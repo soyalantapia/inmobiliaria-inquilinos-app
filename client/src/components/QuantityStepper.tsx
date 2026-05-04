@@ -21,7 +21,7 @@ export function QuantityStepper({ value, min = 0, max, onChange, disabled }: Pro
         aria-label="Restar"
         onClick={dec}
         disabled={disabled || isMin}
-        className="grid h-11 w-11 place-items-center rounded-full bg-primary-100 text-neutral-700 transition-all duration-150 hover:bg-primary-200 active:scale-90 disabled:opacity-30 disabled:hover:bg-primary-100 focus-visible:ring-2 focus-visible:ring-primary-400 sm:h-12 sm:w-12"
+        className="grid h-11 w-11 place-items-center rounded-full bg-primary-100 text-neutral-700 transition-all duration-150 hover:bg-primary-200 active:scale-90 disabled:opacity-30 disabled:hover:bg-primary-100 focus-visible:ring-2 focus-visible:ring-accent-400 sm:h-12 sm:w-12"
       >
         <Minus size={18} strokeWidth={2.5} />
       </button>
@@ -33,7 +33,7 @@ export function QuantityStepper({ value, min = 0, max, onChange, disabled }: Pro
         aria-label="Sumar"
         onClick={inc}
         disabled={disabled || isMax}
-        className="grid h-11 w-11 place-items-center rounded-full bg-primary-500 text-white shadow-cta transition-all duration-150 hover:bg-primary-600 active:scale-90 disabled:opacity-30 disabled:hover:bg-primary-500 focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 sm:h-12 sm:w-12"
+        className="grid h-11 w-11 place-items-center rounded-full bg-accent-500 text-white shadow-cta transition-all duration-150 hover:bg-accent-600 active:scale-90 disabled:opacity-30 disabled:hover:bg-accent-500 focus-visible:ring-2 focus-visible:ring-accent-400 focus-visible:ring-offset-2 sm:h-12 sm:w-12"
       >
         <Plus size={18} strokeWidth={2.5} />
       </button>

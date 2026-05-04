@@ -2,6 +2,7 @@
 @import 'https://api.fontshare.com/v2/css?f[]=satoshi@400,500,600,700,900&display=swap';
 
 @theme {
+  /* Deenex grays — estructura */
   --color-primary-50: #f9f9f9;
   --color-primary-100: #f6f5f6;
   --color-primary-200: #e7e6e7;
@@ -25,20 +26,57 @@
   --color-neutral-900: #333132;
   --color-neutral-950: #272526;
 
+  /* Brand accent — amber: calidez de bar */
+  --color-accent-50: #fff8eb;
+  --color-accent-100: #feebc8;
+  --color-accent-200: #fdd89c;
+  --color-accent-300: #fbbf6b;
+  --color-accent-400: #f9a73c;
+  --color-accent-500: #f59e0b;
+  --color-accent-600: #d97706;
+  --color-accent-700: #b45309;
+  --color-accent-800: #92400e;
+  --color-accent-900: #78350f;
+
+  /* Categorías */
+  --color-cat-bebida: #0ea5e9;
+  --color-cat-bebida-bg: #e0f2fe;
+  --color-cat-comida: #f59e0b;
+  --color-cat-comida-bg: #fef3c7;
+  --color-cat-extra: #a855f7;
+  --color-cat-extra-bg: #f3e8ff;
+
+  /* Status */
+  --color-status-success: #10b981;
+  --color-status-success-bg: #d1fae5;
+  --color-status-success-fg: #065f46;
+  --color-status-warning: #f59e0b;
+  --color-status-warning-bg: #fef3c7;
+  --color-status-warning-fg: #92400e;
+  --color-status-info: #0ea5e9;
+  --color-status-info-bg: #e0f2fe;
+  --color-status-info-fg: #075985;
+  --color-status-error: #f43f5e;
+  --color-status-error-bg: #ffe4e6;
+  --color-status-error-fg: #9f1239;
+
+  /* Legacy secondary (compat con páginas Deenex) */
   --color-secondary: #f3f7f1;
-  --color-status-success: #56bb69;
-  --color-status-error: #ff5656;
-  --color-status-warning: #ffd148;
 
   --font-sans: 'Satoshi', system-ui, -apple-system, sans-serif;
 
+  /* Sombras escalonadas */
   --shadow-card: 0 1px 2px rgba(15, 15, 15, 0.04), 0 1px 1px rgba(15, 15, 15, 0.03);
   --shadow-card-hover: 0 1px 2px rgba(15, 15, 15, 0.04),
     0 8px 24px -12px rgba(15, 15, 15, 0.12);
   --shadow-floating: 0 2px 8px -2px rgba(15, 15, 15, 0.08),
     0 16px 32px -12px rgba(15, 15, 15, 0.18);
   --shadow-cta: 0 1px 2px rgba(15, 15, 15, 0.06),
+    0 8px 16px -8px rgba(245, 158, 11, 0.55);
+  --shadow-cta-neutral: 0 1px 2px rgba(15, 15, 15, 0.06),
     0 8px 16px -8px rgba(58, 56, 58, 0.45);
+  --shadow-cta-success: 0 1px 2px rgba(15, 15, 15, 0.06),
+    0 8px 16px -8px rgba(16, 185, 129, 0.5);
 
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -123,11 +161,11 @@ input:focus-visible {
   }
   10%,
   90% {
-    opacity: 0.6;
+    opacity: 0.7;
   }
   50% {
     transform: translateY(100%);
-    opacity: 0.6;
+    opacity: 0.7;
   }
 }
 
@@ -140,6 +178,31 @@ input:focus-visible {
   50% {
     opacity: 0.92;
     transform: scale(1.02);
+  }
+}
+
+@keyframes glow-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 12px rgba(245, 158, 11, 0);
+  }
+}
+
+@keyframes confetti-burst {
+  0% {
+    opacity: 0;
+    transform: translateY(0) scale(0);
+  }
+  20% {
+    opacity: 1;
+    transform: translateY(-12px) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-60px) scale(0.6);
   }
 }
 
@@ -159,6 +222,14 @@ input:focus-visible {
   animation: pulse-soft 2.4s ease-in-out infinite;
 }
 
+@utility animate-glow-pulse {
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+@utility animate-confetti {
+  animation: confetti-burst 1.4s var(--ease-out-expo) both;
+}
+
 @utility shadow-card {
   box-shadow: var(--shadow-card);
 }
@@ -171,6 +242,12 @@ input:focus-visible {
 @utility shadow-cta {
   box-shadow: var(--shadow-cta);
 }
+@utility shadow-cta-neutral {
+  box-shadow: var(--shadow-cta-neutral);
+}
+@utility shadow-cta-success {
+  box-shadow: var(--shadow-cta-success);
+}
 
 .bg-grid-pattern {
   background-image: radial-gradient(
@@ -179,4 +256,32 @@ input:focus-visible {
     transparent 0
   );
   background-size: 24px 24px;
+}
+
+.bg-amber-mesh {
+  background-image:
+    radial-gradient(
+      ellipse at top left,
+      rgba(245, 158, 11, 0.18),
+      transparent 50%
+    ),
+    radial-gradient(
+      ellipse at bottom right,
+      rgba(168, 85, 247, 0.12),
+      transparent 50%
+    );
+}
+
+.bg-emerald-mesh {
+  background-image:
+    radial-gradient(
+      ellipse at top,
+      rgba(16, 185, 129, 0.18),
+      transparent 60%
+    ),
+    radial-gradient(
+      ellipse at bottom,
+      rgba(245, 158, 11, 0.12),
+      transparent 60%
+    );
 }

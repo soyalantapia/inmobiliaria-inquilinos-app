@@ -40,11 +40,11 @@ export function MagicLinkPage() {
   }, [state, navigate])
 
   return (
-    <div className="bg-grid-pattern grid min-h-[100svh] place-items-center bg-primary-50 px-4 py-10">
-      <div className="animate-fade-up flex w-full max-w-md flex-col items-center gap-5 rounded-3xl bg-white p-8 text-center shadow-card">
+    <div className="bg-amber-mesh bg-grid-pattern grid min-h-[100svh] place-items-center bg-primary-50 px-4 py-10">
+      <div className="animate-fade-up flex w-full max-w-md flex-col items-center gap-5 rounded-3xl bg-white p-8 text-center shadow-card ring-1 ring-neutral-100">
         {state === 'verifying' && (
           <>
-            <div className="grid h-16 w-16 place-items-center rounded-3xl bg-primary-100 text-primary-700">
+            <div className="grid h-16 w-16 place-items-center rounded-3xl bg-accent-50 text-accent-700">
               <Loader2 size={28} className="animate-spin" />
             </div>
             <div>
@@ -56,8 +56,8 @@ export function MagicLinkPage() {
 
         {state === 'ok' && (
           <>
-            <div className="relative grid h-16 w-16 place-items-center rounded-3xl bg-secondary text-[#3f6a35] shadow-card">
-              <div className="absolute inset-0 animate-pulse-soft rounded-3xl bg-secondary opacity-60" />
+            <div className="relative grid h-16 w-16 place-items-center rounded-3xl bg-gradient-to-br from-status-success to-emerald-400 text-white shadow-cta-success">
+              <div className="absolute inset-0 animate-pulse-soft rounded-3xl bg-status-success/40" />
               <CheckCircle2 size={32} className="relative" />
             </div>
             <div>
@@ -69,7 +69,7 @@ export function MagicLinkPage() {
 
         {state === 'invalid' && (
           <>
-            <div className="grid h-16 w-16 place-items-center rounded-3xl bg-[#fff0f0] text-[#b13030]">
+            <div className="grid h-16 w-16 place-items-center rounded-3xl bg-status-error-bg text-status-error-fg">
               <AlertCircle size={32} />
             </div>
             <div>
@@ -80,7 +80,7 @@ export function MagicLinkPage() {
             </div>
             <Link
               to="/login"
-              className="rounded-full bg-primary-500 px-6 py-3 text-sm font-semibold text-white shadow-cta transition-all duration-200 hover:-translate-y-0.5 hover:bg-primary-600 hover:shadow-floating focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2"
+              className="rounded-full bg-gradient-to-br from-accent-400 to-accent-600 px-6 py-3 text-sm font-semibold text-white shadow-cta transition-all duration-200 hover:-translate-y-0.5 hover:from-accent-500 hover:to-accent-700 hover:shadow-floating focus-visible:ring-2 focus-visible:ring-accent-400 focus-visible:ring-offset-2"
             >
               Volver al login
             </Link>
