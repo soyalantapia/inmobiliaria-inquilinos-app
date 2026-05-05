@@ -5,6 +5,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 import path from 'node:path'
 
 export default defineConfig({
+  base: '/bartender-app/',
   plugins: [
     react(),
     tailwindcss(),
@@ -20,7 +21,7 @@ export default defineConfig({
         background_color: '#f9f9f9',
         display: 'standalone',
         orientation: 'any',
-        start_url: '/',
+        start_url: '/bartender-app/',
         icons: [
           { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
           { src: '/icon-512.png', sizes: '512x512', type: 'image/png' },

@@ -48,7 +48,7 @@ export function ScanPage() {
       })
     return () => {
       active = false
-      scanner.stop().catch(() => {}).finally(() => scanner.clear().catch(() => {}))
+      void Promise.resolve(scanner.stop()).catch(() => {}).finally(() => { void Promise.resolve(scanner.clear()).catch(() => {}) })
     }
   }, [mode, navigate, toast])
 

@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AppShell } from '@/layouts/AppShell'
 import { ScanPage } from '@/pages/ScanPage'
 import { OrderDetailPage } from '@/pages/OrderDetailPage'
@@ -14,7 +14,7 @@ export default function App() {
   return (
     <ToastProvider>
       <AuthProvider>
-        <BrowserRouter>
+        <HashRouter>
           <Routes>
             <Route path="login" element={<LoginPage />} />
             <Route path="auth/magic" element={<MagicLinkPage />} />
@@ -34,7 +34,7 @@ export default function App() {
 
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
-        </BrowserRouter>
+        </HashRouter>
       </AuthProvider>
     </ToastProvider>
   )
