@@ -10,12 +10,13 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
+      injectRegister: false,
+      devOptions: { enabled: false },
       manifest: {
         name: 'Bartender App — Deenex',
         short_name: 'Bartender',
         description: 'Retiro de productos por QR — Deenex',
-        theme_color: '#8b8589',
+        theme_color: '#695ede',
         background_color: '#f9f9f9',
         display: 'standalone',
         orientation: 'any',
@@ -38,6 +39,6 @@ export default defineConfig({
   },
   server: {
     port: 5180,
-    host: true,
+    host: '127.0.0.1',
   },
 })

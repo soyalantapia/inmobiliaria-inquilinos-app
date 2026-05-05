@@ -174,6 +174,13 @@ export function ScanPage() {
               {o.token}
             </button>
           ))}
+          <button
+            type="button"
+            onClick={() => navigate('/pedidos/DNX-EXPIRED')}
+            className="inline-flex h-11 items-center rounded-full bg-status-error-bg px-4 text-xs font-bold tracking-widest text-status-error-fg transition-all duration-200 hover:-translate-y-0.5 hover:brightness-95 active:translate-y-0 active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-status-error focus-visible:ring-offset-2"
+          >
+            DNX-EXPIRED
+          </button>
         </div>
       </div>
     </div>

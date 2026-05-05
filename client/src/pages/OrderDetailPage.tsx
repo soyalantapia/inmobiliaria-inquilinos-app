@@ -1,23 +1,40 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, Link } from 'react-router-dom'
-import { ArrowLeft, CheckCircle2, Clock, MapPin, User, Zap, AlertCircle } from 'lucide-react'
-import { findOrderByToken, computeOrderStatus, type OrderProduct } from '@/data/mockOrders'
+import {
+  ArrowLeft,
+  CheckCircle2,
+  Clock,
+  MapPin,
+  User,
+  Zap,
+  AlertCircle,
+  Hourglass,
+  RefreshCw,
+} from 'lucide-react'
+import {
+  findOrderByToken,
+  computeOrderStatus,
+  type OrderProduct,
+} from '@/data/mockOrders'
 import { ProductRow } from '@/components/ProductRow'
 import { StatusBadge } from '@/components/StatusBadge'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { RetrievalHistory } from '@/components/RetrievalHistory'
 import { useToast } from '@/components/Toast'
+import { useAuth } from '@/lib/auth'
 import { cn } from '@/lib/cn'
 
 export function OrderDetailPage() {
   const { token = '' } = useParams()
   const navigate = useNavigate()
   const toast = useToast()
-  const order = useMemo(() => findOrderByToken(token), [token])
+  const { operator } = useAuth()
+  const result = useMemo(() => findOrderByToken(token), [token])
+  const order = result.ok ? result.order : null
 
   const [selection, setSelection] = useState<Record<string, number>>({})
   const [confirmOpen, setConfirmOpen] = useState(false)
 
-  // Aviso si llegan a un pedido ya completado
   useEffect(() => {
     if (order && order.status === 'completed') {
       toast.warning(
@@ -27,52 +44,57 @@ export function OrderDetailPage() {
     }
   }, [order, toast])
 
-  if (!order) {
+  // Error: QR expirado
+  if (!result.ok && result.error === 'expired') {
     return (
-      <div className="animate-fade-up mx-auto flex w-full max-w-2xl flex-col items-center gap-5 px-4 py-20 text-center">
-        <div className="grid h-20 w-20 place-items-center rounded-3xl bg-status-error-bg text-status-error">
-          <AlertCircle size={32} />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold text-neutral-900">No encontramos ese pedido</h1>
-          <p className="mt-2 text-base text-neutral-500">
-            Revisá el código{' '}
-            <code className="rounded-md bg-primary-100 px-1.5 py-0.5 font-mono text-sm font-bold text-neutral-700">
-              {token}
-            </code>{' '}
-            o probá escaneando de nuevo.
-          </p>
-        </div>
-        <Link
-          to="/"
-          className="rounded-full bg-gradient-to-br from-accent-400 to-accent-600 px-6 py-3.5 text-sm font-semibold text-white shadow-cta transition-all duration-200 hover:-translate-y-0.5 hover:shadow-floating active:translate-y-0 active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-accent-400 focus-visible:ring-offset-2"
-        >
-          Volver a escanear
-        </Link>
-      </div>
+      <ErrorState
+        variant="expired"
+        token={token}
+        title="QR expirado"
+        description="Este código ya cumplió su tiempo o fue invalidado por el sistema. Pedile al cliente que genere uno nuevo desde la app."
+      />
     )
   }
 
-  const isCompleted = order.status === 'completed'
-  const totalItems = order.products.reduce((s, p) => s + p.total, 0)
-  const retrievedItems = order.products.reduce((s, p) => s + p.retrieved, 0)
+  // Error: not found
+  if (!result.ok) {
+    return (
+      <ErrorState
+        variant="not-found"
+        token={token}
+        title="No encontramos ese pedido"
+        description="Revisá el código o probá escaneando de nuevo."
+      />
+    )
+  }
+
+  const isCompleted = order!.status === 'completed'
+  const totalItems = order!.products.reduce((s, p) => s + p.total, 0)
+  const retrievedItems = order!.products.reduce((s, p) => s + p.retrieved, 0)
   const selectedItems = Object.values(selection).reduce((s, n) => s + n, 0)
   const progress = totalItems === 0 ? 0 : Math.round((retrievedItems / totalItems) * 100)
   const wouldComplete =
     selectedItems > 0 &&
     computeOrderStatus(
-      order.products.map((p) => ({
+      order!.products.map((p) => ({
         ...p,
         retrieved: p.retrieved + (selection[p.id] ?? 0),
       })),
     ) === 'completed'
+
+  // Concurrencia: si hay historial reciente (<5min) de OTRO operador, alertar
+  const recentOtherRetrieve = order!.history.find((ev) => {
+    if (operator && ev.operator === operator.name) return false
+    const elapsed = Date.now() - new Date(ev.at).getTime()
+    return elapsed < 5 * 60 * 1000
+  })
 
   const setQty = (productId: string, qty: number) =>
     setSelection((prev) => ({ ...prev, [productId]: qty }))
 
   const selectAll = () => {
     const next: Record<string, number> = {}
-    order.products.forEach((p: OrderProduct) => {
+    order!.products.forEach((p: OrderProduct) => {
       const remaining = p.total - p.retrieved
       if (remaining > 0) next[p.id] = remaining
     })
@@ -97,7 +119,7 @@ export function OrderDetailPage() {
       wouldComplete ? 'El pedido quedó completo.' : 'Quedan productos por retirar.',
     )
     navigate(
-      `/pedidos/${encodeURIComponent(order.token)}/confirmacion?items=${selectedItems}&done=${wouldComplete ? '1' : '0'}`,
+      `/pedidos/${encodeURIComponent(order!.token)}/confirmacion?items=${selectedItems}&done=${wouldComplete ? '1' : '0'}`,
     )
   }
 
@@ -119,27 +141,27 @@ export function OrderDetailPage() {
                   Pedido
                 </p>
                 <h1 className="mt-1 font-mono text-2xl font-bold tracking-widest text-neutral-900 sm:text-3xl">
-                  {order.token}
+                  {order!.token}
                 </h1>
               </div>
-              <StatusBadge status={order.status} />
+              <StatusBadge status={order!.status} />
             </div>
 
             <dl className="mt-5 grid gap-3 text-sm sm:grid-cols-3">
               <div className="flex items-center gap-2 text-neutral-700">
                 <User size={16} className="text-accent-500" />
-                <span className="font-medium">{order.customerName}</span>
+                <span className="font-medium">{order!.customerName}</span>
               </div>
-              {order.pickupPoint && (
+              {order!.pickupPoint && (
                 <div className="flex items-center gap-2 text-neutral-700">
                   <MapPin size={16} className="text-cat-extra" />
-                  <span className="font-medium">{order.pickupPoint}</span>
+                  <span className="font-medium">{order!.pickupPoint}</span>
                 </div>
               )}
               <div className="flex items-center gap-2 text-neutral-700">
                 <Clock size={16} className="text-cat-bebida" />
                 <span className="font-medium">
-                  {new Date(order.createdAt).toLocaleString('es-AR', {
+                  {new Date(order!.createdAt).toLocaleString('es-AR', {
                     hour: '2-digit',
                     minute: '2-digit',
                     day: '2-digit',
@@ -172,6 +194,22 @@ export function OrderDetailPage() {
           </div>
         </div>
 
+        {/* Alerta de concurrencia */}
+        {recentOtherRetrieve && !isCompleted && (
+          <div className="animate-fade-in flex items-start gap-3 rounded-2xl bg-status-info-bg p-4 text-status-info-fg ring-1 ring-status-info/20">
+            <RefreshCw size={18} className="mt-0.5 shrink-0 text-status-info" />
+            <div className="text-sm">
+              <p className="font-bold">
+                {recentOtherRetrieve.operator} acaba de retirar productos en{' '}
+                {recentOtherRetrieve.point}
+              </p>
+              <p className="mt-0.5 text-xs font-medium">
+                Revisá el historial antes de confirmar para no duplicar entregas.
+              </p>
+            </div>
+          </div>
+        )}
+
         {isCompleted && (
           <div className="flex items-center gap-3 rounded-2xl bg-status-success-bg p-4 text-status-success-fg">
             <CheckCircle2 size={20} className="shrink-0 text-status-success" />
@@ -200,8 +238,8 @@ export function OrderDetailPage() {
           )}
         </div>
 
-        <div className="flex flex-col gap-3 pb-4">
-          {order.products.map((product) => (
+        <div className="flex flex-col gap-3">
+          {order!.products.map((product) => (
             <ProductRow
               key={product.id}
               product={product}
@@ -210,6 +248,8 @@ export function OrderDetailPage() {
             />
           ))}
         </div>
+
+        <RetrievalHistory events={order!.history} />
 
         {!isCompleted && (
           <>
@@ -258,7 +298,7 @@ export function OrderDetailPage() {
           <span>
             Estás por entregar los últimos{' '}
             <span className="font-bold text-neutral-700">{selectedItems} producto{selectedItems === 1 ? '' : 's'}</span>{' '}
-            del pedido <span className="font-mono font-bold text-accent-700">{order.token}</span>. Esta acción cierra el QR y no se puede deshacer.
+            del pedido <span className="font-mono font-bold text-accent-700">{order!.token}</span>. Esta acción cierra el QR y no se puede deshacer.
           </span>
         }
         confirmLabel="Sí, cerrar pedido"
@@ -267,5 +307,46 @@ export function OrderDetailPage() {
         onCancel={() => setConfirmOpen(false)}
       />
     </>
+  )
+}
+
+function ErrorState({
+  variant,
+  token,
+  title,
+  description,
+}: {
+  variant: 'expired' | 'not-found'
+  token: string
+  title: string
+  description: string
+}) {
+  const Icon = variant === 'expired' ? Hourglass : AlertCircle
+  return (
+    <div className="animate-fade-up mx-auto flex w-full max-w-2xl flex-col items-center gap-5 px-4 py-20 text-center">
+      <div className="grid h-20 w-20 place-items-center rounded-3xl bg-status-error-bg text-status-error">
+        <Icon size={32} />
+      </div>
+      <div>
+        <h1 className="text-2xl font-bold text-neutral-900">{title}</h1>
+        <p className="mt-2 text-base text-neutral-500">
+          {description}
+          {variant === 'not-found' && token && (
+            <>
+              {' '}Código:{' '}
+              <code className="rounded-md bg-primary-100 px-1.5 py-0.5 font-mono text-sm font-bold text-neutral-700">
+                {token}
+              </code>
+            </>
+          )}
+        </p>
+      </div>
+      <Link
+        to="/"
+        className="rounded-full bg-gradient-to-br from-accent-400 to-accent-600 px-6 py-3.5 text-sm font-semibold text-white shadow-cta transition-all duration-200 hover:-translate-y-0.5 hover:shadow-floating active:translate-y-0 active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-accent-400 focus-visible:ring-offset-2"
+      >
+        Volver a escanear
+      </Link>
+    </div>
   )
 }

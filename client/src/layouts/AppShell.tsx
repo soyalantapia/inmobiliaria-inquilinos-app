@@ -2,6 +2,7 @@ import { Outlet, NavLink } from 'react-router-dom'
 import { ScanLine, ListChecks, LogOut } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useAuth } from '@/lib/auth'
+import { OfflineBanner } from '@/components/OfflineBanner'
 
 const links = [
   { to: '/', label: 'Escanear', icon: ScanLine, end: true },
@@ -114,6 +115,7 @@ export function AppShell() {
       </header>
 
       <main className="flex-1 overflow-x-hidden pb-32 md:pb-0">
+        <OfflineBanner />
         <Outlet />
       </main>
 
