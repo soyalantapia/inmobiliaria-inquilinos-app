@@ -1,0 +1,53 @@
+export type Moneda = 'ARS' | 'USD';
+export type EstadoContrato = 'BORRADOR' | 'ACTIVO' | 'FINALIZADO' | 'RESCINDIDO';
+export type EstadoLiquidacion = 'PENDIENTE' | 'PAGADO' | 'PARCIAL' | 'VENCIDO';
+export type IndiceAjuste = 'ICL' | 'IPC' | 'CASA_PROPIA' | 'UVA' | 'CAC' | 'RIPTE' | 'FIJO';
+export type Recomendacion = 'APTO' | 'APTO_CON_GARANTIA' | 'NO_APTO';
+export type Confianza = 'alto' | 'medio' | 'bajo';
+
+export interface ContratoListado {
+  id: string;
+  inquilino: string;
+  direccion: string;
+  monto: number;
+  moneda: Moneda;
+  estado: EstadoContrato;
+  fechaInicio: string;
+  fechaFin: string;
+  proximoVencimiento: string;
+  estadoPagoActual: EstadoLiquidacion;
+}
+
+export interface CampoExtraido {
+  valor: string | number | null;
+  confianza: Confianza;
+}
+
+export interface ContratoExtraido {
+  inquilino: CampoExtraido;
+  cuit: CampoExtraido;
+  direccion: CampoExtraido;
+  montoInicial: CampoExtraido;
+  moneda: CampoExtraido;
+  fechaInicio: CampoExtraido;
+  fechaFin: CampoExtraido;
+  diaPago: CampoExtraido;
+  indiceAjuste: CampoExtraido;
+  frecuenciaAjusteMeses: CampoExtraido;
+  comisionInmobiliaria: CampoExtraido;
+  depositoGarantia: CampoExtraido;
+  tasaPunitorioDiaria: CampoExtraido;
+}
+
+export interface ScreeningResultado {
+  cuit: string;
+  nombre: string;
+  scoreNosis: number;
+  resultadoBcra: number;
+  deudasCount: number;
+  deudasMonto: number;
+  chequesRechazados: number;
+  juiciosCount: number;
+  recomendacion: Recomendacion;
+  recomendacionRazon: string;
+}

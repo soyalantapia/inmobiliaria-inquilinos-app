@@ -1,0 +1,23 @@
+{
+  "name": "@llave/config",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./index.js",
+  "exports": {
+    "./tsconfig.next.json": "./tsconfig.next.json",
+    "./tsconfig.lib.json": "./tsconfig.lib.json",
+    "./tailwind.preset": "./tailwind.preset.js",
+    "./eslint": "./eslint.config.js"
+  },
+  "files": [
+    "tsconfig.next.json",
+    "tsconfig.lib.json",
+    "tailwind.preset.js",
+    "eslint.config.js"
+  ],
+  "devDependencies": {
+    "tailwindcss": "^3.4.13",
+    "tailwindcss-animate": "^1.0.7"
+  }
+}

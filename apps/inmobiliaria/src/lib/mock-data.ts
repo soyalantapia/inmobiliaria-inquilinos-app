@@ -1,0 +1,120 @@
+import type { ContratoExtraido, ContratoListado, ScreeningResultado } from './types';
+
+export const contratosMock: ContratoListado[] = [
+  {
+    id: 'cnt_001',
+    inquilino: 'Mariela Sosa',
+    direccion: 'Gorriti 4521, 3°B',
+    monto: 480000,
+    moneda: 'ARS',
+    estado: 'ACTIVO',
+    fechaInicio: '2025-09-01',
+    fechaFin: '2028-08-31',
+    proximoVencimiento: '2026-05-10',
+    estadoPagoActual: 'PENDIENTE',
+  },
+  {
+    id: 'cnt_002',
+    inquilino: 'Juan Pérez',
+    direccion: 'Av. Cabildo 2890, 7°A',
+    monto: 620000,
+    moneda: 'ARS',
+    estado: 'ACTIVO',
+    fechaInicio: '2024-03-01',
+    fechaFin: '2027-02-28',
+    proximoVencimiento: '2026-05-08',
+    estadoPagoActual: 'PAGADO',
+  },
+  {
+    id: 'cnt_003',
+    inquilino: 'Laura Giménez',
+    direccion: 'Jorge Newbery 1820',
+    monto: 510000,
+    moneda: 'ARS',
+    estado: 'ACTIVO',
+    fechaInicio: '2025-01-15',
+    fechaFin: '2028-01-14',
+    proximoVencimiento: '2026-05-15',
+    estadoPagoActual: 'VENCIDO',
+  },
+  {
+    id: 'cnt_004',
+    inquilino: 'Carlos Romero',
+    direccion: 'Honduras 4490, PB',
+    monto: 720000,
+    moneda: 'ARS',
+    estado: 'ACTIVO',
+    fechaInicio: '2024-11-01',
+    fechaFin: '2027-10-31',
+    proximoVencimiento: '2026-05-05',
+    estadoPagoActual: 'PAGADO',
+  },
+  {
+    id: 'cnt_005',
+    inquilino: 'Ana Pereyra',
+    direccion: 'Salguero 2240, 12°D',
+    monto: 850000,
+    moneda: 'ARS',
+    estado: 'ACTIVO',
+    fechaInicio: '2025-04-01',
+    fechaFin: '2028-03-31',
+    proximoVencimiento: '2026-05-10',
+    estadoPagoActual: 'PENDIENTE',
+  },
+  {
+    id: 'cnt_006',
+    inquilino: 'Tomás Bravo',
+    direccion: 'Olleros 3920',
+    monto: 1200,
+    moneda: 'USD',
+    estado: 'BORRADOR',
+    fechaInicio: '2026-06-01',
+    fechaFin: '2029-05-31',
+    proximoVencimiento: '2026-06-01',
+    estadoPagoActual: 'PENDIENTE',
+  },
+];
+
+export const contratoExtraidoMock: ContratoExtraido = {
+  inquilino: { valor: 'Mariela Sosa', confianza: 'alto' },
+  cuit: { valor: '27-32567890-4', confianza: 'alto' },
+  direccion: { valor: 'Gorriti 4521, 3°B', confianza: 'alto' },
+  montoInicial: { valor: 480000, confianza: 'alto' },
+  moneda: { valor: 'ARS', confianza: 'alto' },
+  fechaInicio: { valor: '2025-09-01', confianza: 'alto' },
+  fechaFin: { valor: '2028-08-31', confianza: 'alto' },
+  diaPago: { valor: 5, confianza: 'medio' },
+  indiceAjuste: { valor: 'ICL', confianza: 'alto' },
+  frecuenciaAjusteMeses: { valor: 12, confianza: 'alto' },
+  comisionInmobiliaria: { valor: 4.17, confianza: 'medio' },
+  depositoGarantia: { valor: 480000, confianza: 'alto' },
+  tasaPunitorioDiaria: { valor: 0.001, confianza: 'bajo' },
+};
+
+export const screeningMock: ScreeningResultado = {
+  cuit: '20-31256789-3',
+  nombre: 'Carlos Eduardo Méndez',
+  scoreNosis: 742,
+  resultadoBcra: 1,
+  deudasCount: 0,
+  deudasMonto: 0,
+  chequesRechazados: 0,
+  juiciosCount: 0,
+  recomendacion: 'APTO',
+  recomendacionRazon:
+    'Score Nosis 742 (alto), BCRA categoría 1 (sin atrasos), sin deudas ni juicios. Cumple criterios objetivos de aptitud sin requerir garantía adicional.',
+};
+
+export const dashboardMetricsMock = {
+  contratosActivos: 87,
+  cobroDelMesPct: 84,
+  morosos: 6,
+  ingresosMes: 41850000,
+};
+
+export const eventosMock = [
+  { id: 'e1', tipo: 'pago', titulo: 'Cobraste a Juan Pérez', subtitulo: 'Hace 12 minutos · $620.000', icono: 'dollar' },
+  { id: 'e2', tipo: 'reclamo', titulo: 'Nuevo reclamo de Mariela Sosa', subtitulo: 'Hace 2 hs · Plomería · Media', icono: 'wrench' },
+  { id: 'e3', tipo: 'aumento', titulo: 'Ajuste aplicado a 5 contratos', subtitulo: 'Hace 1 día · ICL +18,4%', icono: 'trending-up' },
+  { id: 'e4', tipo: 'screening', titulo: 'Screening de Tomás Bravo', subtitulo: 'Hace 1 día · APTO', icono: 'shield-check' },
+] as const;

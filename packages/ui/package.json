@@ -1,0 +1,58 @@
+{
+  "name": "@llave/ui",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "sideEffects": ["**/*.css"],
+  "exports": {
+    "./globals.css": "./src/globals.css",
+    "./cn": "./src/lib/cn.ts",
+    "./button": "./src/components/button.tsx",
+    "./card": "./src/components/card.tsx",
+    "./input": "./src/components/input.tsx",
+    "./label": "./src/components/label.tsx",
+    "./badge": "./src/components/badge.tsx",
+    "./avatar": "./src/components/avatar.tsx",
+    "./tabs": "./src/components/tabs.tsx",
+    "./dialog": "./src/components/dialog.tsx",
+    "./select": "./src/components/select.tsx",
+    "./textarea": "./src/components/textarea.tsx",
+    "./separator": "./src/components/separator.tsx",
+    "./progress": "./src/components/progress.tsx",
+    "./skeleton": "./src/components/skeleton.tsx",
+    "./table": "./src/components/table.tsx",
+    "./toast": "./src/components/toast.tsx",
+    "./tokens": "./src/lib/tokens.ts"
+  },
+  "scripts": {
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@radix-ui/react-avatar": "^1.1.1",
+    "@radix-ui/react-dialog": "^1.1.2",
+    "@radix-ui/react-label": "^2.1.0",
+    "@radix-ui/react-progress": "^1.1.0",
+    "@radix-ui/react-select": "^2.1.2",
+    "@radix-ui/react-separator": "^1.1.0",
+    "@radix-ui/react-slot": "^1.1.0",
+    "@radix-ui/react-tabs": "^1.1.1",
+    "@radix-ui/react-toast": "^1.2.2",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.453.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwind-merge": "^2.5.4"
+  },
+  "devDependencies": {
+    "@llave/config": "workspace:*",
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.0",
+    "typescript": "^5.5.4"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0"
+  }
+}

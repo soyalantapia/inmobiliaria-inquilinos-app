@@ -1,0 +1,26 @@
+{
+  "name": "llave",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Llave — plataforma inmobiliaria (alquiler + expensas + chat IA + screening)",
+  "packageManager": "pnpm@9.0.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "dev:inquilino": "turbo run dev --filter=@llave/inquilino",
+    "dev:inmobiliaria": "turbo run dev --filter=@llave/inmobiliaria",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
+    "clean": "turbo run clean && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "prettier": "^3.3.3",
+    "prettier-plugin-tailwindcss": "^0.6.6",
+    "turbo": "^2.1.0",
+    "typescript": "^5.5.4"
+  }
+}
