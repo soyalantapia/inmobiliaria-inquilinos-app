@@ -3,6 +3,7 @@ import { ArrowUpRight, DollarSign, FileWarning, Plus, ShieldCheck, TrendingUp, U
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@llave/ui/card';
+import { DashboardGreeting } from '@/components/dashboard-greeting';
 import { Topbar } from '@/components/topbar';
 import { dashboardMetricsMock, eventosMock } from '@/lib/mock-data';
 import { formatMonto } from '@/lib/format';
@@ -47,10 +48,8 @@ export default function DashboardPage() {
       <Topbar titulo="Dashboard" />
       <main className="flex-1 space-y-6 p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-sm text-muted-foreground">Buenas, Roberto.</p>
-            <p className="text-2xl font-semibold">Esto pasó hoy en tu cartera.</p>
-          </div>
+          <DashboardGreeting />
+
           <div className="flex gap-2">
             <Button asChild variant="outline">
               <Link href="/screening"><ShieldCheck className="h-4 w-4" />Verificar inquilino</Link>

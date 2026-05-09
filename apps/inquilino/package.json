@@ -11,6 +11,7 @@
     "clean": "rm -rf .next .turbo"
   },
   "dependencies": {
+    "@clerk/nextjs": "^6.6.0",
     "@llave/ui": "workspace:*",
     "@hookform/resolvers": "^3.9.0",
     "lucide-react": "^0.453.0",

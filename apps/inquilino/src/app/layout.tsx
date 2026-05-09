@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google';
 import '@llave/ui/globals.css';
 import './pwa-register.css';
 import { PwaRegister } from './pwa-register';
+import { AuthProvider } from '@/components/auth-provider';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
 
@@ -25,7 +26,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="es-AR" className={inter.variable}>
       <body className="min-h-screen bg-background font-sans">
-        <div className="mx-auto flex min-h-screen max-w-md flex-col">{children}</div>
+        <AuthProvider>
+          <div className="mx-auto flex min-h-screen max-w-md flex-col">{children}</div>
+        </AuthProvider>
         <PwaRegister />
       </body>
     </html>

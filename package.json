@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "description": "Llave — plataforma inmobiliaria (alquiler + expensas + chat IA + screening)",
-  "packageManager": "pnpm@9.0.0",
+  "packageManager": "pnpm@10.28.2",
   "engines": {
     "node": ">=20"
   },

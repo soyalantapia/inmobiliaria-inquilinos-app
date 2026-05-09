@@ -1,9 +1,9 @@
 import Link from 'next/link';
-import { Bell, MapPin } from 'lucide-react';
-import { Avatar, AvatarFallback } from '@llave/ui/avatar';
+import { MapPin } from 'lucide-react';
 import { Card } from '@llave/ui/card';
 import { NavBar } from '@/components/nav-bar';
 import { PaymentCard } from '@/components/payment-card';
+import { UserMenu } from '@/components/user-menu';
 import { contratoMock, liquidacionesMock } from '@/lib/mock-data';
 
 export default function HomePage() {
@@ -12,19 +12,8 @@ export default function HomePage() {
 
   return (
     <>
-      <header className="flex items-center justify-between p-5">
-        <div className="flex items-center gap-3">
-          <Avatar>
-            <AvatarFallback className="bg-primary/10 text-primary">M</AvatarFallback>
-          </Avatar>
-          <div>
-            <p className="text-xs text-muted-foreground">Hola</p>
-            <p className="font-semibold">Mariela</p>
-          </div>
-        </div>
-        <button className="rounded-full p-2 hover:bg-muted" aria-label="Notificaciones">
-          <Bell className="h-5 w-5" />
-        </button>
+      <header className="p-5">
+        <UserMenu />
       </header>
 
       <main className="flex-1 space-y-6 px-5 pb-6">

@@ -1,8 +1,14 @@
-import { Bell, Search } from 'lucide-react';
+'use client';
+
+import { SignOutButton, UserButton } from '@clerk/nextjs';
+import { useRouter } from 'next/navigation';
+import { Bell, LogOut, Search } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@llave/ui/avatar';
 import { Input } from '@llave/ui/input';
+import { isClerkEnabled, mockUser } from '@/lib/auth';
 
 export function Topbar({ titulo }: { titulo: string }) {
+  const router = useRouter();
   return (
     <header className="flex h-16 items-center justify-between border-b bg-background px-6">
       <h1 className="text-xl font-semibold">{titulo}</h1>
@@ -14,9 +20,33 @@ export function Topbar({ titulo }: { titulo: string }) {
         <button className="rounded-full p-2 hover:bg-muted" aria-label="Notificaciones">
           <Bell className="h-5 w-5" />
         </button>
-        <Avatar>
-          <AvatarFallback className="bg-primary/10 text-primary">RT</AvatarFallback>
-        </Avatar>
+
+        {isClerkEnabled() ? (
+          <>
+            <UserButton afterSignOutUrl="/login" />
+            <SignOutButton redirectUrl="/login">
+              <button className="rounded-full p-2 hover:bg-muted md:hidden" aria-label="Cerrar sesión">
+                <LogOut className="h-4 w-4" />
+              </button>
+            </SignOutButton>
+          </>
+        ) : (
+          <div className="flex items-center gap-2">
+            <Avatar>
+              <AvatarFallback className="bg-primary/10 text-primary">
+                {mockUser.user.firstName.slice(0, 1)}
+                {mockUser.user.lastName.slice(0, 1)}
+              </AvatarFallback>
+            </Avatar>
+            <button
+              onClick={() => router.push('/login')}
+              className="rounded-full p-2 hover:bg-muted"
+              aria-label="Cerrar sesión (mock)"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
+          </div>
+        )}
       </div>
     </header>
   );

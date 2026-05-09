@@ -69,14 +69,37 @@ Para correr una sola app: `pnpm dev:inquilino` o `pnpm dev:inmobiliaria`.
 | `/pagos` | Pagos del mes con KPIs y tabla |
 | `/configuracion` | Empresa + equipo + plan + integraciones |
 
-### Pendiente para terminar Sprint 0
+### Auth — Clerk opt-in
 
-Lo que falta para cumplir los criterios de aceptación de §0:
+Las dos apps tienen el wiring completo de Clerk (`@clerk/nextjs`):
+`ClerkProvider`, `clerkMiddleware` con protección de rutas, `<SignIn />` y
+`<UserButton />` / `<SignOutButton />`.
+
+El switch es por env var. Si `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` está
+seteada, Clerk arranca real; si falta, las dos apps caen al mock para que
+`pnpm dev` levante sin tener que crear cuenta de Clerk antes.
+
+Para activarlo:
+
+```bash
+# en apps/inquilino/.env.local Y apps/inmobiliaria/.env.local
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_…
+CLERK_SECRET_KEY=sk_test_…
+```
+
+Y reiniciar `pnpm dev`. El login mock se reemplaza automáticamente por el
+componente `<SignIn />` con tema violeta y los hooks `useUser()` empiezan
+a devolver el usuario real.
+
+> **Inquilino:** Clerk va a hacer OTP por SMS hasta que conectemos
+> WhatsApp Cloud API en Sprint 3 (CLAUDE.md §6.1).
+
+### Pendiente para terminar Sprint 0
 
 - [ ] `apps/api` con Fastify + Prisma (no incluido en esta primera tanda — frontend-only)
 - [ ] `packages/db` con schema Prisma + cliente
 - [ ] `packages/ai`, `packages/integrations`
-- [ ] Integración real con Clerk en ambos frontends (hoy es mock)
+- [x] ~~Integración real con Clerk en ambos frontends~~ (wiring listo, falta pegar las keys reales)
 - [ ] Vercel + Railway + Sentry + PostHog provisionados
 - [ ] Seed de DB
 
