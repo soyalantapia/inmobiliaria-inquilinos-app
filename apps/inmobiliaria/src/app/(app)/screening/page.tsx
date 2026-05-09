@@ -10,6 +10,7 @@ import { Label } from '@llave/ui/label';
 import { Topbar } from '@/components/topbar';
 import { screeningMock } from '@/lib/mock-data';
 import { formatMonto } from '@/lib/format';
+import { formatearCuit, validarCuit } from '@/lib/cuit';
 import type { Recomendacion, ScreeningResultado } from '@/lib/types';
 
 const recoConfig: Record<
@@ -27,8 +28,13 @@ export default function ScreeningPage() {
   const [estado, setEstado] = useState<'idle' | 'loading' | 'done'>('idle');
   const [resultado, setResultado] = useState<ScreeningResultado | null>(null);
 
+  const validacionCuit = validarCuit(cuit);
+  const cuitDirty = cuit.length > 0;
+  const formValido = validacionCuit.valido && nombre.trim().length >= 3;
+
   const verificar = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!formValido) return;
     setEstado('loading');
     // mock: en Sprint 3 esto pega a /api/screening (Nosis + BCRA)
     await new Promise((r) => setTimeout(r, 1800));
@@ -53,11 +59,19 @@ export default function ScreeningPage() {
                 <Label htmlFor="cuit">CUIT / CUIL</Label>
                 <Input
                   id="cuit"
-                  placeholder="20-31256789-3"
-                  value={cuit}
+                  inputMode="numeric"
+                  placeholder="20-31256789-0"
+                  value={formatearCuit(cuit)}
                   onChange={(e) => setCuit(e.target.value)}
+                  aria-invalid={cuitDirty && !validacionCuit.valido}
+                  aria-describedby="cuit-error"
                   required
                 />
+                {cuitDirty && !validacionCuit.valido && (
+                  <p id="cuit-error" className="text-xs text-destructive">
+                    {validacionCuit.motivo}
+                  </p>
+                )}
               </div>
               <div className="space-y-2 md:col-span-2">
                 <Label htmlFor="nombre">Nombre</Label>
@@ -70,7 +84,7 @@ export default function ScreeningPage() {
                 />
               </div>
               <div className="md:col-span-3">
-                <Button type="submit" disabled={!cuit || !nombre || estado === 'loading'}>
+                <Button type="submit" disabled={!formValido || estado === 'loading'}>
                   {estado === 'loading' ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin" />

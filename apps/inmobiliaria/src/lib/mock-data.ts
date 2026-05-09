@@ -92,7 +92,7 @@ export const contratoExtraidoMock: ContratoExtraido = {
 };
 
 export const screeningMock: ScreeningResultado = {
-  cuit: '20-31256789-3',
+  cuit: '20-31256789-0',
   nombre: 'Carlos Eduardo Méndez',
   scoreNosis: 742,
   resultadoBcra: 1,
