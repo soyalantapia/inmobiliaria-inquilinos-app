@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@llav
 import { Input } from '@llave/ui/input';
 import { Label } from '@llave/ui/label';
 import { Progress } from '@llave/ui/progress';
+import { toast } from '@llave/ui/use-toast';
 import { Topbar } from '@/components/topbar';
 import { contratoExtraidoMock } from '@/lib/mock-data';
 import type { ContratoExtraido } from '@/lib/types';
@@ -92,9 +93,29 @@ export default function CargarContratoPage() {
         {paso === 1 && <PasoSubir onArchivo={subir} />}
         {paso === 2 && <PasoIa archivo={archivo} progreso={progreso} />}
         {paso === 3 && (
-          <PasoRevisar datos={datos} setDatos={setDatos} onContinuar={() => setPaso(4)} />
+          <PasoRevisar
+            datos={datos}
+            setDatos={setDatos}
+            onContinuar={() => {
+              setPaso(4);
+              toast({
+                title: 'Datos guardados',
+                description: 'Revisá un último resumen antes de confirmar.',
+              });
+            }}
+          />
         )}
-        {paso === 4 && <PasoConfirmar onConfirmar={() => router.push('/contratos')} />}
+        {paso === 4 && (
+          <PasoConfirmar
+            onConfirmar={() => {
+              toast({
+                title: 'Contrato dado de alta',
+                description: 'Generamos la primera liquidación y mandamos invitación al inquilino.',
+              });
+              router.push('/contratos');
+            }}
+          />
+        )}
       </main>
     </>
   );

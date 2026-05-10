@@ -3,6 +3,8 @@ import { Inter } from 'next/font/google';
 import '@llave/ui/globals.css';
 import './pwa-register.css';
 import { PwaRegister } from './pwa-register';
+import { Toaster } from '@llave/ui/use-toast';
+import { themeScript } from '@llave/ui/theme-toggle';
 import { AuthProvider } from '@/components/auth-provider';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
@@ -24,10 +26,14 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="es-AR" className={inter.variable}>
+    <html lang="es-AR" className={inter.variable} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body className="min-h-screen bg-background font-sans">
         <AuthProvider>
           <div className="mx-auto flex min-h-screen max-w-md flex-col">{children}</div>
+          <Toaster />
         </AuthProvider>
         <PwaRegister />
       </body>

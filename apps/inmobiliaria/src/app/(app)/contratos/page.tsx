@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ChevronRight, Filter, Plus, Search } from 'lucide-react';
+import { ChevronRight, FileText, Filter, Plus, Search } from 'lucide-react';
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card } from '@llave/ui/card';
@@ -126,8 +126,25 @@ export default function ContratosPage() {
               ))}
               {filtrados.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-10 text-center text-sm text-muted-foreground">
-                    No encontramos contratos con esos filtros.
+                  <TableCell colSpan={7} className="py-12 text-center">
+                    <div className="mx-auto flex flex-col items-center gap-2 text-muted-foreground">
+                      <FileText className="h-8 w-8" />
+                      <p className="font-medium text-foreground">
+                        {q ? `Sin resultados para "${q}"` : 'No hay contratos con ese filtro'}
+                      </p>
+                      <p className="text-xs">Probá ajustar la búsqueda o limpiarla.</p>
+                      {(q || filtro !== 'TODOS') && (
+                        <button
+                          onClick={() => {
+                            setQ('');
+                            setFiltro('TODOS');
+                          }}
+                          className="mt-2 text-xs font-medium text-primary hover:underline"
+                        >
+                          Limpiar filtros
+                        </button>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               )}

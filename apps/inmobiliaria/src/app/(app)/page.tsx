@@ -61,10 +61,14 @@ export default function DashboardPage() {
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {cards.map((c) => {
+          {cards.map((c, i) => {
             const Icon = c.icon;
             return (
-              <Card key={c.label}>
+              <Card
+                key={c.label}
+                className="animate-fade-in"
+                style={{ animationDelay: `${i * 60}ms`, animationFillMode: 'backwards' }}
+              >
                 <CardContent className="flex items-start justify-between p-5">
                   <div>
                     <p className="text-xs uppercase tracking-wide text-muted-foreground">{c.label}</p>

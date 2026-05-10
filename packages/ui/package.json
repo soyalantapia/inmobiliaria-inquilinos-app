@@ -22,6 +22,8 @@
     "./skeleton": "./src/components/skeleton.tsx",
     "./table": "./src/components/table.tsx",
     "./toast": "./src/components/toast.tsx",
+    "./use-toast": "./src/components/use-toast.tsx",
+    "./theme-toggle": "./src/components/theme-toggle.tsx",
     "./tokens": "./src/lib/tokens.ts"
   },
   "scripts": {

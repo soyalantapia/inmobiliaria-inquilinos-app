@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { ArrowLeft, CheckCircle2, Loader2, ShieldCheck } from 'lucide-react';
 import { Button } from '@llave/ui/button';
 import { Card } from '@llave/ui/card';
+import { toast } from '@llave/ui/use-toast';
 import { liquidacionesMock } from '@/lib/mock-data';
 import { formatMonto, formatPeriodo } from '@/lib/format';
 
@@ -19,7 +20,13 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
   useEffect(() => {
     // simulación: en Sprint 3 esto pega a /api/pagos/iniciar y redirecciona a init_point de MP
     const t1 = setTimeout(() => setEstado('simulando'), 800);
-    const t2 = setTimeout(() => setEstado('ok'), 2400);
+    const t2 = setTimeout(() => {
+      setEstado('ok');
+      toast({
+        title: 'Pago confirmado',
+        description: 'El comprobante te llega por email y WhatsApp.',
+      });
+    }, 2400);
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);

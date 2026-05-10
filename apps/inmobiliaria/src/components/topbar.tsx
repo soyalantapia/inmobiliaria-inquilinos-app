@@ -2,11 +2,13 @@
 
 import { SignOutButton, UserButton } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
-import { Bell, LogOut, Search } from 'lucide-react';
+import { LogOut, Search } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@llave/ui/avatar';
 import { Input } from '@llave/ui/input';
+import { ThemeToggle } from '@llave/ui/theme-toggle';
 import { isClerkEnabled, mockUser } from '@/lib/auth';
 import { MobileSidebarTrigger } from './sidebar';
+import { NotificationsBell } from './notifications-bell';
 
 export function Topbar({ titulo }: { titulo: string }) {
   const router = useRouter();
@@ -21,9 +23,8 @@ export function Topbar({ titulo }: { titulo: string }) {
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input className="w-72 pl-9" placeholder="Buscar contrato, inquilino…" />
         </div>
-        <button className="rounded-full p-2 hover:bg-muted" aria-label="Notificaciones">
-          <Bell className="h-5 w-5" />
-        </button>
+        <ThemeToggle />
+        <NotificationsBell />
 
         {isClerkEnabled() ? (
           <>

@@ -1,0 +1,131 @@
+'use client';
+
+import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
+import { Bell, CreditCard, MessageCircle, Sparkles, TrendingUp } from 'lucide-react';
+import { cn } from '@llave/ui/cn';
+
+interface Notif {
+  id: string;
+  titulo: string;
+  detalle: string;
+  href: string;
+  cuando: string;
+  unread: boolean;
+  icono: 'card' | 'chat' | 'trend' | 'sparkle';
+}
+
+const ICONS = { card: CreditCard, chat: MessageCircle, trend: TrendingUp, sparkle: Sparkles } as const;
+
+const NOTIFS: Notif[] = [
+  {
+    id: 'i-pago',
+    titulo: 'Tu alquiler vence el 10/05',
+    detalle: '$572.000 — pagá ahora con Mercado Pago',
+    href: '/pago/liq_001',
+    cuando: 'mañana',
+    unread: true,
+    icono: 'card',
+  },
+  {
+    id: 'i-aumento',
+    titulo: 'Próximo ajuste el 01/09',
+    detalle: 'Índice ICL — chequealo en tu contrato',
+    href: '/contrato',
+    cuando: 'hace 2 días',
+    unread: true,
+    icono: 'trend',
+  },
+  {
+    id: 'i-reclamo',
+    titulo: 'La inmobiliaria tomó tu reclamo',
+    detalle: 'Plomería · canilla del baño',
+    href: '/reclamos/nuevo',
+    cuando: 'hace 3 días',
+    unread: false,
+    icono: 'chat',
+  },
+];
+
+export function NotificationsBell() {
+  const [open, setOpen] = useState(false);
+  const [notifs, setNotifs] = useState<Notif[]>(NOTIFS);
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onClick = (e: MouseEvent) => {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [open]);
+
+  const unread = notifs.filter((n) => n.unread).length;
+
+  return (
+    <div className="relative" ref={popoverRef}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="relative rounded-full p-2 hover:bg-muted"
+        aria-label={`${unread} notificaciones sin leer`}
+      >
+        <Bell className="h-5 w-5" />
+        {unread > 0 && (
+          <span className="absolute right-1 top-1 grid h-4 min-w-[1rem] place-items-center rounded-full bg-destructive px-1 text-[10px] font-bold leading-none text-destructive-foreground">
+            {unread}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-12 z-50 w-[calc(100vw-2.5rem)] max-w-sm rounded-lg border bg-popover shadow-lg">
+          <div className="flex items-center justify-between border-b p-3">
+            <p className="text-sm font-semibold">Notificaciones</p>
+            {unread > 0 && (
+              <button
+                onClick={() => setNotifs((p) => p.map((n) => ({ ...n, unread: false })))}
+                className="text-xs font-medium text-primary"
+              >
+                Marcar leídas
+              </button>
+            )}
+          </div>
+          <ul className="max-h-80 overflow-y-auto">
+            {notifs.map((n) => {
+              const Icon = ICONS[n.icono];
+              return (
+                <li key={n.id}>
+                  <Link
+                    href={n.href}
+                    onClick={() => setOpen(false)}
+                    className={cn(
+                      'flex gap-3 border-b px-3 py-3 last:border-b-0 hover:bg-muted/60',
+                      n.unread && 'bg-primary/5',
+                    )}
+                  >
+                    <div className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-primary/10 text-primary">
+                      <Icon className="h-4 w-4" />
+                    </div>
+                    <div className="flex-1 space-y-0.5 min-w-0">
+                      <p className="truncate text-sm font-medium">{n.titulo}</p>
+                      <p className="truncate text-xs text-muted-foreground">{n.detalle}</p>
+                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                        {n.cuando}
+                      </p>
+                    </div>
+                    {n.unread && (
+                      <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-primary" />
+                    )}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}

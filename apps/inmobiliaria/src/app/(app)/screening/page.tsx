@@ -7,6 +7,7 @@ import { Button } from '@llave/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@llave/ui/card';
 import { Input } from '@llave/ui/input';
 import { Label } from '@llave/ui/label';
+import { toast } from '@llave/ui/use-toast';
 import { Topbar } from '@/components/topbar';
 import { screeningMock } from '@/lib/mock-data';
 import { formatMonto } from '@/lib/format';
@@ -40,6 +41,10 @@ export default function ScreeningPage() {
     await new Promise((r) => setTimeout(r, 1800));
     setResultado({ ...screeningMock, cuit, nombre });
     setEstado('done');
+    toast({
+      title: 'Screening listo',
+      description: `${nombre} — recomendación ${screeningMock.recomendacion.replace('_', ' ').toLowerCase()}.`,
+    });
   };
 
   return (

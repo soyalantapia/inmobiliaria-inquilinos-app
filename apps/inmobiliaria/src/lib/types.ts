@@ -5,6 +5,25 @@ export type IndiceAjuste = 'ICL' | 'IPC' | 'CASA_PROPIA' | 'UVA' | 'CAC' | 'RIPT
 export type Recomendacion = 'APTO' | 'APTO_CON_GARANTIA' | 'NO_APTO';
 export type Confianza = 'alto' | 'medio' | 'bajo';
 
+export type CategoriaReclamo = 'PLOMERIA' | 'ELECTRICIDAD' | 'CERRADURA' | 'CALEFACCION' | 'OTRO';
+export type UrgenciaReclamo = 'BAJA' | 'MEDIA' | 'ALTA' | 'EMERGENCIA';
+export type EstadoReclamo = 'ABIERTO' | 'EN_CURSO' | 'RESUELTO' | 'CERRADO';
+
+export interface Reclamo {
+  id: string;
+  contratoId: string;
+  inquilino: string;
+  direccion: string;
+  categoria: CategoriaReclamo;
+  descripcion: string;
+  urgencia: UrgenciaReclamo;
+  estado: EstadoReclamo;
+  asignadoA: string | null;
+  fotoUrl: string | null;
+  createdAt: string;
+  resueltoAt: string | null;
+}
+
 export interface ContratoListado {
   id: string;
   inquilino: string;

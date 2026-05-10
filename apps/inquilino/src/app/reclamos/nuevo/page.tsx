@@ -8,6 +8,7 @@ import { Card } from '@llave/ui/card';
 import { Label } from '@llave/ui/label';
 import { Textarea } from '@llave/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@llave/ui/select';
+import { toast } from '@llave/ui/use-toast';
 import { NavBar } from '@/components/nav-bar';
 import type { Categoria, Urgencia } from '@/lib/types';
 
@@ -119,7 +120,13 @@ export default function NuevoReclamoPage() {
           size="xl"
           className="w-full"
           disabled={!categoria || !urgencia || descripcion.length < 10}
-          onClick={() => setEnviado(true)}
+          onClick={() => {
+            setEnviado(true);
+            toast({
+              title: 'Reclamo enviado',
+              description: 'La inmobiliaria ya lo tiene. Te avisamos por WhatsApp cuando lo tomen.',
+            });
+          }}
         >
           Enviar reclamo
         </Button>

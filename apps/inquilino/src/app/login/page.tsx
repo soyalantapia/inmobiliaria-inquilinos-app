@@ -7,11 +7,15 @@ import { Button } from '@llave/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@llave/ui/card';
 import { Input } from '@llave/ui/input';
 import { Label } from '@llave/ui/label';
+import { ThemeToggle } from '@llave/ui/theme-toggle';
 import { isClerkEnabled } from '@/lib/auth';
 
 export default function LoginPage() {
   return (
-    <main className="flex flex-1 flex-col items-center justify-center px-6 py-10">
+    <main className="relative flex flex-1 flex-col items-center justify-center px-6 py-10">
+      <div className="absolute right-3 top-3">
+        <ThemeToggle />
+      </div>
       <div className="mb-8 flex flex-col items-center gap-3">
         <div className="grid h-14 w-14 place-items-center rounded-2xl bg-primary text-2xl font-bold text-primary-foreground">
           L
