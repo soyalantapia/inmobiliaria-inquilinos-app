@@ -6,8 +6,10 @@ import { useRouter } from 'next/navigation';
 import {
   Bell,
   CalendarClock,
+  CalendarDays,
   ChevronRight,
   CircleHelp,
+  ClipboardCheck,
   FileText,
   Globe,
   Languages,
@@ -20,6 +22,8 @@ import {
   ShieldCheck,
   Sun,
   User,
+  Users,
+  Wrench,
 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@llave/ui/avatar';
 import { Badge } from '@llave/ui/badge';
@@ -269,6 +273,30 @@ export default function CuentaPage() {
               label="Mis documentos"
               descripcion="DNI, recibos, garantes — listos para renovar o mudarte"
               href="/documentos"
+            />
+            <LinkRow
+              icon={<CalendarDays className="h-4 w-4" />}
+              label="Mi calendario"
+              descripcion="Pagos, ajustes y vencimientos en un solo lugar"
+              href="/calendario"
+            />
+            <LinkRow
+              icon={<ClipboardCheck className="h-4 w-4" />}
+              label="Inventario inicial"
+              descripcion="Foto-checklist del estado del depto — para defender el depósito"
+              href="/inventario"
+            />
+            <LinkRow
+              icon={<Users className="h-4 w-4" />}
+              label="Co-inquilinos"
+              descripcion="Compartí el contrato con tu pareja, hermano o amigo"
+              href="/co-inquilinos"
+            />
+            <LinkRow
+              icon={<Wrench className="h-4 w-4" />}
+              label="Profesionales recomendados"
+              descripcion="Plomeros, electricistas y técnicos verificados"
+              href="/profesionales"
             />
             <LinkRow
               icon={<ShieldCheck className="h-4 w-4" />}

@@ -22,6 +22,8 @@ import { Card } from '@llave/ui/card';
 import { Separator } from '@llave/ui/separator';
 import { CompartirGarante } from '@/components/compartir-garante';
 import { ContratoTimeline } from '@/components/contrato-timeline';
+import { DepositoTracker } from '@/components/deposito-tracker';
+import { HistorialAjustes } from '@/components/historial-ajustes';
 import { NavBar } from '@/components/nav-bar';
 import { RenovacionBanner } from '@/components/renovacion-banner';
 import { UserMenu } from '@/components/user-menu';
@@ -123,6 +125,16 @@ export default function ContratoPage() {
               hint={c.ciudad}
             />
           </Card>
+        </section>
+
+        <section className="space-y-2">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Evolución y depósito
+          </h2>
+          <div className="grid gap-3 md:grid-cols-2">
+            <HistorialAjustes />
+            <DepositoTracker depositoOriginal={c.montoActual} fechaFin={c.fechaFin} />
+          </div>
         </section>
 
         <section className="space-y-2">

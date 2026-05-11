@@ -260,6 +260,129 @@ export const misReclamosMock: Reclamo[] = [
   },
 ];
 
+// Red de profesionales curada por la inmobiliaria. El inquilino los contacta
+// directo por WhatsApp y la inmobiliaria valida que están al día. En backend
+// real esto vive en una tabla compartida entre todas las inmobiliarias del
+// network o por inmobiliaria.
+
+export type CategoriaProfesional =
+  | 'PLOMERO'
+  | 'ELECTRICISTA'
+  | 'GASISTA'
+  | 'CERRAJERO'
+  | 'PINTOR'
+  | 'TECNICO_AC'
+  | 'FLETE';
+
+export interface ProfesionalRecomendado {
+  id: string;
+  nombre: string;
+  categoria: CategoriaProfesional;
+  zona: string;
+  telefono: string;
+  rating: number; // 1-5
+  cantTrabajos: number;
+  ultimoTrabajo: string | null; // ISO
+  verificado: boolean;
+  notas?: string;
+}
+
+export const profesionalesMock: ProfesionalRecomendado[] = [
+  {
+    id: 'prof_001',
+    nombre: 'Sergio Almeida',
+    categoria: 'PLOMERO',
+    zona: 'Palermo, Villa Crespo',
+    telefono: '+54 9 11 4421 8830',
+    rating: 4.8,
+    cantTrabajos: 24,
+    ultimoTrabajo: '2026-04-30',
+    verificado: true,
+    notas: 'Llega en el día, factura A',
+  },
+  {
+    id: 'prof_002',
+    nombre: 'Diego Ferrari',
+    categoria: 'ELECTRICISTA',
+    zona: 'Palermo, Recoleta',
+    telefono: '+54 9 11 6502 7714',
+    rating: 4.9,
+    cantTrabajos: 31,
+    ultimoTrabajo: '2026-05-02',
+    verificado: true,
+    notas: 'Matriculado, presupuesto sin cargo',
+  },
+  {
+    id: 'prof_003',
+    nombre: 'Luciana Pérez',
+    categoria: 'GASISTA',
+    zona: 'CABA',
+    telefono: '+54 9 11 5567 2118',
+    rating: 4.7,
+    cantTrabajos: 18,
+    ultimoTrabajo: '2026-03-14',
+    verificado: true,
+    notas: 'Matriculada ENARGAS',
+  },
+  {
+    id: 'prof_004',
+    nombre: 'Pablo Cerrajería 24hs',
+    categoria: 'CERRAJERO',
+    zona: 'CABA, GBA Norte',
+    telefono: '+54 9 11 3399 4422',
+    rating: 4.6,
+    cantTrabajos: 12,
+    ultimoTrabajo: '2026-02-21',
+    verificado: true,
+  },
+  {
+    id: 'prof_005',
+    nombre: 'Camila Torres',
+    categoria: 'PINTOR',
+    zona: 'Palermo, Belgrano',
+    telefono: '+54 9 11 4488 1107',
+    rating: 4.5,
+    cantTrabajos: 9,
+    ultimoTrabajo: '2026-01-18',
+    verificado: false,
+    notas: 'Especializada en interiores',
+  },
+  {
+    id: 'prof_006',
+    nombre: 'Frío Pro AA',
+    categoria: 'TECNICO_AC',
+    zona: 'CABA',
+    telefono: '+54 9 11 6678 9921',
+    rating: 4.7,
+    cantTrabajos: 22,
+    ultimoTrabajo: '2026-04-12',
+    verificado: true,
+    notas: 'Service split y central',
+  },
+  {
+    id: 'prof_007',
+    nombre: 'Mudanzas Soto',
+    categoria: 'FLETE',
+    zona: 'AMBA',
+    telefono: '+54 9 11 5432 1198',
+    rating: 4.4,
+    cantTrabajos: 7,
+    ultimoTrabajo: '2025-12-08',
+    verificado: false,
+    notas: 'Camión chico y mediano',
+  },
+];
+
+export const profesionalCategoriaLabel: Record<CategoriaProfesional, string> = {
+  PLOMERO: 'Plomería',
+  ELECTRICISTA: 'Electricidad',
+  GASISTA: 'Gas',
+  CERRAJERO: 'Cerrajería',
+  PINTOR: 'Pintura',
+  TECNICO_AC: 'Aire / Calefacción',
+  FLETE: 'Fletes y mudanzas',
+};
+
 export const inquilinoActual = {
   id: 'usr_mariela',
   nombre: 'Mariela Sosa',

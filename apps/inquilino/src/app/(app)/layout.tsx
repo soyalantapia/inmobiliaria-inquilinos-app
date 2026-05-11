@@ -1,5 +1,4 @@
 import { SideNav } from '@/components/nav-bar';
-import { CommandPalette } from '@/components/command-palette';
 import { DesktopTopbar } from '@/components/desktop-topbar';
 import { Onboarding } from '@/components/onboarding';
 import { PullToRefresh } from '@/components/pull-to-refresh';
@@ -18,7 +17,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <PullToRefresh />
       <WhatsappFab />
       <Onboarding />
-      <CommandPalette />
     </div>
   );
 }
