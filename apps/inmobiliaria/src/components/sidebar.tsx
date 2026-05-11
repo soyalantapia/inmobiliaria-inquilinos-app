@@ -18,13 +18,13 @@ import {
 import { cn } from '@llave/ui/cn';
 
 const links = [
-  { href: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/', label: 'Inicio', icon: LayoutDashboard },
   { href: '/propiedades', label: 'Propiedades', icon: Building2 },
+  { href: '/pagos', label: 'Pagos', icon: CreditCard },
   { href: '/contratos', label: 'Contratos', icon: FileText },
   { href: '/contratos/nuevo', label: 'Cargar contrato', icon: Plus },
   { href: '/reclamos', label: 'Reclamos', icon: Wrench },
-  { href: '/screening', label: 'Screening', icon: ShieldCheck },
-  { href: '/pagos', label: 'Pagos del mes', icon: CreditCard },
+  { href: '/screening', label: 'Verificar inquilino', icon: ShieldCheck },
   { href: '/configuracion', label: 'Configuración', icon: Settings },
 ] as const;
 

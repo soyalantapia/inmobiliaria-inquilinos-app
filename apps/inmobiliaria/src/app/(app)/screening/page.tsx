@@ -143,7 +143,7 @@ export default function ScreeningPage() {
           setResultado({ ...screeningMock, cuit, nombre: nombre.split(' ')[0] ?? nombre });
           setEstado('done');
           toast({
-            title: 'Informe SkipTrace listo',
+            title: 'Informe del inquilino listo',
             description: `${nombre} — recomendación ${screeningMock.recomendacion.replace('_', ' ').toLowerCase()}.`,
           });
         }
@@ -251,7 +251,7 @@ function ScreeningHome({
           <div className="space-y-5">
             <div className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-medium backdrop-blur">
               <Sparkles className="h-3.5 w-3.5" />
-              SkipTrace 360°
+              Verificación 360°
             </div>
             <h1 className="text-3xl font-bold leading-tight md:text-4xl">
               Verificá un inquilino en menos de{' '}
@@ -415,7 +415,7 @@ function LoadingEtapas({
       <CardContent className="space-y-6 p-6">
         <div className="space-y-2 text-center">
           <Sparkles className="mx-auto h-8 w-8 animate-pulse text-primary" />
-          <p className="text-lg font-semibold">Generando informe SkipTrace</p>
+          <p className="text-lg font-semibold">Generando informe del inquilino</p>
           <p className="text-sm text-muted-foreground">{nombre || 'Inquilino'}</p>
         </div>
 

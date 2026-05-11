@@ -33,7 +33,7 @@ export default function DashboardPage() {
 
   return (
     <>
-      <Topbar titulo="Dashboard" />
+      <Topbar titulo="Inicio" />
       <main className="flex-1 space-y-6 p-4 md:p-6">
         {/* Header con saludo + CTAs */}
         <div className="flex flex-wrap items-center justify-between gap-3">

@@ -225,9 +225,11 @@ export default function PropiedadesPage() {
               placeholder="Buscar dirección, inquilino o propietario"
             />
           </div>
-          <Button>
-            <Plus className="h-4 w-4" />
-            Cargar propiedad
+          <Button asChild>
+            <Link href="/propiedades/nueva">
+              <Plus className="h-4 w-4" />
+              Cargar propiedad
+            </Link>
           </Button>
         </div>
 
