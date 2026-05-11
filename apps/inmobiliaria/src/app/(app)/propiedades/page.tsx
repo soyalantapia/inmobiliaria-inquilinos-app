@@ -5,9 +5,9 @@ import Link from 'next/link';
 import {
   AlertTriangle,
   Building2,
+  CheckCircle2,
   ChevronRight,
   DoorOpen,
-  Filter,
   Home,
   MapPin,
   Plus,
@@ -18,17 +18,18 @@ import {
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card, CardContent } from '@llave/ui/card';
+import { cn } from '@llave/ui/cn';
 import { Input } from '@llave/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@llave/ui/select';
 import { Topbar } from '@/components/topbar';
 import { propiedadesMock } from '@/lib/mock-data';
 import {
   enriquecerPropiedad,
   estadoPropiedadConfig,
   tipoPropiedadLabel,
+  type PropiedadEnriquecida,
 } from '@/lib/propiedades-helpers';
 import { formatMonto } from '@/lib/format';
-import type { EstadoPropiedad, TipoPropiedad } from '@/lib/types';
+import type { TipoPropiedad } from '@/lib/types';
 
 const tipoIcono: Record<TipoPropiedad, React.ComponentType<{ className?: string }>> = {
   DEPARTAMENTO: Home,
@@ -37,21 +38,93 @@ const tipoIcono: Record<TipoPropiedad, React.ComponentType<{ className?: string 
   GALPON: Warehouse,
 };
 
-type FiltroEstado = 'TODOS' | EstadoPropiedad;
+type Filtro = 'TODOS' | 'ALQUILADA' | 'PROBLEMAS' | 'DISPONIBLE';
+
+const FILTROS = [
+  {
+    key: 'ALQUILADA' as const,
+    label: 'Alquiladas',
+    descripcion: 'Al día, sin reclamos abiertos',
+    icon: CheckCircle2,
+    colorActive: 'bg-emerald-500 text-white border-emerald-500 shadow-lg shadow-emerald-500/20',
+    colorIdle:
+      'border-emerald-200 bg-emerald-50/60 text-emerald-700 hover:bg-emerald-100 hover:border-emerald-300 dark:border-emerald-900/40 dark:bg-emerald-900/10 dark:text-emerald-300',
+    badgeBg: 'bg-emerald-500/20',
+  },
+  {
+    key: 'PROBLEMAS' as const,
+    label: 'Con problemas',
+    descripcion: 'Reclamos abiertos o pago vencido',
+    icon: AlertTriangle,
+    colorActive: 'bg-red-500 text-white border-red-500 shadow-lg shadow-red-500/20',
+    colorIdle:
+      'border-red-200 bg-red-50/60 text-red-700 hover:bg-red-100 hover:border-red-300 dark:border-red-900/40 dark:bg-red-900/10 dark:text-red-300',
+    badgeBg: 'bg-red-500/20',
+  },
+  {
+    key: 'DISPONIBLE' as const,
+    label: 'Disponibles',
+    descripcion: 'Sin inquilino o en edición',
+    icon: DoorOpen,
+    colorActive: 'bg-amber-500 text-white border-amber-500 shadow-lg shadow-amber-500/20',
+    colorIdle:
+      'border-amber-200 bg-amber-50/60 text-amber-800 hover:bg-amber-100 hover:border-amber-300 dark:border-amber-900/40 dark:bg-amber-900/10 dark:text-amber-300',
+    badgeBg: 'bg-amber-500/20',
+  },
+] as const;
+
+const FILTROS_LABELS: Record<Filtro, string> = {
+  TODOS: 'Todas',
+  ALQUILADA: 'Alquiladas',
+  PROBLEMAS: 'Con problemas',
+  DISPONIBLE: 'Disponibles',
+};
+
+// Una propiedad está "con problemas" si tiene reclamos abiertos o el pago
+// actual está vencido. Lo usamos como filtro accionable para que el operador
+// vea de un vistazo dónde tiene que meter foco.
+function tieneProblemas(p: PropiedadEnriquecida): boolean {
+  if (p.reclamosAbiertos > 0) return true;
+  if (p.contrato?.estadoPagoActual === 'VENCIDO') return true;
+  return false;
+}
+
+function esDisponible(p: PropiedadEnriquecida): boolean {
+  return p.propiedad.estado === 'DISPONIBLE' || p.propiedad.estado === 'EN_EDICION';
+}
+
+function esAlquiladaOk(p: PropiedadEnriquecida): boolean {
+  return p.propiedad.estado === 'ALQUILADA' && !tieneProblemas(p);
+}
 
 export default function PropiedadesPage() {
   const [q, setQ] = useState('');
-  const [filtro, setFiltro] = useState<FiltroEstado>('TODOS');
+  const [filtro, setFiltro] = useState<Filtro>('TODOS');
 
-  const enriquecidas = useMemo(
-    () => propiedadesMock.map(enriquecerPropiedad),
-    [],
+  const enriquecidas = useMemo(() => propiedadesMock.map(enriquecerPropiedad), []);
+
+  const counters = useMemo(
+    () => ({
+      total: enriquecidas.length,
+      ALQUILADA: enriquecidas.filter(esAlquiladaOk).length,
+      PROBLEMAS: enriquecidas.filter(tieneProblemas).length,
+      DISPONIBLE: enriquecidas.filter(esDisponible).length,
+      ingresosMes: enriquecidas
+        .filter((p) => p.propiedad.estado === 'ALQUILADA' && p.contrato)
+        .reduce((acc, p) => acc + (p.contrato?.monto ?? 0), 0),
+      reclamosAbiertos: enriquecidas.reduce((acc, p) => acc + p.reclamosAbiertos, 0),
+    }),
+    [enriquecidas],
   );
 
   const filtradas = useMemo(() => {
     const term = q.trim().toLowerCase();
     return enriquecidas.filter((p) => {
-      if (filtro !== 'TODOS' && p.propiedad.estado !== filtro) return false;
+      // filtro por estado calculado
+      if (filtro === 'ALQUILADA' && !esAlquiladaOk(p)) return false;
+      if (filtro === 'PROBLEMAS' && !tieneProblemas(p)) return false;
+      if (filtro === 'DISPONIBLE' && !esDisponible(p)) return false;
+
       if (!term) return true;
       return (
         p.propiedad.direccion.toLowerCase().includes(term) ||
@@ -64,30 +137,26 @@ export default function PropiedadesPage() {
     });
   }, [enriquecidas, q, filtro]);
 
-  const counters = useMemo(
-    () => ({
-      total: enriquecidas.length,
-      alquiladas: enriquecidas.filter((p) => p.propiedad.estado === 'ALQUILADA').length,
-      disponibles: enriquecidas.filter((p) => p.propiedad.estado === 'DISPONIBLE').length,
-      ingresosMes: enriquecidas
-        .filter((p) => p.propiedad.estado === 'ALQUILADA' && p.contrato)
-        .reduce((acc, p) => acc + (p.contrato?.monto ?? 0), 0),
-      reclamosAbiertos: enriquecidas.reduce((acc, p) => acc + p.reclamosAbiertos, 0),
-    }),
-    [enriquecidas],
-  );
+  const togglearFiltro = (f: 'ALQUILADA' | 'PROBLEMAS' | 'DISPONIBLE') => {
+    setFiltro((prev) => (prev === f ? 'TODOS' : f));
+  };
 
   return (
     <>
       <Topbar titulo="Propiedades" />
       <main className="flex-1 space-y-6 p-4 md:p-6">
         <div className="grid gap-4 md:grid-cols-4">
-          <Kpi label="Propiedades" value={counters.total.toString()} icon={Building2} hint={`${counters.alquiladas} alquiladas`} />
+          <Kpi
+            label="Propiedades"
+            value={counters.total.toString()}
+            icon={Building2}
+            hint={`${counters.ALQUILADA} alquiladas`}
+          />
           <Kpi
             label="Alquiladas"
-            value={counters.alquiladas.toString()}
+            value={counters.ALQUILADA.toString()}
             icon={DoorOpen}
-            hint={`${counters.disponibles} disponibles`}
+            hint={`${counters.DISPONIBLE} disponibles`}
             accent="emerald"
           />
           <Kpi
@@ -105,35 +174,77 @@ export default function PropiedadesPage() {
           />
         </div>
 
+        {/* 3 botones grandes de filtro */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {FILTROS.map((f) => {
+            const Icon = f.icon;
+            const activo = filtro === f.key;
+            const count = counters[f.key];
+            return (
+              <button
+                key={f.key}
+                onClick={() => togglearFiltro(f.key)}
+                aria-pressed={activo}
+                className={cn(
+                  'flex items-center justify-between gap-3 rounded-xl border px-5 py-4 text-left transition-all duration-200',
+                  activo ? f.colorActive : f.colorIdle,
+                )}
+              >
+                <div className="flex items-center gap-3">
+                  <div
+                    className={cn(
+                      'grid h-10 w-10 shrink-0 place-items-center rounded-lg',
+                      activo ? 'bg-white/20' : f.badgeBg,
+                    )}
+                  >
+                    <Icon className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold uppercase tracking-wide">{f.label}</p>
+                    <p className={cn('text-xs', activo ? 'opacity-90' : 'opacity-70')}>
+                      {f.descripcion}
+                    </p>
+                  </div>
+                </div>
+                <span className={cn('text-3xl font-bold tabular-nums', activo ? 'text-white' : '')}>
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Buscador + CTA cargar */}
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                className="w-72 pl-9"
-                placeholder="Buscar dirección, inquilino o propietario"
-              />
-            </div>
-            <Select value={filtro} onValueChange={(v) => setFiltro(v as FiltroEstado)}>
-              <SelectTrigger className="w-44">
-                <Filter className="mr-2 h-4 w-4" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="TODOS">Todas</SelectItem>
-                <SelectItem value="ALQUILADA">Alquiladas</SelectItem>
-                <SelectItem value="DISPONIBLE">Disponibles</SelectItem>
-                <SelectItem value="EN_EDICION">En edición</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="relative w-full max-w-md">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              className="pl-9"
+              placeholder="Buscar dirección, inquilino o propietario"
+            />
           </div>
           <Button>
             <Plus className="h-4 w-4" />
             Cargar propiedad
           </Button>
         </div>
+
+        {filtro !== 'TODOS' && (
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>
+              Filtrado: <strong className="text-foreground">{FILTROS_LABELS[filtro]}</strong> ·{' '}
+              {filtradas.length} resultado{filtradas.length === 1 ? '' : 's'}
+            </span>
+            <button
+              onClick={() => setFiltro('TODOS')}
+              className="font-medium text-primary hover:underline"
+            >
+              Mostrar todas
+            </button>
+          </div>
+        )}
 
         {filtradas.length === 0 ? (
           <Card>
