@@ -24,10 +24,10 @@ export const liquidacionesMock: Liquidacion[] = [
     periodo: '2026-05',
     montoAlquiler: 480000,
     montoExpensas: 92000,
-    montoPunitorio: 0,
+    montoPunitorio: 0, // se recalcula en runtime con punitorios.ts
     montoTotal: 572000,
-    fechaVencimiento: '2026-05-10',
-    estado: 'PENDIENTE',
+    fechaVencimiento: '2026-05-05', // venció hace ~6 días, queda atrasada para ver el flow
+    estado: 'VENCIDO',
     moneda: 'ARS',
   },
   {
@@ -51,7 +51,7 @@ export const comprobantesMock: Comprobante[] = [
     monto: 568500,
     moneda: 'ARS',
     fechaPago: '2026-04-08',
-    metodo: 'MERCADOPAGO',
+    metodo: 'TRANSFERENCIA',
     pdfUrl: '#',
   },
   {
@@ -60,7 +60,7 @@ export const comprobantesMock: Comprobante[] = [
     monto: 568500,
     moneda: 'ARS',
     fechaPago: '2026-03-04',
-    metodo: 'MERCADOPAGO',
+    metodo: 'TRANSFERENCIA',
     pdfUrl: '#',
   },
   {

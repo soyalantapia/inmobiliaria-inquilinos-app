@@ -1,15 +1,16 @@
 import Link from 'next/link';
 import {
+  AlertTriangle,
   ArrowDownLeft,
   ArrowUpRight,
   CalendarClock,
   ChevronRight,
-  CreditCard,
   Info,
   ReceiptText,
   ShieldCheck,
   Sparkles,
   TrendingUp,
+  Wallet,
 } from 'lucide-react';
 import { Card } from '@llave/ui/card';
 import { InstallPrompt } from '@/components/install-prompt';
@@ -18,15 +19,14 @@ import { UserMenu } from '@/components/user-menu';
 import { contratoMock, liquidacionesMock } from '@/lib/mock-data';
 import { movimientosMock, type Movimiento } from '@/lib/movimientos-mock';
 import { diasHastaVencimiento, formatFecha, formatMonto } from '@/lib/format';
-import type { Moneda } from '@/lib/types';
+import { TASA_PUNITORIA_DIARIA_DEFAULT, calcularPunitorios } from '@/lib/punitorios';
+import type { Liquidacion } from '@/lib/types';
 
 export default function PagosPage() {
   const pendiente = liquidacionesMock.find((l) => l.estado !== 'PAGADO');
-  const diasV = pendiente ? diasHastaVencimiento(pendiente.fechaVencimiento) : null;
   const diasAjuste = diasHastaVencimiento(contratoMock.proximoAjuste);
   const alertaAjuste = diasAjuste >= 0 && diasAjuste <= 60;
 
-  // últimos movimientos para el feed
   const movimientos = movimientosMock.slice(0, 5);
 
   return (
@@ -36,15 +36,8 @@ export default function PagosPage() {
       </header>
 
       <main className="flex-1 space-y-6 px-5 pb-6 md:px-8 md:pt-8">
-        {/* HERO: lo que tenés que pagar — estilo banco, monto enorme */}
         {pendiente ? (
-          <PaymentHero
-            liqId={pendiente.id}
-            monto={pendiente.montoTotal}
-            moneda={pendiente.moneda}
-            fechaVencimiento={pendiente.fechaVencimiento}
-            diasParaVencer={diasV}
-          />
+          <PaymentHero liq={pendiente} />
         ) : (
           <Card className="space-y-2 p-6 text-center">
             <ShieldCheck className="mx-auto h-10 w-10 text-emerald-500" />
@@ -67,7 +60,6 @@ export default function PagosPage() {
           </Card>
         )}
 
-        {/* Feed de movimientos estilo banco */}
         <section className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -95,74 +87,101 @@ export default function PagosPage() {
   );
 }
 
-function PaymentHero({
-  liqId,
-  monto,
-  moneda,
-  fechaVencimiento,
-  diasParaVencer,
-}: {
-  liqId: string;
-  monto: number;
-  moneda: Moneda;
-  fechaVencimiento: string;
-  diasParaVencer: number | null;
-}) {
-  const vencido = diasParaVencer !== null && diasParaVencer < 0;
-  const urgente = diasParaVencer !== null && diasParaVencer >= 0 && diasParaVencer <= 3;
+function PaymentHero({ liq }: { liq: Liquidacion }) {
+  const calc = calcularPunitorios(liq, TASA_PUNITORIA_DIARIA_DEFAULT);
+  const diasV = diasHastaVencimiento(liq.fechaVencimiento);
+  const vencido = calc.diasAtraso > 0;
+  const urgente = !vencido && diasV >= 0 && diasV <= 3;
 
-  const subtitulo =
-    diasParaVencer === null
-      ? ''
-      : vencido
-        ? `Atrasado hace ${Math.abs(diasParaVencer)} día${Math.abs(diasParaVencer) === 1 ? '' : 's'}`
-        : diasParaVencer === 0
-          ? 'Vence hoy'
-          : `Vence en ${diasParaVencer} día${diasParaVencer === 1 ? '' : 's'} · ${formatFecha(fechaVencimiento)}`;
+  const bg = vencido
+    ? 'from-red-600 to-red-500'
+    : urgente
+      ? 'from-amber-600 to-amber-500'
+      : 'from-primary to-primary/80';
 
   return (
-    <Link href={`/pago/${liqId}`} className="block">
+    <Link href={`/pago/${liq.id}`} className="block">
       <Card
-        className={`relative overflow-hidden border-0 p-6 text-primary-foreground shadow-xl shadow-primary/30 transition-transform active:scale-[0.99] md:p-8 ${
-          vencido
-            ? 'bg-gradient-to-br from-red-600 to-red-500'
-            : urgente
-              ? 'bg-gradient-to-br from-amber-600 to-amber-500'
-              : 'bg-gradient-to-br from-primary to-primary/80'
-        }`}
+        className={`relative overflow-hidden border-0 p-6 text-primary-foreground shadow-xl shadow-primary/30 transition-transform active:scale-[0.99] md:p-8 bg-gradient-to-br ${bg}`}
       >
-        {/* glow background */}
         <div className="pointer-events-none absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
         <div className="pointer-events-none absolute -bottom-16 -left-10 h-44 w-44 rounded-full bg-white/5 blur-3xl" />
 
         <div className="relative space-y-5">
           <div className="flex items-center justify-between">
             <p className="text-xs font-medium uppercase tracking-[0.18em] opacity-80">
-              Tu próximo pago
+              {vencido ? 'Atrasado' : 'Tu próximo pago'}
             </p>
-            <CalendarClock className="h-4 w-4 opacity-80" />
+            {vencido ? (
+              <AlertTriangle className="h-4 w-4 opacity-90" />
+            ) : (
+              <CalendarClock className="h-4 w-4 opacity-80" />
+            )}
           </div>
 
           <div className="space-y-1">
             <p className="text-4xl font-bold leading-none tracking-tight md:text-5xl">
-              {formatMonto(monto, moneda)}
+              {formatMonto(calc.totalAPagar, liq.moneda)}
             </p>
-            <p className="text-sm opacity-90">{subtitulo}</p>
+            <p className="text-sm opacity-90">
+              {vencido
+                ? `${calc.diasAtraso} día${calc.diasAtraso === 1 ? '' : 's'} de atraso · venció ${formatFecha(liq.fechaVencimiento)}`
+                : diasV === 0
+                  ? 'Vence hoy'
+                  : `Vence en ${diasV} día${diasV === 1 ? '' : 's'} · ${formatFecha(liq.fechaVencimiento)}`}
+            </p>
           </div>
+
+          {vencido && (
+            <div className="space-y-2 rounded-lg bg-white/15 p-3 text-xs backdrop-blur">
+              <DesgloseRow label="Alquiler + expensas" value={formatMonto(calc.montoOriginal, liq.moneda)} />
+              <DesgloseRow
+                label={`Intereses (${calc.diasAtraso} día${calc.diasAtraso === 1 ? '' : 's'} × ${calc.tasaDiariaPct}%)`}
+                value={`+ ${formatMonto(calc.punitorioAcumulado, liq.moneda)}`}
+                emphasize
+              />
+              <div className="my-1 h-px bg-white/30" />
+              <DesgloseRow label="Total a pagar hoy" value={formatMonto(calc.totalAPagar, liq.moneda)} bold />
+              <p className="pt-1 text-[10px] uppercase tracking-wider opacity-85">
+                +{formatMonto(calc.punitorioPorDia, liq.moneda)} por cada día más
+              </p>
+            </div>
+          )}
 
           <div className="flex items-center justify-between gap-3 pt-2">
             <p className="flex items-center gap-1.5 text-xs opacity-85">
-              <CreditCard className="h-3.5 w-3.5" />
-              Pagás con Mercado Pago
+              <Wallet className="h-3.5 w-3.5" />
+              Pagás por transferencia
             </p>
             <span className="inline-flex items-center gap-1 rounded-full bg-white/20 px-4 py-2 text-sm font-semibold backdrop-blur">
-              Pagar ahora
+              {vencido ? 'Regularizar' : 'Pagar ahora'}
               <ChevronRight className="h-4 w-4" />
             </span>
           </div>
         </div>
       </Card>
     </Link>
+  );
+}
+
+function DesgloseRow({
+  label,
+  value,
+  bold,
+  emphasize,
+}: {
+  label: string;
+  value: string;
+  bold?: boolean;
+  emphasize?: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className={emphasize ? 'font-medium' : 'opacity-90'}>{label}</span>
+      <span className={`tabular-nums ${bold ? 'text-base font-semibold' : 'font-medium'}`}>
+        {value}
+      </span>
+    </div>
   );
 }
 
