@@ -1,163 +1,962 @@
 'use client';
 
-import { useState } from 'react';
-import { CheckCircle2, Download, Loader2, ShieldAlert, ShieldCheck, ShieldX } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import {
+  Briefcase,
+  Building2,
+  Car,
+  Check,
+  Database,
+  Download,
+  FileText,
+  Globe,
+  Home,
+  IdCard,
+  Loader2,
+  Mail,
+  MapPin,
+  MessageCircle,
+  Network,
+  Phone,
+  RotateCw,
+  Search,
+  ShieldAlert,
+  ShieldCheck,
+  ShieldX,
+  Sparkles,
+  TrendingUp,
+  UserRound,
+  Users,
+  Wallet,
+} from 'lucide-react';
+import { Avatar, AvatarFallback } from '@llave/ui/avatar';
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@llave/ui/card';
 import { Input } from '@llave/ui/input';
 import { Label } from '@llave/ui/label';
+import { Separator } from '@llave/ui/separator';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@llave/ui/tabs';
 import { toast } from '@llave/ui/use-toast';
 import { Topbar } from '@/components/topbar';
 import { screeningMock } from '@/lib/mock-data';
-import { formatMonto } from '@/lib/format';
+import { formatMonto, formatFecha } from '@/lib/format';
 import { formatearCuit, validarCuit } from '@/lib/cuit';
-import type { Recomendacion, ScreeningResultado } from '@/lib/types';
-
-const recoConfig: Record<
+import type {
   Recomendacion,
-  { label: string; color: string; icon: React.ComponentType<{ className?: string }> }
-> = {
-  APTO: { label: 'Apto', color: 'text-emerald-600', icon: ShieldCheck },
-  APTO_CON_GARANTIA: { label: 'Apto con garantía', color: 'text-amber-600', icon: ShieldAlert },
-  NO_APTO: { label: 'No apto', color: 'text-red-600', icon: ShieldX },
-};
+  ResumenBcra,
+  RiesgoBcra,
+  ScreeningResultado,
+  VinculoFamiliar,
+} from '@/lib/types';
+
+const ETAPAS = [
+  {
+    key: 'perfil',
+    label: 'Analizando el perfil',
+    detalle: 'Validando identidad contra RENAPER y AFIP',
+    icon: UserRound,
+    duracion: 1200,
+  },
+  {
+    key: 'creditos',
+    label: 'Cruzando datos crediticios',
+    detalle: 'BCRA · Nosis · Veraz · cheques rechazados últimos 4 años',
+    icon: Database,
+    duracion: 1500,
+  },
+  {
+    key: 'bienes',
+    label: 'Consultando bienes y vehículos',
+    detalle: 'Registro de la Propiedad · DNRPA · catastros municipales',
+    icon: Home,
+    duracion: 1100,
+  },
+  {
+    key: 'redes',
+    label: 'Verificando redes y referencias',
+    detalle: 'Redes sociales · grupo familiar · vecinos · historial laboral',
+    icon: Network,
+    duracion: 1400,
+  },
+] as const;
+
+type EtapaKey = (typeof ETAPAS)[number]['key'];
+type Estado = 'idle' | 'loading' | 'done';
 
 export default function ScreeningPage() {
   const [cuit, setCuit] = useState('');
   const [nombre, setNombre] = useState('');
-  const [estado, setEstado] = useState<'idle' | 'loading' | 'done'>('idle');
+  const [estado, setEstado] = useState<Estado>('idle');
+  const [etapaActual, setEtapaActual] = useState<EtapaKey | null>(null);
+  const [completadas, setCompletadas] = useState<Set<EtapaKey>>(new Set());
   const [resultado, setResultado] = useState<ScreeningResultado | null>(null);
+  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const validacionCuit = validarCuit(cuit);
   const cuitDirty = cuit.length > 0;
   const formValido = validacionCuit.valido && nombre.trim().length >= 3;
 
-  const verificar = async (e: React.FormEvent) => {
+  const limpiarTimers = () => {
+    timersRef.current.forEach((t) => clearTimeout(t));
+    timersRef.current = [];
+  };
+
+  useEffect(() => () => limpiarTimers(), []);
+
+  const verificar = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formValido) return;
     setEstado('loading');
-    // mock: en Sprint 3 esto pega a /api/screening (Nosis + BCRA)
-    await new Promise((r) => setTimeout(r, 1800));
-    setResultado({ ...screeningMock, cuit, nombre });
-    setEstado('done');
-    toast({
-      title: 'Screening listo',
-      description: `${nombre} — recomendación ${screeningMock.recomendacion.replace('_', ' ').toLowerCase()}.`,
+    setEtapaActual(ETAPAS[0].key);
+    setCompletadas(new Set());
+    setResultado(null);
+
+    let acumulado = 0;
+    ETAPAS.forEach((etapa, idx) => {
+      acumulado += etapa.duracion;
+      const t = setTimeout(() => {
+        setCompletadas((prev) => {
+          const next = new Set(prev);
+          next.add(etapa.key);
+          return next;
+        });
+        const proxima = ETAPAS[idx + 1];
+        if (proxima) {
+          setEtapaActual(proxima.key);
+        } else {
+          setEtapaActual(null);
+          setResultado({ ...screeningMock, cuit, nombre: nombre.split(' ')[0] ?? nombre });
+          setEstado('done');
+          toast({
+            title: 'Informe SkipTrace listo',
+            description: `${nombre} — recomendación ${screeningMock.recomendacion.replace('_', ' ').toLowerCase()}.`,
+          });
+        }
+      }, acumulado);
+      timersRef.current.push(t);
     });
+  };
+
+  const reiniciar = () => {
+    limpiarTimers();
+    setEstado('idle');
+    setEtapaActual(null);
+    setCompletadas(new Set());
+    setResultado(null);
   };
 
   return (
     <>
       <Topbar titulo="Verificar inquilino" />
-      <main className="flex-1 space-y-6 p-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Screening crediticio</CardTitle>
-            <CardDescription>
-              Combina BCRA + Nosis y devuelve recomendación en menos de 30 segundos. Cacheado por 30 días.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={verificar} className="grid gap-4 md:grid-cols-3">
-              <div className="space-y-2">
-                <Label htmlFor="cuit">CUIT / CUIL</Label>
-                <Input
-                  id="cuit"
-                  inputMode="numeric"
-                  placeholder="20-31256789-0"
-                  value={formatearCuit(cuit)}
-                  onChange={(e) => setCuit(e.target.value)}
-                  aria-invalid={cuitDirty && !validacionCuit.valido}
-                  aria-describedby="cuit-error"
-                  required
-                />
-                {cuitDirty && !validacionCuit.valido && (
-                  <p id="cuit-error" className="text-xs text-destructive">
-                    {validacionCuit.motivo}
-                  </p>
-                )}
-              </div>
-              <div className="space-y-2 md:col-span-2">
-                <Label htmlFor="nombre">Nombre</Label>
-                <Input
-                  id="nombre"
-                  placeholder="Carlos Eduardo Méndez"
-                  value={nombre}
-                  onChange={(e) => setNombre(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="md:col-span-3">
-                <Button type="submit" disabled={!formValido || estado === 'loading'}>
-                  {estado === 'loading' ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Consultando…
-                    </>
-                  ) : (
-                    'Verificar'
+      <main className="flex-1 space-y-6 p-4 md:p-6">
+        {estado === 'idle' && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Screening crediticio</CardTitle>
+              <CardDescription>
+                Cruzamos BCRA, AFIP, Nosis, registros patrimoniales y referencias en menos de
+                30 segundos. Cache de 30 días.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={verificar} className="grid gap-4 md:grid-cols-3">
+                <div className="space-y-2">
+                  <Label htmlFor="cuit">CUIT / CUIL</Label>
+                  <Input
+                    id="cuit"
+                    inputMode="numeric"
+                    placeholder="20-31256789-0"
+                    value={formatearCuit(cuit)}
+                    onChange={(e) => setCuit(e.target.value)}
+                    aria-invalid={cuitDirty && !validacionCuit.valido}
+                    aria-describedby="cuit-error"
+                    required
+                  />
+                  {cuitDirty && !validacionCuit.valido && (
+                    <p id="cuit-error" className="text-xs text-destructive">
+                      {validacionCuit.motivo}
+                    </p>
                   )}
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="nombre">Nombre completo</Label>
+                  <Input
+                    id="nombre"
+                    placeholder="Carlos Eduardo Méndez"
+                    value={nombre}
+                    onChange={(e) => setNombre(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="md:col-span-3">
+                  <Button type="submit" disabled={!formValido}>
+                    <Search className="h-4 w-4" />
+                    Iniciar verificación
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        )}
 
-        {estado === 'done' && resultado && <Resultado data={resultado} />}
+        {estado === 'loading' && (
+          <LoadingEtapas etapaActual={etapaActual} completadas={completadas} nombre={nombre} />
+        )}
+
+        {estado === 'done' && resultado && (
+          <Informe resultado={resultado} onReiniciar={reiniciar} />
+        )}
       </main>
     </>
   );
 }
 
-function Resultado({ data }: { data: ScreeningResultado }) {
-  const cfg = recoConfig[data.recomendacion];
-  const Icon = cfg.icon;
+// ────────────────────────────── Loading multietapa ──────────────────────────
+
+function LoadingEtapas({
+  etapaActual,
+  completadas,
+  nombre,
+}: {
+  etapaActual: EtapaKey | null;
+  completadas: Set<EtapaKey>;
+  nombre: string;
+}) {
+  const total = ETAPAS.length;
+  const hechas = completadas.size;
 
   return (
-    <div className="grid gap-4 lg:grid-cols-3">
-      <Card className="lg:col-span-1">
-        <CardContent className="flex flex-col items-center gap-3 p-6 text-center">
-          <Icon className={`h-14 w-14 ${cfg.color}`} />
-          <h3 className="text-2xl font-semibold">{cfg.label}</h3>
-          <p className="text-sm text-muted-foreground">{data.recomendacionRazon}</p>
-          <Button variant="outline" className="mt-2">
-            <Download className="h-4 w-4" />
-            Descargar informe
-          </Button>
-        </CardContent>
-      </Card>
+    <Card className="overflow-hidden">
+      <CardContent className="space-y-6 p-6">
+        <div className="space-y-2 text-center">
+          <Sparkles className="mx-auto h-8 w-8 animate-pulse text-primary" />
+          <p className="text-lg font-semibold">Generando informe SkipTrace</p>
+          <p className="text-sm text-muted-foreground">{nombre || 'Inquilino'}</p>
+        </div>
 
-      <Card className="lg:col-span-2">
-        <CardHeader>
-          <CardTitle>{data.nombre}</CardTitle>
-          <CardDescription>CUIT {data.cuit}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Metric label="Score Nosis" value={data.scoreNosis.toString()} hint="700+ óptimo" />
-            <Metric
-              label="BCRA — categoría"
-              value={data.resultadoBcra.toString()}
-              hint={data.resultadoBcra === 1 ? 'Sin atrasos' : 'Atrasos detectados'}
-            />
-            <Metric label="Deudas activas" value={data.deudasCount.toString()} hint={formatMonto(data.deudasMonto)} />
-            <Metric label="Cheques rechazados" value={data.chequesRechazados.toString()} />
-            <Metric label="Juicios" value={data.juiciosCount.toString()} />
-            <Metric label="Cache válida" value="30 días" hint="No volvemos a cobrar la consulta" />
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+          <div
+            className="h-full bg-primary transition-all duration-500 ease-out"
+            style={{ width: `${(hechas / total) * 100}%` }}
+          />
+        </div>
+
+        <ol className="space-y-3">
+          {ETAPAS.map((etapa) => {
+            const completada = completadas.has(etapa.key);
+            const actual = etapaActual === etapa.key && !completada;
+            const Icon = etapa.icon;
+            return (
+              <li
+                key={etapa.key}
+                className={`flex items-start gap-3 rounded-md border p-3 transition-colors ${
+                  completada
+                    ? 'border-emerald-200 bg-emerald-50/50 dark:border-emerald-900/30 dark:bg-emerald-900/10'
+                    : actual
+                      ? 'border-primary/40 bg-primary/5'
+                      : 'border-border'
+                }`}
+              >
+                <div
+                  className={`grid h-9 w-9 shrink-0 place-items-center rounded-full ${
+                    completada
+                      ? 'bg-emerald-500 text-white'
+                      : actual
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted text-muted-foreground'
+                  }`}
+                >
+                  {completada ? (
+                    <Check className="h-4 w-4" />
+                  ) : actual ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Icon className="h-4 w-4" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p
+                    className={`text-sm font-medium ${
+                      !completada && !actual ? 'text-muted-foreground' : ''
+                    }`}
+                  >
+                    {etapa.label}
+                  </p>
+                  <p className="text-xs text-muted-foreground">{etapa.detalle}</p>
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ────────────────────────────── Informe ─────────────────────────────────────
+
+const recoConfig: Record<
+  Recomendacion,
+  {
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    border: string;
+    bg: string;
+    accent: string;
+  }
+> = {
+  APTO: {
+    label: 'APTO',
+    icon: ShieldCheck,
+    border: 'border-emerald-200 dark:border-emerald-900/40',
+    bg: 'bg-emerald-50 dark:bg-emerald-900/10',
+    accent: 'text-emerald-700 dark:text-emerald-300',
+  },
+  APTO_CON_GARANTIA: {
+    label: 'APTO con garantía',
+    icon: ShieldAlert,
+    border: 'border-amber-200 dark:border-amber-900/40',
+    bg: 'bg-amber-50 dark:bg-amber-900/10',
+    accent: 'text-amber-700 dark:text-amber-300',
+  },
+  NO_APTO: {
+    label: 'NO APTO',
+    icon: ShieldX,
+    border: 'border-red-200 dark:border-red-900/40',
+    bg: 'bg-red-50 dark:bg-red-900/10',
+    accent: 'text-red-700 dark:text-red-300',
+  },
+};
+
+const vinculoLabel: Record<VinculoFamiliar, string> = {
+  CONYUGE: 'Cónyuge',
+  PADRE_MADRE: 'Padre/Madre',
+  CONVIVIENTE: 'Conviviente',
+  HIJO: 'Hijo/a',
+  HERMANO: 'Hermano/a',
+};
+
+const riesgoConfig: Record<
+  RiesgoBcra,
+  { label: string; variant: 'success' | 'warning' | 'destructive' | 'secondary' }
+> = {
+  bajo: { label: 'Bajo', variant: 'success' },
+  medio: { label: 'Medio', variant: 'warning' },
+  alto: { label: 'Alto', variant: 'destructive' },
+  irrecuperable: { label: 'Irrecuperable', variant: 'destructive' },
+};
+
+function Informe({
+  resultado,
+  onReiniciar,
+}: {
+  resultado: ScreeningResultado;
+  onReiniciar: () => void;
+}) {
+  const reco = recoConfig[resultado.recomendacion];
+  const RIcon = reco.icon;
+  const iniciales = `${resultado.nombre[0] ?? ''}${resultado.apellido[0] ?? ''}`;
+  const edad =
+    new Date().getFullYear() - new Date(resultado.fechaNacimiento).getFullYear();
+
+  return (
+    <div className="space-y-6 animate-fade-in">
+      {/* Hero */}
+      <Card className={`${reco.border} ${reco.bg}`}>
+        <CardContent className="space-y-4 p-6">
+          <div className="flex flex-wrap items-start gap-4">
+            <Avatar className="h-16 w-16">
+              <AvatarFallback className="bg-primary/10 text-lg font-semibold text-primary">
+                {iniciales}
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex-1 min-w-0 space-y-1">
+              <h2 className="text-2xl font-semibold">
+                {resultado.nombre} {resultado.apellido}
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                DNI {resultado.dni} · CUIT {resultado.cuit} · {edad} años
+              </p>
+            </div>
+            <div className={`flex items-center gap-2 rounded-full bg-background/70 px-4 py-1.5`}>
+              <RIcon className={`h-5 w-5 ${reco.accent}`} />
+              <span className={`font-semibold ${reco.accent}`}>{reco.label}</span>
+            </div>
+          </div>
+
+          <p className="text-sm leading-relaxed">{resultado.recomendacionRazon}</p>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-3">
+            <div className="flex flex-wrap gap-6 text-sm">
+              <ScoreInline
+                label="Score Nosis"
+                valor={resultado.scoreNosis.toString()}
+                hint="0-1000"
+              />
+              <ScoreInline
+                label="BCRA"
+                valor={`Sit ${Object.keys(resultado.bcra.situaciones)[0] ?? '—'}`}
+                hint={riesgoConfig[resultado.bcra.riesgo].label}
+              />
+              <ScoreInline
+                label="Patrimonio"
+                valor={`${resultado.inmuebles.length} inm · ${resultado.vehiculos.length} auto`}
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm">
+                <Download className="h-4 w-4" />
+                PDF
+              </Button>
+              <Button variant="ghost" size="sm" onClick={onReiniciar}>
+                <RotateCw className="h-4 w-4" />
+                Nueva consulta
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
+
+      <Tabs defaultValue="resumen">
+        <TabsList className="flex-wrap">
+          <TabsTrigger value="resumen">Resumen</TabsTrigger>
+          <TabsTrigger value="identidad">Identidad</TabsTrigger>
+          <TabsTrigger value="bcra">BCRA</TabsTrigger>
+          <TabsTrigger value="bienes">Bienes</TabsTrigger>
+          <TabsTrigger value="ingresos">Ingresos</TabsTrigger>
+          <TabsTrigger value="familia">Familia</TabsTrigger>
+          <TabsTrigger value="laboral">Laboral</TabsTrigger>
+          <TabsTrigger value="contacto">Contacto</TabsTrigger>
+        </TabsList>
+
+        {/* RESUMEN */}
+        <TabsContent value="resumen" className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <SectionCard icon={<Wallet className="h-4 w-4" />} title="Score y BCRA">
+              <Row label="Score Nosis" value={`${resultado.scoreNosis} / 1000`} />
+              <Row
+                label="Entidades activas"
+                value={resultado.bcra.entidadesCount.toString()}
+              />
+              <Row label="Deuda total" value={formatMonto(resultado.bcra.deudaTomada)} />
+              <Row label="Deuda en mora" value={formatMonto(resultado.bcra.deudaEnMora)} />
+              <Row
+                label="Riesgo"
+                value={
+                  <Badge variant={riesgoConfig[resultado.bcra.riesgo].variant}>
+                    {riesgoConfig[resultado.bcra.riesgo].label}
+                  </Badge>
+                }
+              />
+              <Row
+                label="Cheques rechazados"
+                value={resultado.cheques.rechazadosCount.toString()}
+              />
+            </SectionCard>
+
+            <SectionCard icon={<Home className="h-4 w-4" />} title="Patrimonio">
+              <Row label="Inmuebles" value={resultado.inmuebles.length.toString()} />
+              <Row label="Vehículos" value={resultado.vehiculos.length.toString()} />
+              <Row
+                label="Último auto"
+                value={
+                  resultado.vehiculos[0]
+                    ? `${resultado.vehiculos[0].marca} ${resultado.vehiculos[0].modelo} (${resultado.vehiculos[0].anio})`
+                    : '—'
+                }
+              />
+            </SectionCard>
+
+            <SectionCard icon={<Briefcase className="h-4 w-4" />} title="Laboral">
+              {resultado.empleador ? (
+                <>
+                  <Row label="Empleador" value={resultado.empleador.razonSocial} />
+                  <Row label="CUIT" value={resultado.empleador.cuit} />
+                  <Row label="ART vigente" value={resultado.empleador.artVigente ? 'Sí' : 'No'} />
+                  <Row label="Actividad" value={resultado.empleador.actividad} />
+                </>
+              ) : (
+                <p className="text-sm italic text-muted-foreground">Sin empleador registrado</p>
+              )}
+            </SectionCard>
+
+            <SectionCard icon={<Users className="h-4 w-4" />} title="Grupo familiar">
+              <Row label="Vínculos detectados" value={resultado.familia.length.toString()} />
+              <Row label="Rango ingreso familiar" value={resultado.rangoIngresoFamiliar} />
+              <Row
+                label="BCRA familia"
+                value={
+                  <Badge variant={riesgoConfig[resultado.bcraFamiliar.riesgo].variant}>
+                    Riesgo {riesgoConfig[resultado.bcraFamiliar.riesgo].label.toLowerCase()}
+                  </Badge>
+                }
+              />
+            </SectionCard>
+          </div>
+        </TabsContent>
+
+        {/* IDENTIDAD */}
+        <TabsContent value="identidad" className="space-y-4">
+          <SectionCard icon={<IdCard className="h-4 w-4" />} title="Datos personales">
+            <Row label="Nombre completo" value={`${resultado.nombre} ${resultado.apellido}`} />
+            <Row label="DNI" value={resultado.dni} />
+            <Row label="CUIT/CUIL" value={resultado.cuit} />
+            <Row label="Fecha de nacimiento" value={formatFecha(resultado.fechaNacimiento)} />
+            <Row label="Sexo" value={resultado.sexo === 'F' ? 'Femenino' : 'Masculino'} />
+          </SectionCard>
+
+          <SectionCard icon={<MapPin className="h-4 w-4" />} title="Domicilio">
+            <Row
+              label="Calle"
+              value={`${resultado.domicilio.calle} ${resultado.domicilio.altura}`}
+            />
+            {resultado.domicilio.pisoDpto && (
+              <Row label="Piso/Dto" value={resultado.domicilio.pisoDpto} />
+            )}
+            <Row label="Localidad" value={resultado.domicilio.localidad} />
+            <Row label="Partido" value={resultado.domicilio.partido} />
+            <Row label="Provincia" value={resultado.domicilio.provincia} />
+            <Row label="CP" value={resultado.domicilio.codigoPostal} />
+          </SectionCard>
+        </TabsContent>
+
+        {/* BCRA */}
+        <TabsContent value="bcra" className="space-y-4">
+          <BcraDetail title="Titular" resumen={resultado.bcra} />
+          <SectionCard icon={<FileText className="h-4 w-4" />} title="Cheques (últimos 4 años)">
+            <Row label="Rechazados" value={`${resultado.cheques.rechazadosCount} cheques`} />
+            <Row label="Monto rechazado" value={formatMonto(resultado.cheques.rechazadosMonto)} />
+            <Row label="Levantados" value={`${resultado.cheques.levantadosCount} cheques`} />
+            <Row label="Monto levantado" value={formatMonto(resultado.cheques.levantadosMonto)} />
+          </SectionCard>
+          <BcraDetail title="Grupo familiar" resumen={resultado.bcraFamiliar} />
+          {resultado.empleador && (
+            <BcraDetail
+              title={`Empleador — ${resultado.empleador.razonSocial}`}
+              resumen={resultado.empleador.bcra}
+            />
+          )}
+        </TabsContent>
+
+        {/* BIENES */}
+        <TabsContent value="bienes" className="space-y-4">
+          <SectionCard icon={<Home className="h-4 w-4" />} title="Inmuebles">
+            {resultado.inmuebles.length === 0 ? (
+              <p className="text-sm italic text-muted-foreground">Sin inmuebles registrados</p>
+            ) : (
+              <div className="space-y-2">
+                {resultado.inmuebles.map((i) => (
+                  <div key={i.partidoCatastral} className="rounded-md border p-3 text-sm">
+                    <p className="font-medium">{i.ubicacion}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {i.tipo} · partido {i.partidoCatastral} · adquirido{' '}
+                      {formatFecha(i.fechaAdquisicion)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </SectionCard>
+
+          <SectionCard icon={<Car className="h-4 w-4" />} title="Vehículos">
+            {resultado.vehiculos.length === 0 ? (
+              <p className="text-sm italic text-muted-foreground">Sin vehículos patentados</p>
+            ) : (
+              <div className="space-y-2">
+                {resultado.vehiculos.map((v) => (
+                  <div
+                    key={(v.patente ?? '') + v.modelo}
+                    className="flex items-center justify-between rounded-md border p-3 text-sm"
+                  >
+                    <div>
+                      <p className="font-medium">
+                        {v.marca} {v.modelo}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Año {v.anio} · comprado {formatFecha(v.fechaCompra)}
+                      </p>
+                    </div>
+                    {v.patente && <Badge variant="secondary">{v.patente}</Badge>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </SectionCard>
+        </TabsContent>
+
+        {/* INGRESOS */}
+        <TabsContent value="ingresos" className="space-y-4">
+          <SectionCard icon={<Wallet className="h-4 w-4" />} title="AFIP">
+            <Row label="Categoría" value={formatearCategoria(resultado.ingresos.categoriaAfip)} />
+            <Row label="Ganancias" value={resultado.ingresos.impuestoGanancias} />
+            <Row label="IVA" value={resultado.ingresos.impuestoIva} />
+            <Row label="Empleador" value={resultado.ingresos.empleador ? 'Sí' : 'No'} />
+            <Row
+              label="Integrante societario"
+              value={resultado.ingresos.integranteSocietario ? 'Sí' : 'No'}
+            />
+            <Row
+              label="CIIU"
+              value={`${resultado.ingresos.ciiu} — ${resultado.ingresos.actividadDescripcion}`}
+            />
+            {resultado.ingresos.obraSocialNombre && (
+              <Row
+                label="Obra social"
+                value={`${resultado.ingresos.obraSocialCodigo} — ${resultado.ingresos.obraSocialNombre}`}
+              />
+            )}
+          </SectionCard>
+
+          {resultado.ingresos.nominaUltimos6m.length > 0 && (
+            <SectionCard icon={<TrendingUp className="h-4 w-4" />} title="Nómina últimos 6 meses">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="text-xs text-muted-foreground">
+                    <tr className="border-b">
+                      <th className="py-2 text-left font-normal">Período</th>
+                      <th className="py-2 text-left font-normal">Rango ingreso</th>
+                      <th className="py-2 text-left font-normal">Fecha pago</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {resultado.ingresos.nominaUltimos6m.map((n) => (
+                      <tr key={n.periodo} className="border-b last:border-0">
+                        <td className="py-2 font-medium">{n.periodo}</td>
+                        <td className="py-2">
+                          <Badge variant="secondary">{n.rangoIngreso}</Badge>
+                        </td>
+                        <td className="py-2 text-muted-foreground">{formatFecha(n.fechaPago)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </SectionCard>
+          )}
+        </TabsContent>
+
+        {/* FAMILIA */}
+        <TabsContent value="familia" className="space-y-4">
+          <Card className="bg-muted/30">
+            <CardContent className="flex items-center gap-3 p-4 text-sm">
+              <Users className="h-4 w-4 text-primary" />
+              <p>
+                Rango de ingreso del grupo familiar:{' '}
+                <span className="font-semibold">{resultado.rangoIngresoFamiliar}</span>
+              </p>
+            </CardContent>
+          </Card>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            {resultado.familia.map((f, i) => (
+              <Card key={i}>
+                <CardContent className="space-y-3 p-4">
+                  <div className="flex items-center justify-between">
+                    <Badge variant="outline">{vinculoLabel[f.vinculo]}</Badge>
+                  </div>
+                  <p className="font-medium">{f.nombreCompleto}</p>
+                  {f.telefonos.length === 0 && !f.email ? (
+                    <p className="text-xs italic text-muted-foreground">Sin datos de contacto</p>
+                  ) : (
+                    <div className="space-y-1 text-xs">
+                      {f.telefonos.map((t) => (
+                        <TelefonoLine key={t.numero} t={t} />
+                      ))}
+                      {f.email && (
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <Mail className="h-3 w-3" />
+                          <span className="truncate">{f.email}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </TabsContent>
+
+        {/* LABORAL */}
+        <TabsContent value="laboral" className="space-y-4">
+          {resultado.empleador ? (
+            <>
+              <SectionCard icon={<Briefcase className="h-4 w-4" />} title="Empleador">
+                <Row label="Razón social" value={resultado.empleador.razonSocial} />
+                <Row label="CUIT" value={resultado.empleador.cuit} />
+                <Row label="Tipo" value={resultado.empleador.tipoEmpresa} />
+                <Row
+                  label="Actividad"
+                  value={`${resultado.empleador.ciiu} — ${resultado.empleador.actividad}`}
+                />
+                <Row
+                  label="ART vigente"
+                  value={
+                    resultado.empleador.artVigente ? (
+                      <Badge variant="success">Sí</Badge>
+                    ) : (
+                      <Badge variant="destructive">No</Badge>
+                    )
+                  }
+                />
+              </SectionCard>
+
+              <SectionCard icon={<Phone className="h-4 w-4" />} title="Contacto del empleador">
+                {resultado.empleador.telefonos.map((t) => (
+                  <Row key={t} label="Teléfono" value={t} />
+                ))}
+                {resultado.empleador.email && (
+                  <Row label="Email" value={resultado.empleador.email} />
+                )}
+                {resultado.empleador.paginaWeb && (
+                  <Row
+                    label="Web"
+                    value={
+                      <a
+                        href={resultado.empleador.paginaWeb}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-primary hover:underline"
+                      >
+                        <Globe className="h-3 w-3" />
+                        {resultado.empleador.paginaWeb.replace(/^https?:\/\//, '')}
+                      </a>
+                    }
+                  />
+                )}
+              </SectionCard>
+            </>
+          ) : (
+            <Card>
+              <CardContent className="space-y-2 p-10 text-center text-muted-foreground">
+                <Briefcase className="mx-auto h-10 w-10" />
+                <p className="font-medium">Sin empleador registrado</p>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        {/* CONTACTO */}
+        <TabsContent value="contacto" className="space-y-4">
+          <SectionCard icon={<Phone className="h-4 w-4" />} title="Teléfonos del titular">
+            <div className="space-y-1.5">
+              {resultado.telefonos.map((t) => (
+                <TelefonoLine key={t.numero} t={t} />
+              ))}
+            </div>
+          </SectionCard>
+
+          {resultado.email && (
+            <SectionCard icon={<Mail className="h-4 w-4" />} title="Email">
+              <div className="flex items-center gap-2 text-sm">
+                <span>{resultado.email}</span>
+                <Badge variant="success">verificado</Badge>
+              </div>
+            </SectionCard>
+          )}
+
+          <SectionCard icon={<Building2 className="h-4 w-4" />} title="Vecinos referenciables">
+            <div className="space-y-2">
+              {resultado.vecinos.map((v) => (
+                <div
+                  key={v.nombreCompleto}
+                  className="flex items-center justify-between rounded-md border p-3 text-sm"
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium">{v.nombreCompleto}</p>
+                    <p className="truncate text-xs text-muted-foreground">{v.direccion}</p>
+                  </div>
+                  <a
+                    href={`tel:${v.telefono.replace(/\s/g, '')}`}
+                    className="flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                  >
+                    <Phone className="h-3 w-3" />
+                    {v.telefono}
+                  </a>
+                </div>
+              ))}
+            </div>
+          </SectionCard>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
 
-function Metric({ label, value, hint }: { label: string; value: string; hint?: string }) {
+// ────────────────────────────── Subcomponentes ──────────────────────────────
+
+function SectionCard({
+  icon,
+  title,
+  children,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  children: React.ReactNode;
+}) {
   return (
-    <div className="rounded-md border bg-card p-4">
-      <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className="mt-1 text-2xl font-semibold">{value}</p>
-      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+    <Card>
+      <CardContent className="space-y-3 p-5">
+        <div className="flex items-center gap-2 text-primary">
+          {icon}
+          <h3 className="text-xs font-semibold uppercase tracking-wide">{title}</h3>
+        </div>
+        <Separator />
+        <div className="space-y-2 text-sm">{children}</div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function Row({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <span className="shrink-0 text-xs text-muted-foreground">{label}</span>
+      <span className="text-right text-sm font-medium">{value}</span>
     </div>
   );
+}
+
+function ScoreInline({ label, valor, hint }: { label: string; valor: string; hint?: string }) {
+  return (
+    <div>
+      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="text-base font-semibold tabular-nums">{valor}</p>
+      {hint && <p className="text-[10px] text-muted-foreground">{hint}</p>}
+    </div>
+  );
+}
+
+function TelefonoLine({
+  t,
+}: {
+  t: { numero: string; tipo: 'CELULAR' | 'FIJO'; whatsappActivo: boolean };
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2 rounded-md border bg-background p-2 text-xs">
+      <div className="flex items-center gap-2 min-w-0">
+        <Phone className="h-3 w-3 shrink-0 text-muted-foreground" />
+        <span className="truncate font-medium">{t.numero}</span>
+        <Badge variant="outline" className="text-[10px]">
+          {t.tipo === 'CELULAR' ? 'Celular' : 'Fijo'}
+        </Badge>
+      </div>
+      {t.whatsappActivo && (
+        <span className="flex shrink-0 items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+          <MessageCircle className="h-2.5 w-2.5" />
+          WhatsApp
+        </span>
+      )}
+    </div>
+  );
+}
+
+function BcraDetail({ title, resumen }: { title: string; resumen: ResumenBcra }) {
+  const sitsOrdenadas = ([1, 2, 3, 4, 5] as const).filter(
+    (s) => (resumen.situaciones[s] ?? 0) > 0,
+  );
+  return (
+    <SectionCard icon={<Wallet className="h-4 w-4" />} title={`BCRA — ${title}`}>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Row label="Entidades" value={resumen.entidadesCount.toString()} />
+        <Row label="Deuda tomada" value={formatMonto(resumen.deudaTomada)} />
+        <Row
+          label="Deuda en mora"
+          value={
+            resumen.deudaEnMora > 0 ? (
+              <span className="text-destructive">{formatMonto(resumen.deudaEnMora)}</span>
+            ) : (
+              '—'
+            )
+          }
+        />
+        <Row
+          label="Riesgo"
+          value={
+            <Badge variant={riesgoConfig[resumen.riesgo].variant}>
+              {riesgoConfig[resumen.riesgo].label}
+            </Badge>
+          }
+        />
+      </div>
+
+      {sitsOrdenadas.length > 0 && (
+        <>
+          <Separator />
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Distribución por situación
+            </p>
+            <div className="space-y-1.5">
+              {sitsOrdenadas.map((s) => (
+                <div key={s} className="flex items-center justify-between text-xs">
+                  <span>
+                    Situación {s} —{' '}
+                    <span className="text-muted-foreground">{labelSituacion(s)}</span>
+                  </span>
+                  <Badge variant={s === 1 ? 'success' : s === 2 ? 'warning' : 'destructive'}>
+                    {resumen.situaciones[s]} entidad
+                    {(resumen.situaciones[s] ?? 0) === 1 ? '' : 'es'}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+
+      <Separator />
+
+      <div>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Entidades con las que opera
+        </p>
+        <div className="space-y-1.5">
+          {resumen.entidades.map((e) => {
+            const pct = resumen.deudaTomada > 0 ? (e.deuda / resumen.deudaTomada) * 100 : 0;
+            return (
+              <div key={e.codigo} className="space-y-1 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="truncate font-medium">
+                    {e.nombre} <span className="text-muted-foreground">({e.codigo})</span>
+                  </span>
+                  <span className="shrink-0 tabular-nums">{formatMonto(e.deuda)}</span>
+                </div>
+                <div className="h-1 overflow-hidden rounded-full bg-muted">
+                  <div className="h-full bg-primary" style={{ width: `${pct}%` }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <p className="text-[11px] text-muted-foreground">
+        {resumen.deudaUltimos24m
+          ? '✓ Información disponible en BCRA (últimos 24 meses)'
+          : 'Sin información en los últimos 24 meses'}
+      </p>
+    </SectionCard>
+  );
+}
+
+function labelSituacion(s: 1 | 2 | 3 | 4 | 5): string {
+  return {
+    1: 'sin atraso (<31d)',
+    2: 'atraso 31-90d',
+    3: 'atraso 90-180d',
+    4: 'atraso 180d-1a',
+    5: 'atraso >1a',
+  }[s];
+}
+
+function formatearCategoria(
+  c: 'AUTONOMO' | 'MONOTRIBUTO' | 'RELACION_DEPENDENCIA' | 'NO_INSCRIPTO',
+): string {
+  return {
+    AUTONOMO: 'Autónomo',
+    MONOTRIBUTO: 'Monotributo',
+    RELACION_DEPENDENCIA: 'Relación de dependencia',
+    NO_INSCRIPTO: 'No inscripto',
+  }[c];
 }

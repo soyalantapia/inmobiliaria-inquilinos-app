@@ -98,18 +98,205 @@ export const contratoExtraidoMock: ContratoExtraido = {
   tasaPunitorioDiaria: { valor: 0.001, confianza: 'bajo' },
 };
 
+// Perfil completo tipo SkipTrace (MKT Insiders / Nosis). Persona ficticia
+// con datos coherentes para mostrar todas las secciones del informe.
 export const screeningMock: ScreeningResultado = {
   cuit: '20-31256789-0',
-  nombre: 'Carlos Eduardo Méndez',
+  dni: '31.256.789',
+  nombre: 'Carlos Eduardo',
+  apellido: 'Méndez',
+  fechaNacimiento: '1985-04-22',
+  sexo: 'M',
+
+  domicilio: {
+    calle: 'Av. Rivadavia',
+    altura: '6420',
+    pisoDpto: '8°C',
+    codigoPostal: '1406',
+    localidad: 'Caballito',
+    partido: 'CABA',
+    provincia: 'Buenos Aires',
+  },
+
+  telefonos: [
+    { numero: '+54 11 4631 5870', tipo: 'FIJO', whatsappActivo: false },
+    { numero: '+54 9 11 5234 7891', tipo: 'CELULAR', whatsappActivo: true },
+    { numero: '+54 9 11 6789 1234', tipo: 'CELULAR', whatsappActivo: true },
+    { numero: '+54 9 11 3456 7890', tipo: 'CELULAR', whatsappActivo: false },
+  ],
+  email: 'carlos.mendez@gmail.com',
+
+  bcra: {
+    entidadesCount: 4,
+    deudaTomada: 1850000,
+    deudaEnMora: 0,
+    riesgo: 'bajo',
+    situaciones: { 1: 4 },
+    entidades: [
+      { codigo: '0007', nombre: 'Banco Galicia', deuda: 980000 },
+      { codigo: '0011', nombre: 'Banco Nación', deuda: 520000 },
+      { codigo: '0017', nombre: 'BBVA Argentina', deuda: 240000 },
+      { codigo: '0072', nombre: 'Banco Patagonia', deuda: 110000 },
+    ],
+    deudaUltimos24m: true,
+  },
+
+  cheques: {
+    rechazadosCount: 0,
+    rechazadosMonto: 0,
+    levantadosCount: 2,
+    levantadosMonto: 350000,
+  },
+
+  familia: [
+    {
+      vinculo: 'CONYUGE',
+      nombreCompleto: 'María Laura Fernández',
+      telefonos: [{ numero: '+54 9 11 5678 1234', tipo: 'CELULAR', whatsappActivo: true }],
+      email: 'mlaura.fernandez@gmail.com',
+    },
+    {
+      vinculo: 'HIJO',
+      nombreCompleto: 'Tomás Méndez',
+      telefonos: [],
+      email: null,
+    },
+    {
+      vinculo: 'HIJO',
+      nombreCompleto: 'Sofía Méndez',
+      telefonos: [],
+      email: null,
+    },
+    {
+      vinculo: 'PADRE_MADRE',
+      nombreCompleto: 'Roberto Méndez',
+      telefonos: [
+        { numero: '+54 11 4234 5678', tipo: 'FIJO', whatsappActivo: false },
+        { numero: '+54 9 11 4111 2222', tipo: 'CELULAR', whatsappActivo: true },
+      ],
+      email: 'roberto.mendez@yahoo.com.ar',
+    },
+    {
+      vinculo: 'HERMANO',
+      nombreCompleto: 'Mariana Méndez',
+      telefonos: [{ numero: '+54 9 11 3322 1144', tipo: 'CELULAR', whatsappActivo: true }],
+      email: 'mariana.mendez@hotmail.com',
+    },
+  ],
+  rangoIngresoFamiliar: 'A5',
+  bcraFamiliar: {
+    entidadesCount: 7,
+    deudaTomada: 2840000,
+    deudaEnMora: 180000,
+    riesgo: 'medio',
+    situaciones: { 1: 5, 2: 2 },
+    entidades: [
+      { codigo: '0007', nombre: 'Banco Galicia', deuda: 1450000 },
+      { codigo: '0072', nombre: 'Banco Patagonia', deuda: 620000 },
+      { codigo: '0011', nombre: 'Banco Nación', deuda: 580000 },
+      { codigo: '0044', nombre: 'Banco Hipotecario', deuda: 190000 },
+    ],
+    deudaUltimos24m: true,
+  },
+
+  inmuebles: [
+    {
+      partidoCatastral: 'CABA 12-23-4',
+      ubicacion: 'Av. Rivadavia 6420 8°C — Caballito, CABA',
+      tipo: 'DEPARTAMENTO',
+      fechaAdquisicion: '2018-03-15',
+    },
+    {
+      partidoCatastral: 'BA 053-12-89',
+      ubicacion: 'Lote 12 — Country Las Praderas, Pilar',
+      tipo: 'TERRENO',
+      fechaAdquisicion: '2021-11-08',
+    },
+  ],
+  vehiculos: [
+    {
+      marca: 'Toyota',
+      modelo: 'Corolla Cross XEI',
+      anio: 2023,
+      fechaCompra: '2023-06-10',
+      patente: 'AC842PQ',
+    },
+    {
+      marca: 'Renault',
+      modelo: 'Sandero 1.6',
+      anio: 2017,
+      fechaCompra: '2017-09-22',
+      patente: 'AB129XR',
+    },
+  ],
+
+  ingresos: {
+    categoriaAfip: 'RELACION_DEPENDENCIA',
+    impuestoGanancias: 'AC',
+    impuestoIva: 'NA',
+    integranteSocietario: false,
+    empleador: false,
+    ciiu: '620100',
+    actividadDescripcion: 'Servicios de consultores en informática y suministros de programas',
+    obraSocialCodigo: '203500',
+    obraSocialNombre: 'OSDE — Organización de Servicios Directos Empresarios',
+    nominaUltimos6m: [
+      { periodo: '2026-04', rangoIngreso: 'A6', fechaPago: '2026-05-05' },
+      { periodo: '2026-03', rangoIngreso: 'A6', fechaPago: '2026-04-05' },
+      { periodo: '2026-02', rangoIngreso: 'A6', fechaPago: '2026-03-05' },
+      { periodo: '2026-01', rangoIngreso: 'A5', fechaPago: '2026-02-05' },
+      { periodo: '2025-12', rangoIngreso: 'A6', fechaPago: '2026-01-05' },
+      { periodo: '2025-11', rangoIngreso: 'A5', fechaPago: '2025-12-05' },
+    ],
+  },
+
+  empleador: {
+    cuit: '30-71234567-9',
+    razonSocial: 'Globant Argentina S.A.',
+    ciiu: '620100',
+    actividad: 'Servicios de consultores en informática',
+    telefonos: ['+54 11 4014 4040', '+54 11 4014 4041'],
+    email: 'rrhh@globant.com',
+    paginaWeb: 'https://www.globant.com',
+    tipoEmpresa: 'Sociedad Anónima',
+    artVigente: true,
+    bcra: {
+      entidadesCount: 6,
+      deudaTomada: 145000000,
+      deudaEnMora: 0,
+      riesgo: 'bajo',
+      situaciones: { 1: 6 },
+      entidades: [
+        { codigo: '0007', nombre: 'Banco Galicia', deuda: 65000000 },
+        { codigo: '0017', nombre: 'BBVA Argentina', deuda: 42000000 },
+        { codigo: '0027', nombre: 'Banco Supervielle', deuda: 28000000 },
+      ],
+      deudaUltimos24m: true,
+    },
+  },
+
+  vecinos: [
+    {
+      nombreCompleto: 'Andrea Pérez',
+      telefono: '+54 9 11 5555 7890',
+      direccion: 'Av. Rivadavia 6420 8°B',
+    },
+    {
+      nombreCompleto: 'Diego Romano',
+      telefono: '+54 9 11 4422 3311',
+      direccion: 'Av. Rivadavia 6420 8°D',
+    },
+    {
+      nombreCompleto: 'Encargado del edificio',
+      telefono: '+54 9 11 3344 5566',
+      direccion: 'Portería · Av. Rivadavia 6420',
+    },
+  ],
+
   scoreNosis: 742,
-  resultadoBcra: 1,
-  deudasCount: 0,
-  deudasMonto: 0,
-  chequesRechazados: 0,
-  juiciosCount: 0,
   recomendacion: 'APTO',
   recomendacionRazon:
-    'Score Nosis 742 (alto), BCRA categoría 1 (sin atrasos), sin deudas ni juicios. Cumple criterios objetivos de aptitud sin requerir garantía adicional.',
+    'Score Nosis 742 (alto). BCRA categoría 1 con 4 entidades, sin mora ni deuda en riesgo. Patrimonio sólido (2 inmuebles + 2 vehículos), antigüedad laboral en empresa grande con ART vigente. Ingresos formales estables últimos 6 meses (rango A5-A6). Grupo familiar con leve atraso (Sit 2) pero sin impacto material. Apto sin garantía adicional.',
 };
 
 export const dashboardMetricsMock = {
