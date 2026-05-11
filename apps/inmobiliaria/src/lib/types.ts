@@ -5,6 +5,24 @@ export type IndiceAjuste = 'ICL' | 'IPC' | 'CASA_PROPIA' | 'UVA' | 'CAC' | 'RIPT
 export type Recomendacion = 'APTO' | 'APTO_CON_GARANTIA' | 'NO_APTO';
 export type Confianza = 'alto' | 'medio' | 'bajo';
 
+export type TipoPropiedad = 'DEPARTAMENTO' | 'CASA' | 'LOCAL' | 'GALPON';
+export type EstadoPropiedad = 'ALQUILADA' | 'DISPONIBLE' | 'EN_EDICION';
+
+export interface Propiedad {
+  id: string;
+  direccion: string;
+  ciudad: string;
+  provincia: string;
+  tipo: TipoPropiedad;
+  ambientes: number | null;
+  m2: number | null;
+  fotoUrl: string | null;
+  estado: EstadoPropiedad;
+  propietariosIds: string[]; // FK a Propietario.id (puede haber cotitularidad)
+  contratoActualId: string | null; // FK a Contrato.id, null si DISPONIBLE
+  createdAt: string;
+}
+
 export type CategoriaReclamo = 'PLOMERIA' | 'ELECTRICIDAD' | 'CERRADURA' | 'CALEFACCION' | 'OTRO';
 export type UrgenciaReclamo = 'BAJA' | 'MEDIA' | 'ALTA' | 'EMERGENCIA';
 export type EstadoReclamo = 'ABIERTO' | 'EN_CURSO' | 'RESUELTO' | 'CERRADO' | 'RECHAZADO';
@@ -56,7 +74,7 @@ export interface Propietario {
   notas: string | null;
   createdAt: string;
   // métricas derivadas para el listado/detalle (en backend real se calculan)
-  propiedadesIds: string[];
+  propiedadesIds: string[]; // FK a Propiedad.id (no a Contrato)
   totalCobradoMes: number;
   totalRecibirMes: number;
 }
