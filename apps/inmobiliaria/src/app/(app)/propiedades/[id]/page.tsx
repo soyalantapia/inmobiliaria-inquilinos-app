@@ -4,7 +4,6 @@ import {
   AlertTriangle,
   ArrowLeft,
   CheckCircle2,
-  ClipboardCheck,
   Download,
   FileText,
   Home,
@@ -30,9 +29,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@llave/ui/tabs';
 import { Topbar } from '@/components/topbar';
 import {
   type CoInquilinoAdmin,
-  type EstadoItemInventario,
   coInquilinosMock,
-  inventariosMock,
   propiedadesMock,
 } from '@/lib/mock-data';
 import {
@@ -159,7 +156,6 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
               )}
             </TabsTrigger>
             <TabsTrigger value="personas">Personas</TabsTrigger>
-            <TabsTrigger value="inventario">Inventario</TabsTrigger>
             <TabsTrigger value="documentos">Documentos</TabsTrigger>
           </TabsList>
 
@@ -540,10 +536,6 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
             <CoInquilinosBlock contratoId={contrato?.id} />
           </TabsContent>
 
-          {/* INVENTARIO */}
-          <TabsContent value="inventario" className="space-y-4">
-            <InventarioBlock contratoId={contrato?.id} />
-          </TabsContent>
 
           {/* DOCUMENTOS */}
           <TabsContent value="documentos" className="space-y-4">
@@ -595,136 +587,6 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <p className="text-xs text-muted-foreground">{label}</p>
       <div className="mt-0.5 text-sm font-medium">{children}</div>
     </div>
-  );
-}
-
-const estadoItemColor: Record<EstadoItemInventario, string> = {
-  BUENO: 'bg-emerald-500',
-  REGULAR: 'bg-amber-500',
-  MALO: 'bg-orange-500',
-  FALTANTE: 'bg-red-500',
-};
-
-const estadoItemLabel: Record<EstadoItemInventario, string> = {
-  BUENO: 'Bueno',
-  REGULAR: 'Regular',
-  MALO: 'Malo',
-  FALTANTE: 'Faltante',
-};
-
-function InventarioBlock({ contratoId }: { contratoId: string | undefined }) {
-  const inventario = contratoId
-    ? inventariosMock.find((i) => i.contratoId === contratoId)
-    : null;
-
-  if (!contratoId || !inventario) {
-    return (
-      <Card>
-        <CardContent className="space-y-4 p-6">
-          <div className="flex items-center gap-2">
-            <ClipboardCheck className="h-4 w-4 text-primary" />
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Inventario inicial
-            </h3>
-          </div>
-          <div className="rounded-md border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
-            <ClipboardCheck className="mx-auto h-8 w-8 text-muted-foreground/40" />
-            <p className="mt-2 font-medium">El inquilino todavía no cargó el inventario</p>
-            <p className="mt-1 text-xs">
-              Cuando documente el estado del depto, vas a poder revisarlo y firmarlo acá.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  const total = inventario.items.length;
-  const conFoto = inventario.items.filter((i) => i.conFoto).length;
-  const malEstado = inventario.items.filter((i) => i.estado === 'MALO' || i.estado === 'FALTANTE').length;
-  const porAmbiente = inventario.items.reduce<Record<string, typeof inventario.items>>((acc, item) => {
-    if (!acc[item.ambiente]) acc[item.ambiente] = [];
-    acc[item.ambiente]!.push(item);
-    return acc;
-  }, {});
-
-  return (
-    <>
-      <Card>
-        <CardContent className="space-y-4 p-6">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <ClipboardCheck className="h-4 w-4 text-primary" />
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Inventario inicial
-              </h3>
-            </div>
-            {inventario.firmadoInmobiliaria ? (
-              <Badge variant="success">Firmado</Badge>
-            ) : (
-              <Badge variant="warning">Pendiente firma</Badge>
-            )}
-          </div>
-          <div className="grid grid-cols-3 gap-3 rounded-md border bg-muted/30 p-4 text-center">
-            <div>
-              <p className="text-2xl font-semibold tabular-nums">{total}</p>
-              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Items</p>
-            </div>
-            <div>
-              <p className="text-2xl font-semibold tabular-nums">{conFoto}</p>
-              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Con foto</p>
-            </div>
-            <div>
-              <p className="text-2xl font-semibold tabular-nums text-amber-600">{malEstado}</p>
-              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Mal estado</p>
-            </div>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Cargado el {formatFecha(inventario.cargadoAt!)}.
-            {!inventario.firmadoInmobiliaria && ' Revisá y firmá para que tenga validez legal.'}
-          </p>
-          {!inventario.firmadoInmobiliaria && (
-            <div className="flex flex-wrap gap-2">
-              <Button size="sm">
-                <ShieldCheck className="h-3.5 w-3.5" />
-                Firmar inventario
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {Object.entries(porAmbiente).map(([ambiente, items]) => (
-        <Card key={ambiente}>
-          <CardContent className="space-y-2 p-6">
-            <h4 className="text-sm font-semibold">{ambiente}</h4>
-            <div className="divide-y rounded-md border">
-              {items.map((item) => (
-                <div key={item.id} className="flex items-start gap-3 p-3">
-                  <span
-                    className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${estadoItemColor[item.estado]}`}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium">{item.descripcion}</p>
-                      {item.conFoto && (
-                        <Badge variant="outline" className="text-[10px]">
-                          📸 Con foto
-                        </Badge>
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {estadoItemLabel[item.estado]}
-                      {item.observaciones && ` · ${item.observaciones}`}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      ))}
-    </>
   );
 }
 

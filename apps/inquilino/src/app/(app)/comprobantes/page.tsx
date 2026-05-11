@@ -29,8 +29,13 @@ export default function ComprobantesPage() {
     [anioSel],
   );
 
+  // Ordenamos por período DESC para encontrar el último pago del año seleccionado.
+  const ultimo = useMemo(
+    () => [...delAnio].sort((a, b) => b.periodo.localeCompare(a.periodo))[0] ?? null,
+    [delAnio],
+  );
   const totalAnio = useMemo(() => delAnio.reduce((acc, c) => acc + c.monto, 0), [delAnio]);
-  const promedio = delAnio.length > 0 ? Math.round(totalAnio / delAnio.length) : 0;
+  const promedioMensual = delAnio.length > 0 ? Math.round(totalAnio / delAnio.length) : 0;
 
   return (
     <>
@@ -40,25 +45,23 @@ export default function ComprobantesPage() {
       </header>
 
       <main className="flex-1 space-y-5 px-5 pb-6 md:px-8">
-        {/* Total anual hero */}
+        {/* Hero: último pago mensual */}
         <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-primary to-primary/80 p-6 text-primary-foreground shadow-xl shadow-primary/20">
           <div className="pointer-events-none absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
           <div className="relative space-y-2">
             <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.18em] opacity-80">
               <Wallet className="h-3.5 w-3.5" />
-              Pagaste en {anioSel}
+              {ultimo ? `Último pago · ${formatPeriodo(ultimo.periodo)}` : `Sin pagos en ${anioSel}`}
             </div>
             <p className="text-4xl font-bold leading-none tracking-tight tabular-nums md:text-5xl">
-              {formatMonto(totalAnio)}
+              {ultimo ? formatMonto(ultimo.monto, ultimo.moneda) : formatMonto(0)}
             </p>
             <div className="flex flex-wrap items-center gap-3 text-xs opacity-90">
-              <span>
-                {delAnio.length} pago{delAnio.length === 1 ? '' : 's'}
-              </span>
-              {delAnio.length > 0 && (
+              {ultimo && (
                 <>
+                  <span>Pagado el {formatFecha(ultimo.fechaPago)}</span>
                   <span>·</span>
-                  <span>Promedio {formatMonto(promedio)}/mes</span>
+                  <span>Promedio {formatMonto(promedioMensual)}/mes</span>
                 </>
               )}
             </div>

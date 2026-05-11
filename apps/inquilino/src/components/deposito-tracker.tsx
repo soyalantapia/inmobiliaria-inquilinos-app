@@ -2,16 +2,15 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { AlertCircle, ChevronRight, KeyRound, Wallet } from 'lucide-react';
+import { AlertCircle, ChevronRight, KeyRound } from 'lucide-react';
 import { Card } from '@llave/ui/card';
 import { cn } from '@llave/ui/cn';
 import { diasHastaVencimiento, formatMonto } from '@/lib/format';
-import { leerInventario } from '@/lib/inventario-storage';
 import { liquidacionesMock } from '@/lib/mock-data';
 
 // Tracker visual del depósito: cuánto te van a devolver al final del contrato.
-// Lo calculamos sumando posibles descuentos (items en mal estado del inventario
-// + deudas pendientes) sobre el monto original del depósito.
+// Lo calculamos sumando posibles descuentos (deudas pendientes) sobre el monto
+// original del depósito.
 
 interface Props {
   depositoOriginal: number;
@@ -19,16 +18,11 @@ interface Props {
 }
 
 export function DepositoTracker({ depositoOriginal, fechaFin }: Props) {
-  const [descuentoInventario, setDescuentoInventario] = useState(0);
   const [hidratado, setHidratado] = useState(false);
 
   useEffect(() => {
-    const inv = leerInventario();
-    // Estimación: cada item en mal estado o faltante penaliza un 3% del depósito
-    const malos = inv.items.filter((i) => i.estado === 'MALO' || i.estado === 'FALTANTE').length;
-    setDescuentoInventario(Math.round(depositoOriginal * 0.03 * malos));
     setHidratado(true);
-  }, [depositoOriginal]);
+  }, []);
 
   if (!hidratado) return null;
 
@@ -37,10 +31,10 @@ export function DepositoTracker({ depositoOriginal, fechaFin }: Props) {
     .filter((l) => l.estado === 'VENCIDO')
     .reduce((acc, l) => acc + l.montoTotal, 0);
 
-  const aDevolver = Math.max(0, depositoOriginal - descuentoInventario - descuentoDeudas);
+  const aDevolver = Math.max(0, depositoOriginal - descuentoDeudas);
   const porcentajeDevolver = (aDevolver / depositoOriginal) * 100;
   const diasFin = diasHastaVencimiento(fechaFin);
-  const tieneRiesgo = descuentoInventario > 0 || descuentoDeudas > 0;
+  const tieneRiesgo = descuentoDeudas > 0;
 
   return (
     <Card className="space-y-4 p-5">
@@ -88,20 +82,11 @@ export function DepositoTracker({ depositoOriginal, fechaFin }: Props) {
       {tieneRiesgo && (
         <div className="space-y-2 rounded-lg border bg-muted/30 p-3 text-xs">
           <p className="font-medium">Descuentos estimados</p>
-          {descuentoDeudas > 0 && (
-            <DescuentoRow
-              label="Deuda actual"
-              value={descuentoDeudas}
-              hint="Liquidaciones vencidas sin pagar"
-            />
-          )}
-          {descuentoInventario > 0 && (
-            <DescuentoRow
-              label="Items en mal estado"
-              value={descuentoInventario}
-              hint="3% por item con MALO o FALTANTE"
-            />
-          )}
+          <DescuentoRow
+            label="Deuda actual"
+            value={descuentoDeudas}
+            hint="Liquidaciones vencidas sin pagar"
+          />
         </div>
       )}
 
@@ -119,31 +104,19 @@ export function DepositoTracker({ depositoOriginal, fechaFin }: Props) {
         </div>
       </div>
 
-      {/* CTAs */}
-      <div className="flex flex-col gap-2 sm:flex-row">
+      {/* CTA cuando hay deuda */}
+      {descuentoDeudas > 0 && (
         <Link
-          href="/inventario"
-          className="flex flex-1 items-center justify-between gap-2 rounded-lg border bg-background px-3 py-2 text-xs transition-colors hover:bg-muted/40"
+          href="/"
+          className="flex items-center justify-between gap-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700 transition-colors hover:bg-red-100 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300"
         >
           <div className="flex items-center gap-2">
-            <Wallet className="h-3.5 w-3.5 text-muted-foreground" />
-            <span>Ver inventario</span>
+            <AlertCircle className="h-3.5 w-3.5" />
+            <span>Saldar deuda para recuperar el total</span>
           </div>
-          <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+          <ChevronRight className="h-3.5 w-3.5" />
         </Link>
-        {descuentoDeudas > 0 && (
-          <Link
-            href="/"
-            className="flex flex-1 items-center justify-between gap-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700 transition-colors hover:bg-red-100 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300"
-          >
-            <div className="flex items-center gap-2">
-              <AlertCircle className="h-3.5 w-3.5" />
-              <span>Saldar deuda</span>
-            </div>
-            <ChevronRight className="h-3.5 w-3.5" />
-          </Link>
-        )}
-      </div>
+      )}
     </Card>
   );
 }

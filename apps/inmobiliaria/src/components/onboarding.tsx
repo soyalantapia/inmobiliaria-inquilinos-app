@@ -5,11 +5,14 @@ import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
   ArrowRight,
-  CalendarDays,
+  Building2,
+  CalendarHeart,
   CheckCircle2,
   CreditCard,
   FileText,
-  Receipt,
+  HardHat,
+  LayoutDashboard,
+  Settings,
   Sparkles,
   Users,
   Wrench,
@@ -19,15 +22,12 @@ import {
 import { Button } from '@llave/ui/button';
 import { cn } from '@llave/ui/cn';
 
-// Tutorial guiado paso a paso. Se muestra automáticamente la primera vez
-// que entrás. Después podés relanzarlo desde /cuenta con el botón
-// "Ver tutorial". El flag se guarda en localStorage.
+// Tutorial guiado paso a paso del panel inmobiliaria. Misma mecánica que en
+// el inquilino: se muestra la primera vez, se persiste en localStorage,
+// /configuracion lo puede relanzar.
 
-const STORAGE_KEY = 'llave:onboarding-completed:v1';
-
-// Evento personalizado para que /cuenta pueda relanzar el tour sin
-// montar dos copias del componente.
-const RELAUNCH_EVENT = 'llave:onboarding-relaunch';
+const STORAGE_KEY = 'llave-inmo:onboarding-completed:v1';
+const RELAUNCH_EVENT = 'llave-inmo:onboarding-relaunch';
 
 interface Step {
   icon: LucideIcon;
@@ -42,112 +42,136 @@ const STEPS: Step[] = [
   {
     icon: Sparkles,
     iconBg: 'from-fuchsia-500 to-purple-600',
-    titulo: '¡Bienvenida a Llave!',
-    descripcion: 'Tu alquiler en un solo lugar. Te muestro las cosas importantes en 1 minuto.',
+    titulo: '¡Bienvenido a Llave!',
+    descripcion: 'Te muestro las funciones principales del panel en 1 minuto.',
     bullets: [
-      'Sin papeles ni llamadas innecesarias',
-      'Todo lo que necesitás está a un toque',
+      'Pensado para inmobiliarias que gestionan alquileres',
+      'Tus inquilinos pagan y reclaman desde su app',
       'Podés saltar este tour cuando quieras',
     ],
   },
   {
-    icon: CreditCard,
+    icon: LayoutDashboard,
     iconBg: 'from-primary to-primary/70',
-    titulo: 'Pagás tu alquiler en un toque',
-    descripcion: 'En la pantalla principal ves el monto exacto del mes y si está al día.',
+    titulo: 'Inicio: foto del negocio',
+    descripcion: 'Métricas, alertas y agenda de los próximos 14 días.',
     bullets: [
-      'Vemos vencimiento, monto y punitorios si los hay',
-      'Pagás con transferencia, MP o QR',
-      'Subís el comprobante y queda registrado',
+      'Cobrado del mes y mora actual',
+      'Próximos vencimientos y ajustes',
+      'Qué necesita tu atención hoy',
     ],
-    cta: { label: 'Ver mis pagos', href: '/' },
+    cta: { label: 'Ver inicio', href: '/' },
+  },
+  {
+    icon: Building2,
+    iconBg: 'from-blue-500 to-indigo-600',
+    titulo: 'Propiedades como entidad central',
+    descripcion: 'Todo gira alrededor de la propiedad: contrato, inquilino, propietario, reclamos.',
+    bullets: [
+      'Filtrá por Alquiladas / Disponibles / Problemas',
+      'Cargá nuevas propiedades (te avisamos del costo extra)',
+      'Cada propiedad tiene resumen, inquilino y propietarios',
+    ],
+    cta: { label: 'Ver propiedades', href: '/propiedades' },
   },
   {
     icon: FileText,
-    iconBg: 'from-blue-500 to-indigo-600',
-    titulo: 'Conocé tu contrato',
-    descripcion: 'Datos clave, próximos ajustes, evolución del alquiler y estado del depósito.',
+    iconBg: 'from-cyan-500 to-blue-600',
+    titulo: 'Contratos con todo el detalle',
+    descripcion: 'Pagos, historial cronológico, comunicaciones con el inquilino.',
     bullets: [
-      'Línea de tiempo del contrato',
-      'Cuánto vas a recuperar del depósito',
-      'Compartilo con tu garante con un link',
+      'Histórico de liquidaciones con estado',
+      'Timeline de eventos del contrato',
+      'Plantillas de WhatsApp/Email para gestión',
     ],
-    cta: { label: 'Abrir mi contrato', href: '/contrato' },
+    cta: { label: 'Ver contratos', href: '/contratos' },
   },
   {
-    icon: Sparkles,
-    iconBg: 'from-fuchsia-500 to-purple-600',
-    titulo: 'Chateá con el Broker',
-    descripcion: 'Una IA que leyó tus cláusulas y te responde al instante.',
+    icon: CreditCard,
+    iconBg: 'from-emerald-500 to-teal-600',
+    titulo: 'Pagos y conciliación',
+    descripcion: 'Pendientes, vencidos y pagados. Conciliá con un click cuando subas un comprobante.',
     bullets: [
-      'Aumentos, depósito, mascotas, vencimiento',
-      'Te cita la cláusula exacta del contrato',
-      'Te deriva a la inmobiliaria si hace falta',
+      'Filtros rápidos por estado',
+      'Total cobrado y en mora en grande',
+      'El inquilino sube el comprobante, vos validás',
     ],
-    cta: { label: 'Probar el Broker', href: '/broker' },
+    cta: { label: 'Ver pagos', href: '/pagos' },
+  },
+  {
+    icon: CalendarHeart,
+    iconBg: 'from-rose-500 to-pink-600',
+    titulo: 'Renovaciones cerca del fin',
+    descripcion: 'Mirá qué inquilinos están por vencer y qué decidió cada uno.',
+    bullets: [
+      'Quién quiere renovar y quién no',
+      'Falta avisar: los urgentes en rojo',
+      'Mensaje WhatsApp con plantilla en un click',
+    ],
+    cta: { label: 'Ver renovaciones', href: '/renovaciones' },
   },
   {
     icon: Wrench,
     iconBg: 'from-amber-500 to-orange-600',
-    titulo: 'Reportá problemas',
-    descripcion: 'Plomería, electricidad, cerraduras — todo desde la app.',
+    titulo: 'Reclamos en tiempo real',
+    descripcion: 'Cuando un inquilino reporta algo, lo recibís acá y asignás operador.',
     bullets: [
-      'Sumás foto y descripción rápida',
-      'Seguís el estado en tiempo real',
-      'Calificás al final y te ahorra futuras visitas',
+      'Timeline con mensajes del inquilino',
+      'Asignás, cambiás estado, resolvés',
+      'El inquilino te califica cuando cierra',
     ],
     cta: { label: 'Ver reclamos', href: '/reclamos' },
   },
   {
-    icon: Receipt,
-    iconBg: 'from-emerald-500 to-teal-600',
-    titulo: 'Comprobantes a mano',
-    descripcion: 'Todos tus pagos descargables en PDF, año por año.',
+    icon: HardHat,
+    iconBg: 'from-yellow-500 to-amber-600',
+    titulo: 'Tu red de profesionales',
+    descripcion: 'Plomero, electricista, gasista — los recomendás y tus inquilinos los contactan.',
     bullets: [
-      'Histórico mensual completo',
-      'Útil para deducir si trabajás en relación de dependencia',
-      'Lo compartís con tu contador en un clic',
+      'Cargás los que conocés y trabajaron bien',
+      'Los marcás como verificados',
+      'Aparecen en la app del inquilino con un toque',
     ],
-    cta: { label: 'Ver comprobantes', href: '/comprobantes' },
-  },
-  {
-    icon: CalendarDays,
-    iconBg: 'from-cyan-500 to-blue-600',
-    titulo: 'Mi calendario',
-    descripcion: 'Todo lo que va a pasar con tu alquiler: pagos, ajustes, vencimientos.',
-    bullets: [
-      'Vista unificada de eventos',
-      'No te olvides de nada importante',
-      'Te avisamos por WhatsApp antes',
-    ],
-    cta: { label: 'Ver mi calendario', href: '/calendario' },
+    cta: { label: 'Ver profesionales', href: '/profesionales' },
   },
   {
     icon: Users,
-    iconBg: 'from-rose-500 to-pink-600',
-    titulo: 'Y mucho más',
-    descripcion: 'Profesionales, co-inquilinos, documentos, renovación — todo desde Mi Cuenta.',
+    iconBg: 'from-violet-500 to-purple-600',
+    titulo: 'Propietarios y rendiciones',
+    descripcion: 'Acá ves lo que le debés rendir a cada dueño, con CBU y comisión.',
     bullets: [
-      'Plomero, electricista y técnicos recomendados',
-      'Compartí el contrato con tu pareja o familia',
-      'DNI y recibos guardados para renovar fácil',
+      'Histórico de rendiciones mes a mes',
+      'Te avisa cuando un dueño no tiene CBU',
+      'Detalle con propiedades, contratos y comisión',
     ],
-    cta: { label: 'Explorar Mi Cuenta', href: '/cuenta' },
+    cta: { label: 'Ver propietarios', href: '/propietarios' },
+  },
+  {
+    icon: Settings,
+    iconBg: 'from-slate-500 to-slate-700',
+    titulo: 'Configuración del negocio',
+    descripcion: 'Datos de tu inmobiliaria, equipo, permisos y plan.',
+    bullets: [
+      'Editás nombre, dirección y datos fiscales',
+      'Sumás operadores con sus permisos',
+      'Plan según cantidad de propiedades + facturas',
+    ],
+    cta: { label: 'Ir a configuración', href: '/configuracion' },
   },
   {
     icon: CheckCircle2,
     iconBg: 'from-emerald-500 to-green-600',
-    titulo: '¡Listo!',
-    descripcion: 'Ya conocés Llave. Cualquier duda, el Broker o la inmobiliaria están a un toque.',
+    titulo: '¡A trabajar!',
+    descripcion: 'Ya conocés todo. Podés relanzar este tour desde Configuración cuando quieras.',
     bullets: [
-      'Podés volver a ver este tour desde Mi Cuenta',
-      'WhatsApp directo con tu inmobiliaria',
-      'Que tengas una buena estadía 💜',
+      'Soporte por WhatsApp si te trabás',
+      'Las novedades aparecen en el inicio',
+      'Disfrutá menos tareas administrativas 🎯',
     ],
   },
 ];
 
-export function Onboarding() {
+export function OnboardingInmo() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState(0);
@@ -161,7 +185,6 @@ export function Onboarding() {
       // ignore
     }
 
-    // Escucha el evento para relanzar desde /cuenta
     const onRelaunch = () => {
       setStep(0);
       setOpen(true);
@@ -195,7 +218,6 @@ export function Onboarding() {
     router.push(slide.cta.href);
   };
 
-  // Bloquear scroll del body cuando está abierto
   useEffect(() => {
     if (typeof document === 'undefined') return;
     document.body.style.overflow = open ? 'hidden' : '';
@@ -213,7 +235,6 @@ export function Onboarding() {
 
   return (
     <div className="fixed inset-0 z-50 flex animate-fade-in flex-col items-center justify-center bg-background/95 p-6 backdrop-blur md:p-10">
-      {/* Saltar */}
       <button
         onClick={cerrar}
         className="absolute right-4 top-4 rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
@@ -223,7 +244,6 @@ export function Onboarding() {
       </button>
 
       <div className="w-full max-w-md space-y-6 text-center">
-        {/* Ícono */}
         <div
           className={cn(
             'mx-auto grid h-24 w-24 place-items-center rounded-3xl bg-gradient-to-br text-white shadow-xl md:h-28 md:w-28',
@@ -233,7 +253,6 @@ export function Onboarding() {
           <Icon className="h-12 w-12 md:h-14 md:w-14" strokeWidth={1.5} />
         </div>
 
-        {/* Texto */}
         <div className="space-y-2">
           <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
             Paso {step + 1} de {STEPS.length}
@@ -242,7 +261,6 @@ export function Onboarding() {
           <p className="text-sm text-muted-foreground md:text-base">{slide.descripcion}</p>
         </div>
 
-        {/* Bullets */}
         <ul className="space-y-2 text-left">
           {slide.bullets.map((b, i) => (
             <li key={i} className="flex items-start gap-3 text-sm">
@@ -252,7 +270,6 @@ export function Onboarding() {
           ))}
         </ul>
 
-        {/* Progress dots */}
         <div className="flex items-center justify-center gap-1.5 pt-2">
           {STEPS.map((_, i) => (
             <span
@@ -265,7 +282,6 @@ export function Onboarding() {
           ))}
         </div>
 
-        {/* CTAs */}
         <div className="space-y-2 pt-2">
           {slide.cta && !esUltimo && (
             <Button variant="outline" size="lg" className="w-full" onClick={irACTA}>
@@ -281,7 +297,7 @@ export function Onboarding() {
               </Button>
             )}
             <Button size="lg" className="flex-1" onClick={siguiente}>
-              {esUltimo ? '¡Empezar a usar Llave!' : 'Siguiente'}
+              {esUltimo ? '¡Listo!' : 'Siguiente'}
               {!esUltimo && <ArrowRight className="h-4 w-4" />}
             </Button>
           </div>
@@ -299,8 +315,8 @@ export function Onboarding() {
   );
 }
 
-// Helper que /cuenta usa para relanzar el tour.
-export function relanzarOnboarding(): void {
+// Helper para que /configuracion u otra pantalla pueda relanzar el tour.
+export function relanzarOnboardingInmo(): void {
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new CustomEvent(RELAUNCH_EVENT));
 }

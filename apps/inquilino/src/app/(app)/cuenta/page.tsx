@@ -9,10 +9,9 @@ import {
   CalendarDays,
   ChevronRight,
   CircleHelp,
-  ClipboardCheck,
   FileText,
   Globe,
-  Languages,
+  GraduationCap,
   LifeBuoy,
   LogOut,
   Mail,
@@ -35,6 +34,7 @@ import { Input } from '@llave/ui/input';
 import { Label } from '@llave/ui/label';
 import { toast } from '@llave/ui/use-toast';
 import { NavBar } from '@/components/nav-bar';
+import { relanzarOnboarding } from '@/components/onboarding';
 import { contratoMock } from '@/lib/mock-data';
 import { useCurrentUser } from '@/lib/use-current-user';
 
@@ -45,7 +45,6 @@ interface Prefs {
   notifWhatsapp: boolean;
   notifEmail: boolean;
   notifPush: boolean;
-  idioma: 'es-AR' | 'en-US';
   recordatorioPagoActivo: boolean;
   recordatorioPagoDias: 1 | 3 | 7;
 }
@@ -54,7 +53,6 @@ const PREFS_DEFAULT: Prefs = {
   notifWhatsapp: true,
   notifEmail: true,
   notifPush: false,
-  idioma: 'es-AR',
   recordatorioPagoActivo: true,
   recordatorioPagoDias: 3,
 };
@@ -217,38 +215,25 @@ export default function CuentaPage() {
           </Card>
         </section>
 
-        {/* Idioma */}
-        <section className="space-y-3">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Idioma
-          </h2>
-          <Card>
-            <div className="flex items-center gap-3 p-4">
-              <Languages className="h-4 w-4 text-primary" />
-              <div className="flex-1">
-                <p className="text-sm font-medium">Idioma de la app</p>
-                <p className="text-xs text-muted-foreground">
-                  {prefs.idioma === 'es-AR' ? 'Español (Argentina)' : 'English (US)'}
-                </p>
-              </div>
-              <select
-                value={prefs.idioma}
-                onChange={(e) => setPref('idioma', e.target.value as Prefs['idioma'])}
-                className="rounded-md border bg-background px-2 py-1 text-sm"
-              >
-                <option value="es-AR">Español</option>
-                <option value="en-US">English</option>
-              </select>
-            </div>
-          </Card>
-        </section>
-
         {/* Ayuda y soporte */}
         <section className="space-y-3">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Ayuda
           </h2>
           <Card className="divide-y">
+            <button
+              onClick={relanzarOnboarding}
+              className="flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-muted/40"
+            >
+              <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-primary/10 text-primary">
+                <GraduationCap className="h-4 w-4" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium">Ver tutorial otra vez</p>
+                <p className="text-xs text-muted-foreground">Recorré las funciones principales paso a paso</p>
+              </div>
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            </button>
             <LinkRow
               icon={<CircleHelp className="h-4 w-4" />}
               label="Preguntas frecuentes"
@@ -279,12 +264,6 @@ export default function CuentaPage() {
               label="Mi calendario"
               descripcion="Pagos, ajustes y vencimientos en un solo lugar"
               href="/calendario"
-            />
-            <LinkRow
-              icon={<ClipboardCheck className="h-4 w-4" />}
-              label="Inventario inicial"
-              descripcion="Foto-checklist del estado del depto — para defender el depósito"
-              href="/inventario"
             />
             <LinkRow
               icon={<Users className="h-4 w-4" />}

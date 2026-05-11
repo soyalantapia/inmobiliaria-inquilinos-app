@@ -7,6 +7,7 @@ import {
   CreditCard,
   Download,
   FileText,
+  GraduationCap,
   MapPin,
   Plus,
   Trash2,
@@ -25,6 +26,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@llave/ui/tabs';
 import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
+import { relanzarOnboardingInmo } from '@/components/onboarding';
 import { Topbar } from '@/components/topbar';
 import { COSTO_PROPIEDAD_MENSUAL, calcularResumenPlan, facturasMock } from '@/lib/plan';
 import { formatFecha, formatMonto, formatPeriodo } from '@/lib/format';
@@ -174,6 +176,24 @@ export default function ConfiguracionPage() {
     <>
       <Topbar titulo="Configuración" />
       <main className="flex-1 space-y-6 p-4 md:p-6">
+        {/* Banner del tutorial */}
+        <Card className="border-primary/30 bg-primary/5">
+          <CardContent className="flex flex-wrap items-center gap-3 p-4">
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-primary text-primary-foreground">
+              <GraduationCap className="h-5 w-5" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium">Tutorial guiado</p>
+              <p className="text-xs text-muted-foreground">
+                Repasá las funciones principales del panel en menos de 1 minuto.
+              </p>
+            </div>
+            <Button variant="outline" size="sm" onClick={relanzarOnboardingInmo}>
+              Ver tutorial
+            </Button>
+          </CardContent>
+        </Card>
+
         <Tabs defaultValue="empresa">
           <TabsList className="h-auto flex-wrap justify-start gap-1 p-1">
             <TabsTrigger value="empresa">
