@@ -1,4 +1,4 @@
-import type { Comprobante, Contrato, Liquidacion, MensajeChat } from './types';
+import type { Comprobante, Contrato, Liquidacion, MensajeChat, Reclamo } from './types';
 
 // Mock fijo para que el frontend funcione sin backend. La forma matchea con
 // el schema de packages/db; cuando exista la API se reemplaza por fetch real.
@@ -73,6 +73,88 @@ export const comprobantesMock: Comprobante[] = [
     pdfUrl: '#',
   },
 ];
+
+// Reclamos del inquilino logueado (Mariela, contrato cnt_001). Estos son
+// snapshot iniciales: el storage local hidrata desde acá si no hay nada
+// guardado, y después persiste las nuevas altas + mensajes en localStorage.
+export const misReclamosMock: Reclamo[] = [
+  {
+    id: 'rec_001',
+    contratoId: 'cnt_001',
+    inquilino: 'Mariela Sosa',
+    direccion: 'Gorriti 4521, 3°B',
+    categoria: 'PLOMERIA',
+    descripcion: 'Pierde la canilla del baño desde anoche. Goteo constante.',
+    urgencia: 'MEDIA',
+    estado: 'ABIERTO',
+    asignadoA: null,
+    fotoUrl: null,
+    resolucion: null,
+    createdAt: '2026-05-09T14:32:00-03:00',
+    resueltoAt: null,
+    eventos: [
+      {
+        id: 'ev_001_1',
+        tipo: 'CREADO',
+        autor: 'Mariela Sosa',
+        contenido: null,
+        fecha: '2026-05-09T14:32:00-03:00',
+      },
+    ],
+  },
+  {
+    id: 'rec_006',
+    contratoId: 'cnt_001',
+    inquilino: 'Mariela Sosa',
+    direccion: 'Gorriti 4521, 3°B',
+    categoria: 'PLOMERIA',
+    descripcion: 'Inodoro con pérdida en la base.',
+    urgencia: 'MEDIA',
+    estado: 'RESUELTO',
+    asignadoA: 'Sergio Almeida',
+    fotoUrl: null,
+    resolucion: 'Cambio de empaque y silicona perimetral. Sin filtraciones.',
+    createdAt: '2026-04-28T13:00:00-03:00',
+    resueltoAt: '2026-04-30T17:00:00-03:00',
+    eventos: [
+      {
+        id: 'ev_006_1',
+        tipo: 'CREADO',
+        autor: 'Mariela Sosa',
+        contenido: null,
+        fecha: '2026-04-28T13:00:00-03:00',
+      },
+      {
+        id: 'ev_006_2',
+        tipo: 'ASIGNADO',
+        autor: 'Roberto Tapia',
+        contenido: 'Sergio Almeida',
+        fecha: '2026-04-28T15:00:00-03:00',
+      },
+      {
+        id: 'ev_006_3',
+        tipo: 'EN_CURSO',
+        autor: 'Sergio Almeida',
+        contenido: 'Voy mañana 10am con plomero.',
+        fecha: '2026-04-29T18:00:00-03:00',
+      },
+      {
+        id: 'ev_006_4',
+        tipo: 'RESUELTO',
+        autor: 'Sergio Almeida',
+        contenido: 'Cambio de empaque y silicona perimetral. Sin filtraciones.',
+        fecha: '2026-04-30T17:00:00-03:00',
+      },
+    ],
+  },
+];
+
+export const inquilinoActual = {
+  id: 'usr_mariela',
+  nombre: 'Mariela Sosa',
+  direccion: 'Gorriti 4521, 3°B',
+  contratoId: 'cnt_001',
+};
 
 export const chatInicialMock: MensajeChat[] = [
   {

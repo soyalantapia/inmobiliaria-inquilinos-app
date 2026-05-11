@@ -118,6 +118,8 @@ export const dashboardMetricsMock = {
   ingresosMes: 41850000,
 };
 
+export const operadoresMock = ['Roberto Tapia', 'Luciana Vidal', 'Sergio Almeida'] as const;
+
 export const reclamosMock: Reclamo[] = [
   {
     id: 'rec_001',
@@ -130,8 +132,18 @@ export const reclamosMock: Reclamo[] = [
     estado: 'ABIERTO',
     asignadoA: null,
     fotoUrl: null,
+    resolucion: null,
     createdAt: '2026-05-09T14:32:00-03:00',
     resueltoAt: null,
+    eventos: [
+      {
+        id: 'ev_001_1',
+        tipo: 'CREADO',
+        autor: 'Mariela Sosa',
+        contenido: null,
+        fecha: '2026-05-09T14:32:00-03:00',
+      },
+    ],
   },
   {
     id: 'rec_002',
@@ -144,8 +156,46 @@ export const reclamosMock: Reclamo[] = [
     estado: 'EN_CURSO',
     asignadoA: 'Sergio Almeida',
     fotoUrl: null,
+    resolucion: null,
     createdAt: '2026-05-08T09:15:00-03:00',
     resueltoAt: null,
+    eventos: [
+      {
+        id: 'ev_002_1',
+        tipo: 'CREADO',
+        autor: 'Laura Giménez',
+        contenido: null,
+        fecha: '2026-05-08T09:15:00-03:00',
+      },
+      {
+        id: 'ev_002_2',
+        tipo: 'ASIGNADO',
+        autor: 'Roberto Tapia',
+        contenido: 'Sergio Almeida',
+        fecha: '2026-05-08T11:20:00-03:00',
+      },
+      {
+        id: 'ev_002_3',
+        tipo: 'MENSAJE_INMO',
+        autor: 'Sergio Almeida',
+        contenido: 'Hola Laura, te paso a visitar mañana entre 10 y 12 con el gasista. ¿Estás?',
+        fecha: '2026-05-08T11:35:00-03:00',
+      },
+      {
+        id: 'ev_002_4',
+        tipo: 'MENSAJE_INQUILINO',
+        autor: 'Laura Giménez',
+        contenido: 'Sí, te espero. Gracias!',
+        fecha: '2026-05-08T12:10:00-03:00',
+      },
+      {
+        id: 'ev_002_5',
+        tipo: 'EN_CURSO',
+        autor: 'Sergio Almeida',
+        contenido: 'Pasó el gasista, hay que cambiar termocupla. Volvemos mañana.',
+        fecha: '2026-05-09T13:00:00-03:00',
+      },
+    ],
   },
   {
     id: 'rec_003',
@@ -158,8 +208,18 @@ export const reclamosMock: Reclamo[] = [
     estado: 'ABIERTO',
     asignadoA: null,
     fotoUrl: null,
+    resolucion: null,
     createdAt: '2026-05-09T18:42:00-03:00',
     resueltoAt: null,
+    eventos: [
+      {
+        id: 'ev_003_1',
+        tipo: 'CREADO',
+        autor: 'Carlos Romero',
+        contenido: null,
+        fecha: '2026-05-09T18:42:00-03:00',
+      },
+    ],
   },
   {
     id: 'rec_004',
@@ -172,8 +232,25 @@ export const reclamosMock: Reclamo[] = [
     estado: 'EN_CURSO',
     asignadoA: 'Luciana Vidal',
     fotoUrl: null,
+    resolucion: null,
     createdAt: '2026-05-06T11:00:00-03:00',
     resueltoAt: null,
+    eventos: [
+      {
+        id: 'ev_004_1',
+        tipo: 'CREADO',
+        autor: 'Ana Pereyra',
+        contenido: null,
+        fecha: '2026-05-06T11:00:00-03:00',
+      },
+      {
+        id: 'ev_004_2',
+        tipo: 'ASIGNADO',
+        autor: 'Roberto Tapia',
+        contenido: 'Luciana Vidal',
+        fecha: '2026-05-07T09:00:00-03:00',
+      },
+    ],
   },
   {
     id: 'rec_005',
@@ -186,8 +263,32 @@ export const reclamosMock: Reclamo[] = [
     estado: 'RESUELTO',
     asignadoA: 'Sergio Almeida',
     fotoUrl: null,
+    resolucion: 'Se cambió el módulo del portero. Funciona OK.',
     createdAt: '2026-05-03T16:20:00-03:00',
     resueltoAt: '2026-05-05T10:30:00-03:00',
+    eventos: [
+      {
+        id: 'ev_005_1',
+        tipo: 'CREADO',
+        autor: 'Juan Pérez',
+        contenido: null,
+        fecha: '2026-05-03T16:20:00-03:00',
+      },
+      {
+        id: 'ev_005_2',
+        tipo: 'ASIGNADO',
+        autor: 'Roberto Tapia',
+        contenido: 'Sergio Almeida',
+        fecha: '2026-05-04T08:30:00-03:00',
+      },
+      {
+        id: 'ev_005_3',
+        tipo: 'RESUELTO',
+        autor: 'Sergio Almeida',
+        contenido: 'Se cambió el módulo del portero. Funciona OK.',
+        fecha: '2026-05-05T10:30:00-03:00',
+      },
+    ],
   },
   {
     id: 'rec_006',
@@ -200,8 +301,39 @@ export const reclamosMock: Reclamo[] = [
     estado: 'RESUELTO',
     asignadoA: 'Sergio Almeida',
     fotoUrl: null,
+    resolucion: 'Cambio de empaque y silicona perimetral. Sin filtraciones.',
     createdAt: '2026-04-28T13:00:00-03:00',
     resueltoAt: '2026-04-30T17:00:00-03:00',
+    eventos: [
+      {
+        id: 'ev_006_1',
+        tipo: 'CREADO',
+        autor: 'Mariela Sosa',
+        contenido: null,
+        fecha: '2026-04-28T13:00:00-03:00',
+      },
+      {
+        id: 'ev_006_2',
+        tipo: 'ASIGNADO',
+        autor: 'Roberto Tapia',
+        contenido: 'Sergio Almeida',
+        fecha: '2026-04-28T15:00:00-03:00',
+      },
+      {
+        id: 'ev_006_3',
+        tipo: 'EN_CURSO',
+        autor: 'Sergio Almeida',
+        contenido: 'Voy mañana 10am con plomero.',
+        fecha: '2026-04-29T18:00:00-03:00',
+      },
+      {
+        id: 'ev_006_4',
+        tipo: 'RESUELTO',
+        autor: 'Sergio Almeida',
+        contenido: 'Cambio de empaque y silicona perimetral. Sin filtraciones.',
+        fecha: '2026-04-30T17:00:00-03:00',
+      },
+    ],
   },
 ];
 

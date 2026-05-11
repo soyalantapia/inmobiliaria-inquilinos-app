@@ -10,7 +10,7 @@ const items = [
   { href: '/broker', label: 'Broker', icon: Sparkles },
   { href: '/contrato', label: 'Contrato', icon: FileText },
   { href: '/comprobantes', label: 'Recibos', icon: Receipt },
-  { href: '/reclamos/nuevo', label: 'Reclamo', icon: Wrench },
+  { href: '/reclamos', label: 'Reclamos', icon: Wrench },
 ] as const;
 
 function isActive(pathname: string, href: string): boolean {

@@ -3,8 +3,47 @@
 
 export type Moneda = 'ARS' | 'USD';
 export type EstadoLiquidacion = 'PENDIENTE' | 'PAGADO' | 'PARCIAL' | 'VENCIDO';
+
+// Reclamos
 export type Categoria = 'PLOMERIA' | 'ELECTRICIDAD' | 'CERRADURA' | 'CALEFACCION' | 'OTRO';
 export type Urgencia = 'BAJA' | 'MEDIA' | 'ALTA' | 'EMERGENCIA';
+export type EstadoReclamo = 'ABIERTO' | 'EN_CURSO' | 'RESUELTO' | 'CERRADO' | 'RECHAZADO';
+
+// Cada cambio de estado, asignación o mensaje queda como evento en la timeline.
+export type TipoEvento =
+  | 'CREADO'
+  | 'ASIGNADO'
+  | 'EN_CURSO'
+  | 'RESUELTO'
+  | 'CERRADO'
+  | 'RECHAZADO'
+  | 'MENSAJE_INQUILINO'
+  | 'MENSAJE_INMO';
+
+export interface EventoReclamo {
+  id: string;
+  tipo: TipoEvento;
+  autor: string; // nombre visible
+  contenido: string | null; // texto del mensaje o nota de cambio
+  fecha: string; // ISO
+}
+
+export interface Reclamo {
+  id: string;
+  contratoId: string;
+  inquilino: string;
+  direccion: string;
+  categoria: Categoria;
+  descripcion: string;
+  urgencia: Urgencia;
+  estado: EstadoReclamo;
+  asignadoA: string | null;
+  fotoUrl: string | null;
+  resolucion: string | null; // descripción de cómo se resolvió
+  createdAt: string;
+  resueltoAt: string | null;
+  eventos: EventoReclamo[];
+}
 
 export interface Liquidacion {
   id: string;

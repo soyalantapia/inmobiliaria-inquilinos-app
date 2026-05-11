@@ -7,7 +7,25 @@ export type Confianza = 'alto' | 'medio' | 'bajo';
 
 export type CategoriaReclamo = 'PLOMERIA' | 'ELECTRICIDAD' | 'CERRADURA' | 'CALEFACCION' | 'OTRO';
 export type UrgenciaReclamo = 'BAJA' | 'MEDIA' | 'ALTA' | 'EMERGENCIA';
-export type EstadoReclamo = 'ABIERTO' | 'EN_CURSO' | 'RESUELTO' | 'CERRADO';
+export type EstadoReclamo = 'ABIERTO' | 'EN_CURSO' | 'RESUELTO' | 'CERRADO' | 'RECHAZADO';
+
+export type TipoEventoReclamo =
+  | 'CREADO'
+  | 'ASIGNADO'
+  | 'EN_CURSO'
+  | 'RESUELTO'
+  | 'CERRADO'
+  | 'RECHAZADO'
+  | 'MENSAJE_INQUILINO'
+  | 'MENSAJE_INMO';
+
+export interface EventoReclamo {
+  id: string;
+  tipo: TipoEventoReclamo;
+  autor: string;
+  contenido: string | null;
+  fecha: string; // ISO
+}
 
 export interface Reclamo {
   id: string;
@@ -20,8 +38,10 @@ export interface Reclamo {
   estado: EstadoReclamo;
   asignadoA: string | null;
   fotoUrl: string | null;
+  resolucion: string | null;
   createdAt: string;
   resueltoAt: string | null;
+  eventos: EventoReclamo[];
 }
 
 export interface Propietario {
