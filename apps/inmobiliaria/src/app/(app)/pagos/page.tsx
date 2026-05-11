@@ -206,53 +206,98 @@ export default function PagosPage() {
           </div>
         )}
 
-        <Card>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Inquilino</TableHead>
-                <TableHead>Dirección</TableHead>
-                <TableHead>Vencimiento</TableHead>
-                <TableHead className="text-right">Monto</TableHead>
-                <TableHead>Estado</TableHead>
-                <TableHead></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+        {/* Mobile: lista de cards. Desktop (md+): tabla.
+            En mobile la tabla se cortaba horizontalmente. Las cards muestran
+            la misma info verticalmente y son tap-friendly. */}
+        {filtradas.length === 0 ? (
+          <Card>
+            <div className="py-10 text-center text-sm text-muted-foreground">
+              No hay contratos {estadoLabel[filtro as EstadoLiquidacion].toLowerCase()}s en
+              este momento.
+            </div>
+          </Card>
+        ) : (
+          <>
+            {/* Cards mobile */}
+            <div className="space-y-3 md:hidden">
               {filtradas.map((c) => (
-                <TableRow key={c.id}>
-                  <TableCell className="font-medium">{c.inquilino}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{c.direccion}</TableCell>
-                  <TableCell className="text-sm">{formatFecha(c.proximoVencimiento)}</TableCell>
-                  <TableCell className="text-right font-medium">
-                    {formatMonto(c.monto, c.moneda)}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={estadoVariant[c.estadoPagoActual]}>
-                      {estadoLabel[c.estadoPagoActual]}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right text-sm">
-                    <Link href={`/contratos/${c.id}`} className="text-primary hover:underline">
-                      Ver contrato
-                    </Link>
-                  </TableCell>
-                </TableRow>
+                <Link
+                  key={c.id}
+                  href={`/contratos/${c.id}`}
+                  className="block"
+                >
+                  <Card className="space-y-3 p-4 transition-colors hover:bg-muted/30">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate font-medium">{c.inquilino}</p>
+                        <p className="truncate text-xs text-muted-foreground">{c.direccion}</p>
+                      </div>
+                      <Badge variant={estadoVariant[c.estadoPagoActual]} className="shrink-0">
+                        {estadoLabel[c.estadoPagoActual]}
+                      </Badge>
+                    </div>
+                    <div className="flex items-end justify-between gap-3 border-t pt-3">
+                      <div>
+                        <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                          Vence
+                        </p>
+                        <p className="text-sm font-medium tabular-nums">
+                          {formatFecha(c.proximoVencimiento)}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                          Monto
+                        </p>
+                        <p className="text-base font-semibold tabular-nums">
+                          {formatMonto(c.monto, c.moneda)}
+                        </p>
+                      </div>
+                    </div>
+                  </Card>
+                </Link>
               ))}
-              {filtradas.length === 0 && (
-                <TableRow>
-                  <TableCell
-                    colSpan={6}
-                    className="py-10 text-center text-sm text-muted-foreground"
-                  >
-                    No hay contratos {estadoLabel[filtro as EstadoLiquidacion].toLowerCase()}s en
-                    este momento.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </Card>
+            </div>
+
+            {/* Tabla desktop */}
+            <Card className="hidden md:block">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Inquilino</TableHead>
+                    <TableHead>Dirección</TableHead>
+                    <TableHead>Vencimiento</TableHead>
+                    <TableHead className="text-right">Monto</TableHead>
+                    <TableHead>Estado</TableHead>
+                    <TableHead></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filtradas.map((c) => (
+                    <TableRow key={c.id}>
+                      <TableCell className="font-medium">{c.inquilino}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{c.direccion}</TableCell>
+                      <TableCell className="text-sm">{formatFecha(c.proximoVencimiento)}</TableCell>
+                      <TableCell className="text-right font-medium">
+                        {formatMonto(c.monto, c.moneda)}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={estadoVariant[c.estadoPagoActual]}>
+                          {estadoLabel[c.estadoPagoActual]}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right text-sm">
+                        <Link href={`/contratos/${c.id}`} className="text-primary hover:underline">
+                          Ver contrato
+                        </Link>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </Card>
+          </>
+        )}
       </main>
     </>
   );

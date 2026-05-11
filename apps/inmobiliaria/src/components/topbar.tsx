@@ -13,12 +13,12 @@ import { NotificationsBell } from './notifications-bell';
 export function Topbar({ titulo }: { titulo: string }) {
   const router = useRouter();
   return (
-    <header className="flex h-16 items-center justify-between gap-3 border-b bg-background px-4 md:px-6">
+    <header className="flex h-16 items-center justify-between gap-2 border-b bg-background px-3 md:gap-3 md:px-6">
       <div className="flex items-center gap-2 min-w-0">
         <MobileSidebarTrigger />
-        <h1 className="truncate text-xl font-semibold">{titulo}</h1>
+        <h1 className="truncate text-base font-semibold sm:text-lg md:text-xl">{titulo}</h1>
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex shrink-0 items-center gap-1 md:gap-3">
         <div className="relative hidden md:block">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input className="w-72 pl-9" placeholder="Buscar contrato, inquilino…" />

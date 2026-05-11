@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "inquilino",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "inquilino", "dev"],
+      "port": 3000
+    },
+    {
+      "name": "inmobiliaria",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "inmobiliaria", "dev"],
+      "port": 3001
+    }
+  ]
+}

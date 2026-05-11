@@ -146,7 +146,11 @@ export function agruparPorMes(eventos: EventoCalendario[]): {
   return Object.entries(grupos)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([mes, items]) => {
-      const d = new Date(mes + '-01');
+      // `new Date("2026-03-01")` parsea como UTC midnight, que en ARG (UTC-3)
+      // queda el 28 de febrero. Construimos la fecha con year/monthIndex/day
+      // en hora local para evitar el corrimiento.
+      const [yearStr, monthStr] = mes.split('-');
+      const d = new Date(Number(yearStr), Number(monthStr) - 1, 1);
       const label = d.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
       return { mes, label, items };
     });

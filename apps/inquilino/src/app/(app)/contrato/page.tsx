@@ -303,15 +303,22 @@ function Row({
   hint?: string;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 px-5 py-4">
+    <div className="flex items-start justify-between gap-3 px-5 py-4">
       <div className="flex items-start gap-3 min-w-0">
-        <div className="mt-0.5 text-muted-foreground">{icon}</div>
+        <div className="mt-0.5 shrink-0 text-muted-foreground">{icon}</div>
         <div className="min-w-0">
           <p className="text-xs text-muted-foreground">{label}</p>
-          <p className="truncate font-medium">{value}</p>
+          <p className="font-medium break-words">{value}</p>
+          {hint && (
+            <p className="mt-0.5 text-xs text-muted-foreground sm:hidden">{hint}</p>
+          )}
         </div>
       </div>
-      {hint && <p className="shrink-0 text-xs text-muted-foreground">{hint}</p>}
+      {hint && (
+        <p className="hidden shrink-0 text-xs text-muted-foreground sm:block">
+          {hint}
+        </p>
+      )}
     </div>
   );
 }

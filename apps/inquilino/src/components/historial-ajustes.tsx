@@ -19,7 +19,9 @@ interface PuntoSerie {
 }
 
 // Parsea el detalle "$X → $Y" para extraer Y. Para el INICIO usa "Alquiler
-// inicial: $X". Si no parsea, devuelve null.
+// inicial: $X". Si no parsea, devuelve null. El detalle usa formato AR
+// con puntos como separador de miles ("$405.000"), por eso quitamos puntos
+// antes de hacer Number().
 function parsearMonto(detalle?: string): number | null {
   if (!detalle) return null;
   const matches = detalle.match(/\$([\d.]+)/g);
@@ -27,7 +29,7 @@ function parsearMonto(detalle?: string): number | null {
   const ultimo = matches[matches.length - 1]!;
   const limpio = ultimo.replace(/[$.]/g, '');
   const n = Number(limpio);
-  return Number.isFinite(n) ? n * 1000 : null; // viene en miles
+  return Number.isFinite(n) ? n : null;
 }
 
 export function HistorialAjustes() {

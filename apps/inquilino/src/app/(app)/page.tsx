@@ -84,31 +84,37 @@ export default function PagosPage() {
           </div>
         </Card>
 
-        {/* Card de la inmobiliaria con contacto */}
-        <Card className="flex items-center gap-3 p-4 animate-fade-in">
-          <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
-            <Building2 className="h-5 w-5" />
+        {/* Card de la inmobiliaria con contacto.
+            En mobile chico (<360) stackeamos el bloque de identidad arriba
+            y los botones abajo para que el nombre no se trunque. */}
+        <Card className="flex flex-col gap-3 p-4 animate-fade-in sm:flex-row sm:items-center">
+          <div className="flex flex-1 items-center gap-3 min-w-0">
+            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+              <Building2 className="h-5 w-5" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-muted-foreground">Administra tu contrato</p>
+              <p className="truncate font-semibold">{contratoMock.inmobiliaria}</p>
+            </div>
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs text-muted-foreground">Administra tu contrato</p>
-            <p className="truncate font-semibold">{contratoMock.inmobiliaria}</p>
+          <div className="flex shrink-0 gap-2">
+            <a
+              href="https://wa.me/541145321100"
+              target="_blank"
+              rel="noreferrer"
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-emerald-500 text-white shadow-md shadow-emerald-500/30 transition-colors hover:bg-emerald-600"
+              aria-label="WhatsApp a la inmobiliaria"
+            >
+              <MessageCircle className="h-4 w-4" />
+            </a>
+            <a
+              href="tel:+541145321100"
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground transition-colors hover:bg-accent"
+              aria-label="Llamar a la inmobiliaria"
+            >
+              <Phone className="h-4 w-4" />
+            </a>
           </div>
-          <a
-            href="https://wa.me/541145321100"
-            target="_blank"
-            rel="noreferrer"
-            className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-emerald-500 text-white shadow-md shadow-emerald-500/30 transition-colors hover:bg-emerald-600"
-            aria-label="WhatsApp a la inmobiliaria"
-          >
-            <MessageCircle className="h-4 w-4" />
-          </a>
-          <a
-            href="tel:+541145321100"
-            className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground transition-colors hover:bg-accent"
-            aria-label="Llamar a la inmobiliaria"
-          >
-            <Phone className="h-4 w-4" />
-          </a>
         </Card>
 
         <section className="space-y-3">

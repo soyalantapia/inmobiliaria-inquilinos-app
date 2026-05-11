@@ -56,15 +56,12 @@ export default function ComprobantesPage() {
             <p className="text-4xl font-bold leading-none tracking-tight tabular-nums md:text-5xl">
               {ultimo ? formatMonto(ultimo.monto, ultimo.moneda) : formatMonto(0)}
             </p>
-            <div className="flex flex-wrap items-center gap-3 text-xs opacity-90">
-              {ultimo && (
-                <>
-                  <span>Pagado el {formatFecha(ultimo.fechaPago)}</span>
-                  <span>·</span>
-                  <span>Promedio {formatMonto(promedioMensual)}/mes</span>
-                </>
-              )}
-            </div>
+            {ultimo && (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs opacity-90">
+                <span>Pagado el {formatFecha(ultimo.fechaPago)}</span>
+                <span>Promedio {formatMonto(promedioMensual)}/mes</span>
+              </div>
+            )}
           </div>
         </Card>
 

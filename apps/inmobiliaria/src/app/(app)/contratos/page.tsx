@@ -234,77 +234,126 @@ export default function ContratosPage() {
           </div>
         )}
 
-        <Card>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Inquilino</TableHead>
-                <TableHead>Dirección</TableHead>
-                <TableHead>Vigencia</TableHead>
-                <TableHead className="text-right">Monto</TableHead>
-                <TableHead>Estado contrato</TableHead>
-                <TableHead>Pago actual</TableHead>
-                <TableHead></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtrados.map((c) => (
-                <TableRow key={c.id}>
-                  <TableCell className="font-medium">{c.inquilino}</TableCell>
-                  <TableCell className="text-muted-foreground">{c.direccion}</TableCell>
-                  <TableCell className="text-muted-foreground text-sm">
-                    {formatFecha(c.fechaInicio)} → {formatFecha(c.fechaFin)}
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    {formatMonto(c.monto, c.moneda)}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={c.estado === 'ACTIVO' ? 'success' : 'secondary'}>
-                      {c.estado}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={estadoVariant[c.estadoPagoActual]}>
-                      {estadoLabel[c.estadoPagoActual]}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Link
-                      href={`/contratos/${c.id}`}
-                      className="inline-flex items-center text-primary hover:underline"
-                    >
-                      Ver <ChevronRight className="h-4 w-4" />
-                    </Link>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {filtrados.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={7} className="py-12 text-center">
-                    <div className="mx-auto flex flex-col items-center gap-2 text-muted-foreground">
-                      <FileText className="h-8 w-8" />
-                      <p className="font-medium text-foreground">
-                        {q ? `Sin resultados para "${q}"` : 'No hay contratos con ese filtro'}
-                      </p>
-                      <p className="text-xs">Probá ajustar la búsqueda o limpiarla.</p>
-                      {(q || filtro !== 'TODOS') && (
-                        <button
-                          onClick={() => {
-                            setQ('');
-                            setFiltro('TODOS');
-                          }}
-                          className="mt-2 text-xs font-medium text-primary hover:underline"
-                        >
-                          Limpiar filtros
-                        </button>
-                      )}
+        {/* Empty state */}
+        {filtrados.length === 0 && (
+          <Card>
+            <div className="py-12 text-center">
+              <div className="mx-auto flex flex-col items-center gap-2 text-muted-foreground">
+                <FileText className="h-8 w-8" />
+                <p className="font-medium text-foreground">
+                  {q ? `Sin resultados para "${q}"` : 'No hay contratos con ese filtro'}
+                </p>
+                <p className="text-xs">Probá ajustar la búsqueda o limpiarla.</p>
+                {(q || filtro !== 'TODOS') && (
+                  <button
+                    onClick={() => {
+                      setQ('');
+                      setFiltro('TODOS');
+                    }}
+                    className="mt-2 text-xs font-medium text-primary hover:underline"
+                  >
+                    Limpiar filtros
+                  </button>
+                )}
+              </div>
+            </div>
+          </Card>
+        )}
+
+        {/* Cards mobile */}
+        {filtrados.length > 0 && (
+          <div className="space-y-3 md:hidden">
+            {filtrados.map((c) => (
+              <Link key={c.id} href={`/contratos/${c.id}`} className="block">
+                <Card className="space-y-3 p-4 transition-colors hover:bg-muted/30">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">{c.inquilino}</p>
+                      <p className="truncate text-xs text-muted-foreground">{c.direccion}</p>
                     </div>
-                  </TableCell>
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      <Badge variant={c.estado === 'ACTIVO' ? 'success' : 'secondary'}>
+                        {c.estado}
+                      </Badge>
+                      <Badge variant={estadoVariant[c.estadoPagoActual]} className="text-[10px]">
+                        {estadoLabel[c.estadoPagoActual]}
+                      </Badge>
+                    </div>
+                  </div>
+                  <div className="flex items-end justify-between gap-3 border-t pt-3">
+                    <div className="min-w-0">
+                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                        Vigencia
+                      </p>
+                      <p className="truncate text-xs">
+                        {formatFecha(c.fechaInicio)} → {formatFecha(c.fechaFin)}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                        Monto
+                      </p>
+                      <p className="text-base font-semibold tabular-nums">
+                        {formatMonto(c.monto, c.moneda)}
+                      </p>
+                    </div>
+                  </div>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        )}
+
+        {/* Tabla desktop */}
+        {filtrados.length > 0 && (
+          <Card className="hidden md:block">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Inquilino</TableHead>
+                  <TableHead>Dirección</TableHead>
+                  <TableHead>Vigencia</TableHead>
+                  <TableHead className="text-right">Monto</TableHead>
+                  <TableHead>Estado contrato</TableHead>
+                  <TableHead>Pago actual</TableHead>
+                  <TableHead></TableHead>
                 </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </Card>
+              </TableHeader>
+              <TableBody>
+                {filtrados.map((c) => (
+                  <TableRow key={c.id}>
+                    <TableCell className="font-medium">{c.inquilino}</TableCell>
+                    <TableCell className="text-muted-foreground">{c.direccion}</TableCell>
+                    <TableCell className="text-muted-foreground text-sm">
+                      {formatFecha(c.fechaInicio)} → {formatFecha(c.fechaFin)}
+                    </TableCell>
+                    <TableCell className="text-right font-medium">
+                      {formatMonto(c.monto, c.moneda)}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={c.estado === 'ACTIVO' ? 'success' : 'secondary'}>
+                        {c.estado}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={estadoVariant[c.estadoPagoActual]}>
+                        {estadoLabel[c.estadoPagoActual]}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Link
+                        href={`/contratos/${c.id}`}
+                        className="inline-flex items-center text-primary hover:underline"
+                      >
+                        Ver <ChevronRight className="h-4 w-4" />
+                      </Link>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Card>
+        )}
       </main>
     </>
   );

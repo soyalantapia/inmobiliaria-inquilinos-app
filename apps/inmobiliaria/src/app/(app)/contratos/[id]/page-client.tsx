@@ -333,7 +333,7 @@ function LiquidacionRow({ liq }: { liq: LiquidacionAdmin }) {
     <div className="flex items-center gap-3 p-4">
       <div className="flex shrink-0 flex-col items-center">
         <span className="text-xs uppercase text-muted-foreground">
-          {new Date(liq.periodo + '-01').toLocaleDateString('es-AR', { month: 'short' })}
+          {new Date(Number(liq.periodo.split('-')[0]), Number(liq.periodo.split('-')[1]) - 1, 1).toLocaleDateString('es-AR', { month: 'short' })}
         </span>
         <span className="text-lg font-semibold tabular-nums">
           {liq.periodo.split('-')[0]}

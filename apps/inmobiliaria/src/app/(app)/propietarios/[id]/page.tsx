@@ -340,7 +340,7 @@ function RendicionRow({ rendicion: r }: { rendicion: Rendicion }) {
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium">
-          {new Date(r.periodo + '-01').toLocaleDateString('es-AR', {
+          {new Date(Number(r.periodo.split('-')[0]), Number(r.periodo.split('-')[1]) - 1, 1).toLocaleDateString('es-AR', {
             month: 'long',
             year: 'numeric',
           })}

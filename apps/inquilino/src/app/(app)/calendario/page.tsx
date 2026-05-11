@@ -160,10 +160,22 @@ export default function CalendarioPage() {
   );
 }
 
+// Parsea una fecha ISO evitando el corrimiento por UTC en ARG.
+// Las fechas tipo "2026-06-01" sin hora se interpretan como UTC midnight,
+// que en ARG (UTC-3) queda el día anterior. Forzamos hora local mediodía.
+function parseFechaLocal(iso: string): Date {
+  if (iso.includes('T')) return new Date(iso);
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y!, (m ?? 1) - 1, d ?? 1, 12, 0, 0);
+}
+
 function EventoRow({ evento }: { evento: EventoCalendario }) {
   const Icon = iconoTipo[evento.tipo];
-  const dia = new Date(evento.fecha).getDate();
-  const futuro = new Date(evento.fecha) >= new Date(new Date().toDateString());
+  const fechaEvento = parseFechaLocal(evento.fecha);
+  const dia = fechaEvento.getDate();
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  const futuro = fechaEvento >= hoy;
 
   const content = (
     <div className="flex items-center gap-3 p-4 transition-colors hover:bg-muted/40">
@@ -172,7 +184,7 @@ function EventoRow({ evento }: { evento: EventoCalendario }) {
           {dia}
         </span>
         <span className="text-[10px] uppercase text-muted-foreground">
-          {new Date(evento.fecha).toLocaleDateString('es-AR', { month: 'short' })}
+          {fechaEvento.toLocaleDateString('es-AR', { month: 'short' })}
         </span>
       </div>
       <div className={cn('grid h-9 w-9 shrink-0 place-items-center rounded-lg', colorTipo[evento.tipo])}>
