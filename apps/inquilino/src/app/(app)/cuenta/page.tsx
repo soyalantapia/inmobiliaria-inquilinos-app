@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   Bell,
+  CalendarClock,
   ChevronRight,
   CircleHelp,
   FileText,
@@ -41,6 +42,8 @@ interface Prefs {
   notifEmail: boolean;
   notifPush: boolean;
   idioma: 'es-AR' | 'en-US';
+  recordatorioPagoActivo: boolean;
+  recordatorioPagoDias: 1 | 3 | 7;
 }
 
 const PREFS_DEFAULT: Prefs = {
@@ -48,6 +51,8 @@ const PREFS_DEFAULT: Prefs = {
   notifEmail: true,
   notifPush: false,
   idioma: 'es-AR',
+  recordatorioPagoActivo: true,
+  recordatorioPagoDias: 3,
 };
 
 function leerPrefs(): Prefs {
@@ -152,6 +157,52 @@ export default function CuentaPage() {
           </Card>
         </section>
 
+        {/* Recordatorios de pago */}
+        <section className="space-y-3">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Recordatorios de pago
+          </h2>
+          <Card className="divide-y">
+            <ToggleRow
+              icon={<CalendarClock className="h-4 w-4 text-primary" />}
+              label="Avisame antes del vencimiento"
+              descripcion="Te recordamos por WhatsApp y push antes de que se venza"
+              checked={prefs.recordatorioPagoActivo}
+              onChange={(v) => setPref('recordatorioPagoActivo', v)}
+            />
+            {prefs.recordatorioPagoActivo && (
+              <div className="space-y-3 p-4">
+                <p className="text-xs font-medium text-muted-foreground">
+                  ¿Cuántos días antes querés que te avisemos?
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  {([1, 3, 7] as const).map((d) => (
+                    <button
+                      key={d}
+                      onClick={() => setPref('recordatorioPagoDias', d)}
+                      className={cn(
+                        'flex flex-col items-center gap-1 rounded-lg border p-3 text-center transition-colors',
+                        prefs.recordatorioPagoDias === d
+                          ? 'border-primary bg-primary/10'
+                          : 'border-border hover:bg-muted/40',
+                      )}
+                    >
+                      <span className="text-lg font-semibold tabular-nums">{d}</span>
+                      <span className="text-[11px] text-muted-foreground">
+                        día{d === 1 ? '' : 's'} antes
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Tu día de pago es el {contratoMock.diaPago} de cada mes — te avisaríamos el día{' '}
+                  {Math.max(1, contratoMock.diaPago - prefs.recordatorioPagoDias)}.
+                </p>
+              </div>
+            )}
+          </Card>
+        </section>
+
         {/* Apariencia */}
         <section className="space-y-3">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -212,6 +263,12 @@ export default function CuentaPage() {
               label="Mi contrato"
               descripcion="Ver los términos completos"
               href="/contrato"
+            />
+            <LinkRow
+              icon={<FileText className="h-4 w-4" />}
+              label="Mis documentos"
+              descripcion="DNI, recibos, garantes — listos para renovar o mudarte"
+              href="/documentos"
             />
             <LinkRow
               icon={<ShieldCheck className="h-4 w-4" />}

@@ -30,7 +30,7 @@ export function ChatBubble({ mensaje }: { mensaje: MensajeChat }) {
               <Quote className="h-3 w-3" />
               {cita.clausula}
             </div>
-            <p className="italic opacity-90">"{cita.texto}"</p>
+            <p className="italic opacity-90">&ldquo;{cita.texto}&rdquo;</p>
           </div>
         ))}
       </div>

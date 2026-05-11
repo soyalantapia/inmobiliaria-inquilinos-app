@@ -20,10 +20,12 @@ import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card } from '@llave/ui/card';
 import { Separator } from '@llave/ui/separator';
+import { CompartirGarante } from '@/components/compartir-garante';
 import { ContratoTimeline } from '@/components/contrato-timeline';
 import { NavBar } from '@/components/nav-bar';
+import { RenovacionBanner } from '@/components/renovacion-banner';
 import { UserMenu } from '@/components/user-menu';
-import { contratoMock, garanteMock } from '@/lib/mock-data';
+import { contratoMock, garanteMock, inquilinoActual } from '@/lib/mock-data';
 import { diasHastaVencimiento, formatFecha, formatMonto } from '@/lib/format';
 
 const tipoGaranteLabel: Record<typeof garanteMock.tipo, string> = {
@@ -67,6 +69,8 @@ export default function ContratoPage() {
             </p>
           </div>
         </div>
+
+        <RenovacionBanner contratoId={c.id} diasHastaFin={diasFin} />
 
         <Card className="animate-fade-in space-y-3 p-5">
           <div className="flex flex-wrap items-center gap-2">
@@ -209,6 +213,11 @@ export default function ContratoPage() {
                     </a>
                   </Button>
                 )}
+                <CompartirGarante
+                  contratoId={c.id}
+                  nombreInquilino={inquilinoActual.nombre}
+                  direccion={c.direccion}
+                />
               </div>
             </Card>
           </div>

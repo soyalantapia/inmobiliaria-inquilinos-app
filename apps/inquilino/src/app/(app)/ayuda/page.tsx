@@ -270,7 +270,7 @@ export default function AyudaPage() {
               {busqueda && (
                 <>
                   {' '}
-                  para <strong>"{busqueda}"</strong>
+                  para <strong>&ldquo;{busqueda}&rdquo;</strong>
                 </>
               )}
             </span>

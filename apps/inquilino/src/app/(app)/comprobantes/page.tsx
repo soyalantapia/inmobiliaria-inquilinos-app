@@ -5,6 +5,7 @@ import { Download, Receipt, Wallet } from 'lucide-react';
 import { Card, CardContent } from '@llave/ui/card';
 import { cn } from '@llave/ui/cn';
 import { NavBar } from '@/components/nav-bar';
+import { ResumenAnual } from '@/components/resumen-anual';
 import { comprobantesMock } from '@/lib/mock-data';
 import { formatFecha, formatMonto, formatPeriodo } from '@/lib/format';
 
@@ -64,6 +65,9 @@ export default function ComprobantesPage() {
             </div>
           </div>
         </Card>
+
+        {/* Resumen anual con gráfico */}
+        {delAnio.length > 0 && <ResumenAnual anio={anioSel} />}
 
         {/* Pill buttons de año */}
         {anios.length > 1 && (

@@ -39,7 +39,9 @@ const store = (() => {
     subscribe(listener: Listener) {
       listeners.add(listener);
       listener(toasts);
-      return () => listeners.delete(listener);
+      return () => {
+        listeners.delete(listener);
+      };
     },
     push(input: ToastInput) {
       const id = Math.random().toString(36).slice(2, 10);
