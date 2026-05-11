@@ -11,6 +11,7 @@ import {
   CreditCard,
   Settings,
   Menu,
+  Users,
   Wrench,
   X,
 } from 'lucide-react';
@@ -20,6 +21,7 @@ const links = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/contratos', label: 'Contratos', icon: FileText },
   { href: '/contratos/nuevo', label: 'Cargar contrato', icon: Plus },
+  { href: '/propietarios', label: 'Propietarios', icon: Users },
   { href: '/reclamos', label: 'Reclamos', icon: Wrench },
   { href: '/screening', label: 'Screening', icon: ShieldCheck },
   { href: '/pagos', label: 'Pagos del mes', icon: CreditCard },

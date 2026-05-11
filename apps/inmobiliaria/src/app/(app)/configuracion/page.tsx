@@ -6,13 +6,15 @@ import { Avatar, AvatarFallback } from '@llave/ui/avatar';
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@llave/ui/card';
+import { ConfirmDialog } from '@llave/ui/confirm-dialog';
 import { Input } from '@llave/ui/input';
 import { Label } from '@llave/ui/label';
 import { Separator } from '@llave/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@llave/ui/tabs';
+import { toast } from '@llave/ui/use-toast';
 import { Topbar } from '@/components/topbar';
 
-const equipoMock = [
+const equipoInicial = [
   { id: '1', nombre: 'Roberto Tapia', email: 'roberto@inmosol.com.ar', rol: 'Admin' },
   { id: '2', nombre: 'Luciana Vidal', email: 'luciana@inmosol.com.ar', rol: 'Operadora' },
   { id: '3', nombre: 'Sergio Almeida', email: 'sergio@inmosol.com.ar', rol: 'Operador' },
@@ -25,6 +27,22 @@ export default function ConfiguracionPage() {
     email: 'contacto@inmosol.com.ar',
     telefono: '+54 11 4532 1100',
   });
+  const [equipo, setEquipo] = useState(equipoInicial);
+  const [paraEliminar, setParaEliminar] = useState<typeof equipoInicial[number] | null>(null);
+
+  const guardarDatos = () => {
+    toast({ title: 'Cambios guardados', description: 'Actualizamos los datos de la inmobiliaria.' });
+  };
+
+  const eliminarMiembro = () => {
+    if (!paraEliminar) return;
+    setEquipo((prev) => prev.filter((m) => m.id !== paraEliminar.id));
+    toast({
+      title: 'Acceso revocado',
+      description: `${paraEliminar.nombre} ya no puede entrar al panel.`,
+    });
+    setParaEliminar(null);
+  };
 
   return (
     <>
@@ -50,7 +68,7 @@ export default function ConfiguracionPage() {
                 <Field label="Email administrador" value={datos.email} onChange={(v) => setDatos({ ...datos, email: v })} />
                 <Field label="Teléfono" value={datos.telefono} onChange={(v) => setDatos({ ...datos, telefono: v })} />
                 <div className="md:col-span-2">
-                  <Button>Guardar cambios</Button>
+                  <Button onClick={guardarDatos}>Guardar cambios</Button>
                 </div>
               </CardContent>
             </Card>
@@ -69,7 +87,7 @@ export default function ConfiguracionPage() {
                 </Button>
               </CardHeader>
               <CardContent className="space-y-3">
-                {equipoMock.map((p, i) => (
+                {equipo.map((p, i) => (
                   <div key={p.id}>
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-3">
@@ -85,12 +103,18 @@ export default function ConfiguracionPage() {
                       </div>
                       <div className="flex items-center gap-2">
                         <Badge variant={p.rol === 'Admin' ? 'default' : 'secondary'}>{p.rol}</Badge>
-                        <Button variant="ghost" size="icon" aria-label="Eliminar">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Eliminar a ${p.nombre}`}
+                          disabled={p.rol === 'Admin'}
+                          onClick={() => setParaEliminar(p)}
+                        >
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
                     </div>
-                    {i < equipoMock.length - 1 && <Separator className="mt-3" />}
+                    {i < equipo.length - 1 && <Separator className="mt-3" />}
                   </div>
                 ))}
               </CardContent>
@@ -133,6 +157,16 @@ export default function ConfiguracionPage() {
           </TabsContent>
         </Tabs>
       </main>
+
+      <ConfirmDialog
+        open={paraEliminar !== null}
+        onOpenChange={(open) => !open && setParaEliminar(null)}
+        title={`¿Sacar a ${paraEliminar?.nombre} del equipo?`}
+        description="Pierde el acceso al panel inmediatamente. Podés volver a invitarlo cuando quieras."
+        confirmLabel="Sí, sacarlo"
+        variant="destructive"
+        onConfirm={eliminarMiembro}
+      />
     </>
   );
 }

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { CalendarClock, MapPin, Sparkles, TrendingUp } from 'lucide-react';
 import { Card } from '@llave/ui/card';
+import { InstallPrompt } from '@/components/install-prompt';
 import { NavBar } from '@/components/nav-bar';
 import { PaymentCard } from '@/components/payment-card';
 import { UserMenu } from '@/components/user-menu';
@@ -110,6 +111,7 @@ export default function HomePage() {
       </main>
 
       <NavBar />
+      <InstallPrompt />
     </>
   );
 }

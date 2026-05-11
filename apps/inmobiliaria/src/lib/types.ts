@@ -24,6 +24,23 @@ export interface Reclamo {
   resueltoAt: string | null;
 }
 
+export interface Propietario {
+  id: string;
+  nombre: string;
+  apellido: string;
+  cuit: string;
+  email: string;
+  telefono: string;
+  cbuAlias: string | null;
+  comisionPct: number;
+  notas: string | null;
+  createdAt: string;
+  // métricas derivadas para el listado/detalle (en backend real se calculan)
+  propiedadesIds: string[];
+  totalCobradoMes: number;
+  totalRecibirMes: number;
+}
+
 export interface ContratoListado {
   id: string;
   inquilino: string;

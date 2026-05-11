@@ -24,6 +24,7 @@
     "./toast": "./src/components/toast.tsx",
     "./use-toast": "./src/components/use-toast.tsx",
     "./theme-toggle": "./src/components/theme-toggle.tsx",
+    "./confirm-dialog": "./src/components/confirm-dialog.tsx",
     "./tokens": "./src/lib/tokens.ts"
   },
   "scripts": {
