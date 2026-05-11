@@ -3,12 +3,15 @@ import {
   Building2,
   Calendar,
   CalendarDays,
+  Clock,
   Download,
   FileText,
   KeyRound,
+  Mail,
   MapPin,
   MessageCircle,
   Phone,
+  ShieldCheck,
   Sparkles,
   TrendingUp,
   UserRound,
@@ -17,10 +20,18 @@ import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card } from '@llave/ui/card';
 import { Separator } from '@llave/ui/separator';
+import { ContratoTimeline } from '@/components/contrato-timeline';
 import { NavBar } from '@/components/nav-bar';
 import { UserMenu } from '@/components/user-menu';
-import { contratoMock } from '@/lib/mock-data';
+import { contratoMock, garanteMock } from '@/lib/mock-data';
 import { diasHastaVencimiento, formatFecha, formatMonto } from '@/lib/format';
+
+const tipoGaranteLabel: Record<typeof garanteMock.tipo, string> = {
+  PROPIETARIA: 'Garantía propietaria',
+  CAUCION: 'Caución',
+  SUELDO: 'Recibo de sueldo',
+  DIGITAL: 'Garantía digital',
+};
 
 const indiceLabel: Record<typeof contratoMock.indiceAjuste, string> = {
   ICL: 'ICL — BCRA',
@@ -112,6 +123,15 @@ export default function ContratoPage() {
 
         <section className="space-y-2">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Línea de tiempo
+          </h2>
+          <Card className="p-5">
+            <ContratoTimeline />
+          </Card>
+        </section>
+
+        <section className="space-y-2">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Quiénes están en este contrato
           </h2>
           <div className="grid gap-3 md:grid-cols-2">
@@ -141,19 +161,55 @@ export default function ContratoPage() {
             </Card>
 
             <Card className="space-y-3 p-5">
-              <div className="flex items-center gap-2">
-                <UserRound className="h-4 w-4 text-primary" />
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Garante
-                </p>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="h-4 w-4 text-primary" />
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Garantía
+                  </p>
+                </div>
+                <Badge variant="success">Vigente</Badge>
               </div>
               <div>
-                <p className="font-medium">Cobertura SUMA</p>
-                <p className="text-xs text-muted-foreground">Garantía digital — póliza vigente</p>
+                <p className="font-medium">{garanteMock.nombreProveedor}</p>
+                <p className="text-xs text-muted-foreground">
+                  {tipoGaranteLabel[garanteMock.tipo]}
+                  {garanteMock.numeroPoliza && ` · ${garanteMock.numeroPoliza}`}
+                </p>
               </div>
-              <Badge variant="success" className="w-fit">
-                Vigente hasta {formatFecha(c.fechaFin)}
-              </Badge>
+              <div className="space-y-1.5 rounded-md border bg-muted/40 p-3 text-xs">
+                <GaranteRow
+                  icon={<Clock className="h-3.5 w-3.5" />}
+                  label="Vigente hasta"
+                  value={formatFecha(garanteMock.vigenciaHasta)}
+                />
+                <GaranteRow
+                  icon={<KeyRound className="h-3.5 w-3.5" />}
+                  label="Cobertura"
+                  value={formatMonto(garanteMock.montoCobertura)}
+                />
+                <GaranteRow
+                  icon={<UserRound className="h-3.5 w-3.5" />}
+                  label="Contacto"
+                  value={garanteMock.contactoNombre}
+                />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" asChild>
+                  <a href={`tel:${garanteMock.contactoTelefono.replace(/\s/g, '')}`}>
+                    <Phone className="h-3.5 w-3.5" />
+                    Llamar
+                  </a>
+                </Button>
+                {garanteMock.contactoEmail && (
+                  <Button size="sm" variant="ghost" asChild>
+                    <a href={`mailto:${garanteMock.contactoEmail}`}>
+                      <Mail className="h-3.5 w-3.5" />
+                      Email
+                    </a>
+                  </Button>
+                )}
+              </div>
             </Card>
           </div>
         </section>
@@ -191,6 +247,26 @@ export default function ContratoPage() {
 
       <NavBar />
     </>
+  );
+}
+
+function GaranteRow({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="flex items-center gap-1.5 text-muted-foreground">
+        {icon}
+        {label}
+      </span>
+      <span className="font-medium tabular-nums">{value}</span>
+    </div>
   );
 }
 

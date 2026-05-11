@@ -3,6 +3,72 @@ import type { Comprobante, Contrato, Liquidacion, MensajeChat, Reclamo } from '.
 // Mock fijo para que el frontend funcione sin backend. La forma matchea con
 // el schema de packages/db; cuando exista la API se reemplaza por fetch real.
 
+// Hitos históricos y futuros del contrato. Algunos vienen del schema
+// (creación, fechaFin, ajustes pasados), otros se calculan en runtime.
+export interface HitoContrato {
+  fecha: string; // ISO
+  tipo: 'INICIO' | 'AJUSTE_APLICADO' | 'AJUSTE_FUTURO' | 'FIN_CONTRATO';
+  titulo: string;
+  detalle?: string;
+}
+
+// Datos del garante del contrato. En backend real esto vive en
+// Garante (CLAUDE.md §4) — acá lo simplificamos para mostrar en la pantalla.
+export interface GaranteContrato {
+  tipo: 'PROPIETARIA' | 'CAUCION' | 'SUELDO' | 'DIGITAL';
+  nombreProveedor: string;
+  numeroPoliza: string | null;
+  montoCobertura: number;
+  vigenciaHasta: string; // ISO
+  contactoNombre: string;
+  contactoTelefono: string;
+  contactoEmail: string | null;
+}
+
+export const garanteMock: GaranteContrato = {
+  tipo: 'DIGITAL',
+  nombreProveedor: 'Cobertura SUMA',
+  numeroPoliza: 'POL-2025-48721',
+  montoCobertura: 14400000, // 30 meses de alquiler aprox
+  vigenciaHasta: '2028-08-31',
+  contactoNombre: 'Equipo de gestión SUMA',
+  contactoTelefono: '+54 11 5288 9000',
+  contactoEmail: 'soporte@cobsuma.com.ar',
+};
+
+export const hitosContratoMock: HitoContrato[] = [
+  {
+    fecha: '2025-09-01',
+    tipo: 'INICIO',
+    titulo: 'Empezó tu contrato',
+    detalle: 'Alquiler inicial: $405.000 · 36 meses',
+  },
+  {
+    fecha: '2025-11-01',
+    tipo: 'AJUSTE_APLICADO',
+    titulo: 'Ajuste ICL aplicado',
+    detalle: '$405.000 → $432.000 · +6,7%',
+  },
+  {
+    fecha: '2026-02-01',
+    tipo: 'AJUSTE_APLICADO',
+    titulo: 'Ajuste ICL aplicado',
+    detalle: '$432.000 → $480.000 · +11,1%',
+  },
+  {
+    fecha: '2026-06-01',
+    tipo: 'AJUSTE_FUTURO',
+    titulo: 'Próximo ajuste',
+    detalle: 'Índice ICL · estimado +14% a +18%',
+  },
+  {
+    fecha: '2028-08-31',
+    tipo: 'FIN_CONTRATO',
+    titulo: 'Vence el contrato',
+    detalle: 'Avisanos 3 meses antes si querés renovar',
+  },
+];
+
 export const contratoMock: Contrato = {
   id: 'cnt_001',
   direccion: 'Gorriti 4521, 3°B',
