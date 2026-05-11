@@ -19,6 +19,7 @@ import { Input } from '@llave/ui/input';
 import { Skeleton } from '@llave/ui/skeleton';
 import { toast } from '@llave/ui/use-toast';
 import { NavBar } from '@/components/nav-bar';
+import { RatingReclamoCard } from '@/components/rating-reclamo';
 import { ReclamoTimeline } from '@/components/reclamo-timeline';
 import { inquilinoActual } from '@/lib/mock-data';
 import {
@@ -164,18 +165,24 @@ export default function DetalleReclamoPage({ params }: { params: { id: string } 
 
         {/* Resolución cuando aplica */}
         {reclamo.estado === 'RESUELTO' && reclamo.resolucion && (
-          <Card className="space-y-2 border-emerald-200 bg-emerald-50 p-5 dark:border-emerald-900/40 dark:bg-emerald-900/10">
-            <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300">
-              <CheckCircle2 className="h-4 w-4" />
-              <p className="text-xs font-semibold uppercase tracking-wide">Resolución</p>
-            </div>
-            <p className="text-sm text-emerald-900 dark:text-emerald-100">{reclamo.resolucion}</p>
-            {reclamo.resueltoAt && (
-              <p className="text-xs text-emerald-700 dark:text-emerald-300">
-                {tiempoRelativo(reclamo.resueltoAt)}
+          <>
+            <Card className="space-y-2 border-emerald-200 bg-emerald-50 p-5 dark:border-emerald-900/40 dark:bg-emerald-900/10">
+              <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300">
+                <CheckCircle2 className="h-4 w-4" />
+                <p className="text-xs font-semibold uppercase tracking-wide">Resolución</p>
+              </div>
+              <p className="text-sm text-emerald-900 dark:text-emerald-100">
+                {reclamo.resolucion}
               </p>
-            )}
-          </Card>
+              {reclamo.resueltoAt && (
+                <p className="text-xs text-emerald-700 dark:text-emerald-300">
+                  {tiempoRelativo(reclamo.resueltoAt)}
+                </p>
+              )}
+            </Card>
+
+            <RatingReclamoCard reclamoId={reclamo.id} />
+          </>
         )}
 
         {reclamo.estado === 'RECHAZADO' && reclamo.resolucion && (

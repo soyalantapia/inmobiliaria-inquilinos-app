@@ -1,5 +1,6 @@
 import { SideNav } from '@/components/nav-bar';
 import { DesktopTopbar } from '@/components/desktop-topbar';
+import { Onboarding } from '@/components/onboarding';
 import { WhatsappFab } from '@/components/whatsapp-fab';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -13,6 +14,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </div>
       </div>
       <WhatsappFab />
+      <Onboarding />
     </div>
   );
 }

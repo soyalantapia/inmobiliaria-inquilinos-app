@@ -12,7 +12,7 @@ export const contratoMock: Contrato = {
   fechaFin: '2028-08-31',
   diaPago: 5,
   indiceAjuste: 'ICL',
-  proximoAjuste: '2026-09-01',
+  proximoAjuste: '2026-06-01',
   montoActual: 480000,
   moneda: 'ARS',
 };

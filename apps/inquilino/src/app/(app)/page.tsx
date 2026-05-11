@@ -55,17 +55,7 @@ export default function PagosPage() {
           </Card>
         )}
 
-        {alertaAjuste && (
-          <Card className="flex items-start gap-3 border-primary/20 bg-primary/5 p-4 text-sm animate-fade-in">
-            <TrendingUp className="mt-0.5 h-4 w-4 text-primary" />
-            <div>
-              <p className="font-medium">Próximo ajuste el {formatFecha(contratoMock.proximoAjuste)}</p>
-              <p className="text-xs text-muted-foreground">
-                Índice {contratoMock.indiceAjuste} · faltan {diasAjuste} días
-              </p>
-            </div>
-          </Card>
-        )}
+        {alertaAjuste && <AjusteCountdown diasAjuste={diasAjuste} />}
 
         {/* Card del hogar + acciones rápidas */}
         <Card className="relative overflow-hidden p-0 animate-fade-in">
@@ -310,5 +300,75 @@ function ShortcutLink({
       <Icon className="h-5 w-5 text-primary" />
       {label}
     </Link>
+  );
+}
+
+function AjusteCountdown({ diasAjuste }: { diasAjuste: number }) {
+  // Tier de prominencia según cuán cerca esté
+  // <=7 días → card grande con countdown gigante (primary)
+  // <=30 días → card mediana con días destacados (primary suave)
+  // <=60 días → card chica informativa (primary tenue)
+  const tier = diasAjuste <= 7 ? 'critico' : diasAjuste <= 30 ? 'cerca' : 'lejos';
+
+  if (tier === 'critico' || tier === 'cerca') {
+    const intenso = tier === 'critico';
+    return (
+      <Link href="/contrato" className="block">
+        <Card
+          className={`relative overflow-hidden border-0 animate-fade-in transition-transform active:scale-[0.99] ${
+            intenso
+              ? 'bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-xl shadow-primary/30'
+              : 'border border-primary/30 bg-primary/5'
+          }`}
+        >
+          {intenso && (
+            <>
+              <div className="pointer-events-none absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
+              <div className="pointer-events-none absolute -bottom-16 -left-10 h-44 w-44 rounded-full bg-white/5 blur-3xl" />
+            </>
+          )}
+          <div className="relative flex items-center gap-4 p-5">
+            <div
+              className={`grid h-14 w-14 shrink-0 place-items-center rounded-2xl ${
+                intenso ? 'bg-white/15' : 'bg-primary/10 text-primary'
+              }`}
+            >
+              <TrendingUp className="h-6 w-6" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p
+                className={`text-xs font-medium uppercase tracking-[0.18em] ${
+                  intenso ? 'opacity-80' : 'text-muted-foreground'
+                }`}
+              >
+                Próximo ajuste
+              </p>
+              <p className="text-2xl font-bold leading-tight md:text-3xl">
+                en{' '}
+                <span className="tabular-nums">{diasAjuste}</span>{' '}
+                día{diasAjuste === 1 ? '' : 's'}
+              </p>
+              <p className={`text-xs ${intenso ? 'opacity-90' : 'text-muted-foreground'}`}>
+                {formatFecha(contratoMock.proximoAjuste)} · índice {contratoMock.indiceAjuste}
+              </p>
+            </div>
+            <ChevronRight className={`h-5 w-5 ${intenso ? 'opacity-80' : 'text-muted-foreground'}`} />
+          </div>
+        </Card>
+      </Link>
+    );
+  }
+
+  // <=60 días — card chica
+  return (
+    <Card className="flex items-start gap-3 border-primary/20 bg-primary/5 p-4 text-sm animate-fade-in">
+      <TrendingUp className="mt-0.5 h-4 w-4 text-primary" />
+      <div>
+        <p className="font-medium">Próximo ajuste el {formatFecha(contratoMock.proximoAjuste)}</p>
+        <p className="text-xs text-muted-foreground">
+          Índice {contratoMock.indiceAjuste} · faltan {diasAjuste} días
+        </p>
+      </div>
+    </Card>
   );
 }
