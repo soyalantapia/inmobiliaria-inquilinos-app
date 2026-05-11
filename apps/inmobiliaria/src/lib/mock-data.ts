@@ -408,12 +408,94 @@ export const screeningMock: ScreeningResultado = {
     'Score Nosis 742 (alto). BCRA categoría 1 con 4 entidades, sin mora ni deuda en riesgo. Patrimonio sólido (2 inmuebles + 2 vehículos), antigüedad laboral en empresa grande con ART vigente. Ingresos formales estables últimos 6 meses (rango A5-A6). Grupo familiar con leve atraso (Sit 2) pero sin impacto material. Apto sin garantía adicional.',
 };
 
+// Las métricas core (ingresos, morosos, ocupación) se calculan en runtime
+// con dashboardHelpers a partir de contratosMock + propiedadesMock +
+// reclamosMock. Acá quedan solo métricas estratégicas y comparativos que
+// el backend tendría que calcular cross-tabla (vencimientos próximos,
+// variaciones vs mes anterior, etc.).
 export const dashboardMetricsMock = {
-  contratosActivos: 87,
-  cobroDelMesPct: 84,
-  morosos: 6,
-  ingresosMes: 41850000,
+  // operacionales (estimadas, en backend real se calculan)
+  proximosAjustes30d: 5, // contratos con ajuste en los próximos 30 días
+  contratosVencen90d: 4, // contratos que terminan en los próximos 90 días
+  garantiasVencen30d: 2, // pólizas de garantía que vencen en 30 días
+  screeningsPendientes: 2, // screenings en curso (no convertidos a contrato)
+  reclamosResueltosMes: 8, // resueltos este mes
+  tiempoPromedioResolucionDias: 3.2,
+
+  // comparativos vs mes anterior (en %)
+  variacionIngresos: 8.4, // +8.4% vs abril
+  variacionCobrabilidad: 2.1, // +2.1 puntos vs abril
+  variacionMorosos: -25, // -25% vs abril (mejor)
 };
+
+// Agenda próximos 14 días — eventos importantes
+export const agendaMock = [
+  {
+    id: 'ag_1',
+    fecha: '2026-05-12',
+    titulo: 'Vencimiento alquiler Mariela Sosa',
+    detalle: 'Gorriti 4521 · $572.000',
+    tipo: 'pago' as const,
+    urgencia: 'alta' as const,
+  },
+  {
+    id: 'ag_2',
+    fecha: '2026-05-15',
+    titulo: 'Ajuste ICL · contrato Cabildo 2890',
+    detalle: 'Juan Pérez · +18,4% estimado',
+    tipo: 'ajuste' as const,
+    urgencia: 'media' as const,
+  },
+  {
+    id: 'ag_3',
+    fecha: '2026-05-18',
+    titulo: 'Vence póliza de garantía',
+    detalle: 'Laura Giménez · Newbery 1820',
+    tipo: 'garantia' as const,
+    urgencia: 'media' as const,
+  },
+  {
+    id: 'ag_4',
+    fecha: '2026-05-22',
+    titulo: 'Renovación de contrato',
+    detalle: 'Honduras 4490 · Carlos Romero',
+    tipo: 'renovacion' as const,
+    urgencia: 'baja' as const,
+  },
+  {
+    id: 'ag_5',
+    fecha: '2026-05-25',
+    titulo: 'Rendición a propietarios',
+    detalle: '5 propietarios · $2.1M total',
+    tipo: 'rendicion' as const,
+    urgencia: 'media' as const,
+  },
+];
+
+// Top alertas — lo que requiere acción inmediata
+export const alertasMock = [
+  {
+    id: 'al_1',
+    titulo: 'Reclamo de emergencia sin asignar',
+    detalle: 'Carlos Romero · Electricidad · Honduras 4490',
+    href: '/reclamos/rec_003',
+    severidad: 'critica' as const,
+  },
+  {
+    id: 'al_2',
+    titulo: 'Pago atrasado 6 días',
+    detalle: 'Mariela Sosa · $572.000 + $5.148 punitorios',
+    href: '/pagos',
+    severidad: 'alta' as const,
+  },
+  {
+    id: 'al_3',
+    titulo: 'Propietario sin CBU cargado',
+    detalle: 'Federico López Vega · no podrás rendir',
+    href: '/propietarios',
+    severidad: 'media' as const,
+  },
+];
 
 export const operadoresMock = ['Roberto Tapia', 'Luciana Vidal', 'Sergio Almeida'] as const;
 
