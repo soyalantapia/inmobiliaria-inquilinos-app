@@ -27,6 +27,12 @@ import {
 } from '@/lib/mock-data';
 import { formatFecha, formatMonto } from '@/lib/format';
 
+export function generateStaticParams() {
+  return propietariosMock.map((p) => ({ id: p.id }));
+}
+
+export const dynamicParams = false;
+
 export default function DetallePropietarioPage({ params }: { params: { id: string } }) {
   const propietario = propietariosMock.find((p) => p.id === params.id);
   if (!propietario) notFound();

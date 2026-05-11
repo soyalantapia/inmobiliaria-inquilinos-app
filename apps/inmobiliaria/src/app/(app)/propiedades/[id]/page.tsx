@@ -54,6 +54,12 @@ const tipoIcono: Record<TipoPropiedad, React.ComponentType<{ className?: string 
   GALPON: Warehouse,
 };
 
+export function generateStaticParams() {
+  return propiedadesMock.map((p) => ({ id: p.id }));
+}
+
+export const dynamicParams = false;
+
 export default function DetallePropiedadPage({ params }: { params: { id: string } }) {
   const raw = propiedadesMock.find((p) => p.id === params.id);
   if (!raw) notFound();

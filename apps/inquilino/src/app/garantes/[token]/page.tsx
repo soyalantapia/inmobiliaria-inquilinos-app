@@ -17,7 +17,19 @@ import { Card } from '@llave/ui/card';
 import { Separator } from '@llave/ui/separator';
 import { contratoMock, garanteMock, inquilinoActual } from '@/lib/mock-data';
 import { diasHastaVencimiento, formatFecha, formatMonto } from '@/lib/format';
-import { leerGaranteToken } from '@/lib/garante-token';
+import { generarGaranteToken, leerGaranteToken } from '@/lib/garante-token';
+
+// Para static export pre-generamos un token "demo" válido. En producción
+// estos tokens se generan al compartir desde el inquilino — pero como la
+// página es 100% lectura de los mocks, el HTML es el mismo para cualquier
+// contratoId del demo, así que con uno alcanza.
+export function generateStaticParams() {
+  // token de larga duración para el contrato del demo
+  const tokenDemo = generarGaranteToken(contratoMock.id, 365 * 5);
+  return [{ token: tokenDemo }, { token: 'demo' }];
+}
+
+export const dynamicParams = false;
 
 // Vista pública read-only para que el garante consulte el estado del contrato
 // sin necesidad de cuenta. El token es de un solo uso visual (no hay sesión
