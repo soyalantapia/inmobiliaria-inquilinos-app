@@ -66,7 +66,6 @@ export default function DashboardPage() {
               icon={CheckCircle2}
               tone="emerald"
               delta={m.variacionIngresos}
-              deltaLabel="vs abril"
               hint={`${stats.cobrabilidadPct}% de cobrabilidad`}
             />
             <KpiBig
@@ -82,7 +81,6 @@ export default function DashboardPage() {
               icon={AlertTriangle}
               tone={stats.enMora.cantidad > 0 ? 'red' : 'muted'}
               delta={m.variacionMorosos}
-              deltaLabel="vs abril"
               deltaInverso
               hint={`${stats.enMora.cantidad} contrato${stats.enMora.cantidad === 1 ? '' : 's'} atrasados`}
             />
@@ -279,9 +277,14 @@ function KpiBig({
         ? 'text-emerald-600 dark:text-emerald-400'
         : 'text-red-600 dark:text-red-400';
 
+  // Footer siempre toma exactamente UNA línea (truncate) y reservamos su
+  // altura aunque no haya delta ni hint, para que las 4 cards del grid
+  // tengan exactamente la misma altura — antes el hint "42% de cobrabilidad
+  // · vs abril" wrappeaba en dos líneas y dejaba un hueco blanco en las
+  // demás cards.
   return (
     <Card className="overflow-hidden">
-      <CardContent className={cn('space-y-3 p-5', toneBg)}>
+      <CardContent className={cn('flex h-full flex-col gap-3 p-5', toneBg)}>
         <div className="flex items-start justify-between">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             {label}
@@ -289,9 +292,9 @@ function KpiBig({
           <Icon className={cn('h-5 w-5', toneColor)} />
         </div>
         <p className={cn('text-2xl font-bold tabular-nums md:text-3xl', toneColor)}>{valor}</p>
-        <div className="flex items-center gap-2 text-xs">
+        <div className="mt-auto flex h-5 items-center gap-2 text-xs">
           {delta !== undefined && (
-            <span className={cn('inline-flex items-center gap-0.5 font-medium', deltaColor)}>
+            <span className={cn('inline-flex shrink-0 items-center gap-0.5 font-medium', deltaColor)}>
               {delta > 0 ? (
                 <ArrowUpRight className="h-3 w-3" />
               ) : (
@@ -301,7 +304,12 @@ function KpiBig({
               {delta}%
             </span>
           )}
-          {hint && <span className="text-muted-foreground">{hint}{deltaLabel && delta !== undefined && ` · ${deltaLabel}`}</span>}
+          {hint && (
+            <span className="min-w-0 truncate text-muted-foreground">
+              {hint}
+              {deltaLabel && delta !== undefined && ` · ${deltaLabel}`}
+            </span>
+          )}
         </div>
       </CardContent>
     </Card>
