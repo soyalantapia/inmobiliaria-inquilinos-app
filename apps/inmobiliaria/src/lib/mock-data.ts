@@ -27,8 +27,8 @@ export const contratosMock: ContratoListado[] = [
     monto: 620000,
     moneda: 'ARS',
     estado: 'ACTIVO',
-    fechaInicio: '2024-03-01',
-    fechaFin: '2027-02-28',
+    fechaInicio: '2023-09-01',
+    fechaFin: '2026-08-31',
     proximoVencimiento: '2026-05-08',
     estadoPagoActual: 'PAGADO',
   },
@@ -39,8 +39,8 @@ export const contratosMock: ContratoListado[] = [
     monto: 510000,
     moneda: 'ARS',
     estado: 'ACTIVO',
-    fechaInicio: '2025-01-15',
-    fechaFin: '2028-01-14',
+    fechaInicio: '2023-12-15',
+    fechaFin: '2026-12-14',
     proximoVencimiento: '2026-05-15',
     estadoPagoActual: 'VENCIDO',
   },
@@ -883,6 +883,195 @@ export const propiedadesMock: Propiedad[] = [
     propietariosIds: ['own_005'],
     contratoActualId: 'cnt_006', // borrador
     createdAt: '2026-03-01',
+  },
+];
+
+// Intenciones de renovación reportadas por inquilinos. En el inquilino real
+// estas las dispara el flow /contrato/renovacion. En el lado inmobiliaria
+// las usamos para ordenar el dashboard de renovaciones por urgencia.
+// Red de profesionales que la inmobiliaria mantiene curada. Sus inquilinos
+// los ven en /profesionales del lado inquilino. En backend real esto vive
+// en una tabla Profesional con relación a la inmobiliaria.
+
+export type CategoriaProfesional =
+  | 'PLOMERO'
+  | 'ELECTRICISTA'
+  | 'GASISTA'
+  | 'CERRAJERO'
+  | 'PINTOR'
+  | 'TECNICO_AC'
+  | 'FLETE';
+
+export interface ProfesionalAdmin {
+  id: string;
+  nombre: string;
+  categoria: CategoriaProfesional;
+  zona: string;
+  telefono: string;
+  email: string | null;
+  rating: number;
+  cantTrabajos: number;
+  ultimoTrabajo: string | null;
+  verificado: boolean;
+  notas: string | null;
+  activo: boolean;
+}
+
+export const profesionalCategoriaLabelAdmin: Record<CategoriaProfesional, string> = {
+  PLOMERO: 'Plomería',
+  ELECTRICISTA: 'Electricidad',
+  GASISTA: 'Gas',
+  CERRAJERO: 'Cerrajería',
+  PINTOR: 'Pintura',
+  TECNICO_AC: 'Aire / Calefacción',
+  FLETE: 'Fletes y mudanzas',
+};
+
+export const profesionalesAdminMock: ProfesionalAdmin[] = [
+  {
+    id: 'prof_001',
+    nombre: 'Sergio Almeida',
+    categoria: 'PLOMERO',
+    zona: 'Palermo, Villa Crespo',
+    telefono: '+54 9 11 4421 8830',
+    email: 'sergio.almeida@plomeria.ar',
+    rating: 4.8,
+    cantTrabajos: 24,
+    ultimoTrabajo: '2026-04-30',
+    verificado: true,
+    notas: 'Llega en el día, factura A',
+    activo: true,
+  },
+  {
+    id: 'prof_002',
+    nombre: 'Diego Ferrari',
+    categoria: 'ELECTRICISTA',
+    zona: 'Palermo, Recoleta',
+    telefono: '+54 9 11 6502 7714',
+    email: 'diego@ferrari-elec.com.ar',
+    rating: 4.9,
+    cantTrabajos: 31,
+    ultimoTrabajo: '2026-05-02',
+    verificado: true,
+    notas: 'Matriculado, presupuesto sin cargo',
+    activo: true,
+  },
+  {
+    id: 'prof_003',
+    nombre: 'Luciana Pérez',
+    categoria: 'GASISTA',
+    zona: 'CABA',
+    telefono: '+54 9 11 5567 2118',
+    email: null,
+    rating: 4.7,
+    cantTrabajos: 18,
+    ultimoTrabajo: '2026-03-14',
+    verificado: true,
+    notas: 'Matriculada ENARGAS',
+    activo: true,
+  },
+  {
+    id: 'prof_004',
+    nombre: 'Pablo Cerrajería 24hs',
+    categoria: 'CERRAJERO',
+    zona: 'CABA, GBA Norte',
+    telefono: '+54 9 11 3399 4422',
+    email: null,
+    rating: 4.6,
+    cantTrabajos: 12,
+    ultimoTrabajo: '2026-02-21',
+    verificado: true,
+    notas: null,
+    activo: true,
+  },
+  {
+    id: 'prof_005',
+    nombre: 'Camila Torres',
+    categoria: 'PINTOR',
+    zona: 'Palermo, Belgrano',
+    telefono: '+54 9 11 4488 1107',
+    email: 'camila.t@gmail.com',
+    rating: 4.5,
+    cantTrabajos: 9,
+    ultimoTrabajo: '2026-01-18',
+    verificado: false,
+    notas: 'Especializada en interiores',
+    activo: true,
+  },
+  {
+    id: 'prof_006',
+    nombre: 'Frío Pro AA',
+    categoria: 'TECNICO_AC',
+    zona: 'CABA',
+    telefono: '+54 9 11 6678 9921',
+    email: 'contacto@friopro.com.ar',
+    rating: 4.7,
+    cantTrabajos: 22,
+    ultimoTrabajo: '2026-04-12',
+    verificado: true,
+    notas: 'Service split y central',
+    activo: true,
+  },
+  {
+    id: 'prof_007',
+    nombre: 'Mudanzas Soto',
+    categoria: 'FLETE',
+    zona: 'AMBA',
+    telefono: '+54 9 11 5432 1198',
+    email: null,
+    rating: 4.4,
+    cantTrabajos: 7,
+    ultimoTrabajo: '2025-12-08',
+    verificado: false,
+    notas: 'Camión chico y mediano',
+    activo: true,
+  },
+];
+
+export type DecisionRenovacionMock = 'RENOVAR' | 'NO_RENOVAR' | 'PENSANDO' | 'SIN_RESPUESTA';
+
+export interface IntencionRenovacionMock {
+  contratoId: string;
+  decision: DecisionRenovacionMock;
+  comentario: string | null;
+  fechaIntencion: string | null; // ISO
+}
+
+export const intencionesRenovacionMock: IntencionRenovacionMock[] = [
+  // Mariela todavía no decidió (su contrato vence en 2028, lejos)
+  {
+    contratoId: 'cnt_001',
+    decision: 'SIN_RESPUESTA',
+    comentario: null,
+    fechaIntencion: null,
+  },
+  // Juan dijo que renueva (vence 2027-02, ya está en zona)
+  {
+    contratoId: 'cnt_002',
+    decision: 'RENOVAR',
+    comentario: 'Quiero el mismo plazo y discutir el monto con la inmobiliaria.',
+    fechaIntencion: '2026-04-22T10:00:00-03:00',
+  },
+  // Laura está pensándolo
+  {
+    contratoId: 'cnt_003',
+    decision: 'PENSANDO',
+    comentario: 'Tengo que ver con mi pareja si nos mudamos a un depto más grande.',
+    fechaIntencion: '2026-05-02T18:30:00-03:00',
+  },
+  // Carlos avisó que no renueva
+  {
+    contratoId: 'cnt_004',
+    decision: 'NO_RENOVAR',
+    comentario: 'Nos compramos casa, gracias por estos años.',
+    fechaIntencion: '2026-03-15T09:15:00-03:00',
+  },
+  // Ana y Tomás sin respuesta
+  {
+    contratoId: 'cnt_005',
+    decision: 'SIN_RESPUESTA',
+    comentario: null,
+    fechaIntencion: null,
   },
 ];
 

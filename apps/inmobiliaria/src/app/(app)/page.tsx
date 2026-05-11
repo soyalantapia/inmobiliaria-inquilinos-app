@@ -201,6 +201,7 @@ export default function DashboardPage() {
                 label="Contratos a renovar"
                 valor={m.contratosVencen90d}
                 hint="próximos 90 días"
+                href="/renovaciones"
               />
               <RowVencimiento
                 icon={KeyRound}
@@ -482,13 +483,15 @@ function RowVencimiento({
   label,
   valor,
   hint,
+  href,
 }: {
   icon: React.ComponentType<{ className?: string }>;
   label: string;
   valor: number;
   hint: string;
+  href?: string;
 }) {
-  return (
+  const content = (
     <div className="flex items-center gap-3">
       <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
         <Icon className="h-4 w-4" />
@@ -500,4 +503,13 @@ function RowVencimiento({
       <span className="text-xl font-bold tabular-nums">{valor}</span>
     </div>
   );
+
+  if (href) {
+    return (
+      <Link href={href} className="block rounded-md transition-colors hover:bg-muted/40">
+        {content}
+      </Link>
+    );
+  }
+  return content;
 }

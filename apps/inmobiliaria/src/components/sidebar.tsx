@@ -12,6 +12,8 @@ import {
   Settings,
   Menu,
   Building2,
+  CalendarHeart,
+  HardHat,
   Wrench,
   X,
 } from 'lucide-react';
@@ -23,7 +25,9 @@ const links = [
   { href: '/pagos', label: 'Pagos', icon: CreditCard },
   { href: '/contratos', label: 'Contratos', icon: FileText },
   { href: '/contratos/nuevo', label: 'Cargar contrato', icon: Plus },
+  { href: '/renovaciones', label: 'Renovaciones', icon: CalendarHeart },
   { href: '/reclamos', label: 'Reclamos', icon: Wrench },
+  { href: '/profesionales', label: 'Profesionales', icon: HardHat },
   { href: '/screening', label: 'Verificar inquilino', icon: ShieldCheck },
   { href: '/configuracion', label: 'Configuración', icon: Settings },
 ] as const;

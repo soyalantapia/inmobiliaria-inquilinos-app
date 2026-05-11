@@ -14,6 +14,13 @@ export function formatFecha(iso: string): string {
   return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
+export function diasHastaVencimiento(iso: string): number {
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  const d = new Date(iso);
+  return Math.floor((d.getTime() - hoy.getTime()) / (24 * 60 * 60 * 1000));
+}
+
 export function formatPeriodo(periodo: string): string {
   const [year, month] = periodo.split('-');
   if (!year || !month) return periodo;

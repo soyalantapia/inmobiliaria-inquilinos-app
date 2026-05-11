@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   CheckCircle2,
+  ClipboardCheck,
   Download,
   FileText,
   Home,
@@ -13,6 +14,7 @@ import {
   MessageCircle,
   Phone,
   Plus,
+  ShieldCheck,
   Store,
   UserRound,
   Users,
@@ -150,6 +152,8 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                 </span>
               )}
             </TabsTrigger>
+            <TabsTrigger value="personas">Personas</TabsTrigger>
+            <TabsTrigger value="inventario">Inventario</TabsTrigger>
             <TabsTrigger value="documentos">Documentos</TabsTrigger>
           </TabsList>
 
@@ -500,6 +504,106 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                 })}
               </Card>
             )}
+          </TabsContent>
+
+          {/* PERSONAS */}
+          <TabsContent value="personas" className="space-y-4">
+            <Card>
+              <CardContent className="space-y-4 p-6">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="h-4 w-4 text-primary" />
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Garante vigente
+                  </h3>
+                </div>
+                <div className="grid gap-3 rounded-md border bg-muted/30 p-4 md:grid-cols-2">
+                  <Field label="Proveedor">Cobertura SUMA</Field>
+                  <Field label="N° de póliza">POL-2025-48721</Field>
+                  <Field label="Tipo">Garantía digital</Field>
+                  <Field label="Cobertura">$14.400.000</Field>
+                  <Field label="Vigencia hasta">31/08/2028</Field>
+                  <Field label="Contacto">+54 11 5288 9000</Field>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Los inquilinos pueden compartir un link público de sólo lectura con su garante
+                  desde el lado del inquilino — desde acá controlás cuántos hay activos.
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="space-y-4 p-6">
+                <div className="flex items-center gap-2">
+                  <Users className="h-4 w-4 text-primary" />
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Co-inquilinos
+                  </h3>
+                </div>
+                <div className="rounded-md border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
+                  <Users className="mx-auto h-8 w-8 text-muted-foreground/40" />
+                  <p className="mt-2 font-medium">El inquilino no invitó a nadie todavía</p>
+                  <p className="mt-1 text-xs">
+                    Cuando comparta acceso con pareja o familia, los vas a ver acá con su nivel
+                    de permiso.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* INVENTARIO */}
+          <TabsContent value="inventario" className="space-y-4">
+            <Card>
+              <CardContent className="space-y-4 p-6">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <ClipboardCheck className="h-4 w-4 text-primary" />
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Inventario inicial
+                    </h3>
+                  </div>
+                  <Badge variant="warning">Pendiente firma</Badge>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  El inquilino documenta el estado del depto al entrar (fotos + estado por
+                  ambiente). Cuando esté completo, firmás digitalmente para validarlo. Esto
+                  sirve de referencia al devolver el depósito.
+                </p>
+                <div className="grid grid-cols-3 gap-3 rounded-md border bg-muted/30 p-4 text-center">
+                  <div>
+                    <p className="text-2xl font-semibold tabular-nums">—</p>
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                      Items cargados
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-semibold tabular-nums">—</p>
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                      Con foto
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-semibold tabular-nums text-amber-600">—</p>
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                      Mal estado
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" variant="outline" disabled>
+                    Ver detalle por ambiente
+                  </Button>
+                  <Button size="sm" disabled>
+                    <ShieldCheck className="h-3.5 w-3.5" />
+                    Firmar inventario
+                  </Button>
+                </div>
+                <p className="rounded-md bg-amber-50 p-3 text-xs text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
+                  El inquilino todavía no cargó el inventario. Cuando lo haga, vas a poder
+                  revisar foto por foto y firmar la conformidad.
+                </p>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* DOCUMENTOS */}
