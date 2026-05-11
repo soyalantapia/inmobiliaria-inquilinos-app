@@ -158,6 +158,46 @@ export interface VecinoReferencia {
   direccion: string;
 }
 
+export type PlataformaDigital =
+  | 'INSTAGRAM'
+  | 'LINKEDIN'
+  | 'FACEBOOK'
+  | 'X'
+  | 'TIKTOK'
+  | 'THREADS'
+  | 'YOUTUBE'
+  | 'GOOGLE';
+
+export type EstadoPerfilDigital = 'ACTIVO' | 'INACTIVO' | 'PRIVADO' | 'NO_ENCONTRADO';
+
+export interface PerfilDigital {
+  plataforma: PlataformaDigital;
+  handle: string | null; // @usuario o nombre público
+  url: string | null;
+  verificado: boolean;
+  estado: EstadoPerfilDigital;
+  seguidores: number | null;
+  ultimaActividad: string | null; // ISO
+  notas: string | null; // ej. "menciones a alquileres anteriores", "presentación coherente"
+}
+
+export type CoherenciaHuella = 'alta' | 'media' | 'baja';
+
+export interface HuellaDigital {
+  // Score general 0-100 de cuán completa y coherente es la huella
+  scoreCoherencia: CoherenciaHuella;
+  // Antigüedad de la presencia digital más vieja (años)
+  antiguedadAnios: number;
+  // Plataformas encontradas
+  perfiles: PerfilDigital[];
+  // Menciones en Google / medios
+  mencionesGoogle: number;
+  // Email aparece en N filtraciones/sitios públicos
+  emailEnSitios: number;
+  // Hallazgos relevantes (positivos o negativos) que la IA destaca
+  hallazgos: Array<{ tipo: 'positivo' | 'neutro' | 'alerta'; texto: string }>;
+}
+
 export interface Inmueble {
   partidoCatastral: string;
   ubicacion: string;
@@ -245,6 +285,9 @@ export interface ScreeningResultado {
 
   // Referencias / contactación opcional
   vecinos: VecinoReferencia[];
+
+  // Huella digital — redes sociales y presencia online
+  huellaDigital: HuellaDigital;
 
   // Recomendación IA
   scoreNosis: number; // 0-1000

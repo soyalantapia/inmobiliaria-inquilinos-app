@@ -16,7 +16,6 @@ import {
   Mail,
   MapPin,
   MessageCircle,
-  Network,
   Phone,
   RotateCw,
   Search,
@@ -43,6 +42,11 @@ import { screeningMock } from '@/lib/mock-data';
 import { formatMonto, formatFecha } from '@/lib/format';
 import { formatearCuit, validarCuit } from '@/lib/cuit';
 import type {
+  CoherenciaHuella,
+  EstadoPerfilDigital,
+  HuellaDigital,
+  PerfilDigital,
+  PlataformaDigital,
   Recomendacion,
   ResumenBcra,
   RiesgoBcra,
@@ -63,7 +67,7 @@ const ETAPAS = [
     label: 'Cruzando datos crediticios',
     detalle: 'BCRA · Nosis · Veraz · cheques rechazados últimos 4 años',
     icon: Database,
-    duracion: 1500,
+    duracion: 1400,
   },
   {
     key: 'bienes',
@@ -74,10 +78,17 @@ const ETAPAS = [
   },
   {
     key: 'redes',
-    label: 'Verificando redes y referencias',
-    detalle: 'Redes sociales · grupo familiar · vecinos · historial laboral',
-    icon: Network,
-    duracion: 1400,
+    label: 'Rastreando redes sociales y medios digitales',
+    detalle: 'LinkedIn · Instagram · Facebook · X · Threads · TikTok · Google · menciones públicas',
+    icon: Globe,
+    duracion: 1700,
+  },
+  {
+    key: 'referencias',
+    label: 'Validando familia, vecinos y referencias',
+    detalle: 'Grupo familiar · referencias laborales · vecinos referenciables',
+    icon: Users,
+    duracion: 1200,
   },
 ] as const;
 
@@ -427,6 +438,7 @@ function Informe({
           <TabsTrigger value="ingresos">Ingresos</TabsTrigger>
           <TabsTrigger value="familia">Familia</TabsTrigger>
           <TabsTrigger value="laboral">Laboral</TabsTrigger>
+          <TabsTrigger value="redes">Redes</TabsTrigger>
           <TabsTrigger value="contacto">Contacto</TabsTrigger>
         </TabsList>
 
@@ -736,6 +748,11 @@ function Informe({
           )}
         </TabsContent>
 
+        {/* REDES */}
+        <TabsContent value="redes" className="space-y-4">
+          <HuellaDigitalView huella={resultado.huellaDigital} />
+        </TabsContent>
+
         {/* CONTACTO */}
         <TabsContent value="contacto" className="space-y-4">
           <SectionCard icon={<Phone className="h-4 w-4" />} title="Teléfonos del titular">
@@ -959,4 +976,206 @@ function formatearCategoria(
     RELACION_DEPENDENCIA: 'Relación de dependencia',
     NO_INSCRIPTO: 'No inscripto',
   }[c];
+}
+
+// ────────────────────────────── Huella digital ──────────────────────────────
+
+const plataformaConfig: Record<
+  PlataformaDigital,
+  { label: string; emoji: string; color: string }
+> = {
+  LINKEDIN: { label: 'LinkedIn', emoji: '💼', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' },
+  INSTAGRAM: { label: 'Instagram', emoji: '📷', color: 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-300' },
+  FACEBOOK: { label: 'Facebook', emoji: '👥', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' },
+  X: { label: 'X (Twitter)', emoji: '🐦', color: 'bg-slate-100 text-slate-700 dark:bg-slate-900/30 dark:text-slate-300' },
+  TIKTOK: { label: 'TikTok', emoji: '🎵', color: 'bg-slate-100 text-slate-700 dark:bg-slate-900/30 dark:text-slate-300' },
+  THREADS: { label: 'Threads', emoji: '🧵', color: 'bg-slate-100 text-slate-700 dark:bg-slate-900/30 dark:text-slate-300' },
+  YOUTUBE: { label: 'YouTube', emoji: '▶️', color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' },
+  GOOGLE: { label: 'Google · menciones', emoji: '🔎', color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' },
+};
+
+const estadoPerfilConfig: Record<
+  EstadoPerfilDigital,
+  { label: string; variant: 'success' | 'warning' | 'secondary' | 'destructive' }
+> = {
+  ACTIVO: { label: 'Activa', variant: 'success' },
+  INACTIVO: { label: 'Inactiva', variant: 'warning' },
+  PRIVADO: { label: 'Privada', variant: 'secondary' },
+  NO_ENCONTRADO: { label: 'No encontrada', variant: 'secondary' },
+};
+
+const coherenciaConfig: Record<
+  CoherenciaHuella,
+  { label: string; variant: 'success' | 'warning' | 'destructive' }
+> = {
+  alta: { label: 'Alta', variant: 'success' },
+  media: { label: 'Media', variant: 'warning' },
+  baja: { label: 'Baja', variant: 'destructive' },
+};
+
+function HuellaDigitalView({ huella }: { huella: HuellaDigital }) {
+  const activos = huella.perfiles.filter((p) => p.estado === 'ACTIVO').length;
+  const encontrados = huella.perfiles.filter((p) => p.estado !== 'NO_ENCONTRADO').length;
+  return (
+    <>
+      {/* Stats overview */}
+      <Card>
+        <CardContent className="grid gap-4 p-5 sm:grid-cols-4">
+          <Stat
+            label="Coherencia"
+            value={coherenciaConfig[huella.scoreCoherencia].label}
+            badge={coherenciaConfig[huella.scoreCoherencia].variant}
+          />
+          <Stat
+            label="Plataformas con perfil"
+            value={`${encontrados} / ${huella.perfiles.length}`}
+            hint={`${activos} activas`}
+          />
+          <Stat
+            label="Antigüedad online"
+            value={`${huella.antiguedadAnios} años`}
+            hint="desde el perfil más viejo"
+          />
+          <Stat
+            label="Menciones en Google"
+            value={huella.mencionesGoogle.toString()}
+            hint={`Email en ${huella.emailEnSitios} sitios públicos`}
+          />
+        </CardContent>
+      </Card>
+
+      {/* Hallazgos IA */}
+      {huella.hallazgos.length > 0 && (
+        <SectionCard
+          icon={<Sparkles className="h-4 w-4" />}
+          title="Lo que detectó el análisis"
+        >
+          <ul className="space-y-2">
+            {huella.hallazgos.map((h, i) => (
+              <li key={i} className="flex items-start gap-2 text-sm">
+                <span
+                  className={`mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full ${
+                    h.tipo === 'positivo'
+                      ? 'bg-emerald-500'
+                      : h.tipo === 'alerta'
+                        ? 'bg-destructive'
+                        : 'bg-muted-foreground'
+                  }`}
+                />
+                <span
+                  className={
+                    h.tipo === 'alerta' ? 'text-destructive font-medium' : 'text-foreground'
+                  }
+                >
+                  {h.texto}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </SectionCard>
+      )}
+
+      {/* Cards de perfiles */}
+      <div className="grid gap-3 md:grid-cols-2">
+        {huella.perfiles.map((p) => (
+          <PerfilDigitalCard key={p.plataforma} perfil={p} />
+        ))}
+      </div>
+    </>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  hint,
+  badge,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  badge?: 'success' | 'warning' | 'destructive';
+}) {
+  return (
+    <div>
+      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
+      {badge ? (
+        <Badge variant={badge} className="mt-1">
+          {value}
+        </Badge>
+      ) : (
+        <p className="mt-0.5 text-lg font-semibold tabular-nums">{value}</p>
+      )}
+      {hint && <p className="text-[10px] text-muted-foreground">{hint}</p>}
+    </div>
+  );
+}
+
+function PerfilDigitalCard({ perfil }: { perfil: PerfilDigital }) {
+  const cfg = plataformaConfig[perfil.plataforma];
+  const estadoCfg = estadoPerfilConfig[perfil.estado];
+  const noEncontrado = perfil.estado === 'NO_ENCONTRADO';
+  return (
+    <Card className={noEncontrado ? 'opacity-60' : ''}>
+      <CardContent className="space-y-3 p-4">
+        <div className="flex items-start gap-3">
+          <div className={`grid h-10 w-10 shrink-0 place-items-center rounded-lg text-lg ${cfg.color}`}>
+            {cfg.emoji}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="font-medium">{cfg.label}</span>
+              {perfil.verificado && (
+                <Badge variant="default" className="text-[10px]">
+                  ✓ verificado
+                </Badge>
+              )}
+            </div>
+            {perfil.handle && (
+              <p className="truncate font-mono text-xs text-muted-foreground">{perfil.handle}</p>
+            )}
+          </div>
+          <Badge variant={estadoCfg.variant} className="shrink-0">
+            {estadoCfg.label}
+          </Badge>
+        </div>
+
+        {!noEncontrado && (
+          <>
+            <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+              {perfil.seguidores !== null && (
+                <span>
+                  <strong className="text-foreground tabular-nums">
+                    {perfil.seguidores.toLocaleString('es-AR')}
+                  </strong>{' '}
+                  seguidores
+                </span>
+              )}
+              {perfil.ultimaActividad && (
+                <span>Última actividad: {formatFecha(perfil.ultimaActividad)}</span>
+              )}
+            </div>
+
+            {perfil.notas && (
+              <p className="rounded-md border bg-muted/40 p-2 text-xs leading-relaxed">
+                {perfil.notas}
+              </p>
+            )}
+
+            {perfil.url && (
+              <a
+                href={perfil.url}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+              >
+                <Globe className="h-3 w-3" />
+                Abrir perfil
+              </a>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
