@@ -32,7 +32,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="min-h-screen bg-background font-sans">
         <AuthProvider>
-          <div className="mx-auto flex min-h-screen max-w-md flex-col">{children}</div>
+          {children}
           <Toaster />
         </AuthProvider>
         <PwaRegister />

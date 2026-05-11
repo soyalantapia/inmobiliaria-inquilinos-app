@@ -8,7 +8,6 @@ import { Input } from '@llave/ui/input';
 import { ChatBubble } from '@/components/chat-bubble';
 import { NavBar } from '@/components/nav-bar';
 import { chatInicialMock, contratoMock, respuestasMock } from '@/lib/mock-data';
-import { formatFecha, formatMonto } from '@/lib/format';
 import { guardarChat, leerChat, limpiarChat } from '@/lib/chat-storage';
 import type { MensajeChat } from '@/lib/types';
 
@@ -91,11 +90,11 @@ export default function ContratoPage() {
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <Sparkles className="h-3.5 w-3.5 text-primary" />
-              Asistente del contrato
+              Broker · tu asistente del contrato
             </div>
-            <h1 className="mt-1 truncate text-lg font-semibold">{contratoMock.direccion}</h1>
+            <h1 className="mt-1 text-lg font-semibold">Preguntale lo que quieras</h1>
             <p className="text-xs text-muted-foreground">
-              {formatMonto(contratoMock.montoActual)} · vence {formatFecha(contratoMock.fechaFin)}
+              Responde solo sobre tu contrato — {contratoMock.direccion}
             </p>
           </div>
           {mensajes.length > 1 && (
