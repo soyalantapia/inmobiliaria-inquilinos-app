@@ -6,13 +6,16 @@ import {
   Building2,
   Car,
   Check,
+  Clock,
   Database,
   Download,
   FileText,
+  Fingerprint,
   Globe,
   Home,
   IdCard,
   Loader2,
+  Lock,
   Mail,
   MapPin,
   MessageCircle,
@@ -31,7 +34,7 @@ import {
 import { Avatar, AvatarFallback } from '@llave/ui/avatar';
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@llave/ui/card';
+import { Card, CardContent } from '@llave/ui/card';
 import { Input } from '@llave/ui/input';
 import { Label } from '@llave/ui/label';
 import { Separator } from '@llave/ui/separator';
@@ -162,53 +165,16 @@ export default function ScreeningPage() {
       <Topbar titulo="Verificar inquilino" />
       <main className="flex-1 space-y-6 p-4 md:p-6">
         {estado === 'idle' && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Screening crediticio</CardTitle>
-              <CardDescription>
-                Cruzamos BCRA, AFIP, Nosis, registros patrimoniales y referencias en menos de
-                30 segundos. Cache de 30 días.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={verificar} className="grid gap-4 md:grid-cols-3">
-                <div className="space-y-2">
-                  <Label htmlFor="cuit">CUIT / CUIL</Label>
-                  <Input
-                    id="cuit"
-                    inputMode="numeric"
-                    placeholder="20-31256789-0"
-                    value={formatearCuit(cuit)}
-                    onChange={(e) => setCuit(e.target.value)}
-                    aria-invalid={cuitDirty && !validacionCuit.valido}
-                    aria-describedby="cuit-error"
-                    required
-                  />
-                  {cuitDirty && !validacionCuit.valido && (
-                    <p id="cuit-error" className="text-xs text-destructive">
-                      {validacionCuit.motivo}
-                    </p>
-                  )}
-                </div>
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="nombre">Nombre completo</Label>
-                  <Input
-                    id="nombre"
-                    placeholder="Carlos Eduardo Méndez"
-                    value={nombre}
-                    onChange={(e) => setNombre(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="md:col-span-3">
-                  <Button type="submit" disabled={!formValido}>
-                    <Search className="h-4 w-4" />
-                    Iniciar verificación
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
+          <ScreeningHome
+            cuit={cuit}
+            nombre={nombre}
+            cuitDirty={cuitDirty}
+            validacionCuit={validacionCuit}
+            formValido={formValido}
+            onCuitChange={setCuit}
+            onNombreChange={setNombre}
+            onSubmit={verificar}
+          />
         )}
 
         {estado === 'loading' && (
@@ -220,6 +186,213 @@ export default function ScreeningPage() {
         )}
       </main>
     </>
+  );
+}
+
+// ────────────────────────────── Pantalla inicial ───────────────────────────
+
+const FUENTES_CRUZADAS = [
+  {
+    icon: Fingerprint,
+    label: 'RENAPER · AFIP',
+    descripcion: 'Identidad, CUIT, situación impositiva',
+  },
+  {
+    icon: Wallet,
+    label: 'BCRA · Nosis · Veraz',
+    descripcion: 'Historial crediticio, mora, cheques',
+  },
+  {
+    icon: Home,
+    label: 'Registro de la Propiedad · DNRPA',
+    descripcion: 'Inmuebles y vehículos patentados',
+  },
+  {
+    icon: Globe,
+    label: 'Redes sociales · medios digitales',
+    descripcion: 'LinkedIn, Instagram, X, Facebook, menciones públicas',
+  },
+  {
+    icon: Users,
+    label: 'Grupo familiar · referencias',
+    descripcion: 'Composición familiar, vecinos, historial laboral',
+  },
+] as const;
+
+function ScreeningHome({
+  cuit,
+  nombre,
+  cuitDirty,
+  validacionCuit,
+  formValido,
+  onCuitChange,
+  onNombreChange,
+  onSubmit,
+}: {
+  cuit: string;
+  nombre: string;
+  cuitDirty: boolean;
+  validacionCuit: { valido: boolean; motivo?: string };
+  formValido: boolean;
+  onCuitChange: (v: string) => void;
+  onNombreChange: (v: string) => void;
+  onSubmit: (e: React.FormEvent) => void;
+}) {
+  return (
+    <div className="space-y-6">
+      {/* Hero + form */}
+      <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-primary via-primary to-primary/70 text-primary-foreground shadow-xl shadow-primary/30">
+        {/* Glow decorativo */}
+        <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-white/10 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-32 -left-20 h-72 w-72 rounded-full bg-white/5 blur-3xl" />
+
+        <CardContent className="relative grid gap-8 p-8 md:grid-cols-[1fr_1.2fr] md:p-10">
+          {/* Columna izquierda: propuesta de valor */}
+          <div className="space-y-5">
+            <div className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-medium backdrop-blur">
+              <Sparkles className="h-3.5 w-3.5" />
+              SkipTrace 360°
+            </div>
+            <h1 className="text-3xl font-bold leading-tight md:text-4xl">
+              Verificá un inquilino en menos de{' '}
+              <span className="whitespace-nowrap">30 segundos</span>
+            </h1>
+            <p className="text-sm leading-relaxed opacity-90">
+              Cruzamos identidad, BCRA, AFIP, registros de bienes, redes sociales y referencias.
+              Recibís un informe completo con recomendación accionable.
+            </p>
+
+            <div className="flex flex-wrap gap-4 pt-2 text-xs opacity-90">
+              <Trust icon={Clock} label="< 30 seg" />
+              <Trust icon={ShieldCheck} label="Cache 30 días" />
+              <Trust icon={Lock} label="Ley 25.326" />
+            </div>
+          </div>
+
+          {/* Columna derecha: form */}
+          <div className="rounded-xl bg-background p-6 text-foreground shadow-2xl">
+            <div className="mb-4 space-y-1">
+              <h2 className="text-lg font-semibold">Datos del inquilino</h2>
+              <p className="text-xs text-muted-foreground">
+                Necesitamos el CUIT/CUIL y el nombre completo.
+              </p>
+            </div>
+
+            <form onSubmit={onSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="cuit">CUIT / CUIL</Label>
+                <Input
+                  id="cuit"
+                  inputMode="numeric"
+                  placeholder="20-31256789-0"
+                  value={formatearCuit(cuit)}
+                  onChange={(e) => onCuitChange(e.target.value)}
+                  aria-invalid={cuitDirty && !validacionCuit.valido}
+                  aria-describedby="cuit-error"
+                  className="h-12 text-base font-mono tabular-nums"
+                  required
+                />
+                {cuitDirty && !validacionCuit.valido ? (
+                  <p id="cuit-error" className="text-xs text-destructive">
+                    {validacionCuit.motivo}
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground">
+                    Validamos el dígito verificador automáticamente.
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="nombre">Nombre completo</Label>
+                <Input
+                  id="nombre"
+                  placeholder="Carlos Eduardo Méndez"
+                  value={nombre}
+                  onChange={(e) => onNombreChange(e.target.value)}
+                  className="h-12 text-base"
+                  required
+                />
+              </div>
+
+              <Button
+                type="submit"
+                size="xl"
+                className="mt-2 w-full text-base shadow-lg shadow-primary/20"
+                disabled={!formValido}
+              >
+                <Search className="h-4 w-4" />
+                Iniciar verificación
+              </Button>
+            </form>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Qué cruzamos */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Qué consultamos automáticamente
+          </h3>
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Database className="h-3 w-3" />
+            5 fuentes de datos integradas
+          </span>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          {FUENTES_CRUZADAS.map((f, i) => {
+            const Icon = f.icon;
+            return (
+              <Card
+                key={f.label}
+                className="animate-fade-in transition-shadow hover:shadow-md"
+                style={{ animationDelay: `${i * 60}ms`, animationFillMode: 'backwards' }}
+              >
+                <CardContent className="space-y-2 p-4">
+                  <div className="grid h-9 w-9 place-items-center rounded-lg bg-primary/10 text-primary">
+                    <Icon className="h-4 w-4" />
+                  </div>
+                  <p className="text-sm font-semibold leading-tight">{f.label}</p>
+                  <p className="text-xs text-muted-foreground leading-snug">{f.descripcion}</p>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Lo que recibís */}
+      <Card className="border-primary/10 bg-primary/5">
+        <CardContent className="grid gap-4 p-6 md:grid-cols-[auto_1fr_auto]">
+          <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
+            <FileText className="h-6 w-6" />
+          </div>
+          <div className="space-y-1">
+            <p className="text-sm font-semibold">Recibís un informe completo</p>
+            <p className="text-xs text-muted-foreground">
+              Identidad · BCRA del titular, familiar y empleador · bienes · ingresos · redes sociales ·
+              referencias · recomendación accionable (APTO / APTO con garantía / NO APTO) con
+              razonamiento.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 self-center">
+            <Badge variant="success">APTO</Badge>
+            <Badge variant="warning">APTO c/ garantía</Badge>
+            <Badge variant="destructive">NO APTO</Badge>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function Trust({ icon: Icon, label }: { icon: React.ComponentType<{ className?: string }>; label: string }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <Icon className="h-3.5 w-3.5" />
+      <span>{label}</span>
+    </div>
   );
 }
 
