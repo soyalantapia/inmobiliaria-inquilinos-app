@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import {
   Archive,
   CheckCircle2,
@@ -10,6 +11,7 @@ import {
   FileText,
   Plus,
   Search,
+  X,
 } from 'lucide-react';
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
@@ -18,7 +20,7 @@ import { cn } from '@llave/ui/cn';
 import { Input } from '@llave/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@llave/ui/table';
 import { Topbar } from '@/components/topbar';
-import { contratosMock } from '@/lib/mock-data';
+import { contratosMock, propiedadesMock, propietariosMock } from '@/lib/mock-data';
 import { formatFecha, formatMonto } from '@/lib/format';
 import type { EstadoLiquidacion } from '@/lib/types';
 
@@ -82,6 +84,23 @@ export default function ContratosPage() {
   const [q, setQ] = useState('');
   const [filtro, setFiltro] = useState<Filtro>('TODOS');
 
+  // Filtro por propietario via query string ?propietario=own_xxx
+  // Linkeado desde /propietarios/[id] y /propietarios list.
+  const searchParams = useSearchParams();
+  const propietarioId = searchParams?.get('propietario') ?? null;
+  const propietario = propietarioId
+    ? propietariosMock.find((p) => p.id === propietarioId) ?? null
+    : null;
+  // IDs de contratos asociados a este propietario (via propiedades)
+  const contratosDelPropietario = propietarioId
+    ? new Set(
+        propiedadesMock
+          .filter((p) => p.propietariosIds.includes(propietarioId))
+          .map((p) => p.contratoActualId)
+          .filter((id): id is string => !!id),
+      )
+    : null;
+
   const counters = useMemo(
     () => ({
       ACTIVO: contratosMock.filter((c) => c.estado === 'ACTIVO').length,
@@ -95,6 +114,9 @@ export default function ContratosPage() {
 
   const filtrados = useMemo(() => {
     return contratosMock.filter((c) => {
+      // filtro por propietario (vía query string)
+      if (contratosDelPropietario && !contratosDelPropietario.has(c.id)) return false;
+
       // filtro por estado
       if (filtro === 'ACTIVO' && c.estado !== 'ACTIVO') return false;
       if (filtro === 'BORRADOR' && c.estado !== 'BORRADOR') return false;
@@ -111,7 +133,7 @@ export default function ContratosPage() {
         : true;
       return matchQ;
     });
-  }, [q, filtro]);
+  }, [q, filtro, contratosDelPropietario]);
 
   const togglearFiltro = (f: 'ACTIVO' | 'BORRADOR' | 'ARCHIVADO') => {
     setFiltro((prev) => (prev === f ? 'TODOS' : f));
@@ -121,6 +143,23 @@ export default function ContratosPage() {
     <>
       <Topbar titulo="Contratos" />
       <main className="flex-1 space-y-4 p-4 md:p-6">
+        {/* Chip de filtro por propietario */}
+        {propietario && (
+          <div className="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
+            <span className="text-muted-foreground">Filtrando por propietario:</span>
+            <span className="font-medium">
+              {propietario.nombre} {propietario.apellido}
+            </span>
+            <Link
+              href="/contratos"
+              className="ml-auto flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-3 w-3" />
+              Quitar filtro
+            </Link>
+          </div>
+        )}
+
         {/* 3 botones grandes de filtro */}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           {FILTROS.map((f) => {

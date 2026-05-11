@@ -13,7 +13,9 @@ import {
   Menu,
   Building2,
   CalendarHeart,
+  ClipboardCheck,
   HardHat,
+  Users,
   Wrench,
   X,
 } from 'lucide-react';
@@ -22,11 +24,13 @@ import { cn } from '@llave/ui/cn';
 const links = [
   { href: '/', label: 'Inicio', icon: LayoutDashboard },
   { href: '/propiedades', label: 'Propiedades', icon: Building2 },
+  { href: '/propietarios', label: 'Propietarios', icon: Users },
   { href: '/pagos', label: 'Pagos', icon: CreditCard },
   { href: '/contratos', label: 'Contratos', icon: FileText },
   { href: '/contratos/nuevo', label: 'Cargar contrato', icon: Plus },
   { href: '/renovaciones', label: 'Renovaciones', icon: CalendarHeart },
   { href: '/reclamos', label: 'Reclamos', icon: Wrench },
+  { href: '/inventarios', label: 'Inventarios', icon: ClipboardCheck },
   { href: '/profesionales', label: 'Profesionales', icon: HardHat },
   { href: '/screening', label: 'Verificar inquilino', icon: ShieldCheck },
   { href: '/configuracion', label: 'Configuración', icon: Settings },

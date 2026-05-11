@@ -886,6 +886,425 @@ export const propiedadesMock: Propiedad[] = [
   },
 ];
 
+// Liquidaciones de un contrato: ese histórico mensual que el PM ve para
+// conciliar pagos. En backend real es la tabla Liquidacion joineada con
+// Pagos. Acá las generamos por contrato a partir del fechaInicio.
+
+export interface LiquidacionAdmin {
+  id: string;
+  contratoId: string;
+  periodo: string; // YYYY-MM
+  montoAlquiler: number;
+  montoExpensas: number;
+  montoTotal: number;
+  fechaVencimiento: string;
+  fechaPago: string | null;
+  estado: 'PAGADO' | 'PENDIENTE' | 'VENCIDO';
+  metodoPago: 'TRANSFERENCIA' | 'MERCADOPAGO' | 'EFECTIVO' | null;
+}
+
+// Para no inflar el archivo, generamos al vuelo las últimas 12 liquidaciones
+// de cada contrato a partir de hoy. Los 3 últimos meses son PENDIENTE/PAGADO,
+// el resto PAGADO.
+export function generarLiquidaciones(contratoId: string, montoBase: number): LiquidacionAdmin[] {
+  const hoy = new Date();
+  const liquidaciones: LiquidacionAdmin[] = [];
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(hoy.getFullYear(), hoy.getMonth() - i, 5);
+    const periodo = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const expensas = Math.round(montoBase * 0.19);
+    let estado: LiquidacionAdmin['estado'] = 'PAGADO';
+    let fechaPago: string | null = `${periodo}-${String(d.getDate() + Math.floor(Math.random() * 4)).padStart(2, '0')}`;
+    let metodoPago: LiquidacionAdmin['metodoPago'] = 'TRANSFERENCIA';
+    if (i === 0) {
+      // mes actual: pendiente
+      estado = 'PENDIENTE';
+      fechaPago = null;
+      metodoPago = null;
+    } else if (i === 1 && Math.random() > 0.7) {
+      // mes pasado: a veces vencido
+      estado = 'VENCIDO';
+      fechaPago = null;
+      metodoPago = null;
+    }
+    liquidaciones.push({
+      id: `liq_${contratoId}_${periodo}`,
+      contratoId,
+      periodo,
+      montoAlquiler: montoBase,
+      montoExpensas: expensas,
+      montoTotal: montoBase + expensas,
+      fechaVencimiento: `${periodo}-05`,
+      fechaPago,
+      estado,
+      metodoPago,
+    });
+  }
+  return liquidaciones.reverse();
+}
+
+// Eventos del ciclo de vida de un contrato (creación, ajustes, pagos
+// importantes, reclamos creados, cambios de estado). Para el demo
+// generamos un set fijo para Mariela y otro para los demás.
+
+export type TipoEventoContrato =
+  | 'CREADO'
+  | 'AJUSTE_APLICADO'
+  | 'PAGO_RECIBIDO'
+  | 'PAGO_VENCIDO'
+  | 'RECLAMO_CREADO'
+  | 'COMUNICACION_ENVIADA'
+  | 'GARANTE_RENOVADO'
+  | 'INTENCION_RENOVACION';
+
+export interface EventoContrato {
+  id: string;
+  contratoId: string;
+  tipo: TipoEventoContrato;
+  titulo: string;
+  detalle: string | null;
+  fecha: string; // ISO
+  autor: string;
+}
+
+export const eventosContratoMock: EventoContrato[] = [
+  {
+    id: 'ev_c1_1',
+    contratoId: 'cnt_001',
+    tipo: 'CREADO',
+    titulo: 'Contrato firmado',
+    detalle: 'Inicio 01/09/2025 · 36 meses · ICL',
+    fecha: '2025-08-28T10:30:00-03:00',
+    autor: 'Roberto Tapia',
+  },
+  {
+    id: 'ev_c1_2',
+    contratoId: 'cnt_001',
+    tipo: 'PAGO_RECIBIDO',
+    titulo: 'Primer pago',
+    detalle: '$405.000 · transferencia',
+    fecha: '2025-09-08T09:15:00-03:00',
+    autor: 'Sistema',
+  },
+  {
+    id: 'ev_c1_3',
+    contratoId: 'cnt_001',
+    tipo: 'AJUSTE_APLICADO',
+    titulo: 'Ajuste ICL aplicado',
+    detalle: '$405.000 → $432.000 · +6,7%',
+    fecha: '2025-11-01T08:00:00-03:00',
+    autor: 'Sistema',
+  },
+  {
+    id: 'ev_c1_4',
+    contratoId: 'cnt_001',
+    tipo: 'AJUSTE_APLICADO',
+    titulo: 'Ajuste ICL aplicado',
+    detalle: '$432.000 → $480.000 · +11,1%',
+    fecha: '2026-02-01T08:00:00-03:00',
+    autor: 'Sistema',
+  },
+  {
+    id: 'ev_c1_5',
+    contratoId: 'cnt_001',
+    tipo: 'RECLAMO_CREADO',
+    titulo: 'Reclamo de plomería',
+    detalle: 'Mariela reportó pérdida de canilla',
+    fecha: '2026-05-09T14:32:00-03:00',
+    autor: 'Mariela Sosa',
+  },
+  {
+    id: 'ev_c1_6',
+    contratoId: 'cnt_001',
+    tipo: 'PAGO_VENCIDO',
+    titulo: 'Pago vencido',
+    detalle: 'Período 2026-05 sin pagar al día 10',
+    fecha: '2026-05-11T00:01:00-03:00',
+    autor: 'Sistema',
+  },
+];
+
+// Comunicaciones (WhatsApp / Email / Llamadas) con el inquilino. Log de
+// gestión que el PM ve para saber qué se le dijo.
+
+export type CanalComunicacion = 'WHATSAPP' | 'EMAIL' | 'LLAMADA';
+export type DireccionComunicacion = 'SALIENTE' | 'ENTRANTE';
+
+export interface Comunicacion {
+  id: string;
+  contratoId: string;
+  canal: CanalComunicacion;
+  direccion: DireccionComunicacion;
+  asunto: string;
+  preview: string;
+  fecha: string;
+  autor: string;
+  leida: boolean;
+}
+
+export const comunicacionesMock: Comunicacion[] = [
+  {
+    id: 'com_1',
+    contratoId: 'cnt_001',
+    canal: 'WHATSAPP',
+    direccion: 'SALIENTE',
+    asunto: 'Bienvenida',
+    preview: 'Hola Mariela! Te confirmo que el contrato quedó firmado. Cualquier duda, escribime.',
+    fecha: '2025-08-28T11:00:00-03:00',
+    autor: 'Roberto Tapia',
+    leida: true,
+  },
+  {
+    id: 'com_2',
+    contratoId: 'cnt_001',
+    canal: 'EMAIL',
+    direccion: 'SALIENTE',
+    asunto: 'Aviso de ajuste por ICL',
+    preview: 'Te informamos que el ajuste por ICL aplicado al período 2025-11 fue del 6,7%...',
+    fecha: '2025-10-25T15:00:00-03:00',
+    autor: 'Sistema',
+    leida: true,
+  },
+  {
+    id: 'com_3',
+    contratoId: 'cnt_001',
+    canal: 'WHATSAPP',
+    direccion: 'ENTRANTE',
+    asunto: 'Consulta sobre el ajuste',
+    preview: '¿Por qué subió ese %? ¿Puedo ver el cálculo?',
+    fecha: '2025-10-26T09:30:00-03:00',
+    autor: 'Mariela Sosa',
+    leida: true,
+  },
+  {
+    id: 'com_4',
+    contratoId: 'cnt_001',
+    canal: 'WHATSAPP',
+    direccion: 'SALIENTE',
+    asunto: 'Explicación ICL',
+    preview: 'Te mando el cálculo: tomamos el índice del BCRA de los últimos 12 meses...',
+    fecha: '2025-10-26T10:15:00-03:00',
+    autor: 'Luciana Vidal',
+    leida: true,
+  },
+  {
+    id: 'com_5',
+    contratoId: 'cnt_001',
+    canal: 'WHATSAPP',
+    direccion: 'ENTRANTE',
+    asunto: 'Reclamo plomería',
+    preview: 'Hola! Tengo una pérdida en la canilla del baño desde anoche.',
+    fecha: '2026-05-09T14:33:00-03:00',
+    autor: 'Mariela Sosa',
+    leida: true,
+  },
+  {
+    id: 'com_6',
+    contratoId: 'cnt_001',
+    canal: 'WHATSAPP',
+    direccion: 'SALIENTE',
+    asunto: 'Recordatorio vencimiento',
+    preview: 'Hola Mariela! Te recuerdo que el pago de mayo vencía el 5/05. ¿Pudiste hacerlo?',
+    fecha: '2026-05-08T10:00:00-03:00',
+    autor: 'Roberto Tapia',
+    leida: false,
+  },
+];
+
+// Plantillas de mensaje que el PM puede enviar al inquilino. Acelera la
+// gestión y mantiene consistencia de tono.
+
+export interface PlantillaMensaje {
+  id: string;
+  titulo: string;
+  asunto: string;
+  cuerpo: string;
+  canal: CanalComunicacion;
+}
+
+export const plantillasMensajeMock: PlantillaMensaje[] = [
+  {
+    id: 'tpl_recordatorio',
+    titulo: 'Recordatorio de pago',
+    asunto: 'Recordatorio: vencimiento próximo',
+    cuerpo:
+      'Hola {{nombre}}! Te recordamos que el pago del período actual vence el día 5. Si tenés alguna duda o necesitás ayuda, contestá este mensaje.',
+    canal: 'WHATSAPP',
+  },
+  {
+    id: 'tpl_ajuste',
+    titulo: 'Aviso de ajuste',
+    asunto: 'Tu próximo ajuste de alquiler',
+    cuerpo:
+      'Hola {{nombre}}! Te informamos que el próximo ajuste por ICL será del {{porcentaje}}%. El nuevo monto será de ${{nuevoMonto}} a partir del mes que viene.',
+    canal: 'EMAIL',
+  },
+  {
+    id: 'tpl_reclamo',
+    titulo: 'Seguimiento de reclamo',
+    asunto: 'Sobre tu reclamo',
+    cuerpo:
+      'Hola {{nombre}}! Sobre el reclamo que abriste, ya coordinamos con el proveedor. Te confirmo: {{detalle}}.',
+    canal: 'WHATSAPP',
+  },
+  {
+    id: 'tpl_renovacion',
+    titulo: 'Renovación de contrato',
+    asunto: 'Tu contrato está por vencer',
+    cuerpo:
+      'Hola {{nombre}}! Tu contrato vence el {{fechaFin}}. Queremos saber si tenés intención de renovar para coordinar con el propietario. ¿Hablamos?',
+    canal: 'WHATSAPP',
+  },
+  {
+    id: 'tpl_inspeccion',
+    titulo: 'Coordinar inspección',
+    asunto: 'Coordinemos una visita',
+    cuerpo:
+      'Hola {{nombre}}! Necesitamos coordinar una inspección rápida en {{direccion}}. ¿Qué día y horario te queda cómodo esta semana?',
+    canal: 'WHATSAPP',
+  },
+];
+
+// Inventario inicial cargado por el inquilino. En backend real vive en una
+// tabla Inventario relacionada con Contrato. La inmobiliaria lo revisa y
+// firma para que tenga valor probatorio al devolver el depósito.
+
+export type EstadoItemInventario = 'BUENO' | 'REGULAR' | 'MALO' | 'FALTANTE';
+
+export interface ItemInventarioAdmin {
+  id: string;
+  ambiente: string;
+  descripcion: string;
+  estado: EstadoItemInventario;
+  observaciones: string | null;
+  conFoto: boolean;
+  createdAt: string;
+}
+
+export interface InventarioAdmin {
+  contratoId: string;
+  items: ItemInventarioAdmin[];
+  firmadoInmobiliaria: boolean;
+  firmadoAt: string | null;
+  cargadoAt: string | null;
+}
+
+// Mock: Mariela ya cargó algunos items, todavía sin firmar
+export const inventariosMock: InventarioAdmin[] = [
+  {
+    contratoId: 'cnt_001',
+    cargadoAt: '2025-09-05T10:00:00-03:00',
+    firmadoInmobiliaria: false,
+    firmadoAt: null,
+    items: [
+      {
+        id: 'inv_1',
+        ambiente: 'Living',
+        descripcion: 'Piso de madera flotante',
+        estado: 'BUENO',
+        observaciones: 'Sin marcas visibles',
+        conFoto: true,
+        createdAt: '2025-09-05T10:00:00-03:00',
+      },
+      {
+        id: 'inv_2',
+        ambiente: 'Living',
+        descripcion: 'Pared lado norte',
+        estado: 'REGULAR',
+        observaciones: 'Pequeña marca de cuadro previo',
+        conFoto: true,
+        createdAt: '2025-09-05T10:05:00-03:00',
+      },
+      {
+        id: 'inv_3',
+        ambiente: 'Cocina',
+        descripcion: 'Mesada de granito',
+        estado: 'BUENO',
+        observaciones: null,
+        conFoto: true,
+        createdAt: '2025-09-05T10:12:00-03:00',
+      },
+      {
+        id: 'inv_4',
+        ambiente: 'Cocina',
+        descripcion: 'Anafe Whirlpool',
+        estado: 'BUENO',
+        observaciones: 'Funciona, sin manchas',
+        conFoto: false,
+        createdAt: '2025-09-05T10:15:00-03:00',
+      },
+      {
+        id: 'inv_5',
+        ambiente: 'Baño',
+        descripcion: 'Inodoro',
+        estado: 'REGULAR',
+        observaciones: 'Tapa con rayón leve',
+        conFoto: true,
+        createdAt: '2025-09-05T10:20:00-03:00',
+      },
+      {
+        id: 'inv_6',
+        ambiente: 'Baño',
+        descripcion: 'Espejo del botiquín',
+        estado: 'MALO',
+        observaciones: 'Tiene una grieta en la esquina inferior derecha',
+        conFoto: true,
+        createdAt: '2025-09-05T10:22:00-03:00',
+      },
+      {
+        id: 'inv_7',
+        ambiente: 'Dormitorio',
+        descripcion: 'Placard tres puertas',
+        estado: 'BUENO',
+        observaciones: null,
+        conFoto: true,
+        createdAt: '2025-09-05T10:28:00-03:00',
+      },
+      {
+        id: 'inv_8',
+        ambiente: 'Balcón',
+        descripcion: 'Persiana del living',
+        estado: 'FALTANTE',
+        observaciones: 'No funciona el accionamiento eléctrico',
+        conFoto: true,
+        createdAt: '2025-09-05T10:35:00-03:00',
+      },
+    ],
+  },
+];
+
+// Co-inquilinos por contrato. Mariela invitó a su pareja.
+
+export type PermisoCoInquilinoAdmin = 'VER' | 'PAGAR' | 'COMPLETO';
+
+export interface CoInquilinoAdmin {
+  id: string;
+  contratoId: string;
+  nombre: string;
+  email: string;
+  telefono: string | null;
+  relacion: string;
+  permiso: PermisoCoInquilinoAdmin;
+  estado: 'PENDIENTE' | 'ACEPTADO';
+  invitadoAt: string;
+  aceptadoAt: string | null;
+}
+
+export const coInquilinosMock: CoInquilinoAdmin[] = [
+  {
+    id: 'co_1',
+    contratoId: 'cnt_001',
+    nombre: 'Federico Ramos',
+    email: 'fede.ramos@gmail.com',
+    telefono: '+54 9 11 6789 4421',
+    relacion: 'Pareja',
+    permiso: 'PAGAR',
+    estado: 'ACEPTADO',
+    invitadoAt: '2025-09-12T18:00:00-03:00',
+    aceptadoAt: '2025-09-13T09:30:00-03:00',
+  },
+];
+
 // Intenciones de renovación reportadas por inquilinos. En el inquilino real
 // estas las dispara el flow /contrato/renovacion. En el lado inmobiliaria
 // las usamos para ordenar el dashboard de renovaciones por urgencia.

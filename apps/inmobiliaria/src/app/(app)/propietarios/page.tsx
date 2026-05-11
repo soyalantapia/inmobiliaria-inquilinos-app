@@ -8,12 +8,14 @@ import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card, CardContent } from '@llave/ui/card';
 import { Input } from '@llave/ui/input';
+import { SumarPropietarioDialog } from '@/components/sumar-propietario-dialog';
 import { Topbar } from '@/components/topbar';
 import { propietariosMock } from '@/lib/mock-data';
 import { formatMonto } from '@/lib/format';
 
 export default function PropietariosPage() {
   const [q, setQ] = useState('');
+  const [abrirSumar, setAbrirSumar] = useState(false);
 
   const filtrados = useMemo(() => {
     const term = q.trim().toLowerCase();
@@ -72,7 +74,7 @@ export default function PropietariosPage() {
               className="pl-9"
             />
           </div>
-          <Button>
+          <Button onClick={() => setAbrirSumar(true)}>
             <Plus className="h-4 w-4" />
             Sumar propietario
           </Button>
@@ -90,75 +92,84 @@ export default function PropietariosPage() {
           </Card>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {filtrados.map((p, i) => (
-              <Card
-                key={p.id}
-                className="animate-fade-in transition-shadow hover:shadow-md"
-                style={{ animationDelay: `${i * 40}ms`, animationFillMode: 'backwards' }}
-              >
-                <CardContent className="space-y-4 p-5">
-                  <div className="flex items-start gap-3">
-                    <Avatar>
-                      <AvatarFallback className="bg-primary/10 text-primary">
-                        {p.nombre[0]}
-                        {p.apellido[0]}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold truncate">
-                        {p.nombre} {p.apellido}
-                      </p>
-                      <p className="truncate text-xs text-muted-foreground">CUIT {p.cuit}</p>
-                    </div>
-                    <Badge variant="secondary">
-                      {p.propiedadesIds.length} {p.propiedadesIds.length === 1 ? 'unidad' : 'unidades'}
-                    </Badge>
-                  </div>
+            {filtrados.map((p, i) => {
+              const tel = p.telefono.replace(/[^\d]/g, '');
+              return (
+                <Card
+                  key={p.id}
+                  className="animate-fade-in transition-shadow hover:shadow-md"
+                  style={{ animationDelay: `${i * 40}ms`, animationFillMode: 'backwards' }}
+                >
+                  <CardContent className="space-y-4 p-5">
+                    <Link href={`/propietarios/${p.id}`} className="block space-y-3 -m-1 rounded-md p-1 transition-colors hover:bg-muted/20">
+                      <div className="flex items-start gap-3">
+                        <Avatar>
+                          <AvatarFallback className="bg-primary/10 text-primary">
+                            {p.nombre[0]}
+                            {p.apellido[0]}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold truncate">
+                            {p.nombre} {p.apellido}
+                          </p>
+                          <p className="truncate text-xs text-muted-foreground">CUIT {p.cuit}</p>
+                        </div>
+                        <Badge variant="secondary">
+                          {p.propiedadesIds.length} {p.propiedadesIds.length === 1 ? 'unidad' : 'unidades'}
+                        </Badge>
+                      </div>
 
-                  <div className="space-y-1.5 text-xs text-muted-foreground">
-                    <div className="flex items-center gap-2 truncate">
-                      <Mail className="h-3.5 w-3.5 shrink-0" />
-                      <span className="truncate">{p.email}</span>
-                    </div>
-                    <div className="flex items-center gap-2 truncate">
-                      <Phone className="h-3.5 w-3.5 shrink-0" />
-                      <span>{p.telefono}</span>
-                    </div>
-                  </div>
+                      <div className="space-y-1.5 text-xs text-muted-foreground">
+                        <div className="flex items-center gap-2 truncate">
+                          <Mail className="h-3.5 w-3.5 shrink-0" />
+                          <span className="truncate">{p.email}</span>
+                        </div>
+                        <div className="flex items-center gap-2 truncate">
+                          <Phone className="h-3.5 w-3.5 shrink-0" />
+                          <span>{p.telefono}</span>
+                        </div>
+                      </div>
 
-                  <div className="rounded-md border bg-muted/50 p-3 text-sm">
-                    <p className="text-xs text-muted-foreground">A rendir este mes</p>
-                    <p className="text-lg font-semibold">{formatMonto(p.totalRecibirMes)}</p>
-                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                      Comisión {p.comisionPct}% · Bruto {formatMonto(p.totalCobradoMes)}
-                    </p>
-                  </div>
+                      <div className="rounded-md border bg-muted/50 p-3 text-sm">
+                        <p className="text-xs text-muted-foreground">A rendir este mes</p>
+                        <p className="text-lg font-semibold">{formatMonto(p.totalRecibirMes)}</p>
+                        <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                          Comisión {p.comisionPct}% · Bruto {formatMonto(p.totalCobradoMes)}
+                        </p>
+                      </div>
+                    </Link>
 
-                  {!p.cbuAlias && (
-                    <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-900/10 dark:text-amber-200">
-                      <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                      Falta CBU para transferir
+                    {!p.cbuAlias && (
+                      <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-900/10 dark:text-amber-200">
+                        <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                        Falta CBU para transferir
+                      </div>
+                    )}
+
+                    <div className="flex flex-wrap items-center gap-2 pt-2">
+                      <Button size="sm" variant="outline" asChild>
+                        <Link href={`/contratos?propietario=${p.id}`}>
+                          <FileText className="h-3.5 w-3.5" />
+                          Contratos
+                        </Link>
+                      </Button>
+                      <Button size="sm" variant="ghost" asChild>
+                        <a href={`https://wa.me/${tel}`} target="_blank" rel="noreferrer">
+                          <MessageCircle className="h-3.5 w-3.5" />
+                          WhatsApp
+                        </a>
+                      </Button>
                     </div>
-                  )}
-
-                  <div className="flex flex-wrap items-center gap-2 pt-2">
-                    <Button size="sm" variant="outline" asChild>
-                      <Link href={`/contratos?propietario=${p.id}`}>
-                        <FileText className="h-3.5 w-3.5" />
-                        Contratos
-                      </Link>
-                    </Button>
-                    <Button size="sm" variant="ghost">
-                      <MessageCircle className="h-3.5 w-3.5" />
-                      WhatsApp
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         )}
       </main>
+
+      <SumarPropietarioDialog open={abrirSumar} onOpenChange={setAbrirSumar} />
     </>
   );
 }
