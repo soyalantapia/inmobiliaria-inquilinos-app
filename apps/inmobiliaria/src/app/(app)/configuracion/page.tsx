@@ -47,9 +47,9 @@ export default function ConfiguracionPage() {
   return (
     <>
       <Topbar titulo="Configuración" />
-      <main className="flex-1 space-y-6 p-6">
+      <main className="flex-1 space-y-6 p-4 md:p-6">
         <Tabs defaultValue="empresa">
-          <TabsList>
+          <TabsList className="h-auto flex-wrap justify-start gap-1 p-1">
             <TabsTrigger value="empresa">Empresa</TabsTrigger>
             <TabsTrigger value="equipo">Equipo</TabsTrigger>
             <TabsTrigger value="plan">Plan</TabsTrigger>

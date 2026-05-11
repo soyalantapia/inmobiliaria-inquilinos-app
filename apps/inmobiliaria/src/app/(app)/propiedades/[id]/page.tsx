@@ -137,7 +137,7 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
 
         {/* Tabs */}
         <Tabs defaultValue="resumen">
-          <TabsList>
+          <TabsList className="h-auto flex-wrap justify-start gap-1 p-1">
             <TabsTrigger value="resumen">Resumen</TabsTrigger>
             <TabsTrigger value="inquilino">Inquilino</TabsTrigger>
             <TabsTrigger value="propietarios">Propietarios</TabsTrigger>

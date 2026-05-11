@@ -34,7 +34,7 @@ export default function PropietariosPage() {
     <>
       <Topbar titulo="Propietarios" />
       <main className="flex-1 space-y-6 p-4 md:p-6">
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-3">
           <Card>
             <CardContent className="p-5">
               <p className="text-xs uppercase tracking-wide text-muted-foreground">Propietarios</p>

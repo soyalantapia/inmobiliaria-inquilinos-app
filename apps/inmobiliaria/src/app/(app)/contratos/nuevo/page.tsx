@@ -78,7 +78,7 @@ export default function CargarContratoPage() {
   return (
     <>
       <Topbar titulo="Cargar contrato" />
-      <main className="flex-1 space-y-6 p-6">
+      <main className="flex-1 space-y-6 p-4 md:p-6">
         <div>
           <Link
             href="/contratos"
@@ -123,14 +123,14 @@ export default function CargarContratoPage() {
 
 function Steps({ actual }: { actual: Paso }) {
   return (
-    <ol className="flex items-center gap-3">
+    <ol className="flex flex-wrap items-center gap-x-3 gap-y-2">
       {pasos.map((p, i) => {
         const completado = p.id < actual;
         const activo = p.id === actual;
         return (
-          <li key={p.id} className="flex items-center gap-3">
+          <li key={p.id} className="flex items-center gap-2 sm:gap-3">
             <div
-              className={`grid h-7 w-7 place-items-center rounded-full text-xs font-semibold ${
+              className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-semibold ${
                 completado
                   ? 'bg-primary text-primary-foreground'
                   : activo
@@ -141,11 +141,11 @@ function Steps({ actual }: { actual: Paso }) {
               {completado ? <CheckCircle2 className="h-4 w-4" /> : p.id}
             </div>
             <span
-              className={`text-sm ${activo ? 'font-medium' : completado ? 'text-foreground' : 'text-muted-foreground'}`}
+              className={`text-xs sm:text-sm ${activo ? 'font-medium' : completado ? 'text-foreground' : 'text-muted-foreground'}`}
             >
               {p.label}
             </span>
-            {i < pasos.length - 1 && <span className="h-px w-8 bg-border" />}
+            {i < pasos.length - 1 && <span className="hidden h-px w-8 bg-border sm:block" />}
           </li>
         );
       })}

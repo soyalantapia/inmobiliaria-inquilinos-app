@@ -145,7 +145,7 @@ export default function PropiedadesPage() {
     <>
       <Topbar titulo="Propiedades" />
       <main className="flex-1 space-y-6 p-4 md:p-6">
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <Kpi
             label="Propiedades"
             value={counters.total.toString()}

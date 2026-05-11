@@ -71,7 +71,7 @@ export default function DetalleReclamoPage() {
     return (
       <>
         <Topbar titulo="Reclamo" />
-        <main className="flex-1 p-6">
+        <main className="flex-1 p-4 md:p-6">
           <Card>
             <CardContent className="space-y-2 p-8 text-center">
               <p className="font-medium">Reclamo no encontrado</p>

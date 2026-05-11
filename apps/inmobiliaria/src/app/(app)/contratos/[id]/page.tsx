@@ -16,9 +16,9 @@ export default function DetalleContratoPage({ params }: { params: { id: string }
   return (
     <>
       <Topbar titulo="Contrato" />
-      <main className="flex-1 space-y-6 p-6">
+      <main className="flex-1 space-y-6 p-4 md:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
+          <div className="min-w-0">
             <Link
               href="/contratos"
               className="mb-2 inline-flex items-center text-xs text-muted-foreground hover:text-foreground"
@@ -26,23 +26,24 @@ export default function DetalleContratoPage({ params }: { params: { id: string }
               <ArrowLeft className="h-3 w-3" />
               Volver a contratos
             </Link>
-            <h2 className="text-xl font-semibold">{c.inquilino}</h2>
-            <p className="text-sm text-muted-foreground">{c.direccion}</p>
+            <h2 className="truncate text-xl font-semibold">{c.inquilino}</h2>
+            <p className="truncate text-sm text-muted-foreground">{c.direccion}</p>
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline">
+          <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+            <Button variant="outline" className="flex-1 sm:flex-none">
               <MessageSquare className="h-4 w-4" />
-              Mensaje al inquilino
+              <span className="hidden sm:inline">Mensaje al inquilino</span>
+              <span className="sm:hidden">Mensaje</span>
             </Button>
-            <Button>
+            <Button className="flex-1 sm:flex-none">
               <Pencil className="h-4 w-4" />
-              Editar contrato
+              Editar
             </Button>
           </div>
         </div>
 
         <Tabs defaultValue="resumen">
-          <TabsList>
+          <TabsList className="flex w-full flex-wrap justify-start gap-1 sm:w-auto sm:gap-0">
             <TabsTrigger value="resumen">Resumen</TabsTrigger>
             <TabsTrigger value="pagos">Pagos</TabsTrigger>
             <TabsTrigger value="documentos">Documentos</TabsTrigger>

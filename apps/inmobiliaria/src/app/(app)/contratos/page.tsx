@@ -46,20 +46,20 @@ export default function ContratosPage() {
   return (
     <>
       <Topbar titulo="Contratos" />
-      <main className="flex-1 space-y-4 p-6">
+      <main className="flex-1 space-y-4 p-4 md:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative">
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+            <div className="relative w-full sm:w-72">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                className="w-72 pl-9"
+                className="w-full pl-9"
                 placeholder="Buscar por inquilino o dirección"
               />
             </div>
             <Select value={filtro} onValueChange={(v) => setFiltro(v as typeof filtro)}>
-              <SelectTrigger className="w-44">
+              <SelectTrigger className="w-full sm:w-44">
                 <Filter className="mr-2 h-4 w-4" />
                 <SelectValue />
               </SelectTrigger>
@@ -72,7 +72,7 @@ export default function ContratosPage() {
               </SelectContent>
             </Select>
           </div>
-          <Button asChild>
+          <Button asChild className="w-full sm:w-auto">
             <Link href="/contratos/nuevo">
               <Plus className="h-4 w-4" />
               Cargar contrato
