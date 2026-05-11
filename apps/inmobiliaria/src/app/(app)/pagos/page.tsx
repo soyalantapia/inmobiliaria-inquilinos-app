@@ -132,34 +132,6 @@ export default function PagosPage() {
           </Card>
         </div>
 
-        {/* 3 stats chicas: cantidad de propiedades por estado */}
-        <div className="grid gap-4 sm:grid-cols-3">
-          <MiniStat
-            label="En mora"
-            valor={counters.VENCIDO}
-            sufijo="propiedad"
-            sufijoPlural="propiedades"
-            icon={AlertTriangle}
-            tone="red"
-          />
-          <MiniStat
-            label="Pendientes"
-            valor={counters.PENDIENTE}
-            sufijo="propiedad"
-            sufijoPlural="propiedades"
-            icon={Clock}
-            tone="amber"
-          />
-          <MiniStat
-            label="Pagados"
-            valor={counters.PAGADO}
-            sufijo="propiedad"
-            sufijoPlural="propiedades"
-            icon={CheckCircle2}
-            tone="emerald"
-          />
-        </div>
-
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">Liquidaciones — mayo 2026</h2>
           <div className="flex gap-2">
@@ -286,40 +258,3 @@ export default function PagosPage() {
   );
 }
 
-function MiniStat({
-  label,
-  valor,
-  sufijo,
-  sufijoPlural,
-  icon: Icon,
-  tone,
-}: {
-  label: string;
-  valor: number;
-  sufijo: string;
-  sufijoPlural: string;
-  icon: React.ComponentType<{ className?: string }>;
-  tone: 'red' | 'amber' | 'emerald';
-}) {
-  const toneClass = {
-    red: 'text-red-600 dark:text-red-400',
-    amber: 'text-amber-600 dark:text-amber-400',
-    emerald: 'text-emerald-600 dark:text-emerald-400',
-  }[tone];
-  return (
-    <Card>
-      <CardContent className="flex items-center gap-3 p-5">
-        <div className={cn('grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-muted', toneClass)}>
-          <Icon className="h-5 w-5" />
-        </div>
-        <div className="min-w-0">
-          <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
-          <p className={cn('text-2xl font-semibold tabular-nums', toneClass)}>{valor}</p>
-          <p className="text-xs text-muted-foreground">
-            {valor === 1 ? sufijo : sufijoPlural}
-          </p>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
