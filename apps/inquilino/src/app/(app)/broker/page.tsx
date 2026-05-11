@@ -11,11 +11,59 @@ import { chatInicialMock, contratoMock, respuestasMock } from '@/lib/mock-data';
 import { guardarChat, leerChat, limpiarChat } from '@/lib/chat-storage';
 import type { MensajeChat } from '@/lib/types';
 
-const sugerencias = [
+const sugerenciasIniciales = [
   '¿Cuándo es el próximo aumento?',
   '¿Puedo tener mascotas?',
   '¿Cuánto pagué de depósito?',
 ];
+
+// Sugerencias de follow-up según el último tema. Si la última pregunta del
+// usuario matcheó algún patrón, mostramos preguntas relacionadas que el
+// inquilino probablemente quiera hacer después.
+const sugerenciasContextuales: Array<{ disparador: RegExp; siguientes: string[] }> = [
+  {
+    disparador: /aumento|ajust|icl/i,
+    siguientes: [
+      '¿Cuánto va a ser el próximo aumento estimado?',
+      '¿Puedo renegociar el contrato antes del ajuste?',
+      '¿Qué pasa si no estoy de acuerdo con el índice?',
+    ],
+  },
+  {
+    disparador: /mascot|perro|gato/i,
+    siguientes: [
+      '¿Hay límite de mascotas?',
+      '¿Qué pasa si la mascota daña algo?',
+      '¿Necesito avisar a la inmobiliaria?',
+    ],
+  },
+  {
+    disparador: /depós|deposit|garantía|garante/i,
+    siguientes: [
+      '¿Cuándo me devuelven el depósito?',
+      '¿Puedo cambiar de garante?',
+      '¿Cómo funciona la garantía digital?',
+    ],
+  },
+  {
+    disparador: /vencimiento|finaliza|termina|renovaci/i,
+    siguientes: [
+      '¿Cuánto antes tengo que avisar si me voy?',
+      '¿Puedo renovar el contrato?',
+      '¿Qué pasa si me quedo después del vencimiento?',
+    ],
+  },
+];
+
+function obtenerSugerenciasParaUltimo(mensajes: MensajeChat[]): string[] {
+  // Si solo hay el mensaje de seed (assistant inicial) → mostrar iniciales
+  if (mensajes.length <= 1) return sugerenciasIniciales;
+  // Buscamos el último mensaje del usuario
+  const ultimoUser = [...mensajes].reverse().find((m) => m.rol === 'USER');
+  if (!ultimoUser) return sugerenciasIniciales;
+  const match = sugerenciasContextuales.find((s) => s.disparador.test(ultimoUser.contenido));
+  return match?.siguientes ?? sugerenciasIniciales;
+}
 
 export default function ContratoPage() {
   const [mensajes, setMensajes] = useState<MensajeChat[]>(chatInicialMock);
@@ -87,15 +135,25 @@ export default function ContratoPage() {
     <>
       <header className="border-b p-5">
         <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Sparkles className="h-3.5 w-3.5 text-primary" />
-              Broker · tu asistente del contrato
+          <div className="flex items-start gap-3 min-w-0">
+            <div className="relative grid h-11 w-11 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30">
+              <Sparkles className="h-5 w-5" />
+              <span className="absolute -bottom-0.5 -right-0.5 flex h-3 w-3">
+                <span className="absolute h-full w-full animate-ping rounded-full bg-emerald-500/60" />
+                <span className="relative h-3 w-3 rounded-full border-2 border-background bg-emerald-500" />
+              </span>
             </div>
-            <h1 className="mt-1 text-lg font-semibold">Preguntale lo que quieras</h1>
-            <p className="text-xs text-muted-foreground">
-              Responde solo sobre tu contrato — {contratoMock.direccion}
-            </p>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h1 className="text-lg font-semibold">Broker</h1>
+                <span className="text-[10px] font-medium uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                  Online
+                </span>
+              </div>
+              <p className="truncate text-xs text-muted-foreground">
+                Asistente IA del contrato — {contratoMock.direccion}
+              </p>
+            </div>
           </div>
           {mensajes.length > 1 && (
             <button
@@ -127,9 +185,9 @@ export default function ContratoPage() {
       </main>
 
       <div className="space-y-3 border-t bg-background p-4">
-        {mensajes.length <= 1 && (
+        {!pensando && (
           <div className="flex gap-2 overflow-x-auto pb-1">
-            {sugerencias.map((s) => (
+            {obtenerSugerenciasParaUltimo(mensajes).map((s) => (
               <button
                 key={s}
                 onClick={() => enviar(s)}

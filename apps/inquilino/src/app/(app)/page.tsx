@@ -3,14 +3,21 @@ import {
   AlertTriangle,
   ArrowDownLeft,
   ArrowUpRight,
+  Building2,
   CalendarClock,
   ChevronRight,
+  FileText,
+  Home,
   Info,
+  MapPin,
+  MessageCircle,
+  Phone,
   ReceiptText,
   ShieldCheck,
   Sparkles,
   TrendingUp,
   Wallet,
+  Wrench,
 } from 'lucide-react';
 import { Card } from '@llave/ui/card';
 import { InstallPrompt } from '@/components/install-prompt';
@@ -59,6 +66,60 @@ export default function PagosPage() {
             </div>
           </Card>
         )}
+
+        {/* Card del hogar + acciones rápidas */}
+        <Card className="relative overflow-hidden p-0 animate-fade-in">
+          {/* Foto/gradient del hogar */}
+          <div className="relative h-32 overflow-hidden bg-gradient-to-br from-indigo-400 via-violet-500 to-purple-600">
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(255,255,255,0.25),_transparent_60%)]" />
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_bottom_left,_rgba(0,0,0,0.15),_transparent_50%)]" />
+            <div className="absolute inset-0 flex items-end justify-between gap-3 p-4 text-white">
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 text-xs opacity-90">
+                  <MapPin className="h-3 w-3" />
+                  Tu hogar
+                </div>
+                <p className="truncate text-lg font-semibold leading-tight">
+                  {contratoMock.direccion}
+                </p>
+                <p className="truncate text-xs opacity-90">{contratoMock.ciudad}</p>
+              </div>
+              <Home className="h-12 w-12 opacity-20" strokeWidth={1.5} />
+            </div>
+          </div>
+          <div className="grid grid-cols-3 divide-x">
+            <ShortcutLink href="/broker" icon={Sparkles} label="Broker" />
+            <ShortcutLink href="/contrato" icon={FileText} label="Contrato" />
+            <ShortcutLink href="/reclamos/nuevo" icon={Wrench} label="Reclamo" />
+          </div>
+        </Card>
+
+        {/* Card de la inmobiliaria con contacto */}
+        <Card className="flex items-center gap-3 p-4 animate-fade-in">
+          <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+            <Building2 className="h-5 w-5" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-muted-foreground">Administra tu contrato</p>
+            <p className="truncate font-semibold">{contratoMock.inmobiliaria}</p>
+          </div>
+          <a
+            href="https://wa.me/541145321100"
+            target="_blank"
+            rel="noreferrer"
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-emerald-500 text-white shadow-md shadow-emerald-500/30 transition-colors hover:bg-emerald-600"
+            aria-label="WhatsApp a la inmobiliaria"
+          >
+            <MessageCircle className="h-4 w-4" />
+          </a>
+          <a
+            href="tel:+541145321100"
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground transition-colors hover:bg-accent"
+            aria-label="Llamar a la inmobiliaria"
+          >
+            <Phone className="h-4 w-4" />
+          </a>
+        </Card>
 
         <section className="space-y-3">
           <div className="flex items-center justify-between">
@@ -230,4 +291,24 @@ function MovimientoRow({ mov }: { mov: Movimiento }) {
 function fechaCorta(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
+}
+
+function ShortcutLink({
+  href,
+  icon: Icon,
+  label,
+}: {
+  href: string;
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="flex flex-col items-center gap-1.5 py-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+    >
+      <Icon className="h-5 w-5 text-primary" />
+      {label}
+    </Link>
+  );
 }
