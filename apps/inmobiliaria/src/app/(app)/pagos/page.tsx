@@ -100,28 +100,64 @@ export default function PagosPage() {
     <>
       <Topbar titulo="Pagos del mes" />
       <main className="flex-1 space-y-6 p-4 md:p-6">
-        <div className="grid gap-4 md:grid-cols-3">
-          <Card>
-            <CardContent className="p-5">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Cobrado</p>
-              <p className="mt-1 text-2xl font-semibold text-emerald-600">{formatMonto(totalCobrado)}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-5">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Pendiente</p>
-              <p className="mt-1 text-2xl font-semibold text-amber-600">{formatMonto(totalPendiente)}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-5">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">En mora</p>
-              <p className="mt-1 text-2xl font-semibold text-red-600">{counters.VENCIDO}</p>
-              <p className="text-xs text-muted-foreground">
-                contrato{counters.VENCIDO === 1 ? '' : 's'}
+        {/* 2 stats GRANDES: montos cobrado y pendiente */}
+        <div className="grid gap-4 md:grid-cols-2">
+          <Card className="border-emerald-200 bg-emerald-50/60 dark:border-emerald-900/40 dark:bg-emerald-900/10">
+            <CardContent className="p-6">
+              <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300">
+                <CheckCircle2 className="h-4 w-4" />
+                <p className="text-xs font-semibold uppercase tracking-wide">Cobrado</p>
+              </div>
+              <p className="mt-2 text-3xl font-bold text-emerald-700 tabular-nums dark:text-emerald-300 md:text-4xl">
+                {formatMonto(totalCobrado)}
+              </p>
+              <p className="text-xs text-emerald-700/70 dark:text-emerald-300/70">
+                {counters.PAGADO} propiedad{counters.PAGADO === 1 ? '' : 'es'} al día este mes
               </p>
             </CardContent>
           </Card>
+          <Card className="border-amber-200 bg-amber-50/60 dark:border-amber-900/40 dark:bg-amber-900/10">
+            <CardContent className="p-6">
+              <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300">
+                <Clock className="h-4 w-4" />
+                <p className="text-xs font-semibold uppercase tracking-wide">Pendiente</p>
+              </div>
+              <p className="mt-2 text-3xl font-bold text-amber-700 tabular-nums dark:text-amber-300 md:text-4xl">
+                {formatMonto(totalPendiente)}
+              </p>
+              <p className="text-xs text-amber-700/70 dark:text-amber-300/70">
+                Suma de alquileres no cobrados todavía
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* 3 stats chicas: cantidad de propiedades por estado */}
+        <div className="grid gap-4 sm:grid-cols-3">
+          <MiniStat
+            label="En mora"
+            valor={counters.VENCIDO}
+            sufijo="propiedad"
+            sufijoPlural="propiedades"
+            icon={AlertTriangle}
+            tone="red"
+          />
+          <MiniStat
+            label="Pendientes"
+            valor={counters.PENDIENTE}
+            sufijo="propiedad"
+            sufijoPlural="propiedades"
+            icon={Clock}
+            tone="amber"
+          />
+          <MiniStat
+            label="Pagados"
+            valor={counters.PAGADO}
+            sufijo="propiedad"
+            sufijoPlural="propiedades"
+            icon={CheckCircle2}
+            tone="emerald"
+          />
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -247,5 +283,43 @@ export default function PagosPage() {
         </Card>
       </main>
     </>
+  );
+}
+
+function MiniStat({
+  label,
+  valor,
+  sufijo,
+  sufijoPlural,
+  icon: Icon,
+  tone,
+}: {
+  label: string;
+  valor: number;
+  sufijo: string;
+  sufijoPlural: string;
+  icon: React.ComponentType<{ className?: string }>;
+  tone: 'red' | 'amber' | 'emerald';
+}) {
+  const toneClass = {
+    red: 'text-red-600 dark:text-red-400',
+    amber: 'text-amber-600 dark:text-amber-400',
+    emerald: 'text-emerald-600 dark:text-emerald-400',
+  }[tone];
+  return (
+    <Card>
+      <CardContent className="flex items-center gap-3 p-5">
+        <div className={cn('grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-muted', toneClass)}>
+          <Icon className="h-5 w-5" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
+          <p className={cn('text-2xl font-semibold tabular-nums', toneClass)}>{valor}</p>
+          <p className="text-xs text-muted-foreground">
+            {valor === 1 ? sufijo : sufijoPlural}
+          </p>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
