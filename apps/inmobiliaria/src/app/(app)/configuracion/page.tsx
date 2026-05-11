@@ -7,14 +7,10 @@ import {
   CreditCard,
   Download,
   FileText,
-  IdCard,
-  Mail,
   MapPin,
-  Phone,
   Plus,
-  Settings as SettingsIcon,
-  ShieldCheck,
   Trash2,
+  Users,
 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@llave/ui/avatar';
 import { Badge } from '@llave/ui/badge';
@@ -185,16 +181,12 @@ export default function ConfiguracionPage() {
               Empresa
             </TabsTrigger>
             <TabsTrigger value="equipo">
-              <ShieldCheck className="mr-1.5 h-3.5 w-3.5" />
+              <Users className="mr-1.5 h-3.5 w-3.5" />
               Equipo y permisos
             </TabsTrigger>
             <TabsTrigger value="plan">
               <CreditCard className="mr-1.5 h-3.5 w-3.5" />
               Plan y facturas
-            </TabsTrigger>
-            <TabsTrigger value="integraciones">
-              <SettingsIcon className="mr-1.5 h-3.5 w-3.5" />
-              Integraciones
             </TabsTrigger>
           </TabsList>
 
@@ -496,8 +488,8 @@ export default function ConfiguracionPage() {
                     </Button>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    El cobro se debita el 1° de cada mes. Podés cambiar a transferencia o cripto desde
-                    integraciones.
+                    El cobro se debita el 1° de cada mes. Si necesitás cambiar a transferencia,
+                    escribinos.
                   </p>
                 </CardContent>
               </Card>
@@ -585,24 +577,6 @@ export default function ConfiguracionPage() {
             </Card>
           </TabsContent>
 
-          {/* INTEGRACIONES */}
-          <TabsContent value="integraciones" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Integraciones</CardTitle>
-                <CardDescription>
-                  Conectá tu cuenta de Mercado Pago, WhatsApp, contabilidad y más.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <Integracion nombre="Mercado Pago" estado="Conectado" descripcion="Cobros del mes" />
-                <Integracion nombre="WhatsApp Business" estado="Conectado" descripcion="Avisos y OTP" />
-                <Integracion nombre="Nosis · Verificación" estado="Conectado" descripcion="Screening" />
-                <Integracion nombre="ARCA · Factura electrónica" estado="Pendiente" descripcion="Falta token" />
-                <Integracion nombre="Tango / Bejerman" estado="No conectado" descripcion="Contabilidad" />
-              </CardContent>
-            </Card>
-          </TabsContent>
         </Tabs>
       </main>
 
@@ -676,29 +650,3 @@ function Field({
   );
 }
 
-function Integracion({
-  nombre,
-  estado,
-  descripcion,
-}: {
-  nombre: string;
-  estado: 'Conectado' | 'Pendiente' | 'No conectado';
-  descripcion: string;
-}) {
-  const variant =
-    estado === 'Conectado' ? 'success' : estado === 'Pendiente' ? 'warning' : 'secondary';
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-4">
-      <div>
-        <p className="font-medium">{nombre}</p>
-        <p className="text-xs text-muted-foreground">{descripcion}</p>
-      </div>
-      <div className="flex items-center gap-3">
-        <Badge variant={variant}>{estado}</Badge>
-        <Button variant="ghost" size="sm">
-          {estado === 'Conectado' ? 'Configurar' : 'Conectar'}
-        </Button>
-      </div>
-    </div>
-  );
-}
