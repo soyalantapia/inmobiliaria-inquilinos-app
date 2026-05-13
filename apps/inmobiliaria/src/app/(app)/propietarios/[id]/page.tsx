@@ -13,6 +13,8 @@ import {
   MessageCircle,
   Pencil,
   Phone,
+  PlugZap,
+  Receipt,
   Wallet,
 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@llave/ui/avatar';
@@ -212,6 +214,146 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
                     </Link>
                   );
                 })
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* AFIP + cuenta de cobranza directa */}
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0">
+              <div>
+                <CardTitle className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                  <Receipt className="h-4 w-4" />
+                  Facturación AFIP
+                </CardTitle>
+              </div>
+              {propietario.afip?.conectado ? (
+                <Badge variant="success" className="gap-1">
+                  <CheckCircle2 className="h-3 w-3" />
+                  Conectado
+                </Badge>
+              ) : (
+                <Badge variant="outline">Desconectado</Badge>
+              )}
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              {propietario.afip?.conectado ? (
+                <>
+                  <p className="text-xs text-muted-foreground">
+                    Cuando aprobás un pago, el sistema emite automáticamente factura/recibo a
+                    nombre del propietario y se lo envía al inquilino por WhatsApp y mail.
+                  </p>
+                  <div className="grid grid-cols-2 gap-3 rounded-md border bg-muted/30 p-3 text-xs">
+                    <div>
+                      <p className="text-muted-foreground">Condición fiscal</p>
+                      <p className="font-medium">
+                        {propietario.afip.condicionFiscal === 'MONOTRIBUTO'
+                          ? 'Monotributo'
+                          : propietario.afip.condicionFiscal === 'RESPONSABLE_INSCRIPTO'
+                            ? 'Resp. Inscripto'
+                            : 'Exento'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Tipo de comprobante</p>
+                      <p className="font-medium">
+                        {propietario.afip.tipoComprobante?.replace('_', ' ')}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Punto de venta</p>
+                      <p className="font-mono font-medium">{propietario.afip.puntoVenta}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Conectado desde</p>
+                      <p className="font-medium">
+                        {propietario.afip.conectadoDesde &&
+                          formatFecha(propietario.afip.conectadoDesde)}
+                      </p>
+                    </div>
+                  </div>
+                  <Button variant="outline" size="sm" className="w-full">
+                    Reconectar credenciales AFIP
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-900/10 dark:text-amber-200">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                    <div>
+                      <p className="font-medium">AFIP no conectada</p>
+                      <p>
+                        Si conectás la AFIP, al aprobar el pago se emite la factura automáticamente
+                        y se manda al inquilino por WhatsApp/mail.
+                      </p>
+                    </div>
+                  </div>
+                  <Button size="sm" className="w-full">
+                    <PlugZap className="h-3.5 w-3.5" />
+                    Conectar AFIP
+                  </Button>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0">
+              <CardTitle className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                <Landmark className="h-4 w-4" />
+                Cuenta de cobranza directa
+              </CardTitle>
+              {propietario.cuentaCobranza ? (
+                <Badge variant="secondary">Configurada</Badge>
+              ) : (
+                <Badge variant="outline">No configurada</Badge>
+              )}
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              {propietario.cuentaCobranza ? (
+                <>
+                  <p className="text-xs text-muted-foreground">
+                    Si un contrato está en modo <strong>cobranza directa</strong>, el inquilino
+                    deposita acá y el propietario confirma recepción. La inmobiliaria no toca la
+                    plata, solo audita.
+                  </p>
+                  <div className="space-y-2 rounded-md border bg-muted/30 p-3 text-xs">
+                    <div>
+                      <p className="text-muted-foreground">Banco</p>
+                      <p className="font-medium">{propietario.cuentaCobranza.banco}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Titular</p>
+                      <p className="font-medium">{propietario.cuentaCobranza.titular}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">CBU</p>
+                      <p className="font-mono font-medium">{propietario.cuentaCobranza.cbu}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Alias</p>
+                      <p className="font-mono font-medium">{propietario.cuentaCobranza.alias}</p>
+                    </div>
+                  </div>
+                  <Button variant="outline" size="sm" className="w-full">
+                    <Pencil className="h-3.5 w-3.5" />
+                    Editar cuenta
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs text-muted-foreground">
+                    Por defecto los alquileres se cobran a la <strong>cuenta recaudadora de la
+                    inmobiliaria</strong>. Si querés que el inquilino deposite directo al
+                    propietario, cargá su cuenta.
+                  </p>
+                  <Button variant="outline" size="sm" className="w-full">
+                    <Landmark className="h-3.5 w-3.5" />
+                    Cargar cuenta del propietario
+                  </Button>
+                </>
               )}
             </CardContent>
           </Card>

@@ -22,7 +22,10 @@ export type TipoEventoAuditoria =
   | 'RECLAMO_CLASIFICADO'
   | 'PROFESIONAL_ASIGNADO'
   | 'EQUIPO_INVITADO'
-  | 'EQUIPO_REMOVIDO';
+  | 'EQUIPO_REMOVIDO'
+  | 'FACTURA_AFIP_EMITIDA'
+  | 'PROPIETARIO_CONFIRMO_RECIBO'
+  | 'MODO_COBRANZA_CAMBIADO';
 
 export interface EventoAuditoria {
   id: string;
@@ -149,4 +152,7 @@ export const tipoEventoLabel: Record<TipoEventoAuditoria, string> = {
   PROFESIONAL_ASIGNADO: 'Profesional asignado',
   EQUIPO_INVITADO: 'Miembro de equipo invitado',
   EQUIPO_REMOVIDO: 'Miembro de equipo removido',
+  FACTURA_AFIP_EMITIDA: 'Factura AFIP emitida',
+  PROPIETARIO_CONFIRMO_RECIBO: 'Propietario confirmó recibo del pago',
+  MODO_COBRANZA_CAMBIADO: 'Modo de cobranza cambiado',
 };

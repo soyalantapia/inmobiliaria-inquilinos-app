@@ -24,7 +24,13 @@ import {
 } from '@llave/ui/dialog';
 import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
-import { type PagoInformado, pagosInformadosMock } from '@/lib/mock-data';
+import {
+  contratosMock,
+  pagosInformadosMock,
+  propiedadesMock,
+  propietariosMock,
+  type PagoInformado,
+} from '@/lib/mock-data';
 import { formatFecha, formatMonto, formatPeriodo } from '@/lib/format';
 import {
   conciliarPago,
@@ -82,11 +88,59 @@ export function PagosPorValidar() {
       entidadDescripcion: `Pago de ${pago.inquilino} · ${formatPeriodo(pago.periodo)}`,
       detalle: `${formatMonto(pago.monto)} · ${pago.metodo.toLowerCase()}`,
     });
+
+    // Resolver propietario del contrato (por modoCobranza directo o por
+    // propietariosIds de la propiedad asociada).
+    const contrato = contratosMock.find((c) => c.id === pago.contratoId);
+    const propiedad = propiedadesMock.find((p) => p.contratoActualId === pago.contratoId);
+    const propietarioId =
+      contrato?.cobraDirectoPropietarioId ?? propiedad?.propietariosIds[0] ?? null;
+    const propietario = propietarioId
+      ? propietariosMock.find((p) => p.id === propietarioId)
+      : null;
+
+    // Si el contrato es modo DIRECTO, registrar la confirmación del propietario
+    // (en el flujo real el propietario confirma desde su lado; acá lo simulamos
+    // automáticamente cuando el admin aprueba).
+    if (contrato?.modoCobranza === 'PROPIETARIO_DIRECTO' && propietario) {
+      registrarEvento({
+        tipo: 'PROPIETARIO_CONFIRMO_RECIBO',
+        autor: `${propietario.nombre} ${propietario.apellido}`,
+        rolAutor: 'PROPIETARIO',
+        entidadId: pago.id,
+        entidadDescripcion: `Pago de ${pago.inquilino} · ${formatPeriodo(pago.periodo)}`,
+        detalle: 'Confirmó que recibió el depósito en su cuenta',
+      });
+    }
+
+    // Si el propietario tiene AFIP conectada, emitir factura automática
+    if (propietario?.afip?.conectado) {
+      const tipoComp = (propietario.afip.tipoComprobante ?? 'FACTURA_C').replace('_', ' ');
+      const numero = `${propietario.afip.puntoVenta ?? '0001'}-${String(
+        Math.floor(Math.random() * 99999),
+      ).padStart(8, '0')}`;
+      registrarEvento({
+        tipo: 'FACTURA_AFIP_EMITIDA',
+        autor: 'Sistema (AFIP)',
+        rolAutor: 'SISTEMA',
+        entidadId: pago.id,
+        entidadDescripcion: `${tipoComp} N° ${numero} · ${propietario.nombre} ${propietario.apellido}`,
+        detalle: `Enviada por WhatsApp y mail a ${pago.inquilino} · ${formatMonto(pago.monto)}`,
+      });
+      toast({
+        title: '✅ Pago conciliado + factura AFIP emitida',
+        description: `${tipoComp} N° ${numero} enviada a ${pago.inquilino} por WhatsApp y mail.`,
+      });
+    } else {
+      toast({
+        title: `Pago de ${pago.inquilino} confirmado`,
+        description: propietario
+          ? `${formatMonto(pago.monto)} · sin facturación AFIP (propietario sin conectar)`
+          : `${formatMonto(pago.monto)} · ${formatPeriodo(pago.periodo)}`,
+      });
+    }
+
     refrescar();
-    toast({
-      title: `Pago de ${pago.inquilino} confirmado`,
-      description: `${formatMonto(pago.monto)} · ${formatPeriodo(pago.periodo)}`,
-    });
   };
 
   const handleRechazar = () => {
@@ -310,6 +364,16 @@ function PagoRow({
   onRechazar: () => void;
   onVerComprobante: () => void;
 }) {
+  const contrato = contratosMock.find((c) => c.id === pago.contratoId);
+  const propiedad = propiedadesMock.find((p) => p.contratoActualId === pago.contratoId);
+  const propietarioId =
+    contrato?.cobraDirectoPropietarioId ?? propiedad?.propietariosIds[0] ?? null;
+  const propietario = propietarioId
+    ? propietariosMock.find((p) => p.id === propietarioId)
+    : null;
+  const modoDirecto = contrato?.modoCobranza === 'PROPIETARIO_DIRECTO';
+  const afipOn = !!propietario?.afip?.conectado;
+
   return (
     <Card className="space-y-3 bg-background p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -320,6 +384,18 @@ function PagoRow({
           <div className="min-w-0">
             <p className="truncate text-sm font-medium">{pago.inquilino}</p>
             <p className="truncate text-xs text-muted-foreground">{pago.direccion}</p>
+            <div className="mt-1 flex flex-wrap gap-1">
+              {modoDirecto && (
+                <Badge variant="outline" className="text-[10px]">
+                  Cobranza directa → {propietario?.nombre}
+                </Badge>
+              )}
+              {afipOn && (
+                <Badge variant="secondary" className="text-[10px]">
+                  AFIP conectada
+                </Badge>
+              )}
+            </div>
           </div>
         </div>
         <p className="shrink-0 text-base font-semibold tabular-nums">
@@ -354,7 +430,7 @@ function PagoRow({
         </Button>
         <Button size="sm" onClick={onConciliar} className="ml-auto">
           <CheckCircle2 className="h-3.5 w-3.5" />
-          Confirmar pago
+          {afipOn ? 'Confirmar + facturar AFIP' : 'Confirmar pago'}
         </Button>
       </div>
     </Card>

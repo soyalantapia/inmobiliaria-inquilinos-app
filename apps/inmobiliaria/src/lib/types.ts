@@ -95,6 +95,27 @@ export interface Reclamo {
   profesionalAsignadoCategoria?: string | null;
 }
 
+/** Datos AFIP del propietario para emitir factura/recibo automático al conciliar el alquiler. */
+export interface AfipConfig {
+  conectado: boolean;
+  condicionFiscal?: 'MONOTRIBUTO' | 'RESPONSABLE_INSCRIPTO' | 'EXENTO';
+  puntoVenta?: string; // ej. "0003"
+  tipoComprobante?: 'FACTURA_C' | 'FACTURA_A' | 'FACTURA_B' | 'RECIBO_C';
+  conectadoDesde?: string; // fecha ISO
+}
+
+/**
+ * Cuenta bancaria directa del propietario para que el inquilino le deposite SIN
+ * pasar por la cuenta recaudadora de la inmobiliaria (modo PROPIETARIO_DIRECTO).
+ */
+export interface CuentaCobranzaDirecta {
+  banco: string;
+  titular: string;
+  cbu: string;
+  alias: string;
+  cuit: string;
+}
+
 export interface Propietario {
   id: string;
   nombre: string;
@@ -110,6 +131,10 @@ export interface Propietario {
   propiedadesIds: string[]; // FK a Propiedad.id (no a Contrato)
   totalCobradoMes: number;
   totalRecibirMes: number;
+  /** Configuración AFIP — si está conectada, al conciliar un pago se emite factura/recibo automático. */
+  afip?: AfipConfig;
+  /** Cuenta directa del propietario (modo PROPIETARIO_DIRECTO). */
+  cuentaCobranza?: CuentaCobranzaDirecta;
 }
 
 export interface ContratoListado {
@@ -146,6 +171,17 @@ export interface ContratoListado {
   pendienteAprobacion?: boolean;
   aprobadoPor?: string | null;
   aprobadoAt?: string | null;
+  /**
+   * Modo de cobranza:
+   * - INMOBILIARIA: el inquilino paga a la cuenta recaudadora de la inmo, y la
+   *   inmo después rinde al propietario.
+   * - PROPIETARIO_DIRECTO: el inquilino transfiere directo a la cuenta del
+   *   propietario, sube comprobante, y el propietario confirma recepción.
+   *   El sistema sólo se entera del estado, no toca la plata.
+   */
+  modoCobranza?: 'INMOBILIARIA' | 'PROPIETARIO_DIRECTO';
+  /** Cuando modoCobranza === 'PROPIETARIO_DIRECTO', a quién va dirigido el pago (FK a Propietario.id). */
+  cobraDirectoPropietarioId?: string | null;
 }
 
 export interface CampoExtraido {

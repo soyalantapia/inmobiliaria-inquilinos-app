@@ -6,11 +6,13 @@ import { notFound, useParams } from 'next/navigation';
 import {
   AlertCircle,
   ArrowLeft,
+  Building2,
   CheckCircle2,
   Clock,
   Download,
   FileText,
   Flag,
+  Landmark,
   Mail,
   MessageCircle,
   MessageSquare,
@@ -19,6 +21,7 @@ import {
   Send,
   ShieldCheck,
   TrendingUp,
+  User,
   Wrench,
   XCircle,
   type LucideIcon,
@@ -40,6 +43,7 @@ import {
   contratosMock,
   eventosContratoMock,
   generarLiquidaciones,
+  propietariosMock,
 } from '@/lib/mock-data';
 import { formatFecha, formatMonto } from '@/lib/format';
 
@@ -114,6 +118,8 @@ export default function DetalleContratoPage() {
             inquilino={c.inquilino}
           />
         )}
+
+        <ModoCobranzaCard contrato={c} />
 
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
@@ -617,6 +623,147 @@ function AprobacionContratoCard({
             Aprobar contrato
           </Button>
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ============================================================
+// MODO DE COBRANZA
+// ============================================================
+// Permite elegir si el alquiler se cobra a la cuenta recaudadora de la
+// inmobiliaria (default) o si el inquilino deposita directo al propietario
+// y la inmo sólo audita. Se puede cambiar en cualquier momento — queda
+// registrado en auditoría.
+function ModoCobranzaCard({ contrato }: { contrato: (typeof contratosMock)[number] }) {
+  const inicial: 'INMOBILIARIA' | 'PROPIETARIO_DIRECTO' =
+    contrato.modoCobranza ?? 'INMOBILIARIA';
+  const [modo, setModo] = useState<'INMOBILIARIA' | 'PROPIETARIO_DIRECTO'>(inicial);
+
+  const propietarioDirecto = contrato.cobraDirectoPropietarioId
+    ? propietariosMock.find((p) => p.id === contrato.cobraDirectoPropietarioId)
+    : null;
+
+  function cambiarA(nuevo: 'INMOBILIARIA' | 'PROPIETARIO_DIRECTO') {
+    if (nuevo === modo) return;
+    if (nuevo === 'PROPIETARIO_DIRECTO' && !propietarioDirecto?.cuentaCobranza) {
+      toast({
+        title: 'Cargá la cuenta del propietario primero',
+        description: 'Para cobrar directo necesitás el CBU del propietario.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setModo(nuevo);
+    registrarEvento({
+      tipo: 'MODO_COBRANZA_CAMBIADO',
+      autor: 'Roberto Tapia',
+      rolAutor: 'ADMIN',
+      entidadId: contrato.id,
+      entidadDescripcion: `Contrato · ${contrato.inquilino}`,
+      detalle: `Cambiado a ${nuevo === 'INMOBILIARIA' ? 'cobranza por inmobiliaria' : 'cobranza directa al propietario'}`,
+    });
+    toast({
+      title: 'Modo de cobranza actualizado',
+      description:
+        nuevo === 'INMOBILIARIA'
+          ? 'El inquilino transfiere a la cuenta recaudadora.'
+          : `El inquilino transfiere directo a ${propietarioDirecto?.nombre} ${propietarioDirecto?.apellido}.`,
+    });
+  }
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0">
+        <CardTitle className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+          <Landmark className="h-4 w-4" />
+          Modo de cobranza
+        </CardTitle>
+        <Badge variant={modo === 'INMOBILIARIA' ? 'secondary' : 'success'}>
+          {modo === 'INMOBILIARIA' ? 'Por inmobiliaria' : 'Directa al propietario'}
+        </Badge>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-3 md:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => cambiarA('INMOBILIARIA')}
+            className={cn(
+              'flex flex-col gap-2 rounded-lg border p-3 text-left transition-all',
+              modo === 'INMOBILIARIA'
+                ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                : 'hover:bg-muted/40',
+            )}
+          >
+            <div className="flex items-center gap-2">
+              <Building2 className="h-4 w-4 text-primary" />
+              <span className="text-sm font-semibold">Cuenta recaudadora</span>
+              {modo === 'INMOBILIARIA' && (
+                <CheckCircle2 className="ml-auto h-4 w-4 text-primary" />
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              El inquilino transfiere a la cuenta de la inmobiliaria (tipo Banco
+              Roela / Consorcio Abierto). La inmo después rinde al propietario.
+            </p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => cambiarA('PROPIETARIO_DIRECTO')}
+            className={cn(
+              'flex flex-col gap-2 rounded-lg border p-3 text-left transition-all',
+              modo === 'PROPIETARIO_DIRECTO'
+                ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                : 'hover:bg-muted/40',
+            )}
+          >
+            <div className="flex items-center gap-2">
+              <User className="h-4 w-4 text-primary" />
+              <span className="text-sm font-semibold">Directo al propietario</span>
+              {modo === 'PROPIETARIO_DIRECTO' && (
+                <CheckCircle2 className="ml-auto h-4 w-4 text-primary" />
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              El inquilino deposita directo al CBU del propietario. Sube el
+              comprobante y el propietario confirma recepción.
+            </p>
+          </button>
+        </div>
+
+        {modo === 'PROPIETARIO_DIRECTO' && propietarioDirecto?.cuentaCobranza && (
+          <div className="space-y-2 rounded-md border bg-muted/30 p-3 text-xs">
+            <p className="text-muted-foreground">
+              Cuenta de destino — <strong className="text-foreground">{propietarioDirecto.nombre}{' '}
+              {propietarioDirecto.apellido}</strong>
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <p className="text-muted-foreground">Banco</p>
+                <p className="font-medium">{propietarioDirecto.cuentaCobranza.banco}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Titular</p>
+                <p className="font-medium">{propietarioDirecto.cuentaCobranza.titular}</p>
+              </div>
+              <div className="col-span-2">
+                <p className="text-muted-foreground">CBU</p>
+                <p className="font-mono font-medium">{propietarioDirecto.cuentaCobranza.cbu}</p>
+              </div>
+              <div className="col-span-2">
+                <p className="text-muted-foreground">Alias</p>
+                <p className="font-mono font-medium">{propietarioDirecto.cuentaCobranza.alias}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {modo === 'PROPIETARIO_DIRECTO' && !propietarioDirecto?.cuentaCobranza && (
+          <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-900/10 dark:text-amber-200">
+            Falta cargar la cuenta del propietario para poder cobrar en modo directo.
+          </div>
+        )}
       </CardContent>
     </Card>
   );
