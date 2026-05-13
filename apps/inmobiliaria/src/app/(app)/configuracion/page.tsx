@@ -31,7 +31,7 @@ import { Topbar } from '@/components/topbar';
 import { COSTO_PROPIEDAD_MENSUAL, calcularResumenPlan, facturasMock } from '@/lib/plan';
 import { formatFecha, formatMonto, formatPeriodo } from '@/lib/format';
 
-type Rol = 'ADMIN' | 'OPERADOR' | 'LECTURA';
+type Rol = 'ADMIN' | 'OPERADOR' | 'CARGA' | 'LECTURA';
 
 interface Miembro {
   id: string;
@@ -70,9 +70,16 @@ const equipoInicial: Miembro[] = [
     rol: 'LECTURA',
     ultimoAcceso: '2026-05-08T11:20:00-03:00',
   },
+  {
+    id: '5',
+    nombre: 'Camila Acosta (admin. asistente)',
+    email: 'camila.acosta@inmosol.com.ar',
+    rol: 'CARGA',
+    ultimoAcceso: '2026-05-11T16:30:00-03:00',
+  },
 ];
 
-const ROLES: Record<Rol, { label: string; descripcion: string; variant: 'default' | 'secondary' | 'success' }> = {
+const ROLES: Record<Rol, { label: string; descripcion: string; variant: 'default' | 'secondary' | 'success' | 'warning' }> = {
   ADMIN: {
     label: 'Admin',
     descripcion: 'Gestiona inmobiliaria, equipo, plan y facturación. Puede borrar.',
@@ -80,8 +87,13 @@ const ROLES: Record<Rol, { label: string; descripcion: string; variant: 'default
   },
   OPERADOR: {
     label: 'Operador',
-    descripcion: 'Gestiona contratos, reclamos y screening. No accede a plan ni equipo.',
+    descripcion: 'Gestiona contratos, pagos, reclamos y screening. No accede a plan ni equipo.',
     variant: 'success',
+  },
+  CARGA: {
+    label: 'Carga limitada',
+    descripcion: 'Sólo carga contratos y propiedades. No ve pagos, reclamos ni screening.',
+    variant: 'warning',
   },
   LECTURA: {
     label: 'Solo lectura',
@@ -91,12 +103,15 @@ const ROLES: Record<Rol, { label: string; descripcion: string; variant: 'default
 };
 
 const PERMISOS = [
-  { key: 'contratos.ver', label: 'Ver contratos', roles: ['ADMIN', 'OPERADOR', 'LECTURA'] as Rol[] },
-  { key: 'contratos.crear', label: 'Crear / editar contratos', roles: ['ADMIN', 'OPERADOR'] as Rol[] },
+  { key: 'contratos.ver', label: 'Ver contratos', roles: ['ADMIN', 'OPERADOR', 'CARGA', 'LECTURA'] as Rol[] },
+  { key: 'contratos.crear', label: 'Crear / editar contratos', roles: ['ADMIN', 'OPERADOR', 'CARGA'] as Rol[] },
   { key: 'pagos.ver', label: 'Ver pagos y rendiciones', roles: ['ADMIN', 'OPERADOR', 'LECTURA'] as Rol[] },
+  { key: 'pagos.conciliar', label: 'Conciliar pagos', roles: ['ADMIN', 'OPERADOR'] as Rol[] },
   { key: 'reclamos.gestion', label: 'Gestionar reclamos', roles: ['ADMIN', 'OPERADOR'] as Rol[] },
+  { key: 'caja.cargar', label: 'Cargar gastos de caja', roles: ['ADMIN', 'OPERADOR'] as Rol[] },
   { key: 'screening', label: 'Verificar inquilinos', roles: ['ADMIN', 'OPERADOR'] as Rol[] },
-  { key: 'propiedades.crear', label: 'Cargar / eliminar propiedades', roles: ['ADMIN'] as Rol[] },
+  { key: 'propiedades.crear', label: 'Cargar propiedades', roles: ['ADMIN', 'OPERADOR', 'CARGA'] as Rol[] },
+  { key: 'propiedades.borrar', label: 'Eliminar propiedades', roles: ['ADMIN'] as Rol[] },
   { key: 'equipo', label: 'Gestionar equipo', roles: ['ADMIN'] as Rol[] },
   { key: 'plan', label: 'Gestionar plan y facturación', roles: ['ADMIN'] as Rol[] },
 ] as const;

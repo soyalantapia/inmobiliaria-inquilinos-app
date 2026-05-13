@@ -8,6 +8,7 @@ import { Button } from '@llave/ui/button';
 import { Card, CardContent } from '@llave/ui/card';
 import { cn } from '@llave/ui/cn';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@llave/ui/table';
+import { CargarPagoManualButton } from '@/components/cargar-pago-manual';
 import { PagosPorValidar } from '@/components/pagos-por-validar';
 import { Topbar } from '@/components/topbar';
 import { contactosCobranzaMock, contratosMock } from '@/lib/mock-data';
@@ -214,6 +215,7 @@ export default function PagosPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">Liquidaciones — mayo 2026</h2>
           <div className="flex flex-wrap gap-2">
+            <CargarPagoManualButton />
             <Button variant="outline" size="sm" onClick={() => exportarMorososPdf()}>
               <Download className="h-4 w-4" />
               PDF de morosos
@@ -222,7 +224,7 @@ export default function PagosPage() {
               <Download className="h-4 w-4" />
               PDF cobranzas
             </Button>
-            <Button size="sm">
+            <Button size="sm" variant="ghost">
               <Bell className="h-4 w-4" />
               Recordar a morosos
             </Button>

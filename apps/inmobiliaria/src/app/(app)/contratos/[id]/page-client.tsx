@@ -161,11 +161,36 @@ export default function DetalleContratoPage() {
                 </CardHeader>
                 <CardContent className="space-y-3 text-sm">
                   <Row label="Estado" value={<Badge variant="success">{c.estado}</Badge>} />
+                  <Row
+                    label="Tipo de contrato"
+                    value={
+                      <Badge variant="outline">
+                        {c.tipoContrato === 'SOLO_EXPENSAS'
+                          ? 'Sólo expensas'
+                          : c.tipoContrato === 'ALQUILER'
+                            ? 'Sólo alquiler'
+                            : 'Alquiler + expensas'}
+                      </Badge>
+                    }
+                  />
                   <Row label="Vigencia" value={`${formatFecha(c.fechaInicio)} → ${formatFecha(c.fechaFin)}`} />
-                  <Row label="Monto actual" value={formatMonto(c.monto, c.moneda)} bold />
+                  {c.tipoContrato !== 'SOLO_EXPENSAS' && (
+                    <Row label="Alquiler" value={formatMonto(c.monto, c.moneda)} bold />
+                  )}
+                  {(c.montoExpensas ?? 0) > 0 && (
+                    <Row
+                      label="Expensas"
+                      value={formatMonto(c.montoExpensas!, c.moneda)}
+                      bold={c.tipoContrato === 'SOLO_EXPENSAS'}
+                    />
+                  )}
                   <Row label="Próximo vencimiento" value={formatFecha(c.proximoVencimiento)} />
-                  <Row label="Índice de ajuste" value="ICL — BCRA" />
-                  <Row label="Frecuencia ajuste" value="12 meses" />
+                  {c.tipoContrato !== 'SOLO_EXPENSAS' && (
+                    <>
+                      <Row label="Índice de ajuste" value="ICL — BCRA" />
+                      <Row label="Frecuencia ajuste" value="12 meses" />
+                    </>
+                  )}
                   {c.cbuAlias && (
                     <>
                       <Row

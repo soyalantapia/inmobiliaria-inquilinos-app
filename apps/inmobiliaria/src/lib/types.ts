@@ -1,6 +1,15 @@
 export type Moneda = 'ARS' | 'USD';
 export type EstadoContrato = 'BORRADOR' | 'ACTIVO' | 'FINALIZADO' | 'RESCINDIDO';
 export type EstadoLiquidacion = 'PENDIENTE' | 'PAGADO' | 'PARCIAL' | 'VENCIDO';
+
+/**
+ * Qué administra este contrato:
+ *  - ALQUILER: sólo el canon locativo
+ *  - SOLO_EXPENSAS: gestión de consorcio / complejo sin alquiler (ej. unidades
+ *    propias del dueño, edificios donde sólo administramos expensas)
+ *  - ALQUILER_Y_EXPENSAS: el contrato típico que cobra ambos en un solo recibo
+ */
+export type TipoContrato = 'ALQUILER' | 'SOLO_EXPENSAS' | 'ALQUILER_Y_EXPENSAS';
 export type IndiceAjuste = 'ICL' | 'IPC' | 'CASA_PROPIA' | 'UVA' | 'CAC' | 'RIPTE' | 'FIJO';
 export type Recomendacion = 'APTO' | 'APTO_CON_GARANTIA' | 'NO_APTO';
 export type Confianza = 'alto' | 'medio' | 'bajo';
@@ -122,6 +131,10 @@ export interface ContratoListado {
    */
   cbuAlias?: string | null;
   titularCuenta?: string | null;
+  /** Por defecto ALQUILER_Y_EXPENSAS para retrocompatibilidad. */
+  tipoContrato?: TipoContrato;
+  /** Monto de expensas mensuales (si el contrato lo incluye). */
+  montoExpensas?: number | null;
 }
 
 export interface CampoExtraido {

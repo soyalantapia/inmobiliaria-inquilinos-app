@@ -82,7 +82,29 @@ export const contratosMock: ContratoListado[] = [
     proximoVencimiento: '2026-06-01',
     estadoPagoActual: 'PENDIENTE',
   },
+  // Consorcio "solo expensas": administra el edificio sin alquiler asociado.
+  {
+    id: 'cnt_007',
+    inquilino: 'Consorcio Sucre 1450',
+    direccion: 'Sucre 1450 — Belgrano',
+    monto: 0,
+    moneda: 'ARS',
+    estado: 'ACTIVO',
+    fechaInicio: '2024-01-01',
+    fechaFin: '2027-12-31',
+    proximoVencimiento: '2026-05-10',
+    estadoPagoActual: 'PAGADO',
+    tipoContrato: 'SOLO_EXPENSAS',
+    montoExpensas: 285000,
+  },
 ];
+
+// Etiqueta humana del tipo de contrato.
+export const tipoContratoLabel: Record<'ALQUILER' | 'SOLO_EXPENSAS' | 'ALQUILER_Y_EXPENSAS', string> = {
+  ALQUILER: 'Sólo alquiler',
+  SOLO_EXPENSAS: 'Sólo expensas',
+  ALQUILER_Y_EXPENSAS: 'Alquiler + expensas',
+};
 
 export const contratoExtraidoMock: ContratoExtraido = {
   inquilino: { valor: 'Mariela Sosa', confianza: 'alto' },
