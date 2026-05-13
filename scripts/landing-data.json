@@ -5,15 +5,16 @@
     "version": "v4 · ronda 4 de feedback"
   },
   "hero": {
-    "tagline": "Software operativo para inmobiliarias",
-    "titulo": "Tu inmobiliaria con la operación clara",
-    "subtitulo": "Cobrás alquileres con doble modo (recaudadora o directo al propietario), emitís facturas AFIP automáticamente y le mandás todo al inquilino por WhatsApp. Tu equipo en un panel ordenado, tus inquilinos en una app simple.",
-    "ctaPrimario": { "texto": "Acceder al panel", "href": "../inmobiliaria/" },
-    "ctaSecundario": { "texto": "Ver app del inquilino", "href": "../inquilino/" },
+    "tagline": "Software operativo para alquileres en Argentina",
+    "titulo": "Tu inmueble, tu inquilino, una sola {{plataforma}}",
+    "highlight": "plataforma",
+    "subtitulo": "Cobrás alquileres con doble modo, emitís facturas AFIP automáticamente y le mandás todo al inquilino por WhatsApp. Tu equipo en un panel ordenado, tu inquilino en una app simple. Sin más Excel, sin más WhatsApp roto.",
+    "ctaPropietario": { "texto": "Acceder a la app del Propietario", "href": "../inmobiliaria/" },
+    "ctaInquilino": { "texto": "Acceder a la app del Inquilino", "href": "../inquilino/" },
     "badges": [
       "🇦🇷 100% Argentina",
       "🔐 Auditoría completa",
-      "🤖 AFIP automático",
+      "🤖 Facturación AFIP",
       "📱 PWA inquilino"
     ]
   },

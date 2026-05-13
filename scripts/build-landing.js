@@ -131,18 +131,35 @@ function main() {
   const data = JSON.parse(fs.readFileSync(DATA_PATH, 'utf8'));
   let html = fs.readFileSync(TEMPLATE_PATH, 'utf8');
 
+  // El título puede tener {{palabra}} marcando la palabra con gradiente.
+  // También aceptamos un campo separado `highlight` por compatibilidad.
+  function renderHeroTitulo(titulo, highlight) {
+    if (titulo.includes('{{') && titulo.includes('}}')) {
+      return titulo.replace(/\{\{([^}]+)\}\}/g, (_, palabra) => {
+        return `<span class="grad">${esc(palabra)}</span>`;
+      });
+    }
+    if (highlight && titulo.includes(highlight)) {
+      return esc(titulo).replace(
+        esc(highlight),
+        `<span class="grad">${esc(highlight)}</span>`,
+      );
+    }
+    return esc(titulo);
+  }
+
   // Reemplazos
   const placeholders = {
     META_TITULO: esc(data.meta.titulo),
     META_DESCRIPCION: esc(data.meta.descripcion),
     META_VERSION: esc(data.meta.version),
     HERO_TAGLINE: esc(data.hero.tagline),
-    HERO_TITULO: esc(data.hero.titulo),
+    HERO_TITULO_HTML: renderHeroTitulo(data.hero.titulo, data.hero.highlight),
     HERO_SUBTITULO: esc(data.hero.subtitulo),
-    HERO_CTA_PRIMARIO_TEXTO: esc(data.hero.ctaPrimario.texto),
-    HERO_CTA_PRIMARIO_HREF: esc(data.hero.ctaPrimario.href),
-    HERO_CTA_SECUNDARIO_TEXTO: esc(data.hero.ctaSecundario.texto),
-    HERO_CTA_SECUNDARIO_HREF: esc(data.hero.ctaSecundario.href),
+    CTA_PROPIETARIO_TEXTO: esc(data.hero.ctaPropietario.texto),
+    CTA_PROPIETARIO_HREF: esc(data.hero.ctaPropietario.href),
+    CTA_INQUILINO_TEXTO: esc(data.hero.ctaInquilino.texto),
+    CTA_INQUILINO_HREF: esc(data.hero.ctaInquilino.href),
     HERO_BADGES: renderBadges(data.hero.badges),
     STATS: renderStats(data.stats),
     NAV_LINKS: renderNavLinks(data.secciones),
