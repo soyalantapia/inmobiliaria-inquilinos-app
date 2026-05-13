@@ -13,10 +13,12 @@ const path = require('node:path');
 const SCRIPTS_DIR = __dirname;
 const ROOT = path.resolve(SCRIPTS_DIR, '..');
 const OUT_DIR = path.join(ROOT, 'out');
+// La landing rica va en /presentacion/ — el root del sitio es el picker simple.
+const LANDING_DIR = path.join(OUT_DIR, 'presentacion');
 
 const DATA_PATH = path.join(SCRIPTS_DIR, 'landing-data.json');
 const TEMPLATE_PATH = path.join(SCRIPTS_DIR, 'landing.template.html');
-const OUTPUT_PATH = path.join(OUT_DIR, 'index.html');
+const OUTPUT_PATH = path.join(LANDING_DIR, 'index.html');
 
 // Escape HTML
 function esc(str) {
@@ -158,8 +160,8 @@ function main() {
     console.warn(`⚠ Placeholders sin resolver: ${[...new Set(restantes)].join(', ')}`);
   }
 
-  if (!fs.existsSync(OUT_DIR)) {
-    fs.mkdirSync(OUT_DIR, { recursive: true });
+  if (!fs.existsSync(LANDING_DIR)) {
+    fs.mkdirSync(LANDING_DIR, { recursive: true });
   }
   fs.writeFileSync(OUTPUT_PATH, html, 'utf8');
 

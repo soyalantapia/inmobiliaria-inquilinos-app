@@ -50,10 +50,14 @@ mkdir -p out/inmobiliaria out/inquilino
 cp -R apps/inmobiliaria/out/. out/inmobiliaria/
 cp -R apps/inquilino/out/. out/inquilino/
 
-# Landing en la raíz del sitio: se genera desde landing-data.json + template.
+# Root del sitio: picker simple (3 opciones — presentación, panel inmo, app inquilino).
+# Para editarlo: scripts/picker.html
+cp scripts/picker.html out/index.html
+
+# Landing rica en /presentacion/: se genera desde landing-data.json + template.
 # Para cambiar contenido de la landing, editás scripts/landing-data.json.
 echo ""
-echo "▶ Generando landing desde landing-data.json"
+echo "▶ Generando landing en /presentacion/ desde landing-data.json"
 node scripts/build-landing.js
 
 # .nojekyll para que GH Pages no ignore archivos con _
