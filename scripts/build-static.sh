@@ -50,8 +50,11 @@ mkdir -p out/inmobiliaria out/inquilino
 cp -R apps/inmobiliaria/out/. out/inmobiliaria/
 cp -R apps/inquilino/out/. out/inquilino/
 
-# Landing en la raíz del sitio que enlaza a las dos apps.
-cp scripts/landing.html out/index.html
+# Landing en la raíz del sitio: se genera desde landing-data.json + template.
+# Para cambiar contenido de la landing, editás scripts/landing-data.json.
+echo ""
+echo "▶ Generando landing desde landing-data.json"
+node scripts/build-landing.js
 
 # .nojekyll para que GH Pages no ignore archivos con _
 touch out/.nojekyll
