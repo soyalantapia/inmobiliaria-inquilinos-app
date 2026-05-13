@@ -26,6 +26,7 @@ import { Skeleton } from '@llave/ui/skeleton';
 import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
 import { Topbar } from '@/components/topbar';
+import { GestionReclamo } from '@/components/gestion-reclamo';
 import { ReclamoTimeline } from '@/components/reclamo-timeline';
 import { operadoresMock } from '@/lib/mock-data';
 import {
@@ -257,10 +258,17 @@ export default function DetalleReclamoPage() {
           {/* Columna lateral: acciones */}
           <aside className="space-y-4">
             {!cerrado && (
+              <GestionReclamo
+                reclamo={reclamo}
+                onUpdate={(r) => setReclamo(r)}
+              />
+            )}
+
+            {!cerrado && (
               <Card>
                 <CardContent className="space-y-4 p-5">
                   <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                    Gestión
+                    Operador y estado
                   </h3>
 
                   <div className="space-y-2">

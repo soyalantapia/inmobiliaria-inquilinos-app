@@ -125,6 +125,44 @@ export function cambiarEstado(
   });
 }
 
+export function clasificarReclamo(
+  id: string,
+  clasificacion: 'USO_Y_GOCE' | 'DESPERFECTO',
+  autor: string,
+): Reclamo | null {
+  return mutate(id, (r) => {
+    const conEvento = appendEvento(r, {
+      tipo: 'CLASIFICADO',
+      autor,
+      contenido: clasificacion === 'USO_Y_GOCE' ? 'Uso y goce' : 'Desperfecto',
+      fecha: new Date().toISOString(),
+    });
+    return { ...conEvento, clasificacion };
+  });
+}
+
+export function asignarProfesional(
+  id: string,
+  prof: { id: string; nombre: string; telefono: string; categoria: string },
+  autor: string,
+): Reclamo | null {
+  return mutate(id, (r) => {
+    const conEvento = appendEvento(r, {
+      tipo: 'PROFESIONAL_ASIGNADO',
+      autor,
+      contenido: `${prof.nombre} (${prof.categoria})`,
+      fecha: new Date().toISOString(),
+    });
+    return {
+      ...conEvento,
+      profesionalAsignadoId: prof.id,
+      profesionalAsignadoNombre: prof.nombre,
+      profesionalAsignadoTelefono: prof.telefono,
+      profesionalAsignadoCategoria: prof.categoria,
+    };
+  });
+}
+
 export function agregarMensajeInmo(
   id: string,
   autor: string,

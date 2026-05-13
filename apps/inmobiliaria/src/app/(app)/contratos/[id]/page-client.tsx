@@ -166,6 +166,17 @@ export default function DetalleContratoPage() {
                   <Row label="Próximo vencimiento" value={formatFecha(c.proximoVencimiento)} />
                   <Row label="Índice de ajuste" value="ICL — BCRA" />
                   <Row label="Frecuencia ajuste" value="12 meses" />
+                  {c.cbuAlias && (
+                    <>
+                      <Row
+                        label="CBU/Alias específico"
+                        value={<span className="font-mono">{c.cbuAlias}</span>}
+                      />
+                      {c.titularCuenta && (
+                        <Row label="Titular de la cuenta" value={c.titularCuenta} />
+                      )}
+                    </>
+                  )}
                 </CardContent>
               </Card>
 

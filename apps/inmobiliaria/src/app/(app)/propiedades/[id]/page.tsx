@@ -30,8 +30,14 @@ import { Topbar } from '@/components/topbar';
 import {
   type CoInquilinoAdmin,
   coInquilinosMock,
+  contratosMock,
   propiedadesMock,
 } from '@/lib/mock-data';
+import {
+  participacionesDe,
+  validarParticipaciones,
+  montoQueLeToca,
+} from '@/lib/participaciones';
 import {
   enriquecerPropiedad,
   estadoPropiedadConfig,
@@ -353,8 +359,57 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                   </Button>
                 </CardContent>
               </Card>
-            ) : (
-              <div className="grid gap-4 md:grid-cols-2">
+            ) : (() => {
+              // Calculamos participaciones y monto que toca a cada uno
+              const parts = participacionesDe(propiedad);
+              const validacion = validarParticipaciones(parts);
+              const contratoActual = contratosMock.find((c) => c.id === propiedad.contratoActualId);
+              const montoMensual = contratoActual?.monto ?? 0;
+              return (
+                <>
+                  {/* Resumen de participaciones */}
+                  <Card>
+                    <CardContent className="space-y-3 p-5">
+                      <div className="flex items-center justify-between gap-3">
+                        <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                          Reparto de la propiedad
+                        </h3>
+                        {validacion.balanceado ? (
+                          <Badge variant="success">Suma 100%</Badge>
+                        ) : (
+                          <Badge variant="warning">Suma {validacion.suma}% — falta ajustar</Badge>
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        {parts.map((p) => {
+                          const dueño = propietarios.find((o) => o.id === p.propietarioId);
+                          return (
+                            <div key={p.propietarioId} className="space-y-1">
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="font-medium">
+                                  {dueño ? `${dueño.nombre} ${dueño.apellido}` : p.propietarioId}
+                                </span>
+                                <span className="font-semibold tabular-nums">{p.porcentaje}%</span>
+                              </div>
+                              <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                                <div
+                                  className="h-full bg-primary"
+                                  style={{ width: `${Math.min(100, p.porcentaje)}%` }}
+                                />
+                              </div>
+                              {montoMensual > 0 && (
+                                <p className="text-[11px] text-muted-foreground">
+                                  Le tocan {formatMonto(montoQueLeToca(propiedad, p.propietarioId, montoMensual), contratoActual?.moneda)} mensuales (bruto)
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <div className="grid gap-4 md:grid-cols-2">
                 {propietarios.map((o) => (
                   <Card key={o.id}>
                     <CardContent className="space-y-3 p-5">
@@ -403,7 +458,9 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                   </Card>
                 ))}
               </div>
-            )}
+                </>
+              );
+            })()}
           </TabsContent>
 
           {/* CONTRATO */}

@@ -7,9 +7,7 @@ import {
   Droplets,
   Flame,
   KeyRound,
-  MessageCircle,
   Paintbrush,
-  Phone,
   ShieldCheck,
   Snowflake,
   Star,
@@ -72,14 +70,16 @@ export default function ProfesionalesPage() {
       </header>
 
       <main className="flex-1 space-y-5 px-5 pb-6 md:px-8">
-        <Card className="space-y-2 border-primary/20 bg-primary/5 p-4">
+        <Card className="space-y-2 border-amber-300 bg-amber-50/60 p-4 dark:border-amber-900/40 dark:bg-amber-950/30">
           <div className="flex items-start gap-3">
-            <ShieldCheck className="mt-0.5 h-4 w-4 text-primary" />
+            <ShieldCheck className="mt-0.5 h-4 w-4 text-amber-700 dark:text-amber-300" />
             <div className="text-xs">
-              <p className="font-medium">Profesionales recomendados por tu inmobiliaria</p>
-              <p className="text-muted-foreground">
-                Trabajadores con buen historial. Los contactás directo, sin pasar por la
-                inmobiliaria.
+              <p className="font-medium">Sólo de referencia — no los contactes vos</p>
+              <p className="mt-1 text-muted-foreground">
+                Esta es la red curada por tu inmobiliaria. Si tenés un problema en la
+                propiedad, <Link href="/reclamos/nuevo" className="font-medium text-primary underline-offset-2 hover:underline">creá un reclamo</Link> y la inmobiliaria decide
+                si manda al profesional y quién paga. El plomero/electricista no atiende
+                consultas directas de inquilinos.
               </p>
             </div>
           </div>
@@ -126,7 +126,6 @@ export default function ProfesionalesPage() {
           <div className="grid gap-3 md:grid-cols-2">
             {lista.map((p) => {
               const Icon = iconoCategoria[p.categoria];
-              const tel = p.telefono.replace(/[^\d]/g, '');
               return (
                 <Card key={p.id} className="space-y-3 p-4">
                   <div className="flex items-start gap-3">
@@ -170,25 +169,6 @@ export default function ProfesionalesPage() {
                       {p.notas}
                     </p>
                   )}
-
-                  <div className="flex flex-wrap gap-2">
-                    <Button size="sm" variant="outline" asChild>
-                      <a
-                        href={`https://wa.me/${tel}?text=${encodeURIComponent(`Hola ${p.nombre.split(' ')[0]}! Te contacto de Llave, ¿podés ayudarme con un trabajo?`)}`}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        <MessageCircle className="h-3.5 w-3.5" />
-                        WhatsApp
-                      </a>
-                    </Button>
-                    <Button size="sm" variant="ghost" asChild>
-                      <a href={`tel:${tel}`}>
-                        <Phone className="h-3.5 w-3.5" />
-                        Llamar
-                      </a>
-                    </Button>
-                  </div>
                 </Card>
               );
             })}

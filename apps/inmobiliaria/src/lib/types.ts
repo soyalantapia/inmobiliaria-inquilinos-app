@@ -8,6 +8,14 @@ export type Confianza = 'alto' | 'medio' | 'bajo';
 export type TipoPropiedad = 'DEPARTAMENTO' | 'CASA' | 'LOCAL' | 'GALPON';
 export type EstadoPropiedad = 'ALQUILADA' | 'DISPONIBLE' | 'EN_EDICION';
 
+/** Cuánto le toca a cada propietario de los frutos del alquiler. La suma
+ * de porcentajes de una propiedad debe dar 100. Si no hay participaciones
+ * explícitas, asumimos repartición igualitaria entre `propietariosIds`. */
+export interface ParticipacionPropietario {
+  propietarioId: string;
+  porcentaje: number;
+}
+
 export interface Propiedad {
   id: string;
   direccion: string;
@@ -19,6 +27,8 @@ export interface Propiedad {
   fotoUrl: string | null;
   estado: EstadoPropiedad;
   propietariosIds: string[]; // FK a Propietario.id (puede haber cotitularidad)
+  /** Reparto explícito; opcional — si falta, se reparte parejo. */
+  participaciones?: ParticipacionPropietario[];
   contratoActualId: string | null; // FK a Contrato.id, null si DISPONIBLE
   createdAt: string;
 }
@@ -26,6 +36,11 @@ export interface Propiedad {
 export type CategoriaReclamo = 'PLOMERIA' | 'ELECTRICIDAD' | 'CERRADURA' | 'CALEFACCION' | 'OTRO';
 export type UrgenciaReclamo = 'BAJA' | 'MEDIA' | 'ALTA' | 'EMERGENCIA';
 export type EstadoReclamo = 'ABIERTO' | 'EN_CURSO' | 'RESUELTO' | 'CERRADO' | 'RECHAZADO';
+
+// Quién paga el arreglo: USO_Y_GOCE = lo paga el inquilino (rotura por uso),
+// DESPERFECTO = lo paga el propietario (problema estructural / del inmueble).
+// Lo decide la inmobiliaria al evaluar el reclamo.
+export type ClasificacionReclamo = 'USO_Y_GOCE' | 'DESPERFECTO';
 
 export type TipoEventoReclamo =
   | 'CREADO'
@@ -35,7 +50,9 @@ export type TipoEventoReclamo =
   | 'CERRADO'
   | 'RECHAZADO'
   | 'MENSAJE_INQUILINO'
-  | 'MENSAJE_INMO';
+  | 'MENSAJE_INMO'
+  | 'CLASIFICADO'
+  | 'PROFESIONAL_ASIGNADO';
 
 export interface EventoReclamo {
   id: string;
@@ -60,6 +77,13 @@ export interface Reclamo {
   createdAt: string;
   resueltoAt: string | null;
   eventos: EventoReclamo[];
+  /** Clasificación que decide quién paga el arreglo. */
+  clasificacion?: ClasificacionReclamo | null;
+  /** Profesional externo que el admin asignó al reclamo (de la red curada). */
+  profesionalAsignadoId?: string | null;
+  profesionalAsignadoNombre?: string | null;
+  profesionalAsignadoTelefono?: string | null;
+  profesionalAsignadoCategoria?: string | null;
 }
 
 export interface Propietario {
@@ -90,6 +114,14 @@ export interface ContratoListado {
   fechaFin: string;
   proximoVencimiento: string;
   estadoPagoActual: EstadoLiquidacion;
+  /**
+   * CBU/alias específico de este contrato. Si está presente, sobreescribe
+   * al CBU del propietario para esta unidad. Útil cuando el propietario
+   * tiene varias propiedades y quiere recibir cada alquiler en una cuenta
+   * distinta.
+   */
+  cbuAlias?: string | null;
+  titularCuenta?: string | null;
 }
 
 export interface CampoExtraido {

@@ -2,9 +2,11 @@ import {
   CheckCircle2,
   Clock,
   FileEdit,
+  HardHat,
   MessageCircle,
   Plus,
   ShieldX,
+  Tag,
   UserCheck,
   type LucideIcon,
 } from 'lucide-react';
@@ -21,6 +23,8 @@ const iconForTipo: Record<TipoEventoReclamo, LucideIcon> = {
   RECHAZADO: ShieldX,
   MENSAJE_INQUILINO: MessageCircle,
   MENSAJE_INMO: MessageCircle,
+  CLASIFICADO: Tag,
+  PROFESIONAL_ASIGNADO: HardHat,
 };
 
 const colorForTipo: Record<TipoEventoReclamo, string> = {
@@ -32,6 +36,8 @@ const colorForTipo: Record<TipoEventoReclamo, string> = {
   RECHAZADO: 'bg-destructive/10 text-destructive',
   MENSAJE_INQUILINO: 'bg-secondary text-secondary-foreground',
   MENSAJE_INMO: 'bg-primary/10 text-primary',
+  CLASIFICADO: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+  PROFESIONAL_ASIGNADO: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
 };
 
 const labelForTipo: Record<TipoEventoReclamo, (e: EventoReclamo) => string> = {
@@ -43,6 +49,8 @@ const labelForTipo: Record<TipoEventoReclamo, (e: EventoReclamo) => string> = {
   RECHAZADO: () => 'Rechazado',
   MENSAJE_INQUILINO: (e) => `${e.autor} (inquilino)`,
   MENSAJE_INMO: (e) => `${e.autor} (inmobiliaria)`,
+  CLASIFICADO: (e) => `Clasificado como ${e.contenido ?? '—'}`,
+  PROFESIONAL_ASIGNADO: (e) => `Profesional asignado: ${e.contenido ?? '—'}`,
 };
 
 export function ReclamoTimeline({ eventos }: { eventos: EventoReclamo[] }) {

@@ -19,6 +19,8 @@ export const contratosMock: ContratoListado[] = [
     fechaFin: '2028-08-31',
     proximoVencimiento: '2026-05-10',
     estadoPagoActual: 'PENDIENTE',
+    cbuAlias: 'eduardo.lopez.gorriti',
+    titularCuenta: 'Eduardo López Vega',
   },
   {
     id: 'cnt_002',
@@ -810,7 +812,11 @@ export const propiedadesMock: Propiedad[] = [
     m2: 48,
     fotoUrl: null,
     estado: 'ALQUILADA',
-    propietariosIds: ['own_001'],
+    propietariosIds: ['own_001', 'own_002'],
+    participaciones: [
+      { propietarioId: 'own_001', porcentaje: 60 },
+      { propietarioId: 'own_002', porcentaje: 40 },
+    ],
     contratoActualId: 'cnt_001',
     createdAt: '2024-08-15',
   },
@@ -1194,6 +1200,110 @@ export const coInquilinosMock: CoInquilinoAdmin[] = [
     estado: 'ACEPTADO',
     invitadoAt: '2025-09-12T18:00:00-03:00',
     aceptadoAt: '2025-09-13T09:30:00-03:00',
+  },
+];
+
+// Pagos informados por inquilinos que la inmobiliaria todavía no validó.
+// El flow real: el inquilino transfiere → sube comprobante → su liquidación
+// queda en estado INFORMADO → el admin valida acá y pasa a CONCILIADO.
+
+export type MetodoPagoInformado = 'TRANSFERENCIA' | 'MERCADOPAGO' | 'EFECTIVO' | 'CHEQUE';
+
+export interface PagoInformado {
+  id: string;
+  contratoId: string;
+  inquilino: string;
+  direccion: string;
+  periodo: string; // YYYY-MM
+  monto: number;
+  metodo: MetodoPagoInformado;
+  fechaTransferencia: string; // ISO
+  informadoAt: string; // ISO
+  comprobanteUrl: string; // dataURL o URL al pdf/img
+  notaInquilino: string | null;
+  liquidacionId: string;
+}
+
+export const pagosInformadosMock: PagoInformado[] = [
+  {
+    id: 'pag_inf_001',
+    contratoId: 'cnt_001',
+    inquilino: 'Mariela Sosa',
+    direccion: 'Gorriti 4521, 3°B',
+    periodo: '2026-05',
+    monto: 572000,
+    metodo: 'TRANSFERENCIA',
+    fechaTransferencia: '2026-05-11',
+    informadoAt: '2026-05-11T14:22:00-03:00',
+    comprobanteUrl: '#',
+    notaInquilino: 'Transferencia desde Galicia. Adjunto comprobante.',
+    liquidacionId: 'liq_001',
+  },
+  {
+    id: 'pag_inf_002',
+    contratoId: 'cnt_002',
+    inquilino: 'Juan Pérez',
+    direccion: 'Av. Cabildo 2890, 7°A',
+    periodo: '2026-05',
+    monto: 620000,
+    metodo: 'MERCADOPAGO',
+    fechaTransferencia: '2026-05-07',
+    informadoAt: '2026-05-07T18:45:00-03:00',
+    comprobanteUrl: '#',
+    notaInquilino: null,
+    liquidacionId: 'liq_cnt_002_2026-05',
+  },
+  {
+    id: 'pag_inf_003',
+    contratoId: 'cnt_005',
+    inquilino: 'Ana Pereyra',
+    direccion: 'Salguero 2240, 12°D',
+    periodo: '2026-05',
+    monto: 850000,
+    metodo: 'TRANSFERENCIA',
+    fechaTransferencia: '2026-05-09',
+    informadoAt: '2026-05-09T09:15:00-03:00',
+    comprobanteUrl: '#',
+    notaInquilino: 'Hice el pago el sábado, perdón por la demora en avisar.',
+    liquidacionId: 'liq_cnt_005_2026-05',
+  },
+];
+
+// Datos de cobranza (titular + garante) por contrato. Esto sirve para que
+// el admin imprima la lista de morosos con teléfonos a mano. En backend
+// real esto vive en `Contrato.garante` y `Contrato.inquilino`.
+
+export interface ContactoCobranza {
+  contratoId: string;
+  titular: { nombre: string; telefono: string; email: string };
+  garante: { nombre: string; telefono: string; tipo: string } | null;
+}
+
+export const contactosCobranzaMock: ContactoCobranza[] = [
+  {
+    contratoId: 'cnt_001',
+    titular: { nombre: 'Mariela Sosa', telefono: '+54 9 11 4567 8900', email: 'mariela.sosa@gmail.com' },
+    garante: { nombre: 'Roberto Sosa (padre)', telefono: '+54 9 11 5678 9011', tipo: 'Propietaria' },
+  },
+  {
+    contratoId: 'cnt_002',
+    titular: { nombre: 'Juan Pérez', telefono: '+54 9 11 3344 5566', email: 'juan.perez@hotmail.com' },
+    garante: { nombre: 'Cobertura SUMA', telefono: '+54 11 5288 9000', tipo: 'Digital · POL-2024-12345' },
+  },
+  {
+    contratoId: 'cnt_003',
+    titular: { nombre: 'Laura Giménez', telefono: '+54 9 11 2233 4455', email: 'laura.gim@yahoo.com.ar' },
+    garante: { nombre: 'María Giménez (madre)', telefono: '+54 9 11 6677 8899', tipo: 'Propietaria' },
+  },
+  {
+    contratoId: 'cnt_004',
+    titular: { nombre: 'Carlos Romero', telefono: '+54 9 11 7788 9900', email: 'carlos.romero@gmail.com' },
+    garante: { nombre: 'Recibo de sueldo - Banco Nación', telefono: '+54 11 4347 6000', tipo: 'Sueldo' },
+  },
+  {
+    contratoId: 'cnt_005',
+    titular: { nombre: 'Ana Pereyra', telefono: '+54 9 11 4455 6677', email: 'ana.pereyra@gmail.com' },
+    garante: { nombre: 'Diego Pereyra (hermano)', telefono: '+54 9 11 8899 0011', tipo: 'Propietaria' },
   },
 ];
 

@@ -163,6 +163,36 @@ export default function DetalleReclamoPage({ params }: { params: { id: string } 
           )}
         </Card>
 
+        {/* Profesional asignado por la inmobiliaria */}
+        {reclamo.profesionalAsignadoNombre && (
+          <Card className="space-y-3 border-emerald-300 bg-emerald-50/60 p-5 dark:border-emerald-900/40 dark:bg-emerald-950/30">
+            <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300">
+              <UserCheck className="h-4 w-4" />
+              <p className="text-xs font-semibold uppercase tracking-wide">
+                Profesional asignado
+              </p>
+            </div>
+            <div>
+              <p className="font-medium">{reclamo.profesionalAsignadoNombre}</p>
+              <p className="text-xs text-muted-foreground">
+                {reclamo.profesionalAsignadoCategoria}
+              </p>
+            </div>
+            {reclamo.profesionalAsignadoTelefono && (
+              <p className="text-sm">
+                <span className="text-muted-foreground">Tel: </span>
+                <span className="font-medium tabular-nums">
+                  {reclamo.profesionalAsignadoTelefono}
+                </span>
+              </p>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Te va a contactar para coordinar día y hora. Si no se comunica en 48hs,
+              avisanos por WhatsApp.
+            </p>
+          </Card>
+        )}
+
         {/* Resolución cuando aplica */}
         {reclamo.estado === 'RESUELTO' && reclamo.resolucion && (
           <>

@@ -8,9 +8,12 @@ import { Button } from '@llave/ui/button';
 import { Card, CardContent } from '@llave/ui/card';
 import { cn } from '@llave/ui/cn';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@llave/ui/table';
+import { PagosPorValidar } from '@/components/pagos-por-validar';
 import { Topbar } from '@/components/topbar';
-import { contratosMock } from '@/lib/mock-data';
+import { contactosCobranzaMock, contratosMock } from '@/lib/mock-data';
 import { formatFecha, formatMonto } from '@/lib/format';
+import { abrirReporteImprimible } from '@/lib/reportes-pdf';
+import { diasHastaVencimiento } from '@/lib/format';
 import type { EstadoLiquidacion } from '@/lib/types';
 
 type Filtro = 'TODOS' | 'VENCIDO' | 'PENDIENTE' | 'PAGADO';
@@ -96,10 +99,86 @@ export default function PagosPage() {
     setFiltro((prev) => (prev === f ? 'TODOS' : f));
   };
 
+  // PDF de morosos para llevar a cobranza física.
+  // Incluye titular + garante con sus teléfonos y los días de atraso.
+  const exportarMorososPdf = () => {
+    const morosos = contratosMock.filter((c) => c.estadoPagoActual === 'VENCIDO');
+    const filas: (string | number)[][] = morosos.map((c) => {
+      const contacto = contactosCobranzaMock.find((x) => x.contratoId === c.id);
+      const dias = -diasHastaVencimiento(c.proximoVencimiento);
+      return [
+        c.inquilino,
+        c.direccion,
+        contacto?.titular.telefono ?? '—',
+        contacto?.garante ? `${contacto.garante.nombre} · ${contacto.garante.telefono}` : 'Sin garante registrado',
+        `${dias} días`,
+        formatMonto(c.monto, c.moneda),
+      ];
+    });
+    const totalDeuda = morosos.reduce((acc, c) => acc + c.monto, 0);
+    abrirReporteImprimible({
+      titulo: 'Morosos · cobranza',
+      subtitulo: `Mayo 2026 · ${morosos.length} contrato${morosos.length === 1 ? '' : 's'} con atraso`,
+      inmobiliaria: 'Inmobiliaria del Sol',
+      columnas: [
+        { header: 'Inquilino', width: '20%' },
+        { header: 'Propiedad', width: '20%' },
+        { header: 'Teléfono', width: '14%' },
+        { header: 'Garante (nombre · tel)', width: '26%' },
+        { header: 'Atraso', width: '8%', align: 'center' },
+        { header: 'Monto', width: '12%', align: 'right' },
+      ],
+      filas,
+      totales: [
+        { label: 'Cantidad', valor: morosos.length.toString() },
+        { label: 'Deuda total', valor: formatMonto(totalDeuda) },
+      ],
+      notaFinal:
+        'Imprimí esta hoja para llevar de visita o pegar en el tablero. Al ' +
+        'volver, marcá las gestiones realizadas en la ficha del contrato.',
+    });
+  };
+
+  // PDF detallado de lo cobrado en el mes.
+  // Se usa para rendir a propietarios y para archivo del estudio.
+  const exportarCobradoPdf = () => {
+    const pagados = contratosMock.filter((c) => c.estadoPagoActual === 'PAGADO');
+    const filas: (string | number)[][] = pagados.map((c) => [
+      c.inquilino,
+      c.direccion,
+      formatFecha(c.proximoVencimiento),
+      'Transferencia',
+      formatMonto(c.monto, c.moneda),
+    ]);
+    abrirReporteImprimible({
+      titulo: 'Cobranzas del mes',
+      subtitulo: `Mayo 2026 · ${pagados.length} pago${pagados.length === 1 ? '' : 's'} acreditado${pagados.length === 1 ? '' : 's'}`,
+      inmobiliaria: 'Inmobiliaria del Sol',
+      columnas: [
+        { header: 'Inquilino', width: '24%' },
+        { header: 'Propiedad', width: '28%' },
+        { header: 'Vencimiento', width: '14%' },
+        { header: 'Método', width: '14%' },
+        { header: 'Monto', width: '20%', align: 'right' },
+      ],
+      filas,
+      totales: [
+        { label: 'Cantidad', valor: pagados.length.toString() },
+        { label: 'Total cobrado', valor: formatMonto(totalCobrado) },
+      ],
+      notaFinal:
+        'Este reporte detalla los pagos acreditados y conciliados en el período. Sirve ' +
+        'como respaldo para las rendiciones a propietarios.',
+    });
+  };
+
   return (
     <>
       <Topbar titulo="Pagos del mes" />
       <main className="flex-1 space-y-6 p-4 md:p-6">
+        {/* Pagos informados pendientes de validación */}
+        <PagosPorValidar />
+
         {/* 2 stats GRANDES: montos cobrado y pendiente */}
         <div className="grid gap-4 md:grid-cols-2">
           <Card className="border-emerald-200 bg-emerald-50/60 dark:border-emerald-900/40 dark:bg-emerald-900/10">
@@ -134,10 +213,14 @@ export default function PagosPage() {
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">Liquidaciones — mayo 2026</h2>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm">
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => exportarMorososPdf()}>
               <Download className="h-4 w-4" />
-              Exportar
+              PDF de morosos
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => exportarCobradoPdf()}>
+              <Download className="h-4 w-4" />
+              PDF cobranzas
             </Button>
             <Button size="sm">
               <Bell className="h-4 w-4" />
