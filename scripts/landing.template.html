@@ -764,9 +764,417 @@
         white-space: nowrap;
         border: 0;
       }
+      .skip-link {
+        position: absolute;
+        top: -100px;
+        left: 16px;
+        z-index: 200;
+        padding: 12px 16px;
+        background: var(--primary);
+        color: #fff;
+        border-radius: 8px;
+        font-weight: 600;
+        text-decoration: none;
+        transition: top var(--transition);
+      }
+      .skip-link:focus { top: 16px; }
+
+      /* ============================================================
+         MOBILE DRAWER
+         ============================================================ */
+      .menu-btn {
+        display: inline-grid;
+        place-items: center;
+        width: 40px; height: 40px;
+        border-radius: 10px;
+        background: transparent;
+        border: 1px solid var(--border-strong);
+        cursor: pointer;
+        color: var(--fg);
+      }
+      @media (min-width: 1024px) { .menu-btn { display: none; } }
+      .menu-btn svg { width: 20px; height: 20px; }
+
+      .drawer-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 199;
+        background: rgba(10, 10, 20, 0.5);
+        backdrop-filter: blur(4px);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity var(--transition);
+      }
+      .drawer-backdrop.open { opacity: 1; pointer-events: auto; }
+
+      .drawer {
+        position: fixed;
+        top: 0; right: 0;
+        z-index: 200;
+        width: 86%;
+        max-width: 320px;
+        height: 100dvh;
+        background: var(--card);
+        border-left: 1px solid var(--border);
+        box-shadow: -20px 0 50px -10px rgba(10, 10, 20, 0.2);
+        transform: translateX(100%);
+        transition: transform 280ms cubic-bezier(0.4, 0, 0.2, 1);
+        display: flex;
+        flex-direction: column;
+        padding: 16px;
+        gap: 8px;
+      }
+      .drawer.open { transform: translateX(0); }
+      .drawer-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 8px 16px;
+        border-bottom: 1px solid var(--border);
+        margin-bottom: 8px;
+      }
+      .drawer-close {
+        display: inline-grid;
+        place-items: center;
+        width: 36px; height: 36px;
+        border-radius: 8px;
+        background: transparent;
+        border: 1px solid var(--border);
+        cursor: pointer;
+        color: var(--fg);
+      }
+      .drawer-link {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 14px;
+        border-radius: 10px;
+        color: var(--fg);
+        text-decoration: none;
+        font-weight: 500;
+        font-size: 15px;
+        transition: background var(--transition);
+      }
+      .drawer-link:hover, .drawer-link.active {
+        background: var(--primary-soft);
+        color: var(--primary);
+      }
+      .drawer-cta-group {
+        margin-top: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding: 16px 0 8px;
+        border-top: 1px solid var(--border);
+      }
+
+      /* Scroll spy: nav-link active */
+      .nav-links a.active {
+        color: var(--primary);
+        position: relative;
+      }
+      .nav-links a.active::after {
+        content: '';
+        position: absolute;
+        left: 0; right: 0;
+        bottom: -22px;
+        height: 2px;
+        background: var(--primary);
+        border-radius: 1px;
+      }
+
+      /* ============================================================
+         CÓMO FUNCIONA
+         ============================================================ */
+      .como-funciona {
+        padding: 80px 0;
+        background: var(--bg-soft);
+        position: relative;
+      }
+      @media (min-width: 768px) { .como-funciona { padding: 120px 0; } }
+
+      .pasos-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 20px;
+        position: relative;
+      }
+      @media (min-width: 900px) {
+        .pasos-grid { grid-template-columns: repeat(3, 1fr); gap: 28px; }
+      }
+
+      .paso {
+        position: relative;
+        padding: 32px 28px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        transition: all var(--transition);
+      }
+      .paso:hover {
+        transform: translateY(-4px);
+        border-color: var(--primary);
+        box-shadow: 0 18px 40px -14px var(--primary-glow);
+      }
+      .paso-numero {
+        display: inline-block;
+        font-size: 14px;
+        font-weight: 800;
+        letter-spacing: 0.1em;
+        background: linear-gradient(135deg, var(--primary), var(--accent-pink));
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+        margin-bottom: 8px;
+      }
+      .paso h3 {
+        margin: 0 0 12px;
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        line-height: 1.2;
+      }
+      .paso p.lead {
+        margin: 0 0 18px;
+        color: var(--fg-soft);
+        font-size: 15px;
+        line-height: 1.55;
+      }
+      .paso ul {
+        margin: 0;
+        padding-left: 0;
+        list-style: none;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .paso ul li {
+        padding-left: 24px;
+        position: relative;
+        font-size: 13.5px;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+      .paso ul li::before {
+        content: '✓';
+        position: absolute;
+        left: 0; top: 0;
+        color: var(--accent-emerald);
+        font-weight: 700;
+      }
+
+      /* Conectores entre pasos (sólo desktop) */
+      @media (min-width: 900px) {
+        .pasos-grid::before {
+          content: '';
+          position: absolute;
+          top: 50%;
+          left: 33%;
+          right: 33%;
+          height: 2px;
+          background: repeating-linear-gradient(90deg, var(--border-strong) 0 6px, transparent 6px 12px);
+          z-index: 0;
+        }
+        .paso { position: relative; z-index: 1; }
+      }
+
+      /* ============================================================
+         INTEGRACIONES
+         ============================================================ */
+      .integraciones {
+        padding: 80px 0;
+        position: relative;
+      }
+      @media (min-width: 768px) { .integraciones { padding: 120px 0; } }
+      .integraciones-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+      }
+      @media (min-width: 640px) {
+        .integraciones-grid { grid-template-columns: repeat(3, 1fr); gap: 16px; }
+      }
+      @media (min-width: 1024px) {
+        .integraciones-grid { grid-template-columns: repeat(6, 1fr); }
+      }
+      .integracion {
+        padding: 20px 16px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        text-align: center;
+        transition: all var(--transition);
+      }
+      .integracion:hover {
+        transform: translateY(-2px);
+        border-color: var(--primary);
+        box-shadow: var(--shadow-lg);
+      }
+      .integracion .ig-icon {
+        font-size: 32px;
+        margin-bottom: 8px;
+        line-height: 1;
+      }
+      .integracion .ig-nombre {
+        font-weight: 700;
+        font-size: 14px;
+        margin-bottom: 4px;
+      }
+      .integracion .ig-desc {
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.4;
+      }
+
+      /* ============================================================
+         ANTES / DESPUÉS
+         ============================================================ */
+      .antes-despues {
+        padding: 80px 0;
+        background: var(--bg-soft);
+      }
+      @media (min-width: 768px) { .antes-despues { padding: 120px 0; } }
+      .compare-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 16px;
+        max-width: 900px;
+        margin: 0 auto;
+      }
+      @media (min-width: 768px) {
+        .compare-grid { grid-template-columns: 1fr 1fr; gap: 24px; }
+      }
+      .compare-col {
+        padding: 28px 24px;
+        border-radius: var(--radius-lg);
+        border: 1px solid var(--border);
+      }
+      .compare-col.antes {
+        background: var(--card);
+      }
+      .compare-col.despues {
+        background: linear-gradient(135deg, rgba(124, 58, 237, 0.08), rgba(236, 72, 153, 0.06));
+        border-color: var(--primary);
+      }
+      .compare-head {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 20px;
+      }
+      .compare-head .tag {
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+      .compare-head .tag.tag-rojo {
+        background: var(--c-rose-soft);
+        color: var(--c-rose);
+      }
+      .compare-head .tag.tag-violeta {
+        background: linear-gradient(135deg, var(--primary), var(--accent-pink));
+        color: #fff;
+      }
+      .compare-head h3 {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 700;
+      }
+      .compare-col ul {
+        margin: 0;
+        padding-left: 0;
+        list-style: none;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+      .compare-col ul li {
+        font-size: 14.5px;
+        color: var(--fg-soft);
+        line-height: 1.55;
+        padding-left: 28px;
+        position: relative;
+      }
+      .compare-col.antes ul li::before {
+        content: '✗';
+        position: absolute;
+        left: 0; top: 0;
+        color: var(--c-rose);
+        font-weight: 700;
+        font-size: 16px;
+      }
+      .compare-col.despues ul li::before {
+        content: '✓';
+        position: absolute;
+        left: 0; top: 0;
+        color: var(--primary);
+        font-weight: 700;
+        font-size: 16px;
+      }
+
+      /* ============================================================
+         FAQ
+         ============================================================ */
+      .faq {
+        padding: 80px 0;
+      }
+      @media (min-width: 768px) { .faq { padding: 120px 0; } }
+      .faq-list {
+        max-width: 760px;
+        margin: 0 auto;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      details.faq-item {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        overflow: hidden;
+        transition: all var(--transition);
+      }
+      details.faq-item[open] {
+        border-color: var(--primary);
+        box-shadow: var(--shadow);
+      }
+      details.faq-item summary {
+        list-style: none;
+        cursor: pointer;
+        padding: 20px 24px;
+        font-weight: 600;
+        font-size: 15.5px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        line-height: 1.4;
+      }
+      details.faq-item summary::-webkit-details-marker { display: none; }
+      details.faq-item summary::after {
+        content: '+';
+        font-size: 24px;
+        color: var(--primary);
+        font-weight: 300;
+        flex-shrink: 0;
+        transition: transform var(--transition);
+      }
+      details.faq-item[open] summary::after {
+        transform: rotate(45deg);
+      }
+      details.faq-item .faq-body {
+        padding: 0 24px 22px;
+        color: var(--fg-soft);
+        font-size: 14.5px;
+        line-height: 1.65;
+      }
     </style>
   </head>
   <body>
+    <a href="#main" class="skip-link">Saltar al contenido</a>
+
     <!-- ==================== NAVBAR ==================== -->
     <nav class="top">
       <div class="container">
@@ -774,21 +1182,53 @@
           <span class="logo">L</span>
           <span>Llave</span>
         </a>
-        <div class="nav-links">
+        <div class="nav-links" id="nav-links">
           {{NAV_LINKS}}
+          <a href="#faq">FAQ</a>
           <a href="#changelog">Cambios</a>
         </div>
         <div class="nav-ctas">
           <a href="{{CTA_INQUILINO_HREF}}" class="btn btn-ghost nav-cta-mobile-hide">
             App inquilino
           </a>
-          <a href="{{CTA_PROPIETARIO_HREF}}" class="btn btn-primary">
+          <a href="{{CTA_PROPIETARIO_HREF}}" class="btn btn-primary nav-cta-mobile-hide">
             App propietario →
           </a>
+          <button class="menu-btn" id="menuBtn" aria-label="Abrir menú" aria-controls="drawer" aria-expanded="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M4 7h16M4 12h16M4 17h16"></path>
+            </svg>
+          </button>
         </div>
       </div>
     </nav>
 
+    <!-- ==================== MOBILE DRAWER ==================== -->
+    <div class="drawer-backdrop" id="drawerBackdrop" aria-hidden="true"></div>
+    <aside class="drawer" id="drawer" role="dialog" aria-label="Menú de navegación" aria-modal="true">
+      <div class="drawer-header">
+        <div class="brand">
+          <span class="logo">L</span>
+          <span>Llave</span>
+        </div>
+        <button class="drawer-close" id="drawerClose" aria-label="Cerrar menú">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M18 6L6 18M6 6l12 12"></path>
+          </svg>
+        </button>
+      </div>
+      {{DRAWER_LINKS}}
+      <div class="drawer-cta-group">
+        <a href="{{CTA_PROPIETARIO_HREF}}" class="btn btn-primary btn-lg">
+          🏢 App del Propietario
+        </a>
+        <a href="{{CTA_INQUILINO_HREF}}" class="btn btn-accent btn-lg">
+          📱 App del Inquilino
+        </a>
+      </div>
+    </aside>
+
+    <main id="main">
     <!-- ==================== HERO ==================== -->
     <header id="top" class="hero">
       <div class="hero-bg" aria-hidden="true"></div>
@@ -821,8 +1261,56 @@
       </div>
     </section>
 
+    <!-- ==================== CÓMO FUNCIONA ==================== -->
+    <section id="como-funciona" class="como-funciona">
+      <div class="container">
+        <div class="sec-header reveal">
+          <span class="sec-tag">Cómo funciona</span>
+          <h2>{{COMO_FUNCIONA_TITULO}}</h2>
+          <p>{{COMO_FUNCIONA_SUBTITULO}}</p>
+        </div>
+        <div class="pasos-grid">{{COMO_FUNCIONA_PASOS}}</div>
+      </div>
+    </section>
+
     <!-- ==================== FEATURE SECTIONS ==================== -->
     {{SECCIONES}}
+
+    <!-- ==================== INTEGRACIONES ==================== -->
+    <section id="integraciones" class="integraciones">
+      <div class="container">
+        <div class="sec-header reveal">
+          <span class="sec-tag">Integraciones</span>
+          <h2>{{INTEGRACIONES_TITULO}}</h2>
+          <p>{{INTEGRACIONES_SUBTITULO}}</p>
+        </div>
+        <div class="integraciones-grid">{{INTEGRACIONES_ITEMS}}</div>
+      </div>
+    </section>
+
+    <!-- ==================== ANTES / DESPUÉS ==================== -->
+    <section id="antes-despues" class="antes-despues">
+      <div class="container">
+        <div class="sec-header reveal">
+          <span class="sec-tag">Comparativa</span>
+          <h2>{{ANTES_DESPUES_TITULO}}</h2>
+          <p>{{ANTES_DESPUES_SUBTITULO}}</p>
+        </div>
+        <div class="compare-grid">{{ANTES_DESPUES_COLS}}</div>
+      </div>
+    </section>
+
+    <!-- ==================== FAQ ==================== -->
+    <section id="faq" class="faq">
+      <div class="container">
+        <div class="sec-header reveal">
+          <span class="sec-tag">FAQ</span>
+          <h2>{{FAQ_TITULO}}</h2>
+          <p>{{FAQ_SUBTITULO}}</p>
+        </div>
+        <div class="faq-list">{{FAQ_ITEMS}}</div>
+      </div>
+    </section>
 
     <!-- ==================== CHANGELOG ==================== -->
     <section id="changelog" class="changelog">
@@ -852,6 +1340,8 @@
       </div>
     </section>
 
+    </main>
+
     <!-- ==================== FOOTER ==================== -->
     <footer class="bottom">
       <div class="container">
@@ -859,33 +1349,93 @@
       </div>
     </footer>
 
-    <!-- ==================== SCROLL REVEAL JS ==================== -->
+    <!-- ==================== JS: SCROLL REVEAL + DRAWER + SCROLL SPY ==================== -->
     <script>
       (function () {
-        // Marca todo lo que entra al viewport como "visible" para activar la
-        // animación de aparición. CSS hace el resto.
-        if (!('IntersectionObserver' in window)) {
-          document.querySelectorAll('.reveal').forEach(function (el) {
-            el.classList.add('visible');
-          });
-          return;
-        }
-        var io = new IntersectionObserver(function (entries) {
-          entries.forEach(function (entry) {
-            if (entry.isIntersecting) {
-              entry.target.classList.add('visible');
-              io.unobserve(entry.target);
-            }
-          });
-        }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+        // ===== Scroll reveal con IntersectionObserver =====
+        if ('IntersectionObserver' in window) {
+          var io = new IntersectionObserver(function (entries) {
+            entries.forEach(function (entry) {
+              if (entry.isIntersecting) {
+                entry.target.classList.add('visible');
+                io.unobserve(entry.target);
+              }
+            });
+          }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
 
-        // Agregamos .reveal a las features y a los headers de las secciones.
-        document.querySelectorAll('.feature, .sec-header, .release').forEach(function (el) {
-          el.classList.add('reveal');
-          io.observe(el);
+          document.querySelectorAll('.feature, .sec-header, .release, .paso, .integracion, .compare-col, .faq-item')
+            .forEach(function (el) {
+              el.classList.add('reveal');
+              io.observe(el);
+            });
+          document.querySelectorAll('.reveal').forEach(function (el) { io.observe(el); });
+        } else {
+          document.querySelectorAll('.reveal').forEach(function (el) { el.classList.add('visible'); });
+        }
+
+        // ===== Mobile drawer =====
+        var drawer = document.getElementById('drawer');
+        var backdrop = document.getElementById('drawerBackdrop');
+        var menuBtn = document.getElementById('menuBtn');
+        var drawerClose = document.getElementById('drawerClose');
+
+        function openDrawer() {
+          drawer.classList.add('open');
+          backdrop.classList.add('open');
+          menuBtn.setAttribute('aria-expanded', 'true');
+          document.body.style.overflow = 'hidden';
+        }
+        function closeDrawer() {
+          drawer.classList.remove('open');
+          backdrop.classList.remove('open');
+          menuBtn.setAttribute('aria-expanded', 'false');
+          document.body.style.overflow = '';
+        }
+        if (menuBtn) menuBtn.addEventListener('click', openDrawer);
+        if (drawerClose) drawerClose.addEventListener('click', closeDrawer);
+        if (backdrop) backdrop.addEventListener('click', closeDrawer);
+        document.addEventListener('keydown', function (e) {
+          if (e.key === 'Escape' && drawer.classList.contains('open')) closeDrawer();
         });
-        document.querySelectorAll('.reveal').forEach(function (el) {
-          io.observe(el);
+        // Cierra el drawer al tocar un link dentro
+        drawer.querySelectorAll('a').forEach(function (a) {
+          a.addEventListener('click', closeDrawer);
+        });
+
+        // ===== Scroll spy: resalta en navbar la sección activa =====
+        var navLinks = document.querySelectorAll('#nav-links a[href^="#"]');
+        var sectionMap = new Map();
+        navLinks.forEach(function (link) {
+          var id = link.getAttribute('href').slice(1);
+          var sec = document.getElementById(id);
+          if (sec) sectionMap.set(sec, link);
+        });
+        if ('IntersectionObserver' in window && sectionMap.size > 0) {
+          var spy = new IntersectionObserver(function (entries) {
+            entries.forEach(function (entry) {
+              var link = sectionMap.get(entry.target);
+              if (!link) return;
+              if (entry.isIntersecting) {
+                navLinks.forEach(function (l) { l.classList.remove('active'); });
+                link.classList.add('active');
+              }
+            });
+          }, { rootMargin: '-30% 0px -60% 0px', threshold: 0 });
+          sectionMap.forEach(function (link, sec) { spy.observe(sec); });
+        }
+
+        // ===== Smooth scroll con offset para sticky nav =====
+        document.querySelectorAll('a[href^="#"]').forEach(function (a) {
+          a.addEventListener('click', function (e) {
+            var href = a.getAttribute('href');
+            if (href === '#' || href.length < 2) return;
+            var target = document.querySelector(href);
+            if (!target) return;
+            e.preventDefault();
+            var navH = document.querySelector('nav.top') ? document.querySelector('nav.top').offsetHeight : 0;
+            var y = target.getBoundingClientRect().top + window.pageYOffset - navH - 8;
+            window.scrollTo({ top: y, behavior: 'smooth' });
+          });
         });
       })();
     </script>

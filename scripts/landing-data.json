@@ -24,6 +24,104 @@
     { "valor": "17", "label": "Tipos de eventos auditados" },
     { "valor": "100%", "label": "Trazabilidad de acciones por usuario" }
   ],
+  "comoFunciona": {
+    "titulo": "Cómo funciona",
+    "subtitulo": "Tres pasos. Sin más Excel, sin más WhatsApp roto.",
+    "pasos": [
+      {
+        "numero": "01",
+        "titulo": "Configurás una vez",
+        "descripcion": "Cargás tus propietarios, sus CBUs, conectás la AFIP (opcional), invitás a tu equipo con roles. Listo.",
+        "detalles": [
+          "Cuenta recaudadora de la inmo o cuenta directa del propietario",
+          "AFIP por propietario (Monotributo o Resp. Inscripto)",
+          "4 roles: ADMIN, OPERADOR, CARGA, LECTURA"
+        ]
+      },
+      {
+        "numero": "02",
+        "titulo": "Operás el día a día",
+        "descripcion": "Tu equipo carga contratos y comprobantes. Vos aprobás. Los inquilinos pagan desde el celular y suben el ticket.",
+        "detalles": [
+          "Contratos con OCR (lectura automática del PDF)",
+          "Aprobación admin para que nada entre sin tu OK",
+          "Inquilinos pagan en su PWA y suben comprobante"
+        ]
+      },
+      {
+        "numero": "03",
+        "titulo": "Cobrás y rendís",
+        "descripcion": "Aprobás el pago. El sistema factura por AFIP, manda la factura al inquilino por WhatsApp y rinde al propietario.",
+        "detalles": [
+          "Conciliación con un click",
+          "Factura AFIP automática (CAE + QR + envío)",
+          "Rendición mensual al propietario con PDF"
+        ]
+      }
+    ]
+  },
+  "integraciones": {
+    "titulo": "Habla con todo lo que ya usás",
+    "subtitulo": "Sin pedirle al inquilino que se baje una app rara ni al propietario que aprenda otro sistema.",
+    "items": [
+      { "nombre": "AFIP", "icono": "🧾", "descripcion": "Factura A/B/C y Recibo C con CAE", "color": "violet" },
+      { "nombre": "WhatsApp", "icono": "💬", "descripcion": "Recordatorios y comprobantes automáticos", "color": "emerald" },
+      { "nombre": "Mercado Pago", "icono": "💳", "descripcion": "Reconocimiento de pagos vía API", "color": "blue" },
+      { "nombre": "Transferencias", "icono": "🏦", "descripcion": "Banco Galicia, Macro, Roela, BBVA y más", "color": "indigo" },
+      { "nombre": "BCRA · ICL", "icono": "📊", "descripcion": "Índice de ajuste automático para alquileres", "color": "amber" },
+      { "nombre": "Email", "icono": "✉️", "descripcion": "Comprobantes y recordatorios al inquilino", "color": "rose" }
+    ]
+  },
+  "antesDespues": {
+    "titulo": "Lo que cambia el primer día",
+    "subtitulo": "El antes lo conocés. El después lo probás.",
+    "filas": [
+      { "antes": "Excel + WhatsApp + carpetas en Drive", "despues": "Todo en un solo panel, auditable" },
+      { "antes": "Recordar manualmente la fecha de cada vencimiento", "despues": "Alertas automáticas al inquilino" },
+      { "antes": "Pedirle el comprobante al inquilino por WhatsApp", "despues": "El inquilino sube el comprobante desde su app" },
+      { "antes": "Buscar la factura del propietario en una carpeta", "despues": "Se emite y se manda sola al aprobar el pago" },
+      { "antes": "¿Quién aprobó este pago? ¿Cuándo? ¿Por qué?", "despues": "Auditoría con timeline, usuario, fecha, motivo" },
+      { "antes": "Reclamos en hilos de WhatsApp interminables", "despues": "Reclamos con foto, clasificación y profesional asignado" }
+    ]
+  },
+  "faq": {
+    "titulo": "Preguntas frecuentes",
+    "subtitulo": "Las dudas que más nos hicieron",
+    "items": [
+      {
+        "pregunta": "¿Cómo se cobra el alquiler?",
+        "respuesta": "Tenés dos modos a elegir por contrato. Modo 'inmobiliaria': el inquilino transfiere a la cuenta recaudadora (tipo Banco Roela). Modo 'propietario directo': el inquilino transfiere al CBU del propietario y el propietario confirma recepción. La inmobiliaria audita todo en ambos modos."
+      },
+      {
+        "pregunta": "¿Necesito tener AFIP conectada?",
+        "respuesta": "No es obligatorio. Si la conectás (por propietario), al aprobar el pago se emite factura/recibo con CAE automáticamente y se envía al inquilino por WhatsApp y mail. Si no la conectás, el pago se concilia normal pero sin facturación automática."
+      },
+      {
+        "pregunta": "¿Funciona con expensas y alquiler por separado?",
+        "respuesta": "Sí. Cada contrato puede ser 'sólo alquiler', 'sólo expensas', o 'alquiler + expensas'. Útil para casos donde la inmobiliaria sólo administra las expensas de un consorcio o sólo el alquiler de una unidad."
+      },
+      {
+        "pregunta": "¿Qué pasa si me equivoco aprobando un pago?",
+        "respuesta": "Lo revertís con un botón. En la pantalla de pagos hay una sección 'Resueltos recientes' con el botón 'Revertir' al lado de cada pago conciliado. La reversión queda registrada en la auditoría."
+      },
+      {
+        "pregunta": "¿Cómo manejo el equipo y los permisos?",
+        "respuesta": "Hay 4 roles configurables: ADMIN (controla todo), OPERADOR (día a día), CARGA (sólo carga, no aprueba) y LECTURA (sólo mira, ideal para contadores externos). Cada usuario ve sólo lo que necesita."
+      },
+      {
+        "pregunta": "¿Puedo ajustar el alquiler con ICL automáticamente?",
+        "respuesta": "Sí. Importás el índice del BCRA (o se importa solo) y el sistema recalcula el alquiler cuando corresponde según la frecuencia de ajuste pactada en el contrato. Te avisa antes para que confirmes."
+      },
+      {
+        "pregunta": "¿Cómo se conecta con la AFIP?",
+        "respuesta": "Por propietario, una vez. Cargás CUIT, clave fiscal y elegís punto de venta + tipo de comprobante (Factura A/B/C o Recibo C según condición fiscal). El sistema usa los webservices oficiales WSAA + WSFE."
+      },
+      {
+        "pregunta": "¿Los datos están seguros?",
+        "respuesta": "Todo queda en log de auditoría append-only. Nadie puede borrar movimientos, sólo agregarlos. Cada acción (pago, contrato, gasto, reclamo) tiene autor, rol, fecha, hora y motivo asociado."
+      }
+    ]
+  },
   "secciones": [
     {
       "id": "cobranza",

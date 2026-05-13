@@ -118,6 +118,93 @@ function renderFooterLinksBlock(links) {
   return `<br />${items}`;
 }
 
+// Render pasos de "Cómo funciona"
+function renderPasos(pasos) {
+  return pasos
+    .map((p) => {
+      const items = (p.detalles || [])
+        .map((d) => `<li>${esc(d)}</li>`)
+        .join('\n            ');
+      return `
+          <article class="paso">
+            <div class="paso-numero">${esc(p.numero)}</div>
+            <h3>${esc(p.titulo)}</h3>
+            <p class="lead">${esc(p.descripcion)}</p>
+            <ul>
+            ${items}
+            </ul>
+          </article>`;
+    })
+    .join('');
+}
+
+// Render integraciones
+function renderIntegraciones(items) {
+  return items
+    .map(
+      (i) => `
+          <div class="integracion">
+            <div class="ig-icon">${esc(i.icono)}</div>
+            <div class="ig-nombre">${esc(i.nombre)}</div>
+            <div class="ig-desc">${esc(i.descripcion)}</div>
+          </div>`,
+    )
+    .join('');
+}
+
+// Render comparativa antes/después como 2 columnas (todas las "antes" en la izq, todas las "después" en la derecha)
+function renderAntesDespues(filas) {
+  const antes = filas.map((f) => `<li>${esc(f.antes)}</li>`).join('\n            ');
+  const despues = filas.map((f) => `<li>${esc(f.despues)}</li>`).join('\n            ');
+  return `
+        <div class="compare-col antes">
+          <div class="compare-head">
+            <span class="tag tag-rojo">Antes</span>
+            <h3>Sin Llave</h3>
+          </div>
+          <ul>
+            ${antes}
+          </ul>
+        </div>
+        <div class="compare-col despues">
+          <div class="compare-head">
+            <span class="tag tag-violeta">Después</span>
+            <h3>Con Llave</h3>
+          </div>
+          <ul>
+            ${despues}
+          </ul>
+        </div>`;
+}
+
+// Render FAQ usando <details> nativo (accordion sin JS extra)
+function renderFaq(items) {
+  return items
+    .map(
+      (i) => `
+          <details class="faq-item">
+            <summary>${esc(i.pregunta)}</summary>
+            <div class="faq-body">${esc(i.respuesta)}</div>
+          </details>`,
+    )
+    .join('');
+}
+
+// Render drawer links — items para el menú mobile
+function renderDrawerLinks(secciones) {
+  const links = [
+    { id: 'como-funciona', label: '🚀 Cómo funciona' },
+    ...secciones.map((s) => ({ id: s.id, label: `${s.icono} ${s.titulo}` })),
+    { id: 'integraciones', label: '🔌 Integraciones' },
+    { id: 'antes-despues', label: '⚖️ Antes / Después' },
+    { id: 'faq', label: '❓ Preguntas frecuentes' },
+    { id: 'changelog', label: '📝 Cambios' },
+  ];
+  return links
+    .map((l) => `<a class="drawer-link" href="#${esc(l.id)}">${esc(l.label)}</a>`)
+    .join('\n      ');
+}
+
 function main() {
   if (!fs.existsSync(DATA_PATH)) {
     console.error(`✗ No encontré ${DATA_PATH}`);
@@ -167,6 +254,20 @@ function main() {
     CHANGELOG: renderChangelog(data.changelog),
     FOOTER_CREDITOS: esc(data.footer.creditos),
     FOOTER_LINKS_BLOCK: renderFooterLinksBlock(data.footer.links),
+    // Nuevas secciones
+    COMO_FUNCIONA_TITULO: esc(data.comoFunciona.titulo),
+    COMO_FUNCIONA_SUBTITULO: esc(data.comoFunciona.subtitulo),
+    COMO_FUNCIONA_PASOS: renderPasos(data.comoFunciona.pasos),
+    INTEGRACIONES_TITULO: esc(data.integraciones.titulo),
+    INTEGRACIONES_SUBTITULO: esc(data.integraciones.subtitulo),
+    INTEGRACIONES_ITEMS: renderIntegraciones(data.integraciones.items),
+    ANTES_DESPUES_TITULO: esc(data.antesDespues.titulo),
+    ANTES_DESPUES_SUBTITULO: esc(data.antesDespues.subtitulo),
+    ANTES_DESPUES_COLS: renderAntesDespues(data.antesDespues.filas),
+    FAQ_TITULO: esc(data.faq.titulo),
+    FAQ_SUBTITULO: esc(data.faq.subtitulo),
+    FAQ_ITEMS: renderFaq(data.faq.items),
+    DRAWER_LINKS: renderDrawerLinks(data.secciones),
   };
 
   for (const [key, value] of Object.entries(placeholders)) {
@@ -186,7 +287,11 @@ function main() {
 
   const totalFeatures = data.secciones.reduce((acc, s) => acc + s.features.length, 0);
   console.log(`✓ Landing generada en ${path.relative(ROOT, OUTPUT_PATH)}`);
-  console.log(`  ${data.secciones.length} secciones · ${totalFeatures} features · ${data.changelog.length} releases`);
+  console.log(
+    `  ${data.secciones.length} secciones · ${totalFeatures} features · ` +
+      `${data.comoFunciona.pasos.length} pasos · ${data.integraciones.items.length} integraciones · ` +
+      `${data.faq.items.length} FAQ · ${data.changelog.length} releases`,
+  );
 }
 
 main();
