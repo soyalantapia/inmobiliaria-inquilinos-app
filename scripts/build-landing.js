@@ -109,11 +109,13 @@ function renderChangelog(changelog) {
     .join('');
 }
 
-// Render footer links
-function renderFooterLinks(links) {
-  return links
+// Render footer links — devuelve el bloque entero (incluido el <br>) o vacío si no hay
+function renderFooterLinksBlock(links) {
+  if (!links || links.length === 0) return '';
+  const items = links
     .map((l) => `<a href="${esc(l.href)}">${esc(l.label)}</a>`)
     .join(' · ');
+  return `<br />${items}`;
 }
 
 function main() {
@@ -147,7 +149,7 @@ function main() {
     SECCIONES: data.secciones.map(renderSeccion).join('\n'),
     CHANGELOG: renderChangelog(data.changelog),
     FOOTER_CREDITOS: esc(data.footer.creditos),
-    FOOTER_LINKS: renderFooterLinks(data.footer.links),
+    FOOTER_LINKS_BLOCK: renderFooterLinksBlock(data.footer.links),
   };
 
   for (const [key, value] of Object.entries(placeholders)) {

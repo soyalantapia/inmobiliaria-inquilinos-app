@@ -311,9 +311,7 @@
     }
   ],
   "footer": {
-    "creditos": "Demo construida con Next.js + Turborepo · Datos ficticios",
-    "links": [
-      { "label": "Código fuente", "href": "https://github.com/soyalantapia/inmobiliaria-inquilinos-app" }
-    ]
+    "creditos": "Datos ficticios — demo navegable",
+    "links": []
   }
 }
