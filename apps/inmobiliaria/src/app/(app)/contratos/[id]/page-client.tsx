@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { notFound, useParams } from 'next/navigation';
 import {
+  AlertCircle,
   ArrowLeft,
   CheckCircle2,
   Clock,
@@ -16,8 +17,10 @@ import {
   Pencil,
   Phone,
   Send,
+  ShieldCheck,
   TrendingUp,
   Wrench,
+  XCircle,
   type LucideIcon,
 } from 'lucide-react';
 import { Badge } from '@llave/ui/badge';
@@ -28,6 +31,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@llave/ui/tabs';
 import { toast } from '@llave/ui/use-toast';
 import { MensajeInquilinoDialog } from '@/components/mensaje-inquilino-dialog';
 import { Topbar } from '@/components/topbar';
+import { registrarEvento } from '@/lib/auditoria-storage';
 import {
   type CanalComunicacion,
   type LiquidacionAdmin,
@@ -100,6 +104,17 @@ export default function DetalleContratoPage() {
     <>
       <Topbar titulo="Contrato" />
       <main className="flex-1 space-y-6 p-4 md:p-6">
+        {/* Card de aprobación: aparece cuando el contrato lo cargó un usuario
+            con rol CARGA y todavía no fue aprobado por un ADMIN. */}
+        {c.pendienteAprobacion && (
+          <AprobacionContratoCard
+            contratoId={c.id}
+            cargadoPor={c.cargadoPor ?? 'Usuario desconocido'}
+            cargadoAt={c.cargadoAt ?? ''}
+            inquilino={c.inquilino}
+          />
+        )}
+
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <Link
@@ -497,6 +512,113 @@ function Row({ label, value, bold }: { label: string; value: React.ReactNode; bo
       <span className="text-muted-foreground">{label}</span>
       <span className={bold ? 'font-semibold' : ''}>{value}</span>
     </div>
+  );
+}
+
+function AprobacionContratoCard({
+  contratoId,
+  cargadoPor,
+  cargadoAt,
+  inquilino,
+}: {
+  contratoId: string;
+  cargadoPor: string;
+  cargadoAt: string;
+  inquilino: string;
+}) {
+  const [resuelto, setResuelto] = useState<'APROBADO' | 'RECHAZADO' | null>(null);
+
+  if (resuelto === 'APROBADO') {
+    return (
+      <div className="rounded-lg border border-emerald-300 bg-emerald-50 p-4 dark:border-emerald-900/40 dark:bg-emerald-950/30">
+        <div className="flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-300">
+          <CheckCircle2 className="h-4 w-4" />
+          <span className="font-medium">
+            Contrato aprobado. Pasa a estado ACTIVO y se le notifica al inquilino.
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  if (resuelto === 'RECHAZADO') {
+    return (
+      <div className="rounded-lg border border-red-300 bg-red-50 p-4 dark:border-red-900/40 dark:bg-red-950/30">
+        <div className="flex items-center gap-2 text-sm text-red-700 dark:text-red-300">
+          <XCircle className="h-4 w-4" />
+          <span className="font-medium">
+            Contrato rechazado. {cargadoPor} ya recibió la notificación.
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  const handleAprobar = () => {
+    // Acá registramos en auditoría — el evento queda visible en /configuracion.
+    registrarEvento({
+      tipo: 'CONTRATO_APROBADO',
+      autor: 'Roberto Tapia',
+      rolAutor: 'ADMIN',
+      entidadId: contratoId,
+      entidadDescripcion: `Contrato ${contratoId} · ${inquilino}`,
+      detalle: `Revisión OK. Activado el ${new Date().toLocaleDateString('es-AR')}.`,
+    });
+    setResuelto('APROBADO');
+    toast({
+      title: 'Contrato aprobado',
+      description: `${inquilino} pasa a ACTIVO. Se notifica al inquilino y a ${cargadoPor}.`,
+    });
+  };
+
+  const handleRechazar = () => {
+    registrarEvento({
+      tipo: 'CONTRATO_RECHAZADO',
+      autor: 'Roberto Tapia',
+      rolAutor: 'ADMIN',
+      entidadId: contratoId,
+      entidadDescripcion: `Contrato ${contratoId} · ${inquilino}`,
+      detalle: `Cargado por ${cargadoPor} · rechazado por el admin`,
+    });
+    setResuelto('RECHAZADO');
+    toast({
+      title: 'Contrato rechazado',
+      description: `Avísale a ${cargadoPor} qué corregir.`,
+    });
+  };
+
+  return (
+    <Card className="border-amber-300 bg-amber-50 dark:border-amber-900/40 dark:bg-amber-950/30">
+      <CardContent className="space-y-3 p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="h-5 w-5 text-amber-700 dark:text-amber-300" />
+            <div>
+              <h3 className="text-sm font-semibold">Pendiente de aprobación</h3>
+              <p className="text-xs text-muted-foreground">
+                Cargado por <strong>{cargadoPor}</strong>
+                {cargadoAt && ` · ${formatFecha(cargadoAt)}`}
+              </p>
+            </div>
+          </div>
+          <Badge variant="warning">Borrador</Badge>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Revisá los datos en el resumen y los documentos. Si está todo en orden,
+          aprobalo para que pase a ACTIVO y empiece a facturar.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={handleRechazar}>
+            <XCircle className="h-4 w-4" />
+            Rechazar
+          </Button>
+          <Button onClick={handleAprobar}>
+            <ShieldCheck className="h-4 w-4" />
+            Aprobar contrato
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

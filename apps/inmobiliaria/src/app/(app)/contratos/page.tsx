@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import {
+  AlertCircle,
   Archive,
   CheckCircle2,
   ChevronRight,
@@ -143,6 +144,41 @@ export default function ContratosPage() {
     <>
       <Topbar titulo="Contratos" />
       <main className="flex-1 space-y-4 p-4 md:p-6">
+        {/* Banner: contratos pendientes de aprobación */}
+        {(() => {
+          const pendientes = contratosMock.filter((c) => c.pendienteAprobacion);
+          if (pendientes.length === 0) return null;
+          return (
+            <Card className="border-amber-300 bg-amber-50 dark:border-amber-900/40 dark:bg-amber-950/30">
+              <div className="flex flex-wrap items-center gap-3 p-4">
+                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-amber-500 text-white">
+                  <AlertCircle className="h-5 w-5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold">
+                    {pendientes.length} contrato{pendientes.length === 1 ? '' : 's'} pendiente
+                    {pendientes.length === 1 ? '' : 's'} de aprobación
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Revisá los datos cargados por el equipo y aprobá para que pasen a ACTIVO.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {pendientes.slice(0, 2).map((c) => (
+                    <Link
+                      key={c.id}
+                      href={`/contratos/${c.id}`}
+                      className="rounded-md border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted/40"
+                    >
+                      {c.inquilino} →
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            </Card>
+          );
+        })()}
+
         {/* Chip de filtro por propietario */}
         {propietario && (
           <div className="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm">

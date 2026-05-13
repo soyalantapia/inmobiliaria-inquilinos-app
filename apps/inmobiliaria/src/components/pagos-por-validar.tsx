@@ -7,6 +7,7 @@ import {
   ExternalLink,
   FileText,
   ReceiptText,
+  RotateCcw,
   XCircle,
 } from 'lucide-react';
 import { Badge } from '@llave/ui/badge';
@@ -29,7 +30,9 @@ import {
   conciliarPago,
   estadoDePago,
   rechazarPago,
+  revertirAccion,
 } from '@/lib/conciliacion-storage';
+import { registrarEvento } from '@/lib/auditoria-storage';
 
 // Sección "Por validar" en /pagos del admin. Muestra los comprobantes que
 // los inquilinos subieron y todavía no fueron conciliados. Cuando el admin
@@ -71,6 +74,14 @@ export function PagosPorValidar() {
 
   const handleConciliar = (pago: PagoInformado) => {
     conciliarPago(pago.id, 'Roberto Tapia');
+    registrarEvento({
+      tipo: 'PAGO_CONCILIADO',
+      autor: 'Roberto Tapia',
+      rolAutor: 'ADMIN',
+      entidadId: pago.id,
+      entidadDescripcion: `Pago de ${pago.inquilino} · ${formatPeriodo(pago.periodo)}`,
+      detalle: `${formatMonto(pago.monto)} · ${pago.metodo.toLowerCase()}`,
+    });
     refrescar();
     toast({
       title: `Pago de ${pago.inquilino} confirmado`,
@@ -85,6 +96,14 @@ export function PagosPorValidar() {
       return;
     }
     rechazarPago(rechazando.id, 'Roberto Tapia', motivoRechazo.trim());
+    registrarEvento({
+      tipo: 'PAGO_RECHAZADO',
+      autor: 'Roberto Tapia',
+      rolAutor: 'ADMIN',
+      entidadId: rechazando.id,
+      entidadDescripcion: `Pago de ${rechazando.inquilino} · ${formatPeriodo(rechazando.periodo)}`,
+      detalle: motivoRechazo.trim(),
+    });
     refrescar();
     toast({
       title: 'Pago rechazado',
@@ -94,40 +113,100 @@ export function PagosPorValidar() {
     setMotivoRechazo('');
   };
 
+  /** Revierte un pago previamente conciliado o rechazado. Vuelve al estado
+   *  INFORMADO para que el admin pueda volver a decidir. */
+  const handleRevertir = (pago: PagoInformado) => {
+    const prev = revertirAccion(pago.id);
+    if (!prev) return;
+    registrarEvento({
+      tipo: 'PAGO_REVERTIDO',
+      autor: 'Roberto Tapia',
+      rolAutor: 'ADMIN',
+      entidadId: pago.id,
+      entidadDescripcion: `Pago de ${pago.inquilino} · ${formatPeriodo(pago.periodo)}`,
+      detalle: `Revertido el ${prev.estado === 'CONCILIADO' ? 'OK' : 'rechazo'} dado por ${prev.decidiSPor}`,
+    });
+    refrescar();
+    toast({
+      title: 'Acción revertida',
+      description: `El pago vuelve a estado "Por validar".`,
+    });
+  };
+
+  // Lista de pagos ya conciliados/rechazados (resueltos) para mostrar
+  // abajo y poder revertir si hubo error.
+  const resueltos = useMemo(
+    () => pagosInformadosMock.filter((p) => acciones[p.id]),
+    [acciones],
+  );
+
   if (!hidratado) return null;
-  if (pendientes.length === 0) return null;
+  if (pendientes.length === 0 && resueltos.length === 0) return null;
 
   return (
     <>
-      <Card className="border-amber-300 bg-amber-50/50 dark:border-amber-900/40 dark:bg-amber-900/10">
-        <CardContent className="space-y-4 p-5">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <ReceiptText className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-              <h2 className="text-base font-semibold">Pagos por validar</h2>
+      {pendientes.length > 0 && (
+        <Card className="border-amber-300 bg-amber-50/50 dark:border-amber-900/40 dark:bg-amber-900/10">
+          <CardContent className="space-y-4 p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <ReceiptText className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                <h2 className="text-base font-semibold">Pagos por validar</h2>
+              </div>
+              <Badge variant="warning" className="shrink-0">
+                {pendientes.length}
+              </Badge>
             </div>
-            <Badge variant="warning" className="shrink-0">
-              {pendientes.length}
-            </Badge>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Tus inquilinos informaron estos pagos. Verificá el comprobante y confirmá o
-            rechazá.
-          </p>
+            <p className="text-xs text-muted-foreground">
+              Tus inquilinos informaron estos pagos. Verificá el comprobante y confirmá o
+              rechazá.
+            </p>
 
-          <div className="space-y-3">
-            {pendientes.map((p) => (
-              <PagoRow
-                key={p.id}
-                pago={p}
-                onConciliar={() => handleConciliar(p)}
-                onRechazar={() => setRechazando(p)}
-                onVerComprobante={() => setVerComprobante(p)}
-              />
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+            <div className="space-y-3">
+              {pendientes.map((p) => (
+                <PagoRow
+                  key={p.id}
+                  pago={p}
+                  onConciliar={() => handleConciliar(p)}
+                  onRechazar={() => setRechazando(p)}
+                  onVerComprobante={() => setVerComprobante(p)}
+                />
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Pagos ya resueltos (conciliados o rechazados) — se pueden revertir */}
+      {resueltos.length > 0 && (
+        <Card>
+          <CardContent className="space-y-3 p-5">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                <h3 className="text-sm font-semibold">Resueltos recientes</h3>
+              </div>
+              <Badge variant="secondary" className="shrink-0">
+                {resueltos.length}
+              </Badge>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Si te equivocaste, podés revertir la decisión — vuelve a aparecer como
+              &quot;Por validar&quot;.
+            </p>
+            <div className="divide-y rounded-md border">
+              {resueltos.map((p) => (
+                <ResueltoRow
+                  key={p.id}
+                  pago={p}
+                  estado={acciones[p.id]!}
+                  onRevertir={() => handleRevertir(p)}
+                />
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Modal comprobante */}
       <Dialog open={!!verComprobante} onOpenChange={(v) => !v && setVerComprobante(null)}>
@@ -287,6 +366,46 @@ function Field({ label, value }: { label: string; value: string }) {
     <div className={cn('min-w-0')}>
       <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
       <p className="truncate font-medium">{value}</p>
+    </div>
+  );
+}
+
+function ResueltoRow({
+  pago,
+  estado,
+  onRevertir,
+}: {
+  pago: PagoInformado;
+  estado: 'CONCILIADO' | 'RECHAZADO';
+  onRevertir: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-3 p-3">
+      <div
+        className={cn(
+          'grid h-9 w-9 shrink-0 place-items-center rounded-md',
+          estado === 'CONCILIADO'
+            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+            : 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300',
+        )}
+      >
+        {estado === 'CONCILIADO' ? (
+          <CheckCircle2 className="h-4 w-4" />
+        ) : (
+          <XCircle className="h-4 w-4" />
+        )}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="truncate text-sm font-medium">{pago.inquilino}</p>
+        <p className="truncate text-xs text-muted-foreground">
+          {formatPeriodo(pago.periodo)} · {formatMonto(pago.monto)} ·{' '}
+          {estado === 'CONCILIADO' ? 'Confirmado' : 'Rechazado'}
+        </p>
+      </div>
+      <Button size="sm" variant="ghost" onClick={onRevertir}>
+        <RotateCcw className="h-3.5 w-3.5" />
+        Revertir
+      </Button>
     </div>
   );
 }

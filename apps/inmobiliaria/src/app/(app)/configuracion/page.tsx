@@ -10,6 +10,7 @@ import {
   GraduationCap,
   MapPin,
   Plus,
+  ScrollText,
   Trash2,
   Users,
 } from 'lucide-react';
@@ -30,6 +31,12 @@ import { relanzarOnboardingInmo } from '@/components/onboarding';
 import { Topbar } from '@/components/topbar';
 import { COSTO_PROPIEDAD_MENSUAL, calcularResumenPlan, facturasMock } from '@/lib/plan';
 import { formatFecha, formatMonto, formatPeriodo } from '@/lib/format';
+import {
+  listarAuditoria,
+  tipoEventoLabel,
+  type EventoAuditoria,
+  type TipoEventoAuditoria,
+} from '@/lib/auditoria-storage';
 
 type Rol = 'ADMIN' | 'OPERADOR' | 'CARGA' | 'LECTURA';
 
@@ -222,6 +229,10 @@ export default function ConfiguracionPage() {
             <TabsTrigger value="plan">
               <CreditCard className="mr-1.5 h-3.5 w-3.5" />
               Plan y facturas
+            </TabsTrigger>
+            <TabsTrigger value="auditoria">
+              <ScrollText className="mr-1.5 h-3.5 w-3.5" />
+              Auditoría
             </TabsTrigger>
           </TabsList>
 
@@ -612,6 +623,11 @@ export default function ConfiguracionPage() {
             </Card>
           </TabsContent>
 
+          {/* AUDITORÍA */}
+          <TabsContent value="auditoria" className="space-y-4">
+            <AuditoriaTab />
+          </TabsContent>
+
         </Tabs>
       </main>
 
@@ -681,6 +697,172 @@ function Field({
     <div className="space-y-2">
       <Label>{label}</Label>
       <Input value={value} onChange={(e) => onChange(e.target.value)} />
+    </div>
+  );
+}
+
+// ============================================================
+// TAB DE AUDITORÍA
+// ============================================================
+
+function AuditoriaTab() {
+  const [eventos, setEventos] = useState<EventoAuditoria[]>(() => listarAuditoria());
+  const [filtroTipo, setFiltroTipo] = useState<'todos' | TipoEventoAuditoria>('todos');
+  const [filtroAutor, setFiltroAutor] = useState<string>('todos');
+
+  // Refrescar al volver a la tab (por si se registró algo en otra ventana/acción)
+  function refrescar() {
+    setEventos(listarAuditoria());
+  }
+
+  const autores = useMemo(() => {
+    const set = new Set<string>();
+    eventos.forEach((e) => set.add(e.autor));
+    return Array.from(set).sort();
+  }, [eventos]);
+
+  const filtrados = useMemo(() => {
+    return eventos.filter((e) => {
+      if (filtroTipo !== 'todos' && e.tipo !== filtroTipo) return false;
+      if (filtroAutor !== 'todos' && e.autor !== filtroAutor) return false;
+      return true;
+    });
+  }, [eventos, filtroTipo, filtroAutor]);
+
+  // Agrupar por día para timeline
+  const porDia = useMemo(() => {
+    const map = new Map<string, EventoAuditoria[]>();
+    filtrados.forEach((e) => {
+      const dia = e.fecha.slice(0, 10);
+      const lista = map.get(dia) ?? [];
+      lista.push(e);
+      map.set(dia, lista);
+    });
+    return Array.from(map.entries()).sort((a, b) => b[0].localeCompare(a[0]));
+  }, [filtrados]);
+
+  return (
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <ScrollText className="h-5 w-5" />
+            Auditoría de acciones
+          </CardTitle>
+          <CardDescription>
+            Registro de cada acción sensible (pagos, contratos, caja, equipo). Sirve para
+            auditar qué hizo cada usuario y tener trazabilidad legal.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Tipo de evento</Label>
+              <Select value={filtroTipo} onValueChange={(v) => setFiltroTipo(v as typeof filtroTipo)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos los tipos</SelectItem>
+                  {(Object.keys(tipoEventoLabel) as TipoEventoAuditoria[]).map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {tipoEventoLabel[t]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Usuario</Label>
+              <Select value={filtroAutor} onValueChange={setFiltroAutor}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos los usuarios</SelectItem>
+                  {autores.map((a) => (
+                    <SelectItem key={a} value={a}>
+                      {a}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-end">
+              <Button variant="outline" size="sm" onClick={refrescar}>
+                Refrescar
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>
+              Mostrando <strong className="text-foreground">{filtrados.length}</strong> de{' '}
+              {eventos.length} eventos
+            </span>
+            <span>Se guardan los últimos 500 eventos</span>
+          </div>
+        </CardContent>
+      </Card>
+
+      {porDia.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center text-sm text-muted-foreground">
+            No hay eventos para los filtros seleccionados.
+          </CardContent>
+        </Card>
+      ) : (
+        porDia.map(([dia, eventosDia]) => (
+          <Card key={dia}>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-semibold text-muted-foreground">
+                {formatFecha(`${dia}T12:00:00-03:00`)}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {eventosDia.map((evento) => (
+                <EventoRow key={evento.id} evento={evento} />
+              ))}
+            </CardContent>
+          </Card>
+        ))
+      )}
+    </>
+  );
+}
+
+function EventoRow({ evento }: { evento: EventoAuditoria }) {
+  const hora = new Date(evento.fecha).toLocaleTimeString('es-AR', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  const iniciales = evento.autor
+    .split(' ')
+    .slice(0, 2)
+    .map((p) => p[0])
+    .join('')
+    .toUpperCase();
+
+  return (
+    <div className="flex items-start gap-3 border-l-2 border-muted pl-3">
+      <Avatar className="h-8 w-8 shrink-0">
+        <AvatarFallback className="text-xs">{iniciales}</AvatarFallback>
+      </Avatar>
+      <div className="min-w-0 flex-1 space-y-1">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+          <span className="font-medium">{evento.autor}</span>
+          <Badge variant="outline" className="text-[10px]">
+            {evento.rolAutor}
+          </Badge>
+          <span className="text-muted-foreground">·</span>
+          <span className="text-muted-foreground">{tipoEventoLabel[evento.tipo]}</span>
+        </div>
+        <div className="text-sm font-medium">{evento.entidadDescripcion}</div>
+        {evento.detalle && (
+          <div className="text-xs text-muted-foreground">{evento.detalle}</div>
+        )}
+      </div>
+      <div className="shrink-0 text-xs text-muted-foreground">{hora}</div>
     </div>
   );
 }

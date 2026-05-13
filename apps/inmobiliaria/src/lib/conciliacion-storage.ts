@@ -78,3 +78,20 @@ export function rechazarPago(
   };
   guardar(map);
 }
+
+/**
+ * Revierte una conciliación / rechazo previo y vuelve el pago a estado
+ * INFORMADO (pendiente de validación). Útil cuando el admin dio OK por
+ * error o el inquilino mandó el comprobante equivocado. La auditoría
+ * registra quién revirtió y por qué.
+ */
+export function revertirAccion(
+  pagoId: string,
+): AccionConciliacion | null {
+  const map = leer();
+  const prev = map[pagoId];
+  if (!prev) return null;
+  delete map[pagoId];
+  guardar(map);
+  return prev;
+}

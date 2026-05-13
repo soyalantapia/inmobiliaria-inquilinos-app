@@ -135,6 +135,17 @@ export interface ContratoListado {
   tipoContrato?: TipoContrato;
   /** Monto de expensas mensuales (si el contrato lo incluye). */
   montoExpensas?: number | null;
+  /**
+   * Trazabilidad: quién cargó el contrato y cuándo. Si lo cargó alguien con
+   * rol CARGA, queda PENDIENTE_APROBACION (estado BORRADOR + pendienteAprobacion=true)
+   * hasta que un ADMIN lo apruebe.
+   */
+  cargadoPor?: string;
+  cargadoAt?: string;
+  cargadoRol?: 'ADMIN' | 'OPERADOR' | 'CARGA' | 'LECTURA';
+  pendienteAprobacion?: boolean;
+  aprobadoPor?: string | null;
+  aprobadoAt?: string | null;
 }
 
 export interface CampoExtraido {
