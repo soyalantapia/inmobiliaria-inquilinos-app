@@ -80,10 +80,12 @@ function renderSeccion(s) {
     </section>`;
 }
 
-// Render nav links — un link por sección
+// Render nav links del navbar desktop — usa navTitulo (corto) si está disponible,
+// si no cae al titulo largo. Solo las secciones de features, FAQ y Cambios
+// se agregan aparte en el template.
 function renderNavLinks(secciones) {
   return secciones
-    .map((s) => `<a href="#${esc(s.id)}">${esc(s.titulo)}</a>`)
+    .map((s) => `<a href="#${esc(s.id)}">${esc(s.navTitulo || s.titulo)}</a>`)
     .join('\n          ');
 }
 

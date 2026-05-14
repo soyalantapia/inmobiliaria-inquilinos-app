@@ -126,6 +126,7 @@
     {
       "id": "cobranza",
       "titulo": "Cobranza inteligente",
+      "navTitulo": "Cobranza",
       "subtitulo": "Dos modelos de cobranza en el mismo sistema, configurables por contrato",
       "icono": "💸",
       "color": "emerald",
@@ -159,6 +160,7 @@
     {
       "id": "facturacion",
       "titulo": "Facturación AFIP automática",
+      "navTitulo": "AFIP",
       "subtitulo": "Conectás la AFIP del propietario una vez y el sistema factura solo",
       "icono": "🧾",
       "color": "violet",
@@ -186,6 +188,7 @@
     {
       "id": "contratos",
       "titulo": "Contratos sin papelerío",
+      "navTitulo": "Contratos",
       "subtitulo": "OCR, aprobación por admin, soporte de expensas y ajustes ICL",
       "icono": "📄",
       "color": "blue",
@@ -219,6 +222,7 @@
     {
       "id": "propietarios",
       "titulo": "Propiedades y propietarios",
+      "navTitulo": "Propietarios",
       "subtitulo": "Multi-propietario con porcentajes, CBU por propiedad, AFIP individual",
       "icono": "🏠",
       "color": "amber",
@@ -252,6 +256,7 @@
     {
       "id": "reclamos",
       "titulo": "Reclamos con profesionales curados",
+      "navTitulo": "Reclamos",
       "subtitulo": "Clasificación automática y red de plomeros, electricistas y gasistas",
       "icono": "🔧",
       "color": "rose",
@@ -279,6 +284,7 @@
     {
       "id": "equipo",
       "titulo": "Equipo y auditoría",
+      "navTitulo": "Auditoría",
       "subtitulo": "4 roles bien definidos y trazabilidad legal de cada acción",
       "icono": "🔐",
       "color": "indigo",
@@ -306,6 +312,7 @@
     {
       "id": "inquilino",
       "titulo": "App del inquilino",
+      "navTitulo": "Inquilino",
       "subtitulo": "PWA que se instala como una app — paga, reclama, chatea",
       "icono": "📱",
       "color": "teal",
@@ -339,6 +346,7 @@
     {
       "id": "reportes",
       "titulo": "Reportes y renovaciones",
+      "navTitulo": "Reportes",
       "subtitulo": "PDFs profesionales, alertas de vencimiento y comparativas con ICL",
       "icono": "📈",
       "color": "fuchsia",
