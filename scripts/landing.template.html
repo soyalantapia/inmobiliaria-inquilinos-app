@@ -672,19 +672,13 @@
         background: var(--bg-soft);
       }
 
-      .funcionalidades-wrap {
-        padding: 56px 0 0;
-        background: var(--bg);
+      /* Anchor invisible para nav-link "Funcionalidades": el JS de smooth scroll
+         con offset hace que llegue centrado bajo el navbar sticky. */
+      .anchor-target {
+        display: block;
+        height: 0;
+        overflow: hidden;
       }
-      @media (min-width: 480px) { .funcionalidades-wrap { padding: 64px 0 0; } }
-      @media (min-width: 768px) { .funcionalidades-wrap { padding: 96px 0 0; } }
-      @media (min-width: 1024px) { .funcionalidades-wrap { padding: 120px 0 0; } }
-      .funcionalidades-wrap .sec-header { margin-bottom: 0; }
-
-      /* La primera sección de features arranca pegada al wrap (sin doble padding) */
-      .funcionalidades-wrap + section.featured { padding-top: 36px; }
-      @media (min-width: 480px) { .funcionalidades-wrap + section.featured { padding-top: 44px; } }
-      @media (min-width: 768px) { .funcionalidades-wrap + section.featured { padding-top: 56px; } }
 
       .sec-header {
         text-align: center;
@@ -1982,15 +1976,9 @@
     </section>
 
     <!-- ==================== FUNCIONALIDADES ==================== -->
-    <section id="funcionalidades" class="funcionalidades-wrap">
-      <div class="container">
-        <div class="sec-header reveal">
-          <span class="sec-tag">Funcionalidades</span>
-          <h2>Todo lo que necesitás en una sola plataforma</h2>
-          <p>Cobranza, facturación, contratos, reclamos y reportes. Tocá una card para verla en vivo.</p>
-        </div>
-      </div>
-    </section>
+    <!-- Ancla invisible: el nav "Funcionalidades" scrollea hasta acá y la
+         primera sección de features (Cobranza) hace de intro natural. -->
+    <span id="funcionalidades" class="anchor-target" aria-hidden="true"></span>
     {{SECCIONES}}
 
     <!-- ==================== INTEGRACIONES ==================== -->
