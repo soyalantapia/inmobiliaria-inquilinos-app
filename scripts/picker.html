@@ -6,6 +6,8 @@
     <title>Llave — Elegí qué querés ver</title>
     <meta name="description" content="Plataforma para inmobiliarias e inquilinos. Demo navegable." />
     <meta name="theme-color" content="#7c3aed" />
+    <meta name="color-scheme" content="only light" />
+    <meta name="supported-color-schemes" content="light" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -14,7 +16,7 @@
     />
     <style>
       :root {
-        color-scheme: light only;
+        color-scheme: only light;
         --bg: #ffffff;
         --bg-soft: #f7f7fb;
         --fg: #0a0a14;
@@ -29,10 +31,15 @@
       }
       /* Light mode forzado — sin auto-switch a dark mode del sistema. */
       * { box-sizing: border-box; }
-      html { -webkit-text-size-adjust: 100%; }
+      html {
+        -webkit-text-size-adjust: 100%;
+        color-scheme: only light;
+        background-color: #ffffff;
+      }
       body {
         margin: 0;
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+        background-color: #ffffff;
         background: var(--bg);
         color: var(--fg);
         min-height: 100dvh;

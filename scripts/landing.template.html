@@ -6,6 +6,8 @@
     <title>{{META_TITULO}}</title>
     <meta name="description" content="{{META_DESCRIPCION}}" />
     <meta name="theme-color" content="#7c3aed" />
+    <meta name="color-scheme" content="only light" />
+    <meta name="supported-color-schemes" content="light" />
     <meta property="og:title" content="{{META_TITULO}}" />
     <meta property="og:description" content="{{META_DESCRIPCION}}" />
     <meta property="og:type" content="website" />
@@ -20,7 +22,7 @@
          DESIGN TOKENS
          ============================================================ */
       :root {
-        color-scheme: light only;
+        color-scheme: only light;
         --bg: #ffffff;
         --bg-soft: #f7f7fb;
         --bg-dark: #0a0a14;
@@ -70,10 +72,16 @@
          la preferencia del sistema operativo del usuario. */
 
       * { box-sizing: border-box; }
-      html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+      html {
+        scroll-behavior: smooth;
+        -webkit-text-size-adjust: 100%;
+        color-scheme: only light;
+        background-color: #ffffff;
+      }
       body {
         margin: 0;
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+        background-color: #ffffff;
         background: var(--bg);
         color: var(--fg);
         line-height: 1.55;
