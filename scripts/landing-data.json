@@ -13,7 +13,7 @@
     "ctaInquilino": { "texto": "Acceder a la app del inquilino", "href": "../inquilino/" },
     "badges": [
       "🇦🇷 Operación local",
-      "🔐 Trazabilidad legal",
+      "🔐 Registro de cada acción",
       "🧾 Integración con ARCA",
       "📱 App para inquilinos"
     ]
@@ -40,14 +40,14 @@
         "descripcion": "El inquilino avisa que ya transfirió y manda la foto del comprobante. Entre los 200 mensajes del día, el comprobante queda perdido y nadie lo marca como pagado."
       },
       {
-        "icono": "🧾",
-        "titulo": "Comprobantes sin sistema único",
-        "descripcion": "El recibo en un mail, la foto en WhatsApp, la transferencia en el banco. Armar el cierre mensual toma una tarde entera."
+        "icono": "📅",
+        "titulo": "Renovaciones que llegan tarde",
+        "descripcion": "El contrato vence la semana que viene y recién ahora te acordás del ajuste por índice. Corrés a calcular el nuevo monto y a mandarle la propuesta al propietario y al inquilino."
       },
       {
         "icono": "📞",
         "titulo": "Consultas fuera de horario",
-        "descripcion": "El propietario consulta si pagó tal inquilino al cierre del día. Tu equipo ya se retiró. La respuesta queda en manos dla inmobiliaria."
+        "descripcion": "El propietario consulta si pagó tal inquilino al cierre del día. Tu equipo ya se retiró. La respuesta queda en manos de la inmobiliaria."
       },
       {
         "icono": "🧮",
@@ -56,8 +56,8 @@
       },
       {
         "icono": "🔍",
-        "titulo": "Falta de trazabilidad de acciones",
-        "descripcion": "Frente a una consulta sobre quién y cuándo aprobó un movimiento, no hay un registro consolidado disponible para responder."
+        "titulo": "Nadie se acuerda quién hizo qué",
+        "descripcion": "Frente a una consulta del propietario sobre quién aprobó tal pago y cuándo, no hay un registro consolidado disponible. La memoria depende de cada persona del equipo."
       }
     ]
   },
@@ -68,7 +68,7 @@
       {
         "numero": "01",
         "titulo": "Configurás tu operación",
-        "descripcion": "Cargás propietarios, datos bancarios, conectás la ARCA (opcional) y definís los permisos de tu equipo. Una sola vez.",
+        "descripcion": "Cargás propietarios, datos bancarios, conectás con ARCA (opcional) y definís los permisos de tu equipo. Una sola vez.",
         "detalles": [
           "Cobranza por cuenta recaudadora o transferencia directa al propietario",
           "Conexión con ARCA por propietario (Monotributo o Responsable Inscripto)",
@@ -100,9 +100,9 @@
   "secciones": [
     {
       "id": "cobranza",
-      "titulo": "Cobranza profesional",
+      "titulo": "Cobranza ordenada",
       "navTitulo": "Cobranza",
-      "subtitulo": "Dos modalidades configurables por contrato, con trazabilidad en cada operación.",
+      "subtitulo": "Dos modalidades configurables por contrato, con registro de cada movimiento.",
       "icono": "💸",
       "color": "emerald",
       "features": [
@@ -270,9 +270,9 @@
     },
     {
       "id": "equipo",
-      "titulo": "Equipo y trazabilidad legal",
+      "titulo": "Equipo y registro de acciones",
       "navTitulo": "Registro",
-      "subtitulo": "Cuatro niveles de permisos y registro permanente de cada acción crítica.",
+      "subtitulo": "Cuatro niveles de permisos y registro permanente de cada acción importante.",
       "icono": "🔐",
       "color": "indigo",
       "features": [
@@ -378,7 +378,7 @@
       { "nombre": "ARCA", "icono": "🧾", "descripcion": "Facturación electrónica oficial", "color": "violet" },
       { "nombre": "WhatsApp", "icono": "💬", "descripcion": "Comunicaciones y comprobantes", "color": "emerald" },
       { "nombre": "Mercado Pago", "icono": "💳", "descripcion": "Reconocimiento de pagos", "color": "blue" },
-      { "nombre": "Bancos", "icono": "🏦", "descripcion": "Galicia, Macro, Roela, BBVA y más", "color": "indigo" },
+      { "nombre": "Bancos", "icono": "🏦", "descripcion": "Galicia, Santander, Macro, BBVA y más", "color": "indigo" },
       { "nombre": "Índice oficial", "icono": "📊", "descripcion": "Actualización automática", "color": "amber" },
       { "nombre": "Correo electrónico", "icono": "✉️", "descripcion": "Notificaciones al inquilino", "color": "rose" }
     ]
@@ -403,7 +403,7 @@
     "items": [
       {
         "pregunta": "¿Qué modalidades de cobranza soporta el sistema?",
-        "respuesta": "Dos modalidades, configurables por contrato. La primera centraliza el cobro en la cuenta recaudadora de la inmobiliaria. La segunda transfiere directamente al propietario con confirmación posterior de recepción. La inmobiliaria mantiene la trazabilidad completa en ambos casos."
+        "respuesta": "Dos modalidades, configurables por contrato. La primera centraliza el cobro en la cuenta recaudadora de la inmobiliaria. La segunda transfiere directamente al propietario con confirmación posterior de recepción. La inmobiliaria mantiene el registro completo de movimientos en ambos casos."
       },
       {
         "pregunta": "¿Es obligatoria la integración con ARCA?",
@@ -427,10 +427,10 @@
       },
       {
         "pregunta": "¿Cómo se conecta el sistema con ARCA?",
-        "respuesta": "La conexión se realiza una vez por propietario. Se cargan CUIT, clave fiscal, punto de venta y tipo de comprobante (Factura A, B, C o Recibo C según condición fiscal). El sistema opera sobre los servicios oficiales de la ARCA."
+        "respuesta": "La conexión se realiza una vez por propietario. Se cargan CUIT, clave fiscal, punto de venta y tipo de comprobante (Factura A, B, C o Recibo C según condición fiscal). El sistema opera sobre los servicios oficiales de ARCA."
       },
       {
-        "pregunta": "¿Qué garantiza la seguridad y trazabilidad de los datos?",
+        "pregunta": "¿Qué garantiza la seguridad y el registro de los datos?",
         "respuesta": "Todas las acciones críticas quedan registradas en un historial permanente que no admite eliminación. Cada movimiento (pago, contrato, gasto, reclamo) incluye usuario responsable, fecha, hora y motivo asociado, disponible para auditorías o consultas."
       }
     ]
