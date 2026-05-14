@@ -19,12 +19,21 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="es-AR" className={inter.variable} style={{ colorScheme: 'only light' }} suppressHydrationWarning>
+    <html
+      lang="es-AR"
+      className={inter.variable}
+      style={{ colorScheme: 'only light' }}
+      data-darkreader-mode="ignore"
+      data-darkreader-scheme="light"
+      suppressHydrationWarning
+    >
       <head>
         <meta name="color-scheme" content="only light" />
+        <meta name="supported-color-schemes" content="light" />
+        <meta name="darkreader-lock" />
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
-      <body className="min-h-screen bg-background font-sans">
+      <body className="min-h-screen bg-background font-sans" style={{ backgroundColor: '#ffffff' }}>
         <AuthProvider>
           {children}
           <Toaster />

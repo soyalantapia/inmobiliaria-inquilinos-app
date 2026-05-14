@@ -74,8 +74,18 @@
   * {
     @apply border-border;
   }
+  /* Light mode forzado a nivel de body — color-scheme y bg explícitos.
+     Esto neutraliza Chrome Auto Dark Mode for Web Contents y previene
+     parpadeos. Las extensiones tipo Dark Reader se manejan vía meta tags
+     en el <head> (data-darkreader-mode="ignore" y darkreader-lock). */
+  html {
+    color-scheme: only light !important;
+    background-color: #ffffff;
+  }
   body {
     @apply bg-background text-foreground antialiased;
+    background-color: hsl(var(--background)) !important;
+    color: hsl(var(--foreground)) !important;
     font-feature-settings: 'rlig' 1, 'calt' 1;
   }
 }
