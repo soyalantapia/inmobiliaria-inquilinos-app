@@ -217,69 +217,73 @@ function renderPromo(promo, ctaPropietarioHref) {
         <div class="promo-card reveal">
           <div class="promo-banner">${esc(promo.etiqueta)}</div>
           <div class="promo-body">
-            <div class="promo-audiencia">${esc(promo.audiencia)}</div>
-            <h3 class="promo-headline">acceden a un precio único de lanzamiento</h3>
+            <div class="promo-left">
+              <div class="promo-audiencia">${esc(promo.audiencia)}</div>
+              <h3 class="promo-headline">acceden a un precio único de lanzamiento</h3>
 
-            <div class="promo-precio">
-              <div class="promo-precio-antes">
-                Antes
-                <span class="tachado">${esc(promo.precioOriginal)}</span>
+              <div class="promo-precio">
+                <div class="promo-precio-antes">
+                  Antes
+                  <span class="tachado">${esc(promo.precioOriginal)}</span>
+                </div>
+                <div class="promo-precio-nuevo">
+                  <span class="v">${esc(promo.precioPromocional)}</span>
+                  <span class="periodo">${esc(promo.periodo)}</span>
+                </div>
+                <span class="promo-descuento-chip">${esc(promo.descuento)}</span>
               </div>
-              <div class="promo-precio-nuevo">
-                <span class="v">${esc(promo.precioPromocional)}</span>
-                <span class="periodo">${esc(promo.periodo)}</span>
+
+              <div class="promo-urgencia">
+                <span class="urgencia-chip">
+                  <span class="pulse" aria-hidden="true"></span>
+                  Quedan <strong>${promo.cuposRestantes}</strong> de ${promo.cuposTotales} cupos
+                </span>
+                <span class="urgencia-chip">
+                  📅 <strong>${esc(promo.vencimiento)}</strong>
+                </span>
               </div>
-              <span class="promo-descuento-chip">${esc(promo.descuento)}</span>
+
+              <div class="promo-cupos" role="img" aria-label="${tomados} de ${promo.cuposTotales} cupos tomados">
+                <div class="promo-cupos-header">
+                  <span>${tomados} ya se sumaron</span>
+                  <span>${promo.cuposTotales} cupos totales</span>
+                </div>
+                <div class="promo-cupos-bar">
+                  <div class="promo-cupos-bar-fill" style="width: ${cuposPct}%"></div>
+                </div>
+              </div>
+
+              <div class="promo-cta-group">
+                <a href="${esc(ctaPropietarioHref)}" class="btn btn-primary btn-xl">
+                  🔒 ${esc(promo.cta)}
+                </a>
+                <a href="mailto:hola@llave.com.ar" class="btn btn-ghost btn-xl">
+                  ${esc(promo.ctaSecundario)}
+                </a>
+              </div>
+
+              <p class="promo-garantia">
+                <span class="gar-icon">✓</span>
+                ${esc(promo.garantia)}
+              </p>
             </div>
 
-            <div class="promo-urgencia">
-              <span class="urgencia-chip">
-                <span class="pulse" aria-hidden="true"></span>
-                Quedan <strong>${promo.cuposRestantes}</strong> de ${promo.cuposTotales} cupos
-              </span>
-              <span class="urgencia-chip">
-                📅 <strong>${esc(promo.vencimiento)}</strong>
-              </span>
-            </div>
-
-            <div class="promo-cupos" role="img" aria-label="${tomados} de ${promo.cuposTotales} cupos tomados">
-              <div class="promo-cupos-header">
-                <span>${tomados} ya se sumaron</span>
-                <span>${promo.cuposTotales} cupos totales</span>
-              </div>
-              <div class="promo-cupos-bar">
-                <div class="promo-cupos-bar-fill" style="width: ${cuposPct}%"></div>
+            <div class="promo-right">
+              <div class="promo-listas">
+                <div>
+                  <h4>Todo incluido</h4>
+                  <ul>
+              ${incluye}
+                  </ul>
+                </div>
+                <div>
+                  <h4>Sin extras</h4>
+                  <ul>
+              ${extras}
+                  </ul>
+                </div>
               </div>
             </div>
-
-            <div class="promo-listas">
-              <div>
-                <h4>Todo incluido</h4>
-                <ul>
-            ${incluye}
-                </ul>
-              </div>
-              <div>
-                <h4>Sin extras</h4>
-                <ul>
-            ${extras}
-                </ul>
-              </div>
-            </div>
-
-            <div class="promo-cta-group">
-              <a href="${esc(ctaPropietarioHref)}" class="btn btn-primary btn-xl">
-                🔒 ${esc(promo.cta)}
-              </a>
-              <a href="mailto:hola@llave.com.ar" class="btn btn-ghost btn-xl">
-                ${esc(promo.ctaSecundario)}
-              </a>
-            </div>
-
-            <p class="promo-garantia">
-              <span class="gar-icon">✓</span>
-              ${esc(promo.garantia)}
-            </p>
           </div>
         </div>`;
 }

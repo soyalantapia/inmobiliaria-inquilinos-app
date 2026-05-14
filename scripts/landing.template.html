@@ -950,7 +950,7 @@
       @media (min-width: 1024px) { .precios { padding: 120px 0; } }
 
       .promo-card {
-        max-width: 760px;
+        max-width: 1080px;
         margin: 0 auto;
         position: relative;
         background: var(--card);
@@ -989,22 +989,47 @@
         padding: 28px 22px;
       }
       @media (min-width: 480px) { .promo-body { padding: 36px 28px; } }
-      @media (min-width: 768px) { .promo-body { padding: 44px 40px; } }
+      @media (min-width: 768px) {
+        .promo-body {
+          padding: 44px 40px;
+          display: grid;
+          grid-template-columns: 1.15fr 1fr;
+          gap: 40px;
+          align-items: start;
+        }
+      }
+      @media (min-width: 1024px) {
+        .promo-body { padding: 52px 48px; gap: 56px; }
+      }
+
+      /* Columna izquierda: identidad + precio + urgencia + CTAs */
+      .promo-left {
+        display: flex;
+        flex-direction: column;
+      }
+      /* Columna derecha: listas (incluye + extras) */
+      .promo-right {
+        display: flex;
+        flex-direction: column;
+      }
 
       .promo-audiencia {
         text-align: center;
-        font-size: clamp(15px, 2.5vw, 18px);
+        font-size: clamp(14px, 2.2vw, 16px);
         color: var(--fg-soft);
         font-weight: 600;
-        margin-bottom: 8px;
+        margin-bottom: 6px;
       }
       .promo-headline {
         text-align: center;
-        font-size: clamp(20px, 3.5vw, 28px);
+        font-size: clamp(20px, 3vw, 26px);
         font-weight: 800;
         letter-spacing: -0.02em;
-        margin: 0 0 28px;
+        margin: 0 0 22px;
         line-height: 1.2;
+      }
+      @media (min-width: 768px) {
+        .promo-audiencia, .promo-headline { text-align: left; }
       }
 
       /* Precio destacado: tachado + nuevo + descuento */
@@ -1014,6 +1039,9 @@
         align-items: center;
         gap: 10px;
         margin-bottom: 8px;
+      }
+      @media (min-width: 768px) {
+        .promo-precio { align-items: flex-start; }
       }
       .promo-precio-antes {
         display: inline-flex;
@@ -1041,7 +1069,7 @@
         gap: 8px;
       }
       .promo-precio-nuevo .v {
-        font-size: clamp(48px, 9vw, 80px);
+        font-size: clamp(44px, 7vw, 64px);
         font-weight: 900;
         letter-spacing: -0.04em;
         line-height: 1;
@@ -1074,7 +1102,10 @@
         flex-wrap: wrap;
         gap: 10px;
         justify-content: center;
-        margin: 24px 0;
+        margin: 22px 0 18px;
+      }
+      @media (min-width: 768px) {
+        .promo-urgencia { justify-content: flex-start; }
       }
       .urgencia-chip {
         display: inline-flex;
@@ -1103,10 +1134,11 @@
 
       /* Barra de cupos */
       .promo-cupos {
-        margin: 0 0 28px;
+        margin: 0 auto 24px;
         max-width: 460px;
-        margin-left: auto;
-        margin-right: auto;
+      }
+      @media (min-width: 768px) {
+        .promo-cupos { margin: 0 0 24px; max-width: 100%; }
       }
       .promo-cupos-header {
         display: flex;
@@ -1129,18 +1161,24 @@
         transition: width 800ms ease;
       }
 
-      /* Listas de incluido / extras */
+      /* Listas de incluido / extras (columna derecha en desktop) */
       .promo-listas {
         display: grid;
         grid-template-columns: 1fr;
-        gap: 18px;
-        margin-bottom: 28px;
+        gap: 22px;
         padding: 22px 18px;
         background: var(--bg-soft);
         border-radius: var(--radius);
+        margin-bottom: 0;
       }
-      @media (min-width: 600px) {
-        .promo-listas { grid-template-columns: 1.4fr 1fr; gap: 24px; padding: 24px 22px; }
+      @media (min-width: 768px) {
+        .promo-listas {
+          /* En desktop la columna derecha completa: stack vertical de los 2 bloques */
+          grid-template-columns: 1fr;
+          gap: 24px;
+          padding: 24px 22px;
+          height: 100%;
+        }
       }
       .promo-listas h4 {
         margin: 0 0 10px;
@@ -1181,7 +1219,10 @@
         align-items: stretch;
       }
       @media (min-width: 600px) {
-        .promo-cta-group { flex-direction: row; justify-content: center; }
+        .promo-cta-group { flex-direction: row; justify-content: center; flex-wrap: wrap; }
+      }
+      @media (min-width: 768px) {
+        .promo-cta-group { justify-content: flex-start; }
       }
       .promo-cta-group .btn { min-height: 54px; }
       .promo-garantia {
@@ -1190,6 +1231,9 @@
         font-size: 13px;
         color: var(--fg-soft);
         font-weight: 500;
+      }
+      @media (min-width: 768px) {
+        .promo-garantia { text-align: left; }
       }
       .promo-garantia .gar-icon {
         display: inline-flex;
