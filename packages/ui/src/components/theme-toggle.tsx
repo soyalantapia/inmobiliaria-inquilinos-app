@@ -20,14 +20,13 @@ function applyTheme(theme: Theme) {
   document.documentElement.classList.toggle('dark', theme === 'dark');
 }
 
-// Script inline para aplicar el tema antes del primer paint y evitar flash
+// Script inline que fuerza light mode siempre. No se respeta el dark mode
+// del SO ni el toggle manual — la app queda blanca en celular y compu.
 export const themeScript = `
   (function() {
     try {
-      var stored = localStorage.getItem('${STORAGE_KEY}');
-      var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      var theme = stored || (prefersDark ? 'dark' : 'light');
-      if (theme === 'dark') document.documentElement.classList.add('dark');
+      document.documentElement.classList.remove('dark');
+      document.documentElement.style.colorScheme = 'only light';
     } catch (_) {}
   })();
 `;

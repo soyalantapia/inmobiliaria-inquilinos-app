@@ -14,12 +14,14 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: '#7C3AED',
+  colorScheme: 'light',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="es-AR" className={inter.variable} suppressHydrationWarning>
+    <html lang="es-AR" className={inter.variable} style={{ colorScheme: 'only light' }} suppressHydrationWarning>
       <head>
+        <meta name="color-scheme" content="only light" />
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body className="min-h-screen bg-background font-sans">

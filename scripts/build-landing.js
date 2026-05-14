@@ -214,16 +214,15 @@ function renderFaq(items) {
     .join('');
 }
 
-// Render drawer links — items para el menú mobile, en el mismo orden que la landing
-function renderDrawerLinks(secciones) {
+// Render drawer links — 6 items precisos (mismo árbol que el navbar desktop).
+// El detalle de cada sección se navega vía scroll, no listamos las 8 funcionalidades.
+function renderDrawerLinks(/* secciones */) {
   const links = [
-    { id: 'problema', label: '⚠️ El problema' },
-    { id: 'antes-despues', label: '⚖️ Sin Llave / Con Llave' },
     { id: 'como-funciona', label: '🚀 Cómo funciona' },
     { id: 'funcionalidades', label: '✨ Funcionalidades' },
-    ...secciones.map((s) => ({ id: s.id, label: `${s.icono} ${s.titulo}` })),
     { id: 'integraciones', label: '🔌 Integraciones' },
-    { id: 'faq', label: '❓ Preguntas frecuentes' },
+    { id: 'antes-despues', label: '⚖️ Comparativa' },
+    { id: 'faq', label: '❓ Preguntas' },
     { id: 'changelog', label: '📝 Cambios' },
   ];
   return links
