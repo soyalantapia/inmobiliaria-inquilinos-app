@@ -61,7 +61,7 @@ const ETAPAS = [
   {
     key: 'perfil',
     label: 'Analizando el perfil',
-    detalle: 'Validando identidad contra RENAPER y AFIP',
+    detalle: 'Validando identidad contra RENAPER y ARCA',
     icon: UserRound,
     duracion: 1200,
   },
@@ -194,7 +194,7 @@ export default function ScreeningPage() {
 const FUENTES_CRUZADAS = [
   {
     icon: Fingerprint,
-    label: 'RENAPER · AFIP',
+    label: 'RENAPER · ARCA',
     descripcion: 'Identidad, CUIT, situación impositiva',
   },
   {
@@ -258,7 +258,7 @@ function ScreeningHome({
               <span className="whitespace-nowrap">30 segundos</span>
             </h1>
             <p className="text-sm leading-relaxed opacity-90">
-              Cruzamos identidad, BCRA, AFIP, registros de bienes, redes sociales y referencias.
+              Cruzamos identidad, BCRA, ARCA, registros de bienes, redes sociales y referencias.
               Recibís un informe completo con recomendación accionable.
             </p>
 
@@ -772,7 +772,7 @@ function Informe({
 
         {/* INGRESOS */}
         <TabsContent value="ingresos" className="space-y-4">
-          <SectionCard icon={<Wallet className="h-4 w-4" />} title="AFIP">
+          <SectionCard icon={<Wallet className="h-4 w-4" />} title="ARCA">
             <Row label="Categoría" value={formatearCategoria(resultado.ingresos.categoriaAfip)} />
             <Row label="Ganancias" value={resultado.ingresos.impuestoGanancias} />
             <Row label="IVA" value={resultado.ingresos.impuestoIva} />

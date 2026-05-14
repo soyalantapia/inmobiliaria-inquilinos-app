@@ -219,14 +219,14 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
           </Card>
         </div>
 
-        {/* AFIP + cuenta de cobranza directa */}
+        {/* ARCA + cuenta de cobranza directa */}
         <div className="grid gap-4 lg:grid-cols-2">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0">
               <div>
                 <CardTitle className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                   <Receipt className="h-4 w-4" />
-                  Facturación AFIP
+                  Facturación ARCA
                 </CardTitle>
               </div>
               {propietario.afip?.conectado ? (
@@ -275,7 +275,7 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
                     </div>
                   </div>
                   <Button variant="outline" size="sm" className="w-full">
-                    Reconectar credenciales AFIP
+                    Reconectar credenciales ARCA
                   </Button>
                 </>
               ) : (
@@ -283,16 +283,16 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
                   <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-900/10 dark:text-amber-200">
                     <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
                     <div>
-                      <p className="font-medium">AFIP no conectada</p>
+                      <p className="font-medium">ARCA no conectada</p>
                       <p>
-                        Si conectás la AFIP, al aprobar el pago se emite la factura automáticamente
+                        Si conectás la ARCA, al aprobar el pago se emite la factura automáticamente
                         y se manda al inquilino por WhatsApp/mail.
                       </p>
                     </div>
                   </div>
                   <Button size="sm" className="w-full">
                     <PlugZap className="h-3.5 w-3.5" />
-                    Conectar AFIP
+                    Conectar ARCA
                   </Button>
                 </>
               )}

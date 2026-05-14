@@ -1,7 +1,7 @@
 {
   "meta": {
-    "titulo": "Llave — Plataforma operativa para corredores inmobiliarios",
-    "descripcion": "Sistema integral de gestión para corredores inmobiliarios en Argentina. Cobranza, facturación electrónica ARCA, contratos digitales, reclamos y trazabilidad legal en un único entorno operativo.",
+    "titulo": "Llave — Plataforma para administrar alquileres",
+    "descripcion": "Sistema integral para inmobiliarias y administradores de alquileres en Argentina. Cobranza, facturación electrónica ARCA, contratos, reclamos y registro permanente de cada acción.",
     "version": "v4 · ronda 4 de mejoras"
   },
   "hero": {
@@ -15,7 +15,7 @@
       "🇦🇷 Operación local",
       "🔐 Trazabilidad legal",
       "🧾 Integración con ARCA",
-      "📱 App nativa para inquilinos"
+      "📱 App para inquilinos"
     ]
   },
   "stats": [
@@ -26,8 +26,8 @@
   ],
   "problema": {
     "tag": "El problema",
-    "titulo": "Los puntos de fricción del corretaje hoy",
-    "subtitulo": "Conversamos con corredores inmobiliarios en Argentina y aparecen los mismos seis dolores operativos.",
+    "titulo": "Los problemas reales del día a día",
+    "subtitulo": "Hablamos con inmobiliarias y administradores en Argentina y siempre aparecen los mismos seis dolores.",
     "dolores": [
       {
         "icono": "📑",
@@ -36,8 +36,8 @@
       },
       {
         "icono": "💬",
-        "titulo": "Comunicación operativa sin orden",
-        "descripcion": "Doce inquilinos solicitando datos bancarios el mismo día. Los comprobantes se mezclan con conversaciones personales."
+        "titulo": "Comprobantes que se pierden en WhatsApp",
+        "descripcion": "El inquilino avisa que ya transfirió y manda la foto del comprobante. Entre los 200 mensajes del día, el comprobante queda perdido y nadie lo marca como pagado."
       },
       {
         "icono": "🧾",
@@ -47,7 +47,7 @@
       {
         "icono": "📞",
         "titulo": "Consultas fuera de horario",
-        "descripcion": "El propietario consulta si pagó tal inquilino al cierre del día. Tu equipo ya se retiró. La respuesta queda en manos del corredor."
+        "descripcion": "El propietario consulta si pagó tal inquilino al cierre del día. Tu equipo ya se retiró. La respuesta queda en manos dla inmobiliaria."
       },
       {
         "icono": "🧮",
@@ -142,7 +142,7 @@
       "features": [
         {
           "titulo": "Emisión automática al aprobar",
-          "descripcion": "Cuando el corredor aprueba un pago, si el propietario tiene ARCA conectada, se emite el comprobante con CAE y se envía al inquilino por WhatsApp y mail.",
+          "descripcion": "Cuando la inmobiliaria aprueba un pago, si el propietario tiene ARCA conectada, se emite el comprobante con CAE y se envía al inquilino por WhatsApp y mail.",
           "ruta": "../inmobiliaria/propietarios/own_001",
           "rutaLabel": "Ver propietario con ARCA"
         },
@@ -176,15 +176,15 @@
       "features": [
         {
           "titulo": "Lectura automática del contrato",
-          "descripcion": "Subís el PDF del contrato y el sistema extrae inquilino, dirección, monto, fechas y modalidad de ajuste. El corredor revisa y confirma los datos.",
+          "descripcion": "Subís el PDF del contrato y el sistema extrae inquilino, dirección, monto, fechas y modalidad de ajuste. La inmobiliaria revisa y confirma los datos.",
           "ruta": "../inmobiliaria/contratos/nuevo",
           "rutaLabel": "Probar la carga"
         },
         {
-          "titulo": "Doble nivel de aprobación",
-          "descripcion": "Si el contrato fue cargado por personal con permisos limitados, queda en borrador hasta que el corredor lo aprueba. Ningún contrato se activa sin autorización.",
+          "titulo": "Conversá con la IA sobre el contrato",
+          "descripcion": "Preguntale a la IA sobre cualquier cláusula del contrato: cuándo vence, cuánto sube el alquiler, qué dice sobre rescisión, expensas o mascotas. Te responde en lenguaje simple, sin tener que releer treinta páginas.",
           "ruta": "../inmobiliaria/contratos/cnt_008",
-          "rutaLabel": "Ver contrato pendiente"
+          "rutaLabel": "Probar la conversación con IA"
         },
         {
           "titulo": "Modalidades de cobro flexibles",
@@ -244,13 +244,13 @@
       "features": [
         {
           "titulo": "Clasificación automática del reclamo",
-          "descripcion": "El inquilino describe el problema y el sistema lo clasifica (urgente, plomería, electricidad, gas) sugiriendo los próximos pasos al corredor.",
+          "descripcion": "El inquilino describe el problema y el sistema lo clasifica (urgente, plomería, electricidad, gas) sugiriendo los próximos pasos a la inmobiliaria.",
           "ruta": "../inmobiliaria/reclamos",
           "rutaLabel": "Ver reclamos abiertos"
         },
         {
           "titulo": "Asignación a profesional de confianza",
-          "descripcion": "El corredor asigna el reclamo a un profesional de su red curada. El profesional recibe los datos del reclamo y la propiedad por WhatsApp.",
+          "descripcion": "La inmobiliaria asigna el reclamo a un profesional de su red curada. El profesional recibe los datos del reclamo y la propiedad por WhatsApp.",
           "ruta": "../inmobiliaria/reclamos/rec_006",
           "rutaLabel": "Ver reclamo asignado"
         },
@@ -304,9 +304,9 @@
     },
     {
       "id": "inquilino",
-      "titulo": "App nativa para el inquilino",
+      "titulo": "App para el inquilino",
       "navTitulo": "Inquilino",
-      "subtitulo": "Una app que se instala como cualquier otra y simplifica la operación del inquilino.",
+      "subtitulo": "Una app con Broker IA que simplifica todo lo que el inquilino necesita hacer.",
       "icono": "📱",
       "color": "teal",
       "features": [
@@ -317,10 +317,10 @@
           "rutaLabel": "Probar el flujo de pago"
         },
         {
-          "titulo": "Asistente para consultas frecuentes",
-          "descripcion": "Un asistente automatizado responde las consultas habituales (saldo, vencimientos, medios de pago). Reduce el flujo de WhatsApp al equipo.",
-          "ruta": "../inquilino/",
-          "rutaLabel": "Hablar con el asistente"
+          "titulo": "Broker IA",
+          "descripcion": "Un asistente con IA dentro de la app del inquilino que responde sobre el contrato, los pagos, los reclamos y cualquier duda. Disponible las 24 horas, sin esperas ni llamadas al equipo.",
+          "ruta": "../inquilino/broker",
+          "rutaLabel": "Hablar con el Broker IA"
         },
         {
           "titulo": "Reclamos con evidencia fotográfica",
@@ -385,13 +385,13 @@
   },
   "antesDespues": {
     "titulo": "Antes y después de Llave",
-    "subtitulo": "Los cambios operativos que el corredor percibe desde el primer día.",
+    "subtitulo": "Los cambios operativos que la inmobiliaria percibe desde el primer día.",
     "filas": [
       { "antes": "Información dispersa entre planillas y correos", "despues": "Información centralizada en un único entorno operativo" },
       { "antes": "Vencimientos recordados manualmente", "despues": "Notificaciones automáticas al inquilino antes del vencimiento" },
       { "antes": "Solicitud de comprobantes por WhatsApp", "despues": "El inquilino sube el comprobante desde su app" },
       { "antes": "Búsqueda de facturas entre archivos antiguos", "despues": "Emisión y envío automático al aprobar el pago" },
-      { "antes": "Sin registro de quién aprobó cada movimiento", "despues": "Historial completo con persona, fecha y motivo" },
+      { "antes": "Llamadas al cierre del día para confirmar si pagó tal inquilino", "despues": "El propietario consulta el estado directamente en su resumen mensual" },
       { "antes": "Reclamos en hilos extensos de WhatsApp", "despues": "Reclamos clasificados con asignación a profesional" },
       { "antes": "Consultas reiteradas sobre saldo y vencimiento", "despues": "Asistente automatizado que responde al inquilino" },
       { "antes": "Cierre de mes extenso y manual", "despues": "Rendición generada automáticamente, revisión rápida" }
@@ -399,7 +399,7 @@
   },
   "faq": {
     "titulo": "Preguntas frecuentes",
-    "subtitulo": "Las dudas técnicas y operativas que más nos consultaron los corredores.",
+    "subtitulo": "Las dudas que más nos consultaron las inmobiliarias.",
     "items": [
       {
         "pregunta": "¿Qué modalidades de cobranza soporta el sistema?",
@@ -423,7 +423,7 @@
       },
       {
         "pregunta": "¿Cómo se aplica el ajuste por índice oficial?",
-        "respuesta": "El índice oficial se actualiza automáticamente. El sistema calcula el nuevo alquiler según la frecuencia pactada en el contrato y notifica al corredor antes de aplicar el ajuste, permitiendo confirmar o postergar la actualización."
+        "respuesta": "El índice oficial se actualiza automáticamente. El sistema calcula el nuevo alquiler según la frecuencia pactada en el contrato y te avisa antes de aplicar el ajuste, permitiendo confirmar o postergar la actualización."
       },
       {
         "pregunta": "¿Cómo se conecta el sistema con ARCA?",
@@ -452,7 +452,7 @@
       "fecha": "2026-05-13",
       "titulo": "Aprobación de contratos, historial y reversión de pagos",
       "cambios": [
-        "Carga descentralizada con aprobación del corredor previa a la activación",
+        "Carga descentralizada con aprobación dla inmobiliaria previa a la activación",
         "Pantalla del historial completo de acciones con filtros",
         "Función de reversión de aprobación de pagos con registro automático"
       ]

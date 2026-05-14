@@ -113,29 +113,29 @@ export function PagosPorValidar() {
       });
     }
 
-    // Si el propietario tiene AFIP conectada, emitir factura automática
+    // Si el propietario tiene ARCA conectada, emitir factura automática
     if (propietario?.afip?.conectado) {
       const tipoComp = (propietario.afip.tipoComprobante ?? 'FACTURA_C').replace('_', ' ');
       const numero = `${propietario.afip.puntoVenta ?? '0001'}-${String(
         Math.floor(Math.random() * 99999),
       ).padStart(8, '0')}`;
       registrarEvento({
-        tipo: 'FACTURA_AFIP_EMITIDA',
-        autor: 'Sistema (AFIP)',
+        tipo: 'FACTURA_ARCA_EMITIDA',
+        autor: 'Sistema (ARCA)',
         rolAutor: 'SISTEMA',
         entidadId: pago.id,
         entidadDescripcion: `${tipoComp} N° ${numero} · ${propietario.nombre} ${propietario.apellido}`,
         detalle: `Enviada por WhatsApp y mail a ${pago.inquilino} · ${formatMonto(pago.monto)}`,
       });
       toast({
-        title: '✅ Pago conciliado + factura AFIP emitida',
+        title: '✅ Pago conciliado + factura ARCA emitida',
         description: `${tipoComp} N° ${numero} enviada a ${pago.inquilino} por WhatsApp y mail.`,
       });
     } else {
       toast({
         title: `Pago de ${pago.inquilino} confirmado`,
         description: propietario
-          ? `${formatMonto(pago.monto)} · sin facturación AFIP (propietario sin conectar)`
+          ? `${formatMonto(pago.monto)} · sin facturación ARCA (propietario sin conectar)`
           : `${formatMonto(pago.monto)} · ${formatPeriodo(pago.periodo)}`,
       });
     }
@@ -392,7 +392,7 @@ function PagoRow({
               )}
               {afipOn && (
                 <Badge variant="secondary" className="text-[10px]">
-                  AFIP conectada
+                  ARCA conectada
                 </Badge>
               )}
             </div>
@@ -430,7 +430,7 @@ function PagoRow({
         </Button>
         <Button size="sm" onClick={onConciliar} className="ml-auto">
           <CheckCircle2 className="h-3.5 w-3.5" />
-          {afipOn ? 'Confirmar + facturar AFIP' : 'Confirmar pago'}
+          {afipOn ? 'Confirmar + facturar ARCA' : 'Confirmar pago'}
         </Button>
       </div>
     </Card>

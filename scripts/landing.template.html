@@ -471,17 +471,18 @@
       }
 
       .funcionalidades-wrap {
-        padding: 56px 0 16px;
+        padding: 56px 0 0;
         background: var(--bg);
       }
-      @media (min-width: 480px) { .funcionalidades-wrap { padding: 64px 0 20px; } }
-      @media (min-width: 768px) { .funcionalidades-wrap { padding: 96px 0 24px; } }
-      @media (min-width: 1024px) { .funcionalidades-wrap { padding: 120px 0 24px; } }
+      @media (min-width: 480px) { .funcionalidades-wrap { padding: 64px 0 0; } }
+      @media (min-width: 768px) { .funcionalidades-wrap { padding: 96px 0 0; } }
+      @media (min-width: 1024px) { .funcionalidades-wrap { padding: 120px 0 0; } }
+      .funcionalidades-wrap .sec-header { margin-bottom: 0; }
 
-      .funcionalidades-wrap + section.featured { padding-top: 24px; }
-      @media (min-width: 480px) { .funcionalidades-wrap + section.featured { padding-top: 32px; } }
-      @media (min-width: 768px) { .funcionalidades-wrap + section.featured { padding-top: 48px; } }
-      @media (min-width: 1024px) { .funcionalidades-wrap + section.featured { padding-top: 60px; } }
+      /* La primera sección de features arranca pegada al wrap (sin doble padding) */
+      .funcionalidades-wrap + section.featured { padding-top: 36px; }
+      @media (min-width: 480px) { .funcionalidades-wrap + section.featured { padding-top: 44px; } }
+      @media (min-width: 768px) { .funcionalidades-wrap + section.featured { padding-top: 56px; } }
 
       .sec-header {
         text-align: center;
@@ -1486,10 +1487,10 @@
     <!-- ==================== FUNCIONALIDADES ==================== -->
     <section id="funcionalidades" class="funcionalidades-wrap">
       <div class="container">
-        <div class="sec-header reveal" style="margin-bottom: 24px;">
+        <div class="sec-header reveal">
           <span class="sec-tag">Funcionalidades</span>
-          <h2>Todo lo que la plataforma sabe hacer</h2>
-          <p>8 áreas operativas, 28 funciones concretas. Tocá cualquier card para verla en vivo en la demo.</p>
+          <h2>Todo lo que necesitás en una sola plataforma</h2>
+          <p>Cobranza, facturación, contratos, reclamos y reportes. Tocá una card para verla en vivo.</p>
         </div>
       </div>
     </section>
