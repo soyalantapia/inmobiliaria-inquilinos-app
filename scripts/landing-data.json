@@ -1,33 +1,33 @@
 {
   "meta": {
-    "titulo": "Llave — Plataforma para inmobiliarias",
-    "descripcion": "Software de gestión inmobiliaria pensado para el mercado argentino. Cobranza inteligente, facturación AFIP automática, contratos, reclamos y auditoría completa.",
-    "version": "v4 · ronda 4 de feedback"
+    "titulo": "Llave — Software para administrar alquileres",
+    "descripcion": "Software de gestión inmobiliaria pensado para Argentina. Cobranza de dos formas, facturación AFIP automática, contratos, reclamos y registro de todo.",
+    "version": "v4 · ronda 4 de mejoras"
   },
   "hero": {
-    "tagline": "Software operativo para alquileres en Argentina",
+    "tagline": "Software para administrar alquileres en Argentina",
     "titulo": "Tu inmueble, tu inquilino, una sola {{plataforma}}",
     "highlight": "plataforma",
-    "subtitulo": "Cobrás alquileres con doble modo, emitís facturas AFIP automáticamente y le mandás todo al inquilino por WhatsApp. Tu equipo en un panel ordenado, tu inquilino en una app simple. Sin más Excel, sin más WhatsApp roto.",
+    "subtitulo": "Cobrás alquileres de dos formas, emitís facturas solas y le mandás todo al inquilino por WhatsApp. Tu equipo trabaja en una pantalla clara, tu inquilino paga desde el celular. Sin más Excel, sin más papeles perdidos.",
     "ctaPropietario": { "texto": "Acceder a la app del Propietario", "href": "../inmobiliaria/" },
     "ctaInquilino": { "texto": "Acceder a la app del Inquilino", "href": "../inquilino/" },
     "badges": [
-      "🇦🇷 100% Argentina",
-      "🔐 Auditoría completa",
-      "🤖 Facturación AFIP",
-      "📱 PWA inquilino"
+      "🇦🇷 Hecho para Argentina",
+      "🔐 Registro permanente",
+      "🤖 Facturas solas",
+      "📱 App para el inquilino"
     ]
   },
   "stats": [
-    { "valor": "4", "label": "Roles de equipo (ADMIN, OPERADOR, CARGA, LECTURA)" },
-    { "valor": "11", "label": "Pantallas operativas en el panel" },
-    { "valor": "17", "label": "Tipos de eventos auditados" },
-    { "valor": "100%", "label": "Trazabilidad de acciones por usuario" }
+    { "valor": "5 min", "label": "Para configurar tu primera propiedad" },
+    { "valor": "1 toque", "label": "Para aprobar un pago y emitir la factura" },
+    { "valor": "30 seg", "label": "Para que el inquilino pague desde el celular" },
+    { "valor": "24/7", "label": "Recibís pagos a cualquier hora del día" }
   ],
   "problema": {
     "tag": "El problema",
     "titulo": "¿Te suena conocido?",
-    "subtitulo": "Administrar alquileres sin software dedicado es como llevar la contabilidad de la inmobiliaria en post-its. Funciona hasta que no funciona.",
+    "subtitulo": "Administrar alquileres sin un sistema propio es como llevar la contabilidad en papelitos. Funciona hasta que deja de funcionar.",
     "dolores": [
       {
         "icono": "📑",
@@ -36,43 +36,43 @@
       },
       {
         "icono": "💬",
-        "titulo": "WhatsApp roto",
-        "descripcion": "12 inquilinos pidiendo el CBU el mismo día. Comprobantes mezclados con memes de la familia."
+        "titulo": "WhatsApp que no da más",
+        "descripcion": "Doce inquilinos pidiendo los datos bancarios el mismo día. Comprobantes mezclados con memes de la familia."
       },
       {
         "icono": "🧾",
         "titulo": "Comprobantes perdidos",
-        "descripcion": "El PDF está en el mail de alguien, la foto en WhatsApp, la transferencia en el banco. Buena suerte armando la rendición."
+        "descripcion": "El PDF está en el mail de alguien, la foto en WhatsApp, la transferencia en el banco. Buena suerte armando el resumen."
       },
       {
         "icono": "📞",
-        "titulo": "Llamadas a las 9pm",
-        "descripcion": "El dueño quiere saber si pagó el inquilino del 4ºB. Tu equipo ya se fue. Otra vez vos."
+        "titulo": "Llamadas a las 9 de la noche",
+        "descripcion": "El dueño quiere saber si pagó el inquilino del 4° B. Tu equipo ya se fue. Otra vez vos."
       },
       {
         "icono": "🧮",
-        "titulo": "Liquidar a mano cada mes",
-        "descripcion": "Calculadora, comisión, gastos de plomero, expensas. Si el propietario reclama, tenés que rehacer el cálculo desde cero."
+        "titulo": "Calcular a mano cada mes",
+        "descripcion": "Calculadora, comisión, gastos de plomero, expensas. Si el propietario reclama, hay que rehacer todo desde cero."
       },
       {
         "icono": "🔍",
-        "titulo": "Sin trazabilidad",
-        "descripcion": "El propietario pregunta quién aprobó tal pago y cuándo. Nadie se acuerda. Empezás a googlear cómo recuperar un mensaje de WhatsApp."
+        "titulo": "Nadie se acuerda quién hizo qué",
+        "descripcion": "El dueño pregunta quién aprobó tal pago y cuándo. Nadie se acuerda. Empezás a buscar mensajes viejos en WhatsApp."
       }
     ]
   },
   "comoFunciona": {
     "titulo": "Cómo funciona",
-    "subtitulo": "Tres pasos. Sin más Excel, sin más WhatsApp roto.",
+    "subtitulo": "Tres pasos. Sin Excel, sin papeles, sin llamadas tarde.",
     "pasos": [
       {
         "numero": "01",
-        "titulo": "Configurás una vez",
-        "descripcion": "Cargás tus propietarios, sus CBUs, conectás la AFIP (opcional), invitás a tu equipo con roles. Listo.",
+        "titulo": "Lo configurás una vez",
+        "descripcion": "Cargás tus dueños, sus datos bancarios, conectás la AFIP si querés, invitás a tu equipo. Listo.",
         "detalles": [
-          "Cuenta recaudadora de la inmo o cuenta directa del propietario",
-          "AFIP por propietario (Monotributo o Resp. Inscripto)",
-          "4 roles: ADMIN, OPERADOR, CARGA, LECTURA"
+          "Cobrás vos o le pagan directo al dueño",
+          "Conectás la AFIP del dueño una sola vez",
+          "Invitás a tu equipo con cuatro niveles de permisos"
         ]
       },
       {
@@ -80,82 +80,20 @@
         "titulo": "Operás el día a día",
         "descripcion": "Tu equipo carga contratos y comprobantes. Vos aprobás. Los inquilinos pagan desde el celular y suben el ticket.",
         "detalles": [
-          "Contratos con OCR (lectura automática del PDF)",
-          "Aprobación admin para que nada entre sin tu OK",
-          "Inquilinos pagan en su PWA y suben comprobante"
+          "Subís el contrato en PDF y los datos se leen solos",
+          "Vos aprobás antes de que cualquier cosa entre",
+          "El inquilino paga desde el celular en 30 segundos"
         ]
       },
       {
         "numero": "03",
-        "titulo": "Cobrás y rendís",
-        "descripcion": "Aprobás el pago. El sistema factura por AFIP, manda la factura al inquilino por WhatsApp y rinde al propietario.",
+        "titulo": "Cobrás y le rendís al dueño",
+        "descripcion": "Aprobás el pago, se emite la factura sola, le llega al inquilino por WhatsApp y al dueño le aparece el resumen.",
         "detalles": [
-          "Conciliación con un click",
-          "Factura AFIP automática (CAE + QR + envío)",
-          "Rendición mensual al propietario con PDF"
+          "Aprobás el pago con un toque",
+          "Se emite la factura sola y se manda",
+          "El dueño recibe el resumen mensual en PDF"
         ]
-      }
-    ]
-  },
-  "integraciones": {
-    "titulo": "Habla con todo lo que ya usás",
-    "subtitulo": "Sin pedirle al inquilino que se baje una app rara ni al propietario que aprenda otro sistema.",
-    "items": [
-      { "nombre": "AFIP", "icono": "🧾", "descripcion": "Factura A/B/C y Recibo C con CAE", "color": "violet" },
-      { "nombre": "WhatsApp", "icono": "💬", "descripcion": "Recordatorios y comprobantes automáticos", "color": "emerald" },
-      { "nombre": "Mercado Pago", "icono": "💳", "descripcion": "Reconocimiento de pagos vía API", "color": "blue" },
-      { "nombre": "Transferencias", "icono": "🏦", "descripcion": "Banco Galicia, Macro, Roela, BBVA y más", "color": "indigo" },
-      { "nombre": "BCRA · ICL", "icono": "📊", "descripcion": "Índice de ajuste automático para alquileres", "color": "amber" },
-      { "nombre": "Email", "icono": "✉️", "descripcion": "Comprobantes y recordatorios al inquilino", "color": "rose" }
-    ]
-  },
-  "antesDespues": {
-    "titulo": "Lo que cambia el primer día",
-    "subtitulo": "El antes lo conocés. El después lo probás.",
-    "filas": [
-      { "antes": "Excel + WhatsApp + carpetas en Drive", "despues": "Todo en un solo panel, auditable" },
-      { "antes": "Recordar manualmente la fecha de cada vencimiento", "despues": "Alertas automáticas al inquilino" },
-      { "antes": "Pedirle el comprobante al inquilino por WhatsApp", "despues": "El inquilino sube el comprobante desde su app" },
-      { "antes": "Buscar la factura del propietario en una carpeta", "despues": "Se emite y se manda sola al aprobar el pago" },
-      { "antes": "¿Quién aprobó este pago? ¿Cuándo? ¿Por qué?", "despues": "Auditoría con timeline, usuario, fecha, motivo" },
-      { "antes": "Reclamos en hilos de WhatsApp interminables", "despues": "Reclamos con foto, clasificación y profesional asignado" }
-    ]
-  },
-  "faq": {
-    "titulo": "Preguntas frecuentes",
-    "subtitulo": "Las dudas que más nos hicieron",
-    "items": [
-      {
-        "pregunta": "¿Cómo se cobra el alquiler?",
-        "respuesta": "Tenés dos modos a elegir por contrato. Modo 'inmobiliaria': el inquilino transfiere a la cuenta recaudadora (tipo Banco Roela). Modo 'propietario directo': el inquilino transfiere al CBU del propietario y el propietario confirma recepción. La inmobiliaria audita todo en ambos modos."
-      },
-      {
-        "pregunta": "¿Necesito tener AFIP conectada?",
-        "respuesta": "No es obligatorio. Si la conectás (por propietario), al aprobar el pago se emite factura/recibo con CAE automáticamente y se envía al inquilino por WhatsApp y mail. Si no la conectás, el pago se concilia normal pero sin facturación automática."
-      },
-      {
-        "pregunta": "¿Funciona con expensas y alquiler por separado?",
-        "respuesta": "Sí. Cada contrato puede ser 'sólo alquiler', 'sólo expensas', o 'alquiler + expensas'. Útil para casos donde la inmobiliaria sólo administra las expensas de un consorcio o sólo el alquiler de una unidad."
-      },
-      {
-        "pregunta": "¿Qué pasa si me equivoco aprobando un pago?",
-        "respuesta": "Lo revertís con un botón. En la pantalla de pagos hay una sección 'Resueltos recientes' con el botón 'Revertir' al lado de cada pago conciliado. La reversión queda registrada en la auditoría."
-      },
-      {
-        "pregunta": "¿Cómo manejo el equipo y los permisos?",
-        "respuesta": "Hay 4 roles configurables: ADMIN (controla todo), OPERADOR (día a día), CARGA (sólo carga, no aprueba) y LECTURA (sólo mira, ideal para contadores externos). Cada usuario ve sólo lo que necesita."
-      },
-      {
-        "pregunta": "¿Puedo ajustar el alquiler con ICL automáticamente?",
-        "respuesta": "Sí. Importás el índice del BCRA (o se importa solo) y el sistema recalcula el alquiler cuando corresponde según la frecuencia de ajuste pactada en el contrato. Te avisa antes para que confirmes."
-      },
-      {
-        "pregunta": "¿Cómo se conecta con la AFIP?",
-        "respuesta": "Por propietario, una vez. Cargás CUIT, clave fiscal y elegís punto de venta + tipo de comprobante (Factura A/B/C o Recibo C según condición fiscal). El sistema usa los webservices oficiales WSAA + WSFE."
-      },
-      {
-        "pregunta": "¿Los datos están seguros?",
-        "respuesta": "Todo queda en log de auditoría append-only. Nadie puede borrar movimientos, sólo agregarlos. Cada acción (pago, contrato, gasto, reclamo) tiene autor, rol, fecha, hora y motivo asociado."
       }
     ]
   },
@@ -164,31 +102,31 @@
       "id": "cobranza",
       "titulo": "Cobranza inteligente",
       "navTitulo": "Cobranza",
-      "subtitulo": "Dos modelos de cobranza en el mismo sistema, configurables por contrato",
+      "subtitulo": "Dos formas de cobrar el alquiler, vos elegís cuál para cada contrato",
       "icono": "💸",
       "color": "emerald",
       "features": [
         {
-          "titulo": "Doble modo de cobranza",
-          "descripcion": "Cobrá a la cuenta recaudadora de la inmobiliaria (estilo Banco Roela / Consorcio Abierto) o derivá el pago directo al CBU del propietario. Cada contrato decide cuál.",
+          "titulo": "Dos formas de cobrar",
+          "descripcion": "Cobrás vos a la cuenta de la inmobiliaria (estilo Banco Roela o Consorcio Abierto) o le pedís al inquilino que transfiera directo al dueño. Cada contrato elige cómo.",
           "ruta": "../inmobiliaria/contratos/cnt_005",
           "rutaLabel": "Ver ejemplo de cobranza directa"
         },
         {
-          "titulo": "Conciliación con un click",
-          "descripcion": "El inquilino sube el comprobante. Vos lo aprobás, rechazás o revertís si te equivocaste. Todo queda registrado.",
+          "titulo": "Aprobás con un toque",
+          "descripcion": "El inquilino sube el comprobante. Vos lo aprobás, lo rechazás o lo deshacés si te equivocaste. Queda todo registrado.",
           "ruta": "../inmobiliaria/pagos",
           "rutaLabel": "Ver pagos por validar"
         },
         {
-          "titulo": "Pago manual offline",
-          "descripcion": "Cargás efectivo o transferencias informadas por fuera del sistema sin perder trazabilidad.",
+          "titulo": "Pagos por afuera del sistema",
+          "descripcion": "Cargás los pagos que llegaron en efectivo o las transferencias que viste en el banco. No se pierde nada.",
           "ruta": "../inmobiliaria/pagos",
           "rutaLabel": "Cargar pago manual"
         },
         {
           "titulo": "Caja de gastos",
-          "descripcion": "Plomero, electricista, expensas extraordinarias. Cargás el gasto y se descuenta de la rendición al propietario automáticamente.",
+          "descripcion": "Plomero, electricista, gastos del edificio. Cargás el gasto y se descuenta solo del próximo resumen al dueño.",
           "ruta": "../inmobiliaria/caja",
           "rutaLabel": "Ver caja"
         }
@@ -198,27 +136,33 @@
       "id": "facturacion",
       "titulo": "Facturación AFIP automática",
       "navTitulo": "AFIP",
-      "subtitulo": "Conectás la AFIP del propietario una vez y el sistema factura solo",
+      "subtitulo": "Conectás la AFIP del dueño una vez y el sistema factura solo",
       "icono": "🧾",
       "color": "violet",
       "features": [
         {
-          "titulo": "Emisión automática al aprobar pago",
-          "descripcion": "Cuando confirmás un pago, si el propietario tiene AFIP conectada se emite factura/recibo con CAE y se manda al inquilino por WhatsApp y mail.",
+          "titulo": "Se emite la factura sola",
+          "descripcion": "Cuando aprobás un pago, si el dueño tiene la AFIP conectada se emite la factura o el recibo oficial y se manda al inquilino por WhatsApp y mail.",
           "ruta": "../inmobiliaria/propietarios/own_001",
-          "rutaLabel": "Ver propietario con AFIP"
+          "rutaLabel": "Ver dueño con AFIP"
         },
         {
-          "titulo": "Soporte para Monotributo y Resp. Inscripto",
-          "descripcion": "Configurás condición fiscal, punto de venta y tipo de comprobante (Factura A/B/C o Recibo C) por propietario.",
+          "titulo": "Monotributo o Responsable Inscripto",
+          "descripcion": "Cargás los datos del dueño una vez (condición ante la AFIP, punto de venta) y elegís qué tipo de factura emite (A, B, C o Recibo C).",
           "ruta": "../inmobiliaria/propietarios/own_002",
-          "rutaLabel": "Ver Resp. Inscripto"
+          "rutaLabel": "Ver Responsable Inscripto"
         },
         {
-          "titulo": "Envío al inquilino por WhatsApp y mail",
-          "descripcion": "El comprobante con QR y CAE llega al inquilino sin que tu equipo tenga que hacer nada manual.",
+          "titulo": "Le llega al inquilino solo",
+          "descripcion": "El comprobante con código QR oficial le llega al inquilino por WhatsApp y por mail. Tu equipo no tiene que mandar nada.",
           "ruta": "../inmobiliaria/pagos",
           "rutaLabel": "Probar el flujo"
+        },
+        {
+          "titulo": "Reenviar en dos toques",
+          "descripcion": "Si el inquilino lo pide otra vez (mudanza, banco, contador), se lo reenviás en dos toques. Quedan todos los envíos registrados.",
+          "ruta": "../inmobiliaria/pagos",
+          "rutaLabel": "Ver historial de envíos"
         }
       ]
     },
@@ -226,31 +170,31 @@
       "id": "contratos",
       "titulo": "Contratos sin papelerío",
       "navTitulo": "Contratos",
-      "subtitulo": "OCR, aprobación por admin, soporte de expensas y ajustes ICL",
+      "subtitulo": "Lectura automática del PDF, aprobación del dueño, expensas y ajustes oficiales",
       "icono": "📄",
       "color": "blue",
       "features": [
         {
-          "titulo": "Carga con OCR (lectura automática)",
-          "descripcion": "Subís el PDF del contrato y el sistema extrae inquilino, CUIT, dirección, monto, fechas, índice de ajuste y demás campos. Vos sólo revisás.",
+          "titulo": "Lectura automática del contrato",
+          "descripcion": "Subís el PDF del contrato y el sistema saca solo: inquilino, dirección, monto, fechas y tipo de ajuste. Vos sólo repasás.",
           "ruta": "../inmobiliaria/contratos/nuevo",
-          "rutaLabel": "Probar carga con OCR"
+          "rutaLabel": "Probar la carga"
         },
         {
-          "titulo": "Aprobación por admin",
-          "descripcion": "Si lo cargó un usuario con rol CARGA, queda en borrador hasta que vos lo aprobás. Ningún contrato entra al circuito sin tu OK.",
+          "titulo": "Vos aprobás antes de activar",
+          "descripcion": "Si lo cargó alguien del equipo, queda en borrador hasta que vos lo aprobás. Ningún contrato entra al circuito sin tu visto bueno.",
           "ruta": "../inmobiliaria/contratos/cnt_008",
           "rutaLabel": "Ver contrato pendiente"
         },
         {
           "titulo": "Sólo expensas, sólo alquiler o ambos",
-          "descripcion": "No siempre administrás el alquiler completo. A veces sólo cobrás expensas. El sistema soporta los tres modos.",
+          "descripcion": "No siempre administrás el alquiler completo. A veces sólo cobrás expensas. El sistema soporta los tres casos.",
           "ruta": "../inmobiliaria/contratos",
           "rutaLabel": "Ver contratos"
         },
         {
-          "titulo": "Ajustes ICL del BCRA",
-          "descripcion": "Importás el índice de ajuste del BCRA y el sistema recalcula el alquiler automáticamente cuando corresponde.",
+          "titulo": "Ajustes por índice oficial",
+          "descripcion": "El índice oficial se actualiza solo. El alquiler se recalcula cuando toca y te avisa antes de aplicarlo para que confirmes.",
           "ruta": "../inmobiliaria/contratos/cnt_001",
           "rutaLabel": "Ver historial de ajustes"
         }
@@ -260,31 +204,31 @@
       "id": "propietarios",
       "titulo": "Propiedades y propietarios",
       "navTitulo": "Propietarios",
-      "subtitulo": "Multi-propietario con porcentajes, CBU por propiedad, AFIP individual",
+      "subtitulo": "Más de un dueño por propiedad, datos bancarios por unidad, AFIP por persona",
       "icono": "🏠",
       "color": "amber",
       "features": [
         {
-          "titulo": "Cotitularidad con porcentajes",
-          "descripcion": "Una propiedad puede tener 2 o más dueños con distintos porcentajes. La rendición se reparte automáticamente.",
+          "titulo": "Dos o más dueños en una propiedad",
+          "descripcion": "Una propiedad puede ser de más de un dueño con porcentajes distintos. El reparto del cobro se hace solo cada mes.",
           "ruta": "../inmobiliaria/propietarios",
           "rutaLabel": "Ver propietarios"
         },
         {
-          "titulo": "CBU específico por propiedad",
-          "descripcion": "Un mismo propietario puede pedir cobrar cada propiedad en una cuenta diferente. El sistema lo respeta.",
+          "titulo": "Datos bancarios por propiedad",
+          "descripcion": "Si un dueño quiere cobrar cada propiedad en una cuenta distinta, lo configurás y el sistema lo respeta.",
           "ruta": "../inmobiliaria/propietarios/own_002",
-          "rutaLabel": "Ver propietario con varias unidades"
+          "rutaLabel": "Ver dueño con varias unidades"
         },
         {
-          "titulo": "Cuenta directa configurable",
-          "descripcion": "Cargás banco, titular, CBU y alias del propietario para los contratos en modo cobranza directa.",
+          "titulo": "Cuenta del dueño",
+          "descripcion": "Cargás banco, titular y datos bancarios del dueño para que el inquilino le transfiera directo cuando corresponda.",
           "ruta": "../inmobiliaria/propietarios/own_004",
-          "rutaLabel": "Ver cuenta directa"
+          "rutaLabel": "Ver cuenta del dueño"
         },
         {
-          "titulo": "Vista 360 del propietario",
-          "descripcion": "Sus propiedades, sus contratos, las últimas 6 rendiciones, datos bancarios, AFIP, notas internas.",
+          "titulo": "Todo sobre cada dueño en un lugar",
+          "descripcion": "Sus propiedades, sus contratos, los últimos seis resúmenes, datos bancarios, AFIP y notas privadas tuyas.",
           "ruta": "../inmobiliaria/propietarios/own_001",
           "rutaLabel": "Ver perfil completo"
         }
@@ -292,57 +236,69 @@
     },
     {
       "id": "reclamos",
-      "titulo": "Reclamos con profesionales curados",
+      "titulo": "Reclamos con profesionales de confianza",
       "navTitulo": "Reclamos",
-      "subtitulo": "Clasificación automática y red de plomeros, electricistas y gasistas",
+      "subtitulo": "Reconocimiento del problema y tu red de plomeros, electricistas y gasistas",
       "icono": "🔧",
       "color": "rose",
       "features": [
         {
-          "titulo": "Clasificación con IA",
-          "descripcion": "El inquilino describe el problema, el sistema lo clasifica (urgente, plomería, electricidad, etc.) y propone próximos pasos.",
+          "titulo": "Reconocimiento del problema",
+          "descripcion": "El inquilino describe el problema, el sistema lo clasifica (urgente, plomería, eléctrico, etcétera) y te propone los siguientes pasos.",
           "ruta": "../inmobiliaria/reclamos",
           "rutaLabel": "Ver reclamos abiertos"
         },
         {
-          "titulo": "Asignación a profesional",
-          "descripcion": "Asignás un profesional de tu red curada con un click. El profesional recibe el dato del reclamo y la propiedad por WhatsApp.",
+          "titulo": "Asignar a un profesional",
+          "descripcion": "Le asignás un profesional de tu lista de confianza con un toque. Le llega la información del reclamo y la propiedad por WhatsApp.",
           "ruta": "../inmobiliaria/reclamos/rec_006",
           "rutaLabel": "Ver reclamo asignado"
         },
         {
-          "titulo": "Red de profesionales propia",
-          "descripcion": "Mantenés tu lista de plomeros, electricistas, gasistas y cerrajeros de confianza con sus datos y rangos de precio.",
+          "titulo": "Tu red de profesionales",
+          "descripcion": "Tu lista de plomeros, electricistas, gasistas y cerrajeros de confianza con sus datos, especialidades y precios estimados.",
           "ruta": "../inmobiliaria/profesionales",
           "rutaLabel": "Ver red"
+        },
+        {
+          "titulo": "Estado en tiempo real",
+          "descripcion": "El inquilino ve si su reclamo está abierto, asignado o resuelto. Deja de llamarte para preguntar cómo va.",
+          "ruta": "../inmobiliaria/reclamos",
+          "rutaLabel": "Ver flujo del reclamo"
         }
       ]
     },
     {
       "id": "equipo",
-      "titulo": "Equipo y auditoría",
-      "navTitulo": "Auditoría",
-      "subtitulo": "4 roles bien definidos y trazabilidad legal de cada acción",
+      "titulo": "Equipo y registro de acciones",
+      "navTitulo": "Registro",
+      "subtitulo": "Cuatro niveles de permisos y registro permanente de todo lo que pasa",
       "icono": "🔐",
       "color": "indigo",
       "features": [
         {
-          "titulo": "4 roles configurables",
-          "descripcion": "ADMIN (controla todo), OPERADOR (día a día), CARGA (sólo carga, no aprueba) y LECTURA (sólo mira). Cada uno ve lo que necesita.",
+          "titulo": "Cuatro niveles de permisos",
+          "descripcion": "Administrador (controla todo), Operador (día a día), Carga (sólo carga, no aprueba) y Sólo lectura (sólo mira, ideal para el contador). Cada uno ve lo que necesita.",
           "ruta": "../inmobiliaria/configuracion",
           "rutaLabel": "Ver equipo y permisos"
         },
         {
-          "titulo": "Log de auditoría timeline",
-          "descripcion": "Cada acción sensible (pagos, contratos, caja, reclamos, equipo) queda registrada con autor, rol, entidad, detalle y fecha. Append-only.",
+          "titulo": "Historial de acciones",
+          "descripcion": "Cada acción importante (pagos, contratos, gastos, reclamos, equipo) queda registrada con persona, fecha y motivo. No se borra nunca.",
           "ruta": "../inmobiliaria/configuracion",
-          "rutaLabel": "Ver tab Auditoría"
+          "rutaLabel": "Ver el registro"
         },
         {
-          "titulo": "Filtros por usuario y tipo",
-          "descripcion": "¿Qué hizo Camila esta semana? Filtrás por usuario y por tipo de evento (pago conciliado, contrato cargado, factura emitida…).",
+          "titulo": "Buscar quién hizo qué",
+          "descripcion": "¿Qué hizo cada persona del equipo esta semana? Filtrás por usuario y tipo de movimiento (pago aprobado, contrato cargado, factura emitida).",
           "ruta": "../inmobiliaria/configuracion",
-          "rutaLabel": "Probar filtros"
+          "rutaLabel": "Probar los filtros"
+        },
+        {
+          "titulo": "Invitaciones por mail",
+          "descripcion": "Invitás a alguien al equipo con un mail, le asignás su nivel de permisos y entra a usar el sistema enseguida.",
+          "ruta": "../inmobiliaria/configuracion",
+          "rutaLabel": "Invitar al equipo"
         }
       ]
     },
@@ -350,33 +306,33 @@
       "id": "inquilino",
       "titulo": "App del inquilino",
       "navTitulo": "Inquilino",
-      "subtitulo": "PWA que se instala como una app — paga, reclama, chatea",
+      "subtitulo": "Una app que se instala como cualquier otra y le simplifica todo al inquilino",
       "icono": "📱",
       "color": "teal",
       "features": [
         {
-          "titulo": "Pagar alquiler en 30 segundos",
-          "descripcion": "Ve el monto, los datos bancarios correctos (depende del modo de cobranza), sube el comprobante y listo.",
+          "titulo": "Pagar el alquiler en 30 segundos",
+          "descripcion": "Ve cuánto debe, los datos bancarios correctos y sube el comprobante en tres toques. Listo, ya está informado el pago.",
           "ruta": "../inquilino/pagar",
           "rutaLabel": "Probar el flujo de pago"
         },
         {
-          "titulo": "Broker IA",
-          "descripcion": "Un asistente que responde preguntas comunes (cuánto debo, cuándo vence, cómo pago) sin molestar a la inmobiliaria.",
+          "titulo": "Asistente que responde",
+          "descripcion": "Un asistente automático que responde las preguntas más comunes (cuánto debo, cuándo vence, cómo pago) sin que el inquilino tenga que llamar.",
           "ruta": "../inquilino/",
-          "rutaLabel": "Hablar con el broker"
+          "rutaLabel": "Hablar con el asistente"
         },
         {
           "titulo": "Reclamos desde el celular",
-          "descripcion": "Saca foto del problema, lo describe, queda registrado y el admin lo ve al toque.",
+          "descripcion": "El inquilino saca una foto del problema, lo describe y ya queda registrado. Vos lo ves enseguida en el panel.",
           "ruta": "../inquilino/reclamos/nuevo",
           "rutaLabel": "Probar reclamo"
         },
         {
-          "titulo": "Recibos y contrato a mano",
-          "descripcion": "Histórico de comprobantes y el contrato firmado descargables cuando los necesite (banco, mudanza, etc.).",
+          "titulo": "Sus recibos y contrato a mano",
+          "descripcion": "Todos los comprobantes y el contrato firmado para descargar cuando el inquilino los necesite (banco, mudanza, contador).",
           "ruta": "../inquilino/",
-          "rutaLabel": "Ver dashboard"
+          "rutaLabel": "Ver app del inquilino"
         }
       ]
     },
@@ -384,73 +340,141 @@
       "id": "reportes",
       "titulo": "Reportes y renovaciones",
       "navTitulo": "Reportes",
-      "subtitulo": "PDFs profesionales, alertas de vencimiento y comparativas con ICL",
+      "subtitulo": "Resúmenes en PDF, avisos de vencimiento y propuestas de actualización",
       "icono": "📈",
       "color": "fuchsia",
       "features": [
         {
-          "titulo": "Liquidación al propietario en PDF",
-          "descripcion": "Bruto cobrado, comisión inmobiliaria, gastos descontados, neto a transferir. Listo para mandar por mail.",
+          "titulo": "Resumen mensual al dueño en PDF",
+          "descripcion": "Lo que cobraste, la comisión, los gastos descontados y lo que le toca al dueño. Listo para mandar por mail con un toque.",
           "ruta": "../inmobiliaria/propietarios/own_001",
-          "rutaLabel": "Ver rendiciones"
+          "rutaLabel": "Ver resúmenes"
         },
         {
-          "titulo": "Alertas de renovación",
-          "descripcion": "El sistema te avisa con anticipación qué contratos vencen, con propuesta de actualización por ICL.",
+          "titulo": "Avisos de renovación",
+          "descripcion": "El sistema te avisa con tiempo qué contratos vencen, con una propuesta de actualización por el índice oficial lista para enviar.",
           "ruta": "../inmobiliaria/renovaciones",
           "rutaLabel": "Ver renovaciones"
         },
         {
-          "titulo": "Screening de inquilinos",
-          "descripcion": "Informe SkipTrace con BCRA, vínculos familiares, bienes, empleador. Para decidir antes de firmar.",
+          "titulo": "Análisis del futuro inquilino",
+          "descripcion": "Informe completo con historial financiero, vínculos familiares, bienes y empleador. Para decidir antes de firmar el contrato.",
           "ruta": "../inmobiliaria/screening",
-          "rutaLabel": "Ver informe ejemplo"
+          "rutaLabel": "Ver informe de ejemplo"
+        },
+        {
+          "titulo": "Estado de cuenta del inquilino",
+          "descripcion": "Generás un PDF con todo lo que pagó (y lo que debe) cada inquilino, listo para entregar o mandar por mail.",
+          "ruta": "../inmobiliaria/pagos",
+          "rutaLabel": "Generar estado de cuenta"
         }
       ]
     }
   ],
+  "integraciones": {
+    "titulo": "Habla con todo lo que ya usás",
+    "subtitulo": "Sin pedirle al inquilino que se baje una app rara ni al dueño que aprenda otro sistema.",
+    "items": [
+      { "nombre": "AFIP", "icono": "🧾", "descripcion": "Facturas y recibos oficiales", "color": "violet" },
+      { "nombre": "WhatsApp", "icono": "💬", "descripcion": "Avisos y comprobantes automáticos", "color": "emerald" },
+      { "nombre": "Mercado Pago", "icono": "💳", "descripcion": "Detección automática de pagos", "color": "blue" },
+      { "nombre": "Transferencias", "icono": "🏦", "descripcion": "Banco Galicia, Macro, Roela, BBVA y más", "color": "indigo" },
+      { "nombre": "Índice oficial", "icono": "📊", "descripcion": "Ajuste automático del alquiler", "color": "amber" },
+      { "nombre": "Mail", "icono": "✉️", "descripcion": "Comprobantes y avisos al inquilino", "color": "rose" }
+    ]
+  },
+  "antesDespues": {
+    "titulo": "Lo que cambia el primer día",
+    "subtitulo": "El antes lo conocés. El después lo probás en cinco minutos.",
+    "filas": [
+      { "antes": "Excel, WhatsApp y carpetas perdidas en Google Drive", "despues": "Todo en una sola pantalla, con historial" },
+      { "antes": "Acordarte a mano cuándo vence cada alquiler", "despues": "Avisos automáticos al inquilino antes del vencimiento" },
+      { "antes": "Pedirle el comprobante al inquilino por WhatsApp", "despues": "El inquilino sube el comprobante desde su celular" },
+      { "antes": "Buscar la factura del dueño en una carpeta del mail", "despues": "Se emite la factura sola y se manda al aprobar el pago" },
+      { "antes": "Nadie se acuerda quién aprobó tal pago y cuándo", "despues": "Historial con persona, fecha y motivo de cada acción" },
+      { "antes": "Reclamos en hilos de WhatsApp interminables", "despues": "Reclamos con foto, clasificación y profesional asignado" }
+    ]
+  },
+  "faq": {
+    "titulo": "Preguntas frecuentes",
+    "subtitulo": "Las dudas que más nos hicieron",
+    "items": [
+      {
+        "pregunta": "¿Cómo se cobra el alquiler?",
+        "respuesta": "Tenés dos formas a elegir para cada contrato. Forma 1: el inquilino transfiere a la cuenta de la inmobiliaria (estilo Banco Roela). Forma 2: el inquilino transfiere directo al dueño y el dueño confirma que le llegó. La inmobiliaria audita todo en los dos casos."
+      },
+      {
+        "pregunta": "¿Necesito tener la AFIP conectada?",
+        "respuesta": "No es obligatorio. Si la conectás (uno por dueño), al aprobar el pago se emite la factura sola y se manda al inquilino por WhatsApp y mail. Si no la conectás, el pago se aprueba igual pero sin factura automática."
+      },
+      {
+        "pregunta": "¿Funciona con expensas y alquiler por separado?",
+        "respuesta": "Sí. Cada contrato puede ser sólo alquiler, sólo expensas, o alquiler más expensas. Útil para casos donde la inmobiliaria sólo administra las expensas de un consorcio o sólo el alquiler de una unidad."
+      },
+      {
+        "pregunta": "¿Qué pasa si me equivoco aprobando un pago?",
+        "respuesta": "Lo deshacés con un botón. En la pantalla de pagos hay una sección \"Resueltos recientes\" con el botón \"Deshacer\" al lado de cada pago aprobado. La acción queda registrada en el historial."
+      },
+      {
+        "pregunta": "¿Cómo manejo el equipo y los permisos?",
+        "respuesta": "Hay cuatro niveles de permisos: Administrador (controla todo), Operador (día a día), Carga (sólo carga, no aprueba) y Sólo lectura (sólo mira, ideal para el contador externo). Cada persona del equipo ve únicamente lo que necesita."
+      },
+      {
+        "pregunta": "¿Puedo ajustar el alquiler por el índice oficial automáticamente?",
+        "respuesta": "Sí. El índice oficial se actualiza solo y el sistema recalcula el alquiler cuando corresponde según la frecuencia pactada en el contrato. Te avisa antes para que confirmes la actualización."
+      },
+      {
+        "pregunta": "¿Cómo se conecta con la AFIP?",
+        "respuesta": "Una vez por dueño. Cargás CUIT, clave fiscal y elegís punto de venta y tipo de comprobante (Factura A, B, C o Recibo C según condición). El sistema usa los canales oficiales de la AFIP."
+      },
+      {
+        "pregunta": "¿Los datos están seguros?",
+        "respuesta": "Todo queda en un historial permanente. Nadie puede borrar movimientos, sólo agregarlos. Cada acción (pago, contrato, gasto, reclamo) tiene persona, fecha, hora y motivo."
+      }
+    ]
+  },
   "changelog": [
     {
       "version": "v4",
       "fecha": "2026-05-13",
-      "titulo": "Cobranza dual + AFIP",
+      "titulo": "Cobranza de dos formas y AFIP automático",
       "cambios": [
-        "Modo de cobranza por contrato (inmobiliaria o directo al propietario)",
-        "Conexión AFIP por propietario + emisión automática al conciliar",
-        "Envío de factura al inquilino por WhatsApp y mail",
-        "3 nuevos tipos de evento auditados"
+        "Elegís cómo cobrar para cada contrato (vos o directo al dueño)",
+        "Conexión con la AFIP por dueño y emisión automática de la factura",
+        "Envío del comprobante al inquilino por WhatsApp y mail",
+        "Tres tipos nuevos de movimiento registrados en el historial"
       ]
     },
     {
       "version": "v3",
       "fecha": "2026-05-13",
-      "titulo": "Aprobación de contratos + auditoría + revertir",
+      "titulo": "Aprobación de contratos, registro y deshacer pagos",
       "cambios": [
-        "Flujo CARGA → ADMIN aprueba para contratos",
-        "Tab nueva Auditoría con timeline filtrable",
-        "Revertir conciliación de pagos resueltos"
+        "Tu equipo carga y vos aprobás antes de activar el contrato",
+        "Pantalla nueva con el historial completo de acciones",
+        "Botón para deshacer la aprobación de un pago si te equivocaste"
       ]
     },
     {
       "version": "v2",
       "fecha": "2026-05-13",
-      "titulo": "Solo expensas + caja + pago manual + rol CARGA",
+      "titulo": "Sólo expensas, caja, pagos por afuera y rol Carga",
       "cambios": [
-        "Tipo de contrato: alquiler, expensas o ambos",
-        "Caja de gastos descontables de la rendición",
-        "Carga manual de pagos offline",
-        "Nuevo rol CARGA con permisos limitados"
+        "Tipos de contrato: alquiler, expensas o ambos",
+        "Caja de gastos que se descuentan del resumen al dueño",
+        "Carga manual de pagos que llegaron por fuera del sistema",
+        "Nuevo nivel de permisos: Carga (sólo carga, no aprueba)"
       ]
     },
     {
       "version": "v1",
       "fecha": "2026-05-12",
-      "titulo": "Feedback inicial del cliente",
+      "titulo": "Primera ronda de mejoras del cliente",
       "cambios": [
-        "Conciliación de comprobantes",
-        "Profesionales asignables por reclamo",
-        "PDFs de liquidación",
-        "CBU por propiedad y % entre propietarios"
+        "Aprobación de comprobantes con un toque",
+        "Profesionales asignables a cada reclamo",
+        "Resúmenes mensuales al dueño en PDF",
+        "Datos bancarios por propiedad y porcentajes entre dueños"
       ]
     }
   ],
