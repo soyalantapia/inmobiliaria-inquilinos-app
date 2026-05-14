@@ -80,12 +80,18 @@ function renderSeccion(s) {
     </section>`;
 }
 
-// Render nav links del navbar desktop — usa navTitulo (corto) si está disponible,
-// si no cae al titulo largo. Solo las secciones de features, FAQ y Cambios
-// se agregan aparte en el template.
-function renderNavLinks(secciones) {
-  return secciones
-    .map((s) => `<a href="#${esc(s.id)}">${esc(s.navTitulo || s.titulo)}</a>`)
+// Render nav links del navbar desktop — 4 ítems precisos (no las 8 secciones).
+// Esto evita un navbar saturado. Los detalles de cada sección están accesibles
+// vía scroll o desde el menú lateral (drawer).
+function renderNavLinks(/* secciones */) {
+  const items = [
+    { id: 'como-funciona', label: 'Cómo funciona' },
+    { id: 'funcionalidades', label: 'Funcionalidades' },
+    { id: 'faq', label: 'Preguntas' },
+    { id: 'changelog', label: 'Cambios' },
+  ];
+  return items
+    .map((i) => `<a href="#${esc(i.id)}">${esc(i.label)}</a>`)
     .join('\n          ');
 }
 
