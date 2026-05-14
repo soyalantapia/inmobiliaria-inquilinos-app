@@ -1,7 +1,7 @@
 {
   "meta": {
     "titulo": "Llave — Plataforma operativa para corredores inmobiliarios",
-    "descripcion": "Sistema integral de gestión para corredores inmobiliarios en Argentina. Cobranza, facturación electrónica AFIP, contratos digitales, reclamos y trazabilidad legal en un único entorno operativo.",
+    "descripcion": "Sistema integral de gestión para corredores inmobiliarios en Argentina. Cobranza, facturación electrónica ARCA, contratos digitales, reclamos y trazabilidad legal en un único entorno operativo.",
     "version": "v4 · ronda 4 de mejoras"
   },
   "hero": {
@@ -14,7 +14,7 @@
     "badges": [
       "🇦🇷 Operación local",
       "🔐 Trazabilidad legal",
-      "🧾 Integración con AFIP",
+      "🧾 Integración con ARCA",
       "📱 App nativa para inquilinos"
     ]
   },
@@ -68,10 +68,10 @@
       {
         "numero": "01",
         "titulo": "Configurás tu operación",
-        "descripcion": "Cargás propietarios, datos bancarios, conectás la AFIP (opcional) y definís los permisos de tu equipo. Una sola vez.",
+        "descripcion": "Cargás propietarios, datos bancarios, conectás la ARCA (opcional) y definís los permisos de tu equipo. Una sola vez.",
         "detalles": [
           "Cobranza por cuenta recaudadora o transferencia directa al propietario",
-          "Conexión con AFIP por propietario (Monotributo o Responsable Inscripto)",
+          "Conexión con ARCA por propietario (Monotributo o Responsable Inscripto)",
           "Cuatro niveles de permisos para tu equipo"
         ]
       },
@@ -108,7 +108,7 @@
       "features": [
         {
           "titulo": "Dos modalidades de cobranza",
-          "descripcion": "Cobranza centralizada en la cuenta recaudadora de la inmobiliaria, o transferencia directa al propietario con confirmación posterior. El corredor define la modalidad para cada contrato.",
+          "descripcion": "Modalidad centralizada: el inquilino transfiere a una cuenta única de la inmobiliaria que recibe todos los cobros, y al cierre de mes la inmobiliaria rinde el neto al propietario. Modalidad directa: el inquilino transfiere al CBU del propietario y el propietario confirma la recepción. La modalidad se elige por contrato.",
           "ruta": "../inmobiliaria/contratos/cnt_005",
           "rutaLabel": "Ver ejemplo de cobranza directa"
         },
@@ -135,16 +135,16 @@
     {
       "id": "facturacion",
       "titulo": "Facturación electrónica integrada",
-      "navTitulo": "AFIP",
-      "subtitulo": "Conexión con AFIP por propietario. Emisión y envío al aprobar el pago.",
+      "navTitulo": "ARCA",
+      "subtitulo": "Conexión con ARCA por propietario. Emisión y envío al aprobar el pago.",
       "icono": "🧾",
       "color": "violet",
       "features": [
         {
           "titulo": "Emisión automática al aprobar",
-          "descripcion": "Cuando el corredor aprueba un pago, si el propietario tiene AFIP conectada, se emite el comprobante con CAE y se envía al inquilino por WhatsApp y mail.",
+          "descripcion": "Cuando el corredor aprueba un pago, si el propietario tiene ARCA conectada, se emite el comprobante con CAE y se envía al inquilino por WhatsApp y mail.",
           "ruta": "../inmobiliaria/propietarios/own_001",
-          "rutaLabel": "Ver propietario con AFIP"
+          "rutaLabel": "Ver propietario con ARCA"
         },
         {
           "titulo": "Compatible con todas las condiciones fiscales",
@@ -159,10 +159,10 @@
           "rutaLabel": "Probar el flujo"
         },
         {
-          "titulo": "Reenvío bajo demanda",
-          "descripcion": "Si el inquilino solicita un comprobante anterior (mudanza, banco, contador), se reenvía con dos movimientos. Cada envío queda registrado.",
-          "ruta": "../inmobiliaria/pagos",
-          "rutaLabel": "Ver historial de envíos"
+          "titulo": "Registro de cada comprobante emitido",
+          "descripcion": "Cada factura electrónica queda registrada en el historial de acciones con número de comprobante, propietario, inquilino e importe. Disponible para auditorías y consultas.",
+          "ruta": "../inmobiliaria/configuracion",
+          "rutaLabel": "Ver historial de comprobantes"
         }
       ]
     },
@@ -204,7 +204,7 @@
       "id": "propietarios",
       "titulo": "Gestión de propietarios y propiedades",
       "navTitulo": "Propietarios",
-      "subtitulo": "Cotitularidad, datos bancarios por unidad y AFIP individual por propietario.",
+      "subtitulo": "Cotitularidad, datos bancarios por unidad y ARCA individual por propietario.",
       "icono": "🏠",
       "color": "amber",
       "features": [
@@ -228,7 +228,7 @@
         },
         {
           "titulo": "Ficha integral del propietario",
-          "descripcion": "Propiedades, contratos asociados, últimas seis rendiciones, datos bancarios, AFIP y notas internas. Toda la información operativa centralizada.",
+          "descripcion": "Propiedades, contratos asociados, últimas seis rendiciones, datos bancarios, ARCA y notas internas. Toda la información operativa centralizada.",
           "ruta": "../inmobiliaria/propietarios/own_001",
           "rutaLabel": "Ver perfil completo"
         }
@@ -313,7 +313,7 @@
         {
           "titulo": "Pago de alquiler desde el celular",
           "descripcion": "El inquilino visualiza monto, datos bancarios y carga su comprobante en tres pasos. El pago queda informado al instante.",
-          "ruta": "../inquilino/pagar",
+          "ruta": "../inquilino/",
           "rutaLabel": "Probar el flujo de pago"
         },
         {
@@ -363,10 +363,10 @@
           "rutaLabel": "Ver informe de ejemplo"
         },
         {
-          "titulo": "Estado de cuenta del inquilino",
-          "descripcion": "Resumen en PDF con pagos realizados, saldos y movimientos por inquilino. Listo para envío o impresión bajo demanda.",
-          "ruta": "../inmobiliaria/pagos",
-          "rutaLabel": "Generar estado de cuenta"
+          "titulo": "Ficha integral de la propiedad",
+          "descripcion": "Cada propiedad reúne contrato vigente, propietarios con sus porcentajes, datos bancarios, historial de cobros y reclamos asociados. Disponible en un solo panel.",
+          "ruta": "../inmobiliaria/propiedades",
+          "rutaLabel": "Ver propiedades"
         }
       ]
     }
@@ -375,7 +375,7 @@
     "titulo": "Conexiones con tus herramientas habituales",
     "subtitulo": "Sin pedirle al inquilino que se instale una app desconocida ni al propietario que aprenda un nuevo sistema.",
     "items": [
-      { "nombre": "AFIP", "icono": "🧾", "descripcion": "Facturación electrónica oficial", "color": "violet" },
+      { "nombre": "ARCA", "icono": "🧾", "descripcion": "Facturación electrónica oficial", "color": "violet" },
       { "nombre": "WhatsApp", "icono": "💬", "descripcion": "Comunicaciones y comprobantes", "color": "emerald" },
       { "nombre": "Mercado Pago", "icono": "💳", "descripcion": "Reconocimiento de pagos", "color": "blue" },
       { "nombre": "Bancos", "icono": "🏦", "descripcion": "Galicia, Macro, Roela, BBVA y más", "color": "indigo" },
@@ -406,8 +406,8 @@
         "respuesta": "Dos modalidades, configurables por contrato. La primera centraliza el cobro en la cuenta recaudadora de la inmobiliaria. La segunda transfiere directamente al propietario con confirmación posterior de recepción. La inmobiliaria mantiene la trazabilidad completa en ambos casos."
       },
       {
-        "pregunta": "¿Es obligatoria la integración con AFIP?",
-        "respuesta": "No. La integración con AFIP se configura individualmente por propietario. Cuando está activa, la emisión y envío de comprobantes ocurre automáticamente al aprobar el pago. Sin la integración, la conciliación funciona normalmente pero sin facturación automatizada."
+        "pregunta": "¿Es obligatoria la integración con ARCA?",
+        "respuesta": "No. La integración con ARCA se configura individualmente por propietario. Cuando está activa, la emisión y envío de comprobantes ocurre automáticamente al aprobar el pago. Sin la integración, la conciliación funciona normalmente pero sin facturación automatizada."
       },
       {
         "pregunta": "¿Soporta contratos de sólo expensas o sólo alquiler?",
@@ -426,8 +426,8 @@
         "respuesta": "El índice oficial se actualiza automáticamente. El sistema calcula el nuevo alquiler según la frecuencia pactada en el contrato y notifica al corredor antes de aplicar el ajuste, permitiendo confirmar o postergar la actualización."
       },
       {
-        "pregunta": "¿Cómo se conecta el sistema con AFIP?",
-        "respuesta": "La conexión se realiza una vez por propietario. Se cargan CUIT, clave fiscal, punto de venta y tipo de comprobante (Factura A, B, C o Recibo C según condición fiscal). El sistema opera sobre los servicios oficiales de la AFIP."
+        "pregunta": "¿Cómo se conecta el sistema con ARCA?",
+        "respuesta": "La conexión se realiza una vez por propietario. Se cargan CUIT, clave fiscal, punto de venta y tipo de comprobante (Factura A, B, C o Recibo C según condición fiscal). El sistema opera sobre los servicios oficiales de la ARCA."
       },
       {
         "pregunta": "¿Qué garantiza la seguridad y trazabilidad de los datos?",
@@ -439,10 +439,10 @@
     {
       "version": "v4",
       "fecha": "2026-05-13",
-      "titulo": "Doble modalidad de cobranza e integración con AFIP",
+      "titulo": "Doble modalidad de cobranza e integración con ARCA",
       "cambios": [
         "Modalidad de cobranza configurable por contrato (centralizada o directa al propietario)",
-        "Conexión con AFIP por propietario y emisión automática de comprobantes",
+        "Conexión con ARCA por propietario y emisión automática de comprobantes",
         "Distribución del comprobante al inquilino por WhatsApp y mail",
         "Tres tipos de movimiento adicionales en el historial de acciones"
       ]
@@ -467,21 +467,10 @@
         "Carga manual de pagos recibidos por canales paralelos",
         "Nuevo nivel de permisos: Carga (alta sin facultad de aprobación)"
       ]
-    },
-    {
-      "version": "v1",
-      "fecha": "2026-05-12",
-      "titulo": "Primera ronda de mejoras del cliente piloto",
-      "cambios": [
-        "Aprobación de comprobantes con un movimiento",
-        "Red de profesionales asignable a cada reclamo",
-        "Rendiciones mensuales al propietario en PDF",
-        "Datos bancarios por propiedad y porcentajes entre cotitulares"
-      ]
     }
   ],
   "footer": {
-    "creditos": "Demo navegable · Datos ficticios",
+    "creditos": "",
     "links": []
   }
 }
