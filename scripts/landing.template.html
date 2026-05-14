@@ -1211,18 +1211,29 @@
         font-weight: 800;
       }
 
-      /* CTA + garantía */
+      /* CTA + garantía — los 2 botones lado a lado en cuanto el ancho lo permite */
       .promo-cta-group {
         display: flex;
         flex-direction: column;
         gap: 10px;
         align-items: stretch;
       }
-      @media (min-width: 600px) {
-        .promo-cta-group { flex-direction: row; justify-content: center; flex-wrap: wrap; }
+      @media (min-width: 480px) {
+        .promo-cta-group {
+          flex-direction: row;
+          flex-wrap: nowrap;
+          align-items: stretch;
+        }
+        .promo-cta-group .btn {
+          flex: 1 1 0;
+          min-width: 0;
+          padding-left: 12px;
+          padding-right: 12px;
+          font-size: 14px;
+        }
       }
       @media (min-width: 768px) {
-        .promo-cta-group { justify-content: flex-start; }
+        .promo-cta-group .btn { padding-left: 16px; padding-right: 16px; font-size: 14.5px; }
       }
       .promo-cta-group .btn { min-height: 54px; }
       .promo-garantia {
@@ -1231,9 +1242,6 @@
         font-size: 13px;
         color: var(--fg-soft);
         font-weight: 500;
-      }
-      @media (min-width: 768px) {
-        .promo-garantia { text-align: left; }
       }
       .promo-garantia .gar-icon {
         display: inline-flex;
