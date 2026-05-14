@@ -24,6 +24,43 @@
     { "valor": "17", "label": "Tipos de eventos auditados" },
     { "valor": "100%", "label": "Trazabilidad de acciones por usuario" }
   ],
+  "problema": {
+    "tag": "El problema",
+    "titulo": "¿Te suena conocido?",
+    "subtitulo": "Administrar alquileres sin software dedicado es como llevar la contabilidad de la inmobiliaria en post-its. Funciona hasta que no funciona.",
+    "dolores": [
+      {
+        "icono": "📑",
+        "titulo": "Excel que crece sin control",
+        "descripcion": "Una planilla por contrato, otra de cobros, otra de gastos. A fin de mes nadie sabe cuál es la versión buena."
+      },
+      {
+        "icono": "💬",
+        "titulo": "WhatsApp roto",
+        "descripcion": "12 inquilinos pidiendo el CBU el mismo día. Comprobantes mezclados con memes de la familia."
+      },
+      {
+        "icono": "🧾",
+        "titulo": "Comprobantes perdidos",
+        "descripcion": "El PDF está en el mail de alguien, la foto en WhatsApp, la transferencia en el banco. Buena suerte armando la rendición."
+      },
+      {
+        "icono": "📞",
+        "titulo": "Llamadas a las 9pm",
+        "descripcion": "El dueño quiere saber si pagó el inquilino del 4ºB. Tu equipo ya se fue. Otra vez vos."
+      },
+      {
+        "icono": "🧮",
+        "titulo": "Liquidar a mano cada mes",
+        "descripcion": "Calculadora, comisión, gastos de plomero, expensas. Si el propietario reclama, tenés que rehacer el cálculo desde cero."
+      },
+      {
+        "icono": "🔍",
+        "titulo": "Sin trazabilidad",
+        "descripcion": "El propietario pregunta quién aprobó tal pago y cuándo. Nadie se acuerda. Empezás a googlear cómo recuperar un mensaje de WhatsApp."
+      }
+    ]
+  },
   "comoFunciona": {
     "titulo": "Cómo funciona",
     "subtitulo": "Tres pasos. Sin más Excel, sin más WhatsApp roto.",

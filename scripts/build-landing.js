@@ -120,6 +120,20 @@ function renderFooterLinksBlock(links) {
   return `<br />${items}`;
 }
 
+// Render dolores de "El Problema"
+function renderDolores(dolores) {
+  return dolores
+    .map(
+      (d) => `
+          <article class="dolor">
+            <div class="dolor-icon">${esc(d.icono)}</div>
+            <h3>${esc(d.titulo)}</h3>
+            <p>${esc(d.descripcion)}</p>
+          </article>`,
+    )
+    .join('');
+}
+
 // Render pasos de "Cómo funciona"
 function renderPasos(pasos) {
   return pasos
@@ -192,13 +206,15 @@ function renderFaq(items) {
     .join('');
 }
 
-// Render drawer links — items para el menú mobile
+// Render drawer links — items para el menú mobile, en el mismo orden que la landing
 function renderDrawerLinks(secciones) {
   const links = [
+    { id: 'problema', label: '⚠️ El problema' },
+    { id: 'antes-despues', label: '⚖️ Sin Llave / Con Llave' },
     { id: 'como-funciona', label: '🚀 Cómo funciona' },
+    { id: 'funcionalidades', label: '✨ Funcionalidades' },
     ...secciones.map((s) => ({ id: s.id, label: `${s.icono} ${s.titulo}` })),
     { id: 'integraciones', label: '🔌 Integraciones' },
-    { id: 'antes-despues', label: '⚖️ Antes / Después' },
     { id: 'faq', label: '❓ Preguntas frecuentes' },
     { id: 'changelog', label: '📝 Cambios' },
   ];
@@ -256,6 +272,11 @@ function main() {
     CHANGELOG: renderChangelog(data.changelog),
     FOOTER_CREDITOS: esc(data.footer.creditos),
     FOOTER_LINKS_BLOCK: renderFooterLinksBlock(data.footer.links),
+    // Nueva sección "Problema"
+    PROBLEMA_TAG: esc(data.problema.tag),
+    PROBLEMA_TITULO: esc(data.problema.titulo),
+    PROBLEMA_SUBTITULO: esc(data.problema.subtitulo),
+    PROBLEMA_DOLORES: renderDolores(data.problema.dolores),
     // Nuevas secciones
     COMO_FUNCIONA_TITULO: esc(data.comoFunciona.titulo),
     COMO_FUNCIONA_SUBTITULO: esc(data.comoFunciona.subtitulo),
@@ -290,9 +311,10 @@ function main() {
   const totalFeatures = data.secciones.reduce((acc, s) => acc + s.features.length, 0);
   console.log(`✓ Landing generada en ${path.relative(ROOT, OUTPUT_PATH)}`);
   console.log(
-    `  ${data.secciones.length} secciones · ${totalFeatures} features · ` +
-      `${data.comoFunciona.pasos.length} pasos · ${data.integraciones.items.length} integraciones · ` +
-      `${data.faq.items.length} FAQ · ${data.changelog.length} releases`,
+    `  ${data.problema.dolores.length} dolores · ${data.comoFunciona.pasos.length} pasos · ` +
+      `${data.secciones.length} secciones · ${totalFeatures} features · ` +
+      `${data.integraciones.items.length} integraciones · ${data.faq.items.length} FAQ · ` +
+      `${data.changelog.length} releases`,
   );
 }
 

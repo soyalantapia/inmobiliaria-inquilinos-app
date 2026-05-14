@@ -438,6 +438,18 @@
         background: var(--bg-soft);
       }
 
+      .funcionalidades-wrap {
+        padding: 80px 0 20px;
+        background: var(--bg);
+      }
+      @media (min-width: 768px) {
+        .funcionalidades-wrap { padding: 100px 0 24px; }
+      }
+      .funcionalidades-wrap + section.featured { padding-top: 40px; }
+      @media (min-width: 768px) {
+        .funcionalidades-wrap + section.featured { padding-top: 60px; }
+      }
+
       .sec-header {
         text-align: center;
         margin-bottom: 56px;
@@ -885,6 +897,91 @@
       }
 
       /* ============================================================
+         PROBLEMA
+         ============================================================ */
+      .problema {
+        padding: 80px 0;
+        position: relative;
+        overflow: hidden;
+        isolation: isolate;
+      }
+      @media (min-width: 768px) { .problema { padding: 120px 0; } }
+      .problema::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        z-index: -1;
+        background:
+          radial-gradient(40% 50% at 20% 30%, rgba(225, 29, 72, 0.08), transparent 70%),
+          radial-gradient(35% 45% at 80% 70%, rgba(217, 119, 6, 0.06), transparent 70%);
+      }
+      .problema .sec-tag {
+        background: var(--c-rose-soft);
+        color: var(--c-rose);
+      }
+      .problema-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 16px;
+      }
+      @media (min-width: 640px) {
+        .problema-grid { grid-template-columns: repeat(2, 1fr); gap: 20px; }
+      }
+      @media (min-width: 1024px) {
+        .problema-grid { grid-template-columns: repeat(3, 1fr); }
+      }
+      .dolor {
+        padding: 24px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        transition: all var(--transition);
+        position: relative;
+        overflow: hidden;
+        isolation: isolate;
+      }
+      .dolor::before {
+        content: '';
+        position: absolute;
+        top: 0; left: 0; right: 0;
+        height: 3px;
+        background: linear-gradient(90deg, var(--c-rose), var(--c-amber));
+        transform: scaleX(0);
+        transform-origin: left;
+        transition: transform var(--transition);
+      }
+      .dolor:hover {
+        transform: translateY(-4px);
+        border-color: var(--c-rose);
+        box-shadow: 0 18px 40px -14px rgba(225, 29, 72, 0.25);
+      }
+      .dolor:hover::before { transform: scaleX(1); }
+      .dolor .dolor-icon {
+        width: 44px; height: 44px;
+        border-radius: 10px;
+        background: var(--c-rose-soft);
+        display: grid;
+        place-items: center;
+        font-size: 22px;
+        margin-bottom: 4px;
+      }
+      .dolor h3 {
+        margin: 0;
+        font-size: 17px;
+        font-weight: 700;
+        letter-spacing: -0.015em;
+      }
+      .dolor p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.55;
+      }
+
+      /* ============================================================
          CÓMO FUNCIONA
          ============================================================ */
       .como-funciona {
@@ -1262,6 +1359,30 @@
       </div>
     </section>
 
+    <!-- ==================== EL PROBLEMA ==================== -->
+    <section id="problema" class="problema">
+      <div class="container">
+        <div class="sec-header reveal">
+          <span class="sec-tag">{{PROBLEMA_TAG}}</span>
+          <h2>{{PROBLEMA_TITULO}}</h2>
+          <p>{{PROBLEMA_SUBTITULO}}</p>
+        </div>
+        <div class="problema-grid">{{PROBLEMA_DOLORES}}</div>
+      </div>
+    </section>
+
+    <!-- ==================== ANTES / DESPUÉS ==================== -->
+    <section id="antes-despues" class="antes-despues">
+      <div class="container">
+        <div class="sec-header reveal">
+          <span class="sec-tag">Sin Llave · Con Llave</span>
+          <h2>{{ANTES_DESPUES_TITULO}}</h2>
+          <p>{{ANTES_DESPUES_SUBTITULO}}</p>
+        </div>
+        <div class="compare-grid">{{ANTES_DESPUES_COLS}}</div>
+      </div>
+    </section>
+
     <!-- ==================== CÓMO FUNCIONA ==================== -->
     <section id="como-funciona" class="como-funciona">
       <div class="container">
@@ -1274,7 +1395,16 @@
       </div>
     </section>
 
-    <!-- ==================== FEATURE SECTIONS ==================== -->
+    <!-- ==================== FUNCIONALIDADES ==================== -->
+    <section id="funcionalidades" class="funcionalidades-wrap">
+      <div class="container">
+        <div class="sec-header reveal" style="margin-bottom: 24px;">
+          <span class="sec-tag">Funcionalidades</span>
+          <h2>Todo lo que la plataforma sabe hacer</h2>
+          <p>8 áreas operativas, 28 funciones concretas. Tocá cualquier card para verla en vivo en la demo.</p>
+        </div>
+      </div>
+    </section>
     {{SECCIONES}}
 
     <!-- ==================== INTEGRACIONES ==================== -->
@@ -1286,18 +1416,6 @@
           <p>{{INTEGRACIONES_SUBTITULO}}</p>
         </div>
         <div class="integraciones-grid">{{INTEGRACIONES_ITEMS}}</div>
-      </div>
-    </section>
-
-    <!-- ==================== ANTES / DESPUÉS ==================== -->
-    <section id="antes-despues" class="antes-despues">
-      <div class="container">
-        <div class="sec-header reveal">
-          <span class="sec-tag">Comparativa</span>
-          <h2>{{ANTES_DESPUES_TITULO}}</h2>
-          <p>{{ANTES_DESPUES_SUBTITULO}}</p>
-        </div>
-        <div class="compare-grid">{{ANTES_DESPUES_COLS}}</div>
       </div>
     </section>
 
@@ -1364,7 +1482,7 @@
             });
           }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
 
-          document.querySelectorAll('.feature, .sec-header, .release, .paso, .integracion, .compare-col, .faq-item')
+          document.querySelectorAll('.feature, .sec-header, .release, .paso, .integracion, .compare-col, .faq-item, .dolor')
             .forEach(function (el) {
               el.classList.add('reveal');
               io.observe(el);
