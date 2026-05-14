@@ -285,7 +285,7 @@ export const screeningMock: ScreeningResultado = {
   ],
 
   ingresos: {
-    categoriaAfip: 'RELACION_DEPENDENCIA',
+    categoriaArca: 'RELACION_DEPENDENCIA',
     impuestoGanancias: 'AC',
     impuestoIva: 'NA',
     integranteSocietario: false,

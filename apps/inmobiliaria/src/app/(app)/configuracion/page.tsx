@@ -267,7 +267,7 @@ export default function ConfiguracionPage() {
                   onChange={(v) => setDatos({ ...datos, telefono: v })}
                 />
                 <Field
-                  label="Matrícula del corredor"
+                  label="Matrícula profesional"
                   value={datos.matricula}
                   onChange={(v) => setDatos({ ...datos, matricula: v })}
                 />

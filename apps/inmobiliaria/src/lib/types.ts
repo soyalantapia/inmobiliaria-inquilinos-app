@@ -96,7 +96,7 @@ export interface Reclamo {
 }
 
 /** Datos AFIP del propietario para emitir factura/recibo automático al conciliar el alquiler. */
-export interface AfipConfig {
+export interface ArcaConfig {
   conectado: boolean;
   condicionFiscal?: 'MONOTRIBUTO' | 'RESPONSABLE_INSCRIPTO' | 'EXENTO';
   puntoVenta?: string; // ej. "0003"
@@ -132,7 +132,7 @@ export interface Propietario {
   totalCobradoMes: number;
   totalRecibirMes: number;
   /** Configuración AFIP — si está conectada, al conciliar un pago se emite factura/recibo automático. */
-  afip?: AfipConfig;
+  afip?: ArcaConfig;
   /** Cuenta directa del propietario (modo PROPIETARIO_DIRECTO). */
   cuentaCobranza?: CuentaCobranzaDirecta;
 }
@@ -318,8 +318,8 @@ export interface Empleador {
   bcra: ResumenBcra;
 }
 
-export interface IngresosAfip {
-  categoriaAfip: 'AUTONOMO' | 'MONOTRIBUTO' | 'RELACION_DEPENDENCIA' | 'NO_INSCRIPTO';
+export interface IngresosArca {
+  categoriaArca: 'AUTONOMO' | 'MONOTRIBUTO' | 'RELACION_DEPENDENCIA' | 'NO_INSCRIPTO';
   impuestoGanancias: 'AC' | 'EX' | 'NA' | 'NI';
   impuestoIva: 'AC' | 'EX' | 'NA' | 'NI';
   integranteSocietario: boolean;
@@ -370,7 +370,7 @@ export interface ScreeningResultado {
   vehiculos: Vehiculo[];
 
   // Ingresos
-  ingresos: IngresosAfip;
+  ingresos: IngresosArca;
 
   // Laboral
   empleador: Empleador | null;

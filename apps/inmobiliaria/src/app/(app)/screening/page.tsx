@@ -773,7 +773,7 @@ function Informe({
         {/* INGRESOS */}
         <TabsContent value="ingresos" className="space-y-4">
           <SectionCard icon={<Wallet className="h-4 w-4" />} title="ARCA">
-            <Row label="Categoría" value={formatearCategoria(resultado.ingresos.categoriaAfip)} />
+            <Row label="Categoría" value={formatearCategoria(resultado.ingresos.categoriaArca)} />
             <Row label="Ganancias" value={resultado.ingresos.impuestoGanancias} />
             <Row label="IVA" value={resultado.ingresos.impuestoIva} />
             <Row label="Empleador" value={resultado.ingresos.empleador ? 'Sí' : 'No'} />
