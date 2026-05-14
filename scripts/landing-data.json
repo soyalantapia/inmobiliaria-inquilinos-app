@@ -19,10 +19,10 @@
     ]
   },
   "stats": [
-    { "valor": "5 min", "label": "Para configurar tu primera propiedad" },
-    { "valor": "1 toque", "label": "Para aprobar un pago y emitir la factura" },
-    { "valor": "30 seg", "label": "Para que el inquilino pague desde el celular" },
-    { "valor": "24/7", "label": "Recibís pagos a cualquier hora del día" }
+    { "valor": "10 min", "label": "Tené el control de tu inmobiliaria" },
+    { "valor": "1 toque", "label": "Para cobrarle a todas las propiedades" },
+    { "valor": "24/7", "label": "Que el inquilino pague desde el celular" },
+    { "valor": "250", "label": "Propiedades en el lanzamiento" }
   ],
   "problema": {
     "tag": "El problema",
@@ -392,7 +392,9 @@
       { "antes": "Pedirle el comprobante al inquilino por WhatsApp", "despues": "El inquilino sube el comprobante desde su celular" },
       { "antes": "Buscar la factura del dueño en una carpeta del mail", "despues": "Se emite la factura sola y se manda al aprobar el pago" },
       { "antes": "Nadie se acuerda quién aprobó tal pago y cuándo", "despues": "Historial con persona, fecha y motivo de cada acción" },
-      { "antes": "Reclamos en hilos de WhatsApp interminables", "despues": "Reclamos con foto, clasificación y profesional asignado" }
+      { "antes": "Reclamos en hilos de WhatsApp interminables", "despues": "Reclamos con foto, clasificación y profesional asignado" },
+      { "antes": "Atender \"¿cuánto debo este mes?\" por WhatsApp todo el día", "despues": "El asistente automático le responde al inquilino" },
+      { "antes": "Cierre de mes que te lleva todo el fin de semana", "despues": "El resumen al dueño se arma solo, vos sólo lo revisás" }
     ]
   },
   "faq": {
