@@ -399,59 +399,38 @@
   },
   "precios": {
     "tag": "Precios",
-    "titulo": "Plan simple, sin sorpresas",
-    "subtitulo": "Pagás por propiedad activa. Sin permanencia, sin costos de implementación, sin cargos por usuarios extra.",
-    "destacado": "PROFESIONAL",
-    "moneda": "ARS",
-    "periodo": "/ propiedad / mes",
-    "planes": [
-      {
-        "id": "starter",
-        "nombre": "Inicial",
-        "precio": "$ 5.900",
-        "descripcion": "Para inmobiliarias que recién arrancan a digitalizar.",
-        "limite": "Hasta 10 propiedades",
-        "incluye": [
-          "Cobranza ordenada con doble modalidad",
-          "App del inquilino con Broker IA",
-          "Caja de gastos y rendiciones en PDF",
-          "Hasta 2 usuarios de tu equipo"
-        ],
-        "cta": "Empezar gratis 30 días"
-      },
-      {
-        "id": "pro",
-        "nombre": "Profesional",
-        "precio": "$ 4.500",
-        "descripcion": "El plan de la mayoría de las inmobiliarias activas.",
-        "limite": "11 a 50 propiedades",
-        "incluye": [
-          "Todo lo del plan Inicial",
-          "Integración con ARCA y facturación automática",
-          "Aprobación de contratos por administrador",
-          "Análisis de aspirantes a inquilino incluido",
-          "Hasta 6 usuarios de tu equipo"
-        ],
-        "cta": "Empezar gratis 30 días",
-        "destacado": true
-      },
-      {
-        "id": "enterprise",
-        "nombre": "Premium",
-        "precio": "A medida",
-        "descripcion": "Para inmobiliarias grandes y administradoras de carteras.",
-        "limite": "Más de 50 propiedades",
-        "incluye": [
-          "Todo lo del plan Profesional",
-          "Onboarding personalizado del equipo",
-          "Soporte prioritario por WhatsApp",
-          "Personalización del flujo de aprobación",
-          "Usuarios ilimitados"
-        ],
-        "cta": "Hablar con un asesor"
-      }
-    ],
-    "footnote": "Los precios están expresados en pesos argentinos y se actualizan trimestralmente según el índice oficial."
+    "titulo": "Plan único con oferta de lanzamiento",
+    "subtitulo": "Todo lo de la plataforma sin restricciones ni planes confusos. Pagás por propiedad activa, sin permanencia.",
+    "promo": {
+      "activa": true,
+      "etiqueta": "🔥 OFERTA DE LANZAMIENTO",
+      "audiencia": "Las primeras 50 inmobiliarias",
+      "precioOriginal": "$25.000",
+      "precioPromocional": "$10.000",
+      "moneda": "ARS",
+      "periodo": "por propiedad / mes",
+      "descuento": "60% OFF",
+      "vencimiento": "Hasta el 1 de agosto",
+      "cuposRestantes": 28,
+      "cuposTotales": 50,
+      "garantia": "Precio congelado durante 12 meses",
+      "incluye": [
+        "Toda la plataforma sin restricciones",
+        "Cobranza, ARCA, contratos, reclamos, reportes",
+        "App del inquilino con Broker IA incluido",
+        "Usuarios ilimitados de tu equipo",
+        "Onboarding personalizado del equipo",
+        "Soporte prioritario por WhatsApp"
+      ],
+      "extras": [
+        "Sin permanencia",
+        "Sin costos de implementación",
+        "Sin cargos por usuarios extra"
+      ],
+      "cta": "Asegurar mi precio de lanzamiento",
+      "ctaSecundario": "Hablar con un asesor",
+      "fineprint": "Después del 1 de agosto o de cubiertos los primeros 50 cupos, el precio vuelve al valor de lista ($25.000 por propiedad / mes)."
+    }
   },
   "faq": {
     "titulo": "Preguntas frecuentes",

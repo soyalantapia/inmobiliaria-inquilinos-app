@@ -939,7 +939,7 @@
       .release li::marker { color: var(--primary); }
 
       /* ============================================================
-         PRECIOS
+         PRECIOS · PLAN ÚNICO DE LANZAMIENTO
          ============================================================ */
       .precios {
         padding: 56px 0;
@@ -949,131 +949,267 @@
       @media (min-width: 768px) { .precios { padding: 96px 0; } }
       @media (min-width: 1024px) { .precios { padding: 120px 0; } }
 
-      .precios-grid {
-        display: grid;
-        grid-template-columns: 1fr;
-        gap: 16px;
-        max-width: 1100px;
+      .promo-card {
+        max-width: 760px;
         margin: 0 auto;
-      }
-      @media (min-width: 768px) {
-        .precios-grid { grid-template-columns: repeat(3, 1fr); gap: 20px; }
-      }
-      .plan {
         position: relative;
-        padding: 28px 24px;
         background: var(--card);
-        border: 1px solid var(--border);
-        border-radius: var(--radius-lg);
-        display: flex;
-        flex-direction: column;
-        gap: 14px;
-        transition: all var(--transition);
+        border: 2px solid var(--primary);
+        border-radius: var(--radius-xl);
+        box-shadow: 0 30px 60px -20px var(--primary-glow);
         overflow: hidden;
         isolation: isolate;
       }
-      @media (min-width: 480px) { .plan { padding: 32px 28px; } }
-      .plan:hover {
-        transform: translateY(-4px);
-        border-color: var(--primary);
-        box-shadow: 0 18px 40px -14px var(--primary-glow);
-      }
-      .plan.destacado {
-        border-color: var(--primary);
-        background: linear-gradient(180deg, var(--card), var(--card)),
-                    linear-gradient(180deg, rgba(124, 58, 237, 0.12), rgba(236, 72, 153, 0.06));
-        background-clip: padding-box, border-box;
-        border-width: 2px;
-        box-shadow: 0 24px 50px -16px var(--primary-glow);
-        transform: scale(1);
-      }
-      @media (min-width: 768px) {
-        .plan.destacado { transform: scale(1.04); }
-        .plan.destacado:hover { transform: scale(1.04) translateY(-4px); }
-      }
-      .plan-badge {
+      .promo-card::before {
+        content: '';
         position: absolute;
-        top: 14px;
-        right: 14px;
-        padding: 4px 10px;
-        border-radius: 999px;
-        background: linear-gradient(135deg, var(--primary), var(--accent-pink));
+        inset: 0;
+        z-index: -1;
+        background: linear-gradient(180deg, rgba(124, 58, 237, 0.06), rgba(236, 72, 153, 0.03));
+        pointer-events: none;
+      }
+
+      /* Banda superior con la etiqueta de lanzamiento */
+      .promo-banner {
+        background: linear-gradient(90deg, var(--primary), var(--accent-pink));
         color: #fff;
-        font-size: 10px;
-        font-weight: 700;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-      }
-      .plan-nombre {
+        padding: 12px 20px;
+        text-align: center;
         font-size: 13px;
-        font-weight: 700;
-        color: var(--primary);
+        font-weight: 800;
         letter-spacing: 0.08em;
         text-transform: uppercase;
+        position: relative;
       }
-      .plan-precio {
+      @media (min-width: 480px) {
+        .promo-banner { padding: 14px 24px; font-size: 14px; }
+      }
+
+      .promo-body {
+        padding: 28px 22px;
+      }
+      @media (min-width: 480px) { .promo-body { padding: 36px 28px; } }
+      @media (min-width: 768px) { .promo-body { padding: 44px 40px; } }
+
+      .promo-audiencia {
+        text-align: center;
+        font-size: clamp(15px, 2.5vw, 18px);
+        color: var(--fg-soft);
+        font-weight: 600;
+        margin-bottom: 8px;
+      }
+      .promo-headline {
+        text-align: center;
+        font-size: clamp(20px, 3.5vw, 28px);
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        margin: 0 0 28px;
+        line-height: 1.2;
+      }
+
+      /* Precio destacado: tachado + nuevo + descuento */
+      .promo-precio {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 8px;
+      }
+      .promo-precio-antes {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 14px;
+        color: var(--muted);
+      }
+      .promo-precio-antes .tachado {
+        position: relative;
+        font-weight: 600;
+      }
+      .promo-precio-antes .tachado::before {
+        content: '';
+        position: absolute;
+        left: -3px; right: -3px;
+        top: 50%;
+        height: 2px;
+        background: var(--c-rose);
+        transform: rotate(-8deg);
+      }
+      .promo-precio-nuevo {
         display: flex;
         align-items: baseline;
-        gap: 6px;
+        gap: 8px;
       }
-      .plan-precio .v {
-        font-size: clamp(32px, 4.5vw, 44px);
-        font-weight: 800;
-        letter-spacing: -0.03em;
+      .promo-precio-nuevo .v {
+        font-size: clamp(48px, 9vw, 80px);
+        font-weight: 900;
+        letter-spacing: -0.04em;
         line-height: 1;
+        background: linear-gradient(135deg, var(--primary), var(--accent-pink));
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
       }
-      .plan-precio .periodo {
-        font-size: 13px;
-        color: var(--muted);
-        line-height: 1.3;
-      }
-      .plan-descripcion {
+      .promo-precio-nuevo .periodo {
+        font-size: clamp(13px, 2vw, 16px);
         color: var(--fg-soft);
-        font-size: 14px;
-        line-height: 1.5;
+        font-weight: 500;
       }
-      .plan-limite {
-        font-size: 12px;
-        font-weight: 600;
-        color: var(--primary);
-        background: var(--primary-soft);
-        padding: 6px 12px;
+      .promo-descuento-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 14px;
         border-radius: 999px;
-        align-self: flex-start;
+        background: var(--c-emerald-soft);
+        color: var(--c-emerald);
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
       }
-      .plan-incluye {
+
+      /* Indicadores de urgencia (cupos + fecha) */
+      .promo-urgencia {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        justify-content: center;
+        margin: 24px 0;
+      }
+      .urgencia-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 14px;
+        border-radius: 10px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        font-size: 13px;
+        color: var(--fg-soft);
+        font-weight: 500;
+      }
+      .urgencia-chip strong {
+        color: var(--fg);
+        font-weight: 700;
+      }
+      .urgencia-chip .pulse {
+        width: 8px; height: 8px;
+        border-radius: 50%;
+        background: var(--c-rose);
+        box-shadow: 0 0 0 4px rgba(225, 29, 72, 0.15);
+        animation: blink 1.6s ease-in-out infinite;
+        flex-shrink: 0;
+      }
+
+      /* Barra de cupos */
+      .promo-cupos {
+        margin: 0 0 28px;
+        max-width: 460px;
+        margin-left: auto;
+        margin-right: auto;
+      }
+      .promo-cupos-header {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12.5px;
+        color: var(--muted);
+        margin-bottom: 6px;
+      }
+      .promo-cupos-bar {
+        height: 8px;
+        background: var(--bg-soft);
+        border-radius: 999px;
+        overflow: hidden;
+        border: 1px solid var(--border);
+      }
+      .promo-cupos-bar-fill {
+        height: 100%;
+        background: linear-gradient(90deg, var(--primary), var(--accent-pink));
+        border-radius: 999px;
+        transition: width 800ms ease;
+      }
+
+      /* Listas de incluido / extras */
+      .promo-listas {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 18px;
+        margin-bottom: 28px;
+        padding: 22px 18px;
+        background: var(--bg-soft);
+        border-radius: var(--radius);
+      }
+      @media (min-width: 600px) {
+        .promo-listas { grid-template-columns: 1.4fr 1fr; gap: 24px; padding: 24px 22px; }
+      }
+      .promo-listas h4 {
+        margin: 0 0 10px;
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--primary);
+      }
+      .promo-listas ul {
         list-style: none;
         padding: 0;
-        margin: 4px 0 0;
+        margin: 0;
         display: flex;
         flex-direction: column;
         gap: 8px;
-        flex: 1;
       }
-      .plan-incluye li {
-        font-size: 13.5px;
+      .promo-listas li {
+        font-size: 14px;
+        line-height: 1.5;
         color: var(--fg-soft);
-        line-height: 1.4;
         padding-left: 24px;
         position: relative;
       }
-      .plan-incluye li::before {
+      .promo-listas li::before {
         content: '✓';
         position: absolute;
         left: 0; top: 0;
         color: var(--primary);
-        font-weight: 700;
+        font-weight: 800;
       }
-      .plan-cta {
-        margin-top: 6px;
+
+      /* CTA + garantía */
+      .promo-cta-group {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        align-items: stretch;
       }
-      .precios-footnote {
+      @media (min-width: 600px) {
+        .promo-cta-group { flex-direction: row; justify-content: center; }
+      }
+      .promo-cta-group .btn { min-height: 54px; }
+      .promo-garantia {
         text-align: center;
-        margin: 24px auto 0;
-        color: var(--muted);
+        margin-top: 16px;
         font-size: 13px;
-        max-width: 700px;
-        line-height: 1.5;
+        color: var(--fg-soft);
+        font-weight: 500;
+      }
+      .promo-garantia .gar-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 18px; height: 18px;
+        border-radius: 50%;
+        background: var(--c-emerald-soft);
+        color: var(--c-emerald);
+        margin-right: 4px;
+        vertical-align: -3px;
+      }
+      .promo-fineprint {
+        text-align: center;
+        margin: 18px auto 0;
+        max-width: 600px;
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.55;
+        padding: 0 8px;
       }
 
       /* ============================================================
@@ -2001,8 +2137,8 @@
           <h2>{{PRECIOS_TITULO}}</h2>
           <p>{{PRECIOS_SUBTITULO}}</p>
         </div>
-        <div class="precios-grid">{{PRECIOS_PLANES}}</div>
-        <p class="precios-footnote">{{PRECIOS_FOOTNOTE}}</p>
+        {{PRECIOS_PROMO}}
+        <p class="promo-fineprint">{{PRECIOS_FINEPRINT}}</p>
       </div>
     </section>
 
@@ -2154,7 +2290,7 @@
         }
 
         // ===== Cards spotlight follow mouse =====
-        document.querySelectorAll('.feature, .dolor, .paso, .integracion, .plan').forEach(function (card) {
+        document.querySelectorAll('.feature, .dolor, .paso, .integracion').forEach(function (card) {
           card.addEventListener('mousemove', function (e) {
             var rect = card.getBoundingClientRect();
             var x = ((e.clientX - rect.left) / rect.width) * 100;
@@ -2175,7 +2311,7 @@
             });
           }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
 
-          document.querySelectorAll('.feature, .sec-header, .release, .paso, .integracion, .compare-col, .faq-item, .dolor, .plan, .impacto-card')
+          document.querySelectorAll('.feature, .sec-header, .release, .paso, .integracion, .compare-col, .faq-item, .dolor, .promo-card, .impacto-card')
             .forEach(function (el) {
               el.classList.add('reveal');
               io.observe(el);

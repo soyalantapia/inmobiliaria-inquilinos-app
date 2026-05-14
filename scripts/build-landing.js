@@ -201,40 +201,87 @@ function renderAntesDespues(filas) {
         </div>`;
 }
 
-// Render planes de precios
-function renderPlanes(planes, ctaPropietarioHref) {
-  return planes
-    .map((p) => {
-      const incluye = (p.incluye || [])
-        .map((i) => `<li>${esc(i)}</li>`)
-        .join('\n              ');
-      const destacado = p.destacado ? ' destacado' : '';
-      const badge = p.destacado
-        ? `<span class="plan-badge">Más elegido</span>`
-        : '';
-      // CTA: si dice "Hablar con un asesor", el link es a WhatsApp/contacto;
-      // si es "Empezar gratis", lleva al panel para probar la demo.
-      const ctaHref = /asesor|contact/i.test(p.cta)
-        ? 'mailto:hola@llave.com.ar'
-        : ctaPropietarioHref;
-      const btnClass = p.destacado ? 'btn btn-primary' : 'btn btn-ghost';
-      return `
-          <article class="plan${destacado}">
-            ${badge}
-            <div class="plan-nombre">${esc(p.nombre)}</div>
-            <div class="plan-precio">
-              <span class="v">${esc(p.precio)}</span>
-              <span class="periodo">${/medida/i.test(p.precio) ? '' : '/ propiedad / mes'}</span>
+// Render del plan único de lanzamiento con oferta promocional
+function renderPromo(promo, ctaPropietarioHref) {
+  const incluye = (promo.incluye || [])
+    .map((i) => `<li>${esc(i)}</li>`)
+    .join('\n            ');
+  const extras = (promo.extras || [])
+    .map((i) => `<li>${esc(i)}</li>`)
+    .join('\n            ');
+  const cuposPct = promo.cuposTotales
+    ? Math.max(0, Math.min(100, Math.round(((promo.cuposTotales - promo.cuposRestantes) / promo.cuposTotales) * 100)))
+    : 0;
+  const tomados = (promo.cuposTotales || 0) - (promo.cuposRestantes || 0);
+  return `
+        <div class="promo-card reveal">
+          <div class="promo-banner">${esc(promo.etiqueta)}</div>
+          <div class="promo-body">
+            <div class="promo-audiencia">${esc(promo.audiencia)}</div>
+            <h3 class="promo-headline">acceden a un precio único de lanzamiento</h3>
+
+            <div class="promo-precio">
+              <div class="promo-precio-antes">
+                Antes
+                <span class="tachado">${esc(promo.precioOriginal)}</span>
+              </div>
+              <div class="promo-precio-nuevo">
+                <span class="v">${esc(promo.precioPromocional)}</span>
+                <span class="periodo">${esc(promo.periodo)}</span>
+              </div>
+              <span class="promo-descuento-chip">${esc(promo.descuento)}</span>
             </div>
-            <p class="plan-descripcion">${esc(p.descripcion)}</p>
-            <span class="plan-limite">${esc(p.limite)}</span>
-            <ul class="plan-incluye">
-              ${incluye}
-            </ul>
-            <a href="${esc(ctaHref)}" class="${btnClass} plan-cta btn-lg">${esc(p.cta)}</a>
-          </article>`;
-    })
-    .join('');
+
+            <div class="promo-urgencia">
+              <span class="urgencia-chip">
+                <span class="pulse" aria-hidden="true"></span>
+                Quedan <strong>${promo.cuposRestantes}</strong> de ${promo.cuposTotales} cupos
+              </span>
+              <span class="urgencia-chip">
+                📅 <strong>${esc(promo.vencimiento)}</strong>
+              </span>
+            </div>
+
+            <div class="promo-cupos" role="img" aria-label="${tomados} de ${promo.cuposTotales} cupos tomados">
+              <div class="promo-cupos-header">
+                <span>${tomados} ya se sumaron</span>
+                <span>${promo.cuposTotales} cupos totales</span>
+              </div>
+              <div class="promo-cupos-bar">
+                <div class="promo-cupos-bar-fill" style="width: ${cuposPct}%"></div>
+              </div>
+            </div>
+
+            <div class="promo-listas">
+              <div>
+                <h4>Todo incluido</h4>
+                <ul>
+            ${incluye}
+                </ul>
+              </div>
+              <div>
+                <h4>Sin extras</h4>
+                <ul>
+            ${extras}
+                </ul>
+              </div>
+            </div>
+
+            <div class="promo-cta-group">
+              <a href="${esc(ctaPropietarioHref)}" class="btn btn-primary btn-xl">
+                🔒 ${esc(promo.cta)}
+              </a>
+              <a href="mailto:hola@llave.com.ar" class="btn btn-ghost btn-xl">
+                ${esc(promo.ctaSecundario)}
+              </a>
+            </div>
+
+            <p class="promo-garantia">
+              <span class="gar-icon">✓</span>
+              ${esc(promo.garantia)}
+            </p>
+          </div>
+        </div>`;
 }
 
 // Render FAQ usando <details> nativo (accordion sin JS extra)
@@ -333,8 +380,8 @@ function main() {
     PRECIOS_TAG: esc(data.precios.tag),
     PRECIOS_TITULO: esc(data.precios.titulo),
     PRECIOS_SUBTITULO: esc(data.precios.subtitulo),
-    PRECIOS_PLANES: renderPlanes(data.precios.planes, data.hero.ctaPropietario.href),
-    PRECIOS_FOOTNOTE: esc(data.precios.footnote),
+    PRECIOS_PROMO: renderPromo(data.precios.promo, data.hero.ctaPropietario.href),
+    PRECIOS_FINEPRINT: esc(data.precios.promo.fineprint),
     FAQ_TITULO: esc(data.faq.titulo),
     FAQ_SUBTITULO: esc(data.faq.subtitulo),
     FAQ_ITEMS: renderFaq(data.faq.items),
@@ -361,7 +408,7 @@ function main() {
   console.log(
     `  ${data.problema.dolores.length} dolores · ${data.comoFunciona.pasos.length} pasos · ` +
       `${data.secciones.length} secciones · ${totalFeatures} features · ` +
-      `${data.integraciones.items.length} integraciones · ${data.precios.planes.length} planes · ` +
+      `${data.integraciones.items.length} integraciones · oferta de lanzamiento ${data.precios.promo.cuposRestantes}/${data.precios.promo.cuposTotales} cupos · ` +
       `${data.faq.items.length} FAQ · ${data.changelog.length} releases`,
   );
 }
