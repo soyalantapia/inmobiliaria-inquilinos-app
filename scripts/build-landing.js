@@ -87,6 +87,8 @@ function renderNavLinks(/* secciones */) {
   const items = [
     { id: 'como-funciona', label: 'Cómo funciona' },
     { id: 'funcionalidades', label: 'Funcionalidades' },
+    { id: 'integraciones', label: 'Integraciones' },
+    { id: 'antes-despues', label: 'Comparativa' },
     { id: 'faq', label: 'Preguntas' },
     { id: 'changelog', label: 'Cambios' },
   ];
