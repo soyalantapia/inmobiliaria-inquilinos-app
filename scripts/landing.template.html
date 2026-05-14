@@ -184,6 +184,28 @@
       }
 
       /* ============================================================
+         SECTION DIVIDERS (curvas SVG entre secciones)
+         ============================================================ */
+      .section-divider {
+        display: block;
+        width: 100%;
+        height: 40px;
+        line-height: 0;
+        position: relative;
+        margin-top: -1px;
+        margin-bottom: -1px;
+        pointer-events: none;
+      }
+      @media (min-width: 768px) {
+        .section-divider { height: 60px; }
+      }
+      .section-divider svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+
+      /* ============================================================
          PROGRESS BAR
          ============================================================ */
       .scroll-progress {
@@ -921,6 +943,144 @@
       }
       .release li { margin-bottom: 6px; }
       .release li::marker { color: var(--primary); }
+
+      /* ============================================================
+         PRECIOS
+         ============================================================ */
+      .precios {
+        padding: 56px 0;
+        position: relative;
+      }
+      @media (min-width: 480px) { .precios { padding: 64px 0; } }
+      @media (min-width: 768px) { .precios { padding: 96px 0; } }
+      @media (min-width: 1024px) { .precios { padding: 120px 0; } }
+
+      .precios-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 16px;
+        max-width: 1100px;
+        margin: 0 auto;
+      }
+      @media (min-width: 768px) {
+        .precios-grid { grid-template-columns: repeat(3, 1fr); gap: 20px; }
+      }
+      .plan {
+        position: relative;
+        padding: 28px 24px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        transition: all var(--transition);
+        overflow: hidden;
+        isolation: isolate;
+      }
+      @media (min-width: 480px) { .plan { padding: 32px 28px; } }
+      .plan:hover {
+        transform: translateY(-4px);
+        border-color: var(--primary);
+        box-shadow: 0 18px 40px -14px var(--primary-glow);
+      }
+      .plan.destacado {
+        border-color: var(--primary);
+        background: linear-gradient(180deg, var(--card), var(--card)),
+                    linear-gradient(180deg, rgba(124, 58, 237, 0.12), rgba(236, 72, 153, 0.06));
+        background-clip: padding-box, border-box;
+        border-width: 2px;
+        box-shadow: 0 24px 50px -16px var(--primary-glow);
+        transform: scale(1);
+      }
+      @media (min-width: 768px) {
+        .plan.destacado { transform: scale(1.04); }
+        .plan.destacado:hover { transform: scale(1.04) translateY(-4px); }
+      }
+      .plan-badge {
+        position: absolute;
+        top: 14px;
+        right: 14px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        background: linear-gradient(135deg, var(--primary), var(--accent-pink));
+        color: #fff;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .plan-nombre {
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--primary);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .plan-precio {
+        display: flex;
+        align-items: baseline;
+        gap: 6px;
+      }
+      .plan-precio .v {
+        font-size: clamp(32px, 4.5vw, 44px);
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        line-height: 1;
+      }
+      .plan-precio .periodo {
+        font-size: 13px;
+        color: var(--muted);
+        line-height: 1.3;
+      }
+      .plan-descripcion {
+        color: var(--fg-soft);
+        font-size: 14px;
+        line-height: 1.5;
+      }
+      .plan-limite {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--primary);
+        background: var(--primary-soft);
+        padding: 6px 12px;
+        border-radius: 999px;
+        align-self: flex-start;
+      }
+      .plan-incluye {
+        list-style: none;
+        padding: 0;
+        margin: 4px 0 0;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        flex: 1;
+      }
+      .plan-incluye li {
+        font-size: 13.5px;
+        color: var(--fg-soft);
+        line-height: 1.4;
+        padding-left: 24px;
+        position: relative;
+      }
+      .plan-incluye li::before {
+        content: '✓';
+        position: absolute;
+        left: 0; top: 0;
+        color: var(--primary);
+        font-weight: 700;
+      }
+      .plan-cta {
+        margin-top: 6px;
+      }
+      .precios-footnote {
+        text-align: center;
+        margin: 24px auto 0;
+        color: var(--muted);
+        font-size: 13px;
+        max-width: 700px;
+        line-height: 1.5;
+      }
 
       /* ============================================================
          BANNER DE IMPACTO PRE-CTA
@@ -1771,6 +1931,13 @@
       </div>
     </section>
 
+    <!-- divider: stats (bg-soft) → problema (white) -->
+    <div class="section-divider" aria-hidden="true">
+      <svg preserveAspectRatio="none" viewBox="0 0 1200 60">
+        <path d="M0,0 C300,50 900,50 1200,0 L1200,60 L0,60 Z" fill="#ffffff"/>
+      </svg>
+    </div>
+
     <!-- ==================== EL PROBLEMA ==================== -->
     <section id="problema" class="problema">
       <div class="container">
@@ -1782,6 +1949,13 @@
         <div class="problema-grid">{{PROBLEMA_DOLORES}}</div>
       </div>
     </section>
+
+    <!-- divider: problema (white) → antes/después (bg-soft) -->
+    <div class="section-divider" aria-hidden="true">
+      <svg preserveAspectRatio="none" viewBox="0 0 1200 60">
+        <path d="M0,60 C300,10 900,10 1200,60 L1200,60 L0,60 Z" fill="#f7f7fb"/>
+      </svg>
+    </div>
 
     <!-- ==================== ANTES / DESPUÉS ==================== -->
     <section id="antes-despues" class="antes-despues">
@@ -1831,6 +2005,19 @@
       </div>
     </section>
 
+    <!-- ==================== PRECIOS ==================== -->
+    <section id="precios" class="precios">
+      <div class="container">
+        <div class="sec-header reveal">
+          <span class="sec-tag">{{PRECIOS_TAG}}</span>
+          <h2>{{PRECIOS_TITULO}}</h2>
+          <p>{{PRECIOS_SUBTITULO}}</p>
+        </div>
+        <div class="precios-grid">{{PRECIOS_PLANES}}</div>
+        <p class="precios-footnote">{{PRECIOS_FOOTNOTE}}</p>
+      </div>
+    </section>
+
     <!-- ==================== PREGUNTAS FRECUENTES ==================== -->
     <section id="faq" class="faq">
       <div class="container">
@@ -1842,6 +2029,13 @@
         <div class="faq-list">{{FAQ_ITEMS}}</div>
       </div>
     </section>
+
+    <!-- divider: FAQ (white) → changelog (bg-soft) -->
+    <div class="section-divider" aria-hidden="true">
+      <svg preserveAspectRatio="none" viewBox="0 0 1200 60">
+        <path d="M0,60 C300,10 900,10 1200,60 L1200,60 L0,60 Z" fill="#f7f7fb"/>
+      </svg>
+    </div>
 
     <!-- ==================== CHANGELOG ==================== -->
     <section id="changelog" class="changelog">
@@ -1873,6 +2067,13 @@
         </div>
       </div>
     </section>
+
+    <!-- divider: impacto (bg-soft) → CTA final (white) -->
+    <div class="section-divider" aria-hidden="true">
+      <svg preserveAspectRatio="none" viewBox="0 0 1200 60">
+        <path d="M0,0 C300,50 900,50 1200,0 L1200,60 L0,60 Z" fill="#ffffff"/>
+      </svg>
+    </div>
 
     <!-- ==================== CTA FINAL ==================== -->
     <section class="cta-final">
@@ -1965,7 +2166,7 @@
         }
 
         // ===== Cards spotlight follow mouse =====
-        document.querySelectorAll('.feature, .dolor, .paso, .integracion').forEach(function (card) {
+        document.querySelectorAll('.feature, .dolor, .paso, .integracion, .plan').forEach(function (card) {
           card.addEventListener('mousemove', function (e) {
             var rect = card.getBoundingClientRect();
             var x = ((e.clientX - rect.left) / rect.width) * 100;
@@ -1986,7 +2187,7 @@
             });
           }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
 
-          document.querySelectorAll('.feature, .sec-header, .release, .paso, .integracion, .compare-col, .faq-item, .dolor')
+          document.querySelectorAll('.feature, .sec-header, .release, .paso, .integracion, .compare-col, .faq-item, .dolor, .plan, .impacto-card')
             .forEach(function (el) {
               el.classList.add('reveal');
               io.observe(el);

@@ -88,7 +88,7 @@ function renderNavLinks(/* secciones */) {
     { id: 'como-funciona', label: 'Cómo funciona' },
     { id: 'funcionalidades', label: 'Funcionalidades' },
     { id: 'integraciones', label: 'Integraciones' },
-    { id: 'antes-despues', label: 'Comparativa' },
+    { id: 'precios', label: 'Precios' },
     { id: 'faq', label: 'Preguntas' },
     { id: 'changelog', label: 'Cambios' },
   ];
@@ -201,6 +201,42 @@ function renderAntesDespues(filas) {
         </div>`;
 }
 
+// Render planes de precios
+function renderPlanes(planes, ctaPropietarioHref) {
+  return planes
+    .map((p) => {
+      const incluye = (p.incluye || [])
+        .map((i) => `<li>${esc(i)}</li>`)
+        .join('\n              ');
+      const destacado = p.destacado ? ' destacado' : '';
+      const badge = p.destacado
+        ? `<span class="plan-badge">Más elegido</span>`
+        : '';
+      // CTA: si dice "Hablar con un asesor", el link es a WhatsApp/contacto;
+      // si es "Empezar gratis", lleva al panel para probar la demo.
+      const ctaHref = /asesor|contact/i.test(p.cta)
+        ? 'mailto:hola@llave.com.ar'
+        : ctaPropietarioHref;
+      const btnClass = p.destacado ? 'btn btn-primary' : 'btn btn-ghost';
+      return `
+          <article class="plan${destacado}">
+            ${badge}
+            <div class="plan-nombre">${esc(p.nombre)}</div>
+            <div class="plan-precio">
+              <span class="v">${esc(p.precio)}</span>
+              <span class="periodo">${/medida/i.test(p.precio) ? '' : '/ propiedad / mes'}</span>
+            </div>
+            <p class="plan-descripcion">${esc(p.descripcion)}</p>
+            <span class="plan-limite">${esc(p.limite)}</span>
+            <ul class="plan-incluye">
+              ${incluye}
+            </ul>
+            <a href="${esc(ctaHref)}" class="${btnClass} plan-cta btn-lg">${esc(p.cta)}</a>
+          </article>`;
+    })
+    .join('');
+}
+
 // Render FAQ usando <details> nativo (accordion sin JS extra)
 function renderFaq(items) {
   return items
@@ -294,6 +330,11 @@ function main() {
     ANTES_DESPUES_TITULO: esc(data.antesDespues.titulo),
     ANTES_DESPUES_SUBTITULO: esc(data.antesDespues.subtitulo),
     ANTES_DESPUES_COLS: renderAntesDespues(data.antesDespues.filas),
+    PRECIOS_TAG: esc(data.precios.tag),
+    PRECIOS_TITULO: esc(data.precios.titulo),
+    PRECIOS_SUBTITULO: esc(data.precios.subtitulo),
+    PRECIOS_PLANES: renderPlanes(data.precios.planes, data.hero.ctaPropietario.href),
+    PRECIOS_FOOTNOTE: esc(data.precios.footnote),
     FAQ_TITULO: esc(data.faq.titulo),
     FAQ_SUBTITULO: esc(data.faq.subtitulo),
     FAQ_ITEMS: renderFaq(data.faq.items),
@@ -320,8 +361,8 @@ function main() {
   console.log(
     `  ${data.problema.dolores.length} dolores · ${data.comoFunciona.pasos.length} pasos · ` +
       `${data.secciones.length} secciones · ${totalFeatures} features · ` +
-      `${data.integraciones.items.length} integraciones · ${data.faq.items.length} FAQ · ` +
-      `${data.changelog.length} releases`,
+      `${data.integraciones.items.length} integraciones · ${data.precios.planes.length} planes · ` +
+      `${data.faq.items.length} FAQ · ${data.changelog.length} releases`,
   );
 }
 
