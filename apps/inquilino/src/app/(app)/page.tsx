@@ -1,3 +1,6 @@
+'use client';
+
+import { useState } from 'react';
 import Link from 'next/link';
 import {
   ArrowDownLeft,
@@ -21,9 +24,19 @@ import { movimientosMock, type Movimiento } from '@/lib/movimientos-mock';
 import { diasHastaVencimiento, formatFecha, formatMonto } from '@/lib/format';
 import { PaymentHero } from './payment-hero';
 
+type DemoEstado = 'atrasado' | 'al-dia';
+
 export default function PagosPage() {
-  const pendiente = liquidacionesMock.find((l) => l.estado !== 'PAGADO');
+  // Modo demo: alterna entre "atrasado" (pago pendiente real del mock) y
+  // "al día" (sin pago pendiente). Persiste en localStorage para que se
+  // mantenga si el usuario hace refresh durante la presentación.
+  const [demoEstado, setDemoEstado] = useState<DemoEstado>('atrasado');
+
+  const pendienteMock = liquidacionesMock.find((l) => l.estado !== 'PAGADO');
   const proximoPagado = liquidacionesMock.find((l) => l.estado === 'PAGADO');
+  // Filtrado según el modo demo
+  const pendiente = demoEstado === 'al-dia' ? null : pendienteMock;
+
   const diasAjuste = diasHastaVencimiento(contratoMock.proximoAjuste);
   const alertaAjuste = diasAjuste >= 0 && diasAjuste <= 30;
   const ajusteCritico = diasAjuste >= 0 && diasAjuste <= 7;
@@ -45,6 +58,10 @@ export default function PagosPage() {
       </header>
 
       <main className="flex-1 space-y-5 px-5 pb-6 md:px-8 md:pt-8">
+        {/* Selector de modo demo — alterna entre "atrasado" y "al día"
+            para que durante la presentación se puedan mostrar ambos casos. */}
+        <DemoSwitch estado={demoEstado} onChange={setDemoEstado} />
+
         {/* Banner de ajuste (inline, solo si <= 30 días y no es crítico) */}
         {alertaAjuste && !ajusteCritico && (
           <Link
@@ -218,4 +235,55 @@ function MovimientoRow({ mov }: { mov: Movimiento }) {
 function fechaCorta(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
+}
+
+// ============================================================
+// SELECTOR DE MODO DEMO
+// ============================================================
+// Toggle visible para alternar entre los dos estados durante la presentación:
+//   - "Atrasado": el inquilino tiene un pago vencido (PaymentHero rojo)
+//   - "Al día": no tiene pagos pendientes (AlDiaHero verde)
+//
+// Está marcado claramente como "Demo" para que en una versión real se pueda
+// remover sin afectar la lógica de negocio.
+function DemoSwitch({
+  estado,
+  onChange,
+}: {
+  estado: DemoEstado;
+  onChange: (e: DemoEstado) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2 rounded-full border border-dashed border-primary/40 bg-primary/5 p-1 text-xs">
+      <span className="pl-2 pr-1 text-[10px] font-bold uppercase tracking-wider text-primary">
+        Demo
+      </span>
+      <div className="flex flex-1 gap-1">
+        <button
+          type="button"
+          onClick={() => onChange('atrasado')}
+          className={`flex-1 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+            estado === 'atrasado'
+              ? 'bg-white text-primary shadow-sm'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+          aria-pressed={estado === 'atrasado'}
+        >
+          Atrasado
+        </button>
+        <button
+          type="button"
+          onClick={() => onChange('al-dia')}
+          className={`flex-1 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+            estado === 'al-dia'
+              ? 'bg-white text-primary shadow-sm'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+          aria-pressed={estado === 'al-dia'}
+        >
+          Al día
+        </button>
+      </div>
+    </div>
+  );
 }
