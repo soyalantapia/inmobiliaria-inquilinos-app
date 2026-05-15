@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
 import {
   AlertTriangle,
@@ -25,38 +24,15 @@ import { contratoMock, inquilinoActual, liquidacionesMock } from '@/lib/mock-dat
 import { movimientosMock, type Movimiento } from '@/lib/movimientos-mock';
 import { TASA_PUNITORIA_DIARIA_DEFAULT, calcularPunitorios } from '@/lib/punitorios';
 import { diasHastaVencimiento, formatFecha, formatMonto } from '@/lib/format';
+import { aplicarEstadoDemo, useDemoEstado, type DemoEstado } from '@/lib/demo-estado';
 import type { Liquidacion } from '@/lib/types';
 
-type DemoEstado = 'al-dia' | 'a-tiempo' | 'atrasado';
-
-// Genera la liquidación pendiente según el modo demo:
-// - 'al-dia': null (no hay nada que pagar)
-// - 'atrasado': liquidación original con fecha pasada
-// - 'a-tiempo': mismo monto base pero fecha de vencimiento en 5 días
-function getDemoPendiente(
-  estado: DemoEstado,
-  base: Liquidacion | undefined,
-): Liquidacion | null {
-  if (estado === 'al-dia' || !base) return null;
-  if (estado === 'atrasado') return base;
-  const hoy = new Date();
-  const venc = new Date(hoy);
-  venc.setDate(hoy.getDate() + 5);
-  return {
-    ...base,
-    fechaVencimiento: venc.toISOString().slice(0, 10),
-    montoPunitorio: 0,
-    montoTotal: base.montoAlquiler + (base.montoExpensas ?? 0),
-    estado: 'PENDIENTE',
-  };
-}
-
 export default function PagosPage() {
-  // Modo demo con 3 estados
-  const [demoEstado, setDemoEstado] = useState<DemoEstado>('atrasado');
+  // Modo demo sincronizado entre pantallas vía localStorage
+  const [demoEstado, setDemoEstado] = useDemoEstado();
 
   const pendienteMock = liquidacionesMock.find((l) => l.estado !== 'PAGADO');
-  const pendiente = getDemoPendiente(demoEstado, pendienteMock);
+  const pendiente = aplicarEstadoDemo(demoEstado, pendienteMock);
 
   const diasAjuste = diasHastaVencimiento(contratoMock.proximoAjuste);
   const alertaAjuste = diasAjuste >= 0 && diasAjuste <= 30;

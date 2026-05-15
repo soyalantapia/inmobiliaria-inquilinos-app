@@ -18,31 +18,7 @@ import { TASA_PUNITORIA_DIARIA_DEFAULT, calcularPunitorios } from '@/lib/punitor
 import { diasHastaVencimiento, formatFecha, formatMonto, formatPeriodo } from '@/lib/format';
 import type { Comprobante, Liquidacion } from '@/lib/types';
 
-type DemoEstado = 'al-dia' | 'a-tiempo' | 'atrasado';
-
-// Genera la liquidación pendiente correspondiente al modo demo.
-// - 'al-dia': null (no hay nada que pagar)
-// - 'atrasado': la liquidación original (con fecha pasada → diasAtraso > 0)
-// - 'a-tiempo': clonamos la liquidación pero con fecha de vencimiento futura
-//   para que no aparezca como vencida, y el inquilino pueda "pagar y quedar al día"
-function getDemoPendiente(
-  estado: DemoEstado,
-  base: Liquidacion | undefined,
-): Liquidacion | null {
-  if (estado === 'al-dia' || !base) return null;
-  if (estado === 'atrasado') return base;
-  // 'a-tiempo': vencimiento en 5 días desde hoy
-  const hoy = new Date();
-  const venc = new Date(hoy);
-  venc.setDate(hoy.getDate() + 5);
-  return {
-    ...base,
-    fechaVencimiento: venc.toISOString().slice(0, 10),
-    montoPunitorio: 0,
-    montoTotal: base.montoAlquiler + (base.montoExpensas ?? 0),
-    estado: 'PENDIENTE',
-  };
-}
+import { aplicarEstadoDemo, useDemoEstado, type DemoEstado } from '@/lib/demo-estado';
 
 const metodoLabel = {
   MERCADOPAGO: 'Mercado Pago',
@@ -59,12 +35,13 @@ type Movimiento =
   | { kind: 'cobrado'; comp: Comprobante };
 
 export default function RecibosPage() {
-  const [demoEstado, setDemoEstado] = useState<DemoEstado>('atrasado');
+  // Modo demo sincronizado con el resto de la app vía localStorage
+  const [demoEstado, setDemoEstado] = useDemoEstado();
 
-  // Pago pendiente del mock (real). El modo demo decide si lo mostramos como
+  // Pago pendiente del mock. El modo demo decide cómo se muestra:
   // atrasado, a tiempo (fecha futura), o al día (null).
   const pendienteMock = liquidacionesMock.find((l) => l.estado !== 'PAGADO');
-  const pendiente = getDemoPendiente(demoEstado, pendienteMock);
+  const pendiente = aplicarEstadoDemo(demoEstado, pendienteMock);
 
   // Liquidaciones futuras (no la actual, con fecha > hoy)
   const proximas = useMemo(

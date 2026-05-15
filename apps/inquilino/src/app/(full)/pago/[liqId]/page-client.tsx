@@ -21,11 +21,21 @@ import { liquidacionesMock } from '@/lib/mock-data';
 import { formatFecha, formatMonto, formatPeriodo } from '@/lib/format';
 import { TASA_PUNITORIA_DIARIA_DEFAULT, calcularPunitorios } from '@/lib/punitorios';
 import { leerPagoInformado, type PagoInformado } from '@/lib/pago-storage';
+import { aplicarEstadoDemo, useDemoEstado } from '@/lib/demo-estado';
 
 export default function DetallePagoPage({ params }: { params: { liqId: string } }) {
   const router = useRouter();
-  const liq = liquidacionesMock.find((l) => l.id === params.liqId);
-  if (!liq) notFound();
+  const liqBase = liquidacionesMock.find((l) => l.id === params.liqId);
+  if (!liqBase) notFound();
+
+  // Aplicamos el modo demo a la liquidación. Si "a tiempo", la fecha de
+  // vencimiento pasa a ser futura → calcularPunitorios devuelve diasAtraso=0
+  // y la pantalla se muestra como "pendiente" sin recargos.
+  const [demoEstado] = useDemoEstado();
+  const liqDemo = aplicarEstadoDemo(demoEstado, liqBase);
+  // Si el demo dice "al día" pero igual abrimos esta página, usamos la
+  // liquidación base sin atrasos (asumimos que es histórica/consulta).
+  const liq = liqDemo ?? { ...liqBase, fechaVencimiento: liqBase.fechaVencimiento };
 
   const [informado, setInformado] = useState<PagoInformado | null>(null);
   useEffect(() => {
