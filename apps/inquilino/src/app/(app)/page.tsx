@@ -170,20 +170,22 @@ export default function PagosPage() {
 }
 
 // ============================================================
-// HERO: estado "al día" cuando no hay pago pendiente
+// ESTADO "AL DÍA": notificación compacta, no hero gigante
 // ============================================================
 function AlDiaHero({ proxima }: { proxima: string | null }) {
   return (
-    <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-emerald-500 to-teal-500 p-6 text-white shadow-xl shadow-emerald-500/20 md:p-8 animate-fade-in">
-      <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-white/15 blur-2xl" />
-      <div className="relative space-y-3">
-        <div className="flex items-center gap-2">
-          <CheckCircle2 className="h-5 w-5" />
-          <p className="text-xs font-medium uppercase tracking-[0.18em] opacity-90">Estás al día</p>
-        </div>
-        <p className="text-2xl font-bold leading-tight md:text-3xl">No tenés pagos pendientes</p>
-        {proxima && (
-          <p className="text-sm opacity-90">Próximo vencimiento: {formatFecha(proxima)}</p>
+    <Card className="flex items-center gap-3 border border-emerald-200 bg-emerald-50/60 p-3 animate-fade-in">
+      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-emerald-500 text-white shadow-sm">
+        <CheckCircle2 className="h-4 w-4" strokeWidth={2.5} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold leading-tight text-emerald-900">Estás al día</p>
+        {proxima ? (
+          <p className="truncate text-xs text-emerald-700/80">
+            Próximo vencimiento: {formatFecha(proxima)}
+          </p>
+        ) : (
+          <p className="truncate text-xs text-emerald-700/80">No tenés pagos pendientes</p>
         )}
       </div>
     </Card>
