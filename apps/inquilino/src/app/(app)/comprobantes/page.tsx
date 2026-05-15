@@ -84,18 +84,12 @@ export default function RecibosPage() {
 
   return (
     <>
-      {/* HEADER con el alquiler vigente arriba de todo */}
-      <header className="space-y-4 px-5 pb-1 pt-5 md:px-8">
-        <div>
-          <h1 className="text-2xl font-semibold leading-tight md:text-3xl">Recibos</h1>
-          <p className="text-sm text-muted-foreground">
-            Tu alquiler vigente y todos los pagos.
-          </p>
-        </div>
-
-        <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-primary to-primary/80 p-5 text-primary-foreground shadow-lg shadow-primary/20">
-          <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-white/10 blur-2xl" />
-          <div className="relative space-y-1">
+      {/* PRECIO MENSUAL arriba de todo — primera cosa que ve el inquilino */}
+      <div className="px-5 pt-5 md:px-8">
+        <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-primary to-primary/80 p-6 text-primary-foreground shadow-xl shadow-primary/20 md:p-8">
+          <div className="pointer-events-none absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
+          <div className="pointer-events-none absolute -bottom-16 -left-10 h-44 w-44 rounded-full bg-white/5 blur-3xl" />
+          <div className="relative space-y-2">
             <p className="text-xs font-medium uppercase tracking-[0.18em] opacity-80">
               Tu alquiler vigente
             </p>
@@ -103,14 +97,23 @@ export default function RecibosPage() {
               <p className="text-4xl font-bold leading-none tracking-tight tabular-nums md:text-5xl">
                 {formatMonto(contratoMock.montoActual, contratoMock.moneda)}
               </p>
-              <span className="text-sm font-medium opacity-85">/ mes</span>
+              <span className="text-base font-medium opacity-85">/ mes</span>
             </div>
             <p className="text-xs opacity-85">
               Pagás el día {contratoMock.diaPago} de cada mes · {contratoMock.inmobiliaria}
             </p>
           </div>
         </Card>
+      </div>
 
+      {/* Título y demo toggle debajo del precio */}
+      <header className="space-y-3 px-5 pb-1 pt-5 md:px-8">
+        <div>
+          <h1 className="text-xl font-semibold leading-tight md:text-2xl">Recibos</h1>
+          <p className="text-sm text-muted-foreground">
+            Tus pagos pendientes, los próximos y los cobrados.
+          </p>
+        </div>
         <DemoSwitch estado={demoEstado} onChange={setDemoEstado} />
       </header>
 
