@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { ArrowLeft, Camera, Trash2 } from 'lucide-react';
 import { Button } from '@llave/ui/button';
 import { Card } from '@llave/ui/card';
+import { Input } from '@llave/ui/input';
 import { Label } from '@llave/ui/label';
 import { Textarea } from '@llave/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@llave/ui/select';
@@ -36,12 +37,19 @@ export default function NuevoReclamoPage() {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const [categoria, setCategoria] = useState<Categoria | ''>('');
+  const [tituloOtro, setTituloOtro] = useState(''); // título libre cuando categoría === 'OTRO'
   const [urgencia, setUrgencia] = useState<Urgencia | ''>('');
   const [descripcion, setDescripcion] = useState('');
   const [fotoFile, setFotoFile] = useState<File | null>(null);
   const [fotoPreview, setFotoPreview] = useState<string | null>(null);
   const [errorFoto, setErrorFoto] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
+
+  // El reclamo es válido si tiene categoría, urgencia, descripción >= 10 chars
+  // y, en caso de "OTRO", el título aclaratorio también con >= 3 chars.
+  const tituloOtroValido = categoria !== 'OTRO' || tituloOtro.trim().length >= 3;
+  const puedeEnviar =
+    !!categoria && !!urgencia && descripcion.trim().length >= 10 && tituloOtroValido && !enviando;
 
   const handleFoto = (file: File) => {
     setErrorFoto(null);
@@ -68,16 +76,22 @@ export default function NuevoReclamoPage() {
   };
 
   const enviar = async () => {
-    if (!categoria || !urgencia || descripcion.trim().length < 10) return;
+    if (!puedeEnviar) return;
     setEnviando(true);
     await new Promise((r) => setTimeout(r, 400));
+    // Si la categoría es OTRO, prependemos el título aclaratorio a la
+    // descripción para que aparezca destacado en el panel de la inmobiliaria.
+    const descFinal =
+      categoria === 'OTRO' && tituloOtro.trim().length > 0
+        ? `${tituloOtro.trim()} — ${descripcion.trim()}`
+        : descripcion.trim();
     const nuevo = crearReclamo({
       inquilino: inquilinoActual.nombre,
       contratoId: inquilinoActual.contratoId,
       direccion: inquilinoActual.direccion,
-      categoria,
-      descripcion: descripcion.trim(),
-      urgencia,
+      categoria: categoria as Categoria,
+      descripcion: descFinal,
+      urgencia: urgencia as Urgencia,
       fotoDataUrl: fotoPreview,
     });
     setEnviando(false);
@@ -97,7 +111,7 @@ export default function NuevoReclamoPage() {
         <h1 className="text-lg font-semibold">Nuevo reclamo</h1>
       </header>
 
-      <main className="flex-1 space-y-5 px-5 pb-6">
+      <main className="flex-1 space-y-5 px-5 pb-28 md:pb-8">
         <div className="space-y-2">
           <Label>¿De qué se trata?</Label>
           <div className="grid grid-cols-2 gap-2">
@@ -118,6 +132,25 @@ export default function NuevoReclamoPage() {
             ))}
           </div>
         </div>
+
+        {/* Cuando elige "Otro", pedimos un título breve para aclarar */}
+        {categoria === 'OTRO' && (
+          <div className="space-y-2 animate-fade-in">
+            <Label htmlFor="titulo-otro">¿Qué tipo de reclamo?</Label>
+            <Input
+              id="titulo-otro"
+              placeholder="Ej: Humedad en la pared, Internet, Ascensor…"
+              value={tituloOtro}
+              onChange={(e) => setTituloOtro(e.target.value)}
+              maxLength={60}
+            />
+            <p className="text-xs text-muted-foreground">
+              {tituloOtro.trim().length < 3
+                ? `Mínimo 3 caracteres (te faltan ${3 - tituloOtro.trim().length})`
+                : `${tituloOtro.length}/60`}
+            </p>
+          </div>
+        )}
 
         <div className="space-y-2">
           <Label htmlFor="desc">Contanos un poco</Label>
@@ -194,12 +227,7 @@ export default function NuevoReclamoPage() {
           </Select>
         </div>
 
-        <Button
-          size="xl"
-          className="w-full"
-          disabled={!categoria || !urgencia || descripcion.trim().length < 10 || enviando}
-          onClick={enviar}
-        >
+        <Button size="xl" className="w-full" disabled={!puedeEnviar} onClick={enviar}>
           {enviando ? 'Enviando…' : 'Enviar reclamo'}
         </Button>
       </main>
