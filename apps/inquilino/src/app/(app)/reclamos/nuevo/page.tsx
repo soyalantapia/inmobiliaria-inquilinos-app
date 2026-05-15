@@ -99,7 +99,10 @@ export default function NuevoReclamoPage() {
       title: 'Reclamo enviado',
       description: 'La inmobiliaria ya lo tiene. Te avisamos cuando lo tomen.',
     });
-    router.push(`/reclamos/${nuevo.id}`);
+    // Volvemos a la lista pasando el ID nuevo por query — la lista lo resalta.
+    // No navegamos a /reclamos/[id] porque los IDs nuevos no tienen página
+    // pre-renderizada en el static export (devolverían 404).
+    router.push(`/reclamos?nuevo=${nuevo.id}`);
   };
 
   return (
