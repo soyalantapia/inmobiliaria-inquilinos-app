@@ -17,7 +17,77 @@ export interface Documento {
   dataUrl: string; // base64 mock
   subidoAt: string; // ISO
   vencimiento: string | null; // ISO, opcional
+  /**
+   * Si este documento corresponde a un slot requerido por la inmobiliaria
+   * (ej. "dni-frente"), referenciamos su ID. Los documentos sin slot son
+   * libres (cargados por iniciativa del inquilino dentro de OTRO).
+   */
+  slotId?: string;
 }
+
+/**
+ * Lista de documentos que la inmobiliaria espera del inquilino. Sirve como
+ * checklist visual: cada slot está "Pendiente" hasta que se sube un archivo.
+ */
+export interface SlotDocumento {
+  id: string;
+  categoria: CategoriaDocumento;
+  titulo: string;
+  descripcion: string;
+  requerido: boolean;
+}
+
+export const SLOTS_DOCUMENTOS: SlotDocumento[] = [
+  {
+    id: 'dni-frente',
+    categoria: 'IDENTIDAD',
+    titulo: 'DNI · frente',
+    descripcion: 'Foto del frente del DNI, legible y vigente.',
+    requerido: true,
+  },
+  {
+    id: 'dni-dorso',
+    categoria: 'IDENTIDAD',
+    titulo: 'DNI · dorso',
+    descripcion: 'Foto del dorso del DNI, con código de barras visible.',
+    requerido: true,
+  },
+  {
+    id: 'recibo-1',
+    categoria: 'INGRESOS',
+    titulo: 'Recibo de sueldo · último mes',
+    descripcion: 'PDF firmado o foto del recibo más reciente.',
+    requerido: true,
+  },
+  {
+    id: 'recibo-2',
+    categoria: 'INGRESOS',
+    titulo: 'Recibo de sueldo · anterior',
+    descripcion: 'El del mes inmediatamente anterior.',
+    requerido: true,
+  },
+  {
+    id: 'cert-laboral',
+    categoria: 'INGRESOS',
+    titulo: 'Certificación laboral',
+    descripcion: 'Carta de RR.HH. con antigüedad y remuneración.',
+    requerido: false,
+  },
+  {
+    id: 'garante-escritura',
+    categoria: 'GARANTE',
+    titulo: 'Escritura del garante',
+    descripcion: 'Copia simple del título de propiedad.',
+    requerido: true,
+  },
+  {
+    id: 'garante-recibo',
+    categoria: 'GARANTE',
+    titulo: 'Recibo de sueldo del garante',
+    descripcion: 'El último recibo del garante.',
+    requerido: true,
+  },
+];
 
 export function listarDocumentos(): Documento[] {
   if (typeof window === 'undefined') return [];
