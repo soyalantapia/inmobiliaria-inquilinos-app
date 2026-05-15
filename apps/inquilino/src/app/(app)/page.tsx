@@ -27,16 +27,36 @@ import { TASA_PUNITORIA_DIARIA_DEFAULT, calcularPunitorios } from '@/lib/punitor
 import { diasHastaVencimiento, formatFecha, formatMonto } from '@/lib/format';
 import type { Liquidacion } from '@/lib/types';
 
-type DemoEstado = 'atrasado' | 'al-dia';
+type DemoEstado = 'al-dia' | 'a-tiempo' | 'atrasado';
+
+// Genera la liquidación pendiente según el modo demo:
+// - 'al-dia': null (no hay nada que pagar)
+// - 'atrasado': liquidación original con fecha pasada
+// - 'a-tiempo': mismo monto base pero fecha de vencimiento en 5 días
+function getDemoPendiente(
+  estado: DemoEstado,
+  base: Liquidacion | undefined,
+): Liquidacion | null {
+  if (estado === 'al-dia' || !base) return null;
+  if (estado === 'atrasado') return base;
+  const hoy = new Date();
+  const venc = new Date(hoy);
+  venc.setDate(hoy.getDate() + 5);
+  return {
+    ...base,
+    fechaVencimiento: venc.toISOString().slice(0, 10),
+    montoPunitorio: 0,
+    montoTotal: base.montoAlquiler + (base.montoExpensas ?? 0),
+    estado: 'PENDIENTE',
+  };
+}
 
 export default function PagosPage() {
-  // Modo demo: alterna entre "atrasado" (pago pendiente real del mock) y
-  // "al día" (sin pago pendiente).
+  // Modo demo con 3 estados
   const [demoEstado, setDemoEstado] = useState<DemoEstado>('atrasado');
 
   const pendienteMock = liquidacionesMock.find((l) => l.estado !== 'PAGADO');
-  // Filtrado según el modo demo
-  const pendiente = demoEstado === 'al-dia' ? null : pendienteMock;
+  const pendiente = getDemoPendiente(demoEstado, pendienteMock);
 
   const diasAjuste = diasHastaVencimiento(contratoMock.proximoAjuste);
   const alertaAjuste = diasAjuste >= 0 && diasAjuste <= 30;
@@ -290,36 +310,32 @@ function DemoSwitch({
   estado: DemoEstado;
   onChange: (e: DemoEstado) => void;
 }) {
+  const opciones: { value: DemoEstado; label: string }[] = [
+    { value: 'al-dia', label: 'Al día' },
+    { value: 'a-tiempo', label: 'A tiempo' },
+    { value: 'atrasado', label: 'Retrasado' },
+  ];
   return (
     <div className="flex items-center gap-2 rounded-full border border-dashed border-primary/40 bg-primary/5 p-1 text-xs">
       <span className="pl-2 pr-1 text-[10px] font-bold uppercase tracking-wider text-primary">
         Demo
       </span>
       <div className="flex flex-1 gap-1">
-        <button
-          type="button"
-          onClick={() => onChange('atrasado')}
-          className={`flex-1 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-            estado === 'atrasado'
-              ? 'bg-white text-primary shadow-sm'
-              : 'text-muted-foreground hover:text-foreground'
-          }`}
-          aria-pressed={estado === 'atrasado'}
-        >
-          Atrasado
-        </button>
-        <button
-          type="button"
-          onClick={() => onChange('al-dia')}
-          className={`flex-1 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-            estado === 'al-dia'
-              ? 'bg-white text-primary shadow-sm'
-              : 'text-muted-foreground hover:text-foreground'
-          }`}
-          aria-pressed={estado === 'al-dia'}
-        >
-          Al día
-        </button>
+        {opciones.map((op) => (
+          <button
+            key={op.value}
+            type="button"
+            onClick={() => onChange(op.value)}
+            className={`flex-1 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+              estado === op.value
+                ? 'bg-white text-primary shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+            aria-pressed={estado === op.value}
+          >
+            {op.label}
+          </button>
+        ))}
       </div>
     </div>
   );
