@@ -8,6 +8,7 @@ import { Button } from '@llave/ui/button';
 import { Card, CardContent } from '@llave/ui/card';
 import { cn } from '@llave/ui/cn';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@llave/ui/table';
+import { toast } from '@llave/ui/use-toast';
 import { CargarPagoManualButton } from '@/components/cargar-pago-manual';
 import { PagosPorValidar } from '@/components/pagos-por-validar';
 import { Topbar } from '@/components/topbar';
@@ -224,7 +225,16 @@ export default function PagosPage() {
               <Download className="h-4 w-4" />
               PDF cobranzas
             </Button>
-            <Button size="sm" variant="ghost">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() =>
+                toast({
+                  title: 'Recordatorios enviados',
+                  description: 'Le mandamos WhatsApp y mail a los inquilinos con pagos vencidos.',
+                })
+              }
+            >
               <Bell className="h-4 w-4" />
               Recordar a morosos
             </Button>

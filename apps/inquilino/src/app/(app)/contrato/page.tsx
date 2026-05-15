@@ -20,6 +20,7 @@ import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card } from '@llave/ui/card';
 import { Separator } from '@llave/ui/separator';
+import { BotonProximamente } from '@/components/boton-proximamente';
 import { CompartirGarante } from '@/components/compartir-garante';
 import { ContratoTimeline } from '@/components/contrato-timeline';
 import { DepositoTracker } from '@/components/deposito-tracker';
@@ -169,9 +170,11 @@ export default function ContratoPage() {
                     WhatsApp
                   </a>
                 </Button>
-                <Button size="sm" variant="ghost">
-                  <Phone className="h-3.5 w-3.5" />
-                  Llamar
+                <Button size="sm" variant="ghost" asChild>
+                  <a href="tel:+541145321100">
+                    <Phone className="h-3.5 w-3.5" />
+                    Llamar
+                  </a>
                 </Button>
               </div>
             </Card>
@@ -240,10 +243,15 @@ export default function ContratoPage() {
             <p className="font-medium">Contrato firmado.pdf</p>
             <p className="text-xs text-muted-foreground">Subido el {formatFecha(c.fechaInicio)}</p>
           </div>
-          <Button variant="outline" size="sm">
+          <BotonProximamente
+            variant="outline"
+            size="sm"
+            toastTitle="Preparando PDF…"
+            toastMessage="En unos segundos te llega al mail una copia del contrato firmado."
+          >
             <Download className="h-4 w-4" />
             PDF
-          </Button>
+          </BotonProximamente>
         </Card>
 
         <Separator />

@@ -17,6 +17,7 @@ import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card } from '@llave/ui/card';
 import { cn } from '@llave/ui/cn';
+import { toast } from '@llave/ui/use-toast';
 import {
   contratosMock,
   intencionesRenovacionMock,
@@ -229,14 +230,24 @@ export default function RenovacionesPage() {
                         WhatsApp
                       </a>
                     </Button>
-                    <Button size="sm" variant="ghost">
-                      <Phone className="h-3.5 w-3.5" />
-                      Llamar
+                    <Button size="sm" variant="ghost" asChild>
+                      <a href="tel:+541145321100">
+                        <Phone className="h-3.5 w-3.5" />
+                        Llamar
+                      </a>
                     </Button>
                   </div>
                   <div className="flex gap-2">
                     {c.decision === 'RENOVAR' && (
-                      <Button size="sm">
+                      <Button
+                        size="sm"
+                        onClick={() =>
+                          toast({
+                            title: 'Armando propuesta…',
+                            description: `Generamos la propuesta de renovación de ${c.inquilino} con ajuste por índice oficial. Te llega al mail.`,
+                          })
+                        }
+                      >
                         <TrendingUp className="h-3.5 w-3.5" />
                         Armar propuesta
                       </Button>

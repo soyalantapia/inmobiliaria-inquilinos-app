@@ -162,7 +162,7 @@ export default function DashboardPage() {
                 <AgendaItem key={e.id} evento={e} />
               ))}
               <Link
-                href="#"
+                href="/renovaciones"
                 className="mt-2 inline-flex items-center text-xs font-medium text-primary hover:underline"
               >
                 Ver agenda completa

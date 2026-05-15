@@ -529,7 +529,16 @@ export default function ConfiguracionPage() {
                       <p className="font-medium">Visa terminada en 4242</p>
                       <p className="text-xs text-muted-foreground">Vence 12/27 · Roberto Tapia</p>
                     </div>
-                    <Button variant="ghost" size="sm">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() =>
+                        toast({
+                          title: 'Próximamente',
+                          description: 'El cambio de medio de pago se habilita la semana que viene.',
+                        })
+                      }
+                    >
                       Cambiar
                     </Button>
                   </div>
@@ -549,7 +558,16 @@ export default function ConfiguracionPage() {
                     Histórico de las últimas {facturasMock.length} facturas emitidas por Llave.
                   </CardDescription>
                 </div>
-                <Button variant="outline" size="sm">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    toast({
+                      title: 'Generando CSV…',
+                      description: 'Te lo enviamos por mail en unos segundos.',
+                    })
+                  }
+                >
                   <Download className="h-4 w-4" />
                   Exportar CSV
                 </Button>
@@ -598,7 +616,16 @@ export default function ConfiguracionPage() {
                           )}
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button variant="ghost" size="sm">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              toast({
+                                title: 'Preparando factura…',
+                                description: `Factura de ${formatPeriodo(f.periodo)} · te llega al mail.`,
+                              })
+                            }
+                          >
                             <FileText className="h-3.5 w-3.5" />
                             PDF
                           </Button>
@@ -618,7 +645,17 @@ export default function ConfiguracionPage() {
                     Tenemos Pro (con marca blanca + sub-cuentas) y Enterprise (custom).
                   </p>
                 </div>
-                <Button variant="outline">Comparar planes</Button>
+                <Button
+                  variant="outline"
+                  onClick={() =>
+                    toast({
+                      title: 'Próximamente',
+                      description: 'Pronto vas a poder comparar planes desde acá.',
+                    })
+                  }
+                >
+                  Comparar planes
+                </Button>
               </CardContent>
             </Card>
           </TabsContent>

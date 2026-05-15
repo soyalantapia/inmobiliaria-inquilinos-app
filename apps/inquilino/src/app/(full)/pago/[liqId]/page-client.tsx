@@ -17,6 +17,7 @@ import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card } from '@llave/ui/card';
 import { Separator } from '@llave/ui/separator';
+import { toast } from '@llave/ui/use-toast';
 import { liquidacionesMock } from '@/lib/mock-data';
 import { formatFecha, formatMonto, formatPeriodo } from '@/lib/format';
 import { TASA_PUNITORIA_DIARIA_DEFAULT, calcularPunitorios } from '@/lib/punitorios';
@@ -149,7 +150,17 @@ export default function DetallePagoPage({ params }: { params: { liqId: string } 
         </Card>
 
         {pagado ? (
-          <Button variant="outline" size="xl" className="w-full">
+          <Button
+            variant="outline"
+            size="xl"
+            className="w-full"
+            onClick={() =>
+              toast({
+                title: 'Preparando comprobante…',
+                description: 'En unos segundos te llega al mail el recibo en PDF.',
+              })
+            }
+          >
             <Receipt className="h-5 w-5" />
             Descargar comprobante
           </Button>

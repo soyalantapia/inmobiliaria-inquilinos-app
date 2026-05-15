@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { Card, CardContent } from '@llave/ui/card';
 import { cn } from '@llave/ui/cn';
+import { toast } from '@llave/ui/use-toast';
 import { NavBar } from '@/components/nav-bar';
 import { comprobantesMock, contratoMock, liquidacionesMock } from '@/lib/mock-data';
 import { TASA_PUNITORIA_DIARIA_DEFAULT, calcularPunitorios } from '@/lib/punitorios';
@@ -149,7 +150,16 @@ export default function RecibosPage() {
             <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Movimientos
             </h2>
-            <button className="flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+            <button
+              type="button"
+              onClick={() =>
+                toast({
+                  title: 'Preparando descarga…',
+                  description: `Estamos generando el ZIP con los recibos. Te lo enviamos por mail en unos segundos.`,
+                })
+              }
+              className="flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+            >
               <Download className="h-3 w-3" />
               Descargar año
             </button>

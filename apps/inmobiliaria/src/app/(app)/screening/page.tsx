@@ -589,7 +589,16 @@ function Informe({
               />
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  toast({
+                    title: 'Generando informe…',
+                    description: 'En unos segundos te llega al mail el PDF del análisis completo.',
+                  })
+                }
+              >
                 <Download className="h-4 w-4" />
                 PDF
               </Button>

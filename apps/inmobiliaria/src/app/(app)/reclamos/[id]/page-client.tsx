@@ -366,18 +366,22 @@ export default function DetalleReclamoPage() {
                 </div>
                 <div className="flex flex-wrap gap-2 pt-1">
                   <Button size="sm" variant="outline" asChild>
-                    <a href="https://wa.me/541145678900">
+                    <a href="https://wa.me/541145678900" target="_blank" rel="noreferrer">
                       <MessageCircle className="h-3.5 w-3.5" />
                       WhatsApp
                     </a>
                   </Button>
-                  <Button size="sm" variant="ghost">
-                    <Phone className="h-3.5 w-3.5" />
-                    Llamar
+                  <Button size="sm" variant="ghost" asChild>
+                    <a href="tel:+541145678900">
+                      <Phone className="h-3.5 w-3.5" />
+                      Llamar
+                    </a>
                   </Button>
-                  <Button size="sm" variant="ghost">
-                    <Mail className="h-3.5 w-3.5" />
-                    Email
+                  <Button size="sm" variant="ghost" asChild>
+                    <a href="mailto:inquilino@example.com">
+                      <Mail className="h-3.5 w-3.5" />
+                      Email
+                    </a>
                   </Button>
                 </div>
               </CardContent>

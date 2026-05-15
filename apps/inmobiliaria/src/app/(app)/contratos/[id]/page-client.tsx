@@ -316,7 +316,16 @@ export default function DetalleContratoPage() {
                     <p className="font-medium">Contrato firmado.pdf</p>
                     <p className="text-xs text-muted-foreground">Subido el 28/08/2025 · 1.2 MB</p>
                   </div>
-                  <Button variant="outline" size="sm">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      toast({
+                        title: 'Preparando contrato…',
+                        description: 'En unos segundos te llega el PDF al mail.',
+                      })
+                    }
+                  >
                     <Download className="h-4 w-4" />
                     Descargar
                   </Button>

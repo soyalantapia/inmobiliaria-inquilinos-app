@@ -23,6 +23,7 @@ import {
 import { Avatar, AvatarFallback } from '@llave/ui/avatar';
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
+import { BotonProximamente } from '@/components/boton-proximamente';
 import { Card, CardContent } from '@llave/ui/card';
 import { Separator } from '@llave/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@llave/ui/tabs';
@@ -120,10 +121,15 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                 </div>
               </div>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm">
+                <BotonProximamente
+                  variant="outline"
+                  size="sm"
+                  toastTitle="Editar propiedad"
+                  toastMessage="Próximamente vas a poder editar dirección, ambientes y m² desde acá."
+                >
                   <FileText className="h-4 w-4" />
                   Editar
-                </Button>
+                </BotonProximamente>
               </div>
             </div>
 
@@ -317,17 +323,27 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                   <Separator />
 
                   <div className="flex flex-wrap gap-2">
-                    <Button size="sm" variant="outline">
-                      <MessageCircle className="h-3.5 w-3.5" />
-                      WhatsApp
+                    <Button size="sm" variant="outline" asChild>
+                      <a
+                        href="https://wa.me/541145321100"
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        <MessageCircle className="h-3.5 w-3.5" />
+                        WhatsApp
+                      </a>
                     </Button>
-                    <Button size="sm" variant="ghost">
-                      <Phone className="h-3.5 w-3.5" />
-                      Llamar
+                    <Button size="sm" variant="ghost" asChild>
+                      <a href="tel:+541145321100">
+                        <Phone className="h-3.5 w-3.5" />
+                        Llamar
+                      </a>
                     </Button>
-                    <Button size="sm" variant="ghost">
-                      <Mail className="h-3.5 w-3.5" />
-                      Email
+                    <Button size="sm" variant="ghost" asChild>
+                      <a href="mailto:inquilino@example.com">
+                        <Mail className="h-3.5 w-3.5" />
+                        Email
+                      </a>
                     </Button>
                   </div>
                 </CardContent>
@@ -337,9 +353,11 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                 <CardContent className="space-y-3 p-10 text-center">
                   <UserRound className="mx-auto h-10 w-10 text-muted-foreground" />
                   <p className="font-medium">Propiedad sin inquilino actual</p>
-                  <Button size="sm">
-                    <Plus className="h-4 w-4" />
-                    Cargar contrato
+                  <Button size="sm" asChild>
+                    <Link href="/contratos/nuevo">
+                      <Plus className="h-4 w-4" />
+                      Cargar contrato
+                    </Link>
                   </Button>
                 </CardContent>
               </Card>
@@ -353,9 +371,11 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                 <CardContent className="space-y-3 p-10 text-center">
                   <Users className="mx-auto h-10 w-10 text-muted-foreground" />
                   <p className="font-medium">Sin propietarios cargados</p>
-                  <Button size="sm">
-                    <Plus className="h-4 w-4" />
-                    Agregar propietario
+                  <Button size="sm" asChild>
+                    <Link href="/propietarios">
+                      <Plus className="h-4 w-4" />
+                      Agregar propietario
+                    </Link>
                   </Button>
                 </CardContent>
               </Card>
@@ -450,9 +470,15 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                         </div>
                       )}
 
-                      <Button size="sm" variant="outline" className="w-full">
-                        <MessageCircle className="h-3.5 w-3.5" />
-                        Mensaje
+                      <Button size="sm" variant="outline" className="w-full" asChild>
+                        <a
+                          href={`https://wa.me/${o.telefono.replace(/[^\d]/g, '')}`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          <MessageCircle className="h-3.5 w-3.5" />
+                          Mensaje
+                        </a>
                       </Button>
                     </CardContent>
                   </Card>
@@ -511,9 +537,11 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                 <CardContent className="space-y-3 p-10 text-center">
                   <FileText className="mx-auto h-10 w-10 text-muted-foreground" />
                   <p className="font-medium">Propiedad sin contrato activo</p>
-                  <Button size="sm">
-                    <Plus className="h-4 w-4" />
-                    Cargar contrato
+                  <Button size="sm" asChild>
+                    <Link href="/contratos/nuevo">
+                      <Plus className="h-4 w-4" />
+                      Cargar contrato
+                    </Link>
                   </Button>
                 </CardContent>
               </Card>
@@ -610,9 +638,11 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                 <DocRow nombre="Contrato firmado.pdf" subtitulo="Subido al cargar el contrato" />
                 <DocRow nombre="Escritura.pdf" subtitulo="Documento del propietario" />
                 <DocRow nombre="Reglamento de copropiedad.pdf" subtitulo="Edificio" />
-                <Button variant="outline" size="sm" className="mt-2">
-                  <Plus className="h-4 w-4" />
-                  Subir documento
+                <Button variant="outline" size="sm" className="mt-2" asChild>
+                  <Link href={contrato ? `/contratos/${contrato.id}` : '/contratos'}>
+                    <Plus className="h-4 w-4" />
+                    Subir documento
+                  </Link>
                 </Button>
               </CardContent>
             </Card>
@@ -718,6 +748,9 @@ function CoInquilinosBlock({ contratoId }: { contratoId: string | undefined }) {
 }
 
 function DocRow({ nombre, subtitulo }: { nombre: string; subtitulo: string }) {
+  // En backend real éstos vendrían con su pdfUrl real. Para la demo lo
+  // dejamos como anchor con download que apunta a un placeholder.
+  const slug = encodeURIComponent(nombre);
   return (
     <div className="flex items-center justify-between rounded-md border p-3">
       <div className="flex items-center gap-3 min-w-0">
@@ -727,8 +760,14 @@ function DocRow({ nombre, subtitulo }: { nombre: string; subtitulo: string }) {
           <p className="text-xs text-muted-foreground">{subtitulo}</p>
         </div>
       </div>
-      <Button variant="ghost" size="sm">
-        <Download className="h-4 w-4" />
+      <Button variant="ghost" size="sm" asChild>
+        <a
+          href={`data:application/pdf,${slug}`}
+          download={nombre}
+          aria-label={`Descargar ${nombre}`}
+        >
+          <Download className="h-4 w-4" />
+        </a>
       </Button>
     </div>
   );
