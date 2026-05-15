@@ -189,9 +189,14 @@ export default function NuevoReclamoPage() {
             className="flex cursor-pointer items-center gap-3 rounded-lg border border-dashed p-4 text-sm text-muted-foreground transition-colors hover:border-primary/40"
           >
             <Camera className="h-5 w-5 text-primary" />
-            <div>
-              <p>Subí una foto (opcional)</p>
-              <p className="text-xs">JPG o PNG · hasta {MAX_FOTO_MB} MB</p>
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <p className="font-medium text-foreground">Subí una foto</p>
+                <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Opcional
+                </span>
+              </div>
+              <p className="text-xs">JPG o PNG · hasta {MAX_FOTO_MB} MB · Podés enviar sin foto</p>
             </div>
             <input
               ref={fileRef}
@@ -226,6 +231,23 @@ export default function NuevoReclamoPage() {
             </SelectContent>
           </Select>
         </div>
+
+        {/* Indicador de qué falta para enviar (sólo cuando falta algo y NO está enviando) */}
+        {!puedeEnviar && !enviando && (
+          <p className="rounded-md bg-muted/60 px-3 py-2 text-center text-xs text-muted-foreground">
+            Te falta:{' '}
+            {[
+              !categoria && 'elegir de qué se trata',
+              categoria === 'OTRO' &&
+                tituloOtro.trim().length < 3 &&
+                'aclarar el título',
+              descripcion.trim().length < 10 && 'contar un poco más',
+              !urgencia && 'elegir la urgencia',
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </p>
+        )}
 
         <Button size="xl" className="w-full" disabled={!puedeEnviar} onClick={enviar}>
           {enviando ? 'Enviando…' : 'Enviar reclamo'}
