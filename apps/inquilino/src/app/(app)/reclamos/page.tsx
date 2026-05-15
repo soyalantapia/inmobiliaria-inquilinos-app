@@ -3,7 +3,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { CheckCircle2, ChevronDown, ChevronUp, Plus, Wrench, X } from 'lucide-react';
+import {
+  CalendarClock,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  Clock,
+  MapPin,
+  Plus,
+  Wrench,
+  X,
+} from 'lucide-react';
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card, CardContent } from '@llave/ui/card';
@@ -32,11 +42,29 @@ export default function MisReclamosPage() {
   const searchParams = useSearchParams();
   const idNuevo = searchParams?.get('nuevo') ?? null;
   const [reclamos, setReclamos] = useState<Reclamo[] | null>(null);
-  const [confirmacionVisible, setConfirmacionVisible] = useState(true);
+  // El banner pasa por 3 etapas: visible → desvaneciéndose (clase animada) → oculto.
+  const [bannerEstado, setBannerEstado] = useState<'visible' | 'saliendo' | 'oculto'>(
+    idNuevo ? 'visible' : 'oculto',
+  );
 
   useEffect(() => {
     setReclamos(listarReclamos());
   }, []);
+
+  // Auto-dismiss del banner: empieza a salir después de 5s, se oculta tras 600ms más
+  useEffect(() => {
+    if (bannerEstado !== 'visible') return;
+    const tSalir = setTimeout(() => setBannerEstado('saliendo'), 5000);
+    return () => clearTimeout(tSalir);
+  }, [bannerEstado]);
+
+  useEffect(() => {
+    if (bannerEstado !== 'saliendo') return;
+    const tOcultar = setTimeout(() => setBannerEstado('oculto'), 600);
+    return () => clearTimeout(tOcultar);
+  }, [bannerEstado]);
+
+  const cerrarBanner = () => setBannerEstado('saliendo');
 
   const abiertos = useMemo(
     () =>
@@ -73,9 +101,19 @@ export default function MisReclamosPage() {
           </Button>
         </div>
 
-        {/* Banner de confirmación si venimos de crear un reclamo */}
-        {idNuevo && confirmacionVisible && (
-          <Card className="flex items-start gap-3 border-emerald-200 bg-emerald-50/60 p-3 animate-fade-in">
+        {/* Banner de confirmación si venimos de crear un reclamo.
+            - Entra con animación fade-in
+            - Se queda 5 segundos
+            - Sale con fade-out + slide-up (saliendo)
+            - Después se desmonta del DOM (oculto) */}
+        {idNuevo && bannerEstado !== 'oculto' && (
+          <Card
+            className={`flex items-start gap-3 border-emerald-200 bg-emerald-50/60 p-3 transition-all duration-500 ${
+              bannerEstado === 'saliendo'
+                ? 'pointer-events-none -translate-y-2 scale-95 opacity-0'
+                : 'animate-fade-in opacity-100'
+            }`}
+          >
             <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-emerald-500 text-white shadow-sm">
               <CheckCircle2 className="h-4 w-4" strokeWidth={2.5} />
             </div>
@@ -89,8 +127,8 @@ export default function MisReclamosPage() {
             </div>
             <button
               type="button"
-              onClick={() => setConfirmacionVisible(false)}
-              className="rounded-full p-1 text-emerald-700 hover:bg-emerald-100"
+              onClick={cerrarBanner}
+              className="rounded-full p-1 text-emerald-700 transition-colors hover:bg-emerald-100"
               aria-label="Cerrar"
             >
               <X className="h-4 w-4" />
@@ -153,9 +191,8 @@ function ReclamoRow({ reclamo, resaltado }: { reclamo: Reclamo; resaltado: boole
   const tieneDetalle = IDS_CON_DETALLE.has(reclamo.id);
   const [expandido, setExpandido] = useState(resaltado);
 
-  // Bloque de contenido principal (icono + texto + meta), reutilizado por
-  // ambas variantes (Link vs button expandible).
-  const contenido = (
+  // Encabezado del item (icono + título + meta) — común a ambas variantes
+  const encabezado = (
     <>
       <div className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
         <Icon className="h-4 w-4" />
@@ -178,7 +215,9 @@ function ReclamoRow({ reclamo, resaltado }: { reclamo: Reclamo; resaltado: boole
           )}
         </div>
         <p
-          className={`text-sm text-muted-foreground ${expandido ? '' : 'line-clamp-2'}`}
+          className={`text-sm text-muted-foreground ${
+            expandido && !tieneDetalle ? '' : 'line-clamp-2'
+          }`}
         >
           {reclamo.descripcion}
         </p>
@@ -206,23 +245,101 @@ function ReclamoRow({ reclamo, resaltado }: { reclamo: Reclamo; resaltado: boole
         href={`/reclamos/${reclamo.id}`}
         className={`${wrapperBase} ${wrapperHighlight} hover:bg-muted/40`}
       >
-        {contenido}
+        {encabezado}
       </Link>
     );
   }
 
-  // Reclamo nuevo (del localStorage): expandible inline, sin navegación
+  // Reclamo nuevo (del localStorage): expandible inline con detalle real
+  const fechaCreado = new Date(reclamo.createdAt);
   return (
-    <div className={`${wrapperBase} ${wrapperHighlight}`}>
-      {contenido}
-      <button
-        type="button"
-        onClick={() => setExpandido((v) => !v)}
-        className="mt-1 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground transition-colors hover:bg-accent"
-        aria-label={expandido ? 'Contraer' : 'Expandir'}
-      >
-        {expandido ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-      </button>
+    <div>
+      <div className={`${wrapperBase} ${wrapperHighlight}`}>
+        {encabezado}
+        <button
+          type="button"
+          onClick={() => setExpandido((v) => !v)}
+          className="mt-1 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground transition-colors hover:bg-accent"
+          aria-label={expandido ? 'Contraer' : 'Expandir'}
+        >
+          {expandido ? (
+            <ChevronUp className="h-3.5 w-3.5" />
+          ) : (
+            <ChevronDown className="h-3.5 w-3.5" />
+          )}
+        </button>
+      </div>
+
+      {/* Panel expandido: detalles del reclamo (urgencia, dirección, foto, eventos) */}
+      {expandido && (
+        <div className="space-y-3 border-t bg-muted/30 px-4 py-4 animate-fade-in">
+          <DetalleFila
+            icon={<Clock className="h-3.5 w-3.5" />}
+            label="Urgencia"
+            value={urgenciaLabel[reclamo.urgencia]}
+            badge={urgenciaVariant[reclamo.urgencia]}
+          />
+          <DetalleFila
+            icon={<MapPin className="h-3.5 w-3.5" />}
+            label="Dirección"
+            value={reclamo.direccion}
+          />
+          <DetalleFila
+            icon={<CalendarClock className="h-3.5 w-3.5" />}
+            label="Enviado el"
+            value={fechaCreado.toLocaleString('es-AR', {
+              day: '2-digit',
+              month: '2-digit',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+            })}
+          />
+
+          {reclamo.fotoUrl && (
+            <div className="space-y-1.5">
+              <p className="text-[11px] font-medium text-muted-foreground">Foto adjunta</p>
+              <img
+                src={reclamo.fotoUrl}
+                alt="Foto del reclamo"
+                className="max-h-56 w-full rounded-md object-contain"
+              />
+            </div>
+          )}
+
+          <p className="rounded-md bg-background px-3 py-2 text-[11px] text-muted-foreground">
+            La inmobiliaria recibe el reclamo y te avisa por WhatsApp cuando lo tome.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DetalleFila({
+  icon,
+  label,
+  value,
+  badge,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  badge?: 'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning' | null;
+}) {
+  return (
+    <div className="flex items-start gap-2 text-xs">
+      <span className="mt-0.5 text-muted-foreground">{icon}</span>
+      <div className="flex-1 min-w-0">
+        <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
+        {badge ? (
+          <Badge variant={badge} className="mt-0.5 text-[10px]">
+            {value}
+          </Badge>
+        ) : (
+          <p className="text-sm font-medium">{value}</p>
+        )}
+      </div>
     </div>
   );
 }

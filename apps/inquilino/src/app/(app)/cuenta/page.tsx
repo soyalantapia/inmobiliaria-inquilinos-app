@@ -4,8 +4,6 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
-  Bell,
-  CalendarClock,
   CalendarDays,
   ChevronRight,
   CircleHelp,
@@ -15,11 +13,8 @@ import {
   LifeBuoy,
   LogOut,
   Mail,
-  MessageCircle,
-  Moon,
   Phone,
   ShieldCheck,
-  Sun,
   User,
   Users,
   Wrench,
@@ -28,7 +23,6 @@ import { Avatar, AvatarFallback } from '@llave/ui/avatar';
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card, CardContent } from '@llave/ui/card';
-import { cn } from '@llave/ui/cn';
 import { ConfirmDialog } from '@llave/ui/confirm-dialog';
 import { Input } from '@llave/ui/input';
 import { Label } from '@llave/ui/label';
@@ -38,57 +32,10 @@ import { relanzarOnboarding } from '@/components/onboarding';
 import { contratoMock } from '@/lib/mock-data';
 import { useCurrentUser } from '@/lib/use-current-user';
 
-// Preferencias guardadas en localStorage
-const PREFS_KEY = 'llave:prefs:v1';
-
-interface Prefs {
-  notifWhatsapp: boolean;
-  notifEmail: boolean;
-  notifPush: boolean;
-  recordatorioPagoActivo: boolean;
-  recordatorioPagoDias: 1 | 3 | 7;
-}
-
-const PREFS_DEFAULT: Prefs = {
-  notifWhatsapp: true,
-  notifEmail: true,
-  notifPush: false,
-  recordatorioPagoActivo: true,
-  recordatorioPagoDias: 3,
-};
-
-function leerPrefs(): Prefs {
-  if (typeof window === 'undefined') return PREFS_DEFAULT;
-  try {
-    const raw = window.localStorage.getItem(PREFS_KEY);
-    if (!raw) return PREFS_DEFAULT;
-    return { ...PREFS_DEFAULT, ...JSON.parse(raw) };
-  } catch {
-    return PREFS_DEFAULT;
-  }
-}
-
-function guardarPrefs(p: Prefs): void {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(PREFS_KEY, JSON.stringify(p));
-  } catch {
-    // ignore
-  }
-}
-
 export default function CuentaPage() {
   const router = useRouter();
   const user = useCurrentUser();
-  const [prefs, setPrefs] = useState<Prefs>(() => leerPrefs());
   const [confirmandoLogout, setConfirmandoLogout] = useState(false);
-
-  const setPref = <K extends keyof Prefs>(key: K, value: Prefs[K]) => {
-    const next = { ...prefs, [key]: value };
-    setPrefs(next);
-    guardarPrefs(next);
-    toast({ title: 'Preferencia guardada' });
-  };
 
   return (
     <>
@@ -128,92 +75,6 @@ export default function CuentaPage() {
             Editar datos
           </Button>
         </Card>
-
-        {/* Notificaciones */}
-        <section className="space-y-3">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Notificaciones
-          </h2>
-          <Card className="divide-y">
-            <ToggleRow
-              icon={<MessageCircle className="h-4 w-4 text-emerald-600" />}
-              label="WhatsApp"
-              descripcion="Avisos de pago, ajustes y respuestas a reclamos"
-              checked={prefs.notifWhatsapp}
-              onChange={(v) => setPref('notifWhatsapp', v)}
-            />
-            <ToggleRow
-              icon={<Mail className="h-4 w-4 text-blue-600" />}
-              label="Email"
-              descripcion="Comprobantes de pago y novedades del contrato"
-              checked={prefs.notifEmail}
-              onChange={(v) => setPref('notifEmail', v)}
-            />
-            <ToggleRow
-              icon={<Bell className="h-4 w-4 text-amber-600" />}
-              label="Push en la app"
-              descripcion="Mientras tengas la PWA instalada"
-              checked={prefs.notifPush}
-              onChange={(v) => setPref('notifPush', v)}
-            />
-          </Card>
-        </section>
-
-        {/* Recordatorios de pago */}
-        <section className="space-y-3">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Recordatorios de pago
-          </h2>
-          <Card className="divide-y">
-            <ToggleRow
-              icon={<CalendarClock className="h-4 w-4 text-primary" />}
-              label="Avisame antes del vencimiento"
-              descripcion="Te recordamos por WhatsApp y push antes de que se venza"
-              checked={prefs.recordatorioPagoActivo}
-              onChange={(v) => setPref('recordatorioPagoActivo', v)}
-            />
-            {prefs.recordatorioPagoActivo && (
-              <div className="space-y-3 p-4">
-                <p className="text-xs font-medium text-muted-foreground">
-                  ¿Cuántos días antes querés que te avisemos?
-                </p>
-                <div className="grid grid-cols-3 gap-2">
-                  {([1, 3, 7] as const).map((d) => (
-                    <button
-                      key={d}
-                      onClick={() => setPref('recordatorioPagoDias', d)}
-                      className={cn(
-                        'flex flex-col items-center gap-1 rounded-lg border p-3 text-center transition-colors',
-                        prefs.recordatorioPagoDias === d
-                          ? 'border-primary bg-primary/10'
-                          : 'border-border hover:bg-muted/40',
-                      )}
-                    >
-                      <span className="text-lg font-semibold tabular-nums">{d}</span>
-                      <span className="text-[11px] text-muted-foreground">
-                        día{d === 1 ? '' : 's'} antes
-                      </span>
-                    </button>
-                  ))}
-                </div>
-                <p className="text-[11px] text-muted-foreground">
-                  Tu día de pago es el {contratoMock.diaPago} de cada mes — te avisaríamos el día{' '}
-                  {Math.max(1, contratoMock.diaPago - prefs.recordatorioPagoDias)}.
-                </p>
-              </div>
-            )}
-          </Card>
-        </section>
-
-        {/* Apariencia */}
-        <section className="space-y-3">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Apariencia
-          </h2>
-          <Card>
-            <ThemeRow />
-          </Card>
-        </section>
 
         {/* Ayuda y soporte */}
         <section className="space-y-3">
@@ -350,54 +211,6 @@ function Field({
   );
 }
 
-function ToggleRow({
-  icon,
-  label,
-  descripcion,
-  checked,
-  onChange,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  descripcion: string;
-  checked: boolean;
-  onChange: (v: boolean) => void;
-}) {
-  return (
-    <button
-      onClick={() => onChange(!checked)}
-      className="flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-muted/40"
-    >
-      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-muted">{icon}</div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium">{label}</p>
-        <p className="text-xs text-muted-foreground">{descripcion}</p>
-      </div>
-      <Toggle checked={checked} />
-    </button>
-  );
-}
-
-function Toggle({ checked }: { checked: boolean }) {
-  return (
-    <span
-      className={cn(
-        'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors',
-        checked ? 'bg-primary' : 'bg-muted',
-      )}
-      aria-checked={checked}
-      role="switch"
-    >
-      <span
-        className={cn(
-          'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-background shadow ring-0 transition-transform',
-          checked ? 'translate-x-5' : 'translate-x-0',
-        )}
-      />
-    </span>
-  );
-}
-
 function LinkRow({
   icon,
   label,
@@ -434,49 +247,3 @@ function LinkRow({
   return <Link href={href}>{content}</Link>;
 }
 
-// ThemeRow client-side: lee/escribe el theme directamente para mostrar el toggle
-function ThemeRow() {
-  const STORAGE_KEY = 'llave:theme';
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
-
-  // hidratar tema
-  useState(() => {
-    if (typeof window === 'undefined') return;
-    const stored = window.localStorage.getItem(STORAGE_KEY);
-    const initial =
-      stored === 'dark' || stored === 'light'
-        ? stored
-        : window.matchMedia('(prefers-color-scheme: dark)').matches
-          ? 'dark'
-          : 'light';
-    setTheme(initial as 'light' | 'dark');
-  });
-
-  const toggle = () => {
-    const next = theme === 'dark' ? 'light' : 'dark';
-    setTheme(next);
-    if (typeof document !== 'undefined') {
-      document.documentElement.classList.toggle('dark', next === 'dark');
-    }
-    try {
-      window.localStorage.setItem(STORAGE_KEY, next);
-    } catch {
-      // ignore
-    }
-  };
-
-  return (
-    <button onClick={toggle} className="flex w-full items-center gap-3 p-4 text-left">
-      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-muted">
-        {theme === 'dark' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium">Tema {theme === 'dark' ? 'oscuro' : 'claro'}</p>
-        <p className="text-xs text-muted-foreground">
-          Tocá para alternar al tema {theme === 'dark' ? 'claro' : 'oscuro'}
-        </p>
-      </div>
-      <Toggle checked={theme === 'dark'} />
-    </button>
-  );
-}
