@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import {
+  AlertTriangle,
   ArrowDownLeft,
   ArrowUpRight,
   CheckCircle2,
@@ -14,6 +15,7 @@ import {
   ReceiptText,
   Sparkles,
   TrendingUp,
+  Wallet,
 } from 'lucide-react';
 import { Card } from '@llave/ui/card';
 import { InstallPrompt } from '@/components/install-prompt';
@@ -21,19 +23,18 @@ import { NavBar } from '@/components/nav-bar';
 import { UserMenu } from '@/components/user-menu';
 import { contratoMock, inquilinoActual, liquidacionesMock } from '@/lib/mock-data';
 import { movimientosMock, type Movimiento } from '@/lib/movimientos-mock';
+import { TASA_PUNITORIA_DIARIA_DEFAULT, calcularPunitorios } from '@/lib/punitorios';
 import { diasHastaVencimiento, formatFecha, formatMonto } from '@/lib/format';
-import { PaymentHero } from './payment-hero';
+import type { Liquidacion } from '@/lib/types';
 
 type DemoEstado = 'atrasado' | 'al-dia';
 
 export default function PagosPage() {
   // Modo demo: alterna entre "atrasado" (pago pendiente real del mock) y
-  // "al día" (sin pago pendiente). Persiste en localStorage para que se
-  // mantenga si el usuario hace refresh durante la presentación.
+  // "al día" (sin pago pendiente).
   const [demoEstado, setDemoEstado] = useState<DemoEstado>('atrasado');
 
   const pendienteMock = liquidacionesMock.find((l) => l.estado !== 'PAGADO');
-  const proximoPagado = liquidacionesMock.find((l) => l.estado === 'PAGADO');
   // Filtrado según el modo demo
   const pendiente = demoEstado === 'al-dia' ? null : pendienteMock;
 
@@ -79,12 +80,10 @@ export default function PagosPage() {
           </Link>
         )}
 
-        {/* HERO ÚNICO: pago pendiente o estado "al día" */}
-        {pendiente ? (
-          <PaymentHero liq={pendiente} ajusteCritico={ajusteCritico} diasAjuste={diasAjuste} />
-        ) : (
-          <AlDiaHero proxima={proximoPagado?.fechaVencimiento ?? null} />
-        )}
+        {/* Banner finito: si hay pago pendiente, avisa y lleva a /comprobantes
+            donde se gestiona todo. Si está al día, no mostramos nada (queda
+            implícito y la home arranca con el contenido principal). */}
+        {pendiente && <BannerPagoPendiente liq={pendiente} />}
 
         {/* Card del hogar + inmo (compacta, sin gradient grande) */}
         <Card className="space-y-3 p-4 animate-fade-in">
@@ -170,25 +169,61 @@ export default function PagosPage() {
 }
 
 // ============================================================
-// ESTADO "AL DÍA": notificación compacta, no hero gigante
+// BANNER COMPACTO en home cuando hay pago pendiente
 // ============================================================
-function AlDiaHero({ proxima }: { proxima: string | null }) {
+// Reemplaza al hero gigante. Solo avisa que hay algo a pagar y lleva a
+// /comprobantes donde se gestiona todo (a pagar, próximos, cobrados).
+function BannerPagoPendiente({ liq }: { liq: Liquidacion }) {
+  const calc = calcularPunitorios(liq, TASA_PUNITORIA_DIARIA_DEFAULT);
+  const diasV = diasHastaVencimiento(liq.fechaVencimiento);
+  const vencido = calc.diasAtraso > 0;
+
+  // Color según urgencia
+  const tono = vencido
+    ? {
+        border: 'border-red-300',
+        bg: 'bg-red-50/70',
+        text: 'text-red-900',
+        sub: 'text-red-700/80',
+        icon: 'bg-red-500',
+      }
+    : {
+        border: 'border-primary/30',
+        bg: 'bg-primary/5',
+        text: 'text-foreground',
+        sub: 'text-muted-foreground',
+        icon: 'bg-primary',
+      };
+
   return (
-    <Card className="flex items-center gap-3 border border-emerald-200 bg-emerald-50/60 p-3 animate-fade-in">
-      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-emerald-500 text-white shadow-sm">
-        <CheckCircle2 className="h-4 w-4" strokeWidth={2.5} />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold leading-tight text-emerald-900">Estás al día</p>
-        {proxima ? (
-          <p className="truncate text-xs text-emerald-700/80">
-            Próximo vencimiento: {formatFecha(proxima)}
-          </p>
+    <Link
+      href="/comprobantes"
+      className={`flex items-center gap-3 rounded-xl border ${tono.border} ${tono.bg} px-3 py-3 transition-colors hover:bg-opacity-100 active:scale-[0.99]`}
+    >
+      <div
+        className={`grid h-9 w-9 shrink-0 place-items-center rounded-full ${tono.icon} text-white shadow-sm`}
+      >
+        {vencido ? (
+          <AlertTriangle className="h-4 w-4" strokeWidth={2.5} />
         ) : (
-          <p className="truncate text-xs text-emerald-700/80">No tenés pagos pendientes</p>
+          <Wallet className="h-4 w-4" strokeWidth={2.5} />
         )}
       </div>
-    </Card>
+      <div className="flex-1 min-w-0">
+        <p className={`text-sm font-semibold leading-tight ${tono.text}`}>
+          {vencido ? 'Tenés un pago atrasado' : 'Tenés un pago pendiente'} ·{' '}
+          <span className="tabular-nums">{formatMonto(calc.totalAPagar, liq.moneda)}</span>
+        </p>
+        <p className={`truncate text-xs ${tono.sub}`}>
+          {vencido
+            ? `Venció hace ${calc.diasAtraso} día${calc.diasAtraso === 1 ? '' : 's'}`
+            : diasV === 0
+              ? 'Vence hoy'
+              : `Vence en ${diasV} día${diasV === 1 ? '' : 's'} · ${formatFecha(liq.fechaVencimiento)}`}
+        </p>
+      </div>
+      <ChevronRight className={`h-4 w-4 shrink-0 ${tono.sub}`} />
+    </Link>
   );
 }
 
