@@ -28,6 +28,7 @@ import {
   CargarInquilinoTrigger,
   ListaInvitadosPropiedad,
 } from '@/components/cargar-inquilino-trigger';
+import { InquilinoActualAcciones } from '@/components/inquilino-actual-acciones';
 import { Card, CardContent } from '@llave/ui/card';
 import { Separator } from '@llave/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@llave/ui/tabs';
@@ -344,7 +345,7 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                       </a>
                     </Button>
                     <Button size="sm" variant="ghost" asChild>
-                      <a href="mailto:inquilino@example.com">
+                      <a href={`mailto:${emailDeNombre(contrato.inquilino)}`}>
                         <Mail className="h-3.5 w-3.5" />
                         Email
                       </a>
@@ -370,6 +371,18 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                   </div>
                 </CardContent>
               </Card>
+            )}
+
+            {/* Acciones sobre el inquilino actual: estado de cuenta, reenviar
+                email de bienvenida, y gestión de co-inquilinos. */}
+            {contrato && (
+              <InquilinoActualAcciones
+                inquilinoNombre={contrato.inquilino}
+                inquilinoEmail={emailDeNombre(contrato.inquilino)}
+                propiedadId={propiedad.id}
+                contratoId={contrato.id}
+                direccion={propiedad.direccion}
+              />
             )}
 
             {/* Listado de inquilinos ya invitados, pendientes de activación */}
@@ -760,6 +773,21 @@ function CoInquilinosBlock({ contratoId }: { contratoId: string | undefined }) {
       </CardContent>
     </Card>
   );
+}
+
+// Genera un email "placeholder" a partir del nombre completo del inquilino.
+// Para el inquilino seed (Mariela Sosa) devolvemos el email real que usa
+// el sistema de auth-otp en la app del inquilino, así el flujo se siente
+// consistente. En backend real esto vendría del contrato/usuario.
+function emailDeNombre(nombre: string): string {
+  return `${nombre
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9\s]/g, '')
+    .trim()
+    .split(/\s+/)
+    .join('.')}@gmail.com`;
 }
 
 function DocRow({ nombre, subtitulo }: { nombre: string; subtitulo: string }) {
