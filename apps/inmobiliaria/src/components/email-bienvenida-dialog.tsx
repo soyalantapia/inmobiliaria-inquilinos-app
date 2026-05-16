@@ -54,6 +54,7 @@ export function EmailBienvenidaDialog({
     setEnviando(false);
     setEnviado(true);
     toast({
+      variant: 'success',
       title:
         modo === 'recordatorio' ? 'Recordatorio enviado' : 'Email de bienvenida enviado',
       description: `Le mandamos a ${destinatario.email} el link para activar su cuenta.`,

@@ -51,6 +51,8 @@ export function AgregarCoInquilinoDialog({
   const [nombre, setNombre] = useState('');
   const [apellido, setApellido] = useState('');
   const [email, setEmail] = useState('');
+  const [dni, setDni] = useState('');
+  const [celular, setCelular] = useState('');
   const [relacion, setRelacion] = useState('Conviviente');
   const [permiso, setPermiso] = useState<PermisoCoInquilino>('PAGAR');
   const [guardando, setGuardando] = useState(false);
@@ -61,6 +63,8 @@ export function AgregarCoInquilinoDialog({
       setNombre('');
       setApellido('');
       setEmail('');
+      setDni('');
+      setCelular('');
       setRelacion('Conviviente');
       setPermiso('PAGAR');
       setGuardando(false);
@@ -85,12 +89,15 @@ export function AgregarCoInquilinoDialog({
       nombre,
       apellido,
       email,
+      dni: dni.trim() || undefined,
+      celular: celular.trim() || undefined,
       relacion,
       permiso,
     });
     setGuardando(false);
     toast({
-      title: '¡Co-inquilino agregado!',
+      variant: 'success',
+      title: '¡Invitación enviada!',
       description: `Le mandamos a ${co.email} el link para activar su cuenta.`,
     });
     onAdded?.();
@@ -99,7 +106,7 @@ export function AgregarCoInquilinoDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <UserPlus className="h-5 w-5 text-primary" />
@@ -154,6 +161,35 @@ export function AgregarCoInquilinoDialog({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
+              <Label htmlFor="co-dni" className="flex items-center gap-1.5">
+                DNI
+                <span className="text-[10px] font-normal text-muted-foreground">opcional</span>
+              </Label>
+              <Input
+                id="co-dni"
+                inputMode="numeric"
+                value={dni}
+                onChange={(e) => setDni(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                placeholder="30123456"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="co-celular" className="flex items-center gap-1.5">
+                Celular
+                <span className="text-[10px] font-normal text-muted-foreground">opcional</span>
+              </Label>
+              <Input
+                id="co-celular"
+                type="tel"
+                value={celular}
+                onChange={(e) => setCelular(e.target.value)}
+                placeholder="+54 11 5555-5555"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
               <Label className="text-xs">Relación</Label>
               <Select value={relacion} onValueChange={setRelacion}>
                 <SelectTrigger>
@@ -181,16 +217,14 @@ export function AgregarCoInquilinoDialog({
                 <SelectContent>
                   {PERMISOS.map((p) => (
                     <SelectItem key={p.value} value={p.value}>
-                      <div className="space-y-0.5">
-                        <p className="text-sm font-medium">{p.label}</p>
-                        <p className="text-[10px] text-muted-foreground">
-                          {p.descripcion}
-                        </p>
-                      </div>
+                      {p.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              <p className="text-[11px] text-muted-foreground">
+                {PERMISOS.find((p) => p.value === permiso)?.descripcion}
+              </p>
             </div>
           </div>
 

@@ -21,6 +21,8 @@ export interface CoInquilinoExtra {
   nombre: string;
   apellido: string;
   email: string;
+  dni?: string;
+  celular?: string;
   relacion: string; // "Conviviente", "Cónyuge", etc.
   permiso: PermisoCoInquilino;
   estado: EstadoCoInquilino;
@@ -48,6 +50,8 @@ export interface AgregarCoInquilinoInput {
   nombre: string;
   apellido: string;
   email: string;
+  dni?: string;
+  celular?: string;
   relacion: string;
   permiso: PermisoCoInquilino;
 }
@@ -61,6 +65,8 @@ export function agregarCoInquilino(input: AgregarCoInquilinoInput): CoInquilinoE
     nombre: input.nombre.trim(),
     apellido: input.apellido.trim(),
     email: input.email.trim().toLowerCase(),
+    dni: input.dni?.trim() || undefined,
+    celular: input.celular?.trim() || undefined,
     relacion: input.relacion,
     permiso: input.permiso,
     estado: 'PENDIENTE_ACTIVACION',

@@ -16,7 +16,7 @@ import {
 export interface ToastInput {
   title?: React.ReactNode;
   description?: React.ReactNode;
-  variant?: 'default' | 'destructive';
+  variant?: 'default' | 'destructive' | 'success';
   duration?: number;
 }
 
@@ -49,7 +49,7 @@ const store = (() => {
       toasts = [t, ...toasts].slice(0, 4); // máximo 4 simultáneos
       emit();
 
-      const duration = input.duration ?? 4500;
+      const duration = input.duration ?? 5500;
       setTimeout(() => store.dismiss(id), duration);
 
       return id;
