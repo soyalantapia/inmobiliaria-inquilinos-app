@@ -20,7 +20,8 @@ import { Card } from '@llave/ui/card';
 import { InstallPrompt } from '@/components/install-prompt';
 import { NavBar } from '@/components/nav-bar';
 import { UserMenu } from '@/components/user-menu';
-import { contratoMock, inquilinoActual, liquidacionesMock } from '@/lib/mock-data';
+import { contratoMock, liquidacionesMock } from '@/lib/mock-data';
+import { useCurrentUser } from '@/lib/use-current-user';
 import { movimientosMock, type Movimiento } from '@/lib/movimientos-mock';
 import { TASA_PUNITORIA_DIARIA_DEFAULT, calcularPunitorios } from '@/lib/punitorios';
 import { diasHastaVencimiento, formatFecha, formatMonto } from '@/lib/format';
@@ -38,7 +39,8 @@ export default function PagosPage() {
   const alertaAjuste = diasAjuste >= 0 && diasAjuste <= 30;
   const ajusteCritico = diasAjuste >= 0 && diasAjuste <= 7;
 
-  const nombreCorto = inquilinoActual.nombre.split(' ')[0];
+  const user = useCurrentUser();
+  const nombreCorto = user.firstName;
   const movimientos = movimientosMock.slice(0, 3);
 
   return (
