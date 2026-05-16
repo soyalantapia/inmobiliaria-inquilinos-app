@@ -24,6 +24,10 @@ import { Avatar, AvatarFallback } from '@llave/ui/avatar';
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { BotonProximamente } from '@/components/boton-proximamente';
+import {
+  CargarInquilinoTrigger,
+  ListaInvitadosPropiedad,
+} from '@/components/cargar-inquilino-trigger';
 import { Card, CardContent } from '@llave/ui/card';
 import { Separator } from '@llave/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@llave/ui/tabs';
@@ -350,18 +354,29 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
               </Card>
             ) : (
               <Card>
-                <CardContent className="space-y-3 p-10 text-center">
+                <CardContent className="space-y-4 p-10 text-center">
                   <UserRound className="mx-auto h-10 w-10 text-muted-foreground" />
-                  <p className="font-medium">Propiedad sin inquilino actual</p>
-                  <Button size="sm" asChild>
-                    <Link href="/contratos/nuevo">
-                      <Plus className="h-4 w-4" />
-                      Cargar contrato
-                    </Link>
-                  </Button>
+                  <p className="font-medium">Esta propiedad todavía no tiene inquilino</p>
+                  <p className="text-sm text-muted-foreground">
+                    Cargá los datos del inquilino, sus co-inquilinos y la documentación inicial.
+                    Le mandamos un mail con el link para que active su cuenta en la app.
+                  </p>
+                  <div className="flex justify-center pt-2">
+                    <CargarInquilinoTrigger
+                      propiedadId={propiedad.id}
+                      direccion={propiedad.direccion}
+                      label="Cargar inquilino"
+                    />
+                  </div>
                 </CardContent>
               </Card>
             )}
+
+            {/* Listado de inquilinos ya invitados, pendientes de activación */}
+            <ListaInvitadosPropiedad
+              propiedadId={propiedad.id}
+              direccion={propiedad.direccion}
+            />
           </TabsContent>
 
           {/* PROPIETARIOS */}

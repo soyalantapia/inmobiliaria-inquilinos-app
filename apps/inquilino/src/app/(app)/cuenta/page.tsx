@@ -37,6 +37,7 @@ import { Label } from '@llave/ui/label';
 import { toast } from '@llave/ui/use-toast';
 import { NavBar } from '@/components/nav-bar';
 import { relanzarOnboarding } from '@/components/onboarding';
+import { cerrarSesion } from '@/lib/auth-otp';
 import { contratoMock } from '@/lib/mock-data';
 import { useCurrentUser } from '@/lib/use-current-user';
 
@@ -247,10 +248,13 @@ export default function CuentaPage() {
         open={confirmandoLogout}
         onOpenChange={setConfirmandoLogout}
         title="¿Cerrar sesión?"
-        description="Vas a tener que ingresar de nuevo con tu número."
+        description="Vas a tener que ingresar de nuevo con tu email y un código de 6 dígitos."
         confirmLabel="Cerrar sesión"
         variant="destructive"
-        onConfirm={() => router.push('/login')}
+        onConfirm={() => {
+          cerrarSesion();
+          router.push('/login');
+        }}
       />
     </>
   );

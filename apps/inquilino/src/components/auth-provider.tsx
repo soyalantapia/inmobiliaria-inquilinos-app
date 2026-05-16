@@ -1,36 +1,29 @@
 'use client';
 
-import { ClerkProvider } from '@clerk/nextjs';
-import { isClerkEnabled } from '@/lib/auth';
+import { useEffect } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+import { leerSesion } from '@/lib/auth-otp';
 
-// El stack manda Clerk (CLAUDE.md §2). Si todavía no se cargaron las keys
-// de Clerk, evitamos envolver el árbol con ClerkProvider para que el dev
-// local funcione sin variables de entorno.
+const RUTAS_PUBLICAS = ['/login', '/garantes'];
+
+/**
+ * Protege las rutas privadas: si no hay sesión OTP activa y el usuario está
+ * intentando entrar a una ruta de la app, redirige a /login.
+ *
+ * Las rutas públicas (login, garante con token) son libres.
+ */
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  if (!isClerkEnabled()) {
-    return <>{children}</>;
-  }
+  const router = useRouter();
+  const pathname = usePathname();
 
-  return (
-    <ClerkProvider
-      appearance={{
-        variables: {
-          colorPrimary: 'hsl(262 78% 56%)',
-          colorBackground: 'hsl(270 20% 98%)',
-          fontFamily: 'var(--font-sans)',
-          borderRadius: '0.75rem',
-        },
-        elements: {
-          card: 'shadow-none border-none',
-          formButtonPrimary: 'bg-primary hover:bg-primary/90',
-        },
-      }}
-      signInUrl="/login"
-      signUpUrl="/login"
-      afterSignInUrl="/"
-      afterSignUpUrl="/"
-    >
-      {children}
-    </ClerkProvider>
-  );
+  useEffect(() => {
+    const esPublica = RUTAS_PUBLICAS.some((r) => pathname?.startsWith(r));
+    if (esPublica) return;
+    const sesion = leerSesion();
+    if (!sesion) {
+      router.replace('/login');
+    }
+  }, [pathname, router]);
+
+  return <>{children}</>;
 }
