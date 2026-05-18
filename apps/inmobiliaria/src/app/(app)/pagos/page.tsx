@@ -1,8 +1,15 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { AlertTriangle, Bell, CheckCircle2, Clock, Download } from 'lucide-react';
+import {
+  AlertTriangle,
+  Bell,
+  CheckCircle2,
+  Clock,
+  Download,
+  Inbox,
+} from 'lucide-react';
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card, CardContent } from '@llave/ui/card';
@@ -12,13 +19,18 @@ import { toast } from '@llave/ui/use-toast';
 import { CargarPagoManualButton } from '@/components/cargar-pago-manual';
 import { PagosPorValidar } from '@/components/pagos-por-validar';
 import { Topbar } from '@/components/topbar';
-import { contactosCobranzaMock, contratosMock } from '@/lib/mock-data';
+import {
+  contactosCobranzaMock,
+  contratosMock,
+  pagosInformadosMock,
+} from '@/lib/mock-data';
+import { estadoDePago } from '@/lib/conciliacion-storage';
 import { formatFecha, formatMonto } from '@/lib/format';
 import { abrirReporteImprimible } from '@/lib/reportes-pdf';
 import { diasHastaVencimiento } from '@/lib/format';
 import type { EstadoLiquidacion } from '@/lib/types';
 
-type Filtro = 'TODOS' | 'VENCIDO' | 'PENDIENTE' | 'PAGADO';
+type Filtro = 'TODOS' | 'A_RESOLVER' | 'VENCIDO' | 'PENDIENTE' | 'PAGADO';
 
 const estadoVariant: Record<EstadoLiquidacion, React.ComponentProps<typeof Badge>['variant']> = {
   PENDIENTE: 'warning',
@@ -34,8 +46,19 @@ const estadoLabel: Record<EstadoLiquidacion, string> = {
   VENCIDO: 'Vencido',
 };
 
-// Configuración de los 3 botones de filtro grandes.
+// Configuración de los botones de filtro grandes. "A resolver" va primero —
+// son comprobantes que un inquilino informó y todavía no decidiste si los
+// confirmás o los rechazás. Si hay alguno, esto es lo más urgente de tu día.
 const FILTROS = [
+  {
+    key: 'A_RESOLVER' as const,
+    label: 'A resolver',
+    icon: Inbox,
+    colorActive: 'bg-violet-500 text-white border-violet-500 shadow-lg shadow-violet-500/20',
+    colorIdle:
+      'border-violet-200 bg-violet-50/60 text-violet-700 hover:bg-violet-100 hover:border-violet-300 dark:border-violet-900/40 dark:bg-violet-900/10 dark:text-violet-300',
+    badgeBg: 'bg-violet-500/20',
+  },
   {
     key: 'VENCIDO' as const,
     label: 'Vencidos',
@@ -66,15 +89,44 @@ const FILTROS = [
 ] as const;
 
 export default function PagosPage() {
+  // Default al filtro "A resolver" si hay comprobantes pendientes — así lo
+  // primero que ve el usuario es lo que tiene que decidir.
   const [filtro, setFiltro] = useState<Filtro>('TODOS');
+  const [aResolverCount, setAResolverCount] = useState(0);
+
+  // Recalculamos el contador de pagos "a resolver" en cliente porque
+  // estadoDePago lee de localStorage (acciones previas del admin).
+  useEffect(() => {
+    const recount = () => {
+      const pendientes = pagosInformadosMock.filter(
+        (p) => estadoDePago(p.id) === 'INFORMADO',
+      ).length;
+      setAResolverCount(pendientes);
+      // Default a "A resolver" si hay algo, sólo la primera vez (no
+      // sobreescribimos si el usuario ya cambió de filtro).
+      setFiltro((prev) => {
+        if (prev !== 'TODOS') return prev;
+        return pendientes > 0 ? 'A_RESOLVER' : 'TODOS';
+      });
+    };
+    recount();
+    // Re-chequear cuando cambia el storage en otra pestaña / acción
+    const onStorage = (e: StorageEvent) => {
+      if (e.key?.startsWith('llave-inmo:conciliacion')) recount();
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const counters = useMemo(
     () => ({
+      A_RESOLVER: aResolverCount,
       VENCIDO: contratosMock.filter((c) => c.estadoPagoActual === 'VENCIDO').length,
       PENDIENTE: contratosMock.filter((c) => c.estadoPagoActual === 'PENDIENTE').length,
       PAGADO: contratosMock.filter((c) => c.estadoPagoActual === 'PAGADO').length,
     }),
-    [],
+    [aResolverCount],
   );
 
   const totalCobrado = useMemo(
@@ -93,11 +145,11 @@ export default function PagosPage() {
   );
 
   const filtradas = useMemo(() => {
-    if (filtro === 'TODOS') return contratosMock;
+    if (filtro === 'TODOS' || filtro === 'A_RESOLVER') return contratosMock;
     return contratosMock.filter((c) => c.estadoPagoActual === filtro);
   }, [filtro]);
 
-  const togglearFiltro = (f: 'VENCIDO' | 'PENDIENTE' | 'PAGADO') => {
+  const togglearFiltro = (f: 'A_RESOLVER' | 'VENCIDO' | 'PENDIENTE' | 'PAGADO') => {
     setFiltro((prev) => (prev === f ? 'TODOS' : f));
   };
 
@@ -178,9 +230,6 @@ export default function PagosPage() {
     <>
       <Topbar titulo="Pagos del mes" />
       <main className="flex-1 space-y-6 p-4 md:p-6">
-        {/* Pagos informados pendientes de validación */}
-        <PagosPorValidar />
-
         {/* 2 stats GRANDES: montos cobrado y pendiente */}
         <div className="grid gap-4 md:grid-cols-2">
           <Card className="border-emerald-200 bg-emerald-50/60 dark:border-emerald-900/40 dark:bg-emerald-900/10">
@@ -241,8 +290,8 @@ export default function PagosPage() {
           </div>
         </div>
 
-        {/* 3 botones grandes de filtro, ocupan de punta a punta */}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        {/* 4 botones grandes de filtro, ocupan de punta a punta */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {FILTROS.map((f) => {
             const Icon = f.icon;
             const activo = filtro === f.key;
@@ -286,7 +335,7 @@ export default function PagosPage() {
           })}
         </div>
 
-        {filtro !== 'TODOS' && (
+        {filtro !== 'TODOS' && filtro !== 'A_RESOLVER' && (
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span>
               Filtrado: <strong className="text-foreground">{estadoLabel[filtro]}</strong> ·{' '}
@@ -301,10 +350,14 @@ export default function PagosPage() {
           </div>
         )}
 
-        {/* Mobile: lista de cards. Desktop (md+): tabla.
+        {/* Vista "A resolver": comprobantes informados pendientes de tu OK.
+            Se resuelve en este mismo lugar (sin cards sueltas arriba). */}
+        {filtro === 'A_RESOLVER' ? (
+          <PagosPorValidar onChange={(pendientes) => setAResolverCount(pendientes)} />
+        ) : /* Mobile: lista de cards. Desktop (md+): tabla.
             En mobile la tabla se cortaba horizontalmente. Las cards muestran
-            la misma info verticalmente y son tap-friendly. */}
-        {filtradas.length === 0 ? (
+            la misma info verticalmente y son tap-friendly. */
+        filtradas.length === 0 ? (
           <Card>
             <div className="py-10 text-center text-sm text-muted-foreground">
               No hay contratos {estadoLabel[filtro as EstadoLiquidacion].toLowerCase()}s en

@@ -52,7 +52,13 @@ const metodoLabel: Record<PagoInformado['metodo'], string> = {
   CHEQUE: 'Cheque',
 };
 
-export function PagosPorValidar() {
+interface PagosPorValidarProps {
+  /** Se dispara cuando el conteo de pendientes cambia (post-acción del admin).
+   *  Permite al padre actualizar contadores externos sin re-leer storage. */
+  onChange?: (pendientesRestantes: number) => void;
+}
+
+export function PagosPorValidar({ onChange }: PagosPorValidarProps = {}) {
   const [acciones, setAcciones] = useState<Record<string, 'CONCILIADO' | 'RECHAZADO'>>({});
   const [hidratado, setHidratado] = useState(false);
   const [verComprobante, setVerComprobante] = useState<PagoInformado | null>(null);
@@ -62,6 +68,7 @@ export function PagosPorValidar() {
   useEffect(() => {
     setHidratado(true);
     refrescar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const refrescar = () => {
@@ -71,6 +78,8 @@ export function PagosPorValidar() {
       if (e !== 'INFORMADO') map[p.id] = e;
     });
     setAcciones(map);
+    const pendientesRestantes = pagosInformadosMock.length - Object.keys(map).length;
+    onChange?.(pendientesRestantes);
   };
 
   const pendientes = useMemo(
