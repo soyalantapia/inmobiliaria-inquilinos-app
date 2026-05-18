@@ -85,7 +85,7 @@ export default function CuentaPage() {
   // Datos efectivos: override > user del hook > defaults
   const fullName = override.fullName ?? user.fullName;
   const phone = override.phone ?? user.phone ?? '';
-  const email = override.email ?? 'mariela.sosa@gmail.com';
+  const email = override.email ?? user.email ?? '';
 
   return (
     <>

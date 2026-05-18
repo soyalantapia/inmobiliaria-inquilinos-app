@@ -53,7 +53,7 @@ export default function PagosPage() {
             {nombreCorto} <span aria-hidden="true">👋</span>
           </p>
         </div>
-        <UserMenu />
+        <UserMenu compact />
       </header>
 
       <main className="flex-1 space-y-5 px-5 pb-6 md:px-8 md:pt-8">
