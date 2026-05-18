@@ -6,6 +6,8 @@ import {
   Flame,
   KeyRound,
   Mail,
+  MessageCircle,
+  MoreVertical,
   Paintbrush,
   Pencil,
   Phone,
@@ -15,6 +17,7 @@ import {
   Star,
   Trash2,
   Truck,
+  Wrench,
   Zap,
   type LucideIcon,
 } from 'lucide-react';
@@ -30,10 +33,21 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@llave/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@llave/ui/dropdown-menu';
 import { Input } from '@llave/ui/input';
 import { Label } from '@llave/ui/label';
 import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
+import {
+  AsignarProfesionalDialog,
+  mensajeWhatsappGenerico,
+} from '@/components/asignar-profesional-dialog';
 import {
   type CategoriaProfesional,
   type ProfesionalAdmin,
@@ -46,6 +60,7 @@ import {
   listarProfesionalesAdmin,
   toggleActivo,
 } from '@/lib/profesionales-storage';
+import { listarReclamos } from '@/lib/reclamos-store';
 import { formatFecha } from '@/lib/format';
 
 const iconoCategoria: Record<CategoriaProfesional, LucideIcon> = {
@@ -68,11 +83,30 @@ export default function ProfesionalesAdminPage() {
   const [abrirForm, setAbrirForm] = useState(false);
   const [editando, setEditando] = useState<ProfesionalAdmin | null>(null);
   const [eliminando, setEliminando] = useState<ProfesionalAdmin | null>(null);
+  const [asignando, setAsignando] = useState<ProfesionalAdmin | null>(null);
+  // Conteo de reclamos activos asignados a cada profesional (id → cant).
+  const [reclamosActivosPorProf, setReclamosActivosPorProf] = useState<
+    Record<string, number>
+  >({});
 
   useEffect(() => {
     setLista(listarProfesionalesAdmin());
+    refrescarReclamos();
     setHidratado(true);
   }, []);
+
+  const refrescarReclamos = () => {
+    const map: Record<string, number> = {};
+    listarReclamos().forEach((r) => {
+      if (
+        r.profesionalAsignadoId &&
+        (r.estado === 'ABIERTO' || r.estado === 'EN_CURSO')
+      ) {
+        map[r.profesionalAsignadoId] = (map[r.profesionalAsignadoId] ?? 0) + 1;
+      }
+    });
+    setReclamosActivosPorProf(map);
+  };
 
   const filtrados = useMemo(() => {
     let l = lista;
@@ -180,8 +214,18 @@ export default function ProfesionalesAdminPage() {
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {filtrados.map((p) => {
             const Icon = iconoCategoria[p.categoria];
+            const tel = p.telefono.replace(/[^\d]/g, '');
+            const waUrl = `https://wa.me/${tel}?text=${encodeURIComponent(mensajeWhatsappGenerico(p))}`;
+            const telUrl = `tel:${p.telefono.replace(/\s/g, '')}`;
+            const reclamosActivos = reclamosActivosPorProf[p.id] ?? 0;
             return (
-              <Card key={p.id} className={cn('space-y-3 p-4', !p.activo && 'opacity-60')}>
+              <Card
+                key={p.id}
+                className={cn(
+                  'flex flex-col gap-3 p-4',
+                  !p.activo && 'opacity-60',
+                )}
+              >
                 <div className="flex items-start gap-3">
                   <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
                     <Icon className="h-5 w-5" />
@@ -190,22 +234,42 @@ export default function ProfesionalesAdminPage() {
                     <div className="flex items-center gap-2">
                       <p className="truncate font-medium leading-tight">{p.nombre}</p>
                       {p.verificado && (
-                        <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                        <ShieldCheck
+                          className="h-3.5 w-3.5 shrink-0 text-emerald-600"
+                          aria-label="Verificado por la inmobiliaria"
+                        />
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground">
                       {profesionalCategoriaLabelAdmin[p.categoria]} · {p.zona}
                     </p>
                   </div>
-                  <Badge variant={p.activo ? 'success' : 'outline'} className="shrink-0 text-[10px]">
-                    {p.activo ? 'Activo' : 'Oculto'}
-                  </Badge>
+                  <div className="flex flex-col items-end gap-1">
+                    {reclamosActivos > 0 ? (
+                      <Badge
+                        variant="warning"
+                        className="shrink-0 gap-1 text-[10px]"
+                      >
+                        <Wrench className="h-3 w-3" />
+                        {reclamosActivos} activo{reclamosActivos === 1 ? '' : 's'}
+                      </Badge>
+                    ) : (
+                      <Badge
+                        variant={p.activo ? 'success' : 'outline'}
+                        className="shrink-0 text-[10px]"
+                      >
+                        {p.activo ? 'Activo' : 'Oculto'}
+                      </Badge>
+                    )}
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-3 text-xs">
                   <div className="flex items-center gap-1">
                     <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
-                    <span className="font-medium tabular-nums">{p.rating.toFixed(1)}</span>
+                    <span className="font-medium tabular-nums">
+                      {p.rating.toFixed(1)}
+                    </span>
                   </div>
                   <span className="text-muted-foreground">·</span>
                   <span className="text-muted-foreground">
@@ -235,27 +299,71 @@ export default function ProfesionalesAdminPage() {
                 </div>
 
                 {p.notas && (
-                  <p className="rounded-md bg-muted/40 p-2 text-xs italic">{p.notas}</p>
+                  <p className="rounded-md bg-muted/40 p-2 text-xs italic">
+                    {p.notas}
+                  </p>
                 )}
 
-                <div className="flex flex-wrap justify-end gap-1 border-t pt-3">
-                  <Button size="sm" variant="ghost" onClick={() => handleToggle(p.id)}>
-                    {p.activo ? 'Ocultar' : 'Activar'}
+                {/* Acciones primarias: lo que el inmo realmente hace todos los días. */}
+                <div className="mt-auto grid grid-cols-[1fr_1fr_auto_auto] gap-1.5 border-t pt-3">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5 border-emerald-200 bg-emerald-50/60 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-900/40 dark:bg-emerald-900/10 dark:text-emerald-300"
+                    asChild
+                  >
+                    <a href={waUrl} target="_blank" rel="noreferrer">
+                      <MessageCircle className="h-3.5 w-3.5" />
+                      WhatsApp
+                    </a>
                   </Button>
                   <Button
                     size="sm"
-                    variant="ghost"
-                    onClick={() => {
-                      setEditando(p);
-                      setAbrirForm(true);
-                    }}
+                    onClick={() => setAsignando(p)}
+                    disabled={!p.activo}
+                    className="gap-1.5"
                   >
-                    <Pencil className="h-3.5 w-3.5" />
-                    Editar
+                    <Wrench className="h-3.5 w-3.5" />
+                    Asignar
                   </Button>
-                  <Button size="sm" variant="ghost" onClick={() => setEliminando(p)}>
-                    <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                  <Button size="sm" variant="ghost" asChild aria-label="Llamar">
+                    <a href={telUrl}>
+                      <Phone className="h-3.5 w-3.5" />
+                    </a>
                   </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        aria-label="Más acciones"
+                      >
+                        <MoreVertical className="h-3.5 w-3.5" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-44">
+                      <DropdownMenuItem
+                        onClick={() => {
+                          setEditando(p);
+                          setAbrirForm(true);
+                        }}
+                      >
+                        <Pencil className="mr-2 h-3.5 w-3.5" />
+                        Editar
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleToggle(p.id)}>
+                        {p.activo ? 'Ocultar de inquilinos' : 'Mostrar a inquilinos'}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() => setEliminando(p)}
+                        className="text-destructive focus:text-destructive"
+                      >
+                        <Trash2 className="mr-2 h-3.5 w-3.5" />
+                        Eliminar
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               </Card>
             );
@@ -281,6 +389,13 @@ export default function ProfesionalesAdminPage() {
         confirmLabel="Eliminar"
         variant="destructive"
         onConfirm={handleEliminar}
+      />
+
+      <AsignarProfesionalDialog
+        profesional={asignando}
+        open={!!asignando}
+        onOpenChange={(v) => !v && setAsignando(null)}
+        onAsignado={() => refrescarReclamos()}
       />
     </div>
   );
