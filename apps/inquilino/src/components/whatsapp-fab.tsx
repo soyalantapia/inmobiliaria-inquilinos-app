@@ -2,6 +2,7 @@
 
 import { MessageCircle } from 'lucide-react';
 import { contratoMock } from '@/lib/mock-data';
+import { useCurrentUser } from '@/lib/use-current-user';
 
 // FAB para contactar a la inmobiliaria por WhatsApp.
 // Aparece siempre en pages con shell. En mobile lo levantamos sobre el
@@ -11,10 +12,11 @@ import { contratoMock } from '@/lib/mock-data';
 // viene de contrato.inmobiliaria.telefono.
 
 const TELEFONO_INMO = '541145321100'; // sin + ni espacios para wa.me
-const MENSAJE_DEFAULT = `Hola! Soy ${'Mariela Sosa'}, inquilina en ${contratoMock.direccion}. Tengo una consulta.`;
 
 export function WhatsappFab() {
-  const url = `https://wa.me/${TELEFONO_INMO}?text=${encodeURIComponent(MENSAJE_DEFAULT)}`;
+  const user = useCurrentUser();
+  const mensaje = `Hola! Soy ${user.fullName}, inquilino/a en ${contratoMock.direccion}. Tengo una consulta.`;
+  const url = `https://wa.me/${TELEFONO_INMO}?text=${encodeURIComponent(mensaje)}`;
   return (
     <a
       href={url}
