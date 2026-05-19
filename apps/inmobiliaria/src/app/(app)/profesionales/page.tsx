@@ -48,6 +48,7 @@ import {
   AsignarProfesionalDialog,
   mensajeWhatsappGenerico,
 } from '@/components/asignar-profesional-dialog';
+import { HistorialProfesionalDialog } from '@/components/historial-profesional-dialog';
 import {
   type CategoriaProfesional,
   type ProfesionalAdmin,
@@ -89,6 +90,7 @@ export default function ProfesionalesAdminPage() {
   const [editando, setEditando] = useState<ProfesionalAdmin | null>(null);
   const [eliminando, setEliminando] = useState<ProfesionalAdmin | null>(null);
   const [asignando, setAsignando] = useState<ProfesionalAdmin | null>(null);
+  const [verHistorial, setVerHistorial] = useState<ProfesionalAdmin | null>(null);
   // Conteo de reclamos activos asignados a cada profesional (id → cant).
   const [reclamosActivosPorProf, setReclamosActivosPorProf] = useState<
     Record<string, number>
@@ -251,7 +253,11 @@ export default function ProfesionalesAdminPage() {
                   <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
                     <Icon className="h-5 w-5" />
                   </div>
-                  <div className="flex-1 min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => setVerHistorial(p)}
+                    className="flex-1 min-w-0 text-left transition-colors hover:text-primary"
+                  >
                     <div className="flex items-center gap-2">
                       <p className="truncate font-medium leading-tight">{p.nombre}</p>
                       {p.verificado && (
@@ -264,7 +270,7 @@ export default function ProfesionalesAdminPage() {
                     <p className="text-xs text-muted-foreground">
                       {profesionalCategoriaLabelAdmin[p.categoria]} · {p.zona}
                     </p>
-                  </div>
+                  </button>
                   <div className="flex flex-col items-end gap-1">
                     {reclamosActivos > 0 ? (
                       <Badge
@@ -403,6 +409,10 @@ export default function ProfesionalesAdminPage() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-44">
+                      <DropdownMenuItem onClick={() => setVerHistorial(p)}>
+                        <Wrench className="mr-2 h-3.5 w-3.5" />
+                        Ver historial
+                      </DropdownMenuItem>
                       <DropdownMenuItem
                         onClick={() => {
                           setEditando(p);
@@ -457,6 +467,12 @@ export default function ProfesionalesAdminPage() {
         open={!!asignando}
         onOpenChange={(v) => !v && setAsignando(null)}
         onAsignado={() => refrescarReclamos()}
+      />
+
+      <HistorialProfesionalDialog
+        profesional={verHistorial}
+        open={!!verHistorial}
+        onOpenChange={(v) => !v && setVerHistorial(null)}
       />
     </div>
   );
