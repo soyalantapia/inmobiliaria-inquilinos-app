@@ -1,21 +1,60 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { AlertCircle, FileText, Mail, MessageCircle, Phone, Plus, Search, Users } from 'lucide-react';
+import {
+  AlertCircle,
+  CheckCircle2,
+  FileText,
+  Mail,
+  MessageCircle,
+  Phone,
+  Plus,
+  Search,
+  Users,
+  Wallet,
+} from 'lucide-react';
 import { Avatar, AvatarFallback } from '@llave/ui/avatar';
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card, CardContent } from '@llave/ui/card';
 import { Input } from '@llave/ui/input';
+import {
+  RendirPropietarioDialog,
+  mensajePedirCbu,
+  mensajeRendicion,
+} from '@/components/rendir-propietario-dialog';
 import { SumarPropietarioDialog } from '@/components/sumar-propietario-dialog';
 import { Topbar } from '@/components/topbar';
 import { propietariosMock } from '@/lib/mock-data';
+import type { Propietario } from '@/lib/types';
+import {
+  obtenerRendicion,
+  periodoActual,
+  type Rendicion,
+} from '@/lib/rendiciones-storage';
 import { formatMonto } from '@/lib/format';
 
 export default function PropietariosPage() {
   const [q, setQ] = useState('');
   const [abrirSumar, setAbrirSumar] = useState(false);
+  const [rendiendoA, setRendiendoA] = useState<Propietario | null>(null);
+  const [rendicionesMap, setRendicionesMap] = useState<Record<string, Rendicion | null>>({});
+
+  const periodo = periodoActual();
+
+  const refrescarRendiciones = () => {
+    const map: Record<string, Rendicion | null> = {};
+    propietariosMock.forEach((p) => {
+      map[p.id] = obtenerRendicion(p.id, periodo);
+    });
+    setRendicionesMap(map);
+  };
+
+  useEffect(() => {
+    refrescarRendiciones();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const filtrados = useMemo(() => {
     const term = q.trim().toLowerCase();
@@ -31,12 +70,15 @@ export default function PropietariosPage() {
   const totalPropiedades = propietariosMock.reduce((acc, p) => acc + p.propiedadesIds.length, 0);
   const totalRecibir = propietariosMock.reduce((acc, p) => acc + p.totalRecibirMes, 0);
   const sinCbu = propietariosMock.filter((p) => !p.cbuAlias).length;
+  const porRendir = propietariosMock.filter(
+    (p) => !rendicionesMap[p.id] && p.totalRecibirMes > 0,
+  ).length;
 
   return (
     <>
       <Topbar titulo="Propietarios" />
       <main className="flex-1 space-y-6 p-4 md:p-6">
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Card>
             <CardContent className="p-5">
               <p className="text-xs uppercase tracking-wide text-muted-foreground">Propietarios</p>
@@ -51,7 +93,38 @@ export default function PropietariosPage() {
               <p className="text-xs text-muted-foreground">Después de comisión</p>
             </CardContent>
           </Card>
-          <Card className={sinCbu > 0 ? 'border-amber-200 bg-amber-50/50 dark:border-amber-900/40 dark:bg-amber-900/10' : ''}>
+          <Card
+            className={
+              porRendir > 0
+                ? 'border-primary/30 bg-primary/5'
+                : 'border-emerald-200 bg-emerald-50/40 dark:border-emerald-900/40 dark:bg-emerald-900/10'
+            }
+          >
+            <CardContent className="p-5">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                Sin rendir todavía
+              </p>
+              <p
+                className={`mt-1 text-2xl font-semibold ${
+                  porRendir > 0 ? 'text-primary' : 'text-emerald-600'
+                }`}
+              >
+                {porRendir}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {porRendir > 0
+                  ? `Tenés ${porRendir} propietario${porRendir === 1 ? '' : 's'} esperando`
+                  : 'Todos rendidos este mes 🎉'}
+              </p>
+            </CardContent>
+          </Card>
+          <Card
+            className={
+              sinCbu > 0
+                ? 'border-amber-200 bg-amber-50/50 dark:border-amber-900/40 dark:bg-amber-900/10'
+                : ''
+            }
+          >
             <CardContent className="p-5">
               <p className="text-xs uppercase tracking-wide text-muted-foreground">Sin CBU</p>
               <p className={`mt-1 text-2xl font-semibold ${sinCbu > 0 ? 'text-amber-600' : ''}`}>
@@ -94,6 +167,17 @@ export default function PropietariosPage() {
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {filtrados.map((p, i) => {
               const tel = p.telefono.replace(/[^\d]/g, '');
+              const rendido = rendicionesMap[p.id];
+              const necesitaRendir = !rendido && p.totalRecibirMes > 0;
+              // Mensaje de WhatsApp contextual: rendición si ya se rindió, pedido
+              // de CBU si no tiene, sino aviso de cobranza pronta.
+              const mensajeWA = rendido
+                ? mensajeRendicion(p, rendido)
+                : !p.cbuAlias
+                  ? mensajePedirCbu(p)
+                  : `Hola ${p.nombre.split(' ')[0]}! Soy de Inmobiliaria del Sol. Te paso ` +
+                    `un update de la cobranza del mes en unos días.`;
+              const waUrl = `https://wa.me/${tel}?text=${encodeURIComponent(mensajeWA)}`;
               return (
                 <Card
                   key={p.id}
@@ -101,7 +185,10 @@ export default function PropietariosPage() {
                   style={{ animationDelay: `${i * 40}ms`, animationFillMode: 'backwards' }}
                 >
                   <CardContent className="space-y-4 p-5">
-                    <Link href={`/propietarios/${p.id}`} className="block space-y-3 -m-1 rounded-md p-1 transition-colors hover:bg-muted/20">
+                    <Link
+                      href={`/propietarios/${p.id}`}
+                      className="block space-y-3 -m-1 rounded-md p-1 transition-colors hover:bg-muted/20"
+                    >
                       <div className="flex items-start gap-3">
                         <Avatar>
                           <AvatarFallback className="bg-primary/10 text-primary">
@@ -115,9 +202,29 @@ export default function PropietariosPage() {
                           </p>
                           <p className="truncate text-xs text-muted-foreground">CUIT {p.cuit}</p>
                         </div>
-                        <Badge variant="secondary">
-                          {p.propiedadesIds.length} {p.propiedadesIds.length === 1 ? 'unidad' : 'unidades'}
-                        </Badge>
+                        {/* Badge dinámico: rendido / por rendir / unidades. */}
+                        {rendido ? (
+                          <Badge
+                            variant="success"
+                            className="shrink-0 gap-1 text-[10px]"
+                          >
+                            <CheckCircle2 className="h-3 w-3" />
+                            Rendido
+                          </Badge>
+                        ) : necesitaRendir ? (
+                          <Badge
+                            variant="warning"
+                            className="shrink-0 gap-1 text-[10px]"
+                          >
+                            <Wallet className="h-3 w-3" />
+                            Por rendir
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary" className="shrink-0">
+                            {p.propiedadesIds.length}{' '}
+                            {p.propiedadesIds.length === 1 ? 'unidad' : 'unidades'}
+                          </Badge>
+                        )}
                       </div>
 
                       <div className="space-y-1.5 text-xs text-muted-foreground">
@@ -131,11 +238,24 @@ export default function PropietariosPage() {
                         </div>
                       </div>
 
-                      <div className="rounded-md border bg-muted/50 p-3 text-sm">
-                        <p className="text-xs text-muted-foreground">A rendir este mes</p>
-                        <p className="text-lg font-semibold">{formatMonto(p.totalRecibirMes)}</p>
+                      <div
+                        className={`rounded-md border p-3 text-sm ${
+                          rendido
+                            ? 'border-emerald-200 bg-emerald-50/40 dark:border-emerald-900/40 dark:bg-emerald-900/10'
+                            : necesitaRendir
+                              ? 'border-primary/30 bg-primary/5'
+                              : 'bg-muted/50'
+                        }`}
+                      >
+                        <p className="text-xs text-muted-foreground">
+                          {rendido ? 'Rendido este mes' : 'A rendir este mes'}
+                        </p>
+                        <p className="text-lg font-semibold">
+                          {formatMonto(rendido?.montoNeto ?? p.totalRecibirMes)}
+                        </p>
                         <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                          Comisión {p.comisionPct}% · Bruto {formatMonto(p.totalCobradoMes)}
+                          Comisión {p.comisionPct}% · Bruto{' '}
+                          {formatMonto(rendido?.montoBruto ?? p.totalCobradoMes)}
                         </p>
                       </div>
                     </Link>
@@ -147,18 +267,32 @@ export default function PropietariosPage() {
                       </div>
                     )}
 
-                    <div className="flex flex-wrap items-center gap-2 pt-2">
-                      <Button size="sm" variant="outline" asChild>
-                        <Link href={`/contratos?propietario=${p.id}`}>
-                          <FileText className="h-3.5 w-3.5" />
-                          Contratos
-                        </Link>
-                      </Button>
-                      <Button size="sm" variant="ghost" asChild>
-                        <a href={`https://wa.me/${tel}`} target="_blank" rel="noreferrer">
+                    {/* Acciones primarias: WhatsApp pre-armado + Rendir. */}
+                    <div className="grid grid-cols-[1fr_1fr_auto] gap-1.5 border-t pt-3">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-1.5 border-emerald-200 bg-emerald-50/60 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-900/40 dark:bg-emerald-900/10 dark:text-emerald-300"
+                        asChild
+                      >
+                        <a href={waUrl} target="_blank" rel="noreferrer">
                           <MessageCircle className="h-3.5 w-3.5" />
                           WhatsApp
                         </a>
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => setRendiendoA(p)}
+                        disabled={!necesitaRendir && !rendido}
+                        className="gap-1.5"
+                      >
+                        <Wallet className="h-3.5 w-3.5" />
+                        {rendido ? 'Rendido ✓' : 'Rendir'}
+                      </Button>
+                      <Button size="sm" variant="ghost" asChild aria-label="Contratos">
+                        <Link href={`/contratos?propietario=${p.id}`}>
+                          <FileText className="h-3.5 w-3.5" />
+                        </Link>
                       </Button>
                     </div>
                   </CardContent>
@@ -170,6 +304,13 @@ export default function PropietariosPage() {
       </main>
 
       <SumarPropietarioDialog open={abrirSumar} onOpenChange={setAbrirSumar} />
+
+      <RendirPropietarioDialog
+        propietario={rendiendoA}
+        open={!!rendiendoA}
+        onOpenChange={(v) => !v && setRendiendoA(null)}
+        onRendido={() => refrescarRendiciones()}
+      />
     </>
   );
 }
