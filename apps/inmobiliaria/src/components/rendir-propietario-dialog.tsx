@@ -35,6 +35,7 @@ import {
   periodoActual,
   type Rendicion,
 } from '@/lib/rendiciones-storage';
+import { registrarEvento } from '@/lib/auditoria-storage';
 import type { Propietario } from '@/lib/types';
 import { formatMonto } from '@/lib/format';
 
@@ -118,6 +119,14 @@ export function RendirPropietarioDialog({
       comisionPct: propietario.comisionPct,
       metodo,
       notas: notas.trim() || undefined,
+    });
+    registrarEvento({
+      tipo: 'PROPIETARIO_RENDIDO',
+      autor: 'Roberto Tapia',
+      rolAutor: 'ADMIN',
+      entidadId: rendicion.id,
+      entidadDescripcion: `${propietario.nombre} ${propietario.apellido} · ${periodoLabel(periodo)}`,
+      detalle: `${formatMonto(rendicion.montoNeto)} · ${metodo.toLowerCase()}`,
     });
     toast({
       variant: 'success',

@@ -25,6 +25,7 @@ export type TipoEventoAuditoria =
   | 'EQUIPO_REMOVIDO'
   | 'FACTURA_ARCA_EMITIDA'
   | 'PROPIETARIO_CONFIRMO_RECIBO'
+  | 'PROPIETARIO_RENDIDO'
   | 'MODO_COBRANZA_CAMBIADO';
 
 export interface EventoAuditoria {
@@ -154,5 +155,6 @@ export const tipoEventoLabel: Record<TipoEventoAuditoria, string> = {
   EQUIPO_REMOVIDO: 'Miembro de equipo removido',
   FACTURA_ARCA_EMITIDA: 'Factura ARCA emitida',
   PROPIETARIO_CONFIRMO_RECIBO: 'Propietario confirmó recibo del pago',
+  PROPIETARIO_RENDIDO: 'Rendición a propietario',
   MODO_COBRANZA_CAMBIADO: 'Modo de cobranza cambiado',
 };

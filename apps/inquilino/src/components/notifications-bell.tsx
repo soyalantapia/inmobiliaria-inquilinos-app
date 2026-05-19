@@ -10,6 +10,7 @@ import {
   MessageCircle,
   Star,
   TrendingUp,
+  Wrench,
 } from 'lucide-react';
 import { cn } from '@llave/ui/cn';
 import { contratoMock, liquidacionesMock } from '@/lib/mock-data';
@@ -18,6 +19,7 @@ import { TASA_PUNITORIA_DIARIA_DEFAULT, calcularPunitorios } from '@/lib/punitor
 import { listarReclamos } from '@/lib/reclamos-storage';
 import { obtenerRating } from '@/lib/ratings-storage';
 import { leerPagoInformado } from '@/lib/pago-storage';
+import { datosProfesionalDeInmo } from '@/lib/cross-app-inmo';
 import type { Reclamo } from '@/lib/types';
 
 interface Notif {
@@ -27,7 +29,7 @@ interface Notif {
   href: string;
   cuando: string;
   unread: boolean;
-  icono: 'pago_vencido' | 'pago_pendiente' | 'ajuste' | 'reclamo_inmo' | 'pago_validacion' | 'rating';
+  icono: 'pago_vencido' | 'pago_pendiente' | 'ajuste' | 'reclamo_inmo' | 'pago_validacion' | 'rating' | 'profesional';
   severidad: 'critica' | 'alta' | 'media' | 'baja';
 }
 
@@ -38,6 +40,7 @@ const ICONS = {
   reclamo_inmo: MessageCircle,
   pago_validacion: CheckCircle2,
   rating: Star,
+  profesional: Wrench,
 } as const;
 
 const READ_KEY = 'llave:notif-leidas:v1';
@@ -165,6 +168,25 @@ function construirNotifs(leidas: Set<string>): Notif[] {
         cuando: tiempoCorto(ultimo.fecha),
         unread: !leidas.has(`inmo-${r.id}-${ultimo.fecha}`),
         icono: 'reclamo_inmo',
+        severidad: 'alta',
+      });
+    }
+
+    // 3.b. Profesional asignado al reclamo (cross-app del lado inmo).
+    // Si el reclamo todavía no tiene profesional local pero sí en el storage
+    // del inmo, lo levantamos como notif para que el inquilino lo coordine.
+    const profLocal = r.profesionalAsignadoNombre;
+    const profInmo = profLocal ? null : datosProfesionalDeInmo(r.id);
+    const profNombre = profLocal ?? profInmo?.nombre ?? null;
+    if (profNombre) {
+      out.push({
+        id: `prof-${r.id}-${profNombre}`,
+        titulo: `Te asignaron a ${profNombre}`,
+        detalle: 'Coordiná día y hora para que pase a tu propiedad.',
+        href: `/reclamos/${r.id}`,
+        cuando: 'reciente',
+        unread: !leidas.has(`prof-${r.id}-${profNombre}`),
+        icono: 'profesional',
         severidad: 'alta',
       });
     }

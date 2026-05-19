@@ -19,6 +19,7 @@ import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card, CardContent } from '@llave/ui/card';
 import { Input } from '@llave/ui/input';
+import { HistorialPropietarioDialog } from '@/components/historial-propietario-dialog';
 import {
   RendirPropietarioDialog,
   mensajePedirCbu,
@@ -39,6 +40,7 @@ export default function PropietariosPage() {
   const [q, setQ] = useState('');
   const [abrirSumar, setAbrirSumar] = useState(false);
   const [rendiendoA, setRendiendoA] = useState<Propietario | null>(null);
+  const [verHistorial, setVerHistorial] = useState<Propietario | null>(null);
   const [rendicionesMap, setRendicionesMap] = useState<Record<string, Rendicion | null>>({});
 
   const periodo = periodoActual();
@@ -185,9 +187,10 @@ export default function PropietariosPage() {
                   style={{ animationDelay: `${i * 40}ms`, animationFillMode: 'backwards' }}
                 >
                   <CardContent className="space-y-4 p-5">
-                    <Link
-                      href={`/propietarios/${p.id}`}
-                      className="block space-y-3 -m-1 rounded-md p-1 transition-colors hover:bg-muted/20"
+                    <button
+                      type="button"
+                      onClick={() => setVerHistorial(p)}
+                      className="block w-full text-left space-y-3 -m-1 rounded-md p-1 transition-colors hover:bg-muted/20"
                     >
                       <div className="flex items-start gap-3">
                         <Avatar>
@@ -258,7 +261,7 @@ export default function PropietariosPage() {
                           {formatMonto(rendido?.montoBruto ?? p.totalCobradoMes)}
                         </p>
                       </div>
-                    </Link>
+                    </button>
 
                     {!p.cbuAlias && (
                       <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-900/10 dark:text-amber-200">
@@ -310,6 +313,12 @@ export default function PropietariosPage() {
         open={!!rendiendoA}
         onOpenChange={(v) => !v && setRendiendoA(null)}
         onRendido={() => refrescarRendiciones()}
+      />
+
+      <HistorialPropietarioDialog
+        propietario={verHistorial}
+        open={!!verHistorial}
+        onOpenChange={(v) => !v && setVerHistorial(null)}
       />
     </>
   );
