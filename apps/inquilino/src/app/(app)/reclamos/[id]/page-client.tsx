@@ -8,6 +8,8 @@ import {
   ArrowLeft,
   CheckCircle2,
   Image as ImageIcon,
+  MessageCircle,
+  Phone,
   Send,
   Sparkles,
   UserCheck,
@@ -26,6 +28,7 @@ import {
   agregarMensajeDelInquilino,
   obtenerReclamo,
 } from '@/lib/reclamos-storage';
+import { datosProfesionalDeInmo } from '@/lib/cross-app-inmo';
 import {
   categoriaIcono,
   categoriaLabel,
@@ -45,7 +48,28 @@ export default function DetalleReclamoPage({ params }: { params: { id: string } 
   const scrollEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setReclamo(obtenerReclamo(params.id));
+    const local = obtenerReclamo(params.id);
+    if (!local) {
+      setReclamo(local);
+      return;
+    }
+    // Mergeamos los datos del profesional desde el storage del inmo si
+    // los hay — así cuando el admin asigna profesional desde su panel, el
+    // inquilino lo ve aunque ese reclamo se creó del lado inquilino.
+    const fromInmo = datosProfesionalDeInmo(params.id);
+    if (fromInmo) {
+      setReclamo({
+        ...local,
+        profesionalAsignadoNombre:
+          local.profesionalAsignadoNombre ?? fromInmo.nombre,
+        profesionalAsignadoTelefono:
+          local.profesionalAsignadoTelefono ?? fromInmo.telefono,
+        profesionalAsignadoCategoria:
+          local.profesionalAsignadoCategoria ?? fromInmo.categoria,
+      });
+    } else {
+      setReclamo(local);
+    }
   }, [params.id]);
 
   useEffect(() => {
@@ -164,34 +188,79 @@ export default function DetalleReclamoPage({ params }: { params: { id: string } 
         </Card>
 
         {/* Profesional asignado por la inmobiliaria */}
-        {reclamo.profesionalAsignadoNombre && (
-          <Card className="space-y-3 border-emerald-300 bg-emerald-50/60 p-5 dark:border-emerald-900/40 dark:bg-emerald-950/30">
-            <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300">
-              <UserCheck className="h-4 w-4" />
-              <p className="text-xs font-semibold uppercase tracking-wide">
-                Profesional asignado
-              </p>
-            </div>
-            <div>
-              <p className="font-medium">{reclamo.profesionalAsignadoNombre}</p>
+        {reclamo.profesionalAsignadoNombre && (() => {
+          const tel = (reclamo.profesionalAsignadoTelefono ?? '').replace(
+            /[^\d]/g,
+            '',
+          );
+          const nombrePila =
+            reclamo.profesionalAsignadoNombre.split(' ')[0] ??
+            reclamo.profesionalAsignadoNombre;
+          const mensajeWA = encodeURIComponent(
+            `Hola ${nombrePila}! Soy ${inquilinoActual.nombre.split(' ')[0]}, ` +
+              `inquilino/a en ${reclamo.direccion}. La inmobiliaria te asignó mi ` +
+              `reclamo de ${(reclamo.profesionalAsignadoCategoria ?? '').toLowerCase()}: ` +
+              `${reclamo.descripcion}. ¿Cuándo podés pasar?`,
+          );
+          const waUrl = tel ? `https://wa.me/${tel}?text=${mensajeWA}` : null;
+          const telUrl = reclamo.profesionalAsignadoTelefono
+            ? `tel:${reclamo.profesionalAsignadoTelefono.replace(/\s/g, '')}`
+            : null;
+          return (
+            <Card className="space-y-3 border-emerald-300 bg-emerald-50/60 p-5 dark:border-emerald-900/40 dark:bg-emerald-950/30">
+              <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300">
+                <UserCheck className="h-4 w-4" />
+                <p className="text-xs font-semibold uppercase tracking-wide">
+                  Profesional asignado
+                </p>
+              </div>
+              <div>
+                <p className="font-medium">
+                  {reclamo.profesionalAsignadoNombre}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {reclamo.profesionalAsignadoCategoria}
+                </p>
+              </div>
+              {reclamo.profesionalAsignadoTelefono && (
+                <p className="text-sm">
+                  <span className="text-muted-foreground">Tel: </span>
+                  <span className="font-medium tabular-nums">
+                    {reclamo.profesionalAsignadoTelefono}
+                  </span>
+                </p>
+              )}
               <p className="text-xs text-muted-foreground">
-                {reclamo.profesionalAsignadoCategoria}
+                Coordiná día y hora con él. Si no responde en 48 hs, avisanos
+                por WhatsApp.
               </p>
-            </div>
-            {reclamo.profesionalAsignadoTelefono && (
-              <p className="text-sm">
-                <span className="text-muted-foreground">Tel: </span>
-                <span className="font-medium tabular-nums">
-                  {reclamo.profesionalAsignadoTelefono}
-                </span>
-              </p>
-            )}
-            <p className="text-xs text-muted-foreground">
-              Te va a contactar para coordinar día y hora. Si no se comunica en 48hs,
-              avisanos por WhatsApp.
-            </p>
-          </Card>
-        )}
+              {(waUrl || telUrl) && (
+                <div className="grid grid-cols-2 gap-2 border-t border-emerald-200 pt-3 dark:border-emerald-900/40">
+                  {waUrl && (
+                    <Button
+                      size="sm"
+                      className="gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700"
+                      asChild
+                    >
+                      <a href={waUrl} target="_blank" rel="noreferrer">
+                        <MessageCircle className="h-3.5 w-3.5" />
+                        WhatsApp
+                      </a>
+                    </Button>
+                  )}
+                  {telUrl && (
+                    <Button size="sm" variant="outline" asChild>
+                      <a href={telUrl}>
+                        <Phone className="h-3.5 w-3.5" />
+                        Llamar
+                      </a>
+                    </Button>
+                  )}
+                </div>
+              )}
+            </Card>
+          );
+        })()}
 
         {/* Resolución cuando aplica */}
         {reclamo.estado === 'RESUELTO' && reclamo.resolucion && (
