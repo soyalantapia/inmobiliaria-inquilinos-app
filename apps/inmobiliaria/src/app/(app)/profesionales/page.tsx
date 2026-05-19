@@ -61,6 +61,11 @@ import {
   toggleActivo,
 } from '@/lib/profesionales-storage';
 import { listarReclamos } from '@/lib/reclamos-store';
+import {
+  type CalificacionRecibida,
+  calificacionesPorProfesional,
+  ratingPonderado,
+} from '@/lib/ratings-cross-app';
 import { formatFecha } from '@/lib/format';
 
 const iconoCategoria: Record<CategoriaProfesional, LucideIcon> = {
@@ -88,10 +93,15 @@ export default function ProfesionalesAdminPage() {
   const [reclamosActivosPorProf, setReclamosActivosPorProf] = useState<
     Record<string, number>
   >({});
+  // Calificaciones nuevas recibidas del inquilino, agrupadas por profesional.
+  const [califsPorProf, setCalifsPorProf] = useState<
+    Record<string, CalificacionRecibida[]>
+  >({});
 
   useEffect(() => {
     setLista(listarProfesionalesAdmin());
     refrescarReclamos();
+    setCalifsPorProf(calificacionesPorProfesional());
     setHidratado(true);
   }, []);
 
@@ -119,10 +129,18 @@ export default function ProfesionalesAdminPage() {
   const total = lista.length;
   const activos = lista.filter((p) => p.activo).length;
   const verificados = lista.filter((p) => p.verificado).length;
-  const promedioRating =
-    lista.length > 0
-      ? (lista.reduce((acc, p) => acc + p.rating, 0) / lista.length).toFixed(1)
-      : '—';
+  // Rating promedio: ponderado con las nuevas calificaciones recibidas del
+  // inquilino para que refleje lo más actualizado de la operación.
+  const promedioRating = useMemo(() => {
+    if (lista.length === 0) return '—';
+    const promedios = lista.map((p) => {
+      const califs = califsPorProf[p.id] ?? [];
+      return ratingPonderado(p.rating, p.cantTrabajos, califs).promedio || p.rating;
+    });
+    const valido = promedios.filter((x) => x > 0);
+    if (valido.length === 0) return '—';
+    return (valido.reduce((a, b) => a + b, 0) / valido.length).toFixed(1);
+  }, [lista, califsPorProf]);
 
   const handleGuardar = (data: Omit<ProfesionalAdmin, 'id' | 'rating' | 'cantTrabajos' | 'ultimoTrabajo' | 'activo'>) => {
     if (editando) {
@@ -218,6 +236,9 @@ export default function ProfesionalesAdminPage() {
             const waUrl = `https://wa.me/${tel}?text=${encodeURIComponent(mensajeWhatsappGenerico(p))}`;
             const telUrl = `tel:${p.telefono.replace(/\s/g, '')}`;
             const reclamosActivos = reclamosActivosPorProf[p.id] ?? 0;
+            const califs = califsPorProf[p.id] ?? [];
+            const rating = ratingPonderado(p.rating, p.cantTrabajos, califs);
+            const ultimaCalif = califs[0];
             return (
               <Card
                 key={p.id}
@@ -264,17 +285,28 @@ export default function ProfesionalesAdminPage() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3 text-xs">
+                <div className="flex flex-wrap items-center gap-2 text-xs">
                   <div className="flex items-center gap-1">
                     <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
                     <span className="font-medium tabular-nums">
-                      {p.rating.toFixed(1)}
+                      {rating.promedio > 0
+                        ? rating.promedio.toFixed(1)
+                        : '—'}
                     </span>
                   </div>
                   <span className="text-muted-foreground">·</span>
                   <span className="text-muted-foreground">
-                    {p.cantTrabajos} trabajo{p.cantTrabajos === 1 ? '' : 's'}
+                    {rating.totalCalificaciones} calif
+                    {rating.totalCalificaciones === 1 ? '' : 's'}
                   </span>
+                  {rating.nuevas > 0 && (
+                    <Badge
+                      variant="outline"
+                      className="border-amber-300 bg-amber-50 px-1.5 py-0 text-[10px] text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-300"
+                    >
+                      +{rating.nuevas} nueva{rating.nuevas === 1 ? '' : 's'}
+                    </Badge>
+                  )}
                   {p.ultimoTrabajo && (
                     <>
                       <span className="text-muted-foreground">·</span>
@@ -284,6 +316,35 @@ export default function ProfesionalesAdminPage() {
                     </>
                   )}
                 </div>
+
+                {ultimaCalif && (
+                  <div className="rounded-md border border-amber-200/60 bg-amber-50/40 p-2 text-xs dark:border-amber-900/30 dark:bg-amber-900/10">
+                    <div className="flex items-center gap-1.5">
+                      <div className="flex gap-0.5">
+                        {Array.from({ length: 5 }).map((_, i) => (
+                          <Star
+                            key={i}
+                            className={cn(
+                              'h-3 w-3',
+                              i < ultimaCalif.estrellas
+                                ? 'fill-amber-400 text-amber-400'
+                                : 'text-amber-200',
+                            )}
+                          />
+                        ))}
+                      </div>
+                      <span className="text-[10px] text-muted-foreground">
+                        {ultimaCalif.inquilino.split(' ')[0]} ·{' '}
+                        {formatFecha(ultimaCalif.enviadoAt)}
+                      </span>
+                    </div>
+                    {ultimaCalif.comentario && (
+                      <p className="mt-1 italic text-muted-foreground line-clamp-2">
+                        “{ultimaCalif.comentario}”
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 <div className="space-y-1 text-xs text-muted-foreground">
                   <div className="flex items-center gap-1.5">
