@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
   AlertTriangle,
@@ -9,6 +9,7 @@ import {
   ChevronRight,
   Download,
   Receipt,
+  Wrench,
 } from 'lucide-react';
 import { Card, CardContent } from '@llave/ui/card';
 import { cn } from '@llave/ui/cn';
@@ -16,6 +17,10 @@ import { toast } from '@llave/ui/use-toast';
 import { NavBar } from '@/components/nav-bar';
 import { comprobantesMock, contratoMock, liquidacionesMock } from '@/lib/mock-data';
 import { TASA_PUNITORIA_DIARIA_DEFAULT, calcularPunitorios } from '@/lib/punitorios';
+import {
+  cargosExtraDelInquilino,
+  totalCargosExtra,
+} from '@/lib/cross-app-inmo';
 import { diasHastaVencimiento, formatFecha, formatMonto, formatPeriodo } from '@/lib/format';
 import type { Comprobante, Liquidacion } from '@/lib/types';
 
@@ -38,6 +43,16 @@ type Movimiento =
 export default function RecibosPage() {
   // Modo demo sincronizado con el resto de la app vía localStorage
   const [demoEstado, setDemoEstado] = useDemoEstado();
+
+  // Cargos USO_Y_GOCE que el inmo asignó al inquilino desde reclamos
+  // resueltos. Vienen cross-app del storage del inmo — los hidratamos
+  // post-mount para evitar mismatch con el HTML de SSR.
+  const [cargosExtra, setCargosExtra] = useState<ReturnType<typeof cargosExtraDelInquilino>>([]);
+  const [totalExtra, setTotalExtra] = useState(0);
+  useEffect(() => {
+    setCargosExtra(cargosExtraDelInquilino(contratoMock.id));
+    setTotalExtra(totalCargosExtra(contratoMock.id));
+  }, []);
 
   // Pago pendiente del mock. El modo demo decide cómo se muestra:
   // atrasado, a tiempo (fecha futura), o al día (null).
@@ -107,6 +122,12 @@ export default function RecibosPage() {
             <p className="text-xs opacity-85">
               Pagás el día {contratoMock.diaPago} de cada mes · {contratoMock.inmobiliaria}
             </p>
+            {totalExtra > 0 && (
+              <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-1 text-xs font-medium backdrop-blur">
+                <Wrench className="h-3 w-3" />
+                + {formatMonto(totalExtra)} en cargos extra este mes
+              </div>
+            )}
           </div>
         </Card>
       </div>
@@ -142,6 +163,53 @@ export default function RecibosPage() {
               </button>
             ))}
           </div>
+        )}
+
+        {/* CARGOS EXTRA — reparaciones USO_Y_GOCE que el inquilino debe pagar */}
+        {cargosExtra.length > 0 && (
+          <section className="space-y-2">
+            <div className="flex items-center justify-between px-1">
+              <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                <Wrench className="h-3 w-3 text-amber-600" />
+                Cargos extra del mes
+              </h2>
+              <span className="text-xs font-semibold tabular-nums text-amber-700 dark:text-amber-300">
+                + {formatMonto(totalExtra)}
+              </span>
+            </div>
+            <Card className="border-amber-200 bg-amber-50/40 dark:border-amber-900/40 dark:bg-amber-900/10">
+              <CardContent className="space-y-2 p-3">
+                <p className="text-[11px] text-muted-foreground">
+                  Reparaciones por uso normal de la propiedad. Se suman a tu
+                  próximo pago.
+                </p>
+                <div className="divide-y divide-amber-200/60 dark:divide-amber-900/30">
+                  {cargosExtra.map((c) => (
+                    <div
+                      key={c.reclamoId}
+                      className="flex items-start gap-3 py-2"
+                    >
+                      <div className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                        <Wrench className="h-3.5 w-3.5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="line-clamp-1 text-sm font-medium">
+                          {c.descripcion}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {c.profesional ? `${c.profesional} · ` : ''}
+                          {formatFecha(c.fechaResolucion)}
+                        </p>
+                      </div>
+                      <p className="shrink-0 text-sm font-semibold tabular-nums text-amber-900 dark:text-amber-200">
+                        + {formatMonto(c.monto)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </section>
         )}
 
         {/* LISTA UNIFICADA de movimientos */}

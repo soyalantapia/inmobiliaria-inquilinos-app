@@ -14,6 +14,10 @@ const INMO_RECLAMOS_KEY = 'llave-inmo:reclamos:v1';
 
 interface InmoReclamo {
   id: string;
+  contratoId?: string;
+  direccion?: string;
+  categoria?: string;
+  descripcion?: string;
   asignadoA?: string | null;
   profesionalAsignadoId?: string | null;
   profesionalAsignadoNombre?: string | null;
@@ -22,6 +26,9 @@ interface InmoReclamo {
   estado?: string;
   resolucion?: string | null;
   resueltoAt?: string | null;
+  clasificacion?: 'USO_Y_GOCE' | 'DESPERFECTO' | null;
+  costoTrabajo?: number | null;
+  costoTrabajoNotas?: string | null;
 }
 
 interface InmoPayload {
@@ -66,4 +73,53 @@ export function datosProfesionalDeInmo(reclamoId: string): {
 export function operadorDeInmo(reclamoId: string): string | null {
   const r = leerReclamosInmo().find((x) => x.id === reclamoId);
   return r?.asignadoA ?? null;
+}
+
+export interface CargoExtra {
+  /** ID del reclamo origen. */
+  reclamoId: string;
+  /** Texto descriptivo: lo que se reparó / la categoría. */
+  descripcion: string;
+  /** Profesional que hizo el trabajo, si lo hay. */
+  profesional: string | null;
+  /** Monto que el inquilino debe pagar. */
+  monto: number;
+  /** Fecha en que se resolvió el reclamo. */
+  fechaResolucion: string;
+}
+
+/**
+ * Lista de cargos USO_Y_GOCE que el inmo definió como pagables por el
+ * inquilino. Filtra por contratoId del inquilino logueado y solo trae los
+ * reclamos resueltos con costo cargado.
+ */
+export function cargosExtraDelInquilino(contratoId: string | null): CargoExtra[] {
+  if (!contratoId) return [];
+  const reclamos = leerReclamosInmo();
+  return reclamos
+    .filter(
+      (r) =>
+        r.contratoId === contratoId &&
+        r.clasificacion === 'USO_Y_GOCE' &&
+        typeof r.costoTrabajo === 'number' &&
+        (r.costoTrabajo ?? 0) > 0 &&
+        (r.estado === 'RESUELTO' || r.estado === 'CERRADO'),
+    )
+    .map((r) => ({
+      reclamoId: r.id,
+      descripcion:
+        r.costoTrabajoNotas ||
+        `${(r.categoria ?? 'reparación').toLowerCase()}${
+          r.descripcion ? ` · ${r.descripcion.slice(0, 60)}` : ''
+        }`,
+      profesional: r.profesionalAsignadoNombre ?? null,
+      monto: r.costoTrabajo ?? 0,
+      fechaResolucion: r.resueltoAt ?? new Date().toISOString(),
+    }))
+    .sort((a, b) => b.fechaResolucion.localeCompare(a.fechaResolucion));
+}
+
+/** Total de cargos extra pendientes para el contrato. */
+export function totalCargosExtra(contratoId: string | null): number {
+  return cargosExtraDelInquilino(contratoId).reduce((s, c) => s + c.monto, 0);
 }

@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   CreditCard,
   MessageCircle,
+  Receipt,
   Star,
   TrendingUp,
   Wrench,
@@ -19,7 +20,10 @@ import { TASA_PUNITORIA_DIARIA_DEFAULT, calcularPunitorios } from '@/lib/punitor
 import { listarReclamos } from '@/lib/reclamos-storage';
 import { obtenerRating } from '@/lib/ratings-storage';
 import { leerPagoInformado } from '@/lib/pago-storage';
-import { datosProfesionalDeInmo } from '@/lib/cross-app-inmo';
+import {
+  cargosExtraDelInquilino,
+  datosProfesionalDeInmo,
+} from '@/lib/cross-app-inmo';
 import type { Reclamo } from '@/lib/types';
 
 interface Notif {
@@ -29,7 +33,7 @@ interface Notif {
   href: string;
   cuando: string;
   unread: boolean;
-  icono: 'pago_vencido' | 'pago_pendiente' | 'ajuste' | 'reclamo_inmo' | 'pago_validacion' | 'rating' | 'profesional';
+  icono: 'pago_vencido' | 'pago_pendiente' | 'ajuste' | 'reclamo_inmo' | 'pago_validacion' | 'rating' | 'profesional' | 'cargo_extra';
   severidad: 'critica' | 'alta' | 'media' | 'baja';
 }
 
@@ -41,6 +45,7 @@ const ICONS = {
   pago_validacion: CheckCircle2,
   rating: Star,
   profesional: Wrench,
+  cargo_extra: Receipt,
 } as const;
 
 const READ_KEY = 'llave:notif-leidas:v1';
@@ -63,6 +68,10 @@ function guardarLeidas(set: Set<string>): void {
   } catch {
     // ignore
   }
+}
+
+function formatMontoAR(monto: number): string {
+  return `$${Math.round(monto).toLocaleString('es-AR')}`;
 }
 
 function tiempoCorto(iso: string): string {
@@ -205,6 +214,22 @@ function construirNotifs(leidas: Set<string>): Notif[] {
       unread: !leidas.has(`rating-${r.id}`),
       icono: 'rating',
       severidad: 'baja',
+    });
+  }
+
+  // 5. Cargos extra USO_Y_GOCE cargados por la inmobiliaria — el inquilino
+  // los tiene que pagar junto con el próximo alquiler. Cross-app del inmo.
+  const cargos = cargosExtraDelInquilino(contratoMock.id);
+  for (const c of cargos) {
+    out.push({
+      id: `cargo-${c.reclamoId}`,
+      titulo: 'Cargo extra por reparación',
+      detalle: `${c.descripcion.slice(0, 60)} · ${formatMontoAR(c.monto)}`,
+      href: '/comprobantes',
+      cuando: tiempoCorto(c.fechaResolucion),
+      unread: !leidas.has(`cargo-${c.reclamoId}`),
+      icono: 'cargo_extra',
+      severidad: 'media',
     });
   }
 
