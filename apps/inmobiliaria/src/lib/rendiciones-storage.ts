@@ -11,6 +11,22 @@
 
 const STORAGE_KEY = 'llave-inmo:rendiciones:v1';
 
+/** Snapshot del gasto que se descontó al cerrar la rendición. Congelamos
+ *  estos datos para que el comprobante histórico siga siendo consistente
+ *  aunque después se editen los movimientos de origen. */
+export interface GastoRendido {
+  refId: string;
+  tipo: 'CAJA' | 'TRABAJO';
+  fecha: string;
+  descripcion: string;
+  proveedor: string | null;
+  monto: number;
+  montoTotal: number;
+  participacion: number;
+  propiedadId: string;
+  direccion: string;
+}
+
 export interface Rendicion {
   id: string;
   propietarioId: string;
@@ -18,6 +34,10 @@ export interface Rendicion {
   periodo: string;
   montoBruto: number;
   comisionPct: number;
+  /** Gastos descontados al propietario (de caja + reclamos DESPERFECTO). */
+  gastos?: GastoRendido[];
+  /** Suma de gastos.monto — denormalizado para evitar recalcular. */
+  totalGastos?: number;
   montoNeto: number;
   rendidoAt: string;
   /** Método (transferencia, mercadopago, efectivo). */
@@ -63,16 +83,22 @@ export function marcarRendido(input: {
   periodo: string;
   montoBruto: number;
   comisionPct: number;
+  /** Gastos atribuidos al propietario (caja + trabajos DESPERFECTO). */
+  gastos?: GastoRendido[];
   metodo: Rendicion['metodo'];
   notas?: string;
 }): Rendicion {
-  const montoNeto = Math.round(input.montoBruto * (1 - input.comisionPct / 100));
+  const comisionMonto = Math.round(input.montoBruto * (input.comisionPct / 100));
+  const totalGastos = (input.gastos ?? []).reduce((s, g) => s + g.monto, 0);
+  const montoNeto = input.montoBruto - comisionMonto - totalGastos;
   const rendicion: Rendicion = {
     id: `rend_${Date.now().toString(36)}`,
     propietarioId: input.propietarioId,
     periodo: input.periodo,
     montoBruto: input.montoBruto,
     comisionPct: input.comisionPct,
+    gastos: input.gastos ?? [],
+    totalGastos,
     montoNeto,
     rendidoAt: new Date().toISOString(),
     metodo: input.metodo,

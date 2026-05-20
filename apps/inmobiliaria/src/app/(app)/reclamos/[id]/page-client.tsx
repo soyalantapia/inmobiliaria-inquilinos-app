@@ -53,6 +53,8 @@ export default function DetalleReclamoPage() {
   const [reclamo, setReclamo] = useState<Reclamo | null | undefined>(undefined);
   const [mensaje, setMensaje] = useState('');
   const [resolucion, setResolucion] = useState('');
+  const [costoStr, setCostoStr] = useState('');
+  const [costoNotas, setCostoNotas] = useState('');
   const [dialogo, setDialogo] = useState<'resolver' | 'rechazar' | 'cerrar' | null>(null);
   const scrollEndRef = useRef<HTMLDivElement>(null);
 
@@ -121,10 +123,23 @@ export default function DetalleReclamoPage() {
   const confirmarDialogo = () => {
     if (!dialogo) return;
     if (dialogo === 'resolver') {
-      const updated = cambiarEstado(reclamo.id, 'RESUELTO', OPERADOR_ACTUAL, resolucion.trim());
+      const costoNum = Number(costoStr.replace(/\D/g, '')) || 0;
+      const costo = costoNum > 0 ? { monto: costoNum, notas: costoNotas.trim() || undefined } : null;
+      const updated = cambiarEstado(
+        reclamo.id,
+        'RESUELTO',
+        OPERADOR_ACTUAL,
+        resolucion.trim(),
+        costo,
+      );
       if (updated) {
         setReclamo(updated);
-        toast({ title: 'Reclamo resuelto', description: 'El inquilino fue notificado.' });
+        toast({
+          title: 'Reclamo resuelto',
+          description: costo
+            ? `Costo $${costoNum.toLocaleString('es-AR')} asociado al propietario.`
+            : 'El inquilino fue notificado.',
+        });
       }
     } else if (dialogo === 'rechazar') {
       const updated = cambiarEstado(reclamo.id, 'RECHAZADO', OPERADOR_ACTUAL, resolucion.trim());
@@ -141,6 +156,8 @@ export default function DetalleReclamoPage() {
     }
     setDialogo(null);
     setResolucion('');
+    setCostoStr('');
+    setCostoNotas('');
   };
 
   return (
@@ -397,21 +414,67 @@ export default function DetalleReclamoPage() {
           if (!open) {
             setDialogo(null);
             setResolucion('');
+            setCostoStr('');
+            setCostoNotas('');
           }
         }}
         title="Marcar como resuelto"
         description={
-          <div className="space-y-3 pt-2">
-            <p className="text-sm text-muted-foreground">
-              Describí cómo se resolvió. El inquilino lo va a ver en su detalle.
-            </p>
-            <Textarea
-              autoFocus
-              rows={4}
-              value={resolucion}
-              onChange={(e) => setResolucion(e.target.value)}
-              placeholder="Ej: Vino el plomero el martes, cambió el flexible y selló la canilla."
-            />
+          <div className="space-y-4 pt-2">
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">
+                Describí cómo se resolvió. El inquilino lo va a ver en su detalle.
+              </p>
+              <Textarea
+                autoFocus
+                rows={3}
+                value={resolucion}
+                onChange={(e) => setResolucion(e.target.value)}
+                placeholder="Ej: Vino el plomero el martes, cambió el flexible y selló la canilla."
+              />
+            </div>
+            {reclamo?.profesionalAsignadoNombre ? (
+              <div className="space-y-2 rounded-md border border-primary/20 bg-primary/5 p-3">
+                <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-primary">
+                  Costo del trabajo
+                  <span className="ml-1 rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] font-normal text-primary">
+                    {reclamo.clasificacion === 'USO_Y_GOCE'
+                      ? 'Se cobra al inquilino'
+                      : reclamo.clasificacion === 'DESPERFECTO'
+                        ? 'Se descuenta al propietario'
+                        : 'Sin clasificar'}
+                  </span>
+                </p>
+                <div className="grid gap-2 sm:grid-cols-[140px_1fr]">
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                      $
+                    </span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={costoStr}
+                      onChange={(e) =>
+                        setCostoStr(e.target.value.replace(/\D/g, '').slice(0, 12))
+                      }
+                      placeholder="25000"
+                      className="w-full rounded-md border bg-background px-3 py-1.5 pl-7 text-sm"
+                    />
+                  </div>
+                  <input
+                    type="text"
+                    value={costoNotas}
+                    onChange={(e) => setCostoNotas(e.target.value)}
+                    placeholder="Concepto: cambio de flexible y silicona"
+                    className="rounded-md border bg-background px-3 py-1.5 text-sm"
+                  />
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  Opcional. Si lo cargás, aparece en la rendición del propietario
+                  con el detalle.
+                </p>
+              </div>
+            ) : null}
           </div>
         }
         confirmLabel="Confirmar resolución"

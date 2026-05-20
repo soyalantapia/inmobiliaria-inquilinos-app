@@ -93,6 +93,14 @@ export interface Reclamo {
   profesionalAsignadoNombre?: string | null;
   profesionalAsignadoTelefono?: string | null;
   profesionalAsignadoCategoria?: string | null;
+  /** Costo total del trabajo cargado al cerrar el reclamo.
+   *  Se descuenta del propietario en la rendición (si clasificacion = DESPERFECTO)
+   *  o se cobra al inquilino (si clasificacion = USO_Y_GOCE). */
+  costoTrabajo?: number | null;
+  /** Notas sobre el costo (ítems, descripción, etc.) opcional. */
+  costoTrabajoNotas?: string | null;
+  /** ID de la propiedad del reclamo — para atribuir gastos en rendiciones. */
+  propiedadId?: string | null;
 }
 
 /** Datos AFIP del propietario para emitir factura/recibo automático al conciliar el alquiler. */

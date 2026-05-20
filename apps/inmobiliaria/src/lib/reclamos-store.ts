@@ -97,6 +97,7 @@ export function cambiarEstado(
   nuevoEstado: EstadoReclamo,
   autor: string,
   nota: string | null = null,
+  costo?: { monto: number; notas?: string } | null,
 ): Reclamo | null {
   const tipoMap: Record<EstadoReclamo, TipoEventoReclamo> = {
     ABIERTO: 'CREADO',
@@ -121,8 +122,24 @@ export function cambiarEstado(
           ? nota
           : r.resolucion,
       resueltoAt: nuevoEstado === 'RESUELTO' ? ahora : r.resueltoAt,
+      costoTrabajo: costo?.monto ?? r.costoTrabajo ?? null,
+      costoTrabajoNotas: costo?.notas ?? r.costoTrabajoNotas ?? null,
     };
   });
+}
+
+/** Carga el costo de un trabajo de profesional ya resuelto. Útil cuando se
+ *  cargó el costo después de cerrar el reclamo (o se editó). */
+export function cargarCostoTrabajo(
+  id: string,
+  monto: number,
+  notas?: string,
+): Reclamo | null {
+  return mutate(id, (r) => ({
+    ...r,
+    costoTrabajo: monto,
+    costoTrabajoNotas: notas ?? r.costoTrabajoNotas ?? null,
+  }));
 }
 
 export function clasificarReclamo(
