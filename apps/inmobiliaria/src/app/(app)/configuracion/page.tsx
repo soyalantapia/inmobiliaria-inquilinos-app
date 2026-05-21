@@ -9,6 +9,7 @@ import {
   Download,
   FileText,
   Gift,
+  Globe2,
   GraduationCap,
   Handshake,
   MapPin,
@@ -34,6 +35,7 @@ import { relanzarOnboardingInmo } from '@/components/onboarding';
 import { Topbar } from '@/components/topbar';
 import { TRAMOS_PLAN, calcularResumenPlan, facturasMock } from '@/lib/plan';
 import { BannerMigracion } from '@/components/banner-migracion';
+import { ConfiguracionPais } from '@/components/configuracion-pais';
 import { ConveniosBrowser } from '@/components/convenios-browser';
 import { CuponInput } from '@/components/cupon-input';
 import { EstadoCuentaCard } from '@/components/estado-cuenta-card';
@@ -253,6 +255,10 @@ export default function ConfiguracionPage() {
             <TabsTrigger value="referidos">
               <Gift className="mr-1.5 h-3.5 w-3.5" />
               Invitar colegas
+            </TabsTrigger>
+            <TabsTrigger value="mercado">
+              <Globe2 className="mr-1.5 h-3.5 w-3.5" />
+              Mercado
             </TabsTrigger>
             <TabsTrigger value="auditoria">
               <ScrollText className="mr-1.5 h-3.5 w-3.5" />
@@ -820,6 +826,23 @@ export default function ConfiguracionPage() {
               </CardHeader>
               <CardContent>
                 <ReferidosManager />
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* MERCADO */}
+          <TabsContent value="mercado" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Mercado y país de operación</CardTitle>
+                <CardDescription>
+                  Si operás fuera de Argentina, configurá país, moneda e índice
+                  de ajuste. El producto adapta los formatos y los validadores
+                  legales en consecuencia.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ConfiguracionPais />
               </CardContent>
             </Card>
           </TabsContent>
