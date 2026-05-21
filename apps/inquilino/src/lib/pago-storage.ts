@@ -5,6 +5,8 @@
 // suficiente para que la UI muestre "Pendiente de validación" después de
 // que el inquilino sube el comprobante.
 
+import type { ExtraccionIA } from './extraccion-ia';
+
 const KEY_PREFIX = 'llave:pago';
 const VERSION = 1;
 
@@ -21,6 +23,12 @@ export interface PagoInformado {
   comprobanteSize: number;
   comprobanteMime: string;
   enviadoAt: string; // ISO
+  /**
+   * Lectura por IA del comprobante (monto, fecha, CBU origen, banco,
+   * titular, CUIT, nro de operación). Opcional para no romper datos
+   * pre-existentes; se setea cuando el inquilino sube el archivo.
+   */
+  extraccionIA?: ExtraccionIA;
 }
 
 const buildKey = (liqId: string) => `${KEY_PREFIX}:${liqId}`;

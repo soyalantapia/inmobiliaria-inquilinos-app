@@ -8,6 +8,7 @@ import {
   FileText,
   ReceiptText,
   RotateCcw,
+  Sparkles,
   XCircle,
 } from 'lucide-react';
 import { Badge } from '@llave/ui/badge';
@@ -39,6 +40,11 @@ import {
   revertirAccion,
 } from '@/lib/conciliacion-storage';
 import { registrarEvento } from '@/lib/auditoria-storage';
+import {
+  extraerComprobante,
+  puedeConciliarAutomatico,
+  type ExtraccionIA,
+} from '@/lib/extraccion-ia';
 
 // Sección "Por validar" en /pagos del admin. Muestra los comprobantes que
 // los inquilinos subieron y todavía no fueron conciliados. Cuando el admin
@@ -291,6 +297,15 @@ export function PagosPorValidar({ onChange }: PagosPorValidarProps = {}) {
                 <p>En producción se carga acá el archivo real.</p>
               </div>
             </div>
+            {verComprobante && (
+              <ExtraccionIABlock
+                extraccion={extraerComprobante(verComprobante.id, verComprobante.monto, {
+                  fechaEsperada: verComprobante.fechaTransferencia,
+                  nombreInquilinoHint: verComprobante.inquilino,
+                })}
+                montoEsperado={verComprobante.monto}
+              />
+            )}
             {verComprobante?.notaInquilino && (
               <div className="rounded-md bg-muted/50 p-3 text-xs">
                 <p className="font-medium">Nota del inquilino:</p>
@@ -385,6 +400,15 @@ function PagoRow({
   const modoDirecto = contrato?.modoCobranza === 'PROPIETARIO_DIRECTO';
   const afipOn = !!propietario?.afip?.conectado;
 
+  // Lectura por IA del comprobante. En la demo se genera determinístico
+  // a partir del pago.id; en backend real esto vendría persistido junto
+  // al PagoInformado (campo `extraccionIA`).
+  const extraccion: ExtraccionIA = extraerComprobante(pago.id, pago.monto, {
+    fechaEsperada: pago.fechaTransferencia,
+    nombreInquilinoHint: pago.inquilino,
+  });
+  const autoOk = puedeConciliarAutomatico(extraccion);
+
   return (
     <Card className="space-y-3 bg-background p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -424,6 +448,8 @@ function PagoRow({
         />
       </div>
 
+      <ExtraccionIABlock extraccion={extraccion} montoEsperado={pago.monto} />
+
       {pago.notaInquilino && (
         <p className="rounded-md bg-muted/30 p-2 text-xs italic text-muted-foreground">
           “{pago.notaInquilino}”
@@ -439,12 +465,119 @@ function PagoRow({
           <XCircle className="h-3.5 w-3.5" />
           Rechazar
         </Button>
-        <Button size="sm" onClick={onConciliar} className="ml-auto">
-          <CheckCircle2 className="h-3.5 w-3.5" />
-          {afipOn ? 'Confirmar + facturar ARCA' : 'Confirmar pago'}
+        <Button
+          size="sm"
+          onClick={onConciliar}
+          className={`ml-auto ${autoOk ? 'bg-emerald-600 hover:bg-emerald-700' : ''}`}
+        >
+          {autoOk ? <Sparkles className="h-3.5 w-3.5" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+          {autoOk
+            ? 'Conciliar automático'
+            : afipOn
+              ? 'Confirmar + facturar ARCA'
+              : 'Confirmar pago'}
         </Button>
       </div>
     </Card>
+  );
+}
+
+/**
+ * Panel "Lectura por IA" del comprobante. Muestra los campos detectados
+ * y badges verde/rojo de match contra lo esperado.
+ *
+ * Si confianza alta + todos los matches en verde → se muestra una
+ * banda verde "Listo para conciliar automático". Si hay algún
+ * mismatch → banda amarilla "Revisar manualmente".
+ */
+function ExtraccionIABlock({
+  extraccion,
+  montoEsperado,
+}: {
+  extraccion: ExtraccionIA;
+  montoEsperado: number;
+}) {
+  const auto = puedeConciliarAutomatico(extraccion);
+  return (
+    <div
+      className={`space-y-2 rounded-md border p-3 ${
+        auto
+          ? 'border-emerald-300 bg-emerald-50/60 dark:border-emerald-900/40 dark:bg-emerald-900/10'
+          : 'border-amber-300 bg-amber-50/60 dark:border-amber-900/40 dark:bg-amber-900/10'
+      }`}
+    >
+      <div className="flex items-center gap-2">
+        <Sparkles
+          className={`h-3.5 w-3.5 ${
+            auto ? 'text-emerald-600' : 'text-amber-600'
+          }`}
+        />
+        <p
+          className={`text-[11px] font-semibold uppercase tracking-wide ${
+            auto ? 'text-emerald-700 dark:text-emerald-300' : 'text-amber-700 dark:text-amber-300'
+          }`}
+        >
+          {auto
+            ? 'Lectura por IA · Todo OK, listo para conciliar'
+            : `Lectura por IA · ${extraccion.confianza === 'baja' ? 'Revisar manualmente' : 'Revisá los datos'}`}
+        </p>
+      </div>
+      <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px] md:grid-cols-3">
+        <FieldIA
+          label="Monto"
+          valor={formatMonto(extraccion.monto)}
+          match={extraccion.matchMonto}
+          hint={!extraccion.matchMonto ? `Esperado ${formatMonto(montoEsperado)}` : undefined}
+        />
+        <FieldIA
+          label="Fecha"
+          valor={formatFecha(extraccion.fechaTransferencia)}
+          match={extraccion.matchFecha}
+        />
+        <FieldIA label="N° operación" valor={extraccion.nroOperacion} />
+        <FieldIA label="Banco origen" valor={extraccion.bancoOrigen} />
+        <FieldIA label="Titular" valor={extraccion.titularOrigen} />
+        <FieldIA label="CUIT" valor={extraccion.cuitOrigen} />
+      </div>
+    </div>
+  );
+}
+
+function FieldIA({
+  label,
+  valor,
+  match,
+  hint,
+}: {
+  label: string;
+  valor: string;
+  match?: boolean;
+  hint?: string;
+}) {
+  return (
+    <div className="min-w-0">
+      <div className="flex items-center justify-between gap-1">
+        <p className="text-[9px] uppercase tracking-wide text-muted-foreground">
+          {label}
+        </p>
+        {match !== undefined && (
+          <span
+            className={
+              match
+                ? 'text-emerald-600 dark:text-emerald-400'
+                : 'text-amber-600 dark:text-amber-400'
+            }
+            aria-label={match ? 'Match OK' : 'Diferencia detectada'}
+          >
+            {match ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
+          </span>
+        )}
+      </div>
+      <p className="truncate font-medium tabular-nums">{valor}</p>
+      {hint && (
+        <p className="text-[9px] text-amber-700 dark:text-amber-300">{hint}</p>
+      )}
+    </div>
   );
 }
 

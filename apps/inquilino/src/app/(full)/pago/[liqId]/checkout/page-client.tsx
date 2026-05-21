@@ -12,6 +12,8 @@ import {
   FileImage,
   Hash,
   IdCard,
+  Loader2,
+  Sparkles,
   Trash2,
   Upload,
   UserRound,
@@ -35,6 +37,7 @@ import {
 } from '@/lib/pago-storage';
 import { cargosExtraDelInquilino } from '@/lib/cross-app-inmo';
 import { marcarVariosPagados } from '@/lib/cargos-pagados-storage';
+import { extraerComprobante, type ExtraccionIA } from '@/lib/extraccion-ia';
 
 type Step = 'datos' | 'comprobante' | 'ok';
 const MAX_FILE_MB = 5;
@@ -281,8 +284,15 @@ function StepSubirComprobante({
   const [error, setError] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
 
+  // Estado de la extracción por IA. Mientras `analizando` está en true
+  // mostramos el spinner con "Leyendo el comprobante…". Después de unos
+  // segundos cae la extracción y mostramos los campos detectados.
+  const [analizando, setAnalizando] = useState(false);
+  const [extraccion, setExtraccion] = useState<ExtraccionIA | null>(null);
+
   const handleFile = (f: File) => {
     setError(null);
+    setExtraccion(null);
     if (!/(image\/|application\/pdf)/.test(f.type)) {
       setError('Solo aceptamos imágenes o PDF.');
       return;
@@ -300,11 +310,31 @@ function StepSubirComprobante({
     } else {
       setPreview(null);
     }
+
+    // Disparo la "lectura por IA". En producción esto es una llamada
+    // al backend (OCR + LLM). Acá lo mockeamos con un pequeño delay.
+    setAnalizando(true);
+    setTimeout(() => {
+      const ex = extraerComprobante(`${f.name}|${f.size}`, monto, {
+        // Demo: que el comprobante del inquilino siempre matchee monto
+        // exacto. Lo realista para esta UI: si el inquilino pagó lo
+        // que se le pide, la lectura le dice "todo OK".
+        forzarMatch: true,
+      });
+      setExtraccion(ex);
+      // Auto-completo el nro de operación detectado si el usuario no
+      // escribió uno manual.
+      setNroOperacion((prev) => prev || ex.nroOperacion);
+      setAnalizando(false);
+    }, 1400);
   };
 
   const limpiar = () => {
     setFile(null);
     setPreview(null);
+    setExtraccion(null);
+    setAnalizando(false);
+    setNroOperacion('');
     if (inputRef.current) inputRef.current.value = '';
   };
 
@@ -318,12 +348,13 @@ function StepSubirComprobante({
       liqId,
       estado: 'INFORMADO',
       monto,
-      nroOperacion: nroOperacion.trim() || null,
+      nroOperacion: nroOperacion.trim() || extraccion?.nroOperacion || null,
       comprobanteFileName: file.name,
       comprobanteDataUrl: preview,
       comprobanteSize: file.size,
       comprobanteMime: file.type,
       enviadoAt: new Date().toISOString(),
+      extraccionIA: extraccion ?? undefined,
     };
     guardarPagoInformado(informado);
     // Si el inquilino tenía cargos extra USO_Y_GOCE pendientes del mes,
@@ -417,10 +448,49 @@ function StepSubirComprobante({
           </p>
         )}
 
+        {file && analizando && (
+          <div className="flex items-center gap-3 rounded-md border border-primary/30 bg-primary/5 p-3 text-sm">
+            <Loader2 className="h-4 w-4 animate-spin text-primary" />
+            <div className="flex-1">
+              <p className="font-medium">Leyendo el comprobante…</p>
+              <p className="text-xs text-muted-foreground">
+                Detectamos automáticamente el monto, la fecha y el N° de operación.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {file && extraccion && !analizando && (
+          <div className="space-y-2 rounded-lg border border-emerald-300 bg-gradient-to-br from-emerald-50 to-emerald-50/40 p-4 dark:border-emerald-900/40 dark:from-emerald-900/20 dark:to-emerald-900/10">
+            <div className="flex items-start gap-2">
+              <div className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-emerald-500 text-white">
+                <Sparkles className="h-3.5 w-3.5" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-semibold">Detectamos los datos automáticamente</p>
+                <p className="text-[11px] text-muted-foreground">
+                  Revisalos antes de enviar. Si algo no cuadra, completá manualmente.
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 pt-1 text-xs">
+              <DetalleIA label="Monto" valor={formatMonto(extraccion.monto)} match />
+              <DetalleIA
+                label="Fecha"
+                valor={new Date(extraccion.fechaTransferencia).toLocaleDateString('es-AR')}
+                match={extraccion.matchFecha}
+              />
+              <DetalleIA label="Banco" valor={extraccion.bancoOrigen} />
+              <DetalleIA label="N° operación" valor={extraccion.nroOperacion} />
+              <DetalleIA label="Titular" valor={extraccion.titularOrigen} className="col-span-2" />
+            </div>
+          </div>
+        )}
+
         <Separator />
 
         <div className="space-y-2">
-          <Label htmlFor="nro">N° de operación (opcional)</Label>
+          <Label htmlFor="nro">N° de operación</Label>
           <Input
             id="nro"
             placeholder="123456789"
@@ -429,7 +499,9 @@ function StepSubirComprobante({
             inputMode="numeric"
           />
           <p className="text-xs text-muted-foreground">
-            Ayuda a que validemos más rápido. Lo encontrás en el recibo del banco.
+            {extraccion
+              ? 'Lo detectamos del recibo. Editalo si querés.'
+              : 'Opcional. Lo encontrás en el recibo del banco.'}
           </p>
         </div>
       </Card>
@@ -473,6 +545,21 @@ function StepConfirmado({
         {informado.nroOperacion && <Row label="N° operación" value={informado.nroOperacion} />}
         <Row label="Estado" value="Pendiente de validación" />
 
+        {informado.extraccionIA && (
+          <div className="rounded-md border border-primary/20 bg-primary/5 p-3">
+            <div className="mb-1.5 flex items-center gap-1.5">
+              <Sparkles className="h-3.5 w-3.5 text-primary" />
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-primary">
+                Datos leídos por IA
+              </p>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              {informado.extraccionIA.bancoOrigen} · {informado.extraccionIA.titularOrigen} ·{' '}
+              N° {informado.extraccionIA.nroOperacion}
+            </p>
+          </div>
+        )}
+
         {informado.comprobanteDataUrl && (
           <div className="pt-2">
             <img
@@ -501,6 +588,43 @@ function Row({ label, value }: { label: string; value: string }) {
     <div className="flex items-center justify-between gap-3 text-sm">
       <span className="text-muted-foreground">{label}</span>
       <span className="truncate text-right font-medium">{value}</span>
+    </div>
+  );
+}
+
+function DetalleIA({
+  label,
+  valor,
+  match,
+  className,
+}: {
+  label: string;
+  valor: string;
+  /** Si está definido, mostramos un check verde si true. */
+  match?: boolean;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`rounded-md bg-background/60 p-2 ${className ?? ''}`}
+    >
+      <div className="flex items-center justify-between gap-1">
+        <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+          {label}
+        </p>
+        {match !== undefined && (
+          <span
+            className={
+              match
+                ? 'text-emerald-600 dark:text-emerald-400'
+                : 'text-amber-600 dark:text-amber-400'
+            }
+          >
+            {match ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
+          </span>
+        )}
+      </div>
+      <p className="truncate text-xs font-medium tabular-nums">{valor}</p>
     </div>
   );
 }
