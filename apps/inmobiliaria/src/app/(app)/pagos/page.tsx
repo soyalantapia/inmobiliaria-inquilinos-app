@@ -9,6 +9,7 @@ import {
   Clock,
   Download,
   Inbox,
+  ShieldCheck,
 } from 'lucide-react';
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
@@ -20,6 +21,7 @@ import { CargarPagoManualButton } from '@/components/cargar-pago-manual';
 import { CargosACobrar } from '@/components/cargos-a-cobrar';
 import { PagosPorValidar } from '@/components/pagos-por-validar';
 import { Topbar } from '@/components/topbar';
+import { ValidadorResumenDialog } from '@/components/validador-resumen-dialog';
 import {
   contactosCobranzaMock,
   contratosMock,
@@ -96,6 +98,7 @@ export default function PagosPage() {
   // primero que ve el usuario es lo que tiene que decidir.
   const [filtro, setFiltro] = useState<Filtro>('TODOS');
   const [aResolverCount, setAResolverCount] = useState(0);
+  const [validadorOpen, setValidadorOpen] = useState(false);
 
   // Recalculamos el contador de pagos "a resolver" en cliente porque
   // estadoDePago lee de localStorage (acciones previas del admin).
@@ -367,6 +370,14 @@ export default function PagosPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">Liquidaciones — mayo 2026</h2>
           <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              className="gap-1 bg-violet-600 text-white hover:bg-violet-700"
+              onClick={() => setValidadorOpen(true)}
+            >
+              <ShieldCheck className="h-4 w-4" />
+              Validar por resumen
+            </Button>
             <CargarPagoManualButton />
             <Button variant="outline" size="sm" onClick={() => exportarMorososPdf()}>
               <Download className="h-4 w-4" />
@@ -557,6 +568,20 @@ export default function PagosPage() {
           </>
         )}
       </main>
+
+      {/* Dialog "Validar por resumen": el inmo sube el PDF del banco
+          y conciliamos en bloque contra los pagos informados. */}
+      <ValidadorResumenDialog
+        open={validadorOpen}
+        onOpenChange={setValidadorOpen}
+        onConciliado={() => {
+          // Recalculamos el contador de "a resolver" después de conciliar.
+          const pendientes = pagosInformadosMock.filter(
+            (p) => estadoDePago(p.id) === 'INFORMADO',
+          ).length;
+          setAResolverCount(pendientes);
+        }}
+      />
     </>
   );
 }
