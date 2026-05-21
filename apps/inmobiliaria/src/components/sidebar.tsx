@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   FileText,
   Plus,
+  Rocket,
   ShieldCheck,
   CreditCard,
   Settings,
@@ -37,6 +38,7 @@ const links = [
   { href: '/reclamos', label: 'Reclamos', icon: Wrench },
   { href: '/profesionales', label: 'Profesionales', icon: HardHat },
   { href: '/screening', label: 'Verificar inquilino', icon: ShieldCheck },
+  { href: '/roadmap', label: 'Roadmap', icon: Rocket },
   { href: '/configuracion', label: 'Configuración', icon: Settings },
 ] as const;
 
