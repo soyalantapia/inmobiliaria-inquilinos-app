@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Briefcase,
   Building2,
@@ -170,6 +170,48 @@ export default function ConfiguracionPage() {
   const [nuevoEmail, setNuevoEmail] = useState('');
   const [nuevoRol, setNuevoRol] = useState<Rol>('OPERADOR');
 
+  // Deep-linking: la tab activa se controla por el hash de la URL.
+  // Esto permite enlazar a /configuracion#convenios desde otros lugares
+  // del panel (ej. badge co-branding de la topbar) y abrir directamente
+  // en esa tab.
+  const TABS_VALIDAS = [
+    'empresa',
+    'sociedades',
+    'equipo',
+    'plan',
+    'convenios',
+    'referidos',
+    'mercado',
+    'auditoria',
+  ] as const;
+  type TabConfig = (typeof TABS_VALIDAS)[number];
+
+  const [tabActiva, setTabActiva] = useState<TabConfig>('empresa');
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const sincronizarDesdeHash = () => {
+      const hash = window.location.hash.replace('#', '');
+      if ((TABS_VALIDAS as readonly string[]).includes(hash)) {
+        setTabActiva(hash as TabConfig);
+      }
+    };
+    sincronizarDesdeHash();
+    window.addEventListener('hashchange', sincronizarDesdeHash);
+    return () => window.removeEventListener('hashchange', sincronizarDesdeHash);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const cambiarTab = (v: string) => {
+    setTabActiva(v as TabConfig);
+    if (typeof window !== 'undefined') {
+      // replaceState para no apilar entradas en el historial cada vez que
+      // se cambia de tab.
+      const url = `${window.location.pathname}#${v}`;
+      window.history.replaceState(null, '', url);
+    }
+  };
+
   const plan = useMemo(() => calcularResumenPlan(), []);
 
   const guardarEmpresa = () => {
@@ -230,7 +272,7 @@ export default function ConfiguracionPage() {
           </CardContent>
         </Card>
 
-        <Tabs defaultValue="empresa">
+        <Tabs value={tabActiva} onValueChange={cambiarTab}>
           <TabsList className="h-auto flex-wrap justify-start gap-1 p-1">
             <TabsTrigger value="empresa">
               <Building2 className="mr-1.5 h-3.5 w-3.5" />

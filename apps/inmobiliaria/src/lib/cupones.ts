@@ -191,11 +191,36 @@ export interface CuponActivo {
   aplicadoAt: string;
 }
 
+/**
+ * Sentinel para el seed inicial: marcamos que el cupón viene del default
+ * (no de una activación manual), por si querés diferenciar en analytics.
+ * También sirve para que el banner de migración no se confunda.
+ */
+const SEED_MARKER = 'seed-demo';
+
+/**
+ * Lee el cupón activo. La primera vez que se llama, siembra CUCICBA10
+ * como cupón aplicado para que la demo arranque mostrando el badge
+ * de co-branding en la topbar y el sello en los PDFs. La inmo puede
+ * quitarlo / cambiarlo desde /configuracion#convenios.
+ */
 export function leerCuponActivo(): CuponActivo | null {
   if (typeof window === 'undefined') return null;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as CuponActivo) : null;
+    if (raw) return JSON.parse(raw) as CuponActivo;
+    // Primera carga: aplicamos CUCICBA por default (es el más común y
+    // hace visible el co-branding de G5 desde el primer load de la demo).
+    const cucicba = CUPONES_VALIDOS.find((c) => c.codigo === 'CUCICBA10');
+    if (cucicba) {
+      const seedActivo: CuponActivo = {
+        cupon: cucicba,
+        aplicadoAt: SEED_MARKER,
+      };
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(seedActivo));
+      return seedActivo;
+    }
+    return null;
   } catch {
     return null;
   }
