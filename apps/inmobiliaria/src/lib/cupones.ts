@@ -1,5 +1,3 @@
-'use client';
-
 /**
  * Cupones de descuento por convenios con colegios profesionales o partners.
  * El admin ingresa el código en /configuracion y se aplica sobre todos los
