@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
+  BadgeCheck,
   CircleHelp,
   FileText,
   Receipt,
@@ -29,6 +30,7 @@ const itemsPrimarios: NavItem[] = [
 ];
 
 const itemsSecundarios: NavItem[] = [
+  { href: '/certificado', label: 'Mi certificado', icon: BadgeCheck },
   { href: '/ayuda', label: 'Ayuda', icon: CircleHelp },
   { href: '/cuenta', label: 'Mi cuenta', icon: User },
 ];
