@@ -24,6 +24,8 @@ import {
   contactosCobranzaMock,
   contratosMock,
   pagosInformadosMock,
+  propiedadesMock,
+  propietariosMock,
 } from '@/lib/mock-data';
 import { estadoDePago } from '@/lib/conciliacion-storage';
 import { formatFecha, formatMonto } from '@/lib/format';
@@ -194,6 +196,102 @@ export default function PagosPage() {
     });
   };
 
+  // PDF de morosos agrupado por sociedad / propietario.
+  // Sirve cuando la inmo rinde por separado a cada dueño: cada uno ve qué
+  // contratos suyos están vencidos sin mezclarse con los del resto.
+  // Si la propiedad tiene más de un propietario, el contrato aparece en
+  // todas las secciones donde corresponde (con su % de participación).
+  const exportarMorososPorSociedadPdf = () => {
+    const morosos = contratosMock.filter((c) => c.estadoPagoActual === 'VENCIDO');
+    if (morosos.length === 0) {
+      toast({
+        title: 'No hay morosos este mes',
+        description: 'Todos los contratos están al día o pendientes pero no vencidos.',
+      });
+      return;
+    }
+
+    // Agrupamos: para cada propietario, listamos los contratos morosos de
+    // sus propiedades. Recorrer por propietario y filtrar después es más
+    // robusto que recorrer por contrato y deducir el propietario.
+    const secciones = propietariosMock
+      .map((own) => {
+        const propsDelOwner = propiedadesMock.filter((p) =>
+          p.propietariosIds.includes(own.id),
+        );
+        const contratosIds = new Set(
+          propsDelOwner.map((p) => p.contratoActualId).filter((x): x is string => !!x),
+        );
+        const morososDelOwner = morosos.filter((c) => contratosIds.has(c.id));
+        if (morososDelOwner.length === 0) return null;
+
+        // Para cada contrato moroso del owner, calculamos su % de
+        // participación en esa propiedad (si está definido).
+        const filas: (string | number)[][] = morososDelOwner.map((c) => {
+          const propiedad = propsDelOwner.find((p) => p.contratoActualId === c.id);
+          const partPct = propiedad?.participaciones?.find(
+            (x) => x.propietarioId === own.id,
+          )?.porcentaje;
+          const contacto = contactosCobranzaMock.find((x) => x.contratoId === c.id);
+          const dias = -diasHastaVencimiento(c.proximoVencimiento);
+          const montoParticipacion = partPct
+            ? Math.round((c.monto * partPct) / 100)
+            : c.monto;
+          return [
+            c.inquilino,
+            c.direccion + (partPct ? ` · ${partPct}%` : ''),
+            contacto?.titular.telefono ?? '—',
+            `${dias} días`,
+            formatMonto(montoParticipacion, c.moneda),
+          ];
+        });
+
+        const subtotal = morososDelOwner.reduce((acc, c) => {
+          const propiedad = propsDelOwner.find((p) => p.contratoActualId === c.id);
+          const partPct = propiedad?.participaciones?.find(
+            (x) => x.propietarioId === own.id,
+          )?.porcentaje;
+          return acc + (partPct ? (c.monto * partPct) / 100 : c.monto);
+        }, 0);
+
+        return {
+          titulo: `${own.nombre} ${own.apellido}`,
+          subtitulo: `CUIT ${own.cuit} · ${own.telefono ?? 'sin teléfono'} · ${morososDelOwner.length} contrato${morososDelOwner.length === 1 ? '' : 's'} moroso${morososDelOwner.length === 1 ? '' : 's'}`,
+          filas,
+          subtotal: {
+            label: 'Subtotal de su cartera',
+            valor: formatMonto(Math.round(subtotal)),
+          },
+        };
+      })
+      .filter((s): s is NonNullable<typeof s> => s !== null);
+
+    const totalDeuda = morosos.reduce((acc, c) => acc + c.monto, 0);
+
+    abrirReporteImprimible({
+      titulo: 'Morosos por sociedad',
+      subtitulo: `Mayo 2026 · ${secciones.length} propietario${secciones.length === 1 ? '' : 's'} con cartera atrasada · ${morosos.length} contrato${morosos.length === 1 ? '' : 's'} vencido${morosos.length === 1 ? '' : 's'}`,
+      inmobiliaria: 'Inmobiliaria del Sol',
+      columnas: [
+        { header: 'Inquilino', width: '22%' },
+        { header: 'Propiedad', width: '32%' },
+        { header: 'Teléfono', width: '18%' },
+        { header: 'Atraso', width: '12%', align: 'center' },
+        { header: 'Monto al propietario', width: '16%', align: 'right' },
+      ],
+      secciones,
+      totales: [
+        { label: 'Propietarios afectados', valor: secciones.length.toString() },
+        { label: 'Contratos morosos', valor: morosos.length.toString() },
+        { label: 'Deuda total', valor: formatMonto(totalDeuda) },
+      ],
+      notaFinal:
+        'Listado para rendir por separado a cada propietario. Cuando una propiedad ' +
+        'tiene más de un dueño, el monto se prorratea por % de participación. ' +
+        'Compartilo por WhatsApp o imprimilo y entregalo en mano.',
+    });
+  };
+
   // PDF detallado de lo cobrado en el mes.
   // Se usa para rendir a propietarios y para archivo del estudio.
   const exportarCobradoPdf = () => {
@@ -273,6 +371,14 @@ export default function PagosPage() {
             <Button variant="outline" size="sm" onClick={() => exportarMorososPdf()}>
               <Download className="h-4 w-4" />
               PDF de morosos
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => exportarMorososPorSociedadPdf()}
+            >
+              <Download className="h-4 w-4" />
+              PDF morosos por sociedad
             </Button>
             <Button variant="outline" size="sm" onClick={() => exportarCobradoPdf()}>
               <Download className="h-4 w-4" />

@@ -11,13 +11,32 @@ interface ColumnaTabla {
   align?: 'left' | 'right' | 'center';
 }
 
+/**
+ * Sección agrupada del reporte: se renderiza con un subtítulo + su propia
+ * tabla. Sirve para reportes "por sociedad" o "por propietario" donde
+ * conviene visualmente separar los grupos en lugar de una tabla flat.
+ */
+export interface SeccionReporte {
+  titulo: string;
+  subtitulo?: string;
+  filas: (string | number)[][];
+  subtotal?: { label: string; valor: string };
+}
+
 export interface ReportePrintable {
   titulo: string;
   subtitulo?: string;
   inmobiliaria: string;
   fechaGeneracion?: string;
   columnas: ColumnaTabla[];
-  filas: (string | number)[][];
+  /**
+   * Una de las dos formas:
+   * - `filas`: tabla flat (uso clásico).
+   * - `secciones`: múltiples grupos con subtítulo y subtotal. Si `secciones`
+   *   está presente, se ignora `filas`.
+   */
+  filas?: (string | number)[][];
+  secciones?: SeccionReporte[];
   totales?: { label: string; valor: string }[];
   notaFinal?: string;
 }
@@ -33,7 +52,18 @@ const ESTILOS = `
   .header .subtitle { color: #555; font-size: 13px; margin-top: 4px; }
   .header .meta { text-align: right; font-size: 11px; color: #555; }
   .header .inmo { font-weight: 600; color: #111; }
-  table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+  .seccion { margin-bottom: 32px; page-break-inside: avoid; }
+  .seccion h2 { font-size: 14px; font-weight: 700; margin-bottom: 2px;
+                color: #111; border-left: 4px solid #111; padding-left: 8px; }
+  .seccion .subt { font-size: 11px; color: #666; margin-bottom: 8px;
+                   padding-left: 12px; }
+  .subtotal { font-size: 11px; text-align: right; font-weight: 600;
+              border-top: 1px solid #111; padding-top: 6px; margin-top: 4px;
+              font-variant-numeric: tabular-nums; }
+  .subtotal .label { color: #555; font-weight: 400; margin-right: 8px;
+                     text-transform: uppercase; font-size: 10px;
+                     letter-spacing: 0.04em; }
   thead { background: #f4f4f5; }
   th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #e4e4e7;
            font-size: 11px; vertical-align: top; }
@@ -102,21 +132,45 @@ export function abrirReporteImprimible(reporte: ReportePrintable): void {
     )
     .join('');
 
-  const rowsHtml = reporte.filas
-    .map(
-      (fila) =>
-        '<tr>' +
-        fila
-          .map((celda, i) => {
-            const col = reporte.columnas[i];
-            const cls =
-              col?.align === 'right' ? 'right monto' : col?.align === 'center' ? 'center' : '';
-            return `<td class="${cls}">${escapar(String(celda))}</td>`;
-          })
-          .join('') +
-        '</tr>',
-    )
-    .join('');
+  const renderFilas = (filas: (string | number)[][]) =>
+    filas
+      .map(
+        (fila) =>
+          '<tr>' +
+          fila
+            .map((celda, i) => {
+              const col = reporte.columnas[i];
+              const cls =
+                col?.align === 'right' ? 'right monto' : col?.align === 'center' ? 'center' : '';
+              return `<td class="${cls}">${escapar(String(celda))}</td>`;
+            })
+            .join('') +
+          '</tr>',
+      )
+      .join('');
+
+  const rowsHtml = reporte.filas ? renderFilas(reporte.filas) : '';
+
+  const seccionesHtml = reporte.secciones
+    ? reporte.secciones
+        .map(
+          (s) => `
+            <div class="seccion">
+              <h2>${escapar(s.titulo)}</h2>
+              ${s.subtitulo ? `<div class="subt">${escapar(s.subtitulo)}</div>` : ''}
+              <table>
+                <thead><tr>${colsHtml}</tr></thead>
+                <tbody>${renderFilas(s.filas)}</tbody>
+              </table>
+              ${
+                s.subtotal
+                  ? `<div class="subtotal"><span class="label">${escapar(s.subtotal.label)}</span>${escapar(s.subtotal.valor)}</div>`
+                  : ''
+              }
+            </div>`,
+        )
+        .join('')
+    : '';
 
   const totalesHtml = reporte.totales
     ? `<div class="totales">${reporte.totales
@@ -137,10 +191,14 @@ export function abrirReporteImprimible(reporte: ReportePrintable): void {
       <button onclick="window.print()">Imprimir / Guardar PDF</button>
     </div>
     ${headerHtml}
-    <table>
-      <thead><tr>${colsHtml}</tr></thead>
-      <tbody>${rowsHtml}</tbody>
-    </table>
+    ${
+      reporte.secciones && reporte.secciones.length > 0
+        ? seccionesHtml
+        : `<table>
+            <thead><tr>${colsHtml}</tr></thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>`
+    }
     ${totalesHtml}
     ${notaHtml}
     <div class="footer">My Alquiler · Generado automáticamente · ${escapar(reporte.inmobiliaria)}</div>
