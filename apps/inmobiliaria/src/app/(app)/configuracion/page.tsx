@@ -30,6 +30,10 @@ import { toast } from '@llave/ui/use-toast';
 import { relanzarOnboardingInmo } from '@/components/onboarding';
 import { Topbar } from '@/components/topbar';
 import { TRAMOS_PLAN, calcularResumenPlan, facturasMock } from '@/lib/plan';
+import { CuponInput } from '@/components/cupon-input';
+import { EstadoCuentaCard } from '@/components/estado-cuenta-card';
+import { FormaPagoSelector } from '@/components/forma-pago-selector';
+import { TrialBanner } from '@/components/trial-banner';
 import { formatFecha, formatMonto, formatPeriodo } from '@/lib/format';
 import {
   listarAuditoria,
@@ -541,55 +545,30 @@ export default function ConfiguracionPage() {
               </CardContent>
             </Card>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">¿Cómo funciona el cobro?</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2 text-sm">
-                  <p className="text-muted-foreground">
-                    Pagás un <strong className="text-foreground">precio fijo mensual</strong> según
-                    el tramo en el que estés. Si superás el tope de propiedades del plan, se ajusta
-                    automáticamente al siguiente tramo en la próxima facturación.
-                  </p>
-                  <p className="text-muted-foreground">
-                    No hay cargos por inquilino, contratos ni verificaciones — los screenings y todas
-                    las features del producto están incluidos.
-                  </p>
-                </CardContent>
-              </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">¿Cómo funciona el cobro?</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <p className="text-muted-foreground">
+                  Pagás un <strong className="text-foreground">precio fijo mensual</strong> según
+                  el tramo en el que estés. Si superás el tope de propiedades del plan, se ajusta
+                  automáticamente al siguiente tramo en la próxima facturación.
+                </p>
+                <p className="text-muted-foreground">
+                  No hay cargos por inquilino, contratos ni verificaciones — los screenings y todas
+                  las features del producto están incluidos.
+                </p>
+              </CardContent>
+            </Card>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Método de pago</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3 text-sm">
-                  <div className="flex items-center gap-3 rounded-md border p-3">
-                    <CreditCard className="h-5 w-5 text-muted-foreground" />
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium">Visa terminada en 4242</p>
-                      <p className="text-xs text-muted-foreground">Vence 12/27 · Roberto Tapia</p>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() =>
-                        toast({
-                          title: 'Próximamente',
-                          description: 'El cambio de medio de pago se habilita la semana que viene.',
-                        })
-                      }
-                    >
-                      Cambiar
-                    </Button>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    El cobro se debita el 1° de cada mes. Si necesitás cambiar a transferencia,
-                    escribinos.
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
+            <TrialBanner />
+
+            <EstadoCuentaCard />
+
+            <CuponInput />
+
+            <FormaPagoSelector />
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0">

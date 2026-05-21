@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@llave/ui/cn';
 import { calcularResumenPlan } from '@/lib/plan';
+import { diasRestantesTrial, leerTrial, trialVigente } from '@/lib/trial-storage';
 
 const links = [
   { href: '/', label: 'Inicio', icon: LayoutDashboard },
@@ -39,6 +40,9 @@ const links = [
 
 function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {
   const plan = calcularResumenPlan();
+  const trial = leerTrial();
+  const trialActivo = trialVigente(trial);
+  const diasTrial = trialActivo ? diasRestantesTrial(trial) : 0;
   return (
     <>
       <div className="flex h-16 items-center gap-2 border-b px-6">
@@ -85,7 +89,16 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
             ? `${plan.propiedadesActivas}/${plan.topePlan} propiedades`
             : `${plan.propiedadesActivas} propiedades`}
         </p>
-        {plan.topePlan !== null &&
+        {trialActivo && (
+          <Link
+            href="/configuracion#plan"
+            className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300"
+          >
+            🎁 Trial · {diasTrial} día{diasTrial === 1 ? '' : 's'}
+          </Link>
+        )}
+        {!trialActivo &&
+          plan.topePlan !== null &&
           plan.topePlan - plan.propiedadesActivas <= 3 && (
             <Link
               href="/configuracion#plan"
