@@ -123,6 +123,37 @@ export const CUPONES_VALIDOS: Cupon[] = [
     ],
   },
   /* ============================================================
+   * Cupón "Migración" para clientes que vienen de la competencia
+   *
+   * Idea de Ramiro en el meeting: "como más viable un descuento,
+   * para yo sacarte de la otra aplicación y meterte dentro de la
+   * nuestra". Cubre los 3 competidores que aparecieron en la
+   * conversación: Toco, Consorcio Abierto y AdminPro.
+   * ============================================================ */
+  {
+    codigo: 'MIGRACION25',
+    convenio: 'Migración desde competencia',
+    sigla: 'Migra',
+    porcentaje: 25,
+    vigenciaHasta: '2026-12-31',
+    detalle: 'Si venís de otra plataforma, primeros 12 meses con 25% off',
+    cobertura: 'Toco · Consorcio Abierto · AdminPro · otras',
+    descripcion:
+      'Si tu inmobiliaria está hoy usando otra plataforma (Toco, Consorcio ' +
+      'Abierto, AdminPro o cualquier otra) y querés cambiarte a My Alquiler, ' +
+      'te bonificamos un 25% durante los primeros 12 meses + onboarding ' +
+      'completo sin cargo. Combinable con la migración masiva de tu cartera ' +
+      'desde /propiedades.',
+    estado: 'ACTIVO',
+    beneficios: [
+      '25% off durante 12 meses (acumulable con cupón de colegio)',
+      'Migración de la cartera completa con IA · sin cargo',
+      'Sesión 1-a-1 con product para resolver dudas',
+      'Permanencia 0 · si volvés a la otra app no te cobramos cancelación',
+    ],
+  },
+
+  /* ============================================================
    * Convenios en negociación (mostrados como "Próximamente")
    * ============================================================ */
   {

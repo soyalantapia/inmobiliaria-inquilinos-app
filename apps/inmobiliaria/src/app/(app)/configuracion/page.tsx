@@ -33,6 +33,7 @@ import { toast } from '@llave/ui/use-toast';
 import { relanzarOnboardingInmo } from '@/components/onboarding';
 import { Topbar } from '@/components/topbar';
 import { TRAMOS_PLAN, calcularResumenPlan, facturasMock } from '@/lib/plan';
+import { BannerMigracion } from '@/components/banner-migracion';
 import { ConveniosBrowser } from '@/components/convenios-browser';
 import { CuponInput } from '@/components/cupon-input';
 import { EstadoCuentaCard } from '@/components/estado-cuenta-card';
@@ -505,6 +506,11 @@ export default function ConfiguracionPage() {
 
           {/* PLAN Y FACTURAS */}
           <TabsContent value="plan" className="space-y-4">
+            {/* Banner pro-activo: si la inmo viene de la competencia,
+                aplicamos cupón MIGRACION25 con un click. Se
+                auto-dismissa una vez que el usuario elige o cierra. */}
+            <BannerMigracion />
+
             <Card className="border-primary/20 bg-primary/5">
               <CardContent className="grid gap-6 p-6 md:grid-cols-3">
                 <div>
