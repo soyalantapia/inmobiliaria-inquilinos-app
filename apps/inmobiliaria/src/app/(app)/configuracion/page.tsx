@@ -9,6 +9,7 @@ import {
   Download,
   FileText,
   GraduationCap,
+  Handshake,
   MapPin,
   Plus,
   ScrollText,
@@ -31,6 +32,7 @@ import { toast } from '@llave/ui/use-toast';
 import { relanzarOnboardingInmo } from '@/components/onboarding';
 import { Topbar } from '@/components/topbar';
 import { TRAMOS_PLAN, calcularResumenPlan, facturasMock } from '@/lib/plan';
+import { ConveniosBrowser } from '@/components/convenios-browser';
 import { CuponInput } from '@/components/cupon-input';
 import { EstadoCuentaCard } from '@/components/estado-cuenta-card';
 import { FormaPagoSelector } from '@/components/forma-pago-selector';
@@ -239,6 +241,10 @@ export default function ConfiguracionPage() {
             <TabsTrigger value="plan">
               <CreditCard className="mr-1.5 h-3.5 w-3.5" />
               Plan y facturas
+            </TabsTrigger>
+            <TabsTrigger value="convenios">
+              <Handshake className="mr-1.5 h-3.5 w-3.5" />
+              Convenios
             </TabsTrigger>
             <TabsTrigger value="auditoria">
               <ScrollText className="mr-1.5 h-3.5 w-3.5" />
@@ -699,6 +705,23 @@ export default function ConfiguracionPage() {
                 >
                   Comparar planes
                 </Button>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* CONVENIOS */}
+          <TabsContent value="convenios" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Convenios con colegios y cámaras</CardTitle>
+                <CardDescription>
+                  Si pertenecés a algún colegio o cámara que tenga convenio
+                  con My Alquiler, activá el beneficio acá para acceder a un
+                  descuento permanente sobre tu plan.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ConveniosBrowser />
               </CardContent>
             </Card>
           </TabsContent>
