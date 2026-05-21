@@ -35,7 +35,7 @@ import {
   type PropietarioExtra,
   listarPropietariosExtra,
 } from '@/lib/propietarios-extra-storage';
-import { COSTO_PROPIEDAD_MENSUAL } from '@/lib/plan';
+import { calcularResumenPlan, resumenPara } from '@/lib/plan';
 import { formatMonto } from '@/lib/format';
 import type { TipoPropiedad } from '@/lib/types';
 
@@ -135,6 +135,15 @@ export default function NuevaPropiedadPage() {
   // Flow
   const [confirmando, setConfirmando] = useState(false);
   const [enviando, setEnviando] = useState(false);
+
+  // Plan: comparamos actual vs después de sumar esta propiedad
+  const planActual = useMemo(() => calcularResumenPlan(), []);
+  const planNuevo = useMemo(
+    () => resumenPara(planActual.propiedadesActivas + 1),
+    [planActual.propiedadesActivas],
+  );
+  const haySaltoDePlan = planNuevo.key !== planActual.key;
+  const diferenciaCosto = planNuevo.costoMensualTotal - planActual.costoMensualTotal;
 
   // Catálogo combinado de propietarios
   const todosLosPropietarios = useMemo(
@@ -265,19 +274,65 @@ export default function NuevaPropiedadPage() {
           Volver a propiedades
         </Link>
 
-        {/* Aviso de costo (simplificado) */}
-        <Card className="border-primary/30 bg-primary/5">
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground">
+        {/* Aviso de cambio de plan al sumar la propiedad */}
+        <Card
+          className={
+            haySaltoDePlan
+              ? 'border-amber-300 bg-amber-50/60 dark:border-amber-900/40 dark:bg-amber-900/10'
+              : 'border-primary/30 bg-primary/5'
+          }
+        >
+          <CardContent className="flex items-start gap-3 p-4">
+            <div
+              className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${
+                haySaltoDePlan
+                  ? 'bg-amber-500 text-white'
+                  : 'bg-primary text-primary-foreground'
+              }`}
+            >
               <Building2 className="h-4 w-4" />
             </div>
-            <p className="text-sm">
-              Al sumar esta propiedad se agregan{' '}
-              <strong className="text-foreground">
-                +{formatMonto(COSTO_PROPIEDAD_MENSUAL)}
-              </strong>{' '}
-              por mes a tu factura.
-            </p>
+            <div className="flex-1 text-sm">
+              {haySaltoDePlan ? (
+                <>
+                  <p>
+                    Con esta propiedad pasás de <strong>{planActual.plan}</strong>{' '}
+                    a <strong>{planNuevo.plan}</strong>.
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Tu factura mensual sube de{' '}
+                    <strong className="tabular-nums text-foreground">
+                      {formatMonto(planActual.costoMensualTotal)}
+                    </strong>{' '}
+                    a{' '}
+                    <strong className="tabular-nums text-foreground">
+                      {formatMonto(planNuevo.costoMensualTotal)}
+                    </strong>{' '}
+                    (+{formatMonto(diferenciaCosto)}).{' '}
+                    {planNuevo.topePlan !== null
+                      ? `Incluye hasta ${planNuevo.topePlan} propiedades.`
+                      : 'Sin tope de propiedades.'}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p>
+                    Seguís en <strong>{planActual.plan}</strong> ·{' '}
+                    <strong className="tabular-nums">
+                      {formatMonto(planActual.costoMensualTotal)}
+                    </strong>{' '}
+                    / mes (sin cambios).
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {planActual.topePlan !== null && planActual.propiedadesParaProximo
+                      ? `Te quedan ${planActual.propiedadesParaProximo - 1} propiedad${
+                          planActual.propiedadesParaProximo - 1 === 1 ? '' : 'es'
+                        } antes de pasar a ${planActual.proximoTramo?.nombre ?? 'el siguiente plan'}.`
+                      : 'Sumá las que necesites, no cambia el precio del plan.'}
+                  </p>
+                </>
+              )}
+            </div>
           </CardContent>
         </Card>
 
@@ -822,13 +877,39 @@ export default function NuevaPropiedadPage() {
                   )}
                 </div>
 
-                <div className="space-y-1 rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm">
+                <div
+                  className={`space-y-1 rounded-lg border p-3 text-sm ${
+                    haySaltoDePlan
+                      ? 'border-amber-300 bg-amber-50/60 dark:border-amber-900/40 dark:bg-amber-900/10'
+                      : 'border-primary/20 bg-primary/5'
+                  }`}
+                >
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                    Costo extra
+                    {haySaltoDePlan ? 'Cambio de plan' : 'Plan'}
                   </p>
-                  <p className="text-lg font-semibold tabular-nums text-primary">
-                    +{formatMonto(COSTO_PROPIEDAD_MENSUAL)} / mes
-                  </p>
+                  {haySaltoDePlan ? (
+                    <>
+                      <p className="text-base font-semibold">
+                        {planActual.plan} → {planNuevo.plan}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {formatMonto(planActual.costoMensualTotal)} →{' '}
+                        <strong className="text-foreground tabular-nums">
+                          {formatMonto(planNuevo.costoMensualTotal)}
+                        </strong>{' '}
+                        / mes
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-base font-semibold tabular-nums text-primary">
+                        {planActual.plan} · {formatMonto(planActual.costoMensualTotal)}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">
+                        Sin cambios en tu factura.
+                      </p>
+                    </>
+                  )}
                 </div>
 
                 <Button
@@ -868,16 +949,33 @@ export default function NuevaPropiedadPage() {
         title="¿Sumar esta propiedad?"
         description={
           <div className="space-y-1 pt-2 text-sm">
-            <p>
-              Se agregan{' '}
-              <strong className="text-foreground">
-                +{formatMonto(COSTO_PROPIEDAD_MENSUAL)}
-              </strong>{' '}
-              por mes a tu factura mientras la propiedad esté activa.
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Podés bajarla cuando quieras desde el panel.
-            </p>
+            {haySaltoDePlan ? (
+              <>
+                <p>
+                  Con esta propiedad pasás de <strong>{planActual.plan}</strong>{' '}
+                  a <strong>{planNuevo.plan}</strong>.
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Tu factura mensual pasa de{' '}
+                  {formatMonto(planActual.costoMensualTotal)} a{' '}
+                  <strong className="text-foreground">
+                    {formatMonto(planNuevo.costoMensualTotal)}
+                  </strong>
+                  . El cambio se aplica desde la próxima facturación.
+                </p>
+              </>
+            ) : (
+              <>
+                <p>
+                  Seguís en <strong>{planActual.plan}</strong>, no cambia el
+                  precio del plan ({formatMonto(planActual.costoMensualTotal)} /
+                  mes).
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Podés bajarla cuando quieras desde el panel.
+                </p>
+              </>
+            )}
           </div>
         }
         confirmLabel="Sí, cargar propiedad"

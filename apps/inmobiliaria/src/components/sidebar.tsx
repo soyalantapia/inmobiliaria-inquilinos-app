@@ -20,6 +20,7 @@ import {
   X,
 } from 'lucide-react';
 import { cn } from '@llave/ui/cn';
+import { calcularResumenPlan } from '@/lib/plan';
 
 const links = [
   { href: '/', label: 'Inicio', icon: LayoutDashboard },
@@ -37,6 +38,7 @@ const links = [
 ] as const;
 
 function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {
+  const plan = calcularResumenPlan();
   return (
     <>
       <div className="flex h-16 items-center gap-2 border-b px-6">
@@ -77,7 +79,12 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
       </nav>
       <div className="border-t p-3 text-xs text-muted-foreground">
         <p className="font-medium text-foreground">Inmobiliaria del Sol</p>
-        <p>Plan Starter · 87/100 contratos</p>
+        <p>
+          Plan {plan.plan} ·{' '}
+          {plan.topePlan !== null
+            ? `${plan.propiedadesActivas}/${plan.topePlan} propiedades`
+            : `${plan.propiedadesActivas} propiedades`}
+        </p>
       </div>
     </>
   );

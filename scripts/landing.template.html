@@ -961,6 +961,140 @@
         overflow: hidden;
         isolation: isolate;
       }
+
+      /* === Pricing por tramos (4 cards) === */
+      .precios-grid {
+        max-width: 1180px;
+        margin: 0 auto 40px;
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 16px;
+      }
+      @media (min-width: 640px) { .precios-grid { grid-template-columns: repeat(2, 1fr); } }
+      @media (min-width: 1024px) { .precios-grid { grid-template-columns: repeat(4, 1fr); gap: 20px; } }
+
+      .tramo-card {
+        position: relative;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg, 16px);
+        padding: 28px 24px;
+        text-align: left;
+        transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+      }
+      .tramo-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 16px 40px -20px rgba(0, 0, 0, 0.08);
+        border-color: var(--primary);
+      }
+      .tramo-destacado {
+        background: linear-gradient(180deg, rgba(124, 58, 237, 0.06), rgba(236, 72, 153, 0.02));
+        border: 2px solid var(--primary);
+        box-shadow: 0 24px 50px -20px var(--primary-glow);
+        transform: translateY(-8px);
+      }
+      @media (max-width: 1023px) { .tramo-destacado { transform: none; } }
+
+      .tramo-tag {
+        position: absolute;
+        top: -12px;
+        right: 16px;
+        background: linear-gradient(90deg, var(--primary), var(--accent-pink));
+        color: #fff;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+        padding: 4px 12px;
+        border-radius: 999px;
+        box-shadow: 0 6px 14px -4px var(--primary-glow);
+      }
+
+      .tramo-nombre {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        margin-bottom: 12px;
+      }
+      .tramo-destacado .tramo-nombre { color: var(--primary); }
+
+      .tramo-precio {
+        display: flex;
+        align-items: baseline;
+        gap: 6px;
+        margin-bottom: 8px;
+      }
+      .tramo-v {
+        font-size: 36px;
+        font-weight: 900;
+        color: var(--fg);
+        letter-spacing: -0.5px;
+      }
+      @media (min-width: 1024px) { .tramo-v { font-size: 42px; } }
+      .tramo-periodo {
+        font-size: 13px;
+        color: var(--muted);
+      }
+
+      .tramo-rango {
+        font-size: 13px;
+        color: var(--fg-soft);
+        font-weight: 500;
+      }
+
+      /* === Bloques de "incluye" y CTA debajo de los tramos === */
+      .precios-incluye {
+        max-width: 1080px;
+        margin: 0 auto 32px;
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 24px;
+        padding: 28px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg, 16px);
+        background: var(--bg-soft);
+      }
+      @media (min-width: 768px) { .precios-incluye { grid-template-columns: 2fr 1fr; gap: 40px; } }
+      .precios-incluye h4 {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        color: var(--muted);
+        margin: 0 0 14px;
+      }
+      .precios-incluye ul {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 10px;
+      }
+      @media (min-width: 640px) { .precios-incluye > div:first-child ul { grid-template-columns: 1fr 1fr; gap: 8px 24px; } }
+      .precios-incluye li {
+        font-size: 14px;
+        color: var(--fg-soft);
+        padding-left: 20px;
+        position: relative;
+      }
+      .precios-incluye li::before {
+        content: '✓';
+        position: absolute;
+        left: 0;
+        color: var(--primary);
+        font-weight: 700;
+      }
+
+      .precios-cta-group {
+        max-width: 1080px;
+        margin: 0 auto;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        justify-content: center;
+      }
       .promo-card::before {
         content: '';
         position: absolute;
@@ -2364,7 +2498,7 @@
             });
           }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
 
-          document.querySelectorAll('.feature, .sec-header, .release, .paso, .integracion, .compare-col, .faq-item, .dolor, .promo-card, .impacto-card')
+          document.querySelectorAll('.feature, .sec-header, .release, .paso, .integracion, .compare-col, .faq-item, .dolor, .promo-card, .impacto-card, .precios-grid, .precios-incluye, .precios-cta-group, .tramo-card')
             .forEach(function (el) {
               el.classList.add('reveal');
               io.observe(el);

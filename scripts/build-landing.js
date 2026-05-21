@@ -201,90 +201,55 @@ function renderAntesDespues(filas) {
         </div>`;
 }
 
-// Render del plan único de lanzamiento con oferta promocional
-function renderPromo(promo, ctaPropietarioHref) {
-  const incluye = (promo.incluye || [])
+// Render del pricing por tramos
+function renderPricing(precios, ctaPropietarioHref) {
+  const tramos = (precios.tramos || [])
+    .map(
+      (t) => `
+            <div class="tramo-card${t.destacado ? ' tramo-destacado' : ''}">
+              ${t.etiqueta ? `<div class="tramo-tag">${esc(t.etiqueta)}</div>` : ''}
+              <div class="tramo-nombre">${esc(t.nombre)}</div>
+              <div class="tramo-precio">
+                <span class="tramo-v">${esc(t.precio)}</span>
+                <span class="tramo-periodo">${esc(precios.periodo || '/ mes')}</span>
+              </div>
+              <div class="tramo-rango">${esc(t.rango)}</div>
+            </div>`,
+    )
+    .join('');
+  const incluye = (precios.incluye || [])
     .map((i) => `<li>${esc(i)}</li>`)
     .join('\n            ');
-  const extras = (promo.extras || [])
+  const extras = (precios.extras || [])
     .map((i) => `<li>${esc(i)}</li>`)
     .join('\n            ');
-  const cuposPct = promo.cuposTotales
-    ? Math.max(0, Math.min(100, Math.round(((promo.cuposTotales - promo.cuposRestantes) / promo.cuposTotales) * 100)))
-    : 0;
-  const tomados = (promo.cuposTotales || 0) - (promo.cuposRestantes || 0);
   return `
-        <div class="promo-card reveal">
-          <div class="promo-banner">${esc(promo.etiqueta)}</div>
-          <div class="promo-body">
-            <div class="promo-left">
-              <div class="promo-audiencia">${esc(promo.audiencia)}</div>
-              <h3 class="promo-headline">acceden a un precio único de lanzamiento</h3>
+        <div class="precios-grid reveal">
+          ${tramos}
+        </div>
 
-              <div class="promo-precio">
-                <div class="promo-precio-antes">
-                  Antes
-                  <span class="tachado">${esc(promo.precioOriginal)}</span>
-                </div>
-                <div class="promo-precio-nuevo">
-                  <span class="v">${esc(promo.precioPromocional)}</span>
-                  <span class="periodo">${esc(promo.periodo)}</span>
-                </div>
-                <span class="promo-descuento-chip">${esc(promo.descuento)}</span>
-              </div>
-
-              <div class="promo-urgencia">
-                <span class="urgencia-chip">
-                  <span class="pulse" aria-hidden="true"></span>
-                  Quedan <strong>${promo.cuposRestantes}</strong> de ${promo.cuposTotales} cupos
-                </span>
-                <span class="urgencia-chip">
-                  📅 <strong>${esc(promo.vencimiento)}</strong>
-                </span>
-              </div>
-
-              <div class="promo-cupos" role="img" aria-label="${tomados} de ${promo.cuposTotales} cupos tomados">
-                <div class="promo-cupos-header">
-                  <span>${tomados} ya se sumaron</span>
-                  <span>${promo.cuposTotales} cupos totales</span>
-                </div>
-                <div class="promo-cupos-bar">
-                  <div class="promo-cupos-bar-fill" style="width: ${cuposPct}%"></div>
-                </div>
-              </div>
-
-              <div class="promo-cta-group">
-                <a href="${esc(ctaPropietarioHref)}" class="btn btn-primary btn-xl">
-                  🔒 ${esc(promo.cta)}
-                </a>
-                <a href="mailto:hola@llave.com.ar" class="btn btn-ghost btn-xl">
-                  ${esc(promo.ctaSecundario)}
-                </a>
-              </div>
-
-              <p class="promo-garantia">
-                <span class="gar-icon">✓</span>
-                ${esc(promo.garantia)}
-              </p>
-            </div>
-
-            <div class="promo-right">
-              <div class="promo-listas">
-                <div>
-                  <h4>Todo incluido</h4>
-                  <ul>
+        <div class="precios-incluye reveal">
+          <div>
+            <h4>Todo incluido en cualquier plan</h4>
+            <ul>
               ${incluye}
-                  </ul>
-                </div>
-                <div>
-                  <h4>Sin extras</h4>
-                  <ul>
-              ${extras}
-                  </ul>
-                </div>
-              </div>
-            </div>
+            </ul>
           </div>
+          <div>
+            <h4>Sin extras</h4>
+            <ul>
+              ${extras}
+            </ul>
+          </div>
+        </div>
+
+        <div class="precios-cta-group reveal">
+          <a href="${esc(ctaPropietarioHref)}" class="btn btn-primary btn-xl">
+            🚀 ${esc(precios.cta)}
+          </a>
+          <a href="mailto:hola@myalquiler.com.ar" class="btn btn-ghost btn-xl">
+            ${esc(precios.ctaSecundario)}
+          </a>
         </div>`;
 }
 
@@ -384,8 +349,8 @@ function main() {
     PRECIOS_TAG: esc(data.precios.tag),
     PRECIOS_TITULO: esc(data.precios.titulo),
     PRECIOS_SUBTITULO: esc(data.precios.subtitulo),
-    PRECIOS_PROMO: renderPromo(data.precios.promo, data.hero.ctaPropietario.href),
-    PRECIOS_FINEPRINT: esc(data.precios.promo.fineprint),
+    PRECIOS_PROMO: renderPricing(data.precios, data.hero.ctaPropietario.href),
+    PRECIOS_FINEPRINT: esc(data.precios.fineprint || ''),
     FAQ_TITULO: esc(data.faq.titulo),
     FAQ_SUBTITULO: esc(data.faq.subtitulo),
     FAQ_ITEMS: renderFaq(data.faq.items),
@@ -412,7 +377,7 @@ function main() {
   console.log(
     `  ${data.problema.dolores.length} dolores · ${data.comoFunciona.pasos.length} pasos · ` +
       `${data.secciones.length} secciones · ${totalFeatures} features · ` +
-      `${data.integraciones.items.length} integraciones · oferta de lanzamiento ${data.precios.promo.cuposRestantes}/${data.precios.promo.cuposTotales} cupos · ` +
+      `${data.integraciones.items.length} integraciones · ${data.precios.tramos.length} planes · ` +
       `${data.faq.items.length} FAQ · ${data.changelog.length} releases`,
   );
 }

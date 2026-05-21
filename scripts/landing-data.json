@@ -399,38 +399,58 @@
   },
   "precios": {
     "tag": "Precios",
-    "titulo": "Plan único con oferta de lanzamiento",
-    "subtitulo": "Todo lo de la plataforma sin restricciones ni planes confusos. Pagás por propiedad activa, sin permanencia.",
-    "promo": {
-      "activa": true,
-      "etiqueta": "🔥 OFERTA DE LANZAMIENTO",
-      "audiencia": "Las primeras 50 inmobiliarias",
-      "precioOriginal": "$25.000",
-      "precioPromocional": "$10.000",
-      "moneda": "ARS",
-      "periodo": "por propiedad / mes",
-      "descuento": "60% OFF",
-      "vencimiento": "Hasta el 1 de agosto",
-      "cuposRestantes": 28,
-      "cuposTotales": 50,
-      "garantia": "Precio congelado durante 12 meses",
-      "incluye": [
-        "Toda la plataforma sin restricciones",
-        "Cobranza, ARCA, contratos, reclamos, reportes",
-        "App del inquilino con Broker IA incluido",
-        "Usuarios ilimitados de tu equipo",
-        "Onboarding personalizado del equipo",
-        "Soporte prioritario por WhatsApp"
-      ],
-      "extras": [
-        "Sin permanencia",
-        "Sin costos de implementación",
-        "Sin cargos por usuarios extra"
-      ],
-      "cta": "Asegurar mi precio de lanzamiento",
-      "ctaSecundario": "Hablar con un asesor",
-      "fineprint": "Después del 1 de agosto o de cubiertos los primeros 50 cupos, el precio vuelve al valor de lista ($25.000 por propiedad / mes)."
-    }
+    "titulo": "Un precio fijo por mes según tu cartera",
+    "subtitulo": "Elegís el plan según cuántas propiedades manejás. Sin sorpresas, sin costos por usuario ni por inquilino. Subís de plan automáticamente si crecés.",
+    "moneda": "ARS",
+    "periodo": "por mes",
+    "tramos": [
+      {
+        "nombre": "Starter",
+        "topePropiedades": 10,
+        "rango": "Hasta 10 propiedades",
+        "precio": "$50.000",
+        "destacado": false
+      },
+      {
+        "nombre": "Growth",
+        "topePropiedades": 50,
+        "rango": "Hasta 50 propiedades",
+        "precio": "$100.000",
+        "destacado": true,
+        "etiqueta": "Más elegido"
+      },
+      {
+        "nombre": "Pro",
+        "topePropiedades": 100,
+        "rango": "Hasta 100 propiedades",
+        "precio": "$200.000",
+        "destacado": false
+      },
+      {
+        "nombre": "Enterprise",
+        "topePropiedades": null,
+        "rango": "Más de 100 propiedades",
+        "precio": "$350.000",
+        "destacado": false
+      }
+    ],
+    "incluye": [
+      "Toda la plataforma sin restricciones",
+      "Cobranza, ARCA, contratos, reclamos, reportes",
+      "App del inquilino con Broker IA incluido",
+      "Usuarios ilimitados de tu equipo",
+      "Link mágico para profesionales",
+      "Onboarding personalizado del equipo",
+      "Soporte prioritario por WhatsApp"
+    ],
+    "extras": [
+      "Sin permanencia",
+      "Sin costos de implementación",
+      "Sin cargos por usuarios extra"
+    ],
+    "cta": "Probar 30 días gratis",
+    "ctaSecundario": "Hablar con un asesor",
+    "fineprint": "El precio se ajusta automáticamente al pasar el tope de propiedades del plan. Todos los planes incluyen las mismas funciones."
   },
   "faq": {
     "titulo": "Preguntas frecuentes",

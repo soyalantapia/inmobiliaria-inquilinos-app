@@ -29,7 +29,7 @@ import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
 import { relanzarOnboardingInmo } from '@/components/onboarding';
 import { Topbar } from '@/components/topbar';
-import { COSTO_PROPIEDAD_MENSUAL, calcularResumenPlan, facturasMock } from '@/lib/plan';
+import { TRAMOS_PLAN, calcularResumenPlan, facturasMock } from '@/lib/plan';
 import { formatFecha, formatMonto, formatPeriodo } from '@/lib/format';
 import {
   listarAuditoria,
@@ -482,7 +482,9 @@ export default function ConfiguracionPage() {
                   </p>
                   <p className="mt-1 text-3xl font-bold tabular-nums">{plan.propiedadesActivas}</p>
                   <p className="text-xs text-muted-foreground">
-                    × {formatMonto(plan.costoPorPropiedad)} c/u
+                    {plan.topePlan !== null
+                      ? `de ${plan.topePlan} incluidas en el plan`
+                      : 'sin tope · plan Enterprise'}
                   </p>
                 </div>
                 <div>
@@ -492,7 +494,49 @@ export default function ConfiguracionPage() {
                   <p className="mt-1 text-3xl font-bold tabular-nums text-primary">
                     {formatMonto(plan.costoMensualTotal)}
                   </p>
-                  <p className="text-xs text-muted-foreground">+ IVA 21%</p>
+                  <p className="text-xs text-muted-foreground">+ IVA 21% · fijo</p>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Tabla comparativa de tramos */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Planes disponibles</CardTitle>
+                <CardDescription>
+                  El precio es fijo por mes según el tope de propiedades. Subís de plan
+                  automáticamente al pasarte del tope.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  {TRAMOS_PLAN.map((t) => {
+                    const esActual = t.key === plan.key;
+                    return (
+                      <div
+                        key={t.key}
+                        className={`rounded-lg border p-4 ${
+                          esActual
+                            ? 'border-primary bg-primary/5'
+                            : 'border-border bg-card'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm font-semibold">{t.nombre}</p>
+                          {esActual && (
+                            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                              Tu plan
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-2 text-2xl font-bold tabular-nums text-foreground">
+                          {formatMonto(t.precio)}
+                          <span className="text-xs font-normal text-muted-foreground"> / mes</span>
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">{t.rango}</p>
+                      </div>
+                    );
+                  })}
                 </div>
               </CardContent>
             </Card>
@@ -504,16 +548,13 @@ export default function ConfiguracionPage() {
                 </CardHeader>
                 <CardContent className="space-y-2 text-sm">
                   <p className="text-muted-foreground">
-                    Pagás{' '}
-                    <strong className="text-foreground">
-                      {formatMonto(COSTO_PROPIEDAD_MENSUAL)} ARS
-                    </strong>{' '}
-                    por propiedad activa por mes. Si subís o bajás propiedades durante el mes, se
-                    prorratea automáticamente.
+                    Pagás un <strong className="text-foreground">precio fijo mensual</strong> según
+                    el tramo en el que estés. Si superás el tope de propiedades del plan, se ajusta
+                    automáticamente al siguiente tramo en la próxima facturación.
                   </p>
                   <p className="text-muted-foreground">
-                    No hay cargos por inquilino, contratos ni verificaciones (los screenings están
-                    incluidos en el plan Starter).
+                    No hay cargos por inquilino, contratos ni verificaciones — los screenings y todas
+                    las features del producto están incluidos.
                   </p>
                 </CardContent>
               </Card>
