@@ -216,7 +216,7 @@ export default function CuentaPage() {
         {/* Acerca de */}
         <section className="space-y-3">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Sobre Llave
+            Sobre My Alquiler
           </h2>
           <Card>
             <div className="flex items-center gap-3 p-4">

@@ -178,10 +178,10 @@ export default function GarantePublicPage({ params }: { params: { token: string 
 
         <div className="flex items-center justify-center gap-1 pt-4 text-[11px] text-muted-foreground">
           <UserRound className="h-3 w-3" />
-          <span>Llave · vista para garante</span>
+          <span>My Alquiler · vista para garante</span>
           <span>·</span>
           <Link href="/" className="underline-offset-2 hover:underline">
-            Conocé Llave
+            Conocé My Alquiler
           </Link>
         </div>
       </main>

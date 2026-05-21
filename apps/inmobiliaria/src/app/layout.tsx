@@ -8,7 +8,7 @@ import { AuthProvider } from '@/components/auth-provider';
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
 
 export const metadata: Metadata = {
-  title: 'Llave — Panel inmobiliaria',
+  title: 'My Alquiler — Panel inmobiliaria',
   description: 'Cargá contratos con IA, cobrá automático, verificá inquilinos.',
 };
 

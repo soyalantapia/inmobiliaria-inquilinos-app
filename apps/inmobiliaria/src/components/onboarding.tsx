@@ -42,7 +42,7 @@ const STEPS: Step[] = [
   {
     icon: Sparkles,
     iconBg: 'from-fuchsia-500 to-purple-600',
-    titulo: '¡Bienvenido a Llave!',
+    titulo: '¡Bienvenido a My Alquiler!',
     descripcion: 'Te muestro las funciones principales del panel en 1 minuto.',
     bullets: [
       'Pensado para inmobiliarias que gestionan alquileres',

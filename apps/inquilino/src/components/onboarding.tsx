@@ -42,7 +42,7 @@ const STEPS: Step[] = [
   {
     icon: Sparkles,
     iconBg: 'from-fuchsia-500 to-purple-600',
-    titulo: '¡Bienvenida a Llave!',
+    titulo: '¡Bienvenido a My Alquiler!',
     descripcion: 'Tu alquiler en un solo lugar. Te muestro las cosas importantes en 1 minuto.',
     bullets: [
       'Sin papeles ni llamadas innecesarias',
@@ -138,7 +138,7 @@ const STEPS: Step[] = [
     icon: CheckCircle2,
     iconBg: 'from-emerald-500 to-green-600',
     titulo: '¡Listo!',
-    descripcion: 'Ya conocés Llave. Cualquier duda, el Broker o la inmobiliaria están a un toque.',
+    descripcion: 'Ya conocés My Alquiler. Cualquier duda, el Broker o la inmobiliaria están a un toque.',
     bullets: [
       'Podés volver a ver este tour desde Mi Cuenta',
       'WhatsApp directo con tu inmobiliaria',
@@ -281,7 +281,7 @@ export function Onboarding() {
               </Button>
             )}
             <Button size="lg" className="flex-1" onClick={siguiente}>
-              {esUltimo ? '¡Empezar a usar Llave!' : 'Siguiente'}
+              {esUltimo ? '¡Empezar a usar My Alquiler!' : 'Siguiente'}
               {!esUltimo && <ArrowRight className="h-4 w-4" />}
             </Button>
           </div>

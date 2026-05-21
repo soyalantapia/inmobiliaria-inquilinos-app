@@ -555,7 +555,7 @@ export default function ConfiguracionPage() {
                 <div>
                   <CardTitle>Facturas mes a mes</CardTitle>
                   <CardDescription>
-                    Histórico de las últimas {facturasMock.length} facturas emitidas por Llave.
+                    Histórico de las últimas {facturasMock.length} facturas emitidas por My Alquiler.
                   </CardDescription>
                 </div>
                 <Button

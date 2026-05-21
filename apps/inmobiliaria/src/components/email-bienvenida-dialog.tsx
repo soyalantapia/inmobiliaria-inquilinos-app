@@ -45,8 +45,8 @@ export function EmailBienvenidaDialog({
 
   const asunto =
     modo === 'recordatorio'
-      ? '🔑 Recordatorio · Activá tu cuenta en Llave'
-      : '🎉 Te invitamos a Llave, la app de tu alquiler';
+      ? '🔑 Recordatorio · Activá tu cuenta en My Alquiler'
+      : '🎉 Te invitamos a My Alquiler, la app de tu alquiler';
 
   const onEnviar = async () => {
     setEnviando(true);
@@ -97,7 +97,7 @@ export function EmailBienvenidaDialog({
           <div className="border-b bg-muted/30 px-4 py-3 space-y-1 text-xs">
             <div className="flex gap-2">
               <span className="text-muted-foreground w-16 shrink-0">De:</span>
-              <span className="font-medium">hola@llave.com.ar</span>
+              <span className="font-medium">hola@myalquiler.com.ar</span>
             </div>
             <div className="flex gap-2">
               <span className="text-muted-foreground w-16 shrink-0">Para:</span>
@@ -113,10 +113,10 @@ export function EmailBienvenidaDialog({
           <div className="p-5 space-y-4 bg-background">
             {/* Logo */}
             <div className="flex items-center gap-2">
-              <div className="grid h-9 w-9 place-items-center rounded-lg bg-gradient-to-br from-primary to-purple-600 text-white font-bold shadow-sm">
-                L
+              <div className="grid h-9 w-9 place-items-center rounded-lg bg-gradient-to-br from-primary to-purple-600 text-white text-xs font-bold shadow-sm">
+                My
               </div>
-              <span className="font-semibold">Llave</span>
+              <span className="font-semibold">My Alquiler</span>
             </div>
 
             <div className="space-y-3">
@@ -128,13 +128,13 @@ export function EmailBienvenidaDialog({
 
               {modo === 'recordatorio' ? (
                 <p className="text-sm text-muted-foreground">
-                  Te invitamos a Llave hace unos días pero todavía no entraste a tu cuenta.
+                  Te invitamos a My Alquiler hace unos días pero todavía no entraste a tu cuenta.
                   Acordate de activarla así podés gestionar tu alquiler desde el celular.
                 </p>
               ) : (
                 <>
                   <p className="text-sm text-muted-foreground">
-                    Te damos la bienvenida a <strong>Llave</strong>, la app para gestionar
+                    Te damos la bienvenida a <strong>My Alquiler</strong>, la app para gestionar
                     tu alquiler. Desde acá vas a poder:
                   </p>
                   <ul className="space-y-1.5 text-sm text-muted-foreground">

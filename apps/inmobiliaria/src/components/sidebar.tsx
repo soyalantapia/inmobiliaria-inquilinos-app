@@ -40,11 +40,11 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
   return (
     <>
       <div className="flex h-16 items-center gap-2 border-b px-6">
-        <div className="grid h-8 w-8 place-items-center rounded-md bg-primary text-sm font-bold text-primary-foreground">
-          L
+        <div className="grid h-8 w-8 place-items-center rounded-md bg-primary text-[10px] font-bold text-primary-foreground">
+          My
         </div>
         <div>
-          <p className="text-sm font-semibold leading-tight">Llave</p>
+          <p className="text-sm font-semibold leading-tight">My Alquiler</p>
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
             Panel inmobiliaria
           </p>

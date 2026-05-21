@@ -1,5 +1,5 @@
 export const brand = {
-  name: 'Llave',
+  name: 'My Alquiler',
   tagline: 'Alquilar tranquilo, cobrar tranquilo.',
   primaryHsl: '262 78% 56%',
 } as const;

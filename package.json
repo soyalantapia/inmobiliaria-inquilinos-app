@@ -1,8 +1,8 @@
 {
-  "name": "llave",
+  "name": "my-alquiler",
   "version": "0.0.1",
   "private": true,
-  "description": "Llave — plataforma inmobiliaria (alquiler + expensas + chat IA + screening)",
+  "description": "My Alquiler — plataforma inmobiliaria (alquiler + expensas + chat IA + screening)",
   "packageManager": "pnpm@10.28.2",
   "engines": {
     "node": ">=20"

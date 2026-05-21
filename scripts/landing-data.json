@@ -1,6 +1,6 @@
 {
   "meta": {
-    "titulo": "Llave — Plataforma para administrar alquileres",
+    "titulo": "My Alquiler — Plataforma para administrar alquileres",
     "descripcion": "Sistema integral para inmobiliarias y administradores de alquileres en Argentina. Cobranza, facturación electrónica ARCA, contratos, reclamos y registro permanente de cada acción.",
     "version": "v4 · ronda 4 de mejoras"
   },
@@ -384,7 +384,7 @@
     ]
   },
   "antesDespues": {
-    "titulo": "Antes y después de Llave",
+    "titulo": "Antes y después de My Alquiler",
     "subtitulo": "Los cambios operativos que la inmobiliaria percibe desde el primer día.",
     "filas": [
       { "antes": "Información dispersa entre planillas y correos", "despues": "Información centralizada en un único entorno operativo" },

@@ -10,10 +10,10 @@ import { AuthProvider } from '@/components/auth-provider';
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
 
 export const metadata: Metadata = {
-  title: 'Llave',
+  title: 'My Alquiler',
   description: 'Pagá tu alquiler y expensas, chateá con tu contrato.',
   manifest: '/manifest.webmanifest',
-  appleWebApp: { capable: true, title: 'Llave', statusBarStyle: 'default' },
+  appleWebApp: { capable: true, title: 'My Alquiler', statusBarStyle: 'default' },
 };
 
 export const viewport: Viewport = {

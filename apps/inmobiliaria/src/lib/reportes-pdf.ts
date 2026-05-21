@@ -143,7 +143,7 @@ export function abrirReporteImprimible(reporte: ReportePrintable): void {
     </table>
     ${totalesHtml}
     ${notaHtml}
-    <div class="footer">Llave · Generado automáticamente · ${escapar(reporte.inmobiliaria)}</div>
+    <div class="footer">My Alquiler · Generado automáticamente · ${escapar(reporte.inmobiliaria)}</div>
     </body></html>`);
   win.document.close();
 }

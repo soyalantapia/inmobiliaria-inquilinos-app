@@ -86,7 +86,7 @@ export function InstallPrompt() {
         </div>
         <div className="flex-1 space-y-2 pr-4">
           <div>
-            <p className="text-sm font-medium">Instalá Llave en tu celular</p>
+            <p className="text-sm font-medium">Instalá My Alquiler en tu celular</p>
             <p className="text-xs text-muted-foreground">
               {deferred
                 ? 'Tocás una vez y queda como app, sin pasar por el navegador.'

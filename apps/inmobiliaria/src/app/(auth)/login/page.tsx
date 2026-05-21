@@ -14,11 +14,11 @@ export default function LoginPage() {
     <main className="grid min-h-screen place-items-center px-6">
       <div className="w-full max-w-md space-y-6">
         <div className="flex items-center gap-3">
-          <div className="grid h-10 w-10 place-items-center rounded-md bg-primary font-bold text-primary-foreground">
-            L
+          <div className="grid h-10 w-10 place-items-center rounded-md bg-primary text-xs font-bold text-primary-foreground">
+            My
           </div>
           <div>
-            <p className="font-semibold">Llave</p>
+            <p className="font-semibold">My Alquiler</p>
             <p className="text-xs text-muted-foreground">Panel inmobiliaria</p>
           </div>
         </div>

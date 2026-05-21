@@ -162,10 +162,10 @@ export default function LoginPage() {
       <div className="w-full max-w-md space-y-5">
         {/* Branding */}
         <div className="text-center space-y-1">
-          <div className="mx-auto grid h-12 w-12 place-items-center rounded-xl bg-gradient-to-br from-primary to-purple-600 text-white font-bold text-xl shadow-lg shadow-primary/30">
-            L
+          <div className="mx-auto grid h-12 w-12 place-items-center rounded-xl bg-gradient-to-br from-primary to-purple-600 text-white font-bold text-base shadow-lg shadow-primary/30">
+            My
           </div>
-          <h1 className="text-2xl font-bold tracking-tight">Llave</h1>
+          <h1 className="text-2xl font-bold tracking-tight">My Alquiler</h1>
           <p className="text-sm text-muted-foreground">La app de tu alquiler</p>
         </div>
 

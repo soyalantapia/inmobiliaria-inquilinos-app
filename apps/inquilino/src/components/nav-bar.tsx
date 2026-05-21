@@ -74,11 +74,11 @@ export function SideNav() {
   return (
     <aside className="hidden w-64 shrink-0 flex-col border-r bg-card md:flex">
       <div className="flex h-16 items-center gap-3 border-b px-6">
-        <div className="grid h-9 w-9 place-items-center rounded-lg bg-primary text-base font-bold text-primary-foreground">
-          L
+        <div className="grid h-9 w-9 place-items-center rounded-lg bg-primary text-xs font-bold text-primary-foreground">
+          My
         </div>
         <div>
-          <p className="text-sm font-semibold leading-tight">Llave</p>
+          <p className="text-sm font-semibold leading-tight">My Alquiler</p>
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Inquilino</p>
         </div>
       </div>
