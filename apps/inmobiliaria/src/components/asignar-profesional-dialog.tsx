@@ -333,6 +333,7 @@ export function mensajeWhatsappTrabajo(
       : reclamo.urgencia === 'ALTA'
         ? '⚠️ '
         : '';
+  const linkProf = linkMagicoProfesional(prof.id);
   return (
     `Hola ${nombrePila}! Soy del equipo de Inmobiliaria del Sol. ` +
     `Te paso un trabajo:\n\n` +
@@ -340,8 +341,25 @@ export function mensajeWhatsappTrabajo(
     `${reclamo.descripcion}\n\n` +
     `Inquilino: ${reclamo.inquilino}\n` +
     `Reclamo: ${reclamo.id}\n\n` +
-    `¿Podés ir a revisarlo? Coordinemos día. Cualquier cosa avisame.`
+    `Confirmá día y hora desde tu panel: ${linkProf}\n\n` +
+    `¿Podés ir a revisarlo? Cualquier cosa avisame.`
   );
+}
+
+/** URL del link mágico del profesional. En producción se firma con JWT;
+ *  acá usamos el id directo. La ruta vive en la app del inquilino bajo /p. */
+export function linkMagicoProfesional(profesionalId: string): string {
+  if (typeof window === 'undefined') {
+    return `/inquilino/p/${profesionalId}/`;
+  }
+  // En github pages la app del inquilino vive bajo .../inmobiliaria-inquilinos-app/inquilino/
+  // En localhost dev usamos http://localhost:3000/p/<id>
+  const isLocal = window.location.hostname === 'localhost';
+  if (isLocal) {
+    return `http://localhost:3000/p/${profesionalId}/`;
+  }
+  const base = `${window.location.origin}/inmobiliaria-inquilinos-app/inquilino`;
+  return `${base}/p/${profesionalId}/`;
 }
 
 function profesionalCategoriaLabelCorto(c: CategoriaProfesional): string {

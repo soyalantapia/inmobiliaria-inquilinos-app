@@ -92,10 +92,19 @@ export interface CargoExtra {
  * Lista de cargos USO_Y_GOCE que el inmo definió como pagables por el
  * inquilino. Filtra por contratoId del inquilino logueado y solo trae los
  * reclamos resueltos con costo cargado.
+ *
+ * `incluirPagados`: por defecto false (solo trae pendientes). En `true`
+ * trae todos para mostrar el histórico.
  */
-export function cargosExtraDelInquilino(contratoId: string | null): CargoExtra[] {
+export function cargosExtraDelInquilino(
+  contratoId: string | null,
+  opts: { incluirPagados?: boolean } = {},
+): CargoExtra[] {
   if (!contratoId) return [];
   const reclamos = leerReclamosInmo();
+  // Importación dinámica para no romper SSR si el módulo del inquilino
+  // todavía no se hidrató.
+  const pagados = leerPagadosLocal();
   return reclamos
     .filter(
       (r) =>
@@ -105,6 +114,7 @@ export function cargosExtraDelInquilino(contratoId: string | null): CargoExtra[]
         (r.costoTrabajo ?? 0) > 0 &&
         (r.estado === 'RESUELTO' || r.estado === 'CERRADO'),
     )
+    .filter((r) => opts.incluirPagados || !pagados[r.id])
     .map((r) => ({
       reclamoId: r.id,
       descripcion:
@@ -122,4 +132,15 @@ export function cargosExtraDelInquilino(contratoId: string | null): CargoExtra[]
 /** Total de cargos extra pendientes para el contrato. */
 export function totalCargosExtra(contratoId: string | null): number {
   return cargosExtraDelInquilino(contratoId).reduce((s, c) => s + c.monto, 0);
+}
+
+/** Lectura local del storage de cargos pagados (mismo origen). */
+function leerPagadosLocal(): Record<string, unknown> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage.getItem('llave:cargos-pagados:v1');
+    return raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
 }

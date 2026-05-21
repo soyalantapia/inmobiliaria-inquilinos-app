@@ -23,7 +23,7 @@ import { Input } from '@llave/ui/input';
 import { Label } from '@llave/ui/label';
 import { Separator } from '@llave/ui/separator';
 import { toast } from '@llave/ui/use-toast';
-import { liquidacionesMock } from '@/lib/mock-data';
+import { contratoMock, liquidacionesMock } from '@/lib/mock-data';
 import { datosBancariosMock } from '@/lib/datos-bancarios';
 import { formatMonto, formatPeriodo } from '@/lib/format';
 import { TASA_PUNITORIA_DIARIA_DEFAULT, calcularPunitorios } from '@/lib/punitorios';
@@ -33,6 +33,8 @@ import {
   olvidarPagoInformado,
   type PagoInformado,
 } from '@/lib/pago-storage';
+import { cargosExtraDelInquilino } from '@/lib/cross-app-inmo';
+import { marcarVariosPagados } from '@/lib/cargos-pagados-storage';
 
 type Step = 'datos' | 'comprobante' | 'ok';
 const MAX_FILE_MB = 5;
@@ -324,6 +326,16 @@ function StepSubirComprobante({
       enviadoAt: new Date().toISOString(),
     };
     guardarPagoInformado(informado);
+    // Si el inquilino tenía cargos extra USO_Y_GOCE pendientes del mes,
+    // los marcamos como pagados también — asumimos que el monto del
+    // comprobante cubre alquiler + cargos.
+    const pendientes = cargosExtraDelInquilino(contratoMock.id);
+    if (pendientes.length > 0) {
+      marcarVariosPagados(
+        pendientes.map((c) => c.reclamoId),
+        'TRANSFERENCIA',
+      );
+    }
     setEnviando(false);
     onEnviado(informado);
   };

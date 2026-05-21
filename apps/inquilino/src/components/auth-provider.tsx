@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { leerSesion } from '@/lib/auth-otp';
 
-const RUTAS_PUBLICAS = ['/login', '/garantes'];
+const RUTAS_PUBLICAS = ['/login', '/garantes', '/p'];
 
 /**
  * Protege las rutas privadas: si no hay sesión OTP activa y el usuario está

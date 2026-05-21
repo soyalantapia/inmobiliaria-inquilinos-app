@@ -17,6 +17,7 @@ import { cn } from '@llave/ui/cn';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@llave/ui/table';
 import { toast } from '@llave/ui/use-toast';
 import { CargarPagoManualButton } from '@/components/cargar-pago-manual';
+import { CargosACobrar } from '@/components/cargos-a-cobrar';
 import { PagosPorValidar } from '@/components/pagos-por-validar';
 import { Topbar } from '@/components/topbar';
 import {
@@ -261,6 +262,9 @@ export default function PagosPage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Cargos USO_Y_GOCE generados al inquilino (cobranza vía alquiler) */}
+        <CargosACobrar />
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">Liquidaciones — mayo 2026</h2>
