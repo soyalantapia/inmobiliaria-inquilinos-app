@@ -10,20 +10,23 @@ import {
   HelpCircle,
   MessageCircle,
   Phone,
-  TrendingUp,
   XCircle,
 } from 'lucide-react';
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card } from '@llave/ui/card';
 import { cn } from '@llave/ui/cn';
-import { toast } from '@llave/ui/use-toast';
 import {
+  contactosCobranzaMock,
   contratosMock,
   intencionesRenovacionMock,
   type DecisionRenovacionMock,
 } from '@/lib/mock-data';
 import { diasHastaVencimiento, formatFecha, formatMonto } from '@/lib/format';
+import {
+  NegociadorRenovacionPanel,
+  ResumenSugerenciasCartera,
+} from '@/components/negociador-renovacion';
 
 // Dashboard de renovaciones: muestra los contratos que vencen pronto,
 // la decisión de cada inquilino (o falta de respuesta) y permite actuar.
@@ -143,6 +146,11 @@ export default function RenovacionesPage() {
         />
       </div>
 
+      {/* Resumen Negociador IA: cuánto más entra de plata si todos
+          aceptan la sugerencia. Sirve para que el dueño de la inmo vea
+          de un solo golpe el potencial de la cartera. */}
+      <ResumenSugerenciasCartera contratoIds={filas.map((f) => f.id)} />
+
       {/* Filtros */}
       <div className="flex flex-wrap gap-2">
         {(['TODOS', 'RENOVAR', 'PENSANDO', 'SIN_RESPUESTA', 'NO_RENOVAR'] as FiltroEstado[]).map(
@@ -218,6 +226,21 @@ export default function RenovacionesPage() {
                   </p>
                 )}
 
+                {/* Panel del Negociador IA con sugerencia de aumento +
+                    probabilidad de renovación + borrador de mensaje
+                    WhatsApp. Solo lo mostramos si el inquilino no dijo
+                    explícitamente que NO renueva (en ese caso ya está
+                    cerrado). */}
+                {c.decision !== 'NO_RENOVAR' && (
+                  <NegociadorRenovacionPanel
+                    contratoId={c.id}
+                    telefonoInquilino={
+                      contactosCobranzaMock.find((x) => x.contratoId === c.id)?.titular
+                        .telefono
+                    }
+                  />
+                )}
+
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex flex-wrap gap-2">
                     <Button size="sm" variant="outline" asChild>
@@ -227,7 +250,7 @@ export default function RenovacionesPage() {
                         rel="noreferrer"
                       >
                         <MessageCircle className="h-3.5 w-3.5" />
-                        WhatsApp
+                        WhatsApp libre
                       </a>
                     </Button>
                     <Button size="sm" variant="ghost" asChild>
@@ -237,28 +260,12 @@ export default function RenovacionesPage() {
                       </a>
                     </Button>
                   </div>
-                  <div className="flex gap-2">
-                    {c.decision === 'RENOVAR' && (
-                      <Button
-                        size="sm"
-                        onClick={() =>
-                          toast({
-                            title: 'Armando propuesta…',
-                            description: `Generamos la propuesta de renovación de ${c.inquilino} con ajuste por índice oficial. Te llega al mail.`,
-                          })
-                        }
-                      >
-                        <TrendingUp className="h-3.5 w-3.5" />
-                        Armar propuesta
-                      </Button>
-                    )}
-                    <Button size="sm" variant="ghost" asChild>
-                      <Link href={`/contratos/${c.id}`}>
-                        Ver contrato
-                        <ArrowRight className="h-3.5 w-3.5" />
-                      </Link>
-                    </Button>
-                  </div>
+                  <Button size="sm" variant="ghost" asChild>
+                    <Link href={`/contratos/${c.id}`}>
+                      Ver contrato
+                      <ArrowRight className="h-3.5 w-3.5" />
+                    </Link>
+                  </Button>
                 </div>
               </Card>
             );
