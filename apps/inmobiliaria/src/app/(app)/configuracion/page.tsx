@@ -37,6 +37,7 @@ import { ConveniosBrowser } from '@/components/convenios-browser';
 import { CuponInput } from '@/components/cupon-input';
 import { EstadoCuentaCard } from '@/components/estado-cuenta-card';
 import { FormaPagoSelector } from '@/components/forma-pago-selector';
+import { PlanConsorciosCard } from '@/components/plan-consorcios-card';
 import { ReferidosManager } from '@/components/referidos-manager';
 import { SociedadesManager } from '@/components/sociedades-manager';
 import { TrialBanner } from '@/components/trial-banner';
@@ -604,6 +605,10 @@ export default function ConfiguracionPage() {
             <CuponInput />
 
             <FormaPagoSelector />
+
+            {/* Plan Consorcios: aparece sólo si la inmo administra al
+                menos un edificio bajo propiedad horizontal. */}
+            <PlanConsorciosCard />
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0">

@@ -1,8 +1,17 @@
 // Pricing y plan de la inmobiliaria.
-// Modelo por tramos: la inmobiliaria paga un fijo mensual según la
-// cantidad de propiedades activas. Cuando supera el tope del tramo,
-// pasa al plan siguiente.
+//
+// La inmo paga 2 planes en paralelo (uno por cada vertical que opere):
+//   1. Plan Alquileres — por cantidad de propiedades en cartera.
+//   2. Plan Consorcios — por cantidad de unidades funcionales (UF)
+//      bajo administración. Es ~40% más barato por unidad porque el
+//      ticket promedio de un consorcio es menor que el de un alquiler
+//      (idea de Ramiro: "consorcios más baratos, jugamos con una
+//      bonificación").
+//
+// Si la inmo no administra consorcios, ese plan no aparece en la
+// factura. Si administra los dos, se suman.
 
+import { consorciosMock } from './consorcios-storage';
 import { propiedadesMock } from './mock-data';
 
 export interface TramoPlan {
@@ -118,6 +127,128 @@ export function resumenPara(propiedadesActivas: number): ResumenPlan {
 // compilando — siempre devuelve el precio fijo del plan ACTUAL de la
 // inmobiliaria (no "por propiedad").
 export const COSTO_PROPIEDAD_MENSUAL = 0;
+
+/* ============================================================
+ * Plan Consorcios
+ *
+ * Métrica = cantidad de UF bajo administración (no cantidad de
+ * consorcios — un consorcio chico de 8 UF cuesta menos administrar
+ * que uno grande de 80 UF).
+ *
+ * Precios ~40% más baratos por unidad que el plan de alquileres
+ * porque el ticket promedio de la cobranza (expensas) es menor que
+ * el de un alquiler residencial/comercial.
+ * ============================================================ */
+
+export interface TramoPlanConsorcios {
+  key: 'CNS_BASIC' | 'CNS_STANDARD' | 'CNS_PREMIUM' | 'CNS_ELITE';
+  nombre: string;
+  /** Cota inferior de UF (inclusive). */
+  desde: number;
+  /** Cota superior de UF (inclusive). null = sin tope. */
+  hasta: number | null;
+  /** Precio fijo mensual en ARS. */
+  precio: number;
+  rango: string;
+}
+
+export const TRAMOS_PLAN_CONSORCIOS: TramoPlanConsorcios[] = [
+  {
+    key: 'CNS_BASIC',
+    nombre: 'Consorcios · Basic',
+    desde: 0,
+    hasta: 30,
+    precio: 30_000,
+    rango: 'Hasta 30 UF',
+  },
+  {
+    key: 'CNS_STANDARD',
+    nombre: 'Consorcios · Standard',
+    desde: 31,
+    hasta: 80,
+    precio: 60_000,
+    rango: 'Hasta 80 UF',
+  },
+  {
+    key: 'CNS_PREMIUM',
+    nombre: 'Consorcios · Premium',
+    desde: 81,
+    hasta: 200,
+    precio: 120_000,
+    rango: 'Hasta 200 UF',
+  },
+  {
+    key: 'CNS_ELITE',
+    nombre: 'Consorcios · Elite',
+    desde: 201,
+    hasta: null,
+    precio: 210_000,
+    rango: 'Más de 200 UF',
+  },
+];
+
+export function tramoConsorciosPara(ufs: number): TramoPlanConsorcios {
+  for (const t of TRAMOS_PLAN_CONSORCIOS) {
+    if (ufs >= t.desde && (t.hasta === null || ufs <= t.hasta)) return t;
+  }
+  return TRAMOS_PLAN_CONSORCIOS[TRAMOS_PLAN_CONSORCIOS.length - 1]!;
+}
+
+export interface ResumenConsorcios {
+  /** Cantidad total de UF que administra la inmo. */
+  ufsTotales: number;
+  /** Cantidad de consorcios bajo administración. */
+  consorcios: number;
+  /** Tramo actual (null si no administra consorcios). */
+  tramo: TramoPlanConsorcios | null;
+  costoMensual: number;
+  /** Bonificación equivalente vs plan de alquileres del mismo tramo. */
+  bonificacionVsAlquileres: number;
+}
+
+/**
+ * Cuenta las UF totales sumando los consorcios bajo administración.
+ * Si la inmo no administra ninguno, devuelve un resumen con tramo=null
+ * y costo 0 (ese plan no se factura).
+ */
+export function calcularResumenConsorcios(): ResumenConsorcios {
+  const consorcios = consorciosMock.length;
+  const ufsTotales = consorciosMock.reduce((s, c) => s + c.cantUf, 0);
+  if (consorcios === 0) {
+    return {
+      ufsTotales: 0,
+      consorcios: 0,
+      tramo: null,
+      costoMensual: 0,
+      bonificacionVsAlquileres: 0,
+    };
+  }
+  const tramo = tramoConsorciosPara(ufsTotales);
+  // Comparación contra el precio del tramo de alquileres con el mismo
+  // tope de unidades — sirve para mostrar "ahorro vs si fuera alquiler".
+  const tramoAlqEquivalente = tramoPara(ufsTotales);
+  const bonificacion = Math.max(0, tramoAlqEquivalente.precio - tramo.precio);
+  return {
+    ufsTotales,
+    consorcios,
+    tramo,
+    costoMensual: tramo.precio,
+    bonificacionVsAlquileres: bonificacion,
+  };
+}
+
+/**
+ * Costo total combinado: alquileres + consorcios.
+ */
+export function calcularCostoCombinado(): {
+  alquileres: number;
+  consorcios: number;
+  total: number;
+} {
+  const alq = calcularResumenPlan().costoMensualTotal;
+  const cns = calcularResumenConsorcios().costoMensual;
+  return { alquileres: alq, consorcios: cns, total: alq + cns };
+}
 
 export interface Factura {
   id: string;
