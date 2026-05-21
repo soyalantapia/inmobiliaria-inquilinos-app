@@ -22,6 +22,7 @@ import { Card } from '@llave/ui/card';
 import { Separator } from '@llave/ui/separator';
 import { BotonProximamente } from '@/components/boton-proximamente';
 import { CompartirGarante } from '@/components/compartir-garante';
+import { ContratoChat } from '@/components/contrato-chat';
 import { ContratoTimeline } from '@/components/contrato-timeline';
 import { DepositoTracker } from '@/components/deposito-tracker';
 import { HistorialAjustes } from '@/components/historial-ajustes';
@@ -145,6 +146,16 @@ export default function ContratoPage() {
           <Card className="p-5">
             <ContratoTimeline />
           </Card>
+        </section>
+
+        {/* Chat con el contrato: la IA responde dudas comunes citando
+            la cláusula exacta. Es transparencia real para el inquilino
+            sin obligarlo a leer 30 páginas. */}
+        <section className="space-y-2">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Dudas sobre tu contrato
+          </h2>
+          <ContratoChat />
         </section>
 
         <section className="space-y-2">
