@@ -27,6 +27,7 @@ import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
 import { Topbar } from '@/components/topbar';
 import { GestionReclamo } from '@/components/gestion-reclamo';
+import { ProgresoVisitaCard } from '@/components/progreso-visita-card';
 import { ReclamoTimeline } from '@/components/reclamo-timeline';
 import { operadoresMock } from '@/lib/mock-data';
 import {
@@ -274,6 +275,11 @@ export default function DetalleReclamoPage() {
 
           {/* Columna lateral: acciones */}
           <aside className="space-y-4">
+            {/* Progreso del trabajo (link mágico del profesional) */}
+            {reclamo.profesionalAsignadoId && (
+              <ProgresoVisitaCard reclamoId={reclamo.id} />
+            )}
+
             {!cerrado && (
               <GestionReclamo
                 reclamo={reclamo}

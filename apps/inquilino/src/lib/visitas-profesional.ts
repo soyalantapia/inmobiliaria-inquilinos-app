@@ -121,5 +121,71 @@ export function marcarListo(
   };
   all[reclamoId] = v;
   write(all);
+  // Cross-app: además actualizamos el reclamo en el storage del inmo
+  // como RESUELTO con costoTrabajo. Así el inmo no tiene que cerrar
+  // manualmente y el flow continúa automático.
+  cerrarReclamoEnInmo(reclamoId, nota, montoCobrado);
   return v;
+}
+
+/**
+ * Actualiza el storage del inmo marcando el reclamo como RESUELTO con
+ * el costo + nota del profesional. Solo escribe si el reclamo existe en
+ * el storage del inmo (mismo origin, mismo localStorage).
+ */
+function cerrarReclamoEnInmo(
+  reclamoId: string,
+  nota: string,
+  monto: number | null,
+): void {
+  if (typeof window === 'undefined') return;
+  const KEY = 'llave-inmo:reclamos:v1';
+  try {
+    const raw = window.localStorage.getItem(KEY);
+    if (!raw) return;
+    const data = JSON.parse(raw) as { v: number; reclamos: unknown[] };
+    if (!Array.isArray(data?.reclamos)) return;
+    const ahora = new Date().toISOString();
+    let cambio = false;
+    type RecInmo = {
+      id: string;
+      estado: string;
+      resolucion?: string | null;
+      resueltoAt?: string | null;
+      costoTrabajo?: number | null;
+      costoTrabajoNotas?: string | null;
+      eventos?: Array<{ id: string; tipo: string; autor: string; contenido: string | null; fecha: string }>;
+    };
+    const nuevos = (data.reclamos as RecInmo[]).map((r) => {
+      if (r.id !== reclamoId) return r;
+      cambio = true;
+      const eventos = Array.isArray(r.eventos) ? r.eventos : [];
+      return {
+        ...r,
+        estado: 'RESUELTO',
+        resolucion: nota,
+        resueltoAt: ahora,
+        costoTrabajo: monto,
+        costoTrabajoNotas: nota,
+        eventos: [
+          ...eventos,
+          {
+            id: `ev_${reclamoId}_${eventos.length + 1}`,
+            tipo: 'RESUELTO',
+            autor: 'Profesional',
+            contenido: nota,
+            fecha: ahora,
+          },
+        ],
+      };
+    });
+    if (cambio) {
+      window.localStorage.setItem(
+        KEY,
+        JSON.stringify({ v: 1, reclamos: nuevos }),
+      );
+    }
+  } catch {
+    // ignore
+  }
 }

@@ -29,6 +29,7 @@ import {
   obtenerReclamo,
 } from '@/lib/reclamos-storage';
 import { datosProfesionalDeInmo } from '@/lib/cross-app-inmo';
+import { ProgresoVisitaInquilino } from '@/components/progreso-visita-inquilino';
 import {
   categoriaIcono,
   categoriaLabel,
@@ -261,6 +262,14 @@ export default function DetalleReclamoPage({ params }: { params: { id: string } 
             </Card>
           );
         })()}
+
+        {/* Progreso de la visita del profesional (cross-app) */}
+        {reclamo.profesionalAsignadoNombre && (
+          <ProgresoVisitaInquilino
+            reclamoId={reclamo.id}
+            profesionalNombre={reclamo.profesionalAsignadoNombre ?? null}
+          />
+        )}
 
         {/* Resolución cuando aplica */}
         {reclamo.estado === 'RESUELTO' && reclamo.resolucion && (
