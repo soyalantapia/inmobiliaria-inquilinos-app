@@ -147,11 +147,19 @@ export function PagosPorValidar({ onChange }: PagosPorValidarProps = {}) {
         description: `${tipoComp} N° ${numero} enviada a ${pago.inquilino} por WhatsApp y mail.`,
       });
     } else {
+      const esParcial = pago.tipo === 'PARCIAL';
+      const saldoRest = esParcial
+        ? Math.max(0, (pago.montoLiqTotal ?? 0) - pago.monto)
+        : 0;
       toast({
-        title: `Pago de ${pago.inquilino} confirmado`,
-        description: propietario
-          ? `${formatMonto(pago.monto)} · sin facturación ARCA (propietario sin conectar)`
-          : `${formatMonto(pago.monto)} · ${formatPeriodo(pago.periodo)}`,
+        title: esParcial
+          ? `Parcial de ${pago.inquilino} confirmado`
+          : `Pago de ${pago.inquilino} confirmado`,
+        description: esParcial
+          ? `${formatMonto(pago.monto)} acreditado · saldo restante ${formatMonto(saldoRest)}`
+          : propietario
+            ? `${formatMonto(pago.monto)} · sin facturación ARCA (propietario sin conectar)`
+            : `${formatMonto(pago.monto)} · ${formatPeriodo(pago.periodo)}`,
       });
     }
 
@@ -399,6 +407,10 @@ function PagoRow({
     : null;
   const modoDirecto = contrato?.modoCobranza === 'PROPIETARIO_DIRECTO';
   const afipOn = !!propietario?.afip?.conectado;
+  const esParcial = pago.tipo === 'PARCIAL' && pago.montoLiqTotal !== undefined;
+  const saldoRestanteLiq = esParcial
+    ? Math.max(0, (pago.montoLiqTotal ?? 0) - pago.monto)
+    : 0;
 
   // Lectura por IA del comprobante. En la demo se genera determinístico
   // a partir del pago.id; en backend real esto vendría persistido junto
@@ -420,6 +432,14 @@ function PagoRow({
             <p className="truncate text-sm font-medium">{pago.inquilino}</p>
             <p className="truncate text-xs text-muted-foreground">{pago.direccion}</p>
             <div className="mt-1 flex flex-wrap gap-1">
+              {esParcial && (
+                <Badge
+                  variant="outline"
+                  className="border-amber-300 bg-amber-50 text-[10px] text-amber-800 dark:border-amber-900/40 dark:bg-amber-900/10 dark:text-amber-300"
+                >
+                  Parcial
+                </Badge>
+              )}
               {modoDirecto && (
                 <Badge variant="outline" className="text-[10px]">
                   Cobranza directa → {propietario?.nombre}
@@ -433,9 +453,19 @@ function PagoRow({
             </div>
           </div>
         </div>
-        <p className="shrink-0 text-base font-semibold tabular-nums">
-          {formatMonto(pago.monto)}
-        </p>
+        <div className="shrink-0 text-right">
+          <p className="text-base font-semibold tabular-nums">
+            {formatMonto(pago.monto)}
+          </p>
+          {esParcial && (
+            <p className="text-[10px] text-muted-foreground">
+              de {formatMonto(pago.montoLiqTotal ?? 0)} · saldo{' '}
+              <span className="font-semibold text-amber-700 dark:text-amber-400">
+                {formatMonto(saldoRestanteLiq)}
+              </span>
+            </p>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 rounded-md border bg-muted/30 p-3 text-xs">

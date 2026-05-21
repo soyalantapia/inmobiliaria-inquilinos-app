@@ -8,16 +8,19 @@ import {
   Building2,
   Check,
   CheckCircle2,
+  Clock,
   Copy,
   FileImage,
   Hash,
   IdCard,
   Loader2,
   Sparkles,
+  SplitSquareHorizontal,
   Trash2,
   Upload,
   UserRound,
   X,
+  XCircle,
 } from 'lucide-react';
 import { Button } from '@llave/ui/button';
 import { Card } from '@llave/ui/card';
@@ -30,11 +33,13 @@ import { datosBancariosMock } from '@/lib/datos-bancarios';
 import { formatMonto, formatPeriodo } from '@/lib/format';
 import { TASA_PUNITORIA_DIARIA_DEFAULT, calcularPunitorios } from '@/lib/punitorios';
 import {
-  guardarPagoInformado,
-  leerPagoInformado,
+  agregarPago,
+  listarPagosDeLiq,
   olvidarPagoInformado,
+  saldoPendiente,
   type PagoInformado,
 } from '@/lib/pago-storage';
+import { decisionInmoPago, type DecisionInmoSobrePago } from '@/lib/cross-app-inmo';
 import { cargosExtraDelInquilino } from '@/lib/cross-app-inmo';
 import { marcarVariosPagados } from '@/lib/cargos-pagados-storage';
 import { extraerComprobante, type ExtraccionIA } from '@/lib/extraccion-ia';
@@ -47,14 +52,19 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
   const liq = liquidacionesMock.find((l) => l.id === params.liqId);
 
   const [step, setStep] = useState<Step>('datos');
-  const [existing, setExisting] = useState<PagoInformado | null>(null);
+  /** Pagos previos (parciales o total) ya informados para esta liq. */
+  const [pagosPrevios, setPagosPrevios] = useState<PagoInformado[]>([]);
+  /** Último pago hecho en esta sesión (lo que mostramos en step='ok'). */
+  const [ultimoEnviado, setUltimoEnviado] = useState<PagoInformado | null>(null);
+  /** Monto que el inquilino eligió pagar AHORA (puede ser saldo o parcial). */
+  const [montoElegido, setMontoElegido] = useState<number | null>(null);
+  const [decisionInmoUltima, setDecisionInmoUltima] = useState<
+    DecisionInmoSobrePago | null
+  >(null);
 
   useEffect(() => {
-    const e = leerPagoInformado(params.liqId);
-    if (e) {
-      setExisting(e);
-      setStep('ok');
-    }
+    setPagosPrevios(listarPagosDeLiq(params.liqId));
+    setDecisionInmoUltima(decisionInmoPago(params.liqId));
   }, [params.liqId]);
 
   const calc = useMemo(
@@ -74,6 +84,12 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
   }
 
   const totalAPagar = calc.totalAPagar;
+  const saldo = saldoPendiente(params.liqId, totalAPagar);
+  // Por defecto: pagar el saldo completo (que puede ser todo el total o
+  // el remanente si hubo parciales antes).
+  const montoActual = montoElegido ?? saldo;
+  const cubreTodo = montoActual >= saldo;
+  const completado = saldo === 0 && pagosPrevios.length > 0;
 
   return (
     <>
@@ -91,50 +107,86 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
       <main className="flex-1 space-y-5 px-5 pb-6">
         <Card className="space-y-1 p-5">
           <p className="text-xs uppercase tracking-wide text-muted-foreground">
-            {formatPeriodo(liq.periodo)} · Total a transferir
+            {formatPeriodo(liq.periodo)} ·{' '}
+            {completado ? 'Total del mes (pagado)' : 'Saldo pendiente'}
           </p>
           <p className="text-4xl font-semibold tabular-nums">
-            {formatMonto(totalAPagar, liq.moneda)}
+            {formatMonto(completado ? totalAPagar : saldo, liq.moneda)}
           </p>
-          {calc.diasAtraso > 0 && (
+          {!completado && pagosPrevios.length > 0 && (
             <p className="text-xs text-muted-foreground">
-              Incluye {formatMonto(calc.punitorioAcumulado, liq.moneda)} de punitorios por mora ·
-              tasa {calc.tasaDiariaPct}% diario
+              Total del mes {formatMonto(totalAPagar, liq.moneda)} · Ya informaste{' '}
+              {formatMonto(totalAPagar - saldo, liq.moneda)}
+            </p>
+          )}
+          {calc.diasAtraso > 0 && !completado && (
+            <p className="text-xs text-muted-foreground">
+              Incluye {formatMonto(calc.punitorioAcumulado, liq.moneda)} de punitorios por
+              mora · tasa {calc.tasaDiariaPct}% diario
             </p>
           )}
         </Card>
 
-        {step === 'datos' && (
-          <StepDatosBancarios
-            monto={totalAPagar}
+        {pagosPrevios.length > 0 && (
+          <ParcialesAnteriores
+            pagos={pagosPrevios}
             moneda={liq.moneda}
-            onContinuar={() => setStep('comprobante')}
+            decisionInmo={decisionInmoUltima}
           />
         )}
 
-        {step === 'comprobante' && (
+        {step === 'datos' && !completado && (
+          <>
+            <SelectorMonto
+              saldo={saldo}
+              moneda={liq.moneda}
+              valor={montoActual}
+              onChange={setMontoElegido}
+            />
+            <StepDatosBancarios
+              monto={montoActual}
+              moneda={liq.moneda}
+              parcial={!cubreTodo}
+              onContinuar={() => setStep('comprobante')}
+            />
+          </>
+        )}
+
+        {step === 'comprobante' && !completado && (
           <StepSubirComprobante
             liqId={liq.id}
-            monto={totalAPagar}
+            monto={montoActual}
+            tipo={cubreTodo ? 'TOTAL' : 'PARCIAL'}
             onAtras={() => setStep('datos')}
             onEnviado={(p) => {
-              setExisting(p);
+              setUltimoEnviado(p);
+              setPagosPrevios(listarPagosDeLiq(params.liqId));
+              setMontoElegido(null);
               setStep('ok');
               toast({
-                title: 'Comprobante recibido',
+                title: p.tipo === 'PARCIAL' ? 'Pago parcial recibido' : 'Comprobante recibido',
                 description: 'Lo validamos en 24-48 hs y te avisamos por WhatsApp.',
               });
             }}
           />
         )}
 
-        {step === 'ok' && existing && (
+        {(step === 'ok' || completado) && (
           <StepConfirmado
-            informado={existing}
+            informado={ultimoEnviado ?? pagosPrevios[pagosPrevios.length - 1] ?? null}
+            saldoRestante={saldo}
+            moneda={liq.moneda}
+            onPagarOtroParcial={() => {
+              setMontoElegido(null);
+              setUltimoEnviado(null);
+              setStep('datos');
+            }}
             onReenviar={() => {
               olvidarPagoInformado(liq.id);
-              setExisting(null);
-              setStep('comprobante');
+              setPagosPrevios([]);
+              setUltimoEnviado(null);
+              setMontoElegido(null);
+              setStep('datos');
             }}
             onVolver={() => router.push('/')}
           />
@@ -144,13 +196,180 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
   );
 }
 
+/**
+ * Lista los parciales ya informados, con su estado individual (pendiente
+ * / confirmado / rechazado por el inmo). Si el último pago fue rechazado,
+ * lo destacamos en rojo arriba.
+ */
+function ParcialesAnteriores({
+  pagos,
+  moneda,
+  decisionInmo: _decisionInmo,
+}: {
+  pagos: PagoInformado[];
+  moneda: 'ARS' | 'USD';
+  decisionInmo: DecisionInmoSobrePago | null;
+}) {
+  return (
+    <Card className="space-y-2 p-4">
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        Pagos informados ({pagos.length})
+      </p>
+      <div className="divide-y">
+        {pagos.map((p) => (
+          <div key={p.id} className="flex items-center gap-3 py-2 text-sm">
+            <div
+              className={`grid h-7 w-7 shrink-0 place-items-center rounded-full ${
+                p.estado === 'CONCILIADO'
+                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+                  : p.estado === 'RECHAZADO'
+                    ? 'bg-destructive/10 text-destructive'
+                    : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+              }`}
+            >
+              {p.estado === 'CONCILIADO' ? (
+                <CheckCircle2 className="h-3.5 w-3.5" />
+              ) : p.estado === 'RECHAZADO' ? (
+                <XCircle className="h-3.5 w-3.5" />
+              ) : (
+                <Clock className="h-3.5 w-3.5" />
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium tabular-nums">
+                {formatMonto(p.monto, moneda)}
+                {p.tipo === 'PARCIAL' && (
+                  <span className="ml-1 text-[10px] font-normal text-muted-foreground">
+                    · parcial
+                  </span>
+                )}
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                {new Date(p.enviadoAt).toLocaleDateString('es-AR')}
+                {' · '}
+                {p.estado === 'CONCILIADO'
+                  ? 'Confirmado'
+                  : p.estado === 'RECHAZADO'
+                    ? 'Rechazado'
+                    : 'En revisión'}
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+/**
+ * Selector de monto: "saldo total" o "otro monto" (parcial).
+ * El valor por defecto es el saldo pendiente. Si el inquilino elige
+ * "otro monto", aparece un input numérico clamped a [1000, saldo].
+ */
+function SelectorMonto({
+  saldo,
+  moneda,
+  valor,
+  onChange,
+}: {
+  saldo: number;
+  moneda: 'ARS' | 'USD';
+  valor: number;
+  onChange: (v: number | null) => void;
+}) {
+  const esTotal = valor >= saldo;
+  const [draft, setDraft] = useState<string>(esTotal ? '' : String(valor));
+
+  const setTotal = () => {
+    onChange(null); // null = usar default (saldo)
+    setDraft('');
+  };
+  const setOtro = () => {
+    // Si pasa a "otro" sin valor, arrancamos en la mitad del saldo
+    const inicial = Math.floor(saldo / 2 / 1000) * 1000;
+    onChange(inicial);
+    setDraft(String(inicial));
+  };
+
+  const onInput = (raw: string) => {
+    const limpio = raw.replace(/[^\d]/g, '').slice(0, 9);
+    setDraft(limpio);
+    const n = Number(limpio);
+    if (!Number.isFinite(n)) return;
+    // Permitimos cualquier monto entre $1 y saldo. La validación dura
+    // (por ejemplo no permitir 0) la hacemos en el botón Continuar.
+    onChange(Math.min(Math.max(n, 0), saldo));
+  };
+
+  return (
+    <Card className="space-y-3 p-4">
+      <div className="flex items-center gap-2">
+        <SplitSquareHorizontal className="h-4 w-4 text-primary" />
+        <p className="text-sm font-semibold">¿Cuánto vas a pagar ahora?</p>
+      </div>
+      <div className="space-y-2">
+        <button
+          type="button"
+          onClick={setTotal}
+          className={`flex w-full items-center justify-between gap-3 rounded-md border p-3 text-left text-sm transition-colors ${
+            esTotal
+              ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
+              : 'hover:bg-muted/40'
+          }`}
+        >
+          <div>
+            <p className="font-medium">El saldo completo</p>
+            <p className="text-[11px] text-muted-foreground">
+              Quedás al día con el mes.
+            </p>
+          </div>
+          <p className="font-semibold tabular-nums">{formatMonto(saldo, moneda)}</p>
+        </button>
+        <button
+          type="button"
+          onClick={setOtro}
+          className={`flex w-full items-start gap-3 rounded-md border p-3 text-left text-sm transition-colors ${
+            !esTotal
+              ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
+              : 'hover:bg-muted/40'
+          }`}
+        >
+          <div className="flex-1 space-y-2">
+            <div>
+              <p className="font-medium">Pagar un parcial</p>
+              <p className="text-[11px] text-muted-foreground">
+                Después podés volver y pagar el resto.
+              </p>
+            </div>
+            {!esTotal && (
+              <div className="flex items-center gap-2">
+                <span className="text-base font-semibold">$</span>
+                <Input
+                  inputMode="numeric"
+                  value={draft}
+                  onChange={(e) => onInput(e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
+                  placeholder="0"
+                  className="text-lg font-semibold tabular-nums"
+                />
+              </div>
+            )}
+          </div>
+        </button>
+      </div>
+    </Card>
+  );
+}
+
 function StepDatosBancarios({
   monto,
   moneda,
+  parcial,
   onContinuar,
 }: {
   monto: number;
   moneda: 'ARS' | 'USD';
+  parcial: boolean;
   onContinuar: () => void;
 }) {
   const d = datosBancariosMock;
@@ -161,7 +380,7 @@ function StepDatosBancarios({
     { label: 'CBU', value: d.cbu, icon: <Hash className="h-4 w-4" />, copyKey: 'cbu' },
     { label: 'Alias', value: d.alias, icon: <Hash className="h-4 w-4" />, copyKey: 'alias' },
     {
-      label: 'Monto exacto',
+      label: parcial ? 'Monto del parcial' : 'Monto exacto',
       value: formatMonto(monto, moneda),
       icon: <Hash className="h-4 w-4" />,
       copyKey: 'monto',
@@ -205,8 +424,8 @@ function StepDatosBancarios({
         </li>
       </ol>
 
-      <Button size="xl" className="w-full" onClick={onContinuar}>
-        Ya transferí, subir comprobante
+      <Button size="xl" className="w-full" onClick={onContinuar} disabled={monto <= 0}>
+        {parcial ? 'Ya transferí el parcial, subir comprobante' : 'Ya transferí, subir comprobante'}
         <Upload className="h-4 w-4" />
       </Button>
     </>
@@ -269,11 +488,13 @@ function CopyRow({
 function StepSubirComprobante({
   liqId,
   monto,
+  tipo,
   onAtras,
   onEnviado,
 }: {
   liqId: string;
   monto: number;
+  tipo: 'TOTAL' | 'PARCIAL';
   onAtras: () => void;
   onEnviado: (p: PagoInformado) => void;
 }) {
@@ -343,9 +564,9 @@ function StepSubirComprobante({
     setEnviando(true);
     // mock: en Sprint 3 esto sube a R2 y crea Pago en la DB
     await new Promise((r) => setTimeout(r, 800));
-    const informado: PagoInformado = {
-      v: 1,
+    const informado = agregarPago({
       liqId,
+      tipo,
       estado: 'INFORMADO',
       monto,
       nroOperacion: nroOperacion.trim() || extraccion?.nroOperacion || null,
@@ -355,17 +576,20 @@ function StepSubirComprobante({
       comprobanteMime: file.type,
       enviadoAt: new Date().toISOString(),
       extraccionIA: extraccion ?? undefined,
-    };
-    guardarPagoInformado(informado);
-    // Si el inquilino tenía cargos extra USO_Y_GOCE pendientes del mes,
-    // los marcamos como pagados también — asumimos que el monto del
-    // comprobante cubre alquiler + cargos.
-    const pendientes = cargosExtraDelInquilino(contratoMock.id);
-    if (pendientes.length > 0) {
-      marcarVariosPagados(
-        pendientes.map((c) => c.reclamoId),
-        'TRANSFERENCIA',
-      );
+    });
+    // Si el inquilino tenía cargos extra USO_Y_GOCE pendientes del mes
+    // y este pago cubre el total, los marcamos como pagados también
+    // (asumimos que el comprobante incluye alquiler + cargos). En el
+    // caso de parciales NO los marcamos: la deuda extra recién se
+    // cubre cuando el alquiler está al día.
+    if (tipo === 'TOTAL') {
+      const pendientes = cargosExtraDelInquilino(contratoMock.id);
+      if (pendientes.length > 0) {
+        marcarVariosPagados(
+          pendientes.map((c) => c.reclamoId),
+          'TRANSFERENCIA',
+        );
+      }
     }
     setEnviando(false);
     onEnviado(informado);
@@ -515,69 +739,124 @@ function StepSubirComprobante({
 
 function StepConfirmado({
   informado,
+  saldoRestante,
+  moneda,
+  onPagarOtroParcial,
   onReenviar,
   onVolver,
 }: {
-  informado: PagoInformado;
+  informado: PagoInformado | null;
+  saldoRestante: number;
+  moneda: 'ARS' | 'USD';
+  onPagarOtroParcial: () => void;
   onReenviar: () => void;
   onVolver: () => void;
 }) {
+  const quedoSaldo = saldoRestante > 0;
   return (
     <>
-      <Card className="flex flex-col items-center gap-3 p-6 text-center">
-        <div className="grid h-14 w-14 place-items-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">
-          <CheckCircle2 className="h-7 w-7" />
+      <Card
+        className={`flex flex-col items-center gap-3 p-6 text-center ${
+          quedoSaldo
+            ? 'border-amber-300 bg-amber-50/40 dark:border-amber-900/40 dark:bg-amber-900/10'
+            : ''
+        }`}
+      >
+        <div
+          className={`grid h-14 w-14 place-items-center rounded-full ${
+            quedoSaldo
+              ? 'bg-amber-500 text-white'
+              : 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400'
+          }`}
+        >
+          {quedoSaldo ? <Clock className="h-7 w-7" /> : <CheckCircle2 className="h-7 w-7" />}
         </div>
         <div>
-          <h2 className="text-lg font-semibold">Comprobante recibido</h2>
-          <p className="text-sm text-muted-foreground">
-            Validamos en 24-48 hs hábiles y te avisamos por WhatsApp.
-          </p>
+          <h2 className="text-lg font-semibold">
+            {quedoSaldo ? 'Parcial recibido' : 'Comprobante recibido'}
+          </h2>
+          {quedoSaldo ? (
+            <p className="text-sm text-muted-foreground">
+              Te queda un saldo pendiente de{' '}
+              <strong className="text-foreground tabular-nums">
+                {formatMonto(saldoRestante, moneda)}
+              </strong>
+              . Lo podés pagar cuando quieras.
+            </p>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Validamos en 24-48 hs hábiles y te avisamos por WhatsApp.
+            </p>
+          )}
         </div>
       </Card>
 
-      <Card className="space-y-3 p-5">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Lo que enviaste
-        </h3>
-        <Row label="Monto" value={formatMonto(informado.monto)} />
-        <Row label="Archivo" value={informado.comprobanteFileName ?? '—'} />
-        {informado.nroOperacion && <Row label="N° operación" value={informado.nroOperacion} />}
-        <Row label="Estado" value="Pendiente de validación" />
+      {informado && (
+        <Card className="space-y-3 p-5">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            {informado.tipo === 'PARCIAL' ? 'Parcial que enviaste' : 'Lo que enviaste'}
+          </h3>
+          <Row label="Monto" value={formatMonto(informado.monto, moneda)} />
+          <Row label="Archivo" value={informado.comprobanteFileName ?? '—'} />
+          {informado.nroOperacion && <Row label="N° operación" value={informado.nroOperacion} />}
+          <Row
+            label="Estado"
+            value={
+              informado.estado === 'CONCILIADO'
+                ? 'Confirmado por la inmobiliaria'
+                : informado.estado === 'RECHAZADO'
+                  ? 'Rechazado'
+                  : 'Pendiente de validación'
+            }
+          />
 
-        {informado.extraccionIA && (
-          <div className="rounded-md border border-primary/20 bg-primary/5 p-3">
-            <div className="mb-1.5 flex items-center gap-1.5">
-              <Sparkles className="h-3.5 w-3.5 text-primary" />
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-primary">
-                Datos leídos por IA
+          {informado.extraccionIA && (
+            <div className="rounded-md border border-primary/20 bg-primary/5 p-3">
+              <div className="mb-1.5 flex items-center gap-1.5">
+                <Sparkles className="h-3.5 w-3.5 text-primary" />
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-primary">
+                  Datos leídos por IA
+                </p>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                {informado.extraccionIA.bancoOrigen} · {informado.extraccionIA.titularOrigen} ·{' '}
+                N° {informado.extraccionIA.nroOperacion}
               </p>
             </div>
-            <p className="text-[11px] text-muted-foreground">
-              {informado.extraccionIA.bancoOrigen} · {informado.extraccionIA.titularOrigen} ·{' '}
-              N° {informado.extraccionIA.nroOperacion}
-            </p>
-          </div>
-        )}
+          )}
 
-        {informado.comprobanteDataUrl && (
-          <div className="pt-2">
-            <img
-              src={informado.comprobanteDataUrl}
-              alt="Comprobante enviado"
-              className="max-h-64 w-full rounded-md border object-contain"
-            />
-          </div>
-        )}
-      </Card>
+          {informado.comprobanteDataUrl && (
+            <div className="pt-2">
+              <img
+                src={informado.comprobanteDataUrl}
+                alt="Comprobante enviado"
+                className="max-h-64 w-full rounded-md border object-contain"
+              />
+            </div>
+          )}
+        </Card>
+      )}
 
       <div className="space-y-2">
-        <Button size="xl" className="w-full" onClick={onVolver}>
-          Volver al inicio
-        </Button>
-        <Button variant="ghost" className="w-full" onClick={onReenviar}>
-          Reenviar otro comprobante
-        </Button>
+        {quedoSaldo ? (
+          <>
+            <Button size="xl" className="w-full" onClick={onPagarOtroParcial}>
+              Pagar el saldo ({formatMonto(saldoRestante, moneda)})
+            </Button>
+            <Button variant="outline" className="w-full" onClick={onVolver}>
+              Volver al inicio
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button size="xl" className="w-full" onClick={onVolver}>
+              Volver al inicio
+            </Button>
+            <Button variant="ghost" className="w-full" onClick={onReenviar}>
+              Borrar todos los pagos y reenviar
+            </Button>
+          </>
+        )}
       </div>
     </>
   );

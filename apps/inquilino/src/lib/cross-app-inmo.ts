@@ -184,21 +184,26 @@ function leerConciliacionInmo(): Record<string, AccionConciliacionCrossApp> {
 }
 
 /**
- * Devuelve la decisión del admin para una liquidación dada, o null si
- * todavía no la revisó (o el pago no se informó). Sólo expone decisiones
- * resueltas (CONCILIADO / RECHAZADO).
+ * Devuelve la decisión MÁS RECIENTE del admin para una liquidación, o
+ * null si todavía no la revisó. Cuando hay parciales puede haber varias
+ * acciones; nos quedamos con la última (por fecha de decisión).
+ *
+ * Sólo expone decisiones resueltas (CONCILIADO / RECHAZADO).
  */
 export function decisionInmoPago(liqId: string): DecisionInmoSobrePago | null {
   const map = leerConciliacionInmo();
-  for (const a of Object.values(map)) {
-    if (a.liqId === liqId && (a.estado === 'CONCILIADO' || a.estado === 'RECHAZADO')) {
-      return {
-        estado: a.estado,
-        motivo: a.observacion,
-        decidiSPor: a.decidiSPor,
-        decidiSAt: a.decidiSAt,
-      };
-    }
-  }
-  return null;
+  const acciones = Object.values(map).filter(
+    (a) =>
+      a.liqId === liqId && (a.estado === 'CONCILIADO' || a.estado === 'RECHAZADO'),
+  );
+  if (acciones.length === 0) return null;
+  // Ordenamos por fecha desc y devolvemos la más reciente.
+  acciones.sort((a, b) => b.decidiSAt.localeCompare(a.decidiSAt));
+  const a = acciones[0]!;
+  return {
+    estado: a.estado as 'CONCILIADO' | 'RECHAZADO',
+    motivo: a.observacion,
+    decidiSPor: a.decidiSPor,
+    decidiSAt: a.decidiSAt,
+  };
 }

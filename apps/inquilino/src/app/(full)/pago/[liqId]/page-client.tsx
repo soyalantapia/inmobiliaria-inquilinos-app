@@ -23,7 +23,12 @@ import { toast } from '@llave/ui/use-toast';
 import { liquidacionesMock } from '@/lib/mock-data';
 import { formatFecha, formatMonto, formatPeriodo } from '@/lib/format';
 import { TASA_PUNITORIA_DIARIA_DEFAULT, calcularPunitorios } from '@/lib/punitorios';
-import { leerPagoInformado, type PagoInformado } from '@/lib/pago-storage';
+import {
+  leerPagoInformado,
+  listarPagosDeLiq,
+  saldoPendiente,
+  type PagoInformado,
+} from '@/lib/pago-storage';
 import {
   decisionInmoPago,
   type DecisionInmoSobrePago,
@@ -45,9 +50,11 @@ export default function DetallePagoPage({ params }: { params: { liqId: string } 
   const liq = liqDemo ?? { ...liqBase, fechaVencimiento: liqBase.fechaVencimiento };
 
   const [informado, setInformado] = useState<PagoInformado | null>(null);
+  const [parciales, setParciales] = useState<PagoInformado[]>([]);
   const [decisionInmo, setDecisionInmo] = useState<DecisionInmoSobrePago | null>(null);
   useEffect(() => {
     setInformado(leerPagoInformado(params.liqId));
+    setParciales(listarPagosDeLiq(params.liqId));
     setDecisionInmo(decisionInmoPago(params.liqId));
   }, [params.liqId]);
 
@@ -59,6 +66,12 @@ export default function DetallePagoPage({ params }: { params: { liqId: string } 
   // Mostramos "pendiente de validación" sólo si el inmo todavía no decidió.
   const pendienteValidacion =
     informado?.estado === 'INFORMADO' && !rechazadoPorInmo && !confirmadoPorInmo;
+  // Saldo pendiente considerando todos los parciales informados (excluye
+  // rechazados). Si llega a 0, el inquilino quedó al día por parciales.
+  const saldo = saldoPendiente(params.liqId, calc.totalAPagar);
+  const totalInformado = calc.totalAPagar - saldo;
+  const hayParciales = parciales.length > 0 && saldo > 0;
+  const pagadoEnParciales = !pagado && parciales.length > 0 && saldo === 0;
 
   return (
     <>
@@ -136,9 +149,13 @@ export default function DetallePagoPage({ params }: { params: { liqId: string } 
 
         <Card className="space-y-3 p-5">
           <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">Total a pagar</span>
-            {pagado ? (
+            <span className="text-sm text-muted-foreground">
+              {hayParciales ? 'Saldo pendiente' : 'Total a pagar'}
+            </span>
+            {pagado || pagadoEnParciales ? (
               <Badge variant="success">Pagado</Badge>
+            ) : hayParciales ? (
+              <Badge variant="warning">Parcial</Badge>
             ) : vencido ? (
               <Badge variant="destructive">
                 Atrasado · {calc.diasAtraso} día{calc.diasAtraso === 1 ? '' : 's'}
@@ -149,9 +166,22 @@ export default function DetallePagoPage({ params }: { params: { liqId: string } 
           </div>
           <div>
             <p className="text-4xl font-semibold tabular-nums">
-              {formatMonto(pagado ? liq.montoTotal : calc.totalAPagar, liq.moneda)}
+              {formatMonto(
+                pagado || pagadoEnParciales
+                  ? liq.montoTotal
+                  : hayParciales
+                    ? saldo
+                    : calc.totalAPagar,
+                liq.moneda,
+              )}
             </p>
-            {!pagado && (
+            {hayParciales && (
+              <p className="text-xs text-muted-foreground">
+                Total del mes {formatMonto(calc.totalAPagar, liq.moneda)} · Ya informaste{' '}
+                {formatMonto(totalInformado, liq.moneda)}
+              </p>
+            )}
+            {!pagado && !pagadoEnParciales && (
               <p className="flex items-center gap-1 text-sm text-muted-foreground">
                 <Calendar className="h-3.5 w-3.5" />
                 {vencido
@@ -161,6 +191,56 @@ export default function DetallePagoPage({ params }: { params: { liqId: string } 
             )}
           </div>
         </Card>
+
+        {parciales.length > 0 && (
+          <Card className="space-y-2 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Pagos informados ({parciales.length})
+            </p>
+            <div className="divide-y">
+              {parciales.map((p) => (
+                <div key={p.id} className="flex items-center gap-3 py-2 text-sm">
+                  <div
+                    className={`grid h-7 w-7 shrink-0 place-items-center rounded-full ${
+                      p.estado === 'CONCILIADO'
+                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+                        : p.estado === 'RECHAZADO'
+                          ? 'bg-destructive/10 text-destructive'
+                          : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+                    }`}
+                  >
+                    {p.estado === 'CONCILIADO' ? (
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                    ) : p.estado === 'RECHAZADO' ? (
+                      <XCircle className="h-3.5 w-3.5" />
+                    ) : (
+                      <Clock className="h-3.5 w-3.5" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium tabular-nums">
+                      {formatMonto(p.monto, liq.moneda)}
+                      {p.tipo === 'PARCIAL' && (
+                        <span className="ml-1 text-[10px] font-normal text-muted-foreground">
+                          · parcial
+                        </span>
+                      )}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {formatFecha(p.enviadoAt)}
+                      {' · '}
+                      {p.estado === 'CONCILIADO'
+                        ? 'Confirmado'
+                        : p.estado === 'RECHAZADO'
+                          ? 'Rechazado'
+                          : 'En revisión'}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
 
         <Card className="p-5">
           <h2 className="mb-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -206,7 +286,7 @@ export default function DetallePagoPage({ params }: { params: { liqId: string } 
           </div>
         </Card>
 
-        {pagado ? (
+        {pagado || pagadoEnParciales ? (
           <Button
             variant="outline"
             size="xl"
@@ -221,6 +301,18 @@ export default function DetallePagoPage({ params }: { params: { liqId: string } 
             <Receipt className="h-5 w-5" />
             Descargar comprobante
           </Button>
+        ) : hayParciales ? (
+          <div className="space-y-3">
+            <Button asChild size="xl" className="w-full">
+              <Link href={`/pago/${liq.id}/checkout`}>
+                Pagar el saldo · {formatMonto(saldo, liq.moneda)}
+                <ArrowRight className="h-5 w-5" />
+              </Link>
+            </Button>
+            <p className="text-center text-xs text-muted-foreground">
+              También podés hacer otro parcial.
+            </p>
+          </div>
         ) : pendienteValidacion ? (
           <div className="space-y-3">
             <Button variant="outline" size="xl" className="w-full" asChild>
@@ -243,7 +335,7 @@ export default function DetallePagoPage({ params }: { params: { liqId: string } 
               </Link>
             </Button>
             <p className="text-center text-xs text-muted-foreground">
-              Te mostramos CBU, alias y titular. Después subís el comprobante.
+              Te mostramos CBU, alias y titular. También podés hacer un pago parcial.
             </p>
           </div>
         )}

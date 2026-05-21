@@ -1290,13 +1290,30 @@ export const coInquilinosMock: CoInquilinoAdmin[] = [
 
 export type MetodoPagoInformado = 'TRANSFERENCIA' | 'MERCADOPAGO' | 'EFECTIVO' | 'CHEQUE';
 
+export type TipoPagoInformado = 'TOTAL' | 'PARCIAL';
+
 export interface PagoInformado {
   id: string;
   contratoId: string;
   inquilino: string;
   direccion: string;
   periodo: string; // YYYY-MM
+  /**
+   * Monto del comprobante actual. Si es parcial, sólo cubre una parte
+   * del total de la liquidación.
+   */
   monto: number;
+  /**
+   * Default TOTAL (cubre el monto de la liquidación). Si es PARCIAL,
+   * usamos `montoLiqTotal` y `saldoRestante` para mostrar el restante.
+   */
+  tipo?: TipoPagoInformado;
+  /**
+   * Sólo se setea cuando `tipo === 'PARCIAL'`. Es el monto TOTAL de la
+   * liquidación (alquiler + expensas + punitorios) para que el admin
+   * pueda ver cuánto falta.
+   */
+  montoLiqTotal?: number;
   metodo: MetodoPagoInformado;
   fechaTransferencia: string; // ISO
   informadoAt: string; // ISO
@@ -1347,6 +1364,44 @@ export const pagosInformadosMock: PagoInformado[] = [
     comprobanteUrl: '#',
     notaInquilino: 'Hice el pago el sábado, perdón por la demora en avisar.',
     liquidacionId: 'liq_cnt_005_2026-05',
+  },
+  // Ejemplo de pago parcial: Laura informó 200k de un total de 480k.
+  // Le queda un saldo de 280k que va a pagar en los próximos días.
+  {
+    id: 'pag_inf_004',
+    contratoId: 'cnt_004',
+    inquilino: 'Laura Gómez',
+    direccion: 'Honduras 4490, PB',
+    periodo: '2026-05',
+    monto: 200000,
+    tipo: 'PARCIAL',
+    montoLiqTotal: 480000,
+    metodo: 'TRANSFERENCIA',
+    fechaTransferencia: '2026-05-12',
+    informadoAt: '2026-05-12T11:08:00-03:00',
+    comprobanteUrl: '#',
+    notaInquilino:
+      'Esta semana puedo cubrir solo 200k. El resto lo deposito el 18. Gracias!',
+    liquidacionId: 'liq_cnt_004_2026-05',
+  },
+  // Segundo parcial del mismo contrato: completa el saldo.
+  // (Lo dejamos también pendiente de validación para que el admin vea
+  // los dos en la lista y entienda visualmente la lógica.)
+  {
+    id: 'pag_inf_005',
+    contratoId: 'cnt_004',
+    inquilino: 'Laura Gómez',
+    direccion: 'Honduras 4490, PB',
+    periodo: '2026-05',
+    monto: 280000,
+    tipo: 'PARCIAL',
+    montoLiqTotal: 480000,
+    metodo: 'MERCADOPAGO',
+    fechaTransferencia: '2026-05-18',
+    informadoAt: '2026-05-18T16:42:00-03:00',
+    comprobanteUrl: '#',
+    notaInquilino: 'Segundo parcial, completo lo que faltaba.',
+    liquidacionId: 'liq_cnt_004_2026-05',
   },
 ];
 
