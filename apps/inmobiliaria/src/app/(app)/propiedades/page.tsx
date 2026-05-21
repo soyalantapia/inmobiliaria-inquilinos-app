@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
   AlertTriangle,
@@ -24,6 +24,14 @@ import { Input } from '@llave/ui/input';
 import { MigracionMasivaDialog } from '@/components/migracion-masiva-dialog';
 import { Topbar } from '@/components/topbar';
 import { propiedadesMock } from '@/lib/mock-data';
+import {
+  TODAS_LAS_SOCIEDADES,
+  leerSociedadActiva,
+  matcheaConSociedadActiva,
+  onSociedadCambiada,
+  type SociedadActivaId,
+} from '@/lib/sociedad-seleccionada';
+import { sociedadPrincipal } from '@/lib/sociedades-storage';
 import {
   enriquecerPropiedad,
   estadoPropiedadConfig,
@@ -103,8 +111,27 @@ export default function PropiedadesPage() {
   const [q, setQ] = useState('');
   const [filtro, setFiltro] = useState<Filtro>('TODOS');
   const [migrarOpen, setMigrarOpen] = useState(false);
+  const [sociedadActiva, setSociedadActivaState] =
+    useState<SociedadActivaId>(TODAS_LAS_SOCIEDADES);
 
-  const enriquecidas = useMemo(() => propiedadesMock.map(enriquecerPropiedad), []);
+  // Sync con el switcher de la topbar (sociedad-seleccionada storage
+  // + evento custom para reaccionar sin recargar).
+  useEffect(() => {
+    setSociedadActivaState(leerSociedadActiva());
+    return onSociedadCambiada(setSociedadActivaState);
+  }, []);
+
+  const principalId = useMemo(() => sociedadPrincipal().id, []);
+
+  const enriquecidas = useMemo(
+    () =>
+      propiedadesMock
+        .filter((p) =>
+          matcheaConSociedadActiva(p.sociedadId, sociedadActiva, principalId),
+        )
+        .map(enriquecerPropiedad),
+    [sociedadActiva, principalId],
+  );
 
   const counters = useMemo(
     () => ({

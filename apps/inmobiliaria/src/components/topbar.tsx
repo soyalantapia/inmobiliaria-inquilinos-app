@@ -11,6 +11,7 @@ import { ConvenioBadgeTopbar } from './convenio-badge-topbar';
 import { MobileSidebarTrigger } from './sidebar';
 import { NotificationsBell } from './notifications-bell';
 import { PilotoBadgeTopbar } from './piloto-badge-topbar';
+import { SelectorSociedadTopbar } from './selector-sociedad-topbar';
 
 export function Topbar({ titulo }: { titulo: string }) {
   const router = useRouter();
@@ -22,6 +23,7 @@ export function Topbar({ titulo }: { titulo: string }) {
         <PilotoBadgeTopbar />
       </div>
       <div className="flex shrink-0 items-center gap-1 md:gap-3">
+        <SelectorSociedadTopbar />
         <div className="relative hidden md:block">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input className="w-72 pl-9" placeholder="Buscar contrato, inquilino…" />
