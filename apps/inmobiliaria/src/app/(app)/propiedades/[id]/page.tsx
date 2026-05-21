@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import {
   AlertTriangle,
   ArrowLeft,
+  Briefcase,
   CheckCircle2,
   Download,
   FileText,
@@ -57,6 +58,7 @@ import {
   urgenciaConfig,
 } from '@/lib/reclamos-config';
 import { formatFecha, formatMonto } from '@/lib/format';
+import { sociedadById, sociedadPrincipal } from '@/lib/sociedades-storage';
 import type { TipoPropiedad } from '@/lib/types';
 
 const tipoIcono: Record<TipoPropiedad, React.ComponentType<{ className?: string }>> = {
@@ -124,6 +126,17 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                     </>
                   )}
                 </div>
+                {/* Sociedad gestora: facturación + CBU se manejan bajo esta razón social. */}
+                {(() => {
+                  const soc = sociedadById(propiedad.sociedadId) ?? sociedadPrincipal();
+                  return (
+                    <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                      <Briefcase className="h-3 w-3" />
+                      Gestionada por <strong className="text-foreground">{soc.nombreComercial}</strong>{' '}
+                      · CUIT {soc.cuit}
+                    </p>
+                  );
+                })()}
               </div>
               <div className="flex gap-2">
                 <BotonProximamente

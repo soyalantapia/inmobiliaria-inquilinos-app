@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import {
+  Briefcase,
   Building2,
   CheckCircle2,
   CreditCard,
@@ -33,6 +34,7 @@ import { TRAMOS_PLAN, calcularResumenPlan, facturasMock } from '@/lib/plan';
 import { CuponInput } from '@/components/cupon-input';
 import { EstadoCuentaCard } from '@/components/estado-cuenta-card';
 import { FormaPagoSelector } from '@/components/forma-pago-selector';
+import { SociedadesManager } from '@/components/sociedades-manager';
 import { TrialBanner } from '@/components/trial-banner';
 import { formatFecha, formatMonto, formatPeriodo } from '@/lib/format';
 import {
@@ -226,6 +228,10 @@ export default function ConfiguracionPage() {
               <Building2 className="mr-1.5 h-3.5 w-3.5" />
               Empresa
             </TabsTrigger>
+            <TabsTrigger value="sociedades">
+              <Briefcase className="mr-1.5 h-3.5 w-3.5" />
+              Sociedades
+            </TabsTrigger>
             <TabsTrigger value="equipo">
               <Users className="mr-1.5 h-3.5 w-3.5" />
               Equipo y permisos
@@ -347,6 +353,23 @@ export default function ConfiguracionPage() {
                 Guardar cambios
               </Button>
             </div>
+          </TabsContent>
+
+          {/* SOCIEDADES */}
+          <TabsContent value="sociedades" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Sociedades que gestionás</CardTitle>
+                <CardDescription>
+                  Si tu inmobiliaria opera bajo varias razones sociales (S.R.L.,
+                  S.A., fideicomisos), administralas desde acá. Cada una factura
+                  con su propio CUIT y recibe los pagos en su cuenta.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <SociedadesManager />
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* EQUIPO Y PERMISOS */}

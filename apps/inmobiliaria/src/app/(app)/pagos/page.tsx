@@ -33,6 +33,11 @@ import { estadoDePago } from '@/lib/conciliacion-storage';
 import { formatFecha, formatMonto } from '@/lib/format';
 import { abrirReporteImprimible } from '@/lib/reportes-pdf';
 import { diasHastaVencimiento } from '@/lib/format';
+import {
+  CONDICION_FISCAL_LABEL,
+  listarSociedades,
+  sociedadPrincipal,
+} from '@/lib/sociedades-storage';
 import type { EstadoLiquidacion } from '@/lib/types';
 
 type Filtro = 'TODOS' | 'A_RESOLVER' | 'VENCIDO' | 'PENDIENTE' | 'PAGADO';
@@ -179,7 +184,7 @@ export default function PagosPage() {
     abrirReporteImprimible({
       titulo: 'Morosos · cobranza',
       subtitulo: `Mayo 2026 · ${morosos.length} contrato${morosos.length === 1 ? '' : 's'} con atraso`,
-      inmobiliaria: 'Inmobiliaria del Sol',
+      inmobiliaria: sociedadPrincipal().razonSocial,
       columnas: [
         { header: 'Inquilino', width: '20%' },
         { header: 'Propiedad', width: '20%' },
@@ -199,11 +204,11 @@ export default function PagosPage() {
     });
   };
 
-  // PDF de morosos agrupado por sociedad / propietario.
-  // Sirve cuando la inmo rinde por separado a cada dueño: cada uno ve qué
-  // contratos suyos están vencidos sin mezclarse con los del resto.
-  // Si la propiedad tiene más de un propietario, el contrato aparece en
-  // todas las secciones donde corresponde (con su % de participación).
+  // PDF de morosos agrupado por SOCIEDAD GESTORA.
+  // Sirve cuando la inmobiliaria opera con varias razones sociales
+  // (S.R.L. residencial + S.A. comercial + fideicomiso) y necesita
+  // imprimir un reporte por cada una con su propio CUIT como emisor.
+  // Cada sección es una sociedad, con sus contratos morosos.
   const exportarMorososPorSociedadPdf = () => {
     const morosos = contratosMock.filter((c) => c.estadoPagoActual === 'VENCIDO');
     if (morosos.length === 0) {
@@ -214,56 +219,58 @@ export default function PagosPage() {
       return;
     }
 
-    // Agrupamos: para cada propietario, listamos los contratos morosos de
-    // sus propiedades. Recorrer por propietario y filtrar después es más
-    // robusto que recorrer por contrato y deducir el propietario.
-    const secciones = propietariosMock
-      .map((own) => {
-        const propsDelOwner = propiedadesMock.filter((p) =>
-          p.propietariosIds.includes(own.id),
+    const sociedades = listarSociedades();
+    const principal = sociedadPrincipal();
+
+    const secciones = sociedades
+      .map((soc) => {
+        // Una propiedad pertenece a la sociedad si:
+        //  - tiene sociedadId explícito que matchea, o
+        //  - no tiene sociedadId y soc es la principal (fallback).
+        const propsDeSoc = propiedadesMock.filter((p) =>
+          p.sociedadId
+            ? p.sociedadId === soc.id
+            : soc.id === principal.id,
         );
         const contratosIds = new Set(
-          propsDelOwner.map((p) => p.contratoActualId).filter((x): x is string => !!x),
+          propsDeSoc.map((p) => p.contratoActualId).filter((x): x is string => !!x),
         );
-        const morososDelOwner = morosos.filter((c) => contratosIds.has(c.id));
-        if (morososDelOwner.length === 0) return null;
+        const morososDeSoc = morosos.filter((c) => contratosIds.has(c.id));
+        if (morososDeSoc.length === 0) return null;
 
-        // Para cada contrato moroso del owner, calculamos su % de
-        // participación en esa propiedad (si está definido).
-        const filas: (string | number)[][] = morososDelOwner.map((c) => {
-          const propiedad = propsDelOwner.find((p) => p.contratoActualId === c.id);
-          const partPct = propiedad?.participaciones?.find(
-            (x) => x.propietarioId === own.id,
-          )?.porcentaje;
+        const filas: (string | number)[][] = morososDeSoc.map((c) => {
           const contacto = contactosCobranzaMock.find((x) => x.contratoId === c.id);
           const dias = -diasHastaVencimiento(c.proximoVencimiento);
-          const montoParticipacion = partPct
-            ? Math.round((c.monto * partPct) / 100)
-            : c.monto;
+          // Apellido del primer propietario para que la inmo sepa a quién
+          // rinde dentro de esa sociedad (un fideicomiso puede tener
+          // varios dueños, por ejemplo).
+          const propiedad = propsDeSoc.find((p) => p.contratoActualId === c.id);
+          const primerOwnerId = propiedad?.propietariosIds[0];
+          const ownerNombre = primerOwnerId
+            ? (() => {
+                const ow = propietariosMock.find((x) => x.id === primerOwnerId);
+                return ow ? `${ow.nombre} ${ow.apellido}` : '—';
+              })()
+            : '—';
+
           return [
             c.inquilino,
-            c.direccion + (partPct ? ` · ${partPct}%` : ''),
+            c.direccion,
+            ownerNombre,
             contacto?.titular.telefono ?? '—',
             `${dias} días`,
-            formatMonto(montoParticipacion, c.moneda),
+            formatMonto(c.monto, c.moneda),
           ];
         });
 
-        const subtotal = morososDelOwner.reduce((acc, c) => {
-          const propiedad = propsDelOwner.find((p) => p.contratoActualId === c.id);
-          const partPct = propiedad?.participaciones?.find(
-            (x) => x.propietarioId === own.id,
-          )?.porcentaje;
-          return acc + (partPct ? (c.monto * partPct) / 100 : c.monto);
-        }, 0);
-
+        const subtotal = morososDeSoc.reduce((acc, c) => acc + c.monto, 0);
         return {
-          titulo: `${own.nombre} ${own.apellido}`,
-          subtitulo: `CUIT ${own.cuit} · ${own.telefono ?? 'sin teléfono'} · ${morososDelOwner.length} contrato${morososDelOwner.length === 1 ? '' : 's'} moroso${morososDelOwner.length === 1 ? '' : 's'}`,
+          titulo: soc.razonSocial,
+          subtitulo: `CUIT ${soc.cuit} · ${CONDICION_FISCAL_LABEL[soc.condicionFiscal]} · ${morososDeSoc.length} contrato${morososDeSoc.length === 1 ? '' : 's'} moroso${morososDeSoc.length === 1 ? '' : 's'}`,
           filas,
           subtotal: {
-            label: 'Subtotal de su cartera',
-            valor: formatMonto(Math.round(subtotal)),
+            label: 'Subtotal de la sociedad',
+            valor: formatMonto(subtotal),
           },
         };
       })
@@ -273,25 +280,26 @@ export default function PagosPage() {
 
     abrirReporteImprimible({
       titulo: 'Morosos por sociedad',
-      subtitulo: `Mayo 2026 · ${secciones.length} propietario${secciones.length === 1 ? '' : 's'} con cartera atrasada · ${morosos.length} contrato${morosos.length === 1 ? '' : 's'} vencido${morosos.length === 1 ? '' : 's'}`,
-      inmobiliaria: 'Inmobiliaria del Sol',
+      subtitulo: `Mayo 2026 · ${secciones.length} sociedad${secciones.length === 1 ? '' : 'es'} con cartera atrasada · ${morosos.length} contrato${morosos.length === 1 ? '' : 's'} vencido${morosos.length === 1 ? '' : 's'}`,
+      inmobiliaria: principal.razonSocial,
       columnas: [
-        { header: 'Inquilino', width: '22%' },
-        { header: 'Propiedad', width: '32%' },
-        { header: 'Teléfono', width: '18%' },
-        { header: 'Atraso', width: '12%', align: 'center' },
-        { header: 'Monto al propietario', width: '16%', align: 'right' },
+        { header: 'Inquilino', width: '20%' },
+        { header: 'Propiedad', width: '24%' },
+        { header: 'Propietario', width: '18%' },
+        { header: 'Teléfono', width: '14%' },
+        { header: 'Atraso', width: '10%', align: 'center' },
+        { header: 'Monto', width: '14%', align: 'right' },
       ],
       secciones,
       totales: [
-        { label: 'Propietarios afectados', valor: secciones.length.toString() },
+        { label: 'Sociedades afectadas', valor: secciones.length.toString() },
         { label: 'Contratos morosos', valor: morosos.length.toString() },
         { label: 'Deuda total', valor: formatMonto(totalDeuda) },
       ],
       notaFinal:
-        'Listado para rendir por separado a cada propietario. Cuando una propiedad ' +
-        'tiene más de un dueño, el monto se prorratea por % de participación. ' +
-        'Compartilo por WhatsApp o imprimilo y entregalo en mano.',
+        'Cada sección representa una sociedad de la inmobiliaria con su propio CUIT. ' +
+        'Podés imprimir solo las páginas que te interesen para llevar el reporte ' +
+        'al estudio o al propietario que corresponda.',
     });
   };
 
@@ -309,7 +317,7 @@ export default function PagosPage() {
     abrirReporteImprimible({
       titulo: 'Cobranzas del mes',
       subtitulo: `Mayo 2026 · ${pagados.length} pago${pagados.length === 1 ? '' : 's'} acreditado${pagados.length === 1 ? '' : 's'}`,
-      inmobiliaria: 'Inmobiliaria del Sol',
+      inmobiliaria: sociedadPrincipal().razonSocial,
       columnas: [
         { header: 'Inquilino', width: '24%' },
         { header: 'Propiedad', width: '28%' },

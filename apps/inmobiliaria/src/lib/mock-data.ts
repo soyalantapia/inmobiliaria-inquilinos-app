@@ -899,6 +899,7 @@ export const propiedadesMock: Propiedad[] = [
       { propietarioId: 'own_002', porcentaje: 40 },
     ],
     contratoActualId: 'cnt_001',
+    sociedadId: 'soc_001',
     createdAt: '2024-08-15',
   },
   {
@@ -913,6 +914,7 @@ export const propiedadesMock: Propiedad[] = [
     estado: 'ALQUILADA',
     propietariosIds: ['own_002'],
     contratoActualId: 'cnt_002',
+    sociedadId: 'soc_001',
     createdAt: '2023-11-02',
   },
   {
@@ -927,9 +929,11 @@ export const propiedadesMock: Propiedad[] = [
     estado: 'ALQUILADA',
     propietariosIds: ['own_003'],
     contratoActualId: 'cnt_003',
+    sociedadId: 'soc_001',
     createdAt: '2025-02-20',
   },
   {
+    // Local comercial: gestionado bajo la S.A. comercial.
     id: 'prp_004',
     direccion: 'Honduras 4490, PB',
     ciudad: 'CABA',
@@ -941,9 +945,11 @@ export const propiedadesMock: Propiedad[] = [
     estado: 'ALQUILADA',
     propietariosIds: ['own_002'],
     contratoActualId: 'cnt_004',
+    sociedadId: 'soc_002',
     createdAt: '2024-11-01',
   },
   {
+    // Departamento en fideicomiso familiar Iglesias-Castro.
     id: 'prp_005',
     direccion: 'Salguero 2240, 12°D',
     ciudad: 'CABA',
@@ -955,6 +961,7 @@ export const propiedadesMock: Propiedad[] = [
     estado: 'ALQUILADA',
     propietariosIds: ['own_004'],
     contratoActualId: 'cnt_005',
+    sociedadId: 'soc_003',
     createdAt: '2022-05-10',
   },
   {
@@ -969,6 +976,7 @@ export const propiedadesMock: Propiedad[] = [
     estado: 'EN_EDICION',
     propietariosIds: ['own_005'],
     contratoActualId: 'cnt_006', // borrador
+    sociedadId: 'soc_001',
     createdAt: '2026-03-01',
   },
 ];

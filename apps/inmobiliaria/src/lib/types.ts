@@ -39,6 +39,12 @@ export interface Propiedad {
   /** Reparto explícito; opcional — si falta, se reparte parejo. */
   participaciones?: ParticipacionPropietario[];
   contratoActualId: string | null; // FK a Contrato.id, null si DISPONIBLE
+  /**
+   * Sociedad de la inmobiliaria que gestiona esta propiedad. Determina
+   * qué CUIT figura en las facturas, qué CBU se publica al inquilino y
+   * en qué sociedad agrupa los reportes. Si falta, asume la principal.
+   */
+  sociedadId?: string;
   createdAt: string;
 }
 
