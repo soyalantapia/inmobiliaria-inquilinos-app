@@ -10,6 +10,7 @@ import { isClerkEnabled, mockUser } from '@/lib/auth';
 import { ConvenioBadgeTopbar } from './convenio-badge-topbar';
 import { MobileSidebarTrigger } from './sidebar';
 import { NotificationsBell } from './notifications-bell';
+import { PilotoBadgeTopbar } from './piloto-badge-topbar';
 
 export function Topbar({ titulo }: { titulo: string }) {
   const router = useRouter();
@@ -18,6 +19,7 @@ export function Topbar({ titulo }: { titulo: string }) {
       <div className="flex items-center gap-2 min-w-0">
         <MobileSidebarTrigger />
         <h1 className="truncate text-base font-semibold sm:text-lg md:text-xl">{titulo}</h1>
+        <PilotoBadgeTopbar />
       </div>
       <div className="flex shrink-0 items-center gap-1 md:gap-3">
         <div className="relative hidden md:block">
