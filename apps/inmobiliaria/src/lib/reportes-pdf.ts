@@ -4,6 +4,8 @@
 // perfecto: el operador imprime directo o "guarda como PDF" desde el diálogo
 // nativo del sistema operativo.
 
+import { leerCuponActivo } from './cupones';
+
 interface ColumnaTabla {
   header: string;
   /** Width hint en % para el ancho de la columna */
@@ -83,6 +85,11 @@ const ESTILOS = `
           font-size: 11px; color: #555; }
   .footer { margin-top: 48px; text-align: center; font-size: 10px; color: #999;
             border-top: 1px solid #e4e4e7; padding-top: 12px; }
+  .footer .convenio { display: inline-flex; align-items: center; gap: 6px;
+                      padding: 4px 10px; border-radius: 12px;
+                      background: #ecfdf5; color: #047857;
+                      font-weight: 600; font-size: 10px;
+                      margin-top: 6px; }
   .preview-bar { position: fixed; top: 0; left: 0; right: 0; background: #18181b;
                  color: white; padding: 12px 20px; display: flex; justify-content: space-between;
                  align-items: center; z-index: 100; }
@@ -201,9 +208,24 @@ export function abrirReporteImprimible(reporte: ReportePrintable): void {
     }
     ${totalesHtml}
     ${notaHtml}
-    <div class="footer">My Alquiler · Generado automáticamente · ${escapar(reporte.inmobiliaria)}</div>
+    <div class="footer">
+      My Alquiler · Generado automáticamente · ${escapar(reporte.inmobiliaria)}
+      ${cuponActivoHtml()}
+    </div>
     </body></html>`);
   win.document.close();
+}
+
+/**
+ * Si la inmobiliaria tiene un convenio activo (CUCICBA, CPI, Edifica,
+ * etc.), se muestra un chip verde en el footer del PDF como sello.
+ * Genera sensación de pertenencia hacia el propietario / inquilino que
+ * recibe el documento — refuerza el partnership.
+ */
+function cuponActivoHtml(): string {
+  const activo = leerCuponActivo();
+  if (!activo) return '';
+  return `<br/><span class="convenio">✓ Cliente ${escapar(activo.cupon.convenio)}</span>`;
 }
 
 function escapar(s: string): string {

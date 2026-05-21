@@ -7,6 +7,7 @@ import { Avatar, AvatarFallback } from '@llave/ui/avatar';
 import { Input } from '@llave/ui/input';
 import { ThemeToggle } from '@llave/ui/theme-toggle';
 import { isClerkEnabled, mockUser } from '@/lib/auth';
+import { ConvenioBadgeTopbar } from './convenio-badge-topbar';
 import { MobileSidebarTrigger } from './sidebar';
 import { NotificationsBell } from './notifications-bell';
 
@@ -23,6 +24,7 @@ export function Topbar({ titulo }: { titulo: string }) {
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input className="w-72 pl-9" placeholder="Buscar contrato, inquilino…" />
         </div>
+        <ConvenioBadgeTopbar />
         <ThemeToggle />
         <NotificationsBell />
 
