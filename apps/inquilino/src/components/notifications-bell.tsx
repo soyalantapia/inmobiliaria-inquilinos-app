@@ -5,12 +5,14 @@ import Link from 'next/link';
 import {
   AlertTriangle,
   Bell,
+  CalendarClock,
   CheckCircle2,
   CreditCard,
   MessageCircle,
   Receipt,
   Star,
   TrendingUp,
+  Truck,
   Wrench,
 } from 'lucide-react';
 import { cn } from '@llave/ui/cn';
@@ -24,6 +26,7 @@ import {
   cargosExtraDelInquilino,
   datosProfesionalDeInmo,
 } from '@/lib/cross-app-inmo';
+import { obtenerVisita } from '@/lib/visitas-profesional';
 import type { Reclamo } from '@/lib/types';
 
 interface Notif {
@@ -33,7 +36,7 @@ interface Notif {
   href: string;
   cuando: string;
   unread: boolean;
-  icono: 'pago_vencido' | 'pago_pendiente' | 'ajuste' | 'reclamo_inmo' | 'pago_validacion' | 'rating' | 'profesional' | 'cargo_extra';
+  icono: 'pago_vencido' | 'pago_pendiente' | 'ajuste' | 'reclamo_inmo' | 'pago_validacion' | 'rating' | 'profesional' | 'cargo_extra' | 'visita_confirmada' | 'visita_en_camino' | 'visita_lista';
   severidad: 'critica' | 'alta' | 'media' | 'baja';
 }
 
@@ -46,6 +49,9 @@ const ICONS = {
   rating: Star,
   profesional: Wrench,
   cargo_extra: Receipt,
+  visita_confirmada: CalendarClock,
+  visita_en_camino: Truck,
+  visita_lista: CheckCircle2,
 } as const;
 
 const READ_KEY = 'llave:notif-leidas:v1';
@@ -188,16 +194,71 @@ function construirNotifs(leidas: Set<string>): Notif[] {
     const profInmo = profLocal ? null : datosProfesionalDeInmo(r.id);
     const profNombre = profLocal ?? profInmo?.nombre ?? null;
     if (profNombre) {
-      out.push({
-        id: `prof-${r.id}-${profNombre}`,
-        titulo: `Te asignaron a ${profNombre}`,
-        detalle: 'Coordiná día y hora para que pase a tu propiedad.',
-        href: `/reclamos/${r.id}`,
-        cuando: 'reciente',
-        unread: !leidas.has(`prof-${r.id}-${profNombre}`),
-        icono: 'profesional',
-        severidad: 'alta',
-      });
+      // Notif "te asignaron" solo si el profesional todavía no avanzó.
+      const visita = obtenerVisita(r.id);
+      if (!visita || visita.estado === 'ASIGNADO') {
+        out.push({
+          id: `prof-${r.id}-${profNombre}`,
+          titulo: `Te asignaron a ${profNombre}`,
+          detalle: 'Coordiná día y hora para que pase a tu propiedad.',
+          href: `/reclamos/${r.id}`,
+          cuando: 'reciente',
+          unread: !leidas.has(`prof-${r.id}-${profNombre}`),
+          icono: 'profesional',
+          severidad: 'alta',
+        });
+      }
+      // Estados de la visita (link mágico del profesional).
+      if (visita?.estado === 'CONFIRMADA' && visita.confirmadaAt) {
+        const pila = profNombre.split(' ')[0] ?? profNombre;
+        const cuando = visita.fechaVisita
+          ? new Date(visita.fechaVisita).toLocaleString('es-AR', {
+              weekday: 'short',
+              day: '2-digit',
+              month: 'short',
+              hour: '2-digit',
+              minute: '2-digit',
+            })
+          : 'pronto';
+        out.push({
+          id: `visita-conf-${r.id}-${visita.confirmadaAt}`,
+          titulo: `${pila} confirmó la visita`,
+          detalle: `Va el ${cuando}.`,
+          href: `/reclamos/${r.id}`,
+          cuando: tiempoCorto(visita.confirmadaAt),
+          unread: !leidas.has(`visita-conf-${r.id}-${visita.confirmadaAt}`),
+          icono: 'visita_confirmada',
+          severidad: 'media',
+        });
+      }
+      if (visita?.estado === 'EN_CAMINO' && visita.enCaminoAt) {
+        const pila = profNombre.split(' ')[0] ?? profNombre;
+        out.push({
+          id: `visita-camino-${r.id}-${visita.enCaminoAt}`,
+          titulo: `${pila} está en camino 🚗`,
+          detalle: 'Te avisamos cuando llegue. Tené el celular a mano.',
+          href: `/reclamos/${r.id}`,
+          cuando: tiempoCorto(visita.enCaminoAt),
+          unread: !leidas.has(`visita-camino-${r.id}-${visita.enCaminoAt}`),
+          icono: 'visita_en_camino',
+          severidad: 'alta',
+        });
+      }
+      if (visita?.estado === 'LISTO' && visita.listoAt) {
+        const pila = profNombre.split(' ')[0] ?? profNombre;
+        out.push({
+          id: `visita-listo-${r.id}-${visita.listoAt}`,
+          titulo: `${pila} terminó el trabajo`,
+          detalle: visita.notaFinal
+            ? visita.notaFinal.slice(0, 60)
+            : 'Cerró el trabajo. La inmobiliaria lo revisa.',
+          href: `/reclamos/${r.id}`,
+          cuando: tiempoCorto(visita.listoAt),
+          unread: !leidas.has(`visita-listo-${r.id}-${visita.listoAt}`),
+          icono: 'visita_lista',
+          severidad: 'media',
+        });
+      }
     }
   }
 

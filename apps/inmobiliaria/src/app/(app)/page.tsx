@@ -22,6 +22,7 @@ import { Button } from '@llave/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@llave/ui/card';
 import { cn } from '@llave/ui/cn';
 import { DashboardGreeting } from '@/components/dashboard-greeting';
+import { InboxDelDia } from '@/components/inbox-del-dia';
 import { Topbar } from '@/components/topbar';
 import { agendaMock, alertasMock, dashboardMetricsMock } from '@/lib/mock-data';
 import { calcularDashboardStats } from '@/lib/dashboard-helpers';
@@ -53,6 +54,9 @@ export default function DashboardPage() {
             </Button>
           </div>
         </div>
+
+        {/* Inbox de acciones del día */}
+        <InboxDelDia />
 
         {/* 4 KPIs financieros principales */}
         <section className="space-y-3">
