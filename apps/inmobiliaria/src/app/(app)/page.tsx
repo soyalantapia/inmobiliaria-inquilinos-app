@@ -21,6 +21,7 @@ import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@llave/ui/card';
 import { cn } from '@llave/ui/cn';
+import { AlertaPlan } from '@/components/alerta-plan';
 import { DashboardGreeting } from '@/components/dashboard-greeting';
 import { InboxDelDia } from '@/components/inbox-del-dia';
 import { Topbar } from '@/components/topbar';
@@ -54,6 +55,9 @@ export default function DashboardPage() {
             </Button>
           </div>
         </div>
+
+        {/* Alerta de plan cerca del tope */}
+        <AlertaPlan />
 
         {/* Inbox de acciones del día */}
         <InboxDelDia />

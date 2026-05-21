@@ -120,7 +120,35 @@ export function ProgresoVisitaInquilino({
           </>
         )}
       </div>
+
+      {/* Fotos antes / después del trabajo */}
+      {(visita.fotoAntes || visita.fotoDespues) && (
+        <div className="grid grid-cols-2 gap-2">
+          {visita.fotoAntes && (
+            <FotoCard label="Antes" url={visita.fotoAntes} />
+          )}
+          {visita.fotoDespues && (
+            <FotoCard label="Después" url={visita.fotoDespues} />
+          )}
+        </div>
+      )}
     </Card>
+  );
+}
+
+function FotoCard({ label, url }: { label: string; url: string }) {
+  return (
+    <div className="space-y-1">
+      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+        {label}
+      </p>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={url}
+        alt={label}
+        className="aspect-square w-full rounded-md border object-cover"
+      />
+    </div>
   );
 }
 

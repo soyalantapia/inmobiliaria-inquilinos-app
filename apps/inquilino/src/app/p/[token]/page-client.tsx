@@ -4,11 +4,14 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   CalendarClock,
+  Camera,
   CheckCircle2,
   Clock,
+  Image as ImageIcon,
   KeyRound,
   MapPin,
   Sparkles,
+  Trash2,
   Truck,
   Wrench,
 } from 'lucide-react';
@@ -22,6 +25,7 @@ import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
 import {
   confirmarVisita,
+  guardarFoto,
   listarVisitasDe,
   marcarEnCamino,
   marcarListo,
@@ -406,44 +410,76 @@ function TrabajoCard({
           )}
 
           {estado === 'CONFIRMADA' && (
-            <div className="space-y-2 rounded-md border border-primary/20 bg-primary/5 p-3">
-              <p className="text-xs">
-                Confirmaste visita para{' '}
-                <strong>
-                  {visita?.fechaVisita
-                    ? new Date(visita.fechaVisita).toLocaleString('es-AR', {
-                        weekday: 'short',
-                        day: '2-digit',
-                        month: 'short',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })
-                    : '—'}
-                </strong>
-                .
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <Button size="sm" onClick={handleEnCamino} className="gap-1.5">
-                  <Truck className="h-3.5 w-3.5" />
-                  Salí — Estoy en camino
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => setOpenCerrar(true)}>
-                  Marcar listo
-                </Button>
+            <div className="space-y-3">
+              <div className="space-y-2 rounded-md border border-primary/20 bg-primary/5 p-3">
+                <p className="text-xs">
+                  Confirmaste visita para{' '}
+                  <strong>
+                    {visita?.fechaVisita
+                      ? new Date(visita.fechaVisita).toLocaleString('es-AR', {
+                          weekday: 'short',
+                          day: '2-digit',
+                          month: 'short',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })
+                      : '—'}
+                  </strong>
+                  .
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" onClick={handleEnCamino} className="gap-1.5">
+                    <Truck className="h-3.5 w-3.5" />
+                    Salí — Estoy en camino
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => setOpenCerrar(true)}>
+                    Marcar listo
+                  </Button>
+                </div>
               </div>
+              <FotoPicker
+                label="Foto del problema (antes)"
+                hint="Subí una foto del estado actual antes de empezar."
+                dataUrl={visita?.fotoAntes ?? null}
+                onChange={(url) => {
+                  guardarFoto(reclamo.id, profId, 'antes', url);
+                  onChange();
+                }}
+                onRemove={() => {
+                  guardarFoto(reclamo.id, profId, 'antes', '');
+                  onChange();
+                }}
+              />
             </div>
           )}
 
           {estado === 'EN_CAMINO' && (
-            <div className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-900/40 dark:bg-amber-900/10">
-              <p className="flex items-center gap-1.5 text-xs font-medium text-amber-900 dark:text-amber-200">
-                <Truck className="h-3.5 w-3.5" />
-                En camino — avisamos al inquilino que llegás en breve.
-              </p>
-              <Button size="sm" onClick={() => setOpenCerrar(true)} className="gap-1.5">
-                <CheckCircle2 className="h-3.5 w-3.5" />
-                Marcar como listo
-              </Button>
+            <div className="space-y-3">
+              <div className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-900/40 dark:bg-amber-900/10">
+                <p className="flex items-center gap-1.5 text-xs font-medium text-amber-900 dark:text-amber-200">
+                  <Truck className="h-3.5 w-3.5" />
+                  En camino — avisamos al inquilino que llegás en breve.
+                </p>
+                <Button size="sm" onClick={() => setOpenCerrar(true)} className="gap-1.5">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  Marcar como listo
+                </Button>
+              </div>
+              {visita?.fotoAntes && (
+                <FotoPicker
+                  label="Foto del problema (antes)"
+                  hint="Cargada antes de empezar el trabajo."
+                  dataUrl={visita.fotoAntes}
+                  onChange={(url) => {
+                    guardarFoto(reclamo.id, profId, 'antes', url);
+                    onChange();
+                  }}
+                  onRemove={() => {
+                    guardarFoto(reclamo.id, profId, 'antes', '');
+                    onChange();
+                  }}
+                />
+              )}
             </div>
           )}
 
@@ -475,6 +511,19 @@ function TrabajoCard({
                   />
                 </div>
               </div>
+              <FotoPicker
+                label="Foto del trabajo terminado (después)"
+                hint="Mostrá el resultado para que el inquilino y la inmo lo vean."
+                dataUrl={visita?.fotoDespues ?? null}
+                onChange={(url) => {
+                  guardarFoto(reclamo.id, profId, 'despues', url);
+                  onChange();
+                }}
+                onRemove={() => {
+                  guardarFoto(reclamo.id, profId, 'despues', '');
+                  onChange();
+                }}
+              />
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" className="flex-1" onClick={() => setOpenCerrar(false)}>
                   Cancelar
@@ -488,11 +537,39 @@ function TrabajoCard({
           )}
 
           {estado === 'LISTO' && (
-            <div className="space-y-1 rounded-md border border-emerald-200 bg-emerald-50/40 p-3 text-xs dark:border-emerald-900/40 dark:bg-emerald-900/10">
+            <div className="space-y-2 rounded-md border border-emerald-200 bg-emerald-50/40 p-3 text-xs dark:border-emerald-900/40 dark:bg-emerald-900/10">
               <p className="flex items-center gap-1.5 font-medium text-emerald-900 dark:text-emerald-200">
                 <CheckCircle2 className="h-3.5 w-3.5" />
                 Trabajo completado el {formatFecha(visita?.listoAt ?? '')}
               </p>
+              {(visita?.fotoAntes || visita?.fotoDespues) && (
+                <div className="grid grid-cols-2 gap-2">
+                  {visita.fotoAntes && (
+                    <div className="space-y-1">
+                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                        Antes
+                      </p>
+                      <img
+                        src={visita.fotoAntes}
+                        alt="Antes del trabajo"
+                        className="aspect-square w-full rounded-md border object-cover"
+                      />
+                    </div>
+                  )}
+                  {visita.fotoDespues && (
+                    <div className="space-y-1">
+                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                        Después
+                      </p>
+                      <img
+                        src={visita.fotoDespues}
+                        alt="Después del trabajo"
+                        className="aspect-square w-full rounded-md border object-cover"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
               {visita?.notaFinal && (
                 <p className="italic text-muted-foreground">
                   &ldquo;{visita.notaFinal}&rdquo;
@@ -515,6 +592,94 @@ function TrabajoCard({
         </p>
       )}
     </Card>
+  );
+}
+
+/* ============================================================
+ * Picker de foto con preview + remover
+ * ============================================================ */
+function FotoPicker({
+  label,
+  hint,
+  dataUrl,
+  onChange,
+  onRemove,
+}: {
+  label: string;
+  hint?: string;
+  dataUrl: string | null;
+  onChange: (dataUrl: string) => void;
+  onRemove: () => void;
+}) {
+  const [cargando, setCargando] = useState(false);
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (!f.type.startsWith('image/')) {
+      toast({ title: 'Tiene que ser una imagen', variant: 'destructive' });
+      return;
+    }
+    if (f.size > 5 * 1024 * 1024) {
+      toast({ title: 'Máximo 5 MB', variant: 'destructive' });
+      return;
+    }
+    setCargando(true);
+    const reader = new FileReader();
+    reader.onload = () => {
+      onChange(reader.result as string);
+      setCargando(false);
+    };
+    reader.onerror = () => {
+      toast({ title: 'No pudimos leer la imagen', variant: 'destructive' });
+      setCargando(false);
+    };
+    reader.readAsDataURL(f);
+  };
+
+  return (
+    <div className="space-y-2 rounded-md border bg-muted/20 p-3">
+      <div>
+        <p className="flex items-center gap-1.5 text-xs font-medium">
+          <ImageIcon className="h-3.5 w-3.5 text-primary" />
+          {label}
+        </p>
+        {hint && <p className="text-[10px] text-muted-foreground">{hint}</p>}
+      </div>
+      {dataUrl ? (
+        <div className="space-y-2">
+          <div className="overflow-hidden rounded-md border bg-background">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={dataUrl}
+              alt={label}
+              className="aspect-video w-full object-cover"
+            />
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={onRemove}
+            className="gap-1 text-destructive hover:bg-destructive/10 hover:text-destructive"
+          >
+            <Trash2 className="h-3 w-3" />
+            Sacar foto
+          </Button>
+        </div>
+      ) : (
+        <label className="flex cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed bg-background py-6 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:bg-muted/30">
+          <Camera className="h-4 w-4 text-primary" />
+          <span>{cargando ? 'Cargando…' : 'Tomar / Subir foto'}</span>
+          <input
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={handleFile}
+            className="hidden"
+          />
+        </label>
+      )}
+    </div>
   );
 }
 

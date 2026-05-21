@@ -25,6 +25,10 @@ export interface VisitaProfesional {
   notaFinal: string | null;
   /** Monto cobrado al cerrar (lo carga el profesional). */
   montoCobrado: number | null;
+  /** Foto del problema antes de empezar (dataURL JPEG/PNG). */
+  fotoAntes: string | null;
+  /** Foto del trabajo terminado (dataURL JPEG/PNG). */
+  fotoDespues: string | null;
 }
 
 type Payload = Record<string, VisitaProfesional>;
@@ -70,7 +74,29 @@ function ensure(reclamoId: string, profesionalId: string): VisitaProfesional {
     listoAt: null,
     notaFinal: null,
     montoCobrado: null,
+    fotoAntes: null,
+    fotoDespues: null,
   };
+}
+
+/** Guarda una foto (dataURL) para el reclamo. tipo = 'antes' o 'despues'.
+ *  Si dataUrl es vacío, lo trata como remover. */
+export function guardarFoto(
+  reclamoId: string,
+  profesionalId: string,
+  tipo: 'antes' | 'despues',
+  dataUrl: string,
+): VisitaProfesional {
+  const all = read();
+  const base = ensure(reclamoId, profesionalId);
+  const valor = dataUrl || null;
+  const v: VisitaProfesional =
+    tipo === 'antes'
+      ? { ...base, fotoAntes: valor }
+      : { ...base, fotoDespues: valor };
+  all[reclamoId] = v;
+  write(all);
+  return v;
 }
 
 export function confirmarVisita(

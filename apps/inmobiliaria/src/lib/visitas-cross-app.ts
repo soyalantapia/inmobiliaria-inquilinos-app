@@ -20,6 +20,8 @@ export interface VisitaProfesional {
   listoAt: string | null;
   notaFinal: string | null;
   montoCobrado: number | null;
+  fotoAntes: string | null;
+  fotoDespues: string | null;
 }
 
 function read(): Record<string, VisitaProfesional> {

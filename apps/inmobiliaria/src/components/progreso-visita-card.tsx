@@ -169,7 +169,41 @@ export function ProgresoVisitaCard({ reclamoId }: ProgresoVisitaCardProps) {
             ) : null}
           </div>
         </div>
+
+        {/* Fotos antes / después del trabajo */}
+        {(visita.fotoAntes || visita.fotoDespues) && (
+          <div className="grid grid-cols-2 gap-2">
+            {visita.fotoAntes && (
+              <FotoCard label="Antes" url={visita.fotoAntes} />
+            )}
+            {visita.fotoDespues && (
+              <FotoCard label="Después" url={visita.fotoDespues} />
+            )}
+          </div>
+        )}
       </CardContent>
     </Card>
+  );
+}
+
+function FotoCard({ label, url }: { label: string; url: string }) {
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      className="space-y-1"
+      title="Abrir foto"
+    >
+      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+        {label}
+      </p>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={url}
+        alt={label}
+        className="aspect-square w-full rounded-md border object-cover"
+      />
+    </a>
   );
 }
