@@ -558,6 +558,11 @@ export default function ConfiguracionPage() {
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                   {TRAMOS_PLAN.map((t) => {
                     const esActual = t.key === plan.key;
+                    // Costo efectivo por propiedad asumiendo que el cliente
+                    // está exactamente en el TOPE del tramo (lo más eficiente).
+                    // Para Enterprise (sin tope) asumimos 250 props.
+                    const propsRef = t.hasta ?? 250;
+                    const costoPorPropTope = Math.round(t.precio / Math.max(propsRef, 1));
                     return (
                       <div
                         key={t.key}
@@ -580,9 +585,69 @@ export default function ConfiguracionPage() {
                           <span className="text-xs font-normal text-muted-foreground"> / mes</span>
                         </p>
                         <p className="mt-1 text-xs text-muted-foreground">{t.rango}</p>
+                        <div className="mt-2 border-t pt-2">
+                          <p className="text-[9px] uppercase tracking-wide text-muted-foreground">
+                            Si llenás el tramo
+                          </p>
+                          <p className="text-sm font-semibold tabular-nums text-emerald-700 dark:text-emerald-300">
+                            ≈ {formatMonto(costoPorPropTope)}
+                            <span className="text-[10px] font-normal text-muted-foreground">
+                              {' '}/ propiedad
+                            </span>
+                          </p>
+                        </div>
                       </div>
                     );
                   })}
+                </div>
+
+                {/* Insight: costo efectivo según TU cartera actual + comparación
+                    con el costo "lleno". Le saca el reclamo de Juanpi de que el
+                    cliente no ve el beneficio de escala. */}
+                <div className="mt-4 grid gap-3 sm:grid-cols-3 rounded-lg border-2 border-emerald-200 bg-emerald-50/40 p-4 dark:border-emerald-900/40 dark:bg-emerald-900/10">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                      Tu cartera hoy
+                    </p>
+                    <p className="text-lg font-bold tabular-nums">
+                      {plan.propiedadesActivas} propiedades
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                      Costo efectivo actual
+                    </p>
+                    <p className="text-lg font-bold tabular-nums text-emerald-700 dark:text-emerald-300">
+                      {formatMonto(
+                        Math.round(plan.costoMensualTotal / Math.max(plan.propiedadesActivas, 1)),
+                      )}
+                      <span className="text-[10px] font-normal text-muted-foreground">
+                        {' '}/ propiedad
+                      </span>
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                      {plan.proximoTramo ? 'Si llenás tu tramo' : 'Tope del tramo'}
+                    </p>
+                    {plan.topePlan ? (
+                      <p className="text-lg font-bold tabular-nums">
+                        {formatMonto(Math.round(plan.costoMensualTotal / plan.topePlan))}
+                        <span className="text-[10px] font-normal text-muted-foreground">
+                          {' '}/ propiedad
+                        </span>
+                      </p>
+                    ) : (
+                      <p className="text-lg font-bold tabular-nums">
+                        Sin tope
+                      </p>
+                    )}
+                    <p className="text-[10px] text-muted-foreground">
+                      {plan.propiedadesParaProximo !== null && plan.propiedadesParaProximo > 0
+                        ? `Sumá ${plan.propiedadesParaProximo} más para llenarlo`
+                        : 'Ya estás aprovechando todo el tramo'}
+                    </p>
+                  </div>
                 </div>
               </CardContent>
             </Card>
