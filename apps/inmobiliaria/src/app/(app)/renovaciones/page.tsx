@@ -234,6 +234,7 @@ export default function RenovacionesPage() {
                 {c.decision !== 'NO_RENOVAR' && (
                   <NegociadorRenovacionPanel
                     contratoId={c.id}
+                    inquilino={c.inquilino}
                     telefonoInquilino={
                       contactosCobranzaMock.find((x) => x.contratoId === c.id)?.titular
                         .telefono

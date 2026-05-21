@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Copy,
+  Handshake,
   MessageCircle,
   Sparkles,
   ThumbsDown,
@@ -26,6 +27,7 @@ import {
   CONFIANZA_LABEL,
   sugerirRenovacion,
 } from '@/lib/negociador-ia';
+import { NegociacionIterativaDialog } from './negociacion-iterativa-dialog';
 
 /**
  * Panel del negociador IA para un contrato próximo a renovar.
@@ -42,12 +44,17 @@ export function NegociadorRenovacionPanel({
   contratoId,
   /** Teléfono del inquilino (para deep-link WhatsApp). Opcional. */
   telefonoInquilino,
+  /** Nombre completo del inquilino para los dialogs. */
+  inquilino,
 }: {
   contratoId: string;
   telefonoInquilino?: string | null;
+  inquilino?: string;
 }) {
   const sugerencia = useMemo(() => sugerirRenovacion(contratoId), [contratoId]);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [negociarOpen, setNegociarOpen] = useState(false);
+  const [montoAcordado, setMontoAcordado] = useState<number | null>(null);
 
   if (!sugerencia) return null;
 
@@ -121,19 +128,41 @@ export function NegociadorRenovacionPanel({
           </ul>
         </details>
 
+        {montoAcordado !== null && (
+          <div className="rounded-md border-2 border-emerald-300 bg-emerald-50/60 p-2.5 text-xs dark:border-emerald-900/40 dark:bg-emerald-900/15">
+            <p className="font-semibold text-emerald-800 dark:text-emerald-200">
+              ✓ Negociación cerrada en {formatMonto(montoAcordado)}
+            </p>
+            <p className="text-[11px] text-muted-foreground">
+              Generá el contrato actualizado o pasá a la firma.
+            </p>
+          </div>
+        )}
+
         <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
           <p className="text-[11px] text-muted-foreground">
             <TrendingUp className="mr-1 inline h-3 w-3" />
             Cartera anual: + {formatMonto(sugerencia.diferenciaMensual * 12)}
           </p>
-          <Button
-            size="sm"
-            className="bg-violet-600 text-white hover:bg-violet-700"
-            onClick={() => setDialogOpen(true)}
-          >
-            <Sparkles className="h-3.5 w-3.5" />
-            Generar mensaje WhatsApp
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-violet-300 text-violet-700 hover:bg-violet-50 dark:border-violet-900/40 dark:text-violet-300"
+              onClick={() => setNegociarOpen(true)}
+            >
+              <Handshake className="h-3.5 w-3.5" />
+              Negociar en chat
+            </Button>
+            <Button
+              size="sm"
+              className="bg-violet-600 text-white hover:bg-violet-700"
+              onClick={() => setDialogOpen(true)}
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              Generar mensaje WhatsApp
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -142,6 +171,14 @@ export function NegociadorRenovacionPanel({
         onClose={() => setDialogOpen(false)}
         mensajeInicial={sugerencia.mensajeWhatsApp}
         telefono={telefonoInquilino}
+      />
+
+      <NegociacionIterativaDialog
+        open={negociarOpen}
+        onOpenChange={setNegociarOpen}
+        contratoId={contratoId}
+        inquilino={inquilino ?? 'Inquilino'}
+        onCerrado={(m) => setMontoAcordado(m)}
       />
     </>
   );

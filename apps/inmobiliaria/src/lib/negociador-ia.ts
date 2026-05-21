@@ -298,3 +298,170 @@ export const CONFIANZA_COLOR: Record<ConfianzaInquilino, string> = {
   regular: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
   riesgosa: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
 };
+
+/* ============================================================
+ * Negociación back-and-forth
+ *
+ * Quote de Ramiro en el meeting:
+ *   "Me lo va negociando negociando. Lo cerró en seis cincuenta"
+ *
+ * La IA arranca con la propuesta inicial (calculada por
+ * sugerirRenovacion). Si el inquilino contraoferta, evaluamos:
+ *
+ *  - Por debajo del PISO DURO → rechazamos sin moverse.
+ *  - Dentro del rango aceptable → cerramos o pedimos punto medio.
+ *  - Arriba del techo (raro) → cerramos ahí mismo.
+ *
+ * El PISO DURO depende de la confianza:
+ *   excelente: alquilerActual × 1.12 (retener a buenos inquilinos)
+ *   buena:     alquilerActual × 1.15
+ *   regular:   alquilerActual × 1.18
+ *   riesgosa:  alquilerActual × 1.22
+ * ============================================================ */
+
+export type IntencionInquilino = 'ACEPTAR' | 'RECHAZAR' | 'CONTRAOFERTAR';
+
+export interface PropuestaNegociacion {
+  /** Monto propuesto en esta ronda. */
+  monto: number;
+  /** Texto humano que la IA / inquilino dice. */
+  mensaje: string;
+  /** Si esta ronda cierra el deal (acuerdo). */
+  cerrado: boolean;
+}
+
+/** Configuración estable de la negociación. Calculada al iniciar. */
+export interface ConfigNegociacion {
+  alquilerActual: number;
+  /** Piso blando = lo razonable según confianza. Es lo que la IA prefiere alcanzar. */
+  pisoBlando: number;
+  /** Piso duro = mínimo absoluto. Debajo se rechaza. */
+  pisoDuro: number;
+  /** Techo blando = la propuesta inicial. La IA arranca pidiendo esto. */
+  techoBlando: number;
+  /** Techo duro = el máximo si el inquilino contraoferta arriba (raro). */
+  techoDuro: number;
+  confianza: ConfianzaInquilino;
+}
+
+/**
+ * Arma la configuración fija de la negociación para un contrato.
+ * Se llama una sola vez al abrir el chat.
+ */
+export function iniciarNegociacion(contratoId: string): {
+  config: ConfigNegociacion;
+  aperturaIA: PropuestaNegociacion;
+} | null {
+  const sug = sugerirRenovacion(contratoId);
+  if (!sug) return null;
+
+  const factorPisoDuro = {
+    excelente: 1.12,
+    buena: 1.15,
+    regular: 1.18,
+    riesgosa: 1.22,
+  }[sug.confianza];
+
+  const config: ConfigNegociacion = {
+    alquilerActual: sug.alquilerActual,
+    pisoBlando: Math.round((sug.alquilerActual * 1.18) / 1000) * 1000,
+    pisoDuro: Math.round((sug.alquilerActual * factorPisoDuro) / 1000) * 1000,
+    techoBlando: sug.alquilerNuevo,
+    techoDuro: Math.round((sug.alquilerActual * 1.35) / 1000) * 1000,
+    confianza: sug.confianza,
+  };
+
+  const aperturaIA: PropuestaNegociacion = {
+    monto: config.techoBlando,
+    mensaje:
+      `Hola, te propongo cerrar la renovación a ${formatMontoCorto(config.techoBlando)} ` +
+      `por mes. Es ${sug.aumentoPct}% sobre el alquiler actual, ` +
+      `alineado con el mercado y nuestros ajustes históricos.`,
+    cerrado: false,
+  };
+
+  return { config, aperturaIA };
+}
+
+/**
+ * Responde a una contraoferta del inquilino. Lleva en cuenta:
+ *  - La ronda actual (los precios anteriores ofrecidos).
+ *  - Cuántas veces ya cedió la IA (no quiere ceder infinito).
+ *
+ * Devuelve la próxima propuesta de la IA, o un cierre si el deal
+ * está en rango.
+ */
+export function responderContraoferta(
+  config: ConfigNegociacion,
+  /** Última oferta vigente de la IA (la que el inquilino contraofertó). */
+  ofertaIAActual: number,
+  /** Cuánto pide ahora el inquilino. */
+  contraofertaInquilino: number,
+  /** Cuántas rondas de back-and-forth llevamos. */
+  ronda: number,
+): PropuestaNegociacion {
+  // Caso 1: inquilino acepta o sube — cerramos en su monto.
+  if (contraofertaInquilino >= ofertaIAActual) {
+    return {
+      monto: contraofertaInquilino,
+      mensaje:
+        `Perfecto, cerramos en ${formatMontoCorto(contraofertaInquilino)}. ` +
+        `Te paso el contrato actualizado en las próximas horas. Gracias!`,
+      cerrado: true,
+    };
+  }
+
+  // Caso 2: la contraoferta está dentro del rango aceptable
+  // (entre piso blando y oferta actual). La IA acepta o pide punto medio.
+  if (contraofertaInquilino >= config.pisoBlando) {
+    // Si ya cedimos 2 veces, cerramos donde dice el inquilino.
+    if (ronda >= 3) {
+      return {
+        monto: contraofertaInquilino,
+        mensaje:
+          `Está bien, ${formatMontoCorto(contraofertaInquilino)} cerramos. ` +
+          `Cuento con que renovás y te paso el contrato.`,
+        cerrado: true,
+      };
+    }
+    // Si no, propongo el punto medio.
+    const puntoMedio =
+      Math.round((ofertaIAActual + contraofertaInquilino) / 2 / 1000) * 1000;
+    return {
+      monto: puntoMedio,
+      mensaje:
+        `Entiendo tu posición. Te propongo cerrar en ${formatMontoCorto(puntoMedio)} ` +
+        `— es un valor que funciona para los dos. ¿Lo hablamos?`,
+      cerrado: false,
+    };
+  }
+
+  // Caso 3: contraoferta debajo del piso blando pero arriba del duro.
+  // Rechazamos con explicación, ofrecemos un valor cerca del piso blando.
+  if (contraofertaInquilino >= config.pisoDuro) {
+    const intermedio =
+      Math.round(((ofertaIAActual + config.pisoBlando) / 2) / 1000) * 1000;
+    return {
+      monto: intermedio,
+      mensaje:
+        `${formatMontoCorto(contraofertaInquilino)} es complicado para el propietario — ` +
+        `el ajuste del mercado pide más. Lo que sí puedo hacer es ` +
+        `${formatMontoCorto(intermedio)}, último número que manejo. ¿Cerramos ahí?`,
+      cerrado: false,
+    };
+  }
+
+  // Caso 4: debajo del piso duro. Rechazo limpio.
+  return {
+    monto: config.pisoDuro,
+    mensaje:
+      `Sinceramente, debajo de ${formatMontoCorto(config.pisoDuro)} no podemos ir. ` +
+      `Si la renovación a ese valor no te cierra, prefiero que me avises ` +
+      `y arrancamos el proceso de entrega del inmueble con tiempo.`,
+    cerrado: false,
+  };
+}
+
+function formatMontoCorto(n: number): string {
+  return `$${Math.round(n).toLocaleString('es-AR')}`;
+}
