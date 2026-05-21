@@ -88,7 +88,7 @@ export function PagosPorValidar({ onChange }: PagosPorValidarProps = {}) {
   );
 
   const handleConciliar = (pago: PagoInformado) => {
-    conciliarPago(pago.id, 'Roberto Tapia');
+    conciliarPago(pago.id, 'Roberto Tapia', { liqId: pago.liquidacionId });
     registrarEvento({
       tipo: 'PAGO_CONCILIADO',
       autor: 'Roberto Tapia',
@@ -158,7 +158,9 @@ export function PagosPorValidar({ onChange }: PagosPorValidarProps = {}) {
       toast({ title: 'Tenés que escribir el motivo', variant: 'destructive' });
       return;
     }
-    rechazarPago(rechazando.id, 'Roberto Tapia', motivoRechazo.trim());
+    rechazarPago(rechazando.id, 'Roberto Tapia', motivoRechazo.trim(), {
+      liqId: rechazando.liquidacionId,
+    });
     registrarEvento({
       tipo: 'PAGO_RECHAZADO',
       autor: 'Roberto Tapia',
@@ -170,7 +172,7 @@ export function PagosPorValidar({ onChange }: PagosPorValidarProps = {}) {
     refrescar();
     toast({
       title: 'Pago rechazado',
-      description: `Le avisamos a ${rechazando.inquilino} con tu nota.`,
+      description: `Le avisamos a ${rechazando.inquilino} por WhatsApp y en la app con tu nota.`,
     });
     setRechazando(null);
     setMotivoRechazo('');

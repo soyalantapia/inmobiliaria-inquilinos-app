@@ -68,13 +68,13 @@ export function CargarPagoManualDialog({ open, onOpenChange, onDone }: Props) {
     }
 
     // Generamos un id sintético para el pago manual y lo marcamos como
-    // CONCILIADO directamente (la admin ya validó al cargarlo).
+    // CONCILIADO directamente (la admin ya validó al cargarlo). El pago
+    // manual no nace de una liquidación específica del inquilino, así
+    // que liqId queda en null.
     const pagoId = `pag_manual_${contratoSel.id}_${fecha}`;
-    conciliarPago(
-      pagoId,
-      'Roberto Tapia',
-      `Pago manual · ${metodo} · ${formatMonto(montoNum)}${nota ? ` · ${nota}` : ''}`,
-    );
+    conciliarPago(pagoId, 'Roberto Tapia', {
+      observacion: `Pago manual · ${metodo} · ${formatMonto(montoNum)}${nota ? ` · ${nota}` : ''}`,
+    });
 
     toast({
       title: `Pago de ${contratoSel.inquilino} cargado`,

@@ -13,6 +13,13 @@ export type EstadoConciliacion = 'INFORMADO' | 'CONCILIADO' | 'RECHAZADO';
 
 export interface AccionConciliacion {
   pagoId: string;
+  /**
+   * ID de la liquidación a la que apunta el pago. Lo guardamos en la
+   * acción para que la app del inquilino pueda detectar la decisión del
+   * admin (CONCILIADO / RECHAZADO) sin tener acceso al mapping
+   * pagoId → liquidacionId del lado inmo.
+   */
+  liqId: string | null;
   estado: EstadoConciliacion;
   observacion: string | null;
   decidiSAt: string;
@@ -50,13 +57,14 @@ export function listarAcciones(): Record<string, AccionConciliacion> {
 export function conciliarPago(
   pagoId: string,
   operador: string,
-  observacion: string | null = null,
+  options: { liqId?: string | null; observacion?: string | null } = {},
 ): void {
   const map = leer();
   map[pagoId] = {
     pagoId,
+    liqId: options.liqId ?? null,
     estado: 'CONCILIADO',
-    observacion,
+    observacion: options.observacion ?? null,
     decidiSAt: new Date().toISOString(),
     decidiSPor: operador,
   };
@@ -67,16 +75,31 @@ export function rechazarPago(
   pagoId: string,
   operador: string,
   observacion: string,
+  options: { liqId?: string | null } = {},
 ): void {
   const map = leer();
   map[pagoId] = {
     pagoId,
+    liqId: options.liqId ?? null,
     estado: 'RECHAZADO',
     observacion,
     decidiSAt: new Date().toISOString(),
     decidiSPor: operador,
   };
   guardar(map);
+}
+
+/**
+ * Devuelve la acción del admin para una liquidación dada (lookup por
+ * liqId). Útil para que la app del inquilino pueda mostrar "tu pago fue
+ * rechazado" o "tu pago fue confirmado" leyendo el storage del inmo.
+ */
+export function accionPorLiqId(liqId: string): AccionConciliacion | null {
+  const map = leer();
+  for (const a of Object.values(map)) {
+    if (a.liqId === liqId) return a;
+  }
+  return null;
 }
 
 /**

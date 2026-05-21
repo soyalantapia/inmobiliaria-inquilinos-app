@@ -11,7 +11,9 @@ import {
   CheckCircle2,
   Clock,
   Receipt,
+  RotateCcw,
   TrendingUp,
+  XCircle,
 } from 'lucide-react';
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
@@ -22,6 +24,10 @@ import { liquidacionesMock } from '@/lib/mock-data';
 import { formatFecha, formatMonto, formatPeriodo } from '@/lib/format';
 import { TASA_PUNITORIA_DIARIA_DEFAULT, calcularPunitorios } from '@/lib/punitorios';
 import { leerPagoInformado, type PagoInformado } from '@/lib/pago-storage';
+import {
+  decisionInmoPago,
+  type DecisionInmoSobrePago,
+} from '@/lib/cross-app-inmo';
 import { aplicarEstadoDemo, useDemoEstado } from '@/lib/demo-estado';
 
 export default function DetallePagoPage({ params }: { params: { liqId: string } }) {
@@ -39,14 +45,20 @@ export default function DetallePagoPage({ params }: { params: { liqId: string } 
   const liq = liqDemo ?? { ...liqBase, fechaVencimiento: liqBase.fechaVencimiento };
 
   const [informado, setInformado] = useState<PagoInformado | null>(null);
+  const [decisionInmo, setDecisionInmo] = useState<DecisionInmoSobrePago | null>(null);
   useEffect(() => {
     setInformado(leerPagoInformado(params.liqId));
+    setDecisionInmo(decisionInmoPago(params.liqId));
   }, [params.liqId]);
 
   const calc = calcularPunitorios(liq, TASA_PUNITORIA_DIARIA_DEFAULT);
   const vencido = calc.diasAtraso > 0;
   const pagado = liq.estado === 'PAGADO';
-  const pendienteValidacion = informado?.estado === 'INFORMADO';
+  const rechazadoPorInmo = decisionInmo?.estado === 'RECHAZADO';
+  const confirmadoPorInmo = decisionInmo?.estado === 'CONCILIADO';
+  // Mostramos "pendiente de validación" sólo si el inmo todavía no decidió.
+  const pendienteValidacion =
+    informado?.estado === 'INFORMADO' && !rechazadoPorInmo && !confirmadoPorInmo;
 
   return (
     <>
@@ -62,6 +74,51 @@ export default function DetallePagoPage({ params }: { params: { liqId: string } 
       </header>
 
       <main className="flex-1 space-y-5 px-5 pb-6">
+        {rechazadoPorInmo && decisionInmo && (
+          <Card className="space-y-3 border-destructive bg-destructive/5 p-4">
+            <div className="flex items-start gap-3">
+              <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-destructive text-destructive-foreground">
+                <XCircle className="h-5 w-5" />
+              </div>
+              <div className="flex-1 space-y-1">
+                <p className="text-sm font-semibold text-destructive">
+                  Tu pago fue rechazado
+                </p>
+                {decisionInmo.motivo && (
+                  <p className="rounded-md bg-background/60 p-2 text-xs italic">
+                    “{decisionInmo.motivo}”
+                  </p>
+                )}
+                <p className="text-[11px] text-muted-foreground">
+                  Rechazado por {decisionInmo.decidiSPor} ·{' '}
+                  {formatFecha(decisionInmo.decidiSAt)}
+                </p>
+              </div>
+            </div>
+            <Button asChild size="lg" variant="destructive" className="w-full">
+              <Link href={`/pago/${liq.id}/checkout`}>
+                <RotateCcw className="h-4 w-4" />
+                Volver a subir comprobante
+              </Link>
+            </Button>
+          </Card>
+        )}
+
+        {confirmadoPorInmo && decisionInmo && !pagado && (
+          <Card className="flex items-start gap-3 border-emerald-200 bg-emerald-50 p-4 text-sm dark:border-emerald-900/40 dark:bg-emerald-900/10">
+            <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+            <div className="flex-1">
+              <p className="font-medium text-emerald-900 dark:text-emerald-200">
+                Pago confirmado
+              </p>
+              <p className="text-xs text-emerald-900/80 dark:text-emerald-200/80">
+                {decisionInmo.decidiSPor} validó tu comprobante el{' '}
+                {formatFecha(decisionInmo.decidiSAt)}. Ya está acreditado.
+              </p>
+            </div>
+          </Card>
+        )}
+
         {pendienteValidacion && informado && (
           <Card className="flex items-start gap-3 border-amber-200 bg-amber-50 p-4 text-sm dark:border-amber-900/40 dark:bg-amber-900/10">
             <Clock className="mt-0.5 h-4 w-4 text-amber-600 dark:text-amber-400" />

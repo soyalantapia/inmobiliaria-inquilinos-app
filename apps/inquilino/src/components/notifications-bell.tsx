@@ -14,6 +14,7 @@ import {
   TrendingUp,
   Truck,
   Wrench,
+  XCircle,
 } from 'lucide-react';
 import { cn } from '@llave/ui/cn';
 import { contratoMock, liquidacionesMock } from '@/lib/mock-data';
@@ -25,6 +26,7 @@ import { leerPagoInformado } from '@/lib/pago-storage';
 import {
   cargosExtraDelInquilino,
   datosProfesionalDeInmo,
+  decisionInmoPago,
 } from '@/lib/cross-app-inmo';
 import { obtenerVisita } from '@/lib/visitas-profesional';
 import type { Reclamo } from '@/lib/types';
@@ -36,7 +38,7 @@ interface Notif {
   href: string;
   cuando: string;
   unread: boolean;
-  icono: 'pago_vencido' | 'pago_pendiente' | 'ajuste' | 'reclamo_inmo' | 'pago_validacion' | 'rating' | 'profesional' | 'cargo_extra' | 'visita_confirmada' | 'visita_en_camino' | 'visita_lista';
+  icono: 'pago_vencido' | 'pago_pendiente' | 'ajuste' | 'reclamo_inmo' | 'pago_validacion' | 'pago_rechazado' | 'pago_confirmado' | 'rating' | 'profesional' | 'cargo_extra' | 'visita_confirmada' | 'visita_en_camino' | 'visita_lista';
   severidad: 'critica' | 'alta' | 'media' | 'baja';
 }
 
@@ -46,6 +48,8 @@ const ICONS = {
   ajuste: TrendingUp,
   reclamo_inmo: MessageCircle,
   pago_validacion: CheckCircle2,
+  pago_rechazado: XCircle,
+  pago_confirmado: CheckCircle2,
   rating: Star,
   profesional: Wrench,
   cargo_extra: Receipt,
@@ -111,6 +115,39 @@ function construirNotifs(leidas: Set<string>): Notif[] {
   const liqsActivas = liquidacionesMock.filter((l) => l.estado !== 'PAGADO');
   for (const liq of liqsActivas) {
     const informado = leerPagoInformado(liq.id);
+
+    // Decisión del admin (cross-app). Si rechazó o confirmó, eso pisa
+    // al estado "en revisión" del lado del inquilino.
+    const decision = informado ? decisionInmoPago(liq.id) : null;
+    if (decision?.estado === 'RECHAZADO') {
+      out.push({
+        id: `pago-rech-${liq.id}-${decision.decidiSAt}`,
+        titulo: 'Tu pago fue rechazado',
+        detalle: decision.motivo
+          ? `Motivo: ${decision.motivo.length > 70 ? `${decision.motivo.slice(0, 70)}…` : decision.motivo}`
+          : 'Tenés que volver a mandar el comprobante.',
+        href: `/pago/${liq.id}`,
+        cuando: tiempoCorto(decision.decidiSAt),
+        unread: !leidas.has(`pago-rech-${liq.id}-${decision.decidiSAt}`),
+        icono: 'pago_rechazado',
+        severidad: 'critica',
+      });
+      continue;
+    }
+    if (decision?.estado === 'CONCILIADO') {
+      out.push({
+        id: `pago-ok-${liq.id}-${decision.decidiSAt}`,
+        titulo: '✅ Tu pago fue confirmado',
+        detalle: `${formatMontoAR(liq.montoTotal)} acreditado · ${decision.decidiSPor}`,
+        href: `/pago/${liq.id}`,
+        cuando: tiempoCorto(decision.decidiSAt),
+        unread: !leidas.has(`pago-ok-${liq.id}-${decision.decidiSAt}`),
+        icono: 'pago_confirmado',
+        severidad: 'media',
+      });
+      continue;
+    }
+
     if (informado?.estado === 'INFORMADO') {
       out.push({
         id: `pago-val-${liq.id}`,

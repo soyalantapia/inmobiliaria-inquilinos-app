@@ -11,6 +11,7 @@
  */
 
 const INMO_RECLAMOS_KEY = 'llave-inmo:reclamos:v1';
+const INMO_CONCILIACION_KEY = 'llave-inmo:conciliacion:v1';
 
 interface InmoReclamo {
   id: string;
@@ -143,4 +144,61 @@ function leerPagadosLocal(): Record<string, unknown> {
   } catch {
     return {};
   }
+}
+
+/* ============================================================
+ * Conciliación de pagos (decisión del admin)
+ *
+ * Cuando el admin valida o rechaza un pago informado, la decisión se
+ * guarda en `llave-inmo:conciliacion:v1` con `liqId` adentro. Desde
+ * acá la app del inquilino puede leerla para mostrar un banner de
+ * "tu pago fue rechazado" o una notif "tu pago fue confirmado".
+ * ============================================================ */
+
+export type EstadoConciliacionCrossApp = 'CONCILIADO' | 'RECHAZADO';
+
+export interface DecisionInmoSobrePago {
+  estado: EstadoConciliacionCrossApp;
+  motivo: string | null;
+  decidiSPor: string;
+  decidiSAt: string;
+}
+
+interface AccionConciliacionCrossApp {
+  pagoId: string;
+  liqId: string | null;
+  estado: 'INFORMADO' | 'CONCILIADO' | 'RECHAZADO';
+  observacion: string | null;
+  decidiSAt: string;
+  decidiSPor: string;
+}
+
+function leerConciliacionInmo(): Record<string, AccionConciliacionCrossApp> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage.getItem(INMO_CONCILIACION_KEY);
+    return raw ? (JSON.parse(raw) as Record<string, AccionConciliacionCrossApp>) : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Devuelve la decisión del admin para una liquidación dada, o null si
+ * todavía no la revisó (o el pago no se informó). Sólo expone decisiones
+ * resueltas (CONCILIADO / RECHAZADO).
+ */
+export function decisionInmoPago(liqId: string): DecisionInmoSobrePago | null {
+  const map = leerConciliacionInmo();
+  for (const a of Object.values(map)) {
+    if (a.liqId === liqId && (a.estado === 'CONCILIADO' || a.estado === 'RECHAZADO')) {
+      return {
+        estado: a.estado,
+        motivo: a.observacion,
+        decidiSPor: a.decidiSPor,
+        decidiSAt: a.decidiSAt,
+      };
+    }
+  }
+  return null;
 }
