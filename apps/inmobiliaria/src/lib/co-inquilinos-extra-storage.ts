@@ -20,9 +20,14 @@ export interface CoInquilinoExtra {
   contratoId: string | null;
   nombre: string;
   apellido: string;
-  email: string;
+  /**
+   * WhatsApp es el canal principal y obligatorio. El email pasó a ser
+   * opcional porque, según el feedback de Ramiro, "el mail está
+   * bombardeado, el WhatsApp lo ve al toque".
+   */
+  celular: string;
+  email?: string;
   dni?: string;
-  celular?: string;
   relacion: string; // "Conviviente", "Cónyuge", etc.
   permiso: PermisoCoInquilino;
   estado: EstadoCoInquilino;
@@ -49,9 +54,10 @@ export interface AgregarCoInquilinoInput {
   contratoId?: string | null;
   nombre: string;
   apellido: string;
-  email: string;
+  /** WhatsApp obligatorio: canal principal de comunicación. */
+  celular: string;
+  email?: string;
   dni?: string;
-  celular?: string;
   relacion: string;
   permiso: PermisoCoInquilino;
 }
@@ -64,9 +70,9 @@ export function agregarCoInquilino(input: AgregarCoInquilinoInput): CoInquilinoE
     contratoId: input.contratoId ?? null,
     nombre: input.nombre.trim(),
     apellido: input.apellido.trim(),
-    email: input.email.trim().toLowerCase(),
+    celular: input.celular.trim(),
+    email: input.email?.trim().toLowerCase() || undefined,
     dni: input.dni?.trim() || undefined,
-    celular: input.celular?.trim() || undefined,
     relacion: input.relacion,
     permiso: input.permiso,
     estado: 'PENDIENTE_ACTIVACION',

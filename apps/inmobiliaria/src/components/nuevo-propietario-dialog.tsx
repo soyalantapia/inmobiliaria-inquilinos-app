@@ -54,8 +54,12 @@ export function NuevoPropietarioDialog({
     }
   }, [open]);
 
+  const telefonoOk = telefono.replace(/[^\d]/g, '').length >= 8;
   const puedeGuardar =
-    nombre.trim().length >= 2 && apellido.trim().length >= 2 && !guardando;
+    nombre.trim().length >= 2 &&
+    apellido.trim().length >= 2 &&
+    telefonoOk &&
+    !guardando;
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -137,10 +141,10 @@ export function NuevoPropietarioDialog({
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="np-telefono" className="flex items-center gap-1.5">
-                Teléfono
-                <span className="text-[10px] font-normal text-muted-foreground">
-                  opcional
+                <span className="inline-flex items-center gap-1">
+                  💬 WhatsApp
                 </span>
+                <span className="text-[10px] font-medium text-primary">obligatorio</span>
               </Label>
               <Input
                 id="np-telefono"
@@ -148,7 +152,20 @@ export function NuevoPropietarioDialog({
                 value={telefono}
                 onChange={(e) => setTelefono(e.target.value)}
                 placeholder="+54 11 5555-5555"
+                className={
+                  telefono.length > 0 && !telefonoOk
+                    ? 'border-destructive focus-visible:ring-destructive'
+                    : ''
+                }
               />
+              {telefono.length > 0 && !telefonoOk && (
+                <p className="text-[11px] text-destructive">
+                  Mínimo 8 dígitos (incluí código de área)
+                </p>
+              )}
+              <p className="text-[11px] text-muted-foreground">
+                Toda la comunicación con el propietario va por acá.
+              </p>
             </div>
           </div>
 

@@ -526,9 +526,26 @@ function DialogForm({
     }
   }, [editando, open]);
 
+  const telefonoOk = telefono.replace(/[^\d]/g, '').length >= 8;
+  const emailOk =
+    email.trim().length === 0 ||
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+
   const handleSubmit = () => {
-    if (!nombre.trim() || !zona.trim() || !telefono.trim()) {
+    if (!nombre.trim() || !zona.trim()) {
       toast({ title: 'Faltan datos obligatorios', variant: 'destructive' });
+      return;
+    }
+    if (!telefonoOk) {
+      toast({
+        title: 'WhatsApp obligatorio',
+        description: 'Toda la comunicación con el profesional va por WhatsApp.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    if (!emailOk) {
+      toast({ title: 'Email inválido', variant: 'destructive' });
       return;
     }
     onSubmit({
@@ -580,12 +597,45 @@ function DialogForm({
 
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1">
-              <Label className="text-xs">Teléfono</Label>
-              <Input value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder="+54 9 11 …" />
+              <Label className="flex items-center gap-1.5 text-xs">
+                <span className="inline-flex items-center gap-1">💬 WhatsApp</span>
+                <span className="text-[10px] font-medium text-primary">obligatorio</span>
+              </Label>
+              <Input
+                value={telefono}
+                onChange={(e) => setTelefono(e.target.value)}
+                placeholder="+54 9 11 …"
+                className={
+                  telefono.length > 0 && !telefonoOk
+                    ? 'border-destructive focus-visible:ring-destructive'
+                    : ''
+                }
+              />
+              {telefono.length > 0 && !telefonoOk && (
+                <p className="text-[11px] text-destructive">
+                  Mínimo 8 dígitos
+                </p>
+              )}
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Email (opcional)</Label>
-              <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="—" />
+              <Label className="flex items-center gap-1.5 text-xs">
+                Email
+                <span className="text-[10px] font-normal text-muted-foreground">opcional</span>
+              </Label>
+              <Input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="—"
+                className={
+                  email.length > 0 && !emailOk
+                    ? 'border-destructive focus-visible:ring-destructive'
+                    : ''
+                }
+              />
+              {email.length > 0 && !emailOk && (
+                <p className="text-[11px] text-destructive">Email inválido</p>
+              )}
             </div>
           </div>
 

@@ -96,9 +96,12 @@ export function ListaInvitadosPropiedad({
             <p className="truncate text-sm font-medium">
               {i.nombre} {i.apellido}
             </p>
-            <p className="truncate text-xs text-muted-foreground">{i.email}</p>
+            <p className="truncate text-xs text-muted-foreground">
+              💬 {i.telefono}
+              {i.email ? ` · ${i.email}` : ''}
+            </p>
             <p className="text-[11px] text-amber-700 dark:text-amber-300">
-              Le mandamos el link a su mail · {i.coInquilinos.length}{' '}
+              Le mandamos el link por WhatsApp · {i.coInquilinos.length}{' '}
               co-inquilino{i.coInquilinos.length === 1 ? '' : 's'} · {i.documentos.length}{' '}
               doc{i.documentos.length === 1 ? '' : 's'}
             </p>

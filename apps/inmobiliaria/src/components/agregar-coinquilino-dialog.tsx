@@ -71,10 +71,14 @@ export function AgregarCoInquilinoDialog({
     }
   }, [open]);
 
-  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  const celularOk = celular.replace(/[^\d]/g, '').length >= 8;
+  const emailOk =
+    email.trim().length === 0 ||
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   const puedeGuardar =
     nombre.trim().length >= 2 &&
     apellido.trim().length >= 2 &&
+    celularOk &&
     emailOk &&
     !guardando;
 
@@ -88,9 +92,9 @@ export function AgregarCoInquilinoDialog({
       contratoId: contratoId ?? null,
       nombre,
       apellido,
-      email,
+      celular,
+      email: email.trim() || undefined,
       dni: dni.trim() || undefined,
-      celular: celular.trim() || undefined,
       relacion,
       permiso,
     });
@@ -98,7 +102,7 @@ export function AgregarCoInquilinoDialog({
     toast({
       variant: 'success',
       title: '¡Invitación enviada!',
-      description: `Le mandamos a ${co.email} el link para activar su cuenta.`,
+      description: `Le mandamos a ${co.nombre} el link por WhatsApp para activar su cuenta.`,
     });
     onAdded?.();
     onOpenChange(false);
@@ -143,19 +147,29 @@ export function AgregarCoInquilinoDialog({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="co-email">Email</Label>
+            <Label htmlFor="co-celular" className="flex items-center gap-1.5">
+              <span className="inline-flex items-center gap-1">💬 WhatsApp</span>
+              <span className="text-[10px] font-medium text-primary">obligatorio</span>
+            </Label>
             <Input
-              id="co-email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="juan@correo.com"
+              id="co-celular"
+              type="tel"
+              value={celular}
+              onChange={(e) => setCelular(e.target.value)}
+              placeholder="+54 11 5555-5555"
+              className={
+                celular.length > 0 && !celularOk
+                  ? 'border-destructive focus-visible:ring-destructive'
+                  : ''
+              }
             />
-            {!emailOk && email.length > 0 && (
-              <p className="text-xs text-destructive">Email inválido</p>
+            {celular.length > 0 && !celularOk && (
+              <p className="text-[11px] text-destructive">
+                Mínimo 8 dígitos (incluí código de área)
+              </p>
             )}
             <p className="text-[11px] text-muted-foreground">
-              Le mandamos un mail con el link para activar su cuenta.
+              Le mandamos el link para activar su cuenta por WhatsApp.
             </p>
           </div>
 
@@ -174,17 +188,25 @@ export function AgregarCoInquilinoDialog({
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="co-celular" className="flex items-center gap-1.5">
-                Celular
+              <Label htmlFor="co-email" className="flex items-center gap-1.5">
+                Email
                 <span className="text-[10px] font-normal text-muted-foreground">opcional</span>
               </Label>
               <Input
-                id="co-celular"
-                type="tel"
-                value={celular}
-                onChange={(e) => setCelular(e.target.value)}
-                placeholder="+54 11 5555-5555"
+                id="co-email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="juan@correo.com"
+                className={
+                  email.length > 0 && !emailOk
+                    ? 'border-destructive focus-visible:ring-destructive'
+                    : ''
+                }
               />
+              {email.length > 0 && !emailOk && (
+                <p className="text-[11px] text-destructive">Email inválido</p>
+              )}
             </div>
           </div>
 

@@ -22,7 +22,9 @@ export type EstadoInvitacion = 'PENDIENTE_ACTIVACION' | 'ACTIVO';
 export interface CoInquilinoInvitado {
   nombre: string;
   apellido: string;
-  email: string;
+  /** WhatsApp obligatorio (canal principal de comunicación). */
+  celular: string;
+  email?: string;
   relacion: string; // ej: "Conviviente", "Cónyuge", "Hijo/a"
   permiso: 'VER' | 'PAGAR' | 'COMPLETO';
 }
@@ -42,9 +44,13 @@ export interface InquilinoInvitado {
   // Datos personales
   nombre: string;
   apellido: string;
-  email: string;
-  dni: string;
+  /**
+   * WhatsApp es el canal principal. Email pasa a ser opcional según
+   * el feedback de los clientes piloto.
+   */
   telefono: string;
+  email?: string;
+  dni: string;
   fechaNacimiento: string | null;
   // Co-inquilinos
   coInquilinos: CoInquilinoInvitado[];
@@ -76,9 +82,10 @@ export interface CrearInvitadoInput {
   contratoId?: string | null;
   nombre: string;
   apellido: string;
-  email: string;
-  dni: string;
+  /** WhatsApp obligatorio. */
   telefono: string;
+  email?: string;
+  dni: string;
   fechaNacimiento?: string | null;
   coInquilinos?: CoInquilinoInvitado[];
   documentos?: DocumentoAdjunto[];
@@ -93,9 +100,9 @@ export function crearInvitado(input: CrearInvitadoInput): InquilinoInvitado {
     contratoId: input.contratoId ?? null,
     nombre: input.nombre.trim(),
     apellido: input.apellido.trim(),
-    email: input.email.trim().toLowerCase(),
-    dni: input.dni.trim(),
     telefono: input.telefono.trim(),
+    email: input.email?.trim().toLowerCase() || undefined,
+    dni: input.dni.trim(),
     fechaNacimiento: input.fechaNacimiento ?? null,
     coInquilinos: input.coInquilinos ?? [],
     documentos: input.documentos ?? [],

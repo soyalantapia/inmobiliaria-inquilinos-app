@@ -114,13 +114,17 @@ export function CargarInquilinoWizard({
   };
 
   // ===== Validación del paso 1 =====
-  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  // WhatsApp es obligatorio (canal principal). Email opcional.
+  const telefonoOk = telefono.replace(/[^\d]/g, '').length >= 8;
+  const emailOk =
+    email.trim().length === 0 ||
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   const paso1Ok =
     nombre.trim().length >= 2 &&
     apellido.trim().length >= 2 &&
+    telefonoOk &&
     emailOk &&
-    dni.trim().length >= 7 &&
-    telefono.trim().length >= 6;
+    dni.trim().length >= 7;
 
   const irPaso = (n: Paso) => setPaso(n);
 
@@ -137,9 +141,9 @@ export function CargarInquilinoWizard({
         propiedadId,
         nombre,
         apellido,
-        email,
-        dni,
         telefono,
+        email: email.trim() || undefined,
+        dni,
         fechaNacimiento: fechaNac || null,
         coInquilinos,
         documentos: Object.values(docsPorSlot),
@@ -147,7 +151,7 @@ export function CargarInquilinoWizard({
       });
       toast({
         title: '¡Inquilino cargado!',
-        description: `Le mandamos a ${invitado.email} el link para activar su cuenta.`,
+        description: `Le mandamos a ${invitado.nombre} el link por WhatsApp para activar su cuenta.`,
       });
       onCreated?.();
       cerrar(false);
@@ -186,7 +190,8 @@ export function CargarInquilinoWizard({
             setDni={setDni}
             setTelefono={setTelefono}
             setFechaNac={setFechaNac}
-            emailOk={emailOk || email.length === 0}
+            emailOk={emailOk}
+            telefonoOk={telefonoOk}
           />
         )}
 
@@ -317,6 +322,7 @@ function PasoDatos({
   setTelefono,
   setFechaNac,
   emailOk,
+  telefonoOk,
 }: {
   nombre: string;
   apellido: string;
@@ -331,6 +337,7 @@ function PasoDatos({
   setTelefono: (v: string) => void;
   setFechaNac: (v: string) => void;
   emailOk: boolean;
+  telefonoOk: boolean;
 }) {
   return (
     <div className="space-y-4">
@@ -358,17 +365,30 @@ function PasoDatos({
         </div>
       </div>
       <div className="space-y-1.5">
-        <Label htmlFor="email">Email</Label>
+        <Label htmlFor="telefono" className="flex items-center gap-1.5">
+          <span className="inline-flex items-center gap-1">💬 WhatsApp</span>
+          <span className="text-[10px] font-medium text-primary">obligatorio</span>
+        </Label>
         <Input
-          id="email"
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="maria@correo.com"
+          id="telefono"
+          type="tel"
+          value={telefono}
+          onChange={(e) => setTelefono(e.target.value)}
+          placeholder="+54 9 11 1234 5678"
+          className={
+            telefono.length > 0 && !telefonoOk
+              ? 'border-destructive focus-visible:ring-destructive'
+              : ''
+          }
         />
-        {!emailOk && <p className="text-xs text-destructive">Email inválido</p>}
+        {telefono.length > 0 && !telefonoOk && (
+          <p className="text-[11px] text-destructive">
+            Mínimo 8 dígitos (incluí código de área)
+          </p>
+        )}
         <p className="text-[11px] text-muted-foreground">
-          Le llega un mail con el link para activar su cuenta en la app.
+          Le mandamos el link de activación por WhatsApp y toda la comunicación con el
+          inquilino va por acá.
         </p>
       </div>
       <div className="grid grid-cols-2 gap-3">
@@ -383,14 +403,25 @@ function PasoDatos({
           />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="telefono">Teléfono</Label>
+          <Label htmlFor="email" className="flex items-center gap-1.5">
+            Email
+            <span className="text-[10px] font-normal text-muted-foreground">opcional</span>
+          </Label>
           <Input
-            id="telefono"
-            type="tel"
-            value={telefono}
-            onChange={(e) => setTelefono(e.target.value)}
-            placeholder="+54 9 11 1234 5678"
+            id="email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="maria@correo.com"
+            className={
+              email.length > 0 && !emailOk
+                ? 'border-destructive focus-visible:ring-destructive'
+                : ''
+            }
           />
+          {email.length > 0 && !emailOk && (
+            <p className="text-[11px] text-destructive">Email inválido</p>
+          )}
         </div>
       </div>
       <div className="space-y-1.5">
@@ -418,14 +449,20 @@ function PasoCoinquilinos({
 }) {
   const [nombre, setNombre] = useState('');
   const [apellido, setApellido] = useState('');
+  const [celularCo, setCelularCo] = useState('');
   const [emailCo, setEmailCo] = useState('');
   const [relacion, setRelacion] = useState('Conviviente');
   const [permiso, setPermiso] = useState<CoInquilinoInvitado['permiso']>('PAGAR');
 
+  const celularCoOk = celularCo.replace(/[^\d]/g, '').length >= 8;
+  const emailCoOk =
+    emailCo.trim().length === 0 ||
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailCo.trim());
   const puedeAgregar =
     nombre.trim().length >= 2 &&
     apellido.trim().length >= 2 &&
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailCo.trim());
+    celularCoOk &&
+    emailCoOk;
 
   const agregar = () => {
     setCoInquilinos((arr) => [
@@ -433,13 +470,15 @@ function PasoCoinquilinos({
       {
         nombre: nombre.trim(),
         apellido: apellido.trim(),
-        email: emailCo.trim().toLowerCase(),
+        celular: celularCo.trim(),
+        email: emailCo.trim().toLowerCase() || undefined,
         relacion,
         permiso,
       },
     ]);
     setNombre('');
     setApellido('');
+    setCelularCo('');
     setEmailCo('');
     setRelacion('Conviviente');
     setPermiso('PAGAR');
@@ -471,7 +510,8 @@ function PasoCoinquilinos({
                   {c.nombre} {c.apellido}
                 </p>
                 <p className="truncate text-xs text-muted-foreground">
-                  {c.relacion} · {c.email}
+                  {c.relacion} · 💬 {c.celular}
+                  {c.email ? ` · ${c.email}` : ''}
                 </p>
               </div>
               <Badge variant="outline" className="text-[10px]">
@@ -502,10 +542,26 @@ function PasoCoinquilinos({
           />
         </div>
         <Input
+          type="tel"
+          value={celularCo}
+          onChange={(e) => setCelularCo(e.target.value)}
+          placeholder="💬 WhatsApp (obligatorio) · +54 11 5555-5555"
+          className={
+            celularCo.length > 0 && !celularCoOk
+              ? 'border-destructive focus-visible:ring-destructive'
+              : ''
+          }
+        />
+        <Input
           type="email"
           value={emailCo}
           onChange={(e) => setEmailCo(e.target.value)}
-          placeholder="Email"
+          placeholder="Email (opcional)"
+          className={
+            emailCo.length > 0 && !emailCoOk
+              ? 'border-destructive focus-visible:ring-destructive'
+              : ''
+          }
         />
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">

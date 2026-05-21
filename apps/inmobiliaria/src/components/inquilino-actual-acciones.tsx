@@ -191,18 +191,21 @@ function CoInquilinoRow({
             </Badge>
           </div>
           <p className="truncate text-xs text-muted-foreground">
-            {co.relacion} · {co.email}
+            {co.relacion} · 💬 {co.celular}
+            {co.email ? ` · ${co.email}` : ''}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          <Button
-            size="icon"
-            variant="ghost"
-            onClick={() => setReenviarOpen(true)}
-            aria-label="Reenviar email"
-          >
-            <Mail className="h-4 w-4" />
-          </Button>
+          {co.email && (
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => setReenviarOpen(true)}
+              aria-label="Reenviar email"
+            >
+              <Mail className="h-4 w-4" />
+            </Button>
+          )}
           <Button
             size="icon"
             variant="ghost"
@@ -214,13 +217,15 @@ function CoInquilinoRow({
         </div>
       </div>
 
-      <EmailBienvenidaDialog
-        open={reenviarOpen}
-        onOpenChange={setReenviarOpen}
-        destinatario={{ nombre: `${co.nombre} ${co.apellido}`, email: co.email }}
-        propiedad={direccion}
-        modo={co.estado === 'PENDIENTE_ACTIVACION' ? 'recordatorio' : 'bienvenida'}
-      />
+      {co.email && (
+        <EmailBienvenidaDialog
+          open={reenviarOpen}
+          onOpenChange={setReenviarOpen}
+          destinatario={{ nombre: `${co.nombre} ${co.apellido}`, email: co.email }}
+          propiedad={direccion}
+          modo={co.estado === 'PENDIENTE_ACTIVACION' ? 'recordatorio' : 'bienvenida'}
+        />
+      )}
     </>
   );
 }
