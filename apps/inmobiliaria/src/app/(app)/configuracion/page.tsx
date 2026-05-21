@@ -8,6 +8,7 @@ import {
   CreditCard,
   Download,
   FileText,
+  Gift,
   GraduationCap,
   Handshake,
   MapPin,
@@ -36,6 +37,7 @@ import { ConveniosBrowser } from '@/components/convenios-browser';
 import { CuponInput } from '@/components/cupon-input';
 import { EstadoCuentaCard } from '@/components/estado-cuenta-card';
 import { FormaPagoSelector } from '@/components/forma-pago-selector';
+import { ReferidosManager } from '@/components/referidos-manager';
 import { SociedadesManager } from '@/components/sociedades-manager';
 import { TrialBanner } from '@/components/trial-banner';
 import { formatFecha, formatMonto, formatPeriodo } from '@/lib/format';
@@ -245,6 +247,10 @@ export default function ConfiguracionPage() {
             <TabsTrigger value="convenios">
               <Handshake className="mr-1.5 h-3.5 w-3.5" />
               Convenios
+            </TabsTrigger>
+            <TabsTrigger value="referidos">
+              <Gift className="mr-1.5 h-3.5 w-3.5" />
+              Invitar colegas
             </TabsTrigger>
             <TabsTrigger value="auditoria">
               <ScrollText className="mr-1.5 h-3.5 w-3.5" />
@@ -722,6 +728,22 @@ export default function ConfiguracionPage() {
               </CardHeader>
               <CardContent>
                 <ConveniosBrowser />
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* REFERIDOS */}
+          <TabsContent value="referidos" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Invitá colegas y sumá meses gratis</CardTitle>
+                <CardDescription>
+                  Por cada colega que se sume con tu código, ambos ganan 1 mes
+                  gratis. Acá tenés todo lo que necesitás para invitarlos.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ReferidosManager />
               </CardContent>
             </Card>
           </TabsContent>
