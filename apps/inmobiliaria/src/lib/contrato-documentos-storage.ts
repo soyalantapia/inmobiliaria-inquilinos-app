@@ -25,6 +25,8 @@ export type TipoDocContrato =
   | 'DNI_GARANTE_FRENTE'
   | 'DNI_GARANTE_DORSO'
   | 'RECIBO_SUELDO'
+  | 'CONVENIO_DESOCUPACION'
+  | 'PAGARE'
   | 'FOTO_WHATSAPP'
   | 'OTRO';
 
@@ -110,6 +112,8 @@ export const TIPO_DOC_LABEL: Record<TipoDocContrato, string> = {
   DNI_GARANTE_FRENTE: 'DNI garante · frente',
   DNI_GARANTE_DORSO: 'DNI garante · dorso',
   RECIBO_SUELDO: 'Recibo de sueldo',
+  CONVENIO_DESOCUPACION: 'Convenio de desocupación',
+  PAGARE: 'Pagaré',
   FOTO_WHATSAPP: 'Foto de WhatsApp',
   OTRO: 'Otro documento',
 };

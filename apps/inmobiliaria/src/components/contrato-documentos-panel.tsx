@@ -2,8 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  BookOpenCheck,
   CheckCircle2,
   Download,
+  DoorOpen,
   FileSignature,
   FileText,
   IdCard,
@@ -11,6 +13,7 @@ import {
   MessageCircle,
   Paperclip,
   Plus,
+  ScrollText,
   ShieldCheck,
   Trash2,
   Upload,
@@ -61,6 +64,8 @@ const ICONO_TIPO: Record<TipoDocContrato, typeof FileText> = {
   DNI_GARANTE_FRENTE: ShieldCheck,
   DNI_GARANTE_DORSO: ShieldCheck,
   RECIBO_SUELDO: Wallet,
+  CONVENIO_DESOCUPACION: DoorOpen,
+  PAGARE: ScrollText,
   FOTO_WHATSAPP: MessageCircle,
   OTRO: Paperclip,
 };
@@ -98,6 +103,12 @@ function gruposParaContrato(garantesCount: number): GrupoUI[] {
       tipos: ['DNI_TITULAR_FRENTE', 'DNI_TITULAR_DORSO', 'RECIBO_SUELDO'],
     },
     ...garantes,
+    {
+      key: 'legales',
+      titulo: 'Convenio y pagarés',
+      ayuda: 'Convenio de desocupación firmado y pagarés en garantía.',
+      tipos: ['CONVENIO_DESOCUPACION', 'PAGARE'],
+    },
     {
       key: 'fotos',
       titulo: 'Fotos de WhatsApp y otros',
@@ -439,7 +450,7 @@ export function ContratoDocumentosPanel({ contrato }: Props) {
       <input
         ref={fileRef}
         type="file"
-        accept="image/*,application/pdf"
+        accept="image/*,image/heic,image/heif,application/pdf"
         className="hidden"
         onChange={onFileChange}
       />

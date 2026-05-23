@@ -26,6 +26,18 @@ export interface UnidadFuncional {
   estado: EstadoUF;
   /** Saldo deudor actual en $ (0 si está al día). */
   saldoDeudor: number;
+  /**
+   * Cargo fijo mensual de expensas. Si está presente sobreescribe el
+   * cálculo por coeficiente. Pedido del feedback: "algunas unidades
+   * pagan monto fijo, no porcentaje de la liquidación".
+   */
+  cargoFijo?: number;
+  /** Datos técnicos de servicios por unidad (medidores y NIS). */
+  serviciosUf?: {
+    luz?: { nis: string; medidor?: string };
+    gas?: { nis: string; medidor?: string };
+    agua?: { nis: string; medidor?: string };
+  };
 }
 
 export interface MovimientoConsorcio {
@@ -97,6 +109,10 @@ export const consorciosMock: Consorcio[] = [
         telefono: '+54 9 11 4567 8901',
         estado: 'AL_DIA',
         saldoDeudor: 0,
+        serviciosUf: {
+          luz: { nis: '7821990-4', medidor: 'E0012387' },
+          gas: { nis: '07-9981234-1', medidor: 'M0021908' },
+        },
       },
       {
         id: 'uf_002',
@@ -106,6 +122,11 @@ export const consorciosMock: Consorcio[] = [
         telefono: '+54 9 11 4567 8902',
         estado: 'AL_DIA',
         saldoDeudor: 0,
+        // Caso de monto fijo (acuerdo especial con el propietario).
+        cargoFijo: 185000,
+        serviciosUf: {
+          luz: { nis: '7821990-5', medidor: 'E0012388' },
+        },
       },
       {
         id: 'uf_003',

@@ -15,6 +15,7 @@
  * actualiza con eventos reales y se recalcula periódicamente.
  */
 import { contratosMock, generarLiquidaciones, reclamosMock } from './mock-data';
+import { puntajeCargaBoletas } from './alertas-servicios';
 import type { ContratoListado } from './types';
 
 export type FactorScoring =
@@ -22,7 +23,8 @@ export type FactorScoring =
   | 'mantenimiento'
   | 'comunicacion'
   | 'antiguedad'
-  | 'garantia';
+  | 'garantia'
+  | 'cumplimiento_boletas';
 
 export interface FactorDetalle {
   factor: FactorScoring;
@@ -50,15 +52,17 @@ export interface ResumenScoring {
 }
 
 const PESOS: Record<FactorScoring, number> = {
-  puntualidad: 40,
-  mantenimiento: 15,
-  comunicacion: 15,
-  antiguedad: 15,
-  garantia: 15,
+  puntualidad: 35,
+  cumplimiento_boletas: 15,
+  mantenimiento: 12,
+  comunicacion: 13,
+  antiguedad: 12,
+  garantia: 13,
 };
 
 const FACTOR_LABEL: Record<FactorScoring, string> = {
   puntualidad: 'Puntualidad de pagos',
+  cumplimiento_boletas: 'Carga de boletas obligatorias',
   mantenimiento: 'Mantenimiento de la propiedad',
   comunicacion: 'Comunicación',
   antiguedad: 'Antigüedad como inquilino',
@@ -163,9 +167,11 @@ export function calcularScoringInquilino(
   const com = calcularComunicacion(contrato.id);
   const ant = calcularAntiguedad(contrato);
   const gar = calcularGarantia(contrato.id);
+  const bol = puntajeCargaBoletas(contrato.id);
 
   const factores: FactorDetalle[] = [
     { factor: 'puntualidad', label: FACTOR_LABEL.puntualidad, peso: PESOS.puntualidad, puntaje: pun.puntaje, aporte: 0, explicacion: pun.explicacion },
+    { factor: 'cumplimiento_boletas', label: FACTOR_LABEL.cumplimiento_boletas, peso: PESOS.cumplimiento_boletas, puntaje: bol.puntaje, aporte: 0, explicacion: bol.detalle },
     { factor: 'mantenimiento', label: FACTOR_LABEL.mantenimiento, peso: PESOS.mantenimiento, puntaje: mtto.puntaje, aporte: 0, explicacion: mtto.explicacion },
     { factor: 'comunicacion', label: FACTOR_LABEL.comunicacion, peso: PESOS.comunicacion, puntaje: com.puntaje, aporte: 0, explicacion: com.explicacion },
     { factor: 'antiguedad', label: FACTOR_LABEL.antiguedad, peso: PESOS.antiguedad, puntaje: ant.puntaje, aporte: 0, explicacion: ant.explicacion },

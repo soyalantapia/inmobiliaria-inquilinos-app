@@ -30,6 +30,7 @@ import {
   contratosMock,
   type ContactoCobranza,
 } from '@/lib/mock-data';
+import { consorciosMock } from '@/lib/consorcios-storage';
 import { diasHastaVencimiento, formatFecha, formatMonto } from '@/lib/format';
 
 /**
@@ -71,6 +72,20 @@ const PLANTILLAS: Array<{
     cuerpo:
       'Sr/a {nombre}: en mi carácter de administrador de {direccion} le intimo a regularizar el pago vencido por {monto} en un plazo perentorio de 48hs. Caso contrario daremos inicio a las acciones legales pertinentes según contrato.',
   },
+  {
+    id: 'debe-luz',
+    destinatario: 'titular',
+    titulo: 'Deuda de luz · servicios',
+    cuerpo:
+      'Hola {nombre}! Por contrato la boleta de luz está a tu cargo. La de {direccion} viene marcada como impaga y figura un atraso. Subila al perfil o pasámela por acá así no se corta el suministro y no aparece en el listado de deudores.',
+  },
+  {
+    id: 'falta-boleta',
+    destinatario: 'titular',
+    titulo: 'Falta comprobante de servicios',
+    cuerpo:
+      'Hola {nombre}, te paso a recordar que cuando pagás los servicios (luz, gas, agua) tenés que subir la boleta paga al perfil. Sin el comprobante figura como pendiente y nos vemos obligados a marcarlo. Cualquier duda, escribime.',
+  },
 ];
 
 interface Props {
@@ -81,11 +96,33 @@ interface MorosoEnriquecido {
   contrato: (typeof contratosMock)[number];
   contacto: ContactoCobranza | null;
   dias: number;
+  consorcioId: string | null;
+  consorcioNombre: string | null;
+}
+
+/**
+ * Detecta a qué consorcio pertenece un contrato matcheando la calle del
+ * contrato con la del consorcio. En backend real esto sería un FK,
+ * pero alcanza para filtrar en la demo.
+ */
+function detectarConsorcio(direccion: string): {
+  id: string;
+  nombre: string;
+} | null {
+  const norm = direccion.toLowerCase().split(',')[0]?.trim() ?? '';
+  for (const c of consorciosMock) {
+    const calleConsorcio = c.direccion.toLowerCase().split(',')[0]?.trim() ?? '';
+    if (calleConsorcio && norm.startsWith(calleConsorcio)) {
+      return { id: c.id, nombre: c.nombre };
+    }
+  }
+  return null;
 }
 
 export function MorososPanel({ inmobiliaria = 'My Alquiler' }: Props) {
   const [expandido, setExpandido] = useState(false);
   const [busqueda, setBusqueda] = useState('');
+  const [filtroConsorcio, setFiltroConsorcio] = useState<string>('TODOS');
   const [mensaje, setMensaje] = useState<{
     moroso: MorosoEnriquecido;
     plantillaId: string;
@@ -96,24 +133,43 @@ export function MorososPanel({ inmobiliaria = 'My Alquiler' }: Props) {
   const morosos = useMemo<MorosoEnriquecido[]>(() => {
     return contratosMock
       .filter((c) => c.estadoPagoActual === 'VENCIDO')
-      .map((c) => ({
-        contrato: c,
-        contacto: contactosCobranzaMock.find((x) => x.contratoId === c.id) ?? null,
-        dias: -diasHastaVencimiento(c.proximoVencimiento),
-      }))
+      .map((c) => {
+        const cnsr = detectarConsorcio(c.direccion);
+        return {
+          contrato: c,
+          contacto: contactosCobranzaMock.find((x) => x.contratoId === c.id) ?? null,
+          dias: -diasHastaVencimiento(c.proximoVencimiento),
+          consorcioId: cnsr?.id ?? null,
+          consorcioNombre: cnsr?.nombre ?? null,
+        };
+      })
       .sort((a, b) => b.dias - a.dias);
   }, []);
 
+  const consorciosConMorosos = useMemo(() => {
+    const set = new Map<string, string>();
+    morosos.forEach((m) => {
+      if (m.consorcioId && m.consorcioNombre) {
+        set.set(m.consorcioId, m.consorcioNombre);
+      }
+    });
+    return Array.from(set.entries());
+  }, [morosos]);
+
   const filtrados = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
-    if (!q) return morosos;
-    return morosos.filter(
-      (m) =>
+    return morosos.filter((m) => {
+      if (filtroConsorcio !== 'TODOS' && m.consorcioId !== filtroConsorcio) {
+        return false;
+      }
+      if (!q) return true;
+      return (
         m.contrato.inquilino.toLowerCase().includes(q) ||
         m.contrato.direccion.toLowerCase().includes(q) ||
-        (m.contacto?.garante?.nombre.toLowerCase().includes(q) ?? false),
-    );
-  }, [morosos, busqueda]);
+        (m.contacto?.garante?.nombre.toLowerCase().includes(q) ?? false)
+      );
+    });
+  }, [morosos, busqueda, filtroConsorcio]);
 
   const total = morosos.reduce((acc, m) => acc + m.contrato.monto, 0);
   const aVisible = expandido ? filtrados : filtrados.slice(0, 3);
@@ -209,11 +265,27 @@ export function MorososPanel({ inmobiliaria = 'My Alquiler' }: Props) {
           </Badge>
         </div>
 
-        <Input
-          placeholder="Buscar por inquilino, dirección o garante…"
-          value={busqueda}
-          onChange={(e) => setBusqueda(e.target.value)}
-        />
+        <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+          <Input
+            placeholder="Buscar por inquilino, dirección o garante…"
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+          />
+          {consorciosConMorosos.length > 0 && (
+            <select
+              value={filtroConsorcio}
+              onChange={(e) => setFiltroConsorcio(e.target.value)}
+              className="rounded-md border bg-background px-3 py-1.5 text-sm"
+            >
+              <option value="TODOS">Todos los consorcios</option>
+              {consorciosConMorosos.map(([id, nombre]) => (
+                <option key={id} value={id}>
+                  {nombre}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
 
         <ul className="divide-y rounded-md border">
           {aVisible.map((m) => (
@@ -345,6 +417,11 @@ function MorosoRow({
             <Badge variant="outline" className="text-[10px]">
               {formatMonto(c.monto, c.moneda)}
             </Badge>
+            {moroso.consorcioNombre && (
+              <Badge variant="secondary" className="text-[9px]">
+                {moroso.consorcioNombre}
+              </Badge>
+            )}
           </div>
           <p className="truncate text-xs text-muted-foreground">{c.direccion}</p>
         </div>

@@ -19,7 +19,12 @@ import {
   listarMovimientosCaja,
   type MovimientoCaja,
 } from './caja-storage';
-import { contratosMock, generarLiquidaciones } from './mock-data';
+import {
+  contratosMock,
+  generarLiquidaciones,
+  propiedadesMock,
+  propietariosMock,
+} from './mock-data';
 
 const STORAGE_CIERRES_KEY = 'llave-inmo:cierres-caja:v1';
 const STORAGE_RENDICIONES_KEY = 'llave-inmo:rendiciones:v1';
@@ -227,4 +232,88 @@ export function cerrarDia(input: {
 export function cierreDelDia(fecha?: string): CierreSnapshot | null {
   const dia = fechaIso(fecha);
   return leerCierres().find((c) => c.fecha === dia) ?? null;
+}
+
+/* ============================================================
+ * Posición del mes desagregada por propietario.
+ *
+ * Pedido del feedback: "necesito ver la caja diaria de un propietario
+ * específico, no solo la general". Esto cruza propiedades →
+ * propietarios → liquidaciones cobradas y devuelve un resumen por
+ * propietario con su porción del cobrado, su rendido y su saldo.
+ * ============================================================ */
+
+export interface PosicionPropietario {
+  propietarioId: string;
+  nombre: string;
+  cobradoMes: number;
+  rendidoMes: number;
+  pendiente: number;
+  /** Cuánto del cobrado fue en efectivo (los pagos METODO=EFECTIVO). */
+  enEfectivoMes: number;
+  /** Cuántas liquidaciones pagadas tiene en el mes. */
+  liquidacionesMes: number;
+}
+
+export function posicionPorPropietario(): PosicionPropietario[] {
+  const ahora = new Date();
+  const mes = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, '0')}`;
+
+  // Map contratoId → propietarioId via propiedad.contratoActualId
+  const contratoPropietario = new Map<string, string>();
+  for (const prop of propiedadesMock) {
+    if (prop.contratoActualId && prop.propietariosIds[0]) {
+      contratoPropietario.set(prop.contratoActualId, prop.propietariosIds[0]);
+    }
+  }
+
+  const acumulador = new Map<string, PosicionPropietario>();
+  for (const prop of propietariosMock) {
+    acumulador.set(prop.id, {
+      propietarioId: prop.id,
+      nombre: `${prop.nombre} ${prop.apellido}`,
+      cobradoMes: 0,
+      rendidoMes: 0,
+      pendiente: 0,
+      enEfectivoMes: 0,
+      liquidacionesMes: 0,
+    });
+  }
+
+  for (const c of contratosMock) {
+    const ownerId = contratoPropietario.get(c.id);
+    if (!ownerId) continue;
+    const item = acumulador.get(ownerId);
+    if (!item) continue;
+    const liqs = generarLiquidaciones(c.id, c.monto);
+    for (const liq of liqs) {
+      if (liq.periodo === mes && liq.estado === 'PAGADO') {
+        item.cobradoMes += liq.montoTotal;
+        item.liquidacionesMes += 1;
+        // Heurística: si el método de pago es efectivo, lo contamos.
+        if (
+          liq.metodoPago &&
+          /efectivo|cash/i.test(liq.metodoPago)
+        ) {
+          item.enEfectivoMes += liq.montoTotal;
+        }
+      }
+    }
+  }
+
+  // Rendiciones del mes
+  for (const r of leerRendicionesRaw()) {
+    if (r.periodo === mes) {
+      const item = acumulador.get(r.propietarioId);
+      if (item) item.rendidoMes += r.montoNeto;
+    }
+  }
+
+  for (const item of acumulador.values()) {
+    item.pendiente = Math.max(0, item.cobradoMes - item.rendidoMes);
+  }
+
+  return Array.from(acumulador.values())
+    .filter((p) => p.cobradoMes > 0 || p.rendidoMes > 0)
+    .sort((a, b) => b.cobradoMes - a.cobradoMes);
 }

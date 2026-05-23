@@ -58,9 +58,12 @@ export default function DetalleConsorcioPage({ params }: { params: { id: string 
   const morosidad = morosidadConsorcio(consorcio);
   const soc = sociedadById(consorcio.sociedadId);
 
-  // Cobranza nominal por UF = expensa del mes × coeficiente / 100
-  const expensaPorUf = (coef: number) =>
-    Math.round((consorcio.expensasPeriodoActual * coef) / 100);
+  // Cobranza nominal por UF = monto fijo si lo tiene, o expensa del mes ×
+  // coeficiente / 100. El feedback pidió soportar las dos modalidades
+  // porque hay unidades que pactan un monto fijo con el consorcio.
+  const expensaPorUf = (uf: { coeficiente: number; cargoFijo?: number }) =>
+    uf.cargoFijo ??
+    Math.round((consorcio.expensasPeriodoActual * uf.coeficiente) / 100);
 
   return (
     <>
@@ -212,8 +215,9 @@ export default function DetalleConsorcioPage({ params }: { params: { id: string 
                   <TableRow>
                     <TableHead>UF</TableHead>
                     <TableHead>Titular</TableHead>
-                    <TableHead className="text-right">Coef. %</TableHead>
+                    <TableHead className="text-right">Coef. % / Fijo</TableHead>
                     <TableHead className="text-right">Expensa</TableHead>
+                    <TableHead>Servicios</TableHead>
                     <TableHead className="text-right">Saldo deudor</TableHead>
                     <TableHead>Estado</TableHead>
                   </TableRow>
@@ -231,10 +235,42 @@ export default function DetalleConsorcioPage({ params }: { params: { id: string 
                         </div>
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
-                        {u.coeficiente.toFixed(1)}
+                        {u.cargoFijo ? (
+                          <Badge variant="outline" className="text-[10px]">
+                            Fijo
+                          </Badge>
+                        ) : (
+                          u.coeficiente.toFixed(1)
+                        )}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
-                        {formatMonto(expensaPorUf(u.coeficiente))}
+                        {formatMonto(expensaPorUf(u))}
+                      </TableCell>
+                      <TableCell className="text-[10px]">
+                        {u.serviciosUf ? (
+                          <div className="space-y-0.5">
+                            {u.serviciosUf.luz && (
+                              <p>
+                                <span className="text-muted-foreground">Luz</span>{' '}
+                                <span className="font-mono">{u.serviciosUf.luz.nis}</span>
+                              </p>
+                            )}
+                            {u.serviciosUf.gas && (
+                              <p>
+                                <span className="text-muted-foreground">Gas</span>{' '}
+                                <span className="font-mono">{u.serviciosUf.gas.nis}</span>
+                              </p>
+                            )}
+                            {u.serviciosUf.agua && (
+                              <p>
+                                <span className="text-muted-foreground">Agua</span>{' '}
+                                <span className="font-mono">{u.serviciosUf.agua.nis}</span>
+                              </p>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
                       </TableCell>
                       <TableCell
                         className={`text-right tabular-nums font-medium ${

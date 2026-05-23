@@ -17,6 +17,7 @@ import { Card, CardContent } from '@llave/ui/card';
 import { cn } from '@llave/ui/cn';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@llave/ui/table';
 import { toast } from '@llave/ui/use-toast';
+import { AlertasServiciosCard } from '@/components/alertas-servicios-card';
 import { CargarPagoManualButton } from '@/components/cargar-pago-manual';
 import { CargosACobrar } from '@/components/cargos-a-cobrar';
 import { MorososPanel } from '@/components/morosos-panel';
@@ -380,6 +381,11 @@ export default function PagosPage() {
             plantillas WhatsApp y filtros. Reemplaza al "tenés que abrir
             el PDF para ver los contactos" con datos accionables. */}
         <MorososPanel inmobiliaria={sociedadPrincipal().nombreComercial} />
+
+        {/* Alertas de servicios: inquilinos que no subieron boletas o
+            las tienen vencidas. El feedback pidió tratarlo como
+            morosidad blanda (Sección 5 + 7). */}
+        <AlertasServiciosCard />
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">Liquidaciones — mayo 2026</h2>
