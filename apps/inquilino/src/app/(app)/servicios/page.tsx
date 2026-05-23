@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
+  AlertTriangle,
   ArrowLeft,
   Cable,
   CheckCircle2,
@@ -90,19 +91,50 @@ export default function ServiciosPage() {
   const [hidratado, setHidratado] = useState(false);
   const [subirAbierto, setSubirAbierto] = useState(false);
   const [eliminar, setEliminar] = useState<BoletaServicio | null>(null);
+  const [filtroTipo, setFiltroTipo] = useState<TipoServicio | 'TODOS'>('TODOS');
 
   useEffect(() => {
     setBoletas(listarBoletasDe(contratoMock.id));
     setHidratado(true);
   }, []);
 
-  const totalPagadasMes = useMemo(() => {
-    return boletas
-      .filter((b) => b.estado === 'PAGADA')
+  // Cálculos derivados — todos en un memo bloque para que no se desperdiguen.
+  const stats = useMemo(() => {
+    const pagadas = boletas.filter((b) => b.estado === 'PAGADA');
+    const sinPagar = boletas.filter((b) => b.estado !== 'PAGADA');
+    const totalPagadoAnio = pagadas.reduce((acc, b) => acc + b.monto, 0);
+    const periodoCorr = periodoActual();
+    const totalEsteMes = boletas
+      .filter((b) => b.periodo === periodoCorr)
       .reduce((acc, b) => acc + b.monto, 0);
+    return { pagadas, sinPagar, totalPagadoAnio, totalEsteMes };
   }, [boletas]);
 
-  const pendientes = boletas.filter((b) => b.estado !== 'PAGADA');
+  // Próxima boleta a vencer entre las no pagadas — para el banner de alerta.
+  const proximaAVencer = useMemo(() => {
+    const futuras = stats.sinPagar
+      .map((b) => ({
+        b,
+        dias: Math.ceil(
+          (new Date(b.vencimiento).getTime() - Date.now()) / 86400000,
+        ),
+      }))
+      .filter(({ dias }) => dias <= 7)
+      .sort((a, b) => a.dias - b.dias);
+    return futuras[0] ?? null;
+  }, [stats.sinPagar]);
+
+  // Tipos presentes en las boletas — para mostrar solo chips relevantes en
+  // el filtro (no tiene sentido un chip "Cable" si nunca subiste una).
+  const tiposPresentes = useMemo(() => {
+    return Array.from(new Set(boletas.map((b) => b.tipo)));
+  }, [boletas]);
+
+  // Aplicar filtro de tipo.
+  const filtrarPorTipo = (lista: BoletaServicio[]) =>
+    filtroTipo === 'TODOS' ? lista : lista.filter((b) => b.tipo === filtroTipo);
+  const sinPagarFiltrado = filtrarPorTipo(stats.sinPagar);
+  const pagadasFiltrado = filtrarPorTipo(stats.pagadas);
 
   const onGuardada = (b: BoletaServicio) => {
     guardarBoleta(b);
@@ -160,29 +192,68 @@ export default function ServiciosPage() {
           </p>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 gap-3">
+        {/* Alerta de boleta próxima a vencer (≤ 7 días, no pagada).
+            Va arriba de las stats para que el inquilino la vea apenas entra. */}
+        {proximaAVencer && (
+          <Card className="border-amber-300 bg-amber-50/60 dark:border-amber-900/40 dark:bg-amber-900/10">
+            <CardContent className="flex items-start gap-3 p-3 text-sm">
+              <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-amber-500 text-white">
+                <AlertTriangle className="h-4 w-4" strokeWidth={2.5} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold">
+                  Tu boleta de {TIPO_LABEL[proximaAVencer.b.tipo]} vence{' '}
+                  {proximaAVencer.dias < 0
+                    ? `hace ${Math.abs(proximaAVencer.dias)} día${Math.abs(proximaAVencer.dias) === 1 ? '' : 's'}`
+                    : proximaAVencer.dias === 0
+                      ? 'hoy'
+                      : `en ${proximaAVencer.dias} día${proximaAVencer.dias === 1 ? '' : 's'}`}
+                </p>
+                <p className="text-xs text-amber-800/80 dark:text-amber-300/80">
+                  {formatMonto(proximaAVencer.b.monto)} ·{' '}
+                  {formatFecha(proximaAVencer.b.vencimiento)} · cuando la
+                  pagues marcala como paga.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Stats — 3 cards.
+            "Este mes" = suma de boletas del periodo corriente (luz+gas+agua+...).
+            "Este año" = solo pagadas. "Sin pagar" = boletas SUBIDA/EN_REVISION. */}
+        <div className="grid grid-cols-3 gap-2">
           <Card>
-            <CardContent className="space-y-1 p-4">
+            <CardContent className="space-y-0.5 p-3">
               <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                Pagadas este año
+                Este mes
               </p>
-              <p className="text-xl font-semibold tabular-nums">
-                {formatMonto(totalPagadasMes)}
+              <p className="text-base font-semibold tabular-nums">
+                {formatMonto(stats.totalEsteMes)}
               </p>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="space-y-1 p-4">
+            <CardContent className="space-y-0.5 p-3">
               <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                Pendientes
+                Pagaste este año
+              </p>
+              <p className="text-base font-semibold tabular-nums">
+                {formatMonto(stats.totalPagadoAnio)}
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="space-y-0.5 p-3">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                Sin pagar
               </p>
               <p
-                className={`text-xl font-semibold tabular-nums ${
-                  pendientes.length > 0 ? 'text-amber-600' : ''
+                className={`text-base font-semibold tabular-nums ${
+                  stats.sinPagar.length > 0 ? 'text-amber-600' : ''
                 }`}
               >
-                {pendientes.length}
+                {stats.sinPagar.length}
               </p>
             </CardContent>
           </Card>
@@ -197,104 +268,71 @@ export default function ServiciosPage() {
           Subir nueva boleta
         </Button>
 
-        {/* Listado */}
-        <Card>
-          <CardContent className="space-y-2 p-4">
-            <div className="flex items-center gap-2 pb-2">
-              <Receipt className="h-4 w-4 text-primary" />
-              <p className="text-xs font-semibold uppercase tracking-wide">
-                Historial
-              </p>
-              <span className="text-xs text-muted-foreground">
-                ({boletas.length})
-              </span>
-            </div>
-            {boletas.length === 0 ? (
-              <p className="rounded-md border border-dashed bg-muted/40 p-8 text-center text-sm text-muted-foreground">
-                Todavía no subiste boletas. Tocá «Subir nueva boleta» cuando
-                te llegue la primera.
-              </p>
-            ) : (
-              <ul className="divide-y rounded-md border">
-                {boletas.map((b) => {
-                  const Icon = ICONO_TIPO[b.tipo];
-                  const esImagen = b.tipoMime.startsWith('image/');
-                  return (
-                    <li
-                      key={b.id}
-                      className="flex items-start gap-3 p-3 text-sm"
-                    >
-                      {esImagen ? (
-                        <img
-                          src={b.dataUrl}
-                          alt={b.nombreArchivo}
-                          className="h-12 w-12 shrink-0 rounded object-cover"
-                        />
-                      ) : (
-                        <div className="grid h-12 w-12 shrink-0 place-items-center rounded bg-muted text-muted-foreground">
-                          <Icon className="h-5 w-5" />
-                        </div>
-                      )}
-                      <div className="min-w-0 flex-1 space-y-0.5">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <p className="text-sm font-medium">
-                            {TIPO_LABEL[b.tipo]} · {formatPeriodo(b.periodo)}
-                          </p>
-                          <Badge
-                            variant={ESTADO_VARIANT[b.estado]}
-                            className="text-[10px]"
-                          >
-                            {ESTADO_LABEL[b.estado]}
-                          </Badge>
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          {formatMonto(b.monto)} · vence {formatFecha(b.vencimiento)}
-                        </p>
-                        <p className="truncate text-[10px] text-muted-foreground">
-                          {b.nombreArchivo} · {formatTamanio(b.tamanioBytes)}
-                          {b.pagadoAt && (
-                            <span> · Pagada {formatFecha(b.pagadoAt)}</span>
-                          )}
-                        </p>
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        {b.estado !== 'PAGADA' && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => marcarPagada(b)}
-                          >
-                            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                            <span className="text-[10px]">Pagué</span>
-                          </Button>
-                        )}
-                        <div className="flex gap-1">
-                          <Button asChild variant="ghost" size="sm">
-                            <a
-                              href={b.dataUrl}
-                              download={b.nombreArchivo}
-                              aria-label="Descargar"
-                            >
-                              <Download className="h-3.5 w-3.5" />
-                            </a>
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setEliminar(b)}
-                            aria-label="Eliminar"
-                          >
-                            <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                          </Button>
-                        </div>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
+        {/* Filtros por tipo de servicio — solo si hay >5 boletas en total
+            (para historiales chicos no agregan valor). */}
+        {boletas.length > 5 && tiposPresentes.length > 1 && (
+          <div className="flex flex-wrap gap-1.5">
+            <FiltroChip
+              activo={filtroTipo === 'TODOS'}
+              onClick={() => setFiltroTipo('TODOS')}
+            >
+              Todos
+            </FiltroChip>
+            {tiposPresentes.map((t) => (
+              <FiltroChip
+                key={t}
+                activo={filtroTipo === t}
+                onClick={() => setFiltroTipo(t)}
+              >
+                {TIPO_LABEL[t]}
+              </FiltroChip>
+            ))}
+          </div>
+        )}
+
+        {boletas.length === 0 ? (
+          <Card>
+            <CardContent className="p-8 text-center text-sm text-muted-foreground">
+              <Receipt className="mx-auto mb-2 h-9 w-9" />
+              Todavía no subiste boletas. Tocá «Subir nueva boleta» cuando te
+              llegue la primera.
+            </CardContent>
+          </Card>
+        ) : (
+          <>
+            {/* Sin pagar — sección destacada arriba */}
+            {sinPagarFiltrado.length > 0 && (
+              <BoletasSection
+                titulo="Sin pagar"
+                contador={sinPagarFiltrado.length}
+                accent
+                boletas={sinPagarFiltrado}
+                onMarcarPagada={marcarPagada}
+                onEliminar={setEliminar}
+              />
             )}
-          </CardContent>
-        </Card>
+
+            {/* Pagadas — historial archivado */}
+            {pagadasFiltrado.length > 0 && (
+              <BoletasSection
+                titulo="Pagadas"
+                contador={pagadasFiltrado.length}
+                boletas={pagadasFiltrado}
+                onMarcarPagada={marcarPagada}
+                onEliminar={setEliminar}
+              />
+            )}
+
+            {/* Empty state cuando el filtro no matchea nada */}
+            {sinPagarFiltrado.length === 0 && pagadasFiltrado.length === 0 && (
+              <Card>
+                <CardContent className="p-6 text-center text-sm text-muted-foreground">
+                  No hay boletas de {TIPO_LABEL[filtroTipo as TipoServicio] ?? 'ese tipo'}.
+                </CardContent>
+              </Card>
+            )}
+          </>
+        )}
       </main>
       <NavBar />
 
@@ -320,6 +358,152 @@ export default function ServiciosPage() {
         onConfirm={confirmarEliminar}
       />
     </div>
+  );
+}
+
+// ============================================================
+// BoletasSection — render de una sección de boletas (Sin pagar / Pagadas)
+// ============================================================
+function BoletasSection({
+  titulo,
+  contador,
+  boletas,
+  accent,
+  onMarcarPagada,
+  onEliminar,
+}: {
+  titulo: string;
+  contador: number;
+  boletas: BoletaServicio[];
+  accent?: boolean;
+  onMarcarPagada: (b: BoletaServicio) => void;
+  onEliminar: (b: BoletaServicio) => void;
+}) {
+  return (
+    <section className="space-y-2">
+      <div className="flex items-center gap-2 px-1">
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          {titulo}
+        </h2>
+        <span
+          className={`text-xs ${accent ? 'font-semibold text-amber-600' : 'text-muted-foreground'}`}
+        >
+          ({contador})
+        </span>
+      </div>
+      <Card>
+        <ul className="divide-y">
+          {boletas.map((b) => (
+            <BoletaRow
+              key={b.id}
+              boleta={b}
+              onMarcarPagada={onMarcarPagada}
+              onEliminar={onEliminar}
+            />
+          ))}
+        </ul>
+      </Card>
+    </section>
+  );
+}
+
+function BoletaRow({
+  boleta: b,
+  onMarcarPagada,
+  onEliminar,
+}: {
+  boleta: BoletaServicio;
+  onMarcarPagada: (b: BoletaServicio) => void;
+  onEliminar: (b: BoletaServicio) => void;
+}) {
+  const Icon = ICONO_TIPO[b.tipo];
+  const esImagen = b.tipoMime.startsWith('image/');
+  const sinPagar = b.estado !== 'PAGADA';
+  return (
+    <li className="flex items-start gap-3 p-3 text-sm">
+      {esImagen ? (
+        <img
+          src={b.dataUrl}
+          alt={b.nombreArchivo}
+          className="h-12 w-12 shrink-0 rounded object-cover"
+        />
+      ) : (
+        <div className="grid h-12 w-12 shrink-0 place-items-center rounded bg-muted text-muted-foreground">
+          <Icon className="h-5 w-5" />
+        </div>
+      )}
+      <div className="min-w-0 flex-1 space-y-0.5">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <p className="text-sm font-medium">
+            {TIPO_LABEL[b.tipo]} · {formatPeriodo(b.periodo)}
+          </p>
+          <Badge variant={ESTADO_VARIANT[b.estado]} className="text-[10px]">
+            {ESTADO_LABEL[b.estado]}
+          </Badge>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {formatMonto(b.monto)} · vence {formatFecha(b.vencimiento)}
+        </p>
+        <p className="truncate text-[10px] text-muted-foreground">
+          {b.nombreArchivo} · {formatTamanio(b.tamanioBytes)}
+          {b.pagadoAt && <span> · Pagada {formatFecha(b.pagadoAt)}</span>}
+        </p>
+      </div>
+      <div className="flex flex-col gap-1">
+        {/* Copy más claro: "Ya pagué" en vez de "Pagué".
+            Comunica que la acción es marcar como paga, no pagar acá. */}
+        {sinPagar && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onMarcarPagada(b)}
+            title="Marcar como paga"
+          >
+            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+            <span className="text-[10px]">Ya pagué</span>
+          </Button>
+        )}
+        <div className="flex gap-1">
+          <Button asChild variant="ghost" size="sm">
+            <a href={b.dataUrl} download={b.nombreArchivo} aria-label="Descargar">
+              <Download className="h-3.5 w-3.5" />
+            </a>
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onEliminar(b)}
+            aria-label="Eliminar"
+          >
+            <Trash2 className="h-3.5 w-3.5 text-destructive" />
+          </Button>
+        </div>
+      </div>
+    </li>
+  );
+}
+
+function FiltroChip({
+  activo,
+  onClick,
+  children,
+}: {
+  activo: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+        activo
+          ? 'bg-primary text-primary-foreground'
+          : 'bg-muted text-muted-foreground hover:bg-accent'
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 
