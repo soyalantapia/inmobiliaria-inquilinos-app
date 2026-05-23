@@ -31,6 +31,10 @@ export function ContratoChat() {
   const [mensajes, setMensajes] = useState<MensajeContratoChat[]>([]);
   const [input, setInput] = useState('');
   const [pensando, setPensando] = useState(false);
+  // Sugerencias progresivas: mostramos solo las 3 primeras al toque y un
+  // botón "Más preguntas" expandible. Antes la lista mostraba 6 chips de
+  // entrada, lo cual saturaba visualmente la sección de búsqueda.
+  const [verMasSugerencias, setVerMasSugerencias] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Scroll al final cuando entra un nuevo mensaje
@@ -113,7 +117,10 @@ export function ContratoChat() {
               Empezá con una de estas preguntas:
             </p>
             <div className="flex flex-wrap gap-1.5">
-              {PREGUNTAS_SUGERIDAS.map((p) => (
+              {(verMasSugerencias
+                ? PREGUNTAS_SUGERIDAS
+                : PREGUNTAS_SUGERIDAS.slice(0, 3)
+              ).map((p) => (
                 <button
                   key={p}
                   type="button"
@@ -123,6 +130,15 @@ export function ContratoChat() {
                   {p}
                 </button>
               ))}
+              {!verMasSugerencias && PREGUNTAS_SUGERIDAS.length > 3 && (
+                <button
+                  type="button"
+                  onClick={() => setVerMasSugerencias(true)}
+                  className="rounded-full border border-dashed bg-background px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted"
+                >
+                  Más preguntas ({PREGUNTAS_SUGERIDAS.length - 3})
+                </button>
+              )}
             </div>
           </div>
         )}

@@ -40,14 +40,19 @@ export function ContratoTimeline() {
   const hoy = new Date();
   hoy.setHours(0, 0, 0, 0);
 
+  // Filtramos el hito FIN_CONTRATO porque ese dato ya aparece arriba de la
+  // página en dos lugares: el card resumen ("31/08/2025 → 30/08/2028") y el
+  // RenovacionBanner. Tenerlo también acá generaba ruido.
+  const hitos = hitosContratoMock.filter((h) => h.tipo !== 'FIN_CONTRATO');
+
   return (
     <ol className="space-y-0">
-      {hitosContratoMock.map((h, i) => {
+      {hitos.map((h, i) => {
         const fechaHito = new Date(h.fecha);
         const cumplido = fechaHito <= hoy;
         const cfg = iconConfig[h.tipo];
         const Icon = cumplido ? CheckCircle2 : cfg.icon;
-        const esUltimo = i === hitosContratoMock.length - 1;
+        const esUltimo = i === hitos.length - 1;
 
         return (
           <li key={i} className="relative flex gap-4">
@@ -57,7 +62,7 @@ export function ContratoTimeline() {
                 aria-hidden
                 className={cn(
                   'absolute left-[19px] top-10 h-[calc(100%-32px)] w-0.5',
-                  cumplido && hitosContratoMock[i + 1] && new Date(hitosContratoMock[i + 1]!.fecha) <= hoy
+                  cumplido && hitos[i + 1] && new Date(hitos[i + 1]!.fecha) <= hoy
                     ? 'bg-primary/40'
                     : cumplido
                       ? 'bg-gradient-to-b from-primary/40 to-border'

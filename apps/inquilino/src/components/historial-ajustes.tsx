@@ -5,7 +5,7 @@ import { ArrowUpRight, TrendingUp } from 'lucide-react';
 import { Card } from '@llave/ui/card';
 import { cn } from '@llave/ui/cn';
 import { contratoMock, hitosContratoMock } from '@/lib/mock-data';
-import { formatFecha, formatMonto } from '@/lib/format';
+import { formatMonto } from '@/lib/format';
 
 // Mini-gráfico SVG con la evolución del alquiler en el contrato.
 // Lee los hitos AJUSTE_APLICADO + INICIO + AJUSTE_FUTURO y arma una línea.
@@ -170,32 +170,22 @@ export function HistorialAjustes() {
         </svg>
       </div>
 
-      {/* Tabla resumen */}
-      <div className="space-y-1.5 border-t pt-3 text-xs">
-        {serie.map((p, i) => (
-          <div key={i} className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2 min-w-0">
-              <span
-                className={cn(
-                  'h-1.5 w-1.5 shrink-0 rounded-full',
-                  p.futuro ? 'bg-primary/40' : 'bg-primary',
-                )}
-              />
-              <span className={cn(p.futuro && 'text-muted-foreground')}>
-                {formatFecha(p.fecha)}
-              </span>
-              <span className="text-[10px] text-muted-foreground">· {p.label}</span>
-            </div>
-            <span
-              className={cn(
-                'shrink-0 font-medium tabular-nums',
-                p.futuro && 'text-muted-foreground',
-              )}
-            >
-              {formatMonto(p.monto)}
-            </span>
-          </div>
-        ))}
+      {/* Resumen de una línea — los detalles por hito ya viven en la
+          "Línea de tiempo" más abajo. Antes la tabla repetía 4 filas que el
+          inquilino tenía que cruzar con la timeline para entender. */}
+      <div className="space-y-1 border-t pt-3 text-xs">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-muted-foreground">Empezaste a</span>
+          <span className="font-medium tabular-nums">
+            {formatMonto(primero)}
+          </span>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-muted-foreground">Hoy pagás</span>
+          <span className="font-semibold tabular-nums">
+            {formatMonto(ultimoActual)}
+          </span>
+        </div>
       </div>
     </Card>
   );
