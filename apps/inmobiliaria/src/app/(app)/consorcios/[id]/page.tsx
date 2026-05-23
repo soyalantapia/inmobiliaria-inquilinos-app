@@ -5,11 +5,13 @@ import {
   ArrowLeft,
   ArrowDownCircle,
   ArrowUpCircle,
+  Boxes,
   Building2,
   CalendarCheck,
   HardHat,
   MapPin,
   MessageCircle,
+  Receipt,
   TrendingDown,
   TrendingUp,
   Users,
@@ -27,6 +29,8 @@ import {
   TableHeader,
   TableRow,
 } from '@llave/ui/table';
+import { ConsorcioInventarioTab } from '@/components/consorcio-inventario-tab';
+import { ConsorcioServiciosTab } from '@/components/consorcio-servicios-tab';
 import { Topbar } from '@/components/topbar';
 import {
   CATEGORIA_MOVIMIENTO_LABEL,
@@ -146,6 +150,14 @@ export default function DetalleConsorcioPage({ params }: { params: { id: string 
             <TabsTrigger value="movimientos">
               <ArrowUpCircle className="mr-1.5 h-3.5 w-3.5" />
               Movimientos ({consorcio.movimientos.length})
+            </TabsTrigger>
+            <TabsTrigger value="servicios">
+              <Receipt className="mr-1.5 h-3.5 w-3.5" />
+              Servicios
+            </TabsTrigger>
+            <TabsTrigger value="inventario">
+              <Boxes className="mr-1.5 h-3.5 w-3.5" />
+              Inventario
             </TabsTrigger>
             <TabsTrigger value="asambleas">
               <Vote className="mr-1.5 h-3.5 w-3.5" />
@@ -335,6 +347,16 @@ export default function DetalleConsorcioPage({ params }: { params: { id: string 
                 </TableBody>
               </Table>
             </Card>
+          </TabsContent>
+
+          {/* SERVICIOS COMUNES */}
+          <TabsContent value="servicios" className="space-y-3">
+            <ConsorcioServiciosTab consorcioId={consorcio.id} />
+          </TabsContent>
+
+          {/* INVENTARIO */}
+          <TabsContent value="inventario" className="space-y-3">
+            <ConsorcioInventarioTab consorcioId={consorcio.id} />
           </TabsContent>
 
           {/* ASAMBLEAS */}

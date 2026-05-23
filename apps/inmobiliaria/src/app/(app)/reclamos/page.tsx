@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { AlertTriangle, ChevronRight, Inbox } from 'lucide-react';
+import { AlertTriangle, ChevronRight, Clock, Inbox, Timer } from 'lucide-react';
 import { Badge } from '@llave/ui/badge';
 import { Card, CardContent } from '@llave/ui/card';
 import { Skeleton } from '@llave/ui/skeleton';
@@ -15,6 +15,11 @@ import {
   urgenciaConfig,
 } from '@/lib/reclamos-config';
 import { listarReclamos } from '@/lib/reclamos-store';
+import {
+  ESTADO_SLA_COLOR,
+  ESTADO_SLA_LABEL,
+  evaluarSla,
+} from '@/lib/sla-reclamos';
 import type { EstadoReclamo, Reclamo } from '@/lib/types';
 
 type FiltroEstado = 'TODOS' | EstadoReclamo;
@@ -61,6 +66,21 @@ export default function ReclamosPage() {
     };
   }, [reclamos]);
 
+  const slaCounters = useMemo(() => {
+    if (!reclamos) return null;
+    const activos = reclamos.filter(
+      (r) => r.estado !== 'RESUELTO' && r.estado !== 'CERRADO' && r.estado !== 'RECHAZADO',
+    );
+    let vencidos = 0;
+    let porVencer = 0;
+    for (const r of activos) {
+      const sla = evaluarSla(r);
+      if (sla.estado === 'VENCIDO') vencidos++;
+      else if (sla.estado === 'PROXIMO_VENCIMIENTO') porVencer++;
+    }
+    return { vencidos, porVencer, activos: activos.length };
+  }, [reclamos]);
+
   return (
     <>
       <Topbar titulo="Reclamos" />
@@ -75,6 +95,45 @@ export default function ReclamosPage() {
                   sin resolver
                 </p>
                 <p className="text-xs text-muted-foreground">Atendelos primero.</p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {slaCounters && (slaCounters.vencidos > 0 || slaCounters.porVencer > 0) && (
+          <Card
+            className={
+              slaCounters.vencidos > 0
+                ? 'border-destructive/40 bg-destructive/5'
+                : 'border-amber-200 bg-amber-50/60 dark:border-amber-900/40 dark:bg-amber-900/10'
+            }
+          >
+            <CardContent className="flex flex-wrap items-center gap-3 p-3 text-xs">
+              <Timer
+                className={`h-4 w-4 ${
+                  slaCounters.vencidos > 0
+                    ? 'text-destructive'
+                    : 'text-amber-700 dark:text-amber-300'
+                }`}
+              />
+              <div className="flex-1">
+                {slaCounters.vencidos > 0 ? (
+                  <p>
+                    <strong className="text-destructive">
+                      {slaCounters.vencidos} reclamo{slaCounters.vencidos === 1 ? '' : 's'} fuera del
+                      SLA
+                    </strong>{' '}
+                    · {slaCounters.porVencer} por vencer pronto
+                  </p>
+                ) : (
+                  <p>
+                    {slaCounters.porVencer} reclamo
+                    {slaCounters.porVencer === 1 ? '' : 's'} acercándose al vencimiento del SLA
+                  </p>
+                )}
+                <p className="text-muted-foreground">
+                  EMERGENCIA 6h · ALTA 24h · MEDIA 72h · BAJA 7 días
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -123,6 +182,7 @@ export default function ReclamosPage() {
 function ReclamoRow({ reclamo }: { reclamo: Reclamo }) {
   const Icon = categoriaIcono[reclamo.categoria];
   const mensajesInquilino = reclamo.eventos.filter((e) => e.tipo === 'MENSAJE_INQUILINO').length;
+  const sla = evaluarSla(reclamo);
   return (
     <Link
       href={`/reclamos/${reclamo.id}`}
@@ -140,6 +200,12 @@ function ReclamoRow({ reclamo }: { reclamo: Reclamo }) {
           <Badge variant={estadoConfig[reclamo.estado].variant}>
             {estadoConfig[reclamo.estado].label}
           </Badge>
+          <span
+            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${ESTADO_SLA_COLOR[sla.estado]}`}
+          >
+            <Clock className="h-3 w-3" />
+            SLA · {ESTADO_SLA_LABEL[sla.estado]}
+          </span>
         </div>
         <p className="line-clamp-2 text-sm text-muted-foreground">{reclamo.descripcion}</p>
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -163,6 +229,17 @@ function ReclamoRow({ reclamo }: { reclamo: Reclamo }) {
             </>
           )}
         </div>
+        <p
+          className={`text-[10px] ${
+            sla.estado === 'VENCIDO'
+              ? 'text-destructive'
+              : sla.estado === 'PROXIMO_VENCIMIENTO'
+                ? 'text-amber-700 dark:text-amber-300'
+                : 'text-muted-foreground'
+          }`}
+        >
+          {sla.texto}
+        </p>
       </div>
       <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
     </Link>
