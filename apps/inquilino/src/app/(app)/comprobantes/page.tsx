@@ -92,22 +92,31 @@ export default function RecibosPage() {
     [anioSel],
   );
 
-  // Lista unificada de movimientos. El kind se decide por dias de atraso real:
-  //   diasAtraso > 0 → "atrasado" (rojo, botón Regularizar)
-  //   diasAtraso = 0 → "a-pagar" (ámbar, botón Pagar — caso "a tiempo")
+  // El pago urgente (atrasado/a-pagar) se saca del listado y va arriba
+  // como card destacada con desglose. Antes vivía como una fila más entre
+  // los cobrados — el inquilino con deuda no veía la urgencia a simple vista.
+  const pagoUrgente: Movimiento | null = useMemo(() => {
+    if (!pendiente) return null;
+    const calc = calcularPunitorios(pendiente, TASA_PUNITORIA_DIARIA_DEFAULT);
+    return {
+      kind: calc.diasAtraso > 0 ? 'atrasado' : 'a-pagar',
+      liq: pendiente,
+    };
+  }, [pendiente]);
+
+  // Lista de movimientos = próximos + cobrados (sin el urgente).
   const movimientos: Movimiento[] = useMemo(() => {
     const items: Movimiento[] = [];
-    if (pendiente) {
-      const calc = calcularPunitorios(pendiente, TASA_PUNITORIA_DIARIA_DEFAULT);
-      items.push({
-        kind: calc.diasAtraso > 0 ? 'atrasado' : 'a-pagar',
-        liq: pendiente,
-      });
-    }
     proximas.forEach((l) => items.push({ kind: 'proximo', liq: l }));
     cobradosDelAnio.forEach((c) => items.push({ kind: 'cobrado', comp: c }));
     return items;
-  }, [pendiente, proximas, cobradosDelAnio]);
+  }, [proximas, cobradosDelAnio]);
+
+  // Total cobrado en el año seleccionado — para el footer del listado.
+  const totalCobradoAnio = useMemo(
+    () => cobradosDelAnio.reduce((acc, c) => acc + c.monto, 0),
+    [cobradosDelAnio],
+  );
 
   return (
     <>
@@ -153,6 +162,10 @@ export default function RecibosPage() {
       </header>
 
       <main className="flex-1 space-y-4 px-5 pb-6 md:px-8">
+        {/* Card destacada del pago urgente: aparece arriba con desglose
+            (alquiler + punitorios) y CTA Regularizar/Pagar prominente. */}
+        {pagoUrgente && <PagoUrgenteCard mov={pagoUrgente} />}
+
         {/* FILTRO por año (solo si hay cobrados de varios años) */}
         {anios.length > 1 && (
           <div className="flex flex-wrap gap-2 pt-2">
@@ -238,7 +251,7 @@ export default function RecibosPage() {
               className="flex items-center gap-1 text-xs font-medium text-primary hover:underline"
             >
               <Download className="h-3 w-3" />
-              Descargar año
+              Descargar PDFs del año
             </button>
           </div>
 
@@ -256,6 +269,19 @@ export default function RecibosPage() {
                 <MovimientoRow key={keyForMovimiento(m)} mov={m} />
               ))}
             </Card>
+          )}
+
+          {/* Footer con total cobrado del año seleccionado. Aporta una métrica
+              útil ("cuánto pagué en 2026") sin saturar — solo si hay >=2 cobrados. */}
+          {cobradosDelAnio.length >= 2 && (
+            <div className="flex items-center justify-between px-2 pt-1 text-xs">
+              <span className="text-muted-foreground">
+                Pagaste en {anioSel}
+              </span>
+              <span className="font-semibold tabular-nums">
+                {formatMonto(totalCobradoAnio)}
+              </span>
+            </div>
           )}
         </section>
       </main>
@@ -342,7 +368,8 @@ function MovimientoRow({ mov }: { mov: Movimiento }) {
     );
   }
 
-  // cobrado
+  // cobrado: agregamos badge sutil "Pagado" además del icono check verde,
+  // así no se confía solo en interpretar el icono visualmente.
   const c = mov.comp;
   return (
     <div className="flex items-center gap-3 p-4">
@@ -350,7 +377,14 @@ function MovimientoRow({ mov }: { mov: Movimiento }) {
         <CheckCircle2 className="h-5 w-5" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="truncate text-sm font-medium leading-tight">{formatPeriodo(c.periodo)}</p>
+        <div className="flex items-center gap-1.5">
+          <p className="truncate text-sm font-medium leading-tight">
+            {formatPeriodo(c.periodo)}
+          </p>
+          <span className="shrink-0 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+            Pagado
+          </span>
+        </div>
         <p className="truncate text-xs text-muted-foreground">
           {formatFecha(c.fechaPago)} · {metodoLabel[c.metodo]}
         </p>
@@ -367,6 +401,120 @@ function MovimientoRow({ mov }: { mov: Movimiento }) {
         </a>
       </div>
     </div>
+  );
+}
+
+// ============================================================
+// PagoUrgenteCard — card destacada arriba con desglose
+// ============================================================
+// Antes el pago atrasado/a-pagar vivía como una fila más en la lista de
+// movimientos. Ahora va arriba como card destacada con el desglose
+// (alquiler + punitorios) visible — para que el inquilino entienda por qué
+// el total a pagar es mayor al alquiler vigente.
+function PagoUrgenteCard({ mov }: { mov: Movimiento }) {
+  if (mov.kind !== 'atrasado' && mov.kind !== 'a-pagar') return null;
+  const calc = calcularPunitorios(mov.liq, TASA_PUNITORIA_DIARIA_DEFAULT);
+  const diasV = diasHastaVencimiento(mov.liq.fechaVencimiento);
+  const vencido = mov.kind === 'atrasado';
+  const hayPunitorios = calc.punitorioAcumulado > 0;
+
+  return (
+    <Card
+      className={cn(
+        'overflow-hidden border-2',
+        vencido
+          ? 'border-red-300 bg-red-50/50 dark:border-red-900/50 dark:bg-red-950/20'
+          : 'border-amber-300 bg-amber-50/50 dark:border-amber-900/50 dark:bg-amber-950/20',
+      )}
+    >
+      <CardContent className="space-y-4 p-5">
+        <div className="flex items-start gap-3">
+          <div
+            className={cn(
+              'grid h-10 w-10 shrink-0 place-items-center rounded-lg',
+              vencido
+                ? 'bg-red-500 text-white'
+                : 'bg-amber-500 text-white',
+            )}
+          >
+            {vencido ? (
+              <AlertTriangle className="h-5 w-5" strokeWidth={2.5} />
+            ) : (
+              <CalendarClock className="h-5 w-5" strokeWidth={2.5} />
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold">
+              {vencido ? 'Pago atrasado' : 'Próximo pago'} ·{' '}
+              {formatPeriodo(mov.liq.periodo)}
+            </p>
+            <p
+              className={cn(
+                'text-xs',
+                vencido
+                  ? 'text-red-700 dark:text-red-300'
+                  : 'text-muted-foreground',
+              )}
+            >
+              {vencido
+                ? `Venció hace ${calc.diasAtraso} día${calc.diasAtraso === 1 ? '' : 's'} · ${formatFecha(mov.liq.fechaVencimiento)}`
+                : diasV === 0
+                  ? `Vence hoy · ${formatFecha(mov.liq.fechaVencimiento)}`
+                  : `Vence en ${diasV} día${diasV === 1 ? '' : 's'} · ${formatFecha(mov.liq.fechaVencimiento)}`}
+            </p>
+          </div>
+        </div>
+
+        {/* Desglose: el total a pagar = alquiler + (expensas) + punitorios.
+            Antes solo se mostraba el total, lo que generaba la pregunta
+            "¿por qué pago más que mi alquiler vigente?". */}
+        <div className="space-y-1.5 rounded-md border bg-background/60 p-3 text-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Alquiler</span>
+            <span className="font-medium tabular-nums">
+              {formatMonto(mov.liq.montoAlquiler, mov.liq.moneda)}
+            </span>
+          </div>
+          {mov.liq.montoExpensas ? (
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Expensas</span>
+              <span className="font-medium tabular-nums">
+                {formatMonto(mov.liq.montoExpensas, mov.liq.moneda)}
+              </span>
+            </div>
+          ) : null}
+          {hayPunitorios && (
+            <div className="flex items-center justify-between">
+              <span className="text-red-700 dark:text-red-300">
+                Punitorios ({calc.diasAtraso} día{calc.diasAtraso === 1 ? '' : 's'})
+              </span>
+              <span className="font-medium tabular-nums text-red-700 dark:text-red-300">
+                + {formatMonto(calc.punitorioAcumulado, mov.liq.moneda)}
+              </span>
+            </div>
+          )}
+          <div className="mt-1 flex items-baseline justify-between border-t pt-2">
+            <span className="text-sm font-semibold">Total a pagar</span>
+            <span className="text-lg font-bold tabular-nums">
+              {formatMonto(calc.totalAPagar, mov.liq.moneda)}
+            </span>
+          </div>
+        </div>
+
+        <Link
+          href={`/pago/${mov.liq.id}`}
+          className={cn(
+            'flex w-full items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-semibold transition-colors',
+            vencido
+              ? 'bg-red-600 text-white hover:bg-red-700'
+              : 'bg-primary text-primary-foreground hover:bg-primary/90',
+          )}
+        >
+          {vencido ? 'Regularizar pago' : 'Pagar ahora'}
+          <ChevronRight className="h-4 w-4" />
+        </Link>
+      </CardContent>
+    </Card>
   );
 }
 
