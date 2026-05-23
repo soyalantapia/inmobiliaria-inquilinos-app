@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   CheckCircle2,
   Clock,
@@ -52,6 +52,11 @@ export function BandejaAprobaciones() {
   const [motivoRechazo, setMotivoRechazo] = useState('');
   const [comentarioAprob, setComentarioAprob] = useState('');
   const [showPin, setShowPin] = useState(false);
+  // useRef evita el problema de stale closure: ConfirmDialog llama
+  // onOpenChange(false) DESPUÉS de onConfirm(), cuando showPin todavía
+  // es false en el closure. Con el ref leemos el valor al momento de
+  // la invocación, no al de la captura.
+  const transitioningToPin = useRef(false);
 
   useEffect(() => {
     setItems(listarAprobaciones());
@@ -166,13 +171,13 @@ export function BandejaAprobaciones() {
       )}
 
       {/* Dialog confirmación con comentario opcional.
-          IMPORTANTE: gate open en !showPin — cuando el usuario confirma y
-          se abre el PIN dialog, Radix dispara onOpenChange(false). Sin el
-          gate, eso limpiaría aprobar_ antes de que onPinConfirmado pueda
-          usarlo, rompiendo el flujo de aprobación. */}
+          IMPORTANTE: ConfirmDialog.handleConfirm() llama onOpenChange(false)
+          explícitamente después de onConfirm(). Guardamos la transición en un
+          ref (no state) para evitar el stale closure: cuando onOpenChange
+          se invoca, transitioningToPin.current ya es true y podemos bloquearlo. */}
       <ConfirmDialog
-        open={!!aprobar_ && !showPin}
-        onOpenChange={(o) => !o && !showPin && setAprobar_(null)}
+        open={!!aprobar_}
+        onOpenChange={(o) => !o && !transitioningToPin.current && setAprobar_(null)}
         title={aprobar_ ? `¿Aprobar "${aprobar_.titulo}"?` : ''}
         description={
           aprobar_ ? (
@@ -201,6 +206,7 @@ export function BandejaAprobaciones() {
         }
         confirmLabel="Confirmar y pedir PIN"
         onConfirm={() => {
+          transitioningToPin.current = true;
           setShowPin(true);
         }}
       />
@@ -213,7 +219,10 @@ export function BandejaAprobaciones() {
             ? `${TIPO_APROBACION_LABEL[aprobar_.tipo]} · cargado por ${aprobar_.cargadoPor}`
             : undefined
         }
-        onClose={() => setShowPin(false)}
+        onClose={() => {
+          transitioningToPin.current = false;
+          setShowPin(false);
+        }}
         onConfirmado={onPinConfirmado}
       />
 
