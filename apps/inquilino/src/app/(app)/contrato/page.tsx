@@ -8,12 +8,10 @@ import {
   FileText,
   KeyRound,
   Mail,
-  MapPin,
   MessageCircle,
   Phone,
   ShieldCheck,
   TrendingUp,
-  UserRound,
 } from 'lucide-react';
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
@@ -65,15 +63,33 @@ export default function ContratoPage() {
       </header>
 
       <main className="flex-1 space-y-5 px-5 pb-6 md:px-8 md:pt-8">
-        <div className="flex items-start gap-3">
-          <FileText className="mt-1 h-5 w-5 text-primary" />
-          <div>
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">Mi contrato</p>
-            <h1 className="text-2xl font-semibold leading-tight md:text-3xl">{c.direccion}</h1>
-            <p className="text-sm text-muted-foreground">
-              {c.ciudad} · administra {c.inmobiliaria}
-            </p>
+        {/* Header con CTA PDF visible desde el inicio.
+            Antes el botón "Descargar PDF" estaba al final del scroll, con lo
+            que era invisible para un inquilino que entra a /contrato a
+            buscarlo. Ahora vive arriba a la derecha como acción primaria. */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3 min-w-0">
+            <FileText className="mt-1 h-5 w-5 shrink-0 text-primary" />
+            <div className="min-w-0">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Mi contrato</p>
+              <h1 className="truncate text-2xl font-semibold leading-tight md:text-3xl">
+                {c.direccion}
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                {c.ciudad} · administra {c.inmobiliaria}
+              </p>
+            </div>
           </div>
+          <BotonProximamente
+            variant="outline"
+            size="sm"
+            className="shrink-0"
+            toastTitle="Preparando PDF…"
+            toastMessage="En unos segundos te llega al mail una copia del contrato firmado."
+          >
+            <Download className="h-4 w-4" />
+            PDF
+          </BotonProximamente>
         </div>
 
         <RenovacionBanner contratoId={c.id} diasHastaFin={diasFin} />
@@ -121,12 +137,8 @@ export default function ContratoPage() {
               value={formatMonto(c.montoActual, c.moneda)}
               hint="1 mes — te lo devuelven al final"
             />
-            <Row
-              icon={<MapPin className="h-4 w-4" />}
-              label="Dirección"
-              value={c.direccion}
-              hint={c.ciudad}
-            />
+            {/* Quitamos la row de Dirección: ya aparece arriba en el header
+                de la página ("Mi contrato · Gorriti 4521…"). */}
           </Card>
         </section>
 
@@ -210,21 +222,20 @@ export default function ContratoPage() {
                   {garanteMock.numeroPoliza && ` · ${garanteMock.numeroPoliza}`}
                 </p>
               </div>
+              {/* Resumen compacto: solo cobertura + vencimiento.
+                  El "Contacto" del proveedor de garantía no es info que el
+                  inquilino necesite ver de entrada — queda implícito en los
+                  botones Llamar / Email abajo. */}
               <div className="space-y-1.5 rounded-md border bg-muted/40 p-3 text-xs">
-                <GaranteRow
-                  icon={<Clock className="h-3.5 w-3.5" />}
-                  label="Vigente hasta"
-                  value={formatFecha(garanteMock.vigenciaHasta)}
-                />
                 <GaranteRow
                   icon={<KeyRound className="h-3.5 w-3.5" />}
                   label="Cobertura"
                   value={formatMonto(garanteMock.montoCobertura)}
                 />
                 <GaranteRow
-                  icon={<UserRound className="h-3.5 w-3.5" />}
-                  label="Contacto"
-                  value={garanteMock.contactoNombre}
+                  icon={<Clock className="h-3.5 w-3.5" />}
+                  label="Vigente hasta"
+                  value={formatFecha(garanteMock.vigenciaHasta)}
                 />
               </div>
               <div className="flex flex-wrap gap-2">
@@ -251,22 +262,6 @@ export default function ContratoPage() {
             </Card>
           </div>
         </section>
-
-        <Card className="flex items-center justify-between gap-3 p-5">
-          <div>
-            <p className="font-medium">Contrato firmado.pdf</p>
-            <p className="text-xs text-muted-foreground">Subido el {formatFecha(c.fechaInicio)}</p>
-          </div>
-          <BotonProximamente
-            variant="outline"
-            size="sm"
-            toastTitle="Preparando PDF…"
-            toastMessage="En unos segundos te llega al mail una copia del contrato firmado."
-          >
-            <Download className="h-4 w-4" />
-            PDF
-          </BotonProximamente>
-        </Card>
 
       </main>
 

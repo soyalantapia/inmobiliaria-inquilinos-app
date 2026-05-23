@@ -129,7 +129,7 @@ export function RenovacionBanner({
         href="/contrato/renovacion"
         className="shrink-0 text-xs font-medium text-primary hover:underline"
       >
-        Adelantar
+        Decidir antes
       </Link>
     </div>
   );

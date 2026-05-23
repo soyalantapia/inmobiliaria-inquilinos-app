@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { AlertCircle, ChevronRight, KeyRound } from 'lucide-react';
 import { Card } from '@llave/ui/card';
 import { cn } from '@llave/ui/cn';
-import { diasHastaVencimiento, formatDuracion, formatMonto } from '@/lib/format';
+import { diasHastaVencimiento, formatMonto } from '@/lib/format';
 import { liquidacionesMock } from '@/lib/mock-data';
 
 // Tracker visual del depósito: cuánto te van a devolver al final del contrato.
@@ -58,7 +58,7 @@ export function DepositoTracker({ depositoOriginal, fechaFin }: Props) {
         </div>
         <p className="text-xs text-muted-foreground">
           {tieneRiesgo
-            ? `Hoy te devolverían el ${Math.round(porcentajeDevolver)}% si entregaras así.`
+            ? `Tu deuda actual reduciría tu depósito al ${Math.round(porcentajeDevolver)}%. Saldarla te devuelve el total.`
             : 'Si no hay daños ni deudas, te devuelven el total.'}
         </p>
       </div>
@@ -90,29 +90,28 @@ export function DepositoTracker({ depositoOriginal, fechaFin }: Props) {
         </div>
       )}
 
-      {/* Info estado */}
+      {/* Info estado.
+          Quitamos "Fin del contrato" — ya está en el card resumen
+          ("Te quedan 2 años y 3 meses"). Acá dejamos solo cuándo te
+          devuelven el depósito, que es info específica de este tracker. */}
       <div className="space-y-2 border-t pt-3 text-xs">
-        <div className="flex items-center justify-between">
-          <span className="text-muted-foreground">Fin del contrato</span>
-          <span className="font-medium tabular-nums">en {formatDuracion(diasFin)}</span>
-        </div>
         <div className="flex items-center justify-between">
           <span className="text-muted-foreground">Te devuelven</span>
           <span className="font-medium tabular-nums">
-            {diasFin > 60 ? '~30 días después' : 'a la entrega de llaves'}
+            {diasFin > 60 ? '~30 días después de entregar llaves' : 'a la entrega de llaves'}
           </span>
         </div>
       </div>
 
-      {/* CTA cuando hay deuda */}
+      {/* CTA cuando hay deuda — lleva a /comprobantes (gestión de pagos). */}
       {descuentoDeudas > 0 && (
         <Link
-          href="/"
+          href="/comprobantes"
           className="flex items-center justify-between gap-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700 transition-colors hover:bg-red-100 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300"
         >
           <div className="flex items-center gap-2">
             <AlertCircle className="h-3.5 w-3.5" />
-            <span>Saldar deuda para recuperar el total</span>
+            <span>Regularizar deuda para recuperar el total</span>
           </div>
           <ChevronRight className="h-3.5 w-3.5" />
         </Link>
