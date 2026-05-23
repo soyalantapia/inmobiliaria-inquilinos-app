@@ -9,7 +9,6 @@ import {
   Building2,
   CheckCircle2,
   Clock,
-  Download,
   FileText,
   Flag,
   Landmark,
@@ -32,6 +31,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@llave/ui/card';
 import { cn } from '@llave/ui/cn';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@llave/ui/tabs';
 import { toast } from '@llave/ui/use-toast';
+import { ContratoDocumentosPanel } from '@/components/contrato-documentos-panel';
 import { MensajeInquilinoDialog } from '@/components/mensaje-inquilino-dialog';
 import { Topbar } from '@/components/topbar';
 import { registrarEvento } from '@/lib/auditoria-storage';
@@ -309,29 +309,7 @@ export default function DetalleContratoPage() {
           </TabsContent>
 
           <TabsContent value="documentos" className="space-y-2">
-            <Card>
-              <CardContent className="space-y-3 p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">Contrato firmado.pdf</p>
-                    <p className="text-xs text-muted-foreground">Subido el 28/08/2025 · 1.2 MB</p>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() =>
-                      toast({
-                        title: 'Preparando contrato…',
-                        description: 'En unos segundos te llega el PDF al mail.',
-                      })
-                    }
-                  >
-                    <Download className="h-4 w-4" />
-                    Descargar
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+            <ContratoDocumentosPanel contrato={c} />
           </TabsContent>
         </Tabs>
       </main>

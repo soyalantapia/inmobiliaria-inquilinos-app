@@ -33,6 +33,8 @@ import { InquilinoActualAcciones } from '@/components/inquilino-actual-acciones'
 import { Card, CardContent } from '@llave/ui/card';
 import { Separator } from '@llave/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@llave/ui/tabs';
+import { BoletasInquilinoPanel } from '@/components/boletas-inquilino-panel';
+import { ServiciosPublicosPanel } from '@/components/servicios-publicos-panel';
 import { Topbar } from '@/components/topbar';
 import {
   type CoInquilinoAdmin,
@@ -192,6 +194,7 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
               )}
             </TabsTrigger>
             <TabsTrigger value="personas">Personas</TabsTrigger>
+            <TabsTrigger value="servicios">Servicios</TabsTrigger>
             <TabsTrigger value="documentos">Documentos</TabsTrigger>
           </TabsList>
 
@@ -668,6 +671,12 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
             <CoInquilinosBlock contratoId={contrato?.id} />
           </TabsContent>
 
+
+          {/* SERVICIOS */}
+          <TabsContent value="servicios" className="space-y-4">
+            <ServiciosPublicosPanel propiedadId={propiedad.id} />
+            {contrato && <BoletasInquilinoPanel contratoId={contrato.id} />}
+          </TabsContent>
 
           {/* DOCUMENTOS */}
           <TabsContent value="documentos" className="space-y-4">

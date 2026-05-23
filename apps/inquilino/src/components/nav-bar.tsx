@@ -11,6 +11,7 @@ import {
   User,
   Wallet,
   Wrench,
+  Zap,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@llave/ui/cn';
@@ -30,6 +31,7 @@ const itemsPrimarios: NavItem[] = [
 ];
 
 const itemsSecundarios: NavItem[] = [
+  { href: '/servicios', label: 'Servicios', icon: Zap },
   { href: '/certificado', label: 'Mi certificado', icon: BadgeCheck },
   { href: '/ayuda', label: 'Ayuda', icon: CircleHelp },
   { href: '/cuenta', label: 'Mi cuenta', icon: User },
