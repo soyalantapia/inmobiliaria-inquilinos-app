@@ -26,12 +26,21 @@ import { useCurrentUser } from '@/lib/use-current-user';
 import { movimientosMock, type Movimiento } from '@/lib/movimientos-mock';
 import { TASA_PUNITORIA_DIARIA_DEFAULT, calcularPunitorios } from '@/lib/punitorios';
 import { diasHastaVencimiento, formatFecha, formatMonto } from '@/lib/format';
-import { aplicarEstadoDemo, useDemoEstado, type DemoEstado } from '@/lib/demo-estado';
+import {
+  aplicarEstadoDemo,
+  useDemoEstado,
+  useDemoVisible,
+  type DemoEstado,
+} from '@/lib/demo-estado';
 import type { Liquidacion } from '@/lib/types';
 
 export default function PagosPage() {
-  // Modo demo sincronizado entre pantallas vía localStorage
+  // Modo demo sincronizado entre pantallas vía localStorage.
+  // El switcher solo se muestra si el flag `demo-visible` está activo —
+  // un inquilino real no debería ver controles "Al día / A tiempo / Retrasado".
+  // Para activarlo en una demo: entrar con `?demo=1`.
   const [demoEstado, setDemoEstado] = useDemoEstado();
+  const demoVisible = useDemoVisible();
 
   const pendienteMock = liquidacionesMock.find((l) => l.estado !== 'PAGADO');
   const pendiente = aplicarEstadoDemo(demoEstado, pendienteMock);
@@ -59,8 +68,11 @@ export default function PagosPage() {
 
       <main className="flex-1 space-y-5 px-5 pb-6 md:px-8 md:pt-8">
         {/* Selector de modo demo — alterna entre "atrasado" y "al día"
-            para que durante la presentación se puedan mostrar ambos casos. */}
-        <DemoSwitch estado={demoEstado} onChange={setDemoEstado} />
+            para mostrar ambos casos en presentaciones. Oculto por default
+            para que un inquilino real no lo vea; se activa con ?demo=1. */}
+        {demoVisible && (
+          <DemoSwitch estado={demoEstado} onChange={setDemoEstado} />
+        )}
 
         {/* Banner de ajuste (inline, solo si <= 30 días y no es crítico) */}
         {alertaAjuste && !ajusteCritico && (

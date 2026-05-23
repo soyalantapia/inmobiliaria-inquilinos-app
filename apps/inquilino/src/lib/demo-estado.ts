@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import type { Liquidacion } from './types';
 
 /**
@@ -15,6 +16,7 @@ import type { Liquidacion } from './types';
 export type DemoEstado = 'al-dia' | 'a-tiempo' | 'atrasado';
 
 const STORAGE_KEY = 'llave-inquilino:demo';
+const VISIBLE_KEY = 'llave-inquilino:demo-visible';
 const DEFAULT: DemoEstado = 'atrasado';
 
 /**
@@ -59,6 +61,49 @@ export function useDemoEstado(): [DemoEstado, (e: DemoEstado) => void] {
   };
 
   return [estado, setEstado];
+}
+
+/**
+ * Hook que controla si el switcher de modo demo es visible en la UI.
+ *
+ * Default: oculto — un inquilino real no debería ver controles de demo
+ * (parece producto a medio terminar). Para activarlo, el equipo entra con
+ * `?demo=1` una vez; el flag queda guardado en localStorage. `?demo=0`
+ * lo apaga. Esto permite usar el switcher en demos sin exponerlo a usuarios.
+ */
+export function useDemoVisible(): boolean {
+  const searchParams = useSearchParams();
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const q = searchParams?.get('demo');
+    if (q === '1') {
+      try {
+        window.localStorage.setItem(VISIBLE_KEY, '1');
+      } catch {
+        // ignore
+      }
+      setVisible(true);
+      return;
+    }
+    if (q === '0') {
+      try {
+        window.localStorage.removeItem(VISIBLE_KEY);
+      } catch {
+        // ignore
+      }
+      setVisible(false);
+      return;
+    }
+    // Sin query: leer flag persistido
+    try {
+      setVisible(window.localStorage.getItem(VISIBLE_KEY) === '1');
+    } catch {
+      setVisible(false);
+    }
+  }, [searchParams]);
+
+  return visible;
 }
 
 /**

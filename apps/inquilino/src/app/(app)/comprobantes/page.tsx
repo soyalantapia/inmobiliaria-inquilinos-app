@@ -24,7 +24,12 @@ import {
 import { diasHastaVencimiento, formatFecha, formatMonto, formatPeriodo } from '@/lib/format';
 import type { Comprobante, Liquidacion } from '@/lib/types';
 
-import { aplicarEstadoDemo, useDemoEstado, type DemoEstado } from '@/lib/demo-estado';
+import {
+  aplicarEstadoDemo,
+  useDemoEstado,
+  useDemoVisible,
+  type DemoEstado,
+} from '@/lib/demo-estado';
 
 const metodoLabel = {
   MERCADOPAGO: 'Mercado Pago',
@@ -41,8 +46,10 @@ type Movimiento =
   | { kind: 'cobrado'; comp: Comprobante };
 
 export default function RecibosPage() {
-  // Modo demo sincronizado con el resto de la app vía localStorage
+  // Modo demo sincronizado con el resto de la app vía localStorage.
+  // Solo se muestra el switcher si el flag demo-visible está activo (?demo=1).
   const [demoEstado, setDemoEstado] = useDemoEstado();
+  const demoVisible = useDemoVisible();
 
   // Cargos USO_Y_GOCE que el inmo asignó al inquilino desde reclamos
   // resueltos. Vienen cross-app del storage del inmo — los hidratamos
@@ -140,7 +147,9 @@ export default function RecibosPage() {
             Tus pagos pendientes, los próximos y los cobrados.
           </p>
         </div>
-        <DemoSwitch estado={demoEstado} onChange={setDemoEstado} />
+        {demoVisible && (
+          <DemoSwitch estado={demoEstado} onChange={setDemoEstado} />
+        )}
       </header>
 
       <main className="flex-1 space-y-4 px-5 pb-6 md:px-8">
