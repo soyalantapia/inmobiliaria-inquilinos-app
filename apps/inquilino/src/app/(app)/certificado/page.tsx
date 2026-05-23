@@ -2,10 +2,13 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import {
+  AlertTriangle,
   ArrowLeft,
   BadgeCheck,
   Calendar,
   Check,
+  ChevronRight,
+  Clock,
   Copy,
   Download,
   MapPin,
@@ -13,6 +16,7 @@ import {
   Printer,
   ShieldCheck,
   Sparkles,
+  TrendingUp,
 } from 'lucide-react';
 import Link from 'next/link';
 import { Badge } from '@llave/ui/badge';
@@ -54,6 +58,20 @@ export default function CertificadoInquilinoPage() {
     () => (certificado ? formatFecha(certificado.validoHasta) : ''),
     [certificado],
   );
+
+  // Cuántos días faltan para que venza el certificado — para el banner
+  // de renovación cuando se acerca el vencimiento.
+  const diasHastaVencer = useMemo(() => {
+    if (!certificado) return null;
+    const diff =
+      new Date(certificado.validoHasta).getTime() - Date.now();
+    return Math.ceil(diff / 86400000);
+  }, [certificado]);
+
+  // Cuando el nivel es bajo (REGULAR), el certificado JUEGA EN CONTRA si lo
+  // mostrás a otra inmo. Mostramos coaching en lugar de un CTA grande de
+  // compartir — primero regularizá, después compartís con orgullo.
+  const nivelBajo = certificado?.nivel === 'REGULAR';
 
   if (!hidratado || !certificado) return null;
 
@@ -105,11 +123,68 @@ export default function CertificadoInquilinoPage() {
                 Si te mudás, llevá este certificado a la nueva inmobiliaria.
                 Te ahorrás presentar garante: el certificado prueba con datos
                 verificables que estás al día. La inmo lo valida en 5 segundos
-                escaneando el QR o abriendo el link.
+                abriendo el link.
               </p>
             </div>
           </CardContent>
         </Card>
+
+        {/* Banner de coaching cuando el nivel está bajo. El certificado en
+            "Regular" juega EN CONTRA del inquilino: la inmo destino lo abre
+            y ve un historial flojo. Mejor avisar y mostrar cómo mejorarlo
+            antes de invitarlo a compartir. */}
+        {nivelBajo && (
+          <Card className="border-amber-300 bg-amber-50/70 dark:border-amber-900/40 dark:bg-amber-900/10">
+            <CardContent className="space-y-3 p-4 text-sm">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+                <div className="space-y-1">
+                  <p className="font-semibold">
+                    Antes de compartir, mejorá tu nivel
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Tu certificado hoy queda en{' '}
+                    <strong>{NIVEL_LABEL[certificado.nivel]}</strong>. Una
+                    inmobiliaria que lo abra ve historial flojo y puede
+                    pedirte garante igual. Regularizá los pagos y volvé a
+                    generarlo cuando suba el nivel.
+                  </p>
+                </div>
+              </div>
+              <Link
+                href="/comprobantes"
+                className="flex items-center justify-between gap-2 rounded-md bg-amber-600 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-700"
+              >
+                <span className="flex items-center gap-1.5">
+                  <TrendingUp className="h-3.5 w-3.5" />
+                  Ir a regularizar mis pagos
+                </span>
+                <ChevronRight className="h-3.5 w-3.5" />
+              </Link>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Banner "Vence pronto" — cuando el certificado tiene ≤ 7 días
+            antes de expirar. Le da al inquilino la oportunidad de regenerar
+            uno nuevo antes de necesitarlo en una postulación. */}
+        {diasHastaVencer !== null &&
+          diasHastaVencer > 0 &&
+          diasHastaVencer <= 7 && (
+            <Card className="border-amber-300 bg-amber-50/60 dark:border-amber-900/40 dark:bg-amber-900/10">
+              <CardContent className="flex items-center gap-3 p-3 text-xs">
+                <Clock className="h-4 w-4 shrink-0 text-amber-700" />
+                <p className="flex-1">
+                  Tu certificado vence en{' '}
+                  <strong>
+                    {diasHastaVencer} día{diasHastaVencer === 1 ? '' : 's'}
+                  </strong>
+                  . Regenerá uno nuevo cuando lo necesites — los datos se
+                  toman al instante.
+                </p>
+              </CardContent>
+            </Card>
+          )}
 
         {/* Hero del certificado */}
         <Card className="overflow-hidden">
@@ -159,20 +234,26 @@ export default function CertificadoInquilinoPage() {
               </p>
             </div>
 
+            {/* Métricas con sub-texto explicativo — antes solo aparecía el
+                valor sin contexto ("0/2", "4d", "4.7★") y el inquilino no
+                entendía qué medía cada cosa. */}
             <div className="grid grid-cols-3 gap-2 border-t pt-3 text-center text-xs">
               <Metric
                 label="Cuotas al día"
                 valor={`${certificado.historial.cuotasAlDia}/${certificado.historial.cuotasTotales}`}
+                sub="pagadas en término"
                 accent="emerald"
               />
               <Metric
                 label="Atraso prom."
                 valor={`${certificado.historial.atrasoPromedioDias}d`}
+                sub="días promedio"
                 accent={certificado.historial.atrasoPromedioDias === 0 ? 'emerald' : 'amber'}
               />
               <Metric
-                label="Rating cuidado"
+                label="Cuidado"
                 valor={`${certificado.historial.ratingPromedio}★`}
+                sub="rating del hogar"
                 accent="emerald"
               />
             </div>
@@ -199,13 +280,21 @@ export default function CertificadoInquilinoPage() {
                 <Copy className="h-3.5 w-3.5" />
               </Button>
             </div>
+            {/* Link compacto: en mobile el host completo
+                (http://localhost:3000/verificar/HASH o myalquiler.com.ar/...)
+                ocupa demasiado espacio. Mostramos solo "verificar/HASH" como
+                preview pero el link copiado/compartido es el completo. */}
             <div className="space-y-1">
               <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
                 Link de verificación
               </p>
               <div className="flex items-center gap-2 rounded-md border bg-muted/30 p-2">
                 <p className="flex-1 truncate font-mono text-[11px]">
-                  {certificado.urlVerificacion}
+                  {(() => {
+                    const u = certificado.urlVerificacion;
+                    const idx = u.indexOf('/verificar/');
+                    return idx >= 0 ? `…${u.slice(idx)}` : u;
+                  })()}
                 </p>
                 <Button
                   size="icon"
@@ -224,15 +313,23 @@ export default function CertificadoInquilinoPage() {
           </CardContent>
         </Card>
 
-        {/* Acciones */}
+        {/* Acciones.
+            Si el nivel está bajo, el CTA principal NO es "Compartir por
+            WhatsApp" en verde grande: bajamos el botón a outline para no
+            invitar a hacerlo. El coaching arriba ya redirige a regularizar. */}
         <div className="space-y-2">
           <Button
             size="xl"
-            className="w-full bg-emerald-600 text-white hover:bg-emerald-700"
+            className={
+              nivelBajo
+                ? 'w-full'
+                : 'w-full bg-emerald-600 text-white hover:bg-emerald-700'
+            }
+            variant={nivelBajo ? 'outline' : 'default'}
             onClick={compartirWhatsApp}
           >
             <MessageCircle className="h-5 w-5" />
-            Compartir por WhatsApp
+            {nivelBajo ? 'Compartir igual' : 'Compartir por WhatsApp'}
           </Button>
           <div className="grid grid-cols-2 gap-2">
             <Button
@@ -275,10 +372,12 @@ export default function CertificadoInquilinoPage() {
 function Metric({
   label,
   valor,
+  sub,
   accent,
 }: {
   label: string;
   valor: string;
+  sub?: string;
   accent?: 'emerald' | 'amber';
 }) {
   return (
@@ -297,6 +396,9 @@ function Metric({
       >
         {valor}
       </p>
+      {sub && (
+        <p className="text-[9px] text-muted-foreground/80 leading-tight">{sub}</p>
+      )}
     </div>
   );
 }
