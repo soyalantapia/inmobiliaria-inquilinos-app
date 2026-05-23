@@ -33,7 +33,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@llave/ui/tabs';
 import { toast } from '@llave/ui/use-toast';
 import { ContratoDocumentosPanel } from '@/components/contrato-documentos-panel';
 import { MensajeInquilinoDialog } from '@/components/mensaje-inquilino-dialog';
+import { ScoringInquilinoCard } from '@/components/scoring-inquilino-card';
 import { Topbar } from '@/components/topbar';
+import { calcularScoringInquilino } from '@/lib/scoring-inquilino';
 import { registrarEvento } from '@/lib/auditoria-storage';
 import {
   type CanalComunicacion,
@@ -240,6 +242,8 @@ export default function DetalleContratoPage() {
                 </CardContent>
               </Card>
             </div>
+
+            <ScoringInquilinoCard scoring={calcularScoringInquilino(c)} />
           </TabsContent>
 
           {/* PAGOS */}

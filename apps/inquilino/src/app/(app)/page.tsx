@@ -17,6 +17,7 @@ import {
   Wallet,
 } from 'lucide-react';
 import { Card } from '@llave/ui/card';
+import { AnunciosFeed } from '@/components/anuncios-feed';
 import { InstallPrompt } from '@/components/install-prompt';
 import { NavBar } from '@/components/nav-bar';
 import { UserMenu } from '@/components/user-menu';
@@ -116,6 +117,10 @@ export default function PagosPage() {
             </a>
           </div>
         </Card>
+
+        {/* Anuncios desde la inmobiliaria (corte de agua, cambios de CBU,
+            avisos urgentes). Cross-app de la inmo. */}
+        <AnunciosFeed compacto />
 
         {/* Broker IA — diferenciador del producto, destacado pero sin saturar */}
         <Link href="/broker" className="block">
