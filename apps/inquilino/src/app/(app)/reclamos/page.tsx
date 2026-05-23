@@ -3,24 +3,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import {
-  CalendarClock,
-  CheckCircle2,
-  ChevronDown,
-  ChevronUp,
-  Clock,
-  MapPin,
-  Plus,
-  Wrench,
-  X,
-} from 'lucide-react';
+import { CheckCircle2, Plus, Wrench, X } from 'lucide-react';
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card, CardContent } from '@llave/ui/card';
 import { Skeleton } from '@llave/ui/skeleton';
 import { NavBar } from '@/components/nav-bar';
 import { UserMenu } from '@/components/user-menu';
-import { misReclamosMock } from '@/lib/mock-data';
 import { listarReclamos } from '@/lib/reclamos-storage';
 import {
   categoriaIcono,
@@ -32,11 +21,6 @@ import {
   urgenciaVariant,
 } from '@/lib/reclamos-config';
 import type { Reclamo } from '@/lib/types';
-
-// IDs que tienen detalle pre-renderizado (los del mock). Los reclamos creados
-// por el inquilino tienen IDs dinámicos (rec_<timestamp>) que NO existen como
-// página estática, así que los mostramos expandibles inline.
-const IDS_CON_DETALLE = new Set(misReclamosMock.map((r) => r.id));
 
 export default function MisReclamosPage() {
   const searchParams = useSearchParams();
@@ -96,7 +80,7 @@ export default function MisReclamosPage() {
           <Button asChild className="shrink-0">
             <Link href="/reclamos/nuevo">
               <Plus className="h-4 w-4" />
-              Nuevo
+              Nuevo reclamo
             </Link>
           </Button>
         </div>
@@ -184,16 +168,29 @@ function Section({
 
 function ReclamoRow({ reclamo, resaltado }: { reclamo: Reclamo; resaltado: boolean }) {
   const Icon = categoriaIcono[reclamo.categoria];
-  const lastEvent = reclamo.eventos[reclamo.eventos.length - 1];
   const mensajesPendientes = reclamo.eventos.filter((e) => e.tipo === 'MENSAJE_INMO').length;
-  // Solo los reclamos del mock tienen página de detalle pre-renderizada.
-  // Los nuevos (creados por el inquilino, IDs dinámicos) se muestran inline.
-  const tieneDetalle = IDS_CON_DETALLE.has(reclamo.id);
-  const [expandido, setExpandido] = useState(resaltado);
 
-  // Encabezado del item (icono + título + meta) — común a ambas variantes
-  const encabezado = (
-    <>
+  // Rol del profesional asignado: si la inmo asignó a alguien, mostrarlo con
+  // su rol ("Pablo · plomero") para que el inquilino sepa quién es ese nombre
+  // sin tener que entrar al detalle.
+  const profesionalConRol = (() => {
+    if (reclamo.profesionalAsignadoNombre) {
+      const rol = (reclamo.profesionalAsignadoCategoria ?? '').toLowerCase();
+      return rol
+        ? `${reclamo.profesionalAsignadoNombre} · ${rol}`
+        : reclamo.profesionalAsignadoNombre;
+    }
+    if (reclamo.asignadoA) return reclamo.asignadoA;
+    return null;
+  })();
+
+  return (
+    <Link
+      href={`/reclamos/r?id=${reclamo.id}`}
+      className={`flex items-start gap-3 px-4 py-3 transition-colors hover:bg-muted/40 ${
+        resaltado ? 'ring-2 ring-primary/40 bg-primary/5' : ''
+      }`}
+    >
       <div className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
         <Icon className="h-4 w-4" />
       </div>
@@ -203,28 +200,22 @@ function ReclamoRow({ reclamo, resaltado }: { reclamo: Reclamo; resaltado: boole
           <Badge variant={estadoVariant[reclamo.estado]} className="text-[10px]">
             {estadoLabel[reclamo.estado]}
           </Badge>
-          {reclamo.urgencia === 'EMERGENCIA' && (
-            <Badge variant={urgenciaVariant[reclamo.urgencia]} className="text-[10px]">
-              {urgenciaLabel[reclamo.urgencia]}
-            </Badge>
-          )}
+          {/* Urgencia siempre visible — antes solo se mostraba si era EMERGENCIA.
+              La urgencia es info de prioridad para el inquilino y la inmo, así
+              que tiene que aparecer en la jerarquía de la lista. */}
+          <Badge variant={urgenciaVariant[reclamo.urgencia]} className="text-[10px]">
+            {urgenciaLabel[reclamo.urgencia]}
+          </Badge>
           {resaltado && (
             <Badge variant="secondary" className="text-[10px]">
               Recién enviado
             </Badge>
           )}
         </div>
-        <p
-          className={`text-sm text-muted-foreground ${
-            expandido && !tieneDetalle ? '' : 'line-clamp-2'
-          }`}
-        >
-          {reclamo.descripcion}
-        </p>
+        <p className="text-sm text-muted-foreground line-clamp-2">{reclamo.descripcion}</p>
         <p className="text-[11px] text-muted-foreground">
           {tiempoRelativo(reclamo.createdAt)}
-          {reclamo.asignadoA && ` · ${reclamo.asignadoA}`}
-          {lastEvent && lastEvent.tipo !== 'CREADO' && ` · ${tiempoUltimaActividad(lastEvent.fecha)}`}
+          {profesionalConRol && ` · ${profesionalConRol}`}
         </p>
       </div>
       {mensajesPendientes > 0 && reclamo.estado !== 'CERRADO' && (
@@ -232,124 +223,8 @@ function ReclamoRow({ reclamo, resaltado }: { reclamo: Reclamo; resaltado: boole
           {mensajesPendientes}
         </span>
       )}
-    </>
+    </Link>
   );
-
-  const wrapperBase = 'flex items-start gap-3 px-4 py-3 transition-colors';
-  const wrapperHighlight = resaltado ? 'ring-2 ring-primary/40 bg-primary/5' : '';
-
-  if (tieneDetalle) {
-    // Reclamo del mock: tiene página de detalle pre-renderizada → Link funciona
-    return (
-      <Link
-        href={`/reclamos/${reclamo.id}`}
-        className={`${wrapperBase} ${wrapperHighlight} hover:bg-muted/40`}
-      >
-        {encabezado}
-      </Link>
-    );
-  }
-
-  // Reclamo nuevo (del localStorage): expandible inline con detalle real
-  const fechaCreado = new Date(reclamo.createdAt);
-  return (
-    <div>
-      <div className={`${wrapperBase} ${wrapperHighlight}`}>
-        {encabezado}
-        <button
-          type="button"
-          onClick={() => setExpandido((v) => !v)}
-          className="mt-1 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground transition-colors hover:bg-accent"
-          aria-label={expandido ? 'Contraer' : 'Expandir'}
-        >
-          {expandido ? (
-            <ChevronUp className="h-3.5 w-3.5" />
-          ) : (
-            <ChevronDown className="h-3.5 w-3.5" />
-          )}
-        </button>
-      </div>
-
-      {/* Panel expandido: detalles del reclamo (urgencia, dirección, foto, eventos) */}
-      {expandido && (
-        <div className="space-y-3 border-t bg-muted/30 px-4 py-4 animate-fade-in">
-          <DetalleFila
-            icon={<Clock className="h-3.5 w-3.5" />}
-            label="Urgencia"
-            value={urgenciaLabel[reclamo.urgencia]}
-            badge={urgenciaVariant[reclamo.urgencia]}
-          />
-          <DetalleFila
-            icon={<MapPin className="h-3.5 w-3.5" />}
-            label="Dirección"
-            value={reclamo.direccion}
-          />
-          <DetalleFila
-            icon={<CalendarClock className="h-3.5 w-3.5" />}
-            label="Enviado el"
-            value={fechaCreado.toLocaleString('es-AR', {
-              day: '2-digit',
-              month: '2-digit',
-              year: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit',
-            })}
-          />
-
-          {reclamo.fotoUrl && (
-            <div className="space-y-1.5">
-              <p className="text-[11px] font-medium text-muted-foreground">Foto adjunta</p>
-              <img
-                src={reclamo.fotoUrl}
-                alt="Foto del reclamo"
-                className="max-h-56 w-full rounded-md object-contain"
-              />
-            </div>
-          )}
-
-          <p className="rounded-md bg-background px-3 py-2 text-[11px] text-muted-foreground">
-            La inmobiliaria recibe el reclamo y te avisa por WhatsApp cuando lo tome.
-          </p>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function DetalleFila({
-  icon,
-  label,
-  value,
-  badge,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  badge?: 'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning' | null;
-}) {
-  return (
-    <div className="flex items-start gap-2 text-xs">
-      <span className="mt-0.5 text-muted-foreground">{icon}</span>
-      <div className="flex-1 min-w-0">
-        <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
-        {badge ? (
-          <Badge variant={badge} className="mt-0.5 text-[10px]">
-            {value}
-          </Badge>
-        ) : (
-          <p className="text-sm font-medium">{value}</p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function tiempoUltimaActividad(iso: string): string {
-  const diffMin = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
-  if (diffMin < 60) return `activo hace ${diffMin} min`;
-  const h = Math.floor(diffMin / 60);
-  if (h < 24) return `activo hace ${h} h`;
-  return `actualizado ${new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })}`;
 }
 
 function EmptyState() {

@@ -10,6 +10,8 @@ export type Urgencia = 'BAJA' | 'MEDIA' | 'ALTA' | 'EMERGENCIA';
 export type EstadoReclamo = 'ABIERTO' | 'EN_CURSO' | 'RESUELTO' | 'CERRADO' | 'RECHAZADO';
 
 // Cada cambio de estado, asignación o mensaje queda como evento en la timeline.
+// VISITA_* son hitos del profesional asignado (se computan al vuelo desde
+// `visitas-profesional` storage al renderizar — no se persisten en eventos).
 export type TipoEvento =
   | 'CREADO'
   | 'ASIGNADO'
@@ -18,7 +20,10 @@ export type TipoEvento =
   | 'CERRADO'
   | 'RECHAZADO'
   | 'MENSAJE_INQUILINO'
-  | 'MENSAJE_INMO';
+  | 'MENSAJE_INMO'
+  | 'VISITA_CONFIRMADA'
+  | 'VISITA_EN_CAMINO'
+  | 'VISITA_LISTO';
 
 export interface EventoReclamo {
   id: string;

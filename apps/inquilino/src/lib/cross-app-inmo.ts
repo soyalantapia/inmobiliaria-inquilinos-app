@@ -76,6 +76,27 @@ export function operadorDeInmo(reclamoId: string): string | null {
   return r?.asignadoA ?? null;
 }
 
+/**
+ * Devuelve el estado actualizado del reclamo según el storage del inmo.
+ * El inquilino persiste el reclamo en su propio storage al crearlo, pero
+ * los cambios posteriores (asignar profesional, cerrar, resolver) los hace
+ * la inmo. Sin este merge el inquilino vería su estado obsoleto ("Abierto")
+ * aunque la inmo ya lo haya marcado resuelto.
+ */
+export function estadoReclamoDeInmo(reclamoId: string): {
+  estado: string | null;
+  resolucion: string | null;
+  resueltoAt: string | null;
+} | null {
+  const r = leerReclamosInmo().find((x) => x.id === reclamoId);
+  if (!r) return null;
+  return {
+    estado: r.estado ?? null,
+    resolucion: r.resolucion ?? null,
+    resueltoAt: r.resueltoAt ?? null,
+  };
+}
+
 export interface CargoExtra {
   /** ID del reclamo origen. */
   reclamoId: string;

@@ -1,10 +1,12 @@
 import {
+  CalendarClock,
   CheckCircle2,
   Clock,
   FileEdit,
   MessageCircle,
   Plus,
   ShieldX,
+  Truck,
   UserCheck,
   type LucideIcon,
 } from 'lucide-react';
@@ -21,6 +23,9 @@ const iconForTipo: Record<TipoEvento, LucideIcon> = {
   RECHAZADO: ShieldX,
   MENSAJE_INQUILINO: MessageCircle,
   MENSAJE_INMO: MessageCircle,
+  VISITA_CONFIRMADA: CalendarClock,
+  VISITA_EN_CAMINO: Truck,
+  VISITA_LISTO: CheckCircle2,
 };
 
 const colorForTipo: Record<TipoEvento, string> = {
@@ -32,6 +37,9 @@ const colorForTipo: Record<TipoEvento, string> = {
   RECHAZADO: 'bg-destructive/10 text-destructive',
   MENSAJE_INQUILINO: 'bg-secondary text-secondary-foreground',
   MENSAJE_INMO: 'bg-primary/10 text-primary',
+  VISITA_CONFIRMADA: 'bg-primary/10 text-primary',
+  VISITA_EN_CAMINO: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+  VISITA_LISTO: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
 };
 
 const labelForTipo: Record<TipoEvento, (e: EventoReclamo) => string> = {
@@ -43,6 +51,9 @@ const labelForTipo: Record<TipoEvento, (e: EventoReclamo) => string> = {
   RECHAZADO: () => 'Reclamo rechazado',
   MENSAJE_INQUILINO: (e) => e.autor,
   MENSAJE_INMO: (e) => e.autor,
+  VISITA_CONFIRMADA: (e) => `${e.autor} confirmó visita`,
+  VISITA_EN_CAMINO: (e) => `${e.autor} está en camino`,
+  VISITA_LISTO: (e) => `${e.autor} terminó el trabajo`,
 };
 
 export function ReclamoTimeline({

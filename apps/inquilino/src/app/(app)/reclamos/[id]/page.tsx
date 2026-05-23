@@ -8,5 +8,5 @@ export function generateStaticParams() {
 export const dynamicParams = false;
 
 export default function Page({ params }: { params: { id: string } }) {
-  return <Client params={params} />;
+  return <Client id={params.id} />;
 }

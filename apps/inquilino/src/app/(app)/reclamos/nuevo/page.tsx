@@ -3,20 +3,21 @@
 import { useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Camera, Trash2 } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Camera, Phone, Trash2 } from 'lucide-react';
 import { Button } from '@llave/ui/button';
 import { Card } from '@llave/ui/card';
 import { Input } from '@llave/ui/input';
 import { Label } from '@llave/ui/label';
 import { Textarea } from '@llave/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@llave/ui/select';
-import { toast } from '@llave/ui/use-toast';
 import { NavBar } from '@/components/nav-bar';
 import { inquilinoActual } from '@/lib/mock-data';
 import { crearReclamo } from '@/lib/reclamos-storage';
 import type { Categoria, Urgencia } from '@/lib/types';
 
 const MAX_FOTO_MB = 4;
+// Tel de la inmobiliaria para el atajo "Llamar" cuando el inquilino marca
+// urgencia EMERGENCIA. Mismo número que usa el FAB de WhatsApp.
+const TELEFONO_INMO = '541145321100';
 
 const categorias: Array<{ value: Categoria; label: string; emoji: string }> = [
   { value: 'PLOMERIA', label: 'Plomería', emoji: '🚰' },
@@ -95,10 +96,8 @@ export default function NuevoReclamoPage() {
       fotoDataUrl: fotoPreview,
     });
     setEnviando(false);
-    toast({
-      title: 'Reclamo enviado',
-      description: 'La inmobiliaria ya lo tiene. Te avisamos cuando lo tomen.',
-    });
+    // No mostramos toast: el banner verde en /reclamos cumple la confirmación.
+    // Antes había banner + toast con copy casi idéntico (P7 de la auditoría).
     // Volvemos a la lista pasando el ID nuevo por query — la lista lo resalta.
     // No navegamos a /reclamos/[id] porque los IDs nuevos no tienen página
     // pre-renderizada en el static export (devolverían 404).
@@ -164,11 +163,16 @@ export default function NuevoReclamoPage() {
             onChange={(e) => setDescripcion(e.target.value)}
             rows={4}
           />
-          <p className="text-xs text-muted-foreground">
-            {descripcion.length < 10
-              ? `Mínimo 10 caracteres (te faltan ${10 - descripcion.length})`
-              : 'Listo'}
-          </p>
+          {/* Mostramos el contador solo si el usuario ya empezó a escribir.
+              Antes aparecía "te faltan 10" desde el render inicial, lo que
+              sonaba a regaño antes de tocar el campo (P9 de la auditoría). */}
+          {descripcion.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {descripcion.length < 10
+                ? `Mínimo 10 caracteres (te faltan ${10 - descripcion.length})`
+                : 'Listo'}
+            </p>
+          )}
         </div>
 
         {fotoPreview ? (
@@ -216,24 +220,67 @@ export default function NuevoReclamoPage() {
         )}
         {errorFoto && <p className="text-xs text-destructive">{errorFoto}</p>}
 
+        {/* Urgencia como chips (R10 de la auditoría): antes era un Select que
+            obligaba a abrir el dropdown para descubrir las opciones. Con chips
+            las 4 alternativas y sus descripciones quedan a la vista de entrada. */}
         <div className="space-y-2">
           <Label>Urgencia</Label>
-          <Select value={urgencia} onValueChange={(v) => setUrgencia(v as Urgencia)}>
-            <SelectTrigger>
-              <SelectValue placeholder="Elegí cuán urgente es" />
-            </SelectTrigger>
-            <SelectContent>
-              {urgencias.map((u) => (
-                <SelectItem key={u.value} value={u.value}>
-                  <div className="flex flex-col">
-                    <span className="font-medium">{u.label}</span>
-                    <span className="text-xs text-muted-foreground">{u.descripcion}</span>
-                  </div>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {urgencias.map((u) => {
+              const seleccionado = urgencia === u.value;
+              const esEmergencia = u.value === 'EMERGENCIA';
+              return (
+                <button
+                  key={u.value}
+                  type="button"
+                  onClick={() => setUrgencia(u.value)}
+                  className={`rounded-lg border p-3 text-left transition-colors ${
+                    seleccionado
+                      ? esEmergencia
+                        ? 'border-destructive bg-destructive/5 text-destructive'
+                        : 'border-primary bg-primary/5 text-primary'
+                      : 'border-border hover:border-primary/40'
+                  }`}
+                >
+                  <p className="text-sm font-medium">{u.label}</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {u.descripcion}
+                  </p>
+                </button>
+              );
+            })}
+          </div>
         </div>
+
+        {/* Nota destacada si la urgencia es EMERGENCIA (R11): para casos de
+            riesgo real, mandar un reclamo y esperar no alcanza. Le damos un
+            atajo a llamar a la inmobiliaria YA. */}
+        {urgencia === 'EMERGENCIA' && (
+          <Card className="space-y-3 border-destructive/40 bg-destructive/5 p-4 animate-fade-in">
+            <div className="flex items-start gap-2 text-destructive">
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+              <div className="space-y-1">
+                <p className="text-sm font-semibold">¿Hay riesgo real ahora?</p>
+                <p className="text-xs">
+                  Para fugas, gas, agua corriendo o incendio: llamá a la
+                  inmobiliaria YA. El reclamo escrito va igual, pero el
+                  teléfono va más rápido.
+                </p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant="destructive"
+              className="w-full"
+              asChild
+            >
+              <a href={`tel:+${TELEFONO_INMO}`}>
+                <Phone className="h-4 w-4" />
+                Llamar a la inmobiliaria
+              </a>
+            </Button>
+          </Card>
+        )}
 
         {/* Indicador de qué falta para enviar (sólo cuando falta algo y NO está enviando) */}
         {!puedeEnviar && !enviando && (
