@@ -31,6 +31,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@llave/ui/tabs';
 import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
+import { MatrizPermisosCard } from '@/components/matriz-permisos-card';
+import { PinSeguridadCard } from '@/components/pin-seguridad-card';
 import { relanzarOnboardingInmo } from '@/components/onboarding';
 import { Topbar } from '@/components/topbar';
 import { TRAMOS_PLAN, calcularResumenPlan, facturasMock } from '@/lib/plan';
@@ -47,8 +49,11 @@ import { TrialBanner } from '@/components/trial-banner';
 import { formatFecha, formatMonto, formatPeriodo } from '@/lib/format';
 import {
   listarAuditoria,
+  moduloDeTipo,
   tipoEventoLabel,
+  MODULO_LABEL,
   type EventoAuditoria,
+  type ModuloAuditoria,
   type TipoEventoAuditoria,
 } from '@/lib/auditoria-storage';
 
@@ -123,19 +128,6 @@ const ROLES: Record<Rol, { label: string; descripcion: string; variant: 'default
   },
 };
 
-const PERMISOS = [
-  { key: 'contratos.ver', label: 'Ver contratos', roles: ['ADMIN', 'OPERADOR', 'CARGA', 'LECTURA'] as Rol[] },
-  { key: 'contratos.crear', label: 'Crear / editar contratos', roles: ['ADMIN', 'OPERADOR', 'CARGA'] as Rol[] },
-  { key: 'pagos.ver', label: 'Ver pagos y rendiciones', roles: ['ADMIN', 'OPERADOR', 'LECTURA'] as Rol[] },
-  { key: 'pagos.conciliar', label: 'Conciliar pagos', roles: ['ADMIN', 'OPERADOR'] as Rol[] },
-  { key: 'reclamos.gestion', label: 'Gestionar reclamos', roles: ['ADMIN', 'OPERADOR'] as Rol[] },
-  { key: 'caja.cargar', label: 'Cargar gastos de caja', roles: ['ADMIN', 'OPERADOR'] as Rol[] },
-  { key: 'screening', label: 'Verificar inquilinos', roles: ['ADMIN', 'OPERADOR'] as Rol[] },
-  { key: 'propiedades.crear', label: 'Cargar propiedades', roles: ['ADMIN', 'OPERADOR', 'CARGA'] as Rol[] },
-  { key: 'propiedades.borrar', label: 'Eliminar propiedades', roles: ['ADMIN'] as Rol[] },
-  { key: 'equipo', label: 'Gestionar equipo', roles: ['ADMIN'] as Rol[] },
-  { key: 'plan', label: 'Gestionar plan y facturación', roles: ['ADMIN'] as Rol[] },
-] as const;
 
 const estadoFacturaConfig: Record<
   'PAGADA' | 'PENDIENTE' | 'VENCIDA',
@@ -504,52 +496,9 @@ export default function ConfiguracionPage() {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Qué puede hacer cada rol</CardTitle>
-                <CardDescription>
-                  Matriz de permisos por rol. Los administradores ven todo y manejan plan y equipo.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {(Object.keys(ROLES) as Rol[]).map((rol) => (
-                    <div key={rol} className="rounded-lg border p-4">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <Badge variant={ROLES[rol].variant}>{ROLES[rol].label}</Badge>
-                          <span className="text-xs text-muted-foreground">
-                            {equipo.filter((m) => m.rol === rol).length} persona
-                            {equipo.filter((m) => m.rol === rol).length === 1 ? '' : 's'}
-                          </span>
-                        </div>
-                      </div>
-                      <p className="mt-2 text-xs text-muted-foreground">{ROLES[rol].descripcion}</p>
-                      <ul className="mt-3 grid gap-1.5 sm:grid-cols-2">
-                        {PERMISOS.map((p) => {
-                          const tiene = p.roles.includes(rol);
-                          return (
-                            <li
-                              key={p.key}
-                              className={`flex items-center gap-2 text-xs ${
-                                tiene ? '' : 'text-muted-foreground line-through opacity-60'
-                              }`}
-                            >
-                              {tiene ? (
-                                <CheckCircle2 className="h-3 w-3 shrink-0 text-emerald-500" />
-                              ) : (
-                                <span className="h-3 w-3 shrink-0" />
-                              )}
-                              {p.label}
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+            <PinSeguridadCard />
+
+            <MatrizPermisosCard />
           </TabsContent>
 
           {/* PLAN Y FACTURAS */}
@@ -971,14 +920,20 @@ function Field({
 // TAB DE AUDITORÍA
 // ============================================================
 
+const PAGINA_TAMANIO = 50;
+
 function AuditoriaTab() {
   const [eventos, setEventos] = useState<EventoAuditoria[]>(() => listarAuditoria());
   const [filtroTipo, setFiltroTipo] = useState<'todos' | TipoEventoAuditoria>('todos');
   const [filtroAutor, setFiltroAutor] = useState<string>('todos');
+  const [filtroModulo, setFiltroModulo] = useState<'todos' | ModuloAuditoria>('todos');
+  const [busqueda, setBusqueda] = useState('');
+  const [pagina, setPagina] = useState(0);
+  const [rangoDias, setRangoDias] = useState<'todos' | '7' | '30' | '90'>('todos');
 
-  // Refrescar al volver a la tab (por si se registró algo en otra ventana/acción)
   function refrescar() {
     setEventos(listarAuditoria());
+    setPagina(0);
   }
 
   const autores = useMemo(() => {
@@ -988,24 +943,50 @@ function AuditoriaTab() {
   }, [eventos]);
 
   const filtrados = useMemo(() => {
+    const termino = busqueda.trim().toLowerCase();
+    const limiteTs =
+      rangoDias === 'todos'
+        ? null
+        : Date.now() - parseInt(rangoDias, 10) * 86400_000;
     return eventos.filter((e) => {
       if (filtroTipo !== 'todos' && e.tipo !== filtroTipo) return false;
       if (filtroAutor !== 'todos' && e.autor !== filtroAutor) return false;
+      if (filtroModulo !== 'todos' && moduloDeTipo[e.tipo] !== filtroModulo) return false;
+      if (limiteTs !== null && Date.parse(e.fecha) < limiteTs) return false;
+      if (termino) {
+        const hay =
+          e.autor.toLowerCase().includes(termino) ||
+          e.entidadDescripcion.toLowerCase().includes(termino) ||
+          (e.detalle?.toLowerCase().includes(termino) ?? false) ||
+          tipoEventoLabel[e.tipo].toLowerCase().includes(termino);
+        if (!hay) return false;
+      }
       return true;
     });
-  }, [eventos, filtroTipo, filtroAutor]);
+  }, [eventos, filtroTipo, filtroAutor, filtroModulo, rangoDias, busqueda]);
 
-  // Agrupar por día para timeline
+  const totalPaginas = Math.max(1, Math.ceil(filtrados.length / PAGINA_TAMANIO));
+  const paginaSegura = Math.min(pagina, totalPaginas - 1);
+  const visibles = useMemo(() => {
+    const desde = paginaSegura * PAGINA_TAMANIO;
+    return filtrados.slice(desde, desde + PAGINA_TAMANIO);
+  }, [filtrados, paginaSegura]);
+
+  // Agrupar la página actual por día para timeline
   const porDia = useMemo(() => {
     const map = new Map<string, EventoAuditoria[]>();
-    filtrados.forEach((e) => {
+    visibles.forEach((e) => {
       const dia = e.fecha.slice(0, 10);
       const lista = map.get(dia) ?? [];
       lista.push(e);
       map.set(dia, lista);
     });
     return Array.from(map.entries()).sort((a, b) => b[0].localeCompare(a[0]));
-  }, [filtrados]);
+  }, [visibles]);
+
+  useEffect(() => {
+    setPagina(0);
+  }, [filtroTipo, filtroAutor, filtroModulo, rangoDias, busqueda]);
 
   return (
     <>
@@ -1021,7 +1002,28 @@ function AuditoriaTab() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
+          <Input
+            placeholder="Buscar por inquilino, dirección, monto, motivo…"
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+          />
+          <div className="grid gap-3 sm:grid-cols-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Módulo</Label>
+              <Select value={filtroModulo} onValueChange={(v) => setFiltroModulo(v as typeof filtroModulo)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos los módulos</SelectItem>
+                  {(Object.keys(MODULO_LABEL) as ModuloAuditoria[]).map((m) => (
+                    <SelectItem key={m} value={m}>
+                      {MODULO_LABEL[m]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Tipo de evento</Label>
               <Select value={filtroTipo} onValueChange={(v) => setFiltroTipo(v as typeof filtroTipo)}>
@@ -1054,19 +1056,33 @@ function AuditoriaTab() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex items-end">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Rango</Label>
+              <Select value={rangoDias} onValueChange={(v) => setRangoDias(v as typeof rangoDias)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todo el historial</SelectItem>
+                  <SelectItem value="7">Últimos 7 días</SelectItem>
+                  <SelectItem value="30">Últimos 30 días</SelectItem>
+                  <SelectItem value="90">Últimos 90 días</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+            <span>
+              Mostrando <strong className="text-foreground">{visibles.length}</strong> de{' '}
+              <strong className="text-foreground">{filtrados.length}</strong> filtrados ·{' '}
+              {eventos.length} en total
+            </span>
+            <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" onClick={refrescar}>
                 Refrescar
               </Button>
             </div>
-          </div>
-
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>
-              Mostrando <strong className="text-foreground">{filtrados.length}</strong> de{' '}
-              {eventos.length} eventos
-            </span>
-            <span>Se guardan los últimos 500 eventos</span>
           </div>
         </CardContent>
       </Card>
@@ -1092,6 +1108,31 @@ function AuditoriaTab() {
             </CardContent>
           </Card>
         ))
+      )}
+
+      {totalPaginas > 1 && (
+        <div className="flex items-center justify-between rounded-lg border bg-muted/30 p-3 text-xs">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={paginaSegura === 0}
+            onClick={() => setPagina((p) => Math.max(0, p - 1))}
+          >
+            ← Anterior
+          </Button>
+          <span className="text-muted-foreground">
+            Página <strong className="text-foreground">{paginaSegura + 1}</strong> de{' '}
+            {totalPaginas}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={paginaSegura >= totalPaginas - 1}
+            onClick={() => setPagina((p) => p + 1)}
+          >
+            Siguiente →
+          </Button>
+        </div>
       )}
     </>
   );

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
+  Inbox,
   LayoutDashboard,
   FileText,
   Plus,
@@ -21,6 +22,7 @@ import {
   Wrench,
   X,
 } from 'lucide-react';
+import { listarPendientes } from '@/lib/aprobaciones-storage';
 import { cn } from '@llave/ui/cn';
 import { calcularResumenPlan } from '@/lib/plan';
 import { diasRestantesTrial, leerTrial, trialVigente } from '@/lib/trial-storage';
@@ -33,6 +35,7 @@ const links = [
   { href: '/caja', label: 'Caja', icon: Wallet },
   { href: '/contratos', label: 'Contratos', icon: FileText },
   { href: '/contratos/nuevo', label: 'Cargar contrato', icon: Plus },
+  { href: '/aprobaciones', label: 'Aprobaciones', icon: Inbox },
   { href: '/renovaciones', label: 'Renovaciones', icon: CalendarHeart },
   { href: '/consorcios', label: 'Consorcios', icon: Building },
   { href: '/reclamos', label: 'Reclamos', icon: Wrench },
@@ -47,6 +50,13 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
   const trial = leerTrial();
   const trialActivo = trialVigente(trial);
   const diasTrial = trialActivo ? diasRestantesTrial(trial) : 0;
+  const [pendientes, setPendientes] = useState(0);
+  useEffect(() => {
+    setPendientes(listarPendientes().length);
+    const handler = () => setPendientes(listarPendientes().length);
+    window.addEventListener('storage', handler);
+    return () => window.removeEventListener('storage', handler);
+  }, [pathname]);
   return (
     <>
       <div className="flex h-16 items-center gap-2 border-b px-6">
@@ -80,7 +90,12 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
               )}
             >
               <Icon className="h-4 w-4" />
-              {l.label}
+              <span className="flex-1">{l.label}</span>
+              {l.href === '/aprobaciones' && pendientes > 0 && (
+                <span className="grid h-4 min-w-[1rem] place-items-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground">
+                  {pendientes}
+                </span>
+              )}
             </Link>
           );
         })}
