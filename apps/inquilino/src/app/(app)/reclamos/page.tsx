@@ -11,6 +11,7 @@ import { Skeleton } from '@llave/ui/skeleton';
 import { NavBar } from '@/components/nav-bar';
 import { UserMenu } from '@/components/user-menu';
 import { listarReclamos } from '@/lib/reclamos-storage';
+import { estadoReclamoDeInmo } from '@/lib/cross-app-inmo';
 import {
   categoriaIcono,
   categoriaLabel,
@@ -27,13 +28,38 @@ export default function MisReclamosPage() {
   const idNuevo = searchParams?.get('nuevo') ?? null;
   const [reclamos, setReclamos] = useState<Reclamo[] | null>(null);
   // El banner pasa por 3 etapas: visible → desvaneciéndose (clase animada) → oculto.
-  const [bannerEstado, setBannerEstado] = useState<'visible' | 'saliendo' | 'oculto'>(
-    idNuevo ? 'visible' : 'oculto',
-  );
+  // No inicializamos desde idNuevo: si Next navega client-side entre
+  // /reclamos/nuevo y /reclamos?nuevo=X, el componente persiste y el useState
+  // inicial nunca se vuelve a evaluar. Usamos un useEffect que reacciona a
+  // cambios de idNuevo. NO usamos useRef como guard porque en StrictMode dev
+  // el ref persiste entre los dos mounts y el segundo mount queda con state
+  // 'oculto' y ref ya igual al id (skip), dejando el banner invisible.
+  const [bannerEstado, setBannerEstado] = useState<'visible' | 'saliendo' | 'oculto'>('oculto');
 
   useEffect(() => {
-    setReclamos(listarReclamos());
+    // Mergeamos cada reclamo del storage local con el estado del lado inmo.
+    // Si la inmo (o el auto-cierre por profesional LISTO) cambió el estado,
+    // queremos reflejarlo en la lista — sin esto, EN_CURSO podía mostrar
+    // reclamos que ya estaban RESUELTOS según el inmo, y el inquilino se
+    // enteraba recién al entrar al detalle.
+    const locales = listarReclamos();
+    const merged = locales.map((r) => {
+      const inmo = estadoReclamoDeInmo(r.id);
+      if (!inmo) return r;
+      return {
+        ...r,
+        estado: inmo.estado ?? r.estado,
+        resolucion: inmo.resolucion ?? r.resolucion,
+        resueltoAt: inmo.resueltoAt ?? r.resueltoAt,
+      };
+    });
+    setReclamos(merged);
   }, []);
+
+  // R13: cuando aparece un id nuevo por query, abrimos el banner.
+  useEffect(() => {
+    if (idNuevo) setBannerEstado('visible');
+  }, [idNuevo]);
 
   // Auto-dismiss del banner: empieza a salir después de 5s, se oculta tras 600ms más
   useEffect(() => {

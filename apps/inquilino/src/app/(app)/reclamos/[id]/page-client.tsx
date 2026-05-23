@@ -49,15 +49,7 @@ import {
   urgenciaLabel,
   urgenciaVariant,
 } from '@/lib/reclamos-config';
-import type { EstadoReclamo, EventoReclamo, Reclamo } from '@/lib/types';
-
-const ESTADOS_VALIDOS: ReadonlySet<EstadoReclamo> = new Set<EstadoReclamo>([
-  'ABIERTO',
-  'EN_CURSO',
-  'RESUELTO',
-  'CERRADO',
-  'RECHAZADO',
-]);
+import type { EventoReclamo, Reclamo } from '@/lib/types';
 
 export default function DetalleReclamoPage({ id }: { id: string }) {
   const router = useRouter();
@@ -89,14 +81,9 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
     // Mergeamos también estado/resolución del lado inmo: cuando el inmo
     // (o el auto-cierre por profesional LISTO) marca el reclamo como
     // RESUELTO/CERRADO, el storage del inquilino se queda obsoleto en
-    // ABIERTO. Tomamos el estado real desde el inmo si está disponible
-    // y es un EstadoReclamo válido — así el badge no miente.
+    // ABIERTO. estadoReclamoDeInmo ya valida que el estado sea un
+    // EstadoReclamo conocido — si vuelve null, dejamos el estado local.
     const estadoInmo = estadoReclamoDeInmo(id);
-    const estadoRemoto =
-      estadoInmo?.estado &&
-      ESTADOS_VALIDOS.has(estadoInmo.estado as EstadoReclamo)
-        ? (estadoInmo.estado as EstadoReclamo)
-        : null;
     setReclamo({
       ...local,
       ...(fromInmo
@@ -109,7 +96,7 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
               local.profesionalAsignadoCategoria ?? fromInmo.categoria,
           }
         : {}),
-      estado: estadoRemoto ?? local.estado,
+      estado: estadoInmo?.estado ?? local.estado,
       resolucion: estadoInmo?.resolucion ?? local.resolucion,
       resueltoAt: estadoInmo?.resueltoAt ?? local.resueltoAt,
     });
@@ -394,11 +381,17 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
           );
         })()}
 
-        {/* Progreso de la visita del profesional (cross-app) */}
+        {/* Progreso de la visita del profesional (cross-app).
+            reclamoYaResuelto le dice al componente que oculte el copy
+            "La inmobiliaria lo va a revisar..." porque ya pasó —
+            queda la card "Por confirmar" / "Resuelto" abajo guiando. */}
         {reclamo.profesionalAsignadoNombre && (
           <ProgresoVisitaInquilino
             reclamoId={reclamo.id}
             profesionalNombre={reclamo.profesionalAsignadoNombre ?? null}
+            reclamoYaResuelto={
+              reclamo.estado === 'RESUELTO' || reclamo.estado === 'CERRADO'
+            }
           />
         )}
 

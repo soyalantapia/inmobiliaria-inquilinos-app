@@ -10,8 +10,21 @@
  * Solo lectura — el inquilino nunca escribe en el storage del inmo.
  */
 
+import type { EstadoReclamo } from './types';
+
 const INMO_RECLAMOS_KEY = 'llave-inmo:reclamos:v1';
 const INMO_CONCILIACION_KEY = 'llave-inmo:conciliacion:v1';
+
+// Conjunto de estados válidos de EstadoReclamo — para validar lo que viene
+// del storage del inmo (string sin tipo en disco). Si en el futuro extendemos
+// EstadoReclamo, hay que actualizar este set.
+const ESTADOS_RECLAMO_VALIDOS: ReadonlySet<EstadoReclamo> = new Set<EstadoReclamo>([
+  'ABIERTO',
+  'EN_CURSO',
+  'RESUELTO',
+  'CERRADO',
+  'RECHAZADO',
+]);
 
 interface InmoReclamo {
   id: string;
@@ -84,14 +97,21 @@ export function operadorDeInmo(reclamoId: string): string | null {
  * aunque la inmo ya lo haya marcado resuelto.
  */
 export function estadoReclamoDeInmo(reclamoId: string): {
-  estado: string | null;
+  estado: EstadoReclamo | null;
   resolucion: string | null;
   resueltoAt: string | null;
 } | null {
   const r = leerReclamosInmo().find((x) => x.id === reclamoId);
   if (!r) return null;
+  // Validamos contra el set de estados conocidos: el storage del inmo guarda
+  // string sin tipo, así que un valor desconocido (versión vieja, typo, etc.)
+  // se ignora y dejamos que el caller use el estado local.
+  const estado =
+    r.estado && ESTADOS_RECLAMO_VALIDOS.has(r.estado as EstadoReclamo)
+      ? (r.estado as EstadoReclamo)
+      : null;
   return {
-    estado: r.estado ?? null,
+    estado,
     resolucion: r.resolucion ?? null,
     resueltoAt: r.resueltoAt ?? null,
   };

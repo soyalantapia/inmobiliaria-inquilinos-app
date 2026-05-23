@@ -22,6 +22,14 @@ import { obtenerVisita, type VisitaProfesional } from '@/lib/visitas-profesional
 interface ProgresoVisitaInquilinoProps {
   reclamoId: string;
   profesionalNombre: string | null;
+  /**
+   * Si el reclamo ya fue cerrado por la inmo, escondemos la frase
+   * "La inmobiliaria lo va a revisar y, si todo OK, lo da por resuelto":
+   * para entonces ya está RESUELTO y la card "Por confirmar" o "Resuelto"
+   * de la página de detalle se ocupa de guiar al inquilino. Mostrarla
+   * cuando ya pasó deja tres componentes diciendo cosas contradictorias.
+   */
+  reclamoYaResuelto?: boolean;
 }
 
 const ESTADOS = ['ASIGNADO', 'CONFIRMADA', 'EN_CAMINO', 'LISTO'] as const;
@@ -30,6 +38,7 @@ type Estado = (typeof ESTADOS)[number];
 export function ProgresoVisitaInquilino({
   reclamoId,
   profesionalNombre,
+  reclamoYaResuelto = false,
 }: ProgresoVisitaInquilinoProps) {
   const [visita, setVisita] = useState<VisitaProfesional | null>(null);
   const [hidratado, setHidratado] = useState(false);
@@ -113,9 +122,11 @@ export function ProgresoVisitaInquilino({
                   &ldquo;{visita.notaFinal}&rdquo;
                 </p>
               )}
-              <p className="text-muted-foreground">
-                La inmobiliaria lo va a revisar y, si todo OK, lo da por resuelto.
-              </p>
+              {!reclamoYaResuelto && (
+                <p className="text-muted-foreground">
+                  La inmobiliaria lo va a revisar y, si todo OK, lo da por resuelto.
+                </p>
+              )}
             </div>
           </>
         )}
