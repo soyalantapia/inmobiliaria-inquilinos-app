@@ -79,6 +79,13 @@ export default function ContratoPage() {
       setMensajes(persistido);
     }
     setHidratado(true);
+    // Marcamos que el inquilino abrió el Broker al menos una vez. La home
+    // usa esto para no seguir mostrando el "nudge" de descubrimiento.
+    try {
+      window.localStorage.setItem('llave-inquilino:broker-visitado', '1');
+    } catch {
+      // ignore
+    }
   }, []);
 
   // persistir cuando cambian los mensajes (después de hidratar para no pisar)

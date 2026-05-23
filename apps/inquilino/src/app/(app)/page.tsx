@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   AlertTriangle,
@@ -7,6 +8,8 @@ import {
   ArrowUpRight,
   CheckCircle2,
   ChevronRight,
+  CreditCard,
+  FileText,
   Info,
   MapPin,
   MessageCircle,
@@ -15,6 +18,8 @@ import {
   Sparkles,
   TrendingUp,
   Wallet,
+  Wrench,
+  Zap,
 } from 'lucide-react';
 import { Card } from '@llave/ui/card';
 import { AnunciosFeed } from '@/components/anuncios-feed';
@@ -64,14 +69,68 @@ export default function PagosPage() {
     )
     .slice(0, 3);
 
+  // Próximo pago: si no hay nada pendiente, calculamos cuándo es la próxima
+  // liquidación a vencer (día de pago del mes siguiente). Sirve para el
+  // empty state "Estás al día" + el saludo contextual.
+  const proximoPagoDate = (() => {
+    const hoy = new Date();
+    const diaPago = contratoMock.diaPago;
+    const candidato = new Date(hoy.getFullYear(), hoy.getMonth(), diaPago);
+    if (candidato.getTime() <= hoy.getTime()) {
+      candidato.setMonth(candidato.getMonth() + 1);
+    }
+    return candidato;
+  })();
+  const diasAlProximoPago = Math.ceil(
+    (proximoPagoDate.getTime() - HOY) / (1000 * 60 * 60 * 24),
+  );
+
+  // Saludo contextual: una frase breve que cambia según el estado real.
+  // Es la primera info que ve el inquilino, así que prioriza lo urgente.
+  const mensajeContextual = pendiente
+    ? (() => {
+        const diasV = diasHastaVencimiento(pendiente.fechaVencimiento);
+        if (diasV < 0)
+          return `Tenés un pago atrasado hace ${Math.abs(diasV)} día${Math.abs(diasV) === 1 ? '' : 's'}`;
+        if (diasV === 0) return 'Tu pago vence hoy';
+        return `Tu pago vence en ${diasV} día${diasV === 1 ? '' : 's'}`;
+      })()
+    : `Estás al día · próximo pago en ${diasAlProximoPago} día${diasAlProximoPago === 1 ? '' : 's'}`;
+
+  // Smart nudge del Broker IA: la card solo aparece si el inquilino nunca
+  // entró a /broker. Una vez visitado, la home queda más limpia. El flag
+  // lo setea la propia page /broker en localStorage la primera vez.
+  // Estado inicial = "no visitado" (mostrar el nudge) para que la card se
+  // renderice por default; el effect lo apaga si el flag ya estaba seteado.
+  const [brokerVisitado, setBrokerVisitado] = useState(false);
+  useEffect(() => {
+    try {
+      setBrokerVisitado(
+        window.localStorage.getItem('llave-inquilino:broker-visitado') === '1',
+      );
+    } catch {
+      // ignore — quedaría en false (mostrar)
+    }
+  }, []);
+
   return (
     <>
-      {/* Saludo + menú (mobile) */}
+      {/* Saludo + menú (mobile).
+          La sub-línea es contextual al estado real (atrasado / vence pronto /
+          al día). Le da al inquilino el resumen de su situación apenas abre
+          la app, antes incluso de bajar a las cards. */}
       <header className="flex items-center justify-between px-5 pt-5 md:hidden">
         <div className="min-w-0">
           <p className="text-xs text-muted-foreground">Hola,</p>
           <p className="truncate text-lg font-semibold leading-tight">
             {nombreCorto} <span aria-hidden="true">👋</span>
+          </p>
+          <p
+            className={`mt-0.5 truncate text-[11px] ${
+              pendiente ? 'text-red-700 dark:text-red-400' : 'text-emerald-700 dark:text-emerald-400'
+            }`}
+          >
+            {mensajeContextual}
           </p>
         </div>
         <UserMenu compact />
@@ -85,11 +144,22 @@ export default function PagosPage() {
           <DemoSwitch estado={demoEstado} onChange={setDemoEstado} />
         )}
 
-        {/* Orden de banners arriba: lo más urgente primero.
-            1. Pago pendiente/atrasado — lo que el inquilino tiene que resolver YA.
-            2. Próximo ajuste — informativo, a futuro.
-            Antes estaba al revés y un inquilino moroso veía primero el ajuste. */}
-        {pendiente && <BannerPagoPendiente liq={pendiente} />}
+        {/* Estado financiero principal. Lo más urgente primero:
+            1. Si hay pago pendiente/atrasado: banner con CTA "Regularizar".
+            2. Si no hay nada pendiente: banner verde "Estás al día" con
+               próximo pago — refuerza la sensación de control y elimina
+               el espacio vacío que dejaba la home al estar al día.
+            3. Banner de ajuste — informativo, va después. */}
+        {pendiente ? (
+          <BannerPagoPendiente liq={pendiente} />
+        ) : (
+          <BannerAlDia
+            diasAlProximoPago={diasAlProximoPago}
+            fechaProximo={proximoPagoDate}
+            monto={contratoMock.montoActual}
+            moneda={contratoMock.moneda}
+          />
+        )}
 
         {/* Banner de ajuste (inline, solo si <= 30 días y no es crítico) */}
         {alertaAjuste && !ajusteCritico && (
@@ -107,6 +177,11 @@ export default function PagosPage() {
             <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
           </Link>
         )}
+
+        {/* Acciones rápidas: 4 atajos visuales para las cosas que más hace un
+            inquilino. Reemplaza la sensación de "tengo que buscar dónde está
+            cada cosa" con un acceso directo desde la pantalla principal. */}
+        <QuickActions />
 
         {/* Card compacta de inmo + acciones rápidas.
             Antes mostraba dirección/ciudad arriba + inmo abajo en dos bloques.
@@ -145,26 +220,31 @@ export default function PagosPage() {
             avisos urgentes). Cross-app de la inmo. */}
         <AnunciosFeed compacto />
 
-        {/* Broker IA — diferenciador del producto, destacado pero sin saturar */}
-        <Link href="/broker" className="block">
-          <Card className="group relative overflow-hidden border-0 bg-gradient-to-br from-violet-500 via-purple-500 to-fuchsia-500 p-4 text-white shadow-md shadow-purple-500/20 transition-transform active:scale-[0.99] animate-fade-in">
-            <div className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-white/15 blur-2xl" />
-            <div className="relative flex items-center gap-3">
-              <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-white/20 backdrop-blur">
-                <Sparkles className="h-5 w-5" />
+        {/* Broker IA — diferenciador del producto, destacado pero sin saturar.
+            Smart nudge: solo mostramos esta card si el inquilino nunca abrió
+            /broker. Una vez que la conoce, la home queda más limpia y se le
+            sigue mostrando el atajo en el nav inferior. */}
+        {!brokerVisitado && (
+          <Link href="/broker" className="block">
+            <Card className="group relative overflow-hidden border-0 bg-gradient-to-br from-violet-500 via-purple-500 to-fuchsia-500 p-4 text-white shadow-md shadow-purple-500/20 transition-transform active:scale-[0.99] animate-fade-in">
+              <div className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-white/15 blur-2xl" />
+              <div className="relative flex items-center gap-3">
+                <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-white/20 backdrop-blur">
+                  <Sparkles className="h-5 w-5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium uppercase tracking-wider opacity-85">
+                    Broker IA · nuevo
+                  </p>
+                  <p className="truncate text-sm font-semibold">
+                    Preguntá lo que quieras sobre tu contrato
+                  </p>
+                </div>
+                <ChevronRight className="h-5 w-5 shrink-0 opacity-80 transition-transform group-hover:translate-x-1" />
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium uppercase tracking-wider opacity-85">
-                  Broker IA
-                </p>
-                <p className="truncate text-sm font-semibold">
-                  Preguntá lo que quieras sobre tu contrato
-                </p>
-              </div>
-              <ChevronRight className="h-5 w-5 shrink-0 opacity-80 transition-transform group-hover:translate-x-1" />
-            </div>
-          </Card>
-        </Link>
+            </Card>
+          </Link>
+        )}
 
         {/* Movimientos compactos (3 últimos) */}
         <section className="space-y-2">
@@ -279,6 +359,90 @@ function BannerPagoPendiente({ liq }: { liq: Liquidacion }) {
         </span>
       )}
     </Link>
+  );
+}
+
+// ============================================================
+// BANNER POSITIVO cuando el inquilino está al día
+// ============================================================
+// Espejo del BannerPagoPendiente para el caso "todo OK". Antes la home
+// quedaba semi-vacía cuando estaba al día — ahora muestra refuerzo
+// positivo + cuándo cae el próximo pago, para que sepa qué esperar.
+function BannerAlDia({
+  diasAlProximoPago,
+  fechaProximo,
+  monto,
+  moneda,
+}: {
+  diasAlProximoPago: number;
+  fechaProximo: Date;
+  monto: number;
+  moneda: 'ARS' | 'USD';
+}) {
+  return (
+    <Link
+      href="/comprobantes"
+      className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/70 px-3 py-3 transition-colors hover:bg-emerald-100/70 active:scale-[0.99] dark:border-emerald-900/40 dark:bg-emerald-900/10"
+    >
+      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-emerald-500 text-white shadow-sm">
+        <CheckCircle2 className="h-4 w-4" strokeWidth={2.5} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold leading-tight text-emerald-900 dark:text-emerald-100">
+          Estás al día ·{' '}
+          <span className="tabular-nums">{formatMonto(monto, moneda)}</span>
+        </p>
+        <p className="truncate text-xs text-emerald-800/80 dark:text-emerald-200/80">
+          Próximo pago en {diasAlProximoPago} día
+          {diasAlProximoPago === 1 ? '' : 's'} ·{' '}
+          {fechaProximo.toLocaleDateString('es-AR', {
+            day: '2-digit',
+            month: '2-digit',
+          })}
+        </p>
+      </div>
+      <ChevronRight className="h-4 w-4 shrink-0 text-emerald-700 dark:text-emerald-300" />
+    </Link>
+  );
+}
+
+// ============================================================
+// QUICK ACTIONS — atajos visuales para las 4 tareas más comunes
+// ============================================================
+// La home antes era casi 100% informacional. Esta fila convierte la
+// pantalla en algo accionable: en un tap el inquilino llega a las 4
+// cosas que más quiere hacer (pagar, hacer un reclamo, ver el contrato
+// o subir una boleta de servicios).
+function QuickActions() {
+  const acciones: Array<{
+    href: string;
+    label: string;
+    icon: typeof Wrench;
+    color: string;
+  }> = [
+    { href: '/comprobantes', label: 'Pagar', icon: CreditCard, color: 'text-emerald-600 dark:text-emerald-400' },
+    { href: '/reclamos/nuevo', label: 'Reclamo', icon: Wrench, color: 'text-amber-600 dark:text-amber-400' },
+    { href: '/contrato', label: 'Contrato', icon: FileText, color: 'text-blue-600 dark:text-blue-400' },
+    { href: '/servicios', label: 'Boleta', icon: Zap, color: 'text-violet-600 dark:text-violet-400' },
+  ];
+  return (
+    <div className="grid grid-cols-4 gap-2">
+      {acciones.map((a) => {
+        const Icon = a.icon;
+        return (
+          <Link
+            key={a.href}
+            href={a.href}
+            className="flex flex-col items-center gap-1.5 rounded-xl border bg-card px-2 py-3 text-center transition-colors hover:bg-muted active:scale-[0.97]"
+          >
+            <div className={`grid h-9 w-9 place-items-center rounded-lg bg-muted ${a.color}`}>
+              <Icon className="h-4 w-4" />
+            </div>
+            <span className="truncate text-[11px] font-medium">{a.label}</span>
+          </Link>
+        );
+      })}
+    </div>
   );
 }
 
