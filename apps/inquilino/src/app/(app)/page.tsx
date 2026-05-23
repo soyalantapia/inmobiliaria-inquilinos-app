@@ -51,7 +51,18 @@ export default function PagosPage() {
 
   const user = useCurrentUser();
   const nombreCorto = user.firstName;
-  const movimientos = movimientosMock.slice(0, 3);
+
+  // Movimientos recientes (últimos 60 días). Si no hay nada reciente
+  // mostramos un empty state que linkea a /comprobantes — antes la lista
+  // tiraba pagos de hace 2+ meses en home y parecía obsoleta.
+  const HOY = Date.now();
+  const LIMITE_DIAS = 60;
+  const movimientos = movimientosMock
+    .filter(
+      (m) =>
+        (HOY - new Date(m.fecha).getTime()) / (1000 * 60 * 60 * 24) <= LIMITE_DIAS,
+    )
+    .slice(0, 3);
 
   return (
     <>
@@ -74,6 +85,12 @@ export default function PagosPage() {
           <DemoSwitch estado={demoEstado} onChange={setDemoEstado} />
         )}
 
+        {/* Orden de banners arriba: lo más urgente primero.
+            1. Pago pendiente/atrasado — lo que el inquilino tiene que resolver YA.
+            2. Próximo ajuste — informativo, a futuro.
+            Antes estaba al revés y un inquilino moroso veía primero el ajuste. */}
+        {pendiente && <BannerPagoPendiente liq={pendiente} />}
+
         {/* Banner de ajuste (inline, solo si <= 30 días y no es crítico) */}
         {alertaAjuste && !ajusteCritico && (
           <Link
@@ -91,43 +108,37 @@ export default function PagosPage() {
           </Link>
         )}
 
-        {/* Banner finito: si hay pago pendiente, avisa y lleva a /comprobantes
-            donde se gestiona todo. Si está al día, no mostramos nada (queda
-            implícito y la home arranca con el contenido principal). */}
-        {pendiente && <BannerPagoPendiente liq={pendiente} />}
-
-        {/* Card del hogar + inmo (compacta, sin gradient grande) */}
-        <Card className="space-y-3 p-4 animate-fade-in">
-          <div className="flex items-center gap-3">
-            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 text-white">
-              <MapPin className="h-5 w-5" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="truncate text-sm font-semibold">{contratoMock.direccion}</p>
-              <p className="truncate text-xs text-muted-foreground">{contratoMock.ciudad}</p>
-            </div>
+        {/* Card compacta de inmo + acciones rápidas.
+            Antes mostraba dirección/ciudad arriba + inmo abajo en dos bloques.
+            La dirección ya aparece en el sidenav desktop y en /contrato, así
+            que en home la quitamos para no duplicar y dejar una card de una
+            sola línea: "Inmobiliaria del Sol · WA · Llamar". */}
+        <Card className="flex items-center gap-2 p-3 animate-fade-in">
+          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 text-white">
+            <MapPin className="h-4 w-4" />
           </div>
-          <div className="flex items-center gap-2 border-t pt-3">
-            <p className="flex-1 min-w-0 text-xs text-muted-foreground">
-              Administra <span className="font-medium text-foreground">{contratoMock.inmobiliaria}</span>
-            </p>
-            <a
-              href="https://wa.me/541145321100"
-              target="_blank"
-              rel="noreferrer"
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-emerald-500 text-white transition-colors hover:bg-emerald-600"
-              aria-label="WhatsApp a la inmobiliaria"
-            >
-              <MessageCircle className="h-4 w-4" />
-            </a>
-            <a
-              href="tel:+541145321100"
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground transition-colors hover:bg-accent"
-              aria-label="Llamar a la inmobiliaria"
-            >
-              <Phone className="h-4 w-4" />
-            </a>
-          </div>
+          <p className="flex-1 min-w-0 truncate text-xs text-muted-foreground">
+            Administra{' '}
+            <span className="font-medium text-foreground">
+              {contratoMock.inmobiliaria}
+            </span>
+          </p>
+          <a
+            href="https://wa.me/541145321100"
+            target="_blank"
+            rel="noreferrer"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-emerald-500 text-white transition-colors hover:bg-emerald-600"
+            aria-label="WhatsApp a la inmobiliaria"
+          >
+            <MessageCircle className="h-4 w-4" />
+          </a>
+          <a
+            href="tel:+541145321100"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground transition-colors hover:bg-accent"
+            aria-label="Llamar a la inmobiliaria"
+          >
+            <Phone className="h-4 w-4" />
+          </a>
         </Card>
 
         {/* Anuncios desde la inmobiliaria (corte de agua, cambios de CBU,
@@ -169,11 +180,26 @@ export default function PagosPage() {
               <ChevronRight className="h-3 w-3" />
             </Link>
           </div>
-          <Card className="divide-y">
-            {movimientos.map((m) => (
-              <MovimientoRow key={m.id} mov={m} />
-            ))}
-          </Card>
+          {movimientos.length === 0 ? (
+            <Card className="p-5 text-center">
+              <p className="text-sm text-muted-foreground">
+                Sin movimientos en los últimos {LIMITE_DIAS} días.
+              </p>
+              <Link
+                href="/comprobantes"
+                className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+              >
+                Ver todos los recibos
+                <ChevronRight className="h-3 w-3" />
+              </Link>
+            </Card>
+          ) : (
+            <Card className="divide-y">
+              {movimientos.map((m) => (
+                <MovimientoRow key={m.id} mov={m} />
+              ))}
+            </Card>
+          )}
         </section>
       </main>
 
