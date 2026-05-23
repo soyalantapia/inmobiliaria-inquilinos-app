@@ -19,6 +19,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { toast } from '@llave/ui/use-toast';
 import { CargarPagoManualButton } from '@/components/cargar-pago-manual';
 import { CargosACobrar } from '@/components/cargos-a-cobrar';
+import { MorososPanel } from '@/components/morosos-panel';
 import { PagosPorValidar } from '@/components/pagos-por-validar';
 import { Topbar } from '@/components/topbar';
 import { ValidadorResumenDialog } from '@/components/validador-resumen-dialog';
@@ -374,6 +375,11 @@ export default function PagosPage() {
 
         {/* Cargos USO_Y_GOCE generados al inquilino (cobranza vía alquiler) */}
         <CargosACobrar />
+
+        {/* Panel inline de morosos con teléfonos del titular y garante,
+            plantillas WhatsApp y filtros. Reemplaza al "tenés que abrir
+            el PDF para ver los contactos" con datos accionables. */}
+        <MorososPanel inmobiliaria={sociedadPrincipal().nombreComercial} />
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">Liquidaciones — mayo 2026</h2>

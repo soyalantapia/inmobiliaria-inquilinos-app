@@ -25,6 +25,7 @@ import { Input } from '@llave/ui/input';
 import { Label } from '@llave/ui/label';
 import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
+import { CierreDiarioCard } from '@/components/cierre-diario-card';
 import { Topbar } from '@/components/topbar';
 import {
   type CategoriaGasto,
@@ -91,6 +92,8 @@ export default function CajaPage() {
             Cargar gasto
           </Button>
         </div>
+
+        <CierreDiarioCard />
 
         {/* KPIs */}
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
