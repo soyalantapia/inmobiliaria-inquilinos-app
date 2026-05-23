@@ -165,10 +165,14 @@ export function BandejaAprobaciones() {
         </div>
       )}
 
-      {/* Dialog confirmación con comentario opcional */}
+      {/* Dialog confirmación con comentario opcional.
+          IMPORTANTE: gate open en !showPin — cuando el usuario confirma y
+          se abre el PIN dialog, Radix dispara onOpenChange(false). Sin el
+          gate, eso limpiaría aprobar_ antes de que onPinConfirmado pueda
+          usarlo, rompiendo el flujo de aprobación. */}
       <ConfirmDialog
-        open={!!aprobar_}
-        onOpenChange={(o) => !o && setAprobar_(null)}
+        open={!!aprobar_ && !showPin}
+        onOpenChange={(o) => !o && !showPin && setAprobar_(null)}
         title={aprobar_ ? `¿Aprobar "${aprobar_.titulo}"?` : ''}
         description={
           aprobar_ ? (

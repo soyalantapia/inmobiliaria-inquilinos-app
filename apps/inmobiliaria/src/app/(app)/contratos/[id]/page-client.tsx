@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { notFound, useParams } from 'next/navigation';
 import {
@@ -35,7 +35,7 @@ import { ContratoDocumentosPanel } from '@/components/contrato-documentos-panel'
 import { MensajeInquilinoDialog } from '@/components/mensaje-inquilino-dialog';
 import { ScoringInquilinoCard } from '@/components/scoring-inquilino-card';
 import { Topbar } from '@/components/topbar';
-import { calcularScoringInquilino } from '@/lib/scoring-inquilino';
+import { calcularScoringInquilino, type ResumenScoring } from '@/lib/scoring-inquilino';
 import { registrarEvento } from '@/lib/auditoria-storage';
 import {
   type CanalComunicacion,
@@ -92,6 +92,13 @@ export default function DetalleContratoPage() {
   if (!c) notFound();
 
   const [abrirMensaje, setAbrirMensaje] = useState(false);
+
+  // Scoring calculado sólo en cliente para evitar hydration mismatch:
+  // calcularAntiguedad() usa Date.now() que difiere entre SSR y CSR.
+  const [scoring, setScoring] = useState<ResumenScoring | null>(null);
+  useEffect(() => {
+    setScoring(calcularScoringInquilino(c));
+  }, [c.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const liquidaciones = useMemo(
     () => generarLiquidaciones(c.id, c.monto),
@@ -243,7 +250,7 @@ export default function DetalleContratoPage() {
               </Card>
             </div>
 
-            <ScoringInquilinoCard scoring={calcularScoringInquilino(c)} />
+            {scoring && <ScoringInquilinoCard scoring={scoring} />}
           </TabsContent>
 
           {/* PAGOS */}
