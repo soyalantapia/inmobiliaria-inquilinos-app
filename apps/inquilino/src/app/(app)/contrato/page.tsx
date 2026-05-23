@@ -12,14 +12,12 @@ import {
   MessageCircle,
   Phone,
   ShieldCheck,
-  Sparkles,
   TrendingUp,
   UserRound,
 } from 'lucide-react';
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card } from '@llave/ui/card';
-import { Separator } from '@llave/ui/separator';
 import { BotonProximamente } from '@/components/boton-proximamente';
 import { CompartirGarante } from '@/components/compartir-garante';
 import { ContratoChat } from '@/components/contrato-chat';
@@ -30,7 +28,12 @@ import { NavBar } from '@/components/nav-bar';
 import { RenovacionBanner } from '@/components/renovacion-banner';
 import { UserMenu } from '@/components/user-menu';
 import { contratoMock, garanteMock, inquilinoActual } from '@/lib/mock-data';
-import { diasHastaVencimiento, formatFecha, formatMonto } from '@/lib/format';
+import {
+  diasHastaVencimiento,
+  formatDuracion,
+  formatFecha,
+  formatMonto,
+} from '@/lib/format';
 
 const tipoGaranteLabel: Record<typeof garanteMock.tipo, string> = {
   PROPIETARIA: 'Garantía propietaria',
@@ -52,8 +55,7 @@ const indiceLabel: Record<typeof contratoMock.indiceAjuste, string> = {
 export default function ContratoPage() {
   const c = contratoMock;
   const diasFin = diasHastaVencimiento(c.fechaFin);
-  const aniosRestantes = Math.floor(diasFin / 365);
-  const mesesRestantes = Math.floor((diasFin % 365) / 30);
+  const duracionRestante = formatDuracion(diasFin);
   const diasAjuste = diasHastaVencimiento(c.proximoAjuste);
 
   return (
@@ -87,8 +89,7 @@ export default function ContratoPage() {
             <p className="text-xs text-muted-foreground">Alquiler actual</p>
             <p className="text-3xl font-semibold">{formatMonto(c.montoActual, c.moneda)}</p>
             <p className="text-xs text-muted-foreground">
-              Te quedan {aniosRestantes > 0 ? `${aniosRestantes} año${aniosRestantes === 1 ? '' : 's'} y ` : ''}
-              {mesesRestantes} mes{mesesRestantes === 1 ? '' : 'es'} de contrato
+              Te quedan {duracionRestante} de contrato
             </p>
           </div>
         </Card>
@@ -150,10 +151,12 @@ export default function ContratoPage() {
 
         {/* Chat con el contrato: la IA responde dudas comunes citando
             la cláusula exacta. Es transparencia real para el inquilino
-            sin obligarlo a leer 30 páginas. */}
+            sin obligarlo a leer 30 páginas. Distinto del Broker (/broker):
+            acá las respuestas vienen citando el PDF firmado, no es chat
+            conversacional general. El título lo enfatiza. */}
         <section className="space-y-2">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Dudas sobre tu contrato
+            Buscar en el contrato firmado
           </h2>
           <ContratoChat />
         </section>
@@ -265,24 +268,6 @@ export default function ContratoPage() {
           </BotonProximamente>
         </Card>
 
-        <Separator />
-
-        <Card className="flex flex-col items-start gap-3 border-primary/20 bg-primary/5 p-5 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-start gap-3">
-            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground">
-              <Sparkles className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="font-medium">Preguntale al Broker</p>
-              <p className="text-sm text-muted-foreground">
-                Tu asistente IA responde dudas sobre el contrato al instante.
-              </p>
-            </div>
-          </div>
-          <Button asChild>
-            <Link href="/broker">Abrir chat</Link>
-          </Button>
-        </Card>
       </main>
 
       <NavBar />

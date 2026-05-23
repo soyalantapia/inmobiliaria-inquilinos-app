@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { AlertCircle, ChevronRight, KeyRound } from 'lucide-react';
 import { Card } from '@llave/ui/card';
 import { cn } from '@llave/ui/cn';
-import { diasHastaVencimiento, formatMonto } from '@/lib/format';
+import { diasHastaVencimiento, formatDuracion, formatMonto } from '@/lib/format';
 import { liquidacionesMock } from '@/lib/mock-data';
 
 // Tracker visual del depósito: cuánto te van a devolver al final del contrato.
@@ -94,7 +94,7 @@ export function DepositoTracker({ depositoOriginal, fechaFin }: Props) {
       <div className="space-y-2 border-t pt-3 text-xs">
         <div className="flex items-center justify-between">
           <span className="text-muted-foreground">Fin del contrato</span>
-          <span className="font-medium tabular-nums">en {diasFin} días</span>
+          <span className="font-medium tabular-nums">en {formatDuracion(diasFin)}</span>
         </div>
         <div className="flex items-center justify-between">
           <span className="text-muted-foreground">Te devuelven</span>

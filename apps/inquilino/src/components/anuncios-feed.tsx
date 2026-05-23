@@ -4,9 +4,10 @@ import { useEffect, useState } from 'react';
 import {
   AlertTriangle,
   Bell,
-  ChevronRight,
+  ChevronDown,
   Megaphone,
 } from 'lucide-react';
+import { cn } from '@llave/ui/cn';
 import { Badge } from '@llave/ui/badge';
 import { Card } from '@llave/ui/card';
 import {
@@ -58,6 +59,10 @@ export function AnunciosFeed({ compacto = false }: { compacto?: boolean }) {
 }
 
 function AnuncioRow({ anuncio }: { anuncio: AnuncioInquilino }) {
+  // Anuncio colapsable: por default solo título + 1 línea de preview, click
+  // para expandir el cuerpo completo (P2 de la auditoría: 2 anuncios largos
+  // consumían demasiado espacio del home).
+  const [expandido, setExpandido] = useState(false);
   const tono =
     anuncio.prioridad === 'URGENTE'
       ? {
@@ -81,28 +86,46 @@ function AnuncioRow({ anuncio }: { anuncio: AnuncioInquilino }) {
           };
   const Icon = tono.IconComp;
   return (
-    <Card className={`flex items-start gap-3 border ${tono.border} ${tono.bg} p-3`}>
-      <div
-        className={`grid h-9 w-9 shrink-0 place-items-center rounded-full ${tono.icono}`}
-      >
-        <Icon className="h-4 w-4" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <p className="text-sm font-semibold">{anuncio.titulo}</p>
-          {anuncio.prioridad !== 'NORMAL' && (
-            <Badge
-              variant={anuncio.prioridad === 'URGENTE' ? 'destructive' : 'warning'}
-              className="text-[9px]"
-            >
-              {anuncio.prioridad}
-            </Badge>
-          )}
+    <Card
+      className={`border ${tono.border} ${tono.bg} cursor-pointer transition-colors hover:bg-opacity-100`}
+      onClick={() => setExpandido((v) => !v)}
+    >
+      <div className="flex items-start gap-3 p-3">
+        <div
+          className={`grid h-9 w-9 shrink-0 place-items-center rounded-full ${tono.icono}`}
+        >
+          <Icon className="h-4 w-4" />
         </div>
-        <p className="line-clamp-2 text-xs text-muted-foreground">{anuncio.cuerpo}</p>
-        <p className="mt-1 text-[10px] text-muted-foreground/80">
-          {anuncio.enviadoPor} · {formatFecha(anuncio.enviadoAt)}
-        </p>
+        <div className="flex-1 min-w-0">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <p className="text-sm font-semibold">{anuncio.titulo}</p>
+            {anuncio.prioridad !== 'NORMAL' && (
+              <Badge
+                variant={anuncio.prioridad === 'URGENTE' ? 'destructive' : 'warning'}
+                className="text-[9px]"
+              >
+                {anuncio.prioridad}
+              </Badge>
+            )}
+          </div>
+          <p
+            className={cn(
+              'text-xs text-muted-foreground',
+              expandido ? 'whitespace-pre-line' : 'line-clamp-1',
+            )}
+          >
+            {anuncio.cuerpo}
+          </p>
+          <p className="mt-1 text-[10px] text-muted-foreground/80">
+            {anuncio.enviadoPor} · {formatFecha(anuncio.enviadoAt)}
+          </p>
+        </div>
+        <ChevronDown
+          className={cn(
+            'mt-1 h-4 w-4 shrink-0 text-muted-foreground transition-transform',
+            expandido && 'rotate-180',
+          )}
+        />
       </div>
     </Card>
   );

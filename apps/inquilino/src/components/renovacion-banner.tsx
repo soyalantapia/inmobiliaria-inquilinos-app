@@ -11,6 +11,7 @@ import {
   leerRenovacion,
   type EstadoRenovacion,
 } from '@/lib/renovacion-storage';
+import { formatDuracion } from '@/lib/format';
 
 // Banner contextual que aparece en /contrato según cuánto falta para el fin.
 // - >365 días: tono neutro, "te avisamos cuando se acerque"
@@ -66,7 +67,7 @@ export function RenovacionBanner({
   }
 
   // No decidió todavía: banner según urgencia
-  const meses = Math.floor(diasHastaFin / 30);
+  const duracion = formatDuracion(diasHastaFin);
 
   if (diasHastaFin <= 90) {
     return (
@@ -76,7 +77,7 @@ export function RenovacionBanner({
             <CalendarHeart className="h-5 w-5" />
           </div>
           <div className="flex-1">
-            <p className="text-sm font-semibold">Tu contrato vence en {diasHastaFin} días</p>
+            <p className="text-sm font-semibold">Tu contrato vence en {duracion}</p>
             <p className="text-xs text-muted-foreground">
               Por ley necesitás avisar con anticipación si vas a renovar o irte. Decidí ahora.
             </p>
@@ -99,7 +100,7 @@ export function RenovacionBanner({
           <CalendarHeart className="h-5 w-5" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium">Faltan {meses} meses para que termine tu contrato</p>
+          <p className="text-sm font-medium">Faltan {duracion} para que termine tu contrato</p>
           <p className="text-xs text-muted-foreground">
             Es buen momento para empezar a pensarlo. ¿Renovás?
           </p>
@@ -121,7 +122,7 @@ export function RenovacionBanner({
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <Clock className="h-3.5 w-3.5" />
         <span>
-          Te avisaremos sobre la renovación cuando falten 12 meses ({meses} meses todavía).
+          Te avisaremos sobre la renovación cuando falten 12 meses ({duracion} todavía).
         </span>
       </div>
       <Link

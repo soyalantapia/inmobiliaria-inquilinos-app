@@ -210,6 +210,10 @@ function BannerPagoPendiente({ liq }: { liq: Liquidacion }) {
         icon: 'bg-primary',
       };
 
+  // Cuando hay pago vencido, mostramos un pill "Regularizar" en lugar del
+  // ChevronRight discreto. El card entero sigue siendo el link, así que el
+  // pill es decorativo — refuerza visualmente la acción y elimina la duda
+  // "¿esto es solo info o lo puedo tocar para pagar?" detectada en la auditoría.
   return (
     <Link
       href="/comprobantes"
@@ -237,7 +241,17 @@ function BannerPagoPendiente({ liq }: { liq: Liquidacion }) {
               : `Vence en ${diasV} día${diasV === 1 ? '' : 's'} · ${formatFecha(liq.fechaVencimiento)}`}
         </p>
       </div>
-      <ChevronRight className={`h-4 w-4 shrink-0 ${tono.sub}`} />
+      {vencido ? (
+        <span className="flex shrink-0 items-center gap-1 rounded-full bg-red-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm">
+          Regularizar
+          <ChevronRight className="h-3.5 w-3.5" />
+        </span>
+      ) : (
+        <span className="flex shrink-0 items-center gap-1 rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-sm">
+          Pagar
+          <ChevronRight className="h-3.5 w-3.5" />
+        </span>
+      )}
     </Link>
   );
 }
