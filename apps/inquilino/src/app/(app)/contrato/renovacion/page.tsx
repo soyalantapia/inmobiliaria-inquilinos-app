@@ -22,7 +22,7 @@ import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
 import { NavBar } from '@/components/nav-bar';
 import { contratoMock } from '@/lib/mock-data';
-import { diasHastaVencimiento, formatFecha, formatMonto } from '@/lib/format';
+import { diasHastaVencimiento, formatFecha, formatFechaCorta, formatMonto } from '@/lib/format';
 import {
   type DecisionRenovacion,
   borrarRenovacion,
@@ -123,7 +123,7 @@ export default function RenovacionPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-muted-foreground">Tu contrato vence el</p>
-                  <p className="text-lg font-semibold">{formatFecha(c.fechaFin)}</p>
+                  <p className="text-lg font-semibold">{formatFechaCorta(c.fechaFin)}</p>
                   <p className="text-xs text-muted-foreground">
                     Faltan {diasFin} días · {c.direccion}
                   </p>
@@ -197,7 +197,7 @@ export default function RenovacionPage() {
                         hint="+30% aprox según ICL anualizado"
                       />
                       <Row label="Nuevo plazo sugerido" value="36 meses" />
-                      <Row label="Inicio nuevo contrato" value={formatFecha(c.fechaFin)} />
+                      <Row label="Inicio nuevo contrato" value={formatFechaCorta(c.fechaFin)} />
                     </div>
                   </div>
                   <div className="flex items-start gap-2 text-xs text-muted-foreground">
@@ -215,7 +215,7 @@ export default function RenovacionPage() {
                   <p className="font-medium">Qué pasa ahora:</p>
                   <ul className="space-y-1.5 text-xs text-muted-foreground">
                     <li>· La inmobiliaria coordina la inspección final 15 días antes.</li>
-                    <li>· Tenés que entregar las llaves el {formatFecha(c.fechaFin)}.</li>
+                    <li>· Tenés que entregar las llaves el {formatFechaCorta(c.fechaFin)}.</li>
                     <li>· Te devuelven el depósito de {formatMonto(c.montoActual, c.moneda)} si no hay daños ni deudas.</li>
                   </ul>
                 </div>
@@ -281,7 +281,7 @@ export default function RenovacionPage() {
                 {decision === 'NO_RENOVAR' && (
                   <>
                     <NextStep>Coordinás la inspección final (~15 días antes)</NextStep>
-                    <NextStep>Entregás las llaves el {formatFecha(c.fechaFin)}</NextStep>
+                    <NextStep>Entregás las llaves el {formatFechaCorta(c.fechaFin)}</NextStep>
                     <NextStep>Te devuelven el depósito si no hay observaciones</NextStep>
                   </>
                 )}
