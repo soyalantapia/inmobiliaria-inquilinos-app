@@ -56,9 +56,12 @@ export function DepositoTracker({ depositoOriginal, fechaFin }: Props) {
             de {formatMonto(depositoOriginal)}
           </p>
         </div>
+        {/* Copy más directo — antes era "Tu deuda actual reduciría tu depósito
+            al X%. Saldarla te devuelve el total." que combinaba dos ideas y
+            sonaba condicional/alejado. Ahora separamos en dos frases claras. */}
         <p className="text-xs text-muted-foreground">
           {tieneRiesgo
-            ? `Tu deuda actual reduciría tu depósito al ${Math.round(porcentajeDevolver)}%. Saldarla te devuelve el total.`
+            ? `Con tu deuda actual, te devolverían el ${Math.round(porcentajeDevolver)}%. Si la saldás antes, recuperás todo.`
             : 'Si no hay daños ni deudas, te devuelven el total.'}
         </p>
       </div>

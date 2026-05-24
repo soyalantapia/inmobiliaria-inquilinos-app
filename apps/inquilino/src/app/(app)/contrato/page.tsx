@@ -30,6 +30,7 @@ import {
   diasHastaVencimiento,
   formatDuracion,
   formatFecha,
+  formatFechaCorta,
   formatMonto,
 } from '@/lib/format';
 
@@ -76,7 +77,7 @@ export default function ContratoPage() {
                 {c.direccion}
               </h1>
               <p className="text-sm text-muted-foreground">
-                {c.ciudad} · administra {c.inmobiliaria}
+                {c.ciudad} · Administra {c.inmobiliaria}
               </p>
             </div>
           </div>
@@ -118,7 +119,7 @@ export default function ContratoPage() {
             <Row
               icon={<Calendar className="h-4 w-4" />}
               label="Día de pago"
-              value={`Día ${c.diaPago} de cada mes`}
+              value={`${c.diaPago} de cada mes`}
             />
             <Row
               icon={<TrendingUp className="h-4 w-4" />}
@@ -128,7 +129,7 @@ export default function ContratoPage() {
             <Row
               icon={<CalendarDays className="h-4 w-4" />}
               label="Próximo ajuste"
-              value={formatFecha(c.proximoAjuste)}
+              value={formatFechaCorta(c.proximoAjuste)}
               hint={`en ${diasAjuste} días`}
             />
             <Row

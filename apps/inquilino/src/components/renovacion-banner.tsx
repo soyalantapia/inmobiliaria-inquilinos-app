@@ -112,7 +112,10 @@ export function RenovacionBanner({
     );
   }
 
-  // >365: nota muy suave, sin CTA fuerte
+  // >365: nota muy suave, sin CTA fuerte.
+  // Copy más natural — antes era "Te avisaremos sobre la renovación cuando
+  // falten 12 meses ({duracion} todavía)." con un paréntesis raro y el CTA
+  // "Decidir antes" ambiguo (¿decidir qué?, ¿antes de qué?).
   return (
     <div
       className={cn(
@@ -120,16 +123,16 @@ export function RenovacionBanner({
       )}
     >
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <Clock className="h-3.5 w-3.5" />
+        <Clock className="h-3.5 w-3.5 shrink-0" />
         <span>
-          Te avisaremos sobre la renovación cuando falten 12 meses ({duracion} todavía).
+          Faltan {duracion}. Te avisamos cuando se acerque la renovación.
         </span>
       </div>
       <Link
         href="/contrato/renovacion"
         className="shrink-0 text-xs font-medium text-primary hover:underline"
       >
-        Decidir antes
+        Decidir ahora
       </Link>
     </div>
   );
