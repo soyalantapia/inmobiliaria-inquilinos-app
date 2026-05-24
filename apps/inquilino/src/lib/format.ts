@@ -14,10 +14,26 @@ export function formatFecha(iso: string): string {
   return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
+// Formato compacto de fecha para filas estrechas — devuelve "7 abr" si es
+// del año actual, "7 abr 2025" si es de otro año. Pensado para listas tipo
+// /comprobantes donde el período ("Abril 2026") ya da el contexto y la
+// fecha "07/04/2026" se truncaba feo.
+export function formatFechaCorta(iso: string): string {
+  const d = new Date(iso);
+  const esMismoAnio = d.getFullYear() === new Date().getFullYear();
+  return d.toLocaleDateString('es-AR', {
+    day: 'numeric',
+    month: 'short',
+    ...(esMismoAnio ? {} : { year: 'numeric' }),
+  });
+}
+
+// Formato del período de una liquidación. Devuelve mes capitalizado +
+// año: "Abril 2026" (antes "abril 2026", que se leía como typo).
 export function formatPeriodo(periodo: string): string {
   const [year, month] = periodo.split('-');
   if (!year || !month) return periodo;
-  const meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+  const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
   const m = Number(month) - 1;
   return `${meses[m] ?? month} ${year}`;
 }

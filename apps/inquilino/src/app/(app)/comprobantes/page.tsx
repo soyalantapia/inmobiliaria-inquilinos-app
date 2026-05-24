@@ -21,7 +21,7 @@ import {
   cargosExtraDelInquilino,
   totalCargosExtra,
 } from '@/lib/cross-app-inmo';
-import { diasHastaVencimiento, formatFecha, formatMonto, formatPeriodo } from '@/lib/format';
+import { diasHastaVencimiento, formatFecha, formatFechaCorta, formatMonto, formatPeriodo } from '@/lib/format';
 import type { Comprobante, Liquidacion } from '@/lib/types';
 
 import {
@@ -31,9 +31,11 @@ import {
   type DemoEstado,
 } from '@/lib/demo-estado';
 
+// Labels cortos para los métodos de pago — entran sin truncar en filas
+// estrechas. Antes "Transferencia" se cortaba a "Tra..." en 375px.
 const metodoLabel = {
-  MERCADOPAGO: 'Mercado Pago',
-  TRANSFERENCIA: 'Transferencia',
+  MERCADOPAGO: 'MP',
+  TRANSFERENCIA: 'Transf.',
   QR: 'QR',
   CRIPTO: 'Cripto',
 } as const;
@@ -384,7 +386,7 @@ function MovimientoRow({ mov }: { mov: Movimiento }) {
           <span className="mr-1 inline-block rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
             Pagado
           </span>
-          {formatFecha(c.fechaPago)} · {metodoLabel[c.metodo]}
+          {formatFechaCorta(c.fechaPago)} · {metodoLabel[c.metodo]}
         </p>
       </div>
       <div className="flex flex-col items-end gap-1.5 shrink-0">
