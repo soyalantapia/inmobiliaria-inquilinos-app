@@ -346,12 +346,7 @@ export default function AyudaPage() {
             </div>
             <Card className="divide-y">
               {glosarioFiltrado.map((g) => (
-                <div key={g.termino} className="p-4">
-                  <p className="text-sm font-semibold">{g.termino}</p>
-                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                    {g.definicion}
-                  </p>
-                </div>
+                <TerminoRow key={g.termino} termino={g.termino} definicion={g.definicion} />
               ))}
             </Card>
           </section>
@@ -383,5 +378,34 @@ export default function AyudaPage() {
 
       <NavBar />
     </>
+  );
+}
+
+// ============================================================
+// Termino del glosario — expandible al toque para no saturar.
+// ============================================================
+function TerminoRow({
+  termino,
+  definicion,
+}: {
+  termino: string;
+  definicion: string;
+}) {
+  const [expandido, setExpandido] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={() => setExpandido((v) => !v)}
+      className="block w-full p-4 text-left transition-colors hover:bg-muted/40"
+    >
+      <p className="text-sm font-semibold">{termino}</p>
+      <p
+        className={`mt-1 text-xs leading-relaxed text-muted-foreground ${
+          expandido ? '' : 'line-clamp-1'
+        }`}
+      >
+        {definicion}
+      </p>
+    </button>
   );
 }

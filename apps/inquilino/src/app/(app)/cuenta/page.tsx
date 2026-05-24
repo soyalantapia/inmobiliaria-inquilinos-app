@@ -112,7 +112,12 @@ export default function CuentaPage() {
           </div>
 
           <div className="space-y-3 text-sm">
-            <Field icon={<Phone className="h-4 w-4" />} label="Teléfono" value={phone || '—'} />
+            <Field
+              icon={<Phone className="h-4 w-4" />}
+              label="Teléfono"
+              value={phone || 'Sin agregar'}
+              vacio={!phone}
+            />
             <Field icon={<Mail className="h-4 w-4" />} label="Email" value={email} />
           </div>
 
@@ -142,38 +147,15 @@ export default function CuentaPage() {
           }}
         />
 
-        {/* Ayuda y soporte */}
+        {/* Sección "Tu hogar" — accesos rápidos a las pantallas relacionadas
+            al contrato actual. Antes estaba todo mezclado bajo "Ayuda"
+            (contrato + documentos + calendario + co-inquilinos + profesionales +
+            ayuda + privacidad). Ahora separamos por intención del usuario. */}
         <section className="space-y-3">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Ayuda
+            Tu hogar
           </h2>
           <Card className="divide-y">
-            <button
-              onClick={relanzarOnboarding}
-              className="flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-muted/40"
-            >
-              <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-primary/10 text-primary">
-                <GraduationCap className="h-4 w-4" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium">Ver tutorial otra vez</p>
-                <p className="text-xs text-muted-foreground">Recorré las funciones principales paso a paso</p>
-              </div>
-              <ChevronRight className="h-4 w-4 text-muted-foreground" />
-            </button>
-            <LinkRow
-              icon={<CircleHelp className="h-4 w-4" />}
-              label="Preguntas frecuentes"
-              descripcion="Aumentos, depósito, mascotas, etc."
-              href="/ayuda"
-            />
-            <LinkRow
-              icon={<LifeBuoy className="h-4 w-4" />}
-              label="Hablar con un humano"
-              descripcion="WhatsApp con la inmobiliaria"
-              href={`https://wa.me/541145321100?text=${encodeURIComponent('Hola! Tengo una consulta sobre mi contrato.')}`}
-              external
-            />
             <LinkRow
               icon={<FileText className="h-4 w-4" />}
               label="Mi contrato"
@@ -204,6 +186,52 @@ export default function CuentaPage() {
               descripcion="Plomeros, electricistas y técnicos verificados"
               href="/profesionales"
             />
+          </Card>
+        </section>
+
+        {/* Sección "Ayuda y soporte" — atajos para resolver dudas. */}
+        <section className="space-y-3">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Ayuda y soporte
+          </h2>
+          <Card className="divide-y">
+            <button
+              onClick={relanzarOnboarding}
+              className="flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-muted/40"
+            >
+              <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-primary/10 text-primary">
+                <GraduationCap className="h-4 w-4" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium">Ver tutorial otra vez</p>
+                <p className="text-xs text-muted-foreground">
+                  Recorré las funciones principales paso a paso
+                </p>
+              </div>
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            </button>
+            <LinkRow
+              icon={<CircleHelp className="h-4 w-4" />}
+              label="Preguntas frecuentes"
+              descripcion="Aumentos, depósito, mascotas, etc."
+              href="/ayuda"
+            />
+            <LinkRow
+              icon={<LifeBuoy className="h-4 w-4" />}
+              label="Hablar con un humano"
+              descripcion="WhatsApp con la inmobiliaria"
+              href={`https://wa.me/541145321100?text=${encodeURIComponent('Hola! Tengo una consulta sobre mi contrato.')}`}
+              external
+            />
+          </Card>
+        </section>
+
+        {/* Sección "Legal" — info legal y de privacidad. */}
+        <section className="space-y-3">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Legal
+          </h2>
+          <Card>
             <LinkRow
               icon={<ShieldCheck className="h-4 w-4" />}
               label="Privacidad y términos"
@@ -264,17 +292,25 @@ function Field({
   icon,
   label,
   value,
+  vacio,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string;
+  vacio?: boolean;
 }) {
   return (
     <div className="flex items-center gap-3">
       <div className="text-muted-foreground">{icon}</div>
       <div className="flex-1 min-w-0">
         <p className="text-xs text-muted-foreground">{label}</p>
-        <p className="truncate font-medium">{value}</p>
+        <p
+          className={`truncate ${
+            vacio ? 'italic text-muted-foreground' : 'font-medium'
+          }`}
+        >
+          {value}
+        </p>
       </div>
     </div>
   );

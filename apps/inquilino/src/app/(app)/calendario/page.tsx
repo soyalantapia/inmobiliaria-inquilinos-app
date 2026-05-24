@@ -229,8 +229,14 @@ function diasDesdeHoy(fecha: string): string {
   const diff = Math.floor((f.getTime() - hoy.getTime()) / (24 * 60 * 60 * 1000));
   if (diff === 0) return 'hoy';
   if (diff === 1) return 'mañana';
-  if (diff > 0 && diff <= 7) return `en ${diff} días`;
-  if (diff > 0) return `en ${Math.round(diff / 30)} mes${Math.round(diff / 30) === 1 ? '' : 'es'}`;
+  // Bug fix: antes saltaba a "en X meses" cuando diff > 7, lo que hacía que
+  // diff=8 cayera en Math.round(8/30)=0 → "en 0 meses". Ahora "días" cubre
+  // hasta 30 y "meses" solo se usa cuando supera el mes completo.
+  if (diff > 0 && diff < 30) return `en ${diff} día${diff === 1 ? '' : 's'}`;
+  if (diff > 0) {
+    const meses = Math.round(diff / 30);
+    return `en ${meses} mes${meses === 1 ? '' : 'es'}`;
+  }
   if (diff === -1) return 'ayer';
   return `hace ${Math.abs(diff)} días`;
 }
