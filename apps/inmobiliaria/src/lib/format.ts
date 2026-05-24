@@ -21,22 +21,24 @@ export function diasHastaVencimiento(iso: string): number {
   return Math.floor((d.getTime() - hoy.getTime()) / (24 * 60 * 60 * 1000));
 }
 
+// Devuelve mes capitalizado + año ("Mayo 2026") — antes era minúscula
+// ("mayo 2026") que se leía como typo. Consistente con la app del inquilino.
 export function formatPeriodo(periodo: string): string {
   const [year, month] = periodo.split('-');
   if (!year || !month) return periodo;
   const meses = [
-    'enero',
-    'febrero',
-    'marzo',
-    'abril',
-    'mayo',
-    'junio',
-    'julio',
-    'agosto',
-    'septiembre',
-    'octubre',
-    'noviembre',
-    'diciembre',
+    'Enero',
+    'Febrero',
+    'Marzo',
+    'Abril',
+    'Mayo',
+    'Junio',
+    'Julio',
+    'Agosto',
+    'Septiembre',
+    'Octubre',
+    'Noviembre',
+    'Diciembre',
   ];
   const m = Number(month) - 1;
   return `${meses[m] ?? month} ${year}`;

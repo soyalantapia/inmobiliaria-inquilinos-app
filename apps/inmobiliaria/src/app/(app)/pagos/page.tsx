@@ -388,7 +388,7 @@ export default function PagosPage() {
         <AlertasServiciosCard />
 
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold">Liquidaciones — mayo 2026</h2>
+          <h2 className="text-lg font-semibold">Liquidaciones — Mayo 2026</h2>
           <div className="flex flex-wrap gap-2">
             <Button
               size="sm"
