@@ -14,6 +14,22 @@ export function formatFecha(iso: string): string {
   return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
+// Formato compacto: "7 abr" si es del año actual, "7 abr 2025" si es de
+// otro. Para mostrar fechas en metalines/cards donde "07/04/2026" se ve
+// pesado. Consistente con app del inquilino.
+const MESES_CORTOS_FMT = [
+  'ene', 'feb', 'mar', 'abr', 'may', 'jun',
+  'jul', 'ago', 'sep', 'oct', 'nov', 'dic',
+];
+
+export function formatFechaCorta(iso: string): string {
+  const d = new Date(iso);
+  const dia = d.getDate();
+  const mes = MESES_CORTOS_FMT[d.getMonth()];
+  const esMismoAnio = d.getFullYear() === new Date().getFullYear();
+  return esMismoAnio ? `${dia} ${mes}` : `${dia} ${mes} ${d.getFullYear()}`;
+}
+
 export function diasHastaVencimiento(iso: string): number {
   const hoy = new Date();
   hoy.setHours(0, 0, 0, 0);

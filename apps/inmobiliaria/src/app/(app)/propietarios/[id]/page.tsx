@@ -28,7 +28,7 @@ import {
   propiedadesMock,
   propietariosMock,
 } from '@/lib/mock-data';
-import { formatFecha, formatMonto } from '@/lib/format';
+import { formatFecha, formatFechaCorta, formatMonto } from '@/lib/format';
 
 export function generateStaticParams() {
   return propietariosMock.map((p) => ({ id: p.id }));
@@ -170,7 +170,7 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Cuenta desde</p>
-                <p className="text-sm font-medium">{formatFecha(propietario.createdAt)}</p>
+                <p className="text-sm font-medium">{formatFechaCorta(propietario.createdAt)}</p>
               </div>
               {propietario.notas && (
                 <div>
