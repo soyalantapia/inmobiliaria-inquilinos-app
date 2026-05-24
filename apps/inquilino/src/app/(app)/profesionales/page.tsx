@@ -70,18 +70,26 @@ export default function ProfesionalesPage() {
       </header>
 
       <main className="flex-1 space-y-5 px-5 pb-6 md:px-8">
-        <Card className="space-y-2 border-amber-300 bg-amber-50/60 p-4 dark:border-amber-900/40 dark:bg-amber-950/30">
-          <div className="flex items-start gap-3">
-            <ShieldCheck className="mt-0.5 h-4 w-4 text-amber-700 dark:text-amber-300" />
-            <div className="text-xs">
-              <p className="font-medium">Sólo de referencia — no los contactes vos</p>
-              <p className="mt-1 text-muted-foreground">
-                Esta es la red curada por tu inmobiliaria. Si tenés un problema en la
-                propiedad, <Link href="/reclamos/nuevo" className="font-medium text-primary underline-offset-2 hover:underline">creá un reclamo</Link> y la inmobiliaria decide
-                si manda al profesional y quién paga. El plomero/electricista no atiende
-                consultas directas de inquilinos.
-              </p>
-            </div>
+        {/* Disclaimer condensado: lo crítico va arriba en una línea ("no los
+            contactes vos"); el detalle se mantiene corto y el CTA "creá un
+            reclamo" sigue en línea. Antes ocupaba 4 líneas de texto que el
+            inquilino tendía a saltearse. */}
+        <Card className="border-amber-300 bg-amber-50/60 p-3 dark:border-amber-900/40 dark:bg-amber-950/30">
+          <div className="flex items-start gap-3 text-xs">
+            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-amber-700 dark:text-amber-300" />
+            <p>
+              <span className="font-medium">Solo de referencia — no los contactes vos.</span>{' '}
+              <span className="text-muted-foreground">
+                Para reparaciones,{' '}
+                <Link
+                  href="/reclamos/nuevo"
+                  className="font-medium text-primary underline-offset-2 hover:underline"
+                >
+                  creá un reclamo
+                </Link>{' '}
+                y la inmobiliaria coordina la visita.
+              </span>
+            </p>
           </div>
         </Card>
 

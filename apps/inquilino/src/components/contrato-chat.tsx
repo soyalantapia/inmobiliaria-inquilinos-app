@@ -90,8 +90,7 @@ export function ContratoChat() {
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold">Preguntale a tu contrato</p>
           <p className="text-[11px] text-muted-foreground">
-            Te respondo en segundos con la cláusula exacta. Pruebas sin
-            compromiso.
+            Te respondo en segundos con la cláusula exacta del PDF firmado.
           </p>
         </div>
         {mensajes.length > 0 && (
