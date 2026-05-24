@@ -23,7 +23,10 @@ const categorias: Array<{ value: Categoria; label: string; emoji: string }> = [
   { value: 'PLOMERIA', label: 'Plomería', emoji: '🚰' },
   { value: 'ELECTRICIDAD', label: 'Electricidad', emoji: '💡' },
   { value: 'CERRADURA', label: 'Cerradura', emoji: '🔑' },
-  { value: 'CALEFACCION', label: 'Calefacción / aire', emoji: '🔥' },
+  // Label "Calefacción / A/C" es menos ambiguo que "Calefacción / aire" —
+  // el slash + "aire" se leía como "aire de ventilación" en algunos casos.
+  // A/C = aire acondicionado, término común en AR.
+  { value: 'CALEFACCION', label: 'Calefacción / A/C', emoji: '🔥' },
   { value: 'OTRO', label: 'Otro', emoji: '🛠️' },
 ];
 

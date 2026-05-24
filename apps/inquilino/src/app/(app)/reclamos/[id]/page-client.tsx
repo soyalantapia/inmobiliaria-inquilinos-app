@@ -51,6 +51,10 @@ import {
 } from '@/lib/reclamos-config';
 import type { EventoReclamo, Reclamo } from '@/lib/types';
 
+// Tel de la inmo para el atajo "Llamar" en caso de Emergencia activa.
+// Mismo número que usa el FAB de WhatsApp y el form de nuevo reclamo.
+const TELEFONO_INMO = '541145321100';
+
 export default function DetalleReclamoPage({ id }: { id: string }) {
   const router = useRouter();
   const [reclamo, setReclamo] = useState<Reclamo | null | undefined>(undefined);
@@ -305,6 +309,60 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
             </div>
           )}
         </Card>
+
+        {/* C2 — Emergencia activa: el inquilino marcó EMERGENCIA en el form
+            y aún no resolvió. Le recordamos el atajo a llamar a la inmo —
+            antes esto solo aparecía en el form ANTES de enviar y se perdía
+            al ver el detalle, dejando al usuario sin canal rápido. */}
+        {reclamo.urgencia === 'EMERGENCIA' && !cerrado && (
+          <Card className="space-y-3 border-destructive/40 bg-destructive/5 p-4 animate-fade-in">
+            <div className="flex items-start gap-2 text-destructive">
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+              <div className="space-y-1">
+                <p className="text-sm font-semibold">¿Hay riesgo real ahora?</p>
+                <p className="text-xs">
+                  Para fugas, gas, agua corriendo o incendio: llamá a la
+                  inmobiliaria YA. El reclamo escrito va igual, pero el
+                  teléfono va más rápido.
+                </p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant="destructive"
+              className="w-full"
+              asChild
+            >
+              <a href={`tel:+${TELEFONO_INMO}`}>
+                <Phone className="h-4 w-4" />
+                Llamar a la inmobiliaria
+              </a>
+            </Button>
+          </Card>
+        )}
+
+        {/* A1 — "Estamos viendo tu reclamo": cuando es nuevo (ABIERTO sin
+            profesional asignado) seteamos expectativa de cuándo respondemos.
+            Antes el usuario se quedaba con "Abierto" sin saber si pasaba algo
+            o cuándo. */}
+        {reclamo.estado === 'ABIERTO' &&
+          !reclamo.profesionalAsignadoNombre &&
+          reclamo.urgencia !== 'EMERGENCIA' && (
+            <Card className="flex items-start gap-3 border-amber-200 bg-amber-50/60 p-4 dark:border-amber-900/40 dark:bg-amber-950/20">
+              <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                <Sparkles className="h-4 w-4" />
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm font-semibold text-amber-900 dark:text-amber-100">
+                  Estamos viendo tu reclamo
+                </p>
+                <p className="text-xs text-amber-800/80 dark:text-amber-200/80">
+                  Te respondemos en menos de 24 hs hábiles. Te avisamos por
+                  WhatsApp cuando asignemos un profesional.
+                </p>
+              </div>
+            </Card>
+          )}
 
         {/* Profesional asignado por la inmobiliaria */}
         {reclamo.profesionalAsignadoNombre && (() => {

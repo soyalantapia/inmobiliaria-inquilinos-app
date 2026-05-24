@@ -96,14 +96,14 @@ export default function MisReclamosPage() {
       </header>
 
       <main className="flex-1 space-y-6 px-5 pb-24 md:px-8 md:pt-8">
-        <div className="flex items-start justify-between gap-3">
-          <div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
             <h1 className="text-2xl font-semibold md:text-3xl">Reclamos</h1>
-            <p className="line-clamp-1 text-sm text-muted-foreground sm:line-clamp-none">
-              Pedidos de mantenimiento, reparaciones y consultas a la inmobiliaria.
+            <p className="text-sm text-muted-foreground">
+              Mantenimiento y consultas a la inmobiliaria.
             </p>
           </div>
-          <Button asChild className="shrink-0">
+          <Button asChild className="shrink-0 self-start">
             <Link href="/reclamos/nuevo">
               <Plus className="h-4 w-4" />
               Nuevo reclamo
@@ -226,12 +226,16 @@ function ReclamoRow({ reclamo, resaltado }: { reclamo: Reclamo; resaltado: boole
           <Badge variant={estadoVariant[reclamo.estado]} className="text-[10px]">
             {estadoLabel[reclamo.estado]}
           </Badge>
-          {/* Urgencia siempre visible — antes solo se mostraba si era EMERGENCIA.
-              La urgencia es info de prioridad para el inquilino y la inmo, así
-              que tiene que aparecer en la jerarquía de la lista. */}
-          <Badge variant={urgenciaVariant[reclamo.urgencia]} className="text-[10px]">
-            {urgenciaLabel[reclamo.urgencia]}
-          </Badge>
+          {/* EMERGENCIA queda como badge solid rojo: es la urgencia que tiene
+              que destacar SÍ o SÍ. Las otras urgencias se rebajan a texto
+              modificador con prefijo "Urgencia:" en la metaline de abajo —
+              antes eran badges paralelos al estado y el usuario las leía
+              como una segunda categoría (P A2 del audit). */}
+          {reclamo.urgencia === 'EMERGENCIA' && (
+            <Badge variant="destructive" className="text-[10px]">
+              Emergencia
+            </Badge>
+          )}
           {resaltado && (
             <Badge variant="secondary" className="text-[10px]">
               Recién enviado
@@ -241,6 +245,9 @@ function ReclamoRow({ reclamo, resaltado }: { reclamo: Reclamo; resaltado: boole
         <p className="text-sm text-muted-foreground line-clamp-2">{reclamo.descripcion}</p>
         <p className="text-[11px] text-muted-foreground">
           {tiempoRelativo(reclamo.createdAt)}
+          {reclamo.urgencia !== 'EMERGENCIA' && (
+            <> · Urgencia {urgenciaLabel[reclamo.urgencia].toLowerCase()}</>
+          )}
           {profesionalConRol && ` · ${profesionalConRol}`}
         </p>
       </div>

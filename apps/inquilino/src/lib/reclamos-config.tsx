@@ -1,15 +1,18 @@
 import {
+  Droplets,
   Flame,
   KeyRound,
-  Plug,
   Wrench,
   Zap,
   type LucideIcon,
 } from 'lucide-react';
 import type { Categoria, EstadoReclamo, Urgencia } from './types';
 
+// Mapeo categoría → icono Lucide. Plomería usa Droplets (gotas) y NO Plug
+// (enchufe) — antes mapeaba a Plug y confundía con Electricidad en la lista,
+// el form y el detalle.
 export const categoriaIcono: Record<Categoria, LucideIcon> = {
-  PLOMERIA: Plug,
+  PLOMERIA: Droplets,
   ELECTRICIDAD: Zap,
   CERRADURA: KeyRound,
   CALEFACCION: Flame,
