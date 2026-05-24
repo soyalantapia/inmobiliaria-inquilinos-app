@@ -56,7 +56,7 @@ const STEPS: Step[] = [
     titulo: 'Pagás tu alquiler en un toque',
     descripcion: 'En la pantalla principal ves el monto exacto del mes y si está al día.',
     bullets: [
-      'Vemos vencimiento, monto y punitorios si los hay',
+      'Te mostramos vencimiento, monto y punitorios si los hay',
       'Pagás con transferencia, MP o QR',
       'Subís el comprobante y queda registrado',
     ],
@@ -281,7 +281,11 @@ export function Onboarding() {
               </Button>
             )}
             <Button size="lg" className="flex-1" onClick={siguiente}>
-              {esUltimo ? '¡Empezar a usar My Alquiler!' : 'Siguiente'}
+              {/* En el último paso usamos un copy más corto — "¡Empezar a
+                  usar My Alquiler!" (28 chars) se truncaba como
+                  "¡Empezar a usar My Alqui..." en 375px porque comparte
+                  fila con el botón Anterior. */}
+              {esUltimo ? '¡Empezar!' : 'Siguiente'}
               {!esUltimo && <ArrowRight className="h-4 w-4" />}
             </Button>
           </div>
