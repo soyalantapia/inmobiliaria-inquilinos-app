@@ -24,7 +24,7 @@ import {
   type EventoCalendario,
   type TipoEvento,
 } from '@/lib/calendario-eventos';
-import { formatFecha, formatMonto } from '@/lib/format';
+import { formatFecha, formatFechaCorta, formatMonto } from '@/lib/format';
 
 const iconoTipo: Record<TipoEvento, LucideIcon> = {
   PAGO_MENSUAL: CalendarDays,
@@ -104,7 +104,7 @@ export default function CalendarioPage() {
                 </p>
                 <p className="text-base font-semibold leading-tight">{proximo.titulo}</p>
                 <p className="text-xs text-muted-foreground">
-                  {formatFecha(proximo.fecha)} · {diasDesdeHoy(proximo.fecha)}
+                  {formatFechaCorta(proximo.fecha)} · {diasDesdeHoy(proximo.fecha)}
                 </p>
               </div>
               {proximo.monto && (

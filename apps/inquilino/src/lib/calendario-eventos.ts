@@ -8,6 +8,7 @@ import {
   hitosContratoMock,
   liquidacionesMock,
 } from './mock-data';
+import { formatPeriodo } from './format';
 import { listarReclamos } from './reclamos-storage';
 
 export type TipoEvento =
@@ -61,7 +62,7 @@ export function generarEventos(mesesAdelante = 6): EventoCalendario[] {
         fecha: liq.fechaVencimiento,
         tipo: 'PAGO_VENCIDO',
         titulo: 'Pago vencido',
-        detalle: `Período ${liq.periodo} sin pagar`,
+        detalle: `${formatPeriodo(liq.periodo)} sin pagar`,
         monto: liq.montoTotal,
         href: '/',
       });
@@ -78,7 +79,7 @@ export function generarEventos(mesesAdelante = 6): EventoCalendario[] {
         fecha: c.fechaPago,
         tipo: 'PAGO_REALIZADO',
         titulo: 'Pago realizado',
-        detalle: `Período ${c.periodo}`,
+        detalle: formatPeriodo(c.periodo),
         monto: c.monto,
         href: '/comprobantes',
       });
@@ -146,12 +147,11 @@ export function agruparPorMes(eventos: EventoCalendario[]): {
   return Object.entries(grupos)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([mes, items]) => {
-      // `new Date("2026-03-01")` parsea como UTC midnight, que en ARG (UTC-3)
-      // queda el 28 de febrero. Construimos la fecha con year/monthIndex/day
-      // en hora local para evitar el corrimiento.
-      const [yearStr, monthStr] = mes.split('-');
-      const d = new Date(Number(yearStr), Number(monthStr) - 1, 1);
-      const label = d.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
-      return { mes, label, items };
+      // Usamos formatPeriodo ("Marzo 2026") para mantener consistencia con
+      // el resto de la app. Antes devolvíamos d.toLocaleDateString('es-AR',
+      // { month: 'long', year: 'numeric' }) que daba "marzo de 2026" y con
+      // uppercase CSS terminaba como "MARZO DE 2026" — el "DE" extra que
+      // no tenemos en /comprobantes ni /servicios.
+      return { mes, label: formatPeriodo(mes), items };
     });
 }
