@@ -155,7 +155,7 @@ export default function RecibosPage() {
         <div>
           <h1 className="text-xl font-semibold leading-tight md:text-2xl">Recibos</h1>
           <p className="text-sm text-muted-foreground">
-            Tus pagos pendientes, los próximos y los cobrados.
+            Pendientes, próximos y cobrados.
           </p>
         </div>
         {demoVisible && (
@@ -359,7 +359,7 @@ function MovimientoRow({ mov }: { mov: Movimiento }) {
             {formatPeriodo(mov.liq.periodo)}
           </p>
           <p className="truncate text-xs text-muted-foreground">
-            Vence el {formatFecha(mov.liq.fechaVencimiento)} · en {dias} día
+            Vence el {formatFechaCorta(mov.liq.fechaVencimiento)} · en {dias} día
             {dias === 1 ? '' : 's'}
           </p>
         </div>
@@ -457,10 +457,10 @@ function PagoUrgenteCard({ mov }: { mov: Movimiento }) {
               )}
             >
               {vencido
-                ? `Venció hace ${calc.diasAtraso} día${calc.diasAtraso === 1 ? '' : 's'} · ${formatFecha(mov.liq.fechaVencimiento)}`
+                ? `Venció hace ${calc.diasAtraso} día${calc.diasAtraso === 1 ? '' : 's'} · ${formatFechaCorta(mov.liq.fechaVencimiento)}`
                 : diasV === 0
-                  ? `Vence hoy · ${formatFecha(mov.liq.fechaVencimiento)}`
-                  : `Vence en ${diasV} día${diasV === 1 ? '' : 's'} · ${formatFecha(mov.liq.fechaVencimiento)}`}
+                  ? `Vence hoy · ${formatFechaCorta(mov.liq.fechaVencimiento)}`
+                  : `Vence en ${diasV} día${diasV === 1 ? '' : 's'} · ${formatFechaCorta(mov.liq.fechaVencimiento)}`}
             </p>
           </div>
         </div>
