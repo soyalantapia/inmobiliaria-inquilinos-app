@@ -106,6 +106,22 @@ export default function LoginPage() {
   const onKeyDown = (idx: number, e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Backspace' && !digitos[idx] && idx > 0) {
       otpRefs.current[idx - 1]?.focus();
+      return;
+    }
+    // Enter como backup: si auto-verify no disparó (race con setState),
+    // el usuario puede confirmar a mano sin levantar la mano del teclado.
+    if (e.key === 'Enter' && digitos.every((d) => d !== '')) {
+      e.preventDefault();
+      void onVerificar();
+    }
+    // Flechas para moverse entre dígitos sin tener que tocar el mouse.
+    if (e.key === 'ArrowLeft' && idx > 0) {
+      e.preventDefault();
+      otpRefs.current[idx - 1]?.focus();
+    }
+    if (e.key === 'ArrowRight' && idx < 5) {
+      e.preventDefault();
+      otpRefs.current[idx + 1]?.focus();
     }
   };
 
@@ -497,7 +513,9 @@ function PasoOtp({
         </div>
       </div>
 
-      {/* Inputs OTP — más grandes y con focus ring más visible */}
+      {/* Inputs OTP — más grandes y con focus ring más visible.
+          Cuando hay error, el borde se pinta rojo y el ring también, para
+          que el feedback no dependa solo del texto de abajo. */}
       <div className="flex justify-center gap-2">
         {digitos.map((d, idx) => (
           <input
@@ -513,14 +531,21 @@ function PasoOtp({
             onChange={(e) => onDigito(idx, e.target.value)}
             onKeyDown={(e) => onKeyDown(idx, e)}
             disabled={verificando}
-            className="h-14 w-11 rounded-xl border-2 bg-background text-center text-2xl font-bold tabular-nums shadow-sm transition-all focus:border-primary focus:outline-none focus:ring-4 focus:ring-primary/20 disabled:opacity-60 sm:h-16 sm:w-12"
+            className={`h-14 w-11 rounded-xl border-2 bg-background text-center text-2xl font-bold tabular-nums shadow-sm transition-all focus:outline-none focus:ring-4 disabled:opacity-60 sm:h-16 sm:w-12 ${
+              error
+                ? 'border-destructive focus:border-destructive focus:ring-destructive/20'
+                : 'focus:border-primary focus:ring-primary/20'
+            }`}
             aria-label={`Dígito ${idx + 1}`}
+            aria-invalid={!!error}
+            aria-describedby={error ? 'otp-error' : undefined}
           />
         ))}
       </div>
 
       {error && (
         <p
+          id="otp-error"
           role="alert"
           className="flex items-center justify-center gap-1 text-center text-xs text-destructive"
         >
