@@ -21,7 +21,7 @@ import { Card } from '@llave/ui/card';
 import { Separator } from '@llave/ui/separator';
 import { toast } from '@llave/ui/use-toast';
 import { liquidacionesMock } from '@/lib/mock-data';
-import { formatFecha, formatMonto, formatPeriodo } from '@/lib/format';
+import { formatFecha, formatFechaCorta, formatMonto, formatPeriodo } from '@/lib/format';
 import { TASA_PUNITORIA_DIARIA_DEFAULT, calcularPunitorios } from '@/lib/punitorios';
 import {
   leerPagoInformado,
@@ -185,8 +185,8 @@ export default function DetallePagoPage({ params }: { params: { liqId: string } 
               <p className="flex items-center gap-1 text-sm text-muted-foreground">
                 <Calendar className="h-3.5 w-3.5" />
                 {vencido
-                  ? `Venció el ${formatFecha(liq.fechaVencimiento)}`
-                  : `Vence el ${formatFecha(liq.fechaVencimiento)}`}
+                  ? `Venció el ${formatFechaCorta(liq.fechaVencimiento)}`
+                  : `Vence el ${formatFechaCorta(liq.fechaVencimiento)}`}
               </p>
             )}
           </div>
