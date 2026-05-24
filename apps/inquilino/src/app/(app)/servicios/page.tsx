@@ -52,7 +52,7 @@ import {
   marcarBoletaPagada,
 } from '@/lib/boletas-servicios-storage';
 import { contratoMock } from '@/lib/mock-data';
-import { formatFecha, formatMonto } from '@/lib/format';
+import { formatFecha, formatFechaCorta, formatMonto } from '@/lib/format';
 
 const ICONO_TIPO: Record<TipoServicio, typeof Zap> = {
   LUZ: Zap,
@@ -445,11 +445,11 @@ function BoletaRow({
           </Badge>
         </div>
         <p className="text-xs text-muted-foreground">
-          {formatMonto(b.monto)} · vence {formatFecha(b.vencimiento)}
+          {formatMonto(b.monto)} · vence {formatFechaCorta(b.vencimiento)}
         </p>
         <p className="truncate text-[10px] text-muted-foreground">
           {b.nombreArchivo} · {formatTamanio(b.tamanioBytes)}
-          {b.pagadoAt && <span> · Pagada {formatFecha(b.pagadoAt)}</span>}
+          {b.pagadoAt && <span> · Pagada {formatFechaCorta(b.pagadoAt)}</span>}
         </p>
       </div>
       <div className="flex flex-col gap-1">
