@@ -226,7 +226,13 @@ export default function LoginPage() {
             {paso === 'email' ? (
               <PasoEmail
                 email={email}
-                setEmail={setEmail}
+                setEmail={(v) => {
+                  setEmail(v);
+                  // Si había un error de email, lo limpiamos apenas el usuario
+                  // empieza a corregir — evita que el ⚠ siga visible mientras
+                  // tipea la versión arreglada.
+                  if (errorEmail) setErrorEmail(null);
+                }}
                 error={errorEmail}
                 enviando={enviando}
                 onSubmit={onSolicitar}
@@ -380,9 +386,15 @@ function PasoEmail({
           disabled={enviando}
           required
           className="h-12 text-base"
+          aria-invalid={!!error}
+          aria-describedby={error ? 'email-error' : undefined}
         />
         {error && (
-          <p role="alert" className="flex items-center gap-1 text-xs text-destructive">
+          <p
+            id="email-error"
+            role="alert"
+            className="flex items-center gap-1 text-xs text-destructive"
+          >
             <span aria-hidden>⚠</span> {error}
           </p>
         )}
