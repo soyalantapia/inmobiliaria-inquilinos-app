@@ -29,7 +29,7 @@ import {
   generarCertificado,
   type CertificadoInquilino,
 } from '@/lib/certificado-inquilino';
-import { formatFecha, formatMonto } from '@/lib/format';
+import { formatFecha, formatFechaCorta, formatMonto } from '@/lib/format';
 import { imprimirCertificado } from './imprimible';
 
 /**
@@ -143,9 +143,9 @@ export default function CertificadoInquilinoPage() {
                     Antes de compartir, mejorá tu nivel
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Tu certificado hoy queda en{' '}
-                    <strong>{NIVEL_LABEL[certificado.nivel]}</strong>. Una
-                    inmobiliaria que lo abra ve historial flojo y puede
+                    Hoy tu certificado está en{' '}
+                    <strong>{NIVEL_LABEL[certificado.nivel]}</strong>. Si una
+                    inmobiliaria lo abre, va a ver un historial flojo y puede
                     pedirte garante igual. Regularizá los pagos y volvé a
                     generarlo cuando suba el nivel.
                   </p>
@@ -224,7 +224,7 @@ export default function CertificadoInquilinoPage() {
               </p>
               <p className="flex items-center gap-1.5 text-muted-foreground">
                 <Calendar className="h-3 w-3" />
-                Desde {formatFecha(certificado.contratoActual.fechaInicio)} ·{' '}
+                Desde {formatFechaCorta(certificado.contratoActual.fechaInicio)} ·{' '}
                 {certificado.contratoActual.mesesCumplidos} meses cumplidos
               </p>
               <p className="text-muted-foreground">
@@ -246,7 +246,7 @@ export default function CertificadoInquilinoPage() {
               />
               <Metric
                 label="Atraso prom."
-                valor={`${certificado.historial.atrasoPromedioDias}d`}
+                valor={`${certificado.historial.atrasoPromedioDias}`}
                 sub="días promedio"
                 accent={certificado.historial.atrasoPromedioDias === 0 ? 'emerald' : 'amber'}
               />

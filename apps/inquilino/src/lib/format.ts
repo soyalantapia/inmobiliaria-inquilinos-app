@@ -18,14 +18,21 @@ export function formatFecha(iso: string): string {
 // del año actual, "7 abr 2025" si es de otro año. Pensado para listas tipo
 // /comprobantes donde el período ("Abril 2026") ya da el contexto y la
 // fecha "07/04/2026" se truncaba feo.
+//
+// Construimos manual porque toLocaleDateString('es-AR', { month: 'short' })
+// devuelve "31 de ago de 2025" con "de" que infla el ancho. Queremos
+// "31 ago 2025" sin la preposición.
+const MESES_CORTOS = [
+  'ene', 'feb', 'mar', 'abr', 'may', 'jun',
+  'jul', 'ago', 'sep', 'oct', 'nov', 'dic',
+];
+
 export function formatFechaCorta(iso: string): string {
   const d = new Date(iso);
+  const dia = d.getDate();
+  const mes = MESES_CORTOS[d.getMonth()];
   const esMismoAnio = d.getFullYear() === new Date().getFullYear();
-  return d.toLocaleDateString('es-AR', {
-    day: 'numeric',
-    month: 'short',
-    ...(esMismoAnio ? {} : { year: 'numeric' }),
-  });
+  return esMismoAnio ? `${dia} ${mes}` : `${dia} ${mes} ${d.getFullYear()}`;
 }
 
 // Formato del período de una liquidación. Devuelve mes capitalizado +
