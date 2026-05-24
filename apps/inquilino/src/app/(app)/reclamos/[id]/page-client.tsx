@@ -563,7 +563,7 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
                 e.preventDefault();
                 enviarMensaje();
               }}
-              className="flex items-end gap-2"
+              className="space-y-2"
             >
               <Input
                 placeholder="Ej: ¿pueden venir esta tarde?"
@@ -573,11 +573,12 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
               />
               <Button
                 type="submit"
-                size="icon"
+                className="w-full"
                 disabled={!borrador.trim() || enviando}
                 aria-label="Enviar mensaje"
               >
                 <Send className="h-4 w-4" />
+                {enviando ? 'Enviando…' : 'Enviar'}
               </Button>
             </form>
             <p className="flex items-center gap-1 text-[11px] text-muted-foreground">

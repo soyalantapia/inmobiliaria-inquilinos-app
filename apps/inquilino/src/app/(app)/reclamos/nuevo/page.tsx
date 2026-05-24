@@ -122,14 +122,14 @@ export default function NuevoReclamoPage() {
                 key={c.value}
                 type="button"
                 onClick={() => setCategoria(c.value)}
-                className={`flex items-center gap-2 rounded-lg border p-3 text-left text-sm transition-colors ${
+                className={`flex min-h-[3.25rem] items-center gap-2 rounded-lg border p-3 text-left text-sm transition-colors ${
                   categoria === c.value
                     ? 'border-primary bg-primary/5 text-primary'
                     : 'border-border hover:border-primary/40'
                 }`}
               >
                 <span className="text-xl">{c.emoji}</span>
-                <span className="font-medium">{c.label}</span>
+                <span className="font-medium leading-tight">{c.label}</span>
               </button>
             ))}
           </div>

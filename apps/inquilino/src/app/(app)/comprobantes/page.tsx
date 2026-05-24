@@ -377,15 +377,13 @@ function MovimientoRow({ mov }: { mov: Movimiento }) {
         <CheckCircle2 className="h-5 w-5" />
       </div>
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5">
-          <p className="truncate text-sm font-medium leading-tight">
-            {formatPeriodo(c.periodo)}
-          </p>
-          <span className="shrink-0 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+        <p className="truncate text-sm font-medium leading-tight">
+          {formatPeriodo(c.periodo)}
+        </p>
+        <p className="truncate text-xs text-muted-foreground">
+          <span className="mr-1 inline-block rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
             Pagado
           </span>
-        </div>
-        <p className="truncate text-xs text-muted-foreground">
           {formatFecha(c.fechaPago)} · {metodoLabel[c.metodo]}
         </p>
       </div>

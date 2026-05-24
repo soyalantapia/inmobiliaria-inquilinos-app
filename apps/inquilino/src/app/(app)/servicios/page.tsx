@@ -221,10 +221,13 @@ export default function ServiciosPage() {
 
         {/* Stats — 3 cards.
             "Este mes" = suma de boletas del periodo corriente (luz+gas+agua+...).
-            "Este año" = solo pagadas. "Sin pagar" = boletas SUBIDA/EN_REVISION. */}
+            "Este año" = solo pagadas. "Sin pagar" = boletas SUBIDA/EN_REVISION.
+            En 320px una de las labels se envuelve a 2 líneas — usamos
+            flex+justify-between para que los valores queden bottom-aligned y
+            las cards mantengan misma altura visual. */}
         <div className="grid grid-cols-3 gap-2">
-          <Card>
-            <CardContent className="space-y-0.5 p-3">
+          <Card className="h-full">
+            <CardContent className="flex h-full flex-col justify-between gap-1 p-3">
               <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
                 Este mes
               </p>
@@ -233,8 +236,8 @@ export default function ServiciosPage() {
               </p>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="space-y-0.5 p-3">
+          <Card className="h-full">
+            <CardContent className="flex h-full flex-col justify-between gap-1 p-3">
               <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
                 Pagaste este año
               </p>
@@ -243,8 +246,8 @@ export default function ServiciosPage() {
               </p>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="space-y-0.5 p-3">
+          <Card className="h-full">
+            <CardContent className="flex h-full flex-col justify-between gap-1 p-3">
               <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
                 Sin pagar
               </p>

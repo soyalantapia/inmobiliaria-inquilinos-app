@@ -33,15 +33,15 @@ export function AnunciosFeed({ compacto = false }: { compacto?: boolean }) {
 
   return (
     <section className="space-y-2">
-      <div className="flex items-center justify-between px-1">
-        <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          <Megaphone className="h-3.5 w-3.5" />
-          Anuncios de la inmobiliaria
+      <div className="flex items-center justify-between gap-2 px-1">
+        <h2 className="flex min-w-0 items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <Megaphone className="h-3.5 w-3.5 shrink-0" />
+          <span className="line-clamp-1">Anuncios de la inmobiliaria</span>
         </h2>
         {(urgentes > 0 || importantes > 0) && (
           <Badge
             variant={urgentes > 0 ? 'destructive' : 'warning'}
-            className="text-[10px]"
+            className="shrink-0 whitespace-nowrap text-[10px]"
           >
             {urgentes > 0
               ? `${urgentes} urgente${urgentes === 1 ? '' : 's'}`

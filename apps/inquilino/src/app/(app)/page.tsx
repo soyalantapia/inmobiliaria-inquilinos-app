@@ -87,15 +87,17 @@ export default function PagosPage() {
 
   // Saludo contextual: una frase breve que cambia según el estado real.
   // Es la primera info que ve el inquilino, así que prioriza lo urgente.
+  // Versión CORTA — en mobile angosto (320px) entra completo sin truncate.
+  // El banner grande de abajo ya tiene el detalle completo.
   const mensajeContextual = pendiente
     ? (() => {
         const diasV = diasHastaVencimiento(pendiente.fechaVencimiento);
         if (diasV < 0)
-          return `Tenés un pago atrasado hace ${Math.abs(diasV)} día${Math.abs(diasV) === 1 ? '' : 's'}`;
-        if (diasV === 0) return 'Tu pago vence hoy';
-        return `Tu pago vence en ${diasV} día${diasV === 1 ? '' : 's'}`;
+          return `Atrasado · ${Math.abs(diasV)} día${Math.abs(diasV) === 1 ? '' : 's'}`;
+        if (diasV === 0) return 'Vence hoy';
+        return `Vence en ${diasV} día${diasV === 1 ? '' : 's'}`;
       })()
-    : `Estás al día · próximo pago en ${diasAlProximoPago} día${diasAlProximoPago === 1 ? '' : 's'}`;
+    : `Al día · próximo en ${diasAlProximoPago} día${diasAlProximoPago === 1 ? '' : 's'}`;
 
   // Smart nudge del Broker IA: la card solo aparece si el inquilino nunca
   // entró a /broker. Una vez visitado, la home queda más limpia. El flag
@@ -323,37 +325,42 @@ function BannerPagoPendiente({ liq }: { liq: Liquidacion }) {
   return (
     <Link
       href="/comprobantes"
-      className={`flex items-center gap-3 rounded-xl border ${tono.border} ${tono.bg} px-3 py-3 transition-colors hover:bg-opacity-100 active:scale-[0.99]`}
+      className={`flex flex-col gap-3 rounded-xl border ${tono.border} ${tono.bg} px-3 py-3 transition-colors hover:bg-opacity-100 active:scale-[0.99] sm:flex-row sm:items-center`}
     >
-      <div
-        className={`grid h-9 w-9 shrink-0 place-items-center rounded-full ${tono.icon} text-white shadow-sm`}
-      >
-        {vencido ? (
-          <AlertTriangle className="h-4 w-4" strokeWidth={2.5} />
-        ) : (
-          <Wallet className="h-4 w-4" strokeWidth={2.5} />
-        )}
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className={`text-sm font-semibold leading-tight ${tono.text}`}>
-          {vencido ? 'Tenés un pago atrasado' : 'Tenés un pago pendiente'} ·{' '}
-          <span className="tabular-nums">{formatMonto(calc.totalAPagar, liq.moneda)}</span>
-        </p>
-        <p className={`truncate text-xs ${tono.sub}`}>
-          {vencido
-            ? `Venció hace ${calc.diasAtraso} día${calc.diasAtraso === 1 ? '' : 's'}`
-            : diasV === 0
-              ? 'Vence hoy'
-              : `Vence en ${diasV} día${diasV === 1 ? '' : 's'} · ${formatFecha(liq.fechaVencimiento)}`}
-        </p>
+      {/* En mobile angosto (<sm), el monto + texto compite con el pill por
+          el ancho y queda todo cortado. Solución: stack vertical en mobile,
+          horizontal en sm+. El pill abajo full-width refuerza la acción. */}
+      <div className="flex items-center gap-3">
+        <div
+          className={`grid h-9 w-9 shrink-0 place-items-center rounded-full ${tono.icon} text-white shadow-sm`}
+        >
+          {vencido ? (
+            <AlertTriangle className="h-4 w-4" strokeWidth={2.5} />
+          ) : (
+            <Wallet className="h-4 w-4" strokeWidth={2.5} />
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className={`text-sm font-semibold leading-tight ${tono.text}`}>
+            {vencido ? 'Tenés un pago atrasado' : 'Tenés un pago pendiente'} ·{' '}
+            <span className="tabular-nums">{formatMonto(calc.totalAPagar, liq.moneda)}</span>
+          </p>
+          <p className={`truncate text-xs ${tono.sub}`}>
+            {vencido
+              ? `Venció hace ${calc.diasAtraso} día${calc.diasAtraso === 1 ? '' : 's'}`
+              : diasV === 0
+                ? 'Vence hoy'
+                : `Vence en ${diasV} día${diasV === 1 ? '' : 's'} · ${formatFecha(liq.fechaVencimiento)}`}
+          </p>
+        </div>
       </div>
       {vencido ? (
-        <span className="flex shrink-0 items-center gap-1 rounded-full bg-red-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm">
+        <span className="flex shrink-0 items-center justify-center gap-1 rounded-full bg-red-600 px-3 py-2 text-xs font-semibold text-white shadow-sm sm:py-1.5">
           Regularizar
           <ChevronRight className="h-3.5 w-3.5" />
         </span>
       ) : (
-        <span className="flex shrink-0 items-center gap-1 rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-sm">
+        <span className="flex shrink-0 items-center justify-center gap-1 rounded-full bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground shadow-sm sm:py-1.5">
           Pagar
           <ChevronRight className="h-3.5 w-3.5" />
         </span>

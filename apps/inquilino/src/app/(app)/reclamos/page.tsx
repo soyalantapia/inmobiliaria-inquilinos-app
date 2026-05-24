@@ -99,7 +99,7 @@ export default function MisReclamosPage() {
         <div className="flex items-start justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold md:text-3xl">Reclamos</h1>
-            <p className="text-sm text-muted-foreground">
+            <p className="line-clamp-1 text-sm text-muted-foreground sm:line-clamp-none">
               Pedidos de mantenimiento, reparaciones y consultas a la inmobiliaria.
             </p>
           </div>
