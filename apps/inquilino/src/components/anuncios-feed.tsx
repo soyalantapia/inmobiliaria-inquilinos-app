@@ -14,7 +14,7 @@ import {
   type AnuncioInquilino,
   listarAnunciosParaInquilino,
 } from '@/lib/anuncios-cross-app';
-import { formatFecha } from '@/lib/format';
+import { formatFechaCorta } from '@/lib/format';
 
 export function AnunciosFeed({ compacto = false }: { compacto?: boolean }) {
   const [anuncios, setAnuncios] = useState<AnuncioInquilino[]>([]);
@@ -117,7 +117,7 @@ function AnuncioRow({ anuncio }: { anuncio: AnuncioInquilino }) {
             {anuncio.cuerpo}
           </p>
           <p className="mt-1 text-[10px] text-muted-foreground/80">
-            {anuncio.enviadoPor} · {formatFecha(anuncio.enviadoAt)}
+            {anuncio.enviadoPor} · {formatFechaCorta(anuncio.enviadoAt)}
           </p>
         </div>
         <ChevronDown

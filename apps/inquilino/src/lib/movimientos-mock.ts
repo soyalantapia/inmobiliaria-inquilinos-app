@@ -18,7 +18,7 @@ export const movimientosMock: Movimiento[] = [
   {
     id: 'mv_001',
     tipo: 'pago',
-    titulo: 'Alquiler abril 2026',
+    titulo: 'Alquiler Abril 2026',
     detalle: 'Mercado Pago · liquidación cn-04',
     fecha: '2026-04-08T11:20:00-03:00',
     monto: 568500,
@@ -27,7 +27,7 @@ export const movimientosMock: Movimiento[] = [
   {
     id: 'mv_002',
     tipo: 'pago_expensa',
-    titulo: 'Expensas marzo 2026',
+    titulo: 'Expensas Marzo 2026',
     detalle: 'Consorcio Gorriti 4521',
     fecha: '2026-03-04T09:42:00-03:00',
     monto: 88500,
@@ -45,7 +45,7 @@ export const movimientosMock: Movimiento[] = [
   {
     id: 'mv_004',
     tipo: 'pago',
-    titulo: 'Alquiler febrero 2026',
+    titulo: 'Alquiler Febrero 2026',
     detalle: 'Transferencia bancaria',
     fecha: '2026-02-09T15:30:00-03:00',
     monto: 480000,

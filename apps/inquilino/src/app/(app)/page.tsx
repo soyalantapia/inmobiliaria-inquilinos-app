@@ -30,7 +30,7 @@ import { contratoMock, liquidacionesMock } from '@/lib/mock-data';
 import { useCurrentUser } from '@/lib/use-current-user';
 import { movimientosMock, type Movimiento } from '@/lib/movimientos-mock';
 import { TASA_PUNITORIA_DIARIA_DEFAULT, calcularPunitorios } from '@/lib/punitorios';
-import { diasHastaVencimiento, formatFecha, formatMonto } from '@/lib/format';
+import { diasHastaVencimiento, formatFecha, formatFechaCorta, formatMonto } from '@/lib/format';
 import {
   aplicarEstadoDemo,
   useDemoEstado,
@@ -472,7 +472,7 @@ function MovimientoRow({ mov }: { mov: Movimiento }) {
       <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
       <div className="flex-1 min-w-0">
         <p className="truncate text-sm font-medium">{mov.titulo}</p>
-        <p className="truncate text-[11px] text-muted-foreground">{fechaCorta(mov.fecha)}</p>
+        <p className="truncate text-[11px] text-muted-foreground">{formatFechaCorta(mov.fecha)}</p>
       </div>
       <div className="shrink-0 text-right">
         {mov.monto !== null ? (
@@ -493,11 +493,6 @@ function MovimientoRow({ mov }: { mov: Movimiento }) {
       </div>
     </div>
   );
-}
-
-function fechaCorta(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
 }
 
 // ============================================================
