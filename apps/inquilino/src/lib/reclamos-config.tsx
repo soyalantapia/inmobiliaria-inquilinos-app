@@ -63,6 +63,14 @@ export const estadoVariant: Record<
   RECHAZADO: 'secondary',
 };
 
+// Fecha relativa para reclamos:
+// - <1 min: "recién"
+// - <60 min: "hace X min"
+// - <24 hs: "hace X h"
+// - <7 días: "hace X días"
+// - mismo año: "5 may" (sin año — implícito = año actual)
+// - otro año: "15 ene 2024" — antes devolvíamos solo "DD/MM" para reclamos
+//   viejos del historial, dejando al usuario adivinando el año (A3 del audit).
 export function tiempoRelativo(iso: string): string {
   const now = Date.now();
   const t = new Date(iso).getTime();
@@ -73,5 +81,11 @@ export function tiempoRelativo(iso: string): string {
   if (h < 24) return `hace ${h} h`;
   const d = Math.floor(h / 24);
   if (d < 7) return `hace ${d} día${d === 1 ? '' : 's'}`;
-  return new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
+  const fecha = new Date(iso);
+  const esMismoAnio = fecha.getFullYear() === new Date().getFullYear();
+  return fecha.toLocaleDateString('es-AR', {
+    day: 'numeric',
+    month: 'short',
+    ...(esMismoAnio ? {} : { year: 'numeric' }),
+  });
 }

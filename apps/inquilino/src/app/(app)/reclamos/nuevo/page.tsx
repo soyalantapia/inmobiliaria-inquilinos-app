@@ -1,9 +1,9 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { AlertTriangle, ArrowLeft, Camera, Phone, Trash2 } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Camera, CheckCircle2, Phone, Trash2 } from 'lucide-react';
 import { Button } from '@llave/ui/button';
 import { Card } from '@llave/ui/card';
 import { Input } from '@llave/ui/input';
@@ -18,6 +18,46 @@ const MAX_FOTO_MB = 4;
 // Tel de la inmobiliaria para el atajo "Llamar" cuando el inquilino marca
 // urgencia EMERGENCIA. Mismo número que usa el FAB de WhatsApp.
 const TELEFONO_INMO = '541145321100';
+
+// Autosave del borrador en localStorage — antes si el usuario rotaba el teléfono,
+// recibía una llamada, o salía a buscar info por error, perdía TODO lo escrito.
+// La foto NO se persiste (los File no son serializables y el dataURL puede ser
+// muy grande para localStorage). El resto sí (M3 del audit).
+const DRAFT_KEY = 'llave-inquilino:nuevo-reclamo-draft:v1';
+
+type Draft = {
+  categoria: Categoria | '';
+  tituloOtro: string;
+  urgencia: Urgencia | '';
+  descripcion: string;
+};
+
+function leerDraft(): Draft | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(DRAFT_KEY);
+    if (!raw) return null;
+    const d = JSON.parse(raw);
+    if (!d || typeof d !== 'object') return null;
+    return {
+      categoria: d.categoria ?? '',
+      tituloOtro: typeof d.tituloOtro === 'string' ? d.tituloOtro : '',
+      urgencia: d.urgencia ?? '',
+      descripcion: typeof d.descripcion === 'string' ? d.descripcion : '',
+    };
+  } catch {
+    return null;
+  }
+}
+
+function tieneContenido(d: Draft): boolean {
+  return (
+    d.categoria !== '' ||
+    d.tituloOtro.trim() !== '' ||
+    d.urgencia !== '' ||
+    d.descripcion.trim() !== ''
+  );
+}
 
 const categorias: Array<{ value: Categoria; label: string; emoji: string }> = [
   { value: 'PLOMERIA', label: 'Plomería', emoji: '🚰' },
@@ -48,6 +88,38 @@ export default function NuevoReclamoPage() {
   const [fotoPreview, setFotoPreview] = useState<string | null>(null);
   const [errorFoto, setErrorFoto] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
+  const [draftRestaurado, setDraftRestaurado] = useState(false);
+  const [hidratado, setHidratado] = useState(false);
+
+  // Hidratar borrador al montar — si el usuario salió por error o el browser
+  // se cerró, recupera lo que estaba escribiendo. La foto NO se persiste.
+  useEffect(() => {
+    const d = leerDraft();
+    if (d && tieneContenido(d)) {
+      setCategoria(d.categoria);
+      setTituloOtro(d.tituloOtro);
+      setUrgencia(d.urgencia);
+      setDescripcion(d.descripcion);
+      setDraftRestaurado(true);
+    }
+    setHidratado(true);
+  }, []);
+
+  // Guardar borrador cada vez que cambia algo. Saltamos antes de hidratar
+  // para no pisar el draft con valores vacíos del state inicial.
+  useEffect(() => {
+    if (!hidratado || typeof window === 'undefined') return;
+    const draft: Draft = { categoria, tituloOtro, urgencia, descripcion };
+    if (tieneContenido(draft)) {
+      try {
+        window.localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+      } catch {
+        /* quota o storage deshabilitado — ignorar silenciosamente */
+      }
+    } else {
+      window.localStorage.removeItem(DRAFT_KEY);
+    }
+  }, [categoria, tituloOtro, urgencia, descripcion, hidratado]);
 
   // El reclamo es válido si tiene categoría, urgencia, descripción >= 10 chars
   // y, en caso de "OTRO", el título aclaratorio también con >= 3 chars.
@@ -99,12 +171,29 @@ export default function NuevoReclamoPage() {
       fotoDataUrl: fotoPreview,
     });
     setEnviando(false);
+    // Limpiar borrador — el reclamo ya está persistido, no queremos que al
+    // crear el siguiente aparezca con datos del anterior pre-cargados.
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem(DRAFT_KEY);
+    }
     // No mostramos toast: el banner verde en /reclamos cumple la confirmación.
     // Antes había banner + toast con copy casi idéntico (P7 de la auditoría).
     // Volvemos a la lista pasando el ID nuevo por query — la lista lo resalta.
     // No navegamos a /reclamos/[id] porque los IDs nuevos no tienen página
     // pre-renderizada en el static export (devolverían 404).
     router.push(`/reclamos?nuevo=${nuevo.id}`);
+  };
+
+  // Permite al usuario descartar el borrador restaurado y empezar de cero.
+  const descartarBorrador = () => {
+    setCategoria('');
+    setTituloOtro('');
+    setUrgencia('');
+    setDescripcion('');
+    setDraftRestaurado(false);
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem(DRAFT_KEY);
+    }
   };
 
   return (
@@ -117,6 +206,30 @@ export default function NuevoReclamoPage() {
       </header>
 
       <main className="flex-1 space-y-5 px-5 pb-28 md:pb-8">
+        {/* Banner sutil cuando hidratamos un borrador. Le decimos al usuario
+            que recuperamos lo que tenía escrito y le damos la opción de
+            descartarlo para empezar de cero. */}
+        {draftRestaurado && (
+          <Card className="flex items-start gap-3 border-amber-200 bg-amber-50/60 p-3 animate-fade-in dark:border-amber-900/40 dark:bg-amber-950/20">
+            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-amber-700 dark:text-amber-300" />
+            <div className="flex-1 min-w-0 space-y-1.5">
+              <p className="text-xs font-semibold leading-tight text-amber-900 dark:text-amber-100">
+                Recuperamos tu borrador
+              </p>
+              <p className="text-[11px] leading-snug text-amber-800/80 dark:text-amber-200/80">
+                Seguí donde dejaste. Si no era esto, descartalo y empezá de cero.
+              </p>
+              <button
+                type="button"
+                onClick={descartarBorrador}
+                className="text-[11px] font-semibold text-amber-900 underline-offset-2 hover:underline dark:text-amber-100"
+              >
+                Descartar borrador
+              </button>
+            </div>
+          </Card>
+        )}
+
         <div className="space-y-2">
           <Label>¿De qué se trata?</Label>
           <div className="grid grid-cols-2 gap-2">
