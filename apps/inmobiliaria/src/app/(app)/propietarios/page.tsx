@@ -200,10 +200,16 @@ export default function PropietariosPage() {
                           </AvatarFallback>
                         </Avatar>
                         <div className="flex-1 min-w-0">
-                          <p className="font-semibold truncate">
+                          {/* Nombre y CUIT son datos identificatorios clave —
+                              antes con truncate se cortaban a "Eduardo Cas..."
+                              y "CUIT 20-1234567..." en las cards de 3 cols.
+                              Ahora permitimos wrap a 2 líneas para nombres
+                              largos y dejamos el CUIT en una línea (entra el
+                              formato XX-XXXXXXXX-X completo). */}
+                          <p className="font-semibold leading-tight line-clamp-2">
                             {p.nombre} {p.apellido}
                           </p>
-                          <p className="truncate text-xs text-muted-foreground">CUIT {p.cuit}</p>
+                          <p className="text-xs text-muted-foreground tabular-nums">CUIT {p.cuit}</p>
                         </div>
                         {/* Badge dinámico: rendido / por rendir / unidades. */}
                         {rendido ? (
