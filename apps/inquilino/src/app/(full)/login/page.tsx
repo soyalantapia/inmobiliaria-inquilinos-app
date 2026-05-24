@@ -6,10 +6,12 @@ import {
   ArrowLeft,
   ArrowRight,
   CheckCircle2,
-  Info,
+  CreditCard,
+  FileText,
   Loader2,
   Mail,
   RotateCcw,
+  Sparkles,
 } from 'lucide-react';
 import { Button } from '@llave/ui/button';
 import { Card } from '@llave/ui/card';
@@ -158,67 +160,182 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="flex min-h-[100dvh] flex-col items-center justify-center bg-gradient-to-br from-primary/10 via-background to-background p-5">
-      <div className="w-full max-w-md space-y-5">
-        {/* Branding */}
-        <div className="text-center space-y-1">
-          <div className="mx-auto grid h-12 w-12 place-items-center rounded-xl bg-gradient-to-br from-primary to-purple-600 text-white font-bold text-base shadow-lg shadow-primary/30">
-            My
-          </div>
-          <h1 className="text-2xl font-bold tracking-tight">My Alquiler</h1>
-          <p className="text-sm text-muted-foreground">La app de tu alquiler</p>
+    <main className="relative flex min-h-[100dvh] flex-col overflow-hidden bg-background md:flex-row">
+      {/* Orbs decorativos de fondo — sutiles, generan textura sin distraer */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -left-32 -top-32 h-96 w-96 rounded-full bg-primary/20 blur-3xl"
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -bottom-40 -right-32 h-[28rem] w-[28rem] rounded-full bg-fuchsia-400/15 blur-3xl"
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute left-1/2 top-1/3 h-72 w-72 -translate-x-1/2 rounded-full bg-violet-400/10 blur-3xl"
+      />
+
+      {/* PANEL IZQUIERDO — branding + beneficios (solo desktop) */}
+      <aside className="relative z-10 hidden flex-1 flex-col justify-between p-12 md:flex">
+        <BrandHero />
+
+        <div className="space-y-5">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            Lo que vas a encontrar
+          </p>
+          <ul className="space-y-4">
+            <Beneficio
+              Icon={CreditCard}
+              titulo="Pagás directo desde la app"
+              detalle="Transferencia, MP o QR. Comprobante registrado al instante."
+            />
+            <Beneficio
+              Icon={FileText}
+              titulo="Tu contrato siempre a mano"
+              detalle="Cláusulas, ajustes, depósito y vencimientos en un lugar."
+            />
+            <Beneficio
+              Icon={Sparkles}
+              titulo="Broker IA que responde al toque"
+              detalle="Preguntale cualquier duda — cita la cláusula exacta."
+            />
+          </ul>
         </div>
 
-        <Card className="p-6 space-y-5">
-          {paso === 'email' ? (
-            <PasoEmail
-              email={email}
-              setEmail={setEmail}
-              error={errorEmail}
-              enviando={enviando}
-              onSubmit={onSolicitar}
-            />
-          ) : (
-            <PasoOtp
-              email={email}
-              digitos={digitos}
-              error={errorOtp}
-              verificando={verificando}
-              cooldownHasta={cooldownHasta}
-              otpRefs={otpRefs}
-              onDigito={onDigito}
-              onKeyDown={onKeyDown}
-              onReenviar={onReenviar}
-              onVerificar={() => onVerificar()}
-              onVolver={volverAlEmail}
-            />
-          )}
-        </Card>
+        <p className="text-xs text-muted-foreground">
+          © My Alquiler · La app del inquilino
+        </p>
+      </aside>
 
-        {/* Banner DEMO con el código generado */}
-        {paso === 'otp' && codigoDemo && (
-          <Card className="border-amber-200 bg-amber-50 p-4 dark:border-amber-900/40 dark:bg-amber-900/10">
-            <div className="flex items-start gap-3">
-              <Info className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
-              <div className="space-y-1 text-xs text-amber-900 dark:text-amber-200">
-                <p className="font-semibold">Modo demo</p>
-                <p>
-                  En producción el código llega por mail. Acá te lo mostramos para
-                  que puedas probar el flujo:
-                </p>
-                <p className="font-mono text-lg font-bold tracking-[0.3em] mt-1">
+      {/* PANEL DERECHO — form de login (siempre visible) */}
+      <section className="relative z-10 flex flex-1 items-center justify-center p-5 md:p-10">
+        <div className="w-full max-w-md space-y-5">
+          {/* Brand en mobile (cuando el aside no se ve) */}
+          <div className="md:hidden">
+            <BrandHero compact />
+          </div>
+
+          {/* Card del form */}
+          <Card className="relative overflow-hidden border-0 bg-card/95 p-6 shadow-2xl shadow-primary/10 backdrop-blur-xl">
+            {/* Borde gradient suave arriba */}
+            <div
+              aria-hidden
+              className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary via-fuchsia-500 to-violet-500"
+            />
+
+            {paso === 'email' ? (
+              <PasoEmail
+                email={email}
+                setEmail={setEmail}
+                error={errorEmail}
+                enviando={enviando}
+                onSubmit={onSolicitar}
+              />
+            ) : (
+              <PasoOtp
+                email={email}
+                digitos={digitos}
+                error={errorOtp}
+                verificando={verificando}
+                cooldownHasta={cooldownHasta}
+                otpRefs={otpRefs}
+                onDigito={onDigito}
+                onKeyDown={onKeyDown}
+                onReenviar={onReenviar}
+                onVerificar={() => onVerificar()}
+                onVolver={volverAlEmail}
+              />
+            )}
+          </Card>
+
+          {/* Banner DEMO con el código generado — más prominente que antes */}
+          {paso === 'otp' && codigoDemo && (
+            <Card className="border border-amber-300/60 bg-gradient-to-br from-amber-50 to-amber-100/60 p-4 dark:border-amber-900/40 dark:from-amber-950/40 dark:to-amber-900/20">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="rounded-full bg-amber-500 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white">
+                    Demo
+                  </span>
+                  <p className="text-xs text-amber-900 dark:text-amber-200">
+                    En producción el código llega por mail
+                  </p>
+                </div>
+                <p className="text-center font-mono text-3xl font-bold tracking-[0.4em] text-amber-900 dark:text-amber-100">
                   {codigoDemo}
                 </p>
+                <p className="text-center text-[10px] text-amber-800/70 dark:text-amber-300/70">
+                  Tocá los dígitos arriba o pegá el código directo
+                </p>
               </div>
-            </div>
-          </Card>
-        )}
+            </Card>
+          )}
 
-        <p className="text-center text-xs text-muted-foreground">
-          ¿Sos nuevo? Tu inmobiliaria te tiene que invitar primero.
+          {/* Footer copy */}
+          <p className="text-center text-xs text-muted-foreground">
+            ¿Sos nuevo?{' '}
+            <span className="text-foreground">
+              Tu inmobiliaria tiene que invitarte primero.
+            </span>
+          </p>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+/* ============================================================
+ * Brand hero — logo + título + tagline.
+ * En desktop ocupa el panel izquierdo grande; en mobile es la
+ * versión `compact` arriba del form.
+ * ============================================================ */
+function BrandHero({ compact = false }: { compact?: boolean }) {
+  if (compact) {
+    return (
+      <div className="text-center">
+        <div className="mx-auto mb-2 grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-primary to-fuchsia-600 text-base font-bold text-white shadow-lg shadow-primary/40">
+          My
+        </div>
+        <h1 className="text-xl font-bold tracking-tight">My Alquiler</h1>
+        <p className="text-xs text-muted-foreground">La app de tu alquiler</p>
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-4">
+      <div className="grid h-16 w-16 place-items-center rounded-3xl bg-gradient-to-br from-primary to-fuchsia-600 text-xl font-bold text-white shadow-xl shadow-primary/40">
+        My
+      </div>
+      <div>
+        <h1 className="text-4xl font-bold leading-tight tracking-tight lg:text-5xl">
+          My Alquiler
+        </h1>
+        <p className="mt-2 text-lg text-muted-foreground">
+          La app del inquilino. Tu contrato, tus pagos y tu hogar — en un toque.
         </p>
       </div>
-    </main>
+    </div>
+  );
+}
+
+function Beneficio({
+  Icon,
+  titulo,
+  detalle,
+}: {
+  Icon: typeof CreditCard;
+  titulo: string;
+  detalle: string;
+}) {
+  return (
+    <li className="flex items-start gap-3">
+      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+        <Icon className="h-4 w-4" />
+      </div>
+      <div className="min-w-0">
+        <p className="text-sm font-semibold">{titulo}</p>
+        <p className="text-xs text-muted-foreground">{detalle}</p>
+      </div>
+    </li>
   );
 }
 
@@ -239,29 +356,38 @@ function PasoEmail({
   onSubmit: (e?: React.FormEvent) => void;
 }) {
   return (
-    <form onSubmit={onSubmit} className="space-y-4">
-      <div>
-        <h2 className="text-lg font-semibold">Entrá a tu cuenta</h2>
+    <form onSubmit={onSubmit} className="space-y-5 animate-fade-in">
+      <div className="space-y-1">
+        <h2 className="text-2xl font-bold tracking-tight">Entrá a tu cuenta</h2>
         <p className="text-sm text-muted-foreground">
           Te mandamos un código de 6 dígitos a tu mail.
         </p>
       </div>
+
       <div className="space-y-1.5">
-        <Label htmlFor="email">Email</Label>
+        <Label htmlFor="email" className="text-sm font-medium">
+          Email
+        </Label>
         <Input
           id="email"
           type="email"
           autoComplete="email"
           autoFocus
           inputMode="email"
-          placeholder="tu@correo.com"
+          placeholder="vos@correo.com"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           disabled={enviando}
           required
+          className="h-12 text-base"
         />
-        {error && <p className="text-xs text-destructive">{error}</p>}
+        {error && (
+          <p role="alert" className="flex items-center gap-1 text-xs text-destructive">
+            <span aria-hidden>⚠</span> {error}
+          </p>
+        )}
       </div>
+
       <Button
         type="submit"
         size="xl"
@@ -281,12 +407,16 @@ function PasoEmail({
           </>
         )}
       </Button>
+
+      {/* CTA de demo — rediseñado como chip prominente
+          (antes era un link gris perdido al fondo). */}
       <button
         type="button"
         onClick={() => setEmail('mariela.sosa@gmail.com')}
-        className="block w-full text-center text-xs text-muted-foreground hover:text-foreground"
+        className="flex w-full items-center justify-center gap-2 rounded-full border border-dashed border-primary/40 bg-primary/5 px-3 py-2 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
       >
-        Usar email de demo: mariela.sosa@gmail.com
+        <Sparkles className="h-3.5 w-3.5" />
+        Probar con cuenta demo (Mariela Sosa)
       </button>
     </form>
   );
@@ -336,25 +466,27 @@ function PasoOtp({
   const puedeReenviar = segundos === 0;
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-start gap-2">
+    <div className="space-y-5 animate-fade-in">
+      <div className="flex items-start gap-3">
         <button
           type="button"
           onClick={onVolver}
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-md hover:bg-muted text-muted-foreground"
-          aria-label="Volver"
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          aria-label="Volver al email"
         >
           <ArrowLeft className="h-4 w-4" />
         </button>
-        <div>
-          <h2 className="text-lg font-semibold">Ingresá el código</h2>
-          <p className="text-sm text-muted-foreground break-all">
-            Te lo mandamos a <span className="font-medium text-foreground">{email}</span>
+        <div className="min-w-0">
+          <h2 className="text-2xl font-bold tracking-tight">Ingresá el código</h2>
+          <p className="break-all text-sm text-muted-foreground">
+            Te lo mandamos a{' '}
+            <span className="font-medium text-foreground">{email}</span>
           </p>
         </div>
       </div>
 
-      <div className="flex gap-2 justify-center">
+      {/* Inputs OTP — más grandes y con focus ring más visible */}
+      <div className="flex justify-center gap-2">
         {digitos.map((d, idx) => (
           <input
             key={idx}
@@ -369,13 +501,20 @@ function PasoOtp({
             onChange={(e) => onDigito(idx, e.target.value)}
             onKeyDown={(e) => onKeyDown(idx, e)}
             disabled={verificando}
-            className="h-12 w-10 sm:h-14 sm:w-12 rounded-lg border bg-background text-center text-xl font-semibold tabular-nums focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-60"
+            className="h-14 w-11 rounded-xl border-2 bg-background text-center text-2xl font-bold tabular-nums shadow-sm transition-all focus:border-primary focus:outline-none focus:ring-4 focus:ring-primary/20 disabled:opacity-60 sm:h-16 sm:w-12"
             aria-label={`Dígito ${idx + 1}`}
           />
         ))}
       </div>
 
-      {error && <p className="text-center text-xs text-destructive">{error}</p>}
+      {error && (
+        <p
+          role="alert"
+          className="flex items-center justify-center gap-1 text-center text-xs text-destructive"
+        >
+          <span aria-hidden>⚠</span> {error}
+        </p>
+      )}
 
       <Button
         type="button"
@@ -397,7 +536,8 @@ function PasoOtp({
         )}
       </Button>
 
-      <div className="text-center text-xs">
+      {/* Reenvío con visual cleaner */}
+      <div className="space-y-1 text-center text-xs">
         {puedeReenviar ? (
           <button
             type="button"
@@ -409,14 +549,13 @@ function PasoOtp({
           </button>
         ) : (
           <span className="text-muted-foreground">
-            Podés pedir un código nuevo en <strong>{segundos}s</strong>
+            Reenvío disponible en <strong className="tabular-nums">{segundos}s</strong>
           </span>
         )}
+        <p className="text-[10px] text-muted-foreground/80">
+          El código vence a los 5 minutos. {SEGUNDOS_COOLDOWN}s entre reenvíos.
+        </p>
       </div>
-
-      <p className="text-center text-[11px] text-muted-foreground">
-        El código vence a los 5 minutos. Tenés {SEGUNDOS_COOLDOWN}s entre reenvíos.
-      </p>
     </div>
   );
 }
