@@ -25,7 +25,7 @@ import {
   profesionalCategoriaLabel,
   profesionalesMock,
 } from '@/lib/mock-data';
-import { formatFecha } from '@/lib/format';
+import { formatFechaCorta } from '@/lib/format';
 
 const iconoCategoria: Record<CategoriaProfesional, LucideIcon> = {
   PLOMERO: Droplets,
@@ -166,7 +166,7 @@ export default function ProfesionalesPage() {
                       <>
                         <span className="text-muted-foreground">·</span>
                         <span className="truncate text-muted-foreground">
-                          últ. {formatFecha(p.ultimoTrabajo)}
+                          últ. {formatFechaCorta(p.ultimoTrabajo)}
                         </span>
                       </>
                     )}
