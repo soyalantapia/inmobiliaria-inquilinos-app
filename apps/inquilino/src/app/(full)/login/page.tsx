@@ -515,8 +515,10 @@ function PasoOtp({
 
       {/* Inputs OTP — más grandes y con focus ring más visible.
           Cuando hay error, el borde se pinta rojo y el ring también, para
-          que el feedback no dependa solo del texto de abajo. */}
-      <div className="flex justify-center gap-2">
+          que el feedback no dependa solo del texto de abajo.
+          flex-1 + max-w-[3rem] hace que se adapten al ancho del card
+          (antes overflow horizontal en iPhone SE / viewports < 360px). */}
+      <div className="flex justify-center gap-1.5 sm:gap-2">
         {digitos.map((d, idx) => (
           <input
             key={idx}
@@ -531,7 +533,7 @@ function PasoOtp({
             onChange={(e) => onDigito(idx, e.target.value)}
             onKeyDown={(e) => onKeyDown(idx, e)}
             disabled={verificando}
-            className={`h-14 w-11 rounded-xl border-2 bg-background text-center text-2xl font-bold tabular-nums shadow-sm transition-all focus:outline-none focus:ring-4 disabled:opacity-60 sm:h-16 sm:w-12 ${
+            className={`h-14 min-w-0 flex-1 rounded-xl border-2 bg-background text-center text-xl font-bold tabular-nums shadow-sm transition-all focus:outline-none focus:ring-4 disabled:opacity-60 sm:h-16 sm:max-w-[3rem] sm:text-2xl ${
               error
                 ? 'border-destructive focus:border-destructive focus:ring-destructive/20'
                 : 'focus:border-primary focus:ring-primary/20'
