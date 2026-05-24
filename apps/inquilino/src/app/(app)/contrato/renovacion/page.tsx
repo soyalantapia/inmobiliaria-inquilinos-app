@@ -90,7 +90,7 @@ export default function RenovacionPage() {
     <>
       <header className="flex items-center gap-3 p-5 md:px-8">
         <Button size="icon" variant="ghost" asChild>
-          <Link href="/contrato">
+          <Link href="/contrato" aria-label="Volver al contrato">
             <ArrowLeft className="h-4 w-4" />
           </Link>
         </Button>

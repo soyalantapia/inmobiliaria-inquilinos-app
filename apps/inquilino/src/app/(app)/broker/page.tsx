@@ -218,7 +218,12 @@ export default function ContratoPage() {
             onChange={(e) => setInput(e.target.value)}
             disabled={pensando}
           />
-          <Button type="submit" size="icon" disabled={!input.trim() || pensando}>
+          <Button
+            type="submit"
+            size="icon"
+            disabled={!input.trim() || pensando}
+            aria-label="Enviar mensaje"
+          >
             <Send className="h-4 w-4" />
           </Button>
         </form>

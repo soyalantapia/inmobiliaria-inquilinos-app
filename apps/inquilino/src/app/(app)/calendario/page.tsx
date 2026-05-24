@@ -77,7 +77,7 @@ export default function CalendarioPage() {
     <>
       <header className="flex items-center gap-3 p-5 md:px-8">
         <Button size="icon" variant="ghost" asChild>
-          <Link href="/cuenta">
+          <Link href="/cuenta" aria-label="Volver a Mi cuenta">
             <ArrowLeft className="h-4 w-4" />
           </Link>
         </Button>

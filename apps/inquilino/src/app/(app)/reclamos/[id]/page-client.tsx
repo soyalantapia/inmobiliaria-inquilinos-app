@@ -571,7 +571,12 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
                 onChange={(e) => setBorrador(e.target.value)}
                 disabled={enviando}
               />
-              <Button type="submit" size="icon" disabled={!borrador.trim() || enviando}>
+              <Button
+                type="submit"
+                size="icon"
+                disabled={!borrador.trim() || enviando}
+                aria-label="Enviar mensaje"
+              >
                 <Send className="h-4 w-4" />
               </Button>
             </form>
