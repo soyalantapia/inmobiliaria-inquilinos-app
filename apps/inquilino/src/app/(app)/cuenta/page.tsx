@@ -165,7 +165,7 @@ export default function CuentaPage() {
             <LinkRow
               icon={<FileText className="h-4 w-4" />}
               label="Mis documentos"
-              descripcion="DNI, recibos, garantes — listos para renovar o mudarte"
+              descripcion="DNI, recibos y garantes"
               href="/documentos"
             />
             <LinkRow
@@ -177,7 +177,7 @@ export default function CuentaPage() {
             <LinkRow
               icon={<Users className="h-4 w-4" />}
               label="Co-inquilinos"
-              descripcion="Compartí el contrato con tu pareja, hermano o amigo"
+              descripcion="Compartí el contrato con tu pareja o familia"
               href="/co-inquilinos"
             />
             <LinkRow
@@ -336,7 +336,11 @@ function LinkRow({
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium">{label}</p>
-        <p className="truncate text-xs text-muted-foreground">{descripcion}</p>
+        {/* line-clamp-2 en vez de truncate — las descripciones de "Tu hogar"
+            son contextuales y se cortaban feo en mobile ("DNI, recibos,
+            garantes — listos para r..."). 2 líneas permite leerlas completas
+            sin descontrolar el alto de la lista. */}
+        <p className="line-clamp-2 text-xs text-muted-foreground">{descripcion}</p>
       </div>
       <ChevronRight className="h-4 w-4 text-muted-foreground" />
     </div>
