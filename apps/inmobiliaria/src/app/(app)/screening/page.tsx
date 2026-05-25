@@ -1211,17 +1211,17 @@ function HuellaDigitalView({ huella }: { huella: HuellaDigital }) {
           <Stat
             label="Plataformas con perfil"
             value={`${encontrados} / ${huella.perfiles.length}`}
-            hint={`${activos} activas`}
+            hint={`${activos} activa${activos === 1 ? '' : 's'}`}
           />
           <Stat
             label="Antigüedad online"
-            value={`${huella.antiguedadAnios} años`}
+            value={`${huella.antiguedadAnios} año${huella.antiguedadAnios === 1 ? '' : 's'}`}
             hint="desde el perfil más viejo"
           />
           <Stat
             label="Menciones en Google"
             value={huella.mencionesGoogle.toString()}
-            hint={`Email en ${huella.emailEnSitios} sitios públicos`}
+            hint={`Email en ${huella.emailEnSitios} sitio${huella.emailEnSitios === 1 ? '' : 's'} público${huella.emailEnSitios === 1 ? '' : 's'}`}
           />
         </CardContent>
       </Card>

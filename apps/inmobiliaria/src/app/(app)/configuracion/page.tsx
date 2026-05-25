@@ -607,7 +607,7 @@ export default function ConfiguracionPage() {
                       Tu cartera hoy
                     </p>
                     <p className="text-lg font-bold tabular-nums">
-                      {plan.propiedadesActivas} propiedades
+                      {plan.propiedadesActivas} propiedad{plan.propiedadesActivas === 1 ? '' : 'es'}
                     </p>
                   </div>
                   <div>

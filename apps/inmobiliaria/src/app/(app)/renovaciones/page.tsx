@@ -212,7 +212,7 @@ export default function RenovacionesPage() {
 
                 <div className="grid grid-cols-2 gap-3 rounded-md border bg-muted/30 p-3 text-xs md:grid-cols-4">
                   <Stat label="Vence" value={formatFechaCorta(c.fechaFin)} />
-                  <Stat label="Faltan" value={`${c.dias} días`} />
+                  <Stat label="Faltan" value={`${c.dias} día${c.dias === 1 ? '' : 's'}`} />
                   <Stat label="Monto actual" value={formatMonto(c.monto, c.moneda)} />
                   <Stat
                     label="Avisó"

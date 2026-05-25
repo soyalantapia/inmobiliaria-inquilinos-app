@@ -226,7 +226,7 @@ export default function DashboardPage() {
                   Tiempo promedio de resolución
                 </p>
                 <p className="mt-1 text-lg font-semibold">
-                  {m.tiempoPromedioResolucionDias} días
+                  {m.tiempoPromedioResolucionDias} día{m.tiempoPromedioResolucionDias === 1 ? '' : 's'}
                   <span className="ml-2 text-xs font-normal text-emerald-600">↓ -0.4d</span>
                 </p>
               </div>

@@ -135,7 +135,7 @@ export function EstadoCuentaCard() {
               {e === 'PAUSADO' && (
                 <>
                   El servicio está pausado por falta de pago (
-                  {diasDesdeVencimiento} días vencido). Tus datos están guardados.
+                  {diasDesdeVencimiento} día{diasDesdeVencimiento === 1 ? '' : 's'} vencido). Tus datos están guardados.
                   Apenas regularices, vuelve a funcionar al instante.
                 </>
               )}

@@ -52,7 +52,7 @@ export function CierreDiarioCard() {
     toast({
       variant: 'success',
       title: 'Día cerrado',
-      description: `${snap.movimientos} movimientos · saldo ${formatMonto(snap.balanceDia)}`,
+      description: `${snap.movimientos} movimiento${snap.movimientos === 1 ? '' : 's'} · saldo ${formatMonto(snap.balanceDia)}`,
     });
     setRefresh((n) => n + 1);
   };
@@ -178,7 +178,7 @@ export function CierreDiarioCard() {
         {resumen.movimientos.length > 0 && (
           <details className="rounded-md border bg-background/50 p-3">
             <summary className="cursor-pointer text-xs font-medium">
-              Ver detalle de hoy ({resumen.movimientos.length} movimientos)
+              Ver detalle de hoy ({resumen.movimientos.length} movimiento{resumen.movimientos.length === 1 ? '' : 's'})
             </summary>
             <ul className="mt-2 space-y-1.5">
               {resumen.movimientos.map((m, i) => (

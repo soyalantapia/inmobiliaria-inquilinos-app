@@ -280,7 +280,7 @@ function construirItems(): Item[] {
       titulo: 'Inquilinos atrasados',
       detalle:
         sinGarante > 0
-          ? `${vencidos.length} morosos · ${sinGarante} sin garante`
+          ? `${vencidos.length} moroso${vencidos.length === 1 ? '' : 's'} · ${sinGarante} sin garante`
           : `${vencidos.length} contrato${vencidos.length === 1 ? '' : 's'} con atraso`,
       href: '/pagos',
       cant: vencidos.length,

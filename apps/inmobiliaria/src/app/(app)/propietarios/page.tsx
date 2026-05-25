@@ -85,7 +85,7 @@ export default function PropietariosPage() {
             <CardContent className="p-5">
               <p className="text-xs uppercase tracking-wide text-muted-foreground">Propietarios</p>
               <p className="mt-1 text-2xl font-semibold">{propietariosMock.length}</p>
-              <p className="text-xs text-muted-foreground">{totalPropiedades} contratos</p>
+              <p className="text-xs text-muted-foreground">{totalPropiedades} contrato{totalPropiedades === 1 ? '' : 's'}</p>
             </CardContent>
           </Card>
           <Card>
