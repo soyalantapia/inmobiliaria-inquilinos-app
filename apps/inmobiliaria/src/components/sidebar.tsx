@@ -113,9 +113,16 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
         <p className="font-medium text-foreground">Inmobiliaria del Sol</p>
         <p>
           Plan {plan.plan} ·{' '}
-          {plan.topePlan !== null
-            ? `${plan.propiedadesActivas}/${plan.topePlan} propiedades`
-            : `${plan.propiedadesActivas} propiedades`}
+          {(() => {
+            // "propiedad" o "propiedades" según conteo. Si hay tope
+            // mostramos "X/Y propiedades" sin singularizar — siempre
+            // hay un tope >1, así que el plural es seguro.
+            const n = plan.propiedadesActivas;
+            const sufijo = n === 1 ? 'propiedad' : 'propiedades';
+            return plan.topePlan !== null
+              ? `${n}/${plan.topePlan} propiedades`
+              : `${n} ${sufijo}`;
+          })()}
         </p>
         {trialActivo && (
           <Link

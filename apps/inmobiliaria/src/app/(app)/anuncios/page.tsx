@@ -85,7 +85,7 @@ export default function AnunciosPage() {
     toast({
       variant: 'success',
       title: 'Anuncio enviado',
-      description: `${data.titulo} · ${data.destinatariosCount} destinatarios`,
+      description: `${data.titulo} · ${data.destinatariosCount} destinatario${data.destinatariosCount === 1 ? '' : 's'}`,
     });
   };
 

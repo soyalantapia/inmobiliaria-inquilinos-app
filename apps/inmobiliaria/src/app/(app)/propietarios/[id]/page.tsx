@@ -398,7 +398,7 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
                 toast({
                   variant: 'success',
                   title: 'CSV descargado',
-                  description: `${rendiciones.length} rendiciones de ${propietario.nombre}. Abrilo en Excel o Sheets.`,
+                  description: `${rendiciones.length} rendición${rendiciones.length === 1 ? '' : 'es'} de ${propietario.nombre}. Abrilo en Excel o Sheets.`,
                 });
               }}
             >

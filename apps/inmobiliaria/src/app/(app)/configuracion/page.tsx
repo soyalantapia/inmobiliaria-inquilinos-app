@@ -688,7 +688,7 @@ export default function ConfiguracionPage() {
                 <div>
                   <CardTitle>Facturas mes a mes</CardTitle>
                   <CardDescription>
-                    Histórico de las últimas {facturasMock.length} facturas emitidas por My Alquiler.
+                    Histórico de las últimas {facturasMock.length} factura{facturasMock.length === 1 ? '' : 's'} emitida{facturasMock.length === 1 ? '' : 's'} por My Alquiler.
                   </CardDescription>
                 </div>
                 <Button
@@ -719,7 +719,7 @@ export default function ConfiguracionPage() {
                     toast({
                       variant: 'success',
                       title: 'CSV descargado',
-                      description: `${facturasMock.length} facturas exportadas. Abrilo en Excel o Sheets.`,
+                      description: `${facturasMock.length} factura${facturasMock.length === 1 ? '' : 's'} exportada${facturasMock.length === 1 ? '' : 's'}. Abrilo en Excel o Sheets.`,
                     });
                   }}
                 >
@@ -1122,8 +1122,9 @@ function AuditoriaTab() {
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
             <span>
               Mostrando <strong className="text-foreground">{visibles.length}</strong> de{' '}
-              <strong className="text-foreground">{filtrados.length}</strong> filtrados ·{' '}
-              {eventos.length} en total
+              <strong className="text-foreground">{filtrados.length}</strong> filtrado
+              {filtrados.length === 1 ? '' : 's'} ·{' '}
+              {eventos.length} evento{eventos.length === 1 ? '' : 's'} en total
             </span>
             <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" onClick={refrescar}>

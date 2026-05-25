@@ -245,7 +245,7 @@ function construirItems(): Item[] {
     items.push({
       id: 'sin-rendir',
       titulo: 'Propietarios por rendir',
-      detalle: `${sinRendir.length} esperando su transferencia`,
+      detalle: `${sinRendir.length} ${sinRendir.length === 1 ? 'esperando su transferencia' : 'esperando sus transferencias'}`,
       href: '/propietarios',
       cant: sinRendir.length,
       monto: sinRendir.reduce((s, p) => s + p.totalRecibirMes, 0),
@@ -259,7 +259,7 @@ function construirItems(): Item[] {
   if (sinCbu.length > 0) {
     items.push({
       id: 'sin-cbu',
-      titulo: 'Propietarios sin CBU',
+      titulo: sinCbu.length === 1 ? 'Propietario sin CBU' : 'Propietarios sin CBU',
       detalle: 'Pediles los datos antes de rendir',
       href: '/propietarios',
       cant: sinCbu.length,
@@ -277,7 +277,7 @@ function construirItems(): Item[] {
     }).length;
     items.push({
       id: 'morosos',
-      titulo: 'Inquilinos atrasados',
+      titulo: vencidos.length === 1 ? 'Inquilino atrasado' : 'Inquilinos atrasados',
       detalle:
         sinGarante > 0
           ? `${vencidos.length} moroso${vencidos.length === 1 ? '' : 's'} · ${sinGarante} sin garante`

@@ -179,7 +179,10 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                   ? undefined
                   : vencido
                     ? `Vencido hace ${Math.abs(dias!)} día${Math.abs(dias!) === 1 ? '' : 's'}`
-                    : `Estado: ${contrato.estadoPagoActual.toLowerCase()}`;
+                    : `Estado: ${
+                        contrato.estadoPagoActual.charAt(0) +
+                        contrato.estadoPagoActual.slice(1).toLowerCase()
+                      }`;
                 return (
                   <Stat
                     label="Próximo vencimiento"

@@ -611,7 +611,10 @@ function Informe({
                         'BCRA · familia',
                         `Riesgo ${resultado.bcraFamiliar.riesgo.toLowerCase()}`,
                       ],
-                      ['Patrimonio', `${resultado.inmuebles.length} inmuebles · ${resultado.vehiculos.length} vehículos`],
+                      [
+                        'Patrimonio',
+                        `${resultado.inmuebles.length} inmueble${resultado.inmuebles.length === 1 ? '' : 's'} · ${resultado.vehiculos.length} vehículo${resultado.vehiculos.length === 1 ? '' : 's'}`,
+                      ],
                       [
                         'Ingreso ARCA',
                         `${formatearCategoria(resultado.ingresos.categoriaArca)} · ${resultado.ingresos.actividadDescripcion}`,
