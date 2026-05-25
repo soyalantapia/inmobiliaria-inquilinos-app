@@ -35,6 +35,27 @@ export function formatFechaCorta(iso: string): string {
   return esMismoAnio ? `${dia} ${mes}` : `${dia} ${mes} ${d.getFullYear()}`;
 }
 
+/** Período actual en formato yyyy-mm. Sirve para construir strings
+ * dinámicos como "Estado al mes de Mayo 2026" sin hardcodear el período. */
+export function periodoActualFormat(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+/**
+ * Rango de vigencia "X → Y" donde SIEMPRE se incluye el año en ambos
+ * extremos, incluso si coinciden con el año actual. Evita la confusión
+ * de "31 ago 2023 → 30 ago" donde el endpoint sin año hace dudar de
+ * cuándo cierra el contrato. Espejo del helper homónimo en inmo.
+ */
+export function formatRangoVigencia(inicioIso: string, finIso: string): string {
+  const di = new Date(inicioIso);
+  const df = new Date(finIso);
+  const fmt = (d: Date) =>
+    `${d.getDate()} ${MESES_CORTOS[d.getMonth()]} ${d.getFullYear()}`;
+  return `${fmt(di)} → ${fmt(df)}`;
+}
+
 // Formato del período de una liquidación. Devuelve mes capitalizado +
 // año: "Abril 2026" (antes "abril 2026", que se leía como typo).
 export function formatPeriodo(periodo: string): string {
