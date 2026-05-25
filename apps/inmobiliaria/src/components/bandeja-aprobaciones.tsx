@@ -185,7 +185,7 @@ export function BandejaAprobaciones() {
               <p className="text-sm text-muted-foreground">
                 Cargado por{' '}
                 <strong className="text-foreground">{aprobar_.cargadoPor}</strong>{' '}
-                el {formatFecha(aprobar_.cargadoAt)}.
+                el {formatFechaCorta(aprobar_.cargadoAt)}.
               </p>
               <div className="space-y-2">
                 <Label htmlFor="apr-coment">Comentario (opcional)</Label>
