@@ -13,7 +13,7 @@ import {
   type CargoACobrar,
 } from '@/lib/cargos-a-cobrar';
 import { contactosCobranzaMock } from '@/lib/mock-data';
-import { formatFecha, formatMonto } from '@/lib/format';
+import { formatFecha, formatFechaCorta, formatMonto } from '@/lib/format';
 
 /**
  * Card que muestra los cargos USO_Y_GOCE generados al inquilino con su
@@ -122,8 +122,8 @@ function CargoRow({ cargo }: { cargo: CargoACobrar }) {
           {cargo.direccion}
           {cargo.profesional && ` · ${cargo.profesional}`}
           {' · '}
-          {formatFecha(cargo.fechaResolucion)}
-          {cargo.pagadoAt && ` · pagado el ${formatFecha(cargo.pagadoAt)}`}
+          {formatFechaCorta(cargo.fechaResolucion)}
+          {cargo.pagadoAt && ` · pagado el ${formatFechaCorta(cargo.pagadoAt)}`}
         </p>
       </div>
       <div className="flex shrink-0 flex-col items-end gap-1.5">

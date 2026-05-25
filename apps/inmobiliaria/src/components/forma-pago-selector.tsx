@@ -33,7 +33,7 @@ import {
 } from '@/lib/forma-pago-storage';
 import { aplicarDescuentoCupon } from '@/lib/cupones';
 import { calcularResumenPlan } from '@/lib/plan';
-import { formatFecha, formatMonto } from '@/lib/format';
+import { formatFecha, formatFechaCorta, formatMonto } from '@/lib/format';
 
 /**
  * Selector de forma de pago para el panel de configuración. Muestra las
@@ -216,7 +216,7 @@ function ResumenFormaActiva({
       <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
         Próximo cobro
       </p>
-      <p className="font-semibold">{formatFecha(config.proximoCobro)}</p>
+      <p className="font-semibold">{formatFechaCorta(config.proximoCobro)}</p>
       <p className="text-[10px] text-muted-foreground">
         {formatMonto(monto.importe)} ·{' '}
         {config.forma === 'DEBITO_AUTOMATICO' && config.ultimos4

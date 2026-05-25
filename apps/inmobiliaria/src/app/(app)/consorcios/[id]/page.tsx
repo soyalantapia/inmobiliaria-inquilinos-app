@@ -42,7 +42,7 @@ import {
   morosidadConsorcio,
 } from '@/lib/consorcios-storage';
 import { sociedadById } from '@/lib/sociedades-storage';
-import { formatFecha, formatMonto } from '@/lib/format';
+import { formatFechaCorta, formatMonto } from '@/lib/format';
 
 export function generateStaticParams() {
   return consorciosMock.map((c) => ({ id: c.id }));
@@ -106,7 +106,7 @@ export default function DetalleConsorcioPage({ params }: { params: { id: string 
                     </>
                   )}
                   <span>·</span>
-                  <span>Administrado desde {formatFecha(consorcio.desde)}</span>
+                  <span>Administrado desde {formatFechaCorta(consorcio.desde)}</span>
                 </div>
                 {soc && (
                   <p className="text-[11px] text-muted-foreground">
@@ -352,7 +352,7 @@ export default function DetalleConsorcioPage({ params }: { params: { id: string 
                       const ingreso = m.monto >= 0;
                       return (
                         <TableRow key={m.id}>
-                          <TableCell className="text-sm">{formatFecha(m.fecha)}</TableCell>
+                          <TableCell className="text-sm">{formatFechaCorta(m.fecha)}</TableCell>
                           <TableCell>
                             <div className="flex items-start gap-2">
                               {ingreso ? (
@@ -421,7 +421,7 @@ export default function DetalleConsorcioPage({ params }: { params: { id: string 
                           </Badge>
                         </div>
                         <p className="text-[11px] text-muted-foreground">
-                          {formatFecha(a.fecha)} · {a.asistentes} asistente
+                          {formatFechaCorta(a.fecha)} · {a.asistentes} asistente
                           {a.asistentes === 1 ? '' : 's'}
                         </p>
                       </div>

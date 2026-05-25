@@ -31,7 +31,7 @@ import {
   type ContactoCobranza,
 } from '@/lib/mock-data';
 import { consorciosMock } from '@/lib/consorcios-storage';
-import { diasHastaVencimiento, formatFecha, formatMonto } from '@/lib/format';
+import { diasHastaVencimiento, formatFecha, formatFechaCorta, formatMonto } from '@/lib/format';
 
 /**
  * Plantillas de mensaje pre-armadas para cobranza. La inmo elige el
@@ -209,7 +209,7 @@ export function MorososPanel({ inmobiliaria = 'My Alquiler' }: Props) {
       .replace(/\{nombre\}/g, nombre)
       .replace(/\{direccion\}/g, moroso.contrato.direccion)
       .replace(/\{inquilino\}/g, moroso.contrato.inquilino)
-      .replace(/\{vencimiento\}/g, formatFecha(moroso.contrato.proximoVencimiento))
+      .replace(/\{vencimiento\}/g, formatFechaCorta(moroso.contrato.proximoVencimiento))
       .replace(/\{dias\}/g, String(dias))
       .replace(/\{monto\}/g, monto)
       .replace(/\{inmobiliaria\}/g, inmobiliaria);

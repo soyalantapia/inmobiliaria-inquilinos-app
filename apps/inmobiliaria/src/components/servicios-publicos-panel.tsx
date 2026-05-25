@@ -36,7 +36,7 @@ import {
   guardarServicio,
   leerServiciosDe,
 } from '@/lib/servicios-publicos-storage';
-import { formatFecha } from '@/lib/format';
+import { formatFecha, formatFechaCorta } from '@/lib/format';
 
 const ICONO_SERVICIO: Record<TipoServicio, typeof Zap> = {
   LUZ: Zap,
@@ -161,7 +161,7 @@ export function ServiciosPublicosPanel({ propiedadId }: Props) {
                       </p>
                     )}
                     <p className="text-[9px] uppercase tracking-wide text-muted-foreground">
-                      Actualizado {formatFecha(datos.actualizadoAt)}
+                      Actualizado {formatFechaCorta(datos.actualizadoAt)}
                     </p>
                   </div>
                 )}

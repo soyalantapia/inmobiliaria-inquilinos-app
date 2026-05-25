@@ -26,7 +26,7 @@ import {
   efectivoEnMano,
   listarCierres,
 } from '@/lib/cierre-caja';
-import { formatFecha, formatMonto } from '@/lib/format';
+import { formatFecha, formatFechaCorta, formatMonto } from '@/lib/format';
 
 const USUARIO_ACTUAL = 'Roberto Tapia';
 
@@ -86,7 +86,7 @@ export function CierreDiarioCard() {
               <CalendarClock className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-sm font-semibold">Cierre del día · {formatFecha(hoyIso)}</p>
+              <p className="text-sm font-semibold">Cierre del día · {formatFechaCorta(hoyIso)}</p>
               <p className="text-xs text-muted-foreground">
                 {cierre
                   ? `Cerrado por ${cierre.cerradoPor} a las ${new Date(
@@ -200,7 +200,7 @@ export function CierreDiarioCard() {
                   className="flex items-center justify-between text-xs"
                 >
                   <span className="text-muted-foreground">
-                    {formatFecha(c.fecha)} · {c.movimientos} movs · cerró{' '}
+                    {formatFechaCorta(c.fecha)} · {c.movimientos} movs · cerró{' '}
                     {c.cerradoPor}
                   </span>
                   <span
@@ -362,7 +362,7 @@ function construirReporteHtml(
     .footer { margin-top: 24px; font-size: 9pt; color: #9ca3af; text-align: right; }
   </style></head>
   <body>
-  <h1>Cierre de caja · ${formatFecha(dia)}</h1>
+  <h1>Cierre de caja · ${formatFechaCorta(dia)}</h1>
   <p style="font-size:10pt;color:#555;margin-top:0;">My Alquiler · resumen del día y posición de mes</p>
   <div class="stats">
     <div class="stat"><div class="label">Ingresos</div><div class="valor" style="color:#15803d">${formatMonto(resumen.ingresos)}</div></div>

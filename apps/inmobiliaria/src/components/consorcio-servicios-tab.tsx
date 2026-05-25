@@ -35,7 +35,7 @@ import {
   guardarServicioConsorcio,
   leerServiciosDeConsorcio,
 } from '@/lib/consorcio-servicios-storage';
-import { formatFecha, formatMonto } from '@/lib/format';
+import { formatFecha, formatFechaCorta, formatMonto } from '@/lib/format';
 
 const ICONO_SERVICIO: Record<TipoServicioConsorcio, typeof Zap> = {
   LUZ_PASILLO: Lightbulb,
@@ -181,7 +181,7 @@ export function ConsorcioServiciosTab({ consorcioId }: Props) {
                       </p>
                     )}
                     <p className="text-[9px] uppercase tracking-wide text-muted-foreground">
-                      Actualizado {formatFecha(datos.actualizadoAt)}
+                      Actualizado {formatFechaCorta(datos.actualizadoAt)}
                     </p>
                   </div>
                 )}

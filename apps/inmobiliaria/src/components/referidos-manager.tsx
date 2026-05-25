@@ -41,7 +41,7 @@ import {
 } from '@/lib/referidos-storage';
 import { abrirReporteImprimible } from '@/lib/reportes-pdf';
 import { sociedadPrincipal } from '@/lib/sociedades-storage';
-import { formatFecha } from '@/lib/format';
+import { formatFecha, formatFechaCorta } from '@/lib/format';
 
 /**
  * Manager del programa de referidos: muestra código, link de
@@ -311,10 +311,10 @@ export function ReferidosManager() {
                     <p className="text-[10px] text-muted-foreground">
                       <Clock className="mr-1 inline h-2.5 w-2.5" />
                       {r.estado === 'ACTIVO' && r.activoDesde
-                        ? `Operando desde ${formatFecha(r.activoDesde)}`
+                        ? `Operando desde ${formatFechaCorta(r.activoDesde)}`
                         : r.estado === 'REGISTRADO' && r.registradoAt
-                          ? `Se registró el ${formatFecha(r.registradoAt)}`
-                          : `Invitado el ${formatFecha(r.invitadoAt)}`}
+                          ? `Se registró el ${formatFechaCorta(r.registradoAt)}`
+                          : `Invitado el ${formatFechaCorta(r.invitadoAt)}`}
                     </p>
                   </div>
                   {r.estado === 'INVITADO' && (

@@ -24,7 +24,7 @@ import {
   formatPeriodoBoleta,
   leerBoletasDeContrato,
 } from '@/lib/boletas-cross-app';
-import { formatFecha, formatMonto } from '@/lib/format';
+import { formatFecha, formatFechaCorta, formatMonto } from '@/lib/format';
 
 const ICONO: Record<TipoServicioBoleta, typeof Zap> = {
   LUZ: Zap,
@@ -117,13 +117,13 @@ export function BoletasInquilinoPanel({ contratoId }: Props) {
                       </Badge>
                     </div>
                     <p className="text-[10px] text-muted-foreground">
-                      {formatMonto(b.monto)} · vence {formatFecha(b.vencimiento)}
+                      {formatMonto(b.monto)} · vence {formatFechaCorta(b.vencimiento)}
                       {b.pagadoAt && (
                         <span>
                           {' '}
                           ·{' '}
                           <CheckCircle2 className="inline h-3 w-3 text-emerald-600" />{' '}
-                          {formatFecha(b.pagadoAt)}
+                          {formatFechaCorta(b.pagadoAt)}
                         </span>
                       )}
                     </p>

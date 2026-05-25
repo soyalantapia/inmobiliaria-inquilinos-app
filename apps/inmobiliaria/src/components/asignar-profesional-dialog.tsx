@@ -27,7 +27,7 @@ import {
 } from '@/lib/mock-data';
 import { asignarProfesional, listarReclamos } from '@/lib/reclamos-store';
 import type { CategoriaReclamo, Reclamo, UrgenciaReclamo } from '@/lib/types';
-import { formatFecha } from '@/lib/format';
+import { formatFecha, formatFechaCorta } from '@/lib/format';
 
 /**
  * Mapeo categoría del profesional → categoría del reclamo. Cuando no hay
@@ -303,7 +303,7 @@ function ReclamoRow({
           {reclamo.descripcion}
         </p>
         <p className="mt-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-          {reclamo.inquilino} · creado {formatFecha(reclamo.createdAt)}
+          {reclamo.inquilino} · creado {formatFechaCorta(reclamo.createdAt)}
         </p>
       </div>
     </button>

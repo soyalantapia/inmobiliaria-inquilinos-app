@@ -28,7 +28,7 @@ import {
 } from '@/lib/mock-data';
 import { listarReclamos } from '@/lib/reclamos-store';
 import { calificacionesPorProfesional, ratingPonderado } from '@/lib/ratings-cross-app';
-import { formatFecha } from '@/lib/format';
+import { formatFecha, formatFechaCorta } from '@/lib/format';
 import type { EstadoReclamo, Reclamo } from '@/lib/types';
 import { mensajeWhatsappGenerico } from './asignar-profesional-dialog';
 
@@ -288,7 +288,7 @@ function ReclamoHistorialRow({
             {reclamo.descripcion}
           </p>
           <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-            {reclamo.inquilino} · creado {formatFecha(reclamo.createdAt)}
+            {reclamo.inquilino} · creado {formatFechaCorta(reclamo.createdAt)}
             {tiempoRes !== null && (
               <>
                 {' '}
@@ -313,7 +313,7 @@ function ReclamoHistorialRow({
               ))}
             </div>
             <p className="text-[10px] text-muted-foreground">
-              {formatFecha(calif.enviadoAt)}
+              {formatFechaCorta(calif.enviadoAt)}
             </p>
           </div>
         ) : reclamo.estado === 'RESUELTO' ? (

@@ -14,7 +14,7 @@ import {
   trialVigente,
   type Trial,
 } from '@/lib/trial-storage';
-import { formatFecha } from '@/lib/format';
+import { formatFecha, formatFechaCorta } from '@/lib/format';
 
 /**
  * Banner que aparece en /configuracion cuando la inmo tiene un trial
@@ -52,7 +52,7 @@ export function TrialBanner() {
             <p className="text-sm text-muted-foreground">
               {trial.motivo}. Tu trial vence el{' '}
               <strong className="text-foreground">
-                {formatFecha(trial.hasta)}
+                {formatFechaCorta(trial.hasta)}
               </strong>{' '}
               ({dias} día{dias === 1 ? '' : 's'} restantes). No se debita nada
               mientras esté activo.

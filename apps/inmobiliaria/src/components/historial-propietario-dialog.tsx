@@ -28,7 +28,7 @@ import {
   listarRendicionesDePropietario,
   type Rendicion,
 } from '@/lib/rendiciones-storage';
-import { formatFecha, formatMonto } from '@/lib/format';
+import { formatFecha, formatFechaCorta, formatMonto } from '@/lib/format';
 import type { Propietario } from '@/lib/types';
 
 /**
@@ -295,7 +295,7 @@ function RendicionRow({ rendicion }: { rendicion: Rendicion }) {
           </Badge>
         </div>
         <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-          Rendido el {formatFecha(rendicion.rendidoAt)}
+          Rendido el {formatFechaCorta(rendicion.rendidoAt)}
         </p>
         {rendicion.notas && (
           <p className="mt-1 text-xs italic text-muted-foreground">

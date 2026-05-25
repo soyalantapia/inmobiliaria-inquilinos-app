@@ -32,7 +32,7 @@ import {
   propietariosMock,
   type PagoInformado,
 } from '@/lib/mock-data';
-import { formatFecha, formatMonto, formatPeriodo } from '@/lib/format';
+import { formatFecha, formatFechaCorta, formatMonto, formatPeriodo } from '@/lib/format';
 import {
   conciliarPago,
   estadoDePago,
@@ -471,10 +471,10 @@ function PagoRow({
       <div className="grid grid-cols-2 gap-3 rounded-md border bg-muted/30 p-3 text-xs">
         <Field label="Período" value={formatPeriodo(pago.periodo)} />
         <Field label="Método" value={metodoLabel[pago.metodo]} />
-        <Field label="Transfirió" value={formatFecha(pago.fechaTransferencia)} />
+        <Field label="Transfirió" value={formatFechaCorta(pago.fechaTransferencia)} />
         <Field
           label="Informado"
-          value={`${formatFecha(pago.informadoAt)} ${new Date(pago.informadoAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}`}
+          value={`${formatFechaCorta(pago.informadoAt)} ${new Date(pago.informadoAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}`}
         />
       </div>
 
@@ -561,7 +561,7 @@ function ExtraccionIABlock({
         />
         <FieldIA
           label="Fecha"
-          valor={formatFecha(extraccion.fechaTransferencia)}
+          valor={formatFechaCorta(extraccion.fechaTransferencia)}
           match={extraccion.matchFecha}
         />
         <FieldIA label="N° operación" valor={extraccion.nroOperacion} />

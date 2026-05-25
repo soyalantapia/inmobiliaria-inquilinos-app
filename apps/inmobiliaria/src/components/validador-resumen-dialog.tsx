@@ -35,7 +35,7 @@ import {
   pagosInformadosMock,
   type PagoInformado,
 } from '@/lib/mock-data';
-import { formatFecha, formatMonto } from '@/lib/format';
+import { formatFecha, formatFechaCorta, formatMonto } from '@/lib/format';
 import {
   analizarResumen,
   matchearCredito,
@@ -459,7 +459,7 @@ function CreditoRow({
               {formatMonto(credito.monto)}
             </p>
             <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
-              {formatFecha(credito.fecha)}
+              {formatFechaCorta(credito.fecha)}
             </p>
             <Badge className={`shrink-0 text-[10px] ${colorConfianza[match.confianza]}`}>
               {labelConfianza[match.confianza]}

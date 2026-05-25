@@ -44,7 +44,7 @@ import {
   listarMovimientosDe,
   moverStock,
 } from '@/lib/consorcio-inventario-storage';
-import { formatFecha, formatMonto } from '@/lib/format';
+import { formatFecha, formatFechaCorta, formatMonto } from '@/lib/format';
 
 const USUARIO_ACTUAL = 'Roberto Tapia';
 
@@ -312,7 +312,7 @@ export function ConsorcioInventarioTab({ consorcioId }: Props) {
                     </p>
                     <p className="text-[10px] text-muted-foreground">
                       {m.motivo}
-                      {m.ufDestino && ` · ${m.ufDestino}`} · {formatFecha(m.fecha)} ·{' '}
+                      {m.ufDestino && ` · ${m.ufDestino}`} · {formatFechaCorta(m.fecha)} ·{' '}
                       {m.cargadoPor}
                     </p>
                   </div>
