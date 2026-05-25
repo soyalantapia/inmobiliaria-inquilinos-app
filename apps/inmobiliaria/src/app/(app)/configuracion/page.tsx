@@ -46,7 +46,7 @@ import { PlanConsorciosCard } from '@/components/plan-consorcios-card';
 import { ReferidosManager } from '@/components/referidos-manager';
 import { SociedadesManager } from '@/components/sociedades-manager';
 import { TrialBanner } from '@/components/trial-banner';
-import { formatFecha, formatMonto, formatPeriodo } from '@/lib/format';
+import { formatFechaCorta, formatMonto, formatPeriodo } from '@/lib/format';
 import {
   listarAuditoria,
   moduloDeTipo,
@@ -516,7 +516,7 @@ export default function ConfiguracionPage() {
                   </p>
                   <p className="mt-1 text-3xl font-bold text-primary">{plan.plan}</p>
                   <p className="text-xs text-muted-foreground">
-                    Próxima factura: {formatFecha(plan.proximaFacturacion)}
+                    Próxima factura: {formatFechaCorta(plan.proximaFacturacion)}
                   </p>
                 </div>
                 <div>
@@ -718,7 +718,7 @@ export default function ConfiguracionPage() {
                       <TableRow key={f.id}>
                         <TableCell className="font-medium">{formatPeriodo(f.periodo)}</TableCell>
                         <TableCell className="text-sm text-muted-foreground">
-                          {formatFecha(f.fechaEmision)}
+                          {formatFechaCorta(f.fechaEmision)}
                         </TableCell>
                         <TableCell className="text-right text-sm tabular-nums">
                           {f.propiedadesEnPlan}
@@ -734,7 +734,7 @@ export default function ConfiguracionPage() {
                         <TableCell className="text-xs text-muted-foreground">
                           {f.fechaPago ? (
                             <>
-                              {formatFecha(f.fechaPago)}
+                              {formatFechaCorta(f.fechaPago)}
                               {f.metodoPago && (
                                 <span className="ml-1 opacity-60">· {f.metodoPago.toLowerCase()}</span>
                               )}
@@ -1098,7 +1098,7 @@ function AuditoriaTab() {
           <Card key={dia}>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-semibold text-muted-foreground">
-                {formatFecha(`${dia}T12:00:00-03:00`)}
+                {formatFechaCorta(`${dia}T12:00:00-03:00`)}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
