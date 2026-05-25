@@ -178,7 +178,7 @@ export default function PagosPage() {
         c.direccion,
         contacto?.titular.telefono ?? '—',
         contacto?.garante ? `${contacto.garante.nombre} · ${contacto.garante.telefono}` : 'Sin garante registrado',
-        `${dias} días`,
+        `${dias} día${dias === 1 ? '' : 's'}`,
         formatMonto(c.monto, c.moneda),
       ];
     });
@@ -260,7 +260,7 @@ export default function PagosPage() {
             c.direccion,
             ownerNombre,
             contacto?.titular.telefono ?? '—',
-            `${dias} días`,
+            `${dias} día${dias === 1 ? '' : 's'}`,
             formatMonto(c.monto, c.moneda),
           ];
         });

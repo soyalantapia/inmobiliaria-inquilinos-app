@@ -111,7 +111,7 @@ export function NotificationsBell() {
       <button
         onClick={() => setOpen((v) => !v)}
         className="relative rounded-full p-2 hover:bg-muted"
-        aria-label={`${unreadCount} notificaciones sin leer`}
+        aria-label={`${unreadCount} notificación${unreadCount === 1 ? '' : 'es'} sin leer`}
       >
         <Bell className="h-5 w-5" />
         {unreadCount > 0 && (
