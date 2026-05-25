@@ -179,7 +179,7 @@ const SEED: Aprobacion[] = [
   {
     id: 'apr_seed_2',
     tipo: 'PAGO_MANUAL',
-    titulo: 'Pago manual Ana Pereyra · mayo 2026',
+    titulo: 'Pago manual Ana Pereyra · Mayo 2026',
     descripcion: 'Transferencia recibida fuera del banco recaudador',
     monto: 850000,
     entidadId: 'liq_apr_2',

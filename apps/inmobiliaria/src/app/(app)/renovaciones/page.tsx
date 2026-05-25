@@ -22,7 +22,7 @@ import {
   intencionesRenovacionMock,
   type DecisionRenovacionMock,
 } from '@/lib/mock-data';
-import { diasHastaVencimiento, formatFecha, formatMonto } from '@/lib/format';
+import { diasHastaVencimiento, formatFecha, formatFechaCorta, formatMonto } from '@/lib/format';
 import {
   NegociadorRenovacionPanel,
   ResumenSugerenciasCartera,
@@ -211,12 +211,12 @@ export default function RenovacionesPage() {
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 rounded-md border bg-muted/30 p-3 text-xs md:grid-cols-4">
-                  <Stat label="Vence" value={formatFecha(c.fechaFin)} />
+                  <Stat label="Vence" value={formatFechaCorta(c.fechaFin)} />
                   <Stat label="Faltan" value={`${c.dias} días`} />
                   <Stat label="Monto actual" value={formatMonto(c.monto, c.moneda)} />
                   <Stat
                     label="Avisó"
-                    value={c.fechaIntencion ? formatFecha(c.fechaIntencion) : '—'}
+                    value={c.fechaIntencion ? formatFechaCorta(c.fechaIntencion) : '—'}
                   />
                 </div>
 

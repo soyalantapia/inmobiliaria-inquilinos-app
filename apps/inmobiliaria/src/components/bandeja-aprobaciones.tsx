@@ -31,7 +31,7 @@ import {
   listarAprobaciones,
   rechazar,
 } from '@/lib/aprobaciones-storage';
-import { formatFecha, formatMonto } from '@/lib/format';
+import { formatFecha, formatFechaCorta, formatMonto } from '@/lib/format';
 
 const ICONO_TIPO: Record<TipoAprobacion, typeof Inbox> = {
   CONTRATO_CARGADO: FileSignature,
@@ -319,7 +319,7 @@ function AprobacionCard({ aprobacion, onAprobar, onRechazar }: CardProps) {
             {aprobacion.rolAutor}
           </span>
           <Clock className="h-3 w-3" />
-          <span>{formatFecha(aprobacion.cargadoAt)}</span>
+          <span>{formatFechaCorta(aprobacion.cargadoAt)}</span>
         </div>
 
         {aprobacion.notas && (
