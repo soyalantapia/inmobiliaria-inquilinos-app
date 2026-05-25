@@ -35,7 +35,7 @@ import {
   pagosInformadosMock,
   type PagoInformado,
 } from '@/lib/mock-data';
-import { formatFechaCorta, formatMonto } from '@/lib/format';
+import { formatFechaCorta, formatMonto, formatPeriodo } from '@/lib/format';
 import {
   analizarResumen,
   matchearCredito,
@@ -189,7 +189,7 @@ export function ValidadorResumenDialog({
         rolAutor: 'ADMIN',
         entidadId: m.pagoInformadoId,
         entidadDescripcion: pago
-          ? `Pago de ${pago.inquilino} · ${pago.periodo}`
+          ? `Pago de ${pago.inquilino} · ${formatPeriodo(pago.periodo)}`
           : m.pagoInformadoId,
         detalle: `Match contra resumen · ${formatMonto(c.monto)} · ${c.bancoOrigen}`,
       });

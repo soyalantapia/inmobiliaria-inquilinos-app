@@ -135,7 +135,7 @@ export default function DashboardObjetivosPage() {
             {proyectados.length > 0 && (
               <p className="text-[11px] text-muted-foreground">
                 Proyección actual: cerramos {proyectados[proyectados.length - 1]!.activos} clientes y{' '}
-                {formatMonto(proyectados[proyectados.length - 1]!.mrr)} de MRR en {META_SEMESTRE.cierre}.
+                {formatMonto(proyectados[proyectados.length - 1]!.mrr)} de MRR en {formatPeriodo(META_SEMESTRE.cierre)}.
               </p>
             )}
           </CardContent>

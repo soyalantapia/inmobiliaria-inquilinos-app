@@ -19,6 +19,7 @@ import {
   listarMovimientosCaja,
   type MovimientoCaja,
 } from './caja-storage';
+import { formatPeriodo } from './format';
 import {
   contratosMock,
   generarLiquidaciones,
@@ -150,7 +151,7 @@ export function calcularResumenDia(fecha?: string): ResumenDia {
     ...gastosDelDia.map<MovimientoDia>((mov) => ({ tipo: 'GASTO', mov })),
     ...rendicionesDelDia.map<MovimientoDia>((r) => ({
       tipo: 'RENDICION',
-      descripcion: `Rendición · período ${r.periodo}`,
+      descripcion: `Rendición · ${formatPeriodo(r.periodo)}`,
       monto: r.montoNeto,
       metodo: r.metodo,
     })),

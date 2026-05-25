@@ -42,7 +42,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@llave/ui/tabs';
 import { toast } from '@llave/ui/use-toast';
 import { Topbar } from '@/components/topbar';
 import { screeningMock } from '@/lib/mock-data';
-import { formatMonto, formatFecha } from '@/lib/format';
+import { formatMonto, formatFecha, formatPeriodo } from '@/lib/format';
 import { formatearCuit, validarCuit } from '@/lib/cuit';
 import type {
   CoherenciaHuella,
@@ -816,7 +816,7 @@ function Informe({
                   <tbody>
                     {resultado.ingresos.nominaUltimos6m.map((n) => (
                       <tr key={n.periodo} className="border-b last:border-0">
-                        <td className="py-2 font-medium">{n.periodo}</td>
+                        <td className="py-2 font-medium">{formatPeriodo(n.periodo)}</td>
                         <td className="py-2">
                           <Badge variant="secondary">{n.rangoIngreso}</Badge>
                         </td>
