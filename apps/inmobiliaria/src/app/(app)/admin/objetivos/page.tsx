@@ -20,7 +20,7 @@ import {
   META_SEMESTRE,
   UNIT_ECONOMICS,
 } from '@/lib/objetivos-data';
-import { formatMonto } from '@/lib/format';
+import { formatMonto, formatPeriodo } from '@/lib/format';
 
 /**
  * Dashboard interno de objetivos del semestre.
@@ -344,7 +344,7 @@ function MetaCard({
               {label}
             </p>
             <p className="text-xs text-muted-foreground">
-              Meta {META_SEMESTRE.cierre}: <strong className="text-foreground">{fmt(meta)}</strong>
+              Meta {formatPeriodo(META_SEMESTRE.cierre)}: <strong className="text-foreground">{fmt(meta)}</strong>
             </p>
           </div>
         </div>
