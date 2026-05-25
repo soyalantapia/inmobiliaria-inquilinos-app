@@ -1,3 +1,6 @@
+'use client';
+
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import {
@@ -25,6 +28,7 @@ import { Avatar, AvatarFallback } from '@llave/ui/avatar';
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { BotonProximamente } from '@/components/boton-proximamente';
+import { EditarPropiedadTrigger } from '@/components/editar-propiedad-trigger';
 import {
   CargarInquilinoTrigger,
   ListaInvitadosPropiedad,
@@ -60,6 +64,7 @@ import {
   urgenciaConfig,
 } from '@/lib/reclamos-config';
 import { formatFechaCorta, formatMonto, formatRangoVigencia } from '@/lib/format';
+import { aplicarOverride } from '@/lib/propiedades-overrides-storage';
 import { sociedadById, sociedadPrincipal } from '@/lib/sociedades-storage';
 import type { TipoPropiedad } from '@/lib/types';
 
@@ -70,17 +75,30 @@ const tipoIcono: Record<TipoPropiedad, React.ComponentType<{ className?: string 
   GALPON: Warehouse,
 };
 
-export function generateStaticParams() {
-  return propiedadesMock.map((p) => ({ id: p.id }));
-}
-
-export const dynamicParams = false;
-
 export default function DetallePropiedadPage({ params }: { params: { id: string } }) {
   const raw = propiedadesMock.find((p) => p.id === params.id);
   if (!raw) notFound();
+
+  // Aplicamos overrides locales (edición de dirección/ambientes/m²) sobre
+  // la propiedad base. Se evalúa en cliente porque el storage es
+  // localStorage; en SSR queda con valores base hasta que hidratamos.
+  const [overrideTick, setOverrideTick] = useState(0);
+  useEffect(() => {
+    // Se actualiza tras guardar (custom event interno) o cambios cross-tab
+    // (storage event nativo).
+    const onChange = () => setOverrideTick((n) => n + 1);
+    window.addEventListener('propiedad-actualizada', onChange);
+    window.addEventListener('storage', onChange);
+    return () => {
+      window.removeEventListener('propiedad-actualizada', onChange);
+      window.removeEventListener('storage', onChange);
+    };
+  }, []);
+  const propiedadConOverride = aplicarOverride(raw);
   const { propiedad, contrato, propietarios, reclamos, reclamosAbiertos } =
-    enriquecerPropiedad(raw);
+    enriquecerPropiedad(propiedadConOverride);
+  // overrideTick fuerza re-render cuando el storage cambia desde otro tab.
+  void overrideTick;
 
   const Icon = tipoIcono[propiedad.tipo];
   const estadoCfg = estadoPropiedadConfig[propiedad.estado];
@@ -141,15 +159,7 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                 })()}
               </div>
               <div className="flex gap-2">
-                <BotonProximamente
-                  variant="outline"
-                  size="sm"
-                  toastTitle="Editar propiedad"
-                  toastMessage="Próximamente vas a poder editar dirección, ambientes y m² desde acá."
-                >
-                  <FileText className="h-4 w-4" />
-                  Editar
-                </BotonProximamente>
+                <EditarPropiedadTrigger propiedad={propiedad} />
               </div>
             </div>
 
