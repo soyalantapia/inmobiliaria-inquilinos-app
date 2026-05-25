@@ -17,16 +17,21 @@ export function Topbar({ titulo }: { titulo: string }) {
   const router = useRouter();
   return (
     <header className="flex h-16 items-center justify-between gap-2 border-b bg-background px-3 md:gap-3 md:px-6">
-      <div className="flex items-center gap-2 min-w-0">
+      <div className="flex flex-shrink-0 items-center gap-2">
         <MobileSidebarTrigger />
-        <h1 className="truncate text-base font-semibold sm:text-lg md:text-xl">{titulo}</h1>
+        {/* El título no usa truncate — preferimos que el lado derecho se
+            comprima a que el título quede como "Verificar inq...". Como
+            ya pasa de 13 chars solo "Verificar inquilino", igual entra. */}
+        <h1 className="whitespace-nowrap text-base font-semibold sm:text-lg xl:text-xl">{titulo}</h1>
         <PilotoBadgeTopbar />
       </div>
-      <div className="flex shrink-0 items-center gap-1 md:gap-3">
+      <div className="flex min-w-0 items-center gap-1 md:gap-3">
         <SelectorSociedadTopbar />
-        <div className="relative hidden md:block">
+        {/* Search: oculto en mobile, w-48 en lg, w-72 en xl. Se contrae si
+            falta espacio porque NO tiene shrink-0. */}
+        <div className="relative hidden min-w-0 lg:block">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input className="w-72 pl-9" placeholder="Buscar contrato, inquilino…" />
+          <Input className="w-full pl-9 lg:w-48 xl:w-72" placeholder="Buscar…" />
         </div>
         <ConvenioBadgeTopbar />
         <ThemeToggle />
