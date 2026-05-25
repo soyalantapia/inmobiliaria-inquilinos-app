@@ -32,7 +32,7 @@ import {
   propietariosMock,
 } from '@/lib/mock-data';
 import { estadoDePago } from '@/lib/conciliacion-storage';
-import { formatFecha, formatFechaCorta, formatMonto } from '@/lib/format';
+import { formatFecha, formatFechaCorta, formatMonto, formatPeriodo, periodoActualFormat } from '@/lib/format';
 import { abrirReporteImprimible } from '@/lib/reportes-pdf';
 import { diasHastaVencimiento } from '@/lib/format';
 import {
@@ -185,7 +185,7 @@ export default function PagosPage() {
     const totalDeuda = morosos.reduce((acc, c) => acc + c.monto, 0);
     abrirReporteImprimible({
       titulo: 'Morosos · cobranza',
-      subtitulo: `Mayo 2026 · ${morosos.length} contrato${morosos.length === 1 ? '' : 's'} con atraso`,
+      subtitulo: `${formatPeriodo(periodoActualFormat())} · ${morosos.length} contrato${morosos.length === 1 ? '' : 's'} con atraso`,
       inmobiliaria: sociedadPrincipal().razonSocial,
       columnas: [
         { header: 'Inquilino', width: '20%' },
@@ -282,7 +282,7 @@ export default function PagosPage() {
 
     abrirReporteImprimible({
       titulo: 'Morosos por sociedad',
-      subtitulo: `Mayo 2026 · ${secciones.length} sociedad${secciones.length === 1 ? '' : 'es'} con cartera atrasada · ${morosos.length} contrato${morosos.length === 1 ? '' : 's'} vencido${morosos.length === 1 ? '' : 's'}`,
+      subtitulo: `${formatPeriodo(periodoActualFormat())} · ${secciones.length} sociedad${secciones.length === 1 ? '' : 'es'} con cartera atrasada · ${morosos.length} contrato${morosos.length === 1 ? '' : 's'} vencido${morosos.length === 1 ? '' : 's'}`,
       inmobiliaria: principal.razonSocial,
       columnas: [
         { header: 'Inquilino', width: '20%' },
@@ -318,7 +318,7 @@ export default function PagosPage() {
     ]);
     abrirReporteImprimible({
       titulo: 'Cobranzas del mes',
-      subtitulo: `Mayo 2026 · ${pagados.length} pago${pagados.length === 1 ? '' : 's'} acreditado${pagados.length === 1 ? '' : 's'}`,
+      subtitulo: `${formatPeriodo(periodoActualFormat())} · ${pagados.length} pago${pagados.length === 1 ? '' : 's'} acreditado${pagados.length === 1 ? '' : 's'}`,
       inmobiliaria: sociedadPrincipal().razonSocial,
       columnas: [
         { header: 'Inquilino', width: '24%' },
@@ -388,7 +388,7 @@ export default function PagosPage() {
         <AlertasServiciosCard />
 
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold">Liquidaciones — Mayo 2026</h2>
+          <h2 className="text-lg font-semibold">Liquidaciones — {formatPeriodo(periodoActualFormat())}</h2>
           <div className="flex flex-wrap gap-2">
             <Button
               size="sm"

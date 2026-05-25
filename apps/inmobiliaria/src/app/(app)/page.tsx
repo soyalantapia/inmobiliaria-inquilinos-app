@@ -27,7 +27,7 @@ import { InboxDelDia } from '@/components/inbox-del-dia';
 import { Topbar } from '@/components/topbar';
 import { agendaMock, alertasMock, dashboardMetricsMock } from '@/lib/mock-data';
 import { calcularDashboardStats } from '@/lib/dashboard-helpers';
-import { formatMonto } from '@/lib/format';
+import { formatMonto, formatPeriodo, periodoActualFormat } from '@/lib/format';
 
 export default function DashboardPage() {
   const stats = calcularDashboardStats();
@@ -65,7 +65,7 @@ export default function DashboardPage() {
         {/* 4 KPIs financieros principales */}
         <section className="space-y-3">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Plata · Mayo 2026
+            Plata · {formatPeriodo(periodoActualFormat())}
           </h2>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <KpiBig
@@ -147,7 +147,7 @@ export default function DashboardPage() {
               <div>
                 <CardTitle>Cobro de las últimas 4 semanas</CardTitle>
                 <CardDescription>
-                  Mayo 2026 · cobrabilidad promedio {stats.cobrabilidadPct}%
+                  {formatPeriodo(periodoActualFormat())} · cobrabilidad promedio {stats.cobrabilidadPct}%
                 </CardDescription>
               </div>
               <Badge variant="secondary">Live</Badge>

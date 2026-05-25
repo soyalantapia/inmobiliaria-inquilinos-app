@@ -37,6 +37,12 @@ export function diasHastaVencimiento(iso: string): number {
   return Math.floor((d.getTime() - hoy.getTime()) / (24 * 60 * 60 * 1000));
 }
 
+/** Período actual en formato yyyy-mm (igual que rendiciones-storage). */
+export function periodoActualFormat(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
 // Devuelve mes capitalizado + año ("Mayo 2026") — antes era minúscula
 // ("mayo 2026") que se leía como typo. Consistente con la app del inquilino.
 export function formatPeriodo(periodo: string): string {
