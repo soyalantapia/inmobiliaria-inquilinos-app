@@ -28,7 +28,7 @@ import {
   listarRendicionesDePropietario,
   type Rendicion,
 } from '@/lib/rendiciones-storage';
-import { formatFecha, formatFechaCorta, formatMonto } from '@/lib/format';
+import { formatFechaCorta, formatMonto } from '@/lib/format';
 import type { Propietario } from '@/lib/types';
 
 /**

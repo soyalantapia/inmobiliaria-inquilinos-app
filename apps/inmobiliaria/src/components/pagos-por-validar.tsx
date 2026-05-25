@@ -32,7 +32,7 @@ import {
   propietariosMock,
   type PagoInformado,
 } from '@/lib/mock-data';
-import { formatFecha, formatFechaCorta, formatMonto, formatPeriodo } from '@/lib/format';
+import { formatFechaCorta, formatMonto, formatPeriodo } from '@/lib/format';
 import {
   conciliarPago,
   estadoDePago,

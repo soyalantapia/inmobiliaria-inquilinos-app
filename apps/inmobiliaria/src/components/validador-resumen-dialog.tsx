@@ -35,7 +35,7 @@ import {
   pagosInformadosMock,
   type PagoInformado,
 } from '@/lib/mock-data';
-import { formatFecha, formatFechaCorta, formatMonto } from '@/lib/format';
+import { formatFechaCorta, formatMonto } from '@/lib/format';
 import {
   analizarResumen,
   matchearCredito,

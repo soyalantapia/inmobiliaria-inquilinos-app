@@ -26,7 +26,7 @@ import {
 import { listarProfesionalesAdmin } from '@/lib/profesionales-storage';
 import { asignarProfesional, clasificarReclamo } from '@/lib/reclamos-store';
 import type { Reclamo, CategoriaReclamo, ClasificacionReclamo } from '@/lib/types';
-import { formatFecha, formatFechaCorta } from '@/lib/format';
+import { formatFechaCorta } from '@/lib/format';
 
 // Bloque de gestión que va en /reclamos/[id] del admin.
 // Permite clasificar el reclamo (uso y goce vs desperfecto, lo que define

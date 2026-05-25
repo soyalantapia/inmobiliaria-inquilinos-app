@@ -33,7 +33,7 @@ import {
 } from '@/lib/forma-pago-storage';
 import { aplicarDescuentoCupon } from '@/lib/cupones';
 import { calcularResumenPlan } from '@/lib/plan';
-import { formatFecha, formatFechaCorta, formatMonto } from '@/lib/format';
+import { formatFechaCorta, formatMonto } from '@/lib/format';
 
 /**
  * Selector de forma de pago para el panel de configuración. Muestra las

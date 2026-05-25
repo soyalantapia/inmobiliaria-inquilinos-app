@@ -31,7 +31,7 @@ import {
   listarAprobaciones,
   rechazar,
 } from '@/lib/aprobaciones-storage';
-import { formatFecha, formatFechaCorta, formatMonto } from '@/lib/format';
+import { formatFechaCorta, formatMonto } from '@/lib/format';
 
 const ICONO_TIPO: Record<TipoAprobacion, typeof Inbox> = {
   CONTRATO_CARGADO: FileSignature,

@@ -24,7 +24,7 @@ import {
   formatPeriodoBoleta,
   leerBoletasDeContrato,
 } from '@/lib/boletas-cross-app';
-import { formatFecha, formatFechaCorta, formatMonto } from '@/lib/format';
+import { formatFechaCorta, formatMonto } from '@/lib/format';
 
 const ICONO: Record<TipoServicioBoleta, typeof Zap> = {
   LUZ: Zap,

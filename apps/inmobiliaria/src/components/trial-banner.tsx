@@ -14,7 +14,7 @@ import {
   trialVigente,
   type Trial,
 } from '@/lib/trial-storage';
-import { formatFecha, formatFechaCorta } from '@/lib/format';
+import { formatFechaCorta } from '@/lib/format';
 
 /**
  * Banner que aparece en /configuracion cuando la inmo tiene un trial

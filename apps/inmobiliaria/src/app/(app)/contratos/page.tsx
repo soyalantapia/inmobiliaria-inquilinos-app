@@ -22,7 +22,7 @@ import { Input } from '@llave/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@llave/ui/table';
 import { Topbar } from '@/components/topbar';
 import { contratosMock, propiedadesMock, propietariosMock } from '@/lib/mock-data';
-import { formatFecha, formatMonto } from '@/lib/format';
+import { formatFechaCorta, formatMonto } from '@/lib/format';
 import type { EstadoLiquidacion } from '@/lib/types';
 
 type Filtro = 'TODOS' | 'ACTIVO' | 'BORRADOR' | 'ARCHIVADO';
@@ -304,8 +304,8 @@ export default function ContratosPage() {
                 <Card className="space-y-3 p-4 transition-colors hover:bg-muted/30">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="truncate font-medium">{c.inquilino}</p>
-                      <p className="truncate text-xs text-muted-foreground">{c.direccion}</p>
+                      <p className="line-clamp-2 font-medium leading-tight">{c.inquilino}</p>
+                      <p className="line-clamp-2 text-xs text-muted-foreground">{c.direccion}</p>
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-1">
                       <Badge variant={c.estado === 'ACTIVO' ? 'success' : 'secondary'}>
@@ -321,8 +321,8 @@ export default function ContratosPage() {
                       <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
                         Vigencia
                       </p>
-                      <p className="truncate text-xs">
-                        {formatFecha(c.fechaInicio)} → {formatFecha(c.fechaFin)}
+                      <p className="text-xs tabular-nums">
+                        {formatFechaCorta(c.fechaInicio)} → {formatFechaCorta(c.fechaFin)}
                       </p>
                     </div>
                     <div className="text-right">
@@ -360,8 +360,8 @@ export default function ContratosPage() {
                   <TableRow key={c.id}>
                     <TableCell className="font-medium">{c.inquilino}</TableCell>
                     <TableCell className="text-muted-foreground">{c.direccion}</TableCell>
-                    <TableCell className="text-muted-foreground text-sm">
-                      {formatFecha(c.fechaInicio)} → {formatFecha(c.fechaFin)}
+                    <TableCell className="text-muted-foreground text-sm tabular-nums">
+                      {formatFechaCorta(c.fechaInicio)} → {formatFechaCorta(c.fechaFin)}
                     </TableCell>
                     <TableCell className="text-right font-medium">
                       {formatMonto(c.monto, c.moneda)}

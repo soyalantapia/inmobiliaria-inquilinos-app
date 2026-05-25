@@ -28,7 +28,7 @@ import {
   propiedadesMock,
   propietariosMock,
 } from '@/lib/mock-data';
-import { formatFecha, formatFechaCorta, formatMonto } from '@/lib/format';
+import { formatFechaCorta, formatMonto } from '@/lib/format';
 
 export function generateStaticParams() {
   return propietariosMock.map((p) => ({ id: p.id }));
@@ -274,7 +274,7 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
                       <p className="text-muted-foreground">Conectado desde</p>
                       <p className="font-medium">
                         {propietario.afip.conectadoDesde &&
-                          formatFecha(propietario.afip.conectadoDesde)}
+                          formatFechaCorta(propietario.afip.conectadoDesde)}
                       </p>
                     </div>
                   </div>
@@ -434,7 +434,7 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
                     <div className="flex-1 min-w-0">
                       <p className="truncate text-sm font-medium">{c.inquilino}</p>
                       <p className="truncate text-xs text-muted-foreground">
-                        {c.direccion} · {formatFecha(c.fechaInicio)} → {formatFecha(c.fechaFin)}
+                        {c.direccion} · {formatFechaCorta(c.fechaInicio)} → {formatFechaCorta(c.fechaFin)}
                       </p>
                     </div>
                     <Badge variant={c.estado === 'ACTIVO' ? 'success' : 'outline'}>
@@ -521,7 +521,7 @@ function RendicionRow({ rendicion: r }: { rendicion: Rendicion }) {
         </p>
         <p className="text-xs text-muted-foreground">
           Cobrado {formatMonto(r.cobrado)} − comisión {formatMonto(r.comision)}
-          {r.fecha && ` · Transferido el ${formatFecha(r.fecha)}`}
+          {r.fecha && ` · Transferido el ${formatFechaCorta(r.fecha)}`}
         </p>
       </div>
       <div className="flex shrink-0 flex-col items-end gap-1">

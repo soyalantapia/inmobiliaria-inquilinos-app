@@ -50,7 +50,7 @@ import {
 } from '@/lib/contrato-generator';
 import { propietariosMock } from '@/lib/mock-data';
 import { sociedadPrincipal } from '@/lib/sociedades-storage';
-import { formatFecha } from '@/lib/format';
+import { formatFechaCorta } from '@/lib/format';
 import type { ContratoListado } from '@/lib/types';
 
 interface Props {
@@ -416,7 +416,7 @@ export function ContratoDocumentosPanel({ contrato }: Props) {
                             </p>
                             <p className="text-[10px] text-muted-foreground">
                               {formatTamanio(d.tamanioBytes)} ·{' '}
-                              {formatFecha(d.subidoAt)}
+                              {formatFechaCorta(d.subidoAt)}
                             </p>
                           </div>
                           <Button asChild variant="ghost" size="sm">

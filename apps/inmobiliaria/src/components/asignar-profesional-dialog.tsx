@@ -27,7 +27,7 @@ import {
 } from '@/lib/mock-data';
 import { asignarProfesional, listarReclamos } from '@/lib/reclamos-store';
 import type { CategoriaReclamo, Reclamo, UrgenciaReclamo } from '@/lib/types';
-import { formatFecha, formatFechaCorta } from '@/lib/format';
+import { formatFechaCorta } from '@/lib/format';
 
 /**
  * Mapeo categoría del profesional → categoría del reclamo. Cuando no hay

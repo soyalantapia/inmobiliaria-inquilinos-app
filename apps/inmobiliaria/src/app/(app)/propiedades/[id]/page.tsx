@@ -59,7 +59,7 @@ import {
   tiempoRelativo,
   urgenciaConfig,
 } from '@/lib/reclamos-config';
-import { formatFecha, formatMonto } from '@/lib/format';
+import { formatFechaCorta, formatMonto } from '@/lib/format';
 import { sociedadById, sociedadPrincipal } from '@/lib/sociedades-storage';
 import type { TipoPropiedad } from '@/lib/types';
 
@@ -161,12 +161,12 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
               />
               <Stat
                 label="Próximo vencimiento"
-                value={contrato ? formatFecha(contrato.proximoVencimiento) : '—'}
+                value={contrato ? formatFechaCorta(contrato.proximoVencimiento) : '—'}
                 hint={contrato ? `Estado: ${contrato.estadoPagoActual.toLowerCase()}` : undefined}
               />
               <Stat
                 label="Vigencia contrato"
-                value={contrato ? `Hasta ${formatFecha(contrato.fechaFin)}` : '—'}
+                value={contrato ? `Hasta ${formatFechaCorta(contrato.fechaFin)}` : '—'}
               />
               <Stat
                 label="Reclamos abiertos"
@@ -213,7 +213,7 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                     <>
                       <p className="text-lg font-semibold">{contrato.inquilino}</p>
                       <p className="text-xs text-muted-foreground">
-                        Vigencia: {formatFecha(contrato.fechaInicio)} → {formatFecha(contrato.fechaFin)}
+                        Vigencia: {formatFechaCorta(contrato.fechaInicio)} → {formatFechaCorta(contrato.fechaFin)}
                       </p>
                     </>
                   ) : (
@@ -318,7 +318,7 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
 
                   <div className="grid gap-3 sm:grid-cols-2">
                     <Field label="Vigencia">
-                      {formatFecha(contrato.fechaInicio)} → {formatFecha(contrato.fechaFin)}
+                      {formatFechaCorta(contrato.fechaInicio)} → {formatFechaCorta(contrato.fechaFin)}
                     </Field>
                     <Field label="Estado pago actual">
                       <Badge
@@ -334,7 +334,7 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                       </Badge>
                     </Field>
                     <Field label="Próximo vencimiento">
-                      {formatFecha(contrato.proximoVencimiento)}
+                      {formatFechaCorta(contrato.proximoVencimiento)}
                     </Field>
                     <Field label="Alquiler">
                       {formatMonto(contrato.monto, contrato.moneda)}
@@ -545,7 +545,7 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                       </p>
                       <h3 className="mt-1 text-lg font-semibold">{contrato.inquilino}</h3>
                       <p className="text-xs text-muted-foreground">
-                        {formatFecha(contrato.fechaInicio)} → {formatFecha(contrato.fechaFin)}
+                        {formatFechaCorta(contrato.fechaInicio)} → {formatFechaCorta(contrato.fechaFin)}
                       </p>
                     </div>
                     <Badge variant={contrato.estado === 'ACTIVO' ? 'success' : 'secondary'}>
@@ -562,7 +562,7 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                     <Field label="Índice de ajuste">ICL — BCRA</Field>
                     <Field label="Frecuencia ajuste">12 meses</Field>
                     <Field label="Próximo vencimiento">
-                      {formatFecha(contrato.proximoVencimiento)}
+                      {formatFechaCorta(contrato.proximoVencimiento)}
                     </Field>
                   </div>
 

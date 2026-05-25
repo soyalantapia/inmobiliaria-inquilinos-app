@@ -31,7 +31,7 @@ import {
   type ContactoCobranza,
 } from '@/lib/mock-data';
 import { consorciosMock } from '@/lib/consorcios-storage';
-import { diasHastaVencimiento, formatFecha, formatFechaCorta, formatMonto } from '@/lib/format';
+import { diasHastaVencimiento, formatFechaCorta, formatMonto } from '@/lib/format';
 
 /**
  * Plantillas de mensaje pre-armadas para cobranza. La inmo elige el

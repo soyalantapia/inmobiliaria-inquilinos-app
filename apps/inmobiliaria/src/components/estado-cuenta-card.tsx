@@ -21,7 +21,7 @@ import {
   leerFormaPago,
   type EstadoCuentaCalculado,
 } from '@/lib/forma-pago-storage';
-import { formatFecha } from '@/lib/format';
+import { formatFechaCorta } from '@/lib/format';
 
 /**
  * Card que muestra el estado actual del cobro de My Alquiler:
@@ -103,7 +103,7 @@ export function EstadoCuentaCard() {
                 <>
                   Tu próximo cobro es el{' '}
                   <strong className="text-foreground">
-                    {formatFecha(estado.vencimientoUltimo)}
+                    {formatFechaCorta(estado.vencimientoUltimo)}
                   </strong>
                   . Todo en orden.
                 </>

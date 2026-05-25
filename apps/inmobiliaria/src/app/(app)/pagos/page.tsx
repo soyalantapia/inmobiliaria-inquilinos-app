@@ -32,7 +32,7 @@ import {
   propietariosMock,
 } from '@/lib/mock-data';
 import { estadoDePago } from '@/lib/conciliacion-storage';
-import { formatFecha, formatMonto } from '@/lib/format';
+import { formatFecha, formatFechaCorta, formatMonto } from '@/lib/format';
 import { abrirReporteImprimible } from '@/lib/reportes-pdf';
 import { diasHastaVencimiento } from '@/lib/format';
 import {
@@ -531,7 +531,7 @@ export default function PagosPage() {
                           Vence
                         </p>
                         <p className="text-sm font-medium tabular-nums">
-                          {formatFecha(c.proximoVencimiento)}
+                          {formatFechaCorta(c.proximoVencimiento)}
                         </p>
                       </div>
                       <div className="text-right">
@@ -566,7 +566,7 @@ export default function PagosPage() {
                     <TableRow key={c.id}>
                       <TableCell className="font-medium">{c.inquilino}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{c.direccion}</TableCell>
-                      <TableCell className="text-sm">{formatFecha(c.proximoVencimiento)}</TableCell>
+                      <TableCell className="text-sm">{formatFechaCorta(c.proximoVencimiento)}</TableCell>
                       <TableCell className="text-right font-medium">
                         {formatMonto(c.monto, c.moneda)}
                       </TableCell>

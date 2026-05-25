@@ -13,7 +13,7 @@ import {
   type CargoACobrar,
 } from '@/lib/cargos-a-cobrar';
 import { contactosCobranzaMock } from '@/lib/mock-data';
-import { formatFecha, formatFechaCorta, formatMonto } from '@/lib/format';
+import { formatFechaCorta, formatMonto } from '@/lib/format';
 
 /**
  * Card que muestra los cargos USO_Y_GOCE generados al inquilino con su

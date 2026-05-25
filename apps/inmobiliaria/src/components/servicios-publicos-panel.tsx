@@ -36,7 +36,7 @@ import {
   guardarServicio,
   leerServiciosDe,
 } from '@/lib/servicios-publicos-storage';
-import { formatFecha, formatFechaCorta } from '@/lib/format';
+import { formatFechaCorta } from '@/lib/format';
 
 const ICONO_SERVICIO: Record<TipoServicio, typeof Zap> = {
   LUZ: Zap,

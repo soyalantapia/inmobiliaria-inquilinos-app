@@ -44,7 +44,7 @@ import {
   listarMovimientosDe,
   moverStock,
 } from '@/lib/consorcio-inventario-storage';
-import { formatFecha, formatFechaCorta, formatMonto } from '@/lib/format';
+import { formatFechaCorta, formatMonto } from '@/lib/format';
 
 const USUARIO_ACTUAL = 'Roberto Tapia';
 

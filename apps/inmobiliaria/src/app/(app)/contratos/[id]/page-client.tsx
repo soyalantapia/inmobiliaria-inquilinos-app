@@ -139,8 +139,8 @@ export default function DetalleContratoPage() {
               <ArrowLeft className="h-3 w-3" />
               Volver a contratos
             </Link>
-            <h2 className="truncate text-xl font-semibold">{c.inquilino}</h2>
-            <p className="truncate text-sm text-muted-foreground">{c.direccion}</p>
+            <h2 className="line-clamp-2 text-xl font-semibold leading-tight">{c.inquilino}</h2>
+            <p className="line-clamp-2 text-sm text-muted-foreground">{c.direccion}</p>
           </div>
           <div className="flex w-full flex-wrap gap-2 sm:w-auto">
             <Button

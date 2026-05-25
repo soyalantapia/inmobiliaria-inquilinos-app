@@ -35,7 +35,7 @@ import {
   guardarServicioConsorcio,
   leerServiciosDeConsorcio,
 } from '@/lib/consorcio-servicios-storage';
-import { formatFecha, formatFechaCorta, formatMonto } from '@/lib/format';
+import { formatFechaCorta, formatMonto } from '@/lib/format';
 
 const ICONO_SERVICIO: Record<TipoServicioConsorcio, typeof Zap> = {
   LUZ_PASILLO: Lightbulb,

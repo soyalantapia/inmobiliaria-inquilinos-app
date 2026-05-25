@@ -41,7 +41,7 @@ import {
 } from '@/lib/referidos-storage';
 import { abrirReporteImprimible } from '@/lib/reportes-pdf';
 import { sociedadPrincipal } from '@/lib/sociedades-storage';
-import { formatFecha, formatFechaCorta } from '@/lib/format';
+import { formatFechaCorta } from '@/lib/format';
 
 /**
  * Manager del programa de referidos: muestra código, link de

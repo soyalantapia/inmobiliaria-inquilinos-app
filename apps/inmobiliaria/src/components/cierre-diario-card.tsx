@@ -26,7 +26,7 @@ import {
   efectivoEnMano,
   listarCierres,
 } from '@/lib/cierre-caja';
-import { formatFecha, formatFechaCorta, formatMonto } from '@/lib/format';
+import { formatFechaCorta, formatMonto } from '@/lib/format';
 
 const USUARIO_ACTUAL = 'Roberto Tapia';
 

@@ -118,10 +118,10 @@ export default function ConsorciosPage() {
                           <Building2 className="h-6 w-6" />
                         </div>
                         <div className="min-w-0">
-                          <p className="truncate text-base font-semibold">
+                          <p className="line-clamp-2 text-base font-semibold leading-tight">
                             {c.nombre}
                           </p>
-                          <p className="truncate text-xs text-muted-foreground">
+                          <p className="line-clamp-2 text-xs text-muted-foreground">
                             {c.direccion}
                           </p>
                           <div className="mt-1 flex flex-wrap gap-1">

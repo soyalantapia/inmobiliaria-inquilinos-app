@@ -28,7 +28,7 @@ import {
 } from '@/lib/mock-data';
 import { listarReclamos } from '@/lib/reclamos-store';
 import { calificacionesPorProfesional, ratingPonderado } from '@/lib/ratings-cross-app';
-import { formatFecha, formatFechaCorta } from '@/lib/format';
+import { formatFechaCorta } from '@/lib/format';
 import type { EstadoReclamo, Reclamo } from '@/lib/types';
 import { mensajeWhatsappGenerico } from './asignar-profesional-dialog';
 
