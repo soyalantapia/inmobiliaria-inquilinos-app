@@ -324,7 +324,11 @@ export default function PropiedadesPage() {
                           <Icon className="h-6 w-6" />
                         </div>
                         <div className="flex-1 min-w-0 space-y-1">
-                          <p className="truncate font-semibold leading-tight">
+                          {/* line-clamp-2 — la direccion es el dato
+                              identificatorio de la card. Truncar a 1 linea
+                              dejaba "Gorriti 4521, 3..." que no permitia
+                              distinguir entre unidades del mismo edificio. */}
+                          <p className="line-clamp-2 font-semibold leading-tight">
                             {propiedad.direccion}
                           </p>
                           <p className="text-xs text-muted-foreground">
@@ -441,8 +445,10 @@ function Row({
   return (
     <div className="flex items-center justify-between gap-3">
       <span className="text-xs text-muted-foreground">{label}</span>
+      {/* truncate -> line-clamp-2 — los valores son nombres de personas
+          ("Eduardo Castro · Silvana Morales") y se cortaban a "Silvan...". */}
       <span
-        className={`truncate ${bold ? 'font-semibold' : 'font-medium'} ${muted ? 'italic text-muted-foreground' : ''}`}
+        className={`min-w-0 text-right line-clamp-2 ${bold ? 'font-semibold' : 'font-medium'} ${muted ? 'italic text-muted-foreground' : ''}`}
       >
         {value}
       </span>
