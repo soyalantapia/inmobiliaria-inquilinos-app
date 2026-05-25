@@ -59,7 +59,7 @@ import {
   tiempoRelativo,
   urgenciaConfig,
 } from '@/lib/reclamos-config';
-import { formatFechaCorta, formatMonto } from '@/lib/format';
+import { formatFechaCorta, formatMonto, formatRangoVigencia } from '@/lib/format';
 import { sociedadById, sociedadPrincipal } from '@/lib/sociedades-storage';
 import type { TipoPropiedad } from '@/lib/types';
 
@@ -213,7 +213,7 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                     <>
                       <p className="text-lg font-semibold">{contrato.inquilino}</p>
                       <p className="text-xs text-muted-foreground">
-                        Vigencia: {formatFechaCorta(contrato.fechaInicio)} → {formatFechaCorta(contrato.fechaFin)}
+                        Vigencia: {formatRangoVigencia(contrato.fechaInicio, contrato.fechaFin)}
                       </p>
                     </>
                   ) : (
@@ -318,7 +318,7 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
 
                   <div className="grid gap-3 sm:grid-cols-2">
                     <Field label="Vigencia">
-                      {formatFechaCorta(contrato.fechaInicio)} → {formatFechaCorta(contrato.fechaFin)}
+                      {formatRangoVigencia(contrato.fechaInicio, contrato.fechaFin)}
                     </Field>
                     <Field label="Estado pago actual">
                       <Badge
@@ -545,7 +545,7 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                       </p>
                       <h3 className="mt-1 text-lg font-semibold">{contrato.inquilino}</h3>
                       <p className="text-xs text-muted-foreground">
-                        {formatFechaCorta(contrato.fechaInicio)} → {formatFechaCorta(contrato.fechaFin)}
+                        {formatRangoVigencia(contrato.fechaInicio, contrato.fechaFin)}
                       </p>
                     </div>
                     <Badge variant={contrato.estado === 'ACTIVO' ? 'success' : 'secondary'}>

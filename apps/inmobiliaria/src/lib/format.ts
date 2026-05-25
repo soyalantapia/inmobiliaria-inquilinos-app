@@ -30,6 +30,21 @@ export function formatFechaCorta(iso: string): string {
   return esMismoAnio ? `${dia} ${mes}` : `${dia} ${mes} ${d.getFullYear()}`;
 }
 
+/**
+ * Rango de vigencia "X → Y" donde SIEMPRE se incluye el año en ambos
+ * extremos, incluso si coinciden con el año actual. Esto evita la
+ * confusión de "31 ago 2023 → 30 ago" donde el endpoint sin año hace
+ * dudar de qué año cierra el contrato. Se usa en listas de contratos,
+ * cards de propiedades y resúmenes de propietarios.
+ */
+export function formatRangoVigencia(inicioIso: string, finIso: string): string {
+  const di = new Date(inicioIso);
+  const df = new Date(finIso);
+  const fmt = (d: Date) =>
+    `${d.getDate()} ${MESES_CORTOS_FMT[d.getMonth()]} ${d.getFullYear()}`;
+  return `${fmt(di)} → ${fmt(df)}`;
+}
+
 export function diasHastaVencimiento(iso: string): number {
   const hoy = new Date();
   hoy.setHours(0, 0, 0, 0);

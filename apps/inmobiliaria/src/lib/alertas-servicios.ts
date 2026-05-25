@@ -10,6 +10,7 @@
  * Deriva del cross-app reader de boletas que sube el inquilino.
  */
 import { contratosMock } from './mock-data';
+import { formatPeriodo } from './format';
 import {
   leerBoletasDeContrato,
   type BoletaInquilino,
@@ -63,7 +64,7 @@ export function listarAlertasServicios(): AlertaServicios[] {
           tipo,
           motivo: 'SIN_BOLETA',
           gravedad: 'ATENCION',
-          detalle: `No subió la boleta de ${labelTipo(tipo)} de ${mesActual}.`,
+          detalle: `No subió la boleta de ${labelTipo(tipo)} de ${formatPeriodo(mesActual)}.`,
         });
         continue;
       }

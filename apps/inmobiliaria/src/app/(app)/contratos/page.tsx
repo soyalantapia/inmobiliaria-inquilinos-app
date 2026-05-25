@@ -22,7 +22,7 @@ import { Input } from '@llave/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@llave/ui/table';
 import { Topbar } from '@/components/topbar';
 import { contratosMock, propiedadesMock, propietariosMock } from '@/lib/mock-data';
-import { formatFechaCorta, formatMonto } from '@/lib/format';
+import { formatMonto, formatRangoVigencia } from '@/lib/format';
 import type { EstadoLiquidacion } from '@/lib/types';
 
 type Filtro = 'TODOS' | 'ACTIVO' | 'BORRADOR' | 'ARCHIVADO';
@@ -322,7 +322,7 @@ export default function ContratosPage() {
                         Vigencia
                       </p>
                       <p className="text-xs tabular-nums">
-                        {formatFechaCorta(c.fechaInicio)} → {formatFechaCorta(c.fechaFin)}
+                        {formatRangoVigencia(c.fechaInicio, c.fechaFin)}
                       </p>
                     </div>
                     <div className="text-right">
@@ -361,7 +361,7 @@ export default function ContratosPage() {
                     <TableCell className="font-medium">{c.inquilino}</TableCell>
                     <TableCell className="text-muted-foreground">{c.direccion}</TableCell>
                     <TableCell className="text-muted-foreground text-sm tabular-nums">
-                      {formatFechaCorta(c.fechaInicio)} → {formatFechaCorta(c.fechaFin)}
+                      {formatRangoVigencia(c.fechaInicio, c.fechaFin)}
                     </TableCell>
                     <TableCell className="text-right font-medium">
                       {formatMonto(c.monto, c.moneda)}

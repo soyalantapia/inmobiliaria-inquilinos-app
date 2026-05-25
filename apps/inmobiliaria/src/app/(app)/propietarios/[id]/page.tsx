@@ -28,7 +28,7 @@ import {
   propiedadesMock,
   propietariosMock,
 } from '@/lib/mock-data';
-import { formatFechaCorta, formatMonto } from '@/lib/format';
+import { formatFechaCorta, formatMonto, formatRangoVigencia } from '@/lib/format';
 
 export function generateStaticParams() {
   return propietariosMock.map((p) => ({ id: p.id }));
@@ -434,7 +434,7 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
                     <div className="flex-1 min-w-0">
                       <p className="truncate text-sm font-medium">{c.inquilino}</p>
                       <p className="truncate text-xs text-muted-foreground">
-                        {c.direccion} · {formatFechaCorta(c.fechaInicio)} → {formatFechaCorta(c.fechaFin)}
+                        {c.direccion} · {formatRangoVigencia(c.fechaInicio, c.fechaFin)}
                       </p>
                     </div>
                     <Badge variant={c.estado === 'ACTIVO' ? 'success' : 'outline'}>
