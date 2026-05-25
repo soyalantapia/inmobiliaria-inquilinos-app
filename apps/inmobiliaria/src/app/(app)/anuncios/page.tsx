@@ -47,7 +47,7 @@ import {
   eliminarAnuncio,
   listarAnuncios,
 } from '@/lib/anuncios-storage';
-import { formatFecha } from '@/lib/format';
+import { formatFechaCorta } from '@/lib/format';
 
 const USUARIO_ACTUAL = 'Roberto Tapia';
 
@@ -244,7 +244,7 @@ function AnuncioCard({
           })}
           <span>·</span>
           <span>
-            Enviado por {anuncio.enviadoPor} · {formatFecha(anuncio.enviadoAt)}
+            Enviado por {anuncio.enviadoPor} · {formatFechaCorta(anuncio.enviadoAt)}
           </span>
         </div>
       </CardContent>

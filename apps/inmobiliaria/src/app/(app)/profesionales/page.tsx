@@ -67,7 +67,7 @@ import {
   calificacionesPorProfesional,
   ratingPonderado,
 } from '@/lib/ratings-cross-app';
-import { formatFecha } from '@/lib/format';
+import { formatFechaCorta } from '@/lib/format';
 
 const iconoCategoria: Record<CategoriaProfesional, LucideIcon> = {
   PLOMERO: Droplets,
@@ -317,7 +317,7 @@ export default function ProfesionalesAdminPage() {
                     <>
                       <span className="text-muted-foreground">·</span>
                       <span className="truncate text-muted-foreground">
-                        últ. {formatFecha(p.ultimoTrabajo)}
+                        últ. {formatFechaCorta(p.ultimoTrabajo)}
                       </span>
                     </>
                   )}
@@ -341,7 +341,7 @@ export default function ProfesionalesAdminPage() {
                       </div>
                       <span className="text-[10px] text-muted-foreground">
                         {ultimaCalif.inquilino.split(' ')[0]} ·{' '}
-                        {formatFecha(ultimaCalif.enviadoAt)}
+                        {formatFechaCorta(ultimaCalif.enviadoAt)}
                       </span>
                     </div>
                     {ultimaCalif.comentario && (

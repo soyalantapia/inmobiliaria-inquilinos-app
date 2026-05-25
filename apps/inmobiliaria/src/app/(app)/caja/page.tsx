@@ -36,7 +36,7 @@ import {
   eliminarMovimiento,
   listarMovimientosCaja,
 } from '@/lib/caja-storage';
-import { formatFecha, formatMonto } from '@/lib/format';
+import { formatFechaCorta, formatMonto } from '@/lib/format';
 import { propiedadesMock } from '@/lib/mock-data';
 
 export default function CajaPage() {
@@ -240,7 +240,7 @@ function MovimientoRow({
         </div>
         <p className="truncate text-xs text-muted-foreground">{propDireccion}</p>
         <p className="text-[10px] text-muted-foreground">
-          {formatFecha(mov.fecha)}
+          {formatFechaCorta(mov.fecha)}
           {mov.proveedor && ` · ${mov.proveedor}`} · cargó {mov.cargadoPor}
         </p>
       </div>
