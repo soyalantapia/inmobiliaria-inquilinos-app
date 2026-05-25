@@ -157,27 +157,50 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0">
-              <div className="flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-primary" />
-                <CardTitle className="text-base">Próximos 14 días</CardTitle>
-              </div>
-              <span className="text-xs text-muted-foreground">{agendaMock.length} evento{agendaMock.length === 1 ? '' : 's'}</span>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {agendaMock.map((e) => (
-                <AgendaItem key={e.id} evento={e} />
-              ))}
-              <Link
-                href="/renovaciones"
-                className="mt-2 inline-flex items-center text-xs font-medium text-primary hover:underline"
-              >
-                Ver agenda completa
-                <ArrowUpRight className="h-3 w-3" />
-              </Link>
-            </CardContent>
-          </Card>
+          {(() => {
+            // Defensive: filtramos eventos pasados para que "Próximos 14
+            // días" no muestre nada vencido. Si la fecha del mock quedó
+            // desactualizada, evitamos el reporte "tu agenda dice 11-may
+            // pero hace 13 días que pasó".
+            const hoyMs = (() => {
+              const d = new Date();
+              d.setHours(0, 0, 0, 0);
+              return d.getTime();
+            })();
+            const proximos = agendaMock.filter((e) => {
+              const [y, m, d] = e.fecha.split('-').map(Number);
+              return new Date(y!, m! - 1, d!).getTime() >= hoyMs;
+            });
+            return (
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-4 w-4 text-primary" />
+                    <CardTitle className="text-base">Próximos 14 días</CardTitle>
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    {proximos.length} evento{proximos.length === 1 ? '' : 's'}
+                  </span>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {proximos.length === 0 ? (
+                    <p className="py-4 text-center text-xs text-muted-foreground">
+                      No hay eventos en los próximos 14 días.
+                    </p>
+                  ) : (
+                    proximos.map((e) => <AgendaItem key={e.id} evento={e} />)
+                  )}
+                  <Link
+                    href="/renovaciones"
+                    className="mt-2 inline-flex items-center text-xs font-medium text-primary hover:underline"
+                  >
+                    Ver agenda completa
+                    <ArrowUpRight className="h-3 w-3" />
+                  </Link>
+                </CardContent>
+              </Card>
+            );
+          })()}
         </div>
 
         {/* Top alertas + Métricas estratégicas */}

@@ -312,6 +312,7 @@ export function PagosPorValidar({ onChange }: PagosPorValidarProps = {}) {
                   nombreInquilinoHint: verComprobante.inquilino,
                 })}
                 montoEsperado={verComprobante.monto}
+                fechaDeclarada={verComprobante.fechaTransferencia}
               />
             )}
             {verComprobante?.notaInquilino && (
@@ -471,14 +472,18 @@ function PagoRow({
       <div className="grid grid-cols-2 gap-3 rounded-md border bg-muted/30 p-3 text-xs">
         <Field label="Período" value={formatPeriodo(pago.periodo)} />
         <Field label="Método" value={metodoLabel[pago.metodo]} />
-        <Field label="Transfirió" value={formatFechaCorta(pago.fechaTransferencia)} />
+        <Field label="Fecha declarada" value={formatFechaCorta(pago.fechaTransferencia)} />
         <Field
           label="Informado"
           value={`${formatFechaCorta(pago.informadoAt)} ${new Date(pago.informadoAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}`}
         />
       </div>
 
-      <ExtraccionIABlock extraccion={extraccion} montoEsperado={pago.monto} />
+      <ExtraccionIABlock
+        extraccion={extraccion}
+        montoEsperado={pago.monto}
+        fechaDeclarada={pago.fechaTransferencia}
+      />
 
       {pago.notaInquilino && (
         <p className="rounded-md bg-muted/30 p-2 text-xs italic text-muted-foreground">
@@ -523,9 +528,13 @@ function PagoRow({
 function ExtraccionIABlock({
   extraccion,
   montoEsperado,
+  fechaDeclarada,
 }: {
   extraccion: ExtraccionIA;
   montoEsperado: number;
+  /** Fecha que el inquilino dijo al informar el pago — la usamos para
+   * mostrar la divergencia cuando la IA leyó otra cosa del comprobante. */
+  fechaDeclarada: string;
 }) {
   const auto = puedeConciliarAutomatico(extraccion);
   return (
@@ -560,9 +569,14 @@ function ExtraccionIABlock({
           hint={!extraccion.matchMonto ? `Esperado ${formatMonto(montoEsperado)}` : undefined}
         />
         <FieldIA
-          label="Fecha"
+          label="Fecha en comprobante"
           valor={formatFechaCorta(extraccion.fechaTransferencia)}
           match={extraccion.matchFecha}
+          hint={
+            !extraccion.matchFecha
+              ? `El inquilino declaró ${formatFechaCorta(fechaDeclarada)}`
+              : undefined
+          }
         />
         <FieldIA label="N° operación" valor={extraccion.nroOperacion} />
         <FieldIA label="Banco origen" valor={extraccion.bancoOrigen} />

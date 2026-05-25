@@ -212,7 +212,7 @@ function construirItems(): Item[] {
       titulo: emergencias > 0 ? '⚠ Reclamos sin asignar' : 'Reclamos sin asignar',
       detalle:
         emergencias > 0
-          ? `${emergencias} de emergencia · asigná un profesional`
+          ? `${emergencias} de emergencia · asigná un pro ya`
           : 'Asigná un profesional a la red',
       href: '/reclamos',
       cant: reclamosSinProf.length,

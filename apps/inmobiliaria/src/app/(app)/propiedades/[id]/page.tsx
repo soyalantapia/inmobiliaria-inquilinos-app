@@ -62,7 +62,7 @@ import {
   tiempoRelativo,
   urgenciaConfig,
 } from '@/lib/reclamos-config';
-import { formatFechaCorta, formatMonto, formatRangoVigencia } from '@/lib/format';
+import { diasHastaVencimiento, formatFechaCorta, formatMonto, formatRangoVigencia } from '@/lib/format';
 import { aplicarOverride } from '@/lib/propiedades-overrides-storage';
 import { sociedadById, sociedadPrincipal } from '@/lib/sociedades-storage';
 import type { TipoPropiedad } from '@/lib/types';
@@ -168,11 +168,27 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                 label="Alquiler mensual"
                 value={contrato ? formatMonto(contrato.monto, contrato.moneda) : '—'}
               />
-              <Stat
-                label="Próximo vencimiento"
-                value={contrato ? formatFechaCorta(contrato.proximoVencimiento) : '—'}
-                hint={contrato ? `Estado: ${contrato.estadoPagoActual.toLowerCase()}` : undefined}
-              />
+              {(() => {
+                // Calculamos días al vencimiento para detectar "ya pasó" y
+                // gritar visualmente. Antes mostrábamos solo "Estado:
+                // pendiente" sin pintar rojo cuando el alquiler estaba
+                // atrasado — eso hacía que el inmo no se diera cuenta.
+                const dias = contrato ? diasHastaVencimiento(contrato.proximoVencimiento) : null;
+                const vencido = dias !== null && dias < 0 && contrato?.estadoPagoActual !== 'PAGADO';
+                const hint = !contrato
+                  ? undefined
+                  : vencido
+                    ? `Vencido hace ${Math.abs(dias!)} día${Math.abs(dias!) === 1 ? '' : 's'}`
+                    : `Estado: ${contrato.estadoPagoActual.toLowerCase()}`;
+                return (
+                  <Stat
+                    label="Próximo vencimiento"
+                    value={contrato ? formatFechaCorta(contrato.proximoVencimiento) : '—'}
+                    hint={hint}
+                    accent={vencido ? 'red' : undefined}
+                  />
+                );
+              })()}
               <Stat
                 label="Vigencia contrato"
                 value={contrato ? `Hasta ${formatFechaCorta(contrato.fechaFin)}` : '—'}

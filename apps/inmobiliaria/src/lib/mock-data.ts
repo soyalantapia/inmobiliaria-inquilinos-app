@@ -483,18 +483,21 @@ export const dashboardMetricsMock = {
 };
 
 // Agenda próximos 14 días — eventos importantes
+// Agenda de los próximos 14 días desde "hoy" (25-may-2026 en demo).
+// Importante: las fechas deben ser FUTURAS para que el header
+// "Próximos 14 días" no mienta. Si la fecha demo cambia, ajustar.
 export const agendaMock = [
   {
     id: 'ag_1',
-    fecha: '2026-05-12',
-    titulo: 'Vencimiento alquiler Mariela Sosa',
-    detalle: 'Gorriti 4521 · $572.000',
+    fecha: '2026-05-28',
+    titulo: 'Vencimiento alquiler Juan Pérez',
+    detalle: 'Av. Cabildo 2890 · $620.000',
     tipo: 'pago' as const,
     urgencia: 'alta' as const,
   },
   {
     id: 'ag_2',
-    fecha: '2026-05-15',
+    fecha: '2026-06-01',
     titulo: 'Ajuste ICL · contrato Cabildo 2890',
     detalle: 'Juan Pérez · +18,4% estimado',
     tipo: 'ajuste' as const,
@@ -502,7 +505,7 @@ export const agendaMock = [
   },
   {
     id: 'ag_3',
-    fecha: '2026-05-18',
+    fecha: '2026-06-03',
     titulo: 'Vence póliza de garantía',
     detalle: 'Laura Giménez · Newbery 1820',
     tipo: 'garantia' as const,
@@ -510,7 +513,7 @@ export const agendaMock = [
   },
   {
     id: 'ag_4',
-    fecha: '2026-05-22',
+    fecha: '2026-06-05',
     titulo: 'Renovación de contrato',
     detalle: 'Honduras 4490 · Carlos Romero',
     tipo: 'renovacion' as const,
@@ -518,8 +521,8 @@ export const agendaMock = [
   },
   {
     id: 'ag_5',
-    fecha: '2026-05-25',
-    titulo: 'Rendición a propietarios',
+    fecha: '2026-06-08',
+    titulo: 'Rendición mensual a propietarios',
     detalle: '5 propietarios · $2.1M total',
     tipo: 'rendicion' as const,
     urgencia: 'media' as const,
@@ -527,25 +530,31 @@ export const agendaMock = [
 ];
 
 // Top alertas — lo que requiere acción inmediata
+// Alertas del card "Necesitan tu atención" del home.
+// Importante: los datos deben coincidir con el resto del sistema. Si
+// Mariela Sosa ya informó el pago y está en /pagos · pagos por validar,
+// NO va en este feed como morosa — la que realmente está atrasada es
+// Laura Giménez (lo confirma /pagos · Morosos · 1 contrato y el KPI
+// "EN MORA $510.000 · 1 contrato atrasado").
 export const alertasMock = [
   {
     id: 'al_1',
     titulo: 'Reclamo de emergencia sin asignar',
-    detalle: 'Carlos Romero · Electricidad · Honduras 4490',
+    detalle: 'Inquilino Carlos Romero · Electricidad · Honduras 4490',
     href: '/reclamos/rec_003',
     severidad: 'critica' as const,
   },
   {
     id: 'al_2',
-    titulo: 'Pago atrasado 6 días',
-    detalle: 'Mariela Sosa · $572.000 + $5.148 punitorios',
+    titulo: 'Inquilino atrasado 10 días',
+    detalle: 'Laura Giménez · $510.000 + $4.590 punitorios · Jorge Newbery 1820',
     href: '/pagos',
     severidad: 'alta' as const,
   },
   {
     id: 'al_3',
     titulo: 'Propietario sin CBU cargado',
-    detalle: 'Federico López Vega · no podrás rendir',
+    detalle: 'Federico López Vega · sin CBU no podemos rendir el mes',
     href: '/propietarios',
     severidad: 'media' as const,
   },
