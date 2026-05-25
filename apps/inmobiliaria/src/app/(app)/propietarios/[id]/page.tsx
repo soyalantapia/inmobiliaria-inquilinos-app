@@ -45,19 +45,19 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
   const raw = propietariosMock.find((p) => p.id === params.id);
   if (!raw) notFound();
 
-  // Re-render reactivo cuando el storage cambia (post-save).
-  const [tick, setTick] = useState(0);
+  // SSR + primer render usan datos base (mock). Post-mount aplicamos
+  // overrides locales para evitar hydration mismatch.
+  const [propietario, setPropietario] = useState(raw);
   useEffect(() => {
-    const onChange = () => setTick((n) => n + 1);
-    window.addEventListener('propietario-actualizado', onChange);
-    window.addEventListener('storage', onChange);
+    const aplicar = () => setPropietario(aplicarOverridePropietario(raw));
+    aplicar();
+    window.addEventListener('propietario-actualizado', aplicar);
+    window.addEventListener('storage', aplicar);
     return () => {
-      window.removeEventListener('propietario-actualizado', onChange);
-      window.removeEventListener('storage', onChange);
+      window.removeEventListener('propietario-actualizado', aplicar);
+      window.removeEventListener('storage', aplicar);
     };
-  }, []);
-  void tick;
-  const propietario = aplicarOverridePropietario(raw);
+  }, [raw]);
 
   const propiedadesDelPropietario = propiedadesMock.filter((p) =>
     propietario.propiedadesIds.includes(p.id),

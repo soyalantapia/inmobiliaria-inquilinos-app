@@ -79,26 +79,26 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
   const raw = propiedadesMock.find((p) => p.id === params.id);
   if (!raw) notFound();
 
-  // Aplicamos overrides locales (edición de dirección/ambientes/m²) sobre
-  // la propiedad base. Se evalúa en cliente porque el storage es
-  // localStorage; en SSR queda con valores base hasta que hidratamos.
-  const [overrideTick, setOverrideTick] = useState(0);
+  // Overrides locales (edición de dirección/ambientes/m²) sobre la
+  // propiedad base. Estrategia para evitar hydration mismatch: el
+  // primer render (server + primer pintado client) usa la propiedad
+  // BASE, y un useEffect post-mount aplica los overrides desde
+  // localStorage. Sin esto, si el usuario tiene un patch guardado, el
+  // HTML del SSR difiere del primer render cliente y React emite
+  // warning + repinta el árbol entero.
+  const [propiedadActiva, setPropiedadActiva] = useState(raw);
   useEffect(() => {
-    // Se actualiza tras guardar (custom event interno) o cambios cross-tab
-    // (storage event nativo).
-    const onChange = () => setOverrideTick((n) => n + 1);
-    window.addEventListener('propiedad-actualizada', onChange);
-    window.addEventListener('storage', onChange);
+    const aplicar = () => setPropiedadActiva(aplicarOverride(raw));
+    aplicar(); // post-mount inicial
+    window.addEventListener('propiedad-actualizada', aplicar);
+    window.addEventListener('storage', aplicar);
     return () => {
-      window.removeEventListener('propiedad-actualizada', onChange);
-      window.removeEventListener('storage', onChange);
+      window.removeEventListener('propiedad-actualizada', aplicar);
+      window.removeEventListener('storage', aplicar);
     };
-  }, []);
-  const propiedadConOverride = aplicarOverride(raw);
+  }, [raw]);
   const { propiedad, contrato, propietarios, reclamos, reclamosAbiertos } =
-    enriquecerPropiedad(propiedadConOverride);
-  // overrideTick fuerza re-render cuando el storage cambia desde otro tab.
-  void overrideTick;
+    enriquecerPropiedad(propiedadActiva);
 
   const Icon = tipoIcono[propiedad.tipo];
   const estadoCfg = estadoPropiedadConfig[propiedad.estado];
