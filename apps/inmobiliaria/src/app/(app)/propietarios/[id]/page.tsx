@@ -24,7 +24,6 @@ import { Avatar, AvatarFallback } from '@llave/ui/avatar';
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@llave/ui/card';
-import { BotonProximamente } from '@/components/boton-proximamente';
 import {
   ConectarArcaTrigger,
   CuentaCobranzaTrigger,
@@ -291,15 +290,11 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
                       </p>
                     </div>
                   </div>
-                  <BotonProximamente
+                  <ConectarArcaTrigger
+                    propietario={propietario}
                     variant="outline"
-                    size="sm"
                     className="w-full"
-                    toastTitle="Reconectar ARCA"
-                    toastMessage="Te vamos a pedir CUIT + clave fiscal de nuevo. Próximamente."
-                  >
-                    Reconectar credenciales ARCA
-                  </BotonProximamente>
+                  />
                 </>
               ) : (
                 <>

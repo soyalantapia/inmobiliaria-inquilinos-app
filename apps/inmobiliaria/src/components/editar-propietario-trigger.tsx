@@ -42,11 +42,12 @@ export function ConectarArcaTrigger({
   className,
 }: BaseProps) {
   const [open, setOpen] = useState(false);
+  const yaConectado = propietario.afip?.conectado === true;
   return (
     <>
       <Button variant={variant} size={size} className={className} onClick={() => setOpen(true)}>
         <PlugZap className="h-3.5 w-3.5" />
-        Conectar ARCA
+        {yaConectado ? 'Reconectar credenciales ARCA' : 'Conectar ARCA'}
       </Button>
       <ConectarArcaDialog open={open} onOpenChange={setOpen} propietario={propietario} />
     </>

@@ -27,7 +27,6 @@ import {
 import { Avatar, AvatarFallback } from '@llave/ui/avatar';
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
-import { BotonProximamente } from '@/components/boton-proximamente';
 import { EditarPropiedadTrigger } from '@/components/editar-propiedad-trigger';
 import {
   CargarInquilinoTrigger,

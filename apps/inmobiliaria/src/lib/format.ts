@@ -14,14 +14,28 @@ export function formatMonto(monto: number, moneda: Moneda = 'ARS'): string {
  *
  * Tomar `new Date('2026-08-31')` directo es peligroso: JS lo interpreta
  * como UTC 00:00, y al renderizar en Argentina (UTC-3) muestra "30 ago"
- * — un día menos. Este wrapper detecta el formato yyyy-mm-dd "puro" y
- * lo construye con el constructor (year, month, day) que SÍ es local.
- * Para strings con hora explícita (ISO completo) deja que `new Date()`
- * haga su trabajo normalmente.
+ * — un día menos.
+ *
+ * Detectamos 2 formatos comunes y los normalizamos a fecha LOCAL:
+ *
+ * 1. yyyy-mm-dd "puro" → construimos con (year, month, day) local.
+ * 2. yyyy-mm-ddT00:00:00.000Z → mismo caso, viene de hacer
+ *    `new Date('yyyy-mm-dd').toISOString()`. Lo tratamos como fecha
+ *    "calendárica" sin hora — el `Z` con hora cero es el síntoma de que
+ *    se serializó un yyyy-mm-dd, no un momento real.
+ *
+ * Para cualquier otro ISO con hora explícita (`...T14:22:00-03:00`),
+ * delegamos en `new Date()` que hace lo correcto.
  */
 function parseLocal(iso: string): Date {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
-  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const fechaPura = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (fechaPura) {
+    return new Date(Number(fechaPura[1]), Number(fechaPura[2]) - 1, Number(fechaPura[3]));
+  }
+  const fechaUtcCero = /^(\d{4})-(\d{2})-(\d{2})T00:00:00(?:\.000)?Z$/.exec(iso);
+  if (fechaUtcCero) {
+    return new Date(Number(fechaUtcCero[1]), Number(fechaUtcCero[2]) - 1, Number(fechaUtcCero[3]));
+  }
   return new Date(iso);
 }
 

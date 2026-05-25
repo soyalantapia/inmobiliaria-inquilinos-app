@@ -10,14 +10,25 @@ export function formatMonto(monto: number, moneda: Moneda = 'ARS'): string {
 }
 
 /**
- * Parsea una fecha respetando la zona horaria local. Si recibe un
- * yyyy-mm-dd "puro" lo construye con (year, month, day) para evitar el
- * drift de UTC que dejaba "30 ago" en lugar de "31 ago". Si ya viene con
- * hora explícita, delega en `new Date()`.
+ * Parsea una fecha respetando la zona horaria local. Detecta 2 formatos
+ * "calendáricos" y los normaliza a fecha local:
+ *
+ *  1. yyyy-mm-dd puro (ej. "2026-08-31").
+ *  2. yyyy-mm-ddT00:00:00.000Z (típico de `new Date('yyyy-mm-dd').toISOString()`,
+ *     que serializa un día calendárico como UTC 00:00).
+ *
+ * Cualquier otro ISO con hora explícita (`...T14:22:00-03:00`) se delega
+ * a `new Date()` que ya hace lo correcto.
  */
 function parseLocal(iso: string): Date {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
-  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const fechaPura = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (fechaPura) {
+    return new Date(Number(fechaPura[1]), Number(fechaPura[2]) - 1, Number(fechaPura[3]));
+  }
+  const fechaUtcCero = /^(\d{4})-(\d{2})-(\d{2})T00:00:00(?:\.000)?Z$/.exec(iso);
+  if (fechaUtcCero) {
+    return new Date(Number(fechaUtcCero[1]), Number(fechaUtcCero[2]) - 1, Number(fechaUtcCero[3]));
+  }
   return new Date(iso);
 }
 
