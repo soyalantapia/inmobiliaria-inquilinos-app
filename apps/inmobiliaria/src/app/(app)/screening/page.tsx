@@ -44,6 +44,8 @@ import { Topbar } from '@/components/topbar';
 import { screeningMock } from '@/lib/mock-data';
 import { formatMonto, formatFecha, formatPeriodo } from '@/lib/format';
 import { formatearCuit, validarCuit } from '@/lib/cuit';
+import { abrirReporteImprimible } from '@/lib/reportes-pdf';
+import { sociedadPrincipal } from '@/lib/sociedades-storage';
 import type {
   CoherenciaHuella,
   EstadoPerfilDigital,
@@ -593,9 +595,39 @@ function Informe({
                 variant="outline"
                 size="sm"
                 onClick={() =>
-                  toast({
-                    title: 'Generando informe…',
-                    description: 'En unos segundos te llega al mail el PDF del análisis completo.',
+                  abrirReporteImprimible({
+                    titulo: `Verificación de inquilino — ${resultado.nombre} ${resultado.apellido}`,
+                    subtitulo: `DNI ${resultado.dni} · CUIT ${resultado.cuit} · Score Nosis ${resultado.scoreNosis}`,
+                    inmobiliaria: sociedadPrincipal().razonSocial,
+                    columnas: [
+                      { header: 'Sección', width: '30%' },
+                      { header: 'Dato', width: '70%' },
+                    ],
+                    filas: [
+                      ['Recomendación', reco.label],
+                      ['Razón', resultado.recomendacionRazon],
+                      ['BCRA · titular', `Riesgo ${resultado.bcra.riesgo.toLowerCase()}`],
+                      [
+                        'BCRA · familia',
+                        `Riesgo ${resultado.bcraFamiliar.riesgo.toLowerCase()}`,
+                      ],
+                      ['Patrimonio', `${resultado.inmuebles.length} inmuebles · ${resultado.vehiculos.length} vehículos`],
+                      [
+                        'Ingreso ARCA',
+                        `${formatearCategoria(resultado.ingresos.categoriaArca)} · ${resultado.ingresos.actividadDescripcion}`,
+                      ],
+                      [
+                        'Empleador',
+                        resultado.empleador
+                          ? `${resultado.empleador.razonSocial} (CUIT ${resultado.empleador.cuit})`
+                          : 'Sin empleador registrado',
+                      ],
+                      [
+                        'Cheques BCRA (4a)',
+                        `${resultado.cheques.rechazadosCount} rechazados · ${resultado.cheques.levantadosCount} levantados`,
+                      ],
+                    ],
+                    notaFinal: `Informe generado el ${new Date().toLocaleDateString('es-AR')}. Fuentes: Nosis, BCRA, ARCA. Vigencia 30 días.`,
                   })
                 }
               >

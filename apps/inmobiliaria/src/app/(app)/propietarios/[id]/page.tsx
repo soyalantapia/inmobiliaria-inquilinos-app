@@ -36,8 +36,10 @@ import {
   propiedadesMock,
   propietariosMock,
 } from '@/lib/mock-data';
-import { formatFechaCorta, formatMonto, formatRangoVigencia } from '@/lib/format';
+import { formatFechaCorta, formatMonto, formatPeriodo, formatRangoVigencia } from '@/lib/format';
 import { aplicarOverride as aplicarOverridePropietario } from '@/lib/propietarios-overrides-storage';
+import { descargarCsv } from '@/lib/csv-export';
+import { toast } from '@llave/ui/use-toast';
 
 export default function DetallePropietarioPage({ params }: { params: { id: string } }) {
   const raw = propietariosMock.find((p) => p.id === params.id);
@@ -377,15 +379,36 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
             <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
               Últimas rendiciones
             </CardTitle>
-            <BotonProximamente
+            <Button
               variant="outline"
               size="sm"
-              toastTitle="Generando ZIP…"
-              toastMessage="En unos segundos te llega al mail un archivo con todas las rendiciones del propietario."
+              onClick={() => {
+                const rendiciones = generarRendiciones(
+                  propietario.totalCobradoMes,
+                  propietario.comisionPct,
+                );
+                descargarCsv({
+                  filename: `rendiciones-${propietario.apellido.toLowerCase()}-${propietario.nombre.toLowerCase()}`,
+                  headers: ['Período', 'Cobrado', 'Comisión', 'Rendido', 'Estado', 'Fecha pago'],
+                  rows: rendiciones.map((r) => [
+                    formatPeriodo(r.periodo),
+                    r.cobrado,
+                    r.comision,
+                    r.rendido,
+                    r.estado,
+                    r.fecha ?? '—',
+                  ]),
+                });
+                toast({
+                  variant: 'success',
+                  title: 'CSV descargado',
+                  description: `${rendiciones.length} rendiciones de ${propietario.nombre}. Abrilo en Excel o Sheets.`,
+                });
+              }}
             >
               <Download className="h-3.5 w-3.5" />
               Exportar todo
-            </BotonProximamente>
+            </Button>
           </CardHeader>
           <CardContent className="p-0">
             <div className="divide-y">

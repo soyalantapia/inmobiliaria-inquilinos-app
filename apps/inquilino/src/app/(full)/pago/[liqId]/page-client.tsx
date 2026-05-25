@@ -20,8 +20,9 @@ import { Button } from '@llave/ui/button';
 import { Card } from '@llave/ui/card';
 import { Separator } from '@llave/ui/separator';
 import { toast } from '@llave/ui/use-toast';
-import { liquidacionesMock } from '@/lib/mock-data';
+import { contratoMock, liquidacionesMock } from '@/lib/mock-data';
 import { formatFecha, formatFechaCorta, formatMonto, formatPeriodo } from '@/lib/format';
+import { abrirReciboImprimible } from '@/lib/recibo-pdf';
 import { TASA_PUNITORIA_DIARIA_DEFAULT, calcularPunitorios } from '@/lib/punitorios';
 import {
   leerPagoInformado,
@@ -291,12 +292,22 @@ export default function DetallePagoPage({ params }: { params: { liqId: string } 
             variant="outline"
             size="xl"
             className="w-full"
-            onClick={() =>
-              toast({
-                title: 'Preparando comprobante…',
-                description: 'En unos segundos te llega al mail el recibo en PDF.',
-              })
-            }
+            onClick={() => {
+              const pagoBase = informado ?? parciales[0] ?? null;
+              const fechaIso = pagoBase?.enviadoAt ?? new Date().toISOString();
+              abrirReciboImprimible({
+                periodo: liq.periodo,
+                periodoFmt: formatPeriodo(liq.periodo),
+                inquilino: 'Mariela Sosa',
+                direccion: contratoMock.direccion,
+                monto: liq.montoTotal,
+                montoFmt: formatMonto(liq.montoTotal, liq.moneda),
+                metodo: 'Transferencia',
+                fechaPago: fechaIso,
+                fechaPagoFmt: formatFecha(fechaIso),
+                inmobiliaria: contratoMock.inmobiliaria,
+              });
+            }}
           >
             <Receipt className="h-5 w-5" />
             Descargar comprobante

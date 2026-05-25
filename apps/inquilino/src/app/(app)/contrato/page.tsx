@@ -18,6 +18,7 @@ import { Button } from '@llave/ui/button';
 import { Card } from '@llave/ui/card';
 import { BotonProximamente } from '@/components/boton-proximamente';
 import { CompartirGarante } from '@/components/compartir-garante';
+import { DescargarContratoTrigger } from '@/components/descargar-contrato-trigger';
 import { ContratoChat } from '@/components/contrato-chat';
 import { ContratoTimeline } from '@/components/contrato-timeline';
 import { DepositoTracker } from '@/components/deposito-tracker';
@@ -81,16 +82,11 @@ export default function ContratoPage() {
               </p>
             </div>
           </div>
-          <BotonProximamente
-            variant="outline"
-            size="sm"
+          <DescargarContratoTrigger
+            contrato={c}
+            inquilinoNombre={inquilinoActual.nombre}
             className="shrink-0"
-            toastTitle="Preparando PDF…"
-            toastMessage="En unos segundos te llega al mail una copia del contrato firmado."
-          >
-            <Download className="h-4 w-4" />
-            PDF
-          </BotonProximamente>
+          />
         </div>
 
         <RenovacionBanner contratoId={c.id} diasHastaFin={diasFin} />

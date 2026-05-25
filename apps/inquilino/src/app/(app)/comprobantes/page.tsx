@@ -22,6 +22,7 @@ import {
   totalCargosExtra,
 } from '@/lib/cross-app-inmo';
 import { diasHastaVencimiento, formatFecha, formatFechaCorta, formatMonto, formatPeriodo } from '@/lib/format';
+import { descargarCsv } from '@/lib/csv-export';
 import type { Comprobante, Liquidacion } from '@/lib/types';
 
 import {
@@ -244,16 +245,34 @@ export default function RecibosPage() {
             </h2>
             <button
               type="button"
-              onClick={() =>
+              onClick={() => {
+                if (cobradosDelAnio.length === 0) {
+                  toast({
+                    title: 'Sin movimientos',
+                    description: 'Todavía no hay pagos cobrados este año.',
+                  });
+                  return;
+                }
+                descargarCsv({
+                  filename: `comprobantes-${new Date().getFullYear()}`,
+                  headers: ['Período', 'Fecha pago', 'Monto', 'Método'],
+                  rows: cobradosDelAnio.map((c) => [
+                    formatPeriodo(c.periodo),
+                    c.fechaPago,
+                    c.monto,
+                    c.metodo,
+                  ]),
+                });
                 toast({
-                  title: 'Preparando descarga…',
-                  description: `Estamos generando el ZIP con los recibos. Te lo enviamos por mail en unos segundos.`,
-                })
-              }
+                  variant: 'success',
+                  title: 'CSV descargado',
+                  description: `${cobradosDelAnio.length} comprobante${cobradosDelAnio.length === 1 ? '' : 's'} del año. Llevalo al contador.`,
+                });
+              }}
               className="flex items-center gap-1 text-xs font-medium text-primary hover:underline"
             >
               <Download className="h-3 w-3" />
-              Descargar PDFs del año
+              Descargar movimientos del año
             </button>
           </div>
 

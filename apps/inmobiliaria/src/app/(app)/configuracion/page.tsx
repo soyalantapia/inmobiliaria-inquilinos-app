@@ -32,6 +32,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@llave/ui/tabs';
 import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
 import { CompararPlanesDialog } from '@/components/comparar-planes-dialog';
+import { descargarCsv } from '@/lib/csv-export';
+import { abrirReporteImprimible } from '@/lib/reportes-pdf';
+import { sociedadPrincipal } from '@/lib/sociedades-storage';
 import { MatrizPermisosCard } from '@/components/matriz-permisos-card';
 import { PinSeguridadCard } from '@/components/pin-seguridad-card';
 import { relanzarOnboardingInmo } from '@/components/onboarding';
@@ -691,12 +694,34 @@ export default function ConfiguracionPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() =>
+                  onClick={() => {
+                    descargarCsv({
+                      filename: `facturas-my-alquiler-${new Date().toISOString().slice(0, 10)}`,
+                      headers: [
+                        'Período',
+                        'Fecha emisión',
+                        'Propiedades en plan',
+                        'Importe total',
+                        'Estado',
+                        'Fecha pago',
+                        'Método pago',
+                      ],
+                      rows: facturasMock.map((f) => [
+                        formatPeriodo(f.periodo),
+                        f.fechaEmision,
+                        f.propiedadesEnPlan,
+                        f.importeTotal,
+                        estadoFacturaConfig[f.estado].label,
+                        f.fechaPago ?? '—',
+                        f.metodoPago ?? '—',
+                      ]),
+                    });
                     toast({
-                      title: 'Generando CSV…',
-                      description: 'Te lo enviamos por mail en unos segundos.',
-                    })
-                  }
+                      variant: 'success',
+                      title: 'CSV descargado',
+                      description: `${facturasMock.length} facturas exportadas. Abrilo en Excel o Sheets.`,
+                    });
+                  }}
                 >
                   <Download className="h-4 w-4" />
                   Exportar CSV
@@ -749,12 +774,35 @@ export default function ConfiguracionPage() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() =>
-                              toast({
-                                title: 'Preparando factura…',
-                                description: `Factura de ${formatPeriodo(f.periodo)} · te llega al mail.`,
-                              })
-                            }
+                            onClick={() => {
+                              abrirReporteImprimible({
+                                titulo: `Factura ${formatPeriodo(f.periodo)}`,
+                                subtitulo: `My Alquiler · servicio de gestión inmobiliaria`,
+                                inmobiliaria: sociedadPrincipal().razonSocial,
+                                columnas: [
+                                  { header: 'Concepto', width: '60%' },
+                                  { header: 'Cantidad', width: '15%', align: 'right' },
+                                  { header: 'Subtotal', width: '25%', align: 'right' },
+                                ],
+                                filas: [
+                                  [
+                                    `Plan ${plan.plan} · ${formatPeriodo(f.periodo)}`,
+                                    `${f.propiedadesEnPlan} prop.`,
+                                    formatMonto(f.importeTotal),
+                                  ],
+                                ],
+                                totales: [
+                                  { label: 'Total facturado', valor: formatMonto(f.importeTotal) },
+                                  {
+                                    label: 'Estado',
+                                    valor: estadoFacturaConfig[f.estado].label,
+                                  },
+                                ],
+                                notaFinal: f.fechaPago
+                                  ? `Pagada el ${f.fechaPago} vía ${f.metodoPago ?? 'transferencia'}.`
+                                  : 'Pendiente de pago. Vence en los próximos días.',
+                              });
+                            }}
                           >
                             <FileText className="h-3.5 w-3.5" />
                             PDF
