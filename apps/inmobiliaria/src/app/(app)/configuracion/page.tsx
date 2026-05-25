@@ -31,6 +31,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@llave/ui/tabs';
 import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
+import { CompararPlanesDialog } from '@/components/comparar-planes-dialog';
 import { MatrizPermisosCard } from '@/components/matriz-permisos-card';
 import { PinSeguridadCard } from '@/components/pin-seguridad-card';
 import { relanzarOnboardingInmo } from '@/components/onboarding';
@@ -161,6 +162,7 @@ export default function ConfiguracionPage() {
   const [showInvitar, setShowInvitar] = useState(false);
   const [nuevoEmail, setNuevoEmail] = useState('');
   const [nuevoRol, setNuevoRol] = useState<Rol>('OPERADOR');
+  const [compararPlanesOpen, setCompararPlanesOpen] = useState(false);
 
   // Deep-linking: la tab activa se controla por el hash de la URL.
   // Esto permite enlazar a /configuracion#convenios desde otros lugares
@@ -773,17 +775,14 @@ export default function ConfiguracionPage() {
                     Tenemos Pro (con marca blanca + sub-cuentas) y Enterprise (custom).
                   </p>
                 </div>
-                <Button
-                  variant="outline"
-                  onClick={() =>
-                    toast({
-                      title: 'Próximamente',
-                      description: 'Pronto vas a poder comparar planes desde acá.',
-                    })
-                  }
-                >
+                <Button variant="outline" onClick={() => setCompararPlanesOpen(true)}>
                   Comparar planes
                 </Button>
+                <CompararPlanesDialog
+                  open={compararPlanesOpen}
+                  onOpenChange={setCompararPlanesOpen}
+                  planActual={plan.plan}
+                />
               </CardContent>
             </Card>
           </TabsContent>
