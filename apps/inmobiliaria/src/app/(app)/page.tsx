@@ -90,7 +90,7 @@ export default function DashboardPage() {
               tone={stats.enMora.cantidad > 0 ? 'red' : 'muted'}
               delta={m.variacionMorosos}
               deltaInverso
-              hint={`${stats.enMora.cantidad} contrato${stats.enMora.cantidad === 1 ? '' : 's'} atrasados`}
+              hint={`${stats.enMora.cantidad} contrato${stats.enMora.cantidad === 1 ? ' atrasado' : 's atrasados'}`}
             />
             <KpiBig
               label="A rendir a propietarios"
