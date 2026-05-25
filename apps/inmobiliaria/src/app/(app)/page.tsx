@@ -393,13 +393,29 @@ function KpiSmall({
 }
 
 function ChartSemanas() {
-  // Mock visual: barras stacked con cobrado / pendiente / vencido por semana
-  const semanas = [
-    { label: 'Sem 1', cobrado: 78, pendiente: 18, vencido: 4 },
-    { label: 'Sem 2', cobrado: 92, pendiente: 6, vencido: 2 },
-    { label: 'Sem 3', cobrado: 81, pendiente: 14, vencido: 5 },
-    { label: 'Sem 4', cobrado: 84, pendiente: 12, vencido: 4 },
-  ];
+  // Mock visual: barras stacked con cobrado / pendiente / vencido por semana.
+  // Las etiquetas muestran el rango "5–11 may" en vez de "Sem 1" para que
+  // el inmo entienda a qué fechas se refiere cada barra (antes era ambiguo).
+  const semanas = (() => {
+    const hoy = new Date();
+    const hoyDom = new Date(hoy);
+    // Buscar el domingo de "esta semana" (índice 0 = domingo).
+    hoyDom.setDate(hoyDom.getDate() - hoyDom.getDay());
+    const meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+    const fmtRango = (offset: number) => {
+      const lun = new Date(hoyDom);
+      lun.setDate(hoyDom.getDate() - 7 * (3 - offset) + 1); // lunes de hace 3 semanas + offset
+      const dom = new Date(lun);
+      dom.setDate(lun.getDate() + 6);
+      return `${lun.getDate()}–${dom.getDate()} ${meses[dom.getMonth()]}`;
+    };
+    return [
+      { label: fmtRango(0), cobrado: 78, pendiente: 18, vencido: 4 },
+      { label: fmtRango(1), cobrado: 92, pendiente: 6, vencido: 2 },
+      { label: fmtRango(2), cobrado: 81, pendiente: 14, vencido: 5 },
+      { label: fmtRango(3), cobrado: 84, pendiente: 12, vencido: 4 },
+    ];
+  })();
 
   return (
     <div className="space-y-4 pt-4">
