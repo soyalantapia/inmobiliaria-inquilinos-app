@@ -112,7 +112,7 @@ export function NegociadorRenovacionPanel({
 
         <details className="rounded-md bg-background/60 p-3 text-xs">
           <summary className="cursor-pointer font-medium text-foreground">
-            Cómo llegamos a esta propuesta ({sugerencia.factores.length} factores)
+            Cómo llegamos a esta propuesta ({sugerencia.factores.length} factor{sugerencia.factores.length === 1 ? '' : 'es'})
           </summary>
           <ul className="mt-3 space-y-1.5">
             {sugerencia.factores.map((f, idx) => (

@@ -317,7 +317,7 @@ export function MorososPanel({ inmobiliaria = 'My Alquiler' }: Props) {
             ) : (
               <>
                 <ChevronDown className="h-4 w-4" />
-                Ver los {filtrados.length} morosos
+                Ver los {filtrados.length} moroso{filtrados.length === 1 ? '' : 's'}
               </>
             )}
           </Button>

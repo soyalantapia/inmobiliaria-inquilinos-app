@@ -432,7 +432,7 @@ export default function ConfiguracionPage() {
               <CardHeader className="flex-row items-center justify-between space-y-0">
                 <div>
                   <CardTitle>Equipo</CardTitle>
-                  <CardDescription>{equipo.length} personas con acceso al panel.</CardDescription>
+                  <CardDescription>{equipo.length} {equipo.length === 1 ? 'persona' : 'personas'} con acceso al panel.</CardDescription>
                 </div>
                 <Button size="sm" onClick={() => setShowInvitar(true)}>
                   <Plus className="h-4 w-4" />

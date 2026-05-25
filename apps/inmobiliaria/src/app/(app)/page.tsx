@@ -119,7 +119,7 @@ export default function DashboardPage() {
               label="Reclamos abiertos"
               valor={stats.reclamosAbiertos.toString()}
               icon={Wrench}
-              hint={`${m.reclamosResueltosMes} resueltos este mes`}
+              hint={`${m.reclamosResueltosMes} resuelto${m.reclamosResueltosMes === 1 ? '' : 's'} este mes`}
               alert={stats.reclamosAbiertos > 0}
               href="/reclamos"
             />
@@ -163,7 +163,7 @@ export default function DashboardPage() {
                 <Calendar className="h-4 w-4 text-primary" />
                 <CardTitle className="text-base">Próximos 14 días</CardTitle>
               </div>
-              <span className="text-xs text-muted-foreground">{agendaMock.length} eventos</span>
+              <span className="text-xs text-muted-foreground">{agendaMock.length} evento{agendaMock.length === 1 ? '' : 's'}</span>
             </CardHeader>
             <CardContent className="space-y-3">
               {agendaMock.map((e) => (

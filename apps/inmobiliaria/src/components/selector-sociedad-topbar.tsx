@@ -109,7 +109,7 @@ export function SelectorSociedadTopbar() {
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium">Todas las sociedades</p>
                 <p className="text-[11px] text-muted-foreground">
-                  Vista consolidada de los {sociedades.length} negocios
+                  Vista consolidada de los {sociedades.length} negocio{sociedades.length === 1 ? '' : 's'}
                 </p>
               </div>
               {activa === TODAS_LAS_SOCIEDADES && (
