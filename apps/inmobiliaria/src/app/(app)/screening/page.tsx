@@ -585,7 +585,7 @@ function Informe({
               />
               <ScoreInline
                 label="Patrimonio"
-                valor={`${resultado.inmuebles.length} inm · ${resultado.vehiculos.length} auto`}
+                valor={`${resultado.inmuebles.length} inm. · ${resultado.vehiculos.length} auto${resultado.vehiculos.length === 1 ? '' : 's'}`}
               />
             </div>
             <div className="flex gap-2">
@@ -719,9 +719,9 @@ function Informe({
         <TabsContent value="bcra" className="space-y-4">
           <BcraDetail title="Titular" resumen={resultado.bcra} />
           <SectionCard icon={<FileText className="h-4 w-4" />} title="Cheques (últimos 4 años)">
-            <Row label="Rechazados" value={`${resultado.cheques.rechazadosCount} cheques`} />
+            <Row label="Rechazados" value={`${resultado.cheques.rechazadosCount} cheque${resultado.cheques.rechazadosCount === 1 ? '' : 's'}`} />
             <Row label="Monto rechazado" value={formatMonto(resultado.cheques.rechazadosMonto)} />
-            <Row label="Levantados" value={`${resultado.cheques.levantadosCount} cheques`} />
+            <Row label="Levantados" value={`${resultado.cheques.levantadosCount} cheque${resultado.cheques.levantadosCount === 1 ? '' : 's'}`} />
             <Row label="Monto levantado" value={formatMonto(resultado.cheques.levantadosMonto)} />
           </SectionCard>
           <BcraDetail title="Grupo familiar" resumen={resultado.bcraFamiliar} />
