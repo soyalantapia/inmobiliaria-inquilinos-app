@@ -1,3 +1,6 @@
+'use client';
+
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import {
@@ -22,6 +25,11 @@ import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@llave/ui/card';
 import { BotonProximamente } from '@/components/boton-proximamente';
+import {
+  ConectarArcaTrigger,
+  CuentaCobranzaTrigger,
+  EditarPropietarioTrigger,
+} from '@/components/editar-propietario-trigger';
 import { Topbar } from '@/components/topbar';
 import {
   contratosMock,
@@ -29,16 +37,25 @@ import {
   propietariosMock,
 } from '@/lib/mock-data';
 import { formatFechaCorta, formatMonto, formatRangoVigencia } from '@/lib/format';
-
-export function generateStaticParams() {
-  return propietariosMock.map((p) => ({ id: p.id }));
-}
-
-export const dynamicParams = false;
+import { aplicarOverride as aplicarOverridePropietario } from '@/lib/propietarios-overrides-storage';
 
 export default function DetallePropietarioPage({ params }: { params: { id: string } }) {
-  const propietario = propietariosMock.find((p) => p.id === params.id);
-  if (!propietario) notFound();
+  const raw = propietariosMock.find((p) => p.id === params.id);
+  if (!raw) notFound();
+
+  // Re-render reactivo cuando el storage cambia (post-save).
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const onChange = () => setTick((n) => n + 1);
+    window.addEventListener('propietario-actualizado', onChange);
+    window.addEventListener('storage', onChange);
+    return () => {
+      window.removeEventListener('propietario-actualizado', onChange);
+      window.removeEventListener('storage', onChange);
+    };
+  }, []);
+  void tick;
+  const propietario = aplicarOverridePropietario(raw);
 
   const propiedadesDelPropietario = propiedadesMock.filter((p) =>
     propietario.propiedadesIds.includes(p.id),
@@ -99,13 +116,7 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
                     WhatsApp
                   </a>
                 </Button>
-                <BotonProximamente
-                  toastTitle="Editar propietario"
-                  toastMessage="Próximamente vas a poder editar nombre, CUIT, CBU y notas desde acá."
-                >
-                  <Pencil className="h-4 w-4" />
-                  Editar
-                </BotonProximamente>
+                <EditarPropietarioTrigger propietario={propietario} />
               </div>
             </div>
 
@@ -300,15 +311,7 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
                       </p>
                     </div>
                   </div>
-                  <BotonProximamente
-                    size="sm"
-                    className="w-full"
-                    toastTitle="Conectar ARCA"
-                    toastMessage="Próximamente vas a poder vincular CUIT y clave fiscal en un paso."
-                  >
-                    <PlugZap className="h-3.5 w-3.5" />
-                    Conectar ARCA
-                  </BotonProximamente>
+                  <ConectarArcaTrigger propietario={propietario} className="w-full" />
                 </>
               )}
             </CardContent>
@@ -352,16 +355,7 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
                       <p className="font-mono font-medium">{propietario.cuentaCobranza.alias}</p>
                     </div>
                   </div>
-                  <BotonProximamente
-                    variant="outline"
-                    size="sm"
-                    className="w-full"
-                    toastTitle="Editar cuenta"
-                    toastMessage="Próximamente podés actualizar banco, CBU y alias desde acá."
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                    Editar cuenta
-                  </BotonProximamente>
+                  <CuentaCobranzaTrigger propietario={propietario} className="w-full" />
                 </>
               ) : (
                 <>
@@ -370,16 +364,7 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
                     inmobiliaria</strong>. Si querés que el inquilino deposite directo al
                     propietario, cargá su cuenta.
                   </p>
-                  <BotonProximamente
-                    variant="outline"
-                    size="sm"
-                    className="w-full"
-                    toastTitle="Cargar cuenta"
-                    toastMessage="Próximamente vas a poder cargar banco, CBU y alias del propietario."
-                  >
-                    <Landmark className="h-3.5 w-3.5" />
-                    Cargar cuenta del propietario
-                  </BotonProximamente>
+                  <CuentaCobranzaTrigger propietario={propietario} className="w-full" />
                 </>
               )}
             </CardContent>
