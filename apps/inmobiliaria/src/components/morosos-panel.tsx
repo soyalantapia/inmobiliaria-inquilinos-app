@@ -202,7 +202,9 @@ export function MorososPanel({ inmobiliaria = 'My Alquiler' }: Props) {
       tpl.destinatario === 'garante' && moroso.contacto?.garante
         ? moroso.contacto.garante
         : moroso.contacto?.titular ?? null;
-    const nombre = destino?.nombre ?? 'cliente';
+    // Sólo el nombre de pila — "Hola Laura" suena más cercano que
+    // "Hola Laura Giménez" en un WhatsApp de cobranza.
+    const nombre = destino?.nombre?.split(' ')[0] ?? 'cliente';
     const dias = moroso.dias;
     const monto = formatMonto(moroso.contrato.monto, moroso.contrato.moneda);
     const texto = tpl.cuerpo

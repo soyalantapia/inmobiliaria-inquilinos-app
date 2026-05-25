@@ -98,22 +98,29 @@ export function EditarPropietarioDialog({ open, onOpenChange, propietario }: Pro
         <div className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="ed-nombre">Nombre</Label>
-              <Input id="ed-nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} />
+              <Label htmlFor="ed-nombre" className="flex items-center gap-1">
+                Nombre <span className="text-destructive" aria-label="obligatorio">*</span>
+              </Label>
+              <Input id="ed-nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} aria-required="true" />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="ed-apellido">Apellido</Label>
-              <Input id="ed-apellido" value={apellido} onChange={(e) => setApellido(e.target.value)} />
+              <Label htmlFor="ed-apellido" className="flex items-center gap-1">
+                Apellido <span className="text-destructive" aria-label="obligatorio">*</span>
+              </Label>
+              <Input id="ed-apellido" value={apellido} onChange={(e) => setApellido(e.target.value)} aria-required="true" />
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="ed-cuit">CUIT</Label>
+            <Label htmlFor="ed-cuit" className="flex items-center gap-1">
+              CUIT <span className="text-destructive" aria-label="obligatorio">*</span>
+            </Label>
             <Input
               id="ed-cuit"
               value={cuit}
               onChange={(e) => setCuit(e.target.value)}
               placeholder="20-12345678-9"
+              aria-required="true"
             />
           </div>
 

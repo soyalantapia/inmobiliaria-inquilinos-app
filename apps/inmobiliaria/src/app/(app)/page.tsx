@@ -74,6 +74,7 @@ export default function DashboardPage() {
               icon={CheckCircle2}
               tone="emerald"
               delta={m.variacionIngresos}
+              deltaLabel="vs mes anterior"
               hint={`${stats.cobrabilidadPct}% de cobrabilidad`}
             />
             <KpiBig
@@ -90,6 +91,7 @@ export default function DashboardPage() {
               tone={stats.enMora.cantidad > 0 ? 'red' : 'muted'}
               delta={m.variacionMorosos}
               deltaInverso
+              deltaLabel="vs mes anterior"
               hint={`${stats.enMora.cantidad} contrato${stats.enMora.cantidad === 1 ? ' atrasado' : 's atrasados'}`}
             />
             <KpiBig

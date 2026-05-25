@@ -24,10 +24,10 @@ export function PilotoBadgeTopbar() {
   return (
     <span
       className="hidden items-center gap-1 rounded-full bg-gradient-to-r from-violet-600 to-violet-500 px-2.5 py-1 text-[10px] font-semibold text-white shadow-md shadow-violet-500/20 md:inline-flex"
-      title="Cliente piloto · acceso temprano + canal directo con founders"
+      title="Cliente piloto de My Alquiler · acceso temprano + canal directo con el equipo"
     >
       <Sparkles className="h-3 w-3" />
-      Piloto
+      Cliente piloto
     </span>
   );
 }

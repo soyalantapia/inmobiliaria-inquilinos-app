@@ -120,10 +120,11 @@ export default function ReclamosPage() {
                 {slaCounters.vencidos > 0 ? (
                   <p>
                     <strong className="text-destructive">
-                      {slaCounters.vencidos} reclamo{slaCounters.vencidos === 1 ? '' : 's'} fuera del
-                      SLA
+                      {slaCounters.vencidos} reclamo{slaCounters.vencidos === 1 ? '' : 's'} activo
+                      {slaCounters.vencidos === 1 ? '' : 's'} fuera del SLA
                     </strong>{' '}
-                    · {slaCounters.porVencer} por vencer pronto
+                    · {slaCounters.porVencer} por vencer pronto · sobre {slaCounters.activos} activo
+                    {slaCounters.activos === 1 ? '' : 's'}
                   </p>
                 ) : (
                   <p>

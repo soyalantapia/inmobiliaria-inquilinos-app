@@ -139,7 +139,7 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
         {/* KPIs */}
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Kpi
-            label="Propiedades"
+            label={propietario.propiedadesIds.length === 1 ? 'Propiedad' : 'Propiedades'}
             value={propietario.propiedadesIds.length.toString()}
             icon={<Home className="h-4 w-4" />}
           />
@@ -179,6 +179,7 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
               <div>
                 <p className="text-xs text-muted-foreground">Comisión inmobiliaria</p>
                 <p className="text-lg font-semibold tabular-nums">{propietario.comisionPct}%</p>
+                <p className="text-[10px] text-muted-foreground">del alquiler bruto</p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Cuenta desde</p>
@@ -516,12 +517,7 @@ function RendicionRow({ rendicion: r }: { rendicion: Rendicion }) {
         <Landmark className="h-4 w-4 text-muted-foreground" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium">
-          {new Date(Number(r.periodo.split('-')[0]), Number(r.periodo.split('-')[1]) - 1, 1).toLocaleDateString('es-AR', {
-            month: 'long',
-            year: 'numeric',
-          })}
-        </p>
+        <p className="text-sm font-medium">{formatPeriodo(r.periodo)}</p>
         <p className="text-xs text-muted-foreground">
           Cobrado {formatMonto(r.cobrado)} − comisión {formatMonto(r.comision)}
           {r.fecha && ` · Transferido el ${formatFechaCorta(r.fecha)}`}

@@ -442,8 +442,12 @@ function PagoRow({
                 </Badge>
               )}
               {modoDirecto && (
-                <Badge variant="outline" className="text-[10px]">
-                  Cobranza directa → {propietario?.nombre}
+                <Badge
+                  variant="outline"
+                  className="text-[10px]"
+                  title="El inquilino transfirió directo a la cuenta del propietario. La inmobiliaria sólo audita el pago."
+                >
+                  Cobranza directa al propietario · {propietario?.nombre ?? '—'}
                 </Badge>
               )}
               {afipOn && (
@@ -504,6 +508,13 @@ function PagoRow({
           size="sm"
           onClick={onConciliar}
           className={`ml-auto ${autoOk ? 'bg-emerald-600 hover:bg-emerald-700' : ''}`}
+          title={
+            autoOk
+              ? 'IA validó todo — conciliamos y emitimos comprobante de una.'
+              : afipOn
+                ? 'El propietario tiene ARCA conectada — al confirmar, emitimos factura automática y se la mandamos al inquilino.'
+                : 'Confirmamos el pago. La factura/recibo la emite el propietario por su cuenta (no tiene ARCA conectada).'
+          }
         >
           {autoOk ? <Sparkles className="h-3.5 w-3.5" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
           {autoOk

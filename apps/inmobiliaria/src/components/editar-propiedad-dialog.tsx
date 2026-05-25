@@ -102,12 +102,18 @@ export function EditarPropiedadDialog({ open, onOpenChange, propiedad, onGuardad
 
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="direccion">Dirección</Label>
+            <Label htmlFor="direccion" className="flex items-center gap-1">
+              Dirección
+              <span className="text-destructive" aria-label="obligatorio">
+                *
+              </span>
+            </Label>
             <Input
               id="direccion"
               value={direccion}
               onChange={(e) => setDireccion(e.target.value)}
               placeholder="Av. Rivadavia 6420, 8°C"
+              aria-required="true"
             />
           </div>
 

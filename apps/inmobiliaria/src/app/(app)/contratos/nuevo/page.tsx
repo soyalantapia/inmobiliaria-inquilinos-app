@@ -120,15 +120,28 @@ export default function CargarContratoPage() {
     <>
       <Topbar titulo="Cargar contrato" />
       <main className="flex-1 space-y-6 p-4 md:p-6">
-        <div>
-          <Link
-            href="/contratos"
-            className="mb-2 inline-flex items-center text-xs text-muted-foreground hover:text-foreground"
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <Link
+              href="/contratos"
+              className="mb-2 inline-flex items-center text-xs text-muted-foreground hover:text-foreground"
+            >
+              <ArrowLeft className="h-3 w-3" />
+              Volver
+            </Link>
+            <Steps actual={paso} />
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            asChild
+            className="shrink-0 text-muted-foreground hover:text-destructive"
           >
-            <ArrowLeft className="h-3 w-3" />
-            Volver
-          </Link>
-          <Steps actual={paso} />
+            <Link href="/contratos">
+              <X className="h-4 w-4" />
+              Cancelar carga
+            </Link>
+          </Button>
         </div>
 
         {paso === 1 && <PasoSubir onArchivo={subir} />}
@@ -228,7 +241,7 @@ function PasoSubir({ onArchivo }: { onArchivo: (file: File) => void }) {
       <CardHeader>
         <CardTitle>Subí el PDF del contrato</CardTitle>
         <CardDescription>
-          Aceptamos contratos digitales y escaneados. Si está escaneado, hacemos OCR.
+          Aceptamos contratos digitales y fotos del contrato firmado. Si es una foto, lo leemos igual con OCR.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">

@@ -35,7 +35,10 @@ const links = [
   { href: '/pagos', label: 'Pagos', icon: CreditCard },
   { href: '/caja', label: 'Caja', icon: Wallet },
   { href: '/contratos', label: 'Contratos', icon: FileText },
-  { href: '/contratos/nuevo', label: 'Cargar contrato', icon: Plus },
+  // Sub-item visual: lo marcamos con sub=true para que el renderer le
+  // saque el ícono y lo indente, dejando claro que es "una acción de
+  // Contratos" y no una sección hermana.
+  { href: '/contratos/nuevo', label: 'Cargar contrato', icon: Plus, sub: true },
   { href: '/aprobaciones', label: 'Aprobaciones', icon: Inbox },
   { href: '/renovaciones', label: 'Renovaciones', icon: CalendarHeart },
   { href: '/consorcios', label: 'Consorcios', icon: Building },
@@ -79,19 +82,23 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
               ? pathname === '/'
               : pathname === l.href || pathname.startsWith(`${l.href}/`);
           const Icon = l.icon;
+          const esSub = 'sub' in l && l.sub === true;
           return (
             <Link
               key={l.href}
               href={l.href}
               onClick={onNavigate}
               className={cn(
-                'flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
+                'flex items-center gap-3 rounded-md py-2 text-sm transition-colors',
+                // Los sub-items van indentados con el ícono más chico,
+                // para que se lean como "acción de Contratos".
+                esSub ? 'pl-10 pr-3' : 'px-3',
                 active
                   ? 'bg-primary/10 font-medium text-primary'
                   : 'text-muted-foreground hover:bg-muted hover:text-foreground',
               )}
             >
-              <Icon className="h-4 w-4" />
+              <Icon className={esSub ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
               <span className="flex-1">{l.label}</span>
               {l.href === '/aprobaciones' && pendientes > 0 && (
                 <span className="grid h-4 min-w-[1rem] place-items-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground">

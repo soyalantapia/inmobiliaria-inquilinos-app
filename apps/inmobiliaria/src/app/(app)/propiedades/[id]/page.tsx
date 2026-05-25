@@ -191,12 +191,12 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
               })()}
               <Stat
                 label="Vigencia contrato"
-                value={contrato ? `Hasta ${formatFechaCorta(contrato.fechaFin)}` : '—'}
+                value={contrato ? formatRangoVigencia(contrato.fechaInicio, contrato.fechaFin) : '—'}
               />
               <Stat
                 label="Reclamos abiertos"
                 value={reclamosAbiertos.toString()}
-                hint={`${reclamos.length} total`}
+                hint={`${reclamos.length} reclamo${reclamos.length === 1 ? '' : 's'} en total`}
                 accent={reclamosAbiertos > 0 ? 'red' : 'muted'}
               />
             </div>
