@@ -9,8 +9,20 @@ export function formatMonto(monto: number, moneda: Moneda = 'ARS'): string {
   return formatters[moneda].format(monto);
 }
 
+/**
+ * Parsea una fecha respetando la zona horaria local. Si recibe un
+ * yyyy-mm-dd "puro" lo construye con (year, month, day) para evitar el
+ * drift de UTC que dejaba "30 ago" en lugar de "31 ago". Si ya viene con
+ * hora explícita, delega en `new Date()`.
+ */
+function parseLocal(iso: string): Date {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return new Date(iso);
+}
+
 export function formatFecha(iso: string): string {
-  const d = new Date(iso);
+  const d = parseLocal(iso);
   return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
@@ -28,7 +40,7 @@ const MESES_CORTOS = [
 ];
 
 export function formatFechaCorta(iso: string): string {
-  const d = new Date(iso);
+  const d = parseLocal(iso);
   const dia = d.getDate();
   const mes = MESES_CORTOS[d.getMonth()];
   const esMismoAnio = d.getFullYear() === new Date().getFullYear();
@@ -49,8 +61,8 @@ export function periodoActualFormat(): string {
  * cuándo cierra el contrato. Espejo del helper homónimo en inmo.
  */
 export function formatRangoVigencia(inicioIso: string, finIso: string): string {
-  const di = new Date(inicioIso);
-  const df = new Date(finIso);
+  const di = parseLocal(inicioIso);
+  const df = parseLocal(finIso);
   const fmt = (d: Date) =>
     `${d.getDate()} ${MESES_CORTOS[d.getMonth()]} ${d.getFullYear()}`;
   return `${fmt(di)} → ${fmt(df)}`;
@@ -69,7 +81,7 @@ export function formatPeriodo(periodo: string): string {
 export function diasHastaVencimiento(iso: string): number {
   const hoy = new Date();
   hoy.setHours(0, 0, 0, 0);
-  const venc = new Date(iso);
+  const venc = parseLocal(iso);
   venc.setHours(0, 0, 0, 0);
   return Math.round((venc.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24));
 }

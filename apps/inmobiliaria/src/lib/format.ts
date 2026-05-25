@@ -9,8 +9,24 @@ export function formatMonto(monto: number, moneda: Moneda = 'ARS'): string {
   return formatters[moneda].format(monto);
 }
 
+/**
+ * Parsea una fecha respetando la zona horaria local del usuario.
+ *
+ * Tomar `new Date('2026-08-31')` directo es peligroso: JS lo interpreta
+ * como UTC 00:00, y al renderizar en Argentina (UTC-3) muestra "30 ago"
+ * — un día menos. Este wrapper detecta el formato yyyy-mm-dd "puro" y
+ * lo construye con el constructor (year, month, day) que SÍ es local.
+ * Para strings con hora explícita (ISO completo) deja que `new Date()`
+ * haga su trabajo normalmente.
+ */
+function parseLocal(iso: string): Date {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return new Date(iso);
+}
+
 export function formatFecha(iso: string): string {
-  const d = new Date(iso);
+  const d = parseLocal(iso);
   return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
@@ -23,7 +39,7 @@ const MESES_CORTOS_FMT = [
 ];
 
 export function formatFechaCorta(iso: string): string {
-  const d = new Date(iso);
+  const d = parseLocal(iso);
   const dia = d.getDate();
   const mes = MESES_CORTOS_FMT[d.getMonth()];
   const esMismoAnio = d.getFullYear() === new Date().getFullYear();
@@ -38,8 +54,8 @@ export function formatFechaCorta(iso: string): string {
  * cards de propiedades y resúmenes de propietarios.
  */
 export function formatRangoVigencia(inicioIso: string, finIso: string): string {
-  const di = new Date(inicioIso);
-  const df = new Date(finIso);
+  const di = parseLocal(inicioIso);
+  const df = parseLocal(finIso);
   const fmt = (d: Date) =>
     `${d.getDate()} ${MESES_CORTOS_FMT[d.getMonth()]} ${d.getFullYear()}`;
   return `${fmt(di)} → ${fmt(df)}`;
@@ -48,7 +64,8 @@ export function formatRangoVigencia(inicioIso: string, finIso: string): string {
 export function diasHastaVencimiento(iso: string): number {
   const hoy = new Date();
   hoy.setHours(0, 0, 0, 0);
-  const d = new Date(iso);
+  const d = parseLocal(iso);
+  d.setHours(0, 0, 0, 0);
   return Math.floor((d.getTime() - hoy.getTime()) / (24 * 60 * 60 * 1000));
 }
 
