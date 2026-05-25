@@ -194,7 +194,18 @@ export function PinPromptDialog({
               Cancelar
             </Button>
             {!bloqueado && (
-              <Button onClick={submit}>
+              <Button
+                onClick={submit}
+                // disabled hasta que el PIN tenga el largo mínimo de 4.
+                // Antes el botón estaba siempre activo y al apretarlo con un
+                // PIN incompleto se mostraba "PIN incorrecto" como error,
+                // sumando un intento fallido inutilmente (con bloqueo a los 5).
+                disabled={
+                  modo === 'configurar'
+                    ? pin.length < 4 || pin !== pinConfirm
+                    : pin.length < 4
+                }
+              >
                 <Lock className="h-4 w-4" />
                 {modo === 'configurar' ? 'Crear PIN' : 'Confirmar'}
               </Button>
