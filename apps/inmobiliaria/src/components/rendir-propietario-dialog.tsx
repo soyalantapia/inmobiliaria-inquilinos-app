@@ -43,7 +43,7 @@ import {
 import { registrarEvento } from '@/lib/auditoria-storage';
 import { gastosAtribuidos, type GastoAtribuido } from '@/lib/gastos-rendicion';
 import type { Propietario } from '@/lib/types';
-import { formatMonto } from '@/lib/format';
+import { formatMonto, formatPeriodo } from '@/lib/format';
 
 /**
  * Dialog para marcar como rendido el mes al propietario.
@@ -60,24 +60,10 @@ interface RendirPropietarioDialogProps {
   onRendido?: (rendicion: Rendicion) => void;
 }
 
-const periodoLabel = (p: string): string => {
-  const [year, month] = p.split('-');
-  const meses = [
-    'enero',
-    'febrero',
-    'marzo',
-    'abril',
-    'mayo',
-    'junio',
-    'julio',
-    'agosto',
-    'septiembre',
-    'octubre',
-    'noviembre',
-    'diciembre',
-  ];
-  return `${meses[parseInt(month!, 10) - 1]} ${year}`;
-};
+// Antes este helper tenía meses en minúscula, lo que dejaba el dialog con
+// "Período: **mayo 2026**" mientras el resto de la app usa formatPeriodo
+// que devuelve capitalizado ("Mayo 2026"). Unificamos al helper compartido.
+const periodoLabel = (p: string): string => formatPeriodo(p);
 
 export function RendirPropietarioDialog({
   propietario,

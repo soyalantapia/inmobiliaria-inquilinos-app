@@ -28,7 +28,7 @@ import {
   listarRendicionesDePropietario,
   type Rendicion,
 } from '@/lib/rendiciones-storage';
-import { formatFechaCorta, formatMonto } from '@/lib/format';
+import { formatFechaCorta, formatMonto, formatPeriodo } from '@/lib/format';
 import type { Propietario } from '@/lib/types';
 
 /**
@@ -36,24 +36,10 @@ import type { Propietario } from '@/lib/types';
  * propiedades vinculadas, contratos. Centro de información de una mirada.
  */
 
-const periodoLabel = (p: string): string => {
-  const [year, month] = p.split('-');
-  const meses = [
-    'enero',
-    'febrero',
-    'marzo',
-    'abril',
-    'mayo',
-    'junio',
-    'julio',
-    'agosto',
-    'septiembre',
-    'octubre',
-    'noviembre',
-    'diciembre',
-  ];
-  return `${meses[parseInt(month!, 10) - 1]} ${year}`;
-};
+// Antes este helper duplicaba la tabla de meses en minúscula y dejaba
+// "mayo 2026" mientras el resto de la app usa "Mayo 2026". Lo
+// unificamos al helper compartido formatPeriodo.
+const periodoLabel = (p: string): string => formatPeriodo(p);
 
 const metodoLabel: Record<Rendicion['metodo'], string> = {
   TRANSFERENCIA: 'Transferencia',

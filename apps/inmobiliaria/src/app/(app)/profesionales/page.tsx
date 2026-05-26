@@ -571,8 +571,15 @@ function DialogForm({
 
         <div className="space-y-3">
           <div className="space-y-1">
-            <Label className="text-xs">Nombre</Label>
-            <Input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej: Juan Pérez" />
+            <Label className="text-xs" aria-required>
+              Nombre <span className="text-destructive">*</span>
+            </Label>
+            <Input
+              value={nombre}
+              onChange={(e) => setNombre(e.target.value)}
+              placeholder="Ej: Juan Pérez"
+              required
+            />
           </div>
 
           <div className="space-y-1">
@@ -591,8 +598,15 @@ function DialogForm({
           </div>
 
           <div className="space-y-1">
-            <Label className="text-xs">Zona</Label>
-            <Input value={zona} onChange={(e) => setZona(e.target.value)} placeholder="Ej: Palermo, Recoleta" />
+            <Label className="text-xs" aria-required>
+              Zona <span className="text-destructive">*</span>
+            </Label>
+            <Input
+              value={zona}
+              onChange={(e) => setZona(e.target.value)}
+              placeholder="Ej: Palermo, Recoleta"
+              required
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-2">

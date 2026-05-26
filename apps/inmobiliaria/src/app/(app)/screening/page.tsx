@@ -282,7 +282,9 @@ function ScreeningHome({
 
             <form onSubmit={onSubmit} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="cuit">CUIT / CUIL</Label>
+                <Label htmlFor="cuit" aria-required>
+                  CUIT / CUIL <span className="text-destructive">*</span>
+                </Label>
                 <Input
                   id="cuit"
                   inputMode="numeric"
@@ -306,7 +308,9 @@ function ScreeningHome({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="nombre">Nombre completo</Label>
+                <Label htmlFor="nombre" aria-required>
+                  Nombre completo <span className="text-destructive">*</span>
+                </Label>
                 <Input
                   id="nombre"
                   placeholder="Carlos Eduardo Méndez"

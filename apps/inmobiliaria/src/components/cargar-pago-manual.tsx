@@ -98,13 +98,16 @@ export function CargarPagoManualDialog({ open, onOpenChange, onDone }: Props) {
 
         <div className="space-y-3">
           <div className="space-y-1">
-            <Label className="text-xs">Contrato</Label>
+            <Label className="text-xs" aria-required>
+              Contrato <span className="text-destructive">*</span>
+            </Label>
             <select
               value={contratoId}
               onChange={(e) => {
                 setContratoId(e.target.value);
                 setMonto('');
               }}
+              required
               className="w-full rounded-md border bg-background px-3 py-2 text-sm"
             >
               <option value="">Elegí un contrato…</option>
@@ -120,13 +123,16 @@ export function CargarPagoManualDialog({ open, onOpenChange, onDone }: Props) {
 
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1">
-              <Label className="text-xs">Monto</Label>
+              <Label className="text-xs" aria-required>
+                Monto <span className="text-destructive">*</span>
+              </Label>
               <Input
                 type="number"
                 inputMode="decimal"
                 value={monto}
                 onChange={(e) => setMonto(e.target.value)}
                 placeholder="0"
+                required
               />
               {contratoSel && (
                 <p className="text-[10px] text-muted-foreground">

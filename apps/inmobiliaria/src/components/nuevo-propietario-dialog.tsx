@@ -101,22 +101,28 @@ export function NuevoPropietarioDialog({
         <form onSubmit={onSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="np-nombre">Nombre</Label>
+              <Label htmlFor="np-nombre" aria-required>
+                Nombre <span className="text-destructive">*</span>
+              </Label>
               <Input
                 id="np-nombre"
                 value={nombre}
                 onChange={(e) => setNombre(e.target.value)}
                 placeholder="María"
                 autoFocus
+                required
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="np-apellido">Apellido</Label>
+              <Label htmlFor="np-apellido" aria-required>
+                Apellido <span className="text-destructive">*</span>
+              </Label>
               <Input
                 id="np-apellido"
                 value={apellido}
                 onChange={(e) => setApellido(e.target.value)}
                 placeholder="González"
+                required
               />
             </div>
           </div>
