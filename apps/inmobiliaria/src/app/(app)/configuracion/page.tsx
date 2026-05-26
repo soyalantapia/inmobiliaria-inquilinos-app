@@ -1207,7 +1207,7 @@ function EventoRow({ evento }: { evento: EventoAuditoria }) {
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
           <span className="font-medium">{evento.autor}</span>
           <Badge variant="outline" className="text-[10px]">
-            {evento.rolAutor}
+            {evento.rolAutor.charAt(0) + evento.rolAutor.slice(1).toLowerCase()}
           </Badge>
           <span className="text-muted-foreground">·</span>
           <span className="text-muted-foreground">{tipoEventoLabel[evento.tipo]}</span>

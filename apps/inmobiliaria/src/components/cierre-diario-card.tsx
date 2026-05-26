@@ -302,7 +302,9 @@ function MovRow({ mov }: { mov: MovimientoDia }) {
         <span className="flex items-center gap-1.5">
           <Landmark className="h-3 w-3 text-primary" />
           {mov.descripcion}{' '}
-          <span className="text-muted-foreground">· {mov.metodo}</span>
+          <span className="text-muted-foreground">
+            · {mov.metodo.charAt(0) + mov.metodo.slice(1).toLowerCase()}
+          </span>
         </span>
         <span className="font-semibold tabular-nums text-destructive">
           − {formatMonto(mov.monto)}

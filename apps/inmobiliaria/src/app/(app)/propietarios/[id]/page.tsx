@@ -226,7 +226,7 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
                         </p>
                       </div>
                       <Badge variant={p.estado === 'ALQUILADA' ? 'success' : 'outline'}>
-                        {p.estado}
+                        {p.estado.charAt(0) + p.estado.slice(1).toLowerCase().replace(/_/g, ' ')}
                       </Badge>
                     </Link>
                   );
@@ -442,7 +442,7 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
                       </p>
                     </div>
                     <Badge variant={c.estado === 'ACTIVO' ? 'success' : 'outline'}>
-                      {c.estado}
+                      {c.estado.charAt(0) + c.estado.slice(1).toLowerCase()}
                     </Badge>
                   </Link>
                 ))}

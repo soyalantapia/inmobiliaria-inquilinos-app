@@ -113,7 +113,7 @@ export function AlertasServiciosCard() {
                       }
                       className="text-[9px]"
                     >
-                      {a.tipo}
+                      {a.tipo.charAt(0) + a.tipo.slice(1).toLowerCase()}
                     </Badge>
                   </div>
                   <p className="text-[10px] text-muted-foreground">{a.direccion}</p>
@@ -122,7 +122,7 @@ export function AlertasServiciosCard() {
                 <Button asChild variant="ghost" size="sm">
                   <a
                     href={`https://wa.me/?text=${encodeURIComponent(
-                      `Hola! Te paso a recordar la boleta de ${a.tipo} de ${a.direccion} — ${a.detalle}. Subila a la app o avisame.`,
+                      `Hola! Te paso a recordar la boleta de ${a.tipo.toLowerCase()} de ${a.direccion} — ${a.detalle}. Subila a la app o avisame.`,
                     )}`}
                     target="_blank"
                     rel="noreferrer"

@@ -190,7 +190,14 @@ export default function DetalleContratoPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3 text-sm">
-                  <Row label="Estado" value={<Badge variant="success">{c.estado}</Badge>} />
+                  <Row
+                    label="Estado"
+                    value={
+                      <Badge variant="success">
+                        {c.estado.charAt(0) + c.estado.slice(1).toLowerCase()}
+                      </Badge>
+                    }
+                  />
                   <Row
                     label="Tipo de contrato"
                     value={
@@ -409,7 +416,7 @@ function LiquidacionRow({ liq }: { liq: LiquidacionAdmin }) {
       <div className="flex shrink-0 flex-col items-end gap-1">
         <p className="text-sm font-semibold tabular-nums">{formatMonto(liq.montoTotal)}</p>
         <Badge variant={estadoLiqVariant[liq.estado]} className="text-[10px]">
-          {liq.estado}
+          {liq.estado.charAt(0) + liq.estado.slice(1).toLowerCase()}
         </Badge>
       </div>
     </div>

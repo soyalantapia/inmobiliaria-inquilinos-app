@@ -600,7 +600,7 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                       </p>
                     </div>
                     <Badge variant={contrato.estado === 'ACTIVO' ? 'success' : 'secondary'}>
-                      {contrato.estado}
+                      {contrato.estado.charAt(0) + contrato.estado.slice(1).toLowerCase()}
                     </Badge>
                   </div>
 

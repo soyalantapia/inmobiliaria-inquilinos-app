@@ -783,7 +783,8 @@ function Informe({
                   <div key={i.partidoCatastral} className="rounded-md border p-3 text-sm">
                     <p className="font-medium">{i.ubicacion}</p>
                     <p className="text-xs text-muted-foreground">
-                      {i.tipo} · partido {i.partidoCatastral} · adquirido{' '}
+                      {i.tipo.charAt(0) + i.tipo.slice(1).toLowerCase()} · partido{' '}
+                      {i.partidoCatastral} · adquirido{' '}
                       {formatFecha(i.fechaAdquisicion)}
                     </p>
                   </div>

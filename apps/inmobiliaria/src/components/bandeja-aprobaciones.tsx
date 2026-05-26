@@ -294,7 +294,7 @@ function AprobacionCard({ aprobacion, onAprobar, onRechazar }: CardProps) {
                 }
                 className="text-[9px]"
               >
-                {aprobacion.estado}
+                {aprobacion.estado.charAt(0) + aprobacion.estado.slice(1).toLowerCase()}
               </Badge>
             </div>
             <p className="text-xs text-muted-foreground">
