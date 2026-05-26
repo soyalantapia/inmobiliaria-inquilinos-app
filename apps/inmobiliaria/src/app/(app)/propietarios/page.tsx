@@ -209,7 +209,13 @@ export default function PropietariosPage() {
                           <p className="font-semibold leading-tight line-clamp-2">
                             {p.nombre} {p.apellido}
                           </p>
-                          <p className="text-xs text-muted-foreground tabular-nums">CUIT {p.cuit}</p>
+                          {/* whitespace-nowrap es CRÍTICO: sin él los
+                              guiones del CUIT "20-12345678-2" hacen que
+                              el navegador break la línea en cualquier `-`
+                              y el CUIT termina partido en 3 líneas. */}
+                          <p className="whitespace-nowrap text-xs text-muted-foreground tabular-nums">
+                            CUIT {p.cuit}
+                          </p>
                         </div>
                         {/* Badge dinámico: rendido / por rendir / unidades. */}
                         {rendido ? (

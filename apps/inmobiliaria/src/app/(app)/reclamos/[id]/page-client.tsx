@@ -17,6 +17,7 @@ import {
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card, CardContent } from '@llave/ui/card';
+import { cn } from '@llave/ui/cn';
 import { ConfirmDialog } from '@llave/ui/confirm-dialog';
 import { Input } from '@llave/ui/input';
 import { Label } from '@llave/ui/label';
@@ -31,6 +32,7 @@ import { ProgresoVisitaCard } from '@/components/progreso-visita-card';
 import { ReclamoTimeline } from '@/components/reclamo-timeline';
 import { contactosCobranzaMock, operadoresMock } from '@/lib/mock-data';
 import { formatMonto } from '@/lib/format';
+import { ESTADO_SLA_LABEL, evaluarSla } from '@/lib/sla-reclamos';
 import {
   categoriaIcono,
   categoriaLabel,
@@ -188,6 +190,31 @@ export default function DetalleReclamoPage() {
           <div className="space-y-4">
             <Card>
               <CardContent className="space-y-4 p-6">
+                {/* Si el SLA está vencido (típico de emergencias sin
+                    asignar) mostramos banner rojo arriba — antes el
+                    detalle no transmitía urgencia y se veía igual que
+                    cualquier reclamo. */}
+                {(() => {
+                  const sla = evaluarSla(reclamo);
+                  if (sla.estado !== 'VENCIDO' && sla.estado !== 'PROXIMO_VENCIMIENTO') {
+                    return null;
+                  }
+                  return (
+                    <div
+                      className={cn(
+                        'flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium',
+                        sla.estado === 'VENCIDO'
+                          ? 'border-destructive/40 bg-destructive/10 text-destructive'
+                          : 'border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-900/40 dark:bg-amber-900/10 dark:text-amber-200',
+                      )}
+                    >
+                      <Clock className="h-4 w-4 shrink-0" />
+                      <span>
+                        SLA · {ESTADO_SLA_LABEL[sla.estado]} — {sla.texto}
+                      </span>
+                    </div>
+                  );
+                })()}
                 <div className="flex items-start gap-3">
                   {Icon && (
                     <div className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
@@ -205,6 +232,9 @@ export default function DetalleReclamoPage() {
                       </Badge>
                     </div>
                     <p className="text-sm text-muted-foreground">
+                      {/* Antes mostraba "9 may" sin contexto temporal —
+                          tiempoRelativo da "hace 17 días" que comunica
+                          urgencia al instante. */}
                       {categoriaLabel[reclamo.categoria]} · {reclamo.direccion} ·{' '}
                       {tiempoRelativo(reclamo.createdAt)}
                     </p>

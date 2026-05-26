@@ -255,15 +255,18 @@ export function MorososPanel({ inmobiliaria = 'My Alquiler' }: Props) {
               <p className="text-sm font-semibold">
                 Morosos · {morosos.length} contrato{morosos.length === 1 ? '' : 's'}
               </p>
+              {/* Antes el monto total aparecía DOS veces (en el detalle
+                  acá y en un Badge destructive a la derecha) — quitamos
+                  el texto duplicado y dejamos solo el badge prominente. */}
               <p className="text-xs text-muted-foreground">
-                Deuda total {formatMonto(total)}. Los datos del titular y garante
-                están listos para llamar, mandar WhatsApp o mail.
+                Datos de titular y garante listos para llamar, mandar
+                WhatsApp o mail.
               </p>
             </div>
           </div>
-          <Badge variant="destructive" className="text-xs">
-            <TrendingDown className="mr-1 h-3 w-3" />
-            {formatMonto(total)}
+          <Badge variant="destructive" className="shrink-0 gap-1 text-xs">
+            <TrendingDown className="h-3 w-3" />
+            Deuda total {formatMonto(total)}
           </Badge>
         </div>
 

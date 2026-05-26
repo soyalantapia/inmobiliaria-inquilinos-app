@@ -327,9 +327,18 @@ function KpiBig({
           <Icon className={cn('h-5 w-5', toneColor)} />
         </div>
         <p className={cn('text-2xl font-bold tabular-nums md:text-3xl', toneColor)}>{valor}</p>
-        <div className="mt-auto flex h-5 items-center gap-2 text-xs">
+        {/* Antes este footer era de UNA línea con `truncate` → cuando
+            hint + deltaLabel no entraban, terminaba "1 contrato atrasado
+            · v…". Lo dejamos en 2 líneas con line-clamp-2 y altura mínima
+            estable para que todas las cards mantengan el mismo alto. */}
+        <div className="mt-auto flex min-h-10 items-start gap-2 text-xs leading-tight">
           {delta !== undefined && (
-            <span className={cn('inline-flex shrink-0 items-center gap-0.5 font-medium', deltaColor)}>
+            <span
+              className={cn(
+                'inline-flex shrink-0 items-center gap-0.5 pt-px font-medium',
+                deltaColor,
+              )}
+            >
               {delta > 0 ? (
                 <ArrowUpRight className="h-3 w-3" />
               ) : (
@@ -340,7 +349,7 @@ function KpiBig({
             </span>
           )}
           {hint && (
-            <span className="min-w-0 truncate text-muted-foreground">
+            <span className="min-w-0 line-clamp-2 text-muted-foreground">
               {hint}
               {deltaLabel && delta !== undefined && ` · ${deltaLabel}`}
             </span>

@@ -153,10 +153,10 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                 {(() => {
                   const soc = sociedadById(propiedad.sociedadId) ?? sociedadPrincipal();
                   return (
-                    <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                    <p className="flex flex-wrap items-center gap-x-1.5 text-[11px] text-muted-foreground">
                       <Briefcase className="h-3 w-3" />
                       Gestionada por <strong className="text-foreground">{soc.nombreComercial}</strong>{' '}
-                      · CUIT {soc.cuit}
+                      <span className="whitespace-nowrap">· CUIT {soc.cuit}</span>
                     </p>
                   );
                 })()}

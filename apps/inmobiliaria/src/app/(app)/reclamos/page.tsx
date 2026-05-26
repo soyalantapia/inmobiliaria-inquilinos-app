@@ -128,9 +128,16 @@ export default function ReclamosPage() {
                         {' '}
                         · {slaCounters.porVencer} por vencer pronto
                       </>
-                    )}{' '}
-                    · sobre {slaCounters.activos} activo
-                    {slaCounters.activos === 1 ? '' : 's'}
+                    )}
+                    {/* Si todos los activos están vencidos no repetimos
+                        "sobre N activos" — el copy quedaba "4 fuera del
+                        SLA · sobre 4 activos" que se lee redundante. */}
+                    {slaCounters.vencidos < slaCounters.activos && (
+                      <>
+                        {' '}· sobre {slaCounters.activos} activo
+                        {slaCounters.activos === 1 ? '' : 's'}
+                      </>
+                    )}
                   </p>
                 ) : (
                   <p>

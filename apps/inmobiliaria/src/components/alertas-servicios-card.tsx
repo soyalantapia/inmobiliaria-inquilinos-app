@@ -76,8 +76,9 @@ export function AlertasServiciosCard() {
               {alertas.length} alerta{alertas.length === 1 ? '' : 's'} de servicios
             </p>
             <p className="text-xs text-muted-foreground">
-              Inquilinos que no subieron boletas o las tienen vencidas. El
-              feedback pidió tratarlo como morosidad blanda.
+              Inquilinos que no subieron boletas o las tienen vencidas.
+              Tratalo como morosidad blanda — un recordatorio antes de
+              que pase a deuda.
             </p>
           </div>
           {criticos > 0 && (
