@@ -236,10 +236,10 @@ export default function PagosPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-medium uppercase tracking-wider opacity-85">
-                    Broker IA · nuevo
+                    Asistente IA · nuevo
                   </p>
                   <p className="truncate text-sm font-semibold">
-                    Preguntá lo que quieras sobre tu contrato
+                    Preguntale lo que quieras sobre tu contrato
                   </p>
                 </div>
                 <ChevronRight className="h-5 w-5 shrink-0 opacity-80 transition-transform group-hover:translate-x-1" />

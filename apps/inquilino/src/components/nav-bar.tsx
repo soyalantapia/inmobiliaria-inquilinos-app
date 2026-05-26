@@ -24,7 +24,7 @@ interface NavItem {
 
 const itemsPrimarios: NavItem[] = [
   { href: '/', label: 'Pagos', icon: Wallet },
-  { href: '/broker', label: 'Broker', icon: Sparkles },
+  { href: '/broker', label: 'Asistente', icon: Sparkles },
   { href: '/contrato', label: 'Contrato', icon: FileText },
   { href: '/comprobantes', label: 'Recibos', icon: Receipt },
   { href: '/reclamos', label: 'Reclamos', icon: Wrench },

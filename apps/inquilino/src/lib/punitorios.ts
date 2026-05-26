@@ -8,6 +8,7 @@
 // Esto es lineal — el contrato real puede tener tasa compuesta, pero hasta
 // que conectemos un servicio de cálculo arancelado lo manejamos así.
 
+import { parseLocal } from './format';
 import type { Liquidacion } from './types';
 
 export interface CalculoPunitorios {
@@ -24,8 +25,12 @@ export function calcularPunitorios(
   tasaDiariaPct: number,
   hoy: Date = new Date(),
 ): CalculoPunitorios {
-  const venc = new Date(liq.fechaVencimiento);
-  // normalizar a 00:00 local
+  // Antes: `new Date(liq.fechaVencimiento)` interpretaba "2026-05-05"
+  // como UTC midnight → en AR (GMT-3) retrocedía 1 día → diff con hoy
+  // daba 22 cuando `diasHastaVencimiento(...)` daba 21. Esto generaba
+  // discrepancia en la home: saludo decía "21 días" pero el banner
+  // "Venció hace 22 días". Unificamos con parseFechaLocal.
+  const venc = parseLocal(liq.fechaVencimiento);
   venc.setHours(0, 0, 0, 0);
   const ref = new Date(hoy);
   ref.setHours(0, 0, 0, 0);

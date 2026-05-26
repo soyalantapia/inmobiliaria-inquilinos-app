@@ -77,14 +77,14 @@ const STEPS: Step[] = [
   {
     icon: Sparkles,
     iconBg: 'from-fuchsia-500 to-purple-600',
-    titulo: 'Chateá con el Broker',
+    titulo: 'Chateá con el Asistente',
     descripcion: 'Una IA que leyó tus cláusulas y te responde al instante.',
     bullets: [
       'Aumentos, depósito, mascotas, vencimiento',
       'Te cita la cláusula exacta del contrato',
       'Te deriva a la inmobiliaria si hace falta',
     ],
-    cta: { label: 'Probar el Broker', href: '/broker' },
+    cta: { label: 'Probar el Asistente', href: '/broker' },
   },
   {
     icon: Wrench,
@@ -138,7 +138,7 @@ const STEPS: Step[] = [
     icon: CheckCircle2,
     iconBg: 'from-emerald-500 to-green-600',
     titulo: '¡Listo!',
-    descripcion: 'Ya conocés My Alquiler. Cualquier duda, el Broker o la inmobiliaria están a un toque.',
+    descripcion: 'Ya conocés My Alquiler. Cualquier duda, el Asistente o la inmobiliaria están a un toque.',
     bullets: [
       'Podés volver a ver este tour desde Mi Cuenta',
       'WhatsApp directo con tu inmobiliaria',

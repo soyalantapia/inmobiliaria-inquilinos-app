@@ -152,7 +152,7 @@ export default function ContratoPage() {
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <h1 className="text-lg font-semibold">Broker</h1>
+                <h1 className="text-lg font-semibold">Asistente</h1>
                 <span className="text-[10px] font-medium uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
                   Online
                 </span>

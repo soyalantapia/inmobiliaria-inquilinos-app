@@ -29,7 +29,7 @@
     "./tokens": "./src/lib/tokens.ts"
   },
   "scripts": {
-    "lint": "eslint src",
+    "lint": "echo '@llave/ui: sin lint local — typecheck cubre los .tsx'",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

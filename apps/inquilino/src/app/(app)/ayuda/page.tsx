@@ -76,7 +76,7 @@ const FAQS: FaqItem[] = [
   },
   {
     id: 'contrato-2',
-    pregunta: '¿Qué es el Broker?',
+    pregunta: '¿Qué es el Asistente?',
     respuesta:
       'Es una IA que leyó tu contrato y te responde preguntas al instante. Cita las cláusulas exactas. Si la pregunta es legal compleja te deriva a la inmobiliaria.',
     categoria: 'contrato',
@@ -113,7 +113,7 @@ const FAQS: FaqItem[] = [
     id: 'mascotas-1',
     pregunta: '¿Puedo tener mascotas?',
     respuesta:
-      'Depende de tu contrato. En general se permiten perros y gatos hasta cierto peso. Preguntale al Broker que te cita la cláusula 9 si está habilitado.',
+      'Depende de tu contrato. En general se permiten perros y gatos hasta cierto peso. Preguntale al Asistente que te cita la cláusula 9 si está habilitado.',
     categoria: 'mascotas',
   },
   {
@@ -296,11 +296,11 @@ export default function AyudaPage() {
               <CardContent className="space-y-2 p-8 text-center text-muted-foreground">
                 <BookOpen className="mx-auto h-8 w-8" />
                 <p className="font-medium text-foreground">Sin resultados</p>
-                <p className="text-sm">Probá con otras palabras o pregntale al Broker.</p>
+                <p className="text-sm">Probá con otras palabras o preguntale al Asistente.</p>
                 <Button asChild size="sm" className="mt-2">
                   <a href="/broker">
                     <Sparkles className="h-3.5 w-3.5" />
-                    Abrir Broker
+                    Abrir Asistente
                   </a>
                 </Button>
               </CardContent>
@@ -357,13 +357,13 @@ export default function AyudaPage() {
           <Sparkles className="mx-auto h-8 w-8 text-primary" />
           <p className="font-medium">¿No encontrás lo que buscás?</p>
           <p className="text-sm text-muted-foreground">
-            El Broker entiende preguntas en lenguaje natural y cita tu contrato.
+            El Asistente entiende preguntas en lenguaje natural y cita tu contrato.
           </p>
           <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
             <Button asChild>
               <a href="/broker">
                 <Sparkles className="h-4 w-4" />
-                Preguntale al Broker
+                Preguntale al Asistente
               </a>
             </Button>
             <Button variant="outline" asChild>

@@ -205,7 +205,10 @@ export default function NuevoReclamoPage() {
         <h1 className="text-lg font-semibold">Nuevo reclamo</h1>
       </header>
 
-      <main className="flex-1 space-y-5 px-5 pb-28 md:pb-8">
+      {/* pb-40 (no pb-28) porque el mensaje "Te falta: elegir de qué se
+          trata · contar un poco más · elegir la urgencia" queda al fondo
+          y con pb-28 el bottom-tab-bar fixed lo tapaba en mobile. */}
+      <main className="flex-1 space-y-5 px-5 pb-40 md:pb-8">
         {/* Banner sutil cuando hidratamos un borrador. Le decimos al usuario
             que recuperamos lo que tenía escrito y le damos la opción de
             descartarlo para empezar de cero. */}

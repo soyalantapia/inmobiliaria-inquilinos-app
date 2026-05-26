@@ -212,7 +212,7 @@ export default function LoginPage() {
             />
             <Beneficio
               Icon={Sparkles}
-              titulo="Broker IA que responde al toque"
+              titulo="Asistente IA que responde al toque"
               detalle="Preguntale cualquier duda — cita la cláusula exacta."
             />
           </ul>

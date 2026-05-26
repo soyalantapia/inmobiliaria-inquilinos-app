@@ -20,7 +20,7 @@ export function formatMonto(monto: number, moneda: Moneda = 'ARS'): string {
  * Cualquier otro ISO con hora explícita (`...T14:22:00-03:00`) se delega
  * a `new Date()` que ya hace lo correcto.
  */
-function parseLocal(iso: string): Date {
+export function parseLocal(iso: string): Date {
   const fechaPura = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
   if (fechaPura) {
     return new Date(Number(fechaPura[1]), Number(fechaPura[2]) - 1, Number(fechaPura[3]));
