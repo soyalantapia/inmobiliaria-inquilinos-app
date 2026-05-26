@@ -42,6 +42,7 @@ import {
   type LiquidacionAdmin,
   type TipoEventoContrato,
   comunicacionesMock,
+  contactosCobranzaMock,
   contratosMock,
   eventosContratoMock,
   generarLiquidaciones,
@@ -249,10 +250,37 @@ export default function DetalleContratoPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3 text-sm">
-                  <Row label="Nombre" value={c.inquilino} />
-                  <Row label="WhatsApp" value="+54 9 11 4567 8900" />
-                  <Row label="Email" value="mariela.sosa@gmail.com" />
-                  <Row label="Garante" value="Cobertura SUMA — póliza vigente" />
+                  {/* Antes WhatsApp/Email/Garante eran strings hardcoded
+                      ("+54 9 11 4567 8900" / "mariela.sosa@gmail.com" /
+                      "Cobertura SUMA") IDÉNTICOS para todos los contratos.
+                      Si Roberto abría el contrato de Juan Pérez veía el
+                      email de Mariela Sosa. Bug grave para demo. */}
+                  {(() => {
+                    const contacto = contactosCobranzaMock.find(
+                      (x) => x.contratoId === c.id,
+                    );
+                    return (
+                      <>
+                        <Row label="Nombre" value={c.inquilino} />
+                        <Row
+                          label="WhatsApp"
+                          value={contacto?.titular.telefono ?? '—'}
+                        />
+                        <Row
+                          label="Email"
+                          value={contacto?.titular.email ?? '—'}
+                        />
+                        <Row
+                          label="Garante"
+                          value={
+                            contacto?.garante
+                              ? `${contacto.garante.nombre} · ${contacto.garante.tipo}`
+                              : 'Sin garante registrado'
+                          }
+                        />
+                      </>
+                    );
+                  })()}
                 </CardContent>
               </Card>
             </div>
@@ -332,17 +360,27 @@ export default function DetalleContratoPage() {
         </Tabs>
       </main>
 
-      <MensajeInquilinoDialog
-        open={abrirMensaje}
-        onOpenChange={setAbrirMensaje}
-        inquilino={{
-          nombre: c.inquilino,
-          telefono: '+54 9 11 4567 8900',
-          email: 'mariela.sosa@gmail.com',
-        }}
-        direccion={c.direccion}
-        fechaFin={formatFecha(c.fechaFin)}
-      />
+      {/* Antes telefono/email iban hardcoded ("+54 9 11 4567 8900" /
+          "mariela.sosa@gmail.com") en TODOS los contratos. Si Roberto
+          tocaba "Mensaje al inquilino" desde el contrato de Carlos
+          Romero, el dialog se abría con los datos de Mariela.
+          Ahora resolvemos el contacto real por contratoId. */}
+      {(() => {
+        const cont = contactosCobranzaMock.find((x) => x.contratoId === c.id);
+        return (
+          <MensajeInquilinoDialog
+            open={abrirMensaje}
+            onOpenChange={setAbrirMensaje}
+            inquilino={{
+              nombre: c.inquilino,
+              telefono: cont?.titular.telefono ?? '',
+              email: cont?.titular.email ?? '',
+            }}
+            direccion={c.direccion}
+            fechaFin={formatFecha(c.fechaFin)}
+          />
+        );
+      })()}
     </>
   );
 }
@@ -545,7 +583,7 @@ function AprobacionContratoCard({
         <div className="flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-300">
           <CheckCircle2 className="h-4 w-4" />
           <span className="font-medium">
-            Contrato aprobado. Pasa a estado ACTIVO y se le notifica al inquilino.
+            Contrato aprobado. Pasa a estado Activo y se le notifica al inquilino.
           </span>
         </div>
       </div>
@@ -578,7 +616,7 @@ function AprobacionContratoCard({
     setResuelto('APROBADO');
     toast({
       title: 'Contrato aprobado',
-      description: `${inquilino} pasa a ACTIVO. Se notifica al inquilino y a ${cargadoPor}.`,
+      description: `${inquilino} pasa a Activo. Se notifica al inquilino y a ${cargadoPor}.`,
     });
   };
 

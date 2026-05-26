@@ -704,14 +704,32 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                     Garante vigente
                   </h3>
                 </div>
-                <div className="grid gap-3 rounded-md border bg-muted/30 p-4 md:grid-cols-2">
-                  <Field label="Proveedor">Cobertura SUMA</Field>
-                  <Field label="N° de póliza">POL-2025-48721</Field>
-                  <Field label="Tipo">Garantía digital</Field>
-                  <Field label="Cobertura">$14.400.000</Field>
-                  <Field label="Vigencia hasta">31/08/2028</Field>
-                  <Field label="Contacto">+54 11 5288 9000</Field>
-                </div>
+                {/* Antes acá había 6 campos hardcoded ("Cobertura SUMA",
+                    "POL-2025-48721", "$14.400.000", "31/08/2028",
+                    "+54 11 5288 9000") IDÉNTICOS para todas las
+                    propiedades. Ahora resolvemos el garante real del
+                    contacto de cobranza por contratoId. */}
+                {(() => {
+                  const garante = contrato
+                    ? contactosCobranzaMock.find(
+                        (x) => x.contratoId === contrato.id,
+                      )?.garante ?? null
+                    : null;
+                  if (!garante) {
+                    return (
+                      <div className="rounded-md border border-dashed bg-background/40 p-4 text-xs text-muted-foreground">
+                        Sin garante registrado para este contrato.
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="grid gap-3 rounded-md border bg-muted/30 p-4 md:grid-cols-2">
+                      <Field label="Nombre / proveedor">{garante.nombre}</Field>
+                      <Field label="Tipo">{garante.tipo}</Field>
+                      <Field label="Contacto">{garante.telefono}</Field>
+                    </div>
+                  );
+                })()}
                 <p className="text-xs text-muted-foreground">
                   Los inquilinos pueden compartir un link público de sólo lectura con su garante
                   desde el lado del inquilino — desde acá controlás cuántos hay activos.
