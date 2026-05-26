@@ -250,22 +250,46 @@ export default function RenovacionesPage() {
 
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex flex-wrap gap-2">
-                    <Button size="sm" variant="outline" asChild>
-                      <a
-                        href={`https://wa.me/?text=${encodeURIComponent(`Hola ${c.inquilino.split(' ')[0]}, te escribo de la inmobiliaria por la renovación de tu contrato.`)}`}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        <MessageCircle className="h-3.5 w-3.5" />
-                        WhatsApp libre
-                      </a>
-                    </Button>
-                    <Button size="sm" variant="ghost" asChild>
-                      <a href="tel:+541145321100">
-                        <Phone className="h-3.5 w-3.5" />
-                        Llamar
-                      </a>
-                    </Button>
+                    {/* Resolvemos el teléfono real del inquilino por
+                        contratoId. Antes el WhatsApp era "libre" (sin
+                        destinatario — el usuario tenía que pegarlo
+                        manual) y el "Llamar" iba a un número hardcoded
+                        +54 11 4532 1100 para TODOS los contratos. */}
+                    {(() => {
+                      const tel = contactosCobranzaMock.find(
+                        (x) => x.contratoId === c.id,
+                      )?.titular.telefono;
+                      const telLimpio = tel?.replace(/[^\d]/g, '');
+                      const textoWA = encodeURIComponent(
+                        `Hola ${c.inquilino.split(' ')[0]}, te escribo de la inmobiliaria por la renovación de tu contrato.`,
+                      );
+                      return (
+                        <>
+                          <Button size="sm" variant="outline" asChild>
+                            <a
+                              href={
+                                telLimpio
+                                  ? `https://wa.me/${telLimpio}?text=${textoWA}`
+                                  : `https://wa.me/?text=${textoWA}`
+                              }
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              <MessageCircle className="h-3.5 w-3.5" />
+                              WhatsApp
+                            </a>
+                          </Button>
+                          {telLimpio && (
+                            <Button size="sm" variant="ghost" asChild>
+                              <a href={`tel:${telLimpio}`}>
+                                <Phone className="h-3.5 w-3.5" />
+                                Llamar
+                              </a>
+                            </Button>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                   <Button size="sm" variant="ghost" asChild>
                     <Link href={`/contratos/${c.id}`}>

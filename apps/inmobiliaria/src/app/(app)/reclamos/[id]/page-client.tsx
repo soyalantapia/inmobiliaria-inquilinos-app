@@ -29,7 +29,8 @@ import { Topbar } from '@/components/topbar';
 import { GestionReclamo } from '@/components/gestion-reclamo';
 import { ProgresoVisitaCard } from '@/components/progreso-visita-card';
 import { ReclamoTimeline } from '@/components/reclamo-timeline';
-import { operadoresMock } from '@/lib/mock-data';
+import { contactosCobranzaMock, operadoresMock } from '@/lib/mock-data';
+import { formatMonto } from '@/lib/format';
 import {
   categoriaIcono,
   categoriaLabel,
@@ -138,7 +139,7 @@ export default function DetalleReclamoPage() {
         toast({
           title: 'Reclamo resuelto',
           description: costo
-            ? `Costo $${costoNum.toLocaleString('es-AR')} asociado al propietario.`
+            ? `Costo ${formatMonto(costoNum)} asociado al propietario.`
             : 'El inquilino fue notificado.',
         });
       }
@@ -266,7 +267,7 @@ export default function DetalleReclamoPage() {
                     </Button>
                   </div>
                   <p className="text-[11px] text-muted-foreground">
-                    El inquilino lo recibe en la app y por WhatsApp (Sprint 3).
+                    El inquilino lo recibe en la app y por WhatsApp.
                   </p>
                 </CardContent>
               </Card>
@@ -387,26 +388,57 @@ export default function DetalleReclamoPage() {
                 <div className="space-y-1.5 text-sm text-muted-foreground">
                   <p>{reclamo.direccion}</p>
                 </div>
-                <div className="flex flex-wrap gap-2 pt-1">
-                  <Button size="sm" variant="outline" asChild>
-                    <a href="https://wa.me/541145678900" target="_blank" rel="noreferrer">
-                      <MessageCircle className="h-3.5 w-3.5" />
-                      WhatsApp
-                    </a>
-                  </Button>
-                  <Button size="sm" variant="ghost" asChild>
-                    <a href="tel:+541145678900">
-                      <Phone className="h-3.5 w-3.5" />
-                      Llamar
-                    </a>
-                  </Button>
-                  <Button size="sm" variant="ghost" asChild>
-                    <a href="mailto:inquilino@example.com">
-                      <Mail className="h-3.5 w-3.5" />
-                      Email
-                    </a>
-                  </Button>
-                </div>
+                {/* Resolvemos contacto real del inquilino por contratoId.
+                    Antes los botones llevaban a un número hardcoded
+                    (+5411 4567 8900) para TODOS los reclamos — clickear
+                    desde cualquier reclamo llamaba al mismo número. */}
+                {(() => {
+                  const contacto = contactosCobranzaMock.find(
+                    (c) => c.contratoId === reclamo.contratoId,
+                  );
+                  const tel = contacto?.titular.telefono ?? null;
+                  const telLimpio = tel?.replace(/[^\d]/g, '');
+                  const email = contacto?.titular.email ?? null;
+                  if (!tel && !email) {
+                    return (
+                      <p className="text-[11px] text-muted-foreground">
+                        Sin datos de contacto cargados para este inquilino.
+                      </p>
+                    );
+                  }
+                  return (
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {telLimpio && (
+                        <>
+                          <Button size="sm" variant="outline" asChild>
+                            <a
+                              href={`https://wa.me/${telLimpio}`}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              <MessageCircle className="h-3.5 w-3.5" />
+                              WhatsApp
+                            </a>
+                          </Button>
+                          <Button size="sm" variant="ghost" asChild>
+                            <a href={`tel:${telLimpio}`}>
+                              <Phone className="h-3.5 w-3.5" />
+                              Llamar
+                            </a>
+                          </Button>
+                        </>
+                      )}
+                      {email && (
+                        <Button size="sm" variant="ghost" asChild>
+                          <a href={`mailto:${email}`}>
+                            <Mail className="h-3.5 w-3.5" />
+                            Email
+                          </a>
+                        </Button>
+                      )}
+                    </div>
+                  );
+                })()}
               </CardContent>
             </Card>
           </aside>

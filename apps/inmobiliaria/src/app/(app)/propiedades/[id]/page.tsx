@@ -42,6 +42,7 @@ import { Topbar } from '@/components/topbar';
 import {
   type CoInquilinoAdmin,
   coInquilinosMock,
+  contactosCobranzaMock,
   contratosMock,
   propiedadesMock,
 } from '@/lib/mock-data';
@@ -374,30 +375,49 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
 
                   <Separator />
 
-                  <div className="flex flex-wrap gap-2">
-                    <Button size="sm" variant="outline" asChild>
-                      <a
-                        href="https://wa.me/541145321100"
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        <MessageCircle className="h-3.5 w-3.5" />
-                        WhatsApp
-                      </a>
-                    </Button>
-                    <Button size="sm" variant="ghost" asChild>
-                      <a href="tel:+541145321100">
-                        <Phone className="h-3.5 w-3.5" />
-                        Llamar
-                      </a>
-                    </Button>
-                    <Button size="sm" variant="ghost" asChild>
-                      <a href={`mailto:${emailDeNombre(contrato.inquilino)}`}>
-                        <Mail className="h-3.5 w-3.5" />
-                        Email
-                      </a>
-                    </Button>
-                  </div>
+                  {/* Resolvemos teléfono y email reales del inquilino por
+                      contratoId — antes el botón WhatsApp / Llamar tenía
+                      un número hardcoded (+54 11 4532 1100) idéntico para
+                      todas las propiedades. */}
+                  {(() => {
+                    const contacto = contactosCobranzaMock.find(
+                      (c) => c.contratoId === contrato.id,
+                    );
+                    const tel = contacto?.titular.telefono ?? null;
+                    const telLimpio = tel?.replace(/[^\d]/g, '');
+                    const email =
+                      contacto?.titular.email ?? emailDeNombre(contrato.inquilino);
+                    return (
+                      <div className="flex flex-wrap gap-2">
+                        {telLimpio && (
+                          <>
+                            <Button size="sm" variant="outline" asChild>
+                              <a
+                                href={`https://wa.me/${telLimpio}`}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                <MessageCircle className="h-3.5 w-3.5" />
+                                WhatsApp
+                              </a>
+                            </Button>
+                            <Button size="sm" variant="ghost" asChild>
+                              <a href={`tel:${telLimpio}`}>
+                                <Phone className="h-3.5 w-3.5" />
+                                Llamar
+                              </a>
+                            </Button>
+                          </>
+                        )}
+                        <Button size="sm" variant="ghost" asChild>
+                          <a href={`mailto:${email}`}>
+                            <Mail className="h-3.5 w-3.5" />
+                            Email
+                          </a>
+                        </Button>
+                      </div>
+                    );
+                  })()}
                 </CardContent>
               </Card>
             ) : (
