@@ -445,7 +445,10 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
             {contrato && (
               <InquilinoActualAcciones
                 inquilinoNombre={contrato.inquilino}
-                inquilinoEmail={emailDeNombre(contrato.inquilino)}
+                inquilinoEmail={
+                  contactosCobranzaMock.find((x) => x.contratoId === contrato.id)
+                    ?.titular.email ?? emailDeNombre(contrato.inquilino)
+                }
                 propiedadId={propiedad.id}
                 contratoId={contrato.id}
                 direccion={propiedad.direccion}

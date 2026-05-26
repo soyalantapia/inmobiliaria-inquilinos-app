@@ -517,7 +517,12 @@ function PasoCoinquilinos({
               <Badge variant="outline" className="text-[10px]">
                 {PERMISOS.find((p) => p.value === c.permiso)?.label}
               </Badge>
-              <Button size="icon" variant="ghost" onClick={() => eliminar(idx)}>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => eliminar(idx)}
+                aria-label="Eliminar co-inquilino"
+              >
                 <Trash2 className="h-4 w-4 text-destructive" />
               </Button>
             </div>

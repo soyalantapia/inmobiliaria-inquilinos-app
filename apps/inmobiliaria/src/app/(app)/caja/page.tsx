@@ -248,7 +248,13 @@ function MovimientoRow({
         <p className="text-base font-semibold tabular-nums text-red-600">
           −{formatMonto(mov.monto)}
         </p>
-        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onDelete}>
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-7 w-7"
+          onClick={onDelete}
+          aria-label="Eliminar movimiento de caja"
+        >
           <Trash2 className="h-3.5 w-3.5 text-destructive" />
         </Button>
       </div>

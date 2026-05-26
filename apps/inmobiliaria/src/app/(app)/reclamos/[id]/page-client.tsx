@@ -262,7 +262,12 @@ export default function DetalleReclamoPage() {
                         }
                       }}
                     />
-                    <Button onClick={enviarMensaje} disabled={!mensaje.trim()} size="icon">
+                    <Button
+                      onClick={enviarMensaje}
+                      disabled={!mensaje.trim()}
+                      size="icon"
+                      aria-label="Enviar mensaje al inquilino"
+                    >
                       <Send className="h-4 w-4" />
                     </Button>
                   </div>
