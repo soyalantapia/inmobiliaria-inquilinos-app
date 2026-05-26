@@ -35,7 +35,9 @@ export function PlanConsorciosCard() {
               <p className="text-sm font-semibold">Plan Consorcios</p>
               <p className="text-xs text-muted-foreground">
                 {resumen.consorcios} consorcio{resumen.consorcios === 1 ? '' : 's'} ·{' '}
-                {resumen.ufsTotales} unidades funcionales administradas
+                {resumen.ufsTotales} unidad{resumen.ufsTotales === 1 ? '' : 'es'} funcional
+                {resumen.ufsTotales === 1 ? '' : 'es'} administrada
+                {resumen.ufsTotales === 1 ? '' : 's'}
               </p>
             </div>
           </div>

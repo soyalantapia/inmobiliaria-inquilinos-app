@@ -343,8 +343,8 @@ export function MorososPanel({ inmobiliaria = 'My Alquiler' }: Props) {
               <div className="rounded-md border bg-muted/40 p-2 text-xs">
                 <p className="font-medium">{mensaje.moroso.contrato.inquilino}</p>
                 <p className="text-muted-foreground">
-                  {mensaje.moroso.contrato.direccion} · {mensaje.moroso.dias}{' '}
-                  días de atraso
+                  {mensaje.moroso.contrato.direccion} · {mensaje.moroso.dias} día
+                  {mensaje.moroso.dias === 1 ? '' : 's'} de atraso
                 </p>
               </div>
               <div className="space-y-1">
@@ -414,7 +414,7 @@ function MorosoRow({
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-sm font-semibold">{c.inquilino}</p>
             <Badge variant={tonoUrgencia} className="text-[10px]">
-              {moroso.dias} días
+              {moroso.dias} día{moroso.dias === 1 ? '' : 's'}
             </Badge>
             <Badge variant="outline" className="text-[10px]">
               {formatMonto(c.monto, c.moneda)}

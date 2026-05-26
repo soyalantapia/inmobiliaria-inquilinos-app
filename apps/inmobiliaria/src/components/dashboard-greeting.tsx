@@ -10,7 +10,10 @@ export function DashboardGreeting() {
       <p className="text-sm text-muted-foreground">
         {saludoSegunHora()}, {nombre}.
       </p>
-      <p className="text-2xl font-semibold">Esto pasó hoy en tu cartera.</p>
+      {/* "Esto pasó hoy" era engañoso — abajo se ven KPIs del mes
+          completo y la agenda futura. Hablamos del estado general
+          de la cartera, no del día concreto. */}
+      <p className="text-2xl font-semibold">Tu cartera al día.</p>
     </div>
   );
 }

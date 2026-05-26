@@ -180,26 +180,26 @@ export default function PropiedadesPage() {
             label="Propiedades"
             value={counters.total.toString()}
             icon={Building2}
-            hint={`${counters.ALQUILADA} alquiladas`}
+            hint={`${counters.ALQUILADA} alquilada${counters.ALQUILADA === 1 ? '' : 's'}`}
           />
           <Kpi
             label="Alquiladas"
             value={counters.ALQUILADA.toString()}
             icon={DoorOpen}
-            hint={`${counters.DISPONIBLE} disponibles`}
+            hint={`${counters.DISPONIBLE} disponible${counters.DISPONIBLE === 1 ? '' : 's'}`}
             accent="emerald"
           />
           <Kpi
             label="Ingresos del mes"
             value={formatMonto(counters.ingresosMes)}
             icon={MapPin}
-            hint="suma de alquileres ARS"
+            hint="Total mensual en ARS"
           />
           <Kpi
             label="Reclamos abiertos"
             value={counters.reclamosAbiertos.toString()}
             icon={AlertTriangle}
-            hint="suman de todas las propiedades"
+            hint="Sumando todas las propiedades"
             accent={counters.reclamosAbiertos > 0 ? 'red' : undefined}
           />
         </div>
@@ -343,7 +343,10 @@ export default function PropiedadesPage() {
 
                       <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
                         {propiedad.ambientes !== null && (
-                          <span>{propiedad.ambientes} ambientes</span>
+                          <span>
+                            {propiedad.ambientes} ambiente
+                            {propiedad.ambientes === 1 ? '' : 's'}
+                          </span>
                         )}
                         {propiedad.m2 !== null && <span>{propiedad.m2} m²</span>}
                       </div>

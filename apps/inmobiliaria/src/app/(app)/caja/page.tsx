@@ -324,10 +324,13 @@ function DialogCargarGasto({
         </DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1">
-            <Label className="text-xs">Propiedad</Label>
+            <Label className="text-xs" aria-required>
+              Propiedad <span className="text-destructive">*</span>
+            </Label>
             <select
               value={propiedadId}
               onChange={(e) => setPropiedadId(e.target.value)}
+              required
               className="w-full rounded-md border bg-background px-3 py-2 text-sm"
             >
               <option value="">Elegí una propiedad…</option>
@@ -361,23 +364,29 @@ function DialogCargarGasto({
           </div>
 
           <div className="space-y-1">
-            <Label className="text-xs">Descripción</Label>
+            <Label className="text-xs" aria-required>
+              Descripción <span className="text-destructive">*</span>
+            </Label>
             <Input
               value={descripcion}
               onChange={(e) => setDescripcion(e.target.value)}
               placeholder="Ej: cambio de termotanque"
+              required
             />
           </div>
 
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1">
-              <Label className="text-xs">Monto</Label>
+              <Label className="text-xs" aria-required>
+                Monto <span className="text-destructive">*</span>
+              </Label>
               <Input
                 type="number"
                 inputMode="decimal"
                 value={monto}
                 onChange={(e) => setMonto(e.target.value)}
                 placeholder="0"
+                required
               />
             </div>
             <div className="space-y-1">

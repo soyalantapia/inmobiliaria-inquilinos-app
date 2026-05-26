@@ -94,7 +94,8 @@ export default function DetalleConsorcioPage({ params }: { params: { id: string 
                 <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
                   <span>
                     <Users className="mr-1 inline h-3 w-3" />
-                    {consorcio.cantUf} unidades funcionales
+                    {consorcio.cantUf} unidad{consorcio.cantUf === 1 ? '' : 'es'} funcional
+                    {consorcio.cantUf === 1 ? '' : 'es'}
                   </span>
                   {consorcio.encargado && (
                     <>

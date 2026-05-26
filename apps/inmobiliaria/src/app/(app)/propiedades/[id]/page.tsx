@@ -135,7 +135,10 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                   {propiedad.ambientes !== null && (
                     <>
                       <span>·</span>
-                      <span>{propiedad.ambientes} ambientes</span>
+                      <span>
+                        {propiedad.ambientes} ambiente
+                        {propiedad.ambientes === 1 ? '' : 's'}
+                      </span>
                     </>
                   )}
                   {propiedad.m2 !== null && (

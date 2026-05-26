@@ -501,8 +501,9 @@ export default function PagosPage() {
         filtradas.length === 0 ? (
           <Card>
             <div className="py-10 text-center text-sm text-muted-foreground">
-              No hay contratos {estadoLabel[filtro as EstadoLiquidacion].toLowerCase()}s en
-              este momento.
+              {filtro === 'TODOS'
+                ? 'No hay contratos para mostrar en este momento.'
+                : `No hay contratos ${estadoLabel[filtro as EstadoLiquidacion].toLowerCase()}s en este momento.`}
             </div>
           </Card>
         ) : (

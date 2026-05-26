@@ -27,7 +27,7 @@ import { InboxDelDia } from '@/components/inbox-del-dia';
 import { Topbar } from '@/components/topbar';
 import { agendaMock, alertasMock, dashboardMetricsMock } from '@/lib/mock-data';
 import { calcularDashboardStats } from '@/lib/dashboard-helpers';
-import { formatMonto, formatPeriodo, periodoActualFormat } from '@/lib/format';
+import { diasHastaVencimiento, formatFechaCorta, formatMonto, formatPeriodo, periodoActualFormat } from '@/lib/format';
 
 export default function DashboardPage() {
   const stats = calcularDashboardStats();
@@ -252,7 +252,9 @@ export default function DashboardPage() {
                 </p>
                 <p className="mt-1 text-lg font-semibold">
                   {m.tiempoPromedioResolucionDias} día{m.tiempoPromedioResolucionDias === 1 ? '' : 's'}
-                  <span className="ml-2 text-xs font-normal text-emerald-600">↓ -0.4d</span>
+                  <span className="ml-2 text-xs font-normal text-emerald-600">
+                    ↓ 0,4 d vs mes pasado
+                  </span>
                 </p>
               </div>
             </CardContent>
@@ -479,10 +481,14 @@ const agendaIconConfig: Record<
 function AgendaItem({ evento }: { evento: (typeof agendaMock)[number] }) {
   const cfg = agendaIconConfig[evento.tipo];
   const Icon = cfg.icon;
-  const fecha = new Date(evento.fecha);
-  const ahora = new Date();
-  const dias = Math.ceil((fecha.getTime() - ahora.getTime()) / (1000 * 60 * 60 * 24));
-  const fechaCorta = fecha.toLocaleDateString('es-AR', { day: '2-digit', month: 'short' });
+  // `formatFechaCorta` + `diasHastaVencimiento` usan `parseLocal` adentro,
+  // así que el yyyy-mm-dd del mock no se interpreta como UTC y no
+  // retrocede un día al renderizarse en zona AR. Antes con
+  // `new Date('2026-05-28')` directo aparecía "27 may" — bug clásico.
+  const dias = diasHastaVencimiento(evento.fecha);
+  const fechaCorta = formatFechaCorta(evento.fecha);
+  const etiquetaDias =
+    dias === 0 ? 'hoy' : dias === 1 ? 'mañana' : dias < 0 ? `hace ${-dias}d` : `en ${dias}d`;
 
   return (
     <div className="flex items-start gap-3">
@@ -495,9 +501,7 @@ function AgendaItem({ evento }: { evento: (typeof agendaMock)[number] }) {
       </div>
       <div className="shrink-0 text-right">
         <p className="text-xs font-medium">{fechaCorta}</p>
-        <p className="text-[10px] text-muted-foreground">
-          {dias === 0 ? 'hoy' : dias < 0 ? `hace ${-dias}d` : `en ${dias}d`}
-        </p>
+        <p className="text-[10px] text-muted-foreground">{etiquetaDias}</p>
       </div>
     </div>
   );
