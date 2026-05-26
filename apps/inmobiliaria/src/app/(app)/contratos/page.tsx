@@ -309,7 +309,7 @@ export default function ContratosPage() {
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-1">
                       <Badge variant={c.estado === 'ACTIVO' ? 'success' : 'secondary'}>
-                        {c.estado}
+                        {c.estado.charAt(0) + c.estado.slice(1).toLowerCase()}
                       </Badge>
                       <Badge variant={estadoVariant[c.estadoPagoActual]} className="text-[10px]">
                         {estadoLabel[c.estadoPagoActual]}
@@ -368,7 +368,7 @@ export default function ContratosPage() {
                     </TableCell>
                     <TableCell>
                       <Badge variant={c.estado === 'ACTIVO' ? 'success' : 'secondary'}>
-                        {c.estado}
+                        {c.estado.charAt(0) + c.estado.slice(1).toLowerCase()}
                       </Badge>
                     </TableCell>
                     <TableCell>

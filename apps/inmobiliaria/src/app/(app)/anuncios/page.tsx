@@ -228,7 +228,7 @@ function AnuncioCard({
         <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[10px] text-muted-foreground">
           <Users className="h-3 w-3" />
           {AUDIENCIA_LABEL[anuncio.audiencia]} · {anuncio.destinatariosCount}{' '}
-          destinatarios
+          destinatario{anuncio.destinatariosCount === 1 ? '' : 's'}
           <span>·</span>
           {anuncio.canales.map((c) => {
             const Icon = CANAL_ICONO[c];
@@ -322,22 +322,28 @@ function CrearAnuncioDialog({ abierto, onClose, onGuardar }: DialogProps) {
         </DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1.5">
-            <Label htmlFor="t">Título</Label>
+            <Label htmlFor="t" aria-required>
+              Título <span className="text-destructive">*</span>
+            </Label>
             <Input
               id="t"
               placeholder="Ej. Corte de agua jueves 30/05"
               value={titulo}
               onChange={(e) => setTitulo(e.target.value)}
+              required
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="cu">Cuerpo</Label>
+            <Label htmlFor="cu" aria-required>
+              Cuerpo <span className="text-destructive">*</span>
+            </Label>
             <Textarea
               id="cu"
               rows={4}
               placeholder="Detalle del anuncio…"
               value={cuerpo}
               onChange={(e) => setCuerpo(e.target.value)}
+              required
             />
           </div>
           <div className="grid grid-cols-2 gap-3">

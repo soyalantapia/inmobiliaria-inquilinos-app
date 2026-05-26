@@ -627,7 +627,7 @@ function Informe({
                       ],
                       [
                         'Cheques BCRA (4a)',
-                        `${resultado.cheques.rechazadosCount} rechazados · ${resultado.cheques.levantadosCount} levantados`,
+                        `${resultado.cheques.rechazadosCount} rechazado${resultado.cheques.rechazadosCount === 1 ? '' : 's'} · ${resultado.cheques.levantadosCount} levantado${resultado.cheques.levantadosCount === 1 ? '' : 's'}`,
                       ],
                     ],
                     notaFinal: `Informe generado el ${new Date().toLocaleDateString('es-AR')}. Fuentes: Nosis, BCRA, ARCA. Vigencia 30 días.`,
