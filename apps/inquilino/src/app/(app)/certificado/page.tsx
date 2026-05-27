@@ -29,7 +29,7 @@ import {
   generarCertificado,
   type CertificadoInquilino,
 } from '@/lib/certificado-inquilino';
-import { formatFecha, formatFechaCorta, formatMonto } from '@/lib/format';
+import { formatFecha, formatFechaCorta, formatMonto, parseLocal } from '@/lib/format';
 import { imprimirCertificado } from './imprimible';
 
 /**
@@ -63,9 +63,10 @@ export default function CertificadoInquilinoPage() {
   // de renovación cuando se acerca el vencimiento.
   const diasHastaVencer = useMemo(() => {
     if (!certificado) return null;
-    const diff =
-      new Date(certificado.validoHasta).getTime() - Date.now();
-    return Math.ceil(diff / 86400000);
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+    const vence = parseLocal(certificado.validoHasta);
+    return Math.ceil((vence.getTime() - hoy.getTime()) / 86400000);
   }, [certificado]);
 
   // Cuando el nivel es bajo (REGULAR), el certificado JUEGA EN CONTRA si lo
@@ -152,7 +153,7 @@ export default function CertificadoInquilinoPage() {
                 </div>
               </div>
               <Link
-                href="/comprobantes"
+                href="/"
                 className="flex items-center justify-between gap-2 rounded-md bg-amber-600 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-700"
               >
                 <span className="flex items-center gap-1.5">

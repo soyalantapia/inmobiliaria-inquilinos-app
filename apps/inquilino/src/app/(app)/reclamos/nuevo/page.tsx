@@ -242,6 +242,8 @@ export default function NuevoReclamoPage() {
                 type="button"
                 onClick={() => setCategoria(c.value)}
                 className={`flex min-h-[3.25rem] items-center gap-2 rounded-lg border p-3 text-left text-sm transition-colors ${
+                  c.value === 'OTRO' ? 'col-span-2' : ''
+                } ${
                   categoria === c.value
                     ? 'border-primary bg-primary/5 text-primary'
                     : 'border-border hover:border-primary/40'

@@ -46,8 +46,15 @@ const indiceLabel: Record<typeof contratoMock.indiceAjuste, string> = {
   FIJO: 'Fijo',
 };
 
+// Token de demo con expiración lejana — permite visitar /garantes/demo sin
+// generar un token real, útil para mostrar la página en una presentación.
+const DEMO_PAYLOAD = {
+  contratoId: contratoMock.id,
+  exp: Date.now() + 365 * 24 * 60 * 60 * 1000 * 5,
+};
+
 export default function GarantePublicPage({ params }: { params: { token: string } }) {
-  const payload = leerGaranteToken(params.token);
+  const payload = params.token === 'demo' ? DEMO_PAYLOAD : leerGaranteToken(params.token);
   if (!payload) return notFound();
 
   // En real, buscaríamos el contrato por payload.contratoId. Acá usamos el mock.

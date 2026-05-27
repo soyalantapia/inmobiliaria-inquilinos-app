@@ -225,7 +225,7 @@ function labelFiltro(f: Filtro): string {
 function diasDesdeHoy(fecha: string): string {
   const hoy = new Date();
   hoy.setHours(0, 0, 0, 0);
-  const f = new Date(fecha);
+  const f = parseFechaLocal(fecha);
   const diff = Math.floor((f.getTime() - hoy.getTime()) / (24 * 60 * 60 * 1000));
   if (diff === 0) return 'hoy';
   if (diff === 1) return 'mañana';
