@@ -473,7 +473,7 @@ function CopyRow({
             la transferencia y el inquilino necesita poder verlos completos
             para verificar antes de copiar. truncate + ellipsis "..." escondía
             los últimos digitos del CBU (22 digitos no entraban en 1 linea). */}
-        <p className="break-all font-mono text-sm font-medium tabular-nums">{value}</p>
+        <p className="break-words font-mono text-sm font-medium tabular-nums">{value}</p>
       </div>
       <span
         className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${

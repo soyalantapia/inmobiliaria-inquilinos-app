@@ -193,16 +193,20 @@ export default function ContratoPage() {
 
       <div className="space-y-3 border-t bg-background p-4">
         {!pensando && (
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {obtenerSugerenciasParaUltimo(mensajes).map((s) => (
-              <button
-                key={s}
-                onClick={() => enviar(s)}
-                className="shrink-0 rounded-full border bg-secondary px-3 py-1.5 text-xs font-medium text-secondary-foreground hover:bg-accent"
-              >
-                {s}
-              </button>
-            ))}
+          <div className="relative">
+            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+              {obtenerSugerenciasParaUltimo(mensajes).map((s) => (
+                <button
+                  key={s}
+                  onClick={() => enviar(s)}
+                  className="shrink-0 rounded-full border bg-secondary px-3 py-1.5 text-xs font-medium text-secondary-foreground hover:bg-accent"
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+            {/* fade hint — indica que hay más chips a la derecha */}
+            <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-background to-transparent" />
           </div>
         )}
         <form
