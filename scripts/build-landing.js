@@ -210,10 +210,23 @@ function renderIntegraciones(items) {
 // comparativa, se puede restaurar desde git (commit a9f68ef hacia atrás).
 
 // Render del pricing por tramos
+// L-PRICE-02: cada tramo lleva su propio CTA "Empezar con [plan]" que abre
+// WhatsApp con un mensaje pre-llenado con el plan elegido — capturamos la
+// intención de compra en el momento exacto en que el usuario eligió tramo,
+// en vez de obligarlo a bajar al CTA genérico que no sabía qué plan quería.
+// Enterprise (topePropiedades null) usa "Hablar con ventas" porque requiere
+// conversación previa.
 function renderPricing(precios, ctaPropietarioHref) {
+  const waBase = 'https://wa.me/541145321100?text=';
   const tramos = (precios.tramos || [])
-    .map(
-      (t) => `
+    .map((t) => {
+      const esEnterprise = t.topePropiedades === null || t.topePropiedades === undefined;
+      const ctaTexto = esEnterprise ? 'Hablar con ventas' : `Empezar con ${t.nombre}`;
+      const waMsg = esEnterprise
+        ? `Hola, administro más de 100 propiedades y quiero conocer My Alquiler (plan Enterprise).`
+        : `Hola, quiero empezar con el plan ${t.nombre} de My Alquiler (${t.rango.toLowerCase()}).`;
+      const ctaClass = t.destacado ? 'tramo-cta tramo-cta-destacado' : 'tramo-cta';
+      return `
             <div class="tramo-card${t.destacado ? ' tramo-destacado' : ''}">
               ${t.etiqueta ? `<div class="tramo-tag">${esc(t.etiqueta)}</div>` : ''}
               <div class="tramo-nombre">${esc(t.nombre)}</div>
@@ -222,8 +235,9 @@ function renderPricing(precios, ctaPropietarioHref) {
                 <span class="tramo-periodo">${esc(precios.periodo || '/ mes')}</span>
               </div>
               <div class="tramo-rango">${esc(t.rango)}</div>
-            </div>`,
-    )
+              <a class="${ctaClass}" href="${waBase}${encodeURIComponent(waMsg)}" target="_blank" rel="noreferrer">${esc(ctaTexto)} →</a>
+            </div>`;
+    })
     .join('');
   const incluye = (precios.incluye || [])
     .map((i) => `<li>${esc(i)}</li>`)
@@ -251,6 +265,7 @@ function renderPricing(precios, ctaPropietarioHref) {
           </div>
         </div>
 
+        <p class="precios-cta-intro reveal">¿Todavía no sabés cuál plan te conviene? Recorré la demo sin compromiso o escribinos.</p>
         <div class="precios-cta-group reveal">
           <a href="${esc(ctaPropietarioHref)}" class="btn btn-primary btn-xl">
             🏢 ${esc(precios.cta)}

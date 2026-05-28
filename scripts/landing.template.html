@@ -981,6 +981,11 @@
         padding: 28px 24px;
         text-align: left;
         transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+        /* L-PRICE-02: flex column para que el CTA de cada tramo quede
+           anclado al fondo y los 4 botones queden alineados aunque el
+           texto del rango varíe en altura. */
+        display: flex;
+        flex-direction: column;
       }
       .tramo-card:hover {
         transform: translateY(-4px);
@@ -1042,6 +1047,44 @@
         font-size: 13px;
         color: var(--fg-soft);
         font-weight: 500;
+      }
+
+      /* L-PRICE-02: CTA por tramo. margin-top:auto lo empuja al fondo de la
+         card (gracias al flex-column del .tramo-card). El tramo destacado
+         usa el botón primario lleno; el resto, outline que se rellena en
+         hover. min-height 44px para área de toque mobile. */
+      .tramo-cta {
+        margin-top: 20px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        min-height: 44px;
+        padding: 11px 16px;
+        border-radius: var(--radius-sm);
+        font-weight: 600;
+        font-size: 14px;
+        text-decoration: none;
+        text-align: center;
+        border: 1.5px solid var(--primary);
+        color: var(--primary);
+        background: transparent;
+        transition: all var(--transition);
+      }
+      .tramo-cta:hover {
+        background: var(--primary);
+        color: #fff;
+        transform: translateY(-1px);
+        box-shadow: 0 8px 20px -6px var(--primary-glow);
+      }
+      .tramo-cta-destacado {
+        background: var(--primary);
+        color: #fff;
+        box-shadow: 0 4px 14px -3px var(--primary-glow);
+      }
+      .tramo-cta-destacado:hover {
+        background: var(--primary-dark);
+        color: #fff;
       }
 
       /* === Bloques de "incluye" y CTA debajo de los tramos === */
