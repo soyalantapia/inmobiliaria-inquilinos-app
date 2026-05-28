@@ -200,11 +200,12 @@ export function NuevoPropietarioDialog({
             </Label>
             <Input
               id="np-cbu"
+              aria-describedby="np-cbu-hint"
               value={cbuAlias}
               onChange={(e) => setCbuAlias(e.target.value)}
               placeholder="alias.propietario.mp"
             />
-            <p className="text-[11px] text-muted-foreground">
+            <p id="np-cbu-hint" className="text-[11px] text-muted-foreground">
               Si lo cargás ahora, los pagos del inquilino se acreditan directo a
               esta cuenta.
             </p>
@@ -223,7 +224,7 @@ export function NuevoPropietarioDialog({
             <Button type="submit" className="flex-1" disabled={!puedeGuardar}>
               {guardando ? (
                 <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
                   Guardando…
                 </>
               ) : (

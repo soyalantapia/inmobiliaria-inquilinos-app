@@ -313,6 +313,7 @@ function ScreeningHome({
                 </Label>
                 <Input
                   id="nombre"
+                  autoComplete="name"
                   placeholder="Carlos Eduardo Méndez"
                   value={nombre}
                   onChange={(e) => onNombreChange(e.target.value)}
@@ -425,14 +426,21 @@ function LoadingEtapas({
           <p className="text-sm text-muted-foreground">{nombre || 'Inquilino'}</p>
         </div>
 
-        <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+        <div
+          className="h-1.5 w-full overflow-hidden rounded-full bg-muted"
+          role="progressbar"
+          aria-valuenow={hechas}
+          aria-valuemin={0}
+          aria-valuemax={total}
+          aria-label={`Progreso de verificación: ${hechas} de ${total} etapas`}
+        >
           <div
             className="h-full bg-primary transition-all duration-500 ease-out"
             style={{ width: `${(hechas / total) * 100}%` }}
           />
         </div>
 
-        <ol className="space-y-3">
+        <ol role="list" className="space-y-3">
           {ETAPAS.map((etapa) => {
             const completada = completadas.has(etapa.key);
             const actual = etapaActual === etapa.key && !completada;
@@ -460,7 +468,7 @@ function LoadingEtapas({
                   {completada ? (
                     <Check className="h-4 w-4" />
                   ) : actual ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
                   ) : (
                     <Icon className="h-4 w-4" />
                   )}
@@ -845,12 +853,12 @@ function Informe({
           {resultado.ingresos.nominaUltimos6m.length > 0 && (
             <SectionCard icon={<TrendingUp className="h-4 w-4" />} title="Nómina últimos 6 meses">
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table aria-label="Nómina de ingresos últimos 6 meses" className="w-full text-sm">
                   <thead className="text-xs text-muted-foreground">
                     <tr className="border-b">
-                      <th className="py-2 text-left font-normal">Período</th>
-                      <th className="py-2 text-left font-normal">Rango ingreso</th>
-                      <th className="py-2 text-left font-normal">Fecha pago</th>
+                      <th scope="col" className="py-2 text-left font-normal">Período</th>
+                      <th scope="col" className="py-2 text-left font-normal">Rango ingreso</th>
+                      <th scope="col" className="py-2 text-left font-normal">Fecha pago</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1272,7 +1280,7 @@ function HuellaDigitalView({ huella }: { huella: HuellaDigital }) {
           icon={<Sparkles className="h-4 w-4" />}
           title="Lo que detectó el análisis"
         >
-          <ul className="space-y-2">
+          <ul role="list" className="space-y-2">
             {huella.hallazgos.map((h, i) => (
               <li key={i} className="flex items-start gap-2 text-sm">
                 <span

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import {
   Bug,
   CheckCircle2,
@@ -45,6 +46,7 @@ export function PilotoFab() {
   const [hidratado, setHidratado] = useState(false);
   const [esPiloto, setEsPiloto] = useState(false);
   const [open, setOpen] = useState(false);
+  const pathname = usePathname() ?? '';
 
   useEffect(() => {
     setEsPiloto(esClientePiloto());
@@ -53,14 +55,23 @@ export function PilotoFab() {
 
   if (!hidratado || !esPiloto) return null;
 
+  // /configuracion tiene CTAs primarios al pie ("Guardar cambios",
+  // "Comparar planes"). Ahí movemos el FAB a la izquierda para que no
+  // los tape. Resto de la app: bottom-right clásico.
+  const enConfig = pathname.startsWith('/configuracion');
+  const positionClasses = enConfig
+    ? 'fixed bottom-5 left-5'
+    : 'fixed bottom-5 right-5';
+
   return (
     <>
       <button
+        type="button"
         onClick={() => setOpen(true)}
-        className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-violet-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-violet-600/30 transition-all hover:bg-violet-700 hover:shadow-xl active:scale-95"
+        className={`${positionClasses} z-40 flex items-center gap-2 rounded-full bg-violet-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-violet-600/30 transition-all hover:bg-violet-700 hover:shadow-xl active:scale-95`}
         aria-label="Reportar problema o idea"
       >
-        <Sparkles className="h-4 w-4" />
+        <Sparkles className="h-4 w-4" aria-hidden="true" />
         <span className="hidden sm:inline">Reportar</span>
       </button>
 
@@ -184,6 +195,7 @@ function ReporteDialog({ open, onClose }: { open: boolean; onClose: () => void }
                 <button
                   key={t.id}
                   type="button"
+                  aria-pressed={seleccionado}
                   onClick={() => setTipo(t.id)}
                   className={`flex flex-col items-center gap-1.5 rounded-md border p-3 text-center text-xs transition-colors ${
                     seleccionado
@@ -270,7 +282,7 @@ function ReporteDialog({ open, onClose }: { open: boolean; onClose: () => void }
           </Button>
           <Button onClick={enviar} disabled={!puedeEnviar || enviando}>
             {enviando ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
             ) : (
               <Send className="h-4 w-4" />
             )}

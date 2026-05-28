@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Banknote,
   CheckCircle2,
@@ -42,6 +42,7 @@ import {
 } from '@/lib/rendiciones-storage';
 import { registrarEvento } from '@/lib/auditoria-storage';
 import { gastosAtribuidos, type GastoAtribuido } from '@/lib/gastos-rendicion';
+import { PinPromptDialog } from '@/components/pin-prompt-dialog';
 import type { Propietario } from '@/lib/types';
 import { formatMonto, formatPeriodo } from '@/lib/format';
 
@@ -74,6 +75,8 @@ export function RendirPropietarioDialog({
   const [metodo, setMetodo] = useState<Rendicion['metodo']>('TRANSFERENCIA');
   const [notas, setNotas] = useState('');
   const [guardando, setGuardando] = useState(false);
+  const [showPin, setShowPin] = useState(false);
+  const alsoWhatsappRef = useRef(false);
   const [gastosOpen, setGastosOpen] = useState(true);
   const periodo = periodoActual();
   const yaRendido = propietario ? obtenerRendicion(propietario.id, periodo) : null;
@@ -151,6 +154,7 @@ export function RendirPropietarioDialog({
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -229,7 +233,7 @@ export function RendirPropietarioDialog({
         {/* CBU / Alias */}
         {propietario.cbuAlias ? (
           <div className="space-y-1">
-            <Label className="text-xs">Datos para transferir</Label>
+            <p className="text-xs font-medium leading-none">Datos para transferir</p>
             <div className="flex items-center gap-2 rounded-md border bg-background px-3 py-2">
               <CreditCard className="h-4 w-4 text-muted-foreground" />
               <code className="flex-1 truncate font-mono text-xs">
@@ -257,9 +261,9 @@ export function RendirPropietarioDialog({
 
         {/* Método */}
         <div className="space-y-1">
-          <Label className="text-xs">Método de transferencia</Label>
+          <Label htmlFor="rpd-metodo" className="text-xs">Método de transferencia</Label>
           <Select value={metodo} onValueChange={(v) => setMetodo(v as Rendicion['metodo'])}>
-            <SelectTrigger>
+            <SelectTrigger id="rpd-metodo">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -271,8 +275,9 @@ export function RendirPropietarioDialog({
         </div>
 
         <div className="space-y-1">
-          <Label className="text-xs">Notas (opcional)</Label>
+          <Label htmlFor="rpd-notas" className="text-xs">Notas (opcional)</Label>
           <Textarea
+            id="rpd-notas"
             value={notas}
             onChange={(e) => setNotas(e.target.value)}
             rows={2}
@@ -288,15 +293,15 @@ export function RendirPropietarioDialog({
           <Button
             variant="outline"
             className="flex-1"
-            onClick={() => handleRendir(false)}
+            onClick={() => { alsoWhatsappRef.current = false; setShowPin(true); }}
             disabled={guardando}
           >
-            {guardando ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            {guardando ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : null}
             Marcar como rendido
           </Button>
           <Button
             className="flex-1 gap-1.5"
-            onClick={() => handleRendir(true)}
+            onClick={() => { alsoWhatsappRef.current = true; setShowPin(true); }}
             disabled={guardando}
           >
             <MessageCircle className="h-3.5 w-3.5" />
@@ -305,6 +310,14 @@ export function RendirPropietarioDialog({
         </div>
       </DialogContent>
     </Dialog>
+    <PinPromptDialog
+      abierto={showPin}
+      accion={`Rendir a ${propietario.nombre} ${propietario.apellido}`}
+      subaccion={`${formatMonto(neto)} · ${periodoLabel(periodo)}`}
+      onClose={() => setShowPin(false)}
+      onConfirmado={() => handleRendir(alsoWhatsappRef.current)}
+    />
+  </>
   );
 }
 

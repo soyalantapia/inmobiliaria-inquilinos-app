@@ -251,8 +251,8 @@ function StepUpload({
 
 function StepLeyendo({ file }: { file: File | null }) {
   return (
-    <div className="flex flex-col items-center gap-3 py-12 text-center">
-      <Loader2 className="h-12 w-12 animate-spin text-violet-600" />
+    <div role="status" className="flex flex-col items-center gap-3 py-12 text-center">
+      <Loader2 aria-hidden="true" className="h-12 w-12 animate-spin text-violet-600" />
       <div>
         <p className="text-base font-semibold">Leyendo tu archivo…</p>
         <p className="text-xs text-muted-foreground">
@@ -345,6 +345,7 @@ function StepPreview({
                       disabled={disabled}
                       onChange={() => onToggle(f.id)}
                       className="h-4 w-4 rounded border-border accent-primary"
+                      aria-label={`Seleccionar ${f.inquilino}`}
                     />
                   </TableCell>
                   <TableCell>

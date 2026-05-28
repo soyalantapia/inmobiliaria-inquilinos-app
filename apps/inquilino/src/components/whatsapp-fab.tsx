@@ -6,26 +6,21 @@ import { contratoMock } from '@/lib/mock-data';
 import { useCurrentUser } from '@/lib/use-current-user';
 
 // FAB para contactar a la inmobiliaria por WhatsApp.
-// Aparece en pages con shell. En mobile va sobre el NavBar (bottom-24);
-// en desktop queda libre (bottom-6).
-//
-// Lo ocultamos en:
-//   - /broker        → es el chat de Broker IA, el FAB tapa el botón de
-//                      enviar y compite contextualmente con el assistant.
-//   - /reclamos/nuevo → el form tiene su propio CTA emergencia inmo.
+// Aparece SOLO en la home (/) — antes estaba en toda la app y tapaba
+// CTAs primarios en /reclamos, /pago, etc. La acción de "hablar con la
+// inmo" también vive en /cuenta (botón "WhatsApp con la inmobiliaria"),
+// así que mantener el FAB en TODA la app era duplicado y ruidoso.
 //
 // El número de la inmobiliaria sale del contratoMock; en backend real
 // viene de contrato.inmobiliaria.telefono.
 
 const TELEFONO_INMO = '541145321100'; // sin + ni espacios para wa.me
 
-const RUTAS_SIN_FAB = ['/broker', '/reclamos/nuevo'];
-
 export function WhatsappFab() {
   const user = useCurrentUser();
   const pathname = usePathname() ?? '';
-  const oculto = RUTAS_SIN_FAB.some((r) => pathname === r || pathname.startsWith(`${r}/`));
-  if (oculto) return null;
+  // Solo en la home — cualquier otra ruta lo oculta.
+  if (pathname !== '/') return null;
 
   const mensaje = `Hola! Soy ${user.fullName}, inquilino/a en ${contratoMock.direccion}. Tengo una consulta.`;
   const url = `https://wa.me/${TELEFONO_INMO}?text=${encodeURIComponent(mensaje)}`;

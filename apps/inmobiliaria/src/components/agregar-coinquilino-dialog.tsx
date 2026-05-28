@@ -212,9 +212,9 @@ export function AgregarCoInquilinoDialog({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label className="text-xs">Relación</Label>
+              <Label htmlFor="aci-relacion" className="text-xs">Relación</Label>
               <Select value={relacion} onValueChange={setRelacion}>
-                <SelectTrigger>
+                <SelectTrigger id="aci-relacion">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -228,12 +228,12 @@ export function AgregarCoInquilinoDialog({
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Permiso</Label>
+              <Label htmlFor="aci-permiso" className="text-xs">Permiso</Label>
               <Select
                 value={permiso}
                 onValueChange={(v) => setPermiso(v as PermisoCoInquilino)}
               >
-                <SelectTrigger>
+                <SelectTrigger id="aci-permiso">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -263,7 +263,7 @@ export function AgregarCoInquilinoDialog({
             <Button type="submit" className="flex-1" disabled={!puedeGuardar}>
               {guardando ? (
                 <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
                   Guardando…
                 </>
               ) : (

@@ -304,6 +304,8 @@ function ServicioDialog({ abierto, onClose, tipo, existente, onGuardar }: Dialog
             <Input
               id="consumo"
               type="number"
+              inputMode="decimal"
+              min="0"
               placeholder="Opcional · alertar si difiere"
               value={consumo}
               onChange={(e) => setConsumo(e.target.value)}

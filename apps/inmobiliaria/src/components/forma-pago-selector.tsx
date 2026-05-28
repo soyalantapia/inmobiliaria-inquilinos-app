@@ -112,15 +112,24 @@ export function FormaPagoSelector() {
               const activa = op.forma === config.forma;
               const baseMonto = montoFinalSegunForma(plan.costoMensualTotal, op.forma);
               const conCupon = aplicarDescuentoCupon(baseMonto.importe);
+              // `baseMonto.ahorro` ya está en escala anual (solo lo entrega ANUAL).
+              // `conCupon.descuento` está en la escala del importe que recibió:
+              // mensual para DEBITO/PREPAGO, anual para ANUAL. Normalizamos a
+              // anual antes de sumar para mostrar siempre "Ahorrás X al año".
+              const descuentoCuponAnual =
+                baseMonto.periodo === 'mes'
+                  ? conCupon.descuento * 12
+                  : conCupon.descuento;
               const monto = {
                 importe: conCupon.final,
-                ahorro: baseMonto.ahorro + conCupon.descuento,
+                ahorroAnual: baseMonto.ahorro + descuentoCuponAnual,
                 periodo: baseMonto.periodo,
               };
               return (
                 <button
                   key={op.forma}
                   type="button"
+                  aria-pressed={activa}
                   onClick={() => setEligiendo(op.forma)}
                   className={cn(
                     'relative flex flex-col gap-3 rounded-lg border p-4 text-left transition-all',
@@ -172,9 +181,9 @@ export function FormaPagoSelector() {
                         / {monto.periodo}
                       </span>
                     </p>
-                    {monto.ahorro > 0 && (
+                    {monto.ahorroAnual > 0 && (
                       <p className="text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
-                        Ahorrás {formatMonto(monto.ahorro)} al año
+                        Ahorrás {formatMonto(monto.ahorroAnual)} al año
                       </p>
                     )}
                   </div>

@@ -139,12 +139,13 @@ export function ConectarArcaDialog({ open, onOpenChange, propietario }: Props) {
                 <Label htmlFor="arca-pv">Punto de venta</Label>
                 <Input
                   id="arca-pv"
+                  aria-describedby="arca-pv-hint"
                   value={puntoVenta}
                   onChange={(e) => setPuntoVenta(e.target.value.replace(/[^0-9]/g, '').slice(0, 5))}
                   placeholder="0003"
                   inputMode="numeric"
                 />
-                <p className="text-[11px] text-muted-foreground">
+                <p id="arca-pv-hint" className="text-[11px] text-muted-foreground">
                   Se usa para numerar las facturas que emite el propietario.
                 </p>
               </div>

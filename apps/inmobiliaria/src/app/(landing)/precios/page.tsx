@@ -229,7 +229,7 @@ export default function PreciosPage() {
                     <p className="rounded-md bg-emerald-50 px-2 py-1 text-[11px] text-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300">
                       ≈ {formatMonto(costoPorProp)} por propiedad
                     </p>
-                    <ul className="space-y-1 text-[11px]">
+                    <ul role="list" className="space-y-1 text-[11px]">
                       <li className="flex items-start gap-1.5">
                         <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-emerald-600" />
                         <span>{t.rango.toLowerCase()}</span>
@@ -348,7 +348,7 @@ export default function PreciosPage() {
               <h2 className="text-2xl font-bold md:text-3xl">
                 ¿Qué te llevás distinto?
               </h2>
-              <ul className="space-y-3 text-sm">
+              <ul role="list" className="space-y-3 text-sm">
                 <li className="flex items-start gap-3">
                   <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-violet-600" />
                   <span>
@@ -386,7 +386,7 @@ export default function PreciosPage() {
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 ¿Cómo arrancás?
               </p>
-              <ol className="mt-3 space-y-2.5 text-sm">
+              <ol role="list" className="mt-3 space-y-2.5 text-sm">
                 <li className="flex items-start gap-2">
                   <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
                     1

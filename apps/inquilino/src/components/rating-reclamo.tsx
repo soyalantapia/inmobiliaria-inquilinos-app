@@ -134,17 +134,19 @@ export function RatingReclamoCard({ reclamoId }: { reclamoId: string }) {
 
       {seleccion !== null && (
         <div className="space-y-2 animate-fade-in">
-          <label className="text-xs font-medium text-muted-foreground">
+          <label htmlFor="rating-comentario" className="text-xs font-medium text-muted-foreground">
             Contanos más (opcional)
           </label>
           <Textarea
+            id="rating-comentario"
+            aria-describedby="rating-comentario-count"
             placeholder="Ej: El plomero llegó puntual y dejó todo limpio."
             value={comentario}
             onChange={(e) => setComentario(e.target.value)}
             rows={3}
             maxLength={300}
           />
-          <p className="text-right text-[10px] text-muted-foreground">
+          <p id="rating-comentario-count" className="text-right text-[10px] text-muted-foreground">
             {comentario.length}/300
           </p>
         </div>

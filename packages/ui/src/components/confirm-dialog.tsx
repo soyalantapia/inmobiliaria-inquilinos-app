@@ -20,6 +20,13 @@ export interface ConfirmDialogProps {
   cancelLabel?: string;
   variant?: 'destructive' | 'default';
   loading?: boolean;
+  /**
+   * Cuando `true`, el botón de confirmar queda deshabilitado. Usalo
+   * para que el dialog quede abierto mientras la validación inline no
+   * pase — evita que el usuario pierda lo que escribió por un click
+   * prematuro.
+   */
+  confirmDisabled?: boolean;
   onConfirm: () => void | Promise<void>;
 }
 
@@ -32,9 +39,11 @@ export function ConfirmDialog({
   cancelLabel = 'Cancelar',
   variant = 'default',
   loading = false,
+  confirmDisabled = false,
   onConfirm,
 }: ConfirmDialogProps) {
   const handleConfirm = async () => {
+    if (confirmDisabled) return;
     await onConfirm();
     if (!loading) onOpenChange(false);
   };
@@ -62,7 +71,7 @@ export function ConfirmDialog({
           <Button
             variant={variant === 'destructive' ? 'destructive' : 'default'}
             onClick={handleConfirm}
-            disabled={loading}
+            disabled={loading || confirmDisabled}
           >
             {loading ? 'Procesando…' : confirmLabel}
           </Button>

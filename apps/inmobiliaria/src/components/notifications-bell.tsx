@@ -109,9 +109,12 @@ export function NotificationsBell() {
   return (
     <div className="relative" ref={popoverRef}>
       <button
+        type="button"
         onClick={() => setOpen((v) => !v)}
         className="relative rounded-full p-2 hover:bg-muted"
-        aria-label={`${unreadCount} notificación${unreadCount === 1 ? '' : 'es'} sin leer`}
+        aria-label={unreadCount > 0 ? `${unreadCount} notificación${unreadCount === 1 ? '' : 'es'} sin leer` : 'Notificaciones'}
+        aria-expanded={open}
+        aria-haspopup="dialog"
       >
         <Bell className="h-5 w-5" />
         {unreadCount > 0 && (
@@ -127,6 +130,7 @@ export function NotificationsBell() {
             <p className="text-sm font-semibold">Notificaciones</p>
             {unreadCount > 0 && (
               <button
+                type="button"
                 onClick={marcarTodoLeido}
                 className="text-xs font-medium text-primary hover:underline"
               >
@@ -134,7 +138,7 @@ export function NotificationsBell() {
               </button>
             )}
           </div>
-          <ul className="max-h-96 overflow-y-auto">
+          <ul role="list" aria-label="Notificaciones" className="max-h-96 overflow-y-auto">
             {notifs.length === 0 && (
               <li className="p-6 text-center text-sm text-muted-foreground">
                 No tenés notificaciones nuevas.

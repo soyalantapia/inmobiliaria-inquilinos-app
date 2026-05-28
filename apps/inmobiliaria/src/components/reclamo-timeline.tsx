@@ -55,7 +55,7 @@ const labelForTipo: Record<TipoEventoReclamo, (e: EventoReclamo) => string> = {
 
 export function ReclamoTimeline({ eventos }: { eventos: EventoReclamo[] }) {
   return (
-    <ol className="space-y-4">
+    <ol role="list" className="space-y-4">
       {eventos.map((ev, i) => {
         const Icon = iconForTipo[ev.tipo];
         const esMensaje = ev.tipo === 'MENSAJE_INQUILINO' || ev.tipo === 'MENSAJE_INMO';

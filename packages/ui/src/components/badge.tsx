@@ -20,11 +20,14 @@ const badgeVariants = cva(
 );
 
 export interface BadgeProps
-  extends React.HTMLAttributes<HTMLDivElement>,
+  extends React.HTMLAttributes<HTMLSpanElement>,
     VariantProps<typeof badgeVariants> {}
 
+// Badge renderiza <span> (no <div>) para poder vivir dentro de <p>,
+// CardDescription, etc. sin warnings de hydration de React. El layout
+// se mantiene con inline-flex desde badgeVariants.
 export function Badge({ className, variant, ...props }: BadgeProps) {
-  return <div className={cn(badgeVariants({ variant }), className)} {...props} />;
+  return <span className={cn(badgeVariants({ variant }), className)} {...props} />;
 }
 
 export { badgeVariants };

@@ -137,7 +137,7 @@ export function EmailBienvenidaDialog({
                     Te damos la bienvenida a <strong>My Alquiler</strong>, la app para gestionar
                     tu alquiler. Desde acá vas a poder:
                   </p>
-                  <ul className="space-y-1.5 text-sm text-muted-foreground">
+                  <ul role="list" className="space-y-1.5 text-sm text-muted-foreground">
                     <li className="flex items-start gap-2">
                       <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
                       Pagar tu alquiler con un toque

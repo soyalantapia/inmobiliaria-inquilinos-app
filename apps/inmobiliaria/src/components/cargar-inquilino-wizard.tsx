@@ -245,7 +245,7 @@ export function CargarInquilinoWizard({
                 <Button onClick={onCrear} disabled={creando}>
                   {creando ? (
                     <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
                       Creando…
                     </>
                   ) : (
@@ -570,9 +570,9 @@ function PasoCoinquilinos({
         />
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
-            <Label className="text-xs">Relación</Label>
+            <Label htmlFor="ciw-relacion" className="text-xs">Relación</Label>
             <Select value={relacion} onValueChange={setRelacion}>
-              <SelectTrigger>
+              <SelectTrigger id="ciw-relacion">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -586,12 +586,12 @@ function PasoCoinquilinos({
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs">Permiso</Label>
+            <Label htmlFor="ciw-permiso" className="text-xs">Permiso</Label>
             <Select
               value={permiso}
               onValueChange={(v) => setPermiso(v as CoInquilinoInvitado['permiso'])}
             >
-              <SelectTrigger>
+              <SelectTrigger id="ciw-permiso">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

@@ -108,7 +108,10 @@ export function ContratoChat() {
       {/* Mensajes */}
       <div
         ref={scrollRef}
+        role="log"
         className="max-h-[420px] overflow-y-auto px-4 py-3 space-y-3"
+        aria-live="polite"
+        aria-label="Respuestas del asistente de contrato"
       >
         {haySugerencias && (
           <div className="space-y-3">
@@ -152,7 +155,7 @@ export function ContratoChat() {
               <Sparkles className="h-3 w-3" />
             </div>
             <div className="rounded-lg bg-muted/50 px-3 py-2">
-              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin text-muted-foreground" />
             </div>
           </div>
         )}
@@ -167,6 +170,7 @@ export function ContratoChat() {
         className="flex items-center gap-2 border-t bg-muted/20 p-3"
       >
         <Input
+          aria-label="Escribí tu pregunta al asistente"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Escribí tu pregunta…"

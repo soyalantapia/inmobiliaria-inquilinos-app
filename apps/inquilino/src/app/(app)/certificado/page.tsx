@@ -355,8 +355,8 @@ export default function CertificadoInquilinoPage() {
           <p>
             <strong className="text-foreground">¿Cómo lo verifica la inmobiliaria?</strong>
           </p>
-          <ol className="mt-1 space-y-0.5">
-            <li>1. Abre el link o escanea el QR.</li>
+          <ol role="list" className="mt-1 space-y-0.5">
+            <li>1. Abre el link de verificación.</li>
             <li>2. Ve tus datos verificados y el nivel del historial.</li>
             <li>3. Decide si te alquila sin pedir garante.</li>
           </ol>

@@ -11,6 +11,7 @@ import { Input } from '@llave/ui/input';
 import { Label } from '@llave/ui/label';
 import { Progress } from '@llave/ui/progress';
 import { toast } from '@llave/ui/use-toast';
+import { ConfirmDialog } from '@llave/ui/confirm-dialog';
 import { Topbar } from '@/components/topbar';
 import { contratoExtraidoMock } from '@/lib/mock-data';
 import { formatFechaCorta, formatMonto } from '@/lib/format';
@@ -90,6 +91,7 @@ export default function CargarContratoPage() {
   const [archivo, setArchivo] = useState<File | null>(null);
   const [progreso, setProgreso] = useState(0);
   const [datos, setDatos] = useState<ContratoExtraido>(contratoExtraidoMock);
+  const [cancelarAbierto, setCancelarAbierto] = useState(false);
 
   const subir = async (file: File) => {
     setArchivo(file);
@@ -134,13 +136,20 @@ export default function CargarContratoPage() {
           <Button
             variant="ghost"
             size="sm"
-            asChild
             className="shrink-0 text-muted-foreground hover:text-destructive"
+            onClick={() => {
+              // Si todavía no empezó (paso 1 sin archivo) no hay nada que
+              // perder: navegamos directo. En cualquier otro caso pedimos
+              // confirmación para evitar perder el progreso accidentalmente.
+              if (paso === 1 && !archivo) {
+                router.push('/contratos');
+              } else {
+                setCancelarAbierto(true);
+              }
+            }}
           >
-            <Link href="/contratos">
-              <X className="h-4 w-4" />
-              Cancelar carga
-            </Link>
+            <X className="h-4 w-4" />
+            Cancelar carga
           </Button>
         </div>
 
@@ -172,13 +181,25 @@ export default function CargarContratoPage() {
           />
         )}
       </main>
+
+      {/* Confirmación antes de cancelar — antes el Link iba directo a /contratos
+          sin avisar. Si el operador estaba en paso 3 revisando los datos
+          extraídos por la IA y hacía clic sin querer, perdía todo. */}
+      <ConfirmDialog
+        open={cancelarAbierto}
+        onOpenChange={setCancelarAbierto}
+        title="¿Cancelar la carga?"
+        description="Vas a perder el progreso de este contrato. Esta acción no se puede deshacer."
+        confirmLabel="Sí, cancelar"
+        onConfirm={() => router.push('/contratos')}
+      />
     </>
   );
 }
 
 function Steps({ actual }: { actual: Paso }) {
   return (
-    <ol className="flex flex-wrap items-center gap-x-3 gap-y-2">
+    <ol role="list" className="flex flex-wrap items-center gap-x-3 gap-y-2">
       {pasos.map((p, i) => {
         const completado = p.id < actual;
         const activo = p.id === actual;
@@ -323,7 +344,7 @@ function PasoIa({
         </Button>
       </CardHeader>
       <CardContent className="space-y-4">
-        <Progress value={progreso} />
+        <Progress aria-label="Progreso de extracción del contrato" value={progreso} />
         <div className="grid gap-2 text-sm text-muted-foreground sm:grid-cols-2">
           <Tarea done={progreso >= 25} label="Extrayendo texto del PDF" />
           <Tarea done={progreso >= 50} label="Identificando cláusulas" />
@@ -341,7 +362,7 @@ function Tarea({ done, label }: { done: boolean; label: string }) {
       {done ? (
         <CheckCircle2 className="h-4 w-4 text-emerald-500" />
       ) : (
-        <Loader2 className="h-4 w-4 animate-spin" />
+        <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
       )}
       <span className={done ? 'text-foreground' : ''}>{label}</span>
     </div>

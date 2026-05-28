@@ -40,9 +40,13 @@ export function CierreDiarioCard() {
 
   useEffect(() => setHidratado(true), []);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `refresh` es un contador para forzar re-lectura de localStorage
   const resumen = useMemo(() => calcularResumenDia(hoyIso), [hoyIso, refresh]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const estado = useMemo(() => efectivoEnMano(), [refresh]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const cierre = useMemo(() => cierreDelDia(hoyIso), [hoyIso, refresh]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const cierresPasados = useMemo(() => listarCierres().slice(0, 5), [refresh]);
 
   if (!hidratado) return null;
@@ -180,7 +184,7 @@ export function CierreDiarioCard() {
             <summary className="cursor-pointer text-xs font-medium">
               Ver detalle de hoy ({resumen.movimientos.length} movimiento{resumen.movimientos.length === 1 ? '' : 's'})
             </summary>
-            <ul className="mt-2 space-y-1.5">
+            <ul role="list" className="mt-2 space-y-1.5">
               {resumen.movimientos.map((m, i) => (
                 <MovRow key={i} mov={m} />
               ))}
@@ -193,7 +197,7 @@ export function CierreDiarioCard() {
             <summary className="cursor-pointer text-xs font-medium">
               Últimos cierres
             </summary>
-            <ul className="mt-2 space-y-1">
+            <ul role="list" className="mt-2 space-y-1">
               {cierresPasados.map((c) => (
                 <li
                   key={c.fecha}

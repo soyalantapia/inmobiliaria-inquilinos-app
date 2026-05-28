@@ -129,6 +129,7 @@ export function GestionReclamo({
                   : 'Desperfecto — paga el propietario'}
               </span>
               <button
+                type="button"
                 onClick={() => onUpdate({ ...reclamo, clasificacion: null })}
                 className="ml-auto text-xs text-muted-foreground hover:text-foreground"
               >
@@ -142,6 +143,7 @@ export function GestionReclamo({
               </p>
               <div className="grid grid-cols-2 gap-2">
                 <button
+                  type="button"
                   onClick={() => handleClasificar('USO_Y_GOCE')}
                   className={cn(
                     'flex items-start gap-3 rounded-md border p-3 text-left transition-colors hover:bg-muted/40',
@@ -156,6 +158,7 @@ export function GestionReclamo({
                   </div>
                 </button>
                 <button
+                  type="button"
                   onClick={() => handleClasificar('DESPERFECTO')}
                   className={cn(
                     'flex items-start gap-3 rounded-md border p-3 text-left transition-colors hover:bg-muted/40',
@@ -279,6 +282,7 @@ function ProfesionalRow({
   return (
     <button
       type="button"
+      aria-pressed={selected}
       onClick={onSelect}
       className={cn(
         'flex w-full items-start gap-3 rounded-md border p-2.5 text-left transition-colors',

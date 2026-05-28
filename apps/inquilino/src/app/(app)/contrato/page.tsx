@@ -16,7 +16,6 @@ import {
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card } from '@llave/ui/card';
-import { BotonProximamente } from '@/components/boton-proximamente';
 import { CompartirGarante } from '@/components/compartir-garante';
 import { DescargarContratoTrigger } from '@/components/descargar-contrato-trigger';
 import { ContratoChat } from '@/components/contrato-chat';

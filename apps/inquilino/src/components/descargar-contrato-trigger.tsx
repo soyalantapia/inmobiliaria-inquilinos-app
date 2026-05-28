@@ -81,7 +81,7 @@ export function DescargarContratoTrigger({
   <body class="with-bar">
     <div class="preview-bar">
       <span>Copia del contrato lista · presioná Imprimir para guardarlo como PDF</span>
-      <button onclick="window.print()">Imprimir / Guardar PDF</button>
+      <button type="button" onclick="window.print()">Imprimir / Guardar PDF</button>
     </div>
 
     <h1>Contrato de locación</h1>

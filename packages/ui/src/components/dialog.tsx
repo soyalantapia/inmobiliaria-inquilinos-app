@@ -66,10 +66,20 @@ export const DialogTitle = React.forwardRef<
 ));
 DialogTitle.displayName = DialogPrimitive.Title.displayName;
 
+// DialogDescription envuelve a Radix' Description con `asChild` para
+// renderizar un <div> en vez del <p> por defecto. Eso permite pasar
+// children con bloques (otros <p>, <div>, formularios) sin disparar
+// warnings "<div> cannot be a descendant of <p>" — los teníamos en los
+// dialogs de Invitar, Marcar como resuelto, etc. Radix sigue gestionando
+// el `aria-describedby` correctamente porque se hace por id, no por tag.
 export const DialogDescription = React.forwardRef<
-  React.ElementRef<typeof DialogPrimitive.Description>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Description>
->(({ className, ...props }, ref) => (
-  <DialogPrimitive.Description ref={ref} className={cn('text-sm text-muted-foreground', className)} {...props} />
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
+>(({ className, children, ...props }, ref) => (
+  <DialogPrimitive.Description asChild>
+    <div ref={ref} className={cn('text-sm text-muted-foreground', className)} {...props}>
+      {children}
+    </div>
+  </DialogPrimitive.Description>
 ));
-DialogDescription.displayName = DialogPrimitive.Description.displayName;
+DialogDescription.displayName = 'DialogDescription';

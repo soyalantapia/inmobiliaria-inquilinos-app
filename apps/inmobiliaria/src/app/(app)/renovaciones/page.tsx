@@ -157,6 +157,8 @@ export default function RenovacionesPage() {
           (f) => (
             <button
               key={f}
+              type="button"
+              aria-pressed={filtro === f}
               onClick={() => setFiltro(f)}
               className={cn(
                 'rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',

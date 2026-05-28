@@ -133,6 +133,7 @@ export function BandejaAprobaciones() {
               <Button
                 size="sm"
                 variant={filtro === 'pendientes' ? 'default' : 'outline'}
+                aria-pressed={filtro === 'pendientes'}
                 onClick={() => setFiltro('pendientes')}
               >
                 Pendientes
@@ -140,6 +141,7 @@ export function BandejaAprobaciones() {
               <Button
                 size="sm"
                 variant={filtro === 'historico' ? 'default' : 'outline'}
+                aria-pressed={filtro === 'historico'}
                 onClick={() => setFiltro('historico')}
               >
                 Histórico

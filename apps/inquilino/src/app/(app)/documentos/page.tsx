@@ -205,7 +205,7 @@ export default function DocumentosPage() {
                   </p>
                 </div>
                 <div className="space-y-1">
-                  <Progress value={completitud} className="h-2" />
+                  <Progress aria-label={`Documentos cargados: ${completitud}%`} value={completitud} className="h-2" />
                   <p className="text-[11px] text-muted-foreground">
                     {requeridosCargados} de {totalRequeridos} requeridos · {completitud}%
                   </p>

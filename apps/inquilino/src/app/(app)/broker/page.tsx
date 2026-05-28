@@ -327,16 +327,16 @@ export default function ContratoPage() {
                 </span>
               </div>
               <p className="truncate text-xs text-muted-foreground">
-                Asistente IA del contrato — {contratoMock.direccion}
+                Ayuda con pagos, deuda y trámites · {contratoMock.direccion}
               </p>
             </div>
           </div>
           {mensajes.length > 1 && (
             <button
+              type="button"
               onClick={reiniciarChat}
               className="shrink-0 rounded-full p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
               aria-label="Reiniciar conversación"
-              title="Reiniciar"
             >
               <RotateCcw className="h-4 w-4" />
             </button>
@@ -344,7 +344,11 @@ export default function ContratoPage() {
         </div>
       </header>
 
-      <main className="flex flex-1 flex-col gap-3 overflow-y-auto p-5">
+      <main
+        className="flex flex-1 flex-col gap-3 overflow-y-auto p-5"
+        aria-live="polite"
+        aria-label="Conversación con el Asistente"
+      >
         {mensajes.map((m) => (
           <ChatBubble key={m.id} mensaje={m} />
         ))}
@@ -362,20 +366,23 @@ export default function ContratoPage() {
 
       <div className="space-y-3 border-t bg-background p-4">
         {!pensando && (
-          <div className="relative">
-            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-              {obtenerSugerenciasParaUltimo(mensajes, sugerenciasBase).map((s) => (
-                <button
-                  key={s}
-                  onClick={() => enviar(s)}
-                  className="shrink-0 rounded-full border bg-secondary px-3 py-1.5 text-xs font-medium text-secondary-foreground hover:bg-accent"
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-            {/* fade hint — indica que hay más chips a la derecha */}
-            <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-background to-transparent" />
+          // Antes: `flex overflow-x-auto` + `shrink-0` chips. Eso
+          // dejaba el segundo chip ("¿Cómo se calculan los
+          // punitorios?") cortado a la derecha en mobile angosto, y
+          // el fade hint sugería que había más pero no era obvio que
+          // se podía scrollear. Ahora `flex-wrap` permite que envuelva
+          // a 2 líneas — sin chips truncos y sin gestos ocultos.
+          <div className="flex flex-wrap gap-2">
+            {obtenerSugerenciasParaUltimo(mensajes, sugerenciasBase).map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => enviar(s)}
+                className="rounded-full border bg-secondary px-3 py-1.5 text-xs font-medium text-secondary-foreground hover:bg-accent"
+              >
+                {s}
+              </button>
+            ))}
           </div>
         )}
         <form
@@ -386,7 +393,8 @@ export default function ContratoPage() {
           className="flex items-center gap-2"
         >
           <Input
-            placeholder="Preguntale a tu contrato"
+            placeholder="Preguntale al asistente"
+            aria-label="Pregunta al asistente"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             disabled={pensando}

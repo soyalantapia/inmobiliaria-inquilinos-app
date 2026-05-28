@@ -199,15 +199,16 @@ export function ReferidosManager() {
           </div>
 
           <div className="space-y-2">
-            <Label className="text-xs">Link directo</Label>
+            <Label htmlFor="ref-link" className="text-xs">Link directo</Label>
             <div className="flex items-center gap-2">
               <Input
+                id="ref-link"
                 readOnly
                 value={link}
                 className="font-mono text-xs"
                 onFocus={(e) => e.target.select()}
               />
-              <Button size="sm" variant="outline" onClick={() => copiar(link, 'Link')}>
+              <Button size="sm" variant="outline" aria-label="Copiar link de invitación" onClick={() => copiar(link, 'Link')}>
                 <Copy className="h-3.5 w-3.5" />
               </Button>
             </div>
@@ -321,6 +322,7 @@ export function ReferidosManager() {
                     <Button
                       size="sm"
                       variant="ghost"
+                      aria-label={`Cancelar invitación a ${r.nombre}`}
                       onClick={() => {
                         cancelarInvitacion(r.id);
                         recargar();
@@ -450,9 +452,11 @@ function InvitarDialog({
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="juan@inmobiliaria.com.ar"
+              aria-invalid={email.length > 0 && !emailOk}
+              aria-describedby={email.length > 0 && !emailOk ? 'ref-email-error' : undefined}
             />
             {email.length > 0 && !emailOk && (
-              <p className="text-[11px] text-destructive">Email inválido</p>
+              <p id="ref-email-error" role="alert" className="text-[11px] text-destructive">Email inválido</p>
             )}
           </div>
           <div className="space-y-1.5">
@@ -512,6 +516,7 @@ function MensajeSugeridoDialog({
           </DialogDescription>
         </DialogHeader>
         <Textarea
+          aria-label="Mensaje sugerido para referidos"
           rows={14}
           value={texto}
           onChange={(e) => setTexto(e.target.value)}

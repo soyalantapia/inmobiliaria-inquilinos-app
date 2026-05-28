@@ -192,7 +192,7 @@ function CoInquilinoCard({
           </div>
           <p className="text-xs text-muted-foreground">{co.relacion}</p>
         </div>
-        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onEliminar}>
+        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onEliminar} aria-label={`Eliminar co-inquilino ${co.nombre}`}>
           <Trash2 className="h-3.5 w-3.5 text-destructive" />
         </Button>
       </div>
@@ -226,14 +226,16 @@ function CoInquilinoCard({
       </div>
 
       {/* Permisos */}
-      <div className="space-y-2 rounded-md border bg-muted/30 p-3">
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+      <div role="group" aria-labelledby={`ci-card-permisos-${co.id}`} className="space-y-2 rounded-md border bg-muted/30 p-3">
+        <p id={`ci-card-permisos-${co.id}`} className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
           Permisos
         </p>
         <div className="grid grid-cols-3 gap-1.5">
           {(['VER', 'PAGAR', 'COMPLETO'] as PermisoCoInquilino[]).map((p) => (
             <button
               key={p}
+              type="button"
+              aria-pressed={co.permiso === p}
               onClick={() => onCambiarPermiso(p)}
               className={cn(
                 'rounded-md border px-2 py-1.5 text-[11px] font-medium transition-colors',
@@ -315,6 +317,7 @@ function DialogInvitar({
             </Label>
             <Input
               id="ci-nombre"
+              autoComplete="name"
               value={nombre}
               onChange={(e) => setNombre(e.target.value)}
               placeholder="Ej: Sofía García"
@@ -338,14 +341,17 @@ function DialogInvitar({
             </Label>
             <Input
               id="ci-tel"
+              type="tel"
+              autoComplete="tel"
               value={telefono}
               onChange={(e) => setTelefono(e.target.value)}
               placeholder="+54 9 11 …"
             />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs">Relación</Label>
+            <Label htmlFor="ci-relacion" className="text-xs">Relación</Label>
             <select
+              id="ci-relacion"
               value={relacion}
               onChange={(e) => setRelacion(e.target.value)}
               className="w-full rounded-md border bg-background px-3 py-2 text-sm"
@@ -357,12 +363,14 @@ function DialogInvitar({
               <option>Otro</option>
             </select>
           </div>
-          <div className="space-y-1">
-            <Label className="text-xs">Permisos</Label>
+          <div role="group" aria-labelledby="ci-permisos-label" className="space-y-1">
+            <p id="ci-permisos-label" className="text-xs font-medium leading-none">Permisos</p>
             <div className="grid grid-cols-3 gap-1.5">
               {(['VER', 'PAGAR', 'COMPLETO'] as PermisoCoInquilino[]).map((p) => (
                 <button
                   key={p}
+                  type="button"
+                  aria-pressed={permiso === p}
                   onClick={() => setPermiso(p)}
                   className={cn(
                     'rounded-md border px-2 py-1.5 text-[11px] font-medium transition-colors',

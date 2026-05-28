@@ -32,7 +32,7 @@ export default function NotFound() {
           <Card className="text-left">
             <CardContent className="space-y-2 p-4 text-sm">
               <p className="font-medium">Puede deberse a que:</p>
-              <ul className="space-y-1.5 text-xs text-muted-foreground">
+              <ul role="list" className="space-y-1.5 text-xs text-muted-foreground">
                 <li className="flex items-start gap-2">
                   <span className="mt-0.5 shrink-0 text-amber-600">·</span>
                   El certificado fue regenerado y este link quedó obsoleto.

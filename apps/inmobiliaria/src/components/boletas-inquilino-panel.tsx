@@ -83,7 +83,7 @@ export function BoletasInquilinoPanel({ contratoId }: Props) {
             una, aparece acá automáticamente.
           </p>
         ) : (
-          <ul className="divide-y rounded-md border">
+          <ul role="list" className="divide-y rounded-md border">
             {boletas.map((b) => {
               const Icon = ICONO[b.tipo];
               const esImagen = b.tipoMime.startsWith('image/');
@@ -93,6 +93,7 @@ export function BoletasInquilinoPanel({ contratoId }: Props) {
                   className="flex items-center gap-3 p-3 text-sm"
                 >
                   {esImagen ? (
+                    // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={b.dataUrl}
                       alt={b.nombreArchivo}

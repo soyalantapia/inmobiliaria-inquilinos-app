@@ -170,6 +170,7 @@ export default function DetalleReclamoPage() {
       <main className="flex-1 space-y-6 p-4 md:p-6">
         <div className="flex items-start gap-3">
           <button
+            type="button"
             onClick={() => router.push('/reclamos')}
             className="rounded-full p-2 hover:bg-muted md:hidden"
             aria-label="Volver"
@@ -250,6 +251,7 @@ export default function DetalleReclamoPage() {
                 <p className="text-sm leading-relaxed">{reclamo.descripcion}</p>
                 {reclamo.fotoUrl && (
                   <div className="rounded-md border bg-muted/30 p-2">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={reclamo.fotoUrl}
                       alt="Foto del inquilino"
@@ -260,7 +262,7 @@ export default function DetalleReclamoPage() {
               </CardContent>
             </Card>
 
-            <Card>
+            <Card role="log" aria-label="Historial del reclamo" aria-live="polite">
               <CardContent className="space-y-4 p-6">
                 <div className="flex items-center justify-between">
                   <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
@@ -495,12 +497,14 @@ export default function DetalleReclamoPage() {
         description={
           <div className="space-y-4 pt-2">
             <div className="space-y-2">
-              <p className="text-sm text-muted-foreground">
+              <p id="resolucion-hint" className="text-sm text-muted-foreground">
                 Describí cómo se resolvió. El inquilino lo va a ver en su detalle.
               </p>
               <Textarea
                 autoFocus
                 rows={3}
+                aria-label="Descripción de la resolución"
+                aria-describedby="resolucion-hint"
                 value={resolucion}
                 onChange={(e) => setResolucion(e.target.value)}
                 placeholder="Ej: Vino el plomero el martes, cambió el flexible y selló la canilla."
@@ -531,6 +535,7 @@ export default function DetalleReclamoPage() {
                         setCostoStr(e.target.value.replace(/\D/g, '').slice(0, 12))
                       }
                       placeholder="25000"
+                      aria-label="Costo del trabajo"
                       className="w-full rounded-md border bg-background px-3 py-1.5 pl-7 text-sm"
                     />
                   </div>
@@ -539,6 +544,7 @@ export default function DetalleReclamoPage() {
                     value={costoNotas}
                     onChange={(e) => setCostoNotas(e.target.value)}
                     placeholder="Concepto: cambio de flexible y silicona"
+                    aria-label="Concepto del trabajo"
                     className="rounded-md border bg-background px-3 py-1.5 text-sm"
                   />
                 </div>
@@ -579,6 +585,7 @@ export default function DetalleReclamoPage() {
               Explicale al inquilino por qué este reclamo no procede.
             </p>
             <Textarea
+              aria-label="Motivo del rechazo"
               autoFocus
               rows={3}
               value={resolucion}

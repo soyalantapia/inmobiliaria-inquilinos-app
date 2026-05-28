@@ -29,7 +29,7 @@ import { Label } from '@llave/ui/label';
 import { Separator } from '@llave/ui/separator';
 import { toast } from '@llave/ui/use-toast';
 import { contratoMock, liquidacionesMock } from '@/lib/mock-data';
-import { datosBancariosMock } from '@/lib/datos-bancarios';
+import { datosBancariosMock, proximoCambioVigente } from '@/lib/datos-bancarios';
 import { formatMonto, formatPeriodo } from '@/lib/format';
 import { TASA_PUNITORIA_DIARIA_DEFAULT, calcularPunitorios } from '@/lib/punitorios';
 import {
@@ -95,6 +95,7 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
     <>
       <header className="flex items-center gap-3 p-5">
         <button
+          type="button"
           onClick={() => router.back()}
           className="rounded-full p-2 hover:bg-muted"
           aria-label="Volver"
@@ -137,6 +138,16 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
 
         {step === 'datos' && !completado && (
           <>
+            {/* Si la deuda excede 1.2× alquiler vigente, sugerimos
+                contactar a la inmo para negociar cuotas. Sin esto, el
+                checkout solo ofrece "saldo completo" o "parcial" sin
+                explicar que se puede pactar. */}
+            {saldo > contratoMock.montoActual * 1.2 && (
+              <HintNegociarPagos
+                saldo={saldo}
+                alquilerVigente={contratoMock.montoActual}
+              />
+            )}
             <SelectorMonto
               saldo={saldo}
               moneda={liq.moneda}
@@ -262,6 +273,60 @@ function ParcialesAnteriores({
 }
 
 /**
+ * Banner que se muestra cuando la deuda supera 1.2× el alquiler vigente.
+ * Le sugiere al inquilino contactar a la inmo por WhatsApp para negociar
+ * un plan de cuotas. Antes el checkout solo ofrecía pagar el saldo
+ * completo o un parcial sin guía — el inquilino con deuda alta no sabía
+ * que podía pactar pagos escalonados.
+ */
+function HintNegociarPagos({
+  saldo,
+  alquilerVigente,
+}: {
+  saldo: number;
+  alquilerVigente: number;
+}) {
+  const multiplo = (saldo / alquilerVigente).toFixed(1);
+  const mensaje = encodeURIComponent(
+    `Hola, tengo una deuda de ${formatMonto(saldo)} (${multiplo}× mi alquiler). ¿Podemos pactar un plan de cuotas?`,
+  );
+  const telefono = '541145321100'; // mismo número que el WhatsappFab
+  const url = `https://wa.me/${telefono}?text=${mensaje}`;
+  return (
+    <Card className="border-violet-300 bg-violet-50/60 p-4 dark:border-violet-900/40 dark:bg-violet-900/10">
+      <div className="flex items-start gap-3">
+        <div
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-violet-500 text-white"
+          aria-hidden="true"
+        >
+          <SplitSquareHorizontal className="h-4 w-4" strokeWidth={2.5} />
+        </div>
+        <div className="flex-1 min-w-0 space-y-2">
+          <div>
+            <p className="text-sm font-semibold">
+              ¿Necesitás dividir el pago en cuotas?
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Si no llegás a cubrir todo de una, escribile a la inmobiliaria
+              para pactar un plan. Pagar parcial ayuda, pero acordar evita que
+              los punitorios sigan corriendo.
+            </p>
+          </div>
+          <a
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-emerald-600"
+          >
+            💬 Negociar por WhatsApp
+          </a>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+/**
  * Selector de monto: "saldo total" o "otro monto" (parcial).
  * El valor por defecto es el saldo pendiente. Si el inquilino elige
  * "otro monto", aparece un input numérico clamped a [1000, saldo].
@@ -345,6 +410,7 @@ function SelectorMonto({
               <div className="flex items-center gap-2">
                 <span className="text-base font-semibold">$</span>
                 <Input
+                  aria-label="Monto a pagar"
                   inputMode="numeric"
                   value={draft}
                   onChange={(e) => onInput(e.target.value)}
@@ -373,6 +439,7 @@ function StepDatosBancarios({
   onContinuar: () => void;
 }) {
   const d = datosBancariosMock;
+  const cambio = proximoCambioVigente(d);
   const filas: Array<{ label: string; value: string; icon: React.ReactNode; copyKey: string; copyValue?: string }> = [
     { label: 'Titular', value: d.titular, icon: <UserRound className="h-4 w-4" />, copyKey: 'titular' },
     { label: 'CUIT', value: d.cuit, icon: <IdCard className="h-4 w-4" />, copyKey: 'cuit', copyValue: d.cuit.replace(/-/g, '') },
@@ -388,8 +455,45 @@ function StepDatosBancarios({
     },
   ];
 
+  // Si la inmo agendó un cambio de CBU para más adelante, mostramos un
+  // banner amber con los datos nuevos + fecha de vigencia. Antes el
+  // anuncio sólo vivía en el feed del home y el inquilino que llegaba
+  // directo al checkout no se enteraba.
+  const fechaCambioFmt = cambio
+    ? new Date(cambio.fechaDesde + 'T00:00:00').toLocaleDateString('es-AR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+      })
+    : null;
+
   return (
     <>
+      {cambio && fechaCambioFmt && (
+        <Card
+          role="alert"
+          className="border-amber-300 bg-amber-50/70 p-4 dark:border-amber-900/40 dark:bg-amber-900/10"
+        >
+          <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+            🔔 A partir del {fechaCambioFmt} cambian los datos de cobro
+          </p>
+          <p className="mt-1 text-xs text-amber-900/80 dark:text-amber-200/80">
+            Si transferís <strong>hoy</strong>, usá el CBU y alias de abajo.
+            Si transferís desde el <strong>{fechaCambioFmt}</strong>, usá los datos nuevos:
+          </p>
+          <div className="mt-2 space-y-1 rounded-md bg-background/60 p-3 text-xs">
+            <p>
+              <span className="text-muted-foreground">CBU nuevo: </span>
+              <span className="font-mono break-all">{cambio.cbu}</span>
+            </p>
+            <p>
+              <span className="text-muted-foreground">Alias nuevo: </span>
+              <span className="font-mono">{cambio.alias}</span>
+            </p>
+          </div>
+        </Card>
+      )}
+
       <Card className="overflow-hidden">
         <div className="border-b bg-muted/50 px-5 py-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -409,7 +513,7 @@ function StepDatosBancarios({
         </div>
       </Card>
 
-      <ol className="space-y-2 rounded-md bg-muted/50 p-4 text-sm text-muted-foreground">
+      <ol role="list" className="space-y-2 rounded-md bg-muted/50 p-4 text-sm text-muted-foreground">
         <li className="flex gap-2">
           <span className="font-semibold text-foreground">1.</span>
           Entrá al home banking o app de tu banco.
@@ -643,6 +747,7 @@ function StepSubirComprobante({
         ) : (
           <div className="space-y-3 rounded-lg border bg-muted/40 p-3">
             {preview ? (
+              // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={preview}
                 alt="Comprobante"
@@ -677,8 +782,8 @@ function StepSubirComprobante({
         )}
 
         {file && analizando && (
-          <div className="flex items-center gap-3 rounded-md border border-primary/30 bg-primary/5 p-3 text-sm">
-            <Loader2 className="h-4 w-4 animate-spin text-primary" />
+          <div role="status" className="flex items-center gap-3 rounded-md border border-primary/30 bg-primary/5 p-3 text-sm">
+            <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin text-primary" />
             <div className="flex-1">
               <p className="font-medium">Leyendo el comprobante…</p>
               <p className="text-xs text-muted-foreground">
@@ -721,12 +826,13 @@ function StepSubirComprobante({
           <Label htmlFor="nro">N° de operación</Label>
           <Input
             id="nro"
+            aria-describedby="nro-hint"
             placeholder="123456789"
             value={nroOperacion}
             onChange={(e) => setNroOperacion(e.target.value)}
             inputMode="numeric"
           />
-          <p className="text-xs text-muted-foreground">
+          <p id="nro-hint" className="text-xs text-muted-foreground">
             {extraccion
               ? 'Lo detectamos del recibo. Editalo si querés.'
               : 'Opcional. Lo encontrás en el recibo del banco.'}
@@ -831,6 +937,7 @@ function StepConfirmado({
 
           {informado.comprobanteDataUrl && (
             <div className="pt-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={informado.comprobanteDataUrl}
                 alt="Comprobante enviado"

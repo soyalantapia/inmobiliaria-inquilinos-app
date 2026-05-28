@@ -60,15 +60,16 @@ export function MatrizPermisosCard() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] border-separate border-spacing-0 text-sm">
+          <table aria-label="Matriz de permisos por rol" className="w-full min-w-[640px] border-separate border-spacing-0 text-sm">
             <thead>
               <tr>
-                <th className="sticky left-0 bg-background px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                <th scope="col" className="sticky left-0 bg-background px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                   Capacidad
                 </th>
                 {ROLES_ORDEN.map((r) => (
                   <th
                     key={r}
+                    scope="col"
                     className="px-2 py-2 text-center text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"
                   >
                     {ROL_LABEL[r]}

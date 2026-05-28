@@ -311,7 +311,7 @@ export default function DetalleContratoPage() {
                     Sin eventos registrados todavía.
                   </p>
                 ) : (
-                  <ol className="space-y-0">
+                  <ol role="list" className="space-y-0">
                     {[...eventosDelContrato]
                       .sort((a, b) => b.fecha.localeCompare(a.fecha))
                       .map((ev, i, arr) => (

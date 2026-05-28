@@ -116,6 +116,7 @@ export function CuponInput() {
         </div>
         <div className="flex gap-2">
           <Input
+            aria-label="Código de descuento"
             value={codigo}
             onChange={(e) => setCodigo(e.target.value.toUpperCase())}
             placeholder="Ej: CUCICBA10"

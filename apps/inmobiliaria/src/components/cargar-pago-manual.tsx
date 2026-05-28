@@ -98,10 +98,11 @@ export function CargarPagoManualDialog({ open, onOpenChange, onDone }: Props) {
 
         <div className="space-y-3">
           <div className="space-y-1">
-            <Label className="text-xs" aria-required>
+            <Label htmlFor="cpm-contrato" className="text-xs" aria-required>
               Contrato <span className="text-destructive">*</span>
             </Label>
             <select
+              id="cpm-contrato"
               value={contratoId}
               onChange={(e) => {
                 setContratoId(e.target.value);
@@ -123,10 +124,11 @@ export function CargarPagoManualDialog({ open, onOpenChange, onDone }: Props) {
 
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1">
-              <Label className="text-xs" aria-required>
+              <Label htmlFor="cpm-monto" className="text-xs" aria-required>
                 Monto <span className="text-destructive">*</span>
               </Label>
               <Input
+                id="cpm-monto"
                 type="number"
                 inputMode="decimal"
                 value={monto}
@@ -141,8 +143,9 @@ export function CargarPagoManualDialog({ open, onOpenChange, onDone }: Props) {
               )}
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Método</Label>
+              <Label htmlFor="cpm-metodo" className="text-xs">Método</Label>
               <select
+                id="cpm-metodo"
                 value={metodo}
                 onChange={(e) => setMetodo(e.target.value as MetodoManual)}
                 className="w-full rounded-md border bg-background px-3 py-2 text-sm"
@@ -156,13 +159,14 @@ export function CargarPagoManualDialog({ open, onOpenChange, onDone }: Props) {
           </div>
 
           <div className="space-y-1">
-            <Label className="text-xs">Fecha de cobro</Label>
-            <Input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
+            <Label htmlFor="cpm-fecha" className="text-xs">Fecha de cobro</Label>
+            <Input id="cpm-fecha" type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
           </div>
 
           <div className="space-y-1">
-            <Label className="text-xs">Nota (opcional)</Label>
+            <Label htmlFor="cpm-nota" className="text-xs">Nota (opcional)</Label>
             <Textarea
+              id="cpm-nota"
               rows={2}
               value={nota}
               onChange={(e) => setNota(e.target.value)}

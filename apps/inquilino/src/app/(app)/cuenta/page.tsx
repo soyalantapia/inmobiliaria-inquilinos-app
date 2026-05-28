@@ -117,6 +117,7 @@ export default function CuentaPage() {
               label="Teléfono"
               value={phone || 'Sin agregar'}
               vacio={!phone}
+              onAgregar={!phone ? () => setDialogAbierto(true) : undefined}
             />
             <Field icon={<Mail className="h-4 w-4" />} label="Email" value={email} />
           </div>
@@ -196,6 +197,7 @@ export default function CuentaPage() {
           </h2>
           <Card className="divide-y">
             <button
+              type="button"
               onClick={relanzarOnboarding}
               className="flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-muted/40"
             >
@@ -260,6 +262,7 @@ export default function CuentaPage() {
         {/* Logout */}
         <Card className="border-destructive/20">
           <button
+            type="button"
             onClick={() => setConfirmandoLogout(true)}
             className="flex w-full items-center gap-3 p-4 text-left text-destructive transition-colors hover:bg-destructive/5"
           >
@@ -293,11 +296,15 @@ function Field({
   label,
   value,
   vacio,
+  onAgregar,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string;
   vacio?: boolean;
+  /** Si está vacío, mostrar un mini-CTA inline para completarlo sin
+      tener que abrir el dialog "Editar datos" desde más abajo. */
+  onAgregar?: () => void;
 }) {
   return (
     <div className="flex items-center gap-3">
@@ -312,6 +319,15 @@ function Field({
           {value}
         </p>
       </div>
+      {vacio && onAgregar && (
+        <button
+          type="button"
+          onClick={onAgregar}
+          className="shrink-0 rounded-full border border-dashed border-primary/40 bg-primary/5 px-2.5 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
+        >
+          + Agregar
+        </button>
+      )}
     </div>
   );
 }
@@ -419,6 +435,7 @@ function EditarDatosDialog({
             <Label htmlFor="nombre">Nombre completo</Label>
             <Input
               id="nombre"
+              autoComplete="name"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
               placeholder="Mariela Sosa"
@@ -434,6 +451,7 @@ function EditarDatosDialog({
             <Input
               id="telefono"
               type="tel"
+              autoComplete="tel"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="+54 9 11 1234 5678"
@@ -449,6 +467,7 @@ function EditarDatosDialog({
             <Input
               id="email"
               type="email"
+              autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="vos@correo.com"

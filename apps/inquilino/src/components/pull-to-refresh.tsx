@@ -97,7 +97,7 @@ export function PullToRefresh() {
         }}
       >
         {refreshing ? (
-          <Loader2 className="h-5 w-5 animate-spin text-primary" />
+          <Loader2 aria-hidden="true" className="h-5 w-5 animate-spin text-primary" />
         ) : (
           <RefreshCw
             className={`h-5 w-5 ${listo ? 'text-primary' : 'text-muted-foreground'}`}

@@ -173,6 +173,7 @@ export function AsignarProfesionalDialog({
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
+                aria-label="Buscar reclamo a asignar"
                 value={filtro}
                 onChange={(e) => setFiltro(e.target.value)}
                 placeholder="Buscar por dirección, inquilino o descripción"
@@ -269,6 +270,7 @@ function ReclamoRow({
   return (
     <button
       type="button"
+      aria-pressed={selected}
       onClick={onSelect}
       className={cn(
         'flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors',

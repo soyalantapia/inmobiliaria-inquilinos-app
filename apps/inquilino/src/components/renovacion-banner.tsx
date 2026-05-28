@@ -113,9 +113,11 @@ export function RenovacionBanner({
   }
 
   // >365: nota muy suave, sin CTA fuerte.
-  // Copy más natural — antes era "Te avisaremos sobre la renovación cuando
-  // falten 12 meses ({duracion} todavía)." con un paréntesis raro y el CTA
-  // "Decidir antes" ambiguo (¿decidir qué?, ¿antes de qué?).
+  // Copy más natural — antes "Decidir ahora" contradecía el mensaje
+  // ("te avisamos cuando se acerque" pero el CTA empuja a decidir
+  // YA). Cambiamos a "Ver opciones" — pasivo, informativo, sin
+  // presión. El inquilino puede explorar si quiere, pero no se
+  // siente obligado.
   return (
     <div
       className={cn(
@@ -132,7 +134,7 @@ export function RenovacionBanner({
         href="/contrato/renovacion"
         className="shrink-0 text-xs font-medium text-primary hover:underline"
       >
-        Decidir ahora
+        Ver opciones
       </Link>
     </div>
   );

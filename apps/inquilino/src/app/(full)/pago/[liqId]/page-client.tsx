@@ -78,6 +78,7 @@ export default function DetallePagoPage({ params }: { params: { liqId: string } 
     <>
       <header className="flex items-center gap-3 p-5">
         <button
+          type="button"
           onClick={() => router.push('/')}
           className="rounded-full p-2 hover:bg-muted"
           aria-label="Volver"

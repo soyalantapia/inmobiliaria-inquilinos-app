@@ -307,6 +307,8 @@ function ServicioConsorcioDialog({
             <Input
               id="costo"
               type="number"
+              inputMode="decimal"
+              min="0"
               value={costo}
               onChange={(e) => setCosto(e.target.value)}
             />

@@ -273,6 +273,7 @@ export function MorososPanel({ inmobiliaria = 'My Alquiler' }: Props) {
         <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
           <Input
             placeholder="Buscar por inquilino, dirección o garante…"
+            aria-label="Buscar morosos"
             value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}
           />
@@ -280,6 +281,7 @@ export function MorososPanel({ inmobiliaria = 'My Alquiler' }: Props) {
             <select
               value={filtroConsorcio}
               onChange={(e) => setFiltroConsorcio(e.target.value)}
+              aria-label="Filtrar por consorcio"
               className="rounded-md border bg-background px-3 py-1.5 text-sm"
             >
               <option value="TODOS">Todos los consorcios</option>
@@ -292,7 +294,7 @@ export function MorososPanel({ inmobiliaria = 'My Alquiler' }: Props) {
           )}
         </div>
 
-        <ul className="divide-y rounded-md border">
+        <ul role="list" className="divide-y rounded-md border">
           {aVisible.map((m) => (
             <MorosoRow
               key={m.contrato.id}
@@ -350,13 +352,14 @@ export function MorososPanel({ inmobiliaria = 'My Alquiler' }: Props) {
                   {mensaje.moroso.dias === 1 ? '' : 's'} de atraso
                 </p>
               </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Plantilla</Label>
+              <div role="group" aria-labelledby="mp-plantilla-label" className="space-y-1">
+                <p id="mp-plantilla-label" className="text-xs font-medium leading-none">Plantilla</p>
                 <div className="flex flex-wrap gap-1.5">
                   {PLANTILLAS.map((p) => (
                     <button
                       key={p.id}
                       type="button"
+                      aria-pressed={p.id === mensaje.plantillaId}
                       onClick={() => abrirPlantilla(mensaje.moroso, p.id)}
                       className={`rounded-full border px-2.5 py-1 text-[10px] transition-colors ${
                         p.id === mensaje.plantillaId

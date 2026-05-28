@@ -401,6 +401,47 @@ export const chatInicialMock: MensajeChat[] = [
 ];
 
 export const respuestasMock: Array<{ patron: RegExp; respuesta: string; citas?: Array<{ clausula: string; texto: string }> }> = [
+  /* ----- Monto del alquiler actual ----- */
+  {
+    patron:
+      /cu[áa]nto.*(es|son|vale|pago|cobran|cobra)|alquiler.*(actual|mensual|mes|cuánto|cuanto)|monto.*(alquiler|mensual|actual)|cu[áa]nto.*alquiler|alquiler.*monto/i,
+    respuesta:
+      'Tu alquiler actual es de $480.000 por mes. A eso sumá las expensas (aprox. $88.500). Vence cada día 5. Si pagás tarde, se suman punitorios diarios.',
+    citas: [
+      {
+        clausula: 'Cláusula 3ª — Canon locativo',
+        texto:
+          'El LOCATARIO abonará mensualmente la suma de pesos cuatrocientos ochenta mil ($480.000) en concepto de canon locativo, dentro de los primeros cinco (5) días corridos de cada mes.',
+      },
+    ],
+  },
+  /* ----- Cómo / dónde pagar ----- */
+  {
+    patron: /c[oó]mo.*(pago|pagar)|d[oó]nde.*(pago|pagar)|cbu|alias|transfer|pagar.*(alquiler|mes)/i,
+    respuesta:
+      'Pagás por transferencia bancaria al CBU/Alias de la inmobiliaria. Lo encontrás en la pestaña Pagos → tocá el monto pendiente y aparecen los datos. Después subís el comprobante y la inmo lo valida en 24–48 hs.',
+    citas: [
+      {
+        clausula: 'Cláusula 3ª — Forma de pago',
+        texto:
+          'El canon locativo deberá abonarse mediante transferencia bancaria a la cuenta indicada por el LOCADOR, acompañando comprobante de pago.',
+      },
+    ],
+  },
+  /* ----- Salida anticipada / rescisión ----- */
+  {
+    patron: /salir|irme|rescindir|rescisi[oó]n|terminar antes|mudar|antes de que venza/i,
+    respuesta:
+      'Podés rescindir avisando con 1 mes de anticipación. Si es antes del primer año, la indemnización es 1,5 meses de alquiler. Pasado el primer año, solo 1 mes. Si avisás con 3 meses de anticipación y ya pasó el 6° mes, no hay indemnización.',
+    citas: [
+      {
+        clausula: 'Cláusula 14ª — Resolución anticipada',
+        texto:
+          'El LOCATARIO podrá rescindir previa notificación fehaciente con sesenta (60) días de anticipación. La indemnización se calculará conforme al art. 1221 del Código Civil y Comercial.',
+      },
+    ],
+  },
+  /* ----- Ajuste / aumento / ICL ----- */
   {
     patron: /aumento|ajust|icl/i,
     respuesta:
@@ -412,6 +453,7 @@ export const respuestasMock: Array<{ patron: RegExp; respuesta: string; citas?: 
       },
     ],
   },
+  /* ----- Mascotas ----- */
   {
     patron: /mascot|perro|gato/i,
     respuesta: 'Sí, podés tener mascotas. La cláusula 9 lo permite siempre que sean perros o gatos hasta 25 kg.',
@@ -422,6 +464,7 @@ export const respuestasMock: Array<{ patron: RegExp; respuesta: string; citas?: 
       },
     ],
   },
+  /* ----- Depósito / garantía ----- */
   {
     patron: /depós|deposit/i,
     respuesta:
@@ -433,6 +476,7 @@ export const respuestasMock: Array<{ patron: RegExp; respuesta: string; citas?: 
       },
     ],
   },
+  /* ----- Vencimiento / fin de contrato ----- */
   {
     patron: /vencimiento|finaliza|termina/i,
     respuesta: 'Tu contrato vence el 31 de agosto de 2028. Faltan poco más de dos años.',

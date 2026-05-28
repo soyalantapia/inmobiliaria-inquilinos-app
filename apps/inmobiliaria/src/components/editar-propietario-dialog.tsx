@@ -139,11 +139,12 @@ export function EditarPropietarioDialog({ open, onOpenChange, propietario }: Pro
             <Label htmlFor="ed-cbu">CBU / alias para rendiciones</Label>
             <Input
               id="ed-cbu"
+              aria-describedby="ed-cbu-hint"
               value={cbuAlias}
               onChange={(e) => setCbuAlias(e.target.value)}
               placeholder="alias.banco.propietario"
             />
-            <p className="text-[11px] text-muted-foreground">
+            <p id="ed-cbu-hint" className="text-[11px] text-muted-foreground">
               Es el destino donde se transfiere el neto al rendir el mes.
             </p>
           </div>

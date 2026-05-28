@@ -87,7 +87,7 @@ export function AlertasServiciosCard() {
             </Badge>
           )}
         </div>
-        <ul className="divide-y rounded-md border">
+        <ul role="list" className="divide-y rounded-md border">
           {alertas.slice(0, 6).map((a, i) => {
             const Icon = ICONO_TIPO[a.tipo];
             return (
@@ -127,6 +127,7 @@ export function AlertasServiciosCard() {
                     )}`}
                     target="_blank"
                     rel="noreferrer"
+                    aria-label={`Enviar WhatsApp a ${a.inquilino}`}
                   >
                     <MessageCircle className="h-3.5 w-3.5 text-emerald-600" />
                   </a>

@@ -23,7 +23,11 @@ interface NavItem {
 }
 
 const itemsPrimarios: NavItem[] = [
-  { href: '/', label: 'Pagos', icon: Wallet },
+  // "Inicio" antes era "Pagos" — pero la home es un dashboard (saludo,
+  // banner urgente, atajos, feed inmo, asistente). Renombrar evita
+  // confusión: el h1 dice "Inicio", el navbar también, /comprobantes
+  // sigue siendo "Recibos".
+  { href: '/', label: 'Inicio', icon: Wallet },
   { href: '/broker', label: 'Asistente', icon: Sparkles },
   { href: '/contrato', label: 'Contrato', icon: FileText },
   { href: '/comprobantes', label: 'Recibos', icon: Receipt },
@@ -45,8 +49,11 @@ function isActive(pathname: string, href: string): boolean {
 export function NavBar() {
   const pathname = usePathname() ?? '/';
   return (
-    <nav className="sticky bottom-0 z-30 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/70 md:hidden">
-      <ul className="flex h-16 items-center justify-around">
+    <nav
+      aria-label="Navegación principal"
+      className="sticky bottom-0 z-30 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/70 md:hidden"
+    >
+      <ul role="list" className="flex h-16 items-center justify-around">
         {itemsPrimarios.map((item) => {
           const active = isActive(pathname, item.href);
           const Icon = item.icon;
@@ -54,6 +61,7 @@ export function NavBar() {
             <li key={item.href} className="flex-1 min-w-0">
               <Link
                 href={item.href}
+                aria-current={active ? 'page' : undefined}
                 className={cn(
                   'flex flex-col items-center gap-1 px-1 py-2 text-[10px] transition-colors',
                   active ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
@@ -86,8 +94,8 @@ export function SideNav() {
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Inquilino</p>
         </div>
       </div>
-      <nav className="flex-1 space-y-4 p-3">
-        <ul className="space-y-1">
+      <nav aria-label="Navegación principal" className="flex-1 space-y-4 p-3">
+        <ul role="list" className="space-y-1">
           {itemsPrimarios.map((item) => (
             <NavLink key={item.href} item={item} active={isActive(pathname, item.href)} />
           ))}
@@ -97,7 +105,7 @@ export function SideNav() {
           <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             Cuenta
           </p>
-          <ul className="space-y-1">
+          <ul role="list" className="space-y-1">
             {itemsSecundarios.map((item) => (
               <NavLink key={item.href} item={item} active={isActive(pathname, item.href)} />
             ))}
@@ -119,6 +127,7 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
     <li>
       <Link
         href={item.href}
+        aria-current={active ? 'page' : undefined}
         className={cn(
           'flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
           active

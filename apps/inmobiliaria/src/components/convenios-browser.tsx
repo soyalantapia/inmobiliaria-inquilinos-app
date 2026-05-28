@@ -69,18 +69,8 @@ export function ConveniosBrowser() {
 
   return (
     <div className="space-y-4">
-      {/* Header explicativo */}
-      <div className="flex items-start gap-3 rounded-md border bg-muted/30 p-4 text-sm">
-        <Handshake className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-        <div className="space-y-1">
-          <p className="font-medium">Convenios con colegios y cámaras</p>
-          <p className="text-xs text-muted-foreground">
-            Trabajamos con los colegios profesionales y cámaras del rubro para
-            que los matriculados accedan al producto con un descuento permanente.
-            Si pertenecés a alguno, podés activar el beneficio acá mismo.
-          </p>
-        </div>
-      </div>
+      {/* El header explicativo lo provee el <Card> wrapper en
+          /configuracion → Convenios. No duplicamos copy acá. */}
 
       {/* Convenios activos */}
       <div>
@@ -190,7 +180,7 @@ function ConvenioCard({
         )}
 
         {cupon.beneficios && cupon.beneficios.length > 0 && (
-          <ul className="space-y-1 text-[11px]">
+          <ul role="list" className="space-y-1 text-[11px]">
             {cupon.beneficios.map((b, i) => (
               <li key={i} className="flex items-start gap-1.5">
                 <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-emerald-600" />

@@ -87,7 +87,14 @@ export function ScoringInquilinoCard({ scoring, compacto = false }: Props) {
                     {f.puntaje}
                   </span>
                 </div>
-                <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
+                <div
+                  className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted"
+                  role="progressbar"
+                  aria-valuenow={f.puntaje}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-label={`${f.label}: ${f.puntaje}/100`}
+                >
                   <div
                     className={`h-full transition-all ${barColor}`}
                     style={{ width: `${f.puntaje}%` }}

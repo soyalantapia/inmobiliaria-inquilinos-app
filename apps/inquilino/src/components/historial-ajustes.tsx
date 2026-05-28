@@ -115,6 +115,8 @@ export function HistorialAjustes() {
           viewBox={`0 0 ${W} ${H}`}
           className="h-32 w-full"
           preserveAspectRatio="none"
+          role="img"
+          aria-label={`Evolución del alquiler: de ${formatMonto(primero)} a ${formatMonto(ultimoActual)}, variación total ${variacion}%`}
         >
           {/* Grid horizontal */}
           {[0.25, 0.5, 0.75].map((p) => (

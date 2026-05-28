@@ -60,6 +60,14 @@ import {
   type ModuloAuditoria,
   type TipoEventoAuditoria,
 } from '@/lib/auditoria-storage';
+import { validarCuit } from '@/lib/cuit';
+import {
+  DATOS_EMPRESA_DEFAULT,
+  guardarDatosEmpresa,
+  leerDatosEmpresa,
+  validarDatosEmpresa,
+  type DatosEmpresa,
+} from '@/lib/empresa-storage';
 
 type Rol = 'ADMIN' | 'OPERADOR' | 'CARGA' | 'LECTURA';
 
@@ -143,21 +151,16 @@ const estadoFacturaConfig: Record<
 };
 
 export default function ConfiguracionPage() {
-  // Empresa
-  const [datos, setDatos] = useState({
-    nombre: 'Inmobiliaria del Sol',
-    cuit: '30-71234567-9',
-    email: 'contacto@inmosol.com.ar',
-    telefono: '+54 11 4532 1100',
-    matricula: 'CUCICBA 5872',
-    direccionCalle: 'Av. Santa Fe',
-    direccionAltura: '2890',
-    direccionPiso: '5°B',
-    direccionCiudad: 'CABA',
-    direccionProvincia: 'Buenos Aires',
-    direccionCp: '1425',
-    notasFiscales: '',
-  });
+  // Empresa — hidratado desde localStorage en el primer mount para que
+  // sobreviva al refresh. El default replica al mock anterior para
+  // primera carga.
+  const [datos, setDatos] = useState<DatosEmpresa>(DATOS_EMPRESA_DEFAULT);
+  const [erroresEmpresa, setErroresEmpresa] = useState<
+    Partial<Record<keyof DatosEmpresa, string>>
+  >({});
+  useEffect(() => {
+    setDatos(leerDatosEmpresa());
+  }, []);
 
   // Equipo
   const [equipo, setEquipo] = useState<Miembro[]>(equipoInicial);
@@ -212,7 +215,31 @@ export default function ConfiguracionPage() {
   const plan = useMemo(() => calcularResumenPlan(), []);
 
   const guardarEmpresa = () => {
-    toast({ title: 'Cambios guardados', description: 'Actualizamos los datos de la inmobiliaria.' });
+    const validacionBase = validarDatosEmpresa(datos);
+    const errores = { ...validacionBase.errores };
+    // CUIT: además del required, validamos el dígito verificador con el
+    // algoritmo AFIP (`lib/cuit.ts`).
+    if (!errores.cuit) {
+      const v = validarCuit(datos.cuit);
+      if (!v.valido) errores.cuit = v.motivo ?? 'CUIT inválido';
+    }
+    if (Object.keys(errores).length > 0) {
+      setErroresEmpresa(errores);
+      toast({
+        variant: 'destructive',
+        title: 'Revisá los campos marcados',
+        description:
+          Object.values(errores)[0] ?? 'Hay datos obligatorios sin completar.',
+      });
+      return;
+    }
+    setErroresEmpresa({});
+    guardarDatosEmpresa(datos);
+    toast({
+      variant: 'success',
+      title: 'Cambios guardados',
+      description: 'Actualizamos los datos de la inmobiliaria.',
+    });
   };
 
   const eliminarMiembro = () => {
@@ -225,8 +252,13 @@ export default function ConfiguracionPage() {
     setParaEliminar(null);
   };
 
+  const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const emailInvitarValido = EMAIL_REGEX.test(nuevoEmail.trim());
+
   const invitar = () => {
-    if (!nuevoEmail.includes('@')) {
+    // El botón ya viene deshabilitado si el email no es válido (ver
+    // `confirmDisabled` abajo). Este guard es la red de seguridad.
+    if (!emailInvitarValido) {
       toast({ title: 'Email inválido', variant: 'destructive' });
       return;
     }
@@ -317,21 +349,46 @@ export default function ConfiguracionPage() {
               <CardContent className="grid gap-4 md:grid-cols-2">
                 <Field
                   label="Nombre comercial"
+                  required
+                  error={erroresEmpresa.nombre}
                   value={datos.nombre}
-                  onChange={(v) => setDatos({ ...datos, nombre: v })}
+                  onChange={(v) => {
+                    setDatos({ ...datos, nombre: v });
+                    if (erroresEmpresa.nombre) {
+                      setErroresEmpresa({ ...erroresEmpresa, nombre: undefined });
+                    }
+                  }}
                 />
                 <Field
                   label="CUIT"
+                  required
+                  error={erroresEmpresa.cuit}
                   value={datos.cuit}
-                  onChange={(v) => setDatos({ ...datos, cuit: v })}
+                  onChange={(v) => {
+                    setDatos({ ...datos, cuit: v });
+                    if (erroresEmpresa.cuit) {
+                      setErroresEmpresa({ ...erroresEmpresa, cuit: undefined });
+                    }
+                  }}
                 />
                 <Field
                   label="Email administrador"
+                  required
+                  type="email"
+                  autoComplete="email"
+                  error={erroresEmpresa.email}
                   value={datos.email}
-                  onChange={(v) => setDatos({ ...datos, email: v })}
+                  onChange={(v) => {
+                    setDatos({ ...datos, email: v });
+                    if (erroresEmpresa.email) {
+                      setErroresEmpresa({ ...erroresEmpresa, email: undefined });
+                    }
+                  }}
                 />
                 <Field
                   label="Teléfono"
+                  type="tel"
+                  autoComplete="tel"
                   value={datos.telefono}
                   onChange={(v) => setDatos({ ...datos, telefono: v })}
                 />
@@ -398,6 +455,7 @@ export default function ConfiguracionPage() {
               </CardHeader>
               <CardContent>
                 <Textarea
+                  aria-label="Datos fiscales"
                   placeholder="Ej: IVA Responsable Inscripto · IIBB Convenio Multilateral 901-234-567"
                   value={datos.notasFiscales}
                   onChange={(e) => setDatos({ ...datos, notasFiscales: e.target.value })}
@@ -758,7 +816,16 @@ export default function ConfiguracionPage() {
                             {estadoFacturaConfig[f.estado].label}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-xs text-muted-foreground">
+                        <TableCell
+                          className="max-w-[180px] truncate text-xs text-muted-foreground"
+                          title={
+                            f.fechaPago
+                              ? `${formatFechaCorta(f.fechaPago)}${
+                                  f.metodoPago ? ` · ${f.metodoPago.toLowerCase()}` : ''
+                                }`
+                              : undefined
+                          }
+                        >
                           {f.fechaPago ? (
                             <>
                               {formatFechaCorta(f.fechaPago)}
@@ -905,7 +972,10 @@ export default function ConfiguracionPage() {
 
       <ConfirmDialog
         open={showInvitar}
-        onOpenChange={setShowInvitar}
+        onOpenChange={(open) => {
+          setShowInvitar(open);
+          if (!open) setNuevoEmail('');
+        }}
         title="Invitar al equipo"
         description={
           <div className="space-y-3 pt-2">
@@ -913,14 +983,42 @@ export default function ConfiguracionPage() {
               Le mandamos un email para que active su cuenta y entre al panel.
             </p>
             <div className="space-y-2">
-              <Label htmlFor="invite-email">Email</Label>
+              <Label htmlFor="invite-email" className="flex items-center gap-1">
+                Email
+                <span aria-hidden="true" className="text-destructive">*</span>
+              </Label>
               <Input
                 id="invite-email"
                 type="email"
+                autoComplete="email"
                 value={nuevoEmail}
                 onChange={(e) => setNuevoEmail(e.target.value)}
                 placeholder="persona@inmosol.com.ar"
+                required
+                aria-required="true"
+                aria-invalid={
+                  nuevoEmail.length > 0 && !emailInvitarValido ? true : undefined
+                }
+                aria-describedby={
+                  nuevoEmail.length > 0 && !emailInvitarValido
+                    ? 'invite-email-error'
+                    : undefined
+                }
+                className={
+                  nuevoEmail.length > 0 && !emailInvitarValido
+                    ? 'border-destructive focus-visible:ring-destructive'
+                    : undefined
+                }
               />
+              {nuevoEmail.length > 0 && !emailInvitarValido && (
+                <p
+                  id="invite-email-error"
+                  role="alert"
+                  className="text-xs text-destructive"
+                >
+                  Formato inválido (ej: persona@inmo.com.ar)
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="invite-rol">Rol</Label>
@@ -940,6 +1038,7 @@ export default function ConfiguracionPage() {
           </div>
         }
         confirmLabel="Enviar invitación"
+        confirmDisabled={!emailInvitarValido}
         onConfirm={invitar}
       />
     </>
@@ -950,15 +1049,48 @@ function Field({
   label,
   value,
   onChange,
+  required,
+  error,
+  type,
+  autoComplete,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
+  required?: boolean;
+  error?: string;
+  type?: string;
+  autoComplete?: string;
 }) {
+  const id = `cfg-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}`;
+  const errorId = error ? `${id}-error` : undefined;
   return (
     <div className="space-y-2">
-      <Label>{label}</Label>
-      <Input value={value} onChange={(e) => onChange(e.target.value)} />
+      <Label htmlFor={id} className="flex items-center gap-1">
+        {label}
+        {required && (
+          <span aria-hidden="true" className="text-destructive">
+            *
+          </span>
+        )}
+      </Label>
+      <Input
+        id={id}
+        type={type}
+        autoComplete={autoComplete}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        required={required}
+        aria-required={required || undefined}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={errorId}
+        className={error ? 'border-destructive focus-visible:ring-destructive' : undefined}
+      />
+      {error && (
+        <p id={errorId} role="alert" className="text-xs text-destructive">
+          {error}
+        </p>
+      )}
     </div>
   );
 }
@@ -1050,15 +1182,16 @@ function AuditoriaTab() {
         </CardHeader>
         <CardContent className="space-y-4">
           <Input
+            aria-label="Buscar en historial de cambios"
             placeholder="Buscar por inquilino, dirección, monto, motivo…"
             value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}
           />
           <div className="grid gap-3 sm:grid-cols-4">
             <div className="space-y-1.5">
-              <Label className="text-xs">Módulo</Label>
+              <Label htmlFor="aud-modulo" className="text-xs">Módulo</Label>
               <Select value={filtroModulo} onValueChange={(v) => setFiltroModulo(v as typeof filtroModulo)}>
-                <SelectTrigger>
+                <SelectTrigger id="aud-modulo">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -1072,9 +1205,9 @@ function AuditoriaTab() {
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Tipo de evento</Label>
+              <Label htmlFor="aud-tipo" className="text-xs">Tipo de evento</Label>
               <Select value={filtroTipo} onValueChange={(v) => setFiltroTipo(v as typeof filtroTipo)}>
-                <SelectTrigger>
+                <SelectTrigger id="aud-tipo">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -1088,9 +1221,9 @@ function AuditoriaTab() {
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Usuario</Label>
+              <Label htmlFor="aud-usuario" className="text-xs">Usuario</Label>
               <Select value={filtroAutor} onValueChange={setFiltroAutor}>
-                <SelectTrigger>
+                <SelectTrigger id="aud-usuario">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -1104,9 +1237,9 @@ function AuditoriaTab() {
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Rango</Label>
+              <Label htmlFor="aud-rango" className="text-xs">Rango</Label>
               <Select value={rangoDias} onValueChange={(v) => setRangoDias(v as typeof rangoDias)}>
-                <SelectTrigger>
+                <SelectTrigger id="aud-rango">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

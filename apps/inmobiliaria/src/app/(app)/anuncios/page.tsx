@@ -34,6 +34,7 @@ import {
 } from '@llave/ui/select';
 import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
+import { ConfirmDialog } from '@llave/ui/confirm-dialog';
 import { Topbar } from '@/components/topbar';
 import {
   type Anuncio,
@@ -61,6 +62,7 @@ export default function AnunciosPage() {
   const [anuncios, setAnuncios] = useState<Anuncio[]>([]);
   const [hidratado, setHidratado] = useState(false);
   const [crearAbierto, setCrearAbierto] = useState(false);
+  const [anuncioAEliminar, setAnuncioAEliminar] = useState<Anuncio | null>(null);
 
   useEffect(() => {
     setAnuncios(listarAnuncios());
@@ -89,9 +91,10 @@ export default function AnunciosPage() {
     });
   };
 
-  const handleEliminar = (a: Anuncio) => {
+  const ejecutarEliminar = (a: Anuncio) => {
     eliminarAnuncio(a.id);
     setAnuncios(listarAnuncios());
+    setAnuncioAEliminar(null);
     toast({ title: 'Anuncio eliminado' });
   };
 
@@ -169,7 +172,7 @@ export default function AnunciosPage() {
               <AnuncioCard
                 key={a.id}
                 anuncio={a}
-                onEliminar={() => handleEliminar(a)}
+                onEliminar={() => setAnuncioAEliminar(a)}
               />
             ))}
           </div>
@@ -180,6 +183,22 @@ export default function AnunciosPage() {
         abierto={crearAbierto}
         onClose={() => setCrearAbierto(false)}
         onGuardar={handleCrear}
+      />
+      {/* Confirmación antes de eliminar — antes el Trash2 borraba al instante.
+          Un clic accidental no se podía deshacer y el operador tenía que
+          volver a redactar el anuncio completo. */}
+      <ConfirmDialog
+        open={anuncioAEliminar !== null}
+        onOpenChange={(o) => !o && setAnuncioAEliminar(null)}
+        title="¿Eliminar este anuncio?"
+        description={
+          anuncioAEliminar
+            ? `"${anuncioAEliminar.titulo}" se va a borrar permanentemente. Esta acción no se puede deshacer.`
+            : ''
+        }
+        confirmLabel="Eliminar"
+        variant="destructive"
+        onConfirm={() => { if (anuncioAEliminar) ejecutarEliminar(anuncioAEliminar); }}
       />
     </>
   );
@@ -220,7 +239,7 @@ function AnuncioCard({
             variant="ghost"
             size="sm"
             onClick={onEliminar}
-            aria-label="Eliminar"
+            aria-label={`Eliminar anuncio "${anuncio.titulo}"`}
           >
             <Trash2 className="h-3.5 w-3.5 text-destructive" />
           </Button>
@@ -382,8 +401,8 @@ function CrearAnuncioDialog({ abierto, onClose, onGuardar }: DialogProps) {
               </Select>
             </div>
           </div>
-          <div className="space-y-2">
-            <Label>Canales</Label>
+          <div role="group" aria-labelledby="anuncio-canales-label" className="space-y-2">
+            <p id="anuncio-canales-label" className="text-sm font-medium leading-none">Canales</p>
             <div className="flex flex-wrap gap-2">
               {(['APP', 'WHATSAPP', 'EMAIL'] as CanalAnuncio[]).map((c) => {
                 const Icon = CANAL_ICONO[c];
@@ -392,6 +411,7 @@ function CrearAnuncioDialog({ abierto, onClose, onGuardar }: DialogProps) {
                   <button
                     key={c}
                     type="button"
+                    aria-pressed={activo}
                     onClick={() => toggleCanal(c)}
                     className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors ${
                       activo

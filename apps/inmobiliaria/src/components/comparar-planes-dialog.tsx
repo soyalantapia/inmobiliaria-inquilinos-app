@@ -159,7 +159,7 @@ export function CompararPlanesDialog({ open, onOpenChange, planActual = 'Starter
                   <p className="mt-1 text-lg font-bold">{p.precio}</p>
                   <p className="text-xs text-muted-foreground">{p.bullet}</p>
                 </div>
-                <ul className="my-4 space-y-2 text-xs">
+                <ul role="list" className="my-4 space-y-2 text-xs">
                   {p.features.map((f) => (
                     <li key={f} className="flex items-start gap-1.5">
                       <Check className="mt-0.5 h-3 w-3 shrink-0 text-emerald-600" />

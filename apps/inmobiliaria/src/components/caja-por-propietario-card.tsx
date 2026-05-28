@@ -72,7 +72,7 @@ export function CajaPorPropietarioCard() {
             Sin movimientos cobrados este mes.
           </p>
         ) : (
-          <ul className="divide-y rounded-md border">
+          <ul role="list" className="divide-y rounded-md border">
             {pos.map((p) => (
               <PropietarioRow key={p.propietarioId} pos={p} />
             ))}

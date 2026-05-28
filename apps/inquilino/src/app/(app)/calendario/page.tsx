@@ -119,6 +119,8 @@ export default function CalendarioPage() {
           {(['TODOS', 'PAGOS', 'CONTRATO', 'RECLAMOS'] as Filtro[]).map((f) => (
             <button
               key={f}
+              type="button"
+              aria-pressed={filtro === f}
               onClick={() => setFiltro(f)}
               className={cn(
                 'shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',

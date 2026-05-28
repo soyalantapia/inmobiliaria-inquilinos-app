@@ -353,6 +353,7 @@ export default function NuevaPropiedadPage() {
                       <button
                         key={t.value}
                         type="button"
+                        aria-pressed={activo}
                         onClick={() => setTipo(t.value)}
                         className={`flex flex-col items-center gap-2 rounded-lg border p-3 text-sm transition-colors ${
                           activo
@@ -377,22 +378,32 @@ export default function NuevaPropiedadPage() {
                 </h3>
                 <div className="grid gap-4 md:grid-cols-3">
                   <div className="space-y-2 md:col-span-2">
-                    <Label htmlFor="calle">Calle</Label>
+                    <Label htmlFor="calle">
+                      Calle{' '}
+                      <span aria-hidden="true" className="text-destructive">*</span>
+                    </Label>
                     <Input
                       id="calle"
                       value={calle}
                       onChange={(e) => setCalle(e.target.value)}
                       placeholder="Av. Rivadavia"
+                      required
+                      aria-required="true"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="altura">Altura</Label>
+                    <Label htmlFor="altura">
+                      Altura{' '}
+                      <span aria-hidden="true" className="text-destructive">*</span>
+                    </Label>
                     <Input
                       id="altura"
                       value={altura}
                       onChange={(e) => setAltura(e.target.value)}
                       placeholder="6420"
                       inputMode="numeric"
+                      required
+                      aria-required="true"
                     />
                   </div>
                   <div className="space-y-2">
@@ -408,12 +419,17 @@ export default function NuevaPropiedadPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="ciudad">Ciudad / Localidad</Label>
+                    <Label htmlFor="ciudad">
+                      Ciudad / Localidad{' '}
+                      <span aria-hidden="true" className="text-destructive">*</span>
+                    </Label>
                     <Input
                       id="ciudad"
                       value={ciudad}
                       onChange={(e) => setCiudad(e.target.value)}
                       placeholder="Caballito"
+                      required
+                      aria-required="true"
                     />
                   </div>
                   <div className="space-y-2">
@@ -773,8 +789,8 @@ export default function NuevaPropiedadPage() {
                     </div>
 
                     {/* Requisitos */}
-                    <div className="space-y-2">
-                      <Label>Requisitos al inquilino</Label>
+                    <div role="group" aria-labelledby="prop-requisitos-label" className="space-y-2">
+                      <p id="prop-requisitos-label" className="text-sm font-medium leading-none">Requisitos al inquilino</p>
                       <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                         {REQUISITOS_BASE.map((r) => {
                           const activo = requisitos.includes(r.id);
@@ -782,6 +798,7 @@ export default function NuevaPropiedadPage() {
                             <button
                               key={r.id}
                               type="button"
+                              aria-pressed={activo}
                               onClick={() => toggleRequisito(r.id)}
                               className={`flex items-center gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors ${
                                 activo
@@ -804,6 +821,7 @@ export default function NuevaPropiedadPage() {
                         })}
                       </div>
                       <Textarea
+                        aria-label="Otros requisitos o aclaraciones"
                         value={requisitosExtra}
                         onChange={(e) => setRequisitosExtra(e.target.value)}
                         placeholder="Otros requisitos o aclaraciones..."

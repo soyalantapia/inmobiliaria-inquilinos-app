@@ -215,6 +215,7 @@ export function Onboarding() {
     <div className="fixed inset-0 z-50 flex animate-fade-in flex-col items-center justify-center bg-background/95 p-6 backdrop-blur md:p-10">
       {/* Saltar */}
       <button
+        type="button"
         onClick={cerrar}
         className="absolute right-4 top-4 rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         aria-label="Saltar tour"
@@ -243,7 +244,7 @@ export function Onboarding() {
         </div>
 
         {/* Bullets */}
-        <ul className="space-y-2 text-left">
+        <ul role="list" className="space-y-2 text-left">
           {slide.bullets.map((b, i) => (
             <li key={i} className="flex items-start gap-3 text-sm">
               <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
@@ -291,6 +292,7 @@ export function Onboarding() {
           </div>
           {!esUltimo && esPrimero && (
             <button
+              type="button"
               onClick={cerrar}
               className="block w-full py-2 text-center text-xs font-medium text-muted-foreground hover:text-foreground"
             >

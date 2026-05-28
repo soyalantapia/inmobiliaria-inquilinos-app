@@ -92,15 +92,21 @@ export default function ContratosPage() {
   const propietario = propietarioId
     ? propietariosMock.find((p) => p.id === propietarioId) ?? null
     : null;
-  // IDs de contratos asociados a este propietario (via propiedades)
-  const contratosDelPropietario = propietarioId
-    ? new Set(
-        propiedadesMock
-          .filter((p) => p.propietariosIds.includes(propietarioId))
-          .map((p) => p.contratoActualId)
-          .filter((id): id is string => !!id),
-      )
-    : null;
+  // IDs de contratos asociados a este propietario (via propiedades).
+  // Wrapped en useMemo para que la referencia sea estable y no invalide
+  // el useMemo de `filtrados` en cada render.
+  const contratosDelPropietario = useMemo(
+    () =>
+      propietarioId
+        ? new Set(
+            propiedadesMock
+              .filter((p) => p.propietariosIds.includes(propietarioId))
+              .map((p) => p.contratoActualId)
+              .filter((id): id is string => !!id),
+          )
+        : null,
+    [propietarioId],
+  );
 
   const counters = useMemo(
     () => ({
@@ -205,6 +211,7 @@ export default function ContratosPage() {
             return (
               <button
                 key={f.key}
+                type="button"
                 onClick={() => togglearFiltro(f.key)}
                 aria-pressed={activo}
                 className={cn(
@@ -245,6 +252,7 @@ export default function ContratosPage() {
               onChange={(e) => setQ(e.target.value)}
               className="pl-9"
               placeholder="Buscar por inquilino o dirección"
+              aria-label="Buscar contratos"
             />
           </div>
           <Button asChild className="w-full sm:w-auto">
@@ -262,6 +270,7 @@ export default function ContratosPage() {
               {filtrados.length} resultado{filtrados.length === 1 ? '' : 's'}
             </span>
             <button
+              type="button"
               onClick={() => setFiltro('TODOS')}
               className="font-medium text-primary hover:underline"
             >
@@ -282,6 +291,7 @@ export default function ContratosPage() {
                 <p className="text-xs">Probá ajustar la búsqueda o limpiarla.</p>
                 {(q || filtro !== 'TODOS') && (
                   <button
+                    type="button"
                     onClick={() => {
                       setQ('');
                       setFiltro('TODOS');

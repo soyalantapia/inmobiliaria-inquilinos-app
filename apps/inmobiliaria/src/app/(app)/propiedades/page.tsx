@@ -213,6 +213,7 @@ export default function PropiedadesPage() {
             return (
               <button
                 key={f.key}
+                type="button"
                 onClick={() => togglearFiltro(f.key)}
                 aria-pressed={activo}
                 className={cn(
@@ -253,6 +254,7 @@ export default function PropiedadesPage() {
               onChange={(e) => setQ(e.target.value)}
               className="pl-9"
               placeholder="Buscar dirección, inquilino o propietario"
+              aria-label="Buscar propiedades"
             />
           </div>
           <div className="flex gap-2">
@@ -280,6 +282,7 @@ export default function PropiedadesPage() {
               {filtradas.length} resultado{filtradas.length === 1 ? '' : 's'}
             </span>
             <button
+              type="button"
               onClick={() => setFiltro('TODOS')}
               className="font-medium text-primary hover:underline"
             >
@@ -294,6 +297,7 @@ export default function PropiedadesPage() {
               <Building2 className="mx-auto h-10 w-10" />
               <p className="font-medium text-foreground">Sin resultados</p>
               <button
+                type="button"
                 onClick={() => {
                   setQ('');
                   setFiltro('TODOS');

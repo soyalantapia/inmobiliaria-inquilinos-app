@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowDown,
   Calendar,
@@ -26,6 +26,7 @@ import { Label } from '@llave/ui/label';
 import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
 import { CajaPorPropietarioCard } from '@/components/caja-por-propietario-card';
+import { PinPromptDialog } from '@/components/pin-prompt-dialog';
 import { CierreDiarioCard } from '@/components/cierre-diario-card';
 import { Topbar } from '@/components/topbar';
 import {
@@ -44,6 +45,8 @@ export default function CajaPage() {
   const [abrirForm, setAbrirForm] = useState(false);
   const [eliminando, setEliminando] = useState<MovimientoCaja | null>(null);
   const [filtroProp, setFiltroProp] = useState<string>('TODAS');
+  const [showPin, setShowPin] = useState(false);
+  const transitioningToPin = useRef(false);
 
   useEffect(() => {
     refrescar();
@@ -130,6 +133,8 @@ export default function CajaPage() {
         {/* Filtro propiedad */}
         <div className="flex flex-wrap gap-2">
           <button
+            type="button"
+            aria-pressed={filtroProp === 'TODAS'}
             onClick={() => setFiltroProp('TODAS')}
             className={cn(
               'rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
@@ -143,6 +148,8 @@ export default function CajaPage() {
           {propiedadesMock.map((p) => (
             <button
               key={p.id}
+              type="button"
+              aria-pressed={filtroProp === p.id}
               onClick={() => setFiltroProp(p.id)}
               className={cn(
                 'shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
@@ -197,12 +204,29 @@ export default function CajaPage() {
 
       <ConfirmDialog
         open={!!eliminando}
-        onOpenChange={(o) => !o && setEliminando(null)}
+        onOpenChange={(o) => !o && !transitioningToPin.current && setEliminando(null)}
         title="¿Eliminar movimiento?"
         description={eliminando?.descripcion}
-        confirmLabel="Eliminar"
+        confirmLabel="Eliminar · pedir PIN"
         variant="destructive"
-        onConfirm={handleEliminar}
+        onConfirm={() => {
+          transitioningToPin.current = true;
+          setShowPin(true);
+        }}
+      />
+
+      <PinPromptDialog
+        abierto={showPin}
+        accion="Eliminar gasto de caja"
+        subaccion={eliminando?.descripcion}
+        onClose={() => {
+          transitioningToPin.current = false;
+          setShowPin(false);
+        }}
+        onConfirmado={() => {
+          handleEliminar();
+          transitioningToPin.current = false;
+        }}
       />
     </>
   );
@@ -330,10 +354,11 @@ function DialogCargarGasto({
         </DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1">
-            <Label className="text-xs" aria-required>
+            <Label htmlFor="caj-propiedad" className="text-xs" aria-required>
               Propiedad <span className="text-destructive">*</span>
             </Label>
             <select
+              id="caj-propiedad"
               value={propiedadId}
               onChange={(e) => setPropiedadId(e.target.value)}
               required
@@ -350,8 +375,9 @@ function DialogCargarGasto({
 
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1">
-              <Label className="text-xs">Categoría</Label>
+              <Label htmlFor="caj-categoria" className="text-xs">Categoría</Label>
               <select
+                id="caj-categoria"
                 value={categoria}
                 onChange={(e) => setCategoria(e.target.value as CategoriaGasto)}
                 className="w-full rounded-md border bg-background px-3 py-2 text-sm"
@@ -364,16 +390,17 @@ function DialogCargarGasto({
               </select>
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Fecha</Label>
-              <Input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
+              <Label htmlFor="caj-fecha" className="text-xs">Fecha</Label>
+              <Input id="caj-fecha" type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
             </div>
           </div>
 
           <div className="space-y-1">
-            <Label className="text-xs" aria-required>
+            <Label htmlFor="caj-descripcion" className="text-xs" aria-required>
               Descripción <span className="text-destructive">*</span>
             </Label>
             <Input
+              id="caj-descripcion"
               value={descripcion}
               onChange={(e) => setDescripcion(e.target.value)}
               placeholder="Ej: cambio de termotanque"
@@ -383,10 +410,11 @@ function DialogCargarGasto({
 
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1">
-              <Label className="text-xs" aria-required>
+              <Label htmlFor="caj-monto" className="text-xs" aria-required>
                 Monto <span className="text-destructive">*</span>
               </Label>
               <Input
+                id="caj-monto"
                 type="number"
                 inputMode="decimal"
                 value={monto}
@@ -396,8 +424,9 @@ function DialogCargarGasto({
               />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Proveedor (opcional)</Label>
+              <Label htmlFor="caj-proveedor" className="text-xs">Proveedor (opcional)</Label>
               <Input
+                id="caj-proveedor"
                 value={proveedor}
                 onChange={(e) => setProveedor(e.target.value)}
                 placeholder="Ej: Sergio Almeida"

@@ -126,6 +126,8 @@ export function MensajeInquilinoDialog({
             {plantillasMensajeMock.map((p) => (
               <button
                 key={p.id}
+                type="button"
+                aria-pressed={plantillaActiva === p.id}
                 onClick={() => aplicarPlantilla(p)}
                 className={cn(
                   'rounded-full border px-3 py-1 text-xs transition-colors',
@@ -143,8 +145,8 @@ export function MensajeInquilinoDialog({
         {/* Form */}
         {canal === 'EMAIL' && (
           <div className="space-y-1">
-            <Label className="text-xs">Asunto</Label>
-            <Input value={asunto} onChange={(e) => setAsunto(e.target.value)} />
+            <Label htmlFor="mid-asunto" className="text-xs">Asunto</Label>
+            <Input id="mid-asunto" value={asunto} onChange={(e) => setAsunto(e.target.value)} />
           </div>
         )}
 
@@ -156,6 +158,7 @@ export function MensajeInquilinoDialog({
               para registrarla en Comunicaciones.
             </p>
             <Textarea
+              aria-label="Nota de la llamada"
               placeholder="Nota de la llamada (opcional)…"
               value={cuerpo}
               onChange={(e) => setCuerpo(e.target.value)}
@@ -164,8 +167,9 @@ export function MensajeInquilinoDialog({
           </div>
         ) : (
           <div className="space-y-1">
-            <Label className="text-xs">Mensaje</Label>
+            <Label htmlFor="mid-mensaje" className="text-xs">Mensaje</Label>
             <Textarea
+              id="mid-mensaje"
               value={cuerpo}
               onChange={(e) => setCuerpo(e.target.value)}
               rows={6}
@@ -203,6 +207,8 @@ function CanalButton({
 }) {
   return (
     <button
+      type="button"
+      aria-pressed={active}
       onClick={onClick}
       disabled={disabled}
       className={cn(

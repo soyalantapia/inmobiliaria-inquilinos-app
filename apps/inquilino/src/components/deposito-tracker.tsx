@@ -67,7 +67,14 @@ export function DepositoTracker({ depositoOriginal, fechaFin }: Props) {
       </div>
 
       {/* Barra de progreso */}
-      <div className="h-2 overflow-hidden rounded-full bg-muted">
+      <div
+        className="h-2 overflow-hidden rounded-full bg-muted"
+        role="progressbar"
+        aria-valuenow={porcentajeDevolver}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={`Depósito: ${porcentajeDevolver.toFixed(0)}% esperado de devolución`}
+      >
         <div
           className={cn(
             'h-full transition-all',

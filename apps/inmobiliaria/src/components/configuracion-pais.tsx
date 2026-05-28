@@ -90,20 +90,18 @@ export function ConfiguracionPais() {
 
   return (
     <div className="space-y-5">
-      {/* Banner explicativo */}
+      {/* Banner de descuento de lanzamiento — NO duplica al
+          CardDescription del wrapper en /configuracion → Mercado.
+          Sólo aporta el hook comercial: si elegís un país aún no
+          abierto, te avisamos con descuento. */}
       <Card className="border-violet-200 bg-violet-50/40 dark:border-violet-900/40 dark:bg-violet-900/10">
         <CardContent className="flex items-start gap-3 p-4">
-          <Globe2 className="mt-0.5 h-5 w-5 shrink-0 text-violet-600" />
-          <div className="space-y-1 text-sm">
-            <p className="font-semibold">My Alquiler está expandiendo a LATAM</p>
-            <p className="text-xs text-muted-foreground">
-              Si operás fuera de Argentina, configurá acá el país. El producto
-              ajusta automáticamente la moneda, el índice de actualización del
-              contrato y la ley aplicable. Si tu país todavía no está activo,
-              te avisamos cuando abramos para que vengas con descuento de
-              lanzamiento.
-            </p>
-          </div>
+          <Globe2 className="mt-0.5 h-5 w-5 shrink-0 text-violet-600" aria-hidden="true" />
+          <p className="text-xs text-muted-foreground">
+            <strong className="text-foreground">¿Tu país todavía no está activo?</strong>{' '}
+            Elegilo igual y te avisamos cuando abramos, con descuento de
+            lanzamiento para los que llegan primero.
+          </p>
         </CardContent>
       </Card>
 
@@ -123,6 +121,7 @@ export function ConfiguracionPais() {
                 <button
                   key={p.codigo}
                   type="button"
+                  aria-pressed={seleccionado}
                   onClick={() => p.activo && cambiarPais(p.codigo)}
                   disabled={!p.activo}
                   className={`flex flex-col items-center gap-1 rounded-lg border p-3 text-center transition-colors ${

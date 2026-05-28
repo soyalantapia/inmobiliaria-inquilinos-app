@@ -390,9 +390,10 @@ function TrabajoCard({
         <>
           {estado === 'ASIGNADO' && (
             <div className="space-y-2 rounded-md border bg-muted/20 p-3">
-              <Label className="text-xs">¿Cuándo podés pasar?</Label>
+              <Label htmlFor="ptr-fecha" className="text-xs">¿Cuándo podés pasar?</Label>
               <div className="flex flex-col gap-2 sm:flex-row">
                 <Input
+                  id="ptr-fecha"
                   type="datetime-local"
                   value={fechaInput}
                   onChange={(e) => setFechaInput(e.target.value)}
@@ -486,8 +487,9 @@ function TrabajoCard({
           {openCerrar && estado !== 'LISTO' && (
             <div className="space-y-2 rounded-md border border-emerald-200 bg-emerald-50/40 p-3 dark:border-emerald-900/40 dark:bg-emerald-900/10">
               <div className="space-y-1">
-                <Label className="text-xs">¿Qué hiciste? (lo ve la inmo y el inquilino)</Label>
+                <Label htmlFor="ptr-nota" className="text-xs">¿Qué hiciste? (lo ve la inmo y el inquilino)</Label>
                 <Textarea
+                  id="ptr-nota"
                   value={notaInput}
                   onChange={(e) => setNotaInput(e.target.value)}
                   rows={2}
@@ -495,12 +497,13 @@ function TrabajoCard({
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Costo del trabajo (opcional)</Label>
+                <Label htmlFor="ptr-costo" className="text-xs">Costo del trabajo (opcional)</Label>
                 <div className="relative">
                   <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
                     $
                   </span>
                   <Input
+                    id="ptr-costo"
                     value={montoInput}
                     onChange={(e) =>
                       setMontoInput(e.target.value.replace(/\D/g, '').slice(0, 12))
@@ -549,6 +552,7 @@ function TrabajoCard({
                       <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
                         Antes
                       </p>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={visita.fotoAntes}
                         alt="Antes del trabajo"
@@ -561,6 +565,7 @@ function TrabajoCard({
                       <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
                         Después
                       </p>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={visita.fotoDespues}
                         alt="Después del trabajo"

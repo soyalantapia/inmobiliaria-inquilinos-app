@@ -179,6 +179,7 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
       <>
         <header className="flex items-center gap-3 p-5">
           <button
+            type="button"
             onClick={() => router.push('/reclamos')}
             className="rounded-full p-2 hover:bg-muted"
             aria-label="Volver"
@@ -257,6 +258,7 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
     <>
       <header className="flex items-center gap-3 p-5">
         <button
+          type="button"
           onClick={() => router.push('/reclamos')}
           className="rounded-full p-2 hover:bg-muted"
           aria-label="Volver"
@@ -293,6 +295,7 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
 
           {reclamo.fotoUrl && (
             <div className="rounded-md border bg-muted/30 p-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={reclamo.fotoUrl}
                 alt="Foto adjunta"
@@ -500,6 +503,7 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
                 <p className="text-xs font-medium">¿Qué sigue pasando?</p>
                 <Input
                   placeholder="Ej: vuelve a perder a las pocas horas"
+                  aria-label="Describir el problema que sigue"
                   value={persisteTexto}
                   onChange={(e) => setPersisteTexto(e.target.value)}
                   autoFocus
@@ -590,7 +594,7 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
               {eventosUnificados.length} evento{eventosUnificados.length === 1 ? '' : 's'}
             </span>
           </div>
-          <Card className="p-5">
+          <Card role="log" aria-label="Historial y mensajes del reclamo" aria-live="polite" className="p-5">
             <ReclamoTimeline
               eventos={eventosUnificados}
               inquilinoNombre={inquilinoActual.nombre}
@@ -625,6 +629,7 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
             >
               <Input
                 placeholder="Ej: ¿pueden venir esta tarde?"
+                aria-label="Comentario sobre este reclamo"
                 value={borrador}
                 onChange={(e) => setBorrador(e.target.value)}
                 disabled={enviando}

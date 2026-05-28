@@ -419,8 +419,16 @@ function SociedadDialog({
     }
   }, [editando, open]);
 
-  const puedeGuardar =
-    razonSocial.trim().length >= 3 && cuit.replace(/\D/g, '').length === 11;
+  // Validación inline: además del bool `puedeGuardar`, exponemos la
+  // lista de motivos por los que el botón está deshabilitado. Eso
+  // alimenta el tooltip + hint visible y le ahorra al usuario tener que
+  // adivinar qué le falta.
+  const motivosBloqueo: string[] = [];
+  if (razonSocial.trim().length < 3)
+    motivosBloqueo.push('Razón social (mín. 3 caracteres)');
+  if (cuit.replace(/\D/g, '').length !== 11)
+    motivosBloqueo.push('CUIT (11 dígitos)');
+  const puedeGuardar = motivosBloqueo.length === 0;
 
   const guardar = () => {
     if (!puedeGuardar) return;
@@ -531,14 +539,14 @@ function SociedadDialog({
                 />
               </div>
               <div className="space-y-1.5">
-                <Label>Condición fiscal</Label>
+                <Label htmlFor="sm-condicion">Condición fiscal</Label>
                 <Select
                   value={condicionFiscal}
                   onValueChange={(v) =>
                     setCondicionFiscal(v as CondicionFiscalSociedad)
                   }
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="sm-condicion">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -651,14 +659,14 @@ function SociedadDialog({
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Tipo de comprobante</Label>
+                  <Label htmlFor="sm-tipo-comp">Tipo de comprobante</Label>
                   <Select
                     value={arcaTipoComp}
                     onValueChange={(v) =>
                       setArcaTipoComp(v as 'FACTURA_A' | 'FACTURA_B' | 'FACTURA_C' | 'RECIBO_X')
                     }
                   >
-                    <SelectTrigger>
+                    <SelectTrigger id="sm-tipo-comp">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -674,14 +682,33 @@ function SociedadDialog({
           </div>
         </div>
 
-        <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
-          <Button variant="outline" onClick={onClose}>
-            Cancelar
-          </Button>
-          <Button onClick={guardar} disabled={!puedeGuardar}>
-            <CheckCircle2 className="h-4 w-4" />
-            {editando ? 'Guardar cambios' : 'Crear sociedad'}
-          </Button>
+        <div className="space-y-2 pt-2">
+          {!puedeGuardar && (
+            <p
+              className="text-xs text-muted-foreground"
+              role="status"
+              aria-live="polite"
+            >
+              Falta completar: {motivosBloqueo.join(' · ')}
+            </p>
+          )}
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button variant="outline" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={guardar}
+              disabled={!puedeGuardar}
+              title={
+                puedeGuardar
+                  ? undefined
+                  : `Falta completar: ${motivosBloqueo.join(', ')}`
+              }
+            >
+              <CheckCircle2 className="h-4 w-4" />
+              {editando ? 'Guardar cambios' : 'Crear sociedad'}
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

@@ -27,28 +27,39 @@ import { listarPendientes } from '@/lib/aprobaciones-storage';
 import { cn } from '@llave/ui/cn';
 import { calcularResumenPlan } from '@/lib/plan';
 import { diasRestantesTrial, leerTrial, trialVigente } from '@/lib/trial-storage';
+import type { Capacidad, Rol } from '@/lib/permisos';
+import { rolTienePermiso } from '@/lib/permisos';
+import { getRolActual, ROL_CHANGE_EVENT } from '@/lib/rol-storage';
 
-const links = [
-  { href: '/', label: 'Inicio', icon: LayoutDashboard },
-  { href: '/propiedades', label: 'Propiedades', icon: Building2 },
-  { href: '/propietarios', label: 'Propietarios', icon: Users },
-  { href: '/pagos', label: 'Pagos', icon: CreditCard },
-  { href: '/caja', label: 'Caja', icon: Wallet },
-  { href: '/contratos', label: 'Contratos', icon: FileText },
+type NavLink = {
+  href: string;
+  label: string;
+  icon: React.ElementType;
+  sub?: boolean;
+  capacidad?: Capacidad;
+};
+
+const links: NavLink[] = [
+  { href: '/', label: 'Inicio', icon: LayoutDashboard, capacidad: 'home.ver' },
+  { href: '/propiedades', label: 'Propiedades', icon: Building2, capacidad: 'propiedades.ver' },
+  { href: '/propietarios', label: 'Propietarios', icon: Users, capacidad: 'propietarios.ver' },
+  { href: '/pagos', label: 'Pagos', icon: CreditCard, capacidad: 'pagos.ver' },
+  { href: '/caja', label: 'Caja', icon: Wallet, capacidad: 'caja.ver' },
+  { href: '/contratos', label: 'Contratos', icon: FileText, capacidad: 'contratos.ver' },
   // Sub-item visual: lo marcamos con sub=true para que el renderer le
   // saque el ícono y lo indente, dejando claro que es "una acción de
   // Contratos" y no una sección hermana.
-  { href: '/contratos/nuevo', label: 'Cargar contrato', icon: Plus, sub: true },
-  { href: '/aprobaciones', label: 'Aprobaciones', icon: Inbox },
-  { href: '/renovaciones', label: 'Renovaciones', icon: CalendarHeart },
-  { href: '/consorcios', label: 'Consorcios', icon: Building },
-  { href: '/reclamos', label: 'Reclamos', icon: Wrench },
-  { href: '/anuncios', label: 'Anuncios', icon: Megaphone },
-  { href: '/profesionales', label: 'Profesionales', icon: HardHat },
-  { href: '/screening', label: 'Verificar inquilino', icon: ShieldCheck },
+  { href: '/contratos/nuevo', label: 'Cargar contrato', icon: Plus, sub: true, capacidad: 'contratos.crear' },
+  { href: '/aprobaciones', label: 'Aprobaciones', icon: Inbox, capacidad: 'contrato.aprobar' },
+  { href: '/renovaciones', label: 'Renovaciones', icon: CalendarHeart, capacidad: 'contratos.ver' },
+  { href: '/consorcios', label: 'Consorcios', icon: Building, capacidad: 'propiedades.ver' },
+  { href: '/reclamos', label: 'Reclamos', icon: Wrench, capacidad: 'reclamos.ver' },
+  { href: '/anuncios', label: 'Anuncios', icon: Megaphone, capacidad: 'comunicaciones.enviar' },
+  { href: '/profesionales', label: 'Profesionales', icon: HardHat, capacidad: 'profesionales.ver' },
+  { href: '/screening', label: 'Verificar inquilino', icon: ShieldCheck, capacidad: 'screening.ver' },
   { href: '/roadmap', label: 'Roadmap', icon: Rocket },
   { href: '/configuracion', label: 'Configuración', icon: Settings },
-] as const;
+];
 
 function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {
   const plan = calcularResumenPlan();
@@ -56,12 +67,30 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
   const trialActivo = trialVigente(trial);
   const diasTrial = trialActivo ? diasRestantesTrial(trial) : 0;
   const [pendientes, setPendientes] = useState(0);
+  const [rol, setRol] = useState<Rol>('ADMIN');
+
   useEffect(() => {
     setPendientes(listarPendientes().length);
     const handler = () => setPendientes(listarPendientes().length);
     window.addEventListener('storage', handler);
     return () => window.removeEventListener('storage', handler);
   }, [pathname]);
+
+  useEffect(() => {
+    setRol(getRolActual());
+    const handleRolChange = () => setRol(getRolActual());
+    window.addEventListener('storage', handleRolChange);
+    window.addEventListener(ROL_CHANGE_EVENT, handleRolChange);
+    return () => {
+      window.removeEventListener('storage', handleRolChange);
+      window.removeEventListener(ROL_CHANGE_EVENT, handleRolChange);
+    };
+  }, []);
+
+  const linksVisibles = links.filter(
+    (l) => !l.capacidad || rolTienePermiso(rol, l.capacidad),
+  );
+
   return (
     <>
       <div className="flex h-16 items-center gap-2 border-b px-6">
@@ -75,19 +104,20 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
           </p>
         </div>
       </div>
-      <nav className="flex-1 space-y-1 p-3">
-        {links.map((l) => {
+      <nav aria-label="Navegación principal" className="flex-1 space-y-1 p-3">
+        {linksVisibles.map((l) => {
           const active =
             l.href === '/'
               ? pathname === '/'
               : pathname === l.href || pathname.startsWith(`${l.href}/`);
           const Icon = l.icon;
-          const esSub = 'sub' in l && l.sub === true;
+          const esSub = l.sub === true;
           return (
             <Link
               key={l.href}
               href={l.href}
               onClick={onNavigate}
+              aria-current={active ? 'page' : undefined}
               className={cn(
                 'flex items-center gap-3 rounded-md py-2 text-sm transition-colors',
                 // Los sub-items van indentados con el ícono más chico,
@@ -177,6 +207,7 @@ export function MobileSidebarTrigger() {
   return (
     <>
       <button
+        type="button"
         onClick={() => setOpen(true)}
         className="rounded-full p-2 hover:bg-muted md:hidden"
         aria-label="Abrir menú"
@@ -193,6 +224,7 @@ export function MobileSidebarTrigger() {
           />
           <aside className="relative flex h-full w-64 flex-col bg-card shadow-xl">
             <button
+              type="button"
               onClick={() => setOpen(false)}
               className="absolute right-3 top-4 rounded-full p-1.5 hover:bg-muted"
               aria-label="Cerrar menú"

@@ -206,7 +206,7 @@ export function BannerMigracion() {
         </div>
         <div className="rounded-md border border-emerald-200 bg-background/60 p-3 text-[11px] dark:border-emerald-900/40">
           <p className="font-semibold">Próximos pasos sugeridos:</p>
-          <ol className="mt-1 space-y-0.5 text-muted-foreground">
+          <ol role="list" className="mt-1 space-y-0.5 text-muted-foreground">
             <li>1. Migrá tu cartera desde Propiedades · botón &ldquo;Migrar mi cartera&rdquo;</li>
             <li>2. Configurá la sociedad emisora en Configuración → Sociedades</li>
             <li>3. Conectá ARCA para que las facturas salgan automáticas</li>

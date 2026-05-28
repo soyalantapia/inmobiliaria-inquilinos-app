@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import { LogOut, Search } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@llave/ui/avatar';
 import { Input } from '@llave/ui/input';
-import { ThemeToggle } from '@llave/ui/theme-toggle';
 import { isClerkEnabled, mockUser } from '@/lib/auth';
 import { ConvenioBadgeTopbar } from './convenio-badge-topbar';
 import { MobileSidebarTrigger } from './sidebar';
@@ -31,17 +30,16 @@ export function Topbar({ titulo }: { titulo: string }) {
             falta espacio porque NO tiene shrink-0. */}
         <div className="relative hidden min-w-0 lg:block">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input className="w-full pl-9 lg:w-48 xl:w-72" placeholder="Buscar…" />
+          <Input className="w-full pl-9 lg:w-48 xl:w-72" placeholder="Buscar…" aria-label="Buscar" />
         </div>
         <ConvenioBadgeTopbar />
-        <ThemeToggle />
         <NotificationsBell />
 
         {isClerkEnabled() ? (
           <>
             <UserButton afterSignOutUrl="/login" />
             <SignOutButton redirectUrl="/login">
-              <button className="rounded-full p-2 hover:bg-muted md:hidden" aria-label="Cerrar sesión">
+              <button type="button" className="rounded-full p-2 hover:bg-muted md:hidden" aria-label="Cerrar sesión">
                 <LogOut className="h-4 w-4" />
               </button>
             </SignOutButton>
@@ -55,6 +53,7 @@ export function Topbar({ titulo }: { titulo: string }) {
               </AvatarFallback>
             </Avatar>
             <button
+              type="button"
               onClick={() => router.push('/login')}
               className="rounded-full p-2 hover:bg-muted"
               aria-label="Cerrar sesión (mock)"

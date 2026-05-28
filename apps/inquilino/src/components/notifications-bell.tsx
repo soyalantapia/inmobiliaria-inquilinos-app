@@ -377,9 +377,12 @@ export function NotificationsBell() {
   return (
     <div className="relative" ref={popoverRef}>
       <button
+        type="button"
         onClick={() => setOpen((v) => !v)}
         className="relative rounded-full p-2 hover:bg-muted"
-        aria-label={`${unread} notificaciones sin leer`}
+        aria-label={unread > 0 ? `${unread} notificaciones sin leer` : 'Notificaciones'}
+        aria-expanded={open}
+        aria-haspopup="dialog"
       >
         <Bell className="h-5 w-5" />
         {unread > 0 && (
@@ -394,12 +397,12 @@ export function NotificationsBell() {
           <div className="flex items-center justify-between border-b p-3">
             <p className="text-sm font-semibold">Notificaciones</p>
             {unread > 0 && (
-              <button onClick={marcarTodasLeidas} className="text-xs font-medium text-primary">
+              <button type="button" onClick={marcarTodasLeidas} className="text-xs font-medium text-primary">
                 Marcar leídas
               </button>
             )}
           </div>
-          <ul className="max-h-80 overflow-y-auto">
+          <ul role="list" aria-label="Notificaciones" className="max-h-80 overflow-y-auto">
             {notifs.length === 0 && (
               <li className="p-8 text-center text-sm text-muted-foreground">
                 <Bell className="mx-auto mb-2 h-6 w-6 opacity-50" />

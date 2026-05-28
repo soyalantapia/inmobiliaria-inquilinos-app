@@ -46,7 +46,7 @@ export function ContratoTimeline() {
   const hitos = hitosContratoMock.filter((h) => h.tipo !== 'FIN_CONTRATO');
 
   return (
-    <ol className="space-y-0">
+    <ol role="list" className="space-y-0">
       {hitos.map((h, i) => {
         const fechaHito = new Date(h.fecha);
         const cumplido = fechaHito <= hoy;

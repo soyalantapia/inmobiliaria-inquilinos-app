@@ -213,7 +213,7 @@ export default function RenovacionPage() {
               {decision === 'NO_RENOVAR' && (
                 <div className="space-y-3 rounded-lg border bg-muted/40 p-4 text-sm">
                   <p className="font-medium">Qué pasa ahora:</p>
-                  <ul className="space-y-1.5 text-xs text-muted-foreground">
+                  <ul role="list" className="space-y-1.5 text-xs text-muted-foreground">
                     <li>· La inmobiliaria coordina la inspección final 15 días antes.</li>
                     <li>· Tenés que entregar las llaves el {formatFechaCorta(c.fechaFin)}.</li>
                     <li>· Te devuelven el depósito de {formatMonto(c.montoActual, c.moneda)} si no hay daños ni deudas.</li>
@@ -231,10 +231,11 @@ export default function RenovacionPage() {
               )}
 
               <div className="space-y-2">
-                <label className="text-xs font-medium text-muted-foreground">
+                <label htmlFor="ren-comentario" className="text-xs font-medium text-muted-foreground">
                   Comentario (opcional)
                 </label>
                 <Textarea
+                  id="ren-comentario"
                   value={comentario}
                   onChange={(e) => setComentario(e.target.value)}
                   placeholder="Algo que quieras que la inmobiliaria sepa…"
@@ -270,7 +271,7 @@ export default function RenovacionPage() {
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Próximos pasos
               </p>
-              <ul className="mt-2 space-y-2 text-sm">
+              <ul role="list" className="mt-2 space-y-2 text-sm">
                 {decision === 'RENOVAR' && (
                   <>
                     <NextStep>La inmobiliaria te manda la propuesta final</NextStep>
@@ -327,6 +328,8 @@ function OpcionDecision({
 }) {
   return (
     <button
+      type="button"
+      aria-pressed={selected}
       onClick={onClick}
       className={cn(
         'flex items-start gap-3 rounded-lg border p-4 text-left transition-colors',

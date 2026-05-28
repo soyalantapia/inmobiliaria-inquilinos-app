@@ -163,6 +163,8 @@ export default function ReclamosPage() {
             return (
               <button
                 key={t.value}
+                type="button"
+                aria-pressed={active}
                 onClick={() => setFiltro(t.value)}
                 className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
                   active

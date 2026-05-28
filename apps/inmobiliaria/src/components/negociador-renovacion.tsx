@@ -114,7 +114,7 @@ export function NegociadorRenovacionPanel({
           <summary className="cursor-pointer font-medium text-foreground">
             Cómo llegamos a esta propuesta ({sugerencia.factores.length} factor{sugerencia.factores.length === 1 ? '' : 'es'})
           </summary>
-          <ul className="mt-3 space-y-1.5">
+          <ul role="list" className="mt-3 space-y-1.5">
             {sugerencia.factores.map((f, idx) => (
               <li key={idx} className="flex items-start gap-2">
                 {f.positivo ? (
@@ -214,7 +214,14 @@ function Metric({
 
 function Barra({ pct, colorClass }: { pct: number; colorClass: string }) {
   return (
-    <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+    <div
+      className="h-1.5 w-full overflow-hidden rounded-full bg-muted"
+      role="progressbar"
+      aria-valuenow={pct}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-label={`Probabilidad de renovación: ${pct}%`}
+    >
       <div
         className={`h-full ${colorClass} transition-all`}
         style={{ width: `${Math.max(2, pct)}%` }}

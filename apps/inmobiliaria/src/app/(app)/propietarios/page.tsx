@@ -146,6 +146,7 @@ export default function PropietariosPage() {
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Buscar por nombre, CUIT o email"
+              aria-label="Buscar propietarios"
               className="pl-9"
             />
           </div>
@@ -160,7 +161,7 @@ export default function PropietariosPage() {
             <CardContent className="space-y-2 p-10 text-center text-muted-foreground">
               <Users className="mx-auto h-8 w-8" />
               <p className="font-medium text-foreground">Sin resultados para &quot;{q}&quot;</p>
-              <button onClick={() => setQ('')} className="text-xs font-medium text-primary hover:underline">
+              <button type="button" onClick={() => setQ('')} className="text-xs font-medium text-primary hover:underline">
                 Limpiar búsqueda
               </button>
             </CardContent>

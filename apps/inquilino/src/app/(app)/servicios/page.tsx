@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   AlertTriangle,
-  ArrowLeft,
   Cable,
   CheckCircle2,
   Download,
@@ -167,7 +166,25 @@ export default function ServiciosPage() {
 
   if (!hidratado) {
     return (
-      <div className="flex min-h-screen flex-col bg-muted/30">
+      <div className="flex min-h-screen flex-col bg-muted/30 pb-16 md:pb-0">
+        <main className="flex-1 space-y-5 p-4 md:p-6">
+          <div className="h-3 w-12 animate-pulse rounded bg-muted" />
+          <div className="space-y-2">
+            <div className="h-7 w-28 animate-pulse rounded bg-muted" />
+            <div className="h-4 w-56 animate-pulse rounded bg-muted" />
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {[0, 1, 2].map((i) => (
+              <Card key={i}>
+                <CardContent className="h-16 animate-pulse p-3" />
+              </Card>
+            ))}
+          </div>
+          <div className="h-9 w-32 animate-pulse rounded bg-muted" />
+          <Card>
+            <CardContent className="h-32 animate-pulse p-4" />
+          </Card>
+        </main>
         <NavBar />
       </div>
     );
@@ -176,13 +193,11 @@ export default function ServiciosPage() {
   return (
     <div className="flex min-h-screen flex-col bg-muted/30 pb-16 md:pb-0">
       <main className="flex-1 space-y-5 p-4 md:p-6">
-        <Link
-          href="/"
-          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="h-3 w-3" />
-          Volver
-        </Link>
+        {/* Antes había un "← Volver" arriba que duplicaba al NavBar
+            inferior y al gesto de back del browser. Lo sacamos: el
+            usuario navega por el NavBar (Inicio / Asistente / etc.) o
+            con el back nativo del SO. Consistente con el resto de
+            pantallas del inquilino que no usan back manual. */}
 
         <div className="space-y-1">
           <h1 className="text-2xl font-bold tracking-tight">Servicios</h1>
@@ -395,7 +410,7 @@ function BoletasSection({
         </span>
       </div>
       <Card>
-        <ul className="divide-y">
+        <ul role="list" className="divide-y">
           {boletas.map((b) => (
             <BoletaRow
               key={b.id}
@@ -425,6 +440,7 @@ function BoletaRow({
   return (
     <li className="flex items-start gap-3 p-3 text-sm">
       {esImagen ? (
+        // eslint-disable-next-line @next/next/no-img-element
         <img
           src={b.dataUrl}
           alt={b.nombreArchivo}
@@ -460,7 +476,7 @@ function BoletaRow({
             variant="ghost"
             size="sm"
             onClick={() => onMarcarPagada(b)}
-            title="Marcar como paga"
+            aria-label={`Marcar como pagada: ${TIPO_LABEL[b.tipo]} ${formatPeriodo(b.periodo)}`}
           >
             <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
             <span className="text-[10px]">Ya pagué</span>
@@ -468,7 +484,11 @@ function BoletaRow({
         )}
         <div className="flex gap-1">
           <Button asChild variant="ghost" size="sm">
-            <a href={b.dataUrl} download={b.nombreArchivo} aria-label="Descargar">
+            <a
+              href={b.dataUrl}
+              download={b.nombreArchivo}
+              aria-label={`Descargar boleta de ${TIPO_LABEL[b.tipo]} ${formatPeriodo(b.periodo)}`}
+            >
               <Download className="h-3.5 w-3.5" />
             </a>
           </Button>
@@ -476,7 +496,7 @@ function BoletaRow({
             variant="ghost"
             size="sm"
             onClick={() => onEliminar(b)}
-            aria-label="Eliminar"
+            aria-label={`Eliminar boleta de ${TIPO_LABEL[b.tipo]} ${formatPeriodo(b.periodo)}`}
           >
             <Trash2 className="h-3.5 w-3.5 text-destructive" />
           </Button>
@@ -498,6 +518,7 @@ function FiltroChip({
   return (
     <button
       type="button"
+      aria-pressed={activo}
       onClick={onClick}
       className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
         activo
@@ -632,6 +653,8 @@ function SubirBoletaDialog({ abierto, onClose, onGuardar }: DialogProps) {
             <Input
               id="monto"
               type="number"
+              inputMode="decimal"
+              min="0"
               placeholder="Ej. 32400"
               value={monto}
               onChange={(e) => setMonto(e.target.value)}
@@ -639,8 +662,9 @@ function SubirBoletaDialog({ abierto, onClose, onGuardar }: DialogProps) {
           </div>
 
           <div className="space-y-1.5">
-            <Label>Archivo de la boleta</Label>
+            <Label htmlFor="svc-archivo">Archivo de la boleta</Label>
             <input
+              id="svc-archivo"
               ref={fileRef}
               type="file"
               accept="image/*,application/pdf"

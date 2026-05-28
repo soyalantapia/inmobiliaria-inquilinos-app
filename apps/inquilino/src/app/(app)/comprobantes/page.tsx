@@ -15,6 +15,7 @@ import { Card, CardContent } from '@llave/ui/card';
 import { cn } from '@llave/ui/cn';
 import { toast } from '@llave/ui/use-toast';
 import { NavBar } from '@/components/nav-bar';
+import { UserMenu } from '@/components/user-menu';
 import { comprobantesMock, contratoMock, liquidacionesMock } from '@/lib/mock-data';
 import { TASA_PUNITORIA_DIARIA_DEFAULT, calcularPunitorios } from '@/lib/punitorios';
 import {
@@ -123,8 +124,17 @@ export default function RecibosPage() {
 
   return (
     <>
-      {/* PRECIO MENSUAL arriba de todo — primera cosa que ve el inquilino */}
-      <div className="px-5 pt-5 md:px-8">
+      {/* Header con UserMenu — consistente con el resto de las pantallas
+          del inquilino (mobile-only; en desktop se cubre por la topbar
+          del layout). Antes esta pantalla empezaba directo con la card
+          violeta del precio mensual, sin saludo ni avatar — el usuario
+          perdía el contexto de "estoy en mi cuenta". */}
+      <header className="p-5 md:hidden">
+        <UserMenu />
+      </header>
+
+      {/* PRECIO MENSUAL — primera cosa que ve el inquilino debajo del header */}
+      <div className="px-5 md:px-8 md:pt-5">
         <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-primary to-primary/80 p-6 text-primary-foreground shadow-xl shadow-primary/20 md:p-8">
           <div className="pointer-events-none absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
           <div className="pointer-events-none absolute -bottom-16 -left-10 h-44 w-44 rounded-full bg-white/5 blur-3xl" />
@@ -176,6 +186,7 @@ export default function RecibosPage() {
               <button
                 key={a}
                 type="button"
+                aria-pressed={a === anioSel}
                 onClick={() => setAnioSel(a)}
                 className={cn(
                   'rounded-full px-4 py-1.5 text-xs font-medium transition-colors',

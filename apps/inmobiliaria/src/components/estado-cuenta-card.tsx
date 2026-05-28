@@ -166,7 +166,14 @@ export function EstadoCuentaCard() {
               <span>Vencimiento</span>
               <span>Corte automático ({DIAS_HASTA_CORTE} días)</span>
             </div>
-            <div className="h-2 overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-2 overflow-hidden rounded-full bg-muted"
+              role="progressbar"
+              aria-valuenow={diasDesdeVencimiento}
+              aria-valuemin={0}
+              aria-valuemax={DIAS_HASTA_CORTE}
+              aria-label={`Días desde vencimiento: ${diasDesdeVencimiento} de ${DIAS_HASTA_CORTE}`}
+            >
               <div
                 className={cn(
                   'h-full transition-all',

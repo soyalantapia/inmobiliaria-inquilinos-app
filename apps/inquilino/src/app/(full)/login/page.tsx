@@ -176,7 +176,7 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="relative flex min-h-[100dvh] flex-col overflow-hidden bg-background md:flex-row">
+    <main className="relative min-h-[100dvh] overflow-hidden bg-background">
       {/* Orbs decorativos de fondo — sutiles, generan textura sin distraer */}
       <div
         aria-hidden
@@ -191,41 +191,46 @@ export default function LoginPage() {
         className="pointer-events-none absolute left-1/2 top-1/3 h-72 w-72 -translate-x-1/2 rounded-full bg-violet-400/10 blur-3xl"
       />
 
-      {/* PANEL IZQUIERDO — branding + beneficios (solo desktop) */}
-      <aside className="relative z-10 hidden flex-1 flex-col justify-between p-12 md:flex">
-        <BrandHero />
+      {/* Wrapper centrado con max-width. Sin esto, en viewports >1280
+          las dos columnas (`flex-1`) ocupaban 50%/50% y dejaban un
+          vacío gigante en el centro — el user lo veía como "cortado".
+          Ahora el contenido vive en un container 6xl, cerca del centro. */}
+      <div className="relative z-10 mx-auto flex min-h-[100dvh] max-w-6xl flex-col md:flex-row md:items-stretch">
+        {/* PANEL IZQUIERDO — branding + beneficios (solo desktop).
+            Antes usaba `justify-between` con 3 hijos, lo que dejaba
+            huecos enormes en viewports altos. Ahora agrupa el contenido
+            en el centro vertical y el copyright queda como footer
+            absolute al pie. */}
+        <aside className="relative hidden flex-1 flex-col justify-center gap-10 p-12 md:flex">
+          <BrandHero />
 
-        <div className="space-y-5">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-            Lo que vas a encontrar
-          </p>
-          <ul className="space-y-4">
-            <Beneficio
-              Icon={CreditCard}
-              titulo="Pagás directo desde la app"
-              detalle="Transferencia, MP o QR. Comprobante registrado al instante."
-            />
-            <Beneficio
-              Icon={FileText}
-              titulo="Tu contrato siempre a mano"
-              detalle="Cláusulas, ajustes, depósito y vencimientos en un lugar."
-            />
-            <Beneficio
-              Icon={Sparkles}
-              titulo="Asistente IA que responde al toque"
-              detalle="Preguntale cualquier duda — cita la cláusula exacta."
-            />
-          </ul>
-        </div>
+          <div className="space-y-5">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              Lo que vas a encontrar
+            </p>
+            <ul role="list" className="space-y-4">
+              <Beneficio
+                Icon={CreditCard}
+                titulo="Pagás directo desde la app"
+                detalle="Transferencia, MP o QR. Comprobante registrado al instante."
+              />
+              <Beneficio
+                Icon={FileText}
+                titulo="Tu contrato siempre a mano"
+                detalle="Cláusulas, ajustes, depósito y vencimientos en un lugar."
+              />
+              <Beneficio
+                Icon={Sparkles}
+                titulo="Asistente IA que responde al toque"
+                detalle="Preguntale cualquier duda — cita la cláusula exacta."
+              />
+            </ul>
+          </div>
+        </aside>
 
-        <p className="text-xs text-muted-foreground">
-          © My Alquiler · La app del inquilino
-        </p>
-      </aside>
-
-      {/* PANEL DERECHO — form de login (siempre visible) */}
-      <section className="relative z-10 flex flex-1 items-center justify-center p-5 md:p-10">
-        <div className="w-full max-w-md space-y-5">
+        {/* PANEL DERECHO — form de login (siempre visible) */}
+        <section className="flex flex-1 items-center justify-center p-5 md:p-10">
+          <div className="w-full max-w-md space-y-5">
           {/* Brand en mobile (cuando el aside no se ve) */}
           <div className="md:hidden">
             <BrandHero compact />
@@ -301,6 +306,13 @@ export default function LoginPage() {
           </p>
         </div>
       </section>
+      </div>
+
+      {/* Copyright al pie, fuera del container max-w para que quede
+          anclado al borde de la pantalla. */}
+      <p className="pointer-events-none absolute bottom-6 left-1/2 z-10 hidden -translate-x-1/2 text-xs text-muted-foreground md:block">
+        © My Alquiler · La app del inquilino
+      </p>
     </main>
   );
 }
@@ -424,7 +436,7 @@ function PasoEmail({
       >
         {enviando ? (
           <>
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
             Enviando código…
           </>
         ) : (
@@ -530,6 +542,7 @@ function PasoOtp({
             autoComplete={idx === 0 ? 'one-time-code' : 'off'}
             maxLength={6}
             value={d}
+            aria-label={`Dígito ${idx + 1} de ${digitos.length}`}
             onChange={(e) => onDigito(idx, e.target.value)}
             onKeyDown={(e) => onKeyDown(idx, e)}
             disabled={verificando}
@@ -538,7 +551,6 @@ function PasoOtp({
                 ? 'border-destructive focus:border-destructive focus:ring-destructive/20'
                 : 'focus:border-primary focus:ring-primary/20'
             }`}
-            aria-label={`Dígito ${idx + 1}`}
             aria-invalid={!!error}
             aria-describedby={error ? 'otp-error' : undefined}
           />
@@ -564,7 +576,7 @@ function PasoOtp({
       >
         {verificando ? (
           <>
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
             Verificando…
           </>
         ) : (

@@ -215,6 +215,7 @@ export default function AyudaPage() {
         <div className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
+            aria-label="Buscar en ayuda"
             value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}
             placeholder="Ej: aumento, mascotas, depósito..."
@@ -236,6 +237,8 @@ export default function AyudaPage() {
                 return (
                   <button
                     key={c.key}
+                    type="button"
+                    aria-pressed={activo}
                     onClick={() => setCategoria(activo ? null : c.key)}
                     className={cn(
                       'flex flex-col items-center gap-2 rounded-lg border p-3 text-sm transition-colors',
@@ -275,6 +278,7 @@ export default function AyudaPage() {
               )}
             </span>
             <button
+              type="button"
               onClick={() => {
                 setBusqueda('');
                 setCategoria(null);
@@ -312,7 +316,10 @@ export default function AyudaPage() {
                 return (
                   <div key={f.id}>
                     <button
+                      type="button"
                       onClick={() => setAbierto(expandido ? null : f.id)}
+                      aria-expanded={expandido}
+                      aria-controls={`faq-respuesta-${f.id}`}
                       className="flex w-full items-start gap-3 p-4 text-left transition-colors hover:bg-muted/40"
                     >
                       <span className="flex-1 text-sm font-medium">{f.pregunta}</span>
@@ -321,10 +328,14 @@ export default function AyudaPage() {
                           'mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform',
                           expandido && 'rotate-180',
                         )}
+                        aria-hidden="true"
                       />
                     </button>
                     {expandido && (
-                      <div className="px-4 pb-4 text-sm leading-relaxed text-muted-foreground animate-fade-in">
+                      <div
+                        id={`faq-respuesta-${f.id}`}
+                        className="px-4 pb-4 text-sm leading-relaxed text-muted-foreground animate-fade-in"
+                      >
                         {f.respuesta}
                       </div>
                     )}

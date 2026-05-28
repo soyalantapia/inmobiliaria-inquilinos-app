@@ -95,20 +95,15 @@ export default function MisReclamosPage() {
         <UserMenu />
       </header>
 
-      <main className="flex-1 space-y-6 px-5 pb-24 md:px-8 md:pt-8">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
-            <h1 className="text-2xl font-semibold md:text-3xl">Reclamos</h1>
-            <p className="text-sm text-muted-foreground">
-              Mantenimiento y consultas a la inmobiliaria.
-            </p>
-          </div>
-          <Button asChild className="shrink-0 self-start">
-            <Link href="/reclamos/nuevo">
-              <Plus className="h-4 w-4" />
-              Nuevo reclamo
-            </Link>
-          </Button>
+      {/* pb-40: deja espacio para el footer sticky con el CTA "Nuevo
+          reclamo" + el NavBar inferior. Sin esto, el último item se
+          quedaba escondido detrás del footer. */}
+      <main className="flex-1 space-y-6 px-5 pb-40 md:px-8 md:pb-32 md:pt-8">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-semibold md:text-3xl">Reclamos</h1>
+          <p className="text-sm text-muted-foreground">
+            Mantenimiento y consultas a la inmobiliaria.
+          </p>
         </div>
 
         {/* Banner de confirmación si venimos de crear un reclamo.
@@ -161,6 +156,25 @@ export default function MisReclamosPage() {
           </>
         )}
       </main>
+
+      {/* Footer sticky con el CTA principal. Antes "Nuevo reclamo" vivía
+          arriba al lado del título — pero el inquilino llega a esta
+          pantalla con la intención de o (a) ver el estado de un reclamo
+          existente, o (b) crear uno nuevo. Tener el CTA fijo abajo lo
+          hace siempre alcanzable sin importar cuántos items haya en la
+          lista, y respeta el patrón mobile de "acción primaria al
+          alcance del pulgar". En desktop usa el mismo footer porque la
+          app es mobile-first y mantenemos consistencia. */}
+      <div className="fixed inset-x-0 bottom-16 z-30 border-t border-border/60 bg-background/95 px-5 py-3 shadow-[0_-8px_16px_-12px_rgba(0,0,0,0.08)] backdrop-blur md:bottom-0 md:px-8">
+        <div className="mx-auto w-full max-w-md md:max-w-3xl">
+          <Button asChild className="w-full md:w-auto md:ml-auto md:flex">
+            <Link href="/reclamos/nuevo">
+              <Plus className="h-4 w-4" />
+              Nuevo reclamo
+            </Link>
+          </Button>
+        </div>
+      </div>
 
       <NavBar />
     </>
@@ -252,7 +266,10 @@ function ReclamoRow({ reclamo, resaltado }: { reclamo: Reclamo; resaltado: boole
         </p>
       </div>
       {mensajesPendientes > 0 && reclamo.estado !== 'CERRADO' && (
-        <span className="mt-1 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
+        <span
+          className="mt-1 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground"
+          aria-label={`${mensajesPendientes} mensaje${mensajesPendientes === 1 ? '' : 's'} nuevo${mensajesPendientes === 1 ? '' : 's'}`}
+        >
           {mensajesPendientes}
         </span>
       )}

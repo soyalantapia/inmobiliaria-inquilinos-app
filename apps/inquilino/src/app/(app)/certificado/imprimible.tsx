@@ -140,7 +140,7 @@ export function imprimirCertificado(c: CertificadoInquilino): void {
 <body class="with-bar">
   <div class="preview-bar">
     <div style="font-size: 13px">Vista previa · Listo para imprimir o guardar como PDF</div>
-    <button onclick="window.print()">Imprimir / Guardar PDF</button>
+    <button type="button" onclick="window.print()">Imprimir / Guardar PDF</button>
   </div>
 
   <div class="header">

@@ -233,13 +233,14 @@ export default function NuevoReclamoPage() {
           </Card>
         )}
 
-        <div className="space-y-2">
-          <Label>¿De qué se trata?</Label>
+        <div role="group" aria-labelledby="recnuevo-categoria-label" className="space-y-2">
+          <p id="recnuevo-categoria-label" className="text-sm font-medium leading-none">¿De qué se trata?</p>
           <div className="grid grid-cols-2 gap-2">
             {categorias.map((c) => (
               <button
                 key={c.value}
                 type="button"
+                aria-pressed={categoria === c.value}
                 onClick={() => setCategoria(c.value)}
                 className={`flex min-h-[3.25rem] items-center gap-2 rounded-lg border p-3 text-left text-sm transition-colors ${
                   c.value === 'OTRO' ? 'col-span-2' : ''
@@ -262,12 +263,13 @@ export default function NuevoReclamoPage() {
             <Label htmlFor="titulo-otro">¿Qué tipo de reclamo?</Label>
             <Input
               id="titulo-otro"
+              aria-describedby="titulo-otro-hint"
               placeholder="Ej: Humedad en la pared, Internet, Ascensor…"
               value={tituloOtro}
               onChange={(e) => setTituloOtro(e.target.value)}
               maxLength={60}
             />
-            <p className="text-xs text-muted-foreground">
+            <p id="titulo-otro-hint" className="text-xs text-muted-foreground">
               {tituloOtro.trim().length < 3
                 ? `Mínimo 3 caracteres (te faltan ${3 - tituloOtro.trim().length})`
                 : `${tituloOtro.length}/60`}
@@ -283,21 +285,23 @@ export default function NuevoReclamoPage() {
             value={descripcion}
             onChange={(e) => setDescripcion(e.target.value)}
             rows={4}
+            maxLength={1000}
           />
           {/* Mostramos el contador solo si el usuario ya empezó a escribir.
               Antes aparecía "te faltan 10" desde el render inicial, lo que
               sonaba a regaño antes de tocar el campo (P9 de la auditoría). */}
           {descripcion.length > 0 && (
-            <p className="text-xs text-muted-foreground">
+            <p className={`text-xs ${descripcion.length >= 950 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}>
               {descripcion.length < 10
                 ? `Mínimo 10 caracteres (te faltan ${10 - descripcion.length})`
-                : 'Listo'}
+                : `${descripcion.length}/1000`}
             </p>
           )}
         </div>
 
         {fotoPreview ? (
           <Card className="space-y-2 border-dashed p-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={fotoPreview}
               alt="Foto del reclamo"
@@ -344,8 +348,8 @@ export default function NuevoReclamoPage() {
         {/* Urgencia como chips (R10 de la auditoría): antes era un Select que
             obligaba a abrir el dropdown para descubrir las opciones. Con chips
             las 4 alternativas y sus descripciones quedan a la vista de entrada. */}
-        <div className="space-y-2">
-          <Label>Urgencia</Label>
+        <div role="group" aria-labelledby="recnuevo-urgencia-label" className="space-y-2">
+          <p id="recnuevo-urgencia-label" className="text-sm font-medium leading-none">Urgencia</p>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {urgencias.map((u) => {
               const seleccionado = urgencia === u.value;
@@ -354,6 +358,7 @@ export default function NuevoReclamoPage() {
                 <button
                   key={u.value}
                   type="button"
+                  aria-pressed={seleccionado}
                   onClick={() => setUrgencia(u.value)}
                   className={`rounded-lg border p-3 text-left transition-colors ${
                     seleccionado

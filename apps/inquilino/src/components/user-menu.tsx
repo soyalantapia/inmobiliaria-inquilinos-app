@@ -2,7 +2,6 @@
 
 import Link from 'next/link';
 import { Avatar, AvatarFallback } from '@llave/ui/avatar';
-import { ThemeToggle } from '@llave/ui/theme-toggle';
 import { useCurrentUser } from '@/lib/use-current-user';
 import { NotificationsBell } from './notifications-bell';
 
@@ -33,7 +32,6 @@ export function UserMenu({ compact = false }: UserMenuProps = {}) {
         )}
       </Link>
       <div className="flex items-center gap-1">
-        <ThemeToggle />
         <NotificationsBell />
       </div>
     </div>

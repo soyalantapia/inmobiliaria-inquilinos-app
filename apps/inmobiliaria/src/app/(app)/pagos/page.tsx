@@ -440,6 +440,7 @@ export default function PagosPage() {
             return (
               <button
                 key={f.key}
+                type="button"
                 onClick={() => togglearFiltro(f.key)}
                 aria-pressed={activo}
                 className={cn(
@@ -483,6 +484,7 @@ export default function PagosPage() {
               {filtradas.length} resultado{filtradas.length === 1 ? '' : 's'}
             </span>
             <button
+              type="button"
               onClick={() => setFiltro('TODOS')}
               className="font-medium text-primary hover:underline"
             >

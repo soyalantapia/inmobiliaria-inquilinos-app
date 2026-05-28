@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   ArrowDown,
@@ -72,17 +72,18 @@ export function ConsorcioInventarioTab({ consorcioId }: Props) {
     tipo: 'ENTRADA' | 'SALIDA';
   } | null>(null);
 
-  const refrescar = () => {
+  const refrescar = useCallback(() => {
     setItems(listarInventarioDe(consorcioId));
     setMovs(listarMovimientosDe(consorcioId));
-  };
+  }, [consorcioId]);
 
   useEffect(() => {
     refrescar();
     setHidratado(true);
-  }, [consorcioId]);
+  }, [refrescar]);
 
-  const bajoMinimo = useMemo(() => itemsBajoMinimo(consorcioId), [items, consorcioId]);
+  // `itemsBajoMinimo` lee de localStorage; `items` actúa como trigger de re-cómputo
+  const bajoMinimo = useMemo(() => itemsBajoMinimo(consorcioId), [items, consorcioId]); // eslint-disable-line react-hooks/exhaustive-deps
   const valorStock = useMemo(() => {
     return items.reduce(
       (acc, i) => acc + (i.costoUnitario ?? 0) * i.cantidadActual,
@@ -185,7 +186,7 @@ export function ConsorcioInventarioTab({ consorcioId }: Props) {
             <p className="font-semibold text-amber-900 dark:text-amber-100">
               Items con stock por debajo del mínimo
             </p>
-            <ul className="mt-2 list-disc pl-4 text-amber-900/80 dark:text-amber-200/80">
+            <ul role="list" className="mt-2 list-disc pl-4 text-amber-900/80 dark:text-amber-200/80">
               {bajoMinimo.map((i) => (
                 <li key={i.id}>
                   <strong>{i.nombre}</strong> · queda {i.cantidadActual}{' '}
@@ -294,7 +295,7 @@ export function ConsorcioInventarioTab({ consorcioId }: Props) {
           <summary className="cursor-pointer text-xs font-medium">
             Últimos movimientos ({movs.length})
           </summary>
-          <ul className="mt-2 space-y-1.5 text-xs">
+          <ul role="list" className="mt-2 space-y-1.5 text-xs">
             {movs.slice(0, 20).map((m) => {
               const item = items.find((i) => i.id === m.itemId);
               return (
@@ -439,6 +440,8 @@ function CrearItemDialog({ abierto, onClose, consorcioId, onGuardar }: CrearProp
               <Input
                 id="cant"
                 type="number"
+                inputMode="numeric"
+                min="0"
                 value={cantidad}
                 onChange={(e) => setCantidad(e.target.value)}
               />
@@ -448,6 +451,8 @@ function CrearItemDialog({ abierto, onClose, consorcioId, onGuardar }: CrearProp
               <Input
                 id="min"
                 type="number"
+                inputMode="numeric"
+                min="0"
                 value={minimo}
                 onChange={(e) => setMinimo(e.target.value)}
               />
@@ -458,6 +463,8 @@ function CrearItemDialog({ abierto, onClose, consorcioId, onGuardar }: CrearProp
             <Input
               id="costo"
               type="number"
+              inputMode="decimal"
+              min="0"
               placeholder="Opcional"
               value={costo}
               onChange={(e) => setCosto(e.target.value)}
@@ -546,6 +553,8 @@ function MoverStockDialog({ abierto, onClose, item, tipo, onConfirmar }: MoverPr
               <Input
                 id="cant"
                 type="number"
+                inputMode="numeric"
+                min="0"
                 value={cantidad}
                 onChange={(e) => setCantidad(e.target.value)}
               />

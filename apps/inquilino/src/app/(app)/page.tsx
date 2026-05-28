@@ -139,6 +139,7 @@ export default function PagosPage() {
       </header>
 
       <main className="flex-1 space-y-5 px-5 pb-6 md:px-8 md:pt-8">
+        <h1 className="sr-only">Inicio</h1>
         {/* Selector de modo demo — alterna entre "atrasado" y "al día"
             para mostrar ambos casos en presentaciones. Oculto por default
             para que un inquilino real no lo vea; se activa con ?demo=1. */}
@@ -183,7 +184,7 @@ export default function PagosPage() {
         {/* Acciones rápidas: 4 atajos visuales para las cosas que más hace un
             inquilino. Reemplaza la sensación de "tengo que buscar dónde está
             cada cosa" con un acceso directo desde la pantalla principal. */}
-        <QuickActions />
+        <QuickActions liqPendiente={pendiente ?? null} />
 
         {/* Card compacta de inmo + acciones rápidas.
             Antes mostraba dirección/ciudad arriba + inmo abajo en dos bloques.
@@ -294,8 +295,10 @@ export default function PagosPage() {
 // ============================================================
 // BANNER COMPACTO en home cuando hay pago pendiente
 // ============================================================
-// Reemplaza al hero gigante. Solo avisa que hay algo a pagar y lleva a
-// /comprobantes donde se gestiona todo (a pagar, próximos, cobrados).
+// Lleva DIRECTO al checkout del pago urgente (no a /comprobantes).
+// Antes Mariela hacía un click "Regularizar" → /comprobantes → otro
+// click "Regularizar pago" → checkout. 2 clicks para la acción más
+// crítica. Ahora 1 click directo.
 function BannerPagoPendiente({ liq }: { liq: Liquidacion }) {
   const calc = calcularPunitorios(liq, TASA_PUNITORIA_DIARIA_DEFAULT);
   const diasV = diasHastaVencimiento(liq.fechaVencimiento);
@@ -324,7 +327,7 @@ function BannerPagoPendiente({ liq }: { liq: Liquidacion }) {
   // "¿esto es solo info o lo puedo tocar para pagar?" detectada en la auditoría.
   return (
     <Link
-      href="/comprobantes"
+      href={`/pago/${liq.id}/checkout`}
       className={`flex flex-col gap-3 rounded-xl border ${tono.border} ${tono.bg} px-3 py-3 transition-colors hover:bg-opacity-100 active:scale-[0.99] sm:flex-row sm:items-center`}
     >
       {/* En mobile angosto (<sm), el monto + texto compite con el pill por
@@ -420,14 +423,19 @@ function BannerAlDia({
 // pantalla en algo accionable: en un tap el inquilino llega a las 4
 // cosas que más quiere hacer (pagar, hacer un reclamo, ver el contrato
 // o subir una boleta de servicios).
-function QuickActions() {
+function QuickActions({ liqPendiente }: { liqPendiente: Liquidacion | null }) {
+  // El atajo "Pagar" lleva DIRECTO al checkout del pago pendiente si
+  // existe — antes iba a la lista /comprobantes y obligaba a un
+  // segundo click. Si no hay nada pendiente, lleva a la lista para
+  // que el usuario igual encuentre comprobantes pasados.
+  const pagarHref = liqPendiente ? `/pago/${liqPendiente.id}/checkout` : '/comprobantes';
   const acciones: Array<{
     href: string;
     label: string;
     icon: typeof Wrench;
     color: string;
   }> = [
-    { href: '/comprobantes', label: 'Pagar', icon: CreditCard, color: 'text-emerald-600 dark:text-emerald-400' },
+    { href: pagarHref, label: 'Pagar', icon: CreditCard, color: 'text-emerald-600 dark:text-emerald-400' },
     { href: '/reclamos/nuevo', label: 'Reclamo', icon: Wrench, color: 'text-amber-600 dark:text-amber-400' },
     { href: '/contrato', label: 'Contrato', icon: FileText, color: 'text-blue-600 dark:text-blue-400' },
     { href: '/servicios', label: 'Boleta', icon: Zap, color: 'text-violet-600 dark:text-violet-400' },

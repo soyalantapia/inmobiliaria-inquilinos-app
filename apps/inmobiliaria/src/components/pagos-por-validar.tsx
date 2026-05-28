@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Banknote,
   CheckCircle2,
@@ -45,6 +45,7 @@ import {
   puedeConciliarAutomatico,
   type ExtraccionIA,
 } from '@/lib/extraccion-ia';
+import { PinPromptDialog } from '@/components/pin-prompt-dialog';
 
 // Sección "Por validar" en /pagos del admin. Muestra los comprobantes que
 // los inquilinos subieron y todavía no fueron conciliados. Cuando el admin
@@ -70,6 +71,10 @@ export function PagosPorValidar({ onChange }: PagosPorValidarProps = {}) {
   const [verComprobante, setVerComprobante] = useState<PagoInformado | null>(null);
   const [rechazando, setRechazando] = useState<PagoInformado | null>(null);
   const [motivoRechazo, setMotivoRechazo] = useState('');
+  const [showPin, setShowPin] = useState(false);
+  const [pinAccion, setPinAccion] = useState('');
+  const [pinSubaccion, setPinSubaccion] = useState<string | undefined>(undefined);
+  const pendingAction = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     setHidratado(true);
@@ -166,30 +171,21 @@ export function PagosPorValidar({ onChange }: PagosPorValidarProps = {}) {
     refrescar();
   };
 
-  const handleRechazar = () => {
-    if (!rechazando) return;
-    if (!motivoRechazo.trim()) {
-      toast({ title: 'Tenés que escribir el motivo', variant: 'destructive' });
-      return;
-    }
-    rechazarPago(rechazando.id, 'Roberto Tapia', motivoRechazo.trim(), {
-      liqId: rechazando.liquidacionId,
-    });
+  const handleRechazar = (pago: PagoInformado, motivo: string) => {
+    rechazarPago(pago.id, 'Roberto Tapia', motivo, { liqId: pago.liquidacionId });
     registrarEvento({
       tipo: 'PAGO_RECHAZADO',
       autor: 'Roberto Tapia',
       rolAutor: 'ADMIN',
-      entidadId: rechazando.id,
-      entidadDescripcion: `Pago de ${rechazando.inquilino} · ${formatPeriodo(rechazando.periodo)}`,
-      detalle: motivoRechazo.trim(),
+      entidadId: pago.id,
+      entidadDescripcion: `Pago de ${pago.inquilino} · ${formatPeriodo(pago.periodo)}`,
+      detalle: motivo,
     });
     refrescar();
     toast({
       title: 'Pago rechazado',
-      description: `Le avisamos a ${rechazando.inquilino} por WhatsApp y en la app con tu nota.`,
+      description: `Le avisamos a ${pago.inquilino} por WhatsApp y en la app con tu nota.`,
     });
-    setRechazando(null);
-    setMotivoRechazo('');
   };
 
   /** Revierte un pago previamente conciliado o rechazado. Vuelve al estado
@@ -210,6 +206,20 @@ export function PagosPorValidar({ onChange }: PagosPorValidarProps = {}) {
       title: 'Acción revertida',
       description: `El pago vuelve a estado "Por validar".`,
     });
+  };
+
+  const triggerConciliar = (pago: PagoInformado) => {
+    setPinAccion('Conciliar pago');
+    setPinSubaccion(`${pago.inquilino} · ${formatMonto(pago.monto)}`);
+    pendingAction.current = () => handleConciliar(pago);
+    setShowPin(true);
+  };
+
+  const triggerRevertir = (pago: PagoInformado) => {
+    setPinAccion('Revertir conciliación');
+    setPinSubaccion(`${pago.inquilino} · ${formatPeriodo(pago.periodo)}`);
+    pendingAction.current = () => handleRevertir(pago);
+    setShowPin(true);
   };
 
   // Lista de pagos ya conciliados/rechazados (resueltos) para mostrar
@@ -246,7 +256,7 @@ export function PagosPorValidar({ onChange }: PagosPorValidarProps = {}) {
                 <PagoRow
                   key={p.id}
                   pago={p}
-                  onConciliar={() => handleConciliar(p)}
+                  onConciliar={() => triggerConciliar(p)}
                   onRechazar={() => setRechazando(p)}
                   onVerComprobante={() => setVerComprobante(p)}
                 />
@@ -279,7 +289,7 @@ export function PagosPorValidar({ onChange }: PagosPorValidarProps = {}) {
                   key={p.id}
                   pago={p}
                   estado={acciones[p.id]!}
-                  onRevertir={() => handleRevertir(p)}
+                  onRevertir={() => triggerRevertir(p)}
                 />
               ))}
             </div>
@@ -338,8 +348,9 @@ export function PagosPorValidar({ onChange }: PagosPorValidarProps = {}) {
                 className="flex-1"
                 onClick={() => {
                   if (!verComprobante) return;
-                  handleConciliar(verComprobante);
+                  const pago = verComprobante;
                   setVerComprobante(null);
+                  triggerConciliar(pago);
                 }}
               >
                 <CheckCircle2 className="h-4 w-4" />
@@ -378,12 +389,41 @@ export function PagosPorValidar({ onChange }: PagosPorValidarProps = {}) {
             <Button variant="outline" className="flex-1" onClick={() => setRechazando(null)}>
               Cancelar
             </Button>
-            <Button variant="destructive" className="flex-1" onClick={handleRechazar}>
+            <Button
+              variant="destructive"
+              className="flex-1"
+              onClick={() => {
+                if (!rechazando) return;
+                if (!motivoRechazo.trim()) {
+                  toast({ title: 'Tenés que escribir el motivo', variant: 'destructive' });
+                  return;
+                }
+                const pagoCapturado = rechazando;
+                const motivoCapturado = motivoRechazo.trim();
+                setRechazando(null);
+                setMotivoRechazo('');
+                setPinAccion('Rechazar pago');
+                setPinSubaccion(`${pagoCapturado.inquilino} · "${motivoCapturado}"`);
+                pendingAction.current = () => handleRechazar(pagoCapturado, motivoCapturado);
+                setShowPin(true);
+              }}
+            >
               Rechazar pago
             </Button>
           </div>
         </DialogContent>
       </Dialog>
+
+      <PinPromptDialog
+        abierto={showPin}
+        accion={pinAccion}
+        subaccion={pinSubaccion}
+        onClose={() => setShowPin(false)}
+        onConfirmado={() => {
+          pendingAction.current?.();
+          pendingAction.current = null;
+        }}
+      />
     </>
   );
 }

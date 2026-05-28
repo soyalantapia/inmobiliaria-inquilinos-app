@@ -2,7 +2,12 @@
 const animate = require('tailwindcss-animate');
 
 module.exports = {
-  darkMode: ['class'],
+  // Dark mode DESHABILITADO globalmente. El selector apunta a un
+  // atributo que nunca aparece en el DOM, así las clases `dark:*` que
+  // siguen escritas en el JSX (legacy) no se activan jamás. Si más
+  // adelante queremos volver a habilitar light/dark, volver a
+  // `['class']` y agregar el toggle en UI.
+  darkMode: ['selector', '[data-theme="dark-disabled-permanently"]'],
   theme: {
     container: {
       center: true,

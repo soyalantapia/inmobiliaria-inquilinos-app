@@ -264,7 +264,7 @@ function StepUpload({
     <div className="space-y-4">
       <div className="rounded-md border bg-muted/40 p-4 text-sm">
         <p className="font-medium">¿Cómo funciona?</p>
-        <ol className="mt-2 space-y-1 text-xs text-muted-foreground">
+        <ol role="list" className="mt-2 space-y-1 text-xs text-muted-foreground">
           <li>1. Subís el PDF / imagen del resumen del banco (lo que te descargás de home banking).</li>
           <li>2. Leemos los créditos del período con IA.</li>
           <li>3. Para cada crédito te sugerimos qué inquilino lo pagó.</li>
@@ -309,8 +309,8 @@ function StepUpload({
 
 function StepLeyendo({ file }: { file: File | null }) {
   return (
-    <div className="flex flex-col items-center gap-3 py-12 text-center">
-      <Loader2 className="h-10 w-10 animate-spin text-primary" />
+    <div role="status" className="flex flex-col items-center gap-3 py-12 text-center">
+      <Loader2 aria-hidden="true" className="h-10 w-10 animate-spin text-primary" />
       <div>
         <p className="text-base font-semibold">Leyendo el resumen…</p>
         <p className="text-xs text-muted-foreground">
@@ -449,6 +449,7 @@ function CreditoRow({
             onChange={onToggle}
             disabled={!matchableable}
             className="h-4 w-4 rounded border-border accent-primary"
+            aria-label={`Seleccionar crédito de ${formatMonto(credito.monto)} – ${credito.concepto}`}
           />
         </label>
 

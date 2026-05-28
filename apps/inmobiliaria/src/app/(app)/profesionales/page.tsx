@@ -202,6 +202,8 @@ export default function ProfesionalesAdminPage() {
           {(['TODOS', ...(Object.keys(profesionalCategoriaLabelAdmin) as CategoriaProfesional[])] as Filtro[]).map((c) => (
             <button
               key={c}
+              type="button"
+              aria-pressed={filtro === c}
               onClick={() => setFiltro(c)}
               className={cn(
                 'shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
@@ -571,10 +573,11 @@ function DialogForm({
 
         <div className="space-y-3">
           <div className="space-y-1">
-            <Label className="text-xs" aria-required>
+            <Label htmlFor="pf-nombre" className="text-xs" aria-required>
               Nombre <span className="text-destructive">*</span>
             </Label>
             <Input
+              id="pf-nombre"
               value={nombre}
               onChange={(e) => setNombre(e.target.value)}
               placeholder="Ej: Juan Pérez"
@@ -583,8 +586,9 @@ function DialogForm({
           </div>
 
           <div className="space-y-1">
-            <Label className="text-xs">Categoría</Label>
+            <Label htmlFor="pf-categoria" className="text-xs">Categoría</Label>
             <select
+              id="pf-categoria"
               value={categoria}
               onChange={(e) => setCategoria(e.target.value as CategoriaProfesional)}
               className="w-full rounded-md border bg-background px-3 py-2 text-sm"
@@ -598,10 +602,11 @@ function DialogForm({
           </div>
 
           <div className="space-y-1">
-            <Label className="text-xs" aria-required>
+            <Label htmlFor="pf-zona" className="text-xs" aria-required>
               Zona <span className="text-destructive">*</span>
             </Label>
             <Input
+              id="pf-zona"
               value={zona}
               onChange={(e) => setZona(e.target.value)}
               placeholder="Ej: Palermo, Recoleta"
@@ -611,11 +616,12 @@ function DialogForm({
 
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1">
-              <Label className="flex items-center gap-1.5 text-xs">
+              <Label htmlFor="pf-tel" className="flex items-center gap-1.5 text-xs">
                 <span className="inline-flex items-center gap-1">💬 WhatsApp</span>
                 <span className="text-[10px] font-medium text-primary">obligatorio</span>
               </Label>
               <Input
+                id="pf-tel"
                 value={telefono}
                 onChange={(e) => setTelefono(e.target.value)}
                 placeholder="+54 9 11 …"
@@ -632,11 +638,12 @@ function DialogForm({
               )}
             </div>
             <div className="space-y-1">
-              <Label className="flex items-center gap-1.5 text-xs">
+              <Label htmlFor="pf-email" className="flex items-center gap-1.5 text-xs">
                 Email
                 <span className="text-[10px] font-normal text-muted-foreground">opcional</span>
               </Label>
               <Input
+                id="pf-email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -654,8 +661,8 @@ function DialogForm({
           </div>
 
           <div className="space-y-1">
-            <Label className="text-xs">Notas internas</Label>
-            <Textarea value={notas} onChange={(e) => setNotas(e.target.value)} rows={2} />
+            <Label htmlFor="pf-notas" className="text-xs">Notas internas</Label>
+            <Textarea id="pf-notas" value={notas} onChange={(e) => setNotas(e.target.value)} rows={2} />
           </div>
 
           <label className="flex items-center gap-2 text-xs">

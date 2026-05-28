@@ -390,7 +390,7 @@ export function ContratoDocumentosPanel({ contrato }: Props) {
                 </div>
 
                 {docsDeGrupo.length > 0 && (
-                  <ul className="divide-y rounded-md border">
+                  <ul role="list" className="divide-y rounded-md border">
                     {docsDeGrupo.map((d) => {
                       const Icon = ICONO_TIPO[d.tipo];
                       const esImagen = d.tipoMime.startsWith('image/');
@@ -400,6 +400,7 @@ export function ContratoDocumentosPanel({ contrato }: Props) {
                           className="flex items-center gap-3 p-3 text-sm"
                         >
                           {esImagen ? (
+                            // eslint-disable-next-line @next/next/no-img-element
                             <img
                               src={d.dataUrl}
                               alt={d.etiqueta}

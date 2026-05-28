@@ -75,6 +75,7 @@ export function InstallPrompt() {
     <div className="fixed inset-x-3 bottom-20 z-40 animate-fade-in md:inset-x-auto md:left-3 md:right-auto md:w-80">
       <Card className="relative flex items-start gap-3 border-primary/20 bg-primary/5 p-4 shadow-lg">
         <button
+          type="button"
           onClick={dismiss}
           className="absolute right-2 top-2 rounded-full p-1 text-muted-foreground hover:bg-muted"
           aria-label="Cerrar"
