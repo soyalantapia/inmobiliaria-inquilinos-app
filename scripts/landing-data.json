@@ -97,6 +97,14 @@
       }
     ]
   },
+  "demoVideo": {
+    "_nota": "Hook de video demo (L-DEMO-01). Mientras 'url' esté vacío, la sección NO se renderiza. Cuando tengas un screencast del producto, pegá la URL de embed: YouTube (https://www.youtube.com/embed/XXXX), Vimeo (https://player.vimeo.com/video/XXXX) o un .mp4 directo. La sección aparece automáticamente después de 'Cómo funciona'. Opcional: 'poster' (URL de imagen) para el frame de carga de un mp4.",
+    "tag": "En acción",
+    "titulo": "Mirá la plataforma funcionando",
+    "subtitulo": "Un recorrido de pocos minutos por la operación completa: cobranza, aprobación, ARCA y rendición.",
+    "url": "",
+    "poster": ""
+  },
   "secciones": [
     {
       "id": "cobranza",

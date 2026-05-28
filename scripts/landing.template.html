@@ -2175,6 +2175,37 @@
         color: var(--muted);
       }
 
+      /* ============================================================
+         VIDEO DEMO · L-DEMO-01 hook (sólo si hay URL real)
+         ============================================================ */
+      .video-demo {
+        padding: 56px 0;
+        background: var(--bg-soft);
+      }
+      @media (min-width: 480px) { .video-demo { padding: 64px 0; } }
+      @media (min-width: 768px) { .video-demo { padding: 96px 0; } }
+      .demo-video-frame {
+        position: relative;
+        width: 100%;
+        max-width: 900px;
+        margin: 0 auto;
+        aspect-ratio: 16 / 9;
+        border-radius: var(--radius);
+        overflow: hidden;
+        border: 1px solid var(--border);
+        box-shadow: var(--shadow-lg);
+        background: #000;
+      }
+      .demo-video-el {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        border: 0;
+        display: block;
+        object-fit: cover;
+      }
+
       /* QW-14 / QW2-05: el bloque CSS de "Antes/Después" (.antes-despues,
          .compare-grid, .compare-col, .compare-head, .tag-rojo, .tag-violeta)
          fue eliminado junto con la sección HTML correspondiente. Eran ~95
@@ -2457,6 +2488,13 @@
         <div class="pasos-grid">{{COMO_FUNCIONA_PASOS}}</div>
       </div>
     </section>
+
+    <!-- ==================== VIDEO DEMO (condicional) ====================
+         L-DEMO-01 hook: aparece sólo si hay URL de video en landing-data.json.
+         Mientras esté vacío, {{VIDEO_DEMO_SECTION}} se reemplaza por string
+         vacío — no ponemos un player falso. Va después de "Cómo funciona":
+         primero explicamos cómo opera, después se ve en acción. -->
+    {{VIDEO_DEMO_SECTION}}
 
     <!-- ==================== FUNCIONALIDADES ==================== -->
     <!-- Ancla invisible: el nav "Funcionalidades" scrollea hasta acá y la

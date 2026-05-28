@@ -248,6 +248,35 @@ function renderTestimoniales(testimoniales) {
     </section>`;
 }
 
+// Render video demo (L-DEMO-01 hook): devuelve la SECCIÓN ENTERA o ''.
+// Mientras no haya URL de video cargada, no renderiza nada — no ponemos un
+// player vacío ni un placeholder falso. Soporta embeds (YouTube/Vimeo via
+// iframe) y archivos .mp4 (via <video>). Cuando el dueño cargue la URL, la
+// sección aparece sola después de "Cómo funciona".
+function renderVideoDemo(video) {
+  if (!video || !video.url) return '';
+  const esMp4 = /\.mp4($|\?)/i.test(video.url);
+  const media = esMp4
+    ? `<video class="demo-video-el" controls preload="metadata"${video.poster ? ` poster="${esc(video.poster)}"` : ''}>
+              <source src="${esc(video.url)}" type="video/mp4" />
+              Tu navegador no soporta el video. <a href="${esc(video.url)}">Verlo directo</a>.
+            </video>`
+    : `<iframe class="demo-video-el" src="${esc(video.url)}" title="${esc(video.titulo || 'Demo de My Alquiler')}" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
+  return `
+    <section id="video-demo" class="video-demo">
+      <div class="container">
+        <div class="sec-header reveal">
+          <span class="sec-tag">${esc(video.tag || 'En acción')}</span>
+          <h2>${esc(video.titulo || '')}</h2>
+          ${video.subtitulo ? `<p>${esc(video.subtitulo)}</p>` : ''}
+        </div>
+        <div class="demo-video-frame reveal">
+          ${media}
+        </div>
+      </div>
+    </section>`;
+}
+
 // Render integraciones
 function renderIntegraciones(items) {
   return items
@@ -421,6 +450,7 @@ function main() {
     COMO_FUNCIONA_TITULO: esc(data.comoFunciona.titulo),
     COMO_FUNCIONA_SUBTITULO: esc(data.comoFunciona.subtitulo),
     COMO_FUNCIONA_PASOS: renderPasos(data.comoFunciona.pasos),
+    VIDEO_DEMO_SECTION: renderVideoDemo(data.demoVideo),
     INTEGRACIONES_TITULO: esc(data.integraciones.titulo),
     INTEGRACIONES_SUBTITULO: esc(data.integraciones.subtitulo),
     INTEGRACIONES_ITEMS: renderIntegraciones(data.integraciones.items),

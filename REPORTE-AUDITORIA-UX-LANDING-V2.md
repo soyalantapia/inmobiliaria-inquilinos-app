@@ -306,3 +306,46 @@ Enterprise: "Hablar con ventas →" → WhatsApp con campos extra
 > - 4 mejoras estratégicas heredadas del V1 que requieren testimoniales reales, demo visual y un flow de pricing — material de 2-4 semanas.
 >
 > Con los 8 nuevos quick wins, la landing queda **production-ready para empezar a recibir tráfico de WhatsApp serio**. Con las 4 estratégicas, queda lista para correr ads.
+
+---
+
+## 6. Addendum — Cierre de estratégicas (post V2)
+
+Después del audit V2 se avanzaron los 4 pendientes estratégicos hasta donde es **honestamente posible sin inventar contenido falso**. Estado final:
+
+| Pendiente | Estado | Commit |
+|---|---|---|
+| **L-PRICE-02** · CTA por tramo | ✅ **Completo** — cada plan abre WhatsApp con mensaje pre-llenado | `f87fe49` |
+| **L-DEEP-LINK-01** · Contexto en demo | ✅ **Completo** — `DemoBanner` en ambas apps, dismissable, link de regreso | `93edd5f` |
+| **L-SOCIAL-01** · Confianza | 🟡 **Parcial honesto** — sección "Por qué confiar" con 6 garantías reales del producto. Hook de testimoniales listo (requiere material real) | `93edd5f` |
+| **L-DEMO-01** · Demo visual | 🟡 **Parcial honesto** — callout "demo en vivo sin registro" en hero. Hook de video listo (requiere screencast real) | `93edd5f` + `[este commit]` |
+
+### Lo único que falta — requiere material que sólo vos tenés
+
+No se inventan testimoniales ni se fabrica un video: sería el mismo claim falso que QW-13 eliminó. La plomería ya está lista. Para completar al 100%:
+
+**1. Testimoniales reales** → editá `scripts/landing-data.json`, key `testimoniales.items`:
+```json
+"items": [
+  {
+    "nombre": "Marcela Gómez",
+    "rol": "Dueña",
+    "inmobiliaria": "Gómez Propiedades",
+    "ciudad": "Mar del Plata",
+    "cita": "Dejé de perder comprobantes en WhatsApp. El cierre de mes pasó de un día entero a una hora.",
+    "foto": "https://.../marcela.jpg"
+  }
+]
+```
+La sección "Inmobiliarias que ya operan con My Alquiler" aparece sola entre Garantías y Precios. Con 1 testimonial alcanza para arrancar; lo ideal son 3.
+
+**2. Video / screencast del producto** → editá `scripts/landing-data.json`, key `demoVideo.url`:
+```json
+"url": "https://www.youtube.com/embed/TU_VIDEO_ID"
+```
+Acepta YouTube, Vimeo o un `.mp4` directo (con `poster` opcional). La sección "Mirá la plataforma funcionando" aparece sola después de "Cómo funciona", en un contenedor responsive 16:9. Un screencast de 60-90s con voz alcanza — no necesita producción.
+
+Después de cualquiera de los dos: `bash scripts/build-static.sh`, commit y push. El deploy de GH Pages levanta el cambio solo.
+
+### Pendiente que NO requiere material (queda como mejora futura opcional)
+- **Instrumentación** (eventos de click + scroll depth): requiere elegir herramienta de analytics. No es bloqueante para recibir tráfico.
