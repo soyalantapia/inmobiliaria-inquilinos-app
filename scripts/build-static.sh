@@ -54,6 +54,14 @@ cp -R apps/inquilino/out/. out/inquilino/
 # Para editarlo: scripts/picker.html
 cp scripts/picker.html out/index.html
 
+# Página de legales en /legales/: documentos preliminares (T&C, Privacidad, Datos).
+# QW2-01: antes el footer apuntaba a `href="#"` y rebotaba al hero — peor que vacío.
+# Ahora cada link va a /legales/#terminos|#privacidad|#datos y aterriza en una página
+# real con la versión preliminar de cada documento + contacto legal.
+# Para editar el contenido: scripts/legales-page.html
+mkdir -p out/legales
+cp scripts/legales-page.html out/legales/index.html
+
 # Landing rica en /presentacion/: se genera desde landing-data.json + template.
 # Para cambiar contenido de la landing, editás scripts/landing-data.json.
 echo ""

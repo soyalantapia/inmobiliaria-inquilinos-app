@@ -204,30 +204,10 @@ function renderIntegraciones(items) {
     .join('');
 }
 
-// Render comparativa antes/después como 2 columnas (todas las "antes" en la izq, todas las "después" en la derecha)
-function renderAntesDespues(filas) {
-  const antes = filas.map((f) => `<li>${esc(f.antes)}</li>`).join('\n            ');
-  const despues = filas.map((f) => `<li>${esc(f.despues)}</li>`).join('\n            ');
-  return `
-        <div class="compare-col antes">
-          <div class="compare-head">
-            <span class="tag tag-rojo">Antes</span>
-            <h3>Sin Llave</h3>
-          </div>
-          <ul>
-            ${antes}
-          </ul>
-        </div>
-        <div class="compare-col despues">
-          <div class="compare-head">
-            <span class="tag tag-violeta">Después</span>
-            <h3>Con Llave</h3>
-          </div>
-          <ul>
-            ${despues}
-          </ul>
-        </div>`;
-}
+// QW-14 / QW2-06: la función renderAntesDespues fue eliminada con la sección
+// "Antes/Después" del template. Se sacó el grupo de placeholders ANTES_DESPUES
+// para mantener el script limpio. Si en el futuro se quiere reactivar la
+// comparativa, se puede restaurar desde git (commit a9f68ef hacia atrás).
 
 // Render del pricing por tramos
 function renderPricing(precios, ctaPropietarioHref) {
@@ -371,9 +351,6 @@ function main() {
     INTEGRACIONES_TITULO: esc(data.integraciones.titulo),
     INTEGRACIONES_SUBTITULO: esc(data.integraciones.subtitulo),
     INTEGRACIONES_ITEMS: renderIntegraciones(data.integraciones.items),
-    ANTES_DESPUES_TITULO: esc(data.antesDespues.titulo),
-    ANTES_DESPUES_SUBTITULO: esc(data.antesDespues.subtitulo),
-    ANTES_DESPUES_COLS: renderAntesDespues(data.antesDespues.filas),
     PRECIOS_TAG: esc(data.precios.tag),
     PRECIOS_TITULO: esc(data.precios.titulo),
     PRECIOS_SUBTITULO: esc(data.precios.subtitulo),

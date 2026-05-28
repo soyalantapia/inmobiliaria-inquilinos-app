@@ -22,7 +22,7 @@
     { "valor": "10 min", "label": "Para poner tu cartera en operación" },
     { "valor": "1 toque", "label": "Para conciliar pagos del mes" },
     { "valor": "24/7", "label": "Disponibilidad de cobranza online" },
-    { "valor": "Sin límite", "label": "De propiedades por equipo en cualquier plan" }
+    { "valor": "∞", "label": "Sin límite de propiedades en cualquier plan" }
   ],
   "problema": {
     "tag": "El problema",
@@ -63,7 +63,7 @@
   },
   "comoFunciona": {
     "titulo": "Implementación en tres etapas",
-    "subtitulo": "Sin migraciones extensas ni capacitaciones largas. Tu cartera puede operar el mismo día.",
+    "subtitulo": "Sin migraciones extensas ni capacitaciones largas. Carteras chicas operan el mismo día; las más grandes, en pocos días con ayuda de nuestro equipo.",
     "pasos": [
       {
         "numero": "01",
@@ -383,20 +383,6 @@
       { "nombre": "Correo electrónico", "icono": "✉️", "descripcion": "Notificaciones al inquilino", "color": "rose" }
     ]
   },
-  "antesDespues": {
-    "titulo": "Antes y después de My Alquiler",
-    "subtitulo": "Los cambios operativos que la inmobiliaria percibe desde el primer día.",
-    "filas": [
-      { "antes": "Información dispersa entre planillas y correos", "despues": "Información centralizada en un único entorno operativo" },
-      { "antes": "Vencimientos recordados manualmente", "despues": "Notificaciones automáticas al inquilino antes del vencimiento" },
-      { "antes": "Solicitud de comprobantes por WhatsApp", "despues": "El inquilino sube el comprobante desde su app" },
-      { "antes": "Búsqueda de facturas entre archivos antiguos", "despues": "Emisión y envío automático al aprobar el pago" },
-      { "antes": "Llamadas al cierre del día para confirmar si pagó tal inquilino", "despues": "El propietario consulta el estado directamente en su resumen mensual" },
-      { "antes": "Reclamos en hilos extensos de WhatsApp", "despues": "Reclamos clasificados con asignación a profesional" },
-      { "antes": "Consultas reiteradas sobre saldo y vencimiento", "despues": "Asistente automatizado que responde al inquilino" },
-      { "antes": "Cierre de mes extenso y manual", "despues": "Rendición generada automáticamente, revisión rápida" }
-    ]
-  },
   "precios": {
     "tag": "Precios",
     "titulo": "Un precio fijo por mes según tu cartera",
@@ -440,7 +426,7 @@
       "App del inquilino con Broker IA incluido",
       "Usuarios ilimitados de tu equipo",
       "Link mágico para profesionales",
-      "Onboarding personalizado del equipo",
+      "Onboarding (video guiado en Starter; sesión 1:1 con nuestro equipo en Growth, Pro y Enterprise)",
       "Soporte prioritario por WhatsApp"
     ],
     "extras": [
@@ -462,7 +448,7 @@
       },
       {
         "pregunta": "¿Quién carga mis contratos al sistema cuando arranco?",
-        "respuesta": "Lo hacemos juntos. El onboarding incluye una sesión de migración en la que cargamos tus contratos vigentes a partir del PDF (lectura automática) y configuramos a propietarios, equipo y modalidad de cobranza. Si tenés más de 50 propiedades, la migración demora entre 2 y 5 días hábiles."
+        "respuesta": "Depende del plan. En Starter (hasta 10 propiedades) seguís un video guiado y cargás los contratos vos mismo usando la lectura automática de PDF — operás el mismo día. En Growth, Pro y Enterprise hacemos una sesión 1:1 en la que cargamos tus contratos vigentes y configuramos propietarios, equipo y modalidad de cobranza; con más de 50 propiedades la migración demora entre 2 y 5 días hábiles."
       },
       {
         "pregunta": "¿Qué pasa con mis datos si me doy de baja?",
@@ -559,8 +545,8 @@
       {
         "titulo": "Apps",
         "links": [
-          { "label": "Panel inmobiliario", "href": "../inmobiliaria/" },
-          { "label": "App del inquilino", "href": "../inquilino/" }
+          { "label": "🏢 Panel inmobiliario", "href": "../inmobiliaria/" },
+          { "label": "📱 App del inquilino", "href": "../inquilino/" }
         ]
       },
       {
@@ -573,9 +559,9 @@
       {
         "titulo": "Legales",
         "links": [
-          { "label": "Términos y condiciones", "href": "#" },
-          { "label": "Política de privacidad", "href": "#" },
-          { "label": "Política de datos", "href": "#" }
+          { "label": "Términos y condiciones", "href": "../legales/#terminos" },
+          { "label": "Política de privacidad", "href": "../legales/#privacidad" },
+          { "label": "Política de datos", "href": "../legales/#datos" }
         ]
       }
     ],

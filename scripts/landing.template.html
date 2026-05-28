@@ -2006,102 +2006,11 @@
       }
       @media (min-width: 480px) { .integracion .ig-desc { font-size: 12px; } }
 
-      /* ============================================================
-         ANTES / DESPUÉS
-         ============================================================ */
-      .antes-despues {
-        padding: 56px 0;
-        background: var(--bg-soft);
-      }
-      @media (min-width: 480px) { .antes-despues { padding: 64px 0; } }
-      @media (min-width: 768px) { .antes-despues { padding: 96px 0; } }
-      @media (min-width: 1024px) { .antes-despues { padding: 120px 0; } }
-
-      .compare-grid {
-        display: grid;
-        grid-template-columns: 1fr;
-        gap: 14px;
-        max-width: 900px;
-        margin: 0 auto;
-      }
-      @media (min-width: 480px) { .compare-grid { gap: 18px; } }
-      @media (min-width: 768px) {
-        .compare-grid { grid-template-columns: 1fr 1fr; gap: 24px; }
-      }
-      .compare-col {
-        padding: 22px 18px;
-        border-radius: var(--radius-lg);
-        border: 1px solid var(--border);
-      }
-      @media (min-width: 480px) { .compare-col { padding: 24px 20px; } }
-      @media (min-width: 768px) { .compare-col { padding: 28px 24px; } }
-      .compare-col.antes {
-        background: var(--card);
-      }
-      .compare-col.despues {
-        background: linear-gradient(135deg, rgba(124, 58, 237, 0.08), rgba(236, 72, 153, 0.06));
-        border-color: var(--primary);
-      }
-      .compare-head {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        margin-bottom: 20px;
-      }
-      .compare-head .tag {
-        padding: 4px 10px;
-        border-radius: 999px;
-        font-size: 11px;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-      }
-      .compare-head .tag.tag-rojo {
-        background: var(--c-rose-soft);
-        color: var(--c-rose);
-      }
-      .compare-head .tag.tag-violeta {
-        background: linear-gradient(135deg, var(--primary), var(--accent-pink));
-        color: #fff;
-      }
-      .compare-head h3 {
-        margin: 0;
-        font-size: 18px;
-        font-weight: 700;
-      }
-      .compare-col ul {
-        margin: 0;
-        padding-left: 0;
-        list-style: none;
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-      }
-      @media (min-width: 480px) { .compare-col ul { gap: 14px; } }
-      .compare-col ul li {
-        font-size: 13.5px;
-        color: var(--fg-soft);
-        line-height: 1.55;
-        padding-left: 24px;
-        position: relative;
-      }
-      @media (min-width: 480px) { .compare-col ul li { font-size: 14.5px; padding-left: 28px; } }
-      .compare-col.antes ul li::before {
-        content: '✗';
-        position: absolute;
-        left: 0; top: 0;
-        color: var(--c-rose);
-        font-weight: 700;
-        font-size: 16px;
-      }
-      .compare-col.despues ul li::before {
-        content: '✓';
-        position: absolute;
-        left: 0; top: 0;
-        color: var(--primary);
-        font-weight: 700;
-        font-size: 16px;
-      }
+      /* QW-14 / QW2-05: el bloque CSS de "Antes/Después" (.antes-despues,
+         .compare-grid, .compare-col, .compare-head, .tag-rojo, .tag-violeta)
+         fue eliminado junto con la sección HTML correspondiente. Eran ~95
+         líneas de CSS muerto. Si se reactiva la sección, restaurar desde
+         git (commit a9f68ef hacia atrás). */
 
       /* ============================================================
          FAQ
@@ -2588,7 +2497,7 @@
             });
           }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
 
-          document.querySelectorAll('.feature, .sec-header, .release, .paso, .integracion, .compare-col, .faq-item, .dolor, .promo-card, .impacto-card, .precios-grid, .precios-incluye, .precios-cta-group, .tramo-card')
+          document.querySelectorAll('.feature, .sec-header, .release, .paso, .integracion, .faq-item, .dolor, .promo-card, .impacto-card, .precios-grid, .precios-incluye, .precios-cta-group, .tramo-card')
             .forEach(function (el) {
               el.classList.add('reveal');
               io.observe(el);

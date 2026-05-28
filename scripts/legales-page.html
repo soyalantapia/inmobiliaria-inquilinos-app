@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="es-AR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Legales · My Alquiler</title>
+    <meta name="description" content="Términos y condiciones, política de privacidad y política de datos de My Alquiler." />
+    <meta name="color-scheme" content="only light" />
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        color-scheme: only light;
+        --bg: #ffffff;
+        --bg-soft: #f7f7fb;
+        --fg: #0a0a14;
+        --fg-soft: #3f3f55;
+        --muted: #6b6b80;
+        --border: #e8e8ef;
+        --primary: #7c3aed;
+        --primary-soft: #ede9fe;
+        --radius: 14px;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; background: #fff; }
+      body {
+        margin: 0;
+        font-family: 'Inter', system-ui, sans-serif;
+        background: #fff;
+        color: var(--fg);
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+      }
+      .container { max-width: 760px; margin: 0 auto; padding: 0 20px; }
+      header.top {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: rgba(255, 255, 255, 0.92);
+        backdrop-filter: blur(12px);
+        border-bottom: 1px solid var(--border);
+      }
+      header.top .container {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 60px;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 800;
+        font-size: 17px;
+        text-decoration: none;
+        color: inherit;
+        letter-spacing: -0.02em;
+      }
+      .brand .logo {
+        display: inline-grid;
+        place-items: center;
+        width: 32px; height: 32px;
+        border-radius: 9px;
+        background: linear-gradient(135deg, #7c3aed, #ec4899);
+        color: #fff;
+        font-weight: 900;
+        font-size: 11px;
+      }
+      .back {
+        font-size: 13px;
+        color: var(--muted);
+        text-decoration: none;
+        padding: 8px 12px;
+        border-radius: 8px;
+        transition: background 200ms ease;
+      }
+      .back:hover { background: var(--primary-soft); color: var(--primary); }
+
+      main { padding: 48px 0 80px; }
+
+      .page-header {
+        margin-bottom: 40px;
+        text-align: center;
+      }
+      .page-header h1 {
+        margin: 0 0 12px;
+        font-size: clamp(28px, 5vw, 40px);
+        font-weight: 800;
+        letter-spacing: -0.025em;
+      }
+      .page-header p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 15px;
+      }
+
+      .toc {
+        display: flex;
+        gap: 8px;
+        justify-content: center;
+        flex-wrap: wrap;
+        margin: 0 auto 56px;
+        padding: 16px;
+        background: var(--bg-soft);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+      }
+      .toc a {
+        padding: 8px 14px;
+        font-size: 13.5px;
+        font-weight: 600;
+        color: var(--fg-soft);
+        text-decoration: none;
+        border-radius: 8px;
+        transition: all 200ms ease;
+      }
+      .toc a:hover {
+        background: var(--primary-soft);
+        color: var(--primary);
+      }
+
+      .disclaimer {
+        background: #fff7ed;
+        border: 1px solid #fdba74;
+        border-radius: 12px;
+        padding: 16px 20px;
+        margin: 0 0 48px;
+        font-size: 14px;
+        color: #7c2d12;
+      }
+      .disclaimer strong { color: #7c2d12; }
+
+      section.doc {
+        margin: 0 0 64px;
+        scroll-margin-top: 80px;
+      }
+      section.doc h2 {
+        margin: 0 0 8px;
+        font-size: clamp(22px, 4vw, 28px);
+        font-weight: 800;
+        letter-spacing: -0.02em;
+      }
+      section.doc .doc-meta {
+        margin: 0 0 24px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      section.doc h3 {
+        margin: 28px 0 8px;
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--fg);
+      }
+      section.doc p, section.doc li {
+        font-size: 14.5px;
+        color: var(--fg-soft);
+        line-height: 1.65;
+      }
+      section.doc ul {
+        padding-left: 22px;
+        margin: 8px 0 12px;
+      }
+      section.doc li { margin-bottom: 6px; }
+
+      .contact-box {
+        background: var(--bg-soft);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 20px;
+        margin-top: 24px;
+        font-size: 14px;
+      }
+      .contact-box a { color: var(--primary); text-decoration: none; font-weight: 600; }
+      .contact-box a:hover { text-decoration: underline; }
+
+      footer.bot {
+        padding: 32px 0;
+        border-top: 1px solid var(--border);
+        text-align: center;
+        font-size: 13px;
+        color: var(--muted);
+        background: var(--bg-soft);
+      }
+      footer.bot a { color: var(--fg-soft); text-decoration: underline; text-underline-offset: 3px; margin: 0 6px; }
+    </style>
+  </head>
+  <body>
+    <header class="top">
+      <div class="container">
+        <a href="../presentacion/" class="brand">
+          <span class="logo">My</span>
+          <span>My Alquiler</span>
+        </a>
+        <a href="../presentacion/" class="back">← Volver a la landing</a>
+      </div>
+    </header>
+
+    <main>
+      <div class="container">
+        <div class="page-header">
+          <h1>Documentos legales</h1>
+          <p>Términos, privacidad y política de datos de My Alquiler.</p>
+        </div>
+
+        <nav class="toc" aria-label="Tabla de contenidos">
+          <a href="#terminos">📄 Términos y condiciones</a>
+          <a href="#privacidad">🔒 Privacidad</a>
+          <a href="#datos">🗂️ Política de datos</a>
+        </nav>
+
+        <div class="disclaimer">
+          <strong>📌 Versión preliminar.</strong> Estos documentos están en revisión final con
+          nuestro estudio legal. Resumen la operatoria y los compromisos con el cliente
+          conforme a la práctica habitual de SaaS B2B en Argentina. Para acuerdos formales
+          o cláusulas particulares, contactanos en
+          <a href="mailto:legales@myalquiler.com.ar">legales@myalquiler.com.ar</a>.
+        </div>
+
+        <section id="terminos" class="doc">
+          <h2>Términos y condiciones de uso</h2>
+          <p class="doc-meta">Última actualización: mayo 2026</p>
+
+          <h3>1. Objeto del servicio</h3>
+          <p>
+            My Alquiler es una plataforma SaaS que asiste a inmobiliarias y administradores
+            de propiedades de la República Argentina en la gestión de contratos de alquiler,
+            cobranza, facturación electrónica (mediante conexión opcional con ARCA) y
+            comunicaciones con inquilinos y propietarios.
+          </p>
+
+          <h3>2. Cuentas y planes</h3>
+          <p>
+            La contratación se realiza por suscripción mensual sin permanencia. El cliente
+            puede dar de baja la cuenta en cualquier momento desde el panel. El cambio
+            entre tramos (Starter, Growth, Pro, Enterprise) se aplica automáticamente al
+            superar el tope de propiedades del plan vigente.
+          </p>
+
+          <h3>3. Responsabilidades del cliente</h3>
+          <ul>
+            <li>Garantizar la veracidad de los datos cargados sobre propiedades, contratos, propietarios e inquilinos.</li>
+            <li>Resguardar las credenciales de acceso de su equipo y notificarnos ante sospecha de compromiso.</li>
+            <li>Configurar correctamente los permisos de los usuarios de su equipo (Administrador / Operador / Carga / Sólo lectura).</li>
+            <li>En caso de integrar ARCA, mantener vigente y vigente su clave fiscal y punto de venta.</li>
+          </ul>
+
+          <h3>4. Responsabilidades de My Alquiler</h3>
+          <ul>
+            <li>Mantener la plataforma operativa con disponibilidad ≥ 99,5% mensual.</li>
+            <li>Resguardar los datos del cliente de acuerdo a lo descripto en la sección "Política de datos" más abajo.</li>
+            <li>Brindar soporte prioritario por WhatsApp en horario hábil con respuesta promedio menor a 30 minutos.</li>
+            <li>Notificar con antelación cambios sustanciales en precios, alcance o términos.</li>
+          </ul>
+
+          <h3>5. Limitación de responsabilidad</h3>
+          <p>
+            My Alquiler no es parte de los contratos de alquiler entre inmobiliarias,
+            propietarios e inquilinos. Las decisiones operativas (aprobar pagos, emitir
+            facturas, ejecutar comunicaciones) son responsabilidad del cliente. La
+            plataforma facilita la operación pero no la sustituye legalmente.
+          </p>
+
+          <h3>6. Cancelación y bajas</h3>
+          <p>
+            El cliente puede solicitar la baja desde el panel o por WhatsApp. Al darse de
+            baja se entrega un export completo en formato CSV/JSON de toda la información
+            cargada. Los datos se conservan cifrados por 90 días por si el cliente desea
+            reactivar la cuenta; luego se eliminan definitivamente.
+          </p>
+        </section>
+
+        <section id="privacidad" class="doc">
+          <h2>Política de privacidad</h2>
+          <p class="doc-meta">Última actualización: mayo 2026</p>
+
+          <h3>1. Información que recolectamos</h3>
+          <ul>
+            <li>Datos de identificación del cliente: razón social, CUIT, contactos del equipo, dirección.</li>
+            <li>Datos operativos cargados por el cliente: contratos, propietarios, inquilinos, propiedades, comprobantes de pago, comunicaciones, fotos de reclamos.</li>
+            <li>Datos de uso de la plataforma: logs de acceso, acciones críticas (pagos, contratos, reclamos), errores técnicos.</li>
+          </ul>
+
+          <h3>2. Cómo usamos la información</h3>
+          <ul>
+            <li>Operar la plataforma y los servicios contratados.</li>
+            <li>Soporte y mejora del producto.</li>
+            <li>Cumplir obligaciones legales (registro de operaciones, normativa ARCA).</li>
+            <li>Enviar notificaciones operativas al cliente, sus propietarios e inquilinos cuando corresponda según el contrato.</li>
+          </ul>
+
+          <h3>3. Lo que NO hacemos</h3>
+          <ul>
+            <li>No vendemos datos a terceros bajo ninguna circunstancia.</li>
+            <li>No usamos los datos del cliente para entrenar modelos de IA externos.</li>
+            <li>No accedemos a las cuentas del cliente para operar en su nombre sin autorización expresa.</li>
+          </ul>
+
+          <h3>4. Derechos del titular de los datos</h3>
+          <p>
+            Cualquier persona cuyos datos estén en la plataforma puede solicitar acceso,
+            rectificación o eliminación escribiendo a
+            <a href="mailto:privacidad@myalquiler.com.ar">privacidad@myalquiler.com.ar</a>.
+            Cumplimos con la Ley 25.326 de Protección de Datos Personales de Argentina.
+          </p>
+        </section>
+
+        <section id="datos" class="doc">
+          <h2>Política de datos</h2>
+          <p class="doc-meta">Última actualización: mayo 2026</p>
+
+          <h3>1. Almacenamiento y seguridad</h3>
+          <ul>
+            <li>Los datos se almacenan en servidores ubicados en proveedores cloud con presencia en LATAM, cifrados en reposo (AES-256) y en tránsito (TLS 1.3).</li>
+            <li>Las claves fiscales de ARCA se almacenan cifradas con clave maestra rotada, nunca aparecen en logs ni en respuestas de la API.</li>
+            <li>Los datos bancarios del propietario son sólo de lectura: la plataforma nunca opera transferencias en su nombre.</li>
+            <li>El historial de acciones críticas es inmutable y queda disponible para auditoría.</li>
+          </ul>
+
+          <h3>2. Quién tiene acceso</h3>
+          <ul>
+            <li>El cliente y los miembros de su equipo según los permisos que configure (Administrador / Operador / Carga / Sólo lectura).</li>
+            <li>El equipo técnico de My Alquiler, sólo cuando es estrictamente necesario para soporte o resolución de incidentes, y con registro de cada acceso.</li>
+            <li>Autoridades públicas, sólo ante requerimiento judicial formal y conforme a la normativa argentina vigente.</li>
+          </ul>
+
+          <h3>3. Retención y baja</h3>
+          <p>
+            Los datos operativos se conservan mientras la cuenta esté activa. Al darse de
+            baja, el cliente recibe un export completo (CSV/JSON) y los datos se conservan
+            cifrados 90 días adicionales por si decide reactivar la cuenta. Luego se
+            eliminan definitivamente de los sistemas operativos. Los logs anonimizados
+            pueden conservarse por un período mayor para análisis técnico agregado.
+          </p>
+
+          <h3>4. Backups y disponibilidad</h3>
+          <p>
+            Se realizan backups diarios cifrados con retención de 30 días. El objetivo de
+            disponibilidad mensual es ≥ 99,5%. En caso de incidente que afecte la
+            disponibilidad o la integridad de los datos, el cliente es notificado por
+            WhatsApp y email dentro de las primeras 4 horas hábiles.
+          </p>
+
+          <div class="contact-box">
+            <strong>¿Tenés una consulta sobre datos?</strong><br />
+            Escribinos a <a href="mailto:privacidad@myalquiler.com.ar">privacidad@myalquiler.com.ar</a>
+            o por WhatsApp a <a href="https://wa.me/541145321100" target="_blank" rel="noreferrer">+54 11 4532-1100</a>.
+            Respondemos en horario hábil dentro de 24 horas.
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <footer class="bot">
+      <div class="container">
+        <p>
+          © 2026 My Alquiler · Documentos preliminares ·
+          <a href="../presentacion/">Volver a la landing</a> ·
+          <a href="mailto:legales@myalquiler.com.ar">Contacto legal</a>
+        </p>
+      </div>
+    </footer>
+  </body>
+</html>
