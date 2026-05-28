@@ -133,35 +133,10 @@ export default function RecibosPage() {
         <UserMenu />
       </header>
 
-      {/* PRECIO MENSUAL — primera cosa que ve el inquilino debajo del header */}
-      <div className="px-5 md:px-8 md:pt-5">
-        <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-primary to-primary/80 p-6 text-primary-foreground shadow-xl shadow-primary/20 md:p-8">
-          <div className="pointer-events-none absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
-          <div className="pointer-events-none absolute -bottom-16 -left-10 h-44 w-44 rounded-full bg-white/5 blur-3xl" />
-          <div className="relative space-y-2">
-            <p className="text-xs font-medium uppercase tracking-[0.18em] opacity-80">
-              Tu alquiler vigente
-            </p>
-            <div className="flex items-baseline gap-2">
-              <p className="text-4xl font-bold leading-none tracking-tight tabular-nums md:text-5xl">
-                {formatMonto(contratoMock.montoActual, contratoMock.moneda)}
-              </p>
-              <span className="text-base font-medium opacity-85">/ mes</span>
-            </div>
-            <p className="text-xs opacity-85">
-              Pagás el día {contratoMock.diaPago} de cada mes · {contratoMock.inmobiliaria}
-            </p>
-            {totalExtra > 0 && (
-              <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-1 text-xs font-medium backdrop-blur">
-                <Wrench className="h-3 w-3" />
-                + {formatMonto(totalExtra)} en cargos extra este mes
-              </div>
-            )}
-          </div>
-        </Card>
-      </div>
-
-      {/* Título y demo toggle debajo del precio */}
+      {/* Título arriba — la card del pago urgente (si la hay) va
+          PRIMERO antes que la card "Tu alquiler vigente". Antes la
+          violeta gigante tapaba al rojo urgente y Mariela tenía que
+          scrollear para regularizar. */}
       <header className="space-y-3 px-5 pb-1 pt-5 md:px-8">
         <div>
           <h1 className="text-xl font-semibold leading-tight md:text-2xl">Recibos</h1>
@@ -178,6 +153,33 @@ export default function RecibosPage() {
         {/* Card destacada del pago urgente: aparece arriba con desglose
             (alquiler + punitorios) y CTA Regularizar/Pagar prominente. */}
         {pagoUrgente && <PagoUrgenteCard mov={pagoUrgente} />}
+
+        {/* "Tu alquiler vigente" — antes era una card violeta gigante
+            ARRIBA de todo. Ahora va abajo del pago urgente y más
+            compacta: el contexto (cuánto pagás por mes) sigue
+            disponible pero no compite por atención con la urgencia. */}
+        <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-primary/90 to-primary/70 p-4 text-primary-foreground shadow-md shadow-primary/10">
+          <div className="relative flex items-baseline justify-between gap-2">
+            <div>
+              <p className="text-[10px] font-medium uppercase tracking-[0.18em] opacity-80">
+                Tu alquiler vigente
+              </p>
+              <p className="mt-0.5 text-2xl font-bold tabular-nums md:text-3xl">
+                {formatMonto(contratoMock.montoActual, contratoMock.moneda)}
+                <span className="ml-1 text-xs font-normal opacity-85">/ mes</span>
+              </p>
+            </div>
+            <p className="text-[11px] text-right opacity-85">
+              Día {contratoMock.diaPago}<br />de cada mes
+            </p>
+          </div>
+          {totalExtra > 0 && (
+            <div className="relative mt-2 inline-flex items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-1 text-[11px] font-medium backdrop-blur">
+              <Wrench className="h-3 w-3" />
+              + {formatMonto(totalExtra)} en cargos extra este mes
+            </div>
+          )}
+        </Card>
 
         {/* FILTRO por año (solo si hay cobrados de varios años) */}
         {anios.length > 1 && (

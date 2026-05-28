@@ -154,9 +154,20 @@ export function Onboarding() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    // GUARDS (mismo patrón aplicado en el admin):
+    // 1. Solo en `/` (home). El tour explica las funciones del panel,
+    //    no tiene sentido taparle a Mariela el checkout o un reclamo.
+    // 2. Persistir el flag AL ABRIR (no al cerrar). Antes, si Mariela
+    //    refrescaba sin tocar "Cerrar/Saltar", el modal volvía a salir
+    //    en cada visita. Ahora se muestra UNA sola vez.
+    if (window.location.pathname !== '/') return;
+
     try {
       const completado = window.localStorage.getItem(STORAGE_KEY);
-      if (!completado) setOpen(true);
+      if (!completado) {
+        setOpen(true);
+        window.localStorage.setItem(STORAGE_KEY, new Date().toISOString());
+      }
     } catch {
       // ignore
     }

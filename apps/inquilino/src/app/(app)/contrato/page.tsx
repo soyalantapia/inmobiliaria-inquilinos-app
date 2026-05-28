@@ -93,16 +93,19 @@ export default function ContratoPage() {
         <Card className="animate-fade-in space-y-3 p-5">
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="success">Activo</Badge>
+            {/* formatFechaCorta ("1 sep 2025") en vez de formatFecha
+                ("01/09/2025") — más natural y legible para Mariela. */}
             <span className="text-xs text-muted-foreground">
-              {formatFecha(c.fechaInicio)} → {formatFecha(c.fechaFin)}
+              {formatFechaCorta(c.fechaInicio)} → {formatFechaCorta(c.fechaFin)}
             </span>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Alquiler actual</p>
             <p className="text-3xl font-semibold">{formatMonto(c.montoActual, c.moneda)}</p>
-            <p className="text-xs text-muted-foreground">
-              Te quedan {duracionRestante} de contrato
-            </p>
+            {/* "Te quedan X de contrato" lo sacamos: el banner de
+                renovación arriba ya dice "Faltan X. Te avisamos cuando
+                se acerque la renovación · Ver opciones". Tener la misma
+                info repetida cada 100px es ruido. */}
           </div>
         </Card>
 

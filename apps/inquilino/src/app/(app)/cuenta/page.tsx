@@ -105,8 +105,11 @@ export default function CuentaPage() {
             </Avatar>
             <div className="flex-1 min-w-0">
               <p className="truncate text-lg font-semibold">{fullName}</p>
+              {/* "Inquilino" hardcoded en masculino sonaba descuidado
+                  para usuarias femeninas (Mariela ve "Inquilino").
+                  Neutro y más cálido: "Tu hogar · [dirección]". */}
               <p className="truncate text-xs text-muted-foreground">
-                Inquilino · {contratoMock.direccion}
+                Tu hogar · {contratoMock.direccion}
               </p>
             </div>
           </div>
@@ -157,12 +160,10 @@ export default function CuentaPage() {
             Tu hogar
           </h2>
           <Card className="divide-y">
-            <LinkRow
-              icon={<FileText className="h-4 w-4" />}
-              label="Mi contrato"
-              descripcion="Ver los términos completos"
-              href="/contrato"
-            />
+            {/* "Mi contrato → Ver términos" se removió porque
+                duplicaba al tab "Contrato" del NavBar inferior. Dos
+                puntos de entrada al mismo contenido confunden. El
+                acceso al contrato sigue al toque desde el NavBar. */}
             <LinkRow
               icon={<FileText className="h-4 w-4" />}
               label="Mis documentos"

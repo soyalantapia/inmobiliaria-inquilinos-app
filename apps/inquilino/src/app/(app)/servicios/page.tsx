@@ -266,13 +266,29 @@ export default function ServiciosPage() {
               <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
                 Sin pagar
               </p>
-              <p
-                className={`text-base font-semibold tabular-nums ${
-                  stats.sinPagar.length > 0 ? 'text-amber-600' : ''
-                }`}
-              >
-                {stats.sinPagar.length}
-              </p>
+              {/* Antes era solo un número grande en naranja sin
+                  contexto — Mariela veía "1" amber y no sabía si era
+                  alerta o decorativo. Ahora el número va con un sub
+                  ("Pendientes" / "Al día") y, si hay pendientes, un
+                  ícono ⚠ explícito. */}
+              <div>
+                <p
+                  className={`text-base font-semibold tabular-nums ${
+                    stats.sinPagar.length > 0
+                      ? 'text-amber-700 dark:text-amber-300'
+                      : 'text-emerald-700 dark:text-emerald-300'
+                  }`}
+                >
+                  {stats.sinPagar.length > 0 ? (
+                    <>⚠ {stats.sinPagar.length}</>
+                  ) : (
+                    '✓ 0'
+                  )}
+                </p>
+                <p className="text-[10px] text-muted-foreground">
+                  {stats.sinPagar.length > 0 ? 'Pendientes' : 'Al día'}
+                </p>
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -482,7 +498,11 @@ function BoletaRow({
             <span className="text-[10px]">Ya pagué</span>
           </Button>
         )}
-        <div className="flex gap-1">
+        {/* Download + Trash con SEPARACIÓN amplia para evitar toque
+            accidental en mobile. Antes ambos íconos estaban a 4px y
+            con dedo gordo podías borrar la boleta que acabás de subir.
+            El trash queda al borde derecho con un divider visual. */}
+        <div className="flex items-center gap-1">
           <Button asChild variant="ghost" size="sm">
             <a
               href={b.dataUrl}
@@ -492,9 +512,13 @@ function BoletaRow({
               <Download className="h-3.5 w-3.5" />
             </a>
           </Button>
+          {/* Separador físico + margen lateral grande para que el
+              trash quede aislado y requiera intención clara. */}
+          <span className="mx-2 h-5 w-px bg-border" aria-hidden="true" />
           <Button
             variant="ghost"
             size="sm"
+            className="hover:bg-destructive/10"
             onClick={() => onEliminar(b)}
             aria-label={`Eliminar boleta de ${TIPO_LABEL[b.tipo]} ${formatPeriodo(b.periodo)}`}
           >

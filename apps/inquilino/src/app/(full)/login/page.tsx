@@ -518,9 +518,15 @@ function PasoOtp({
         </button>
         <div className="min-w-0">
           <h2 className="text-2xl font-bold tracking-tight">Ingresá el código</h2>
-          <p className="break-all text-sm text-muted-foreground">
+          {/* Antes el `break-all` rompía el email en cualquier char y
+              quedaba "mariela.sosa@g | mail.com" — visualmente sucio.
+              Ahora el email va en su propia línea con `break-words`
+              (sólo en boundaries naturales), evitando el corte raro. */}
+          <p className="text-sm text-muted-foreground">
             Te lo mandamos a{' '}
-            <span className="font-medium text-foreground">{email}</span>
+            <span className="block break-words font-medium text-foreground">
+              {email}
+            </span>
           </p>
         </div>
       </div>

@@ -495,10 +495,37 @@ function StepDatosBancarios({
       )}
 
       <Card className="overflow-hidden">
-        <div className="border-b bg-muted/50 px-5 py-3">
+        {/* Header con label + acción "Copiar todos" — power-user
+            agradece pegar bloque preformateado en su app de banking
+            sin tocar 5 botones Copiar individuales. Los individuales
+            siguen disponibles para quien copia campo por campo. */}
+        <div className="flex items-center justify-between gap-2 border-b bg-muted/50 px-5 py-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Datos para la transferencia
           </p>
+          <button
+            type="button"
+            onClick={async () => {
+              const texto = filas
+                .map((f) => `${f.label}: ${f.copyValue ?? f.value}`)
+                .join('\n');
+              try {
+                await navigator.clipboard.writeText(texto);
+                toast({
+                  title: 'Datos copiados',
+                  description: 'Pegalos en tu home banking.',
+                });
+              } catch {
+                toast({
+                  title: 'No pudimos copiar',
+                  variant: 'destructive',
+                });
+              }
+            }}
+            className="rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-medium text-primary transition-colors hover:bg-primary/20"
+          >
+            Copiar todos
+          </button>
         </div>
         <div className="divide-y">
           {filas.map((f) => (
@@ -573,11 +600,17 @@ function CopyRow({
       <span className="text-muted-foreground">{icon}</span>
       <div className="flex-1 min-w-0">
         <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</p>
-        {/* break-all en lugar de truncate — CBU/Alias son datos críticos para
-            la transferencia y el inquilino necesita poder verlos completos
-            para verificar antes de copiar. truncate + ellipsis "..." escondía
-            los últimos digitos del CBU (22 digitos no entraban en 1 linea). */}
-        <p className="break-words font-mono text-sm font-medium tabular-nums">{value}</p>
+        {/* CBU (22 dígitos numéricos) lo agrupamos en bloques de 4 para
+            que sea legible y entre en una línea visible incluso en
+            mobile angosto. Antes "00700991200000312345" + "60" se
+            partía con los últimos 2 dígitos colgando, riesgoso al
+            copiar manual. Otros valores (alias, monto) se renderizan
+            normal con break-words. */}
+        <p className="break-words font-mono text-sm font-medium tabular-nums">
+          {label === 'CBU' && /^\d{22}$/.test(value)
+            ? value.match(/.{1,4}/g)!.join(' ')
+            : value}
+        </p>
       </div>
       <span
         className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
@@ -729,7 +762,7 @@ function StepSubirComprobante({
           >
             <Upload className="h-8 w-8 text-primary" />
             <div>
-              <p className="text-sm font-medium">Tocá para elegir un archivo</p>
+              <p className="text-sm font-medium">Tocá o arrastrá un archivo</p>
               <p className="text-xs text-muted-foreground">JPG, PNG o PDF</p>
             </div>
             <input
@@ -827,7 +860,7 @@ function StepSubirComprobante({
           <Input
             id="nro"
             aria-describedby="nro-hint"
-            placeholder="123456789"
+            placeholder="Ej: 123456789"
             value={nroOperacion}
             onChange={(e) => setNroOperacion(e.target.value)}
             inputMode="numeric"

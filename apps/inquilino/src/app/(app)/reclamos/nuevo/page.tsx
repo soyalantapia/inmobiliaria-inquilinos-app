@@ -345,12 +345,15 @@ export default function NuevoReclamoPage() {
         )}
         {errorFoto && <p className="text-xs text-destructive">{errorFoto}</p>}
 
-        {/* Urgencia como chips (R10 de la auditoría): antes era un Select que
-            obligaba a abrir el dropdown para descubrir las opciones. Con chips
-            las 4 alternativas y sus descripciones quedan a la vista de entrada. */}
+        {/* Urgencia: 2x2 grid SIEMPRE (también en mobile angosto).
+            Antes era `grid-cols-1 sm:grid-cols-2` y en mobile real
+            (375px) quedaba apilado: "Emergencia" caía fuera del primer
+            viewport y un usuario con urgencia real podía marcar
+            "Urgente" sin descubrir el nivel más alto. Ahora las 4
+            opciones caben en una sola pantalla. */}
         <div role="group" aria-labelledby="recnuevo-urgencia-label" className="space-y-2">
           <p id="recnuevo-urgencia-label" className="text-sm font-medium leading-none">Urgencia</p>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <div className="grid grid-cols-2 gap-2">
             {urgencias.map((u) => {
               const seleccionado = urgencia === u.value;
               const esEmergencia = u.value === 'EMERGENCIA';
@@ -365,7 +368,9 @@ export default function NuevoReclamoPage() {
                       ? esEmergencia
                         ? 'border-destructive bg-destructive/5 text-destructive'
                         : 'border-primary bg-primary/5 text-primary'
-                      : 'border-border hover:border-primary/40'
+                      : esEmergencia
+                        ? 'border-destructive/30 hover:border-destructive/60'
+                        : 'border-border hover:border-primary/40'
                   }`}
                 >
                   <p className="text-sm font-medium">{u.label}</p>
@@ -425,7 +430,17 @@ export default function NuevoReclamoPage() {
           </p>
         )}
 
-        <Button size="xl" className="w-full" disabled={!puedeEnviar} onClick={enviar}>
+        {/* className extra "disabled:bg-muted disabled:text-muted-foreground"
+            sobreescribe el opacity-50 por defecto del Button shadcn —
+            cuando disabled, en vez de violeta apagado al 50% (que se
+            seguía leyendo como "casi activo"), se muestra gris claro
+            inequívoco. */}
+        <Button
+          size="xl"
+          className="w-full disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100"
+          disabled={!puedeEnviar}
+          onClick={enviar}
+        >
           {enviando ? 'Enviando…' : 'Enviar reclamo'}
         </Button>
       </main>

@@ -119,7 +119,10 @@ export const TIPO_LABEL: Record<TipoServicio, string> = {
 };
 
 export const ESTADO_LABEL: Record<EstadoBoleta, string> = {
-  SUBIDA: 'Subida',
+  // "Subida" era ambiguo para servicios públicos en Argentina —
+  // se podía leer como "la tarifa subió". "Cargada" describe la
+  // acción real (la boleta está cargada en la app, pendiente de pago).
+  SUBIDA: 'Cargada',
   PAGADA: 'Pagada',
   EN_REVISION: 'En revisión',
 };

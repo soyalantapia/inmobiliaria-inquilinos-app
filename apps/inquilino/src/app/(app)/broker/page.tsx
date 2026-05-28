@@ -326,8 +326,11 @@ export default function ContratoPage() {
                   Online
                 </span>
               </div>
+              {/* En mobile angosto la dirección se cortaba ("Gorriti
+                  45...") y confundía. Mostramos solo el copy
+                  funcional; la dirección ya se sabe en /contrato. */}
               <p className="truncate text-xs text-muted-foreground">
-                Ayuda con pagos, deuda y trámites · {contratoMock.direccion}
+                Ayuda con pagos, deuda y trámites
               </p>
             </div>
           </div>

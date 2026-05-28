@@ -108,10 +108,15 @@ function AnuncioRow({ anuncio }: { anuncio: AnuncioInquilino }) {
               </Badge>
             )}
           </div>
+          {/* line-clamp-2 (no -1) para preview: con 1 línea, datos
+              críticos como un CBU nuevo se cortaban con "..." y el
+              inquilino tenía que tocar para verlo. 2 líneas permite
+              ver la primera frase informativa completa sin truncar
+              datos. Expandido sigue mostrando todo. */}
           <p
             className={cn(
               'text-xs text-muted-foreground',
-              expandido ? 'whitespace-pre-line' : 'line-clamp-1',
+              expandido ? 'whitespace-pre-line' : 'line-clamp-2',
             )}
           >
             {anuncio.cuerpo}
