@@ -103,7 +103,10 @@ const equipoInicial: Miembro[] = [
   },
   {
     id: '4',
-    nombre: 'Contador externo',
+    // I2-08: "Contador externo" era un rol, no un nombre. El resto del equipo
+    // tiene nombres reales; usamos uno coherente con el email (martin.contador).
+    // El rol "Solo lectura" ya comunica que es un externo de consulta.
+    nombre: 'Martín Herrera',
     email: 'martin.contador@gmail.com',
     rol: 'LECTURA',
     ultimoAcceso: '2026-05-08T11:20:00-03:00',

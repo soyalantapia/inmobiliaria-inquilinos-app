@@ -286,7 +286,7 @@
       "features": [
         {
           "titulo": "Cuatro niveles de permisos",
-          "descripcion": "Administrador (control total), Operador (operación cotidiana), Carga (alta de datos sin aprobación) y Sólo lectura (ideal para contadores externos). Cada usuario accede a lo necesario.",
+          "descripcion": "Administrador (control total), Operador (operación cotidiana), Carga limitada (alta de datos sin aprobación) y Sólo lectura (ideal para contadores externos). Cada usuario accede a lo necesario.",
           "ruta": "../inmobiliaria/configuracion",
           "rutaLabel": "Ver equipo y permisos"
         },
@@ -532,7 +532,7 @@
       },
       {
         "pregunta": "¿Qué niveles de permisos están disponibles?",
-        "respuesta": "Cuatro: Administrador (control total), Operador (operación cotidiana sin aprobaciones críticas), Carga (alta de datos sin facultad de aprobación) y Sólo lectura (visualización, ideal para contadores externos). Cada usuario accede exclusivamente a las funciones permitidas por su nivel."
+        "respuesta": "Cuatro: Administrador (control total), Operador (operación cotidiana sin aprobaciones críticas), Carga limitada (alta de datos sin facultad de aprobación) y Sólo lectura (visualización, ideal para contadores externos). Cada usuario accede exclusivamente a las funciones permitidas por su nivel."
       },
       {
         "pregunta": "¿Cómo se aplica el ajuste por índice oficial?",
@@ -578,7 +578,7 @@
         "Tipos de contrato: alquiler, expensas o combinación",
         "Caja de gastos imputables al propietario en la rendición mensual",
         "Carga manual de pagos recibidos por canales paralelos",
-        "Nuevo nivel de permisos: Carga (alta sin facultad de aprobación)"
+        "Nuevo nivel de permisos: Carga limitada (alta sin facultad de aprobación)"
       ]
     }
   ],

@@ -128,9 +128,10 @@ export function HistorialPropietarioDialog({
           />
           <MetricBox
             label="Neto histórico"
-            value={
-              totalNetoHistorico > 0 ? formatMonto(totalNetoHistorico) : '—'
-            }
+            /* I2-06: antes mostraba "—" (ambiguo: ¿$0, sin datos, error?).
+               Ahora "$0" cuando no hubo rendiciones — coherente con el box
+               "Rendiciones: 0" de al lado y con el empty state de abajo. */
+            value={formatMonto(totalNetoHistorico)}
             icon={<Banknote className="h-3 w-3 text-emerald-600" />}
           />
         </div>
@@ -158,7 +159,13 @@ export function HistorialPropietarioDialog({
         {propietario.cbuAlias && (
           <div className="flex items-center gap-2 rounded-md border bg-muted/20 px-3 py-2 text-xs">
             <CreditCard className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="text-muted-foreground">Cobra en:</span>
+            {/* I2-07: antes decía sólo "Cobra en:" sin aclarar si el valor es
+                un CBU o un alias. Roberto rinde plata a esa cuenta — saber el
+                tipo importa para verificar antes de transferir. Detectamos:
+                22 dígitos = CBU, si no = alias (igual que la ficha completa). */}
+            <span className="text-muted-foreground">
+              Cobra en ({/^\d{22}$/.test(propietario.cbuAlias.replace(/\s/g, '')) ? 'CBU' : 'alias'}):
+            </span>
             <code className="font-mono">{propietario.cbuAlias}</code>
           </div>
         )}

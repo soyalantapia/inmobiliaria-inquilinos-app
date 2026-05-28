@@ -56,9 +56,11 @@ export function SelectorSociedadTopbar() {
   const sociedadActiva =
     activa === TODAS_LAS_SOCIEDADES ? null : sociedades.find((s) => s.id === activa);
 
+  // I2-03: "Todas (3)" no decía de qué eran las 3. "Todas las sociedades"
+  // aclara que el filtro es por sociedad (el detalle/total va en el dropdown).
   const label =
     activa === TODAS_LAS_SOCIEDADES
-      ? `Todas (${sociedades.length})`
+      ? 'Todas las sociedades'
       : sociedadActiva?.nombreComercial ?? 'Sociedad';
 
   const Icon = activa === TODAS_LAS_SOCIEDADES ? Globe : Briefcase;

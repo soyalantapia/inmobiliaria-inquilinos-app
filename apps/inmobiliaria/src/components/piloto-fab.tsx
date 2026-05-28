@@ -53,6 +53,21 @@ export function PilotoFab() {
     setHidratado(true);
   }, []);
 
+  // I2-01: cuando el FAB está visible, reservamos espacio al pie del
+  // contenido para que el botón flotante no tape los CTAs que viven en la
+  // esquina inferior de las cards al final del scroll (ej. "Generar mensaje
+  // WhatsApp" en Renovaciones). El padding sólo existe mientras el FAB existe
+  // — en producción sin modo piloto no se agrega nada.
+  useEffect(() => {
+    if (!hidratado || !esPiloto) return;
+    const main = document.getElementById('main-content');
+    if (!main) return;
+    main.style.paddingBottom = '6rem';
+    return () => {
+      main.style.paddingBottom = '';
+    };
+  }, [hidratado, esPiloto]);
+
   if (!hidratado || !esPiloto) return null;
 
   // /configuracion tiene CTAs primarios al pie ("Guardar cambios",

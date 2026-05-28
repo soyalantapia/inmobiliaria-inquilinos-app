@@ -2,9 +2,8 @@
 
 import { SignOutButton, UserButton } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
-import { LogOut, Search } from 'lucide-react';
+import { LogOut } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@llave/ui/avatar';
-import { Input } from '@llave/ui/input';
 import { isClerkEnabled, mockUser } from '@/lib/auth';
 import { ConvenioBadgeTopbar } from './convenio-badge-topbar';
 import { MobileSidebarTrigger } from './sidebar';
@@ -26,12 +25,11 @@ export function Topbar({ titulo }: { titulo: string }) {
       </div>
       <div className="flex min-w-0 items-center gap-1 md:gap-3">
         <SelectorSociedadTopbar />
-        {/* Search: oculto en mobile, w-48 en lg, w-72 en xl. Se contrae si
-            falta espacio porque NO tiene shrink-0. */}
-        <div className="relative hidden min-w-0 lg:block">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input className="w-full pl-9 lg:w-48 xl:w-72" placeholder="Buscar…" aria-label="Buscar" />
-        </div>
+        {/* I2-02: el search global del topbar era decorativo (sin value ni
+            onChange — no buscaba nada) y convivía con el buscador real de
+            cada sección (ej. Propietarios), confundiendo al usuario. Lo
+            quitamos hasta tener búsqueda global de verdad: cada sección ya
+            tiene su buscador funcional. Mejor sin search que con uno fake. */}
         <ConvenioBadgeTopbar />
         <NotificationsBell />
 

@@ -247,7 +247,13 @@ export default function PropietariosPage() {
                             CUIT {p.cuit}
                           </p>
                         </div>
-                        {/* Badge dinámico: rendido / por rendir / unidades. */}
+                        {/* I2-05: este badge comunica ESTADO de rendición.
+                            Antes el tercer caso mostraba la cantidad de
+                            unidades ("1 unidad") — una semántica distinta en el
+                            mismo slot que rompía el escaneo visual. Ahora los
+                            tres casos son estados coherentes: Rendido / Por
+                            rendir / Al día. La cantidad de unidades vive en la
+                            ficha del propietario, no en el badge de estado. */}
                         {rendido ? (
                           <Badge
                             variant="success"
@@ -265,9 +271,12 @@ export default function PropietariosPage() {
                             Por rendir
                           </Badge>
                         ) : (
-                          <Badge variant="secondary" className="shrink-0">
-                            {p.propiedadesIds.length}{' '}
-                            {p.propiedadesIds.length === 1 ? 'unidad' : 'unidades'}
+                          <Badge
+                            variant="secondary"
+                            className="shrink-0 gap-1 text-[10px]"
+                          >
+                            <CheckCircle2 className="h-3 w-3" />
+                            Al día
                           </Badge>
                         )}
                       </div>
