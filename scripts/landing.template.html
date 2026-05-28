@@ -1558,9 +1558,20 @@
          link pequeño debajo del CTA principal. Sigue visible (para quien
          aterrice por error) pero no compite visualmente.
          ============================================================ */
+      /* L-DEMO-01: nota de "demo en vivo" debajo del CTA primario del hero. */
+      .hero-demo-nota {
+        margin: 14px 0 0;
+        font-size: 13px;
+        color: var(--fg-soft);
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+      }
       .hero-inquilino-link {
         display: inline-block;
-        margin-top: 14px;
+        margin-top: 10px;
         color: var(--muted);
         font-size: 13.5px;
         font-weight: 500;
@@ -2049,6 +2060,121 @@
       }
       @media (min-width: 480px) { .integracion .ig-desc { font-size: 12px; } }
 
+      /* ============================================================
+         POR QUÉ CONFIAR (GARANTÍAS) · L-SOCIAL-01 honesto
+         ============================================================ */
+      .garantias {
+        padding: 56px 0;
+        background: var(--bg-soft);
+      }
+      @media (min-width: 480px) { .garantias { padding: 64px 0; } }
+      @media (min-width: 768px) { .garantias { padding: 96px 0; } }
+      .garantias-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 14px;
+        max-width: 1080px;
+        margin: 0 auto;
+      }
+      @media (min-width: 640px) { .garantias-grid { grid-template-columns: repeat(2, 1fr); gap: 18px; } }
+      @media (min-width: 1024px) { .garantias-grid { grid-template-columns: repeat(3, 1fr); gap: 20px; } }
+      .garantia {
+        padding: 24px 22px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        transition: all var(--transition);
+      }
+      .garantia:hover {
+        border-color: var(--primary);
+        transform: translateY(-3px);
+        box-shadow: 0 16px 36px -16px var(--primary-glow);
+      }
+      .garantia-icon {
+        font-size: 30px;
+        line-height: 1;
+        margin-bottom: 2px;
+      }
+      .garantia h3 {
+        margin: 0;
+        font-size: 16.5px;
+        font-weight: 700;
+        letter-spacing: -0.015em;
+      }
+      .garantia p {
+        margin: 0;
+        font-size: 14px;
+        color: var(--muted);
+        line-height: 1.55;
+      }
+
+      /* ============================================================
+         TESTIMONIALES · L-SOCIAL-01 hook (sólo si hay items reales)
+         ============================================================ */
+      .testimoniales {
+        padding: 56px 0;
+      }
+      @media (min-width: 480px) { .testimoniales { padding: 64px 0; } }
+      @media (min-width: 768px) { .testimoniales { padding: 96px 0; } }
+      .testi-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 16px;
+        max-width: 1080px;
+        margin: 0 auto;
+      }
+      @media (min-width: 768px) { .testi-grid { grid-template-columns: repeat(2, 1fr); gap: 20px; } }
+      @media (min-width: 1024px) { .testi-grid { grid-template-columns: repeat(3, 1fr); } }
+      .testi {
+        padding: 24px 22px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+      }
+      .testi-cita {
+        margin: 0;
+        font-size: 15px;
+        line-height: 1.6;
+        color: var(--fg-soft);
+        flex: 1;
+      }
+      .testi-autor {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .testi-foto {
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        object-fit: cover;
+        flex-shrink: 0;
+      }
+      .testi-foto-ph {
+        display: grid;
+        place-items: center;
+        background: linear-gradient(135deg, var(--primary), var(--accent-pink));
+        color: #fff;
+        font-weight: 800;
+        font-size: 18px;
+      }
+      .testi-nombre {
+        margin: 0;
+        font-size: 14.5px;
+        font-weight: 700;
+      }
+      .testi-meta {
+        margin: 0;
+        font-size: 12.5px;
+        color: var(--muted);
+      }
+
       /* QW-14 / QW2-05: el bloque CSS de "Antes/Después" (.antes-despues,
          .compare-grid, .compare-col, .compare-head, .tag-rojo, .tag-violeta)
          fue eliminado junto con la sección HTML correspondiente. Eran ~95
@@ -2218,6 +2344,14 @@
               🏢 {{CTA_PROPIETARIO_TEXTO}}
             </a>
           </div>
+          <!-- L-DEMO-01: microcopy que aclara que el demo es navegable sin
+               fricción — reduce la duda "¿me va a pedir registro/instalar?".
+               El demo en vivo ES real (apps con datos de ejemplo en GH Pages),
+               así que la promesa es honesta. -->
+          <p class="hero-demo-nota">
+            <span aria-hidden="true">✨</span>
+            Demo navegable en vivo · sin registro · datos de ejemplo
+          </p>
           <a href="{{CTA_INQUILINO_HREF}}" class="hero-inquilino-link">
             📱 {{CTA_INQUILINO_TEXTO}} →
           </a>
@@ -2341,6 +2475,31 @@
         <div class="integraciones-grid">{{INTEGRACIONES_ITEMS}}</div>
       </div>
     </section>
+
+    <!-- ==================== POR QUÉ CONFIAR (GARANTÍAS) ====================
+         L-SOCIAL-01 (versión honesta): no inventamos testimoniales ni logos
+         de clientes. En su lugar, reforzamos confianza con las condiciones
+         REALES con las que opera el producto (sin permanencia, datos
+         exportables, registro inmutable, soporte humano, ARCA oficial, made
+         in AR). Va justo antes de Precios para bajar la guardia del comprador
+         en el momento previo a ver el costo. -->
+    <section id="garantias" class="garantias">
+      <div class="container">
+        <div class="sec-header reveal">
+          <span class="sec-tag">{{GARANTIAS_TAG}}</span>
+          <h2>{{GARANTIAS_TITULO}}</h2>
+          <p>{{GARANTIAS_SUBTITULO}}</p>
+        </div>
+        <div class="garantias-grid">{{GARANTIAS_ITEMS}}</div>
+      </div>
+    </section>
+
+    <!-- ==================== TESTIMONIALES (condicional) ====================
+         L-SOCIAL-01 hook: esta sección sólo aparece si hay testimonios
+         reales cargados en landing-data.json. Mientras 'items' esté vacío,
+         {{TESTIMONIALES_SECTION}} se reemplaza por string vacío — no
+         inventamos prueba social. -->
+    {{TESTIMONIALES_SECTION}}
 
     <!-- ==================== PRECIOS ==================== -->
     <section id="precios" class="precios">
@@ -2540,7 +2699,7 @@
             });
           }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
 
-          document.querySelectorAll('.feature, .sec-header, .release, .paso, .integracion, .faq-item, .dolor, .promo-card, .impacto-card, .precios-grid, .precios-incluye, .precios-cta-group, .tramo-card')
+          document.querySelectorAll('.feature, .sec-header, .release, .paso, .integracion, .garantia, .faq-item, .dolor, .promo-card, .impacto-card, .precios-grid, .precios-incluye, .precios-cta-group, .tramo-card')
             .forEach(function (el) {
               el.classList.add('reveal');
               io.observe(el);

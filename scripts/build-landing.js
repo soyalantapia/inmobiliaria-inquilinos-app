@@ -190,6 +190,64 @@ function renderPasos(pasos) {
     .join('');
 }
 
+// Render garantías (L-SOCIAL-01 versión honesta): trust-building basado en
+// condiciones REALES del producto, no en testimoniales inventados. Cada
+// garantía es una política o feature que ya existe (sin permanencia, export
+// de datos, registro inmutable, soporte WhatsApp, ARCA oficial, made in AR).
+function renderGarantias(items) {
+  return items
+    .map(
+      (g) => `
+          <article class="garantia">
+            <div class="garantia-icon">${esc(g.icono)}</div>
+            <h3>${esc(g.titulo)}</h3>
+            <p>${esc(g.descripcion)}</p>
+          </article>`,
+    )
+    .join('');
+}
+
+// Render testimoniales (L-SOCIAL-01 hook): devuelve la SECCIÓN ENTERA o ''.
+// Mientras no haya testimonios reales cargados en el JSON, no renderiza nada
+// — preferimos vacío honesto a testimoniales inventados. Cuando el dueño
+// cargue items reales (nombre, rol, inmobiliaria, cita), la sección aparece
+// sola entre Garantías y Precios.
+function renderTestimoniales(testimoniales) {
+  if (!testimoniales || !testimoniales.items || testimoniales.items.length === 0) {
+    return '';
+  }
+  const cards = testimoniales.items
+    .map((t) => {
+      const foto = t.foto
+        ? `<img class="testi-foto" src="${esc(t.foto)}" alt="${esc(t.nombre)}" loading="lazy" />`
+        : `<div class="testi-foto testi-foto-ph" aria-hidden="true">${esc((t.nombre || '?').charAt(0))}</div>`;
+      const meta = [t.rol, t.inmobiliaria, t.ciudad].filter(Boolean).map(esc).join(' · ');
+      return `
+          <article class="testi">
+            <p class="testi-cita">“${esc(t.cita)}”</p>
+            <div class="testi-autor">
+              ${foto}
+              <div>
+                <p class="testi-nombre">${esc(t.nombre)}</p>
+                <p class="testi-meta">${meta}</p>
+              </div>
+            </div>
+          </article>`;
+    })
+    .join('');
+  return `
+    <section id="testimoniales" class="testimoniales">
+      <div class="container">
+        <div class="sec-header reveal">
+          <span class="sec-tag">${esc(testimoniales.tag || 'Testimonios')}</span>
+          <h2>${esc(testimoniales.titulo || '')}</h2>
+          ${testimoniales.subtitulo ? `<p>${esc(testimoniales.subtitulo)}</p>` : ''}
+        </div>
+        <div class="testi-grid">${cards}</div>
+      </div>
+    </section>`;
+}
+
 // Render integraciones
 function renderIntegraciones(items) {
   return items
@@ -366,6 +424,11 @@ function main() {
     INTEGRACIONES_TITULO: esc(data.integraciones.titulo),
     INTEGRACIONES_SUBTITULO: esc(data.integraciones.subtitulo),
     INTEGRACIONES_ITEMS: renderIntegraciones(data.integraciones.items),
+    GARANTIAS_TAG: esc(data.garantias.tag),
+    GARANTIAS_TITULO: esc(data.garantias.titulo),
+    GARANTIAS_SUBTITULO: esc(data.garantias.subtitulo),
+    GARANTIAS_ITEMS: renderGarantias(data.garantias.items),
+    TESTIMONIALES_SECTION: renderTestimoniales(data.testimoniales),
     PRECIOS_TAG: esc(data.precios.tag),
     PRECIOS_TITULO: esc(data.precios.titulo),
     PRECIOS_SUBTITULO: esc(data.precios.subtitulo),

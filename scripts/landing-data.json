@@ -383,6 +383,50 @@
       { "nombre": "Correo electrónico", "icono": "✉️", "descripcion": "Notificaciones al inquilino", "color": "rose" }
     ]
   },
+  "garantias": {
+    "tag": "Por qué confiar",
+    "titulo": "Hecho para que pruebes sin riesgo",
+    "subtitulo": "No tenemos letra chica. Estas son las condiciones con las que trabajamos desde el primer día.",
+    "items": [
+      {
+        "icono": "🔓",
+        "titulo": "Sin permanencia",
+        "descripcion": "Pagás mes a mes y das de baja cuando quieras desde el panel. Sin contratos de fidelidad ni penalidades por irte."
+      },
+      {
+        "icono": "📦",
+        "titulo": "Tus datos son tuyos",
+        "descripcion": "Si te vas, te llevás todo: export completo en CSV/JSON de contratos, propietarios, pagos y comprobantes. Sin secuestro de información."
+      },
+      {
+        "icono": "🛡️",
+        "titulo": "Registro inmutable",
+        "descripcion": "Cada acción crítica queda registrada con autor, fecha y motivo. El historial no se puede borrar — auditable ante cualquier consulta del propietario."
+      },
+      {
+        "icono": "💬",
+        "titulo": "Soporte humano por WhatsApp",
+        "descripcion": "Te responde una persona, no un bot. Respuesta promedio menor a 30 minutos en horario hábil; sábados a la mañana para urgencias operativas."
+      },
+      {
+        "icono": "🧾",
+        "titulo": "Facturación oficial con ARCA",
+        "descripcion": "Integración directa con los servicios oficiales de ARCA. Emisión con CAE real, no comprobantes truchos ni workarounds."
+      },
+      {
+        "icono": "🇦🇷",
+        "titulo": "Hecho en Argentina",
+        "descripcion": "Entendemos la operatoria local: índices oficiales, modalidades de cobranza, condiciones fiscales de tus propietarios. Construido para el mercado argentino."
+      }
+    ]
+  },
+  "testimoniales": {
+    "_nota": "Hook de prueba social real. Mientras 'items' esté vacío, la sección NO se renderiza (no inventamos testimoniales). Cuando tengas testimonios reales, agregá objetos con: nombre, rol, inmobiliaria, ciudad, cita, foto (URL opcional). La sección aparece automáticamente entre Garantías y Precios.",
+    "tag": "Lo que dicen",
+    "titulo": "Inmobiliarias que ya operan con My Alquiler",
+    "subtitulo": "",
+    "items": []
+  },
   "precios": {
     "tag": "Precios",
     "titulo": "Un precio fijo por mes según tu cartera",
