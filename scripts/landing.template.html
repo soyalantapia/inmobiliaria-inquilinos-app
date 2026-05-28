@@ -1510,20 +1510,92 @@
       @media (min-width: 480px) { .cta-final p { margin: 0 auto 36px; } }
 
       /* ============================================================
-         FOOTER
+         HERO LINK SECUNDARIO INQUILINO
+         QW-09: el comprador es la inmobiliaria; el inquilino baja a un
+         link pequeño debajo del CTA principal. Sigue visible (para quien
+         aterrice por error) pero no compite visualmente.
+         ============================================================ */
+      .hero-inquilino-link {
+        display: inline-block;
+        margin-top: 14px;
+        color: var(--muted);
+        font-size: 13.5px;
+        font-weight: 500;
+        text-decoration: none;
+        transition: color var(--transition);
+      }
+      .hero-inquilino-link:hover {
+        color: var(--primary);
+      }
+
+      /* ============================================================
+         FOOTER (QW-01)
+         Antes el footer era un `<p></p>` vacío — el último scroll de la
+         landing gritaba "amateur" en una SaaS B2B. Ahora: grid de hasta 4
+         columnas (Producto, Apps, Contacto, Legales) + bottom bar con
+         razón social y año. Contenido vive en `landing-data.json:footer`.
          ============================================================ */
       footer.bottom {
-        padding: 32px 0;
+        padding: 48px 0 28px;
         border-top: 1px solid var(--border);
-        text-align: center;
         color: var(--muted);
-        font-size: 13px;
+        font-size: 13.5px;
+        background: var(--bg-soft);
       }
-      footer.bottom a {
+      @media (min-width: 768px) {
+        footer.bottom { padding: 64px 0 36px; }
+      }
+      .footer-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 28px 24px;
+        margin-bottom: 32px;
+      }
+      @media (min-width: 768px) {
+        .footer-grid {
+          grid-template-columns: repeat(4, 1fr);
+          gap: 36px 28px;
+          margin-bottom: 40px;
+        }
+      }
+      .footer-col h4 {
+        margin: 0 0 12px;
+        font-size: 11.5px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--fg);
+      }
+      .footer-col ul {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .footer-col li {
+        line-height: 1.4;
+      }
+      .footer-col a {
         color: var(--fg-soft);
+        text-decoration: none;
+        transition: color var(--transition);
+      }
+      .footer-col a:hover {
+        color: var(--primary);
         text-decoration: underline;
         text-underline-offset: 3px;
-        margin: 0 6px;
+      }
+      .footer-bottom {
+        padding-top: 20px;
+        border-top: 1px solid var(--border);
+        text-align: center;
+        font-size: 12.5px;
+        color: var(--muted);
+      }
+      .footer-bottom p {
+        margin: 0;
       }
 
       /* ============================================================
@@ -2103,10 +2175,13 @@
       <div class="scroll-progress-fill" id="scrollProgress"></div>
     </div>
 
-    <!-- ==================== STICKY CTA FLOTANTE ==================== -->
+    <!-- ==================== STICKY CTA FLOTANTE ====================
+         QW-04: copy unificado con el navbar para que el ojo registre
+         "es el mismo botón que vengo viendo arriba" en vez de creer que
+         son 4 botones distintos con el mismo destino. -->
     <div class="float-cta" id="floatCta" aria-hidden="true">
       <a href="{{CTA_PROPIETARIO_HREF}}" class="btn btn-primary">
-        🏢 Probar la demo
+        🏢 Probar demo
       </a>
     </div>
 
@@ -2124,8 +2199,11 @@
           <a href="{{CTA_INQUILINO_HREF}}" class="btn btn-ghost nav-cta-mobile-hide">
             App inquilino
           </a>
+          <!-- QW-10: "App propietario" mentía — el propietario es el dueño del
+               inmueble (otro rol). Este link va al panel inmobiliario.
+               QW-04: copy unificado con float CTA = "Probar demo". -->
           <a href="{{CTA_PROPIETARIO_HREF}}" class="btn btn-primary nav-cta-mobile-hide">
-            App propietario →
+            Probar demo →
           </a>
           <button class="menu-btn" id="menuBtn" aria-label="Abrir menú" aria-controls="drawer" aria-expanded="false">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -2151,12 +2229,15 @@
         </button>
       </div>
       {{DRAWER_LINKS}}
+      <!-- QW-04 + QW-10: labels alineados con resto del sitio.
+           "Panel inmobiliario" en lugar de "App del Propietario" (que mentía),
+           y "App del inquilino" en minúsculas como en el hero. -->
       <div class="drawer-cta-group">
         <a href="{{CTA_PROPIETARIO_HREF}}" class="btn btn-primary btn-lg">
-          🏢 App del Propietario
+          🏢 Panel inmobiliario
         </a>
-        <a href="{{CTA_INQUILINO_HREF}}" class="btn btn-accent btn-lg">
-          📱 App del Inquilino
+        <a href="{{CTA_INQUILINO_HREF}}" class="btn btn-ghost btn-lg">
+          📱 App del inquilino
         </a>
       </div>
     </aside>
@@ -2174,14 +2255,20 @@
           </span>
           <h1>{{HERO_TITULO_HTML}}</h1>
           <p class="subtitle">{{HERO_SUBTITULO}}</p>
+          <!-- QW-09: el comprador es la inmobiliaria — no podemos tener dos
+               CTAs xl igualados que dividan al ojo. Hero queda con UN solo
+               CTA primario (panel inmobiliario) y el inquilino baja a un
+               link inferior pequeño + ícono — sigue visible para quien
+               aterrice por error desde un link compartido, pero no compite
+               con el CTA principal. -->
           <div class="hero-ctas">
             <a href="{{CTA_PROPIETARIO_HREF}}" class="btn btn-primary btn-xl">
               🏢 {{CTA_PROPIETARIO_TEXTO}}
             </a>
-            <a href="{{CTA_INQUILINO_HREF}}" class="btn btn-accent btn-xl">
-              📱 {{CTA_INQUILINO_TEXTO}}
-            </a>
           </div>
+          <a href="{{CTA_INQUILINO_HREF}}" class="hero-inquilino-link">
+            📱 {{CTA_INQUILINO_TEXTO}} →
+          </a>
           <div class="badges">{{HERO_BADGES}}</div>
         </div>
 
@@ -2267,24 +2354,11 @@
       </div>
     </section>
 
-    <!-- divider: problema (white) → antes/después (bg-soft) -->
-    <div class="section-divider" aria-hidden="true">
-      <svg preserveAspectRatio="none" viewBox="0 0 1200 60">
-        <path d="M0,60 C300,10 900,10 1200,60 L1200,60 L0,60 Z" fill="#f7f7fb"/>
-      </svg>
-    </div>
-
-    <!-- ==================== ANTES / DESPUÉS ==================== -->
-    <section id="antes-despues" class="antes-despues">
-      <div class="container">
-        <div class="sec-header reveal">
-          <span class="sec-tag">Sin My Alquiler · Con My Alquiler</span>
-          <h2>{{ANTES_DESPUES_TITULO}}</h2>
-          <p>{{ANTES_DESPUES_SUBTITULO}}</p>
-        </div>
-        <div class="compare-grid">{{ANTES_DESPUES_COLS}}</div>
-      </div>
-    </section>
+    <!-- QW-14: la sección "Antes/Después" se quitó porque repetía
+         conceptualmente lo que Problema ya cubre y forzaba al lector a
+         procesar dos veces los mismos dolores. La transición ahora va
+         directo de Problema → Cómo funciona (problema → solución), que es
+         el orden mental natural del comprador. -->
 
     <!-- ==================== CÓMO FUNCIONA ==================== -->
     <section id="como-funciona" class="como-funciona">
@@ -2357,23 +2431,31 @@
       </div>
     </section>
 
-    <!-- ==================== BANNER DE IMPACTO ==================== -->
+    <!-- ==================== BANNER DE IMPACTO ====================
+         QW-13: el copy anterior ("Lo que reportan las inmobiliarias después
+         de adoptar la plataforma") prometía testimoniales y entregaba 3
+         números anónimos — sonaba a claim sin respaldo. Reescrito como
+         "diseño del producto": son las métricas que el sistema garantiza
+         por arquitectura (historial inmutable, emisión automática, menos
+         trabajo manual), no afirmaciones de clientes anónimos. Cuando
+         tengamos testimoniales reales con nombre + foto, se vuelve a la
+         redacción "lo que reportan…". -->
     <section class="impacto">
       <div class="container">
-        <h2 class="reveal">El impacto el primer mes</h2>
-        <p class="lead reveal">Lo que reportan las inmobiliarias después de adoptar la plataforma.</p>
+        <h2 class="reveal">Lo que el producto te garantiza por diseño</h2>
+        <p class="lead reveal">No son testimonios — son consecuencias directas de cómo está construida la plataforma.</p>
         <div class="impacto-grid">
           <div class="impacto-card reveal">
             <div class="big">12 hs</div>
-            <div class="label">Menos por mes en el cierre y armado de rendiciones al propietario.</div>
+            <div class="label">Estimadas menos por mes en cierre y rendiciones al propietario, gracias a la automatización del cálculo.</div>
           </div>
           <div class="impacto-card reveal">
             <div class="big">0</div>
-            <div class="label">Comprobantes perdidos. Cada pago queda registrado con su trazabilidad.</div>
+            <div class="label">Comprobantes perdidos: cada pago queda registrado en el historial inmutable con trazabilidad completa.</div>
           </div>
           <div class="impacto-card reveal">
             <div class="big">100%</div>
-            <div class="label">De las facturas emitidas y enviadas al inquilino sin intervención manual.</div>
+            <div class="label">Facturas con ARCA conectada se emiten y envían al inquilino sin intervención manual del equipo.</div>
           </div>
         </div>
       </div>
@@ -2386,32 +2468,40 @@
       </svg>
     </div>
 
-    <!-- ==================== CTA FINAL ==================== -->
+    <!-- ==================== CTA FINAL ====================
+         QW-04 + QW-09: igual que el hero, mantenemos un solo CTA primario
+         (panel inmobiliario) y bajamos el link de inquilino como secundario
+         pequeño. Antes había 2 CTAs igualados que diluían la conversión y
+         confundían a la audiencia compradora (que es la inmobiliaria). -->
     <section class="cta-final">
       <div class="container">
         <h2 class="reveal">Conocé la plataforma en <span class="grad">cinco minutos</span></h2>
         <p class="reveal">
-          Demo navegable con datos ficticios. Ingresá al panel inmobiliario o a la app del
-          inquilino para recorrer la operación completa. Cada función está liberada y
-          funciona en vivo.
+          Demo navegable con datos ficticios. Recorré la operación completa del panel:
+          cobranza, ARCA, contratos, rendiciones. Cada función está liberada y funciona en vivo.
         </p>
         <div class="hero-ctas reveal" style="justify-content: center;">
           <a href="{{CTA_PROPIETARIO_HREF}}" class="btn btn-primary btn-xl">
             🏢 {{CTA_PROPIETARIO_TEXTO}}
           </a>
-          <a href="{{CTA_INQUILINO_HREF}}" class="btn btn-accent btn-xl">
-            📱 {{CTA_INQUILINO_TEXTO}}
-          </a>
         </div>
+        <a href="{{CTA_INQUILINO_HREF}}" class="hero-inquilino-link reveal" style="margin-top: 16px;">
+          📱 {{CTA_INQUILINO_TEXTO}} →
+        </a>
       </div>
     </section>
 
     </main>
 
-    <!-- ==================== FOOTER ==================== -->
+    <!-- ==================== FOOTER ====================
+         QW-01: antes era literal `<p></p>` — sin legales, sin contacto,
+         sin razón social. Para una SaaS con ARCA/datos bancarios la
+         ausencia gritaba "amateur". Ahora: 4 columnas (Producto, Apps,
+         Contacto, Legales) + bottom bar con razón social y año. El JSON
+         drive el contenido — `landing-data.json:footer.columnas`. -->
     <footer class="bottom">
       <div class="container">
-        <p>{{FOOTER_CREDITOS}}{{FOOTER_LINKS_BLOCK}}</p>
+        {{FOOTER_HTML}}
       </div>
     </footer>
 

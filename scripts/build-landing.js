@@ -90,7 +90,10 @@ function renderNavLinks(/* secciones */) {
     { id: 'integraciones', label: 'Integraciones' },
     { id: 'precios', label: 'Precios' },
     { id: 'faq', label: 'Preguntas' },
-    { id: 'changelog', label: 'Cambios' },
+    // QW-11: "Cambios" → "Novedades" — "Cambios" era jerga interna
+    // (changelog dev-speak). Una inmobiliaria evaluando lee "Novedades"
+    // como release notes / lo nuevo del producto.
+    { id: 'changelog', label: 'Novedades' },
   ];
   return items
     .map((i) => `<a href="#${esc(i.id)}">${esc(i.label)}</a>`)
@@ -119,13 +122,38 @@ function renderChangelog(changelog) {
     .join('');
 }
 
-// Render footer links — devuelve el bloque entero (incluido el <br>) o vacío si no hay
-function renderFooterLinksBlock(links) {
-  if (!links || links.length === 0) return '';
-  const items = links
-    .map((l) => `<a href="${esc(l.href)}">${esc(l.label)}</a>`)
-    .join(' · ');
-  return `<br />${items}`;
+// QW-01: footer con columnas en lugar de un párrafo vacío.
+// Antes el footer era literal `<p></p>` (sin legales, sin contacto, sin razón
+// social) — el último scroll de la landing gritaba "amateur" en una SaaS que
+// toca facturación electrónica y datos bancarios. Ahora generamos un grid de
+// 4 columnas + bottom bar a partir de footer.columnas en landing-data.json.
+function renderFooter(footer) {
+  if (!footer || !footer.columnas) {
+    return `<div class="footer-bottom"><p>${esc(footer && footer.bottom ? footer.bottom : '')}</p></div>`;
+  }
+  const cols = footer.columnas
+    .map((col) => {
+      const links = (col.links || [])
+        .map(
+          (l) =>
+            `<li><a href="${esc(l.href)}">${esc(l.label)}</a></li>`,
+        )
+        .join('\n            ');
+      return `
+          <div class="footer-col">
+            <h4>${esc(col.titulo)}</h4>
+            <ul>
+            ${links}
+            </ul>
+          </div>`;
+    })
+    .join('');
+  return `
+        <div class="footer-grid">${cols}
+        </div>
+        <div class="footer-bottom">
+          <p>${esc(footer.bottom || '')}</p>
+        </div>`;
 }
 
 // Render dolores de "El Problema"
@@ -245,10 +273,10 @@ function renderPricing(precios, ctaPropietarioHref) {
 
         <div class="precios-cta-group reveal">
           <a href="${esc(ctaPropietarioHref)}" class="btn btn-primary btn-xl">
-            🚀 ${esc(precios.cta)}
+            🏢 ${esc(precios.cta)}
           </a>
-          <a href="mailto:hola@myalquiler.com.ar" class="btn btn-ghost btn-xl">
-            ${esc(precios.ctaSecundario)}
+          <a href="https://wa.me/541145321100?text=Hola%2C%20quiero%20conocer%20My%20Alquiler" target="_blank" rel="noreferrer" class="btn btn-ghost btn-xl">
+            💬 ${esc(precios.ctaSecundario)}
           </a>
         </div>`;
 }
@@ -266,16 +294,17 @@ function renderFaq(items) {
     .join('');
 }
 
-// Render drawer links — 6 items precisos (mismo árbol que el navbar desktop).
-// El detalle de cada sección se navega vía scroll, no listamos las 8 funcionalidades.
+// Render drawer links — 5 items precisos (mismo árbol que el navbar desktop).
+// QW-14: quité "Comparativa" del drawer porque la sección Antes/Después
+// queda eliminada en este sweep (era redundante con Problema).
+// QW-11: "Cambios" → "Novedades" igual que el navbar desktop.
 function renderDrawerLinks(/* secciones */) {
   const links = [
     { id: 'como-funciona', label: '🚀 Cómo funciona' },
     { id: 'funcionalidades', label: '✨ Funcionalidades' },
     { id: 'integraciones', label: '🔌 Integraciones' },
-    { id: 'antes-despues', label: '⚖️ Comparativa' },
     { id: 'faq', label: '❓ Preguntas' },
-    { id: 'changelog', label: '📝 Cambios' },
+    { id: 'changelog', label: '📝 Novedades' },
   ];
   return links
     .map((l) => `<a class="drawer-link" href="#${esc(l.id)}">${esc(l.label)}</a>`)
@@ -329,8 +358,7 @@ function main() {
     NAV_LINKS: renderNavLinks(data.secciones),
     SECCIONES: data.secciones.map(renderSeccion).join('\n'),
     CHANGELOG: renderChangelog(data.changelog),
-    FOOTER_CREDITOS: esc(data.footer.creditos),
-    FOOTER_LINKS_BLOCK: renderFooterLinksBlock(data.footer.links),
+    FOOTER_HTML: renderFooter(data.footer),
     // Nueva sección "Problema"
     PROBLEMA_TAG: esc(data.problema.tag),
     PROBLEMA_TITULO: esc(data.problema.titulo),

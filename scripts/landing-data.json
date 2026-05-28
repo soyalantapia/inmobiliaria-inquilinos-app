@@ -9,8 +9,8 @@
     "titulo": "Tu cartera, tu equipo y tu inquilino en {{una sola plataforma}}",
     "highlight": "una sola plataforma",
     "subtitulo": "Gestioná contratos, cobranzas y rendiciones desde un único sistema. Tu equipo opera con permisos definidos, los inquilinos pagan desde el celular y los propietarios reciben su rendición mensual automáticamente.",
-    "ctaPropietario": { "texto": "Acceder al panel inmobiliario", "href": "../inmobiliaria/" },
-    "ctaInquilino": { "texto": "Acceder a la app del inquilino", "href": "../inquilino/" },
+    "ctaPropietario": { "texto": "Recorrer panel demo", "href": "../inmobiliaria/" },
+    "ctaInquilino": { "texto": "Si sos inquilino, entrá acá", "href": "../inquilino/" },
     "badges": [
       "🇦🇷 Operación local",
       "🔐 Registro de cada acción",
@@ -22,7 +22,7 @@
     { "valor": "10 min", "label": "Para poner tu cartera en operación" },
     { "valor": "1 toque", "label": "Para conciliar pagos del mes" },
     { "valor": "24/7", "label": "Disponibilidad de cobranza online" },
-    { "valor": "250", "label": "Propiedades en la versión inicial" }
+    { "valor": "Sin límite", "label": "De propiedades por equipo en cualquier plan" }
   ],
   "problema": {
     "tag": "El problema",
@@ -448,14 +448,34 @@
       "Sin costos de implementación",
       "Sin cargos por usuarios extra"
     ],
-    "cta": "Probar 30 días gratis",
-    "ctaSecundario": "Hablar con un asesor",
+    "cta": "Recorrer panel demo",
+    "ctaSecundario": "Hablar por WhatsApp",
     "fineprint": "El precio se ajusta automáticamente al pasar el tope de propiedades del plan. Todos los planes incluyen las mismas funciones."
   },
   "faq": {
     "titulo": "Preguntas frecuentes",
     "subtitulo": "Las dudas que más nos consultaron las inmobiliarias.",
     "items": [
+      {
+        "pregunta": "¿Hay contrato mínimo o costo de implementación?",
+        "respuesta": "No. Sin permanencia, sin costos de implementación, sin cargos por usuarios extra. Pagás mes a mes y das de baja cuando quieras desde el panel."
+      },
+      {
+        "pregunta": "¿Quién carga mis contratos al sistema cuando arranco?",
+        "respuesta": "Lo hacemos juntos. El onboarding incluye una sesión de migración en la que cargamos tus contratos vigentes a partir del PDF (lectura automática) y configuramos a propietarios, equipo y modalidad de cobranza. Si tenés más de 50 propiedades, la migración demora entre 2 y 5 días hábiles."
+      },
+      {
+        "pregunta": "¿Qué pasa con mis datos si me doy de baja?",
+        "respuesta": "Te entregamos un export completo en formato estándar (CSV/JSON): contratos, propietarios, inquilinos, historial de pagos y comprobantes emitidos. Conservamos los datos cifrados 90 días por si querés volver, y después los eliminamos definitivamente."
+      },
+      {
+        "pregunta": "¿Cuál es el tiempo de respuesta del soporte?",
+        "respuesta": "Soporte prioritario por WhatsApp en horario hábil (9 a 19, lunes a viernes), con respuesta promedio menor a 30 minutos. Para casos urgentes operativos (problemas con cobranza o ARCA), atendemos también sábados a la mañana."
+      },
+      {
+        "pregunta": "¿Cómo guardan la clave fiscal y los datos sensibles?",
+        "respuesta": "Las claves fiscales se almacenan cifradas y nunca aparecen en logs ni en respuestas de la API. Los datos bancarios del propietario son sólo de lectura — el sistema nunca opera transferencias en su nombre. El historial de acciones es inmutable y queda disponible para auditoría."
+      },
       {
         "pregunta": "¿Qué modalidades de cobranza soporta el sistema?",
         "respuesta": "Dos modalidades, configurables por contrato. La primera centraliza el cobro en la cuenta recaudadora de la inmobiliaria. La segunda transfiere directamente al propietario con confirmación posterior de recepción. La inmobiliaria mantiene el registro completo de movimientos en ambos casos."
@@ -504,17 +524,17 @@
     },
     {
       "version": "v3",
-      "fecha": "2026-05-13",
+      "fecha": "2026-04-22",
       "titulo": "Aprobación de contratos, historial y reversión de pagos",
       "cambios": [
-        "Carga descentralizada con aprobación dla inmobiliaria previa a la activación",
+        "Carga descentralizada con aprobación de la inmobiliaria previa a la activación",
         "Pantalla del historial completo de acciones con filtros",
         "Función de reversión de aprobación de pagos con registro automático"
       ]
     },
     {
       "version": "v2",
-      "fecha": "2026-05-13",
+      "fecha": "2026-03-18",
       "titulo": "Modalidades flexibles de contrato, caja y pagos paralelos",
       "cambios": [
         "Tipos de contrato: alquiler, expensas o combinación",
@@ -525,7 +545,40 @@
     }
   ],
   "footer": {
-    "creditos": "",
-    "links": []
+    "columnas": [
+      {
+        "titulo": "Producto",
+        "links": [
+          { "label": "Funcionalidades", "href": "#funcionalidades" },
+          { "label": "Cómo funciona", "href": "#como-funciona" },
+          { "label": "Precios", "href": "#precios" },
+          { "label": "Preguntas frecuentes", "href": "#faq" },
+          { "label": "Novedades", "href": "#changelog" }
+        ]
+      },
+      {
+        "titulo": "Apps",
+        "links": [
+          { "label": "Panel inmobiliario", "href": "../inmobiliaria/" },
+          { "label": "App del inquilino", "href": "../inquilino/" }
+        ]
+      },
+      {
+        "titulo": "Contacto",
+        "links": [
+          { "label": "WhatsApp ventas", "href": "https://wa.me/541145321100?text=Hola%2C%20quiero%20conocer%20My%20Alquiler" },
+          { "label": "hola@myalquiler.com.ar", "href": "mailto:hola@myalquiler.com.ar" }
+        ]
+      },
+      {
+        "titulo": "Legales",
+        "links": [
+          { "label": "Términos y condiciones", "href": "#" },
+          { "label": "Política de privacidad", "href": "#" },
+          { "label": "Política de datos", "href": "#" }
+        ]
+      }
+    ],
+    "bottom": "© 2026 My Alquiler · Hecho en Argentina"
   }
 }
