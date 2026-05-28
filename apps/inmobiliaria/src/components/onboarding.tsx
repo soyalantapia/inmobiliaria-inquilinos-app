@@ -178,9 +178,22 @@ export function OnboardingInmo() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    // GUARDS:
+    // 1. Solo en `/` (dashboard). El tour explica el panel — no tiene
+    //    sentido tapar el wizard de "Cargar contrato" o el detalle de
+    //    un reclamo donde el user vino a HACER algo concreto.
+    // 2. Persistir el flag AL ABRIR (no al cerrar). Antes, si el user
+    //    refrescaba sin tocar "Cerrar/Saltar", el modal volvía a salir
+    //    en cada visita. Ahora se muestra UNA sola vez por vida del
+    //    navegador.
+    if (window.location.pathname !== '/') return;
+
     try {
       const completado = window.localStorage.getItem(STORAGE_KEY);
-      if (!completado) setOpen(true);
+      if (!completado) {
+        setOpen(true);
+        window.localStorage.setItem(STORAGE_KEY, new Date().toISOString());
+      }
     } catch {
       // ignore
     }

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { AlertTriangle, ChevronRight, Clock, Inbox, Timer } from 'lucide-react';
 import { Badge } from '@llave/ui/badge';
 import { Card, CardContent } from '@llave/ui/card';
@@ -22,22 +23,47 @@ import {
 } from '@/lib/sla-reclamos';
 import type { EstadoReclamo, Reclamo } from '@/lib/types';
 
-type FiltroEstado = 'TODOS' | EstadoReclamo;
+// `SIN_ASIGNAR` no es un estado del reclamo (es derivado: abierto/en curso
+// sin profesional). Lo metemos como filtro extra para que el card del
+// dashboard "Reclamos sin asignar" caiga acá con el filtro ya aplicado.
+type FiltroReclamos = 'TODOS' | 'SIN_ASIGNAR' | EstadoReclamo;
 
-const tabs: Array<{ value: FiltroEstado; label: string }> = [
+const tabs: Array<{ value: FiltroReclamos; label: string }> = [
   { value: 'TODOS', label: 'Todos' },
+  { value: 'SIN_ASIGNAR', label: 'Sin asignar' },
   { value: 'ABIERTO', label: 'Abiertos' },
   { value: 'EN_CURSO', label: 'En curso' },
   { value: 'RESUELTO', label: 'Resueltos' },
   { value: 'RECHAZADO', label: 'Rechazados' },
 ];
 
+// Mapea ?filtro=slug → tab interno. Soporta `sin-asignar`, `abierto`, etc.
+const FILTRO_FROM_PARAM: Record<string, FiltroReclamos> = {
+  'sin-asignar': 'SIN_ASIGNAR',
+  abierto: 'ABIERTO',
+  'en-curso': 'EN_CURSO',
+  resuelto: 'RESUELTO',
+  rechazado: 'RECHAZADO',
+};
+
 export default function ReclamosPage() {
+  const searchParams = useSearchParams();
   const [reclamos, setReclamos] = useState<Reclamo[] | null>(null);
-  const [filtro, setFiltro] = useState<FiltroEstado>('TODOS');
+  const [filtro, setFiltro] = useState<FiltroReclamos>('TODOS');
 
   useEffect(() => {
     setReclamos(listarReclamos());
+  }, []);
+
+  // Si el usuario llegó con ?filtro=sin-asignar (típico desde el card
+  // del dashboard), aplicamos el filtro al mount. No reseteamos al
+  // cambiar el query, así el user puede tocar otro tab y queda.
+  useEffect(() => {
+    const param = searchParams?.get('filtro');
+    if (param && FILTRO_FROM_PARAM[param]) {
+      setFiltro(FILTRO_FROM_PARAM[param]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const filtrados = useMemo(() => {
@@ -50,7 +76,15 @@ export default function ReclamosPage() {
       if (diff !== 0) return diff;
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
-    return filtro === 'TODOS' ? ordenados : ordenados.filter((r) => r.estado === filtro);
+    if (filtro === 'TODOS') return ordenados;
+    if (filtro === 'SIN_ASIGNAR') {
+      return ordenados.filter(
+        (r) =>
+          (r.estado === 'ABIERTO' || r.estado === 'EN_CURSO') &&
+          !r.profesionalAsignadoId,
+      );
+    }
+    return ordenados.filter((r) => r.estado === filtro);
   }, [reclamos, filtro]);
 
   const counters = useMemo(() => {
@@ -60,6 +94,11 @@ export default function ReclamosPage() {
       EN_CURSO: reclamos.filter((r) => r.estado === 'EN_CURSO').length,
       RESUELTO: reclamos.filter((r) => r.estado === 'RESUELTO').length,
       RECHAZADO: reclamos.filter((r) => r.estado === 'RECHAZADO').length,
+      SIN_ASIGNAR: reclamos.filter(
+        (r) =>
+          (r.estado === 'ABIERTO' || r.estado === 'EN_CURSO') &&
+          !r.profesionalAsignadoId,
+      ).length,
       EMERGENCIA: reclamos.filter(
         (r) => r.urgencia === 'EMERGENCIA' && (r.estado === 'ABIERTO' || r.estado === 'EN_CURSO'),
       ).length,
@@ -262,13 +301,17 @@ function ReclamoRow({ reclamo }: { reclamo: Reclamo }) {
   );
 }
 
-function EmptyState({ filtro }: { filtro: FiltroEstado }) {
+function EmptyState({ filtro }: { filtro: FiltroReclamos }) {
   return (
     <Card>
       <CardContent className="space-y-2 p-10 text-center text-muted-foreground">
         <Inbox className="mx-auto h-10 w-10" />
         <p className="font-medium text-foreground">
-          {filtro === 'TODOS' ? 'No hay reclamos' : 'Sin reclamos en este estado'}
+          {filtro === 'TODOS'
+            ? 'No hay reclamos'
+            : filtro === 'SIN_ASIGNAR'
+              ? 'Todos los reclamos tienen profesional asignado 🎉'
+              : 'Sin reclamos en este estado'}
         </p>
         <p className="text-sm">Cuando lleguen aparecen acá.</p>
       </CardContent>

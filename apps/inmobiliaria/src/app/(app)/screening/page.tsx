@@ -288,7 +288,12 @@ function ScreeningHome({
                 <Input
                   id="cuit"
                   inputMode="numeric"
-                  placeholder="20-31256789-0"
+                  // Placeholder NO usable: antes era un CUIT real
+                  // ("20-31256789-0") que pegado tal cual disparaba
+                  // un screening con datos del mock. El user no sabía
+                  // si era de prueba o si ya había gastado consulta.
+                  // Ahora termina en "X" — claramente inválido.
+                  placeholder="Ej: 20-XXXXXXXX-X"
                   value={formatearCuit(cuit)}
                   onChange={(e) => onCuitChange(e.target.value)}
                   aria-invalid={cuitDirty && !validacionCuit.valido}
@@ -314,7 +319,7 @@ function ScreeningHome({
                 <Input
                   id="nombre"
                   autoComplete="name"
-                  placeholder="Carlos Eduardo Méndez"
+                  placeholder="Ej: nombre y apellido"
                   value={nombre}
                   onChange={(e) => onNombreChange(e.target.value)}
                   className="h-12 text-base"

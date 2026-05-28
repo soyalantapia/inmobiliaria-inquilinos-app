@@ -274,15 +274,23 @@ function StepUpload({
 
       <label
         htmlFor="resumen-file"
-        className="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-primary/30 bg-primary/5 px-6 py-12 text-center transition-colors hover:border-primary/60"
+        className="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-primary/30 bg-primary/5 px-6 py-10 text-center transition-colors hover:border-primary/60"
       >
-        <Upload className="h-10 w-10 text-primary" />
+        <Upload className="h-10 w-10 text-primary" aria-hidden="true" />
         <div>
-          <p className="text-sm font-medium">Tocá para elegir el resumen</p>
+          <p className="text-sm font-medium">Arrastrá el resumen o tocá el botón</p>
           <p className="text-xs text-muted-foreground">
             PDF / JPG / PNG · hasta {MAX_FILE_MB} MB
           </p>
         </div>
+        {/* Botón visible además de la dropzone — antes la única
+            indicación de cómo subir era el texto "Tocá para elegir"
+            sobre el icono. Algunos usuarios buscaban un botón
+            explícito antes de notar que toda la zona era clickeable.
+            El input sigue oculto, el htmlFor del label lo dispara. */}
+        <span className="pointer-events-none inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-sm">
+          Elegir archivo
+        </span>
         <input
           ref={inputRef}
           id="resumen-file"

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   AlertCircle,
@@ -36,8 +37,20 @@ import {
 } from '@/lib/rendiciones-storage';
 import { formatMonto } from '@/lib/format';
 
+// Filtros aplicables vía query param (?filtro=sin-cbu / sin-rendir).
+// Usado por los cards del dashboard "Para resolver hoy" para que el
+// user no caiga en /propietarios genérico y tenga que volver a filtrar.
+type FiltroPropietarios = 'TODOS' | 'SIN_CBU' | 'SIN_RENDIR';
+
+const FILTRO_FROM_PARAM: Record<string, FiltroPropietarios> = {
+  'sin-cbu': 'SIN_CBU',
+  'sin-rendir': 'SIN_RENDIR',
+};
+
 export default function PropietariosPage() {
+  const searchParams = useSearchParams();
   const [q, setQ] = useState('');
+  const [filtroExtra, setFiltroExtra] = useState<FiltroPropietarios>('TODOS');
   const [abrirSumar, setAbrirSumar] = useState(false);
   const [rendiendoA, setRendiendoA] = useState<Propietario | null>(null);
   const [verHistorial, setVerHistorial] = useState<Propietario | null>(null);
@@ -58,16 +71,32 @@ export default function PropietariosPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Aplica el filtro inicial si llegamos con ?filtro=sin-cbu/sin-rendir.
+  useEffect(() => {
+    const param = searchParams?.get('filtro');
+    if (param && FILTRO_FROM_PARAM[param]) {
+      setFiltroExtra(FILTRO_FROM_PARAM[param]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const filtrados = useMemo(() => {
     const term = q.trim().toLowerCase();
-    if (!term) return propietariosMock;
-    return propietariosMock.filter(
+    let base = propietariosMock as readonly Propietario[];
+    if (filtroExtra === 'SIN_CBU') base = base.filter((p) => !p.cbuAlias);
+    if (filtroExtra === 'SIN_RENDIR') {
+      base = base.filter(
+        (p) => !rendicionesMap[p.id] && p.totalRecibirMes > 0,
+      );
+    }
+    if (!term) return base;
+    return base.filter(
       (p) =>
         `${p.nombre} ${p.apellido}`.toLowerCase().includes(term) ||
         p.cuit.includes(term) ||
         p.email.toLowerCase().includes(term),
     );
-  }, [q]);
+  }, [q, filtroExtra, rendicionesMap]);
 
   const totalPropiedades = propietariosMock.reduce((acc, p) => acc + p.propiedadesIds.length, 0);
   const totalRecibir = propietariosMock.reduce((acc, p) => acc + p.totalRecibirMes, 0);

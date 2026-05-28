@@ -440,7 +440,7 @@ function MorosoRow({
             onClick={() => onAbrirPlantilla('recordatorio-titular')}
           >
             <Sparkles className="h-3.5 w-3.5" />
-            <span className="text-xs">Plantilla</span>
+            <span className="text-xs">Avisar titular</span>
           </Button>
         </div>
       </div>
@@ -527,7 +527,7 @@ function ContactoBloque({
             className="inline-flex items-center gap-1 rounded-full border border-primary/40 bg-primary/5 px-2 py-0.5 text-[10px] text-primary hover:bg-primary/10"
           >
             <Sparkles className="h-3 w-3" />
-            Plantilla
+            Avisar garante
           </button>
         )}
       </div>

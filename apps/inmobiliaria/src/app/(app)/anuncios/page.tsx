@@ -105,8 +105,11 @@ export default function AnunciosPage() {
       <Topbar titulo="Anuncios" />
       <main className="flex-1 space-y-5 p-4 md:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
+          {/* Antes había un h1 "Anuncios" inline que duplicaba al h1
+              del Topbar (dos H1 con el mismo texto en la misma página
+              = anti-patrón de accesibilidad). Lo sacamos: dejamos solo
+              la descripción para no perder el contexto del propósito. */}
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Anuncios</h1>
             <p className="text-sm text-muted-foreground">
               Comunicaciones masivas a inquilinos, propietarios y consorcios.
             </p>

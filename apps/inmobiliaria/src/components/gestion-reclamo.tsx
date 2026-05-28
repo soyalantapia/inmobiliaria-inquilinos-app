@@ -285,12 +285,14 @@ function ProfesionalRow({
       aria-pressed={selected}
       onClick={onSelect}
       className={cn(
-        'flex w-full items-start gap-3 rounded-md border p-2.5 text-left transition-colors',
+        'flex w-full items-start gap-3 rounded-md p-2.5 text-left transition-colors',
         selected
-          ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
+          ? 'border-2 border-primary bg-primary/5 ring-2 ring-primary/20'
           : destacado
-            ? 'border-primary/30 bg-primary/[0.03] hover:border-primary/50 hover:bg-primary/5'
-            : 'border-border bg-background hover:border-primary/40 hover:bg-muted/30',
+            ? // border-2 violeta + bg sutil destacan claramente al
+              // profesional cuyo rubro coincide con el reclamo.
+              'border-2 border-primary/60 bg-primary/5 hover:bg-primary/10'
+            : 'border border-border bg-background hover:border-primary/40 hover:bg-muted/30',
       )}
     >
       <div
@@ -304,6 +306,11 @@ function ProfesionalRow({
       <div className="flex-1 min-w-0 space-y-0.5">
         <div className="flex flex-wrap items-center gap-1.5">
           <p className="truncate text-sm font-medium">{profesional.nombre}</p>
+          {destacado && (
+            <span className="inline-flex items-center gap-0.5 rounded-full bg-primary px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-primary-foreground">
+              Recomendado
+            </span>
+          )}
           {profesional.verificado && (
             <ShieldCheck
               className="h-3 w-3 shrink-0 text-emerald-600"

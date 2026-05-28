@@ -103,8 +103,15 @@ function esDisponible(p: PropiedadEnriquecida): boolean {
   return p.propiedad.estado === 'DISPONIBLE' || p.propiedad.estado === 'EN_EDICION';
 }
 
-function esAlquiladaOk(p: PropiedadEnriquecida): boolean {
-  return p.propiedad.estado === 'ALQUILADA' && !tieneProblemas(p);
+// Antes esto era `esAlquiladaOk` (ALQUILADA && !tieneProblemas) y
+// generaba inconsistencia con el dashboard: el dashboard contaba TODAS
+// las ALQUILADAS (5/6 = 83%) y acá veíamos "1 alquilada" porque las
+// otras 4 tenían algún reclamo o pago vencido. Misma palabra ("alquilada"),
+// dos definiciones → Roberto perdía confianza en los números.
+// Ahora "alquilada" = `estado === 'ALQUILADA'` SIEMPRE. Las que tengan
+// problemas se cuentan aparte en el counter PROBLEMAS y son un subset.
+function esAlquilada(p: PropiedadEnriquecida): boolean {
+  return p.propiedad.estado === 'ALQUILADA';
 }
 
 export default function PropiedadesPage() {
@@ -136,7 +143,7 @@ export default function PropiedadesPage() {
   const counters = useMemo(
     () => ({
       total: enriquecidas.length,
-      ALQUILADA: enriquecidas.filter(esAlquiladaOk).length,
+      ALQUILADA: enriquecidas.filter(esAlquilada).length,
       PROBLEMAS: enriquecidas.filter(tieneProblemas).length,
       DISPONIBLE: enriquecidas.filter(esDisponible).length,
       ingresosMes: enriquecidas
@@ -151,7 +158,7 @@ export default function PropiedadesPage() {
     const term = q.trim().toLowerCase();
     return enriquecidas.filter((p) => {
       // filtro por estado calculado
-      if (filtro === 'ALQUILADA' && !esAlquiladaOk(p)) return false;
+      if (filtro === 'ALQUILADA' && !esAlquilada(p)) return false;
       if (filtro === 'PROBLEMAS' && !tieneProblemas(p)) return false;
       if (filtro === 'DISPONIBLE' && !esDisponible(p)) return false;
 

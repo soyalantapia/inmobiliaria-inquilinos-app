@@ -96,6 +96,21 @@ export function InboxDelDia() {
     return () => clearInterval(id);
   }, []);
 
+  // Ordenamos por urgencia: rojo (emergencias/morosos) primero,
+  // amber (atención), después el resto. Antes salían en orden de
+  // construcción — el card de emergencia quedaba mezclado con
+  // "propietarios por rendir" y se perdía la jerarquía.
+  const itemsOrdenados = [...items].sort((a, b) => {
+    const peso: Record<Item['tono'], number> = {
+      rojo: 0,
+      amber: 1,
+      violeta: 2,
+      azul: 3,
+      esmeralda: 4,
+    };
+    return peso[a.tono] - peso[b.tono];
+  });
+
   if (!hidratado) return null;
 
   return (
@@ -135,15 +150,20 @@ export function InboxDelDia() {
         </Card>
       ) : (
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-          {items.map((it) => {
+          {itemsOrdenados.map((it) => {
             const t = TONOS[it.tono];
             const Icon = it.icono;
+            // Cards rojas (emergencia/morosos críticos) tienen border
+            // más grueso para destacar del resto a primera vista. Las
+            // amber/violeta quedan con border simple.
+            const esUrgente = it.tono === 'rojo';
             return (
               <Link
                 key={it.id}
                 href={it.href}
                 className={cn(
-                  'flex items-center gap-3 rounded-lg border p-3 transition-colors',
+                  'flex items-center gap-3 rounded-lg p-3 transition-colors',
+                  esUrgente ? 'border-2' : 'border',
                   t.card,
                 )}
               >
@@ -191,6 +211,9 @@ function construirItems(): Item[] {
       id: 'pagos-validar',
       titulo: 'Pagos a validar',
       detalle: `${porValidar.length} comprobante${porValidar.length === 1 ? '' : 's'} esperando OK`,
+      // /pagos ya defaultea al filtro "A resolver" cuando hay
+      // pendientes (ver pagos/page.tsx:118-123), así que el card cae
+      // directo a la vista correcta sin query param.
       href: '/pagos',
       cant: porValidar.length,
       monto: porValidar.reduce((s, p) => s + p.monto, 0),
@@ -214,7 +237,9 @@ function construirItems(): Item[] {
         emergencias > 0
           ? `${emergencias} de emergencia · asigná un pro ya`
           : 'Asigná un profesional a la red',
-      href: '/reclamos',
+      // Filtro aplicado: /reclamos?filtro=sin-asignar muestra
+      // sólo los reclamos abiertos sin profesional asignado.
+      href: '/reclamos?filtro=sin-asignar',
       cant: reclamosSinProf.length,
       icono: Wrench,
       tono: emergencias > 0 ? 'rojo' : 'amber',
@@ -246,7 +271,7 @@ function construirItems(): Item[] {
       id: 'sin-rendir',
       titulo: 'Propietarios por rendir',
       detalle: `${sinRendir.length} ${sinRendir.length === 1 ? 'esperando su transferencia' : 'esperando sus transferencias'}`,
-      href: '/propietarios',
+      href: '/propietarios?filtro=sin-rendir',
       cant: sinRendir.length,
       monto: sinRendir.reduce((s, p) => s + p.totalRecibirMes, 0),
       icono: Wallet,
@@ -261,7 +286,7 @@ function construirItems(): Item[] {
       id: 'sin-cbu',
       titulo: sinCbu.length === 1 ? 'Propietario sin CBU' : 'Propietarios sin CBU',
       detalle: 'Pediles los datos antes de rendir',
-      href: '/propietarios',
+      href: '/propietarios?filtro=sin-cbu',
       cant: sinCbu.length,
       icono: Banknote,
       tono: 'amber',

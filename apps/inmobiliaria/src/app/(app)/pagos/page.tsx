@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   Bell,
   CheckCircle2,
+  ChevronDown,
   Clock,
   Download,
   Inbox,
@@ -14,6 +15,12 @@ import {
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card, CardContent } from '@llave/ui/card';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@llave/ui/dropdown-menu';
 import { cn } from '@llave/ui/cn';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@llave/ui/table';
 import { toast } from '@llave/ui/use-toast';
@@ -399,22 +406,31 @@ export default function PagosPage() {
               Validar por resumen
             </Button>
             <CargarPagoManualButton />
-            <Button variant="outline" size="sm" onClick={() => exportarMorososPdf()}>
-              <Download className="h-4 w-4" />
-              PDF de morosos
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => exportarMorososPorSociedadPdf()}
-            >
-              <Download className="h-4 w-4" />
-              PDF morosos por sociedad
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => exportarCobradoPdf()}>
-              <Download className="h-4 w-4" />
-              PDF cobranzas
-            </Button>
+            {/* Antes eran 3 botones PDF consecutivos ("PDF de
+                morosos", "PDF morosos por sociedad", "PDF cobranzas")
+                que saturaban la fila y obligaban a leer cada uno para
+                decidir. Consolidado en un dropdown con las 3 opciones
+                bajo "Exportar PDF ▾". */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm">
+                  <Download className="h-4 w-4" />
+                  Exportar PDF
+                  <ChevronDown className="h-3 w-3 opacity-70" aria-hidden="true" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => exportarMorososPdf()}>
+                  Morosos del mes
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => exportarMorososPorSociedadPdf()}>
+                  Morosos agrupados por sociedad
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => exportarCobradoPdf()}>
+                  Cobranzas del mes
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button
               size="sm"
               variant="ghost"
