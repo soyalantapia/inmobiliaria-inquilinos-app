@@ -176,7 +176,14 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="relative min-h-[100dvh] overflow-hidden bg-background">
+    // Antes el bg era `bg-background` (blanco plano) con 3 orbs decorativos.
+    // En viewports tall (>1400px) los orbs quedaban en las esquinas y dejaban
+    // una banda blanca enorme en el medio — el user lo veía "cortado":
+    // gradient arriba → blanco medio → gradient abajo. Ahora el main tiene
+    // un gradient diagonal continuo de base (siempre cubre el 100dvh) y los
+    // orbs van encima como acento; además agrandé el orb central y movi el
+    // de fuchsia más arriba para tapar el "hueco" en pantallas grandes.
+    <main className="relative min-h-[100dvh] overflow-hidden bg-gradient-to-br from-violet-50 via-background to-fuchsia-50/60">
       {/* Orbs decorativos de fondo — sutiles, generan textura sin distraer */}
       <div
         aria-hidden
@@ -184,11 +191,11 @@ export default function LoginPage() {
       />
       <div
         aria-hidden
-        className="pointer-events-none absolute -bottom-40 -right-32 h-[28rem] w-[28rem] rounded-full bg-fuchsia-400/15 blur-3xl"
+        className="pointer-events-none absolute -bottom-40 -right-32 h-[32rem] w-[32rem] rounded-full bg-fuchsia-400/20 blur-3xl"
       />
       <div
         aria-hidden
-        className="pointer-events-none absolute left-1/2 top-1/3 h-72 w-72 -translate-x-1/2 rounded-full bg-violet-400/10 blur-3xl"
+        className="pointer-events-none absolute left-1/2 top-1/2 h-[28rem] w-[28rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-violet-400/10 blur-3xl"
       />
 
       {/* Wrapper centrado con max-width. Sin esto, en viewports >1280
