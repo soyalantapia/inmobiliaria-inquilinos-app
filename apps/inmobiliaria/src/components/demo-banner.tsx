@@ -38,10 +38,13 @@ export function DemoBanner() {
   };
 
   return (
+    // Posicionado abajo: un banner fixed top siempre compite con los headers
+    // sticky (top:0) y los tapa. Abajo-centro no choca con el header ni con el
+    // FAB "Reportar" (que está abajo-derecha).
     <div
       role="region"
       aria-label="Aviso de demostración"
-      className="pointer-events-none fixed inset-x-0 top-2 z-[60] flex justify-center px-3"
+      className="pointer-events-none fixed inset-x-0 bottom-4 z-[55] flex justify-center px-3"
     >
       <div className="pointer-events-auto flex max-w-[calc(100vw-1.5rem)] items-center gap-2 rounded-full border border-border bg-background/95 px-3 py-1.5 text-xs shadow-lg backdrop-blur">
         <Info className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
