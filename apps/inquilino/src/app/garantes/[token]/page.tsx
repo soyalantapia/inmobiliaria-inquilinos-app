@@ -7,6 +7,8 @@ import {
   FileText,
   KeyRound,
   MapPin,
+  MessageCircle,
+  Phone,
   ShieldCheck,
   TrendingUp,
   UserRound,
@@ -16,7 +18,11 @@ import { Button } from '@llave/ui/button';
 import { Card } from '@llave/ui/card';
 import { Separator } from '@llave/ui/separator';
 import { contratoMock, garanteMock, inquilinoActual } from '@/lib/mock-data';
-import { diasHastaVencimiento, formatFecha, formatMonto } from '@/lib/format';
+import {
+  diasHastaVencimiento,
+  formatFechaCorta,
+  formatMonto,
+} from '@/lib/format';
 import { generarGaranteToken, leerGaranteToken } from '@/lib/garante-token';
 
 // Para static export pre-generamos un token "demo" válido. En producción
@@ -74,11 +80,36 @@ export default function GarantePublicPage({ params }: { params: { token: string 
         </div>
         <h1 className="mt-1 text-lg font-semibold">Estado del contrato</h1>
         <p className="text-xs text-muted-foreground">
-          Compartido por {inquilinoActual.nombre} · link vigente hasta {formatFecha(expFecha.toISOString())}
+          Compartido por {inquilinoActual.nombre} · link vigente hasta {formatFechaCorta(expFecha.toISOString())}
         </p>
       </header>
 
       <main className="flex-1 space-y-5 px-5 py-6 md:px-8">
+        {/* Bloque "¿Qué hacés acá?" — antes el garante abría el link
+            y veía datos del contrato sin saber si tenía que firmar,
+            aceptar o si era informativo. Diego escribía "¿pero qué
+            hago ahora?" a su sobrino. Este bloque pone el contexto
+            arriba: sos garante de este contrato (activo), esto es
+            informativo, el proceso de aceptación/firma sigue en la
+            inmobiliaria. */}
+        <Card className="space-y-2 border-primary/30 bg-primary/5 p-5">
+          <div className="flex items-start gap-3">
+            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground">
+              <UserRound className="h-4 w-4" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold">Sos garante de este contrato</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {inquilinoActual.nombre} te eligió como garante. Esta vista te
+                muestra los datos del alquiler que firmó con{' '}
+                <strong className="text-foreground">{c.inmobiliaria}</strong>.
+                Es informativa — el proceso de aceptación/firma del rol de
+                garante sigue directamente con la inmobiliaria.
+              </p>
+            </div>
+          </div>
+        </Card>
+
         <Card className="space-y-3 p-5">
           <div className="flex items-start gap-3">
             <FileText className="mt-1 h-5 w-5 text-primary" />
@@ -93,13 +124,17 @@ export default function GarantePublicPage({ params }: { params: { token: string 
           </div>
           <Separator />
           <div>
-            <p className="text-xs text-muted-foreground">Alquiler actual</p>
+            <p className="text-xs text-muted-foreground">Alquiler mensual</p>
             <p className="text-2xl font-semibold tabular-nums">
               {formatMonto(c.montoActual, c.moneda)}
             </p>
+            {/* POV neutro — antes "Te quedan 2 años…" sonaba raro al
+                garante, que no es el inquilino. Ahora "Vence el X·
+                Faltan Y" funciona para cualquier lector. */}
             <p className="text-xs text-muted-foreground">
-              Te quedan {aniosRestantes > 0 ? `${aniosRestantes} año${aniosRestantes === 1 ? '' : 's'} y ` : ''}
-              {mesesRestantes} mes{mesesRestantes === 1 ? '' : 'es'} de contrato
+              Vence el {formatFechaCorta(c.fechaFin)} · faltan{' '}
+              {aniosRestantes > 0 ? `${aniosRestantes} año${aniosRestantes === 1 ? '' : 's'} y ` : ''}
+              {mesesRestantes} mes{mesesRestantes === 1 ? '' : 'es'}
             </p>
           </div>
         </Card>
@@ -112,7 +147,7 @@ export default function GarantePublicPage({ params }: { params: { token: string 
             <Row
               icon={<Calendar className="h-4 w-4" />}
               label="Período"
-              value={`${formatFecha(c.fechaInicio)} → ${formatFecha(c.fechaFin)}`}
+              value={`${formatFechaCorta(c.fechaInicio)} → ${formatFechaCorta(c.fechaFin)}`}
             />
             <Row
               icon={<TrendingUp className="h-4 w-4" />}
@@ -122,7 +157,7 @@ export default function GarantePublicPage({ params }: { params: { token: string 
             <Row
               icon={<CalendarDays className="h-4 w-4" />}
               label="Próximo ajuste"
-              value={formatFecha(c.proximoAjuste)}
+              value={formatFechaCorta(c.proximoAjuste)}
               hint={`en ${diasAjuste} días`}
             />
             <Row
@@ -140,8 +175,13 @@ export default function GarantePublicPage({ params }: { params: { token: string 
         </section>
 
         <section className="space-y-2">
+          {/* Antes "TU garantía" sugería que el garante había contratado
+              la cobertura SUMA. La cobertura es contratada por la
+              inmobiliaria/inquilino — Diego (garante personal) no tiene
+              nada que ver con ella. Reescrito como "Garantía del
+              contrato" + texto explicativo. */}
           <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Tu garantía
+            Garantía del contrato
           </h2>
           <Card className="space-y-3 p-5">
             <div className="flex items-center justify-between gap-2">
@@ -156,13 +196,16 @@ export default function GarantePublicPage({ params }: { params: { token: string 
               {garanteMock.numeroPoliza && (
                 <GaranteRow label="N° de póliza" value={garanteMock.numeroPoliza} />
               )}
-              <GaranteRow label="Vigente hasta" value={formatFecha(garanteMock.vigenciaHasta)} />
+              <GaranteRow
+                label="Vigente hasta"
+                value={formatFechaCorta(garanteMock.vigenciaHasta)}
+              />
               <GaranteRow label="Cobertura" value={formatMonto(garanteMock.montoCobertura)} />
               <GaranteRow label="Contacto" value={garanteMock.contactoNombre} />
             </div>
             <p className="text-xs text-muted-foreground">
-              Si necesitás dar de baja la garantía o cambiarla, contactá directamente con la
-              inmobiliaria.
+              Esta cobertura la gestiona la inmobiliaria — vos no tenés que
+              hacer nada al respecto.
             </p>
           </Card>
         </section>
@@ -173,20 +216,45 @@ export default function GarantePublicPage({ params }: { params: { token: string 
             <p className="text-sm font-medium">¿Dudas sobre el contrato?</p>
           </div>
           <p className="text-xs text-muted-foreground">
-            Esta vista es de sólo lectura. Para consultas o documentación adicional, contactá
-            directamente con {c.inmobiliaria}.
+            Esta vista es de sólo lectura. Para consultas o documentación
+            adicional, contactá directamente con {c.inmobiliaria}.
           </p>
-          <Button size="sm" variant="outline" asChild>
-            <a href="https://wa.me/541145321100" target="_blank" rel="noreferrer">
-              Contactar inmobiliaria
-            </a>
-          </Button>
+          {/* Antes había un solo CTA "Contactar inmobiliaria" sin
+              decir si abría WhatsApp / email / teléfono. Ahora 2
+              botones explícitos: chat verde (WA) + llamada azul,
+              ambos con el número visible. */}
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              asChild
+              className="bg-emerald-500 hover:bg-emerald-600 text-white"
+            >
+              <a
+                href="https://wa.me/541145321100"
+                target="_blank"
+                rel="noreferrer"
+              >
+                <MessageCircle className="h-3.5 w-3.5" />
+                WhatsApp
+              </a>
+            </Button>
+            <Button size="sm" variant="outline" asChild>
+              <a href="tel:+541145321100">
+                <Phone className="h-3.5 w-3.5" />
+                Llamar
+              </a>
+            </Button>
+            <span className="self-center text-[11px] text-muted-foreground">
+              +54 11 4532-1100
+            </span>
+          </div>
         </Card>
 
-        <div className="flex items-center justify-center gap-1 pt-4 text-[11px] text-muted-foreground">
+        {/* Footer completo — antes "Con…" se truncaba. */}
+        <div className="flex flex-wrap items-center justify-center gap-1 pt-4 text-[11px] text-muted-foreground">
           <UserRound className="h-3 w-3" />
-          <span>My Alquiler · vista para garante</span>
-          <span>·</span>
+          <span>My Alquiler · vista para garante · sin cuenta requerida</span>
+          <span aria-hidden="true">·</span>
           <Link href="/" className="underline-offset-2 hover:underline">
             Conocé My Alquiler
           </Link>

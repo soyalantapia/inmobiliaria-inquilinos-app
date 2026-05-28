@@ -162,12 +162,30 @@ export default function PaginaProfesional({ token }: { token: string }) {
         {!hidratado ? (
           <Card className="h-40 animate-pulse bg-muted/40" />
         ) : reclamosAsignados.length === 0 ? (
-          <Card className="space-y-2 p-8 text-center">
+          // Empty state con explicación de qué pasa cuando llegue un
+          // trabajo. Antes era solo "Sin trabajos asignados" y Sergio
+          // se quedaba dudando si tenía que cargar algo, si le iba a
+          // llegar notificación, o si tenía que estar refrescando.
+          <Card className="space-y-3 p-6 text-center">
             <Sparkles className="mx-auto h-8 w-8 text-muted-foreground/50" />
-            <p className="text-sm font-medium">Sin trabajos asignados</p>
-            <p className="text-xs text-muted-foreground">
-              Cuando la inmobiliaria te asigne un trabajo, va a aparecer acá.
-            </p>
+            <div className="space-y-1">
+              <p className="text-sm font-medium">Sin trabajos asignados</p>
+              <p className="text-xs text-muted-foreground">
+                Cuando la inmobiliaria te asigne uno, va a aparecer acá.
+              </p>
+            </div>
+            <div className="rounded-md border bg-muted/40 p-3 text-left text-[11px] text-muted-foreground">
+              <p className="font-medium text-foreground">¿Qué vas a ver?</p>
+              <ul role="list" className="mt-1.5 space-y-1">
+                <li>• Dirección de la propiedad y contacto del inquilino</li>
+                <li>• Categoría del problema (plomería, electricidad, etc.)</li>
+                <li>• Foto del reclamo si la cargó el inquilino</li>
+                <li>• Botones para marcar &quot;En camino&quot; y &quot;Listo&quot;</li>
+              </ul>
+              <p className="mt-2">
+                Te avisamos por WhatsApp cuando llegue un trabajo nuevo.
+              </p>
+            </div>
           </Card>
         ) : (
           <>
@@ -219,6 +237,18 @@ export default function PaginaProfesional({ token }: { token: string }) {
         <div className="rounded-md border bg-background p-3 text-center text-xs text-muted-foreground">
           ¿Dudas? Llamá a la inmobiliaria al +54 11 4532-1100. Tu link es único
           y solo lo podés ver vos.
+        </div>
+
+        {/* Brand footer — identifica que el producto es My Alquiler
+            sin restarle protagonismo a la inmobiliaria que es el
+            cliente directo del profesional. Antes la página no tenía
+            nada que dijera "My Alquiler" y si Sergio quería buscar
+            info de la plataforma no sabía por dónde. */}
+        <div className="flex items-center justify-center gap-2 pt-2 text-[11px] text-muted-foreground">
+          <div className="grid h-5 w-5 place-items-center rounded bg-gradient-to-br from-primary to-fuchsia-600 text-[8px] font-bold text-white">
+            My
+          </div>
+          <span>Con tecnología de My Alquiler · vista para profesionales</span>
         </div>
       </main>
     </div>
