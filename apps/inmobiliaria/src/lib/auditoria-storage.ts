@@ -156,13 +156,30 @@ function leer(): EventoAuditoria[] {
  * + búsqueda + filtros) sin pegarle a producción.
  */
 function generarSeedSinteticos(): EventoAuditoria[] {
+  // V2b-02: "Eugenia Rinaldi" no estaba en el equipo (configuracion/page.tsx)
+  // — autora fantasma. La lista ahora son los 5 miembros reales del equipo
+  // (el contador, rol LECTURA, no genera eventos porque sólo lee).
   const usuarios: Array<{ nombre: string; rol: string }> = [
     { nombre: 'Roberto Tapia', rol: 'ADMIN' },
     { nombre: 'Luciana Vidal', rol: 'OPERADOR' },
     { nombre: 'Sergio Almeida', rol: 'OPERADOR' },
     { nombre: 'Camila Acosta', rol: 'CARGA' },
-    { nombre: 'Eugenia Rinaldi', rol: 'ADMIN' },
   ];
+
+  // V2b-05: qué roles pueden generar cada tipo de evento, en línea con
+  // permisos.ts. Antes el autor se elegía al azar y aparecían incoherencias
+  // como "Camila (Carga) cargó un pago manual" — algo que su rol no permite.
+  // CARGA sólo puede dar de alta contratos/propiedades; el resto es ADMIN/OPERADOR.
+  const rolesPorTipo: Partial<Record<TipoEventoAuditoria, string[]>> = {
+    CONTRATO_CARGADO: ['ADMIN', 'OPERADOR', 'CARGA'],
+    PROPIEDAD_CARGADA: ['ADMIN', 'OPERADOR', 'CARGA'],
+    EQUIPO_INVITADO: ['ADMIN'],
+    EQUIPO_REMOVIDO: ['ADMIN'],
+    MODO_COBRANZA_CAMBIADO: ['ADMIN'],
+  };
+  // Por defecto (pagos, caja, reclamos, rendiciones, ARCA, aprobaciones):
+  // sólo ADMIN y OPERADOR.
+  const rolesDefault = ['ADMIN', 'OPERADOR'];
   const inquilinos = [
     'Mariela Sosa',
     'Juan Pérez',
@@ -237,7 +254,12 @@ function generarSeedSinteticos(): EventoAuditoria[] {
     const fecha = new Date(hoy - diasAtras * 86400_000);
     fecha.setHours(hora, min, 0, 0);
     const tipo = pick(bag);
-    const usuario = pick(usuarios);
+    // V2b-05: el autor se elige sólo entre los roles habilitados para ese
+    // tipo de evento (fallback a la lista completa por si algún tipo no
+    // tuviera candidatos, aunque siempre hay un ADMIN).
+    const rolesOk = rolesPorTipo[tipo] ?? rolesDefault;
+    const candidatos = usuarios.filter((u) => rolesOk.includes(u.rol));
+    const usuario = pick(candidatos.length > 0 ? candidatos : usuarios);
     const inquilino = pick(inquilinos);
     const direccion = pick(direcciones);
     const propietario = pick(propietarios);

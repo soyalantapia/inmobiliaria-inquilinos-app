@@ -126,7 +126,10 @@ const SEEDS: Anuncio[] = [
     prioridad: 'IMPORTANTE',
     audiencia: 'TODOS_INQUILINOS',
     canales: ['APP', 'EMAIL'],
-    enviadoPor: 'Eugenia Rinaldi',
+    // V2b-02: "Eugenia Rinaldi" no existe en el equipo. El anuncio habla de
+    // Roberto en 3ª persona ("WhatsApp directo a Roberto"), así que lo firma
+    // Luciana Vidal (Operadora, día a día de cobranzas).
+    enviadoPor: 'Luciana Vidal',
     enviadoAt: '2026-05-15T15:30:00-03:00',
     destinatariosCount: 6,
   },

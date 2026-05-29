@@ -22,11 +22,15 @@ export type Rol = 'ADMIN' | 'OPERADOR' | 'CARGA' | 'LECTURA';
 
 export const ROLES_ORDEN: Rol[] = ['ADMIN', 'OPERADOR', 'CARGA', 'LECTURA'];
 
+// V2b-04: estos labels son la fuente de verdad para los badges de rol en
+// toda la app (auditoría, etc.). Antes decían "Carga"/"Lectura" pero Equipo
+// y permisos usa "Carga limitada"/"Solo lectura" — el mismo rol salía con
+// dos nombres. Unificados a los descriptivos.
 export const ROL_LABEL: Record<Rol, string> = {
   ADMIN: 'Admin',
   OPERADOR: 'Operador',
-  CARGA: 'Carga',
-  LECTURA: 'Lectura',
+  CARGA: 'Carga limitada',
+  LECTURA: 'Solo lectura',
 };
 
 export const ROL_DESCRIPCION: Record<Rol, string> = {

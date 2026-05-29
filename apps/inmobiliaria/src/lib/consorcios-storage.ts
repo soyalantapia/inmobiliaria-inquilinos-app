@@ -296,7 +296,11 @@ export const consorciosMock: Consorcio[] = [
     id: 'cnsr_002',
     nombre: 'Consorcio Cabildo 2890',
     direccion: 'Av. Cabildo 2890, Belgrano, CABA',
-    cantUf: 24,
+    // V2b-01: antes 24, pero el array `unidades` tiene 4 entradas reales —
+    // el badge decía "24 UF" mientras el ratio "al día" y la deuda se
+    // calculaban sobre 4 ("3/4", "1 con deuda"). Alineado a las unidades
+    // reales para que todos los números del consorcio cuadren.
+    cantUf: 4,
     sociedadId: 'soc_002',
     encargado: { nombre: 'Roberto Sosa', sueldo: 520000 },
     periodoActual: '2026-05',
