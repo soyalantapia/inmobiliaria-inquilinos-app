@@ -20,6 +20,7 @@ import { Label } from '@llave/ui/label';
 import { toast } from '@llave/ui/use-toast';
 import {
   SEGUNDOS_COOLDOWN,
+  iniciarSesionDemo,
   leerSesion,
   solicitarCodigo,
   verificarCodigo,
@@ -42,10 +43,19 @@ export default function LoginPage() {
 
   // Si ya hay sesión, redirigir a home (excepto que vengamos con ?force)
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    // Bypass de demo: `/login?demo=1` crea la sesión de Mariela y entra
+    // directo, salteando el OTP. Útil para testing headless (browse no puede
+    // completar el flujo de 6 inputs) y para compartir la demo sin fricción.
+    // Seguro: todo corre sobre mocks en localStorage, no hay backend real.
+    if (params.has('demo')) {
+      iniciarSesionDemo();
+      router.replace('/');
+      return;
+    }
     const sesion = leerSesion();
-    if (sesion) {
-      const params = new URLSearchParams(window.location.search);
-      if (!params.has('force')) router.replace('/');
+    if (sesion && !params.has('force')) {
+      router.replace('/');
     }
   }, [router]);
 

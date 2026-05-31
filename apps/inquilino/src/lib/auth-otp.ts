@@ -260,6 +260,31 @@ function resolverInquilino(email: string): Omit<InquilinoSesion, 'loggeadoAt'> {
 }
 
 /**
+ * Bypass de login para el demo: crea la sesión de Mariela directo, sin pasar
+ * por el OTP. La usa `/login?demo=1`. Pensado para (a) testing automatizado
+ * con navegadores headless que no pueden completar el flujo OTP de 6 inputs,
+ * y (b) compartir la demo sin fricción. NO es un agujero de seguridad: toda
+ * la app corre sobre datos mock en localStorage, no hay backend ni datos
+ * reales detrás. En producción con backend real esta función no existiría.
+ */
+export function iniciarSesionDemo(): InquilinoSesion {
+  const mariela = SEED_INQUILINOS[0]!;
+  const sesion: InquilinoSesion = {
+    ...mariela,
+    esInvitado: false,
+    loggeadoAt: new Date().toISOString(),
+  };
+  if (typeof window !== 'undefined') {
+    try {
+      window.localStorage.setItem(SESION_KEY, JSON.stringify(sesion));
+    } catch {
+      // ignore
+    }
+  }
+  return sesion;
+}
+
+/**
  * Lee la sesión activa, si la hay.
  */
 export function leerSesion(): InquilinoSesion | null {
