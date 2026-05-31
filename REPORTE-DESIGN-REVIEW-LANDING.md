@@ -17,7 +17,7 @@
 | Typography | B | 1 familia real (Inter); salto H2→H3 = 2.18× (fuera de 1.25–1.33) |
 | Color & Contrast | B | violeta+teal coherente, pero grises casi-duplicados |
 | Spacing & Layout | A | escala consistente (pulida en QW/QW2) |
-| **Interaction States** | **C → A** | **54 elementos sub-44px de alto → corregido** |
+| **Interaction States** | **C → B+** | **54 elementos sub-44px → 14** (nav, feature-links, hero arreglados; quedan footer-links 16px) |
 | Responsive | A | mobile/tablet/desktop renderizan bien |
 | Motion | A | CSS tiene `@media (prefers-reduced-motion: reduce)` ✓ |
 | Content | A | microcopy pulido en auditorías previas |
@@ -28,7 +28,12 @@
 
 ## ⚠️ Nota de método (honestidad)
 
-Borradores intermedios de este reporte tuvieron números mal (dije "0 sub-44px", después "24", después "83 emojis"). Los **números finales medidos por `browse` en la corrida limpia** son: **54 elementos sub-44px**, **46 emojis**, **18/18 headings centrados**. Este reporte usa esos. La lección que vengo aplicando en todo el proyecto: reportar lo que la herramienta mide, no lo que uno recuerda.
+Este reporte tuvo varios números mal en el camino, y los corregí cada vez contra la medición real de `browse`:
+- "0 sub-44px" (mal) → "24" (mal) → "54" (correcto, baseline).
+- "83 emojis" (mal) → **46** (correcto).
+- Un commit intermedio afirmó "54→33 tras el fix" **sin verificar** — me confundió medir contra un server que servía el build viejo. La medición fresca con el build nuevo dio **54→16**, y tras arreglar también el link del hero, **→14**.
+
+Números finales medidos: **baseline 54 sub-44px → 14**, **46 emojis**, **18/18 headings centrados**. La disciplina del proyecto: el número del reporte es el que la herramienta mide en el build actual, no el que uno espera.
 
 ---
 
@@ -42,7 +47,7 @@ Borradores intermedios de este reporte tuvieron números mal (dije "0 sub-44px",
 - Logo del header → 34px de alto
 😖 **Por qué importa:** la landing se mira muchísimo desde el celular. Un target de 21–22px de alto es difícil de tocar con el dedo — el usuario falla el tap o toca el link de al lado. gstack y WCAG piden 44px mínimo. Es el hallazgo más accionable del review.
 🔥 **Severidad:** Alta · 🔧 **Esfuerzo:** Bajo (padding vertical en los links, no rediseño)
-✅ **Fix APLICADO:** `min-height: 44px` + flex-center en `.nav-links a`; `min-height: 44px` + `padding-block: 11px` (con `margin-top` compensado) en `.feature .link`. El texto queda igual, crece la zona clickeable. Esto resuelve la gran mayoría de los 54 (nav 6 + feature-links ~32 + hero link). Quedan algunos del footer y badges que no son targets críticos.
+✅ **Fix APLICADO y VERIFICADO con browse:** `min-height:44px` + flex-center en `.nav-links a` (22→44 ✓), `.feature .link` (21→44 ✓) y `.hero-inquilino-link` (21→44 ✓). **Baseline 54 → 14 sub-44px.** Los 14 que quedan: logo (34px), botón hamburguesa (36px) y ~12 links del footer (16px). Los del footer se dejan a propósito: son links de pie de página convencionalmente compactos, no targets de acción primarios — subirlos a 44px rompería el ritmo del footer-grid. El texto de todos quedó igual; solo creció la zona clickeable de los que importan.
 
 ### [DR-02] [AI-Slop · C] — La landing tiene el "look generado por IA"
 👀 **Qué vi (browse, medido):**

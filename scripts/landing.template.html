@@ -1585,8 +1585,12 @@
         gap: 6px;
       }
       .hero-inquilino-link {
-        display: inline-block;
-        margin-top: 10px;
+        /* DR-01: era 21px de alto. inline-flex + min-height 44px le da área
+           táctil sin cambiar el tamaño del texto ni romper el centrado. */
+        display: inline-flex;
+        align-items: center;
+        min-height: 44px;
+        margin-top: 6px;
         color: var(--muted);
         font-size: 13.5px;
         font-weight: 500;
