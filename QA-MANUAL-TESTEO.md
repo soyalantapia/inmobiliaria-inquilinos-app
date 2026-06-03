@@ -29,7 +29,7 @@ pnpm --filter inmobiliaria dev   # → http://localhost:3001   (en otra terminal
 | **Mariela** (inquilina) | En el login: botón **"Probar con cuenta demo (Mariela Sosa)"** → pide código → el código aparece en un **banner amarillo "DEMO"** en la misma pantalla, copialo. **Atajo:** agregá `?demo=1` a la URL del login y entra directo sin código. |
 | **Diego** (garante, sin cuenta) | Link público: `/inquilino/garantes/demo` |
 | **Plomero/profesional** (sin cuenta) | Link público: `/inquilino/p/demo` |
-| **Otra inmobiliaria** (verificar certificado) | Link público: `/inquilino/verificar/X9KP-MNZ4-7BHF` |
+| **Otra inmobiliaria** (verificar certificado) | Link público: `/inquilino/verificar/16NJ-PTVB-KF8B` (hash estable del inquilino demo) |
 
 > **Tip mobile:** la app del inquilino es una PWA pensada para celular. Testeala en el celular real o achicá la ventana del navegador a ~390px de ancho (DevTools → modo responsive → iPhone). El panel inmobiliaria es para desktop.
 
@@ -164,9 +164,10 @@ pnpm --filter inmobiliaria dev   # → http://localhost:3001   (en otra terminal
 - [ ] Si no hay trabajo: empty state explica "¿Qué vas a ver?".
 - [ ] Brand "Con tecnología de My Alquiler" abajo.
 
-### C3. Verificar certificado (`/inquilino/verificar/X9KP-MNZ4-7BHF`)
+### C3. Verificar certificado (`/inquilino/verificar/16NJ-PTVB-KF8B`)
 - [ ] **Esta es PÚBLICA** (no debe redirigir a login). Si te manda a login → ❌ CRÍTICO.
 - [ ] Muestra el certificado del inquilino para que otra inmobiliaria lo valide.
+- [ ] **Bug encontrado y arreglado en este QA (BUG-01):** el hash del certificado cambiaba con el tiempo (incluía `cuotasPagadas`, que crece mes a mes), entonces un link compartido se rompía con 404 en el siguiente deploy. Fix: el hash ahora depende solo de datos inmutables (DNI+contrato+inmobiliaria). El hash estable es `16NJ-PTVB-KF8B`.
 
 ---
 

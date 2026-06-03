@@ -181,13 +181,18 @@ export function generarCertificado(): CertificadoInquilino {
   const historial = calcularHistorial();
   const { nivel, detalle: nivelDetalle } = calcularNivel(historial);
 
-  // Hash basado en datos estables (DNI + contrato + inmo). Esto asegura
-  // que el mismo inquilino siempre tiene el mismo hash.
+  // Hash basado SOLO en datos inmutables (DNI + contrato + inmo). Antes
+  // incluía historial.cuotasPagadas en la semilla, pero ese valor crece con
+  // el tiempo (calcularHistorial usa new Date() para contar meses), así que
+  // el hash cambiaba mes a mes y entre deploys → un link de certificado
+  // compartido a otra inmobiliaria se rompía con 404 (dynamicParams=false
+  // sólo pre-renderiza el hash del momento del build). Sacando cuotasPagadas,
+  // el hash de un inquilino es estable para siempre, que es lo que el caso
+  // "certificado social" necesita: el link compartido sigue vivo.
   const semilla = [
     inquilino.dni,
     contratoMock.id,
     contratoMock.inmobiliaria,
-    historial.cuotasPagadas.toString(),
   ].join('|');
   const hash = hashCertificado(semilla);
 
