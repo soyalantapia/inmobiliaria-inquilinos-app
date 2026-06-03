@@ -43,6 +43,7 @@ import { decisionInmoPago, type DecisionInmoSobrePago } from '@/lib/cross-app-in
 import { cargosExtraDelInquilino } from '@/lib/cross-app-inmo';
 import { marcarVariosPagados } from '@/lib/cargos-pagados-storage';
 import { extraerComprobante, type ExtraccionIA } from '@/lib/extraccion-ia';
+import { leerSesion } from '@/lib/auth-otp';
 
 type Step = 'datos' | 'comprobante' | 'ok';
 const MAX_FILE_MB = 5;
@@ -677,11 +678,20 @@ function StepSubirComprobante({
     // al backend (OCR + LLM). Acá lo mockeamos con un pequeño delay.
     setAnalizando(true);
     setTimeout(() => {
+      // BUG-03: el titular leído del comprobante tiene que ser el propio
+      // inquilino (es SU recibo). Si no, la IA le mostraba un nombre random
+      // ("Florencia Russo") en su propio pago y lo hacía dudar de si pagó
+      // bien. Tomamos el nombre de la sesión activa.
+      const sesion = leerSesion();
+      const titularInquilino = sesion
+        ? `${sesion.nombre} ${sesion.apellido}`.trim()
+        : undefined;
       const ex = extraerComprobante(`${f.name}|${f.size}`, monto, {
         // Demo: que el comprobante del inquilino siempre matchee monto
         // exacto. Lo realista para esta UI: si el inquilino pagó lo
         // que se le pide, la lectura le dice "todo OK".
         forzarMatch: true,
+        titularEsperado: titularInquilino,
       });
       setExtraccion(ex);
       // Auto-completo el nro de operación detectado si el usuario no

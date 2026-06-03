@@ -147,7 +147,7 @@ function generarNroOperacion(r: () => number): string {
 export function extraerComprobante(
   seed: string,
   montoEsperado: number,
-  opts: { fechaEsperada?: string; forzarMatch?: boolean } = {},
+  opts: { fechaEsperada?: string; forzarMatch?: boolean; titularEsperado?: string } = {},
 ): ExtraccionIA {
   const r = rng(hash32(seed));
 
@@ -184,7 +184,13 @@ export function extraerComprobante(
     nroOperacion: generarNroOperacion(r),
     cbuOrigen: generarCbu(r),
     bancoOrigen: pick(BANCOS, r),
-    titularOrigen: pick(NOMBRES, r),
+    // BUG-03 (walkthrough Jorge): cuando es el propio inquilino subiendo SU
+    // comprobante, el titular tiene que ser ÉL — no un nombre random de la
+    // lista. Mostrarle "Florencia Russo" en su propio recibo lo hace pensar
+    // que pagó a la cuenta equivocada y rompe toda la confianza recién ganada.
+    // Si nos pasan titularEsperado (lado inquilino, sabemos quién paga) lo
+    // usamos; del lado inmo (sin contexto) cae al random de siempre.
+    titularOrigen: opts.titularEsperado ?? pick(NOMBRES, r),
     cuitOrigen: generarCuit(r),
     confianza,
     matchMonto,
