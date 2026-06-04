@@ -14,7 +14,6 @@ import {
   LogOut,
   Mail,
   Phone,
-  Save,
   ShieldCheck,
   User,
   Users,
@@ -25,57 +24,18 @@ import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card, CardContent } from '@llave/ui/card';
 import { ConfirmDialog } from '@llave/ui/confirm-dialog';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@llave/ui/dialog';
-import { Input } from '@llave/ui/input';
-import { Label } from '@llave/ui/label';
-import { toast } from '@llave/ui/use-toast';
 import { NavBar } from '@/components/nav-bar';
 import { relanzarOnboarding } from '@/components/onboarding';
 import { cerrarSesion } from '@/lib/auth-otp';
 import { contratoMock } from '@/lib/mock-data';
+import { leerProfile, type ProfileOverride } from '@/lib/profile-override';
 import { useCurrentUser } from '@/lib/use-current-user';
-
-// Datos editables persistidos en localStorage. En backend real esto pega
-// contra el endpoint del propio usuario.
-const PROFILE_KEY = 'llave-inquilino:profile:v1';
-
-interface ProfileOverride {
-  fullName?: string;
-  phone?: string;
-  email?: string;
-}
-
-function leerProfile(): ProfileOverride {
-  if (typeof window === 'undefined') return {};
-  try {
-    const raw = window.localStorage.getItem(PROFILE_KEY);
-    return raw ? (JSON.parse(raw) as ProfileOverride) : {};
-  } catch {
-    return {};
-  }
-}
-
-function guardarProfile(p: ProfileOverride): void {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(PROFILE_KEY, JSON.stringify(p));
-  } catch {
-    // ignore
-  }
-}
 
 export default function CuentaPage() {
   const router = useRouter();
   const user = useCurrentUser();
   const [confirmandoLogout, setConfirmandoLogout] = useState(false);
   const [override, setOverride] = useState<ProfileOverride>({});
-  const [dialogAbierto, setDialogAbierto] = useState(false);
 
   // Hidratación del override desde localStorage (post-mount)
   useEffect(() => {
@@ -120,36 +80,18 @@ export default function CuentaPage() {
               label="Teléfono"
               value={phone || 'Sin agregar'}
               vacio={!phone}
-              onAgregar={!phone ? () => setDialogAbierto(true) : undefined}
+              onAgregar={!phone ? () => router.push('/cuenta/editar') : undefined}
             />
             <Field icon={<Mail className="h-4 w-4" />} label="Email" value={email} />
           </div>
 
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full"
-            onClick={() => setDialogAbierto(true)}
-          >
-            <User className="h-4 w-4" />
-            Editar datos
+          <Button variant="outline" size="sm" className="w-full" asChild>
+            <Link href="/cuenta/editar">
+              <User className="h-4 w-4" />
+              Editar datos
+            </Link>
           </Button>
         </Card>
-
-        <EditarDatosDialog
-          open={dialogAbierto}
-          onOpenChange={setDialogAbierto}
-          initial={{ fullName, phone, email }}
-          onGuardar={(nuevo) => {
-            setOverride(nuevo);
-            guardarProfile(nuevo);
-            setDialogAbierto(false);
-            toast({
-              title: 'Datos actualizados',
-              description: 'Le avisamos a la inmobiliaria con tus nuevos datos.',
-            });
-          }}
-        />
 
         {/* Sección "Tu hogar" — accesos rápidos a las pantallas relacionadas
             al contrato actual. Antes estaba todo mezclado bajo "Ayuda"
@@ -372,131 +314,3 @@ function LinkRow({
   }
   return <Link href={href}>{content}</Link>;
 }
-
-// ============================================================
-// DIALOG: Editar datos personales
-// ============================================================
-function EditarDatosDialog({
-  open,
-  onOpenChange,
-  initial,
-  onGuardar,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  initial: { fullName: string; phone: string; email: string };
-  onGuardar: (data: { fullName: string; phone: string; email: string }) => void;
-}) {
-  const [fullName, setFullName] = useState(initial.fullName);
-  const [phone, setPhone] = useState(initial.phone);
-  const [email, setEmail] = useState(initial.email);
-  const [guardando, setGuardando] = useState(false);
-
-  // Resetear los valores cada vez que se abre el dialog
-  useEffect(() => {
-    if (open) {
-      setFullName(initial.fullName);
-      setPhone(initial.phone);
-      setEmail(initial.email);
-    }
-  }, [open, initial.fullName, initial.phone, initial.email]);
-
-  // Validación básica
-  const nombreOk = fullName.trim().length >= 3;
-  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
-  const telOk = phone.trim().length === 0 || phone.trim().length >= 6;
-  const puedeGuardar = nombreOk && emailOk && telOk && !guardando;
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!puedeGuardar) return;
-    setGuardando(true);
-    // Simulación de delay de red
-    await new Promise((r) => setTimeout(r, 350));
-    onGuardar({
-      fullName: fullName.trim(),
-      phone: phone.trim(),
-      email: email.trim(),
-    });
-    setGuardando(false);
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Editar tus datos</DialogTitle>
-          <DialogDescription>
-            Si cambiás algún dato, la inmobiliaria lo recibe automáticamente.
-          </DialogDescription>
-        </DialogHeader>
-
-        <form onSubmit={submit} className="space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="nombre">Nombre completo</Label>
-            <Input
-              id="nombre"
-              autoComplete="name"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              placeholder="Mariela Sosa"
-              maxLength={80}
-            />
-            {!nombreOk && fullName.length > 0 && (
-              <p className="text-xs text-destructive">Mínimo 3 caracteres</p>
-            )}
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="telefono">Teléfono</Label>
-            <Input
-              id="telefono"
-              type="tel"
-              autoComplete="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="+54 9 11 1234 5678"
-              maxLength={30}
-            />
-            {!telOk && (
-              <p className="text-xs text-destructive">Teléfono inválido</p>
-            )}
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              type="email"
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="vos@correo.com"
-              maxLength={80}
-            />
-            {!emailOk && email.length > 0 && (
-              <p className="text-xs text-destructive">Email inválido</p>
-            )}
-          </div>
-
-          <div className="flex gap-2 pt-2">
-            <Button
-              type="button"
-              variant="outline"
-              className="flex-1"
-              onClick={() => onOpenChange(false)}
-              disabled={guardando}
-            >
-              Cancelar
-            </Button>
-            <Button type="submit" className="flex-1" disabled={!puedeGuardar}>
-              <Save className="h-4 w-4" />
-              {guardando ? 'Guardando…' : 'Guardar'}
-            </Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-

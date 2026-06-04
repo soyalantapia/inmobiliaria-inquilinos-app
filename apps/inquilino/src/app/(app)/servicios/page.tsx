@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
   AlertTriangle,
@@ -8,11 +8,8 @@ import {
   CheckCircle2,
   Download,
   Droplets,
-  FileText,
   Flame,
-  ImageIcon,
   Landmark,
-  Plus,
   Receipt,
   Trash2,
   Upload,
@@ -23,16 +20,6 @@ import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card, CardContent } from '@llave/ui/card';
 import { ConfirmDialog } from '@llave/ui/confirm-dialog';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@llave/ui/dialog';
-import { Input } from '@llave/ui/input';
-import { Label } from '@llave/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@llave/ui/select';
 import { toast } from '@llave/ui/use-toast';
 import { NavBar } from '@/components/nav-bar';
 import {
@@ -40,13 +27,10 @@ import {
   type EstadoBoleta,
   type TipoServicio,
   ESTADO_LABEL,
-  TAMANIO_MAX,
   TIPO_LABEL,
   eliminarBoleta,
   formatPeriodo,
   formatTamanio,
-  guardarBoleta,
-  leerArchivoComoDataUrl,
   listarBoletasDe,
   marcarBoletaPagada,
 } from '@/lib/boletas-servicios-storage';
@@ -88,7 +72,6 @@ function periodoActual(): string {
 export default function ServiciosPage() {
   const [boletas, setBoletas] = useState<BoletaServicio[]>([]);
   const [hidratado, setHidratado] = useState(false);
-  const [subirAbierto, setSubirAbierto] = useState(false);
   const [eliminar, setEliminar] = useState<BoletaServicio | null>(null);
   const [filtroTipo, setFiltroTipo] = useState<TipoServicio | 'TODOS'>('TODOS');
 
@@ -134,17 +117,6 @@ export default function ServiciosPage() {
     filtroTipo === 'TODOS' ? lista : lista.filter((b) => b.tipo === filtroTipo);
   const sinPagarFiltrado = filtrarPorTipo(stats.sinPagar);
   const pagadasFiltrado = filtrarPorTipo(stats.pagadas);
-
-  const onGuardada = (b: BoletaServicio) => {
-    guardarBoleta(b);
-    setBoletas(listarBoletasDe(contratoMock.id));
-    setSubirAbierto(false);
-    toast({
-      variant: 'success',
-      title: 'Boleta subida',
-      description: `${TIPO_LABEL[b.tipo]} · ${formatPeriodo(b.periodo)}`,
-    });
-  };
 
   const marcarPagada = (b: BoletaServicio) => {
     marcarBoletaPagada(b.contratoId, b.id);
@@ -293,13 +265,11 @@ export default function ServiciosPage() {
           </Card>
         </div>
 
-        <Button
-          className="w-full"
-          size="lg"
-          onClick={() => setSubirAbierto(true)}
-        >
-          <Upload className="h-4 w-4" />
-          Subir nueva boleta
+        <Button className="w-full" size="lg" asChild>
+          <Link href="/servicios/subir">
+            <Upload className="h-4 w-4" />
+            Subir nueva boleta
+          </Link>
         </Button>
 
         {/* Filtros por tipo de servicio — solo si hay >5 boletas en total
@@ -369,12 +339,6 @@ export default function ServiciosPage() {
         )}
       </main>
       <NavBar />
-
-      <SubirBoletaDialog
-        abierto={subirAbierto}
-        onClose={() => setSubirAbierto(false)}
-        onGuardar={onGuardada}
-      />
 
       <ConfirmDialog
         open={!!eliminar}
@@ -552,190 +516,5 @@ function FiltroChip({
     >
       {children}
     </button>
-  );
-}
-
-interface DialogProps {
-  abierto: boolean;
-  onClose: () => void;
-  onGuardar: (b: BoletaServicio) => void;
-}
-
-function SubirBoletaDialog({ abierto, onClose, onGuardar }: DialogProps) {
-  const [tipo, setTipo] = useState<TipoServicio>('LUZ');
-  const [periodo, setPeriodo] = useState(periodoActual());
-  const [monto, setMonto] = useState('');
-  const [vencimiento, setVencimiento] = useState('');
-  const [archivo, setArchivo] = useState<File | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (!abierto) return;
-    setTipo('LUZ');
-    setPeriodo(periodoActual());
-    setMonto('');
-    setVencimiento('');
-    setArchivo(null);
-  }, [abierto]);
-
-  const submit = async () => {
-    if (!archivo) {
-      toast({
-        variant: 'destructive',
-        title: 'Falta el archivo',
-        description: 'Cargá la foto o PDF de la boleta antes de continuar.',
-      });
-      return;
-    }
-    if (archivo.size > TAMANIO_MAX) {
-      toast({
-        variant: 'destructive',
-        title: 'Archivo muy grande',
-        description: `Probá con uno de hasta ${formatTamanio(TAMANIO_MAX)}.`,
-      });
-      return;
-    }
-    if (!monto || parseInt(monto, 10) <= 0) {
-      toast({
-        variant: 'destructive',
-        title: 'Falta el monto',
-        description: 'Indicá cuánto da el total de la boleta.',
-      });
-      return;
-    }
-    try {
-      const dataUrl = await leerArchivoComoDataUrl(archivo);
-      onGuardar({
-        id: `bol-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        contratoId: contratoMock.id,
-        tipo,
-        periodo,
-        monto: parseInt(monto, 10),
-        vencimiento: vencimiento || new Date().toISOString().slice(0, 10),
-        estado: 'SUBIDA',
-        nombreArchivo: archivo.name,
-        tipoMime: archivo.type || 'application/octet-stream',
-        tamanioBytes: archivo.size,
-        dataUrl,
-        subidoAt: new Date().toISOString(),
-      });
-    } catch (err) {
-      toast({
-        variant: 'destructive',
-        title: 'No pudimos leer el archivo',
-        description: 'Intentá con otro o achicalo y volvé a probar.',
-      });
-    }
-  };
-
-  return (
-    <Dialog open={abierto} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Subir boleta</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3">
-          <div className="space-y-1.5">
-            <Label htmlFor="tipo">Tipo de servicio</Label>
-            <Select value={tipo} onValueChange={(v) => setTipo(v as TipoServicio)}>
-              <SelectTrigger id="tipo">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {TIPOS_DISPONIBLES.map((t) => (
-                  <SelectItem key={t} value={t}>
-                    {TIPO_LABEL[t]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="periodo">Período</Label>
-              <Input
-                id="periodo"
-                type="month"
-                value={periodo}
-                onChange={(e) => setPeriodo(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="venc">Vencimiento</Label>
-              <Input
-                id="venc"
-                type="date"
-                value={vencimiento}
-                onChange={(e) => setVencimiento(e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="monto">Monto total (ARS)</Label>
-            <Input
-              id="monto"
-              type="number"
-              inputMode="decimal"
-              min="0"
-              placeholder="Ej. 32400"
-              value={monto}
-              onChange={(e) => setMonto(e.target.value)}
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="svc-archivo">Archivo de la boleta</Label>
-            <input
-              id="svc-archivo"
-              ref={fileRef}
-              type="file"
-              accept="image/*,application/pdf"
-              className="hidden"
-              onChange={(e) => setArchivo(e.target.files?.[0] ?? null)}
-            />
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full justify-start"
-              onClick={() => fileRef.current?.click()}
-            >
-              {archivo ? (
-                <>
-                  {archivo.type.startsWith('image/') ? (
-                    <ImageIcon className="h-4 w-4" />
-                  ) : (
-                    <FileText className="h-4 w-4" />
-                  )}
-                  <span className="truncate text-xs">{archivo.name}</span>
-                  <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">
-                    {formatTamanio(archivo.size)}
-                  </span>
-                </>
-              ) : (
-                <>
-                  <Plus className="h-4 w-4" />
-                  Elegir foto o PDF
-                </>
-              )}
-            </Button>
-            <p className="text-[10px] text-muted-foreground">
-              Hasta {formatTamanio(TAMANIO_MAX)} · acepta JPG, PNG, PDF.
-            </p>
-          </div>
-
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={onClose}>
-              Cancelar
-            </Button>
-            <Button onClick={submit}>
-              <Upload className="h-4 w-4" />
-              Subir
-            </Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
   );
 }
