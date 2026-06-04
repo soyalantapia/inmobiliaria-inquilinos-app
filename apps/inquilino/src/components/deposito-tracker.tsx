@@ -121,7 +121,7 @@ export function DepositoTracker({ depositoOriginal, fechaFin }: Props) {
         >
           <div className="flex items-center gap-2">
             <AlertCircle className="h-3.5 w-3.5" />
-            <span>Regularizar deuda para recuperar el total</span>
+            <span>Ponerte al día para recuperar el total</span>
           </div>
           <ChevronRight className="h-3.5 w-3.5" />
         </Link>

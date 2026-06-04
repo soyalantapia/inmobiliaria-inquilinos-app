@@ -371,7 +371,7 @@ function MovimientoRow({ mov }: { mov: Movimiento }) {
                 : 'bg-primary text-primary-foreground hover:bg-primary/90'
             }`}
           >
-            {vencido ? 'Regularizar' : 'Pagar'}
+            {vencido ? 'Ponerte al día' : 'Pagar'}
             <ChevronRight className="h-3 w-3" />
           </Link>
         </div>
@@ -542,7 +542,7 @@ function PagoUrgenteCard({ mov }: { mov: Movimiento }) {
               : 'bg-primary text-primary-foreground hover:bg-primary/90',
           )}
         >
-          {vencido ? 'Regularizar pago' : 'Pagar ahora'}
+          {vencido ? 'Ponerte al día' : 'Pagar ahora'}
           <ChevronRight className="h-4 w-4" />
         </Link>
       </CardContent>

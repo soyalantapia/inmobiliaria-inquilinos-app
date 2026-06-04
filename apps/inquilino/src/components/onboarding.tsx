@@ -19,9 +19,10 @@ import {
 import { Button } from '@llave/ui/button';
 import { cn } from '@llave/ui/cn';
 
-// Tutorial guiado paso a paso. Se muestra automáticamente la primera vez
-// que entrás. Después podés relanzarlo desde /cuenta con el botón
-// "Ver tutorial". El flag se guarda en localStorage.
+// Tutorial guiado paso a paso. NO se auto-abre como un muro: se ofrece de
+// forma discreta y opt-in con <OnboardingInvite /> en el home (J3, walkthrough
+// Jorge), y se puede relanzar desde /cuenta con "Ver tutorial". El flag de
+// "ya visto/descartado" se guarda en localStorage.
 
 const STORAGE_KEY = 'llave:onboarding-completed:v1';
 
@@ -154,25 +155,11 @@ export function Onboarding() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    // GUARDS (mismo patrón aplicado en el admin):
-    // 1. Solo en `/` (home). El tour explica las funciones del panel,
-    //    no tiene sentido taparle a Mariela el checkout o un reclamo.
-    // 2. Persistir el flag AL ABRIR (no al cerrar). Antes, si Mariela
-    //    refrescaba sin tocar "Cerrar/Saltar", el modal volvía a salir
-    //    en cada visita. Ahora se muestra UNA sola vez.
-    if (window.location.pathname !== '/') return;
-
-    try {
-      const completado = window.localStorage.getItem(STORAGE_KEY);
-      if (!completado) {
-        setOpen(true);
-        window.localStorage.setItem(STORAGE_KEY, new Date().toISOString());
-      }
-    } catch {
-      // ignore
-    }
-
-    // Escucha el evento para relanzar desde /cuenta
+    // J3 (walkthrough Jorge): el tour YA NO se auto-abre. A un inquilino
+    // apurado por pagar, taparle el home con un modal "PASO 1 DE 9" lo frena
+    // y lo cierra con bronca. Ahora la primera vez se ofrece de forma discreta
+    // y opt-in vía <OnboardingInvite /> (en el home), y desde /cuenta. Este
+    // componente sólo muestra el modal cuando se dispara explícitamente.
     const onRelaunch = () => {
       setStep(0);
       setOpen(true);
@@ -320,4 +307,74 @@ export function Onboarding() {
 export function relanzarOnboarding(): void {
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new CustomEvent(RELAUNCH_EVENT));
+}
+
+// ¿El inquilino todavía no vio ni descartó el tour? (client-only)
+export function onboardingPendiente(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return !window.localStorage.getItem(STORAGE_KEY);
+  } catch {
+    return false;
+  }
+}
+
+// Marca el tour como visto/descartado para que la invitación no vuelva a salir.
+export function marcarOnboardingVisto(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(STORAGE_KEY, new Date().toISOString());
+  } catch {
+    // ignore
+  }
+}
+
+// J3 (walkthrough Jorge): invitación discreta y opt-in al tour, dentro del
+// flujo del home — NO un muro full-screen. Sólo aparece si el inquilino nunca
+// vio ni descartó el tour. Sigue el patrón "smart nudge" de la card del Broker:
+// estado inicial oculto + effect client-only que lo prende, para no romper la
+// hidratación SSR.
+export function OnboardingInvite() {
+  const [mostrar, setMostrar] = useState(false);
+
+  useEffect(() => {
+    setMostrar(onboardingPendiente());
+  }, []);
+
+  if (!mostrar) return null;
+
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 animate-fade-in">
+      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-fuchsia-500 to-purple-600 text-white">
+        <Sparkles className="h-4 w-4" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium leading-tight">¿Primera vez por acá?</p>
+        <p className="truncate text-xs text-muted-foreground">
+          Te muestro cómo funciona en 1 minuto
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={() => {
+          setMostrar(false);
+          relanzarOnboarding();
+        }}
+        className="shrink-0 rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+      >
+        Ver cómo
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          marcarOnboardingVisto();
+          setMostrar(false);
+        }}
+        aria-label="Ahora no, gracias"
+        className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      >
+        <X className="h-4 w-4" />
+      </button>
+    </div>
+  );
 }

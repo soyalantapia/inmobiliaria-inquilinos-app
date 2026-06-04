@@ -408,10 +408,17 @@ function PasoEmail({
 }) {
   return (
     <form onSubmit={onSubmit} className="space-y-5 animate-fade-in">
-      <div className="space-y-1">
+      <div className="space-y-1.5">
         <h2 className="text-2xl font-bold tracking-tight">Entrá a tu cuenta</h2>
         <p className="text-sm text-muted-foreground">
           Te mandamos un código de 6 dígitos a tu mail.
+        </p>
+        {/* J4 (walkthrough Jorge): la sesión persiste (no expira). Jorge temía
+            tener que buscar el código en el mail todos los meses. Se lo
+            aclaramos acá para sacarle ese miedo desde la entrada. */}
+        <p className="flex items-center gap-1.5 text-xs text-emerald-700 dark:text-emerald-400">
+          <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+          Lo pedís una sola vez — después te mantenemos la sesión abierta.
         </p>
       </div>
 

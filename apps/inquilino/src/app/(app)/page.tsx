@@ -25,6 +25,7 @@ import { Card } from '@llave/ui/card';
 import { AnunciosFeed } from '@/components/anuncios-feed';
 import { InstallPrompt } from '@/components/install-prompt';
 import { NavBar } from '@/components/nav-bar';
+import { OnboardingInvite } from '@/components/onboarding';
 import { UserMenu } from '@/components/user-menu';
 import { contratoMock, liquidacionesMock } from '@/lib/mock-data';
 import { useCurrentUser } from '@/lib/use-current-user';
@@ -186,6 +187,11 @@ export default function PagosPage() {
             cada cosa" con un acceso directo desde la pantalla principal. */}
         <QuickActions liqPendiente={pendiente ?? null} />
 
+        {/* J3 (walkthrough Jorge): invitación discreta y opt-in al tour, en
+            lugar del muro full-screen que se auto-abría. Jorge ve primero su
+            pago y sus atajos; el tour queda como oferta, no como obstáculo. */}
+        <OnboardingInvite />
+
         {/* Card compacta de inmo + acciones rápidas.
             Antes mostraba dirección/ciudad arriba + inmo abajo en dos bloques.
             La dirección ya aparece en el sidenav desktop y en /contrato, así
@@ -328,47 +334,97 @@ function BannerPagoPendiente({ liq }: { liq: Liquidacion }) {
   return (
     <Link
       href={`/pago/${liq.id}/checkout`}
-      className={`flex flex-col gap-3 rounded-xl border ${tono.border} ${tono.bg} px-3 py-3 transition-colors hover:bg-opacity-100 active:scale-[0.99] sm:flex-row sm:items-center`}
+      className={`flex flex-col gap-3 rounded-xl border ${tono.border} ${tono.bg} px-3 py-3 transition-colors hover:bg-opacity-100 active:scale-[0.99]`}
     >
       {/* En mobile angosto (<sm), el monto + texto compite con el pill por
           el ancho y queda todo cortado. Solución: stack vertical en mobile,
           horizontal en sm+. El pill abajo full-width refuerza la acción. */}
-      <div className="flex items-center gap-3">
-        <div
-          className={`grid h-9 w-9 shrink-0 place-items-center rounded-full ${tono.icon} text-white shadow-sm`}
-        >
-          {vencido ? (
-            <AlertTriangle className="h-4 w-4" strokeWidth={2.5} />
-          ) : (
-            <Wallet className="h-4 w-4" strokeWidth={2.5} />
-          )}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="flex flex-1 items-center gap-3">
+          <div
+            className={`grid h-9 w-9 shrink-0 place-items-center rounded-full ${tono.icon} text-white shadow-sm`}
+          >
+            {vencido ? (
+              <AlertTriangle className="h-4 w-4" strokeWidth={2.5} />
+            ) : (
+              <Wallet className="h-4 w-4" strokeWidth={2.5} />
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className={`text-sm font-semibold leading-tight ${tono.text}`}>
+              {vencido ? 'Tenés un pago atrasado' : 'Tenés un pago pendiente'} ·{' '}
+              <span className="tabular-nums">{formatMonto(calc.totalAPagar, liq.moneda)}</span>
+            </p>
+            <p className={`truncate text-xs ${tono.sub}`}>
+              {vencido
+                ? `Venció hace ${calc.diasAtraso} día${calc.diasAtraso === 1 ? '' : 's'}`
+                : diasV === 0
+                  ? 'Vence hoy'
+                  : `Vence en ${diasV} día${diasV === 1 ? '' : 's'} · ${formatFecha(liq.fechaVencimiento)}`}
+            </p>
+          </div>
         </div>
-        <div className="flex-1 min-w-0">
-          <p className={`text-sm font-semibold leading-tight ${tono.text}`}>
-            {vencido ? 'Tenés un pago atrasado' : 'Tenés un pago pendiente'} ·{' '}
-            <span className="tabular-nums">{formatMonto(calc.totalAPagar, liq.moneda)}</span>
-          </p>
-          <p className={`truncate text-xs ${tono.sub}`}>
-            {vencido
-              ? `Venció hace ${calc.diasAtraso} día${calc.diasAtraso === 1 ? '' : 's'}`
-              : diasV === 0
-                ? 'Vence hoy'
-                : `Vence en ${diasV} día${diasV === 1 ? '' : 's'} · ${formatFecha(liq.fechaVencimiento)}`}
-          </p>
-        </div>
+        {vencido ? (
+          <span className="flex shrink-0 items-center justify-center gap-1 rounded-full bg-red-600 px-3 py-2 text-xs font-semibold text-white shadow-sm sm:py-1.5">
+            Ponerte al día
+            <ChevronRight className="h-3.5 w-3.5" />
+          </span>
+        ) : (
+          <span className="flex shrink-0 items-center justify-center gap-1 rounded-full bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground shadow-sm sm:py-1.5">
+            Pagar
+            <ChevronRight className="h-3.5 w-3.5" />
+          </span>
+        )}
       </div>
-      {vencido ? (
-        <span className="flex shrink-0 items-center justify-center gap-1 rounded-full bg-red-600 px-3 py-2 text-xs font-semibold text-white shadow-sm sm:py-1.5">
-          Regularizar
-          <ChevronRight className="h-3.5 w-3.5" />
-        </span>
-      ) : (
-        <span className="flex shrink-0 items-center justify-center gap-1 rounded-full bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground shadow-sm sm:py-1.5">
-          Pagar
-          <ChevronRight className="h-3.5 w-3.5" />
-        </span>
-      )}
+
+      {/* J2 (walkthrough Jorge): desglose SIEMPRE visible del monto. Jorge
+          esperaba $480.000 (su alquiler) y veía sólo el total sin explicación
+          → pánico ("¿por qué me cobran de más?"). Mostrar alquiler + expensas
+          (+ intereses si está vencido) evita que tenga que tocar "Pagar" sólo
+          para entender por qué debe más. Suma siempre: alquiler+expensas =
+          montoOriginal, y montoOriginal+intereses = totalAPagar (punitorios.ts). */}
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className={`space-y-1 rounded-lg bg-white/70 px-3 py-2 text-xs dark:bg-black/20 ${tono.text}`}
+      >
+        <DesgloseFila label="Alquiler" value={formatMonto(liq.montoAlquiler, liq.moneda)} />
+        {liq.montoExpensas != null && liq.montoExpensas > 0 && (
+          <DesgloseFila label="Expensas" value={formatMonto(liq.montoExpensas, liq.moneda)} />
+        )}
+        {vencido && (
+          <DesgloseFila
+            label={`Intereses · ${calc.diasAtraso} día${calc.diasAtraso === 1 ? '' : 's'} de atraso`}
+            value={`+ ${formatMonto(calc.punitorioAcumulado, liq.moneda)}`}
+            accent
+          />
+        )}
+        <div className={`my-1 h-px ${vencido ? 'bg-red-200' : 'bg-primary/20'}`} />
+        <DesgloseFila label="Total a pagar" value={formatMonto(calc.totalAPagar, liq.moneda)} bold />
+      </div>
     </Link>
+  );
+}
+
+// Una fila del desglose del monto en el banner del home (J2). El color de
+// texto lo hereda del contenedor (tono.text); las etiquetas van atenuadas
+// por opacidad para que funcionen igual sobre el tono rojo (vencido) o
+// primario (pendiente) sin tener que pasar clases por prop.
+function DesgloseFila({
+  label,
+  value,
+  bold,
+  accent,
+}: {
+  label: string;
+  value: string;
+  bold?: boolean;
+  accent?: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className={accent ? 'font-medium' : 'opacity-70'}>{label}</span>
+      <span className={`tabular-nums ${bold ? 'text-sm font-bold' : 'font-medium'}`}>{value}</span>
+    </div>
   );
 }
 
