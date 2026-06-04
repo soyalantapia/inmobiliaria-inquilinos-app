@@ -6,7 +6,6 @@ import { PwaRegister } from './pwa-register';
 import { Toaster } from '@llave/ui/use-toast';
 import { themeScript } from '@llave/ui/theme-toggle';
 import { AuthProvider } from '@/components/auth-provider';
-import { DemoBanner } from '@/components/demo-banner';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
 
@@ -47,7 +46,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           {children}
           <Toaster />
         </AuthProvider>
-        <DemoBanner />
         <PwaRegister />
       </body>
     </html>
