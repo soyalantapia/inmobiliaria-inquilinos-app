@@ -27,14 +27,26 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
 export const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
+    /**
+     * `page` (default): en MOBILE el modal se abre a pantalla completa
+     * (page-like) y scrollea — pensado para formularios, así nunca se corta
+     * ni quedan los botones fuera de alcance. En sm+ vuelve a ser modal
+     * centrado.
+     * `compact`: diálogo centrado con margen en todos los tamaños — para
+     * confirmaciones cortas, donde la pantalla completa quedaría vacía.
+     */
+    variant?: 'page' | 'compact';
+  }
+>(({ className, children, variant = 'page', ...props }, ref) => (
   <DialogPortal>
     <DialogOverlay />
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        'fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 sm:rounded-lg',
+        variant === 'page'
+          ? 'fixed inset-0 z-50 flex flex-col gap-4 overflow-y-auto bg-background p-6 shadow-lg duration-200 sm:inset-auto sm:left-[50%] sm:top-[50%] sm:grid sm:max-h-[90vh] sm:w-full sm:max-w-lg sm:translate-x-[-50%] sm:translate-y-[-50%] sm:rounded-lg sm:border'
+          : 'fixed left-[50%] top-[50%] z-50 grid max-h-[85vh] w-[calc(100%-2rem)] max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 overflow-y-auto rounded-lg border bg-background p-6 shadow-lg duration-200',
         className,
       )}
       {...props}
