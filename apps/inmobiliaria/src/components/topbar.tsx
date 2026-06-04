@@ -16,7 +16,6 @@ import { ConvenioBadgeTopbar } from './convenio-badge-topbar';
 import { MobileSidebarTrigger } from './sidebar';
 import { NotificationsBell } from './notifications-bell';
 import { PilotoBadgeTopbar } from './piloto-badge-topbar';
-import { SelectorSociedadTopbar } from './selector-sociedad-topbar';
 
 export function Topbar({ titulo }: { titulo: string }) {
   const router = useRouter();
@@ -31,7 +30,6 @@ export function Topbar({ titulo }: { titulo: string }) {
         <PilotoBadgeTopbar />
       </div>
       <div className="flex min-w-0 items-center gap-1 md:gap-3">
-        <SelectorSociedadTopbar />
         {/* I2-02: el search global del topbar era decorativo (sin value ni
             onChange — no buscaba nada) y convivía con el buscador real de
             cada sección (ej. Propietarios), confundiendo al usuario. Lo
