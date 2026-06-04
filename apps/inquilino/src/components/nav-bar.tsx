@@ -22,15 +22,15 @@ interface NavItem {
   icon: LucideIcon;
 }
 
+// El Asistente IA va en el CENTRO (índice 2 de 5) y se renderiza como botón
+// elevado (FAB) en el bottom-nav mobile: es el diferenciador del producto y
+// el patrón moderno de navegación. El orden agrupa lo "de plata" a la
+// izquierda (Inicio, Pagos) y lo documental a la derecha (Contrato, Reclamos).
 const itemsPrimarios: NavItem[] = [
-  // "Inicio" antes era "Pagos" — pero la home es un dashboard (saludo,
-  // banner urgente, atajos, feed inmo, asistente). Renombrar evita
-  // confusión: el h1 dice "Inicio", el navbar también, /comprobantes
-  // sigue siendo "Recibos".
   { href: '/', label: 'Inicio', icon: Wallet },
+  { href: '/comprobantes', label: 'Pagos', icon: Receipt },
   { href: '/broker', label: 'Asistente', icon: Sparkles },
   { href: '/contrato', label: 'Contrato', icon: FileText },
-  { href: '/comprobantes', label: 'Recibos', icon: Receipt },
   { href: '/reclamos', label: 'Reclamos', icon: Wrench },
 ];
 
@@ -48,15 +48,51 @@ function isActive(pathname: string, href: string): boolean {
 
 export function NavBar() {
   const pathname = usePathname() ?? '/';
+  // El ítem del medio (Asistente) se renderiza como botón central elevado.
+  const centerIndex = Math.floor(itemsPrimarios.length / 2);
   return (
     <nav
       aria-label="Navegación principal"
       className="sticky bottom-0 z-30 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/70 md:hidden"
     >
-      <ul role="list" className="flex h-16 items-center justify-around">
-        {itemsPrimarios.map((item) => {
+      <ul role="list" className="flex h-16 items-end justify-around">
+        {itemsPrimarios.map((item, i) => {
           const active = isActive(pathname, item.href);
           const Icon = item.icon;
+
+          // Botón central elevado (FAB): el Asistente IA, diferenciador del
+          // producto. Sobresale por encima del borde del nav; el anillo del
+          // color de fondo crea el efecto "notch" alrededor del círculo.
+          if (i === centerIndex) {
+            return (
+              <li key={item.href} className="flex flex-1 justify-center">
+                <Link
+                  href={item.href}
+                  aria-current={active ? 'page' : undefined}
+                  aria-label={item.label}
+                  className="group flex flex-col items-center"
+                >
+                  <span
+                    className={cn(
+                      '-mt-8 grid h-[52px] w-[52px] place-items-center rounded-full bg-gradient-to-br from-primary to-fuchsia-600 text-white shadow-lg shadow-primary/40 ring-4 ring-background transition-transform group-active:scale-95',
+                      active && 'ring-primary/15',
+                    )}
+                  >
+                    <Icon className="h-5 w-5" strokeWidth={2.2} />
+                  </span>
+                  <span
+                    className={cn(
+                      'mb-2 mt-1 text-[10px] font-semibold',
+                      active ? 'text-primary' : 'text-muted-foreground',
+                    )}
+                  >
+                    {item.label}
+                  </span>
+                </Link>
+              </li>
+            );
+          }
+
           return (
             <li key={item.href} className="flex-1 min-w-0">
               <Link
