@@ -10,7 +10,6 @@ import {
   Loader2,
   MessageCircle,
   Send,
-  Sparkles,
 } from 'lucide-react';
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
@@ -27,7 +26,9 @@ import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
 import {
   crearReporte,
+  detectarNavegador,
   esClientePiloto,
+  pantallaDesdeUrl,
   type TipoReporte,
 } from '@/lib/piloto-storage';
 
@@ -88,7 +89,7 @@ export function PilotoFab() {
         className={`${positionClasses} z-40 flex items-center gap-2 rounded-full bg-violet-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-violet-600/30 transition-all hover:bg-violet-700 hover:shadow-xl active:scale-95`}
         aria-label="Reportar problema o idea"
       >
-        <Sparkles className="h-4 w-4" aria-hidden="true" />
+        <Bug className="h-4 w-4" aria-hidden="true" />
         <span className="hidden sm:inline">Reportar</span>
       </button>
 
@@ -103,6 +104,23 @@ function ReporteDialog({ open, onClose }: { open: boolean; onClose: () => void }
   const [detalle, setDetalle] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [enviado, setEnviado] = useState(false);
+  const [contexto, setContexto] = useState<{
+    pantalla: string;
+    viewport: string;
+    navegador: string;
+  } | null>(null);
+
+  // Capturamos el contexto técnico al abrir el diálogo, para MOSTRAR
+  // exactamente qué se adjunta al reporte (lo que el equipo necesita para
+  // reproducir el error: dónde estabas, en qué resolución y navegador).
+  useEffect(() => {
+    if (!open || typeof window === 'undefined') return;
+    setContexto({
+      pantalla: pantallaDesdeUrl(window.location.pathname),
+      viewport: `${window.innerWidth}×${window.innerHeight}`,
+      navegador: detectarNavegador(window.navigator.userAgent),
+    });
+  }, [open]);
 
   useEffect(() => {
     if (!open) {
@@ -194,7 +212,7 @@ function ReporteDialog({ open, onClose }: { open: boolean; onClose: () => void }
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-violet-600" />
+            <Bug className="h-5 w-5 text-violet-600" />
             Reportar al equipo
           </DialogTitle>
           <DialogDescription>
@@ -264,17 +282,27 @@ function ReporteDialog({ open, onClose }: { open: boolean; onClose: () => void }
                     : 'Cualquier contexto adicional.'
               }
             />
-            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-              <span>Adjuntamos automático:</span>
-              <Badge variant="outline" className="text-[9px]">
-                URL actual
-              </Badge>
-              <Badge variant="outline" className="text-[9px]">
-                Timestamp
-              </Badge>
-              <Badge variant="outline" className="text-[9px]">
-                Tu user
-              </Badge>
+            <div className="rounded-md border bg-muted/30 p-2.5">
+              <p className="mb-1.5 text-[10px] font-medium text-muted-foreground">
+                Se adjunta solo para que el equipo reproduzca el error:
+              </p>
+              <div className="flex flex-wrap gap-1">
+                <Badge variant="outline" className="text-[9px]">
+                  📍 {contexto?.pantalla ?? '—'}
+                </Badge>
+                <Badge variant="outline" className="text-[9px]">
+                  🖥 {contexto?.viewport ?? '—'}
+                </Badge>
+                <Badge variant="outline" className="text-[9px]">
+                  {contexto?.navegador ?? '—'}
+                </Badge>
+                <Badge variant="outline" className="text-[9px]">
+                  Roberto Tapia
+                </Badge>
+                <Badge variant="outline" className="text-[9px]">
+                  Fecha y hora
+                </Badge>
+              </div>
             </div>
           </div>
         </div>

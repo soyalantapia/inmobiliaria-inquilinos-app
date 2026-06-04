@@ -28,10 +28,16 @@ export interface ReportePiloto {
   tipo: TipoReporte;
   titulo: string;
   detalle: string;
-  /** URL desde la que se reportó el issue. */
+  /** URL (pathname) desde la que se reportó el issue. */
   url: string;
   /** ¿En qué pantalla estaba el usuario? (deducido de la URL). */
   pantalla: string;
+  /** URL completa (con host) para reproducir el error tal cual. */
+  urlCompleta?: string;
+  /** Navegador deducido del userAgent (Chrome / Safari / …). */
+  navegador?: string;
+  /** Resolución del viewport al momento del reporte (ej. "1440×900"). */
+  viewport?: string;
   reportadoAt: string;
   /** Quién lo reportó (mock — operador actual). */
   reportadoPor: string;
@@ -101,11 +107,14 @@ export interface NuevoReporteInput {
   titulo: string;
   detalle: string;
   url?: string;
+  urlCompleta?: string;
+  navegador?: string;
+  viewport?: string;
 }
 
 export function crearReporte(input: NuevoReporteInput): ReportePiloto {
-  const url =
-    input.url ?? (typeof window !== 'undefined' ? window.location.pathname : '/');
+  const tieneWindow = typeof window !== 'undefined';
+  const url = input.url ?? (tieneWindow ? window.location.pathname : '/');
   const reporte: ReportePiloto = {
     id: `rep_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
     tipo: input.tipo,
@@ -113,6 +122,12 @@ export function crearReporte(input: NuevoReporteInput): ReportePiloto {
     detalle: input.detalle.trim(),
     url,
     pantalla: pantallaDesdeUrl(url),
+    // Contexto técnico que el equipo necesita para reproducir el error,
+    // capturado automáticamente (como cualquier herramienta de bug report).
+    urlCompleta: input.urlCompleta ?? (tieneWindow ? window.location.href : undefined),
+    navegador:
+      input.navegador ?? (tieneWindow ? detectarNavegador(window.navigator.userAgent) : undefined),
+    viewport: input.viewport ?? (tieneWindow ? `${window.innerWidth}×${window.innerHeight}` : undefined),
     reportadoAt: new Date().toISOString(),
     reportadoPor: 'Roberto Tapia', // mock — en backend usa el user logueado
   };
@@ -122,12 +137,23 @@ export function crearReporte(input: NuevoReporteInput): ReportePiloto {
   return reporte;
 }
 
+/** Deduce un nombre de navegador legible desde el userAgent. */
+export function detectarNavegador(ua: string): string {
+  // El orden importa: Edge/Opera incluyen "Chrome" en su UA.
+  if (/\bEdg\//.test(ua)) return 'Edge';
+  if (/\bOPR\//.test(ua) || /\bOpera\//.test(ua)) return 'Opera';
+  if (/\bChrome\//.test(ua)) return 'Chrome';
+  if (/\bFirefox\//.test(ua)) return 'Firefox';
+  if (/\bSafari\//.test(ua)) return 'Safari';
+  return 'Navegador';
+}
+
 export function eliminarReporte(id: string): void {
   const lista = leerReportes().filter((r) => r.id !== id);
   persistirReportes(lista);
 }
 
-function pantallaDesdeUrl(url: string): string {
+export function pantallaDesdeUrl(url: string): string {
   // Mapeo simple: el primer segmento define la pantalla.
   const partes = url.split('/').filter(Boolean);
   if (partes.length === 0) return 'Home';
