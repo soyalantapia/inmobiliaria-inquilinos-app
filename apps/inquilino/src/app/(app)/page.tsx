@@ -86,20 +86,6 @@ export default function PagosPage() {
     (proximoPagoDate.getTime() - HOY) / (1000 * 60 * 60 * 24),
   );
 
-  // Saludo contextual: una frase breve que cambia según el estado real.
-  // Es la primera info que ve el inquilino, así que prioriza lo urgente.
-  // Versión CORTA — en mobile angosto (320px) entra completo sin truncate.
-  // El banner grande de abajo ya tiene el detalle completo.
-  const mensajeContextual = pendiente
-    ? (() => {
-        const diasV = diasHastaVencimiento(pendiente.fechaVencimiento);
-        if (diasV < 0)
-          return `Atrasado · ${Math.abs(diasV)} día${Math.abs(diasV) === 1 ? '' : 's'}`;
-        if (diasV === 0) return 'Vence hoy';
-        return `Vence en ${diasV} día${diasV === 1 ? '' : 's'}`;
-      })()
-    : `Al día · próximo en ${diasAlProximoPago} día${diasAlProximoPago === 1 ? '' : 's'}`;
-
   // Smart nudge del Broker IA: la card solo aparece si el inquilino nunca
   // entró a /broker. Una vez visitado, la home queda más limpia. El flag
   // lo setea la propia page /broker en localStorage la primera vez.
@@ -118,22 +104,13 @@ export default function PagosPage() {
 
   return (
     <>
-      {/* Saludo + menú (mobile).
-          La sub-línea es contextual al estado real (atrasado / vence pronto /
-          al día). Le da al inquilino el resumen de su situación apenas abre
-          la app, antes incluso de bajar a las cards. */}
+      {/* Saludo + menú (mobile). El detalle del estado de pago vive en el
+          banner grande de abajo, así que el saludo queda limpio. */}
       <header className="flex items-center justify-between px-5 pt-5 md:hidden">
         <div className="min-w-0">
           <p className="text-xs text-muted-foreground">Hola,</p>
           <p className="truncate text-lg font-semibold leading-tight">
             {nombreCorto} <span aria-hidden="true">👋</span>
-          </p>
-          <p
-            className={`mt-0.5 truncate text-[11px] ${
-              pendiente ? 'text-red-700 dark:text-red-400' : 'text-emerald-700 dark:text-emerald-400'
-            }`}
-          >
-            {mensajeContextual}
           </p>
         </div>
         <UserMenu compact />
