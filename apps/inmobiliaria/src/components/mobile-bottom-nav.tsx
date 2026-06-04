@@ -22,8 +22,13 @@ import { getRolActual, ROL_CHANGE_EVENT } from '@/lib/rol-storage';
 // Barra de navegación inferior tipo app, SOLO en mobile (`md:hidden`; en
 // desktop manda la Sidebar). Trae las 4 secciones del día a día —Inicio,
 // Propiedades, Pagos, Reclamos— y en el centro un FAB elevado para la acción
-// primaria de una inmobiliaria: "Cargar contrato". El resto de las secciones
+// primaria de una inmobiliaria: "Cargar propiedad". El resto de las secciones
 // sigue accesible desde el menú (hamburguesa) del topbar.
+
+// Ruta de la acción del FAB. Se trata aparte para que la pestaña "Propiedades"
+// (/propiedades) NO quede marcada como activa cuando estás cargando una
+// propiedad nueva (/propiedades/nueva) — ahí el activo es el FAB.
+const FAB_HREF = '/propiedades/nueva';
 //
 // Respeta permisos por rol (igual que la Sidebar) y muestra badges de
 // pendientes en Pagos (comprobantes a validar) y Reclamos (sin asignar),
@@ -89,7 +94,10 @@ export function MobileBottomNav() {
   const puede = (c?: Capacidad) => !c || rolTienePermiso(rol, c);
   const izq = TABS_IZQ.filter((t) => puede(t.capacidad));
   const der = TABS_DER.filter((t) => puede(t.capacidad));
-  const puedeCargar = rolTienePermiso(rol, 'contratos.crear');
+  const puedeCargar = rolTienePermiso(rol, 'propiedades.crear');
+
+  // Una pestaña está activa salvo cuando estás en la ruta del FAB (ahí manda él).
+  const tabActiva = (href: string) => isActive(pathname, href) && pathname !== FAB_HREF;
 
   const badgeDe = (href: string): number =>
     href === '/pagos' ? pagosBadge : href === '/reclamos' ? reclamosBadge : 0;
@@ -101,22 +109,22 @@ export function MobileBottomNav() {
     >
       <ul className="flex h-16 items-end justify-around pb-[env(safe-area-inset-bottom)]">
         {izq.map((t) => (
-          <NavTab key={t.href} tab={t} active={isActive(pathname, t.href)} badge={badgeDe(t.href)} />
+          <NavTab key={t.href} tab={t} active={tabActiva(t.href)} badge={badgeDe(t.href)} />
         ))}
 
-        {/* FAB central elevado: "Cargar contrato", la acción primaria. */}
+        {/* FAB central elevado: "Cargar propiedad", la acción primaria. */}
         {puedeCargar && (
           <li className="flex flex-1 justify-center">
             <Link
-              href="/contratos/nuevo"
-              aria-label="Cargar contrato"
-              aria-current={isActive(pathname, '/contratos/nuevo') ? 'page' : undefined}
+              href={FAB_HREF}
+              aria-label="Cargar propiedad"
+              aria-current={isActive(pathname, FAB_HREF) ? 'page' : undefined}
               className="group flex flex-col items-center"
             >
               <span
                 className={cn(
                   '-mt-8 grid h-[52px] w-[52px] place-items-center rounded-full bg-gradient-to-br from-primary to-violet-600 text-white shadow-lg shadow-primary/40 ring-4 ring-background transition-transform group-active:scale-95',
-                  isActive(pathname, '/contratos/nuevo') && 'ring-primary/20',
+                  isActive(pathname, FAB_HREF) && 'ring-primary/20',
                 )}
               >
                 <Plus className="h-6 w-6" strokeWidth={2.4} />
@@ -124,7 +132,7 @@ export function MobileBottomNav() {
               <span
                 className={cn(
                   'mb-2 mt-1 text-[10px] font-semibold',
-                  isActive(pathname, '/contratos/nuevo') ? 'text-primary' : 'text-muted-foreground',
+                  isActive(pathname, FAB_HREF) ? 'text-primary' : 'text-muted-foreground',
                 )}
               >
                 Cargar
@@ -134,7 +142,7 @@ export function MobileBottomNav() {
         )}
 
         {der.map((t) => (
-          <NavTab key={t.href} tab={t} active={isActive(pathname, t.href)} badge={badgeDe(t.href)} />
+          <NavTab key={t.href} tab={t} active={tabActiva(t.href)} badge={badgeDe(t.href)} />
         ))}
       </ul>
     </nav>

@@ -4,6 +4,13 @@ import { SignOutButton, UserButton } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
 import { LogOut } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@llave/ui/avatar';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@llave/ui/dropdown-menu';
 import { isClerkEnabled, mockUser } from '@/lib/auth';
 import { ConvenioBadgeTopbar } from './convenio-badge-topbar';
 import { MobileSidebarTrigger } from './sidebar';
@@ -43,22 +50,41 @@ export function Topbar({ titulo }: { titulo: string }) {
             </SignOutButton>
           </>
         ) : (
-          <div className="flex items-center gap-2">
-            <Avatar>
-              <AvatarFallback className="bg-primary/10 text-primary">
-                {mockUser.user.firstName.slice(0, 1)}
-                {mockUser.user.lastName.slice(0, 1)}
-              </AvatarFallback>
-            </Avatar>
-            <button
-              type="button"
-              onClick={() => router.push('/login')}
-              className="rounded-full p-2 hover:bg-muted"
-              aria-label="Cerrar sesión (mock)"
-            >
-              <LogOut className="h-4 w-4" />
-            </button>
-          </div>
+          // El "Cerrar sesión" vivía como botón suelto siempre visible al lado
+          // del avatar — muy fácil de tocar sin querer. Ahora vive detrás del
+          // avatar, en un menú (click avatar → Cerrar sesión).
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-label="Menú de cuenta"
+                className="rounded-full outline-none transition-shadow hover:ring-2 hover:ring-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                <Avatar>
+                  <AvatarFallback className="bg-primary/10 text-primary">
+                    {mockUser.user.firstName.slice(0, 1)}
+                    {mockUser.user.lastName.slice(0, 1)}
+                  </AvatarFallback>
+                </Avatar>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-[12rem]">
+              <div className="px-2 py-1.5">
+                <p className="text-sm font-medium leading-none">
+                  {mockUser.user.firstName} {mockUser.user.lastName}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">Inmobiliaria del Sol</p>
+              </div>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => router.push('/login')}
+                className="text-destructive hover:bg-destructive/10 hover:text-destructive focus:bg-destructive/10 focus:text-destructive"
+              >
+                <LogOut className="mr-2 h-4 w-4" />
+                Cerrar sesión
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
       </div>
     </header>
