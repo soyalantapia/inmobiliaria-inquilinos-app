@@ -73,10 +73,12 @@ export function PilotoFab() {
   // /configuracion tiene CTAs primarios al pie ("Guardar cambios",
   // "Comparar planes"). Ahí movemos el FAB a la izquierda para que no
   // los tape. Resto de la app: bottom-right clásico.
+  // En mobile lo elevamos (bottom-20) para que no choque con la barra de
+  // navegación inferior (h-16); en desktop (sin barra) vuelve a bottom-5.
   const enConfig = pathname.startsWith('/configuracion');
   const positionClasses = enConfig
-    ? 'fixed bottom-5 left-5'
-    : 'fixed bottom-5 right-5';
+    ? 'fixed bottom-20 left-5 md:bottom-5'
+    : 'fixed bottom-20 right-5 md:bottom-5';
 
   return (
     <>

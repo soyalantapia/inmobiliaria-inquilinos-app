@@ -1,3 +1,4 @@
+import { MobileBottomNav } from '@/components/mobile-bottom-nav';
 import { OnboardingInmo } from '@/components/onboarding';
 import { PilotoFab } from '@/components/piloto-fab';
 import { Sidebar } from '@/components/sidebar';
@@ -18,10 +19,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <div
         id="main-content"
         tabIndex={-1}
-        className="flex min-w-0 flex-1 flex-col outline-none"
+        className="flex min-w-0 flex-1 flex-col outline-none pb-16 md:pb-0"
       >
         {children}
       </div>
+      {/* Barra de navegación inferior tipo app — sólo mobile (en desktop manda
+          la Sidebar). El pb-16 de arriba reserva su alto para que no tape el
+          contenido. */}
+      <MobileBottomNav />
       <OnboardingInmo />
       {/* FAB para clientes piloto — sólo aparece si la cuenta tiene
           el modo activo (los 9-10 beta testers). */}
