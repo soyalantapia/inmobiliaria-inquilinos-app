@@ -15,7 +15,7 @@ import { Card, CardContent } from '@llave/ui/card';
 import { cn } from '@llave/ui/cn';
 import { toast } from '@llave/ui/use-toast';
 import { NavBar } from '@/components/nav-bar';
-import { UserMenu } from '@/components/user-menu';
+import { MobileGreetingHeader } from '@/components/mobile-greeting-header';
 import { comprobantesMock, contratoMock, liquidacionesMock } from '@/lib/mock-data';
 import { TASA_PUNITORIA_DIARIA_DEFAULT, calcularPunitorios } from '@/lib/punitorios';
 import {
@@ -124,14 +124,9 @@ export default function RecibosPage() {
 
   return (
     <>
-      {/* Header con UserMenu — consistente con el resto de las pantallas
-          del inquilino (mobile-only; en desktop se cubre por la topbar
-          del layout). Antes esta pantalla empezaba directo con la card
-          violeta del precio mensual, sin saludo ni avatar — el usuario
-          perdía el contexto de "estoy en mi cuenta". */}
-      <header className="p-5 md:hidden">
-        <UserMenu />
-      </header>
+      {/* Header de saludo consistente con el resto de las pantallas
+          (mobile-only; en desktop se cubre por la topbar del layout). */}
+      <MobileGreetingHeader />
 
       {/* Título arriba — la card del pago urgente (si la hay) va
           PRIMERO antes que la card "Tu alquiler vigente". Antes la

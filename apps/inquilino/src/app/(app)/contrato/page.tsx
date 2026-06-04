@@ -24,7 +24,7 @@ import { DepositoTracker } from '@/components/deposito-tracker';
 import { HistorialAjustes } from '@/components/historial-ajustes';
 import { NavBar } from '@/components/nav-bar';
 import { RenovacionBanner } from '@/components/renovacion-banner';
-import { UserMenu } from '@/components/user-menu';
+import { MobileGreetingHeader } from '@/components/mobile-greeting-header';
 import { contratoMock, garanteMock, inquilinoActual } from '@/lib/mock-data';
 import {
   diasHastaVencimiento,
@@ -59,9 +59,7 @@ export default function ContratoPage() {
 
   return (
     <>
-      <header className="p-5 md:hidden">
-        <UserMenu />
-      </header>
+      <MobileGreetingHeader />
 
       <main className="flex-1 space-y-5 px-5 pb-6 md:px-8 md:pt-8">
         {/* Header con CTA PDF visible desde el inicio.

@@ -26,9 +26,8 @@ import { AnunciosFeed } from '@/components/anuncios-feed';
 import { InstallPrompt } from '@/components/install-prompt';
 import { NavBar } from '@/components/nav-bar';
 import { OnboardingInvite } from '@/components/onboarding';
-import { UserMenu } from '@/components/user-menu';
+import { MobileGreetingHeader } from '@/components/mobile-greeting-header';
 import { contratoMock, liquidacionesMock } from '@/lib/mock-data';
-import { useCurrentUser } from '@/lib/use-current-user';
 import { movimientosMock, type Movimiento } from '@/lib/movimientos-mock';
 import { TASA_PUNITORIA_DIARIA_DEFAULT, calcularPunitorios } from '@/lib/punitorios';
 import { diasHastaVencimiento, formatFecha, formatFechaCorta, formatMonto } from '@/lib/format';
@@ -54,9 +53,6 @@ export default function PagosPage() {
   const diasAjuste = diasHastaVencimiento(contratoMock.proximoAjuste);
   const alertaAjuste = diasAjuste >= 0 && diasAjuste <= 30;
   const ajusteCritico = diasAjuste >= 0 && diasAjuste <= 7;
-
-  const user = useCurrentUser();
-  const nombreCorto = user.firstName;
 
   // Movimientos recientes (últimos 60 días). Si no hay nada reciente
   // mostramos un empty state que linkea a /comprobantes — antes la lista
@@ -104,17 +100,7 @@ export default function PagosPage() {
 
   return (
     <>
-      {/* Saludo + menú (mobile). El detalle del estado de pago vive en el
-          banner grande de abajo, así que el saludo queda limpio. */}
-      <header className="flex items-center justify-between px-5 pt-5 md:hidden">
-        <div className="min-w-0">
-          <p className="text-xs text-muted-foreground">Hola,</p>
-          <p className="truncate text-lg font-semibold leading-tight">
-            {nombreCorto} <span aria-hidden="true">👋</span>
-          </p>
-        </div>
-        <UserMenu compact />
-      </header>
+      <MobileGreetingHeader />
 
       <main className="flex-1 space-y-5 px-5 pb-6 md:px-8 md:pt-8">
         <h1 className="sr-only">Inicio</h1>

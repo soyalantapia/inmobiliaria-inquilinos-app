@@ -9,7 +9,7 @@ import { Button } from '@llave/ui/button';
 import { Card, CardContent } from '@llave/ui/card';
 import { Skeleton } from '@llave/ui/skeleton';
 import { NavBar } from '@/components/nav-bar';
-import { UserMenu } from '@/components/user-menu';
+import { MobileGreetingHeader } from '@/components/mobile-greeting-header';
 import { listarReclamos } from '@/lib/reclamos-storage';
 import { estadoReclamoDeInmo } from '@/lib/cross-app-inmo';
 import {
@@ -91,9 +91,7 @@ export default function MisReclamosPage() {
 
   return (
     <>
-      <header className="p-5 md:hidden">
-        <UserMenu />
-      </header>
+      <MobileGreetingHeader />
 
       {/* pb-40: deja espacio para el footer sticky con el CTA "Nuevo
           reclamo" + el NavBar inferior. Sin esto, el último item se
