@@ -8,7 +8,6 @@ import {
   Clock,
   Mail,
   Phone,
-  Plus,
   Trash2,
   UserPlus,
   Users,
@@ -18,15 +17,6 @@ import { Button } from '@llave/ui/button';
 import { Card } from '@llave/ui/card';
 import { cn } from '@llave/ui/cn';
 import { ConfirmDialog } from '@llave/ui/confirm-dialog';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@llave/ui/dialog';
-import { Input } from '@llave/ui/input';
-import { Label } from '@llave/ui/label';
 import { toast } from '@llave/ui/use-toast';
 import { NavBar } from '@/components/nav-bar';
 import {
@@ -35,7 +25,6 @@ import {
   aceptarInvitacion,
   cambiarPermiso,
   eliminarCoInquilino,
-  invitarCoInquilino,
   listarCoInquilinos,
   permisoDescripcion,
   permisoLabel,
@@ -45,23 +34,12 @@ import { formatFecha } from '@/lib/format';
 export default function CoInquilinosPage() {
   const [lista, setLista] = useState<CoInquilino[]>([]);
   const [hidratado, setHidratado] = useState(false);
-  const [abrirInvitar, setAbrirInvitar] = useState(false);
   const [eliminando, setEliminando] = useState<CoInquilino | null>(null);
 
   useEffect(() => {
     setLista(listarCoInquilinos());
     setHidratado(true);
   }, []);
-
-  const handleInvitar = (data: Parameters<typeof invitarCoInquilino>[0]) => {
-    invitarCoInquilino(data);
-    setLista(listarCoInquilinos());
-    setAbrirInvitar(false);
-    toast({
-      title: 'Invitación enviada',
-      description: `Le mandamos un mail a ${data.email}`,
-    });
-  };
 
   const handleAceptar = (id: string) => {
     aceptarInvitacion(id);
@@ -111,9 +89,11 @@ export default function CoInquilinosPage() {
           </div>
         </Card>
 
-        <Button className="w-full" onClick={() => setAbrirInvitar(true)}>
-          <UserPlus className="h-4 w-4" />
-          Invitar a alguien
+        <Button className="w-full" asChild>
+          <Link href="/co-inquilinos/invitar">
+            <UserPlus className="h-4 w-4" />
+            Invitar a alguien
+          </Link>
         </Button>
 
         {hidratado && lista.length === 0 ? (
@@ -140,12 +120,6 @@ export default function CoInquilinosPage() {
       </main>
 
       <NavBar />
-
-      <DialogInvitar
-        open={abrirInvitar}
-        onOpenChange={setAbrirInvitar}
-        onSubmit={handleInvitar}
-      />
 
       <ConfirmDialog
         open={!!eliminando}
@@ -257,146 +231,5 @@ function CoInquilinoCard({
         </Button>
       )}
     </Card>
-  );
-}
-
-function DialogInvitar({
-  open,
-  onOpenChange,
-  onSubmit,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  onSubmit: (data: {
-    nombre: string;
-    email: string;
-    telefono: string | null;
-    relacion: string;
-    permiso: PermisoCoInquilino;
-  }) => void;
-}) {
-  const [nombre, setNombre] = useState('');
-  const [email, setEmail] = useState('');
-  const [telefono, setTelefono] = useState('');
-  const [relacion, setRelacion] = useState('Pareja');
-  const [permiso, setPermiso] = useState<PermisoCoInquilino>('PAGAR');
-
-  const handleSubmit = () => {
-    if (!nombre.trim() || !email.trim()) {
-      toast({ title: 'Faltan nombre y email', variant: 'destructive' });
-      return;
-    }
-    onSubmit({
-      nombre: nombre.trim(),
-      email: email.trim(),
-      telefono: telefono.trim() || null,
-      relacion,
-      permiso,
-    });
-    setNombre('');
-    setEmail('');
-    setTelefono('');
-    setRelacion('Pareja');
-    setPermiso('PAGAR');
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Invitar a un co-inquilino</DialogTitle>
-          <DialogDescription>
-            Le mandamos un mail con un link para que active su acceso.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-3">
-          <div className="space-y-1">
-            <Label htmlFor="ci-nombre" className="text-xs">
-              Nombre
-            </Label>
-            <Input
-              id="ci-nombre"
-              autoComplete="name"
-              value={nombre}
-              onChange={(e) => setNombre(e.target.value)}
-              placeholder="Ej: Sofía García"
-            />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="ci-email" className="text-xs">
-              Email
-            </Label>
-            <Input
-              id="ci-email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="sofia@ejemplo.com"
-            />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="ci-tel" className="text-xs">
-              Teléfono (opcional)
-            </Label>
-            <Input
-              id="ci-tel"
-              type="tel"
-              autoComplete="tel"
-              value={telefono}
-              onChange={(e) => setTelefono(e.target.value)}
-              placeholder="+54 9 11 …"
-            />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="ci-relacion" className="text-xs">Relación</Label>
-            <select
-              id="ci-relacion"
-              value={relacion}
-              onChange={(e) => setRelacion(e.target.value)}
-              className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-            >
-              <option>Pareja</option>
-              <option>Hermano/a</option>
-              <option>Amigo/a</option>
-              <option>Familiar</option>
-              <option>Otro</option>
-            </select>
-          </div>
-          <div role="group" aria-labelledby="ci-permisos-label" className="space-y-1">
-            <p id="ci-permisos-label" className="text-xs font-medium leading-none">Permisos</p>
-            <div className="grid grid-cols-3 gap-1.5">
-              {(['VER', 'PAGAR', 'COMPLETO'] as PermisoCoInquilino[]).map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  aria-pressed={permiso === p}
-                  onClick={() => setPermiso(p)}
-                  className={cn(
-                    'rounded-md border px-2 py-1.5 text-[11px] font-medium transition-colors',
-                    permiso === p
-                      ? 'border-primary bg-primary/10 text-primary'
-                      : 'border-border hover:bg-muted/40',
-                  )}
-                >
-                  {permisoLabel[p]}
-                </button>
-              ))}
-            </div>
-            <p className="text-[10px] text-muted-foreground">{permisoDescripcion[permiso]}</p>
-          </div>
-        </div>
-
-        <div className="flex gap-2">
-          <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
-            Cancelar
-          </Button>
-          <Button className="flex-1" onClick={handleSubmit}>
-            <Plus className="h-4 w-4" />
-            Enviar invitación
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
   );
 }
