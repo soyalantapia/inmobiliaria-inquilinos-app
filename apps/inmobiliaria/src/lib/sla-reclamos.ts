@@ -58,8 +58,8 @@ export function evaluarSla(reclamo: Reclamo, ahoraMs = Date.now()): ResumenSla {
       pctConsumido: (dur / limite) * 100,
       texto:
         dur <= limite
-          ? `Resuelto en ${formatHoras(dur)} — dentro del SLA (${formatHoras(limite)}).`
-          : `Resuelto en ${formatHoras(dur)} — fuera del SLA por ${formatHoras(dur - limite)}.`,
+          ? `Resuelto en ${formatHoras(dur)}, dentro del plazo (${formatHoras(limite)}).`
+          : `Resuelto en ${formatHoras(dur)}, ${formatHoras(dur - limite)} más que el plazo.`,
       alertar: false,
     };
   }
@@ -71,7 +71,7 @@ export function evaluarSla(reclamo: Reclamo, ahoraMs = Date.now()): ResumenSla {
       horasLimite: limite,
       horasRestantes: restantes,
       pctConsumido: pct,
-      texto: `Vencido hace ${formatHoras(-restantes)} (SLA ${formatHoras(limite)}).`,
+      texto: `Atrasado hace ${formatHoras(-restantes)} (el plazo para resolver era ${formatHoras(limite)}).`,
       alertar: true,
     };
   }
@@ -83,7 +83,7 @@ export function evaluarSla(reclamo: Reclamo, ahoraMs = Date.now()): ResumenSla {
       horasLimite: limite,
       horasRestantes: restantes,
       pctConsumido: pct,
-      texto: `Faltan ${formatHoras(restantes)} para vencer el SLA.`,
+      texto: `Faltan ${formatHoras(restantes)} para cumplir el plazo.`,
       alertar: true,
     };
   }
@@ -94,7 +94,7 @@ export function evaluarSla(reclamo: Reclamo, ahoraMs = Date.now()): ResumenSla {
     horasLimite: limite,
     horasRestantes: restantes,
     pctConsumido: pct,
-    texto: `En tiempo · ${Math.round(pct)}% del SLA consumido.`,
+    texto: `${Math.round(pct)}% del plazo consumido.`,
     alertar: false,
   };
 }

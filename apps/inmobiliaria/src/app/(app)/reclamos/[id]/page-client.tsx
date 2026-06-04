@@ -211,7 +211,7 @@ export default function DetalleReclamoPage() {
                     >
                       <Clock className="h-4 w-4 shrink-0" />
                       <span>
-                        SLA · {ESTADO_SLA_LABEL[sla.estado]} — {sla.texto}
+                        Plazo de resolución · {ESTADO_SLA_LABEL[sla.estado]} — {sla.texto}
                       </span>
                     </div>
                   );
@@ -509,6 +509,11 @@ export default function DetalleReclamoPage() {
                 onChange={(e) => setResolucion(e.target.value)}
                 placeholder="Ej: Vino el plomero el martes, cambió el flexible y selló la canilla."
               />
+              {resolucion.trim().length > 0 && resolucion.trim().length < 5 && (
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  Un poco más de detalle — mínimo 5 caracteres.
+                </p>
+              )}
             </div>
             {reclamo?.profesionalAsignadoNombre ? (
               <div className="space-y-2 rounded-md border border-primary/20 bg-primary/5 p-3">
@@ -557,17 +562,8 @@ export default function DetalleReclamoPage() {
           </div>
         }
         confirmLabel="Confirmar resolución"
-        onConfirm={() => {
-          if (resolucion.trim().length < 5) {
-            toast({
-              title: 'Necesitamos un poco más de detalle',
-              description: 'Mínimo 5 caracteres.',
-              variant: 'destructive',
-            });
-            return;
-          }
-          confirmarDialogo();
-        }}
+        confirmDisabled={resolucion.trim().length < 5}
+        onConfirm={() => confirmarDialogo()}
       />
 
       <ConfirmDialog
@@ -592,21 +588,17 @@ export default function DetalleReclamoPage() {
               onChange={(e) => setResolucion(e.target.value)}
               placeholder="Ej: El daño es por mal uso, queda a cargo del inquilino según cláusula 12."
             />
+            {resolucion.trim().length > 0 && resolucion.trim().length < 5 && (
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                Un poco más de detalle — mínimo 5 caracteres.
+              </p>
+            )}
           </div>
         }
         confirmLabel="Rechazar"
         variant="destructive"
-        onConfirm={() => {
-          if (resolucion.trim().length < 5) {
-            toast({
-              title: 'Necesitamos motivo',
-              description: 'Mínimo 5 caracteres.',
-              variant: 'destructive',
-            });
-            return;
-          }
-          confirmarDialogo();
-        }}
+        confirmDisabled={resolucion.trim().length < 5}
+        onConfirm={() => confirmarDialogo()}
       />
 
       <ConfirmDialog
