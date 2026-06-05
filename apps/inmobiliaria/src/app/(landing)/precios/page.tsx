@@ -103,7 +103,7 @@ export default function PreciosPage() {
             </div>
           </Link>
           <div className="flex gap-2">
-            <Button asChild variant="ghost" size="sm">
+            <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex">
               <Link href="/login">Iniciar sesión</Link>
             </Button>
             <Button asChild size="sm">
