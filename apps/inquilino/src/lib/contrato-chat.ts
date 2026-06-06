@@ -77,7 +77,7 @@ const RESPUESTAS: RespuestaTemplate[] = [
               'art. 14 de la Ley 27.737.',
           },
         ],
-        followUps: ['¿Cuánto va a aumentar?', '¿Puedo negociar?'],
+        followUps: ['¿Cuánto va a aumentar?'],
       };
     },
   },
