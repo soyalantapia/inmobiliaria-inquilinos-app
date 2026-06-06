@@ -87,6 +87,30 @@ export function eliminarAnuncio(id: string): void {
   write(read().filter((a) => a.id !== id));
 }
 
+/**
+ * Acuses (lectura / confirmación) por anuncio. En backend real lo calcula el
+ * server desde la tabla AnuncioAcuse; acá lo derivamos determinísticamente del
+ * anuncio para mostrar el loop "Leído X de N · Confirmado Y" sin datos reales.
+ */
+export function simularAcuses(
+  a: Pick<Anuncio, 'id' | 'destinatariosCount'>,
+): { leido: number; confirmado: number; total: number } {
+  const total = a.destinatariosCount;
+  let h = 0;
+  for (let i = 0; i < a.id.length; i += 1) {
+    h = (h * 31 + a.id.charCodeAt(i)) >>> 0;
+  }
+  // Avalancha: ids correlativos (seeds) deben dar valores bien distintos.
+  h ^= h >>> 13;
+  h = (h * 0x5bd1e995) >>> 0;
+  h ^= h >>> 15;
+  const pLeido = 0.55 + (h % 35) / 100; // 0.55–0.89
+  const leido = Math.min(total, Math.round(total * pLeido));
+  const pConf = 0.5 + (h % 30) / 100; // 0.50–0.79 del leído
+  const confirmado = Math.min(leido, Math.round(leido * pConf));
+  return { leido, confirmado, total };
+}
+
 export const AUDIENCIA_LABEL: Record<AudienciaAnuncio, string> = {
   TODOS_INQUILINOS: 'Todos los inquilinos',
   INQUILINOS_MOROSOS: 'Inquilinos con pago vencido',

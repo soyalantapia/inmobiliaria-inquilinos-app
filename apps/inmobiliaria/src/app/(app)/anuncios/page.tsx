@@ -6,6 +6,7 @@ import {
   Bell,
   Building2,
   Check,
+  Eye,
   Mail,
   Megaphone,
   Plus,
@@ -50,6 +51,7 @@ import {
   eliminarAnuncio,
   inquilinosAlcanzables,
   listarAnuncios,
+  simularAcuses,
 } from '@/lib/anuncios-storage';
 import { formatFechaCorta } from '@/lib/format';
 
@@ -268,7 +270,7 @@ export default function AnunciosPage() {
         title="¿Eliminar este anuncio?"
         description={
           anuncioAEliminar
-            ? `"${anuncioAEliminar.titulo}" se va a borrar permanentemente. Esta acción no se puede deshacer.`
+            ? `Se elimina "${anuncioAEliminar.titulo}" para todos sus destinatarios (${anuncioAEliminar.destinatariosCount}). También les desaparece de la app y no se puede deshacer.`
             : ''
         }
         confirmLabel="Eliminar"
@@ -287,6 +289,16 @@ function AnuncioCard({
   onEliminar: () => void;
 }) {
   const esNormal = anuncio.prioridad === 'NORMAL';
+  const { leido, confirmado, total } = simularAcuses(anuncio);
+  const faltan = total - leido;
+  const recordar = () =>
+    toast({
+      title: 'Recordatorio enviado',
+      description:
+        faltan === 1
+          ? 'Le reenviamos el anuncio a 1 destinatario que no lo leyó.'
+          : `Les reenviamos el anuncio a ${faltan} destinatarios que no lo leyeron.`,
+    });
   return (
     <Card
       className={`border-l-4 transition-colors hover:bg-muted/30 ${PRIORIDAD_ACCENT[anuncio.prioridad]}`}
@@ -334,6 +346,44 @@ function AnuncioCard({
           <span className="ml-auto whitespace-nowrap">
             {anuncio.enviadoPor} · {formatFechaCorta(anuncio.enviadoAt)}
           </span>
+        </div>
+
+        {/* Acuse: cuántos leyeron / confirmaron + recordar a los que faltan.
+            En backend lo calcula el server desde los acuses reales. */}
+        <div className="space-y-1.5">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+            <span className="inline-flex items-center gap-3 text-muted-foreground">
+              <span className="inline-flex items-center gap-1">
+                <Eye className="h-3.5 w-3.5" />
+                Leído{' '}
+                <strong className="text-foreground tabular-nums">
+                  {leido}/{total}
+                </strong>
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <Check className="h-3.5 w-3.5" />
+                Confirmado{' '}
+                <strong className="text-foreground tabular-nums">
+                  {confirmado}/{total}
+                </strong>
+              </span>
+            </span>
+            {faltan > 0 && (
+              <button
+                type="button"
+                onClick={recordar}
+                className="font-medium text-primary hover:underline"
+              >
+                Recordar a {faltan} que {faltan === 1 ? 'falta' : 'faltan'}
+              </button>
+            )}
+          </div>
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full rounded-full bg-primary transition-all"
+              style={{ width: `${total > 0 ? (leido / total) * 100 : 0}%` }}
+            />
+          </div>
         </div>
       </CardContent>
     </Card>

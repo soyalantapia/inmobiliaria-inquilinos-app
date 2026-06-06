@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import {
   AlertTriangle,
   Bell,
+  Check,
   ChevronDown,
   Megaphone,
 } from 'lucide-react';
@@ -14,22 +15,38 @@ import {
   type AnuncioInquilino,
   listarAnunciosParaInquilino,
 } from '@/lib/anuncios-cross-app';
+import {
+  type Acuse,
+  leerAcuses,
+  marcarEnterado,
+  marcarLeido,
+} from '@/lib/anuncios-acuses';
 import { formatFechaCorta } from '@/lib/format';
 
 export function AnunciosFeed({ compacto = false }: { compacto?: boolean }) {
   const [anuncios, setAnuncios] = useState<AnuncioInquilino[]>([]);
+  const [acuses, setAcuses] = useState<Record<string, Acuse>>({});
   const [hidratado, setHidratado] = useState(false);
 
   useEffect(() => {
     setAnuncios(listarAnunciosParaInquilino());
+    setAcuses(leerAcuses());
     setHidratado(true);
   }, []);
 
   if (!hidratado || anuncios.length === 0) return null;
 
   const aMostrar = compacto ? anuncios.slice(0, 3) : anuncios;
-  const urgentes = anuncios.filter((a) => a.prioridad === 'URGENTE').length;
-  const importantes = anuncios.filter((a) => a.prioridad === 'IMPORTANTE').length;
+  const noLeidos = anuncios.filter((a) => !acuses[a.id]?.leidoAt).length;
+
+  const abrir = (id: string) => {
+    marcarLeido(id);
+    setAcuses(leerAcuses());
+  };
+  const confirmar = (id: string) => {
+    marcarEnterado(id);
+    setAcuses(leerAcuses());
+  };
 
   return (
     <section className="space-y-2">
@@ -38,31 +55,43 @@ export function AnunciosFeed({ compacto = false }: { compacto?: boolean }) {
           <Megaphone className="h-3.5 w-3.5 shrink-0" />
           <span className="line-clamp-1">Anuncios de la inmobiliaria</span>
         </h2>
-        {(urgentes > 0 || importantes > 0) && (
-          <Badge
-            variant={urgentes > 0 ? 'destructive' : 'warning'}
-            className="shrink-0 whitespace-nowrap text-[10px]"
-          >
-            {urgentes > 0
-              ? `${urgentes} urgente${urgentes === 1 ? '' : 's'}`
-              : `${importantes} importante${importantes === 1 ? '' : 's'}`}
+        {noLeidos > 0 && (
+          <Badge className="shrink-0 whitespace-nowrap text-[10px]">
+            {noLeidos} sin leer
           </Badge>
         )}
       </div>
       <div className="space-y-2">
         {aMostrar.map((a) => (
-          <AnuncioRow key={a.id} anuncio={a} />
+          <AnuncioRow
+            key={a.id}
+            anuncio={a}
+            acuse={acuses[a.id]}
+            onAbrir={() => abrir(a.id)}
+            onEnterado={() => confirmar(a.id)}
+          />
         ))}
       </div>
     </section>
   );
 }
 
-function AnuncioRow({ anuncio }: { anuncio: AnuncioInquilino }) {
-  // Anuncio colapsable: por default solo título + 1 línea de preview, click
-  // para expandir el cuerpo completo (P2 de la auditoría: 2 anuncios largos
-  // consumían demasiado espacio del home).
+function AnuncioRow({
+  anuncio,
+  acuse,
+  onAbrir,
+  onEnterado,
+}: {
+  anuncio: AnuncioInquilino;
+  acuse?: Acuse;
+  onAbrir: () => void;
+  onEnterado: () => void;
+}) {
+  // Anuncio colapsable: por default solo título + preview, click para expandir.
   const [expandido, setExpandido] = useState(false);
+  const noLeido = !acuse?.leidoAt;
+  const confirmado = !!acuse?.confirmadoAt;
+
   const tono =
     anuncio.prioridad === 'URGENTE'
       ? {
@@ -85,10 +114,21 @@ function AnuncioRow({ anuncio }: { anuncio: AnuncioInquilino }) {
             IconComp: Megaphone,
           };
   const Icon = tono.IconComp;
+
+  const toggle = () => {
+    if (!expandido) onAbrir(); // abrir = marcar leído
+    setExpandido((v) => !v);
+  };
+
   return (
     <Card
-      className={`border ${tono.border} ${tono.bg} cursor-pointer transition-colors hover:bg-opacity-100`}
-      onClick={() => setExpandido((v) => !v)}
+      className={cn(
+        'cursor-pointer border transition-colors',
+        tono.border,
+        tono.bg,
+        noLeido && 'ring-1 ring-primary/30',
+      )}
+      onClick={toggle}
     >
       <div className="flex items-start gap-3 p-3">
         <div
@@ -96,9 +136,17 @@ function AnuncioRow({ anuncio }: { anuncio: AnuncioInquilino }) {
         >
           <Icon className="h-4 w-4" />
         </div>
-        <div className="flex-1 min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
-            <p className="text-sm font-semibold">{anuncio.titulo}</p>
+            {noLeido && (
+              <span
+                className="h-2 w-2 shrink-0 rounded-full bg-primary"
+                aria-label="Sin leer"
+              />
+            )}
+            <p className={cn('text-sm', noLeido ? 'font-bold' : 'font-semibold')}>
+              {anuncio.titulo}
+            </p>
             {anuncio.prioridad !== 'NORMAL' && (
               <Badge
                 variant={anuncio.prioridad === 'URGENTE' ? 'destructive' : 'warning'}
@@ -108,11 +156,7 @@ function AnuncioRow({ anuncio }: { anuncio: AnuncioInquilino }) {
               </Badge>
             )}
           </div>
-          {/* line-clamp-2 (no -1) para preview: con 1 línea, datos
-              críticos como un CBU nuevo se cortaban con "..." y el
-              inquilino tenía que tocar para verlo. 2 líneas permite
-              ver la primera frase informativa completa sin truncar
-              datos. Expandido sigue mostrando todo. */}
+          {/* line-clamp-2 para preview; expandido muestra todo. */}
           <p
             className={cn(
               'text-xs text-muted-foreground',
@@ -121,9 +165,27 @@ function AnuncioRow({ anuncio }: { anuncio: AnuncioInquilino }) {
           >
             {anuncio.cuerpo}
           </p>
-          <p className="mt-1 text-[10px] text-muted-foreground/80">
-            {anuncio.enviadoPor} · {formatFechaCorta(anuncio.enviadoAt)}
-          </p>
+          <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[10px] text-muted-foreground/80">
+              {anuncio.enviadoPor} · {formatFechaCorta(anuncio.enviadoAt)}
+            </p>
+            {confirmado ? (
+              <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-600">
+                <Check className="h-3 w-3" /> Enterado
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEnterado();
+                }}
+                className="inline-flex items-center gap-1 rounded-full border border-primary/40 px-2.5 py-0.5 text-[10px] font-semibold text-primary transition-colors hover:bg-primary hover:text-primary-foreground"
+              >
+                <Check className="h-3 w-3" /> Enterado
+              </button>
+            )}
+          </div>
         </div>
         <ChevronDown
           className={cn(
