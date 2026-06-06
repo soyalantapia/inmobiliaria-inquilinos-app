@@ -12,10 +12,16 @@
  * y los inquilinos lo leen cross-app desde su /comunicaciones.
  */
 
+import type { EstadoLiquidacion } from './types';
+import { contratosMock, propietariosMock } from './mock-data';
+import { consorciosMock } from './consorcios-storage';
+
 const STORAGE_KEY = 'llave-inmo:anuncios:v1';
 
 export type AudienciaAnuncio =
   | 'TODOS_INQUILINOS'
+  | 'INQUILINOS_MOROSOS'
+  | 'INQUILINOS_PENDIENTES'
   | 'TODOS_PROPIETARIOS'
   | 'TODOS_CONSORCIOS'
   | 'INQUILINOS_CONSORCIO'
@@ -83,11 +89,75 @@ export function eliminarAnuncio(id: string): void {
 
 export const AUDIENCIA_LABEL: Record<AudienciaAnuncio, string> = {
   TODOS_INQUILINOS: 'Todos los inquilinos',
+  INQUILINOS_MOROSOS: 'Inquilinos con pago vencido',
+  INQUILINOS_PENDIENTES: 'Inquilinos con pago pendiente',
   TODOS_PROPIETARIOS: 'Todos los propietarios',
   TODOS_CONSORCIOS: 'Todos los consorcios',
   INQUILINOS_CONSORCIO: 'Inquilinos de un consorcio',
   CONTRATOS_ESPECIFICOS: 'Contratos específicos',
 };
+
+/** Una unidad alcanzable por un anuncio (contrato activo). */
+export interface DestinatarioContrato {
+  id: string;
+  inquilino: string;
+  direccion: string;
+  estadoPago: EstadoLiquidacion;
+}
+
+/** Contratos a los que se puede dirigir un anuncio: activos (no borradores). */
+export function inquilinosAlcanzables(): DestinatarioContrato[] {
+  return contratosMock
+    .filter((c) => c.estado === 'ACTIVO')
+    .map((c) => ({
+      id: c.id,
+      inquilino: c.inquilino,
+      direccion: c.direccion,
+      estadoPago: c.estadoPagoActual,
+    }));
+}
+
+export function consorciosAlcanzables(): { id: string; nombre: string }[] {
+  return consorciosMock.map((c) => ({ id: c.id, nombre: c.nombre }));
+}
+
+function contratosDeConsorcio(consorcioId: string): DestinatarioContrato[] {
+  const cons = consorciosMock.find((c) => c.id === consorcioId);
+  if (!cons) return [];
+  const base = cons.direccion.split(',')[0]?.trim().toLowerCase() ?? '';
+  return base
+    ? inquilinosAlcanzables().filter((c) => c.direccion.toLowerCase().includes(base))
+    : [];
+}
+
+/**
+ * Destinatarios reales que alcanza una audiencia. En backend lo calcula el
+ * server; acá lo derivamos del mock para que el alcance mostrado sea real
+ * (y no un número hardcodeado).
+ */
+export function contarDestinatarios(
+  audiencia: AudienciaAnuncio,
+  ids: string[] = [],
+): number {
+  switch (audiencia) {
+    case 'TODOS_INQUILINOS':
+      return inquilinosAlcanzables().length;
+    case 'INQUILINOS_MOROSOS':
+      return inquilinosAlcanzables().filter((c) => c.estadoPago === 'VENCIDO').length;
+    case 'INQUILINOS_PENDIENTES':
+      return inquilinosAlcanzables().filter((c) => c.estadoPago === 'PENDIENTE').length;
+    case 'TODOS_PROPIETARIOS':
+      return propietariosMock.length;
+    case 'TODOS_CONSORCIOS':
+      return consorciosMock.length;
+    case 'INQUILINOS_CONSORCIO':
+      return ids[0] ? contratosDeConsorcio(ids[0]).length : 0;
+    case 'CONTRATOS_ESPECIFICOS':
+      return ids.length;
+    default:
+      return 0;
+  }
+}
 
 export const PRIORIDAD_LABEL: Record<PrioridadAnuncio, string> = {
   NORMAL: 'Normal',
