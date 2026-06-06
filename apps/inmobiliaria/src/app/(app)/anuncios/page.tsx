@@ -49,9 +49,9 @@ import {
   contarDestinatarios,
   crearAnuncio,
   eliminarAnuncio,
+  contarAcuses,
   inquilinosAlcanzables,
   listarAnuncios,
-  simularAcuses,
 } from '@/lib/anuncios-storage';
 import { formatFechaCorta } from '@/lib/format';
 
@@ -289,7 +289,7 @@ function AnuncioCard({
   onEliminar: () => void;
 }) {
   const esNormal = anuncio.prioridad === 'NORMAL';
-  const { leido, confirmado, total } = simularAcuses(anuncio);
+  const { leido, confirmado, total } = contarAcuses(anuncio);
   const faltan = total - leido;
   const recordar = () =>
     toast({

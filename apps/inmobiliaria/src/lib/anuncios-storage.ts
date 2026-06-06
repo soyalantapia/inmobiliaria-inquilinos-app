@@ -87,27 +87,78 @@ export function eliminarAnuncio(id: string): void {
   write(read().filter((a) => a.id !== id));
 }
 
-/**
- * Acuses (lectura / confirmación) por anuncio. En backend real lo calcula el
- * server desde la tabla AnuncioAcuse; acá lo derivamos determinísticamente del
- * anuncio para mostrar el loop "Leído X de N · Confirmado Y" sin datos reales.
- */
-export function simularAcuses(
-  a: Pick<Anuncio, 'id' | 'destinatariosCount'>,
-): { leido: number; confirmado: number; total: number } {
-  const total = a.destinatariosCount;
+// Mismo key donde el inquilino guarda sus acuses (en prod = mismo origin).
+const ACUSES_INQUILINO_KEY = 'llave:anuncios:acuses:v1';
+// Inquilino demo (en backend real, los destinatarios y sus acuses vienen del server).
+const DEMO_INQUILINO = { contratoId: 'cnt_001', consorcioId: 'cnsr_001' };
+
+function leerAcusesInquilino(): Record<
+  string,
+  { leidoAt?: string; confirmadoAt?: string }
+> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage.getItem(ACUSES_INQUILINO_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+/** ¿El inquilino demo (cnt_001 / cnsr_001) es destinatario de este anuncio? */
+function esRecipienteDemo(
+  a: Pick<Anuncio, 'audiencia' | 'audienciaIds'>,
+): boolean {
+  switch (a.audiencia) {
+    case 'TODOS_INQUILINOS':
+      return true;
+    case 'INQUILINOS_CONSORCIO':
+      return (a.audienciaIds ?? []).includes(DEMO_INQUILINO.consorcioId);
+    case 'CONTRATOS_ESPECIFICOS':
+      return (a.audienciaIds ?? []).includes(DEMO_INQUILINO.contratoId);
+    default:
+      return false;
+  }
+}
+
+/** Simulación determinística de acuses sobre n destinatarios. */
+function simularSobre(id: string, n: number): { leido: number; confirmado: number } {
+  if (n <= 0) return { leido: 0, confirmado: 0 };
   let h = 0;
-  for (let i = 0; i < a.id.length; i += 1) {
-    h = (h * 31 + a.id.charCodeAt(i)) >>> 0;
+  for (let i = 0; i < id.length; i += 1) {
+    h = (h * 31 + id.charCodeAt(i)) >>> 0;
   }
   // Avalancha: ids correlativos (seeds) deben dar valores bien distintos.
   h ^= h >>> 13;
   h = (h * 0x5bd1e995) >>> 0;
   h ^= h >>> 15;
   const pLeido = 0.55 + (h % 35) / 100; // 0.55–0.89
-  const leido = Math.min(total, Math.round(total * pLeido));
+  const leido = Math.min(n, Math.round(n * pLeido));
   const pConf = 0.5 + (h % 30) / 100; // 0.50–0.79 del leído
   const confirmado = Math.min(leido, Math.round(leido * pConf));
+  return { leido, confirmado };
+}
+
+/**
+ * Acuses (lectura / confirmación) por anuncio, lado inmobiliaria.
+ * - Los "otros" destinatarios se simulan determinísticamente (en backend real
+ *   lo calcula el server desde la tabla AnuncioAcuse).
+ * - El acuse REAL del inquilino se suma encima, reservándole 1 lugar para no
+ *   duplicar: en producción (mismo origin) cuando el inquilino toca "Enterado"
+ *   el conteo del inmo sube de verdad. En dev (orígenes distintos) no hay acuse
+ *   legible → queda solo la simulación.
+ */
+export function contarAcuses(
+  a: Pick<Anuncio, 'id' | 'destinatariosCount' | 'audiencia' | 'audienciaIds'>,
+): { leido: number; confirmado: number; total: number } {
+  const total = a.destinatariosCount;
+  if (!esRecipienteDemo(a) || total <= 0) {
+    return { ...simularSobre(a.id, total), total };
+  }
+  const base = simularSobre(a.id, total - 1); // 1 lugar reservado al inquilino real
+  const real = leerAcusesInquilino()[a.id];
+  const leido = Math.min(total, base.leido + (real?.leidoAt ? 1 : 0));
+  const confirmado = Math.min(leido, base.confirmado + (real?.confirmadoAt ? 1 : 0));
   return { leido, confirmado, total };
 }
 
