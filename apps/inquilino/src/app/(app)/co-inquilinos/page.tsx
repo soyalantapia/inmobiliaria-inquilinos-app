@@ -75,7 +75,7 @@ export default function CoInquilinosPage() {
         </div>
       </header>
 
-      <main className="flex-1 space-y-5 px-5 pb-6 md:px-8">
+      <main className="flex-1 space-y-5 px-5 pb-36 md:px-8 md:pb-6">
         <Card className="space-y-2 border-primary/20 bg-primary/5 p-4">
           <div className="flex items-start gap-3">
             <Users className="mt-0.5 h-4 w-4 text-primary" />
@@ -89,12 +89,16 @@ export default function CoInquilinosPage() {
           </div>
         </Card>
 
-        <Button className="w-full" asChild>
-          <Link href="/co-inquilinos/invitar">
-            <UserPlus className="h-4 w-4" />
-            Invitar a alguien
-          </Link>
-        </Button>
+        {/* Barra de acción: en mobile queda FIJA abajo (arriba de la NavBar);
+            en desktop vuelve a ser inline. */}
+        <div className="fixed inset-x-0 bottom-16 z-20 border-t bg-background/95 px-5 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:static md:inset-x-auto md:bottom-auto md:z-auto md:border-0 md:bg-transparent md:px-0 md:py-0 md:backdrop-blur-none">
+          <Button className="w-full" asChild>
+            <Link href="/co-inquilinos/invitar">
+              <UserPlus className="h-4 w-4" />
+              Invitar a alguien
+            </Link>
+          </Button>
+        </div>
 
         {hidratado && lista.length === 0 ? (
           <Card className="p-8 text-center">

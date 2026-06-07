@@ -25,21 +25,41 @@ import {
 export default function InvitarCoInquilinoPage() {
   const router = useRouter();
   const [nombre, setNombre] = useState('');
+  const [dni, setDni] = useState('');
   const [email, setEmail] = useState('');
   const [telefono, setTelefono] = useState('');
   const [relacion, setRelacion] = useState('Pareja');
+  const [relacionOtro, setRelacionOtro] = useState('');
   const [permiso, setPermiso] = useState<PermisoCoInquilino>('PAGAR');
 
   const enviar = () => {
+    const dniLimpio = dni.replace(/\D/g, '');
     if (!nombre.trim() || !email.trim()) {
       toast({ title: 'Faltan nombre y email', variant: 'destructive' });
       return;
     }
+    if (dniLimpio.length < 7 || dniLimpio.length > 8) {
+      toast({
+        title: 'Revisá el DNI',
+        description: 'Tiene que tener 7 u 8 números.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    if (!telefono.trim()) {
+      toast({ title: 'Falta el teléfono', variant: 'destructive' });
+      return;
+    }
+    if (relacion === 'Otro' && !relacionOtro.trim()) {
+      toast({ title: 'Aclará la relación', variant: 'destructive' });
+      return;
+    }
     invitarCoInquilino({
       nombre: nombre.trim(),
+      dni: dniLimpio,
       email: email.trim(),
-      telefono: telefono.trim() || null,
-      relacion,
+      telefono: telefono.trim(),
+      relacion: relacion === 'Otro' ? relacionOtro.trim() : relacion,
       permiso,
     });
     toast({
@@ -63,7 +83,7 @@ export default function InvitarCoInquilinoPage() {
         </div>
       </header>
 
-      <main className="flex-1 px-5 pb-40 md:px-8 md:pb-8">
+      <main className="flex-1 px-5 pb-44 md:px-8 md:pb-8">
         <p className="text-sm text-muted-foreground">
           Le mandamos un mail con un link para que active su acceso.
         </p>
@@ -83,6 +103,18 @@ export default function InvitarCoInquilinoPage() {
           </div>
 
           <div className="space-y-1.5">
+            <Label htmlFor="ci-dni">DNI</Label>
+            <Input
+              id="ci-dni"
+              inputMode="numeric"
+              value={dni}
+              onChange={(e) => setDni(e.target.value)}
+              placeholder="Ej: 30123456"
+              className="h-12 text-base"
+            />
+          </div>
+
+          <div className="space-y-1.5">
             <Label htmlFor="ci-email">Email</Label>
             <Input
               id="ci-email"
@@ -96,7 +128,7 @@ export default function InvitarCoInquilinoPage() {
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="ci-tel">Teléfono (opcional)</Label>
+            <Label htmlFor="ci-tel">Teléfono</Label>
             <Input
               id="ci-tel"
               type="tel"
@@ -125,6 +157,20 @@ export default function InvitarCoInquilinoPage() {
             </select>
           </div>
 
+          {relacion === 'Otro' && (
+            <div className="space-y-1.5">
+              <Label htmlFor="ci-relacion-otro">¿Cuál?</Label>
+              <Input
+                id="ci-relacion-otro"
+                value={relacionOtro}
+                onChange={(e) => setRelacionOtro(e.target.value)}
+                placeholder="Ej: tío, compañero de trabajo…"
+                className="h-12 text-base"
+                autoFocus
+              />
+            </div>
+          )}
+
           <div role="group" aria-labelledby="ci-permisos-label" className="space-y-1.5">
             <p id="ci-permisos-label" className="text-sm font-medium leading-none">
               Permisos
@@ -150,7 +196,10 @@ export default function InvitarCoInquilinoPage() {
             <p className="text-xs text-muted-foreground">{permisoDescripcion[permiso]}</p>
           </div>
 
-          <div className="flex gap-2 pt-2">
+          {/* Barra de acciones: en mobile flota fija abajo (arriba de la NavBar)
+              con sombra hacia arriba que indica que el contenido scrollea detrás;
+              en desktop vuelve a ser inline. */}
+          <div className="fixed inset-x-0 bottom-16 z-20 flex gap-2 border-t bg-background/95 px-5 py-3 shadow-[0_-8px_24px_-12px_rgba(0,0,0,0.18)] backdrop-blur supports-[backdrop-filter]:bg-background/80 md:static md:z-auto md:border-0 md:bg-transparent md:px-0 md:py-0 md:pt-2 md:shadow-none md:backdrop-blur-none">
             <Button type="button" variant="outline" className="flex-1" asChild>
               <Link href="/co-inquilinos">Cancelar</Link>
             </Button>

@@ -117,7 +117,7 @@ export default function SubirBoletaPage() {
         </div>
       </header>
 
-      <main className="flex-1 px-5 pb-40 md:px-8 md:pb-8">
+      <main className="flex-1 px-5 pb-44 md:px-8 md:pb-8">
         <form onSubmit={(e) => { e.preventDefault(); void submit(); }} className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="tipo">Tipo de servicio</Label>
@@ -212,7 +212,7 @@ export default function SubirBoletaPage() {
             </p>
           </div>
 
-          <div className="flex gap-2 pt-2">
+          <div className="fixed inset-x-0 bottom-16 z-20 flex gap-2 border-t bg-background/95 px-5 py-3 shadow-[0_-8px_24px_-12px_rgba(0,0,0,0.18)] backdrop-blur supports-[backdrop-filter]:bg-background/80 md:static md:z-auto md:border-0 md:bg-transparent md:px-0 md:py-0 md:pt-2 md:shadow-none md:backdrop-blur-none">
             <Button type="button" variant="outline" className="flex-1" asChild>
               <Link href="/servicios">Cancelar</Link>
             </Button>

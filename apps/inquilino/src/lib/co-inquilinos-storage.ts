@@ -14,7 +14,8 @@ export interface CoInquilino {
   nombre: string;
   email: string;
   telefono: string | null;
-  relacion: string; // ej: "Pareja", "Hermano", "Amigo"
+  dni?: string;
+  relacion: string; // ej: "Pareja", "Hermano", "Amigo" o lo aclarado en "Otro"
   permiso: PermisoCoInquilino;
   estado: EstadoInvitacion;
   invitadoAt: string;
