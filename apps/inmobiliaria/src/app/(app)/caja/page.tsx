@@ -25,9 +25,7 @@ import { Input } from '@llave/ui/input';
 import { Label } from '@llave/ui/label';
 import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
-import { CajaPorPropietarioCard } from '@/components/caja-por-propietario-card';
 import { PinPromptDialog } from '@/components/pin-prompt-dialog';
-import { CierreDiarioCard } from '@/components/cierre-diario-card';
 import { Topbar } from '@/components/topbar';
 import {
   type CategoriaGasto,
@@ -97,11 +95,9 @@ export default function CajaPage() {
           </Button>
         </div>
 
-        <CierreDiarioCard />
-
-        <CajaPorPropietarioCard />
-
-        {/* KPIs */}
+        {/* KPIs — solo lo del gasto a descontar (el cierre diario y la caja
+            por propietario se sacaron: se pisaban con Pagos/Rendiciones y
+            mareaban con tarjetas en $0). */}
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
           <Card className="p-4">
             <div className="flex items-center gap-2 text-muted-foreground">
