@@ -26,7 +26,7 @@ import type { EstadoReclamo, Reclamo } from '@/lib/types';
 // `SIN_ASIGNAR` no es un estado del reclamo (es derivado: abierto/en curso
 // sin profesional). Lo metemos como filtro extra para que el card del
 // dashboard "Reclamos sin asignar" caiga acá con el filtro ya aplicado.
-type FiltroReclamos = 'TODOS' | 'SIN_ASIGNAR' | EstadoReclamo;
+type FiltroReclamos = 'TODOS' | 'SIN_ASIGNAR' | 'EMERGENCIA' | 'SLA' | EstadoReclamo;
 
 const tabs: Array<{ value: FiltroReclamos; label: string }> = [
   { value: 'TODOS', label: 'Todos' },
@@ -84,6 +84,25 @@ export default function ReclamosPage() {
           !r.profesionalAsignadoId,
       );
     }
+    if (filtro === 'EMERGENCIA') {
+      return ordenados.filter(
+        (r) =>
+          r.urgencia === 'EMERGENCIA' &&
+          (r.estado === 'ABIERTO' || r.estado === 'EN_CURSO'),
+      );
+    }
+    if (filtro === 'SLA') {
+      return ordenados.filter((r) => {
+        if (
+          r.estado === 'RESUELTO' ||
+          r.estado === 'CERRADO' ||
+          r.estado === 'RECHAZADO'
+        )
+          return false;
+        const e = evaluarSla(r).estado;
+        return e === 'VENCIDO' || e === 'PROXIMO_VENCIMIENTO';
+      });
+    }
     return ordenados.filter((r) => r.estado === filtro);
   }, [reclamos, filtro]);
 
@@ -125,71 +144,65 @@ export default function ReclamosPage() {
       <Topbar titulo="Reclamos" />
       <main className="flex-1 space-y-4 p-4 md:p-6">
         {counters && counters.EMERGENCIA > 0 && (
-          <Card className="border-destructive/40 bg-destructive/5">
-            <CardContent className="flex items-start gap-3 p-4 text-sm">
-              <AlertTriangle className="mt-0.5 h-5 w-5 text-destructive" />
-              <div>
-                <p className="font-medium text-destructive">
-                  {counters.EMERGENCIA} reclamo{counters.EMERGENCIA === 1 ? '' : 's'} de emergencia
-                  sin resolver
-                </p>
-                <p className="text-xs text-muted-foreground">Atendelos primero.</p>
-              </div>
-            </CardContent>
-          </Card>
+          <button
+            type="button"
+            onClick={() => setFiltro(filtro === 'EMERGENCIA' ? 'TODOS' : 'EMERGENCIA')}
+            aria-pressed={filtro === 'EMERGENCIA'}
+            className={`flex w-full items-center gap-2 rounded-lg border border-destructive/40 px-3 py-2 text-left text-sm transition-colors ${
+              filtro === 'EMERGENCIA'
+                ? 'bg-destructive/10 ring-2 ring-destructive/30'
+                : 'bg-destructive/5 hover:bg-destructive/10'
+            }`}
+          >
+            <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" />
+            <span className="flex-1 font-medium text-destructive">
+              {counters.EMERGENCIA} reclamo{counters.EMERGENCIA === 1 ? '' : 's'} de emergencia sin resolver
+            </span>
+            <ChevronRight className="h-4 w-4 shrink-0 text-destructive/70" />
+          </button>
         )}
 
         {slaCounters && (slaCounters.vencidos > 0 || slaCounters.porVencer > 0) && (
-          <Card
-            className={
+          <button
+            type="button"
+            onClick={() => setFiltro(filtro === 'SLA' ? 'TODOS' : 'SLA')}
+            aria-pressed={filtro === 'SLA'}
+            className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
               slaCounters.vencidos > 0
-                ? 'border-destructive/40 bg-destructive/5'
-                : 'border-amber-200 bg-amber-50/60 dark:border-amber-900/40 dark:bg-amber-900/10'
-            }
+                ? filtro === 'SLA'
+                  ? 'border-destructive/40 bg-destructive/10 ring-2 ring-destructive/30'
+                  : 'border-destructive/40 bg-destructive/5 hover:bg-destructive/10'
+                : filtro === 'SLA'
+                  ? 'border-amber-300 bg-amber-100/70 ring-2 ring-amber-400/30 dark:border-amber-900/40 dark:bg-amber-900/20'
+                  : 'border-amber-200 bg-amber-50/60 hover:bg-amber-100/60 dark:border-amber-900/40 dark:bg-amber-900/10'
+            }`}
           >
-            <CardContent className="flex flex-wrap items-center gap-3 p-3 text-xs">
-              <Timer
-                className={`h-4 w-4 ${
-                  slaCounters.vencidos > 0
-                    ? 'text-destructive'
-                    : 'text-amber-700 dark:text-amber-300'
-                }`}
-              />
-              <div className="flex-1">
-                {slaCounters.vencidos > 0 ? (
-                  <p>
-                    <strong className="text-destructive">
-                      {slaCounters.vencidos} reclamo{slaCounters.vencidos === 1 ? '' : 's'} activo
-                      {slaCounters.vencidos === 1 ? '' : 's'} fuera del SLA
-                    </strong>
-                    {slaCounters.porVencer > 0 && (
-                      <>
-                        {' '}
-                        · {slaCounters.porVencer} por vencer pronto
-                      </>
-                    )}
-                    {/* Si todos los activos están vencidos no repetimos
-                        "sobre N activos" — el copy quedaba "4 fuera del
-                        SLA · sobre 4 activos" que se lee redundante. */}
-                    {slaCounters.vencidos < slaCounters.activos && (
-                      <>
-                        {' '}· sobre {slaCounters.activos} activo
-                        {slaCounters.activos === 1 ? '' : 's'}
-                      </>
-                    )}
-                  </p>
-                ) : (
-                  <p>
-                    {slaCounters.porVencer} reclamo
-                    {slaCounters.porVencer === 1 ? '' : 's'} acercándose al vencimiento del SLA
-                  </p>
-                )}
-                <p className="text-muted-foreground">
-                  EMERGENCIA 6h · ALTA 24h · MEDIA 72h · BAJA 7 días
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+            <Timer
+              className={`h-4 w-4 shrink-0 ${
+                slaCounters.vencidos > 0
+                  ? 'text-destructive'
+                  : 'text-amber-700 dark:text-amber-300'
+              }`}
+            />
+            <span
+              className={`flex-1 font-medium ${
+                slaCounters.vencidos > 0
+                  ? 'text-destructive'
+                  : 'text-amber-800 dark:text-amber-200'
+              }`}
+            >
+              {slaCounters.vencidos > 0
+                ? `${slaCounters.vencidos} reclamo${slaCounters.vencidos === 1 ? '' : 's'} fuera del SLA`
+                : `${slaCounters.porVencer} reclamo${slaCounters.porVencer === 1 ? '' : 's'} por vencer pronto`}
+            </span>
+            <ChevronRight
+              className={`h-4 w-4 shrink-0 ${
+                slaCounters.vencidos > 0
+                  ? 'text-destructive/70'
+                  : 'text-amber-700/70 dark:text-amber-300/70'
+              }`}
+            />
+          </button>
         )}
 
         <div className="flex flex-wrap gap-2">
