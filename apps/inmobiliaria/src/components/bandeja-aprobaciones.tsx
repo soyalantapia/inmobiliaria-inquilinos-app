@@ -10,7 +10,6 @@ import {
   Landmark,
   Trash2,
   Undo,
-  Wallet,
   XCircle,
 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@llave/ui/avatar';
@@ -35,7 +34,6 @@ import { formatFechaCorta, formatMonto } from '@/lib/format';
 
 const ICONO_TIPO: Record<TipoAprobacion, typeof Inbox> = {
   CONTRATO_CARGADO: FileSignature,
-  PAGO_MANUAL: Wallet,
   GASTO_CAJA_ELIMINACION: Trash2,
   DEVOLUCION_DEPOSITO: Undo,
   AJUSTE_FUERA_DE_INDICE: Landmark,

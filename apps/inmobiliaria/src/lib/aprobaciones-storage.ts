@@ -17,9 +17,11 @@ import { registrarEvento } from './auditoria-storage';
 
 const STORAGE_KEY = 'llave-inmo:aprobaciones:v1';
 
+// Nota IA: "PAGO_MANUAL" se sacó a propósito — validar/aprobar pagos vive SOLO
+// en la sección Pagos (un único lugar para la plata). Aprobaciones queda para
+// lo NO-monetario que carga el equipo y requiere visto + PIN.
 export type TipoAprobacion =
   | 'CONTRATO_CARGADO'
-  | 'PAGO_MANUAL'
   | 'GASTO_CAJA_ELIMINACION'
   | 'DEVOLUCION_DEPOSITO'
   | 'AJUSTE_FUERA_DE_INDICE';
@@ -153,7 +155,6 @@ export function rechazar(
 
 export const TIPO_APROBACION_LABEL: Record<TipoAprobacion, string> = {
   CONTRATO_CARGADO: 'Contrato cargado',
-  PAGO_MANUAL: 'Pago manual cargado',
   GASTO_CAJA_ELIMINACION: 'Eliminar gasto de caja',
   DEVOLUCION_DEPOSITO: 'Devolver depósito',
   AJUSTE_FUERA_DE_INDICE: 'Ajuste fuera del índice',
@@ -175,19 +176,6 @@ const SEED: Aprobacion[] = [
     cargadoAt: '2026-05-22T16:18:00-03:00',
     estado: 'PENDIENTE',
     notas: 'Verificá las cláusulas 4ª y 7ª (firmadas hoy a la mañana con el propietario).',
-  },
-  {
-    id: 'apr_seed_2',
-    tipo: 'PAGO_MANUAL',
-    titulo: 'Pago manual Ana Pereyra · Mayo 2026',
-    descripcion: 'Transferencia recibida fuera del banco recaudador',
-    monto: 850000,
-    entidadId: 'liq_apr_2',
-    cargadoPor: 'Luciana Vidal',
-    rolAutor: 'OPERADOR',
-    cargadoAt: '2026-05-23T09:42:00-03:00',
-    estado: 'PENDIENTE',
-    notas: 'La inquilina depositó al CBU viejo. Adjunté comprobante en el contrato.',
   },
   {
     id: 'apr_seed_3',

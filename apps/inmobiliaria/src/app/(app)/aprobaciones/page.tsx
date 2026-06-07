@@ -11,8 +11,11 @@ export default function AprobacionesPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Aprobaciones</h1>
           <p className="text-sm text-muted-foreground">
-            Solicitudes cargadas por Operadores y Carga que esperan tu visto. Al
-            confirmar te pedimos el PIN de seguridad.
+            Lo que tu equipo (Operadores y Carga) cargó y necesita tu visto, con
+            PIN: contratos, gastos, devoluciones y ajustes.{' '}
+            <span className="font-medium text-foreground">
+              Los pagos se validan en Pagos.
+            </span>
           </p>
         </div>
         <BandejaAprobaciones />

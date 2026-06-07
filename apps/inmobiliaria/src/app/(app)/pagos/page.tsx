@@ -349,6 +349,11 @@ export default function PagosPage() {
     <>
       <Topbar titulo="Pagos del mes" />
       <main className="flex-1 space-y-6 p-4 md:p-6">
+        <p className="text-sm text-muted-foreground">
+          La plata del mes: quién pagó, quién debe y los pagos a validar. Las
+          autorizaciones que carga tu equipo van en{' '}
+          <span className="font-medium text-foreground">Aprobaciones</span>.
+        </p>
         {/* 2 stats GRANDES: montos cobrado y pendiente */}
         <div className="grid gap-4 md:grid-cols-2">
           <Card className="border-emerald-200 bg-emerald-50/60 dark:border-emerald-900/40 dark:bg-emerald-900/10">
