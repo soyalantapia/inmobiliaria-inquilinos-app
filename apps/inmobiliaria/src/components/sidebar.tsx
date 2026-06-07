@@ -9,7 +9,6 @@ import {
   FileText,
   Megaphone,
   Plus,
-  Rocket,
   ShieldCheck,
   CreditCard,
   Settings,
@@ -25,6 +24,7 @@ import {
 } from 'lucide-react';
 import { listarPendientes } from '@/lib/aprobaciones-storage';
 import { cn } from '@llave/ui/cn';
+import { CountBadge } from '@/components/count-badge';
 import { calcularResumenPlan } from '@/lib/plan';
 import { diasRestantesTrial, leerTrial, trialVigente } from '@/lib/trial-storage';
 import type { Capacidad, Rol } from '@/lib/permisos';
@@ -57,7 +57,6 @@ const links: NavLink[] = [
   { href: '/anuncios', label: 'Anuncios', icon: Megaphone, capacidad: 'comunicaciones.enviar' },
   { href: '/profesionales', label: 'Profesionales', icon: HardHat, capacidad: 'profesionales.ver' },
   { href: '/screening', label: 'Verificar inquilino', icon: ShieldCheck, capacidad: 'screening.ver' },
-  { href: '/roadmap', label: 'Roadmap', icon: Rocket },
   { href: '/configuracion', label: 'Configuración', icon: Settings },
 ];
 
@@ -130,10 +129,8 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
             >
               <Icon className={esSub ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
               <span className="flex-1">{l.label}</span>
-              {l.href === '/aprobaciones' && pendientes > 0 && (
-                <span className="grid h-4 min-w-[1rem] place-items-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground">
-                  {pendientes}
-                </span>
+              {l.href === '/aprobaciones' && (
+                <CountBadge count={pendientes} />
               )}
             </Link>
           );

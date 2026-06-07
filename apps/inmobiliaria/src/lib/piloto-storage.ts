@@ -21,7 +21,10 @@
 const FLAG_KEY = 'llave-inmo:piloto-activo:v1';
 const REPORTES_KEY = 'llave-inmo:piloto-reportes:v1';
 
-export type TipoReporte = 'BUG' | 'IDEA' | 'PREGUNTA';
+export type TipoReporte = 'BUG' | 'IDEA';
+
+/** Impacto del bug, para que el equipo lo triagee de un vistazo. */
+export type SeveridadReporte = 'BLOQUEA' | 'MOLESTO' | 'MENOR';
 
 export interface ReportePiloto {
   id: string;
@@ -38,6 +41,8 @@ export interface ReportePiloto {
   navegador?: string;
   /** Resolución del viewport al momento del reporte (ej. "1440×900"). */
   viewport?: string;
+  /** Impacto del bug (solo para tipo BUG). */
+  severidad?: SeveridadReporte;
   reportadoAt: string;
   /** Quién lo reportó (mock — operador actual). */
   reportadoPor: string;
@@ -110,8 +115,22 @@ export interface NuevoReporteInput {
   urlCompleta?: string;
   navegador?: string;
   viewport?: string;
+  severidad?: SeveridadReporte;
 }
 
+/**
+ * TODO (backend) — TRACKEO ABSOLUTO del reporte. Hoy, del lado cliente, solo
+ * capturamos lo básico (url, pantalla, navegador, viewport). Cuando exista
+ * backend, el reporte debe levantar y guardar AUTOMÁTICAMENTE del lado servidor
+ * todo lo necesario para reproducir cualquier bug sin preguntarle nada al user:
+ *   - Usuario: id, email, rol y cuenta/inmobiliaria (del JWT, no hardcodeado).
+ *   - Página exacta: URL completa + ruta + params/query desde la que reportó.
+ *   - IP del cliente (solo server-side) + geo aproximada.
+ *   - userAgent completo → navegador + versión, SO, dispositivo, viewport.
+ *   - Sesión: session id, timestamp del servidor, build/versión de la app.
+ *   - Estado: últimas acciones del usuario y errores de consola recientes.
+ * (Definir retención de estos datos y el aviso de privacidad correspondiente.)
+ */
 export function crearReporte(input: NuevoReporteInput): ReportePiloto {
   const tieneWindow = typeof window !== 'undefined';
   const url = input.url ?? (tieneWindow ? window.location.pathname : '/');
@@ -128,6 +147,7 @@ export function crearReporte(input: NuevoReporteInput): ReportePiloto {
     navegador:
       input.navegador ?? (tieneWindow ? detectarNavegador(window.navigator.userAgent) : undefined),
     viewport: input.viewport ?? (tieneWindow ? `${window.innerWidth}×${window.innerHeight}` : undefined),
+    severidad: input.severidad,
     reportadoAt: new Date().toISOString(),
     reportadoPor: 'Roberto Tapia', // mock — en backend usa el user logueado
   };
@@ -169,7 +189,6 @@ export function pantallaDesdeUrl(url: string): string {
     profesionales: 'Profesionales',
     screening: 'Verificación inquilino',
     configuracion: 'Configuración',
-    roadmap: 'Roadmap',
     admin: 'Panel interno',
   };
   return PANTALLAS[partes[0]!] ?? partes[0]!;
@@ -178,11 +197,15 @@ export function pantallaDesdeUrl(url: string): string {
 export const TIPO_REPORTE_LABEL: Record<TipoReporte, string> = {
   BUG: 'Bug',
   IDEA: 'Idea',
-  PREGUNTA: 'Pregunta',
+};
+
+export const SEVERIDAD_LABEL: Record<SeveridadReporte, string> = {
+  BLOQUEA: 'Me bloquea',
+  MOLESTO: 'Molesto',
+  MENOR: 'Menor',
 };
 
 export const TIPO_REPORTE_COLOR: Record<TipoReporte, string> = {
   BUG: 'bg-destructive/10 text-destructive',
   IDEA: 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300',
-  PREGUNTA: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
 };

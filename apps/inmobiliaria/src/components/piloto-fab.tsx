@@ -5,13 +5,11 @@ import { usePathname } from 'next/navigation';
 import {
   Bug,
   CheckCircle2,
-  HelpCircle,
   Lightbulb,
   Loader2,
   MessageCircle,
   Send,
 } from 'lucide-react';
-import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import {
   Dialog,
@@ -26,11 +24,18 @@ import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
 import {
   crearReporte,
-  detectarNavegador,
   esClientePiloto,
-  pantallaDesdeUrl,
+  SEVERIDAD_LABEL,
+  type SeveridadReporte,
   type TipoReporte,
 } from '@/lib/piloto-storage';
+
+const SEV_COLOR: Record<SeveridadReporte, string> = {
+  BLOQUEA: 'border-destructive bg-destructive/10 text-destructive ring-2 ring-destructive/20',
+  MOLESTO:
+    'border-amber-500 bg-amber-50 text-amber-700 ring-2 ring-amber-500/20 dark:bg-amber-900/30 dark:text-amber-300',
+  MENOR: 'border-foreground/30 bg-muted text-foreground ring-2 ring-foreground/10',
+};
 
 /**
  * FAB (floating action button) que aparece SÓLO si la cuenta tiene
@@ -100,31 +105,20 @@ export function PilotoFab() {
 
 function ReporteDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [tipo, setTipo] = useState<TipoReporte>('BUG');
+  const [severidad, setSeveridad] = useState<SeveridadReporte | null>(null);
   const [titulo, setTitulo] = useState('');
   const [detalle, setDetalle] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [enviado, setEnviado] = useState(false);
-  const [contexto, setContexto] = useState<{
-    pantalla: string;
-    viewport: string;
-    navegador: string;
-  } | null>(null);
 
-  // Capturamos el contexto técnico al abrir el diálogo, para MOSTRAR
-  // exactamente qué se adjunta al reporte (lo que el equipo necesita para
-  // reproducir el error: dónde estabas, en qué resolución y navegador).
-  useEffect(() => {
-    if (!open || typeof window === 'undefined') return;
-    setContexto({
-      pantalla: pantallaDesdeUrl(window.location.pathname),
-      viewport: `${window.innerWidth}×${window.innerHeight}`,
-      navegador: detectarNavegador(window.navigator.userAgent),
-    });
-  }, [open]);
+  // El contexto técnico (pantalla, viewport, navegador, URL) se sigue capturando
+  // y guardando en el reporte vía crearReporte() — ya no se muestra en el UI.
+  // (Backend: ver TODO de "trackeo absoluto" en lib/piloto-storage.ts.)
 
   useEffect(() => {
     if (!open) {
       setTipo('BUG');
+      setSeveridad(null);
       setTitulo('');
       setDetalle('');
       setEnviando(false);
@@ -139,7 +133,12 @@ function ReporteDialog({ open, onClose }: { open: boolean; onClose: () => void }
     setEnviando(true);
     // Pequeño delay simulado para que se sienta como una llamada al back
     setTimeout(() => {
-      crearReporte({ tipo, titulo, detalle });
+      crearReporte({
+        tipo,
+        titulo,
+        detalle,
+        severidad: tipo === 'BUG' && severidad ? severidad : undefined,
+      });
       setEnviando(false);
       setEnviado(true);
       toast({
@@ -173,14 +172,6 @@ function ReporteDialog({ open, onClose }: { open: boolean; onClose: () => void }
       color:
         'bg-violet-100 text-violet-700 hover:bg-violet-200 dark:bg-violet-900/30 dark:text-violet-300 dark:hover:bg-violet-900/40',
     },
-    {
-      id: 'PREGUNTA',
-      icon: HelpCircle,
-      label: 'Pregunta',
-      descripcion: 'No sabés cómo hacer algo',
-      color:
-        'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:hover:bg-amber-900/40',
-    },
   ];
 
   if (enviado) {
@@ -195,7 +186,7 @@ function ReporteDialog({ open, onClose }: { open: boolean; onClose: () => void }
               <p className="text-lg font-semibold">¡Gracias por reportarlo!</p>
               <p className="text-sm text-muted-foreground">
                 Te leemos. Si es bug, lo corregimos en el próximo deploy. Si
-                es idea, la sumamos al roadmap.
+                es idea, la tenemos en cuenta para mejorar.
               </p>
             </div>
             <Button onClick={onClose} className="w-full">
@@ -222,7 +213,7 @@ function ReporteDialog({ open, onClose }: { open: boolean; onClose: () => void }
         </DialogHeader>
 
         <div className="space-y-3">
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             {TIPOS.map((t) => {
               const Icon = t.icon;
               const seleccionado = tipo === t.id;
@@ -250,7 +241,7 @@ function ReporteDialog({ open, onClose }: { open: boolean; onClose: () => void }
 
           <div className="space-y-1.5">
             <Label htmlFor="rep-titulo">
-              {tipo === 'BUG' ? '¿Qué falló?' : tipo === 'IDEA' ? 'Tu idea en una línea' : 'Tu pregunta'}
+              {tipo === 'BUG' ? '¿Qué falló?' : 'Tu idea en una línea'}
             </Label>
             <Input
               id="rep-titulo"
@@ -259,13 +250,35 @@ function ReporteDialog({ open, onClose }: { open: boolean; onClose: () => void }
               placeholder={
                 tipo === 'BUG'
                   ? 'Ej: el botón Conciliar no responde'
-                  : tipo === 'IDEA'
-                    ? 'Ej: poder filtrar por barrio'
-                    : 'Ej: ¿cómo descargo el certificado?'
+                  : 'Ej: poder filtrar por barrio'
               }
               autoFocus
             />
           </div>
+
+          {tipo === 'BUG' && (
+            <div className="space-y-1.5">
+              <Label>¿Cuánto te afecta?</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {(['BLOQUEA', 'MOLESTO', 'MENOR'] as SeveridadReporte[]).map((s) => {
+                  const sel = severidad === s;
+                  return (
+                    <button
+                      key={s}
+                      type="button"
+                      aria-pressed={sel}
+                      onClick={() => setSeveridad(sel ? null : s)}
+                      className={`rounded-md border px-2 py-2 text-xs font-medium transition-colors ${
+                        sel ? SEV_COLOR[s] : 'border-border bg-background hover:bg-muted/40'
+                      }`}
+                    >
+                      {SEVERIDAD_LABEL[s]}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <div className="space-y-1.5">
             <Label htmlFor="rep-detalle">Detalle</Label>
@@ -277,33 +290,9 @@ function ReporteDialog({ open, onClose }: { open: boolean; onClose: () => void }
               placeholder={
                 tipo === 'BUG'
                   ? 'Contanos qué hiciste, qué esperabas que pasara y qué pasó en su lugar. ¿Pasa siempre o sólo a veces?'
-                  : tipo === 'IDEA'
-                    ? '¿Para qué te servirá? ¿Cómo se usaría?'
-                    : 'Cualquier contexto adicional.'
+                  : '¿Para qué te servirá? ¿Cómo se usaría?'
               }
             />
-            <div className="rounded-md border bg-muted/30 p-2.5">
-              <p className="mb-1.5 text-[10px] font-medium text-muted-foreground">
-                Se adjunta solo para que el equipo reproduzca el error:
-              </p>
-              <div className="flex flex-wrap gap-1">
-                <Badge variant="outline" className="text-[9px]">
-                  📍 {contexto?.pantalla ?? '—'}
-                </Badge>
-                <Badge variant="outline" className="text-[9px]">
-                  🖥 {contexto?.viewport ?? '—'}
-                </Badge>
-                <Badge variant="outline" className="text-[9px]">
-                  {contexto?.navegador ?? '—'}
-                </Badge>
-                <Badge variant="outline" className="text-[9px]">
-                  Roberto Tapia
-                </Badge>
-                <Badge variant="outline" className="text-[9px]">
-                  Fecha y hora
-                </Badge>
-              </div>
-            </div>
           </div>
         </div>
 
