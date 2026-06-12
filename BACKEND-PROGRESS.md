@@ -107,9 +107,49 @@
       endpoints (hoy siguen en localStorage; los endpoints ya devuelven el shape
       necesario).
 
-### Fases 4-7 — pendientes (ver PROMPT-BACKEND-FULL.md y BACKEND-ENDPOINTS.md)
+### ✅ Fase 4 — Operación (API COMPLETA · 33 tests)
+- routes/operacion.ts: reclamos e2e (inquilino crea → asignar profesional →
+  timeline ReclamoEvento → resolver/rechazar con validación) + SLA server-side
+  (helper portado de sla-reclamos.ts, plazos por urgencia), profesionales,
+  consorcios (+unidades/movimientos/asambleas), renovaciones (+decisión con PIN).
+- prisma/seeds/operacion.ts: reclamos/profesionales/consorcios del mock.
+
+### ✅ Fase 5 — Anuncios con acuses REALES (API + FRONT · 20 tests)
+- routes/anuncios.ts: audiencias resueltas server-side (FK consorcioId con
+  fallback heurístico documentado), conteos Leído/Confirmado desde AnuncioAcuse,
+  POST /anuncios/:id/leido|enterado del inquilino (upsert, idempotente, 403 si
+  no le aplica), canales fijos APP+EMAIL.
+- MUERTOS los hacks: anuncios-cross-app (lectura de localStorage ajeno) y el
+  blend contarAcuses (simulación) quedan SOLO como fallback sin API.
+- Front migrado: useAnuncios (inmo, refetch 30s) + useMisAnuncios (inquilino);
+  páginas /anuncios y el feed del home consumiendo el API.
+- ✅ E2E ESTRELLA EN BROWSER: Mariela toca "Enterado" en :3000 → el panel en
+  :3001 muestra Leído 1/1 · Confirmado 1/1 vía Railway (cero localStorage).
+
+### ✅ Fase 6 — Mundo inquilino (API COMPLETA · 27 tests)
+- routes/inquilino-mundo.ts: GET /certificado (calculado de liquidaciones REALES,
+  hash determinístico, honesto), POST /screening (identidad del informe =
+  EXACTAMENTE lo solicitado — muerto el crítico 5 del reporte PM), co-inquilinos
+  (invitación con token; "simular aceptó" solo DEMO_MODE), boletas, POST /reportes
+  con tracking server-side (IP real vía trustProxy, userAgent, identidad JWT).
+
+### 🔶 Fase 7 — Producción (PREPARADA, falta el deploy con OK del dueño)
+- [x] BACKEND.md (arquitectura, cómo correr, credenciales seed, envs, deploy).
+- [x] scripts/smoke-prod.mjs — 6/6 verde contra el API local.
+- [x] Dockerfile listo (migrate deploy + node dist).
+- [ ] `railway up` del API (CONFIRMAR con el dueño — primer deploy a prod).
+- [ ] Switch del front de GH Pages al API (CONFIRMAR + workflow scope del token).
+
+### Front pendiente (los endpoints YA existen y están testeados)
+- /pagos del panel (PagosPorValidar 726 líneas), checkout/comprobantes del
+  inquilino, reclamos/renovaciones/consorcios, pantallas del mundo inquilino.
+  Patrón establecido: hook en lib/api/hooks.ts + adaptador + fallback (ver caja,
+  aprobaciones, anuncios, contratos).
+- Pantalla de login real del panel (hoy auto-sesión dev de Roberto).
+- Fix horizontal aplicado: apiFetch manda Content-Type SOLO con body (Fastify
+  devuelve 400 ante JSON vacío).
 - Las specs exactas de campos viven en /tmp/backend-specs.json (regenerables
-  re-corriendo el workflow de extracción si se pierde el tmp).
+  re-corriendo el workflow de extracción).
 
 ## Datos operativos
 - Railway: proyecto `b01a1ecb-2169-46ef-b6cf-71a2d6cca234`, env `857efc10-…`
