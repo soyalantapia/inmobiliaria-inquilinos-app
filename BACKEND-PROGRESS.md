@@ -80,9 +80,34 @@
   listado se completan desde el mock por id (derivados de liquidaciones).
 - BACKEND-ENDPOINTS.md: 92 endpoints + 39 seeds planificados (del workflow).
 
-### Fases 3-7 — pendientes (ver PROMPT-BACKEND-FULL.md y BACKEND-ENDPOINTS.md)
-- Fase 3 (la plata): Liquidacion/Pago/MovimientoCaja/Rendicion/Aprobacion ya
-  están migrados en el schema — faltan seeds + endpoints + front.
+### ✅ Fase 3 — La plata (API COMPLETA · front parcial)
+- [x] Seeds: 6 liquidaciones (estados del mock: Mariela y Laura VENCIDAS),
+      2 pagos INFORMADOS (bandeja a validar), 3 movimientos de caja (1 ya
+      descontado), rendición seed ren_001 (own_001 mayo, con GastoRendido
+      snapshot), 2 aprobaciones pendientes (sin PAGO_MANUAL, por diseño).
+- [x] Endpoints (routes/plata.ts): GET /liquidaciones · GET /pagos ·
+      POST /pagos/:id/validar|rechazar (PIN + permisos pago.conciliar/rechazar,
+      transacción pago+liquidación) · POST /pagos/informar +
+      GET /mis-liquidaciones (inquilino) · GET/POST /caja/movimientos ·
+      GET/POST /rendiciones (TRANSACCIÓN del loop: bruto por participación −
+      comisión − gastos pendientes → GastoRendido snapshots + movimientos
+      marcados descontadoEnRendicion + rendicionId; guard CBU faltante; 409 si
+      período ya rendido) · GET /aprobaciones + aprobar/rechazar con PIN
+      (aprueba CONTRATO_CARGADO → contrato ACTIVO).
+- [x] GET /contratos ahora DERIVA estadoPagoActual/proximoVencimiento de
+      liquidaciones reales → MUERTO el bridge del front (hooks.ts ya no mira
+      mocks) y muerto el crítico de plata del reporte PM.
+- [x] Tests 28/28 (12 de plata: PIN incorrecto, permisos por rol, doble
+      validación 409, informar pago del inquilino, neto exacto $1.420.750 del
+      loop de rendición, CBU faltante, doble rendición, aprobación activa
+      contrato).
+- [x] E2E: panel /contratos muestra estados reales del server.
+- ⏭ Front de plata pendiente (continuación): migrar pantallas /pagos, /caja,
+      /aprobaciones del panel + checkout/comprobantes del inquilino a estos
+      endpoints (hoy siguen en localStorage; los endpoints ya devuelven el shape
+      necesario).
+
+### Fases 4-7 — pendientes (ver PROMPT-BACKEND-FULL.md y BACKEND-ENDPOINTS.md)
 - Las specs exactas de campos viven en /tmp/backend-specs.json (regenerables
   re-corriendo el workflow de extracción si se pierde el tmp).
 

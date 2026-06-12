@@ -177,6 +177,118 @@ export async function seedBase(prisma: PrismaClient) {
     });
   }
 
+  // ===== Fase 3 — La plata =====
+
+  // Liquidaciones (estado del mock: Mariela y Laura vencidas, resto al día)
+  const liqs = [
+    { id: 'liq_001', contratoId: 'cnt_001', periodo: '2026-05', montoAlquiler: 480000, montoExpensas: 92000, montoTotal: 572000, fechaVencimiento: '2026-05-05', estado: 'VENCIDO' as const },
+    { id: 'liq_002', contratoId: 'cnt_002', periodo: '2026-06', montoAlquiler: 620000, montoExpensas: null, montoTotal: 620000, fechaVencimiento: '2026-06-10', estado: 'PAGADO' as const, fechaPago: '2026-06-08', metodoPago: 'TRANSFERENCIA' as const },
+    { id: 'liq_003', contratoId: 'cnt_003', periodo: '2026-06', montoAlquiler: 510000, montoExpensas: null, montoTotal: 510000, fechaVencimiento: '2026-06-02', estado: 'VENCIDO' as const },
+    { id: 'liq_004', contratoId: 'cnt_004', periodo: '2026-06', montoAlquiler: 720000, montoExpensas: null, montoTotal: 720000, fechaVencimiento: '2026-06-01', estado: 'PAGADO' as const, fechaPago: '2026-06-01', metodoPago: 'TRANSFERENCIA' as const },
+    { id: 'liq_005', contratoId: 'cnt_005', periodo: '2026-06', montoAlquiler: 850000, montoExpensas: null, montoTotal: 850000, fechaVencimiento: '2026-07-05', estado: 'PENDIENTE' as const },
+    { id: 'liq_007', contratoId: 'cnt_007', periodo: '2026-06', montoAlquiler: 0, montoExpensas: 285000, montoTotal: 285000, fechaVencimiento: '2026-06-10', estado: 'PAGADO' as const, fechaPago: '2026-06-09', metodoPago: 'TRANSFERENCIA' as const },
+  ];
+  for (const l of liqs) {
+    const { fechaVencimiento, fechaPago, ...resto } = l as typeof l & { fechaPago?: string };
+    await prisma.liquidacion.upsert({
+      where: { id: l.id },
+      update: {},
+      create: {
+        ...resto,
+        inmobiliariaId: tid,
+        fechaVencimiento: new Date(fechaVencimiento),
+        fechaPago: fechaPago ? new Date(fechaPago) : null,
+      },
+    });
+  }
+
+  // Pagos informados por inquilinos — la bandeja "a validar" del panel
+  const pagos = [
+    { id: 'pag_001', contratoId: 'cnt_005', liquidacionId: 'liq_005', periodo: '2026-06', monto: 850000, metodo: 'TRANSFERENCIA' as const, nroOperacion: 'TRF-882341', fechaTransferencia: '2026-06-10', notaInquilino: 'Transferí desde mi cuenta del Galicia.' },
+    { id: 'pag_002', contratoId: 'cnt_001', liquidacionId: 'liq_001', periodo: '2026-05', monto: 572000, metodo: 'TRANSFERENCIA' as const, nroOperacion: 'TRF-901122', fechaTransferencia: '2026-06-11', notaInquilino: 'Pago de mayo completo, perdón la demora.' },
+  ];
+  for (const p of pagos) {
+    const { fechaTransferencia, ...resto } = p;
+    await prisma.pago.upsert({
+      where: { id: p.id },
+      update: {},
+      create: { ...resto, inmobiliariaId: tid, fechaTransferencia: new Date(fechaTransferencia), montoLiqTotal: p.monto },
+    });
+  }
+
+  // Caja de gastos (mock de /caja: 2 pendientes + 1 ya descontado en rendición)
+  const rendicion = await prisma.rendicion.upsert({
+    where: { propietarioId_periodo: { propietarioId: 'own_001', periodo: '2026-05' } },
+    update: {},
+    create: {
+      id: 'ren_001',
+      inmobiliariaId: tid,
+      propietarioId: 'own_001',
+      periodo: '2026-05',
+      montoBruto: 288000, // 60% de $480.000 (participación en prp_001)
+      comisionPct: 8,
+      comisionMonto: 23040,
+      totalGastos: 27000, // 60% de $45.000 (plomería)
+      montoNeto: 237960,
+      metodo: 'TRANSFERENCIA',
+      notas: 'Rendición de mayo · Gorriti 4521 (60%)',
+      rendidoAt: new Date('2026-05-10'),
+    },
+  });
+
+  const movimientos = [
+    { id: 'mov_001', propiedadId: 'prp_001', contratoId: 'cnt_001', categoria: 'PLOMERIA' as const, descripcion: 'Reparación pérdida cocina', monto: 45000, fecha: '2026-04-30', proveedor: 'Sergio Almeida (plomero)', cargadoPor: 'Roberto Tapia', descontadoEnRendicion: true, rendicionId: rendicion.id },
+    { id: 'mov_002', propiedadId: 'prp_004', contratoId: 'cnt_004', categoria: 'EXPENSAS' as const, descripcion: 'Expensa extraordinaria — fachada', monto: 62000, fecha: '2026-05-02', proveedor: 'Consorcio', cargadoPor: 'Roberto Tapia', descontadoEnRendicion: false },
+    { id: 'mov_003', propiedadId: 'prp_002', contratoId: 'cnt_002', categoria: 'ELECTRICIDAD' as const, descripcion: 'Cambio de térmica del tablero', monto: 28500, fecha: '2026-05-04', proveedor: 'Diego Ferrari (electricista)', cargadoPor: 'Luciana Vidal', descontadoEnRendicion: false },
+  ];
+  for (const m of movimientos) {
+    const { fecha, ...resto } = m;
+    await prisma.movimientoCaja.upsert({
+      where: { id: m.id },
+      update: {},
+      create: { ...resto, inmobiliariaId: tid, tipo: 'GASTO', fecha: new Date(fecha) },
+    });
+  }
+
+  // GastoRendido snapshot de la rendición seed
+  const yaGasto = await prisma.gastoRendido.findFirst({ where: { rendicionId: rendicion.id } });
+  if (!yaGasto) {
+    await prisma.gastoRendido.create({
+      data: {
+        inmobiliariaId: tid,
+        rendicionId: rendicion.id,
+        refId: 'mov_001',
+        tipo: 'CAJA',
+        fecha: new Date('2026-04-30'),
+        descripcion: 'Reparación pérdida cocina',
+        proveedor: 'Sergio Almeida (plomero)',
+        monto: 27000,
+        montoTotal: 45000,
+        participacion: 60,
+        propiedadId: 'prp_001',
+        direccion: 'Gorriti 4521, 3°B',
+      },
+    });
+  }
+
+  // Aprobaciones pendientes (NO-monetarias; sin PAGO_MANUAL por diseño)
+  const camila = await prisma.usuario.findFirst({ where: { inmobiliariaId: tid, email: 'camila@delsol.com' } });
+  const luciana = await prisma.usuario.findFirst({ where: { inmobiliariaId: tid, email: 'luciana@delsol.com' } });
+  if (camila && luciana) {
+    const aprobaciones = [
+      { id: 'apr_seed_1', tipo: 'CONTRATO_CARGADO' as const, titulo: 'Tomás Bravo · Olleros 3920', descripcion: 'Contrato en dólares · 36 meses · cargado para revisión', entidadId: 'cnt_006', cargadoPorId: camila.id, rolAutor: 'CARGA' as const, cargadoAt: '2026-05-22T16:18:00-03:00', notas: 'Verificá las cláusulas 4ª y 7ª (firmadas hoy a la mañana con el propietario).' },
+      { id: 'apr_seed_3', tipo: 'DEVOLUCION_DEPOSITO' as const, titulo: 'Devolución depósito · Laura Giménez', descripcion: 'Cierre de contrato anticipado · contrato cnt_003', monto: 510000, entidadId: 'cnt_003', cargadoPorId: luciana.id, rolAutor: 'OPERADOR' as const, cargadoAt: '2026-05-23T11:05:00-03:00', notas: 'Acta de inspección OK · descontamos $42.000 por pintura.' },
+    ];
+    for (const a of aprobaciones) {
+      const { cargadoAt, ...resto } = a;
+      await prisma.aprobacion.upsert({
+        where: { id: a.id },
+        update: {},
+        create: { ...resto, inmobiliariaId: tid, cargadoAt: new Date(cargadoAt) },
+      });
+    }
+  }
+
   return { inmobiliariaId: tid };
 }
 

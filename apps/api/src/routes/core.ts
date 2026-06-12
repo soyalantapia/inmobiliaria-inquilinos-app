@@ -20,10 +20,22 @@ export async function coreRoutes(app: FastifyInstance) {
       include: {
         propiedad: { select: { id: true, direccion: true, ciudad: true } },
         inquilinoTitular: { select: { id: true, nombre: true, apellido: true, email: true } },
+        liquidaciones: { orderBy: { periodo: 'desc' }, take: 6 },
       },
       orderBy: { createdAt: 'asc' },
     });
-    return contratos;
+    // estadoPagoActual / proximoVencimiento DERIVADOS de liquidaciones reales:
+    // cualquier vencida manda; si no, la más reciente; sin liqs → PENDIENTE.
+    return contratos.map(({ liquidaciones, ...c }) => {
+      const vencida = liquidaciones.find((l) => l.estado === 'VENCIDO');
+      const actual = vencida ?? liquidaciones[0] ?? null;
+      const pendiente = liquidaciones.find((l) => l.estado === 'PENDIENTE' || l.estado === 'VENCIDO');
+      return {
+        ...c,
+        estadoPagoActual: actual?.estado ?? 'PENDIENTE',
+        proximoVencimiento: pendiente?.fechaVencimiento ?? null,
+      };
+    });
   });
 
   app.get('/contratos/:id', async (request, reply) => {

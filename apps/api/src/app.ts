@@ -7,6 +7,7 @@ import { loadEnv, type Env } from './env.js';
 import { healthRoutes } from './routes/health.js';
 import { authRoutes } from './routes/auth.js';
 import { coreRoutes } from './routes/core.js';
+import { plataRoutes } from './routes/plata.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -38,6 +39,7 @@ export async function buildApp(envOverrides: Partial<Record<string, string>> = {
   await app.register(healthRoutes);
   await app.register(authRoutes);
   await app.register(coreRoutes);
+  await app.register(plataRoutes);
 
   return app;
 }

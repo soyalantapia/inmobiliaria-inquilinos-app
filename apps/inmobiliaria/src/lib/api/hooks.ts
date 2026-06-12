@@ -30,25 +30,25 @@ interface ContratoApi {
   aprobadoPor: string | null;
   propiedad: { id: string; direccion: string; ciudad: string };
   inquilinoTitular: { id: string; nombre: string; apellido: string | null } | null;
+  /** Derivados por el server desde liquidaciones reales (Fase 3). */
+  estadoPagoActual: ContratoListado['estadoPagoActual'];
+  proximoVencimiento: string | null;
 }
 
 function mapContrato(c: ContratoApi): ContratoListado {
-  // Bridge hasta Fase 3: estadoPagoActual/proximoVencimiento son derivados de
-  // liquidaciones (aún mock). Matcheamos por id para conservar la demo fiel.
-  const mock = contratosMock.find((m) => m.id === c.id);
   return {
     id: c.id,
     inquilino: c.inquilinoTitular
       ? `${c.inquilinoTitular.nombre} ${c.inquilinoTitular.apellido ?? ''}`.trim()
-      : (mock?.inquilino ?? '—'),
+      : '—',
     direccion: c.propiedad.direccion,
     monto: Number(c.monto),
     moneda: c.moneda,
     estado: c.estado,
     fechaInicio: c.fechaInicio.slice(0, 10),
     fechaFin: c.fechaFin.slice(0, 10),
-    proximoVencimiento: mock?.proximoVencimiento ?? c.fechaFin.slice(0, 10),
-    estadoPagoActual: mock?.estadoPagoActual ?? 'PENDIENTE',
+    proximoVencimiento: (c.proximoVencimiento ?? c.fechaFin).slice(0, 10),
+    estadoPagoActual: c.estadoPagoActual ?? 'PENDIENTE',
     cbuAlias: c.cbuAlias,
     titularCuenta: c.titularCuenta,
     ...(c.tipoContrato ? { tipoContrato: c.tipoContrato } : {}),

@@ -8,6 +8,6 @@ export default defineConfig({
     fileParallelism: false,
     testTimeout: 30_000,
     // seedBase corre en beforeAll contra la DB remota (Railway) — necesita aire
-    hookTimeout: 60_000,
+    hookTimeout: 180_000,
   },
 });
