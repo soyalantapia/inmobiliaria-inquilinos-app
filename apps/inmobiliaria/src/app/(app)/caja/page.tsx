@@ -30,27 +30,19 @@ import { Topbar } from '@/components/topbar';
 import {
   type CategoriaGasto,
   type MovimientoCaja,
-  cargarMovimiento,
   categoriaGastoLabel,
-  eliminarMovimiento,
-  listarMovimientosCaja,
 } from '@/lib/caja-storage';
+import { useCaja } from '@/lib/api/hooks';
 import { formatFechaCorta, formatMonto } from '@/lib/format';
 import { propiedadesMock } from '@/lib/mock-data';
 
 export default function CajaPage() {
-  const [movimientos, setMovimientos] = useState<MovimientoCaja[]>([]);
+  const { movimientos, crearGasto, eliminarGasto, refrescar } = useCaja();
   const [abrirForm, setAbrirForm] = useState(false);
   const [eliminando, setEliminando] = useState<MovimientoCaja | null>(null);
   const [filtroProp, setFiltroProp] = useState<string>('TODAS');
   const [showPin, setShowPin] = useState(false);
   const transitioningToPin = useRef(false);
-
-  useEffect(() => {
-    refrescar();
-  }, []);
-
-  const refrescar = () => setMovimientos(listarMovimientosCaja());
 
   const filtrados = useMemo(() => {
     if (filtroProp === 'TODAS') return movimientos;
@@ -66,12 +58,15 @@ export default function CajaPage() {
     .reduce((acc, m) => acc + m.monto, 0);
   const cantidadMov = movimientos.length;
 
-  const handleEliminar = () => {
+  const handleEliminar = async (pin: string) => {
     if (!eliminando) return;
-    eliminarMovimiento(eliminando.id);
-    refrescar();
-    setEliminando(null);
-    toast({ title: 'Movimiento eliminado' });
+    try {
+      await eliminarGasto(eliminando.id, pin);
+      setEliminando(null);
+      toast({ title: 'Movimiento eliminado' });
+    } catch (e) {
+      toast({ variant: 'destructive', title: 'No se pudo eliminar', description: e instanceof Error ? e.message : undefined });
+    }
   };
 
   return (
@@ -188,8 +183,14 @@ export default function CajaPage() {
         open={abrirForm}
         onOpenChange={setAbrirForm}
         onSubmit={(data) => {
-          cargarMovimiento(data);
-          refrescar();
+          void crearGasto({
+            propiedadId: data.propiedadId,
+            categoria: data.categoria,
+            descripcion: data.descripcion,
+            monto: data.monto,
+            fecha: data.fecha,
+            proveedor: data.proveedor,
+          });
           setAbrirForm(false);
           toast({
             title: 'Gasto cargado',
@@ -219,8 +220,8 @@ export default function CajaPage() {
           transitioningToPin.current = false;
           setShowPin(false);
         }}
-        onConfirmado={() => {
-          handleEliminar();
+        onConfirmado={(pin) => {
+          void handleEliminar(pin);
           transitioningToPin.current = false;
         }}
       />

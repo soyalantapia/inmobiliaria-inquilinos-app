@@ -206,6 +206,21 @@ export async function plataRoutes(app: FastifyInstance) {
     });
   });
 
+  app.delete('/caja/movimientos/:id', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'caja.eliminar');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const body = z.object({ pin: z.string().optional() }).parse(request.body ?? {});
+    if (!(await verificarPin(u.userId, body.pin, reply))) return;
+    const mov = await prisma.movimientoCaja.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
+    if (!mov) return reply.code(404).send({ message: 'Movimiento inexistente' });
+    if (mov.descontadoEnRendicion) {
+      return reply.code(409).send({ message: 'Ya fue descontado en una rendición — no se puede eliminar' });
+    }
+    await prisma.movimientoCaja.delete({ where: { id } });
+    return { ok: true };
+  });
+
   // ===== Rendiciones (cierra el loop caja→rendición) =====
   app.get('/rendiciones', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'pagos.ver');

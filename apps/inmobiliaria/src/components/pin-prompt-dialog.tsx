@@ -28,7 +28,8 @@ interface PinPromptDialogProps {
   subaccion?: string;
   onClose: () => void;
   /** Se llama solo si el PIN se valida correctamente. */
-  onConfirmado: () => void;
+  /** Recibe el PIN tipeado — los flujos contra el API lo reenvían al server. */
+  onConfirmado: (pin: string) => void;
 }
 
 export function PinPromptDialog({
@@ -56,9 +57,10 @@ export function PinPromptDialog({
   useEffect(() => {
     if (!abierto) return;
     // Si el PIN ya está desbloqueado por otra acción reciente,
-    // auto-confirmamos sin pedir input.
+    // auto-confirmamos sin pedir input (no hay PIN tipeado: va vacío;
+    // los flujos contra el API vuelven a pedirlo si el server lo exige).
     if (modo === 'validar' && pinEstaDesbloqueado()) {
-      onConfirmado();
+      onConfirmado('');
       onClose();
     }
   }, [abierto, modo, onClose, onConfirmado]);
@@ -80,7 +82,7 @@ export function PinPromptDialog({
         title: 'PIN configurado',
         description: 'Lo vamos a pedir cada vez que confirmes una acción sensible.',
       });
-      onConfirmado();
+      onConfirmado(pin);
       onClose();
       return;
     }
@@ -89,7 +91,7 @@ export function PinPromptDialog({
       setError(res.error);
       return;
     }
-    onConfirmado();
+    onConfirmado(pin);
     onClose();
   };
 
