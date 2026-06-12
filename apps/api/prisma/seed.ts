@@ -1,7 +1,7 @@
 /**
- * Seeds idempotentes (upsert): portan los mocks del front para que la demo se
- * vea idéntica con datos reales. Corre con `pnpm --filter api seed` y también
- * desde los tests (seedBase).
+ * Seeds idempotentes: portan los mocks del front (ids EXACTOS: cnt_001,
+ * prp_001, own_001…) para que la demo se vea idéntica con datos reales.
+ * Corre con `pnpm --filter api seed`, tras `migrate reset`, y desde tests.
  */
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
@@ -10,46 +10,174 @@ const PASSWORD_DEV = 'delsol123';
 const PIN_DEV = '1234';
 
 export async function seedBase(prisma: PrismaClient) {
-  const inmobiliaria = await prisma.inmobiliaria.upsert({
-    where: { slug: 'del-sol' },
-    update: {},
-    create: { nombre: 'Inmobiliaria del Sol', slug: 'del-sol' },
-  });
+  // ===== Tenant =====
+  const existente = await prisma.inmobiliaria.findFirst({ where: { nombre: 'Inmobiliaria del Sol' } });
+  const inmobiliaria =
+    existente ??
+    (await prisma.inmobiliaria.create({
+      data: {
+        nombre: 'Inmobiliaria del Sol',
+        cuit: '30-71234567-1',
+        email: 'contacto@inmosol.com.ar',
+        telefono: '+54 11 4532 1100',
+        matricula: 'CUCICBA 5872',
+        direccionCalle: 'Av. Santa Fe',
+        direccionAltura: '2890',
+        direccionPiso: '5°B',
+        direccionCiudad: 'CABA',
+        direccionProvincia: 'Buenos Aires',
+        direccionCp: '1425',
+        esPiloto: true,
+        codigoReferido: 'DELSOL-2026',
+      },
+    }));
+  const tid = inmobiliaria.id;
 
+  // ===== Usuarios del panel =====
   const passwordHash = bcrypt.hashSync(PASSWORD_DEV, 10);
   const pinHash = bcrypt.hashSync(PIN_DEV, 10);
-
   const usuarios = [
-    { email: 'roberto@delsol.com', nombre: 'Roberto Tapia', rol: 'ADMIN' as const },
-    { email: 'luciana@delsol.com', nombre: 'Luciana Vidal', rol: 'OPERADOR' as const },
-    { email: 'camila@delsol.com', nombre: 'Camila Acosta', rol: 'CARGA' as const },
+    { email: 'roberto@delsol.com', nombre: 'Roberto', apellido: 'Tapia', rol: 'ADMIN' as const },
+    { email: 'luciana@delsol.com', nombre: 'Luciana', apellido: 'Vidal', rol: 'OPERADOR' as const },
+    { email: 'camila@delsol.com', nombre: 'Camila', apellido: 'Acosta', rol: 'CARGA' as const },
   ];
   for (const u of usuarios) {
     await prisma.usuario.upsert({
-      where: { email: u.email },
-      update: { nombre: u.nombre, rol: u.rol },
-      create: { ...u, inmobiliariaId: inmobiliaria.id, passwordHash, pinHash },
+      where: { inmobiliariaId_email: { inmobiliariaId: tid, email: u.email } },
+      update: { nombre: u.nombre, apellido: u.apellido, rol: u.rol },
+      create: { ...u, inmobiliariaId: tid, passwordHash, pinHash },
     });
   }
 
-  // Inquilinos de los contratos mock (cnt_001..)
+  // ===== Sociedades =====
+  const sociedades = [
+    {
+      id: 'soc_001', razonSocial: 'Inmobiliaria del Sol S.R.L.', nombreComercial: 'Inmobiliaria del Sol',
+      cuit: '30-71234567-8', condicionFiscal: 'RESPONSABLE_INSCRIPTO' as const,
+      domicilioFiscal: 'Av. Santa Fe 2890, 5°B, CABA', email: 'contacto@inmosol.com.ar', telefono: '+54 11 4532 1100',
+      cuentaCobranza: { banco: 'Banco Galicia', titular: 'Inmobiliaria del Sol S.R.L.', cbu: '0070100120000018273645', alias: 'delsol.cobranzas', cuit: '30-71234567-8' },
+      afip: { conectado: true, puntoVenta: '0003', tipoComprobante: 'FACTURA_B', conectadoDesde: '2025-03-12' },
+      esPrincipal: true,
+    },
+    {
+      id: 'soc_002', razonSocial: 'Sol Comercial S.A.', nombreComercial: 'Sol Comercial',
+      cuit: '30-72345678-9', condicionFiscal: 'RESPONSABLE_INSCRIPTO' as const,
+      domicilioFiscal: 'Av. Santa Fe 2890, 5°B, CABA', email: 'admin@solcomercial.com.ar', telefono: '+54 11 4532 1100',
+      cuentaCobranza: { banco: 'Banco Macro', titular: 'Sol Comercial S.A.', cbu: '2850001230094523456789', alias: 'solcomercial.cob', cuit: '30-72345678-9' },
+      afip: { conectado: true, puntoVenta: '0001', tipoComprobante: 'FACTURA_A', conectadoDesde: '2025-06-20' },
+      esPrincipal: false,
+    },
+    {
+      id: 'soc_003', razonSocial: 'Fideicomiso Iglesias - Castro', nombreComercial: 'Fideicomiso I-C',
+      cuit: '33-71456789-2', condicionFiscal: 'EXENTO' as const,
+      domicilioFiscal: 'Av. Santa Fe 2890, 5°B, CABA', email: 'fideicomiso@inmosol.com.ar', telefono: '+54 11 4532 1100',
+      cuentaCobranza: undefined, afip: { conectado: false }, esPrincipal: false,
+    },
+  ];
+  for (const s of sociedades) {
+    await prisma.sociedad.upsert({
+      where: { id: s.id },
+      update: {},
+      create: { ...s, inmobiliariaId: tid },
+    });
+  }
+
+  // ===== Propietarios =====
+  const propietarios = [
+    { id: 'own_001', nombre: 'Eduardo', apellido: 'Castro', cuit: '20-12345678-2', email: 'eduardo.castro@gmail.com', telefono: '+54 11 4789 1234', cbuAlias: 'castro.eduardo.cuenta', comisionPct: 8, notas: 'Pide rendición los días 10 de cada mes. Prefiere WhatsApp.' },
+    { id: 'own_002', nombre: 'Silvana', apellido: 'Morales', cuit: '27-23456789-3', email: 'silvana.morales@hotmail.com', telefono: '+54 11 5234 8765', cbuAlias: 'morales.silvana.mp', comisionPct: 7, notas: null },
+    { id: 'own_003', nombre: 'Federico', apellido: 'López Vega', cuit: '20-34567890-4', email: 'fedelopezvega@gmail.com', telefono: '+54 11 6677 2211', cbuAlias: null, comisionPct: 8, notas: 'Sin CBU cargado — no podemos rendirle hasta que lo pase.' },
+    { id: 'own_004', nombre: 'Patricia', apellido: 'Iglesias', cuit: '27-45678901-5', email: 'patricia.iglesias@yahoo.com', telefono: '+54 11 4455 9988', cbuAlias: 'iglesias.cobro', comisionPct: 6.5, notas: 'Cobra directo (fideicomiso familiar).' },
+    { id: 'own_005', nombre: 'Martín', apellido: 'Bravo', cuit: '20-56789012-6', email: 'martin.bravo@gmail.com', telefono: '+54 11 3322 1144', cbuAlias: 'bravo.martin.usd', comisionPct: 8, notas: 'Inmueble en USD; cobra en pesos al MEP.' },
+  ];
+  for (const p of propietarios) {
+    await prisma.propietario.upsert({ where: { id: p.id }, update: {}, create: { ...p, inmobiliariaId: tid } });
+  }
+
+  // ===== Propiedades =====
+  const propiedades = [
+    { id: 'prp_001', direccion: 'Gorriti 4521, 3°B', ciudad: 'Palermo, CABA', provincia: 'Buenos Aires', tipo: 'DEPARTAMENTO' as const, ambientes: 2, m2: 48, estado: 'ALQUILADA' as const, sociedadId: 'soc_001' },
+    { id: 'prp_002', direccion: 'Av. Cabildo 2890, 7°A', ciudad: 'Belgrano, CABA', provincia: 'Buenos Aires', tipo: 'DEPARTAMENTO' as const, ambientes: 3, m2: 72, estado: 'ALQUILADA' as const, sociedadId: 'soc_001' },
+    { id: 'prp_003', direccion: 'Jorge Newbery 1820', ciudad: 'Colegiales, CABA', provincia: 'Buenos Aires', tipo: 'CASA' as const, ambientes: 4, m2: 130, estado: 'ALQUILADA' as const, sociedadId: 'soc_001' },
+    { id: 'prp_004', direccion: 'Honduras 4490, PB', ciudad: 'Palermo, CABA', provincia: 'Buenos Aires', tipo: 'LOCAL' as const, ambientes: null, m2: 95, estado: 'ALQUILADA' as const, sociedadId: 'soc_002' },
+    { id: 'prp_005', direccion: 'Salguero 2240, 12°D', ciudad: 'Palermo, CABA', provincia: 'Buenos Aires', tipo: 'DEPARTAMENTO' as const, ambientes: 3, m2: 80, estado: 'ALQUILADA' as const, sociedadId: 'soc_003' },
+    { id: 'prp_006', direccion: 'Olleros 3920', ciudad: 'Las Cañitas, CABA', provincia: 'Buenos Aires', tipo: 'DEPARTAMENTO' as const, ambientes: 2, m2: 55, estado: 'EN_EDICION' as const, sociedadId: 'soc_001' },
+  ];
+  for (const p of propiedades) {
+    await prisma.propiedad.upsert({ where: { id: p.id }, update: {}, create: { ...p, inmobiliariaId: tid } });
+  }
+
+  // Participaciones (cotitularidad)
+  const participaciones = [
+    { propiedadId: 'prp_001', propietarioId: 'own_001', porcentaje: 60 },
+    { propiedadId: 'prp_001', propietarioId: 'own_002', porcentaje: 40 },
+    { propiedadId: 'prp_002', propietarioId: 'own_002', porcentaje: 100 },
+    { propiedadId: 'prp_003', propietarioId: 'own_003', porcentaje: 100 },
+    { propiedadId: 'prp_004', propietarioId: 'own_002', porcentaje: 100 },
+    { propiedadId: 'prp_005', propietarioId: 'own_004', porcentaje: 100 },
+    { propiedadId: 'prp_006', propietarioId: 'own_005', porcentaje: 100 },
+  ];
+  for (const pp of participaciones) {
+    const ya = await prisma.participacionPropietario.findFirst({
+      where: { propiedadId: pp.propiedadId, propietarioId: pp.propietarioId },
+    });
+    if (!ya) await prisma.participacionPropietario.create({ data: { ...pp, inmobiliariaId: tid } });
+  }
+
+  // ===== Contratos (ids exactos del mock) =====
+  const contratos = [
+    { id: 'cnt_001', propiedadId: 'prp_001', estado: 'ACTIVO' as const, monto: 480000, moneda: 'ARS' as const, fechaInicio: '2025-09-01', fechaFin: '2028-08-31', diaPago: 5, indiceAjuste: 'ICL' as const, frecuenciaAjusteMeses: 12, proximoAjuste: '2026-06-01', tipoContrato: 'ALQUILER' as const, cbuAlias: 'eduardo.lopez.gorriti', titularCuenta: 'Eduardo López Vega', comisionInmobiliaria: 4.17, depositoGarantia: 480000, tasaPunitorioDiaria: 0.001 },
+    { id: 'cnt_002', propiedadId: 'prp_002', estado: 'ACTIVO' as const, monto: 620000, moneda: 'ARS' as const, fechaInicio: '2025-03-01', fechaFin: '2027-02-28', diaPago: 10, indiceAjuste: 'IPC' as const, frecuenciaAjusteMeses: 6, proximoAjuste: '2026-09-01', tipoContrato: 'ALQUILER' as const },
+    { id: 'cnt_003', propiedadId: 'prp_003', estado: 'ACTIVO' as const, monto: 510000, moneda: 'ARS' as const, fechaInicio: '2024-11-01', fechaFin: '2026-10-31', diaPago: 5, indiceAjuste: 'ICL' as const, frecuenciaAjusteMeses: 12, proximoAjuste: '2026-11-01', tipoContrato: 'ALQUILER' as const },
+    { id: 'cnt_004', propiedadId: 'prp_004', estado: 'ACTIVO' as const, monto: 720000, moneda: 'ARS' as const, fechaInicio: '2025-06-01', fechaFin: '2028-05-31', diaPago: 1, indiceAjuste: 'IPC' as const, frecuenciaAjusteMeses: 4, proximoAjuste: '2026-10-01', tipoContrato: 'ALQUILER' as const },
+    { id: 'cnt_005', propiedadId: 'prp_005', estado: 'ACTIVO' as const, monto: 850000, moneda: 'ARS' as const, fechaInicio: '2025-12-01', fechaFin: '2027-11-30', diaPago: 5, indiceAjuste: 'CASA_PROPIA' as const, frecuenciaAjusteMeses: 6, proximoAjuste: '2026-12-01', tipoContrato: 'ALQUILER' as const, modoCobranza: 'PROPIETARIO_DIRECTO' as const, cobraDirectoPropietarioId: 'own_004' },
+    { id: 'cnt_006', propiedadId: 'prp_006', estado: 'BORRADOR' as const, monto: 1200, moneda: 'USD' as const, fechaInicio: '2026-07-01', fechaFin: '2029-06-30', diaPago: 5, indiceAjuste: 'FIJO' as const, frecuenciaAjusteMeses: 12, tipoContrato: 'ALQUILER' as const, cargadoPor: 'Camila Acosta', cargadoRol: 'CARGA' as const, cargadoAt: '2026-05-22', pendienteAprobacion: true },
+    { id: 'cnt_007', propiedadId: 'prp_002', estado: 'ACTIVO' as const, monto: 0, moneda: 'ARS' as const, fechaInicio: '2026-01-01', fechaFin: '2027-12-31', diaPago: 10, indiceAjuste: 'FIJO' as const, frecuenciaAjusteMeses: 12, tipoContrato: 'SOLO_EXPENSAS' as const, montoExpensas: 285000, cargadoPor: 'Camila Acosta', cargadoRol: 'CARGA' as const, aprobadoPor: 'Roberto Tapia' },
+    { id: 'cnt_008', propiedadId: 'prp_006', estado: 'BORRADOR' as const, monto: 540000, moneda: 'ARS' as const, fechaInicio: '2026-07-01', fechaFin: '2028-06-30', diaPago: 5, indiceAjuste: 'ICL' as const, frecuenciaAjusteMeses: 12, tipoContrato: 'ALQUILER_Y_EXPENSAS' as const, montoExpensas: 110000, cargadoPor: 'Camila Acosta', cargadoRol: 'CARGA' as const, pendienteAprobacion: true },
+  ];
+  for (const c of contratos) {
+    const { fechaInicio, fechaFin, proximoAjuste, cargadoAt, ...resto } = c;
+    await prisma.contrato.upsert({
+      where: { id: c.id },
+      update: {},
+      create: {
+        ...resto,
+        inmobiliariaId: tid,
+        fechaInicio: new Date(fechaInicio),
+        fechaFin: new Date(fechaFin),
+        proximoAjuste: proximoAjuste ? new Date(proximoAjuste) : null,
+        cargadoAt: cargadoAt ? new Date(cargadoAt) : null,
+      },
+    });
+  }
+  // Puntero contratoActual de cada propiedad alquilada
+  const punteros: Array<[string, string]> = [
+    ['prp_001', 'cnt_001'], ['prp_002', 'cnt_002'], ['prp_003', 'cnt_003'],
+    ['prp_004', 'cnt_004'], ['prp_005', 'cnt_005'],
+  ];
+  for (const [prp, cnt] of punteros) {
+    await prisma.propiedad.update({ where: { id: prp }, data: { contratoActualId: cnt } });
+  }
+
+  // ===== Inquilinos (titulares 1:1 con su contrato) =====
   const inquilinos = [
-    { email: 'mariela.sosa@gmail.com', nombre: 'Mariela Sosa', telefono: '+5491145678900', dni: '32456789' },
-    { email: 'juan.perez@inquilino.demo', nombre: 'Juan Pérez', telefono: null, dni: null },
-    { email: 'laura.gimenez@inquilino.demo', nombre: 'Laura Giménez', telefono: null, dni: null },
-    { email: 'carlos.romero@inquilino.demo', nombre: 'Carlos Romero', telefono: null, dni: null },
-    { email: 'ana.pereyra@inquilino.demo', nombre: 'Ana Pereyra', telefono: null, dni: null },
-    { email: 'tomas.bravo@inquilino.demo', nombre: 'Tomás Bravo', telefono: null, dni: null },
+    { email: 'mariela.sosa@gmail.com', nombre: 'Mariela', apellido: 'Sosa', telefono: '+5491145678900', dni: '32456789', contratoId: 'cnt_001' },
+    { email: 'juan.perez@inquilino.demo', nombre: 'Juan', apellido: 'Pérez', contratoId: 'cnt_002' },
+    { email: 'laura.gimenez@inquilino.demo', nombre: 'Laura', apellido: 'Giménez', contratoId: 'cnt_003' },
+    { email: 'carlos.romero@inquilino.demo', nombre: 'Carlos', apellido: 'Romero', contratoId: 'cnt_004' },
+    { email: 'ana.pereyra@inquilino.demo', nombre: 'Ana', apellido: 'Pereyra', contratoId: 'cnt_005' },
+    { email: 'tomas.bravo@inquilino.demo', nombre: 'Tomás', apellido: 'Bravo', contratoId: 'cnt_006' },
+    { email: 'lucia.fernandez@inquilino.demo', nombre: 'Lucía', apellido: 'Fernández', contratoId: 'cnt_008' },
   ];
   for (const i of inquilinos) {
     await prisma.inquilino.upsert({
-      where: { email: i.email },
-      update: { nombre: i.nombre },
-      create: { ...i, inmobiliariaId: inmobiliaria.id },
+      where: { inmobiliariaId_email: { inmobiliariaId: tid, email: i.email } },
+      update: { nombre: i.nombre, apellido: i.apellido, contratoId: i.contratoId },
+      create: { ...i, inmobiliariaId: tid },
     });
   }
 
-  return { inmobiliariaId: inmobiliaria.id };
+  return { inmobiliariaId: tid };
 }
 
 // Runner CLI

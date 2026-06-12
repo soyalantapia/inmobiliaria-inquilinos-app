@@ -7,5 +7,7 @@ export default defineConfig({
     // Las suites comparten la DB de test (schema "test") → sin paralelismo entre archivos
     fileParallelism: false,
     testTimeout: 30_000,
+    // seedBase corre en beforeAll contra la DB remota (Railway) — necesita aire
+    hookTimeout: 60_000,
   },
 });

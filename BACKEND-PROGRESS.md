@@ -56,9 +56,35 @@
 - ⏭ Diferido a Fase 2: pantalla de login del PANEL inmo (hoy auto-entra con mock;
       tiene sentido hacerla cuando el panel consuma datos reales).
 
-### Fases 2-7 — pendientes (ver PROMPT-BACKEND-FULL.md)
-- El workflow de extracción del modelo de datos (specs → schema completo) corre
-  en background; su output alimenta Fase 2+.
+### ✅ Fase 2 — Núcleo de datos (COMPLETA)
+- [x] Schema COMPLETO del producto aplicado: 72 modelos + 72 enums (migración
+      `nucleo_completo`, 2206 líneas SQL) — derivado por workflow de los 37+
+      stores del front. Ids de mocks preservados (cnt_001, prp_001, own_001…).
+      CodigoOtp endurecido (hash+TTL+un uso, FK a Inquilino).
+- [x] Seeds core: tenant completo + 3 sociedades + 5 propietarios + 6 propiedades
+      + participaciones (cotitularidad 60/40 en prp_001) + 8 contratos + 7
+      inquilinos titulares 1:1.
+- [x] Endpoints core (requireUsuario + capacidad + tenant scope): GET /contratos,
+      /contratos/:id, /propiedades, /propiedades/:id, /propietarios,
+      /propietarios/:id, /inquilinos — con joins (titular, participaciones,
+      contratoActual, arca, cuentaCobranza).
+- [x] Tests 16/16 (auth 9 + core 7: joins, cotitularidad, 401, 403 inquilino→panel).
+- [x] Front inmo: `lib/api/session.ts` (auto-login dev de Roberto hasta que haya
+      pantalla de login) + `lib/api/hooks.ts` (useContratos con adaptador a
+      ContratoListado y fallback a mocks si API caída) + página /contratos
+      migrada al hook.
+- [x] E2E verificado: browser → CORS preflight → POST /auth/login → GET
+      /contratos → los 8 contratos de la DB renderizados en el panel.
+- Modo API dev: `.env.local` en ambas apps con NEXT_PUBLIC_API_URL=http://localhost:3002.
+- Bridge documentado (muere en Fase 3): estadoPagoActual/proximoVencimiento del
+  listado se completan desde el mock por id (derivados de liquidaciones).
+- BACKEND-ENDPOINTS.md: 92 endpoints + 39 seeds planificados (del workflow).
+
+### Fases 3-7 — pendientes (ver PROMPT-BACKEND-FULL.md y BACKEND-ENDPOINTS.md)
+- Fase 3 (la plata): Liquidacion/Pago/MovimientoCaja/Rendicion/Aprobacion ya
+  están migrados en el schema — faltan seeds + endpoints + front.
+- Las specs exactas de campos viven en /tmp/backend-specs.json (regenerables
+  re-corriendo el workflow de extracción si se pierde el tmp).
 
 ## Datos operativos
 - Railway: proyecto `b01a1ecb-2169-46ef-b6cf-71a2d6cca234`, env `857efc10-…`

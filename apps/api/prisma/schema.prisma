@@ -1,5 +1,22 @@
-// My Alquiler — schema base (los modelos de negocio se agregan por fase,
-// derivados de la spec extraída de los stores del front).
+// =============================================================================
+// My Alquiler — prisma/schema.prisma (draft FINAL)
+// PostgreSQL · multi-tenant por Inmobiliaria: TODO modelo de negocio lleva
+// inmobiliariaId + relación. Catálogos GLOBALES sin tenant: Capacidad, Cupon,
+// TramoPlan, TramoPlanConsorcios, MetaSemestre, CohortMes, FunnelStep,
+// FuenteAdquisicion, BloqueadorObjetivo. CodigoOtp es infra de auth pre-tenant.
+//
+// DERIVADOS QUE NO SE PERSISTEN (los computa el API):
+//   Contrato.estadoPagoActual / proximoVencimiento · Propietario.totalCobradoMes,
+//   totalRecibirMes, propiedadesIds · dashboardMetrics / agenda / alertas / feed ·
+//   SLA de reclamos (EN_TIEMPO/PROXIMO_VENCIMIENTO/VENCIDO) · estado suscripción
+//   (AL_DIA/GRACIA/ATRASADO/PAUSADO) · MatchSugerido de resumen bancario ·
+//   scoring inquilino · puntajeCargaBoletas · calendario / hitos · cargos a cobrar.
+//
+// Archivos: los dataUrl base64 del mock migran a object storage (campos *Url).
+// Punitorios: lineales, recalculados al día (montoPunitorio de Liquidacion es
+// snapshot informativo, la verdad la calcula el server con fechas LOCALES).
+// =============================================================================
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -9,72 +26,2178 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ===== Tenancy + Auth (Fase 1) =====
+// =============================================================================
+// ENUMS (valores EXACTOS del código)
+// =============================================================================
 
-enum RolUsuario {
+enum Rol {
   ADMIN
   OPERADOR
   CARGA
   LECTURA
 }
 
-model Inmobiliaria {
-  id        String   @id @default(cuid())
-  nombre    String
-  slug      String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+enum Moneda {
+  ARS
+  USD
+}
 
-  usuarios   Usuario[]
-  inquilinos Inquilino[]
+enum EstadoContrato {
+  BORRADOR
+  ACTIVO
+  FINALIZADO
+  RESCINDIDO
+}
+
+enum IndiceAjuste {
+  ICL
+  IPC
+  CASA_PROPIA
+  UVA
+  CAC
+  RIPTE
+  FIJO
+}
+
+enum TipoContrato {
+  ALQUILER
+  SOLO_EXPENSAS
+  ALQUILER_Y_EXPENSAS
+}
+
+enum ModoCobranza {
+  INMOBILIARIA
+  PROPIETARIO_DIRECTO
+}
+
+enum EstadoLiquidacion {
+  PENDIENTE
+  PAGADO
+  PARCIAL
+  VENCIDO
+}
+
+enum MetodoPago {
+  TRANSFERENCIA
+  MERCADOPAGO
+  EFECTIVO
+}
+
+enum TipoPago {
+  TOTAL
+  PARCIAL
+}
+
+enum MetodoPagoInformado {
+  TRANSFERENCIA
+  MERCADOPAGO
+  EFECTIVO
+  CHEQUE
+}
+
+// AccionConciliacion colapsa en Pago: estado + observacion + decididoPor/At
+enum EstadoConciliacion {
+  INFORMADO
+  CONCILIADO
+  RECHAZADO
+}
+
+enum MetodoComprobante {
+  MERCADOPAGO
+  TRANSFERENCIA
+  QR
+  CRIPTO
+}
+
+enum TipoPropiedad {
+  DEPARTAMENTO
+  CASA
+  LOCAL
+  GALPON
+}
+
+enum EstadoPropiedad {
+  ALQUILADA
+  DISPONIBLE
+  EN_EDICION
+}
+
+enum CondicionFiscal {
+  MONOTRIBUTO
+  RESPONSABLE_INSCRIPTO
+  EXENTO
+}
+
+enum TipoComprobanteAfip {
+  FACTURA_C
+  FACTURA_A
+  FACTURA_B
+  RECIBO_C
+}
+
+enum TipoGarante {
+  PROPIETARIA
+  CAUCION
+  SUELDO
+  DIGITAL
+}
+
+enum PermisoCoInquilino {
+  VER
+  PAGAR
+  COMPLETO
+}
+
+enum EstadoInvitacion {
+  PENDIENTE
+  ACEPTADO
+}
+
+enum Sexo {
+  F
+  M
+}
+
+enum RangoIngreso {
+  A1
+  A2
+  A3
+  A4
+  A5
+  A6
+  A7
+}
+
+enum Recomendacion {
+  APTO
+  APTO_CON_GARANTIA
+  NO_APTO
+}
+
+enum EstadoScreening {
+  EN_CURSO
+  COMPLETO
+  CONVERTIDO
+}
+
+enum TipoEventoContrato {
+  CREADO
+  AJUSTE_APLICADO
+  PAGO_RECIBIDO
+  PAGO_VENCIDO
+  RECLAMO_CREADO
+  COMUNICACION_ENVIADA
+  GARANTE_RENOVADO
+  INTENCION_RENOVACION
+}
+
+enum DecisionRenovacion {
+  RENOVAR
+  NO_RENOVAR
+  PENSANDO
+  SIN_RESPUESTA
+}
+
+enum TipoMovimientoCaja {
+  GASTO
+  INGRESO_EXTRA
+}
+
+enum CategoriaGasto {
+  PLOMERIA
+  ELECTRICIDAD
+  GAS
+  CERRAJERIA
+  PINTURA
+  EXPENSAS
+  MATERIALES
+  OTRO
+}
+
+enum MetodoRendicion {
+  TRANSFERENCIA
+  MERCADOPAGO
+  EFECTIVO
+}
+
+enum TipoGastoRendido {
+  CAJA
+  TRABAJO
+}
+
+enum MetodoCargoPagado {
+  TRANSFERENCIA
+  MERCADOPAGO
+  OTRO
+}
+
+enum FormaPago {
+  DEBITO_AUTOMATICO
+  PREPAGO
+  ANUAL
+}
+
+enum MovimientoTipo {
+  pago
+  pago_expensa
+  ajuste
+  punitorio
+  reembolso
+  aviso
+}
+
+enum SignoMovimiento {
+  salida
+  entrada
+  info
+}
+
+enum TipoAprobacion {
+  CONTRATO_CARGADO
+  GASTO_CAJA_ELIMINACION
+  DEVOLUCION_DEPOSITO
+  AJUSTE_FUERA_DE_INDICE
+}
+
+enum RolAutorAprobacion {
+  OPERADOR
+  CARGA
+}
+
+enum EstadoAprobacion {
+  PENDIENTE
+  APROBADA
+  RECHAZADA
+}
+
+enum TipoEventoAuditoria {
+  PAGO_CONCILIADO
+  PAGO_RECHAZADO
+  PAGO_REVERTIDO
+  PAGO_MANUAL_CARGADO
+  CONTRATO_CARGADO
+  CONTRATO_APROBADO
+  CONTRATO_RECHAZADO
+  PROPIEDAD_CARGADA
+  GASTO_CAJA_CARGADO
+  GASTO_CAJA_ELIMINADO
+  RECLAMO_CLASIFICADO
+  PROFESIONAL_ASIGNADO
+  EQUIPO_INVITADO
+  EQUIPO_REMOVIDO
+  FACTURA_ARCA_EMITIDA
+  PROPIETARIO_CONFIRMO_RECIBO
+  PROPIETARIO_RENDIDO
+  MODO_COBRANZA_CAMBIADO
+}
+
+enum GrupoCapacidad {
+  lectura
+  carga
+  operativa
+  sensible
+}
+
+enum TipoReporte {
+  BUG
+  IDEA
+}
+
+enum SeveridadReporte {
+  BLOQUEA
+  MOLESTO
+  MENOR
+}
+
+enum TipoTrial {
+  PROMOTOR
+  LANZAMIENTO
+  CUSTOM
+}
+
+enum KeyTramoPlan {
+  STARTER
+  GROWTH
+  PRO
+  ENTERPRISE
+}
+
+enum KeyTramoPlanConsorcios {
+  CNS_BASIC
+  CNS_STANDARD
+  CNS_PREMIUM
+  CNS_ELITE
+}
+
+enum EstadoFactura {
+  PAGADA
+  PENDIENTE
+  VENCIDA
+}
+
+enum MetodoPagoFactura {
+  TRANSFERENCIA
+  TARJETA
+}
+
+enum EstadoConvenio {
+  ACTIVO
+  PROXIMAMENTE
+  CERRADO
+}
+
+enum EstadoReferido {
+  INVITADO
+  REGISTRADO
+  ACTIVO
+  CHURN
+}
+
+enum PrioridadBloqueador {
+  alta
+  media
+  baja
+}
+
+enum CategoriaReclamo {
+  PLOMERIA
+  ELECTRICIDAD
+  CERRADURA
+  CALEFACCION
+  OTRO
+}
+
+enum UrgenciaReclamo {
+  BAJA
+  MEDIA
+  ALTA
+  EMERGENCIA
+}
+
+enum EstadoReclamo {
+  ABIERTO
+  EN_CURSO
+  RESUELTO
+  CERRADO
+  RECHAZADO
+}
+
+enum ClasificacionReclamo {
+  USO_Y_GOCE
+  DESPERFECTO
+}
+
+enum TipoEventoReclamo {
+  CREADO
+  ASIGNADO
+  EN_CURSO
+  RESUELTO
+  CERRADO
+  RECHAZADO
+  MENSAJE_INQUILINO
+  MENSAJE_INMO
+  CLASIFICADO
+  PROFESIONAL_ASIGNADO
+  VISITA_CONFIRMADA
+  VISITA_EN_CAMINO
+  VISITA_LISTO
+}
+
+enum CategoriaProfesional {
+  PLOMERO
+  ELECTRICISTA
+  GASISTA
+  CERRAJERO
+  PINTOR
+  TECNICO_AC
+  FLETE
+}
+
+enum EstadoVisitaProfesional {
+  ASIGNADO
+  CONFIRMADA
+  EN_CAMINO
+  LISTO
+}
+
+enum DecisionInquilino {
+  CONFORME
+  PERSISTE
+}
+
+enum EstadoUF {
+  AL_DIA
+  PENDIENTE
+  VENCIDO
+  CON_PLAN_PAGO
+}
+
+enum CategoriaMovimientoConsorcio {
+  COBRANZA
+  SUELDO
+  MANTENIMIENTO
+  SERVICIO
+  IMPUESTO
+  OTRO
+}
+
+enum TipoAsamblea {
+  ORDINARIA
+  EXTRAORDINARIA
+}
+
+enum CategoriaInventario {
+  ILUMINACION
+  PLOMERIA
+  CERRAJERIA
+  LIMPIEZA
+  ELECTRICIDAD
+  OFICINA
+  OTRO
+}
+
+enum TipoMovimientoInventario {
+  ENTRADA
+  SALIDA
+  AJUSTE
+}
+
+enum TipoServicioConsorcio {
+  LUZ_PASILLO
+  GAS_CENTRAL
+  AGUA_GENERAL
+  ASCENSOR
+  CALEFACCION_CENTRAL
+  ABL
+  OTRO
+}
+
+enum TipoDocContrato {
+  CONTRATO_FIRMADO
+  DNI_TITULAR_FRENTE
+  DNI_TITULAR_DORSO
+  DNI_GARANTE_FRENTE
+  DNI_GARANTE_DORSO
+  RECIBO_SUELDO
+  CONVENIO_DESOCUPACION
+  PAGARE
+  FOTO_WHATSAPP
+  OTRO
+}
+
+enum EstadoInvitadoInquilino {
+  PENDIENTE_ACTIVACION
+  ACTIVO
+}
+
+enum PrioridadAnuncio {
+  NORMAL
+  IMPORTANTE
+  URGENTE
+}
+
+enum AudienciaAnuncio {
+  TODOS_INQUILINOS
+  INQUILINOS_MOROSOS
+  INQUILINOS_PENDIENTES
+  TODOS_PROPIETARIOS
+  TODOS_CONSORCIOS
+  INQUILINOS_CONSORCIO
+  CONTRATOS_ESPECIFICOS
+}
+
+enum CanalAnuncio {
+  APP
+  WHATSAPP
+  EMAIL
+}
+
+enum TipoServicio {
+  LUZ
+  GAS
+  AGUA
+  INTERNET
+  ABL
+  CABLE
+}
+
+enum EstadoBoleta {
+  SUBIDA
+  PAGADA
+  EN_REVISION
+}
+
+enum RolMensajeChat {
+  USER
+  ASSISTANT
+}
+
+enum CategoriaDocumento {
+  IDENTIDAD
+  INGRESOS
+  GARANTE
+  OTRO
+}
+
+enum NivelHistorial {
+  EXCELENTE
+  BUENO
+  REGULAR
+  NUEVO
+}
+
+// =============================================================================
+// TENANT RAÍZ
+// =============================================================================
+
+model Inmobiliaria {
+  id                  String   @id @default(cuid())
+  nombre              String
+  cuit                String
+  email               String
+  telefono            String
+  matricula           String
+  direccionCalle      String
+  direccionAltura     String
+  direccionPiso       String   @default("")
+  direccionCiudad     String
+  direccionProvincia  String
+  direccionCp         String
+  notasFiscales       String   @default("")
+  esPiloto            Boolean  @default(true)
+  codigoReferido      String   @unique
+  mesesGratisGanados  Int      @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  usuarios                   Usuario[]
+  sociedades                 Sociedad[]
+  propietarios               Propietario[]
+  arcaConfigs                ArcaConfig[]
+  cuentasCobranzaDirecta     CuentaCobranzaDirecta[]
+  propiedades                Propiedad[]
+  participaciones            ParticipacionPropietario[]
+  contratos                  Contrato[]
+  contratoDrafts             ContratoDraft[]
+  inquilinos                 Inquilino[]
+  garantes                   Garante[]
+  coInquilinos               CoInquilino[]
+  liquidaciones              Liquidacion[]
+  pagos                      Pago[]
+  comprobantes               Comprobante[]
+  screenings                 Screening[]
+  eventosContrato            EventoContrato[]
+  intencionesRenovacion      IntencionRenovacion[]
+  movimientosCaja            MovimientoCaja[]
+  cierresCaja                CierreCaja[]
+  rendiciones                Rendicion[]
+  gastosRendidos             GastoRendido[]
+  cargosPagados              CargoPagado[]
+  suscripcion                Suscripcion?
+  movimientosFeed            MovimientoFeed[]
+  datosBancarios             DatosBancarios?
+  proximosCambiosBancarios   ProximoCambioBancario[]
+  resumenesBancarios         ResumenBancario[]
+  creditosDetectados         CreditoDetectado[]
+  aprobaciones               Aprobacion[]
+  eventosAuditoria           EventoAuditoria[]
+  reportesPiloto             ReportePiloto[]
+  trial                      Trial?
+  facturas                   Factura[]
+  cuponAplicado              CuponAplicado?
+  referidos                  Referido[]
+  reclamos                   Reclamo[]
+  reclamoEventos             ReclamoEvento[]
+  profesionales              Profesional[]
+  visitasProfesional         VisitaProfesional[]
+  confirmacionesReclamo      ConfirmacionReclamo[]
+  consorcios                 Consorcio[]
+  unidadesFuncionales        UnidadFuncional[]
+  movimientosConsorcio       MovimientoConsorcio[]
+  asambleasConsorcio         AsambleaConsorcio[]
+  itemsInventario            ItemInventario[]
+  movimientosInventario      MovimientoInventario[]
+  serviciosComunes           ServicioComunConsorcio[]
+  documentosContrato         DocumentoContrato[]
+  inquilinosInvitados        InquilinoInvitado[]
+  coInquilinosInvitados      CoInquilinoInvitado[]
+  documentosAdjuntosInvitado DocumentoAdjuntoInvitado[]
+  anuncios                   Anuncio[]
+  anunciosAcuses             AnuncioAcuse[]
+  boletasServicio            BoletaServicio[]
+  serviciosPublicos          ServicioPublico[]
+  ratingsReclamo             RatingReclamo[]
+  chatMensajes               ChatMensaje[]
+  documentos                 Documento[]
+  slotsDocumento             SlotDocumento[]
+  certificados               CertificadoInquilino[]
 
   @@map("inmobiliarias")
 }
 
+// =============================================================================
+// GOBERNANZA — usuarios, permisos, PIN, auditoría, aprobaciones
+// =============================================================================
+
 model Usuario {
-  id             String     @id @default(cuid())
-  inmobiliariaId String
-  email          String     @unique
-  nombre         String
-  rol            RolUsuario
-  passwordHash   String
-  pinHash        String?
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
+  id                  String    @id @default(cuid())
+  inmobiliariaId      String
+  inmobiliaria        Inmobiliaria @relation(fields: [inmobiliariaId], references: [id])
+  nombre              String
+  apellido            String
+  email               String
+  imageUrl            String?
+  rol                 Rol
+  passwordHash        String?
+  // PinSeguridad colapsado acá (1:1): hash argon2/bcrypt de ^\d{4,6}$,
+  // 5 fallos consecutivos => bloqueadoHasta = now+30min; unlock TTL 5min es
+  // challenge/token server-side efímero, NO estado persistente.
+  pinHash             String?
+  pinIntentosFallidos Int       @default(0)
+  pinBloqueadoHasta   DateTime?
+  activo              Boolean   @default(true)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
-  inmobiliaria Inmobiliaria @relation(fields: [inmobiliariaId], references: [id])
+  aprobacionesCargadas  Aprobacion[]      @relation("AprobacionesCargadas")
+  aprobacionesDecididas Aprobacion[]      @relation("AprobacionesDecididas")
+  eventosAuditoria      EventoAuditoria[]
+  reportesPiloto        ReportePiloto[]
+  pagosDecididos        Pago[]            @relation("PagosDecididos")
 
+  @@unique([inmobiliariaId, email])
   @@index([inmobiliariaId])
   @@map("usuarios")
 }
 
-model Inquilino {
-  id             String   @id @default(cuid())
-  inmobiliariaId String
-  email          String   @unique
-  nombre         String
-  telefono       String?
-  dni            String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+// Catálogo GLOBAL de permisos (matriz CAPACIDADES de permisos.ts) — sin tenant.
+model Capacidad {
+  key             String         @id // ej: "pago.conciliar"
+  label           String
+  roles           Rol[]
+  requierePin     Boolean        @default(false)
+  rolesAprobacion Rol[] // roles cuya carga queda PENDIENTE de aprobación ADMIN
+  grupo           GrupoCapacidad
 
-  inmobiliaria Inmobiliaria @relation(fields: [inmobiliariaId], references: [id])
-  otps         OtpCode[]
-
-  @@index([inmobiliariaId])
-  @@map("inquilinos")
+  @@map("capacidades")
 }
 
-model OtpCode {
+model Aprobacion {
+  id                   String             @id @default(cuid())
+  inmobiliariaId       String
+  inmobiliaria         Inmobiliaria       @relation(fields: [inmobiliariaId], references: [id])
+  tipo                 TipoAprobacion
+  titulo               String
+  descripcion          String
+  monto                Decimal?           @db.Decimal(14, 2)
+  entidadId            String // polimórfico: cnt_* / mov_* / pago según tipo
+  cargadoPorId         String
+  cargadoPor           Usuario            @relation("AprobacionesCargadas", fields: [cargadoPorId], references: [id])
+  rolAutor             RolAutorAprobacion
+  cargadoAt            DateTime
+  estado               EstadoAprobacion   @default(PENDIENTE)
+  aprobadoPorId        String?
+  aprobadoPor          Usuario?           @relation("AprobacionesDecididas", fields: [aprobadoPorId], references: [id])
+  aprobadoAt           DateTime?
+  comentarioAprobador  String?
+  notas                String?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  @@index([inmobiliariaId, estado])
+  @@index([cargadoPorId])
+  @@index([aprobadoPorId])
+  @@map("aprobaciones")
+}
+
+// Append-only; el server NO recorta (pagina). Módulo se deriva del tipo.
+model EventoAuditoria {
+  id                 String              @id @default(cuid())
+  inmobiliariaId     String
+  inmobiliaria       Inmobiliaria        @relation(fields: [inmobiliariaId], references: [id])
+  tipo               TipoEventoAuditoria
+  autorId            String
+  autor              Usuario             @relation(fields: [autorId], references: [id])
+  rolAutor           String // snapshot del rol al momento del evento
+  entidadId          String // polimórfico: pag_* / cnt_* / mov_* / rec_*
+  entidadDescripcion String
+  detalle            String?
+  fecha              DateTime            @default(now())
+
+  @@index([inmobiliariaId, fecha])
+  @@index([inmobiliariaId, tipo])
+  @@index([autorId])
+  @@map("eventos_auditoria")
+}
+
+// OTP inquilino: 6 dígitos, TTL 5 min, cooldown reenvío 45 s, máx 5 intentos.
+// Efímero y pre-auth (email trim+lowercase) — sin tenant.
+model CodigoOtp {
   id          String    @id @default(cuid())
   inquilinoId String
+  inquilino   Inquilino @relation(fields: [inquilinoId], references: [id])
   codeHash    String
   expiresAt   DateTime
   usedAt      DateTime?
   createdAt   DateTime  @default(now())
 
-  inquilino Inquilino @relation(fields: [inquilinoId], references: [id])
-
   @@index([inquilinoId])
-  @@map("otp_codes")
+  @@map("codigos_otp")
+}
+
+model ReportePiloto {
+  id           String            @id @default(cuid())
+  inmobiliariaId String
+  inmobiliaria Inmobiliaria      @relation(fields: [inmobiliariaId], references: [id])
+  usuarioId    String
+  usuario      Usuario           @relation(fields: [usuarioId], references: [id])
+  rol          String // snapshot del rol del JWT
+  tipo         TipoReporte
+  titulo       String
+  detalle      String
+  url          String
+  pantalla     String
+  urlCompleta  String?
+  navegador    String?
+  viewport     String?
+  severidad    SeveridadReporte?
+  // tracking capturado server-side (TODO explícito del código)
+  ip           String?
+  userAgent    String?
+  sessionId    String?
+  build        String?
+  reportadoAt  DateTime          @default(now())
+
+  @@index([inmobiliariaId])
+  @@index([usuarioId])
+  @@map("reportes_piloto")
+}
+
+model Trial {
+  id             String       @id @default(cuid())
+  inmobiliariaId String       @unique
+  inmobiliaria   Inmobiliaria @relation(fields: [inmobiliariaId], references: [id])
+  tipo           TipoTrial
+  motivo         String
+  desde          DateTime
+  hasta          DateTime // vigente si hasta >= hoy; no se cobran facturas
+  activadoPor    String // equipo de ventas
+
+  @@map("trials")
+}
+
+// =============================================================================
+// EMPRESA / SOCIEDADES / PLAN / CUPONES / REFERIDOS
+// =============================================================================
+
+model Sociedad {
+  id              String          @id @default(cuid())
+  inmobiliariaId  String
+  inmobiliaria    Inmobiliaria    @relation(fields: [inmobiliariaId], references: [id])
+  razonSocial     String
+  nombreComercial String
+  cuit            String
+  condicionFiscal CondicionFiscal
+  domicilioFiscal String
+  email           String
+  telefono        String
+  cuentaCobranza  Json? // { banco, titular, cbu, alias, cuit }
+  afip            Json? // { conectado, puntoVenta?, tipoComprobante? (incl. RECIBO_X), conectadoDesde? }
+  esPrincipal     Boolean         @default(false) // exactamente 1 entre las activas
+  activa          Boolean         @default(true) // baja lógica
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  propiedades Propiedad[]
+  contratos   Contrato[]
+  consorcios  Consorcio[]
+
+  @@index([inmobiliariaId])
+  @@map("sociedades")
+}
+
+// Catálogo GLOBAL de tramos (plan.ts)
+model TramoPlan {
+  id     String       @id @default(cuid())
+  key    KeyTramoPlan @unique
+  nombre String
+  desde  Int
+  hasta  Int?
+  precio Int
+  rango  String
+
+  @@map("tramos_plan")
+}
+
+// Catálogo GLOBAL — métrica: suma de cantUf de los consorcios del tenant
+model TramoPlanConsorcios {
+  id     String                 @id @default(cuid())
+  key    KeyTramoPlanConsorcios @unique
+  nombre String
+  desde  Int
+  hasta  Int?
+  precio Int
+  rango  String
+
+  @@map("tramos_plan_consorcios")
+}
+
+// Factura del SaaS a la inmobiliaria. IVA = round(base*0.21).
+model Factura {
+  id                String             @id @default(cuid())
+  inmobiliariaId    String
+  inmobiliaria      Inmobiliaria       @relation(fields: [inmobiliariaId], references: [id])
+  periodo           String // 'YYYY-MM'
+  fechaEmision      DateTime
+  propiedadesEnPlan Int
+  plan              KeyTramoPlan
+  importeBase       Int
+  importeIva        Int
+  importeTotal      Int
+  estado            EstadoFactura
+  fechaPago         DateTime?
+  metodoPago        MetodoPagoFactura?
+  pdfUrl            String
+
+  @@index([inmobiliariaId, periodo])
+  @@map("facturas")
+}
+
+// Suscripción del tenant = ConfigFormaPago + EstadoCuenta mergeadas.
+// Estado AL_DIA/GRACIA/ATRASADO/PAUSADO es DERIVADO (gracia 15d, corte 45d).
+model Suscripcion {
+  id                String       @id @default(cuid())
+  inmobiliariaId    String       @unique
+  inmobiliaria      Inmobiliaria @relation(fields: [inmobiliariaId], references: [id])
+  forma             FormaPago
+  ultimos4          String?
+  marca             String?
+  proximoCobro      DateTime
+  configuradaAt     DateTime
+  vencimientoUltimo DateTime
+  ultimoCobroOk     Boolean      @default(true)
+  updatedAt         DateTime     @updatedAt
+
+  @@map("suscripciones")
+}
+
+// Catálogo GLOBAL de convenios/cupones (cupones.ts)
+model Cupon {
+  codigo       String          @id // ej: "CUCICBA10"
+  convenio     String
+  porcentaje   Int
+  vigenciaHasta DateTime?
+  detalle      String
+  sigla        String?
+  cobertura    String?
+  descripcion  String?
+  sitioWeb     String?
+  estado       EstadoConvenio?
+  matriculados Int?
+  beneficios   String[]
+
+  aplicaciones CuponAplicado[]
+
+  @@map("cupones")
+}
+
+// 1 cupón activo por inmobiliaria. origenSeed reemplaza el sentinel 'seed-demo'.
+model CuponAplicado {
+  id             String       @id @default(cuid())
+  inmobiliariaId String       @unique
+  inmobiliaria   Inmobiliaria @relation(fields: [inmobiliariaId], references: [id])
+  cuponCodigo    String
+  cupon          Cupon        @relation(fields: [cuponCodigo], references: [codigo])
+  aplicadoAt     DateTime     @default(now())
+  origenSeed     Boolean      @default(false)
+
+  @@index([cuponCodigo])
+  @@map("cupones_aplicados")
+}
+
+model Referido {
+  id                 String         @id @default(cuid())
+  inmobiliariaId     String // tenant referente (codigoReferido + mesesGratisGanados)
+  inmobiliaria       Inmobiliaria   @relation(fields: [inmobiliariaId], references: [id])
+  nombre             String
+  email              String
+  inmobiliariaNombre String? // campo 'inmobiliaria' del mock (texto libre)
+  estado             EstadoReferido @default(INVITADO)
+  invitadoAt         DateTime
+  registradoAt       DateTime?
+  activoDesde        DateTime? // al pasar a ACTIVO: +1 mes gratis al referente
+
+  @@index([inmobiliariaId])
+  @@map("referidos")
+}
+
+// =============================================================================
+// PANEL INTERNO /admin/objetivos — GLOBAL equipo My Alquiler (NO multi-tenant)
+// =============================================================================
+
+model MetaSemestre {
+  id              String @id @default(cuid())
+  clientesActivos Int
+  mrrArs          Int
+  inicio          String // 'YYYY-MM'
+  cierre          String // 'YYYY-MM'
+
+  @@map("metas_semestre")
+}
+
+model CohortMes {
+  id      String @id @default(cuid())
+  periodo String @unique // 'YYYY-MM'
+  nuevos  Int
+  churn   Int
+  activos Int
+  mrr     Int
+
+  @@map("cohortes_mes")
+}
+
+model FunnelStep {
+  id         String @id @default(cuid())
+  orden      Int
+  etapa      String
+  cantidad   Int
+  conversion Float
+
+  @@map("funnel_steps")
+}
+
+model FuenteAdquisicion {
+  id         String @id @default(cuid())
+  nombre     String
+  clientes   Int
+  costoTotal Int
+
+  @@map("fuentes_adquisicion")
+}
+
+model BloqueadorObjetivo {
+  id          String              @id @default(cuid())
+  prioridad   PrioridadBloqueador
+  titulo      String
+  responsable String
+  detalle     String
+
+  @@map("bloqueadores_objetivo")
+}
+
+// =============================================================================
+// CORE — propietarios, propiedades, contratos, inquilinos, garantes
+// =============================================================================
+
+model Propietario {
+  id             String       @id @default(cuid())
+  inmobiliariaId String
+  inmobiliaria   Inmobiliaria @relation(fields: [inmobiliariaId], references: [id])
+  nombre         String
+  apellido       String
+  cuit           String
+  email          String
+  telefono       String
+  cbuAlias       String? // null => alerta 'sin CBU no podemos rendir'
+  comisionPct    Float        @default(8)
+  notas          String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  // totalCobradoMes / totalRecibirMes / propiedadesIds: DERIVADOS, no persistir
+  arca                     ArcaConfig?
+  cuentaCobranza           CuentaCobranzaDirecta?
+  participaciones          ParticipacionPropietario[]
+  rendiciones              Rendicion[]
+  contratosCobranzaDirecta Contrato[]                 @relation("CobranzaDirecta")
+
+  @@index([inmobiliariaId])
+  @@map("propietarios")
+}
+
+// 1:1 con Propietario. Si conectado=true, al conciliar un pago se emite
+// factura/recibo automático con puntoVenta + tipoComprobante.
+model ArcaConfig {
+  id              String               @id @default(cuid())
+  inmobiliariaId  String
+  inmobiliaria    Inmobiliaria         @relation(fields: [inmobiliariaId], references: [id])
+  propietarioId   String               @unique
+  propietario     Propietario          @relation(fields: [propietarioId], references: [id])
+  conectado       Boolean              @default(false)
+  condicionFiscal CondicionFiscal?
+  puntoVenta      String?
+  tipoComprobante TipoComprobanteAfip?
+  conectadoDesde  DateTime?
+  updatedAt       DateTime             @updatedAt
+
+  @@index([inmobiliariaId])
+  @@map("arca_configs")
+}
+
+// Cuenta que ve el inquilino cuando el contrato es PROPIETARIO_DIRECTO.
+model CuentaCobranzaDirecta {
+  id             String       @id @default(cuid())
+  inmobiliariaId String
+  inmobiliaria   Inmobiliaria @relation(fields: [inmobiliariaId], references: [id])
+  propietarioId  String       @unique
+  propietario    Propietario  @relation(fields: [propietarioId], references: [id])
+  banco          String
+  titular        String
+  cbu            String
+  alias          String
+  cuit           String
+  updatedAt      DateTime     @updatedAt
+
+  @@index([inmobiliariaId])
+  @@map("cuentas_cobranza_directa")
+}
+
+model Propiedad {
+  id              String          @id @default(cuid())
+  inmobiliariaId  String
+  inmobiliaria    Inmobiliaria    @relation(fields: [inmobiliariaId], references: [id])
+  direccion       String
+  ciudad          String
+  provincia       String
+  tipo            TipoPropiedad
+  ambientes       Int?
+  m2              Float?
+  fotoUrl         String?
+  estado          EstadoPropiedad @default(EN_EDICION)
+  contratoActualId String?        @unique // null si DISPONIBLE
+  contratoActual  Contrato?       @relation("ContratoActual", fields: [contratoActualId], references: [id])
+  sociedadId      String? // null => sociedad principal (fallback)
+  sociedad        Sociedad?       @relation(fields: [sociedadId], references: [id])
+  consorcioId     String? // FK que reemplaza el match heurístico por dirección
+  consorcio       Consorcio?      @relation(fields: [consorcioId], references: [id])
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  contratos         Contrato[]                 @relation("PropiedadContratos")
+  participaciones   ParticipacionPropietario[]
+  reclamos          Reclamo[]
+  movimientosCaja   MovimientoCaja[]
+  serviciosPublicos ServicioPublico[]
+  invitados         InquilinoInvitado[]
+
+  @@index([inmobiliariaId])
+  @@index([sociedadId])
+  @@index([consorcioId])
+  @@map("propiedades")
+}
+
+// Cotitularidad: Σ porcentaje por propiedad = 100 ± 0.5 (valida el API).
+// Sin filas explícitas => reparto igualitario.
+model ParticipacionPropietario {
+  inmobiliariaId String
+  inmobiliaria   Inmobiliaria @relation(fields: [inmobiliariaId], references: [id])
+  propiedadId    String
+  propiedad      Propiedad    @relation(fields: [propiedadId], references: [id])
+  propietarioId  String
+  propietario    Propietario  @relation(fields: [propietarioId], references: [id])
+  porcentaje     Float
+
+  @@id([propiedadId, propietarioId])
+  @@index([inmobiliariaId])
+  @@index([propietarioId])
+  @@map("participaciones_propietario")
+}
+
+model Contrato {
+  id                        String          @id @default(cuid())
+  inmobiliariaId            String
+  inmobiliaria              Inmobiliaria    @relation(fields: [inmobiliariaId], references: [id])
+  propiedadId               String
+  propiedad                 Propiedad       @relation("PropiedadContratos", fields: [propiedadId], references: [id])
+  sociedadId                String? // null => sociedad principal
+  sociedad                  Sociedad?       @relation(fields: [sociedadId], references: [id])
+  estado                    EstadoContrato  @default(BORRADOR)
+  monto                     Decimal         @db.Decimal(14, 2)
+  moneda                    Moneda          @default(ARS)
+  fechaInicio               DateTime
+  fechaFin                  DateTime
+  diaPago                   Int
+  indiceAjuste              IndiceAjuste
+  frecuenciaAjusteMeses     Int
+  proximoAjuste             DateTime?
+  tipoContrato              TipoContrato    @default(ALQUILER)
+  montoExpensas             Decimal?        @db.Decimal(14, 2)
+  cbuAlias                  String? // override del CBU del propietario para esta unidad
+  titularCuenta             String?
+  comisionInmobiliaria      Float?
+  depositoGarantia          Decimal?        @db.Decimal(14, 2)
+  tasaPunitorioDiaria       Float? // % por día (default app: 0.15 ≈ 4.5%/mes)
+  modoCobranza              ModoCobranza    @default(INMOBILIARIA)
+  cobraDirectoPropietarioId String?
+  cobraDirectoPropietario   Propietario?    @relation("CobranzaDirecta", fields: [cobraDirectoPropietarioId], references: [id])
+
+  // Workflow de carga/aprobación (rol CARGA => BORRADOR + pendienteAprobacion)
+  cargadoPor          String?
+  cargadoRol          Rol?
+  cargadoAt           DateTime?
+  pendienteAprobacion Boolean   @default(false)
+  aprobadoPor         String?
+  aprobadoAt          DateTime?
+
+  // DERIVADOS (no persistidos): estadoPagoActual, proximoVencimiento
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  propiedadActualDe   Propiedad?            @relation("ContratoActual")
+  inquilinoTitular    Inquilino?
+  garantes            Garante[]
+  coInquilinos        CoInquilino[]
+  liquidaciones       Liquidacion[]
+  pagos               Pago[]
+  comprobantes        Comprobante[]
+  eventos             EventoContrato[]
+  intencionRenovacion IntencionRenovacion?
+  screenings          Screening[]
+  drafts              ContratoDraft[]
+  reclamos            Reclamo[]
+  movimientosCaja     MovimientoCaja[]
+  movimientosFeed     MovimientoFeed[]
+  documentos          DocumentoContrato[]
+  invitados           InquilinoInvitado[]
+  boletas             BoletaServicio[]
+  chatMensajes        ChatMensaje[]
+  certificados        CertificadoInquilino[]
+  cargosPagados       CargoPagado[]
+
+  @@index([inmobiliariaId, estado])
+  @@index([propiedadId])
+  @@index([sociedadId])
+  @@index([cobraDirectoPropietarioId])
+  @@map("contratos")
+}
+
+// Draft de extracción IA (ContratoExtraido): cada campo {valor, confianza}.
+model ContratoDraft {
+  id             String       @id @default(cuid())
+  inmobiliariaId String
+  inmobiliaria   Inmobiliaria @relation(fields: [inmobiliariaId], references: [id])
+  contratoId     String? // set al convertir el draft en Contrato
+  contrato       Contrato?    @relation(fields: [contratoId], references: [id])
+  datos          Json // { campo: { valor, confianza: 'alto'|'medio'|'bajo' } }
+  creadoPor      String?
+  createdAt      DateTime     @default(now())
+
+  @@index([inmobiliariaId])
+  @@index([contratoId])
+  @@map("contrato_drafts")
+}
+
+// Titular del contrato (mata la denormalización Contrato.inquilino).
+// email = identidad de login OTP de la app inquilino.
+model Inquilino {
+  id             String       @id @default(cuid())
+  inmobiliariaId String
+  inmobiliaria   Inmobiliaria @relation(fields: [inmobiliariaId], references: [id])
+  nombre         String
+  apellido       String?
+  email          String? // null hasta invitación; OTP requiere email
+  telefono       String?
+  cuit           String?
+  dni            String?
+  esInvitado     Boolean      @default(false)
+  contratoId     String?      @unique // titular 1:1
+  contrato       Contrato?    @relation(fields: [contratoId], references: [id])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  acuses       AnuncioAcuse[]
+  documentos   Documento[]
+  certificados CertificadoInquilino[]
+  codigosOtp   CodigoOtp[]
+
+  @@unique([inmobiliariaId, email])
+  @@index([inmobiliariaId])
+  @@map("inquilinos")
+}
+
+model Garante {
+  id               String       @id @default(cuid())
+  inmobiliariaId   String
+  inmobiliaria     Inmobiliaria @relation(fields: [inmobiliariaId], references: [id])
+  contratoId       String
+  contrato         Contrato     @relation(fields: [contratoId], references: [id])
+  tipo             TipoGarante
+  nombreProveedor  String
+  numeroPoliza     String?
+  montoCobertura   Decimal      @db.Decimal(14, 2)
+  vigenciaHasta    DateTime
+  contactoNombre   String
+  contactoTelefono String
+  contactoEmail    String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@index([inmobiliariaId])
+  @@index([contratoId])
+  @@map("garantes")
+}
+
+model CoInquilino {
+  id             String             @id @default(cuid())
+  inmobiliariaId String
+  inmobiliaria   Inmobiliaria       @relation(fields: [inmobiliariaId], references: [id])
+  contratoId     String
+  contrato       Contrato           @relation(fields: [contratoId], references: [id])
+  nombre         String
+  email          String
+  telefono       String?
+  dni            String?
+  relacion       String // texto libre: 'Pareja', 'Hermano', 'Amigo', 'Otro'
+  permiso        PermisoCoInquilino
+  estado         EstadoInvitacion   @default(PENDIENTE)
+  invitadoAt     DateTime           @default(now())
+  aceptadoAt     DateTime?
+
+  @@index([inmobiliariaId])
+  @@index([contratoId])
+  @@map("co_inquilinos")
+}
+
+// =============================================================================
+// SCREENING
+// =============================================================================
+
+model Screening {
+  id                   String          @id @default(cuid())
+  inmobiliariaId       String
+  inmobiliaria         Inmobiliaria    @relation(fields: [inmobiliariaId], references: [id])
+  estado               EstadoScreening @default(EN_CURSO) // pendiente→completo→convertido
+  contratoId           String? // set al convertir a contrato
+  contrato             Contrato?       @relation(fields: [contratoId], references: [id])
+  cuit                 String
+  dni                  String
+  nombre               String
+  apellido             String
+  fechaNacimiento      DateTime
+  sexo                 Sexo
+  domicilio            Json
+  telefonos            Json // TelefonoValidado[]: tipo CELULAR|FIJO + whatsappActivo
+  email                String?
+  bcra                 Json // RiesgoBcra bajo|medio|alto|irrecuperable, SituacionBcra 1-5
+  cheques              Json // { rechazadosCount, rechazadosMonto, levantadosCount, levantadosMonto }
+  familia              Json // VinculoFamiliar CONYUGE|PADRE_MADRE|CONVIVIENTE|HIJO|HERMANO
+  rangoIngresoFamiliar RangoIngreso
+  bcraFamiliar         Json
+  inmuebles            Json // Inmueble.tipo DEPARTAMENTO|CASA|TERRENO
+  vehiculos            Json
+  ingresos             Json // IngresosArca: categoriaArca, impuestos AC|EX|NA|NI, nominaUltimos6m
+  empleador            Json?
+  vecinos              Json
+  huellaDigital        Json // PlataformaDigital / EstadoPerfilDigital / CoherenciaHuella / hallazgos
+  scoreNosis           Int // 0-1000
+  recomendacion        Recomendacion
+  recomendacionRazon   String
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+
+  @@index([inmobiliariaId, estado])
+  @@index([contratoId])
+  @@map("screenings")
+}
+
+// =============================================================================
+// LIQUIDACIONES / PAGOS / COMPROBANTES
+// =============================================================================
+
+model Liquidacion {
+  id               String            @id @default(cuid())
+  inmobiliariaId   String
+  inmobiliaria     Inmobiliaria      @relation(fields: [inmobiliariaId], references: [id])
+  contratoId       String
+  contrato         Contrato          @relation(fields: [contratoId], references: [id])
+  periodo          String // 'YYYY-MM'
+  montoAlquiler    Decimal           @db.Decimal(14, 2)
+  montoExpensas    Decimal?          @db.Decimal(14, 2)
+  montoPunitorio   Decimal           @default(0) @db.Decimal(14, 2) // se recalcula al día, no congelar
+  montoTotal       Decimal           @db.Decimal(14, 2)
+  fechaVencimiento DateTime
+  fechaPago        DateTime?
+  estado           EstadoLiquidacion @default(PENDIENTE)
+  metodoPago       MetodoPago?
+  moneda           Moneda            @default(ARS)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  pagos        Pago[]
+  comprobantes Comprobante[]
+
+  @@unique([contratoId, periodo])
+  @@index([inmobiliariaId, estado])
+  @@index([inmobiliariaId, periodo])
+  @@map("liquidaciones")
+}
+
+// Pago informado por el inquilino, unificado entre apps.
+// AccionConciliacion COLAPSA acá: estado + observacion + decididoPor/decididoAt
+// (normaliza los typos decidiSAt/decidiSPor). N pagos por liquidación (parciales).
+model Pago {
+  id                  String              @id @default(cuid())
+  inmobiliariaId      String
+  inmobiliaria        Inmobiliaria        @relation(fields: [inmobiliariaId], references: [id])
+  contratoId          String
+  contrato            Contrato            @relation(fields: [contratoId], references: [id])
+  liquidacionId       String
+  liquidacion         Liquidacion         @relation(fields: [liquidacionId], references: [id])
+  periodo             String // 'YYYY-MM'
+  tipo                TipoPago            @default(TOTAL)
+  monto               Decimal             @db.Decimal(14, 2)
+  montoLiqTotal       Decimal?            @db.Decimal(14, 2) // snapshot del total al informar
+  metodo              MetodoPagoInformado
+  nroOperacion        String?
+  fechaTransferencia  DateTime
+  informadoAt         DateTime            @default(now()) // enviadoAt del lado inquilino
+  comprobanteUrl      String? // object storage (mata dataUrl)
+  comprobanteFileName String?
+  comprobanteMime     String?
+  comprobanteSize     Int?
+  notaInquilino       String?
+  extraccionIA        Json?
+  estado              EstadoConciliacion  @default(INFORMADO)
+  observacion         String? // obligatoria al RECHAZAR (valida API)
+  decididoPorId       String?
+  decididoPor         Usuario?            @relation("PagosDecididos", fields: [decididoPorId], references: [id])
+  decididoAt          DateTime?
+
+  @@index([inmobiliariaId, estado])
+  @@index([contratoId])
+  @@index([liquidacionId])
+  @@index([decididoPorId])
+  @@map("pagos")
+}
+
+// Recibo que ve el inquilino (derivable de Pago CONCILIADO, pero la app lo
+// lista como recurso propio).
+model Comprobante {
+  id             String            @id @default(cuid())
+  inmobiliariaId String
+  inmobiliaria   Inmobiliaria      @relation(fields: [inmobiliariaId], references: [id])
+  contratoId     String
+  contrato       Contrato          @relation(fields: [contratoId], references: [id])
+  liquidacionId  String?
+  liquidacion    Liquidacion?      @relation(fields: [liquidacionId], references: [id])
+  periodo        String // 'YYYY-MM'
+  monto          Decimal           @db.Decimal(14, 2)
+  moneda         Moneda            @default(ARS)
+  fechaPago      DateTime
+  metodo         MetodoComprobante
+  pdfUrl         String
+
+  @@index([inmobiliariaId])
+  @@index([contratoId])
+  @@index([liquidacionId])
+  @@map("comprobantes")
+}
+
+// =============================================================================
+// EVENTOS DE CONTRATO / RENOVACIÓN
+// =============================================================================
+
+model EventoContrato {
+  id             String             @id @default(cuid())
+  inmobiliariaId String
+  inmobiliaria   Inmobiliaria       @relation(fields: [inmobiliariaId], references: [id])
+  contratoId     String
+  contrato       Contrato           @relation(fields: [contratoId], references: [id])
+  tipo           TipoEventoContrato
+  titulo         String
+  detalle        String?
+  fecha          DateTime
+  autor          String // 'Sistema' en eventos automáticos
+
+  @@index([inmobiliariaId])
+  @@index([contratoId, fecha])
+  @@map("eventos_contrato")
+}
+
+// Unifica renovacion-storage (inquilino, typo 'decidiSAt') + mock inmo
+// ('fechaIntencion') en decididoAt. SIN_RESPUESTA es valor explícito.
+model IntencionRenovacion {
+  id             String             @id @default(cuid())
+  inmobiliariaId String
+  inmobiliaria   Inmobiliaria       @relation(fields: [inmobiliariaId], references: [id])
+  contratoId     String             @unique
+  contrato       Contrato           @relation(fields: [contratoId], references: [id])
+  decision       DecisionRenovacion @default(SIN_RESPUESTA)
+  comentario     String?
+  decididoAt     DateTime?
+  updatedAt      DateTime           @updatedAt
+
+  @@index([inmobiliariaId])
+  @@map("intenciones_renovacion")
+}
+
+// =============================================================================
+// PLATA — caja, cierres, rendiciones, cargos, feed, banco
+// =============================================================================
+
+model MovimientoCaja {
+  id                     String             @id @default(cuid())
+  inmobiliariaId         String
+  inmobiliaria           Inmobiliaria       @relation(fields: [inmobiliariaId], references: [id])
+  propiedadId            String
+  propiedad              Propiedad          @relation(fields: [propiedadId], references: [id])
+  contratoId             String?
+  contrato               Contrato?          @relation(fields: [contratoId], references: [id])
+  tipo                   TipoMovimientoCaja
+  categoria              CategoriaGasto
+  descripcion            String
+  monto                  Decimal            @db.Decimal(14, 2)
+  fecha                  DateTime
+  proveedor              String?
+  comprobanteUrl         String?
+  cargadoPor             String
+  // Loop caja→rendición: al rendir se marca descontado y se linkea la rendición
+  descontadoEnRendicion  Boolean            @default(false)
+  rendicionId            String?
+  rendicion              Rendicion?         @relation(fields: [rendicionId], references: [id])
+  createdAt              DateTime           @default(now())
+
+  @@index([inmobiliariaId, fecha])
+  @@index([propiedadId])
+  @@index([contratoId])
+  @@index([rendicionId])
+  @@map("movimientos_caja")
+}
+
+// Snapshot INMUTABLE de auditoría: 1 por (tenant, fecha); re-cerrar reemplaza.
+model CierreCaja {
+  id             String       @id @default(cuid())
+  inmobiliariaId String
+  inmobiliaria   Inmobiliaria @relation(fields: [inmobiliariaId], references: [id])
+  fecha          DateTime     @db.Date
+  ingresos       Decimal      @db.Decimal(14, 2)
+  egresos        Decimal      @db.Decimal(14, 2)
+  balanceDia     Decimal      @db.Decimal(14, 2)
+  efectivoEnMano Decimal      @db.Decimal(14, 2)
+  pendienteRendir Decimal     @db.Decimal(14, 2)
+  movimientos    Int
+  cerradoAt      DateTime
+  cerradoPor     String
+
+  @@unique([inmobiliariaId, fecha])
+  @@map("cierres_caja")
+}
+
+// montoNeto = montoBruto - comisionMonto - totalGastos
+model Rendicion {
+  id             String          @id @default(cuid())
+  inmobiliariaId String
+  inmobiliaria   Inmobiliaria    @relation(fields: [inmobiliariaId], references: [id])
+  propietarioId  String
+  propietario    Propietario     @relation(fields: [propietarioId], references: [id])
+  periodo        String // 'YYYY-MM'
+  montoBruto     Decimal         @db.Decimal(14, 2)
+  comisionPct    Float
+  comisionMonto  Decimal         @db.Decimal(14, 2) // snapshot congelado
+  totalGastos    Decimal         @default(0) @db.Decimal(14, 2)
+  montoNeto      Decimal         @db.Decimal(14, 2)
+  rendidoAt      DateTime        @default(now())
+  metodo         MetodoRendicion
+  notas          String?
+
+  gastos          GastoRendido[]
+  movimientosCaja MovimientoCaja[]
+
+  @@unique([propietarioId, periodo])
+  @@index([inmobiliariaId, periodo])
+  @@map("rendiciones")
+}
+
+// Snapshot congelado del gasto al rendir (el comprobante histórico sobrevive
+// ediciones del origen): refId soft 'caja:<movId>' | 'reclamo:<recId>',
+// propiedadId/direccion denormalizados A PROPÓSITO (sin FK dura).
+model GastoRendido {
+  id             String           @id @default(cuid())
+  inmobiliariaId String
+  inmobiliaria   Inmobiliaria     @relation(fields: [inmobiliariaId], references: [id])
+  rendicionId    String
+  rendicion      Rendicion        @relation(fields: [rendicionId], references: [id])
+  refId          String
+  tipo           TipoGastoRendido
+  fecha          DateTime
+  descripcion    String
+  proveedor      String?
+  monto          Decimal          @db.Decimal(14, 2) // parte del propietario
+  montoTotal     Decimal          @db.Decimal(14, 2)
+  participacion  Float
+  propiedadId    String // snapshot, sin FK
+  direccion      String // snapshot, sin FK
+
+  @@index([inmobiliariaId])
+  @@index([rendicionId])
+  @@map("gastos_rendidos")
+}
+
+// Marca que el cargo USO_Y_GOCE de un reclamo ya fue cobrado al inquilino.
+// El monto en lote (monto=0 en el mock) lo completa el API desde costoTrabajo.
+model CargoPagado {
+  id             String            @id @default(cuid())
+  inmobiliariaId String
+  inmobiliaria   Inmobiliaria      @relation(fields: [inmobiliariaId], references: [id])
+  reclamoId      String            @unique
+  reclamo        Reclamo           @relation(fields: [reclamoId], references: [id])
+  contratoId     String?
+  contrato       Contrato?         @relation(fields: [contratoId], references: [id])
+  monto          Decimal           @db.Decimal(14, 2)
+  pagadoAt       DateTime          @default(now())
+  metodo         MetodoCargoPagado
+
+  @@index([inmobiliariaId])
+  @@index([contratoId])
+  @@map("cargos_pagados")
+}
+
+// Feed estilo banco de /pagos (app inquilino). En backend se puede componer de
+// pagos+ajustes+cargos+reembolsos; se materializa para portar los seeds.
+model MovimientoFeed {
+  id             String          @id @default(cuid())
+  inmobiliariaId String
+  inmobiliaria   Inmobiliaria    @relation(fields: [inmobiliariaId], references: [id])
+  contratoId     String
+  contrato       Contrato        @relation(fields: [contratoId], references: [id])
+  tipo           MovimientoTipo
+  titulo         String
+  detalle        String
+  fecha          DateTime
+  monto          Decimal?        @db.Decimal(14, 2) // null en info/aviso
+  signo          SignoMovimiento
+
+  @@index([inmobiliariaId])
+  @@index([contratoId, fecha])
+  @@map("movimientos_feed")
+}
+
+// Cuenta recaudadora que ve el inquilino en el checkout (1:1 tenant).
+model DatosBancarios {
+  id             String       @id @default(cuid())
+  inmobiliariaId String       @unique
+  inmobiliaria   Inmobiliaria @relation(fields: [inmobiliariaId], references: [id])
+  banco          String
+  tipoCuenta     String
+  titular        String
+  cuit           String
+  cbu            String
+  alias          String
+  updatedAt      DateTime     @updatedAt
+
+  proximoCambio ProximoCambioBancario?
+
+  @@map("datos_bancarios")
+}
+
+// Vigente para el banner solo si fechaDesde > hoy; al llegar la fecha, el API
+// promueve cbu/alias a DatosBancarios.
+model ProximoCambioBancario {
+  id               String         @id @default(cuid())
+  inmobiliariaId   String
+  inmobiliaria     Inmobiliaria   @relation(fields: [inmobiliariaId], references: [id])
+  datosBancariosId String         @unique
+  datosBancarios   DatosBancarios @relation(fields: [datosBancariosId], references: [id])
+  fechaDesde       DateTime
+  cbu              String
+  alias            String
+  motivo           String?
+
+  @@index([inmobiliariaId])
+  @@map("proximos_cambios_bancarios")
+}
+
+// Upload de resumen bancario (NUNCA credenciales — constraint duro).
+// MatchSugerido se calcula on-the-fly; solo persiste la decisión final en Pago.
+model ResumenBancario {
+  id             String       @id @default(cuid())
+  inmobiliariaId String
+  inmobiliaria   Inmobiliaria @relation(fields: [inmobiliariaId], references: [id])
+  fileName       String
+  fileSize       Int
+  archivoUrl     String?
+  subidoAt       DateTime     @default(now())
+  subidoPor      String
+
+  creditos CreditoDetectado[]
+
+  @@index([inmobiliariaId])
+  @@map("resumenes_bancarios")
+}
+
+model CreditoDetectado {
+  id                String          @id @default(cuid())
+  inmobiliariaId    String
+  inmobiliaria      Inmobiliaria    @relation(fields: [inmobiliariaId], references: [id])
+  resumenBancarioId String
+  resumenBancario   ResumenBancario @relation(fields: [resumenBancarioId], references: [id])
+  fecha             DateTime
+  concepto          String
+  monto             Decimal         @db.Decimal(14, 2)
+  titularOrigen     String
+  cbuOrigen         String?
+  nroOperacion      String
+  bancoOrigen       String
+
+  @@index([inmobiliariaId])
+  @@index([resumenBancarioId])
+  @@map("creditos_detectados")
+}
+
+// =============================================================================
+// OPERACIÓN — reclamos, profesionales, visitas, consorcios, inventario
+// =============================================================================
+
+model Reclamo {
+  id              String                @id @default(cuid())
+  inmobiliariaId  String
+  inmobiliaria    Inmobiliaria          @relation(fields: [inmobiliariaId], references: [id])
+  contratoId      String
+  contrato        Contrato              @relation(fields: [contratoId], references: [id])
+  propiedadId     String? // para atribuir gastos en rendiciones
+  propiedad       Propiedad?            @relation(fields: [propiedadId], references: [id])
+  categoria       CategoriaReclamo
+  descripcion     String
+  urgencia        UrgenciaReclamo
+  estado          EstadoReclamo         @default(ABIERTO)
+  asignadoA       String? // operador interno (texto)
+  fotoUrl         String?
+  resolucion      String?
+  clasificacion   ClasificacionReclamo? // decide a quién se imputa costoTrabajo
+  profesionalId   String? // FK reemplaza los campos denormalizados del mock
+  profesional     Profesional?          @relation(fields: [profesionalId], references: [id])
+  costoTrabajo    Decimal?              @db.Decimal(14, 2)
+  costoTrabajoNotas String?
+  createdAt       DateTime              @default(now())
+  resueltoAt      DateTime?
+  updatedAt       DateTime              @updatedAt
+
+  eventos      ReclamoEvento[]
+  visita       VisitaProfesional?
+  confirmacion ConfirmacionReclamo?
+  rating       RatingReclamo?
+  cargoPagado  CargoPagado?
+
+  @@index([inmobiliariaId, estado])
+  @@index([contratoId])
+  @@index([propiedadId])
+  @@index([profesionalId])
+  @@map("reclamos")
+}
+
+// Timeline del reclamo (incluye chat MENSAJE_INQUILINO/MENSAJE_INMO).
+model ReclamoEvento {
+  id             String            @id @default(cuid())
+  inmobiliariaId String
+  inmobiliaria   Inmobiliaria      @relation(fields: [inmobiliariaId], references: [id])
+  reclamoId      String
+  reclamo        Reclamo           @relation(fields: [reclamoId], references: [id])
+  tipo           TipoEventoReclamo
+  autor          String // 'Profesional' al cerrar desde visita
+  contenido      String?
+  fecha          DateTime          @default(now())
+
+  @@index([inmobiliariaId])
+  @@index([reclamoId, fecha])
+  @@map("reclamo_eventos")
+}
+
+model Profesional {
+  id             String               @id @default(cuid())
+  inmobiliariaId String
+  inmobiliaria   Inmobiliaria         @relation(fields: [inmobiliariaId], references: [id])
+  nombre         String
+  categoria      CategoriaProfesional
+  zona           String
+  telefono       String
+  email          String?
+  rating         Float                @default(0) // seed; ponderado se calcula con RatingReclamo
+  cantTrabajos   Int                  @default(0)
+  ultimoTrabajo  DateTime?
+  verificado     Boolean              @default(false)
+  notas          String?
+  activo         Boolean              @default(true)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  reclamos Reclamo[]
+  visitas  VisitaProfesional[]
+
+  @@index([inmobiliariaId])
+  @@map("profesionales")
+}
+
+// Flujo del profesional vía link mágico /p/[token] (sin login).
+// marcarListo => transacción: visita LISTO + reclamo RESUELTO + costoTrabajo.
+// Los eventos VISITA_* del timeline se computan al vuelo desde acá.
+model VisitaProfesional {
+  id             String                  @id @default(cuid())
+  inmobiliariaId String
+  inmobiliaria   Inmobiliaria            @relation(fields: [inmobiliariaId], references: [id])
+  reclamoId      String                  @unique // 1 visita por reclamo
+  reclamo        Reclamo                 @relation(fields: [reclamoId], references: [id])
+  profesionalId  String
+  profesional    Profesional             @relation(fields: [profesionalId], references: [id])
+  token          String                  @unique // link mágico firmado
+  fechaVisita    DateTime?
+  estado         EstadoVisitaProfesional @default(ASIGNADO)
+  confirmadaAt   DateTime?
+  enCaminoAt     DateTime?
+  listoAt        DateTime?
+  notaFinal      String?
+  montoCobrado   Decimal?                @db.Decimal(14, 2)
+  fotoAntes      String?
+  fotoDespues    String?
+
+  @@index([inmobiliariaId])
+  @@index([profesionalId])
+  @@map("visitas_profesional")
+}
+
+// CONFORME ratifica el cierre; PERSISTE (comentario obligatorio) reabre/notifica.
+model ConfirmacionReclamo {
+  id             String            @id @default(cuid())
+  inmobiliariaId String
+  inmobiliaria   Inmobiliaria      @relation(fields: [inmobiliariaId], references: [id])
+  reclamoId      String            @unique
+  reclamo        Reclamo           @relation(fields: [reclamoId], references: [id])
+  estado         DecisionInquilino
+  fecha          DateTime          @default(now())
+  comentario     String?
+
+  @@index([inmobiliariaId])
+  @@map("confirmaciones_reclamo")
+}
+
+model RatingReclamo {
+  id             String       @id @default(cuid())
+  inmobiliariaId String
+  inmobiliaria   Inmobiliaria @relation(fields: [inmobiliariaId], references: [id])
+  reclamoId      String       @unique // 1 rating por reclamo (upsert)
+  reclamo        Reclamo      @relation(fields: [reclamoId], references: [id])
+  estrellas      Int // 1-5 (valida API)
+  comentario     String?
+  enviadoAt      DateTime     @default(now())
+
+  @@index([inmobiliariaId])
+  @@map("ratings_reclamo")
+}
+
+// =============================================================================
+// CONSORCIOS
+// =============================================================================
+
+model Consorcio {
+  id                     String       @id @default(cuid())
+  inmobiliariaId         String
+  inmobiliaria           Inmobiliaria @relation(fields: [inmobiliariaId], references: [id])
+  nombre                 String
+  direccion              String
+  cantUf                 Int // consistente con unidades reales (fix V2b-01)
+  sociedadId             String?
+  sociedad               Sociedad?    @relation(fields: [sociedadId], references: [id])
+  encargado              Json? // { nombre, sueldo }
+  periodoActual          String // 'YYYY-MM'
+  expensasPeriodoActual  Decimal      @db.Decimal(14, 2)
+  desde                  DateTime
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
+
+  unidades              UnidadFuncional[]
+  movimientos           MovimientoConsorcio[]
+  asambleas             AsambleaConsorcio[]
+  itemsInventario       ItemInventario[]
+  movimientosInventario MovimientoInventario[]
+  serviciosComunes      ServicioComunConsorcio[]
+  propiedades           Propiedad[]
+
+  @@index([inmobiliariaId])
+  @@index([sociedadId])
+  @@map("consorcios")
+}
+
+// Expensa de la UF: por coeficiente (Σ coeficientes = 100), salvo cargoFijo.
+model UnidadFuncional {
+  id             String       @id @default(cuid())
+  inmobiliariaId String
+  inmobiliaria   Inmobiliaria @relation(fields: [inmobiliariaId], references: [id])
+  consorcioId    String
+  consorcio      Consorcio    @relation(fields: [consorcioId], references: [id])
+  identificacion String // '1°A', 'PB Comercial'
+  titular        String
+  coeficiente    Float
+  telefono       String
+  estado         EstadoUF     @default(AL_DIA)
+  saldoDeudor    Decimal      @default(0) @db.Decimal(14, 2)
+  cargoFijo      Decimal?     @db.Decimal(14, 2)
+  serviciosUf    Json? // { luz?/gas?/agua?: { nis, medidor? } }
+
+  @@index([inmobiliariaId])
+  @@index([consorcioId])
+  @@map("unidades_funcionales")
+}
+
+// Convención de signo: monto >= 0 ingreso (cobranza UF), negativo egreso.
+model MovimientoConsorcio {
+  id             String                       @id @default(cuid())
+  inmobiliariaId String
+  inmobiliaria   Inmobiliaria                 @relation(fields: [inmobiliariaId], references: [id])
+  consorcioId    String
+  consorcio      Consorcio                    @relation(fields: [consorcioId], references: [id])
+  fecha          DateTime
+  concepto       String
+  monto          Decimal                      @db.Decimal(14, 2)
+  categoria      CategoriaMovimientoConsorcio
+
+  @@index([inmobiliariaId])
+  @@index([consorcioId, fecha])
+  @@map("movimientos_consorcio")
+}
+
+model AsambleaConsorcio {
+  id               String       @id @default(cuid())
+  inmobiliariaId   String
+  inmobiliaria     Inmobiliaria @relation(fields: [inmobiliariaId], references: [id])
+  consorcioId      String
+  consorcio        Consorcio    @relation(fields: [consorcioId], references: [id])
+  fecha            DateTime
+  tipo             TipoAsamblea
+  asunto           String
+  asistentes       Int
+  acuerdoPrincipal String
+
+  @@index([inmobiliariaId])
+  @@index([consorcioId])
+  @@map("asambleas_consorcio")
+}
+
+// Alerta stock bajo: cantidadActual < minimoStock (derivada).
+model ItemInventario {
+  id             String              @id @default(cuid())
+  inmobiliariaId String
+  inmobiliaria   Inmobiliaria        @relation(fields: [inmobiliariaId], references: [id])
+  consorcioId    String
+  consorcio      Consorcio           @relation(fields: [consorcioId], references: [id])
+  categoria      CategoriaInventario
+  nombre         String
+  unidad         String // 'unidades', 'bidones', 'rollos'
+  cantidadActual Int // clamp >= 0
+  minimoStock    Int
+  costoUnitario  Decimal?            @db.Decimal(14, 2)
+  notas          String?
+  actualizadoAt  DateTime            @updatedAt
+
+  movimientos MovimientoInventario[]
+
+  @@index([inmobiliariaId])
+  @@index([consorcioId])
+  @@map("items_inventario")
+}
+
+// ENTRADA suma, SALIDA resta, AJUSTE setea valor absoluto.
+model MovimientoInventario {
+  id             String                   @id @default(cuid())
+  inmobiliariaId String
+  inmobiliaria   Inmobiliaria             @relation(fields: [inmobiliariaId], references: [id])
+  itemId         String
+  item           ItemInventario           @relation(fields: [itemId], references: [id])
+  consorcioId    String
+  consorcio      Consorcio                @relation(fields: [consorcioId], references: [id])
+  tipo           TipoMovimientoInventario
+  cantidad       Int
+  motivo         String
+  ufDestino      String?
+  fecha          DateTime                 @default(now())
+  cargadoPor     String
+
+  @@index([inmobiliariaId])
+  @@index([itemId])
+  @@index([consorcioId])
+  @@map("movimientos_inventario")
+}
+
+// Upsert por (consorcio, tipo).
+model ServicioComunConsorcio {
+  id                   String                @id @default(cuid())
+  inmobiliariaId       String
+  inmobiliaria         Inmobiliaria          @relation(fields: [inmobiliariaId], references: [id])
+  consorcioId          String
+  consorcio            Consorcio             @relation(fields: [consorcioId], references: [id])
+  tipo                 TipoServicioConsorcio
+  proveedor            String
+  nis                  String
+  numeroMedidor        String?
+  costoPromedioMensual Decimal?              @db.Decimal(14, 2)
+  observaciones        String?
+  actualizadoAt        DateTime              @updatedAt
+
+  @@unique([consorcioId, tipo])
+  @@index([inmobiliariaId])
+  @@map("servicios_comunes_consorcio")
+}
+
+// =============================================================================
+// DOCUMENTOS DE CONTRATO / INQUILINOS INVITADOS
+// =============================================================================
+
+// dataUrl base64 → object storage; límite 2MB se valida server-side.
+model DocumentoContrato {
+  id                 String          @id @default(cuid())
+  inmobiliariaId     String
+  inmobiliaria       Inmobiliaria    @relation(fields: [inmobiliariaId], references: [id])
+  contratoId         String
+  contrato           Contrato        @relation(fields: [contratoId], references: [id])
+  tipo               TipoDocContrato
+  etiqueta           String
+  garanteIndex       Int?
+  periodoLiquidacion String?
+  nombreArchivo      String
+  tipoMime           String
+  tamanioBytes       Int
+  archivoUrl         String
+  subidoAt           DateTime        @default(now())
+  subidoPor          String
+
+  @@index([inmobiliariaId])
+  @@index([contratoId])
+  @@map("documentos_contrato")
+}
+
+// Invitación de inquilino (WhatsApp obligatorio, email opcional — pilotos).
+// Activación: primer login OTP por email => ACTIVO + activadoAt.
+model InquilinoInvitado {
+  id              String                  @id @default(cuid())
+  inmobiliariaId  String
+  inmobiliaria    Inmobiliaria            @relation(fields: [inmobiliariaId], references: [id])
+  propiedadId     String
+  propiedad       Propiedad               @relation(fields: [propiedadId], references: [id])
+  contratoId      String?
+  contrato        Contrato?               @relation(fields: [contratoId], references: [id])
+  nombre          String
+  apellido        String
+  telefono        String // WhatsApp obligatorio
+  email           String?
+  dni             String
+  fechaNacimiento DateTime?
+  estado          EstadoInvitadoInquilino @default(PENDIENTE_ACTIVACION)
+  invitadoAt      DateTime                @default(now())
+  invitadoPor     String                  @default("Equipo de la inmobiliaria")
+  activadoAt      DateTime?
+
+  coInquilinos CoInquilinoInvitado[]
+  documentos   DocumentoAdjuntoInvitado[]
+
+  @@index([inmobiliariaId])
+  @@index([propiedadId])
+  @@index([contratoId])
+  @@map("inquilinos_invitados")
+}
+
+model CoInquilinoInvitado {
+  id             String             @id @default(cuid())
+  inmobiliariaId String
+  inmobiliaria   Inmobiliaria       @relation(fields: [inmobiliariaId], references: [id])
+  invitadoId     String
+  invitado       InquilinoInvitado  @relation(fields: [invitadoId], references: [id])
+  nombre         String
+  apellido       String
+  celular        String
+  email          String?
+  relacion       String // texto libre
+  permiso        PermisoCoInquilino
+
+  @@index([inmobiliariaId])
+  @@index([invitadoId])
+  @@map("co_inquilinos_invitados")
+}
+
+model DocumentoAdjuntoInvitado {
+  id             String            @id @default(cuid())
+  inmobiliariaId String
+  inmobiliaria   Inmobiliaria      @relation(fields: [inmobiliariaId], references: [id])
+  invitadoId     String
+  invitado       InquilinoInvitado @relation(fields: [invitadoId], references: [id])
+  nombre         String
+  tipoMime       String
+  tamanioBytes   Int
+  archivoUrl     String
+  subidoAt       DateTime          @default(now())
+
+  @@index([inmobiliariaId])
+  @@index([invitadoId])
+  @@map("documentos_adjuntos_invitado")
+}
+
+// =============================================================================
+// COMUNICACIÓN — anuncios, boletas, servicios, chat, documentos, certificado
+// =============================================================================
+
+// destinatariosCount se materializa al enviar (snapshot de la audiencia).
+model Anuncio {
+  id                 String           @id @default(cuid())
+  inmobiliariaId     String
+  inmobiliaria       Inmobiliaria     @relation(fields: [inmobiliariaId], references: [id])
+  titulo             String
+  cuerpo             String
+  prioridad          PrioridadAnuncio @default(NORMAL)
+  audiencia          AudienciaAnuncio
+  audienciaIds       String[] // cnsr_* (INQUILINOS_CONSORCIO) o cnt_* (CONTRATOS_ESPECIFICOS)
+  canales            CanalAnuncio[]
+  enviadoPor         String
+  enviadoAt          DateTime
+  destinatariosCount Int              @default(0)
+  programadoPara     DateTime?
+
+  acuses AnuncioAcuse[]
+
+  @@index([inmobiliariaId, enviadoAt])
+  @@map("anuncios")
+}
+
+// unique(anuncioId, usuarioId) del requerimiento: el "usuario" lector es el
+// Inquilino logueado (la identidad sale del JWT, muere DEMO_INQUILINO).
+model AnuncioAcuse {
+  id             String       @id @default(cuid())
+  inmobiliariaId String
+  inmobiliaria   Inmobiliaria @relation(fields: [inmobiliariaId], references: [id])
+  anuncioId      String
+  anuncio        Anuncio      @relation(fields: [anuncioId], references: [id])
+  inquilinoId    String
+  inquilino      Inquilino    @relation(fields: [inquilinoId], references: [id])
+  leidoAt        DateTime? // marcarLeido no pisa leidoAt previo
+  confirmadoAt   DateTime? // 'Enterado' implica leidoAt si faltaba
+
+  @@unique([anuncioId, inquilinoId])
+  @@index([inmobiliariaId])
+  @@index([inquilinoId])
+  @@map("anuncios_acuses")
+}
+
+model BoletaServicio {
+  id             String       @id @default(cuid())
+  inmobiliariaId String
+  inmobiliaria   Inmobiliaria @relation(fields: [inmobiliariaId], references: [id])
+  contratoId     String
+  contrato       Contrato     @relation(fields: [contratoId], references: [id])
+  tipo           TipoServicio
+  periodo        String // 'YYYY-MM'
+  monto          Decimal      @db.Decimal(14, 2)
+  vencimiento    DateTime
+  estado         EstadoBoleta @default(SUBIDA) // label UI de SUBIDA: 'Cargada'
+  nombreArchivo  String
+  tipoMime       String
+  tamanioBytes   Int
+  archivoUrl     String
+  subidoAt       DateTime     @default(now())
+  pagadoAt       DateTime?
+  notas          String?
+
+  @@index([inmobiliariaId])
+  @@index([contratoId, periodo])
+  @@map("boletas_servicio")
+}
+
+// Upsert por (propiedad, tipo).
+model ServicioPublico {
+  id                      String       @id @default(cuid())
+  inmobiliariaId          String
+  inmobiliaria            Inmobiliaria @relation(fields: [inmobiliariaId], references: [id])
+  propiedadId             String
+  propiedad               Propiedad    @relation(fields: [propiedadId], references: [id])
+  tipo                    TipoServicio
+  distribuidora           String
+  nis                     String
+  numeroMedidor           String?
+  titular                 String?
+  observaciones           String?
+  consumoPromedioMensual  Decimal?     @db.Decimal(14, 2)
+  actualizadoAt           DateTime     @updatedAt
+
+  @@unique([propiedadId, tipo])
+  @@index([inmobiliariaId])
+  @@map("servicios_publicos")
+}
+
+// Asistente IA del contrato; citas = [{ clausula, texto }].
+model ChatMensaje {
+  id             String         @id @default(cuid())
+  inmobiliariaId String
+  inmobiliaria   Inmobiliaria   @relation(fields: [inmobiliariaId], references: [id])
+  contratoId     String
+  contrato       Contrato       @relation(fields: [contratoId], references: [id])
+  rol            RolMensajeChat
+  contenido      String
+  citas          Json?
+  createdAt      DateTime       @default(now())
+
+  @@index([inmobiliariaId])
+  @@index([contratoId, createdAt])
+  @@map("chat_mensajes")
+}
+
+// Checklist documental configurable por inmobiliaria (antes constante).
+model SlotDocumento {
+  id             String             @id @default(cuid())
+  inmobiliariaId String
+  inmobiliaria   Inmobiliaria       @relation(fields: [inmobiliariaId], references: [id])
+  codigo         String // 'dni-frente', 'recibo-1', ...
+  categoria      CategoriaDocumento
+  titulo         String
+  descripcion    String
+  requerido      Boolean            @default(false)
+
+  documentos Documento[]
+
+  @@unique([inmobiliariaId, codigo])
+  @@map("slots_documento")
+}
+
+model Documento {
+  id             String             @id @default(cuid())
+  inmobiliariaId String
+  inmobiliaria   Inmobiliaria       @relation(fields: [inmobiliariaId], references: [id])
+  inquilinoId    String
+  inquilino      Inquilino          @relation(fields: [inquilinoId], references: [id])
+  categoria      CategoriaDocumento
+  nombre         String
+  tipoMime       String
+  tamanioBytes   Int
+  archivoUrl     String
+  subidoAt       DateTime           @default(now())
+  vencimiento    DateTime?
+  slotId         String? // sin slot = documento libre en OTRO
+  slot           SlotDocumento?     @relation(fields: [slotId], references: [id])
+
+  @@index([inmobiliariaId])
+  @@index([inquilinoId])
+  @@index([slotId])
+  @@map("documentos")
+}
+
+// 'Reemplazo del garante': hash HMAC-SHA256 firmado con clave privada de
+// My Alquiler sobre SOLO datos inmutables (dni|contratoId|inmobiliaria).
+// Verificación pública /verificar/[hash]: firma + no-revocación. Validez 30 días.
+model CertificadoInquilino {
+  id              String         @id @default(cuid())
+  inmobiliariaId  String
+  inmobiliaria    Inmobiliaria   @relation(fields: [inmobiliariaId], references: [id])
+  hash            String         @unique // formato XXXX-XXXX-XXXX
+  inquilinoId     String
+  inquilino       Inquilino      @relation(fields: [inquilinoId], references: [id])
+  contratoId      String
+  contrato        Contrato       @relation(fields: [contratoId], references: [id])
+  inquilinoData   Json // snapshot { nombre, dni, email, telefono }
+  contratoActual  Json // snapshot { direccion, inmobiliaria, fechaInicio, montoMensual, moneda, mesesCumplidos }
+  historial       Json // snapshot { cuotasTotales, cuotasPagadas, cuotasAlDia, atrasoPromedioDias, pagosRechazados, ratingPromedio }
+  nivel           NivelHistorial
+  nivelDetalle    String
+  generadoAt      DateTime       @default(now())
+  validoHasta     DateTime
+  urlVerificacion String
+  revocadoAt      DateTime?
+
+  @@index([inmobiliariaId])
+  @@index([inquilinoId])
+  @@index([contratoId])
+  @@map("certificados_inquilino")
 }

@@ -21,7 +21,8 @@ import { cn } from '@llave/ui/cn';
 import { Input } from '@llave/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@llave/ui/table';
 import { Topbar } from '@/components/topbar';
-import { contratosMock, propiedadesMock, propietariosMock } from '@/lib/mock-data';
+import { propiedadesMock, propietariosMock } from '@/lib/mock-data';
+import { useContratos } from '@/lib/api/hooks';
 import { formatMonto, formatRangoVigencia } from '@/lib/format';
 import type { EstadoLiquidacion } from '@/lib/types';
 
@@ -82,6 +83,7 @@ const estadoLabel: Record<EstadoLiquidacion, string> = {
 };
 
 export default function ContratosPage() {
+  const { contratos } = useContratos();
   const [q, setQ] = useState('');
   const [filtro, setFiltro] = useState<Filtro>('TODOS');
 
@@ -110,17 +112,17 @@ export default function ContratosPage() {
 
   const counters = useMemo(
     () => ({
-      ACTIVO: contratosMock.filter((c) => c.estado === 'ACTIVO').length,
-      BORRADOR: contratosMock.filter((c) => c.estado === 'BORRADOR').length,
-      ARCHIVADO: contratosMock.filter(
+      ACTIVO: contratos.filter((c) => c.estado === 'ACTIVO').length,
+      BORRADOR: contratos.filter((c) => c.estado === 'BORRADOR').length,
+      ARCHIVADO: contratos.filter(
         (c) => c.estado === 'FINALIZADO' || c.estado === 'RESCINDIDO',
       ).length,
     }),
-    [],
+    [contratos],
   );
 
   const filtrados = useMemo(() => {
-    return contratosMock.filter((c) => {
+    return contratos.filter((c) => {
       // filtro por propietario (vía query string)
       if (contratosDelPropietario && !contratosDelPropietario.has(c.id)) return false;
 
@@ -140,7 +142,7 @@ export default function ContratosPage() {
         : true;
       return matchQ;
     });
-  }, [q, filtro, contratosDelPropietario]);
+  }, [contratos, q, filtro, contratosDelPropietario]);
 
   const togglearFiltro = (f: 'ACTIVO' | 'BORRADOR' | 'ARCHIVADO') => {
     setFiltro((prev) => (prev === f ? 'TODOS' : f));
@@ -152,7 +154,7 @@ export default function ContratosPage() {
       <main className="flex-1 space-y-4 p-4 md:p-6">
         {/* Banner: contratos pendientes de aprobación */}
         {(() => {
-          const pendientes = contratosMock.filter((c) => c.pendienteAprobacion);
+          const pendientes = contratos.filter((c) => c.pendienteAprobacion);
           if (pendientes.length === 0) return null;
           return (
             <Card className="border-amber-300 bg-amber-50 dark:border-amber-900/40 dark:bg-amber-950/30">
