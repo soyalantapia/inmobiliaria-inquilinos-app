@@ -65,6 +65,89 @@ function mapContrato(c: ContratoApi): ContratoListado {
   } as ContratoListado;
 }
 
+// ===== Aprobaciones =====
+
+import {
+  aprobar as aprobarLocal,
+  listarAprobaciones,
+  rechazar as rechazarLocal,
+  type Aprobacion,
+} from '@/lib/aprobaciones-storage';
+
+interface AprobacionApi extends Omit<Aprobacion, 'cargadoPor' | 'monto' | 'aprobadoPor'> {
+  monto: string | number | null;
+  cargadoPor: { nombre: string; apellido: string; rol: string };
+  aprobadoPorId: string | null;
+}
+
+function mapAprobacion(a: AprobacionApi): Aprobacion {
+  return {
+    ...a,
+    monto: a.monto != null ? Number(a.monto) : undefined,
+    cargadoPor: `${a.cargadoPor.nombre} ${a.cargadoPor.apellido}`.trim(),
+    aprobadoPor: a.aprobadoPorId ?? undefined,
+  } as Aprobacion;
+}
+
+export function useAprobaciones(): {
+  aprobaciones: Aprobacion[];
+  cargando: boolean;
+  aprobarApi: (id: string, pin: string, comentario?: string) => Promise<Aprobacion>;
+  rechazarApi: (id: string, pin: string, motivo: string) => Promise<Aprobacion>;
+} {
+  const qc = useQueryClient();
+  const q = useQuery({
+    queryKey: ['aprobaciones'],
+    queryFn: async () => {
+      await ensureApiSession();
+      const data = await apiFetch<AprobacionApi[]>('/aprobaciones');
+      return data.map(mapAprobacion);
+    },
+    enabled: apiEnabled,
+    staleTime: 10_000,
+  });
+  const invalidar = () => void qc.invalidateQueries({ queryKey: ['aprobaciones'] });
+
+  if (!apiEnabled || q.isError) {
+    return {
+      aprobaciones: listarAprobaciones(),
+      cargando: false,
+      aprobarApi: async (id, _pin, comentario) => {
+        const r = aprobarLocal(id, 'Roberto Tapia', comentario);
+        if (!r) throw new Error('No se pudo aprobar');
+        return r;
+      },
+      rechazarApi: async (id, _pin, motivo) => {
+        const r = rechazarLocal(id, 'Roberto Tapia', motivo);
+        if (!r) throw new Error('No se pudo rechazar');
+        return r;
+      },
+    };
+  }
+
+  return {
+    aprobaciones: q.data ?? [],
+    cargando: q.isPending,
+    aprobarApi: async (id, pin, comentario) => {
+      const r = await apiFetch<AprobacionApi>(`/aprobaciones/${id}/aprobar`, {
+        method: 'POST',
+        body: JSON.stringify({ pin, comentario }),
+      });
+      invalidar();
+      void qc.invalidateQueries({ queryKey: ['contratos'] }); // aprobar contrato lo activa
+      return mapAprobacion(r);
+    },
+    rechazarApi: async (id, pin, motivo) => {
+      const r = await apiFetch<AprobacionApi>(`/aprobaciones/${id}/rechazar`, {
+        method: 'POST',
+        body: JSON.stringify({ pin, comentario: motivo }),
+      });
+      invalidar();
+      return mapAprobacion(r);
+    },
+  };
+}
+
 // ===== Caja de gastos =====
 
 interface MovimientoCajaApi {

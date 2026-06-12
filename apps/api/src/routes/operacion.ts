@@ -1,0 +1,493 @@
+import type { FastifyInstance, FastifyReply } from 'fastify';
+import bcrypt from 'bcryptjs';
+import { z } from 'zod';
+import { prisma } from '../db.js';
+import { requireInquilino, requireUsuario } from '../auth/guards.js';
+
+/**
+ * Fase 4 — Operación: reclamos con SLA calculado en el server, asignación de
+ * profesionales, reclamos del inquilino, red de profesionales, consorcios y
+ * renovaciones (intención por contrato activo).
+ */
+
+// ===== SLA por urgencia (portado de apps/inmobiliaria/src/lib/sla-reclamos.ts) =====
+//
+// Reglas del feedback: "necesito que el sistema me avise cuando un reclamo se
+// está pasando del tiempo razonable para resolver".
+//   - EMERGENCIA → 6h · ALTA → 24h · MEDIA → 72h · BAJA → 168h (7 días)
+// El estado se calcula contra createdAt y se desactiva si el reclamo ya está
+// RESUELTO o CERRADO.
+
+type UrgenciaReclamoSla = 'BAJA' | 'MEDIA' | 'ALTA' | 'EMERGENCIA';
+type EstadoReclamoSla = 'ABIERTO' | 'EN_CURSO' | 'RESUELTO' | 'CERRADO' | 'RECHAZADO';
+type EstadoSla = 'EN_TIEMPO' | 'PROXIMO_VENCIMIENTO' | 'VENCIDO' | 'RESUELTO';
+
+const SLA_HORAS_POR_URGENCIA: Record<UrgenciaReclamoSla, number> = {
+  EMERGENCIA: 6,
+  ALTA: 24,
+  MEDIA: 72,
+  BAJA: 168, // 7 días
+};
+
+interface ReclamoParaSla {
+  urgencia: UrgenciaReclamoSla;
+  estado: EstadoReclamoSla;
+  createdAt: Date;
+  resueltoAt: Date | null;
+}
+
+interface ResumenSla {
+  slaEstado: EstadoSla;
+  /** Fecha límite para resolver (createdAt + horas del SLA), ISO. */
+  slaVencimiento: string;
+  slaHorasTranscurridas: number;
+  slaHorasLimite: number;
+  /** Horas restantes — negativo si ya pasó. */
+  slaHorasRestantes: number;
+  /** Porcentaje del SLA consumido (0-100+). */
+  slaPctConsumido: number;
+  /** Frase humana para mostrar. */
+  slaTexto: string;
+  /** Si conviene mandar alerta (a más del 80%). */
+  slaAlertar: boolean;
+}
+
+function formatHoras(h: number): string {
+  if (h < 1) return `${Math.round(h * 60)}m`;
+  if (h < 24) return `${Math.round(h)}h`;
+  const dias = h / 24;
+  return `${dias.toFixed(dias < 10 ? 1 : 0)}d`;
+}
+
+function evaluarSla(reclamo: ReclamoParaSla, ahoraMs = Date.now()): ResumenSla {
+  const limite = SLA_HORAS_POR_URGENCIA[reclamo.urgencia];
+  const inicio = reclamo.createdAt.getTime();
+  const slaVencimiento = new Date(inicio + limite * 3600_000).toISOString();
+  const horas = Math.max(0, (ahoraMs - inicio) / 3600_000);
+  const restantes = limite - horas;
+  const pct = (horas / limite) * 100;
+
+  if (reclamo.estado === 'RESUELTO' || reclamo.estado === 'CERRADO') {
+    const dur = reclamo.resueltoAt
+      ? Math.max(0, (reclamo.resueltoAt.getTime() - inicio) / 3600_000)
+      : horas;
+    return {
+      slaEstado: 'RESUELTO',
+      slaVencimiento,
+      slaHorasTranscurridas: dur,
+      slaHorasLimite: limite,
+      slaHorasRestantes: limite - dur,
+      slaPctConsumido: (dur / limite) * 100,
+      slaTexto:
+        dur <= limite
+          ? `Resuelto en ${formatHoras(dur)}, dentro del plazo (${formatHoras(limite)}).`
+          : `Resuelto en ${formatHoras(dur)}, ${formatHoras(dur - limite)} más que el plazo.`,
+      slaAlertar: false,
+    };
+  }
+
+  if (restantes < 0) {
+    return {
+      slaEstado: 'VENCIDO',
+      slaVencimiento,
+      slaHorasTranscurridas: horas,
+      slaHorasLimite: limite,
+      slaHorasRestantes: restantes,
+      slaPctConsumido: pct,
+      slaTexto: `Atrasado hace ${formatHoras(-restantes)} (el plazo para resolver era ${formatHoras(limite)}).`,
+      slaAlertar: true,
+    };
+  }
+
+  if (pct >= 80) {
+    return {
+      slaEstado: 'PROXIMO_VENCIMIENTO',
+      slaVencimiento,
+      slaHorasTranscurridas: horas,
+      slaHorasLimite: limite,
+      slaHorasRestantes: restantes,
+      slaPctConsumido: pct,
+      slaTexto: `Faltan ${formatHoras(restantes)} para cumplir el plazo.`,
+      slaAlertar: true,
+    };
+  }
+
+  return {
+    slaEstado: 'EN_TIEMPO',
+    slaVencimiento,
+    slaHorasTranscurridas: horas,
+    slaHorasLimite: limite,
+    slaHorasRestantes: restantes,
+    slaPctConsumido: pct,
+    slaTexto: `${Math.round(pct)}% del plazo consumido.`,
+    slaAlertar: false,
+  };
+}
+
+/** Adjunta el SLA calculado a un reclamo (cualquier shape que tenga los campos base). */
+function conSla<T extends ReclamoParaSla>(reclamo: T): T & ResumenSla {
+  return { ...reclamo, ...evaluarSla(reclamo) };
+}
+
+// Mismo helper que plata.ts: acciones sensibles piden el PIN del usuario.
+async function verificarPin(userId: string, pin: string | undefined, reply: FastifyReply): Promise<boolean> {
+  if (!pin) {
+    await reply.code(400).send({ message: 'Esta acción requiere tu PIN de seguridad' });
+    return false;
+  }
+  const u = await prisma.usuario.findUnique({ where: { id: userId } });
+  if (!u?.pinHash || !bcrypt.compareSync(pin, u.pinHash)) {
+    await reply.code(403).send({ message: 'PIN incorrecto' });
+    return false;
+  }
+  return true;
+}
+
+async function nombreUsuario(userId: string): Promise<string> {
+  const usuario = await prisma.usuario.findUnique({ where: { id: userId } });
+  return usuario ? `${usuario.nombre} ${usuario.apellido}`.trim() : 'Panel';
+}
+
+const ESTADOS_CERRADOS = ['RESUELTO', 'CERRADO', 'RECHAZADO'] as const;
+
+export async function operacionRoutes(app: FastifyInstance) {
+  // ===== Reclamos (panel) =====
+  app.get('/reclamos', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'reclamos.ver');
+    if (!u) return;
+    const q = z
+      .object({
+        estado: z.enum(['ABIERTO', 'EN_CURSO', 'RESUELTO', 'CERRADO', 'RECHAZADO']).optional(),
+        urgencia: z.enum(['BAJA', 'MEDIA', 'ALTA', 'EMERGENCIA']).optional(),
+      })
+      .parse(request.query ?? {});
+    const reclamos = await prisma.reclamo.findMany({
+      where: {
+        inmobiliariaId: u.inmobiliariaId,
+        ...(q.estado ? { estado: q.estado } : {}),
+        ...(q.urgencia ? { urgencia: q.urgencia } : {}),
+      },
+      include: {
+        propiedad: { select: { id: true, direccion: true, ciudad: true } },
+        contrato: {
+          select: {
+            id: true,
+            inquilinoTitular: { select: { id: true, nombre: true, apellido: true, telefono: true } },
+          },
+        },
+        profesional: { select: { id: true, nombre: true, categoria: true, telefono: true, rating: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    return reclamos.map(conSla);
+  });
+
+  app.get('/reclamos/:id', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'reclamos.ver');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const reclamo = await prisma.reclamo.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      include: {
+        propiedad: { select: { id: true, direccion: true, ciudad: true } },
+        contrato: {
+          select: {
+            id: true,
+            inquilinoTitular: { select: { id: true, nombre: true, apellido: true, telefono: true, email: true } },
+          },
+        },
+        profesional: true,
+        eventos: { orderBy: { fecha: 'asc' } },
+        visita: true,
+        confirmacion: true,
+        rating: true,
+      },
+    });
+    if (!reclamo) return reply.code(404).send({ message: 'Reclamo inexistente' });
+    return conSla(reclamo);
+  });
+
+  app.post('/reclamos/:id/asignar', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'profesional.asignar');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const body = z.object({ profesionalId: z.string().min(1) }).safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ message: 'Indicá qué profesional querés asignar' });
+
+    const reclamo = await prisma.reclamo.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
+    if (!reclamo) return reply.code(404).send({ message: 'Reclamo inexistente' });
+    if ((ESTADOS_CERRADOS as readonly string[]).includes(reclamo.estado)) {
+      return reply.code(409).send({ message: 'El reclamo ya está cerrado — no se puede asignar profesional' });
+    }
+    const prof = await prisma.profesional.findFirst({
+      where: { id: body.data.profesionalId, inmobiliariaId: u.inmobiliariaId, activo: true },
+    });
+    if (!prof) return reply.code(404).send({ message: 'Profesional inexistente o dado de baja' });
+
+    const autor = await nombreUsuario(u.userId);
+    const [actualizado] = await prisma.$transaction([
+      prisma.reclamo.update({ where: { id }, data: { profesionalId: prof.id } }),
+      prisma.reclamoEvento.create({
+        data: {
+          inmobiliariaId: u.inmobiliariaId,
+          reclamoId: id,
+          tipo: 'PROFESIONAL_ASIGNADO',
+          autor,
+          contenido: `${prof.nombre} (${prof.categoria})`,
+        },
+      }),
+    ]);
+    return conSla(actualizado);
+  });
+
+  app.post('/reclamos/:id/resolver', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'reclamos.gestionar');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const body = z.object({ resolucion: z.string().min(5) }).safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ message: 'Contá cómo se resolvió (mínimo 5 caracteres)' });
+
+    const reclamo = await prisma.reclamo.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
+    if (!reclamo) return reply.code(404).send({ message: 'Reclamo inexistente' });
+    if ((ESTADOS_CERRADOS as readonly string[]).includes(reclamo.estado)) {
+      return reply.code(409).send({ message: 'El reclamo ya fue decidido' });
+    }
+
+    const ahora = new Date();
+    const autor = await nombreUsuario(u.userId);
+    const [actualizado] = await prisma.$transaction([
+      prisma.reclamo.update({
+        where: { id },
+        data: { estado: 'RESUELTO', resolucion: body.data.resolucion, resueltoAt: ahora },
+      }),
+      prisma.reclamoEvento.create({
+        data: {
+          inmobiliariaId: u.inmobiliariaId,
+          reclamoId: id,
+          tipo: 'RESUELTO',
+          autor,
+          contenido: body.data.resolucion,
+          fecha: ahora,
+        },
+      }),
+    ]);
+    return conSla(actualizado);
+  });
+
+  app.post('/reclamos/:id/rechazar', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'reclamos.gestionar');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const body = z.object({ motivo: z.string().min(5) }).safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ message: 'Contale al inquilino por qué se rechaza (mínimo 5 caracteres)' });
+
+    const reclamo = await prisma.reclamo.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
+    if (!reclamo) return reply.code(404).send({ message: 'Reclamo inexistente' });
+    if ((ESTADOS_CERRADOS as readonly string[]).includes(reclamo.estado)) {
+      return reply.code(409).send({ message: 'El reclamo ya fue decidido' });
+    }
+
+    const autor = await nombreUsuario(u.userId);
+    const [actualizado] = await prisma.$transaction([
+      prisma.reclamo.update({
+        where: { id },
+        data: { estado: 'RECHAZADO', resolucion: body.data.motivo },
+      }),
+      prisma.reclamoEvento.create({
+        data: { inmobiliariaId: u.inmobiliariaId, reclamoId: id, tipo: 'RECHAZADO', autor, contenido: body.data.motivo },
+      }),
+    ]);
+    return conSla(actualizado);
+  });
+
+  app.post('/reclamos/:id/responder', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'reclamos.gestionar');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const body = z.object({ mensaje: z.string().min(1) }).safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ message: 'Escribí el mensaje para el inquilino' });
+
+    const reclamo = await prisma.reclamo.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
+    if (!reclamo) return reply.code(404).send({ message: 'Reclamo inexistente' });
+
+    const autor = await nombreUsuario(u.userId);
+    return prisma.reclamoEvento.create({
+      data: { inmobiliariaId: u.inmobiliariaId, reclamoId: id, tipo: 'MENSAJE_INMO', autor, contenido: body.data.mensaje },
+    });
+  });
+
+  // ===== Reclamos del inquilino =====
+  app.get('/mis-reclamos', async (request, reply) => {
+    const inq = await requireInquilino(request, reply);
+    if (!inq) return;
+    if (!inq.contratoId) return [];
+    const reclamos = await prisma.reclamo.findMany({
+      where: { contratoId: inq.contratoId, inmobiliariaId: inq.inmobiliariaId },
+      include: {
+        eventos: { orderBy: { fecha: 'asc' } },
+        profesional: { select: { id: true, nombre: true, telefono: true, categoria: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    return reclamos.map(conSla);
+  });
+
+  app.post('/mis-reclamos', async (request, reply) => {
+    const inq = await requireInquilino(request, reply);
+    if (!inq) return;
+    if (!inq.contratoId) return reply.code(400).send({ message: 'No tenés un contrato activo' });
+    const body = z
+      .object({
+        titulo: z.string().min(3),
+        descripcion: z.string().min(5),
+        categoria: z.enum(['PLOMERIA', 'ELECTRICIDAD', 'CERRADURA', 'CALEFACCION', 'OTRO']),
+        urgencia: z.enum(['BAJA', 'MEDIA', 'ALTA', 'EMERGENCIA']),
+      })
+      .safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ message: 'Datos del reclamo incompletos' });
+
+    const contrato = await prisma.contrato.findFirst({
+      where: { id: inq.contratoId, inmobiliariaId: inq.inmobiliariaId },
+    });
+    if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
+
+    const inquilino = await prisma.inquilino.findUnique({ where: { id: inq.inquilinoId } });
+    const autor = inquilino ? `${inquilino.nombre} ${inquilino.apellido ?? ''}`.trim() : 'Inquilino';
+
+    // El modelo no tiene campo `titulo`: va como encabezado de la descripción.
+    const reclamo = await prisma.$transaction(async (tx) => {
+      const r = await tx.reclamo.create({
+        data: {
+          inmobiliariaId: inq.inmobiliariaId,
+          contratoId: contrato.id,
+          propiedadId: contrato.propiedadId,
+          categoria: body.data.categoria,
+          descripcion: `${body.data.titulo} — ${body.data.descripcion}`,
+          urgencia: body.data.urgencia,
+          estado: 'ABIERTO',
+        },
+      });
+      await tx.reclamoEvento.create({
+        data: { inmobiliariaId: inq.inmobiliariaId, reclamoId: r.id, tipo: 'CREADO', autor, contenido: null },
+      });
+      return r;
+    });
+    return reply.code(201).send(conSla(reclamo));
+  });
+
+  // ===== Red de profesionales =====
+  app.get('/profesionales', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'profesionales.ver');
+    if (!u) return;
+    const q = z
+      .object({
+        categoria: z.enum(['PLOMERO', 'ELECTRICISTA', 'GASISTA', 'CERRAJERO', 'PINTOR', 'TECNICO_AC', 'FLETE']).optional(),
+        activo: z.enum(['true', 'false']).optional(),
+      })
+      .parse(request.query ?? {});
+    return prisma.profesional.findMany({
+      where: {
+        inmobiliariaId: u.inmobiliariaId,
+        ...(q.categoria ? { categoria: q.categoria } : {}),
+        ...(q.activo ? { activo: q.activo === 'true' } : {}),
+      },
+      orderBy: [{ rating: 'desc' }, { nombre: 'asc' }],
+    });
+  });
+
+  // ===== Consorcios =====
+  // No existe capacidad específica de consorcios en permisos.ts: se usa
+  // propiedades.ver (administración de edificios = patrimonio, visible para
+  // todos los roles igual que propiedades).
+  app.get('/consorcios', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'propiedades.ver');
+    if (!u) return;
+    return prisma.consorcio.findMany({
+      where: { inmobiliariaId: u.inmobiliariaId },
+      include: { unidades: { orderBy: { id: 'asc' } } },
+      orderBy: { desde: 'asc' },
+    });
+  });
+
+  app.get('/consorcios/:id', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'propiedades.ver');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const consorcio = await prisma.consorcio.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      include: {
+        unidades: { orderBy: { id: 'asc' } },
+        movimientos: { orderBy: { fecha: 'desc' } },
+        asambleas: { orderBy: { fecha: 'desc' } },
+      },
+    });
+    if (!consorcio) return reply.code(404).send({ message: 'Consorcio inexistente' });
+    return consorcio;
+  });
+
+  // ===== Renovaciones =====
+  app.get('/renovaciones', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'contratos.ver');
+    if (!u) return;
+    const contratos = await prisma.contrato.findMany({
+      where: { inmobiliariaId: u.inmobiliariaId, estado: 'ACTIVO' },
+      select: {
+        id: true,
+        fechaInicio: true,
+        fechaFin: true,
+        monto: true,
+        moneda: true,
+        tipoContrato: true,
+        propiedad: { select: { id: true, direccion: true, ciudad: true } },
+        inquilinoTitular: { select: { id: true, nombre: true, apellido: true, email: true, telefono: true } },
+        intencionRenovacion: true,
+      },
+      orderBy: { fechaFin: 'asc' },
+    });
+    const ahora = Date.now();
+    return contratos.map((c) => ({
+      ...c,
+      diasParaVencimiento: Math.ceil((c.fechaFin.getTime() - ahora) / 86_400_000),
+    }));
+  });
+
+  // Decisión de renovación registrada desde el panel. No hay capacidad
+  // específica de renovaciones en permisos.ts: se trata como acción sensible
+  // sobre el ciclo de vida del contrato (contrato.aprobar = ADMIN) + PIN,
+  // porque pisa la intención declarada por el inquilino.
+  app.post('/renovaciones/:contratoId/decision', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'contrato.aprobar');
+    if (!u) return;
+    const { contratoId } = request.params as { contratoId: string };
+    const body = z
+      .object({
+        decision: z.enum(['RENOVAR', 'NO_RENOVAR', 'PENSANDO', 'SIN_RESPUESTA']),
+        notas: z.string().optional(),
+        pin: z.string().optional(),
+      })
+      .safeParse(request.body ?? {});
+    if (!body.success) {
+      return reply.code(400).send({ message: 'Decisión inválida — usá RENOVAR, NO_RENOVAR, PENSANDO o SIN_RESPUESTA' });
+    }
+    if (!(await verificarPin(u.userId, body.data.pin, reply))) return;
+
+    const contrato = await prisma.contrato.findFirst({ where: { id: contratoId, inmobiliariaId: u.inmobiliariaId } });
+    if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
+    if (contrato.estado !== 'ACTIVO') {
+      return reply.code(409).send({ message: 'Solo se registra la decisión sobre contratos activos' });
+    }
+
+    const decididoAt = body.data.decision === 'SIN_RESPUESTA' ? null : new Date();
+    return prisma.intencionRenovacion.upsert({
+      where: { contratoId },
+      update: { decision: body.data.decision, comentario: body.data.notas ?? null, decididoAt },
+      create: {
+        inmobiliariaId: u.inmobiliariaId,
+        contratoId,
+        decision: body.data.decision,
+        comentario: body.data.notas ?? null,
+        decididoAt,
+      },
+    });
+  });
+}

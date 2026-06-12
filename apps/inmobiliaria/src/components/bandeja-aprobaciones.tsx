@@ -26,10 +26,8 @@ import {
   type Aprobacion,
   type TipoAprobacion,
   TIPO_APROBACION_LABEL,
-  aprobar,
-  listarAprobaciones,
-  rechazar,
 } from '@/lib/aprobaciones-storage';
+import { useAprobaciones } from '@/lib/api/hooks';
 import { formatFechaCorta, formatMonto } from '@/lib/format';
 
 const ICONO_TIPO: Record<TipoAprobacion, typeof Inbox> = {
@@ -42,8 +40,7 @@ const ICONO_TIPO: Record<TipoAprobacion, typeof Inbox> = {
 const USUARIO_ACTUAL = 'Roberto Tapia';
 
 export function BandejaAprobaciones() {
-  const [items, setItems] = useState<Aprobacion[]>([]);
-  const [hidratado, setHidratado] = useState(false);
+  const { aprobaciones: items, cargando, aprobarApi, rechazarApi } = useAprobaciones();
   const [filtro, setFiltro] = useState<'pendientes' | 'historico'>('pendientes');
   const [aprobar_, setAprobar_] = useState<Aprobacion | null>(null);
   const [rechazar_, setRechazar_] = useState<Aprobacion | null>(null);
@@ -56,11 +53,6 @@ export function BandejaAprobaciones() {
   // la invocación, no al de la captura.
   const transitioningToPin = useRef(false);
 
-  useEffect(() => {
-    setItems(listarAprobaciones());
-    setHidratado(true);
-  }, []);
-
   const filtrados = useMemo(() => {
     if (filtro === 'pendientes')
       return items.filter((i) => i.estado === 'PENDIENTE');
@@ -72,37 +64,36 @@ export function BandejaAprobaciones() {
     [items],
   );
 
-  const onPinConfirmado = () => {
-    if (!aprobar_) return;
-    const actualizada = aprobar(aprobar_.id, USUARIO_ACTUAL, comentarioAprob || undefined);
-    if (actualizada) {
-      setItems(listarAprobaciones());
+  const onPinConfirmado = async (pin: string) => {
+    try {
+      if (aprobar_) {
+        const r = await aprobarApi(aprobar_.id, pin, comentarioAprob || undefined);
+        toast({ variant: 'success', title: 'Aprobada', description: r.titulo });
+        setAprobar_(null);
+        setComentarioAprob('');
+      } else if (rechazar_) {
+        const r = await rechazarApi(rechazar_.id, pin, motivoRechazo.trim());
+        toast({ variant: 'default', title: 'Rechazada', description: r.titulo });
+        setRechazar_(null);
+        setMotivoRechazo('');
+      }
+    } catch (e) {
       toast({
-        variant: 'success',
-        title: 'Aprobada',
-        description: actualizada.titulo,
+        variant: 'destructive',
+        title: 'No se pudo completar',
+        description: e instanceof Error ? e.message : 'Probá de nuevo.',
       });
     }
-    setAprobar_(null);
-    setComentarioAprob('');
   };
 
+  // El rechazo también es acción sensible: valida motivo y pasa por el PIN.
   const ejecutarRechazo = () => {
     if (!rechazar_ || !motivoRechazo.trim()) return;
-    const actualizada = rechazar(rechazar_.id, USUARIO_ACTUAL, motivoRechazo.trim());
-    if (actualizada) {
-      setItems(listarAprobaciones());
-      toast({
-        variant: 'default',
-        title: 'Rechazada',
-        description: actualizada.titulo,
-      });
-    }
-    setRechazar_(null);
-    setMotivoRechazo('');
+    transitioningToPin.current = true;
+    setShowPin(true);
   };
 
-  if (!hidratado) return null;
+  if (cargando) return null;
 
   return (
     <div className="space-y-3">
@@ -213,22 +204,21 @@ export function BandejaAprobaciones() {
 
       <PinPromptDialog
         abierto={showPin}
-        accion={aprobar_ ? aprobar_.titulo : 'Aprobación'}
-        subaccion={
-          aprobar_
-            ? `${TIPO_APROBACION_LABEL[aprobar_.tipo]} · cargado por ${aprobar_.cargadoPor}`
-            : undefined
-        }
+        accion={(aprobar_ ?? rechazar_)?.titulo ?? 'Aprobación'}
+        subaccion={(() => {
+          const item = aprobar_ ?? rechazar_;
+          return item ? `${TIPO_APROBACION_LABEL[item.tipo]} · cargado por ${item.cargadoPor}` : undefined;
+        })()}
         onClose={() => {
           transitioningToPin.current = false;
           setShowPin(false);
         }}
-        onConfirmado={onPinConfirmado}
+        onConfirmado={(pin) => void onPinConfirmado(pin)}
       />
 
       <ConfirmDialog
         open={!!rechazar_}
-        onOpenChange={(o) => !o && setRechazar_(null)}
+        onOpenChange={(o) => !o && !transitioningToPin.current && setRechazar_(null)}
         title={rechazar_ ? `¿Rechazar "${rechazar_.titulo}"?` : ''}
         description={
           rechazar_ ? (
@@ -248,7 +238,7 @@ export function BandejaAprobaciones() {
             </div>
           ) : null
         }
-        confirmLabel="Rechazar"
+        confirmLabel="Rechazar y pedir PIN"
         variant="destructive"
         onConfirm={ejecutarRechazo}
       />
