@@ -8,7 +8,6 @@ import {
   LayoutDashboard,
   FileText,
   Megaphone,
-  Plus,
   ShieldCheck,
   CreditCard,
   Settings,
@@ -46,10 +45,6 @@ const links: NavLink[] = [
   { href: '/pagos', label: 'Pagos', icon: CreditCard, capacidad: 'pagos.ver' },
   { href: '/caja', label: 'Caja', icon: Wallet, capacidad: 'caja.ver' },
   { href: '/contratos', label: 'Contratos', icon: FileText, capacidad: 'contratos.ver' },
-  // Sub-item visual: lo marcamos con sub=true para que el renderer le
-  // saque el ícono y lo indente, dejando claro que es "una acción de
-  // Contratos" y no una sección hermana.
-  { href: '/contratos/nuevo', label: 'Cargar contrato', icon: Plus, sub: true, capacidad: 'contratos.crear' },
   { href: '/aprobaciones', label: 'Aprobaciones', icon: Inbox, capacidad: 'contrato.aprobar' },
   { href: '/renovaciones', label: 'Renovaciones', icon: CalendarHeart, capacidad: 'contratos.ver' },
   { href: '/consorcios', label: 'Consorcios', icon: Building, capacidad: 'propiedades.ver' },
