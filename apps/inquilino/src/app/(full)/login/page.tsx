@@ -18,13 +18,12 @@ import { Card } from '@llave/ui/card';
 import { Input } from '@llave/ui/input';
 import { Label } from '@llave/ui/label';
 import { toast } from '@llave/ui/use-toast';
+import { SEGUNDOS_COOLDOWN, leerSesion } from '@/lib/auth-otp';
 import {
-  SEGUNDOS_COOLDOWN,
-  iniciarSesionDemo,
-  leerSesion,
-  solicitarCodigo,
-  verificarCodigo,
-} from '@/lib/auth-otp';
+  iniciarSesionDemoUnificada,
+  solicitarCodigoUnificado,
+  verificarCodigoUnificado,
+} from '@/lib/auth-otp-api';
 
 type Paso = 'email' | 'otp';
 
@@ -49,7 +48,7 @@ export default function LoginPage() {
     // completar el flujo de 6 inputs) y para compartir la demo sin fricción.
     // Seguro: todo corre sobre mocks en localStorage, no hay backend real.
     if (params.has('demo')) {
-      iniciarSesionDemo();
+      iniciarSesionDemoUnificada();
       router.replace('/');
       return;
     }
@@ -69,7 +68,7 @@ export default function LoginPage() {
     // Pequeño delay para que se sienta natural
     await new Promise((r) => setTimeout(r, 300));
 
-    const r = solicitarCodigo(email);
+    const r = await solicitarCodigoUnificado(email);
     if (!r.ok) {
       setErrorEmail(r.motivo ?? 'No pudimos enviar el código.');
       setEnviando(false);
@@ -145,7 +144,7 @@ export default function LoginPage() {
       return;
     }
     await new Promise((r) => setTimeout(r, 350));
-    const r = verificarCodigo(email, codigo);
+    const r = await verificarCodigoUnificado(email, codigo);
     if (!r.ok) {
       setErrorOtp(r.motivo ?? 'No pudimos verificar el código.');
       setVerificando(false);
@@ -163,7 +162,7 @@ export default function LoginPage() {
 
   const onReenviar = async () => {
     setErrorOtp(null);
-    const r = solicitarCodigo(email);
+    const r = await solicitarCodigoUnificado(email);
     if (!r.ok) {
       setErrorOtp(r.motivo ?? 'No pudimos reenviar el código.');
       return;

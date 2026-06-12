@@ -5,7 +5,7 @@ export const JwtUsuarioSchema = z.object({
   kind: z.literal('usuario'),
   userId: z.string(),
   inmobiliariaId: z.string(),
-  rol: z.enum(['ADMIN', 'OPERADOR', 'CARGA']),
+  rol: z.enum(['ADMIN', 'OPERADOR', 'CARGA', 'LECTURA']),
 });
 export type JwtUsuario = z.infer<typeof JwtUsuarioSchema>;
 
@@ -41,6 +41,6 @@ export const OtpVerifySchema = z.object({
 export const AuthResponseSchema = z.object({
   token: z.string(),
   nombre: z.string(),
-  rol: z.enum(['ADMIN', 'OPERADOR', 'CARGA']).optional(),
+  rol: z.enum(['ADMIN', 'OPERADOR', 'CARGA', 'LECTURA']).optional(),
 });
 export type AuthResponse = z.infer<typeof AuthResponseSchema>;

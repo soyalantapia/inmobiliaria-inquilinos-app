@@ -26,18 +26,39 @@
 - [x] tsc + lint limpios (api + ambas apps), ambas apps renderizando (REGLA 0 ok).
 - pnpm root: `pnpm.onlyBuiltDependencies` para prisma/esbuild (pnpm 10).
 
-### ⏳ Fase 1 — Auth + tenancy (SIGUIENTE)
-- [ ] Modelos ya existen (Usuario/Inquilino/OtpCode) — falta lógica.
-- [ ] `POST /auth/login` (email+password → JWT 15d) + tests.
-- [ ] `POST /auth/otp/request` + `/auth/otp/verify` (dev: OTP 000000 logueado en consola).
-- [ ] `POST /auth/demo` (solo DEMO_MODE) → JWT de Mariela.
-- [ ] `POST /auth/pin/verify` (para aprobaciones).
-- [ ] Middleware `requireAuth` / `requireRol` (capacidades de lib/permisos.ts → shared).
-- [ ] Seeds: tenant "Inmobiliaria del Sol" + roberto/luciana/camila (delsol123, PIN 1234)
-      + inquilinos de los contratos mock.
-- [ ] Front: login inmo + OTP inquilino reales detrás de `apiEnabled`.
+### ✅ Fase 1 — Auth + tenancy (COMPLETA)
+- [x] Enum de rol con LECTURA (migración `rol_lectura`). Matriz de permisos
+      portada a `@llave/shared/permisos` (copia 1:1 de lib/permisos.ts del inmo).
+- [x] `POST /auth/login` (email+password → JWT 15d, bcrypt).
+- [x] `POST /auth/otp/request` + `/verify` (OTP real hasheado, TTL 10min, un solo
+      uso; código por log del server; backdoor `000000` SOLO con DEMO_MODE;
+      respuesta anti-enumeración de emails).
+- [x] `POST /auth/demo` (DEMO_MODE) → JWT de Mariela. `GET /auth/me`.
+      `POST /auth/pin/verify` (PIN bcrypt).
+- [x] Guards `requireAuth` / `requireUsuario(capacidad)` / `requireInquilino`
+      usando la matriz de shared.
+- [x] Seeds idempotentes (`pnpm --filter api seed` y `seedBase()` para tests):
+      tenant del-sol + roberto/luciana/camila (delsol123, PIN 1234) + 6 inquilinos
+      (Mariela = mariela.sosa@gmail.com).
+- [x] Tests: 9/9 verdes (login ok/401, OTP backdoor+inválido, /me 401/ok, PIN
+      ok/403, demo) contra la DB real.
+- [x] Build: tsup (bundlea @llave/shared; tsconfig paths para typecheck —
+      tsc sin emit, build real por tsup).
+- [x] Front inquilino: `auth-otp-api.ts` (capa unificada API↔local con fallback
+      por red caída), login page cableada (solicitar/verificar/demo), token JWT
+      en `llave:auth:token`, `cerrarSesion()` limpia el token. La sesión local se
+      sigue persistiendo → el resto de la app intacta.
+- [x] E2E verificado en preview: OTP REAL del server (código del log) → JWT en
+      localStorage (kind inquilino, exp 15d) + home de Mariela.
+- Modo API en dev: `apps/inquilino/.env.local` con
+      `NEXT_PUBLIC_API_URL=http://localhost:3002` (gitignored; borrarlo = modo
+      localStorage puro).
+- ⏭ Diferido a Fase 2: pantalla de login del PANEL inmo (hoy auto-entra con mock;
+      tiene sentido hacerla cuando el panel consuma datos reales).
 
 ### Fases 2-7 — pendientes (ver PROMPT-BACKEND-FULL.md)
+- El workflow de extracción del modelo de datos (specs → schema completo) corre
+  en background; su output alimenta Fase 2+.
 
 ## Datos operativos
 - Railway: proyecto `b01a1ecb-2169-46ef-b6cf-71a2d6cca234`, env `857efc10-…`

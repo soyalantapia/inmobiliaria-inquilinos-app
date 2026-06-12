@@ -15,6 +15,7 @@ enum RolUsuario {
   ADMIN
   OPERADOR
   CARGA
+  LECTURA
 }
 
 model Inmobiliaria {

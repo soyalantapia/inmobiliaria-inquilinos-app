@@ -298,15 +298,31 @@ export function leerSesion(): InquilinoSesion | null {
 }
 
 /**
- * Cierra la sesión.
+ * Cierra la sesión (local + token del API si lo hay).
  */
 export function cerrarSesion(): void {
   if (typeof window === 'undefined') return;
   try {
     window.localStorage.removeItem(SESION_KEY);
+    window.localStorage.removeItem('llave:auth:token');
   } catch {
     // ignore
   }
+}
+
+/** Persiste una sesión construida fuera (ej. login contra el API). */
+export function guardarSesion(sesion: InquilinoSesion): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(SESION_KEY, JSON.stringify(sesion));
+  } catch {
+    // ignore
+  }
+}
+
+/** Construye los datos locales del inquilino para un email (seed/invitado/genérico). */
+export function resolverInquilinoLocal(email: string): Omit<InquilinoSesion, 'loggeadoAt'> {
+  return resolverInquilino(email.trim().toLowerCase());
 }
 
 /* ============================================================

@@ -5,6 +5,7 @@ import jwt from '@fastify/jwt';
 import rateLimit from '@fastify/rate-limit';
 import { loadEnv, type Env } from './env.js';
 import { healthRoutes } from './routes/health.js';
+import { authRoutes } from './routes/auth.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -34,6 +35,7 @@ export async function buildApp(envOverrides: Partial<Record<string, string>> = {
   await app.register(jwt, { secret: env.JWT_SECRET });
 
   await app.register(healthRoutes);
+  await app.register(authRoutes);
 
   return app;
 }
