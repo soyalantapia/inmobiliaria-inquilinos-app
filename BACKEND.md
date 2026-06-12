@@ -66,9 +66,9 @@ pnpm --filter api db:deploy      # prod/Docker (no interactivo)
 
 ## Deploy (Railway)
 - Proyecto: `distinguished-adaptation` (CLI ya linkeada). DB: service `Postgres`.
-- API: `Dockerfile` en `apps/api` (contexto = raíz del monorepo; corre
-  `prisma migrate deploy` al arrancar). Deploy: `railway up` desde la raíz con el
-  service del API seleccionado, o conectar el repo en el dashboard.
+- **API EN PROD: https://api-production-262e.up.railway.app** (service `api`,
+  Dockerfile multi-stage, `migrate deploy` al arrancar, DB por red interna).
+  Re-deploy: `railway up --service api --detach` desde la raíz.
 - Front productivo contra el API: setear `NEXT_PUBLIC_API_URL` en el build de GH
   Pages (⚠️ tocar `.github/workflows/` requiere `gh auth refresh -s workflow`
   del dueño ANTES del push) y sumar el dominio de Pages a `CORS_ORIGINS`.

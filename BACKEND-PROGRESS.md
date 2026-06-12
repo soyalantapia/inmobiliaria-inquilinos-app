@@ -133,12 +133,23 @@
   (invitación con token; "simular aceptó" solo DEMO_MODE), boletas, POST /reportes
   con tracking server-side (IP real vía trustProxy, userAgent, identidad JWT).
 
-### 🔶 Fase 7 — Producción (PREPARADA, falta el deploy con OK del dueño)
-- [x] BACKEND.md (arquitectura, cómo correr, credenciales seed, envs, deploy).
-- [x] scripts/smoke-prod.mjs — 6/6 verde contra el API local.
-- [x] Dockerfile listo (migrate deploy + node dist).
-- [ ] `railway up` del API (CONFIRMAR con el dueño — primer deploy a prod).
-- [ ] Switch del front de GH Pages al API (CONFIRMAR + workflow scope del token).
+### ✅ Fase 7 — Producción (API DEPLOYADO EN RAILWAY)
+- [x] Service `api` creado en el proyecto MYALQ (junto al Postgres), variables
+      seteadas (DATABASE_URL por red INTERNA ${{Postgres.DATABASE_URL}},
+      JWT_SECRET propio de prod, DEMO_MODE=true, CORS, RAILWAY_DOCKERFILE_PATH).
+- [x] `railway up` → imagen Docker buildeada en Railway (Dockerfile multi-stage,
+      lockfile validado con el workspace completo) → migrate deploy (al día) →
+      server arriba en el PORT asignado.
+- [x] **URL pública: https://api-production-262e.up.railway.app**
+- [x] Smoke 6/6 CONTRA PROD (health db:up, demo, login, contratos derivados,
+      mis-anuncios, conteos reales).
+- [x] Verificación final en browser: front local + localStorage limpio → demo →
+      JWT de prod → feed de anuncios desde la DB de producción.
+- Los `.env.local` de ambas apps quedaron apuntando a PROD (el dueño ya no
+  necesita levantar el API local; para dev de API: http://localhost:3002).
+- [ ] Switch del build de GH Pages al API (única pieza restante de infra):
+      requiere `gh auth refresh -s workflow` del dueño para tocar el workflow
+      (inyectar NEXT_PUBLIC_API_URL) — el CORS ya admite soyalantapia.github.io.
 
 ### Front pendiente (los endpoints YA existen y están testeados)
 - /pagos del panel (PagosPorValidar 726 líneas), checkout/comprobantes del
