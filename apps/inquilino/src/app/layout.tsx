@@ -6,6 +6,7 @@ import { PwaRegister } from './pwa-register';
 import { Toaster } from '@llave/ui/use-toast';
 import { themeScript } from '@llave/ui/theme-toggle';
 import { AuthProvider } from '@/components/auth-provider';
+import { QueryProvider } from '@/components/query-provider';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
 
@@ -42,10 +43,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body className="min-h-screen bg-background font-sans" style={{ backgroundColor: '#ffffff' }}>
-        <AuthProvider>
-          {children}
-          <Toaster />
-        </AuthProvider>
+        <QueryProvider>
+          <AuthProvider>
+            {children}
+            <Toaster />
+          </AuthProvider>
+        </QueryProvider>
         <PwaRegister />
       </body>
     </html>

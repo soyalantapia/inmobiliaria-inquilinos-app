@@ -1,0 +1,79 @@
+// My Alquiler — schema base (los modelos de negocio se agregan por fase,
+// derivados de la spec extraída de los stores del front).
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ===== Tenancy + Auth (Fase 1) =====
+
+enum RolUsuario {
+  ADMIN
+  OPERADOR
+  CARGA
+}
+
+model Inmobiliaria {
+  id        String   @id @default(cuid())
+  nombre    String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  usuarios   Usuario[]
+  inquilinos Inquilino[]
+
+  @@map("inmobiliarias")
+}
+
+model Usuario {
+  id             String     @id @default(cuid())
+  inmobiliariaId String
+  email          String     @unique
+  nombre         String
+  rol            RolUsuario
+  passwordHash   String
+  pinHash        String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  inmobiliaria Inmobiliaria @relation(fields: [inmobiliariaId], references: [id])
+
+  @@index([inmobiliariaId])
+  @@map("usuarios")
+}
+
+model Inquilino {
+  id             String   @id @default(cuid())
+  inmobiliariaId String
+  email          String   @unique
+  nombre         String
+  telefono       String?
+  dni            String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  inmobiliaria Inmobiliaria @relation(fields: [inmobiliariaId], references: [id])
+  otps         OtpCode[]
+
+  @@index([inmobiliariaId])
+  @@map("inquilinos")
+}
+
+model OtpCode {
+  id          String    @id @default(cuid())
+  inquilinoId String
+  codeHash    String
+  expiresAt   DateTime
+  usedAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  inquilino Inquilino @relation(fields: [inquilinoId], references: [id])
+
+  @@index([inquilinoId])
+  @@map("otp_codes")
+}

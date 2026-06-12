@@ -22,5 +22,13 @@
     "prettier-plugin-tailwindcss": "^0.6.6",
     "turbo": "^2.1.0",
     "typescript": "^5.5.4"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "@prisma/engines",
+      "esbuild",
+      "prisma"
+    ]
   }
 }
