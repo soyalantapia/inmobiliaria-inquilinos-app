@@ -65,6 +65,87 @@ function mapContrato(c: ContratoApi): ContratoListado {
   } as ContratoListado;
 }
 
+// ===== Anuncios (acuses REALES del server) =====
+
+import {
+  contarAcuses,
+  contarDestinatarios,
+  crearAnuncio as crearAnuncioLocal,
+  eliminarAnuncio as eliminarAnuncioLocal,
+  listarAnuncios,
+  type Anuncio,
+} from '@/lib/anuncios-storage';
+
+export type AnuncioConConteos = Anuncio & {
+  conteos?: { leido: number; confirmado: number; total: number };
+};
+
+interface AnuncioApi extends Omit<Anuncio, 'enviadoAt'> {
+  enviadoAt: string;
+  conteos: { leido: number; confirmado: number; total: number };
+}
+
+export interface NuevoAnuncio {
+  titulo: string;
+  cuerpo: string;
+  prioridad: Anuncio['prioridad'];
+  audiencia: Anuncio['audiencia'];
+  audienciaIds?: string[];
+}
+
+export function useAnuncios(): {
+  anuncios: AnuncioConConteos[];
+  cargando: boolean;
+  crear: (a: NuevoAnuncio) => Promise<void>;
+  eliminar: (id: string) => Promise<void>;
+} {
+  const qc = useQueryClient();
+  const q = useQuery({
+    queryKey: ['anuncios'],
+    queryFn: async () => {
+      await ensureApiSession();
+      const data = await apiFetch<AnuncioApi[]>('/anuncios');
+      return data as AnuncioConConteos[];
+    },
+    enabled: apiEnabled,
+    staleTime: 10_000,
+    refetchInterval: 30_000, // los acuses de los inquilinos van llegando
+  });
+  const invalidar = () => void qc.invalidateQueries({ queryKey: ['anuncios'] });
+
+  if (!apiEnabled || q.isError) {
+    return {
+      anuncios: listarAnuncios().map((a) => ({ ...a, conteos: { ...contarAcuses(a), total: a.destinatariosCount } })),
+      cargando: false,
+      crear: async (input) => {
+        crearAnuncioLocal({
+          ...input,
+          audienciaIds: input.audienciaIds ?? [],
+          canales: ['APP', 'EMAIL'],
+          enviadoPor: 'Roberto Tapia',
+          destinatariosCount: contarDestinatarios(input.audiencia, input.audienciaIds ?? []),
+        });
+      },
+      eliminar: async (id) => {
+        eliminarAnuncioLocal(id);
+      },
+    };
+  }
+
+  return {
+    anuncios: q.data ?? [],
+    cargando: q.isPending,
+    crear: async (input) => {
+      await apiFetch('/anuncios', { method: 'POST', body: JSON.stringify(input) });
+      invalidar();
+    },
+    eliminar: async (id) => {
+      await apiFetch(`/anuncios/${id}`, { method: 'DELETE' });
+      invalidar();
+    },
+  };
+}
+
 // ===== Aprobaciones =====
 
 import {

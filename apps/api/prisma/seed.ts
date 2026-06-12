@@ -5,6 +5,9 @@
  */
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { seedOperacion } from './seeds/operacion.js';
+import { seedAnuncios } from './seeds/anuncios.js';
+import { seedInquilinoMundo } from './seeds/inquilinoMundo.js';
 
 const PASSWORD_DEV = 'delsol123';
 const PIN_DEV = '1234';
@@ -41,13 +44,13 @@ export async function seedBase(prisma: PrismaClient) {
     { email: 'luciana@delsol.com', nombre: 'Luciana', apellido: 'Vidal', rol: 'OPERADOR' as const },
     { email: 'camila@delsol.com', nombre: 'Camila', apellido: 'Acosta', rol: 'CARGA' as const },
   ];
-  for (const u of usuarios) {
-    await prisma.usuario.upsert({
+  await Promise.all(usuarios.map((u) =>
+    prisma.usuario.upsert({
       where: { inmobiliariaId_email: { inmobiliariaId: tid, email: u.email } },
       update: { nombre: u.nombre, apellido: u.apellido, rol: u.rol },
       create: { ...u, inmobiliariaId: tid, passwordHash, pinHash },
-    });
-  }
+    }),
+  ));
 
   // ===== Sociedades =====
   const sociedades = [
@@ -74,13 +77,9 @@ export async function seedBase(prisma: PrismaClient) {
       cuentaCobranza: undefined, afip: { conectado: false }, esPrincipal: false,
     },
   ];
-  for (const s of sociedades) {
-    await prisma.sociedad.upsert({
-      where: { id: s.id },
-      update: {},
-      create: { ...s, inmobiliariaId: tid },
-    });
-  }
+  await Promise.all(sociedades.map((s) =>
+    prisma.sociedad.upsert({ where: { id: s.id }, update: {}, create: { ...s, inmobiliariaId: tid } }),
+  ));
 
   // ===== Propietarios =====
   const propietarios = [
@@ -90,9 +89,9 @@ export async function seedBase(prisma: PrismaClient) {
     { id: 'own_004', nombre: 'Patricia', apellido: 'Iglesias', cuit: '27-45678901-5', email: 'patricia.iglesias@yahoo.com', telefono: '+54 11 4455 9988', cbuAlias: 'iglesias.cobro', comisionPct: 6.5, notas: 'Cobra directo (fideicomiso familiar).' },
     { id: 'own_005', nombre: 'Martín', apellido: 'Bravo', cuit: '20-56789012-6', email: 'martin.bravo@gmail.com', telefono: '+54 11 3322 1144', cbuAlias: 'bravo.martin.usd', comisionPct: 8, notas: 'Inmueble en USD; cobra en pesos al MEP.' },
   ];
-  for (const p of propietarios) {
-    await prisma.propietario.upsert({ where: { id: p.id }, update: {}, create: { ...p, inmobiliariaId: tid } });
-  }
+  await Promise.all(propietarios.map((p) =>
+    prisma.propietario.upsert({ where: { id: p.id }, update: {}, create: { ...p, inmobiliariaId: tid } }),
+  ));
 
   // ===== Propiedades =====
   const propiedades = [
@@ -103,9 +102,9 @@ export async function seedBase(prisma: PrismaClient) {
     { id: 'prp_005', direccion: 'Salguero 2240, 12°D', ciudad: 'Palermo, CABA', provincia: 'Buenos Aires', tipo: 'DEPARTAMENTO' as const, ambientes: 3, m2: 80, estado: 'ALQUILADA' as const, sociedadId: 'soc_003' },
     { id: 'prp_006', direccion: 'Olleros 3920', ciudad: 'Las Cañitas, CABA', provincia: 'Buenos Aires', tipo: 'DEPARTAMENTO' as const, ambientes: 2, m2: 55, estado: 'EN_EDICION' as const, sociedadId: 'soc_001' },
   ];
-  for (const p of propiedades) {
-    await prisma.propiedad.upsert({ where: { id: p.id }, update: {}, create: { ...p, inmobiliariaId: tid } });
-  }
+  await Promise.all(propiedades.map((p) =>
+    prisma.propiedad.upsert({ where: { id: p.id }, update: {}, create: { ...p, inmobiliariaId: tid } }),
+  ));
 
   // Participaciones (cotitularidad)
   const participaciones = [
@@ -288,6 +287,11 @@ export async function seedBase(prisma: PrismaClient) {
       });
     }
   }
+
+  // ===== Dominios (Fases 4-6) =====
+  await seedOperacion(prisma, tid);
+  await seedAnuncios(prisma, tid);
+  await seedInquilinoMundo(prisma, tid);
 
   return { inmobiliariaId: tid };
 }

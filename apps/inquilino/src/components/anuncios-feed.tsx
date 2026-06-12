@@ -11,28 +11,13 @@ import {
 import { cn } from '@llave/ui/cn';
 import { Badge } from '@llave/ui/badge';
 import { Card } from '@llave/ui/card';
-import {
-  type AnuncioInquilino,
-  listarAnunciosParaInquilino,
-} from '@/lib/anuncios-cross-app';
-import {
-  type Acuse,
-  leerAcuses,
-  marcarEnterado,
-  marcarLeido,
-} from '@/lib/anuncios-acuses';
+import { type AnuncioInquilino } from '@/lib/anuncios-cross-app';
+import { type Acuse } from '@/lib/anuncios-acuses';
+import { useMisAnuncios } from '@/lib/api/hooks';
 import { formatFechaCorta } from '@/lib/format';
 
 export function AnunciosFeed({ compacto = false }: { compacto?: boolean }) {
-  const [anuncios, setAnuncios] = useState<AnuncioInquilino[]>([]);
-  const [acuses, setAcuses] = useState<Record<string, Acuse>>({});
-  const [hidratado, setHidratado] = useState(false);
-
-  useEffect(() => {
-    setAnuncios(listarAnunciosParaInquilino());
-    setAcuses(leerAcuses());
-    setHidratado(true);
-  }, []);
+  const { anuncios, acuses, marcarLeido, marcarEnterado, hidratado } = useMisAnuncios();
 
   if (!hidratado || anuncios.length === 0) return null;
 
@@ -40,12 +25,10 @@ export function AnunciosFeed({ compacto = false }: { compacto?: boolean }) {
   const noLeidos = anuncios.filter((a) => !acuses[a.id]?.leidoAt).length;
 
   const abrir = (id: string) => {
-    marcarLeido(id);
-    setAcuses(leerAcuses());
+    void marcarLeido(id);
   };
   const confirmar = (id: string) => {
-    marcarEnterado(id);
-    setAcuses(leerAcuses());
+    void marcarEnterado(id);
   };
 
   return (

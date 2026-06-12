@@ -45,7 +45,8 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
     headers: {
-      'Content-Type': 'application/json',
+      // Content-Type solo si hay body: Fastify rechaza JSON vacío con 400
+      ...(init.body ? { 'Content-Type': 'application/json' } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init.headers ?? {}),
     },

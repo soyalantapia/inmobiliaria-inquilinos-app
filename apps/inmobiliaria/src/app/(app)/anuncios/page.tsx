@@ -47,12 +47,9 @@ import {
   PRIORIDAD_LABEL,
   consorciosAlcanzables,
   contarDestinatarios,
-  crearAnuncio,
-  eliminarAnuncio,
-  contarAcuses,
   inquilinosAlcanzables,
-  listarAnuncios,
 } from '@/lib/anuncios-storage';
+import { useAnuncios, type AnuncioConConteos } from '@/lib/api/hooks';
 import { formatFechaCorta } from '@/lib/format';
 
 const USUARIO_ACTUAL = 'Roberto Tapia';
@@ -75,14 +72,12 @@ const FILTROS_PRIORIDAD: { value: FiltroPrioridad; label: string }[] = [
 ];
 
 export default function AnunciosPage() {
-  const [anuncios, setAnuncios] = useState<Anuncio[]>([]);
+  const { anuncios, crear, eliminar } = useAnuncios();
   const [hidratado, setHidratado] = useState(false);
   const [crearAbierto, setCrearAbierto] = useState(false);
   const [anuncioAEliminar, setAnuncioAEliminar] = useState<Anuncio | null>(null);
   const [filtroPrioridad, setFiltroPrioridad] = useState<FiltroPrioridad>('TODAS');
-
   useEffect(() => {
-    setAnuncios(listarAnuncios());
     setHidratado(true);
   }, []);
 
@@ -115,8 +110,13 @@ export default function AnunciosPage() {
       : anuncios.filter((a) => a.prioridad === filtroPrioridad);
 
   const handleCrear = (data: Omit<Anuncio, 'id' | 'enviadoAt'>) => {
-    crearAnuncio(data);
-    setAnuncios(listarAnuncios());
+    void crear({
+      titulo: data.titulo,
+      cuerpo: data.cuerpo,
+      prioridad: data.prioridad,
+      audiencia: data.audiencia,
+      audienciaIds: data.audienciaIds,
+    });
     setCrearAbierto(false);
     toast({
       variant: 'success',
@@ -126,8 +126,7 @@ export default function AnunciosPage() {
   };
 
   const ejecutarEliminar = (a: Anuncio) => {
-    eliminarAnuncio(a.id);
-    setAnuncios(listarAnuncios());
+    void eliminar(a.id);
     setAnuncioAEliminar(null);
     toast({ title: 'Anuncio eliminado' });
   };
@@ -285,11 +284,11 @@ function AnuncioCard({
   anuncio,
   onEliminar,
 }: {
-  anuncio: Anuncio;
+  anuncio: AnuncioConConteos;
   onEliminar: () => void;
 }) {
   const esNormal = anuncio.prioridad === 'NORMAL';
-  const { leido, confirmado, total } = contarAcuses(anuncio);
+  const { leido, confirmado, total } = anuncio.conteos ?? { leido: 0, confirmado: 0, total: anuncio.destinatariosCount };
   const faltan = total - leido;
   const recordar = () =>
     toast({
