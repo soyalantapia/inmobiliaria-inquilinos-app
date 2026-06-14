@@ -31,9 +31,10 @@ import { MorososPanel } from '@/components/morosos-panel';
 import { PagosPorValidar } from '@/components/pagos-por-validar';
 import { Topbar } from '@/components/topbar';
 import { ValidadorResumenDialog } from '@/components/validador-resumen-dialog';
+import { apiEnabled } from '@/lib/api/client';
+import { useContratos } from '@/lib/api/hooks';
 import {
   contactosCobranzaMock,
-  contratosMock,
   pagosInformadosMock,
   propiedadesMock,
   propietariosMock,
@@ -114,13 +115,21 @@ export default function PagosPage() {
   const [aResolverCount, setAResolverCount] = useState(0);
   const [validadorOpen, setValidadorOpen] = useState(false);
 
+  // En producción (API) la cartera real viene de useContratos; los paneles
+  // de conciliación todavía-no-cableados (morosos/cargos/servicios/validar)
+  // se muestran solo en el build demo (!apiEnabled) para no inventar data.
+  const real = apiEnabled;
+  const { contratos } = useContratos();
+
   // Recalculamos el contador de pagos "a resolver" en cliente porque
   // estadoDePago lee de localStorage (acciones previas del admin).
   useEffect(() => {
     const recount = () => {
-      const pendientes = pagosInformadosMock.filter(
-        (p) => estadoDePago(p.id) === 'INFORMADO',
-      ).length;
+      // En modo real (API) la cola de validación todavía no está cableada:
+      // no inventamos comprobantes informados desde el mock.
+      const pendientes = real
+        ? 0
+        : pagosInformadosMock.filter((p) => estadoDePago(p.id) === 'INFORMADO').length;
       setAResolverCount(pendientes);
       // Default a "A resolver" si hay algo, sólo la primera vez (no
       // sobreescribimos si el usuario ya cambió de filtro).
@@ -137,37 +146,37 @@ export default function PagosPage() {
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [real]);
 
   const counters = useMemo(
     () => ({
       A_RESOLVER: aResolverCount,
-      VENCIDO: contratosMock.filter((c) => c.estadoPagoActual === 'VENCIDO').length,
-      PENDIENTE: contratosMock.filter((c) => c.estadoPagoActual === 'PENDIENTE').length,
-      PAGADO: contratosMock.filter((c) => c.estadoPagoActual === 'PAGADO').length,
+      VENCIDO: contratos.filter((c) => c.estadoPagoActual === 'VENCIDO').length,
+      PENDIENTE: contratos.filter((c) => c.estadoPagoActual === 'PENDIENTE').length,
+      PAGADO: contratos.filter((c) => c.estadoPagoActual === 'PAGADO').length,
     }),
-    [aResolverCount],
+    [aResolverCount, contratos],
   );
 
   const totalCobrado = useMemo(
     () =>
-      contratosMock
+      contratos
         .filter((c) => c.estadoPagoActual === 'PAGADO')
         .reduce((acc, c) => acc + c.monto, 0),
-    [],
+    [contratos],
   );
   const totalPendiente = useMemo(
     () =>
-      contratosMock
+      contratos
         .filter((c) => c.estadoPagoActual !== 'PAGADO')
         .reduce((acc, c) => acc + c.monto, 0),
-    [],
+    [contratos],
   );
 
   const filtradas = useMemo(() => {
-    if (filtro === 'TODOS' || filtro === 'A_RESOLVER') return contratosMock;
-    return contratosMock.filter((c) => c.estadoPagoActual === filtro);
-  }, [filtro]);
+    if (filtro === 'TODOS' || filtro === 'A_RESOLVER') return contratos;
+    return contratos.filter((c) => c.estadoPagoActual === filtro);
+  }, [filtro, contratos]);
 
   const togglearFiltro = (f: 'A_RESOLVER' | 'VENCIDO' | 'PENDIENTE' | 'PAGADO') => {
     setFiltro((prev) => (prev === f ? 'TODOS' : f));
@@ -176,7 +185,7 @@ export default function PagosPage() {
   // PDF de morosos para llevar a cobranza física.
   // Incluye titular + garante con sus teléfonos y los días de atraso.
   const exportarMorososPdf = () => {
-    const morosos = contratosMock.filter((c) => c.estadoPagoActual === 'VENCIDO');
+    const morosos = contratos.filter((c) => c.estadoPagoActual === 'VENCIDO');
     const filas: (string | number)[][] = morosos.map((c) => {
       const contacto = contactosCobranzaMock.find((x) => x.contratoId === c.id);
       const dias = -diasHastaVencimiento(c.proximoVencimiento);
@@ -219,7 +228,7 @@ export default function PagosPage() {
   // imprimir un reporte por cada una con su propio CUIT como emisor.
   // Cada sección es una sociedad, con sus contratos morosos.
   const exportarMorososPorSociedadPdf = () => {
-    const morosos = contratosMock.filter((c) => c.estadoPagoActual === 'VENCIDO');
+    const morosos = contratos.filter((c) => c.estadoPagoActual === 'VENCIDO');
     if (morosos.length === 0) {
       toast({
         title: 'No hay morosos este mes',
@@ -315,7 +324,7 @@ export default function PagosPage() {
   // PDF detallado de lo cobrado en el mes.
   // Se usa para rendir a propietarios y para archivo del estudio.
   const exportarCobradoPdf = () => {
-    const pagados = contratosMock.filter((c) => c.estadoPagoActual === 'PAGADO');
+    const pagados = contratos.filter((c) => c.estadoPagoActual === 'PAGADO');
     const filas: (string | number)[][] = pagados.map((c) => [
       c.inquilino,
       c.direccion,
@@ -386,31 +395,34 @@ export default function PagosPage() {
           </Card>
         </div>
 
-        {/* Cargos USO_Y_GOCE generados al inquilino (cobranza vía alquiler) */}
-        <CargosACobrar />
-
-        {/* Panel inline de morosos con teléfonos del titular y garante,
-            plantillas WhatsApp y filtros. Reemplaza al "tenés que abrir
-            el PDF para ver los contactos" con datos accionables. */}
-        <MorososPanel inmobiliaria={sociedadPrincipal().nombreComercial} />
-
-        {/* Alertas de servicios: inquilinos que no subieron boletas o
-            las tienen vencidas. El feedback pidió tratarlo como
-            morosidad blanda (Sección 5 + 7). */}
-        <AlertasServiciosCard />
+        {/* Paneles de conciliación todavía sobre datos demo (cargos
+            USO_Y_GOCE, morosos con contactos, alertas de servicios). Se
+            muestran solo en el build demo; en producción se ocultan hasta
+            cablearlos al API para no mezclar data ficticia con la real. */}
+        {!real && (
+          <>
+            <CargosACobrar />
+            <MorososPanel inmobiliaria={sociedadPrincipal().nombreComercial} />
+            <AlertasServiciosCard />
+          </>
+        )}
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">Liquidaciones — {formatPeriodo(periodoActualFormat())}</h2>
           <div className="flex flex-wrap gap-2">
-            <Button
-              size="sm"
-              className="gap-1 bg-violet-600 text-white hover:bg-violet-700"
-              onClick={() => setValidadorOpen(true)}
-            >
-              <ShieldCheck className="h-4 w-4" />
-              Validar por resumen
-            </Button>
-            <CargarPagoManualButton />
+            {!real && (
+              <>
+                <Button
+                  size="sm"
+                  className="gap-1 bg-violet-600 text-white hover:bg-violet-700"
+                  onClick={() => setValidadorOpen(true)}
+                >
+                  <ShieldCheck className="h-4 w-4" />
+                  Validar por resumen
+                </Button>
+                <CargarPagoManualButton />
+              </>
+            )}
             {/* Antes eran 3 botones PDF consecutivos ("PDF de
                 morosos", "PDF morosos por sociedad", "PDF cobranzas")
                 que saturaban la fila y obligaban a leer cada uno para
@@ -428,9 +440,11 @@ export default function PagosPage() {
                 <DropdownMenuItem onClick={() => exportarMorososPdf()}>
                   Morosos del mes
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => exportarMorososPorSociedadPdf()}>
-                  Morosos agrupados por sociedad
-                </DropdownMenuItem>
+                {!real && (
+                  <DropdownMenuItem onClick={() => exportarMorososPorSociedadPdf()}>
+                    Morosos agrupados por sociedad
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem onClick={() => exportarCobradoPdf()}>
                   Cobranzas del mes
                 </DropdownMenuItem>
@@ -517,7 +531,15 @@ export default function PagosPage() {
         {/* Vista "A resolver": comprobantes informados pendientes de tu OK.
             Se resuelve en este mismo lugar (sin cards sueltas arriba). */}
         {filtro === 'A_RESOLVER' ? (
-          <PagosPorValidar onChange={(pendientes) => setAResolverCount(pendientes)} />
+          real ? (
+            <Card>
+              <div className="py-10 text-center text-sm text-muted-foreground">
+                No hay comprobantes informados esperando validación.
+              </div>
+            </Card>
+          ) : (
+            <PagosPorValidar onChange={(pendientes) => setAResolverCount(pendientes)} />
+          )
         ) : /* Mobile: lista de cards. Desktop (md+): tabla.
             En mobile la tabla se cortaba horizontalmente. Las cards muestran
             la misma info verticalmente y son tap-friendly. */
