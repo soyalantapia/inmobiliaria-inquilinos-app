@@ -49,7 +49,8 @@ import {
   contarDestinatarios,
   inquilinosAlcanzables,
 } from '@/lib/anuncios-storage';
-import { useAnuncios, type AnuncioConConteos } from '@/lib/api/hooks';
+import { useAnuncios, useContratos, type AnuncioConConteos } from '@/lib/api/hooks';
+import { type ContratoListado } from '@/lib/types';
 import { formatFechaCorta } from '@/lib/format';
 
 const USUARIO_ACTUAL = 'Roberto Tapia';
@@ -73,6 +74,9 @@ const FILTROS_PRIORIDAD: { value: FiltroPrioridad; label: string }[] = [
 
 export default function AnunciosPage() {
   const { anuncios, crear, eliminar } = useAnuncios();
+  // En modo API el preview de destinatarios se calcula con los contratos reales
+  // (un alta/aprobación de contrato cambia el alcance); en demo cae al mock.
+  const { contratos: contratosApi, deApi: contratosDeApi } = useContratos();
   const [hidratado, setHidratado] = useState(false);
   const [crearAbierto, setCrearAbierto] = useState(false);
   const [anuncioAEliminar, setAnuncioAEliminar] = useState<Anuncio | null>(null);
@@ -259,6 +263,7 @@ export default function AnunciosPage() {
         abierto={crearAbierto}
         onClose={() => setCrearAbierto(false)}
         onGuardar={handleCrear}
+        contratosApi={contratosDeApi ? contratosApi : null}
       />
       {/* Confirmación antes de eliminar — antes el Trash2 borraba al instante.
           Un clic accidental no se podía deshacer y el operador tenía que
@@ -393,9 +398,13 @@ interface DialogProps {
   abierto: boolean;
   onClose: () => void;
   onGuardar: (data: Omit<Anuncio, 'id' | 'enviadoAt'>) => void;
+  /** Contratos reales del API (modo API). Si viene, el preview de
+   *  destinatarios de audiencias de inquilinos se calcula con ellos en vez
+   *  del mock, para que coincida con lo que resuelve el server. */
+  contratosApi?: ContratoListado[] | null;
 }
 
-function CrearAnuncioDialog({ abierto, onClose, onGuardar }: DialogProps) {
+function CrearAnuncioDialog({ abierto, onClose, onGuardar, contratosApi }: DialogProps) {
   const [titulo, setTitulo] = useState('');
   const [cuerpo, setCuerpo] = useState('');
   const [prioridad, setPrioridad] = useState<PrioridadAnuncio>('NORMAL');
@@ -418,7 +427,18 @@ function CrearAnuncioDialog({ abierto, onClose, onGuardar }: DialogProps) {
   }, [abierto]);
 
   const consorcios = consorciosAlcanzables();
-  const contratos = inquilinosAlcanzables();
+  // Inquilinos alcanzables: del API (activos, con inquilino real, sin
+  // SOLO_EXPENSAS) cuando hay API; si no, del mock.
+  const contratos = contratosApi
+    ? contratosApi
+        .filter((c) => c.estado === 'ACTIVO' && c.tipoContrato !== 'SOLO_EXPENSAS')
+        .map((c) => ({
+          id: c.id,
+          inquilino: c.inquilino,
+          direccion: c.direccion,
+          estadoPago: c.estadoPagoActual,
+        }))
+    : inquilinosAlcanzables();
   const qContrato = buscarContrato.trim().toLowerCase();
   const contratosFiltrados = qContrato
     ? contratos.filter(
@@ -439,7 +459,20 @@ function CrearAnuncioDialog({ abierto, onClose, onGuardar }: DialogProps) {
       : audiencia === 'CONTRATOS_ESPECIFICOS'
         ? contratosSel
         : [];
-  const destinatarios = contarDestinatarios(audiencia, audienciaIds);
+  // Conteo de destinatarios: en modo API las audiencias de inquilinos se
+  // cuentan con los contratos reales (`contratos`); el resto (consorcios,
+  // propietarios) sigue del mock — son estructurales y no cambian con altas.
+  const destinatarios = contratosApi
+    ? audiencia === 'TODOS_INQUILINOS'
+      ? contratos.length
+      : audiencia === 'INQUILINOS_MOROSOS'
+        ? contratos.filter((c) => c.estadoPago === 'VENCIDO').length
+        : audiencia === 'INQUILINOS_PENDIENTES'
+          ? contratos.filter((c) => c.estadoPago === 'PENDIENTE').length
+          : audiencia === 'CONTRATOS_ESPECIFICOS'
+            ? audienciaIds.length
+            : contarDestinatarios(audiencia, audienciaIds)
+    : contarDestinatarios(audiencia, audienciaIds);
 
   const revisar = () => {
     if (!titulo.trim() || !cuerpo.trim()) {
