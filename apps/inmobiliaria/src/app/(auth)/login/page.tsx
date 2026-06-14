@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@llav
 import { Input } from '@llave/ui/input';
 import { Label } from '@llave/ui/label';
 import { isClerkEnabled } from '@/lib/auth';
+import { apiEnabled, apiFetch, setToken, ApiError } from '@/lib/api/client';
 
 export default function LoginPage() {
   return (
@@ -28,39 +29,52 @@ export default function LoginPage() {
             path="/login"
             routing="path"
             signUpUrl="/login"
-            appearance={{
-              elements: {
-                rootBox: 'w-full',
-                card: 'shadow-sm',
-              },
-            }}
+            appearance={{ elements: { rootBox: 'w-full', card: 'shadow-sm' } }}
           />
         ) : (
-          <MockLogin />
+          <LoginForm />
         )}
-
-        <p className="text-center text-xs text-muted-foreground">
-          {isClerkEnabled()
-            ? 'Auth gestionado por Clerk.'
-            : 'Mock — pegá NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY en .env.local para activar Clerk real.'}
-        </p>
       </div>
     </main>
   );
 }
 
-function MockLogin() {
+/**
+ * Login real contra el API (email + password → JWT). En modo demo
+ * (`NEXT_PUBLIC_API_URL` vacío) no hay backend: deja pasar para que la demo
+ * de GH Pages siga funcionando con localStorage.
+ */
+function LoginForm() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [pass, setPass] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 600));
-    setLoading(false);
-    router.push('/');
+    try {
+      if (!apiEnabled) {
+        // Demo sin backend: entra directo (los datos vienen de localStorage).
+        router.replace('/');
+        return;
+      }
+      const r = await apiFetch<{ token: string; nombre: string; rol: string }>('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email: email.trim().toLowerCase(), password: pass }),
+      });
+      setToken(r.token);
+      router.replace('/');
+    } catch (err) {
+      setError(
+        err instanceof ApiError && err.status === 401
+          ? 'Email o contraseña incorrectos.'
+          : 'No se pudo entrar. Revisá tu conexión y probá de nuevo.',
+      );
+      setLoading(false);
+    }
   };
 
   return (
@@ -79,7 +93,7 @@ function MockLogin() {
               autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="roberto@inmosol.com.ar"
+              placeholder="vos@tuinmobiliaria.com"
               required
             />
           </div>
@@ -94,6 +108,11 @@ function MockLogin() {
               required
             />
           </div>
+          {error && (
+            <p className="rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive">
+              {error}
+            </p>
+          )}
           <Button type="submit" className="w-full" size="lg" disabled={!email || !pass || loading}>
             {loading ? 'Entrando…' : 'Entrar'}
           </Button>

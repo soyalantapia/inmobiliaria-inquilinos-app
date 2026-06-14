@@ -2,9 +2,11 @@ import { MobileBottomNav } from '@/components/mobile-bottom-nav';
 import { OnboardingInmo } from '@/components/onboarding';
 import { PilotoFab } from '@/components/piloto-fab';
 import { Sidebar } from '@/components/sidebar';
+import { AuthGuard } from '@/components/auth-guard';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
+    <AuthGuard>
     <div className="flex min-h-screen">
       {/* Skip-nav: oculto visualmente pero accesible para usuarios de teclado /
           lectores de pantalla. Al enfocarse con Tab, aparece sobre todo lo demás
@@ -32,5 +34,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           el modo activo (los 9-10 beta testers). */}
       <PilotoFab />
     </div>
+    </AuthGuard>
   );
 }
