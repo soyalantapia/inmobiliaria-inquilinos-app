@@ -34,7 +34,7 @@ interface ContratoApi {
   cargadoRol: string | null;
   cargadoAt: string | null;
   aprobadoPor: string | null;
-  propiedad: { id: string; direccion: string; ciudad: string };
+  propiedad: { id: string; direccion: string; ciudad: string; consorcio?: { nombre: string } | null };
   inquilinoTitular: { id: string; nombre: string; apellido: string | null } | null;
   /** Derivados por el server desde liquidaciones reales (Fase 3). */
   estadoPagoActual: ContratoListado['estadoPagoActual'];
@@ -46,7 +46,7 @@ function mapContrato(c: ContratoApi): ContratoListado {
     id: c.id,
     inquilino: c.inquilinoTitular
       ? `${c.inquilinoTitular.nombre} ${c.inquilinoTitular.apellido ?? ''}`.trim()
-      : '—',
+      : (c.propiedad.consorcio?.nombre ?? '—'),
     direccion: c.propiedad.direccion,
     monto: Number(c.monto),
     moneda: c.moneda,

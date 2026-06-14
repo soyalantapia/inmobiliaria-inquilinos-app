@@ -150,6 +150,15 @@ export async function seedOperacion(prisma: PrismaClient, tid: string) {
     });
   }
 
+  // FK propiedad→consorcio: prp_002 (Av. Cabildo 2890, 7°A) pertenece al
+  // Consorcio Cabildo 2890 (cnsr_002). cnt_007 es su contrato SOLO_EXPENSAS:
+  // sin inquilino titular, la "parte" que se muestra en /contratos es el
+  // consorcio (de lo contrario la fila sale con nombre "—").
+  await prisma.propiedad.updateMany({
+    where: { id: 'prp_002', inmobiliariaId: tid },
+    data: { consorcioId: 'cnsr_002' },
+  });
+
   // Unidades funcionales
   const unidades = [
     // cnsr_001 — Gorriti 4521
