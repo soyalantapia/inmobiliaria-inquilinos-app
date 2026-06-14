@@ -33,6 +33,7 @@ import {
   categoriaGastoLabel,
 } from '@/lib/caja-storage';
 import { useCaja } from '@/lib/api/hooks';
+import { apiEnabled } from '@/lib/api/client';
 import { formatFechaCorta, formatMonto } from '@/lib/format';
 import { propiedadesMock } from '@/lib/mock-data';
 
@@ -58,14 +59,18 @@ export default function CajaPage() {
     .reduce((acc, m) => acc + m.monto, 0);
   const cantidadMov = movimientos.length;
 
-  const handleEliminar = async (pin: string) => {
-    if (!eliminando) return;
+  // Devuelve null si salió bien o el mensaje de error si el server rechazó
+  // (PIN incorrecto, gasto ya rendido 409, etc.): en modo servidor el diálogo
+  // de PIN lo muestra inline y queda abierto para reintentar.
+  const handleEliminar = async (pin: string): Promise<string | null> => {
+    if (!eliminando) return null;
     try {
       await eliminarGasto(eliminando.id, pin);
       setEliminando(null);
       toast({ title: 'Movimiento eliminado' });
+      return null;
     } catch (e) {
-      toast({ variant: 'destructive', title: 'No se pudo eliminar', description: e instanceof Error ? e.message : undefined });
+      return e instanceof Error ? e.message : 'No se pudo eliminar.';
     }
   };
 
@@ -216,14 +221,12 @@ export default function CajaPage() {
         abierto={showPin}
         accion="Eliminar gasto de caja"
         subaccion={eliminando?.descripcion}
+        validacion={apiEnabled ? 'servidor' : 'local'}
         onClose={() => {
           transitioningToPin.current = false;
           setShowPin(false);
         }}
-        onConfirmado={(pin) => {
-          void handleEliminar(pin);
-          transitioningToPin.current = false;
-        }}
+        onConfirmado={(pin) => handleEliminar(pin)}
       />
     </>
   );

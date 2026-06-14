@@ -27,22 +27,36 @@ interface PinPromptDialogProps {
   /** Subtexto: monto, entidad, contraparte. */
   subaccion?: string;
   onClose: () => void;
-  /** Se llama solo si el PIN se valida correctamente. */
-  /** Recibe el PIN tipeado — los flujos contra el API lo reenvían al server. */
-  onConfirmado: (pin: string) => void;
+  /**
+   * Validación del PIN:
+   * - `'local'` (default): el PIN vive en localStorage (modo demo). El diálogo
+   *   valida con `validarPin`/`tienePinConfigurado` y soporta el alta inicial.
+   * - `'servidor'`: el PIN lo valida el server (modo API). El diálogo NO usa
+   *   localStorage para decidir el modo ni para validar: solo recolecta el PIN
+   *   y lo reenvía. `onConfirmado` debe devolver el mensaje de error si el
+   *   server rechaza (el diálogo lo muestra y queda abierto para reintentar) o
+   *   `void`/`null` si salió bien (cierra).
+   */
+  validacion?: 'local' | 'servidor';
+  /** Se llama con el PIN tipeado. En modo `'servidor'` puede devolver un
+   *  string de error (mantiene el diálogo abierto) o null/void (éxito). */
+  onConfirmado: (pin: string) => void | string | null | Promise<void | string | null>;
 }
 
 export function PinPromptDialog({
   abierto,
   accion,
   subaccion,
+  validacion = 'local',
   onClose,
   onConfirmado,
 }: PinPromptDialogProps) {
+  const servidor = validacion === 'servidor';
   const [modo, setModo] = useState<'validar' | 'configurar'>('validar');
   const [pin, setPin] = useState('');
   const [pinConfirm, setPinConfirm] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [enviando, setEnviando] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -50,22 +64,25 @@ export function PinPromptDialog({
     setPin('');
     setPinConfirm('');
     setError(null);
-    setModo(tienePinConfigurado() ? 'validar' : 'configurar');
+    setEnviando(false);
+    // En modo servidor siempre validamos (el alta del PIN no es local).
+    setModo(servidor || tienePinConfigurado() ? 'validar' : 'configurar');
     setTimeout(() => inputRef.current?.focus(), 50);
-  }, [abierto]);
+  }, [abierto, servidor]);
 
   useEffect(() => {
-    if (!abierto) return;
+    if (!abierto || servidor) return;
     // Si el PIN ya está desbloqueado por otra acción reciente,
     // auto-confirmamos sin pedir input (no hay PIN tipeado: va vacío;
     // los flujos contra el API vuelven a pedirlo si el server lo exige).
+    // En modo servidor NO aplica: el server pide el PIN real en cada acción.
     if (modo === 'validar' && pinEstaDesbloqueado()) {
       onConfirmado('');
       onClose();
     }
-  }, [abierto, modo, onClose, onConfirmado]);
+  }, [abierto, modo, onClose, onConfirmado, servidor]);
 
-  const submit = () => {
+  const submit = async () => {
     setError(null);
     if (modo === 'configurar') {
       if (pin !== pinConfirm) {
@@ -84,6 +101,25 @@ export function PinPromptDialog({
       });
       onConfirmado(pin);
       onClose();
+      return;
+    }
+    // modo validar
+    if (servidor) {
+      // El server valida el PIN. onConfirmado devuelve el mensaje de error si
+      // lo rechaza (queda abierto para reintentar) o null/void si salió ok.
+      setEnviando(true);
+      try {
+        const err = await onConfirmado(pin);
+        if (typeof err === 'string') {
+          setError(err);
+          setPin('');
+          setTimeout(() => inputRef.current?.focus(), 50);
+          return;
+        }
+        onClose();
+      } finally {
+        setEnviando(false);
+      }
       return;
     }
     const res = validarPin(pin);
@@ -203,13 +239,18 @@ export function PinPromptDialog({
                 // PIN incompleto se mostraba "PIN incorrecto" como error,
                 // sumando un intento fallido inutilmente (con bloqueo a los 5).
                 disabled={
-                  modo === 'configurar'
+                  enviando ||
+                  (modo === 'configurar'
                     ? pin.length < 4 || pin !== pinConfirm
-                    : pin.length < 4
+                    : pin.length < 4)
                 }
               >
                 <Lock className="h-4 w-4" />
-                {modo === 'configurar' ? 'Crear PIN' : 'Confirmar'}
+                {enviando
+                  ? 'Verificando…'
+                  : modo === 'configurar'
+                    ? 'Crear PIN'
+                    : 'Confirmar'}
               </Button>
             )}
           </div>

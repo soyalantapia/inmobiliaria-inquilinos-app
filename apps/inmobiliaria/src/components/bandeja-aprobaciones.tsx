@@ -28,6 +28,7 @@ import {
   TIPO_APROBACION_LABEL,
 } from '@/lib/aprobaciones-storage';
 import { useAprobaciones } from '@/lib/api/hooks';
+import { apiEnabled } from '@/lib/api/client';
 import { formatFechaCorta, formatMonto } from '@/lib/format';
 
 const ICONO_TIPO: Record<TipoAprobacion, typeof Inbox> = {
@@ -64,7 +65,10 @@ export function BandejaAprobaciones() {
     [items],
   );
 
-  const onPinConfirmado = async (pin: string) => {
+  // Devuelve null si salió bien (el diálogo de PIN cierra) o el mensaje de
+  // error si el server rechazó (PIN incorrecto, etc.): el diálogo lo muestra
+  // inline y queda abierto para reintentar, sin romper el estado del ítem.
+  const onPinConfirmado = async (pin: string): Promise<string | null> => {
     try {
       if (aprobar_) {
         const r = await aprobarApi(aprobar_.id, pin, comentarioAprob || undefined);
@@ -77,12 +81,9 @@ export function BandejaAprobaciones() {
         setRechazar_(null);
         setMotivoRechazo('');
       }
+      return null;
     } catch (e) {
-      toast({
-        variant: 'destructive',
-        title: 'No se pudo completar',
-        description: e instanceof Error ? e.message : 'Probá de nuevo.',
-      });
+      return e instanceof Error ? e.message : 'No se pudo completar. Probá de nuevo.';
     }
   };
 
@@ -209,11 +210,12 @@ export function BandejaAprobaciones() {
           const item = aprobar_ ?? rechazar_;
           return item ? `${TIPO_APROBACION_LABEL[item.tipo]} · cargado por ${item.cargadoPor}` : undefined;
         })()}
+        validacion={apiEnabled ? 'servidor' : 'local'}
         onClose={() => {
           transitioningToPin.current = false;
           setShowPin(false);
         }}
-        onConfirmado={(pin) => void onPinConfirmado(pin)}
+        onConfirmado={(pin) => onPinConfirmado(pin)}
       />
 
       <ConfirmDialog
