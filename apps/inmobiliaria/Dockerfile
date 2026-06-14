@@ -13,7 +13,7 @@ ARG NEXT_PUBLIC_API_URL=https://api-production-262e.up.railway.app
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_TELEMETRY_DISABLED=1
 # package.json de TODO el workspace (el lockfile valida contra todos los importers)
-COPY pnpm-lock.yaml pnpm-workspace.yaml package.json turbo.json ./
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json turbo.json tsconfig.base.json ./
 COPY apps/api/package.json apps/api/package.json
 COPY apps/inquilino/package.json apps/inquilino/package.json
 COPY apps/inmobiliaria/package.json apps/inmobiliaria/package.json
