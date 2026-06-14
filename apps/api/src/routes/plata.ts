@@ -181,7 +181,8 @@ export async function plataRoutes(app: FastifyInstance) {
         descripcion: z.string().min(3),
         monto: z.number().positive(),
         fecha: z.string(),
-        proveedor: z.string().optional(),
+        // El front manda null cuando el proveedor queda vacío: aceptar null además de undefined.
+        proveedor: z.string().nullable().optional(),
       })
       .safeParse(request.body ?? {});
     if (!body.success) return reply.code(400).send({ message: 'Datos del gasto incompletos' });

@@ -158,6 +158,30 @@ describe('Rendición — el loop caja→rendición', () => {
   });
 });
 
+describe('Alta de gasto en caja', () => {
+  it('crea un gasto sin proveedor (proveedor null) → 200 y persiste; luego se puede eliminar', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/caja/movimientos',
+      headers: auth(tokenAdmin),
+      // proveedor null = caso del form cuando queda vacío (antes daba 400)
+      payload: { propiedadId: 'prp_003', categoria: 'CERRAJERIA', descripcion: 'QA alta sin proveedor', monto: 15000, fecha: '2026-06-14', proveedor: null },
+    });
+    expect(res.statusCode).toBe(200);
+    const creado = res.json();
+    expect(creado.proveedor).toBeNull();
+    expect(Number(creado.monto)).toBe(15000);
+    // limpieza: el gasto recién creado no está descontado → se puede eliminar con PIN
+    const del = await app.inject({
+      method: 'DELETE',
+      url: `/caja/movimientos/${creado.id}`,
+      headers: auth(tokenAdmin),
+      payload: { pin: '1234' },
+    });
+    expect(del.statusCode).toBe(200);
+  });
+});
+
 describe('Aprobaciones con PIN', () => {
   it('aprobar el contrato de Tomás Bravo → APROBADA + contrato ACTIVO', async () => {
     const res = await app.inject({

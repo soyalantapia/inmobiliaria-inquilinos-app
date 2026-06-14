@@ -187,20 +187,30 @@ export default function CajaPage() {
       <DialogCargarGasto
         open={abrirForm}
         onOpenChange={setAbrirForm}
-        onSubmit={(data) => {
-          void crearGasto({
-            propiedadId: data.propiedadId,
-            categoria: data.categoria,
-            descripcion: data.descripcion,
-            monto: data.monto,
-            fecha: data.fecha,
-            proveedor: data.proveedor,
-          });
-          setAbrirForm(false);
-          toast({
-            title: 'Gasto cargado',
-            description: `Se descontará en la próxima rendición.`,
-          });
+        onSubmit={async (data) => {
+          // Esperamos el alta: si el server rechaza, NO cerramos ni mostramos
+          // éxito (antes el `void` se tragaba el error y el toast mentía).
+          try {
+            await crearGasto({
+              propiedadId: data.propiedadId,
+              categoria: data.categoria,
+              descripcion: data.descripcion,
+              monto: data.monto,
+              fecha: data.fecha,
+              proveedor: data.proveedor,
+            });
+            setAbrirForm(false);
+            toast({
+              title: 'Gasto cargado',
+              description: `Se descontará en la próxima rendición.`,
+            });
+          } catch (e) {
+            toast({
+              variant: 'destructive',
+              title: 'No se pudo cargar el gasto',
+              description: e instanceof Error ? e.message : 'Probá de nuevo.',
+            });
+          }
         }}
       />
 
