@@ -8,6 +8,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiEnabled, apiFetch } from './client';
 import { ensureApiSession } from './session';
+import { mockUser } from '@/lib/auth';
 import { contratosMock, propiedadesMock, propietariosMock } from '@/lib/mock-data';
 import type {
   ContratoListado,
@@ -17,6 +18,7 @@ import type {
   TipoPropiedad,
 } from '@/lib/types';
 import { enriquecerPropiedad, type PropiedadEnriquecida } from '@/lib/propiedades-helpers';
+import type { DashboardStats } from '@/lib/dashboard-helpers';
 import {
   cargarMovimiento as cargarMovimientoLocal,
   eliminarMovimiento as eliminarMovimientoLocal,
@@ -342,6 +344,62 @@ export function useCaja(): {
   };
 }
 
+// ===== Usuario logueado (/auth/me) =====
+
+interface MeApi {
+  kind: string;
+  nombre: string;
+  email: string;
+  rol: string;
+}
+
+export interface Me {
+  nombre: string;
+  email: string;
+  rol: string;
+  firstName: string;
+  iniciales: string;
+}
+
+function iniciales(nombre: string, email: string): string {
+  const parts = nombre.trim().split(/\s+/).filter(Boolean);
+  const ini = `${parts[0]?.[0] ?? ''}${parts[1]?.[0] ?? ''}`.toUpperCase();
+  return ini || (email[0]?.toUpperCase() ?? '?');
+}
+
+export function useMe(): { me: Me | null; cargando: boolean } {
+  const q = useQuery({
+    queryKey: ['me'],
+    queryFn: async () => {
+      await ensureApiSession();
+      return apiFetch<MeApi>('/auth/me');
+    },
+    enabled: apiEnabled,
+    staleTime: 60_000,
+  });
+
+  if (!apiEnabled) {
+    const u = mockUser.user;
+    return {
+      me: {
+        nombre: u.fullName,
+        email: u.primaryEmailAddress.emailAddress,
+        rol: 'ADMIN',
+        firstName: u.firstName,
+        iniciales: `${u.firstName[0] ?? ''}${u.lastName[0] ?? ''}`.toUpperCase(),
+      },
+      cargando: false,
+    };
+  }
+  const d = q.data;
+  if (!d) return { me: null, cargando: q.isPending };
+  const firstName = d.nombre.trim().split(/\s+/)[0] ?? d.nombre;
+  return {
+    me: { nombre: d.nombre, email: d.email, rol: d.rol, firstName, iniciales: iniciales(d.nombre, d.email) },
+    cargando: false,
+  };
+}
+
 export function useContratos(): { contratos: ContratoListado[]; cargando: boolean; deApi: boolean } {
   const q = useQuery({
     queryKey: ['contratos'],
@@ -663,4 +721,88 @@ export function usePropietarios(): {
   });
 
   return { propietarios, cargando: ownersQ.isPending, deApi: true };
+}
+
+// ===== Dashboard (agregados reales para el home) =====
+
+export interface DashboardData {
+  stats: DashboardStats;
+  morosos: { contratoId: string; inquilino: string; direccion: string; monto: number; moneda: ContratoListado['moneda'] }[];
+  propietariosSinCbu: number;
+  porRendir: number;
+  proximosVencimientos: { id: string; direccion: string; inquilino: string; fecha: string; monto: number }[];
+  cargando: boolean;
+}
+
+const COMISION_DASHBOARD = 0.08;
+
+export function useDashboard(): DashboardData {
+  const { contratos, cargando: cargC } = useContratos();
+  const { propiedades, cargando: cargP } = usePropiedades();
+  const { propietarios } = usePropietarios();
+  const { liquidaciones } = useLiquidaciones();
+
+  const activos = contratos.filter((c) => c.estado === 'ACTIVO');
+  const cobrado = activos.filter((c) => c.estadoPagoActual === 'PAGADO').reduce((a, c) => a + c.monto, 0);
+  const porCobrar = activos.filter((c) => c.estadoPagoActual === 'PENDIENTE').reduce((a, c) => a + c.monto, 0);
+  const moraContratos = activos.filter((c) => c.estadoPagoActual === 'VENCIDO');
+  const enMora = { monto: moraContratos.reduce((a, c) => a + c.monto, 0), cantidad: moraContratos.length };
+  const totalActivos = cobrado + porCobrar + enMora.monto;
+  const comisionMes = Math.round(cobrado * COMISION_DASHBOARD);
+  const aRendirMes = Math.round(cobrado - comisionMes);
+
+  const totalProps = propiedades.length;
+  const alquiladas = propiedades.filter((p) => p.propiedad.estado === 'ALQUILADA').length;
+  const ocupacionPct = totalProps > 0 ? Math.round((alquiladas / totalProps) * 100) : 0;
+  const reclamosAbiertos = propiedades.reduce((a, p) => a + p.reclamosAbiertos, 0);
+  const cobrabilidadPct = totalActivos > 0 ? Math.round((cobrado / totalActivos) * 100) : 0;
+
+  const stats: DashboardStats = {
+    cobradoMes: cobrado,
+    porCobrarMes: porCobrar,
+    enMora,
+    comisionMes,
+    aRendirMes,
+    contratosActivos: activos.length,
+    ocupacionPct,
+    reclamosAbiertos,
+    cobrabilidadPct,
+  };
+
+  const morosos = moraContratos.map((c) => ({
+    contratoId: c.id,
+    inquilino: c.inquilino,
+    direccion: c.direccion,
+    monto: c.monto,
+    moneda: c.moneda,
+  }));
+
+  const propietariosSinCbu = propietarios.filter((p) => !p.cbuAlias).length;
+  const porRendir = propietarios.filter((p) => p.totalRecibirMes > 0).length;
+
+  // Próximos vencimientos: liquidaciones no pagadas que vencen dentro de 14 días.
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  const en14 = hoy.getTime() + 14 * 24 * 60 * 60 * 1000;
+  const proximosVencimientos = liquidaciones
+    .filter((l) => l.estado !== 'PAGADO' && l.fechaVencimiento)
+    .map((l) => ({ l, ts: new Date(l.fechaVencimiento).getTime() }))
+    .filter(({ ts }) => ts >= hoy.getTime() && ts <= en14)
+    .sort((a, b) => a.ts - b.ts)
+    .map(({ l }) => ({
+      id: l.id,
+      direccion: l.direccion,
+      inquilino: l.inquilino,
+      fecha: l.fechaVencimiento,
+      monto: l.montoTotal,
+    }));
+
+  return {
+    stats,
+    morosos,
+    propietariosSinCbu,
+    porRendir,
+    proximosVencimientos,
+    cargando: cargC || cargP,
+  };
 }

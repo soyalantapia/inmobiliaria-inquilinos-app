@@ -12,6 +12,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@llave/ui/cn';
+import { apiEnabled } from '@/lib/api/client';
 import { estadoDePago } from '@/lib/conciliacion-storage';
 import { pagosInformadosMock } from '@/lib/mock-data';
 import { listarReclamos } from '@/lib/reclamos-store';
@@ -54,9 +55,13 @@ function isActive(pathname: string, href: string): boolean {
 // Conteos de pendientes — mismos filtros que components/inbox-del-dia.tsx
 // (única fuente de verdad para no divergir del dashboard).
 function contarPagosAValidar(): number {
+  // En producción la cola de validación de comprobantes todavía no está
+  // cableada al API → 0 (no mostramos pendientes ficticios del mock).
+  if (apiEnabled) return 0;
   return pagosInformadosMock.filter((p) => estadoDePago(p.id) === 'INFORMADO').length;
 }
 function contarReclamosSinAsignar(): number {
+  if (apiEnabled) return 0;
   return listarReclamos().filter(
     (r) => (r.estado === 'ABIERTO' || r.estado === 'EN_CURSO') && !r.profesionalAsignadoId,
   ).length;

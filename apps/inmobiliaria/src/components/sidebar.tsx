@@ -22,6 +22,8 @@ import {
   X,
 } from 'lucide-react';
 import { listarPendientes } from '@/lib/aprobaciones-storage';
+import { apiEnabled } from '@/lib/api/client';
+import { useAprobaciones } from '@/lib/api/hooks';
 import { cn } from '@llave/ui/cn';
 import { CountBadge } from '@/components/count-badge';
 import { calcularResumenPlan } from '@/lib/plan';
@@ -60,12 +62,18 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
   const trial = leerTrial();
   const trialActivo = trialVigente(trial);
   const diasTrial = trialActivo ? diasRestantesTrial(trial) : 0;
-  const [pendientes, setPendientes] = useState(0);
+  const [pendientesLocal, setPendientesLocal] = useState(0);
   const [rol, setRol] = useState<Rol>('ADMIN');
 
+  // En producción el badge cuenta las aprobaciones reales del API; en build
+  // demo (!apiEnabled) usa el store local.
+  const { aprobaciones } = useAprobaciones();
+  const pendientes = apiEnabled ? aprobaciones.length : pendientesLocal;
+
   useEffect(() => {
-    setPendientes(listarPendientes().length);
-    const handler = () => setPendientes(listarPendientes().length);
+    if (apiEnabled) return;
+    setPendientesLocal(listarPendientes().length);
+    const handler = () => setPendientesLocal(listarPendientes().length);
     window.addEventListener('storage', handler);
     return () => window.removeEventListener('storage', handler);
   }, [pathname]);

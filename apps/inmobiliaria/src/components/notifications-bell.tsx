@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { Badge } from '@llave/ui/badge';
 import { cn } from '@llave/ui/cn';
+import { apiEnabled } from '@/lib/api/client';
 import { reclamosMock } from '@/lib/mock-data';
 
 interface Notif {
@@ -33,6 +34,9 @@ const ICONS = {
 } as const;
 
 function buildNotifs(): Notif[] {
+  // En producción todavía no hay feed de notificaciones en el API → vacío
+  // (no mostramos eventos ficticios del mock como si fueran reales).
+  if (apiEnabled) return [];
   // construimos las notificaciones a partir del mock de reclamos abiertos
   // + algunos eventos sintéticos del dashboard
   const reclamosAbiertos = reclamosMock.filter((r) => r.estado === 'ABIERTO');

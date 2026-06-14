@@ -11,7 +11,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@llave/ui/dropdown-menu';
-import { isClerkEnabled, mockUser } from '@/lib/auth';
+import { isClerkEnabled } from '@/lib/auth';
+import { setToken } from '@/lib/api/client';
+import { useMe } from '@/lib/api/hooks';
 import { ConvenioBadgeTopbar } from './convenio-badge-topbar';
 import { MobileSidebarTrigger } from './sidebar';
 import { NotificationsBell } from './notifications-bell';
@@ -19,6 +21,13 @@ import { PilotoBadgeTopbar } from './piloto-badge-topbar';
 
 export function Topbar({ titulo }: { titulo: string }) {
   const router = useRouter();
+  const { me } = useMe();
+  const nombreCompleto = me?.nombre ?? 'Cargando…';
+  const inicialesCuenta = me?.iniciales ?? '·';
+  const cerrarSesion = () => {
+    setToken(null);
+    router.replace('/login');
+  };
   return (
     <header className="flex h-16 items-center justify-between gap-2 border-b bg-background px-3 md:gap-3 md:px-6">
       <div className="flex flex-shrink-0 items-center gap-2">
@@ -60,22 +69,21 @@ export function Topbar({ titulo }: { titulo: string }) {
               >
                 <Avatar>
                   <AvatarFallback className="bg-primary/10 text-primary">
-                    {mockUser.user.firstName.slice(0, 1)}
-                    {mockUser.user.lastName.slice(0, 1)}
+                    {inicialesCuenta}
                   </AvatarFallback>
                 </Avatar>
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="min-w-[12rem]">
               <div className="px-2 py-1.5">
-                <p className="text-sm font-medium leading-none">
-                  {mockUser.user.firstName} {mockUser.user.lastName}
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">Inmobiliaria del Sol</p>
+                <p className="text-sm font-medium leading-none">{nombreCompleto}</p>
+                {me?.email && (
+                  <p className="mt-1 text-xs text-muted-foreground">{me.email}</p>
+                )}
               </div>
               <DropdownMenuSeparator />
               <DropdownMenuItem
-                onClick={() => router.push('/login')}
+                onClick={cerrarSesion}
                 className="text-destructive hover:bg-destructive/10 hover:text-destructive focus:bg-destructive/10 focus:text-destructive"
               >
                 <LogOut className="mr-2 h-4 w-4" />

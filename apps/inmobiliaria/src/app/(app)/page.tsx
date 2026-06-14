@@ -1,3 +1,5 @@
+'use client';
+
 import Link from 'next/link';
 import {
   AlertOctagon,
@@ -27,9 +29,16 @@ import { InboxDelDia } from '@/components/inbox-del-dia';
 import { Topbar } from '@/components/topbar';
 import { agendaMock, alertasMock, dashboardMetricsMock } from '@/lib/mock-data';
 import { calcularDashboardStats } from '@/lib/dashboard-helpers';
+import { apiEnabled } from '@/lib/api/client';
+import { useDashboard } from '@/lib/api/hooks';
 import { diasHastaVencimiento, formatFechaCorta, formatMonto, formatPeriodo, periodoActualFormat } from '@/lib/format';
 
 export default function DashboardPage() {
+  // En producción (API) el dashboard se arma con agregados reales. El render
+  // demo (mocks: Roberto, 6 contratos, $1.34M…) queda intacto para el build
+  // de GH Pages sin backend (!apiEnabled).
+  if (apiEnabled) return <DashboardReal />;
+
   const stats = calcularDashboardStats();
   const m = dashboardMetricsMock;
 
@@ -257,6 +266,245 @@ export default function DashboardPage() {
                   </span>
                 </p>
               </div>
+            </CardContent>
+          </Card>
+        </div>
+      </main>
+    </>
+  );
+}
+
+// ─────────────────── Dashboard REAL (modo API) ───────────────────
+
+function DashboardReal() {
+  const { stats, morosos, propietariosSinCbu, porRendir, proximosVencimientos } = useDashboard();
+
+  return (
+    <>
+      <Topbar titulo="Inicio" />
+      <main className="flex-1 space-y-6 p-4 md:p-6">
+        {/* Header con saludo + CTAs */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <DashboardGreeting />
+          <div className="flex flex-wrap gap-2">
+            <Button asChild variant="outline">
+              <Link href="/screening">
+                <ShieldCheck className="h-4 w-4" />
+                Verificar inquilino
+              </Link>
+            </Button>
+            <Button asChild>
+              <Link href="/contratos/nuevo">
+                <Plus className="h-4 w-4" />
+                Cargar contrato
+              </Link>
+            </Button>
+          </div>
+        </div>
+
+        {/* Para resolver hoy (derivado de datos reales) */}
+        <section className="space-y-3">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Para resolver hoy
+          </h2>
+          {morosos.length === 0 && propietariosSinCbu === 0 && porRendir === 0 ? (
+            <Card>
+              <CardContent className="flex items-center gap-3 p-5 text-sm text-muted-foreground">
+                <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+                Todo al día — no tenés acciones urgentes.
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {morosos.length > 0 && (
+                <Link href="/pagos">
+                  <Card className="cursor-pointer border-red-200 bg-red-50/40 transition-shadow hover:shadow-md dark:border-red-900/40 dark:bg-red-900/10">
+                    <CardContent className="flex items-center justify-between p-5">
+                      <div>
+                        <p className="flex items-center gap-1 text-sm font-medium text-destructive">
+                          <AlertTriangle className="h-4 w-4" />
+                          Inquilinos atrasados
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {morosos.length} contrato{morosos.length === 1 ? '' : 's'} ·{' '}
+                          {formatMonto(morosos.reduce((a, m) => a + m.monto, 0))}
+                        </p>
+                      </div>
+                      <span className="text-3xl font-bold tabular-nums text-destructive">
+                        {morosos.length}
+                      </span>
+                    </CardContent>
+                  </Card>
+                </Link>
+              )}
+              {propietariosSinCbu > 0 && (
+                <Link href="/propietarios?filtro=sin-cbu">
+                  <Card className="cursor-pointer border-amber-200 bg-amber-50/40 transition-shadow hover:shadow-md dark:border-amber-900/40 dark:bg-amber-900/10">
+                    <CardContent className="flex items-center justify-between p-5">
+                      <div>
+                        <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
+                          Propietarios sin CBU
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Pediles los datos antes de rendir
+                        </p>
+                      </div>
+                      <span className="text-3xl font-bold tabular-nums text-amber-600">
+                        {propietariosSinCbu}
+                      </span>
+                    </CardContent>
+                  </Card>
+                </Link>
+              )}
+              {porRendir > 0 && (
+                <Link href="/propietarios?filtro=sin-rendir">
+                  <Card className="cursor-pointer border-primary/30 bg-primary/5 transition-shadow hover:shadow-md">
+                    <CardContent className="flex items-center justify-between p-5">
+                      <div>
+                        <p className="text-sm font-medium text-primary">Propietarios por rendir</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Esperando sus transferencias
+                        </p>
+                      </div>
+                      <span className="text-3xl font-bold tabular-nums text-primary">{porRendir}</span>
+                    </CardContent>
+                  </Card>
+                </Link>
+              )}
+            </div>
+          )}
+        </section>
+
+        {/* 4 KPIs financieros */}
+        <section className="space-y-3">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Plata · {formatPeriodo(periodoActualFormat())}
+          </h2>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <KpiBig
+              label="Cobrado"
+              valor={formatMonto(stats.cobradoMes)}
+              icon={CheckCircle2}
+              tone="emerald"
+              hint={`${stats.cobrabilidadPct}% de cobrabilidad`}
+            />
+            <KpiBig label="Por cobrar" valor={formatMonto(stats.porCobrarMes)} icon={Clock} tone="amber" hint="Pendientes este mes" />
+            <KpiBig
+              label="En mora"
+              valor={formatMonto(stats.enMora.monto)}
+              icon={AlertTriangle}
+              tone={stats.enMora.cantidad > 0 ? 'red' : 'muted'}
+              hint={`${stats.enMora.cantidad} contrato${stats.enMora.cantidad === 1 ? ' atrasado' : 's atrasados'}`}
+            />
+            <KpiBig
+              label="A rendir a propietarios"
+              valor={formatMonto(stats.aRendirMes)}
+              icon={Wallet}
+              tone="primary"
+              hint={`Tu comisión: ${formatMonto(stats.comisionMes)}`}
+            />
+          </div>
+        </section>
+
+        {/* 4 KPIs operacionales */}
+        <section className="space-y-3">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Operación</h2>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <KpiSmall
+              label="Contratos activos"
+              valor={stats.contratosActivos.toString()}
+              icon={FileText}
+              hint={`${stats.ocupacionPct}% ocupación`}
+              href="/contratos"
+            />
+            <KpiSmall
+              label="Reclamos abiertos"
+              valor={stats.reclamosAbiertos.toString()}
+              icon={Wrench}
+              alert={stats.reclamosAbiertos > 0}
+              href="/reclamos"
+            />
+            <KpiSmall
+              label="En mora"
+              valor={stats.enMora.cantidad.toString()}
+              icon={AlertTriangle}
+              alert={stats.enMora.cantidad > 0}
+              href="/pagos"
+            />
+            <KpiSmall
+              label="Propietarios por rendir"
+              valor={porRendir.toString()}
+              icon={Wallet}
+              href="/propietarios"
+            />
+          </div>
+        </section>
+
+        {/* Necesitan tu atención + Próximos 14 días */}
+        <div className="grid gap-6 lg:grid-cols-3">
+          <Card className="border-amber-200 bg-amber-50/30 dark:border-amber-900/40 dark:bg-amber-900/5 lg:col-span-2">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0">
+              <div className="flex items-center gap-2">
+                <AlertOctagon className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                <CardTitle className="text-base">Necesitan tu atención</CardTitle>
+              </div>
+              <Badge variant="warning">{morosos.length}</Badge>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {morosos.length === 0 ? (
+                <p className="py-4 text-center text-xs text-muted-foreground">Sin alertas por ahora.</p>
+              ) : (
+                morosos.map((m) => (
+                  <Link
+                    key={m.contratoId}
+                    href={`/contratos/${m.contratoId}`}
+                    className="flex items-center justify-between gap-3 rounded-md border bg-background p-3 text-sm transition-colors hover:bg-muted/30"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">{m.inquilino}</p>
+                      <p className="truncate text-xs text-muted-foreground">{m.direccion}</p>
+                    </div>
+                    <div className="flex items-center gap-2 text-right">
+                      <span className="font-semibold tabular-nums text-destructive">
+                        {formatMonto(m.monto, m.moneda)}
+                      </span>
+                      <ArrowUpRight className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                  </Link>
+                ))
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0">
+              <div className="flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-primary" />
+                <CardTitle className="text-base">Próximos 14 días</CardTitle>
+              </div>
+              <span className="text-xs text-muted-foreground">
+                {proximosVencimientos.length} vencimiento{proximosVencimientos.length === 1 ? '' : 's'}
+              </span>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {proximosVencimientos.length === 0 ? (
+                <p className="py-4 text-center text-xs text-muted-foreground">
+                  No hay vencimientos en los próximos 14 días.
+                </p>
+              ) : (
+                proximosVencimientos.map((v) => (
+                  <div key={v.id} className="flex items-center justify-between gap-2 text-sm">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">{v.inquilino}</p>
+                      <p className="truncate text-xs text-muted-foreground">{v.direccion}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-muted-foreground">{formatFechaCorta(v.fecha)}</p>
+                      <p className="text-sm font-semibold tabular-nums">{formatMonto(v.monto)}</p>
+                    </div>
+                  </div>
+                ))
+              )}
             </CardContent>
           </Card>
         </div>

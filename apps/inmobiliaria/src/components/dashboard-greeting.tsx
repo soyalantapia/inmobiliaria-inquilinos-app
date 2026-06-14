@@ -1,10 +1,10 @@
 'use client';
 
-import { useUser } from '@clerk/nextjs';
-import { isClerkEnabled, mockUser } from '@/lib/auth';
+import { useMe } from '@/lib/api/hooks';
 
 export function DashboardGreeting() {
-  const nombre = useNombre();
+  const { me } = useMe();
+  const nombre = me?.firstName ?? 'Operador';
   return (
     <div>
       <p className="text-sm text-muted-foreground">
@@ -28,13 +28,4 @@ function saludoSegunHora(): string {
   if (h < 12) return 'Buen día';
   if (h < 19) return 'Buenas tardes';
   return 'Buenas noches';
-}
-
-function useNombre(): string {
-  if (isClerkEnabled()) {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    const { user } = useUser();
-    return user?.firstName ?? user?.username ?? 'Operador';
-  }
-  return mockUser.user.firstName;
 }
