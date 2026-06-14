@@ -18,6 +18,7 @@ import { Card } from '@llave/ui/card';
 import { Input } from '@llave/ui/input';
 import { Label } from '@llave/ui/label';
 import { toast } from '@llave/ui/use-toast';
+import { apiEnabled } from '@/lib/api/client';
 import { SEGUNDOS_COOLDOWN, leerSesion } from '@/lib/auth-otp';
 import {
   iniciarSesionDemoUnificada,
@@ -44,10 +45,9 @@ export default function LoginPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     // Bypass de demo: `/login?demo=1` crea la sesión de Mariela y entra
-    // directo, salteando el OTP. Útil para testing headless (browse no puede
-    // completar el flujo de 6 inputs) y para compartir la demo sin fricción.
-    // Seguro: todo corre sobre mocks en localStorage, no hay backend real.
-    if (params.has('demo')) {
+    // directo, salteando el OTP. SOLO en el build demo sin backend
+    // (!apiEnabled). En producción se ignora — nadie entra sin OTP real.
+    if (!apiEnabled && params.has('demo')) {
       iniciarSesionDemoUnificada();
       router.replace('/');
       return;
@@ -471,16 +471,18 @@ function PasoEmail({
         )}
       </Button>
 
-      {/* CTA de demo — rediseñado como chip prominente
-          (antes era un link gris perdido al fondo). */}
-      <button
-        type="button"
-        onClick={() => setEmail('mariela.sosa@gmail.com')}
-        className="flex w-full items-center justify-center gap-2 rounded-full border border-dashed border-primary/40 bg-primary/5 px-3 py-2 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
-      >
-        <Sparkles className="h-3.5 w-3.5" />
-        Probar con cuenta demo (Mariela Sosa)
-      </button>
+      {/* CTA de demo — SOLO en el build demo sin backend. En producción
+          no ofrecemos la cuenta de prueba (Mariela). */}
+      {!apiEnabled && (
+        <button
+          type="button"
+          onClick={() => setEmail('mariela.sosa@gmail.com')}
+          className="flex w-full items-center justify-center gap-2 rounded-full border border-dashed border-primary/40 bg-primary/5 px-3 py-2 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+          Probar con cuenta demo (Mariela Sosa)
+        </button>
+      )}
     </form>
   );
 }

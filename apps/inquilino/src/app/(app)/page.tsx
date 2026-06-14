@@ -37,9 +37,16 @@ import {
   useDemoVisible,
   type DemoEstado,
 } from '@/lib/demo-estado';
+import { apiEnabled } from '@/lib/api/client';
+import { useMiContrato, useMisLiquidaciones } from '@/lib/api/hooks';
 import type { Liquidacion } from '@/lib/types';
 
 export default function PagosPage() {
+  // En producción (API) la home se arma con el contrato + liquidaciones reales
+  // del inquilino logueado. El render demo (mocks, switcher ?demo=1) queda
+  // intacto para el build sin backend (!apiEnabled).
+  if (apiEnabled) return <HomeReal />;
+
   // Modo demo sincronizado entre pantallas vía localStorage.
   // El switcher solo se muestra si el flag `demo-visible` está activo —
   // un inquilino real no debería ver controles "Al día / A tiempo / Retrasado".
@@ -249,6 +256,152 @@ export default function PagosPage() {
             <Card className="divide-y">
               {movimientos.map((m) => (
                 <MovimientoRow key={m.id} mov={m} />
+              ))}
+            </Card>
+          )}
+        </section>
+      </main>
+
+      <NavBar />
+      <InstallPrompt />
+    </>
+  );
+}
+
+// ============================================================
+// HOME REAL (modo API) — contrato + liquidaciones del inquilino
+// ============================================================
+function HomeReal() {
+  const { contrato, inmobiliariaTelefono } = useMiContrato();
+  const { liquidaciones } = useMisLiquidaciones();
+
+  const pendiente = liquidaciones.find((l) => l.estado !== 'PAGADO') ?? null;
+  const pagadas = liquidaciones.filter((l) => l.estado === 'PAGADO').slice(0, 3);
+
+  const diasAjuste = contrato?.proximoAjuste ? diasHastaVencimiento(contrato.proximoAjuste) : -1;
+  const alertaAjuste = diasAjuste >= 0 && diasAjuste <= 30;
+  const ajusteCritico = diasAjuste >= 0 && diasAjuste <= 7;
+
+  const HOY = Date.now();
+  const diaPago = contrato?.diaPago ?? 5;
+  const proximoPagoDate = (() => {
+    const hoy = new Date();
+    const candidato = new Date(hoy.getFullYear(), hoy.getMonth(), diaPago);
+    if (candidato.getTime() <= hoy.getTime()) candidato.setMonth(candidato.getMonth() + 1);
+    return candidato;
+  })();
+  const diasAlProximoPago = Math.ceil((proximoPagoDate.getTime() - HOY) / (1000 * 60 * 60 * 24));
+
+  const telLimpio = (inmobiliariaTelefono ?? '').replace(/[^\d]/g, '');
+
+  return (
+    <>
+      <MobileGreetingHeader />
+      <main className="flex-1 space-y-5 px-5 pb-6 md:px-8 md:pt-8">
+        <h1 className="sr-only">Inicio</h1>
+
+        {pendiente ? (
+          <BannerPagoPendiente liq={pendiente} />
+        ) : (
+          <BannerAlDia
+            diasAlProximoPago={diasAlProximoPago}
+            fechaProximo={proximoPagoDate}
+            monto={contrato?.montoActual ?? 0}
+            moneda={contrato?.moneda ?? 'ARS'}
+          />
+        )}
+
+        {alertaAjuste && !ajusteCritico && contrato && (
+          <Link
+            href="/contrato"
+            className="flex items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm transition-colors hover:bg-primary/10"
+          >
+            <TrendingUp className="h-4 w-4 shrink-0 text-primary" />
+            <div className="flex-1 min-w-0">
+              <p className="font-medium">Próximo ajuste en {diasAjuste} días</p>
+              <p className="truncate text-xs text-muted-foreground">
+                {formatFecha(contrato.proximoAjuste)} · índice {contrato.indiceAjuste}
+              </p>
+            </div>
+            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+          </Link>
+        )}
+
+        <QuickActions liqPendiente={pendiente} />
+
+        {/* Card de la inmobiliaria que administra (datos reales del contrato) */}
+        <Card className="flex items-center gap-2 p-3 animate-fade-in">
+          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 text-white">
+            <MapPin className="h-4 w-4" />
+          </div>
+          <p className="flex-1 min-w-0 truncate text-xs text-muted-foreground">
+            Administra{' '}
+            <span className="font-medium text-foreground">{contrato?.inmobiliaria ?? '—'}</span>
+          </p>
+          {telLimpio && (
+            <>
+              <a
+                href={`https://wa.me/${telLimpio}`}
+                target="_blank"
+                rel="noreferrer"
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-emerald-500 text-white transition-colors hover:bg-emerald-600"
+                aria-label="WhatsApp a la inmobiliaria"
+              >
+                <MessageCircle className="h-4 w-4" />
+              </a>
+              <a
+                href={`tel:${inmobiliariaTelefono}`}
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground transition-colors hover:bg-accent"
+                aria-label="Llamar a la inmobiliaria"
+              >
+                <Phone className="h-4 w-4" />
+              </a>
+            </>
+          )}
+        </Card>
+
+        <AnunciosFeed compacto />
+
+        {/* Últimos pagos registrados (liquidaciones pagadas) */}
+        <section className="space-y-2">
+          <div className="flex items-center justify-between px-1">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Últimos movimientos
+            </h2>
+            <Link
+              href="/comprobantes"
+              className="flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+            >
+              Ver todos
+              <ChevronRight className="h-3 w-3" />
+            </Link>
+          </div>
+          {pagadas.length === 0 ? (
+            <Card className="p-5 text-center">
+              <p className="text-sm text-muted-foreground">Todavía no registrás pagos.</p>
+              <Link
+                href="/comprobantes"
+                className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+              >
+                Ver todos los recibos
+                <ChevronRight className="h-3 w-3" />
+              </Link>
+            </Card>
+          ) : (
+            <Card className="divide-y">
+              {pagadas.map((l) => (
+                <div key={l.id} className="flex items-center gap-3 px-4 py-3">
+                  <ReceiptText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <div className="flex-1 min-w-0">
+                    <p className="truncate text-sm font-medium">Pago {l.periodo}</p>
+                    <p className="truncate text-[11px] text-muted-foreground">
+                      {formatFechaCorta(l.fechaVencimiento)}
+                    </p>
+                  </div>
+                  <p className="text-sm font-semibold tabular-nums text-emerald-600">
+                    + {formatMonto(l.montoTotal, l.moneda)}
+                  </p>
+                </div>
               ))}
             </Card>
           )}

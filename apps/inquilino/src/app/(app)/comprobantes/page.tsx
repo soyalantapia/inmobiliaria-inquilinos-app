@@ -25,6 +25,8 @@ import {
 import { diasHastaVencimiento, formatFecha, formatFechaCorta, formatMonto, formatPeriodo } from '@/lib/format';
 import { descargarCsv } from '@/lib/csv-export';
 import type { Comprobante, Liquidacion } from '@/lib/types';
+import { apiEnabled } from '@/lib/api/client';
+import { useMiContrato, useMisLiquidaciones } from '@/lib/api/hooks';
 
 import {
   aplicarEstadoDemo,
@@ -50,6 +52,8 @@ type Movimiento =
   | { kind: 'cobrado'; comp: Comprobante };
 
 export default function RecibosPage() {
+  if (apiEnabled) return <RecibosReal />;
+
   // Modo demo sincronizado con el resto de la app vía localStorage.
   // Solo se muestra el switcher si el flag demo-visible está activo (?demo=1).
   const [demoEstado, setDemoEstado] = useDemoEstado();
@@ -311,6 +315,113 @@ export default function RecibosPage() {
                 {formatMonto(totalCobradoAnio)}
               </span>
             </div>
+          )}
+        </section>
+      </main>
+
+      <NavBar />
+    </>
+  );
+}
+
+// ============================================================
+// RECIBOS REAL (modo API) — liquidaciones del inquilino
+// ============================================================
+function RecibosReal() {
+  const { contrato } = useMiContrato();
+  const { liquidaciones } = useMisLiquidaciones();
+
+  const noPagadas = liquidaciones.filter((l) => l.estado !== 'PAGADO');
+  const pagadas = liquidaciones.filter((l) => l.estado === 'PAGADO');
+  const urgenteLiq =
+    [...noPagadas].sort((a, b) => a.fechaVencimiento.localeCompare(b.fechaVencimiento))[0] ?? null;
+  const proximas = noPagadas.filter((l) => l.id !== urgenteLiq?.id);
+
+  const pagoUrgente: Movimiento | null = urgenteLiq
+    ? {
+        kind:
+          calcularPunitorios(urgenteLiq, TASA_PUNITORIA_DIARIA_DEFAULT).diasAtraso > 0
+            ? 'atrasado'
+            : 'a-pagar',
+        liq: urgenteLiq,
+      }
+    : null;
+
+  return (
+    <>
+      <MobileGreetingHeader />
+      <header className="space-y-3 px-5 pb-1 pt-5 md:px-8">
+        <div>
+          <h1 className="text-xl font-semibold leading-tight md:text-2xl">Recibos</h1>
+          <p className="text-sm text-muted-foreground">Pendientes, próximos y cobrados.</p>
+        </div>
+      </header>
+
+      <main className="flex-1 space-y-4 px-5 pb-6 md:px-8">
+        {pagoUrgente && <PagoUrgenteCard mov={pagoUrgente} />}
+
+        {contrato && (
+          <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-primary/90 to-primary/70 p-4 text-primary-foreground shadow-md shadow-primary/10">
+            <div className="relative flex items-baseline justify-between gap-2">
+              <div>
+                <p className="text-[10px] font-medium uppercase tracking-[0.18em] opacity-80">
+                  Tu alquiler vigente
+                </p>
+                <p className="mt-0.5 text-2xl font-bold tabular-nums md:text-3xl">
+                  {formatMonto(contrato.montoActual, contrato.moneda)}
+                  <span className="ml-1 text-xs font-normal opacity-85">/ mes</span>
+                </p>
+              </div>
+              <p className="text-[11px] text-right opacity-85">
+                Día {contrato.diaPago}
+                <br />
+                de cada mes
+              </p>
+            </div>
+          </Card>
+        )}
+
+        <section className="space-y-2">
+          <div className="flex items-center justify-between px-1">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Movimientos
+            </h2>
+          </div>
+          {proximas.length === 0 && pagadas.length === 0 ? (
+            <Card>
+              <CardContent className="space-y-2 p-8 text-center text-muted-foreground">
+                <Receipt className="mx-auto h-9 w-9" />
+                <p className="font-medium text-foreground">Sin movimientos</p>
+                <p className="text-sm">Acá vas a ver tus pagos próximos y los ya abonados.</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card className="divide-y">
+              {proximas.map((l) => (
+                <MovimientoRow key={`p:${l.id}`} mov={{ kind: 'proximo', liq: l }} />
+              ))}
+              {pagadas.map((l) => (
+                <div key={`pag:${l.id}`} className="flex items-center gap-3 p-4">
+                  <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-emerald-100 text-emerald-700">
+                    <CheckCircle2 className="h-5 w-5" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="truncate text-sm font-medium leading-tight">
+                      {formatPeriodo(l.periodo)}
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      <span className="mr-1 inline-block rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                        Pagado
+                      </span>
+                      Venció {formatFechaCorta(l.fechaVencimiento)}
+                    </p>
+                  </div>
+                  <p className="shrink-0 text-sm font-semibold tabular-nums">
+                    {formatMonto(l.montoTotal, l.moneda)}
+                  </p>
+                </div>
+              ))}
+            </Card>
           )}
         </section>
       </main>

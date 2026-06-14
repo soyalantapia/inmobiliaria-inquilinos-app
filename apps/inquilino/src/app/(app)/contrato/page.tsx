@@ -1,3 +1,5 @@
+'use client';
+
 import Link from 'next/link';
 import {
   Building2,
@@ -26,6 +28,8 @@ import { NavBar } from '@/components/nav-bar';
 import { RenovacionBanner } from '@/components/renovacion-banner';
 import { MobileGreetingHeader } from '@/components/mobile-greeting-header';
 import { contratoMock, garanteMock, inquilinoActual } from '@/lib/mock-data';
+import { apiEnabled } from '@/lib/api/client';
+import { useMiContrato } from '@/lib/api/hooks';
 import {
   diasHastaVencimiento,
   formatDuracion,
@@ -52,6 +56,8 @@ const indiceLabel: Record<typeof contratoMock.indiceAjuste, string> = {
 };
 
 export default function ContratoPage() {
+  if (apiEnabled) return <ContratoReal />;
+
   const c = contratoMock;
   const diasFin = diasHastaVencimiento(c.fechaFin);
   const duracionRestante = formatDuracion(diasFin);
@@ -260,6 +266,125 @@ export default function ContratoPage() {
           </div>
         </section>
 
+      </main>
+
+      <NavBar />
+    </>
+  );
+}
+
+// ============================================================
+// CONTRATO REAL (modo API)
+// ============================================================
+function ContratoReal() {
+  const { contrato: c, inmobiliariaTelefono } = useMiContrato();
+
+  if (!c) {
+    return (
+      <>
+        <MobileGreetingHeader />
+        <main className="flex-1 px-5 pb-6 pt-10 text-center text-muted-foreground md:px-8">
+          <FileText className="mx-auto h-9 w-9 animate-pulse" />
+          <p className="mt-2 text-sm">Cargando tu contrato…</p>
+        </main>
+        <NavBar />
+      </>
+    );
+  }
+
+  const diasAjuste = c.proximoAjuste ? diasHastaVencimiento(c.proximoAjuste) : -1;
+  const telLimpio = (inmobiliariaTelefono ?? '').replace(/[^\d]/g, '');
+
+  return (
+    <>
+      <MobileGreetingHeader />
+      <main className="flex-1 space-y-5 px-5 pb-6 md:px-8 md:pt-8">
+        <div className="flex items-start gap-3 min-w-0">
+          <FileText className="mt-1 h-5 w-5 shrink-0 text-primary" />
+          <div className="min-w-0">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">Mi contrato</p>
+            <h1 className="truncate text-2xl font-semibold leading-tight md:text-3xl">{c.direccion}</h1>
+            <p className="text-sm text-muted-foreground">
+              {c.ciudad} · Administra {c.inmobiliaria}
+            </p>
+          </div>
+        </div>
+
+        <Card className="animate-fade-in space-y-3 p-5">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="success">Activo</Badge>
+            <span className="text-xs text-muted-foreground">
+              {formatFechaCorta(c.fechaInicio)} → {formatFechaCorta(c.fechaFin)}
+            </span>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Alquiler actual</p>
+            <p className="text-3xl font-semibold">{formatMonto(c.montoActual, c.moneda)}</p>
+          </div>
+        </Card>
+
+        <section className="space-y-2">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Datos clave
+          </h2>
+          <Card className="divide-y">
+            <Row
+              icon={<Calendar className="h-4 w-4" />}
+              label="Día de pago"
+              value={`${c.diaPago} de cada mes`}
+            />
+            <Row
+              icon={<TrendingUp className="h-4 w-4" />}
+              label="Índice de ajuste"
+              value={indiceLabel[c.indiceAjuste]}
+            />
+            {c.proximoAjuste && (
+              <Row
+                icon={<CalendarDays className="h-4 w-4" />}
+                label="Próximo ajuste"
+                value={formatFechaCorta(c.proximoAjuste)}
+                hint={diasAjuste >= 0 ? `en ${diasAjuste} días` : undefined}
+              />
+            )}
+            <Row
+              icon={<KeyRound className="h-4 w-4" />}
+              label="Depósito en garantía"
+              value={formatMonto(c.montoActual, c.moneda)}
+              hint="1 mes — te lo devuelven al final"
+            />
+          </Card>
+        </section>
+
+        <section className="space-y-2">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Quién administra
+          </h2>
+          <Card className="space-y-3 p-5">
+            <div className="flex items-center gap-2">
+              <Building2 className="h-4 w-4 text-primary" />
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Inmobiliaria
+              </p>
+            </div>
+            <p className="font-medium">{c.inmobiliaria}</p>
+            {telLimpio && (
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" asChild>
+                  <a href={`https://wa.me/${telLimpio}`} target="_blank" rel="noreferrer">
+                    <MessageCircle className="h-3.5 w-3.5" />
+                    WhatsApp
+                  </a>
+                </Button>
+                <Button size="sm" variant="ghost" asChild>
+                  <a href={`tel:${inmobiliariaTelefono}`}>
+                    <Phone className="h-3.5 w-3.5" />
+                    Llamar
+                  </a>
+                </Button>
+              </div>
+            )}
+          </Card>
+        </section>
       </main>
 
       <NavBar />
