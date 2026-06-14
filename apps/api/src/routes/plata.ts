@@ -373,6 +373,8 @@ export async function plataRoutes(app: FastifyInstance) {
           aprobadoAt: new Date(),
           comentarioAprobador: body.comentario,
         },
+        // Mismo shape que GET /aprobaciones: el front mapea cargadoPor.nombre.
+        include: { cargadoPor: { select: { nombre: true, apellido: true, rol: true } } },
       });
       // Si es un contrato cargado, al aprobar pasa a ACTIVO / al rechazar queda BORRADOR sin pendiente
       if (apr.tipo === 'CONTRATO_CARGADO') {

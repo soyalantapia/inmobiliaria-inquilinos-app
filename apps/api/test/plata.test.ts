@@ -168,6 +168,13 @@ describe('Aprobaciones con PIN', () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().estado).toBe('APROBADA');
+    // La respuesta debe traer cargadoPor con el mismo shape que GET /aprobaciones
+    // (el front mapea cargadoPor.nombre; sin el include el cliente crasheaba).
+    expect(res.json().cargadoPor).toMatchObject({
+      nombre: expect.any(String),
+      apellido: expect.any(String),
+      rol: expect.any(String),
+    });
     const contratos = await app.inject({ method: 'GET', url: '/contratos', headers: auth(tokenAdmin) });
     const c6 = contratos.json().find((c: { id: string }) => c.id === 'cnt_006');
     expect(c6.estado).toBe('ACTIVO');
