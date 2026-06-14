@@ -19,7 +19,9 @@
     "seed": "tsx prisma/seed.ts"
   },
   "tsup": {
-    "noExternal": ["@llave/shared"]
+    "noExternal": [
+      "@llave/shared"
+    ]
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",
@@ -30,11 +32,13 @@
     "@prisma/client": "^6.2.0",
     "bcryptjs": "^2.4.3",
     "fastify": "^5.2.0",
+    "nodemailer": "^8.0.11",
     "zod": "^3.24.1"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^22.10.0",
+    "@types/nodemailer": "^8.0.1",
     "prisma": "^6.2.0",
     "tsup": "^8.3.5",
     "tsx": "^4.19.2",

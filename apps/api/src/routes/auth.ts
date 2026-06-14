@@ -11,6 +11,7 @@ import {
 } from '@llave/shared';
 import { prisma } from '../db.js';
 import { requireAuth, requireUsuario } from '../auth/guards.js';
+import { enviarOtp } from '../mailer.js';
 
 const TOKEN_TTL = '15d';
 const OTP_TTL_MS = 10 * 60 * 1000;
@@ -54,8 +55,18 @@ export async function authRoutes(app: FastifyInstance) {
         expiresAt: new Date(Date.now() + OTP_TTL_MS),
       },
     });
-    // Sin proveedor de email todavía: el código sale por el log del server.
-    app.log.info({ email: inquilino.email, code }, 'OTP generado');
+    // Envío por SMTP si está configurado (SMTP_HOST/USER/PASS); si no, fallback
+    // a loguear el código (dev/prueba). No filtramos el resultado al cliente.
+    // Lo encontramos por email, así que usamos el que matcheó (tipado nullable).
+    const destino = inquilino.email ?? body.data.email.toLowerCase();
+    try {
+      const enviado = await enviarOtp(destino, code);
+      if (!enviado) app.log.info({ email: destino, code }, 'OTP generado (SMTP no configurado — código por log)');
+      else app.log.info({ email: destino }, 'OTP enviado por email');
+    } catch (err) {
+      // No romper el login si el SMTP falla: logueamos el código como respaldo.
+      app.log.error({ email: destino, code, err: (err as Error).message }, 'OTP: fallo el envío SMTP — código por log');
+    }
     return { ok: true };
   });
 
