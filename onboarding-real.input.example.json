@@ -1,0 +1,90 @@
+{
+  "_LEEME": "Copiá este archivo a onboarding-real.input.json y reemplazá TODOS los valores con datos REALES. Enums válidos: propiedad.tipo = DEPARTAMENTO|CASA|PH|LOCAL|OFICINA|COCHERA|GALPON|TERRENO ; contrato.moneda = ARS|USD ; contrato.indiceAjuste = ICL|IPC|CASA_PROPIA|FIJO ; contrato.tipoContrato = ALQUILER|SOLO_EXPENSAS|ALQUILER_Y_EXPENSAS ; contrato.modoCobranza = INMOBILIARIA|PROPIETARIO_DIRECTO ; liquidacion.estado = PENDIENTE|VENCIDO|PAGADO. Las participaciones de los propietarios DEBEN sumar 100.",
+
+  "inmobiliaria": {
+    "nombre": "COMPLETAR — Nombre de tu inmobiliaria",
+    "cuit": "30-00000000-0",
+    "email": "contacto@tudominio.com",
+    "telefono": "+54 11 0000 0000",
+    "matricula": "CUCICBA 0000",
+    "direccionCalle": "Calle",
+    "direccionAltura": "0000",
+    "direccionPiso": "",
+    "direccionCiudad": "CABA",
+    "direccionProvincia": "Buenos Aires",
+    "direccionCp": "1000",
+    "esPiloto": false,
+    "codigoReferido": null
+  },
+
+  "admin": {
+    "nombre": "Nombre",
+    "apellido": "Apellido",
+    "email": "vos@tudominio.com",
+    "password": "CAMBIAR-contraseña-inicial",
+    "pin": "1234"
+  },
+
+  "usuariosExtra": [],
+
+  "sociedad": {
+    "razonSocial": "",
+    "cuit": "",
+    "condicionFiscal": "RESPONSABLE_INSCRIPTO",
+    "cuentaCobranza": { "banco": "", "titular": "", "cbu": "", "alias": "", "cuit": "" }
+  },
+
+  "propietarios": [
+    {
+      "nombre": "Nombre",
+      "apellido": "Apellido",
+      "cuit": "20-00000000-0",
+      "email": "propietario@email.com",
+      "telefono": "+54 11 0000 0000",
+      "cbuAlias": "alias.del.propietario",
+      "comisionPct": 8,
+      "participacionPct": 100,
+      "notas": null
+    }
+  ],
+
+  "propiedad": {
+    "direccion": "Calle 1234, 1°A",
+    "ciudad": "CABA",
+    "provincia": "Buenos Aires",
+    "tipo": "DEPARTAMENTO",
+    "ambientes": 2,
+    "m2": 50
+  },
+
+  "contrato": {
+    "monto": 480000,
+    "moneda": "ARS",
+    "fechaInicio": "2026-01-01",
+    "fechaFin": "2029-12-31",
+    "diaPago": 5,
+    "indiceAjuste": "ICL",
+    "frecuenciaAjusteMeses": 12,
+    "tipoContrato": "ALQUILER",
+    "comisionInmobiliaria": 8,
+    "depositoGarantia": 480000,
+    "modoCobranza": "INMOBILIARIA",
+    "montoExpensas": null
+  },
+
+  "inquilino": {
+    "nombre": "Nombre",
+    "apellido": "Apellido",
+    "dni": "00000000",
+    "email": "inquilino@email.com",
+    "telefono": "+54 11 0000 0000"
+  },
+
+  "liquidacion": {
+    "periodo": "2026-06",
+    "montoAlquiler": 480000,
+    "montoExpensas": null,
+    "fechaVencimiento": "2026-06-05",
+    "estado": "PENDIENTE"
+  }
+}

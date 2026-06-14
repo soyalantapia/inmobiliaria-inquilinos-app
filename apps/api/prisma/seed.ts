@@ -299,6 +299,13 @@ export async function seedBase(prisma: PrismaClient) {
 // Runner CLI
 const esRunner = process.argv[1]?.endsWith('seed.ts');
 if (esRunner) {
+  // El seed demo (Inmobiliaria del Sol) NO debe correr en producción. Para una
+  // inmobiliaria real usar scripts/onboarding-real.mjs. (Belt & suspenders: el
+  // Dockerfile sólo corre `migrate deploy`, no este seed.)
+  if (process.env.NODE_ENV === 'production' && !process.argv.includes('--force')) {
+    console.error('✗ seed demo bloqueado en NODE_ENV=production. Usá scripts/onboarding-real.mjs para datos reales (o --force si de verdad querés sembrar la demo).');
+    process.exit(1);
+  }
   const prisma = new PrismaClient();
   seedBase(prisma)
     .then(({ inmobiliariaId }) => {

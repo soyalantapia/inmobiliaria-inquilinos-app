@@ -16,6 +16,12 @@ coverage
 .env.*
 !.env.example
 
+# Onboarding real: contiene PII real — NUNCA se commitea (el .example sí)
+onboarding-real.input.json
+# Backups de la DB
+backup-*.dump
+*.dump
+
 .vscode/*
 !.vscode/extensions.json
 .idea
