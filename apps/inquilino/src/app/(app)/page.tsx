@@ -44,9 +44,12 @@ import type { Liquidacion } from '@/lib/types';
 export default function PagosPage() {
   // En producción (API) la home se arma con el contrato + liquidaciones reales
   // del inquilino logueado. El render demo (mocks, switcher ?demo=1) queda
-  // intacto para el build sin backend (!apiEnabled).
-  if (apiEnabled) return <HomeReal />;
+  // intacto para el build sin backend (!apiEnabled). Switcher delgado: cada
+  // variante tiene sus propios hooks (no rompemos rules-of-hooks).
+  return apiEnabled ? <HomeReal /> : <HomeDemo />;
+}
 
+function HomeDemo() {
   // Modo demo sincronizado entre pantallas vía localStorage.
   // El switcher solo se muestra si el flag `demo-visible` está activo —
   // un inquilino real no debería ver controles "Al día / A tiempo / Retrasado".

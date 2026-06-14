@@ -52,8 +52,12 @@ type Movimiento =
   | { kind: 'cobrado'; comp: Comprobante };
 
 export default function RecibosPage() {
-  if (apiEnabled) return <RecibosReal />;
+  // Switcher delgado: variante real (API) vs demo (mocks). Cada una con sus
+  // propios hooks para no violar rules-of-hooks.
+  return apiEnabled ? <RecibosReal /> : <RecibosDemo />;
+}
 
+function RecibosDemo() {
   // Modo demo sincronizado con el resto de la app vía localStorage.
   // Solo se muestra el switcher si el flag demo-visible está activo (?demo=1).
   const [demoEstado, setDemoEstado] = useDemoEstado();
