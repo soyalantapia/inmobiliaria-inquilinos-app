@@ -89,7 +89,17 @@ export function BandejaAprobaciones() {
 
   // El rechazo también es acción sensible: valida motivo y pasa por el PIN.
   const ejecutarRechazo = () => {
-    if (!rechazar_ || !motivoRechazo.trim()) return;
+    if (!rechazar_) return;
+    // El motivo es obligatorio (lo recibe quien cargó). Antes, sin motivo el
+    // botón no hacía nada (no-op silencioso); ahora avisamos con un mensaje claro.
+    if (!motivoRechazo.trim()) {
+      toast({
+        variant: 'destructive',
+        title: 'Falta el motivo',
+        description: 'Escribí por qué lo rechazás: se lo avisamos a quien lo cargó.',
+      });
+      return;
+    }
     transitioningToPin.current = true;
     setShowPin(true);
   };
