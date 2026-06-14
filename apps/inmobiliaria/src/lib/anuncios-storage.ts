@@ -180,10 +180,15 @@ export interface DestinatarioContrato {
   estadoPago: EstadoLiquidacion;
 }
 
-/** Contratos a los que se puede dirigir un anuncio: activos (no borradores). */
+/**
+ * Contratos a los que se puede dirigir un anuncio: activos (no borradores) y
+ * con inquilino real. Los SOLO_EXPENSAS (consorcios sin inquilino, ej. cnt_007)
+ * se excluyen: no tienen un inquilino que reciba el anuncio en la app. Así el
+ * conteo del preview coincide con la audiencia que resuelve el server.
+ */
 export function inquilinosAlcanzables(): DestinatarioContrato[] {
   return contratosMock
-    .filter((c) => c.estado === 'ACTIVO')
+    .filter((c) => c.estado === 'ACTIVO' && c.tipoContrato !== 'SOLO_EXPENSAS')
     .map((c) => ({
       id: c.id,
       inquilino: c.inquilino,
