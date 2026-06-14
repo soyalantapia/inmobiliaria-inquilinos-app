@@ -449,6 +449,40 @@ const SESSION_INQUILINO_PREFIX = 'inquilino:';
  * ============================================================ */
 
 export async function inquilinoMundoRoutes(app: FastifyInstance) {
+  // ===== Contrato del inquilino logueado (alimenta home + /contrato) =====
+  app.get('/mi-contrato', async (request, reply) => {
+    const inq = await requireInquilino(request, reply);
+    if (!inq) return;
+    if (!inq.contratoId) {
+      return reply.code(404).send({ message: 'No tenés un contrato activo' });
+    }
+    const contrato = await prisma.contrato.findFirst({
+      where: { id: inq.contratoId, inmobiliariaId: inq.inmobiliariaId },
+      include: {
+        propiedad: { select: { direccion: true, ciudad: true } },
+        inmobiliaria: { select: { nombre: true, telefono: true } },
+      },
+    });
+    if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
+    return {
+      id: contrato.id,
+      direccion: contrato.propiedad.direccion,
+      ciudad: contrato.propiedad.ciudad,
+      inmobiliaria: contrato.inmobiliaria.nombre,
+      inmobiliariaTelefono: contrato.inmobiliaria.telefono ?? null,
+      fechaInicio: contrato.fechaInicio.toISOString().slice(0, 10),
+      fechaFin: contrato.fechaFin.toISOString().slice(0, 10),
+      diaPago: contrato.diaPago,
+      indiceAjuste: contrato.indiceAjuste,
+      proximoAjuste: contrato.proximoAjuste ? contrato.proximoAjuste.toISOString().slice(0, 10) : null,
+      montoActual: Number(contrato.monto),
+      montoExpensas: contrato.montoExpensas != null ? Number(contrato.montoExpensas) : null,
+      tipoContrato: contrato.tipoContrato,
+      tasaPunitorioDiaria: contrato.tasaPunitorioDiaria != null ? Number(contrato.tasaPunitorioDiaria) : null,
+      moneda: contrato.moneda,
+    };
+  });
+
   // ===== Certificado del inquilino (el "reemplazo del garante") =====
   app.get('/certificado', async (request, reply) => {
     const inq = await requireInquilino(request, reply);
