@@ -28,7 +28,7 @@ import {
 } from '@/components/rendir-propietario-dialog';
 import { SumarPropietarioDialog } from '@/components/sumar-propietario-dialog';
 import { Topbar } from '@/components/topbar';
-import { propietariosMock } from '@/lib/mock-data';
+import { usePropietarios } from '@/lib/api/hooks';
 import type { Propietario } from '@/lib/types';
 import {
   obtenerRendicion,
@@ -56,11 +56,13 @@ export default function PropietariosPage() {
   const [verHistorial, setVerHistorial] = useState<Propietario | null>(null);
   const [rendicionesMap, setRendicionesMap] = useState<Record<string, Rendicion | null>>({});
 
+  const { propietarios, cargando } = usePropietarios();
+
   const periodo = periodoActual();
 
   const refrescarRendiciones = () => {
     const map: Record<string, Rendicion | null> = {};
-    propietariosMock.forEach((p) => {
+    propietarios.forEach((p) => {
       map[p.id] = obtenerRendicion(p.id, periodo);
     });
     setRendicionesMap(map);
@@ -69,7 +71,7 @@ export default function PropietariosPage() {
   useEffect(() => {
     refrescarRendiciones();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [propietarios]);
 
   // Aplica el filtro inicial si llegamos con ?filtro=sin-cbu/sin-rendir.
   useEffect(() => {
@@ -82,7 +84,7 @@ export default function PropietariosPage() {
 
   const filtrados = useMemo(() => {
     const term = q.trim().toLowerCase();
-    let base = propietariosMock as readonly Propietario[];
+    let base = propietarios as readonly Propietario[];
     if (filtroExtra === 'SIN_CBU') base = base.filter((p) => !p.cbuAlias);
     if (filtroExtra === 'SIN_RENDIR') {
       base = base.filter(
@@ -96,12 +98,12 @@ export default function PropietariosPage() {
         p.cuit.includes(term) ||
         p.email.toLowerCase().includes(term),
     );
-  }, [q, filtroExtra, rendicionesMap]);
+  }, [propietarios, q, filtroExtra, rendicionesMap]);
 
-  const totalPropiedades = propietariosMock.reduce((acc, p) => acc + p.propiedadesIds.length, 0);
-  const totalRecibir = propietariosMock.reduce((acc, p) => acc + p.totalRecibirMes, 0);
-  const sinCbu = propietariosMock.filter((p) => !p.cbuAlias).length;
-  const porRendir = propietariosMock.filter(
+  const totalPropiedades = propietarios.reduce((acc, p) => acc + p.propiedadesIds.length, 0);
+  const totalRecibir = propietarios.reduce((acc, p) => acc + p.totalRecibirMes, 0);
+  const sinCbu = propietarios.filter((p) => !p.cbuAlias).length;
+  const porRendir = propietarios.filter(
     (p) => !rendicionesMap[p.id] && p.totalRecibirMes > 0,
   ).length;
 
@@ -113,7 +115,7 @@ export default function PropietariosPage() {
           <Card>
             <CardContent className="p-5">
               <p className="text-xs uppercase tracking-wide text-muted-foreground">Propietarios</p>
-              <p className="mt-1 text-2xl font-semibold">{propietariosMock.length}</p>
+              <p className="mt-1 text-2xl font-semibold">{propietarios.length}</p>
               <p className="text-xs text-muted-foreground">{totalPropiedades} contrato{totalPropiedades === 1 ? '' : 's'}</p>
             </CardContent>
           </Card>
@@ -185,14 +187,25 @@ export default function PropietariosPage() {
           </Button>
         </div>
 
-        {filtrados.length === 0 ? (
+        {cargando && propietarios.length === 0 ? (
+          <Card>
+            <CardContent className="space-y-2 p-10 text-center text-muted-foreground">
+              <Users className="mx-auto h-8 w-8 animate-pulse" />
+              <p className="font-medium text-foreground">Cargando propietarios…</p>
+            </CardContent>
+          </Card>
+        ) : filtrados.length === 0 ? (
           <Card>
             <CardContent className="space-y-2 p-10 text-center text-muted-foreground">
               <Users className="mx-auto h-8 w-8" />
-              <p className="font-medium text-foreground">Sin resultados para &quot;{q}&quot;</p>
-              <button type="button" onClick={() => setQ('')} className="text-xs font-medium text-primary hover:underline">
-                Limpiar búsqueda
-              </button>
+              <p className="font-medium text-foreground">
+                {propietarios.length === 0 ? 'Todavía no cargaste propietarios' : `Sin resultados para "${q}"`}
+              </p>
+              {propietarios.length > 0 && (
+                <button type="button" onClick={() => setQ('')} className="text-xs font-medium text-primary hover:underline">
+                  Limpiar búsqueda
+                </button>
+              )}
             </CardContent>
           </Card>
         ) : (
@@ -207,7 +220,7 @@ export default function PropietariosPage() {
                 ? mensajeRendicion(p, rendido)
                 : !p.cbuAlias
                   ? mensajePedirCbu(p)
-                  : `Hola ${p.nombre.split(' ')[0]}! Soy de Inmobiliaria del Sol. Te paso ` +
+                  : `Hola ${p.nombre.split(' ')[0]}! Te paso ` +
                     `un update de la cobranza del mes en unos días.`;
               const waUrl = `https://wa.me/${tel}?text=${encodeURIComponent(mensajeWA)}`;
               return (

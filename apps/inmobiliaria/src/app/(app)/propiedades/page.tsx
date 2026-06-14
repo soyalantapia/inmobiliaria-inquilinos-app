@@ -23,7 +23,7 @@ import { cn } from '@llave/ui/cn';
 import { Input } from '@llave/ui/input';
 import { MigracionMasivaDialog } from '@/components/migracion-masiva-dialog';
 import { Topbar } from '@/components/topbar';
-import { propiedadesMock } from '@/lib/mock-data';
+import { usePropiedades } from '@/lib/api/hooks';
 import {
   TODAS_LAS_SOCIEDADES,
   leerSociedadActiva,
@@ -33,7 +33,6 @@ import {
 } from '@/lib/sociedad-seleccionada';
 import { sociedadPrincipal } from '@/lib/sociedades-storage';
 import {
-  enriquecerPropiedad,
   estadoPropiedadConfig,
   tipoPropiedadLabel,
   type PropiedadEnriquecida,
@@ -130,14 +129,14 @@ export default function PropiedadesPage() {
 
   const principalId = useMemo(() => sociedadPrincipal().id, []);
 
+  const { propiedades, cargando } = usePropiedades();
+
   const enriquecidas = useMemo(
     () =>
-      propiedadesMock
-        .filter((p) =>
-          matcheaConSociedadActiva(p.sociedadId, sociedadActiva, principalId),
-        )
-        .map(enriquecerPropiedad),
-    [sociedadActiva, principalId],
+      propiedades.filter((pe) =>
+        matcheaConSociedadActiva(pe.propiedad.sociedadId, sociedadActiva, principalId),
+      ),
+    [propiedades, sociedadActiva, principalId],
   );
 
   const counters = useMemo(
@@ -298,21 +297,32 @@ export default function PropiedadesPage() {
           </div>
         )}
 
-        {filtradas.length === 0 ? (
+        {cargando && enriquecidas.length === 0 ? (
+          <Card>
+            <CardContent className="space-y-2 p-10 text-center text-muted-foreground">
+              <Building2 className="mx-auto h-10 w-10 animate-pulse" />
+              <p className="font-medium text-foreground">Cargando propiedades…</p>
+            </CardContent>
+          </Card>
+        ) : filtradas.length === 0 ? (
           <Card>
             <CardContent className="space-y-2 p-10 text-center text-muted-foreground">
               <Building2 className="mx-auto h-10 w-10" />
-              <p className="font-medium text-foreground">Sin resultados</p>
-              <button
-                type="button"
-                onClick={() => {
-                  setQ('');
-                  setFiltro('TODOS');
-                }}
-                className="text-xs font-medium text-primary hover:underline"
-              >
-                Limpiar filtros
-              </button>
+              <p className="font-medium text-foreground">
+                {enriquecidas.length === 0 ? 'Todavía no cargaste propiedades' : 'Sin resultados'}
+              </p>
+              {enriquecidas.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQ('');
+                    setFiltro('TODOS');
+                  }}
+                  className="text-xs font-medium text-primary hover:underline"
+                >
+                  Limpiar filtros
+                </button>
+              )}
             </CardContent>
           </Card>
         ) : (

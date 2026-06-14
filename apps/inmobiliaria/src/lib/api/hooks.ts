@@ -8,8 +8,15 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiEnabled, apiFetch } from './client';
 import { ensureApiSession } from './session';
-import { contratosMock } from '@/lib/mock-data';
-import type { ContratoListado } from '@/lib/types';
+import { contratosMock, propiedadesMock, propietariosMock } from '@/lib/mock-data';
+import type {
+  ContratoListado,
+  EstadoPropiedad,
+  Propiedad,
+  Propietario,
+  TipoPropiedad,
+} from '@/lib/types';
+import { enriquecerPropiedad, type PropiedadEnriquecida } from '@/lib/propiedades-helpers';
 import {
   cargarMovimiento as cargarMovimientoLocal,
   eliminarMovimiento as eliminarMovimientoLocal,
@@ -350,4 +357,310 @@ export function useContratos(): { contratos: ContratoListado[]; cargando: boolea
   // Si el API falla (caído), caemos a los mocks para no dejar la pantalla vacía.
   if (q.isError) return { contratos: contratosMock, cargando: false, deApi: false };
   return { contratos: q.data ?? [], cargando: q.isPending, deApi: true };
+}
+
+// ===== Propiedades (enriquecidas con contrato + propietarios) =====
+
+interface PropiedadApi {
+  id: string;
+  direccion: string;
+  ciudad: string;
+  provincia: string;
+  tipo: string;
+  ambientes: number | null;
+  m2: number | null;
+  fotoUrl: string | null;
+  estado: string;
+  contratoActualId: string | null;
+  sociedadId: string | null;
+  participaciones: Array<{
+    propietarioId: string;
+    porcentaje: number;
+    propietario: { id: string; nombre: string; apellido: string };
+  }>;
+  contratoActual: { id: string; estado: string; monto: string | number; moneda: string } | null;
+}
+
+interface ReclamoLiteApi {
+  contratoId: string | null;
+  estado: string;
+}
+
+// El enum de Prisma tiene más tipos (PH, OFICINA, COCHERA, TERRENO) que los
+// 4 que renderiza el panel (íconos/labels). Coercionamos para no romper los
+// lookups por record con una propiedad de tipo no contemplado.
+function coerceTipo(t: string): TipoPropiedad {
+  switch (t) {
+    case 'DEPARTAMENTO':
+    case 'CASA':
+    case 'LOCAL':
+    case 'GALPON':
+      return t;
+    case 'PH':
+      return 'DEPARTAMENTO';
+    case 'OFICINA':
+    case 'COCHERA':
+      return 'LOCAL';
+    case 'TERRENO':
+      return 'GALPON';
+    default:
+      return 'DEPARTAMENTO';
+  }
+}
+
+function mapPropiedad(p: PropiedadApi): Propiedad {
+  return {
+    id: p.id,
+    direccion: p.direccion,
+    ciudad: p.ciudad,
+    provincia: p.provincia,
+    tipo: coerceTipo(p.tipo),
+    ambientes: p.ambientes,
+    m2: p.m2,
+    fotoUrl: p.fotoUrl,
+    estado: p.estado as EstadoPropiedad,
+    propietariosIds: p.participaciones.map((x) => x.propietarioId),
+    participaciones: p.participaciones.map((x) => ({
+      propietarioId: x.propietarioId,
+      porcentaje: x.porcentaje,
+    })),
+    contratoActualId: p.contratoActualId,
+    ...(p.sociedadId ? { sociedadId: p.sociedadId } : {}),
+    createdAt: '',
+  };
+}
+
+// Propietario "liviano" para el listado/cards (solo nombre/apellido vienen
+// embebidos en /propiedades). El detalle completo lo trae usePropietarios.
+function propietarioLite(o: { id: string; nombre: string; apellido: string }, propId: string): Propietario {
+  return {
+    id: o.id,
+    nombre: o.nombre,
+    apellido: o.apellido,
+    cuit: '',
+    email: '',
+    telefono: '',
+    cbuAlias: null,
+    comisionPct: 0,
+    notas: null,
+    createdAt: '',
+    propiedadesIds: [propId],
+    totalCobradoMes: 0,
+    totalRecibirMes: 0,
+  };
+}
+
+export function usePropiedades(): {
+  propiedades: PropiedadEnriquecida[];
+  cargando: boolean;
+  deApi: boolean;
+} {
+  const { contratos } = useContratos();
+  const propsQ = useQuery({
+    queryKey: ['propiedades'],
+    queryFn: async () => {
+      await ensureApiSession();
+      return apiFetch<PropiedadApi[]>('/propiedades');
+    },
+    enabled: apiEnabled,
+    staleTime: 15_000,
+  });
+  const reclamosQ = useQuery({
+    queryKey: ['reclamos', 'lite'],
+    queryFn: async () => {
+      await ensureApiSession();
+      return apiFetch<ReclamoLiteApi[]>('/reclamos');
+    },
+    enabled: apiEnabled,
+    staleTime: 30_000,
+  });
+
+  if (!apiEnabled) {
+    return { propiedades: propiedadesMock.map(enriquecerPropiedad), cargando: false, deApi: false };
+  }
+  // API caída: empty + flag, NO mocks (no inventamos data en producción).
+  if (propsQ.isError) return { propiedades: [], cargando: false, deApi: true };
+
+  const reclamos = reclamosQ.data ?? [];
+  const propiedades: PropiedadEnriquecida[] = (propsQ.data ?? []).map((p) => {
+    const contrato = p.contratoActualId
+      ? (contratos.find((c) => c.id === p.contratoActualId) ?? null)
+      : null;
+    const propietarios = p.participaciones.map((pp) => propietarioLite(pp.propietario, p.id));
+    const reclamosAbiertos = reclamos.filter(
+      (r) => r.contratoId === p.contratoActualId && (r.estado === 'ABIERTO' || r.estado === 'EN_CURSO'),
+    ).length;
+    return {
+      propiedad: mapPropiedad(p),
+      contrato,
+      propietarios,
+      reclamos: [],
+      reclamosAbiertos,
+    };
+  });
+
+  return { propiedades, cargando: propsQ.isPending, deApi: true };
+}
+
+// ===== Liquidaciones (recibos mensuales por contrato) =====
+
+interface LiquidacionApi {
+  id: string;
+  contratoId: string;
+  periodo: string;
+  montoAlquiler: string | number;
+  montoExpensas: string | number | null;
+  montoPunitorio: string | number | null;
+  montoTotal: string | number;
+  fechaVencimiento: string;
+  fechaPago: string | null;
+  estado: string;
+  moneda: string;
+  contrato: {
+    id: string;
+    propiedad: { direccion: string } | null;
+    inquilinoTitular: { nombre: string; apellido: string | null } | null;
+  } | null;
+}
+
+export interface LiquidacionItem {
+  id: string;
+  contratoId: string;
+  periodo: string;
+  montoAlquiler: number;
+  montoExpensas: number | null;
+  montoTotal: number;
+  estado: string;
+  fechaVencimiento: string;
+  fechaPago: string | null;
+  direccion: string;
+  inquilino: string;
+}
+
+function mapLiquidacion(l: LiquidacionApi): LiquidacionItem {
+  return {
+    id: l.id,
+    contratoId: l.contratoId,
+    periodo: l.periodo,
+    montoAlquiler: Number(l.montoAlquiler),
+    montoExpensas: l.montoExpensas != null ? Number(l.montoExpensas) : null,
+    montoTotal: Number(l.montoTotal),
+    estado: l.estado,
+    fechaVencimiento: (l.fechaVencimiento ?? '').slice(0, 10),
+    fechaPago: l.fechaPago ? l.fechaPago.slice(0, 10) : null,
+    direccion: l.contrato?.propiedad?.direccion ?? '—',
+    inquilino: l.contrato?.inquilinoTitular
+      ? `${l.contrato.inquilinoTitular.nombre} ${l.contrato.inquilinoTitular.apellido ?? ''}`.trim()
+      : '—',
+  };
+}
+
+export function useLiquidaciones(): {
+  liquidaciones: LiquidacionItem[];
+  cargando: boolean;
+  deApi: boolean;
+} {
+  const q = useQuery({
+    queryKey: ['liquidaciones'],
+    queryFn: async () => {
+      await ensureApiSession();
+      const data = await apiFetch<LiquidacionApi[]>('/liquidaciones');
+      return data.map(mapLiquidacion);
+    },
+    enabled: apiEnabled,
+    staleTime: 15_000,
+  });
+  if (!apiEnabled) return { liquidaciones: [], cargando: false, deApi: false };
+  if (q.isError) return { liquidaciones: [], cargando: false, deApi: true };
+  return { liquidaciones: q.data ?? [], cargando: q.isPending, deApi: true };
+}
+
+// Período "YYYY-MM" del mes actual (hora local del cliente).
+function periodoActualYM(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+// ===== Propietarios (con métricas reales derivadas de liquidaciones) =====
+
+interface PropietarioApi {
+  id: string;
+  nombre: string;
+  apellido: string;
+  cuit: string | null;
+  email: string | null;
+  telefono: string | null;
+  cbuAlias: string | null;
+  comisionPct: number | null;
+  notas: string | null;
+  createdAt: string;
+  participaciones: Array<{ propiedadId: string; porcentaje: number }>;
+}
+
+export function usePropietarios(): {
+  propietarios: Propietario[];
+  cargando: boolean;
+  deApi: boolean;
+} {
+  const ownersQ = useQuery({
+    queryKey: ['propietarios'],
+    queryFn: async () => {
+      await ensureApiSession();
+      return apiFetch<PropietarioApi[]>('/propietarios');
+    },
+    enabled: apiEnabled,
+    staleTime: 15_000,
+  });
+  const propsQ = useQuery({
+    queryKey: ['propiedades'],
+    queryFn: async () => {
+      await ensureApiSession();
+      return apiFetch<PropiedadApi[]>('/propiedades');
+    },
+    enabled: apiEnabled,
+    staleTime: 15_000,
+  });
+  const { liquidaciones } = useLiquidaciones();
+
+  if (!apiEnabled) return { propietarios: propietariosMock, cargando: false, deApi: false };
+  if (ownersQ.isError) return { propietarios: [], cargando: false, deApi: true };
+
+  // Atribuimos lo COBRADO este mes (liquidaciones PAGADAS del período) a cada
+  // propietario según su participación en la propiedad del contrato. Lo "a
+  // rendir" descuenta la comisión. Si nada se cobró todavía, queda en 0 — que
+  // es el estado real de un alta nueva (sin pagos conciliados aún).
+  const period = periodoActualYM();
+  const props = propsQ.data ?? [];
+  const cobradoByOwner: Record<string, number> = {};
+  for (const l of liquidaciones) {
+    if (l.periodo !== period || l.estado !== 'PAGADO') continue;
+    const prop = props.find((p) => p.contratoActualId === l.contratoId);
+    if (!prop) continue;
+    for (const part of prop.participaciones) {
+      cobradoByOwner[part.propietarioId] =
+        (cobradoByOwner[part.propietarioId] ?? 0) + l.montoTotal * (part.porcentaje / 100);
+    }
+  }
+
+  const propietarios: Propietario[] = (ownersQ.data ?? []).map((o) => {
+    const cobrado = Math.round(cobradoByOwner[o.id] ?? 0);
+    const recibir = Math.round(cobrado * (1 - (o.comisionPct ?? 0) / 100));
+    return {
+      id: o.id,
+      nombre: o.nombre,
+      apellido: o.apellido,
+      cuit: o.cuit ?? '',
+      email: o.email ?? '',
+      telefono: o.telefono ?? '',
+      cbuAlias: o.cbuAlias,
+      comisionPct: o.comisionPct ?? 0,
+      notas: o.notas,
+      createdAt: (o.createdAt ?? '').slice(0, 10),
+      propiedadesIds: (o.participaciones ?? []).map((x) => x.propiedadId),
+      totalCobradoMes: cobrado,
+      totalRecibirMes: recibir,
+    };
+  });
+
+  return { propietarios, cargando: ownersQ.isPending, deApi: true };
 }
