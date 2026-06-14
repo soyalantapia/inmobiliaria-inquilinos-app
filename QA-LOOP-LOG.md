@@ -1,5 +1,8 @@
 # 🔁 QA LOOP — 10 pasadas limpias consecutivas
 
+> ## 🔁 RE-CORRIDA 2 (a pedido del dueño, 2026-06-14 tarde)
+> Re-ejecución completa del loop sobre el código ya fixeado (H1-H7, en `origin/main` `7e76a8e`). Sin tocar código salvo nuevo hallazgo. Resultados abajo de todo, en **"Re-corrida 2"**. La corrida original (con los 7 fixes) queda como histórico.
+
 > Mecánica: 1 pasada = Journeys A (Roberto panel) + B (Mariela mobile) + C (loop cruzado) impecables.
 > Cualquier hallazgo → fix → verificación → commit → RESET TOTAL → contador a 0.
 > Reset: `cd apps/api && pnpm exec tsx ../../scripts/reset-qa.mjs` + localStorage.clear() en :3000 y :3001.
@@ -110,3 +113,25 @@
 
 ## Bitácora
 - **Pre-pasada** (impar/desktop/demo). Journey A pasos 1-2: dashboard OK sin errores de consola; /contratos lista 8 contratos con badges reales (Mariela Vencido ✓, Juan Pagado ✓). Detectado **H1** en cnt_007 → fix (seed+endpoint+adapter) → tests → commit `2add5a5` → `railway up` → RESET TOTAL → **contador a 0**.
+
+---
+
+## 🔁 Re-corrida 2 (sobre código ya fixeado — a pedido del dueño)
+
+Sin cambios de código (H1-H7 ya en `origin/main`). Cada pasada = RESET + A+B+C. Cualquier hallazgo nuevo → fix → contador a 0.
+
+| # | Variante | A | B | C | Resultado |
+|---|----------|---|---|---|-----------|
+| 1 | impar · desktop · demo · error PIN | ✅ dashboard, contratos 8 (cnt_007, Mariela Vencido/Juan Pagado), aprobar Tomás (9999→"PIN incorrecto"→1234), caja QA-P1 alta+baja+409, anuncio→6 | ✅ demo login (inquilino), deuda 606.320, QA-P1 Enterado verde persiste (preview reiniciado por chrome-error de infra, no bug) | ✅ panel Leído 1/6·Confirmado 1/6, delete "(6)", smoke OK | **✅ (1/10)** |
+| 2 | par · mobile · OTP | ✅ mobile contratos 8 (cnt_007), aprobar Tomás, caja QA-P2 alta+baja+409, anuncio→6 (overflow 0) | ✅ OTP completo (000000), deuda 606.320, QA-P2 Enterado verde persiste | ✅ panel Leído 1/6·Confirmado 1/6, delete "(6)", smoke OK | **✅ (2/10)** |
+| 3 | impar · desktop · demo | ✅ contratos 8 (cnt_007, badges), aprobar Tomás, caja QA-P3 alta+baja+409, anuncio→6 | ✅ demo login, deuda 606.320, QA-P3 Enterado verde persiste | ✅ panel Leído 1/6·Confirmado 1/6, delete "(6)", smoke OK | **✅ (3/10)** |
+| 4 | par · mobile · OTP · orden B→A→C | ✅ (2º) contratos 8 mobile, aprobar Tomás, caja QA-P4 alta+baja+409, anuncio→6 | ✅ (1º) OTP completo, deuda 606.320, entera anu_seed_1 (badge 3→2 s/overflow) | ✅ cross-origin invertido: panel anu_seed_1 Leído 1/12·Confirmado 1/12; delete QA-P4 "(6)"; smoke OK | **✅ (4/10)** |
+| 5 | impar · desktop · demo | ✅ contratos 8, aprobar Tomás, caja QA-P5 alta+baja+409, anuncio→6 | ✅ demo login, deuda 606.320, QA-P5 Enterado verde persiste | ✅ panel Leído 1/6·Confirmado 1/6, delete "(6)", smoke OK | **✅ (5/10)** |
+| 6 | par · mobile · OTP | ✅ mobile contratos 8, aprobar Tomás, caja QA-P6 alta+baja+409, anuncio→6 (overflow 0) | ✅ OTP completo, deuda 606.320, QA-P6 Enterado verde persiste | ✅ panel Leído 1/6·Confirmado 1/6, delete "(6)", smoke OK | **✅ (6/10)** |
+| 7 | impar · desktop · demo | ✅ contratos 8, aprobar Tomás, caja QA-P7 alta+baja+409, anuncio→6 | ✅ demo login, deuda 606.320, QA-P7 Enterado verde persiste | ✅ panel Leído 1/6·Confirmado 1/6, delete "(6)", smoke OK | **✅ (7/10)** |
+| 8 | par · mobile · OTP · orden B→A→C | ✅ (2º) contratos 8 mobile, aprobar Tomás, caja QA-P8 alta+baja+409, anuncio→6 | ✅ (1º) OTP completo, deuda 606.320, entera anu_seed_1 (badge 3→2 s/overflow) | ✅ cross-origin invertido: panel anu_seed_1 Leído 1/12·Confirmado 1/12; delete QA-P8 "(6)"; smoke OK | **✅ (8/10)** |
+| 9 | impar · desktop · demo | ✅ contratos 8, aprobar Tomás, caja QA-P9 alta+baja+409, anuncio→6 | ✅ demo login, deuda 606.320, QA-P9 Enterado verde persiste | ✅ panel Leído 1/6·Confirmado 1/6, delete "(6)", smoke OK | **✅ (9/10)** |
+| 10 | par · mobile · OTP | ✅ mobile contratos 8, aprobar Tomás, caja QA-P10 alta+baja+409, anuncio→6 (overflow 0) | ✅ OTP completo, deuda 606.320, QA-P10 Enterado verde persiste | ✅ panel Leído 1/6·Confirmado 1/6, delete "(6)", seed intacto, smoke OK | **✅ (10/10)** |
+
+### ✅ CIERRE Re-corrida 2 — 10/10 pasadas limpias consecutivas (pasadas 1 a 10, SIN tocar código)
+Re-ejecución completa sobre el código ya fixeado (H1-H7). **Cero hallazgos nuevos.** Único incidente: un `chrome-error` del preview inquilino entre pasadas (glitch de infra del dev server, no del producto) — recuperado con preview_stop/start, sin tocar código, contador intacto. Variantes cubiertas igual que la corrida original (desktop/mobile, demo/OTP, B→A→C en 4 y 8, error PIN en pasada 1, cross-origin en ambos sentidos). Smoke prod 6/6 en cada pasada. DB demo restaurada al estado seed por el RESET final.
