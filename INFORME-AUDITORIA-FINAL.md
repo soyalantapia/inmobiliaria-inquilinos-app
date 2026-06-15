@@ -40,12 +40,20 @@ Se auditó **todo** el proyecto (panel + inquilino + API + packages) en 4 frente
 12. ✅ Co-inquilinos: botón **"Simular que aceptó"** (copy demo) visible en prod → gateado a demo.
 13. ✅ Colores off-brand (onboarding, ayuda, contratos, renovaciones, pagos) → tokens de marca violeta (verde=ahorro, rojo=mora preservados).
 
-### ⚪ BAJAS — pendientes (no bloquean)
-- ⏳ **Íconos PWA faltan**: el manifest referencia `icon-192/512/maskable.png` pero no existen en `public/` → 404 en cada carga + sin ícono de "agregar a inicio". _Fix: dropear los 3 PNG de marca._
-- ⏳ **Sin dark-mode**: con `prefers-color-scheme: dark` la app sigue clara (no aplica clase `dark`). Light-only es decisión válida; las clases `dark:` del código son código muerto. _Informativo._
-- ⏳ PDF de morosos (panel) usa teléfono/garante de `contactosCobranzaMock` (solo en el export, no en pantalla).
-- ⏳ Reclamos del inquilino colapsan error de API en el empty "Todavía no tenés reclamos".
-- ⏳ Detalle de propiedad (tab Resumen): "Inquilino actual —" en vez del nombre real (empty state seguro, no crash; el nombre sí aparece en el detalle de contrato). Mapear `inquilinoTitular.nombre` en `use-propiedad`.
+### ⚪ BAJAS — todas RESUELTAS _(commit 102f32b)_
+- ✅ **Íconos PWA**: generados `icon-192/512/maskable.png` (marca violeta "My") + `app/icon.png` (favicon) en ambas apps. Verificado en vivo: `GET /icon-192.png → 200` (era 404).
+- ✅ **PDF de morosos** (panel): teléfono/garante gateados a demo (en prod '—'/'Sin garante', sin depender del mismatch de ids).
+- ✅ **Reclamos del inquilino**: error de API ahora muestra estado + Reintentar (flag `hayError`), distinto del empty "Todavía no tenés reclamos".
+- ✅ **Detalle de propiedad** "Inquilino actual": derivaba mal de un campo inexistente → ahora `inquilinoTitular.nombre+apellido` del API. **Verificado en vivo: "Martín Gómez"** (era "—").
+- ✅ **reclamos/[id]** (inquilino): visita del profesional (cross-app, sin endpoint) gateada a demo.
+- ✅ **Detalle de pago**: subtexto "Te mostramos CBU/alias/titular" → "coordinás con la inmobiliaria" en prod (coincide con el checkout neutro).
+- ℹ️ **Sin dark-mode**: decisión deliberada **light-only** (no es defecto). Las clases `dark:` quedan inertes; no se habilita dark para no introducir regresiones visuales en una UI probada en claro.
+
+### 🔁 Re-testeo final (post-fix)
+- Builds panel + inquilino: ✅ (50/50 · 42/42 páginas)
+- Lecturas de endpoints: ✅ **23/23** (incl. `GET /propiedades/:id` con `estadoPagoActual` derivado)
+- Mutaciones E2E con cleanup: ✅ **9/9** (PIN 403/200, tenant limpio)
+- Verificación en vivo: ícono 200 · detalle de propiedad sin crash + inquilino real · gating OK
 
 ---
 
