@@ -174,6 +174,10 @@ export interface ContratoListado {
   tipoContrato?: TipoContrato;
   /** Monto de expensas mensuales (si el contrato lo incluye). */
   montoExpensas?: number | null;
+  /** Índice de actualización del alquiler (ICL, IPC, etc.). Null si no aplica. */
+  indiceAjuste?: string | null;
+  /** Cada cuántos meses se ajusta el alquiler. Null si no aplica. */
+  frecuenciaAjusteMeses?: number | null;
   /**
    * Trazabilidad: quién cargó el contrato y cuándo. Si lo cargó alguien con
    * rol CARGA, queda PENDIENTE_APROBACION (estado BORRADOR + pendienteAprobacion=true)

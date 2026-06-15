@@ -277,15 +277,41 @@ export default function ContratoPage() {
 // CONTRATO REAL (modo API)
 // ============================================================
 function ContratoReal() {
-  const { contrato: c, inmobiliariaTelefono } = useMiContrato();
+  const { contrato: c, inmobiliariaTelefono, cargando } = useMiContrato();
 
-  if (!c) {
+  // Sólo mostramos el spinner mientras realmente está cargando. Si terminó de
+  // cargar y no hay contrato (error de API o inquilino sin contrato asignado),
+  // mostramos un estado claro en vez de dejar el spinner colgado para siempre.
+  if (cargando) {
     return (
       <>
         <MobileGreetingHeader />
         <main className="flex-1 px-5 pb-6 pt-10 text-center text-muted-foreground md:px-8">
           <FileText className="mx-auto h-9 w-9 animate-pulse" />
           <p className="mt-2 text-sm">Cargando tu contrato…</p>
+        </main>
+        <NavBar />
+      </>
+    );
+  }
+
+  if (!c) {
+    return (
+      <>
+        <MobileGreetingHeader />
+        <main className="flex-1 px-5 pb-6 pt-10 text-center md:px-8">
+          <FileText className="mx-auto h-9 w-9 text-muted-foreground" />
+          <p className="mt-3 text-sm font-medium">No pudimos cargar tu contrato.</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Revisá tu conexión e intentá de nuevo.
+          </p>
+          <Button
+            variant="outline"
+            className="mt-4"
+            onClick={() => window.location.reload()}
+          >
+            Reintentar
+          </Button>
         </main>
         <NavBar />
       </>

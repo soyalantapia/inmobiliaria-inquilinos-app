@@ -33,6 +33,7 @@ import {
 } from '@llave/ui/select';
 import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
+import { apiEnabled } from '@/lib/api/client';
 import {
   type CategoriaInventario,
   type ItemInventario,
@@ -91,9 +92,15 @@ export function ConsorcioInventarioTab({ consorcioId }: Props) {
     );
   }, [items]);
 
+  // Alta de items y movimientos de stock escriben sólo a localStorage (sin
+  // endpoint). En prod (apiEnabled) gateamos las mutaciones para no fingir
+  // persistencia; en build demo (!apiEnabled) queda operativo. Lectura libre.
+  const puedeMutar = !apiEnabled;
+
   if (!hidratado) return null;
 
   const onItemCreado = (data: Omit<ItemInventario, 'id' | 'actualizadoAt'>) => {
+    if (!puedeMutar) return;
     cargarItem(data);
     refrescar();
     setCrearAbierto(false);
@@ -111,6 +118,7 @@ export function ConsorcioInventarioTab({ consorcioId }: Props) {
     motivo: string,
     ufDestino?: string,
   ) => {
+    if (!puedeMutar) return;
     moverStock({
       itemId: item.id,
       consorcioId,
@@ -200,7 +208,12 @@ export function ConsorcioInventarioTab({ consorcioId }: Props) {
 
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold">Stock actual</h3>
-        <Button size="sm" onClick={() => setCrearAbierto(true)}>
+        <Button
+          size="sm"
+          onClick={() => setCrearAbierto(true)}
+          disabled={!puedeMutar}
+          title={puedeMutar ? undefined : 'Próximamente'}
+        >
           <Plus className="h-4 w-4" />
           Agregar item
         </Button>
@@ -269,6 +282,8 @@ export function ConsorcioInventarioTab({ consorcioId }: Props) {
                       onClick={() =>
                         setMoverAbierto({ item, tipo: 'ENTRADA' })
                       }
+                      disabled={!puedeMutar}
+                      title={puedeMutar ? undefined : 'Próximamente'}
                     >
                       <ArrowUp className="h-3.5 w-3.5 text-emerald-600" />
                     </Button>
@@ -278,7 +293,8 @@ export function ConsorcioInventarioTab({ consorcioId }: Props) {
                       onClick={() =>
                         setMoverAbierto({ item, tipo: 'SALIDA' })
                       }
-                      disabled={item.cantidadActual === 0}
+                      disabled={!puedeMutar || item.cantidadActual === 0}
+                      title={puedeMutar ? undefined : 'Próximamente'}
                     >
                       <ArrowDown className="h-3.5 w-3.5 text-destructive" />
                     </Button>
@@ -329,6 +345,7 @@ export function ConsorcioInventarioTab({ consorcioId }: Props) {
         onClose={() => setCrearAbierto(false)}
         consorcioId={consorcioId}
         onGuardar={onItemCreado}
+        puedeMutar={puedeMutar}
       />
 
       <MoverStockDialog
@@ -339,6 +356,7 @@ export function ConsorcioInventarioTab({ consorcioId }: Props) {
         onConfirmar={(item, cantidad, motivo, ufDestino) =>
           onMovimiento(item, moverAbierto?.tipo ?? 'SALIDA', cantidad, motivo, ufDestino)
         }
+        puedeMutar={puedeMutar}
       />
     </div>
   );
@@ -349,9 +367,10 @@ interface CrearProps {
   onClose: () => void;
   consorcioId: string;
   onGuardar: (data: Omit<ItemInventario, 'id' | 'actualizadoAt'>) => void;
+  puedeMutar: boolean;
 }
 
-function CrearItemDialog({ abierto, onClose, consorcioId, onGuardar }: CrearProps) {
+function CrearItemDialog({ abierto, onClose, consorcioId, onGuardar, puedeMutar }: CrearProps) {
   const [categoria, setCategoria] = useState<CategoriaInventario>('ILUMINACION');
   const [nombre, setNombre] = useState('');
   const [unidad, setUnidad] = useState('unidades');
@@ -372,6 +391,7 @@ function CrearItemDialog({ abierto, onClose, consorcioId, onGuardar }: CrearProp
   }, [abierto]);
 
   const submit = () => {
+    if (!puedeMutar) return;
     if (!nombre.trim() || !cantidad) {
       toast({
         variant: 'destructive',
@@ -483,7 +503,13 @@ function CrearItemDialog({ abierto, onClose, consorcioId, onGuardar }: CrearProp
             <Button variant="outline" onClick={onClose}>
               Cancelar
             </Button>
-            <Button onClick={submit}>Agregar</Button>
+            <Button
+              onClick={submit}
+              disabled={!puedeMutar}
+              title={puedeMutar ? undefined : 'Próximamente'}
+            >
+              Agregar
+            </Button>
           </div>
         </div>
       </DialogContent>
@@ -502,9 +528,10 @@ interface MoverProps {
     motivo: string,
     ufDestino?: string,
   ) => void;
+  puedeMutar: boolean;
 }
 
-function MoverStockDialog({ abierto, onClose, item, tipo, onConfirmar }: MoverProps) {
+function MoverStockDialog({ abierto, onClose, item, tipo, onConfirmar, puedeMutar }: MoverProps) {
   const [cantidad, setCantidad] = useState('');
   const [motivo, setMotivo] = useState('');
   const [ufDestino, setUfDestino] = useState('');
@@ -517,6 +544,7 @@ function MoverStockDialog({ abierto, onClose, item, tipo, onConfirmar }: MoverPr
   }, [abierto]);
 
   const submit = () => {
+    if (!puedeMutar) return;
     if (!item || !cantidad) return;
     if (!motivo.trim()) {
       toast({
@@ -587,7 +615,11 @@ function MoverStockDialog({ abierto, onClose, item, tipo, onConfirmar }: MoverPr
               <Button variant="outline" onClick={onClose}>
                 Cancelar
               </Button>
-              <Button onClick={submit}>
+              <Button
+                onClick={submit}
+                disabled={!puedeMutar}
+                title={puedeMutar ? undefined : 'Próximamente'}
+              >
                 {tipo === 'ENTRADA' ? 'Sumar' : 'Descontar'}
               </Button>
             </div>

@@ -42,7 +42,7 @@ interface Step {
 const STEPS: Step[] = [
   {
     icon: Sparkles,
-    iconBg: 'from-fuchsia-500 to-purple-600',
+    iconBg: 'from-primary to-primary/70',
     titulo: '¡Bienvenido a My Alquiler!',
     descripcion: 'Tu alquiler en un solo lugar. Te muestro las cosas importantes en 1 minuto.',
     bullets: [
@@ -65,7 +65,7 @@ const STEPS: Step[] = [
   },
   {
     icon: FileText,
-    iconBg: 'from-blue-500 to-indigo-600',
+    iconBg: 'from-primary to-primary/70',
     titulo: 'Conocé tu contrato',
     descripcion: 'Datos clave, próximos ajustes, evolución del alquiler y estado del depósito.',
     bullets: [
@@ -77,7 +77,7 @@ const STEPS: Step[] = [
   },
   {
     icon: Sparkles,
-    iconBg: 'from-fuchsia-500 to-purple-600',
+    iconBg: 'from-primary to-primary/70',
     titulo: 'Chateá con el Asistente',
     descripcion: 'Una IA que leyó tus cláusulas y te responde al instante.',
     bullets: [
@@ -89,7 +89,7 @@ const STEPS: Step[] = [
   },
   {
     icon: Wrench,
-    iconBg: 'from-amber-500 to-orange-600',
+    iconBg: 'from-primary to-primary/70',
     titulo: 'Reportá problemas',
     descripcion: 'Plomería, electricidad, cerraduras — todo desde la app.',
     bullets: [
@@ -101,7 +101,7 @@ const STEPS: Step[] = [
   },
   {
     icon: Receipt,
-    iconBg: 'from-emerald-500 to-teal-600',
+    iconBg: 'from-primary to-primary/70',
     titulo: 'Comprobantes a mano',
     descripcion: 'Todos tus pagos descargables en PDF, año por año.',
     bullets: [
@@ -113,7 +113,7 @@ const STEPS: Step[] = [
   },
   {
     icon: CalendarDays,
-    iconBg: 'from-cyan-500 to-blue-600',
+    iconBg: 'from-primary to-primary/70',
     titulo: 'Mi calendario',
     descripcion: 'Todo lo que va a pasar con tu alquiler: pagos, ajustes, vencimientos.',
     bullets: [
@@ -125,7 +125,7 @@ const STEPS: Step[] = [
   },
   {
     icon: Users,
-    iconBg: 'from-rose-500 to-pink-600',
+    iconBg: 'from-primary to-primary/70',
     titulo: 'Y mucho más',
     descripcion: 'Profesionales, co-inquilinos, documentos, renovación — todo desde Mi Cuenta.',
     bullets: [
@@ -137,7 +137,7 @@ const STEPS: Step[] = [
   },
   {
     icon: CheckCircle2,
-    iconBg: 'from-emerald-500 to-green-600',
+    iconBg: 'from-primary to-primary/70',
     titulo: '¡Listo!',
     descripcion: 'Ya conocés My Alquiler. Cualquier duda, el Asistente o la inmobiliaria están a un toque.',
     bullets: [
@@ -345,7 +345,7 @@ export function OnboardingInvite() {
 
   return (
     <div className="flex items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 animate-fade-in">
-      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-fuchsia-500 to-purple-600 text-white">
+      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-primary to-primary/70 text-white">
         <Sparkles className="h-4 w-4" />
       </div>
       <div className="min-w-0 flex-1">

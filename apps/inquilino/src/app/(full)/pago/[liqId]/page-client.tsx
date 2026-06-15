@@ -46,7 +46,7 @@ export default function DetallePagoPage({ params }: { params: { liqId: string } 
   // Origen de la liquidación: API en prod (useLiquidacion deriva de
   // useMisLiquidaciones), liquidacionesMock en la demo offline. La búsqueda
   // por liqId vive dentro del hook.
-  const { liquidacion: liqApi, cargando } = useLiquidacion(params.liqId);
+  const { liquidacion: liqApi, cargando, isError } = useLiquidacion(params.liqId);
 
   // En modo demo seguimos usando el mock + el "modo demo" (al día / atrasado)
   // y todo el store local de parciales/decisiones. En prod no hay endpoint
@@ -64,8 +64,31 @@ export default function DetallePagoPage({ params }: { params: { liqId: string } 
     );
   }
 
+  // Error de API (sólo prod): el liqId puede ser perfectamente válido pero el
+  // backend está caído / la request falló. NO disparamos notFound (que daría un
+  // 404 engañoso "esta liquidación no existe"): mostramos un estado de error
+  // con reintento para no perder un liqId real por una caída transitoria.
+  if (apiEnabled && isError) {
+    return (
+      <main className="flex-1 px-5 py-10 text-center">
+        <p className="text-sm font-medium">No pudimos cargar la liquidación.</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Revisá tu conexión e intentá de nuevo.
+        </p>
+        <Button
+          variant="outline"
+          className="mt-4"
+          onClick={() => window.location.reload()}
+        >
+          Reintentar
+        </Button>
+      </main>
+    );
+  }
+
   // No encontrada: en demo nunca pasa (generateStaticParams cubre todos los
-  // ids del mock); en prod, si el API no la tiene, vamos a notFound.
+  // ids del mock); en prod, si la lista cargó OK pero no contiene este liqId,
+  // la liquidación realmente no existe → notFound.
   const liq = apiEnabled
     ? liqApi
     : (liqDemo ?? (liqBase ? { ...liqBase, fechaVencimiento: liqBase.fechaVencimiento } : null));

@@ -16,6 +16,8 @@
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiEnabled, apiFetch } from './client';
+import { useMiContrato } from './hooks';
+import { useCurrentUser } from '@/lib/use-current-user';
 import { inquilinoActual } from '@/lib/mock-data';
 import {
   crearReclamo as crearReclamoLocal,
@@ -94,13 +96,23 @@ function mapEvento(e: EventoApi): EventoReclamo | null {
   };
 }
 
-function mapReclamo(r: ReclamoApi): Reclamo {
+/**
+ * Identidad real del inquilino para denormalizar en cada reclamo. En prod
+ * viene de la sesión OTP (`useCurrentUser().fullName`) y del contrato real
+ * (`useMiContrato().contrato.direccion`); en demo cae al mock `inquilinoActual`.
+ */
+interface IdentidadInquilino {
+  inquilino: string;
+  direccion: string;
+}
+
+function mapReclamo(r: ReclamoApi, identidad: IdentidadInquilino): Reclamo {
   const prof = r.profesional ?? null;
   return {
     id: r.id,
     contratoId: r.contratoId,
-    inquilino: inquilinoActual.nombre,
-    direccion: inquilinoActual.direccion,
+    inquilino: identidad.inquilino,
+    direccion: identidad.direccion,
     categoria: r.categoria,
     descripcion: r.descripcion,
     urgencia: r.urgencia,
@@ -158,6 +170,18 @@ export function useMisReclamos(): {
     staleTime: 15_000,
   });
 
+  // Identidad real para denormalizar en cada reclamo del API. En prod el
+  // nombre sale de la sesión OTP y la dirección del contrato real; si todavía
+  // no hidrataron caemos a string vacío (mejor que mostrar el mock 'Mariela').
+  // En demo (!apiEnabled) estos hooks ya devuelven el mock, pero igual usamos
+  // `inquilinoActual` abajo para no cambiar el comportamiento offline.
+  const user = useCurrentUser();
+  const { contrato } = useMiContrato();
+  const identidad: IdentidadInquilino = {
+    inquilino: user.fullName,
+    direccion: contrato?.direccion ?? '',
+  };
+
   // Combina título + descripción igual que el panel de la inmo lo guarda
   // (el modelo no tiene campo `titulo`): para OTRO el título va como prefijo.
   const descripcionCombinada = (input: CrearReclamoInput): string =>
@@ -195,7 +219,7 @@ export function useMisReclamos(): {
   }
 
   return {
-    reclamos: (q.data ?? []).map(mapReclamo),
+    reclamos: (q.data ?? []).map((r) => mapReclamo(r, identidad)),
     cargando: q.isPending,
     deApi: true,
     crearReclamo: async (input) => {
@@ -209,7 +233,7 @@ export function useMisReclamos(): {
         }),
       });
       await qc.invalidateQueries({ queryKey: QUERY_KEY });
-      return mapReclamo(creado);
+      return mapReclamo(creado, identidad);
     },
   };
 }

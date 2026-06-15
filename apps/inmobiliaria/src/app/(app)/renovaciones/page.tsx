@@ -55,7 +55,7 @@ const decisionConfig: Record<
   PENSANDO: {
     label: 'Lo está pensando',
     badge: 'secondary',
-    color: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300',
+    color: 'bg-primary/10 text-primary',
     icon: Clock,
   },
   SIN_RESPUESTA: {

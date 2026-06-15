@@ -44,7 +44,7 @@ import { registrarEvento } from '@/lib/auditoria-storage';
 import { gastosAtribuidos, type GastoAtribuido } from '@/lib/gastos-rendicion';
 import { PinPromptDialog } from '@/components/pin-prompt-dialog';
 import { apiEnabled, ApiError } from '@/lib/api/client';
-import { useRendiciones } from '@/lib/api/use-rendiciones';
+import { useRendiciones, type RendicionApi } from '@/lib/api/use-rendiciones';
 import type { Propietario } from '@/lib/types';
 import { formatMonto, formatPeriodo } from '@/lib/format';
 
@@ -130,17 +130,20 @@ export function RendirPropietarioDialog({
   };
 
   // Rendición efímera SIN persistir — solo para armar el toast y el mensaje
-  // de WhatsApp en prod (la fuente de verdad es el server). Replica el cálculo
-  // de `marcarRendido` para que los montos coincidan con el desglose mostrado.
-  const construirRendicionEfimera = (): Rendicion => ({
-    id: `rend_api_${Date.now().toString(36)}`,
+  // de WhatsApp en prod (la fuente de verdad es el server). Los montos
+  // (bruto/comisión/gastos/neto) salen de la respuesta del POST /rendiciones:
+  // el server ya descontó los gastos, así que su `montoNeto` es el real y puede
+  // diferir del cálculo local del desglose. Los ítems de gastos del comprobante
+  // siguen saliendo del snapshot local (el server solo devuelve el total).
+  const construirRendicionEfimera = (resp: RendicionApi): Rendicion => ({
+    id: resp.id || `rend_api_${Date.now().toString(36)}`,
     propietarioId: propietario.id,
     periodo,
-    montoBruto: bruto,
-    comisionPct: propietario.comisionPct,
+    montoBruto: Number(resp.montoBruto),
+    comisionPct: resp.comisionPct,
     gastos,
-    totalGastos,
-    montoNeto: neto,
+    totalGastos: Number(resp.totalGastos),
+    montoNeto: Number(resp.montoNeto),
     rendidoAt: new Date().toISOString(),
     metodo,
     notas: notas.trim() || null,
@@ -155,7 +158,7 @@ export function RendirPropietarioDialog({
   ): Promise<string | void> => {
     setGuardando(true);
     try {
-      await rendirApi({
+      const resp = await rendirApi({
         propietarioId: propietario.id,
         periodo,
         metodo,
@@ -163,8 +166,9 @@ export function RendirPropietarioDialog({
         notas: notas.trim() || undefined,
       });
       // Rendición efímera solo para el comprobante/toast (NO persiste en prod:
-      // la fuente de verdad es el server, ya invalidamos sus queries).
-      const rendicion = construirRendicionEfimera();
+      // la fuente de verdad es el server, ya invalidamos sus queries). Usa el
+      // neto que devolvió el server, no el cálculo local.
+      const rendicion = construirRendicionEfimera(resp);
       toast({
         variant: 'success',
         title: `¡${propietario.nombre} rendido!`,

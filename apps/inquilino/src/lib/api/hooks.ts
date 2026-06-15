@@ -46,6 +46,7 @@ export function useMiContrato(): {
   contrato: Contrato | null;
   inmobiliariaTelefono: string | null;
   cargando: boolean;
+  isError: boolean;
   deApi: boolean;
 } {
   const q = useQuery({
@@ -54,10 +55,10 @@ export function useMiContrato(): {
     enabled: apiEnabled,
     staleTime: 60_000,
   });
-  if (!apiEnabled) return { contrato: contratoMock, inmobiliariaTelefono: null, cargando: false, deApi: false };
-  if (q.isError) return { contrato: null, inmobiliariaTelefono: null, cargando: false, deApi: true };
+  if (!apiEnabled) return { contrato: contratoMock, inmobiliariaTelefono: null, cargando: false, isError: false, deApi: false };
+  if (q.isError) return { contrato: null, inmobiliariaTelefono: null, cargando: false, isError: true, deApi: true };
   const d = q.data;
-  if (!d) return { contrato: null, inmobiliariaTelefono: null, cargando: q.isPending, deApi: true };
+  if (!d) return { contrato: null, inmobiliariaTelefono: null, cargando: q.isPending, isError: false, deApi: true };
   return {
     contrato: {
       id: d.id,
@@ -74,6 +75,7 @@ export function useMiContrato(): {
     },
     inmobiliariaTelefono: d.inmobiliariaTelefono,
     cargando: false,
+    isError: false,
     deApi: true,
   };
 }
@@ -111,6 +113,7 @@ function mapLiquidacion(l: LiquidacionApi): Liquidacion {
 export function useMisLiquidaciones(): {
   liquidaciones: Liquidacion[];
   cargando: boolean;
+  isError: boolean;
   deApi: boolean;
 } {
   const q = useQuery({
@@ -119,9 +122,9 @@ export function useMisLiquidaciones(): {
     enabled: apiEnabled,
     staleTime: 30_000,
   });
-  if (!apiEnabled) return { liquidaciones: liquidacionesMock, cargando: false, deApi: false };
-  if (q.isError) return { liquidaciones: [], cargando: false, deApi: true };
-  return { liquidaciones: (q.data ?? []).map(mapLiquidacion), cargando: q.isPending, deApi: true };
+  if (!apiEnabled) return { liquidaciones: liquidacionesMock, cargando: false, isError: false, deApi: false };
+  if (q.isError) return { liquidaciones: [], cargando: false, isError: true, deApi: true };
+  return { liquidaciones: (q.data ?? []).map(mapLiquidacion), cargando: q.isPending, isError: false, deApi: true };
 }
 
 export function useMisAnuncios(): {

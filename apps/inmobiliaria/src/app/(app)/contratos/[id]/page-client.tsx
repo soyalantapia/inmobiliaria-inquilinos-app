@@ -67,15 +67,17 @@ const eventoIcono: Record<TipoEventoContrato, LucideIcon> = {
   INTENCION_RENOVACION: Flag,
 };
 
+// Verde (emerald) = OK/pago, rojo = vencido/mora, ámbar = aviso garante; el
+// resto va a la marca (primary, violeta) vía token en vez de colores sueltos.
 const eventoColor: Record<TipoEventoContrato, string> = {
   CREADO: 'bg-emerald-500',
   AJUSTE_APLICADO: 'bg-primary',
   PAGO_RECIBIDO: 'bg-emerald-500',
   PAGO_VENCIDO: 'bg-red-500',
-  RECLAMO_CREADO: 'bg-blue-500',
+  RECLAMO_CREADO: 'bg-primary',
   COMUNICACION_ENVIADA: 'bg-muted',
   GARANTE_RENOVADO: 'bg-amber-500',
-  INTENCION_RENOVACION: 'bg-purple-500',
+  INTENCION_RENOVACION: 'bg-primary',
 };
 
 const canalIcono: Record<CanalComunicacion, LucideIcon> = {
@@ -272,8 +274,20 @@ export default function DetalleContratoPage() {
                   <Row label="Próximo vencimiento" value={formatFecha(c.proximoVencimiento)} />
                   {c.tipoContrato !== 'SOLO_EXPENSAS' && (
                     <>
-                      <Row label="Índice de ajuste" value="ICL — BCRA" />
-                      <Row label="Frecuencia ajuste" value="12 meses" />
+                      <Row
+                        label="Índice de ajuste"
+                        value={apiEnabled ? c.indiceAjuste ?? '—' : 'ICL — BCRA'}
+                      />
+                      <Row
+                        label="Frecuencia ajuste"
+                        value={
+                          apiEnabled
+                            ? c.frecuenciaAjusteMeses != null
+                              ? `${c.frecuenciaAjusteMeses} meses`
+                              : '—'
+                            : '12 meses'
+                        }
+                      />
                     </>
                   )}
                   {c.cbuAlias && (

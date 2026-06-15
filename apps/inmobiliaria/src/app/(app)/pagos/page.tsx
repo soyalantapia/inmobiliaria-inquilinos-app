@@ -427,7 +427,7 @@ export default function PagosPage() {
               <>
                 <Button
                   size="sm"
-                  className="gap-1 bg-violet-600 text-white hover:bg-violet-700"
+                  className="gap-1 bg-primary text-primary-foreground hover:bg-primary/90"
                   onClick={() => setValidadorOpen(true)}
                 >
                   <ShieldCheck className="h-4 w-4" />

@@ -28,6 +28,7 @@ import {
 } from '@llave/ui/select';
 import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
+import { apiEnabled } from '@/lib/api/client';
 import {
   type ServicioComun,
   type TipoServicioConsorcio,
@@ -82,7 +83,13 @@ export function ConsorcioServiciosTab({ consorcioId }: Props) {
     [servicios],
   );
 
+  // El alta/edición de servicios escribe sólo a localStorage (no hay endpoint).
+  // En prod (apiEnabled) gateamos las mutaciones para no fingir persistencia;
+  // en build demo (!apiEnabled) queda todo operativo. La lectura sigue libre.
+  const puedeMutar = !apiEnabled;
+
   const guardar = (s: ServicioComun) => {
+    if (!puedeMutar) return;
     guardarServicioConsorcio(consorcioId, s);
     setServicios(leerServiciosDeConsorcio(consorcioId));
     setEditar(null);
@@ -148,6 +155,8 @@ export function ConsorcioServiciosTab({ consorcioId }: Props) {
                     variant={datos ? 'ghost' : 'secondary'}
                     size="sm"
                     onClick={() => setEditar({ tipo, existente: datos })}
+                    disabled={!puedeMutar}
+                    title={puedeMutar ? undefined : 'Próximamente'}
                   >
                     {datos ? (
                       <>
@@ -197,6 +206,7 @@ export function ConsorcioServiciosTab({ consorcioId }: Props) {
         tipo={editar?.tipo ?? 'LUZ_PASILLO'}
         existente={editar?.existente}
         onGuardar={guardar}
+        puedeMutar={puedeMutar}
       />
     </div>
   );
@@ -221,6 +231,7 @@ interface DialogProps {
   tipo: TipoServicioConsorcio;
   existente?: ServicioComun;
   onGuardar: (s: ServicioComun) => void;
+  puedeMutar: boolean;
 }
 
 function ServicioConsorcioDialog({
@@ -229,6 +240,7 @@ function ServicioConsorcioDialog({
   tipo,
   existente,
   onGuardar,
+  puedeMutar,
 }: DialogProps) {
   const [proveedor, setProveedor] = useState('');
   const [nis, setNis] = useState('');
@@ -246,6 +258,7 @@ function ServicioConsorcioDialog({
   }, [abierto, existente]);
 
   const submit = () => {
+    if (!puedeMutar) return;
     if (!proveedor.trim() || !nis.trim()) {
       toast({
         variant: 'destructive',
@@ -326,7 +339,13 @@ function ServicioConsorcioDialog({
             <Button variant="outline" onClick={onClose}>
               Cancelar
             </Button>
-            <Button onClick={submit}>Guardar</Button>
+            <Button
+              onClick={submit}
+              disabled={!puedeMutar}
+              title={puedeMutar ? undefined : 'Próximamente'}
+            >
+              Guardar
+            </Button>
           </div>
         </div>
       </DialogContent>

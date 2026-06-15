@@ -25,12 +25,13 @@ import type { Liquidacion } from '@/lib/types';
 export function useLiquidacion(liqId: string): {
   liquidacion: Liquidacion | null;
   cargando: boolean;
+  isError: boolean;
   deApi: boolean;
 } {
-  const { liquidaciones, cargando, deApi } = useMisLiquidaciones();
+  const { liquidaciones, cargando, isError, deApi } = useMisLiquidaciones();
   // Mientras carga todavía no sabemos si existe: liquidacion=null + cargando.
   const liquidacion = liquidaciones.find((l) => l.id === liqId) ?? null;
-  return { liquidacion, cargando, deApi };
+  return { liquidacion, cargando, isError, deApi };
 }
 
 /** Método de pago que entiende el API (`POST /pagos/informar`). */

@@ -334,7 +334,7 @@ function RecibosDemo() {
 // ============================================================
 function RecibosReal() {
   const { contrato } = useMiContrato();
-  const { liquidaciones } = useMisLiquidaciones();
+  const { liquidaciones, cargando, isError } = useMisLiquidaciones();
 
   const noPagadas = liquidaciones.filter((l) => l.estado !== 'PAGADO');
   const pagadas = liquidaciones.filter((l) => l.estado === 'PAGADO');
@@ -392,7 +392,41 @@ function RecibosReal() {
               Movimientos
             </h2>
           </div>
-          {proximas.length === 0 && pagadas.length === 0 ? (
+          {cargando ? (
+            // Mientras la lista carga mostramos un skeleton en lugar de saltar
+            // directo a "Sin movimientos" (que parpadeaba como falso vacío).
+            <Card className="divide-y">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="flex items-center gap-3 p-4">
+                  <div className="h-10 w-10 shrink-0 animate-pulse rounded-lg bg-muted" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-3.5 w-2/3 animate-pulse rounded bg-muted" />
+                    <div className="h-3 w-1/3 animate-pulse rounded bg-muted" />
+                  </div>
+                  <div className="h-4 w-16 shrink-0 animate-pulse rounded bg-muted" />
+                </div>
+              ))}
+            </Card>
+          ) : isError ? (
+            // Outage del API: no afirmamos "Sin movimientos" (sería un falso
+            // vacío). Mostramos error claro con reintento.
+            <Card>
+              <CardContent className="space-y-2 p-8 text-center">
+                <AlertTriangle className="mx-auto h-9 w-9 text-muted-foreground" />
+                <p className="font-medium text-foreground">No pudimos cargar tus movimientos</p>
+                <p className="text-sm text-muted-foreground">
+                  Revisá tu conexión e intentá de nuevo.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                >
+                  Reintentar
+                </button>
+              </CardContent>
+            </Card>
+          ) : proximas.length === 0 && pagadas.length === 0 ? (
             <Card>
               <CardContent className="space-y-2 p-8 text-center text-muted-foreground">
                 <Receipt className="mx-auto h-9 w-9" />

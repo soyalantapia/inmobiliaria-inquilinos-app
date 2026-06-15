@@ -135,6 +135,8 @@ function mapContrato(r: ContratoApi): ContratoListado {
     titularCuenta: r.titularCuenta,
     tipoContrato: r.tipoContrato ?? 'ALQUILER_Y_EXPENSAS',
     montoExpensas: expensas,
+    indiceAjuste: r.indiceAjuste,
+    frecuenciaAjusteMeses: r.frecuenciaAjusteMeses,
     cargadoPor: r.cargadoPor ?? undefined,
     cargadoAt: r.cargadoAt ?? undefined,
     cargadoRol: r.cargadoRol ?? undefined,

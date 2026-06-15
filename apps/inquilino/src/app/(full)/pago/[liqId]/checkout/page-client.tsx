@@ -848,31 +848,38 @@ function StepSubirComprobante({
       setPreview(null);
     }
 
-    // Disparo la "lectura por IA". En producción esto es una llamada
-    // al backend (OCR + LLM). Acá lo mockeamos con un pequeño delay.
-    setAnalizando(true);
-    setTimeout(() => {
-      // BUG-03: el titular leído del comprobante tiene que ser el propio
-      // inquilino (es SU recibo). Si no, la IA le mostraba un nombre random
-      // ("Florencia Russo") en su propio pago y lo hacía dudar de si pagó
-      // bien. Tomamos el nombre de la sesión activa.
-      const sesion = leerSesion();
-      const titularInquilino = sesion
-        ? `${sesion.nombre} ${sesion.apellido}`.trim()
-        : undefined;
-      const ex = extraerComprobante(`${f.name}|${f.size}`, monto, {
-        // Demo: que el comprobante del inquilino siempre matchee monto
-        // exacto. Lo realista para esta UI: si el inquilino pagó lo
-        // que se le pide, la lectura le dice "todo OK".
-        forzarMatch: true,
-        titularEsperado: titularInquilino,
-      });
-      setExtraccion(ex);
-      // Auto-completo el nro de operación detectado si el usuario no
-      // escribió uno manual.
-      setNroOperacion((prev) => prev || ex.nroOperacion);
-      setAnalizando(false);
-    }, 1400);
+    // La "lectura por IA" es un mock determinístico (PRNG sobre el nombre del
+    // archivo): inventa monto/nro de operación/titular. Eso sirve para la demo
+    // offline, pero en prod (apiEnabled) NO debe fabricar un N° de operación —
+    // el inquilino tiene que ingresar el real de SU comprobante, no uno
+    // simulado que después se informaría al backend como si fuese verdadero.
+    // Por eso gateamos toda la extracción a la demo. Cuando exista el OCR+LLM
+    // real en el backend, este bloque se reemplaza por esa llamada.
+    if (!apiEnabled) {
+      setAnalizando(true);
+      setTimeout(() => {
+        // BUG-03: el titular leído del comprobante tiene que ser el propio
+        // inquilino (es SU recibo). Si no, la IA le mostraba un nombre random
+        // ("Florencia Russo") en su propio pago y lo hacía dudar de si pagó
+        // bien. Tomamos el nombre de la sesión activa.
+        const sesion = leerSesion();
+        const titularInquilino = sesion
+          ? `${sesion.nombre} ${sesion.apellido}`.trim()
+          : undefined;
+        const ex = extraerComprobante(`${f.name}|${f.size}`, monto, {
+          // Demo: que el comprobante del inquilino siempre matchee monto
+          // exacto. Lo realista para esta UI: si el inquilino pagó lo
+          // que se le pide, la lectura le dice "todo OK".
+          forzarMatch: true,
+          titularEsperado: titularInquilino,
+        });
+        setExtraccion(ex);
+        // Auto-completo el nro de operación detectado si el usuario no
+        // escribió uno manual.
+        setNroOperacion((prev) => prev || ex.nroOperacion);
+        setAnalizando(false);
+      }, 1400);
+    }
   };
 
   const limpiar = () => {
@@ -887,7 +894,13 @@ function StepSubirComprobante({
   const enviar = async () => {
     if (!file) return;
     setEnviando(true);
-    const nroOp = nroOperacion.trim() || extraccion?.nroOperacion || null;
+    // En prod el N° de operación informado es SIEMPRE el que tipeó el inquilino
+    // (o null si lo dejó vacío): nunca el valor simulado de la IA. En la demo
+    // mantenemos el fallback a la extracción para que el flujo offline siga
+    // autocompletando como antes.
+    const nroOp = apiEnabled
+      ? nroOperacion.trim() || null
+      : nroOperacion.trim() || extraccion?.nroOperacion || null;
     const enviadoAt = new Date().toISOString();
 
     // ===== Prod: POST real /pagos/informar =====

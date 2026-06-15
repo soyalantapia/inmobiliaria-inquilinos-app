@@ -275,8 +275,72 @@ function HomeDemo() {
 // HOME REAL (modo API) — contrato + liquidaciones del inquilino
 // ============================================================
 function HomeReal() {
-  const { contrato, inmobiliariaTelefono } = useMiContrato();
-  const { liquidaciones } = useMisLiquidaciones();
+  const {
+    contrato,
+    inmobiliariaTelefono,
+    cargando: cargandoContrato,
+    isError: errorContrato,
+  } = useMiContrato();
+  const {
+    liquidaciones,
+    cargando: cargandoLiq,
+    isError: errorLiq,
+  } = useMisLiquidaciones();
+
+  // Mientras cualquiera de las dos fuentes está cargando, mostramos un skeleton:
+  // nunca debemos pintar el banner "Estás al día" hasta saber que NO hay pagos
+  // pendientes. Pintarlo con datos a medio cargar es un falso positivo grave
+  // (el inquilino podría tener un pago atrasado y la home decirle que está OK).
+  const cargando = cargandoContrato || cargandoLiq;
+  // Si falla cualquiera de las dos fuentes no podemos afirmar el estado de
+  // cuenta: mostramos un error claro en lugar de "Estás al día / $0".
+  const hayError = errorContrato || errorLiq;
+
+  if (cargando) {
+    return (
+      <>
+        <MobileGreetingHeader />
+        <main className="flex-1 space-y-5 px-5 pb-6 md:px-8 md:pt-8">
+          <h1 className="sr-only">Inicio</h1>
+          <div className="h-[104px] animate-pulse rounded-xl border bg-muted/50" />
+          <div className="grid grid-cols-4 gap-2">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="h-[76px] animate-pulse rounded-xl border bg-muted/50" />
+            ))}
+          </div>
+          <div className="h-14 animate-pulse rounded-xl border bg-muted/50" />
+          <div className="h-24 animate-pulse rounded-xl border bg-muted/50" />
+        </main>
+        <NavBar />
+        <InstallPrompt />
+      </>
+    );
+  }
+
+  if (hayError) {
+    return (
+      <>
+        <MobileGreetingHeader />
+        <main className="flex-1 px-5 pb-6 pt-10 text-center md:px-8">
+          <AlertTriangle className="mx-auto h-9 w-9 text-muted-foreground" />
+          <p className="mt-3 text-sm font-medium">No pudimos cargar tu cuenta.</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Revisá tu conexión e intentá de nuevo. No mostramos tu estado de pago
+            para no darte información incorrecta.
+          </p>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="mt-4 inline-flex items-center justify-center rounded-lg border bg-card px-4 py-2 text-sm font-medium transition-colors hover:bg-muted"
+          >
+            Reintentar
+          </button>
+        </main>
+        <NavBar />
+        <InstallPrompt />
+      </>
+    );
+  }
 
   const pendiente = liquidaciones.find((l) => l.estado !== 'PAGADO') ?? null;
   const pagadas = liquidaciones.filter((l) => l.estado === 'PAGADO').slice(0, 3);
@@ -615,7 +679,7 @@ function QuickActions({ liqPendiente }: { liqPendiente: Liquidacion | null }) {
   }> = [
     { href: pagarHref, label: 'Pagar', icon: CreditCard, color: 'text-emerald-600 dark:text-emerald-400' },
     { href: '/reclamos/nuevo', label: 'Reclamo', icon: Wrench, color: 'text-amber-600 dark:text-amber-400' },
-    { href: '/contrato', label: 'Contrato', icon: FileText, color: 'text-blue-600 dark:text-blue-400' },
+    { href: '/contrato', label: 'Contrato', icon: FileText, color: 'text-primary' },
     { href: '/servicios', label: 'Boleta', icon: Zap, color: 'text-violet-600 dark:text-violet-400' },
   ];
   return (

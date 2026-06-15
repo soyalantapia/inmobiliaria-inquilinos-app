@@ -27,6 +27,7 @@ import {
   permisoLabel,
 } from '@/lib/co-inquilinos-storage';
 import { useCoInquilinos } from '@/lib/api/use-coinquilinos';
+import { apiEnabled } from '@/lib/api/client';
 import { formatFecha } from '@/lib/format';
 
 export default function CoInquilinosPage() {
@@ -241,7 +242,9 @@ function CoInquilinoCard({
         <p className="text-[10px] text-muted-foreground">{permisoDescripcion[co.permiso]}</p>
       </div>
 
-      {co.estado === 'PENDIENTE' && (
+      {/* Atajo demo: en prod (apiEnabled) la aceptación la hace el co-inquilino
+          desde su propio flujo (link de invitación), así que no se muestra. */}
+      {co.estado === 'PENDIENTE' && !apiEnabled && (
         <Button size="sm" variant="outline" className="w-full" onClick={onAceptar}>
           Simular que aceptó la invitación
         </Button>
