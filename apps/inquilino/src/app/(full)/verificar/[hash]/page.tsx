@@ -49,7 +49,7 @@ export function generateStaticParams() {
   return [{ hash: cert.hash }];
 }
 
-export const dynamicParams = false;
+export const dynamicParams = process.env.STATIC_EXPORT !== '1';
 
 export default function VerificarCertificadoPage({
   params,

@@ -22,7 +22,7 @@ export function generateStaticParams() {
   return TOKENS_SEED.map((token) => ({ token }));
 }
 
-export const dynamicParams = false;
+export const dynamicParams = process.env.STATIC_EXPORT !== '1';
 
 export default function Page({ params }: { params: { token: string } }) {
   return <PaginaProfesional token={params.token} />;

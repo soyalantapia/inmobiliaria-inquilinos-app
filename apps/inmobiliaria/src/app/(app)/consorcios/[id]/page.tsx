@@ -8,7 +8,7 @@ export function generateStaticParams() {
   return consorciosMock.map((c) => ({ id: c.id }));
 }
 
-export const dynamicParams = false;
+export const dynamicParams = process.env.STATIC_EXPORT !== '1';
 
 export default function Page() {
   return <Client />;

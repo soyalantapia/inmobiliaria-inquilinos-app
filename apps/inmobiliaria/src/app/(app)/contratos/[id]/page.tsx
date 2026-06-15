@@ -7,7 +7,7 @@ export function generateStaticParams() {
   return contratosMock.map((c) => ({ id: c.id }));
 }
 
-export const dynamicParams = false;
+export const dynamicParams = process.env.STATIC_EXPORT !== '1';
 
 export default function Page() {
   // El client lee el id via useParams(), no necesita props.

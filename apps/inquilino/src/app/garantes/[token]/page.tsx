@@ -40,7 +40,7 @@ export function generateStaticParams() {
   return [{ token: tokenDemo }, { token: 'demo' }];
 }
 
-export const dynamicParams = false;
+export const dynamicParams = process.env.STATIC_EXPORT !== '1';
 
 // Vista pública read-only para que el garante consulte el estado del contrato
 // sin necesidad de cuenta. El token es de un solo uso visual (no hay sesión
