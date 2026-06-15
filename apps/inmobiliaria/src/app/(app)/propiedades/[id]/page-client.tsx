@@ -1,6 +1,5 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import {
@@ -12,6 +11,7 @@ import {
   FileText,
   Home,
   IdCard,
+  Loader2,
   Mail,
   MapPin,
   MessageCircle,
@@ -43,19 +43,13 @@ import {
   type CoInquilinoAdmin,
   coInquilinosMock,
   contactosCobranzaMock,
-  contratosMock,
-  propiedadesMock,
 } from '@/lib/mock-data';
 import {
   participacionesDe,
   validarParticipaciones,
   montoQueLeToca,
 } from '@/lib/participaciones';
-import {
-  enriquecerPropiedad,
-  estadoPropiedadConfig,
-  tipoPropiedadLabel,
-} from '@/lib/propiedades-helpers';
+import { estadoPropiedadConfig, tipoPropiedadLabel } from '@/lib/propiedades-helpers';
 import {
   categoriaIcono,
   categoriaLabel,
@@ -64,8 +58,8 @@ import {
   urgenciaConfig,
 } from '@/lib/reclamos-config';
 import { diasHastaVencimiento, formatFechaCorta, formatMonto, formatRangoVigencia } from '@/lib/format';
-import { aplicarOverride } from '@/lib/propiedades-overrides-storage';
-import { sociedadById, sociedadPrincipal } from '@/lib/sociedades-storage';
+import { apiEnabled } from '@/lib/api/client';
+import { usePropiedad } from '@/lib/api/use-propiedad';
 import type { TipoPropiedad } from '@/lib/types';
 
 const tipoIcono: Record<TipoPropiedad, React.ComponentType<{ className?: string }>> = {
@@ -76,29 +70,53 @@ const tipoIcono: Record<TipoPropiedad, React.ComponentType<{ className?: string 
 };
 
 export default function DetallePropiedadPage({ params }: { params: { id: string } }) {
-  const raw = propiedadesMock.find((p) => p.id === params.id);
-  if (!raw) notFound();
+  // Datos desde el API real (GET /propiedades/:id) con fallback al mock +
+  // overrides locales solo en build demo (!apiEnabled). El hook devuelve el
+  // mismo shape enriquecido que consumía esta pantalla (propiedad + contrato
+  // + propietarios + reclamos) más la sociedad gestora del hero.
+  const { propiedad: detalle, cargando, deApi, noEncontrada } = usePropiedad(params.id);
 
-  // Overrides locales (edición de dirección/ambientes/m²) sobre la
-  // propiedad base. Estrategia para evitar hydration mismatch: el
-  // primer render (server + primer pintado client) usa la propiedad
-  // BASE, y un useEffect post-mount aplica los overrides desde
-  // localStorage. Sin esto, si el usuario tiene un patch guardado, el
-  // HTML del SSR difiere del primer render cliente y React emite
-  // warning + repinta el árbol entero.
-  const [propiedadActiva, setPropiedadActiva] = useState(raw);
-  useEffect(() => {
-    const aplicar = () => setPropiedadActiva(aplicarOverride(raw));
-    aplicar(); // post-mount inicial
-    window.addEventListener('propiedad-actualizada', aplicar);
-    window.addEventListener('storage', aplicar);
-    return () => {
-      window.removeEventListener('propiedad-actualizada', aplicar);
-      window.removeEventListener('storage', aplicar);
-    };
-  }, [raw]);
-  const { propiedad, contrato, propietarios, reclamos, reclamosAbiertos } =
-    enriquecerPropiedad(propiedadActiva);
+  // En build demo el mock es síncrono: si no existe el id → 404 real de Next.
+  if (!deApi && noEncontrada) notFound();
+
+  // Cargando (solo en modo API).
+  if (cargando) {
+    return (
+      <>
+        <Topbar titulo="Propiedad" />
+        <main className="flex flex-1 items-center justify-center p-10">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" aria-label="Cargando propiedad" />
+        </main>
+      </>
+    );
+  }
+
+  // No encontrada / error del API: empty state legible (sin caer al mock en prod).
+  if (!detalle) {
+    return (
+      <>
+        <Topbar titulo="Propiedad" />
+        <main className="flex-1 space-y-6 p-4 md:p-6">
+          <Link
+            href="/propiedades"
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+          >
+            <ArrowLeft className="h-3 w-3" />
+            Volver a propiedades
+          </Link>
+          <Card>
+            <CardContent className="space-y-2 p-10 text-center text-muted-foreground">
+              <Home className="mx-auto h-10 w-10" />
+              <p className="font-medium text-foreground">No encontramos esta propiedad</p>
+              <p className="text-sm">Puede haber sido dada de baja o el enlace no es válido.</p>
+            </CardContent>
+          </Card>
+        </main>
+      </>
+    );
+  }
+
+  const { propiedad, contrato, propietarios, reclamos, reclamosAbiertos, sociedad } = detalle;
 
   const Icon = tipoIcono[propiedad.tipo];
   const estadoCfg = estadoPropiedadConfig[propiedad.estado];
@@ -150,19 +168,23 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                   )}
                 </div>
                 {/* Sociedad gestora: facturación + CBU se manejan bajo esta razón social. */}
-                {(() => {
-                  const soc = sociedadById(propiedad.sociedadId) ?? sociedadPrincipal();
-                  return (
-                    <p className="flex flex-wrap items-center gap-x-1.5 text-[11px] text-muted-foreground">
-                      <Briefcase className="h-3 w-3" />
-                      Gestionada por <strong className="text-foreground">{soc.nombreComercial}</strong>{' '}
-                      <span className="whitespace-nowrap">· CUIT {soc.cuit}</span>
-                    </p>
-                  );
-                })()}
+                <p className="flex flex-wrap items-center gap-x-1.5 text-[11px] text-muted-foreground">
+                  <Briefcase className="h-3 w-3" />
+                  Gestionada por <strong className="text-foreground">{sociedad.nombreComercial}</strong>{' '}
+                  <span className="whitespace-nowrap">· CUIT {sociedad.cuit}</span>
+                </p>
               </div>
               <div className="flex gap-2">
-                <EditarPropiedadTrigger propiedad={propiedad} />
+                {/* La edición de propiedad escribe a overrides locales (sin
+                    endpoint PATCH todavía). En modo API la deshabilitamos. */}
+                {apiEnabled ? (
+                  <Button variant="outline" size="sm" disabled title="Próximamente">
+                    <FileText className="h-4 w-4" />
+                    Editar
+                  </Button>
+                ) : (
+                  <EditarPropiedadTrigger propiedad={propiedad} />
+                )}
               </div>
             </div>
 
@@ -481,7 +503,7 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
               // Calculamos participaciones y monto que toca a cada uno
               const parts = participacionesDe(propiedad);
               const validacion = validarParticipaciones(parts);
-              const contratoActual = contratosMock.find((c) => c.id === propiedad.contratoActualId);
+              const contratoActual = contrato;
               const montoMensual = contratoActual?.monto ?? 0;
               return (
                 <>

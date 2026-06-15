@@ -61,6 +61,7 @@ import {
   listarProfesionalesAdmin,
   toggleActivo,
 } from '@/lib/profesionales-storage';
+import { useProfesionales } from '@/lib/api/use-profesionales';
 import { listarReclamos } from '@/lib/reclamos-store';
 import {
   type CalificacionRecibida,
@@ -82,7 +83,11 @@ const iconoCategoria: Record<CategoriaProfesional, LucideIcon> = {
 type Filtro = 'TODOS' | CategoriaProfesional;
 
 export default function ProfesionalesAdminPage() {
-  const [lista, setLista] = useState<ProfesionalAdmin[]>([]);
+  // Lista real desde el API (GET /profesionales) o el store local en demo.
+  const { profesionales, cargando, deApi } = useProfesionales();
+  // En modo API todavía no hay POST/PATCH/DELETE de profesional: las altas,
+  // ediciones y bajas se gatean a demo para no escribir mock en producción.
+  const puedeMutar = !deApi;
   const [hidratado, setHidratado] = useState(false);
   const [filtro, setFiltro] = useState<Filtro>('TODOS');
   const [soloActivos, setSoloActivos] = useState(true);
@@ -91,6 +96,9 @@ export default function ProfesionalesAdminPage() {
   const [eliminando, setEliminando] = useState<ProfesionalAdmin | null>(null);
   const [asignando, setAsignando] = useState<ProfesionalAdmin | null>(null);
   const [verHistorial, setVerHistorial] = useState<ProfesionalAdmin | null>(null);
+  // En demo las altas/ediciones/bajas viven en localStorage; este contador
+  // fuerza un re-render para reflejar el store tras cada mutación local.
+  const [versionLocal, setVersionLocal] = useState(0);
   // Conteo de reclamos activos asignados a cada profesional (id → cant).
   const [reclamosActivosPorProf, setReclamosActivosPorProf] = useState<
     Record<string, number>
@@ -100,8 +108,15 @@ export default function ProfesionalesAdminPage() {
     Record<string, CalificacionRecibida[]>
   >({});
 
+  // En demo la lista canónica es el store local (mutable); en prod es la del
+  // API. Reaccionamos a `versionLocal` para releer el store tras mutar.
+  const lista = useMemo<ProfesionalAdmin[]>(
+    () => (puedeMutar ? listarProfesionalesAdmin() : profesionales),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [puedeMutar, profesionales, versionLocal],
+  );
+
   useEffect(() => {
-    setLista(listarProfesionalesAdmin());
     refrescarReclamos();
     setCalifsPorProf(calificacionesPorProfesional());
     setHidratado(true);
@@ -145,6 +160,7 @@ export default function ProfesionalesAdminPage() {
   }, [lista, califsPorProf]);
 
   const handleGuardar = (data: Omit<ProfesionalAdmin, 'id' | 'rating' | 'cantTrabajos' | 'ultimoTrabajo' | 'activo'>) => {
+    if (!puedeMutar) return;
     if (editando) {
       actualizarProfesional(editando.id, data);
       toast({ title: 'Profesional actualizado' });
@@ -152,22 +168,23 @@ export default function ProfesionalesAdminPage() {
       crearProfesional(data);
       toast({ title: 'Profesional agregado' });
     }
-    setLista(listarProfesionalesAdmin());
+    setVersionLocal((v) => v + 1);
     setAbrirForm(false);
     setEditando(null);
   };
 
   const handleEliminar = () => {
-    if (!eliminando) return;
+    if (!puedeMutar || !eliminando) return;
     eliminarProfesional(eliminando.id);
-    setLista(listarProfesionalesAdmin());
+    setVersionLocal((v) => v + 1);
     setEliminando(null);
     toast({ title: 'Eliminado' });
   };
 
   const handleToggle = (id: string) => {
+    if (!puedeMutar) return;
     toggleActivo(id);
-    setLista(listarProfesionalesAdmin());
+    setVersionLocal((v) => v + 1);
   };
 
   return (
@@ -182,7 +199,11 @@ export default function ProfesionalesAdminPage() {
             Plomeros, electricistas y técnicos que recomendás a tus inquilinos.
           </p>
         </div>
-        <Button onClick={() => { setEditando(null); setAbrirForm(true); }}>
+        <Button
+          onClick={() => { setEditando(null); setAbrirForm(true); }}
+          disabled={!puedeMutar}
+          title={puedeMutar ? undefined : 'Próximamente'}
+        >
           <Plus className="h-4 w-4" />
           Agregar profesional
         </Button>
@@ -228,9 +249,26 @@ export default function ProfesionalesAdminPage() {
       </div>
 
       {/* Lista */}
-      {hidratado && filtrados.length === 0 ? (
+      {cargando ? (
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Card key={i} className="h-40 animate-pulse bg-muted/40" />
+          ))}
+        </div>
+      ) : hidratado && filtrados.length === 0 ? (
         <Card className="p-8 text-center">
-          <p className="text-sm font-medium">No hay profesionales con este filtro</p>
+          <p className="text-sm font-medium">
+            {lista.length === 0
+              ? 'Todavía no cargaste profesionales'
+              : 'No hay profesionales con este filtro'}
+          </p>
+          {lista.length === 0 && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              {puedeMutar
+                ? 'Agregá plomeros, electricistas y técnicos para tus inquilinos.'
+                : 'Cuando tu inmobiliaria cargue su red, vas a verla acá.'}
+            </p>
+          )}
         </Card>
       ) : (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -415,26 +453,35 @@ export default function ProfesionalesAdminPage() {
                         <Wrench className="mr-2 h-3.5 w-3.5" />
                         Ver historial
                       </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => {
-                          setEditando(p);
-                          setAbrirForm(true);
-                        }}
-                      >
-                        <Pencil className="mr-2 h-3.5 w-3.5" />
-                        Editar
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleToggle(p.id)}>
-                        {p.activo ? 'Ocultar de inquilinos' : 'Mostrar a inquilinos'}
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        onClick={() => setEliminando(p)}
-                        className="text-destructive focus:text-destructive"
-                      >
-                        <Trash2 className="mr-2 h-3.5 w-3.5" />
-                        Eliminar
-                      </DropdownMenuItem>
+                      {puedeMutar ? (
+                        <>
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setEditando(p);
+                              setAbrirForm(true);
+                            }}
+                          >
+                            <Pencil className="mr-2 h-3.5 w-3.5" />
+                            Editar
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleToggle(p.id)}>
+                            {p.activo ? 'Ocultar de inquilinos' : 'Mostrar a inquilinos'}
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onClick={() => setEliminando(p)}
+                            className="text-destructive focus:text-destructive"
+                          >
+                            <Trash2 className="mr-2 h-3.5 w-3.5" />
+                            Eliminar
+                          </DropdownMenuItem>
+                        </>
+                      ) : (
+                        <DropdownMenuItem disabled>
+                          <Pencil className="mr-2 h-3.5 w-3.5" />
+                          Editar (próximamente)
+                        </DropdownMenuItem>
+                      )}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>

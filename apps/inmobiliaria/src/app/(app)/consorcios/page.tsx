@@ -1,9 +1,10 @@
+'use client';
+
 import Link from 'next/link';
 import {
   AlertTriangle,
   ArrowRight,
   Building2,
-  CheckCircle2,
   HardHat,
   Plus,
   TrendingUp,
@@ -12,12 +13,14 @@ import {
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card, CardContent } from '@llave/ui/card';
+import { Skeleton } from '@llave/ui/skeleton';
 import { Topbar } from '@/components/topbar';
 import {
   balanceConsorcio,
-  listarConsorcios,
   morosidadConsorcio,
 } from '@/lib/consorcios-storage';
+import { apiEnabled } from '@/lib/api/client';
+import { useConsorcios } from '@/lib/api/use-consorcios';
 import { sociedadById } from '@/lib/sociedades-storage';
 import { formatMonto } from '@/lib/format';
 
@@ -31,16 +34,17 @@ import { formatMonto } from '@/lib/format';
  * (expensas, gastos comunes, asambleas, libro de actas).
  */
 export default function ConsorciosPage() {
-  const consorcios = listarConsorcios();
+  const { consorcios, cargando } = useConsorcios();
 
-  // KPIs cabecera
-  const totalConsorcios = consorcios.length;
-  const totalUF = consorcios.reduce((s, c) => s + c.cantUf, 0);
-  const totalIngresosMes = consorcios.reduce(
+  // KPIs cabecera (con guardas por si todavía no llegó la data del API)
+  const lista = consorcios ?? [];
+  const totalConsorcios = lista.length;
+  const totalUF = lista.reduce((s, c) => s + c.cantUf, 0);
+  const totalIngresosMes = lista.reduce(
     (s, c) => s + balanceConsorcio(c).ingresos,
     0,
   );
-  const totalMorosidad = consorcios.reduce(
+  const totalMorosidad = lista.reduce(
     (s, c) => s + morosidadConsorcio(c).totalDeuda,
     0,
   );
@@ -60,17 +64,28 @@ export default function ConsorciosPage() {
               comunes y asambleas.
             </p>
           </div>
+          {/* Alta de consorcio: sin endpoint en el API. En demo (!apiEnabled)
+              queda como stub navegable; en prod lo deshabilitamos con tooltip
+              "próximamente" para no escribir mock sobre datos reales. */}
           <Button
-            asChild
+            asChild={!apiEnabled}
             size="sm"
             variant="outline"
+            disabled={apiEnabled}
+            title={apiEnabled ? 'Próximamente' : undefined}
             className="opacity-60 hover:opacity-100"
           >
-            {/* Stub: el alta de consorcio queda para una iteración futura */}
-            <Link href="/consorcios#proximamente">
-              <Plus className="h-4 w-4" />
-              Sumar consorcio
-            </Link>
+            {apiEnabled ? (
+              <>
+                <Plus className="h-4 w-4" />
+                Sumar consorcio
+              </>
+            ) : (
+              <Link href="/consorcios#proximamente">
+                <Plus className="h-4 w-4" />
+                Sumar consorcio
+              </Link>
+            )}
           </Button>
         </div>
 
@@ -104,7 +119,37 @@ export default function ConsorciosPage() {
 
         {/* Lista */}
         <div className="space-y-3">
-          {consorcios.map((c) => {
+          {cargando && consorcios === null
+            ? Array.from({ length: 2 }).map((_, i) => (
+                <Card key={i}>
+                  <CardContent className="space-y-3 p-5">
+                    <div className="flex items-start gap-3">
+                      <Skeleton className="h-12 w-12 rounded-xl" />
+                      <div className="flex-1 space-y-2">
+                        <Skeleton className="h-4 w-1/2" />
+                        <Skeleton className="h-3 w-2/3" />
+                      </div>
+                    </div>
+                    <Skeleton className="h-16 w-full rounded-md" />
+                  </CardContent>
+                </Card>
+              ))
+            : null}
+
+          {!cargando && lista.length === 0 ? (
+            <Card>
+              <CardContent className="space-y-2 p-8 text-center">
+                <Building2 className="mx-auto h-8 w-8 text-muted-foreground" />
+                <p className="text-sm font-medium">Sin consorcios todavía</p>
+                <p className="text-xs text-muted-foreground">
+                  Cuando sumes un edificio bajo administración va a aparecer acá
+                  con sus expensas, cobranzas y asambleas.
+                </p>
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {lista.map((c) => {
             const balance = balanceConsorcio(c);
             const morosidad = morosidadConsorcio(c);
             const soc = sociedadById(c.sociedadId);

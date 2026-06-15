@@ -1,6 +1,5 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import {
@@ -18,6 +17,7 @@ import {
   Phone,
   PlugZap,
   Receipt,
+  Users,
   Wallet,
 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@llave/ui/avatar';
@@ -30,43 +30,68 @@ import {
   EditarPropietarioTrigger,
 } from '@/components/editar-propietario-trigger';
 import { Topbar } from '@/components/topbar';
-import {
-  contratosMock,
-  propiedadesMock,
-  propietariosMock,
-} from '@/lib/mock-data';
+import { apiEnabled } from '@/lib/api/client';
+import { usePropietario } from '@/lib/api/use-propietario';
 import { formatFechaCorta, formatMonto, formatPeriodo, formatRangoVigencia } from '@/lib/format';
-import { aplicarOverride as aplicarOverridePropietario } from '@/lib/propietarios-overrides-storage';
 import { descargarCsv } from '@/lib/csv-export';
 import { toast } from '@llave/ui/use-toast';
 
 export default function DetallePropietarioPage({ params }: { params: { id: string } }) {
-  const raw = propietariosMock.find((p) => p.id === params.id);
-  if (!raw) notFound();
+  const { detalle, cargando } = usePropietario(params.id);
 
-  // SSR + primer render usan datos base (mock). Post-mount aplicamos
-  // overrides locales para evitar hydration mismatch.
-  const [propietario, setPropietario] = useState(raw);
-  useEffect(() => {
-    const aplicar = () => setPropietario(aplicarOverridePropietario(raw));
-    aplicar();
-    window.addEventListener('propietario-actualizado', aplicar);
-    window.addEventListener('storage', aplicar);
-    return () => {
-      window.removeEventListener('propietario-actualizado', aplicar);
-      window.removeEventListener('storage', aplicar);
-    };
-  }, [raw]);
+  // En build demo (!apiEnabled) un id inexistente es un 404 real. En prod, si el
+  // API no devuelve el propietario (caído/404), mostramos un estado vacío en vez
+  // de romper la página estática.
+  if (!apiEnabled && !detalle) notFound();
 
-  const propiedadesDelPropietario = propiedadesMock.filter((p) =>
-    propietario.propiedadesIds.includes(p.id),
-  );
-  const contratosDelPropietario = contratosMock.filter((c) =>
-    propiedadesDelPropietario.some((p) => p.contratoActualId === c.id),
-  );
+  if (cargando && !detalle) {
+    return (
+      <>
+        <Topbar titulo="Propietario" />
+        <main className="flex-1 space-y-6 p-4 md:p-6">
+          <Card>
+            <CardContent className="space-y-2 p-10 text-center text-muted-foreground">
+              <Users className="mx-auto h-8 w-8 animate-pulse" />
+              <p className="font-medium text-foreground">Cargando propietario…</p>
+            </CardContent>
+          </Card>
+        </main>
+      </>
+    );
+  }
 
+  if (!detalle) {
+    return (
+      <>
+        <Topbar titulo="Propietario" />
+        <main className="flex-1 space-y-6 p-4 md:p-6">
+          <Link
+            href="/propietarios"
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+          >
+            <ArrowLeft className="h-3 w-3" />
+            Volver a propietarios
+          </Link>
+          <Card>
+            <CardContent className="space-y-2 p-10 text-center text-muted-foreground">
+              <Users className="mx-auto h-8 w-8" />
+              <p className="font-medium text-foreground">No encontramos este propietario</p>
+              <p className="text-xs">Puede que haya sido eliminado o que el enlace ya no sea válido.</p>
+            </CardContent>
+          </Card>
+        </main>
+      </>
+    );
+  }
+
+  const { propietario, propiedades, contratos } = detalle;
   const tel = propietario.telefono.replace(/[^\d]/g, '');
   const ingresoAnualEstimado = propietario.totalRecibirMes * 12;
+
+  // En prod (API real) la edición de datos básicos / ARCA / cuenta de cobranza
+  // todavía no tiene endpoint: la dejamos deshabilitada con tooltip. En build
+  // demo seguimos usando los triggers que escriben a localStorage.
+  const edicionHabilitada = !apiEnabled;
 
   return (
     <>
@@ -94,15 +119,15 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
                 <h1 className="text-2xl font-semibold">
                   {propietario.nombre} {propietario.apellido}
                 </h1>
-                <p className="text-sm text-muted-foreground">CUIT {propietario.cuit}</p>
+                <p className="text-sm text-muted-foreground">CUIT {propietario.cuit || '—'}</p>
                 <div className="flex flex-wrap gap-3 pt-2 text-xs">
                   <span className="flex items-center gap-1 text-muted-foreground">
                     <Mail className="h-3.5 w-3.5" />
-                    {propietario.email}
+                    {propietario.email || '—'}
                   </span>
                   <span className="flex items-center gap-1 text-muted-foreground">
                     <Phone className="h-3.5 w-3.5" />
-                    {propietario.telefono}
+                    {propietario.telefono || '—'}
                   </span>
                 </div>
               </div>
@@ -117,7 +142,14 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
                     WhatsApp
                   </a>
                 </Button>
-                <EditarPropietarioTrigger propietario={propietario} />
+                {edicionHabilitada ? (
+                  <EditarPropietarioTrigger propietario={propietario} />
+                ) : (
+                  <Button variant="outline" disabled title="Próximamente">
+                    <Pencil className="h-4 w-4" />
+                    Editar
+                  </Button>
+                )}
               </div>
             </div>
 
@@ -183,7 +215,9 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Cuenta desde</p>
-                <p className="text-sm font-medium">{formatFechaCorta(propietario.createdAt)}</p>
+                <p className="text-sm font-medium">
+                  {propietario.createdAt ? formatFechaCorta(propietario.createdAt) : '—'}
+                </p>
               </div>
               {propietario.notas && (
                 <div>
@@ -200,14 +234,14 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
               <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                 Propiedades
               </CardTitle>
-              <Badge variant="secondary">{propiedadesDelPropietario.length}</Badge>
+              <Badge variant="secondary">{propiedades.length}</Badge>
             </CardHeader>
             <CardContent className="space-y-2 p-6 pt-0">
-              {propiedadesDelPropietario.length === 0 ? (
+              {propiedades.length === 0 ? (
                 <p className="text-sm text-muted-foreground">Sin propiedades asociadas.</p>
               ) : (
-                propiedadesDelPropietario.map((p) => {
-                  const contrato = contratosMock.find((c) => c.id === p.contratoActualId);
+                propiedades.map((p) => {
+                  const contrato = contratos.find((c) => c.id === p.contratoActualId);
                   return (
                     <Link
                       key={p.id}
@@ -291,11 +325,18 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
                       </p>
                     </div>
                   </div>
-                  <ConectarArcaTrigger
-                    propietario={propietario}
-                    variant="outline"
-                    className="w-full"
-                  />
+                  {edicionHabilitada ? (
+                    <ConectarArcaTrigger
+                      propietario={propietario}
+                      variant="outline"
+                      className="w-full"
+                    />
+                  ) : (
+                    <Button variant="outline" size="sm" disabled className="w-full" title="Próximamente">
+                      <PlugZap className="h-3.5 w-3.5" />
+                      Reconectar credenciales ARCA
+                    </Button>
+                  )}
                 </>
               ) : (
                 <>
@@ -309,7 +350,14 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
                       </p>
                     </div>
                   </div>
-                  <ConectarArcaTrigger propietario={propietario} className="w-full" />
+                  {edicionHabilitada ? (
+                    <ConectarArcaTrigger propietario={propietario} className="w-full" />
+                  ) : (
+                    <Button size="sm" disabled className="w-full" title="Próximamente">
+                      <PlugZap className="h-3.5 w-3.5" />
+                      Conectar ARCA
+                    </Button>
+                  )}
                 </>
               )}
             </CardContent>
@@ -353,7 +401,14 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
                       <p className="font-mono font-medium">{propietario.cuentaCobranza.alias}</p>
                     </div>
                   </div>
-                  <CuentaCobranzaTrigger propietario={propietario} className="w-full" />
+                  {edicionHabilitada ? (
+                    <CuentaCobranzaTrigger propietario={propietario} className="w-full" />
+                  ) : (
+                    <Button variant="outline" size="sm" disabled className="w-full" title="Próximamente">
+                      <Pencil className="h-3.5 w-3.5" />
+                      Editar cuenta
+                    </Button>
+                  )}
                 </>
               ) : (
                 <>
@@ -362,7 +417,14 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
                     inmobiliaria</strong>. Si querés que el inquilino deposite directo al
                     propietario, cargá su cuenta.
                   </p>
-                  <CuentaCobranzaTrigger propietario={propietario} className="w-full" />
+                  {edicionHabilitada ? (
+                    <CuentaCobranzaTrigger propietario={propietario} className="w-full" />
+                  ) : (
+                    <Button variant="outline" size="sm" disabled className="w-full" title="Próximamente">
+                      <Landmark className="h-3.5 w-3.5" />
+                      Cargar cuenta del propietario
+                    </Button>
+                  )}
                 </>
               )}
             </CardContent>
@@ -421,14 +483,14 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
             <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
               Contratos
             </CardTitle>
-            <Badge variant="secondary">{contratosDelPropietario.length}</Badge>
+            <Badge variant="secondary">{contratos.length}</Badge>
           </CardHeader>
           <CardContent className="p-0">
-            {contratosDelPropietario.length === 0 ? (
+            {contratos.length === 0 ? (
               <p className="p-6 text-sm text-muted-foreground">Sin contratos asociados.</p>
             ) : (
               <div className="divide-y">
-                {contratosDelPropietario.map((c) => (
+                {contratos.map((c) => (
                   <Link
                     key={c.id}
                     href={`/contratos/${c.id}`}

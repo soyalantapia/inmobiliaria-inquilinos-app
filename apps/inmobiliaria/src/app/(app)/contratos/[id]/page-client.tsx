@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { notFound, useParams } from 'next/navigation';
 import {
@@ -37,17 +37,14 @@ import { ScoringInquilinoCard } from '@/components/scoring-inquilino-card';
 import { Topbar } from '@/components/topbar';
 import { calcularScoringInquilino, type ResumenScoring } from '@/lib/scoring-inquilino';
 import { registrarEvento } from '@/lib/auditoria-storage';
+import { apiEnabled } from '@/lib/api/client';
+import { useContrato } from '@/lib/api/use-contrato';
 import {
   type CanalComunicacion,
   type LiquidacionAdmin,
   type TipoEventoContrato,
-  comunicacionesMock,
-  contactosCobranzaMock,
-  contratosMock,
-  eventosContratoMock,
-  generarLiquidaciones,
-  propietariosMock,
 } from '@/lib/mock-data';
+import type { ContratoListado, Propietario } from '@/lib/types';
 import { formatFecha, formatMonto } from '@/lib/format';
 
 const estadoLiqVariant: Record<
@@ -89,30 +86,69 @@ const canalIcono: Record<CanalComunicacion, LucideIcon> = {
 
 export default function DetalleContratoPage() {
   const params = useParams<{ id: string }>();
-  const c = contratosMock.find((x) => x.id === params.id);
-  if (!c) notFound();
+  const { detalle, cargando, noEncontrado } = useContrato(params.id);
+
+  // En build demo (!apiEnabled) el id inexistente da 404 sin tirar request:
+  // mantenemos el comportamiento original de notFound().
+  if (!apiEnabled && noEncontrado) notFound();
 
   const [abrirMensaje, setAbrirMensaje] = useState(false);
+
+  const c = detalle?.contrato ?? null;
+  const contacto = detalle?.contacto ?? null;
 
   // Scoring calculado sólo en cliente para evitar hydration mismatch:
   // calcularAntiguedad() usa Date.now() que difiere entre SSR y CSR.
   const [scoring, setScoring] = useState<ResumenScoring | null>(null);
   useEffect(() => {
-    setScoring(calcularScoringInquilino(c));
-  }, [c.id]); // eslint-disable-line react-hooks/exhaustive-deps
+    setScoring(c ? calcularScoringInquilino(c) : null);
+  }, [c?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const liquidaciones = useMemo(
-    () => generarLiquidaciones(c.id, c.monto),
-    [c.id, c.monto],
-  );
-  const eventosDelContrato = useMemo(
-    () => eventosContratoMock.filter((e) => e.contratoId === c.id),
-    [c.id],
-  );
-  const comunicaciones = useMemo(
-    () => comunicacionesMock.filter((cm) => cm.contratoId === c.id),
-    [c.id],
-  );
+  if (cargando) {
+    return (
+      <>
+        <Topbar titulo="Contrato" />
+        <main className="flex-1 space-y-6 p-4 md:p-6">
+          <div className="h-4 w-40 animate-pulse rounded bg-muted" />
+          <div className="h-8 w-2/3 animate-pulse rounded bg-muted" />
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="h-56 animate-pulse rounded-lg bg-muted" />
+            <div className="h-56 animate-pulse rounded-lg bg-muted" />
+          </div>
+        </main>
+      </>
+    );
+  }
+
+  if (!detalle || !c) {
+    return (
+      <>
+        <Topbar titulo="Contrato" />
+        <main className="flex-1 space-y-4 p-4 md:p-6">
+          <Link
+            href="/contratos"
+            className="inline-flex items-center text-xs text-muted-foreground hover:text-foreground"
+          >
+            <ArrowLeft className="h-3 w-3" />
+            Volver a contratos
+          </Link>
+          <Card>
+            <CardContent className="p-10 text-center">
+              <FileText className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+              <p className="text-sm font-medium">No encontramos este contrato.</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Puede que se haya eliminado o que no tengas acceso.
+              </p>
+            </CardContent>
+          </Card>
+        </main>
+      </>
+    );
+  }
+
+  const liquidaciones = detalle.liquidaciones;
+  const eventosDelContrato = detalle.eventos;
+  const comunicaciones = detalle.comunicaciones;
 
   return (
     <>
@@ -129,7 +165,7 @@ export default function DetalleContratoPage() {
           />
         )}
 
-        <ModoCobranzaCard contrato={c} />
+        <ModoCobranzaCard contrato={c} propietarioDirecto={detalle.propietarioDirecto} />
 
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
@@ -153,13 +189,20 @@ export default function DetalleContratoPage() {
               <span className="hidden sm:inline">Mensaje al inquilino</span>
               <span className="sm:hidden">Mensaje</span>
             </Button>
-            <Button
-              className="flex-1 sm:flex-none"
-              onClick={() => toast({ title: 'Editor de contrato en construcción' })}
-            >
-              <Pencil className="h-4 w-4" />
-              Editar
-            </Button>
+            {apiEnabled ? (
+              <Button className="flex-1 sm:flex-none" disabled title="Próximamente">
+                <Pencil className="h-4 w-4" />
+                Editar
+              </Button>
+            ) : (
+              <Button
+                className="flex-1 sm:flex-none"
+                onClick={() => toast({ title: 'Editor de contrato en construcción' })}
+              >
+                <Pencil className="h-4 w-4" />
+                Editar
+              </Button>
+            )}
           </div>
         </div>
 
@@ -250,37 +293,20 @@ export default function DetalleContratoPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3 text-sm">
-                  {/* Antes WhatsApp/Email/Garante eran strings hardcoded
-                      ("+54 9 11 4567 8900" / "mariela.sosa@gmail.com" /
-                      "Cobertura SUMA") IDÉNTICOS para todos los contratos.
-                      Si Roberto abría el contrato de Juan Pérez veía el
-                      email de Mariela Sosa. Bug grave para demo. */}
-                  {(() => {
-                    const contacto = contactosCobranzaMock.find(
-                      (x) => x.contratoId === c.id,
-                    );
-                    return (
-                      <>
-                        <Row label="Nombre" value={c.inquilino} />
-                        <Row
-                          label="WhatsApp"
-                          value={contacto?.titular.telefono ?? '—'}
-                        />
-                        <Row
-                          label="Email"
-                          value={contacto?.titular.email ?? '—'}
-                        />
-                        <Row
-                          label="Garante"
-                          value={
-                            contacto?.garante
-                              ? `${contacto.garante.nombre} · ${contacto.garante.tipo}`
-                              : 'Sin garante registrado'
-                          }
-                        />
-                      </>
-                    );
-                  })()}
+                  {/* WhatsApp/Email/Garante salen del contacto real resuelto por
+                      contratoId (API en prod, mock en demo). Antes eran strings
+                      hardcoded idénticos para todos los contratos. */}
+                  <Row label="Nombre" value={c.inquilino} />
+                  <Row label="WhatsApp" value={contacto?.titular.telefono ?? '—'} />
+                  <Row label="Email" value={contacto?.titular.email ?? '—'} />
+                  <Row
+                    label="Garante"
+                    value={
+                      contacto?.garante
+                        ? `${contacto.garante.nombre} · ${contacto.garante.tipo}`
+                        : 'Sin garante registrado'
+                    }
+                  />
                 </CardContent>
               </Card>
             </div>
@@ -355,32 +381,41 @@ export default function DetalleContratoPage() {
           </TabsContent>
 
           <TabsContent value="documentos" className="space-y-2">
-            <ContratoDocumentosPanel contrato={c} />
+            {/* El panel de documentos sube/elimina archivos en localStorage
+                (contrato-documentos-storage), sin endpoint todavía. En modo API
+                lo deshabilitamos para no escribir estado fantasma en prod. */}
+            {apiEnabled ? (
+              <Card>
+                <CardContent className="p-10 text-center">
+                  <FileText className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+                  <p className="text-sm font-medium">Gestión de documentos próximamente</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    La carga y descarga de documentos del expediente estará disponible
+                    en breve.
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <ContratoDocumentosPanel contrato={c} />
+            )}
           </TabsContent>
         </Tabs>
       </main>
 
-      {/* Antes telefono/email iban hardcoded ("+54 9 11 4567 8900" /
-          "mariela.sosa@gmail.com") en TODOS los contratos. Si Roberto
-          tocaba "Mensaje al inquilino" desde el contrato de Carlos
-          Romero, el dialog se abría con los datos de Mariela.
-          Ahora resolvemos el contacto real por contratoId. */}
-      {(() => {
-        const cont = contactosCobranzaMock.find((x) => x.contratoId === c.id);
-        return (
-          <MensajeInquilinoDialog
-            open={abrirMensaje}
-            onOpenChange={setAbrirMensaje}
-            inquilino={{
-              nombre: c.inquilino,
-              telefono: cont?.titular.telefono ?? '',
-              email: cont?.titular.email ?? '',
-            }}
-            direccion={c.direccion}
-            fechaFin={formatFecha(c.fechaFin)}
-          />
-        );
-      })()}
+      {/* El contacto real (titular tel/email) se resuelve por contratoId desde
+          el API en prod o el mock en demo. Antes iban hardcoded e idénticos para
+          todos los contratos. */}
+      <MensajeInquilinoDialog
+        open={abrirMensaje}
+        onOpenChange={setAbrirMensaje}
+        inquilino={{
+          nombre: c.inquilino,
+          telefono: contacto?.titular.telefono ?? '',
+          email: contacto?.titular.email ?? '',
+        }}
+        direccion={c.direccion}
+        fechaFin={formatFecha(c.fechaFin)}
+      />
     </>
   );
 }
@@ -656,12 +691,24 @@ function AprobacionContratoCard({
           Revisá los datos en el resumen y los documentos. Si está todo en orden,
           aprobalo para que pase a ACTIVO y empiece a facturar.
         </p>
+        {/* Aprobar/Rechazar registran en auditoría local (registrarEvento) sin
+            endpoint todavía. En modo API los deshabilitamos para no escribir
+            estado fantasma en prod. */}
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={handleRechazar}>
+          <Button
+            variant="outline"
+            onClick={handleRechazar}
+            disabled={apiEnabled}
+            title={apiEnabled ? 'Próximamente' : undefined}
+          >
             <XCircle className="h-4 w-4" />
             Rechazar
           </Button>
-          <Button onClick={handleAprobar}>
+          <Button
+            onClick={handleAprobar}
+            disabled={apiEnabled}
+            title={apiEnabled ? 'Próximamente' : undefined}
+          >
             <ShieldCheck className="h-4 w-4" />
             Aprobar contrato
           </Button>
@@ -678,17 +725,25 @@ function AprobacionContratoCard({
 // inmobiliaria (default) o si el inquilino deposita directo al propietario
 // y la inmo sólo audita. Se puede cambiar en cualquier momento — queda
 // registrado en auditoría.
-function ModoCobranzaCard({ contrato }: { contrato: (typeof contratosMock)[number] }) {
+function ModoCobranzaCard({
+  contrato,
+  propietarioDirecto,
+}: {
+  contrato: ContratoListado;
+  propietarioDirecto: Propietario | null;
+}) {
   const inicial: 'INMOBILIARIA' | 'PROPIETARIO_DIRECTO' =
     contrato.modoCobranza ?? 'INMOBILIARIA';
   const [modo, setModo] = useState<'INMOBILIARIA' | 'PROPIETARIO_DIRECTO'>(inicial);
 
-  const propietarioDirecto = contrato.cobraDirectoPropietarioId
-    ? propietariosMock.find((p) => p.id === contrato.cobraDirectoPropietarioId)
-    : null;
-
   function cambiarA(nuevo: 'INMOBILIARIA' | 'PROPIETARIO_DIRECTO') {
     if (nuevo === modo) return;
+    // Sin endpoint PATCH del modo de cobranza todavía: en modo API esto sólo
+    // escribiría auditoría local fantasma. Lo bloqueamos en prod.
+    if (apiEnabled) {
+      toast({ title: 'Cambiar el modo de cobranza estará disponible próximamente.' });
+      return;
+    }
     if (nuevo === 'PROPIETARIO_DIRECTO' && !propietarioDirecto?.cuentaCobranza) {
       toast({
         title: 'Cargá la cuenta del propietario primero',
@@ -731,8 +786,10 @@ function ModoCobranzaCard({ contrato }: { contrato: (typeof contratosMock)[numbe
           <button
             type="button"
             onClick={() => cambiarA('INMOBILIARIA')}
+            disabled={apiEnabled && modo !== 'INMOBILIARIA'}
+            title={apiEnabled ? 'Próximamente' : undefined}
             className={cn(
-              'flex flex-col gap-2 rounded-lg border p-3 text-left transition-all',
+              'flex flex-col gap-2 rounded-lg border p-3 text-left transition-all disabled:cursor-not-allowed',
               modo === 'INMOBILIARIA'
                 ? 'border-primary bg-primary/5 ring-1 ring-primary'
                 : 'hover:bg-muted/40',
@@ -754,8 +811,10 @@ function ModoCobranzaCard({ contrato }: { contrato: (typeof contratosMock)[numbe
           <button
             type="button"
             onClick={() => cambiarA('PROPIETARIO_DIRECTO')}
+            disabled={apiEnabled && modo !== 'PROPIETARIO_DIRECTO'}
+            title={apiEnabled ? 'Próximamente' : undefined}
             className={cn(
-              'flex flex-col gap-2 rounded-lg border p-3 text-left transition-all',
+              'flex flex-col gap-2 rounded-lg border p-3 text-left transition-all disabled:cursor-not-allowed',
               modo === 'PROPIETARIO_DIRECTO'
                 ? 'border-primary bg-primary/5 ring-1 ring-primary'
                 : 'hover:bg-muted/40',
