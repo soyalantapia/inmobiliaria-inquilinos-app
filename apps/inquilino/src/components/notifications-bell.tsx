@@ -17,6 +17,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { cn } from '@llave/ui/cn';
+import { apiEnabled } from '@/lib/api/client';
 import { contratoMock, liquidacionesMock } from '@/lib/mock-data';
 import { diasHastaVencimiento, formatFecha } from '@/lib/format';
 import { TASA_PUNITORIA_DIARIA_DEFAULT, calcularPunitorios } from '@/lib/punitorios';
@@ -109,6 +110,10 @@ function ultimoMensajeInmoEnReclamo(r: Reclamo): { texto: string; fecha: string 
 }
 
 function construirNotifs(leidas: Set<string>): Notif[] {
+  // En producción todavía no hay feed de notificaciones en el API → vacío
+  // (no mostramos eventos ficticios del mock como si fueran reales).
+  if (apiEnabled) return [];
+
   const out: Notif[] = [];
 
   // 1. Pagos vencidos / próximos / en validación

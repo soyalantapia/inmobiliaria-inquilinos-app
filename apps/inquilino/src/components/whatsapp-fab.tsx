@@ -3,37 +3,38 @@
 import { MessageCircle } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { contratoMock } from '@/lib/mock-data';
+import { apiEnabled } from '@/lib/api/client';
+import { useMiContrato } from '@/lib/api/hooks';
 import { useCurrentUser } from '@/lib/use-current-user';
 
-// FAB para contactar a la inmobiliaria por WhatsApp.
-// Aparece SOLO en la home (/) — antes estaba en toda la app y tapaba
-// CTAs primarios en /reclamos, /pago, etc. La acción de "hablar con la
-// inmo" también vive en /cuenta (botón "WhatsApp con la inmobiliaria"),
-// así que mantener el FAB en TODA la app era duplicado y ruidoso.
-//
-// El número de la inmobiliaria sale del contratoMock; en backend real
-// viene de contrato.inmobiliaria.telefono.
-
-const TELEFONO_INMO = '541145321100'; // sin + ni espacios para wa.me
+// FAB para contactar a la inmobiliaria por WhatsApp. Solo en la home (/).
+// El teléfono y la dirección salen del CONTRATO REAL del inquilino
+// (GET /mi-contrato). En build demo (!apiEnabled) se usan los del mock.
+const TELEFONO_DEMO = '541145321100';
 
 export function WhatsappFab() {
   const user = useCurrentUser();
   const pathname = usePathname() ?? '';
+  const { contrato, inmobiliariaTelefono } = useMiContrato();
+
   // Solo en la home — cualquier otra ruta lo oculta.
   if (pathname !== '/') return null;
 
-  const mensaje = `Hola! Soy ${user.fullName}, inquilino/a en ${contratoMock.direccion}. Tengo una consulta.`;
-  const url = `https://wa.me/${TELEFONO_INMO}?text=${encodeURIComponent(mensaje)}`;
+  const tel = (apiEnabled ? inmobiliariaTelefono : TELEFONO_DEMO) ?? '';
+  // En prod, sin teléfono real de la inmobiliaria no mostramos el FAB
+  // (no inventamos un número).
+  if (apiEnabled && !tel) return null;
+
+  const telLimpio = tel.replace(/\D/g, '');
+  const direccion = contrato?.direccion ?? contratoMock.direccion;
+  const mensaje = `Hola! Soy ${user.fullName}, inquilino/a en ${direccion}. Tengo una consulta.`;
+  const url = `https://wa.me/${telLimpio}?text=${encodeURIComponent(mensaje)}`;
   return (
     <a
       href={url}
       target="_blank"
       rel="noreferrer"
       aria-label="Hablar con la inmobiliaria por WhatsApp"
-      /* bottom-24 (no bottom-20) — el nav inferior mide ~72-80px en
-         mobile y con bottom-20 el FAB pisaba los iconos "Recibos" y
-         "Reclamos". El comment de arriba ya decía bottom-24, este es
-         el fix que faltaba aplicar. */
       className="fixed bottom-24 right-3 z-30 grid h-12 w-12 place-items-center rounded-full bg-emerald-500 text-white shadow-lg shadow-emerald-500/40 transition-all hover:scale-105 hover:bg-emerald-600 active:scale-95 md:bottom-6 md:right-6 md:h-12 md:w-12"
     >
       <MessageCircle className="h-5 w-5 md:h-6 md:w-6" strokeWidth={2.5} />
