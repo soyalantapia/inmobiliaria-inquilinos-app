@@ -200,7 +200,9 @@ export default function PagosPage() {
   const exportarMorososPdf = () => {
     const morosos = contratos.filter((c) => c.estadoPagoActual === 'VENCIDO');
     const filas: (string | number)[][] = morosos.map((c) => {
-      const contacto = contactosCobranzaMock.find((x) => x.contratoId === c.id);
+      // Teléfono/garante: solo del mock en demo. En prod no hay endpoint que
+      // los exponga → '—'/'Sin garante' (no dependemos del mismatch de ids).
+      const contacto = apiEnabled ? undefined : contactosCobranzaMock.find((x) => x.contratoId === c.id);
       const dias = -diasHastaVencimiento(c.proximoVencimiento);
       return [
         c.inquilino,
@@ -270,7 +272,7 @@ export default function PagosPage() {
         if (morososDeSoc.length === 0) return null;
 
         const filas: (string | number)[][] = morososDeSoc.map((c) => {
-          const contacto = contactosCobranzaMock.find((x) => x.contratoId === c.id);
+          const contacto = apiEnabled ? undefined : contactosCobranzaMock.find((x) => x.contratoId === c.id);
           const dias = -diasHastaVencimiento(c.proximoVencimiento);
           // Apellido del primer propietario para que la inmo sepa a quién
           // rinde dentro de esa sociedad (un fideicomiso puede tener

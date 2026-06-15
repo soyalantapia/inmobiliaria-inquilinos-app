@@ -155,7 +155,10 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
   const eventosUnificados = useMemo<EventoReclamo[]>(() => {
     if (!reclamo) return [];
     const base = [...reclamo.eventos];
-    const visita = obtenerVisita(reclamo.id);
+    // La visita del profesional vive en storage cross-app (flujo /p/[token]),
+    // sin endpoint en el API → solo en demo. En prod el timeline sale de
+    // reclamo.eventos del API.
+    const visita = apiEnabled ? null : obtenerVisita(reclamo.id);
     const nombre = reclamo.profesionalAsignadoNombre ?? 'Profesional';
     if (visita?.confirmadaAt) {
       base.push({
@@ -478,7 +481,7 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
             reclamoYaResuelto le dice al componente que oculte el copy
             "La inmobiliaria lo va a revisar..." porque ya pasó —
             queda la card "Por confirmar" / "Resuelto" abajo guiando. */}
-        {reclamo.profesionalAsignadoNombre && (
+        {!apiEnabled && reclamo.profesionalAsignadoNombre && (
           <ProgresoVisitaInquilino
             reclamoId={reclamo.id}
             profesionalNombre={reclamo.profesionalAsignadoNombre ?? null}

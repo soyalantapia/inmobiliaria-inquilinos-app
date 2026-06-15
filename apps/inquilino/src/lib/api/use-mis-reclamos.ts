@@ -160,6 +160,7 @@ export function useMisReclamos(): {
   reclamos: Reclamo[];
   cargando: boolean;
   deApi: boolean;
+  hayError: boolean;
   crearReclamo: (input: CrearReclamoInput) => Promise<Reclamo>;
 } {
   const qc = useQueryClient();
@@ -194,6 +195,7 @@ export function useMisReclamos(): {
       reclamos: leerReclamosLocales(),
       cargando: false,
       deApi: false,
+      hayError: false,
       crearReclamo: async (input) =>
         crearReclamoLocal({
           inquilino: inquilinoActual.nombre,
@@ -212,6 +214,7 @@ export function useMisReclamos(): {
       reclamos: [],
       cargando: false,
       deApi: true,
+      hayError: true,
       crearReclamo: async () => {
         throw new Error('No se pudo conectar con el servidor');
       },
@@ -222,6 +225,7 @@ export function useMisReclamos(): {
     reclamos: (q.data ?? []).map((r) => mapReclamo(r, identidad)),
     cargando: q.isPending,
     deApi: true,
+    hayError: false,
     crearReclamo: async (input) => {
       const creado = await apiFetch<ReclamoApi>('/mis-reclamos', {
         method: 'POST',

@@ -90,8 +90,8 @@ interface ContratoApi {
   estadoPagoActual: EstadoLiquidacion;
   cbuAlias?: string | null;
   titularCuenta?: string | null;
-  /** Inquilino titular embebido: de acá sale el email real (sin fabricar). */
-  inquilinoTitular?: { email?: string | null } | null;
+  /** Inquilino titular embebido: de acá salen nombre y email reales (sin fabricar). */
+  inquilinoTitular?: { nombre?: string | null; apellido?: string | null; email?: string | null } | null;
 }
 
 interface SociedadApi {
@@ -146,9 +146,14 @@ function mapPropietario(p: PropietarioApi, porcentaje: number): Propietario {
 }
 
 function mapContrato(c: ContratoApi): ContratoListado {
+  // El API del detalle trae el inquilino como relación (inquilinoTitular),
+  // no como campo plano → derivamos nombre+apellido. Antes quedaba '—'.
+  const nombreInquilino = c.inquilinoTitular
+    ? `${c.inquilinoTitular.nombre ?? ''} ${c.inquilinoTitular.apellido ?? ''}`.trim()
+    : '';
   return {
     id: c.id,
-    inquilino: c.inquilino ?? '—',
+    inquilino: nombreInquilino || c.inquilino || '—',
     direccion: c.direccion ?? '—',
     monto: numOrNull(c.monto) ?? 0,
     moneda: c.moneda,

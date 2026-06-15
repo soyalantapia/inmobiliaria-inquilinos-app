@@ -27,7 +27,7 @@ export default function MisReclamosPage() {
   const idNuevo = searchParams?.get('nuevo') ?? null;
   // Datos reales del API (o storage local en demo). `cargando` controla el
   // skeleton; en error de API `reclamos` viene vacío (sin caer al mock).
-  const { reclamos, cargando } = useMisReclamos();
+  const { reclamos, cargando, hayError } = useMisReclamos();
   // El banner pasa por 3 etapas: visible → desvaneciéndose (clase animada) → oculto.
   // No inicializamos desde idNuevo: si Next navega client-side entre
   // /reclamos/nuevo y /reclamos?nuevo=X, el componente persiste y el useState
@@ -121,6 +121,19 @@ export default function MisReclamosPage() {
 
         {cargando ? (
           <ListaSkeleton />
+        ) : hayError ? (
+          <Card className="p-8 text-center">
+            <p className="font-medium">No pudimos cargar tus reclamos</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Revisá tu conexión e intentá de nuevo.
+            </p>
+            <button
+              onClick={() => window.location.reload()}
+              className="mt-4 text-sm font-medium text-primary hover:underline"
+            >
+              Reintentar
+            </button>
+          </Card>
         ) : reclamos.length === 0 ? (
           <EmptyState />
         ) : (

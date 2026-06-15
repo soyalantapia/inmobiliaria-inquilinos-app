@@ -430,7 +430,9 @@ function DetallePagoView({
               </Link>
             </Button>
             <p className="text-center text-xs text-muted-foreground">
-              Te mostramos CBU, alias y titular. También podés hacer un pago parcial.
+              {apiEnabled
+                ? 'Coordinás los datos de transferencia con la inmobiliaria. También podés hacer un pago parcial.'
+                : 'Te mostramos CBU, alias y titular. También podés hacer un pago parcial.'}
             </p>
           </div>
         )}
