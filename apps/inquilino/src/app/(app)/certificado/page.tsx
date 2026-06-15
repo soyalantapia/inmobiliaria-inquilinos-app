@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -11,6 +11,7 @@ import {
   Clock,
   Copy,
   Download,
+  Loader2,
   MapPin,
   MessageCircle,
   Printer,
@@ -23,13 +24,9 @@ import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card, CardContent } from '@llave/ui/card';
 import { toast } from '@llave/ui/use-toast';
-import {
-  NIVEL_COLOR,
-  NIVEL_LABEL,
-  generarCertificado,
-  type CertificadoInquilino,
-} from '@/lib/certificado-inquilino';
+import { NIVEL_COLOR, NIVEL_LABEL } from '@/lib/certificado-inquilino';
 import { formatFecha, formatFechaCorta, formatMonto, parseLocal } from '@/lib/format';
+import { useMiCertificado } from '@/lib/api/use-certificado';
 import { imprimirCertificado } from './imprimible';
 
 /**
@@ -46,13 +43,7 @@ import { imprimirCertificado } from './imprimible';
  * los datos y se ahorra pedir garante.
  */
 export default function CertificadoInquilinoPage() {
-  const [hidratado, setHidratado] = useState(false);
-  const [certificado, setCertificado] = useState<CertificadoInquilino | null>(null);
-
-  useEffect(() => {
-    setCertificado(generarCertificado());
-    setHidratado(true);
-  }, []);
+  const { certificado, cargando } = useMiCertificado();
 
   const validoHastaTexto = useMemo(
     () => (certificado ? formatFecha(certificado.validoHasta) : ''),
@@ -74,7 +65,42 @@ export default function CertificadoInquilinoPage() {
   // compartir — primero regularizá, después compartís con orgullo.
   const nivelBajo = certificado?.nivel === 'REGULAR';
 
-  if (!hidratado || !certificado) return null;
+  // Estado de carga (sólo en prod con API): mismo header, spinner debajo.
+  if (cargando) {
+    return (
+      <>
+        <CertificadoHeader />
+        <main className="flex flex-1 items-center justify-center px-5 pb-8 pt-16 text-muted-foreground">
+          <Loader2 className="h-6 w-6 animate-spin" />
+        </main>
+      </>
+    );
+  }
+
+  // Sin certificado en prod (sin contrato activo o el API falló): empty state
+  // real, sin inventar datos.
+  if (!certificado) {
+    return (
+      <>
+        <CertificadoHeader />
+        <main className="flex-1 px-5 pb-8 pt-6">
+          <Card>
+            <CardContent className="flex flex-col items-center gap-3 p-8 text-center">
+              <ShieldCheck className="h-8 w-8 text-muted-foreground/60" />
+              <p className="text-sm font-semibold">Todavía no podemos generar tu certificado</p>
+              <p className="text-xs text-muted-foreground">
+                Necesitás un contrato activo para emitir el certificado de
+                inquilino. Si ya tenés uno, volvé a intentarlo en unos minutos.
+              </p>
+              <Button asChild variant="outline" size="sm" className="mt-1">
+                <Link href="/cuenta">Volver a mi cuenta</Link>
+              </Button>
+            </CardContent>
+          </Card>
+        </main>
+      </>
+    );
+  }
 
   const copiar = async (texto: string, label: string) => {
     try {
@@ -101,17 +127,7 @@ export default function CertificadoInquilinoPage() {
 
   return (
     <>
-      <header className="flex items-center justify-between gap-3 p-5">
-        <div className="flex items-center gap-3">
-          <Button asChild variant="ghost" size="icon">
-            <Link href="/cuenta" aria-label="Volver">
-              <ArrowLeft className="h-5 w-5" />
-            </Link>
-          </Button>
-          <h1 className="text-lg font-semibold">Mi certificado</h1>
-        </div>
-        <ShieldCheck className="h-5 w-5 text-emerald-600" />
-      </header>
+      <CertificadoHeader />
 
       <main className="flex-1 space-y-5 px-5 pb-8">
         {/* Explicación */}
@@ -367,6 +383,22 @@ export default function CertificadoInquilinoPage() {
         </div>
       </main>
     </>
+  );
+}
+
+function CertificadoHeader() {
+  return (
+    <header className="flex items-center justify-between gap-3 p-5">
+      <div className="flex items-center gap-3">
+        <Button asChild variant="ghost" size="icon">
+          <Link href="/cuenta" aria-label="Volver">
+            <ArrowLeft className="h-5 w-5" />
+          </Link>
+        </Button>
+        <h1 className="text-lg font-semibold">Mi certificado</h1>
+      </div>
+      <ShieldCheck className="h-5 w-5 text-emerald-600" />
+    </header>
   );
 }
 

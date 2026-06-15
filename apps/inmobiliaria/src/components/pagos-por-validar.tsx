@@ -46,6 +46,8 @@ import {
   type ExtraccionIA,
 } from '@/lib/extraccion-ia';
 import { PinPromptDialog } from '@/components/pin-prompt-dialog';
+import { apiEnabled } from '@/lib/api/client';
+import { usePagosInformados } from '@/lib/api/use-pagos';
 
 // Sección "Por validar" en /pagos del admin. Muestra los comprobantes que
 // los inquilinos subieron y todavía no fueron conciliados. Cuando el admin
@@ -65,7 +67,270 @@ interface PagosPorValidarProps {
   onChange?: (pendientesRestantes: number) => void;
 }
 
-export function PagosPorValidar({ onChange }: PagosPorValidarProps = {}) {
+/**
+ * Dispatcher: en producción (apiEnabled) cableamos contra el API real
+ * (GET /pagos + POST validar/rechazar). En el build demo (!apiEnabled)
+ * cae al flujo localStorage de siempre, intacto.
+ */
+export function PagosPorValidar(props: PagosPorValidarProps = {}) {
+  if (apiEnabled) return <PagosPorValidarApi {...props} />;
+  return <PagosPorValidarDemo {...props} />;
+}
+
+/**
+ * Variante API: lee los comprobantes informados de /pagos y los concilia /
+ * rechaza contra el server. No usa localStorage ni la lectura por IA (no
+ * persistida en el API) ni la lista de "resueltos/revertir" (el API no tiene
+ * endpoint de revert: una vez decidido, sale de la bandeja). El PIN lo valida
+ * el server (validacion="servidor").
+ */
+function PagosPorValidarApi({ onChange }: PagosPorValidarProps = {}) {
+  const { pagos, cargando, validar, rechazar } = usePagosInformados();
+  const [verComprobante, setVerComprobante] = useState<PagoInformado | null>(null);
+  const [rechazando, setRechazando] = useState<PagoInformado | null>(null);
+  const [motivoRechazo, setMotivoRechazo] = useState('');
+  const [showPin, setShowPin] = useState(false);
+  const [pinAccion, setPinAccion] = useState('');
+  const [pinSubaccion, setPinSubaccion] = useState<string | undefined>(undefined);
+  // Acción pendiente que ejecuta el PIN: devuelve null si salió bien o el
+  // mensaje de error del server (PIN inválido, ya decidido) para reintentar.
+  const pendingAction = useRef<((pin: string) => Promise<string | null>) | null>(null);
+
+  // Avisamos al padre el conteo real de pendientes cada vez que cambia.
+  useEffect(() => {
+    onChange?.(pagos.length);
+  }, [pagos.length, onChange]);
+
+  const triggerConciliar = (pago: PagoInformado) => {
+    setPinAccion('Conciliar pago');
+    setPinSubaccion(`${pago.inquilino} · ${formatMonto(pago.monto)}`);
+    pendingAction.current = async (pin) => {
+      try {
+        await validar(pago.id, pin);
+        toast({
+          title: `Pago de ${pago.inquilino} confirmado`,
+          description: `${formatMonto(pago.monto)} · ${formatPeriodo(pago.periodo)}`,
+        });
+        return null;
+      } catch (e) {
+        return e instanceof Error ? e.message : 'No se pudo conciliar. Probá de nuevo.';
+      }
+    };
+    setShowPin(true);
+  };
+
+  const triggerRechazar = (pago: PagoInformado, motivo: string) => {
+    setPinAccion('Rechazar pago');
+    setPinSubaccion(`${pago.inquilino} · "${motivo}"`);
+    pendingAction.current = async (pin) => {
+      try {
+        await rechazar(pago.id, motivo, pin);
+        toast({
+          title: 'Pago rechazado',
+          description: `Le avisamos a ${pago.inquilino} con tu nota.`,
+        });
+        return null;
+      } catch (e) {
+        return e instanceof Error ? e.message : 'No se pudo rechazar. Probá de nuevo.';
+      }
+    };
+    setShowPin(true);
+  };
+
+  if (cargando) {
+    return (
+      <Card>
+        <div className="py-10 text-center text-sm text-muted-foreground">
+          Cargando comprobantes informados…
+        </div>
+      </Card>
+    );
+  }
+
+  if (pagos.length === 0) {
+    return (
+      <Card>
+        <div className="py-10 text-center text-sm text-muted-foreground">
+          No hay comprobantes informados esperando validación.
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <>
+      <Card className="border-amber-300 bg-amber-50/50 dark:border-amber-900/40 dark:bg-amber-900/10">
+        <CardContent className="space-y-4 p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <ReceiptText className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+              <h2 className="text-base font-semibold">Pagos por validar</h2>
+            </div>
+            <Badge variant="warning" className="shrink-0">
+              {pagos.length}
+            </Badge>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Tus inquilinos informaron estos pagos. Verificá el comprobante y confirmá o
+            rechazá.
+          </p>
+
+          <div className="space-y-3">
+            {pagos.map((p) => (
+              <PagoRow
+                key={p.id}
+                pago={p}
+                conIA={false}
+                onConciliar={() => triggerConciliar(p)}
+                onRechazar={() => setRechazando(p)}
+                onVerComprobante={() => setVerComprobante(p)}
+              />
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Modal comprobante (sin lectura por IA: no la persiste el API) */}
+      <Dialog open={!!verComprobante} onOpenChange={(v) => !v && setVerComprobante(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Comprobante de {verComprobante?.inquilino}</DialogTitle>
+            <DialogDescription>
+              {verComprobante &&
+                `${formatPeriodo(verComprobante.periodo)} · ${formatMonto(verComprobante.monto)} · ${metodoLabel[verComprobante.metodo]}`}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            {verComprobante?.comprobanteUrl ? (
+              <a
+                href={verComprobante.comprobanteUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="grid h-48 place-items-center rounded-md border bg-muted text-center text-xs text-primary hover:bg-muted/70"
+              >
+                <div className="space-y-1">
+                  <FileText className="mx-auto h-10 w-10" />
+                  <p className="font-medium">Abrir comprobante</p>
+                  <p className="text-muted-foreground">PDF / imagen en una pestaña nueva</p>
+                </div>
+              </a>
+            ) : (
+              <div className="grid h-48 place-items-center rounded-md border bg-muted text-center text-xs text-muted-foreground">
+                <div className="space-y-1">
+                  <FileText className="mx-auto h-10 w-10" />
+                  <p>El inquilino no adjuntó archivo.</p>
+                </div>
+              </div>
+            )}
+            {verComprobante?.notaInquilino && (
+              <div className="rounded-md bg-muted/50 p-3 text-xs">
+                <p className="font-medium">Nota del inquilino:</p>
+                <p className="text-muted-foreground">{verComprobante.notaInquilino}</p>
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  if (!verComprobante) return;
+                  setRechazando(verComprobante);
+                  setVerComprobante(null);
+                }}
+              >
+                <XCircle className="h-4 w-4" />
+                Rechazar
+              </Button>
+              <Button
+                className="flex-1"
+                onClick={() => {
+                  if (!verComprobante) return;
+                  const pago = verComprobante;
+                  setVerComprobante(null);
+                  triggerConciliar(pago);
+                }}
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                Confirmar
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal rechazo con motivo (el server exige mínimo 5 caracteres) */}
+      <Dialog
+        open={!!rechazando}
+        onOpenChange={(v) => {
+          if (!v) {
+            setRechazando(null);
+            setMotivoRechazo('');
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Rechazar el pago de {rechazando?.inquilino}</DialogTitle>
+            <DialogDescription>
+              Le va a llegar la notificación con tu motivo. Probá ser claro para que
+              corrija rápido.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            rows={4}
+            value={motivoRechazo}
+            onChange={(e) => setMotivoRechazo(e.target.value)}
+            placeholder="Ej: el comprobante no se ve, mandá la imagen de nuevo."
+          />
+          <div className="flex gap-2">
+            <Button variant="outline" className="flex-1" onClick={() => setRechazando(null)}>
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              className="flex-1"
+              onClick={() => {
+                if (!rechazando) return;
+                if (motivoRechazo.trim().length < 5) {
+                  toast({
+                    title: 'Contale al inquilino por qué (mínimo 5 caracteres)',
+                    variant: 'destructive',
+                  });
+                  return;
+                }
+                const pagoCapturado = rechazando;
+                const motivoCapturado = motivoRechazo.trim();
+                setRechazando(null);
+                setMotivoRechazo('');
+                triggerRechazar(pagoCapturado, motivoCapturado);
+              }}
+            >
+              Rechazar pago
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <PinPromptDialog
+        abierto={showPin}
+        accion={pinAccion}
+        subaccion={pinSubaccion}
+        validacion="servidor"
+        onClose={() => setShowPin(false)}
+        onConfirmado={async (pin) => {
+          const run = pendingAction.current;
+          if (!run) return null;
+          const err = await run(pin);
+          if (err) return err; // mantiene el diálogo abierto para reintentar
+          pendingAction.current = null;
+          return null;
+        }}
+      />
+    </>
+  );
+}
+
+function PagosPorValidarDemo({ onChange }: PagosPorValidarProps = {}) {
   const [acciones, setAcciones] = useState<Record<string, 'CONCILIADO' | 'RECHAZADO'>>({});
   const [hidratado, setHidratado] = useState(false);
   const [verComprobante, setVerComprobante] = useState<PagoInformado | null>(null);
@@ -430,11 +695,15 @@ export function PagosPorValidar({ onChange }: PagosPorValidarProps = {}) {
 
 function PagoRow({
   pago,
+  conIA = true,
   onConciliar,
   onRechazar,
   onVerComprobante,
 }: {
   pago: PagoInformado;
+  /** Mostrar el bloque "Lectura por IA". En modo API lo apagamos: el API
+   *  todavía no persiste la extracción, así que no inventamos datos. */
+  conIA?: boolean;
   onConciliar: () => void;
   onRechazar: () => void;
   onVerComprobante: () => void;
@@ -446,8 +715,8 @@ function PagoRow({
   const propietario = propietarioId
     ? propietariosMock.find((p) => p.id === propietarioId)
     : null;
-  const modoDirecto = contrato?.modoCobranza === 'PROPIETARIO_DIRECTO';
-  const afipOn = !!propietario?.afip?.conectado;
+  const modoDirecto = conIA && contrato?.modoCobranza === 'PROPIETARIO_DIRECTO';
+  const afipOn = conIA && !!propietario?.afip?.conectado;
   const esParcial = pago.tipo === 'PARCIAL' && pago.montoLiqTotal !== undefined;
   const saldoRestanteLiq = esParcial
     ? Math.max(0, (pago.montoLiqTotal ?? 0) - pago.monto)
@@ -455,12 +724,15 @@ function PagoRow({
 
   // Lectura por IA del comprobante. En la demo se genera determinístico
   // a partir del pago.id; en backend real esto vendría persistido junto
-  // al PagoInformado (campo `extraccionIA`).
-  const extraccion: ExtraccionIA = extraerComprobante(pago.id, pago.monto, {
-    fechaEsperada: pago.fechaTransferencia,
-    nombreInquilinoHint: pago.inquilino,
-  });
-  const autoOk = puedeConciliarAutomatico(extraccion);
+  // al PagoInformado (campo `extraccionIA`). En modo API (conIA=false) no
+  // la calculamos para no mostrar datos sintéticos sobre pagos reales.
+  const extraccion: ExtraccionIA | null = conIA
+    ? extraerComprobante(pago.id, pago.monto, {
+        fechaEsperada: pago.fechaTransferencia,
+        nombreInquilinoHint: pago.inquilino,
+      })
+    : null;
+  const autoOk = extraccion ? puedeConciliarAutomatico(extraccion) : false;
 
   return (
     <Card className="space-y-3 bg-background p-4">
@@ -523,11 +795,13 @@ function PagoRow({
         />
       </div>
 
-      <ExtraccionIABlock
-        extraccion={extraccion}
-        montoEsperado={pago.monto}
-        fechaDeclarada={pago.fechaTransferencia}
-      />
+      {extraccion && (
+        <ExtraccionIABlock
+          extraccion={extraccion}
+          montoEsperado={pago.monto}
+          fechaDeclarada={pago.fechaTransferencia}
+        />
+      )}
 
       {pago.notaInquilino && (
         <p className="rounded-md bg-muted/30 p-2 text-xs italic text-muted-foreground">

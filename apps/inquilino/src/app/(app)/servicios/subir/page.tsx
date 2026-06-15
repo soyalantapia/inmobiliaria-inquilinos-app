@@ -22,10 +22,10 @@ import {
   TIPO_LABEL,
   formatPeriodo,
   formatTamanio,
-  guardarBoleta,
   leerArchivoComoDataUrl,
 } from '@/lib/boletas-servicios-storage';
-import { contratoMock } from '@/lib/mock-data';
+import { useBoletas } from '@/lib/api/use-servicios';
+import { apiEnabled } from '@/lib/api/client';
 
 const TIPOS_DISPONIBLES: TipoServicio[] = ['LUZ', 'GAS', 'AGUA', 'INTERNET', 'ABL', 'CABLE'];
 
@@ -40,11 +40,13 @@ function periodoActual(): string {
 // main + NavBar, igual que las demás pantallas-formulario).
 export default function SubirBoletaPage() {
   const router = useRouter();
+  const { subirBoleta } = useBoletas();
   const [tipo, setTipo] = useState<TipoServicio>('LUZ');
   const [periodo, setPeriodo] = useState(periodoActual());
   const [monto, setMonto] = useState('');
   const [vencimiento, setVencimiento] = useState('');
   const [archivo, setArchivo] = useState<File | null>(null);
+  const [enviando, setEnviando] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const submit = async () => {
@@ -72,21 +74,21 @@ export default function SubirBoletaPage() {
       });
       return;
     }
+    setEnviando(true);
     try {
-      const dataUrl = await leerArchivoComoDataUrl(archivo);
-      guardarBoleta({
-        id: `bol-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        contratoId: contratoMock.id,
-        tipo,
+      // En demo necesitamos el dataUrl para previsualizar/descargar offline.
+      // En prod el archivo no se sube todavía (no hay storage en el API) —
+      // solo mandamos los metadatos, así que evitamos leer el archivo entero.
+      const dataUrl = apiEnabled ? undefined : await leerArchivoComoDataUrl(archivo);
+      await subirBoleta({
+        servicio: tipo,
         periodo,
         monto: parseInt(monto, 10),
-        vencimiento: vencimiento || new Date().toISOString().slice(0, 10),
-        estado: 'SUBIDA',
+        vencimiento: vencimiento || undefined,
         nombreArchivo: archivo.name,
         tipoMime: archivo.type || 'application/octet-stream',
         tamanioBytes: archivo.size,
         dataUrl,
-        subidoAt: new Date().toISOString(),
       });
       toast({
         variant: 'success',
@@ -97,9 +99,11 @@ export default function SubirBoletaPage() {
     } catch {
       toast({
         variant: 'destructive',
-        title: 'No pudimos leer el archivo',
-        description: 'Intentá con otro o achicalo y volvé a probar.',
+        title: 'No pudimos subir la boleta',
+        description: 'Revisá tu conexión e intentá de nuevo.',
       });
+    } finally {
+      setEnviando(false);
     }
   };
 
@@ -216,9 +220,9 @@ export default function SubirBoletaPage() {
             <Button type="button" variant="outline" className="flex-1" asChild>
               <Link href="/servicios">Cancelar</Link>
             </Button>
-            <Button type="submit" className="flex-1">
+            <Button type="submit" className="flex-1" disabled={enviando}>
               <Upload className="h-4 w-4" />
-              Subir
+              {enviando ? 'Subiendo…' : 'Subir'}
             </Button>
           </div>
         </form>

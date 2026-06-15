@@ -44,8 +44,9 @@ import {
   agregarMensajeInmo,
   asignarOperador,
   cambiarEstado,
-  obtenerReclamo,
 } from '@/lib/reclamos-store';
+import { apiEnabled } from '@/lib/api/client';
+import { useReclamo } from '@/lib/api/use-reclamo';
 import { mockUser } from '@/lib/auth';
 import type { Reclamo } from '@/lib/types';
 
@@ -54,6 +55,21 @@ const OPERADOR_ACTUAL = mockUser.user.fullName; // Roberto Tapia en mock
 export default function DetalleReclamoPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+
+  // Fuente de verdad: API real en prod (GET /reclamos/:id) o el store local en
+  // build demo (!apiEnabled). En prod las mutaciones pegan al API e invalidan la
+  // query; en demo seguimos usando el reclamos-store como antes.
+  const {
+    reclamo: reclamoFuente,
+    contacto: contactoApi,
+    asignar: asignarApi,
+    resolver: resolverApi,
+    rechazar: rechazarApi,
+    responder: responderApi,
+  } = useReclamo(params?.id);
+
+  // Copia local para respuesta instantánea: en demo el store devuelve el objeto
+  // actualizado y lo pisamos acá; en prod se resincroniza desde la query.
   const [reclamo, setReclamo] = useState<Reclamo | null | undefined>(undefined);
   const [mensaje, setMensaje] = useState('');
   const [resolucion, setResolucion] = useState('');
@@ -63,8 +79,8 @@ export default function DetalleReclamoPage() {
   const scrollEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (params?.id) setReclamo(obtenerReclamo(params.id));
-  }, [params?.id]);
+    setReclamo(reclamoFuente);
+  }, [reclamoFuente]);
 
   useEffect(() => {
     scrollEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -97,7 +113,10 @@ export default function DetalleReclamoPage() {
     reclamo.estado === 'CERRADO' ||
     reclamo.estado === 'RECHAZADO';
 
+  // Asignar operador interno y "tomar/poner en curso" no tienen endpoint en el
+  // API → solo operan en build demo (store). En prod quedan deshabilitados.
   const handleAsignar = (operador: string) => {
+    if (apiEnabled) return;
     const updated = asignarOperador(reclamo.id, operador, OPERADOR_ACTUAL);
     if (updated) {
       setReclamo(updated);
@@ -106,6 +125,7 @@ export default function DetalleReclamoPage() {
   };
 
   const handleTomar = () => {
+    if (apiEnabled) return;
     const updated = cambiarEstado(reclamo.id, 'EN_CURSO', OPERADOR_ACTUAL);
     if (updated) {
       setReclamo(updated);
@@ -113,9 +133,21 @@ export default function DetalleReclamoPage() {
     }
   };
 
-  const enviarMensaje = () => {
+  // Responder al inquilino → POST /reclamos/:id/responder en prod (la query se
+  // invalida y trae el evento real); en demo escribe el store local.
+  const enviarMensaje = async () => {
     const texto = mensaje.trim();
     if (!texto) return;
+    if (apiEnabled) {
+      try {
+        await responderApi(texto);
+        setMensaje('');
+        toast({ title: 'Mensaje enviado al inquilino' });
+      } catch {
+        toast({ title: 'No se pudo enviar el mensaje', variant: 'destructive' });
+      }
+      return;
+    }
     const updated = agregarMensajeInmo(reclamo.id, OPERADOR_ACTUAL, texto);
     if (updated) {
       setReclamo(updated);
@@ -124,40 +156,62 @@ export default function DetalleReclamoPage() {
     }
   };
 
-  const confirmarDialogo = () => {
+  const confirmarDialogo = async () => {
     if (!dialogo) return;
+    const reclamoId = reclamo.id;
+
     if (dialogo === 'resolver') {
-      const costoNum = Number(costoStr.replace(/\D/g, '')) || 0;
-      const costo = costoNum > 0 ? { monto: costoNum, notas: costoNotas.trim() || undefined } : null;
-      const updated = cambiarEstado(
-        reclamo.id,
-        'RESUELTO',
-        OPERADOR_ACTUAL,
-        resolucion.trim(),
-        costo,
-      );
-      if (updated) {
-        setReclamo(updated);
-        toast({
-          title: 'Reclamo resuelto',
-          description: costo
-            ? `Costo ${formatMonto(costoNum)} asociado al propietario.`
-            : 'El inquilino fue notificado.',
-        });
+      const resolucionTxt = resolucion.trim();
+      if (apiEnabled) {
+        // El endpoint /resolver solo recibe la resolución; el costo del trabajo
+        // no tiene endpoint propio todavía, así que en prod no se persiste.
+        try {
+          await resolverApi(resolucionTxt);
+          toast({ title: 'Reclamo resuelto', description: 'El inquilino fue notificado.' });
+        } catch {
+          toast({ title: 'No se pudo resolver el reclamo', variant: 'destructive' });
+        }
+      } else {
+        const costoNum = Number(costoStr.replace(/\D/g, '')) || 0;
+        const costo = costoNum > 0 ? { monto: costoNum, notas: costoNotas.trim() || undefined } : null;
+        const updated = cambiarEstado(reclamoId, 'RESUELTO', OPERADOR_ACTUAL, resolucionTxt, costo);
+        if (updated) {
+          setReclamo(updated);
+          toast({
+            title: 'Reclamo resuelto',
+            description: costo
+              ? `Costo ${formatMonto(costoNum)} asociado al propietario.`
+              : 'El inquilino fue notificado.',
+          });
+        }
       }
     } else if (dialogo === 'rechazar') {
-      const updated = cambiarEstado(reclamo.id, 'RECHAZADO', OPERADOR_ACTUAL, resolucion.trim());
-      if (updated) {
-        setReclamo(updated);
-        toast({ title: 'Reclamo rechazado' });
+      const motivo = resolucion.trim();
+      if (apiEnabled) {
+        try {
+          await rechazarApi(motivo);
+          toast({ title: 'Reclamo rechazado' });
+        } catch {
+          toast({ title: 'No se pudo rechazar el reclamo', variant: 'destructive' });
+        }
+      } else {
+        const updated = cambiarEstado(reclamoId, 'RECHAZADO', OPERADOR_ACTUAL, motivo);
+        if (updated) {
+          setReclamo(updated);
+          toast({ title: 'Reclamo rechazado' });
+        }
       }
     } else if (dialogo === 'cerrar') {
-      const updated = cambiarEstado(reclamo.id, 'CERRADO', OPERADOR_ACTUAL);
-      if (updated) {
-        setReclamo(updated);
-        toast({ title: 'Reclamo cerrado' });
+      // Cerrar definitivamente (CERRADO) no tiene endpoint → solo demo.
+      if (!apiEnabled) {
+        const updated = cambiarEstado(reclamoId, 'CERRADO', OPERADOR_ACTUAL);
+        if (updated) {
+          setReclamo(updated);
+          toast({ title: 'Reclamo cerrado' });
+        }
       }
     }
+
     setDialogo(null);
     setResolucion('');
     setCostoStr('');
@@ -322,6 +376,7 @@ export default function DetalleReclamoPage() {
               <GestionReclamo
                 reclamo={reclamo}
                 onUpdate={(r) => setReclamo(r)}
+                asignarApi={asignarApi}
               />
             )}
 
@@ -332,37 +387,43 @@ export default function DetalleReclamoPage() {
                     Operador y estado
                   </h3>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="asignado" className="text-xs">
-                      Asignado a
-                    </Label>
-                    <Select
-                      value={reclamo.asignadoA ?? ''}
-                      onValueChange={(v) => v && handleAsignar(v)}
-                    >
-                      <SelectTrigger id="asignado">
-                        <SelectValue placeholder="Elegí operador" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {operadoresMock.map((op) => (
-                          <SelectItem key={op} value={op}>
-                            {op}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  {/* Asignar operador interno y "tomar/poner en curso" no tienen
+                      endpoint en el API → solo en build demo. */}
+                  {!apiEnabled && (
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="asignado" className="text-xs">
+                          Asignado a
+                        </Label>
+                        <Select
+                          value={reclamo.asignadoA ?? ''}
+                          onValueChange={(v) => v && handleAsignar(v)}
+                        >
+                          <SelectTrigger id="asignado">
+                            <SelectValue placeholder="Elegí operador" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {operadoresMock.map((op) => (
+                              <SelectItem key={op} value={op}>
+                                {op}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
 
-                  <Separator />
+                      <Separator />
+                    </>
+                  )}
 
                   <div className="space-y-2">
-                    {reclamo.estado === 'ABIERTO' && (
+                    {!apiEnabled && reclamo.estado === 'ABIERTO' && (
                       <Button className="w-full" onClick={handleTomar} disabled={!reclamo.asignadoA}>
                         <Clock className="h-4 w-4" />
                         Tomar y poner en curso
                       </Button>
                     )}
-                    {reclamo.estado === 'ABIERTO' && !reclamo.asignadoA && (
+                    {!apiEnabled && reclamo.estado === 'ABIERTO' && !reclamo.asignadoA && (
                       <p className="text-[11px] text-muted-foreground">
                         Asigná un operador antes de tomarlo.
                       </p>
@@ -401,14 +462,17 @@ export default function DetalleReclamoPage() {
                       {tiempoRelativo(reclamo.resueltoAt)} · {reclamo.asignadoA ?? '—'}
                     </p>
                   )}
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => setDialogo('cerrar')}
-                  >
-                    Cerrar definitivamente
-                  </Button>
+                  {/* "Cerrar definitivamente" (CERRADO) no tiene endpoint → demo. */}
+                  {!apiEnabled && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => setDialogo('cerrar')}
+                    >
+                      Cerrar definitivamente
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
             )}
@@ -425,17 +489,21 @@ export default function DetalleReclamoPage() {
                 <div className="space-y-1.5 text-sm text-muted-foreground">
                   <p>{reclamo.direccion}</p>
                 </div>
-                {/* Resolvemos contacto real del inquilino por contratoId.
-                    Antes los botones llevaban a un número hardcoded
-                    (+5411 4567 8900) para TODOS los reclamos — clickear
-                    desde cualquier reclamo llamaba al mismo número. */}
+                {/* Contacto real del inquilino: en prod viene del API
+                    (contrato.inquilinoTitular); en demo lo resolvemos por
+                    contratoId contra el mock. Antes los botones llevaban a un
+                    número hardcoded para TODOS los reclamos. */}
                 {(() => {
-                  const contacto = contactosCobranzaMock.find(
-                    (c) => c.contratoId === reclamo.contratoId,
-                  );
-                  const tel = contacto?.titular.telefono ?? null;
+                  const contactoMock = apiEnabled
+                    ? null
+                    : contactosCobranzaMock.find((c) => c.contratoId === reclamo.contratoId);
+                  const tel = apiEnabled
+                    ? contactoApi?.telefono ?? null
+                    : contactoMock?.titular.telefono ?? null;
                   const telLimpio = tel?.replace(/[^\d]/g, '');
-                  const email = contacto?.titular.email ?? null;
+                  const email = apiEnabled
+                    ? contactoApi?.email ?? null
+                    : contactoMock?.titular.email ?? null;
                   if (!tel && !email) {
                     return (
                       <p className="text-[11px] text-muted-foreground">

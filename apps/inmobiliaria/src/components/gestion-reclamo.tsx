@@ -25,6 +25,8 @@ import {
 } from '@/lib/mock-data';
 import { listarProfesionalesAdmin } from '@/lib/profesionales-storage';
 import { asignarProfesional, clasificarReclamo } from '@/lib/reclamos-store';
+import { apiEnabled } from '@/lib/api/client';
+import { useProfesionales } from '@/lib/api/use-profesionales';
 import type { Reclamo, CategoriaReclamo, ClasificacionReclamo } from '@/lib/types';
 import { formatFechaCorta } from '@/lib/format';
 
@@ -44,16 +46,26 @@ const sugerenciaCategoria: Partial<Record<CategoriaReclamo, CategoriaProfesional
 export function GestionReclamo({
   reclamo,
   onUpdate,
+  asignarApi,
 }: {
   reclamo: Reclamo;
   onUpdate: (r: Reclamo) => void;
+  /** Acción real de asignación (POST /reclamos/:id/asignar) — usada en prod. */
+  asignarApi?: (profesionalId: string) => Promise<void>;
 }) {
-  const [profesionales, setProfesionales] = useState<ProfesionalAdmin[]>([]);
+  // Red de profesionales: API real en prod, store local en demo.
+  const { profesionales: profesionalesApi } = useProfesionales();
+  const [profesionalesDemo, setProfesionalesDemo] = useState<ProfesionalAdmin[]>([]);
   const [seleccionProf, setSeleccionProf] = useState<string>('');
+  const [asignando, setAsignando] = useState(false);
 
   useEffect(() => {
-    setProfesionales(listarProfesionalesAdmin().filter((p) => p.activo));
+    if (!apiEnabled) setProfesionalesDemo(listarProfesionalesAdmin().filter((p) => p.activo));
   }, []);
+
+  const profesionales = apiEnabled
+    ? profesionalesApi.filter((p) => p.activo)
+    : profesionalesDemo;
 
   const sugerida = sugerenciaCategoria[reclamo.categoria];
 
@@ -67,7 +79,10 @@ export function GestionReclamo({
     };
   }, [profesionales, sugerida]);
 
+  // La clasificación (uso y goce / desperfecto) no tiene endpoint en el API:
+  // solo opera en build demo (store). En prod se mantiene deshabilitada.
   const handleClasificar = (clasificacion: ClasificacionReclamo) => {
+    if (apiEnabled) return;
     const actualizado = clasificarReclamo(reclamo.id, clasificacion, 'Roberto Tapia');
     if (actualizado) {
       onUpdate(actualizado);
@@ -84,13 +99,35 @@ export function GestionReclamo({
     }
   };
 
-  const handleAsignar = () => {
+  const handleAsignar = async () => {
     if (!seleccionProf) {
       toast({ title: 'Elegí un profesional', variant: 'destructive' });
       return;
     }
     const prof = profesionales.find((p) => p.id === seleccionProf);
     if (!prof) return;
+
+    // Prod: POST /reclamos/:id/asignar (la query del detalle se invalida y
+    // trae el profesional + el evento PROFESIONAL_ASIGNADO reales).
+    if (apiEnabled) {
+      if (!asignarApi) return;
+      setAsignando(true);
+      try {
+        await asignarApi(prof.id);
+        toast({
+          title: `${prof.nombre} asignado`,
+          description: 'Se le notificó al inquilino. El profesional lo va a contactar.',
+        });
+        setSeleccionProf('');
+      } catch {
+        toast({ title: 'No se pudo asignar el profesional', variant: 'destructive' });
+      } finally {
+        setAsignando(false);
+      }
+      return;
+    }
+
+    // Demo: store local.
     const actualizado = asignarProfesional(
       reclamo.id,
       {
@@ -128,14 +165,21 @@ export function GestionReclamo({
                   ? 'Uso y goce — paga el inquilino'
                   : 'Desperfecto — paga el propietario'}
               </span>
-              <button
-                type="button"
-                onClick={() => onUpdate({ ...reclamo, clasificacion: null })}
-                className="ml-auto text-xs text-muted-foreground hover:text-foreground"
-              >
-                Cambiar
-              </button>
+              {/* Re-clasificar no tiene endpoint en el API → solo demo. */}
+              {!apiEnabled && (
+                <button
+                  type="button"
+                  onClick={() => onUpdate({ ...reclamo, clasificacion: null })}
+                  className="ml-auto text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Cambiar
+                </button>
+              )}
             </div>
+          ) : apiEnabled ? (
+            // En prod la clasificación todavía no tiene endpoint: mostramos el
+            // estado real (sin clasificar) sin acciones que no persistan.
+            <p className="text-xs text-muted-foreground">Sin clasificar todavía.</p>
           ) : (
             <>
               <p className="text-xs text-muted-foreground">
@@ -194,14 +238,18 @@ export function GestionReclamo({
           {reclamo.profesionalAsignadoNombre ? (
             <ProfesionalAsignadoCard
               reclamo={reclamo}
-              onCambiar={() =>
-                onUpdate({
-                  ...reclamo,
-                  profesionalAsignadoId: null,
-                  profesionalAsignadoNombre: null,
-                  profesionalAsignadoTelefono: null,
-                  profesionalAsignadoCategoria: null,
-                })
+              // Reasignar/desasignar no tiene endpoint en el API → solo demo.
+              onCambiar={
+                apiEnabled
+                  ? undefined
+                  : () =>
+                      onUpdate({
+                        ...reclamo,
+                        profesionalAsignadoId: null,
+                        profesionalAsignadoNombre: null,
+                        profesionalAsignadoTelefono: null,
+                        profesionalAsignadoCategoria: null,
+                      })
               }
             />
           ) : (
@@ -253,9 +301,9 @@ export function GestionReclamo({
                 size="sm"
                 className="w-full"
                 onClick={handleAsignar}
-                disabled={!seleccionProf}
+                disabled={!seleccionProf || asignando}
               >
-                Asignar y avisar al inquilino
+                {asignando ? 'Asignando…' : 'Asignar y avisar al inquilino'}
               </Button>
             </>
           )}
@@ -347,7 +395,8 @@ function ProfesionalAsignadoCard({
   onCambiar,
 }: {
   reclamo: Reclamo;
-  onCambiar: () => void;
+  /** Si falta (prod, sin endpoint de reasignación), no se ofrece "Cambiar". */
+  onCambiar?: () => void;
 }) {
   // Reconstruimos un objeto mínimo del profesional para reutilizar el helper
   // de mensaje del dialog. Lo importante para el mensaje es la categoría y el
@@ -387,7 +436,12 @@ function ProfesionalAsignadoCard({
       <p className="text-xs text-muted-foreground">
         Le compartimos al inquilino los datos para coordinar.
       </p>
-      <div className="grid grid-cols-[1fr_1fr_auto] gap-1.5 border-t pt-3">
+      <div
+        className={cn(
+          'grid gap-1.5 border-t pt-3',
+          onCambiar ? 'grid-cols-[1fr_1fr_auto]' : 'grid-cols-2',
+        )}
+      >
         <Button
           size="sm"
           variant="outline"
@@ -405,9 +459,11 @@ function ProfesionalAsignadoCard({
             Llamar
           </a>
         </Button>
-        <Button size="sm" variant="ghost" onClick={onCambiar}>
-          Cambiar
-        </Button>
+        {onCambiar && (
+          <Button size="sm" variant="ghost" onClick={onCambiar}>
+            Cambiar
+          </Button>
+        )}
       </div>
     </div>
   );

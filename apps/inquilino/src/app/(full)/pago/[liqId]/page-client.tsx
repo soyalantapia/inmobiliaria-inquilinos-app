@@ -35,29 +35,71 @@ import {
   type DecisionInmoSobrePago,
 } from '@/lib/cross-app-inmo';
 import { aplicarEstadoDemo, useDemoEstado } from '@/lib/demo-estado';
+import { apiEnabled, useLiquidacion } from '@/lib/api/use-pago';
+import type { Liquidacion } from '@/lib/types';
 
 export default function DetallePagoPage({ params }: { params: { liqId: string } }) {
   const router = useRouter();
+
+  // Origen de la liquidación: API en prod (useLiquidacion deriva de
+  // useMisLiquidaciones), liquidacionesMock en la demo offline. La búsqueda
+  // por liqId vive dentro del hook.
+  const { liquidacion: liqApi, cargando } = useLiquidacion(params.liqId);
+
+  // En modo demo seguimos usando el mock + el "modo demo" (al día / atrasado)
+  // y todo el store local de parciales/decisiones. En prod no hay endpoint
+  // del inquilino para esos datos, así que quedan vacíos.
   const liqBase = liquidacionesMock.find((l) => l.id === params.liqId);
-  if (!liqBase) notFound();
-
-  // Aplicamos el modo demo a la liquidación. Si "a tiempo", la fecha de
-  // vencimiento pasa a ser futura → calcularPunitorios devuelve diasAtraso=0
-  // y la pantalla se muestra como "pendiente" sin recargos.
   const [demoEstado] = useDemoEstado();
-  const liqDemo = aplicarEstadoDemo(demoEstado, liqBase);
-  // Si el demo dice "al día" pero igual abrimos esta página, usamos la
-  // liquidación base sin atrasos (asumimos que es histórica/consulta).
-  const liq = liqDemo ?? { ...liqBase, fechaVencimiento: liqBase.fechaVencimiento };
+  const liqDemo = liqBase ? aplicarEstadoDemo(demoEstado, liqBase) : null;
 
+  // Loading real (sólo prod, mientras useMisLiquidaciones está pendiente).
+  if (apiEnabled && cargando) {
+    return (
+      <main className="flex-1 px-5 py-10">
+        <p className="text-sm text-muted-foreground">Cargando la liquidación…</p>
+      </main>
+    );
+  }
+
+  // No encontrada: en demo nunca pasa (generateStaticParams cubre todos los
+  // ids del mock); en prod, si el API no la tiene, vamos a notFound.
+  const liq = apiEnabled
+    ? liqApi
+    : (liqDemo ?? (liqBase ? { ...liqBase, fechaVencimiento: liqBase.fechaVencimiento } : null));
+  if (!liq) notFound();
+
+  return (
+    <DetallePagoView liq={liq} liqId={params.liqId} router={router} />
+  );
+}
+
+/**
+ * Vista del detalle. Separada para poder llamar hooks (useState/useEffect)
+ * después del early-return de loading/notFound sin romper las reglas de
+ * hooks. `liq` ya viene resuelta (API o mock).
+ */
+function DetallePagoView({
+  liq,
+  liqId,
+  router,
+}: {
+  liq: Liquidacion;
+  liqId: string;
+  router: ReturnType<typeof useRouter>;
+}) {
   const [informado, setInformado] = useState<PagoInformado | null>(null);
   const [parciales, setParciales] = useState<PagoInformado[]>([]);
   const [decisionInmo, setDecisionInmo] = useState<DecisionInmoSobrePago | null>(null);
   useEffect(() => {
-    setInformado(leerPagoInformado(params.liqId));
-    setParciales(listarPagosDeLiq(params.liqId));
-    setDecisionInmo(decisionInmoPago(params.liqId));
-  }, [params.liqId]);
+    // Historial de parciales + decisión del inmo: sólo en la demo offline.
+    // En prod el API no expone esos datos al inquilino, así que quedan vacíos
+    // (la liq de por sí ya refleja PAGADO cuando el inmo concilia).
+    if (apiEnabled) return;
+    setInformado(leerPagoInformado(liqId));
+    setParciales(listarPagosDeLiq(liqId));
+    setDecisionInmo(decisionInmoPago(liqId));
+  }, [liqId]);
 
   const calc = calcularPunitorios(liq, TASA_PUNITORIA_DIARIA_DEFAULT);
   const vencido = calc.diasAtraso > 0;
@@ -69,7 +111,7 @@ export default function DetallePagoPage({ params }: { params: { liqId: string } 
     informado?.estado === 'INFORMADO' && !rechazadoPorInmo && !confirmadoPorInmo;
   // Saldo pendiente considerando todos los parciales informados (excluye
   // rechazados). Si llega a 0, el inquilino quedó al día por parciales.
-  const saldo = saldoPendiente(params.liqId, calc.totalAPagar);
+  const saldo = saldoPendiente(liqId, calc.totalAPagar);
   const totalInformado = calc.totalAPagar - saldo;
   const hayParciales = parciales.length > 0 && saldo > 0;
   const pagadoEnParciales = !pagado && parciales.length > 0 && saldo === 0;

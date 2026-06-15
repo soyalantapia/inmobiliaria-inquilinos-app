@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Plus } from 'lucide-react';
+import { ArrowLeft, Loader2, Plus } from 'lucide-react';
 import { Button } from '@llave/ui/button';
 import { Input } from '@llave/ui/input';
 import { Label } from '@llave/ui/label';
@@ -12,10 +12,11 @@ import { toast } from '@llave/ui/use-toast';
 import { NavBar } from '@/components/nav-bar';
 import {
   type PermisoCoInquilino,
-  invitarCoInquilino,
   permisoDescripcion,
   permisoLabel,
 } from '@/lib/co-inquilinos-storage';
+import { ApiError } from '@/lib/api/client';
+import { useCoInquilinos } from '@/lib/api/use-coinquilinos';
 
 // Antes el formulario de invitación vivía en un Dialog (modal centrado). En
 // mobile, con 5 campos + permisos + acciones, el modal se pasaba del alto del
@@ -24,6 +25,7 @@ import {
 // (back-header + main + NavBar). No se rompe en ningún teléfono.
 export default function InvitarCoInquilinoPage() {
   const router = useRouter();
+  const { invitar } = useCoInquilinos();
   const [nombre, setNombre] = useState('');
   const [dni, setDni] = useState('');
   const [email, setEmail] = useState('');
@@ -31,8 +33,10 @@ export default function InvitarCoInquilinoPage() {
   const [relacion, setRelacion] = useState('Pareja');
   const [relacionOtro, setRelacionOtro] = useState('');
   const [permiso, setPermiso] = useState<PermisoCoInquilino>('PAGAR');
+  const [enviando, setEnviando] = useState(false);
 
-  const enviar = () => {
+  const enviar = async () => {
+    if (enviando) return;
     const dniLimpio = dni.replace(/\D/g, '');
     if (!nombre.trim() || !email.trim()) {
       toast({ title: 'Faltan nombre y email', variant: 'destructive' });
@@ -54,19 +58,32 @@ export default function InvitarCoInquilinoPage() {
       toast({ title: 'Aclará la relación', variant: 'destructive' });
       return;
     }
-    invitarCoInquilino({
-      nombre: nombre.trim(),
-      dni: dniLimpio,
-      email: email.trim(),
-      telefono: telefono.trim(),
-      relacion: relacion === 'Otro' ? relacionOtro.trim() : relacion,
-      permiso,
-    });
-    toast({
-      title: 'Invitación enviada',
-      description: `Le mandamos un mail a ${email.trim()}`,
-    });
-    router.push('/co-inquilinos');
+    const emailLimpio = email.trim();
+    setEnviando(true);
+    try {
+      await invitar({
+        nombre: nombre.trim(),
+        dni: dniLimpio,
+        email: emailLimpio,
+        telefono: telefono.trim(),
+        relacion: relacion === 'Otro' ? relacionOtro.trim() : relacion,
+        permiso,
+      });
+      toast({
+        title: 'Invitación enviada',
+        description: `Le mandamos un mail a ${emailLimpio}`,
+      });
+      router.push('/co-inquilinos');
+    } catch (err) {
+      // El API responde 409 si ya invitaste a alguien con ese email.
+      toast({
+        title: 'No se pudo enviar la invitación',
+        description:
+          err instanceof ApiError ? err.message : 'Revisá los datos e intentá de nuevo.',
+        variant: 'destructive',
+      });
+      setEnviando(false);
+    }
   };
 
   return (
@@ -88,7 +105,7 @@ export default function InvitarCoInquilinoPage() {
           Le mandamos un mail con un link para que active su acceso.
         </p>
 
-        <form onSubmit={(e) => { e.preventDefault(); enviar(); }} className="mt-5 space-y-4">
+        <form onSubmit={(e) => { e.preventDefault(); void enviar(); }} className="mt-5 space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="ci-nombre">Nombre</Label>
             <Input
@@ -203,9 +220,13 @@ export default function InvitarCoInquilinoPage() {
             <Button type="button" variant="outline" className="flex-1" asChild>
               <Link href="/co-inquilinos">Cancelar</Link>
             </Button>
-            <Button type="submit" className="flex-1">
-              <Plus className="h-4 w-4" />
-              Enviar invitación
+            <Button type="submit" className="flex-1" disabled={enviando}>
+              {enviando ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Plus className="h-4 w-4" />
+              )}
+              {enviando ? 'Enviando…' : 'Enviar invitación'}
             </Button>
           </div>
         </form>

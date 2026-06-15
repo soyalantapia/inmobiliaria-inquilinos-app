@@ -10,8 +10,7 @@ import { Card, CardContent } from '@llave/ui/card';
 import { Skeleton } from '@llave/ui/skeleton';
 import { NavBar } from '@/components/nav-bar';
 import { MobileGreetingHeader } from '@/components/mobile-greeting-header';
-import { listarReclamos } from '@/lib/reclamos-storage';
-import { estadoReclamoDeInmo } from '@/lib/cross-app-inmo';
+import { useMisReclamos } from '@/lib/api/use-mis-reclamos';
 import {
   categoriaIcono,
   categoriaLabel,
@@ -26,7 +25,9 @@ import type { Reclamo } from '@/lib/types';
 export default function MisReclamosPage() {
   const searchParams = useSearchParams();
   const idNuevo = searchParams?.get('nuevo') ?? null;
-  const [reclamos, setReclamos] = useState<Reclamo[] | null>(null);
+  // Datos reales del API (o storage local en demo). `cargando` controla el
+  // skeleton; en error de API `reclamos` viene vacío (sin caer al mock).
+  const { reclamos, cargando } = useMisReclamos();
   // El banner pasa por 3 etapas: visible → desvaneciéndose (clase animada) → oculto.
   // No inicializamos desde idNuevo: si Next navega client-side entre
   // /reclamos/nuevo y /reclamos?nuevo=X, el componente persiste y el useState
@@ -35,26 +36,6 @@ export default function MisReclamosPage() {
   // el ref persiste entre los dos mounts y el segundo mount queda con state
   // 'oculto' y ref ya igual al id (skip), dejando el banner invisible.
   const [bannerEstado, setBannerEstado] = useState<'visible' | 'saliendo' | 'oculto'>('oculto');
-
-  useEffect(() => {
-    // Mergeamos cada reclamo del storage local con el estado del lado inmo.
-    // Si la inmo (o el auto-cierre por profesional LISTO) cambió el estado,
-    // queremos reflejarlo en la lista — sin esto, EN_CURSO podía mostrar
-    // reclamos que ya estaban RESUELTOS según el inmo, y el inquilino se
-    // enteraba recién al entrar al detalle.
-    const locales = listarReclamos();
-    const merged = locales.map((r) => {
-      const inmo = estadoReclamoDeInmo(r.id);
-      if (!inmo) return r;
-      return {
-        ...r,
-        estado: inmo.estado ?? r.estado,
-        resolucion: inmo.resolucion ?? r.resolucion,
-        resueltoAt: inmo.resueltoAt ?? r.resueltoAt,
-      };
-    });
-    setReclamos(merged);
-  }, []);
 
   // R13: cuando aparece un id nuevo por query, abrimos el banner.
   useEffect(() => {
@@ -77,15 +58,14 @@ export default function MisReclamosPage() {
   const cerrarBanner = () => setBannerEstado('saliendo');
 
   const abiertos = useMemo(
-    () =>
-      reclamos?.filter((r) => r.estado === 'ABIERTO' || r.estado === 'EN_CURSO') ?? [],
+    () => reclamos.filter((r) => r.estado === 'ABIERTO' || r.estado === 'EN_CURSO'),
     [reclamos],
   );
   const archivados = useMemo(
     () =>
-      reclamos?.filter(
+      reclamos.filter(
         (r) => r.estado === 'RESUELTO' || r.estado === 'CERRADO' || r.estado === 'RECHAZADO',
-      ) ?? [],
+      ),
     [reclamos],
   );
 
@@ -139,7 +119,7 @@ export default function MisReclamosPage() {
           </Card>
         )}
 
-        {reclamos === null ? (
+        {cargando ? (
           <ListaSkeleton />
         ) : reclamos.length === 0 ? (
           <EmptyState />

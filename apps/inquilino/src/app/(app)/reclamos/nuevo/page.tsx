@@ -10,8 +10,8 @@ import { Input } from '@llave/ui/input';
 import { Label } from '@llave/ui/label';
 import { Textarea } from '@llave/ui/textarea';
 import { NavBar } from '@/components/nav-bar';
-import { inquilinoActual } from '@/lib/mock-data';
-import { crearReclamo } from '@/lib/reclamos-storage';
+import { useMisReclamos } from '@/lib/api/use-mis-reclamos';
+import { categoriaLabel } from '@/lib/reclamos-config';
 import type { Categoria, Urgencia } from '@/lib/types';
 
 const MAX_FOTO_MB = 4;
@@ -79,6 +79,7 @@ const urgencias: Array<{ value: Urgencia; label: string; descripcion: string }> 
 
 export default function NuevoReclamoPage() {
   const router = useRouter();
+  const { crearReclamo } = useMisReclamos();
   const fileRef = useRef<HTMLInputElement>(null);
   const [categoria, setCategoria] = useState<Categoria | ''>('');
   const [tituloOtro, setTituloOtro] = useState(''); // título libre cuando categoría === 'OTRO'
@@ -154,22 +155,28 @@ export default function NuevoReclamoPage() {
   const enviar = async () => {
     if (!puedeEnviar) return;
     setEnviando(true);
-    await new Promise((r) => setTimeout(r, 400));
-    // Si la categoría es OTRO, prependemos el título aclaratorio a la
-    // descripción para que aparezca destacado en el panel de la inmobiliaria.
-    const descFinal =
+    // El título: en "Otro" lo escribe el usuario, si no usamos el label de la
+    // categoría (el API exige titulo ≥3). La descripción va cruda — el hook
+    // combina título+descripción para el panel de la inmo igual que antes.
+    const titulo =
       categoria === 'OTRO' && tituloOtro.trim().length > 0
-        ? `${tituloOtro.trim()} — ${descripcion.trim()}`
-        : descripcion.trim();
-    const nuevo = crearReclamo({
-      inquilino: inquilinoActual.nombre,
-      contratoId: inquilinoActual.contratoId,
-      direccion: inquilinoActual.direccion,
-      categoria: categoria as Categoria,
-      descripcion: descFinal,
-      urgencia: urgencia as Urgencia,
-      fotoDataUrl: fotoPreview,
-    });
+        ? tituloOtro.trim()
+        : categoriaLabel[categoria as Categoria];
+    let nuevo;
+    try {
+      nuevo = await crearReclamo({
+        titulo,
+        categoria: categoria as Categoria,
+        descripcion: descripcion.trim(),
+        urgencia: urgencia as Urgencia,
+        fotoDataUrl: fotoPreview,
+      });
+    } catch {
+      // El POST falló (sin conexión / error del server): liberamos el botón
+      // para que el usuario pueda reintentar sin quedar trabado en "Enviando…".
+      setEnviando(false);
+      return;
+    }
     setEnviando(false);
     // Limpiar borrador — el reclamo ya está persistido, no queremos que al
     // crear el siguiente aparezca con datos del anterior pre-cargados.

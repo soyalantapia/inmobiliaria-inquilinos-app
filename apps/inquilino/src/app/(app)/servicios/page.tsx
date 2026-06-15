@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
   AlertTriangle,
@@ -28,13 +28,10 @@ import {
   type TipoServicio,
   ESTADO_LABEL,
   TIPO_LABEL,
-  eliminarBoleta,
   formatPeriodo,
   formatTamanio,
-  listarBoletasDe,
-  marcarBoletaPagada,
 } from '@/lib/boletas-servicios-storage';
-import { contratoMock } from '@/lib/mock-data';
+import { type ServicioPublico, useBoletas, useServicios } from '@/lib/api/use-servicios';
 import { formatFecha, formatFechaCorta, formatMonto } from '@/lib/format';
 
 const ICONO_TIPO: Record<TipoServicio, typeof Zap> = {
@@ -70,15 +67,16 @@ function periodoActual(): string {
 }
 
 export default function ServiciosPage() {
-  const [boletas, setBoletas] = useState<BoletaServicio[]>([]);
-  const [hidratado, setHidratado] = useState(false);
+  const {
+    boletas,
+    hidratado,
+    puedeGestionar,
+    marcarPagada: marcarPagadaApi,
+    eliminar: eliminarApi,
+  } = useBoletas();
+  const { servicios } = useServicios();
   const [eliminar, setEliminar] = useState<BoletaServicio | null>(null);
   const [filtroTipo, setFiltroTipo] = useState<TipoServicio | 'TODOS'>('TODOS');
-
-  useEffect(() => {
-    setBoletas(listarBoletasDe(contratoMock.id));
-    setHidratado(true);
-  }, []);
 
   // Cálculos derivados — todos en un memo bloque para que no se desperdiguen.
   const stats = useMemo(() => {
@@ -118,9 +116,8 @@ export default function ServiciosPage() {
   const sinPagarFiltrado = filtrarPorTipo(stats.sinPagar);
   const pagadasFiltrado = filtrarPorTipo(stats.pagadas);
 
-  const marcarPagada = (b: BoletaServicio) => {
-    marcarBoletaPagada(b.contratoId, b.id);
-    setBoletas(listarBoletasDe(contratoMock.id));
+  const marcarPagada = async (b: BoletaServicio) => {
+    await marcarPagadaApi(b);
     toast({
       variant: 'success',
       title: 'Marcado como pagado',
@@ -128,11 +125,11 @@ export default function ServiciosPage() {
     });
   };
 
-  const confirmarEliminar = () => {
+  const confirmarEliminar = async () => {
     if (!eliminar) return;
-    eliminarBoleta(eliminar.contratoId, eliminar.id);
-    setBoletas(listarBoletasDe(contratoMock.id));
+    const b = eliminar;
     setEliminar(null);
+    await eliminarApi(b);
     toast({ title: 'Boleta eliminada' });
   };
 
@@ -178,6 +175,13 @@ export default function ServiciosPage() {
             ve cuando se cargan y queda el historial archivado.
           </p>
         </div>
+
+        {/* Datos de los servicios públicos de la propiedad (NIS, distribuidora,
+            medidor) — sirven al inquilino para identificar qué boleta sube y
+            verificar que sea la suya. Solo aparece si el API los devuelve. */}
+        {servicios.length > 0 && (
+          <ServiciosPublicosCard servicios={servicios} />
+        )}
 
         {/* Alerta de boleta próxima a vencer (≤ 7 días, no pagada).
             Va arriba de las stats para que el inquilino la vea apenas entra. */}
@@ -311,6 +315,7 @@ export default function ServiciosPage() {
                 contador={sinPagarFiltrado.length}
                 accent
                 boletas={sinPagarFiltrado}
+                puedeGestionar={puedeGestionar}
                 onMarcarPagada={marcarPagada}
                 onEliminar={setEliminar}
               />
@@ -322,6 +327,7 @@ export default function ServiciosPage() {
                 titulo="Pagadas"
                 contador={pagadasFiltrado.length}
                 boletas={pagadasFiltrado}
+                puedeGestionar={puedeGestionar}
                 onMarcarPagada={marcarPagada}
                 onEliminar={setEliminar}
               />
@@ -360,6 +366,54 @@ export default function ServiciosPage() {
 }
 
 // ============================================================
+// ServiciosPublicosCard — NIS / distribuidora / medidor de la propiedad
+// ============================================================
+function ServiciosPublicosCard({ servicios }: { servicios: ServicioPublico[] }) {
+  return (
+    <Card>
+      <CardContent className="space-y-3 p-4">
+        <div className="space-y-0.5">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Servicios de la propiedad
+          </h2>
+          <p className="text-[11px] text-muted-foreground">
+            Datos para identificar tus boletas (número de cliente / NIS).
+          </p>
+        </div>
+        <ul role="list" className="divide-y">
+          {servicios.map((s) => {
+            const Icon = ICONO_TIPO[s.tipo];
+            return (
+              <li key={s.id} className="flex items-start gap-3 py-2.5 text-sm">
+                <div className="grid h-9 w-9 shrink-0 place-items-center rounded bg-muted text-muted-foreground">
+                  <Icon className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1 space-y-0.5">
+                  <p className="text-sm font-medium">
+                    {TIPO_LABEL[s.tipo]} · {s.distribuidora}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    N° cliente / NIS: <span className="font-medium">{s.nis}</span>
+                    {s.numeroMedidor && (
+                      <> · Medidor {s.numeroMedidor}</>
+                    )}
+                  </p>
+                  {s.titular && (
+                    <p className="truncate text-[10px] text-muted-foreground">
+                      Titular: {s.titular}
+                    </p>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ============================================================
 // BoletasSection — render de una sección de boletas (Sin pagar / Pagadas)
 // ============================================================
 function BoletasSection({
@@ -367,6 +421,7 @@ function BoletasSection({
   contador,
   boletas,
   accent,
+  puedeGestionar,
   onMarcarPagada,
   onEliminar,
 }: {
@@ -374,6 +429,7 @@ function BoletasSection({
   contador: number;
   boletas: BoletaServicio[];
   accent?: boolean;
+  puedeGestionar: boolean;
   onMarcarPagada: (b: BoletaServicio) => void;
   onEliminar: (b: BoletaServicio) => void;
 }) {
@@ -395,6 +451,7 @@ function BoletasSection({
             <BoletaRow
               key={b.id}
               boleta={b}
+              puedeGestionar={puedeGestionar}
               onMarcarPagada={onMarcarPagada}
               onEliminar={onEliminar}
             />
@@ -407,19 +464,24 @@ function BoletasSection({
 
 function BoletaRow({
   boleta: b,
+  puedeGestionar,
   onMarcarPagada,
   onEliminar,
 }: {
   boleta: BoletaServicio;
+  puedeGestionar: boolean;
   onMarcarPagada: (b: BoletaServicio) => void;
   onEliminar: (b: BoletaServicio) => void;
 }) {
   const Icon = ICONO_TIPO[b.tipo];
   const esImagen = b.tipoMime.startsWith('image/');
   const sinPagar = b.estado !== 'PAGADA';
+  // El archivo solo es descargable/previsualizable si tenemos su contenido
+  // (demo: dataUrl). En prod el API aún no devuelve el archivo real.
+  const tieneArchivo = !!b.dataUrl;
   return (
     <li className="flex items-start gap-3 p-3 text-sm">
-      {esImagen ? (
+      {esImagen && tieneArchivo ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={b.dataUrl}
@@ -450,8 +512,10 @@ function BoletaRow({
       </div>
       <div className="flex flex-col gap-1">
         {/* Copy más claro: "Ya pagué" en vez de "Pagué".
-            Comunica que la acción es marcar como paga, no pagar acá. */}
-        {sinPagar && (
+            Comunica que la acción es marcar como paga, no pagar acá.
+            puedeGestionar=false (prod sin endpoint) → ocultamos la acción
+            para no prometer algo que el API no persiste todavía. */}
+        {sinPagar && puedeGestionar && (
           <Button
             variant="ghost"
             size="sm"
@@ -465,30 +529,40 @@ function BoletaRow({
         {/* Download + Trash con SEPARACIÓN amplia para evitar toque
             accidental en mobile. Antes ambos íconos estaban a 4px y
             con dedo gordo podías borrar la boleta que acabás de subir.
-            El trash queda al borde derecho con un divider visual. */}
-        <div className="flex items-center gap-1">
-          <Button asChild variant="ghost" size="sm">
-            <a
-              href={b.dataUrl}
-              download={b.nombreArchivo}
-              aria-label={`Descargar boleta de ${TIPO_LABEL[b.tipo]} ${formatPeriodo(b.periodo)}`}
-            >
-              <Download className="h-3.5 w-3.5" />
-            </a>
-          </Button>
-          {/* Separador físico + margen lateral grande para que el
-              trash quede aislado y requiera intención clara. */}
-          <span className="mx-2 h-5 w-px bg-border" aria-hidden="true" />
-          <Button
-            variant="ghost"
-            size="sm"
-            className="hover:bg-destructive/10"
-            onClick={() => onEliminar(b)}
-            aria-label={`Eliminar boleta de ${TIPO_LABEL[b.tipo]} ${formatPeriodo(b.periodo)}`}
-          >
-            <Trash2 className="h-3.5 w-3.5 text-destructive" />
-          </Button>
-        </div>
+            El trash queda al borde derecho con un divider visual.
+            El download solo aparece si tenemos el archivo (demo); el trash
+            solo si puedeGestionar (no hay endpoint DELETE en el API). */}
+        {(tieneArchivo || puedeGestionar) && (
+          <div className="flex items-center gap-1">
+            {tieneArchivo && (
+              <Button asChild variant="ghost" size="sm">
+                <a
+                  href={b.dataUrl}
+                  download={b.nombreArchivo}
+                  aria-label={`Descargar boleta de ${TIPO_LABEL[b.tipo]} ${formatPeriodo(b.periodo)}`}
+                >
+                  <Download className="h-3.5 w-3.5" />
+                </a>
+              </Button>
+            )}
+            {tieneArchivo && puedeGestionar && (
+              // Separador físico + margen lateral grande para que el
+              // trash quede aislado y requiera intención clara.
+              <span className="mx-2 h-5 w-px bg-border" aria-hidden="true" />
+            )}
+            {puedeGestionar && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="hover:bg-destructive/10"
+                onClick={() => onEliminar(b)}
+                aria-label={`Eliminar boleta de ${TIPO_LABEL[b.tipo]} ${formatPeriodo(b.periodo)}`}
+              >
+                <Trash2 className="h-3.5 w-3.5 text-destructive" />
+              </Button>
+            )}
+          </div>
+        )}
       </div>
     </li>
   );

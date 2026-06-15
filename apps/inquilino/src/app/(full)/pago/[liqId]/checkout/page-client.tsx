@@ -44,13 +44,25 @@ import { cargosExtraDelInquilino } from '@/lib/cross-app-inmo';
 import { marcarVariosPagados } from '@/lib/cargos-pagados-storage';
 import { extraerComprobante, type ExtraccionIA } from '@/lib/extraccion-ia';
 import { leerSesion } from '@/lib/auth-otp';
+import {
+  apiEnabled,
+  useInformarPago,
+  useLiquidacion,
+} from '@/lib/api/use-pago';
 
 type Step = 'datos' | 'comprobante' | 'ok';
 const MAX_FILE_MB = 5;
 
 export default function CheckoutPage({ params }: { params: { liqId: string } }) {
   const router = useRouter();
-  const liq = liquidacionesMock.find((l) => l.id === params.liqId);
+  // Liquidación: API en prod (useLiquidacion → useMisLiquidaciones), mock en
+  // la demo offline. La búsqueda por liqId vive dentro del hook.
+  const { liquidacion: liqApi, cargando } = useLiquidacion(params.liqId);
+  const liq = apiEnabled
+    ? liqApi
+    : (liquidacionesMock.find((l) => l.id === params.liqId) ?? null);
+
+  const informarPago = useInformarPago();
 
   const [step, setStep] = useState<Step>('datos');
   /** Pagos previos (parciales o total) ya informados para esta liq. */
@@ -64,6 +76,9 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
   >(null);
 
   useEffect(() => {
+    // Historial de parciales + decisión del inmo: sólo en la demo offline.
+    // En prod el API no expone esos datos al inquilino.
+    if (apiEnabled) return;
     setPagosPrevios(listarPagosDeLiq(params.liqId));
     setDecisionInmoUltima(decisionInmoPago(params.liqId));
   }, [params.liqId]);
@@ -72,6 +87,14 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
     () => (liq ? calcularPunitorios(liq, TASA_PUNITORIA_DIARIA_DEFAULT) : null),
     [liq],
   );
+
+  if (apiEnabled && cargando) {
+    return (
+      <main className="flex-1 px-5 py-10">
+        <p className="text-sm text-muted-foreground">Cargando la liquidación…</p>
+      </main>
+    );
+  }
 
   if (!liq || !calc) {
     return (
@@ -169,10 +192,18 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
             liqId={liq.id}
             monto={montoActual}
             tipo={cubreTodo ? 'TOTAL' : 'PARCIAL'}
+            // En prod la persistencia es el POST real /pagos/informar; en la
+            // demo offline seguimos guardando en pago-storage local.
+            informarPagoApi={
+              apiEnabled
+                ? (input) => informarPago.mutateAsync(input)
+                : null
+            }
             onAtras={() => setStep('datos')}
             onEnviado={(p) => {
               setUltimoEnviado(p);
-              setPagosPrevios(listarPagosDeLiq(params.liqId));
+              // El historial local sólo aplica a la demo: en prod queda vacío.
+              if (!apiEnabled) setPagosPrevios(listarPagosDeLiq(params.liqId));
               setMontoElegido(null);
               setStep('ok');
               toast({
@@ -186,8 +217,15 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
         {(step === 'ok' || completado) && (
           <StepConfirmado
             informado={ultimoEnviado ?? pagosPrevios[pagosPrevios.length - 1] ?? null}
-            saldoRestante={saldo}
+            // En prod no hay historial de parciales: el saldo restante se
+            // deriva del pago recién enviado (total - lo informado ahora).
+            saldoRestante={
+              apiEnabled
+                ? Math.max(0, totalAPagar - (ultimoEnviado?.monto ?? totalAPagar))
+                : saldo
+            }
             moneda={liq.moneda}
+            allowReenviar={!apiEnabled}
             onPagarOtroParcial={() => {
               setMontoElegido(null);
               setUltimoEnviado(null);
@@ -631,12 +669,26 @@ function StepSubirComprobante({
   liqId,
   monto,
   tipo,
+  informarPagoApi,
   onAtras,
   onEnviado,
 }: {
   liqId: string;
   monto: number;
   tipo: 'TOTAL' | 'PARCIAL';
+  /**
+   * En prod: POST real `/pagos/informar`. Si es null, estamos en la demo
+   * offline y persistimos en el store local (`agregarPago`).
+   */
+  informarPagoApi:
+    | ((input: {
+        liquidacionId: string;
+        monto: number;
+        metodo: 'TRANSFERENCIA';
+        nroOperacion?: string | null;
+        fechaTransferencia: string;
+      }) => Promise<unknown>)
+    | null;
   onAtras: () => void;
   onEnviado: (p: PagoInformado) => void;
 }) {
@@ -713,6 +765,52 @@ function StepSubirComprobante({
   const enviar = async () => {
     if (!file) return;
     setEnviando(true);
+    const nroOp = nroOperacion.trim() || extraccion?.nroOperacion || null;
+    const enviadoAt = new Date().toISOString();
+
+    // ===== Prod: POST real /pagos/informar =====
+    if (informarPagoApi) {
+      try {
+        await informarPagoApi({
+          liquidacionId: liqId,
+          monto,
+          metodo: 'TRANSFERENCIA',
+          nroOperacion: nroOp,
+          fechaTransferencia: enviadoAt,
+        });
+      } catch (e) {
+        setEnviando(false);
+        setError(
+          e instanceof Error
+            ? e.message
+            : 'No pudimos informar el pago. Reintentá en un momento.',
+        );
+        return;
+      }
+      // Objeto sólo para la pantalla de confirmación (no se persiste local:
+      // el pago ya quedó en la DB; el comprobante adjunto se sube en backend
+      // real cuando exista el endpoint de upload).
+      const informado: PagoInformado = {
+        v: 1,
+        id: `api_${Date.now().toString(36)}`,
+        liqId,
+        tipo,
+        estado: 'INFORMADO',
+        monto,
+        nroOperacion: nroOp,
+        comprobanteFileName: file.name,
+        comprobanteDataUrl: preview,
+        comprobanteSize: file.size,
+        comprobanteMime: file.type,
+        enviadoAt,
+        extraccionIA: extraccion ?? undefined,
+      };
+      setEnviando(false);
+      onEnviado(informado);
+      return;
+    }
+
+    // ===== Demo offline: store local =====
     // mock: en Sprint 3 esto sube a R2 y crea Pago en la DB
     await new Promise((r) => setTimeout(r, 800));
     const informado = agregarPago({
@@ -720,12 +818,12 @@ function StepSubirComprobante({
       tipo,
       estado: 'INFORMADO',
       monto,
-      nroOperacion: nroOperacion.trim() || extraccion?.nroOperacion || null,
+      nroOperacion: nroOp,
       comprobanteFileName: file.name,
       comprobanteDataUrl: preview,
       comprobanteSize: file.size,
       comprobanteMime: file.type,
-      enviadoAt: new Date().toISOString(),
+      enviadoAt,
       extraccionIA: extraccion ?? undefined,
     });
     // Si el inquilino tenía cargos extra USO_Y_GOCE pendientes del mes
@@ -894,6 +992,7 @@ function StepConfirmado({
   informado,
   saldoRestante,
   moneda,
+  allowReenviar,
   onPagarOtroParcial,
   onReenviar,
   onVolver,
@@ -901,6 +1000,12 @@ function StepConfirmado({
   informado: PagoInformado | null;
   saldoRestante: number;
   moneda: 'ARS' | 'USD';
+  /**
+   * "Borrar todos los pagos y reenviar" es una operación del store local
+   * (demo). En prod el pago ya quedó informado en la DB y no se puede
+   * "olvidar" desde acá, así que ocultamos el botón.
+   */
+  allowReenviar: boolean;
   onPagarOtroParcial: () => void;
   onReenviar: () => void;
   onVolver: () => void;
@@ -1006,9 +1111,11 @@ function StepConfirmado({
             <Button size="xl" className="w-full" onClick={onVolver}>
               Volver al inicio
             </Button>
-            <Button variant="ghost" className="w-full" onClick={onReenviar}>
-              Borrar todos los pagos y reenviar
-            </Button>
+            {allowReenviar && (
+              <Button variant="ghost" className="w-full" onClick={onReenviar}>
+                Borrar todos los pagos y reenviar
+              </Button>
+            )}
           </>
         )}
       </div>

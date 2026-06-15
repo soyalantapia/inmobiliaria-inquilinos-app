@@ -33,6 +33,7 @@ import { Topbar } from '@/components/topbar';
 import { ValidadorResumenDialog } from '@/components/validador-resumen-dialog';
 import { apiEnabled } from '@/lib/api/client';
 import { useContratos } from '@/lib/api/hooks';
+import { useAResolverCount } from '@/lib/api/use-pagos';
 import {
   contactosCobranzaMock,
   pagosInformadosMock,
@@ -116,37 +117,49 @@ export default function PagosPage() {
   const [validadorOpen, setValidadorOpen] = useState(false);
 
   // En producción (API) la cartera real viene de useContratos; los paneles
-  // de conciliación todavía-no-cableados (morosos/cargos/servicios/validar)
-  // se muestran solo en el build demo (!apiEnabled) para no inventar data.
+  // de conciliación todavía-no-cableados (morosos/cargos/servicios) se
+  // muestran solo en el build demo (!apiEnabled) para no inventar data. La
+  // cola "A resolver" (pagos informados) SÍ está cableada al API.
   const real = apiEnabled;
   const { contratos } = useContratos();
 
-  // Recalculamos el contador de pagos "a resolver" en cliente porque
-  // estadoDePago lee de localStorage (acciones previas del admin).
+  // Conteo de comprobantes "a resolver". En prod sale de /pagos (estado
+  // INFORMADO); en demo, del mock + localStorage. El hook ya hace el branch.
+  const { count: aResolverApi, deApi: aResolverDeApi } = useAResolverCount();
+
+  // En modo API el contador es reactivo (viene del hook): lo reflejamos y
+  // defaulteamos a "A resolver" si hay pendientes la primera vez.
   useEffect(() => {
+    if (!aResolverDeApi) return;
+    setAResolverCount(aResolverApi);
+    setFiltro((prev) => {
+      if (prev !== 'TODOS') return prev;
+      return aResolverApi > 0 ? 'A_RESOLVER' : 'TODOS';
+    });
+  }, [aResolverDeApi, aResolverApi]);
+
+  // En modo demo recalculamos en cliente porque estadoDePago lee de
+  // localStorage (acciones previas del admin) y cambia entre pestañas.
+  useEffect(() => {
+    if (aResolverDeApi) return;
     const recount = () => {
-      // En modo real (API) la cola de validación todavía no está cableada:
-      // no inventamos comprobantes informados desde el mock.
-      const pendientes = real
-        ? 0
-        : pagosInformadosMock.filter((p) => estadoDePago(p.id) === 'INFORMADO').length;
+      const pendientes = pagosInformadosMock.filter(
+        (p) => estadoDePago(p.id) === 'INFORMADO',
+      ).length;
       setAResolverCount(pendientes);
-      // Default a "A resolver" si hay algo, sólo la primera vez (no
-      // sobreescribimos si el usuario ya cambió de filtro).
       setFiltro((prev) => {
         if (prev !== 'TODOS') return prev;
         return pendientes > 0 ? 'A_RESOLVER' : 'TODOS';
       });
     };
     recount();
-    // Re-chequear cuando cambia el storage en otra pestaña / acción
     const onStorage = (e: StorageEvent) => {
       if (e.key?.startsWith('llave-inmo:conciliacion')) recount();
     };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [real]);
+  }, [aResolverDeApi]);
 
   const counters = useMemo(
     () => ({
@@ -529,17 +542,16 @@ export default function PagosPage() {
         )}
 
         {/* Vista "A resolver": comprobantes informados pendientes de tu OK.
-            Se resuelve en este mismo lugar (sin cards sueltas arriba). */}
+            Se resuelve en este mismo lugar (sin cards sueltas arriba).
+            PagosPorValidar internamente usa el API en prod y el mock en demo;
+            su onChange refleja el conteo real (y solo lo sobreescribimos en
+            demo: en prod el contador ya es reactivo vía useAResolverCount). */}
         {filtro === 'A_RESOLVER' ? (
-          real ? (
-            <Card>
-              <div className="py-10 text-center text-sm text-muted-foreground">
-                No hay comprobantes informados esperando validación.
-              </div>
-            </Card>
-          ) : (
-            <PagosPorValidar onChange={(pendientes) => setAResolverCount(pendientes)} />
-          )
+          <PagosPorValidar
+            onChange={(pendientes) => {
+              if (!aResolverDeApi) setAResolverCount(pendientes);
+            }}
+          />
         ) : /* Mobile: lista de cards. Desktop (md+): tabla.
             En mobile la tabla se cortaba horizontalmente. Las cards muestran
             la misma info verticalmente y son tap-friendly. */

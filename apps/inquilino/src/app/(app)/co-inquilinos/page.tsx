@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import {
   ArrowLeft,
   CheckCircle2,
   Clock,
+  Loader2,
   Mail,
   Phone,
   Trash2,
@@ -22,43 +23,49 @@ import { NavBar } from '@/components/nav-bar';
 import {
   type CoInquilino,
   type PermisoCoInquilino,
-  aceptarInvitacion,
-  cambiarPermiso,
-  eliminarCoInquilino,
-  listarCoInquilinos,
   permisoDescripcion,
   permisoLabel,
 } from '@/lib/co-inquilinos-storage';
+import { useCoInquilinos } from '@/lib/api/use-coinquilinos';
 import { formatFecha } from '@/lib/format';
 
 export default function CoInquilinosPage() {
-  const [lista, setLista] = useState<CoInquilino[]>([]);
-  const [hidratado, setHidratado] = useState(false);
+  const { coInquilinos, cargando, deApi, aceptar, cambiarPermiso, eliminar } =
+    useCoInquilinos();
   const [eliminando, setEliminando] = useState<CoInquilino | null>(null);
 
-  useEffect(() => {
-    setLista(listarCoInquilinos());
-    setHidratado(true);
-  }, []);
-
-  const handleAceptar = (id: string) => {
-    aceptarInvitacion(id);
-    setLista(listarCoInquilinos());
-    toast({ title: 'Aceptado (simulación)' });
+  const handleAceptar = async (id: string) => {
+    try {
+      await aceptar(id);
+      toast({ title: deApi ? 'Invitación aceptada' : 'Aceptado (simulación)' });
+    } catch {
+      toast({
+        title: 'No se pudo aceptar',
+        description: 'La aceptación real llega por el link que le enviamos.',
+        variant: 'destructive',
+      });
+    }
   };
 
-  const handleEliminar = () => {
+  const handleEliminar = async () => {
     if (!eliminando) return;
-    eliminarCoInquilino(eliminando.id);
-    setLista(listarCoInquilinos());
+    const co = eliminando;
     setEliminando(null);
-    toast({ title: 'Removido' });
+    try {
+      await eliminar(co.id);
+      toast({ title: 'Removido' });
+    } catch {
+      toast({ title: 'No se pudo remover', variant: 'destructive' });
+    }
   };
 
-  const handleCambiarPermiso = (id: string, p: PermisoCoInquilino) => {
-    cambiarPermiso(id, p);
-    setLista(listarCoInquilinos());
-    toast({ title: 'Permiso actualizado' });
+  const handleCambiarPermiso = async (id: string, p: PermisoCoInquilino) => {
+    try {
+      await cambiarPermiso(id, p);
+      toast({ title: 'Permiso actualizado' });
+    } catch {
+      toast({ title: 'No se pudo actualizar el permiso', variant: 'destructive' });
+    }
   };
 
   return (
@@ -100,7 +107,12 @@ export default function CoInquilinosPage() {
           </Button>
         </div>
 
-        {hidratado && lista.length === 0 ? (
+        {cargando ? (
+          <Card className="p-8 text-center">
+            <Loader2 className="mx-auto h-10 w-10 animate-spin text-muted-foreground/50" />
+            <p className="mt-2 text-sm font-medium">Cargando co-inquilinos…</p>
+          </Card>
+        ) : coInquilinos.length === 0 ? (
           <Card className="p-8 text-center">
             <Users className="mx-auto h-10 w-10 text-muted-foreground/50" />
             <p className="mt-2 text-sm font-medium">Todavía no invitaste a nadie</p>
@@ -110,7 +122,7 @@ export default function CoInquilinosPage() {
           </Card>
         ) : (
           <div className="space-y-3">
-            {lista.map((c) => (
+            {coInquilinos.map((c) => (
               <CoInquilinoCard
                 key={c.id}
                 co={c}

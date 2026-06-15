@@ -24,6 +24,8 @@ import { NavBar } from '@/components/nav-bar';
 import { RatingReclamoCard } from '@/components/rating-reclamo';
 import { ReclamoTimeline } from '@/components/reclamo-timeline';
 import { inquilinoActual } from '@/lib/mock-data';
+import { apiEnabled } from '@/lib/api/client';
+import { useMisReclamos } from '@/lib/api/use-mis-reclamos';
 import {
   agregarMensajeDelInquilino,
   obtenerReclamo,
@@ -57,6 +59,9 @@ const TELEFONO_INMO = '541145321100';
 
 export default function DetalleReclamoPage({ id }: { id: string }) {
   const router = useRouter();
+  // En prod los datos vienen del API (GET /mis-reclamos, filtramos por id).
+  // En demo seguimos leyendo del storage local + merge cross-app inmo.
+  const { reclamos: reclamosApi, cargando: cargandoApi, deApi } = useMisReclamos();
   const [reclamo, setReclamo] = useState<Reclamo | null | undefined>(undefined);
   const [borrador, setBorrador] = useState('');
   const [enviando, setEnviando] = useState(false);
@@ -67,7 +72,8 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
 
   // Re-cargar reclamo + estado del inmo. Lo extraemos en función nombrada
   // porque también lo llamamos después de las acciones del inquilino
-  // (marcar conforme / persiste) para refrescar la UI.
+  // (marcar conforme / persiste) para refrescar la UI. Solo aplica en demo:
+  // en prod el reclamo se deriva del API en el effect de abajo.
   const recargar = (id: string) => {
     if (!id) {
       setReclamo(null);
@@ -108,10 +114,21 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
   };
 
   useEffect(() => {
+    if (deApi) {
+      // Prod: el detalle se sirve del mismo GET /mis-reclamos (el inquilino no
+      // accede a /reclamos/:id). Mientras carga dejamos `undefined` (skeleton);
+      // una vez cargado, si no aparece el id es null (no encontrado).
+      if (cargandoApi) {
+        setReclamo(undefined);
+        return;
+      }
+      setReclamo(reclamosApi.find((r) => r.id === id) ?? null);
+      return;
+    }
     recargar(id);
     // recargar es estable porque no usa nada del scope externo del effect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  }, [id, deApi, cargandoApi, reclamosApi]);
 
   useEffect(() => {
     scrollEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -253,6 +270,11 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
 
   const resuelto = reclamo.estado === 'RESUELTO';
   const cerrado = reclamo.estado === 'CERRADO' || resuelto || reclamo.estado === 'RECHAZADO';
+
+  // Las acciones del inquilino (comentar, confirmar conforme/persiste) escriben
+  // en storage local y NO tienen endpoint en el API todavía. En prod (apiEnabled)
+  // las deshabilitamos para no dar feedback falso; en demo siguen funcionando.
+  const puedeInteractuar = !apiEnabled;
 
   return (
     <>
@@ -484,7 +506,12 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
               el problema sigue, avisanos y volvemos a intervenir.
             </p>
 
-            {!persisteOpen ? (
+            {!puedeInteractuar ? (
+              <p className="rounded-md bg-amber-100/60 px-3 py-2 text-xs text-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
+                Si el problema sigue, avisanos por WhatsApp y volvemos a
+                intervenir.
+              </p>
+            ) : !persisteOpen ? (
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <Button
                   className="bg-emerald-600 text-white hover:bg-emerald-700"
@@ -609,7 +636,7 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
             - Composer (acá): comentarios sobre ESTE reclamo, quedan en historial.
             - FAB WhatsApp (arriba): consultas generales a la inmo.
             - WhatsApp profesional: coordinar día y hora con el técnico. */}
-        {!cerrado ? (
+        {!cerrado && puedeInteractuar ? (
           <Card className="space-y-3 p-4">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -647,6 +674,16 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
             <p className="flex items-center gap-1 text-[11px] text-muted-foreground">
               <Sparkles className="h-3 w-3 text-primary" />
               Te avisamos por WhatsApp cuando te respondan.
+            </p>
+          </Card>
+        ) : !cerrado ? (
+          // Prod: no hay endpoint para que el inquilino comente este reclamo.
+          // Lo derivamos al canal de WhatsApp en vez de mostrar un form muerto.
+          <Card className="space-y-2 p-4 text-center text-sm text-muted-foreground">
+            <MessageCircle className="mx-auto h-6 w-6 text-primary" />
+            <p>
+              ¿Querés agregar algo sobre este reclamo? Escribinos por WhatsApp y
+              lo sumamos al seguimiento.
             </p>
           </Card>
         ) : (
