@@ -79,13 +79,33 @@ export async function coreRoutes(app: FastifyInstance) {
       where: { id, inmobiliariaId: u.inmobiliariaId },
       include: {
         participaciones: { include: { propietario: true } },
-        contratoActual: { include: { inquilinoTitular: true } },
+        contratoActual: {
+          include: {
+            inquilinoTitular: true,
+            liquidaciones: { orderBy: { periodo: 'desc' }, take: 6 },
+          },
+        },
         contratos: { orderBy: { fechaInicio: 'desc' } },
         sociedad: { select: { id: true, nombreComercial: true } },
       },
     });
     if (!propiedad) return reply.code(404).send({ message: 'Propiedad inexistente' });
-    return propiedad;
+    // estadoPagoActual / proximoVencimiento DERIVADOS de liquidaciones reales
+    // (igual que el listado): el detalle no los traía y el front asumía que
+    // estaban → crasheaba al refrescar/deep-link (charAt sobre undefined).
+    let contratoActual = null;
+    if (propiedad.contratoActual) {
+      const { liquidaciones, ...rest } = propiedad.contratoActual;
+      const vencida = liquidaciones.find((l) => l.estado === 'VENCIDO');
+      const actual = vencida ?? liquidaciones[0] ?? null;
+      const pendiente = liquidaciones.find((l) => l.estado === 'PENDIENTE' || l.estado === 'VENCIDO');
+      contratoActual = {
+        ...rest,
+        estadoPagoActual: actual?.estado ?? 'PENDIENTE',
+        proximoVencimiento: pendiente?.fechaVencimiento ?? null,
+      };
+    }
+    return { ...propiedad, contratoActual };
   });
 
   // ===== Propietarios =====

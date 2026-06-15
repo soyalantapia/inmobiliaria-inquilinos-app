@@ -152,11 +152,11 @@ function mapContrato(c: ContratoApi): ContratoListado {
     direccion: c.direccion ?? '—',
     monto: numOrNull(c.monto) ?? 0,
     moneda: c.moneda,
-    estado: c.estado,
+    estado: c.estado ?? 'ACTIVO',
     fechaInicio: (c.fechaInicio ?? '').slice(0, 10),
     fechaFin: (c.fechaFin ?? '').slice(0, 10),
     proximoVencimiento: (c.proximoVencimiento ?? '').slice(0, 10),
-    estadoPagoActual: c.estadoPagoActual,
+    estadoPagoActual: c.estadoPagoActual ?? 'PENDIENTE',
     cbuAlias: c.cbuAlias ?? null,
     titularCuenta: c.titularCuenta ?? null,
   };

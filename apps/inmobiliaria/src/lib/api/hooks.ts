@@ -122,7 +122,9 @@ export function useAnuncios(): {
   });
   const invalidar = () => void qc.invalidateQueries({ queryKey: ['anuncios'] });
 
-  if (!apiEnabled || q.isError) {
+  // Demo offline: seeds locales. SOLO en !apiEnabled — los seeds tienen un
+  // CBU/alias INVENTADO, reenviarlos sería phishing. En prod jamás.
+  if (!apiEnabled) {
     return {
       anuncios: listarAnuncios().map((a) => ({ ...a, conteos: { ...contarAcuses(a), total: a.destinatariosCount } })),
       cargando: false,
@@ -138,6 +140,15 @@ export function useAnuncios(): {
       eliminar: async (id) => {
         eliminarAnuncioLocal(id);
       },
+    };
+  }
+  // Prod con API caída: vacío, nunca seeds.
+  if (q.isError) {
+    return {
+      anuncios: [],
+      cargando: false,
+      crear: async () => { throw new Error('Sin conexión con el servidor'); },
+      eliminar: async () => { throw new Error('Sin conexión con el servidor'); },
     };
   }
 
@@ -198,7 +209,7 @@ export function useAprobaciones(): {
   });
   const invalidar = () => void qc.invalidateQueries({ queryKey: ['aprobaciones'] });
 
-  if (!apiEnabled || q.isError) {
+  if (!apiEnabled) {
     return {
       aprobaciones: listarAprobaciones(),
       cargando: false,
@@ -212,6 +223,15 @@ export function useAprobaciones(): {
         if (!r) throw new Error('No se pudo rechazar');
         return r;
       },
+    };
+  }
+  // Prod con API caída: vacío, nunca seeds (montos/autores fabricados).
+  if (q.isError) {
+    return {
+      aprobaciones: [],
+      cargando: false,
+      aprobarApi: async () => { throw new Error('Sin conexión con el servidor'); },
+      rechazarApi: async () => { throw new Error('Sin conexión con el servidor'); },
     };
   }
 
@@ -303,8 +323,8 @@ export function useCaja(): {
   });
   const invalidar = () => void qc.invalidateQueries({ queryKey: ['caja'] });
 
-  if (!apiEnabled || q.isError) {
-    // Modo local (o API caída): mismo contrato de funciones sobre localStorage
+  if (!apiEnabled) {
+    // Modo demo: mismo contrato de funciones sobre localStorage
     return {
       movimientos: listarMovimientosCaja(),
       cargando: false,
@@ -325,6 +345,16 @@ export function useCaja(): {
       eliminarGasto: async (id) => {
         eliminarMovimientoLocal(id);
       },
+      refrescar: invalidar,
+    };
+  }
+  // Prod con API caída: vacío, nunca seeds (gastos/propiedadId mock fabricados).
+  if (q.isError) {
+    return {
+      movimientos: [],
+      cargando: false,
+      crearGasto: async () => { throw new Error('Sin conexión con el servidor'); },
+      eliminarGasto: async () => { throw new Error('Sin conexión con el servidor'); },
       refrescar: invalidar,
     };
   }
@@ -412,8 +442,9 @@ export function useContratos(): { contratos: ContratoListado[]; cargando: boolea
     staleTime: 15_000,
   });
   if (!apiEnabled) return { contratos: contratosMock, cargando: false, deApi: false };
-  // Si el API falla (caído), caemos a los mocks para no dejar la pantalla vacía.
-  if (q.isError) return { contratos: contratosMock, cargando: false, deApi: false };
+  // En prod NUNCA caemos a mocks ante error: mostraría una cartera FABRICADA
+  // (contratos/inquilinos/montos falsos) que envenena Dashboard + Pagos. Vacío.
+  if (q.isError) return { contratos: [], cargando: false, deApi: true };
   return { contratos: q.data ?? [], cargando: q.isPending, deApi: true };
 }
 
