@@ -21,6 +21,12 @@ import {
 } from '@/lib/certificado-inquilino';
 import { formatFecha, formatMonto } from '@/lib/format';
 
+// Mismo criterio que `apiEnabled` de '@/lib/api/client', pero calculado acá
+// para no importar un módulo 'use client' dentro de este server component.
+// `NEXT_PUBLIC_API_URL` se inlinea en build, así que es una constante segura
+// incluso con static export (generateStaticParams + dynamicParams=false).
+const API_HABILITADO = (process.env.NEXT_PUBLIC_API_URL ?? '').replace(/\/$/, '').length > 0;
+
 /**
  * Página pública (sin auth) que verifica un certificado de inquilino.
  *
@@ -50,6 +56,62 @@ export default function VerificarCertificadoPage({
 }: {
   params: { hash: string };
 }) {
+  // En producción no hay endpoint público para resolver un certificado por
+  // hash: buscarCertificadoPorHash() regenera el certificado del inquilino
+  // mock (nombre + DNI + dirección + inmobiliaria) para CUALQUIER hash válido.
+  // Exponer eso filtraría PII de un inquilino demo a cualquiera con el link.
+  // Mostramos un estado neutro hasta que exista verificación real contra el
+  // datawarehouse de My Alquiler.
+  if (API_HABILITADO) {
+    return (
+      <main className="min-h-screen bg-muted/20 p-4 md:p-8">
+        <div className="mx-auto max-w-2xl space-y-5">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <div className="grid h-8 w-8 place-items-center rounded-md bg-primary text-[10px] font-bold text-primary-foreground">
+                My
+              </div>
+              <div>
+                <p className="text-sm font-semibold leading-tight">My Alquiler</p>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                  Verificación de certificado
+                </p>
+              </div>
+            </div>
+            <Button asChild variant="ghost" size="sm">
+              <Link href="/">
+                <ArrowLeft className="h-3 w-3" />
+                Cerrar
+              </Link>
+            </Button>
+          </div>
+
+          <Card>
+            <CardContent className="space-y-4 p-8 text-center">
+              <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-muted text-muted-foreground">
+                <ShieldCheck className="h-7 w-7" />
+              </div>
+              <div className="space-y-1.5">
+                <p className="text-sm font-medium text-foreground">
+                  Certificado no disponible
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  No pudimos verificar este certificado en línea. Pedile al
+                  inquilino que lo regenere desde su app, o verificá los datos
+                  directamente con la inmobiliaria.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="pt-2 text-center text-[10px] text-muted-foreground">
+            My Alquiler · myalquiler.com.ar
+          </div>
+        </div>
+      </main>
+    );
+  }
+
   const cert = buscarCertificadoPorHash(params.hash);
   if (!cert) notFound();
 

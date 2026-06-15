@@ -15,6 +15,7 @@ import {
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card, CardContent } from '@llave/ui/card';
+import { apiEnabled } from '@/lib/api/client';
 import {
   type BoletaInquilino,
   type EstadoBoletaInquilino,
@@ -56,6 +57,11 @@ export function BoletasInquilinoPanel({ contratoId }: Props) {
     setBoletas(leerBoletasDeContrato(contratoId));
     setHidratado(true);
   }, [contratoId]);
+
+  // En prod las boletas se siembran (generarSeedsHistoricos) porque no hay
+  // storage cross-app real: serían datos fantasma. Sin endpoint todavía,
+  // ocultamos el panel entero en modo API.
+  if (apiEnabled) return null;
 
   if (!hidratado) return null;
 

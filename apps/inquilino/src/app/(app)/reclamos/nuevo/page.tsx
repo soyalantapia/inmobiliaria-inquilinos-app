@@ -10,14 +10,16 @@ import { Input } from '@llave/ui/input';
 import { Label } from '@llave/ui/label';
 import { Textarea } from '@llave/ui/textarea';
 import { NavBar } from '@/components/nav-bar';
+import { apiEnabled } from '@/lib/api/client';
+import { useMiContrato } from '@/lib/api/hooks';
 import { useMisReclamos } from '@/lib/api/use-mis-reclamos';
 import { categoriaLabel } from '@/lib/reclamos-config';
 import type { Categoria, Urgencia } from '@/lib/types';
 
 const MAX_FOTO_MB = 4;
-// Tel de la inmobiliaria para el atajo "Llamar" cuando el inquilino marca
-// urgencia EMERGENCIA. Mismo número que usa el FAB de WhatsApp.
-const TELEFONO_INMO = '541145321100';
+// Tel de la inmobiliaria de muestra para el atajo "Llamar" en modo demo
+// (urgencia EMERGENCIA). En prod usamos el teléfono real de useMiContrato.
+const TELEFONO_INMO_DEMO = '541145321100';
 
 // Autosave del borrador en localStorage — antes si el usuario rotaba el teléfono,
 // recibía una llamada, o salía a buscar info por error, perdía TODO lo escrito.
@@ -80,6 +82,13 @@ const urgencias: Array<{ value: Urgencia; label: string; descripcion: string }> 
 export default function NuevoReclamoPage() {
   const router = useRouter();
   const { crearReclamo } = useMisReclamos();
+  const { inmobiliariaTelefono } = useMiContrato();
+  // Teléfono de la inmobiliaria para el atajo "Llamar" (urgencia EMERGENCIA).
+  // En demo usamos el número de muestra; en prod el real (limpiando no-dígitos).
+  // Si en prod no hay teléfono, no mostramos el botón de llamada.
+  const telInmo = apiEnabled
+    ? (inmobiliariaTelefono ?? '').replace(/\D/g, '')
+    : TELEFONO_INMO_DEMO;
   const fileRef = useRef<HTMLInputElement>(null);
   const [categoria, setCategoria] = useState<Categoria | ''>('');
   const [tituloOtro, setTituloOtro] = useState(''); // título libre cuando categoría === 'OTRO'
@@ -406,17 +415,19 @@ export default function NuevoReclamoPage() {
                 </p>
               </div>
             </div>
-            <Button
-              size="sm"
-              variant="destructive"
-              className="w-full"
-              asChild
-            >
-              <a href={`tel:+${TELEFONO_INMO}`}>
-                <Phone className="h-4 w-4" />
-                Llamar a la inmobiliaria
-              </a>
-            </Button>
+            {telInmo && (
+              <Button
+                size="sm"
+                variant="destructive"
+                className="w-full"
+                asChild
+              >
+                <a href={`tel:+${telInmo}`}>
+                  <Phone className="h-4 w-4" />
+                  Llamar a la inmobiliaria
+                </a>
+              </Button>
+            )}
           </Card>
         )}
 

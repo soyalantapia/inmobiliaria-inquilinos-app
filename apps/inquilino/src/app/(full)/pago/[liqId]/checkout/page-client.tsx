@@ -14,6 +14,7 @@ import {
   Hash,
   IdCard,
   Loader2,
+  MessageCircle,
   Sparkles,
   SplitSquareHorizontal,
   Trash2,
@@ -44,6 +45,7 @@ import { cargosExtraDelInquilino } from '@/lib/cross-app-inmo';
 import { marcarVariosPagados } from '@/lib/cargos-pagados-storage';
 import { extraerComprobante, type ExtraccionIA } from '@/lib/extraccion-ia';
 import { leerSesion } from '@/lib/auth-otp';
+import { useMiContrato } from '@/lib/api/hooks';
 import {
   apiEnabled,
   useInformarPago,
@@ -63,6 +65,9 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
     : (liquidacionesMock.find((l) => l.id === params.liqId) ?? null);
 
   const informarPago = useInformarPago();
+  // Teléfono real de la inmobiliaria (sólo en prod) para el CTA de WhatsApp
+  // del estado neutro de datos bancarios. En demo es null y no se usa.
+  const { inmobiliariaTelefono } = useMiContrato();
 
   const [step, setStep] = useState<Step>('datos');
   /** Pagos previos (parciales o total) ya informados para esta liq. */
@@ -182,6 +187,7 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
               monto={montoActual}
               moneda={liq.moneda}
               parcial={!cubreTodo}
+              inmobiliariaTelefono={inmobiliariaTelefono}
               onContinuar={() => setStep('comprobante')}
             />
           </>
@@ -470,13 +476,33 @@ function StepDatosBancarios({
   monto,
   moneda,
   parcial,
+  inmobiliariaTelefono,
   onContinuar,
 }: {
   monto: number;
   moneda: 'ARS' | 'USD';
   parcial: boolean;
+  /** Teléfono real de la inmobiliaria (prod). null en demo / sin dato. */
+  inmobiliariaTelefono: string | null;
   onContinuar: () => void;
 }) {
+  // En prod NO hay endpoint con la cuenta de cobranza real de la inmobiliaria.
+  // Mostrar el CBU/CUIT/titular mock sería un dato bancario inventado al que
+  // el inquilino podría transferir plata: peligroso. En su lugar mostramos un
+  // estado neutro que aclara que la inmobiliaria envía los datos, con un CTA a
+  // WhatsApp si tenemos su teléfono. En demo (!apiEnabled) el flujo queda intacto.
+  if (apiEnabled) {
+    return (
+      <StepDatosBancariosNeutro
+        monto={monto}
+        moneda={moneda}
+        parcial={parcial}
+        inmobiliariaTelefono={inmobiliariaTelefono}
+        onContinuar={onContinuar}
+      />
+    );
+  }
+
   const d = datosBancariosMock;
   const cambio = proximoCambioVigente(d);
   const filas: Array<{ label: string; value: string; icon: React.ReactNode; copyKey: string; copyValue?: string }> = [
@@ -593,6 +619,81 @@ function StepDatosBancarios({
           Volvé acá y subí el comprobante para que validemos.
         </li>
       </ol>
+
+      <Button size="xl" className="w-full" onClick={onContinuar} disabled={monto <= 0}>
+        {parcial ? 'Ya transferí el parcial, subir comprobante' : 'Ya transferí, subir comprobante'}
+        <Upload className="h-4 w-4" />
+      </Button>
+    </>
+  );
+}
+
+/**
+ * Estado neutro de datos bancarios para producción: como no hay endpoint con
+ * la cuenta real de cobranza, no mostramos ningún CBU/CUIT/titular (sería un
+ * dato inventado al que el inquilino podría transferir). Le explicamos que la
+ * inmobiliaria le envía los datos y, si tenemos su teléfono, ofrecemos un CTA
+ * de WhatsApp para pedírselos. El monto exacto sí lo mostramos (es real).
+ */
+function StepDatosBancariosNeutro({
+  monto,
+  moneda,
+  parcial,
+  inmobiliariaTelefono,
+  onContinuar,
+}: {
+  monto: number;
+  moneda: 'ARS' | 'USD';
+  parcial: boolean;
+  inmobiliariaTelefono: string | null;
+  onContinuar: () => void;
+}) {
+  const telLimpio = (inmobiliariaTelefono ?? '').replace(/\D/g, '');
+  const mensaje = encodeURIComponent(
+    `Hola, quiero pagar ${formatMonto(monto, moneda)}. ¿Me pasás el CBU/alias y titular para transferir?`,
+  );
+  const waUrl = telLimpio ? `https://wa.me/${telLimpio}?text=${mensaje}` : null;
+
+  return (
+    <>
+      <Card className="space-y-3 p-5">
+        <div className="flex items-start gap-3">
+          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+            <Building2 className="h-4 w-4" />
+          </div>
+          <div className="flex-1 space-y-1">
+            <p className="text-sm font-semibold">
+              Los datos para transferir te los envía la inmobiliaria
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Por seguridad no mostramos acá el CBU ni el titular. Pedíselos a
+              la inmobiliaria, transferí el monto exacto y volvé a subir el
+              comprobante.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between gap-3 rounded-md border bg-muted/40 px-3 py-2.5">
+          <span className="text-xs text-muted-foreground">
+            {parcial ? 'Monto del parcial' : 'Monto a transferir'}
+          </span>
+          <span className="font-mono text-sm font-semibold tabular-nums">
+            {formatMonto(monto, moneda)}
+          </span>
+        </div>
+
+        {waUrl && (
+          <a
+            href={waUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-emerald-500 px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-emerald-600"
+          >
+            <MessageCircle className="h-4 w-4" strokeWidth={2.5} />
+            Pedir los datos por WhatsApp
+          </a>
+        )}
+      </Card>
 
       <Button size="xl" className="w-full" onClick={onContinuar} disabled={monto <= 0}>
         {parcial ? 'Ya transferí el parcial, subir comprobante' : 'Ya transferí, subir comprobante'}

@@ -18,13 +18,15 @@ import { Button } from '@llave/ui/button';
 import { Card } from '@llave/ui/card';
 import { cn } from '@llave/ui/cn';
 import { NavBar } from '@/components/nav-bar';
+import { Proximamente } from '@/components/proximamente';
+import { apiEnabled } from '@/lib/api/client';
 import {
   agruparPorMes,
   generarEventos,
   type EventoCalendario,
   type TipoEvento,
 } from '@/lib/calendario-eventos';
-import { formatFecha, formatFechaCorta, formatMonto } from '@/lib/format';
+import { formatFechaCorta, formatMonto } from '@/lib/format';
 
 const iconoTipo: Record<TipoEvento, LucideIcon> = {
   PAGO_MENSUAL: CalendarDays,
@@ -47,6 +49,24 @@ const colorTipo: Record<TipoEvento, string> = {
 type Filtro = 'TODOS' | 'PAGOS' | 'CONTRATO' | 'RECLAMOS';
 
 export default function CalendarioPage() {
+  // El calendario se arma con mocks (contrato/liquidaciones/comprobantes/hitos):
+  // no hay endpoint que devuelva eventos reales todavía. En prod no mostramos
+  // un calendario fabricado — lo gateamos a un estado neutro "Disponible pronto".
+  if (apiEnabled) {
+    return (
+      <Proximamente
+        titulo="Mi calendario"
+        descripcion="Vas a ver acá tus pagos, ajustes y vencimientos en un solo lugar. Estamos terminando de conectarlo."
+        icon={<CalendarDays className="h-7 w-7" />}
+        volverHref="/cuenta"
+        volverLabel="Volver a Mi cuenta"
+      />
+    );
+  }
+  return <CalendarioDemo />;
+}
+
+function CalendarioDemo() {
   const [eventos, setEventos] = useState<EventoCalendario[]>([]);
   const [filtro, setFiltro] = useState<Filtro>('TODOS');
   const [hidratado, setHidratado] = useState(false);

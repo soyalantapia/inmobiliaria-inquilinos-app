@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Sparkles } from 'lucide-react';
+import { apiEnabled } from '@/lib/api/client';
 import { esClientePiloto } from '@/lib/piloto-storage';
 
 /**
@@ -18,6 +19,10 @@ export function PilotoBadgeTopbar() {
     setEsPiloto(esClientePiloto());
     setHidratado(true);
   }, []);
+
+  // El estado "cliente piloto" es de la beta cerrada (mock, default true en
+  // demo). En prod no marcamos cuentas como piloto: ocultamos el badge.
+  if (apiEnabled) return null;
 
   if (!hidratado || !esPiloto) return null;
 

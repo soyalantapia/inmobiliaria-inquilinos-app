@@ -51,12 +51,20 @@ export default function CuentaPage() {
 function CuentaReal() {
   const router = useRouter();
   const user = useCurrentUser();
-  const { contrato } = useMiContrato();
+  const { contrato, inmobiliariaTelefono } = useMiContrato();
   const [confirmandoLogout, setConfirmandoLogout] = useState(false);
 
   const fullName = user.fullName;
   const email = user.email ?? '';
   const direccion = contrato?.direccion ?? '';
+
+  // Teléfono real de la inmobiliaria (de useMiContrato). Limpiamos no-dígitos
+  // para armar el link de WhatsApp. Si no hay teléfono, ocultamos el botón en
+  // vez de mandar a un número hardcodeado que no es de esta inmobiliaria.
+  const telWa = (inmobiliariaTelefono ?? '').replace(/\D/g, '');
+  const waHumanoHref = telWa
+    ? `https://wa.me/${telWa}?text=${encodeURIComponent('Hola! Tengo una consulta sobre mi contrato.')}`
+    : null;
 
   return (
     <>
@@ -161,13 +169,18 @@ function CuentaReal() {
               descripcion="Aumentos, depósito, mascotas, etc."
               href="/ayuda"
             />
-            <LinkRow
-              icon={<LifeBuoy className="h-4 w-4" />}
-              label="Hablar con un humano"
-              descripcion="WhatsApp con la inmobiliaria"
-              href={`https://wa.me/541145321100?text=${encodeURIComponent('Hola! Tengo una consulta sobre mi contrato.')}`}
-              external
-            />
+            {/* Solo mostramos el atajo a WhatsApp si tenemos el teléfono real
+                de la inmobiliaria (de useMiContrato). Sin teléfono, ocultamos
+                la fila en vez de mandar a un número hardcodeado. */}
+            {waHumanoHref && (
+              <LinkRow
+                icon={<LifeBuoy className="h-4 w-4" />}
+                label="Hablar con un humano"
+                descripcion="WhatsApp con la inmobiliaria"
+                href={waHumanoHref}
+                external
+              />
+            )}
           </Card>
         </section>
 

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { mockUser } from './auth';
 import { leerSesion, type InquilinoSesion } from './auth-otp';
+import { apiEnabled } from './api/client';
 
 export interface CurrentUserView {
   isLoaded: boolean;
@@ -43,7 +44,23 @@ export function useCurrentUser(): CurrentUserView {
     };
   }
 
-  // Fallback durante el primer render / SSR
+  // Fallback cuando todavía no hay sesión (primer render / SSR / sin login).
+  // En producción (apiEnabled) NO mostramos el mock 'Mariela': devolvemos un
+  // perfil neutro. Tras el login OTP la sesión real ya pone el nombre.
+  if (apiEnabled) {
+    return {
+      isLoaded: hidratado,
+      isSignedIn: false,
+      firstName: '',
+      fullName: '',
+      initial: '',
+      phone: null,
+      email: null,
+    };
+  }
+
+  // Demo (!apiEnabled): seguimos usando el mock para que las pantallas no se
+  // rompan antes de hidratar la sesión.
   return {
     isLoaded: hidratado,
     isSignedIn: false,

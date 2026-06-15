@@ -22,6 +22,7 @@ import { Input } from '@llave/ui/input';
 import { Label } from '@llave/ui/label';
 import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
+import { apiEnabled } from '@/lib/api/client';
 import {
   crearReporte,
   esClientePiloto,
@@ -65,7 +66,8 @@ export function PilotoFab() {
   // WhatsApp" en Renovaciones). El padding sólo existe mientras el FAB existe
   // — en producción sin modo piloto no se agrega nada.
   useEffect(() => {
-    if (!hidratado || !esPiloto) return;
+    // En prod (apiEnabled) no hay modo piloto: no reservamos padding extra.
+    if (apiEnabled || !hidratado || !esPiloto) return;
     const main = document.getElementById('main-content');
     if (!main) return;
     main.style.paddingBottom = '6rem';
@@ -73,6 +75,10 @@ export function PilotoFab() {
       main.style.paddingBottom = '';
     };
   }, [hidratado, esPiloto]);
+
+  // El modo piloto (FAB "Reportar") es de la beta cerrada. En prod no se
+  // monta ni el botón ni el padding reservado.
+  if (apiEnabled) return null;
 
   if (!hidratado || !esPiloto) return null;
 

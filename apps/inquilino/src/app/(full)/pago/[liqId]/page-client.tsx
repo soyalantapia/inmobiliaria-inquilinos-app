@@ -36,6 +36,8 @@ import {
 } from '@/lib/cross-app-inmo';
 import { aplicarEstadoDemo, useDemoEstado } from '@/lib/demo-estado';
 import { apiEnabled, useLiquidacion } from '@/lib/api/use-pago';
+import { useMiContrato } from '@/lib/api/hooks';
+import { useCurrentUser } from '@/lib/use-current-user';
 import type { Liquidacion } from '@/lib/types';
 
 export default function DetallePagoPage({ params }: { params: { liqId: string } }) {
@@ -91,6 +93,10 @@ function DetallePagoView({
   const [informado, setInformado] = useState<PagoInformado | null>(null);
   const [parciales, setParciales] = useState<PagoInformado[]>([]);
   const [decisionInmo, setDecisionInmo] = useState<DecisionInmoSobrePago | null>(null);
+  // Datos reales para el recibo imprimible en prod: nombre de la sesión OTP +
+  // dirección/inmobiliaria del contrato real. En demo no se usan (ver abajo).
+  const user = useCurrentUser();
+  const { contrato } = useMiContrato();
   useEffect(() => {
     // Historial de parciales + decisión del inmo: sólo en la demo offline.
     // En prod el API no expone esos datos al inquilino, así que quedan vacíos
@@ -341,14 +347,21 @@ function DetallePagoView({
               abrirReciboImprimible({
                 periodo: liq.periodo,
                 periodoFmt: formatPeriodo(liq.periodo),
-                inquilino: 'Mariela Sosa',
-                direccion: contratoMock.direccion,
+                // En prod usamos el nombre real de la sesión y la
+                // dirección/inmobiliaria del contrato real; en demo
+                // mantenemos los datos mock intactos.
+                inquilino: apiEnabled ? user.fullName : 'Mariela Sosa',
+                direccion: apiEnabled
+                  ? (contrato?.direccion ?? '')
+                  : contratoMock.direccion,
                 monto: liq.montoTotal,
                 montoFmt: formatMonto(liq.montoTotal, liq.moneda),
                 metodo: 'Transferencia',
                 fechaPago: fechaIso,
                 fechaPagoFmt: formatFecha(fechaIso),
-                inmobiliaria: contratoMock.inmobiliaria,
+                inmobiliaria: apiEnabled
+                  ? (contrato?.inmobiliaria ?? '')
+                  : contratoMock.inmobiliaria,
               });
             }}
           >

@@ -13,18 +13,21 @@ interface UserMenuProps {
 
 export function UserMenu({ compact = false }: UserMenuProps = {}) {
   const user = useCurrentUser();
+  const tieneNombre = user.firstName.length > 0;
 
   return (
     <div className="flex items-center justify-between gap-2">
       <Link
         href="/cuenta"
         className="flex items-center gap-3 rounded-lg -ml-1 p-1 transition-colors hover:bg-muted"
-        aria-label={`Cuenta de ${user.firstName}`}
+        aria-label={tieneNombre ? `Cuenta de ${user.firstName}` : 'Mi cuenta'}
       >
         <Avatar>
-          <AvatarFallback className="bg-primary/10 text-primary">{user.initial}</AvatarFallback>
+          <AvatarFallback className="bg-primary/10 text-primary">
+            {user.initial || <span aria-hidden="true">·</span>}
+          </AvatarFallback>
         </Avatar>
-        {!compact && (
+        {!compact && tieneNombre && (
           <div>
             <p className="text-xs text-muted-foreground">Hola</p>
             <p className="font-semibold">{user.firstName}</p>

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Handshake } from 'lucide-react';
+import { apiEnabled } from '@/lib/api/client';
 import { leerCuponActivo, type CuponActivo } from '@/lib/cupones';
 
 /**
@@ -22,6 +23,10 @@ export function ConvenioBadgeTopbar() {
     setActivo(leerCuponActivo());
     setHidratado(true);
   }, []);
+
+  // En prod no hay convenio real (CUCICBA/CPI/etc.): el cupón se siembra
+  // en localStorage por el flujo demo. No mostramos el badge mockeado.
+  if (apiEnabled) return null;
 
   if (!hidratado || !activo) return null;
 

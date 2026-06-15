@@ -101,6 +101,10 @@ export default function DetalleContratoPage() {
   // calcularAntiguedad() usa Date.now() que difiere entre SSR y CSR.
   const [scoring, setScoring] = useState<ResumenScoring | null>(null);
   useEffect(() => {
+    // El scoring del inquilino es fabricado (calcularScoringInquilino) sin
+    // fuente real. En prod no lo mostramos: dejamos scoring en null y la
+    // ScoringInquilinoCard no se renderiza.
+    if (apiEnabled) return;
     setScoring(c ? calcularScoringInquilino(c) : null);
   }, [c?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 

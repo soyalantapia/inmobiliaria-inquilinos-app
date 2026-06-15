@@ -33,6 +33,7 @@ import {
   type VisitaProfesional,
 } from '@/lib/visitas-profesional';
 import { formatFecha } from '@/lib/format';
+import { apiEnabled } from '@/lib/api/client';
 
 /* ============================================================
  * Datos
@@ -81,6 +82,35 @@ const URGENCIA_COLOR: Record<string, string> = {
 };
 
 export default function PaginaProfesional({ token }: { token: string }) {
+  // En producción no hay endpoint que resuelva el token de un profesional ni
+  // sus trabajos asignados: esta vista vive del seed (nombres/teléfonos de
+  // profesionales, teléfono de la inmobiliaria) y lee cross-app el storage del
+  // inmo. Nada de eso existe en prod, así que mostramos un estado neutro en vez
+  // de exponer datos mock. `apiEnabled` es una constante de módulo
+  // (NEXT_PUBLIC_API_URL inlineado), seguro con static export. Gate ANTES del
+  // componente con hooks para no romper rules-of-hooks.
+  if (apiEnabled) {
+    return (
+      <main className="flex min-h-screen items-center justify-center p-6">
+        <Card className="max-w-md space-y-3 p-6 text-center">
+          <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-muted text-muted-foreground">
+            <KeyRound className="h-6 w-6" />
+          </div>
+          <p className="text-base font-semibold">No disponible</p>
+          <p className="text-sm text-muted-foreground">
+            Esta vista para profesionales todavía no está disponible. Si
+            esperabas un trabajo asignado, contactá directamente a la
+            inmobiliaria que te envió el link.
+          </p>
+        </Card>
+      </main>
+    );
+  }
+
+  return <PaginaProfesionalDemo token={token} />;
+}
+
+function PaginaProfesionalDemo({ token }: { token: string }) {
   const prof = PROFESIONALES_SEED[token];
   const [reclamosAsignados, setReclamosAsignados] = useState<ReclamoProf[]>([]);
   const [visitas, setVisitas] = useState<VisitaProfesional[]>([]);

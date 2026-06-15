@@ -774,22 +774,38 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
 
           {/* DOCUMENTOS */}
           <TabsContent value="documentos" className="space-y-4">
-            <Card>
-              <CardContent className="space-y-3 p-6">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Documentos
-                </h3>
-                <DocRow nombre="Contrato firmado.pdf" subtitulo="Subido al cargar el contrato" />
-                <DocRow nombre="Escritura.pdf" subtitulo="Documento del propietario" />
-                <DocRow nombre="Reglamento de copropiedad.pdf" subtitulo="Edificio" />
-                <Button variant="outline" size="sm" className="mt-2" asChild>
-                  <Link href={contrato ? `/contratos/${contrato.id}` : '/contratos'}>
-                    <Plus className="h-4 w-4" />
-                    Subir documento
-                  </Link>
-                </Button>
-              </CardContent>
-            </Card>
+            {/* Las filas son archivos hardcodeados del expediente sin endpoint
+                todavía. En modo API no mostramos documentos fantasma: mismo
+                patrón "Próximamente" que contratos/[id]. */}
+            {apiEnabled ? (
+              <Card>
+                <CardContent className="p-10 text-center">
+                  <FileText className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+                  <p className="text-sm font-medium">Gestión de documentos próximamente</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    La carga y descarga de documentos del expediente estará disponible
+                    en breve.
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card>
+                <CardContent className="space-y-3 p-6">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Documentos
+                  </h3>
+                  <DocRow nombre="Contrato firmado.pdf" subtitulo="Subido al cargar el contrato" />
+                  <DocRow nombre="Escritura.pdf" subtitulo="Documento del propietario" />
+                  <DocRow nombre="Reglamento de copropiedad.pdf" subtitulo="Edificio" />
+                  <Button variant="outline" size="sm" className="mt-2" asChild>
+                    <Link href={contrato ? `/contratos/${contrato.id}` : '/contratos'}>
+                      <Plus className="h-4 w-4" />
+                      Subir documento
+                    </Link>
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
         </Tabs>
       </main>

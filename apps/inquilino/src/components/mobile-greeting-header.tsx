@@ -15,12 +15,19 @@ import { useCurrentUser } from '@/lib/use-current-user';
  */
 export function MobileGreetingHeader() {
   const user = useCurrentUser();
+  const tieneNombre = user.firstName.length > 0;
   return (
     <header className="flex items-center justify-between px-5 pt-5 md:hidden">
       <div className="min-w-0">
         <p className="text-xs text-muted-foreground">Hola,</p>
         <p className="truncate text-lg font-semibold leading-tight">
-          {user.firstName} <span aria-hidden="true">👋</span>
+          {tieneNombre ? (
+            <>
+              {user.firstName} <span aria-hidden="true">👋</span>
+            </>
+          ) : (
+            <span aria-hidden="true">👋</span>
+          )}
         </p>
       </div>
       <UserMenu compact />

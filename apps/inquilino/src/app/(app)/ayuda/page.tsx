@@ -21,6 +21,8 @@ import { Card, CardContent } from '@llave/ui/card';
 import { cn } from '@llave/ui/cn';
 import { Input } from '@llave/ui/input';
 import { NavBar } from '@/components/nav-bar';
+import { apiEnabled } from '@/lib/api/client';
+import { useMiContrato } from '@/lib/api/hooks';
 
 interface FaqItem {
   id: string;
@@ -179,6 +181,14 @@ export default function AyudaPage() {
   const [busqueda, setBusqueda] = useState('');
   const [categoria, setCategoria] = useState<string | null>(null);
   const [abierto, setAbierto] = useState<string | null>(null);
+
+  // Teléfono para "Hablar con humano". En demo (!apiEnabled) mantenemos el
+  // número de muestra. En prod usamos el teléfono real de la inmobiliaria
+  // (de useMiContrato); si no hay, no mostramos el botón (no hay fuente).
+  const { inmobiliariaTelefono } = useMiContrato();
+  const telWa = apiEnabled
+    ? (inmobiliariaTelefono ?? '').replace(/\D/g, '')
+    : '541145321100';
 
   const filtradas = useMemo(() => {
     const term = busqueda.trim().toLowerCase();
@@ -377,12 +387,14 @@ export default function AyudaPage() {
                 Preguntale al Asistente
               </a>
             </Button>
-            <Button variant="outline" asChild>
-              <a href="https://wa.me/541145321100" target="_blank" rel="noreferrer">
-                <MessageCircle className="h-4 w-4" />
-                Hablar con humano
-              </a>
-            </Button>
+            {telWa && (
+              <Button variant="outline" asChild>
+                <a href={`https://wa.me/${telWa}`} target="_blank" rel="noreferrer">
+                  <MessageCircle className="h-4 w-4" />
+                  Hablar con humano
+                </a>
+              </Button>
+            )}
           </div>
         </Card>
       </main>
