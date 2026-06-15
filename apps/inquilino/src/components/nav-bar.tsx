@@ -15,6 +15,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@llave/ui/cn';
+import { useMiContrato } from '@/lib/api/hooks';
 
 interface NavItem {
   href: string;
@@ -119,6 +120,7 @@ export function NavBar() {
 // caben justo) y Cuenta/Ayuda se acceden por el avatar del header.
 export function SideNav() {
   const pathname = usePathname() ?? '/';
+  const { contrato } = useMiContrato();
   return (
     <aside className="hidden w-64 shrink-0 flex-col border-r bg-card md:flex">
       <div className="flex h-16 items-center gap-3 border-b px-6">
@@ -148,11 +150,13 @@ export function SideNav() {
           </ul>
         </div>
       </nav>
-      <div className="border-t p-3 text-xs">
-        <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Tu hogar</p>
-        <p className="mt-0.5 font-medium leading-tight">Gorriti 4521, 3°B</p>
-        <p className="text-[10px] text-muted-foreground">Inmobiliaria del Sol</p>
-      </div>
+      {contrato && (
+        <div className="border-t p-3 text-xs">
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Tu hogar</p>
+          <p className="mt-0.5 font-medium leading-tight">{contrato.direccion}</p>
+          <p className="text-[10px] text-muted-foreground">{contrato.inmobiliaria}</p>
+        </div>
+      )}
     </aside>
   );
 }

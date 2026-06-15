@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import { listarPendientes } from '@/lib/aprobaciones-storage';
 import { apiEnabled } from '@/lib/api/client';
-import { useAprobaciones } from '@/lib/api/hooks';
+import { useAprobaciones, useMe } from '@/lib/api/hooks';
 import { cn } from '@llave/ui/cn';
 import { CountBadge } from '@/components/count-badge';
 import { calcularResumenPlan } from '@/lib/plan';
@@ -69,6 +69,7 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
   // demo (!apiEnabled) usa el store local.
   const { aprobaciones } = useAprobaciones();
   const pendientes = apiEnabled ? aprobaciones.length : pendientesLocal;
+  const { me } = useMe();
 
   useEffect(() => {
     if (apiEnabled) return;
@@ -140,6 +141,13 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
         })}
       </nav>
       <div className="border-t p-3 text-xs text-muted-foreground">
+        {apiEnabled ? (
+          <>
+            <p className="font-medium text-foreground">{me?.nombre ?? 'Mi cuenta'}</p>
+            {me?.email && <p className="truncate">{me.email}</p>}
+          </>
+        ) : (
+        <>
         <p className="font-medium text-foreground">Inmobiliaria del Sol</p>
         <p>
           Plan {plan.plan} ·{' '}
@@ -172,6 +180,8 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
               ⚡ Cerca del tope · Subir
             </Link>
           )}
+        </>
+        )}
       </div>
     </>
   );

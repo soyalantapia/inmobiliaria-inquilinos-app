@@ -318,7 +318,7 @@ function ReclamoRow({
 export function mensajeWhatsappGenerico(prof: ProfesionalAdmin): string {
   const nombrePila = prof.nombre.split(' ')[0] ?? prof.nombre;
   return (
-    `Hola ${nombrePila}! Soy del equipo de Inmobiliaria del Sol. ` +
+    `Hola ${nombrePila}! Soy del equipo de la inmobiliaria. ` +
     `Tenemos un trabajo de ${profesionalCategoriaLabelCorto(prof.categoria)} ` +
     `para coordinar. ¿Cuándo tenés disponibilidad?`
   );
@@ -337,7 +337,7 @@ export function mensajeWhatsappTrabajo(
         : '';
   const linkProf = linkMagicoProfesional(prof.id);
   return (
-    `Hola ${nombrePila}! Soy del equipo de Inmobiliaria del Sol. ` +
+    `Hola ${nombrePila}! Soy del equipo de la inmobiliaria. ` +
     `Te paso un trabajo:\n\n` +
     `${urg}*${reclamo.categoria.toLowerCase()}* en *${reclamo.direccion}*\n` +
     `${reclamo.descripcion}\n\n` +
