@@ -15,7 +15,7 @@ import {
   tiempoRelativo,
   urgenciaConfig,
 } from '@/lib/reclamos-config';
-import { listarReclamos } from '@/lib/reclamos-store';
+import { useReclamos } from '@/lib/api/use-reclamos';
 import {
   ESTADO_SLA_COLOR,
   ESTADO_SLA_LABEL,
@@ -48,12 +48,8 @@ const FILTRO_FROM_PARAM: Record<string, FiltroReclamos> = {
 
 export default function ReclamosPage() {
   const searchParams = useSearchParams();
-  const [reclamos, setReclamos] = useState<Reclamo[] | null>(null);
+  const { reclamos } = useReclamos();
   const [filtro, setFiltro] = useState<FiltroReclamos>('TODOS');
-
-  useEffect(() => {
-    setReclamos(listarReclamos());
-  }, []);
 
   // Si el usuario llegó con ?filtro=sin-asignar (típico desde el card
   // del dashboard), aplicamos el filtro al mount. No reseteamos al
