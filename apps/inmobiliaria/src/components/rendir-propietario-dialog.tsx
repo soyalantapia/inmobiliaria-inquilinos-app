@@ -43,6 +43,8 @@ import {
 import { registrarEvento } from '@/lib/auditoria-storage';
 import { gastosAtribuidos, type GastoAtribuido } from '@/lib/gastos-rendicion';
 import { PinPromptDialog } from '@/components/pin-prompt-dialog';
+import { apiEnabled, ApiError } from '@/lib/api/client';
+import { useRendiciones } from '@/lib/api/use-rendiciones';
 import type { Propietario } from '@/lib/types';
 import { formatMonto, formatPeriodo } from '@/lib/format';
 
@@ -80,6 +82,8 @@ export function RendirPropietarioDialog({
   const [gastosOpen, setGastosOpen] = useState(true);
   const periodo = periodoActual();
   const yaRendido = propietario ? obtenerRendicion(propietario.id, periodo) : null;
+  // En prod posteamos a /rendiciones; en demo el dialog cae al store local.
+  const { rendir: rendirApi } = useRendiciones();
 
   // Gastos del período (caja + trabajos DESPERFECTO con costo cargado).
   // Si ya rendimos, esto devuelve el snapshot guardado.
@@ -115,9 +119,74 @@ export function RendirPropietarioDialog({
     }
   };
 
-  const handleRendir = async (alsoWhatsapp: boolean) => {
+  // Abre WhatsApp con el comprobante. Se llama tras rendir si el usuario
+  // eligió "Rendir + WhatsApp". Los montos del mensaje los toma de la
+  // rendición resultante (en prod, los locales coinciden con el desglose).
+  const abrirWhatsapp = (rendicion: Rendicion) => {
+    const mensaje = mensajeRendicion(propietario, rendicion);
+    const tel = propietario.telefono.replace(/[^\d]/g, '');
+    const url = `https://wa.me/${tel}?text=${encodeURIComponent(mensaje)}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  // Rendición efímera SIN persistir — solo para armar el toast y el mensaje
+  // de WhatsApp en prod (la fuente de verdad es el server). Replica el cálculo
+  // de `marcarRendido` para que los montos coincidan con el desglose mostrado.
+  const construirRendicionEfimera = (): Rendicion => ({
+    id: `rend_api_${Date.now().toString(36)}`,
+    propietarioId: propietario.id,
+    periodo,
+    montoBruto: bruto,
+    comisionPct: propietario.comisionPct,
+    gastos,
+    totalGastos,
+    montoNeto: neto,
+    rendidoAt: new Date().toISOString(),
+    metodo,
+    notas: notas.trim() || null,
+  });
+
+  // En PROD: postea a /rendiciones (el server valida el PIN y calcula los
+  // montos). Devuelve un string de error para que el PinPromptDialog quede
+  // abierto y el usuario reintente; o undefined si salió bien.
+  const handleRendirApi = async (
+    alsoWhatsapp: boolean,
+    pin: string,
+  ): Promise<string | void> => {
     setGuardando(true);
-    await new Promise((r) => setTimeout(r, 300));
+    try {
+      await rendirApi({
+        propietarioId: propietario.id,
+        periodo,
+        metodo,
+        pin: pin || undefined,
+        notas: notas.trim() || undefined,
+      });
+      // Rendición efímera solo para el comprobante/toast (NO persiste en prod:
+      // la fuente de verdad es el server, ya invalidamos sus queries).
+      const rendicion = construirRendicionEfimera();
+      toast({
+        variant: 'success',
+        title: `¡${propietario.nombre} rendido!`,
+        description: `Transferimos ${formatMonto(rendicion.montoNeto)} por ${metodo.toLowerCase()}.`,
+      });
+      onRendido?.(rendicion);
+      onOpenChange(false);
+      if (alsoWhatsapp) abrirWhatsapp(rendicion);
+    } catch (e) {
+      const msg =
+        e instanceof ApiError
+          ? e.message
+          : 'No pudimos registrar la rendición. Reintentá en un momento.';
+      return msg;
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  // En DEMO: persiste en rendiciones-storage como hasta ahora (sin API).
+  const handleRendirDemo = (alsoWhatsapp: boolean) => {
+    setGuardando(true);
     const rendicion = marcarRendido({
       propietarioId: propietario.id,
       periodo,
@@ -142,15 +211,15 @@ export function RendirPropietarioDialog({
     });
     onRendido?.(rendicion);
     onOpenChange(false);
-
-    if (alsoWhatsapp) {
-      const mensaje = mensajeRendicion(propietario, rendicion);
-      const tel = propietario.telefono.replace(/[^\d]/g, '');
-      const url = `https://wa.me/${tel}?text=${encodeURIComponent(mensaje)}`;
-      window.open(url, '_blank', 'noopener,noreferrer');
-    }
-
+    if (alsoWhatsapp) abrirWhatsapp(rendicion);
     setGuardando(false);
+  };
+
+  // Entrada única desde el PinPromptDialog. En prod recolecta el PIN y lo
+  // reenvía al server; en demo valida el PIN localmente (modo del dialog).
+  const handleRendir = (pin: string): string | void | Promise<string | void> => {
+    if (apiEnabled) return handleRendirApi(alsoWhatsappRef.current, pin);
+    handleRendirDemo(alsoWhatsappRef.current);
   };
 
   return (
@@ -285,9 +354,11 @@ export function RendirPropietarioDialog({
           />
         </div>
 
-        <Badge variant="outline" className="text-[10px]">
-          Modo demo · la transferencia se simula
-        </Badge>
+        {!apiEnabled && (
+          <Badge variant="outline" className="text-[10px]">
+            Modo demo · la transferencia se simula
+          </Badge>
+        )}
 
         <div className="flex flex-col gap-2 sm:flex-row">
           <Button
@@ -314,8 +385,11 @@ export function RendirPropietarioDialog({
       abierto={showPin}
       accion={`Rendir a ${propietario.nombre} ${propietario.apellido}`}
       subaccion={`${formatMonto(neto)} · ${periodoLabel(periodo)}`}
+      // En prod el PIN lo valida el server (POST /rendiciones); en demo el
+      // dialog lo valida localmente como hasta ahora.
+      validacion={apiEnabled ? 'servidor' : 'local'}
       onClose={() => setShowPin(false)}
-      onConfirmado={() => handleRendir(alsoWhatsappRef.current)}
+      onConfirmado={(pin) => handleRendir(pin)}
     />
   </>
   );

@@ -31,6 +31,7 @@ import {
   SelectValue,
 } from '@llave/ui/select';
 import { toast } from '@llave/ui/use-toast';
+import { apiEnabled } from '@/lib/api/client';
 import {
   type CoInquilinoInvitado,
   type DocumentoAdjunto,
@@ -130,6 +131,17 @@ export function CargarInquilinoWizard({
 
   // ===== Crear el invitado =====
   const onCrear = async () => {
+    // Salvaguarda en prod: el trigger ya deshabilita el botón, pero si por
+    // algún camino se abre el wizard con el API activo, no persistimos nada
+    // en localStorage — avisamos que el alta aún no está disponible.
+    if (apiEnabled) {
+      toast({
+        title: 'Próximamente',
+        description: 'La carga de inquilinos estará disponible pronto.',
+      });
+      cerrar(false);
+      return;
+    }
     if (!paso1Ok) {
       setPaso(1);
       return;

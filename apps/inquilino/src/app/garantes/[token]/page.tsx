@@ -25,6 +25,11 @@ import {
 } from '@/lib/format';
 import { generarGaranteToken, leerGaranteToken } from '@/lib/garante-token';
 
+// Mismo criterio que `apiEnabled` de '@/lib/api/client', pero calculado acá
+// para no importar un módulo 'use client' dentro de este server component.
+// `NEXT_PUBLIC_API_URL` se inlinea en build, así que es una constante.
+const API_HABILITADO = (process.env.NEXT_PUBLIC_API_URL ?? '').replace(/\/$/, '').length > 0;
+
 // Para static export pre-generamos un token "demo" válido. En producción
 // estos tokens se generan al compartir desde el inquilino — pero como la
 // página es 100% lectura de los mocks, el HTML es el mismo para cualquier
@@ -62,6 +67,43 @@ const DEMO_PAYLOAD = {
 export default function GarantePublicPage({ params }: { params: { token: string } }) {
   const payload = params.token === 'demo' ? DEMO_PAYLOAD : leerGaranteToken(params.token);
   if (!payload) return notFound();
+
+  // En producción todavía no hay endpoint para resolver un contrato por token
+  // de garante: la vista actual lee de los mocks. Mostramos un estado neutro
+  // "disponible pronto" en vez de exponer datos falsos de un contrato.
+  if (API_HABILITADO) {
+    return (
+      <div className="mx-auto flex min-h-screen w-full max-w-md flex-col md:max-w-2xl">
+        <header className="border-b bg-muted/30 px-5 py-4">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <ShieldCheck className="h-3.5 w-3.5" />
+            <span>Vista compartida · sólo lectura</span>
+          </div>
+          <h1 className="mt-1 text-lg font-semibold">Estado del contrato</h1>
+        </header>
+        <main className="flex flex-1 flex-col items-center justify-center px-5 py-12 md:px-8">
+          <Card className="w-full max-w-sm space-y-4 p-8 text-center">
+            <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-primary/10 text-primary">
+              <ShieldCheck className="h-7 w-7" />
+            </div>
+            <div className="space-y-1.5">
+              <p className="text-sm font-medium text-foreground">Disponible pronto</p>
+              <p className="text-sm text-muted-foreground">
+                La vista compartida para garantes estará disponible en breve. Para
+                consultas sobre el contrato, contactá directamente a la inmobiliaria.
+              </p>
+            </div>
+            <Link
+              href="/"
+              className="inline-block text-sm font-medium text-primary underline-offset-2 hover:underline"
+            >
+              Conocé My Alquiler
+            </Link>
+          </Card>
+        </main>
+      </div>
+    );
+  }
 
   // En real, buscaríamos el contrato por payload.contratoId. Acá usamos el mock.
   const c = contratoMock;

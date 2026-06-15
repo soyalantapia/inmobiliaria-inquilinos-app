@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Loader2, UserPlus } from 'lucide-react';
+import { Clock, Loader2, UserPlus } from 'lucide-react';
 import { Button } from '@llave/ui/button';
 import {
   Dialog,
@@ -13,6 +13,7 @@ import {
 import { Input } from '@llave/ui/input';
 import { Label } from '@llave/ui/label';
 import { toast } from '@llave/ui/use-toast';
+import { apiEnabled } from '@/lib/api/client';
 import {
   type PropietarioExtra,
   agregarPropietarioExtra,
@@ -83,6 +84,43 @@ export function NuevoPropietarioDialog({
     onCreated?.(nuevo);
     onOpenChange(false);
   };
+
+  // En prod no hay POST de propietario en el API: en vez del form mock que
+  // guarda en localStorage mostramos "Próximamente". En demo (!apiEnabled) el
+  // alta sigue funcionando como hasta ahora.
+  if (apiEnabled) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserPlus className="h-5 w-5 text-primary" />
+              Nuevo propietario
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col items-center gap-3 py-4 text-center">
+            <div className="grid h-12 w-12 place-items-center rounded-full bg-primary/10 text-primary">
+              <Clock className="h-6 w-6" />
+            </div>
+            <p className="text-sm font-medium">
+              El alta de propietarios estará disponible pronto
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Estamos conectando la carga con el sistema. Por ahora podés operar
+              sobre los propietarios ya cargados.
+            </p>
+            <Button
+              variant="outline"
+              className="mt-1"
+              onClick={() => onOpenChange(false)}
+            >
+              Entendido
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

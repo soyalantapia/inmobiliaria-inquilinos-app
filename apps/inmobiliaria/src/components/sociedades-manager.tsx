@@ -31,6 +31,7 @@ import {
   SelectValue,
 } from '@llave/ui/select';
 import { toast } from '@llave/ui/use-toast';
+import { apiEnabled } from '@/lib/api/client';
 import {
   CONDICION_FISCAL_LABEL,
   type Sociedad,
@@ -67,6 +68,12 @@ export function SociedadesManager() {
 
   if (!hidratado) return null;
 
+  // El CRUD de sociedades escribe a localStorage (sociedades-storage) y no
+  // tiene endpoint en el API. En producción (apiEnabled) deshabilitamos las
+  // mutaciones para no "guardar" algo que sólo vive en el navegador; en build
+  // demo (!apiEnabled) queda todo operativo.
+  const puedeMutar = !apiEnabled;
+
   const principalId = lista.find((s) => s.esPrincipal && s.activa)?.id ?? null;
   const propiedadesPorSociedad = (sociedadId: string) =>
     propiedadesMock.filter(
@@ -75,6 +82,7 @@ export function SociedadesManager() {
     ).length;
 
   const handleMarcarPrincipal = (s: Sociedad) => {
+    if (!puedeMutar) return;
     marcarComoPrincipal(s.id);
     recargar();
     toast({
@@ -86,7 +94,7 @@ export function SociedadesManager() {
   };
 
   const handleBaja = () => {
-    if (!bajaSociedad) return;
+    if (!puedeMutar || !bajaSociedad) return;
     desactivarSociedad(bajaSociedad.id);
     recargar();
     toast({
@@ -98,6 +106,7 @@ export function SociedadesManager() {
   };
 
   const handleReactivar = (s: Sociedad) => {
+    if (!puedeMutar) return;
     reactivarSociedad(s.id);
     recargar();
     toast({ variant: 'success', title: `${s.nombreComercial} reactivada` });
@@ -140,11 +149,33 @@ export function SociedadesManager() {
             </p>
           )}
         </div>
-        <Button size="sm" onClick={() => setCrearOpen(true)}>
+        <Button
+          size="sm"
+          onClick={() => setCrearOpen(true)}
+          disabled={!puedeMutar}
+          title={puedeMutar ? undefined : 'Disponible pronto'}
+        >
           <Plus className="h-4 w-4" />
           Agregar sociedad
         </Button>
       </div>
+
+      {/* Aviso en prod: el CRUD no persiste del lado del servidor todavía */}
+      {!puedeMutar && (
+        <Card className="border-dashed bg-muted/20">
+          <CardContent className="flex items-start gap-3 p-4">
+            <Info className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+            <div className="space-y-1 text-sm">
+              <p className="font-semibold">Gestión de sociedades disponible pronto</p>
+              <p className="text-xs text-muted-foreground">
+                Estamos conectando esta sección al servidor. Por ahora podés
+                ver tus sociedades, pero agregar, editar o dar de baja va a
+                estar disponible en breve.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Cards de sociedades activas */}
       <div className="space-y-3">
@@ -157,6 +188,7 @@ export function SociedadesManager() {
             onPrincipal={() => handleMarcarPrincipal(s)}
             onBaja={() => setBajaSociedad(s)}
             puedeBaja={activas.length > 1}
+            puedeMutar={puedeMutar}
           />
         ))}
       </div>
@@ -176,7 +208,13 @@ export function SociedadesManager() {
                     CUIT {s.cuit}
                   </p>
                 </div>
-                <Button size="sm" variant="ghost" onClick={() => handleReactivar(s)}>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => handleReactivar(s)}
+                  disabled={!puedeMutar}
+                  title={puedeMutar ? undefined : 'Disponible pronto'}
+                >
                   Reactivar
                 </Button>
               </CardContent>
@@ -227,6 +265,7 @@ function SociedadCard({
   onPrincipal,
   onBaja,
   puedeBaja,
+  puedeMutar,
 }: {
   sociedad: Sociedad;
   propiedades: number;
@@ -234,6 +273,7 @@ function SociedadCard({
   onPrincipal: () => void;
   onBaja: () => void;
   puedeBaja: boolean;
+  puedeMutar: boolean;
 }) {
   const arcaOn = sociedad.afip?.conectado ?? false;
   const tieneCbu = !!sociedad.cuentaCobranza?.cbu;
@@ -272,7 +312,13 @@ function SociedadCard({
             </div>
           </div>
           <div className="flex shrink-0 gap-1">
-            <Button size="sm" variant="ghost" onClick={onEditar}>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={onEditar}
+              disabled={!puedeMutar}
+              title={puedeMutar ? undefined : 'Disponible pronto'}
+            >
               <Edit2 className="h-3.5 w-3.5" />
               Editar
             </Button>
@@ -302,7 +348,13 @@ function SociedadCard({
         {/* Acciones secundarias */}
         <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
           {!sociedad.esPrincipal ? (
-            <Button size="sm" variant="outline" onClick={onPrincipal}>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onPrincipal}
+              disabled={!puedeMutar}
+              title={puedeMutar ? undefined : 'Disponible pronto'}
+            >
               <Star className="h-3 w-3" />
               Marcar como principal
             </Button>
@@ -316,6 +368,8 @@ function SociedadCard({
               size="sm"
               variant="ghost"
               onClick={onBaja}
+              disabled={!puedeMutar}
+              title={puedeMutar ? undefined : 'Disponible pronto'}
               className="text-destructive hover:text-destructive"
             >
               <TrendingDown className="h-3 w-3" />
@@ -431,7 +485,10 @@ function SociedadDialog({
   const puedeGuardar = motivosBloqueo.length === 0;
 
   const guardar = () => {
-    if (!puedeGuardar) return;
+    // Sin endpoint en prod: el dialog sólo persiste a localStorage. El botón
+    // de "Agregar sociedad" ya viene deshabilitado cuando apiEnabled, este
+    // guard es la red de seguridad por si el dialog se abre por otra vía.
+    if (apiEnabled || !puedeGuardar) return;
     const cuentaCobranza =
       cbuAlias.trim() || bancoNombre.trim()
         ? {

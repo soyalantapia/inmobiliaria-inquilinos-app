@@ -12,6 +12,7 @@ import {
   Snowflake,
   Star,
   Truck,
+  Wrench,
   Zap,
   type LucideIcon,
 } from 'lucide-react';
@@ -20,6 +21,8 @@ import { Button } from '@llave/ui/button';
 import { Card } from '@llave/ui/card';
 import { cn } from '@llave/ui/cn';
 import { NavBar } from '@/components/nav-bar';
+import { Proximamente } from '@/components/proximamente';
+import { apiEnabled } from '@/lib/api/client';
 import {
   type CategoriaProfesional,
   profesionalCategoriaLabel,
@@ -40,6 +43,24 @@ const iconoCategoria: Record<CategoriaProfesional, LucideIcon> = {
 type Filtro = 'TODOS' | CategoriaProfesional;
 
 export default function ProfesionalesPage() {
+  // El inquilino no tiene endpoint accesible para la red de profesionales
+  // (la verificación vive del lado de la inmobiliaria). En producción
+  // mostramos un estado neutro en vez del listado mock.
+  if (apiEnabled) {
+    return (
+      <Proximamente
+        titulo="Profesionales"
+        descripcion="Pronto vas a ver acá los plomeros, electricistas y técnicos verificados por tu inmobiliaria."
+        icon={<Wrench className="h-7 w-7" />}
+        volverHref="/cuenta"
+        volverLabel="Volver a Mi cuenta"
+      />
+    );
+  }
+  return <ProfesionalesDemo />;
+}
+
+function ProfesionalesDemo() {
   const [filtro, setFiltro] = useState<Filtro>('TODOS');
   const [soloVerificados, setSoloVerificados] = useState(false);
 

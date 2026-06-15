@@ -13,6 +13,8 @@ import { Progress } from '@llave/ui/progress';
 import { toast } from '@llave/ui/use-toast';
 import { ConfirmDialog } from '@llave/ui/confirm-dialog';
 import { Topbar } from '@/components/topbar';
+import { Proximamente } from '@/components/proximamente';
+import { apiEnabled } from '@/lib/api/client';
 import { contratoExtraidoMock } from '@/lib/mock-data';
 import { formatFechaCorta, formatMonto } from '@/lib/format';
 import type { ContratoExtraido } from '@/lib/types';
@@ -86,6 +88,28 @@ const camposGrupos: Array<{ titulo: string; descripcion: string; campos: Campo[]
 ];
 
 export default function CargarContratoPage() {
+  // En prod no hay POST de contrato (ni el parse IA) en el API: mostramos
+  // "Próximamente" en lugar del wizard mock que daría de alta en localStorage.
+  // En demo (!apiEnabled) el wizard sigue intacto. `apiEnabled` es constante de
+  // módulo, así que el return temprano no altera el orden de hooks.
+  if (apiEnabled) {
+    return (
+      <>
+        <Topbar titulo="Cargar contrato" />
+        <Proximamente
+          titulo="La carga de contratos estará disponible pronto"
+          descripcion="La lectura del contrato con IA y el alta automática se están conectando con el sistema. Por ahora podés consultar y operar sobre los contratos ya cargados."
+          volverHref="/contratos"
+          volverLabel="Volver a contratos"
+        />
+      </>
+    );
+  }
+
+  return <CargarContratoWizard />;
+}
+
+function CargarContratoWizard() {
   const router = useRouter();
   const [paso, setPaso] = useState<Paso>(1);
   const [archivo, setArchivo] = useState<File | null>(null);

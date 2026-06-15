@@ -31,6 +31,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@llave/ui/tabs';
 import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
+import { apiEnabled } from '@/lib/api/client';
 import { CompararPlanesDialog } from '@/components/comparar-planes-dialog';
 import { descargarCsv } from '@/lib/csv-export';
 import { abrirReporteImprimible } from '@/lib/reportes-pdf';
@@ -281,6 +282,39 @@ export default function ConfiguracionPage() {
       description: `${nuevoEmail} recibe un email para activar su cuenta.`,
     });
   };
+
+  // En producción (apiEnabled) ninguna de las secciones de esta página tiene
+  // endpoint en el API: empresa, sociedades, equipo, plan, convenios y
+  // auditoría escriben todo a localStorage (empresa-storage, sociedades-storage,
+  // auditoria-storage, etc.). "Guardar" acá no persistiría nada del lado del
+  // servidor y mostraría datos mock, así que gateamos la pantalla completa con
+  // un estado "disponible pronto". En build demo (!apiEnabled) la config queda
+  // intacta.
+  if (apiEnabled) {
+    return (
+      <>
+        <Topbar titulo="Configuración" />
+        <main className="flex-1 p-4 md:p-6">
+          <Card className="mx-auto max-w-md">
+            <CardContent className="flex flex-col items-center gap-4 p-10 text-center">
+              <div className="grid h-14 w-14 place-items-center rounded-2xl bg-primary/10 text-primary">
+                <Building2 className="h-7 w-7" />
+              </div>
+              <div className="space-y-1.5">
+                <h1 className="text-lg font-semibold">Configuración</h1>
+                <p className="text-sm text-muted-foreground">
+                  Estamos terminando de conectar los datos de tu inmobiliaria,
+                  sociedades, equipo y facturación. Esta sección va a estar
+                  disponible pronto.
+                </p>
+              </div>
+              <Badge variant="secondary">Disponible pronto</Badge>
+            </CardContent>
+          </Card>
+        </main>
+      </>
+    );
+  }
 
   return (
     <>

@@ -40,6 +40,7 @@ import { Label } from '@llave/ui/label';
 import { Separator } from '@llave/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@llave/ui/tabs';
 import { toast } from '@llave/ui/use-toast';
+import { apiEnabled } from '@/lib/api/client';
 import { Topbar } from '@/components/topbar';
 import { screeningMock } from '@/lib/mock-data';
 import { formatMonto, formatFecha, formatPeriodo } from '@/lib/format';
@@ -161,6 +162,39 @@ export default function ScreeningPage() {
     setCompletadas(new Set());
     setResultado(null);
   };
+
+  // En producción (apiEnabled) no hay proveedor real de verificación
+  // conectado: el flujo de acá es una SIMULACIÓN con datos mock. Para no
+  // mostrarle al cliente un informe falso, gateamos la pantalla entera con
+  // un estado "disponible pronto". En build demo (!apiEnabled) la simulación
+  // queda intacta.
+  if (apiEnabled) {
+    return (
+      <>
+        <Topbar titulo="Verificar inquilino" />
+        <main className="flex-1 p-4 md:p-6">
+          <Card className="mx-auto max-w-md">
+            <CardContent className="flex flex-col items-center gap-4 p-10 text-center">
+              <div className="grid h-14 w-14 place-items-center rounded-2xl bg-primary/10 text-primary">
+                <ShieldCheck className="h-7 w-7" />
+              </div>
+              <div className="space-y-1.5">
+                <h1 className="text-lg font-semibold">
+                  Verificación de inquilinos
+                </h1>
+                <p className="text-sm text-muted-foreground">
+                  Estamos integrando las fuentes de datos (RENAPER, BCRA, ARCA,
+                  registros de bienes y referencias). Esta función va a estar
+                  disponible pronto.
+                </p>
+              </div>
+              <Badge variant="secondary">Disponible pronto</Badge>
+            </CardContent>
+          </Card>
+        </main>
+      </>
+    );
+  }
 
   return (
     <>

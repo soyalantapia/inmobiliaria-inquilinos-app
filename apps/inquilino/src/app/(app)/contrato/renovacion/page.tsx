@@ -21,6 +21,8 @@ import { Separator } from '@llave/ui/separator';
 import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
 import { NavBar } from '@/components/nav-bar';
+import { Proximamente } from '@/components/proximamente';
+import { apiEnabled } from '@/lib/api/client';
 import { contratoMock } from '@/lib/mock-data';
 import { diasHastaVencimiento, formatFecha, formatFechaCorta, formatMonto } from '@/lib/format';
 import {
@@ -38,6 +40,26 @@ import {
 type Paso = 1 | 2 | 3;
 
 export default function RenovacionPage() {
+  // El endpoint de decisión de renovación existe en el API pero es del lado
+  // de la inmobiliaria (POST /renovaciones/:contratoId/decision requiere
+  // contrato.aprobar). El inquilino NO tiene endpoint para declarar su
+  // intención, así que la confirmación actual solo iría a localStorage.
+  // Hasta que exista el back del lado inquilino, gateamos a "disponible pronto".
+  if (apiEnabled) {
+    return (
+      <Proximamente
+        titulo="Renovación"
+        descripcion="Pronto vas a poder avisarle a tu inmobiliaria si querés renovar tu contrato desde acá."
+        icon={<CalendarCheck className="h-7 w-7" />}
+        volverHref="/contrato"
+        volverLabel="Volver al contrato"
+      />
+    );
+  }
+  return <RenovacionDemo />;
+}
+
+function RenovacionDemo() {
   const router = useRouter();
   const c = contratoMock;
   const diasFin = diasHastaVencimiento(c.fechaFin);

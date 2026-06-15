@@ -7,6 +7,8 @@ import { Card } from '@llave/ui/card';
 import { Input } from '@llave/ui/input';
 import { ChatBubble } from '@/components/chat-bubble';
 import { NavBar } from '@/components/nav-bar';
+import { Proximamente } from '@/components/proximamente';
+import { apiEnabled } from '@/lib/api/client';
 import {
   chatInicialMock,
   contratoMock,
@@ -104,7 +106,22 @@ function obtenerSugerenciasParaUltimo(
   return match?.siguientes ?? iniciales;
 }
 
-export default function ContratoPage() {
+export default function BrokerPage() {
+  // En producción todavía no hay endpoint de IA: el chat actual es 100% mock
+  // (respuestas locales + persistencia en localStorage). Mostramos un estado
+  // neutro en vez de simular un asistente que no existe en el back.
+  if (apiEnabled) {
+    return (
+      <Proximamente
+        titulo="Asistente"
+        descripcion="Pronto vas a poder preguntarle al asistente sobre tus pagos, deuda y trámites de tu contrato."
+      />
+    );
+  }
+  return <BrokerDemo />;
+}
+
+function BrokerDemo() {
   const [demoEstado] = useDemoEstado();
   const [mensajes, setMensajes] = useState<MensajeChat[]>(chatInicialMock);
   const [input, setInput] = useState('');

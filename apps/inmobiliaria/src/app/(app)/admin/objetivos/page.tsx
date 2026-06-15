@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { Badge } from '@llave/ui/badge';
 import { Card, CardContent } from '@llave/ui/card';
+import { apiEnabled } from '@/lib/api/client';
 import { Topbar } from '@/components/topbar';
 import {
   BLOQUEADORES,
@@ -35,6 +36,36 @@ import { formatMonto, formatPeriodo } from '@/lib/format';
  * conoce.
  */
 export default function DashboardObjetivosPage() {
+  // En producción (apiEnabled) no hay endpoint de datawarehouse: todos los
+  // números de acá salen de objetivos-data (mock estático). Mostrar métricas
+  // internas inventadas a un cliente sería engañoso, así que gateamos la
+  // pantalla con un estado "disponible pronto". En build demo (!apiEnabled)
+  // el dashboard interno queda intacto.
+  if (apiEnabled) {
+    return (
+      <>
+        <Topbar titulo="Objetivos 2026 · interno" />
+        <main className="flex-1 p-4 md:p-6">
+          <Card className="mx-auto max-w-md">
+            <CardContent className="flex flex-col items-center gap-4 p-10 text-center">
+              <div className="grid h-14 w-14 place-items-center rounded-2xl bg-primary/10 text-primary">
+                <Target className="h-7 w-7" />
+              </div>
+              <div className="space-y-1.5">
+                <h1 className="text-lg font-semibold">Objetivos del semestre</h1>
+                <p className="text-sm text-muted-foreground">
+                  Estamos conectando este panel al datawarehouse. Los objetivos,
+                  cohorts y unit economics van a estar disponibles pronto.
+                </p>
+              </div>
+              <Badge variant="secondary">Disponible pronto</Badge>
+            </CardContent>
+          </Card>
+        </main>
+      </>
+    );
+  }
+
   // Tomamos el último mes con datos REALES (los proyectados los marcamos
   // visualmente distinto). Asumimos los que tienen activos < meta como
   // reales, los siguientes como proyección.

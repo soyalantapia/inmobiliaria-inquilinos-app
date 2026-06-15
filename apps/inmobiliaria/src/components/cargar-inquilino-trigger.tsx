@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, UserPlus } from 'lucide-react';
+import { UserPlus } from 'lucide-react';
 import { Button } from '@llave/ui/button';
+import { apiEnabled } from '@/lib/api/client';
 import {
   type InquilinoInvitado,
   invitadosDePropiedad,
@@ -32,6 +33,24 @@ export function CargarInquilinoTrigger({
 }) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
+
+  // En prod no hay POST de inquilino/invitación en el API: deshabilitamos el
+  // botón con tooltip "Próximamente" en vez de abrir el wizard mock que
+  // guarda en localStorage. En demo (!apiEnabled) el flujo sigue intacto.
+  if (apiEnabled) {
+    return (
+      <Button
+        variant={variant}
+        size={size}
+        className={fullWidth ? 'w-full' : ''}
+        disabled
+        title="Próximamente"
+      >
+        <UserPlus className="h-4 w-4" />
+        {label}
+      </Button>
+    );
+  }
 
   return (
     <>

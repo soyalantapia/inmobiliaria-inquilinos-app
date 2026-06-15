@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Clock, Plus } from 'lucide-react';
 import { Button } from '@llave/ui/button';
 import {
   Dialog,
@@ -14,6 +14,7 @@ import { Input } from '@llave/ui/input';
 import { Label } from '@llave/ui/label';
 import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
+import { apiEnabled } from '@/lib/api/client';
 import { validarCuit } from '@/lib/cuit';
 
 // Modal para dar de alta un propietario. En backend real es POST /api/owners.
@@ -71,6 +72,36 @@ export function SumarPropietarioDialog({ open, onOpenChange }: Props) {
     reset();
     onOpenChange(false);
   };
+
+  // En prod no hay POST de propietario en el API: en vez del form mock que
+  // solo toastea (sin persistir nada real) mostramos "Próximamente". En demo
+  // (!apiEnabled) el flujo sigue igual.
+  if (apiEnabled) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Sumar propietario</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col items-center gap-3 py-4 text-center">
+            <div className="grid h-12 w-12 place-items-center rounded-full bg-primary/10 text-primary">
+              <Clock className="h-6 w-6" />
+            </div>
+            <p className="text-sm font-medium">
+              El alta de propietarios estará disponible pronto
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Estamos conectando la carga con el sistema. Por ahora podés operar
+              sobre los propietarios ya cargados.
+            </p>
+            <Button variant="outline" className="mt-1" onClick={() => onOpenChange(false)}>
+              Entendido
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog

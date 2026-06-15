@@ -25,6 +25,8 @@ import { ConfirmDialog } from '@llave/ui/confirm-dialog';
 import { Progress } from '@llave/ui/progress';
 import { toast } from '@llave/ui/use-toast';
 import { NavBar } from '@/components/nav-bar';
+import { Proximamente } from '@/components/proximamente';
+import { apiEnabled } from '@/lib/api/client';
 import {
   type CategoriaDocumento,
   type Documento,
@@ -50,6 +52,24 @@ const iconoCategoria: Record<CategoriaDocumento, React.ReactNode> = {
 };
 
 export default function DocumentosPage() {
+  // En producción los documentos no tienen endpoint en el API: subir/eliminar
+  // solo persistiría en localStorage (dataURLs base64). Hasta que exista el
+  // back de documentos mostramos un estado neutro en vez del checklist mock.
+  if (apiEnabled) {
+    return (
+      <Proximamente
+        titulo="Mis documentos"
+        descripcion="Pronto vas a poder subir y tener a mano tu DNI, recibos y garantías desde acá."
+        icon={<FileText className="h-7 w-7" />}
+        volverHref="/cuenta"
+        volverLabel="Volver a Mi cuenta"
+      />
+    );
+  }
+  return <DocumentosDemo />;
+}
+
+function DocumentosDemo() {
   const [documentos, setDocumentos] = useState<Documento[]>([]);
   const [hidratado, setHidratado] = useState(false);
   const [eliminando, setEliminando] = useState<Documento | null>(null);

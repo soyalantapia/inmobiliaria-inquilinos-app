@@ -30,8 +30,214 @@ import { cerrarSesion } from '@/lib/auth-otp';
 import { contratoMock } from '@/lib/mock-data';
 import { leerProfile, type ProfileOverride } from '@/lib/profile-override';
 import { useCurrentUser } from '@/lib/use-current-user';
+import { apiEnabled } from '@/lib/api/client';
+import { useMiContrato } from '@/lib/api/hooks';
 
 export default function CuentaPage() {
+  // En prod la LECTURA de los datos del inquilino es real (sesión OTP + API),
+  // pero la EDICIÓN no tiene endpoint todavía. En demo, la UI mock (con
+  // override en localStorage) sigue intacta.
+  return apiEnabled ? <CuentaReal /> : <CuentaDemo />;
+}
+
+// ============================================================
+// CUENTA REAL (modo API)
+// ============================================================
+// Datos de lectura reales:
+//   - nombre + email: sesión OTP activa (`useCurrentUser`)
+//   - dirección: contrato real (`useMiContrato`)
+// La edición (/cuenta/editar) NO tiene endpoint en el API: el botón queda
+// deshabilitado con copy "próximamente" en vez de guardar en localStorage.
+function CuentaReal() {
+  const router = useRouter();
+  const user = useCurrentUser();
+  const { contrato } = useMiContrato();
+  const [confirmandoLogout, setConfirmandoLogout] = useState(false);
+
+  const fullName = user.fullName;
+  const email = user.email ?? '';
+  const direccion = contrato?.direccion ?? '';
+
+  return (
+    <>
+      <header className="p-5">
+        <h1 className="text-2xl font-semibold md:text-3xl">Mi cuenta</h1>
+        <p className="text-sm text-muted-foreground">Datos personales y preferencias</p>
+      </header>
+
+      <main className="flex-1 space-y-5 px-5 pb-6 md:px-8">
+        {/* Card de perfil (datos reales, edición deshabilitada) */}
+        <Card className="space-y-4 p-5">
+          <div className="flex items-center gap-4">
+            <Avatar className="h-16 w-16">
+              <AvatarFallback className="bg-primary text-2xl font-semibold text-primary-foreground">
+                {user.initial}
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex-1 min-w-0">
+              <p className="truncate text-lg font-semibold">{fullName}</p>
+              <p className="truncate text-xs text-muted-foreground">
+                {direccion ? `Tu hogar · ${direccion}` : 'Tu hogar'}
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-3 text-sm">
+            <Field icon={<Mail className="h-4 w-4" />} label="Email" value={email} />
+          </div>
+
+          {/* Edición sin endpoint todavía → botón deshabilitado con copy claro.
+              No abrimos /cuenta/editar (que solo guarda en localStorage). */}
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full"
+            disabled
+            title="Disponible pronto"
+          >
+            <User className="h-4 w-4" />
+            Editar datos (próximamente)
+          </Button>
+        </Card>
+
+        {/* Tu hogar */}
+        <section className="space-y-3">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Tu hogar
+          </h2>
+          <Card className="divide-y">
+            <LinkRow
+              icon={<FileText className="h-4 w-4" />}
+              label="Mis documentos"
+              descripcion="DNI, recibos y garantes"
+              href="/documentos"
+            />
+            <LinkRow
+              icon={<CalendarDays className="h-4 w-4" />}
+              label="Mi calendario"
+              descripcion="Pagos, ajustes y vencimientos en un solo lugar"
+              href="/calendario"
+            />
+            <LinkRow
+              icon={<Users className="h-4 w-4" />}
+              label="Co-inquilinos"
+              descripcion="Compartí el contrato con tu pareja o familia"
+              href="/co-inquilinos"
+            />
+            <LinkRow
+              icon={<Wrench className="h-4 w-4" />}
+              label="Profesionales recomendados"
+              descripcion="Plomeros, electricistas y técnicos verificados"
+              href="/profesionales"
+            />
+          </Card>
+        </section>
+
+        {/* Ayuda y soporte */}
+        <section className="space-y-3">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Ayuda y soporte
+          </h2>
+          <Card className="divide-y">
+            <button
+              type="button"
+              onClick={relanzarOnboarding}
+              className="flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-muted/40"
+            >
+              <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-primary/10 text-primary">
+                <GraduationCap className="h-4 w-4" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium">Ver tutorial otra vez</p>
+                <p className="text-xs text-muted-foreground">
+                  Recorré las funciones principales paso a paso
+                </p>
+              </div>
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            </button>
+            <LinkRow
+              icon={<CircleHelp className="h-4 w-4" />}
+              label="Preguntas frecuentes"
+              descripcion="Aumentos, depósito, mascotas, etc."
+              href="/ayuda"
+            />
+            <LinkRow
+              icon={<LifeBuoy className="h-4 w-4" />}
+              label="Hablar con un humano"
+              descripcion="WhatsApp con la inmobiliaria"
+              href={`https://wa.me/541145321100?text=${encodeURIComponent('Hola! Tengo una consulta sobre mi contrato.')}`}
+              external
+            />
+          </Card>
+        </section>
+
+        {/* Legal */}
+        <section className="space-y-3">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Legal
+          </h2>
+          <Card>
+            <LinkRow
+              icon={<ShieldCheck className="h-4 w-4" />}
+              label="Privacidad y términos"
+              descripcion="Cómo manejamos tus datos"
+              href="/ayuda#privacidad"
+            />
+          </Card>
+        </section>
+
+        {/* Acerca de */}
+        <section className="space-y-3">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Sobre My Alquiler
+          </h2>
+          <Card>
+            <div className="flex items-center gap-3 p-4">
+              <Globe className="h-4 w-4 text-muted-foreground" />
+              <div className="flex-1 text-sm">
+                <p className="font-medium">Versión 0.1.0</p>
+                <p className="text-xs text-muted-foreground">Última actualización: hoy</p>
+              </div>
+            </div>
+          </Card>
+        </section>
+
+        {/* Logout */}
+        <Card className="border-destructive/20">
+          <button
+            type="button"
+            onClick={() => setConfirmandoLogout(true)}
+            className="flex w-full items-center gap-3 p-4 text-left text-destructive transition-colors hover:bg-destructive/5"
+          >
+            <LogOut className="h-4 w-4" />
+            <span className="flex-1 font-medium">Cerrar sesión</span>
+            <ChevronRight className="h-4 w-4 opacity-50" />
+          </button>
+        </Card>
+      </main>
+
+      <NavBar />
+
+      <ConfirmDialog
+        open={confirmandoLogout}
+        onOpenChange={setConfirmandoLogout}
+        title="¿Cerrar sesión?"
+        description="Vas a tener que ingresar de nuevo con tu email y un código de 6 dígitos."
+        confirmLabel="Cerrar sesión"
+        variant="destructive"
+        onConfirm={() => {
+          cerrarSesion();
+          router.push('/login');
+        }}
+      />
+    </>
+  );
+}
+
+// ============================================================
+// CUENTA DEMO (modo mock) — UI original intacta
+// ============================================================
+function CuentaDemo() {
   const router = useRouter();
   const user = useCurrentUser();
   const [confirmandoLogout, setConfirmandoLogout] = useState(false);

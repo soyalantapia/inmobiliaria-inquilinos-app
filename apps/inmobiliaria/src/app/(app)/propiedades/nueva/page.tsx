@@ -29,7 +29,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
 import { Topbar } from '@/components/topbar';
+import { Proximamente } from '@/components/proximamente';
 import { NuevoPropietarioDialog } from '@/components/nuevo-propietario-dialog';
+import { apiEnabled } from '@/lib/api/client';
 import { propietariosMock } from '@/lib/mock-data';
 import {
   type PropietarioExtra,
@@ -94,6 +96,29 @@ const REQUISITOS_BASE = [
 ];
 
 export default function NuevaPropiedadPage() {
+  // En prod no hay POST de propiedad/contrato en el API: mostramos un estado
+  // "Próximamente" en vez del form mock que "guarda" en localStorage. En demo
+  // (!apiEnabled) seguimos con el wizard mock intacto. `apiEnabled` es una
+  // constante de módulo (no cambia entre renders), así que este return
+  // temprano no rompe el orden de hooks.
+  if (apiEnabled) {
+    return (
+      <>
+        <Topbar titulo="Cargar propiedad" />
+        <Proximamente
+          titulo="La carga de propiedades estará disponible pronto"
+          descripcion="Estamos terminando de conectar el alta de propiedades con el sistema. Mientras tanto vas a ver tu cartera y operar sobre lo ya cargado."
+          volverHref="/propiedades"
+          volverLabel="Volver a propiedades"
+        />
+      </>
+    );
+  }
+
+  return <NuevaPropiedadForm />;
+}
+
+function NuevaPropiedadForm() {
   const router = useRouter();
 
   // Tipo + dirección
