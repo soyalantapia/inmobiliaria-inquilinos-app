@@ -16,13 +16,10 @@ import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card } from '@llave/ui/card';
 import { cn } from '@llave/ui/cn';
-import {
-  contactosCobranzaMock,
-  contratosMock,
-  intencionesRenovacionMock,
-  type DecisionRenovacionMock,
-} from '@/lib/mock-data';
-import { diasHastaVencimiento, formatFecha, formatFechaCorta, formatMonto } from '@/lib/format';
+import { type DecisionRenovacionMock } from '@/lib/mock-data';
+import { formatFecha, formatFechaCorta, formatMonto } from '@/lib/format';
+import { apiEnabled } from '@/lib/api/client';
+import { useRenovaciones } from '@/lib/api/use-renovaciones';
 import {
   NegociadorRenovacionPanel,
   ResumenSugerenciasCartera,
@@ -72,25 +69,10 @@ const decisionConfig: Record<
 export default function RenovacionesPage() {
   const [filtro, setFiltro] = useState<FiltroEstado>('TODOS');
 
-  // Cruzamos contratos con intenciones, calculamos urgencia
-  const filas = useMemo(() => {
-    return contratosMock
-      .filter((c) => c.estado === 'ACTIVO')
-      .map((c) => {
-        const intencion = intencionesRenovacionMock.find((i) => i.contratoId === c.id);
-        const decision: DecisionRenovacionMock = intencion?.decision ?? 'SIN_RESPUESTA';
-        const dias = diasHastaVencimiento(c.fechaFin);
-        return {
-          ...c,
-          decision,
-          comentario: intencion?.comentario ?? null,
-          fechaIntencion: intencion?.fechaIntencion ?? null,
-          dias,
-          urgencia: dias <= 90 ? 'ALTA' : dias <= 180 ? 'MEDIA' : dias <= 365 ? 'BAJA' : 'NINGUNA',
-        };
-      })
-      .sort((a, b) => a.dias - b.dias);
-  }, []);
+  // Renovaciones reales del API (contratos activos + intención); fallback al
+  // mock solo en build demo. La decisión se registra desde el detalle del
+  // contrato (botón "Ver contrato").
+  const { renovaciones: filas } = useRenovaciones();
 
   const filtradas = useMemo(() => {
     if (filtro === 'TODOS') return filas;
@@ -149,7 +131,7 @@ export default function RenovacionesPage() {
       {/* Resumen Negociador IA: cuánto más entra de plata si todos
           aceptan la sugerencia. Sirve para que el dueño de la inmo vea
           de un solo golpe el potencial de la cartera. */}
-      <ResumenSugerenciasCartera contratoIds={filas.map((f) => f.id)} />
+      {!apiEnabled && <ResumenSugerenciasCartera contratoIds={filas.map((f) => f.id)} />}
 
       {/* Filtros */}
       <div className="flex flex-wrap gap-2">
@@ -239,14 +221,11 @@ export default function RenovacionesPage() {
                     WhatsApp. Solo lo mostramos si el inquilino no dijo
                     explícitamente que NO renueva (en ese caso ya está
                     cerrado). */}
-                {c.decision !== 'NO_RENOVAR' && (
+                {!apiEnabled && c.decision !== 'NO_RENOVAR' && (
                   <NegociadorRenovacionPanel
                     contratoId={c.id}
                     inquilino={c.inquilino}
-                    telefonoInquilino={
-                      contactosCobranzaMock.find((x) => x.contratoId === c.id)?.titular
-                        .telefono
-                    }
+                    telefonoInquilino={c.telefono ?? undefined}
                   />
                 )}
 
@@ -258,9 +237,7 @@ export default function RenovacionesPage() {
                         manual) y el "Llamar" iba a un número hardcoded
                         +54 11 4532 1100 para TODOS los contratos. */}
                     {(() => {
-                      const tel = contactosCobranzaMock.find(
-                        (x) => x.contratoId === c.id,
-                      )?.titular.telefono;
+                      const tel = c.telefono;
                       const telLimpio = tel?.replace(/[^\d]/g, '');
                       const textoWA = encodeURIComponent(
                         `Hola ${c.inquilino.split(' ')[0]}, te escribo de la inmobiliaria por la renovación de tu contrato.`,
