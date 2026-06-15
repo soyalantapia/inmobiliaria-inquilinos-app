@@ -62,6 +62,7 @@ import {
   toggleActivo,
 } from '@/lib/profesionales-storage';
 import { useProfesionales } from '@/lib/api/use-profesionales';
+import { apiEnabled } from '@/lib/api/client';
 import { listarReclamos } from '@/lib/reclamos-store';
 import {
   type CalificacionRecibida,
@@ -118,7 +119,9 @@ export default function ProfesionalesAdminPage() {
 
   useEffect(() => {
     refrescarReclamos();
-    setCalifsPorProf(calificacionesPorProfesional());
+    // Calificaciones cross-app (localStorage del lado inquilino): solo en demo.
+    // En prod (apiEnabled) no leemos ese store; el rating sale del API.
+    if (!apiEnabled) setCalifsPorProf(calificacionesPorProfesional());
     setHidratado(true);
   }, []);
 

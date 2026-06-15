@@ -13,7 +13,8 @@ import {
 } from 'lucide-react';
 import { Card } from '@llave/ui/card';
 import { diasHastaVencimiento, formatFecha, formatMonto } from '@/lib/format';
-import { TASA_PUNITORIA_DIARIA_DEFAULT, calcularPunitorios } from '@/lib/punitorios';
+import { apiEnabled } from '@/lib/api/client';
+import { resolverMontos } from '@/lib/punitorios';
 import type { Liquidacion } from '@/lib/types';
 
 /**
@@ -34,7 +35,9 @@ export function PaymentHero({
   diasAjuste: number;
 }) {
   const [desgloseAbierto, setDesgloseAbierto] = useState(false);
-  const calc = calcularPunitorios(liq, TASA_PUNITORIA_DIARIA_DEFAULT);
+  // En prod (apiEnabled) total y punitorio salen de la liq del API (server =
+  // fuente de verdad). En demo, recálculo local con la tasa default.
+  const calc = resolverMontos(liq, apiEnabled);
   const diasV = diasHastaVencimiento(liq.fechaVencimiento);
   const vencido = calc.diasAtraso > 0;
   const urgente = !vencido && diasV >= 0 && diasV <= 3;
@@ -85,8 +88,11 @@ export function PaymentHero({
             </p>
           </div>
 
-          {/* Resumen compacto del recargo + toggle */}
-          {vencido && (
+          {/* Resumen compacto del recargo + toggle. En prod, si el contrato no
+              tiene tasa punitoria, el server manda punitorio 0 → no mostramos
+              el bloque de recargo (evita "Incluye $0 de recargo"). En demo
+              `tasaDiariaPct > 0` siempre, así que se renderiza igual que antes. */}
+          {vencido && (calc.punitorioAcumulado > 0 || calc.tasaDiariaPct > 0) && (
             <div className="space-y-2">
               <button
                 type="button"
@@ -125,7 +131,11 @@ export function PaymentHero({
                     value={formatMonto(calc.montoOriginal, liq.moneda)}
                   />
                   <DesgloseRow
-                    label={`Intereses (${calc.diasAtraso} día${calc.diasAtraso === 1 ? '' : 's'} × ${calc.tasaDiariaPct}%)`}
+                    label={
+                      calc.tasaDiariaPct > 0
+                        ? `Intereses (${calc.diasAtraso} día${calc.diasAtraso === 1 ? '' : 's'} × ${calc.tasaDiariaPct}%)`
+                        : `Intereses (${calc.diasAtraso} día${calc.diasAtraso === 1 ? '' : 's'} de atraso)`
+                    }
                     value={`+ ${formatMonto(calc.punitorioAcumulado, liq.moneda)}`}
                     emphasize
                   />
@@ -135,9 +145,11 @@ export function PaymentHero({
                     value={formatMonto(calc.totalAPagar, liq.moneda)}
                     bold
                   />
-                  <p className="pt-1 text-[10px] uppercase tracking-wider opacity-85">
-                    +{formatMonto(calc.punitorioPorDia, liq.moneda)} por cada día más
-                  </p>
+                  {calc.punitorioPorDia > 0 && (
+                    <p className="pt-1 text-[10px] uppercase tracking-wider opacity-85">
+                      +{formatMonto(calc.punitorioPorDia, liq.moneda)} por cada día más
+                    </p>
+                  )}
                 </div>
               )}
             </div>

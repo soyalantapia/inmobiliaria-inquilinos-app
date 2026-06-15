@@ -29,7 +29,7 @@ import { OnboardingInvite } from '@/components/onboarding';
 import { MobileGreetingHeader } from '@/components/mobile-greeting-header';
 import { contratoMock, liquidacionesMock } from '@/lib/mock-data';
 import { movimientosMock, type Movimiento } from '@/lib/movimientos-mock';
-import { TASA_PUNITORIA_DIARIA_DEFAULT, calcularPunitorios } from '@/lib/punitorios';
+import { resolverMontos } from '@/lib/punitorios';
 import { diasHastaVencimiento, formatFecha, formatFechaCorta, formatMonto } from '@/lib/format';
 import {
   aplicarEstadoDemo,
@@ -425,7 +425,10 @@ function HomeReal() {
 // click "Regularizar pago" → checkout. 2 clicks para la acción más
 // crítica. Ahora 1 click directo.
 function BannerPagoPendiente({ liq }: { liq: Liquidacion }) {
-  const calc = calcularPunitorios(liq, TASA_PUNITORIA_DIARIA_DEFAULT);
+  // `apiEnabled` es constante de módulo y la rama es consistente: HomeReal sólo
+  // se monta con apiEnabled=true, HomeDemo con false. En prod total/punitorio
+  // salen de la liq del API (server = verdad); en demo, recálculo local.
+  const calc = resolverMontos(liq, apiEnabled);
   const diasV = diasHastaVencimiento(liq.fechaVencimiento);
   const vencido = calc.diasAtraso > 0;
 
@@ -510,7 +513,7 @@ function BannerPagoPendiente({ liq }: { liq: Liquidacion }) {
         {liq.montoExpensas != null && liq.montoExpensas > 0 && (
           <DesgloseFila label="Expensas" value={formatMonto(liq.montoExpensas, liq.moneda)} />
         )}
-        {vencido && (
+        {vencido && (calc.punitorioAcumulado > 0 || calc.tasaDiariaPct > 0) && (
           <DesgloseFila
             label={`Intereses · ${calc.diasAtraso} día${calc.diasAtraso === 1 ? '' : 's'} de atraso`}
             value={`+ ${formatMonto(calc.punitorioAcumulado, liq.moneda)}`}

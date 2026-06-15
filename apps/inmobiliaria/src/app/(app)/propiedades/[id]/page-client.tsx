@@ -116,7 +116,7 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
     );
   }
 
-  const { propiedad, contrato, propietarios, reclamos, reclamosAbiertos, sociedad } = detalle;
+  const { propiedad, contrato, propietarios, reclamos, reclamosAbiertos, sociedad, inquilinoEmail } = detalle;
 
   const Icon = tipoIcono[propiedad.tipo];
   const estadoCfg = estadoPropiedadConfig[propiedad.estado];
@@ -402,13 +402,17 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                       un número hardcoded (+54 11 4532 1100) idéntico para
                       todas las propiedades. */}
                   {(() => {
-                    const contacto = contactosCobranzaMock.find(
-                      (c) => c.contratoId === contrato.id,
-                    );
+                    const contacto = apiEnabled
+                      ? null
+                      : contactosCobranzaMock.find((c) => c.contratoId === contrato.id);
                     const tel = contacto?.titular.telefono ?? null;
                     const telLimpio = tel?.replace(/[^\d]/g, '');
-                    const email =
-                      contacto?.titular.email ?? emailDeNombre(contrato.inquilino);
+                    // En prod NO fabricamos email: usamos el real (inquilinoEmail)
+                    // si el API lo trae; si no, el botón Email no se muestra. En
+                    // demo seguimos con el contacto mock / fallback por nombre.
+                    const email = apiEnabled
+                      ? inquilinoEmail
+                      : (contacto?.titular.email ?? emailDeNombre(contrato.inquilino));
                     return (
                       <div className="flex flex-wrap gap-2">
                         {telLimpio && (
@@ -431,12 +435,16 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                             </Button>
                           </>
                         )}
-                        <Button size="sm" variant="ghost" asChild>
-                          <a href={`mailto:${email}`}>
-                            <Mail className="h-3.5 w-3.5" />
-                            Email
-                          </a>
-                        </Button>
+                        {email ? (
+                          <Button size="sm" variant="ghost" asChild>
+                            <a href={`mailto:${email}`}>
+                              <Mail className="h-3.5 w-3.5" />
+                              Email
+                            </a>
+                          </Button>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
                       </div>
                     );
                   })()}
@@ -467,9 +475,14 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
             {contrato && (
               <InquilinoActualAcciones
                 inquilinoNombre={contrato.inquilino}
+                // En prod usamos el email REAL del titular (o vacío si el API no
+                // lo trae): nada de email fabricado por nombre. En demo seguimos
+                // con el contacto mock / fallback por nombre.
                 inquilinoEmail={
-                  contactosCobranzaMock.find((x) => x.contratoId === contrato.id)
-                    ?.titular.email ?? emailDeNombre(contrato.inquilino)
+                  apiEnabled
+                    ? (inquilinoEmail ?? '')
+                    : (contactosCobranzaMock.find((x) => x.contratoId === contrato.id)
+                        ?.titular.email ?? emailDeNombre(contrato.inquilino))
                 }
                 propiedadId={propiedad.id}
                 contratoId={contrato.id}

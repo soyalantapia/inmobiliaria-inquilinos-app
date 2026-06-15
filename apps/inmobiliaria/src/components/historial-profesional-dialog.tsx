@@ -26,6 +26,7 @@ import {
   type ProfesionalAdmin,
   profesionalCategoriaLabelAdmin,
 } from '@/lib/mock-data';
+import { apiEnabled } from '@/lib/api/client';
 import { listarReclamos } from '@/lib/reclamos-store';
 import { calificacionesPorProfesional, ratingPonderado } from '@/lib/ratings-cross-app';
 import { formatFechaCorta } from '@/lib/format';
@@ -74,9 +75,10 @@ export function HistorialProfesionalDialog({
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }, [profesional]);
 
-  // Calificaciones recibidas indexadas por reclamoId.
+  // Calificaciones recibidas indexadas por reclamoId. Cross-app (localStorage
+  // del lado inquilino): solo en demo. En prod (apiEnabled) no leemos ese store.
   const califsByReclamo = useMemo(() => {
-    if (!profesional) return {};
+    if (!profesional || apiEnabled) return {};
     const all = calificacionesPorProfesional()[profesional.id] ?? [];
     return Object.fromEntries(all.map((c) => [c.reclamoId, c]));
     // eslint-disable-next-line react-hooks/exhaustive-deps

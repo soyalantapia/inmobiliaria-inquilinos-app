@@ -54,3 +54,53 @@ export function calcularPunitorios(
 }
 
 export const TASA_PUNITORIA_DIARIA_DEFAULT = 0.15; // 0.15% diario ≈ 4.5% mensual
+
+/**
+ * Resuelve total / punitorio / días de atraso de una liquidación según el modo:
+ *
+ * - **API (prod, `apiEnabled=true`)**: el server es la fuente de verdad. El
+ *   `montoTotal` y el `montoPunitorio` salen tal cual de la liquidación que dio
+ *   el API (que ya respeta la `tasaPunitorioDiaria` real del contrato — o la
+ *   ausencia de tasa → punitorio 0). NO se re-calcula con una constante
+ *   hardcodeada. Los `diasAtraso` se derivan de `fechaVencimiento` sólo para el
+ *   texto ("X días de atraso"); como no conocemos la tasa real del contrato,
+ *   `tasaDiariaPct` y `punitorioPorDia` quedan en 0 (no se muestra desglose de
+ *   intereses inventado).
+ *
+ * - **Demo (`apiEnabled=false`)**: idéntico al comportamiento previo —
+ *   `calcularPunitorios(liq, TASA_PUNITORIA_DIARIA_DEFAULT)`.
+ *
+ * Devuelve el MISMO shape `CalculoPunitorios` que `calcularPunitorios` para que
+ * las pantallas no tengan que ramificar más allá de esta llamada.
+ */
+export function resolverMontos(
+  liq: Liquidacion,
+  apiEnabled: boolean,
+  hoy: Date = new Date(),
+): CalculoPunitorios {
+  if (!apiEnabled) {
+    return calcularPunitorios(liq, TASA_PUNITORIA_DIARIA_DEFAULT, hoy);
+  }
+
+  // Días de atraso: mismo cálculo local que calcularPunitorios, sólo para texto.
+  const venc = parseLocal(liq.fechaVencimiento);
+  venc.setHours(0, 0, 0, 0);
+  const ref = new Date(hoy);
+  ref.setHours(0, 0, 0, 0);
+  const diff = Math.floor((ref.getTime() - venc.getTime()) / 86400000);
+  const diasAtraso = Math.max(0, diff);
+
+  // Montos del API: el server ya aplicó (o no) la tasa real del contrato.
+  const punitorioAcumulado = liq.montoPunitorio;
+  const totalAPagar = liq.montoTotal;
+  const montoOriginal = liq.montoTotal - liq.montoPunitorio;
+
+  return {
+    diasAtraso,
+    montoOriginal,
+    punitorioAcumulado,
+    punitorioPorDia: 0, // no conocemos la tasa real del contrato
+    tasaDiariaPct: 0,
+    totalAPagar,
+  };
+}

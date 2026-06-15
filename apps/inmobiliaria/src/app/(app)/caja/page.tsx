@@ -32,13 +32,35 @@ import {
   type MovimientoCaja,
   categoriaGastoLabel,
 } from '@/lib/caja-storage';
-import { useCaja } from '@/lib/api/hooks';
+import { useCaja, usePropiedades } from '@/lib/api/hooks';
 import { apiEnabled } from '@/lib/api/client';
 import { formatFechaCorta, formatMonto } from '@/lib/format';
 import { propiedadesMock } from '@/lib/mock-data';
 
+/** Opción mínima de propiedad para el select/filtros de caja. */
+interface PropiedadOpcion {
+  id: string;
+  direccion: string;
+  contratoActualId: string | null;
+}
+
 export default function CajaPage() {
   const { movimientos, crearGasto, eliminarGasto, refrescar } = useCaja();
+  // En prod las propiedades salen del API real (usePropiedades): así el select
+  // y los chips usan ids/direcciones/contratoActualId reales y el alta de gasto
+  // NO postea un propiedadId mock (FK rota). En demo seguimos con el mock.
+  const { propiedades } = usePropiedades();
+  const opcionesProp: PropiedadOpcion[] = apiEnabled
+    ? propiedades.map((p) => ({
+        id: p.propiedad.id,
+        direccion: p.propiedad.direccion,
+        contratoActualId: p.propiedad.contratoActualId,
+      }))
+    : propiedadesMock.map((p) => ({
+        id: p.id,
+        direccion: p.direccion,
+        contratoActualId: p.contratoActualId,
+      }));
   const [abrirForm, setAbrirForm] = useState(false);
   const [eliminando, setEliminando] = useState<MovimientoCaja | null>(null);
   const [filtroProp, setFiltroProp] = useState<string>('TODAS');
@@ -141,7 +163,7 @@ export default function CajaPage() {
           >
             Todas las propiedades
           </button>
-          {propiedadesMock.map((p) => (
+          {opcionesProp.map((p) => (
             <button
               key={p.id}
               type="button"
@@ -175,7 +197,7 @@ export default function CajaPage() {
                 key={m.id}
                 mov={m}
                 propDireccion={
-                  propiedadesMock.find((p) => p.id === m.propiedadId)?.direccion ?? '—'
+                  opcionesProp.find((p) => p.id === m.propiedadId)?.direccion ?? '—'
                 }
                 onDelete={() => setEliminando(m)}
               />
@@ -187,6 +209,7 @@ export default function CajaPage() {
       <DialogCargarGasto
         open={abrirForm}
         onOpenChange={setAbrirForm}
+        opciones={opcionesProp}
         onSubmit={async (data) => {
           // Esperamos el alta: si el server rechaza, NO cerramos ni mostramos
           // éxito (antes el `void` se tragaba el error y el toast mentía).
@@ -299,10 +322,12 @@ function MovimientoRow({
 function DialogCargarGasto({
   open,
   onOpenChange,
+  opciones,
   onSubmit,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  opciones: PropiedadOpcion[];
   onSubmit: (data: Omit<MovimientoCaja, 'id' | 'createdAt' | 'descontadoEnRendicion'>) => void;
 }) {
   const [propiedadId, setPropiedadId] = useState('');
@@ -337,7 +362,7 @@ function DialogCargarGasto({
       toast({ title: 'El monto tiene que ser positivo', variant: 'destructive' });
       return;
     }
-    const prop = propiedadesMock.find((p) => p.id === propiedadId);
+    const prop = opciones.find((p) => p.id === propiedadId);
     onSubmit({
       propiedadId,
       contratoId: prop?.contratoActualId ?? null,
@@ -375,7 +400,7 @@ function DialogCargarGasto({
               className="w-full rounded-md border bg-background px-3 py-2 text-sm"
             >
               <option value="">Elegí una propiedad…</option>
-              {propiedadesMock.map((p) => (
+              {opciones.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.direccion}
                 </option>

@@ -23,7 +23,7 @@ import { toast } from '@llave/ui/use-toast';
 import { contratoMock, liquidacionesMock } from '@/lib/mock-data';
 import { formatFecha, formatFechaCorta, formatMonto, formatPeriodo } from '@/lib/format';
 import { abrirReciboImprimible } from '@/lib/recibo-pdf';
-import { TASA_PUNITORIA_DIARIA_DEFAULT, calcularPunitorios } from '@/lib/punitorios';
+import { resolverMontos } from '@/lib/punitorios';
 import {
   leerPagoInformado,
   listarPagosDeLiq,
@@ -107,7 +107,9 @@ function DetallePagoView({
     setDecisionInmo(decisionInmoPago(liqId));
   }, [liqId]);
 
-  const calc = calcularPunitorios(liq, TASA_PUNITORIA_DIARIA_DEFAULT);
+  // `liq` ya viene resuelta (API en prod, mock en demo). En prod total/punitorio
+  // salen del API (server = verdad), no del re-cálculo con la tasa default.
+  const calc = resolverMontos(liq, apiEnabled);
   const vencido = calc.diasAtraso > 0;
   const pagado = liq.estado === 'PAGADO';
   const rechazadoPorInmo = decisionInmo?.estado === 'RECHAZADO';
@@ -301,7 +303,7 @@ function DetallePagoView({
             {liq.montoExpensas !== null && (
               <Row label="Expensas" value={formatMonto(liq.montoExpensas, liq.moneda)} />
             )}
-            {vencido && (
+            {vencido && calc.punitorioAcumulado > 0 && (
               <>
                 <Separator />
                 <div className="space-y-2 rounded-md border border-destructive/30 bg-destructive/5 p-3">
@@ -310,8 +312,9 @@ function DetallePagoView({
                     <div className="space-y-1.5 text-xs">
                       <p className="font-medium text-destructive">Punitorios por mora</p>
                       <p className="text-muted-foreground">
-                        Tasa {calc.tasaDiariaPct}% diario sobre el monto original · {calc.diasAtraso}{' '}
-                        día{calc.diasAtraso === 1 ? '' : 's'} de atraso
+                        {calc.tasaDiariaPct > 0
+                          ? `Tasa ${calc.tasaDiariaPct}% diario sobre el monto original · ${calc.diasAtraso} día${calc.diasAtraso === 1 ? '' : 's'} de atraso`
+                          : `${calc.diasAtraso} día${calc.diasAtraso === 1 ? '' : 's'} de atraso`}
                       </p>
                     </div>
                   </div>
@@ -320,10 +323,12 @@ function DetallePagoView({
                     value={`+ ${formatMonto(calc.punitorioAcumulado, liq.moneda)}`}
                     highlight
                   />
-                  <p className="rounded bg-destructive/10 px-2 py-1 text-[11px] font-medium text-destructive">
-                    <TrendingUp className="mr-1 inline h-3 w-3" />
-                    Sumás {formatMonto(calc.punitorioPorDia, liq.moneda)} por cada día más que pase
-                  </p>
+                  {calc.punitorioPorDia > 0 && (
+                    <p className="rounded bg-destructive/10 px-2 py-1 text-[11px] font-medium text-destructive">
+                      <TrendingUp className="mr-1 inline h-3 w-3" />
+                      Sumás {formatMonto(calc.punitorioPorDia, liq.moneda)} por cada día más que pase
+                    </p>
+                  )}
                 </div>
               </>
             )}

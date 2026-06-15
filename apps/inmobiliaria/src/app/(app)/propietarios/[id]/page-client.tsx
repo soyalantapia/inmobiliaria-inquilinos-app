@@ -431,51 +431,71 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
           </Card>
         </div>
 
-        {/* Rendiciones */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-              Últimas rendiciones
-            </CardTitle>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                const rendiciones = generarRendiciones(
-                  propietario.totalCobradoMes,
-                  propietario.comisionPct,
-                );
-                descargarCsv({
-                  filename: `rendiciones-${propietario.apellido.toLowerCase()}-${propietario.nombre.toLowerCase()}`,
-                  headers: ['Período', 'Cobrado', 'Comisión', 'Rendido', 'Estado', 'Fecha pago'],
-                  rows: rendiciones.map((r) => [
-                    formatPeriodo(r.periodo),
-                    r.cobrado,
-                    r.comision,
-                    r.rendido,
-                    r.estado,
-                    r.fecha ?? '—',
-                  ]),
-                });
-                toast({
-                  variant: 'success',
-                  title: 'CSV descargado',
-                  description: `${rendiciones.length} rendición${rendiciones.length === 1 ? '' : 'es'} de ${propietario.nombre}. Abrilo en Excel o Sheets.`,
-                });
-              }}
-            >
-              <Download className="h-3.5 w-3.5" />
-              Exportar todo
-            </Button>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="divide-y">
-              {generarRendiciones(propietario.totalCobradoMes, propietario.comisionPct).map((r) => (
-                <RendicionRow key={r.periodo} rendicion={r} />
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+        {/* Rendiciones — en prod (apiEnabled) NO mostramos historial fabricado
+            (PAGADO/PENDIENTE + fechas inventadas por generarRendiciones). Sin
+            endpoint real de rendiciones todavía: mostramos "Disponible pronto".
+            En demo (!apiEnabled) seguimos con el historial simulado. */}
+        {apiEnabled ? (
+          <Card>
+            <CardHeader className="space-y-0">
+              <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                Últimas rendiciones
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-6 pt-0 text-center">
+              <Receipt className="mx-auto mb-2 h-8 w-8 text-muted-foreground/50" />
+              <p className="text-sm font-medium">Disponible pronto</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                El historial de rendiciones al propietario estará disponible en breve.
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0">
+              <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                Últimas rendiciones
+              </CardTitle>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const rendiciones = generarRendiciones(
+                    propietario.totalCobradoMes,
+                    propietario.comisionPct,
+                  );
+                  descargarCsv({
+                    filename: `rendiciones-${propietario.apellido.toLowerCase()}-${propietario.nombre.toLowerCase()}`,
+                    headers: ['Período', 'Cobrado', 'Comisión', 'Rendido', 'Estado', 'Fecha pago'],
+                    rows: rendiciones.map((r) => [
+                      formatPeriodo(r.periodo),
+                      r.cobrado,
+                      r.comision,
+                      r.rendido,
+                      r.estado,
+                      r.fecha ?? '—',
+                    ]),
+                  });
+                  toast({
+                    variant: 'success',
+                    title: 'CSV descargado',
+                    description: `${rendiciones.length} rendición${rendiciones.length === 1 ? '' : 'es'} de ${propietario.nombre}. Abrilo en Excel o Sheets.`,
+                  });
+                }}
+              >
+                <Download className="h-3.5 w-3.5" />
+                Exportar todo
+              </Button>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="divide-y">
+                {generarRendiciones(propietario.totalCobradoMes, propietario.comisionPct).map((r) => (
+                  <RendicionRow key={r.periodo} rendicion={r} />
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Contratos vigentes */}
         <Card>

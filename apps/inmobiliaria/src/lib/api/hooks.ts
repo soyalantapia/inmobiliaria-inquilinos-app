@@ -734,7 +734,27 @@ export interface DashboardData {
   cargando: boolean;
 }
 
+// Comisión por defecto (8%) usada en el demo y como último recurso cuando todavía
+// no hay propietarios con comisión real ni nada cobrado del que derivar una tasa.
 const COMISION_DASHBOARD = 0.08;
+
+// Tasa de comisión efectiva (0..1) derivada de la comisión REAL por propietario.
+// Pondera comisionPct por lo cobrado de cada propietario este mes; si nada se
+// cobró aún, promedia los comisionPct cargados; si no hay propietarios, cae al 8%.
+function comisionEfectiva(propietarios: Propietario[]): number {
+  const cobrado = propietarios.reduce((a, p) => a + p.totalCobradoMes, 0);
+  if (cobrado > 0) {
+    const comision = propietarios.reduce(
+      (a, p) => a + p.totalCobradoMes * ((p.comisionPct ?? 0) / 100),
+      0,
+    );
+    return comision / cobrado;
+  }
+  if (propietarios.length > 0) {
+    return propietarios.reduce((a, p) => a + (p.comisionPct ?? 0) / 100, 0) / propietarios.length;
+  }
+  return COMISION_DASHBOARD;
+}
 
 export function useDashboard(): DashboardData {
   const { contratos, cargando: cargC } = useContratos();
@@ -748,7 +768,14 @@ export function useDashboard(): DashboardData {
   const moraContratos = activos.filter((c) => c.estadoPagoActual === 'VENCIDO');
   const enMora = { monto: moraContratos.reduce((a, c) => a + c.monto, 0), cantidad: moraContratos.length };
   const totalActivos = cobrado + porCobrar + enMora.monto;
-  const comisionMes = Math.round(cobrado * COMISION_DASHBOARD);
+
+  // Comisión real (sólo en prod): cada propietario trae su comisionPct y lo que se
+  // le cobró este mes (totalCobradoMes). La comisión efectiva sobre lo cobrado del
+  // estudio es el promedio ponderado de comisionPct por lo cobrado de cada
+  // propietario, reemplazando el 0.08 fijo por la tasa real sin perder coherencia
+  // con `cobrado`. En el demo se mantiene el 0.08 fijo (parity byte-for-byte).
+  const tasaComision = apiEnabled ? comisionEfectiva(propietarios) : COMISION_DASHBOARD;
+  const comisionMes = Math.round(cobrado * tasaComision);
   const aRendirMes = Math.round(cobrado - comisionMes);
 
   const totalProps = propiedades.length;

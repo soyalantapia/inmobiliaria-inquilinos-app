@@ -17,7 +17,7 @@ import { toast } from '@llave/ui/use-toast';
 import { NavBar } from '@/components/nav-bar';
 import { MobileGreetingHeader } from '@/components/mobile-greeting-header';
 import { comprobantesMock, contratoMock, liquidacionesMock } from '@/lib/mock-data';
-import { TASA_PUNITORIA_DIARIA_DEFAULT, calcularPunitorios } from '@/lib/punitorios';
+import { resolverMontos } from '@/lib/punitorios';
 import {
   cargosExtraDelInquilino,
   totalCargosExtra,
@@ -109,7 +109,8 @@ function RecibosDemo() {
   // los cobrados — el inquilino con deuda no veía la urgencia a simple vista.
   const pagoUrgente: Movimiento | null = useMemo(() => {
     if (!pendiente) return null;
-    const calc = calcularPunitorios(pendiente, TASA_PUNITORIA_DIARIA_DEFAULT);
+    // RecibosDemo → apiEnabled=false → resolverMontos cae al cálculo local.
+    const calc = resolverMontos(pendiente, apiEnabled);
     return {
       kind: calc.diasAtraso > 0 ? 'atrasado' : 'a-pagar',
       liq: pendiente,
@@ -344,7 +345,7 @@ function RecibosReal() {
   const pagoUrgente: Movimiento | null = urgenteLiq
     ? {
         kind:
-          calcularPunitorios(urgenteLiq, TASA_PUNITORIA_DIARIA_DEFAULT).diasAtraso > 0
+          resolverMontos(urgenteLiq, apiEnabled).diasAtraso > 0
             ? 'atrasado'
             : 'a-pagar',
         liq: urgenteLiq,
@@ -440,7 +441,9 @@ function RecibosReal() {
 // ============================================================
 function MovimientoRow({ mov }: { mov: Movimiento }) {
   if (mov.kind === 'atrasado' || mov.kind === 'a-pagar') {
-    const calc = calcularPunitorios(mov.liq, TASA_PUNITORIA_DIARIA_DEFAULT);
+    // Componente compartido demo/real: `apiEnabled` (constante de módulo) elige
+    // el origen. En prod, total/punitorio salen de la liq del API.
+    const calc = resolverMontos(mov.liq, apiEnabled);
     const diasV = diasHastaVencimiento(mov.liq.fechaVencimiento);
     const vencido = mov.kind === 'atrasado';
 
@@ -555,7 +558,10 @@ function MovimientoRow({ mov }: { mov: Movimiento }) {
 // el total a pagar es mayor al alquiler vigente.
 function PagoUrgenteCard({ mov }: { mov: Movimiento }) {
   if (mov.kind !== 'atrasado' && mov.kind !== 'a-pagar') return null;
-  const calc = calcularPunitorios(mov.liq, TASA_PUNITORIA_DIARIA_DEFAULT);
+  // Componente compartido demo/real: en prod (apiEnabled) total y punitorios
+  // salen de la liq del API. El bloque de punitorios ya se gatea con
+  // `hayPunitorios`, así que un contrato sin tasa (punitorio 0) no lo muestra.
+  const calc = resolverMontos(mov.liq, apiEnabled);
   const diasV = diasHastaVencimiento(mov.liq.fechaVencimiento);
   const vencido = mov.kind === 'atrasado';
   const hayPunitorios = calc.punitorioAcumulado > 0;

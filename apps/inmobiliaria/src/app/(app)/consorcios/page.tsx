@@ -179,7 +179,9 @@ export default function ConsorciosPage() {
                                 {c.encargado.nombre.split(' ')[0]}
                               </Badge>
                             )}
-                            {soc && (
+                            {/* Razón social = sociedadById (seed local). En prod
+                                (apiEnabled) no mostramos ese dato fabricado. */}
+                            {!apiEnabled && soc && (
                               <Badge variant="secondary" className="text-[10px]">
                                 Gestiona {soc.nombreComercial}
                               </Badge>

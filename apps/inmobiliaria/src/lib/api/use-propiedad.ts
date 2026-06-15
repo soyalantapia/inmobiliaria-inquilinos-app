@@ -49,6 +49,12 @@ export interface PropiedadDetalle {
   reclamos: Reclamo[];
   reclamosAbiertos: number;
   sociedad: SociedadGestora;
+  /**
+   * Email REAL del inquilino titular (lo trae el API en
+   * contratoActual.inquilinoTitular.email). null si el contrato no lo expone.
+   * En prod la pantalla NO fabrica email: usa éste o oculta el botón.
+   */
+  inquilinoEmail: string | null;
 }
 
 /* ---------- Shapes del API (GET /propiedades/:id) ---------- */
@@ -84,6 +90,8 @@ interface ContratoApi {
   estadoPagoActual: EstadoLiquidacion;
   cbuAlias?: string | null;
   titularCuenta?: string | null;
+  /** Inquilino titular embebido: de acá sale el email real (sin fabricar). */
+  inquilinoTitular?: { email?: string | null } | null;
 }
 
 interface SociedadApi {
@@ -189,6 +197,10 @@ function mapPropiedad(p: PropiedadApi): PropiedadDetalle {
     cuit: p.sociedad?.cuit ?? '—',
   };
 
+  // Email real del titular si el API lo trae; si no, null (la pantalla decide
+  // ocultar el botón en vez de fabricar uno).
+  const emailTitular = p.contratoActual?.inquilinoTitular?.email ?? null;
+
   return {
     propiedad,
     contrato,
@@ -197,6 +209,7 @@ function mapPropiedad(p: PropiedadApi): PropiedadDetalle {
     reclamos: [],
     reclamosAbiertos: 0,
     sociedad,
+    inquilinoEmail: emailTitular,
   };
 }
 
@@ -211,6 +224,9 @@ function detalleMock(id: string): PropiedadDetalle | null {
   return {
     ...enriquecida,
     sociedad: { id: soc.id, nombreComercial: soc.nombreComercial, cuit: soc.cuit },
+    // En demo la pantalla resuelve el email por contactosCobranzaMock/emailDeNombre
+    // (rama !apiEnabled), así que este campo queda neutro acá.
+    inquilinoEmail: null,
   };
 }
 

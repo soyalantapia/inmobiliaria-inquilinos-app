@@ -140,7 +140,8 @@ export function useMisAnuncios(): {
   });
   const invalidar = () => void qc.invalidateQueries({ queryKey: ['mis-anuncios'] });
 
-  if (!apiEnabled || q.isError) {
+  // Demo offline: seeds/localStorage cross-app + acuses locales. Intacto.
+  if (!apiEnabled) {
     return {
       anuncios: listarAnunciosParaInquilino(),
       acuses: leerAcuses(),
@@ -150,6 +151,19 @@ export function useMisAnuncios(): {
       marcarEnterado: async (id) => {
         marcarEnteradoLocal(id);
       },
+      hidratado: true,
+    };
+  }
+
+  // Prod: si el API falla NUNCA caemos a los SEEDS_FALLBACK locales (tienen
+  // un CBU/alias hardcodeados → riesgo de phishing si el inquilino transfiere
+  // a una cuenta inventada). Mostramos lista vacía y los acuses no aplican.
+  if (q.isError) {
+    return {
+      anuncios: [],
+      acuses: {},
+      marcarLeido: async () => {},
+      marcarEnterado: async () => {},
       hidratado: true,
     };
   }

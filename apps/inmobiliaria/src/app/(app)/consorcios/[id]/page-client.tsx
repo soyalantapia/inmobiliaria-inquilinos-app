@@ -127,7 +127,9 @@ export default function DetalleConsorcioPage() {
                   <span>·</span>
                   <span>Administrado desde {formatFechaCorta(consorcio.desde)}</span>
                 </div>
-                {soc && (
+                {/* Razón social + CUIT salen de sociedadById (seed local). En
+                    prod (apiEnabled) no mostramos ese dato fabricado. */}
+                {!apiEnabled && soc && (
                   <p className="text-[11px] text-muted-foreground">
                     Bajo razón social{' '}
                     <strong className="text-foreground">{soc.nombreComercial}</strong> · CUIT{' '}

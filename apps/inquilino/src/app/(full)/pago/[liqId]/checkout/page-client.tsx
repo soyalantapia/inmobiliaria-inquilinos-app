@@ -32,7 +32,7 @@ import { toast } from '@llave/ui/use-toast';
 import { contratoMock, liquidacionesMock } from '@/lib/mock-data';
 import { datosBancariosMock, proximoCambioVigente } from '@/lib/datos-bancarios';
 import { formatMonto, formatPeriodo } from '@/lib/format';
-import { TASA_PUNITORIA_DIARIA_DEFAULT, calcularPunitorios } from '@/lib/punitorios';
+import { resolverMontos } from '@/lib/punitorios';
 import {
   agregarPago,
   listarPagosDeLiq,
@@ -66,8 +66,9 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
 
   const informarPago = useInformarPago();
   // Teléfono real de la inmobiliaria (sólo en prod) para el CTA de WhatsApp
-  // del estado neutro de datos bancarios. En demo es null y no se usa.
-  const { inmobiliariaTelefono } = useMiContrato();
+  // del estado neutro de datos bancarios + el hint de negociar. En demo es
+  // null. El contrato real aporta el alquiler vigente (umbral del hint).
+  const { contrato, inmobiliariaTelefono } = useMiContrato();
 
   const [step, setStep] = useState<Step>('datos');
   /** Pagos previos (parciales o total) ya informados para esta liq. */
@@ -88,8 +89,11 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
     setDecisionInmoUltima(decisionInmoPago(params.liqId));
   }, [params.liqId]);
 
+  // CRÍTICO: el monto que se INFORMA al pagar deriva de calc.totalAPagar. En
+  // prod (apiEnabled) debe ser liq.montoTotal real del API (server = verdad),
+  // NO el re-cálculo con la tasa hardcodeada. En demo, cálculo local idéntico.
   const calc = useMemo(
-    () => (liq ? calcularPunitorios(liq, TASA_PUNITORIA_DIARIA_DEFAULT) : null),
+    () => (liq ? resolverMontos(liq, apiEnabled) : null),
     [liq],
   );
 
@@ -114,6 +118,12 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
 
   const totalAPagar = calc.totalAPagar;
   const saldo = saldoPendiente(params.liqId, totalAPagar);
+  // Alquiler vigente para el umbral del hint de negociación: en la demo es el
+  // mock; en prod, el monto real del contrato (o, si no llegó, el montoAlquiler
+  // de la liquidación). Nunca el mock en prod.
+  const alquilerVigente = apiEnabled
+    ? (contrato?.montoActual ?? liq.montoAlquiler)
+    : contratoMock.montoActual;
   // Por defecto: pagar el saldo completo (que puede ser todo el total o
   // el remanente si hubo parciales antes).
   const montoActual = montoElegido ?? saldo;
@@ -149,10 +159,10 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
               {formatMonto(totalAPagar - saldo, liq.moneda)}
             </p>
           )}
-          {calc.diasAtraso > 0 && !completado && (
+          {calc.punitorioAcumulado > 0 && !completado && (
             <p className="text-xs text-muted-foreground">
               Incluye {formatMonto(calc.punitorioAcumulado, liq.moneda)} de punitorios por
-              mora · tasa {calc.tasaDiariaPct}% diario
+              mora{calc.tasaDiariaPct > 0 ? ` · tasa ${calc.tasaDiariaPct}% diario` : ''}
             </p>
           )}
         </Card>
@@ -170,11 +180,15 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
             {/* Si la deuda excede 1.2× alquiler vigente, sugerimos
                 contactar a la inmo para negociar cuotas. Sin esto, el
                 checkout solo ofrece "saldo completo" o "parcial" sin
-                explicar que se puede pactar. */}
-            {saldo > contratoMock.montoActual * 1.2 && (
+                explicar que se puede pactar. En prod el alquiler vigente
+                sale del contrato real (o, en su defecto, del montoAlquiler
+                de la liq) y el wa.me usa el teléfono real de la inmo: si no
+                tenemos teléfono, el hint no se muestra (sin CTA falso). */}
+            {saldo > alquilerVigente * 1.2 && (!apiEnabled || inmobiliariaTelefono) && (
               <HintNegociarPagos
                 saldo={saldo}
-                alquilerVigente={contratoMock.montoActual}
+                alquilerVigente={alquilerVigente}
+                inmobiliariaTelefono={inmobiliariaTelefono}
               />
             )}
             <SelectorMonto
@@ -327,15 +341,22 @@ function ParcialesAnteriores({
 function HintNegociarPagos({
   saldo,
   alquilerVigente,
+  inmobiliariaTelefono,
 }: {
   saldo: number;
   alquilerVigente: number;
+  /** Teléfono real de la inmobiliaria (prod). null en demo. */
+  inmobiliariaTelefono: string | null;
 }) {
   const multiplo = (saldo / alquilerVigente).toFixed(1);
   const mensaje = encodeURIComponent(
     `Hola, tengo una deuda de ${formatMonto(saldo)} (${multiplo}× mi alquiler). ¿Podemos pactar un plan de cuotas?`,
   );
-  const telefono = '541145321100'; // mismo número que el WhatsappFab
+  // En prod usamos el teléfono real de la inmo (el call-site no renderiza este
+  // hint si no hay teléfono). En demo cae al número demo del WhatsappFab.
+  const telefono = apiEnabled
+    ? (inmobiliariaTelefono ?? '').replace(/\D/g, '')
+    : '541145321100';
   const url = `https://wa.me/${telefono}?text=${mensaje}`;
   return (
     <Card className="border-violet-300 bg-violet-50/60 p-4 dark:border-violet-900/40 dark:bg-violet-900/10">

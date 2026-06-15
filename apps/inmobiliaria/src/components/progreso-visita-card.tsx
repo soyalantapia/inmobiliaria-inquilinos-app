@@ -12,6 +12,7 @@ import { Badge } from '@llave/ui/badge';
 import { Card, CardContent } from '@llave/ui/card';
 import { cn } from '@llave/ui/cn';
 import { visitaDeReclamo, type VisitaProfesional } from '@/lib/visitas-cross-app';
+import { apiEnabled } from '@/lib/api/client';
 import { formatMonto } from '@/lib/format';
 
 /**
@@ -63,6 +64,9 @@ export function ProgresoVisitaCard({ reclamoId }: ProgresoVisitaCardProps) {
 
   useEffect(() => {
     setHidratado(true);
+    // Progreso de visita cross-app (localStorage del lado profesional): solo en
+    // demo. En prod (apiEnabled) no leemos ese store y la card no se renderiza.
+    if (apiEnabled) return;
     setVisita(visitaDeReclamo(reclamoId));
     // Poll cada 3 segs para reflejar updates del profesional. En backend
     // real esto sería un websocket / SSE.
