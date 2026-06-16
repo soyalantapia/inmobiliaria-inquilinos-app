@@ -40,7 +40,7 @@ import {
  */
 export function AppMockup() {
   return (
-    <div aria-hidden className="relative w-full select-none pb-14 pr-2 sm:pr-10">
+    <div aria-hidden className="relative w-full select-none pb-6 pr-2 sm:pr-8">
       <PanelBrowser />
       <InquilinoPhone />
     </div>
@@ -233,7 +233,7 @@ function Kpi({
  * ============================================================ */
 function InquilinoPhone() {
   return (
-    <div className="absolute -bottom-8 -right-2 w-[39%] max-w-[188px] sm:-right-3">
+    <div className="absolute -bottom-4 -right-2 w-[38%] max-w-[182px] sm:-right-3">
       {/* Botones laterales */}
       <div className="absolute -left-[2px] top-[22%] h-5 w-[2px] rounded-l bg-gray-700" />
       <div className="absolute -left-[2px] top-[32%] h-8 w-[2px] rounded-l bg-gray-700" />

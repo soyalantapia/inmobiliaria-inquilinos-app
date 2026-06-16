@@ -12,10 +12,10 @@ import { AppMockup } from './app-mockup';
  */
 export function AuthShell({ children }: { children: React.ReactNode }): JSX.Element {
   return (
-    <div className="min-h-screen lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
+    <div className="min-h-screen lg:grid lg:h-screen lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] lg:overflow-hidden">
       {/* IZQUIERDA — formulario */}
-      <div className="flex min-h-screen flex-col bg-background lg:min-h-0">
-        <div className="mx-auto flex w-full max-w-[420px] flex-1 flex-col px-6 py-10 sm:px-10">
+      <div className="flex min-h-screen flex-col bg-background lg:h-screen lg:min-h-0 lg:overflow-y-auto">
+        <div className="mx-auto flex w-full max-w-[420px] flex-1 flex-col px-6 py-8 sm:px-10">
           {/* Logo */}
           <div className="flex items-center gap-3">
             <div className="grid h-10 w-10 place-items-center rounded-xl bg-primary text-xs font-bold text-primary-foreground">
@@ -48,27 +48,27 @@ export function AuthShell({ children }: { children: React.ReactNode }): JSX.Elem
       </div>
 
       {/* DERECHA — hero premium */}
-      <div className="relative hidden overflow-hidden bg-gradient-to-br from-[hsl(262_78%_56%)] to-[hsl(262_70%_42%)] lg:flex">
+      <div className="relative hidden overflow-hidden bg-gradient-to-br from-[hsl(262_78%_56%)] to-[hsl(262_70%_42%)] lg:flex lg:h-screen">
         {/* Glows decorativos sutiles */}
         <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-white/10 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-32 -left-20 h-80 w-80 rounded-full bg-black/10 blur-3xl" />
 
-        <div className="relative z-10 mx-auto flex w-full max-w-xl flex-col justify-center gap-8 px-12 py-12 text-white">
-          <div className="space-y-4">
-            <span className="inline-block rounded-full bg-white/15 px-3 py-1 text-xs font-semibold uppercase tracking-wide">
+        <div className="relative z-10 mx-auto flex w-full max-w-xl flex-col justify-center gap-5 px-10 py-8 text-white xl:px-12">
+          <div className="space-y-3">
+            <span className="inline-block rounded-full bg-white/15 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide">
               Para inmobiliarias
             </span>
-            <h1 className="text-3xl font-bold leading-tight xl:text-4xl">
+            <h1 className="text-[26px] font-bold leading-[1.12] xl:text-[34px]">
               Cobrá tus alquileres sin perseguir a nadie
             </h1>
-            <p className="max-w-md text-sm text-white/80 xl:text-base">
+            <p className="max-w-md text-sm text-white/80">
               El panel que ordena tu cartera + la app donde tus inquilinos pagan, reclaman y ven su
               contrato.
             </p>
           </div>
 
           {/* Value props */}
-          <div className="space-y-3">
+          <div className="space-y-2">
             <ValueProp icon={Wallet} text="Cobranzas y mora en tiempo real" />
             <ValueProp icon={Smartphone} text="Tus inquilinos pagan desde su app" />
             <ValueProp icon={FileText} text="Rendí a propietarios sin Excel" />
@@ -91,8 +91,8 @@ export function AuthShell({ children }: { children: React.ReactNode }): JSX.Elem
 function ValueProp({ icon: Icon, text }: { icon: LucideIcon; text: string }) {
   return (
     <div className="flex items-center gap-3">
-      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white/15">
-        <Icon className="h-5 w-5 text-white" />
+      <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white/15">
+        <Icon className="h-4 w-4 text-white" />
       </div>
       <span className="text-sm font-medium text-white/90">{text}</span>
     </div>
