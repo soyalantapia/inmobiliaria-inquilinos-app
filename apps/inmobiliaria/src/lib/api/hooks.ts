@@ -376,11 +376,30 @@ export function useCaja(): {
 
 // ===== Usuario logueado (/auth/me) =====
 
+interface MeTrialApi {
+  tipo: string;
+  hasta: string;
+  diasRestantes: number;
+  vigente: boolean;
+}
+
 interface MeApi {
   kind: string;
   nombre: string;
   email: string;
   rol: string;
+  // Campos del trial pre-lanzamiento (rama usuario de /auth/me). Opcionales
+  // por compatibilidad: backends viejos o la rama no-usuario no los traen.
+  esPiloto?: boolean;
+  perfilFiscalCompleto?: boolean;
+  trial?: MeTrialApi | null;
+}
+
+export interface MeTrial {
+  tipo: string;
+  hasta: string;
+  diasRestantes: number;
+  vigente: boolean;
 }
 
 export interface Me {
@@ -389,6 +408,12 @@ export interface Me {
   rol: string;
   firstName: string;
   iniciales: string;
+  /** Cuenta piloto de la beta pre-lanzamiento. */
+  esPiloto: boolean;
+  /** El perfil fiscal (ARCA/AFIP) está completo. */
+  perfilFiscalCompleto: boolean;
+  /** Trial pre-lanzamiento si lo hay; null si la cuenta no tiene trial. */
+  trial: MeTrial | null;
 }
 
 function iniciales(nombre: string, email: string): string {
@@ -417,6 +442,11 @@ export function useMe(): { me: Me | null; cargando: boolean } {
         rol: 'ADMIN',
         firstName: u.firstName,
         iniciales: `${u.firstName[0] ?? ''}${u.lastName[0] ?? ''}`.toUpperCase(),
+        // En demo el trial pre-lanzamiento real no aplica: el TrialBanner usa
+        // la fuente local (trial-storage) por su cuenta y estos quedan neutros.
+        esPiloto: false,
+        perfilFiscalCompleto: true,
+        trial: null,
       },
       cargando: false,
     };
@@ -425,7 +455,23 @@ export function useMe(): { me: Me | null; cargando: boolean } {
   if (!d) return { me: null, cargando: q.isPending };
   const firstName = d.nombre.trim().split(/\s+/)[0] ?? d.nombre;
   return {
-    me: { nombre: d.nombre, email: d.email, rol: d.rol, firstName, iniciales: iniciales(d.nombre, d.email) },
+    me: {
+      nombre: d.nombre,
+      email: d.email,
+      rol: d.rol,
+      firstName,
+      iniciales: iniciales(d.nombre, d.email),
+      esPiloto: d.esPiloto ?? false,
+      perfilFiscalCompleto: d.perfilFiscalCompleto ?? true,
+      trial: d.trial
+        ? {
+            tipo: d.trial.tipo,
+            hasta: d.trial.hasta,
+            diasRestantes: d.trial.diasRestantes,
+            vigente: d.trial.vigente,
+          }
+        : null,
+    },
     cargando: false,
   };
 }
@@ -752,6 +798,92 @@ export function usePropietarios(): {
   });
 
   return { propietarios, cargando: ownersQ.isPending, deApi: true };
+}
+
+// ===== Alta de propietario (POST /propietarios) =====
+
+/** Campos del form de alta de propietario; montos/porcentajes como number. */
+export interface NuevoPropietario {
+  nombre: string;
+  apellido: string;
+  email?: string;
+  telefono?: string;
+  cuit?: string;
+  cbuAlias?: string;
+  comisionPct?: number;
+  notas?: string;
+}
+
+/**
+ * Mutación de alta de propietario contra el API real. Invalida ['propietarios']
+ * (lista + métricas) tras crear. Devuelve el Propietario mapeado para que el
+ * caller pueda asociarlo en el acto (ej. asignarlo a un slot en Nueva propiedad).
+ * En demo NO se usa: los dialogs mantienen su escritura local de antes.
+ */
+export function useCrearPropietario(): {
+  crear: (input: NuevoPropietario) => Promise<Propietario>;
+} {
+  const qc = useQueryClient();
+  return {
+    crear: async (input) => {
+      await ensureApiSession();
+      const o = await apiFetch<PropietarioApi>('/propietarios', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
+      await qc.invalidateQueries({ queryKey: ['propietarios'] });
+      return {
+        id: o.id,
+        nombre: o.nombre,
+        apellido: o.apellido,
+        cuit: o.cuit ?? '',
+        email: o.email ?? '',
+        telefono: o.telefono ?? '',
+        cbuAlias: o.cbuAlias,
+        comisionPct: o.comisionPct ?? 0,
+        notas: o.notas,
+        createdAt: (o.createdAt ?? '').slice(0, 10),
+        propiedadesIds: (o.participaciones ?? []).map((x) => x.propiedadId),
+        totalCobradoMes: 0,
+        totalRecibirMes: 0,
+      };
+    },
+  };
+}
+
+// ===== Alta de propiedad (POST /propiedades) =====
+
+/** Form de alta de propiedad; participaciones suman 100. */
+export interface NuevaPropiedad {
+  direccion: string;
+  ciudad: string;
+  provincia: string;
+  tipo: TipoPropiedad;
+  ambientes?: number;
+  m2?: number;
+  propietarios: Array<{ propietarioId: string; porcentaje: number }>;
+}
+
+/**
+ * Mutación de alta de propiedad contra el API real. Invalida ['propiedades']
+ * (lista + cards) tras crear y devuelve la Propiedad creada (para redirigir al
+ * detalle). En demo NO se usa: el wizard mantiene su flujo local de antes.
+ */
+export function useCrearPropiedad(): {
+  crear: (input: NuevaPropiedad) => Promise<Propiedad>;
+} {
+  const qc = useQueryClient();
+  return {
+    crear: async (input) => {
+      await ensureApiSession();
+      const p = await apiFetch<PropiedadApi>('/propiedades', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
+      await qc.invalidateQueries({ queryKey: ['propiedades'] });
+      return mapPropiedad(p);
+    },
+  };
 }
 
 // ===== Dashboard (agregados reales para el home) =====

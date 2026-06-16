@@ -2,6 +2,7 @@
 
 import { SignIn } from '@clerk/nextjs';
 import { useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button } from '@llave/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@llave/ui/card';
@@ -116,6 +117,12 @@ function LoginForm() {
           <Button type="submit" className="w-full" size="lg" disabled={!email || !pass || loading}>
             {loading ? 'Entrando…' : 'Entrar'}
           </Button>
+          <p className="text-center text-xs text-muted-foreground">
+            ¿No tenés cuenta?{' '}
+            <Link href="/registro" className="font-medium text-primary hover:underline">
+              Probar gratis
+            </Link>
+          </p>
         </form>
       </CardContent>
     </Card>

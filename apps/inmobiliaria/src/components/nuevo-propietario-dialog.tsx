@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Clock, Loader2, UserPlus } from 'lucide-react';
+import { Loader2, UserPlus } from 'lucide-react';
 import { Button } from '@llave/ui/button';
 import {
   Dialog,
@@ -14,15 +14,27 @@ import { Input } from '@llave/ui/input';
 import { Label } from '@llave/ui/label';
 import { toast } from '@llave/ui/use-toast';
 import { apiEnabled } from '@/lib/api/client';
+import { useCrearPropietario } from '@/lib/api/hooks';
 import {
   type PropietarioExtra,
   agregarPropietarioExtra,
 } from '@/lib/propietarios-extra-storage';
 
+/**
+ * Forma mínima que el wizard necesita del propietario recién creado: id +
+ * nombre/apellido para asignarlo a un slot. PropietarioExtra (demo) y el
+ * Propietario del API la satisfacen, así que `onCreated` acepta ambos.
+ */
+export interface PropietarioCreado {
+  id: string;
+  nombre: string;
+  apellido: string;
+}
+
 interface NuevoPropietarioDialogProps {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  onCreated?: (propietario: PropietarioExtra) => void;
+  onCreated?: (propietario: PropietarioCreado) => void;
 }
 
 /**
@@ -42,6 +54,7 @@ export function NuevoPropietarioDialog({
   const [telefono, setTelefono] = useState('');
   const [cbuAlias, setCbuAlias] = useState('');
   const [guardando, setGuardando] = useState(false);
+  const { crear } = useCrearPropietario();
 
   useEffect(() => {
     if (open) {
@@ -66,15 +79,41 @@ export function NuevoPropietarioDialog({
     e.preventDefault();
     if (!puedeGuardar) return;
     setGuardando(true);
-    await new Promise((r) => setTimeout(r, 300));
-    const nuevo = agregarPropietarioExtra({
-      nombre,
-      apellido,
-      cuit,
-      email,
-      telefono,
-      cbuAlias,
-    });
+
+    // Prod: POST /propietarios con los campos del form (invalida ['propietarios']
+    // dentro del hook). Demo: store local de antes (byte-for-byte).
+    let nuevo: PropietarioCreado;
+    if (apiEnabled) {
+      try {
+        nuevo = await crear({
+          nombre: nombre.trim(),
+          apellido: apellido.trim(),
+          ...(email.trim() ? { email: email.trim() } : {}),
+          ...(telefono.trim() ? { telefono: telefono.trim() } : {}),
+          ...(cuit.trim() ? { cuit: cuit.trim() } : {}),
+          ...(cbuAlias.trim() ? { cbuAlias: cbuAlias.trim() } : {}),
+        });
+      } catch (err) {
+        setGuardando(false);
+        toast({
+          variant: 'destructive',
+          title: 'No se pudo crear el propietario',
+          description: err instanceof Error ? err.message : 'Probá de nuevo en un momento.',
+        });
+        return;
+      }
+    } else {
+      await new Promise((r) => setTimeout(r, 300));
+      nuevo = agregarPropietarioExtra({
+        nombre,
+        apellido,
+        cuit,
+        email,
+        telefono,
+        cbuAlias,
+      });
+    }
+
     setGuardando(false);
     toast({
       variant: 'success',
@@ -84,43 +123,6 @@ export function NuevoPropietarioDialog({
     onCreated?.(nuevo);
     onOpenChange(false);
   };
-
-  // En prod no hay POST de propietario en el API: en vez del form mock que
-  // guarda en localStorage mostramos "Próximamente". En demo (!apiEnabled) el
-  // alta sigue funcionando como hasta ahora.
-  if (apiEnabled) {
-    return (
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <UserPlus className="h-5 w-5 text-primary" />
-              Nuevo propietario
-            </DialogTitle>
-          </DialogHeader>
-          <div className="flex flex-col items-center gap-3 py-4 text-center">
-            <div className="grid h-12 w-12 place-items-center rounded-full bg-primary/10 text-primary">
-              <Clock className="h-6 w-6" />
-            </div>
-            <p className="text-sm font-medium">
-              El alta de propietarios estará disponible pronto
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Estamos conectando la carga con el sistema. Por ahora podés operar
-              sobre los propietarios ya cargados.
-            </p>
-            <Button
-              variant="outline"
-              className="mt-1"
-              onClick={() => onOpenChange(false)}
-            >
-              Entendido
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-    );
-  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

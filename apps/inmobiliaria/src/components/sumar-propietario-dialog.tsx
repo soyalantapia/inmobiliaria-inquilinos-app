@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Clock, Plus } from 'lucide-react';
+import { Loader2, Plus } from 'lucide-react';
 import { Button } from '@llave/ui/button';
 import {
   Dialog,
@@ -15,11 +15,14 @@ import { Label } from '@llave/ui/label';
 import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
 import { apiEnabled } from '@/lib/api/client';
+import { useCrearPropietario } from '@/lib/api/hooks';
 import { validarCuit } from '@/lib/cuit';
 
-// Modal para dar de alta un propietario. En backend real es POST /api/owners.
-// Acá toasteamos y cerramos — los datos no se persisten porque mock-data es
-// un array constante, pero el flow de UX queda 100% funcional para demo.
+// Modal para dar de alta un propietario.
+//  - Prod (apiEnabled): POST /propietarios con los campos del form; el hook
+//    invalida ['propietarios'] así la lista se refresca al instante.
+//  - Demo (!apiEnabled): toasteamos y cerramos — los datos no se persisten
+//    porque mock-data es un array constante, pero el flow de UX queda intacto.
 
 interface Props {
   open: boolean;
@@ -35,6 +38,8 @@ export function SumarPropietarioDialog({ open, onOpenChange }: Props) {
   const [cbuAlias, setCbuAlias] = useState('');
   const [comisionPct, setComisionPct] = useState('8');
   const [notas, setNotas] = useState('');
+  const [guardando, setGuardando] = useState(false);
+  const { crear } = useCrearPropietario();
 
   const reset = () => {
     setNombre('');
@@ -47,7 +52,7 @@ export function SumarPropietarioDialog({ open, onOpenChange }: Props) {
     setNotas('');
   };
 
-  const guardar = () => {
+  const guardar = async () => {
     if (!nombre.trim() || !apellido.trim() || !cuit.trim() || !email.trim()) {
       toast({
         title: 'Faltan datos obligatorios',
@@ -65,6 +70,42 @@ export function SumarPropietarioDialog({ open, onOpenChange }: Props) {
       });
       return;
     }
+
+    // Prod: POST /propietarios (el hook invalida ['propietarios']).
+    if (apiEnabled) {
+      setGuardando(true);
+      try {
+        const comision = Number(comisionPct);
+        await crear({
+          nombre: nombre.trim(),
+          apellido: apellido.trim(),
+          email: email.trim(),
+          ...(telefono.trim() ? { telefono: telefono.trim() } : {}),
+          cuit: cuit.trim(),
+          ...(cbuAlias.trim() ? { cbuAlias: cbuAlias.trim() } : {}),
+          ...(Number.isFinite(comision) ? { comisionPct: comision } : {}),
+          ...(notas.trim() ? { notas: notas.trim() } : {}),
+        });
+      } catch (err) {
+        setGuardando(false);
+        toast({
+          variant: 'destructive',
+          title: 'No se pudo sumar el propietario',
+          description: err instanceof Error ? err.message : 'Probá de nuevo en un momento.',
+        });
+        return;
+      }
+      setGuardando(false);
+      toast({
+        title: `${nombre} ${apellido} agregado`,
+        description: 'Ya aparece en tu cartera de propietarios.',
+      });
+      reset();
+      onOpenChange(false);
+      return;
+    }
+
+    // Demo: toast sin persistir (mismo comportamiento de antes).
     toast({
       title: `${nombre} ${apellido} agregado`,
       description: 'Cuando conectemos el backend, queda guardado al instante.',
@@ -72,36 +113,6 @@ export function SumarPropietarioDialog({ open, onOpenChange }: Props) {
     reset();
     onOpenChange(false);
   };
-
-  // En prod no hay POST de propietario en el API: en vez del form mock que
-  // solo toastea (sin persistir nada real) mostramos "Próximamente". En demo
-  // (!apiEnabled) el flujo sigue igual.
-  if (apiEnabled) {
-    return (
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Sumar propietario</DialogTitle>
-          </DialogHeader>
-          <div className="flex flex-col items-center gap-3 py-4 text-center">
-            <div className="grid h-12 w-12 place-items-center rounded-full bg-primary/10 text-primary">
-              <Clock className="h-6 w-6" />
-            </div>
-            <p className="text-sm font-medium">
-              El alta de propietarios estará disponible pronto
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Estamos conectando la carga con el sistema. Por ahora podés operar
-              sobre los propietarios ya cargados.
-            </p>
-            <Button variant="outline" className="mt-1" onClick={() => onOpenChange(false)}>
-              Entendido
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-    );
-  }
 
   return (
     <Dialog
@@ -180,12 +191,26 @@ export function SumarPropietarioDialog({ open, onOpenChange }: Props) {
         </div>
 
         <div className="flex gap-2">
-          <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
+          <Button
+            variant="outline"
+            className="flex-1"
+            onClick={() => onOpenChange(false)}
+            disabled={guardando}
+          >
             Cancelar
           </Button>
-          <Button className="flex-1" onClick={guardar}>
-            <Plus className="h-4 w-4" />
-            Sumar
+          <Button className="flex-1" onClick={guardar} disabled={guardando}>
+            {guardando ? (
+              <>
+                <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+                Sumando…
+              </>
+            ) : (
+              <>
+                <Plus className="h-4 w-4" />
+                Sumar
+              </>
+            )}
           </Button>
         </div>
       </DialogContent>

@@ -3,10 +3,14 @@ import { OnboardingInmo } from '@/components/onboarding';
 import { PilotoFab } from '@/components/piloto-fab';
 import { Sidebar } from '@/components/sidebar';
 import { AuthGuard } from '@/components/auth-guard';
+import { TrialBanner } from '@/components/trial-banner';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <AuthGuard>
+    {/* Barra superior full-width pre-lanzamiento — sólo cuentas piloto en prod
+        (cableada a /auth/me real). Va arriba de todo para verse en cada pantalla. */}
+    <TrialBanner />
     <div className="flex min-h-screen">
       {/* Skip-nav: oculto visualmente pero accesible para usuarios de teclado /
           lectores de pantalla. Al enfocarse con Tab, aparece sobre todo lo demás

@@ -239,7 +239,7 @@ export async function coreRoutes(app: FastifyInstance) {
           telefono: z.string().trim().optional(),
           dni: z.string().trim().optional(),
         }),
-        monto: z.number().positive(),
+        monto: z.number().nonnegative(), // 0 válido para SOLO_EXPENSAS
         moneda: z.enum(['ARS', 'USD']).default('ARS'),
         fechaInicio: z.string(),
         fechaFin: z.string(),

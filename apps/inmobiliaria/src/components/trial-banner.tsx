@@ -1,115 +1,73 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Gift, Sparkles, X } from 'lucide-react';
-import { Badge } from '@llave/ui/badge';
-import { Button } from '@llave/ui/button';
-import { Card, CardContent } from '@llave/ui/card';
-import { toast } from '@llave/ui/use-toast';
-import {
-  activarTrial,
-  cancelarTrial,
-  diasRestantesTrial,
-  leerTrial,
-  trialVigente,
-  type Trial,
-} from '@/lib/trial-storage';
-import { formatFechaCorta } from '@/lib/format';
+import Link from 'next/link';
+import { Gift, Rocket, ArrowRight } from 'lucide-react';
+import { apiEnabled } from '@/lib/api/client';
+import { useMe } from '@/lib/api/hooks';
 
 /**
- * Banner que aparece en /configuracion cuando la inmo tiene un trial
- * gratuito vigente. Incluye un dialog para activarlo a mano (modo demo).
+ * Barra superior full-width para cuentas piloto pre-lanzamiento.
+ *
+ * Fuente: /auth/me REAL vía useMe (esPiloto + trial { diasRestantes, vigente }
+ * + perfilFiscalCompleto). Gateada a apiEnabled: en demo (GH Pages / dev sin
+ * backend) NO se muestra — el trial demo vive como card en /configuracion
+ * (TrialCardDemo, basada en trial-storage local).
+ *
+ * Estados:
+ *  - Trial vigente   → "Cuenta pre-lanzamiento · Gratis · quedan N días" (violeta).
+ *  - Perfil fiscal incompleto → suma CTA "Completá tu perfil fiscal" → /configuracion.
+ *  - Trial vencido   → variante suave "Tu acceso pre-lanzamiento venció" (no bloquea).
+ *
+ * Se monta arriba de todo en el layout del panel: aparece en todas las pantallas.
  */
 export function TrialBanner() {
-  const [trial, setTrial] = useState<Trial | null>(null);
-  const [hidratado, setHidratado] = useState(false);
+  const { me } = useMe();
 
-  useEffect(() => {
-    setTrial(leerTrial());
-    setHidratado(true);
-  }, []);
+  // Solo en prod (API real) y solo para cuentas piloto.
+  if (!apiEnabled) return null;
+  if (!me?.esPiloto) return null;
 
-  if (!hidratado) return null;
+  const trial = me.trial;
+  const fiscalIncompleto = me.perfilFiscalCompleto === false;
 
-  const vigente = trial && trialVigente(trial);
-  const dias = trial ? diasRestantesTrial(trial) : 0;
-
-  if (vigente && trial) {
+  // Trial vencido: aviso suave, no bloqueante.
+  if (!trial?.vigente) {
     return (
-      <Card className="border-emerald-300 bg-gradient-to-br from-emerald-50 to-emerald-50/40 dark:border-emerald-900/40 dark:from-emerald-900/20 dark:to-emerald-900/10">
-        <CardContent className="flex flex-wrap items-start gap-3 p-5">
-          <div className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-emerald-500 text-white shadow-lg shadow-emerald-500/20">
-            <Gift className="h-5 w-5" />
-          </div>
-          <div className="flex-1 min-w-0 space-y-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="text-base font-semibold">¡Tenés acceso gratuito!</p>
-              <Badge variant="success" className="gap-1 text-[10px]">
-                <Sparkles className="h-3 w-3" />
-                Trial activo
-              </Badge>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              {trial.motivo}. Tu trial vence el{' '}
-              <strong className="text-foreground">
-                {formatFechaCorta(trial.hasta)}
-              </strong>{' '}
-              ({dias} día{dias === 1 ? '' : 's'} restantes). No se debita nada
-              mientras esté activo.
-            </p>
-            <p className="text-[11px] text-muted-foreground">
-              Activado por {trial.activadoPor}
-            </p>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              cancelarTrial();
-              setTrial(null);
-              toast({ title: 'Trial finalizado' });
-            }}
-            className="shrink-0 gap-1"
-          >
-            <X className="h-3 w-3" />
-            Finalizar
-          </Button>
-        </CardContent>
-      </Card>
+      <div className="flex w-full flex-wrap items-center justify-center gap-x-2 gap-y-1 border-b border-violet-200/70 bg-violet-50 px-4 py-2 text-center text-sm text-violet-900 dark:border-violet-900/40 dark:bg-violet-950/40 dark:text-violet-100">
+        <Gift className="h-4 w-4 shrink-0 text-violet-500" aria-hidden />
+        <span className="font-medium">Tu acceso pre-lanzamiento venció</span>
+        <span className="text-violet-700/80 dark:text-violet-200/70">
+          Seguís con acceso al panel — coordiná con el equipo para continuar.
+        </span>
+      </div>
     );
   }
 
-  // Si no hay trial activo, mostramos un toggle compacto para activar (demo)
+  const dias = trial.diasRestantes;
+  const diasTxt = `${dias} día${dias === 1 ? '' : 's'}`;
+
   return (
-    <Card className="border-dashed">
-      <CardContent className="flex flex-wrap items-center gap-3 p-3 text-xs text-muted-foreground">
-        <Gift className="h-4 w-4 text-primary" />
+    <div className="flex w-full flex-wrap items-center justify-center gap-x-3 gap-y-1 border-b border-violet-200/70 bg-gradient-to-r from-violet-50 to-violet-100/60 px-4 py-2 text-sm text-violet-900 dark:border-violet-900/40 dark:from-violet-950/50 dark:to-violet-900/30 dark:text-violet-100">
+      <span className="flex items-center gap-2">
+        <Rocket className="h-4 w-4 shrink-0 text-violet-500" aria-hidden />
         <span>
-          ¿Sos promotor estratégico o llegaste por un convenio especial? Pediles
-          a Ventas que te active el trial gratuito.
+          <span className="font-semibold">Cuenta pre-lanzamiento</span>
+          <span className="text-violet-400 dark:text-violet-500"> · </span>
+          <span className="font-medium">Gratis</span>
+          <span className="text-violet-400 dark:text-violet-500"> · </span>
+          <span>quedan {diasTxt}</span>
         </span>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="ml-auto h-7 text-[10px]"
-          onClick={() => {
-            const nuevo = activarTrial({
-              tipo: 'PROMOTOR',
-              motivo: 'Trial 6 meses · acuerdo de presentación con CUCICBA',
-              meses: 6,
-              activadoPor: 'Equipo de ventas My Alquiler',
-            });
-            setTrial(nuevo);
-            toast({
-              variant: 'success',
-              title: '¡Trial activado!',
-              description: 'Tenés 6 meses gratis. Sin compromiso.',
-            });
-          }}
+      </span>
+
+      {fiscalIncompleto && (
+        <Link
+          href="/configuracion"
+          className="inline-flex items-center gap-1 rounded-full border border-violet-300/70 bg-white/60 px-2.5 py-0.5 text-xs font-medium text-violet-700 transition-colors hover:bg-white dark:border-violet-700/60 dark:bg-violet-900/40 dark:text-violet-100 dark:hover:bg-violet-900/70"
         >
-          Activar trial demo
-        </Button>
-      </CardContent>
-    </Card>
+          Completá tu perfil fiscal
+          <ArrowRight className="h-3 w-3" aria-hidden />
+        </Link>
+      )}
+    </div>
   );
 }

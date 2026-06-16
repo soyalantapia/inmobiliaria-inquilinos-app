@@ -50,7 +50,7 @@ import { FormaPagoSelector } from '@/components/forma-pago-selector';
 import { PlanConsorciosCard } from '@/components/plan-consorcios-card';
 import { ReferidosManager } from '@/components/referidos-manager';
 import { SociedadesManager } from '@/components/sociedades-manager';
-import { TrialBanner } from '@/components/trial-banner';
+import { TrialCardDemo } from '@/components/trial-card-demo';
 import { formatFechaCorta, formatMonto, formatPeriodo } from '@/lib/format';
 import {
   listarAuditoria,
@@ -766,7 +766,7 @@ export default function ConfiguracionPage() {
               </CardContent>
             </Card>
 
-            <TrialBanner />
+            <TrialCardDemo />
 
             <EstadoCuentaCard />
 

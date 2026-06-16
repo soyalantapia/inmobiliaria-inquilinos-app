@@ -29,9 +29,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
 import { Topbar } from '@/components/topbar';
-import { Proximamente } from '@/components/proximamente';
-import { NuevoPropietarioDialog } from '@/components/nuevo-propietario-dialog';
+import {
+  NuevoPropietarioDialog,
+  type PropietarioCreado,
+} from '@/components/nuevo-propietario-dialog';
 import { apiEnabled } from '@/lib/api/client';
+import { useCrearPropiedad, usePropietarios } from '@/lib/api/hooks';
 import { propietariosMock } from '@/lib/mock-data';
 import {
   type PropietarioExtra,
@@ -96,30 +99,17 @@ const REQUISITOS_BASE = [
 ];
 
 export default function NuevaPropiedadPage() {
-  // En prod no hay POST de propiedad/contrato en el API: mostramos un estado
-  // "Próximamente" en vez del form mock que "guarda" en localStorage. En demo
-  // (!apiEnabled) seguimos con el wizard mock intacto. `apiEnabled` es una
-  // constante de módulo (no cambia entre renders), así que este return
-  // temprano no rompe el orden de hooks.
-  if (apiEnabled) {
-    return (
-      <>
-        <Topbar titulo="Cargar propiedad" />
-        <Proximamente
-          titulo="La carga de propiedades estará disponible pronto"
-          descripcion="Estamos terminando de conectar el alta de propiedades con el sistema. Mientras tanto vas a ver tu cartera y operar sobre lo ya cargado."
-          volverHref="/propiedades"
-          volverLabel="Volver a propiedades"
-        />
-      </>
-    );
-  }
-
+  // El alta de propiedad ya está cableada al API: en prod hace POST /propiedades
+  // con propietarios reales; en demo (!apiEnabled) sigue el flujo local de antes.
   return <NuevaPropiedadForm />;
 }
 
 function NuevaPropiedadForm() {
   const router = useRouter();
+  const { crear: crearPropiedad } = useCrearPropiedad();
+  // Propietarios reales del API (prod). En demo el hook devuelve propietariosMock,
+  // pero ahí seguimos usando el catálogo local (mock + extras de localStorage).
+  const { propietarios: propietariosApi } = usePropietarios();
 
   // Tipo + dirección
   const [tipo, setTipo] = useState<TipoPropiedad | ''>('');
@@ -170,23 +160,33 @@ function NuevaPropiedadForm() {
   const haySaltoDePlan = planNuevo.key !== planActual.key;
   const diferenciaCosto = planNuevo.costoMensualTotal - planActual.costoMensualTotal;
 
-  // Catálogo combinado de propietarios
+  // Catálogo de propietarios para el selector:
+  //  - Prod (apiEnabled): los propietarios REALES del API (usePropietarios).
+  //  - Demo: mock + los creados al vuelo en localStorage (esNuevo).
   const todosLosPropietarios = useMemo(
-    () => [
-      ...propietariosExtra.map((p) => ({
-        id: p.id,
-        nombre: p.nombre,
-        apellido: p.apellido,
-        esNuevo: true,
-      })),
-      ...propietariosMock.map((p) => ({
-        id: p.id,
-        nombre: p.nombre,
-        apellido: p.apellido,
-        esNuevo: false,
-      })),
-    ],
-    [propietariosExtra],
+    () =>
+      apiEnabled
+        ? propietariosApi.map((p) => ({
+            id: p.id,
+            nombre: p.nombre,
+            apellido: p.apellido,
+            esNuevo: false,
+          }))
+        : [
+            ...propietariosExtra.map((p) => ({
+              id: p.id,
+              nombre: p.nombre,
+              apellido: p.apellido,
+              esNuevo: true,
+            })),
+            ...propietariosMock.map((p) => ({
+              id: p.id,
+              nombre: p.nombre,
+              apellido: p.apellido,
+              esNuevo: false,
+            })),
+          ],
+    [propietariosApi, propietariosExtra],
   );
 
   // Auto-redistribuir % cuando se cambia conDivision o se agrega/quita
@@ -248,9 +248,13 @@ function NuevaPropiedadForm() {
     );
   };
 
-  // Tras crear un propietario en el dialog, lo asignamos al slot vacío más reciente
-  const onPropietarioCreado = (nuevo: PropietarioExtra) => {
-    setPropietariosExtra((prev) => [nuevo, ...prev]);
+  // Tras crear un propietario en el dialog, lo asignamos al slot vacío más reciente.
+  // En demo lo sumamos al catálogo local; en prod ya entra por la invalidación de
+  // ['propietarios'] del hook (no tocamos el state local de extras).
+  const onPropietarioCreado = (nuevo: PropietarioCreado) => {
+    if (!apiEnabled) {
+      setPropietariosExtra((prev) => [nuevo as PropietarioExtra, ...prev]);
+    }
     setAsignados((prev) => {
       const idxVacio = prev.findIndex((p) => !p.propietarioId);
       if (idxVacio === -1) {
@@ -274,6 +278,62 @@ function NuevaPropiedadForm() {
 
   const guardar = async () => {
     setEnviando(true);
+
+    // Prod: POST /propiedades con el payload del contrato del API. El contrato
+    // (sección opcional) NO se manda acá: este endpoint sólo da de alta la
+    // propiedad + participaciones. En demo, simulamos y redirigimos como antes.
+    if (apiEnabled) {
+      const direccion = `${calle.trim()} ${altura.trim()}${
+        pisoDpto.trim() ? ` ${pisoDpto.trim()}` : ''
+      }`.trim();
+      const participaciones = propietariosVisibles.map((p) => ({
+        propietarioId: p.propietarioId,
+        porcentaje: p.porcentaje,
+      }));
+      // Validación dura: porcentajes deben sumar 100 antes de enviar.
+      const sumaPct = participaciones.reduce((s, p) => s + p.porcentaje, 0);
+      if (sumaPct !== 100) {
+        setEnviando(false);
+        setConfirmando(false);
+        toast({
+          variant: 'destructive',
+          title: 'La división no suma 100%',
+          description: `Los porcentajes de los propietarios suman ${sumaPct}%. Ajustalos para que den 100%.`,
+        });
+        return;
+      }
+      const ambientesNum = Number(ambientes);
+      const m2Num = Number(m2);
+      try {
+        const creada = await crearPropiedad({
+          direccion,
+          ciudad: ciudad.trim(),
+          provincia,
+          tipo: tipo as TipoPropiedad,
+          ...(ambientes && Number.isFinite(ambientesNum) ? { ambientes: ambientesNum } : {}),
+          ...(m2 && Number.isFinite(m2Num) ? { m2: m2Num } : {}),
+          propietarios: participaciones,
+        });
+        setEnviando(false);
+        setConfirmando(false);
+        toast({
+          variant: 'success',
+          title: '¡Propiedad cargada!',
+          description: 'Ya forma parte de tu cartera.',
+        });
+        router.push(`/propiedades/${creada.id}`);
+      } catch (err) {
+        setEnviando(false);
+        setConfirmando(false);
+        toast({
+          variant: 'destructive',
+          title: 'No se pudo cargar la propiedad',
+          description: err instanceof Error ? err.message : 'Probá de nuevo en un momento.',
+        });
+      }
+      return;
+    }
+
     await new Promise((r) => setTimeout(r, 600));
     setEnviando(false);
     setConfirmando(false);
