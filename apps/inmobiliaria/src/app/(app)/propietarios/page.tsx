@@ -68,10 +68,15 @@ export default function PropietariosPage() {
     setRendicionesMap(map);
   };
 
+  // `propietarios` es una ref NUEVA cada render (usePropietarios mapea el dato
+  // del API sin memoizar), así que dependemos de una key estable (los ids) y
+  // no de la ref: si no, el effect setea rendicionesMap en cada render → loop
+  // infinito (React #185), que el re-render del Radix Dialog disparaba al abrir.
+  const propietariosKey = propietarios.map((p) => p.id).join(',');
   useEffect(() => {
     refrescarRendiciones();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [propietarios]);
+  }, [propietariosKey]);
 
   // Aplica el filtro inicial si llegamos con ?filtro=sin-cbu/sin-rendir.
   useEffect(() => {
