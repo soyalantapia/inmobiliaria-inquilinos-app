@@ -40,7 +40,7 @@ import {
  */
 export function AppMockup() {
   return (
-    <div aria-hidden className="relative w-full select-none pb-6 pr-2 sm:pr-8">
+    <div aria-hidden className="relative w-full select-none pb-3 pr-2 sm:pr-8">
       <PanelBrowser />
       <InquilinoPhone />
     </div>
@@ -78,17 +78,15 @@ const NAV: Array<{ icon: LucideIcon; label: string; active?: boolean; badge?: nu
   { icon: Building2, label: 'Propiedades' },
   { icon: Users, label: 'Propietarios' },
   { icon: CreditCard, label: 'Pagos' },
-  { icon: Wallet, label: 'Caja' },
   { icon: FileText, label: 'Contratos' },
   { icon: Inbox, label: 'Aprobaciones', badge: 3 },
-  { icon: Wrench, label: 'Reclamos' },
 ];
 
 function PanelSidebar() {
   return (
     <aside className="hidden w-[34%] shrink-0 flex-col border-r border-gray-100 bg-white sm:flex">
       {/* Logo */}
-      <div className="flex h-11 items-center gap-2 border-b border-gray-100 px-3">
+      <div className="flex h-10 items-center gap-2 border-b border-gray-100 px-3">
         <div className="grid h-6 w-6 place-items-center rounded-md bg-primary text-[8px] font-bold text-primary-foreground">
           My
         </div>
@@ -102,7 +100,7 @@ function PanelSidebar() {
         {NAV.map((item) => (
           <div
             key={item.label}
-            className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-[9px] font-medium ${
+            className={`flex items-center gap-2 rounded-md px-2 py-1 text-[9px] font-medium ${
               item.active ? 'bg-primary/10 text-primary' : 'text-gray-400'
             }`}
           >
@@ -117,7 +115,7 @@ function PanelSidebar() {
         ))}
       </nav>
       {/* Footer cuenta */}
-      <div className="border-t border-gray-100 p-2.5">
+      <div className="border-t border-gray-100 p-2">
         <p className="text-[8px] font-semibold text-gray-700">Inmobiliaria del Sol</p>
         <p className="text-[7px] text-gray-400">Plan Pro · 28 propiedades</p>
       </div>
@@ -129,7 +127,7 @@ function PanelMain() {
   return (
     <div className="min-w-0 flex-1">
       {/* Topbar */}
-      <div className="flex h-11 items-center justify-between border-b border-gray-100 bg-white px-4">
+      <div className="flex h-10 items-center justify-between border-b border-gray-100 bg-white px-4">
         <p className="text-[11px] font-semibold text-gray-800">Inicio</p>
         <div className="flex items-center gap-1.5">
           <span className="flex items-center gap-1 rounded-md px-2 py-1 text-[8px] font-medium text-gray-500 ring-1 ring-gray-200">
@@ -141,19 +139,17 @@ function PanelMain() {
         </div>
       </div>
 
-      <div className="space-y-2.5 p-4">
+      <div className="space-y-2 p-3">
         {/* Saludo */}
-        <div>
+        <div className="flex items-baseline justify-between">
           <p className="text-[12px] font-bold text-gray-900">Hola, Roberto</p>
-          <p className="text-[8px] text-gray-400">Esto es lo que pasa en tu cartera hoy.</p>
+          <p className="text-[7px] font-semibold uppercase tracking-wider text-gray-400">
+            Plata · Junio 2026
+          </p>
         </div>
 
-        <p className="pt-0.5 text-[7px] font-semibold uppercase tracking-wider text-gray-400">
-          Plata · Junio 2026
-        </p>
-
         {/* 4 KPIs (2×2) — fiel a KpiBig */}
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 gap-1.5">
           <Kpi
             label="Cobrado"
             valor="$1.34M"
@@ -205,7 +201,7 @@ function Kpi({
 }) {
   const t = TONES[tone];
   return (
-    <div className={`flex flex-col gap-1 rounded-lg p-2.5 ${t.bg}`}>
+    <div className={`flex flex-col gap-1 rounded-lg p-2 ${t.bg}`}>
       <div className="flex items-start justify-between">
         <p className="text-[7px] font-semibold uppercase tracking-wide text-gray-400">{label}</p>
         <Icon className={`h-3 w-3 ${t.text}`} />
@@ -233,7 +229,7 @@ function Kpi({
  * ============================================================ */
 function InquilinoPhone() {
   return (
-    <div className="absolute -bottom-4 -right-2 w-[38%] max-w-[182px] sm:-right-3">
+    <div className="absolute -bottom-2 -right-2 w-[38%] max-w-[182px] sm:-right-3">
       {/* Botones laterales */}
       <div className="absolute -left-[2px] top-[22%] h-5 w-[2px] rounded-l bg-gray-700" />
       <div className="absolute -left-[2px] top-[32%] h-8 w-[2px] rounded-l bg-gray-700" />

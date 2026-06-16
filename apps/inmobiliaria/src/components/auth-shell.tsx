@@ -53,15 +53,15 @@ export function AuthShell({ children }: { children: React.ReactNode }): JSX.Elem
         <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-white/10 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-32 -left-20 h-80 w-80 rounded-full bg-black/10 blur-3xl" />
 
-        <div className="relative z-10 mx-auto flex w-full max-w-xl flex-col justify-center gap-5 px-10 py-8 text-white xl:px-12">
-          <div className="space-y-3">
+        <div className="relative z-10 mx-auto flex w-full max-w-xl flex-col justify-center gap-3.5 px-10 py-5 text-white xl:gap-5 xl:px-12 xl:py-8">
+          <div className="space-y-2">
             <span className="inline-block rounded-full bg-white/15 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide">
               Para inmobiliarias
             </span>
-            <h1 className="text-[26px] font-bold leading-[1.12] xl:text-[34px]">
+            <h1 className="text-[22px] font-bold leading-[1.08] xl:text-[32px]">
               Cobrá tus alquileres sin perseguir a nadie
             </h1>
-            <p className="max-w-md text-sm text-white/80">
+            <p className="max-w-md text-[13px] leading-snug text-white/80 xl:text-sm">
               El panel que ordena tu cartera + la app donde tus inquilinos pagan, reclaman y ven su
               contrato.
             </p>
@@ -90,11 +90,11 @@ export function AuthShell({ children }: { children: React.ReactNode }): JSX.Elem
 
 function ValueProp({ icon: Icon, text }: { icon: LucideIcon; text: string }) {
   return (
-    <div className="flex items-center gap-3">
-      <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white/15">
-        <Icon className="h-4 w-4 text-white" />
+    <div className="flex items-center gap-2.5">
+      <div className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-white/15">
+        <Icon className="h-3.5 w-3.5 text-white" />
       </div>
-      <span className="text-sm font-medium text-white/90">{text}</span>
+      <span className="text-[13px] font-medium text-white/90">{text}</span>
     </div>
   );
 }
