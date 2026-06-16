@@ -5,38 +5,26 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button } from '@llave/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@llave/ui/card';
 import { Input } from '@llave/ui/input';
 import { Label } from '@llave/ui/label';
+import { AuthShell } from '@/components/auth-shell';
 import { isClerkEnabled } from '@/lib/auth';
 import { apiEnabled, apiFetch, setToken, ApiError } from '@/lib/api/client';
 
 export default function LoginPage() {
   return (
-    <main className="grid min-h-screen place-items-center px-6">
-      <div className="w-full max-w-md space-y-6">
-        <div className="flex items-center gap-3">
-          <div className="grid h-10 w-10 place-items-center rounded-md bg-primary text-xs font-bold text-primary-foreground">
-            My
-          </div>
-          <div>
-            <p className="font-semibold">My Alquiler</p>
-            <p className="text-xs text-muted-foreground">Panel inmobiliaria</p>
-          </div>
-        </div>
-
-        {isClerkEnabled() ? (
-          <SignIn
-            path="/login"
-            routing="path"
-            signUpUrl="/login"
-            appearance={{ elements: { rootBox: 'w-full', card: 'shadow-sm' } }}
-          />
-        ) : (
-          <LoginForm />
-        )}
-      </div>
-    </main>
+    <AuthShell>
+      {isClerkEnabled() ? (
+        <SignIn
+          path="/login"
+          routing="path"
+          signUpUrl="/login"
+          appearance={{ elements: { rootBox: 'w-full', card: 'shadow-sm' } }}
+        />
+      ) : (
+        <LoginForm />
+      )}
+    </AuthShell>
   );
 }
 
@@ -79,52 +67,54 @@ function LoginForm() {
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Entrar</CardTitle>
-        <CardDescription>Usá tu mail y contraseña.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={submit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              type="email"
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="vos@tuinmobiliaria.com"
-              required
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="pass">Contraseña</Label>
-            <Input
-              id="pass"
-              type="password"
-              autoComplete="current-password"
-              value={pass}
-              onChange={(e) => setPass(e.target.value)}
-              required
-            />
-          </div>
-          {error && (
-            <p className="rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive">
-              {error}
-            </p>
-          )}
-          <Button type="submit" className="w-full" size="lg" disabled={!email || !pass || loading}>
-            {loading ? 'Entrando…' : 'Entrar'}
-          </Button>
-          <p className="text-center text-xs text-muted-foreground">
-            ¿No tenés cuenta?{' '}
-            <Link href="/registro" className="font-medium text-primary hover:underline">
-              Probar gratis
-            </Link>
+    <div className="w-full space-y-8">
+      <div className="space-y-2">
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+          Entrá a tu panel
+        </h1>
+        <p className="text-sm text-muted-foreground">Usá tu mail y contraseña.</p>
+      </div>
+
+      <form onSubmit={submit} className="space-y-5">
+        <div className="space-y-2">
+          <Label htmlFor="email">Email</Label>
+          <Input
+            id="email"
+            type="email"
+            autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="vos@tuinmobiliaria.com"
+            required
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="pass">Contraseña</Label>
+          <Input
+            id="pass"
+            type="password"
+            autoComplete="current-password"
+            value={pass}
+            onChange={(e) => setPass(e.target.value)}
+            required
+          />
+        </div>
+        {error && (
+          <p className="rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+            {error}
           </p>
-        </form>
-      </CardContent>
-    </Card>
+        )}
+        <Button type="submit" className="w-full" size="lg" disabled={!email || !pass || loading}>
+          {loading ? 'Entrando…' : 'Entrar'}
+        </Button>
+      </form>
+
+      <p className="text-center text-sm text-muted-foreground">
+        ¿No tenés cuenta?{' '}
+        <Link href="/registro" className="font-semibold text-primary hover:underline">
+          Probar gratis
+        </Link>
+      </p>
+    </div>
   );
 }

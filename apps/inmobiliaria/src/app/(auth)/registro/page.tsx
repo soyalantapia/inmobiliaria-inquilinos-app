@@ -4,9 +4,9 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button } from '@llave/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@llave/ui/card';
 import { Input } from '@llave/ui/input';
 import { Label } from '@llave/ui/label';
+import { AuthShell } from '@/components/auth-shell';
 import { apiEnabled } from '@/lib/api/client';
 import { registrar } from '@/lib/api/registro';
 
@@ -31,21 +31,9 @@ type Errores = Partial<Record<string, string>>;
 
 export default function RegistroPage() {
   return (
-    <main className="grid min-h-screen place-items-center px-6 py-10">
-      <div className="w-full max-w-md space-y-6">
-        <div className="flex items-center gap-3">
-          <div className="grid h-10 w-10 place-items-center rounded-md bg-primary text-xs font-bold text-primary-foreground">
-            My
-          </div>
-          <div>
-            <p className="font-semibold">My Alquiler</p>
-            <p className="text-xs text-muted-foreground">Panel inmobiliaria</p>
-          </div>
-        </div>
-
-        <RegistroWizard />
-      </div>
-    </main>
+    <AuthShell>
+      <RegistroWizard />
+    </AuthShell>
   );
 }
 
@@ -141,140 +129,161 @@ function RegistroWizard() {
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Probá My Alquiler gratis</CardTitle>
-        <CardDescription>
-          {paso === 1 ? 'Paso 1 de 2 · Tu inmobiliaria' : 'Paso 2 de 2 · Tu acceso'}
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        {serverError && (
-          <p className="mb-4 rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive">
-            {serverError}
-          </p>
-        )}
+    <div className="w-full space-y-8">
+      <div className="space-y-4">
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+          Probá My Alquiler gratis
+        </h1>
+        <ProgresoPasos paso={paso} />
+      </div>
 
-        {paso === 1 ? (
-          <form onSubmit={irAPaso2} className="space-y-4" noValidate>
-            <Field
-              id="inmo-nombre"
-              label="Nombre de la inmobiliaria"
-              value={inmo.nombre}
-              onChange={(v) => setInmo({ ...inmo, nombre: v })}
-              placeholder="Inmobiliaria Ejemplo"
-              error={errores.nombre}
-            />
-            <Field
-              id="inmo-email"
-              label="Email"
-              type="email"
-              autoComplete="email"
-              value={inmo.email}
-              onChange={(v) => setInmo({ ...inmo, email: v })}
-              placeholder="contacto@tuinmobiliaria.com"
-              error={errores.email}
-            />
-            <Field
-              id="inmo-telefono"
-              label="Teléfono"
-              type="tel"
-              autoComplete="tel"
-              value={inmo.telefono}
-              onChange={(v) => setInmo({ ...inmo, telefono: v })}
-              placeholder="+54 9 11 5555 5555"
-              error={errores.telefono}
-            />
-            <div className="grid grid-cols-2 gap-3">
-              <Field
-                id="inmo-ciudad"
-                label="Ciudad"
-                value={inmo.ciudad}
-                onChange={(v) => setInmo({ ...inmo, ciudad: v })}
-                placeholder="Córdoba"
-                error={errores.ciudad}
-              />
-              <Field
-                id="inmo-provincia"
-                label="Provincia"
-                value={inmo.provincia}
-                onChange={(v) => setInmo({ ...inmo, provincia: v })}
-                placeholder="Córdoba"
-                error={errores.provincia}
-              />
-            </div>
-            <Button type="submit" className="w-full" size="lg">
-              Siguiente
-            </Button>
-          </form>
-        ) : (
-          <form onSubmit={crearCuenta} className="space-y-4" noValidate>
-            <div className="grid grid-cols-2 gap-3">
-              <Field
-                id="admin-nombre"
-                label="Nombre"
-                autoComplete="given-name"
-                value={admin.nombre}
-                onChange={(v) => setAdmin({ ...admin, nombre: v })}
-                placeholder="Juan"
-                error={errores.aNombre}
-              />
-              <Field
-                id="admin-apellido"
-                label="Apellido"
-                autoComplete="family-name"
-                value={admin.apellido}
-                onChange={(v) => setAdmin({ ...admin, apellido: v })}
-                placeholder="Pérez"
-                error={errores.aApellido}
-              />
-            </div>
-            <Field
-              id="admin-password"
-              label="Contraseña"
-              type="password"
-              autoComplete="new-password"
-              value={admin.password}
-              onChange={(v) => setAdmin({ ...admin, password: v })}
-              placeholder="Mínimo 8 caracteres"
-              error={errores.password}
-            />
-            <Field
-              id="admin-confirmar"
-              label="Confirmar contraseña"
-              type="password"
-              autoComplete="new-password"
-              value={admin.confirmar}
-              onChange={(v) => setAdmin({ ...admin, confirmar: v })}
-              placeholder="Repetí la contraseña"
-              error={errores.confirmar}
-            />
-            <div className="flex gap-3">
-              <Button
-                type="button"
-                variant="outline"
-                size="lg"
-                className="flex-1"
-                onClick={volver}
-                disabled={loading}
-              >
-                Atrás
-              </Button>
-              <Button type="submit" size="lg" className="flex-1" disabled={loading}>
-                {loading ? 'Creando…' : 'Crear cuenta'}
-              </Button>
-            </div>
-          </form>
-        )}
-
-        <p className="mt-6 text-center text-xs text-muted-foreground">
-          ¿Ya tenés cuenta?{' '}
-          <Link href="/login" className="font-medium text-primary hover:underline">
-            Entrar
-          </Link>
+      {serverError && (
+        <p className="rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+          {serverError}
         </p>
-      </CardContent>
-    </Card>
+      )}
+
+      {paso === 1 ? (
+        <form onSubmit={irAPaso2} className="space-y-5" noValidate>
+          <Field
+            id="inmo-nombre"
+            label="Nombre de la inmobiliaria"
+            value={inmo.nombre}
+            onChange={(v) => setInmo({ ...inmo, nombre: v })}
+            placeholder="Inmobiliaria Ejemplo"
+            error={errores.nombre}
+          />
+          <Field
+            id="inmo-email"
+            label="Email"
+            type="email"
+            autoComplete="email"
+            value={inmo.email}
+            onChange={(v) => setInmo({ ...inmo, email: v })}
+            placeholder="contacto@tuinmobiliaria.com"
+            error={errores.email}
+          />
+          <Field
+            id="inmo-telefono"
+            label="Teléfono"
+            type="tel"
+            autoComplete="tel"
+            value={inmo.telefono}
+            onChange={(v) => setInmo({ ...inmo, telefono: v })}
+            placeholder="+54 9 11 5555 5555"
+            error={errores.telefono}
+          />
+          <div className="grid grid-cols-2 gap-3">
+            <Field
+              id="inmo-ciudad"
+              label="Ciudad"
+              value={inmo.ciudad}
+              onChange={(v) => setInmo({ ...inmo, ciudad: v })}
+              placeholder="Córdoba"
+              error={errores.ciudad}
+            />
+            <Field
+              id="inmo-provincia"
+              label="Provincia"
+              value={inmo.provincia}
+              onChange={(v) => setInmo({ ...inmo, provincia: v })}
+              placeholder="Córdoba"
+              error={errores.provincia}
+            />
+          </div>
+          <Button type="submit" className="w-full" size="lg">
+            Siguiente
+          </Button>
+        </form>
+      ) : (
+        <form onSubmit={crearCuenta} className="space-y-5" noValidate>
+          <div className="grid grid-cols-2 gap-3">
+            <Field
+              id="admin-nombre"
+              label="Nombre"
+              autoComplete="given-name"
+              value={admin.nombre}
+              onChange={(v) => setAdmin({ ...admin, nombre: v })}
+              placeholder="Juan"
+              error={errores.aNombre}
+            />
+            <Field
+              id="admin-apellido"
+              label="Apellido"
+              autoComplete="family-name"
+              value={admin.apellido}
+              onChange={(v) => setAdmin({ ...admin, apellido: v })}
+              placeholder="Pérez"
+              error={errores.aApellido}
+            />
+          </div>
+          <Field
+            id="admin-password"
+            label="Contraseña"
+            type="password"
+            autoComplete="new-password"
+            value={admin.password}
+            onChange={(v) => setAdmin({ ...admin, password: v })}
+            placeholder="Mínimo 8 caracteres"
+            error={errores.password}
+          />
+          <Field
+            id="admin-confirmar"
+            label="Confirmar contraseña"
+            type="password"
+            autoComplete="new-password"
+            value={admin.confirmar}
+            onChange={(v) => setAdmin({ ...admin, confirmar: v })}
+            placeholder="Repetí la contraseña"
+            error={errores.confirmar}
+          />
+          <div className="flex gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              size="lg"
+              className="flex-1"
+              onClick={volver}
+              disabled={loading}
+            >
+              Atrás
+            </Button>
+            <Button type="submit" size="lg" className="flex-1" disabled={loading}>
+              {loading ? 'Creando…' : 'Crear cuenta'}
+            </Button>
+          </div>
+        </form>
+      )}
+
+      <p className="text-center text-sm text-muted-foreground">
+        ¿Ya tenés cuenta?{' '}
+        <Link href="/login" className="font-semibold text-primary hover:underline">
+          Entrar
+        </Link>
+      </p>
+    </div>
+  );
+}
+
+function ProgresoPasos({ paso }: { paso: 1 | 2 }) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <span
+          className={`h-1.5 flex-1 rounded-full transition-colors ${
+            paso >= 1 ? 'bg-primary' : 'bg-violet-100'
+          }`}
+        />
+        <span
+          className={`h-1.5 flex-1 rounded-full transition-colors ${
+            paso >= 2 ? 'bg-primary' : 'bg-violet-100'
+          }`}
+        />
+      </div>
+      <p className="text-xs font-medium text-muted-foreground">
+        {paso === 1 ? 'Paso 1 de 2 · Tu inmobiliaria' : 'Paso 2 de 2 · Tu acceso'}
+      </p>
+    </div>
   );
 }
 
