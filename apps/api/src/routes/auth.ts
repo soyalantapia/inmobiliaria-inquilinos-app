@@ -18,6 +18,40 @@ const OTP_TTL_MS = 10 * 60 * 1000;
 /** Email del inquilino demo (Mariela). El front entra con ?demo=1. */
 const DEMO_INQUILINO_EMAIL = 'mariela.sosa@gmail.com';
 
+/**
+ * Fin del acceso gratis pre-lanzamiento. Todas las cuentas auto-registradas
+ * quedan gratis hasta esta fecha (Trial tipo LANZAMIENTO). Cambiá esta fecha
+ * (o seteá FECHA_LANZAMIENTO en el entorno) cuando definas el lanzamiento real.
+ */
+const FECHA_LANZAMIENTO_DEFAULT = '2026-12-31T23:59:59-03:00';
+
+/** Genera un código de referido único tipo "GOMEZ-4821" a partir del nombre. */
+function generarCodigoReferido(nombre: string): string {
+  const slug =
+    nombre
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-zA-Z]/g, '')
+      .toUpperCase()
+      .slice(0, 6) || 'INMO';
+  return `${slug}-${String(randomInt(0, 10000)).padStart(4, '0')}`;
+}
+
+const RegistroSchema = z.object({
+  inmobiliaria: z.object({
+    nombre: z.string().trim().min(2),
+    email: z.string().trim().email(),
+    telefono: z.string().trim().min(5),
+    ciudad: z.string().trim().min(2),
+    provincia: z.string().trim().min(2),
+  }),
+  admin: z.object({
+    nombre: z.string().trim().min(2),
+    apellido: z.string().trim().min(2),
+    password: z.string().min(8),
+  }),
+});
+
 export async function authRoutes(app: FastifyInstance) {
   // --- Panel inmobiliaria: email + password ---
   app.post('/auth/login', async (request, reply) => {
@@ -36,6 +70,89 @@ export async function authRoutes(app: FastifyInstance) {
     };
     const token = app.jwt.sign(payload, { expiresIn: TOKEN_TTL });
     return { token, nombre: `${usuario.nombre} ${usuario.apellido}`.trim(), rol: usuario.rol };
+  });
+
+  // --- Auto-onboarding: una inmobiliaria crea su cuenta sola ---
+  // Crea Inmobiliaria (piloto pre-lanzamiento) + Usuario ADMIN + Trial gratis,
+  // todo en una transacción, y devuelve el token igual que /auth/login.
+  app.post('/auth/registro', async (request, reply) => {
+    const body = RegistroSchema.safeParse(request.body);
+    if (!body.success) return reply.code(400).send({ message: 'Datos de registro incompletos o inválidos' });
+    const { inmobiliaria, admin } = body.data;
+    const email = inmobiliaria.email.toLowerCase();
+
+    // El email es el login del admin → debe ser único entre usuarios.
+    const yaExiste = await prisma.usuario.findFirst({ where: { email } });
+    if (yaExiste) return reply.code(409).send({ message: 'Ya existe una cuenta con ese email' });
+
+    const hasta = new Date(process.env.FECHA_LANZAMIENTO ?? FECHA_LANZAMIENTO_DEFAULT);
+    const passwordHash = bcrypt.hashSync(admin.password, 10);
+
+    // Reintentamos por si el código de referido colisiona (unique).
+    let usuario;
+    for (let intento = 0; intento < 5; intento++) {
+      try {
+        const creado = await prisma.$transaction(async (tx) => {
+          const inmo = await tx.inmobiliaria.create({
+            data: {
+              nombre: inmobiliaria.nombre,
+              email,
+              telefono: inmobiliaria.telefono,
+              // Fiscales/dirección completa: se completan después desde el panel.
+              cuit: '',
+              matricula: '',
+              direccionCalle: '',
+              direccionAltura: '',
+              direccionPiso: '',
+              direccionCiudad: inmobiliaria.ciudad,
+              direccionProvincia: inmobiliaria.provincia,
+              direccionCp: '',
+              esPiloto: true, // cuenta pre-lanzamiento
+              codigoReferido: generarCodigoReferido(inmobiliaria.nombre),
+            },
+          });
+          const u = await tx.usuario.create({
+            data: {
+              inmobiliariaId: inmo.id,
+              nombre: admin.nombre,
+              apellido: admin.apellido,
+              email,
+              rol: 'ADMIN',
+              passwordHash,
+              activo: true,
+            },
+          });
+          await tx.trial.create({
+            data: {
+              inmobiliariaId: inmo.id,
+              tipo: 'LANZAMIENTO',
+              motivo: 'Auto-onboarding pre-lanzamiento',
+              desde: new Date(),
+              hasta,
+              activadoPor: 'self-service',
+            },
+          });
+          return u;
+        });
+        usuario = creado;
+        break;
+      } catch (err) {
+        const msg = (err as Error).message;
+        if (intento < 4 && /codigoReferido|Unique constraint/i.test(msg)) continue; // colisión de código → reintentar
+        request.log.error({ err: msg }, 'Fallo el registro auto-servicio');
+        return reply.code(500).send({ message: 'No se pudo crear la cuenta. Intentá de nuevo.' });
+      }
+    }
+    if (!usuario) return reply.code(500).send({ message: 'No se pudo crear la cuenta. Intentá de nuevo.' });
+
+    const payload: JwtUsuario = {
+      kind: 'usuario',
+      userId: usuario.id,
+      inmobiliariaId: usuario.inmobiliariaId,
+      rol: usuario.rol,
+    };
+    const token = app.jwt.sign(payload, { expiresIn: TOKEN_TTL });
+    return reply.code(201).send({ token, nombre: `${usuario.nombre} ${usuario.apellido}`.trim(), rol: usuario.rol });
   });
 
   // --- Inquilino: OTP por email ---
@@ -122,9 +239,28 @@ export async function authRoutes(app: FastifyInstance) {
     const payload = await requireAuth(request, reply);
     if (!payload) return;
     if (payload.kind === 'usuario') {
-      const u = await prisma.usuario.findUnique({ where: { id: payload.userId } });
+      const u = await prisma.usuario.findUnique({
+        where: { id: payload.userId },
+        include: { inmobiliaria: { include: { trial: true } } },
+      });
       if (!u) return reply.code(401).send({ message: 'Usuario inexistente' });
-      return { kind: 'usuario', nombre: `${u.nombre} ${u.apellido}`.trim(), email: u.email, rol: u.rol };
+      const trial = u.inmobiliaria.trial;
+      const diasRestantes = trial
+        ? Math.max(0, Math.ceil((trial.hasta.getTime() - Date.now()) / 86_400_000))
+        : null;
+      return {
+        kind: 'usuario',
+        nombre: `${u.nombre} ${u.apellido}`.trim(),
+        email: u.email,
+        rol: u.rol,
+        inmobiliaria: u.inmobiliaria.nombre,
+        esPiloto: u.inmobiliaria.esPiloto,
+        // Perfil fiscal incompleto si el auto-onboarding dejó cuit/dirección vacíos.
+        perfilFiscalCompleto: !!(u.inmobiliaria.cuit && u.inmobiliaria.direccionCalle),
+        trial: trial
+          ? { tipo: trial.tipo, hasta: trial.hasta, diasRestantes, vigente: trial.hasta.getTime() >= Date.now() }
+          : null,
+      };
     }
     const i = await prisma.inquilino.findUnique({ where: { id: payload.inquilinoId } });
     if (!i) return reply.code(401).send({ message: 'Inquilino inexistente' });
