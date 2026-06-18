@@ -26,6 +26,16 @@ interface MiAnuncioApi extends Omit<AnuncioInquilino, 'enviadoAt'> {
 
 // ===== Mi contrato =====
 
+/** Cuenta de cobranza REAL (de la DB) que el inquilino usa para transferir. */
+export interface DatosCobranza {
+  modo: 'INMOBILIARIA' | 'PROPIETARIO_DIRECTO';
+  titular: string;
+  cuit: string;
+  banco: string | null;
+  cbu: string;
+  alias: string;
+}
+
 interface ContratoApi {
   id: string;
   direccion: string;
@@ -40,11 +50,13 @@ interface ContratoApi {
   montoActual: number;
   montoExpensas: number | null;
   moneda: Contrato['moneda'];
+  datosCobranza?: DatosCobranza | null;
 }
 
 export function useMiContrato(): {
   contrato: Contrato | null;
   inmobiliariaTelefono: string | null;
+  datosCobranza: DatosCobranza | null;
   cargando: boolean;
   isError: boolean;
   deApi: boolean;
@@ -55,10 +67,10 @@ export function useMiContrato(): {
     enabled: apiEnabled,
     staleTime: 60_000,
   });
-  if (!apiEnabled) return { contrato: contratoMock, inmobiliariaTelefono: null, cargando: false, isError: false, deApi: false };
-  if (q.isError) return { contrato: null, inmobiliariaTelefono: null, cargando: false, isError: true, deApi: true };
+  if (!apiEnabled) return { contrato: contratoMock, inmobiliariaTelefono: null, datosCobranza: null, cargando: false, isError: false, deApi: false };
+  if (q.isError) return { contrato: null, inmobiliariaTelefono: null, datosCobranza: null, cargando: false, isError: true, deApi: true };
   const d = q.data;
-  if (!d) return { contrato: null, inmobiliariaTelefono: null, cargando: q.isPending, isError: false, deApi: true };
+  if (!d) return { contrato: null, inmobiliariaTelefono: null, datosCobranza: null, cargando: q.isPending, isError: false, deApi: true };
   return {
     contrato: {
       id: d.id,
@@ -74,6 +86,7 @@ export function useMiContrato(): {
       moneda: d.moneda,
     },
     inmobiliariaTelefono: d.inmobiliariaTelefono,
+    datosCobranza: d.datosCobranza ?? null,
     cargando: false,
     isError: false,
     deApi: true,

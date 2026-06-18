@@ -461,9 +461,46 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
       include: {
         propiedad: { select: { direccion: true, ciudad: true } },
         inmobiliaria: { select: { nombre: true, telefono: true } },
+        sociedad: { select: { cuentaCobranza: true } },
+        cobraDirectoPropietario: { include: { cuentaCobranza: true } },
       },
     });
     if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
+
+    // Cuenta de cobranza REAL (de la DB) que el inquilino usa para transferir.
+    // NUNCA un dato inventado: si no hay cuenta cargada devolvemos null y la app
+    // le pide al inquilino que la solicite a la inmobiliaria.
+    //  - PROPIETARIO_DIRECTO => cuenta del propietario (CuentaCobranzaDirecta).
+    //  - INMOBILIARIA        => cuenta de la sociedad del contrato (o la principal).
+    type CuentaJson = { banco?: string; titular?: string; cbu?: string; alias?: string; cuit?: string };
+    let datosCobranza:
+      | { modo: 'PROPIETARIO_DIRECTO' | 'INMOBILIARIA'; titular: string; cuit: string; banco: string | null; cbu: string; alias: string }
+      | null = null;
+
+    if (contrato.modoCobranza === 'PROPIETARIO_DIRECTO' && contrato.cobraDirectoPropietario?.cuentaCobranza) {
+      const c = contrato.cobraDirectoPropietario.cuentaCobranza;
+      datosCobranza = { modo: 'PROPIETARIO_DIRECTO', titular: c.titular, cuit: c.cuit, banco: c.banco, cbu: c.cbu, alias: c.alias };
+    } else {
+      let cuenta = (contrato.sociedad?.cuentaCobranza as CuentaJson | null) ?? null;
+      if (!cuenta) {
+        const principal = await prisma.sociedad.findFirst({
+          where: { inmobiliariaId: inq.inmobiliariaId, esPrincipal: true, activa: true },
+          select: { cuentaCobranza: true },
+        });
+        cuenta = (principal?.cuentaCobranza as CuentaJson | null) ?? null;
+      }
+      if (cuenta?.cbu && cuenta.titular) {
+        datosCobranza = {
+          modo: 'INMOBILIARIA',
+          titular: cuenta.titular,
+          cuit: cuenta.cuit ?? '',
+          banco: cuenta.banco ?? null,
+          cbu: cuenta.cbu,
+          alias: cuenta.alias ?? '',
+        };
+      }
+    }
+
     return {
       id: contrato.id,
       direccion: contrato.propiedad.direccion,
@@ -480,6 +517,7 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
       tipoContrato: contrato.tipoContrato,
       tasaPunitorioDiaria: contrato.tasaPunitorioDiaria != null ? Number(contrato.tasaPunitorioDiaria) : null,
       moneda: contrato.moneda,
+      datosCobranza,
     };
   });
 

@@ -45,7 +45,7 @@ import { cargosExtraDelInquilino } from '@/lib/cross-app-inmo';
 import { marcarVariosPagados } from '@/lib/cargos-pagados-storage';
 import { extraerComprobante, type ExtraccionIA } from '@/lib/extraccion-ia';
 import { leerSesion } from '@/lib/auth-otp';
-import { useMiContrato } from '@/lib/api/hooks';
+import { useMiContrato, type DatosCobranza } from '@/lib/api/hooks';
 import {
   apiEnabled,
   useInformarPago,
@@ -68,7 +68,7 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
   // Teléfono real de la inmobiliaria (sólo en prod) para el CTA de WhatsApp
   // del estado neutro de datos bancarios + el hint de negociar. En demo es
   // null. El contrato real aporta el alquiler vigente (umbral del hint).
-  const { contrato, inmobiliariaTelefono } = useMiContrato();
+  const { contrato, inmobiliariaTelefono, datosCobranza } = useMiContrato();
 
   const [step, setStep] = useState<Step>('datos');
   /** Pagos previos (parciales o total) ya informados para esta liq. */
@@ -202,6 +202,7 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
               moneda={liq.moneda}
               parcial={!cubreTodo}
               inmobiliariaTelefono={inmobiliariaTelefono}
+              datosCobranza={datosCobranza}
               onContinuar={() => setStep('comprobante')}
             />
           </>
@@ -498,6 +499,7 @@ function StepDatosBancarios({
   moneda,
   parcial,
   inmobiliariaTelefono,
+  datosCobranza,
   onContinuar,
 }: {
   monto: number;
@@ -505,14 +507,15 @@ function StepDatosBancarios({
   parcial: boolean;
   /** Teléfono real de la inmobiliaria (prod). null en demo / sin dato. */
   inmobiliariaTelefono: string | null;
+  /** Cuenta de cobranza REAL traída del API (prod). null si no está cargada. */
+  datosCobranza: DatosCobranza | null;
   onContinuar: () => void;
 }) {
-  // En prod NO hay endpoint con la cuenta de cobranza real de la inmobiliaria.
-  // Mostrar el CBU/CUIT/titular mock sería un dato bancario inventado al que
-  // el inquilino podría transferir plata: peligroso. En su lugar mostramos un
-  // estado neutro que aclara que la inmobiliaria envía los datos, con un CTA a
-  // WhatsApp si tenemos su teléfono. En demo (!apiEnabled) el flujo queda intacto.
-  if (apiEnabled) {
+  // En prod mostramos la cuenta de cobranza REAL de la base (datosCobranza).
+  // Si la inmobiliaria todavía no la cargó (null), NO inventamos un CBU: estado
+  // neutro + pedirle los datos a la inmobiliaria. En demo (!apiEnabled) usamos
+  // el mock con el flujo intacto.
+  if (apiEnabled && !datosCobranza) {
     return (
       <StepDatosBancariosNeutro
         monto={monto}
@@ -524,14 +527,24 @@ function StepDatosBancarios({
     );
   }
 
-  const d = datosBancariosMock;
-  const cambio = proximoCambioVigente(d);
+  // Fuente única: prod => cuenta real de la DB; demo => mock.
+  const d = datosCobranza
+    ? { titular: datosCobranza.titular, cuit: datosCobranza.cuit, banco: datosCobranza.banco ?? '', tipoCuenta: '', cbu: datosCobranza.cbu, alias: datosCobranza.alias }
+    : datosBancariosMock;
+  // El banner de "próximo cambio de CBU" solo aplica al mock (demo).
+  const cambio = datosCobranza ? null : proximoCambioVigente(datosBancariosMock);
   const filas: Array<{ label: string; value: string; icon: React.ReactNode; copyKey: string; copyValue?: string }> = [
     { label: 'Titular', value: d.titular, icon: <UserRound className="h-4 w-4" />, copyKey: 'titular' },
-    { label: 'CUIT', value: d.cuit, icon: <IdCard className="h-4 w-4" />, copyKey: 'cuit', copyValue: d.cuit.replace(/-/g, '') },
-    { label: 'Banco', value: `${d.banco} · ${d.tipoCuenta}`, icon: <Building2 className="h-4 w-4" />, copyKey: 'banco' },
+    ...(d.cuit
+      ? [{ label: 'CUIT', value: d.cuit, icon: <IdCard className="h-4 w-4" />, copyKey: 'cuit', copyValue: d.cuit.replace(/-/g, '') }]
+      : []),
+    ...(d.banco
+      ? [{ label: 'Banco', value: d.tipoCuenta ? `${d.banco} · ${d.tipoCuenta}` : d.banco, icon: <Building2 className="h-4 w-4" />, copyKey: 'banco' }]
+      : []),
     { label: 'CBU', value: d.cbu, icon: <Hash className="h-4 w-4" />, copyKey: 'cbu' },
-    { label: 'Alias', value: d.alias, icon: <Hash className="h-4 w-4" />, copyKey: 'alias' },
+    ...(d.alias
+      ? [{ label: 'Alias', value: d.alias, icon: <Hash className="h-4 w-4" />, copyKey: 'alias' }]
+      : []),
     {
       label: parcial ? 'Monto del parcial' : 'Monto exacto',
       value: formatMonto(monto, moneda),
