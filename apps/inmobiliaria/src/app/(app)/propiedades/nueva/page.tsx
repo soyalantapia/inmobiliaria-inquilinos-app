@@ -1031,9 +1031,11 @@ function NuevaPropiedadForm() {
                   </Link>
                 </Button>
 
-                <p className="text-center text-[11px] text-muted-foreground">
-                  Aceptás que esta acción modifica tu próxima factura.
-                </p>
+                {haySaltoDePlan && (
+                  <p className="text-center text-[11px] text-muted-foreground">
+                    Aceptás que esta acción sube tu plan y modifica tu próxima factura.
+                  </p>
+                )}
               </CardContent>
             </Card>
           </aside>

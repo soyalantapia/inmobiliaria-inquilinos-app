@@ -135,7 +135,7 @@ export default function PreciosPage() {
           <div className="flex flex-wrap items-center justify-center gap-2">
             <Button asChild size="lg">
               <Link href="/registro">
-                Empezar gratis 14 días
+                Empezar gratis
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </Button>
@@ -391,7 +391,7 @@ export default function PreciosPage() {
                   <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
                     1
                   </span>
-                  <span>Te das de alta gratis · 14 días sin tarjeta</span>
+                  <span>Te das de alta gratis hasta el lanzamiento · sin tarjeta</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
@@ -434,7 +434,7 @@ export default function PreciosPage() {
         {/* Footer */}
         <footer className="mt-20 border-t pt-8 text-center text-xs text-muted-foreground">
           <p>
-            My Alquiler · myalquiler.com.ar · Hecho en Argentina para LATAM
+            My Alquiler · myalquiler.com · Hecho en Argentina para LATAM
           </p>
           <p className="mt-1">
             <Link href="/login" className="underline">

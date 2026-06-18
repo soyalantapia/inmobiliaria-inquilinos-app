@@ -274,6 +274,9 @@ function ScreeningHome({
   onNombreChange: (v: string) => void;
   onSubmit: (e: React.FormEvent) => void;
 }) {
+  // Consentimiento del inquilino (Ley 25.326): obligatorio antes de verificar.
+  // Vive acá (no en el padre) y se resetea en cada verificación nueva.
+  const [consentimiento, setConsentimiento] = useState(false);
   return (
     <div className="space-y-6">
       {/* Hero + form */}
@@ -361,11 +364,25 @@ function ScreeningHome({
                 />
               </div>
 
+              <label className="flex items-start gap-2 rounded-lg border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={consentimiento}
+                  onChange={(e) => setConsentimiento(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+                />
+                <span>
+                  Confirmo que el inquilino prestó su{' '}
+                  <strong className="text-foreground">consentimiento</strong> para verificar sus
+                  datos (Ley 25.326 de Protección de Datos Personales).
+                </span>
+              </label>
+
               <Button
                 type="submit"
                 size="xl"
                 className="mt-2 w-full text-base shadow-lg shadow-primary/20"
-                disabled={!formValido}
+                disabled={!formValido || !consentimiento}
               >
                 <Search className="h-4 w-4" />
                 Iniciar verificación

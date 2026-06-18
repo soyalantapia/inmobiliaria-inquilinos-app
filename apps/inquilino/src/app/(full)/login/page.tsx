@@ -237,8 +237,8 @@ export default function LoginPage() {
               />
               <Beneficio
                 Icon={Sparkles}
-                titulo="Asistente IA que responde al toque"
-                detalle="Preguntale cualquier duda — cita la cláusula exacta."
+                titulo="Asistente IA — muy pronto"
+                detalle="Vas a poder preguntarle cualquier duda del contrato y te cita la cláusula exacta."
               />
             </ul>
           </div>
