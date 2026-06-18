@@ -442,7 +442,7 @@ export default function PreciosPage() {
             </Link>
             {' · '}
             <a
-              href="https://wa.me/?text=Hola%2C%20quiero%20saber%20m%C3%A1s%20de%20My%20Alquiler"
+              href="https://wa.me/5491154596266?text=Hola%2C%20quiero%20saber%20m%C3%A1s%20de%20My%20Alquiler"
               target="_blank"
               rel="noreferrer"
               className="underline"
