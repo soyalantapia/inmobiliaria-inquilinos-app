@@ -355,7 +355,8 @@ export default function PropietariosPage() {
                       <Button
                         size="sm"
                         onClick={() => setRendiendoA(p)}
-                        disabled={!necesitaRendir && !rendido}
+                        disabled={(!necesitaRendir && !rendido) || !p.cbuAlias}
+                        title={!p.cbuAlias ? 'Cargá el CBU/alias del propietario para poder rendir' : undefined}
                         className="gap-1.5"
                       >
                         <Wallet className="h-3.5 w-3.5" />

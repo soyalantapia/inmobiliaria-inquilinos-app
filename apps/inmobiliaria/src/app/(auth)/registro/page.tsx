@@ -177,6 +177,7 @@ function RegistroWizard() {
             <Field
               id="inmo-ciudad"
               label="Ciudad"
+              autoComplete="address-level2"
               value={inmo.ciudad}
               onChange={(v) => setInmo({ ...inmo, ciudad: v })}
               placeholder="Córdoba"
@@ -185,6 +186,7 @@ function RegistroWizard() {
             <Field
               id="inmo-provincia"
               label="Provincia"
+              autoComplete="address-level1"
               value={inmo.provincia}
               onChange={(v) => setInmo({ ...inmo, provincia: v })}
               placeholder="Córdoba"

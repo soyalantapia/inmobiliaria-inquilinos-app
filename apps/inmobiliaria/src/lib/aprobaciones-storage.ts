@@ -181,7 +181,7 @@ const SEED: Aprobacion[] = [
     id: 'apr_seed_3',
     tipo: 'DEVOLUCION_DEPOSITO',
     titulo: 'Devolución depósito · Laura Giménez',
-    descripcion: 'Cierre de contrato anticipado · contrato cnt_003',
+    descripcion: 'Cierre de contrato anticipado · Jorge Newbery 1820',
     monto: 510000,
     entidadId: 'cnt_003',
     cargadoPor: 'Luciana Vidal',

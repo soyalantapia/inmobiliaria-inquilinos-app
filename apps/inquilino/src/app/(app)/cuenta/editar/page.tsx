@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Save } from 'lucide-react';
+import { ArrowLeft, Pencil, Save } from 'lucide-react';
 import { Button } from '@llave/ui/button';
 import { Input } from '@llave/ui/input';
 import { Label } from '@llave/ui/label';
@@ -11,11 +11,33 @@ import { toast } from '@llave/ui/use-toast';
 import { NavBar } from '@/components/nav-bar';
 import { useCurrentUser } from '@/lib/use-current-user';
 import { leerProfile, guardarProfile } from '@/lib/profile-override';
+import { apiEnabled } from '@/lib/api/client';
+import { Proximamente } from '@/components/proximamente';
 
 // Antes "Editar tus datos" era un Dialog (modal). En mobile, con teclado
 // abierto y 3 campos + validaciones, el modal centrado se cortaba. Ahora es
 // una página completa con scroll natural (back-header + form + NavBar).
+//
+// En prod (apiEnabled) NO hay endpoint para guardar el perfil del inquilino:
+// el form solo escribiría en localStorage y el toast "le avisamos a la
+// inmobiliaria" sería falso. Lo gateamos a "Disponible pronto" como el resto
+// de las funciones sin backend; en demo se sigue usando el form local.
 export default function EditarDatosPage() {
+  if (apiEnabled) {
+    return (
+      <Proximamente
+        titulo="Editar tus datos"
+        descripcion="Vas a poder actualizar tu nombre, teléfono y email y que la inmobiliaria los reciba. Estamos terminando de conectarlo."
+        icon={<Pencil className="h-7 w-7" />}
+        volverHref="/cuenta"
+        volverLabel="Volver a Mi cuenta"
+      />
+    );
+  }
+  return <EditarDatosDemo />;
+}
+
+function EditarDatosDemo() {
   const router = useRouter();
   const user = useCurrentUser();
 
