@@ -52,6 +52,26 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
     },
   });
   if (!res.ok) {
+    // Sesión vencida/invalidada: si mandamos un token y el server lo rechaza
+    // (401), limpiamos la sesión y mandamos a re-loguear. Si no, el inquilino
+    // queda atrapado en "No pudimos cargar tu cuenta · Reintentar" para siempre
+    // (reintentar con un token muerto nunca funciona). Solo aplica a requests
+    // autenticados (token presente) y fuera del propio /login (evita loops y no
+    // pisa el manejo de error del login por OTP, que también puede dar 401).
+    if (
+      res.status === 401 &&
+      token &&
+      typeof window !== 'undefined' &&
+      !window.location.pathname.startsWith('/login')
+    ) {
+      try {
+        window.localStorage.removeItem(TOKEN_KEY);
+        window.localStorage.removeItem('llave-inquilino:auth:sesion:v1');
+      } catch {
+        // ignore
+      }
+      window.location.assign('/login?expirada=1');
+    }
     let message = `HTTP ${res.status}`;
     try {
       const body = (await res.json()) as { message?: string };

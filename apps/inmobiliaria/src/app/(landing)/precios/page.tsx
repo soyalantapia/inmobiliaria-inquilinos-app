@@ -107,7 +107,7 @@ export default function PreciosPage() {
               <Link href="/login">Iniciar sesión</Link>
             </Button>
             <Button asChild size="sm">
-              <Link href="/login">
+              <Link href="/registro">
                 Probar gratis
                 <ArrowRight className="h-3.5 w-3.5" />
               </Link>
@@ -134,7 +134,7 @@ export default function PreciosPage() {
           </p>
           <div className="flex flex-wrap items-center justify-center gap-2">
             <Button asChild size="lg">
-              <Link href="/login">
+              <Link href="/registro">
                 Empezar gratis 14 días
                 <ArrowRight className="h-4 w-4" />
               </Link>
@@ -256,7 +256,7 @@ export default function PreciosPage() {
                       className={`w-full ${recomendado ? '' : 'variant-outline'}`}
                       variant={recomendado ? 'default' : 'outline'}
                     >
-                      <Link href="/login">Empezar</Link>
+                      <Link href="/registro">Empezar</Link>
                     </Button>
                   </CardContent>
                 </Card>
@@ -422,7 +422,7 @@ export default function PreciosPage() {
                 </li>
               </ol>
               <Button asChild className="mt-4 w-full">
-                <Link href="/login">
+                <Link href="/registro">
                   Probar gratis
                   <ArrowRight className="h-4 w-4" />
                 </Link>
