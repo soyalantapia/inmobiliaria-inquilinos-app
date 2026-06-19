@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../db.js';
 import { requireUsuario } from '../auth/guards.js';
+import { generarLiquidacionesContrato } from '../lib/liquidaciones.js';
 
 /**
  * Núcleo de datos del panel (Fase 2): contratos, propiedades, propietarios,
@@ -263,7 +264,10 @@ export async function coreRoutes(app: FastifyInstance) {
           inmobiliariaId: u.inmobiliariaId,
           nombre: d.inquilino.nombre,
           apellido: d.inquilino.apellido || null,
-          email: d.inquilino.email || null,
+          // Normalizado a minúsculas: el login por OTP busca el email en
+          // minúsculas. Sin esto, un email cargado con mayúsculas dejaría al
+          // inquilino sin poder entrar nunca.
+          email: d.inquilino.email ? d.inquilino.email.toLowerCase() : null,
           telefono: d.inquilino.telefono || null,
           dni: d.inquilino.dni || null,
           esInvitado: false,
@@ -292,6 +296,9 @@ export async function coreRoutes(app: FastifyInstance) {
       });
       await tx.inquilino.update({ where: { id: inq.id }, data: { contratoId: contrato.id } });
       await tx.propiedad.update({ where: { id: prop.id }, data: { contratoActualId: contrato.id, estado: 'ALQUILADA' } });
+      // Devengar las liquidaciones del contrato (cargos mensuales). Sin esto
+      // el inquilino no tendría nada para pagar al activar el contrato.
+      await generarLiquidacionesContrato(tx, contrato);
       return contrato;
     });
   });
