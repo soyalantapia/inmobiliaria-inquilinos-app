@@ -178,6 +178,40 @@ export async function coreRoutes(app: FastifyInstance) {
     });
   });
 
+  // Cuenta de cobranza DIRECTA del propietario (la que ve el inquilino cuando
+  // el contrato es PROPIETARIO_DIRECTO). Antes solo vivía en localStorage del
+  // panel → el inquilino veía el fallback. Upsert por propietario (@unique).
+  app.put('/propietarios/:id/cuenta-cobranza-directa', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'propietarios.crear');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const prop = await prisma.propietario.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
+    if (!prop) return reply.code(404).send({ message: 'Propietario inexistente' });
+    const body = z
+      .object({
+        banco: z.string().trim().min(2, 'Indicá el banco'),
+        titular: z.string().trim().min(2, 'Indicá el titular'),
+        cbu: z.string().trim().regex(/^\d{22}$/, 'El CBU debe tener 22 dígitos'),
+        alias: z.string().trim().min(2, 'Indicá el alias'),
+        cuit: z.string().trim().optional().default(''),
+      })
+      .safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ message: body.error.issues[0]?.message ?? 'Datos inválidos' });
+    const data = {
+      banco: body.data.banco,
+      titular: body.data.titular,
+      cbu: body.data.cbu,
+      alias: body.data.alias,
+      cuit: body.data.cuit,
+    };
+    const cuenta = await prisma.cuentaCobranzaDirecta.upsert({
+      where: { propietarioId: id },
+      create: { ...data, propietarioId: id, inmobiliariaId: u.inmobiliariaId },
+      update: data,
+    });
+    return { ok: true, cuentaCobranza: cuenta };
+  });
+
   app.post('/propiedades', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'propiedades.crear');
     if (!u) return;
@@ -273,6 +307,18 @@ export async function coreRoutes(app: FastifyInstance) {
           esInvitado: false,
         },
       });
+      // Modo cobranza directa: el contrato apunta al dueño PRINCIPAL de la
+      // propiedad (mayor participación) para que el inquilino vea SU cuenta de
+      // cobranza directa. Sin esto, /mi-contrato no encontraba a quién cobrar y
+      // caía al modo inmobiliaria.
+      let cobraDirectoPropietarioId: string | null = null;
+      if (d.modoCobranza === 'PROPIETARIO_DIRECTO') {
+        const part = await tx.participacionPropietario.findFirst({
+          where: { propiedadId: prop.id },
+          orderBy: { porcentaje: 'desc' },
+        });
+        cobraDirectoPropietarioId = part?.propietarioId ?? null;
+      }
       const contrato = await tx.contrato.create({
         data: {
           inmobiliariaId: u.inmobiliariaId,
@@ -289,6 +335,7 @@ export async function coreRoutes(app: FastifyInstance) {
           tipoContrato: d.tipoContrato,
           depositoGarantia: d.depositoGarantia ?? null,
           modoCobranza: d.modoCobranza,
+          cobraDirectoPropietarioId,
           cargadoPor: u.userId,
           cargadoRol: u.rol,
           cargadoAt: new Date(),

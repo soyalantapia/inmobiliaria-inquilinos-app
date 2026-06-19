@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Landmark, Pencil, PlugZap } from 'lucide-react';
 import { Button, type ButtonProps } from '@llave/ui/button';
 import { ConectarArcaDialog } from './conectar-arca-dialog';
@@ -62,6 +63,7 @@ export function CuentaCobranzaTrigger({
   className,
 }: BaseProps) {
   const [open, setOpen] = useState(false);
+  const qc = useQueryClient();
   const yaTiene = !!propietario.cuentaCobranza;
   return (
     <>
@@ -78,7 +80,15 @@ export function CuentaCobranzaTrigger({
           </>
         )}
       </Button>
-      <CuentaCobranzaDialog open={open} onOpenChange={setOpen} propietario={propietario} />
+      <CuentaCobranzaDialog
+        open={open}
+        onOpenChange={setOpen}
+        propietario={propietario}
+        onSaved={() => {
+          void qc.invalidateQueries({ queryKey: ['propietario', propietario.id] });
+          void qc.invalidateQueries({ queryKey: ['propietarios'] });
+        }}
+      />
     </>
   );
 }

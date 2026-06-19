@@ -498,6 +498,21 @@ export async function setCobranza(input: CobranzaCuenta): Promise<void> {
   await apiFetch('/cobranza', { method: 'PUT', body: JSON.stringify(input) });
 }
 
+/**
+ * Cuenta de cobranza DIRECTA de un propietario (la que ve el inquilino cuando
+ * el contrato es PROPIETARIO_DIRECTO). Persiste en la DB (CuentaCobranzaDirecta).
+ */
+export async function setCuentaCobranzaDirecta(
+  propietarioId: string,
+  input: CobranzaCuenta,
+): Promise<void> {
+  await ensureApiSession();
+  await apiFetch(`/propietarios/${propietarioId}/cuenta-cobranza-directa`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
+}
+
 export function useMe(): { me: Me | null; cargando: boolean } {
   const q = useQuery({
     queryKey: ['me'],

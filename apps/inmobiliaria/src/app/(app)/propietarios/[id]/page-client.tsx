@@ -88,10 +88,13 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
   const tel = propietario.telefono.replace(/[^\d]/g, '');
   const ingresoAnualEstimado = propietario.totalRecibirMes * 12;
 
-  // En prod (API real) la edición de datos básicos / ARCA / cuenta de cobranza
-  // todavía no tiene endpoint: la dejamos deshabilitada con tooltip. En build
-  // demo seguimos usando los triggers que escriben a localStorage.
+  // En prod (API real) la edición de datos básicos / ARCA todavía no tiene
+  // endpoint: la dejamos deshabilitada con tooltip. En build demo seguimos
+  // usando los triggers que escriben a localStorage.
   const edicionHabilitada = !apiEnabled;
+  // La cuenta de cobranza directa SÍ tiene endpoint (PUT /propietarios/:id/
+  // cuenta-cobranza-directa) → editable también en prod.
+  const cobranzaEditable = true;
 
   return (
     <>
@@ -401,7 +404,7 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
                       <p className="font-mono font-medium">{propietario.cuentaCobranza.alias}</p>
                     </div>
                   </div>
-                  {edicionHabilitada ? (
+                  {cobranzaEditable ? (
                     <CuentaCobranzaTrigger propietario={propietario} className="w-full" />
                   ) : (
                     <Button variant="outline" size="sm" disabled className="w-full" title="Próximamente">
@@ -417,7 +420,7 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
                     inmobiliaria</strong>. Si querés que el inquilino deposite directo al
                     propietario, cargá su cuenta.
                   </p>
-                  {edicionHabilitada ? (
+                  {cobranzaEditable ? (
                     <CuentaCobranzaTrigger propietario={propietario} className="w-full" />
                   ) : (
                     <Button variant="outline" size="sm" disabled className="w-full" title="Próximamente">

@@ -13,12 +13,16 @@ import { Input } from '@llave/ui/input';
 import { Label } from '@llave/ui/label';
 import { toast } from '@llave/ui/use-toast';
 import { guardarOverride } from '@/lib/propietarios-overrides-storage';
+import { apiEnabled, ApiError } from '@/lib/api/client';
+import { setCuentaCobranzaDirecta } from '@/lib/api/hooks';
 import type { Propietario } from '@/lib/types';
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   propietario: Propietario;
+  /** En prod, refrescar el detalle del propietario tras guardar (invalidate). */
+  onSaved?: () => void;
 }
 
 /**
@@ -26,7 +30,7 @@ interface Props {
  * Si el propietario ya tiene cuenta, precarga los datos; si no, arranca
  * vacío. Al guardar persiste como override y dispara evento para refrescar.
  */
-export function CuentaCobranzaDialog({ open, onOpenChange, propietario }: Props) {
+export function CuentaCobranzaDialog({ open, onOpenChange, propietario, onSaved }: Props) {
   const existente = propietario.cuentaCobranza;
   const [banco, setBanco] = useState(existente?.banco ?? '');
   const [titular, setTitular] = useState(existente?.titular ?? `${propietario.nombre} ${propietario.apellido}`);
@@ -64,17 +68,31 @@ export function CuentaCobranzaDialog({ open, onOpenChange, propietario }: Props)
       });
       return;
     }
+    const cuenta = {
+      banco: banco.trim(),
+      titular: titular.trim(),
+      cbu: cbu.replace(/\s/g, ''),
+      alias: alias.trim(),
+      cuit: cuitTitular.trim(),
+    };
     setGuardando(true);
-    await new Promise((r) => setTimeout(r, 350));
-    guardarOverride(propietario.id, {
-      cuentaCobranza: {
-        banco: banco.trim(),
-        titular: titular.trim(),
-        cbu: cbu.replace(/\s/g, ''),
-        alias: alias.trim(),
-        cuit: cuitTitular.trim(),
-      },
-    });
+    try {
+      if (apiEnabled) {
+        await setCuentaCobranzaDirecta(propietario.id, cuenta);
+        onSaved?.();
+      } else {
+        await new Promise((r) => setTimeout(r, 350));
+        guardarOverride(propietario.id, { cuentaCobranza: cuenta });
+      }
+    } catch (e) {
+      setGuardando(false);
+      toast({
+        variant: 'destructive',
+        title: 'No se pudo guardar',
+        description: e instanceof ApiError ? e.message : 'Probá de nuevo en un momento.',
+      });
+      return;
+    }
     setGuardando(false);
     toast({
       variant: 'success',
