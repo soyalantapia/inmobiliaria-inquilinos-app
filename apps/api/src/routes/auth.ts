@@ -330,6 +330,10 @@ export async function authRoutes(app: FastifyInstance) {
         rol: u.rol,
         inmobiliaria: u.inmobiliaria.nombre,
         esPiloto: u.inmobiliaria.esPiloto,
+        // ¿Ya tiene PIN de seguridad en la DB? El panel lo usa para mostrar
+        // "Configurar" vs "Cambiar" (antes el PIN era solo localStorage y nunca
+        // llegaba al backend → las acciones sensibles daban 403 para siempre).
+        tienePin: !!u.pinHash,
         // Perfil fiscal incompleto si el auto-onboarding dejó cuit/dirección vacíos.
         perfilFiscalCompleto: !!(u.inmobiliaria.cuit && u.inmobiliaria.direccionCalle),
         trial: trial
@@ -366,5 +370,37 @@ export async function authRoutes(app: FastifyInstance) {
     const valid = !!u?.pinHash && bcrypt.compareSync(body.data.pin, u.pinHash);
     if (!valid) return reply.code(403).send({ message: 'PIN incorrecto', valid: false });
     return { valid: true };
+  });
+
+  // Configurar / cambiar el PIN de seguridad → lo PERSISTE en la DB
+  // (usuario.pinHash). Antes el panel solo lo guardaba en localStorage y el
+  // backend nunca lo recibía, así que una cuenta nueva (registro self-service)
+  // no podía validar pagos, rendir ni aprobar (verificarPin → 403). Cada
+  // usuario configura su propio PIN; si ya tiene uno, exige el PIN actual.
+  app.post('/auth/pin', async (request, reply) => {
+    const usuario = await requireUsuario(request, reply);
+    if (!usuario) return;
+    const body = z
+      .object({
+        pinNuevo: z.string().regex(/^\d{4,6}$/, 'El PIN debe tener 4 a 6 dígitos'),
+        pinActual: z.string().optional(),
+      })
+      .safeParse(request.body ?? {});
+    if (!body.success) {
+      return reply.code(400).send({ message: body.error.issues[0]?.message ?? 'PIN inválido' });
+    }
+    const u = await prisma.usuario.findUnique({ where: { id: usuario.userId } });
+    if (!u) return reply.code(401).send({ message: 'Usuario inexistente' });
+    // Si ya hay PIN, hay que probar que sos vos (PIN actual correcto) antes de cambiarlo.
+    if (u.pinHash) {
+      if (!body.data.pinActual || !bcrypt.compareSync(body.data.pinActual, u.pinHash)) {
+        return reply.code(403).send({ message: 'El PIN actual no coincide' });
+      }
+    }
+    await prisma.usuario.update({
+      where: { id: u.id },
+      data: { pinHash: bcrypt.hashSync(body.data.pinNuevo, 10) },
+    });
+    return { ok: true, tienePin: true };
   });
 }

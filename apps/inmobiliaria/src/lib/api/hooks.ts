@@ -392,6 +392,7 @@ interface MeApi {
   // por compatibilidad: backends viejos o la rama no-usuario no los traen.
   esPiloto?: boolean;
   perfilFiscalCompleto?: boolean;
+  tienePin?: boolean;
   trial?: MeTrialApi | null;
 }
 
@@ -412,6 +413,8 @@ export interface Me {
   esPiloto: boolean;
   /** El perfil fiscal (ARCA/AFIP) está completo. */
   perfilFiscalCompleto: boolean;
+  /** Ya configuró el PIN de seguridad en la DB (no solo en localStorage). */
+  tienePin: boolean;
   /** Trial pre-lanzamiento si lo hay; null si la cuenta no tiene trial. */
   trial: MeTrial | null;
 }
@@ -420,6 +423,16 @@ function iniciales(nombre: string, email: string): string {
   const parts = nombre.trim().split(/\s+/).filter(Boolean);
   const ini = `${parts[0]?.[0] ?? ''}${parts[1]?.[0] ?? ''}`.toUpperCase();
   return ini || (email[0]?.toUpperCase() ?? '?');
+}
+
+/**
+ * Configura / cambia el PIN de seguridad en el backend (DB). El panel lo usa en
+ * modo API; en demo la card sigue con localStorage. Lanza ApiError con el
+ * mensaje del server si el PIN actual no coincide o el nuevo es inválido.
+ */
+export async function setPinSeguridad(input: { pinNuevo: string; pinActual?: string }): Promise<void> {
+  await ensureApiSession();
+  await apiFetch('/auth/pin', { method: 'POST', body: JSON.stringify(input) });
 }
 
 export function useMe(): { me: Me | null; cargando: boolean } {
@@ -446,6 +459,9 @@ export function useMe(): { me: Me | null; cargando: boolean } {
         // la fuente local (trial-storage) por su cuenta y estos quedan neutros.
         esPiloto: false,
         perfilFiscalCompleto: true,
+        // En demo el PIN vive en localStorage (la card lo lee directo); este
+        // campo solo lo usa la card en modo API.
+        tienePin: false,
         trial: null,
       },
       cargando: false,
@@ -463,6 +479,7 @@ export function useMe(): { me: Me | null; cargando: boolean } {
       iniciales: iniciales(d.nombre, d.email),
       esPiloto: d.esPiloto ?? false,
       perfilFiscalCompleto: d.perfilFiscalCompleto ?? true,
+      tienePin: d.tienePin ?? false,
       trial: d.trial
         ? {
             tipo: d.trial.tipo,

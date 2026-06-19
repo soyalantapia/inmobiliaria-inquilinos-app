@@ -2,46 +2,72 @@
 
 import { useEffect, useState } from 'react';
 import { KeyRound, Lock, RotateCcw, ShieldAlert, ShieldCheck } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@llave/ui/button';
 import { Card, CardContent } from '@llave/ui/card';
 import { ConfirmDialog } from '@llave/ui/confirm-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@llave/ui/dialog';
 import { Input } from '@llave/ui/input';
 import { Label } from '@llave/ui/label';
 import { toast } from '@llave/ui/use-toast';
 import {
   cambiarPin,
+  configurarPinInicial,
   pinEstaBloqueado,
   resetearPin,
   tienePinConfigurado,
 } from '@/lib/pin-seguridad-storage';
-import { PinPromptDialog } from '@/components/pin-prompt-dialog';
+import { apiEnabled, ApiError } from '@/lib/api/client';
+import { setPinSeguridad, useMe } from '@/lib/api/hooks';
 
+/**
+ * Tarjeta de PIN de seguridad. En modo API persiste el PIN en la DB
+ * (usuario.pinHash) vía `POST /auth/pin` — antes solo lo guardaba en
+ * localStorage y el backend nunca lo recibía, así que una cuenta nueva no podía
+ * validar pagos / rendir / aprobar (verificarPin → 403). En demo (sin API)
+ * sigue con localStorage intacto.
+ */
 export function PinSeguridadCard() {
+  const qc = useQueryClient();
+  const { me, cargando } = useMe();
   const [hidratado, setHidratado] = useState(false);
-  const [configurado, setConfigurado] = useState(false);
+  const [localConfigurado, setLocalConfigurado] = useState(false);
   const [bloqueado, setBloqueado] = useState(false);
-  const [showCambiar, setShowCambiar] = useState(false);
-  const [showSetup, setShowSetup] = useState(false);
+  const [dialog, setDialog] = useState<null | 'configurar' | 'cambiar'>(null);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
-  const refrescar = () => {
-    setConfigurado(tienePinConfigurado());
+  const refrescarLocal = () => {
+    setLocalConfigurado(tienePinConfigurado());
     setBloqueado(pinEstaBloqueado());
   };
 
   useEffect(() => {
-    refrescar();
+    refrescarLocal();
     setHidratado(true);
   }, []);
+
+  // En modo API la fuente de verdad es el backend (me.tienePin); en demo, localStorage.
+  const configurado = apiEnabled ? !!me?.tienePin : localConfigurado;
+
+  const onDone = () => {
+    setDialog(null);
+    if (apiEnabled) void qc.invalidateQueries({ queryKey: ['me'] });
+    else refrescarLocal();
+  };
 
   const reset = () => {
     resetearPin();
     toast({ title: 'PIN reseteado', description: 'Configurá uno nuevo cuando confirmes la próxima acción.' });
     setShowResetConfirm(false);
-    refrescar();
+    refrescarLocal();
   };
 
-  if (!hidratado) return null;
+  if (!hidratado || (apiEnabled && cargando)) return null;
 
   return (
     <Card>
@@ -78,49 +104,30 @@ export function PinSeguridadCard() {
 
         <div className="flex flex-wrap gap-2">
           {!configurado ? (
-            <Button size="sm" onClick={() => setShowSetup(true)}>
+            <Button size="sm" onClick={() => setDialog('configurar')}>
               <KeyRound className="h-4 w-4" />
               Configurar PIN
             </Button>
           ) : (
             <>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setShowCambiar(true)}
-              >
+              <Button size="sm" variant="outline" onClick={() => setDialog('cambiar')}>
                 <Lock className="h-4 w-4" />
                 Cambiar PIN
               </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setShowResetConfirm(true)}
-              >
-                <RotateCcw className="h-4 w-4" />
-                Resetear
-              </Button>
+              {/* En demo el reset es local; en API el "olvidé el PIN" es un flujo
+                  de recuperación aparte (no self-serve), así que no lo mostramos. */}
+              {!apiEnabled && (
+                <Button size="sm" variant="outline" onClick={() => setShowResetConfirm(true)}>
+                  <RotateCcw className="h-4 w-4" />
+                  Resetear
+                </Button>
+              )}
             </>
           )}
         </div>
       </CardContent>
 
-      <PinPromptDialog
-        abierto={showSetup}
-        accion="Configurar PIN de seguridad"
-        subaccion="Lo vamos a pedir cuando confirmes acciones sensibles."
-        onClose={() => {
-          setShowSetup(false);
-          refrescar();
-        }}
-        onConfirmado={refrescar}
-      />
-
-      <CambiarPinDialog
-        abierto={showCambiar}
-        onClose={() => setShowCambiar(false)}
-        onCambiado={refrescar}
-      />
+      <PinDialog modo={dialog} onClose={() => setDialog(null)} onDone={onDone} />
 
       <ConfirmDialog
         open={showResetConfirm}
@@ -135,17 +142,26 @@ export function PinSeguridadCard() {
   );
 }
 
-interface CambiarProps {
-  abierto: boolean;
+interface PinDialogProps {
+  modo: null | 'configurar' | 'cambiar';
   onClose: () => void;
-  onCambiado: () => void;
+  onDone: () => void;
 }
 
-function CambiarPinDialog({ abierto, onClose, onCambiado }: CambiarProps) {
+/**
+ * Diálogo único de configurar/cambiar PIN. Usa el primitivo `Dialog` (no
+ * `ConfirmDialog`) para quedarse abierto y mostrar el error si el server
+ * rechaza (PIN actual incorrecto). En modo API pega a `POST /auth/pin`; en demo
+ * usa el storage local.
+ */
+function PinDialog({ modo, onClose, onDone }: PinDialogProps) {
+  const abierto = modo !== null;
+  const esConfigurar = modo === 'configurar';
   const [pinAnterior, setPinAnterior] = useState('');
   const [pinNuevo, setPinNuevo] = useState('');
   const [pinConfirm, setPinConfirm] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [enviando, setEnviando] = useState(false);
 
   useEffect(() => {
     if (!abierto) return;
@@ -153,45 +169,86 @@ function CambiarPinDialog({ abierto, onClose, onCambiado }: CambiarProps) {
     setPinNuevo('');
     setPinConfirm('');
     setError(null);
-  }, [abierto]);
+    setEnviando(false);
+  }, [abierto, modo]);
 
-  const submit = () => {
+  const submit = async () => {
     setError(null);
+    if (!/^\d{4,6}$/.test(pinNuevo)) {
+      setError('El PIN nuevo debe tener entre 4 y 6 dígitos.');
+      return;
+    }
     if (pinNuevo !== pinConfirm) {
       setError('Los dos PINs nuevos no coinciden.');
       return;
     }
-    const res = cambiarPin({ pinAnterior, pinNuevo });
+    if (!esConfigurar && pinAnterior.length < 4) {
+      setError('Ingresá tu PIN actual.');
+      return;
+    }
+
+    if (apiEnabled) {
+      setEnviando(true);
+      try {
+        await setPinSeguridad({ pinNuevo, pinActual: esConfigurar ? undefined : pinAnterior });
+        toast({ variant: 'success', title: esConfigurar ? 'PIN configurado' : 'PIN actualizado' });
+        onDone();
+      } catch (e) {
+        setError(e instanceof ApiError ? e.message : 'No se pudo guardar el PIN. Probá de nuevo.');
+      } finally {
+        setEnviando(false);
+      }
+      return;
+    }
+
+    // Demo / localStorage
+    const res = esConfigurar
+      ? configurarPinInicial({ pin: pinNuevo })
+      : cambiarPin({ pinAnterior, pinNuevo });
     if (!res.ok) {
       setError(res.error);
       return;
     }
-    toast({ variant: 'success', title: 'PIN actualizado' });
-    onCambiado();
-    onClose();
+    toast({ variant: 'success', title: esConfigurar ? 'PIN configurado' : 'PIN actualizado' });
+    onDone();
   };
 
+  const disabled =
+    enviando || pinNuevo.length < 4 || pinNuevo !== pinConfirm || (!esConfigurar && pinAnterior.length < 4);
+
   return (
-    <ConfirmDialog
-      open={abierto}
-      onOpenChange={(o) => !o && onClose()}
-      title="Cambiar PIN"
-      description={
-        <div className="space-y-3 pt-2">
-          <div className="space-y-2">
-            <Label htmlFor="pin-ant">PIN actual</Label>
-            <Input
-              id="pin-ant"
-              type="password"
-              inputMode="numeric"
-              pattern="\d*"
-              maxLength={6}
-              value={pinAnterior}
-              onChange={(e) =>
-                setPinAnterior(e.target.value.replace(/\D/g, ''))
-              }
-            />
-          </div>
+    <Dialog open={abierto} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <KeyRound className="h-5 w-5 text-primary" />
+            {esConfigurar ? 'Configurar PIN de seguridad' : 'Cambiar PIN'}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          {esConfigurar && (
+            <div className="rounded-md border border-amber-200 bg-amber-50/40 p-3 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-900/10 dark:text-amber-200">
+              Es de 4 a 6 dígitos. Te lo vamos a pedir antes de aprobar pagos, rendir o devolver depósitos.
+            </div>
+          )}
+
+          {!esConfigurar && (
+            <div className="space-y-2">
+              <Label htmlFor="pin-ant">PIN actual</Label>
+              <Input
+                id="pin-ant"
+                type="password"
+                inputMode="numeric"
+                pattern="\d*"
+                maxLength={6}
+                autoComplete="off"
+                value={pinAnterior}
+                onChange={(e) => setPinAnterior(e.target.value.replace(/\D/g, ''))}
+              />
+            </div>
+          )}
+
           <div className="space-y-2">
             <Label htmlFor="pin-new">PIN nuevo</Label>
             <Input
@@ -200,31 +257,46 @@ function CambiarPinDialog({ abierto, onClose, onCambiado }: CambiarProps) {
               inputMode="numeric"
               pattern="\d*"
               maxLength={6}
+              autoComplete="new-password"
               value={pinNuevo}
               onChange={(e) => setPinNuevo(e.target.value.replace(/\D/g, ''))}
             />
           </div>
+
           <div className="space-y-2">
-            <Label htmlFor="pin-rep">Repetí el nuevo</Label>
+            <Label htmlFor="pin-rep">Repetí el PIN nuevo</Label>
             <Input
               id="pin-rep"
               type="password"
               inputMode="numeric"
               pattern="\d*"
               maxLength={6}
+              autoComplete="new-password"
               value={pinConfirm}
               onChange={(e) => setPinConfirm(e.target.value.replace(/\D/g, ''))}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !disabled) void submit();
+              }}
             />
           </div>
+
           {error && (
             <p className="rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive">
               {error}
             </p>
           )}
+
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button onClick={submit} disabled={disabled}>
+              <Lock className="h-4 w-4" />
+              {enviando ? 'Guardando…' : esConfigurar ? 'Crear PIN' : 'Cambiar PIN'}
+            </Button>
+          </div>
         </div>
-      }
-      confirmLabel="Cambiar PIN"
-      onConfirm={submit}
-    />
+      </DialogContent>
+    </Dialog>
   );
 }
