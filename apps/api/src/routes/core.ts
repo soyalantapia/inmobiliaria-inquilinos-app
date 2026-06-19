@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { Prisma } from '@prisma/client';
+import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '../db.js';
 import { requireUsuario } from '../auth/guards.js';
@@ -597,6 +598,93 @@ export async function coreRoutes(app: FastifyInstance) {
       });
       if (siguiente) await prisma.sociedad.update({ where: { id: siguiente.id }, data: { esPrincipal: true } });
     }
+    return { ok: true };
+  });
+
+  // ===== Configuración: equipo y permisos (usuarios del panel) =====
+  // Antes el tab Equipo era 100% mock (equipoInicial hardcoded). Ahora persiste
+  // en la tabla Usuario. Guardas para no dejar la inmobiliaria sin ningún Admin.
+  const rolEnum = z.enum(['ADMIN', 'OPERADOR', 'CARGA', 'LECTURA']);
+
+  app.get('/usuarios', async (request, reply) => {
+    const u = await requireUsuario(request, reply);
+    if (!u) return;
+    const rows = await prisma.usuario.findMany({
+      where: { inmobiliariaId: u.inmobiliariaId },
+      select: { id: true, nombre: true, apellido: true, email: true, rol: true, activo: true, createdAt: true },
+      orderBy: [{ activo: 'desc' }, { createdAt: 'asc' }],
+    });
+    return rows.map((r) => ({ ...r, esVos: r.id === u.userId }));
+  });
+
+  app.post('/usuarios', async (request, reply) => {
+    const u = await requireUsuario(request, reply);
+    if (!u) return;
+    if (u.rol !== 'ADMIN') return reply.code(403).send({ message: 'Solo un Admin puede sumar gente al equipo' });
+    const body = z
+      .object({
+        nombre: z.string().trim().min(2, 'Indicá el nombre'),
+        apellido: z.string().trim().min(1, 'Indicá el apellido'),
+        email: z.string().trim().email('Email inválido'),
+        rol: rolEnum,
+        password: z.string().min(6, 'La contraseña tiene que tener al menos 6 caracteres'),
+      })
+      .safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ message: body.error.issues[0]?.message ?? 'Datos inválidos' });
+    const email = body.data.email.toLowerCase();
+    const yaExiste = await prisma.usuario.findFirst({ where: { email } });
+    if (yaExiste) return reply.code(409).send({ message: 'Ya existe una cuenta con ese email' });
+    const creado = await prisma.usuario.create({
+      data: {
+        inmobiliariaId: u.inmobiliariaId,
+        nombre: body.data.nombre,
+        apellido: body.data.apellido,
+        email,
+        rol: body.data.rol,
+        passwordHash: bcrypt.hashSync(body.data.password, 10),
+        activo: true,
+      },
+      select: { id: true, nombre: true, apellido: true, email: true, rol: true, activo: true },
+    });
+    return reply.code(201).send({ ...creado, esVos: false });
+  });
+
+  app.put('/usuarios/:id', async (request, reply) => {
+    const u = await requireUsuario(request, reply);
+    if (!u) return;
+    if (u.rol !== 'ADMIN') return reply.code(403).send({ message: 'Solo un Admin puede cambiar roles' });
+    const { id } = request.params as { id: string };
+    const target = await prisma.usuario.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
+    if (!target) return reply.code(404).send({ message: 'Usuario inexistente' });
+    const body = z
+      .object({ rol: rolEnum.optional(), nombre: z.string().trim().min(2).optional(), apellido: z.string().trim().min(1).optional() })
+      .safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ message: 'Datos inválidos' });
+    // No dejar la inmobiliaria sin ningún Admin activo.
+    if (body.data.rol && body.data.rol !== 'ADMIN' && target.rol === 'ADMIN' && target.activo) {
+      const otros = await prisma.usuario.count({ where: { inmobiliariaId: u.inmobiliariaId, rol: 'ADMIN', activo: true, id: { not: id } } });
+      if (otros === 0) return reply.code(409).send({ message: 'Tiene que quedar al menos un Admin activo' });
+    }
+    return prisma.usuario.update({
+      where: { id },
+      data: body.data,
+      select: { id: true, nombre: true, apellido: true, email: true, rol: true, activo: true },
+    });
+  });
+
+  app.delete('/usuarios/:id', async (request, reply) => {
+    const u = await requireUsuario(request, reply);
+    if (!u) return;
+    if (u.rol !== 'ADMIN') return reply.code(403).send({ message: 'Solo un Admin puede quitar gente del equipo' });
+    const { id } = request.params as { id: string };
+    if (id === u.userId) return reply.code(409).send({ message: 'No podés quitarte a vos mismo' });
+    const target = await prisma.usuario.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
+    if (!target) return reply.code(404).send({ message: 'Usuario inexistente' });
+    if (target.rol === 'ADMIN' && target.activo) {
+      const otros = await prisma.usuario.count({ where: { inmobiliariaId: u.inmobiliariaId, rol: 'ADMIN', activo: true, id: { not: id } } });
+      if (otros === 0) return reply.code(409).send({ message: 'Tiene que quedar al menos un Admin activo' });
+    }
+    await prisma.usuario.update({ where: { id }, data: { activo: false } });
     return { ok: true };
   });
 }

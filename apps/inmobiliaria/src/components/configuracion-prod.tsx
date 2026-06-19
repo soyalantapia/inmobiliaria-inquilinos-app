@@ -20,6 +20,7 @@ import {
 } from '@/lib/api/hooks';
 import { PinSeguridadCard } from '@/components/pin-seguridad-card';
 import { SociedadesManager } from '@/components/sociedades-manager';
+import { EquipoCard } from '@/components/equipo-card';
 
 /**
  * Configuración en PRODUCCIÓN. Antes toda la página se gateaba con "Disponible
@@ -39,6 +40,7 @@ export function ConfiguracionProd() {
           <h2 className="mb-2 px-1 text-sm font-semibold text-muted-foreground">Sociedades</h2>
           <SociedadesManager />
         </div>
+        <EquipoCard />
         <div>
           <h2 className="mb-2 px-1 text-sm font-semibold text-muted-foreground">Seguridad</h2>
           <PinSeguridadCard />
@@ -51,8 +53,8 @@ export function ConfiguracionProd() {
             <div>
               <p className="text-sm font-semibold">Más opciones, pronto</p>
               <p className="text-xs text-muted-foreground">
-                Equipo y permisos, plan y facturas, convenios y auditoría están en camino.
-                Lo esencial para operar — empresa, sociedades, cobranza y PIN — ya está activo.
+                Plan y facturas, convenios y auditoría están en camino. Lo esencial para
+                operar — empresa, sociedades, cobranza, equipo y PIN — ya está activo.
               </p>
             </div>
           </CardContent>

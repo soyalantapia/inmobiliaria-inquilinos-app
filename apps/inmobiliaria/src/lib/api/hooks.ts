@@ -513,6 +513,54 @@ export async function setCuentaCobranzaDirecta(
   });
 }
 
+// ===== Configuración: equipo y permisos =====
+
+export type RolEquipo = 'ADMIN' | 'OPERADOR' | 'CARGA' | 'LECTURA';
+
+export interface MiembroEquipo {
+  id: string;
+  nombre: string;
+  apellido: string;
+  email: string;
+  rol: RolEquipo;
+  activo: boolean;
+  esVos: boolean;
+}
+
+export function useEquipo(): { equipo: MiembroEquipo[]; cargando: boolean } {
+  const q = useQuery({
+    queryKey: ['equipo'],
+    queryFn: async () => {
+      await ensureApiSession();
+      return apiFetch<MiembroEquipo[]>('/usuarios');
+    },
+    enabled: apiEnabled,
+    staleTime: 30_000,
+  });
+  return { equipo: q.data ?? [], cargando: q.isPending };
+}
+
+export async function crearUsuario(input: {
+  nombre: string;
+  apellido: string;
+  email: string;
+  rol: RolEquipo;
+  password: string;
+}): Promise<void> {
+  await ensureApiSession();
+  await apiFetch('/usuarios', { method: 'POST', body: JSON.stringify(input) });
+}
+
+export async function cambiarUsuario(id: string, patch: { rol?: RolEquipo; nombre?: string; apellido?: string }): Promise<void> {
+  await ensureApiSession();
+  await apiFetch(`/usuarios/${id}`, { method: 'PUT', body: JSON.stringify(patch) });
+}
+
+export async function eliminarUsuario(id: string): Promise<void> {
+  await ensureApiSession();
+  await apiFetch(`/usuarios/${id}`, { method: 'DELETE' });
+}
+
 export function useMe(): { me: Me | null; cargando: boolean } {
   const q = useQuery({
     queryKey: ['me'],
