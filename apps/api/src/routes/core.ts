@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../db.js';
 import { requireUsuario } from '../auth/guards.js';
@@ -463,7 +464,7 @@ export async function coreRoutes(app: FastifyInstance) {
       await prisma.sociedad.update({ where: { id: existente.id }, data: { cuentaCobranza } });
     } else {
       // Primera vez: creamos la sociedad principal con los datos mínimos de la
-      // inmobiliaria. El CRUD multi-sociedad completo queda para más adelante.
+      // inmobiliaria. El CRUD multi-sociedad completo está más abajo.
       const domicilio = [i.direccionCalle, i.direccionAltura, i.direccionPiso].filter(Boolean).join(' ').trim();
       await prisma.sociedad.create({
         data: {
@@ -482,5 +483,120 @@ export async function coreRoutes(app: FastifyInstance) {
       });
     }
     return { ok: true, tieneCuenta: true };
+  });
+
+  // ===== Configuración: CRUD de sociedades (multi-empresa) =====
+  // Antes vivía 100% en localStorage (sociedades-storage) → en prod el manager
+  // estaba gateado. Ahora persiste en la tabla Sociedad. GET/PUT /cobranza
+  // (arriba) sigue operando sobre la principal; esto es el CRUD completo.
+  const sociedadBody = z.object({
+    razonSocial: z.string().trim().min(2, 'Indicá la razón social'),
+    nombreComercial: z.string().trim().min(1, 'Indicá el nombre comercial'),
+    cuit: z.string().trim().optional().default(''),
+    condicionFiscal: z.enum(['MONOTRIBUTO', 'RESPONSABLE_INSCRIPTO', 'EXENTO']).default('RESPONSABLE_INSCRIPTO'),
+    domicilioFiscal: z.string().trim().optional().default(''),
+    email: z.string().trim().optional().default(''),
+    telefono: z.string().trim().optional().default(''),
+    cuentaCobranza: z.record(z.unknown()).optional(),
+    afip: z.record(z.unknown()).optional(),
+  });
+
+  app.get('/sociedades', async (request, reply) => {
+    const u = await requireUsuario(request, reply);
+    if (!u) return;
+    const q = z.object({ incluirInactivas: z.coerce.boolean().optional() }).parse(request.query ?? {});
+    return prisma.sociedad.findMany({
+      where: { inmobiliariaId: u.inmobiliariaId, ...(q.incluirInactivas ? {} : { activa: true }) },
+      orderBy: [{ esPrincipal: 'desc' }, { createdAt: 'asc' }],
+    });
+  });
+
+  app.post('/sociedades', async (request, reply) => {
+    const u = await requireUsuario(request, reply);
+    if (!u) return;
+    if (u.rol !== 'ADMIN') return reply.code(403).send({ message: 'Solo un Admin puede crear sociedades' });
+    const body = sociedadBody.safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ message: body.error.issues[0]?.message ?? 'Datos inválidos' });
+    // La primera sociedad activa queda como principal automáticamente.
+    const tienePrincipal = await prisma.sociedad.findFirst({
+      where: { inmobiliariaId: u.inmobiliariaId, esPrincipal: true, activa: true },
+    });
+    return prisma.sociedad.create({
+      data: {
+        inmobiliariaId: u.inmobiliariaId,
+        razonSocial: body.data.razonSocial,
+        nombreComercial: body.data.nombreComercial,
+        cuit: body.data.cuit,
+        condicionFiscal: body.data.condicionFiscal,
+        domicilioFiscal: body.data.domicilioFiscal,
+        email: body.data.email,
+        telefono: body.data.telefono,
+        cuentaCobranza: (body.data.cuentaCobranza ?? undefined) as Prisma.InputJsonValue | undefined,
+        afip: (body.data.afip ?? undefined) as Prisma.InputJsonValue | undefined,
+        esPrincipal: !tienePrincipal,
+        activa: true,
+      },
+    });
+  });
+
+  app.put('/sociedades/:id', async (request, reply) => {
+    const u = await requireUsuario(request, reply);
+    if (!u) return;
+    if (u.rol !== 'ADMIN') return reply.code(403).send({ message: 'Solo un Admin puede editar sociedades' });
+    const { id } = request.params as { id: string };
+    const soc = await prisma.sociedad.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
+    if (!soc) return reply.code(404).send({ message: 'Sociedad inexistente' });
+    const body = sociedadBody.partial().safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ message: body.error.issues[0]?.message ?? 'Datos inválidos' });
+    const { cuentaCobranza, afip, ...rest } = body.data;
+    return prisma.sociedad.update({
+      where: { id },
+      data: {
+        ...rest,
+        ...(cuentaCobranza !== undefined ? { cuentaCobranza: cuentaCobranza as Prisma.InputJsonValue } : {}),
+        ...(afip !== undefined ? { afip: afip as Prisma.InputJsonValue } : {}),
+      },
+    });
+  });
+
+  app.put('/sociedades/:id/principal', async (request, reply) => {
+    const u = await requireUsuario(request, reply);
+    if (!u) return;
+    if (u.rol !== 'ADMIN') return reply.code(403).send({ message: 'Solo un Admin puede cambiar la sociedad principal' });
+    const { id } = request.params as { id: string };
+    const soc = await prisma.sociedad.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId, activa: true } });
+    if (!soc) return reply.code(404).send({ message: 'Sociedad inexistente o inactiva' });
+    await prisma.$transaction([
+      prisma.sociedad.updateMany({ where: { inmobiliariaId: u.inmobiliariaId }, data: { esPrincipal: false } }),
+      prisma.sociedad.update({ where: { id }, data: { esPrincipal: true } }),
+    ]);
+    return { ok: true };
+  });
+
+  app.patch('/sociedades/:id', async (request, reply) => {
+    const u = await requireUsuario(request, reply);
+    if (!u) return;
+    if (u.rol !== 'ADMIN') return reply.code(403).send({ message: 'Solo un Admin puede dar de baja o reactivar sociedades' });
+    const { id } = request.params as { id: string };
+    const body = z.object({ reactivar: z.boolean().optional() }).parse(request.body ?? {});
+    const soc = await prisma.sociedad.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
+    if (!soc) return reply.code(404).send({ message: 'Sociedad inexistente' });
+    // Reactivar: simplemente la volvemos activa (no toca la principal).
+    if (body.reactivar) {
+      await prisma.sociedad.update({ where: { id }, data: { activa: true } });
+      return { ok: true };
+    }
+    const activas = await prisma.sociedad.count({ where: { inmobiliariaId: u.inmobiliariaId, activa: true } });
+    if (soc.activa && activas <= 1) return reply.code(409).send({ message: 'No podés dar de baja la única sociedad activa' });
+    await prisma.sociedad.update({ where: { id }, data: { activa: false, esPrincipal: false } });
+    // Si la dada de baja era la principal, promovemos otra activa.
+    if (soc.esPrincipal) {
+      const siguiente = await prisma.sociedad.findFirst({
+        where: { inmobiliariaId: u.inmobiliariaId, activa: true },
+        orderBy: { createdAt: 'asc' },
+      });
+      if (siguiente) await prisma.sociedad.update({ where: { id: siguiente.id }, data: { esPrincipal: true } });
+    }
+    return { ok: true };
   });
 }

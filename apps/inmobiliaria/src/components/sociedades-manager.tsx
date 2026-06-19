@@ -36,13 +36,17 @@ import {
   CONDICION_FISCAL_LABEL,
   type Sociedad,
   type CondicionFiscalSociedad,
-  actualizarSociedad,
-  agregarSociedad,
-  desactivarSociedad,
-  listarSociedades,
-  marcarComoPrincipal,
-  reactivarSociedad,
 } from '@/lib/sociedades-storage';
+import {
+  cargarSociedades,
+  crearSociedad,
+  darDeBaja,
+  editarSociedad,
+  hacerPrincipal,
+  reactivar,
+} from '@/lib/api/use-sociedades';
+import { ApiError } from '@/lib/api/client';
+import { useMe } from '@/lib/api/hooks';
 import { propiedadesMock } from '@/lib/mock-data';
 
 /**
@@ -59,20 +63,26 @@ export function SociedadesManager() {
   const [editando, setEditando] = useState<Sociedad | null>(null);
   const [bajaSociedad, setBajaSociedad] = useState<Sociedad | null>(null);
 
-  const recargar = () => setLista(listarSociedades({ incluirInactivas: true }));
+  const { me } = useMe();
+
+  const recargar = async () => {
+    try {
+      setLista(await cargarSociedades({ incluirInactivas: true }));
+    } catch {
+      // dejamos la lista como estaba; el error de la acción ya se muestra en su toast
+    }
+  };
 
   useEffect(() => {
-    recargar();
-    setHidratado(true);
+    void recargar().finally(() => setHidratado(true));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (!hidratado) return null;
 
-  // El CRUD de sociedades escribe a localStorage (sociedades-storage) y no
-  // tiene endpoint en el API. En producción (apiEnabled) deshabilitamos las
-  // mutaciones para no "guardar" algo que sólo vive en el navegador; en build
-  // demo (!apiEnabled) queda todo operativo.
-  const puedeMutar = !apiEnabled;
+  // Multi-sociedad ya persiste en la DB (GET/POST/PUT/PATCH /sociedades). Las
+  // mutaciones son solo para ADMIN; en demo (!apiEnabled) van a localStorage.
+  const puedeMutar = !apiEnabled || me?.rol === 'ADMIN';
 
   const principalId = lista.find((s) => s.esPrincipal && s.activa)?.id ?? null;
   const propiedadesPorSociedad = (sociedadId: string) =>
@@ -81,35 +91,54 @@ export function SociedadesManager() {
         (p.sociedadId ?? principalId) === sociedadId && p.estado !== 'EN_EDICION',
     ).length;
 
-  const handleMarcarPrincipal = (s: Sociedad) => {
-    if (!puedeMutar) return;
-    marcarComoPrincipal(s.id);
-    recargar();
+  const conError = (e: unknown) =>
     toast({
-      variant: 'success',
-      title: `${s.nombreComercial} ahora es la sociedad principal`,
-      description:
-        'Las propiedades sin sociedad asignada van a usar esta por defecto.',
+      variant: 'destructive',
+      title: 'No se pudo guardar',
+      description: e instanceof ApiError ? e.message : 'Probá de nuevo en un momento.',
     });
+
+  const handleMarcarPrincipal = async (s: Sociedad) => {
+    if (!puedeMutar) return;
+    try {
+      await hacerPrincipal(s.id);
+      await recargar();
+      toast({
+        variant: 'success',
+        title: `${s.nombreComercial} ahora es la sociedad principal`,
+        description:
+          'Las propiedades sin sociedad asignada van a usar esta por defecto.',
+      });
+    } catch (e) {
+      conError(e);
+    }
   };
 
-  const handleBaja = () => {
+  const handleBaja = async () => {
     if (!puedeMutar || !bajaSociedad) return;
-    desactivarSociedad(bajaSociedad.id);
-    recargar();
-    toast({
-      title: `${bajaSociedad.nombreComercial} dada de baja`,
-      description:
-        'Queda en el historial pero no se usa para nuevas operaciones.',
-    });
-    setBajaSociedad(null);
+    try {
+      await darDeBaja(bajaSociedad.id);
+      await recargar();
+      toast({
+        title: `${bajaSociedad.nombreComercial} dada de baja`,
+        description:
+          'Queda en el historial pero no se usa para nuevas operaciones.',
+      });
+      setBajaSociedad(null);
+    } catch (e) {
+      conError(e);
+    }
   };
 
-  const handleReactivar = (s: Sociedad) => {
+  const handleReactivar = async (s: Sociedad) => {
     if (!puedeMutar) return;
-    reactivarSociedad(s.id);
-    recargar();
-    toast({ variant: 'success', title: `${s.nombreComercial} reactivada` });
+    try {
+      await reactivar(s.id);
+      await recargar();
+      toast({ variant: 'success', title: `${s.nombreComercial} reactivada` });
+    } catch (e) {
+      conError(e);
+    }
   };
 
   const activas = lista.filter((s) => s.activa);
@@ -153,24 +182,23 @@ export function SociedadesManager() {
           size="sm"
           onClick={() => setCrearOpen(true)}
           disabled={!puedeMutar}
-          title={puedeMutar ? undefined : 'Disponible pronto'}
+          title={puedeMutar ? undefined : 'Necesitás permiso de Admin'}
         >
           <Plus className="h-4 w-4" />
           Agregar sociedad
         </Button>
       </div>
 
-      {/* Aviso en prod: el CRUD no persiste del lado del servidor todavía */}
+      {/* En prod, solo un Admin puede crear/editar/dar de baja sociedades. */}
       {!puedeMutar && (
         <Card className="border-dashed bg-muted/20">
           <CardContent className="flex items-start gap-3 p-4">
             <Info className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
             <div className="space-y-1 text-sm">
-              <p className="font-semibold">Gestión de sociedades disponible pronto</p>
+              <p className="font-semibold">Solo lectura</p>
               <p className="text-xs text-muted-foreground">
-                Estamos conectando esta sección al servidor. Por ahora podés
-                ver tus sociedades, pero agregar, editar o dar de baja va a
-                estar disponible en breve.
+                Podés ver las sociedades. Para agregar, editar o dar de baja
+                necesitás permiso de <strong>Admin</strong>.
               </p>
             </div>
           </CardContent>
@@ -213,7 +241,7 @@ export function SociedadesManager() {
                   variant="ghost"
                   onClick={() => handleReactivar(s)}
                   disabled={!puedeMutar}
-                  title={puedeMutar ? undefined : 'Disponible pronto'}
+                  title={puedeMutar ? undefined : 'Necesitás permiso de Admin'}
                 >
                   Reactivar
                 </Button>
@@ -317,7 +345,7 @@ function SociedadCard({
               variant="ghost"
               onClick={onEditar}
               disabled={!puedeMutar}
-              title={puedeMutar ? undefined : 'Disponible pronto'}
+              title={puedeMutar ? undefined : 'Necesitás permiso de Admin'}
             >
               <Edit2 className="h-3.5 w-3.5" />
               Editar
@@ -353,7 +381,7 @@ function SociedadCard({
               variant="outline"
               onClick={onPrincipal}
               disabled={!puedeMutar}
-              title={puedeMutar ? undefined : 'Disponible pronto'}
+              title={puedeMutar ? undefined : 'Necesitás permiso de Admin'}
             >
               <Star className="h-3 w-3" />
               Marcar como principal
@@ -369,7 +397,7 @@ function SociedadCard({
               variant="ghost"
               onClick={onBaja}
               disabled={!puedeMutar}
-              title={puedeMutar ? undefined : 'Disponible pronto'}
+              title={puedeMutar ? undefined : 'Necesitás permiso de Admin'}
               className="text-destructive hover:text-destructive"
             >
               <TrendingDown className="h-3 w-3" />
@@ -484,11 +512,8 @@ function SociedadDialog({
     motivosBloqueo.push('CUIT (11 dígitos)');
   const puedeGuardar = motivosBloqueo.length === 0;
 
-  const guardar = () => {
-    // Sin endpoint en prod: el dialog sólo persiste a localStorage. El botón
-    // de "Agregar sociedad" ya viene deshabilitado cuando apiEnabled, este
-    // guard es la red de seguridad por si el dialog se abre por otra vía.
-    if (apiEnabled || !puedeGuardar) return;
+  const guardar = async () => {
+    if (!puedeGuardar) return;
     const cuentaCobranza =
       cbuAlias.trim() || bancoNombre.trim()
         ? {
@@ -507,36 +532,37 @@ function SociedadDialog({
         conectadoDesde: new Date().toISOString().slice(0, 10),
       }),
     };
-    if (editando) {
-      actualizarSociedad(editando.id, {
-        razonSocial: razonSocial.trim(),
-        nombreComercial: nombreComercial.trim() || razonSocial.trim(),
-        cuit: cuit.trim(),
-        condicionFiscal,
-        domicilioFiscal: domicilioFiscal.trim(),
-        email: email.trim(),
-        telefono: telefono.trim(),
-        cuentaCobranza,
-        afip,
-      });
-      toast({ variant: 'success', title: 'Sociedad actualizada' });
-    } else {
-      agregarSociedad({
-        razonSocial: razonSocial.trim(),
-        nombreComercial: nombreComercial.trim() || razonSocial.trim(),
-        cuit: cuit.trim(),
-        condicionFiscal,
-        domicilioFiscal: domicilioFiscal.trim(),
-        email: email.trim(),
-        telefono: telefono.trim(),
-        cuentaCobranza,
-        afip,
-      });
+    const payload = {
+      razonSocial: razonSocial.trim(),
+      nombreComercial: nombreComercial.trim() || razonSocial.trim(),
+      cuit: cuit.trim(),
+      condicionFiscal,
+      domicilioFiscal: domicilioFiscal.trim(),
+      email: email.trim(),
+      telefono: telefono.trim(),
+      cuentaCobranza,
+      afip,
+    };
+    try {
+      // editarSociedad/crearSociedad pegan al API en prod y a localStorage en demo.
+      if (editando) {
+        await editarSociedad(editando.id, payload);
+        toast({ variant: 'success', title: 'Sociedad actualizada' });
+      } else {
+        await crearSociedad(payload);
+        toast({
+          variant: 'success',
+          title: '¡Sociedad agregada!',
+          description: 'Ya podés asignarla a las propiedades que correspondan.',
+        });
+      }
+    } catch (e) {
       toast({
-        variant: 'success',
-        title: '¡Sociedad agregada!',
-        description: 'Ya podés asignarla a las propiedades que correspondan.',
+        variant: 'destructive',
+        title: 'No se pudo guardar',
+        description: e instanceof ApiError ? e.message : 'Probá de nuevo en un momento.',
       });
+      return;
     }
     onGuardado();
   };
