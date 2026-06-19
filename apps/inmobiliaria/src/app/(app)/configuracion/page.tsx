@@ -38,6 +38,7 @@ import { abrirReporteImprimible } from '@/lib/reportes-pdf';
 import { sociedadPrincipal } from '@/lib/sociedades-storage';
 import { MatrizPermisosCard } from '@/components/matriz-permisos-card';
 import { PinSeguridadCard } from '@/components/pin-seguridad-card';
+import { ConfiguracionProd } from '@/components/configuracion-prod';
 import { relanzarOnboardingInmo } from '@/components/onboarding';
 import { Topbar } from '@/components/topbar';
 import { TRAMOS_PLAN, calcularResumenPlan, facturasMock } from '@/lib/plan';
@@ -290,28 +291,14 @@ export default function ConfiguracionPage() {
   // servidor y mostraría datos mock, así que gateamos la pantalla completa con
   // un estado "disponible pronto". En build demo (!apiEnabled) la config queda
   // intacta.
+  // En prod mostramos las secciones que YA persisten en la DB (empresa,
+  // cobranza, PIN). El resto del long-tail queda como "pronto" dentro del
+  // propio ConfiguracionProd. El render demo (abajo) queda intacto.
   if (apiEnabled) {
     return (
       <>
         <Topbar titulo="Configuración" />
-        <main className="flex-1 p-4 md:p-6">
-          <Card className="mx-auto max-w-md">
-            <CardContent className="flex flex-col items-center gap-4 p-10 text-center">
-              <div className="grid h-14 w-14 place-items-center rounded-2xl bg-primary/10 text-primary">
-                <Building2 className="h-7 w-7" />
-              </div>
-              <div className="space-y-1.5">
-                <h1 className="text-lg font-semibold">Configuración</h1>
-                <p className="text-sm text-muted-foreground">
-                  Estamos terminando de conectar los datos de tu inmobiliaria,
-                  sociedades, equipo y facturación. Esta sección va a estar
-                  disponible pronto.
-                </p>
-              </div>
-              <Badge variant="secondary">Disponible pronto</Badge>
-            </CardContent>
-          </Card>
-        </main>
+        <ConfiguracionProd />
       </>
     );
   }

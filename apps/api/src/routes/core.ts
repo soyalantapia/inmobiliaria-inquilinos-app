@@ -313,4 +313,127 @@ export async function coreRoutes(app: FastifyInstance) {
       orderBy: { nombre: 'asc' },
     });
   });
+
+  // ===== Configuración: datos de la empresa (fiscales/contacto) =====
+  // Antes esta config vivía SOLO en localStorage (empresa-storage) → una cuenta
+  // nueva no podía completar su CUIT/dirección/matrícula y `perfilFiscalCompleto`
+  // quedaba en false para siempre. Ahora persiste en la inmobiliaria.
+  app.get('/empresa', async (request, reply) => {
+    const u = await requireUsuario(request, reply);
+    if (!u) return;
+    const i = await prisma.inmobiliaria.findUnique({ where: { id: u.inmobiliariaId } });
+    if (!i) return reply.code(404).send({ message: 'Inmobiliaria inexistente' });
+    return {
+      nombre: i.nombre,
+      email: i.email,
+      cuit: i.cuit,
+      matricula: i.matricula,
+      telefono: i.telefono,
+      direccionCalle: i.direccionCalle,
+      direccionAltura: i.direccionAltura,
+      direccionPiso: i.direccionPiso,
+      direccionCiudad: i.direccionCiudad,
+      direccionProvincia: i.direccionProvincia,
+      direccionCp: i.direccionCp,
+      perfilFiscalCompleto: !!(i.cuit && i.direccionCalle),
+    };
+  });
+
+  app.put('/empresa', async (request, reply) => {
+    const u = await requireUsuario(request, reply);
+    if (!u) return;
+    if (u.rol !== 'ADMIN') return reply.code(403).send({ message: 'Solo un Admin puede editar los datos de la empresa' });
+    const body = z
+      .object({
+        nombre: z.string().trim().min(2).optional(),
+        cuit: z.string().trim().optional(),
+        matricula: z.string().trim().optional(),
+        telefono: z.string().trim().optional(),
+        direccionCalle: z.string().trim().optional(),
+        direccionAltura: z.string().trim().optional(),
+        direccionPiso: z.string().trim().optional(),
+        direccionCiudad: z.string().trim().optional(),
+        direccionProvincia: z.string().trim().optional(),
+        direccionCp: z.string().trim().optional(),
+      })
+      .safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ message: 'Datos de la empresa inválidos' });
+    const i = await prisma.inmobiliaria.update({ where: { id: u.inmobiliariaId }, data: body.data });
+    return { ok: true, perfilFiscalCompleto: !!(i.cuit && i.direccionCalle) };
+  });
+
+  // ===== Configuración: cuenta de cobranza (lo que el inquilino ve para pagar) =====
+  // Se guarda en la sociedad PRINCIPAL (Sociedad.cuentaCobranza). Antes no había
+  // endpoint → una inmobiliaria nueva no podía cargar su CBU y el inquilino veía
+  // el fallback "pedíle los datos". Ahora el inquilino ve el CBU real de la DB.
+  app.get('/cobranza', async (request, reply) => {
+    const u = await requireUsuario(request, reply);
+    if (!u) return;
+    const soc = await prisma.sociedad.findFirst({
+      where: { inmobiliariaId: u.inmobiliariaId, esPrincipal: true, activa: true },
+      select: { cuentaCobranza: true },
+    });
+    const c = (soc?.cuentaCobranza as { banco?: string; titular?: string; cbu?: string; alias?: string; cuit?: string } | null) ?? null;
+    return {
+      tieneCuenta: !!(c?.cbu && c?.titular),
+      cuenta: {
+        banco: c?.banco ?? '',
+        titular: c?.titular ?? '',
+        cbu: c?.cbu ?? '',
+        alias: c?.alias ?? '',
+        cuit: c?.cuit ?? '',
+      },
+    };
+  });
+
+  app.put('/cobranza', async (request, reply) => {
+    const u = await requireUsuario(request, reply);
+    if (!u) return;
+    if (u.rol !== 'ADMIN') return reply.code(403).send({ message: 'Solo un Admin puede editar la cuenta de cobranza' });
+    const body = z
+      .object({
+        banco: z.string().trim().min(2, 'Indicá el banco'),
+        titular: z.string().trim().min(2, 'Indicá el titular de la cuenta'),
+        cbu: z.string().trim().regex(/^\d{22}$/, 'El CBU debe tener 22 dígitos'),
+        alias: z.string().trim().optional().default(''),
+        cuit: z.string().trim().optional().default(''),
+      })
+      .safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ message: body.error.issues[0]?.message ?? 'Datos de cobranza inválidos' });
+    const cuentaCobranza = {
+      banco: body.data.banco,
+      titular: body.data.titular,
+      cbu: body.data.cbu,
+      alias: body.data.alias,
+      cuit: body.data.cuit,
+    };
+    const i = await prisma.inmobiliaria.findUnique({ where: { id: u.inmobiliariaId } });
+    if (!i) return reply.code(404).send({ message: 'Inmobiliaria inexistente' });
+    const existente = await prisma.sociedad.findFirst({
+      where: { inmobiliariaId: u.inmobiliariaId, esPrincipal: true, activa: true },
+    });
+    if (existente) {
+      await prisma.sociedad.update({ where: { id: existente.id }, data: { cuentaCobranza } });
+    } else {
+      // Primera vez: creamos la sociedad principal con los datos mínimos de la
+      // inmobiliaria. El CRUD multi-sociedad completo queda para más adelante.
+      const domicilio = [i.direccionCalle, i.direccionAltura, i.direccionPiso].filter(Boolean).join(' ').trim();
+      await prisma.sociedad.create({
+        data: {
+          inmobiliariaId: u.inmobiliariaId,
+          razonSocial: i.nombre,
+          nombreComercial: i.nombre,
+          cuit: body.data.cuit || i.cuit || '',
+          condicionFiscal: 'RESPONSABLE_INSCRIPTO',
+          domicilioFiscal: domicilio || i.direccionCiudad || '',
+          email: i.email,
+          telefono: i.telefono ?? '',
+          cuentaCobranza,
+          esPrincipal: true,
+          activa: true,
+        },
+      });
+    }
+    return { ok: true, tieneCuenta: true };
+  });
 }

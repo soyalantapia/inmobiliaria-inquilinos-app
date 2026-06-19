@@ -435,6 +435,69 @@ export async function setPinSeguridad(input: { pinNuevo: string; pinActual?: str
   await apiFetch('/auth/pin', { method: 'POST', body: JSON.stringify(input) });
 }
 
+// ===== Configuración: empresa (datos fiscales/contacto) =====
+
+export interface EmpresaDatos {
+  nombre: string;
+  email: string;
+  cuit: string;
+  matricula: string;
+  telefono: string;
+  direccionCalle: string;
+  direccionAltura: string;
+  direccionPiso: string;
+  direccionCiudad: string;
+  direccionProvincia: string;
+  direccionCp: string;
+  perfilFiscalCompleto: boolean;
+}
+
+export function useEmpresa(): { empresa: EmpresaDatos | null; cargando: boolean } {
+  const q = useQuery({
+    queryKey: ['empresa'],
+    queryFn: async () => {
+      await ensureApiSession();
+      return apiFetch<EmpresaDatos>('/empresa');
+    },
+    enabled: apiEnabled,
+    staleTime: 60_000,
+  });
+  return { empresa: q.data ?? null, cargando: q.isPending };
+}
+
+export async function setEmpresa(input: Partial<Omit<EmpresaDatos, 'perfilFiscalCompleto'>>): Promise<void> {
+  await ensureApiSession();
+  await apiFetch('/empresa', { method: 'PUT', body: JSON.stringify(input) });
+}
+
+// ===== Configuración: cuenta de cobranza (el CBU que ve el inquilino) =====
+
+export interface CobranzaCuenta {
+  banco: string;
+  titular: string;
+  cbu: string;
+  alias: string;
+  cuit: string;
+}
+
+export function useCobranza(): { tieneCuenta: boolean; cuenta: CobranzaCuenta | null; cargando: boolean } {
+  const q = useQuery({
+    queryKey: ['cobranza'],
+    queryFn: async () => {
+      await ensureApiSession();
+      return apiFetch<{ tieneCuenta: boolean; cuenta: CobranzaCuenta }>('/cobranza');
+    },
+    enabled: apiEnabled,
+    staleTime: 60_000,
+  });
+  return { tieneCuenta: q.data?.tieneCuenta ?? false, cuenta: q.data?.cuenta ?? null, cargando: q.isPending };
+}
+
+export async function setCobranza(input: CobranzaCuenta): Promise<void> {
+  await ensureApiSession();
+  await apiFetch('/cobranza', { method: 'PUT', body: JSON.stringify(input) });
+}
+
 export function useMe(): { me: Me | null; cargando: boolean } {
   const q = useQuery({
     queryKey: ['me'],
