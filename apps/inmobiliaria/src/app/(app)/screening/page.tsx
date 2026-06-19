@@ -40,6 +40,13 @@ import { Label } from '@llave/ui/label';
 import { Separator } from '@llave/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@llave/ui/tabs';
 import { toast } from '@llave/ui/use-toast';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@llave/ui/dialog';
 import { apiEnabled } from '@/lib/api/client';
 import { Topbar } from '@/components/topbar';
 import { screeningMock } from '@/lib/mock-data';
@@ -105,6 +112,7 @@ export default function ScreeningPage() {
   const [cuit, setCuit] = useState('');
   const [nombre, setNombre] = useState('');
   const [estado, setEstado] = useState<Estado>('idle');
+  const [betaOpen, setBetaOpen] = useState(false);
   const [etapaActual, setEtapaActual] = useState<EtapaKey | null>(null);
   const [completadas, setCompletadas] = useState<Set<EtapaKey>>(new Set());
   const [resultado, setResultado] = useState<ScreeningResultado | null>(null);
@@ -124,6 +132,13 @@ export default function ScreeningPage() {
   const verificar = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formValido) return;
+    // En prod la verificación todavía no está conectada a las fuentes reales
+    // (RENAPER/BCRA/Nosis): en vez de correr una simulación con datos falsos,
+    // avisamos que está en beta. En demo (!apiEnabled) corre la muestra.
+    if (apiEnabled) {
+      setBetaOpen(true);
+      return;
+    }
     setEstado('loading');
     setEtapaActual(ETAPAS[0].key);
     setCompletadas(new Set());
@@ -163,38 +178,10 @@ export default function ScreeningPage() {
     setResultado(null);
   };
 
-  // En producción (apiEnabled) no hay proveedor real de verificación
-  // conectado: el flujo de acá es una SIMULACIÓN con datos mock. Para no
-  // mostrarle al cliente un informe falso, gateamos la pantalla entera con
-  // un estado "disponible pronto". En build demo (!apiEnabled) la simulación
-  // queda intacta.
-  if (apiEnabled) {
-    return (
-      <>
-        <Topbar titulo="Verificar inquilino" />
-        <main className="flex-1 p-4 md:p-6">
-          <Card className="mx-auto max-w-md">
-            <CardContent className="flex flex-col items-center gap-4 p-10 text-center">
-              <div className="grid h-14 w-14 place-items-center rounded-2xl bg-primary/10 text-primary">
-                <ShieldCheck className="h-7 w-7" />
-              </div>
-              <div className="space-y-1.5">
-                <h1 className="text-lg font-semibold">
-                  Verificación de inquilinos
-                </h1>
-                <p className="text-sm text-muted-foreground">
-                  Estamos integrando las fuentes de datos (RENAPER, BCRA, ARCA,
-                  registros de bienes y referencias). Esta función va a estar
-                  disponible pronto.
-                </p>
-              </div>
-              <Badge variant="secondary">Disponible pronto</Badge>
-            </CardContent>
-          </Card>
-        </main>
-      </>
-    );
-  }
+  // En prod la verificación se muestra en BETA: la pantalla y el form están
+  // visibles, pero al "Iniciar verificación" abrimos un popup avisando que
+  // todavía no está disponible — NUNCA corremos una simulación con datos
+  // falsos. En demo (!apiEnabled) la simulación de muestra queda intacta.
 
   return (
     <>
@@ -221,6 +208,25 @@ export default function ScreeningPage() {
           <Informe resultado={resultado} onReiniciar={reiniciar} />
         )}
       </main>
+
+      <Dialog open={betaOpen} onOpenChange={setBetaOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5 text-primary" />
+              Verificación en beta
+            </DialogTitle>
+            <DialogDescription>
+              Esta función todavía no está disponible. Estamos conectando las
+              fuentes oficiales (RENAPER, BCRA, Nosis/Veraz) para darte informes
+              con datos reales. Te avisamos apenas esté lista.
+            </DialogDescription>
+          </DialogHeader>
+          <Button onClick={() => setBetaOpen(false)} className="w-full">
+            Entendido
+          </Button>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -288,9 +294,14 @@ function ScreeningHome({
         <CardContent className="relative grid gap-8 p-8 md:grid-cols-[1fr_1.2fr] md:p-10">
           {/* Columna izquierda: propuesta de valor */}
           <div className="space-y-5">
-            <div className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-medium backdrop-blur">
-              <Sparkles className="h-3.5 w-3.5" />
-              Verificación 360°
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-medium backdrop-blur">
+                <Sparkles className="h-3.5 w-3.5" />
+                Verificación 360°
+              </div>
+              <span className="rounded-full bg-white/25 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide backdrop-blur">
+                Beta
+              </span>
             </div>
             <h1 className="text-3xl font-bold leading-tight md:text-4xl">
               Verificá un inquilino en menos de{' '}
