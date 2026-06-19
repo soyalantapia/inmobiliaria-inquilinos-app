@@ -294,6 +294,23 @@ export async function coreRoutes(app: FastifyInstance) {
     const prop = await prisma.propiedad.findFirst({ where: { id: d.propiedadId, inmobiliariaId: u.inmobiliariaId } });
     if (!prop) return reply.code(404).send({ message: 'Propiedad inexistente' });
     if (prop.contratoActualId) return reply.code(409).send({ message: 'La propiedad ya tiene un contrato activo' });
+    // Modo cobranza directa: el contrato apunta al dueño PRINCIPAL (mayor
+    // participación). Si la propiedad no tiene dueños cargados, rechazamos acá:
+    // si no, el inquilino quedaría sin cuenta real a la cual transferir y /mi-
+    // contrato caería silenciosamente al modo inmobiliaria.
+    let cobraDirectoPropietarioId: string | null = null;
+    if (d.modoCobranza === 'PROPIETARIO_DIRECTO') {
+      const part = await prisma.participacionPropietario.findFirst({
+        where: { propiedadId: prop.id },
+        orderBy: { porcentaje: 'desc' },
+      });
+      if (!part) {
+        return reply.code(400).send({
+          message: 'La propiedad necesita dueños cargados para usar cobranza directa al propietario',
+        });
+      }
+      cobraDirectoPropietarioId = part.propietarioId;
+    }
     return prisma.$transaction(async (tx) => {
       const inq = await tx.inquilino.create({
         data: {
@@ -309,18 +326,6 @@ export async function coreRoutes(app: FastifyInstance) {
           esInvitado: false,
         },
       });
-      // Modo cobranza directa: el contrato apunta al dueño PRINCIPAL de la
-      // propiedad (mayor participación) para que el inquilino vea SU cuenta de
-      // cobranza directa. Sin esto, /mi-contrato no encontraba a quién cobrar y
-      // caía al modo inmobiliaria.
-      let cobraDirectoPropietarioId: string | null = null;
-      if (d.modoCobranza === 'PROPIETARIO_DIRECTO') {
-        const part = await tx.participacionPropietario.findFirst({
-          where: { propiedadId: prop.id },
-          orderBy: { porcentaje: 'desc' },
-        });
-        cobraDirectoPropietarioId = part?.propietarioId ?? null;
-      }
       const contrato = await tx.contrato.create({
         data: {
           inmobiliariaId: u.inmobiliariaId,
@@ -370,6 +375,7 @@ export async function coreRoutes(app: FastifyInstance) {
   app.get('/empresa', async (request, reply) => {
     const u = await requireUsuario(request, reply);
     if (!u) return;
+    if (u.rol !== 'ADMIN') return reply.code(403).send({ message: 'Necesitás permiso de Admin para ver esta sección' });
     const i = await prisma.inmobiliaria.findUnique({ where: { id: u.inmobiliariaId } });
     if (!i) return reply.code(404).send({ message: 'Inmobiliaria inexistente' });
     return {
@@ -418,6 +424,7 @@ export async function coreRoutes(app: FastifyInstance) {
   app.get('/cobranza', async (request, reply) => {
     const u = await requireUsuario(request, reply);
     if (!u) return;
+    if (u.rol !== 'ADMIN') return reply.code(403).send({ message: 'Necesitás permiso de Admin para ver esta sección' });
     const soc = await prisma.sociedad.findFirst({
       where: { inmobiliariaId: u.inmobiliariaId, esPrincipal: true, activa: true },
       select: { cuentaCobranza: true },
@@ -505,6 +512,7 @@ export async function coreRoutes(app: FastifyInstance) {
   app.get('/sociedades', async (request, reply) => {
     const u = await requireUsuario(request, reply);
     if (!u) return;
+    if (u.rol !== 'ADMIN') return reply.code(403).send({ message: 'Necesitás permiso de Admin para ver esta sección' });
     const q = z.object({ incluirInactivas: z.coerce.boolean().optional() }).parse(request.query ?? {});
     return prisma.sociedad.findMany({
       where: { inmobiliariaId: u.inmobiliariaId, ...(q.incluirInactivas ? {} : { activa: true }) },
@@ -609,6 +617,7 @@ export async function coreRoutes(app: FastifyInstance) {
   app.get('/usuarios', async (request, reply) => {
     const u = await requireUsuario(request, reply);
     if (!u) return;
+    if (u.rol !== 'ADMIN') return reply.code(403).send({ message: 'Necesitás permiso de Admin para ver el equipo' });
     const rows = await prisma.usuario.findMany({
       where: { inmobiliariaId: u.inmobiliariaId },
       select: { id: true, nombre: true, apellido: true, email: true, rol: true, activo: true, createdAt: true },
@@ -660,16 +669,29 @@ export async function coreRoutes(app: FastifyInstance) {
       .object({ rol: rolEnum.optional(), nombre: z.string().trim().min(2).optional(), apellido: z.string().trim().min(1).optional() })
       .safeParse(request.body ?? {});
     if (!body.success) return reply.code(400).send({ message: 'Datos inválidos' });
-    // No dejar la inmobiliaria sin ningún Admin activo.
-    if (body.data.rol && body.data.rol !== 'ADMIN' && target.rol === 'ADMIN' && target.activo) {
-      const otros = await prisma.usuario.count({ where: { inmobiliariaId: u.inmobiliariaId, rol: 'ADMIN', activo: true, id: { not: id } } });
-      if (otros === 0) return reply.code(409).send({ message: 'Tiene que quedar al menos un Admin activo' });
+    // Atómico: aplicamos el cambio y verificamos que quede ≥1 Admin activo
+    // DENTRO de la misma transacción serializable. Cubre la carrera de dos
+    // admins degradándose en simultáneo (que un pre-chequeo no atómico no ve).
+    try {
+      return await prisma.$transaction(
+        async (tx) => {
+          const r = await tx.usuario.update({
+            where: { id },
+            data: body.data,
+            select: { id: true, nombre: true, apellido: true, email: true, rol: true, activo: true },
+          });
+          const admins = await tx.usuario.count({ where: { inmobiliariaId: u.inmobiliariaId, rol: 'ADMIN', activo: true } });
+          if (admins === 0) throw new Error('SIN_ADMIN');
+          return r;
+        },
+        { isolationLevel: 'Serializable' as Prisma.TransactionIsolationLevel },
+      );
+    } catch (e) {
+      if (e instanceof Error && e.message === 'SIN_ADMIN') {
+        return reply.code(409).send({ message: 'Tiene que quedar al menos un Admin activo' });
+      }
+      throw e;
     }
-    return prisma.usuario.update({
-      where: { id },
-      data: body.data,
-      select: { id: true, nombre: true, apellido: true, email: true, rol: true, activo: true },
-    });
   });
 
   app.delete('/usuarios/:id', async (request, reply) => {
@@ -680,11 +702,23 @@ export async function coreRoutes(app: FastifyInstance) {
     if (id === u.userId) return reply.code(409).send({ message: 'No podés quitarte a vos mismo' });
     const target = await prisma.usuario.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
     if (!target) return reply.code(404).send({ message: 'Usuario inexistente' });
-    if (target.rol === 'ADMIN' && target.activo) {
-      const otros = await prisma.usuario.count({ where: { inmobiliariaId: u.inmobiliariaId, rol: 'ADMIN', activo: true, id: { not: id } } });
-      if (otros === 0) return reply.code(409).send({ message: 'Tiene que quedar al menos un Admin activo' });
+    // Atómico (ver PUT /usuarios/:id): baja + verificación de ≥1 Admin activo
+    // en la misma transacción serializable.
+    try {
+      await prisma.$transaction(
+        async (tx) => {
+          await tx.usuario.update({ where: { id }, data: { activo: false } });
+          const admins = await tx.usuario.count({ where: { inmobiliariaId: u.inmobiliariaId, rol: 'ADMIN', activo: true } });
+          if (admins === 0) throw new Error('SIN_ADMIN');
+        },
+        { isolationLevel: 'Serializable' as Prisma.TransactionIsolationLevel },
+      );
+    } catch (e) {
+      if (e instanceof Error && e.message === 'SIN_ADMIN') {
+        return reply.code(409).send({ message: 'Tiene que quedar al menos un Admin activo' });
+      }
+      throw e;
     }
-    await prisma.usuario.update({ where: { id }, data: { activo: false } });
     return { ok: true };
   });
 }

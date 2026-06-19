@@ -46,6 +46,7 @@ export function EquipoCard() {
   const { equipo, cargando } = useEquipo();
   const [crearOpen, setCrearOpen] = useState(false);
   const [aQuitar, setAQuitar] = useState<MiembroEquipo | null>(null);
+  const [procesando, setProcesando] = useState(false);
 
   const esAdmin = me?.rol === 'ADMIN';
   const refrescar = () => qc.invalidateQueries({ queryKey: ['equipo'] });
@@ -58,17 +59,22 @@ export function EquipoCard() {
     });
 
   const cambiarRol = async (m: MiembroEquipo, rol: RolEquipo) => {
+    if (procesando || rol === m.rol) return;
+    setProcesando(true);
     try {
       await cambiarUsuario(m.id, { rol });
       await refrescar();
       toast({ variant: 'success', title: `${m.nombre} ahora es ${ROL_LABEL[rol]}` });
     } catch (e) {
       onError(e);
+    } finally {
+      setProcesando(false);
     }
   };
 
   const quitar = async () => {
-    if (!aQuitar) return;
+    if (!aQuitar || procesando) return;
+    setProcesando(true);
     try {
       await eliminarUsuario(aQuitar.id);
       await refrescar();
@@ -76,6 +82,8 @@ export function EquipoCard() {
       setAQuitar(null);
     } catch (e) {
       onError(e);
+    } finally {
+      setProcesando(false);
     }
   };
 
@@ -113,7 +121,7 @@ export function EquipoCard() {
                 <p className="truncate text-xs text-muted-foreground">{m.email}</p>
               </div>
               {esAdmin && !m.esVos ? (
-                <Select value={m.rol} onValueChange={(v) => cambiarRol(m, v as RolEquipo)}>
+                <Select value={m.rol} onValueChange={(v) => cambiarRol(m, v as RolEquipo)} disabled={procesando}>
                   <SelectTrigger className="h-8 w-[150px] text-xs">
                     <SelectValue />
                   </SelectTrigger>
@@ -129,7 +137,7 @@ export function EquipoCard() {
                 <Badge variant="secondary">{ROL_LABEL[m.rol]}</Badge>
               )}
               {esAdmin && !m.esVos && (
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => setAQuitar(m)}>
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => setAQuitar(m)} disabled={procesando}>
                   <Trash2 className="h-4 w-4" />
                 </Button>
               )}

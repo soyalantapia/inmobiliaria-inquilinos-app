@@ -15,6 +15,7 @@ import {
   setEmpresa,
   useCobranza,
   useEmpresa,
+  useMe,
   type CobranzaCuenta,
   type EmpresaDatos,
 } from '@/lib/api/hooks';
@@ -31,6 +32,31 @@ import { EquipoCard } from '@/components/equipo-card';
  * sigue como "pronto".
  */
 export function ConfiguracionProd() {
+  const { me } = useMe();
+  // Configuración es territorio de Admin (las lecturas del backend están
+  // gateadas a ADMIN). Un no-admin ve un estado claro en vez de cards rotas.
+  if (!me) return null;
+  if (me.rol !== 'ADMIN') {
+    return (
+      <main className="flex-1 p-4 md:p-6">
+        <Card className="mx-auto max-w-md">
+          <CardContent className="flex flex-col items-center gap-4 p-10 text-center">
+            <div className="grid h-14 w-14 place-items-center rounded-2xl bg-muted text-muted-foreground">
+              <ShieldCheck className="h-7 w-7" />
+            </div>
+            <div className="space-y-1.5">
+              <h1 className="text-lg font-semibold">Configuración</h1>
+              <p className="text-sm text-muted-foreground">
+                Esta sección la maneja un <strong>Admin</strong> de la inmobiliaria. Pedile que
+                cargue empresa, cobranza, sociedades o equipo.
+              </p>
+            </div>
+            <Badge variant="secondary">Solo Admin</Badge>
+          </CardContent>
+        </Card>
+      </main>
+    );
+  }
   return (
     <main className="flex-1 space-y-6 p-4 md:p-6">
       <div className="mx-auto w-full max-w-2xl space-y-6">

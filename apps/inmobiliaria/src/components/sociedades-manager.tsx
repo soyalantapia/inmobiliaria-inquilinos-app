@@ -470,6 +470,7 @@ function SociedadDialog({
   const [arcaTipoComp, setArcaTipoComp] = useState<
     'FACTURA_A' | 'FACTURA_B' | 'FACTURA_C' | 'RECIBO_X'
   >('FACTURA_B');
+  const [guardando, setGuardando] = useState(false);
 
   useEffect(() => {
     if (editando) {
@@ -513,7 +514,8 @@ function SociedadDialog({
   const puedeGuardar = motivosBloqueo.length === 0;
 
   const guardar = async () => {
-    if (!puedeGuardar) return;
+    if (!puedeGuardar || guardando) return;
+    setGuardando(true);
     const cuentaCobranza =
       cbuAlias.trim() || bancoNombre.trim()
         ? {
@@ -556,15 +558,16 @@ function SociedadDialog({
           description: 'Ya podés asignarla a las propiedades que correspondan.',
         });
       }
+      onGuardado();
     } catch (e) {
       toast({
         variant: 'destructive',
         title: 'No se pudo guardar',
         description: e instanceof ApiError ? e.message : 'Probá de nuevo en un momento.',
       });
-      return;
+    } finally {
+      setGuardando(false);
     }
-    onGuardado();
   };
 
   return (
@@ -781,7 +784,7 @@ function SociedadDialog({
             </Button>
             <Button
               onClick={guardar}
-              disabled={!puedeGuardar}
+              disabled={!puedeGuardar || guardando}
               title={
                 puedeGuardar
                   ? undefined
@@ -789,7 +792,7 @@ function SociedadDialog({
               }
             >
               <CheckCircle2 className="h-4 w-4" />
-              {editando ? 'Guardar cambios' : 'Crear sociedad'}
+              {guardando ? 'Guardando…' : editando ? 'Guardar cambios' : 'Crear sociedad'}
             </Button>
           </div>
         </div>
