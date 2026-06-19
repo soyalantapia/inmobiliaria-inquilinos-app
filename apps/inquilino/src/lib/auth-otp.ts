@@ -39,6 +39,10 @@ export interface InquilinoSesion {
   contratoId: string;
   esInvitado: boolean; // creado desde la inmo vs mock seed
   loggeadoAt: string;
+  /** true si la sesión es de un CO-INQUILINO (no el titular). */
+  esCoInquilino?: boolean;
+  /** Permiso del co-inquilino sobre el contrato (solo si esCoInquilino). */
+  permiso?: 'VER' | 'PAGAR' | 'COMPLETO';
 }
 
 interface CodigoVigente {

@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { rolTienePermiso } from '@llave/shared';
 import { prisma } from '../db.js';
-import { requireAuth, requireInquilino, requireUsuario } from '../auth/guards.js';
+import { requireAuth, requireContratoAcceso, requireInquilino, requireUsuario } from '../auth/guards.js';
 
 /**
  * Fase 6 — Mundo inquilino: certificado del inquilino (el "reemplazo del
@@ -451,7 +451,7 @@ const SESSION_INQUILINO_PREFIX = 'inquilino:';
 export async function inquilinoMundoRoutes(app: FastifyInstance) {
   // ===== Contrato del inquilino logueado (alimenta home + /contrato) =====
   app.get('/mi-contrato', async (request, reply) => {
-    const inq = await requireInquilino(request, reply);
+    const inq = await requireContratoAcceso(request, reply);
     if (!inq) return;
     if (!inq.contratoId) {
       return reply.code(404).send({ message: 'No tenés un contrato activo' });
@@ -690,7 +690,7 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
 
   // ===== Co-inquilinos (los del contrato del inquilino logueado) =====
   app.get('/co-inquilinos', async (request, reply) => {
-    const inq = await requireInquilino(request, reply);
+    const inq = await requireContratoAcceso(request, reply);
     if (!inq) return;
     if (!inq.contratoId) return [];
     return prisma.coInquilino.findMany({
@@ -744,6 +744,21 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
     return reply.code(201).send({ ...co, tokenInvitacion });
   });
 
+  // Regenera el link de invitación de un co-inquilino existente (el titular lo
+  // perdió o quiere reenviarlo). Solo el titular del contrato.
+  app.post('/co-inquilinos/:id/link', async (request, reply) => {
+    const inq = await requireInquilino(request, reply);
+    if (!inq) return;
+    const { id } = request.params as { id: string };
+    const co = await prisma.coInquilino.findFirst({ where: { id, contratoId: inq.contratoId ?? '' } });
+    if (!co) return reply.code(404).send({ message: 'Co-inquilino inexistente' });
+    const tokenInvitacion = app.jwt.sign(
+      { kind: 'co-invitacion', coInquilinoId: co.id, contratoId: co.contratoId },
+      { expiresIn: '7d' },
+    );
+    return { tokenInvitacion };
+  });
+
   app.post('/co-inquilinos/:id/aceptar', async (request, reply) => {
     const inq = await requireInquilino(request, reply);
     if (!inq) return;
@@ -785,7 +800,7 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
 
   // ===== Boletas de servicios =====
   app.get('/boletas', async (request, reply) => {
-    const inq = await requireInquilino(request, reply);
+    const inq = await requireContratoAcceso(request, reply);
     if (!inq) return;
     if (!inq.contratoId) return [];
     return prisma.boletaServicio.findMany({
@@ -924,7 +939,8 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
       // Usuario. Para reportes de inquilinos lo atribuimos al ADMIN del tenant
       // como receptor, y conservamos la autoría REAL en rol + sessionId.
       rol = 'INQUILINO';
-      sessionId = `${SESSION_INQUILINO_PREFIX}${payload.inquilinoId}`;
+      const actorId = payload.kind === 'co-inquilino' ? payload.coInquilinoId : payload.inquilinoId;
+      sessionId = `${SESSION_INQUILINO_PREFIX}${actorId}`;
       const receptor = await prisma.usuario.findFirst({
         where: { inmobiliariaId: payload.inmobiliariaId, rol: 'ADMIN', activo: true },
         orderBy: { createdAt: 'asc' },

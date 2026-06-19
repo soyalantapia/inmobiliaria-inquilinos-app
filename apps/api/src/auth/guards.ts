@@ -42,7 +42,7 @@ export async function requireUsuario(
   return payload;
 }
 
-/** Exige un inquilino autenticado. */
+/** Exige un inquilino TITULAR autenticado (no co-inquilino). */
 export async function requireInquilino(request: FastifyRequest, reply: FastifyReply) {
   const payload = await requireAuth(request, reply);
   if (!payload) return null;
@@ -51,4 +51,58 @@ export async function requireInquilino(request: FastifyRequest, reply: FastifyRe
     return null;
   }
   return payload;
+}
+
+type Permiso = 'VER' | 'PAGAR' | 'COMPLETO';
+const RANGO_PERMISO: Record<Permiso, number> = { VER: 1, PAGAR: 2, COMPLETO: 3 };
+
+/** Acceso resuelto a un contrato: sea el titular o un co-inquilino. */
+export type ContratoAcceso = {
+  inmobiliariaId: string;
+  /** null solo para un titular sin contrato activo (el endpoint decide). */
+  contratoId: string | null;
+  permiso: Permiso;
+  esCoInquilino: boolean;
+  inquilinoId: string | null;
+  coInquilinoId: string | null;
+};
+
+/**
+ * Exige acceso al contrato: lo cumple el inquilino TITULAR (permiso COMPLETO) o
+ * un CO-INQUILINO con permiso suficiente. `minPermiso` gatea las acciones de
+ * escritura (p.ej. informar un pago exige PAGAR). El titular siempre pasa.
+ */
+export async function requireContratoAcceso(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  minPermiso: Permiso = 'VER',
+): Promise<ContratoAcceso | null> {
+  const payload = await requireAuth(request, reply);
+  if (!payload) return null;
+  if (payload.kind === 'inquilino') {
+    return {
+      inmobiliariaId: payload.inmobiliariaId,
+      contratoId: payload.contratoId,
+      permiso: 'COMPLETO',
+      esCoInquilino: false,
+      inquilinoId: payload.inquilinoId,
+      coInquilinoId: null,
+    };
+  }
+  if (payload.kind === 'co-inquilino') {
+    if (RANGO_PERMISO[payload.permiso] < RANGO_PERMISO[minPermiso]) {
+      await reply.code(403).send({ message: `Tu acceso (${payload.permiso}) no alcanza para esta acción` });
+      return null;
+    }
+    return {
+      inmobiliariaId: payload.inmobiliariaId,
+      contratoId: payload.contratoId,
+      permiso: payload.permiso,
+      esCoInquilino: true,
+      inquilinoId: null,
+      coInquilinoId: payload.coInquilinoId,
+    };
+  }
+  await reply.code(403).send({ message: 'Solo para inquilinos' });
+  return null;
 }

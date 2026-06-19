@@ -6,6 +6,7 @@ import {
   LoginRequestSchema,
   OtpRequestSchema,
   OtpVerifySchema,
+  type JwtCoInquilino,
   type JwtInquilino,
   type JwtUsuario,
 } from '@llave/shared';
@@ -219,6 +220,80 @@ export async function authRoutes(app: FastifyInstance) {
     return { token, nombre: `${inquilino.nombre} ${inquilino.apellido ?? ''}`.trim() };
   });
 
+  // --- Co-inquilino: invitación por link (la comparte el titular) ---
+  // El token lo firma POST /co-inquilinos (kind 'co-invitacion', 7d). Estas
+  // rutas son PÚBLICAS: las abre quien recibió el link. La identidad y el
+  // permiso se leen de la DB (el token solo identifica la invitación), así un
+  // token viejo o manipulado no puede elevar permisos.
+  function leerInvitacion(token: string): { coInquilinoId: string } | null {
+    try {
+      const d = app.jwt.verify<{ kind?: string; coInquilinoId?: string }>(token);
+      if (d?.kind !== 'co-invitacion' || !d.coInquilinoId) return null;
+      return { coInquilinoId: d.coInquilinoId };
+    } catch {
+      return null;
+    }
+  }
+
+  // Detalle de la invitación para la pantalla del link (sin sesión).
+  app.get('/co-invitacion/:token', async (request, reply) => {
+    const { token } = request.params as { token: string };
+    const inv = leerInvitacion(token);
+    if (!inv) return reply.code(400).send({ message: 'Invitación inválida o vencida' });
+    const co = await prisma.coInquilino.findUnique({
+      where: { id: inv.coInquilinoId },
+      include: {
+        contrato: { select: { propiedad: { select: { direccion: true, ciudad: true } } } },
+        inmobiliaria: { select: { nombre: true } },
+      },
+    });
+    if (!co) return reply.code(404).send({ message: 'Invitación inexistente' });
+    return {
+      nombre: co.nombre,
+      relacion: co.relacion,
+      permiso: co.permiso,
+      estado: co.estado,
+      direccion: co.contrato?.propiedad?.direccion ?? '',
+      ciudad: co.contrato?.propiedad?.ciudad ?? '',
+      inmobiliaria: co.inmobiliaria?.nombre ?? '',
+    };
+  });
+
+  // Aceptar la invitación → marca ACEPTADO y emite la sesión del co-inquilino.
+  app.post('/co-invitacion/:token/aceptar', async (request, reply) => {
+    const { token } = request.params as { token: string };
+    const inv = leerInvitacion(token);
+    if (!inv) return reply.code(400).send({ message: 'Invitación inválida o vencida' });
+    const co = await prisma.coInquilino.findUnique({
+      where: { id: inv.coInquilinoId },
+      include: { contrato: { select: { propiedad: { select: { direccion: true, ciudad: true } } } } },
+    });
+    if (!co) return reply.code(404).send({ message: 'Invitación inexistente' });
+    if (co.estado !== 'ACEPTADO') {
+      await prisma.coInquilino.update({
+        where: { id: co.id },
+        data: { estado: 'ACEPTADO', aceptadoAt: new Date() },
+      });
+    }
+    const payload: JwtCoInquilino = {
+      kind: 'co-inquilino',
+      coInquilinoId: co.id,
+      inmobiliariaId: co.inmobiliariaId,
+      contratoId: co.contratoId,
+      permiso: co.permiso,
+    };
+    const tokenSesion = app.jwt.sign(payload, { expiresIn: TOKEN_TTL });
+    return {
+      token: tokenSesion,
+      nombre: co.nombre,
+      email: co.email,
+      permiso: co.permiso,
+      contratoId: co.contratoId,
+      direccion: co.contrato?.propiedad?.direccion ?? '',
+      ciudad: co.contrato?.propiedad?.ciudad ?? '',
+    };
+  });
+
   // --- Demo: sesión de Mariela con un click (?demo=1) ---
   app.post('/auth/demo', async (_request, reply) => {
     if (!app.env.DEMO_MODE) return reply.code(404).send({ message: 'No disponible' });
@@ -260,6 +335,20 @@ export async function authRoutes(app: FastifyInstance) {
         trial: trial
           ? { tipo: trial.tipo, hasta: trial.hasta, diasRestantes, vigente: trial.hasta.getTime() >= Date.now() }
           : null,
+      };
+    }
+    if (payload.kind === 'co-inquilino') {
+      const co = await prisma.coInquilino.findUnique({ where: { id: payload.coInquilinoId } });
+      if (!co) return reply.code(401).send({ message: 'Co-inquilino inexistente' });
+      return {
+        kind: 'co-inquilino',
+        nombre: co.nombre,
+        email: co.email,
+        telefono: co.telefono,
+        dni: co.dni,
+        contratoId: co.contratoId,
+        permiso: co.permiso,
+        esCoInquilino: true,
       };
     }
     const i = await prisma.inquilino.findUnique({ where: { id: payload.inquilinoId } });

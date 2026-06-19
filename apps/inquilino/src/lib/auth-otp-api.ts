@@ -79,6 +79,51 @@ export async function verificarCodigoUnificado(
   }
 }
 
+// ===== Co-inquilino: aceptar la invitación por link =====
+
+export interface CoInvitacionDetalle {
+  nombre: string;
+  relacion: string;
+  permiso: 'VER' | 'PAGAR' | 'COMPLETO';
+  estado: 'PENDIENTE' | 'ACEPTADO';
+  direccion: string;
+  ciudad: string;
+  inmobiliaria: string;
+}
+
+/** Detalle público de la invitación (para la pantalla del link). */
+export async function leerInvitacionCoInquilino(token: string): Promise<CoInvitacionDetalle> {
+  return apiFetch<CoInvitacionDetalle>(`/co-invitacion/${encodeURIComponent(token)}`);
+}
+
+/** Acepta la invitación, guarda la sesión del co-inquilino y la devuelve. */
+export async function aceptarInvitacionCoInquilino(token: string): Promise<InquilinoSesion> {
+  const r = await apiFetch<{
+    token: string;
+    nombre: string;
+    email: string;
+    permiso: 'VER' | 'PAGAR' | 'COMPLETO';
+    contratoId: string;
+    direccion: string;
+    ciudad: string;
+  }>(`/co-invitacion/${encodeURIComponent(token)}/aceptar`, { method: 'POST' });
+  setToken(r.token);
+  const partes = r.nombre.trim().split(' ');
+  const sesion: InquilinoSesion = {
+    email: r.email ?? '',
+    nombre: partes[0] ?? r.nombre,
+    apellido: partes.slice(1).join(' '),
+    direccion: r.direccion ?? '',
+    contratoId: r.contratoId ?? '',
+    esInvitado: true,
+    esCoInquilino: true,
+    permiso: r.permiso,
+    loggeadoAt: new Date().toISOString(),
+  };
+  guardarSesion(sesion);
+  return sesion;
+}
+
 /** Demo (?demo=1): sesión local de Mariela siempre; si hay API, también su JWT. */
 export function iniciarSesionDemoUnificada(): InquilinoSesion {
   const sesion = iniciarSesionDemo();

@@ -6,6 +6,7 @@ import {
   ArrowLeft,
   CheckCircle2,
   Clock,
+  Copy,
   Loader2,
   Mail,
   Phone,
@@ -31,7 +32,7 @@ import { apiEnabled } from '@/lib/api/client';
 import { formatFecha } from '@/lib/format';
 
 export default function CoInquilinosPage() {
-  const { coInquilinos, cargando, deApi, aceptar, cambiarPermiso, eliminar } =
+  const { coInquilinos, cargando, deApi, aceptar, cambiarPermiso, eliminar, regenerarLink } =
     useCoInquilinos();
   const [eliminando, setEliminando] = useState<CoInquilino | null>(null);
 
@@ -66,6 +67,22 @@ export default function CoInquilinosPage() {
       toast({ title: 'Permiso actualizado' });
     } catch {
       toast({ title: 'No se pudo actualizar el permiso', variant: 'destructive' });
+    }
+  };
+
+  const handleCompartir = async (id: string) => {
+    try {
+      const tk = await regenerarLink(id);
+      if (!tk) return;
+      const url = `${window.location.origin}/invitacion/${tk}`;
+      try {
+        await navigator.clipboard.writeText(url);
+        toast({ title: 'Link copiado', description: 'Pegáselo a tu co-inquilino para que entre.' });
+      } catch {
+        toast({ title: 'Tu link de invitación', description: url });
+      }
+    } catch {
+      toast({ title: 'No se pudo generar el link', variant: 'destructive' });
     }
   };
 
@@ -128,6 +145,7 @@ export default function CoInquilinosPage() {
                 key={c.id}
                 co={c}
                 onAceptar={() => handleAceptar(c.id)}
+                onCompartir={() => handleCompartir(c.id)}
                 onEliminar={() => setEliminando(c)}
                 onCambiarPermiso={(p) => handleCambiarPermiso(c.id, p)}
               />
@@ -154,11 +172,13 @@ export default function CoInquilinosPage() {
 function CoInquilinoCard({
   co,
   onAceptar,
+  onCompartir,
   onEliminar,
   onCambiarPermiso,
 }: {
   co: CoInquilino;
   onAceptar: () => void;
+  onCompartir: () => void;
   onEliminar: () => void;
   onCambiarPermiso: (p: PermisoCoInquilino) => void;
 }) {
@@ -247,6 +267,13 @@ function CoInquilinoCard({
       {co.estado === 'PENDIENTE' && !apiEnabled && (
         <Button size="sm" variant="outline" className="w-full" onClick={onAceptar}>
           Simular que aceptó la invitación
+        </Button>
+      )}
+
+      {/* Prod: el titular recupera/recomparte el link de invitación. */}
+      {co.estado === 'PENDIENTE' && apiEnabled && (
+        <Button size="sm" variant="outline" className="w-full" onClick={onCompartir}>
+          <Copy className="h-3.5 w-3.5" /> Copiar link de invitación
         </Button>
       )}
     </Card>

@@ -2,7 +2,8 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '../db.js';
-import { requireInquilino, requireUsuario } from '../auth/guards.js';
+import { requireContratoAcceso, requireInquilino, requireUsuario } from '../auth/guards.js';
+import { generarLiquidacionesContrato } from '../lib/liquidaciones.js';
 
 /**
  * Fase 3 — La plata: liquidaciones, validación de pagos informados, caja de
@@ -109,9 +110,9 @@ export async function plataRoutes(app: FastifyInstance) {
     });
   });
 
-  // Inquilino informa un pago sobre su liquidación
+  // Inquilino (o co-inquilino con permiso PAGAR/COMPLETO) informa un pago.
   app.post('/pagos/informar', async (request, reply) => {
-    const inq = await requireInquilino(request, reply);
+    const inq = await requireContratoAcceso(request, reply, 'PAGAR');
     if (!inq) return;
     if (!inq.contratoId) return reply.code(400).send({ message: 'No tenés un contrato activo' });
     const body = z
@@ -151,7 +152,7 @@ export async function plataRoutes(app: FastifyInstance) {
 
   // Liquidaciones del inquilino logueado (para informar pagos / comprobantes)
   app.get('/mis-liquidaciones', async (request, reply) => {
-    const inq = await requireInquilino(request, reply);
+    const inq = await requireContratoAcceso(request, reply);
     if (!inq) return;
     if (!inq.contratoId) return [];
     return prisma.liquidacion.findMany({
@@ -379,13 +380,18 @@ export async function plataRoutes(app: FastifyInstance) {
       });
       // Si es un contrato cargado, al aprobar pasa a ACTIVO / al rechazar queda BORRADOR sin pendiente
       if (apr.tipo === 'CONTRATO_CARGADO') {
-        await prisma.contrato.update({
+        const contratoActualizado = await prisma.contrato.update({
           where: { id: apr.entidadId },
           data:
             accion === 'aprobar'
               ? { estado: 'ACTIVO', pendienteAprobacion: false, aprobadoAt: new Date() }
               : { pendienteAprobacion: false },
         });
+        // Al aprobar, el contrato se activa → devengar sus liquidaciones
+        // (idempotente: skipDuplicates si ya existían).
+        if (accion === 'aprobar') {
+          await generarLiquidacionesContrato(prisma, contratoActualizado);
+        }
       }
       return updated;
     });

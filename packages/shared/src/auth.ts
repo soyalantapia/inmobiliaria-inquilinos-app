@@ -18,9 +18,24 @@ export const JwtInquilinoSchema = z.object({
 });
 export type JwtInquilino = z.infer<typeof JwtInquilinoSchema>;
 
+/**
+ * Payload del JWT de un CO-INQUILINO. Identidad distinta del titular: no tiene
+ * `inquilinoId` (no existe como `Inquilino`); accede al MISMO contrato pero con
+ * un `permiso` acotado que se enforça server-side.
+ */
+export const JwtCoInquilinoSchema = z.object({
+  kind: z.literal('co-inquilino'),
+  coInquilinoId: z.string(),
+  inmobiliariaId: z.string(),
+  contratoId: z.string(),
+  permiso: z.enum(['VER', 'PAGAR', 'COMPLETO']),
+});
+export type JwtCoInquilino = z.infer<typeof JwtCoInquilinoSchema>;
+
 export const JwtPayloadSchema = z.discriminatedUnion('kind', [
   JwtUsuarioSchema,
   JwtInquilinoSchema,
+  JwtCoInquilinoSchema,
 ]);
 export type JwtPayload = z.infer<typeof JwtPayloadSchema>;
 

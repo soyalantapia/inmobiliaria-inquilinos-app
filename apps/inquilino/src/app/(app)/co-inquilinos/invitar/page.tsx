@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Loader2, Plus } from 'lucide-react';
+import { ArrowLeft, Check, Copy, Loader2, Plus, Share2 } from 'lucide-react';
 import { Button } from '@llave/ui/button';
 import { Input } from '@llave/ui/input';
 import { Label } from '@llave/ui/label';
@@ -34,6 +34,22 @@ export default function InvitarCoInquilinoPage() {
   const [relacionOtro, setRelacionOtro] = useState('');
   const [permiso, setPermiso] = useState<PermisoCoInquilino>('PAGAR');
   const [enviando, setEnviando] = useState(false);
+  const [link, setLink] = useState<string | null>(null);
+  const [copiado, setCopiado] = useState(false);
+
+  const copiar = async () => {
+    if (!link) return;
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 2000);
+    } catch {
+      toast({ title: 'No pudimos copiar', description: 'Copialo manualmente.', variant: 'destructive' });
+    }
+  };
+  const waUrl = link
+    ? `https://wa.me/?text=${encodeURIComponent(`Te sumé al contrato en My Alquiler. Entrá con este link: ${link}`)}`
+    : null;
 
   const enviar = async () => {
     if (enviando) return;
@@ -61,7 +77,7 @@ export default function InvitarCoInquilinoPage() {
     const emailLimpio = email.trim();
     setEnviando(true);
     try {
-      await invitar({
+      const tk = await invitar({
         nombre: nombre.trim(),
         dni: dniLimpio,
         email: emailLimpio,
@@ -69,10 +85,15 @@ export default function InvitarCoInquilinoPage() {
         relacion: relacion === 'Otro' ? relacionOtro.trim() : relacion,
         permiso,
       });
-      toast({
-        title: 'Invitación enviada',
-        description: `Le mandamos un mail a ${emailLimpio}`,
-      });
+      if (tk) {
+        // El backend devuelve el token; armamos el link para que el titular lo
+        // comparta (no se manda mail automático).
+        setLink(`${window.location.origin}/invitacion/${tk}`);
+        setEnviando(false);
+        return;
+      }
+      // Demo sin backend: no hay link real para compartir.
+      toast({ title: 'Invitación creada', description: `Para ${emailLimpio}` });
       router.push('/co-inquilinos');
     } catch (err) {
       // El API responde 409 si ya invitaste a alguien con ese email.
@@ -85,6 +106,72 @@ export default function InvitarCoInquilinoPage() {
       setEnviando(false);
     }
   };
+
+  if (link) {
+    return (
+      <>
+        <header className="flex items-center gap-3 p-5 md:px-8">
+          <Button size="icon" variant="ghost" asChild>
+            <Link href="/co-inquilinos" aria-label="Volver a Co-inquilinos">
+              <ArrowLeft className="h-4 w-4" />
+            </Link>
+          </Button>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">Co-inquilinos</p>
+            <h1 className="text-xl font-semibold md:text-2xl">Invitación lista</h1>
+          </div>
+        </header>
+
+        <main className="flex-1 px-5 pb-44 md:px-8 md:pb-8">
+          <div className="flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/5 p-4">
+            <Check className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+            <p className="text-sm">
+              Compartile este link a <span className="font-medium">{nombre.trim()}</span>. Cuando lo
+              abra y acepte, entra al contrato con el acceso que le diste.
+            </p>
+          </div>
+
+          <div className="mt-4 space-y-1.5">
+            <Label>Link de invitación</Label>
+            <div className="flex gap-2">
+              <Input
+                readOnly
+                value={link}
+                onFocus={(e) => e.currentTarget.select()}
+                className="h-12 text-sm"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-12 w-12 shrink-0"
+                onClick={copiar}
+                aria-label="Copiar link"
+              >
+                {copiado ? <Check className="h-4 w-4 text-primary" /> : <Copy className="h-4 w-4" />}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">El link vence en 7 días.</p>
+          </div>
+
+          <div className="mt-5 flex flex-col gap-2">
+            {waUrl && (
+              <Button asChild className="w-full">
+                <a href={waUrl} target="_blank" rel="noopener noreferrer">
+                  <Share2 className="h-4 w-4" /> Compartir por WhatsApp
+                </a>
+              </Button>
+            )}
+            <Button variant="outline" className="w-full" asChild>
+              <Link href="/co-inquilinos">Listo</Link>
+            </Button>
+          </div>
+        </main>
+
+        <NavBar />
+      </>
+    );
+  }
 
   return (
     <>
@@ -102,7 +189,7 @@ export default function InvitarCoInquilinoPage() {
 
       <main className="flex-1 px-5 pb-44 md:px-8 md:pb-8">
         <p className="text-sm text-muted-foreground">
-          Le mandamos un mail con un link para que active su acceso.
+          Le generamos un link para que actives su acceso. Se lo compartís vos (WhatsApp, mail, lo que quieras).
         </p>
 
         <form onSubmit={(e) => { e.preventDefault(); void enviar(); }} className="mt-5 space-y-4">

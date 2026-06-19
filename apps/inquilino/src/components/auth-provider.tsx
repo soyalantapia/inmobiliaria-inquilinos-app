@@ -9,7 +9,7 @@ import { leerSesion } from '@/lib/auth-otp';
 // alquilarle. Si no la listamos acá, el AuthProvider la redirige a
 // /login y la inmo externa abandona — caso de uso "certificado social"
 // muerto. Faltaba en la lista, ahora está.
-const RUTAS_PUBLICAS = ['/login', '/garantes', '/p', '/verificar'];
+const RUTAS_PUBLICAS = ['/login', '/garantes', '/p', '/verificar', '/invitacion'];
 
 /**
  * Protege las rutas privadas: si no hay sesión OTP activa y el usuario está

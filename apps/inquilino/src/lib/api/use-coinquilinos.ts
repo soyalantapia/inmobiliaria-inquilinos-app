@@ -58,7 +58,10 @@ export interface UseCoInquilinos {
   cargando: boolean;
   /** true = los datos vienen del API real; false = localStorage (demo). */
   deApi: boolean;
-  invitar: (input: InvitarCoInquilinoInput) => Promise<void>;
+  /** Devuelve el token de invitación (para armar el link a compartir), o null en demo. */
+  invitar: (input: InvitarCoInquilinoInput) => Promise<string | null>;
+  /** Regenera el link de invitación de un co-inquilino existente (null en demo). */
+  regenerarLink: (id: string) => Promise<string | null>;
   cambiarPermiso: (id: string, permiso: PermisoCoInquilino) => Promise<void>;
   aceptar: (id: string) => Promise<void>;
   eliminar: (id: string) => Promise<void>;
@@ -85,7 +88,9 @@ export function useCoInquilinos(): UseCoInquilinos {
       invitar: async (input) => {
         invitarLocal(input);
         await invalidar();
+        return null;
       },
+      regenerarLink: async () => null,
       cambiarPermiso: async (id, permiso) => {
         cambiarPermisoLocal(id, permiso);
         await invalidar();
@@ -109,7 +114,7 @@ export function useCoInquilinos(): UseCoInquilinos {
     cargando: q.isPending,
     deApi: true,
     invitar: async (input) => {
-      await apiFetch('/co-inquilinos', {
+      const r = await apiFetch<{ tokenInvitacion?: string }>('/co-inquilinos', {
         method: 'POST',
         body: JSON.stringify({
           nombre: input.nombre,
@@ -121,6 +126,13 @@ export function useCoInquilinos(): UseCoInquilinos {
         }),
       });
       await invalidar();
+      return r?.tokenInvitacion ?? null;
+    },
+    regenerarLink: async (id) => {
+      const r = await apiFetch<{ tokenInvitacion?: string }>(`/co-inquilinos/${id}/link`, {
+        method: 'POST',
+      });
+      return r?.tokenInvitacion ?? null;
     },
     cambiarPermiso: async (id, permiso) => {
       await apiFetch(`/co-inquilinos/${id}/permiso`, {
