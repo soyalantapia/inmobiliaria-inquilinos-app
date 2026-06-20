@@ -12,6 +12,7 @@ import {
 } from '@llave/shared';
 import { prisma } from '../db.js';
 import { requireAuth, requireUsuario } from '../auth/guards.js';
+import { verificarPinUsuario } from '../auth/pin.js';
 import { enviarOtp } from '../mailer.js';
 
 const TOKEN_TTL = '15d';
@@ -377,9 +378,10 @@ export async function authRoutes(app: FastifyInstance) {
     if (!usuario) return;
     const body = z.object({ pin: z.string().min(4) }).safeParse(request.body);
     if (!body.success) return reply.code(400).send({ message: 'PIN requerido' });
-    const u = await prisma.usuario.findUnique({ where: { id: usuario.userId } });
-    const valid = !!u?.pinHash && bcrypt.compareSync(body.data.pin, u.pinHash);
-    if (!valid) return reply.code(403).send({ message: 'PIN incorrecto', valid: false });
+    // verificarPinUsuario aplica el bloqueo anti-fuerza-bruta (lockout por
+    // intentos), igual que las acciones de plata/operación.
+    const r = await verificarPinUsuario(usuario.userId, body.data.pin);
+    if (!r.ok) return reply.code(r.code).send({ message: r.message, valid: false });
     return { valid: true };
   });
 

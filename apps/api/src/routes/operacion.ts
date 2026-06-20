@@ -1,8 +1,8 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '../db.js';
 import { requireInquilino, requireUsuario } from '../auth/guards.js';
+import { verificarPinUsuario } from '../auth/pin.js';
 
 /**
  * Fase 4 — Operación: reclamos con SLA calculado en el server, asignación de
@@ -139,14 +139,11 @@ function conSla<T extends ReclamoParaSla>(reclamo: T): T & ResumenSla {
 }
 
 // Mismo helper que plata.ts: acciones sensibles piden el PIN del usuario.
+// Delega en verificarPinUsuario (auth/pin.ts) → bloqueo anti-fuerza-bruta.
 async function verificarPin(userId: string, pin: string | undefined, reply: FastifyReply): Promise<boolean> {
-  if (!pin) {
-    await reply.code(400).send({ message: 'Esta acción requiere tu PIN de seguridad' });
-    return false;
-  }
-  const u = await prisma.usuario.findUnique({ where: { id: userId } });
-  if (!u?.pinHash || !bcrypt.compareSync(pin, u.pinHash)) {
-    await reply.code(403).send({ message: 'PIN incorrecto' });
+  const r = await verificarPinUsuario(userId, pin);
+  if (!r.ok) {
+    await reply.code(r.code).send({ message: r.message });
     return false;
   }
   return true;
