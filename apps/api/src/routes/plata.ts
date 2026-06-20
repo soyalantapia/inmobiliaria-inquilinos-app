@@ -87,29 +87,37 @@ export async function plataRoutes(app: FastifyInstance) {
     //     al total; si es un pago parcial, queda PARCIAL. Antes un pago parcial la
     //     marcaba PAGADO → el inquilino no podía pagar el resto y al propietario
     //     se le acreditaba el monto completo (no el realmente cobrado).
-    const conflicto = await prisma.$transaction(async (tx) => {
+    const pagoOk = await prisma.$transaction(async (tx) => {
       const upd = await tx.pago.updateMany({
         where: { id, estado: 'INFORMADO' },
         data: { estado: 'CONCILIADO', decididoPorId: u.userId, decididoAt: new Date() },
       });
-      if (upd.count === 0) return true;
+      if (upd.count === 0) return null;
       const agg = await tx.pago.aggregate({
         where: { liquidacionId: pago.liquidacionId, estado: 'CONCILIADO' },
         _sum: { monto: true },
       });
       const cobrado = Number(agg._sum.monto ?? 0);
-      const total = Number(pago.montoLiqTotal);
+      // Total AUTORITATIVO de la liquidación (montoLiqTotal del pago es nullable;
+      // Number(null)=0 marcaría PAGADO siempre).
+      const liq = await tx.liquidacion.findUnique({
+        where: { id: pago.liquidacionId },
+        select: { montoTotal: true },
+      });
+      const total = Number(liq?.montoTotal ?? pago.montoLiqTotal ?? 0);
       await tx.liquidacion.update({
         where: { id: pago.liquidacionId },
         data:
-          cobrado >= total
+          total > 0 && cobrado >= total
             ? { estado: 'PAGADO', fechaPago: pago.fechaTransferencia, metodoPago: 'TRANSFERENCIA' }
             : { estado: 'PARCIAL' },
       });
-      return false;
+      // Devolvemos el pago DENTRO de la tx: si el findUnique fallara afuera, el
+      // estado ya estaría cambiado y el cliente vería un error engañoso.
+      return tx.pago.findUnique({ where: { id } });
     });
-    if (conflicto) return reply.code(409).send({ message: 'El pago ya fue decidido' });
-    return prisma.pago.findUnique({ where: { id } });
+    if (!pagoOk) return reply.code(409).send({ message: 'El pago ya fue decidido' });
+    return pagoOk;
   });
 
   app.post('/pagos/:id/rechazar', async (request, reply) => {
@@ -125,13 +133,19 @@ export async function plataRoutes(app: FastifyInstance) {
     if (pago.estado !== 'INFORMADO') return reply.code(409).send({ message: 'El pago ya fue decidido' });
 
     // Atómico (igual que validar): WHERE estado='INFORMADO' garantiza que sólo
-    // una decisión (validar o rechazar) gane ante requests concurrentes.
-    const upd = await prisma.pago.updateMany({
-      where: { id, estado: 'INFORMADO' },
-      data: { estado: 'RECHAZADO', observacion: body.data.observacion, decididoPorId: u.userId, decididoAt: new Date() },
+    // una decisión (validar o rechazar) gane ante requests concurrentes. El
+    // findUnique va DENTRO de la tx para no devolver un error engañoso si fallara
+    // después de haber cambiado el estado.
+    const pagoOk = await prisma.$transaction(async (tx) => {
+      const upd = await tx.pago.updateMany({
+        where: { id, estado: 'INFORMADO' },
+        data: { estado: 'RECHAZADO', observacion: body.data.observacion, decididoPorId: u.userId, decididoAt: new Date() },
+      });
+      if (upd.count === 0) return null;
+      return tx.pago.findUnique({ where: { id } });
     });
-    if (upd.count === 0) return reply.code(409).send({ message: 'El pago ya fue decidido' });
-    return prisma.pago.findUnique({ where: { id } });
+    if (!pagoOk) return reply.code(409).send({ message: 'El pago ya fue decidido' });
+    return pagoOk;
   });
 
   // Inquilino (o co-inquilino con permiso PAGAR/COMPLETO) informa un pago.

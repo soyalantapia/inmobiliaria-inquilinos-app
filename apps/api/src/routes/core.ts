@@ -439,6 +439,12 @@ export async function coreRoutes(app: FastifyInstance) {
       if (e instanceof Error && e.message === 'PROP_OCUPADA') {
         return reply.code(409).send({ message: 'La propiedad ya tiene un contrato activo' });
       }
+      // Carrera de email duplicado: dos altas concurrentes con el mismo email
+      // pasan el pre-check y la 2da viola @@unique([inmobiliariaId,email]) → P2002.
+      // Lo convertimos en un 409 claro en vez de un 500.
+      if (e && typeof e === 'object' && (e as { code?: string }).code === 'P2002') {
+        return reply.code(409).send({ message: 'Ya tenés un inquilino con ese email en tu cartera' });
+      }
       throw e;
     }
   });
