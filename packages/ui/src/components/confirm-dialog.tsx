@@ -49,7 +49,10 @@ export function ConfirmDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    // Mientras `loading`, bloqueamos el cierre por ESC / click afuera: si no,
+    // el dialog se cerraba en medio de la operación y el usuario quedaba sin
+    // saber si su acción (crear contrato, rendir, eliminar…) terminó.
+    <Dialog open={open} onOpenChange={(o) => { if (!o && loading) return; onOpenChange(o); }}>
       <DialogContent variant="compact" className="sm:max-w-md">
         <DialogHeader>
           <div className="flex items-start gap-3">

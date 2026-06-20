@@ -382,7 +382,14 @@ export default function PropietariosPage() {
         propietario={rendiendoA}
         open={!!rendiendoA}
         onOpenChange={(v) => !v && setRendiendoA(null)}
-        onRendido={() => refrescarRendiciones()}
+        onRendido={(rendicion) => {
+          // Actualizamos el badge con la rendición que devuelve el server. Antes
+          // sólo llamábamos refrescarRendiciones(), que lee de localStorage
+          // (obtenerRendicion) y en PROD no tiene el dato → el badge seguía en
+          // "Por rendir" pese al éxito (parecía que falló).
+          if (rendiendoA) setRendicionesMap((m) => ({ ...m, [rendiendoA.id]: rendicion }));
+          refrescarRendiciones();
+        }}
       />
 
       <HistorialPropietarioDialog

@@ -328,7 +328,7 @@ function DialogCargarGasto({
   open: boolean;
   onOpenChange: (v: boolean) => void;
   opciones: PropiedadOpcion[];
-  onSubmit: (data: Omit<MovimientoCaja, 'id' | 'createdAt' | 'descontadoEnRendicion'>) => void;
+  onSubmit: (data: Omit<MovimientoCaja, 'id' | 'createdAt' | 'descontadoEnRendicion'>) => void | Promise<void>;
 }) {
   const [propiedadId, setPropiedadId] = useState('');
   const [categoria, setCategoria] = useState<CategoriaGasto>('PLOMERIA');
@@ -336,6 +336,7 @@ function DialogCargarGasto({
   const [monto, setMonto] = useState('');
   const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10));
   const [proveedor, setProveedor] = useState('');
+  const [guardando, setGuardando] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -348,7 +349,8 @@ function DialogCargarGasto({
     }
   }, [open]);
 
-  const guardar = () => {
+  const guardar = async () => {
+    if (guardando) return;
     if (!propiedadId || !descripcion.trim() || !monto) {
       toast({
         title: 'Faltan datos',
@@ -363,18 +365,23 @@ function DialogCargarGasto({
       return;
     }
     const prop = opciones.find((p) => p.id === propiedadId);
-    onSubmit({
-      propiedadId,
-      contratoId: prop?.contratoActualId ?? null,
-      tipo: 'GASTO',
-      categoria,
-      descripcion: descripcion.trim(),
-      monto: montoNum,
-      fecha,
-      proveedor: proveedor.trim() || null,
-      comprobante: null,
-      cargadoPor: 'Roberto Tapia',
-    });
+    setGuardando(true);
+    try {
+      await onSubmit({
+        propiedadId,
+        contratoId: prop?.contratoActualId ?? null,
+        tipo: 'GASTO',
+        categoria,
+        descripcion: descripcion.trim(),
+        monto: montoNum,
+        fecha,
+        proveedor: proveedor.trim() || null,
+        comprobante: null,
+        cargadoPor: 'Roberto Tapia',
+      });
+    } finally {
+      setGuardando(false);
+    }
   };
 
   return (
@@ -473,9 +480,9 @@ function DialogCargarGasto({
           <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
-          <Button className="flex-1" onClick={guardar}>
+          <Button className="flex-1" onClick={guardar} disabled={guardando}>
             <Plus className="h-4 w-4" />
-            Cargar
+            {guardando ? 'Cargando…' : 'Cargar'}
           </Button>
         </div>
       </DialogContent>
