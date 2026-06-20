@@ -83,7 +83,7 @@ const estadoLabel: Record<EstadoLiquidacion, string> = {
 };
 
 export default function ContratosPage() {
-  const { contratos } = useContratos();
+  const { contratos, cargando } = useContratos();
   const [q, setQ] = useState('');
   const [filtro, setFiltro] = useState<Filtro>('TODOS');
 
@@ -281,8 +281,19 @@ export default function ContratosPage() {
           </div>
         )}
 
+        {/* Loading: no confundir "cargando" con "no hay contratos" (antes la
+            lista vacía durante la carga parecía cartera vacía). */}
+        {cargando && filtrados.length === 0 && (
+          <Card>
+            <div className="flex flex-col items-center gap-2 py-12 text-center text-muted-foreground">
+              <FileText className="h-8 w-8 animate-pulse" />
+              <p className="text-sm">Cargando tus contratos…</p>
+            </div>
+          </Card>
+        )}
+
         {/* Empty state */}
-        {filtrados.length === 0 && (
+        {!cargando && filtrados.length === 0 && (
           <Card>
             <div className="py-12 text-center">
               <div className="mx-auto flex flex-col items-center gap-2 text-muted-foreground">
