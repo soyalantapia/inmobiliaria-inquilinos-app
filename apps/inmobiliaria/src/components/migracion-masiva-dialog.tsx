@@ -37,6 +37,7 @@ import {
   type FilaMigracion,
 } from '@/lib/migracion-masiva';
 import { formatMonto } from '@/lib/format';
+import { apiEnabled } from '@/lib/api/client';
 
 type Step = 'upload' | 'leyendo' | 'preview' | 'listo';
 const MAX_FILE_MB = 20;
@@ -131,6 +132,17 @@ export function MigracionMasivaDialog({
   };
 
   const importar = () => {
+    // En prod la importación masiva por IA no está disponible todavía — el
+    // endpoint /contratos/importar-bulk no existe. Mostramos el estado real
+    // en lugar de simular un éxito que no persiste en la DB.
+    if (apiEnabled) {
+      toast({
+        title: 'Importación masiva · Próximamente',
+        description: 'Estamos desarrollando esta funcionalidad. Por ahora usá el alta manual desde "Nuevo contrato".',
+      });
+      onOpenChange(false);
+      return;
+    }
     const n = seleccionados.size;
     setCantidadImportada(n);
     setStep('listo');

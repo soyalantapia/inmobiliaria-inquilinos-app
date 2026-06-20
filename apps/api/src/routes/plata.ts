@@ -99,14 +99,15 @@ export async function plataRoutes(app: FastifyInstance) {
       });
       const cobrado = Number(agg._sum.monto ?? 0);
       // Total AUTORITATIVO de la liquidación (montoLiqTotal del pago es nullable;
-      // Number(null)=0 marcaría PAGADO siempre).
-      const liq = await tx.liquidacion.findUnique({
-        where: { id: pago.liquidacionId },
+      // Number(null)=0 marcaría PAGADO siempre). H-2: incluimos inmobiliariaId en
+      // ambas ops para que un ID de liquidación ajeno no pueda operar cross-tenant.
+      const liq = await tx.liquidacion.findFirst({
+        where: { id: pago.liquidacionId, inmobiliariaId: u.inmobiliariaId },
         select: { montoTotal: true },
       });
       const total = Number(liq?.montoTotal ?? pago.montoLiqTotal ?? 0);
-      await tx.liquidacion.update({
-        where: { id: pago.liquidacionId },
+      await tx.liquidacion.updateMany({
+        where: { id: pago.liquidacionId, inmobiliariaId: u.inmobiliariaId },
         data:
           total > 0 && cobrado >= total
             ? { estado: 'PAGADO', fechaPago: pago.fechaTransferencia, metodoPago: 'TRANSFERENCIA' }
@@ -159,7 +160,9 @@ export async function plataRoutes(app: FastifyInstance) {
         monto: z.number().positive(),
         metodo: z.enum(['TRANSFERENCIA', 'MERCADOPAGO', 'EFECTIVO', 'CHEQUE']),
         nroOperacion: z.string().optional(),
-        fechaTransferencia: z.string(),
+        // coerce.date rechaza strings que no son fecha (antes new Date('xxx') =
+        // Invalid Date hacía explotar el create con 500 en una acción de plata).
+        fechaTransferencia: z.coerce.date(),
         nota: z.string().optional(),
       })
       .safeParse(request.body ?? {});
@@ -170,6 +173,18 @@ export async function plataRoutes(app: FastifyInstance) {
     });
     if (!liq) return reply.code(404).send({ message: 'Liquidación inexistente' });
     if (liq.estado === 'PAGADO') return reply.code(409).send({ message: 'Esta liquidación ya está paga' });
+
+    // Evitar doble-informe: si ya hay un pago INFORMADO esperando validación,
+    // no creamos otro (el inquilino no veía el estado "pendiente de validación"
+    // en prod y cada toque del botón insertaba otra fila Pago en la bandeja).
+    const yaInformado = await prisma.pago.findFirst({
+      where: { liquidacionId: liq.id, estado: 'INFORMADO' },
+    });
+    if (yaInformado) {
+      return reply
+        .code(409)
+        .send({ message: 'Ya informaste un pago de este mes; esperá que la inmobiliaria lo valide.' });
+    }
 
     return prisma.pago.create({
       data: {
@@ -182,7 +197,7 @@ export async function plataRoutes(app: FastifyInstance) {
         montoLiqTotal: liq.montoTotal,
         metodo: body.data.metodo,
         nroOperacion: body.data.nroOperacion,
-        fechaTransferencia: new Date(body.data.fechaTransferencia),
+        fechaTransferencia: body.data.fechaTransferencia,
         notaInquilino: body.data.nota,
       },
     });
@@ -319,9 +334,20 @@ export async function plataRoutes(app: FastifyInstance) {
     }
     if (montoBruto === 0) return reply.code(409).send({ message: `No hay cobros del período ${periodo} para rendir` });
 
-    // Gastos pendientes de sus propiedades × participación
+    // Gastos pendientes de sus propiedades × participación — SOLO del período
+    // que se rinde. Antes traía gastos de CUALQUIER mes y los descontaba todos
+    // en la primera rendición (el propietario cobraba de menos / neto negativo).
+    const inicioPeriodo = new Date(`${periodo}-01T00:00:00.000Z`);
+    const finPeriodo = new Date(inicioPeriodo);
+    finPeriodo.setUTCMonth(finPeriodo.getUTCMonth() + 1);
     const gastosPend = await prisma.movimientoCaja.findMany({
-      where: { inmobiliariaId: u.inmobiliariaId, propiedadId: { in: propIds }, tipo: 'GASTO', descontadoEnRendicion: false },
+      where: {
+        inmobiliariaId: u.inmobiliariaId,
+        propiedadId: { in: propIds },
+        tipo: 'GASTO',
+        descontadoEnRendicion: false,
+        fecha: { gte: inicioPeriodo, lt: finPeriodo },
+      },
       include: { propiedad: { select: { direccion: true } } },
     });
 
@@ -356,31 +382,49 @@ export async function plataRoutes(app: FastifyInstance) {
       });
     }
 
-    // Transacción: crear rendición + snapshots + marcar gastos DESCONTADOS
-    const rendicion = await prisma.$transaction(async (tx) => {
-      const r = await tx.rendicion.create({
-        data: {
-          inmobiliariaId: u.inmobiliariaId,
-          propietarioId,
-          periodo,
-          montoBruto,
-          comisionPct: owner.comisionPct,
-          comisionMonto,
-          totalGastos,
-          montoNeto,
-          metodo: body.data.metodo,
-          notas: body.data.notas,
-        },
-      });
-      if (gastosData.length > 0) {
-        await tx.gastoRendido.createMany({ data: gastosData.map((g) => ({ ...g, rendicionId: r.id })) });
-        await tx.movimientoCaja.updateMany({
-          where: { id: { in: gastosPend.map((g) => g.id) } },
-          data: { descontadoEnRendicion: true, rendicionId: r.id },
+    // Transacción: crear rendición + snapshots + marcar gastos DESCONTADOS.
+    // El updateMany de gastos es un LOCK condicionado (WHERE descontadoEnRendicion
+    // =false): si otra rendición concurrente ya tomó alguno, el count no cuadra y
+    // abortamos toda la transacción (antes dos rendiciones simultáneas podían
+    // descontar el mismo gasto dos veces).
+    let rendicion;
+    try {
+      rendicion = await prisma.$transaction(async (tx) => {
+        const r = await tx.rendicion.create({
+          data: {
+            inmobiliariaId: u.inmobiliariaId,
+            propietarioId,
+            periodo,
+            montoBruto,
+            comisionPct: owner.comisionPct,
+            comisionMonto,
+            totalGastos,
+            montoNeto,
+            metodo: body.data.metodo,
+            notas: body.data.notas,
+          },
         });
+        if (gastosData.length > 0) {
+          const lock = await tx.movimientoCaja.updateMany({
+            where: { id: { in: gastosPend.map((g) => g.id) }, descontadoEnRendicion: false },
+            data: { descontadoEnRendicion: true, rendicionId: r.id },
+          });
+          if (lock.count !== gastosData.length) {
+            throw new Error('GASTO_YA_RENDIDO');
+          }
+          await tx.gastoRendido.createMany({ data: gastosData.map((g) => ({ ...g, rendicionId: r.id })) });
+        }
+        return r;
+      });
+    } catch (e) {
+      if (e instanceof Error && e.message === 'GASTO_YA_RENDIDO') {
+        return reply.code(409).send({ message: 'Algún gasto ya fue rendido en otra rendición. Recargá y reintentá.' });
       }
-      return r;
-    });
+      if (e && typeof e === 'object' && (e as { code?: string }).code === 'P2002') {
+        return reply.code(409).send({ message: `El período ${periodo} ya está rendido a este propietario` });
+      }
+      throw e;
+    }
 
     return reply.code(201).send(rendicion);
   });
@@ -397,8 +441,9 @@ export async function plataRoutes(app: FastifyInstance) {
     const r = await prisma.rendicion.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
     if (!r) return reply.code(404).send({ message: 'Rendición inexistente' });
     await prisma.$transaction([
-      // Los gastos vuelven a quedar disponibles para descontar en la próxima rendición.
-      prisma.movimientoCaja.updateMany({ where: { rendicionId: id }, data: { descontadoEnRendicion: false, rendicionId: null } }),
+      // H-3: inmobiliariaId en los deletes/updates para que un id ajeno no opere
+      // cross-tenant aunque la verificación previa ya lo garantice por FK.
+      prisma.movimientoCaja.updateMany({ where: { rendicionId: id, inmobiliariaId: u.inmobiliariaId }, data: { descontadoEnRendicion: false, rendicionId: null } }),
       prisma.gastoRendido.deleteMany({ where: { rendicionId: id } }),
       prisma.rendicion.delete({ where: { id } }),
     ]);
@@ -429,37 +474,54 @@ export async function plataRoutes(app: FastifyInstance) {
       }
       if (!(await verificarPin(u.userId, body.pin, reply))) return;
 
-      const apr = await prisma.aprobacion.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
-      if (!apr) return reply.code(404).send({ message: 'Aprobación inexistente' });
-      if (apr.estado !== 'PENDIENTE') return reply.code(409).send({ message: 'Ya fue decidida' });
-
-      const updated = await prisma.aprobacion.update({
-        where: { id },
-        data: {
-          estado: accion === 'aprobar' ? 'APROBADA' : 'RECHAZADA',
-          aprobadoPorId: u.userId,
-          aprobadoAt: new Date(),
-          comentarioAprobador: body.comentario,
-        },
-        // Mismo shape que GET /aprobaciones: el front mapea cargadoPor.nombre.
-        include: { cargadoPor: { select: { nombre: true, apellido: true, rol: true } } },
-      });
-      // Si es un contrato cargado, al aprobar pasa a ACTIVO / al rechazar queda BORRADOR sin pendiente
-      if (apr.tipo === 'CONTRATO_CARGADO') {
-        const contratoActualizado = await prisma.contrato.update({
-          where: { id: apr.entidadId },
-          data:
-            accion === 'aprobar'
-              ? { estado: 'ACTIVO', pendienteAprobacion: false, aprobadoAt: new Date() }
-              : { pendienteAprobacion: false },
+      // TODO atómico en una sola transacción: el updateMany condicionado por
+      // estado='PENDIENTE' es el lock (solo la primera request gana), y la
+      // activación del contrato + devengo van en la MISMA tx. Antes el update de
+      // la aprobación y el del contrato eran awaits sueltos: si el segundo fallaba
+      // (P2025, contrato borrado), la aprobación quedaba decidida pero el contrato
+      // sin activar (commit parcial + falso error), y dos requests concurrentes
+      // pasaban ambas el pre-check.
+      const result = await prisma.$transaction(async (tx) => {
+        const apr = await tx.aprobacion.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
+        if (!apr) return { http: 404 as const };
+        const lock = await tx.aprobacion.updateMany({
+          where: { id, inmobiliariaId: u.inmobiliariaId, estado: 'PENDIENTE' },
+          data: {
+            estado: accion === 'aprobar' ? 'APROBADA' : 'RECHAZADA',
+            aprobadoPorId: u.userId,
+            aprobadoAt: new Date(),
+            comentarioAprobador: body.comentario,
+          },
         });
-        // Al aprobar, el contrato se activa → devengar sus liquidaciones
-        // (idempotente: skipDuplicates si ya existían).
-        if (accion === 'aprobar') {
-          await generarLiquidacionesContrato(prisma, contratoActualizado);
+        if (lock.count === 0) return { http: 409 as const };
+        // Si es un contrato cargado, al aprobar pasa a ACTIVO / al rechazar queda BORRADOR sin pendiente.
+        // H-4: updateMany con inmobiliariaId para defensa en profundidad (apr ya
+        // está scoped pero el contrato.update usaría sólo el PK sin esa garantía).
+        if (apr.tipo === 'CONTRATO_CARGADO') {
+          await tx.contrato.updateMany({
+            where: { id: apr.entidadId, inmobiliariaId: u.inmobiliariaId },
+            data:
+              accion === 'aprobar'
+                ? { estado: 'ACTIVO', pendienteAprobacion: false, aprobadoAt: new Date() }
+                : { pendienteAprobacion: false },
+          });
+          // Al aprobar, el contrato se activa → devengar sus liquidaciones
+          // (idempotente: skipDuplicates si ya existían).
+          if (accion === 'aprobar') {
+            const contratoActualizado = await tx.contrato.findUniqueOrThrow({ where: { id: apr.entidadId } });
+            await generarLiquidacionesContrato(tx, contratoActualizado);
+          }
         }
-      }
-      return updated;
+        // Mismo shape que GET /aprobaciones: el front mapea cargadoPor.nombre.
+        const updated = await tx.aprobacion.findUniqueOrThrow({
+          where: { id },
+          include: { cargadoPor: { select: { nombre: true, apellido: true, rol: true } } },
+        });
+        return { http: 200 as const, updated };
+      });
+      if (result.http === 404) return reply.code(404).send({ message: 'Aprobación inexistente' });
+      if (result.http === 409) return reply.code(409).send({ message: 'Ya fue decidida' });
+      return result.updated;
     });
   }
 }

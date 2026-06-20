@@ -263,29 +263,37 @@ export async function operacionRoutes(app: FastifyInstance) {
 
     const reclamo = await prisma.reclamo.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
     if (!reclamo) return reply.code(404).send({ message: 'Reclamo inexistente' });
-    if ((ESTADOS_CERRADOS as readonly string[]).includes(reclamo.estado)) {
-      return reply.code(409).send({ message: 'El reclamo ya fue decidido' });
-    }
 
     const ahora = new Date();
     const autor = await nombreUsuario(u.userId);
-    const [actualizado] = await prisma.$transaction([
-      prisma.reclamo.update({
-        where: { id },
-        data: { estado: 'RESUELTO', resolucion: body.data.resolucion, resueltoAt: ahora },
-      }),
-      prisma.reclamoEvento.create({
-        data: {
-          inmobiliariaId: u.inmobiliariaId,
-          reclamoId: id,
-          tipo: 'RESUELTO',
-          autor,
-          contenido: body.data.resolucion,
-          fecha: ahora,
-        },
-      }),
-    ]);
-    return conSla(actualizado);
+    try {
+      const actualizado = await prisma.$transaction(async (tx) => {
+        // Lock por estado: si otra request ya lo cerró/rechazó/resolvió, count=0 →
+        // abortamos. Antes el update era incondicional: resolver y rechazar
+        // concurrentes podían commitear ambos y dejar el timeline con eventos
+        // contradictorios.
+        const res = await tx.reclamo.updateMany({
+          where: { id, estado: { notIn: [...ESTADOS_CERRADOS] } },
+          data: { estado: 'RESUELTO', resolucion: body.data.resolucion, resueltoAt: ahora },
+        });
+        if (res.count === 0) throw new ConflictoEstadoReclamo('El reclamo ya fue decidido');
+        await tx.reclamoEvento.create({
+          data: {
+            inmobiliariaId: u.inmobiliariaId,
+            reclamoId: id,
+            tipo: 'RESUELTO',
+            autor,
+            contenido: body.data.resolucion,
+            fecha: ahora,
+          },
+        });
+        return tx.reclamo.findUniqueOrThrow({ where: { id } });
+      });
+      return conSla(actualizado);
+    } catch (e) {
+      if (e instanceof ConflictoEstadoReclamo) return reply.code(409).send({ message: e.message });
+      throw e;
+    }
   });
 
   app.post('/reclamos/:id/rechazar', async (request, reply) => {
@@ -297,21 +305,25 @@ export async function operacionRoutes(app: FastifyInstance) {
 
     const reclamo = await prisma.reclamo.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
     if (!reclamo) return reply.code(404).send({ message: 'Reclamo inexistente' });
-    if ((ESTADOS_CERRADOS as readonly string[]).includes(reclamo.estado)) {
-      return reply.code(409).send({ message: 'El reclamo ya fue decidido' });
-    }
 
     const autor = await nombreUsuario(u.userId);
-    const [actualizado] = await prisma.$transaction([
-      prisma.reclamo.update({
-        where: { id },
-        data: { estado: 'RECHAZADO', resolucion: body.data.motivo },
-      }),
-      prisma.reclamoEvento.create({
-        data: { inmobiliariaId: u.inmobiliariaId, reclamoId: id, tipo: 'RECHAZADO', autor, contenido: body.data.motivo },
-      }),
-    ]);
-    return conSla(actualizado);
+    try {
+      const actualizado = await prisma.$transaction(async (tx) => {
+        const res = await tx.reclamo.updateMany({
+          where: { id, estado: { notIn: [...ESTADOS_CERRADOS] } },
+          data: { estado: 'RECHAZADO', resolucion: body.data.motivo },
+        });
+        if (res.count === 0) throw new ConflictoEstadoReclamo('El reclamo ya fue decidido');
+        await tx.reclamoEvento.create({
+          data: { inmobiliariaId: u.inmobiliariaId, reclamoId: id, tipo: 'RECHAZADO', autor, contenido: body.data.motivo },
+        });
+        return tx.reclamo.findUniqueOrThrow({ where: { id } });
+      });
+      return conSla(actualizado);
+    } catch (e) {
+      if (e instanceof ConflictoEstadoReclamo) return reply.code(409).send({ message: e.message });
+      throw e;
+    }
   });
 
   app.post('/reclamos/:id/responder', async (request, reply) => {

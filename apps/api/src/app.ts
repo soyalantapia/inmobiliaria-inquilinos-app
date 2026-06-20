@@ -3,6 +3,7 @@ import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import jwt from '@fastify/jwt';
 import rateLimit from '@fastify/rate-limit';
+import { ZodError } from 'zod';
 import { loadEnv, type Env } from './env.js';
 import { healthRoutes } from './routes/health.js';
 import { authRoutes } from './routes/auth.js';
@@ -38,6 +39,29 @@ export async function buildApp(envOverrides: Partial<Record<string, string>> = {
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
   });
   await app.register(jwt, { secret: env.JWT_SECRET });
+
+  // Error-handler global: sin esto cualquier z.parse() o error de Prisma no
+  // atrapado cae al 500 genérico de Fastify (entrada malformada o conflicto se
+  // ven como "error del servidor", y en mutaciones = falso-error tras commit).
+  // Acá los mapeamos a 4xx claros. Es la red de seguridad; cada endpoint igual
+  // valida con zod y maneja sus conflictos donde puede dar un mensaje mejor.
+  app.setErrorHandler((err, req, reply) => {
+    if (err instanceof ZodError) {
+      return reply.code(400).send({ message: 'Datos inválidos', issues: err.issues });
+    }
+    const code = (err as { code?: string }).code;
+    if (code === 'P2002') return reply.code(409).send({ message: 'Ya existe un registro con esos datos' });
+    if (code === 'P2003') return reply.code(409).send({ message: 'No se puede completar: hay datos relacionados' });
+    if (code === 'P2025') return reply.code(404).send({ message: 'Registro inexistente' });
+    // Errores que ya traen un statusCode de cliente (rate-limit 429, JWT 401,
+    // validación nativa de Fastify 400…): respetarlos en vez de pisarlos con 500.
+    const status = (err as { statusCode?: number }).statusCode;
+    if (typeof status === 'number' && status >= 400 && status < 500) {
+      return reply.code(status).send({ message: (err as Error).message });
+    }
+    req.log?.error(err);
+    return reply.code(500).send({ message: 'Error interno' });
+  });
 
   await app.register(healthRoutes);
   await app.register(authRoutes);

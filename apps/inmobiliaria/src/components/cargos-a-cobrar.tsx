@@ -138,8 +138,8 @@ function CargoRow({ cargo }: { cargo: CargoACobrar }) {
             asChild
             onClick={() => {
               toast({
-                title: 'Recordatorio enviado',
-                description: `Le mandamos el detalle del cargo a ${nombrePila}.`,
+                title: 'WhatsApp listo para enviar',
+                description: `Abrimos el chat con ${nombrePila}. Mandá el mensaje cuando quieras.`,
               });
             }}
           >

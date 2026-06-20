@@ -76,6 +76,7 @@ export default function DetalleReclamoPage() {
   const [costoStr, setCostoStr] = useState('');
   const [costoNotas, setCostoNotas] = useState('');
   const [dialogo, setDialogo] = useState<'resolver' | 'rechazar' | 'cerrar' | null>(null);
+  const [dialogoCargando, setDialogoCargando] = useState(false);
   const scrollEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -159,6 +160,9 @@ export default function DetalleReclamoPage() {
   const confirmarDialogo = async () => {
     if (!dialogo) return;
     const reclamoId = reclamo.id;
+    // Loading guard: evita que el usuario haga doble click y cree dos eventos
+    // de timeline con estados contradictorios (RESUELTO+RECHAZADO a la vez).
+    setDialogoCargando(true);
 
     if (dialogo === 'resolver') {
       const resolucionTxt = resolucion.trim();
@@ -212,6 +216,7 @@ export default function DetalleReclamoPage() {
       }
     }
 
+    setDialogoCargando(false);
     setDialogo(null);
     setResolucion('');
     setCostoStr('');
@@ -631,6 +636,7 @@ export default function DetalleReclamoPage() {
         }
         confirmLabel="Confirmar resolución"
         confirmDisabled={resolucion.trim().length < 5}
+        loading={dialogoCargando}
         onConfirm={() => confirmarDialogo()}
       />
 
@@ -666,6 +672,7 @@ export default function DetalleReclamoPage() {
         confirmLabel="Rechazar"
         variant="destructive"
         confirmDisabled={resolucion.trim().length < 5}
+        loading={dialogoCargando}
         onConfirm={() => confirmarDialogo()}
       />
 

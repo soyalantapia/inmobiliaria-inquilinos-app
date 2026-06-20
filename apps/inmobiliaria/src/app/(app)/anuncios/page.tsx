@@ -50,6 +50,7 @@ import {
   inquilinosAlcanzables,
 } from '@/lib/anuncios-storage';
 import { useAnuncios, useContratos, type AnuncioConConteos } from '@/lib/api/hooks';
+import { apiEnabled } from '@/lib/api/client';
 import { type ContratoListado } from '@/lib/types';
 import { formatFechaCorta } from '@/lib/format';
 
@@ -295,7 +296,12 @@ function AnuncioCard({
   const esNormal = anuncio.prioridad === 'NORMAL';
   const { leido, confirmado, total } = anuncio.conteos ?? { leido: 0, confirmado: 0, total: anuncio.destinatariosCount };
   const faltan = total - leido;
-  const recordar = () =>
+  const recordar = () => {
+    // En prod no hay endpoint de re-envío: evitar falso éxito
+    if (apiEnabled) {
+      toast({ title: 'Re-envío · Próximamente', description: 'Esta funcionalidad estará disponible en la próxima versión.' });
+      return;
+    }
     toast({
       title: 'Recordatorio enviado',
       description:
@@ -303,6 +309,7 @@ function AnuncioCard({
           ? 'Le reenviamos el anuncio a 1 destinatario que no lo leyó.'
           : `Les reenviamos el anuncio a ${faltan} destinatarios que no lo leyeron.`,
     });
+  };
   return (
     <Card
       className={`border-l-4 transition-colors hover:bg-muted/30 ${PRIORIDAD_ACCENT[anuncio.prioridad]}`}

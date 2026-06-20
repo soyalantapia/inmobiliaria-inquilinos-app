@@ -6,6 +6,7 @@ import {
   type JwtPayload,
   type JwtUsuario,
 } from '@llave/shared';
+import { prisma } from '../db.js';
 
 /** Verifica el Bearer token y devuelve el payload tipado. 401 si falta/inválido. */
 export async function requireAuth(request: FastifyRequest, reply: FastifyReply): Promise<JwtPayload | null> {
@@ -90,17 +91,30 @@ export async function requireContratoAcceso(
     };
   }
   if (payload.kind === 'co-inquilino') {
-    if (RANGO_PERMISO[payload.permiso] < RANGO_PERMISO[minPermiso]) {
-      await reply.code(403).send({ message: `Tu acceso (${payload.permiso}) no alcanza para esta acción` });
+    // El token dura 15 días, así que NO confiamos en el permiso/estado del JWT:
+    // los revalidamos contra la DB en cada request. Si el titular sacó el acceso
+    // o bajó el permiso, surte efecto al instante (antes el co-inquilino seguía
+    // entrando con su permiso viejo hasta que venciera el token = agujero real).
+    const co = await prisma.coInquilino.findUnique({ where: { id: payload.coInquilinoId } });
+    if (!co || co.estado !== 'ACEPTADO') {
+      await reply.code(401).send({ message: 'Tu acceso fue revocado' });
+      return null;
+    }
+    if (co.contratoId !== payload.contratoId || co.inmobiliariaId !== payload.inmobiliariaId) {
+      await reply.code(401).send({ message: 'Tu acceso fue revocado' });
+      return null;
+    }
+    if (RANGO_PERMISO[co.permiso] < RANGO_PERMISO[minPermiso]) {
+      await reply.code(403).send({ message: `Tu acceso (${co.permiso}) no alcanza para esta acción` });
       return null;
     }
     return {
-      inmobiliariaId: payload.inmobiliariaId,
-      contratoId: payload.contratoId,
-      permiso: payload.permiso,
+      inmobiliariaId: co.inmobiliariaId,
+      contratoId: co.contratoId,
+      permiso: co.permiso,
       esCoInquilino: true,
       inquilinoId: null,
-      coInquilinoId: payload.coInquilinoId,
+      coInquilinoId: co.id,
     };
   }
   await reply.code(403).send({ message: 'Solo para inquilinos' });

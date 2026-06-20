@@ -223,6 +223,9 @@ export async function coreRoutes(app: FastifyInstance) {
   app.delete('/propietarios/:id', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'propietarios.crear');
     if (!u) return;
+    // H-1: la capacidad 'propietarios.crear' incluye CARGA, pero eliminar requiere
+    // al menos OPERADOR (impacto mayor que cargar).
+    if (u.rol === 'CARGA') return reply.code(403).send({ message: 'Solo un Admin u Operador puede eliminar propietarios' });
     const { id } = request.params as { id: string };
     const prop = await prisma.propietario.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
     if (!prop) return reply.code(404).send({ message: 'Propietario inexistente' });
@@ -264,10 +267,15 @@ export async function coreRoutes(app: FastifyInstance) {
       .safeParse(request.body ?? {});
     if (!body.success) return reply.code(400).send({ message: 'Datos de la propiedad incompletos' });
     const d = body.data;
+    // B1: mismo propietario duplicado en el array → P2002 en createMany → 500
+    const idsUnicos = [...new Set(d.propietarios.map((p) => p.propietarioId))];
+    if (idsUnicos.length !== d.propietarios.length) {
+      return reply.code(400).send({ message: 'El mismo propietario aparece más de una vez en la división' });
+    }
     if (Math.round(d.propietarios.reduce((a, p) => a + p.porcentaje, 0)) !== 100) {
       return reply.code(400).send({ message: 'Los porcentajes de los propietarios deben sumar 100' });
     }
-    const ids = d.propietarios.map((p) => p.propietarioId);
+    const ids = idsUnicos;
     const existen = await prisma.propietario.count({ where: { id: { in: ids }, inmobiliariaId: u.inmobiliariaId } });
     if (existen !== ids.length) return reply.code(400).send({ message: 'Algún propietario no existe' });
     return prisma.$transaction(async (tx) => {
@@ -304,6 +312,8 @@ export async function coreRoutes(app: FastifyInstance) {
   app.delete('/propiedades/:id', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'propiedades.crear');
     if (!u) return;
+    // H-1: mismo razonamiento que DELETE /propietarios.
+    if (u.rol === 'CARGA') return reply.code(403).send({ message: 'Solo un Admin u Operador puede eliminar propiedades' });
     const { id } = request.params as { id: string };
     const prop = await prisma.propiedad.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
     if (!prop) return reply.code(404).send({ message: 'Propiedad inexistente' });
@@ -344,8 +354,10 @@ export async function coreRoutes(app: FastifyInstance) {
         }),
         monto: z.number().nonnegative(), // 0 válido para SOLO_EXPENSAS
         moneda: z.enum(['ARS', 'USD']).default('ARS'),
-        fechaInicio: z.string(),
-        fechaFin: z.string(),
+        // coerce.date rechaza strings que no son fecha — antes new Date('xxx')
+        // producía Invalid Date, que Prisma aceptaba y guardaba como null/epoch.
+        fechaInicio: z.coerce.date(),
+        fechaFin: z.coerce.date(),
         diaPago: z.number().int().min(1).max(31),
         indiceAjuste: z.enum(['ICL', 'IPC', 'CASA_PROPIA', 'UVA', 'CAC', 'RIPTE']),
         frecuenciaAjusteMeses: z.number().int().positive(),
@@ -357,6 +369,9 @@ export async function coreRoutes(app: FastifyInstance) {
       .safeParse(request.body ?? {});
     if (!body.success) return reply.code(400).send({ message: 'Datos del contrato incompletos' });
     const d = body.data;
+    if (d.fechaFin <= d.fechaInicio) {
+      return reply.code(400).send({ message: 'La fecha de fin tiene que ser posterior a la fecha de inicio' });
+    }
     const prop = await prisma.propiedad.findFirst({ where: { id: d.propiedadId, inmobiliariaId: u.inmobiliariaId } });
     if (!prop) return reply.code(404).send({ message: 'Propiedad inexistente' });
     if (prop.contratoActualId) return reply.code(409).send({ message: 'La propiedad ya tiene un contrato activo' });
@@ -406,8 +421,8 @@ export async function coreRoutes(app: FastifyInstance) {
           estado: 'ACTIVO',
           monto: d.monto,
           moneda: d.moneda,
-          fechaInicio: new Date(d.fechaInicio),
-          fechaFin: new Date(d.fechaFin),
+          fechaInicio: d.fechaInicio,
+          fechaFin: d.fechaFin,
           diaPago: d.diaPago,
           indiceAjuste: d.indiceAjuste,
           frecuenciaAjusteMeses: d.frecuenciaAjusteMeses,
@@ -759,7 +774,25 @@ export async function coreRoutes(app: FastifyInstance) {
     if (!body.success) return reply.code(400).send({ message: body.error.issues[0]?.message ?? 'Datos inválidos' });
     const email = body.data.email.toLowerCase();
     const yaExiste = await prisma.usuario.findFirst({ where: { email } });
-    if (yaExiste) return reply.code(409).send({ message: 'Ya existe una cuenta con ese email' });
+    if (yaExiste) {
+      // B5: si fue dado de baja lógica (activo=false) en ESTA inmobiliaria, lo
+      // reactivamos con los nuevos datos en lugar de bloquear el email para siempre.
+      if (!yaExiste.activo && yaExiste.inmobiliariaId === u.inmobiliariaId) {
+        const reactivado = await prisma.usuario.update({
+          where: { id: yaExiste.id },
+          data: {
+            nombre: body.data.nombre,
+            apellido: body.data.apellido,
+            rol: body.data.rol,
+            passwordHash: bcrypt.hashSync(body.data.password, 10),
+            activo: true,
+          },
+          select: { id: true, nombre: true, apellido: true, email: true, rol: true, activo: true },
+        });
+        return reply.code(200).send({ ...reactivado, esVos: false });
+      }
+      return reply.code(409).send({ message: 'Ya existe una cuenta con ese email' });
+    }
     const creado = await prisma.usuario.create({
       data: {
         inmobiliariaId: u.inmobiliariaId,

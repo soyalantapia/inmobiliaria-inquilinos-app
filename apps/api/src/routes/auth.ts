@@ -161,22 +161,25 @@ export async function authRoutes(app: FastifyInstance) {
     const body = OtpRequestSchema.safeParse(request.body);
     if (!body.success) return reply.code(400).send({ message: 'Email requerido' });
 
-    const inquilino = await prisma.inquilino.findFirst({ where: { email: body.data.email.toLowerCase() } });
+    // El email de inquilino es único POR inmobiliaria (@@unique([inmobiliariaId,
+    // email])), no global: el mismo email puede existir en dos inmobiliarias.
+    // Generamos un OTP para CADA cuenta con ese email (mismo código, un solo
+    // mail) y al verificar la identidad sale del OTP que matchea — nunca de un
+    // findFirst arbitrario (que podía loguear contra el tenant equivocado).
+    const emailLc = body.data.email.toLowerCase();
+    const inquilinos = await prisma.inquilino.findMany({ where: { email: emailLc }, select: { id: true } });
     // Respuesta idéntica exista o no (no enumerar emails)
-    if (!inquilino) return { ok: true };
+    if (inquilinos.length === 0) return { ok: true };
 
     const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
-    await prisma.codigoOtp.create({
-      data: {
-        inquilinoId: inquilino.id,
-        codeHash: bcrypt.hashSync(code, 8),
-        expiresAt: new Date(Date.now() + OTP_TTL_MS),
-      },
+    const codeHash = bcrypt.hashSync(code, 8);
+    const expiresAt = new Date(Date.now() + OTP_TTL_MS);
+    await prisma.codigoOtp.createMany({
+      data: inquilinos.map((i) => ({ inquilinoId: i.id, codeHash, expiresAt })),
     });
     // Envío por SMTP si está configurado (SMTP_HOST/USER/PASS); si no, fallback
     // a loguear el código (dev/prueba). No filtramos el resultado al cliente.
-    // Lo encontramos por email, así que usamos el que matcheó (tipado nullable).
-    const destino = inquilino.email ?? body.data.email.toLowerCase();
+    const destino = emailLc;
     try {
       const enviado = await enviarOtp(destino, code);
       if (!enviado) app.log.info({ email: destino, code }, 'OTP generado (SMTP no configurado — código por log)');
@@ -192,23 +195,31 @@ export async function authRoutes(app: FastifyInstance) {
     const body = OtpVerifySchema.safeParse(request.body);
     if (!body.success) return reply.code(400).send({ message: 'Email y código de 6 dígitos requeridos' });
 
-    const inquilino = await prisma.inquilino.findFirst({ where: { email: body.data.email.toLowerCase() } });
-    if (!inquilino) return reply.code(401).send({ message: 'Código inválido' });
+    // Resolvemos la identidad por el OTP que matchea, no por findFirst-por-email:
+    // así un email compartido entre inmobiliarias no puede loguear contra la
+    // cuenta equivocada (la identidad sale de la fila OTP validada).
+    const emailLc = body.data.email.toLowerCase();
+    const inquilinos = await prisma.inquilino.findMany({ where: { email: emailLc } });
+    if (inquilinos.length === 0) return reply.code(401).send({ message: 'Código inválido' });
 
-    let valido = false;
-    if (app.env.DEMO_MODE && body.data.code === '000000') {
-      valido = true; // backdoor SOLO de demo/dev
+    let inquilino: (typeof inquilinos)[number] | null = null;
+    if (app.env.DEMO_MODE && body.data.code === '000000' && process.env.NODE_ENV !== 'production') {
+      inquilino = inquilinos[0] ?? null; // backdoor SOLO de demo/dev (M-1: excluir prod)
     } else {
-      const otp = await prisma.codigoOtp.findFirst({
-        where: { inquilinoId: inquilino.id, usedAt: null, expiresAt: { gt: new Date() } },
+      const ids = inquilinos.map((i) => i.id);
+      const otps = await prisma.codigoOtp.findMany({
+        where: { inquilinoId: { in: ids }, usedAt: null, expiresAt: { gt: new Date() } },
         orderBy: { createdAt: 'desc' },
       });
-      if (otp && bcrypt.compareSync(body.data.code, otp.codeHash)) {
-        await prisma.codigoOtp.update({ where: { id: otp.id }, data: { usedAt: new Date() } });
-        valido = true;
+      for (const otp of otps) {
+        if (bcrypt.compareSync(body.data.code, otp.codeHash)) {
+          await prisma.codigoOtp.update({ where: { id: otp.id }, data: { usedAt: new Date() } });
+          inquilino = inquilinos.find((i) => i.id === otp.inquilinoId) ?? null;
+          break;
+        }
       }
     }
-    if (!valido) return reply.code(401).send({ message: 'Código inválido o vencido' });
+    if (!inquilino) return reply.code(401).send({ message: 'Código inválido o vencido' });
 
     const payload: JwtInquilino = {
       kind: 'inquilino',
