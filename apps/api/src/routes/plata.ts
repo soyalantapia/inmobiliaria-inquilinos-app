@@ -79,17 +79,37 @@ export async function plataRoutes(app: FastifyInstance) {
     if (!pago) return reply.code(404).send({ message: 'Pago inexistente' });
     if (pago.estado !== 'INFORMADO') return reply.code(409).send({ message: 'El pago ya fue decidido' });
 
-    const [pagoOk] = await prisma.$transaction([
-      prisma.pago.update({
-        where: { id },
+    // Atómico:
+    //  1) La transición INFORMADO→CONCILIADO se hace con updateMany condicionado
+    //     (WHERE estado='INFORMADO'). Si otra request (validar/rechazar) ya lo
+    //     decidió, count=0 → 409. Cierra la carrera de doble-decisión.
+    //  2) La liquidación pasa a PAGADO SÓLO si la suma de pagos conciliados llega
+    //     al total; si es un pago parcial, queda PARCIAL. Antes un pago parcial la
+    //     marcaba PAGADO → el inquilino no podía pagar el resto y al propietario
+    //     se le acreditaba el monto completo (no el realmente cobrado).
+    const conflicto = await prisma.$transaction(async (tx) => {
+      const upd = await tx.pago.updateMany({
+        where: { id, estado: 'INFORMADO' },
         data: { estado: 'CONCILIADO', decididoPorId: u.userId, decididoAt: new Date() },
-      }),
-      prisma.liquidacion.update({
+      });
+      if (upd.count === 0) return true;
+      const agg = await tx.pago.aggregate({
+        where: { liquidacionId: pago.liquidacionId, estado: 'CONCILIADO' },
+        _sum: { monto: true },
+      });
+      const cobrado = Number(agg._sum.monto ?? 0);
+      const total = Number(pago.montoLiqTotal);
+      await tx.liquidacion.update({
         where: { id: pago.liquidacionId },
-        data: { estado: 'PAGADO', fechaPago: pago.fechaTransferencia, metodoPago: 'TRANSFERENCIA' },
-      }),
-    ]);
-    return pagoOk;
+        data:
+          cobrado >= total
+            ? { estado: 'PAGADO', fechaPago: pago.fechaTransferencia, metodoPago: 'TRANSFERENCIA' }
+            : { estado: 'PARCIAL' },
+      });
+      return false;
+    });
+    if (conflicto) return reply.code(409).send({ message: 'El pago ya fue decidido' });
+    return prisma.pago.findUnique({ where: { id } });
   });
 
   app.post('/pagos/:id/rechazar', async (request, reply) => {
@@ -104,10 +124,14 @@ export async function plataRoutes(app: FastifyInstance) {
     if (!pago) return reply.code(404).send({ message: 'Pago inexistente' });
     if (pago.estado !== 'INFORMADO') return reply.code(409).send({ message: 'El pago ya fue decidido' });
 
-    return prisma.pago.update({
-      where: { id },
+    // Atómico (igual que validar): WHERE estado='INFORMADO' garantiza que sólo
+    // una decisión (validar o rechazar) gane ante requests concurrentes.
+    const upd = await prisma.pago.updateMany({
+      where: { id, estado: 'INFORMADO' },
       data: { estado: 'RECHAZADO', observacion: body.data.observacion, decididoPorId: u.userId, decididoAt: new Date() },
     });
+    if (upd.count === 0) return reply.code(409).send({ message: 'El pago ya fue decidido' });
+    return prisma.pago.findUnique({ where: { id } });
   });
 
   // Inquilino (o co-inquilino con permiso PAGAR/COMPLETO) informa un pago.
@@ -309,6 +333,14 @@ export async function plataRoutes(app: FastifyInstance) {
       };
     });
     const montoNeto = montoBruto - comisionMonto - totalGastos;
+    // Si los gastos adelantados + comisión superan lo cobrado, el neto daría
+    // negativo (el propietario "debería" plata). No emitimos una rendición
+    // negativa: el operador tiene que resolverlo a mano (cobrar primero o ajustar).
+    if (montoNeto < 0) {
+      return reply.code(409).send({
+        message: 'Los gastos adelantados y la comisión superan lo cobrado este período. Revisá los gastos antes de rendir.',
+      });
+    }
 
     // Transacción: crear rendición + snapshots + marcar gastos DESCONTADOS
     const rendicion = await prisma.$transaction(async (tx) => {

@@ -238,6 +238,9 @@ export async function coreRoutes(app: FastifyInstance) {
     }
     await prisma.$transaction([
       prisma.cuentaCobranzaDirecta.deleteMany({ where: { propietarioId: id } }),
+      // El propietario puede tener ArcaConfig (relación 1:1). Sin borrarla, el
+      // delete tiraba 500 por violación de FK.
+      prisma.arcaConfig.deleteMany({ where: { propietarioId: id } }),
       prisma.propietario.delete({ where: { id } }),
     ]);
     return { ok: true };
@@ -357,6 +360,14 @@ export async function coreRoutes(app: FastifyInstance) {
     const prop = await prisma.propiedad.findFirst({ where: { id: d.propiedadId, inmobiliariaId: u.inmobiliariaId } });
     if (!prop) return reply.code(404).send({ message: 'Propiedad inexistente' });
     if (prop.contratoActualId) return reply.code(409).send({ message: 'La propiedad ya tiene un contrato activo' });
+    // Email del inquilino único por inmobiliaria (@@unique([inmobiliariaId,email])).
+    // Lo chequeamos acá para devolver un 409 claro en vez de un 500 por violación
+    // de constraint.
+    const emailInq = d.inquilino.email ? d.inquilino.email.toLowerCase() : null;
+    if (emailInq) {
+      const yaInq = await prisma.inquilino.findFirst({ where: { inmobiliariaId: u.inmobiliariaId, email: emailInq } });
+      if (yaInq) return reply.code(409).send({ message: 'Ya tenés un inquilino con ese email en tu cartera' });
+    }
     // Modo cobranza directa: el contrato apunta al dueño PRINCIPAL (mayor
     // participación). Si la propiedad no tiene dueños cargados, rechazamos acá:
     // si no, el inquilino quedaría sin cuenta real a la cual transferir y /mi-
@@ -374,16 +385,15 @@ export async function coreRoutes(app: FastifyInstance) {
       }
       cobraDirectoPropietarioId = part.propietarioId;
     }
-    return prisma.$transaction(async (tx) => {
+    try {
+      return await prisma.$transaction(async (tx) => {
       const inq = await tx.inquilino.create({
         data: {
           inmobiliariaId: u.inmobiliariaId,
           nombre: d.inquilino.nombre,
           apellido: d.inquilino.apellido || null,
-          // Normalizado a minúsculas: el login por OTP busca el email en
-          // minúsculas. Sin esto, un email cargado con mayúsculas dejaría al
-          // inquilino sin poder entrar nunca.
-          email: d.inquilino.email ? d.inquilino.email.toLowerCase() : null,
+          // Normalizado a minúsculas: el login por OTP busca el email en minúsculas.
+          email: emailInq,
           telefono: d.inquilino.telefono || null,
           dni: d.inquilino.dni || null,
           esInvitado: false,
@@ -412,12 +422,49 @@ export async function coreRoutes(app: FastifyInstance) {
         },
       });
       await tx.inquilino.update({ where: { id: inq.id }, data: { contratoId: contrato.id } });
-      await tx.propiedad.update({ where: { id: prop.id }, data: { contratoActualId: contrato.id, estado: 'ALQUILADA' } });
+      // Claim ATÓMICO de la propiedad: el WHERE contratoActualId=null garantiza
+      // que si otra request concurrente ya activó un contrato, count=0 → abortamos
+      // (cierra la carrera de doble alta de contrato sobre la misma propiedad).
+      const claim = await tx.propiedad.updateMany({
+        where: { id: prop.id, contratoActualId: null },
+        data: { contratoActualId: contrato.id, estado: 'ALQUILADA' },
+      });
+      if (claim.count === 0) throw new Error('PROP_OCUPADA');
       // Devengar las liquidaciones del contrato (cargos mensuales). Sin esto
       // el inquilino no tendría nada para pagar al activar el contrato.
       await generarLiquidacionesContrato(tx, contrato);
       return contrato;
-    });
+      });
+    } catch (e) {
+      if (e instanceof Error && e.message === 'PROP_OCUPADA') {
+        return reply.code(409).send({ message: 'La propiedad ya tiene un contrato activo' });
+      }
+      throw e;
+    }
+  });
+
+  // Finalizar un contrato: lo marca FINALIZADO y LIBERA la propiedad (vuelve a
+  // DISPONIBLE, contratoActualId=null) + desvincula al inquilino titular. Sin
+  // esto, una propiedad quedaba ALQUILADA para siempre y no se le podía cargar
+  // un contrato nuevo cuando el anterior vencía.
+  app.post('/contratos/:id/finalizar', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'contratos.crear');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const contrato = await prisma.contrato.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
+    if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
+    if (contrato.estado === 'FINALIZADO' || contrato.estado === 'RESCINDIDO') {
+      return reply.code(409).send({ message: 'El contrato ya está finalizado' });
+    }
+    await prisma.$transaction([
+      prisma.contrato.update({ where: { id }, data: { estado: 'FINALIZADO' } }),
+      prisma.propiedad.updateMany({
+        where: { id: contrato.propiedadId, contratoActualId: id },
+        data: { contratoActualId: null, estado: 'DISPONIBLE' },
+      }),
+      prisma.inquilino.updateMany({ where: { contratoId: id }, data: { contratoId: null } }),
+    ]);
+    return { ok: true };
   });
 
   // ===== Inquilinos =====
