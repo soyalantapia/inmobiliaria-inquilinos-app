@@ -55,8 +55,10 @@ function mapContrato(c: ContratoApi): ContratoListado {
     id: c.id,
     inquilino: c.inquilinoTitular
       ? `${c.inquilinoTitular.nombre} ${c.inquilinoTitular.apellido ?? ''}`.trim()
-      : (c.propiedad.consorcio?.nombre ?? '—'),
-    direccion: c.propiedad.direccion,
+      : (c.propiedad?.consorcio?.nombre ?? '—'),
+    // Defensa: una respuesta sin la relación `propiedad` (p.ej. un POST que
+    // devuelve la fila pelada) no debe crashear con "reading 'direccion'".
+    direccion: c.propiedad?.direccion ?? '—',
     monto: Number(c.monto),
     moneda: c.moneda,
     estado: c.estado,

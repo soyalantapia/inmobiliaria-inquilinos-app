@@ -165,6 +165,8 @@ export async function coreRoutes(app: FastifyInstance) {
       .safeParse(request.body ?? {});
     if (!body.success) return reply.code(400).send({ message: 'Datos del propietario incompletos' });
     const d = body.data;
+    // include participaciones (vacío en un alta nueva) para que la respuesta
+    // matchee el tipo PropietarioApi del cliente, que las espera presentes.
     return prisma.propietario.create({
       data: {
         inmobiliariaId: u.inmobiliariaId,
@@ -177,6 +179,7 @@ export async function coreRoutes(app: FastifyInstance) {
         comisionPct: d.comisionPct ?? 8,
         notas: d.notas || null,
       },
+      include: { participaciones: true },
     });
   });
 
