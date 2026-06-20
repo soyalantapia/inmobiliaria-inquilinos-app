@@ -259,8 +259,42 @@ export async function coreRoutes(app: FastifyInstance) {
           porcentaje: p.porcentaje,
         })),
       });
-      return prop;
+      // Devolvemos la propiedad CON sus participaciones: el cliente (mapPropiedad)
+      // hace p.participaciones.map(...) y, sin esto, crasheaba con "reading 'map'"
+      // DESPUÉS de crearla → falso error + recargas duplicadas.
+      return { ...prop, participaciones: d.propietarios };
     });
+  });
+
+  // Eliminar una propiedad. Pensado para limpiar altas DUPLICADAS: solo permite
+  // borrar propiedades SIN contrato activo y SIN historial (contratos, reclamos
+  // o movimientos de caja). Las que tienen historial no se borran — se preservan.
+  app.delete('/propiedades/:id', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'propiedades.crear');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const prop = await prisma.propiedad.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
+    if (!prop) return reply.code(404).send({ message: 'Propiedad inexistente' });
+    if (prop.contratoActualId) {
+      return reply.code(409).send({ message: 'No podés eliminar una propiedad con un contrato activo. Finalizá el contrato primero.' });
+    }
+    const [contratos, reclamos, movimientos] = await Promise.all([
+      prisma.contrato.count({ where: { propiedadId: id } }),
+      prisma.reclamo.count({ where: { propiedadId: id } }),
+      prisma.movimientoCaja.count({ where: { propiedadId: id } }),
+    ]);
+    if (contratos + reclamos + movimientos > 0) {
+      return reply.code(409).send({
+        message: 'Esta propiedad tiene historial (contratos, reclamos o caja) y no se puede eliminar.',
+      });
+    }
+    await prisma.$transaction([
+      prisma.participacionPropietario.deleteMany({ where: { propiedadId: id } }),
+      prisma.servicioPublico.deleteMany({ where: { propiedadId: id } }),
+      prisma.inquilinoInvitado.deleteMany({ where: { propiedadId: id } }),
+      prisma.propiedad.delete({ where: { id } }),
+    ]);
+    return { ok: true };
   });
 
   app.post('/contratos', async (request, reply) => {

@@ -697,8 +697,10 @@ function mapPropiedad(p: PropiedadApi): Propiedad {
     m2: p.m2,
     fotoUrl: p.fotoUrl,
     estado: p.estado as EstadoPropiedad,
-    propietariosIds: p.participaciones.map((x) => x.propietarioId),
-    participaciones: p.participaciones.map((x) => ({
+    // Defensa: si la respuesta no trae participaciones (p.ej. un POST que devuelve
+    // la fila pelada), no crasheamos con "reading 'map'".
+    propietariosIds: (p.participaciones ?? []).map((x) => x.propietarioId),
+    participaciones: (p.participaciones ?? []).map((x) => ({
       propietarioId: x.propietarioId,
       porcentaje: x.porcentaje,
     })),
@@ -1025,6 +1027,18 @@ export function useCrearPropiedad(): {
       });
       await qc.invalidateQueries({ queryKey: ['propiedades'] });
       return mapPropiedad(p);
+    },
+  };
+}
+
+/** Eliminar una propiedad sin historial (típicamente un alta duplicada). */
+export function useEliminarPropiedad(): { eliminar: (id: string) => Promise<void> } {
+  const qc = useQueryClient();
+  return {
+    eliminar: async (id) => {
+      await ensureApiSession();
+      await apiFetch(`/propiedades/${id}`, { method: 'DELETE' });
+      await qc.invalidateQueries({ queryKey: ['propiedades'] });
     },
   };
 }

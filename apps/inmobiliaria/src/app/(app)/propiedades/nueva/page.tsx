@@ -216,6 +216,16 @@ function NuevaPropiedadForm() {
     propietariosValidos &&
     contratoValido;
 
+  // Qué falta para poder cargar — así el botón deshabilitado no es un misterio.
+  const motivosFaltantes: string[] = [];
+  if (!tipo) motivosFaltantes.push('Elegí el tipo de propiedad');
+  if (calle.trim().length < 3) motivosFaltantes.push('Completá la calle');
+  if (altura.trim().length < 1) motivosFaltantes.push('Completá la altura');
+  if (ciudad.trim().length < 2) motivosFaltantes.push('Completá la ciudad / localidad');
+  if (!propietariosVisibles.every((p) => !!p.propietarioId)) motivosFaltantes.push('Asigná un propietario');
+  if (!pctValido) motivosFaltantes.push(`La división tiene que sumar 100% (hoy suma ${totalPct}%)`);
+  if (contratoActivado && !contratoValido) motivosFaltantes.push('Completá los datos del contrato (monto, fecha, duración)');
+
   // Acciones propietarios
   const agregarSlotPropietario = () => {
     setAsignados((prev) => {
@@ -632,6 +642,22 @@ function NuevaPropiedadForm() {
                   </div>
                 </div>
 
+                <p className="text-[11px] leading-relaxed text-muted-foreground">
+                  {conDivision ? (
+                    <>
+                      <strong className="text-foreground">Con división %:</strong> indicá qué porcentaje
+                      del alquiler le corresponde a cada propietario. Tiene que sumar 100%.
+                    </>
+                  ) : (
+                    <>
+                      Un solo dueño se queda con el 100% del alquiler. Si la propiedad tiene{' '}
+                      <strong className="text-foreground">más de un propietario</strong>, activá{' '}
+                      <strong className="text-foreground">«Con división %»</strong> para repartir el
+                      alquiler entre ellos.
+                    </>
+                  )}
+                </p>
+
                 <div className="space-y-2">
                   {(conDivision ? asignados : asignados.slice(0, 1)).map((slot, idx) => (
                     <div
@@ -1015,10 +1041,21 @@ function NuevaPropiedadForm() {
                   )}
                 </div>
 
+                {!formValido && motivosFaltantes.length > 0 && (
+                  <div className="rounded-md border border-amber-300 bg-amber-50 p-2.5 text-[11px] text-amber-800">
+                    <p className="font-semibold">Para cargar la propiedad falta:</p>
+                    <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                      {motivosFaltantes.map((m) => (
+                        <li key={m}>{m}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 <Button
                   size="lg"
                   className="w-full"
                   disabled={!formValido}
+                  title={formValido ? undefined : `Falta: ${motivosFaltantes.join(' · ')}`}
                   onClick={() => setConfirmando(true)}
                 >
                   <CheckCircle2 className="h-4 w-4" />

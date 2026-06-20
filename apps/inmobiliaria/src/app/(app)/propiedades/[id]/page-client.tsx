@@ -28,6 +28,7 @@ import { Avatar, AvatarFallback } from '@llave/ui/avatar';
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { EditarPropiedadTrigger } from '@/components/editar-propiedad-trigger';
+import { EliminarPropiedadButton } from '@/components/eliminar-propiedad-button';
 import {
   CargarInquilinoTrigger,
   ListaInvitadosPropiedad,
@@ -184,6 +185,9 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                   </Button>
                 ) : (
                   <EditarPropiedadTrigger propiedad={propiedad} />
+                )}
+                {apiEnabled && propiedad.estado === 'DISPONIBLE' && (
+                  <EliminarPropiedadButton propiedadId={propiedad.id} direccion={propiedad.direccion} />
                 )}
               </div>
             </div>
