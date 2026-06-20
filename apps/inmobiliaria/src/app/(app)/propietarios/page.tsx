@@ -335,7 +335,7 @@ export default function PropietariosPage() {
                     {!p.cbuAlias && (
                       <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-900/10 dark:text-amber-200">
                         <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                        Falta CBU para transferir
+                        Cargá el CBU/alias del propietario para poder rendirle.
                       </div>
                     )}
 

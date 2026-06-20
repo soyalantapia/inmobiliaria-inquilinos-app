@@ -89,12 +89,18 @@ export default function CertificadoInquilinoPage() {
               <ShieldCheck className="h-8 w-8 text-muted-foreground/60" />
               <p className="text-sm font-semibold">Todavía no podemos generar tu certificado</p>
               <p className="text-xs text-muted-foreground">
-                Necesitás un contrato activo para emitir el certificado de
-                inquilino. Si ya tenés uno, volvé a intentarlo en unos minutos.
+                Hace falta un contrato activo. Si tu contrato recién arranca, puede
+                tardar unos minutos en estar listo. Probá de nuevo o, si sigue, escribile
+                a tu inmobiliaria.
               </p>
-              <Button asChild variant="outline" size="sm" className="mt-1">
-                <Link href="/cuenta">Volver a mi cuenta</Link>
-              </Button>
+              <div className="mt-1 flex flex-wrap justify-center gap-2">
+                <Button variant="default" size="sm" onClick={() => window.location.reload()}>
+                  Reintentar
+                </Button>
+                <Button asChild variant="outline" size="sm">
+                  <Link href="/cuenta">Volver a mi cuenta</Link>
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </main>
@@ -346,7 +352,7 @@ export default function CertificadoInquilinoPage() {
             onClick={compartirWhatsApp}
           >
             <MessageCircle className="h-5 w-5" />
-            {nivelBajo ? 'Compartir igual' : 'Compartir por WhatsApp'}
+            {nivelBajo ? 'Compartir igual (puede pedirte garante)' : 'Compartir por WhatsApp'}
           </Button>
           <div className="grid grid-cols-2 gap-2">
             <Button

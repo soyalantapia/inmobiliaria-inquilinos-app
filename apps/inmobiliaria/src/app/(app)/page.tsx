@@ -135,10 +135,10 @@ export default function DashboardPage() {
               href="/reclamos"
             />
             <KpiSmall
-              label="Próximos ajustes"
+              label="Ajustes de alquiler"
               valor={m.proximosAjustes30d.toString()}
               icon={TrendingUp}
-              hint="En los próximos 30 días"
+              hint="Aumentos programados (próx. 30 días)"
               href="/contratos"
             />
             <KpiSmall

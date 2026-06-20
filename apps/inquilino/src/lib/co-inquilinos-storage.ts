@@ -76,11 +76,11 @@ function guardar(lista: CoInquilino[]): void {
 export const permisoLabel: Record<PermisoCoInquilino, string> = {
   VER: 'Solo ver',
   PAGAR: 'Ver y pagar',
-  COMPLETO: 'Todo',
+  COMPLETO: 'Control total',
 };
 
 export const permisoDescripcion: Record<PermisoCoInquilino, string> = {
-  VER: 'Ve el contrato, los pagos y los reclamos. No puede actuar.',
-  PAGAR: 'Puede ver todo + informar pagos en su nombre.',
-  COMPLETO: 'Puede ver todo + pagar + crear reclamos + decidir renovación.',
+  VER: 'Ve el contrato, los pagos y los reclamos. No puede hacer nada más.',
+  PAGAR: 'Ve todo y puede informar pagos (ej: avisar que hizo una transferencia). No cambia el contrato.',
+  COMPLETO: 'Ve todo, informa pagos, abre reclamos y decide la renovación. Como vos.',
 };
