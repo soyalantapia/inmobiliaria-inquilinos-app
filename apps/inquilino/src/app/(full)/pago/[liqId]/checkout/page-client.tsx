@@ -1030,6 +1030,10 @@ function StepSubirComprobante({
               onChange={(e) => {
                 const f = e.target.files?.[0];
                 if (f) handleFile(f);
+                // Limpiamos el value para que, si el archivo fue rechazado, el
+                // usuario pueda volver a elegir EL MISMO archivo (corregido) y
+                // el onChange dispare igual.
+                e.target.value = '';
               }}
             />
           </label>

@@ -371,6 +371,26 @@ export async function plataRoutes(app: FastifyInstance) {
     return reply.code(201).send(rendicion);
   });
 
+  // Anular/deshacer una rendición: la borra y deja los gastos otra vez PENDIENTES
+  // para la próxima. No se movió plata real (la rendición es un registro), así que
+  // es reversible. Requiere PIN, igual que rendir.
+  app.post('/rendiciones/:id/anular', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'rendicion.confirmar');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const body = z.object({ pin: z.string().optional() }).parse(request.body ?? {});
+    if (!(await verificarPin(u.userId, body.pin, reply))) return;
+    const r = await prisma.rendicion.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
+    if (!r) return reply.code(404).send({ message: 'Rendición inexistente' });
+    await prisma.$transaction([
+      // Los gastos vuelven a quedar disponibles para descontar en la próxima rendición.
+      prisma.movimientoCaja.updateMany({ where: { rendicionId: id }, data: { descontadoEnRendicion: false, rendicionId: null } }),
+      prisma.gastoRendido.deleteMany({ where: { rendicionId: id } }),
+      prisma.rendicion.delete({ where: { id } }),
+    ]);
+    return { ok: true };
+  });
+
   // ===== Aprobaciones (no-monetarias, con PIN) =====
   app.get('/aprobaciones', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'contratos.ver');

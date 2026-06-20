@@ -20,6 +20,8 @@ import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card, CardContent } from '@llave/ui/card';
 import { Input } from '@llave/ui/input';
+import { apiEnabled } from '@/lib/api/client';
+import { AnularRendicionButton } from '@/components/anular-rendicion-button';
 import { HistorialPropietarioDialog } from '@/components/historial-propietario-dialog';
 import {
   RendirPropietarioDialog,
@@ -273,13 +275,19 @@ export default function PropietariosPage() {
                             rendir / Al día. La cantidad de unidades vive en la
                             ficha del propietario, no en el badge de estado. */}
                         {rendido ? (
-                          <Badge
-                            variant="success"
-                            className="shrink-0 gap-1 text-[10px]"
-                          >
-                            <CheckCircle2 className="h-3 w-3" />
-                            Rendido
-                          </Badge>
+                          <div className="flex shrink-0 items-center gap-1.5">
+                            <Badge variant="success" className="gap-1 text-[10px]">
+                              <CheckCircle2 className="h-3 w-3" />
+                              Rendido
+                            </Badge>
+                            {apiEnabled && (
+                              <AnularRendicionButton
+                                rendicionId={rendido.id}
+                                nombre={`${p.nombre} ${p.apellido ?? ''}`.trim()}
+                                onAnulada={() => setRendicionesMap((m) => ({ ...m, [p.id]: null }))}
+                              />
+                            )}
+                          </div>
                         ) : necesitaRendir ? (
                           <Badge
                             variant="warning"

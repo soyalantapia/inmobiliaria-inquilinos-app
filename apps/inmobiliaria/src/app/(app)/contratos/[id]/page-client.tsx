@@ -35,6 +35,7 @@ import { ContratoDocumentosPanel } from '@/components/contrato-documentos-panel'
 import { MensajeInquilinoDialog } from '@/components/mensaje-inquilino-dialog';
 import { ScoringInquilinoCard } from '@/components/scoring-inquilino-card';
 import { Topbar } from '@/components/topbar';
+import { FinalizarContratoButton } from '@/components/finalizar-contrato-button';
 import { calcularScoringInquilino, type ResumenScoring } from '@/lib/scoring-inquilino';
 import { registrarEvento } from '@/lib/auditoria-storage';
 import { apiEnabled } from '@/lib/api/client';
@@ -208,6 +209,9 @@ export default function DetalleContratoPage() {
                 <Pencil className="h-4 w-4" />
                 Editar
               </Button>
+            )}
+            {apiEnabled && c.estado === 'ACTIVO' && (
+              <FinalizarContratoButton contratoId={c.id} direccion={c.direccion} />
             )}
           </div>
         </div>

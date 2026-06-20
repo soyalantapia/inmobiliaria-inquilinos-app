@@ -1045,6 +1045,28 @@ export function useEliminarPropiedad(): { eliminar: (id: string) => Promise<void
   };
 }
 
+/** Anular/deshacer una rendición (requiere PIN). Lanza ApiError si el server rechaza. */
+export async function anularRendicion(rendicionId: string, pin: string): Promise<void> {
+  await ensureApiSession();
+  await apiFetch(`/rendiciones/${rendicionId}/anular`, { method: 'POST', body: JSON.stringify({ pin }) });
+}
+
+/** Finalizar un contrato: lo cierra y libera la propiedad (vuelve a DISPONIBLE). */
+export function useFinalizarContrato(): { finalizar: (id: string) => Promise<void> } {
+  const qc = useQueryClient();
+  return {
+    finalizar: async (id) => {
+      await ensureApiSession();
+      await apiFetch(`/contratos/${id}/finalizar`, { method: 'POST' });
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['contratos'] }),
+        qc.invalidateQueries({ queryKey: ['contrato', id] }),
+        qc.invalidateQueries({ queryKey: ['propiedades'] }),
+      ]);
+    },
+  };
+}
+
 /** Eliminar un propietario sin historial (típicamente un alta duplicada). */
 export function useEliminarPropietario(): { eliminar: (id: string) => Promise<void> } {
   const qc = useQueryClient();
