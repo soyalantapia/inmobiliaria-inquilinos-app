@@ -181,6 +181,7 @@ function PagosPorValidarApi({ onChange }: PagosPorValidarProps = {}) {
                 key={p.id}
                 pago={p}
                 conIA={false}
+                disabled={showPin}
                 onConciliar={() => triggerConciliar(p)}
                 onRechazar={() => setRechazando(p)}
                 onVerComprobante={() => setVerComprobante(p)}
@@ -521,6 +522,7 @@ function PagosPorValidarDemo({ onChange }: PagosPorValidarProps = {}) {
                 <PagoRow
                   key={p.id}
                   pago={p}
+                  disabled={showPin}
                   onConciliar={() => triggerConciliar(p)}
                   onRechazar={() => setRechazando(p)}
                   onVerComprobante={() => setVerComprobante(p)}
@@ -696,6 +698,7 @@ function PagosPorValidarDemo({ onChange }: PagosPorValidarProps = {}) {
 function PagoRow({
   pago,
   conIA = true,
+  disabled = false,
   onConciliar,
   onRechazar,
   onVerComprobante,
@@ -704,6 +707,9 @@ function PagoRow({
   /** Mostrar el bloque "Lectura por IA". En modo API lo apagamos: el API
    *  todavía no persiste la extracción, así que no inventamos datos. */
   conIA?: boolean;
+  /** Deshabilita las acciones (ej: mientras hay un PIN abierto para otro pago,
+   *  para no pisar pendingAction y conciliar el pago equivocado). */
+  disabled?: boolean;
   onConciliar: () => void;
   onRechazar: () => void;
   onVerComprobante: () => void;
@@ -810,17 +816,18 @@ function PagoRow({
       )}
 
       <div className="flex flex-wrap gap-2">
-        <Button size="sm" variant="outline" onClick={onVerComprobante}>
+        <Button size="sm" variant="outline" onClick={onVerComprobante} disabled={disabled}>
           <ExternalLink className="h-3.5 w-3.5" />
           Ver comprobante
         </Button>
-        <Button size="sm" variant="outline" onClick={onRechazar}>
+        <Button size="sm" variant="outline" onClick={onRechazar} disabled={disabled}>
           <XCircle className="h-3.5 w-3.5" />
           Rechazar
         </Button>
         <Button
           size="sm"
           onClick={onConciliar}
+          disabled={disabled}
           className={`ml-auto ${autoOk ? 'bg-emerald-600 hover:bg-emerald-700' : ''}`}
           title={
             autoOk

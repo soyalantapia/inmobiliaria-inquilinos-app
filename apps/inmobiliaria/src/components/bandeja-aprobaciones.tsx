@@ -165,6 +165,7 @@ export function BandejaAprobaciones() {
             <AprobacionCard
               key={a.id}
               aprobacion={a}
+              disabled={!!aprobar_ || !!rechazar_}
               onAprobar={() => setAprobar_(a)}
               onRechazar={() => setRechazar_(a)}
             />
@@ -260,11 +261,12 @@ export function BandejaAprobaciones() {
 
 interface CardProps {
   aprobacion: Aprobacion;
+  disabled?: boolean;
   onAprobar: () => void;
   onRechazar: () => void;
 }
 
-function AprobacionCard({ aprobacion, onAprobar, onRechazar }: CardProps) {
+function AprobacionCard({ aprobacion, disabled = false, onAprobar, onRechazar }: CardProps) {
   const Icon = ICONO_TIPO[aprobacion.tipo];
   const pendiente = aprobacion.estado === 'PENDIENTE';
   const iniciales = aprobacion.cargadoPor
@@ -339,11 +341,11 @@ function AprobacionCard({ aprobacion, onAprobar, onRechazar }: CardProps) {
 
         {pendiente && (
           <div className="flex flex-wrap gap-2 pt-1">
-            <Button size="sm" onClick={onAprobar}>
+            <Button size="sm" onClick={onAprobar} disabled={disabled}>
               <CheckCircle2 className="h-4 w-4" />
               Aprobar
             </Button>
-            <Button size="sm" variant="outline" onClick={onRechazar}>
+            <Button size="sm" variant="outline" onClick={onRechazar} disabled={disabled}>
               <XCircle className="h-4 w-4" />
               Rechazar
             </Button>

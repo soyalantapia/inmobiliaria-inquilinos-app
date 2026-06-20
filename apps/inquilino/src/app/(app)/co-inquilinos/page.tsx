@@ -241,15 +241,17 @@ function CoInquilinoCard({
         <p id={`ci-card-permisos-${co.id}`} className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
           Permisos
         </p>
-        <div className="grid grid-cols-3 gap-1.5">
+        <div className="grid grid-cols-3 gap-2">
           {(['VER', 'PAGAR', 'COMPLETO'] as PermisoCoInquilino[]).map((p) => (
             <button
               key={p}
               type="button"
               aria-pressed={co.permiso === p}
-              onClick={() => onCambiarPermiso(p)}
+              // No re-disparamos la API si ya es el permiso actual (evita un
+              // cambio "accidental" / llamada redundante por re-tap en mobile).
+              onClick={() => co.permiso !== p && onCambiarPermiso(p)}
               className={cn(
-                'rounded-md border px-2 py-1.5 text-[11px] font-medium transition-colors',
+                'min-h-[40px] rounded-md border px-2 py-2 text-xs font-medium transition-colors',
                 co.permiso === p
                   ? 'border-primary bg-primary/10 text-primary'
                   : 'border-border hover:bg-muted/40',
