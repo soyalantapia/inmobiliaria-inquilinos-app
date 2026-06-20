@@ -52,6 +52,19 @@ export interface Reclamo {
   profesionalAsignadoNombre?: string | null;
   profesionalAsignadoTelefono?: string | null;
   profesionalAsignadoCategoria?: string | null;
+  /** Decisión del inquilino sobre el cierre (solo prod/API). En demo la decisión
+   *  vive en localStorage (confirmaciones-reclamo.ts). */
+  confirmacionInquilino?: {
+    estado: 'CONFORME' | 'PERSISTE';
+    fecha: string;
+    comentario: string | null;
+  } | null;
+  /** Calificación del inquilino del reclamo resuelto (solo prod/API). */
+  ratingInquilino?: {
+    estrellas: number;
+    comentario: string | null;
+    enviadoAt: string;
+  } | null;
 }
 
 export interface Liquidacion {

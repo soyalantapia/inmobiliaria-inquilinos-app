@@ -62,7 +62,13 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
   const router = useRouter();
   // En prod los datos vienen del API (GET /mis-reclamos, filtramos por id).
   // En demo seguimos leyendo del storage local + merge cross-app inmo.
-  const { reclamos: reclamosApi, cargando: cargandoApi, deApi } = useMisReclamos();
+  const {
+    reclamos: reclamosApi,
+    cargando: cargandoApi,
+    deApi,
+    confirmarResolucion,
+    calificarReclamo,
+  } = useMisReclamos();
   const { inmobiliariaTelefono } = useMiContrato();
   // Teléfono para el atajo "Llamar" en Emergencia activa. En demo, número de
   // muestra; en prod el real (sin no-dígitos). Sin teléfono en prod, ocultamos
@@ -76,6 +82,7 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
   const [decision, setDecision] = useState<DecisionInquilino | null>(null);
   const [persisteOpen, setPersisteOpen] = useState(false);
   const [persisteTexto, setPersisteTexto] = useState('');
+  const [confirmando, setConfirmando] = useState(false);
   const scrollEndRef = useRef<HTMLDivElement>(null);
 
   // Re-cargar reclamo + estado del inmo. Lo extraemos en función nombrada
@@ -246,11 +253,25 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
     }
   };
 
-  const confirmarConforme = () => {
+  const confirmarConforme = async () => {
+    if (confirmando) return;
+    // Prod: el endpoint cierra el reclamo (CERRADO) y registra la confirmación;
+    // el invalidate refetchea y el effect refresca `reclamo` con el nuevo estado.
+    if (deApi) {
+      setConfirmando(true);
+      try {
+        await confirmarResolucion(reclamo.id, 'CONFORME');
+        toast({ title: 'Confirmado', description: 'Marcamos el reclamo como resuelto.' });
+      } catch {
+        toast({ variant: 'destructive', title: 'No se pudo confirmar', description: 'Probá de nuevo.' });
+      } finally {
+        setConfirmando(false);
+      }
+      return;
+    }
+    // Demo: la decisión vive en localStorage + un mensaje en el timeline para
+    // que quede registro humano del momento en que el inquilino dio el OK.
     marcarConforme(reclamo.id);
-    // Agregamos un mensaje al timeline para que quede registro humano del
-    // momento en que el inquilino dio el OK. Esto también unifica narrativa:
-    // todo lo que pasa con el reclamo aparece en "Historial y mensajes".
     agregarMensajeDelInquilino(
       reclamo.id,
       inquilinoActual.nombre,
@@ -260,9 +281,27 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
     toast({ title: 'Confirmado', description: 'Marcamos el reclamo como resuelto.' });
   };
 
-  const confirmarPersiste = () => {
+  const confirmarPersiste = async () => {
     const detalle = persisteTexto.trim();
-    if (!detalle) return;
+    if (!detalle || confirmando) return;
+    if (deApi) {
+      setConfirmando(true);
+      try {
+        await confirmarResolucion(reclamo.id, 'PERSISTE', detalle);
+        setPersisteOpen(false);
+        setPersisteTexto('');
+        toast({
+          variant: 'default',
+          title: 'Le avisamos a la inmobiliaria',
+          description: 'Reabrimos el reclamo para que vuelvan a intervenir.',
+        });
+      } catch {
+        toast({ variant: 'destructive', title: 'No se pudo enviar', description: 'Probá de nuevo.' });
+      } finally {
+        setConfirmando(false);
+      }
+      return;
+    }
     marcarPersiste(reclamo.id, detalle);
     agregarMensajeDelInquilino(
       reclamo.id,
@@ -282,10 +321,18 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
   const resuelto = reclamo.estado === 'RESUELTO';
   const cerrado = reclamo.estado === 'CERRADO' || resuelto || reclamo.estado === 'RECHAZADO';
 
-  // Las acciones del inquilino (comentar, confirmar conforme/persiste) escriben
-  // en storage local y NO tienen endpoint en el API todavía. En prod (apiEnabled)
-  // las deshabilitamos para no dar feedback falso; en demo siguen funcionando.
-  const puedeInteractuar = !apiEnabled;
+  // Decisión del inquilino sobre el cierre. En prod sale del API (la confirmación
+  // persistida); en demo, del estado local que setea `recargar` desde localStorage.
+  // En prod CONFORME pasa el reclamo a CERRADO (no RESUELTO), por eso las cards de
+  // resolución se guían por `decisionActual`, no por `resuelto`.
+  const decisionActual: DecisionInquilino | null = deApi
+    ? (reclamo.confirmacionInquilino?.estado ?? null)
+    : decision;
+
+  // Comentar en el reclamo (composer) sigue siendo demo-only: no hay endpoint
+  // para que el inquilino sume mensajes al timeline en prod. Confirmar resolución
+  // SÍ tiene endpoint, así que se habilita siempre.
+  const puedeComentar = !apiEnabled;
 
   return (
     <>
@@ -500,7 +547,7 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
             - RESUELTO + decision CONFORME → verde + rating.
             - RESUELTO + decision PERSISTE → naranja con su comentario;
               ocultamos rating porque sería contradictorio. */}
-        {resuelto && reclamo.resolucion && decision === null && (
+        {resuelto && reclamo.resolucion && decisionActual === null && (
           <Card className="space-y-3 border-amber-300 bg-amber-50/70 p-5 dark:border-amber-900/40 dark:bg-amber-900/10">
             <div className="flex items-center gap-2 text-amber-800 dark:text-amber-300">
               <AlertTriangle className="h-4 w-4" />
@@ -519,21 +566,21 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
               el problema sigue, avisanos y volvemos a intervenir.
             </p>
 
-            {!puedeInteractuar ? (
-              <p className="rounded-md bg-amber-100/60 px-3 py-2 text-xs text-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
-                Si el problema sigue, avisanos por WhatsApp y volvemos a
-                intervenir.
-              </p>
-            ) : !persisteOpen ? (
+            {!persisteOpen ? (
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <Button
                   className="bg-emerald-600 text-white hover:bg-emerald-700"
                   onClick={confirmarConforme}
+                  disabled={confirmando}
                 >
                   <CheckCircle2 className="h-4 w-4" />
-                  Estoy conforme
+                  {confirmando ? 'Confirmando…' : 'Estoy conforme'}
                 </Button>
-                <Button variant="outline" onClick={() => setPersisteOpen(true)}>
+                <Button
+                  variant="outline"
+                  onClick={() => setPersisteOpen(true)}
+                  disabled={confirmando}
+                >
                   <AlertTriangle className="h-4 w-4" />
                   Sigue el problema
                 </Button>
@@ -546,12 +593,14 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
                   aria-label="Describir el problema que sigue"
                   value={persisteTexto}
                   onChange={(e) => setPersisteTexto(e.target.value)}
+                  disabled={confirmando}
                   autoFocus
                 />
                 <div className="flex justify-end gap-2 pt-1">
                   <Button
                     variant="ghost"
                     size="sm"
+                    disabled={confirmando}
                     onClick={() => {
                       setPersisteOpen(false);
                       setPersisteTexto('');
@@ -562,10 +611,10 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
                   <Button
                     size="sm"
                     variant="destructive"
-                    disabled={!persisteTexto.trim()}
+                    disabled={!persisteTexto.trim() || confirmando}
                     onClick={confirmarPersiste}
                   >
-                    Avisar a la inmobiliaria
+                    {confirmando ? 'Enviando…' : 'Avisar a la inmobiliaria'}
                   </Button>
                 </div>
               </div>
@@ -573,7 +622,7 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
           </Card>
         )}
 
-        {resuelto && reclamo.resolucion && decision === 'CONFORME' && (
+        {decisionActual === 'CONFORME' && reclamo.resolucion && (
           <>
             <Card className="space-y-2 border-emerald-200 bg-emerald-50 p-5 dark:border-emerald-900/40 dark:bg-emerald-900/10">
               <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300">
@@ -592,11 +641,27 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
               )}
             </Card>
 
-            <RatingReclamoCard reclamoId={reclamo.id} />
+            <RatingReclamoCard
+              reclamoId={reclamo.id}
+              apiMode={deApi}
+              ratingInicial={reclamo.ratingInquilino ?? null}
+              onCalificar={
+                deApi
+                  ? (estrellas, comentario) =>
+                      calificarReclamo(reclamo.id, estrellas, comentario ?? undefined)
+                  : undefined
+              }
+            />
           </>
         )}
 
-        {resuelto && decision === 'PERSISTE' && (
+        {/* "Reportaste que sigue".
+            - Demo: estado queda RESUELTO + decisionActual='PERSISTE' (localStorage).
+            - Prod: PERSISTE reabre el reclamo a EN_CURSO conservando la resolución,
+              así que lo detectamos por estado EN_CURSO + resolución previa (no hay
+              ConfirmacionReclamo PERSISTE: es one-shot por el @unique). */}
+        {((resuelto && decisionActual === 'PERSISTE') ||
+          (deApi && reclamo.estado === 'EN_CURSO' && !!reclamo.resolucion)) && (
           <Card className="space-y-2 border-amber-300 bg-amber-50 p-5 dark:border-amber-900/40 dark:bg-amber-900/10">
             <div className="flex items-center gap-2 text-amber-800 dark:text-amber-300">
               <AlertTriangle className="h-4 w-4" />
@@ -649,7 +714,7 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
             - Composer (acá): comentarios sobre ESTE reclamo, quedan en historial.
             - FAB WhatsApp (arriba): consultas generales a la inmo.
             - WhatsApp profesional: coordinar día y hora con el técnico. */}
-        {!cerrado && puedeInteractuar ? (
+        {!cerrado && puedeComentar ? (
           <Card className="space-y-3 p-4">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">

@@ -14,6 +14,7 @@
  * En modo demo (!apiEnabled) caemos al storage local + merge cross-app inmo,
  * exactamente como hacían las páginas antes de cablear el API.
  */
+import { useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiEnabled, apiFetch } from './client';
 import { useMiContrato } from './hooks';
@@ -52,6 +53,18 @@ interface ProfesionalApi {
   categoria: string;
 }
 
+interface ConfirmacionApi {
+  estado: 'CONFORME' | 'PERSISTE';
+  fecha: string;
+  comentario: string | null;
+}
+
+interface RatingApi {
+  estrellas: number;
+  comentario: string | null;
+  enviadoAt: string;
+}
+
 interface ReclamoApi {
   id: string;
   contratoId: string;
@@ -66,6 +79,8 @@ interface ReclamoApi {
   resueltoAt: string | null;
   eventos?: EventoApi[];
   profesional?: ProfesionalApi | null;
+  confirmacion?: ConfirmacionApi | null;
+  rating?: RatingApi | null;
   // (incluye campos SLA que la UI del inquilino no consume)
 }
 
@@ -128,6 +143,8 @@ function mapReclamo(r: ReclamoApi, identidad: IdentidadInquilino): Reclamo {
     profesionalAsignadoNombre: prof?.nombre ?? null,
     profesionalAsignadoTelefono: prof?.telefono ?? null,
     profesionalAsignadoCategoria: prof?.categoria ?? null,
+    confirmacionInquilino: r.confirmacion ?? null,
+    ratingInquilino: r.rating ?? null,
   };
 }
 
@@ -162,6 +179,14 @@ export function useMisReclamos(): {
   deApi: boolean;
   hayError: boolean;
   crearReclamo: (input: CrearReclamoInput) => Promise<Reclamo>;
+  /** Solo prod: ratifica (CONFORME → cierra) o reabre (PERSISTE) el reclamo. */
+  confirmarResolucion: (
+    reclamoId: string,
+    decision: 'CONFORME' | 'PERSISTE',
+    comentario?: string,
+  ) => Promise<void>;
+  /** Solo prod: califica un reclamo resuelto (1-5). */
+  calificarReclamo: (reclamoId: string, estrellas: number, comentario?: string) => Promise<void>;
 } {
   const qc = useQueryClient();
   const q = useQuery({
@@ -183,12 +208,29 @@ export function useMisReclamos(): {
     direccion: contrato?.direccion ?? '',
   };
 
+  // Memoizamos el mapeo: `mapReclamo` crea objetos nuevos en cada llamada, así
+  // que sin esto `reclamos` cambiaría de identidad en cada render y dispararía
+  // en bucle el effect del detalle (reclamos/[id]) que copia el reclamo a estado.
+  const reclamosApi = useMemo(
+    () => (q.data ?? []).map((r) => mapReclamo(r, identidad)),
+    // identidad es un objeto nuevo cada render; dependemos de sus primitivas.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [q.data, identidad.inquilino, identidad.direccion],
+  );
+
   // Combina título + descripción igual que el panel de la inmo lo guarda
   // (el modelo no tiene campo `titulo`): para OTRO el título va como prefijo.
   const descripcionCombinada = (input: CrearReclamoInput): string =>
     input.categoria === 'OTRO' && input.titulo.trim().length > 0
       ? `${input.titulo.trim()} — ${input.descripcion.trim()}`
       : input.descripcion.trim();
+
+  // En demo, confirmar/calificar viven en localStorage (confirmaciones-reclamo.ts
+  // y ratings-storage.ts), que la página usa directo. Estas funciones del hook
+  // son el camino de prod; en demo no se llaman.
+  const soloProd = async (): Promise<never> => {
+    throw new Error('Disponible solo con servidor');
+  };
 
   if (!apiEnabled) {
     return {
@@ -206,6 +248,8 @@ export function useMisReclamos(): {
           urgencia: input.urgencia,
           fotoDataUrl: input.fotoDataUrl ?? null,
         }),
+      confirmarResolucion: soloProd,
+      calificarReclamo: soloProd,
     };
   }
 
@@ -218,11 +262,13 @@ export function useMisReclamos(): {
       crearReclamo: async () => {
         throw new Error('No se pudo conectar con el servidor');
       },
+      confirmarResolucion: soloProd,
+      calificarReclamo: soloProd,
     };
   }
 
   return {
-    reclamos: (q.data ?? []).map((r) => mapReclamo(r, identidad)),
+    reclamos: reclamosApi,
     cargando: q.isPending,
     deApi: true,
     hayError: false,
@@ -238,6 +284,20 @@ export function useMisReclamos(): {
       });
       await qc.invalidateQueries({ queryKey: QUERY_KEY });
       return mapReclamo(creado, identidad);
+    },
+    confirmarResolucion: async (reclamoId, decision, comentario) => {
+      await apiFetch(`/mis-reclamos/${reclamoId}/confirmar-resolucion`, {
+        method: 'POST',
+        body: JSON.stringify({ decision, comentario: comentario?.trim() || undefined }),
+      });
+      await qc.invalidateQueries({ queryKey: QUERY_KEY });
+    },
+    calificarReclamo: async (reclamoId, estrellas, comentario) => {
+      await apiFetch(`/mis-reclamos/${reclamoId}/rating`, {
+        method: 'POST',
+        body: JSON.stringify({ estrellas, comentario: comentario?.trim() || undefined }),
+      });
+      await qc.invalidateQueries({ queryKey: QUERY_KEY });
     },
   };
 }

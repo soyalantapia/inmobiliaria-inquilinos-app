@@ -61,7 +61,16 @@ function formatHoras(h: number): string {
 
 function evaluarSla(reclamo: ReclamoParaSla, ahoraMs = Date.now()): ResumenSla {
   const limite = SLA_HORAS_POR_URGENCIA[reclamo.urgencia];
-  const inicio = reclamo.createdAt.getTime();
+  const creado = reclamo.createdAt.getTime();
+
+  // Reclamo reabierto por el inquilino (PERSISTE): vuelve a un estado activo
+  // conservando resueltoAt como ancla. El reloj del SLA reinicia desde la
+  // reapertura —si midiéramos desde createdAt, un reclamo viejo reaparecería
+  // como VENCIDO apenas se reabre. Para estados resueltos `inicio` = createdAt.
+  const reabierto =
+    reclamo.estado !== 'RESUELTO' && reclamo.estado !== 'CERRADO' && reclamo.resueltoAt !== null;
+  const inicio = reabierto ? reclamo.resueltoAt!.getTime() : creado;
+
   const slaVencimiento = new Date(inicio + limite * 3600_000).toISOString();
   const horas = Math.max(0, (ahoraMs - inicio) / 3600_000);
   const restantes = limite - horas;
@@ -69,7 +78,7 @@ function evaluarSla(reclamo: ReclamoParaSla, ahoraMs = Date.now()): ResumenSla {
 
   if (reclamo.estado === 'RESUELTO' || reclamo.estado === 'CERRADO') {
     const dur = reclamo.resueltoAt
-      ? Math.max(0, (reclamo.resueltoAt.getTime() - inicio) / 3600_000)
+      ? Math.max(0, (reclamo.resueltoAt.getTime() - creado) / 3600_000)
       : horas;
     return {
       slaEstado: 'RESUELTO',
@@ -149,6 +158,11 @@ async function nombreUsuario(userId: string): Promise<string> {
 }
 
 const ESTADOS_CERRADOS = ['RESUELTO', 'CERRADO', 'RECHAZADO'] as const;
+
+// Señal interna para abortar una transacción cuando el reclamo ya cambió de
+// estado (carrera): se traduce a 409 en el handler. Evita el doble-cierre y el
+// crédito/registro duplicado si dos requests confirman a la vez.
+class ConflictoEstadoReclamo extends Error {}
 
 export async function operacionRoutes(app: FastifyInstance) {
   // ===== Reclamos (panel) =====
@@ -326,6 +340,8 @@ export async function operacionRoutes(app: FastifyInstance) {
       include: {
         eventos: { orderBy: { fecha: 'asc' } },
         profesional: { select: { id: true, nombre: true, telefono: true, categoria: true } },
+        confirmacion: { select: { estado: true, fecha: true, comentario: true } },
+        rating: { select: { estrellas: true, comentario: true, enviadoAt: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -373,6 +389,142 @@ export async function operacionRoutes(app: FastifyInstance) {
       return r;
     });
     return reply.code(201).send(conSla(reclamo));
+  });
+
+  // El inquilino ratifica o rechaza el cierre que hizo la inmobiliaria. RESUELTO
+  // es un estado "por confirmar": le da agencia al inquilino sobre su propio
+  // reclamo (antes era espectador) y elimina la contradicción "Resuelto pero el
+  // problema sigue".
+  //   - CONFORME → CERRADO. Persistimos ConfirmacionReclamo (reclamoId @unique:
+  //     una sola confirmación firme por reclamo) + evento CERRADO.
+  //   - PERSISTE → EN_CURSO (reabre, vuelve a la cola activa del panel). NO
+  //     creamos ConfirmacionReclamo —es one-shot por el @unique— para no bloquear
+  //     una futura confirmación tras un nuevo intento de la inmo; queda como
+  //     evento + reapertura, que es repetible.
+  app.post('/mis-reclamos/:id/confirmar-resolucion', async (request, reply) => {
+    const inq = await requireInquilino(request, reply);
+    if (!inq) return;
+    if (!inq.contratoId) return reply.code(400).send({ message: 'No tenés un contrato activo' });
+    const { id } = request.params as { id: string };
+    const body = z
+      .object({
+        decision: z.enum(['CONFORME', 'PERSISTE']),
+        comentario: z.string().trim().max(500).optional(),
+      })
+      .safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ message: 'Decisión inválida' });
+    const comentario = body.data.comentario?.trim() || null;
+    if (body.data.decision === 'PERSISTE' && !comentario) {
+      return reply.code(400).send({ message: 'Contanos qué sigue pasando' });
+    }
+
+    const reclamo = await prisma.reclamo.findFirst({
+      where: { id, contratoId: inq.contratoId, inmobiliariaId: inq.inmobiliariaId },
+    });
+    if (!reclamo) return reply.code(404).send({ message: 'Reclamo inexistente' });
+    if (reclamo.estado !== 'RESUELTO') {
+      return reply.code(409).send({ message: 'Este reclamo no está esperando tu confirmación' });
+    }
+
+    const inquilino = await prisma.inquilino.findUnique({ where: { id: inq.inquilinoId } });
+    const autor = inquilino ? `${inquilino.nombre} ${inquilino.apellido ?? ''}`.trim() : 'Inquilino';
+    const ahora = new Date();
+
+    try {
+      const actualizado = await prisma.$transaction(async (tx) => {
+        if (body.data.decision === 'CONFORME') {
+          // El updateMany condicional es el lock: solo la primera request que
+          // ve estado RESUELTO logra la transición; las demás cuentan 0 → 409.
+          const res = await tx.reclamo.updateMany({
+            where: { id, estado: 'RESUELTO' },
+            data: { estado: 'CERRADO' },
+          });
+          if (res.count === 0) throw new ConflictoEstadoReclamo('El reclamo ya fue cerrado');
+          await tx.confirmacionReclamo.create({
+            data: { inmobiliariaId: inq.inmobiliariaId, reclamoId: id, estado: 'CONFORME', comentario, fecha: ahora },
+          });
+          await tx.reclamoEvento.create({
+            data: {
+              inmobiliariaId: inq.inmobiliariaId,
+              reclamoId: id,
+              tipo: 'CERRADO',
+              autor,
+              contenido: comentario ?? 'El inquilino confirmó que el problema está resuelto.',
+              fecha: ahora,
+            },
+          });
+        } else {
+          // Conservamos resueltoAt: en EN_CURSO actúa como ANCLA de la reapertura
+          // para que el SLA reinicie desde acá (ver evaluarSla). Si lo borráramos,
+          // el SLA volvería a medir desde createdAt y el reclamo —creado hace días—
+          // reaparecería como VENCIDO al instante en el panel.
+          const res = await tx.reclamo.updateMany({
+            where: { id, estado: 'RESUELTO' },
+            data: { estado: 'EN_CURSO' },
+          });
+          if (res.count === 0) throw new ConflictoEstadoReclamo('El reclamo ya cambió de estado');
+          await tx.reclamoEvento.create({
+            data: {
+              inmobiliariaId: inq.inmobiliariaId,
+              reclamoId: id,
+              tipo: 'MENSAJE_INQUILINO',
+              autor,
+              contenido: `El problema sigue: ${comentario}`,
+              fecha: ahora,
+            },
+          });
+        }
+        return tx.reclamo.findUniqueOrThrow({
+          where: { id },
+          include: {
+            eventos: { orderBy: { fecha: 'asc' } },
+            profesional: { select: { id: true, nombre: true, telefono: true, categoria: true } },
+            confirmacion: { select: { estado: true, fecha: true, comentario: true } },
+            rating: { select: { estrellas: true, comentario: true, enviadoAt: true } },
+          },
+        });
+      });
+      return conSla(actualizado);
+    } catch (e) {
+      if (e instanceof ConflictoEstadoReclamo) return reply.code(409).send({ message: e.message });
+      throw e;
+    }
+  });
+
+  // Calificación del inquilino del reclamo ya resuelto/cerrado. La lectura
+  // agregada ya existe (historial del inquilino en inquilino-mundo.ts) pero
+  // hasta ahora solo se escribía en localStorage en la demo → en prod el rating
+  // promedio quedaba siempre en 0. Upsert por reclamoId (@unique): se puede
+  // re-calificar.
+  app.post('/mis-reclamos/:id/rating', async (request, reply) => {
+    const inq = await requireInquilino(request, reply);
+    if (!inq) return;
+    if (!inq.contratoId) return reply.code(400).send({ message: 'No tenés un contrato activo' });
+    const { id } = request.params as { id: string };
+    const body = z
+      .object({
+        estrellas: z.number().int().min(1).max(5),
+        comentario: z.string().trim().max(300).optional(),
+      })
+      .safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ message: 'Elegí entre 1 y 5 estrellas' });
+    const comentario = body.data.comentario?.trim() || null;
+
+    const reclamo = await prisma.reclamo.findFirst({
+      where: { id, contratoId: inq.contratoId, inmobiliariaId: inq.inmobiliariaId },
+      select: { id: true, estado: true },
+    });
+    if (!reclamo) return reply.code(404).send({ message: 'Reclamo inexistente' });
+    if (reclamo.estado !== 'RESUELTO' && reclamo.estado !== 'CERRADO') {
+      return reply.code(409).send({ message: 'Solo podés calificar un reclamo resuelto' });
+    }
+
+    const rating = await prisma.ratingReclamo.upsert({
+      where: { reclamoId: id },
+      create: { inmobiliariaId: inq.inmobiliariaId, reclamoId: id, estrellas: body.data.estrellas, comentario },
+      update: { estrellas: body.data.estrellas, comentario },
+    });
+    return { reclamoId: rating.reclamoId, estrellas: rating.estrellas, comentario: rating.comentario, enviadoAt: rating.enviadoAt };
   });
 
   // ===== Red de profesionales =====

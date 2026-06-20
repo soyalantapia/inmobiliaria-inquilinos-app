@@ -17,7 +17,20 @@ const ETIQUETAS: Record<1 | 2 | 3 | 4 | 5, string> = {
   5: '¡Excelente!',
 };
 
-export function RatingReclamoCard({ reclamoId }: { reclamoId: string }) {
+export function RatingReclamoCard({
+  reclamoId,
+  apiMode = false,
+  ratingInicial = null,
+  onCalificar,
+}: {
+  reclamoId: string;
+  /** Prod: persiste vía API (onCalificar). Demo (default): localStorage. */
+  apiMode?: boolean;
+  /** Rating ya enviado que vino del API (para mostrar el ack al recargar). */
+  ratingInicial?: { estrellas: number; comentario: string | null; enviadoAt?: string } | null;
+  /** Solo prod: callback que persiste el rating en el servidor. */
+  onCalificar?: (estrellas: 1 | 2 | 3 | 4 | 5, comentario: string | null) => Promise<void>;
+}) {
   const [rating, setRating] = useState<RatingReclamo | null>(null);
   const [seleccion, setSeleccion] = useState<1 | 2 | 3 | 4 | 5 | null>(null);
   const [hover, setHover] = useState<number | null>(null);
@@ -25,8 +38,21 @@ export function RatingReclamoCard({ reclamoId }: { reclamoId: string }) {
   const [enviando, setEnviando] = useState(false);
 
   useEffect(() => {
+    if (apiMode) {
+      setRating(
+        ratingInicial
+          ? {
+              reclamoId,
+              estrellas: ratingInicial.estrellas as 1 | 2 | 3 | 4 | 5,
+              comentario: ratingInicial.comentario,
+              enviadoAt: ratingInicial.enviadoAt ?? new Date().toISOString(),
+            }
+          : null,
+      );
+      return;
+    }
     setRating(obtenerRating(reclamoId));
-  }, [reclamoId]);
+  }, [reclamoId, apiMode, ratingInicial]);
 
   // Si ya calificó, mostramos el ack
   if (rating) {
@@ -66,14 +92,24 @@ export function RatingReclamoCard({ reclamoId }: { reclamoId: string }) {
   const enviar = async () => {
     if (!seleccion) return;
     setEnviando(true);
-    await new Promise((r) => setTimeout(r, 400));
     const nuevo: RatingReclamo = {
       reclamoId,
       estrellas: seleccion,
       comentario: comentario.trim() || null,
       enviadoAt: new Date().toISOString(),
     };
-    guardarRating(nuevo);
+    try {
+      if (apiMode) {
+        await onCalificar?.(seleccion, nuevo.comentario);
+      } else {
+        await new Promise((r) => setTimeout(r, 400));
+        guardarRating(nuevo);
+      }
+    } catch {
+      setEnviando(false);
+      toast({ variant: 'destructive', title: 'No se pudo enviar', description: 'Probá de nuevo.' });
+      return;
+    }
     setRating(nuevo);
     setEnviando(false);
     toast({

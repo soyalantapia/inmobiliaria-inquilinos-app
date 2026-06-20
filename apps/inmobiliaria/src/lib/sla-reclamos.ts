@@ -40,7 +40,15 @@ export interface ResumenSla {
 
 export function evaluarSla(reclamo: Reclamo, ahoraMs = Date.now()): ResumenSla {
   const limite = SLA_HORAS_POR_URGENCIA[reclamo.urgencia];
-  const inicio = Date.parse(reclamo.createdAt);
+  const creado = Date.parse(reclamo.createdAt);
+
+  // Reclamo reabierto por el inquilino (PERSISTE): vuelve a un estado activo
+  // conservando resueltoAt como ancla → el SLA reinicia desde la reapertura, no
+  // desde createdAt (sino reaparecería como VENCIDO al instante). Para resueltos
+  // `inicio` = createdAt. Mantener idéntico al server (apps/api .../operacion.ts).
+  const reabierto =
+    reclamo.estado !== 'RESUELTO' && reclamo.estado !== 'CERRADO' && !!reclamo.resueltoAt;
+  const inicio = reabierto ? Date.parse(reclamo.resueltoAt as string) : creado;
   const horas = Math.max(0, (ahoraMs - inicio) / 3600_000);
   const restantes = limite - horas;
   const pct = (horas / limite) * 100;
@@ -48,7 +56,7 @@ export function evaluarSla(reclamo: Reclamo, ahoraMs = Date.now()): ResumenSla {
   if (reclamo.estado === 'RESUELTO' || reclamo.estado === 'CERRADO') {
     const cerradoEn = reclamo.resueltoAt ?? null;
     const dur = cerradoEn
-      ? Math.max(0, (Date.parse(cerradoEn) - inicio) / 3600_000)
+      ? Math.max(0, (Date.parse(cerradoEn) - creado) / 3600_000)
       : horas;
     return {
       estado: 'RESUELTO',
