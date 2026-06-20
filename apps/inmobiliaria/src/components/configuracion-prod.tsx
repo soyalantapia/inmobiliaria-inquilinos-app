@@ -158,6 +158,7 @@ function EmpresaCard() {
         </p>
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Razón social" value={form.nombre} onChange={set('nombre')} />
+          <Field label="Email" value={form.email} onChange={set('email')} placeholder="info@inmobiliaria.com" />
           <Field label="CUIT" value={form.cuit} onChange={set('cuit')} placeholder="30-XXXXXXXX-X" />
           <Field label="Matrícula" value={form.matricula} onChange={set('matricula')} placeholder="CUCICBA / CPI…" />
           <Field label="Teléfono" value={form.telefono} onChange={set('telefono')} />

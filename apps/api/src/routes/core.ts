@@ -217,6 +217,32 @@ export async function coreRoutes(app: FastifyInstance) {
     return { ok: true, cuentaCobranza: cuenta };
   });
 
+  // Eliminar un propietario. Igual que propiedades: solo si no tiene historial
+  // (no está en ninguna propiedad, sin rendiciones, sin contrato de cobranza
+  // directa). Pensado para limpiar altas duplicadas; los reales se preservan.
+  app.delete('/propietarios/:id', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'propietarios.crear');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const prop = await prisma.propietario.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
+    if (!prop) return reply.code(404).send({ message: 'Propietario inexistente' });
+    const [participaciones, rendiciones, contratos] = await Promise.all([
+      prisma.participacionPropietario.count({ where: { propietarioId: id } }),
+      prisma.rendicion.count({ where: { propietarioId: id } }),
+      prisma.contrato.count({ where: { cobraDirectoPropietarioId: id } }),
+    ]);
+    if (participaciones + rendiciones + contratos > 0) {
+      return reply.code(409).send({
+        message: 'Este propietario está asociado a propiedades, contratos o rendiciones y no se puede eliminar.',
+      });
+    }
+    await prisma.$transaction([
+      prisma.cuentaCobranzaDirecta.deleteMany({ where: { propietarioId: id } }),
+      prisma.propietario.delete({ where: { id } }),
+    ]);
+    return { ok: true };
+  });
+
   app.post('/propiedades', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'propiedades.crear');
     if (!u) return;
@@ -438,6 +464,7 @@ export async function coreRoutes(app: FastifyInstance) {
     const body = z
       .object({
         nombre: z.string().trim().min(2).optional(),
+        email: z.string().trim().email('Email inválido').optional(),
         cuit: z.string().trim().optional(),
         matricula: z.string().trim().optional(),
         telefono: z.string().trim().optional(),

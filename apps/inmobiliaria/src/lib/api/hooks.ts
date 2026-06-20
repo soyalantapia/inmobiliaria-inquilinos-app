@@ -768,7 +768,7 @@ export function usePropiedades(): {
     const contrato = p.contratoActualId
       ? (contratos.find((c) => c.id === p.contratoActualId) ?? null)
       : null;
-    const propietarios = p.participaciones.map((pp) => propietarioLite(pp.propietario, p.id));
+    const propietarios = (p.participaciones ?? []).map((pp) => propietarioLite(pp.propietario, p.id));
     const reclamosAbiertos = reclamos.filter(
       (r) => r.contratoId === p.contratoActualId && (r.estado === 'ABIERTO' || r.estado === 'EN_CURSO'),
     ).length;
@@ -1041,6 +1041,21 @@ export function useEliminarPropiedad(): { eliminar: (id: string) => Promise<void
       await ensureApiSession();
       await apiFetch(`/propiedades/${id}`, { method: 'DELETE' });
       await qc.invalidateQueries({ queryKey: ['propiedades'] });
+    },
+  };
+}
+
+/** Eliminar un propietario sin historial (típicamente un alta duplicada). */
+export function useEliminarPropietario(): { eliminar: (id: string) => Promise<void> } {
+  const qc = useQueryClient();
+  return {
+    eliminar: async (id) => {
+      await ensureApiSession();
+      await apiFetch(`/propietarios/${id}`, { method: 'DELETE' });
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['propietarios'] }),
+        qc.invalidateQueries({ queryKey: ['propiedades'] }),
+      ]);
     },
   };
 }

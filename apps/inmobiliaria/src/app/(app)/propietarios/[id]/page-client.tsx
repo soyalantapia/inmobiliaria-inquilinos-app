@@ -29,6 +29,7 @@ import {
   CuentaCobranzaTrigger,
   EditarPropietarioTrigger,
 } from '@/components/editar-propietario-trigger';
+import { EliminarPropietarioButton } from '@/components/eliminar-propietario-button';
 import { Topbar } from '@/components/topbar';
 import { apiEnabled } from '@/lib/api/client';
 import { usePropietario } from '@/lib/api/use-propietario';
@@ -152,6 +153,12 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
                     <Pencil className="h-4 w-4" />
                     Editar
                   </Button>
+                )}
+                {apiEnabled && (propietario.propiedadesIds?.length ?? 0) === 0 && (
+                  <EliminarPropietarioButton
+                    propietarioId={propietario.id}
+                    nombre={`${propietario.nombre} ${propietario.apellido ?? ''}`.trim()}
+                  />
                 )}
               </div>
             </div>
