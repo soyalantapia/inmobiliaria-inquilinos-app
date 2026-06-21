@@ -27,6 +27,13 @@ const EnvSchema = z.object({
     .default('http://localhost:3000,http://localhost:3001,https://soyalantapia.github.io')
     .transform((v) => v.split(',').map((s) => s.trim()).filter(Boolean)),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  // Fin del acceso gratis pre-lanzamiento (la usa /auth/registro). Si está seteada,
+  // tiene que ser una fecha parseable → una basura falla en el ARRANQUE con mensaje
+  // claro, en vez de un 500 silencioso al registrarse. Lenient: ISO con o sin hora.
+  FECHA_LANZAMIENTO: z
+    .string()
+    .refine((s) => !Number.isNaN(Date.parse(s)), 'FECHA_LANZAMIENTO no es una fecha válida')
+    .optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

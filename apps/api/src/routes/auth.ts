@@ -87,7 +87,7 @@ export async function authRoutes(app: FastifyInstance) {
     const yaExiste = await prisma.usuario.findFirst({ where: { email } });
     if (yaExiste) return reply.code(409).send({ message: 'Ya existe una cuenta con ese email' });
 
-    const hasta = new Date(process.env.FECHA_LANZAMIENTO ?? FECHA_LANZAMIENTO_DEFAULT);
+    const hasta = new Date(app.env.FECHA_LANZAMIENTO ?? FECHA_LANZAMIENTO_DEFAULT);
     const passwordHash = bcrypt.hashSync(admin.password, 10);
 
     // Reintentamos por si el código de referido colisiona (unique).

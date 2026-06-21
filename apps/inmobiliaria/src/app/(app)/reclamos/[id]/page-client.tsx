@@ -77,6 +77,7 @@ export default function DetalleReclamoPage() {
   const [costoNotas, setCostoNotas] = useState('');
   const [dialogo, setDialogo] = useState<'resolver' | 'rechazar' | 'cerrar' | null>(null);
   const [dialogoCargando, setDialogoCargando] = useState(false);
+  const [enviandoMsg, setEnviandoMsg] = useState(false);
   const scrollEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -138,14 +139,17 @@ export default function DetalleReclamoPage() {
   // invalida y trae el evento real); en demo escribe el store local.
   const enviarMensaje = async () => {
     const texto = mensaje.trim();
-    if (!texto) return;
+    if (!texto || enviandoMsg) return;
     if (apiEnabled) {
+      setEnviandoMsg(true);
       try {
         await responderApi(texto);
         setMensaje('');
         toast({ title: 'Mensaje enviado al inquilino' });
       } catch {
         toast({ title: 'No se pudo enviar el mensaje', variant: 'destructive' });
+      } finally {
+        setEnviandoMsg(false);
       }
       return;
     }
@@ -355,7 +359,7 @@ export default function DetalleReclamoPage() {
                     />
                     <Button
                       onClick={enviarMensaje}
-                      disabled={!mensaje.trim()}
+                      disabled={!mensaje.trim() || enviandoMsg}
                       size="icon"
                       aria-label="Enviar mensaje al inquilino"
                     >

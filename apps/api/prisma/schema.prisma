@@ -813,6 +813,10 @@ model Sociedad {
   consorcios  Consorcio[]
 
   @@index([inmobiliariaId])
+  // Índice ÚNICO PARCIAL "sociedades_principal_activa_key" sobre (inmobiliariaId)
+  // WHERE esPrincipal=true AND activa=true (migración 20260621010000), creado a
+  // mano porque Prisma no expresa índices parciales: una sola sociedad principal
+  // activa por inmobiliaria. NO lo borres si migrate dev marca drift sobre sociedades.
   @@map("sociedades")
 }
 

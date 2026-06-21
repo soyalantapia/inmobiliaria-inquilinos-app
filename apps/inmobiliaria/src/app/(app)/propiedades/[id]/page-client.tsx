@@ -752,15 +752,19 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                     propiedades. Ahora resolvemos el garante real del
                     contacto de cobranza por contratoId. */}
                 {(() => {
-                  const garante = contrato
-                    ? contactosCobranzaMock.find(
-                        (x) => x.contratoId === contrato.id,
-                      )?.garante ?? null
-                    : null;
+                  // El garante real vive en la ficha del contrato; acá solo lo
+                  // resolvemos en demo desde el mock. En prod queda null → empty-state
+                  // (antes el mock no matcheaba y mostraba "Sin garante" engañoso).
+                  const garante =
+                    !apiEnabled && contrato
+                      ? contactosCobranzaMock.find((x) => x.contratoId === contrato.id)?.garante ?? null
+                      : null;
                   if (!garante) {
                     return (
                       <div className="rounded-md border border-dashed bg-background/40 p-4 text-xs text-muted-foreground">
-                        Sin garante registrado para este contrato.
+                        {apiEnabled
+                          ? 'Los datos del garante están en la ficha del contrato.'
+                          : 'Sin garante registrado para este contrato.'}
                       </div>
                     );
                   }
@@ -867,7 +871,9 @@ const permisoLabelAdmin: Record<CoInquilinoAdmin['permiso'], string> = {
 };
 
 function CoInquilinosBlock({ contratoId }: { contratoId: string | undefined }) {
-  const cos = contratoId ? coInquilinosMock.filter((c) => c.contratoId === contratoId) : [];
+  // Mock solo en demo: en prod no hay fuente real cableada en esta ficha → evita
+  // listar/contar co-inquilinos del mock que no pertenecen a este tenant.
+  const cos = !apiEnabled && contratoId ? coInquilinosMock.filter((c) => c.contratoId === contratoId) : [];
 
   return (
     <Card>

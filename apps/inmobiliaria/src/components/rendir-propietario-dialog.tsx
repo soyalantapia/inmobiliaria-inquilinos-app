@@ -81,7 +81,9 @@ export function RendirPropietarioDialog({
   const alsoWhatsappRef = useRef(false);
   const [gastosOpen, setGastosOpen] = useState(true);
   const periodo = periodoActual();
-  const yaRendido = propietario ? obtenerRendicion(propietario.id, periodo) : null;
+  // El badge "ya rendido" sale de localStorage → solo válido en demo. En prod
+  // queda null (no se inventa estado) hasta que haya un GET real de rendiciones.
+  const yaRendido = !apiEnabled && propietario ? obtenerRendicion(propietario.id, periodo) : null;
   // En prod posteamos a /rendiciones; en demo el dialog cae al store local.
   const { rendir: rendirApi } = useRendiciones();
 

@@ -723,22 +723,30 @@ export async function coreRoutes(app: FastifyInstance) {
     const tienePrincipal = await prisma.sociedad.findFirst({
       where: { inmobiliariaId: u.inmobiliariaId, esPrincipal: true, activa: true },
     });
-    return prisma.sociedad.create({
-      data: {
-        inmobiliariaId: u.inmobiliariaId,
-        razonSocial: body.data.razonSocial,
-        nombreComercial: body.data.nombreComercial,
-        cuit: body.data.cuit,
-        condicionFiscal: body.data.condicionFiscal,
-        domicilioFiscal: body.data.domicilioFiscal,
-        email: body.data.email,
-        telefono: body.data.telefono,
-        cuentaCobranza: (body.data.cuentaCobranza ?? undefined) as Prisma.InputJsonValue | undefined,
-        afip: (body.data.afip ?? undefined) as Prisma.InputJsonValue | undefined,
-        esPrincipal: !tienePrincipal,
-        activa: true,
-      },
-    });
+    const data = {
+      inmobiliariaId: u.inmobiliariaId,
+      razonSocial: body.data.razonSocial,
+      nombreComercial: body.data.nombreComercial,
+      cuit: body.data.cuit,
+      condicionFiscal: body.data.condicionFiscal,
+      domicilioFiscal: body.data.domicilioFiscal,
+      email: body.data.email,
+      telefono: body.data.telefono,
+      cuentaCobranza: (body.data.cuentaCobranza ?? undefined) as Prisma.InputJsonValue | undefined,
+      afip: (body.data.afip ?? undefined) as Prisma.InputJsonValue | undefined,
+      activa: true,
+    };
+    try {
+      return await prisma.sociedad.create({ data: { ...data, esPrincipal: !tienePrincipal } });
+    } catch (e) {
+      // Carrera: otra request creó la principal entre el findFirst y el create. El
+      // índice parcial único (una sola principal-activa por inmobiliaria) la corta
+      // con P2002 → reintentamos como NO principal (ya hay una principal).
+      if (e && typeof e === 'object' && (e as { code?: string }).code === 'P2002' && !tienePrincipal) {
+        return await prisma.sociedad.create({ data: { ...data, esPrincipal: false } });
+      }
+      throw e;
+    }
   });
 
   app.put('/sociedades/:id', async (request, reply) => {
