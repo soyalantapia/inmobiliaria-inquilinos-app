@@ -116,6 +116,21 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
     );
   }
 
+  // En prod, si la liquidación YA está paga (validada por la inmobiliaria), no
+  // re-mostramos el formulario de pago: el flag local `completado` deriva de
+  // localStorage (vacío en prod) y antes el form reaparecía como si no se hubiera
+  // pagado. (El caso "informado, pendiente de validación" lo cubre el 409 del API.)
+  if (apiEnabled && liq.estado === 'PAGADO') {
+    return (
+      <main className="flex-1 px-5 py-10">
+        <p className="text-base font-medium">Esta liquidación ya está paga. ¡Gracias!</p>
+        <Button asChild className="mt-4">
+          <Link href="/">Volver al inicio</Link>
+        </Button>
+      </main>
+    );
+  }
+
   const totalAPagar = calc.totalAPagar;
   const saldo = saldoPendiente(params.liqId, totalAPagar);
   // Alquiler vigente para el umbral del hint de negociación: en la demo es el

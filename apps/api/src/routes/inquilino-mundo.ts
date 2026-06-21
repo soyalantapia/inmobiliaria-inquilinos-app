@@ -443,6 +443,7 @@ function pantallaDesdeUrl(url: string): string {
 
 /** Prefijo con el que conservamos la autoría real de reportes de inquilinos. */
 const SESSION_INQUILINO_PREFIX = 'inquilino:';
+const SESSION_COINQUILINO_PREFIX = 'co-inquilino:';
 
 /* ============================================================
  * Rutas
@@ -939,8 +940,13 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
       // Usuario. Para reportes de inquilinos lo atribuimos al ADMIN del tenant
       // como receptor, y conservamos la autoría REAL en rol + sessionId.
       rol = 'INQUILINO';
-      const actorId = payload.kind === 'co-inquilino' ? payload.coInquilinoId : payload.inquilinoId;
-      sessionId = `${SESSION_INQUILINO_PREFIX}${actorId}`;
+      // Prefijo distinto por tipo: el id de un co-inquilino vive en la tabla
+      // CoInquilino, no en Inquilino → con el prefijo de inquilino su nombre nunca
+      // resolvía en GET /reportes (caía al fallback 'Inquilino').
+      sessionId =
+        payload.kind === 'co-inquilino'
+          ? `${SESSION_COINQUILINO_PREFIX}${payload.coInquilinoId}`
+          : `${SESSION_INQUILINO_PREFIX}${payload.inquilinoId}`;
       const receptor = await prisma.usuario.findFirst({
         where: { inmobiliariaId: payload.inmobiliariaId, rol: 'ADMIN', activo: true },
         orderBy: { createdAt: 'asc' },
@@ -988,27 +994,34 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
       orderBy: { reportadoAt: 'desc' },
     });
 
-    // Resolver la autoría real de los reportes hechos por inquilinos
-    const inquilinoIds = [
+    // Resolver la autoría real de los reportes hechos por inquilinos Y co-inquilinos
+    // (cada uno con su prefijo; el id de un co-inquilino vive en otra tabla).
+    const idsConPrefijo = (prefijo: string) => [
       ...new Set(
         reportes
-          .filter((r) => r.sessionId?.startsWith(SESSION_INQUILINO_PREFIX))
-          .map((r) => r.sessionId!.slice(SESSION_INQUILINO_PREFIX.length)),
+          .filter((r) => r.sessionId?.startsWith(prefijo))
+          .map((r) => r.sessionId!.slice(prefijo.length)),
       ),
     ];
-    const inquilinos = inquilinoIds.length
-      ? await prisma.inquilino.findMany({ where: { id: { in: inquilinoIds } } })
-      : [];
-    const nombrePorId = new Map(
-      inquilinos.map((i) => [i.id, `${i.nombre} ${i.apellido ?? ''}`.trim()]),
-    );
+    const inquilinoIds = idsConPrefijo(SESSION_INQUILINO_PREFIX);
+    const coInquilinoIds = idsConPrefijo(SESSION_COINQUILINO_PREFIX);
+    const [inquilinos, coInquilinos] = await Promise.all([
+      inquilinoIds.length ? prisma.inquilino.findMany({ where: { id: { in: inquilinoIds } } }) : [],
+      coInquilinoIds.length ? prisma.coInquilino.findMany({ where: { id: { in: coInquilinoIds } } }) : [],
+    ]);
+    const nombrePorId = new Map<string, string>();
+    for (const i of inquilinos) nombrePorId.set(i.id, `${i.nombre} ${i.apellido ?? ''}`.trim());
+    for (const c of coInquilinos) nombrePorId.set(c.id, c.nombre.trim());
+
+    const nombreAutor = (sessionId: string | null): string => {
+      if (sessionId?.startsWith(SESSION_COINQUILINO_PREFIX))
+        return `${nombrePorId.get(sessionId.slice(SESSION_COINQUILINO_PREFIX.length)) ?? 'Co-inquilino'} (co-inquilino)`;
+      return `${nombrePorId.get(sessionId?.slice(SESSION_INQUILINO_PREFIX.length) ?? '') ?? 'Inquilino'} (inquilino)`;
+    };
 
     return reportes.map((r) => ({
       ...r,
-      reportadoPor:
-        r.rol === 'INQUILINO'
-          ? `${nombrePorId.get(r.sessionId?.slice(SESSION_INQUILINO_PREFIX.length) ?? '') ?? 'Inquilino'} (inquilino)`
-          : `${r.usuario.nombre} ${r.usuario.apellido}`.trim(),
+      reportadoPor: r.rol === 'INQUILINO' ? nombreAutor(r.sessionId) : `${r.usuario.nombre} ${r.usuario.apellido}`.trim(),
     }));
   });
 }
