@@ -55,10 +55,23 @@ export async function coreRoutes(app: FastifyInstance) {
         garantes: true,
         coInquilinos: true,
         documentos: true,
+        liquidaciones: { orderBy: { periodo: 'desc' }, take: 6 },
       },
     });
     if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
-    return contrato;
+    // estadoPagoActual / proximoVencimiento DERIVADOS de liquidaciones reales
+    // (igual que el listado y el detalle de propiedad): antes el detalle no los
+    // traía y el front aproximaba proximoVencimiento con la fecha de AJUSTE del
+    // alquiler (dato equivocado: el ajuste no es el vencimiento del mes).
+    const { liquidaciones, ...rest } = contrato;
+    const vencida = liquidaciones.find((l) => l.estado === 'VENCIDO');
+    const actual = vencida ?? liquidaciones[0] ?? null;
+    const pendiente = liquidaciones.find((l) => l.estado === 'PENDIENTE' || l.estado === 'VENCIDO');
+    return {
+      ...rest,
+      estadoPagoActual: actual?.estado ?? 'PENDIENTE',
+      proximoVencimiento: pendiente?.fechaVencimiento ?? null,
+    };
   });
 
   // ===== Propiedades =====

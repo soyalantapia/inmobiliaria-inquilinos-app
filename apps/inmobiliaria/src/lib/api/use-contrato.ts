@@ -61,6 +61,9 @@ interface ContratoApi {
   indiceAjuste: string | null;
   frecuenciaAjusteMeses: number | null;
   proximoAjuste: string | null;
+  // Derivados de liquidaciones reales por el backend (GET /contratos/:id).
+  proximoVencimiento?: string | null;
+  estadoPagoActual?: ContratoListado['estadoPagoActual'];
   tipoContrato: ContratoListado['tipoContrato'];
   montoExpensas: string | number | null;
   cbuAlias: string | null;
@@ -127,10 +130,10 @@ function mapContrato(r: ContratoApi): ContratoListado {
     estado: r.estado,
     fechaInicio: (r.fechaInicio ?? '').slice(0, 10),
     fechaFin: (r.fechaFin ?? '').slice(0, 10),
-    // El detalle no trae proximoVencimiento derivado; usamos el próximo ajuste
-    // como mejor aproximación y caemos a la fecha de fin si no hay.
-    proximoVencimiento: (r.proximoAjuste ?? r.fechaFin ?? '').slice(0, 10),
-    estadoPagoActual: 'PENDIENTE',
+    // proximoVencimiento real (derivado de liquidaciones por el backend); si no
+    // viniera, caemos al próximo ajuste y luego a la fecha de fin.
+    proximoVencimiento: (r.proximoVencimiento ?? r.proximoAjuste ?? r.fechaFin ?? '').slice(0, 10),
+    estadoPagoActual: r.estadoPagoActual ?? 'PENDIENTE',
     cbuAlias: r.cbuAlias,
     titularCuenta: r.titularCuenta,
     tipoContrato: r.tipoContrato ?? 'ALQUILER_Y_EXPENSAS',
