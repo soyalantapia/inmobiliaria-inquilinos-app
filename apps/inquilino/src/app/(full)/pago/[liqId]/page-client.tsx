@@ -371,7 +371,10 @@ function DetallePagoView({
             className="w-full"
             onClick={() => {
               const pagoBase = informado ?? parciales[0] ?? null;
-              const fechaIso = pagoBase?.enviadoAt ?? new Date().toISOString();
+              // En prod la fecha REAL del pago viene de la liquidación conciliada
+              // (liq.fechaPago); antes el pagoBase local estaba vacío y el recibo
+              // salía con la fecha de HOY. En demo liq.fechaPago es null → usa el mock.
+              const fechaIso = liq.fechaPago ?? pagoBase?.enviadoAt ?? new Date().toISOString();
               abrirReciboImprimible({
                 periodo: liq.periodo,
                 periodoFmt: formatPeriodo(liq.periodo),

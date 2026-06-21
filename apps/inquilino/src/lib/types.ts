@@ -76,6 +76,8 @@ export interface Liquidacion {
   montoPunitorio: number;
   montoTotal: number;
   fechaVencimiento: string;
+  /** Fecha en que la inmobiliaria concilió el pago (solo cuando estado=PAGADO). */
+  fechaPago?: string | null;
   estado: EstadoLiquidacion;
   moneda: Moneda;
 }

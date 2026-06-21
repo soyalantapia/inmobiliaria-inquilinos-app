@@ -204,8 +204,10 @@ function mapDetalle(r: ContratoApi): ContratoDetalle {
     contrato,
     contacto: mapContacto(r),
     propietarioDirecto: mapPropietarioDirecto(r),
-    // Función pura, determinística a partir del monto: misma lógica que el mock.
-    liquidaciones: generarLiquidaciones(contrato.id, contrato.monto),
+    // En prod NO fabricamos liquidaciones (antes generarLiquidaciones inventaba 12
+    // cuotas a partir del monto → historial de pagos FALSO en el tab Pagos). El
+    // endpoint de detalle no expone las liquidaciones reales todavía → empty state.
+    liquidaciones: [],
     // El detalle no expone estos logs todavía → empty state real en prod.
     eventos: [],
     comunicaciones: [],

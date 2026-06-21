@@ -104,6 +104,7 @@ interface LiquidacionApi {
   montoPunitorio: string | number | null;
   montoTotal: string | number;
   fechaVencimiento: string;
+  fechaPago?: string | null;
   estado: Liquidacion['estado'];
   moneda: Liquidacion['moneda'];
 }
@@ -118,6 +119,7 @@ function mapLiquidacion(l: LiquidacionApi): Liquidacion {
     montoPunitorio: Number(l.montoPunitorio ?? 0),
     montoTotal: Number(l.montoTotal),
     fechaVencimiento: (l.fechaVencimiento ?? '').slice(0, 10),
+    fechaPago: l.fechaPago ?? null,
     estado: l.estado,
     moneda: l.moneda,
   };

@@ -66,6 +66,7 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
     reclamos: reclamosApi,
     cargando: cargandoApi,
     deApi,
+    hayError,
     confirmarResolucion,
     calificarReclamo,
   } = useMisReclamos();
@@ -226,8 +227,12 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
         <main className="flex-1 px-5">
           <Card>
             <CardContent className="space-y-2 p-8 text-center">
-              <p className="font-medium">No encontramos este reclamo</p>
-              <p className="text-sm text-muted-foreground">Probablemente fue eliminado o el link está roto.</p>
+              <p className="font-medium">{hayError ? 'No pudimos cargar el reclamo' : 'No encontramos este reclamo'}</p>
+              <p className="text-sm text-muted-foreground">
+                {hayError
+                  ? 'Si entrás como co-inquilino, es posible que tu permiso no incluya los reclamos. Consultá con el titular del contrato.'
+                  : 'Probablemente fue eliminado o el link está roto.'}
+              </p>
               <Button asChild className="mt-2">
                 <Link href="/reclamos">Volver al listado</Link>
               </Button>

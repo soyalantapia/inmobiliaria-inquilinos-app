@@ -919,8 +919,11 @@ export function usePropietarios(): {
     const prop = props.find((p) => p.contratoActualId === l.contratoId);
     if (!prop) continue;
     for (const part of prop.participaciones) {
+      // Sobre el ALQUILER (no montoTotal): igual que la rendición real del server,
+      // las expensas no le corresponden al propietario. Antes inflaba el KPI y el
+      // preview del diálogo de rendición.
       cobradoByOwner[part.propietarioId] =
-        (cobradoByOwner[part.propietarioId] ?? 0) + l.montoTotal * (part.porcentaje / 100);
+        (cobradoByOwner[part.propietarioId] ?? 0) + l.montoAlquiler * (part.porcentaje / 100);
     }
   }
 

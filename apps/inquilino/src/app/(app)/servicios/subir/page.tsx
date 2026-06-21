@@ -25,7 +25,7 @@ import {
   leerArchivoComoDataUrl,
 } from '@/lib/boletas-servicios-storage';
 import { useBoletas } from '@/lib/api/use-servicios';
-import { apiEnabled } from '@/lib/api/client';
+import { apiEnabled, ApiError } from '@/lib/api/client';
 
 const TIPOS_DISPONIBLES: TipoServicio[] = ['LUZ', 'GAS', 'AGUA', 'INTERNET', 'ABL', 'CABLE'];
 
@@ -96,11 +96,16 @@ export default function SubirBoletaPage() {
         description: `${TIPO_LABEL[tipo]} · ${formatPeriodo(periodo)}`,
       });
       router.push('/servicios');
-    } catch {
+    } catch (e) {
+      // 403: un co-inquilino sin permiso. Antes el catch vacío mostraba "revisá
+      // tu conexión" (engañoso) para un error de permiso.
+      const sinPermiso = e instanceof ApiError && e.status === 403;
       toast({
         variant: 'destructive',
-        title: 'No pudimos subir la boleta',
-        description: 'Revisá tu conexión e intentá de nuevo.',
+        title: sinPermiso ? 'Sin permiso' : 'No pudimos subir la boleta',
+        description: sinPermiso
+          ? 'Solo el titular del contrato puede subir boletas de servicios.'
+          : 'Revisá tu conexión e intentá de nuevo.',
       });
     } finally {
       setEnviando(false);
