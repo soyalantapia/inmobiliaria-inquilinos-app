@@ -724,18 +724,28 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
     });
     if (yaInvitado) return reply.code(409).send({ message: 'Ya invitaste a alguien con ese email' });
 
-    const co = await prisma.coInquilino.create({
-      data: {
-        inmobiliariaId: inq.inmobiliariaId,
-        contratoId: inq.contratoId,
-        nombre: body.data.nombre,
-        dni: body.data.dni,
-        email,
-        telefono: body.data.telefono,
-        relacion: body.data.relacion,
-        permiso: body.data.permiso,
-      },
-    });
+    let co;
+    try {
+      co = await prisma.coInquilino.create({
+        data: {
+          inmobiliariaId: inq.inmobiliariaId,
+          contratoId: inq.contratoId,
+          nombre: body.data.nombre,
+          dni: body.data.dni,
+          email,
+          telefono: body.data.telefono,
+          relacion: body.data.relacion,
+          permiso: body.data.permiso,
+        },
+      });
+    } catch (e) {
+      // Carrera de doble-invitación concurrente (dos requests pasan el findFirst de
+      // arriba): el @@unique([contratoId, email]) la corta con P2002 → mismo 409.
+      if (e && typeof e === 'object' && (e as { code?: string }).code === 'P2002') {
+        return reply.code(409).send({ message: 'Ya invitaste a alguien con ese email' });
+      }
+      throw e;
+    }
     // El modelo no persiste el token: lo firmamos al vuelo (JWT con el id de
     // la invitación) — es lo que iría en el link/WhatsApp de invitación.
     const tokenInvitacion = app.jwt.sign(

@@ -1255,6 +1255,9 @@ model CoInquilino {
 
   @@index([inmobiliariaId])
   @@index([contratoId])
+  // Una sola invitación por (contrato, email). La revocación BORRA la fila, así
+  // que re-invitar tras revocar no choca. Cierra la carrera de doble-invitación.
+  @@unique([contratoId, email])
   @@map("co_inquilinos")
 }
 
@@ -1367,6 +1370,11 @@ model Pago {
   @@index([contratoId])
   @@index([liquidacionId])
   @@index([decididoPorId])
+  // Hay un índice ÚNICO PARCIAL "pagos_liquidacionId_informado_key" sobre
+  // (liquidacionId) WHERE estado='INFORMADO' creado a mano en la migración
+  // 20260621000000_audit_unique_constraints (Prisma no expresa índices parciales).
+  // Garantiza un solo pago INFORMADO por liquidación. NO lo borres si migrate dev
+  // marca "drift" sobre pagos — es esperado.
   @@map("pagos")
 }
 

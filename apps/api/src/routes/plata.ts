@@ -193,21 +193,33 @@ export async function plataRoutes(app: FastifyInstance) {
         .send({ message: 'Ya informaste un pago de este mes; esperá que la inmobiliaria lo valide.' });
     }
 
-    return prisma.pago.create({
-      data: {
-        inmobiliariaId: inq.inmobiliariaId,
-        contratoId: inq.contratoId,
-        liquidacionId: liq.id,
-        periodo: liq.periodo,
-        tipo: Number(liq.montoTotal) === body.data.monto ? 'TOTAL' : 'PARCIAL',
-        monto: body.data.monto,
-        montoLiqTotal: liq.montoTotal,
-        metodo: body.data.metodo,
-        nroOperacion: body.data.nroOperacion,
-        fechaTransferencia: body.data.fechaTransferencia,
-        notaInquilino: body.data.nota,
-      },
-    });
+    try {
+      return await prisma.pago.create({
+        data: {
+          inmobiliariaId: inq.inmobiliariaId,
+          contratoId: inq.contratoId,
+          liquidacionId: liq.id,
+          periodo: liq.periodo,
+          tipo: Number(liq.montoTotal) === body.data.monto ? 'TOTAL' : 'PARCIAL',
+          monto: body.data.monto,
+          montoLiqTotal: liq.montoTotal,
+          metodo: body.data.metodo,
+          nroOperacion: body.data.nroOperacion,
+          fechaTransferencia: body.data.fechaTransferencia,
+          notaInquilino: body.data.nota,
+        },
+      });
+    } catch (e) {
+      // Carrera de doble-informe concurrente (dos requests pasan el findFirst de
+      // arriba a la vez): el índice parcial único (un solo INFORMADO por
+      // liquidación) la corta con P2002 → mismo 409 amigable que el caso secuencial.
+      if (e && typeof e === 'object' && (e as { code?: string }).code === 'P2002') {
+        return reply
+          .code(409)
+          .send({ message: 'Ya informaste un pago de este mes; esperá que la inmobiliaria lo valide.' });
+      }
+      throw e;
+    }
   });
 
   // Liquidaciones del inquilino logueado (para informar pagos / comprobantes)
