@@ -154,9 +154,11 @@ export async function plataRoutes(app: FastifyInstance) {
     return pagoOk;
   });
 
-  // Inquilino (o co-inquilino con permiso PAGAR/COMPLETO) informa un pago.
+  // Inquilino o CUALQUIER co-inquilino del contrato (incluido permiso VER) informa
+  // un pago. Decisión del dueño (2026-06-21): pagar el alquiler no se restringe —
+  // cualquier miembro del contrato puede hacerlo (el tier PAGAR ya no aplica acá).
   app.post('/pagos/informar', async (request, reply) => {
-    const inq = await requireContratoAcceso(request, reply, 'PAGAR');
+    const inq = await requireContratoAcceso(request, reply, 'VER');
     if (!inq) return;
     if (!inq.contratoId) return reply.code(400).send({ message: 'No tenés un contrato activo' });
     const body = z
@@ -347,7 +349,10 @@ export async function plataRoutes(app: FastifyInstance) {
     });
     for (const liq of liqsPagadas) {
       const part = owner.participaciones.find((p) => p.propiedadId === liq.contrato.propiedadId);
-      montoBruto += Number(liq.montoTotal) * ((part?.porcentaje ?? 100) / 100);
+      // Bruto = SOLO el alquiler (no montoTotal): las expensas/punitorios no entran
+      // en la rendición al propietario (las cobra/paga el consorcio). La comisión y
+      // el neto se calculan sobre el alquiler. (Decisión del dueño 2026-06-21.)
+      montoBruto += Number(liq.montoAlquiler) * ((part?.porcentaje ?? 100) / 100);
     }
     if (montoBruto === 0) return reply.code(409).send({ message: `No hay cobros del período ${periodo} para rendir` });
 
