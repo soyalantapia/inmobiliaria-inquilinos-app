@@ -46,7 +46,7 @@ import {
   reactivar,
 } from '@/lib/api/use-sociedades';
 import { ApiError } from '@/lib/api/client';
-import { useMe } from '@/lib/api/hooks';
+import { useMe, usePropiedades } from '@/lib/api/hooks';
 import { propiedadesMock } from '@/lib/mock-data';
 
 /**
@@ -64,6 +64,9 @@ export function SociedadesManager() {
   const [bajaSociedad, setBajaSociedad] = useState<Sociedad | null>(null);
 
   const { me } = useMe();
+  // En prod contamos las propiedades REALES de la cartera; en demo, el mock.
+  // (Antes usaba siempre propiedadesMock → en prod mostraba 0 por sociedad.)
+  const { propiedades: propiedadesReales } = usePropiedades();
 
   const recargar = async () => {
     try {
@@ -85,8 +88,11 @@ export function SociedadesManager() {
   const puedeMutar = !apiEnabled || me?.rol === 'ADMIN';
 
   const principalId = lista.find((s) => s.esPrincipal && s.activa)?.id ?? null;
+  const fuentePropiedades = apiEnabled
+    ? propiedadesReales.map((p) => p.propiedad)
+    : propiedadesMock;
   const propiedadesPorSociedad = (sociedadId: string) =>
-    propiedadesMock.filter(
+    fuentePropiedades.filter(
       (p) =>
         (p.sociedadId ?? principalId) === sociedadId && p.estado !== 'EN_EDICION',
     ).length;

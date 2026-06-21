@@ -469,10 +469,16 @@ export default function PagosPage() {
               size="sm"
               variant="ghost"
               onClick={() =>
-                toast({
-                  title: 'Recordatorios enviados',
-                  description: 'Le mandamos WhatsApp y mail a los inquilinos con pagos vencidos.',
-                })
+                real
+                  ? toast({
+                      title: 'Próximamente',
+                      description:
+                        'El recordatorio automático a morosos por WhatsApp y mail todavía no está disponible.',
+                    })
+                  : toast({
+                      title: 'Recordatorios enviados',
+                      description: 'Le mandamos WhatsApp y mail a los inquilinos con pagos vencidos.',
+                    })
               }
             >
               <Bell className="h-4 w-4" />
