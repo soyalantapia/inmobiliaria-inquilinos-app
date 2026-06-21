@@ -76,7 +76,10 @@ function evaluarSla(reclamo: ReclamoParaSla, ahoraMs = Date.now()): ResumenSla {
   const restantes = limite - horas;
   const pct = (horas / limite) * 100;
 
-  if (reclamo.estado === 'RESUELTO' || reclamo.estado === 'CERRADO') {
+  // RECHAZADO también es terminal: antes caía al check de VENCIDO de abajo y
+  // mostraba un SLA atrasado + alerta en falso para un reclamo ya cerrado.
+  if (reclamo.estado === 'RESUELTO' || reclamo.estado === 'CERRADO' || reclamo.estado === 'RECHAZADO') {
+    const rechazado = reclamo.estado === 'RECHAZADO';
     const dur = reclamo.resueltoAt
       ? Math.max(0, (reclamo.resueltoAt.getTime() - creado) / 3600_000)
       : horas;
@@ -87,8 +90,9 @@ function evaluarSla(reclamo: ReclamoParaSla, ahoraMs = Date.now()): ResumenSla {
       slaHorasLimite: limite,
       slaHorasRestantes: limite - dur,
       slaPctConsumido: (dur / limite) * 100,
-      slaTexto:
-        dur <= limite
+      slaTexto: rechazado
+        ? 'Reclamo rechazado.'
+        : dur <= limite
           ? `Resuelto en ${formatHoras(dur)}, dentro del plazo (${formatHoras(limite)}).`
           : `Resuelto en ${formatHoras(dur)}, ${formatHoras(dur - limite)} más que el plazo.`,
       slaAlertar: false,
@@ -236,19 +240,32 @@ export async function operacionRoutes(app: FastifyInstance) {
     if (!prof) return reply.code(404).send({ message: 'Profesional inexistente o dado de baja' });
 
     const autor = await nombreUsuario(u.userId);
-    const [actualizado] = await prisma.$transaction([
-      prisma.reclamo.update({ where: { id }, data: { profesionalId: prof.id } }),
-      prisma.reclamoEvento.create({
-        data: {
-          inmobiliariaId: u.inmobiliariaId,
-          reclamoId: id,
-          tipo: 'PROFESIONAL_ASIGNADO',
-          autor,
-          contenido: `${prof.nombre} (${prof.categoria})`,
-        },
-      }),
-    ]);
-    return conSla(actualizado);
+    try {
+      const actualizado = await prisma.$transaction(async (tx) => {
+        // Lock atómico (igual que resolver/rechazar): si un resolver/rechazar
+        // concurrente cerró el reclamo entre el pre-check y acá, count=0 → 409.
+        // Antes el update incondicional asignaba un profesional a un reclamo cerrado.
+        const res = await tx.reclamo.updateMany({
+          where: { id, estado: { notIn: [...ESTADOS_CERRADOS] } },
+          data: { profesionalId: prof.id },
+        });
+        if (res.count === 0) throw new ConflictoEstadoReclamo('El reclamo ya está cerrado — no se puede asignar profesional');
+        await tx.reclamoEvento.create({
+          data: {
+            inmobiliariaId: u.inmobiliariaId,
+            reclamoId: id,
+            tipo: 'PROFESIONAL_ASIGNADO',
+            autor,
+            contenido: `${prof.nombre} (${prof.categoria})`,
+          },
+        });
+        return tx.reclamo.findUniqueOrThrow({ where: { id } });
+      });
+      return conSla(actualizado);
+    } catch (e) {
+      if (e instanceof ConflictoEstadoReclamo) return reply.code(409).send({ message: e.message });
+      throw e;
+    }
   });
 
   app.post('/reclamos/:id/resolver', async (request, reply) => {

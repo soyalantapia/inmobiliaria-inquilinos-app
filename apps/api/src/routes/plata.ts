@@ -118,6 +118,11 @@ export async function plataRoutes(app: FastifyInstance) {
               }
             : { estado: 'PARCIAL' },
       });
+      // El pago que CIERRA el ciclo (con parciales previos) queda etiquetado TOTAL,
+      // no PARCIAL → el toast del panel no muestra un saldo restante falso.
+      if (total > 0 && cobrado >= total) {
+        await tx.pago.updateMany({ where: { id, tipo: 'PARCIAL' }, data: { tipo: 'TOTAL' } });
+      }
       // Devolvemos el pago DENTRO de la tx: si el findUnique fallara afuera, el
       // estado ya estaría cambiado y el cliente vería un error engañoso.
       return tx.pago.findUnique({ where: { id } });
@@ -180,6 +185,16 @@ export async function plataRoutes(app: FastifyInstance) {
     });
     if (!liq) return reply.code(404).send({ message: 'Liquidación inexistente' });
     if (liq.estado === 'PAGADO') return reply.code(409).send({ message: 'Esta liquidación ya está paga' });
+    // El monto informado no puede superar el saldo pendiente (total − conciliados):
+    // antes, al volver a pagar un parcial, se podía informar más que lo que faltaba.
+    const aggConc = await prisma.pago.aggregate({
+      where: { liquidacionId: liq.id, estado: 'CONCILIADO' },
+      _sum: { monto: true },
+    });
+    const saldoPendiente = Number(liq.montoTotal) - Number(aggConc._sum.monto ?? 0);
+    if (saldoPendiente > 0 && body.data.monto > saldoPendiente) {
+      return reply.code(400).send({ message: 'El monto supera el saldo pendiente de esta liquidación' });
+    }
 
     // Evitar doble-informe: si ya hay un pago INFORMADO esperando validación,
     // no creamos otro (el inquilino no veía el estado "pendiente de validación"

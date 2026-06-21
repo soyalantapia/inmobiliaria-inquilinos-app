@@ -844,6 +844,12 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
     if ((body.data.tamanioBytes ?? 0) > TAMANIO_MAX) {
       return reply.code(400).send({ message: 'La boleta no puede superar los 2 MB' });
     }
+    // No se cargan boletas de períodos futuros.
+    const [anioBol = 0, mesBol = 0] = body.data.periodo.split('-').map(Number);
+    const hoyBol = new Date();
+    if (anioBol > hoyBol.getFullYear() || (anioBol === hoyBol.getFullYear() && mesBol > hoyBol.getMonth() + 1)) {
+      return reply.code(400).send({ message: 'No podés cargar boletas de períodos futuros' });
+    }
 
     // monto default: consumo promedio del servicio de la propiedad (si está cargado)
     let monto = body.data.monto;

@@ -7,7 +7,9 @@ import nodemailer, { type Transporter } from 'nodemailer';
  * false: el caller cae al fallback de loguear el código (útil en dev/prueba).
  */
 const host = process.env.SMTP_HOST;
-const port = Number(process.env.SMTP_PORT ?? 587);
+// || (no ??): un SMTP_PORT='' (string vacío) pasaba el ?? y daba Number('')=0,
+// puerto inválido → el OTP fallaba en silencio (el inquilino no podía entrar).
+const port = Number(process.env.SMTP_PORT || 587);
 const user = process.env.SMTP_USER;
 const pass = process.env.SMTP_PASS;
 const from = process.env.SMTP_FROM ?? 'My Alquiler <no-reply@myalquiler.app>';

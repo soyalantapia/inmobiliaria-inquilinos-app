@@ -385,6 +385,17 @@ export async function coreRoutes(app: FastifyInstance) {
     if (d.fechaFin <= d.fechaInicio) {
       return reply.code(400).send({ message: 'La fecha de fin tiene que ser posterior a la fecha de inicio' });
     }
+    // monto 0 solo tiene sentido en SOLO_EXPENSAS; con ALQUILER las liquidaciones
+    // nunca llegarían a PAGADO (montoTotal 0) y el inquilino quedaría "debiendo $0".
+    if (d.monto === 0 && d.tipoContrato !== 'SOLO_EXPENSAS') {
+      return reply.code(400).send({ message: 'El monto del alquiler tiene que ser mayor a cero' });
+    }
+    if ((d.tipoContrato === 'ALQUILER_Y_EXPENSAS' || d.tipoContrato === 'SOLO_EXPENSAS') && !d.montoExpensas) {
+      return reply.code(400).send({ message: 'Este tipo de contrato requiere el monto de expensas' });
+    }
+    // CARGA carga contratos para REVISIÓN (permisos.ts: contratos.crear con
+    // rolesAprobacion incluye CARGA): NO se activan solos. ADMIN/OPERADOR activan directo.
+    const esCarga = u.rol === 'CARGA';
     const prop = await prisma.propiedad.findFirst({ where: { id: d.propiedadId, inmobiliariaId: u.inmobiliariaId } });
     if (!prop) return reply.code(404).send({ message: 'Propiedad inexistente' });
     if (prop.contratoActualId) return reply.code(409).send({ message: 'La propiedad ya tiene un contrato activo' });
@@ -431,7 +442,8 @@ export async function coreRoutes(app: FastifyInstance) {
         data: {
           inmobiliariaId: u.inmobiliariaId,
           propiedadId: prop.id,
-          estado: 'ACTIVO',
+          estado: esCarga ? 'BORRADOR' : 'ACTIVO',
+          pendienteAprobacion: esCarga,
           monto: d.monto,
           moneda: d.moneda,
           fechaInicio: d.fechaInicio,
@@ -450,9 +462,27 @@ export async function coreRoutes(app: FastifyInstance) {
         },
       });
       await tx.inquilino.update({ where: { id: inq.id }, data: { contratoId: contrato.id } });
-      // Claim ATÓMICO de la propiedad: el WHERE contratoActualId=null garantiza
-      // que si otra request concurrente ya activó un contrato, count=0 → abortamos
-      // (cierra la carrera de doble alta de contrato sobre la misma propiedad).
+      if (esCarga) {
+        // BORRADOR: NO se reclama la propiedad ni se devengan liquidaciones hasta
+        // que un ADMIN/OPERADOR apruebe. Creamos la Aprobacion que aparece en la
+        // bandeja; la activación + claim + devengado ocurren al aprobar (plata.ts).
+        await tx.aprobacion.create({
+          data: {
+            inmobiliariaId: u.inmobiliariaId,
+            tipo: 'CONTRATO_CARGADO',
+            titulo: `${d.inquilino.nombre} · ${prop.direccion}`,
+            descripcion: `Contrato cargado para revisión (${d.tipoContrato}).`,
+            entidadId: contrato.id,
+            cargadoPorId: u.userId,
+            rolAutor: 'CARGA',
+            cargadoAt: new Date(),
+          },
+        });
+        return contrato;
+      }
+      // ADMIN/OPERADOR: activa directo. Claim ATÓMICO de la propiedad: el WHERE
+      // contratoActualId=null garantiza que si otra request concurrente ya activó
+      // un contrato, count=0 → abortamos (cierra la carrera de doble alta).
       const claim = await tx.propiedad.updateMany({
         where: { id: prop.id, contratoActualId: null },
         data: { contratoActualId: contrato.id, estado: 'ALQUILADA' },
@@ -494,14 +524,28 @@ export async function coreRoutes(app: FastifyInstance) {
     if (contrato.estado === 'FINALIZADO' || contrato.estado === 'RESCINDIDO') {
       return reply.code(409).send({ message: 'El contrato ya está finalizado' });
     }
-    await prisma.$transaction([
-      prisma.contrato.update({ where: { id }, data: { estado: 'FINALIZADO' } }),
-      prisma.propiedad.updateMany({
+    // Un BORRADOR (cargado, pendiente de aprobación) no se finaliza: hay que
+    // rechazar la aprobación. Permitirlo dejaba un contrato finalizable que una
+    // aprobación pendiente podía después revivir a ACTIVO.
+    if (contrato.estado === 'BORRADOR') {
+      return reply.code(409).send({ message: 'Un contrato en borrador no se finaliza; rechazá la aprobación.' });
+    }
+    // Lock atómico: el updateMany condicionado por estado evita la doble
+    // finalización concurrente (sólo la primera gana; la segunda da count 0 → 409).
+    const fin = await prisma.$transaction(async (tx) => {
+      const upd = await tx.contrato.updateMany({
+        where: { id, inmobiliariaId: u.inmobiliariaId, estado: { notIn: ['FINALIZADO', 'RESCINDIDO', 'BORRADOR'] } },
+        data: { estado: 'FINALIZADO' },
+      });
+      if (upd.count === 0) return false;
+      await tx.propiedad.updateMany({
         where: { id: contrato.propiedadId, contratoActualId: id },
         data: { contratoActualId: null, estado: 'DISPONIBLE' },
-      }),
-      prisma.inquilino.updateMany({ where: { contratoId: id }, data: { contratoId: null } }),
-    ]);
+      });
+      await tx.inquilino.updateMany({ where: { contratoId: id }, data: { contratoId: null } });
+      return true;
+    });
+    if (!fin) return reply.code(409).send({ message: 'El contrato ya está finalizado' });
     return { ok: true };
   });
 
