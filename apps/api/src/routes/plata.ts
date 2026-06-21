@@ -192,7 +192,13 @@ export async function plataRoutes(app: FastifyInstance) {
       _sum: { monto: true },
     });
     const saldoPendiente = Number(liq.montoTotal) - Number(aggConc._sum.monto ?? 0);
-    if (saldoPendiente > 0 && body.data.monto > saldoPendiente) {
+    // Carrera: liq.estado pudo leerse stale como PARCIAL mientras un /validar
+    // concurrente ya concilió el total → saldo 0. No dejamos informar sobre una
+    // liquidación efectivamente paga (el check de estado=PAGADO de arriba no la agarra).
+    if (saldoPendiente <= 0) {
+      return reply.code(409).send({ message: 'Esta liquidación ya está paga' });
+    }
+    if (body.data.monto > saldoPendiente) {
       return reply.code(400).send({ message: 'El monto supera el saldo pendiente de esta liquidación' });
     }
 
@@ -572,6 +578,14 @@ export async function plataRoutes(app: FastifyInstance) {
             });
             if (claim.count === 0) throw new Error('PROP_OCUPADA');
             await generarLiquidacionesContrato(tx, contratoActualizado);
+          }
+          if (accion === 'rechazar') {
+            // El borrador rechazado se descarta: borramos el inquilino que se creó
+            // para él. Si no, su email queda tomado (@@unique [inmobiliariaId,email])
+            // y bloquea para siempre volver a cargar un contrato con ese inquilino.
+            // El contrato queda BORRADOR-rechazado (inquilinoTitular pasa a null, ya
+            // manejado por los mappers); no genera liquidaciones ni reclamó propiedad.
+            await tx.inquilino.deleteMany({ where: { contratoId: apr.entidadId, inmobiliariaId: u.inmobiliariaId } });
           }
         }
         // Mismo shape que GET /aprobaciones: el front mapea cargadoPor.nombre.

@@ -47,22 +47,26 @@ function calcularHistorial(
   ratingPromedio: number,
 ): HistorialCertificado {
   const ahora = Date.now();
+  // Comparamos por DÍA (no por timestamp): un pago conciliado el mismo día del
+  // vencimiento pero más tarde (fechaPago 14:00 vs vencimiento 00:00 UTC) caía
+  // como "demorado". Normalizamos ambos al inicio del día UTC.
+  const startOfDayUTC = (d: Date) => Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
   // Cuotas totales = todas las que vencieron hasta hoy. Pagadas = PAGADO.
   const vencidas = liqs.filter((l) => l.fechaVencimiento.getTime() <= ahora);
   const cuotasTotales = vencidas.length;
   const pagadas = vencidas.filter((l) => l.estado === 'PAGADO');
   // Al día = pagadas en o antes del vencimiento (sin fechaPago asumimos al día).
   const alDia = pagadas.filter(
-    (l) => !l.fechaPago || l.fechaPago.getTime() <= l.fechaVencimiento.getTime(),
+    (l) => !l.fechaPago || startOfDayUTC(l.fechaPago) <= startOfDayUTC(l.fechaVencimiento),
   );
   const demoradas = pagadas.filter(
-    (l) => l.fechaPago && l.fechaPago.getTime() > l.fechaVencimiento.getTime(),
+    (l) => l.fechaPago && startOfDayUTC(l.fechaPago) > startOfDayUTC(l.fechaVencimiento),
   );
   const atrasoPromedioDias =
     demoradas.length > 0
       ? Math.round(
           demoradas.reduce(
-            (acc, l) => acc + (l.fechaPago!.getTime() - l.fechaVencimiento.getTime()) / DIA_MS,
+            (acc, l) => acc + (startOfDayUTC(l.fechaPago!) - startOfDayUTC(l.fechaVencimiento)) / DIA_MS,
             0,
           ) / demoradas.length,
         )
@@ -968,7 +972,9 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
         orderBy: { createdAt: 'asc' },
       });
       if (!receptor) {
-        return reply.code(500).send({ message: 'La inmobiliaria no tiene un ADMIN para recibir reportes' });
+        return reply
+          .code(409)
+          .send({ message: 'La inmobiliaria no tiene un administrador activo — contactala directamente.' });
       }
       usuarioId = receptor.id;
     }

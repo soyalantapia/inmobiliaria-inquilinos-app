@@ -796,16 +796,32 @@ export async function coreRoutes(app: FastifyInstance) {
       await prisma.sociedad.update({ where: { id }, data: { activa: true } });
       return { ok: true };
     }
-    const activas = await prisma.sociedad.count({ where: { inmobiliariaId: u.inmobiliariaId, activa: true } });
-    if (soc.activa && activas <= 1) return reply.code(409).send({ message: 'No podés dar de baja la única sociedad activa' });
-    await prisma.sociedad.update({ where: { id }, data: { activa: false, esPrincipal: false } });
-    // Si la dada de baja era la principal, promovemos otra activa.
-    if (soc.esPrincipal) {
-      const siguiente = await prisma.sociedad.findFirst({
-        where: { inmobiliariaId: u.inmobiliariaId, activa: true },
-        orderBy: { createdAt: 'asc' },
-      });
-      if (siguiente) await prisma.sociedad.update({ where: { id: siguiente.id }, data: { esPrincipal: true } });
+    // Baja dentro de una tx Serializable: el count va DESPUÉS del update y si queda
+    // 0 activas se hace rollback. Antes el count-then-update permitía que dos bajas
+    // concurrentes de sociedades distintas pasaran ambas el chequeo y dejaran la
+    // inmobiliaria sin ninguna sociedad activa. Mismo patrón que PUT/DELETE /usuarios.
+    try {
+      await prisma.$transaction(
+        async (tx) => {
+          await tx.sociedad.update({ where: { id }, data: { activa: false, esPrincipal: false } });
+          const activas = await tx.sociedad.count({ where: { inmobiliariaId: u.inmobiliariaId, activa: true } });
+          if (activas === 0) throw new Error('ULTIMA_ACTIVA');
+          // Si la dada de baja era la principal, promovemos otra activa.
+          if (soc.esPrincipal) {
+            const siguiente = await tx.sociedad.findFirst({
+              where: { inmobiliariaId: u.inmobiliariaId, activa: true },
+              orderBy: { createdAt: 'asc' },
+            });
+            if (siguiente) await tx.sociedad.update({ where: { id: siguiente.id }, data: { esPrincipal: true } });
+          }
+        },
+        { isolationLevel: 'Serializable' },
+      );
+    } catch (e) {
+      if (e instanceof Error && e.message === 'ULTIMA_ACTIVA') {
+        return reply.code(409).send({ message: 'No podés dar de baja la única sociedad activa' });
+      }
+      throw e;
     }
     return { ok: true };
   });
