@@ -187,7 +187,10 @@ async function resolverAudiencia(
 export async function anunciosRoutes(app: FastifyInstance) {
   // ===== Panel: listado con conteos REALES desde AnuncioAcuse =====
   app.get('/anuncios', async (request, reply) => {
-    const u = await requireUsuario(request, reply, 'contratos.ver');
+    // Consistente con POST/DELETE de anuncios (comunicaciones.enviar = ADMIN/
+    // OPERADOR). Antes era contratos.ver → CARGA/LECTURA podían leer el cuerpo de
+    // todas las comunicaciones vía API directa (el sidebar ya las ocultaba).
+    const u = await requireUsuario(request, reply, 'comunicaciones.enviar');
     if (!u) return;
     const anuncios = await prisma.anuncio.findMany({
       where: { inmobiliariaId: u.inmobiliariaId },
@@ -305,22 +308,22 @@ export async function anunciosRoutes(app: FastifyInstance) {
       const ahora = new Date();
       const clave = { anuncioId_inquilinoId: { anuncioId: id, inquilinoId: inq.inquilinoId } };
       const previo = await prisma.anuncioAcuse.findUnique({ where: clave });
-      if (!previo) {
-        return prisma.anuncioAcuse.create({
-          data: {
-            inmobiliariaId: inq.inmobiliariaId,
-            anuncioId: id,
-            inquilinoId: inq.inquilinoId,
-            leidoAt: ahora,
-            confirmadoAt: accion === 'enterado' ? ahora : null,
-          },
-        });
-      }
-      return prisma.anuncioAcuse.update({
+      // upsert ATÓMICO sobre la unique [anuncioId, inquilinoId]: antes el
+      // findUnique→create dejaba una ventana donde un doble-tap concurrente
+      // hacía que el 2do create violara la unique (P2002 → 409 espurio al
+      // inquilino al marcar leído). Preserva los valores previos igual que antes.
+      return prisma.anuncioAcuse.upsert({
         where: clave,
-        data: {
-          leidoAt: previo.leidoAt ?? ahora,
-          ...(accion === 'enterado' ? { confirmadoAt: previo.confirmadoAt ?? ahora } : {}),
+        create: {
+          inmobiliariaId: inq.inmobiliariaId,
+          anuncioId: id,
+          inquilinoId: inq.inquilinoId,
+          leidoAt: ahora,
+          confirmadoAt: accion === 'enterado' ? ahora : null,
+        },
+        update: {
+          leidoAt: previo?.leidoAt ?? ahora,
+          ...(accion === 'enterado' ? { confirmadoAt: previo?.confirmadoAt ?? ahora } : {}),
         },
       });
     });

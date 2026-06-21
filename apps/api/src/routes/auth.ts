@@ -404,11 +404,13 @@ export async function authRoutes(app: FastifyInstance) {
     }
     const u = await prisma.usuario.findUnique({ where: { id: usuario.userId } });
     if (!u) return reply.code(401).send({ message: 'Usuario inexistente' });
-    // Si ya hay PIN, hay que probar que sos vos (PIN actual correcto) antes de cambiarlo.
+    // Si ya hay PIN, hay que probar que sos vos (PIN actual correcto) antes de
+    // cambiarlo. Vía verificarPinUsuario para heredar el lockout anti-fuerza-bruta:
+    // antes era un bcrypt.compareSync pelado → cambiar de PIN era un oráculo sin
+    // límite de intentos para adivinar el PIN actual con una sesión abierta.
     if (u.pinHash) {
-      if (!body.data.pinActual || !bcrypt.compareSync(body.data.pinActual, u.pinHash)) {
-        return reply.code(403).send({ message: 'El PIN actual no coincide' });
-      }
+      const r = await verificarPinUsuario(u.id, body.data.pinActual);
+      if (!r.ok) return reply.code(r.code).send({ message: r.message });
     }
     await prisma.usuario.update({
       where: { id: u.id },

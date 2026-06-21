@@ -108,7 +108,14 @@ export async function plataRoutes(app: FastifyInstance) {
         where: { id: pago.liquidacionId, inmobiliariaId: u.inmobiliariaId },
         data:
           total > 0 && cobrado >= total
-            ? { estado: 'PAGADO', fechaPago: pago.fechaTransferencia, metodoPago: 'TRANSFERENCIA' }
+            ? {
+                estado: 'PAGADO',
+                fechaPago: pago.fechaTransferencia,
+                // Método REAL del pago (no hardcodear): MetodoPagoInformado incluye
+                // CHEQUE, que no existe en MetodoPago → lo mapeamos a TRANSFERENCIA.
+                metodoPago:
+                  pago.metodo === 'MERCADOPAGO' ? 'MERCADOPAGO' : pago.metodo === 'EFECTIVO' ? 'EFECTIVO' : 'TRANSFERENCIA',
+              }
             : { estado: 'PARCIAL' },
       });
       // Devolvemos el pago DENTRO de la tx: si el findUnique fallara afuera, el
@@ -232,7 +239,9 @@ export async function plataRoutes(app: FastifyInstance) {
         categoria: z.enum(['PLOMERIA', 'ELECTRICIDAD', 'GAS', 'CERRAJERIA', 'PINTURA', 'EXPENSAS', 'MATERIALES', 'OTRO']),
         descripcion: z.string().min(3),
         monto: z.number().positive(),
-        fecha: z.string(),
+        // coerce.date rechaza strings no-fecha (igual que fechaTransferencia):
+        // antes new Date('xxx')=Invalid Date hacía explotar el create con 500.
+        fecha: z.coerce.date(),
         // El front manda null cuando el proveedor queda vacío: aceptar null además de undefined.
         proveedor: z.string().nullable().optional(),
       })
@@ -252,7 +261,7 @@ export async function plataRoutes(app: FastifyInstance) {
         categoria: body.data.categoria,
         descripcion: body.data.descripcion,
         monto: body.data.monto,
-        fecha: new Date(body.data.fecha),
+        fecha: body.data.fecha,
         proveedor: body.data.proveedor,
         cargadoPor: usuario ? `${usuario.nombre} ${usuario.apellido}`.trim() : 'Panel',
       },
@@ -265,12 +274,22 @@ export async function plataRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     const body = z.object({ pin: z.string().optional() }).parse(request.body ?? {});
     if (!(await verificarPin(u.userId, body.pin, reply))) return;
-    const mov = await prisma.movimientoCaja.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
+    // 404 vs 409: distinguimos "no existe" de "ya rendido" con una lectura previa,
+    // pero el borrado en sí es ATÓMICO (deleteMany WHERE descontadoEnRendicion=false):
+    // si una rendición concurrente toma el gasto entre el check y el delete, el
+    // count queda en 0 y devolvemos 409 (antes el delete lo borraba igual y dejaba
+    // la rendición apuntando a un gasto inexistente).
+    const mov = await prisma.movimientoCaja.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      select: { descontadoEnRendicion: true },
+    });
     if (!mov) return reply.code(404).send({ message: 'Movimiento inexistente' });
-    if (mov.descontadoEnRendicion) {
+    const res = await prisma.movimientoCaja.deleteMany({
+      where: { id, inmobiliariaId: u.inmobiliariaId, descontadoEnRendicion: false },
+    });
+    if (res.count === 0) {
       return reply.code(409).send({ message: 'Ya fue descontado en una rendición — no se puede eliminar' });
     }
-    await prisma.movimientoCaja.delete({ where: { id } });
     return { ok: true };
   });
 

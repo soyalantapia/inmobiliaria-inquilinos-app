@@ -34,15 +34,22 @@ export async function verificarPinUsuario(userId: string, pin: string | undefine
     return { ok: true };
   }
 
-  // Falló: sumamos intento y bloqueamos al llegar al límite.
-  const intentos = u.pinIntentosFallidos + 1;
-  const bloquear = intentos >= PIN_MAX_INTENTOS;
-  await prisma.usuario.update({
+  // Falló: incremento ATÓMICO del contador (antes leíamos u.pinIntentosFallidos y
+  // escribíamos el valor absoluto → dos intentos concurrentes podían pisarse y
+  // subcontar los intentos). El bloqueo se aplica al cruzar el límite.
+  const tras = await prisma.usuario.update({
     where: { id: userId },
-    data: bloquear
-      ? { pinIntentosFallidos: 0, pinBloqueadoHasta: new Date(Date.now() + PIN_BLOQUEO_MIN * 60_000) }
-      : { pinIntentosFallidos: intentos },
+    data: { pinIntentosFallidos: { increment: 1 } },
+    select: { pinIntentosFallidos: true },
   });
+  const intentos = tras.pinIntentosFallidos;
+  const bloquear = intentos >= PIN_MAX_INTENTOS;
+  if (bloquear) {
+    await prisma.usuario.update({
+      where: { id: userId },
+      data: { pinIntentosFallidos: 0, pinBloqueadoHasta: new Date(Date.now() + PIN_BLOQUEO_MIN * 60_000) },
+    });
+  }
   return bloquear
     ? { ok: false, code: 429, message: `Demasiados intentos con el PIN. Bloqueado ${PIN_BLOQUEO_MIN} minutos.` }
     : { ok: false, code: 403, message: `PIN incorrecto. Te quedan ${PIN_MAX_INTENTOS - intentos} intento${PIN_MAX_INTENTOS - intentos === 1 ? '' : 's'}.` };

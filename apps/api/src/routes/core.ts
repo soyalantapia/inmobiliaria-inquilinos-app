@@ -261,7 +261,7 @@ export async function coreRoutes(app: FastifyInstance) {
         ambientes: z.number().int().positive().optional(),
         m2: z.number().positive().optional(),
         propietarios: z
-          .array(z.object({ propietarioId: z.string(), porcentaje: z.number().min(0).max(100) }))
+          .array(z.object({ propietarioId: z.string(), porcentaje: z.number().positive().max(100) }))
           .min(1),
       })
       .safeParse(request.body ?? {});
@@ -359,7 +359,7 @@ export async function coreRoutes(app: FastifyInstance) {
         fechaInicio: z.coerce.date(),
         fechaFin: z.coerce.date(),
         diaPago: z.number().int().min(1).max(31),
-        indiceAjuste: z.enum(['ICL', 'IPC', 'CASA_PROPIA', 'UVA', 'CAC', 'RIPTE']),
+        indiceAjuste: z.enum(['ICL', 'IPC', 'CASA_PROPIA', 'UVA', 'CAC', 'RIPTE', 'FIJO']),
         frecuenciaAjusteMeses: z.number().int().positive(),
         montoExpensas: z.number().positive().optional(),
         tipoContrato: z.enum(['ALQUILER', 'SOLO_EXPENSAS', 'ALQUILER_Y_EXPENSAS']).default('ALQUILER'),
@@ -471,6 +471,10 @@ export async function coreRoutes(app: FastifyInstance) {
   app.post('/contratos/:id/finalizar', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'contratos.crear');
     if (!u) return;
+    // Finalizar es irreversible (libera la propiedad + desvincula al inquilino).
+    // contratos.crear incluye CARGA, pero CARGA solo carga para aprobación → no
+    // debería poder finalizar. Mismo guard que DELETE /propietarios y /propiedades.
+    if (u.rol === 'CARGA') return reply.code(403).send({ message: 'Solo un Admin u Operador puede finalizar contratos' });
     const { id } = request.params as { id: string };
     const contrato = await prisma.contrato.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
     if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
