@@ -383,16 +383,19 @@ export async function plataRoutes(app: FastifyInstance) {
     }
     if (montoBruto === 0) return reply.code(409).send({ message: `No hay cobros del período ${periodo} para rendir` });
 
-    // Gastos pendientes de sus propiedades × participación — SOLO del período
-    // que se rinde. Antes traía gastos de CUALQUIER mes y los descontaba todos
-    // en la primera rendición (el propietario cobraba de menos / neto negativo).
+    // Gastos pendientes — SOLO del período que se rinde y SOLO de las propiedades
+    // que aportaron ingreso a esta rendición (las que tienen liquidación PAGADA del
+    // período). Antes descontaba gastos de CUALQUIER propiedad del dueño (p.ej. una
+    // solo-expensas, que no aporta alquiler) del neto de sus propiedades de alquiler.
+    // (Decisión del dueño 2026-06-21: cada propiedad se rinde por su cuenta.)
+    const propIdsConIngreso = [...new Set(liqsPagadas.map((l) => l.contrato.propiedadId))];
     const inicioPeriodo = new Date(`${periodo}-01T00:00:00.000Z`);
     const finPeriodo = new Date(inicioPeriodo);
     finPeriodo.setUTCMonth(finPeriodo.getUTCMonth() + 1);
     const gastosPend = await prisma.movimientoCaja.findMany({
       where: {
         inmobiliariaId: u.inmobiliariaId,
-        propiedadId: { in: propIds },
+        propiedadId: { in: propIdsConIngreso },
         tipo: 'GASTO',
         descontadoEnRendicion: false,
         fecha: { gte: inicioPeriodo, lt: finPeriodo },
