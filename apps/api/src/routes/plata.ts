@@ -503,10 +503,20 @@ export async function plataRoutes(app: FastifyInstance) {
                 ? { estado: 'ACTIVO', pendienteAprobacion: false, aprobadoAt: new Date() }
                 : { pendienteAprobacion: false },
           });
-          // Al aprobar, el contrato se activa → devengar sus liquidaciones
-          // (idempotente: skipDuplicates si ya existían).
+          // Al aprobar, el contrato se activa → reclamar la propiedad + devengar
+          // sus liquidaciones, IGUAL que POST /contratos (core.ts). Antes este path
+          // activaba el contrato pero NUNCA reclamaba la propiedad: quedaba
+          // DISPONIBLE para siempre y dos BORRADOR sobre la misma propiedad (p.ej.
+          // cnt_006 + cnt_008) podían activarse ambos. El claim atómico
+          // (WHERE contratoActualId=null) es a la vez la corrección (propiedad→
+          // ALQUILADA) y el lock anti-doble-activación.
           if (accion === 'aprobar') {
             const contratoActualizado = await tx.contrato.findUniqueOrThrow({ where: { id: apr.entidadId } });
+            const claim = await tx.propiedad.updateMany({
+              where: { id: contratoActualizado.propiedadId, inmobiliariaId: u.inmobiliariaId, contratoActualId: null },
+              data: { contratoActualId: contratoActualizado.id, estado: 'ALQUILADA' },
+            });
+            if (claim.count === 0) throw new Error('PROP_OCUPADA');
             await generarLiquidacionesContrato(tx, contratoActualizado);
           }
         }
@@ -516,9 +526,20 @@ export async function plataRoutes(app: FastifyInstance) {
           include: { cargadoPor: { select: { nombre: true, apellido: true, rol: true } } },
         });
         return { http: 200 as const, updated };
+      }).catch((e: unknown) => {
+        // PROP_OCUPADA: al aprobar, la propiedad ya fue reclamada por otro contrato
+        // (carrera o un segundo BORRADOR sobre la misma propiedad). El throw hizo
+        // rollback TOTAL → la aprobación vuelve a PENDIENTE. Lo mapeamos a 409 acá
+        // porque el handler global no mapea un Error genérico (caería en 500).
+        if (e instanceof Error && e.message === 'PROP_OCUPADA') return { http: 409 as const, motivo: 'PROP_OCUPADA' as const };
+        throw e;
       });
       if (result.http === 404) return reply.code(404).send({ message: 'Aprobación inexistente' });
-      if (result.http === 409) return reply.code(409).send({ message: 'Ya fue decidida' });
+      if (result.http === 409) {
+        return reply
+          .code(409)
+          .send({ message: 'motivo' in result ? 'La propiedad ya tiene un contrato activo' : 'Ya fue decidida' });
+      }
       return result.updated;
     });
   }
