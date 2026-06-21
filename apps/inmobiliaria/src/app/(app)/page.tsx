@@ -277,7 +277,20 @@ export default function DashboardPage() {
 // ─────────────────── Dashboard REAL (modo API) ───────────────────
 
 function DashboardReal() {
-  const { stats, morosos, propietariosSinCbu, porRendir, proximosVencimientos } = useDashboard();
+  const { stats, morosos, propietariosSinCbu, porRendir, proximosVencimientos, cargando } = useDashboard();
+
+  // Durante el fetch inicial, stats viene en $0 y los KPIs mostraban un falso
+  // "Todo al día". Mostramos un estado de carga hasta tener los datos reales.
+  if (cargando) {
+    return (
+      <>
+        <Topbar titulo="Inicio" />
+        <main className="flex-1 p-4 md:p-6">
+          <p className="text-sm text-muted-foreground">Cargando tu panel…</p>
+        </main>
+      </>
+    );
+  }
 
   return (
     <>

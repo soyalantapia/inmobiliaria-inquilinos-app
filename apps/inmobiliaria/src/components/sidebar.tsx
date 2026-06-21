@@ -68,7 +68,11 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
   // En producción el badge cuenta las aprobaciones reales del API; en build
   // demo (!apiEnabled) usa el store local.
   const { aprobaciones } = useAprobaciones();
-  const pendientes = apiEnabled ? aprobaciones.length : pendientesLocal;
+  // Solo las PENDIENTE: GET /aprobaciones devuelve todas (incl. APROBADA/RECHAZADA)
+  // → el badge contaba las ya decididas. El badge refleja lo que falta resolver.
+  const pendientes = apiEnabled
+    ? aprobaciones.filter((a) => a.estado === 'PENDIENTE').length
+    : pendientesLocal;
   const { me } = useMe();
 
   useEffect(() => {

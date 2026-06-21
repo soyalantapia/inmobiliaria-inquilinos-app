@@ -125,7 +125,8 @@ export default function MisReclamosPage() {
           <Card className="p-8 text-center">
             <p className="font-medium">No pudimos cargar tus reclamos</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Revisá tu conexión e intentá de nuevo.
+              Revisá tu conexión e intentá de nuevo. Si entrás como co-inquilino, es posible que tu permiso no
+              incluya los reclamos — consultá con el titular.
             </p>
             <button
               onClick={() => window.location.reload()}

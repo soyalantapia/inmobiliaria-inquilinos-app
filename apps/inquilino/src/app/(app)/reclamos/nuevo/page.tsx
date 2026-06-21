@@ -9,8 +9,9 @@ import { Card } from '@llave/ui/card';
 import { Input } from '@llave/ui/input';
 import { Label } from '@llave/ui/label';
 import { Textarea } from '@llave/ui/textarea';
+import { toast } from '@llave/ui/use-toast';
 import { NavBar } from '@/components/nav-bar';
-import { apiEnabled } from '@/lib/api/client';
+import { apiEnabled, ApiError } from '@/lib/api/client';
 import { useMiContrato } from '@/lib/api/hooks';
 import { useMisReclamos } from '@/lib/api/use-mis-reclamos';
 import { categoriaLabel } from '@/lib/reclamos-config';
@@ -180,9 +181,15 @@ export default function NuevoReclamoPage() {
         urgencia: urgencia as Urgencia,
         fotoDataUrl: fotoPreview,
       });
-    } catch {
-      // El POST falló (sin conexión / error del server): liberamos el botón
-      // para que el usuario pueda reintentar sin quedar trabado en "Enviando…".
+    } catch (e) {
+      // El POST falló: feedback al usuario (antes era SILENCIOSO) + liberar el
+      // botón para reintentar. Distinguimos el 403 (co-inquilino sin permiso).
+      const sinPermiso = e instanceof ApiError && e.status === 403;
+      toast({
+        variant: 'destructive',
+        title: sinPermiso ? 'Tu acceso no permite crear reclamos' : 'No pudimos enviar el reclamo',
+        description: sinPermiso ? 'Pedíselo al titular del contrato.' : 'Revisá tu conexión e intentá de nuevo.',
+      });
       setEnviando(false);
       return;
     }

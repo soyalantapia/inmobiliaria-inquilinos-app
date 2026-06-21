@@ -255,6 +255,7 @@ export function useAprobaciones(): {
         body: JSON.stringify({ pin, comentario: motivo }),
       });
       invalidar();
+      void qc.invalidateQueries({ queryKey: ['contratos'] }); // rechazar limpia pendienteAprobacion del contrato
       return mapAprobacion(r);
     },
   };

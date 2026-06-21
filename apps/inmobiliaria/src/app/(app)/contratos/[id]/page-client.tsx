@@ -499,7 +499,9 @@ function LiquidacionRow({ liq }: { liq: LiquidacionAdmin }) {
       <div className="flex-1 min-w-0 space-y-0.5">
         <div className="flex items-center gap-2">
           <p className="text-sm font-medium">
-            Alquiler {formatMonto(liq.montoAlquiler)} + Expensas {formatMonto(liq.montoExpensas)}
+            {liq.montoExpensas != null && liq.montoExpensas > 0
+              ? `Alquiler ${formatMonto(liq.montoAlquiler)} + Expensas ${formatMonto(liq.montoExpensas)}`
+              : `Alquiler ${formatMonto(liq.montoAlquiler)}`}
           </p>
         </div>
         <p className="text-xs text-muted-foreground">
