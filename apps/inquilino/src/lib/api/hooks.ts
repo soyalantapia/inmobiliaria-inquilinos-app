@@ -4,6 +4,7 @@
  * Hooks de datos del inquilino: API si hay NEXT_PUBLIC_API_URL, localStorage
  * si no (la demo offline sigue intacta). Mismos shapes que usan las pantallas.
  */
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiEnabled, apiFetch } from './client';
 import { contratoMock, liquidacionesMock } from '@/lib/mock-data';
@@ -150,6 +151,12 @@ export function useMisAnuncios(): {
   hidratado: boolean;
 } {
   const qc = useQueryClient();
+  // Gate de montaje: en demo los anuncios salen de localStorage (solo cliente).
+  // Sin esto `hidratado` era `true` ya en el SSR → en el server no había anuncios
+  // (sin localStorage) y el <section> aparecía recién en el cliente = hydration
+  // mismatch en el home ("Expected server HTML to contain a matching <section>").
+  const [montado, setMontado] = useState(false);
+  useEffect(() => setMontado(true), []);
   const q = useQuery({
     queryKey: ['mis-anuncios'],
     queryFn: () => apiFetch<MiAnuncioApi[]>('/mis-anuncios'),
@@ -169,7 +176,9 @@ export function useMisAnuncios(): {
       marcarEnterado: async (id) => {
         marcarEnteradoLocal(id);
       },
-      hidratado: true,
+      // false hasta montar en el cliente → server y primer render del cliente
+      // coinciden (ambos sin anuncios) y recién después aparece el <section>.
+      hidratado: montado,
     };
   }
 

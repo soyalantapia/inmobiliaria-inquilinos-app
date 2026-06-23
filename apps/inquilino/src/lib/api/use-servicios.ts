@@ -10,6 +10,7 @@
  *   En prod las acciones que tienen endpoint (subir) van de verdad; marcar
  *   pagada / eliminar NO tienen endpoint en el API → se gatean a !apiEnabled.
  */
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiEnabled, apiFetch } from './client';
 import {
@@ -147,6 +148,11 @@ export function useBoletas(): {
   eliminar: (b: BoletaServicio) => Promise<void>;
 } {
   const qc = useQueryClient();
+  // Gate de montaje: en demo las boletas salen de localStorage (solo cliente).
+  // Sin esto `hidratado: true` ya en el SSR → la lista aparecía recién en el
+  // cliente = hydration mismatch (mismo patrón que useMisAnuncios).
+  const [montado, setMontado] = useState(false);
+  useEffect(() => setMontado(true), []);
   const q = useQuery({
     queryKey: ['mis-boletas'],
     queryFn: () => apiFetch<BoletaApi[]>('/boletas'),
@@ -161,7 +167,7 @@ export function useBoletas(): {
     return {
       boletas,
       cargando: false,
-      hidratado: true,
+      hidratado: montado,
       deApi: false,
       puedeGestionar: true,
       subirBoleta: async (input) => {

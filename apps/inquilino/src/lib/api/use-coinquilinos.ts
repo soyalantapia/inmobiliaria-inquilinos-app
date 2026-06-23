@@ -5,6 +5,7 @@
  * NEXT_PUBLIC_API_URL, localStorage si no (la demo offline sigue intacta).
  * Mismo shape (CoInquilino) que renderiza la pantalla.
  */
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiEnabled, apiFetch } from './client';
 import {
@@ -71,6 +72,11 @@ const QUERY_KEY = ['co-inquilinos'];
 
 export function useCoInquilinos(): UseCoInquilinos {
   const qc = useQueryClient();
+  // Gate de montaje: en demo la lista sale de localStorage (solo cliente). Sin
+  // esto el server renderiza la lista vacía y el cliente la poblada = hydration
+  // mismatch (mismo patrón que useMisAnuncios / useBoletas).
+  const [montado, setMontado] = useState(false);
+  useEffect(() => setMontado(true), []);
   const q = useQuery({
     queryKey: QUERY_KEY,
     queryFn: () => apiFetch<CoInquilinoApi[]>('/co-inquilinos'),
@@ -82,8 +88,10 @@ export function useCoInquilinos(): UseCoInquilinos {
   // ===== Demo offline: store local intacto =====
   if (!apiEnabled) {
     return {
-      coInquilinos: listarCoInquilinos(),
-      cargando: false,
+      // Hasta montar: lista vacía + cargando (igual que el server) para no
+      // diferir del HTML servido; tras montar leemos localStorage.
+      coInquilinos: montado ? listarCoInquilinos() : [],
+      cargando: !montado,
       deApi: false,
       invitar: async (input) => {
         invitarLocal(input);
