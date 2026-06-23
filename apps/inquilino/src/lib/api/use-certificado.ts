@@ -16,6 +16,7 @@
  *     calendárico (la UI sólo muestra la fecha, no la hora).
  *   - montoMensual ya viene como number desde el handler.
  */
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiEnabled, apiFetch } from './client';
 import {
@@ -88,9 +89,17 @@ export function useMiCertificado(): {
     staleTime: 60_000,
   });
 
-  // Demo offline: regeneramos el certificado del inquilino mock, igual que antes.
+  // Demo offline: generamos el certificado SOLO tras montar, no en SSR/primer
+  // render. generarCertificado() lee window.location.origin (y new Date()), así
+  // que el HTML del server difería del cliente → mismatch de hidratación en la
+  // URL de verificación. Con el gate de montaje, server y cliente arrancan en
+  // skeleton (cargando) y el cert se computa client-side.
+  const [certDemo, setCertDemo] = useState<CertificadoInquilino | null>(null);
+  useEffect(() => {
+    if (!apiEnabled) setCertDemo(generarCertificado());
+  }, []);
   if (!apiEnabled) {
-    return { certificado: generarCertificado(), cargando: false, deApi: false };
+    return { certificado: certDemo, cargando: certDemo === null, deApi: false };
   }
   // En prod, si el endpoint falla, no inventamos: certificado null.
   if (q.isError) return { certificado: null, cargando: false, deApi: true };

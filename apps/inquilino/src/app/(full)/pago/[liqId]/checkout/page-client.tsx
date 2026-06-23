@@ -31,7 +31,7 @@ import { Separator } from '@llave/ui/separator';
 import { toast } from '@llave/ui/use-toast';
 import { contratoMock, liquidacionesMock } from '@/lib/mock-data';
 import { datosBancariosMock, proximoCambioVigente } from '@/lib/datos-bancarios';
-import { formatMonto, formatPeriodo } from '@/lib/format';
+import { formatFecha, formatMonto, formatPeriodo } from '@/lib/format';
 import { resolverMontos } from '@/lib/punitorios';
 import {
   agregarPago,
@@ -361,7 +361,7 @@ function ParcialesAnteriores({
                 )}
               </p>
               <p className="text-[11px] text-muted-foreground">
-                {new Date(p.enviadoAt).toLocaleDateString('es-AR')}
+                {formatFecha(p.enviadoAt)}
                 {' · '}
                 {p.estado === 'CONCILIADO'
                   ? 'Confirmado'

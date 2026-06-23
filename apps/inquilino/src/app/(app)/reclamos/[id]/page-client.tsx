@@ -277,6 +277,13 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
       setReclamo(updated);
       setBorrador('');
       toast({ title: 'Mensaje enviado' });
+    } else {
+      // write falló (cuota de localStorage llena): no limpiamos el borrador.
+      toast({
+        variant: 'destructive',
+        title: 'No se pudo guardar el mensaje',
+        description: 'El almacenamiento local está lleno. Probá liberar espacio.',
+      });
     }
   };
 

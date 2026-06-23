@@ -20,10 +20,10 @@ import {
   type TipoServicio,
   TAMANIO_MAX,
   TIPO_LABEL,
-  formatPeriodo,
   formatTamanio,
   leerArchivoComoDataUrl,
 } from '@/lib/boletas-servicios-storage';
+import { formatPeriodo } from '@/lib/format';
 import { useBoletas } from '@/lib/api/use-servicios';
 import { apiEnabled, ApiError } from '@/lib/api/client';
 

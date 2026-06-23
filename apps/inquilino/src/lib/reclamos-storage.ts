@@ -131,7 +131,9 @@ export function agregarMensajeDelInquilino(
     eventos: [...reclamos[idx]!.eventos, evento],
   };
   const next = reclamos.map((r, i) => (i === idx ? updated : r));
-  write(next);
+  // Propagar el fallo de persistencia (igual que crearReclamo): si write falla
+  // (cuota llena), devolvemos null para que el caller no muestre falso éxito.
+  if (!write(next)) return null;
   return updated;
 }
 

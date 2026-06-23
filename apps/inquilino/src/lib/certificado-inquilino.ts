@@ -105,7 +105,10 @@ function calcularHistorial(): CertificadoInquilino['historial'] {
   // vencieron hasta hoy. Pagadas = las que están con estado PAGADO.
   const ahora = Date.now();
   const liqsVencidas = liquidacionesMock.filter(
-    (l) => new Date(l.fechaVencimiento).getTime() <= ahora,
+    // parseLocal (no `new Date('YYYY-MM-DD')` UTC): así una cuota cuenta como
+    // vencida desde su medianoche LOCAL, no 3h antes en UTC-3. Mismo criterio que
+    // calcularPunitorios y diasHastaVencimiento.
+    (l) => parseLocal(l.fechaVencimiento).getTime() <= ahora,
   );
   const cuotasTotales = liqsVencidas.length;
   const pagadas = liqsVencidas.filter((l) => l.estado === 'PAGADO').length;

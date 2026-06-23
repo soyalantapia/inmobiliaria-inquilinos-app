@@ -28,11 +28,10 @@ import {
   type TipoServicio,
   ESTADO_LABEL,
   TIPO_LABEL,
-  formatPeriodo,
   formatTamanio,
 } from '@/lib/boletas-servicios-storage';
 import { type ServicioPublico, useBoletas, useServicios } from '@/lib/api/use-servicios';
-import { formatFecha, formatFechaCorta, formatMonto, diasHastaVencimiento } from '@/lib/format';
+import { formatFecha, formatFechaCorta, formatMonto, formatPeriodo, diasHastaVencimiento } from '@/lib/format';
 
 const ICONO_TIPO: Record<TipoServicio, typeof Zap> = {
   LUZ: Zap,
