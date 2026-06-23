@@ -23,7 +23,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
   useEffect(() => {
-    const esPublica = RUTAS_PUBLICAS.some((r) => pathname?.startsWith(r));
+    // Match por BOUNDARY de segmento, no por prefijo crudo: con startsWith, el
+    // prefijo '/p' (del token route /p/[token]) eximía de auth a /profesionales,
+    // /pago/[liqId], /pagos y /perfil → un usuario deslogueado veía datos
+    // financieros privados. `pathname === r || startsWith(r + '/')` deja público
+    // solo el segmento exacto y sus subrutas reales.
+    const esPublica =
+      !!pathname &&
+      RUTAS_PUBLICAS.some((r) => pathname === r || pathname.startsWith(r + '/'));
     if (esPublica) return;
     const sesion = leerSesion();
     if (!sesion) {

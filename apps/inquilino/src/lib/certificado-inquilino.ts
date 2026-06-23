@@ -202,7 +202,11 @@ export function generarCertificado(): CertificadoInquilino {
   // URL pública: en demo apunta al mismo origin para que se pueda
   // probar local + GH Pages. En producción es myalquiler.com.ar/verificar.
   const origin = typeof window !== 'undefined' ? window.location.origin : 'https://myalquiler.com.ar';
-  const urlVerificacion = `${origin}/verificar/${hash}`;
+  // En el export estático (GH Pages) la app vive bajo un basePath que origin NO
+  // incluye → el link compartido daba 404. NEXT_PUBLIC_BASE_PATH se setea solo en
+  // ese build (vacío en dev/Railway, así que el link queda igual que antes).
+  const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
+  const urlVerificacion = `${origin}${basePath}/verificar/${hash}`;
 
   return {
     hash,

@@ -156,18 +156,21 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
   }, [id, deApi]);
 
   // Auto-scroll al final del timeline SOLO cuando se agrega un evento nuevo
-  // (mensaje enviado), no al abrir el detalle. En el mount inicial el contador
-  // pasa de null a N: si scrolleábamos ahí, la página saltaba al final del
-  // historial y ocultaba el resumen/header del reclamo.
-  const prevEventosLen = useRef<number | null>(null);
+  // (mensaje enviado) DENTRO del mismo reclamo, no al abrir el detalle. Trackeamos
+  // {id, len}: al cambiar de `id` (la ruta [id] reusa la instancia en navegación
+  // id→id, p.ej. desde el bell o /calendario) o en el mount, memorizamos sin
+  // scrollear; antes el ref no se reseteaba al cambiar de id y volvía a saltar al
+  // fondo, ocultando el header/resumen.
+  const prevEventos = useRef<{ id: string; len: number } | null>(null);
   useEffect(() => {
     const len = reclamo?.eventos.length;
     if (len == null) return;
-    if (prevEventosLen.current != null && len > prevEventosLen.current) {
+    const prev = prevEventos.current;
+    if (prev != null && prev.id === id && len > prev.len) {
       scrollEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
     }
-    prevEventosLen.current = len;
-  }, [reclamo?.eventos.length]);
+    prevEventos.current = { id, len };
+  }, [id, reclamo?.eventos.length]);
 
   const Icon = useMemo(
     () => (reclamo ? categoriaIcono[reclamo.categoria] : null),
