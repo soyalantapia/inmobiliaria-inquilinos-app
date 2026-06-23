@@ -68,9 +68,14 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
   // ya PAGADA reaparecía como deuda repagable.
   const liqBase = liquidacionesMock.find((l) => l.id === params.liqId) ?? null;
   const [demoEstado] = useDemoEstado();
+  // Sin `?? liqBase`: en 'al-dia' aplicarEstadoDemo devuelve null → el guard
+  // `if (!liq || !calc)` muestra "No encontramos esta liquidación" (coherente con
+  // el home). Antes el fallback mostraba el mock VENCIDO repagable.
   const liq = apiEnabled
     ? liqApi
-    : ((liqBase ? aplicarEstadoDemo(demoEstado, liqBase) : null) ?? liqBase);
+    : liqBase
+      ? aplicarEstadoDemo(demoEstado, liqBase)
+      : null;
 
   const informarPago = useInformarPago();
   // Teléfono real de la inmobiliaria (sólo en prod) para el CTA de WhatsApp
@@ -85,6 +90,10 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
   const [ultimoEnviado, setUltimoEnviado] = useState<PagoInformado | null>(null);
   /** Monto que el inquilino eligió pagar AHORA (puede ser saldo o parcial). */
   const [montoElegido, setMontoElegido] = useState<number | null>(null);
+  /** En prod NO hay historial local de parciales (pagosPrevios queda []); este
+   * estado preserva el saldo remanente tras informar un parcial, para que al
+   * volver a "datos" no reaparezca el total original. */
+  const [saldoProdRestante, setSaldoProdRestante] = useState<number | null>(null);
   const [decisionInmoUltima, setDecisionInmoUltima] = useState<
     DecisionInmoSobrePago | null
   >(null);
@@ -141,7 +150,10 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
   }
 
   const totalAPagar = calc.totalAPagar;
-  const saldo = saldoPendiente(params.liqId, totalAPagar);
+  const saldoBase = saldoPendiente(params.liqId, totalAPagar);
+  // En prod arrastramos el remanente tras un parcial (saldoProdRestante);
+  // saldoBase ya viene redondeado (Math.round) desde saldoPendiente.
+  const saldo = apiEnabled ? saldoProdRestante ?? saldoBase : saldoBase;
   // Alquiler vigente para el umbral del hint de negociación: en la demo es el
   // mock; en prod, el monto real del contrato (o, si no llegó, el montoAlquiler
   // de la liquidación). Nunca el mock en prod.
@@ -269,12 +281,17 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
             // deriva del pago recién enviado (total - lo informado ahora).
             saldoRestante={
               apiEnabled
-                ? Math.max(0, totalAPagar - (ultimoEnviado?.monto ?? totalAPagar))
+                ? Math.max(0, saldo - (ultimoEnviado?.monto ?? saldo))
                 : saldo
             }
             moneda={liq.moneda}
             allowReenviar={!apiEnabled}
             onPagarOtroParcial={() => {
+              // Preservar el remanente para que "datos" muestre el saldo que
+              // falta, no el total original (prod no tiene historial local).
+              if (apiEnabled) {
+                setSaldoProdRestante(Math.max(0, saldo - (ultimoEnviado?.monto ?? saldo)));
+              }
               setMontoElegido(null);
               setUltimoEnviado(null);
               setStep('datos');
@@ -284,6 +301,7 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
               setPagosPrevios([]);
               setUltimoEnviado(null);
               setMontoElegido(null);
+              setSaldoProdRestante(null);
               setStep('datos');
             }}
             onVolver={() => router.push('/')}

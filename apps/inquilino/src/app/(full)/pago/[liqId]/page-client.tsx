@@ -89,9 +89,10 @@ export default function DetallePagoPage({ params }: { params: { liqId: string } 
   // No encontrada: en demo nunca pasa (generateStaticParams cubre todos los
   // ids del mock); en prod, si la lista cargó OK pero no contiene este liqId,
   // la liquidación realmente no existe → notFound.
-  const liq = apiEnabled
-    ? liqApi
-    : (liqDemo ?? (liqBase ? { ...liqBase, fechaVencimiento: liqBase.fechaVencimiento } : null));
+  // En demo: estado 'al-dia' → liqDemo es null → notFound (no hay nada pendiente,
+  // coherente con el home). Antes un `?? liqBase` mostraba el mock VENCIDO crudo,
+  // contradiciendo el "Estás al día" del home.
+  const liq = apiEnabled ? liqApi : liqDemo;
   if (!liq) notFound();
 
   return (

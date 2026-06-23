@@ -50,6 +50,11 @@ export default function SubirBoletaPage() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const submit = async () => {
+    // Guard anti doble-submit: el botón tiene disabled={enviando}, pero Enter en
+    // un input habilitado (monto/periodo/vencimiento) dispara el onSubmit igual.
+    // Sin esto, dos Enter rápidos durante el await de leerArchivoComoDataUrl
+    // creaban dos boletas duplicadas. Mismo patrón que invitar/page.tsx.
+    if (enviando) return;
     if (!archivo) {
       toast({
         variant: 'destructive',

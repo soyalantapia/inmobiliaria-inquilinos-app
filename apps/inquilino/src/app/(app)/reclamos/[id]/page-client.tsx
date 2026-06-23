@@ -346,7 +346,6 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
   };
 
   const resuelto = reclamo.estado === 'RESUELTO';
-  const cerrado = reclamo.estado === 'CERRADO' || resuelto || reclamo.estado === 'RECHAZADO';
 
   // Decisión del inquilino sobre el cierre. En prod sale del API (la confirmación
   // persistida); en demo, del estado local que setea `recargar` desde localStorage.
@@ -355,6 +354,14 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
   const decisionActual: DecisionInquilino | null = deApi
     ? (reclamo.confirmacionInquilino?.estado ?? null)
     : decision;
+
+  // PERSISTE re-abre el reclamo: en demo el estado queda RESUELTO (marcarPersiste
+  // solo escribe en confirmaciones-reclamo), así que sin excluir PERSISTE el footer
+  // "está cerrado, creá uno nuevo" aparecía a la vez que la card "Reportaste que
+  // sigue" y se ocultaba el composer. Excluyéndolo, las tres condiciones cuadran.
+  const cerrado =
+    (reclamo.estado === 'CERRADO' || resuelto || reclamo.estado === 'RECHAZADO') &&
+    decisionActual !== 'PERSISTE';
 
   // Comentar en el reclamo (composer) sigue siendo demo-only: no hay endpoint
   // para que el inquilino sume mensajes al timeline en prod. Confirmar resolución

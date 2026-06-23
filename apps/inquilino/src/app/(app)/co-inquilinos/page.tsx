@@ -189,8 +189,12 @@ function CoInquilinoCard({
   onAceptar: () => void;
   onCompartir: () => void;
   onEliminar: () => void;
-  onCambiarPermiso: (p: PermisoCoInquilino) => void;
+  onCambiarPermiso: (p: PermisoCoInquilino) => void | Promise<void>;
 }) {
+  // Guard anti doble-PATCH: en prod, tocar otro permiso antes de que resuelva el
+  // PATCH anterior disparaba dos requests concurrentes. Deshabilitamos los botones
+  // mientras hay un cambio en vuelo.
+  const [cambiando, setCambiando] = useState(false);
   return (
     <Card className="space-y-3 p-4">
       <div className="flex items-start gap-3">
@@ -256,11 +260,20 @@ function CoInquilinoCard({
               key={p}
               type="button"
               aria-pressed={co.permiso === p}
-              // No re-disparamos la API si ya es el permiso actual (evita un
-              // cambio "accidental" / llamada redundante por re-tap en mobile).
-              onClick={() => co.permiso !== p && onCambiarPermiso(p)}
+              disabled={cambiando}
+              // No re-disparamos la API si ya es el permiso actual (re-tap en
+              // mobile) ni si ya hay un cambio en vuelo (PATCH concurrentes).
+              onClick={async () => {
+                if (co.permiso === p || cambiando) return;
+                setCambiando(true);
+                try {
+                  await onCambiarPermiso(p);
+                } finally {
+                  setCambiando(false);
+                }
+              }}
               className={cn(
-                'min-h-[40px] rounded-md border px-2 py-2 text-xs font-medium transition-colors',
+                'min-h-[40px] rounded-md border px-2 py-2 text-xs font-medium transition-colors disabled:opacity-60',
                 co.permiso === p
                   ? 'border-primary bg-primary/10 text-primary'
                   : 'border-border hover:bg-muted/40',

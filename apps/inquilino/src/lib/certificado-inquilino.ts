@@ -17,6 +17,7 @@
  */
 
 import { liquidacionesMock, contratoMock } from './mock-data';
+import { parseLocal } from './format';
 
 export type NivelHistorial = 'EXCELENTE' | 'BUENO' | 'REGULAR' | 'NUEVO';
 
@@ -173,7 +174,9 @@ export function generarCertificado(): CertificadoInquilino {
     email: 'mariela.sosa@gmail.com',
     telefono: '+54 9 11 4321 9876',
   };
-  const inicio = new Date(contratoMock.fechaInicio);
+  // parseLocal (no `new Date('YYYY-MM-DD')`, que parsea en UTC y en UTC-3 cae al
+  // mes anterior → mesesCumplidos inflado en 1).
+  const inicio = parseLocal(contratoMock.fechaInicio);
   const meses =
     (new Date().getFullYear() - inicio.getFullYear()) * 12 +
     (new Date().getMonth() - inicio.getMonth());
