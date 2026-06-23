@@ -1198,7 +1198,13 @@ function StepConfirmado({
         </div>
         <div>
           <h2 className="text-lg font-semibold">
-            {quedoSaldo ? 'Parcial recibido' : 'Comprobante recibido'}
+            {quedoSaldo
+              ? apiEnabled
+                ? 'Parcial informado'
+                : 'Parcial recibido'
+              : apiEnabled
+                ? 'Pago informado'
+                : 'Comprobante recibido'}
           </h2>
           {quedoSaldo ? (
             <p className="text-sm text-muted-foreground">
@@ -1216,13 +1222,27 @@ function StepConfirmado({
         </div>
       </Card>
 
+      {/* Prod: el archivo del comprobante todavía NO se sube al backend (no hay
+          endpoint de upload). No fingimos que llegó: registramos los datos del pago
+          y le pedimos al inquilino que mande el comprobante por WhatsApp. El upload
+          real (bucket + endpoint multipart) queda para la Ola 1. */}
+      {apiEnabled && (
+        <Card className="space-y-1 border-amber-300 bg-amber-50/60 p-4 text-sm dark:border-amber-900/40 dark:bg-amber-900/10">
+          <p className="font-semibold text-amber-900 dark:text-amber-200">📎 Falta un paso: enviá el comprobante</p>
+          <p className="text-amber-800 dark:text-amber-300">
+            Registramos los datos de tu pago, pero el archivo todavía no nos llega por la app.
+            Enviáselo por WhatsApp a la inmobiliaria para que puedan validarlo.
+          </p>
+        </Card>
+      )}
+
       {informado && (
         <Card className="space-y-3 p-5">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             {informado.tipo === 'PARCIAL' ? 'Parcial que enviaste' : 'Lo que enviaste'}
           </h3>
           <Row label="Monto" value={formatMonto(informado.monto, moneda)} />
-          <Row label="Archivo" value={informado.comprobanteFileName ?? '—'} />
+          <Row label={apiEnabled ? 'Archivo a enviar' : 'Archivo'} value={informado.comprobanteFileName ?? '—'} />
           {informado.nroOperacion && <Row label="N° operación" value={informado.nroOperacion} />}
           <Row
             label="Estado"
@@ -1250,7 +1270,9 @@ function StepConfirmado({
             </div>
           )}
 
-          {informado.comprobanteDataUrl && (
+          {/* En prod NO mostramos el thumbnail "recibido": el archivo no llegó al
+              backend, mostrarlo daría falsa tranquilidad. En demo sí (es local). */}
+          {!apiEnabled && informado.comprobanteDataUrl && (
             <div className="pt-2">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
