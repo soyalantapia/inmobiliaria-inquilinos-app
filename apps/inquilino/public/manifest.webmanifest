@@ -1,7 +1,7 @@
 {
-  "name": "Llave — inquilino",
-  "short_name": "Llave",
-  "description": "Pagá tu alquiler y expensas, chateá con tu contrato.",
+  "name": "My Alquiler — Inquilino",
+  "short_name": "My Alquiler",
+  "description": "Pagá tu alquiler y expensas, hacé reclamos y seguí tu contrato.",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",
