@@ -82,6 +82,81 @@ export async function plataRoutes(app: FastifyInstance) {
     return { contratosProcesados: contratos.length, liquidacionesNuevas };
   });
 
+  // Cierre de caja del día: lo COBRADO (pagos conciliados) en una fecha + la
+  // comisión de la inmobiliaria sobre el alquiler cobrado. Es la "rendición de
+  // caja diaria" que pidió la inmobiliaria. Solo lectura. La comisión va SOLO
+  // sobre el alquiler (no las expensas) y se prorratea en pagos parciales.
+  app.get('/caja/cierre', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'caja.ver');
+    if (!u) return;
+    const q = z
+      .object({ fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'fecha debe ser YYYY-MM-DD').optional() })
+      .parse(request.query ?? {});
+    // Día en hora de Argentina (UTC-3): el rango en UTC es [fecha 03:00Z, +24h).
+    const arNow = new Date(Date.now() - 3 * 3600 * 1000);
+    const fecha = q.fecha ?? arNow.toISOString().slice(0, 10);
+    const desde = new Date(`${fecha}T03:00:00.000Z`);
+    const hasta = new Date(desde.getTime() + 24 * 3600 * 1000);
+
+    const pagos = await prisma.pago.findMany({
+      where: {
+        inmobiliariaId: u.inmobiliariaId,
+        estado: 'CONCILIADO',
+        decididoAt: { gte: desde, lt: hasta },
+      },
+      include: {
+        liquidacion: { select: { montoAlquiler: true, montoTotal: true, periodo: true } },
+        contrato: {
+          select: {
+            propiedad: {
+              select: {
+                direccion: true,
+                participaciones: {
+                  select: { porcentaje: true, propietario: { select: { comisionPct: true } } },
+                },
+              },
+            },
+            inquilinoTitular: { select: { nombre: true, apellido: true } },
+          },
+        },
+      },
+      orderBy: { decididoAt: 'asc' },
+    });
+
+    let cobrado = 0;
+    let comision = 0;
+    const items = pagos.map((p) => {
+      const monto = Number(p.monto);
+      cobrado += monto;
+      const liqTotal = Number(p.liquidacion?.montoTotal ?? 0);
+      const liqAlq = Number(p.liquidacion?.montoAlquiler ?? 0);
+      // Porción de alquiler dentro del pago (proporcional: cubre parciales y
+      // excluye las expensas, sobre las que NO se cobra comisión).
+      const alquilerPortion = liqTotal > 0 ? monto * (liqAlq / liqTotal) : 0;
+      // Tasa de comisión ponderada por la participación de cada dueño de la propiedad.
+      const parts = p.contrato?.propiedad?.participaciones ?? [];
+      const tasa = parts.reduce(
+        (s, x) => s + (x.porcentaje / 100) * ((x.propietario?.comisionPct ?? 0) / 100),
+        0,
+      );
+      const comisionPago = Math.round(alquilerPortion * tasa);
+      comision += comisionPago;
+      const inq = p.contrato?.inquilinoTitular;
+      return {
+        id: p.id,
+        inquilino: inq ? `${inq.nombre} ${inq.apellido ?? ''}`.trim() : '—',
+        direccion: p.contrato?.propiedad?.direccion ?? '—',
+        periodo: p.liquidacion?.periodo ?? p.periodo,
+        monto,
+        comision: comisionPago,
+        metodo: p.metodo,
+        hora: p.decididoAt,
+      };
+    });
+
+    return { fecha, cobrado, comision, cantidad: items.length, pagos: items };
+  });
+
   // ===== Pagos informados (bandeja a validar) =====
   app.get('/pagos', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'pagos.ver');
