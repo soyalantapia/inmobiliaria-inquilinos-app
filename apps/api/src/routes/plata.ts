@@ -45,6 +45,43 @@ export async function plataRoutes(app: FastifyInstance) {
     });
   });
 
+  // Devenga (top-up) las liquidaciones de meses futuros de TODOS los contratos
+  // ACTIVO del tenant. computarLiquidacionesContrato genera hasta "el mes que
+  // viene inclusive"; sin un disparo periódico, un contrato se queda sin
+  // liquidaciones a partir del 2º mes (no hay nada que cobrar). Es IDEMPOTENTE
+  // (skipDuplicates sobre @@unique([contratoId,periodo])) → se puede llamar
+  // cuantas veces se quiera. Hoy lo dispara un botón del panel; mañana un cron de
+  // Railway puede pegarle a este mismo endpoint sin cambiar el código (sólo habrá
+  // que darle una credencial de servicio para autenticarse).
+  app.post('/liquidaciones/devengar', async (request, reply) => {
+    const u = await requireUsuario(request, reply);
+    if (!u) return;
+    if (u.rol !== 'ADMIN' && u.rol !== 'OPERADOR') {
+      return reply.code(403).send({ message: 'Necesitás permiso de Admin u Operador para generar liquidaciones' });
+    }
+    const contratos = await prisma.contrato.findMany({
+      where: { inmobiliariaId: u.inmobiliariaId, estado: 'ACTIVO' },
+      select: {
+        id: true,
+        inmobiliariaId: true,
+        monto: true,
+        montoExpensas: true,
+        moneda: true,
+        fechaInicio: true,
+        fechaFin: true,
+        diaPago: true,
+      },
+    });
+    let liquidacionesNuevas = 0;
+    for (const c of contratos) {
+      // Una llamada idempotente por contrato (cada generar es su propio
+      // createMany skipDuplicates). No hace falta una tx global: nada se corrompe
+      // si falla a la mitad, y un reintento completa lo que falte.
+      liquidacionesNuevas += await generarLiquidacionesContrato(prisma, c);
+    }
+    return { contratosProcesados: contratos.length, liquidacionesNuevas };
+  });
+
   // ===== Pagos informados (bandeja a validar) =====
   app.get('/pagos', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'pagos.ver');
