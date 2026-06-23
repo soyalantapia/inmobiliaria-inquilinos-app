@@ -10,6 +10,7 @@ import {
   Clock,
   Download,
   Inbox,
+  RefreshCw,
   ShieldCheck,
 } from 'lucide-react';
 import { Badge } from '@llave/ui/badge';
@@ -33,7 +34,7 @@ import { Topbar } from '@/components/topbar';
 import { ValidadorResumenDialog } from '@/components/validador-resumen-dialog';
 import { apiEnabled } from '@/lib/api/client';
 import { useContratos } from '@/lib/api/hooks';
-import { useAResolverCount } from '@/lib/api/use-pagos';
+import { useAResolverCount, useDevengar } from '@/lib/api/use-pagos';
 import {
   contactosCobranzaMock,
   pagosInformadosMock,
@@ -115,6 +116,8 @@ export default function PagosPage() {
   const [filtro, setFiltro] = useState<Filtro>('TODOS');
   const [aResolverCount, setAResolverCount] = useState(0);
   const [validadorOpen, setValidadorOpen] = useState(false);
+  const [devengando, setDevengando] = useState(false);
+  const { devengar } = useDevengar();
 
   // En producción (API) la cartera real viene de useContratos; los paneles
   // de conciliación todavía-no-cableados (morosos/cargos/servicios) se
@@ -442,6 +445,41 @@ export default function PagosPage() {
                 </Button>
                 <CargarPagoManualButton />
               </>
+            )}
+            {real && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1"
+                disabled={devengando}
+                onClick={async () => {
+                  setDevengando(true);
+                  try {
+                    const r = await devengar();
+                    toast({
+                      title:
+                        r.liquidacionesNuevas > 0
+                          ? `Se generaron ${r.liquidacionesNuevas} liquidación${r.liquidacionesNuevas === 1 ? '' : 'es'}`
+                          : 'Todo al día',
+                      description:
+                        r.liquidacionesNuevas > 0
+                          ? `Completé los períodos que faltaban en ${r.contratosProcesados} contrato${r.contratosProcesados === 1 ? '' : 's'} activo${r.contratosProcesados === 1 ? '' : 's'}.`
+                          : `No faltaba ningún período en los ${r.contratosProcesados} contratos activos.`,
+                    });
+                  } catch (e) {
+                    toast({
+                      variant: 'destructive',
+                      title: 'No se pudieron generar',
+                      description: e instanceof Error ? e.message : 'Reintentá en un momento.',
+                    });
+                  } finally {
+                    setDevengando(false);
+                  }
+                }}
+              >
+                <RefreshCw className={cn('h-4 w-4', devengando && 'animate-spin')} />
+                {devengando ? 'Generando…' : 'Generar liquidaciones'}
+              </Button>
             )}
             {/* Antes eran 3 botones PDF consecutivos ("PDF de
                 morosos", "PDF morosos por sociedad", "PDF cobranzas")

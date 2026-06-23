@@ -152,3 +152,32 @@ export function usePagosInformados(): UsePagosInformados {
     },
   };
 }
+
+export interface DevengoResultado {
+  contratosProcesados: number;
+  liquidacionesNuevas: number;
+}
+
+/**
+ * Devenga (top-up) las liquidaciones de meses futuros de los contratos ACTIVO:
+ *   POST /liquidaciones/devengar
+ * computarLiquidacionesContrato genera hasta "el mes que viene"; sin un disparo
+ * periódico un contrato se queda sin liquidaciones a partir del 2º mes. Es
+ * IDEMPOTENTE en el server (skipDuplicates) → se puede llamar cuantas veces se
+ * quiera. Hoy lo dispara un botón del panel; mañana un cron pega al mismo
+ * endpoint. Solo prod (en demo no hay backend que devengar).
+ */
+export function useDevengar(): { devengar: () => Promise<DevengoResultado>; disponible: boolean } {
+  const qc = useQueryClient();
+  return {
+    disponible: apiEnabled,
+    devengar: async () => {
+      const r = await apiFetch<DevengoResultado>('/liquidaciones/devengar', { method: 'POST' });
+      // El top-up cambia liquidaciones (y por ende la cartera/cobranza derivada).
+      void qc.invalidateQueries({ queryKey: ['liquidaciones'] });
+      void qc.invalidateQueries({ queryKey: ['contratos'] });
+      void qc.invalidateQueries({ queryKey: ['propiedades'] });
+      return r;
+    },
+  };
+}
