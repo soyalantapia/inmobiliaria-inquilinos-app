@@ -53,6 +53,9 @@ export async function buildApp(envOverrides: Partial<Record<string, string>> = {
     if (code === 'P2002') return reply.code(409).send({ message: 'Ya existe un registro con esos datos' });
     if (code === 'P2003') return reply.code(409).send({ message: 'No se puede completar: hay datos relacionados' });
     if (code === 'P2025') return reply.code(404).send({ message: 'Registro inexistente' });
+    // P2034: write-conflict/deadlock de una tx Serializable (p.ej. baja de
+    // sociedad, cambio de rol). Sin esto caía al 500 genérico. 409 = reintentable.
+    if (code === 'P2034') return reply.code(409).send({ message: 'Conflicto de escritura concurrente, reintentá' });
     // Errores que ya traen un statusCode de cliente (rate-limit 429, JWT 401,
     // validación nativa de Fastify 400…): respetarlos en vez de pisarlos con 500.
     const status = (err as { statusCode?: number }).statusCode;

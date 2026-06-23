@@ -82,7 +82,7 @@ export async function coreRoutes(app: FastifyInstance) {
       where: { inmobiliariaId: u.inmobiliariaId },
       include: {
         participaciones: { include: { propietario: { select: { id: true, nombre: true, apellido: true } } } },
-        contratoActual: { select: { id: true, estado: true, monto: true, moneda: true } },
+        contratoActual: { select: { id: true, estado: true, monto: true, moneda: true, modoCobranza: true } },
       },
       orderBy: { createdAt: 'asc' },
     });

@@ -498,13 +498,25 @@ export async function plataRoutes(app: FastifyInstance) {
     if (!(await verificarPin(u.userId, body.pin, reply))) return;
     const r = await prisma.rendicion.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
     if (!r) return reply.code(404).send({ message: 'Rendición inexistente' });
-    await prisma.$transaction([
-      // H-3: inmobiliariaId en los deletes/updates para que un id ajeno no opere
-      // cross-tenant aunque la verificación previa ya lo garantice por FK.
-      prisma.movimientoCaja.updateMany({ where: { rendicionId: id, inmobiliariaId: u.inmobiliariaId }, data: { descontadoEnRendicion: false, rendicionId: null } }),
-      prisma.gastoRendido.deleteMany({ where: { rendicionId: id } }),
-      prisma.rendicion.delete({ where: { id } }),
-    ]);
+    try {
+      await prisma.$transaction(async (tx) => {
+        // H-3: inmobiliariaId en los deletes/updates para que un id ajeno no opere
+        // cross-tenant aunque la verificación previa ya lo garantice por FK.
+        await tx.movimientoCaja.updateMany({ where: { rendicionId: id, inmobiliariaId: u.inmobiliariaId }, data: { descontadoEnRendicion: false, rendicionId: null } });
+        await tx.gastoRendido.deleteMany({ where: { rendicionId: id } });
+        // Lock atómico: el deleteMany condicionado es el lock. Dos anulaciones
+        // concurrentes pasan el findFirst de arriba a la vez; sólo la primera
+        // borra la fila (count 1), la segunda ve count 0 → 409 (antes daba 404
+        // por el P2025 de rendicion.delete sobre una fila ya borrada).
+        const del = await tx.rendicion.deleteMany({ where: { id, inmobiliariaId: u.inmobiliariaId } });
+        if (del.count === 0) throw new Error('YA_ANULADA');
+      });
+    } catch (e) {
+      if (e instanceof Error && e.message === 'YA_ANULADA') {
+        return reply.code(409).send({ message: 'La rendición ya fue anulada' });
+      }
+      throw e;
+    }
     return { ok: true };
   });
 
@@ -585,7 +597,23 @@ export async function plataRoutes(app: FastifyInstance) {
             // y bloquea para siempre volver a cargar un contrato con ese inquilino.
             // El contrato queda BORRADOR-rechazado (inquilinoTitular pasa a null, ya
             // manejado por los mappers); no genera liquidaciones ni reclamó propiedad.
-            await tx.inquilino.deleteMany({ where: { contratoId: apr.entidadId, inmobiliariaId: u.inmobiliariaId } });
+            // Antes de borrar el inquilino hay que borrar sus hijos con FK requerida
+            // (sin onDelete → Restrict por default): CodigoOtp / AnuncioAcuse /
+            // Documento / CertificadoInquilino. Si el inquilino abrió la PWA y pidió
+            // un OTP (crea un CodigoOtp), el deleteMany tiraría P2003 → rollback → la
+            // aprobación volvía a PENDIENTE y no se podía rechazar nunca más.
+            const inqs = await tx.inquilino.findMany({
+              where: { contratoId: apr.entidadId, inmobiliariaId: u.inmobiliariaId },
+              select: { id: true },
+            });
+            const inqIds = inqs.map((i) => i.id);
+            if (inqIds.length > 0) {
+              await tx.codigoOtp.deleteMany({ where: { inquilinoId: { in: inqIds } } });
+              await tx.anuncioAcuse.deleteMany({ where: { inquilinoId: { in: inqIds } } });
+              await tx.documento.deleteMany({ where: { inquilinoId: { in: inqIds } } });
+              await tx.certificadoInquilino.deleteMany({ where: { inquilinoId: { in: inqIds } } });
+              await tx.inquilino.deleteMany({ where: { id: { in: inqIds } } });
+            }
           }
         }
         // Mismo shape que GET /aprobaciones: el front mapea cargadoPor.nombre.

@@ -281,11 +281,21 @@ export async function authRoutes(app: FastifyInstance) {
       include: { contrato: { select: { propiedad: { select: { direccion: true, ciudad: true } } } } },
     });
     if (!co) return reply.code(404).send({ message: 'Invitación inexistente' });
-    if (co.estado !== 'ACEPTADO') {
-      await prisma.coInquilino.update({
-        where: { id: co.id },
-        data: { estado: 'ACEPTADO', aceptadoAt: new Date() },
-      });
+    // El link de invitación es de UN SOLO USO. updateMany condicionado por
+    // estado != 'ACEPTADO' = lock atómico: sólo la primera aceptación gana y pasa
+    // a ACEPTADO; cualquier re-uso del link (o una carrera de dos aceptaciones)
+    // da count 0 → 409. Antes el link servía infinitas veces dentro de su TTL de
+    // 7 días: cualquiera que lo tuviera podía generar sesiones de co-inquilino.
+    // Para re-habilitar el acceso, el titular regenera el link
+    // (POST /co-inquilinos/:id/link), que vuelve a dejar la invitación en PENDIENTE.
+    const aceptada = await prisma.coInquilino.updateMany({
+      where: { id: co.id, estado: { not: 'ACEPTADO' } },
+      data: { estado: 'ACEPTADO', aceptadoAt: new Date() },
+    });
+    if (aceptada.count === 0) {
+      return reply
+        .code(409)
+        .send({ message: 'Esta invitación ya fue aceptada. Pedile al titular que te reenvíe el link.' });
     }
     const payload: JwtCoInquilino = {
       kind: 'co-inquilino',

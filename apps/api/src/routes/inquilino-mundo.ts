@@ -767,6 +767,17 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     const co = await prisma.coInquilino.findFirst({ where: { id, contratoId: inq.contratoId ?? '' } });
     if (!co) return reply.code(404).send({ message: 'Co-inquilino inexistente' });
+    // Regenerar el link re-arma la invitación: como la aceptación es de un solo uso
+    // (ver /co-invitacion/:token/aceptar en auth.ts), volvemos la invitación a
+    // PENDIENTE para que el link NUEVO se pueda aceptar. Esto además revoca la sesión
+    // vigente del co-inquilino (requireContratoAcceso exige estado=ACEPTADO) →
+    // rotación de credencial: reenviar el link invalida el acceso anterior.
+    if (co.estado === 'ACEPTADO') {
+      await prisma.coInquilino.update({
+        where: { id: co.id },
+        data: { estado: 'PENDIENTE', aceptadoAt: null },
+      });
+    }
     const tokenInvitacion = app.jwt.sign(
       { kind: 'co-invitacion', coInquilinoId: co.id, contratoId: co.contratoId },
       { expiresIn: '7d' },
