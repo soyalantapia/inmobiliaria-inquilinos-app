@@ -159,7 +159,10 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
       <header className="flex items-center gap-3 p-5">
         <button
           type="button"
-          onClick={() => router.back()}
+          // push (no back()): el home (banner + quick-action) linkea DIRECTO al
+          // checkout salteando /pago/[liqId], así que back() salía del flujo de
+          // pago. push garantiza que "Volver" siempre lleve al detalle.
+          onClick={() => router.push(`/pago/${params.liqId}`)}
           className="rounded-full p-2 hover:bg-muted"
           aria-label="Volver"
         >
@@ -467,6 +470,7 @@ function SelectorMonto({
         <button
           type="button"
           onClick={setTotal}
+          aria-pressed={esTotal}
           className={`flex w-full items-center justify-between gap-3 rounded-md border p-3 text-left text-sm transition-colors ${
             esTotal
               ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
@@ -484,6 +488,7 @@ function SelectorMonto({
         <button
           type="button"
           onClick={setOtro}
+          aria-pressed={!esTotal}
           className={`flex w-full items-start gap-3 rounded-md border p-3 text-left text-sm transition-colors ${
             !esTotal
               ? 'border-primary bg-primary/5 ring-2 ring-primary/20'

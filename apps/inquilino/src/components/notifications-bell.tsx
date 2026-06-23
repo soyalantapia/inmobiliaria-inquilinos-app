@@ -360,8 +360,17 @@ export function NotificationsBell() {
         setOpen(false);
       }
     };
+    // Escape cierra el popover (declaramos aria-haspopup="dialog" → el teclado
+    // espera poder cerrarlo con Escape).
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
     document.addEventListener('mousedown', onClick);
-    return () => document.removeEventListener('mousedown', onClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onClick);
+      document.removeEventListener('keydown', onKey);
+    };
   }, [open]);
 
   // Recalcular al abrir (por si cambió algo en otra pestaña / ruta)
@@ -398,7 +407,7 @@ export function NotificationsBell() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-12 z-50 w-[calc(100vw-2.5rem)] max-w-sm rounded-lg border bg-popover shadow-lg">
+        <div role="dialog" aria-label="Notificaciones" className="absolute right-0 top-12 z-50 w-[calc(100vw-2.5rem)] max-w-sm rounded-lg border bg-popover shadow-lg">
           <div className="flex items-center justify-between border-b p-3">
             <p className="text-sm font-semibold">Notificaciones</p>
             {unread > 0 && (
