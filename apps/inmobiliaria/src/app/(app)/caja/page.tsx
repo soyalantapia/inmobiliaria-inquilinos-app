@@ -3,7 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowDown,
+  Banknote,
   Calendar,
+  ChevronDown,
+  ChevronUp,
+  MessageCircle,
+  Percent,
   Plus,
   Trash2,
   TrendingDown,
@@ -33,6 +38,7 @@ import {
   categoriaGastoLabel,
 } from '@/lib/caja-storage';
 import { useCaja, usePropiedades } from '@/lib/api/hooks';
+import { useCierreCaja } from '@/lib/api/use-pagos';
 import { apiEnabled } from '@/lib/api/client';
 import { formatFechaCorta, formatMonto } from '@/lib/format';
 import { propiedadesMock } from '@/lib/mock-data';
@@ -148,6 +154,9 @@ export default function CajaPage() {
           </Card>
         </div>
 
+        {/* Cierre de caja del día (cobrado + comisión) — solo prod (data real) */}
+        {apiEnabled && <CierreCajaDelDia />}
+
         {/* Filtro propiedad */}
         <div className="flex flex-wrap gap-2">
           <button
@@ -262,6 +271,126 @@ export default function CajaPage() {
         onConfirmado={(pin) => handleEliminar(pin)}
       />
     </>
+  );
+}
+
+/**
+ * Cierre de caja del día: lo cobrado (pagos conciliados) + la comisión de la
+ * inmobiliaria, desde el API real. Solo en prod (en demo no hay backend de
+ * cobranzas; antes había una versión mock que mostraba $0 y se sacó).
+ */
+function CierreCajaDelDia() {
+  // "Hoy" en hora de Argentina (UTC-3), igual que el backend.
+  const hoy = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
+  const [fecha, setFecha] = useState(hoy);
+  const [abierto, setAbierto] = useState(false);
+  const { cierre, cargando } = useCierreCaja(fecha);
+  const esHoy = fecha === hoy;
+
+  const compartir = () => {
+    if (!cierre || cierre.cantidad === 0) return;
+    const cuando = esHoy ? 'de hoy' : `del ${fecha}`;
+    const msg =
+      `*Cierre de caja ${cuando}*\n` +
+      `Cobrado: ${formatMonto(cierre.cobrado)}\n` +
+      `Comisión (honorarios): ${formatMonto(cierre.comision)}\n` +
+      `${cierre.cantidad} cobro${cierre.cantidad === 1 ? '' : 's'} conciliado${cierre.cantidad === 1 ? '' : 's'}.`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank', 'noopener,noreferrer');
+  };
+
+  return (
+    <Card className="overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-muted/20 p-4">
+        <div className="flex items-center gap-2">
+          <Banknote className="h-4 w-4 text-emerald-600" />
+          <h2 className="text-sm font-semibold">Cierre de caja del día</h2>
+        </div>
+        <div className="flex items-center gap-2">
+          <Calendar className="h-4 w-4 text-muted-foreground" />
+          <Input
+            type="date"
+            value={fecha}
+            max={hoy}
+            onChange={(e) => setFecha(e.target.value || hoy)}
+            className="h-8 w-[150px]"
+            aria-label="Fecha del cierre de caja"
+          />
+        </div>
+      </div>
+      <CardContent className="p-4">
+        {cargando ? (
+          <p className="text-sm text-muted-foreground">Cargando…</p>
+        ) : !cierre || cierre.cantidad === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Sin cobranzas conciliadas {esHoy ? 'hoy' : 'ese día'}. Aparecen acá cuando validás
+            un pago que informó el inquilino.
+          </p>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-3 dark:border-emerald-900/40 dark:bg-emerald-900/10">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
+                  Cobrado
+                </p>
+                <p className="mt-1 text-2xl font-bold tabular-nums text-emerald-700 dark:text-emerald-300">
+                  {formatMonto(cierre.cobrado)}
+                </p>
+              </div>
+              <div className="rounded-lg border bg-muted/20 p-3">
+                <p className="flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  <Percent className="h-3 w-3" /> Comisión
+                </p>
+                <p className="mt-1 text-2xl font-bold tabular-nums">{formatMonto(cierre.comision)}</p>
+                <p className="text-[10px] text-muted-foreground">tus honorarios sobre el alquiler</p>
+              </div>
+              <div className="rounded-lg border bg-muted/20 p-3">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  Cobros
+                </p>
+                <p className="mt-1 text-2xl font-bold tabular-nums">{cierre.cantidad}</p>
+              </div>
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setAbierto((v) => !v)}>
+                {abierto ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                {abierto ? 'Ocultar detalle' : 'Ver detalle'}
+              </Button>
+              <Button size="sm" variant="outline" className="gap-1.5" onClick={compartir}>
+                <MessageCircle className="h-3.5 w-3.5" />
+                Compartir por WhatsApp
+              </Button>
+            </div>
+
+            {abierto && (
+              <div className="mt-3 space-y-2">
+                {cierre.pagos.map((p) => (
+                  <div
+                    key={p.id}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-background p-2.5 text-sm"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">{p.inquilino}</p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {p.direccion} · {p.periodo} · {p.metodo.toLowerCase()}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-semibold tabular-nums text-emerald-700 dark:text-emerald-300">
+                        {formatMonto(p.monto)}
+                      </p>
+                      <p className="text-[10px] tabular-nums text-muted-foreground">
+                        comisión {formatMonto(p.comision)}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

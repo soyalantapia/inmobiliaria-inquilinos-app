@@ -167,6 +167,46 @@ export interface DevengoResultado {
  * quiera. Hoy lo dispara un botón del panel; mañana un cron pega al mismo
  * endpoint. Solo prod (en demo no hay backend que devengar).
  */
+export interface CierreCajaItem {
+  id: string;
+  inquilino: string;
+  direccion: string;
+  periodo: string;
+  monto: number;
+  comision: number;
+  metodo: string;
+  hora: string;
+}
+export interface CierreCaja {
+  fecha: string;
+  cobrado: number;
+  comision: number;
+  cantidad: number;
+  pagos: CierreCajaItem[];
+}
+
+/**
+ * Cierre de caja del día: lo cobrado (pagos conciliados) + la comisión de la
+ * inmobiliaria sobre el alquiler. GET /caja/cierre?fecha=YYYY-MM-DD (default hoy,
+ * en hora de Argentina). Solo prod (en demo no hay backend de cobranzas).
+ */
+export function useCierreCaja(fecha?: string): {
+  cierre: CierreCaja | null;
+  cargando: boolean;
+  disponible: boolean;
+} {
+  const q = useQuery({
+    queryKey: ['caja', 'cierre', fecha ?? 'hoy'],
+    queryFn: async () => {
+      await ensureApiSession();
+      return apiFetch<CierreCaja>(`/caja/cierre${fecha ? `?fecha=${fecha}` : ''}`);
+    },
+    enabled: apiEnabled,
+    staleTime: 15_000,
+  });
+  return { cierre: q.isError ? null : (q.data ?? null), cargando: q.isPending, disponible: apiEnabled };
+}
+
 export function useDevengar(): { devengar: () => Promise<DevengoResultado>; disponible: boolean } {
   const qc = useQueryClient();
   return {
