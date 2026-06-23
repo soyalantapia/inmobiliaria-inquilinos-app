@@ -24,6 +24,7 @@ import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card, CardContent } from '@llave/ui/card';
 import { ConfirmDialog } from '@llave/ui/confirm-dialog';
+import { DescargarAppCard } from '@/components/instalar-app';
 import { NavBar } from '@/components/nav-bar';
 import { relanzarOnboarding } from '@/components/onboarding';
 import { cerrarSesion } from '@/lib/auth-otp';
@@ -107,6 +108,9 @@ function CuentaReal() {
             Editar datos (próximamente)
           </Button>
         </Card>
+
+        {/* Descargar la app (PWA) — se oculta sola si ya está instalada */}
+        <DescargarAppCard />
 
         {/* Tu hogar */}
         <section className="space-y-3">
@@ -311,6 +315,9 @@ function CuentaDemo() {
             </Link>
           </Button>
         </Card>
+
+        {/* Descargar la app (PWA) — se oculta sola si ya está instalada */}
+        <DescargarAppCard />
 
         {/* Sección "Tu hogar" — accesos rápidos a las pantallas relacionadas
             al contrato actual. Antes estaba todo mezclado bajo "Ayuda"
