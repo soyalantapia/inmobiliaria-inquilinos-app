@@ -161,35 +161,40 @@ export default function PagosPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aResolverDeApi]);
 
+  // Cobranza: sólo contratos con liquidaciones reales. Un BORRADOR (p.ej. uno
+  // cargado y luego rechazado) no se cobra y su estadoPagoActual derivado cae a
+  // PENDIENTE → inflaba el KPI "Pendiente" y aparecía en la lista de cobros.
+  const cobrables = useMemo(() => contratos.filter((c) => c.estado !== 'BORRADOR'), [contratos]);
+
   const counters = useMemo(
     () => ({
       A_RESOLVER: aResolverCount,
-      VENCIDO: contratos.filter((c) => c.estadoPagoActual === 'VENCIDO').length,
-      PENDIENTE: contratos.filter((c) => c.estadoPagoActual === 'PENDIENTE').length,
-      PAGADO: contratos.filter((c) => c.estadoPagoActual === 'PAGADO').length,
+      VENCIDO: cobrables.filter((c) => c.estadoPagoActual === 'VENCIDO').length,
+      PENDIENTE: cobrables.filter((c) => c.estadoPagoActual === 'PENDIENTE').length,
+      PAGADO: cobrables.filter((c) => c.estadoPagoActual === 'PAGADO').length,
     }),
-    [aResolverCount, contratos],
+    [aResolverCount, cobrables],
   );
 
   const totalCobrado = useMemo(
     () =>
-      contratos
+      cobrables
         .filter((c) => c.estadoPagoActual === 'PAGADO')
         .reduce((acc, c) => acc + c.monto, 0),
-    [contratos],
+    [cobrables],
   );
   const totalPendiente = useMemo(
     () =>
-      contratos
+      cobrables
         .filter((c) => c.estadoPagoActual !== 'PAGADO')
         .reduce((acc, c) => acc + c.monto, 0),
-    [contratos],
+    [cobrables],
   );
 
   const filtradas = useMemo(() => {
-    if (filtro === 'TODOS' || filtro === 'A_RESOLVER') return contratos;
-    return contratos.filter((c) => c.estadoPagoActual === filtro);
-  }, [filtro, contratos]);
+    if (filtro === 'TODOS' || filtro === 'A_RESOLVER') return cobrables;
+    return cobrables.filter((c) => c.estadoPagoActual === filtro);
+  }, [filtro, cobrables]);
 
   const togglearFiltro = (f: 'A_RESOLVER' | 'VENCIDO' | 'PENDIENTE' | 'PAGADO') => {
     setFiltro((prev) => (prev === f ? 'TODOS' : f));

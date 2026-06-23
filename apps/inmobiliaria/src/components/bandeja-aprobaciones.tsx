@@ -90,13 +90,14 @@ export function BandejaAprobaciones() {
   // El rechazo también es acción sensible: valida motivo y pasa por el PIN.
   const ejecutarRechazo = () => {
     if (!rechazar_) return;
-    // El motivo es obligatorio (lo recibe quien cargó). Antes, sin motivo el
-    // botón no hacía nada (no-op silencioso); ahora avisamos con un mensaje claro.
-    if (!motivoRechazo.trim()) {
+    // El motivo es obligatorio (lo recibe quien cargó) y el API exige mínimo 5
+    // caracteres. Antes el front sólo chequeaba no-vacío → con 1-4 chars el 400 del
+    // backend recién aparecía DESPUÉS de tipear el PIN. Validamos lo mismo acá.
+    if (motivoRechazo.trim().length < 5) {
       toast({
         variant: 'destructive',
         title: 'Falta el motivo',
-        description: 'Escribí por qué lo rechazás: se lo avisamos a quien lo cargó.',
+        description: 'Escribí por qué lo rechazás (mínimo 5 caracteres): se lo avisamos a quien lo cargó.',
       });
       return;
     }

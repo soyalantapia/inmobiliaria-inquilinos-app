@@ -45,7 +45,7 @@ import {
   type LiquidacionAdmin,
   type TipoEventoContrato,
 } from '@/lib/mock-data';
-import type { ContratoListado, Propietario } from '@/lib/types';
+import type { ContratoListado, EstadoContrato, Propietario } from '@/lib/types';
 import { formatFecha, formatMonto } from '@/lib/format';
 
 const estadoLiqVariant: Record<
@@ -55,6 +55,15 @@ const estadoLiqVariant: Record<
   PAGADO: 'success',
   PENDIENTE: 'warning',
   VENCIDO: 'destructive',
+};
+
+// Estado del contrato → color del badge. Antes estaba hardcodeado 'success'
+// (siempre verde): un BORRADOR/FINALIZADO/RESCINDIDO se veía como ACTIVO.
+const estadoContratoVariant: Record<EstadoContrato, React.ComponentProps<typeof Badge>['variant']> = {
+  ACTIVO: 'success',
+  BORRADOR: 'warning',
+  FINALIZADO: 'secondary',
+  RESCINDIDO: 'destructive',
 };
 
 const eventoIcono: Record<TipoEventoContrato, LucideIcon> = {
@@ -247,7 +256,7 @@ export default function DetalleContratoPage() {
                   <Row
                     label="Estado"
                     value={
-                      <Badge variant="success">
+                      <Badge variant={estadoContratoVariant[c.estado] ?? 'secondary'}>
                         {c.estado.charAt(0) + c.estado.slice(1).toLowerCase()}
                       </Badge>
                     }

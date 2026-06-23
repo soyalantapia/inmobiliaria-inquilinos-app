@@ -21,8 +21,7 @@ import { cn } from '@llave/ui/cn';
 import { Input } from '@llave/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@llave/ui/table';
 import { Topbar } from '@/components/topbar';
-import { propiedadesMock, propietariosMock } from '@/lib/mock-data';
-import { useContratos } from '@/lib/api/hooks';
+import { useContratos, usePropiedades } from '@/lib/api/hooks';
 import { formatMonto, formatRangoVigencia } from '@/lib/format';
 import type { EstadoLiquidacion } from '@/lib/types';
 
@@ -91,23 +90,32 @@ export default function ContratosPage() {
   // Linkeado desde /propietarios/[id] y /propietarios list.
   const searchParams = useSearchParams();
   const propietarioId = searchParams?.get('propietario') ?? null;
-  const propietario = propietarioId
-    ? propietariosMock.find((p) => p.id === propietarioId) ?? null
-    : null;
-  // IDs de contratos asociados a este propietario (via propiedades).
+  // Datos REALES (en demo el hook cae a los mocks): antes el filtro ?propietario=
+  // se armaba con propiedadesMock/propietariosMock → en prod el Set quedaba vacío y
+  // la pantalla mostraba CERO contratos para ese propietario.
+  const { propiedades } = usePropiedades();
+  const propietario = useMemo(() => {
+    if (!propietarioId) return null;
+    for (const p of propiedades) {
+      const m = p.propietarios.find((o) => o.id === propietarioId);
+      if (m) return m;
+    }
+    return null;
+  }, [propietarioId, propiedades]);
+  // IDs de contratos (actuales) de las propiedades de este propietario.
   // Wrapped en useMemo para que la referencia sea estable y no invalide
   // el useMemo de `filtrados` en cada render.
   const contratosDelPropietario = useMemo(
     () =>
       propietarioId
         ? new Set(
-            propiedadesMock
-              .filter((p) => p.propietariosIds.includes(propietarioId))
-              .map((p) => p.contratoActualId)
+            propiedades
+              .filter((p) => p.propiedad.propietariosIds.includes(propietarioId))
+              .map((p) => p.propiedad.contratoActualId)
               .filter((id): id is string => !!id),
           )
         : null,
-    [propietarioId],
+    [propietarioId, propiedades],
   );
 
   const counters = useMemo(

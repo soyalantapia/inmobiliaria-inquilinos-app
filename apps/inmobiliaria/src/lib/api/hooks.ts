@@ -247,6 +247,7 @@ export function useAprobaciones(): {
       });
       invalidar();
       void qc.invalidateQueries({ queryKey: ['contratos'] }); // aprobar contrato lo activa
+      void qc.invalidateQueries({ queryKey: ['contrato'] }); // y el DETALLE (badge "pendiente aprobación")
       return mapAprobacion(r);
     },
     rechazarApi: async (id, pin, motivo) => {
@@ -256,6 +257,7 @@ export function useAprobaciones(): {
       });
       invalidar();
       void qc.invalidateQueries({ queryKey: ['contratos'] }); // rechazar limpia pendienteAprobacion del contrato
+      void qc.invalidateQueries({ queryKey: ['contrato'] }); // y el DETALLE (badge "pendiente aprobación")
       return mapAprobacion(r);
     },
   };
@@ -659,7 +661,13 @@ interface PropiedadApi {
     porcentaje: number;
     propietario: { id: string; nombre: string; apellido: string };
   }>;
-  contratoActual: { id: string; estado: string; monto: string | number; moneda: string } | null;
+  contratoActual: {
+    id: string;
+    estado: string;
+    monto: string | number;
+    moneda: string;
+    modoCobranza?: string; // INMOBILIARIA | PROPIETARIO_DIRECTO — para no inflar el KPI cobrado
+  } | null;
 }
 
 interface ReclamoLiteApi {
@@ -919,6 +927,11 @@ export function usePropietarios(): {
     if (l.periodo !== period || l.estado !== 'PAGADO') continue;
     const prop = props.find((p) => p.contratoActualId === l.contratoId);
     if (!prop) continue;
+    // El KPI "cobrado / a rendir" refleja lo que la inmobiliaria va a RENDIR al
+    // propietario. POST /rendiciones (server) sólo cuenta contratos
+    // modoCobranza=INMOBILIARIA; en PROPIETARIO_DIRECTO el dueño cobra él mismo y no
+    // se rinde → contarlo acá inflaba el bruto y no coincidía con la rendición real.
+    if (prop.contratoActual?.modoCobranza === 'PROPIETARIO_DIRECTO') continue;
     for (const part of prop.participaciones) {
       // Sobre el ALQUILER (no montoTotal): igual que la rendición real del server,
       // las expensas no le corresponden al propietario. Antes inflaba el KPI y el
@@ -1122,8 +1135,8 @@ function comisionEfectiva(propietarios: Propietario[]): number {
 export function useDashboard(): DashboardData {
   const { contratos, cargando: cargC } = useContratos();
   const { propiedades, cargando: cargP } = usePropiedades();
-  const { propietarios } = usePropietarios();
-  const { liquidaciones } = useLiquidaciones();
+  const { propietarios, cargando: cargOwn } = usePropietarios();
+  const { liquidaciones, cargando: cargLiq } = useLiquidaciones();
 
   const activos = contratos.filter((c) => c.estado === 'ACTIVO');
   const cobrado = activos.filter((c) => c.estadoPagoActual === 'PAGADO').reduce((a, c) => a + c.monto, 0);
@@ -1193,6 +1206,8 @@ export function useDashboard(): DashboardData {
     propietariosSinCbu,
     porRendir,
     proximosVencimientos,
-    cargando: cargC || cargP,
+    // Incluye propietarios y liquidaciones: el dashboard deriva comisión/a-rendir y
+    // próximos vencimientos de esos datos → sin esto se mostraba antes de tenerlos.
+    cargando: cargC || cargP || cargOwn || cargLiq,
   };
 }
