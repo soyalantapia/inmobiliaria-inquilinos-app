@@ -1,5 +1,22 @@
 # Pendientes — punto de partida del próximo chat
 
+> ## ✅ ESTADO OLA 0 (2026-06-23) — aplicado en el working tree, SIN commitear ni deployar
+> Se aplicaron con disciplina (verificado file:line + typecheck/build OK):
+> **P1, P2, P3, P4, P5, P6, P7, P8, P9, P11, P12, P13**.
+> - **P1** (plata.ts): borra CodigoOtp/AnuncioAcuse/Documento/CertificadoInquilino antes del `inquilino.deleteMany` al rechazar.
+> - **P7** (auth.ts + inquilino-mundo.ts): aceptación de co-invitación = lock atómico de un solo uso; regenerar el link re-arma la invitación a PENDIENTE (rota la credencial).
+> - **P6** (checkout): parche honesto — en prod no se finge que el comprobante llegó; se pide enviarlo por WhatsApp. (Upload real = Ola 1.)
+> - **P8** (core.ts + hooks.ts), **P5/P3** (hooks.ts), **P2/P9** (pagos+contratos pages), **P4** (app.ts P2034), **P11** (anular rendición atómica), **P12/P13** (front).
+>
+> **DIFERIDOS (decisión del dueño, NO aplicados):**
+> - **P10** — bloquear informar pago / subir boleta sobre contrato FINALIZADO. No es bug claro: no hay endpoint para que la inmobiliaria registre el pago, así que bloquear dejaría sin forma de cobrar un saldo legítimo pendiente. → **decisión**: ¿se cobra el saldo post-finalización por la app o por afuera?
+> - **P14** — saldo (no total) en el checkout multi-parcial: el backend ya rechaza `monto > saldo` (integridad cubierta); el fix UI necesita exponer lo conciliado al front = feature, demo-céntrica.
+>
+> Verificación: `tsc --noEmit` OK en api + panel + inquilino; `pnpm --filter api build` OK.
+> Falta: **commit + deploy (Railway) + smoke + re-correr `AUDITORIA-PROFUNDA-PROMPT.md`**.
+
+---
+
 > **~15 hallazgos confirmados de la 3ra pasada de auditoría, SIN aplicar todavía.**
 > La síntesis del workflow se cortó por límite de sesión, pero los confirmados
 > crudos (≥2/3 verificadores) están capturados acá, deduplicados y triados.

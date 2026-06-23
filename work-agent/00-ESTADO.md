@@ -75,4 +75,6 @@ Los 3 más urgentes (ALTA):
 | `03-AUDITORIAS.md` | Historia de las 6 pasadas + metodología + el prompt reutilizable |
 | `04-PENDIENTES.md` | **Los ~15 hallazgos sin aplicar + long-tail diferido** |
 | `05-DECISIONES.md` | Decisiones de negocio del dueño + reglas duras |
+| `06-ANALISIS-SENIOR.md` | **Análisis dev senior: dónde estamos / qué falta / roadmap en olas** (2026-06-23) |
 | `../AUDITORIA-PROFUNDA-PROMPT.md` | El prompt reutilizable de auditoría |
+| `../PROMPT-DEV-SENIOR.md` | Onboarding del dev principal senior (genera este análisis) |
