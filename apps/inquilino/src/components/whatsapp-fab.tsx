@@ -35,7 +35,7 @@ export function WhatsappFab() {
       target="_blank"
       rel="noreferrer"
       aria-label="Hablar con la inmobiliaria por WhatsApp"
-      className="fixed bottom-24 right-3 z-30 grid h-12 w-12 place-items-center rounded-full bg-emerald-500 text-white shadow-lg shadow-emerald-500/40 transition-all hover:scale-105 hover:bg-emerald-600 active:scale-95 md:bottom-6 md:right-6 md:h-12 md:w-12"
+      className="group fixed bottom-24 right-3 z-30 grid h-12 w-12 place-items-center rounded-full bg-emerald-500 text-white shadow-lg shadow-emerald-500/40 transition-all hover:scale-105 hover:bg-emerald-600 active:scale-95 md:bottom-6 md:right-6 md:h-12 md:w-12"
     >
       <MessageCircle className="h-5 w-5 md:h-6 md:w-6" strokeWidth={2.5} />
       <span className="pointer-events-none absolute right-full mr-3 hidden whitespace-nowrap rounded-md bg-foreground px-3 py-1.5 text-xs font-medium text-background opacity-0 transition-opacity group-hover:opacity-100 md:block">

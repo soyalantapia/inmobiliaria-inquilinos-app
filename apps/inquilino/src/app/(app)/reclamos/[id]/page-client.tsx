@@ -129,25 +129,44 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
     setDecision(obtenerConfirmacion(id)?.estado ?? null);
   };
 
+  // Prod (API): el detalle se sirve del mismo GET /mis-reclamos (el inquilino no
+  // accede a /reclamos/:id). Mientras carga dejamos `undefined` (skeleton); una
+  // vez cargado, si no aparece el id es null (no encontrado). `reclamosApi` está
+  // memoizado en el hook, así que su referencia es estable salvo cambio real.
   useEffect(() => {
-    if (deApi) {
-      // Prod: el detalle se sirve del mismo GET /mis-reclamos (el inquilino no
-      // accede a /reclamos/:id). Mientras carga dejamos `undefined` (skeleton);
-      // una vez cargado, si no aparece el id es null (no encontrado).
-      if (cargandoApi) {
-        setReclamo(undefined);
-        return;
-      }
-      setReclamo(reclamosApi.find((r) => r.id === id) ?? null);
+    if (!deApi) return;
+    if (cargandoApi) {
+      setReclamo(undefined);
       return;
     }
-    recargar(id);
-    // recargar es estable porque no usa nada del scope externo del effect.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setReclamo(reclamosApi.find((r) => r.id === id) ?? null);
   }, [id, deApi, cargandoApi, reclamosApi]);
 
+  // Demo: leemos el reclamo de localStorage al montar / cambiar de id. NO
+  // dependemos de `reclamosApi`: en demo el hook devuelve un array NUEVO en cada
+  // render (sin memo), y como `recargar` hace setReclamo({...}) con un objeto
+  // nuevo, tenerlo en las deps disparaba un loop infinito de renders ("Maximum
+  // update depth exceeded"). Las mutaciones de la página refrescan llamando a
+  // `recargar` directo (enviar mensaje / confirmar), no por este effect.
   useEffect(() => {
-    scrollEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    if (deApi) return;
+    recargar(id);
+    // recargar es estable: solo usa `id`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, deApi]);
+
+  // Auto-scroll al final del timeline SOLO cuando se agrega un evento nuevo
+  // (mensaje enviado), no al abrir el detalle. En el mount inicial el contador
+  // pasa de null a N: si scrolleábamos ahí, la página saltaba al final del
+  // historial y ocultaba el resumen/header del reclamo.
+  const prevEventosLen = useRef<number | null>(null);
+  useEffect(() => {
+    const len = reclamo?.eventos.length;
+    if (len == null) return;
+    if (prevEventosLen.current != null && len > prevEventosLen.current) {
+      scrollEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }
+    prevEventosLen.current = len;
   }, [reclamo?.eventos.length]);
 
   const Icon = useMemo(

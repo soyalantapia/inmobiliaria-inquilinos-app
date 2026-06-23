@@ -33,15 +33,19 @@ function read(): Reclamo[] {
   }
 }
 
-function write(reclamos: Reclamo[]): void {
-  if (typeof window === 'undefined') return;
+// Devuelve `false` si el `setItem` falla (típicamente QuotaExceededError: el
+// dataURL de una foto pesada revienta el ~5MB de localStorage). Antes se tragaba
+// el error y los callers asumían que se persistió → falso éxito.
+function write(reclamos: Reclamo[]): boolean {
+  if (typeof window === 'undefined') return true;
   try {
     window.localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({ v: 1, reclamos } satisfies Payload),
     );
+    return true;
   } catch {
-    // ignore (Sentry lo agarra después)
+    return false;
   }
 }
 
@@ -92,8 +96,17 @@ export function crearReclamo(input: CrearReclamoInput): Reclamo {
       },
     ],
   };
-  const next = [nuevo, ...read()];
-  write(next);
+  if (!write([nuevo, ...read()])) {
+    // El dataURL de la foto suele ser lo que excede la cuota de localStorage.
+    // La foto es OPCIONAL: si no entra, reintentamos sin ella para NO perder el
+    // reclamo (antes el fallo se tragaba y la UI mostraba un banner de éxito
+    // sobre un reclamo que no existía → pérdida silenciosa de datos). Si ni sin
+    // foto entra, lanzamos: `enviar()` ya muestra un toast y conserva el draft.
+    if (nuevo.fotoUrl && write([{ ...nuevo, fotoUrl: null }, ...read()])) {
+      return { ...nuevo, fotoUrl: null };
+    }
+    throw new Error('No se pudo guardar el reclamo (almacenamiento lleno).');
+  }
   return nuevo;
 }
 

@@ -32,7 +32,7 @@ import {
   formatTamanio,
 } from '@/lib/boletas-servicios-storage';
 import { type ServicioPublico, useBoletas, useServicios } from '@/lib/api/use-servicios';
-import { formatFecha, formatFechaCorta, formatMonto } from '@/lib/format';
+import { formatFecha, formatFechaCorta, formatMonto, diasHastaVencimiento } from '@/lib/format';
 
 const ICONO_TIPO: Record<TipoServicio, typeof Zap> = {
   LUZ: Zap,
@@ -77,6 +77,12 @@ export default function ServiciosPage() {
   const { servicios } = useServicios();
   const [eliminar, setEliminar] = useState<BoletaServicio | null>(null);
   const [filtroTipo, setFiltroTipo] = useState<TipoServicio | 'TODOS'>('TODOS');
+  // En demo `boletas` se deriva de localStorage en cada render. `marcarPagada`
+  // escribe el storage pero no cambia ningún estado, así que la UI quedaba stale
+  // (la boleta no se movía a "Pagadas" hasta recargar). Bumpeamos este tick tras
+  // la mutación para forzar el re-render que vuelve a leer el storage. (Eliminar
+  // ya re-renderiza vía setEliminar(null), por eso no lo tocamos.)
+  const [, refrescar] = useState(0);
 
   // Cálculos derivados — todos en un memo bloque para que no se desperdiguen.
   const stats = useMemo(() => {
@@ -95,9 +101,11 @@ export default function ServiciosPage() {
     const futuras = stats.sinPagar
       .map((b) => ({
         b,
-        dias: Math.ceil(
-          (new Date(b.vencimiento).getTime() - Date.now()) / 86400000,
-        ),
+        // diasHastaVencimiento parsea la fecha en horario LOCAL (parseLocal),
+        // igual que formatFecha que se muestra al lado en el banner. Antes
+        // new Date('YYYY-MM-DD') parseaba en UTC y el conteo quedaba off-by-one
+        // respecto a la fecha impresa en UTC-3.
+        dias: diasHastaVencimiento(b.vencimiento),
       }))
       .filter(({ dias }) => dias <= 7)
       .sort((a, b) => a.dias - b.dias);
@@ -118,6 +126,7 @@ export default function ServiciosPage() {
 
   const marcarPagada = async (b: BoletaServicio) => {
     await marcarPagadaApi(b);
+    refrescar((n) => n + 1);
     toast({
       variant: 'success',
       title: 'Marcado como pagado',

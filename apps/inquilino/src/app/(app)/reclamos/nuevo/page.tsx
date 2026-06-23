@@ -315,8 +315,8 @@ export default function NuevoReclamoPage() {
               sonaba a regaño antes de tocar el campo (P9 de la auditoría). */}
           {descripcion.length > 0 && (
             <p className={`text-xs ${descripcion.length >= 950 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}>
-              {descripcion.length < 10
-                ? `Mínimo 10 caracteres (te faltan ${10 - descripcion.length})`
+              {descripcion.trim().length < 10
+                ? `Mínimo 10 caracteres (te faltan ${10 - descripcion.trim().length})`
                 : `${descripcion.length}/1000`}
             </p>
           )}

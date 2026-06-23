@@ -570,14 +570,32 @@ function MovimientoRow({ mov }: { mov: Movimiento }) {
       </div>
       <div className="flex flex-col items-end gap-1.5 shrink-0">
         <p className="text-sm font-semibold tabular-nums">{formatMonto(c.monto, c.moneda)}</p>
-        <a
-          href={c.pdfUrl}
-          download
-          className="flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"
-        >
-          <Download className="h-3 w-3" />
-          PDF
-        </a>
+        {c.pdfUrl && c.pdfUrl !== '#' ? (
+          <a
+            href={c.pdfUrl}
+            download
+            className="flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"
+          >
+            <Download className="h-3 w-3" />
+            PDF
+          </a>
+        ) : (
+          // En la demo los comprobantes mock tienen pdfUrl '#': sin este guard el
+          // link navegaba a /# (scroll al tope) sin descargar nada ni avisar.
+          <button
+            type="button"
+            onClick={() =>
+              toast({
+                title: 'Comprobante no disponible',
+                description: 'En la demo todavía no hay PDF para descargar.',
+              })
+            }
+            className="flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"
+          >
+            <Download className="h-3 w-3" />
+            PDF
+          </button>
+        )}
       </div>
     </div>
   );

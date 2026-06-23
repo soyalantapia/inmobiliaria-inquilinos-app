@@ -45,6 +45,7 @@ import { cargosExtraDelInquilino } from '@/lib/cross-app-inmo';
 import { marcarVariosPagados } from '@/lib/cargos-pagados-storage';
 import { extraerComprobante, type ExtraccionIA } from '@/lib/extraccion-ia';
 import { leerSesion } from '@/lib/auth-otp';
+import { aplicarEstadoDemo, useDemoEstado } from '@/lib/demo-estado';
 import { useMiContrato, type DatosCobranza } from '@/lib/api/hooks';
 import {
   apiEnabled,
@@ -60,9 +61,16 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
   // Liquidación: API en prod (useLiquidacion → useMisLiquidaciones), mock en
   // la demo offline. La búsqueda por liqId vive dentro del hook.
   const { liquidacion: liqApi, cargando } = useLiquidacion(params.liqId);
+  // En demo aplicamos el estado del switcher (aplicarEstadoDemo) IGUAL que la
+  // pantalla de detalle, para que monto/punitorios/estado coincidan entre el CTA
+  // "Pagar $X" del detalle y este checkout. Antes el checkout leía el mock CRUDO:
+  // en 'a-tiempo' cobraba punitorios que el detalle decía no aplicar, y una liq
+  // ya PAGADA reaparecía como deuda repagable.
+  const liqBase = liquidacionesMock.find((l) => l.id === params.liqId) ?? null;
+  const [demoEstado] = useDemoEstado();
   const liq = apiEnabled
     ? liqApi
-    : (liquidacionesMock.find((l) => l.id === params.liqId) ?? null);
+    : ((liqBase ? aplicarEstadoDemo(demoEstado, liqBase) : null) ?? liqBase);
 
   const informarPago = useInformarPago();
   // Teléfono real de la inmobiliaria (sólo en prod) para el CTA de WhatsApp
@@ -116,11 +124,12 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
     );
   }
 
-  // En prod, si la liquidación YA está paga (validada por la inmobiliaria), no
-  // re-mostramos el formulario de pago: el flag local `completado` deriva de
-  // localStorage (vacío en prod) y antes el form reaparecía como si no se hubiera
-  // pagado. (El caso "informado, pendiente de validación" lo cubre el 409 del API.)
-  if (apiEnabled && liq.estado === 'PAGADO') {
+  // Si la liquidación YA está paga, no re-mostramos el formulario de pago. En
+  // demo (default 'atrasado') liq_002 conserva estado PAGADO, así que sin este
+  // guard el checkout dejaba "re-pagar" una deuda inexistente con punitorios
+  // recalculados. Antes el guard estaba gateado por `apiEnabled` y en demo no
+  // corría. (El caso "informado, pendiente de validación" lo cubre el 409 del API.)
+  if (liq.estado === 'PAGADO') {
     return (
       <main className="flex-1 px-5 py-10">
         <p className="text-base font-medium">Esta liquidación ya está paga. ¡Gracias!</p>

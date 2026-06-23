@@ -200,7 +200,7 @@ export default function GarantePublicPage({ params }: { params: { token: string 
               icon={<CalendarDays className="h-4 w-4" />}
               label="Próximo ajuste"
               value={formatFechaCorta(c.proximoAjuste)}
-              hint={`en ${diasAjuste} días`}
+              hint={diasAjuste >= 0 ? `en ${diasAjuste} días` : undefined}
             />
             <Row
               icon={<KeyRound className="h-4 w-4" />}

@@ -35,10 +35,18 @@ export default function CoInquilinosPage() {
   const { coInquilinos, cargando, deApi, aceptar, cambiarPermiso, eliminar, regenerarLink } =
     useCoInquilinos();
   const [eliminando, setEliminando] = useState<CoInquilino | null>(null);
+  // En demo `coInquilinos` se deriva de localStorage en cada render. Aceptar y
+  // cambiar permiso escriben el storage pero no cambian estado del componente, y
+  // el invalidateQueries del hook no re-renderiza una query deshabilitada → la
+  // card quedaba stale (seguía "Pendiente" / con el permiso viejo) hasta recargar.
+  // Bumpeamos este tick tras esas mutaciones. (Eliminar ya re-renderiza vía
+  // setEliminando(null).)
+  const [, refrescar] = useState(0);
 
   const handleAceptar = async (id: string) => {
     try {
       await aceptar(id);
+      refrescar((n) => n + 1);
       toast({ title: deApi ? 'Invitación aceptada' : 'Aceptado (simulación)' });
     } catch {
       toast({
@@ -64,6 +72,7 @@ export default function CoInquilinosPage() {
   const handleCambiarPermiso = async (id: string, p: PermisoCoInquilino) => {
     try {
       await cambiarPermiso(id, p);
+      refrescar((n) => n + 1);
       toast({ title: 'Permiso actualizado' });
     } catch {
       toast({ title: 'No se pudo actualizar el permiso', variant: 'destructive' });

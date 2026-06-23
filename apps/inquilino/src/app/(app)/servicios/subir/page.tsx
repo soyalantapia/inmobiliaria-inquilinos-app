@@ -66,7 +66,11 @@ export default function SubirBoletaPage() {
       });
       return;
     }
-    if (!monto || parseInt(monto, 10) <= 0) {
+    // El campo acepta decimales (inputMode decimal); redondeamos a pesos enteros
+    // para GUARDAR lo mismo que se ve. Antes parseInt truncaba 1234.56 → 1234 en
+    // silencio y descuadraba los totales del año.
+    const montoNum = Math.round(parseFloat(monto));
+    if (!monto || !Number.isFinite(montoNum) || montoNum <= 0) {
       toast({
         variant: 'destructive',
         title: 'Falta el monto',
@@ -83,7 +87,7 @@ export default function SubirBoletaPage() {
       await subirBoleta({
         servicio: tipo,
         periodo,
-        monto: parseInt(monto, 10),
+        monto: montoNum,
         vencimiento: vencimiento || undefined,
         nombreArchivo: archivo.name,
         tipoMime: archivo.type || 'application/octet-stream',

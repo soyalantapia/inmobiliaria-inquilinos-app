@@ -50,9 +50,13 @@ function EditarDatosDemo() {
   // Aplicar el override persistido al montar (client-only).
   useEffect(() => {
     const ov = leerProfile();
-    if (ov.fullName) setFullName(ov.fullName);
-    if (ov.phone) setPhone(ov.phone);
-    if (ov.email) setEmail(ov.email);
+    // `!== undefined` (no truthy): un teléfono guardado vacío ('') es una
+    // decisión deliberada ("Sin agregar") y debe respetarse. Con el guard truthy
+    // se ignoraba y el form re-prefilleaba el teléfono mock, contradiciendo a
+    // /cuenta que ya mostraba "Sin agregar".
+    if (ov.fullName !== undefined) setFullName(ov.fullName);
+    if (ov.phone !== undefined) setPhone(ov.phone);
+    if (ov.email !== undefined) setEmail(ov.email);
   }, []);
 
   const nombreOk = fullName.trim().length >= 3;
