@@ -192,9 +192,14 @@ comprobante por WhatsApp" como parche corto, o esperar storage), y P9/P11–P14 
 
 ### 🌊 Ola 1 — Desbloquear (1–2 semanas) · *las dos tuberías que destraban medio backlog*
 1. **File storage** (R2/Spaces) + endpoint multipart/presigned → cierra P6, boletas, fotos,
-   documentos de una.
+   documentos de una. *(Pendiente — bloquea en credenciales del bucket.)*
 2. **Cron/worker** → devengo mensual (mes 3+) + aplicación del ajuste de índice +
    recordatorios. Sin esto el producto se rompe solo pasado el 2º mes de cualquier contrato.
+   - ✅ **Devengo — 1er increment SHIPPED (2026-06-23):** `POST /liquidaciones/devengar`
+     (idempotente, ADMIN/OPERADOR) + botón "Generar liquidaciones" en Pagos. **Listo para
+     cron**: un Railway cron-job pega al mismo endpoint sin tocar código (falta credencial
+     de servicio). Pendiente: wiring del cron + aplicación del ajuste de índice (IPC/ICL/UVA,
+     necesita fuente de datos del índice).
 
 ### 🌊 Ola 2 — Diferenciar (semanas) · *lo que vende y retiene*
 - **Screening real** (proveedor a definir) — el "wow".
