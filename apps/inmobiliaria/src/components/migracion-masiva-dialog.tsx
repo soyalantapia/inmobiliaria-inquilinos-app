@@ -124,10 +124,14 @@ export function MigracionMasivaDialog({
   };
 
   const toggleSeleccionarTodos = () => {
-    if (seleccionados.size === filas.length) {
+    // Solo las filas seleccionables (los DUPLICADOs quedan fuera por default y
+    // su checkbox está disabled): antes "seleccionar todos" metía los DUPLICADOs
+    // —que no se podían destildar— e inflaba el contador y el "Importamos N".
+    const seleccionables = filas.filter((f) => f.estado !== 'DUPLICADO');
+    if (seleccionados.size === seleccionables.length) {
       setSeleccionados(new Set());
     } else {
-      setSeleccionados(new Set(filas.map((f) => f.id)));
+      setSeleccionados(new Set(seleccionables.map((f) => f.id)));
     }
   };
 
@@ -322,7 +326,10 @@ function StepPreview({
               <TableHead className="w-10">
                 <input
                   type="checkbox"
-                  checked={seleccionados.size === filas.length}
+                  checked={
+                    seleccionados.size > 0 &&
+                    seleccionados.size === filas.filter((f) => f.estado !== 'DUPLICADO').length
+                  }
                   onChange={onToggleTodos}
                   className="h-4 w-4 rounded border-border accent-primary"
                   aria-label="Seleccionar todos"

@@ -56,7 +56,7 @@ const PLANTILLAS: Array<{
     destinatario: 'titular',
     titulo: 'Segundo aviso · titular',
     cuerpo:
-      'Hola {nombre}, sigo sin novedades del alquiler vencido de {direccion}. La deuda al día es {monto} (con punitorios). Necesito que me confirmes fecha de pago hoy mismo. Si no podés pagar el total, hablamos para armar un plan.',
+      'Hola {nombre}, sigo sin novedades del alquiler vencido de {direccion}. El alquiler adeudado es {monto}. Necesito que me confirmes fecha de pago hoy mismo. Si no podés pagar el total, hablamos para armar un plan.',
   },
   {
     id: 'aviso-garante',

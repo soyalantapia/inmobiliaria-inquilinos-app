@@ -145,8 +145,15 @@ export default function PropiedadesPage() {
       ALQUILADA: enriquecidas.filter(esAlquilada).length,
       PROBLEMAS: enriquecidas.filter(tieneProblemas).length,
       DISPONIBLE: enriquecidas.filter(esDisponible).length,
+      // Excluye PROPIETARIO_DIRECTO: esa plata va del inquilino al dueño sin
+      // pasar por la inmobiliaria, no es "ingreso del mes" del estudio.
       ingresosMes: enriquecidas
-        .filter((p) => p.propiedad.estado === 'ALQUILADA' && p.contrato)
+        .filter(
+          (p) =>
+            p.propiedad.estado === 'ALQUILADA' &&
+            p.contrato &&
+            p.contrato.modoCobranza !== 'PROPIETARIO_DIRECTO',
+        )
         .reduce((acc, p) => acc + (p.contrato?.monto ?? 0), 0),
       reclamosAbiertos: enriquecidas.reduce((acc, p) => acc + p.reclamosAbiertos, 0),
     }),

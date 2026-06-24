@@ -196,9 +196,15 @@ function NuevaPropiedadForm() {
   const totalPct = propietariosVisibles.reduce((s, p) => s + (p.porcentaje || 0), 0);
   const pctValido = !conDivision || totalPct === 100;
 
+  // El mismo propietario no puede aparecer en dos slots: la PK compuesta
+  // (propiedadId, propietarioId) lo rechaza en el backend → sin esta guarda el
+  // alta pasaba la validación y reventaba con un toast genérico en prod.
+  const propietarioIds = propietariosVisibles.map((p) => p.propietarioId).filter(Boolean);
+  const hayPropietarioDuplicado = new Set(propietarioIds).size !== propietarioIds.length;
+
   // Validación
   const propietariosValidos =
-    propietariosVisibles.every((p) => !!p.propietarioId) && pctValido;
+    propietariosVisibles.every((p) => !!p.propietarioId) && pctValido && !hayPropietarioDuplicado;
 
   const contratoValido =
     !contratoActivado ||
@@ -224,6 +230,7 @@ function NuevaPropiedadForm() {
   if (ciudad.trim().length < 2) motivosFaltantes.push('Completá la ciudad / localidad');
   if (!propietariosVisibles.every((p) => !!p.propietarioId)) motivosFaltantes.push('Asigná un propietario');
   if (!pctValido) motivosFaltantes.push(`La división tiene que sumar 100% (hoy suma ${totalPct}%)`);
+  if (hayPropietarioDuplicado) motivosFaltantes.push('El mismo propietario no puede aparecer dos veces');
   if (contratoActivado && !contratoValido) motivosFaltantes.push('Completá los datos del contrato (monto, fecha, duración)');
 
   // Acciones propietarios

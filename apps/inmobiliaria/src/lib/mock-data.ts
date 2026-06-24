@@ -1389,12 +1389,12 @@ export const pagosInformadosMock: PagoInformado[] = [
     notaInquilino: 'Hice el pago el sábado, perdón por la demora en avisar.',
     liquidacionId: 'liq_cnt_005_2026-05',
   },
-  // Ejemplo de pago parcial: Laura informó 200k de un total de 480k.
+  // Ejemplo de pago parcial: Carlos informó 200k de un total de 480k.
   // Le queda un saldo de 280k que va a pagar en los próximos días.
   {
     id: 'pag_inf_004',
     contratoId: 'cnt_004',
-    inquilino: 'Laura Gómez',
+    inquilino: 'Carlos Romero',
     direccion: 'Honduras 4490, PB',
     periodo: '2026-05',
     monto: 200000,
@@ -1414,7 +1414,7 @@ export const pagosInformadosMock: PagoInformado[] = [
   {
     id: 'pag_inf_005',
     contratoId: 'cnt_004',
-    inquilino: 'Laura Gómez',
+    inquilino: 'Carlos Romero',
     direccion: 'Honduras 4490, PB',
     periodo: '2026-05',
     monto: 280000,

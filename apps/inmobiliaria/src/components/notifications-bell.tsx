@@ -13,7 +13,7 @@ import {
 import { Badge } from '@llave/ui/badge';
 import { cn } from '@llave/ui/cn';
 import { apiEnabled } from '@/lib/api/client';
-import { reclamosMock } from '@/lib/mock-data';
+import { listarReclamos } from '@/lib/reclamos-store';
 
 interface Notif {
   id: string;
@@ -37,9 +37,10 @@ function buildNotifs(): Notif[] {
   // En producción todavía no hay feed de notificaciones en el API → vacío
   // (no mostramos eventos ficticios del mock como si fueran reales).
   if (apiEnabled) return [];
-  // construimos las notificaciones a partir del mock de reclamos abiertos
-  // + algunos eventos sintéticos del dashboard
-  const reclamosAbiertos = reclamosMock.filter((r) => r.estado === 'ABIERTO');
+  // construimos las notificaciones a partir de los reclamos abiertos del STORE
+  // (no del mock congelado) + algunos eventos sintéticos del dashboard. Así, al
+  // resolver un reclamo, la campana deja de listarlo igual que el Inbox del día.
+  const reclamosAbiertos = listarReclamos().filter((r) => r.estado === 'ABIERTO');
 
   const fromReclamos: Notif[] = reclamosAbiertos.map((r, idx) => ({
     id: `n-rec-${r.id}`,
@@ -163,7 +164,14 @@ export function NotificationsBell() {
                 <li key={n.id}>
                   <Link
                     href={n.href}
-                    onClick={() => setOpen(false)}
+                    onClick={() => {
+                      setOpen(false);
+                      // Marcar esta notificación como leída (antes el badge solo
+                      // se limpiaba con "Marcar todas leídas").
+                      setNotifs((prev) =>
+                        prev.map((x) => (x.id === n.id ? { ...x, unread: false } : x)),
+                      );
+                    }}
                     className={cn(
                       'flex gap-3 border-b px-3 py-3 transition-colors last:border-b-0 hover:bg-muted/60',
                       n.unread && 'bg-primary/5',

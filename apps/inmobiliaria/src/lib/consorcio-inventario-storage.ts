@@ -62,7 +62,14 @@ function read(): Payload {
   if (typeof window === 'undefined') return { items: SEEDS_ITEMS, movimientos: SEEDS_MOVS };
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw) as Payload;
+    if (raw) {
+      // Validar la FORMA, no solo que sea JSON: un valor válido pero de shape
+      // incorrecto (ej. `[]`) pasaba el catch y crasheaba luego en read().items[id].
+      const p = JSON.parse(raw);
+      if (p && typeof p === 'object' && !Array.isArray(p) && p.items && p.movimientos) {
+        return p as Payload;
+      }
+    }
   } catch {
     // ignore
   }

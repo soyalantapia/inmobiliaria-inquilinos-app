@@ -151,7 +151,10 @@ function leerLista(): Sociedad[] {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(SEEDS));
       return SEEDS;
     }
-    return JSON.parse(raw) as Sociedad[];
+    const parsed = JSON.parse(raw);
+    // Guard de forma: un JSON válido pero no-array (corrupción externa) pasaba el
+    // catch y crasheaba en .filter/.find de los callers (topbar incluido).
+    return Array.isArray(parsed) ? (parsed as Sociedad[]) : SEEDS;
   } catch {
     return SEEDS;
   }

@@ -99,7 +99,13 @@ function leer(): ReferidosState {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(SEED));
       return SEED;
     }
-    return JSON.parse(raw) as ReferidosState;
+    const parsed = JSON.parse(raw);
+    // Guard de forma: si falta el array `referidos` (corrupción/esquema viejo)
+    // caemos al SEED en vez de crashear en .filter/.unshift de los callers.
+    if (parsed && typeof parsed === 'object' && Array.isArray(parsed.referidos)) {
+      return parsed as ReferidosState;
+    }
+    return SEED;
   } catch {
     return SEED;
   }
