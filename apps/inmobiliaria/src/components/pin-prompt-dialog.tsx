@@ -212,6 +212,8 @@ export function PinPromptDialog({
                 pattern="\d*"
                 maxLength={6}
                 autoComplete="off"
+                aria-invalid={!!error}
+                aria-describedby={error ? 'pin-error' : undefined}
                 value={pin}
                 onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
                 onKeyDown={(e) => {
@@ -222,7 +224,7 @@ export function PinPromptDialog({
           )}
 
           {error && (
-            <p className="rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive">
+            <p id="pin-error" role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive">
               {error}
             </p>
           )}

@@ -475,6 +475,9 @@ function PagosPorValidarDemo({ onChange }: PagosPorValidarProps = {}) {
   };
 
   const triggerConciliar = (pago: PagoInformado) => {
+    // Si ya hay un PIN dialog abierto, no pisamos pendingAction (otra fila —
+    // p.ej. Revertir, que no se deshabilita — podría secuestrar la acción).
+    if (showPin) return;
     setPinAccion('Conciliar pago');
     setPinSubaccion(`${pago.inquilino} · ${formatMonto(pago.monto)}`);
     pendingAction.current = () => handleConciliar(pago);
@@ -482,6 +485,7 @@ function PagosPorValidarDemo({ onChange }: PagosPorValidarProps = {}) {
   };
 
   const triggerRevertir = (pago: PagoInformado) => {
+    if (showPin) return;
     setPinAccion('Revertir conciliación');
     setPinSubaccion(`${pago.inquilino} · ${formatPeriodo(pago.periodo)}`);
     pendingAction.current = () => handleRevertir(pago);

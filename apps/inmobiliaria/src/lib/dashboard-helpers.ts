@@ -21,7 +21,10 @@ export interface DashboardStats {
 
 const COMISION_DEFAULT = 0.08; // 8% promedio
 
-export function calcularDashboardStats(): DashboardStats {
+// `gastosPendientes` = gastos de caja aún no descontados (se pasa desde el
+// componente, leído de caja-storage tras montar para no romper la hidratación).
+// El neto "A rendir a propietarios" = cobrado − comisión − gastos pendientes.
+export function calcularDashboardStats(gastosPendientes = 0): DashboardStats {
   const activos = contratosMock.filter((c) => c.estado === 'ACTIVO');
 
   const cobrado = activos
@@ -40,7 +43,7 @@ export function calcularDashboardStats(): DashboardStats {
 
   const totalActivos = cobrado + porCobrar + enMora.monto;
   const comisionMes = Math.round(cobrado * COMISION_DEFAULT);
-  const aRendirMes = Math.round(cobrado - comisionMes);
+  const aRendirMes = Math.round(cobrado - comisionMes - gastosPendientes);
 
   const totalPropiedades = propiedadesMock.length;
   const alquiladas = propiedadesMock.filter((p) => p.estado === 'ALQUILADA').length;

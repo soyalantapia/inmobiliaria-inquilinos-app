@@ -137,7 +137,7 @@ export function EquipoCard() {
                 <Badge variant="secondary">{ROL_LABEL[m.rol]}</Badge>
               )}
               {esAdmin && !m.esVos && (
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => setAQuitar(m)} disabled={procesando}>
+                <Button variant="ghost" size="icon" aria-label={`Quitar a ${m.nombre} ${m.apellido} del equipo`} className="h-8 w-8 text-destructive" onClick={() => setAQuitar(m)} disabled={procesando}>
                   <Trash2 className="h-4 w-4" />
                 </Button>
               )}

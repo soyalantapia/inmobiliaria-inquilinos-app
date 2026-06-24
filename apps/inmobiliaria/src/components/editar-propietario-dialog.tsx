@@ -14,6 +14,7 @@ import { Label } from '@llave/ui/label';
 import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
 import { guardarOverride } from '@/lib/propietarios-overrides-storage';
+import { validarCuit } from '@/lib/cuit';
 import type { Propietario } from '@/lib/types';
 
 interface Props {
@@ -57,11 +58,14 @@ export function EditarPropietarioDialog({ open, onOpenChange, propietario }: Pro
       });
       return;
     }
-    if (!cuit.trim()) {
+    // Validar formato + dígito verificador (igual que screening/configuracion):
+    // el CUIT alimenta facturas y rendiciones, no debe guardarse basura.
+    const valCuit = validarCuit(cuit);
+    if (!valCuit.valido) {
       toast({
         variant: 'destructive',
-        title: 'Falta el CUIT',
-        description: 'El CUIT es obligatorio para emitir factura.',
+        title: 'Revisá el CUIT',
+        description: valCuit.motivo ?? 'El CUIT no es válido.',
       });
       return;
     }

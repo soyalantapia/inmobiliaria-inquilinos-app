@@ -168,12 +168,15 @@ function mapContrato(c: ContratoApi): ContratoListado {
 }
 
 function mapPropiedad(p: PropiedadApi): PropiedadDetalle {
-  const participaciones: ParticipacionPropietario[] = p.participaciones.map((x) => ({
+  // `?? []`: el POST /propiedades puede devolver la fila pelada sin la relación
+  // participaciones eager-loaded → sin esto, .map crasheaba la pantalla (mismo
+  // patrón ya guardado en hooks.ts y use-propietario.ts).
+  const participaciones: ParticipacionPropietario[] = (p.participaciones ?? []).map((x) => ({
     propietarioId: x.propietarioId,
     porcentaje: Number(x.porcentaje),
   }));
 
-  const propietarios: Propietario[] = p.participaciones
+  const propietarios: Propietario[] = (p.participaciones ?? [])
     .filter((x): x is ParticipacionApi & { propietario: PropietarioApi } => x.propietario != null)
     .map((x) => mapPropietario(x.propietario, Number(x.porcentaje)));
 

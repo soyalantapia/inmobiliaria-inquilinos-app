@@ -17,6 +17,7 @@ import { toast } from '@llave/ui/use-toast';
 import { contratosMock } from '@/lib/mock-data';
 import { conciliarPago } from '@/lib/conciliacion-storage';
 import { formatMonto } from '@/lib/format';
+import { PinPromptDialog } from '@/components/pin-prompt-dialog';
 
 // Dialog para que la administradora cargue manualmente un pago que recibió
 // (efectivo, transferencia que vino fuera de la app, cheque). Se concilia
@@ -36,6 +37,7 @@ export function CargarPagoManualDialog({ open, onOpenChange, onDone }: Props) {
   const [metodo, setMetodo] = useState<MetodoManual>('EFECTIVO');
   const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10));
   const [nota, setNota] = useState('');
+  const [showPin, setShowPin] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -44,6 +46,7 @@ export function CargarPagoManualDialog({ open, onOpenChange, onDone }: Props) {
       setMetodo('EFECTIVO');
       setFecha(new Date().toISOString().slice(0, 10));
       setNota('');
+      setShowPin(false);
     }
   }, [open]);
 
@@ -56,6 +59,10 @@ export function CargarPagoManualDialog({ open, onOpenChange, onDone }: Props) {
     }
   }, [contratoSel, monto]);
 
+  // Validar y pedir PIN. Conciliar un pago es una acción que el modelo de
+  // permisos marca con requierePin (permisos.ts: pago.conciliar) — el resto de
+  // los flujos de conciliación pasan por PinPromptDialog. Antes esta ruta
+  // llamaba conciliarPago() directo, bypasseando el 2º factor.
   const guardar = () => {
     if (!contratoSel) {
       toast({ title: 'Elegí un contrato', variant: 'destructive' });
@@ -66,26 +73,29 @@ export function CargarPagoManualDialog({ open, onOpenChange, onDone }: Props) {
       toast({ title: 'El monto tiene que ser positivo', variant: 'destructive' });
       return;
     }
+    setShowPin(true);
+  };
 
-    // Generamos un id sintético para el pago manual y lo marcamos como
-    // CONCILIADO directamente (la admin ya validó al cargarlo). El pago
-    // manual no nace de una liquidación específica del inquilino, así
-    // que liqId queda en null.
+  // Se ejecuta sólo tras confirmar el PIN. Genera un id sintético y marca el
+  // pago como CONCILIADO (no nace de una liquidación → liqId null).
+  const confirmarConPin = () => {
+    if (!contratoSel) return;
+    const montoNum = Number(monto);
     const pagoId = `pag_manual_${contratoSel.id}_${fecha}`;
     conciliarPago(pagoId, 'Roberto Tapia', {
       observacion: `Pago manual · ${metodo} · ${formatMonto(montoNum)}${nota ? ` · ${nota}` : ''}`,
     });
-
     toast({
       title: `Pago de ${contratoSel.inquilino} cargado`,
       description: `${formatMonto(montoNum)} · ${metodo.toLowerCase()}`,
     });
-
+    setShowPin(false);
     onOpenChange(false);
     onDone?.();
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
@@ -186,6 +196,14 @@ export function CargarPagoManualDialog({ open, onOpenChange, onDone }: Props) {
         </div>
       </DialogContent>
     </Dialog>
+    <PinPromptDialog
+      abierto={showPin}
+      accion="Confirmar cobro manual"
+      subaccion={contratoSel ? `${contratoSel.inquilino} · ${formatMonto(Number(monto) || 0)}` : undefined}
+      onClose={() => setShowPin(false)}
+      onConfirmado={() => confirmarConPin()}
+    />
+    </>
   );
 }
 

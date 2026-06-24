@@ -228,7 +228,7 @@ function Steps({ actual }: { actual: Paso }) {
         const completado = p.id < actual;
         const activo = p.id === actual;
         return (
-          <li key={p.id} className="flex items-center gap-2 sm:gap-3">
+          <li key={p.id} aria-current={activo ? 'step' : undefined} className="flex items-center gap-2 sm:gap-3">
             <div
               className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-semibold ${
                 completado
@@ -410,6 +410,19 @@ function PasoRevisar({
     setDatos({ ...datos, [key]: { ...datos[key], valor } });
   };
 
+  // Validación de términos (espejo del wizard API): no dejar avanzar con monto
+  // <= 0, fechas incompletas, fin <= inicio, o día de pago fuera de 1-31.
+  const fInicio = String(datos.fechaInicio?.valor ?? '');
+  const fFin = String(datos.fechaFin?.valor ?? '');
+  const diaPagoNum = Number(datos.diaPago?.valor ?? 0);
+  const terminosValidos =
+    Number(datos.montoInicial?.valor ?? 0) > 0 &&
+    fInicio.length === 10 &&
+    fFin.length === 10 &&
+    fFin > fInicio &&
+    diaPagoNum >= 1 &&
+    diaPagoNum <= 31;
+
   // Cuenta campos con confianza baja/media: el operador necesita saber
   // de un vistazo cuánto va a tener que revisar antes de empezar.
   const aRevisar = Object.values(datos).filter(
@@ -490,7 +503,7 @@ function PasoRevisar({
               <ArrowLeft className="h-4 w-4" />
               Cambiar PDF
             </Button>
-            <Button onClick={onContinuar}>
+            <Button onClick={onContinuar} disabled={!terminosValidos}>
               Continuar
               <ArrowRight className="h-4 w-4" />
             </Button>
@@ -1263,7 +1276,7 @@ function StepsApi({ actual }: { actual: PasoApi }) {
         const completado = p.id < actual;
         const activo = p.id === actual;
         return (
-          <li key={p.id} className="flex items-center gap-2 sm:gap-3">
+          <li key={p.id} aria-current={activo ? 'step' : undefined} className="flex items-center gap-2 sm:gap-3">
             <div
               className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-semibold ${
                 completado

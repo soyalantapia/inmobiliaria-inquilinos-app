@@ -119,6 +119,15 @@ export function totalPendienteDescuento(propiedadId: string): number {
     .reduce((acc, m) => acc + m.monto, 0);
 }
 
+// Suma global de TODOS los gastos pendientes de descontar (sin propiedad). Se
+// usa en el KPI "A rendir a propietarios" del dashboard, que debe descontar los
+// gastos de caja del neto a transferir.
+export function totalGastosPendientesGlobal(): number {
+  return listarMovimientosCaja()
+    .filter((m) => m.tipo === 'GASTO' && !m.descontadoEnRendicion)
+    .reduce((acc, m) => acc + m.monto, 0);
+}
+
 export function cargarMovimiento(
   data: Omit<MovimientoCaja, 'id' | 'createdAt' | 'descontadoEnRendicion'>,
 ): MovimientoCaja {

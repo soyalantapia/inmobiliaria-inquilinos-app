@@ -272,6 +272,8 @@ function PinDialog({ modo, onClose, onDone }: PinDialogProps) {
               pattern="\d*"
               maxLength={6}
               autoComplete="new-password"
+              aria-invalid={!!error}
+              aria-describedby={error ? 'pin-card-error' : undefined}
               value={pinConfirm}
               onChange={(e) => setPinConfirm(e.target.value.replace(/\D/g, ''))}
               onKeyDown={(e) => {
@@ -281,7 +283,7 @@ function PinDialog({ modo, onClose, onDone }: PinDialogProps) {
           </div>
 
           {error && (
-            <p className="rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive">
+            <p id="pin-card-error" role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive">
               {error}
             </p>
           )}

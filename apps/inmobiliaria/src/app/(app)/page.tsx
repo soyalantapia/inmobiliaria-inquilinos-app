@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   AlertOctagon,
@@ -29,17 +30,26 @@ import { InboxDelDia } from '@/components/inbox-del-dia';
 import { Topbar } from '@/components/topbar';
 import { agendaMock, alertasMock, dashboardMetricsMock } from '@/lib/mock-data';
 import { calcularDashboardStats } from '@/lib/dashboard-helpers';
+import { totalGastosPendientesGlobal } from '@/lib/caja-storage';
 import { apiEnabled } from '@/lib/api/client';
 import { useDashboard } from '@/lib/api/hooks';
 import { diasHastaVencimiento, formatFechaCorta, formatMonto, formatPeriodo, periodoActualFormat } from '@/lib/format';
 
 export default function DashboardPage() {
+  // Gastos de caja pendientes: se leen tras montar (localStorage) para no romper
+  // la hidratación — en el primer render (SSR/export) valen 0 y el KPI "A rendir"
+  // se ajusta al instante en cliente. El hook va ANTES del return condicional.
+  const [gastosPendientes, setGastosPendientes] = useState(0);
+  useEffect(() => {
+    setGastosPendientes(totalGastosPendientesGlobal());
+  }, []);
+
   // En producción (API) el dashboard se arma con agregados reales. El render
   // demo (mocks: Roberto, 6 contratos, $1.34M…) queda intacto para el build
   // de GH Pages sin backend (!apiEnabled).
   if (apiEnabled) return <DashboardReal />;
 
-  const stats = calcularDashboardStats();
+  const stats = calcularDashboardStats(gastosPendientes);
   const m = dashboardMetricsMock;
 
   return (
