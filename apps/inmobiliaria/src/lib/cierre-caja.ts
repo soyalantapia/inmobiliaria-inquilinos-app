@@ -120,7 +120,7 @@ export function calcularResumenDia(fecha?: string): ResumenDia {
   type Ingreso = Extract<MovimientoDia, { tipo: 'INGRESO' }>;
   const ingresosLista: Ingreso[] = [];
   for (const c of contratosMock) {
-    const liqs = generarLiquidaciones(c.id, c.monto);
+    const liqs = generarLiquidaciones(c.id, c.monto, c.montoExpensas ?? 0);
     for (const liq of liqs) {
       if (liq.fechaPago && liq.fechaPago.slice(0, 10) === dia) {
         ingresosLista.push({
@@ -186,7 +186,7 @@ export function efectivoEnMano(): {
   let cobradoMes = 0;
   let alquilerCobradoMes = 0;
   for (const c of contratosMock) {
-    const liqs = generarLiquidaciones(c.id, c.monto);
+    const liqs = generarLiquidaciones(c.id, c.monto, c.montoExpensas ?? 0);
     for (const liq of liqs) {
       if (liq.periodo === mes && liq.estado === 'PAGADO') {
         cobradoMes += liq.montoTotal;
@@ -286,7 +286,7 @@ export function posicionPorPropietario(): PosicionPropietario[] {
     if (!ownerId) continue;
     const item = acumulador.get(ownerId);
     if (!item) continue;
-    const liqs = generarLiquidaciones(c.id, c.monto);
+    const liqs = generarLiquidaciones(c.id, c.monto, c.montoExpensas ?? 0);
     for (const liq of liqs) {
       if (liq.periodo === mes && liq.estado === 'PAGADO') {
         item.cobradoMes += liq.montoTotal;

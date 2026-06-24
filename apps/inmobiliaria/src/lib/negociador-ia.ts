@@ -48,6 +48,8 @@ export interface SugerenciaRenovacion {
   probabilidadRenovar: number;
   /** Calidad/perfil del inquilino. */
   confianza: ConfianzaInquilino;
+  /** Moneda del contrato (ARS/USD) — define el redondeo de los pisos. */
+  moneda: ContratoListado['moneda'];
   /** Factores explícitos que sustentan la sugerencia. */
   factores: FactorRenovacion[];
   /** Mensaje sugerido para mandar al inquilino por WhatsApp. */
@@ -154,6 +156,17 @@ const PROB_BASE: Record<ConfianzaInquilino, number> = {
  * Genera la sugerencia completa para un contrato. Si no encontramos el
  * contrato, devuelve null (defensivo).
  */
+/**
+ * Redondea el alquiler al "número lindo" según la moneda: al millar en ARS,
+ * al medio-centenar en USD. Sin esto, un alquiler USD chico (ej. 1200) se
+ * redondeaba a 1000 (round(1.38)·1000) → la "propuesta de aumento" salía MENOR
+ * que el alquiler actual (diferencia negativa).
+ */
+function redondearAlquiler(valor: number, moneda: ContratoListado['moneda']): number {
+  const step = moneda === 'USD' ? 50 : 1000;
+  return Math.round(valor / step) * step;
+}
+
 export function sugerirRenovacion(
   contratoId: string,
 ): SugerenciaRenovacion | null {
@@ -180,7 +193,10 @@ export function sugerirRenovacion(
   const ruido = Math.floor(r() * 3); // 0-2 puntos
   const aumentoPct = Math.max(15, base + ajusteConfianza + ruido);
 
-  const alquilerNuevo = Math.round((contrato.monto * (100 + aumentoPct)) / 100 / 1000) * 1000;
+  const alquilerNuevo = redondearAlquiler(
+    (contrato.monto * (100 + aumentoPct)) / 100,
+    contrato.moneda,
+  );
   const diferenciaMensual = alquilerNuevo - contrato.monto;
 
   // Probabilidad: arranca del base por confianza y va bajando si el
@@ -209,6 +225,7 @@ export function sugerirRenovacion(
     diferenciaMensual,
     probabilidadRenovar: probabilidad,
     confianza,
+    moneda: contrato.moneda,
     factores,
     mensajeWhatsApp: armarMensaje(contrato, aumentoPct, alquilerNuevo, confianza),
   };
@@ -381,8 +398,8 @@ export function iniciarNegociacion(contratoId: string): {
   }[sug.confianza];
 
   const techoBlando = sug.alquilerNuevo;
-  const pisoBlandoRaw = Math.round((sug.alquilerActual * factorPisoBlando) / 1000) * 1000;
-  const pisoDuroRaw = Math.round((sug.alquilerActual * factorPisoDuro) / 1000) * 1000;
+  const pisoBlandoRaw = redondearAlquiler(sug.alquilerActual * factorPisoBlando, sug.moneda);
+  const pisoDuroRaw = redondearAlquiler(sug.alquilerActual * factorPisoDuro, sug.moneda);
   // Invariante de seguridad: pisoDuro <= pisoBlando <= techoBlando. Garantiza
   // que NINGÚN cierre (Caso 1/2) ni contraoferta de la IA (Caso 3, que el
   // inquilino puede "aceptar") caiga por debajo del piso duro.

@@ -131,7 +131,11 @@ export default function RenovacionesPage() {
       {/* Resumen Negociador IA: cuánto más entra de plata si todos
           aceptan la sugerencia. Sirve para que el dueño de la inmo vea
           de un solo golpe el potencial de la cartera. */}
-      {!apiEnabled && <ResumenSugerenciasCartera contratoIds={filas.map((f) => f.id)} />}
+      {!apiEnabled && (
+        <ResumenSugerenciasCartera
+          contratoIds={filas.filter((f) => f.decision !== 'NO_RENOVAR').map((f) => f.id)}
+        />
+      )}
 
       {/* Filtros */}
       <div className="flex flex-wrap gap-2">

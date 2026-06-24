@@ -427,8 +427,8 @@ function NuevaPropiedadForm() {
                   </p>
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     {planActual.topePlan !== null && planActual.propiedadesParaProximo
-                      ? `Te quedan ${planActual.propiedadesParaProximo - 1} propiedad${
-                          planActual.propiedadesParaProximo - 1 === 1 ? '' : 'es'
+                      ? `Te quedan ${planActual.propiedadesParaProximo} propiedad${
+                          planActual.propiedadesParaProximo === 1 ? '' : 'es'
                         } antes de pasar a ${planActual.proximoTramo?.nombre ?? 'el siguiente plan'}.`
                       : 'Sumá las que necesites, no cambia el precio del plan.'}
                   </p>

@@ -109,8 +109,10 @@ export function resumenPara(propiedadesActivas: number): ResumenPlan {
   const tramo = tramoPara(propiedadesActivas);
   const idx = TRAMOS_PLAN.findIndex((t) => t.key === tramo.key);
   const proximoTramo = idx >= 0 && idx < TRAMOS_PLAN.length - 1 ? TRAMOS_PLAN[idx + 1]! : null;
+  // Cuántas faltan para llegar al tope del tramo (sin +1: con 5 activas y tope 10
+  // faltan 5, no 6; y con el tramo lleno da 0 para activar "Ya estás aprovechando").
   const propiedadesParaProximo =
-    tramo.hasta !== null ? Math.max(0, tramo.hasta - propiedadesActivas + 1) : null;
+    tramo.hasta !== null ? Math.max(0, tramo.hasta - propiedadesActivas) : null;
   return {
     plan: tramo.nombre,
     key: tramo.key,

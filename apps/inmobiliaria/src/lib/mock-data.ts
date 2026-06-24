@@ -1010,6 +1010,20 @@ export interface LiquidacionAdmin {
 // Para no inflar el archivo, generamos al vuelo las últimas 12 liquidaciones
 // de cada contrato a partir de hoy. Los 3 últimos meses son PENDIENTE/PAGADO,
 // el resto PAGADO.
+// Pseudo-aleatorio DETERMINÍSTICO por clave (FNV-1a → 0..1). Reemplaza a
+// Math.random() en generarLiquidaciones: antes el mes pasado salía VENCIDO el
+// ~30% de las veces AL AZAR en cada render, y como el scoring del inquilino
+// deriva de estas liquidaciones, el puntaje fluctuaba ±6 pts entre navegaciones
+// (contradiciendo el "cálculo determinístico desde mocks").
+function rngDeterministico(clave: string): number {
+  let h = 2166136261;
+  for (let k = 0; k < clave.length; k++) {
+    h ^= clave.charCodeAt(k);
+    h = Math.imul(h, 16777619);
+  }
+  return ((h >>> 0) % 1000) / 1000;
+}
+
 export function generarLiquidaciones(
   contratoId: string,
   montoBase: number,
@@ -1025,15 +1039,15 @@ export function generarLiquidaciones(
     const periodo = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
     const expensas = montoExpensasBase > 0 ? montoExpensasBase : Math.round(montoBase * 0.19);
     let estado: LiquidacionAdmin['estado'] = 'PAGADO';
-    let fechaPago: string | null = `${periodo}-${String(d.getDate() + Math.floor(Math.random() * 4)).padStart(2, '0')}`;
+    let fechaPago: string | null = `${periodo}-${String(d.getDate() + Math.floor(rngDeterministico(`${contratoId}|${periodo}|dia`) * 4)).padStart(2, '0')}`;
     let metodoPago: LiquidacionAdmin['metodoPago'] = 'TRANSFERENCIA';
     if (i === 0) {
       // mes actual: pendiente
       estado = 'PENDIENTE';
       fechaPago = null;
       metodoPago = null;
-    } else if (i === 1 && Math.random() > 0.7) {
-      // mes pasado: a veces vencido
+    } else if (i === 1 && rngDeterministico(`${contratoId}|mes-pasado-vencido`) > 0.7) {
+      // mes pasado: a veces vencido (determinístico por contrato)
       estado = 'VENCIDO';
       fechaPago = null;
       metodoPago = null;
