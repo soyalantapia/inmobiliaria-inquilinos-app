@@ -47,7 +47,7 @@ export function InstallPrompt() {
 
   return (
     <>
-      <div className="fixed inset-x-3 bottom-20 z-40 animate-fade-in md:inset-x-auto md:left-3 md:right-auto md:w-80">
+      <div className="fixed inset-x-3 bottom-36 z-40 animate-fade-in md:bottom-20 md:inset-x-auto md:left-3 md:right-auto md:w-80">
         <Card className="relative flex items-start gap-3 border-primary/20 bg-primary/5 p-4 shadow-lg">
           <button
             type="button"

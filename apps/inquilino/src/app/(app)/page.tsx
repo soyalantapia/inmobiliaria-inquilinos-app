@@ -579,7 +579,7 @@ function BannerPagoPendiente({ liq }: { liq: Liquidacion }) {
         )}
         {vencido && (calc.punitorioAcumulado > 0 || calc.tasaDiariaPct > 0) && (
           <DesgloseFila
-            label={`Intereses · ${calc.diasAtraso} día${calc.diasAtraso === 1 ? '' : 's'} de atraso`}
+            label={`Punitorios · ${calc.diasAtraso} día${calc.diasAtraso === 1 ? '' : 's'} de atraso`}
             value={`+ ${formatMonto(calc.punitorioAcumulado, liq.moneda)}`}
             accent
           />
@@ -680,7 +680,7 @@ function QuickActions({ liqPendiente }: { liqPendiente: Liquidacion | null }) {
     { href: pagarHref, label: 'Pagar', icon: CreditCard, color: 'text-emerald-600 dark:text-emerald-400' },
     { href: '/reclamos/nuevo', label: 'Reclamo', icon: Wrench, color: 'text-amber-600 dark:text-amber-400' },
     { href: '/contrato', label: 'Contrato', icon: FileText, color: 'text-primary' },
-    { href: '/servicios', label: 'Boleta', icon: Zap, color: 'text-violet-600 dark:text-violet-400' },
+    { href: '/servicios', label: 'Servicios', icon: Zap, color: 'text-violet-600 dark:text-violet-400' },
   ];
   return (
     <div className="grid grid-cols-4 gap-2">
