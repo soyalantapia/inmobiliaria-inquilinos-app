@@ -819,7 +819,7 @@ export default function ConfiguracionPage() {
                       <TableHead className="text-right">Importe</TableHead>
                       <TableHead>Estado</TableHead>
                       <TableHead>Pagada</TableHead>
-                      <TableHead></TableHead>
+                      <TableHead><span className="sr-only">Acciones</span></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>

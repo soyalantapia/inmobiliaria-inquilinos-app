@@ -270,6 +270,7 @@ export function RendirPropietarioDialog({
               <button
                 type="button"
                 onClick={() => setGastosOpen((v) => !v)}
+                aria-expanded={gastosOpen}
                 className="flex w-full items-center justify-between gap-2 text-left"
               >
                 <div className="flex items-center gap-2">
@@ -283,9 +284,9 @@ export function RendirPropietarioDialog({
                     − {formatMonto(totalGastos)}
                   </span>
                   {gastosOpen ? (
-                    <ChevronUp className="h-3 w-3 text-amber-700 dark:text-amber-300" />
+                    <ChevronUp aria-hidden className="h-3 w-3 text-amber-700 dark:text-amber-300" />
                   ) : (
-                    <ChevronDown className="h-3 w-3 text-amber-700 dark:text-amber-300" />
+                    <ChevronDown aria-hidden className="h-3 w-3 text-amber-700 dark:text-amber-300" />
                   )}
                 </div>
               </button>

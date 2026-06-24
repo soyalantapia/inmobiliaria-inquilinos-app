@@ -49,6 +49,7 @@ import {
   conciliarPago,
   estadoDePago,
 } from '@/lib/conciliacion-storage';
+import { PinPromptDialog } from '@/components/pin-prompt-dialog';
 import { registrarEvento } from '@/lib/auditoria-storage';
 
 type Step = 'upload' | 'leyendo' | 'matches' | 'listo';
@@ -82,6 +83,7 @@ export function ValidadorResumenDialog({
   /** ids de créditos que el admin va a conciliar al confirmar. */
   const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set());
   const [conciliadosFinal, setConciliadosFinal] = useState(0);
+  const [showPin, setShowPin] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -172,7 +174,7 @@ export function ValidadorResumenDialog({
     if (opcion) setSeleccionados((s) => new Set(s).add(creditoId));
   };
 
-  const conciliar = () => {
+  const ejecutarConciliacion = () => {
     let count = 0;
     for (const id of seleccionados) {
       const m = matches[id];
@@ -205,7 +207,15 @@ export function ValidadorResumenDialog({
     });
   };
 
+  // Conciliar requiere PIN (permisos.ts: pago.conciliar). Esta ruta masiva lo
+  // omitía; ahora abre el PinPromptDialog y concilia recién al confirmar.
+  const conciliar = () => {
+    if (seleccionados.size === 0) return;
+    setShowPin(true);
+  };
+
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -250,6 +260,17 @@ export function ValidadorResumenDialog({
         )}
       </DialogContent>
     </Dialog>
+    <PinPromptDialog
+      abierto={showPin}
+      accion="Conciliar pagos por resumen"
+      subaccion={`${seleccionados.size} pago${seleccionados.size === 1 ? '' : 's'}`}
+      onClose={() => setShowPin(false)}
+      onConfirmado={() => {
+        setShowPin(false);
+        ejecutarConciliacion();
+      }}
+    />
+    </>
   );
 }
 

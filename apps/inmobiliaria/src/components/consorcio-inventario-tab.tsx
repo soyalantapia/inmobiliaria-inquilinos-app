@@ -545,7 +545,15 @@ function MoverStockDialog({ abierto, onClose, item, tipo, onConfirmar, puedeMuta
 
   const submit = () => {
     if (!puedeMutar) return;
-    if (!item || !cantidad) return;
+    const cantNum = parseInt(cantidad, 10);
+    if (!item || !Number.isFinite(cantNum) || cantNum <= 0) {
+      toast({
+        variant: 'destructive',
+        title: 'Cantidad inválida',
+        description: 'Ingresá una cantidad mayor a 0.',
+      });
+      return;
+    }
     if (!motivo.trim()) {
       toast({
         variant: 'destructive',

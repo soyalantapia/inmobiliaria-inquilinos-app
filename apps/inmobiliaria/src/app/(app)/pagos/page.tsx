@@ -667,7 +667,7 @@ export default function PagosPage() {
                     <TableHead>Vencimiento</TableHead>
                     <TableHead className="text-right">Monto</TableHead>
                     <TableHead>Estado</TableHead>
-                    <TableHead></TableHead>
+                    <TableHead><span className="sr-only">Acciones</span></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>

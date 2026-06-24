@@ -419,8 +419,20 @@ function PagosPorValidarDemo({ onChange }: PagosPorValidarProps = {}) {
       });
     } else {
       const esParcial = pago.tipo === 'PARCIAL';
+      // Resta los otros parciales ya conciliados de la misma liq (este pago ya
+      // quedó CONCILIADO arriba, por eso lo excluimos por id).
+      const yaConcLiq = pago.liquidacionId
+        ? pagosInformadosMock
+            .filter(
+              (p) =>
+                p.id !== pago.id &&
+                p.liquidacionId === pago.liquidacionId &&
+                estadoDePago(p.id) === 'CONCILIADO',
+            )
+            .reduce((s, p) => s + p.monto, 0)
+        : 0;
       const saldoRest = esParcial
-        ? Math.max(0, (pago.montoLiqTotal ?? 0) - pago.monto)
+        ? Math.max(0, (pago.montoLiqTotal ?? 0) - pago.monto - yaConcLiq)
         : 0;
       toast({
         title: esParcial
@@ -728,8 +740,20 @@ function PagoRow({
   const modoDirecto = conIA && contrato?.modoCobranza === 'PROPIETARIO_DIRECTO';
   const afipOn = conIA && !!propietario?.afip?.conectado;
   const esParcial = pago.tipo === 'PARCIAL' && pago.montoLiqTotal !== undefined;
+  // Restamos también los parciales YA conciliados de la MISMA liquidación; si no,
+  // el "saldo" muestra una deuda fantasma (ignora lo ya cobrado de esa liq).
+  const yaConciliadoLiq = pago.liquidacionId
+    ? pagosInformadosMock
+        .filter(
+          (p) =>
+            p.id !== pago.id &&
+            p.liquidacionId === pago.liquidacionId &&
+            estadoDePago(p.id) === 'CONCILIADO',
+        )
+        .reduce((s, p) => s + p.monto, 0)
+    : 0;
   const saldoRestanteLiq = esParcial
-    ? Math.max(0, (pago.montoLiqTotal ?? 0) - pago.monto)
+    ? Math.max(0, (pago.montoLiqTotal ?? 0) - pago.monto - yaConciliadoLiq)
     : 0;
 
   // Lectura por IA del comprobante. En la demo se genera determinístico

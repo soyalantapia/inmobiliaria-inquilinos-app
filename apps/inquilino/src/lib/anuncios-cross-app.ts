@@ -16,6 +16,8 @@ export type AudienciaAnuncio =
   | 'TODOS_PROPIETARIOS'
   | 'TODOS_CONSORCIOS'
   | 'INQUILINOS_CONSORCIO'
+  | 'INQUILINOS_MOROSOS'
+  | 'INQUILINOS_PENDIENTES'
   | 'CONTRATOS_ESPECIFICOS';
 
 export type PrioridadAnuncio = 'NORMAL' | 'IMPORTANTE' | 'URGENTE';
@@ -67,6 +69,12 @@ export function listarAnunciosParaInquilino(): AnuncioInquilino[] {
         );
       case 'CONTRATOS_ESPECIFICOS':
         return (a.audienciaIds ?? []).includes(INQUILINO_ACTUAL.contratoId);
+      // La inmobiliaria ya resolvió la pertenencia (morosos/pendientes) al crear
+      // el anuncio; acá el inquilino no tiene su propio estado de pago, así que si
+      // recibió el anuncio es porque corresponde (igual que TODOS_INQUILINOS).
+      case 'INQUILINOS_MOROSOS':
+      case 'INQUILINOS_PENDIENTES':
+        return true;
       default:
         return false;
     }
@@ -100,7 +108,7 @@ const SEEDS_FALLBACK: AnuncioInquilino[] = [
     prioridad: 'IMPORTANTE',
     audiencia: 'TODOS_INQUILINOS',
     canales: ['APP', 'EMAIL'],
-    enviadoPor: 'Eugenia Rinaldi',
+    enviadoPor: 'Luciana Vidal',
     enviadoAt: '2026-05-15T15:30:00-03:00',
     destinatariosCount: 6,
   },

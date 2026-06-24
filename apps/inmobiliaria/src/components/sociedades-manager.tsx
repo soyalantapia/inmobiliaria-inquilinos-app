@@ -527,7 +527,9 @@ function SociedadDialog({
         ? {
             banco: bancoNombre.trim() || 'Sin especificar',
             titular: razonSocial.trim(),
-            cbu: '',
+            // El form no tiene campo para el CBU numérico; preservamos el
+            // existente al editar (antes lo pisaba con '' → data loss del CBU).
+            cbu: editando?.cuentaCobranza?.cbu ?? '',
             alias: cbuAlias.trim(),
             cuit: cuit.trim(),
           }

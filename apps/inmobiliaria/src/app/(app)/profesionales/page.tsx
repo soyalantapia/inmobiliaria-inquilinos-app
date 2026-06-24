@@ -672,6 +672,8 @@ function DialogForm({
               </Label>
               <Input
                 id="pf-tel"
+                aria-invalid={telefono.length > 0 && !telefonoOk}
+                aria-describedby={telefono.length > 0 && !telefonoOk ? 'pf-tel-error' : undefined}
                 value={telefono}
                 onChange={(e) => setTelefono(e.target.value)}
                 placeholder="+54 9 11 …"
@@ -682,7 +684,7 @@ function DialogForm({
                 }
               />
               {telefono.length > 0 && !telefonoOk && (
-                <p className="text-[11px] text-destructive">
+                <p id="pf-tel-error" role="alert" className="text-[11px] text-destructive">
                   Mínimo 8 dígitos
                 </p>
               )}
@@ -695,6 +697,8 @@ function DialogForm({
               <Input
                 id="pf-email"
                 type="email"
+                aria-invalid={email.length > 0 && !emailOk}
+                aria-describedby={email.length > 0 && !emailOk ? 'pf-email-error' : undefined}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="—"
@@ -705,7 +709,7 @@ function DialogForm({
                 }
               />
               {email.length > 0 && !emailOk && (
-                <p className="text-[11px] text-destructive">Email inválido</p>
+                <p id="pf-email-error" role="alert" className="text-[11px] text-destructive">Email inválido</p>
               )}
             </div>
           </div>

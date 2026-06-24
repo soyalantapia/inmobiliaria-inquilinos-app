@@ -393,7 +393,7 @@ export default function ContratosPage() {
                   <TableHead className="text-right">Monto</TableHead>
                   <TableHead>Estado contrato</TableHead>
                   <TableHead>Pago actual</TableHead>
-                  <TableHead></TableHead>
+                  <TableHead><span className="sr-only">Acciones</span></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>

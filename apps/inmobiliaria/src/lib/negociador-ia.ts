@@ -362,9 +362,20 @@ export function iniciarNegociacion(contratoId: string): {
     riesgosa: 1.22,
   }[sug.confianza];
 
+  // pisoBlando por confianza, SIEMPRE menor que pisoDuro. Antes era 1.18 fijo:
+  // para 'riesgosa' (pisoDuro 1.22) quedaba pisoBlando < pisoDuro y una
+  // contraoferta en [1.18, 1.22) cerraba por la rama "rango aceptable" BAJO el
+  // piso duro de la inmobiliaria.
+  const factorPisoBlando = {
+    excelente: 1.1,
+    buena: 1.12,
+    regular: 1.15,
+    riesgosa: 1.18,
+  }[sug.confianza];
+
   const config: ConfigNegociacion = {
     alquilerActual: sug.alquilerActual,
-    pisoBlando: Math.round((sug.alquilerActual * 1.18) / 1000) * 1000,
+    pisoBlando: Math.round((sug.alquilerActual * factorPisoBlando) / 1000) * 1000,
     pisoDuro: Math.round((sug.alquilerActual * factorPisoDuro) / 1000) * 1000,
     techoBlando: sug.alquilerNuevo,
     techoDuro: Math.round((sug.alquilerActual * 1.35) / 1000) * 1000,

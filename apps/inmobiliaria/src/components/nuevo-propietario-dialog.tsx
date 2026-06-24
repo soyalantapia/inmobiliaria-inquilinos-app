@@ -194,6 +194,8 @@ export function NuevoPropietarioDialog({
               </Label>
               <Input
                 id="np-telefono"
+                aria-invalid={telefono.length > 0 && !telefonoOk}
+                aria-describedby={telefono.length > 0 && !telefonoOk ? 'np-telefono-error' : undefined}
                 type="tel"
                 value={telefono}
                 onChange={(e) => setTelefono(e.target.value)}
@@ -205,7 +207,7 @@ export function NuevoPropietarioDialog({
                 }
               />
               {telefono.length > 0 && !telefonoOk && (
-                <p className="text-[11px] text-destructive">
+                <p id="np-telefono-error" role="alert" className="text-[11px] text-destructive">
                   Mínimo 8 dígitos (incluí código de área)
                 </p>
               )}
