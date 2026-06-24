@@ -516,7 +516,9 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
             reclamo.profesionalAsignadoNombre.split(' ')[0] ??
             reclamo.profesionalAsignadoNombre;
           const mensajeWA = encodeURIComponent(
-            `Hola ${nombrePila}! Soy ${inquilinoActual.nombre.split(' ')[0]}, ` +
+            // reclamo.inquilino = nombre REAL en prod (mapReclamo→user.fullName),
+            // mock en demo. Antes usaba el mock "Mariela" también en prod.
+            `Hola ${nombrePila}! Soy ${reclamo.inquilino.split(' ')[0]}, ` +
               `inquilino/a en ${reclamo.direccion}. La inmobiliaria te asignó mi ` +
               `reclamo de ${(reclamo.profesionalAsignadoCategoria ?? '').toLowerCase()}: ` +
               `${reclamo.descripcion}. ¿Cuándo podés pasar?`,
@@ -759,7 +761,9 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
           <Card role="log" aria-label="Historial y mensajes del reclamo" aria-live="polite" className="p-5">
             <ReclamoTimeline
               eventos={eventosUnificados}
-              inquilinoNombre={inquilinoActual.nombre}
+              // reclamo.inquilino = nombre real en prod, para que esPropio
+              // (ev.autor === inquilinoNombre) marque bien los mensajes propios.
+              inquilinoNombre={reclamo.inquilino}
             />
             <div ref={scrollEndRef} />
           </Card>
