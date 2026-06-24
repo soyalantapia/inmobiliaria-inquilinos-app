@@ -519,8 +519,9 @@ export default function PagosPage() {
                         'El recordatorio automático a morosos por WhatsApp y mail todavía no está disponible.',
                     })
                   : toast({
-                      title: 'Recordatorios enviados',
-                      description: 'Le mandamos WhatsApp y mail a los inquilinos con pagos vencidos.',
+                      title: 'Recordatorios simulados',
+                      description:
+                        'En producción se envían WhatsApp y mail a los inquilinos con pagos vencidos. En la demo no se manda nada.',
                     })
               }
             >

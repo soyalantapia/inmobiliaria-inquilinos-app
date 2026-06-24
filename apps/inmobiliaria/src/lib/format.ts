@@ -50,7 +50,9 @@ export function fechaHoyLocal(): string {
 }
 
 export function formatFecha(iso: string): string {
+  if (!iso) return '—';
   const d = parseLocal(iso);
+  if (Number.isNaN(d.getTime())) return '—';
   return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
@@ -63,7 +65,9 @@ const MESES_CORTOS_FMT = [
 ];
 
 export function formatFechaCorta(iso: string): string {
+  if (!iso) return '—';
   const d = parseLocal(iso);
+  if (Number.isNaN(d.getTime())) return '—';
   const dia = d.getDate();
   const mes = MESES_CORTOS_FMT[d.getMonth()];
   const esMismoAnio = d.getFullYear() === new Date().getFullYear();
@@ -78,8 +82,10 @@ export function formatFechaCorta(iso: string): string {
  * cards de propiedades y resúmenes de propietarios.
  */
 export function formatRangoVigencia(inicioIso: string, finIso: string): string {
+  if (!inicioIso || !finIso) return '—';
   const di = parseLocal(inicioIso);
   const df = parseLocal(finIso);
+  if (Number.isNaN(di.getTime()) || Number.isNaN(df.getTime())) return '—';
   const fmt = (d: Date) =>
     `${d.getDate()} ${MESES_CORTOS_FMT[d.getMonth()]} ${d.getFullYear()}`;
   return `${fmt(di)} → ${fmt(df)}`;

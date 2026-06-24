@@ -159,6 +159,10 @@ export function sugerirRenovacion(
 ): SugerenciaRenovacion | null {
   const contrato = contratosMock.find((c) => c.id === contratoId);
   if (!contrato) return null;
+  // Sin alquiler a negociar (ej. SOLO_EXPENSAS con monto=0) no hay renovación
+  // posible: dejarlo pasar generaba propuestas de "$0 por mes" y un cierre
+  // instantáneo ante cualquier contraoferta positiva.
+  if (contrato.monto <= 0) return null;
 
   const confianza = calcularConfianza(contrato);
   const r = rng(hash32(`${contratoId}|sug`));
@@ -362,22 +366,34 @@ export function iniciarNegociacion(contratoId: string): {
     riesgosa: 1.22,
   }[sug.confianza];
 
-  // pisoBlando por confianza, SIEMPRE menor que pisoDuro. Antes era 1.18 fijo:
-  // para 'riesgosa' (pisoDuro 1.22) quedaba pisoBlando < pisoDuro y una
-  // contraoferta en [1.18, 1.22) cerraba por la rama "rango aceptable" BAJO el
-  // piso duro de la inmobiliaria.
+  // pisoBlando = objetivo "lo razonable" que la IA defiende; SIEMPRE por ENCIMA
+  // del pisoDuro (mínimo absoluto). Antes (fix previo) quedaba pisoBlando <
+  // pisoDuro para TODAS las confianzas → el Caso 3 era código muerto y una
+  // contraoferta en [pisoBlando, pisoDuro) cerraba por la rama "aceptable" BAJO
+  // el piso duro. Estos factores quedan entre el pisoDuro y el techo de apertura
+  // (~+19% el más bajo), y abajo los clampeamos para que la invariante
+  // pisoDuro <= pisoBlando <= techoBlando se cumpla pase lo que pase.
   const factorPisoBlando = {
-    excelente: 1.1,
-    buena: 1.12,
-    regular: 1.15,
-    riesgosa: 1.18,
+    excelente: 1.16,
+    buena: 1.18,
+    regular: 1.2,
+    riesgosa: 1.24,
   }[sug.confianza];
+
+  const techoBlando = sug.alquilerNuevo;
+  const pisoBlandoRaw = Math.round((sug.alquilerActual * factorPisoBlando) / 1000) * 1000;
+  const pisoDuroRaw = Math.round((sug.alquilerActual * factorPisoDuro) / 1000) * 1000;
+  // Invariante de seguridad: pisoDuro <= pisoBlando <= techoBlando. Garantiza
+  // que NINGÚN cierre (Caso 1/2) ni contraoferta de la IA (Caso 3, que el
+  // inquilino puede "aceptar") caiga por debajo del piso duro.
+  const pisoBlando = Math.min(pisoBlandoRaw, techoBlando);
+  const pisoDuro = Math.min(pisoDuroRaw, pisoBlando);
 
   const config: ConfigNegociacion = {
     alquilerActual: sug.alquilerActual,
-    pisoBlando: Math.round((sug.alquilerActual * factorPisoBlando) / 1000) * 1000,
-    pisoDuro: Math.round((sug.alquilerActual * factorPisoDuro) / 1000) * 1000,
-    techoBlando: sug.alquilerNuevo,
+    pisoBlando,
+    pisoDuro,
+    techoBlando,
     techoDuro: Math.round((sug.alquilerActual * 1.35) / 1000) * 1000,
     confianza: sug.confianza,
   };

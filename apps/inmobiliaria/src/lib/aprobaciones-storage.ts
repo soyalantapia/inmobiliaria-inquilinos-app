@@ -13,9 +13,30 @@
  * localStorage como una cola simple.
  */
 
-import { registrarEvento } from './auditoria-storage';
+import { registrarEvento, type TipoEventoAuditoria } from './auditoria-storage';
 
 const STORAGE_KEY = 'llave-inmo:aprobaciones:v1';
+
+// Evento de auditoría según el tipo de solicitud. Antes un ternario binario
+// escribía PAGO_CONCILIADO/PAGO_RECHAZADO para TODO lo que no fuera contrato:
+// una devolución de depósito aprobada quedaba como "Pago conciliado" (módulo
+// pagos, acción equivocada). Al aprobar, la acción SÍ ocurre → tipo de dominio.
+const EVENTO_APROBADO: Record<TipoAprobacion, TipoEventoAuditoria> = {
+  CONTRATO_CARGADO: 'CONTRATO_APROBADO',
+  GASTO_CAJA_ELIMINACION: 'GASTO_CAJA_ELIMINADO',
+  DEVOLUCION_DEPOSITO: 'PROPIETARIO_RENDIDO',
+  AJUSTE_FUERA_DE_INDICE: 'MODO_COBRANZA_CAMBIADO',
+};
+
+// Al rechazar, la acción NO ocurre: mapear al tipo de dominio mentiría
+// (mostraría "Gasto eliminado" para una eliminación que se rechazó). Contrato
+// tiene su evento propio; el resto usa el genérico SOLICITUD_RECHAZADA.
+const EVENTO_RECHAZADO: Record<TipoAprobacion, TipoEventoAuditoria> = {
+  CONTRATO_CARGADO: 'CONTRATO_RECHAZADO',
+  GASTO_CAJA_ELIMINACION: 'SOLICITUD_RECHAZADA',
+  DEVOLUCION_DEPOSITO: 'SOLICITUD_RECHAZADA',
+  AJUSTE_FUERA_DE_INDICE: 'SOLICITUD_RECHAZADA',
+};
 
 // Nota IA: "PAGO_MANUAL" se sacó a propósito — validar/aprobar pagos vive SOLO
 // en la sección Pagos (un único lugar para la plata). Aprobaciones queda para
@@ -109,10 +130,7 @@ export function aprobar(
   lista[idx] = actualizada;
   guardar(lista);
   registrarEvento({
-    tipo:
-      actualizada.tipo === 'CONTRATO_CARGADO'
-        ? 'CONTRATO_APROBADO'
-        : 'PAGO_CONCILIADO',
+    tipo: EVENTO_APROBADO[actualizada.tipo],
     autor: aprobadoPor,
     rolAutor: 'ADMIN',
     entidadId: actualizada.entidadId,
@@ -140,10 +158,7 @@ export function rechazar(
   lista[idx] = actualizada;
   guardar(lista);
   registrarEvento({
-    tipo:
-      actualizada.tipo === 'CONTRATO_CARGADO'
-        ? 'CONTRATO_RECHAZADO'
-        : 'PAGO_RECHAZADO',
+    tipo: EVENTO_RECHAZADO[actualizada.tipo],
     autor: aprobadoPor,
     rolAutor: 'ADMIN',
     entidadId: actualizada.entidadId,

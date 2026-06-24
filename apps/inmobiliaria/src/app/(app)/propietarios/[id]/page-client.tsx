@@ -180,9 +180,12 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
 
         {/* KPIs */}
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {/* Mismo origen que el badge de la card "Propiedades" (propiedades.length):
+              propiedadesIds incluye participaciones con propiedad no embebida por el
+              API → en prod el KPI y el badge mostraban números distintos. */}
           <Kpi
-            label={propietario.propiedadesIds.length === 1 ? 'Propiedad' : 'Propiedades'}
-            value={propietario.propiedadesIds.length.toString()}
+            label={propiedades.length === 1 ? 'Propiedad' : 'Propiedades'}
+            value={propiedades.length.toString()}
             icon={<Home className="h-4 w-4" />}
           />
           <Kpi

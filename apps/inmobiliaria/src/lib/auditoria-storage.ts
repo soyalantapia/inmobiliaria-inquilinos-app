@@ -29,7 +29,8 @@ export type TipoEventoAuditoria =
   | 'FACTURA_ARCA_EMITIDA'
   | 'PROPIETARIO_CONFIRMO_RECIBO'
   | 'PROPIETARIO_RENDIDO'
-  | 'MODO_COBRANZA_CAMBIADO';
+  | 'MODO_COBRANZA_CAMBIADO'
+  | 'SOLICITUD_RECHAZADA';
 
 export interface EventoAuditoria {
   id: string;
@@ -72,6 +73,7 @@ export const moduloDeTipo: Record<TipoEventoAuditoria, ModuloAuditoria> = {
   PROPIETARIO_CONFIRMO_RECIBO: 'propietarios',
   PROPIETARIO_RENDIDO: 'propietarios',
   MODO_COBRANZA_CAMBIADO: 'configuracion',
+  SOLICITUD_RECHAZADA: 'configuracion',
 };
 
 export const MODULO_LABEL: Record<ModuloAuditoria, string> = {
@@ -414,4 +416,5 @@ export const tipoEventoLabel: Record<TipoEventoAuditoria, string> = {
   PROPIETARIO_CONFIRMO_RECIBO: 'Propietario confirmó recibo del pago',
   PROPIETARIO_RENDIDO: 'Rendición a propietario',
   MODO_COBRANZA_CAMBIADO: 'Modo de cobranza cambiado',
+  SOLICITUD_RECHAZADA: 'Solicitud rechazada',
 };

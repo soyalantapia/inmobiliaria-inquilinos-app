@@ -462,7 +462,7 @@ function PagosPorValidarDemo({ onChange }: PagosPorValidarProps = {}) {
     refrescar();
     toast({
       title: 'Pago rechazado',
-      description: `Le avisamos a ${pago.inquilino} por WhatsApp y en la app con tu nota.`,
+      description: `Quedó registrado como rechazado con tu nota. En producción se le avisa a ${pago.inquilino}.`,
     });
   };
 
@@ -658,8 +658,8 @@ function PagosPorValidarDemo({ onChange }: PagosPorValidarProps = {}) {
           <DialogHeader>
             <DialogTitle>Rechazar el pago de {rechazando?.inquilino}</DialogTitle>
             <DialogDescription>
-              Le va a llegar la notificación con tu motivo. Probá ser claro para que
-              corrija rápido.
+              En producción le llega la notificación con tu motivo. Probá ser claro
+              para que corrija rápido.
             </DialogDescription>
           </DialogHeader>
           <Textarea

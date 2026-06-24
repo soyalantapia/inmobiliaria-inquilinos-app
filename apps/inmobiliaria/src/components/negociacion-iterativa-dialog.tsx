@@ -234,8 +234,7 @@ export function NegociacionIterativaDialog({
                   Cerraron en {formatMonto(cerrado.monto)}
                 </p>
                 <p className="text-[11px] text-muted-foreground">
-                  Se guardó el acuerdo en la auditoría. Generá el contrato
-                  actualizado desde el panel de renovaciones.
+                  Generá el contrato actualizado desde el panel de renovaciones.
                 </p>
               </div>
             </div>

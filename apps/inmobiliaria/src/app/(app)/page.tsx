@@ -701,7 +701,7 @@ function ChartSemanas() {
 
   return (
     <div className="space-y-4 pt-4">
-      <div className="grid grid-cols-4 items-end gap-4">
+      <div className="grid grid-cols-2 items-end gap-3 sm:grid-cols-4 sm:gap-4">
         {semanas.map((s) => (
           <div key={s.label} className="flex flex-col items-center gap-2">
             <div className="relative h-36 w-full overflow-hidden rounded-md bg-muted">
@@ -724,7 +724,7 @@ function ChartSemanas() {
                 }}
               />
             </div>
-            <p className="text-xs text-muted-foreground">{s.label}</p>
+            <p className="whitespace-nowrap text-xs text-muted-foreground">{s.label}</p>
             <p className="text-sm font-semibold tabular-nums">{s.cobrado}%</p>
           </div>
         ))}

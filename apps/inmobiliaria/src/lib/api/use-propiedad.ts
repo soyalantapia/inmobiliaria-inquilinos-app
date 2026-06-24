@@ -160,7 +160,10 @@ function mapContrato(c: ContratoApi): ContratoListado {
     estado: c.estado ?? 'ACTIVO',
     fechaInicio: (c.fechaInicio ?? '').slice(0, 10),
     fechaFin: (c.fechaFin ?? '').slice(0, 10),
-    proximoVencimiento: (c.proximoVencimiento ?? '').slice(0, 10),
+    // Fallback a fechaFin como en use-contrato.ts: si el backend no computó
+    // proximoVencimiento (contrato sin liquidaciones pendientes) evitamos que
+    // baje '' al formatter → '—' en vez de "NaN undefined NaN".
+    proximoVencimiento: (c.proximoVencimiento ?? c.fechaFin ?? '').slice(0, 10),
     estadoPagoActual: c.estadoPagoActual ?? 'PENDIENTE',
     cbuAlias: c.cbuAlias ?? null,
     titularCuenta: c.titularCuenta ?? null,

@@ -101,8 +101,8 @@ export function AgregarCoInquilinoDialog({
     setGuardando(false);
     toast({
       variant: 'success',
-      title: '¡Invitación enviada!',
-      description: `Le mandamos a ${co.nombre} el link por WhatsApp para activar su cuenta.`,
+      title: '¡Co-inquilino agregado!',
+      description: `En producción se le envía a ${co.nombre} el link por WhatsApp para activar su cuenta.`,
     });
     onAdded?.();
     onOpenChange(false);
@@ -169,7 +169,7 @@ export function AgregarCoInquilinoDialog({
               </p>
             )}
             <p className="text-[11px] text-muted-foreground">
-              Le mandamos el link para activar su cuenta por WhatsApp.
+              En producción le llega el link para activar su cuenta por WhatsApp.
             </p>
           </div>
 

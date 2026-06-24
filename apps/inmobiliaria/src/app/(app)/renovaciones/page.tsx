@@ -221,7 +221,7 @@ export default function RenovacionesPage() {
                     WhatsApp. Solo lo mostramos si el inquilino no dijo
                     explícitamente que NO renueva (en ese caso ya está
                     cerrado). */}
-                {!apiEnabled && c.decision !== 'NO_RENOVAR' && (
+                {!apiEnabled && c.decision !== 'NO_RENOVAR' && c.monto > 0 && (
                   <NegociadorRenovacionPanel
                     contratoId={c.id}
                     inquilino={c.inquilino}
