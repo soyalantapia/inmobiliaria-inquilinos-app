@@ -271,7 +271,7 @@ function RecibosDemo() {
                   return;
                 }
                 descargarCsv({
-                  filename: `comprobantes-${new Date().getFullYear()}`,
+                  filename: `comprobantes-${anioSel}`,
                   headers: ['Período', 'Fecha pago', 'Monto', 'Método'],
                   rows: cobradosDelAnio.map((c) => [
                     formatPeriodo(c.periodo),
@@ -333,7 +333,7 @@ function RecibosDemo() {
 // RECIBOS REAL (modo API) — liquidaciones del inquilino
 // ============================================================
 function RecibosReal() {
-  const { contrato } = useMiContrato();
+  const { contrato, cargando: cargandoContrato } = useMiContrato();
   const { liquidaciones, cargando, isError } = useMisLiquidaciones();
 
   const noPagadas = liquidaciones.filter((l) => l.estado !== 'PAGADO');
@@ -365,6 +365,9 @@ function RecibosReal() {
       <main className="flex-1 space-y-4 px-5 pb-6 md:px-8">
         {pagoUrgente && <PagoUrgenteCard mov={pagoUrgente} />}
 
+        {cargandoContrato && !contrato && (
+          <div className="h-[88px] animate-pulse rounded-xl border bg-muted/50" />
+        )}
         {contrato && (
           <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-primary/90 to-primary/70 p-4 text-primary-foreground shadow-md shadow-primary/10">
             <div className="relative flex items-baseline justify-between gap-2">

@@ -347,6 +347,7 @@ export function NotificationsBell() {
   const [leidas, setLeidas] = useState<Set<string>>(new Set());
   const [hidratado, setHidratado] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setLeidas(leerLeidas());
@@ -355,6 +356,10 @@ export function NotificationsBell() {
 
   useEffect(() => {
     if (!open) return;
+    // Al abrir, el foco entra al diálogo (aria-haspopup="dialog" lo implica);
+    // antes quedaba en el botón campana y el lector de pantalla no anunciaba el
+    // popover ni ocultaba el fondo.
+    dialogRef.current?.focus();
     const onClick = (e: MouseEvent) => {
       if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
         setOpen(false);
@@ -407,7 +412,7 @@ export function NotificationsBell() {
       </button>
 
       {open && (
-        <div role="dialog" aria-label="Notificaciones" className="absolute right-0 top-12 z-50 w-[calc(100vw-2.5rem)] max-w-sm rounded-lg border bg-popover shadow-lg">
+        <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Notificaciones" className="absolute right-0 top-12 z-50 w-[calc(100vw-2.5rem)] max-w-sm rounded-lg border bg-popover shadow-lg focus:outline-none">
           <div className="flex items-center justify-between border-b p-3">
             <p className="text-sm font-semibold">Notificaciones</p>
             {unread > 0 && (

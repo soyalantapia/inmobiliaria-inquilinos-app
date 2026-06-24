@@ -299,6 +299,7 @@ export default function CertificadoInquilinoPage() {
                 size="sm"
                 variant="outline"
                 onClick={() => copiar(certificado.hash, 'Código')}
+                aria-label="Copiar código"
               >
                 <Copy className="h-3.5 w-3.5" />
               </Button>

@@ -167,7 +167,11 @@ function ProfesionalesDemo() {
                       <div className="flex items-center gap-2">
                         <p className="truncate font-medium leading-tight">{p.nombre}</p>
                         {p.verificado && (
-                          <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                          <ShieldCheck
+                            className="h-3.5 w-3.5 shrink-0 text-emerald-600"
+                            role="img"
+                            aria-label="Verificado"
+                          />
                         )}
                       </div>
                       <p className="text-xs text-muted-foreground">

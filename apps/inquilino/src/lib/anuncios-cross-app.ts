@@ -100,9 +100,9 @@ const SEEDS_FALLBACK: AnuncioInquilino[] = [
   },
   {
     id: 'anu_seed_2',
-    titulo: 'Nuevo CBU para cobranzas · vigente desde 01/06',
+    titulo: 'Nuevo CBU para cobranzas · vigente desde 01/07',
     cuerpo:
-      'Cambiamos a Banco Galicia. CBU 0070100120000018273645 · Alias delsol.cobranzas. Por favor reemplazá el de junio en adelante.',
+      'Cambiamos a Banco Galicia. CBU 0070100120000018273645 · Alias delsol.cobranzas. Por favor reemplazá el de julio en adelante.',
     prioridad: 'IMPORTANTE',
     audiencia: 'TODOS_INQUILINOS',
     canales: ['APP', 'EMAIL'],
