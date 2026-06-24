@@ -686,6 +686,48 @@ export async function coreRoutes(app: FastifyInstance) {
     return { ok: true, tieneCuenta: true };
   });
 
+  // ===== Configuración: Mercado y país de operación =====
+  // País / moneda / índice de ajuste default. Antes vivía SOLO en localStorage
+  // (lib/paises) → no persistía por inmobiliaria ni impactaba nada. Ahora se
+  // guarda en la inmobiliaria y el wizard de contratos lo usa como default.
+  app.get('/mercado', async (request, reply) => {
+    const u = await requireUsuario(request, reply);
+    if (!u) return;
+    if (u.rol !== 'ADMIN') return reply.code(403).send({ message: 'Necesitás permiso de Admin para ver esta sección' });
+    const i = await prisma.inmobiliaria.findUnique({ where: { id: u.inmobiliariaId } });
+    if (!i) return reply.code(404).send({ message: 'Inmobiliaria inexistente' });
+    return {
+      codigo: i.paisCodigo,
+      moneda: i.monedaDefault,
+      indiceDefault: i.indiceDefaultContrato,
+    };
+  });
+
+  app.put('/mercado', async (request, reply) => {
+    const u = await requireUsuario(request, reply);
+    if (!u) return;
+    if (u.rol !== 'ADMIN') return reply.code(403).send({ message: 'Solo un Admin puede editar la configuración de mercado' });
+    const body = z
+      .object({
+        codigo: z.enum(['AR', 'UY', 'BR', 'PY']),
+        moneda: z.enum(['ARS', 'USD', 'UYU', 'BRL', 'PYG']),
+        // El índice válido depende del país; el front lo restringe a los del país
+        // elegido. Acá sólo exigimos un código no vacío y acotado.
+        indiceDefault: z.string().trim().min(1).max(40),
+      })
+      .safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ message: body.error.issues[0]?.message ?? 'Configuración de mercado inválida' });
+    await prisma.inmobiliaria.update({
+      where: { id: u.inmobiliariaId },
+      data: {
+        paisCodigo: body.data.codigo,
+        monedaDefault: body.data.moneda,
+        indiceDefaultContrato: body.data.indiceDefault,
+      },
+    });
+    return { ok: true };
+  });
+
   // ===== Configuración: CRUD de sociedades (multi-empresa) =====
   // Antes vivía 100% en localStorage (sociedades-storage) → en prod el manager
   // estaba gateado. Ahora persiste en la tabla Sociedad. GET/PUT /cobranza

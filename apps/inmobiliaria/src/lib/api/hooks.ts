@@ -10,6 +10,11 @@ import { apiEnabled, apiFetch } from './client';
 import { ensureApiSession } from './session';
 import { mockUser } from '@/lib/auth';
 import { contratosMock, propiedadesMock, propietariosMock } from '@/lib/mock-data';
+import {
+  leerConfiguracionPais,
+  guardarConfiguracionPais,
+  type ConfiguracionPais,
+} from '@/lib/paises';
 import type {
   ContratoListado,
   EstadoPropiedad,
@@ -474,6 +479,36 @@ export function useEmpresa(): { empresa: EmpresaDatos | null; cargando: boolean 
 export async function setEmpresa(input: Partial<Omit<EmpresaDatos, 'perfilFiscalCompleto'>>): Promise<void> {
   await ensureApiSession();
   await apiFetch('/empresa', { method: 'PUT', body: JSON.stringify(input) });
+}
+
+// ===== Configuración: Mercado (país / moneda / índice default) =====
+// Hook DUAL: en prod (apiEnabled) persiste por inmobiliaria vía /mercado; en demo
+// usa localStorage (lib/paises). Misma forma `ConfiguracionPais` en ambos lados.
+// El consumidor (configuracion-pais, wizard de contratos) no se entera del modo.
+export function useMercado(): { config: ConfiguracionPais | null; cargando: boolean } {
+  const q = useQuery({
+    queryKey: ['mercado'],
+    queryFn: async () => {
+      await ensureApiSession();
+      return apiFetch<ConfiguracionPais>('/mercado');
+    },
+    enabled: apiEnabled,
+    staleTime: 60_000,
+  });
+  if (!apiEnabled) {
+    // Demo: fuente local. `leerConfiguracionPais` ya guarda el window-guard.
+    return { config: leerConfiguracionPais(), cargando: false };
+  }
+  return { config: q.data ?? null, cargando: q.isPending };
+}
+
+export async function setMercado(config: ConfiguracionPais): Promise<void> {
+  if (!apiEnabled) {
+    guardarConfiguracionPais(config);
+    return;
+  }
+  await ensureApiSession();
+  await apiFetch('/mercado', { method: 'PUT', body: JSON.stringify(config) });
 }
 
 // ===== Configuración: cuenta de cobranza (el CBU que ve el inquilino) =====

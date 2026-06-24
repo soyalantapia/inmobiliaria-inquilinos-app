@@ -564,6 +564,12 @@ model Inmobiliaria {
   direccionProvincia  String
   direccionCp         String
   notasFiscales       String   @default("")
+  // Config de "Mercado y país de operación" (tab Mercado de /configuracion).
+  // Persiste por inmobiliaria; el wizard de contratos usa indiceDefaultContrato
+  // y monedaDefault como valores por defecto de un contrato nuevo.
+  paisCodigo            String  @default("AR")
+  monedaDefault         String  @default("ARS")
+  indiceDefaultContrato String  @default("ICL")
   esPiloto            Boolean  @default(true)
   codigoReferido      String   @unique
   mesesGratisGanados  Int      @default(0)

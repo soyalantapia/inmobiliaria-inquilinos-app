@@ -965,9 +965,9 @@ export default function ConfiguracionPage() {
               <CardHeader>
                 <CardTitle>Mercado y país de operación</CardTitle>
                 <CardDescription>
-                  Si operás fuera de Argentina, configurá país, moneda e índice
-                  de ajuste. El producto adapta los formatos y los validadores
-                  legales en consecuencia.
+                  País, moneda e índice de ajuste de tu inmobiliaria. La moneda y
+                  el índice se aplican como valores por defecto a tus contratos
+                  nuevos. Las normas locales son una referencia informativa.
                 </CardDescription>
               </CardHeader>
               <CardContent>

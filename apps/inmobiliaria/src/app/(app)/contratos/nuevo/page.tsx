@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
@@ -17,7 +17,7 @@ import { ConfirmDialog } from '@llave/ui/confirm-dialog';
 import { Topbar } from '@/components/topbar';
 import { apiEnabled, apiFetch, ApiError } from '@/lib/api/client';
 import { ensureApiSession } from '@/lib/api/session';
-import { usePropiedades } from '@/lib/api/hooks';
+import { usePropiedades, useMercado } from '@/lib/api/hooks';
 import { contratoExtraidoMock } from '@/lib/mock-data';
 import { formatFechaCorta, formatMonto } from '@/lib/format';
 import type {
@@ -651,6 +651,9 @@ const indicesAjuste: Array<{ value: IndiceAjuste; label: string }> = [
   { value: 'RIPTE', label: 'RIPTE' },
 ];
 
+// Índices que el Select ofrece (para validar el default que viene de Mercado).
+const INDICES_DISPONIBLES = new Set(indicesAjuste.map((i) => i.value as string));
+
 const tiposContrato: Array<{ value: TipoContrato; label: string }> = [
   { value: 'ALQUILER', label: 'Solo alquiler' },
   { value: 'ALQUILER_Y_EXPENSAS', label: 'Alquiler + expensas' },
@@ -674,6 +677,9 @@ function CargarContratoApiWizard() {
   const router = useRouter();
   const qc = useQueryClient();
   const { propiedades, cargando } = usePropiedades();
+  // Config de Mercado de la inmobiliaria → define el índice y la moneda por
+  // defecto de un contrato nuevo (lo que la inmo eligió en /configuracion#mercado).
+  const { config: mercado } = useMercado();
 
   const [paso, setPaso] = useState<PasoApi>(1);
 
@@ -699,6 +705,20 @@ function CargarContratoApiWizard() {
   const [montoExpensas, setMontoExpensas] = useState('');
   const [depositoGarantia, setDepositoGarantia] = useState('');
   const [modoCobranza, setModoCobranza] = useState<ModoCobranza>('INMOBILIARIA');
+
+  // Defaults desde la config de Mercado (índice + moneda), una sola vez al
+  // llegar la config y antes de que el usuario edite los términos.
+  const defaultsMercadoAplicados = useRef(false);
+  useEffect(() => {
+    if (!mercado || defaultsMercadoAplicados.current) return;
+    defaultsMercadoAplicados.current = true;
+    if (INDICES_DISPONIBLES.has(mercado.indiceDefault)) {
+      setIndiceAjuste(mercado.indiceDefault as IndiceAjuste);
+    }
+    if (mercado.moneda === 'ARS' || mercado.moneda === 'USD') {
+      setMoneda(mercado.moneda);
+    }
+  }, [mercado]);
 
   // Flow
   const [confirmando, setConfirmando] = useState(false);

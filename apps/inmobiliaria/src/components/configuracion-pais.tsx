@@ -26,13 +26,12 @@ import {
   MONEDA_LABEL,
   PAISES,
   formatearMontoConPais,
-  guardarConfiguracionPais,
-  leerConfiguracionPais,
   paisPorCodigo,
   type CodigoPais,
   type ConfiguracionPais,
   type Moneda,
 } from '@/lib/paises';
+import { useMercado, setMercado } from '@/lib/api/hooks';
 
 /**
  * Tab "Mercado" de /configuracion. La inmo elige:
@@ -47,15 +46,19 @@ import {
  * que cambia es el índice y algunas normas".
  */
 export function ConfiguracionPais() {
-  const [hidratado, setHidratado] = useState(false);
+  // Config persistida: en prod viene de /mercado (por inmobiliaria), en demo de
+  // localStorage. El hook dual abstrae el modo.
+  const { config: persistido, cargando } = useMercado();
   const [config, setConfig] = useState<ConfiguracionPais | null>(null);
+  const [guardando, setGuardando] = useState(false);
 
+  // Inicializamos el form una vez que llega la config. Mount-gate: en SSR/primer
+  // render config=null → return null, sin romper la hidratación.
   useEffect(() => {
-    setConfig(leerConfiguracionPais());
-    setHidratado(true);
-  }, []);
+    if (persistido && !config) setConfig(persistido);
+  }, [persistido, config]);
 
-  if (!hidratado || !config) return null;
+  if (cargando || !config) return null;
 
   const pais = paisPorCodigo(config.codigo);
   const monedasPosibles: Moneda[] = [pais.monedaDefault, 'USD'];
@@ -77,13 +80,24 @@ export function ConfiguracionPais() {
     setConfig({ ...config, indiceDefault: codigo });
   };
 
-  const guardar = () => {
-    guardarConfiguracionPais(config);
-    toast({
-      variant: 'success',
-      title: 'Configuración guardada',
-      description: `Ahora operás en ${pais.nombre} con ${MONEDA_LABEL[config.moneda]}.`,
-    });
+  const guardar = async () => {
+    setGuardando(true);
+    try {
+      await setMercado(config);
+      toast({
+        variant: 'success',
+        title: 'Configuración guardada',
+        description: `Ahora operás en ${pais.nombre} con ${MONEDA_LABEL[config.moneda]}. Los contratos nuevos arrancan con ${config.indiceDefault}.`,
+      });
+    } catch (e) {
+      toast({
+        variant: 'destructive',
+        title: 'No se pudo guardar',
+        description: e instanceof Error ? e.message : 'Probá de nuevo en un momento.',
+      });
+    } finally {
+      setGuardando(false);
+    }
   };
 
   const ejemploMonto = formatearMontoConPais(572000, config);
@@ -272,8 +286,7 @@ export function ConfiguracionPais() {
                 <div>
                   <p className="text-sm font-semibold">Normas locales aplicables</p>
                   <p className="text-xs text-muted-foreground">
-                    Los templates de contrato y los validadores legales usan
-                    estos valores como referencia.
+                    Referencia informativa del marco regulatorio del país elegido.
                   </p>
                 </div>
               </div>
@@ -304,9 +317,9 @@ export function ConfiguracionPais() {
           </Card>
 
           <div className="flex justify-end">
-            <Button onClick={guardar} size="lg">
+            <Button onClick={guardar} size="lg" disabled={guardando}>
               <CheckCircle2 className="h-4 w-4" />
-              Guardar configuración
+              {guardando ? 'Guardando…' : 'Guardar configuración'}
             </Button>
           </div>
         </>
@@ -321,8 +334,7 @@ export function ConfiguracionPais() {
               Identificación fiscal en {pais.nombre}: <strong>{pais.identificadorFiscal}</strong>
             </p>
             <p className="text-[11px] text-muted-foreground">
-              Las sociedades y propietarios usan este formato. El validador
-              de identificación se ajusta automáticamente.
+              Formato de identificación fiscal del país elegido (referencia).
             </p>
           </div>
         </CardContent>
