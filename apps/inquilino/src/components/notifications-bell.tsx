@@ -348,6 +348,7 @@ export function NotificationsBell() {
   const [hidratado, setHidratado] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     setLeidas(leerLeidas());
@@ -368,7 +369,13 @@ export function NotificationsBell() {
     // Escape cierra el popover (declaramos aria-haspopup="dialog" → el teclado
     // espera poder cerrarlo con Escape).
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
+      if (e.key === 'Escape') {
+        setOpen(false);
+        // Devolver el foco al botón que abrió el diálogo (a11y de diálogo): sin
+        // esto, al cerrar con Escape el foco caía a document.body y el teclado
+        // reiniciaba la navegación desde el tope de la página.
+        triggerRef.current?.focus();
+      }
     };
     document.addEventListener('mousedown', onClick);
     document.addEventListener('keydown', onKey);
@@ -396,6 +403,7 @@ export function NotificationsBell() {
   return (
     <div className="relative" ref={popoverRef}>
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen((v) => !v)}
         className="relative rounded-full p-2 hover:bg-muted"

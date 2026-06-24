@@ -306,13 +306,21 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
     // Demo: la decisión vive en localStorage + un mensaje en el timeline para
     // que quede registro humano del momento en que el inquilino dio el OK.
     marcarConforme(reclamo.id);
-    agregarMensajeDelInquilino(
+    const okConforme = agregarMensajeDelInquilino(
       reclamo.id,
       inquilinoActual.nombre,
       '✅ Confirmo que el problema está resuelto. Gracias.',
     );
     recargar(reclamo.id);
-    toast({ title: 'Confirmado', description: 'Marcamos el reclamo como resuelto.' });
+    toast(
+      okConforme
+        ? { title: 'Confirmado', description: 'Marcamos el reclamo como resuelto.' }
+        : {
+            variant: 'destructive',
+            title: 'Confirmado, pero…',
+            description: 'No pudimos guardar la nota en el historial (almacenamiento lleno).',
+          },
+    );
   };
 
   const confirmarPersiste = async () => {
@@ -337,7 +345,7 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
       return;
     }
     marcarPersiste(reclamo.id, detalle);
-    agregarMensajeDelInquilino(
+    const okPersiste = agregarMensajeDelInquilino(
       reclamo.id,
       inquilinoActual.nombre,
       `⚠️ El problema sigue: ${detalle}`,
@@ -345,11 +353,19 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
     setPersisteOpen(false);
     setPersisteTexto('');
     recargar(reclamo.id);
-    toast({
-      variant: 'default',
-      title: 'Le avisamos a la inmobiliaria',
-      description: 'Vamos a coordinar una nueva visita.',
-    });
+    toast(
+      okPersiste
+        ? {
+            variant: 'default',
+            title: 'Le avisamos a la inmobiliaria',
+            description: 'Vamos a coordinar una nueva visita.',
+          }
+        : {
+            variant: 'destructive',
+            title: 'Le avisamos, pero…',
+            description: 'No pudimos guardar la nota en el historial (almacenamiento lleno).',
+          },
+    );
   };
 
   const resuelto = reclamo.estado === 'RESUELTO';
