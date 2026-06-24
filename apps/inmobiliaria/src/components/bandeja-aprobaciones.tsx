@@ -111,7 +111,7 @@ export function BandejaAprobaciones() {
     <div className="space-y-3">
       <Card>
         <CardContent className="space-y-3 p-5">
-          <div className="flex items-start justify-between gap-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="flex items-center gap-3">
               <div className="relative grid h-10 w-10 place-items-center rounded-md bg-primary/10 text-primary">
                 <Inbox className="h-5 w-5" />
