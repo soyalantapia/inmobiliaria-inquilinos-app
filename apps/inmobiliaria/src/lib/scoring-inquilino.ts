@@ -107,7 +107,11 @@ function calcularMantenimiento(contratoId: string): { puntaje: number; explicaci
   if (propios.length === 0) {
     return { puntaje: 88, explicacion: 'Sin reclamos abiertos por el inquilino — buen señal.' };
   }
-  const usoYGoce = propios.filter((r) => r.estado === 'RESUELTO' || r.estado === 'EN_CURSO').length;
+  // "Uso y goce" = mal uso del inquilino, no defecto de la propiedad. Se mide por
+  // clasificacion (campo diseñado para esto), no por estado del ciclo de vida —
+  // antes contaba CUALQUIER reclamo RESUELTO/EN_CURSO (incluidos DESPERFECTO, que
+  // son responsabilidad del propietario) y restaba puntos de mantenimiento injustamente.
+  const usoYGoce = propios.filter((r) => r.clasificacion === 'USO_Y_GOCE').length;
   const recurrentes = propios.length;
   // Pocos reclamos = buen mantenimiento. Muchos uso y goce = mal mantenimiento.
   const puntaje = Math.max(30, 95 - recurrentes * 6 - usoYGoce * 4);

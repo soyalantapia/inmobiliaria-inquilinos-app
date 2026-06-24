@@ -227,7 +227,7 @@ function detalleMock(id: string): ContratoDetalle | null {
     contrato: c,
     contacto,
     propietarioDirecto,
-    liquidaciones: generarLiquidaciones(c.id, c.monto),
+    liquidaciones: generarLiquidaciones(c.id, c.monto, c.montoExpensas ?? 0),
     eventos: eventosContratoMock.filter((e) => e.contratoId === id),
     comunicaciones: comunicacionesMock.filter((cm) => cm.contratoId === id),
   };

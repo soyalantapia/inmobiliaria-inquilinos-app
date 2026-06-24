@@ -15,6 +15,8 @@ import { Label } from '@llave/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@llave/ui/select';
 import { toast } from '@llave/ui/use-toast';
 import { guardarOverride } from '@/lib/propietarios-overrides-storage';
+import { validarCuit } from '@/lib/cuit';
+import { apiEnabled } from '@/lib/api/client';
 import type { Propietario } from '@/lib/types';
 
 interface Props {
@@ -65,6 +67,17 @@ export function ConectarArcaDialog({ open, onOpenChange, propietario }: Props) {
       });
       return;
     }
+    // El CUIT alimenta la numeración de comprobantes ARCA: validamos el dígito
+    // verificador (antes cualquier string no-vacío se persistía como CUIT fiscal).
+    const vCuit = validarCuit(cuit.trim());
+    if (!vCuit.valido) {
+      toast({
+        variant: 'destructive',
+        title: 'CUIT inválido',
+        description: vCuit.motivo ?? 'Revisá el CUIT ingresado.',
+      });
+      return;
+    }
     setProcesando(true);
     // Simulación: en la realidad acá iría window.open al OAuth de AFIP y
     // se completaría con el callback. Mostramos delay para que se sienta.
@@ -90,8 +103,10 @@ export function ConectarArcaDialog({ open, onOpenChange, propietario }: Props) {
     setTimeout(() => onOpenChange(false), 1600);
     toast({
       variant: 'success',
-      title: 'ARCA conectada',
-      description: 'A partir de ahora la factura se emite sola al aprobar el pago.',
+      title: apiEnabled ? 'ARCA conectada' : 'ARCA conectada (demo)',
+      description: apiEnabled
+        ? 'A partir de ahora la factura se emite sola al aprobar el pago.'
+        : 'Simulación guardada. En producción, cada pago aprobado emite la factura automáticamente.',
     });
   };
 
@@ -179,8 +194,9 @@ export function ConectarArcaDialog({ open, onOpenChange, propietario }: Props) {
             </div>
             <p className="text-base font-semibold">¡Listo, ARCA conectada!</p>
             <p className="max-w-xs text-xs text-muted-foreground">
-              Desde el próximo pago aprobado, la factura sale sola y se manda al inquilino por
-              WhatsApp y mail.
+              {apiEnabled
+                ? 'Desde el próximo pago aprobado, la factura sale sola y se manda al inquilino por WhatsApp y mail.'
+                : 'Simulación guardada. En producción, cada pago aprobado emite la factura y la enviamos al inquilino por WhatsApp y mail.'}
             </p>
           </div>
         )}

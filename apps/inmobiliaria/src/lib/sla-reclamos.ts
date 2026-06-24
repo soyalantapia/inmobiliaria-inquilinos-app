@@ -53,6 +53,22 @@ export function evaluarSla(reclamo: Reclamo, ahoraMs = Date.now()): ResumenSla {
   const restantes = limite - horas;
   const pct = (horas / limite) * 100;
 
+  // RECHAZADO es terminal como RESUELTO/CERRADO: el reclamo se desestimó, no
+  // tiene un plazo de resolución vigente. Sin esto caía a la rama por tiempo y
+  // —como cambiarEstado() no setea resueltoAt para RECHAZADO— inicio=createdAt
+  // daba un SLA "Vencido" falso en un ticket ya cerrado.
+  if (reclamo.estado === 'RECHAZADO') {
+    return {
+      estado: 'RESUELTO',
+      horasTranscurridas: horas,
+      horasLimite: limite,
+      horasRestantes: limite - horas,
+      pctConsumido: pct,
+      texto: 'Reclamo rechazado — sin plazo de resolución.',
+      alertar: false,
+    };
+  }
+
   if (reclamo.estado === 'RESUELTO' || reclamo.estado === 'CERRADO') {
     const cerradoEn = reclamo.resueltoAt ?? null;
     const dur = cerradoEn

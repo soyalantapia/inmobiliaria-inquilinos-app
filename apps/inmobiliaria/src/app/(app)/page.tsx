@@ -31,6 +31,7 @@ import { Topbar } from '@/components/topbar';
 import { agendaMock, alertasMock, dashboardMetricsMock } from '@/lib/mock-data';
 import { calcularDashboardStats } from '@/lib/dashboard-helpers';
 import { totalGastosPendientesGlobal } from '@/lib/caja-storage';
+import { listarReclamos } from '@/lib/reclamos-store';
 import { apiEnabled } from '@/lib/api/client';
 import { useDashboard } from '@/lib/api/hooks';
 import { diasHastaVencimiento, formatFechaCorta, formatMonto, formatPeriodo, periodoActualFormat } from '@/lib/format';
@@ -40,8 +41,15 @@ export default function DashboardPage() {
   // la hidratación — en el primer render (SSR/export) valen 0 y el KPI "A rendir"
   // se ajusta al instante en cliente. El hook va ANTES del return condicional.
   const [gastosPendientes, setGastosPendientes] = useState(0);
+  // Reclamos abiertos: arranca undefined (SSR/primer render usa el mock) y se
+  // resuelve contra el store tras montar, para que el KPI refleje resoluciones
+  // de la sesión (igual fuente que el Inbox) sin romper la hidratación.
+  const [reclamosAbiertos, setReclamosAbiertos] = useState<number | undefined>(undefined);
   useEffect(() => {
     setGastosPendientes(totalGastosPendientesGlobal());
+    setReclamosAbiertos(
+      listarReclamos().filter((r) => r.estado === 'ABIERTO' || r.estado === 'EN_CURSO').length,
+    );
   }, []);
 
   // En producción (API) el dashboard se arma con agregados reales. El render
@@ -49,7 +57,7 @@ export default function DashboardPage() {
   // de GH Pages sin backend (!apiEnabled).
   if (apiEnabled) return <DashboardReal />;
 
-  const stats = calcularDashboardStats(gastosPendientes);
+  const stats = calcularDashboardStats(gastosPendientes, reclamosAbiertos);
   const m = dashboardMetricsMock;
 
   return (

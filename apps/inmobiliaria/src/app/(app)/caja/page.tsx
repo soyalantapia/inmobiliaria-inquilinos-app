@@ -78,14 +78,16 @@ export default function CajaPage() {
     return movimientos.filter((m) => m.propiedadId === filtroProp);
   }, [movimientos, filtroProp]);
 
-  // KPIs
-  const totalGastado = movimientos
+  // KPIs derivados de `filtrados` (no de `movimientos`): al activar un chip de
+  // propiedad la lista se acotaba pero los KPIs seguían mostrando el total global,
+  // sin coincidir con las filas visibles. Con filtroProp='TODAS', filtrados===movimientos.
+  const totalGastado = filtrados
     .filter((m) => m.tipo === 'GASTO')
     .reduce((acc, m) => acc + m.monto, 0);
-  const pendienteDescuento = movimientos
+  const pendienteDescuento = filtrados
     .filter((m) => m.tipo === 'GASTO' && !m.descontadoEnRendicion)
     .reduce((acc, m) => acc + m.monto, 0);
-  const cantidadMov = movimientos.length;
+  const cantidadMov = filtrados.length;
 
   // Devuelve null si salió bien o el mensaje de error si el server rechazó
   // (PIN incorrecto, gasto ya rendido 409, etc.): en modo servidor el diálogo

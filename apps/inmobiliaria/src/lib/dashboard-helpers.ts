@@ -24,7 +24,14 @@ const COMISION_DEFAULT = 0.08; // 8% promedio
 // `gastosPendientes` = gastos de caja aún no descontados (se pasa desde el
 // componente, leído de caja-storage tras montar para no romper la hidratación).
 // El neto "A rendir a propietarios" = cobrado − comisión − gastos pendientes.
-export function calcularDashboardStats(gastosPendientes = 0): DashboardStats {
+export function calcularDashboardStats(
+  gastosPendientes = 0,
+  // `reclamosAbiertosLive` viene del store (localStorage) leído tras montar, igual
+  // que gastosPendientes — para no romper hidratación. Si es undefined (SSR/primer
+  // render) usamos el conteo del mock; el cliente lo corrige al instante. Sin esto
+  // el KPI quedaba congelado en reclamosMock y contradecía al Inbox tras resolver.
+  reclamosAbiertosLive?: number,
+): DashboardStats {
   const activos = contratosMock.filter((c) => c.estado === 'ACTIVO');
 
   const cobrado = activos
@@ -49,9 +56,9 @@ export function calcularDashboardStats(gastosPendientes = 0): DashboardStats {
   const alquiladas = propiedadesMock.filter((p) => p.estado === 'ALQUILADA').length;
   const ocupacionPct = totalPropiedades > 0 ? Math.round((alquiladas / totalPropiedades) * 100) : 0;
 
-  const reclamosAbiertos = reclamosMock.filter(
-    (r) => r.estado === 'ABIERTO' || r.estado === 'EN_CURSO',
-  ).length;
+  const reclamosAbiertos =
+    reclamosAbiertosLive ??
+    reclamosMock.filter((r) => r.estado === 'ABIERTO' || r.estado === 'EN_CURSO').length;
 
   const cobrabilidadPct =
     totalActivos > 0 ? Math.round((cobrado / totalActivos) * 100) : 0;

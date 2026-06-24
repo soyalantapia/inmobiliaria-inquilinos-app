@@ -237,8 +237,10 @@ export function ContratoDocumentosPanel({ contrato }: Props) {
       contrato,
       propietarios: propietariosMock.slice(0, 2),
       diaPago: 5,
-      indiceAjuste: 'ICL',
-      frecuenciaAjusteMeses: 6,
+      // Del contrato, no fijos: un contrato IPC/12m generaba un Word que decía
+      // "ICL cada 6 meses". El generador ya aplica los mismos fallbacks.
+      indiceAjuste: contrato.indiceAjuste ?? 'ICL',
+      frecuenciaAjusteMeses: contrato.frecuenciaAjusteMeses ?? 6,
       comisionInmobiliariaPct: 4.17,
       depositoGarantia: contrato.monto,
       ciudadFirma: 'Ciudad Autónoma de Buenos Aires',

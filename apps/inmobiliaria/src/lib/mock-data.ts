@@ -1010,13 +1010,20 @@ export interface LiquidacionAdmin {
 // Para no inflar el archivo, generamos al vuelo las últimas 12 liquidaciones
 // de cada contrato a partir de hoy. Los 3 últimos meses son PENDIENTE/PAGADO,
 // el resto PAGADO.
-export function generarLiquidaciones(contratoId: string, montoBase: number): LiquidacionAdmin[] {
+export function generarLiquidaciones(
+  contratoId: string,
+  montoBase: number,
+  // Expensas reales del contrato. Si es 0 (contratos sin expensas explícitas)
+  // caemos a la estimación histórica del 19% del alquiler. Para SOLO_EXPENSAS
+  // (montoBase=0) el 19% daba $0 e ignoraba las expensas reales del contrato.
+  montoExpensasBase = 0,
+): LiquidacionAdmin[] {
   const hoy = new Date();
   const liquidaciones: LiquidacionAdmin[] = [];
   for (let i = 11; i >= 0; i--) {
     const d = new Date(hoy.getFullYear(), hoy.getMonth() - i, 5);
     const periodo = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    const expensas = Math.round(montoBase * 0.19);
+    const expensas = montoExpensasBase > 0 ? montoExpensasBase : Math.round(montoBase * 0.19);
     let estado: LiquidacionAdmin['estado'] = 'PAGADO';
     let fechaPago: string | null = `${periodo}-${String(d.getDate() + Math.floor(Math.random() * 4)).padStart(2, '0')}`;
     let metodoPago: LiquidacionAdmin['metodoPago'] = 'TRANSFERENCIA';

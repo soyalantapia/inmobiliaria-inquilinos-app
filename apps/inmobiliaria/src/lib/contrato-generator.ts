@@ -15,7 +15,25 @@
  * esto se haría server-side con plantillas.
  */
 import type { ContratoListado, Propietario } from './types';
-import { formatFecha, formatMonto } from './format';
+import { formatFecha, formatMonto, parseLocal } from './format';
+
+// Duración del contrato en meses, derivada de las fechas (no hardcodear).
+const MESES_EN_PALABRAS: Record<number, string> = {
+  6: 'SEIS',
+  12: 'DOCE',
+  18: 'DIECIOCHO',
+  24: 'VEINTICUATRO',
+  30: 'TREINTA',
+  36: 'TREINTA Y SEIS',
+  48: 'CUARENTA Y OCHO',
+  60: 'SESENTA',
+};
+function duracionMeses(inicioIso: string, finIso: string): number {
+  if (!inicioIso || !finIso) return 36;
+  const ms = parseLocal(finIso).getTime() - parseLocal(inicioIso).getTime();
+  if (!Number.isFinite(ms) || ms <= 0) return 36;
+  return Math.max(1, Math.round(ms / (1000 * 60 * 60 * 24 * (365.25 / 12))));
+}
 
 export interface VariablesContrato {
   contrato: ContratoListado;
@@ -82,6 +100,8 @@ export function generarContratoHTML(v: VariablesContrato): string {
   const deposito = v.depositoGarantia ?? contrato.monto;
   const ciudad = v.ciudadFirma ?? 'Ciudad Autónoma de Buenos Aires';
   const propietarioNombre = nombrarPropietarios(propietarios);
+  const meses = duracionMeses(contrato.fechaInicio, contrato.fechaFin);
+  const plazoTexto = `${MESES_EN_PALABRAS[meses] ?? meses} (${meses}) MESES`;
 
   const css = `
     body { font-family: 'Times New Roman', Georgia, serif; font-size: 12pt; line-height: 1.5; color: #111; margin: 2.5cm; }
@@ -132,7 +152,7 @@ export function generarContratoHTML(v: VariablesContrato): string {
   LOCADOR.</p>
 
   <h2>Segunda — Plazo</h2>
-  <p>El plazo de la locación es de TREINTA Y SEIS (36) MESES, contados
+  <p>El plazo de la locación es de ${plazoTexto}, contados
   a partir del ${formatFecha(contrato.fechaInicio)} y hasta el
   ${formatFecha(contrato.fechaFin)}.</p>
 

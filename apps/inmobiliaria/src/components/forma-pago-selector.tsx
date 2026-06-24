@@ -219,7 +219,10 @@ function ResumenFormaActiva({
   config: ConfigFormaPago;
   plan: ReturnType<typeof calcularResumenPlan>;
 }) {
-  const monto = montoFinalSegunForma(plan.costoMensualTotal, config.forma);
+  // Aplicar el cupón activo igual que las cards (línea ~114): si no, el "Próximo
+  // cobro" mostraba el precio sin descuento mientras la card mostraba el de cupón.
+  const base = montoFinalSegunForma(plan.costoMensualTotal, config.forma);
+  const monto = { ...base, importe: aplicarDescuentoCupon(base.importe).final };
   return (
     <div className="rounded-md border bg-muted/30 px-3 py-2 text-right text-xs">
       <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
@@ -269,7 +272,12 @@ function ConfigurarFormaDialog({
 
   if (!forma) return null;
 
-  const monto = montoFinalSegunForma(plan.costoMensual, forma);
+  // Mismo cupón que las cards: el dialog mostraba el precio sin descuento
+  // ($5.000-$48.000 más que la card). conCupon.descuento alimenta la línea
+  // extra del desglose ANUAL.
+  const base = montoFinalSegunForma(plan.costoMensual, forma);
+  const conCupon = aplicarDescuentoCupon(base.importe);
+  const monto = { ...base, importe: conCupon.final };
 
   const handleConfirmar = async () => {
     if (forma === 'DEBITO_AUTOMATICO') {
@@ -402,6 +410,12 @@ function ConfigurarFormaDialog({
                   <span>Descuento {Math.round(DESCUENTO_ANUAL * 100)}%</span>
                   <span className="tabular-nums">− {formatMonto(monto.ahorro)}</span>
                 </div>
+                {conCupon.descuento > 0 && (
+                  <div className="flex justify-between text-emerald-700 dark:text-emerald-300">
+                    <span>Cupón {conCupon.cupon?.codigo}</span>
+                    <span className="tabular-nums">− {formatMonto(conCupon.descuento)}</span>
+                  </div>
+                )}
                 <div className="mt-2 flex justify-between border-t pt-2 text-sm font-semibold">
                   <span>A pagar hoy</span>
                   <span className="tabular-nums">{formatMonto(monto.importe)}</span>

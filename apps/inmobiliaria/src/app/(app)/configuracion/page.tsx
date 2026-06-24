@@ -279,8 +279,8 @@ export default function ConfiguracionPage() {
     setNuevoEmail('');
     setNuevoRol('OPERADOR');
     toast({
-      title: 'Invitación enviada',
-      description: `${nuevoEmail} recibe un email para activar su cuenta.`,
+      title: 'Miembro agregado (demo)',
+      description: `En producción, ${nuevoEmail} recibiría un email para activar su cuenta.`,
     });
   };
 
@@ -1004,7 +1004,7 @@ export default function ConfiguracionPage() {
         description={
           <div className="space-y-3 pt-2">
             <p className="text-sm text-muted-foreground">
-              Le mandamos un email para que active su cuenta y entre al panel.
+              En producción le mandamos un email para que active su cuenta y entre al panel.
             </p>
             <div className="space-y-2">
               <Label htmlFor="invite-email" className="flex items-center gap-1">
