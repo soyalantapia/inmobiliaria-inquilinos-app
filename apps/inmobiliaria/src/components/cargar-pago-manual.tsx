@@ -16,7 +16,7 @@ import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
 import { contratosMock } from '@/lib/mock-data';
 import { conciliarPago } from '@/lib/conciliacion-storage';
-import { formatMonto } from '@/lib/format';
+import { formatMonto, fechaHoyLocal } from '@/lib/format';
 import { PinPromptDialog } from '@/components/pin-prompt-dialog';
 
 // Dialog para que la administradora cargue manualmente un pago que recibió
@@ -35,7 +35,7 @@ export function CargarPagoManualDialog({ open, onOpenChange, onDone }: Props) {
   const [contratoId, setContratoId] = useState('');
   const [monto, setMonto] = useState('');
   const [metodo, setMetodo] = useState<MetodoManual>('EFECTIVO');
-  const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10));
+  const [fecha, setFecha] = useState(fechaHoyLocal());
   const [nota, setNota] = useState('');
   const [showPin, setShowPin] = useState(false);
 
@@ -44,7 +44,7 @@ export function CargarPagoManualDialog({ open, onOpenChange, onDone }: Props) {
       setContratoId('');
       setMonto('');
       setMetodo('EFECTIVO');
-      setFecha(new Date().toISOString().slice(0, 10));
+      setFecha(fechaHoyLocal());
       setNota('');
       setShowPin(false);
     }

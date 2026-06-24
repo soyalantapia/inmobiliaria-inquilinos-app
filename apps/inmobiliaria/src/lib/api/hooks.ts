@@ -19,6 +19,7 @@ import type {
 } from '@/lib/types';
 import { enriquecerPropiedad, type PropiedadEnriquecida } from '@/lib/propiedades-helpers';
 import type { DashboardStats } from '@/lib/dashboard-helpers';
+import { parseLocal } from '@/lib/format';
 import {
   cargarMovimiento as cargarMovimientoLocal,
   eliminarMovimiento as eliminarMovimientoLocal,
@@ -746,7 +747,7 @@ export function usePropiedades(): {
   cargando: boolean;
   deApi: boolean;
 } {
-  const { contratos } = useContratos();
+  const { contratos, cargando: cargandoContratos } = useContratos();
   const propsQ = useQuery({
     queryKey: ['propiedades'],
     queryFn: async () => {
@@ -777,7 +778,12 @@ export function usePropiedades(): {
     const contrato = p.contratoActualId
       ? (contratos.find((c) => c.id === p.contratoActualId) ?? null)
       : null;
-    const propietarios = (p.participaciones ?? []).map((pp) => propietarioLite(pp.propietario, p.id));
+    // filter: el API puede devolver una participación con propietario null
+    // (participación huérfana, estado de DB válido) → propietarioLite crashea al
+    // desestructurar. Mismo guard que use-propiedad.ts.
+    const propietarios = (p.participaciones ?? [])
+      .filter((pp) => pp.propietario != null)
+      .map((pp) => propietarioLite(pp.propietario, p.id));
     const reclamosAbiertos = reclamos.filter(
       (r) => r.contratoId === p.contratoActualId && (r.estado === 'ABIERTO' || r.estado === 'EN_CURSO'),
     ).length;
@@ -790,7 +796,9 @@ export function usePropiedades(): {
     };
   });
 
-  return { propiedades, cargando: propsQ.isPending, deApi: true };
+  // Incluimos cargandoContratos: si /propiedades resuelve antes que /contratos,
+  // todas las props aparecerían como "Sin contrato vigente" hasta el refetch.
+  return { propiedades, cargando: propsQ.isPending || cargandoContratos, deApi: true };
 }
 
 // ===== Liquidaciones (recibos mensuales por contrato) =====
@@ -1189,7 +1197,7 @@ export function useDashboard(): DashboardData {
   const en14 = hoy.getTime() + 14 * 24 * 60 * 60 * 1000;
   const proximosVencimientos = liquidaciones
     .filter((l) => l.estado !== 'PAGADO' && l.fechaVencimiento)
-    .map((l) => ({ l, ts: new Date(l.fechaVencimiento).getTime() }))
+    .map((l) => ({ l, ts: parseLocal(l.fechaVencimiento).getTime() }))
     .filter(({ ts }) => ts >= hoy.getTime() && ts <= en14)
     .sort((a, b) => a.ts - b.ts)
     .map(({ l }) => ({

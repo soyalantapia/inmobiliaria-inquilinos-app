@@ -8,6 +8,8 @@
  * localStorage por inmobiliaria.
  */
 
+import { parseLocal } from './format';
+
 const STORAGE_KEY = 'llave-inmo:cupon:v1';
 
 export type EstadoConvenio = 'ACTIVO' | 'PROXIMAMENTE' | 'CERRADO';
@@ -246,8 +248,14 @@ export function aplicarCupon(codigo: string): { ok: true; cupon: Cupon } | { ok:
   if (cupon.estado === 'CERRADO') {
     return { ok: false, error: 'Este convenio cerró.' };
   }
-  if (cupon.vigenciaHasta && new Date(cupon.vigenciaHasta) < new Date()) {
-    return { ok: false, error: `Este cupón venció el ${cupon.vigenciaHasta}.` };
+  if (cupon.vigenciaHasta) {
+    // Comparar contra el FIN del día LOCAL (no UTC midnight): sin esto el cupón
+    // se rechaza 3h antes de que termine su día de vigencia en AR (UTC-3).
+    const venc = parseLocal(cupon.vigenciaHasta);
+    venc.setHours(23, 59, 59, 999);
+    if (venc < new Date()) {
+      return { ok: false, error: `Este cupón venció el ${cupon.vigenciaHasta}.` };
+    }
   }
   if (typeof window !== 'undefined') {
     try {

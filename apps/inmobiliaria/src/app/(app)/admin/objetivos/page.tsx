@@ -75,9 +75,12 @@ export default function DashboardObjetivosPage() {
   const progresoClientes = ultimoReal.activos / META_SEMESTRE.clientesActivos;
   const progresoMrr = ultimoReal.mrr / META_SEMESTRE.mrrArs;
 
-  const mesesTranscurridos = 4;
-  const mesesTotales = 6;
-  const progresoTemporal = mesesTranscurridos / mesesTotales;
+  // Derivado de las fechas reales del semestre (antes 4/6 hardcodeado → el
+  // marcador temporal quedaba ~12pp atrasado). El offset UTC se cancela en la
+  // fracción (ambos extremos son UTC). Server component: sin riesgo de hidratación.
+  const inicioMeta = new Date(META_SEMESTRE.inicio + '-01').getTime();
+  const cierreMeta = new Date(META_SEMESTRE.cierre + '-01').getTime();
+  const progresoTemporal = Math.min(1, Math.max(0, (Date.now() - inicioMeta) / (cierreMeta - inicioMeta)));
 
   const totalSpend = FUENTES.reduce((s, f) => s + f.costoTotal, 0);
   const totalClientesAdq = FUENTES.reduce((s, f) => s + f.clientes, 0);

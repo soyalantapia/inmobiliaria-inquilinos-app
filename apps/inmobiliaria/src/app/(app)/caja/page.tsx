@@ -40,7 +40,7 @@ import {
 import { useCaja, usePropiedades } from '@/lib/api/hooks';
 import { useCierreCaja } from '@/lib/api/use-pagos';
 import { apiEnabled } from '@/lib/api/client';
-import { formatFechaCorta, formatMonto } from '@/lib/format';
+import { formatFechaCorta, formatMonto, fechaHoyLocal } from '@/lib/format';
 import { propiedadesMock } from '@/lib/mock-data';
 
 /** Opción mínima de propiedad para el select/filtros de caja. */
@@ -281,7 +281,7 @@ export default function CajaPage() {
  */
 function CierreCajaDelDia() {
   // "Hoy" en hora de Argentina (UTC-3), igual que el backend.
-  const hoy = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
+  const hoy = fechaHoyLocal();
   const [fecha, setFecha] = useState(hoy);
   const [abierto, setAbierto] = useState(false);
   const { cierre, cargando } = useCierreCaja(fecha);
@@ -463,7 +463,7 @@ function DialogCargarGasto({
   const [categoria, setCategoria] = useState<CategoriaGasto>('PLOMERIA');
   const [descripcion, setDescripcion] = useState('');
   const [monto, setMonto] = useState('');
-  const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10));
+  const [fecha, setFecha] = useState(fechaHoyLocal());
   const [proveedor, setProveedor] = useState('');
   const [guardando, setGuardando] = useState(false);
 
@@ -473,7 +473,7 @@ function DialogCargarGasto({
       setCategoria('PLOMERIA');
       setDescripcion('');
       setMonto('');
-      setFecha(new Date().toISOString().slice(0, 10));
+      setFecha(fechaHoyLocal());
       setProveedor('');
     }
   }, [open]);

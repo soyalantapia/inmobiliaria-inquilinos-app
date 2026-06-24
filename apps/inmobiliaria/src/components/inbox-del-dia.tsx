@@ -27,7 +27,7 @@ import {
 } from '@/lib/mock-data';
 import { obtenerRendicion, periodoActual } from '@/lib/rendiciones-storage';
 import { listarReclamos } from '@/lib/reclamos-store';
-import { formatMonto } from '@/lib/format';
+import { formatMonto, parseLocal } from '@/lib/format';
 
 /**
  * Inbox priorizado del día. Reúne en un solo lugar todas las acciones
@@ -319,7 +319,7 @@ function construirItems(): Item[] {
   const proximos = contratosMock.filter((c) => {
     if (c.estadoPagoActual !== 'PENDIENTE') return false;
     const dias =
-      (new Date(c.proximoVencimiento).getTime() - Date.now()) /
+      (parseLocal(c.proximoVencimiento).getTime() - Date.now()) /
       (1000 * 60 * 60 * 24);
     return dias >= 0 && dias <= 3;
   });

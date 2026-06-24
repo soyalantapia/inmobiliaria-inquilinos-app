@@ -81,6 +81,16 @@ const estadoLabel: Record<EstadoLiquidacion, string> = {
   VENCIDO: 'Vencido',
 };
 
+// Variant del badge según el estado del CONTRATO (no el de pago). Antes era un
+// ternario ACTIVO?success:secondary que pintaba BORRADOR/FINALIZADO/RESCINDIDO
+// todos gris, inconsistente con el detalle. Espejo de contratos/[id].
+const estadoContratoVariant: Record<string, React.ComponentProps<typeof Badge>['variant']> = {
+  ACTIVO: 'success',
+  BORRADOR: 'warning',
+  FINALIZADO: 'secondary',
+  RESCINDIDO: 'destructive',
+};
+
 export default function ContratosPage() {
   const { contratos, cargando } = useContratos();
   const [q, setQ] = useState('');
@@ -339,7 +349,7 @@ export default function ContratosPage() {
                       <p className="line-clamp-2 text-xs text-muted-foreground">{c.direccion}</p>
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-1">
-                      <Badge variant={c.estado === 'ACTIVO' ? 'success' : 'secondary'}>
+                      <Badge variant={estadoContratoVariant[c.estado] ?? 'secondary'}>
                         {c.estado.charAt(0) + c.estado.slice(1).toLowerCase()}
                       </Badge>
                       <Badge variant={estadoVariant[c.estadoPagoActual]} className="text-[10px]">
@@ -398,7 +408,7 @@ export default function ContratosPage() {
                       {formatMonto(c.monto, c.moneda)}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={c.estado === 'ACTIVO' ? 'success' : 'secondary'}>
+                      <Badge variant={estadoContratoVariant[c.estado] ?? 'secondary'}>
                         {c.estado.charAt(0) + c.estado.slice(1).toLowerCase()}
                       </Badge>
                     </TableCell>

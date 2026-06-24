@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { formatFecha } from '@/lib/format';
 import {
   CheckCircle2,
   ExternalLink,
@@ -195,7 +196,7 @@ function ConvenioCard({
             Código: <span className="font-mono font-semibold">{cupon.codigo}</span>
             {cupon.vigenciaHasta && (
               <>
-                {' · '}vence {new Date(cupon.vigenciaHasta).toLocaleDateString('es-AR')}
+                {' · '}vence {formatFecha(cupon.vigenciaHasta)}
               </>
             )}
           </div>

@@ -91,6 +91,10 @@ export function RendirPropietarioDialog({
   // Si ya rendimos, esto devuelve el snapshot guardado.
   const gastos = useMemo<GastoAtribuido[]>(() => {
     if (!propietario) return [];
+    // En prod el server computa los gastos al rendir (la response trae el neto
+    // real). gastosAtribuidos lee mocks/localStorage que en prod están vacíos →
+    // mostraría un 0 fabricado y un "A transferir" inflado vs el toast posterior.
+    if (apiEnabled) return [];
     return gastosAtribuidos(propietario.id, periodo);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [propietario, periodo, open]);
@@ -109,7 +113,10 @@ export function RendirPropietarioDialog({
 
   const bruto = propietario.totalCobradoMes;
   const comisionMonto = Math.round(bruto * (propietario.comisionPct / 100));
-  const neto = bruto - comisionMonto - totalGastos;
+  // Piso en 0: si los gastos superan lo cobrado, el neto a transferir no puede
+  // ser negativo (antes mostraba/guardaba un monto negativo en la rendición).
+  const netoCrudo = bruto - comisionMonto - totalGastos;
+  const neto = Math.max(0, netoCrudo);
 
   const copiarCbu = async () => {
     if (!propietario.cbuAlias) return;
@@ -303,6 +310,13 @@ export function RendirPropietarioDialog({
             value={formatMonto(neto)}
             highlight
           />
+          {netoCrudo < 0 && (
+            <p className="mt-1 rounded-md bg-amber-50 p-2 text-[11px] text-amber-700">
+              Los gastos del período ({formatMonto(totalGastos)}) superan lo cobrado;
+              no queda saldo a transferir este mes (mostramos $0). El faltante de{' '}
+              {formatMonto(Math.abs(netoCrudo))} queda pendiente para la próxima rendición.
+            </p>
+          )}
         </div>
 
         {/* CBU / Alias */}

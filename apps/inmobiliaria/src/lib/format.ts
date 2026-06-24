@@ -27,7 +27,7 @@ export function formatMonto(monto: number, moneda: Moneda = 'ARS'): string {
  * Para cualquier otro ISO con hora explícita (`...T14:22:00-03:00`),
  * delegamos en `new Date()` que hace lo correcto.
  */
-function parseLocal(iso: string): Date {
+export function parseLocal(iso: string): Date {
   const fechaPura = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
   if (fechaPura) {
     return new Date(Number(fechaPura[1]), Number(fechaPura[2]) - 1, Number(fechaPura[3]));
@@ -37,6 +37,16 @@ function parseLocal(iso: string): Date {
     return new Date(Number(fechaUtcCero[1]), Number(fechaUtcCero[2]) - 1, Number(fechaUtcCero[3]));
   }
   return new Date(iso);
+}
+
+/**
+ * Fecha de HOY en formato YYYY-MM-DD según la zona horaria LOCAL del usuario.
+ * Usar esto en vez de `new Date().toISOString().slice(0,10)` (que da la fecha
+ * UTC y, en AR UTC-3, "salta" a mañana entre las 21:00 y la medianoche).
+ */
+export function fechaHoyLocal(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 export function formatFecha(iso: string): string {

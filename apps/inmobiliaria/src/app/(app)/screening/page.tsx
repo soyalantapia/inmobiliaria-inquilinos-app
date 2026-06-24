@@ -50,7 +50,7 @@ import {
 import { apiEnabled } from '@/lib/api/client';
 import { Topbar } from '@/components/topbar';
 import { screeningMock } from '@/lib/mock-data';
-import { formatMonto, formatFecha, formatPeriodo } from '@/lib/format';
+import { formatMonto, formatFecha, formatPeriodo, parseLocal } from '@/lib/format';
 import { formatearCuit, validarCuit } from '@/lib/cuit';
 import { abrirReporteImprimible } from '@/lib/reportes-pdf';
 import { sociedadPrincipal } from '@/lib/sociedades-storage';
@@ -328,7 +328,18 @@ function ScreeningHome({
               </p>
             </div>
 
-            <form onSubmit={onSubmit} className="space-y-4">
+            <form
+              onSubmit={(e) => {
+                // El checkbox de consentimiento (Ley 25.326) vive acá; el botón
+                // disabled no frena el submit por Enter, así que lo gateamos.
+                if (!consentimiento) {
+                  e.preventDefault();
+                  return;
+                }
+                onSubmit(e);
+              }}
+              className="space-y-4"
+            >
               <div className="space-y-2">
                 <Label htmlFor="cuit" aria-required>
                   CUIT / CUIL <span className="text-destructive">*</span>
@@ -622,8 +633,14 @@ function Informe({
   const reco = recoConfig[resultado.recomendacion];
   const RIcon = reco.icon;
   const iniciales = `${resultado.nombre[0] ?? ''}${resultado.apellido[0] ?? ''}`;
+  // Edad con ajuste por cumpleaños (no solo resta de años) y parseLocal para que
+  // el mes/día no se corran por UTC.
+  const hoyEdad = new Date();
+  const nacEdad = parseLocal(resultado.fechaNacimiento);
   const edad =
-    new Date().getFullYear() - new Date(resultado.fechaNacimiento).getFullYear();
+    hoyEdad.getFullYear() -
+    nacEdad.getFullYear() -
+    (hoyEdad < new Date(hoyEdad.getFullYear(), nacEdad.getMonth(), nacEdad.getDate()) ? 1 : 0);
 
   return (
     <div className="space-y-6 animate-fade-in">

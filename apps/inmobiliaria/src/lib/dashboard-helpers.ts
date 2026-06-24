@@ -43,7 +43,7 @@ export function calcularDashboardStats(gastosPendientes = 0): DashboardStats {
 
   const totalActivos = cobrado + porCobrar + enMora.monto;
   const comisionMes = Math.round(cobrado * COMISION_DEFAULT);
-  const aRendirMes = Math.round(cobrado - comisionMes - gastosPendientes);
+  const aRendirMes = Math.max(0, Math.round(cobrado - comisionMes - gastosPendientes));
 
   const totalPropiedades = propiedadesMock.length;
   const alquiladas = propiedadesMock.filter((p) => p.estado === 'ALQUILADA').length;
