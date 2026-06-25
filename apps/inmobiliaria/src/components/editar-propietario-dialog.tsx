@@ -59,15 +59,19 @@ export function EditarPropietarioDialog({ open, onOpenChange, propietario }: Pro
       return;
     }
     // Validar formato + dígito verificador (igual que screening/configuracion):
-    // el CUIT alimenta facturas y rendiciones, no debe guardarse basura.
-    const valCuit = validarCuit(cuit);
-    if (!valCuit.valido) {
-      toast({
-        variant: 'destructive',
-        title: 'Revisá el CUIT',
-        description: valCuit.motivo ?? 'El CUIT no es válido.',
-      });
-      return;
+    // el CUIT alimenta facturas y rendiciones, no debe guardarse basura. Es
+    // OPCIONAL (el alta lo permite vacío) → solo lo validamos si se ingresó algo;
+    // si no, no bloqueamos editar el resto de los campos.
+    if (cuit.trim()) {
+      const valCuit = validarCuit(cuit);
+      if (!valCuit.valido) {
+        toast({
+          variant: 'destructive',
+          title: 'Revisá el CUIT',
+          description: valCuit.motivo ?? 'El CUIT no es válido.',
+        });
+        return;
+      }
     }
     setGuardando(true);
     await new Promise((r) => setTimeout(r, 350));

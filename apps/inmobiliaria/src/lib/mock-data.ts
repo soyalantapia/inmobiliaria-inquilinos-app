@@ -860,8 +860,11 @@ export const propietariosMock: Propietario[] = [
     notas: 'Vive en Córdoba. Tiene 2 unidades funcionales en CABA. Cobra directo a su cuenta.',
     createdAt: '2022-05-10',
     propiedadesIds: ['prp_005'],
-    totalCobradoMes: 850000,
-    totalRecibirMes: 794750,
+    // Su único contrato (cnt_005) es PROPIETARIO_DIRECTO → el alquiler va directo
+    // del inquilino al dueño, la inmo NO lo cobra ni lo rinde. En 0 para que el
+    // KPI "A rendir" y el botón Rendir no la incluyan (igual que el path API).
+    totalCobradoMes: 0,
+    totalRecibirMes: 0,
     afip: { conectado: false },
     cuentaCobranza: {
       banco: 'Banco Macro',

@@ -88,6 +88,9 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
   const { propietario, propiedades, contratos } = detalle;
   const tel = propietario.telefono.replace(/[^\d]/g, '');
   const ingresoAnualEstimado = propietario.totalRecibirMes * 12;
+  // En prod el endpoint /propietarios/:id todavía no devuelve liquidaciones → los
+  // montos vienen en 0. Mostramos '—' en vez de un $0 engañoso (en demo hay data).
+  const finanzasNoDisponibles = apiEnabled && propietario.totalCobradoMes === 0;
 
   // En prod (API real) la edición de datos básicos / ARCA todavía no tiene
   // endpoint: la dejamos deshabilitada con tooltip. En build demo seguimos
@@ -136,16 +139,18 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
                 </div>
               </div>
               <div className="flex w-full gap-2 sm:w-auto">
-                <Button variant="outline" asChild>
-                  <a
-                    href={`https://wa.me/${tel}`}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    <MessageCircle className="h-4 w-4" />
-                    WhatsApp
-                  </a>
-                </Button>
+                {tel && (
+                  <Button variant="outline" asChild>
+                    <a
+                      href={`https://wa.me/${tel}`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <MessageCircle className="h-4 w-4" />
+                      WhatsApp
+                    </a>
+                  </Button>
+                )}
                 {edicionHabilitada ? (
                   <EditarPropietarioTrigger propietario={propietario} />
                 ) : (
@@ -190,18 +195,18 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
           />
           <Kpi
             label="Bruto cobrado/mes"
-            value={formatMonto(propietario.totalCobradoMes)}
+            value={finanzasNoDisponibles ? '—' : formatMonto(propietario.totalCobradoMes)}
             icon={<Wallet className="h-4 w-4" />}
           />
           <Kpi
             label="A rendir/mes"
-            value={formatMonto(propietario.totalRecibirMes)}
+            value={finanzasNoDisponibles ? '—' : formatMonto(propietario.totalRecibirMes)}
             icon={<Wallet className="h-4 w-4" />}
             highlight
           />
           <Kpi
             label="Ingreso anual est."
-            value={formatMonto(ingresoAnualEstimado)}
+            value={finanzasNoDisponibles ? '—' : formatMonto(ingresoAnualEstimado)}
             icon={<Building2 className="h-4 w-4" />}
           />
         </div>

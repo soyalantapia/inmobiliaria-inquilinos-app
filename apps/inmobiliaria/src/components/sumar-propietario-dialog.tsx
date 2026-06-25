@@ -73,9 +73,19 @@ export function SumarPropietarioDialog({ open, onOpenChange }: Props) {
 
     // Prod: POST /propietarios (el hook invalida ['propietarios']).
     if (apiEnabled) {
+      const comision = Number(comisionPct);
+      // Rango válido del API (z.number().min(0).max(100)): avisamos en cliente en
+      // vez de mandar -5/500 y comerse un 400 genérico.
+      if (comisionPct.trim() && (!Number.isFinite(comision) || comision < 0 || comision > 100)) {
+        toast({
+          variant: 'destructive',
+          title: 'Comisión inválida',
+          description: 'Ingresá un porcentaje entre 0 y 100.',
+        });
+        return;
+      }
       setGuardando(true);
       try {
-        const comision = Number(comisionPct);
         await crear({
           nombre: nombre.trim(),
           apellido: apellido.trim(),

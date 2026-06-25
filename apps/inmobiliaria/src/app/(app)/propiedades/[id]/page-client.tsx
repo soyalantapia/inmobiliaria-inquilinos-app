@@ -607,16 +607,18 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                         </div>
                       )}
 
-                      <Button size="sm" variant="outline" className="w-full" asChild>
-                        <a
-                          href={`https://wa.me/${o.telefono.replace(/[^\d]/g, '')}`}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          <MessageCircle className="h-3.5 w-3.5" />
-                          Mensaje
-                        </a>
-                      </Button>
+                      {o.telefono.replace(/[^\d]/g, '') && (
+                        <Button size="sm" variant="outline" className="w-full" asChild>
+                          <a
+                            href={`https://wa.me/${o.telefono.replace(/[^\d]/g, '')}`}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            <MessageCircle className="h-3.5 w-3.5" />
+                            Mensaje
+                          </a>
+                        </Button>
+                      )}
                     </CardContent>
                   </Card>
                 ))}
@@ -652,8 +654,10 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                     <Field label="Alquiler actual">
                       {formatMonto(contrato.monto, contrato.moneda)}
                     </Field>
-                    <Field label="Índice de ajuste">ICL — BCRA</Field>
-                    <Field label="Frecuencia ajuste">12 meses</Field>
+                    <Field label="Índice de ajuste">{contrato.indiceAjuste ?? 'ICL — BCRA'}</Field>
+                    <Field label="Frecuencia ajuste">
+                      {contrato.frecuenciaAjusteMeses ? `${contrato.frecuenciaAjusteMeses} meses` : '12 meses'}
+                    </Field>
                     <Field label="Próximo vencimiento">
                       {formatFechaCorta(contrato.proximoVencimiento)}
                     </Field>

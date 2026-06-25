@@ -77,6 +77,9 @@ export default function DetalleReclamoPage() {
   const [costoNotas, setCostoNotas] = useState('');
   const [dialogo, setDialogo] = useState<'resolver' | 'rechazar' | 'cerrar' | null>(null);
   const [dialogoCargando, setDialogoCargando] = useState(false);
+  // Guard de re-entrancia SÍNCRONO contra el doble-click: setDialogoCargando es un
+  // state setter (async) y no bloquea la 2da invocación en el mismo tick.
+  const confirmandoRef = useRef(false);
   const [enviandoMsg, setEnviandoMsg] = useState(false);
   const scrollEndRef = useRef<HTMLDivElement>(null);
 
@@ -162,10 +165,12 @@ export default function DetalleReclamoPage() {
   };
 
   const confirmarDialogo = async () => {
-    if (!dialogo) return;
+    if (!dialogo || confirmandoRef.current) return;
     const reclamoId = reclamo.id;
-    // Loading guard: evita que el usuario haga doble click y cree dos eventos
-    // de timeline con estados contradictorios (RESUELTO+RECHAZADO a la vez).
+    // El ref bloquea el 2do click ANTES de que React re-renderice (sin esto el
+    // doble-click creaba dos eventos en el timeline). setDialogoCargando es solo
+    // para el spinner del botón.
+    confirmandoRef.current = true;
     setDialogoCargando(true);
 
     if (dialogo === 'resolver') {
@@ -221,6 +226,7 @@ export default function DetalleReclamoPage() {
     }
 
     setDialogoCargando(false);
+    confirmandoRef.current = false;
     setDialogo(null);
     setResolucion('');
     setCostoStr('');

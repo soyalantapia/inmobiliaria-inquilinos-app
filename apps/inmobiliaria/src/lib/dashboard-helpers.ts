@@ -32,7 +32,12 @@ export function calcularDashboardStats(
   // el KPI quedaba congelado en reclamosMock y contradecía al Inbox tras resolver.
   reclamosAbiertosLive?: number,
 ): DashboardStats {
-  const activos = contratosMock.filter((c) => c.estado === 'ACTIVO');
+  // Excluye PROPIETARIO_DIRECTO de cobrado/porCobrar/mora: esa plata va directo
+  // del inquilino al dueño, no pasa por la inmo (alinea el demo con el path API,
+  // hooks.ts que ya lo saltea).
+  const activos = contratosMock.filter(
+    (c) => c.estado === 'ACTIVO' && c.modoCobranza !== 'PROPIETARIO_DIRECTO',
+  );
 
   const cobrado = activos
     .filter((c) => c.estadoPagoActual === 'PAGADO')

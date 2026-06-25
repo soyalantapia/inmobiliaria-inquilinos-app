@@ -90,6 +90,8 @@ interface ContratoApi {
   estadoPagoActual: EstadoLiquidacion;
   cbuAlias?: string | null;
   titularCuenta?: string | null;
+  indiceAjuste?: string | null;
+  frecuenciaAjusteMeses?: number | null;
   /** Inquilino titular embebido: de acá salen nombre y email reales (sin fabricar). */
   inquilinoTitular?: { nombre?: string | null; apellido?: string | null; email?: string | null } | null;
 }
@@ -167,6 +169,8 @@ function mapContrato(c: ContratoApi): ContratoListado {
     estadoPagoActual: c.estadoPagoActual ?? 'PENDIENTE',
     cbuAlias: c.cbuAlias ?? null,
     titularCuenta: c.titularCuenta ?? null,
+    indiceAjuste: c.indiceAjuste ?? null,
+    frecuenciaAjusteMeses: c.frecuenciaAjusteMeses ?? null,
   };
 }
 
