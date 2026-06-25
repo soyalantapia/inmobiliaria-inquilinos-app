@@ -27,6 +27,7 @@
     "@fastify/cors": "^10.0.1",
     "@fastify/helmet": "^13.0.0",
     "@fastify/jwt": "^9.0.1",
+    "@fastify/multipart": "^9.4.0",
     "@fastify/rate-limit": "^10.1.1",
     "@llave/shared": "workspace:*",
     "@prisma/client": "^6.2.0",

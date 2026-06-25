@@ -2,6 +2,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import jwt from '@fastify/jwt';
+import multipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
 import { ZodError } from 'zod';
 import { loadEnv, type Env } from './env.js';
@@ -12,6 +13,7 @@ import { plataRoutes } from './routes/plata.js';
 import { operacionRoutes } from './routes/operacion.js';
 import { anunciosRoutes } from './routes/anuncios.js';
 import { inquilinoMundoRoutes } from './routes/inquilino-mundo.js';
+import { uploadsRoutes } from './routes/uploads.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -39,6 +41,8 @@ export async function buildApp(envOverrides: Partial<Record<string, string>> = {
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
   });
   await app.register(jwt, { secret: env.JWT_SECRET });
+  // Uploads de archivos (comprobantes/boletas/fotos/documentos) → Railway Volume.
+  await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024, files: 1 } });
 
   // Error-handler global: sin esto cualquier z.parse() o error de Prisma no
   // atrapado cae al 500 genérico de Fastify (entrada malformada o conflicto se
@@ -73,6 +77,7 @@ export async function buildApp(envOverrides: Partial<Record<string, string>> = {
   await app.register(operacionRoutes);
   await app.register(anunciosRoutes);
   await app.register(inquilinoMundoRoutes);
+  await app.register(uploadsRoutes);
 
   return app;
 }
