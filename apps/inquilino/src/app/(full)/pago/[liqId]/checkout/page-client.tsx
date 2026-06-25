@@ -462,8 +462,11 @@ function SelectorMonto({
     setDraft('');
   };
   const setOtro = () => {
-    // Si pasa a "otro" sin valor, arrancamos en la mitad del saldo
-    const inicial = Math.floor(saldo / 2 / 1000) * 1000;
+    // Si pasa a "otro" sin valor, arrancamos en la mitad del saldo. Para saldos
+    // chicos (< $2000) el redondeo al millar daba 0 → bloqueaba "Continuar" sin
+    // aviso; caemos a la mitad exacta (mínimo 1) en ese caso.
+    const mitadMil = Math.floor(saldo / 2 / 1000) * 1000;
+    const inicial = mitadMil > 0 ? mitadMil : Math.max(1, Math.round(saldo / 2));
     onChange(inicial);
     setDraft(String(inicial));
   };

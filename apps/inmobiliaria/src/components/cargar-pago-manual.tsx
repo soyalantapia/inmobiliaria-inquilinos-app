@@ -73,6 +73,12 @@ export function CargarPagoManualDialog({ open, onOpenChange, onDone }: Props) {
       toast({ title: 'El monto tiene que ser positivo', variant: 'destructive' });
       return;
     }
+    // El campo date se puede vaciar a mano → sin esto el pagoId saldría malformado
+    // (pag_manual_cnt_X_) y el registro quedaría sin fecha.
+    if (!fecha || fecha.length !== 10) {
+      toast({ title: 'Elegí la fecha de cobro', variant: 'destructive' });
+      return;
+    }
     setShowPin(true);
   };
 

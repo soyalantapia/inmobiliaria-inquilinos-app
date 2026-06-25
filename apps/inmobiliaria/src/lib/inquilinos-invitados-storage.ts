@@ -15,7 +15,13 @@
  * desde acá son los que el inquilino puede usar para loguearse.
  */
 
+import { contratosMock, propiedadesMock } from '@/lib/mock-data';
+
 const STORAGE_KEY = 'llave-inmo:inquilinos-invitados:v1';
+// Clave que lee el LOGIN de la app inquilino (auth-otp.ts) — otra forma
+// (InvitadoRegistrado). Espejamos ahí los invitados para que, cuando ambas apps
+// comparten origin (GH Pages), el inquilino entre con su contrato/dirección reales.
+const INQUILINO_AUTH_KEY = 'llave-inquilino:auth:invitados:v1';
 
 export type EstadoInvitacion = 'PENDIENTE_ACTIVACION' | 'ACTIVO';
 
@@ -116,11 +122,40 @@ export function crearInvitado(input: CrearInvitadoInput): InquilinoInvitado {
       const lista = listarInvitados();
       lista.unshift(nuevo);
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(lista));
+      if (nuevo.email) espejarParaLoginInquilino(nuevo);
     } catch {
       // ignore
     }
   }
   return nuevo;
+}
+
+/**
+ * Espeja el invitado en la clave que lee el login del inquilino, con la forma
+ * InvitadoRegistrado (email/nombre/apellido/direccion/contratoId/invitadoAt). La
+ * dirección sale del contrato asignado o de la propiedad. Sin esto, un invitado
+ * cargado desde el panel se logueaba con sesión genérica (direccion/contrato '—').
+ */
+function espejarParaLoginInquilino(inv: InquilinoInvitado): void {
+  try {
+    const contrato = inv.contratoId ? contratosMock.find((c) => c.id === inv.contratoId) : null;
+    const propiedad = propiedadesMock.find((p) => p.id === inv.propiedadId);
+    const registro = {
+      email: (inv.email ?? '').toLowerCase(),
+      nombre: inv.nombre,
+      apellido: inv.apellido,
+      direccion: contrato?.direccion ?? propiedad?.direccion ?? '—',
+      contratoId: inv.contratoId ?? '—',
+      invitadoAt: inv.invitadoAt,
+    };
+    const raw = window.localStorage.getItem(INQUILINO_AUTH_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    const lista = Array.isArray(parsed) ? parsed.filter((r) => r?.email !== registro.email) : [];
+    lista.unshift(registro);
+    window.localStorage.setItem(INQUILINO_AUTH_KEY, JSON.stringify(lista));
+  } catch {
+    // ignore
+  }
 }
 
 export function eliminarInvitado(id: string): void {

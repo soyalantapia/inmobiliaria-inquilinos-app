@@ -58,6 +58,10 @@ export default function InvitarCoInquilinoPage() {
       toast({ title: 'Faltan nombre y email', variant: 'destructive' });
       return;
     }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      toast({ title: 'Email inválido', variant: 'destructive' });
+      return;
+    }
     if (dniLimpio.length < 7 || dniLimpio.length > 8) {
       toast({
         title: 'Revisá el DNI',
@@ -66,8 +70,12 @@ export default function InvitarCoInquilinoPage() {
       });
       return;
     }
-    if (!telefono.trim()) {
-      toast({ title: 'Falta el teléfono', variant: 'destructive' });
+    if (telefono.replace(/[^\d]/g, '').length < 8) {
+      toast({
+        title: 'Teléfono inválido',
+        description: 'Mínimo 8 dígitos, con código de área.',
+        variant: 'destructive',
+      });
       return;
     }
     if (relacion === 'Otro' && !relacionOtro.trim()) {
