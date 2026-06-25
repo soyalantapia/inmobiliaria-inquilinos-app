@@ -226,17 +226,17 @@ function CrearMiembroDialog({
         <div className="space-y-3">
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label className="text-xs">Nombre</Label>
-              <Input value={nombre} onChange={(e) => setNombre(e.target.value)} />
+              <Label htmlFor="eq-nombre" className="text-xs">Nombre</Label>
+              <Input id="eq-nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Apellido</Label>
-              <Input value={apellido} onChange={(e) => setApellido(e.target.value)} />
+              <Label htmlFor="eq-apellido" className="text-xs">Apellido</Label>
+              <Input id="eq-apellido" value={apellido} onChange={(e) => setApellido(e.target.value)} />
             </div>
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs">Email (su usuario para entrar)</Label>
-            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="nombre@inmobiliaria.com" />
+            <Label htmlFor="eq-email" className="text-xs">Email (su usuario para entrar)</Label>
+            <Input id="eq-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="nombre@inmobiliaria.com" />
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs">Rol</Label>
@@ -255,12 +255,12 @@ function CrearMiembroDialog({
             <p className="text-[11px] text-muted-foreground">{ROL_DESCRIPCION[rol]}</p>
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs">Contraseña inicial</Label>
-            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" placeholder="Mínimo 6 caracteres" />
+            <Label htmlFor="eq-password" className="text-xs">Contraseña inicial</Label>
+            <Input id="eq-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" placeholder="Mínimo 6 caracteres" />
             <p className="text-[11px] text-muted-foreground">Se la pasás a la persona; después puede cambiarla.</p>
           </div>
           {error && (
-            <p className="rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive">{error}</p>
+            <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive">{error}</p>
           )}
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => onOpenChange(false)} disabled={guardando}>

@@ -1221,7 +1221,9 @@ export function useDashboard(): DashboardData {
     enMora,
     comisionMes,
     aRendirMes,
-    contratosActivos: activos.length,
+    // El CONTEO no excluye PROPIETARIO_DIRECTO (sí es un contrato activo) → coincide
+    // con /contratos. La exclusión de PD es solo para los agregados $$ (cobrado/mora).
+    contratosActivos: contratos.filter((c) => c.estado === 'ACTIVO').length,
     ocupacionPct,
     reclamosAbiertos,
     cobrabilidadPct,

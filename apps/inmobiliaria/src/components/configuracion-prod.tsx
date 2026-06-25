@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { Building2, Landmark, Lock, ShieldCheck, Sparkles } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@llave/ui/button';
@@ -176,7 +176,7 @@ function EmpresaCard() {
           <Field label="Código postal" value={form.direccionCp} onChange={set('direccionCp')} />
         </div>
         {error && (
-          <p className="rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive">{error}</p>
+          <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive">{error}</p>
         )}
         <div className="flex justify-end">
           <Button onClick={guardar} disabled={guardando}>
@@ -258,7 +258,7 @@ function CuentaCobranzaCard() {
           <Field label="CUIT del titular" value={form.cuit} onChange={set('cuit')} placeholder="30-XXXXXXXX-X" />
         </div>
         {error && (
-          <p className="rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive">{error}</p>
+          <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive">{error}</p>
         )}
         <div className="flex items-center justify-between gap-2">
           <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
@@ -286,10 +286,11 @@ function Field({
   placeholder?: string;
   inputMode?: 'numeric' | 'text';
 }) {
+  const id = useId();
   return (
     <div className="space-y-1.5">
-      <Label className="text-xs">{label}</Label>
-      <Input value={value} onChange={onChange} placeholder={placeholder} inputMode={inputMode} />
+      <Label htmlFor={id} className="text-xs">{label}</Label>
+      <Input id={id} value={value} onChange={onChange} placeholder={placeholder} inputMode={inputMode} />
     </div>
   );
 }

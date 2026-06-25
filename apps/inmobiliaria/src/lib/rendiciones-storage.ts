@@ -90,7 +90,9 @@ export function marcarRendido(input: {
 }): Rendicion {
   const comisionMonto = Math.round(input.montoBruto * (input.comisionPct / 100));
   const totalGastos = (input.gastos ?? []).reduce((s, g) => s + g.monto, 0);
-  const montoNeto = input.montoBruto - comisionMonto - totalGastos;
+  // Nunca negativo (gastos > bruto−comisión): el preview del dialog ya clampa a 0,
+  // y el path API rechaza con 409 — espejamos acá para no persistir/mostrar negativos.
+  const montoNeto = Math.max(0, input.montoBruto - comisionMonto - totalGastos);
   const rendicion: Rendicion = {
     id: `rend_${Date.now().toString(36)}`,
     propietarioId: input.propietarioId,

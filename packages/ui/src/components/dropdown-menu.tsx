@@ -43,7 +43,12 @@ export function DropdownMenu({ children }: { children: React.ReactNode }) {
       setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
+      if (e.key === 'Escape') {
+        setOpen(false);
+        // Devolver el foco al trigger (WCAG menu button): si no, el foco cae al
+        // body y el usuario de teclado retoma desde el inicio del documento.
+        triggerRef.current?.focus();
+      }
     };
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
@@ -136,7 +141,7 @@ interface DropdownMenuItemProps extends React.ButtonHTMLAttributes<HTMLButtonEle
 
 export const DropdownMenuItem = React.forwardRef<HTMLButtonElement, DropdownMenuItemProps>(
   ({ className, onClick, inset, ...props }, ref) => {
-    const { setOpen } = useDropdown();
+    const { setOpen, triggerRef } = useDropdown();
     return (
       <button
         ref={ref}
@@ -145,6 +150,7 @@ export const DropdownMenuItem = React.forwardRef<HTMLButtonElement, DropdownMenu
         onClick={(e) => {
           onClick?.(e);
           setOpen(false);
+          triggerRef.current?.focus();
         }}
         className={cn(
           'flex w-full cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground disabled:pointer-events-none disabled:opacity-50',

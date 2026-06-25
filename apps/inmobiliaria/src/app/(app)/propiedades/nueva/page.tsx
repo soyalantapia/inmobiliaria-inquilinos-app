@@ -629,6 +629,7 @@ function NuevaPropiedadForm() {
                     <button
                       type="button"
                       onClick={() => setConDivision((v) => !v)}
+                      aria-pressed={conDivision}
                       className={`rounded-md border px-2.5 py-1 text-xs transition-colors ${
                         conDivision
                           ? 'border-primary bg-primary/10 text-primary'
@@ -696,6 +697,7 @@ function NuevaPropiedadForm() {
                       {conDivision ? (
                         <div className="relative">
                           <Input
+                            aria-label="Porcentaje de participación del propietario"
                             value={slot.porcentaje.toString()}
                             onChange={(e) =>
                               actualizarSlot(slot.rowId, {
@@ -756,6 +758,7 @@ function NuevaPropiedadForm() {
                 <button
                   type="button"
                   onClick={() => setContratoActivado((v) => !v)}
+                  aria-expanded={contratoActivado}
                   className="flex w-full items-center justify-between gap-2 p-5 text-left"
                 >
                   <div className="flex items-center gap-2">
