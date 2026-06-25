@@ -473,6 +473,12 @@ export default function ProfesionalesAdminPage() {
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
                             onClick={() => setEliminando(p)}
+                            disabled={(reclamosActivosPorProf[p.id] ?? 0) > 0}
+                            title={
+                              (reclamosActivosPorProf[p.id] ?? 0) > 0
+                                ? 'Tiene reclamos activos asignados — reasignalos antes de eliminar'
+                                : undefined
+                            }
                             className="text-destructive focus:text-destructive"
                           >
                             <Trash2 className="mr-2 h-3.5 w-3.5" />

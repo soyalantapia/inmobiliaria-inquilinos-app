@@ -794,8 +794,11 @@ export const propietariosMock: Propietario[] = [
     notas: 'Pide rendición los días 10 de cada mes. Prefiere WhatsApp.',
     createdAt: '2024-08-15',
     propiedadesIds: ['prp_001'],
-    totalCobradoMes: 572000,
-    totalRecibirMes: 526240,
+    // Su contrato (cnt_001) está VENCIDO → la inmo NO cobró, no hay nada "a rendir".
+    // En 0 para no inflar el KPI de /propietarios ni habilitar Rendir sobre plata
+    // no recibida (igual que own_004 PROPIETARIO_DIRECTO y own_005 BORRADOR).
+    totalCobradoMes: 0,
+    totalRecibirMes: 0,
     afip: {
       conectado: true,
       condicionFiscal: 'MONOTRIBUTO',
@@ -845,8 +848,9 @@ export const propietariosMock: Propietario[] = [
     notas: 'Cuenta nueva — falta CBU. Reclamar en la próxima rendición.',
     createdAt: '2025-02-20',
     propiedadesIds: ['prp_003'],
-    totalCobradoMes: 510000,
-    totalRecibirMes: 469200,
+    // Contrato cnt_003 VENCIDO → no cobrado → nada a rendir (mismo criterio que own_001).
+    totalCobradoMes: 0,
+    totalRecibirMes: 0,
   },
   {
     id: 'own_004',

@@ -226,6 +226,10 @@ export function BandejaAprobaciones() {
         onClose={() => {
           transitioningToPin.current = false;
           setShowPin(false);
+          // Limpiar el estado que abre los ConfirmDialog: si no, al cancelar el
+          // PIN reaparece el diálogo de aprobar/rechazar.
+          setAprobar_(null);
+          setRechazar_(null);
         }}
         onConfirmado={(pin) => onPinConfirmado(pin)}
       />

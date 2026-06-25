@@ -38,6 +38,10 @@ export function calcularDashboardStats(
   const activos = contratosMock.filter(
     (c) => c.estado === 'ACTIVO' && c.modoCobranza !== 'PROPIETARIO_DIRECTO',
   );
+  // El CONTEO de contratos activos NO excluye PROPIETARIO_DIRECTO (sí es un
+  // contrato activo, aunque su plata no la cobre la inmo) → así coincide con
+  // el contador de /contratos. La exclusión de PD es solo para los agregados $$.
+  const todosActivos = contratosMock.filter((c) => c.estado === 'ACTIVO');
 
   const cobrado = activos
     .filter((c) => c.estadoPagoActual === 'PAGADO')
@@ -74,7 +78,7 @@ export function calcularDashboardStats(
     enMora,
     comisionMes,
     aRendirMes,
-    contratosActivos: activos.length,
+    contratosActivos: todosActivos.length,
     ocupacionPct,
     reclamosAbiertos,
     cobrabilidadPct,

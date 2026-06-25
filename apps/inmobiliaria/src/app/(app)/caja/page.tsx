@@ -269,6 +269,9 @@ export default function CajaPage() {
         onClose={() => {
           transitioningToPin.current = false;
           setShowPin(false);
+          // Limpiar `eliminando` también: si no, ConfirmDialog (open={!!eliminando})
+          // reaparece al cancelar el PIN.
+          setEliminando(null);
         }}
         onConfirmado={(pin) => handleEliminar(pin)}
       />
