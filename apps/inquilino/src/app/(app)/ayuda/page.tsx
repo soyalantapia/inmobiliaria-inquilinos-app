@@ -422,6 +422,7 @@ function TerminoRow({
   return (
     <button
       type="button"
+      aria-expanded={expandido}
       onClick={() => setExpandido((v) => !v)}
       className="block w-full p-4 text-left transition-colors hover:bg-muted/40"
     >

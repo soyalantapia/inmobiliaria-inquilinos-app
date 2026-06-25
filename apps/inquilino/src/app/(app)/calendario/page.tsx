@@ -122,7 +122,7 @@ function CalendarioDemo() {
                 <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   Tu próximo evento
                 </p>
-                <p className="text-base font-semibold leading-tight">{proximo.titulo}</p>
+                <p className="line-clamp-2 break-words text-base font-semibold leading-tight">{proximo.titulo}</p>
                 <p className="text-xs text-muted-foreground">
                   {formatFechaCorta(proximo.fecha)} · {diasDesdeHoy(proximo.fecha)}
                 </p>

@@ -751,8 +751,12 @@ function FotoPicker({
 function defaultFecha(): string {
   const d = new Date();
   d.setHours(d.getHours() + 24); // mañana misma hora
-  d.setMinutes(0);
-  return d.toISOString().slice(0, 16);
+  d.setMinutes(0, 0, 0);
+  // Un <input type="datetime-local"> interpreta su value como hora LOCAL.
+  // toISOString() devuelve UTC, así que en AR (UTC-3) prefilleaba +3h (y cerca
+  // de medianoche saltaba de día). Construimos el string en hora local.
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
 function _unusedToShush(_: typeof CheckCircle2 | typeof MapPin | typeof Clock) {}

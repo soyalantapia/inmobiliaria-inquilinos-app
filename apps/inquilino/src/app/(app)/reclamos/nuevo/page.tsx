@@ -315,8 +315,8 @@ export default function NuevoReclamoPage() {
               sonaba a regaño antes de tocar el campo (P9 de la auditoría). */}
           {descripcion.length > 0 && (
             <p className={`text-xs ${descripcion.length >= 950 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}>
-              {descripcion.length < 10
-                ? `Mínimo 10 caracteres (te faltan ${10 - descripcion.length})`
+              {descripcion.trim().length < 10
+                ? `Mínimo 10 caracteres (te faltan ${10 - descripcion.trim().length})`
                 : `${descripcion.length}/1000`}
             </p>
           )}
@@ -358,6 +358,8 @@ export default function NuevoReclamoPage() {
               id="foto"
               type="file"
               accept="image/*"
+              aria-invalid={!!errorFoto}
+              aria-describedby={errorFoto ? 'foto-error' : undefined}
               className="hidden"
               onChange={(e) => {
                 const f = e.target.files?.[0];
@@ -366,7 +368,7 @@ export default function NuevoReclamoPage() {
             />
           </label>
         )}
-        {errorFoto && <p className="text-xs text-destructive">{errorFoto}</p>}
+        {errorFoto && <p id="foto-error" role="alert" className="text-xs text-destructive">{errorFoto}</p>}
 
         {/* Urgencia: 2x2 grid SIEMPRE (también en mobile angosto).
             Antes era `grid-cols-1 sm:grid-cols-2` y en mobile real

@@ -12,8 +12,12 @@ const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
 
 export const metadata: Metadata = {
   title: 'My Alquiler',
-  description: 'Pagá tu alquiler y expensas, chateá con tu contrato.',
-  manifest: '/manifest.webmanifest',
+  description: 'Pagá tu alquiler y expensas, hacé reclamos y seguí tu contrato.',
+  // El CONTENIDO del manifest lo genera app/manifest.ts (con basePath). El LINK,
+  // en cambio, Next lo emite con el path crudo del campo `manifest` SIN aplicar
+  // basePath, así que lo prefijamos a mano. NEXT_PUBLIC_BASE_PATH solo está
+  // seteado en el static export (vacío en dev/Railway).
+  manifest: (process.env.NEXT_PUBLIC_BASE_PATH ?? '') + '/manifest.webmanifest',
   appleWebApp: { capable: true, title: 'My Alquiler', statusBarStyle: 'default' },
 };
 

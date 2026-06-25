@@ -17,6 +17,7 @@
  */
 
 import { liquidacionesMock, contratoMock } from './mock-data';
+import { parseLocal } from './format';
 
 export type NivelHistorial = 'EXCELENTE' | 'BUENO' | 'REGULAR' | 'NUEVO';
 
@@ -104,7 +105,10 @@ function calcularHistorial(): CertificadoInquilino['historial'] {
   // vencieron hasta hoy. Pagadas = las que están con estado PAGADO.
   const ahora = Date.now();
   const liqsVencidas = liquidacionesMock.filter(
-    (l) => new Date(l.fechaVencimiento).getTime() <= ahora,
+    // parseLocal (no `new Date('YYYY-MM-DD')` UTC): así una cuota cuenta como
+    // vencida desde su medianoche LOCAL, no 3h antes en UTC-3. Mismo criterio que
+    // calcularPunitorios y diasHastaVencimiento.
+    (l) => parseLocal(l.fechaVencimiento).getTime() <= ahora,
   );
   const cuotasTotales = liqsVencidas.length;
   const pagadas = liqsVencidas.filter((l) => l.estado === 'PAGADO').length;
@@ -173,7 +177,9 @@ export function generarCertificado(): CertificadoInquilino {
     email: 'mariela.sosa@gmail.com',
     telefono: '+54 9 11 4321 9876',
   };
-  const inicio = new Date(contratoMock.fechaInicio);
+  // parseLocal (no `new Date('YYYY-MM-DD')`, que parsea en UTC y en UTC-3 cae al
+  // mes anterior → mesesCumplidos inflado en 1).
+  const inicio = parseLocal(contratoMock.fechaInicio);
   const meses =
     (new Date().getFullYear() - inicio.getFullYear()) * 12 +
     (new Date().getMonth() - inicio.getMonth());
@@ -202,7 +208,11 @@ export function generarCertificado(): CertificadoInquilino {
   // URL pública: en demo apunta al mismo origin para que se pueda
   // probar local + GH Pages. En producción es myalquiler.com.ar/verificar.
   const origin = typeof window !== 'undefined' ? window.location.origin : 'https://myalquiler.com.ar';
-  const urlVerificacion = `${origin}/verificar/${hash}`;
+  // En el export estático (GH Pages) la app vive bajo un basePath que origin NO
+  // incluye → el link compartido daba 404. NEXT_PUBLIC_BASE_PATH se setea solo en
+  // ese build (vacío en dev/Railway, así que el link queda igual que antes).
+  const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
+  const urlVerificacion = `${origin}${basePath}/verificar/${hash}`;
 
   return {
     hash,

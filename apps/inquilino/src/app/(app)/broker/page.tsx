@@ -262,7 +262,7 @@ function BrokerDemo() {
         id: `a_${Date.now()}`,
         rol: 'ASSISTANT',
         contenido:
-          `Podés regularizarlo desde "Pagar ahora" en el inicio. Tenés dos opciones: ` +
+          `Podés regularizarlo desde "Ponerte al día" en el inicio. Tenés dos opciones: ` +
           `pagar el saldo completo (${formatMonto(estadoPago.totalAPagar)}) y quedar al día, o pagar un parcial y completar después. ` +
           `Apenas subís el comprobante, la inmobiliaria lo valida y se actualiza tu estado.`,
         createdAt: new Date().toISOString(),

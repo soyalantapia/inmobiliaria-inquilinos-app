@@ -445,7 +445,7 @@ export const respuestasMock: Array<{ patron: RegExp; respuesta: string; citas?: 
   {
     patron: /aumento|ajust|icl/i,
     respuesta:
-      'Tu contrato se ajusta cada 12 meses según el índice ICL del BCRA. El próximo ajuste es el 1° de septiembre de 2026.',
+      'Tu contrato se ajusta cada 12 meses según el índice ICL del BCRA. El próximo ajuste es el 1° de junio de 2026.',
     citas: [
       {
         clausula: 'Cláusula 4ª — Ajuste',

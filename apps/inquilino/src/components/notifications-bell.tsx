@@ -347,6 +347,8 @@ export function NotificationsBell() {
   const [leidas, setLeidas] = useState<Set<string>>(new Set());
   const [hidratado, setHidratado] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     setLeidas(leerLeidas());
@@ -355,13 +357,32 @@ export function NotificationsBell() {
 
   useEffect(() => {
     if (!open) return;
+    // Al abrir, el foco entra al diálogo (aria-haspopup="dialog" lo implica);
+    // antes quedaba en el botón campana y el lector de pantalla no anunciaba el
+    // popover ni ocultaba el fondo.
+    dialogRef.current?.focus();
     const onClick = (e: MouseEvent) => {
       if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
         setOpen(false);
       }
     };
+    // Escape cierra el popover (declaramos aria-haspopup="dialog" → el teclado
+    // espera poder cerrarlo con Escape).
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setOpen(false);
+        // Devolver el foco al botón que abrió el diálogo (a11y de diálogo): sin
+        // esto, al cerrar con Escape el foco caía a document.body y el teclado
+        // reiniciaba la navegación desde el tope de la página.
+        triggerRef.current?.focus();
+      }
+    };
     document.addEventListener('mousedown', onClick);
-    return () => document.removeEventListener('mousedown', onClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onClick);
+      document.removeEventListener('keydown', onKey);
+    };
   }, [open]);
 
   // Recalcular al abrir (por si cambió algo en otra pestaña / ruta)
@@ -382,6 +403,7 @@ export function NotificationsBell() {
   return (
     <div className="relative" ref={popoverRef}>
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen((v) => !v)}
         className="relative rounded-full p-2 hover:bg-muted"
@@ -398,7 +420,7 @@ export function NotificationsBell() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-12 z-50 w-[calc(100vw-2.5rem)] max-w-sm rounded-lg border bg-popover shadow-lg">
+        <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Notificaciones" className="absolute right-0 top-12 z-50 w-[calc(100vw-2.5rem)] max-w-sm rounded-lg border bg-popover shadow-lg focus:outline-none">
           <div className="flex items-center justify-between border-b p-3">
             <p className="text-sm font-semibold">Notificaciones</p>
             {unread > 0 && (

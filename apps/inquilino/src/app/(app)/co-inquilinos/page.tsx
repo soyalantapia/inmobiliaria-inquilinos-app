@@ -35,10 +35,18 @@ export default function CoInquilinosPage() {
   const { coInquilinos, cargando, deApi, aceptar, cambiarPermiso, eliminar, regenerarLink } =
     useCoInquilinos();
   const [eliminando, setEliminando] = useState<CoInquilino | null>(null);
+  // En demo `coInquilinos` se deriva de localStorage en cada render. Aceptar y
+  // cambiar permiso escriben el storage pero no cambian estado del componente, y
+  // el invalidateQueries del hook no re-renderiza una query deshabilitada → la
+  // card quedaba stale (seguía "Pendiente" / con el permiso viejo) hasta recargar.
+  // Bumpeamos este tick tras esas mutaciones. (Eliminar ya re-renderiza vía
+  // setEliminando(null).)
+  const [, refrescar] = useState(0);
 
   const handleAceptar = async (id: string) => {
     try {
       await aceptar(id);
+      refrescar((n) => n + 1);
       toast({ title: deApi ? 'Invitación aceptada' : 'Aceptado (simulación)' });
     } catch {
       toast({
@@ -64,6 +72,7 @@ export default function CoInquilinosPage() {
   const handleCambiarPermiso = async (id: string, p: PermisoCoInquilino) => {
     try {
       await cambiarPermiso(id, p);
+      refrescar((n) => n + 1);
       toast({ title: 'Permiso actualizado' });
     } catch {
       toast({ title: 'No se pudo actualizar el permiso', variant: 'destructive' });
@@ -180,8 +189,12 @@ function CoInquilinoCard({
   onAceptar: () => void;
   onCompartir: () => void;
   onEliminar: () => void;
-  onCambiarPermiso: (p: PermisoCoInquilino) => void;
+  onCambiarPermiso: (p: PermisoCoInquilino) => void | Promise<void>;
 }) {
+  // Guard anti doble-PATCH: en prod, tocar otro permiso antes de que resuelva el
+  // PATCH anterior disparaba dos requests concurrentes. Deshabilitamos los botones
+  // mientras hay un cambio en vuelo.
+  const [cambiando, setCambiando] = useState(false);
   return (
     <Card className="space-y-3 p-4">
       <div className="flex items-start gap-3">
@@ -247,11 +260,20 @@ function CoInquilinoCard({
               key={p}
               type="button"
               aria-pressed={co.permiso === p}
-              // No re-disparamos la API si ya es el permiso actual (evita un
-              // cambio "accidental" / llamada redundante por re-tap en mobile).
-              onClick={() => co.permiso !== p && onCambiarPermiso(p)}
+              disabled={cambiando}
+              // No re-disparamos la API si ya es el permiso actual (re-tap en
+              // mobile) ni si ya hay un cambio en vuelo (PATCH concurrentes).
+              onClick={async () => {
+                if (co.permiso === p || cambiando) return;
+                setCambiando(true);
+                try {
+                  await onCambiarPermiso(p);
+                } finally {
+                  setCambiando(false);
+                }
+              }}
               className={cn(
-                'min-h-[40px] rounded-md border px-2 py-2 text-xs font-medium transition-colors',
+                'min-h-[40px] rounded-md border px-2 py-2 text-xs font-medium transition-colors disabled:opacity-60',
                 co.permiso === p
                   ? 'border-primary bg-primary/10 text-primary'
                   : 'border-border hover:bg-muted/40',

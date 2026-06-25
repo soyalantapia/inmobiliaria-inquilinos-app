@@ -1,17 +1,16 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { Button } from '@llave/ui/button';
 import { Card, CardContent } from '@llave/ui/card';
 
 export default function NotFound() {
-  const [pathname, setPathname] = useState('');
-
-  useEffect(() => {
-    setPathname(window.location.pathname);
-  }, []);
+  // usePathname da el pathname desde el PRIMER render del cliente (sin efecto),
+  // evitando el flash del 404 genérico antes de la vista contextual de
+  // /verificar/ y /garantes/ (links públicos compartidos con terceros).
+  const pathname = usePathname() ?? '';
 
   const esCertificado = pathname.startsWith('/verificar/');
   const esGarante = pathname.startsWith('/garantes/');
@@ -93,7 +92,7 @@ export default function NotFound() {
   }
 
   return (
-    <main className="flex flex-1 flex-col items-center justify-center px-6 text-center">
+    <main className="flex min-h-screen flex-col items-center justify-center px-6 text-center">
       <p className="text-6xl font-bold text-primary">404</p>
       <p className="mt-2 text-muted-foreground">No encontramos esta página.</p>
       <Button asChild className="mt-6">

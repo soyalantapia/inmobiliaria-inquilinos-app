@@ -20,6 +20,7 @@ import {
   generarCertificado,
 } from '@/lib/certificado-inquilino';
 import { formatFecha, formatMonto } from '@/lib/format';
+import { VerificadoFecha } from './verificado-fecha';
 
 // Mismo criterio que `apiEnabled` de '@/lib/api/client', pero calculado acá
 // para no importar un módulo 'use client' dentro de este server component.
@@ -153,8 +154,8 @@ export default function VerificarCertificadoPage({
                   Certificado válido
                 </p>
                 <p className="text-xs text-emerald-900/80 dark:text-emerald-200/80">
-                  Verificado el {formatFecha(new Date().toISOString())}. Vigencia
-                  hasta {formatFecha(cert.validoHasta)}.
+                  Verificado el <VerificadoFecha />. Vigencia hasta{' '}
+                  {formatFecha(cert.validoHasta)}.
                 </p>
               </div>
               <Badge className="ml-auto bg-emerald-500 text-white">

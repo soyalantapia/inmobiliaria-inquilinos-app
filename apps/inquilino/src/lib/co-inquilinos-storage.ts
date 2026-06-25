@@ -27,7 +27,10 @@ export function listarCoInquilinos(): CoInquilino[] {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
-    return JSON.parse(raw) as CoInquilino[];
+    // Array.isArray: un valor no-array (storage corrupto) crashea la pantalla
+    // al iterar; mismo guard que el resto de los lectores del repo.
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as CoInquilino[]) : [];
   } catch {
     return [];
   }

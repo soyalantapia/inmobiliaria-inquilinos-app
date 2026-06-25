@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
@@ -193,6 +193,8 @@ export function Onboarding() {
     router.push(slide.cta.href);
   };
 
+  const closeBtnRef = useRef<HTMLButtonElement>(null);
+
   // Bloquear scroll del body cuando está abierto
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -200,6 +202,20 @@ export function Onboarding() {
     return () => {
       document.body.style.overflow = '';
     };
+  }, [open]);
+
+  // A11y de modal: al abrir, el foco entra al overlay (botón Saltar) y Escape
+  // cierra. Antes era un <div> sin role/foco → el teclado y los lectores de
+  // pantalla seguían sobre el contenido de fondo.
+  useEffect(() => {
+    if (!open || typeof document === 'undefined') return;
+    closeBtnRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') cerrar();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   if (!open) return null;
@@ -210,9 +226,15 @@ export function Onboarding() {
   const esPrimero = step === 0;
 
   return (
-    <div className="fixed inset-0 z-50 flex animate-fade-in flex-col items-center justify-center bg-background/95 p-6 backdrop-blur md:p-10">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="onboarding-title"
+      className="fixed inset-0 z-50 flex animate-fade-in flex-col items-center justify-center bg-background/95 p-6 backdrop-blur md:p-10"
+    >
       {/* Saltar */}
       <button
+        ref={closeBtnRef}
         type="button"
         onClick={cerrar}
         className="absolute right-4 top-4 rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
@@ -237,7 +259,7 @@ export function Onboarding() {
           <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
             Paso {step + 1} de {STEPS.length}
           </p>
-          <h2 className="text-2xl font-bold leading-tight md:text-3xl">{slide.titulo}</h2>
+          <h2 id="onboarding-title" className="text-2xl font-bold leading-tight md:text-3xl">{slide.titulo}</h2>
           <p className="text-sm text-muted-foreground md:text-base">{slide.descripcion}</p>
         </div>
 

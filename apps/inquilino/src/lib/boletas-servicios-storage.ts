@@ -129,18 +129,9 @@ export const ESTADO_LABEL: Record<EstadoBoleta, string> = {
 
 export const TAMANIO_MAX = 2 * 1024 * 1024;
 
-/**
- * Convierte "2026-04" → "Abr 2026". Capitalizamos manualmente porque
- * toLocaleDateString en es-AR devuelve "abr" en minúscula, y "Luz · abr 2026"
- * se leía como typo en la lista.
- */
-export function formatPeriodo(periodo: string): string {
-  const [anio, mes] = periodo.split('-');
-  if (!anio || !mes) return periodo;
-  const fecha = new Date(parseInt(anio, 10), parseInt(mes, 10) - 1, 1);
-  const raw = fecha.toLocaleDateString('es-AR', { month: 'short', year: 'numeric' });
-  return raw.charAt(0).toUpperCase() + raw.slice(1);
-}
+// `formatPeriodo` vive en @/lib/format (única fuente, "Mayo 2026"). Antes había
+// una copia acá con formato corto ("May 2026") que hacía que el MISMO período se
+// viera distinto en /servicios vs /comprobantes.
 
 /**
  * Seed con dos boletas del mes pasado pagadas + una del mes actual

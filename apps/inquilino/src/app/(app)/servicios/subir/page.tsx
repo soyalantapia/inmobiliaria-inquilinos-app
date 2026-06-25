@@ -20,10 +20,10 @@ import {
   type TipoServicio,
   TAMANIO_MAX,
   TIPO_LABEL,
-  formatPeriodo,
   formatTamanio,
   leerArchivoComoDataUrl,
 } from '@/lib/boletas-servicios-storage';
+import { formatPeriodo } from '@/lib/format';
 import { useBoletas } from '@/lib/api/use-servicios';
 import { apiEnabled, ApiError } from '@/lib/api/client';
 
@@ -50,6 +50,11 @@ export default function SubirBoletaPage() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const submit = async () => {
+    // Guard anti doble-submit: el botón tiene disabled={enviando}, pero Enter en
+    // un input habilitado (monto/periodo/vencimiento) dispara el onSubmit igual.
+    // Sin esto, dos Enter rápidos durante el await de leerArchivoComoDataUrl
+    // creaban dos boletas duplicadas. Mismo patrón que invitar/page.tsx.
+    if (enviando) return;
     if (!archivo) {
       toast({
         variant: 'destructive',
@@ -66,7 +71,11 @@ export default function SubirBoletaPage() {
       });
       return;
     }
-    if (!monto || parseInt(monto, 10) <= 0) {
+    // El campo acepta decimales (inputMode decimal); redondeamos a pesos enteros
+    // para GUARDAR lo mismo que se ve. Antes parseInt truncaba 1234.56 → 1234 en
+    // silencio y descuadraba los totales del año.
+    const montoNum = Math.round(parseFloat(monto));
+    if (!monto || !Number.isFinite(montoNum) || montoNum <= 0) {
       toast({
         variant: 'destructive',
         title: 'Falta el monto',
@@ -83,7 +92,7 @@ export default function SubirBoletaPage() {
       await subirBoleta({
         servicio: tipo,
         periodo,
-        monto: parseInt(monto, 10),
+        monto: montoNum,
         vencimiento: vencimiento || undefined,
         nombreArchivo: archivo.name,
         tipoMime: archivo.type || 'application/octet-stream',

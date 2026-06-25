@@ -129,26 +129,48 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
     setDecision(obtenerConfirmacion(id)?.estado ?? null);
   };
 
+  // Prod (API): el detalle se sirve del mismo GET /mis-reclamos (el inquilino no
+  // accede a /reclamos/:id). Mientras carga dejamos `undefined` (skeleton); una
+  // vez cargado, si no aparece el id es null (no encontrado). `reclamosApi` está
+  // memoizado en el hook, así que su referencia es estable salvo cambio real.
   useEffect(() => {
-    if (deApi) {
-      // Prod: el detalle se sirve del mismo GET /mis-reclamos (el inquilino no
-      // accede a /reclamos/:id). Mientras carga dejamos `undefined` (skeleton);
-      // una vez cargado, si no aparece el id es null (no encontrado).
-      if (cargandoApi) {
-        setReclamo(undefined);
-        return;
-      }
-      setReclamo(reclamosApi.find((r) => r.id === id) ?? null);
+    if (!deApi) return;
+    if (cargandoApi) {
+      setReclamo(undefined);
       return;
     }
-    recargar(id);
-    // recargar es estable porque no usa nada del scope externo del effect.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setReclamo(reclamosApi.find((r) => r.id === id) ?? null);
   }, [id, deApi, cargandoApi, reclamosApi]);
 
+  // Demo: leemos el reclamo de localStorage al montar / cambiar de id. NO
+  // dependemos de `reclamosApi`: en demo el hook devuelve un array NUEVO en cada
+  // render (sin memo), y como `recargar` hace setReclamo({...}) con un objeto
+  // nuevo, tenerlo en las deps disparaba un loop infinito de renders ("Maximum
+  // update depth exceeded"). Las mutaciones de la página refrescan llamando a
+  // `recargar` directo (enviar mensaje / confirmar), no por este effect.
   useEffect(() => {
-    scrollEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }, [reclamo?.eventos.length]);
+    if (deApi) return;
+    recargar(id);
+    // recargar es estable: solo usa `id`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, deApi]);
+
+  // Auto-scroll al final del timeline SOLO cuando se agrega un evento nuevo
+  // (mensaje enviado) DENTRO del mismo reclamo, no al abrir el detalle. Trackeamos
+  // {id, len}: al cambiar de `id` (la ruta [id] reusa la instancia en navegación
+  // id→id, p.ej. desde el bell o /calendario) o en el mount, memorizamos sin
+  // scrollear; antes el ref no se reseteaba al cambiar de id y volvía a saltar al
+  // fondo, ocultando el header/resumen.
+  const prevEventos = useRef<{ id: string; len: number } | null>(null);
+  useEffect(() => {
+    const len = reclamo?.eventos.length;
+    if (len == null) return;
+    const prev = prevEventos.current;
+    if (prev != null && prev.id === id && len > prev.len) {
+      scrollEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }
+    prevEventos.current = { id, len };
+  }, [id, reclamo?.eventos.length]);
 
   const Icon = useMemo(
     () => (reclamo ? categoriaIcono[reclamo.categoria] : null),
@@ -255,6 +277,13 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
       setReclamo(updated);
       setBorrador('');
       toast({ title: 'Mensaje enviado' });
+    } else {
+      // write falló (cuota de localStorage llena): no limpiamos el borrador.
+      toast({
+        variant: 'destructive',
+        title: 'No se pudo guardar el mensaje',
+        description: 'El almacenamiento local está lleno. Probá liberar espacio.',
+      });
     }
   };
 
@@ -277,13 +306,21 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
     // Demo: la decisión vive en localStorage + un mensaje en el timeline para
     // que quede registro humano del momento en que el inquilino dio el OK.
     marcarConforme(reclamo.id);
-    agregarMensajeDelInquilino(
+    const okConforme = agregarMensajeDelInquilino(
       reclamo.id,
       inquilinoActual.nombre,
       '✅ Confirmo que el problema está resuelto. Gracias.',
     );
     recargar(reclamo.id);
-    toast({ title: 'Confirmado', description: 'Marcamos el reclamo como resuelto.' });
+    toast(
+      okConforme
+        ? { title: 'Confirmado', description: 'Marcamos el reclamo como resuelto.' }
+        : {
+            variant: 'destructive',
+            title: 'Confirmado, pero…',
+            description: 'No pudimos guardar la nota en el historial (almacenamiento lleno).',
+          },
+    );
   };
 
   const confirmarPersiste = async () => {
@@ -308,7 +345,7 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
       return;
     }
     marcarPersiste(reclamo.id, detalle);
-    agregarMensajeDelInquilino(
+    const okPersiste = agregarMensajeDelInquilino(
       reclamo.id,
       inquilinoActual.nombre,
       `⚠️ El problema sigue: ${detalle}`,
@@ -316,15 +353,22 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
     setPersisteOpen(false);
     setPersisteTexto('');
     recargar(reclamo.id);
-    toast({
-      variant: 'default',
-      title: 'Le avisamos a la inmobiliaria',
-      description: 'Vamos a coordinar una nueva visita.',
-    });
+    toast(
+      okPersiste
+        ? {
+            variant: 'default',
+            title: 'Le avisamos a la inmobiliaria',
+            description: 'Vamos a coordinar una nueva visita.',
+          }
+        : {
+            variant: 'destructive',
+            title: 'Le avisamos, pero…',
+            description: 'No pudimos guardar la nota en el historial (almacenamiento lleno).',
+          },
+    );
   };
 
   const resuelto = reclamo.estado === 'RESUELTO';
-  const cerrado = reclamo.estado === 'CERRADO' || resuelto || reclamo.estado === 'RECHAZADO';
 
   // Decisión del inquilino sobre el cierre. En prod sale del API (la confirmación
   // persistida); en demo, del estado local que setea `recargar` desde localStorage.
@@ -333,6 +377,14 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
   const decisionActual: DecisionInquilino | null = deApi
     ? (reclamo.confirmacionInquilino?.estado ?? null)
     : decision;
+
+  // PERSISTE re-abre el reclamo: en demo el estado queda RESUELTO (marcarPersiste
+  // solo escribe en confirmaciones-reclamo), así que sin excluir PERSISTE el footer
+  // "está cerrado, creá uno nuevo" aparecía a la vez que la card "Reportaste que
+  // sigue" y se ocultaba el composer. Excluyéndolo, las tres condiciones cuadran.
+  const cerrado =
+    (reclamo.estado === 'CERRADO' || resuelto || reclamo.estado === 'RECHAZADO') &&
+    decisionActual !== 'PERSISTE';
 
   // Comentar en el reclamo (composer) sigue siendo demo-only: no hay endpoint
   // para que el inquilino sume mensajes al timeline en prod. Confirmar resolución
@@ -464,7 +516,9 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
             reclamo.profesionalAsignadoNombre.split(' ')[0] ??
             reclamo.profesionalAsignadoNombre;
           const mensajeWA = encodeURIComponent(
-            `Hola ${nombrePila}! Soy ${inquilinoActual.nombre.split(' ')[0]}, ` +
+            // reclamo.inquilino = nombre REAL en prod (mapReclamo→user.fullName),
+            // mock en demo. Antes usaba el mock "Mariela" también en prod.
+            `Hola ${nombrePila}! Soy ${reclamo.inquilino.split(' ')[0]}, ` +
               `inquilino/a en ${reclamo.direccion}. La inmobiliaria te asignó mi ` +
               `reclamo de ${(reclamo.profesionalAsignadoCategoria ?? '').toLowerCase()}: ` +
               `${reclamo.descripcion}. ¿Cuándo podés pasar?`,
@@ -707,7 +761,9 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
           <Card role="log" aria-label="Historial y mensajes del reclamo" aria-live="polite" className="p-5">
             <ReclamoTimeline
               eventos={eventosUnificados}
-              inquilinoNombre={inquilinoActual.nombre}
+              // reclamo.inquilino = nombre real en prod, para que esPropio
+              // (ev.autor === inquilinoNombre) marque bien los mensajes propios.
+              inquilinoNombre={reclamo.inquilino}
             />
             <div ref={scrollEndRef} />
           </Card>

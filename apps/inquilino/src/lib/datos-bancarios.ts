@@ -36,9 +36,10 @@ export const datosBancariosMock: DatosBancarios = {
   cbu: '0070099120000031234560',
   alias: 'inmosol.alquileres',
   proximoCambio: {
-    // Sincronizado con el anuncio "Nuevo CBU vigente desde 01/06" del
-    // feed de inmobiliaria (anuncios-cross-app.ts:97).
-    fechaDesde: '2026-06-01',
+    // Fecha FUTURA para que el banner "OJO: a partir de X usá estos datos" se
+    // vea en la demo (proximoCambioVigente sólo lo devuelve si fechaDesde > hoy).
+    // Sincronizado con el anuncio "Nuevo CBU vigente desde 01/07" del feed inmo.
+    fechaDesde: '2026-07-01',
     cbu: '0070100120000018273645',
     alias: 'delsol.cobranzas',
     motivo: 'Cambio de cuenta de cobranzas',

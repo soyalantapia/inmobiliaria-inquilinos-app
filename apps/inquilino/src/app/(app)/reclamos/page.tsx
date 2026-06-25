@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { CheckCircle2, Plus, Wrench, X } from 'lucide-react';
@@ -22,7 +22,7 @@ import {
 } from '@/lib/reclamos-config';
 import type { Reclamo } from '@/lib/types';
 
-export default function MisReclamosPage() {
+function MisReclamosInner() {
   const searchParams = useSearchParams();
   const idNuevo = searchParams?.get('nuevo') ?? null;
   // Datos reales del API (o storage local en demo). `cargando` controla el
@@ -307,5 +307,16 @@ function ListaSkeleton() {
         </div>
       ))}
     </Card>
+  );
+}
+
+// useSearchParams() (lee ?nuevo=) requiere un <Suspense> padre para que el static
+// export (GH Pages) pre-renderice la página sin romper el banner de confirmación.
+// Mismo patrón que reclamos/r/page.tsx.
+export default function MisReclamosPage() {
+  return (
+    <Suspense fallback={<ListaSkeleton />}>
+      <MisReclamosInner />
+    </Suspense>
   );
 }

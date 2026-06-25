@@ -576,6 +576,12 @@ function PasoOtp({
             aria-label={`Dígito ${idx + 1} de ${digitos.length}`}
             onChange={(e) => onDigito(idx, e.target.value)}
             onKeyDown={(e) => onKeyDown(idx, e)}
+            // Al enfocar seleccionamos el dígito existente: corregir una casilla
+            // ya llena reemplaza SOLO esa casilla (el value queda en 1 char y cae
+            // en la rama single), sin reescribir todo el código desde el índice 0.
+            // El pegado de 6 dígitos sigue funcionando: reemplaza la selección y
+            // llega multi-char a onChange → rama de distribución.
+            onFocus={(e) => e.currentTarget.select()}
             disabled={verificando}
             className={`h-14 min-w-0 flex-1 rounded-xl border-2 bg-background text-center text-xl font-bold tabular-nums shadow-sm transition-all focus:outline-none focus:ring-4 disabled:opacity-60 sm:h-16 sm:max-w-[3rem] sm:text-2xl ${
               error

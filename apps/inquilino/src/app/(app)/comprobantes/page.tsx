@@ -271,7 +271,7 @@ function RecibosDemo() {
                   return;
                 }
                 descargarCsv({
-                  filename: `comprobantes-${new Date().getFullYear()}`,
+                  filename: `comprobantes-${anioSel}`,
                   headers: ['Período', 'Fecha pago', 'Monto', 'Método'],
                   rows: cobradosDelAnio.map((c) => [
                     formatPeriodo(c.periodo),
@@ -333,7 +333,7 @@ function RecibosDemo() {
 // RECIBOS REAL (modo API) — liquidaciones del inquilino
 // ============================================================
 function RecibosReal() {
-  const { contrato } = useMiContrato();
+  const { contrato, cargando: cargandoContrato } = useMiContrato();
   const { liquidaciones, cargando, isError } = useMisLiquidaciones();
 
   const noPagadas = liquidaciones.filter((l) => l.estado !== 'PAGADO');
@@ -365,6 +365,9 @@ function RecibosReal() {
       <main className="flex-1 space-y-4 px-5 pb-6 md:px-8">
         {pagoUrgente && <PagoUrgenteCard mov={pagoUrgente} />}
 
+        {cargandoContrato && !contrato && (
+          <div className="h-[88px] animate-pulse rounded-xl border bg-muted/50" />
+        )}
         {contrato && (
           <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-primary/90 to-primary/70 p-4 text-primary-foreground shadow-md shadow-primary/10">
             <div className="relative flex items-baseline justify-between gap-2">
@@ -570,14 +573,32 @@ function MovimientoRow({ mov }: { mov: Movimiento }) {
       </div>
       <div className="flex flex-col items-end gap-1.5 shrink-0">
         <p className="text-sm font-semibold tabular-nums">{formatMonto(c.monto, c.moneda)}</p>
-        <a
-          href={c.pdfUrl}
-          download
-          className="flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"
-        >
-          <Download className="h-3 w-3" />
-          PDF
-        </a>
+        {c.pdfUrl && c.pdfUrl !== '#' ? (
+          <a
+            href={c.pdfUrl}
+            download
+            className="flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"
+          >
+            <Download className="h-3 w-3" />
+            PDF
+          </a>
+        ) : (
+          // En la demo los comprobantes mock tienen pdfUrl '#': sin este guard el
+          // link navegaba a /# (scroll al tope) sin descargar nada ni avisar.
+          <button
+            type="button"
+            onClick={() =>
+              toast({
+                title: 'Comprobante no disponible',
+                description: 'En la demo todavía no hay PDF para descargar.',
+              })
+            }
+            className="flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"
+          >
+            <Download className="h-3 w-3" />
+            PDF
+          </button>
+        )}
       </div>
     </div>
   );

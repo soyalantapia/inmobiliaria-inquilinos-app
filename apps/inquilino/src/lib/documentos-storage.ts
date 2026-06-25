@@ -94,7 +94,10 @@ export function listarDocumentos(): Documento[] {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
-    return JSON.parse(raw) as Documento[];
+    // Array.isArray: un valor no-array (storage corrupto) hacía forEach/filter
+    // tirar TypeError en el render y caer a error.tsx con "Reintentar" inútil.
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as Documento[]) : [];
   } catch {
     return [];
   }

@@ -31,7 +31,7 @@ import { Separator } from '@llave/ui/separator';
 import { toast } from '@llave/ui/use-toast';
 import { contratoMock, liquidacionesMock } from '@/lib/mock-data';
 import { datosBancariosMock, proximoCambioVigente } from '@/lib/datos-bancarios';
-import { formatMonto, formatPeriodo } from '@/lib/format';
+import { formatFecha, formatMonto, formatPeriodo } from '@/lib/format';
 import { resolverMontos } from '@/lib/punitorios';
 import {
   agregarPago,
@@ -45,6 +45,7 @@ import { cargosExtraDelInquilino } from '@/lib/cross-app-inmo';
 import { marcarVariosPagados } from '@/lib/cargos-pagados-storage';
 import { extraerComprobante, type ExtraccionIA } from '@/lib/extraccion-ia';
 import { leerSesion } from '@/lib/auth-otp';
+import { aplicarEstadoDemo, useDemoEstado } from '@/lib/demo-estado';
 import { useMiContrato, type DatosCobranza } from '@/lib/api/hooks';
 import {
   apiEnabled,
@@ -60,9 +61,21 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
   // Liquidación: API en prod (useLiquidacion → useMisLiquidaciones), mock en
   // la demo offline. La búsqueda por liqId vive dentro del hook.
   const { liquidacion: liqApi, cargando } = useLiquidacion(params.liqId);
+  // En demo aplicamos el estado del switcher (aplicarEstadoDemo) IGUAL que la
+  // pantalla de detalle, para que monto/punitorios/estado coincidan entre el CTA
+  // "Pagar $X" del detalle y este checkout. Antes el checkout leía el mock CRUDO:
+  // en 'a-tiempo' cobraba punitorios que el detalle decía no aplicar, y una liq
+  // ya PAGADA reaparecía como deuda repagable.
+  const liqBase = liquidacionesMock.find((l) => l.id === params.liqId) ?? null;
+  const [demoEstado] = useDemoEstado();
+  // Sin `?? liqBase`: en 'al-dia' aplicarEstadoDemo devuelve null → el guard
+  // `if (!liq || !calc)` muestra "No encontramos esta liquidación" (coherente con
+  // el home). Antes el fallback mostraba el mock VENCIDO repagable.
   const liq = apiEnabled
     ? liqApi
-    : (liquidacionesMock.find((l) => l.id === params.liqId) ?? null);
+    : liqBase
+      ? aplicarEstadoDemo(demoEstado, liqBase)
+      : null;
 
   const informarPago = useInformarPago();
   // Teléfono real de la inmobiliaria (sólo en prod) para el CTA de WhatsApp
@@ -77,6 +90,10 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
   const [ultimoEnviado, setUltimoEnviado] = useState<PagoInformado | null>(null);
   /** Monto que el inquilino eligió pagar AHORA (puede ser saldo o parcial). */
   const [montoElegido, setMontoElegido] = useState<number | null>(null);
+  /** En prod NO hay historial local de parciales (pagosPrevios queda []); este
+   * estado preserva el saldo remanente tras informar un parcial, para que al
+   * volver a "datos" no reaparezca el total original. */
+  const [saldoProdRestante, setSaldoProdRestante] = useState<number | null>(null);
   const [decisionInmoUltima, setDecisionInmoUltima] = useState<
     DecisionInmoSobrePago | null
   >(null);
@@ -116,11 +133,12 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
     );
   }
 
-  // En prod, si la liquidación YA está paga (validada por la inmobiliaria), no
-  // re-mostramos el formulario de pago: el flag local `completado` deriva de
-  // localStorage (vacío en prod) y antes el form reaparecía como si no se hubiera
-  // pagado. (El caso "informado, pendiente de validación" lo cubre el 409 del API.)
-  if (apiEnabled && liq.estado === 'PAGADO') {
+  // Si la liquidación YA está paga, no re-mostramos el formulario de pago. En
+  // demo (default 'atrasado') liq_002 conserva estado PAGADO, así que sin este
+  // guard el checkout dejaba "re-pagar" una deuda inexistente con punitorios
+  // recalculados. Antes el guard estaba gateado por `apiEnabled` y en demo no
+  // corría. (El caso "informado, pendiente de validación" lo cubre el 409 del API.)
+  if (liq.estado === 'PAGADO') {
     return (
       <main className="flex-1 px-5 py-10">
         <p className="text-base font-medium">Esta liquidación ya está paga. ¡Gracias!</p>
@@ -132,7 +150,10 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
   }
 
   const totalAPagar = calc.totalAPagar;
-  const saldo = saldoPendiente(params.liqId, totalAPagar);
+  const saldoBase = saldoPendiente(params.liqId, totalAPagar);
+  // En prod arrastramos el remanente tras un parcial (saldoProdRestante);
+  // saldoBase ya viene redondeado (Math.round) desde saldoPendiente.
+  const saldo = apiEnabled ? saldoProdRestante ?? saldoBase : saldoBase;
   // Alquiler vigente para el umbral del hint de negociación: en la demo es el
   // mock; en prod, el monto real del contrato (o, si no llegó, el montoAlquiler
   // de la liquidación). Nunca el mock en prod.
@@ -150,7 +171,10 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
       <header className="flex items-center gap-3 p-5">
         <button
           type="button"
-          onClick={() => router.back()}
+          // push (no back()): el home (banner + quick-action) linkea DIRECTO al
+          // checkout salteando /pago/[liqId], así que back() salía del flujo de
+          // pago. push garantiza que "Volver" siempre lleve al detalle.
+          onClick={() => router.push(`/pago/${params.liqId}`)}
           className="rounded-full p-2 hover:bg-muted"
           aria-label="Volver"
         >
@@ -257,12 +281,17 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
             // deriva del pago recién enviado (total - lo informado ahora).
             saldoRestante={
               apiEnabled
-                ? Math.max(0, totalAPagar - (ultimoEnviado?.monto ?? totalAPagar))
+                ? Math.max(0, saldo - (ultimoEnviado?.monto ?? saldo))
                 : saldo
             }
             moneda={liq.moneda}
             allowReenviar={!apiEnabled}
             onPagarOtroParcial={() => {
+              // Preservar el remanente para que "datos" muestre el saldo que
+              // falta, no el total original (prod no tiene historial local).
+              if (apiEnabled) {
+                setSaldoProdRestante(Math.max(0, saldo - (ultimoEnviado?.monto ?? saldo)));
+              }
               setMontoElegido(null);
               setUltimoEnviado(null);
               setStep('datos');
@@ -272,6 +301,7 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
               setPagosPrevios([]);
               setUltimoEnviado(null);
               setMontoElegido(null);
+              setSaldoProdRestante(null);
               setStep('datos');
             }}
             onVolver={() => router.push('/')}
@@ -331,7 +361,7 @@ function ParcialesAnteriores({
                 )}
               </p>
               <p className="text-[11px] text-muted-foreground">
-                {new Date(p.enviadoAt).toLocaleDateString('es-AR')}
+                {formatFecha(p.enviadoAt)}
                 {' · '}
                 {p.estado === 'CONCILIADO'
                   ? 'Confirmado'
@@ -458,6 +488,7 @@ function SelectorMonto({
         <button
           type="button"
           onClick={setTotal}
+          aria-pressed={esTotal}
           className={`flex w-full items-center justify-between gap-3 rounded-md border p-3 text-left text-sm transition-colors ${
             esTotal
               ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
@@ -475,6 +506,7 @@ function SelectorMonto({
         <button
           type="button"
           onClick={setOtro}
+          aria-pressed={!esTotal}
           className={`flex w-full items-start gap-3 rounded-md border p-3 text-left text-sm transition-colors ${
             !esTotal
               ? 'border-primary bg-primary/5 ring-2 ring-primary/20'

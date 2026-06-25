@@ -17,6 +17,10 @@ const nextConfig = {
         output: 'export',
         trailingSlash: true,
         basePath: '/inmobiliaria-inquilinos-app/inquilino',
+        // Exponemos el basePath al cliente para prefijar URLs públicas compartibles
+        // (link de verificación del certificado). window.location.origin NO incluye
+        // el basePath → sin esto el link copiado/compartido daba 404 en GH Pages.
+        env: { NEXT_PUBLIC_BASE_PATH: '/inmobiliaria-inquilinos-app/inquilino' },
         images: { unoptimized: true },
         webpack: (config) => {
           config.resolve.alias['@clerk/nextjs'] = clerkNoop;

@@ -53,7 +53,13 @@ export function listarAnunciosParaInquilino(): AnuncioInquilino[] {
   let lista: AnuncioInquilino[] = [];
   try {
     const raw = window.localStorage.getItem(INMO_KEY);
-    if (raw) lista = JSON.parse(raw) as AnuncioInquilino[];
+    if (raw) {
+      // Validar forma: un valor cross-app no-array (storage corrupto/foráneo)
+      // hacía `lista.filter` tirar TypeError FUERA del try → crasheaba el HOME
+      // (landing) con "Reintentar" inútil. Igual que reclamos/pago/cross-app-inmo.
+      const parsed = JSON.parse(raw);
+      lista = Array.isArray(parsed) ? (parsed as AnuncioInquilino[]) : [];
+    }
   } catch {
     lista = [];
   }
@@ -102,9 +108,9 @@ const SEEDS_FALLBACK: AnuncioInquilino[] = [
   },
   {
     id: 'anu_seed_2',
-    titulo: 'Nuevo CBU para cobranzas · vigente desde 01/06',
+    titulo: 'Nuevo CBU para cobranzas · vigente desde 01/07',
     cuerpo:
-      'Cambiamos a Banco Galicia. CBU 0070100120000018273645 · Alias delsol.cobranzas. Por favor reemplazá el de junio en adelante.',
+      'Cambiamos a Banco Galicia. CBU 0070100120000018273645 · Alias delsol.cobranzas. Por favor reemplazá el de julio en adelante.',
     prioridad: 'IMPORTANTE',
     audiencia: 'TODOS_INQUILINOS',
     canales: ['APP', 'EMAIL'],
