@@ -1188,7 +1188,12 @@ export function useDashboard(): DashboardData {
   const { propietarios, cargando: cargOwn } = usePropietarios();
   const { liquidaciones, cargando: cargLiq } = useLiquidaciones();
 
-  const activos = contratos.filter((c) => c.estado === 'ACTIVO');
+  // Excluye PROPIETARIO_DIRECTO igual que dashboard-helpers (demo) y /pagos: esa
+  // plata va directo del inquilino al dueño, no la cobra/rinde la inmo. (El path
+  // PROD del dashboard había quedado sin este guard tras el fix de iter11.)
+  const activos = contratos.filter(
+    (c) => c.estado === 'ACTIVO' && c.modoCobranza !== 'PROPIETARIO_DIRECTO',
+  );
   const cobrado = activos.filter((c) => c.estadoPagoActual === 'PAGADO').reduce((a, c) => a + c.monto, 0);
   const porCobrar = activos.filter((c) => c.estadoPagoActual === 'PENDIENTE').reduce((a, c) => a + c.monto, 0);
   const moraContratos = activos.filter((c) => c.estadoPagoActual === 'VENCIDO');

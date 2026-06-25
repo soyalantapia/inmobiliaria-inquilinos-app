@@ -41,7 +41,10 @@ STATIC_EXPORT=1 pnpm --filter inmobiliaria build
 
 echo ""
 echo "▶ Build inquilino"
-STATIC_EXPORT=1 pnpm --filter inquilino build
+# NEXT_PUBLIC_BASE_PATH se hornea en el bundle: lo usan los componentes que arman
+# URLs absolutas para compartir (compartir-garante, certificado) — en GH Pages la
+# app vive bajo este prefijo. En Railway NO se setea (basePath vacío = correcto).
+NEXT_PUBLIC_BASE_PATH=/inmobiliaria-inquilinos-app/inquilino STATIC_EXPORT=1 pnpm --filter inquilino build
 
 # Combinamos los dos outputs bajo /out con la estructura que espera GH Pages
 echo ""

@@ -211,7 +211,7 @@ export function NegociacionIterativaDialog({
           className="flex-1 min-h-[280px] overflow-y-auto rounded-md border bg-background p-3 space-y-3"
         >
           {mensajes.map((m) => (
-            <MensajeBurbuja key={m.id} mensaje={m} />
+            <MensajeBurbuja key={m.id} mensaje={m} moneda={config?.moneda} />
           ))}
           {pensando && (
             <div className="flex items-start gap-2">
@@ -293,7 +293,7 @@ export function NegociacionIterativaDialog({
   );
 }
 
-function MensajeBurbuja({ mensaje }: { mensaje: Mensaje }) {
+function MensajeBurbuja({ mensaje, moneda }: { mensaje: Mensaje; moneda?: ConfigNegociacion['moneda'] }) {
   if (mensaje.autor === 'INQUILINO') {
     return (
       <div className="flex justify-end">
@@ -337,7 +337,7 @@ function MensajeBurbuja({ mensaje }: { mensaje: Mensaje }) {
         {!mensaje.cerrado && (
           <Badge variant="outline" className="text-[10px]">
             <MessageCircle className="mr-1 h-2.5 w-2.5" />
-            Propone {formatMonto(mensaje.monto)}
+            Propone {formatMonto(mensaje.monto, moneda)}
           </Badge>
         )}
       </div>

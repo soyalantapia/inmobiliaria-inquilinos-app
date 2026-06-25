@@ -123,7 +123,7 @@ export function CargarPagoManualDialog({ open, onOpenChange, onDone }: Props) {
             >
               <option value="">Elegí un contrato…</option>
               {contratosMock
-                .filter((c) => c.estado === 'ACTIVO')
+                .filter((c) => c.estado === 'ACTIVO' && c.modoCobranza !== 'PROPIETARIO_DIRECTO')
                 .map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.inquilino} · {c.direccion}

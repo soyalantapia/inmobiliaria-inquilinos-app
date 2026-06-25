@@ -121,14 +121,14 @@ export function EditarPropietarioDialog({ open, onOpenChange, propietario }: Pro
 
           <div className="space-y-2">
             <Label htmlFor="ed-cuit" className="flex items-center gap-1">
-              CUIT <span className="text-destructive" aria-label="obligatorio">*</span>
+              CUIT
+              <span className="text-[10px] font-normal text-muted-foreground">opcional</span>
             </Label>
             <Input
               id="ed-cuit"
               value={cuit}
               onChange={(e) => setCuit(e.target.value)}
               placeholder="20-12345678-9"
-              aria-required="true"
             />
           </div>
 
