@@ -649,6 +649,7 @@ const indicesAjuste: Array<{ value: IndiceAjuste; label: string }> = [
   { value: 'UVA', label: 'UVA' },
   { value: 'CAC', label: 'CAC (Construcción)' },
   { value: 'RIPTE', label: 'RIPTE' },
+  { value: 'FIJO', label: 'Monto fijo (sin ajuste)' },
 ];
 
 // Índices que el Select ofrece (para validar el default que viene de Mercado).

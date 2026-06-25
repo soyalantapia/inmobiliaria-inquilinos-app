@@ -690,10 +690,12 @@ export async function coreRoutes(app: FastifyInstance) {
   // País / moneda / índice de ajuste default. Antes vivía SOLO en localStorage
   // (lib/paises) → no persistía por inmobiliaria ni impactaba nada. Ahora se
   // guarda en la inmobiliaria y el wizard de contratos lo usa como default.
+  // LECTURA: cualquier usuario autenticado de la inmobiliaria (scoped por
+  // inmobiliariaId del JWT). El wizard de contratos —usado por OPERADOR y CARGA,
+  // no solo ADMIN— necesita leer el índice/moneda default. ESCRITURA: solo ADMIN.
   app.get('/mercado', async (request, reply) => {
     const u = await requireUsuario(request, reply);
     if (!u) return;
-    if (u.rol !== 'ADMIN') return reply.code(403).send({ message: 'Necesitás permiso de Admin para ver esta sección' });
     const i = await prisma.inmobiliaria.findUnique({ where: { id: u.inmobiliariaId } });
     if (!i) return reply.code(404).send({ message: 'Inmobiliaria inexistente' });
     return {
@@ -703,6 +705,15 @@ export async function coreRoutes(app: FastifyInstance) {
     };
   });
 
+  // Monedas válidas por país (la default del país + USD) — espeja el front
+  // (monedasPosibles = [pais.monedaDefault, 'USD']).
+  const MONEDAS_POR_PAIS: Record<string, string[]> = {
+    AR: ['ARS', 'USD'],
+    UY: ['UYU', 'USD'],
+    BR: ['BRL', 'USD'],
+    PY: ['PYG', 'USD'],
+  };
+
   app.put('/mercado', async (request, reply) => {
     const u = await requireUsuario(request, reply);
     if (!u) return;
@@ -711,12 +722,20 @@ export async function coreRoutes(app: FastifyInstance) {
       .object({
         codigo: z.enum(['AR', 'UY', 'BR', 'PY']),
         moneda: z.enum(['ARS', 'USD', 'UYU', 'BRL', 'PYG']),
-        // El índice válido depende del país; el front lo restringe a los del país
-        // elegido. Acá sólo exigimos un código no vacío y acotado.
-        indiceDefault: z.string().trim().min(1).max(40),
+        // Mismo enum que POST /contratos: un índice fuera de esta lista lo
+        // ignoraría el wizard (no-op silencioso). Hoy AR-céntrico (único país
+        // activo); al abrir UY/BR/PY se extiende junto con el enum del contrato.
+        indiceDefault: z.enum(['ICL', 'IPC', 'CASA_PROPIA', 'UVA', 'CAC', 'RIPTE', 'FIJO']),
       })
       .safeParse(request.body ?? {});
     if (!body.success) return reply.code(400).send({ message: body.error.issues[0]?.message ?? 'Configuración de mercado inválida' });
+    // Cruce país↔moneda: evita tuplas imposibles (ej. AR con PYG).
+    const monedasOk = MONEDAS_POR_PAIS[body.data.codigo] ?? ['USD'];
+    if (!monedasOk.includes(body.data.moneda)) {
+      return reply.code(400).send({ message: `La moneda ${body.data.moneda} no corresponde al país ${body.data.codigo}` });
+    }
+    const existe = await prisma.inmobiliaria.findUnique({ where: { id: u.inmobiliariaId }, select: { id: true } });
+    if (!existe) return reply.code(404).send({ message: 'Inmobiliaria inexistente' });
     await prisma.inmobiliaria.update({
       where: { id: u.inmobiliariaId },
       data: {

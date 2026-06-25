@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Building,
   CalendarClock,
@@ -49,6 +50,7 @@ export function ConfiguracionPais() {
   // Config persistida: en prod viene de /mercado (por inmobiliaria), en demo de
   // localStorage. El hook dual abstrae el modo.
   const { config: persistido, cargando } = useMercado();
+  const qc = useQueryClient();
   const [config, setConfig] = useState<ConfiguracionPais | null>(null);
   const [guardando, setGuardando] = useState(false);
 
@@ -84,6 +86,9 @@ export function ConfiguracionPais() {
     setGuardando(true);
     try {
       await setMercado(config);
+      // Invalidar la caché para que el wizard de contratos (y cualquier lector)
+      // tome el valor nuevo en la misma sesión, sin esperar el staleTime de 60s.
+      await qc.invalidateQueries({ queryKey: ['mercado'] });
       toast({
         variant: 'success',
         title: 'Configuración guardada',

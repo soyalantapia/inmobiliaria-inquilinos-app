@@ -224,7 +224,7 @@ export interface ConfiguracionPais {
   indiceDefault: string;
 }
 
-const DEFAULT_CONFIG: ConfiguracionPais = {
+export const DEFAULT_CONFIG: ConfiguracionPais = {
   codigo: 'AR',
   moneda: 'ARS',
   indiceDefault: 'ICL',

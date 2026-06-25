@@ -13,6 +13,7 @@ import { contratosMock, propiedadesMock, propietariosMock } from '@/lib/mock-dat
 import {
   leerConfiguracionPais,
   guardarConfiguracionPais,
+  DEFAULT_CONFIG as DEFAULT_CONFIG_PAIS,
   type ConfiguracionPais,
 } from '@/lib/paises';
 import type {
@@ -499,6 +500,10 @@ export function useMercado(): { config: ConfiguracionPais | null; cargando: bool
     // Demo: fuente local. `leerConfiguracionPais` ya guarda el window-guard.
     return { config: leerConfiguracionPais(), cargando: false };
   }
+  // Ante error (red/permiso) caemos al default del país (AR/ARS/ICL) en vez de
+  // null, para que el wizard arranque con algo coherente y no quede colgado
+  // esperando un valor que nunca llega.
+  if (q.isError) return { config: DEFAULT_CONFIG_PAIS, cargando: false };
   return { config: q.data ?? null, cargando: q.isPending };
 }
 
