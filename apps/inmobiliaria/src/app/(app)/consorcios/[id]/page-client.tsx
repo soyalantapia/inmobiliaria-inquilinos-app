@@ -256,7 +256,7 @@ export default function DetalleConsorcioPage() {
                         </div>
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
-                        {u.cargoFijo ? (
+                        {u.cargoFijo !== undefined ? (
                           <Badge variant="outline" className="text-[10px]">
                             Fijo
                           </Badge>

@@ -19,6 +19,7 @@ import {
   propiedadesMock,
   propietariosMock,
 } from '@/lib/mock-data';
+import { aplicarOverride } from '@/lib/propietarios-overrides-storage';
 import type {
   ContratoListado,
   EstadoContrato,
@@ -210,8 +211,11 @@ function mapDetalle(d: PropietarioDetalleApi): PropietarioDetalle {
 // ===== Fallback mock (build demo / !apiEnabled) =====
 
 function detalleMock(id: string): PropietarioDetalle | null {
-  const propietario = propietariosMock.find((p) => p.id === id);
-  if (!propietario) return null;
+  const base = propietariosMock.find((p) => p.id === id);
+  if (!base) return null;
+  // Aplica los overrides de localStorage (CBU/cuenta de cobranza editados en demo),
+  // igual que use-propiedad.ts — sin esto, guardar la cuenta no se reflejaba nunca.
+  const propietario = aplicarOverride(base);
   const propiedades = propiedadesMock.filter((p) => propietario.propiedadesIds.includes(p.id));
   const contratos = contratosMock.filter((c) =>
     propiedades.some((p) => p.contratoActualId === c.id),

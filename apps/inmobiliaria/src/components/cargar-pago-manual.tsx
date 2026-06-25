@@ -83,11 +83,11 @@ export function CargarPagoManualDialog({ open, onOpenChange, onDone }: Props) {
     const montoNum = Number(monto);
     const pagoId = `pag_manual_${contratoSel.id}_${fecha}`;
     conciliarPago(pagoId, 'Roberto Tapia', {
-      observacion: `Pago manual · ${metodo} · ${formatMonto(montoNum)}${nota ? ` · ${nota}` : ''}`,
+      observacion: `Pago manual · ${metodo} · ${formatMonto(montoNum, contratoSel.moneda)}${nota ? ` · ${nota}` : ''}`,
     });
     toast({
       title: `Pago de ${contratoSel.inquilino} cargado`,
-      description: `${formatMonto(montoNum)} · ${metodo.toLowerCase()}`,
+      description: `${formatMonto(montoNum, contratoSel.moneda)} · ${metodo.toLowerCase()}`,
     });
     setShowPin(false);
     onOpenChange(false);
@@ -199,7 +199,7 @@ export function CargarPagoManualDialog({ open, onOpenChange, onDone }: Props) {
     <PinPromptDialog
       abierto={showPin}
       accion="Confirmar cobro manual"
-      subaccion={contratoSel ? `${contratoSel.inquilino} · ${formatMonto(Number(monto) || 0)}` : undefined}
+      subaccion={contratoSel ? `${contratoSel.inquilino} · ${formatMonto(Number(monto) || 0, contratoSel.moneda)}` : undefined}
       onClose={() => setShowPin(false)}
       onConfirmado={() => confirmarConPin()}
     />

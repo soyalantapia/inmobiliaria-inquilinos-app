@@ -114,7 +114,7 @@ export function NegociacionIterativaDialog({
       id: `m_${Date.now()}_inq`,
       autor: 'INQUILINO',
       monto,
-      texto: `Mi contraoferta: ${formatMonto(monto)}`,
+      texto: `Mi contraoferta: ${formatMonto(monto, config?.moneda)}`,
     };
     setMensajes((prev) => [...prev, msgInquilino]);
     setInput('');
@@ -147,7 +147,7 @@ export function NegociacionIterativaDialog({
       id: `m_${Date.now()}_acept`,
       autor: 'INQUILINO',
       monto: ultima.monto,
-      texto: `Listo, acepto ${formatMonto(ultima.monto)}.`,
+      texto: `Listo, acepto ${formatMonto(ultima.monto, config?.moneda)}.`,
     };
     setMensajes((prev) => [...prev, msgInquilino]);
     setPensando(true);
@@ -158,7 +158,7 @@ export function NegociacionIterativaDialog({
         autor: 'IA',
         monto: ultima.monto,
         texto:
-          `Genial, cerramos en ${formatMonto(ultima.monto)}. Te paso el ` +
+          `Genial, cerramos en ${formatMonto(ultima.monto, config?.moneda)}. Te paso el ` +
           `borrador del contrato actualizado en las próximas horas.`,
         cerrado: true,
       };
@@ -188,18 +188,18 @@ export function NegociacionIterativaDialog({
           <div className="grid grid-cols-3 gap-2 rounded-md border bg-muted/30 p-3 text-xs">
             <Rango
               label="Mínimo"
-              valor={formatMonto(config.pisoDuro)}
+              valor={formatMonto(config.pisoDuro, config.moneda)}
               hint="No bajamos de acá"
             />
             <Rango
               label="Ideal"
-              valor={formatMonto(config.pisoBlando)}
+              valor={formatMonto(config.pisoBlando, config.moneda)}
               hint="Aceptamos sin chistar"
               accent="emerald"
             />
             <Rango
               label="Propuesta inicial"
-              valor={formatMonto(config.techoBlando)}
+              valor={formatMonto(config.techoBlando, config.moneda)}
               hint="Arrancamos pidiendo esto"
               accent="primary"
             />
@@ -231,7 +231,7 @@ export function NegociacionIterativaDialog({
               <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
               <div>
                 <p className="text-sm font-semibold">
-                  Cerraron en {formatMonto(cerrado.monto)}
+                  Cerraron en {formatMonto(cerrado.monto, config?.moneda)}
                 </p>
                 <p className="text-[11px] text-muted-foreground">
                   Generá el contrato actualizado desde el panel de renovaciones.

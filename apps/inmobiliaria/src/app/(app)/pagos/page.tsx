@@ -167,7 +167,13 @@ export default function PagosPage() {
   // Cobranza: sólo contratos con liquidaciones reales. Un BORRADOR (p.ej. uno
   // cargado y luego rechazado) no se cobra y su estadoPagoActual derivado cae a
   // PENDIENTE → inflaba el KPI "Pendiente" y aparecía en la lista de cobros.
-  const cobrables = useMemo(() => contratos.filter((c) => c.estado !== 'BORRADOR'), [contratos]);
+  // Excluye PROPIETARIO_DIRECTO: ese alquiler va directo del inquilino al dueño,
+  // la inmo no lo cobra → no debe inflar "Pendiente"/"Cobrado" ni aparecer en la
+  // cartera de cobro (alinea con dashboard-helpers, que ya lo excluye).
+  const cobrables = useMemo(
+    () => contratos.filter((c) => c.estado !== 'BORRADOR' && c.modoCobranza !== 'PROPIETARIO_DIRECTO'),
+    [contratos],
+  );
 
   const counters = useMemo(
     () => ({

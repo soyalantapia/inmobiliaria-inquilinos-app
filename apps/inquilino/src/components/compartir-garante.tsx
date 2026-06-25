@@ -34,7 +34,11 @@ export function CompartirGarante({
     if (!open) return '';
     const token = generarGaranteToken(contratoId, 30);
     const origin = typeof window !== 'undefined' ? window.location.origin : '';
-    return `${origin}/garantes/${token}`;
+    // basePath: en GH Pages la app vive bajo /inmobiliaria-inquilinos-app/inquilino
+    // (seteado en el export build); vacío en Railway/dev. Sin esto el link al
+    // garante salía sin el prefijo → 404 al compartirlo desde la demo.
+    const base = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
+    return `${origin}${base}/garantes/${token}`;
   }, [open, contratoId]);
 
   const mensajeWA = `Hola! Soy ${nombreInquilino}. Te comparto el estado de mi contrato de alquiler en ${direccion} — podés consultarlo sin cuenta acá: ${url}`;

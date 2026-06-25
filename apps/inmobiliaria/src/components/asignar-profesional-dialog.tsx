@@ -351,17 +351,20 @@ export function mensajeWhatsappTrabajo(
 /** URL del link mágico del profesional. En producción se firma con JWT;
  *  acá usamos el id directo. La ruta vive en la app del inquilino bajo /p. */
 export function linkMagicoProfesional(profesionalId: string): string {
+  // La app del inquilino vive en OTRO host que el panel admin. En prod Railway
+  // el panel es admin.myalquiler.com y el inquilino app.myalquiler.com → sin esto
+  // el link salía con el dominio del admin + el basePath de GH Pages = 404.
+  // NEXT_PUBLIC_INQUILINO_URL se hornea por entorno (prod: https://app.myalquiler.com).
+  const envBase = process.env.NEXT_PUBLIC_INQUILINO_URL?.replace(/\/$/, '');
+  if (envBase) return `${envBase}/p/${profesionalId}/`;
   if (typeof window === 'undefined') {
     return `/inquilino/p/${profesionalId}/`;
   }
-  // En github pages la app del inquilino vive bajo .../inmobiliaria-inquilinos-app/inquilino/
-  // En localhost dev usamos http://localhost:3000/p/<id>
-  const isLocal = window.location.hostname === 'localhost';
-  if (isLocal) {
+  // Fallbacks sin env: localhost dev y GH Pages (mismo origin + basePath del inquilino).
+  if (window.location.hostname === 'localhost') {
     return `http://localhost:3000/p/${profesionalId}/`;
   }
-  const base = `${window.location.origin}/inmobiliaria-inquilinos-app/inquilino`;
-  return `${base}/p/${profesionalId}/`;
+  return `${window.location.origin}/inmobiliaria-inquilinos-app/inquilino/p/${profesionalId}/`;
 }
 
 function profesionalCategoriaLabelCorto(c: CategoriaProfesional): string {

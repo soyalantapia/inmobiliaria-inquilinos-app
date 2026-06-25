@@ -96,11 +96,11 @@ export function NegociadorRenovacionPanel({
           />
           <Metric
             label="Nuevo alquiler"
-            valor={formatMonto(sugerencia.alquilerNuevo)}
+            valor={formatMonto(sugerencia.alquilerNuevo, sugerencia.moneda)}
           />
           <Metric
             label="+ por mes"
-            valor={`+ ${formatMonto(sugerencia.diferenciaMensual)}`}
+            valor={`+ ${formatMonto(sugerencia.diferenciaMensual, sugerencia.moneda)}`}
             highlight
           />
           <Metric
@@ -131,7 +131,7 @@ export function NegociadorRenovacionPanel({
         {montoAcordado !== null && (
           <div className="rounded-md border-2 border-emerald-300 bg-emerald-50/60 p-2.5 text-xs dark:border-emerald-900/40 dark:bg-emerald-900/15">
             <p className="font-semibold text-emerald-800 dark:text-emerald-200">
-              ✓ Negociación cerrada en {formatMonto(montoAcordado)}
+              ✓ Negociación cerrada en {formatMonto(montoAcordado, sugerencia.moneda)}
             </p>
             <p className="text-[11px] text-muted-foreground">
               Generá el contrato actualizado o pasá a la firma.
@@ -142,7 +142,7 @@ export function NegociadorRenovacionPanel({
         <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
           <p className="text-[11px] text-muted-foreground">
             <TrendingUp className="mr-1 inline h-3 w-3" />
-            Cartera anual: + {formatMonto(sugerencia.diferenciaMensual * 12)}
+            Cartera anual: + {formatMonto(sugerencia.diferenciaMensual * 12, sugerencia.moneda)}
           </p>
           <div className="flex flex-wrap gap-2">
             <Button
@@ -327,6 +327,10 @@ export function ResumenSugerenciasCartera({ contratoIds }: { contratoIds: string
     for (const id of contratoIds) {
       const s = sugerirRenovacion(id);
       if (!s) continue;
+      // El banner de cartera está denominado en ARS (formatMonto default). NO
+      // sumamos contratos USD acá o mezclaríamos dólares y pesos en el mismo
+      // número; cada contrato USD ya muestra su potencial en su propia card.
+      if (s.moneda !== 'ARS') continue;
       actual += s.alquilerActual;
       nuevo += s.alquilerNuevo;
       sugerencias++;

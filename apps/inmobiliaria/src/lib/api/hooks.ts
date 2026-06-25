@@ -55,6 +55,7 @@ interface ContratoApi {
   /** Derivados por el server desde liquidaciones reales (Fase 3). */
   estadoPagoActual: ContratoListado['estadoPagoActual'];
   proximoVencimiento: string | null;
+  modoCobranza?: string | null;
 }
 
 function mapContrato(c: ContratoApi): ContratoListado {
@@ -80,6 +81,7 @@ function mapContrato(c: ContratoApi): ContratoListado {
     ...(c.pendienteAprobacion ? { pendienteAprobacion: true } : {}),
     ...(c.cargadoPor ? { cargadoPor: c.cargadoPor } : {}),
     ...(c.aprobadoPor ? { aprobadoPor: c.aprobadoPor } : {}),
+    ...(c.modoCobranza ? { modoCobranza: c.modoCobranza as ContratoListado['modoCobranza'] } : {}),
   } as ContratoListado;
 }
 
