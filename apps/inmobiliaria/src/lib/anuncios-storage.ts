@@ -116,6 +116,13 @@ function esRecipienteDemo(
       return (a.audienciaIds ?? []).includes(DEMO_INQUILINO.consorcioId);
     case 'CONTRATOS_ESPECIFICOS':
       return (a.audienciaIds ?? []).includes(DEMO_INQUILINO.contratoId);
+    // El inquilino demo (cnt_001) está VENCIDO → es moroso, no pendiente. Sin
+    // estos casos, contarAcuses simulaba sobre TODOS los slots e ignoraba el
+    // acuse real que el inquilino guardó en localStorage para estas audiencias.
+    case 'INQUILINOS_MOROSOS':
+      return true;
+    case 'INQUILINOS_PENDIENTES':
+      return false;
     default:
       return false;
   }

@@ -48,7 +48,7 @@ import {
   imprimirContratoPdf,
   type VariablesContrato,
 } from '@/lib/contrato-generator';
-import { propietariosMock } from '@/lib/mock-data';
+import { propiedadesMock, propietariosMock } from '@/lib/mock-data';
 import { sociedadPrincipal } from '@/lib/sociedades-storage';
 import { formatFechaCorta } from '@/lib/format';
 import type { ContratoListado } from '@/lib/types';
@@ -233,9 +233,17 @@ export function ContratoDocumentosPanel({ contrato }: Props) {
 
   const variables = useMemo<VariablesContrato>(() => {
     const sociedad = sociedadPrincipal();
+    // Propietarios REALES del contrato (no los primeros 2): buscamos la propiedad
+    // por contratoActualId y filtramos por sus propietariosIds. Antes el Word/PDF
+    // salía SIEMPRE con Eduardo Castro + Silvana Morales (un documento legal con
+    // los nombres del LOCADOR equivocados en todos los contratos menos el primero).
+    const prp = propiedadesMock.find((p) => p.contratoActualId === contrato.id);
+    const propietarios = prp
+      ? propietariosMock.filter((o) => prp.propietariosIds.includes(o.id))
+      : propietariosMock.slice(0, 1);
     return {
       contrato,
-      propietarios: propietariosMock.slice(0, 2),
+      propietarios,
       diaPago: 5,
       // Del contrato, no fijos: un contrato IPC/12m generaba un Word que decía
       // "ICL cada 6 meses". El generador ya aplica los mismos fallbacks.

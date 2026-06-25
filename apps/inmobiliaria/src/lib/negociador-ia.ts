@@ -363,6 +363,8 @@ export interface ConfigNegociacion {
   /** Techo duro = el máximo si el inquilino contraoferta arriba (raro). */
   techoDuro: number;
   confianza: ConfianzaInquilino;
+  /** Moneda del contrato — define el redondeo de las contraofertas (USD=50/ARS=1000). */
+  moneda: ContratoListado['moneda'];
 }
 
 /**
@@ -411,8 +413,9 @@ export function iniciarNegociacion(contratoId: string): {
     pisoBlando,
     pisoDuro,
     techoBlando,
-    techoDuro: Math.round((sug.alquilerActual * 1.35) / 1000) * 1000,
+    techoDuro: redondearAlquiler(sug.alquilerActual * 1.35, sug.moneda),
     confianza: sug.confianza,
+    moneda: sug.moneda,
   };
 
   const aperturaIA: PropuestaNegociacion = {
@@ -469,8 +472,10 @@ export function responderContraoferta(
       };
     }
     // Si no, propongo el punto medio.
-    const puntoMedio =
-      Math.round((ofertaIAActual + contraofertaInquilino) / 2 / 1000) * 1000;
+    const puntoMedio = redondearAlquiler(
+      (ofertaIAActual + contraofertaInquilino) / 2,
+      config.moneda,
+    );
     return {
       monto: puntoMedio,
       mensaje:
@@ -483,8 +488,10 @@ export function responderContraoferta(
   // Caso 3: contraoferta debajo del piso blando pero arriba del duro.
   // Rechazamos con explicación, ofrecemos un valor cerca del piso blando.
   if (contraofertaInquilino >= config.pisoDuro) {
-    const intermedio =
-      Math.round(((ofertaIAActual + config.pisoBlando) / 2) / 1000) * 1000;
+    const intermedio = redondearAlquiler(
+      (ofertaIAActual + config.pisoBlando) / 2,
+      config.moneda,
+    );
     return {
       monto: intermedio,
       mensaje:
