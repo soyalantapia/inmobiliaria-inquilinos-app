@@ -50,6 +50,11 @@ export interface InformarPagoInput {
   /** ISO; el API lo castea a Date. */
   fechaTransferencia: string;
   nota?: string | null;
+  /** Comprobante REAL ya subido a /uploads (Railway Volume). */
+  comprobanteUrl?: string;
+  comprobanteFileName?: string;
+  comprobanteMime?: string;
+  comprobanteSize?: number;
 }
 
 /**
@@ -87,6 +92,12 @@ export function useInformarPago() {
       // El API valida con z.string().optional(): mandamos sólo si hay valor.
       if (input.nroOperacion) body.nroOperacion = input.nroOperacion;
       if (input.nota) body.nota = input.nota;
+      if (input.comprobanteUrl) {
+        body.comprobanteUrl = input.comprobanteUrl;
+        body.comprobanteFileName = input.comprobanteFileName;
+        body.comprobanteMime = input.comprobanteMime;
+        body.comprobanteSize = input.comprobanteSize;
+      }
       return apiFetch<PagoInformadoApi>('/pagos/informar', {
         method: 'POST',
         body: JSON.stringify(body),

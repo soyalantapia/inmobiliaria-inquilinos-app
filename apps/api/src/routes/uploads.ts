@@ -98,6 +98,13 @@ export async function uploadsRoutes(app: FastifyInstance): Promise<void> {
 
   // GET /uploads/:tenant/:name — sirve el archivo. Solo de TU inmobiliaria.
   app.get('/uploads/:tenant/:name', async (request, reply) => {
+    // Un <a href> / <img src> no puede mandar el header Authorization → aceptamos
+    // el token también por query (?token=) y lo copiamos al header para que
+    // requireAuth lo valide igual. (Mismo nivel de auth, solo otro transporte.)
+    const qToken = (request.query as { token?: string }).token;
+    if (qToken && !request.headers.authorization) {
+      request.headers.authorization = `Bearer ${qToken}`;
+    }
     const payload = await requireAuth(request, reply);
     if (!payload) return;
     const { tenant, name } = request.params as { tenant: string; name: string };

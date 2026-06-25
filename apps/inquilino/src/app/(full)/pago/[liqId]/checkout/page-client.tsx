@@ -52,6 +52,7 @@ import {
   useInformarPago,
   useLiquidacion,
 } from '@/lib/api/use-pago';
+import { subirArchivo } from '@/lib/api/client';
 
 type Step = 'datos' | 'comprobante' | 'ok';
 const MAX_FILE_MB = 5;
@@ -872,6 +873,10 @@ function StepSubirComprobante({
         metodo: 'TRANSFERENCIA';
         nroOperacion?: string | null;
         fechaTransferencia: string;
+        comprobanteUrl?: string;
+        comprobanteFileName?: string;
+        comprobanteMime?: string;
+        comprobanteSize?: number;
       }) => Promise<unknown>)
     | null;
   onAtras: () => void;
@@ -966,15 +971,21 @@ function StepSubirComprobante({
       : nroOperacion.trim() || extraccion?.nroOperacion || null;
     const enviadoAt = new Date().toISOString();
 
-    // ===== Prod: POST real /pagos/informar =====
+    // ===== Prod: subir el comprobante REAL + POST /pagos/informar =====
     if (informarPagoApi) {
       try {
+        // El archivo ahora SÍ llega al backend (Railway Volume), no solo metadatos.
+        const subido = await subirArchivo(file);
         await informarPagoApi({
           liquidacionId: liqId,
           monto,
           metodo: 'TRANSFERENCIA',
           nroOperacion: nroOp,
           fechaTransferencia: enviadoAt,
+          comprobanteUrl: subido.url,
+          comprobanteFileName: subido.nombreArchivo,
+          comprobanteMime: subido.tipoMime,
+          comprobanteSize: subido.tamanioBytes,
         });
       } catch (e) {
         setEnviando(false);

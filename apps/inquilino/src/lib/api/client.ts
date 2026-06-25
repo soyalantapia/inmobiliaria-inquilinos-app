@@ -83,3 +83,37 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   }
   return (await res.json()) as T;
 }
+
+export interface ArchivoSubido {
+  url: string;
+  nombreArchivo: string;
+  tipoMime: string;
+  tamanioBytes: number;
+}
+
+/**
+ * Sube un archivo REAL al backend (multipart → Railway Volume) y devuelve su URL
+ * servida. No usa apiFetch porque ese fuerza Content-Type JSON; acá dejamos que el
+ * browser ponga el boundary de multipart. Antes el archivo nunca salía del browser.
+ */
+export async function subirArchivo(file: File): Promise<ArchivoSubido> {
+  const token = getToken();
+  const fd = new FormData();
+  fd.append('file', file);
+  const res = await fetch(`${API_URL}/uploads`, {
+    method: 'POST',
+    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: fd,
+  });
+  if (!res.ok) {
+    let message = `HTTP ${res.status}`;
+    try {
+      const body = (await res.json()) as { message?: string };
+      if (body.message) message = body.message;
+    } catch {
+      // sin body JSON
+    }
+    throw new ApiError(res.status, message);
+  }
+  return (await res.json()) as ArchivoSubido;
+}

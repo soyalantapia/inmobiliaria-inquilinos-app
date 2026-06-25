@@ -288,6 +288,12 @@ export async function plataRoutes(app: FastifyInstance) {
         // Invalid Date hacía explotar el create con 500 en una acción de plata).
         fechaTransferencia: z.coerce.date(),
         nota: z.string().optional(),
+        // Comprobante REAL subido a /uploads (Railway Volume). Antes el archivo
+        // nunca llegaba al backend (solo metadatos) → la inmo no podía verlo.
+        comprobanteUrl: z.string().optional(),
+        comprobanteFileName: z.string().optional(),
+        comprobanteMime: z.string().optional(),
+        comprobanteSize: z.number().int().nonnegative().optional(),
       })
       .safeParse(request.body ?? {});
     if (!body.success) return reply.code(400).send({ message: 'Datos del pago incompletos' });
@@ -340,6 +346,10 @@ export async function plataRoutes(app: FastifyInstance) {
           nroOperacion: body.data.nroOperacion,
           fechaTransferencia: body.data.fechaTransferencia,
           notaInquilino: body.data.nota,
+          comprobanteUrl: body.data.comprobanteUrl,
+          comprobanteFileName: body.data.comprobanteFileName,
+          comprobanteMime: body.data.comprobanteMime,
+          comprobanteSize: body.data.comprobanteSize,
         },
       });
     } catch (e) {
