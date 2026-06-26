@@ -13,7 +13,7 @@
  */
 import { useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiEnabled, apiFetch } from './client';
+import { API_URL, apiEnabled, apiFetch, getToken } from './client';
 import { ensureApiSession } from './session';
 import { pagosInformadosMock, type PagoInformado } from '@/lib/mock-data';
 import { estadoDePago } from '@/lib/conciliacion-storage';
@@ -42,6 +42,21 @@ interface PagoApi {
   liquidacion: { id: string; periodo: string; montoTotal: string | number; estado: string } | null;
 }
 
+/**
+ * URL abrible del comprobante. En prod el API guarda un path `/uploads/<tenant>/…`
+ * que hay que (a) hacer absoluto contra el API (el panel vive en otro dominio) y
+ * (b) firmar con `?token`, porque un `<a>`/`<img>` no manda el header Authorization.
+ * En demo el comprobante es un dataUrl base64 → se devuelve tal cual.
+ */
+function urlComprobante(raw: string | null): string {
+  if (!raw) return '';
+  if (raw.startsWith('/uploads/')) {
+    const token = getToken();
+    return `${API_URL}${raw}${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+  }
+  return raw;
+}
+
 function mapPago(p: PagoApi): PagoInformado {
   const inquilino = p.contrato?.inquilinoTitular
     ? `${p.contrato.inquilinoTitular.nombre} ${p.contrato.inquilinoTitular.apellido ?? ''}`.trim()
@@ -58,7 +73,7 @@ function mapPago(p: PagoApi): PagoInformado {
     metodo: p.metodo,
     fechaTransferencia: p.fechaTransferencia,
     informadoAt: p.informadoAt,
-    comprobanteUrl: p.comprobanteUrl ?? '',
+    comprobanteUrl: urlComprobante(p.comprobanteUrl),
     notaInquilino: p.notaInquilino,
     liquidacionId: p.liquidacion?.id ?? '',
   };
