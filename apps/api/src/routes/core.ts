@@ -49,7 +49,15 @@ export async function coreRoutes(app: FastifyInstance) {
     const contrato = await prisma.contrato.findFirst({
       where: { id, inmobiliariaId: u.inmobiliariaId },
       include: {
-        propiedad: { include: { participaciones: { include: { propietario: true } } } },
+        // cuentaCobranza incluida: en PROPIETARIO_DIRECTO el front necesita la
+        // cuenta del dueño (CBU/alias) para mostrar el destino de cobro. Sin esto
+        // siempre mostraba "Falta cargar la cuenta" aunque existiera (mismo include
+        // que GET /propietarios/:id).
+        propiedad: {
+          include: {
+            participaciones: { include: { propietario: { include: { cuentaCobranza: true } } } },
+          },
+        },
         inquilinoTitular: true,
         sociedad: { select: { id: true, nombreComercial: true } },
         garantes: true,

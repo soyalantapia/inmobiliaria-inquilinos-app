@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../db.js';
 import { requireUsuario } from '../auth/guards.js';
-import { borrarArchivoSubido } from './uploads.js';
+import { borrarArchivoSubido, urlEsDelTenant } from './uploads.js';
 
 /**
  * Documentos del expediente de un contrato (lado inmobiliaria): DNI titular y
@@ -90,6 +90,10 @@ export async function documentosRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(400).send({ message: 'Datos inválidos', detalle: parsed.error.flatten() });
     }
     const b = parsed.data;
+    // archivoUrl tiene que ser un /uploads de ESTA inmobiliaria (no externa/ajena).
+    if (!urlEsDelTenant(b.archivoUrl, u.inmobiliariaId)) {
+      return reply.code(400).send({ message: 'archivoUrl inválido' });
+    }
     const doc = await prisma.documentoContrato.create({
       data: {
         inmobiliariaId: u.inmobiliariaId,

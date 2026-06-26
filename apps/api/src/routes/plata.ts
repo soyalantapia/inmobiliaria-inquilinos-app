@@ -4,6 +4,7 @@ import { prisma } from '../db.js';
 import { requireContratoAcceso, requireInquilino, requireUsuario } from '../auth/guards.js';
 import { verificarPinUsuario } from '../auth/pin.js';
 import { devengarTodosLosTenants, generarLiquidacionesContrato } from '../lib/liquidaciones.js';
+import { urlEsDelTenant } from './uploads.js';
 
 /**
  * Fase 3 — La plata: liquidaciones, validación de pagos informados, caja de
@@ -118,6 +119,10 @@ export async function plataRoutes(app: FastifyInstance) {
         inmobiliariaId: u.inmobiliariaId,
         estado: 'CONCILIADO',
         decididoAt: { gte: desde, lt: hasta },
+        // SOLO contratos de cobranza por inmobiliaria: en PROPIETARIO_DIRECTO la
+        // inmo no cobra ni gana comisión, así que esos pagos no van al cierre del
+        // día (mismo filtro que /rendiciones). Antes inflaban cobrado + comisión.
+        contrato: { modoCobranza: 'INMOBILIARIA' },
       },
       include: {
         liquidacion: { select: { montoAlquiler: true, montoTotal: true, periodo: true } },
@@ -312,6 +317,11 @@ export async function plataRoutes(app: FastifyInstance) {
       })
       .safeParse(request.body ?? {});
     if (!body.success) return reply.code(400).send({ message: 'Datos del pago incompletos' });
+    // El comprobante, si viene, tiene que ser un archivo /uploads de ESTA
+    // inmobiliaria (no una url externa ni de otro tenant).
+    if (body.data.comprobanteUrl && !urlEsDelTenant(body.data.comprobanteUrl, inq.inmobiliariaId)) {
+      return reply.code(400).send({ message: 'Comprobante inválido' });
+    }
 
     const liq = await prisma.liquidacion.findFirst({
       where: { id: body.data.liquidacionId, contratoId: inq.contratoId },

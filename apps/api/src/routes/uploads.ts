@@ -44,6 +44,23 @@ function tenantDe(payload: JwtPayload): string | null {
 }
 
 /**
+ * True si `url` es un archivo servido por nosotros (`/uploads/<tenant>/<name>`)
+ * y pertenece al `tenant` indicado. Lo usan los endpoints que PERSISTEN una url
+ * (comprobante de pago, documento) para no guardar una url externa arbitraria ni
+ * de otra inmobiliaria (defensa en profundidad: el GET ya re-chequea al servir,
+ * pero validar al persistir evita dato sucio/no-servible).
+ */
+export function urlEsDelTenant(url: string, tenant: string): boolean {
+  const m = /^\/uploads\/([^/]+)\/([^/]+)$/.exec(url);
+  if (!m) return false;
+  const urlTenant = m[1];
+  const rawName = m[2];
+  if (!urlTenant || !rawName) return false;
+  if (urlTenant !== tenant) return false;
+  return path.basename(rawName) === rawName && !rawName.includes('..');
+}
+
+/**
  * Borra del Volume un archivo subido, dada su `url` (`/uploads/<tenant>/<name>`),
  * pero SOLO si pertenece al `tenant` indicado (defensa anti cross-tenant). Best
  * effort: si la URL no es nuestra o el archivo ya no está, no rompe. Lo usa el
