@@ -33,9 +33,8 @@ import {
   type TipoServicio,
   DISTRIBUIDORAS_SUGERIDAS,
   TIPO_SERVICIO_LABEL,
-  guardarServicio,
-  leerServiciosDe,
 } from '@/lib/servicios-publicos-storage';
+import { useServiciosPublicos } from '@/lib/api/use-servicios-publicos';
 import { formatFechaCorta } from '@/lib/format';
 
 const ICONO_SERVICIO: Record<TipoServicio, typeof Zap> = {
@@ -54,16 +53,12 @@ interface Props {
 }
 
 export function ServiciosPublicosPanel({ propiedadId }: Props) {
-  const [servicios, setServicios] = useState<DatosServicio[]>([]);
-  const [hidratado, setHidratado] = useState(false);
+  // Servicios REALES vía API en prod (la misma tabla que lee el inquilino);
+  // localStorage en demo.
+  const { servicios, hidratado, guardar: guardarServicioApi } = useServiciosPublicos(propiedadId);
   const [editar, setEditar] = useState<{ tipo: TipoServicio; existente?: DatosServicio } | null>(
     null,
   );
-
-  useEffect(() => {
-    setServicios(leerServiciosDe(propiedadId));
-    setHidratado(true);
-  }, [propiedadId]);
 
   const porTipo = useMemo(() => {
     const map = new Map<TipoServicio, DatosServicio>();
@@ -71,15 +66,22 @@ export function ServiciosPublicosPanel({ propiedadId }: Props) {
     return map;
   }, [servicios]);
 
-  const guardar = (input: DatosServicio) => {
-    guardarServicio(propiedadId, input);
-    setServicios(leerServiciosDe(propiedadId));
-    setEditar(null);
-    toast({
-      variant: 'success',
-      title: 'Servicio actualizado',
-      description: `${TIPO_SERVICIO_LABEL[input.tipo]} · ${input.distribuidora}`,
-    });
+  const guardar = async (input: DatosServicio) => {
+    try {
+      await guardarServicioApi(input);
+      setEditar(null);
+      toast({
+        variant: 'success',
+        title: 'Servicio actualizado',
+        description: `${TIPO_SERVICIO_LABEL[input.tipo]} · ${input.distribuidora}`,
+      });
+    } catch {
+      toast({
+        variant: 'destructive',
+        title: 'No se pudo guardar',
+        description: 'Revisá los datos e intentá de nuevo.',
+      });
+    }
   };
 
   if (!hidratado) return null;
