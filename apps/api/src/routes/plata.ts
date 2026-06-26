@@ -610,21 +610,37 @@ export async function plataRoutes(app: FastifyInstance) {
           },
         });
         if (gastosData.length > 0) {
-          const lock = await tx.movimientoCaja.updateMany({
-            where: { id: { in: gastosPend.map((g) => g.id) }, descontadoEnRendicion: false },
-            data: { descontadoEnRendicion: true, rendicionId: r.id },
+          // Cobranza compartida (propiedad con varios dueños): cada gasto se rinde
+          // por PARTES (cada dueño descuenta su participación). Sumamos lo ya
+          // rendido por OTROS dueños y marcamos el gasto como descontado-total SOLO
+          // cuando las partes cubren el monto completo. Antes se marcaba entero tras
+          // la primera parte → en propiedades multi-dueño el resto de los dueños
+          // nunca recibía su descuento y la inmobiliaria absorbía la diferencia.
+          const ids = gastosPend.map((g) => g.id);
+          const previas = await tx.gastoRendido.groupBy({
+            by: ['refId'],
+            where: { refId: { in: ids }, tipo: 'CAJA' },
+            _sum: { monto: true },
           });
-          if (lock.count !== gastosData.length) {
-            throw new Error('GASTO_YA_RENDIDO');
-          }
+          const yaRendido = new Map(previas.map((p) => [p.refId, Number(p._sum.monto ?? 0)]));
           await tx.gastoRendido.createMany({ data: gastosData.map((g) => ({ ...g, rendicionId: r.id })) });
+          // El gasto queda descontado-total cuando (lo ya rendido + esta parte)
+          // cubre el monto completo; si no, sigue PENDIENTE para los demás dueños.
+          const idsCompletos = gastosData
+            .filter((g) => (yaRendido.get(g.refId) ?? 0) + Number(g.monto) >= Number(g.montoTotal) - 0.01)
+            .map((g) => g.refId);
+          if (idsCompletos.length > 0) {
+            await tx.movimientoCaja.updateMany({
+              where: { id: { in: idsCompletos }, descontadoEnRendicion: false },
+              data: { descontadoEnRendicion: true, rendicionId: r.id },
+            });
+          }
         }
         return r;
       });
     } catch (e) {
-      if (e instanceof Error && e.message === 'GASTO_YA_RENDIDO') {
-        return reply.code(409).send({ message: 'Algún gasto ya fue rendido en otra rendición. Recargá y reintentá.' });
-      }
+      // La unicidad (propietarioId, periodo) es el lock anti-doble-rendición del
+      // mismo dueño; dos dueños distintos SÍ rinden el mismo gasto (cada uno su parte).
       if (e && typeof e === 'object' && (e as { code?: string }).code === 'P2002') {
         return reply.code(409).send({ message: `El período ${periodo} ya está rendido a este propietario` });
       }
