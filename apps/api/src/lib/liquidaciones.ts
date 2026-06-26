@@ -102,3 +102,34 @@ export async function generarLiquidacionesContrato(
   const res = await tx.liquidacion.createMany({ data, skipDuplicates: true });
   return res.count;
 }
+
+/**
+ * Devenga (top-up) las liquidaciones de TODOS los contratos ACTIVO de TODAS las
+ * inmobiliarias. Es la versión global (no tenant-scopeada) que dispara el cron:
+ * el endpoint POST /liquidaciones/devengar solo cubre el tenant del usuario, y
+ * sin un disparo periódico global cada contrato se queda sin liquidaciones a
+ * partir del 2º mes. IDEMPOTENTE (skipDuplicates) → seguro de repetir y seguro
+ * aunque corran dos réplicas a la vez.
+ */
+export async function devengarTodosLosTenants(
+  prisma: PrismaClient,
+): Promise<{ contratosProcesados: number; liquidacionesNuevas: number }> {
+  const contratos = await prisma.contrato.findMany({
+    where: { estado: 'ACTIVO' },
+    select: {
+      id: true,
+      inmobiliariaId: true,
+      monto: true,
+      montoExpensas: true,
+      moneda: true,
+      fechaInicio: true,
+      fechaFin: true,
+      diaPago: true,
+    },
+  });
+  let liquidacionesNuevas = 0;
+  for (const c of contratos) {
+    liquidacionesNuevas += await generarLiquidacionesContrato(prisma, c);
+  }
+  return { contratosProcesados: contratos.length, liquidacionesNuevas };
+}

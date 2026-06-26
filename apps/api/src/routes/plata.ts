@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../db.js';
 import { requireContratoAcceso, requireInquilino, requireUsuario } from '../auth/guards.js';
 import { verificarPinUsuario } from '../auth/pin.js';
-import { generarLiquidacionesContrato } from '../lib/liquidaciones.js';
+import { devengarTodosLosTenants, generarLiquidacionesContrato } from '../lib/liquidaciones.js';
 
 /**
  * Fase 3 — La plata: liquidaciones, validación de pagos informados, caja de
@@ -80,6 +80,21 @@ export async function plataRoutes(app: FastifyInstance) {
       liquidacionesNuevas += await generarLiquidacionesContrato(prisma, c);
     }
     return { contratosProcesados: contratos.length, liquidacionesNuevas };
+  });
+
+  // Disparo GLOBAL del devengo (TODAS las inmobiliarias). Lo usa un cron externo
+  // o un trigger manual: se autentica con un secreto compartido (header
+  // x-cron-secret) porque un scheduler no tiene sesión de usuario. El back además
+  // corre este mismo devengo solo, in-process (ver cron.ts), así que esto es el
+  // camino externo/redundante. Idempotente.
+  app.post('/internal/cron/devengar', async (request, reply) => {
+    const secret = process.env.CRON_SECRET;
+    const provisto = request.headers['x-cron-secret'];
+    // Sin secreto configurado el endpoint queda cerrado (nunca abierto por defecto).
+    if (!secret || provisto !== secret) {
+      return reply.code(401).send({ message: 'No autorizado' });
+    }
+    return devengarTodosLosTenants(prisma);
   });
 
   // Cierre de caja del día: lo COBRADO (pagos conciliados) en una fecha + la
