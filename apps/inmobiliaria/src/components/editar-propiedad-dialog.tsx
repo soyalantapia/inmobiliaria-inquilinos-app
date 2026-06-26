@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@llave/ui/button';
 import {
   Dialog,
@@ -14,6 +15,7 @@ import { Label } from '@llave/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@llave/ui/select';
 import { toast } from '@llave/ui/use-toast';
 import { guardarOverride } from '@/lib/propiedades-overrides-storage';
+import { apiEnabled, apiFetch, ApiError } from '@/lib/api/client';
 import type { Propiedad, TipoPropiedad } from '@/lib/types';
 
 interface Props {
@@ -46,6 +48,7 @@ export function EditarPropiedadDialog({ open, onOpenChange, propiedad, onGuardad
   );
   const [m2, setM2] = useState<string>(propiedad.m2 != null ? String(propiedad.m2) : '');
   const [guardando, setGuardando] = useState(false);
+  const qc = useQueryClient();
 
   // Reset cuando abrimos: tomamos siempre los valores actuales de la
   // propiedad (que ya incluyen override aplicado si existía).
@@ -70,24 +73,50 @@ export function EditarPropiedadDialog({ open, onOpenChange, propiedad, onGuardad
       return;
     }
     setGuardando(true);
-    // Simulación de delay para mantener feedback consistente con otros forms.
-    await new Promise((r) => setTimeout(r, 350));
-    guardarOverride(propiedad.id, {
+    const datos = {
       direccion: direccion.trim(),
       ciudad: ciudad.trim(),
       provincia: provincia.trim(),
       tipo,
       ambientes: ambientes ? Number(ambientes) : null,
       m2: m2 ? Number(m2) : null,
-    });
-    setGuardando(false);
-    toast({
-      variant: 'success',
-      title: 'Propiedad actualizada',
-      description: 'Los nuevos datos ya quedaron guardados.',
-    });
-    onGuardado?.();
-    onOpenChange(false);
+    };
+    try {
+      if (apiEnabled) {
+        // Prod: persistir de verdad en la fila Propiedad + refrescar la query
+        // del detalle/listado (sin esto se veían los datos viejos hasta recargar).
+        await apiFetch(`/propiedades/${propiedad.id}`, {
+          method: 'PUT',
+          body: JSON.stringify(datos),
+        });
+        await Promise.all([
+          qc.invalidateQueries({ queryKey: ['propiedad', propiedad.id] }),
+          qc.invalidateQueries({ queryKey: ['propiedades'] }),
+        ]);
+      } else {
+        // Demo: override local + pequeño delay para feedback consistente.
+        await new Promise((r) => setTimeout(r, 350));
+        guardarOverride(propiedad.id, datos);
+      }
+      toast({
+        variant: 'success',
+        title: 'Propiedad actualizada',
+        description: 'Los nuevos datos ya quedaron guardados.',
+      });
+      onGuardado?.();
+      onOpenChange(false);
+    } catch (e) {
+      const sinPermiso = e instanceof ApiError && e.status === 403;
+      toast({
+        variant: 'destructive',
+        title: sinPermiso ? 'Sin permiso' : 'No se pudo guardar',
+        description: sinPermiso
+          ? 'Tu rol no permite editar propiedades.'
+          : 'Revisá los datos e intentá de nuevo.',
+      });
+    } finally {
+      setGuardando(false);
+    }
   };
 
   return (

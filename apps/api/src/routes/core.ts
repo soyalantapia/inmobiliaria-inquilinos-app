@@ -125,6 +125,47 @@ export async function coreRoutes(app: FastifyInstance) {
     return { ...propiedad, contratoActual };
   });
 
+  // Editar datos básicos de una propiedad. Antes el panel guardaba estos cambios
+  // como "override" en localStorage (propiedades-overrides-storage), pero en prod
+  // la lectura ignora los overrides → editar una propiedad decía "guardado" y NO
+  // persistía (pérdida silenciosa). Ahora actualiza la fila real, tenant-scopeado.
+  app.put('/propiedades/:id', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'propiedades.crear');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const parsed = z
+      .object({
+        direccion: z.string().trim().min(1).max(300),
+        ciudad: z.string().trim().max(120),
+        provincia: z.string().trim().max(120),
+        tipo: z.enum(['DEPARTAMENTO', 'CASA', 'LOCAL', 'GALPON']),
+        ambientes: z.number().int().nonnegative().nullable().optional(),
+        m2: z.number().nonnegative().nullable().optional(),
+      })
+      .safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ message: 'Datos inválidos', detalle: parsed.error.flatten() });
+    }
+    const existe = await prisma.propiedad.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      select: { id: true },
+    });
+    if (!existe) return reply.code(404).send({ message: 'Propiedad inexistente' });
+    const b = parsed.data;
+    const propiedad = await prisma.propiedad.update({
+      where: { id },
+      data: {
+        direccion: b.direccion,
+        ciudad: b.ciudad,
+        provincia: b.provincia,
+        tipo: b.tipo,
+        ambientes: b.ambientes ?? null,
+        m2: b.m2 ?? null,
+      },
+    });
+    return propiedad;
+  });
+
   // ===== Propietarios =====
   app.get('/propietarios', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'propietarios.ver');
