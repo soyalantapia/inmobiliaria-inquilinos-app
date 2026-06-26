@@ -169,8 +169,10 @@ export interface CrearReclamoInput {
   categoria: Categoria;
   descripcion: string;
   urgencia: Urgencia;
-  /** Foto en dataURL — solo se persiste en modo demo (el API aún no la recibe). */
+  /** Foto en dataURL — preview local (demo). */
   fotoDataUrl?: string | null;
+  /** Foto REAL ya subida a /uploads (Railway Volume) — el path prod la persiste. */
+  fotoUrl?: string;
 }
 
 export function useMisReclamos(): {
@@ -280,6 +282,7 @@ export function useMisReclamos(): {
           descripcion: input.descripcion.trim(),
           categoria: input.categoria,
           urgencia: input.urgencia,
+          ...(input.fotoUrl ? { fotoUrl: input.fotoUrl } : {}),
         }),
       });
       await qc.invalidateQueries({ queryKey: QUERY_KEY });

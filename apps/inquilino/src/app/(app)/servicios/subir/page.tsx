@@ -25,7 +25,7 @@ import {
 } from '@/lib/boletas-servicios-storage';
 import { formatPeriodo } from '@/lib/format';
 import { useBoletas } from '@/lib/api/use-servicios';
-import { apiEnabled, ApiError } from '@/lib/api/client';
+import { apiEnabled, ApiError, subirArchivo } from '@/lib/api/client';
 
 const TIPOS_DISPONIBLES: TipoServicio[] = ['LUZ', 'GAS', 'AGUA', 'INTERNET', 'ABL', 'CABLE'];
 
@@ -85,10 +85,15 @@ export default function SubirBoletaPage() {
     }
     setEnviando(true);
     try {
-      // En demo necesitamos el dataUrl para previsualizar/descargar offline.
-      // En prod el archivo no se sube todavía (no hay storage en el API) —
-      // solo mandamos los metadatos, así que evitamos leer el archivo entero.
-      const dataUrl = apiEnabled ? undefined : await leerArchivoComoDataUrl(archivo);
+      // En demo: dataUrl para previsualizar/descargar offline. En prod: subimos
+      // el archivo REAL a /uploads (Railway Volume) y mandamos su URL.
+      let dataUrl: string | undefined;
+      let archivoUrl: string | undefined;
+      if (apiEnabled) {
+        archivoUrl = (await subirArchivo(archivo)).url;
+      } else {
+        dataUrl = await leerArchivoComoDataUrl(archivo);
+      }
       await subirBoleta({
         servicio: tipo,
         periodo,
@@ -97,6 +102,7 @@ export default function SubirBoletaPage() {
         nombreArchivo: archivo.name,
         tipoMime: archivo.type || 'application/octet-stream',
         tamanioBytes: archivo.size,
+        archivoUrl,
         dataUrl,
       });
       toast({

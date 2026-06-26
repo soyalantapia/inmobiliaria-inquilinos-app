@@ -384,6 +384,9 @@ export async function operacionRoutes(app: FastifyInstance) {
         descripcion: z.string().min(5),
         categoria: z.enum(['PLOMERIA', 'ELECTRICIDAD', 'CERRADURA', 'CALEFACCION', 'OTRO']),
         urgencia: z.enum(['BAJA', 'MEDIA', 'ALTA', 'EMERGENCIA']),
+        // Foto REAL del problema, subida a /uploads (Railway Volume). Antes la foto
+        // se elegía en el browser y nunca llegaba al backend.
+        fotoUrl: z.string().optional(),
       })
       .safeParse(request.body ?? {});
     if (!body.success) return reply.code(400).send({ message: 'Datos del reclamo incompletos' });
@@ -407,6 +410,7 @@ export async function operacionRoutes(app: FastifyInstance) {
           descripcion: `${body.data.titulo} — ${body.data.descripcion}`,
           urgencia: body.data.urgencia,
           estado: 'ABIERTO',
+          fotoUrl: body.data.fotoUrl,
         },
       });
       await tx.reclamoEvento.create({

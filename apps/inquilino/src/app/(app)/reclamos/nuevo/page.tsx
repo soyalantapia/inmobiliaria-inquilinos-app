@@ -11,7 +11,7 @@ import { Label } from '@llave/ui/label';
 import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
 import { NavBar } from '@/components/nav-bar';
-import { apiEnabled, ApiError } from '@/lib/api/client';
+import { apiEnabled, ApiError, subirArchivo } from '@/lib/api/client';
 import { useMiContrato } from '@/lib/api/hooks';
 import { useMisReclamos } from '@/lib/api/use-mis-reclamos';
 import { categoriaLabel } from '@/lib/reclamos-config';
@@ -172,6 +172,16 @@ export default function NuevoReclamoPage() {
       categoria === 'OTRO' && tituloOtro.trim().length > 0
         ? tituloOtro.trim()
         : categoriaLabel[categoria as Categoria];
+    // Subir la foto REAL al backend (Railway Volume) antes de crear el reclamo.
+    // Es complementaria: si la subida falla, igual creamos el reclamo (sin foto).
+    let fotoUrl: string | undefined;
+    if (apiEnabled && fotoFile) {
+      try {
+        fotoUrl = (await subirArchivo(fotoFile)).url;
+      } catch {
+        // ignore: la foto es opcional, no bloqueamos el reclamo.
+      }
+    }
     let nuevo;
     try {
       nuevo = await crearReclamo({
@@ -180,6 +190,7 @@ export default function NuevoReclamoPage() {
         descripcion: descripcion.trim(),
         urgencia: urgencia as Urgencia,
         fotoDataUrl: fotoPreview,
+        fotoUrl,
       });
     } catch (e) {
       // El POST falló: feedback al usuario (antes era SILENCIOSO) + liberar el

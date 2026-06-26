@@ -132,6 +132,8 @@ export interface SubirBoletaInput {
   nombreArchivo?: string;
   tipoMime?: string;
   tamanioBytes?: number;
+  /** URL REAL del archivo ya subido a /uploads (Railway Volume) — path prod. */
+  archivoUrl?: string;
   /** Solo demo: dataUrl del archivo para previsualizar/descargar offline. */
   dataUrl?: string;
 }
@@ -228,6 +230,7 @@ export function useBoletas(): {
           ...(input.nombreArchivo ? { nombreArchivo: input.nombreArchivo } : {}),
           ...(input.tipoMime ? { tipoMime: input.tipoMime } : {}),
           ...(input.tamanioBytes != null ? { tamanioBytes: input.tamanioBytes } : {}),
+          ...(input.archivoUrl ? { archivoUrl: input.archivoUrl } : {}),
         }),
       });
       invalidar();
