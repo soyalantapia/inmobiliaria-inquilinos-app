@@ -43,6 +43,24 @@ function tenantDe(payload: JwtPayload): string | null {
   return (payload as { inmobiliariaId?: string }).inmobiliariaId ?? null;
 }
 
+/**
+ * Borra del Volume un archivo subido, dada su `url` (`/uploads/<tenant>/<name>`),
+ * pero SOLO si pertenece al `tenant` indicado (defensa anti cross-tenant). Best
+ * effort: si la URL no es nuestra o el archivo ya no está, no rompe. Lo usa el
+ * DELETE de documentos para no dejar huérfanos en el disco.
+ */
+export async function borrarArchivoSubido(url: string, tenant: string): Promise<void> {
+  const m = /^\/uploads\/([^/]+)\/([^/]+)$/.exec(url);
+  if (!m) return; // URL externa o con otro formato → no la tocamos.
+  const urlTenant = m[1];
+  const rawName = m[2];
+  if (!urlTenant || !rawName) return;
+  if (urlTenant !== tenant) return; // jamás borrar archivos de otra inmobiliaria.
+  const safe = path.basename(rawName);
+  if (safe !== rawName || safe.includes('..')) return;
+  await unlink(path.join(UPLOADS_DIR, tenant, safe)).catch(() => {});
+}
+
 function mimeDeArchivo(name: string): string {
   const e = path.extname(name).toLowerCase();
   if (e === '.jpg' || e === '.jpeg') return 'image/jpeg';

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   BookOpenCheck,
   CheckCircle2,
@@ -37,12 +37,9 @@ import {
   type TipoDocContrato,
   TAMANIO_MAX,
   TIPO_DOC_LABEL,
-  eliminarDocContrato,
   formatTamanio,
-  guardarDocContrato,
-  leerArchivoComoDataUrl,
-  listarDocsContrato,
 } from '@/lib/contrato-documentos-storage';
+import { useDocsContrato } from '@/lib/api/use-documentos';
 import {
   descargarContratoWord,
   imprimirContratoPdf,
@@ -119,17 +116,12 @@ function gruposParaContrato(garantesCount: number): GrupoUI[] {
 }
 
 export function ContratoDocumentosPanel({ contrato }: Props) {
-  const [docs, setDocs] = useState<DocContrato[]>([]);
-  const [hidratado, setHidratado] = useState(false);
+  // Documentos REALES vía API en prod (CRUD + Volume); localStorage en demo.
+  const { docs, hidratado, subir, eliminar: eliminarDoc } = useDocsContrato(contrato.id);
   const [grupoActivo, setGrupoActivo] = useState<GrupoUI | null>(null);
   const [tipoElegido, setTipoElegido] = useState<TipoDocContrato>('DNI_TITULAR_FRENTE');
   const [garantesCount, setGarantesCount] = useState(1);
   const fileRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    setDocs(listarDocsContrato(contrato.id));
-    setHidratado(true);
-  }, [contrato.id]);
 
   const grupos = useMemo(() => gruposParaContrato(garantesCount), [garantesCount]);
 
@@ -190,45 +182,43 @@ export function ContratoDocumentosPanel({ contrato }: Props) {
       e.target.value = '';
       return;
     }
+    const etiqueta = `${TIPO_DOC_LABEL[tipoElegido]}${
+      grupoActivo.garanteIndex ? ` · Garante ${grupoActivo.garanteIndex}` : ''
+    }`;
     try {
-      const dataUrl = await leerArchivoComoDataUrl(file);
-      const nuevo: DocContrato = {
-        id: `doc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        contratoId: contrato.id,
+      await subir({
+        file,
         tipo: tipoElegido,
-        etiqueta: `${TIPO_DOC_LABEL[tipoElegido]}${
-          grupoActivo.garanteIndex ? ` · Garante ${grupoActivo.garanteIndex}` : ''
-        }`,
+        etiqueta,
         garanteIndex: grupoActivo.garanteIndex,
-        nombreArchivo: file.name,
-        tipoMime: file.type || 'application/octet-stream',
-        tamanioBytes: file.size,
-        dataUrl,
-        subidoAt: new Date().toISOString(),
-        subidoPor: 'admin',
-      };
-      guardarDocContrato(nuevo);
-      setDocs(listarDocsContrato(contrato.id));
+      });
       toast({
         variant: 'success',
         title: 'Documento cargado',
-        description: nuevo.etiqueta,
+        description: etiqueta,
       });
     } catch (err) {
       toast({
         variant: 'destructive',
         title: 'No se pudo guardar',
-        description: 'Probá con un archivo más chico o liberá espacio.',
+        description: 'Revisá el archivo (hasta 2 MB, imagen o PDF) e intentá de nuevo.',
       });
     } finally {
       e.target.value = '';
     }
   };
 
-  const eliminar = (doc: DocContrato) => {
-    eliminarDocContrato(doc.contratoId, doc.id);
-    setDocs(listarDocsContrato(contrato.id));
-    toast({ title: 'Documento eliminado', description: doc.etiqueta });
+  const eliminar = async (doc: DocContrato) => {
+    try {
+      await eliminarDoc(doc);
+      toast({ title: 'Documento eliminado', description: doc.etiqueta });
+    } catch {
+      toast({
+        variant: 'destructive',
+        title: 'No se pudo eliminar',
+        description: 'Intentá de nuevo.',
+      });
+    }
   };
 
   const variables = useMemo<VariablesContrato>(() => {
@@ -434,6 +424,8 @@ export function ContratoDocumentosPanel({ contrato }: Props) {
                             <a
                               href={d.dataUrl}
                               download={d.nombreArchivo}
+                              target="_blank"
+                              rel="noopener"
                               aria-label="Descargar"
                             >
                               <Download className="h-3.5 w-3.5" />

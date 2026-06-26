@@ -63,3 +63,37 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   }
   return (await res.json()) as T;
 }
+
+export interface ArchivoSubido {
+  url: string;
+  nombreArchivo: string;
+  tipoMime: string;
+  tamanioBytes: number;
+}
+
+/**
+ * Sube un archivo REAL al Volume del backend (POST /uploads, multipart) y
+ * devuelve su URL servida + metadatos. Usado por el expediente de documentos.
+ * No mandamos Content-Type: el browser pone el boundary del multipart solo.
+ */
+export async function subirArchivo(file: File): Promise<ArchivoSubido> {
+  const token = getToken();
+  const fd = new FormData();
+  fd.append('file', file);
+  const res = await fetch(`${API_URL}/uploads`, {
+    method: 'POST',
+    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: fd,
+  });
+  if (!res.ok) {
+    let message = `HTTP ${res.status}`;
+    try {
+      const body = (await res.json()) as { message?: string };
+      if (body.message) message = body.message;
+    } catch {
+      // sin body JSON
+    }
+    throw new ApiError(res.status, message);
+  }
+  return (await res.json()) as ArchivoSubido;
+}

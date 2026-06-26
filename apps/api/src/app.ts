@@ -14,6 +14,7 @@ import { operacionRoutes } from './routes/operacion.js';
 import { anunciosRoutes } from './routes/anuncios.js';
 import { inquilinoMundoRoutes } from './routes/inquilino-mundo.js';
 import { uploadsRoutes } from './routes/uploads.js';
+import { documentosRoutes } from './routes/documentos.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -78,6 +79,7 @@ export async function buildApp(envOverrides: Partial<Record<string, string>> = {
   await app.register(anunciosRoutes);
   await app.register(inquilinoMundoRoutes);
   await app.register(uploadsRoutes);
+  await app.register(documentosRoutes);
 
   return app;
 }
