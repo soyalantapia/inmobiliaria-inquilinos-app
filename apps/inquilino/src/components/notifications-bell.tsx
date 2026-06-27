@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@llave/ui/cn';
 import { apiEnabled } from '@/lib/api/client';
+import { useMisNotificaciones } from '@/lib/api/use-notificaciones';
 import { contratoMock, liquidacionesMock } from '@/lib/mock-data';
 import { diasHastaVencimiento, formatFecha } from '@/lib/format';
 import { TASA_PUNITORIA_DIARIA_DEFAULT, calcularPunitorios } from '@/lib/punitorios';
@@ -385,12 +386,23 @@ export function NotificationsBell() {
     };
   }, [open]);
 
+  // En prod las notifs vienen del API (feed real); en demo, de la derivación local.
+  const apiNotifs = useMisNotificaciones();
+
   // Recalcular al abrir (por si cambió algo en otra pestaña / ruta)
-  const notifs = useMemo(
-    () => (hidratado ? construirNotifs(leidas) : []),
+  const notifs = useMemo(() => {
+    if (!hidratado) return [];
+    if (apiEnabled) {
+      // El API ya ordena por severidad y limita; acá solo aplicamos el unread local.
+      return (apiNotifs ?? []).map((n) => ({
+        ...n,
+        icono: n.icono as Notif['icono'],
+        unread: !leidas.has(n.id),
+      }));
+    }
+    return construirNotifs(leidas);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [hidratado, leidas, open],
-  );
+  }, [hidratado, leidas, open, apiNotifs]);
 
   const unread = notifs.filter((n) => n.unread).length;
 
@@ -438,7 +450,7 @@ export function NotificationsBell() {
               </li>
             )}
             {notifs.map((n) => {
-              const Icon = ICONS[n.icono];
+              const Icon = ICONS[n.icono] ?? Bell;
               const colorIcon =
                 n.severidad === 'critica'
                   ? 'bg-destructive/10 text-destructive'

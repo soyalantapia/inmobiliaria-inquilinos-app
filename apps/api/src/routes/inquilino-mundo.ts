@@ -930,6 +930,175 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
     });
   });
 
+  // Feed de notificaciones del inquilino — DERIVADO del estado real (liquidaciones,
+  // pagos, reclamos). Antes la campana era un no-op en prod (if(apiEnabled) return [])
+  // → el inquilino nunca recibía alertas (pago rechazado, alquiler vencido, respuesta
+  // a reclamo, profesional asignado). El `unread` lo resuelve el cliente (localStorage
+  // de leídas); acá devolvemos los eventos accionables ya ordenados por severidad.
+  app.get('/mis-notificaciones', async (request, reply) => {
+    const inq = await requireContratoAcceso(request, reply);
+    if (!inq) return;
+    if (!inq.contratoId) return [];
+    const contratoId = inq.contratoId;
+    const ahora = Date.now();
+    const relativo = (d: Date | string): string => {
+      const min = Math.floor((ahora - new Date(d).getTime()) / 60000);
+      if (min < 60) return `hace ${Math.max(min, 0)} min`;
+      const h = Math.floor(min / 60);
+      if (h < 24) return `hace ${h} h`;
+      const dd = Math.floor(h / 24);
+      return `hace ${dd} día${dd === 1 ? '' : 's'}`;
+    };
+    const diasHasta = (d: Date | string): number =>
+      Math.ceil((new Date(d).getTime() - ahora) / 86400000);
+
+    type Notif = {
+      id: string;
+      titulo: string;
+      detalle: string;
+      href: string;
+      cuando: string;
+      icono: string;
+      severidad: 'critica' | 'alta' | 'media' | 'baja';
+    };
+    const out: Notif[] = [];
+
+    // 1) Liquidaciones impagas: en revisión / vencidas / próximas a vencer.
+    const liqs = await prisma.liquidacion.findMany({
+      where: { contratoId, estado: { in: ['PENDIENTE', 'VENCIDO', 'PARCIAL'] } },
+      orderBy: { fechaVencimiento: 'asc' },
+    });
+    for (const liq of liqs) {
+      const informado = await prisma.pago.findFirst({
+        where: { liquidacionId: liq.id, estado: 'INFORMADO' },
+        orderBy: { informadoAt: 'desc' },
+      });
+      if (informado) {
+        out.push({
+          id: `pago-val-${liq.id}`,
+          titulo: 'Comprobante en revisión',
+          detalle: 'Te avisamos cuando la inmobiliaria lo valide (24-48 hs).',
+          href: `/pago/${liq.id}`,
+          cuando: relativo(informado.informadoAt),
+          icono: 'pago_validacion',
+          severidad: 'media',
+        });
+        continue;
+      }
+      const dias = diasHasta(liq.fechaVencimiento);
+      if (liq.estado === 'VENCIDO' || dias < 0) {
+        out.push({
+          id: `pago-venc-${liq.id}`,
+          titulo: 'Tu alquiler está atrasado',
+          detalle: `Período ${liq.periodo} · pagá cuanto antes para no sumar punitorios.`,
+          href: `/pago/${liq.id}`,
+          cuando: `venció ${new Date(liq.fechaVencimiento).toLocaleDateString('es-AR')}`,
+          icono: 'pago_vencido',
+          severidad: 'critica',
+        });
+      } else if (dias <= 5) {
+        out.push({
+          id: `pago-prox-${liq.id}`,
+          titulo: dias === 0 ? 'Tu alquiler vence hoy' : `Tu alquiler vence en ${dias} día${dias === 1 ? '' : 's'}`,
+          detalle: `Período ${liq.periodo}.`,
+          href: `/pago/${liq.id}`,
+          cuando: dias === 0 ? 'hoy' : `en ${dias}d`,
+          icono: 'pago_pendiente',
+          severidad: 'alta',
+        });
+      }
+    }
+
+    // 2) Pagos decididos en los últimos 30 días: rechazado / confirmado.
+    const hace30 = new Date(ahora - 30 * 86400000);
+    const decididos = await prisma.pago.findMany({
+      where: { contratoId, estado: { in: ['RECHAZADO', 'CONCILIADO'] }, decididoAt: { gte: hace30 } },
+      orderBy: { decididoAt: 'desc' },
+      take: 10,
+    });
+    for (const p of decididos) {
+      if (p.estado === 'RECHAZADO') {
+        out.push({
+          id: `pago-rech-${p.id}`,
+          titulo: 'Tu pago fue rechazado',
+          detalle: p.observacion ? p.observacion.slice(0, 80) : 'Volvé a mandar el comprobante.',
+          href: `/pago/${p.liquidacionId}`,
+          cuando: p.decididoAt ? relativo(p.decididoAt) : 'reciente',
+          icono: 'pago_rechazado',
+          severidad: 'critica',
+        });
+      } else {
+        out.push({
+          id: `pago-ok-${p.id}`,
+          titulo: 'Tu pago fue confirmado',
+          detalle: `$${Math.round(Number(p.monto)).toLocaleString('es-AR')} acreditado.`,
+          href: `/pago/${p.liquidacionId}`,
+          cuando: p.decididoAt ? relativo(p.decididoAt) : 'reciente',
+          icono: 'pago_confirmado',
+          severidad: 'media',
+        });
+      }
+    }
+
+    // 3) Reclamos: respondidos por la inmo / profesional asignado / a calificar.
+    const reclamos = await prisma.reclamo.findMany({
+      where: { contratoId },
+      include: { eventos: { orderBy: { fecha: 'asc' } }, profesional: true, visita: true, rating: true },
+    });
+    const CERRADOS = ['RESUELTO', 'CERRADO', 'RECHAZADO'];
+    for (const r of reclamos) {
+      if (!CERRADOS.includes(r.estado)) {
+        // El último mensaje del timeline es de la inmo y el inquilino no respondió.
+        let mensajeInmo: { contenido: string; fecha: Date } | null = null;
+        for (let i = r.eventos.length - 1; i >= 0; i--) {
+          const ev = r.eventos[i]!;
+          if (ev.tipo === 'MENSAJE_INMO' && ev.contenido) {
+            mensajeInmo = { contenido: ev.contenido, fecha: ev.fecha };
+            break;
+          }
+          if (ev.tipo === 'MENSAJE_INQUILINO') break;
+        }
+        if (mensajeInmo) {
+          out.push({
+            id: `inmo-${r.id}-${mensajeInmo.fecha.toISOString()}`,
+            titulo: 'Te respondieron tu reclamo',
+            detalle: mensajeInmo.contenido.slice(0, 70),
+            href: `/reclamos/${r.id}`,
+            cuando: relativo(mensajeInmo.fecha),
+            icono: 'reclamo_inmo',
+            severidad: 'alta',
+          });
+        }
+        if (r.profesional && (!r.visita || r.visita.estado === 'ASIGNADO')) {
+          out.push({
+            id: `prof-${r.id}-${r.profesional.id}`,
+            titulo: `Te asignaron a ${r.profesional.nombre}`,
+            detalle: 'Coordiná día y hora para que pase a tu propiedad.',
+            href: `/reclamos/${r.id}`,
+            cuando: 'reciente',
+            icono: 'profesional',
+            severidad: 'alta',
+          });
+        }
+      }
+      if (r.estado === 'RESUELTO' && !r.rating) {
+        out.push({
+          id: `rating-${r.id}`,
+          titulo: 'Calificá tu última reparación',
+          detalle: `${r.categoria.toLowerCase()} · contanos cómo fue.`,
+          href: `/reclamos/${r.id}`,
+          cuando: r.resueltoAt ? relativo(r.resueltoAt) : 'hace poco',
+          icono: 'rating',
+          severidad: 'baja',
+        });
+      }
+    }
+
+    const sev = { critica: 4, alta: 3, media: 2, baja: 1 } as const;
+    out.sort((a, b) => sev[b.severidad] - sev[a.severidad]);
+    return out.slice(0, 8);
+  });
+
   // ===== Reportes piloto — tracking ABSOLUTO server-side =====
   app.post('/reportes', async (request, reply) => {
     // Cualquier autenticado: usuario del panel O inquilino.
