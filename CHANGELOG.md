@@ -39,6 +39,16 @@ Plataforma SaaS multi-tenant para inmobiliarias (panel) e inquilinos (PWA). Esta
   `…/:id/aceptar` (demo-only en prod) y las acciones sobre reclamos EXISTENTES
   (confirmar-resolución, rating), que deben seguir andando si el contrato se finalizó a mitad.
 
+### Observabilidad + robustez + docs (27/06)
+- **Auditoría (#2):** el rastro `EventoAuditoria` (antes nadie escribía) ahora se emite en
+  9 acciones sensibles del panel — conciliar/rechazar pago, cargar/eliminar gasto de caja,
+  rendir, aprobar/rechazar contrato cargado, invitar/remover del equipo. Helper best-effort
+  `lib/auditoria.ts` (nunca rompe la acción de negocio). Falta `GET /eventos` + vista.
+- **Robustez (#3):** `GET /health` devuelve 503 si la DB está caída (antes 200 siempre);
+  auto-logout ante 401 en el panel (paridad con la PWA); vars operativas declaradas en EnvSchema.
+- **Docs (#4):** freshness — PIN 4→4-6 dígitos, backdoor demo (DEMO_MODE+NODE_ENV), PORT local,
+  CierreCaja (computado, no persistido), cifras viejas de 06-ANALISIS.
+
 ### Dinero / plata: consistencia y rendición (21–26/06)
 - Gasto multi-propietario se rinde por partes y se conserva (B2).
 - Batch A1: cierre de caja, cuenta del propietario y validación de comprobantes.
