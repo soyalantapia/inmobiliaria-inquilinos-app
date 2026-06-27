@@ -1,276 +1,632 @@
 import Link from 'next/link';
+import { Plus_Jakarta_Sans, Fraunces } from 'next/font/google';
 import {
   ArrowRight,
-  Building2,
-  CheckCircle2,
-  FileText,
-  Rocket,
-  ScrollText,
-  ShieldCheck,
-  Smartphone,
-  Sparkles,
+  ArrowUpRight,
   Wallet,
+  Smartphone,
+  FileText,
   Wrench,
+  Building2,
+  ScrollText,
+  Calculator,
+  CheckCircle2,
+  Check,
+  X,
+  MessageCircle,
+  ShieldCheck,
 } from 'lucide-react';
-import { Badge } from '@llave/ui/badge';
-import { Button } from '@llave/ui/button';
-import { Card, CardContent } from '@llave/ui/card';
+import { HeroSignup } from './_landing/hero-signup';
+import { LivePanel } from './_landing/live-panel';
+import { Reveal } from './_landing/reveal';
 
 /**
- * Pantalla de inicio pública de My Alquiler. Es la puerta de entrada para una
- * inmobiliaria nueva: presenta el producto y la invita a crear su cuenta.
+ * Pantalla de inicio de My Alquiler — landing de alta conversión.
  *
- * Accesible sin auth (grupo (landing)). El visitante sin sesión que entra a `/`
- * aterriza acá (ver AuthGuard) y de acá va al alta real en `/registro`.
- * El alta ya existe y funciona: crea la inmobiliaria (tenant) + el admin + el
- * trial en el backend y deja al admin logueado.
+ * Construida con el método landing-builder (research → copy → diseño). Ángulo
+ * de mercado virgen (confirmado en el teardown de competidores AR): ninguno
+ * muestra la plata en vivo, ninguno usa la app del inquilino como argumento,
+ * ninguno dice "perseguir". El signature move es el panel vivo del hero.
+ *
+ * Honestidad: cero testimonios o métricas fabricados. La prueba es real:
+ * convenios CPI/CUCICBA/Edifica + la beta, y una cita textual del relevamiento.
+ *
+ * El alta real ya existe (POST /auth/registro). La captura del hero precarga
+ * /registro con el email.
  */
+
+const display = Plus_Jakarta_Sans({
+  subsets: ['latin'],
+  weight: ['500', '600', '700', '800'],
+  variable: '--font-display',
+  display: 'swap',
+});
+const serif = Fraunces({
+  subsets: ['latin'],
+  weight: ['400', '500'],
+  style: ['normal', 'italic'],
+  variable: '--font-serif-display',
+  display: 'swap',
+});
 
 export const metadata = {
   title: 'My Alquiler · Cobrá tus alquileres sin perseguir a nadie',
   description:
-    'La plataforma para inmobiliarias: el panel que ordena tu cartera + la ' +
-    'app donde tus inquilinos pagan, reclaman y ven su contrato. Creá tu ' +
-    'inmobiliaria gratis hasta el lanzamiento, sin tarjeta.',
+    'El software de alquileres donde tus inquilinos pagan solos, la mora aparece sola y la rendición a propietarios sale calculada. Gratis hasta el lanzamiento, sin tarjeta.',
   openGraph: {
-    title: 'My Alquiler · Software para inmobiliarias',
+    title: 'My Alquiler · Cobrá tus alquileres sin perseguir a nadie',
     description:
-      'Cobranzas y mora en tiempo real, app para el inquilino, rendición a ' +
-      'propietarios sin Excel. Creá tu inmobiliaria gratis.',
+      'Tus inquilinos pagan desde la app. Vos ves la plata en vivo. La rendición sale sola. Para inmobiliarias argentinas.',
     type: 'website',
   },
 };
 
-const BENEFICIOS = [
-  {
-    icon: Wallet,
-    titulo: 'Cobranzas y mora en tiempo real',
-    detalle:
-      'Ves quién pagó, quién debe y cuánto, al instante. Se terminó la planilla de cobranzas.',
-  },
-  {
-    icon: Smartphone,
-    titulo: 'Tus inquilinos pagan desde su app',
-    detalle:
-      'Cada inquilino tiene su app: informa el pago, sube el comprobante y reclama. Vos validás en un toque.',
-  },
-  {
-    icon: FileText,
-    titulo: 'Rendí a propietarios sin Excel',
-    detalle:
-      'La rendición del mes sale calculada: alquiler, comisión y gastos. Lista para enviar.',
-  },
-  {
-    icon: Building2,
-    titulo: 'Multi-sociedad y consorcios',
-    detalle:
-      'S.R.L., S.A. y fideicomisos en una sola cuenta. Módulo aparte para administración de PH.',
-  },
-  {
-    icon: Wrench,
-    titulo: 'Reclamos con red de profesionales',
-    detalle:
-      'El inquilino reclama, asignás al plomero o electricista y se confirma por WhatsApp.',
-  },
-  {
-    icon: ScrollText,
-    titulo: 'Caja y auditoría al día',
-    detalle:
-      'Cada peso y cada acción sensible quedan registrados. Cierre de caja sin sorpresas.',
-  },
-];
-
-const PASOS = [
-  'Creás tu inmobiliaria en 1 minuto · sin tarjeta',
-  'Cargás tus propiedades, contratos y propietarios',
-  'Invitás a tus inquilinos: pagan y reclaman desde su app',
-  'Cobrás, rendís y tenés todo el mes ordenado',
-];
+const STYLES = `
+.ml-landing h1, .ml-landing h2, .ml-landing h3, .ml-landing .display { font-family: var(--font-display), system-ui, sans-serif; }
+.ml-landing .serif { font-family: var(--font-serif-display), Georgia, serif; }
+@keyframes numIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@keyframes kpiPulse { 0% { box-shadow: 0 0 0 0 rgba(16,185,129,0.45); } 100% { box-shadow: 0 0 0 9px rgba(16,185,129,0); } }
+`;
 
 export default function InicioPage() {
   return (
-    <>
-      {/* Topbar pública */}
-      <header className="sticky top-0 z-30 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/70">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 md:px-6">
-          <Link href="/inicio" className="flex items-center gap-2">
-            <div className="grid h-9 w-9 place-items-center rounded-lg bg-primary text-[12px] font-bold text-primary-foreground">
-              My
-            </div>
-            <div>
-              <p className="text-sm font-semibold leading-tight">My Alquiler</p>
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                Software inmobiliario
-              </p>
-            </div>
+    <div className={`ml-landing ${display.variable} ${serif.variable} min-h-screen bg-[#faf8f5] text-foreground`}>
+      <style dangerouslySetInnerHTML={{ __html: STYLES }} />
+      {/* Sin JS (crawlers, lectores), el fade-up no debe esconder contenido. */}
+      <noscript>
+        <style
+          dangerouslySetInnerHTML={{
+            __html: '.ml-landing [data-reveal]{opacity:1!important;transform:none!important;}',
+          }}
+        />
+      </noscript>
+      <Header />
+      <main>
+        <Hero />
+        <Convenios />
+        <Semana />
+        <TresActores />
+        <Features />
+        <Reclamos />
+        <CitaRelevamiento />
+        <Precio />
+        <Preguntas />
+        <CierreCta />
+      </main>
+      <Footer />
+    </div>
+  );
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+function Header() {
+  return (
+    <header className="sticky top-0 z-40 border-b border-black/[0.06] bg-[#faf8f5]/85 backdrop-blur supports-[backdrop-filter]:bg-[#faf8f5]/70">
+      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5 md:px-8">
+        <Link href="/inicio" className="flex items-center gap-2.5">
+          <div className="grid h-9 w-9 place-items-center rounded-[10px] bg-primary text-[13px] font-bold text-primary-foreground">
+            My
+          </div>
+          <span className="display text-[15px] font-bold tracking-tight">My Alquiler</span>
+        </Link>
+        <div className="flex items-center gap-1.5">
+          <Link
+            href="/login"
+            className="hidden rounded-full px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground sm:inline-flex"
+          >
+            Entrar
           </Link>
-          <div className="flex gap-2">
-            <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex">
-              <Link href="/login">Iniciar sesión</Link>
-            </Button>
-            <Button asChild size="sm">
-              <Link href="/registro">
-                Crear mi inmobiliaria
-                <ArrowRight className="h-3.5 w-3.5" />
-              </Link>
-            </Button>
+          <Link
+            href="/registro"
+            className="inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+          >
+            Empezá gratis
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+/* ── Hero ───────────────────────────────────────────────────────────────── */
+function Hero() {
+  return (
+    <section className="relative overflow-hidden">
+      <div className="mx-auto grid max-w-6xl items-center gap-12 px-5 py-16 md:px-8 md:py-24 lg:grid-cols-[1.05fr_0.95fr] lg:gap-8">
+        <div>
+          <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-primary">
+            Software de alquileres · hecho en Córdoba
+          </p>
+          <h1 className="mt-5 text-[clamp(2.5rem,6vw,4.25rem)] font-extrabold leading-[1.02] tracking-[-0.02em]">
+            Cobrá tus alquileres{' '}
+            <span className="bg-gradient-to-br from-primary to-violet-500 bg-clip-text text-transparent">
+              sin perseguir a nadie
+            </span>
+            .
+          </h1>
+          <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground">
+            Tus inquilinos pagan desde la app. Vos ves la plata en vivo. La rendición a
+            propietarios sale sola. Sin Excel y sin WhatsApp a las once de la noche.
+          </p>
+          <div className="mt-9">
+            <HeroSignup />
+          </div>
+          <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 text-[13px] text-muted-foreground">
+            <Trust>Gratis hasta el lanzamiento</Trust>
+            <Trust>Sin tarjeta</Trust>
+            <Trust>Sin permanencia</Trust>
           </div>
         </div>
-      </header>
 
-      <main className="mx-auto max-w-6xl px-4 py-12 md:px-6 md:py-16 lg:py-20">
-        {/* Hero */}
-        <section className="space-y-5 text-center">
-          <Badge className="bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">
-            <Sparkles className="mr-1 h-3 w-3" />
-            Hecho por inmobiliarias, para inmobiliarias
-          </Badge>
-          <h1 className="mx-auto max-w-3xl text-3xl font-bold tracking-tight md:text-5xl">
-            Cobrá tus alquileres sin perseguir a nadie
-          </h1>
-          <p className="mx-auto max-w-2xl text-base text-muted-foreground md:text-lg">
-            El panel que ordena tu cartera{' '}
-            <strong className="text-foreground">+ la app</strong> donde tus
-            inquilinos pagan, reclaman y ven su contrato. Todo en un solo lugar,
-            sin Excel.
-          </p>
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            <Button asChild size="xl">
-              <Link href="/registro">
-                Crear mi inmobiliaria
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
-            <Button asChild variant="outline" size="lg">
-              <Link href="/precios">Ver precios</Link>
-            </Button>
-          </div>
-          <div className="flex flex-wrap items-center justify-center gap-2 text-[11px] text-muted-foreground">
-            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 font-medium text-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300">
-              <Rocket className="h-3 w-3" />
-              Gratis hasta el lanzamiento
-            </span>
-            <span>· sin tarjeta · sin permanencia</span>
-          </div>
-        </section>
+        {/* El producto antes del fold — el signature move */}
+        <div className="lg:pl-4">
+          <LivePanel />
+        </div>
+      </div>
+    </section>
+  );
+}
 
-        {/* Beneficios */}
-        <section className="mt-20 space-y-8">
-          <div className="text-center">
-            <p className="text-xs font-semibold uppercase tracking-wide text-primary">
-              Qué resolvés con My Alquiler
-            </p>
-            <h2 className="mt-1 text-2xl font-bold md:text-3xl">
-              Todo lo que hoy hacés con 4 herramientas, en uno
-            </h2>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {BENEFICIOS.map((b) => {
-              const Icon = b.icon;
-              return (
-                <Card key={b.titulo}>
-                  <CardContent className="space-y-2 p-5">
-                    <div className="grid h-10 w-10 place-items-center rounded-lg bg-primary/10 text-primary">
-                      <Icon className="h-5 w-5" />
-                    </div>
-                    <p className="font-semibold">{b.titulo}</p>
-                    <p className="text-xs leading-relaxed text-muted-foreground">
-                      {b.detalle}
-                    </p>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        </section>
+function Trust({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <Check className="h-3.5 w-3.5 text-emerald-600" strokeWidth={3} />
+      {children}
+    </span>
+  );
+}
 
-        {/* Cómo arrancás + CTA */}
-        <section className="mt-20 rounded-2xl border-2 border-violet-200 bg-gradient-to-br from-violet-50/60 to-primary/5 p-8 dark:border-violet-900/40 dark:from-violet-900/15 md:p-12">
-          <div className="grid gap-6 md:grid-cols-2 md:items-center">
-            <div className="space-y-4">
-              <h2 className="text-2xl font-bold md:text-3xl">
-                Estás operando hoy mismo
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                Te das de alta vos, sin esperar a nadie. La cuenta queda lista al
-                instante y entrás directo al panel.
+/* ── Convenios (prueba real, sin logos truchos) ─────────────────────────── */
+function Convenios() {
+  return (
+    <section className="border-y border-black/[0.06] bg-white/60">
+      <div className="mx-auto flex max-w-6xl flex-col items-center gap-5 px-5 py-7 md:flex-row md:justify-between md:px-8">
+        <p className="text-center text-[13px] text-muted-foreground md:text-left">
+          Con convenio para matriculados de{' '}
+          <span className="font-semibold text-foreground">CPI Córdoba</span>,{' '}
+          <span className="font-semibold text-foreground">CUCICBA</span> y{' '}
+          <span className="font-semibold text-foreground">Edifica</span>.
+        </p>
+        <p className="rounded-full bg-primary/[0.07] px-4 py-1.5 text-center text-[13px] font-medium text-primary">
+          Beta abierta · las primeras 50 inmobiliarias entran con −20% para siempre
+        </p>
+      </div>
+    </section>
+  );
+}
+
+/* ── La semana del administrador (PAS: problema + agitación) ─────────────── */
+function Semana() {
+  const antes = [
+    'Rastreás quién pagó por WhatsApp, uno por uno.',
+    'La rendición del mes la hacés a mano, en una planilla.',
+    'Los ajustes por ICL quedan desactualizados entre contratos.',
+    'El propietario te llama para preguntar si cobraste.',
+  ];
+  const despues = [
+    'El inquilino paga desde la app y sube el comprobante.',
+    'La rendición sale calculada: alquiler, comisión y gastos.',
+    'El ajuste por índice se aplica solo, sin tocar Excel.',
+    'El propietario ve su liquidación el mismo día que cobrás.',
+  ];
+  return (
+    <section className="mx-auto max-w-6xl px-5 py-20 md:px-8 md:py-28">
+      <Reveal>
+        <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-primary">El lunes del administrador</p>
+        <h2 className="mt-3 max-w-2xl text-[clamp(1.9rem,4vw,3rem)] font-bold leading-[1.08] tracking-[-0.015em]">
+          Son las nueve y ya tenés tres mensajes preguntando si cobraste.
+        </h2>
+      </Reveal>
+
+      <div className="mt-12 grid gap-5 md:grid-cols-2">
+        <Reveal>
+          <div className="h-full rounded-3xl border border-black/[0.07] bg-white/40 p-7">
+            <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Con Excel y WhatsApp</p>
+            <ul className="mt-5 space-y-3.5">
+              {antes.map((t) => (
+                <li key={t} className="flex items-start gap-3 text-[15px] leading-snug text-muted-foreground">
+                  <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-red-50 text-red-400">
+                    <X className="h-3 w-3" strokeWidth={3} />
+                  </span>
+                  {t}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </Reveal>
+        <Reveal delay={90}>
+          <div className="h-full rounded-3xl border border-primary/20 bg-gradient-to-br from-white to-primary/[0.04] p-7 shadow-[0_24px_60px_-32px_rgba(80,40,160,0.4)]">
+            <p className="text-sm font-semibold uppercase tracking-wide text-primary">Con My Alquiler</p>
+            <ul className="mt-5 space-y-3.5">
+              {despues.map((t) => (
+                <li key={t} className="flex items-start gap-3 text-[15px] font-medium leading-snug text-foreground">
+                  <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-emerald-100 text-emerald-600">
+                    <Check className="h-3 w-3" strokeWidth={3} />
+                  </span>
+                  {t}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </Reveal>
+      </div>
+    </section>
+  );
+}
+
+/* ── Tres actores (la solución, narrativa) ──────────────────────────────── */
+function TresActores() {
+  const actores = [
+    {
+      who: 'El inquilino',
+      icon: Smartphone,
+      text: 'Paga desde su celular, sube el comprobante y reclama. No te llama, no te escribe a la noche.',
+    },
+    {
+      who: 'El propietario',
+      icon: Wallet,
+      text: 'Recibe su rendición prolija el mismo día que cobrás. Deja de llamarte a preguntar.',
+    },
+    {
+      who: 'Vos',
+      icon: ShieldCheck,
+      text: 'Ves la plata en vivo, la mora aparece sola y la caja cuadra. No perseguís a nadie.',
+    },
+  ];
+  return (
+    <section className="border-y border-black/[0.06] bg-white/50">
+      <div className="mx-auto max-w-6xl px-5 py-20 md:px-8 md:py-24">
+        <Reveal>
+          <h2 className="max-w-3xl text-[clamp(1.9rem,4vw,3rem)] font-bold leading-[1.08] tracking-[-0.015em]">
+            Una sola plataforma. Tres personas más tranquilas.
+          </h2>
+        </Reveal>
+        <div className="mt-12 grid gap-6 md:grid-cols-3">
+          {actores.map((a, i) => (
+            <Reveal key={a.who} delay={i * 80}>
+              <div className="flex h-full flex-col gap-4">
+                <div className="grid h-12 w-12 place-items-center rounded-2xl bg-primary/[0.08] text-primary">
+                  <a.icon className="h-6 w-6" />
+                </div>
+                <p className="display text-xl font-bold">{a.who}</p>
+                <p className="text-[15px] leading-relaxed text-muted-foreground">{a.text}</p>
+              </div>
+            </Reveal>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ── Features (bento asimétrico, NO grid de 3 iguales) ───────────────────── */
+function Features() {
+  return (
+    <section className="mx-auto max-w-6xl px-5 py-20 md:px-8 md:py-28">
+      <Reveal>
+        <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-primary">Todo en un panel</p>
+        <h2 className="mt-3 max-w-2xl text-[clamp(1.9rem,4vw,3rem)] font-bold leading-[1.08] tracking-[-0.015em]">
+          Lo que hoy hacés con cuatro herramientas, acá pasa solo.
+        </h2>
+      </Reveal>
+
+      <div className="mt-12 grid auto-rows-[minmax(0,1fr)] gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {/* Celda grande: cobranzas en vivo */}
+        <Reveal className="sm:col-span-2 lg:row-span-2">
+          <article className="flex h-full flex-col justify-between gap-6 rounded-3xl border border-black/[0.07] bg-white p-7">
+            <div>
+              <div className="grid h-11 w-11 place-items-center rounded-2xl bg-primary/[0.08] text-primary">
+                <Wallet className="h-5 w-5" />
+              </div>
+              <h3 className="mt-5 text-xl font-bold">Cobranzas en vivo</h3>
+              <p className="mt-2 max-w-md text-[15px] leading-relaxed text-muted-foreground">
+                Quién pagó, quién debe y cuánto, al instante. La mora aparece sola, con los
+                punitorios calculados día a día. Te enterás antes de que el propietario te llame.
               </p>
-              <ul role="list" className="space-y-3 text-sm">
-                <li className="flex items-start gap-3">
-                  <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-violet-600" />
-                  <span>
-                    <strong>Tus datos, tuyos</strong> · si te vas, te llevás tu
-                    cartera. Sin permanencia ni cargos de cancelación.
-                  </span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <Wallet className="mt-0.5 h-5 w-5 shrink-0 text-violet-600" />
-                  <span>
-                    <strong>Gratis hasta el lanzamiento</strong> · empezás sin
-                    tarjeta y sin compromiso.
-                  </span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <Smartphone className="mt-0.5 h-5 w-5 shrink-0 text-violet-600" />
-                  <span>
-                    <strong>La app del inquilino incluida</strong> · cada
-                    inquilino paga y reclama desde su celular.
-                  </span>
-                </li>
-              </ul>
             </div>
-            <div className="rounded-lg bg-background p-6 shadow-lg">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                ¿Cómo arrancás?
+            <MiniCobranzas />
+          </article>
+        </Reveal>
+
+        <FeatureCard icon={FileText} title="Rendición en un clic" highlight={false}>
+          Alquiler, comisión, gastos y expensas, calculados. Tu propietario la recibe el mismo día.
+        </FeatureCard>
+
+        <FeatureCard icon={Wrench} title="Reclamos con red de profesionales" highlight>
+          El inquilino reclama, vos derivás al plomero o electricista y se confirma por WhatsApp. Nadie más lo tiene.
+        </FeatureCard>
+
+        <FeatureCard icon={Calculator} title="Ajustes ICL e IPC automáticos">
+          El índice se aplica solo en la fecha que toca. Sin planillas heredadas que nadie audita.
+        </FeatureCard>
+
+        <FeatureCard icon={Building2} title="Multi-sociedad y consorcios">
+          S.R.L., S.A. y fideicomisos en una cuenta. Módulo aparte para administración de PH.
+        </FeatureCard>
+
+        <FeatureCard icon={ScrollText} title="Caja y auditoría al día">
+          Cada peso y cada acción sensible quedan registrados. El cierre de caja cuadra sin sorpresas.
+        </FeatureCard>
+      </div>
+    </section>
+  );
+}
+
+function FeatureCard({
+  icon: Icon,
+  title,
+  children,
+  highlight = false,
+}: {
+  icon: typeof Wallet;
+  title: string;
+  children: React.ReactNode;
+  highlight?: boolean;
+}) {
+  return (
+    <Reveal>
+      <article
+        className={[
+          'group flex h-full flex-col gap-3 rounded-3xl border p-7 transition-all hover:-translate-y-0.5',
+          highlight
+            ? 'border-primary/25 bg-gradient-to-br from-primary/[0.06] to-white shadow-[0_24px_60px_-36px_rgba(80,40,160,0.45)]'
+            : 'border-black/[0.07] bg-white hover:shadow-[0_24px_60px_-40px_rgba(80,40,160,0.35)]',
+        ].join(' ')}
+      >
+        <div
+          className={[
+            'grid h-11 w-11 place-items-center rounded-2xl transition-colors',
+            highlight ? 'bg-primary text-primary-foreground' : 'bg-primary/[0.08] text-primary',
+          ].join(' ')}
+        >
+          <Icon className="h-5 w-5" />
+        </div>
+        <h3 className="mt-1 text-lg font-bold leading-snug">{title}</h3>
+        <p className="text-[14.5px] leading-relaxed text-muted-foreground">{children}</p>
+      </article>
+    </Reveal>
+  );
+}
+
+function MiniCobranzas() {
+  const rows = [
+    { n: 'Laura Giménez', d: 'Cobrado', tone: 'emerald' as const },
+    { n: 'Carlos Romero', d: 'Vence en 2 días', tone: 'amber' as const },
+    { n: 'Sofía Aguirre', d: '10 días en mora', tone: 'red' as const },
+  ];
+  const dot = { emerald: 'bg-emerald-500', amber: 'bg-amber-500', red: 'bg-red-500' };
+  const txt = { emerald: 'text-emerald-600', amber: 'text-amber-600', red: 'text-red-500' };
+  return (
+    <div className="rounded-2xl border border-black/[0.06] bg-[#fbfafc] p-3">
+      <div className="space-y-1.5">
+        {rows.map((r) => (
+          <div key={r.n} className="flex items-center gap-3 rounded-xl bg-white px-3 py-2 ring-1 ring-black/[0.04]">
+            <span className={`h-2 w-2 shrink-0 rounded-full ${dot[r.tone]}`} />
+            <span className="flex-1 truncate text-[13px] font-medium text-gray-800">{r.n}</span>
+            <span className={`text-[12px] font-semibold ${txt[r.tone]}`}>{r.d}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── Reclamos (banda oscura, ruptura de ritmo) ──────────────────────────── */
+function Reclamos() {
+  return (
+    <section className="bg-[linear-gradient(135deg,#2a1758_0%,#1a0f33_100%)] text-white">
+      <div className="mx-auto grid max-w-6xl items-center gap-10 px-5 py-20 md:grid-cols-2 md:px-8 md:py-24">
+        <Reveal>
+          <div>
+            <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-violet-300">
+              Lo que ningún software del rubro tiene
+            </p>
+            <h2 className="mt-4 text-[clamp(1.9rem,4vw,3rem)] font-bold leading-[1.06] tracking-[-0.015em]">
+              El inquilino rompe algo. Vos no coordinás nada.
+            </h2>
+            <p className="mt-5 max-w-md text-lg leading-relaxed text-white/70">
+              El reclamo entra desde la app, lo derivás a un profesional de tu red y el plomero
+              confirma la visita por WhatsApp con un link. Sin login, sin llamados, sin quedar en el medio.
+            </p>
+            <Link
+              href="/registro"
+              className="mt-8 inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-semibold text-[#1b1228] transition-transform hover:-translate-y-0.5"
+            >
+              Empezá gratis
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </div>
+        </Reveal>
+        <Reveal delay={90}>
+          <FlujoReclamo />
+        </Reveal>
+      </div>
+    </section>
+  );
+}
+
+function FlujoReclamo() {
+  const pasos = [
+    { icon: Smartphone, t: 'El inquilino sube el reclamo', s: 'Pérdida de agua · Honduras 4490' },
+    { icon: Wrench, t: 'Lo derivás a un profesional', s: 'Diego Funes · Plomería' },
+    { icon: MessageCircle, t: 'Confirma la visita por WhatsApp', s: 'Sin login, con un link' },
+    { icon: CheckCircle2, t: 'Resuelto y registrado', s: 'Sin que toques el teléfono' },
+  ];
+  return (
+    <div className="space-y-2.5">
+      {pasos.map((p, i) => (
+        <div
+          key={p.t}
+          className="flex items-center gap-3.5 rounded-2xl border border-white/10 bg-white/[0.06] p-3.5 backdrop-blur"
+        >
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/10 text-violet-200">
+            <p.icon className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1 leading-tight">
+            <p className="text-sm font-semibold">{p.t}</p>
+            <p className="mt-0.5 truncate text-[12.5px] text-white/55">{p.s}</p>
+          </div>
+          <span className="text-xs font-bold text-white/30">0{i + 1}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ── Cita del relevamiento (honesta — la "cosa rara": numerales serif) ───── */
+function CitaRelevamiento() {
+  return (
+    <section className="mx-auto max-w-4xl px-5 py-24 text-center md:px-8 md:py-32">
+      <Reveal>
+        <p className="text-[13px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+          Durante el relevamiento con inmobiliarias de Córdoba
+        </p>
+        <blockquote className="serif mt-7 text-[clamp(1.75rem,4.5vw,3.25rem)] font-medium italic leading-[1.15] tracking-[-0.01em] text-foreground">
+          “La gestión de cobranza y rendición es un dolor de muela.”
+        </blockquote>
+        <p className="mt-7 text-sm text-muted-foreground">
+          Un administrador, en una entrevista real. No es un testimonio armado: es la razón por la
+          que existe My Alquiler.
+        </p>
+      </Reveal>
+    </section>
+  );
+}
+
+/* ── Precio (sin fake 3 columnas) ───────────────────────────────────────── */
+function Precio() {
+  return (
+    <section className="border-y border-black/[0.06] bg-white/50">
+      <div className="mx-auto max-w-6xl px-5 py-20 md:px-8 md:py-24">
+        <div className="grid items-center gap-8 md:grid-cols-[1.1fr_0.9fr]">
+          <Reveal>
+            <div>
+              <h2 className="text-[clamp(1.9rem,4vw,3rem)] font-bold leading-[1.08] tracking-[-0.015em]">
+                Gratis hasta el lanzamiento. Después, un precio fijo y claro.
+              </h2>
+              <p className="mt-5 max-w-xl text-lg leading-relaxed text-muted-foreground">
+                Un valor por mes según el tamaño de tu cartera. Sin comisión por transferencia y sin
+                permanencia. Las primeras 50 inmobiliarias entran a la beta con{' '}
+                <span className="font-semibold text-foreground">−20% para siempre</span>.
               </p>
-              <ol role="list" className="mt-3 space-y-2.5 text-sm">
-                {PASOS.map((paso, idx) => (
-                  <li key={paso} className="flex items-start gap-2">
-                    <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
-                      {idx + 1}
-                    </span>
-                    <span>{paso}</span>
+            </div>
+          </Reveal>
+          <Reveal delay={90}>
+            <div className="rounded-3xl border border-black/[0.07] bg-white p-7 shadow-[0_24px_60px_-40px_rgba(80,40,160,0.35)]">
+              <div className="flex items-baseline gap-2">
+                <span className="display text-4xl font-extrabold tracking-tight">$0</span>
+                <span className="text-sm text-muted-foreground">hasta el lanzamiento</span>
+              </div>
+              <ul className="mt-5 space-y-2.5 text-[15px]">
+                {['Sin tarjeta', 'Sin permanencia', 'Te llevás tus datos cuando quieras'].map((t) => (
+                  <li key={t} className="flex items-center gap-2.5">
+                    <Check className="h-4 w-4 text-emerald-600" strokeWidth={3} />
+                    {t}
                   </li>
                 ))}
-              </ol>
-              <Button asChild size="lg" className="mt-5 w-full">
-                <Link href="/registro">
-                  Crear mi inmobiliaria
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
-              </Button>
-              <p className="mt-3 flex flex-wrap items-center justify-center gap-1 text-[11px] text-muted-foreground">
-                <CheckCircle2 className="h-3 w-3 text-emerald-600" />
-                Sin tarjeta · queda lista al instante
-              </p>
+              </ul>
+              <Link
+                href="/precios"
+                className="mt-6 inline-flex items-center gap-1.5 text-sm font-semibold text-primary hover:underline"
+              >
+                Ver los planes cuando termine la beta
+                <ArrowUpRight className="h-4 w-4" />
+              </Link>
             </div>
-          </div>
-        </section>
+          </Reveal>
+        </div>
+      </div>
+    </section>
+  );
+}
 
-        {/* Footer */}
-        <footer className="mt-20 border-t pt-8 text-center text-xs text-muted-foreground">
-          <p>My Alquiler · myalquiler.com · Hecho en Argentina para LATAM</p>
-          <p className="mt-1">
-            ¿Ya tenés cuenta?{' '}
-            <Link href="/login" className="underline">
-              Iniciar sesión
-            </Link>
-            {' · '}
-            <Link href="/precios" className="underline">
-              Ver precios
-            </Link>
-            {' · '}
-            <a
-              href="https://wa.me/5491154596266?text=Hola%2C%20quiero%20saber%20m%C3%A1s%20de%20My%20Alquiler"
-              target="_blank"
-              rel="noreferrer"
-              className="underline"
-            >
-              Hablar por WhatsApp
-            </a>
+/* ── Preguntas (NO acordeón: texto corrido, primera persona) ────────────── */
+function Preguntas() {
+  const qs = [
+    {
+      q: '¿Y si mi inquilino no se baja la app?',
+      a: 'Igual le llega el link de pago por WhatsApp y sube el comprobante desde el navegador. La app es un plus, no un requisito.',
+    },
+    {
+      q: '¿Tengo que migrar toda mi cartera de una?',
+      a: 'No. Cargás una propiedad, ves cómo funciona y seguís a tu ritmo. Nadie te apura ni te cobra por probar.',
+    },
+    {
+      q: '¿Qué pasa cuando termina el período gratis?',
+      a: 'Te avisamos antes. Elegís un plan o te llevás tus datos. Cero cargo por irte.',
+    },
+  ];
+  return (
+    <section className="mx-auto max-w-4xl px-5 py-20 md:px-8 md:py-24">
+      <Reveal>
+        <h2 className="text-[clamp(1.6rem,3.5vw,2.4rem)] font-bold tracking-[-0.015em]">
+          Las tres preguntas que nos hacen siempre
+        </h2>
+      </Reveal>
+      <div className="mt-10 space-y-9">
+        {qs.map((qa, i) => (
+          <Reveal key={qa.q} delay={i * 60}>
+            <div>
+              <h3 className="text-lg font-bold">{qa.q}</h3>
+              <p className="mt-2 max-w-2xl text-[15.5px] leading-relaxed text-muted-foreground">{qa.a}</p>
+            </div>
+          </Reveal>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/* ── Cierre (repite la promesa + captura) ───────────────────────────────── */
+function CierreCta() {
+  return (
+    <section className="px-5 pb-20 md:px-8">
+      <div className="relative mx-auto max-w-6xl overflow-hidden rounded-[2rem] bg-[linear-gradient(135deg,#2a1758_0%,#16092e_100%)] px-7 py-16 text-white md:px-16 md:py-20">
+        <div className="pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full bg-primary/30 blur-3xl" />
+        <div className="relative max-w-2xl">
+          <h2 className="text-[clamp(2rem,4.5vw,3.25rem)] font-bold leading-[1.06] tracking-[-0.015em]">
+            Tu próxima rendición, lista antes del mediodía.
+          </h2>
+          <p className="mt-5 text-lg text-white/70">
+            Creá tu inmobiliaria en minutos y empezá a cobrar sin perseguir a nadie.
           </p>
-        </footer>
-      </main>
-    </>
+          <div className="mt-9">
+            <HeroSignup tone="dark" cta="Crear mi inmobiliaria" microcopy="Gratis hasta el lanzamiento · sin tarjeta · sin vendedores." />
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ── Footer ─────────────────────────────────────────────────────────────── */
+function Footer() {
+  return (
+    <footer className="border-t border-black/[0.06] bg-[#faf8f5]">
+      <div className="mx-auto flex max-w-6xl flex-col gap-6 px-5 py-10 md:flex-row md:items-center md:justify-between md:px-8">
+        <div className="flex items-center gap-2.5">
+          <div className="grid h-8 w-8 place-items-center rounded-lg bg-primary text-[11px] font-bold text-primary-foreground">
+            My
+          </div>
+          <div>
+            <p className="display text-sm font-bold">My Alquiler</p>
+            <p className="text-xs text-muted-foreground">Hecho en Córdoba para inmobiliarias argentinas.</p>
+          </div>
+        </div>
+        <nav className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
+          <Link href="/login" className="hover:text-foreground">Iniciar sesión</Link>
+          <Link href="/precios" className="hover:text-foreground">Precios</Link>
+          <a
+            href="https://wa.me/5491154596266?text=Hola%2C%20quiero%20saber%20m%C3%A1s%20de%20My%20Alquiler"
+            target="_blank"
+            rel="noreferrer"
+            className="hover:text-foreground"
+          >
+            WhatsApp
+          </a>
+        </nav>
+      </div>
+    </footer>
   );
 }
