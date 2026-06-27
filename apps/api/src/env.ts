@@ -34,6 +34,17 @@ const EnvSchema = z.object({
     .string()
     .refine((s) => !Number.isNaN(Date.parse(s)), 'FECHA_LANZAMIENTO no es una fecha válida')
     .optional(),
+  // Operativas: declaradas acá para documentar el contrato de entorno en un solo
+  // lugar y completar el tipo Env. (Hoy sus consumidores —mailer/cron/uploads/plata—
+  // las leen vía process.env; migrarlos a app.env para atrapar typos en runtime es
+  // un follow-up.) Todas opcionales: el código ya tiene defaults razonables.
+  CRON_SECRET: z.string().optional(),
+  CRON_DEVENGO: z.string().optional(),
+  UPLOADS_DIR: z.string().optional(),
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.string().optional(),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
