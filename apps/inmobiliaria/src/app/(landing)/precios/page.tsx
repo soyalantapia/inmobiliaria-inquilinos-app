@@ -91,7 +91,7 @@ export default function PreciosPage() {
       {/* Topbar pública */}
       <header className="sticky top-0 z-30 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/70">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 md:px-6">
-          <Link href="/precios" className="flex items-center gap-2">
+          <Link href="/inicio" className="flex items-center gap-2">
             <div className="grid h-9 w-9 place-items-center rounded-lg bg-primary text-[12px] font-bold text-primary-foreground">
               My
             </div>
