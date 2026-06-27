@@ -19,6 +19,7 @@ import {
   Wallet,
   Users,
   Wrench,
+  ScrollText,
   X,
 } from 'lucide-react';
 import { listarPendientes } from '@/lib/aprobaciones-storage';
@@ -54,6 +55,7 @@ const links: NavLink[] = [
   { href: '/anuncios', label: 'Anuncios', icon: Megaphone, capacidad: 'comunicaciones.enviar' },
   { href: '/profesionales', label: 'Profesionales', icon: HardHat, capacidad: 'profesionales.ver' },
   { href: '/screening', label: 'Verificar inquilino', icon: ShieldCheck, capacidad: 'screening.ver' },
+  { href: '/auditoria', label: 'Auditoría', icon: ScrollText, capacidad: 'auditoria.ver' },
   { href: '/configuracion', label: 'Configuración', icon: Settings },
 ];
 
