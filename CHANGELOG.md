@@ -10,6 +10,17 @@
 
 Plataforma SaaS multi-tenant para inmobiliarias (panel) e inquilinos (PWA). Estado de cambios desde el handoff inicial hasta hoy.
 
+### Home pública — puerta de entrada de alta (27/06)
+- Nueva pantalla de inicio pública `(landing)/inicio` (hero + beneficios + "¿Cómo arrancás?")
+  con CTA **"Crear mi inmobiliaria" → `/registro`**. Reusa el estilo de `/precios` y los copys
+  del registro (`@llave/ui`, Server Component, estática).
+- Ruteo: el visitante **sin sesión que entra a `/`** ahora aterriza en la home (antes lo
+  mandaban directo al login). Un deep-link sin sesión sigue yendo a `/login` (suele ser sesión
+  vencida). Cambio acotado en `auth-guard.tsx` (redirect por path) + `/inicio` agregada a las
+  rutas públicas de `middleware.ts`. El dashboard del logueado y la demo no se tocan.
+- El alta en sí (`/registro` + `POST /auth/registro`) ya existía y crea la inmobiliaria (tenant)
+  + el admin + el trial en una transacción real; esta entrega solo le construye la **entrada**.
+
 ### File storage y uploads REALES (25–26/06)
 - Storage real sobre Railway Volume con endpoint `/uploads` (keystone #1).
 - Comprobante de pago real del inquilino — cierra el "éxito falso" (P6).
