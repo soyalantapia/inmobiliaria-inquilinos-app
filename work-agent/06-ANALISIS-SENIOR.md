@@ -1,5 +1,16 @@
 # 06 · Análisis del Dev Senior — dónde estamos / qué falta / qué sería ideal
 
+> 🟢 **UPDATE 2026-06-27 — los 2 keystones de este análisis están HECHOS:**
+> - **Keystone #1 (file storage)** → DONE: Railway Volume `/data` + `/uploads`, los 4
+>   flujos suben de verdad. Ver `01-ARQUITECTURA.md` §storage / `../PROJECT.MD` §9.
+> - **Keystone #2 (cron de devengo)** → DONE: in-process cada 6h + `/internal/cron/devengar`.
+> Además, la **auditoría 27/06** cerró 8 desconexiones/bugs (ver `03-AUDITORIAS.md`).
+> Lo que queda del roadmap de abajo es lo que necesita **decisión de producto/insumo**
+> (screening NOSIS, broker IA, billing, referidos) — ver `04-PENDIENTES.md`. El resto
+> del documento se conserva como contexto del análisis original.
+
+---
+
 > **Primera entrega** de `PROMPT-DEV-SENIOR.md`. Informe de alineación: estado real
 > (verificado contra el código, no contra los docs viejos), salud/riesgos, el inventario
 > de gaps, y un roadmap priorizado en olas. **No se aplicó ningún cambio de código** —

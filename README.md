@@ -4,59 +4,130 @@ SaaS **multi-tenant** de gestión de alquileres (codename interno `@llave/*`).
 Panel para la inmobiliaria + PWA para el inquilino. **En producción** para
 **Tapia Propiedades**.
 
-> 📂 **Handoff completo del proyecto en [`work-agent/`](./work-agent/)** — estado,
-> arquitectura, deploy, auditorías, pendientes y decisiones. Empezá por
-> [`work-agent/00-ESTADO.md`](./work-agent/00-ESTADO.md).
+> 🧭 **¿Primera vez acá? Leé [`PROJECT.MD`](./PROJECT.MD)** — el documento maestro
+> con el contexto absoluto del proyecto (qué es, arquitectura, modelo de datos, API,
+> plata, auth, deploy, auditorías, decisiones, roadmap).
 >
-> 🔍 Prompt reutilizable de auditoría: [`AUDITORIA-PROFUNDA-PROMPT.md`](./AUDITORIA-PROFUNDA-PROMPT.md).
+> 📂 **Handoff operativo del día a día en [`work-agent/`](./work-agent/)** — empezá
+> por [`work-agent/00-ESTADO.md`](./work-agent/00-ESTADO.md).
 
-## EN VIVO (Railway)
+---
 
-| | |
+## 🌐 En vivo (Railway)
+
+| | URL |
 |---|---|
-| Panel inmobiliaria | **https://admin.myalquiler.com** |
-| PWA inquilino | **https://app.myalquiler.com** |
-| API | https://api-production-262e.up.railway.app (`GET /health`) |
+| **Panel inmobiliaria** | https://admin.myalquiler.com |
+| **PWA inquilino** | https://app.myalquiler.com |
+| **API** | https://api-production-262e.up.railway.app — `GET /health` → `{ok, db, ts}` |
 
-## Stack
+Tenant real: **Tapia Propiedades** · admin `alannaimtapia@gmail.com` / `Tapia.2026!` / **PIN 1234**.
 
-- **Backend** `apps/api`: Fastify + Prisma + **Postgres** (multi-tenant por `inmobiliariaId`).
-- **Panel** `apps/inmobiliaria`: Next.js 15 (desktop-first) + TanStack Query.
-- **PWA inquilino** `apps/inquilino`: Next.js 15 (mobile-first, PWA).
-- **Packages** `@llave/{shared,ui,config}`. Monorepo pnpm + turbo, TypeScript estricto.
+---
 
-Auth: **OTP + JWT propio** (NO Clerk — el README viejo estaba desactualizado).
-Frontend ramifica por `apiEnabled` (`NEXT_PUBLIC_API_URL`): real vs mock/demo.
+## 🧱 Stack
 
-## Estructura
+Monorepo **pnpm `10.28` + turbo**, **TypeScript** estricto, **Node ≥ 20**.
+
+| Capa | Qué | Versión |
+|---|---|---|
+| **Backend** `apps/api` | Fastify + Prisma + **Postgres** (multi-tenant por `inmobiliariaId`), ESM, build `tsup` (node22) | Fastify `5.2` · Prisma `6.2` |
+| **Panel** `apps/inmobiliaria` | **Next.js 14** (App Router, desktop-first) + TanStack Query | Next `14.2` · React `18.3` · RQ `5.101` |
+| **PWA** `apps/inquilino` | **Next.js 14** (App Router, mobile-first, PWA) + TanStack Query | igual que el panel |
+| **Packages** | `@llave/shared` (permisos + schemas JWT), `@llave/ui` (shadcn/Radix, tokens violeta/lavanda), `@llave/config` (tsconfig + tailwind) | — |
+
+- **Auth**: OTP + JWT **propio** (NO Clerk — el README viejo estaba desactualizado).
+  3 tipos de token (usuario panel / inquilino / co-inquilino), todos con `inmobiliariaId`.
+- **Frontend ramifica por `apiEnabled`** (`NEXT_PUBLIC_API_URL`): API real (prod) vs
+  mock/localStorage (demo). **Ambos modos deben andar.**
+- **File storage**: Railway Volume (`/data`) + endpoint `/uploads` (multipart).
+- **Cron de devengo**: in-process (cada 6h, idempotente) — genera liquidaciones futuras.
+
+Cifras: **105 endpoints · 72 modelos Prisma · 72 enums** (schema ~2220 líneas).
+
+---
+
+## 📁 Estructura
 
 ```
 apps/
-  api/            # Fastify + Prisma (routes: auth, core, plata, operacion, inquilino-mundo, anuncios, health)
-  inmobiliaria/   # panel admin
-  inquilino/      # PWA inquilino
-packages/{ui,shared,config}
-work-agent/       # 📂 documentación de handoff (LEER PRIMERO)
-AUDITORIA-PROFUNDA-PROMPT.md   # prompt reutilizable de auditoría
+  api/            # Fastify + Prisma. routes: auth, core, plata, operacion,
+                  #   inquilino-mundo, anuncios, uploads, documentos,
+                  #   servicios-publicos, health.  (prisma/schema.prisma + migraciones)
+  inmobiliaria/   # panel admin (Next 14, desktop-first)
+  inquilino/      # PWA inquilino (Next 14, mobile-first)
+packages/
+  shared/         # @llave/shared — permisos.ts, auth.ts (JWT schemas)
+  ui/             # @llave/ui — design system
+  config/         # @llave/config — tsconfig + tailwind
+work-agent/       # 📂 documentación de handoff (LEER al entrar)
+scripts/          # build-landing, onboarding-real.mjs, reset-qa.mjs, ...
+PROJECT.MD        # 📖 documento maestro (contexto absoluto)
+README.md         # este archivo (orientación + tooling)
 ```
 
-## Setup local
+---
 
-Requiere Node ≥ 20 y pnpm 9.
+## 📂 Qué hay en `work-agent/` (handoff)
+
+La carpeta `work-agent/` es la fuente de verdad operativa. Cada archivo:
+
+| Archivo | Para qué |
+|---|---|
+| **`00-ESTADO.md`** | Resumen ejecutivo de **dónde está el proyecto hoy** + qué sigue. Empezá acá. |
+| **`01-ARQUITECTURA.md`** | Stack, estructura del backend, **multi-tenant**, roles/capacidades, **modelo de plata**, patrones canónicos (lock atómico, error handler), `apiEnabled`, auth. |
+| **`02-DEPLOY.md`** | **Railway** (servicios, dominios), cómo deployar (`railway up`), migraciones, **cómo consultar la DB de prod**, Volume, smoke test, verificación local. |
+| **`03-AUDITORIAS.md`** | Historia de las campañas de auditoría multi-agente + metodología + falsos positivos conocidos (no re-arreglar). |
+| **`04-PENDIENTES.md`** | **Qué falta / roadmap** — el punto de partida del próximo chat. |
+| **`05-DECISIONES.md`** | **Decisiones de negocio del dueño** (no des-arreglar) + reglas duras + datos del tenant real. |
+| **`06-ANALISIS-SENIOR.md`** | Análisis dev senior: dónde estamos / qué falta / roadmap en olas. |
+| **`PROMPT-LOOP-QA-VISUAL-FUNCIONAL.md`** | Prompt reutilizable para correr una auditoría/QA en loop hasta que no haya errores. |
+
+---
+
+## 🧰 Lo que tenemos a mano (tooling y accesos)
+
+- **Railway** (proyecto **MYALQ**, env `production`): 3 servicios deployables
+  (`myalquiler-back`, `myalquiler-front`, `myalquiler-inquilino`) + Postgres de prod.
+  CLI autenticada → `railway up`, `railway variables`, `railway ssh`, `railway logs`.
+  - ⚠️ Los servicios **NO** están conectados a GitHub → push a `main` **no** auto-deploya.
+- **DB de prod**: host interno (no resuelve desde tu Mac). Para consultarla:
+  `railway ssh --service myalquiler-back "node --input-type=module -e '…PrismaClient…'"`.
+- **DB de test**: una Postgres **distinta** (host público `thomas.proxy.rlwy.net`, en
+  `apps/api/.env`). Las suites de `apps/api` (vitest) la usan; se re-seedea en cada corrida.
+- **Suite de tests**: `pnpm --filter api test` (vitest + `app.inject` + `seedBase`).
+- **E2E contra prod**: mintear un JWT con `JWT_SECRET` y probar con `curl` (con
+  cleanup/restore — nunca ensuciar el tenant real). Ejemplos en `02-DEPLOY.md`.
+- **Email**: SMTP Hostinger (`myalquiler@xnod.tech`). **Storage**: Railway Volume `/data`.
+- **Prompt de auditoría**: `work-agent/PROMPT-LOOP-QA-VISUAL-FUNCIONAL.md`.
+
+> Integraciones declaradas en `.env.example` pero **aún no cableadas** (roadmap):
+> MercadoPago (`MP_*`), screening NOSIS (`NOSIS_*`), WhatsApp (`WHATSAPP_*`),
+> Cloudflare R2 (`R2_*`), Resend (`RESEND_API_KEY`), IA/OCR (`ANTHROPIC_*`), Redis.
+
+---
+
+## ⚡ Setup local
+
+Requiere **Node ≥ 20** y **pnpm 10** (`corepack enable` o `npm i -g pnpm`).
 
 ```bash
 pnpm install
-pnpm dev                  # levanta panel + inquilino
+pnpm dev                  # levanta panel + inquilino (turbo)
 # o por app:
-pnpm dev:inmobiliaria
-pnpm dev:inquilino
+pnpm dev:inmobiliaria     # panel  → http://localhost:3001
+pnpm dev:inquilino        # PWA    → http://localhost:3000
 ```
 
-El backend necesita `DATABASE_URL` (Postgres) y `JWT_SECRET` en `apps/api/.env`.
-Ver [`work-agent/02-DEPLOY.md`](./work-agent/02-DEPLOY.md) para la mecánica de
-producción (Railway, migraciones, cómo chequear la DB de prod, smoke test).
+**Backend local**: necesita `DATABASE_URL` (Postgres) y `JWT_SECRET` en
+`apps/api/.env`. Levantar con `pnpm --filter api dev` (tsx watch). Comandos Prisma:
+`pnpm --filter api db:generate | db:migrate | db:deploy | seed`.
 
-## Verificar antes de deployar
+Variables del front: `NEXT_PUBLIC_API_URL` (vacío = modo demo/mock; seteado = API real).
+
+---
+
+## ✅ Verificar antes de deployar (siempre)
 
 ```bash
 pnpm --filter api exec tsc --noEmit && pnpm --filter api build
@@ -64,19 +135,38 @@ pnpm --filter @llave/inmobiliaria exec tsc --noEmit && pnpm --filter @llave/inmo
 pnpm --filter @llave/inquilino exec tsc --noEmit && pnpm --filter @llave/inquilino build
 ```
 
-## Estado
+## 🚀 Deploy
 
-Lanzado y endurecido: **6 pasadas de auditoría multi-agente, ~50 bugs reales
-arreglados**. Hay **~15 hallazgos de la última pasada sin aplicar** (varios son
-regresiones de los fixes recientes) → ver
-[`work-agent/04-PENDIENTES.md`](./work-agent/04-PENDIENTES.md), el punto de partida
-del próximo chat.
+```bash
+railway up --service myalquiler-back --detach        # solo el/los servicio(s) que tocaste
+railway up --service myalquiler-front --detach
+railway up --service myalquiler-inquilino --detach
+```
 
-## Reglas duras
+Después: smoke test (`GET /health` → `{db:"up"}`) y, si tocaste un endpoint, un E2E
+mínimo contra prod. Detalle en [`work-agent/02-DEPLOY.md`](./work-agent/02-DEPLOY.md).
 
-- NUNCA `prisma migrate reset` contra prod.
-- No correr acciones irreversibles sin confirmar en el chat.
-- No crear data de prueba en el tenant real (Tapia Propiedades).
-- gh token sin workflow scope (no tocar `.github/workflows/`).
+---
+
+## 🤝 Trabajar en equipo
+
+El objetivo de esta documentación es **centralizar todo** para que varias personas
+puedan trabajar el proyecto:
+
+1. **Onboarding**: leé [`PROJECT.MD`](./PROJECT.MD) (contexto absoluto) → luego
+   `work-agent/00-ESTADO.md` (estado de hoy) → `04-PENDIENTES.md` (qué sigue).
+2. **Antes de tocar plata/auth/multi-tenant**: leé `01-ARQUITECTURA.md` y
+   `05-DECISIONES.md` — hay reglas LOCKED del dueño que **no** se des-arreglan.
+3. **Ramas**: trabajá en una rama y abrí PR; pushear a `main` está OK en este repo.
+4. **Mantené los docs al día**: si agregás un endpoint, una regla de plata o un
+   modelo, actualizá `PROJECT.MD` (sección afín) y el archivo de `work-agent/`
+   correspondiente en el mismo PR. Documentación desactualizada = deuda.
+
+## 🛑 Reglas duras
+
+- **NUNCA** `prisma migrate reset` contra prod.
+- No correr acciones irreversibles (deploy, migración de schema, borrado) sin confirmar.
+- **No crear data de prueba en el tenant real** (Tapia Propiedades).
+- gh token **sin** workflow scope → no tocar `.github/workflows/`.
 
 Detalle en [`work-agent/05-DECISIONES.md`](./work-agent/05-DECISIONES.md).

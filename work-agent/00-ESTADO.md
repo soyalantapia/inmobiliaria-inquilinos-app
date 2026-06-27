@@ -1,18 +1,18 @@
 # Estado del proyecto — My Alquiler
 
 > **Documento de handoff.** Resumen ejecutivo de dónde está el proyecto hoy.
-> Última actualización: 2026-06-21. Último commit: `081c17e` (auditoría v5).
-> Para detalle, ver los demás archivos de `work-agent/`.
+> Última actualización: **2026-06-27**. Último commit: `23fae36` (auditoría 27/06, D4).
+> Contexto absoluto en [`../PROJECT.MD`](../PROJECT.MD). Detalle en los demás `work-agent/`.
 
 ## Qué es
 
-**My Alquiler** (codename interno `@llave/*`) es un SaaS **multi-tenant** de gestión
-de alquileres para **Tapia Propiedades** (y futuras inmobiliarias). Dos frentes:
+**My Alquiler** (codename `@llave/*`) es un SaaS **multi-tenant** de gestión de
+alquileres para **Tapia Propiedades** (y futuras inmobiliarias). Dos frentes:
 
-- **Panel de la inmobiliaria** (admin): contratos, propiedades, propietarios,
-  pagos, rendiciones, reclamos, equipo, sociedades, configuración.
-- **PWA del inquilino**: ver contrato/liquidaciones, informar pagos, comprobantes,
-  reclamos, servicios, co-inquilinos.
+- **Panel de la inmobiliaria** (admin): contratos, propiedades, propietarios, pagos,
+  rendiciones, caja, reclamos, equipo, sociedades, configuración.
+- **PWA del inquilino**: contrato/liquidaciones, informar pagos con comprobante,
+  boletas de servicios, reclamos, co-inquilinos, notificaciones.
 
 ## EN VIVO (producción, Railway)
 
@@ -20,61 +20,59 @@ de alquileres para **Tapia Propiedades** (y futuras inmobiliarias). Dos frentes:
 |---|---|
 | Panel inmobiliaria | **https://admin.myalquiler.com** |
 | PWA inquilino | **https://app.myalquiler.com** |
-| API | https://api-production-262e.up.railway.app |
+| API | https://api-production-262e.up.railway.app (`GET /health`) |
 
-Tenant real: **Tapia Propiedades**. Admin: `alannaimtapia@gmail.com / Tapia.2026! / PIN 1234`.
-Healthcheck: `GET /health` → `{ok, db, ts}`.
+Tenant real: **Tapia Propiedades** · admin `alannaimtapia@gmail.com / Tapia.2026! / PIN 1234`.
 
 ## Dónde estamos
 
-El sistema está **lanzado y endurecido**. Se hicieron **6 pasadas de auditoría
-multi-agente** (pre-lanzamiento + v2 + v3 + v4 + 2 regresiones) que arreglaron
-**~50 bugs reales** verificados contra el código y deployados en prod. El flujo
-central — contratos, liquidaciones, pagos, rendiciones, reclamos, equipo,
-sociedades, co-inquilinos — está **cableado al API real**.
+El sistema está **lanzado y endurecido**, con el flujo central **100% cableado al API
+real** (no mock): contratos, liquidaciones, pagos, rendiciones, caja, reclamos,
+equipo, sociedades, co-inquilinos, servicios, documentos. Múltiples campañas de
+auditoría multi-agente arreglaron **~50+ bugs reales** verificados y deployados.
 
-- **Core**: sólido y en prod. Money model, multi-tenant, máquinas de estado,
-  locks atómicos, constraints únicos, auth/PIN/OTP — todo auditado.
-- **Tendencia**: cada re-corrida del prompt de auditoría encuentra menos bugs
-  (v4: 24 → 1ra regresión: 12 → 3ra regresión: ~15 confirmados, varios
-  regresiones de los propios fixes). El loop **converge**.
-- **3 decisiones de negocio** tomadas por el dueño (ver `05-DECISIONES.md`):
-  comisión sobre alquiler, cualquier co-inquilino puede pagar, gastos por
-  propiedad con ingreso.
+**Hitos junio 2026 (todo en prod, en `main`):**
 
-## Qué falta (lo más importante para el próximo chat)
+- ✅ **File storage REAL** (Railway Volume `/data` + `/uploads` multipart): los 4
+  flujos de archivos suben de verdad — comprobante de pago, foto de reclamo, boleta,
+  documentos del contrato. (Ver `01-ARQUITECTURA.md` §storage y `../PROJECT.MD` §9.)
+- ✅ **Cron de devengo** in-process (cada 6h, idempotente) + endpoint
+  `/internal/cron/devengar` con `CRON_SECRET`. Genera liquidaciones futuras sin tocar nada.
+- ✅ **Servicios públicos** del panel persistidos (la inmo carga → el inquilino ve) y
+  **edición de propiedad** que persiste de verdad (antes era override de localStorage).
+- ✅ **Auditoría multi-agente 27/06** — workflow (6 finders → verificación adversarial
+  → crítico de completitud) encontró **8 hallazgos, los 8 fixeados/deployados/testeados
+  en prod** (E2E con cleanup; B2 con test de regresión). Ver `03-AUDITORIAS.md`.
 
-Hay **~15 hallazgos confirmados de la 3ra pasada de auditoría SIN aplicar todavía**
-(la síntesis se cortó por límite de sesión, pero los confirmados están). Varios
-son **regresiones de los fixes de la v5**. Están todos triados en
-**`04-PENDIENTES.md`** — ése es el punto de partida del próximo chat.
+## Qué falta (próximo chat)
 
-Los 3 más urgentes (ALTA):
-1. **rechazar aprobación puede fallar con P2003** si el inquilino del BORRADOR
-   tiene `CodigoOtp`/`AnuncioAcuse`/`Documento` (el `deleteMany` de la v5 choca
-   con FKs RESTRICT). → regresión del fix v5.
-2. **Comprobante adjunto del checkout nunca se sube al backend** en prod (éxito
-   falso). → bug viejo, alto impacto.
-3. **Link de invitación de co-inquilino reusable** (token sin uso único).
+**No hay bugs abiertos conocidos.** Lo pendiente necesita **decisión de producto o
+insumo del owner** (no es bug) — triado en `04-PENDIENTES.md`:
+
+1. **Forma de pago del plan SaaS** (billing): cómo cobra el SaaS a la inmobiliaria.
+2. **Programa de referidos**: reglas comerciales.
+3. **Screening real** (NOSIS) · **Broker IA/OCR** de comprobantes (presupuesto).
+4. **WhatsApp real** (recordatorio a morosos / invitaciones) · conciliación bancaria.
 
 ## Cómo seguir
 
-1. Leer `04-PENDIENTES.md` y aplicar los fixes (con la disciplina de
-   `03-AUDITORIAS.md`: verificar cada uno contra el código real antes de tocar).
-2. Deployar siguiendo `02-DEPLOY.md` (Railway, `migrate deploy`, smoke test).
-3. Re-correr el prompt `AUDITORIA-PROFUNDA-PROMPT.md` (raíz del repo) para validar
-   que no se introdujo nada nuevo.
+1. Para una feature nueva: leé `01-ARQUITECTURA.md` (patrones) + `05-DECISIONES.md`
+   (reglas LOCKED) antes de tocar plata/auth/multi-tenant.
+2. Cablear con disciplina (verificar file:line, `tsc`+`build` 0, E2E contra prod con
+   cleanup), commitear, deployar (`02-DEPLOY.md`), smoke test.
+3. Para validar que no se rompió nada: re-correr `PROMPT-LOOP-QA-VISUAL-FUNCIONAL.md`.
 
-## Mapa de archivos de este handoff
+## Mapa de este handoff
 
 | Archivo | Contenido |
 |---|---|
 | `00-ESTADO.md` | Este resumen ejecutivo |
-| `01-ARQUITECTURA.md` | Stack, estructura, multi-tenant, money model, convenciones |
-| `02-DEPLOY.md` | Railway, migraciones, cómo chequear prod, smoke test, reglas duras |
-| `03-AUDITORIAS.md` | Historia de las 6 pasadas + metodología + el prompt reutilizable |
-| `04-PENDIENTES.md` | **Los ~15 hallazgos sin aplicar + long-tail diferido** |
+| `01-ARQUITECTURA.md` | Stack, estructura, multi-tenant, money model, storage, cron, convenciones |
+| `02-DEPLOY.md` | Railway, Volume, migraciones, consultar prod, smoke test, reglas duras |
+| `03-AUDITORIAS.md` | Historia de las campañas + metodología + la auditoría 27/06 (8 fixes) |
+| `04-PENDIENTES.md` | Roadmap — lo que falta (decisiones de producto) |
 | `05-DECISIONES.md` | Decisiones de negocio del dueño + reglas duras |
-| `06-ANALISIS-SENIOR.md` | **Análisis dev senior: dónde estamos / qué falta / roadmap en olas** (2026-06-23) |
-| `../AUDITORIA-PROFUNDA-PROMPT.md` | El prompt reutilizable de auditoría |
-| `../PROMPT-DEV-SENIOR.md` | Onboarding del dev principal senior (genera este análisis) |
+| `06-ANALISIS-SENIOR.md` | Análisis dev senior / roadmap en olas |
+| `PROMPT-LOOP-QA-VISUAL-FUNCIONAL.md` | Prompt reutilizable de auditoría en loop |
+| `../PROJECT.MD` | **Documento maestro (contexto absoluto)** |
+| `../README.md` | Orientación + tooling + setup |

@@ -17,11 +17,16 @@ Decisión: pagar el alquiler no se restringe por permiso — cualquier miembro d
 (incluido un co-inquilino "Ver") puede informar el pago. El tier PAGAR ya no agrega nada
 sobre VER para esa acción. Commit `019598b`.
 
-### 3. Gastos de rendición SOLO de propiedades con ingreso
+### 3. Gastos de rendición SOLO de propiedades con ingreso (y por partes en multi-dueño)
 En la rendición de un período se descuentan **solo** los gastos de las propiedades que
-aportaron alquiler a esa rendición (las que tienen liquidación PAGADA del período =
-`propIdsConIngreso`), NO de todas las propiedades del dueño. Antes una propiedad
-solo-expensas reducía el neto de las de alquiler. Commit `afaefe3`.
+aportaron alquiler a esa rendición (`propIdsConIngreso`), NO de todas las del dueño.
+Commit `afaefe3`. **Además (auditoría 27/06, B2):** en propiedades con varios dueños el
+gasto se rinde **por partes** (cada dueño su participación) y se marca descontado-total
+recién cuando las partes cubren el 100% → conservación del total. Commit `dac6d4a`.
+
+### 4. PROPIETARIO_DIRECTO no es ingreso de la inmobiliaria
+Tanto `POST /rendiciones` como `GET /caja/cierre` filtran `modoCobranza='INMOBILIARIA'`:
+en cobranza directa la inmo no cobra ni gana comisión. (B1, auditoría 27/06, `74d519f`.)
 
 ## Decisiones de seguridad / acceso (ya implementadas)
 
@@ -29,6 +34,10 @@ solo-expensas reducía el neto de las de alquiler. Commit `afaefe3`.
   el email global, así que dos tenants no pueden compartir email. NO scopear por tenant.
 - **Co-inquilino "Ver" ve el CBU/datos bancarios en el checkout** (decisión: dejarlo ver
   y pagar). El backend no lo bloquea (ver decisión 2).
+- **La inmobiliaria puede dar de alta co-inquilinos desde el panel** (auditoría 27/06,
+  D1): CRUD real `/contratos/:contratoId/co-inquilinos` (requireUsuario, tenant-scope).
+  En prod el **email es obligatorio** (la activación del co-inquilino es por email,
+  igual que el inquilino) — antes el panel los guardaba solo en localStorage.
 - **Backdoor demo (OTP `000000`)** excluido de producción (`NODE_ENV !== 'production'`).
 
 ## Reglas duras (innegociables — del dueño)

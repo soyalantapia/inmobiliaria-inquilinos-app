@@ -7,7 +7,7 @@ workspace Deenex. Servicios:
 
 | Servicio | svc id | Build | Dominio |
 |---|---|---|---|
-| `myalquiler-back` | `bf0c4296…` | Dockerfile `apps/api/Dockerfile` | api-production-262e.up.railway.app |
+| `myalquiler-back` | `bf0c4296…` | Dockerfile `apps/api/Dockerfile` (+ **Volume `myalquiler-back-volume` en `/data`** para uploads) | api-production-262e.up.railway.app |
 | `myalquiler-front` | `f654d7a1…` | Dockerfile `apps/inmobiliaria/Dockerfile` | **admin.myalquiler.com** |
 | `myalquiler-inquilino` | `e8209a59…` | Dockerfile `apps/inquilino/Dockerfile` | **app.myalquiler.com** |
 | `Postgres-_cRj` | `5cac29d2…` | — | DB PROD EN USO (host interno `postgres-crj.railway.internal`) |
@@ -20,11 +20,17 @@ Otros Postgres del proyecto (`Postgres`, `Postgres-fL7g`) y `MongoDB` están sin
 Para desplegar:
 
 ```bash
-railway up --service <svc> --environment production --detach -m "mensaje"
-# y pollear railway status --json hasta SUCCESS
+railway up --service <svc> --detach        # back / front / inquilino — solo lo que tocaste
+# (el env activo ya es production; railway environment production si hace falta fijarlo)
 ```
 
-Deployar **solo los servicios que tocaste** (back / front / inquilino).
+Para saber cuándo quedó live un endpoint nuevo: pollear hasta que pase de **404→401**
+(route registrado pero sin token) en vez de pollear `railway status`. Ej:
+`for i in $(seq 1 15); do curl -s -o /dev/null -w '%{http_code}' "$API/<ruta-nueva>"; sleep 20; done`.
+
+**Env del back (prod):** `DATABASE_URL`, `JWT_SECRET` (64 chars), `DEMO_MODE=false`,
+`PORT`, SMTP Hostinger, **`CRON_SECRET`** (para `/internal/cron/devengar`),
+`CORS_ORIGINS` (incluye los dominios de los fronts), `UPLOADS_DIR` (opcional; default `/data/uploads`).
 
 Mecánica de los Dockerfiles (fronts): `RAILWAY_DOCKERFILE_PATH=apps/<app>/Dockerfile`,
 contexto = raíz del monorepo, `NEXT_PUBLIC_API_URL` se hornea como build ARG. El
@@ -57,21 +63,19 @@ tablas → **es esperado, NO borrar el índice**.
 
 ## Cómo chequear / consultar la DB de prod desde local
 
-⚠️ `railway run --service myalquiler-back` inyecta la URL **interna**
-(`postgres-crj.railway.internal`), **inalcanzable** desde tu máquina. Para conectarte
-desde local usá la **URL pública** del servicio Postgres:
+⚠️ La DB de prod tiene **solo host interno** (`postgres-crj.railway.internal`),
+**inalcanzable** desde tu máquina (`railway run` inyecta esa URL interna). La forma
+confiable y verificada: correr la query **dentro del contenedor** del back, donde el
+host interno SÍ resuelve, vía `railway ssh`:
 
 ```bash
-# Obtener la URL pública (proxy) del Postgres de prod
-PUBURL=$(railway variables --service Postgres-_cRj --environment production --json \
-  | python3 -c "import json,sys; print(json.load(sys.stdin).get('DATABASE_PUBLIC_URL',''))")
-
-# Correr un script de chequeo (read-only) con el cliente Prisma local
-DATABASE_URL="$PUBURL" node apps/api/check.mjs   # ej: contar duplicados, ver índices, etc.
+railway ssh --service myalquiler-back \
+  "node --input-type=module -e 'import{PrismaClient}from\"@prisma/client\";const p=new PrismaClient();console.log(await p.contrato.count());await p.\$disconnect();'"
 ```
 
-(La URL pública es `thomas.proxy.rlwy.net:<puerto>` — distinta del `.env` local,
-que apunta a OTRA DB de test/dev en el mismo proxy con otro puerto.)
+(Si en algún momento se expone la URL pública del Postgres de prod —`DATABASE_PUBLIC_URL`,
+host tipo `*.proxy.rlwy.net`— se puede conectar desde local con el Prisma client. Hoy
+no está expuesta. NO confundir con el `apps/api/.env`, que apunta a OTRA DB de **test**.)
 
 ## Smoke test de prod (sin ensuciar el tenant real)
 
@@ -95,11 +99,21 @@ pnpm --filter @llave/inquilino exec tsc --noEmit
 pnpm --filter @llave/inquilino build
 ```
 
-## ⚠️ NO correr los tests contra DB incierta
+## Tests (DB de test, NO prod)
 
-Las suites de `apps/api` (`vitest run`) pegan a una **DB remota de Railway** y hacen
-resets/seed en `beforeAll`. Si no tenés certeza 100% de que NO es prod, **no las
-corras** (regla dura: nunca arriesgar prod).
+Las suites de `apps/api` (`pnpm --filter api test`, vitest) pegan a una **DB de test**
+(host **público** `thomas.proxy.rlwy.net`, en `apps/api/.env`) y hacen reset/`seedBase`
+en `beforeAll`. Es **distinta de prod** — pero la regla dura sigue: si no tenés certeza
+100% de que el `DATABASE_URL` NO es prod, **no las corras**.
+
+- **Gotcha**: si el `schema.prisma` cambió y el test DB quedó atrás (ej. faltaba la
+  col `inmobiliarias.paisCodigo`), sincronizalo con `npx prisma db push --accept-data-loss`
+  (es el DB de test, se re-seedea). La suite plata tiene **2-3 fallas preexistentes**
+  de drift de seed (montoBruto esperado, y polución de estado por correr la suite
+  repetida) — NO son regresiones.
+- **E2E contra prod** (sin tocar datos reales): mintear un JWT con `JWT_SECRET`
+  (usuario o inquilino) y probar con `curl` con cleanup/restore. `requireUsuario` /
+  `requireContratoAcceso` no validan el id contra DB para el titular.
 
 ## Reglas duras (del dueño — innegociables)
 

@@ -1,184 +1,77 @@
-# Pendientes — punto de partida del próximo chat
+# Pendientes — roadmap
 
-> ## ✅ ESTADO OLA 0 (2026-06-23) — aplicado en el working tree, SIN commitear ni deployar
-> Se aplicaron con disciplina (verificado file:line + typecheck/build OK):
-> **P1, P2, P3, P4, P5, P6, P7, P8, P9, P11, P12, P13**.
-> - **P1** (plata.ts): borra CodigoOtp/AnuncioAcuse/Documento/CertificadoInquilino antes del `inquilino.deleteMany` al rechazar.
-> - **P7** (auth.ts + inquilino-mundo.ts): aceptación de co-invitación = lock atómico de un solo uso; regenerar el link re-arma la invitación a PENDIENTE (rota la credencial).
-> - **P6** (checkout): parche honesto — en prod no se finge que el comprobante llegó; se pide enviarlo por WhatsApp. (Upload real = Ola 1.)
-> - **P8** (core.ts + hooks.ts), **P5/P3** (hooks.ts), **P2/P9** (pagos+contratos pages), **P4** (app.ts P2034), **P11** (anular rendición atómica), **P12/P13** (front).
->
-> **DIFERIDOS (decisión del dueño, NO aplicados):**
-> - **P10** — bloquear informar pago / subir boleta sobre contrato FINALIZADO. No es bug claro: no hay endpoint para que la inmobiliaria registre el pago, así que bloquear dejaría sin forma de cobrar un saldo legítimo pendiente. → **decisión**: ¿se cobra el saldo post-finalización por la app o por afuera?
-> - **P14** — saldo (no total) en el checkout multi-parcial: el backend ya rechaza `monto > saldo` (integridad cubierta); el fix UI necesita exponer lo conciliado al front = feature, demo-céntrica.
->
-> Verificación: `tsc --noEmit` OK en api + panel + inquilino; `pnpm --filter api build` OK.
-> Falta: **commit + deploy (Railway) + smoke + re-correr `AUDITORIA-PROFUNDA-PROMPT.md`**.
+> Última actualización: **2026-06-27**. **No hay bugs abiertos conocidos.** El core
+> está en prod y endurecido; las campañas de auditoría convergieron. Lo que queda
+> necesita **decisión de producto o insumo del owner** (no es bug). Historial de lo
+> ya hecho al final.
 
 ---
 
-> **~15 hallazgos confirmados de la 3ra pasada de auditoría, SIN aplicar todavía.**
-> La síntesis del workflow se cortó por límite de sesión, pero los confirmados
-> crudos (≥2/3 verificadores) están capturados acá, deduplicados y triados.
-> Origen: run `wte2tzjue` (3ra regresión, 2026-06-21).
->
-> ⚠️ **Disciplina obligatoria** (ver `03-AUDITORIAS.md`): antes de aplicar cada uno,
-> abrir el archivo, **trazar el flujo real y confirmar** que el bug existe y que el
-> fix es correcto. Los fix specs de abajo vienen del agente de síntesis y a veces
-> sub-analizan. Typecheck + build entre tandas. Deploy + smoke (ver `02-DEPLOY.md`).
+## A. Necesita decisión / insumo del owner (no son bugs)
+
+### 1. Forma de pago del plan SaaS (billing) — [producto]
+Cómo le cobra el SaaS a la inmobiliaria. Existen los modelos
+`Suscripcion`/`Factura`/`Cupon`/`TramoPlan` pero falta definir el flujo (medio de
+pago, ciclo, prueba, mora). El panel tiene una pantalla de configuración de "forma de
+pago" que hoy escribe a localStorage → **fake en prod**, a la espera de la decisión.
+**Bloqueo:** modelo de billing sin definir + posible integración MercadoPago (`MP_*`).
+
+### 2. Programa de referidos — [comercial]
+Modelo `Referido` existe; faltan las reglas (qué premia, a quién, tope, validez). El
+panel tiene un manager de referidos en localStorage → **fake en prod** hasta tener las
+reglas. **Bloqueo:** decisión comercial.
+
+### 3. Screening real — [insumo: proveedor]
+Hoy el screening es demo. Integrar **NOSIS** (vars `NOSIS_API_KEY`/`NOSIS_BASE_URL` en
+`.env.example`). Endpoints `GET /screenings` + `POST /screening` ya existen como cáscara.
+
+### 4. Broker IA / OCR de comprobantes — [insumo: presupuesto]
+Lectura por IA del comprobante (extraer monto/fecha/operación) para acelerar la
+validación. Vars `ANTHROPIC_API_KEY`/`ANTHROPIC_MODEL`. El panel de "Por validar" ya
+muestra el comprobante real (la base está); falta el paso de IA.
+
+### 5. WhatsApp real — [insumo: cuenta WhatsApp Business]
+Recordatorio automático a morosos + envío del link de invitación de co-inquilino por
+WhatsApp (hoy el flujo asume que el link se manda a mano). Vars `WHATSAPP_*`.
+
+### 6. Conciliación bancaria — [producto]
+Modelos `DatosBancarios`/`ResumenBancario`/`CreditoDetectado` existen para auto-detectar
+acreditaciones y pre-conciliar pagos. Sin flujo definido.
 
 ---
 
-## A. REGRESIONES de los fixes v5 (arrancar por acá)
+## B. Long-tail demo-gated A PROPÓSITO (no son bugs)
 
-### P1 — [ALTA] `rechazar` aprobación puede fallar con P2003 (FK RESTRICT)
-`apps/api/src/routes/plata.ts` (rama `rechazar`, ~líneas 582-589)
-
-El fix v5 agregó `tx.inquilino.deleteMany({ where: { contratoId: apr.entidadId } })`
-al rechazar una aprobación CONTRATO_CARGADO (para liberar el email). **Pero** si el
-inquilino del BORRADOR tiene hijos con FK obligatoria sin CASCADE (`CodigoOtp`,
-`CertificadoInquilino`, `AnuncioAcuse`, `Documento`), el delete tira **P2003** → la tx
-hace rollback → la aprobación vuelve a PENDIENTE y **no se puede rechazar nunca más**.
-Repro: CARGA carga contrato → el inquilino abre la PWA y pide un OTP (crea `CodigoOtp`)
-→ Admin intenta rechazar → falla permanentemente.
-
-**Fix**: antes del `inquilino.deleteMany`, borrar los hijos en la misma tx:
-```ts
-const inqs = await tx.inquilino.findMany({
-  where: { contratoId: apr.entidadId, inmobiliariaId: u.inmobiliariaId },
-  select: { id: true },
-});
-const ids = inqs.map((i) => i.id);
-await tx.codigoOtp.deleteMany({ where: { inquilinoId: { in: ids } } });
-await tx.certificadoInquilino.deleteMany({ where: { inquilinoId: { in: ids } } });
-await tx.anuncioAcuse.deleteMany({ where: { inquilinoId: { in: ids } } });
-await tx.documento.deleteMany({ where: { inquilinoId: { in: ids } } });
-await tx.inquilino.deleteMany({ where: { contratoId: apr.entidadId, inmobiliariaId: u.inmobiliariaId } });
-```
-**VERIFICAR primero**: qué FKs apuntan a `Inquilino` en `schema.prisma` y cuáles son
-RESTRICT (default Prisma) vs Cascade. Borrar exactamente esas. (Alternativa más
-robusta pero con migración: `onDelete: Cascade` en esas relaciones.)
-
-### P2 — [ALTA] BORRADOR-rechazado infla KPIs y aparece en la lista de Pagos
-`apps/inmobiliaria/src/app/(app)/pagos/page.tsx` (~164-192) y `/contratos/page.tsx` (~116)
-
-El fix v5 borra el inquilino al rechazar pero **deja el contrato en estado BORRADOR**.
-Ese BORRADOR-rechazado infla el KPI "Pendiente" y aparece en la lista de cobros/pagos.
-
-**Fix**: filtrar `estado !== 'BORRADOR'` en `pagos/page.tsx` (front, donde aplica;
-el endpoint `/contratos` debe seguir devolviendo BORRADORs para la pantalla de
-contratos). Opcional: endpoint `DELETE /contratos/:id` (ADMIN/OPERADOR, solo
-BORRADOR con `pendienteAprobacion=false`) para limpiar el draft rechazado, o
-distinguir en el contador `pendienteAprobacion`.
-
-### P3 — [MEDIA] `useDashboard.cargando` incompleto
-`apps/inmobiliaria/src/lib/api/hooks.ts` (~1122-1197)
-
-El guard de carga del dashboard (fix v5) usa `cargando` pero ése no incluye
-`usePropietarios().cargando` ni `useLiquidaciones().cargando` → el dashboard puede
-mostrarse antes de tener esos datos. **Fix**: incluirlos:
-`cargando: cargC || cargP || cargOwn || cargLiq`.
-
-### P4 — [BAJA] P2034 no mapeado por el error handler global
-`apps/api/src/app.ts`
-
-La baja de sociedad v5 usa tx `Serializable`, que puede tirar **P2034**
-(serialization failure) bajo concurrencia → hoy cae a **500**. **Fix**: en el error
-handler, mapear `err.code === 'P2034'` → 409 ("Conflicto de escritura concurrente,
-reintentá") (o 503 con Retry-After).
-
-### P5 — [ALTA] `aprobarApi`/`rechazarApi` no invalidan `['contrato', id]`
-`apps/inmobiliaria/src/lib/api/hooks.ts` (~243-260)
-
-Tras aprobar/rechazar, el **detalle** de contrato en cache queda stale (el badge
-"pendiente aprobación" no se actualiza). **Fix**: en ambas, agregar
-`void qc.invalidateQueries({ queryKey: ['contrato'] })` (prefix-match invalida todos
-los detalles). (`['contratos']` —lista— ya se invalida; falta `['contrato', id]` —detalle.)
+Pantallas/features secundarias que muestran "Próximamente" o mock en prod — **no rompen
+el core ni la plata**: negociación iterativa de renovación, migración masiva de cartera,
+reset de PIN olvidado, objetivos/métricas internas (dashboards de la propia inmo), y
+algunas vistas de consorcios. Y los **falsos positivos conocidos** de `03-AUDITORIAS.md`
+(NO re-arreglar).
 
 ---
 
-## B. Bugs preexistentes (no-regresión)
+## C. Ya hecho (para no re-trabajarlo)
 
-### P6 — [ALTA] Comprobante adjunto del checkout NUNCA se sube al backend (éxito falso)
-`apps/inquilino/src/app/(full)/pago/[liqId]/checkout/page-client.tsx` (~935-973)
-
-En prod, el inquilino adjunta el comprobante y la UI muestra éxito, pero **el archivo
-nunca se manda al backend** (no hay endpoint de upload). **Fix**: (corto plazo) en
-`StepConfirmado` no mostrar el thumbnail/nombre como si hubiera llegado cuando
-`apiEnabled`, y avisar "adjuntá el comprobante por WhatsApp". (Correcto) implementar
-endpoint de upload (multipart) + 2º POST con el File antes de `onEnviado`.
-
-### P7 — [ALTA] Link de invitación de co-inquilino reusable (token sin uso único)
-`apps/api/src/routes/auth.ts` (~275-307, `POST /co-invitacion/:token/aceptar`)
-
-El endpoint emite una sesión nueva cada vez que se usa el link, sin verificar que ya
-fue aceptado → el link sirve infinitas veces. **Fix**: `if (co.estado === 'ACEPTADO')
-return reply.code(409).send({ message: 'Esta invitación ya fue aceptada...' })`.
-(Re-enviar = vía `POST /co-inquilinos/:id/link`, que solo el titular autenticado.)
-
-### P8 — [ALTA] KPI "cobrado por propietario" inflado con PROPIETARIO_DIRECTO
-`apps/inmobiliaria/src/lib/api/hooks.ts` (~917-928, `usePropietarios`)
-
-El KPI suma `montoAlquiler` de todas las liquidaciones PAGADAS sin filtrar
-`modoCobranza`, pero `POST /rendiciones` (server) solo cuenta `INMOBILIARIA`. Un
-propietario con contratos PROPIETARIO_DIRECTO ve un bruto inflado que no coincide con
-lo que se va a rendir (incluso 409 si TODO es directo). **Fix**: exponer
-`modoCobranza` del contrato en `GET /propiedades` (core.ts) + `PropiedadApi`, y filtrar
-`!== 'INMOBILIARIA'` en el loop. (O calcular `totalCobradoMes` server-side.)
-
-### P9 — [MEDIA] Filtro `?propietario=` usa `propiedadesMock` en modo API
-`apps/inmobiliaria/src/app/(app)/contratos/page.tsx` (~94-110)
-
-Desde `/propietarios` → "Ver contratos" pasa `?propietario=<uuid real>`, pero el filtro
-se arma con `propiedadesMock` → en prod el Set queda vacío → **cero contratos**. **Fix**:
-derivar de datos reales (agregar `propietariosIds` al DTO de `GET /contratos` y armar el
-Set desde los contratos reales), o desactivar el filtro cuando `apiEnabled`.
-
-### P10 — [MEDIA] `/pagos/informar` y `/boletas` aceptan sobre contrato FINALIZADO
-`apps/api/src/routes/plata.ts` (~183) y `inquilino-mundo.ts` (~861)
-
-Dentro del TTL del JWT (15 días), un inquilino de un contrato ya FINALIZADO puede
-informar un pago de una liquidación PARCIAL pendiente, o subir boletas. **Fix**: tras
-obtener la liq/contrato, verificar `contrato.estado === 'ACTIVO'` → si no, 409.
-
-### P11 — [BAJA] `POST /rendiciones/:id/anular` sin lock atómico
-`apps/api/src/routes/plata.ts` (~493-509) — dos anulaciones concurrentes: la 2ª da 404
-en vez de 409. **Fix**: tx callback con `deleteMany` + check `count === 0` → 409 (o
-capturar P2025 → 409).
-
-### P12 — [BAJA] Validación de motivo de rechazo en front permite < 5 chars
-`apps/inmobiliaria/src/components/bandeja-aprobaciones.tsx` (~91-105) — el API exige ≥5,
-el front solo `.trim()` → 400 tras escribir el PIN. **Fix**: `motivoRechazo.trim().length < 5`.
-
-### P13 — [BAJA] Badge de estado del detalle de contrato siempre verde
-`apps/inmobiliaria/src/app/(app)/contratos/[id]/page-client.tsx` (~248-254) — hardcoded
-`success`. **Fix**: `Record<EstadoContrato, variant>` (ACTIVO=success, BORRADOR=warning,
-FINALIZADO=secondary, RESCINDIDO=destructive).
-
-### P14 — [MEDIA] SelectorMonto muestra el total en vez del saldo (parciales)
-`apps/inquilino/.../checkout/page-client.tsx` (~134-135, 265-269) — **= el #7 diferido de
-la v5.** El backend ya rechaza `monto > saldo` (integridad cubierta); el fix UI completo
-necesita exponer lo conciliado al front. Bajo el flujo multi-parcial, demo-céntrico.
+- **Core en prod, cableado al API real**: contratos, liquidaciones, pagos,
+  rendiciones, caja, reclamos, equipo, sociedades, co-inquilinos, servicios, documentos.
+- **Ola 0 (23/06)**: P1–P13 (regresiones de v5 + integridad backend) aplicados.
+- **Keystones (26/06)**: file storage real (Volume + `/uploads`, 4 flujos) + cron de
+  devengo (in-process + `/internal/cron/devengar`).
+- **Servicios públicos** del panel persistidos + **edición de propiedad** real
+  (`PUT /propiedades/:id`).
+- **Auditoría 27/06 — 8 hallazgos, los 8 fixeados/deployados/testeados** (E2E con
+  cleanup; B2 con test de regresión). Ver `03-AUDITORIAS.md`:
+  - D1 co-inquilino del panel REAL · D2 cuentaCobranza en detalle de contrato ·
+    D3 rating al panel + recalc profesional · D4 feed `/mis-notificaciones` real.
+  - B1 cierre de caja excluye PROPIETARIO_DIRECTO · B2 gasto multi-dueño conservado ·
+    B3 redondeo a centavos consistente · B4 validación de prefijo de tenant en URLs.
 
 ---
 
-## C. Long-tail diferido A PROPÓSITO (no son bugs)
+## Cómo encarar una feature pendiente
 
-Pantallas demo-gated que muestran "Próximamente" o mock en prod (features secundarias,
-no rompen el core ni la plata): historial de propietario, servicios públicos del
-inquilino, negociación iterativa, migración masiva, recordatorio automático a morosos
-(WhatsApp/mail real), reset de PIN olvidado, billing/facturas, auditoría de eventos,
-objetivos/métricas internas, consorcios. Y la lista de "FALSOS POSITIVOS conocidos" de
-`03-AUDITORIAS.md` (NO re-arreglar).
-
----
-
-## Orden sugerido
-
-1. **P1** (regresión que rompe rechazar — verificar las FKs reales primero).
-2. **P5, P3, P4, P2** (resto de regresiones v5 — rápidas).
-3. **P7, P8, P10** (ALTA/MEDIA backend de integridad).
-4. **P6** (comprobante — decidir corto plazo vs endpoint de upload).
-5. **P9, P11, P12, P13** (UX/robustez).
-6. **P14** (decisión/feature, dejar para cuando se exponga el saldo al front).
-7. **Re-correr `AUDITORIA-PROFUNDA-PROMPT.md`** para validar.
+1. Confirmá la **decisión de producto** con el owner (las de la sección A la requieren).
+2. Leé `01-ARQUITECTURA.md` (patrones) + `05-DECISIONES.md` (reglas LOCKED).
+3. Cableá backend → front respetando `apiEnabled` (demo debe seguir andando).
+4. `tsc`+`build` 0 → commit → deploy (`02-DEPLOY.md`) → **E2E contra prod con cleanup**.
+5. Actualizá `PROJECT.MD` + el `work-agent/` afín en el mismo PR.

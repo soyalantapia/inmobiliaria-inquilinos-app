@@ -2,12 +2,15 @@
 
 ## Stack
 
-- **Backend** `apps/api`: **Fastify + Prisma (Postgres)**. ESM, build con `tsup` (`node22`).
-- **Panel** `apps/inmobiliaria`: **Next.js 15** (desktop-first), TanStack Query.
-- **PWA inquilino** `apps/inquilino`: **Next.js 15** (mobile-first, PWA).
+- **Backend** `apps/api`: **Fastify 5 + Prisma 6 (Postgres)**. ESM, build con `tsup` (`node22`).
+- **Panel** `apps/inmobiliaria`: **Next.js 14** (App Router, desktop-first), TanStack Query 5.
+- **PWA inquilino** `apps/inquilino`: **Next.js 14** (App Router, mobile-first, PWA).
 - **Packages**: `@llave/shared` (`permisos.ts`, `auth.ts`, schemas Zod), `@llave/ui`
-  (shadcn, tokens violeta/lavanda), `@llave/config` (tsconfig + tailwind).
-- **Monorepo**: pnpm workspaces + turbo. TypeScript estricto.
+  (shadcn/Radix, tokens violeta/lavanda), `@llave/config` (tsconfig + tailwind).
+- **Monorepo**: pnpm `10.28` workspaces + turbo. TypeScript estricto. Node ≥ 20.
+
+> Cifras: **105 endpoints · 72 modelos Prisma · 72 enums** (schema ~2220 líneas).
+> Inventario completo de endpoints y modelos en [`../PROJECT.MD`](../PROJECT.MD) §4–5.
 
 > ⚠️ El `README.md` viejo hablaba de "frontend MVP con Clerk, sin backend". Eso
 > quedó OBSOLETO: hay backend real en prod y el auth es **OTP/JWT propio**, no Clerk.
@@ -21,21 +24,31 @@ apps/
       schema.prisma    # ~2200 líneas, multi-tenant
       migrations/      # 5 migraciones (ver 02-DEPLOY.md)
     src/
-      app.ts           # bootstrap + ERROR HANDLER GLOBAL
+      index.ts         # entrypoint: buildApp() + listen + iniciarCronDevengo()
+      app.ts           # bootstrap + ERROR HANDLER GLOBAL + registra routes/plugins
       env.ts           # EnvSchema (Zod) — valida env al arrancar
+      db.ts            # PrismaClient singleton
+      cron.ts          # scheduler in-process del devengo (cada 6h, idempotente)
+      lib/
+        liquidaciones.ts  # computar/generar liquidaciones + devengarTodosLosTenants
       auth/
-        guards.ts      # requireUsuario / requireInquilino / requireContratoAcceso
+        guards.ts      # requireAuth / requireUsuario / requireInquilino / requireContratoAcceso
         pin.ts         # verificarPinUsuario (lockout anti-fuerza-bruta)
       routes/
         auth.ts        # login panel, OTP inquilino, PIN, co-invitación, registro
-        core.ts        # propiedades, propietarios, contratos, sociedades, usuarios, empresa, cobranza
-        plata.ts       # liquidaciones, pagos, rendiciones, caja, aprobaciones
-        operacion.ts   # reclamos (SLA), profesionales, renovaciones
-        inquilino-mundo.ts  # API de la PWA (el archivo más grande, ~1000 líneas)
+        core.ts        # contratos, propiedades (+PUT), propietarios, sociedades, usuarios,
+                       #   empresa, cobranza, mercado, co-inquilinos (panel), servicios (vía sep.)
+        plata.ts       # liquidaciones, pagos, rendiciones, caja, aprobaciones, cron global
+        operacion.ts   # reclamos (SLA), profesionales, renovaciones, screening
+        inquilino-mundo.ts  # API de la PWA (el más grande): contrato, pagos, boletas,
+                       #   reclamos, co-inquilinos, servicios, mis-notificaciones
         anuncios.ts    # comunicaciones a inquilinos
+        uploads.ts     # file storage (multipart) sobre Railway Volume
+        documentos.ts  # documentos del contrato (CRUD)
+        servicios-publicos.ts # servicios públicos por propiedad (CRUD)
         health.ts      # GET /health
-  inmobiliaria/        # panel (Next 15)
-  inquilino/           # PWA (Next 15)
+  inmobiliaria/        # panel (Next 14)
+  inquilino/           # PWA (Next 14)
 packages/{shared,ui,config}
 ```
 
@@ -98,6 +111,31 @@ Liquidaciones  →  Pagos                    →  Rendiciones
   está mapeado todavía; ver pendientes.)
 - **Toda mutación que el cliente vaya a mapear debe devolver el objeto COMPLETO**
   (con sus relaciones), si no el front crashea con `undefined.map`.
+
+## File storage (Railway Volume + `/uploads`)
+
+Los archivos suben de verdad (antes solo viajaban metadatos). **Sin migración** (los
+modelos ya tenían el campo URL):
+
+- Volume `myalquiler-back-volume` en `/data`; `@fastify/multipart`. `routes/uploads.ts`:
+  `POST /uploads` (allowlist jpeg/png/webp/gif/heic/pdf, 10 MB, guarda en
+  `/data/uploads/<inmobiliariaId>/<uuid><ext>`) y `GET /uploads/:tenant/:name?token=`
+  (sirve; valida tenant, anti path-traversal; acepta el token por query porque un
+  `<img>/<a>` no manda header). Helpers `urlEsDelTenant` y `borrarArchivoSubido`.
+- 4 flujos cableados: comprobante (`Pago.comprobanteUrl`), foto de reclamo
+  (`Reclamo.fotoUrl`), boleta (`BoletaServicio.archivoUrl`), documentos del contrato
+  (`DocumentoContrato.archivoUrl`, CRUD en `routes/documentos.ts`).
+
+## Cron de devengo (`cron.ts`)
+
+`computarLiquidacionesContrato` genera hasta "el mes que viene"; sin disparo periódico,
+cada contrato se queda sin liquidaciones desde el 2º mes. Solución sin infra aparte:
+
+- `iniciarCronDevengo` (arrancado en `index.ts` tras `listen`) corre
+  `devengarTodosLosTenants(prisma)` ~30 s post-arranque y **cada 6 h**. Idempotente
+  (`createMany skipDuplicates`) → seguro de repetir / 2 réplicas. Apagable con `CRON_DEVENGO=off`.
+- `POST /internal/cron/devengar` (plata.ts): mismo devengo global, header
+  `x-cron-secret == CRON_SECRET` (cerrado si la var no está) — para cron externo/test.
 
 ## apiEnabled (real vs demo) — CLAVE para el front
 

@@ -40,9 +40,32 @@ falsos positivos conocidos. Si no, re-reporta los ~50 fixes ya hechos.
 | **v4** (ejecución del prompt) | 24 | 16 + 1 decisión | 2 CRÍTICOS del flujo de aprobación |
 | Cierre diferidos v4 | — | 5 + migración sociedad | "continua con todo" |
 | **v5** (1ra regresión) | 12 | 11 | agarró una **regresión del propio fix v4** |
-| **3ra regresión** | ~20 (15 únicos) | **0 (PENDIENTE)** | síntesis cortada por límite de sesión → ver `04-PENDIENTES.md` |
+| **3ra regresión** | ~20 (15 únicos) | aplicados | regresiones de los fixes v5 |
+| **Ola 0** (23/06) | P1–P13 | aplicados | regresiones de v5 + integridad backend |
+| **Keystones** (26/06) | — | file storage + cron | desconexiones estructurales, no "bugs" |
+| **Auditoría 27/06** | 8 | **8 (todos)** | ver abajo — desconexiones + plata, E2E en prod |
 
-**Total ~50 bugs reales arreglados** + 3 decisiones de negocio.
+**Total ~60 bugs/desconexiones reales arreglados** + decisiones de negocio.
+
+### Auditoría 27/06 (8 hallazgos, todos fixeados + deployados + testeados en prod)
+
+Workflow: 6 finders (3 desconexión + 3 bugs) → verificación adversarial por hallazgo
+→ crítico de completitud con 2ª ronda. 0 críticos · 5 ALTO · 1 MEDIO · 2 BAJO.
+
+| # | Sev | Qué · commit |
+|---|---|---|
+| D1 | ALTO | Co-inquilino del panel REAL (`/contratos/:id/co-inquilinos`) — antes solo localStorage · `6cd6e53` |
+| D2 | ALTO | `GET /contratos/:id` incluye `cuentaCobranza` del propietario (PROPIETARIO_DIRECTO) · `74d519f` |
+| D3 | ALTO | Rating del inquilino llega al panel + recalcula `profesional.rating` · `bf19128` |
+| D4 | MEDIO | Feed real `GET /mis-notificaciones` (la campana dejó de ser no-op) · `23fae36` |
+| B1 | ALTO | `/caja/cierre` excluye pagos PROPIETARIO_DIRECTO del ingreso de la inmo · `74d519f` |
+| B2 | ALTO | Gasto multi-propietario se rinde por partes y se conserva (+ `rendicion-multiowner.test.ts`) · `dac6d4a` |
+| B3 | BAJO | Cierre de caja con comisión a centavos, consistente con la rendición · `6822c4b` |
+| B4 | BAJO | `comprobanteUrl`/`archivoUrl` validan prefijo de tenant al persistir · `74d519f` |
+
+Validación: cada uno `tsc`+`build` 0, deploy Railway, **E2E contra prod con
+cleanup/restore** (5/5, 10/10, 11/11, 12/12, 4/4 según el flujo). B2 con test de
+integración. Script del workflow en `.claude/.../workflows/scripts/myalquiler-audit-backend-bugs-*.js`.
 
 ## La tendencia (por qué seguir re-corriendo)
 
