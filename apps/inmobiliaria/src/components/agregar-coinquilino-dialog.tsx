@@ -21,17 +21,20 @@ import {
 } from '@llave/ui/select';
 import { toast } from '@llave/ui/use-toast';
 import {
+  type AgregarCoInquilinoInput,
   type PermisoCoInquilino,
-  agregarCoInquilino,
 } from '@/lib/co-inquilinos-extra-storage';
 
 interface AgregarCoInquilinoDialogProps {
   propiedadId: string;
   contratoId?: string | null;
   inquilinoPrincipal?: string;
+  /** En prod el email es obligatorio (la activación del co-inquilino es por email). */
+  emailRequerido?: boolean;
+  /** Persiste el co-inquilino (API en prod, localStorage en demo). */
+  onAgregar: (input: AgregarCoInquilinoInput) => Promise<void>;
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  onAdded?: () => void;
 }
 
 const PERMISOS: Array<{ value: PermisoCoInquilino; label: string; descripcion: string }> = [
@@ -44,9 +47,10 @@ export function AgregarCoInquilinoDialog({
   propiedadId,
   contratoId,
   inquilinoPrincipal,
+  emailRequerido = false,
+  onAgregar,
   open,
   onOpenChange,
-  onAdded,
 }: AgregarCoInquilinoDialogProps) {
   const [nombre, setNombre] = useState('');
   const [apellido, setApellido] = useState('');
@@ -72,9 +76,8 @@ export function AgregarCoInquilinoDialog({
   }, [open]);
 
   const celularOk = celular.replace(/[^\d]/g, '').length >= 8;
-  const emailOk =
-    email.trim().length === 0 ||
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  const emailFormatoOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  const emailOk = emailRequerido ? emailFormatoOk : email.trim().length === 0 || emailFormatoOk;
   const puedeGuardar =
     nombre.trim().length >= 2 &&
     apellido.trim().length >= 2 &&
@@ -86,26 +89,35 @@ export function AgregarCoInquilinoDialog({
     e.preventDefault();
     if (!puedeGuardar) return;
     setGuardando(true);
-    await new Promise((r) => setTimeout(r, 350));
-    const co = agregarCoInquilino({
-      propiedadId,
-      contratoId: contratoId ?? null,
-      nombre,
-      apellido,
-      celular,
-      email: email.trim() || undefined,
-      dni: dni.trim() || undefined,
-      relacion,
-      permiso,
-    });
-    setGuardando(false);
-    toast({
-      variant: 'success',
-      title: '¡Co-inquilino agregado!',
-      description: `En producción se le envía a ${co.nombre} el link por WhatsApp para activar su cuenta.`,
-    });
-    onAdded?.();
-    onOpenChange(false);
+    try {
+      await onAgregar({
+        propiedadId,
+        contratoId: contratoId ?? null,
+        nombre,
+        apellido,
+        celular,
+        email: email.trim() || undefined,
+        dni: dni.trim() || undefined,
+        relacion,
+        permiso,
+      });
+      toast({
+        variant: 'success',
+        title: '¡Co-inquilino agregado!',
+        description: emailRequerido
+          ? `${nombre.trim()} ya tiene acceso: que entre con su email (${email.trim().toLowerCase()}) para activar la cuenta.`
+          : `En producción se le envía a ${nombre.trim()} el link por WhatsApp para activar su cuenta.`,
+      });
+      onOpenChange(false);
+    } catch (err) {
+      toast({
+        variant: 'destructive',
+        title: 'No se pudo agregar',
+        description: err instanceof Error ? err.message : 'Revisá los datos e intentá de nuevo.',
+      });
+    } finally {
+      setGuardando(false);
+    }
   };
 
   return (
@@ -190,7 +202,11 @@ export function AgregarCoInquilinoDialog({
             <div className="space-y-1.5">
               <Label htmlFor="co-email" className="flex items-center gap-1.5">
                 Email
-                <span className="text-[10px] font-normal text-muted-foreground">opcional</span>
+                {emailRequerido ? (
+                  <span className="text-[10px] font-medium text-primary">obligatorio</span>
+                ) : (
+                  <span className="text-[10px] font-normal text-muted-foreground">opcional</span>
+                )}
               </Label>
               <Input
                 id="co-email"

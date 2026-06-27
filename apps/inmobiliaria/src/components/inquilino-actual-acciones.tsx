@@ -1,18 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Mail, Plus, Trash2, UserCheck, UserPlus } from 'lucide-react';
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card } from '@llave/ui/card';
 import { ConfirmDialog } from '@llave/ui/confirm-dialog';
 import { toast } from '@llave/ui/use-toast';
-import {
-  type CoInquilinoExtra,
-  PERMISO_LABEL,
-  coInquilinosDePropiedad,
-  eliminarCoInquilino,
-} from '@/lib/co-inquilinos-extra-storage';
+import { type CoInquilinoExtra, PERMISO_LABEL } from '@/lib/co-inquilinos-extra-storage';
+import { useCoInquilinos } from '@/lib/api/use-co-inquilinos';
 import { AgregarCoInquilinoDialog } from './agregar-coinquilino-dialog';
 import { EmailBienvenidaDialog } from './email-bienvenida-dialog';
 
@@ -35,29 +31,30 @@ export function InquilinoActualAcciones({
 }) {
   const [reenviarOpen, setReenviarOpen] = useState(false);
   const [agregarOpen, setAgregarOpen] = useState(false);
-  const [coInquilinos, setCoInquilinos] = useState<CoInquilinoExtra[]>([]);
   const [eliminando, setEliminando] = useState<CoInquilinoExtra | null>(null);
-  const [hidratado, setHidratado] = useState(false);
+  // Co-inquilinos REALES vía API en prod (tabla CoInquilino); localStorage en demo.
+  const { coInquilinos, hidratado, emailRequerido, agregar, eliminar } = useCoInquilinos(
+    propiedadId,
+    contratoId,
+  );
 
-  const refrescar = () => {
-    setCoInquilinos(coInquilinosDePropiedad(propiedadId));
-  };
-
-  useEffect(() => {
-    refrescar();
-    setHidratado(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [propiedadId]);
-
-  const onConfirmarEliminar = () => {
+  const onConfirmarEliminar = async () => {
     if (!eliminando) return;
-    eliminarCoInquilino(eliminando.id);
-    refrescar();
-    toast({
-      title: 'Co-inquilino eliminado',
-      description: `${eliminando.nombre} ya no tiene acceso a la propiedad.`,
-    });
+    const co = eliminando;
     setEliminando(null);
+    try {
+      await eliminar(co);
+      toast({
+        title: 'Co-inquilino eliminado',
+        description: `${co.nombre} ya no tiene acceso a la propiedad.`,
+      });
+    } catch {
+      toast({
+        variant: 'destructive',
+        title: 'No se pudo eliminar',
+        description: 'Intentá de nuevo.',
+      });
+    }
   };
 
   return (
@@ -134,9 +131,10 @@ export function InquilinoActualAcciones({
         propiedadId={propiedadId}
         contratoId={contratoId ?? null}
         inquilinoPrincipal={inquilinoNombre}
+        emailRequerido={emailRequerido}
+        onAgregar={agregar}
         open={agregarOpen}
         onOpenChange={setAgregarOpen}
-        onAdded={refrescar}
       />
       <ConfirmDialog
         open={!!eliminando}

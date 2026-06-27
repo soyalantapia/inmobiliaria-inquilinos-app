@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply } from 'fastify';
 import type { Prisma } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
@@ -80,6 +80,94 @@ export async function coreRoutes(app: FastifyInstance) {
       estadoPagoActual: actual?.estado ?? 'PENDIENTE',
       proximoVencimiento: pendiente?.fechaVencimiento ?? null,
     };
+  });
+
+  // Co-inquilinos de un contrato — lado PANEL (la inmobiliaria los carga). El lado
+  // inquilino (auto-invitación del titular) vive en inquilino-mundo.ts con
+  // requireInquilino; ESTO es requireUsuario + tenant-scope por inmobiliariaId.
+  // Antes el panel los guardaba SOLO en localStorage → el toast decía "se le envía
+  // el link por WhatsApp" pero nada llegaba a la DB ni daba acceso real.
+  async function contratoDelTenant(
+    contratoId: string,
+    inmobiliariaId: string,
+    reply: FastifyReply,
+  ): Promise<boolean> {
+    const c = await prisma.contrato.findFirst({
+      where: { id: contratoId, inmobiliariaId },
+      select: { id: true },
+    });
+    if (!c) {
+      await reply.code(404).send({ message: 'Contrato no encontrado' });
+      return false;
+    }
+    return true;
+  }
+
+  app.get('/contratos/:contratoId/co-inquilinos', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'contratos.ver');
+    if (!u) return;
+    const { contratoId } = request.params as { contratoId: string };
+    if (!(await contratoDelTenant(contratoId, u.inmobiliariaId, reply))) return;
+    return prisma.coInquilino.findMany({
+      where: { contratoId, inmobiliariaId: u.inmobiliariaId },
+      orderBy: { invitadoAt: 'desc' },
+    });
+  });
+
+  app.post('/contratos/:contratoId/co-inquilinos', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'contratos.crear');
+    if (!u) return;
+    const { contratoId } = request.params as { contratoId: string };
+    if (!(await contratoDelTenant(contratoId, u.inmobiliariaId, reply))) return;
+    const body = z
+      .object({
+        nombre: z.string().trim().min(2).max(120),
+        email: z.string().trim().email(),
+        telefono: z.string().trim().max(40).optional(),
+        dni: z.string().trim().max(20).optional(),
+        relacion: z.string().trim().min(2).max(60),
+        permiso: z.enum(['VER', 'PAGAR', 'COMPLETO']),
+      })
+      .safeParse(request.body ?? {});
+    if (!body.success) {
+      return reply.code(400).send({
+        message: 'Datos del co-inquilino incompletos (nombre, email, relación y permiso)',
+      });
+    }
+    const email = body.data.email.toLowerCase();
+    try {
+      const co = await prisma.coInquilino.create({
+        data: {
+          inmobiliariaId: u.inmobiliariaId,
+          contratoId,
+          nombre: body.data.nombre,
+          email,
+          telefono: body.data.telefono,
+          dni: body.data.dni,
+          relacion: body.data.relacion,
+          permiso: body.data.permiso,
+        },
+      });
+      return reply.code(201).send(co);
+    } catch (e) {
+      // @@unique([contratoId, email]) corta el duplicado con P2002.
+      if (e && typeof e === 'object' && (e as { code?: string }).code === 'P2002') {
+        return reply.code(409).send({ message: 'Ya hay un co-inquilino con ese email en este contrato' });
+      }
+      throw e;
+    }
+  });
+
+  app.delete('/contratos/:contratoId/co-inquilinos/:id', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'contratos.crear');
+    if (!u) return;
+    const { contratoId, id } = request.params as { contratoId: string; id: string };
+    const co = await prisma.coInquilino.findFirst({
+      where: { id, contratoId, inmobiliariaId: u.inmobiliariaId },
+    });
+    if (!co) return reply.code(404).send({ message: 'Co-inquilino no encontrado' });
+    await prisma.coInquilino.delete({ where: { id: co.id } });
+    return { ok: true };
   });
 
   // ===== Propiedades =====
