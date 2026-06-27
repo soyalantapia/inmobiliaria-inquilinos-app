@@ -73,6 +73,7 @@ insumo del owner** (no es bug) — triado en `04-PENDIENTES.md`:
 | `04-PENDIENTES.md` | Roadmap — lo que falta (decisiones de producto) |
 | `05-DECISIONES.md` | Decisiones de negocio del dueño + reglas duras |
 | `06-ANALISIS-SENIOR.md` | Análisis dev senior / roadmap en olas |
+| `PROMPT-ONBOARDING-DEV-SENIOR.md` | **Prompt de onboarding** — un dev senior x10 recorre TODO, lo entiende y propone con qué seguir |
 | `PROMPT-LOOP-QA-VISUAL-FUNCIONAL.md` | Prompt reutilizable de auditoría en loop |
 | `historico/` | Docs viejos archivados (auditorías/reportes/prompts) |
 | `../PROJECT.MD` | **Documento maestro (contexto absoluto)** |
