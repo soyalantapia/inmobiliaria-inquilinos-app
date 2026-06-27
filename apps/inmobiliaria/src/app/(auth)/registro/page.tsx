@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button } from '@llave/ui/button';
@@ -57,6 +57,21 @@ function RegistroWizard() {
     confirmar: '',
   });
   const [errores, setErrores] = useState<Errores>({});
+
+  // Prefill desde la landing: el hero manda /registro?email=…&nombre=… para que
+  // el alta arranque con lo que ya escribió. Se setea tras montar (evita
+  // mismatch de hidratación) y no pisa lo que el usuario haya tipeado.
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    const email = sp.get('email')?.trim();
+    const nombre = sp.get('nombre')?.trim();
+    if (!email && !nombre) return;
+    setInmo((prev) => ({
+      ...prev,
+      email: email && !prev.email ? email : prev.email,
+      nombre: nombre && !prev.nombre ? nombre : prev.nombre,
+    }));
+  }, []);
 
   const validarPaso1 = (): boolean => {
     const e: Errores = {};

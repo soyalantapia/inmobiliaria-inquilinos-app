@@ -10,6 +10,21 @@
 
 Plataforma SaaS multi-tenant para inmobiliarias (panel) e inquilinos (PWA). Estado de cambios desde el handoff inicial hasta hoy.
 
+### Landing de conversión `/inicio` (27/06)
+- La home pasó de "linda" a **landing de alta conversión** con el método landing-builder
+  (research de competidores AR/US → copy PAS → diseño). Ángulo de mercado virgen: ningún
+  competidor argentino muestra la plata en vivo, usa la app del inquilino como argumento ni
+  dice "perseguir". Nos quedamos con los tres.
+- **Signature move:** panel del producto VIVO en el hero (`_landing/live-panel.tsx`) — una
+  state machine que anima el flujo cobranza→comprobante→cobrado→rendición con datos AR creíbles.
+  Tipografía propia (Plus Jakarta Sans + Fraunces), bento asimétrico, fade-up on-scroll
+  (`reveal.tsx`, IntersectionObserver, `once`), reglas anti-IA aplicadas. Marca violeta.
+- **Auto-onboarding:** captura de email en el hero (`_landing/hero-signup.tsx`) que precarga
+  `/registro?email=…` (el alta lee el query en un `useEffect`). La landing y el alta se sienten
+  una sola cosa.
+- **Honestidad:** cero testimonios/métricas fabricados. Prueba real = convenios CPI/CUCICBA/Edifica
+  + beta −20%, y una cita textual del relevamiento. Build de prod verde, demo y prod andan.
+
 ### Home pública — puerta de entrada de alta (27/06)
 - Nueva pantalla de inicio pública `(landing)/inicio` (hero + beneficios + "¿Cómo arrancás?")
   con CTA **"Crear mi inmobiliaria" → `/registro`**. Reusa el estilo de `/precios` y los copys
