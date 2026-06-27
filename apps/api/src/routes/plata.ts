@@ -159,7 +159,10 @@ export async function plataRoutes(app: FastifyInstance) {
         (s, x) => s + (x.porcentaje / 100) * ((x.propietario?.comisionPct ?? 0) / 100),
         0,
       );
-      const comisionPago = Math.round(alquilerPortion * tasa);
+      // Redondeo a CENTAVOS (no a peso entero) para cuadrar con la rendición, que
+      // persiste comisión en Decimal(14,2). Antes el cierre redondeaba a peso
+      // entero por pago → drift de centavos al reconciliar cierre vs rendición.
+      const comisionPago = Math.round(alquilerPortion * tasa * 100) / 100;
       comision += comisionPago;
       const inq = p.contrato?.inquilinoTitular;
       return {
@@ -174,7 +177,15 @@ export async function plataRoutes(app: FastifyInstance) {
       };
     });
 
-    return { fecha, cobrado, comision, cantidad: items.length, pagos: items };
+    // Totales redondeados a centavos: cobrado/comision acumulan floats; sin esto
+    // la suma podía arrastrar artefactos binarios (0.1+0.2) en el JSON.
+    return {
+      fecha,
+      cobrado: Math.round(cobrado * 100) / 100,
+      comision: Math.round(comision * 100) / 100,
+      cantidad: items.length,
+      pagos: items,
+    };
   });
 
   // ===== Pagos informados (bandeja a validar) =====
