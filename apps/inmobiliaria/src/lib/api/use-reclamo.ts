@@ -57,6 +57,7 @@ interface ReclamoDetalleApi {
     categoria: CategoriaProfesional | string;
     telefono: string | null;
   } | null;
+  rating: { estrellas: number; comentario: string | null; enviadoAt: string } | null;
   eventos?: EventoApi[];
 }
 
@@ -97,6 +98,9 @@ function mapReclamo(r: ReclamoDetalleApi): Reclamo {
     costoTrabajo: r.costoTrabajo != null ? Number(r.costoTrabajo) : null,
     costoTrabajoNotas: r.costoTrabajoNotas ?? null,
     propiedadId: r.propiedadId,
+    ratingInquilino: r.rating
+      ? { estrellas: r.rating.estrellas, comentario: r.rating.comentario, enviadoAt: r.rating.enviadoAt }
+      : null,
   };
 }
 

@@ -107,6 +107,8 @@ export interface Reclamo {
   costoTrabajoNotas?: string | null;
   /** ID de la propiedad del reclamo — para atribuir gastos en rendiciones. */
   propiedadId?: string | null;
+  /** Calificación que dejó el inquilino al resolverse el reclamo (1-5 + comentario). */
+  ratingInquilino?: { estrellas: number; comentario: string | null; enviadoAt: string } | null;
 }
 
 /** Datos AFIP del propietario para emitir factura/recibo automático al conciliar el alquiler. */

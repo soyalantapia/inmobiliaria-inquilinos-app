@@ -222,6 +222,42 @@ export function GestionReclamo({
         </CardContent>
       </Card>
 
+      {/* Calificación que dejó el inquilino al resolverse (D3): antes se persistía
+          pero no se mostraba en ningún lado del panel. */}
+      {reclamo.ratingInquilino && (
+        <Card>
+          <CardContent className="space-y-2 p-5">
+            <div className="flex items-center gap-2">
+              <Star className="h-4 w-4 text-amber-500" />
+              <h3 className="text-sm font-semibold">Calificación del inquilino</h3>
+            </div>
+            <div className="flex items-center gap-1">
+              {[1, 2, 3, 4, 5].map((n) => (
+                <Star
+                  key={n}
+                  className={`h-4 w-4 ${
+                    n <= reclamo.ratingInquilino!.estrellas
+                      ? 'fill-amber-400 text-amber-400'
+                      : 'text-muted-foreground/30'
+                  }`}
+                />
+              ))}
+              <span className="ml-1 text-sm font-medium tabular-nums">
+                {reclamo.ratingInquilino.estrellas}/5
+              </span>
+              <span className="ml-auto text-[11px] text-muted-foreground">
+                {formatFechaCorta(reclamo.ratingInquilino.enviadoAt)}
+              </span>
+            </div>
+            {reclamo.ratingInquilino.comentario && (
+              <p className="rounded-md bg-muted/50 p-2.5 text-xs text-muted-foreground">
+                “{reclamo.ratingInquilino.comentario}”
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* 2) Asignar profesional — la lista de cards reemplaza al select plano. */}
       <Card>
         <CardContent className="space-y-3 p-5">

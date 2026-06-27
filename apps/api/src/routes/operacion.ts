@@ -542,7 +542,7 @@ export async function operacionRoutes(app: FastifyInstance) {
 
     const reclamo = await prisma.reclamo.findFirst({
       where: { id, contratoId: inq.contratoId, inmobiliariaId: inq.inmobiliariaId },
-      select: { id: true, estado: true },
+      select: { id: true, estado: true, profesionalId: true },
     });
     if (!reclamo) return reply.code(404).send({ message: 'Reclamo inexistente' });
     if (reclamo.estado !== 'RESUELTO' && reclamo.estado !== 'CERRADO') {
@@ -554,6 +554,22 @@ export async function operacionRoutes(app: FastifyInstance) {
       create: { inmobiliariaId: inq.inmobiliariaId, reclamoId: id, estrellas: body.data.estrellas, comentario },
       update: { estrellas: body.data.estrellas, comentario },
     });
+
+    // Recalcular el rating PONDERADO del profesional asignado = promedio real de
+    // las estrellas de TODOS sus reclamos calificados. Antes profesional.rating
+    // quedaba en el valor seed y el ranking del panel (GET /profesionales, ordena
+    // por rating) nunca reflejaba las calificaciones reales del inquilino.
+    if (reclamo.profesionalId) {
+      const agg = await prisma.ratingReclamo.aggregate({
+        where: { reclamo: { profesionalId: reclamo.profesionalId } },
+        _avg: { estrellas: true },
+      });
+      await prisma.profesional.update({
+        where: { id: reclamo.profesionalId },
+        data: { rating: agg._avg.estrellas ?? 0 },
+      });
+    }
+
     return { reclamoId: rating.reclamoId, estrellas: rating.estrellas, comentario: rating.comentario, enviadoAt: rating.enviadoAt };
   });
 
