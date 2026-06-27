@@ -29,9 +29,9 @@ Auth **propia** (OTP + JWT, **no** Clerk). Los 3 tokens (HS256, firmados con `JW
 | `inquilino` | titular del contrato | OTP por email (`/auth/otp/request` + `/verify`) |
 | `co-inquilino` | co-inquilino del contrato | link de invitación (un solo uso) → sesión propia |
 
-- **Password**: hash **bcrypt** (nunca en claro). **PIN** (4 dígitos, acciones de
-  plata): hash bcrypt + **lockout anti-fuerza-bruta** (5 intentos → 15 min) en
-  `apps/api/src/auth/pin.ts`.
+- **Password**: hash **bcrypt** (nunca en claro). **PIN** (4 a 6 dígitos, acciones
+  de plata; `pinNuevo` valida `/^\d{4,6}$/` en `auth.ts`): hash bcrypt + **lockout
+  anti-fuerza-bruta** (5 intentos → 15 min) en `apps/api/src/auth/pin.ts`.
 - **Email de usuario panel GLOBAL** (no por tenant) a propósito: el login busca el
   email globalmente, así dos tenants no comparten email. El alta de usuario valida
   unicidad global. (Decisión documentada — no scopear, rompería el login.)
@@ -39,7 +39,9 @@ Auth **propia** (OTP + JWT, **no** Clerk). Los 3 tokens (HS256, firmados con `JW
   permiso (VER/PAGAR/COMPLETO) se **revalida contra la DB en cada request**
   (`requireContratoAcceso`), no se confía en el JWT de 15 días → bajar un permiso
   surte efecto al instante.
-- **Backdoor demo (OTP `000000`)**: solo `NODE_ENV !== 'production'`. En prod no existe.
+- **Backdoor demo (OTP `000000`)**: requiere **ambas** condiciones — `DEMO_MODE`
+  activo **y** `NODE_ENV !== 'production'` (`auth.ts`). En prod (`DEMO_MODE=false`)
+  no existe.
 
 ## Autorización (roles + capacidades)
 

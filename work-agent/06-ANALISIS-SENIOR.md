@@ -8,6 +8,11 @@
 > Lo que queda del roadmap de abajo es lo que necesita **decisión de producto/insumo**
 > (screening NOSIS, broker IA, billing, referidos) — ver `04-PENDIENTES.md`. El resto
 > del documento se conserva como contexto del análisis original.
+>
+> ⚠️ **Cifras del cuerpo desactualizadas (eran del 23/06):** hoy son **105 endpoints
+> en 10 routers · 72 modelos · 9 suites de test**, y **P6 (el comprobante no subía) ya
+> está cerrado** por el Keystone #1. Para el estado/cifras al día la fuente es
+> [`../PROJECT.MD`](../PROJECT.MD) + [`../CHANGELOG.md`](../CHANGELOG.md).
 
 ---
 
