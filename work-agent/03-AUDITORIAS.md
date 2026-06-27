@@ -2,7 +2,8 @@
 
 ## El prompt reutilizable
 
-`AUDITORIA-PROFUNDA-PROMPT.md` (raíz del repo) es la herramienta central. Encapsula:
+El prompt canónico hoy es **`PROMPT-LOOP-QA-VISUAL-FUNCIONAL.md`** (esta carpeta). El
+histórico `historico/AUDITORIA-PROFUNDA-PROMPT.md` fue la herramienta central y encapsula:
 
 - **El lente "¿lo viviría un usuario común?"** — priorizar por daño real (plata mal,
   crash, datos perdidos, éxito falso, fuga entre tenants), no por elegancia.

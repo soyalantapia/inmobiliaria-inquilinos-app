@@ -74,5 +74,8 @@ insumo del owner** (no es bug) — triado en `04-PENDIENTES.md`:
 | `05-DECISIONES.md` | Decisiones de negocio del dueño + reglas duras |
 | `06-ANALISIS-SENIOR.md` | Análisis dev senior / roadmap en olas |
 | `PROMPT-LOOP-QA-VISUAL-FUNCIONAL.md` | Prompt reutilizable de auditoría en loop |
+| `historico/` | Docs viejos archivados (auditorías/reportes/prompts) |
 | `../PROJECT.MD` | **Documento maestro (contexto absoluto)** |
 | `../README.md` | Orientación + tooling + setup |
+| `../docs/` | Referencias: API, modelo de datos, config, runbook, testing, frontend, glosario |
+| `../CONTRIBUTING.md` · `../SECURITY.md` · `../CHANGELOG.md` | Contribuir · seguridad · historial |

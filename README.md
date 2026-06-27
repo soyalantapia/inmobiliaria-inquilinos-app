@@ -83,6 +83,23 @@ La carpeta `work-agent/` es la fuente de verdad operativa. Cada archivo:
 | **`06-ANALISIS-SENIOR.md`** | Análisis dev senior: dónde estamos / qué falta / roadmap en olas. |
 | **`PROMPT-LOOP-QA-VISUAL-FUNCIONAL.md`** | Prompt reutilizable para correr una auditoría/QA en loop hasta que no haya errores. |
 
+> Documentos históricos (auditorías/reportes/prompts viejos) archivados en
+> [`work-agent/historico/`](./work-agent/historico/).
+
+---
+
+## 📚 Referencias técnicas (`docs/`)
+
+| Documento | Para qué |
+|---|---|
+| [`docs/API.md`](./docs/API.md) | Referencia de los **105 endpoints** (auth, request, respuesta, errores, reglas). |
+| [`docs/DATA-MODEL.md`](./docs/DATA-MODEL.md) | **Modelo de datos** — ERD (mermaid), `onDelete` de las FK, multi-tenant, uniques. |
+| [`docs/CONFIG.md`](./docs/CONFIG.md) | **Variables de entorno** por app (requerida, default, dónde se setea). |
+| [`docs/RUNBOOK.md`](./docs/RUNBOOK.md) | **Operaciones / on-call** — incidentes, rollback, DB, rotación de secretos. |
+| [`docs/TESTING.md`](./docs/TESTING.md) · [`docs/FRONTEND.md`](./docs/FRONTEND.md) · [`docs/GLOSARIO.md`](./docs/GLOSARIO.md) | Testing · guía de front (`apiEnabled`/hooks/`@llave/ui`) · glosario del dominio. |
+
+Y en la raíz: [`CONTRIBUTING.md`](./CONTRIBUTING.md) · [`SECURITY.md`](./SECURITY.md) · [`CHANGELOG.md`](./CHANGELOG.md).
+
 ---
 
 ## 🧰 Lo que tenemos a mano (tooling y accesos)

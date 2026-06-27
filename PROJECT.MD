@@ -486,7 +486,7 @@ finders → verificación adversarial → síntesis). Detalle en
   producción** (con cleanup/restore). B2 lleva test de integración (`rendicion-multiowner.test.ts`).
 
 **Prompt reutilizable de auditoría:** `work-agent/PROMPT-LOOP-QA-VISUAL-FUNCIONAL.md`
-(+ el histórico `AUDITORIA-PROFUNDA-PROMPT.md` en la raíz).
+(+ el histórico `work-agent/historico/AUDITORIA-PROFUNDA-PROMPT.md`).
 
 ---
 
@@ -553,6 +553,16 @@ El `.env.example` declara las integraciones planeadas (la mayoría aún no cable
 |---|---|
 | Entender el proyecto entero | **este archivo** |
 | Onboarding rápido + tooling | [`README.md`](./README.md) |
+| **Referencia de los 105 endpoints** | [`docs/API.md`](./docs/API.md) |
+| **Modelo de datos (ERD + cascadas)** | [`docs/DATA-MODEL.md`](./docs/DATA-MODEL.md) |
+| **Variables de entorno** | [`docs/CONFIG.md`](./docs/CONFIG.md) |
+| **Operaciones / on-call** | [`docs/RUNBOOK.md`](./docs/RUNBOOK.md) |
+| Testing | [`docs/TESTING.md`](./docs/TESTING.md) |
+| Guía de frontend | [`docs/FRONTEND.md`](./docs/FRONTEND.md) |
+| Glosario del dominio | [`docs/GLOSARIO.md`](./docs/GLOSARIO.md) |
+| Cómo contribuir | [`CONTRIBUTING.md`](./CONTRIBUTING.md) |
+| Seguridad | [`SECURITY.md`](./SECURITY.md) |
+| Historial de cambios | [`CHANGELOG.md`](./CHANGELOG.md) |
 | Estado ejecutivo de hoy | [`work-agent/00-ESTADO.md`](./work-agent/00-ESTADO.md) |
 | Arquitectura/convenciones | [`work-agent/01-ARQUITECTURA.md`](./work-agent/01-ARQUITECTURA.md) |
 | Deployar / consultar prod | [`work-agent/02-DEPLOY.md`](./work-agent/02-DEPLOY.md) |
