@@ -395,6 +395,11 @@ export async function operacionRoutes(app: FastifyInstance) {
       where: { id: inq.contratoId, inmobiliariaId: inq.inmobiliariaId },
     });
     if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
+    // P10: no se abren reclamos nuevos sobre un contrato finalizado/borrador (las
+    // acciones sobre reclamos EXISTENTES —confirmar-resolución, rating— sí siguen).
+    if (contrato.estado !== 'ACTIVO') {
+      return reply.code(409).send({ message: 'El contrato ya no está activo' });
+    }
 
     const inquilino = await prisma.inquilino.findUnique({ where: { id: inq.inquilinoId } });
     const autor = inquilino ? `${inquilino.nombre} ${inquilino.apellido ?? ''}`.trim() : 'Inquilino';

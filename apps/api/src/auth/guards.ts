@@ -120,3 +120,29 @@ export async function requireContratoAcceso(
   await reply.code(403).send({ message: 'Solo para inquilinos' });
   return null;
 }
+
+/**
+ * Exige que el contrato del inquilino esté ACTIVO. Para acciones de ESCRITURA
+ * que crean/mutan la relación viva (informar pago, subir boleta, abrir reclamo,
+ * gestionar co-inquilinos): un contrato BORRADOR/FINALIZADO/RESCINDIDO no debe
+ * aceptar mutaciones aunque el JWT (15 días) siga vivo después de finalizarlo.
+ *
+ * La LECTURA NO usa este guard a propósito: un ex-inquilino sigue pudiendo ver su
+ * contrato pasado, liquidaciones y comprobantes. Por eso va por-endpoint y NO
+ * dentro de requireContratoAcceso. Devuelve false (y ya respondió) si no procede.
+ */
+export async function exigirContratoActivo(
+  contratoId: string,
+  inmobiliariaId: string,
+  reply: FastifyReply,
+): Promise<boolean> {
+  const contrato = await prisma.contrato.findFirst({
+    where: { id: contratoId, inmobiliariaId },
+    select: { estado: true },
+  });
+  if (!contrato || contrato.estado !== 'ACTIVO') {
+    await reply.code(409).send({ message: 'El contrato ya no está activo' });
+    return false;
+  }
+  return true;
+}

@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../db.js';
-import { requireContratoAcceso, requireInquilino, requireUsuario } from '../auth/guards.js';
+import { exigirContratoActivo, requireContratoAcceso, requireInquilino, requireUsuario } from '../auth/guards.js';
 import { verificarPinUsuario } from '../auth/pin.js';
 import { devengarTodosLosTenants, generarLiquidacionesContrato } from '../lib/liquidaciones.js';
 import { urlEsDelTenant } from './uploads.js';
@@ -309,6 +309,8 @@ export async function plataRoutes(app: FastifyInstance) {
     const inq = await requireContratoAcceso(request, reply, 'VER');
     if (!inq) return;
     if (!inq.contratoId) return reply.code(400).send({ message: 'No tenés un contrato activo' });
+    // P10: un contrato finalizado/borrador no acepta pagos nuevos (aunque el JWT siga vivo).
+    if (!(await exigirContratoActivo(inq.contratoId, inq.inmobiliariaId, reply))) return;
     const body = z
       .object({
         liquidacionId: z.string(),
