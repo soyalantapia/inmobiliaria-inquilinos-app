@@ -12,16 +12,17 @@ import {
   Lock,
   Wallet,
 } from 'lucide-react';
+import { track } from './analytics';
 
 /**
  * EL PANEL VIVO — el signature move de la landing. Un dashboard de cobranzas
- * (réplica del real, datos argentinos creíbles) que se anima solo en loop
- * mostrando el flujo completo: llega el comprobante → se valida → "cobrado" →
- * rendición al propietario. Hace en 7 segundos lo que el copy tarda 3 párrafos.
+ * (réplica del real, datos argentinos creíbles) que se anima solo mostrando el
+ * flujo completo: llega el comprobante → se valida → "cobrado" → rendición.
  *
- * Sin librería de motion: una state machine de 4 pasos (setInterval) + CSS.
- * Tilt 3D sutil que sigue al cursor. Respeta prefers-reduced-motion (se queda
- * en el paso "cobrado", sin loop).
+ * Además es JUGABLE: si pasás el mouse por encima se pausa el loop, y podés
+ * tocar "Validar" vos mismo para ver cómo el pago pasa a cobrado y la mora baja.
+ * Sin librería de motion: state machine de 4 pasos (setInterval) + CSS. Tilt 3D
+ * que sigue al cursor. Respeta prefers-reduced-motion (queda en "cobrado").
  */
 
 type Beat = 0 | 1 | 2 | 3;
@@ -36,6 +37,7 @@ const KPIS: Record<Beat, { cobrado: string; mora: string; rendir: string }> = {
 export function LivePanel() {
   const [beat, setBeat] = useState<Beat>(0);
   const [tilt, setTilt] = useState({ x: 0, y: 0 });
+  const pausedRef = useRef(false);
   const reduce = useRef(false);
 
   useEffect(() => {
@@ -45,7 +47,7 @@ export function LivePanel() {
       return;
     }
     const id = setInterval(() => {
-      setBeat((b) => ((b + 1) % 4) as Beat);
+      if (!pausedRef.current) setBeat((b) => ((b + 1) % 4) as Beat);
     }, 2100);
     return () => clearInterval(id);
   }, []);
@@ -58,18 +60,26 @@ export function LivePanel() {
     setTilt({ x: +(py * -5).toFixed(2), y: +(px * 6).toFixed(2) });
   };
 
+  const validar = () => {
+    setBeat(2);
+    track('panel_played');
+  };
+
   const k = KPIS[beat];
 
   return (
-    <div
-      className="group/panel [perspective:1600px]"
-      onMouseMove={onMove}
-      onMouseLeave={() => setTilt({ x: 0, y: 0 })}
-      aria-hidden
-    >
+    <div className="group/panel [perspective:1600px]">
       <div
         className="relative transition-transform duration-300 ease-out will-change-transform"
         style={{ transform: `rotateX(${tilt.x}deg) rotateY(${tilt.y}deg)` }}
+        onMouseMove={onMove}
+        onMouseEnter={() => {
+          pausedRef.current = true;
+        }}
+        onMouseLeave={() => {
+          pausedRef.current = false;
+          setTilt({ x: 0, y: 0 });
+        }}
       >
         {/* halo violeta detrás, no un blob genérico: un solo resplandor del color del producto */}
         <div className="pointer-events-none absolute -inset-6 -z-10 rounded-[2rem] bg-[radial-gradient(60%_60%_at_60%_30%,hsl(262_78%_56%/0.18),transparent_70%)] blur-2xl" />
@@ -90,9 +100,7 @@ export function LivePanel() {
             {/* header */}
             <div className="flex items-baseline justify-between">
               <p className="text-[13px] font-bold text-gray-900">Cobranzas</p>
-              <p className="text-[9px] font-semibold uppercase tracking-wider text-gray-400">
-                Junio 2026
-              </p>
+              <p className="text-[9px] font-semibold uppercase tracking-wider text-gray-400">Junio 2026</p>
             </div>
 
             {/* 3 KPIs que cambian con el beat */}
@@ -115,7 +123,7 @@ export function LivePanel() {
                 <p className="text-[10px] font-semibold text-gray-700">Pagos a validar</p>
                 <span className="text-[9px] font-medium text-gray-400">Junio</span>
               </div>
-              <PaymentRow beat={beat} />
+              <PaymentRow beat={beat} onValidar={validar} />
             </div>
           </div>
         </div>
@@ -136,6 +144,11 @@ export function LivePanel() {
           ))}
         </div>
       </div>
+
+      {/* hint de interactividad */}
+      <p className="mt-9 text-center text-[12px] text-muted-foreground">
+        Pasá el mouse para pausarlo y validá el pago vos mismo.
+      </p>
     </div>
   );
 }
@@ -193,7 +206,7 @@ function Kpi({
   );
 }
 
-function PaymentRow({ beat }: { beat: Beat }) {
+function PaymentRow({ beat, onValidar }: { beat: Beat; onValidar: () => void }) {
   return (
     <div
       className={`flex items-center gap-2.5 rounded-lg p-2 ring-1 transition-colors duration-500 ${
@@ -211,12 +224,12 @@ function PaymentRow({ beat }: { beat: Beat }) {
         <p className="truncate text-[10px] font-semibold text-gray-900">Martín Gómez</p>
         <p className="truncate text-[8.5px] text-gray-400">Av. Colón 1240 · $650.000</p>
       </div>
-      <RowState beat={beat} />
+      <RowState beat={beat} onValidar={onValidar} />
     </div>
   );
 }
 
-function RowState({ beat }: { beat: Beat }) {
+function RowState({ beat, onValidar }: { beat: Beat; onValidar: () => void }) {
   if (beat === 0) {
     return (
       <span className="shrink-0 rounded-full bg-amber-50 px-2 py-1 text-[8.5px] font-semibold text-amber-600">
@@ -225,10 +238,15 @@ function RowState({ beat }: { beat: Beat }) {
     );
   }
   if (beat === 1) {
+    // momento jugable: botón real
     return (
-      <span className="flex shrink-0 animate-[numIn_0.4s_ease-out] items-center gap-1 rounded-full bg-primary/10 px-2 py-1 text-[8.5px] font-semibold text-primary">
-        <FileText className="h-2.5 w-2.5" /> Comprobante
-      </span>
+      <button
+        type="button"
+        onClick={onValidar}
+        className="flex shrink-0 animate-[numIn_0.4s_ease-out] items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-[8.5px] font-semibold text-white transition-transform hover:scale-105"
+      >
+        <FileText className="h-2.5 w-2.5" /> Validar
+      </button>
     );
   }
   if (beat === 2) {
@@ -266,9 +284,7 @@ function Toast({ show, variant }: { show: boolean; variant: 'comprobante' | 'ren
             {comprobante ? 'Comprobante recibido' : 'Rendición lista'}
           </p>
           <p className="mt-0.5 text-[9px] text-gray-500">
-            {comprobante
-              ? 'Martín subió su pago desde la app.'
-              : 'María Paz cobra su alquiler hoy.'}
+            {comprobante ? 'Martín subió su pago desde la app.' : 'María Paz cobra su alquiler hoy.'}
           </p>
         </div>
       </div>
