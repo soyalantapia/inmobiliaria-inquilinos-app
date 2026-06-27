@@ -19,6 +19,11 @@ import {
 import { HeroSignup } from './_landing/hero-signup';
 import { LivePanel } from './_landing/live-panel';
 import { Reveal } from './_landing/reveal';
+import { AnalyticsProvider } from './_landing/analytics';
+import { HeroHeadline } from './_landing/hero-headline';
+import { TrustLogos } from './_landing/trust-logos';
+import { Calculadora } from './_landing/calculadora';
+import { WhatsappFab } from './_landing/whatsapp-fab';
 
 /**
  * Pantalla de inicio de My Alquiler — landing de alta conversión.
@@ -49,15 +54,28 @@ const serif = Fraunces({
   display: 'swap',
 });
 
+const DESC =
+  'El software de alquileres donde tus inquilinos pagan solos, la mora aparece sola y la rendición a propietarios sale calculada. Gratis hasta el lanzamiento, sin tarjeta.';
+
 export const metadata = {
+  metadataBase: new URL('https://admin.myalquiler.com'),
   title: 'My Alquiler · Cobrá tus alquileres sin perseguir a nadie',
-  description:
-    'El software de alquileres donde tus inquilinos pagan solos, la mora aparece sola y la rendición a propietarios sale calculada. Gratis hasta el lanzamiento, sin tarjeta.',
+  description: DESC,
+  alternates: { canonical: '/inicio' },
+  robots: { index: true, follow: true },
   openGraph: {
     title: 'My Alquiler · Cobrá tus alquileres sin perseguir a nadie',
     description:
       'Tus inquilinos pagan desde la app. Vos ves la plata en vivo. La rendición sale sola. Para inmobiliarias argentinas.',
     type: 'website',
+    url: '/inicio',
+    siteName: 'My Alquiler',
+    locale: 'es_AR',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'My Alquiler · Cobrá tus alquileres sin perseguir a nadie',
+    description: DESC,
   },
 };
 
@@ -80,13 +98,15 @@ export default function InicioPage() {
           }}
         />
       </noscript>
+      <AnalyticsProvider />
       <Header />
       <main>
         <Hero />
-        <Convenios />
+        <TrustLogos />
         <Semana />
         <TresActores />
         <Features />
+        <Calculadora />
         <Reclamos />
         <CitaRelevamiento />
         <Precio />
@@ -94,6 +114,7 @@ export default function InicioPage() {
         <CierreCta />
       </main>
       <Footer />
+      <WhatsappFab />
     </div>
   );
 }
@@ -138,13 +159,7 @@ function Hero() {
           <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-primary">
             Software de alquileres · hecho en Córdoba
           </p>
-          <h1 className="mt-5 text-[clamp(2.5rem,6vw,4.25rem)] font-extrabold leading-[1.02] tracking-[-0.02em]">
-            Cobrá tus alquileres{' '}
-            <span className="bg-gradient-to-br from-primary to-violet-500 bg-clip-text text-transparent">
-              sin perseguir a nadie
-            </span>
-            .
-          </h1>
+          <HeroHeadline />
           <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground">
             Tus inquilinos pagan desde la app. Vos ves la plata en vivo. La rendición a
             propietarios sale sola. Sin Excel y sin WhatsApp a las once de la noche.
@@ -174,25 +189,6 @@ function Trust({ children }: { children: React.ReactNode }) {
       <Check className="h-3.5 w-3.5 text-emerald-600" strokeWidth={3} />
       {children}
     </span>
-  );
-}
-
-/* ── Convenios (prueba real, sin logos truchos) ─────────────────────────── */
-function Convenios() {
-  return (
-    <section className="border-y border-black/[0.06] bg-white/60">
-      <div className="mx-auto flex max-w-6xl flex-col items-center gap-5 px-5 py-7 md:flex-row md:justify-between md:px-8">
-        <p className="text-center text-[13px] text-muted-foreground md:text-left">
-          Con convenio para matriculados de{' '}
-          <span className="font-semibold text-foreground">CPI Córdoba</span>,{' '}
-          <span className="font-semibold text-foreground">CUCICBA</span> y{' '}
-          <span className="font-semibold text-foreground">Edifica</span>.
-        </p>
-        <p className="rounded-full bg-primary/[0.07] px-4 py-1.5 text-center text-[13px] font-medium text-primary">
-          Beta abierta · las primeras 50 inmobiliarias entran con −20% para siempre
-        </p>
-      </div>
-    </section>
   );
 }
 
@@ -592,7 +588,7 @@ function CierreCta() {
             Creá tu inmobiliaria en minutos y empezá a cobrar sin perseguir a nadie.
           </p>
           <div className="mt-9">
-            <HeroSignup tone="dark" cta="Crear mi inmobiliaria" microcopy="Gratis hasta el lanzamiento · sin tarjeta · sin vendedores." />
+            <HeroSignup tone="dark" from="cierre" cta="Crear mi inmobiliaria" microcopy="Gratis hasta el lanzamiento · sin tarjeta · sin vendedores." />
           </div>
         </div>
       </div>

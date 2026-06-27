@@ -10,6 +10,19 @@
 
 Plataforma SaaS multi-tenant para inmobiliarias (panel) e inquilinos (PWA). Estado de cambios desde el handoff inicial hasta hoy.
 
+### Landing `/inicio` — upgrades de conversión (27/06)
+- **Medir:** PostHog env-gated y de carga diferida (`_landing/analytics.tsx`) — pageview,
+  scroll-depth, `signup_start`, `panel_played`, `calc_used`, `whatsapp_click` + autocapture.
+  Se enciende seteando `NEXT_PUBLIC_POSTHOG_KEY` en el front. + **A/B del headline**
+  (`hero-headline.tsx`): SSR rinde la variante A; con key asigna 50/50 y reporta `hero_variant`.
+- **WOW interactivo:** el panel del hero ahora es **jugable** (pausa al hover + botón "Validar"
+  real) y **calculadora de ahorro** honesta (`calculadora.tsx`, asunción visible "~12 min/prop").
+- **Pro al compartir + mobile:** **OG image 1200×630** (`opengraph-image.tsx`, next/og) +
+  `metadataBase`/canonical/twitter/robots + **botón flotante de WhatsApp** + pulido mobile.
+- **Prueba social honesta:** banda de confianza con CPI Córdoba / CUCICBA / Edifica
+  (`trust-logos.tsx`, recreados en HTML) + escasez real de la beta. **Cero números de adopción
+  inventados** (en prod hoy: 4 inmobiliarias / 11 propiedades, verificado en DB).
+
 ### Landing de conversión `/inicio` (27/06)
 - La home pasó de "linda" a **landing de alta conversión** con el método landing-builder
   (research de competidores AR/US → copy PAS → diseño). Ángulo de mercado virgen: ningún

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowRight } from 'lucide-react';
+import { track } from './analytics';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -18,11 +19,14 @@ export function HeroSignup({
   cta = 'Empezá gratis',
   microcopy = 'Sin spam. Sin vendedores. Solo el link para crear tu inmobiliaria.',
   tone = 'light',
+  from = 'hero',
 }: {
   cta?: string;
   microcopy?: string;
   /** 'light' sobre fondo claro · 'dark' sobre la banda oscura del cierre. */
   tone?: 'light' | 'dark';
+  /** de dónde sale el submit, para la analítica. */
+  from?: string;
 }) {
   const router = useRouter();
   const [email, setEmail] = useState('');
@@ -35,6 +39,7 @@ export function HeroSignup({
       setError('Escribí un email válido para arrancar.');
       return;
     }
+    track('signup_start', { from, email_domain: v.split('@')[1] ?? '' });
     router.push(`/registro?email=${encodeURIComponent(v)}`);
   };
 
