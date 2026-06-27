@@ -1171,4 +1171,19 @@ export async function coreRoutes(app: FastifyInstance) {
     });
     return { ok: true };
   });
+
+  // ===== Auditoría: lee el rastro de eventos (quién hizo qué). Capacidad
+  // auditoria.ver (ADMIN/LECTURA). Tenant-scopeado. Lo escriben las acciones
+  // sensibles vía lib/auditoria.ts. =====
+  app.get('/eventos', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'auditoria.ver');
+    if (!u) return;
+    const q = z.object({ limit: z.coerce.number().int().min(1).max(200).default(80) }).parse(request.query ?? {});
+    return prisma.eventoAuditoria.findMany({
+      where: { inmobiliariaId: u.inmobiliariaId },
+      include: { autor: { select: { nombre: true, apellido: true, rol: true } } },
+      orderBy: { fecha: 'desc' },
+      take: q.limit,
+    });
+  });
 }
