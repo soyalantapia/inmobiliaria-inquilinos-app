@@ -29,6 +29,16 @@ Plataforma SaaS multi-tenant para inmobiliarias (panel) e inquilinos (PWA). Esta
 - Reclamos: la calificación del inquilino llega al panel y recalcula el score del profesional (D3).
 - Documentación: PROJECT.md maestro, README detallado y work-agent al día.
 
+### Integridad — guard de contrato ACTIVO (27/06, P10)
+- Las escrituras del inquilino sobre el contrato ahora exigen `contrato.estado='ACTIVO'`:
+  `/pagos/informar`, `/boletas`, `POST /mis-reclamos`, `/co-inquilinos` + `…/:id/link` + `…/:id/permiso`.
+  Sin esto, un ex-inquilino seguía informando pagos y subiendo boletas durante los 15 días
+  que vive el JWT después de finalizar el contrato. Helper `exigirContratoActivo` en
+  `auth/guards.ts` + test de regresión. La LECTURA no se restringe (un ex-inquilino sigue
+  viendo su contrato pasado, liquidaciones y comprobantes). Excluidas a propósito:
+  `…/:id/aceptar` (demo-only en prod) y las acciones sobre reclamos EXISTENTES
+  (confirmar-resolución, rating), que deben seguir andando si el contrato se finalizó a mitad.
+
 ### Dinero / plata: consistencia y rendición (21–26/06)
 - Gasto multi-propietario se rinde por partes y se conserva (B2).
 - Batch A1: cierre de caja, cuenta del propietario y validación de comprobantes.

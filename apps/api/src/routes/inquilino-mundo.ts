@@ -3,7 +3,13 @@ import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { rolTienePermiso } from '@llave/shared';
 import { prisma } from '../db.js';
-import { requireAuth, requireContratoAcceso, requireInquilino, requireUsuario } from '../auth/guards.js';
+import {
+  exigirContratoActivo,
+  requireAuth,
+  requireContratoAcceso,
+  requireInquilino,
+  requireUsuario,
+} from '../auth/guards.js';
 
 /**
  * Fase 6 — Mundo inquilino: certificado del inquilino (el "reemplazo del
@@ -708,6 +714,8 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
     const inq = await requireInquilino(request, reply);
     if (!inq) return;
     if (!inq.contratoId) return reply.code(400).send({ message: 'No tenés un contrato activo' });
+    // P10: no se gestionan co-inquilinos sobre un contrato finalizado/borrador.
+    if (!(await exigirContratoActivo(inq.contratoId, inq.inmobiliariaId, reply))) return;
     const body = z
       .object({
         nombre: z.string().trim().min(3),
@@ -764,6 +772,9 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
   app.post('/co-inquilinos/:id/link', async (request, reply) => {
     const inq = await requireInquilino(request, reply);
     if (!inq) return;
+    if (!inq.contratoId) return reply.code(400).send({ message: 'No tenés un contrato activo' });
+    // P10: no se regenera el link de invitación sobre un contrato finalizado/borrador.
+    if (!(await exigirContratoActivo(inq.contratoId, inq.inmobiliariaId, reply))) return;
     const { id } = request.params as { id: string };
     const co = await prisma.coInquilino.findFirst({ where: { id, contratoId: inq.contratoId ?? '' } });
     if (!co) return reply.code(404).send({ message: 'Co-inquilino inexistente' });
@@ -804,6 +815,9 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
   app.patch('/co-inquilinos/:id/permiso', async (request, reply) => {
     const inq = await requireInquilino(request, reply);
     if (!inq) return;
+    if (!inq.contratoId) return reply.code(400).send({ message: 'No tenés un contrato activo' });
+    // P10: no se cambia el permiso de un co-inquilino sobre un contrato finalizado/borrador.
+    if (!(await exigirContratoActivo(inq.contratoId, inq.inmobiliariaId, reply))) return;
     const { id } = request.params as { id: string };
     const body = z
       .object({ permiso: z.enum(['VER', 'PAGAR', 'COMPLETO']) })
@@ -839,6 +853,8 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
     const inq = await requireInquilino(request, reply);
     if (!inq) return;
     if (!inq.contratoId) return reply.code(400).send({ message: 'No tenés un contrato activo' });
+    // P10: no se cargan boletas sobre un contrato finalizado/borrador.
+    if (!(await exigirContratoActivo(inq.contratoId, inq.inmobiliariaId, reply))) return;
     const body = z
       .object({
         servicio: z.enum(['LUZ', 'GAS', 'AGUA', 'INTERNET', 'ABL', 'CABLE']),

@@ -215,3 +215,34 @@ describe('Aprobaciones con PIN', () => {
     expect(res.statusCode).toBe(400);
   });
 });
+
+// P10: las escrituras del inquilino sobre el contrato exigen contrato ACTIVO.
+// El JWT vive 15 días y sobrevive a finalizar el contrato → sin este guard, un
+// ex-inquilino seguía informando pagos / subiendo boletas. Va al FINAL del archivo
+// porque finaliza cnt_001 (mutación de seed); cada test file re-seedea en beforeAll.
+describe('P10 — escritura sobre contrato no-activo', () => {
+  it('finalizar cnt_001 y luego informar pago / subir boleta con el JWT viejo → 409', async () => {
+    // Token de Mariela (cnt_001) emitido ANTES de finalizar: el JWT lleva el contratoId.
+    const demo = await app.inject({ method: 'POST', url: '/auth/demo' });
+    const tk = demo.json().token;
+    const fin = await app.inject({ method: 'POST', url: '/contratos/cnt_001/finalizar', headers: auth(tokenAdmin) });
+    expect(fin.statusCode).toBe(200);
+
+    const pago = await app.inject({
+      method: 'POST',
+      url: '/pagos/informar',
+      headers: auth(tk),
+      payload: { liquidacionId: 'liq_001', monto: 1000, metodo: 'TRANSFERENCIA', fechaTransferencia: '2026-06-12' },
+    });
+    expect(pago.statusCode).toBe(409);
+    expect(pago.json().message).toMatch(/no está activo/i);
+
+    const boleta = await app.inject({
+      method: 'POST',
+      url: '/boletas',
+      headers: auth(tk),
+      payload: { servicio: 'LUZ', periodo: '2026-06', monto: 5000 },
+    });
+    expect(boleta.statusCode).toBe(409);
+  });
+});
