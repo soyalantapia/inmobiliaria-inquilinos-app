@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '../db.js';
 import { requireUsuario } from '../auth/guards.js';
+import { registrarEvento } from '../lib/auditoria.js';
 import { generarLiquidacionesContrato } from '../lib/liquidaciones.js';
 
 /**
@@ -1088,6 +1089,14 @@ export async function coreRoutes(app: FastifyInstance) {
       },
       select: { id: true, nombre: true, apellido: true, email: true, rol: true, activo: true },
     });
+    await registrarEvento({
+      inmobiliariaId: u.inmobiliariaId,
+      tipo: 'EQUIPO_INVITADO',
+      autorId: u.userId,
+      rolAutor: u.rol,
+      entidadId: creado.id,
+      entidadDescripcion: `${creado.nombre} ${creado.apellido} (${creado.rol}) · ${creado.email}`,
+    });
     return reply.code(201).send({ ...creado, esVos: false });
   });
 
@@ -1152,6 +1161,14 @@ export async function coreRoutes(app: FastifyInstance) {
       }
       throw e;
     }
+    await registrarEvento({
+      inmobiliariaId: u.inmobiliariaId,
+      tipo: 'EQUIPO_REMOVIDO',
+      autorId: u.userId,
+      rolAutor: u.rol,
+      entidadId: id,
+      entidadDescripcion: `${target.nombre} ${target.apellido} (${target.rol}) · ${target.email}`,
+    });
     return { ok: true };
   });
 }
