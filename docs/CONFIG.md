@@ -18,7 +18,7 @@ Referencia de configuración de las tres apps del monorepo. Las marcadas **no ca
 |---|---|---|---|---|
 | `DATABASE_URL` | **Sí** (`min(1)`) | — | Railway service `api` / `.env` local | Conexión Postgres (Prisma). |
 | `JWT_SECRET` | **Sí** (`min(16)`) | — | Railway service `api` / `.env` local | Firma/verificación de JWT (auth usuarios e inquilinos). |
-| `PORT` | No | `3002` (schema). `.env` local usa `3001` | Railway (lo inyecta la plataforma) / `.env` local | Puerto de escucha del servidor. |
+| `PORT` | No | `3002` (default del schema y del `.env` local) | Railway (lo inyecta la plataforma) / `.env` local | Puerto de escucha del servidor. |
 | `DEMO_MODE` | No | `false` | `.env` local / overrides en tests | Modo demo. En tests se pasa `DEMO_MODE: 'true'` vía `buildApp({...})`. |
 | `CORS_ORIGINS` | No | `http://localhost:3000,http://localhost:3001,https://soyalantapia.github.io` | Railway service `api` | Lista (CSV) de orígenes permitidos para CORS. |
 | `NODE_ENV` | No | `development` (enum: `development\|test\|production`) | Railway / Dockerfile (`ENV NODE_ENV=production`) / tests (`'test'`) | Entorno de ejecución. |

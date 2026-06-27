@@ -4,6 +4,7 @@ import { prisma } from '../db.js';
 import { exigirContratoActivo, requireContratoAcceso, requireInquilino, requireUsuario } from '../auth/guards.js';
 import { verificarPinUsuario } from '../auth/pin.js';
 import { devengarTodosLosTenants, generarLiquidacionesContrato } from '../lib/liquidaciones.js';
+import { registrarEvento } from '../lib/auditoria.js';
 import { urlEsDelTenant } from './uploads.js';
 
 /**
@@ -271,6 +272,14 @@ export async function plataRoutes(app: FastifyInstance) {
       return tx.pago.findUnique({ where: { id } });
     });
     if (!pagoOk) return reply.code(409).send({ message: 'El pago ya fue decidido' });
+    await registrarEvento({
+      inmobiliariaId: u.inmobiliariaId,
+      tipo: 'PAGO_CONCILIADO',
+      autorId: u.userId,
+      rolAutor: u.rol,
+      entidadId: pagoOk.id,
+      entidadDescripcion: `Pago ${pagoOk.periodo} · $${Number(pagoOk.monto)}`,
+    });
     return pagoOk;
   });
 
@@ -299,6 +308,15 @@ export async function plataRoutes(app: FastifyInstance) {
       return tx.pago.findUnique({ where: { id } });
     });
     if (!pagoOk) return reply.code(409).send({ message: 'El pago ya fue decidido' });
+    await registrarEvento({
+      inmobiliariaId: u.inmobiliariaId,
+      tipo: 'PAGO_RECHAZADO',
+      autorId: u.userId,
+      rolAutor: u.rol,
+      entidadId: pagoOk.id,
+      entidadDescripcion: `Pago ${pagoOk.periodo} · $${Number(pagoOk.monto)}`,
+      detalle: body.data.observacion,
+    });
     return pagoOk;
   });
 
@@ -447,7 +465,7 @@ export async function plataRoutes(app: FastifyInstance) {
     if (!prop) return reply.code(404).send({ message: 'Propiedad inexistente' });
     const usuario = await prisma.usuario.findUnique({ where: { id: u.userId } });
 
-    return prisma.movimientoCaja.create({
+    const mov = await prisma.movimientoCaja.create({
       data: {
         inmobiliariaId: u.inmobiliariaId,
         propiedadId: prop.id,
@@ -461,6 +479,15 @@ export async function plataRoutes(app: FastifyInstance) {
         cargadoPor: usuario ? `${usuario.nombre} ${usuario.apellido}`.trim() : 'Panel',
       },
     });
+    await registrarEvento({
+      inmobiliariaId: u.inmobiliariaId,
+      tipo: 'GASTO_CAJA_CARGADO',
+      autorId: u.userId,
+      rolAutor: u.rol,
+      entidadId: mov.id,
+      entidadDescripcion: `Gasto ${body.data.categoria} · $${body.data.monto} · ${body.data.descripcion}`,
+    });
+    return mov;
   });
 
   app.delete('/caja/movimientos/:id', async (request, reply) => {
@@ -485,6 +512,14 @@ export async function plataRoutes(app: FastifyInstance) {
     if (res.count === 0) {
       return reply.code(409).send({ message: 'Ya fue descontado en una rendición — no se puede eliminar' });
     }
+    await registrarEvento({
+      inmobiliariaId: u.inmobiliariaId,
+      tipo: 'GASTO_CAJA_ELIMINADO',
+      autorId: u.userId,
+      rolAutor: u.rol,
+      entidadId: id,
+      entidadDescripcion: 'Gasto de caja eliminado',
+    });
     return { ok: true };
   });
 
@@ -660,6 +695,14 @@ export async function plataRoutes(app: FastifyInstance) {
       throw e;
     }
 
+    await registrarEvento({
+      inmobiliariaId: u.inmobiliariaId,
+      tipo: 'PROPIETARIO_RENDIDO',
+      autorId: u.userId,
+      rolAutor: u.rol,
+      entidadId: rendicion.id,
+      entidadDescripcion: `Rendición ${body.data.periodo} a propietario ${body.data.propietarioId} · neto $${Number(rendicion.montoNeto)}`,
+    });
     return reply.code(201).send(rendicion);
   });
 
@@ -811,6 +854,16 @@ export async function plataRoutes(app: FastifyInstance) {
         return reply
           .code(409)
           .send({ message: 'motivo' in result ? 'La propiedad ya tiene un contrato activo' : 'Ya fue decidida' });
+      }
+      if (result.updated.tipo === 'CONTRATO_CARGADO') {
+        await registrarEvento({
+          inmobiliariaId: u.inmobiliariaId,
+          tipo: accion === 'aprobar' ? 'CONTRATO_APROBADO' : 'CONTRATO_RECHAZADO',
+          autorId: u.userId,
+          rolAutor: u.rol,
+          entidadId: result.updated.entidadId,
+          entidadDescripcion: result.updated.titulo,
+        });
       }
       return result.updated;
     });

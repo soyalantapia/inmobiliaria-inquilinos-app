@@ -40,6 +40,24 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Sesión vencida/invalidada: si mandamos un token y el server lo rechaza (401),
+ * limpiamos la sesión y mandamos a re-loguear. Sin esto, un admin con el token
+ * vencido (vive 15 días) quedaba mirando pantallas vacías sin entender por qué
+ * (cada query daba 401 → []). Solo aplica a requests autenticados (token presente)
+ * y fuera de /login (evita loops). Mismo patrón que la PWA del inquilino.
+ */
+function manejarSesionVencida(status: number, token: string | null): void {
+  if (status === 401 && token && typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+    try {
+      window.localStorage.removeItem(TOKEN_KEY);
+    } catch {
+      // ignore
+    }
+    window.location.assign('/login?expirada=1');
+  }
+}
+
 export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = getToken();
   const res = await fetch(`${API_URL}${path}`, {
@@ -52,6 +70,7 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
     },
   });
   if (!res.ok) {
+    manejarSesionVencida(res.status, token);
     let message = `HTTP ${res.status}`;
     try {
       const body = (await res.json()) as { message?: string };
@@ -86,6 +105,7 @@ export async function subirArchivo(file: File): Promise<ArchivoSubido> {
     body: fd,
   });
   if (!res.ok) {
+    manejarSesionVencida(res.status, token);
     let message = `HTTP ${res.status}`;
     try {
       const body = (await res.json()) as { message?: string };
