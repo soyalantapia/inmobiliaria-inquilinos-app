@@ -68,17 +68,27 @@ function LoginOtp() {
       return;
     }
     try {
-      await apiFetch('/auth/usuario/otp/request', {
+      const r = await apiFetch<{ ok: boolean; existe?: boolean }>('/auth/usuario/otp/request', {
         method: 'POST',
         body: JSON.stringify({ email: emailLc }),
       });
+      // Email sin cuenta → lo mandamos al alta (precargando el email) en vez de
+      // hacerlo esperar un código que nunca llega. El cartel del registro le
+      // dice "no encontramos una cuenta… armala en segundos".
+      if (r.existe === false) {
+        // Dejamos el botón en "Enviando…" mientras navega: router.push es una
+        // navegación soft asíncrona; si reseteáramos enviando acá el botón
+        // volvería a su estado normal sin feedback hasta que monte /registro.
+        router.push(`/registro?email=${encodeURIComponent(emailLc)}&nueva=1`);
+        return;
+      }
       setCooldownHasta(Date.now() + SEGUNDOS_COOLDOWN * 1000);
       setDigitos(['', '', '', '', '', '']);
       setPaso('otp');
       setTimeout(() => otpRefs.current[0]?.focus(), 100);
+      setEnviando(false);
     } catch {
       setErrorEmail('No pudimos enviar el código. Revisá tu conexión y probá de nuevo.');
-    } finally {
       setEnviando(false);
     }
   };

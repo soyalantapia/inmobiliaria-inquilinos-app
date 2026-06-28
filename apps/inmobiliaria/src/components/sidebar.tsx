@@ -100,16 +100,22 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
     (l) => !l.capacidad || rolTienePermiso(rol, l.capacidad),
   );
 
+  // El header muestra el nombre de la inmobiliaria (que se sienta SU panel).
+  // Mientras carga / sin dato cae a la marca genérica.
+  const inmoNombre = me?.inmobiliaria?.trim() ?? '';
+
   return (
     <>
       <div className="flex h-16 items-center gap-2 border-b px-6">
-        <div className="grid h-8 w-8 place-items-center rounded-md bg-primary text-[10px] font-bold text-primary-foreground">
+        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-primary text-[10px] font-bold text-primary-foreground">
           My
         </div>
-        <div>
-          <p className="text-sm font-semibold leading-tight">My Alquiler</p>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold leading-tight" title={inmoNombre || 'My Alquiler'}>
+            {inmoNombre || 'My Alquiler'}
+          </p>
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
-            Panel inmobiliaria
+            {inmoNombre ? 'Panel · My Alquiler' : 'Panel inmobiliaria'}
           </p>
         </div>
       </div>

@@ -402,6 +402,8 @@ interface MeApi {
   nombre: string;
   email: string;
   rol: string;
+  // Nombre de la inmobiliaria del usuario (rama usuario de /auth/me).
+  inmobiliaria?: string;
   // Campos del trial pre-lanzamiento (rama usuario de /auth/me). Opcionales
   // por compatibilidad: backends viejos o la rama no-usuario no los traen.
   esPiloto?: boolean;
@@ -423,6 +425,8 @@ export interface Me {
   rol: string;
   firstName: string;
   iniciales: string;
+  /** Nombre de la inmobiliaria (para identificar el panel en el header). */
+  inmobiliaria: string;
   /** Cuenta piloto de la beta pre-lanzamiento. */
   esPiloto: boolean;
   /** El perfil fiscal (ARCA/AFIP) está completo. */
@@ -629,6 +633,7 @@ export function useMe(): { me: Me | null; cargando: boolean } {
         rol: 'ADMIN',
         firstName: u.firstName,
         iniciales: `${u.firstName[0] ?? ''}${u.lastName[0] ?? ''}`.toUpperCase(),
+        inmobiliaria: 'Inmobiliaria del Sol',
         // En demo el trial pre-lanzamiento real no aplica: el TrialBanner usa
         // la fuente local (trial-storage) por su cuenta y estos quedan neutros.
         esPiloto: false,
@@ -651,6 +656,7 @@ export function useMe(): { me: Me | null; cargando: boolean } {
       rol: d.rol,
       firstName,
       iniciales: iniciales(d.nombre, d.email),
+      inmobiliaria: d.inmobiliaria ?? '',
       esPiloto: d.esPiloto ?? false,
       perfilFiscalCompleto: d.perfilFiscalCompleto ?? true,
       tienePin: d.tienePin ?? false,

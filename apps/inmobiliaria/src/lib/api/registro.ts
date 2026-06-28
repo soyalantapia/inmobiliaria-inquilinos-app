@@ -12,14 +12,16 @@ export interface RegistroInmobiliaria {
   nombre: string;
   email: string;
   telefono: string;
-  ciudad: string;
-  provincia: string;
+  // Ciudad/provincia salieron del alta (se completan después desde el panel).
+  ciudad?: string;
+  provincia?: string;
 }
 
 export interface RegistroAdmin {
   nombre: string;
   apellido: string;
-  password: string;
+  // El alta ya no pide contraseña: la cuenta entra por OTP.
+  password?: string;
 }
 
 export interface RegistroBody {

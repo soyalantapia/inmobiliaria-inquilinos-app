@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { Mail, Zap } from 'lucide-react';
 import { Button } from '@llave/ui/button';
 import { Input } from '@llave/ui/input';
 import { Label } from '@llave/ui/label';
@@ -12,109 +13,77 @@ import { registrar } from '@/lib/api/registro';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-type Paso1 = {
-  nombre: string;
+type Datos = {
+  nombre: string; // nombre de la inmobiliaria
   email: string;
   telefono: string;
-  ciudad: string;
-  provincia: string;
+  adminNombre: string;
+  adminApellido: string;
 };
 
-type Paso2 = {
-  nombre: string;
-  apellido: string;
-  password: string;
-  confirmar: string;
-};
-
-type Errores = Partial<Record<string, string>>;
+type Errores = Partial<Record<keyof Datos, string>>;
 
 export default function RegistroPage() {
   return (
     <AuthShell>
-      <RegistroWizard />
+      <RegistroForm />
     </AuthShell>
   );
 }
 
-function RegistroWizard() {
+function RegistroForm() {
   const router = useRouter();
-  const [paso, setPaso] = useState<1 | 2>(1);
   const [loading, setLoading] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
+  // Si llegó redirigido desde el login (email sin cuenta) mostramos el cartel
+  // con copy contextual ("no encontramos una cuenta…").
+  const [desdeLogin, setDesdeLogin] = useState(false);
 
-  const [inmo, setInmo] = useState<Paso1>({
+  const [datos, setDatos] = useState<Datos>({
     nombre: '',
     email: '',
     telefono: '',
-    ciudad: '',
-    provincia: '',
-  });
-  const [admin, setAdmin] = useState<Paso2>({
-    nombre: '',
-    apellido: '',
-    password: '',
-    confirmar: '',
+    adminNombre: '',
+    adminApellido: '',
   });
   const [errores, setErrores] = useState<Errores>({});
 
-  // Prefill desde la landing: el hero manda /registro?email=…&nombre=… para que
-  // el alta arranque con lo que ya escribió. Se setea tras montar (evita
-  // mismatch de hidratación) y no pisa lo que el usuario haya tipeado.
+  // Prefill desde la landing o el login: ?email=…&nombre=…&nueva=1. Se setea
+  // tras montar (evita mismatch de hidratación) y no pisa lo ya tipeado.
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search);
     const email = sp.get('email')?.trim();
     const nombre = sp.get('nombre')?.trim();
+    if (sp.get('nueva') === '1') setDesdeLogin(true);
     if (!email && !nombre) return;
-    setInmo((prev) => ({
+    setDatos((prev) => ({
       ...prev,
       email: email && !prev.email ? email : prev.email,
       nombre: nombre && !prev.nombre ? nombre : prev.nombre,
     }));
   }, []);
 
-  const validarPaso1 = (): boolean => {
+  const set = (campo: keyof Datos, valor: string) => {
+    setDatos((prev) => ({ ...prev, [campo]: valor }));
+    if (errores[campo]) setErrores((prev) => ({ ...prev, [campo]: undefined }));
+  };
+
+  const validar = (): boolean => {
     const e: Errores = {};
-    if (!inmo.nombre.trim()) e.nombre = 'Ingresá el nombre de la inmobiliaria.';
-    if (!inmo.email.trim()) e.email = 'Ingresá un email.';
-    else if (!EMAIL_RE.test(inmo.email.trim())) e.email = 'El email no parece válido.';
-    if (!inmo.telefono.trim()) e.telefono = 'Ingresá un teléfono.';
-    if (!inmo.ciudad.trim()) e.ciudad = 'Ingresá la ciudad.';
-    if (!inmo.provincia.trim()) e.provincia = 'Ingresá la provincia.';
+    if (!datos.nombre.trim()) e.nombre = 'Ingresá el nombre de la inmobiliaria.';
+    if (!datos.email.trim()) e.email = 'Ingresá un email.';
+    else if (!EMAIL_RE.test(datos.email.trim())) e.email = 'El email no parece válido.';
+    if (!datos.telefono.trim()) e.telefono = 'Ingresá un teléfono.';
+    if (!datos.adminNombre.trim()) e.adminNombre = 'Ingresá tu nombre.';
+    if (!datos.adminApellido.trim()) e.adminApellido = 'Ingresá tu apellido.';
     setErrores(e);
     return Object.keys(e).length === 0;
-  };
-
-  const validarPaso2 = (): boolean => {
-    const e: Errores = {};
-    if (!admin.nombre.trim()) e.aNombre = 'Ingresá tu nombre.';
-    if (!admin.apellido.trim()) e.aApellido = 'Ingresá tu apellido.';
-    if (!admin.password) e.password = 'Ingresá una contraseña.';
-    else if (admin.password.length < 8) e.password = 'Mínimo 8 caracteres.';
-    if (admin.confirmar !== admin.password) e.confirmar = 'Las contraseñas no coinciden.';
-    setErrores(e);
-    return Object.keys(e).length === 0;
-  };
-
-  const irAPaso2 = (ev: React.FormEvent) => {
-    ev.preventDefault();
-    setServerError(null);
-    if (validarPaso1()) {
-      setErrores({});
-      setPaso(2);
-    }
-  };
-
-  const volver = () => {
-    setServerError(null);
-    setErrores({});
-    setPaso(1);
   };
 
   const crearCuenta = async (ev: React.FormEvent) => {
     ev.preventDefault();
     setServerError(null);
-    if (!validarPaso2()) return;
+    if (!validar()) return;
     setLoading(true);
     try {
       if (!apiEnabled) {
@@ -124,16 +93,13 @@ function RegistroWizard() {
       }
       await registrar({
         inmobiliaria: {
-          nombre: inmo.nombre.trim(),
-          email: inmo.email.trim().toLowerCase(),
-          telefono: inmo.telefono.trim(),
-          ciudad: inmo.ciudad.trim(),
-          provincia: inmo.provincia.trim(),
+          nombre: datos.nombre.trim(),
+          email: datos.email.trim().toLowerCase(),
+          telefono: datos.telefono.trim(),
         },
         admin: {
-          nombre: admin.nombre.trim(),
-          apellido: admin.apellido.trim(),
-          password: admin.password,
+          nombre: datos.adminNombre.trim(),
+          apellido: datos.adminApellido.trim(),
         },
       });
       router.push('/?bienvenida=1');
@@ -144,12 +110,29 @@ function RegistroWizard() {
   };
 
   return (
-    <div className="w-full space-y-8">
-      <div className="space-y-4">
+    <div className="w-full space-y-7">
+      {/* Cartel: armá tu cuenta en segundos */}
+      <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4 dark:border-violet-900/40 dark:bg-violet-900/10">
+        <div className="flex items-start gap-3">
+          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground">
+            <Zap className="h-4 w-4" />
+          </div>
+          <div className="min-w-0">
+            <p className="font-semibold text-primary">Armá tu cuenta en segundos</p>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              {desdeLogin
+                ? 'No encontramos una cuenta con ese email. Creala acá: sin tarjeta y sin contraseña.'
+                : 'Sin tarjeta y sin contraseña. Entrás con un código que te mandamos por mail.'}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
         <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
           Probá My Alquiler gratis
         </h1>
-        <ProgresoPasos paso={paso} />
+        <p className="text-sm text-muted-foreground">Gratis hasta el lanzamiento. Cancelás cuando quieras.</p>
       </div>
 
       {serverError && (
@@ -158,147 +141,71 @@ function RegistroWizard() {
         </p>
       )}
 
-      {paso === 1 ? (
-        <form onSubmit={irAPaso2} className="space-y-5" noValidate>
+      <form onSubmit={crearCuenta} className="space-y-5" noValidate>
+        <Field
+          id="inmo-nombre"
+          label="Nombre de la inmobiliaria"
+          value={datos.nombre}
+          onChange={(v) => set('nombre', v)}
+          placeholder="Inmobiliaria Ejemplo"
+          error={errores.nombre}
+        />
+        <Field
+          id="inmo-email"
+          label="Email"
+          type="email"
+          autoComplete="email"
+          value={datos.email}
+          onChange={(v) => set('email', v)}
+          placeholder="contacto@tuinmobiliaria.com"
+          error={errores.email}
+        />
+        <Field
+          id="inmo-telefono"
+          label="Teléfono"
+          type="tel"
+          autoComplete="tel"
+          value={datos.telefono}
+          onChange={(v) => set('telefono', v)}
+          placeholder="+54 9 11 5555 5555"
+          error={errores.telefono}
+        />
+        <div className="grid grid-cols-2 gap-3">
           <Field
-            id="inmo-nombre"
-            label="Nombre de la inmobiliaria"
-            value={inmo.nombre}
-            onChange={(v) => setInmo({ ...inmo, nombre: v })}
-            placeholder="Inmobiliaria Ejemplo"
-            error={errores.nombre}
+            id="admin-nombre"
+            label="Tu nombre"
+            autoComplete="given-name"
+            value={datos.adminNombre}
+            onChange={(v) => set('adminNombre', v)}
+            placeholder="Juan"
+            error={errores.adminNombre}
           />
           <Field
-            id="inmo-email"
-            label="Email"
-            type="email"
-            autoComplete="email"
-            value={inmo.email}
-            onChange={(v) => setInmo({ ...inmo, email: v })}
-            placeholder="contacto@tuinmobiliaria.com"
-            error={errores.email}
+            id="admin-apellido"
+            label="Tu apellido"
+            autoComplete="family-name"
+            value={datos.adminApellido}
+            onChange={(v) => set('adminApellido', v)}
+            placeholder="Pérez"
+            error={errores.adminApellido}
           />
-          <Field
-            id="inmo-telefono"
-            label="Teléfono"
-            type="tel"
-            autoComplete="tel"
-            value={inmo.telefono}
-            onChange={(v) => setInmo({ ...inmo, telefono: v })}
-            placeholder="+54 9 11 5555 5555"
-            error={errores.telefono}
-          />
-          <div className="grid grid-cols-2 gap-3">
-            <Field
-              id="inmo-ciudad"
-              label="Ciudad"
-              autoComplete="address-level2"
-              value={inmo.ciudad}
-              onChange={(v) => setInmo({ ...inmo, ciudad: v })}
-              placeholder="Córdoba"
-              error={errores.ciudad}
-            />
-            <Field
-              id="inmo-provincia"
-              label="Provincia"
-              autoComplete="address-level1"
-              value={inmo.provincia}
-              onChange={(v) => setInmo({ ...inmo, provincia: v })}
-              placeholder="Córdoba"
-              error={errores.provincia}
-            />
-          </div>
-          <Button type="submit" className="w-full" size="lg">
-            Siguiente
-          </Button>
-        </form>
-      ) : (
-        <form onSubmit={crearCuenta} className="space-y-5" noValidate>
-          <div className="grid grid-cols-2 gap-3">
-            <Field
-              id="admin-nombre"
-              label="Nombre"
-              autoComplete="given-name"
-              value={admin.nombre}
-              onChange={(v) => setAdmin({ ...admin, nombre: v })}
-              placeholder="Juan"
-              error={errores.aNombre}
-            />
-            <Field
-              id="admin-apellido"
-              label="Apellido"
-              autoComplete="family-name"
-              value={admin.apellido}
-              onChange={(v) => setAdmin({ ...admin, apellido: v })}
-              placeholder="Pérez"
-              error={errores.aApellido}
-            />
-          </div>
-          <Field
-            id="admin-password"
-            label="Contraseña"
-            type="password"
-            autoComplete="new-password"
-            value={admin.password}
-            onChange={(v) => setAdmin({ ...admin, password: v })}
-            placeholder="Mínimo 8 caracteres"
-            error={errores.password}
-          />
-          <Field
-            id="admin-confirmar"
-            label="Confirmar contraseña"
-            type="password"
-            autoComplete="new-password"
-            value={admin.confirmar}
-            onChange={(v) => setAdmin({ ...admin, confirmar: v })}
-            placeholder="Repetí la contraseña"
-            error={errores.confirmar}
-          />
-          <div className="flex gap-3">
-            <Button
-              type="button"
-              variant="outline"
-              size="lg"
-              className="flex-1"
-              onClick={volver}
-              disabled={loading}
-            >
-              Atrás
-            </Button>
-            <Button type="submit" size="lg" className="flex-1" disabled={loading}>
-              {loading ? 'Creando…' : 'Crear cuenta'}
-            </Button>
-          </div>
-        </form>
-      )}
+        </div>
+
+        <Button type="submit" className="w-full" size="lg" disabled={loading}>
+          {loading ? 'Creando…' : 'Crear cuenta gratis'}
+        </Button>
+
+        <p className="flex items-center justify-center gap-1.5 text-center text-xs text-muted-foreground">
+          <Mail className="h-3.5 w-3.5" />
+          Sin contraseñas: entrás siempre con un código que te mandamos por mail.
+        </p>
+      </form>
 
       <p className="text-center text-sm text-muted-foreground">
         ¿Ya tenés cuenta?{' '}
         <Link href="/login" className="font-semibold text-primary hover:underline">
           Entrar
         </Link>
-      </p>
-    </div>
-  );
-}
-
-function ProgresoPasos({ paso }: { paso: 1 | 2 }) {
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-2">
-        <span
-          className={`h-1.5 flex-1 rounded-full transition-colors ${
-            paso >= 1 ? 'bg-primary' : 'bg-violet-100'
-          }`}
-        />
-        <span
-          className={`h-1.5 flex-1 rounded-full transition-colors ${
-            paso >= 2 ? 'bg-primary' : 'bg-violet-100'
-          }`}
-        />
-      </div>
-      <p className="text-xs font-medium text-muted-foreground">
-        {paso === 1 ? 'Paso 1 de 2 · Tu inmobiliaria' : 'Paso 2 de 2 · Tu acceso'}
       </p>
     </div>
   );

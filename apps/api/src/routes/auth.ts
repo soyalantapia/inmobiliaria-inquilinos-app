@@ -44,13 +44,17 @@ const RegistroSchema = z.object({
     nombre: z.string().trim().min(2),
     email: z.string().trim().email(),
     telefono: z.string().trim().min(5),
-    ciudad: z.string().trim().min(2),
-    provincia: z.string().trim().min(2),
+    // Ciudad/provincia salieron del alta (se completan después desde el panel).
+    // Opcionales por compatibilidad con clientes que aún las manden.
+    ciudad: z.string().trim().optional(),
+    provincia: z.string().trim().optional(),
   }),
   admin: z.object({
     nombre: z.string().trim().min(2),
     apellido: z.string().trim().min(2),
-    password: z.string().min(8),
+    // El alta ya no pide contraseña: el panel entra por OTP. `password` es
+    // opcional sólo como backstop (si algún cliente la manda, la guardamos).
+    password: z.string().min(8).optional(),
   }),
 });
 
@@ -88,7 +92,9 @@ export async function authRoutes(app: FastifyInstance) {
     if (yaExiste) return reply.code(409).send({ message: 'Ya existe una cuenta con ese email' });
 
     const hasta = new Date(app.env.FECHA_LANZAMIENTO ?? FECHA_LANZAMIENTO_DEFAULT);
-    const passwordHash = bcrypt.hashSync(admin.password, 10);
+    // Sin contraseña en el alta → passwordHash null. La cuenta entra por OTP;
+    // el /auth/login con password sólo aplica si alguna vez se setea una.
+    const passwordHash = admin.password ? bcrypt.hashSync(admin.password, 10) : null;
 
     // Reintentamos por si el código de referido colisiona (unique).
     let usuario;
@@ -106,8 +112,8 @@ export async function authRoutes(app: FastifyInstance) {
               direccionCalle: '',
               direccionAltura: '',
               direccionPiso: '',
-              direccionCiudad: inmobiliaria.ciudad,
-              direccionProvincia: inmobiliaria.provincia,
+              direccionCiudad: inmobiliaria.ciudad ?? '',
+              direccionProvincia: inmobiliaria.provincia ?? '',
               direccionCp: '',
               esPiloto: true, // cuenta pre-lanzamiento
               codigoReferido: generarCodigoReferido(inmobiliaria.nombre),
@@ -166,14 +172,17 @@ export async function authRoutes(app: FastifyInstance) {
     if (!body.success) return reply.code(400).send({ message: 'Email requerido' });
 
     const emailLc = body.data.email.toLowerCase();
-    // Un OTP por cada usuario ACTIVO con ese email. En la práctica el email es
-    // único (el registro lo enforça global), pero no asumimos unicidad ni
-    // enumeramos: la respuesta es idéntica exista o no la cuenta.
+    // Un OTP por cada usuario ACTIVO con ese email (en la práctica el email es
+    // único: el registro lo enforça global).
     const usuarios = await prisma.usuario.findMany({
       where: { email: emailLc, activo: true },
       select: { id: true },
     });
-    if (usuarios.length === 0) return { ok: true };
+    // UX self-service: devolvemos `existe` para que el panel mande a /registro
+    // a quien todavía no tiene cuenta, en vez de hacerlo esperar un código que
+    // nunca llega. Trade-off consciente: permite saber si un email es cliente,
+    // aceptable en un alta B2B donde registrarse es público de todos modos.
+    if (usuarios.length === 0) return { ok: true, existe: false };
 
     const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
     const codeHash = bcrypt.hashSync(code, 8);
@@ -190,7 +199,7 @@ export async function authRoutes(app: FastifyInstance) {
     } catch (err) {
       app.log.error({ email: emailLc, code, err: (err as Error).message }, 'OTP admin: fallo el envío SMTP — código por log');
     }
-    return { ok: true };
+    return { ok: true, existe: true };
   });
 
   app.post('/auth/usuario/otp/verify', async (request, reply) => {
