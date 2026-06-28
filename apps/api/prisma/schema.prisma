@@ -670,6 +670,7 @@ model Usuario {
   eventosAuditoria      EventoAuditoria[]
   reportesPiloto        ReportePiloto[]
   pagosDecididos        Pago[]            @relation("PagosDecididos")
+  codigosOtp            CodigoOtpUsuario[]
 
   @@unique([inmobiliariaId, email])
   @@index([inmobiliariaId])
@@ -749,6 +750,21 @@ model CodigoOtp {
 
   @@index([inquilinoId])
   @@map("codigos_otp")
+}
+
+/// OTP de login del PANEL (modelo Usuario). Gemelo de CodigoOtp pero keyed a
+/// `usuarioId`: el admin entra con email + código de 6 dígitos, sin contraseña.
+model CodigoOtpUsuario {
+  id        String    @id @default(cuid())
+  usuarioId String
+  usuario   Usuario   @relation(fields: [usuarioId], references: [id])
+  codeHash  String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([usuarioId])
+  @@map("codigos_otp_usuario")
 }
 
 model ReportePiloto {
