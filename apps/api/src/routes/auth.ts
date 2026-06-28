@@ -157,6 +157,80 @@ export async function authRoutes(app: FastifyInstance) {
     return reply.code(201).send({ token, nombre: `${usuario.nombre} ${usuario.apellido}`.trim(), rol: usuario.rol });
   });
 
+  // --- Panel inmobiliaria: login por OTP (sin contraseña) ---
+  // Mismo motor que el OTP del inquilino, pero contra el modelo Usuario. El
+  // /auth/login con contraseña sigue existiendo como backstop de emergencia,
+  // pero el panel ya entra por código.
+  app.post('/auth/usuario/otp/request', async (request, reply) => {
+    const body = OtpRequestSchema.safeParse(request.body);
+    if (!body.success) return reply.code(400).send({ message: 'Email requerido' });
+
+    const emailLc = body.data.email.toLowerCase();
+    // Un OTP por cada usuario ACTIVO con ese email. En la práctica el email es
+    // único (el registro lo enforça global), pero no asumimos unicidad ni
+    // enumeramos: la respuesta es idéntica exista o no la cuenta.
+    const usuarios = await prisma.usuario.findMany({
+      where: { email: emailLc, activo: true },
+      select: { id: true },
+    });
+    if (usuarios.length === 0) return { ok: true };
+
+    const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
+    const codeHash = bcrypt.hashSync(code, 8);
+    const expiresAt = new Date(Date.now() + OTP_TTL_MS);
+    await prisma.codigoOtpUsuario.createMany({
+      data: usuarios.map((u) => ({ usuarioId: u.id, codeHash, expiresAt })),
+    });
+    // Envío por SMTP si está configurado; si no, fallback a loguear el código
+    // (dev). No filtramos el resultado al cliente.
+    try {
+      const enviado = await enviarOtp(emailLc, code);
+      if (!enviado) app.log.info({ email: emailLc, code }, 'OTP admin generado (SMTP no configurado — código por log)');
+      else app.log.info({ email: emailLc }, 'OTP admin enviado por email');
+    } catch (err) {
+      app.log.error({ email: emailLc, code, err: (err as Error).message }, 'OTP admin: fallo el envío SMTP — código por log');
+    }
+    return { ok: true };
+  });
+
+  app.post('/auth/usuario/otp/verify', async (request, reply) => {
+    const body = OtpVerifySchema.safeParse(request.body);
+    if (!body.success) return reply.code(400).send({ message: 'Email y código de 6 dígitos requeridos' });
+
+    const emailLc = body.data.email.toLowerCase();
+    const usuarios = await prisma.usuario.findMany({ where: { email: emailLc, activo: true } });
+    if (usuarios.length === 0) return reply.code(401).send({ message: 'Código inválido' });
+
+    // La identidad sale de la fila OTP que matchea, no de un findFirst-por-email.
+    let usuario: (typeof usuarios)[number] | null = null;
+    if (app.env.DEMO_MODE && body.data.code === '000000' && process.env.NODE_ENV !== 'production') {
+      usuario = usuarios[0] ?? null; // backdoor SOLO de demo/dev (excluye prod)
+    } else {
+      const ids = usuarios.map((u) => u.id);
+      const otps = await prisma.codigoOtpUsuario.findMany({
+        where: { usuarioId: { in: ids }, usedAt: null, expiresAt: { gt: new Date() } },
+        orderBy: { createdAt: 'desc' },
+      });
+      for (const otp of otps) {
+        if (bcrypt.compareSync(body.data.code, otp.codeHash)) {
+          await prisma.codigoOtpUsuario.update({ where: { id: otp.id }, data: { usedAt: new Date() } });
+          usuario = usuarios.find((u) => u.id === otp.usuarioId) ?? null;
+          break;
+        }
+      }
+    }
+    if (!usuario) return reply.code(401).send({ message: 'Código inválido o vencido' });
+
+    const payload: JwtUsuario = {
+      kind: 'usuario',
+      userId: usuario.id,
+      inmobiliariaId: usuario.inmobiliariaId,
+      rol: usuario.rol,
+    };
+    const token = app.jwt.sign(payload, { expiresIn: TOKEN_TTL });
+    return { token, nombre: `${usuario.nombre} ${usuario.apellido}`.trim(), rol: usuario.rol };
+  });
+
   // --- Inquilino: OTP por email ---
   app.post('/auth/otp/request', async (request, reply) => {
     const body = OtpRequestSchema.safeParse(request.body);
