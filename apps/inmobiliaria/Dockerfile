@@ -24,6 +24,17 @@ RUN pnpm install --frozen-lockfile
 COPY packages packages
 COPY scripts scripts
 COPY apps/inmobiliaria apps/inmobiliaria
+# Resto de NEXT_PUBLIC_* que el cliente hornea en build time. Railway las expone
+# como build args desde las variables del service, pero SOLO si se declara el ARG
+# para consumirlas; sin esto quedan undefined en el bundle aunque estén seteadas
+# en el panel (PostHog no inicia; el link mágico del inquilino cae a un 404).
+# Se declaran acá (después del COPY) para no invalidar la capa de pnpm install.
+ARG NEXT_PUBLIC_INQUILINO_URL
+ENV NEXT_PUBLIC_INQUILINO_URL=$NEXT_PUBLIC_INQUILINO_URL
+ARG NEXT_PUBLIC_POSTHOG_KEY
+ENV NEXT_PUBLIC_POSTHOG_KEY=$NEXT_PUBLIC_POSTHOG_KEY
+ARG NEXT_PUBLIC_POSTHOG_HOST
+ENV NEXT_PUBLIC_POSTHOG_HOST=$NEXT_PUBLIC_POSTHOG_HOST
 RUN pnpm --filter @llave/inmobiliaria exec next build
 
 FROM base AS runtime
