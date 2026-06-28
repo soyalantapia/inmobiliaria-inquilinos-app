@@ -10,6 +10,11 @@ export const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? '').replace(/\/$/, ''
 export const apiEnabled = API_URL.length > 0;
 
 const TOKEN_KEY = 'llave:auth:token';
+// Token de "persona" (lo emite /auth/otp/verify tras el OTP). Es DISTINTO del
+// token activo: solo habilita listar/elegir alquileres del email. Lo guardamos
+// aparte para que el switcher "Cambiar de alquiler" funcione después del login
+// sin re-pedir el OTP, mientras el token activo sigue siendo el del contrato.
+const PERSONA_KEY = 'llave:auth:persona';
 
 export function getToken(): string | null {
   if (typeof window === 'undefined') return null;
@@ -25,6 +30,25 @@ export function setToken(token: string | null): void {
   try {
     if (token === null) window.localStorage.removeItem(TOKEN_KEY);
     else window.localStorage.setItem(TOKEN_KEY, token);
+  } catch {
+    // storage lleno/bloqueado: seguimos sin persistir
+  }
+}
+
+export function getPersonaToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.localStorage.getItem(PERSONA_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setPersonaToken(token: string | null): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (token === null) window.localStorage.removeItem(PERSONA_KEY);
+    else window.localStorage.setItem(PERSONA_KEY, token);
   } catch {
     // storage lleno/bloqueado: seguimos sin persistir
   }
@@ -72,6 +96,36 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
       }
       window.location.assign('/login?expirada=1');
     }
+    let message = `HTTP ${res.status}`;
+    try {
+      const body = (await res.json()) as { message?: string };
+      if (body.message) message = body.message;
+    } catch {
+      // sin body JSON
+    }
+    throw new ApiError(res.status, message);
+  }
+  return (await res.json()) as T;
+}
+
+/**
+ * Fetch autenticado con el token de "persona" (listar/elegir alquileres).
+ * A diferencia de apiFetch, NO dispara el auto-logout global ante un 401: si el
+ * persona-token venció, el switcher cae con un ApiError que el caller maneja
+ * (la sesión del inquilino sigue viva). Así un persona-token vencido no expulsa
+ * al usuario de toda la app — solo deshabilita el cambio de alquiler.
+ */
+export async function apiFetchPersona<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const token = getPersonaToken();
+  const res = await fetch(`${API_URL}${path}`, {
+    ...init,
+    headers: {
+      ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(init.headers ?? {}),
+    },
+  });
+  if (!res.ok) {
     let message = `HTTP ${res.status}`;
     try {
       const body = (await res.json()) as { message?: string };

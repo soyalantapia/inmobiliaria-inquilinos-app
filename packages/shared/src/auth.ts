@@ -32,6 +32,21 @@ export const JwtCoInquilinoSchema = z.object({
 });
 export type JwtCoInquilino = z.infer<typeof JwtCoInquilinoSchema>;
 
+/**
+ * Payload del JWT de "persona": identidad por EMAIL que se emite al verificar el
+ * OTP. NO da acceso a datos de contrato — solo habilita listar y elegir entre los
+ * alquileres registrados con ese email (que pueden ser de varias inmobiliarias).
+ * El acceso real a un alquiler sale del `JwtInquilino` que emite /auth/inquilino/elegir.
+ */
+export const JwtPersonaSchema = z.object({
+  kind: z.literal('persona'),
+  email: z.string().email(),
+});
+export type JwtPersona = z.infer<typeof JwtPersonaSchema>;
+
+// El token de "persona" queda FUERA de esta unión a propósito: requireAuth (que
+// valida JwtPayloadSchema) debe RECHAZARLO en los endpoints normales. Solo
+// requirePersona lo valida (con JwtPersonaSchema), para listar/elegir alquileres.
 export const JwtPayloadSchema = z.discriminatedUnion('kind', [
   JwtUsuarioSchema,
   JwtInquilinoSchema,

@@ -156,3 +156,58 @@ export async function enviarOtp(email: string, code: string): Promise<boolean> {
 export async function enviarOtpAdmin(email: string, code: string): Promise<boolean> {
   return enviarOtp(email, code); // mismo canal SMTP, mismo diseño
 }
+
+/** URL de la app del inquilino (para los CTAs del email). */
+const APP_INQUILINO_URL = (process.env.APP_INQUILINO_URL ?? 'https://app.myalquiler.com').replace(/\/$/, '');
+
+/** Cuerpo del email de invitación/onboarding del inquilino (tema claro). */
+function invitacionHtml(opts: { inmobiliaria: string; email: string; appUrl: string }): string {
+  const inmo = esc(opts.inmobiliaria);
+  const inner = `
+    <h1 style="margin:0 0 10px;color:#1c1726;font-size:22px;line-height:1.2;font-weight:800;letter-spacing:-0.02em;">Entrá a tu alquiler</h1>
+    <p style="margin:0 0 18px;color:#6b6577;font-size:15px;line-height:1.65;"><strong style="color:#1c1726;">${inmo}</strong> te sumó a <strong style="color:#1c1726;">My Alquiler</strong>, la app donde ves tu contrato, pagás el alquiler y hacés reclamos — todo desde el celular.</p>
+
+    <!-- Botón -->
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:4px 0 20px;"><tr>
+      <td align="center" bgcolor="#7c3aed" style="background-color:#7c3aed;border-radius:12px;">
+        <a href="${opts.appUrl}" target="_blank" style="display:inline-block;padding:14px 30px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:15px;font-weight:800;color:#ffffff;text-decoration:none;letter-spacing:0.2px;">Entrar a My Alquiler &rarr;</a>
+      </td>
+    </tr></table>
+
+    <!-- Cómo entra -->
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 6px;">
+      <tr>
+        <td bgcolor="#faf9fd" style="background-color:#faf9fd;border:1px solid #ece8f7;border-radius:10px;padding:12px 16px;">
+          <p style="margin:0;color:#6b6577;font-size:13px;line-height:1.5;">
+            Entrás con tu email (<strong style="color:#1c1726;">${esc(opts.email)}</strong>) y un código de 6 dígitos que te mandamos. <strong style="color:#1c1726;">Sin contraseñas.</strong>
+          </p>
+        </td>
+      </tr>
+    </table>`;
+
+  return shell({
+    preview: `${opts.inmobiliaria} te sumó a My Alquiler — entrá con tu email`,
+    inner,
+  });
+}
+
+/**
+ * Email de onboarding: avisa al inquilino que su inmobiliaria lo sumó a My
+ * Alquiler y cómo entrar. Best-effort (el caller no debe romper si falla).
+ */
+export async function enviarInvitacionInquilino(
+  email: string,
+  inmobiliariaNombre: string,
+  appUrl: string = APP_INQUILINO_URL,
+): Promise<boolean> {
+  const t = getTransporter();
+  if (!t) return false;
+  await t.sendMail({
+    from,
+    to: email,
+    subject: `${inmobiliariaNombre} te sumó a My Alquiler`,
+    text: `${inmobiliariaNombre} te sumó a My Alquiler, la app para ver tu contrato, pagar el alquiler y hacer reclamos.\nEntrá con tu email (${email}) y un código que te mandamos: ${appUrl}\nSin contraseñas.`,
+    html: invitacionHtml({ inmobiliaria: inmobiliariaNombre, email, appUrl }),
+  });
+  return true;
+}

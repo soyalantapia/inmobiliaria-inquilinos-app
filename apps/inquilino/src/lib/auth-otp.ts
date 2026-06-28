@@ -43,6 +43,12 @@ export interface InquilinoSesion {
   esCoInquilino?: boolean;
   /** Permiso del co-inquilino sobre el contrato (solo si esCoInquilino). */
   permiso?: 'VER' | 'PAGAR' | 'COMPLETO';
+  /** Id del Inquilino (fila/contrato) activo. Lo setea el login por API; sirve
+   *  para marcar el alquiler actual en el switcher "Cambiar de alquiler". */
+  inquilinoId?: string;
+  /** Cuántos alquileres tiene esta persona (mismo email). >1 habilita el
+   *  switcher en Cuenta. Lo setea el login por API; undefined en demo. */
+  alquileresCount?: number;
 }
 
 interface CodigoVigente {
@@ -309,6 +315,7 @@ export function cerrarSesion(): void {
   try {
     window.localStorage.removeItem(SESION_KEY);
     window.localStorage.removeItem('llave:auth:token');
+    window.localStorage.removeItem('llave:auth:persona');
   } catch {
     // ignore
   }

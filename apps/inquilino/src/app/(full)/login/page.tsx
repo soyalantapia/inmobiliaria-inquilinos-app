@@ -5,11 +5,13 @@ import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
   ArrowRight,
+  Building2,
   CheckCircle2,
   CreditCard,
   FileText,
   Loader2,
   Mail,
+  MapPin,
   RotateCcw,
   Sparkles,
 } from 'lucide-react';
@@ -21,12 +23,14 @@ import { toast } from '@llave/ui/use-toast';
 import { apiEnabled } from '@/lib/api/client';
 import { SEGUNDOS_COOLDOWN, leerSesion } from '@/lib/auth-otp';
 import {
+  elegirAlquiler,
   iniciarSesionDemoUnificada,
   solicitarCodigoUnificado,
   verificarCodigoUnificado,
+  type Alquiler,
 } from '@/lib/auth-otp-api';
 
-type Paso = 'email' | 'otp';
+type Paso = 'email' | 'otp' | 'elegir';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -40,6 +44,11 @@ export default function LoginPage() {
   const [errorOtp, setErrorOtp] = useState<string | null>(null);
   const [digitos, setDigitos] = useState<string[]>(['', '', '', '', '', '']);
   const otpRefs = useRef<Array<HTMLInputElement | null>>([]);
+  // Paso "elegir": cuando el email tiene varios alquileres, mostramos el
+  // selector. `eligiendo` = inquilinoId en curso (spinner en esa fila).
+  const [alquileres, setAlquileres] = useState<Alquiler[]>([]);
+  const [eligiendo, setEligiendo] = useState<string | null>(null);
+  const [errorElegir, setErrorElegir] = useState<string | null>(null);
 
   // Si ya hay sesión, redirigir a home (excepto que vengamos con ?force)
   useEffect(() => {
@@ -153,11 +162,35 @@ export default function LoginPage() {
       return;
     }
     setVerificando(false);
+    // Varios alquileres → mostramos el selector en vez de entrar directo.
+    if (r.tipo === 'elegir') {
+      setAlquileres(r.alquileres);
+      setErrorElegir(null);
+      setPaso('elegir');
+      return;
+    }
     toast({
-      title: `¡Hola ${r.sesion?.nombre ?? ''}!`,
+      title: `¡Hola ${r.sesion.nombre}!`,
       description: 'Ingresaste con éxito.',
     });
     router.replace('/');
+  };
+
+  /* ============================================================
+   * Paso 3 (opcional): elegir a qué alquiler entrar
+   * ============================================================ */
+  const onElegir = async (inquilinoId: string) => {
+    if (eligiendo) return;
+    setEligiendo(inquilinoId);
+    setErrorElegir(null);
+    try {
+      const sesion = await elegirAlquiler(inquilinoId, alquileres.length);
+      toast({ title: `¡Hola ${sesion.nombre}!`, description: 'Entraste a tu alquiler.' });
+      router.replace('/');
+    } catch {
+      setEligiendo(null);
+      setErrorElegir('No pudimos entrar a ese alquiler. Probá de nuevo.');
+    }
   };
 
   const onReenviar = async () => {
@@ -274,7 +307,7 @@ export default function LoginPage() {
                 enviando={enviando}
                 onSubmit={onSolicitar}
               />
-            ) : (
+            ) : paso === 'otp' ? (
               <PasoOtp
                 email={email}
                 digitos={digitos}
@@ -287,6 +320,13 @@ export default function LoginPage() {
                 onReenviar={onReenviar}
                 onVerificar={() => onVerificar()}
                 onVolver={volverAlEmail}
+              />
+            ) : (
+              <PasoElegir
+                alquileres={alquileres}
+                eligiendo={eligiendo}
+                error={errorElegir}
+                onElegir={onElegir}
               />
             )}
           </Card>
@@ -644,6 +684,80 @@ function PasoOtp({
           El código vence a los 5 minutos. {SEGUNDOS_COOLDOWN}s entre reenvíos.
         </p>
       </div>
+    </div>
+  );
+}
+
+/* ============================================================
+ * Paso 3: elegir a qué alquiler entrar (email con varios alquileres)
+ * ============================================================ */
+function PasoElegir({
+  alquileres,
+  eligiendo,
+  error,
+  onElegir,
+}: {
+  alquileres: Alquiler[];
+  eligiendo: string | null;
+  error: string | null;
+  onElegir: (inquilinoId: string) => void;
+}) {
+  return (
+    <div className="space-y-5 animate-fade-in">
+      <div className="space-y-1.5">
+        <h2 className="text-2xl font-bold tracking-tight">Elegí tu alquiler</h2>
+        <p className="text-sm text-muted-foreground">
+          Tenés más de un alquiler con este email. ¿A cuál querés entrar?
+        </p>
+      </div>
+
+      <ul role="list" className="space-y-2.5">
+        {alquileres.map((a) => {
+          const cargando = eligiendo === a.inquilinoId;
+          return (
+            <li key={a.inquilinoId}>
+              <button
+                type="button"
+                onClick={() => onElegir(a.inquilinoId)}
+                disabled={eligiendo !== null}
+                className="group flex w-full items-center gap-3 rounded-xl border-2 border-border bg-background p-4 text-left transition-all hover:border-primary hover:bg-primary/5 focus:outline-none focus:ring-4 focus:ring-primary/20 disabled:opacity-60"
+              >
+                <div className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+                  <MapPin className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-semibold">{a.direccion || 'Tu alquiler'}</p>
+                  <p className="flex items-center gap-1 truncate text-xs text-muted-foreground">
+                    <Building2 className="h-3 w-3 shrink-0" />
+                    <span className="truncate">
+                      {a.inmobiliaria}
+                      {a.ciudad ? ` · ${a.ciudad}` : ''}
+                    </span>
+                  </p>
+                </div>
+                {cargando ? (
+                  <Loader2 className="h-5 w-5 shrink-0 animate-spin text-primary" />
+                ) : (
+                  <ArrowRight className="h-5 w-5 shrink-0 text-muted-foreground transition-colors group-hover:text-primary" />
+                )}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+
+      {error && (
+        <p
+          role="alert"
+          className="flex items-center justify-center gap-1 text-center text-xs text-destructive"
+        >
+          <span aria-hidden>⚠</span> {error}
+        </p>
+      )}
+
+      <p className="text-center text-[11px] text-muted-foreground">
+        Vas a poder cambiar de alquiler cuando quieras desde tu cuenta.
+      </p>
     </div>
   );
 }

@@ -1,9 +1,11 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import {
   JwtPayloadSchema,
+  JwtPersonaSchema,
   rolTienePermiso,
   type Capacidad,
   type JwtPayload,
+  type JwtPersona,
   type JwtUsuario,
 } from '@llave/shared';
 import { prisma } from '../db.js';
@@ -52,6 +54,32 @@ export async function requireInquilino(request: FastifyRequest, reply: FastifyRe
     return null;
   }
   return payload;
+}
+
+/**
+ * Exige un token de "persona" (el que emite /auth/otp/verify tras el OTP). Solo
+ * habilita listar y elegir alquileres de ese email — NO da acceso a datos de
+ * contrato (eso lo gatea requireInquilino con el JwtInquilino de /elegir).
+ */
+export async function requirePersona(
+  request: FastifyRequest,
+  reply: FastifyReply,
+): Promise<JwtPersona | null> {
+  // Validamos contra JwtPersonaSchema (NO contra JwtPayloadSchema, que excluye
+  // 'persona'). Así un token normal acá da 403 y un token de persona en los
+  // endpoints normales da 401 en requireAuth — separación estricta.
+  try {
+    await request.jwtVerify();
+  } catch {
+    await reply.code(401).send({ message: 'No autenticado' });
+    return null;
+  }
+  const parsed = JwtPersonaSchema.safeParse(request.user);
+  if (!parsed.success) {
+    await reply.code(403).send({ message: 'Sesión inválida para esta acción' });
+    return null;
+  }
+  return parsed.data;
 }
 
 type Permiso = 'VER' | 'PAGAR' | 'COMPLETO';

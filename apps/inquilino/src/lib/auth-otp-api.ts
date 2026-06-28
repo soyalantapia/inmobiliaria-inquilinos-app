@@ -7,20 +7,44 @@
  * el resto de la app siga funcionando sin cambios.
  */
 
-import { ApiError, apiEnabled, apiFetch, setToken } from './api/client';
+import {
+  ApiError,
+  apiEnabled,
+  apiFetch,
+  apiFetchPersona,
+  setPersonaToken,
+  setToken,
+} from './api/client';
 import {
   SEGUNDOS_COOLDOWN,
   guardarSesion,
   iniciarSesionDemo,
-  resolverInquilinoLocal,
   solicitarCodigo,
   verificarCodigo,
   type InquilinoSesion,
   type SolicitarCodigoResultado,
-  type VerificarCodigoResultado,
 } from './auth-otp';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Un alquiler (contrato) de la persona, tal como lo lista el API. */
+export interface Alquiler {
+  inquilinoId: string;
+  nombre: string;
+  inmobiliaria: string;
+  direccion: string;
+  ciudad: string;
+}
+
+/**
+ * Resultado de verificar el OTP en el flujo unificado. Una persona (email) puede
+ * tener varios alquileres, así que el OTP ya no entra directo: o entra (1 solo
+ * alquiler / flujo local) o pide elegir (varios).
+ */
+export type VerificarUnificadoResultado =
+  | { ok: true; tipo: 'entrar'; sesion: InquilinoSesion }
+  | { ok: true; tipo: 'elegir'; alquileres: Alquiler[] }
+  | { ok: false; motivo: string };
 
 export async function solicitarCodigoUnificado(email: string): Promise<SolicitarCodigoResultado> {
   if (!apiEnabled) return solicitarCodigo(email);
@@ -51,32 +75,92 @@ export async function solicitarCodigoUnificado(email: string): Promise<Solicitar
 export async function verificarCodigoUnificado(
   email: string,
   codigo: string,
-): Promise<VerificarCodigoResultado> {
-  if (!apiEnabled) return verificarCodigo(email, codigo);
+): Promise<VerificarUnificadoResultado> {
+  if (!apiEnabled) return desdeLocal(email, codigo);
 
   const emailNorm = email.trim().toLowerCase();
   try {
-    const r = await apiFetch<{ token: string; nombre: string }>('/auth/otp/verify', {
-      method: 'POST',
-      body: JSON.stringify({ email: emailNorm, code: codigo.replace(/\s/g, '') }),
-    });
-    setToken(r.token);
-    const sesion: InquilinoSesion = {
-      ...resolverInquilinoLocal(emailNorm),
-      loggeadoAt: new Date().toISOString(),
-    };
-    guardarSesion(sesion);
-    return { ok: true, sesion };
+    const r = await apiFetch<{ personaToken: string; alquileres: Alquiler[] }>(
+      '/auth/otp/verify',
+      {
+        method: 'POST',
+        body: JSON.stringify({ email: emailNorm, code: codigo.replace(/\s/g, '') }),
+      },
+    );
+    // Guardamos el persona-token: habilita /elegir y /alquileres (switcher).
+    setPersonaToken(r.personaToken);
+    if (r.alquileres.length === 0) {
+      // No debería pasar (verify exige ≥1 fila para el email), pero defensivo.
+      return { ok: false, motivo: 'No encontramos alquileres para este email.' };
+    }
+    if (r.alquileres.length === 1) {
+      // Un solo alquiler → entramos directo, sin pantalla de selección.
+      const sesion = await elegirAlquiler(r.alquileres[0]!.inquilinoId, 1);
+      return { ok: true, tipo: 'entrar', sesion };
+    }
+    // Varios → la UI muestra el selector y llama a elegirAlquiler con la elegida.
+    return { ok: true, tipo: 'elegir', alquileres: r.alquileres };
   } catch (e) {
     if (e instanceof ApiError && e.status === 401) {
       return { ok: false, motivo: 'Código inválido o vencido. Pedí uno nuevo.' };
     }
     if (e instanceof ApiError) {
-      return { ok: false, motivo: 'No pudimos verificar el código. Probá de nuevo.' };
+      return { ok: false, motivo: e.message || 'No pudimos verificar el código. Probá de nuevo.' };
     }
-    // API inalcanzable → flujo local (el código local que generó el fallback)
-    return verificarCodigo(email, codigo);
+    // API inalcanzable → flujo local (el código local del fallback offline).
+    return desdeLocal(email, codigo);
   }
+}
+
+/** Adapta el flujo local (sin backend) al resultado unificado. */
+function desdeLocal(email: string, codigo: string): VerificarUnificadoResultado {
+  const r = verificarCodigo(email, codigo);
+  return r.ok && r.sesion
+    ? { ok: true, tipo: 'entrar', sesion: r.sesion }
+    : { ok: false, motivo: r.motivo ?? 'No pudimos verificar el código.' };
+}
+
+/**
+ * Elige a qué alquiler entrar (con el persona-token del OTP). Persiste el JWT
+ * del contrato como token activo + la sesión local con los datos REALES que
+ * devuelve el API. `total` = cuántos alquileres tiene la persona (para mostrar
+ * el switcher en Cuenta sólo si hay más de uno).
+ */
+export async function elegirAlquiler(inquilinoId: string, total: number): Promise<InquilinoSesion> {
+  const r = await apiFetchPersona<{
+    token: string;
+    inquilinoId: string;
+    email: string;
+    nombre: string;
+    apellido: string;
+    direccion: string;
+    ciudad: string;
+    contratoId: string;
+    inmobiliaria: string;
+  }>('/auth/inquilino/elegir', {
+    method: 'POST',
+    body: JSON.stringify({ inquilinoId }),
+  });
+  setToken(r.token);
+  const sesion: InquilinoSesion = {
+    email: r.email,
+    nombre: r.nombre,
+    apellido: r.apellido,
+    direccion: r.direccion,
+    contratoId: r.contratoId,
+    esInvitado: false,
+    loggeadoAt: new Date().toISOString(),
+    inquilinoId: r.inquilinoId,
+    alquileresCount: total,
+  };
+  guardarSesion(sesion);
+  return sesion;
+}
+
+/** Lista los alquileres de la persona (para el switcher). Requiere persona-token. */
+export async function listarAlquileres(): Promise<Alquiler[]> {
+  const r = await apiFetchPersona<{ alquileres: Alquiler[] }>('/auth/inquilino/alquileres');
+  return r.alquileres;
 }
 
 // ===== Co-inquilino: aceptar la invitación por link =====

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
+  ArrowLeftRight,
   CalendarDays,
   ChevronRight,
   CircleHelp,
@@ -27,7 +28,7 @@ import { ConfirmDialog } from '@llave/ui/confirm-dialog';
 import { DescargarAppCard } from '@/components/instalar-app';
 import { NavBar } from '@/components/nav-bar';
 import { relanzarOnboarding } from '@/components/onboarding';
-import { cerrarSesion } from '@/lib/auth-otp';
+import { cerrarSesion, leerSesion } from '@/lib/auth-otp';
 import { contratoMock } from '@/lib/mock-data';
 import { leerProfile, type ProfileOverride } from '@/lib/profile-override';
 import { useCurrentUser } from '@/lib/use-current-user';
@@ -54,6 +55,13 @@ function CuentaReal() {
   const user = useCurrentUser();
   const { contrato, inmobiliariaTelefono } = useMiContrato();
   const [confirmandoLogout, setConfirmandoLogout] = useState(false);
+  // Mostramos el switcher "Cambiar de alquiler" sólo si la persona tiene más de
+  // un alquiler (lo setea el login por API en la sesión). Una sola fila → la
+  // entrada no aporta y la ocultamos.
+  const [variosAlquileres, setVariosAlquileres] = useState(false);
+  useEffect(() => {
+    setVariosAlquileres((leerSesion()?.alquileresCount ?? 1) > 1);
+  }, []);
 
   const fullName = user.fullName;
   const email = user.email ?? '';
@@ -118,6 +126,14 @@ function CuentaReal() {
             Tu hogar
           </h2>
           <Card className="divide-y">
+            {variosAlquileres && (
+              <LinkRow
+                icon={<ArrowLeftRight className="h-4 w-4" />}
+                label="Cambiar de alquiler"
+                descripcion="Tenés más de un alquiler con este email"
+                href="/mis-alquileres"
+              />
+            )}
             <LinkRow
               icon={<FileText className="h-4 w-4" />}
               label="Mis documentos"

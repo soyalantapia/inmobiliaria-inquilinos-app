@@ -6,6 +6,7 @@ import { prisma } from '../db.js';
 import { requireUsuario } from '../auth/guards.js';
 import { registrarEvento } from '../lib/auditoria.js';
 import { generarLiquidacionesContrato } from '../lib/liquidaciones.js';
+import { enviarInvitacionInquilino } from '../mailer.js';
 
 /**
  * Núcleo de datos del panel (Fase 2): contratos, propiedades, propietarios,
@@ -563,7 +564,7 @@ export async function coreRoutes(app: FastifyInstance) {
       cobraDirectoPropietarioId = part.propietarioId;
     }
     try {
-      return await prisma.$transaction(async (tx) => {
+      const contratoCreado = await prisma.$transaction(async (tx) => {
       const inq = await tx.inquilino.create({
         data: {
           inmobiliariaId: u.inmobiliariaId,
@@ -631,6 +632,25 @@ export async function coreRoutes(app: FastifyInstance) {
       await generarLiquidacionesContrato(tx, contrato);
       return contrato;
       });
+      // Mail de onboarding al inquilino: solo contratos ACTIVOS (no BORRADOR de
+      // CARGA) y con email. Best-effort: si el SMTP falla, NO rompemos el alta.
+      if (emailInq && !esCarga) {
+        try {
+          const inmo = await prisma.inmobiliaria.findUnique({
+            where: { id: u.inmobiliariaId },
+            select: { nombre: true },
+          });
+          const enviado = await enviarInvitacionInquilino(emailInq, inmo?.nombre ?? 'Tu inmobiliaria');
+          if (enviado) request.log.info({ email: emailInq }, 'Invitación de inquilino enviada');
+          else request.log.info({ email: emailInq }, 'Invitación de inquilino: SMTP no configurado');
+        } catch (err) {
+          request.log.error(
+            { email: emailInq, err: (err as Error).message },
+            'Invitación de inquilino: fallo el envío',
+          );
+        }
+      }
+      return contratoCreado;
     } catch (e) {
       if (e instanceof Error && e.message === 'PROP_OCUPADA') {
         return reply.code(409).send({ message: 'La propiedad ya tiene un contrato activo' });

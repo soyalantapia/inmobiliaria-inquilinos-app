@@ -8,10 +8,11 @@ import {
   OtpVerifySchema,
   type JwtCoInquilino,
   type JwtInquilino,
+  type JwtPersona,
   type JwtUsuario,
 } from '@llave/shared';
 import { prisma } from '../db.js';
-import { requireAuth, requireUsuario } from '../auth/guards.js';
+import { requireAuth, requirePersona, requireUsuario } from '../auth/guards.js';
 import { verificarPinUsuario } from '../auth/pin.js';
 import { enviarOtp } from '../mailer.js';
 
@@ -57,6 +58,29 @@ const RegistroSchema = z.object({
     password: z.string().min(8).optional(),
   }),
 });
+
+/**
+ * Lista los alquileres (contratos) registrados con un email, de TODAS las
+ * inmobiliarias. Cada fila Inquilino es un contrato (1:1 con Contrato). Es la
+ * base del selector "Mis alquileres": una persona = un email = N alquileres.
+ */
+async function alquileresDeEmail(email: string) {
+  const inquilinos = await prisma.inquilino.findMany({
+    where: { email, contratoId: { not: null } },
+    include: {
+      inmobiliaria: { select: { nombre: true } },
+      contrato: { select: { propiedad: { select: { direccion: true, ciudad: true } } } },
+    },
+    orderBy: { createdAt: 'asc' },
+  });
+  return inquilinos.map((i) => ({
+    inquilinoId: i.id,
+    nombre: `${i.nombre} ${i.apellido ?? ''}`.trim(),
+    inmobiliaria: i.inmobiliaria.nombre,
+    direccion: i.contrato?.propiedad?.direccion ?? '',
+    ciudad: i.contrato?.propiedad?.ciudad ?? '',
+  }));
+}
 
 export async function authRoutes(app: FastifyInstance) {
   // --- Panel inmobiliaria: email + password ---
@@ -279,40 +303,86 @@ export async function authRoutes(app: FastifyInstance) {
     const body = OtpVerifySchema.safeParse(request.body);
     if (!body.success) return reply.code(400).send({ message: 'Email y código de 6 dígitos requeridos' });
 
-    // Resolvemos la identidad por el OTP que matchea, no por findFirst-por-email:
-    // así un email compartido entre inmobiliarias no puede loguear contra la
-    // cuenta equivocada (la identidad sale de la fila OTP validada).
+    // El OTP prueba que quien entra controla el email. La identidad concreta (a
+    // qué alquiler entra) se elige DESPUÉS: una persona puede tener varios
+    // contratos, incluso en inmobiliarias distintas. Acá emitimos un token de
+    // "persona" (por email) + la lista de sus alquileres; /auth/inquilino/elegir
+    // emite el token del contrato elegido. Así "una persona, un login, varios
+    // alquileres" sin atar la sesión a una sola inmobiliaria.
     const emailLc = body.data.email.toLowerCase();
-    const inquilinos = await prisma.inquilino.findMany({ where: { email: emailLc } });
+    const inquilinos = await prisma.inquilino.findMany({ where: { email: emailLc }, select: { id: true } });
     if (inquilinos.length === 0) return reply.code(401).send({ message: 'Código inválido' });
 
-    let inquilino: (typeof inquilinos)[number] | null = null;
+    let verificado = false;
     if (app.env.DEMO_MODE && body.data.code === '000000' && process.env.NODE_ENV !== 'production') {
-      inquilino = inquilinos[0] ?? null; // backdoor SOLO de demo/dev (M-1: excluir prod)
+      verificado = true; // backdoor SOLO de demo/dev (excluye prod)
     } else {
       const ids = inquilinos.map((i) => i.id);
       const otps = await prisma.codigoOtp.findMany({
         where: { inquilinoId: { in: ids }, usedAt: null, expiresAt: { gt: new Date() } },
         orderBy: { createdAt: 'desc' },
       });
-      for (const otp of otps) {
-        if (bcrypt.compareSync(body.data.code, otp.codeHash)) {
-          await prisma.codigoOtp.update({ where: { id: otp.id }, data: { usedAt: new Date() } });
-          inquilino = inquilinos.find((i) => i.id === otp.inquilinoId) ?? null;
-          break;
-        }
+      verificado = otps.some((otp) => bcrypt.compareSync(body.data.code, otp.codeHash));
+      // Un mismo código se generó para TODAS las filas del email (una por
+      // contrato). Al validar, invalidamos el lote entero para que no se reuse.
+      if (verificado) {
+        await prisma.codigoOtp.updateMany({
+          where: { inquilinoId: { in: ids }, usedAt: null },
+          data: { usedAt: new Date() },
+        });
       }
     }
-    if (!inquilino) return reply.code(401).send({ message: 'Código inválido o vencido' });
+    if (!verificado) return reply.code(401).send({ message: 'Código inválido o vencido' });
 
+    const personaToken = app.jwt.sign(
+      { kind: 'persona', email: emailLc } satisfies JwtPersona,
+      { expiresIn: TOKEN_TTL },
+    );
+    return { personaToken, alquileres: await alquileresDeEmail(emailLc) };
+  });
+
+  // Elegir a qué alquiler entrar (auth con el token de "persona" del OTP).
+  // Emite el JwtInquilino del contrato elegido — el token que usa el resto de
+  // la app. Solo permite elegir alquileres registrados con el email del token.
+  app.post('/auth/inquilino/elegir', async (request, reply) => {
+    const persona = await requirePersona(request, reply);
+    if (!persona) return;
+    const sel = z.object({ inquilinoId: z.string().min(1) }).safeParse(request.body);
+    if (!sel.success) return reply.code(400).send({ message: 'inquilinoId requerido' });
+    const inq = await prisma.inquilino.findFirst({
+      where: { id: sel.data.inquilinoId, email: persona.email },
+      include: {
+        inmobiliaria: { select: { nombre: true } },
+        contrato: { select: { propiedad: { select: { direccion: true, ciudad: true } } } },
+      },
+    });
+    if (!inq) return reply.code(404).send({ message: 'Alquiler inexistente' });
     const payload: JwtInquilino = {
       kind: 'inquilino',
-      inquilinoId: inquilino.id,
-      inmobiliariaId: inquilino.inmobiliariaId,
-      contratoId: inquilino.contratoId,
+      inquilinoId: inq.id,
+      inmobiliariaId: inq.inmobiliariaId,
+      contratoId: inq.contratoId,
     };
     const token = app.jwt.sign(payload, { expiresIn: TOKEN_TTL });
-    return { token, nombre: `${inquilino.nombre} ${inquilino.apellido ?? ''}`.trim() };
+    return {
+      token,
+      inquilinoId: inq.id,
+      email: persona.email,
+      nombre: inq.nombre,
+      apellido: inq.apellido ?? '',
+      direccion: inq.contrato?.propiedad?.direccion ?? '',
+      ciudad: inq.contrato?.propiedad?.ciudad ?? '',
+      contratoId: inq.contratoId ?? '',
+      inmobiliaria: inq.inmobiliaria.nombre,
+    };
+  });
+
+  // Lista los alquileres de la persona (para el selector "Mis alquileres" y el
+  // switcher). Siempre refleja el estado actual (deriva del email del token).
+  app.get('/auth/inquilino/alquileres', async (request, reply) => {
+    const persona = await requirePersona(request, reply);
+    if (!persona) return;
+    return { alquileres: await alquileresDeEmail(persona.email) };
   });
 
   // --- Co-inquilino: invitación por link (la comparte el titular) ---
