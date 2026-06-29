@@ -54,6 +54,17 @@ function LoginOtp() {
   const [errorEmail, setErrorEmail] = useState<string | null>(null);
   const [errorOtp, setErrorOtp] = useState<string | null>(null);
   const [cooldownHasta, setCooldownHasta] = useState<number | null>(null);
+  // ?expirada=1: el cliente nos echó por un 401 (token vencido). Avisamos el
+  // motivo para que el rebote al login no parezca un error de la app.
+  const [sesionExpirada, setSesionExpirada] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('expirada')) {
+      setSesionExpirada(true);
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+  }, []);
   const otpRefs = useRef<Array<HTMLInputElement | null>>([]);
 
   /* ----- Paso 1: pedir el código ----- */
@@ -198,6 +209,7 @@ function LoginOtp() {
           error={errorEmail}
           enviando={enviando}
           redirigiendo={redirigiendo}
+          sesionExpirada={sesionExpirada}
           onSubmit={onSolicitar}
         />
       ) : (
@@ -233,6 +245,7 @@ function PasoEmail({
   error,
   enviando,
   redirigiendo,
+  sesionExpirada,
   onSubmit,
 }: {
   email: string;
@@ -240,10 +253,20 @@ function PasoEmail({
   error: string | null;
   enviando: boolean;
   redirigiendo: boolean;
+  sesionExpirada: boolean;
   onSubmit: (e?: React.FormEvent) => void;
 }) {
   return (
     <form onSubmit={onSubmit} className="space-y-6">
+      {sesionExpirada && (
+        <div
+          role="status"
+          className="flex items-start gap-2 rounded-xl border border-amber-300/60 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-200"
+        >
+          <RotateCcw className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+          <span>Tu sesión venció por seguridad. Volvé a entrar con tu email.</span>
+        </div>
+      )}
       <div className="space-y-2">
         <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
           Entrá a tu panel

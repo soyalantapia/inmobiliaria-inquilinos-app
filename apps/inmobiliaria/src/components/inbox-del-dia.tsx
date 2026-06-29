@@ -113,6 +113,8 @@ export function InboxDelDia() {
 
   if (!hidratado) return null;
 
+  const totalAcciones = items.reduce((s, i) => s + i.cant, 0);
+
   return (
     <section className="space-y-3">
       <div className="flex items-center justify-between">
@@ -122,7 +124,7 @@ export function InboxDelDia() {
             Para resolver hoy
           </h2>
           <Badge variant="outline" className="text-[10px]">
-            {items.reduce((s, i) => s + i.cant, 0)} acciones
+            {totalAcciones} {totalAcciones === 1 ? 'acción' : 'acciones'}
           </Badge>
         </div>
         {items.length > 0 && (

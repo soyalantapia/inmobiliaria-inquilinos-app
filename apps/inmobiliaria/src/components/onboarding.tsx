@@ -27,6 +27,9 @@ import { cn } from '@llave/ui/cn';
 // /configuracion lo puede relanzar.
 
 const STORAGE_KEY = 'llave-inmo:onboarding-completed:v1';
+// Paso alcanzado mientras el tour está abierto: si el usuario refresca a mitad,
+// reabrimos donde estaba en vez de perder el resto. Se borra al cerrar/terminar.
+const STEP_KEY = 'llave-inmo:onboarding-step:v1';
 const RELAUNCH_EVENT = 'llave-inmo:onboarding-relaunch';
 
 interface Step {
@@ -179,38 +182,55 @@ export function OnboardingInmo() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    // GUARDS:
-    // 1. Solo en `/` (dashboard). El tour explica el panel — no tiene
-    //    sentido tapar el wizard de "Cargar contrato" o el detalle de
-    //    un reclamo donde el user vino a HACER algo concreto.
-    // 2. Persistir el flag AL ABRIR (no al cerrar). Antes, si el user
-    //    refrescaba sin tocar "Cerrar/Saltar", el modal volvía a salir
-    //    en cada visita. Ahora se muestra UNA sola vez por vida del
-    //    navegador.
-    if (window.location.pathname !== '/') return;
 
-    try {
-      const completado = window.localStorage.getItem(STORAGE_KEY);
-      if (!completado) {
-        setOpen(true);
-        window.localStorage.setItem(STORAGE_KEY, new Date().toISOString());
-      }
-    } catch {
-      // ignore
-    }
-
+    // El listener de "relanzar" se registra SIEMPRE (no sólo en `/`): el botón
+    // "Ver tutorial" vive en /configuracion. Antes estaba detrás del guard de
+    // pathname, así que en /configuracion el evento no tenía a quién avisar y el
+    // botón no hacía nada.
     const onRelaunch = () => {
       setStep(0);
       setOpen(true);
     };
     window.addEventListener(RELAUNCH_EVENT, onRelaunch);
+
+    // Auto-apertura SÓLO en `/` (dashboard): el tour explica el panel, no tiene
+    // sentido taparlo en el wizard de "Cargar contrato" o el detalle de un
+    // reclamo. Si quedó a mitad (refresh), reabrimos en el paso guardado en vez
+    // de perder el resto; el flag "completado" se escribe al CERRAR, no al abrir.
+    if (window.location.pathname === '/') {
+      try {
+        if (!window.localStorage.getItem(STORAGE_KEY)) {
+          const guardado = Number(window.localStorage.getItem(STEP_KEY) ?? '0');
+          if (Number.isFinite(guardado) && guardado > 0) {
+            setStep(Math.min(guardado, STEPS.length - 1));
+          }
+          setOpen(true);
+        }
+      } catch {
+        // ignore
+      }
+    }
+
     return () => window.removeEventListener(RELAUNCH_EVENT, onRelaunch);
   }, []);
+
+  // Persistimos el paso mientras el tour está abierto (para reanudar tras refresh).
+  useEffect(() => {
+    if (!open || typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(STEP_KEY, String(step));
+    } catch {
+      // ignore
+    }
+  }, [open, step]);
 
   const cerrar = () => {
     setOpen(false);
     try {
+      // Recién acá marcamos "completado" (no al abrir) y limpiamos el paso en
+      // curso, para que no vuelva a auto-abrirse pero sí se pueda relanzar.
       window.localStorage.setItem(STORAGE_KEY, new Date().toISOString());
+      window.localStorage.removeItem(STEP_KEY);
     } catch {
       // ignore
     }

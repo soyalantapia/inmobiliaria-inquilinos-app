@@ -139,9 +139,16 @@ function RegistroForm() {
       </div>
 
       {serverError && (
-        <p className="rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-          {serverError}
-        </p>
+        <div className="space-y-2 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+          <p>{serverError}</p>
+          {/* Si el email ya tiene cuenta (409), ofrecemos el camino correcto:
+              ir a iniciar sesión en vez de dejar al usuario trabado en el alta. */}
+          {/ya existe/i.test(serverError) && (
+            <Link href="/login" className="inline-flex font-semibold underline">
+              Iniciar sesión con esta cuenta
+            </Link>
+          )}
+        </div>
       )}
 
       <form onSubmit={crearCuenta} className="space-y-5" noValidate>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useId, useState } from 'react';
-import { Building2, Landmark, Lock, ShieldCheck, Sparkles } from 'lucide-react';
+import { Building2, GraduationCap, Landmark, Lock, ShieldCheck, Sparkles } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@llave/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@llave/ui/card';
@@ -23,6 +23,7 @@ import { PinSeguridadCard } from '@/components/pin-seguridad-card';
 import { SociedadesManager } from '@/components/sociedades-manager';
 import { EquipoCard } from '@/components/equipo-card';
 import { ConfiguracionPais } from '@/components/configuracion-pais';
+import { relanzarOnboardingInmo } from '@/components/onboarding';
 
 /**
  * Configuración en PRODUCCIÓN. Antes toda la página se gateaba con "Disponible
@@ -61,6 +62,24 @@ export function ConfiguracionProd() {
   return (
     <main className="flex-1 space-y-6 p-4 md:p-6">
       <div className="mx-auto w-full max-w-2xl space-y-6">
+        {/* Relanzar el tour guiado. En prod esta es la ÚNICA vía para volver a
+            verlo (el banner demo no se renderiza acá). */}
+        <Card className="border-primary/30 bg-primary/5">
+          <CardContent className="flex flex-wrap items-center gap-3 p-4">
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-primary text-primary-foreground">
+              <GraduationCap className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium">Tutorial guiado</p>
+              <p className="text-xs text-muted-foreground">
+                Repasá las funciones principales del panel en menos de 1 minuto.
+              </p>
+            </div>
+            <Button variant="outline" size="sm" onClick={relanzarOnboardingInmo}>
+              Ver tutorial
+            </Button>
+          </CardContent>
+        </Card>
         <EmpresaCard />
         <CuentaCobranzaCard />
         <div>

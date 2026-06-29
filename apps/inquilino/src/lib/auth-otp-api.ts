@@ -102,7 +102,11 @@ export async function verificarCodigoUnificado(
     return { ok: true, tipo: 'elegir', alquileres: r.alquileres };
   } catch (e) {
     if (e instanceof ApiError && e.status === 401) {
-      return { ok: false, motivo: 'Código inválido o vencido. Pedí uno nuevo.' };
+      // El backend devuelve 401 tanto si el código es incorrecto como si venció,
+      // sin distinguir. NO ordenamos "Pedí uno nuevo" (la acción de reenvío puede
+      // estar bloqueada por el cooldown): pedimos revisar y reintentar, que el
+      // usuario SIEMPRE puede hacer de inmediato.
+      return { ok: false, motivo: 'Código incorrecto o vencido. Revisá los dígitos e intentá de nuevo.' };
     }
     if (e instanceof ApiError) {
       return { ok: false, motivo: e.message || 'No pudimos verificar el código. Probá de nuevo.' };

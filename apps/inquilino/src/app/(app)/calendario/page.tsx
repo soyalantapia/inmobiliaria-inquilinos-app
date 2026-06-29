@@ -89,8 +89,11 @@ function CalendarioDemo() {
 
   const grupos = useMemo(() => agruparPorMes(filtrados), [filtrados]);
 
-  // Próximo evento futuro (para hero)
-  const hoy = new Date().toISOString().slice(0, 10);
+  // Próximo evento futuro (para hero). Usamos la fecha LOCAL, no la UTC:
+  // toISOString() de noche en AR (UTC-3) ya devuelve "mañana" y salteaba el
+  // evento de hoy a la noche.
+  const ahora = new Date();
+  const hoy = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, '0')}-${String(ahora.getDate()).padStart(2, '0')}`;
   const proximo = eventos.find((e) => e.fecha.slice(0, 10) >= hoy);
 
   return (

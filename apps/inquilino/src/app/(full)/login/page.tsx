@@ -49,6 +49,9 @@ export default function LoginPage() {
   const [alquileres, setAlquileres] = useState<Alquiler[]>([]);
   const [eligiendo, setEligiendo] = useState<string | null>(null);
   const [errorElegir, setErrorElegir] = useState<string | null>(null);
+  // ?expirada=1: el cliente nos echó por un 401 (token vencido). Avisamos por qué
+  // para que no parezca que la app se rompió ni que mintió "sesión abierta".
+  const [sesionExpirada, setSesionExpirada] = useState(false);
 
   // Si ya hay sesión, redirigir a home (excepto que vengamos con ?force)
   useEffect(() => {
@@ -60,6 +63,11 @@ export default function LoginPage() {
       iniciarSesionDemoUnificada();
       router.replace('/');
       return;
+    }
+    if (params.has('expirada')) {
+      setSesionExpirada(true);
+      // Limpiamos el param para que un refresh no repita el aviso.
+      window.history.replaceState(null, '', window.location.pathname);
     }
     const sesion = leerSesion();
     if (sesion && !params.has('force')) {
@@ -305,6 +313,7 @@ export default function LoginPage() {
                 }}
                 error={errorEmail}
                 enviando={enviando}
+                sesionExpirada={sesionExpirada}
                 onSubmit={onSolicitar}
               />
             ) : paso === 'otp' ? (
@@ -437,16 +446,27 @@ function PasoEmail({
   setEmail,
   error,
   enviando,
+  sesionExpirada,
   onSubmit,
 }: {
   email: string;
   setEmail: (v: string) => void;
   error: string | null;
   enviando: boolean;
+  sesionExpirada: boolean;
   onSubmit: (e?: React.FormEvent) => void;
 }) {
   return (
     <form onSubmit={onSubmit} className="space-y-5 animate-fade-in">
+      {sesionExpirada && (
+        <div
+          role="status"
+          className="flex items-start gap-2 rounded-xl border border-amber-300/60 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-200"
+        >
+          <RotateCcw className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+          <span>Tu sesión venció por seguridad. Volvé a entrar con tu email — es un toque.</span>
+        </div>
+      )}
       <div className="space-y-1.5">
         <h2 className="text-2xl font-bold tracking-tight">Entrá a tu cuenta</h2>
         <p className="text-sm text-muted-foreground">

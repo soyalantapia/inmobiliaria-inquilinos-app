@@ -80,7 +80,9 @@ export default function RenovacionesPage() {
   }, [filas, filtro]);
 
   // KPIs
-  const totalEnZona = filas.filter((f) => f.dias <= 365).length;
+  // "Vencen en <12 meses": sólo contratos que vencen en el futuro (≥ 0 días).
+  // Antes contaba también los YA vencidos (días negativos), inflando el KPI.
+  const totalEnZona = filas.filter((f) => f.dias >= 0 && f.dias <= 365).length;
   const renovarCount = filas.filter((f) => f.decision === 'RENOVAR').length;
   const noRenovarCount = filas.filter((f) => f.decision === 'NO_RENOVAR').length;
   const sinResponderUrgentes = filas.filter(

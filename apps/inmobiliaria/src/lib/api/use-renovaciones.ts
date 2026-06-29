@@ -57,6 +57,13 @@ function urgenciaDe(dias: number): RenovacionFila['urgencia'] {
   return dias <= 90 ? 'ALTA' : dias <= 180 ? 'MEDIA' : dias <= 365 ? 'BAJA' : 'NINGUNA';
 }
 
+/** Fecha local (yyyy-mm-dd) de un timestamp ISO. Recortar con slice(0,10) daría
+ *  la fecha UTC y, cerca de medianoche, mostraba el "Avisó" un día corrido. */
+function fechaLocalISO(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function mapRenovacion(r: RenovacionApi): RenovacionFila {
   return {
     id: r.id,
@@ -72,7 +79,7 @@ function mapRenovacion(r: RenovacionApi): RenovacionFila {
     email: r.inquilinoTitular?.email ?? null,
     decision: r.intencionRenovacion?.decision ?? 'SIN_RESPUESTA',
     comentario: r.intencionRenovacion?.comentario ?? null,
-    fechaIntencion: r.intencionRenovacion?.decididoAt ? r.intencionRenovacion.decididoAt.slice(0, 10) : null,
+    fechaIntencion: r.intencionRenovacion?.decididoAt ? fechaLocalISO(r.intencionRenovacion.decididoAt) : null,
     dias: r.diasParaVencimiento,
     urgencia: urgenciaDe(r.diasParaVencimiento),
   };

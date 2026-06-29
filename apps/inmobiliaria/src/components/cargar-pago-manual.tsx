@@ -52,12 +52,10 @@ export function CargarPagoManualDialog({ open, onOpenChange, onDone }: Props) {
 
   const contratoSel = contratosMock.find((c) => c.id === contratoId);
 
-  // Si elegís contrato pero no escribiste monto, sugerimos el del contrato.
-  useEffect(() => {
-    if (contratoSel && !monto) {
-      setMonto(String(contratoSel.monto));
-    }
-  }, [contratoSel, monto]);
+  // El monto del contrato se sugiere UNA sola vez, al elegir el contrato (en el
+  // onChange del select). Antes un useEffect con dep [contratoSel, monto] lo
+  // reinyectaba cada vez que el campo quedaba vacío → era imposible borrarlo
+  // para cargar un pago parcial. Ahora el operador puede borrar y reescribir.
 
   // Validar y pedir PIN. Conciliar un pago es una acción que el modelo de
   // permisos marca con requierePin (permisos.ts: pago.conciliar) — el resto de
@@ -121,8 +119,11 @@ export function CargarPagoManualDialog({ open, onOpenChange, onDone }: Props) {
               id="cpm-contrato"
               value={contratoId}
               onChange={(e) => {
-                setContratoId(e.target.value);
-                setMonto('');
+                const id = e.target.value;
+                setContratoId(id);
+                // Sugerimos el monto del contrato al elegirlo (editable/borrable).
+                const c = contratosMock.find((x) => x.id === id);
+                setMonto(c ? String(c.monto) : '');
               }}
               required
               className="w-full rounded-md border bg-background px-3 py-2 text-sm"

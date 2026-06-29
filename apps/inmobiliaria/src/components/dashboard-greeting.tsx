@@ -2,7 +2,7 @@
 
 import { useMe } from '@/lib/api/hooks';
 
-export function DashboardGreeting() {
+export function DashboardGreeting({ titulo = 'Tu cartera al día.' }: { titulo?: string } = {}) {
   const { me } = useMe();
   const nombre = me?.firstName ?? 'Operador';
   return (
@@ -12,8 +12,10 @@ export function DashboardGreeting() {
       </p>
       {/* "Esto pasó hoy" era engañoso — abajo se ven KPIs del mes
           completo y la agenda futura. Hablamos del estado general
-          de la cartera, no del día concreto. */}
-      <p className="text-2xl font-semibold">Tu cartera al día.</p>
+          de la cartera, no del día concreto. El título es configurable:
+          una cuenta SIN propiedades no tiene "cartera al día" (ver el
+          empty-state del dashboard, que pasa un titular de bienvenida). */}
+      <p className="text-2xl font-semibold">{titulo}</p>
     </div>
   );
 }

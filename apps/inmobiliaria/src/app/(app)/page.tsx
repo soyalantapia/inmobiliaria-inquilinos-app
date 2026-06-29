@@ -349,7 +349,9 @@ function DashboardReal() {
         <Topbar titulo="Inicio" />
         <main className="flex-1 space-y-6 p-4 md:p-6">
           <BienvenidaBanner />
-          <DashboardGreeting />
+          {/* Cuenta sin propiedades: NO afirmamos "Tu cartera al día." (no hay
+              cartera). Titular de bienvenida coherente con el empty-state. */}
+          <DashboardGreeting titulo="Bienvenido a My Alquiler." />
           <PrimerPasoCard />
         </main>
       </>
