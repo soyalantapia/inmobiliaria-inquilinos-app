@@ -23,15 +23,18 @@ import { useMe } from '@/lib/api/hooks';
 export function TrialBanner() {
   const { me } = useMe();
 
-  // Solo en prod (API real) y solo para cuentas piloto.
+  // Solo en prod (API real). El banner de trial VIGENTE lo ve TODA cuenta: el
+  // alta siempre crea un trial de lanzamiento, pero antes esto se gateaba a
+  // `esPiloto` y las cuentas self-service nunca veían el "Gratis · quedan N días".
   if (!apiEnabled) return null;
-  if (!me?.esPiloto) return null;
 
-  const trial = me.trial;
-  const fiscalIncompleto = me.perfilFiscalCompleto === false;
+  const trial = me?.trial;
+  const fiscalIncompleto = me?.perfilFiscalCompleto === false;
 
-  // Trial vencido: aviso suave, no bloqueante.
+  // Sin trial vigente: el aviso suave de "venció" se muestra SÓLO a pilotos
+  // (no molestamos a las self-service sin trial vigente).
   if (!trial?.vigente) {
+    if (!me?.esPiloto || !trial) return null;
     return (
       <div className="flex w-full flex-wrap items-center justify-center gap-x-2 gap-y-1 border-b border-violet-200/70 bg-violet-50 px-4 py-2 text-center text-sm text-violet-900 dark:border-violet-900/40 dark:bg-violet-950/40 dark:text-violet-100">
         <Gift className="h-4 w-4 shrink-0 text-violet-500" aria-hidden />

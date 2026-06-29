@@ -552,12 +552,24 @@ function Preguntas() {
       q: '¿Qué pasa cuando termina el período gratis?',
       a: 'Te avisamos antes. Elegís un plan o te llevás tus datos. Cero cargo por irte.',
     },
+    {
+      q: '¿Es seguro? Manejo plata de terceros.',
+      a: 'No conectamos tu cuenta bancaria ni tocamos tu dinero. La plata va directo a tu CBU; vos subís el resumen y validás los pagos. Nosotros sólo organizamos la información.',
+    },
+    {
+      q: '¿Cómo paga el inquilino?',
+      a: 'Por transferencia a tu CBU/alias o por Mercado Pago. Sube el comprobante y lo validás vos — el dinero nunca pasa por nosotros.',
+    },
+    {
+      q: '¿Tengo con quién hablar si me trabo?',
+      a: 'Sí: soporte por WhatsApp con gente real, no un bot. Te damos una mano para migrar y arrancar.',
+    },
   ];
   return (
     <section className="mx-auto max-w-4xl px-5 py-20 md:px-8 md:py-24">
       <Reveal>
         <h2 className="text-[clamp(1.6rem,3.5vw,2.4rem)] font-bold tracking-[-0.015em]">
-          Las tres preguntas que nos hacen siempre
+          Las preguntas que nos hacen siempre
         </h2>
       </Reveal>
       <div className="mt-10 space-y-9">

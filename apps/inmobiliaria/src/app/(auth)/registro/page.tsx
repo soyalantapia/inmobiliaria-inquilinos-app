@@ -70,7 +70,10 @@ function RegistroForm() {
 
   const validar = (): boolean => {
     const e: Errores = {};
+    // El backend exige min(2) en estos tres (RegistroSchema). Lo espejamos acá
+    // para que el error aparezca inline y no como un 400 genérico tras enviar.
     if (!datos.nombre.trim()) e.nombre = 'Ingresá el nombre de la inmobiliaria.';
+    else if (datos.nombre.trim().length < 2) e.nombre = 'Usá al menos 2 letras.';
     if (!datos.email.trim()) e.email = 'Ingresá un email.';
     else if (!EMAIL_RE.test(datos.email.trim())) e.email = 'El email no parece válido.';
     // Teléfono es OPCIONAL — bajamos la fricción del alta. Sólo validamos el
@@ -78,7 +81,9 @@ function RegistroForm() {
     if (datos.telefono.trim() && datos.telefono.trim().length < 5)
       e.telefono = 'El teléfono no parece válido.';
     if (!datos.adminNombre.trim()) e.adminNombre = 'Ingresá tu nombre.';
+    else if (datos.adminNombre.trim().length < 2) e.adminNombre = 'Usá al menos 2 letras.';
     if (!datos.adminApellido.trim()) e.adminApellido = 'Ingresá tu apellido.';
+    else if (datos.adminApellido.trim().length < 2) e.adminApellido = 'Usá al menos 2 letras.';
     setErrores(e);
     return Object.keys(e).length === 0;
   };

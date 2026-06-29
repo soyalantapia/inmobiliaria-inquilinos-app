@@ -108,7 +108,7 @@ export default function PreciosPage() {
             </Button>
             <Button asChild size="sm">
               <Link href="/registro">
-                Probar gratis
+                Empezá gratis
                 <ArrowRight className="h-3.5 w-3.5" />
               </Link>
             </Button>
@@ -135,7 +135,7 @@ export default function PreciosPage() {
           <div className="flex flex-wrap items-center justify-center gap-2">
             <Button asChild size="lg">
               <Link href="/registro">
-                Empezar gratis
+                Empezá gratis
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </Button>
@@ -194,8 +194,6 @@ export default function PreciosPage() {
           </div>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             {TRAMOS_PLAN.map((t, idx) => {
-              const propsRef = t.hasta ?? 250;
-              const costoPorProp = Math.round(t.precio / Math.max(propsRef, 1));
               const recomendado = idx === 1; // Growth
               return (
                 <Card
@@ -226,9 +224,6 @@ export default function PreciosPage() {
                         / mes
                       </p>
                     </div>
-                    <p className="rounded-md bg-emerald-50 px-2 py-1 text-[11px] text-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300">
-                      ≈ {formatMonto(costoPorProp)} por propiedad
-                    </p>
                     <ul role="list" className="space-y-1 text-[11px]">
                       <li className="flex items-start gap-1.5">
                         <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-emerald-600" />
@@ -256,7 +251,7 @@ export default function PreciosPage() {
                       className={`w-full ${recomendado ? '' : 'variant-outline'}`}
                       variant={recomendado ? 'default' : 'outline'}
                     >
-                      <Link href="/registro">Empezar</Link>
+                      <Link href="/registro">Empezá gratis</Link>
                     </Button>
                   </CardContent>
                 </Card>
@@ -423,7 +418,7 @@ export default function PreciosPage() {
               </ol>
               <Button asChild className="mt-4 w-full">
                 <Link href="/registro">
-                  Probar gratis
+                  Empezá gratis
                   <ArrowRight className="h-4 w-4" />
                 </Link>
               </Button>

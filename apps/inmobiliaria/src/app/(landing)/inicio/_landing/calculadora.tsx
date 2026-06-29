@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { ArrowRight, Clock } from 'lucide-react';
+import { formatMonto } from '@/lib/format';
 import { track } from './analytics';
 
 /**
@@ -16,9 +17,13 @@ const MIN_POR_PROP = 12; // min/mes de cobranza + seguimiento + rendición manua
 
 export function Calculadora() {
   const [props, setProps] = useState(60);
+  // Valor de la hora EDITABLE (no inventamos un sueldo): el usuario pone el suyo
+  // y traducimos las horas ahorradas a plata. Default editable, declarado estimado.
+  const [valorHora, setValorHora] = useState(12000);
 
   const horasMes = Math.round((props * MIN_POR_PROP) / 60);
   const diasAnio = Math.round((horasMes * 12) / 8); // jornadas de 8 hs al año
+  const pesosMes = horasMes * (Number.isFinite(valorHora) ? valorHora : 0);
 
   return (
     <section className="mx-auto max-w-6xl px-5 py-20 md:px-8 md:py-24">
@@ -52,6 +57,22 @@ export function Calculadora() {
             <span>5</span>
             <span>500</span>
           </div>
+
+          <label htmlFor="calc-hora" className="mt-6 block text-sm font-semibold">
+            Tu hora vale aprox.{' '}
+            <span className="text-[11px] font-normal text-muted-foreground">(estimá)</span>
+          </label>
+          <div className="relative mt-2 max-w-[200px]">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
+            <input
+              id="calc-hora"
+              type="text"
+              inputMode="numeric"
+              value={valorHora ? valorHora.toLocaleString('es-AR') : ''}
+              onChange={(e) => setValorHora(Number(e.target.value.replace(/\D/g, '')) || 0)}
+              className="w-full rounded-lg border border-black/[0.1] bg-white py-2 pl-7 pr-3 text-sm tabular-nums outline-none focus:border-primary/50"
+            />
+          </div>
         </div>
 
         <div className="rounded-3xl bg-[linear-gradient(135deg,#2a1758_0%,#16092e_100%)] p-8 text-white">
@@ -67,6 +88,17 @@ export function Calculadora() {
             Son cerca de <strong className="text-white">{diasAnio} jornadas</strong> de 8 horas al año que
             dejás de perder en planillas y WhatsApp.
           </p>
+          {pesosMes > 0 && (
+            <div className="mt-5 border-t border-white/15 pt-4">
+              <p className="flex items-baseline gap-2">
+                <span className="display text-3xl font-extrabold tabular-nums">{formatMonto(pesosMes)}</span>
+                <span className="text-sm font-medium text-white/70">/ mes de tu tiempo</span>
+              </p>
+              <p className="mt-1 text-[12px] text-white/50">
+                Estimado, según el valor de hora que pusiste arriba.
+              </p>
+            </div>
+          )}
           <Link
             href="/registro"
             onClick={() => track('cta_click', { from: 'calculadora', props })}

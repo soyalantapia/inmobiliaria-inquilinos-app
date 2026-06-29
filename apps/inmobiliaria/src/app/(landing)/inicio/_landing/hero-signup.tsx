@@ -17,7 +17,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  */
 export function HeroSignup({
   cta = 'Empezá gratis',
-  microcopy = 'Sin spam. Sin vendedores. Solo el link para crear tu inmobiliaria.',
+  microcopy = 'Sin spam. Sin vendedores. Te llevamos directo a crear tu inmobiliaria (2 minutos).',
   tone = 'light',
   from = 'hero',
 }: {
