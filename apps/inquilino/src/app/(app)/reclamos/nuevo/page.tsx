@@ -175,11 +175,14 @@ export default function NuevoReclamoPage() {
     // Subir la foto REAL al backend (Railway Volume) antes de crear el reclamo.
     // Es complementaria: si la subida falla, igual creamos el reclamo (sin foto).
     let fotoUrl: string | undefined;
+    let fotoFallo = false;
     if (apiEnabled && fotoFile) {
       try {
         fotoUrl = (await subirArchivo(fotoFile)).url;
       } catch {
-        // ignore: la foto es opcional, no bloqueamos el reclamo.
+        // La foto es opcional: NO bloqueamos el reclamo, pero avisamos después
+        // (antes se perdía en silencio y el usuario creía que iba adjunta).
+        fotoFallo = true;
       }
     }
     let nuevo;
@@ -210,11 +213,20 @@ export default function NuevoReclamoPage() {
     if (typeof window !== 'undefined') {
       window.localStorage.removeItem(DRAFT_KEY);
     }
-    // No mostramos toast: el banner verde en /reclamos cumple la confirmación.
-    // Antes había banner + toast con copy casi idéntico (P7 de la auditoría).
-    // Volvemos a la lista pasando el ID nuevo por query — la lista lo resalta.
-    // No navegamos a /reclamos/[id] porque los IDs nuevos no tienen página
-    // pre-renderizada en el static export (devolverían 404).
+    // Si la foto no se pudo subir, avisamos (el reclamo se envió igual). El
+    // resto de la confirmación la da el banner verde en /reclamos.
+    if (fotoFallo) {
+      toast({
+        variant: 'destructive',
+        title: 'El reclamo se envió, pero sin la foto',
+        description: 'No pudimos subir la imagen. Si es importante, agregala escribiéndole a la inmobiliaria.',
+      });
+    }
+    // No mostramos toast de éxito: el banner verde en /reclamos cumple la
+    // confirmación. Antes había banner + toast con copy casi idéntico (P7 de la
+    // auditoría). Volvemos a la lista pasando el ID nuevo por query — la lista lo
+    // resalta. No navegamos a /reclamos/[id] porque los IDs nuevos no tienen
+    // página pre-renderizada en el static export (devolverían 404).
     router.push(`/reclamos?nuevo=${nuevo.id}`);
   };
 
@@ -255,6 +267,7 @@ export default function NuevoReclamoPage() {
               </p>
               <p className="text-[11px] leading-snug text-amber-800/80 dark:text-amber-200/80">
                 Seguí donde dejaste. Si no era esto, descartalo y empezá de cero.
+                La foto no se guarda en el borrador — si habías subido una, volvé a adjuntarla.
               </p>
               <button
                 type="button"

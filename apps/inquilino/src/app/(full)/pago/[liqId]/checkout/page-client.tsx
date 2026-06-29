@@ -98,6 +98,13 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
   const [decisionInmoUltima, setDecisionInmoUltima] = useState<
     DecisionInmoSobrePago | null
   >(null);
+  // Sesión local: para gatear el flujo a co-inquilinos "Solo lectura" (VER), que
+  // pueden ver pagos pero NO informarlos. Se lee tras montar (no en render) para
+  // no romper la hidratación del export estático.
+  const [sesion, setSesion] = useState<ReturnType<typeof leerSesion>>(null);
+  useEffect(() => {
+    setSesion(leerSesion());
+  }, []);
 
   useEffect(() => {
     // Historial de parciales + decisión del inmo: sólo en la demo offline.
@@ -146,6 +153,26 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
         <Button asChild className="mt-4">
           <Link href="/">Volver al inicio</Link>
         </Button>
+      </main>
+    );
+  }
+
+  // Co-inquilino "Solo lectura" (VER): la pantalla de invitación promete que NO
+  // puede informar pagos. Lo hacemos cumplir acá, el único punto donde se informa
+  // un pago (el home le muestra el monto, que sí puede ver).
+  if (sesion?.esCoInquilino && sesion.permiso === 'VER') {
+    return (
+      <main className="flex-1 px-5 py-10">
+        <div className="mx-auto max-w-md space-y-3 text-center">
+          <p className="text-base font-medium">Tu acceso es de solo lectura</p>
+          <p className="text-sm text-muted-foreground">
+            Podés ver el contrato, las liquidaciones y los pagos, pero no informar pagos.
+            Pedíselo al titular del contrato.
+          </p>
+          <Button asChild className="mt-2">
+            <Link href="/">Volver al inicio</Link>
+          </Button>
+        </div>
       </main>
     );
   }
@@ -455,14 +482,20 @@ function SelectorMonto({
   valor: number;
   onChange: (v: number | null) => void;
 }) {
-  const esTotal = valor >= saldo;
-  const [draft, setDraft] = useState<string>(esTotal ? '' : String(valor));
+  // El modo (total/parcial) es estado EXPLÍCITO, no derivado de `valor >= saldo`.
+  // Antes, al tipear un monto que llegaba al saldo, `esTotal` se volvía true, el
+  // input del parcial se desmontaba y el usuario perdía el foco a mitad de tipeo.
+  // Ahora el input sólo se oculta cuando el usuario elige "saldo completo".
+  const [modoParcial, setModoParcial] = useState<boolean>(valor < saldo);
+  const [draft, setDraft] = useState<string>(valor < saldo ? String(valor) : '');
 
   const setTotal = () => {
+    setModoParcial(false);
     onChange(null); // null = usar default (saldo)
     setDraft('');
   };
   const setOtro = () => {
+    setModoParcial(true);
     // Si pasa a "otro" sin valor, arrancamos en la mitad del saldo. Para saldos
     // chicos (< $2000) el redondeo al millar daba 0 → bloqueaba "Continuar" sin
     // aviso; caemos a la mitad exacta (mínimo 1) en ese caso.
@@ -482,6 +515,10 @@ function SelectorMonto({
     onChange(Math.min(Math.max(n, 0), saldo));
   };
 
+  // El parcial es inválido si está vacío o en 0 → explicamos por qué se bloquea
+  // "Continuar" (antes el botón quedaba deshabilitado sin ningún aviso).
+  const parcialInvalido = modoParcial && (draft === '' || Number(draft) <= 0);
+
   return (
     <Card className="space-y-3 p-4">
       <div className="flex items-center gap-2">
@@ -492,9 +529,9 @@ function SelectorMonto({
         <button
           type="button"
           onClick={setTotal}
-          aria-pressed={esTotal}
+          aria-pressed={!modoParcial}
           className={`flex w-full items-center justify-between gap-3 rounded-md border p-3 text-left text-sm transition-colors ${
-            esTotal
+            !modoParcial
               ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
               : 'hover:bg-muted/40'
           }`}
@@ -510,9 +547,9 @@ function SelectorMonto({
         <button
           type="button"
           onClick={setOtro}
-          aria-pressed={!esTotal}
+          aria-pressed={modoParcial}
           className={`flex w-full items-start gap-3 rounded-md border p-3 text-left text-sm transition-colors ${
-            !esTotal
+            modoParcial
               ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
               : 'hover:bg-muted/40'
           }`}
@@ -524,19 +561,26 @@ function SelectorMonto({
                 Después podés volver y pagar el resto.
               </p>
             </div>
-            {!esTotal && (
-              <div className="flex items-center gap-2">
-                <span className="text-base font-semibold">$</span>
-                <Input
-                  aria-label="Monto a pagar"
-                  inputMode="numeric"
-                  value={draft}
-                  onChange={(e) => onInput(e.target.value)}
-                  onClick={(e) => e.stopPropagation()}
-                  placeholder="0"
-                  className="text-lg font-semibold tabular-nums"
-                />
-              </div>
+            {modoParcial && (
+              <>
+                <div className="flex items-center gap-2">
+                  <span className="text-base font-semibold">$</span>
+                  <Input
+                    aria-label="Monto a pagar"
+                    inputMode="numeric"
+                    value={draft}
+                    onChange={(e) => onInput(e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    placeholder="0"
+                    className="text-lg font-semibold tabular-nums"
+                  />
+                </div>
+                {parcialInvalido && (
+                  <p className="text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                    Ingresá un monto mayor a $0 para continuar.
+                  </p>
+                )}
+              </>
             )}
           </div>
         </button>

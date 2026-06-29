@@ -107,6 +107,18 @@ export default function LoginPage() {
     // Si pegan los 6 dígitos de una, distribuir
     const limpio = valor.replace(/\D/g, '');
     if (limpio.length > 1) {
+      // Corrección sobre una casilla YA llena en teclados Android que no respetan
+      // select(): el value llega como "viejoNuevo" (2 chars). Lo tratamos como
+      // edición de ESA casilla (último char), no como pegado del código completo
+      // (antes esto reescribía todo el código desde el índice 0).
+      if (limpio.length === 2 && digitos[idx]) {
+        const nuevo = [...digitos];
+        nuevo[idx] = limpio.slice(-1);
+        setDigitos(nuevo);
+        if (idx < 5) setTimeout(() => otpRefs.current[idx + 1]?.focus(), 0);
+        if (nuevo.every((d) => d !== '')) setTimeout(() => onVerificar(nuevo.join('')), 100);
+        return;
+      }
       const arr = ['', '', '', '', '', ''];
       for (let i = 0; i < 6 && i < limpio.length; i++) arr[i] = limpio[i] ?? '';
       setDigitos(arr);
@@ -203,6 +215,9 @@ export default function LoginPage() {
 
   const onReenviar = async () => {
     setErrorOtp(null);
+    // Si quedó un verify colgado (p. ej. el usuario tocó esto en 3G lento), lo
+    // liberamos: sin esto `verificando=true` bloqueaba el form (inputs disabled).
+    setVerificando(false);
     const r = await solicitarCodigoUnificado(email);
     if (!r.ok) {
       setErrorOtp(r.motivo ?? 'No pudimos reenviar el código.');
@@ -223,6 +238,9 @@ export default function LoginPage() {
     setDigitos(['', '', '', '', '', '']);
     setErrorOtp(null);
     setCodigoDemo(null);
+    // Liberamos un verify en curso para no dejar el botón/inputs trabados al
+    // volver y reenviar el código.
+    setVerificando(false);
   };
 
   return (

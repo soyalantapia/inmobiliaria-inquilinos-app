@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CheckCircle2, Copy, Mail, Send, Sparkles } from 'lucide-react';
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
@@ -57,6 +57,27 @@ export function EmailBienvenidaDialog({
 }: EmailBienvenidaDialogProps) {
   const [enviando, setEnviando] = useState(false);
   const [enviado, setEnviado] = useState(false);
+  // Timer del cierre automático tras enviar. Lo guardamos en un ref para poder
+  // cancelarlo: si el diálogo se reabría dentro de la ventana de 1.2s, el timeout
+  // viejo cerraba el diálogo recién abierto.
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    // Al (re)abrir, cancelamos cualquier cierre pendiente y reseteamos el estado.
+    if (open && closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+    if (open) {
+      setEnviado(false);
+      setEnviando(false);
+    }
+  }, [open]);
+
+  // Limpieza al desmontar.
+  useEffect(() => () => {
+    if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+  }, []);
 
   const asunto =
     modo === 'recordatorio'
@@ -74,8 +95,9 @@ export function EmailBienvenidaDialog({
         modo === 'recordatorio' ? 'Recordatorio enviado' : 'Email de bienvenida enviado',
       description: `Le mandamos a ${destinatario.email} el link para activar su cuenta.`,
     });
-    // Cerramos el dialog después de un momento
-    setTimeout(() => {
+    // Cerramos el dialog después de un momento (cancelable si se reabre antes).
+    closeTimerRef.current = setTimeout(() => {
+      closeTimerRef.current = null;
       onOpenChange(false);
       setEnviado(false);
     }, 1200);

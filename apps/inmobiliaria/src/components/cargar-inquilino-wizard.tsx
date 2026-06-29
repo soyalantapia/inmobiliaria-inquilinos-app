@@ -245,7 +245,9 @@ export function CargarInquilinoWizard({
                 onClick={() => irPaso((paso + 1) as Paso)}
                 disabled={paso === 1 && !paso1Ok}
               >
-                {paso === 2 ? 'Saltar' : 'Siguiente'}
+                {/* En el paso de co-inquilinos: "Saltar" solo si no agregó
+                    ninguno; si ya sumó alguno, "Continuar" (no estaría salteando). */}
+                {paso === 2 ? (coInquilinos.length > 0 ? 'Continuar' : 'Saltar') : 'Siguiente'}
                 <ArrowRight className="h-4 w-4" />
               </Button>
             )}

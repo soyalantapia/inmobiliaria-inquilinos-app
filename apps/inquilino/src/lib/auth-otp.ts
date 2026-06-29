@@ -316,6 +316,9 @@ export function cerrarSesion(): void {
     window.localStorage.removeItem(SESION_KEY);
     window.localStorage.removeItem('llave:auth:token');
     window.localStorage.removeItem('llave:auth:persona');
+    // Borrador del "nuevo reclamo": contiene texto del usuario. Sin esto, el
+    // próximo que use el dispositivo lo veía recuperado como propio (privacidad).
+    window.localStorage.removeItem('llave-inquilino:nuevo-reclamo-draft:v1');
   } catch {
     // ignore
   }

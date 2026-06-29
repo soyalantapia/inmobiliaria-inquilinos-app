@@ -85,7 +85,10 @@ export function CargarPagoManualDialog({ open, onOpenChange, onDone }: Props) {
   const confirmarConPin = () => {
     if (!contratoSel) return;
     const montoNum = Number(monto);
-    const pagoId = `pag_manual_${contratoSel.id}_${fecha}`;
+    // Sufijo único: dos cobros del mismo contrato en la misma fecha (ej. dos
+    // pagos parciales el mismo día) generaban el MISMO id y el segundo pisaba al
+    // primero sin aviso. Date.now() los mantiene distintos.
+    const pagoId = `pag_manual_${contratoSel.id}_${fecha}_${Date.now()}`;
     conciliarPago(pagoId, 'Roberto Tapia', {
       observacion: `Pago manual · ${metodo} · ${formatMonto(montoNum, contratoSel.moneda)}${nota ? ` · ${nota}` : ''}`,
     });
