@@ -211,3 +211,78 @@ export async function enviarInvitacionInquilino(
   });
   return true;
 }
+
+/** URL del panel de la inmobiliaria (para el CTA del email de bienvenida). */
+const APP_ADMIN_URL = (process.env.APP_ADMIN_URL ?? 'https://admin.myalquiler.com').replace(/\/$/, '');
+
+/** Cuerpo del email de bienvenida que recibe la inmobiliaria al registrarse. */
+function bienvenidaInmoHtml(opts: {
+  adminNombre: string;
+  inmobiliaria: string;
+  email: string;
+  panelUrl: string;
+}): string {
+  const inmo = esc(opts.inmobiliaria);
+  const admin = esc(opts.adminNombre);
+  const inner = `
+    <h1 style="margin:0 0 10px;color:#1c1726;font-size:22px;line-height:1.2;font-weight:800;letter-spacing:-0.02em;">¡Tu cuenta está lista, ${admin}! 🎉</h1>
+    <p style="margin:0 0 18px;color:#6b6577;font-size:15px;line-height:1.65;">Creaste la cuenta de <strong style="color:#1c1726;">${inmo}</strong> en <strong style="color:#1c1726;">My Alquiler</strong>. Desde tu panel vas a gestionar contratos, cobros, reclamos y rendiciones — y tus inquilinos pagan y reclaman desde su propia app.</p>
+
+    <!-- Botón -->
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:4px 0 20px;"><tr>
+      <td align="center" bgcolor="#7c3aed" style="background-color:#7c3aed;border-radius:12px;">
+        <a href="${opts.panelUrl}" target="_blank" style="display:inline-block;padding:14px 30px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:15px;font-weight:800;color:#ffffff;text-decoration:none;letter-spacing:0.2px;">Entrar a mi panel &rarr;</a>
+      </td>
+    </tr></table>
+
+    <!-- Primeros pasos -->
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 14px;">
+      <tr>
+        <td bgcolor="#faf9fd" style="background-color:#faf9fd;border:1px solid #ece8f7;border-radius:10px;padding:14px 16px;">
+          <p style="margin:0 0 8px;color:#1c1726;font-size:13px;font-weight:700;">Para arrancar:</p>
+          <p style="margin:0 0 4px;color:#6b6577;font-size:13px;line-height:1.6;">1. Cargá tu primera propiedad y su contrato.</p>
+          <p style="margin:0 0 4px;color:#6b6577;font-size:13px;line-height:1.6;">2. Invitá al inquilino — le llega su acceso por mail.</p>
+          <p style="margin:0;color:#6b6577;font-size:13px;line-height:1.6;">3. Mirá tu tablero: cobros, mora y agenda del mes.</p>
+        </td>
+      </tr>
+    </table>
+
+    <!-- Cómo entra -->
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 6px;">
+      <tr>
+        <td bgcolor="#f6f4fe" style="background-color:#f6f4fe;border:1px solid #e4dcfb;border-radius:10px;padding:12px 16px;">
+          <p style="margin:0;color:#6b6577;font-size:13px;line-height:1.5;">
+            Entrás con tu email (<strong style="color:#1c1726;">${esc(opts.email)}</strong>) y un código de 6 dígitos que te mandamos. <strong style="color:#1c1726;">Sin contraseñas.</strong> Es gratis hasta el lanzamiento.
+          </p>
+        </td>
+      </tr>
+    </table>`;
+
+  return shell({
+    preview: `Tu cuenta de ${opts.inmobiliaria} en My Alquiler está lista — entrá a tu panel`,
+    inner,
+  });
+}
+
+/**
+ * Email de bienvenida a la inmobiliaria recién registrada: confirma el alta,
+ * da los primeros pasos y el link al panel. Best-effort (el caller no debe
+ * romper el alta si el SMTP falla).
+ */
+export async function enviarBienvenidaInmobiliaria(
+  email: string,
+  adminNombre: string,
+  inmobiliariaNombre: string,
+  panelUrl: string = APP_ADMIN_URL,
+): Promise<boolean> {
+  const t = getTransporter();
+  if (!t) return false;
+  await t.sendMail({
+    from,
+    to: email,
+    subject: `Tu cuenta de ${inmobiliariaNombre} en My Alquiler está lista`,
+    text: `¡Hola ${adminNombre}! Creaste la cuenta de ${inmobiliariaNombre} en My Alquiler.\nEntrá a tu panel: ${panelUrl}\nIngresás con tu email (${email}) y un código que te mandamos. Sin contraseñas. Gratis hasta el lanzamiento.`,
+    html: bienvenidaInmoHtml({ adminNombre, inmobiliaria: inmobiliariaNombre, email, panelUrl }),
+  });
+  return true;
+}

@@ -673,7 +673,7 @@ export function useMe(): { me: Me | null; cargando: boolean } {
   };
 }
 
-export function useContratos(): { contratos: ContratoListado[]; cargando: boolean; deApi: boolean } {
+export function useContratos(): { contratos: ContratoListado[]; cargando: boolean; deApi: boolean; error: boolean } {
   const q = useQuery({
     queryKey: ['contratos'],
     queryFn: async () => {
@@ -684,11 +684,12 @@ export function useContratos(): { contratos: ContratoListado[]; cargando: boolea
     enabled: apiEnabled,
     staleTime: 15_000,
   });
-  if (!apiEnabled) return { contratos: contratosMock, cargando: false, deApi: false };
+  if (!apiEnabled) return { contratos: contratosMock, cargando: false, deApi: false, error: false };
   // En prod NUNCA caemos a mocks ante error: mostraría una cartera FABRICADA
   // (contratos/inquilinos/montos falsos) que envenena Dashboard + Pagos. Vacío.
-  if (q.isError) return { contratos: [], cargando: false, deApi: true };
-  return { contratos: q.data ?? [], cargando: q.isPending, deApi: true };
+  // `error` lo expone el dashboard para no confundir "fetch falló" con "cuenta vacía".
+  if (q.isError) return { contratos: [], cargando: false, deApi: true, error: true };
+  return { contratos: q.data ?? [], cargando: q.isPending, deApi: true, error: false };
 }
 
 // ===== Propiedades (enriquecidas con contrato + propietarios) =====
@@ -794,8 +795,9 @@ export function usePropiedades(): {
   propiedades: PropiedadEnriquecida[];
   cargando: boolean;
   deApi: boolean;
+  error: boolean;
 } {
-  const { contratos, cargando: cargandoContratos } = useContratos();
+  const { contratos, cargando: cargandoContratos, error: errorContratos } = useContratos();
   const propsQ = useQuery({
     queryKey: ['propiedades'],
     queryFn: async () => {
@@ -816,10 +818,10 @@ export function usePropiedades(): {
   });
 
   if (!apiEnabled) {
-    return { propiedades: propiedadesMock.map(enriquecerPropiedad), cargando: false, deApi: false };
+    return { propiedades: propiedadesMock.map(enriquecerPropiedad), cargando: false, deApi: false, error: false };
   }
   // API caída: empty + flag, NO mocks (no inventamos data en producción).
-  if (propsQ.isError) return { propiedades: [], cargando: false, deApi: true };
+  if (propsQ.isError) return { propiedades: [], cargando: false, deApi: true, error: true };
 
   const reclamos = reclamosQ.data ?? [];
   const propiedades: PropiedadEnriquecida[] = (propsQ.data ?? []).map((p) => {
@@ -846,7 +848,8 @@ export function usePropiedades(): {
 
   // Incluimos cargandoContratos: si /propiedades resuelve antes que /contratos,
   // todas las props aparecerían como "Sin contrato vigente" hasta el refetch.
-  return { propiedades, cargando: propsQ.isPending || cargandoContratos, deApi: true };
+  // `error` refleja un fallo de cualquiera de las dos fuentes (contratos o props).
+  return { propiedades, cargando: propsQ.isPending || cargandoContratos, deApi: true, error: errorContratos };
 }
 
 // ===== Liquidaciones (recibos mensuales por contrato) =====
@@ -1164,6 +1167,14 @@ export interface DashboardData {
   porRendir: number;
   proximosVencimientos: { id: string; direccion: string; inquilino: string; fecha: string; monto: number }[];
   cargando: boolean;
+  /** Alguna fuente (contratos o propiedades) falló al cargar. El dashboard NO
+   *  debe mostrar el estado vacío "cuenta nueva" en este caso: 0 propiedades por
+   *  un fetch caído ≠ inmobiliaria sin propiedades. */
+  error: boolean;
+  /** Total de propiedades de la cuenta. Es la señal real de "cuenta nueva/vacía"
+   *  (≠ `contratosActivos === 0`, que también da 0 con todos los contratos
+   *  finalizados aunque la cuenta tenga propiedades y trabajo pendiente). */
+  propiedadesTotal: number;
 }
 
 // Comisión por defecto (8%) usada en el demo y como último recurso cuando todavía
@@ -1189,8 +1200,8 @@ function comisionEfectiva(propietarios: Propietario[]): number {
 }
 
 export function useDashboard(): DashboardData {
-  const { contratos, cargando: cargC } = useContratos();
-  const { propiedades, cargando: cargP } = usePropiedades();
+  const { contratos, cargando: cargC, error: errContratos } = useContratos();
+  const { propiedades, cargando: cargP, error: errProps } = usePropiedades();
   const { propietarios, cargando: cargOwn } = usePropietarios();
   const { liquidaciones, cargando: cargLiq } = useLiquidaciones();
 
@@ -1272,5 +1283,7 @@ export function useDashboard(): DashboardData {
     // Incluye propietarios y liquidaciones: el dashboard deriva comisión/a-rendir y
     // próximos vencimientos de esos datos → sin esto se mostraba antes de tenerlos.
     cargando: cargC || cargP || cargOwn || cargLiq,
+    error: errContratos || errProps,
+    propiedadesTotal: propiedades.length,
   };
 }

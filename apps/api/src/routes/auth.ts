@@ -14,7 +14,7 @@ import {
 import { prisma } from '../db.js';
 import { requireAuth, requirePersona, requireUsuario } from '../auth/guards.js';
 import { verificarPinUsuario } from '../auth/pin.js';
-import { enviarOtp } from '../mailer.js';
+import { enviarOtp, enviarBienvenidaInmobiliaria } from '../mailer.js';
 
 const TOKEN_TTL = '15d';
 const OTP_TTL_MS = 10 * 60 * 1000;
@@ -44,7 +44,14 @@ const RegistroSchema = z.object({
   inmobiliaria: z.object({
     nombre: z.string().trim().min(2),
     email: z.string().trim().email(),
-    telefono: z.string().trim().min(5),
+    // Teléfono opcional en el alta: bajamos la fricción del registro. Si lo
+    // mandan vacío, se completa después desde el panel (igual que cuit/dirección).
+    // Validamos min(5) sólo cuando viene un valor no vacío.
+    telefono: z
+      .string()
+      .trim()
+      .refine((v) => v === '' || v.length >= 5, { message: 'Teléfono inválido' })
+      .optional(),
     // Ciudad/provincia salieron del alta (se completan después desde el panel).
     // Opcionales por compatibilidad con clientes que aún las manden.
     ciudad: z.string().trim().optional(),
@@ -129,7 +136,7 @@ export async function authRoutes(app: FastifyInstance) {
             data: {
               nombre: inmobiliaria.nombre,
               email,
-              telefono: inmobiliaria.telefono,
+              telefono: inmobiliaria.telefono ?? '',
               // Fiscales/dirección completa: se completan después desde el panel.
               cuit: '',
               matricula: '',
@@ -176,6 +183,17 @@ export async function authRoutes(app: FastifyInstance) {
       }
     }
     if (!usuario) return reply.code(500).send({ message: 'No se pudo crear la cuenta. Intentá de nuevo.' });
+
+    // Email de bienvenida — best-effort, FUERA de la transacción: confirma el
+    // alta, da los primeros pasos y deja a mano el link del panel. Si el SMTP
+    // falla NO rompemos el registro (el token ya está emitido y la cuenta creada).
+    try {
+      const enviado = await enviarBienvenidaInmobiliaria(email, usuario.nombre, inmobiliaria.nombre);
+      if (!enviado) request.log.info({ email }, 'Bienvenida inmo: SMTP no configurado — se omite el mail');
+      else request.log.info({ email }, 'Bienvenida inmo enviada por email');
+    } catch (err) {
+      request.log.error({ email, err: (err as Error).message }, 'Bienvenida inmo: fallo el envío SMTP (no bloquea el alta)');
+    }
 
     const payload: JwtUsuario = {
       kind: 'usuario',

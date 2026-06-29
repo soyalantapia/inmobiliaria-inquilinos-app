@@ -6,7 +6,9 @@ import {
   AlertOctagon,
   AlertTriangle,
   ArrowDownRight,
+  ArrowRight,
   ArrowUpRight,
+  Building2,
   Calendar,
   CheckCircle2,
   Clock,
@@ -16,9 +18,11 @@ import {
   Plus,
   Search,
   ShieldCheck,
+  Sparkles,
   TrendingUp,
   Wallet,
   Wrench,
+  X,
 } from 'lucide-react';
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
@@ -64,6 +68,9 @@ export default function DashboardPage() {
     <>
       <Topbar titulo="Inicio" />
       <main className="flex-1 space-y-6 p-4 md:p-6">
+        {/* Bienvenida post-registro (?bienvenida=1), una sola vez. */}
+        <BienvenidaBanner />
+
         {/* Header con saludo + CTAs */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <DashboardGreeting />
@@ -295,7 +302,8 @@ export default function DashboardPage() {
 // ─────────────────── Dashboard REAL (modo API) ───────────────────
 
 function DashboardReal() {
-  const { stats, morosos, propietariosSinCbu, porRendir, proximosVencimientos, cargando } = useDashboard();
+  const { stats, morosos, propietariosSinCbu, porRendir, proximosVencimientos, cargando, error, propiedadesTotal } =
+    useDashboard();
 
   // Durante el fetch inicial, stats viene en $0 y los KPIs mostraban un falso
   // "Todo al día". Mostramos un estado de carga hasta tener los datos reales.
@@ -310,10 +318,51 @@ function DashboardReal() {
     );
   }
 
+  // Falló la carga (contratos o propiedades). Mostramos error + reintento en
+  // lugar del dashboard en $0 o — peor — el estado vacío "cuenta nueva", que le
+  // mentiría a una inmobiliaria con cartera diciéndole que no tiene propiedades.
+  if (error) {
+    return (
+      <>
+        <Topbar titulo="Inicio" />
+        <main className="flex-1 px-4 py-10 text-center md:p-6">
+          <AlertTriangle className="mx-auto h-9 w-9 text-muted-foreground" />
+          <p className="mt-3 text-sm font-medium">No pudimos cargar tu panel.</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Revisá tu conexión e intentá de nuevo. No mostramos datos para no darte información incorrecta.
+          </p>
+          <Button variant="outline" className="mt-4" onClick={() => window.location.reload()}>
+            Reintentar
+          </Button>
+        </main>
+      </>
+    );
+  }
+
+  // Cuenta nueva/vacía: SIN propiedades cargadas. Usamos `propiedadesTotal === 0`
+  // (no `contratosActivos === 0`): una cuenta con todos los contratos finalizados
+  // tiene 0 contratos activos pero conserva sus propiedades y trabajo pendiente
+  // (rendiciones, CBUs) — esa NO es una cuenta nueva y debe ver el dashboard.
+  if (propiedadesTotal === 0) {
+    return (
+      <>
+        <Topbar titulo="Inicio" />
+        <main className="flex-1 space-y-6 p-4 md:p-6">
+          <BienvenidaBanner />
+          <DashboardGreeting />
+          <PrimerPasoCard />
+        </main>
+      </>
+    );
+  }
+
   return (
     <>
       <Topbar titulo="Inicio" />
       <main className="flex-1 space-y-6 p-4 md:p-6">
+        {/* Bienvenida post-registro (?bienvenida=1), una sola vez. */}
+        <BienvenidaBanner />
+
         {/* Header con saludo + CTAs */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <DashboardGreeting />
@@ -541,6 +590,123 @@ function DashboardReal() {
         </div>
       </main>
     </>
+  );
+}
+
+// ─────────────────────────── Onboarding / primer uso ───────────────────────────
+
+/**
+ * Banner de confirmación post-registro. El alta redirige a `/?bienvenida=1`;
+ * acá lo leemos (client-only, tras montar, para no romper la hidratación),
+ * mostramos una tira de bienvenida y limpiamos el query param con
+ * replaceState para que un refresh no la vuelva a mostrar. Es dismissible.
+ */
+function BienvenidaBanner() {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      if (sp.get('bienvenida') === '1') {
+        setVisible(true);
+        // Sacamos el param de la URL sin recargar: la bienvenida es de una sola
+        // vez, no debe persistir si el usuario refresca o comparte el link.
+        sp.delete('bienvenida');
+        const qs = sp.toString();
+        window.history.replaceState(
+          null,
+          '',
+          window.location.pathname + (qs ? `?${qs}` : ''),
+        );
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  if (!visible) return null;
+
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-primary/25 bg-gradient-to-r from-primary/10 to-fuchsia-500/5 px-4 py-3 animate-fade-in">
+      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-primary to-fuchsia-600 text-white shadow-sm">
+        <Sparkles className="h-4 w-4" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold leading-tight">¡Tu cuenta está lista! 🎉</p>
+        <p className="truncate text-xs text-muted-foreground">
+          Bienvenido a My Alquiler. Te mandamos un mail con los primeros pasos.
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={() => setVisible(false)}
+        aria-label="Cerrar bienvenida"
+        className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      >
+        <X className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Estado vacío del dashboard para una cuenta nueva (0 contratos activos).
+ * En vez de mostrar 8 KPIs en $0 y "Todo al día" — que a un recién llegado le
+ * dicen nada — lo guiamos al primer paso real: cargar su primera propiedad.
+ */
+function PrimerPasoCard() {
+  const pasos = [
+    { n: 1, texto: 'Cargás tu primera propiedad y su contrato.' },
+    { n: 2, texto: 'Invitás al inquilino — le llega su acceso por mail.' },
+    { n: 3, texto: 'Ves cobros, mora y agenda del mes en tu tablero.' },
+  ];
+  return (
+    <Card className="overflow-hidden border-primary/20">
+      <CardContent className="space-y-5 p-6 md:p-8">
+        <div className="flex items-start gap-4">
+          <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-primary to-fuchsia-600 text-white shadow-md">
+            <Building2 className="h-6 w-6" />
+          </div>
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold md:text-xl">Empecemos por tu primera propiedad</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Todavía no cargaste ninguna. En un par de minutos tenés tu primer alquiler andando.
+            </p>
+          </div>
+        </div>
+
+        <ol className="space-y-2">
+          {pasos.map((p) => (
+            <li key={p.n} className="flex items-start gap-3 text-sm">
+              <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+                {p.n}
+              </span>
+              <span className="pt-0.5">{p.texto}</span>
+            </li>
+          ))}
+        </ol>
+
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Button asChild size="lg" className="sm:flex-1">
+            <Link href="/propiedades/nueva">
+              <Plus className="h-4 w-4" />
+              Cargar mi primera propiedad
+            </Link>
+          </Button>
+          <Button asChild variant="outline" size="lg" className="sm:flex-1">
+            <Link href="/contratos/nuevo">
+              <FileText className="h-4 w-4" />
+              Ya tengo la propiedad: cargar contrato
+            </Link>
+          </Button>
+        </div>
+
+        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <ArrowRight className="h-3.5 w-3.5" />
+          ¿Tenés muchas propiedades? Escribinos por WhatsApp y las migramos por vos.
+        </p>
+      </CardContent>
+    </Card>
   );
 }
 

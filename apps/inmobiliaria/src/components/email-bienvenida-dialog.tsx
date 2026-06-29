@@ -13,6 +13,21 @@ import {
 } from '@llave/ui/dialog';
 import { toast } from '@llave/ui/use-toast';
 
+/**
+ * Login de la app del inquilino. Vive en OTRO host que el panel admin
+ * (prod: app.myalquiler.com vs admin.myalquiler.com), por eso usamos la env
+ * `NEXT_PUBLIC_INQUILINO_URL` que se hornea por entorno — igual que el link
+ * mágico del profesional. Determinista (sin `window`) para no romper la
+ * hidratación. Antes este dialog hardcodeaba la URL vieja de GH Pages.
+ *
+ * Usamos `||` (no `??`): el Dockerfile hornea la env como string VACÍO cuando el
+ * ARG no está seteado (set-but-empty, no undefined) y Next inlinea ese '' literal
+ * → con `??` quedaría `'' + '/login/'` = `/login/` (relativo, 404 contra el host
+ * del admin). El helper hermano (asignar-profesional-dialog) hace lo mismo.
+ */
+const APP_INQUILINO_URL =
+  (process.env.NEXT_PUBLIC_INQUILINO_URL?.replace(/\/$/, '') || 'https://app.myalquiler.com') + '/login/';
+
 interface EmailBienvenidaDialogProps {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -68,9 +83,7 @@ export function EmailBienvenidaDialog({
 
   const copiarLink = async () => {
     try {
-      await navigator.clipboard.writeText(
-        `https://soyalantapia.github.io/inmobiliaria-inquilinos-app/inquilino/login/`,
-      );
+      await navigator.clipboard.writeText(APP_INQUILINO_URL);
       toast({ title: 'Link copiado al portapapeles' });
     } catch {
       toast({ title: 'No pudimos copiar el link', variant: 'destructive' });
@@ -170,7 +183,7 @@ export function EmailBienvenidaDialog({
                   Tocá el botón para activar tu cuenta:
                 </p>
                 <a
-                  href="/inquilino/login/"
+                  href={APP_INQUILINO_URL}
                   target="_blank"
                   rel="noreferrer"
                   className="inline-flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
@@ -179,7 +192,7 @@ export function EmailBienvenidaDialog({
                   Activar mi cuenta
                 </a>
                 <p className="text-[11px] text-muted-foreground break-all">
-                  o entrá a https://soyalantapia.github.io/inmobiliaria-inquilinos-app/inquilino/login/
+                  o entrá a {APP_INQUILINO_URL}
                 </p>
               </div>
 

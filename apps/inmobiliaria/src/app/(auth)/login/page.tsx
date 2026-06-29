@@ -46,6 +46,10 @@ function LoginOtp() {
   const [email, setEmail] = useState('');
   const [digitos, setDigitos] = useState<string[]>(['', '', '', '', '', '']);
   const [enviando, setEnviando] = useState(false);
+  // Cuando el email no tiene cuenta lo mandamos al alta. En vez de dejar el
+  // botón colgado en "Enviando código…" mientras navega, mostramos un estado
+  // explícito "Te llevamos al alta…" para que el salto a /registro no sorprenda.
+  const [redirigiendo, setRedirigiendo] = useState(false);
   const [verificando, setVerificando] = useState(false);
   const [errorEmail, setErrorEmail] = useState<string | null>(null);
   const [errorOtp, setErrorOtp] = useState<string | null>(null);
@@ -76,9 +80,11 @@ function LoginOtp() {
       // hacerlo esperar un código que nunca llega. El cartel del registro le
       // dice "no encontramos una cuenta… armala en segundos".
       if (r.existe === false) {
-        // Dejamos el botón en "Enviando…" mientras navega: router.push es una
-        // navegación soft asíncrona; si reseteáramos enviando acá el botón
-        // volvería a su estado normal sin feedback hasta que monte /registro.
+        // Email sin cuenta → al alta. Mostramos un estado explícito de
+        // transición ("Te llevamos al alta…") en vez de dejar el botón colgado
+        // en "Enviando código…": router.push es una navegación soft asíncrona y
+        // sin este feedback el salto a /registro aparecía sin aviso.
+        setRedirigiendo(true);
         router.push(`/registro?email=${encodeURIComponent(emailLc)}&nueva=1`);
         return;
       }
@@ -191,6 +197,7 @@ function LoginOtp() {
           }}
           error={errorEmail}
           enviando={enviando}
+          redirigiendo={redirigiendo}
           onSubmit={onSolicitar}
         />
       ) : (
@@ -225,12 +232,14 @@ function PasoEmail({
   setEmail,
   error,
   enviando,
+  redirigiendo,
   onSubmit,
 }: {
   email: string;
   setEmail: (v: string) => void;
   error: string | null;
   enviando: boolean;
+  redirigiendo: boolean;
   onSubmit: (e?: React.FormEvent) => void;
 }) {
   return (
@@ -267,7 +276,12 @@ function PasoEmail({
       </div>
 
       <Button type="submit" className="w-full" size="lg" disabled={enviando || !email.trim()}>
-        {enviando ? (
+        {redirigiendo ? (
+          <>
+            <Loader2 aria-hidden className="h-4 w-4 animate-spin" />
+            Te llevamos al alta…
+          </>
+        ) : enviando ? (
           <>
             <Loader2 aria-hidden className="h-4 w-4 animate-spin" />
             Enviando código…
@@ -280,6 +294,12 @@ function PasoEmail({
           </>
         )}
       </Button>
+
+      {redirigiendo && (
+        <p role="status" className="text-center text-sm text-muted-foreground">
+          No encontramos una cuenta con ese email. Te llevamos a crearla.
+        </p>
+      )}
     </form>
   );
 }

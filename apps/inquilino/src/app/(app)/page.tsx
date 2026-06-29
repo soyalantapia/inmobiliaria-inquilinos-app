@@ -396,6 +396,11 @@ function HomeReal() {
 
         <QuickActions liqPendiente={pendiente} />
 
+        {/* Invitación discreta al tour (opt-in). Faltaba en HomeReal: en
+            producción ningún inquilino la veía — sólo estaba en la home demo.
+            Va después del pago y los atajos, igual que en demo. */}
+        <OnboardingInvite />
+
         {/* Card de la inmobiliaria que administra (datos reales del contrato) */}
         <Card className="flex items-center gap-2 p-3 animate-fade-in">
           <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 text-white">

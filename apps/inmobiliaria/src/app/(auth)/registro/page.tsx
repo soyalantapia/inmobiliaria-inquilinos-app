@@ -73,7 +73,10 @@ function RegistroForm() {
     if (!datos.nombre.trim()) e.nombre = 'Ingresá el nombre de la inmobiliaria.';
     if (!datos.email.trim()) e.email = 'Ingresá un email.';
     else if (!EMAIL_RE.test(datos.email.trim())) e.email = 'El email no parece válido.';
-    if (!datos.telefono.trim()) e.telefono = 'Ingresá un teléfono.';
+    // Teléfono es OPCIONAL — bajamos la fricción del alta. Sólo validamos el
+    // formato si el usuario escribió algo.
+    if (datos.telefono.trim() && datos.telefono.trim().length < 5)
+      e.telefono = 'El teléfono no parece válido.';
     if (!datos.adminNombre.trim()) e.adminNombre = 'Ingresá tu nombre.';
     if (!datos.adminApellido.trim()) e.adminApellido = 'Ingresá tu apellido.';
     setErrores(e);
@@ -163,6 +166,7 @@ function RegistroForm() {
         <Field
           id="inmo-telefono"
           label="Teléfono"
+          optional
           type="tel"
           autoComplete="tel"
           value={datos.telefono}
@@ -220,6 +224,7 @@ function Field({
   placeholder,
   autoComplete,
   error,
+  optional,
 }: {
   id: string;
   label: string;
@@ -229,10 +234,14 @@ function Field({
   placeholder?: string;
   autoComplete?: string;
   error?: string;
+  optional?: boolean;
 }) {
   return (
     <div className="space-y-2">
-      <Label htmlFor={id}>{label}</Label>
+      <Label htmlFor={id}>
+        {label}
+        {optional && <span className="ml-1 font-normal text-muted-foreground">(opcional)</span>}
+      </Label>
       <Input
         id={id}
         type={type}

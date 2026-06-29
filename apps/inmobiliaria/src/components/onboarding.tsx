@@ -162,12 +162,13 @@ const STEPS: Step[] = [
     icon: CheckCircle2,
     iconBg: 'from-emerald-500 to-green-600',
     titulo: '¡A trabajar!',
-    descripcion: 'Ya conocés todo. Podés relanzar este tour desde Configuración cuando quieras.',
+    descripcion: 'El primer paso es cargar una propiedad con su contrato. Te lleva 2 minutos.',
     bullets: [
+      'Cargá tu primera propiedad y su inquilino',
       'Soporte por WhatsApp si te trabás',
-      'Las novedades aparecen en el inicio',
-      'Disfrutá menos tareas administrativas 🎯',
+      'Podés relanzar este tour desde Configuración',
     ],
+    cta: { label: 'Cargar mi primera propiedad', href: '/propiedades/nueva' },
   },
 ];
 
@@ -297,8 +298,15 @@ export function OnboardingInmo() {
         </div>
 
         <div className="space-y-2 pt-2">
-          {slide.cta && !esUltimo && (
-            <Button variant="outline" size="lg" className="w-full" onClick={irACTA}>
+          {/* En la última slide la CTA es la acción PRINCIPAL (cargar la primera
+              propiedad) → botón lleno. En las intermedias es secundaria (outline). */}
+          {slide.cta && (
+            <Button
+              variant={esUltimo ? 'default' : 'outline'}
+              size="lg"
+              className="w-full"
+              onClick={irACTA}
+            >
               {slide.cta.label}
               <ArrowRight className="h-4 w-4" />
             </Button>
@@ -310,8 +318,15 @@ export function OnboardingInmo() {
                 Anterior
               </Button>
             )}
-            <Button size="lg" className="flex-1" onClick={siguiente}>
-              {esUltimo ? '¡Listo!' : 'Siguiente'}
+            {/* En la última slide el primario es la CTA de arriba, así que acá
+                "Listo" sólo cierra el tour (botón quieto, ghost). */}
+            <Button
+              variant={esUltimo ? 'ghost' : 'default'}
+              size="lg"
+              className="flex-1"
+              onClick={siguiente}
+            >
+              {esUltimo ? 'Listo' : 'Siguiente'}
               {!esUltimo && <ArrowRight className="h-4 w-4" />}
             </Button>
           </div>
