@@ -738,6 +738,30 @@ function CargarContratoApiWizard() {
     [propiedades, propiedadId],
   );
 
+  // Encadenado desde "cargar propiedad": /contratos/nuevo?propiedad=<id> llega
+  // con la propiedad recién creada. La preseleccionamos y saltamos al paso del
+  // inquilino. Leemos de window (no useSearchParams) para no exigir Suspense en
+  // el export estático. Una sola vez, cuando ya cargaron las propiedades.
+  const preseleccionAplicada = useRef(false);
+  useEffect(() => {
+    if (preseleccionAplicada.current || cargando) return;
+    let pid = '';
+    try {
+      pid = new URLSearchParams(window.location.search).get('propiedad') ?? '';
+    } catch {
+      /* ignore */
+    }
+    if (!pid) {
+      preseleccionAplicada.current = true;
+      return;
+    }
+    if (disponibles.some((p) => p.propiedad.id === pid)) {
+      preseleccionAplicada.current = true;
+      setPropiedadId(pid);
+      setPaso(2);
+    }
+  }, [cargando, disponibles]);
+
   const incluyeExpensas =
     tipoContrato === 'ALQUILER_Y_EXPENSAS' || tipoContrato === 'SOLO_EXPENSAS';
   const requiereAlquiler = tipoContrato !== 'SOLO_EXPENSAS';

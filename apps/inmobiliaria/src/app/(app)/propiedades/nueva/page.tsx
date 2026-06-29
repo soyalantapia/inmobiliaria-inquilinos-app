@@ -6,10 +6,7 @@ import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
   Building2,
-  Camera,
   CheckCircle2,
-  ChevronDown,
-  ChevronUp,
   FileText,
   Home,
   Plus,
@@ -26,7 +23,6 @@ import { ConfirmDialog } from '@llave/ui/confirm-dialog';
 import { Input } from '@llave/ui/input';
 import { Label } from '@llave/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@llave/ui/select';
-import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
 import { Topbar } from '@/components/topbar';
 import {
@@ -78,9 +74,6 @@ const provincias = [
   'Tucumán',
 ] as const;
 
-type Moneda = 'ARS' | 'USD';
-type IndiceAjuste = 'ICL' | 'IPC' | 'CASA_PROPIA' | 'OTRO';
-
 interface PropietarioAsignado {
   /** UUID local en el form; no es el id del propietario. */
   rowId: string;
@@ -88,15 +81,6 @@ interface PropietarioAsignado {
   propietarioId: string;
   porcentaje: number;
 }
-
-const REQUISITOS_BASE = [
-  { id: 'garantia_propietaria', label: 'Garantía propietaria' },
-  { id: 'garante', label: 'Garante (recibo de sueldo)' },
-  { id: 'seguro_caucion', label: 'Seguro de caución' },
-  { id: 'deposito', label: 'Depósito (1 mes)' },
-  { id: 'recibo_sueldo', label: 'Recibo de sueldo del inquilino' },
-  { id: 'dni_frente_dorso', label: 'DNI frente y dorso' },
-];
 
 export default function NuevaPropiedadPage() {
   // El alta de propiedad ya está cableada al API: en prod hace POST /propiedades
@@ -123,7 +107,6 @@ function NuevaPropiedadForm() {
   // Características
   const [ambientes, setAmbientes] = useState('');
   const [m2, setM2] = useState('');
-  const [notas, setNotas] = useState('');
 
   // Propietarios (multi)
   const [propietariosExtra, setPropietariosExtra] = useState<PropietarioExtra[]>(
@@ -135,17 +118,11 @@ function NuevaPropiedadForm() {
   const [conDivision, setConDivision] = useState(false);
   const [nuevoPropOpen, setNuevoPropOpen] = useState(false);
 
-  // Contrato (opcional)
-  const [contratoActivado, setContratoActivado] = useState(false);
-  const [monto, setMonto] = useState('');
-  const [moneda, setMoneda] = useState<Moneda>('ARS');
-  const [fechaInicio, setFechaInicio] = useState('');
-  const [duracionMeses, setDuracionMeses] = useState('36');
-  const [periodicidadAjuste, setPeriodicidadAjuste] = useState('3'); // meses
-  const [indiceAjuste, setIndiceAjuste] = useState<IndiceAjuste>('ICL');
-  const [comisionPct, setComisionPct] = useState('5');
-  const [requisitos, setRequisitos] = useState<string[]>(['garantia_propietaria', 'recibo_sueldo']);
-  const [requisitosExtra, setRequisitosExtra] = useState('');
+  // El contrato (monto, vigencia, ajustes, comisión) NO se carga acá: el
+  // endpoint POST /propiedades sólo da de alta la propiedad + participaciones, y
+  // antes este form recolectaba el contrato pero en prod NO se persistía (trampa
+  // de valor). Ahora, al guardar, encadenamos al alta del contrato con la
+  // propiedad ya seleccionada (/contratos/nuevo?propiedad=<id>).
 
   // Flow
   const [confirmando, setConfirmando] = useState(false);
@@ -206,21 +183,12 @@ function NuevaPropiedadForm() {
   const propietariosValidos =
     propietariosVisibles.every((p) => !!p.propietarioId) && pctValido && !hayPropietarioDuplicado;
 
-  const contratoValido =
-    !contratoActivado ||
-    (Number(monto) > 0 &&
-      fechaInicio.length === 10 &&
-      Number(duracionMeses) > 0 &&
-      Number(periodicidadAjuste) > 0 &&
-      Number(comisionPct) >= 0);
-
   const formValido =
     !!tipo &&
     calle.trim().length >= 3 &&
     altura.trim().length >= 1 &&
     ciudad.trim().length >= 2 &&
-    propietariosValidos &&
-    contratoValido;
+    propietariosValidos;
 
   // Qué falta para poder cargar — así el botón deshabilitado no es un misterio.
   const motivosFaltantes: string[] = [];
@@ -231,7 +199,6 @@ function NuevaPropiedadForm() {
   if (!propietariosVisibles.every((p) => !!p.propietarioId)) motivosFaltantes.push('Asigná un propietario');
   if (!pctValido) motivosFaltantes.push(`La división tiene que sumar 100% (hoy suma ${totalPct}%)`);
   if (hayPropietarioDuplicado) motivosFaltantes.push('El mismo propietario no puede aparecer dos veces');
-  if (contratoActivado && !contratoValido) motivosFaltantes.push('Completá los datos del contrato (monto, fecha, duración)');
 
   // Acciones propietarios
   const agregarSlotPropietario = () => {
@@ -287,12 +254,6 @@ function NuevaPropiedadForm() {
     });
   };
 
-  const toggleRequisito = (id: string) => {
-    setRequisitos((prev) =>
-      prev.includes(id) ? prev.filter((r) => r !== id) : [...prev, id],
-    );
-  };
-
   const guardar = async () => {
     setEnviando(true);
 
@@ -336,9 +297,12 @@ function NuevaPropiedadForm() {
         toast({
           variant: 'success',
           title: '¡Propiedad cargada!',
-          description: 'Ya forma parte de tu cartera.',
+          description: 'Ahora cargale el alquiler para verla andando.',
         });
-        router.push(`/propiedades/${creada.id}`);
+        // Encadenamos al alta del contrato con la propiedad ya elegida: es el
+        // "momento ajá" (ver cobros/mora/agenda). Si todavía no hay inquilino,
+        // desde ahí puede cancelar y la propiedad ya quedó en su cartera.
+        router.push(`/contratos/nuevo?propiedad=${creada.id}`);
       } catch (err) {
         setEnviando(false);
         setConfirmando(false);
@@ -357,9 +321,7 @@ function NuevaPropiedadForm() {
     toast({
       variant: 'success',
       title: '¡Propiedad cargada!',
-      description: contratoActivado
-        ? 'Propiedad + contrato listos. Ahora podés invitar al inquilino.'
-        : 'Ya forma parte de tu cartera. Cuando tengas inquilino, cargale el contrato.',
+      description: 'Ya forma parte de tu cartera. Cuando tengas inquilino, cargale el contrato.',
     });
     router.push('/propiedades');
   };
@@ -445,7 +407,8 @@ function NuevaPropiedadForm() {
             <Card>
               <CardContent className="space-y-4 p-5">
                 <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                  Tipo de propiedad
+                  Tipo de propiedad{' '}
+                  <span aria-hidden="true" className="text-destructive">*</span>
                 </h3>
                 <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
                   {tipos.map((t) => {
@@ -592,29 +555,9 @@ function NuevaPropiedadForm() {
                     />
                   </div>
                 </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="notas" className="flex items-center gap-1.5">
-                    Notas internas
-                    <span className="text-[10px] font-normal text-muted-foreground">opcional</span>
-                  </Label>
-                  <Textarea
-                    id="notas"
-                    value={notas}
-                    onChange={(e) => setNotas(e.target.value)}
-                    placeholder="Ej: SUM en planta baja, parrilla, cochera fija nro 12..."
-                    rows={3}
-                  />
-                </div>
-
-                <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-dashed p-4 text-sm text-muted-foreground transition-colors hover:border-primary/40">
-                  <Camera className="h-5 w-5 text-primary" />
-                  <div>
-                    <p className="font-medium text-foreground">Subir foto principal (opcional)</p>
-                    <p className="text-xs">JPG o PNG, hasta 5 MB</p>
-                  </div>
-                  <input type="file" accept="image/*" className="hidden" />
-                </label>
+                {/* Foto y notas internas: removidas por ahora — el alta no las
+                    persiste (input de foto sin handler y notas no viajaban en el
+                    payload). Volverán cuando el backend las soporte. */}
               </CardContent>
             </Card>
 
@@ -666,6 +609,18 @@ function NuevaPropiedadForm() {
                   )}
                 </p>
 
+                {todosLosPropietarios.length === 0 ? (
+                  <div className="flex flex-col items-start gap-3 rounded-lg border border-dashed border-primary/40 bg-primary/5 p-4">
+                    <p className="text-sm">
+                      Toda propiedad necesita al menos un dueño asignado, y todavía
+                      no cargaste ninguno. Empecemos por ahí.
+                    </p>
+                    <Button type="button" onClick={() => setNuevoPropOpen(true)}>
+                      <UserPlus className="h-4 w-4" />
+                      Agregar el propietario
+                    </Button>
+                  </div>
+                ) : (
                 <div className="space-y-2">
                   {(conDivision ? asignados : asignados.slice(0, 1)).map((slot, idx) => (
                     <div
@@ -733,6 +688,7 @@ function NuevaPropiedadForm() {
                     </div>
                   ))}
                 </div>
+                )}
 
                 {conDivision && (
                   <div className="flex items-center justify-between">
@@ -752,205 +708,23 @@ function NuevaPropiedadForm() {
               </CardContent>
             </Card>
 
-            {/* Contrato (opcional) */}
-            <Card>
-              <CardContent className="p-0">
-                <button
-                  type="button"
-                  onClick={() => setContratoActivado((v) => !v)}
-                  aria-expanded={contratoActivado}
-                  className="flex w-full items-center justify-between gap-2 p-5 text-left"
-                >
-                  <div className="flex items-center gap-2">
-                    <div className="grid h-9 w-9 place-items-center rounded-md bg-primary/10 text-primary">
-                      <FileText className="h-4 w-4" />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-semibold">Datos del contrato</h3>
-                      <p className="text-xs text-muted-foreground">
-                        Si ya hay un alquiler firmado, cargá monto, vigencia, ajustes y comisión.
-                      </p>
-                    </div>
-                  </div>
-                  {contratoActivado ? (
-                    <ChevronUp className="h-4 w-4 text-muted-foreground" />
-                  ) : (
-                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                  )}
-                </button>
-
-                {contratoActivado && (
-                  <div className="space-y-5 border-t p-5">
-                    {/* Monto */}
-                    <div className="grid gap-3 md:grid-cols-[1fr_140px]">
-                      <div className="space-y-1.5">
-                        <Label htmlFor="monto">Alquiler mensual</Label>
-                        <div className="relative">
-                          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                            $
-                          </span>
-                          <Input
-                            id="monto"
-                            inputMode="numeric"
-                            value={monto}
-                            onChange={(e) =>
-                              setMonto(e.target.value.replace(/\D/g, '').slice(0, 12))
-                            }
-                            placeholder="480000"
-                            className="pl-7"
-                          />
-                        </div>
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label htmlFor="moneda">Moneda</Label>
-                        <Select value={moneda} onValueChange={(v) => setMoneda(v as Moneda)}>
-                          <SelectTrigger id="moneda">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="ARS">ARS — Pesos</SelectItem>
-                            <SelectItem value="USD">USD — Dólares</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-
-                    {/* Vigencia */}
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <div className="space-y-1.5">
-                        <Label htmlFor="fechaInicio">Inicio del contrato</Label>
-                        <Input
-                          id="fechaInicio"
-                          type="date"
-                          value={fechaInicio}
-                          onChange={(e) => setFechaInicio(e.target.value)}
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label htmlFor="duracion">Duración total</Label>
-                        <div className="flex gap-2">
-                          <Input
-                            id="duracion"
-                            inputMode="numeric"
-                            value={duracionMeses}
-                            onChange={(e) =>
-                              setDuracionMeses(e.target.value.replace(/\D/g, '').slice(0, 3))
-                            }
-                            placeholder="36"
-                            className="w-24"
-                          />
-                          <p className="grid flex-1 place-items-center rounded-md border bg-muted/40 px-3 text-xs text-muted-foreground">
-                            meses
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Ajustes */}
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <div className="space-y-1.5">
-                        <Label htmlFor="periodicidad">Ajuste cada</Label>
-                        <Select
-                          value={periodicidadAjuste}
-                          onValueChange={setPeriodicidadAjuste}
-                        >
-                          <SelectTrigger id="periodicidad">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="3">3 meses</SelectItem>
-                            <SelectItem value="4">4 meses</SelectItem>
-                            <SelectItem value="6">6 meses</SelectItem>
-                            <SelectItem value="12">12 meses</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label htmlFor="indice">Índice de ajuste</Label>
-                        <Select
-                          value={indiceAjuste}
-                          onValueChange={(v) => setIndiceAjuste(v as IndiceAjuste)}
-                        >
-                          <SelectTrigger id="indice">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="ICL">ICL (BCRA)</SelectItem>
-                            <SelectItem value="IPC">IPC (INDEC)</SelectItem>
-                            <SelectItem value="CASA_PROPIA">Casa Propia</SelectItem>
-                            <SelectItem value="OTRO">Otro / a convenir</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-
-                    {/* Comisión */}
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <div className="space-y-1.5">
-                        <Label htmlFor="comision">Comisión inmobiliaria</Label>
-                        <div className="relative">
-                          <Input
-                            id="comision"
-                            inputMode="numeric"
-                            value={comisionPct}
-                            onChange={(e) =>
-                              setComisionPct(e.target.value.replace(/[^\d.]/g, '').slice(0, 5))
-                            }
-                            placeholder="5"
-                            className="pr-8"
-                          />
-                          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
-                            %
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-muted-foreground">
-                          Sobre cada cobranza del propietario.
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Requisitos */}
-                    <div role="group" aria-labelledby="prop-requisitos-label" className="space-y-2">
-                      <p id="prop-requisitos-label" className="text-sm font-medium leading-none">Requisitos al inquilino</p>
-                      <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                        {REQUISITOS_BASE.map((r) => {
-                          const activo = requisitos.includes(r.id);
-                          return (
-                            <button
-                              key={r.id}
-                              type="button"
-                              aria-pressed={activo}
-                              onClick={() => toggleRequisito(r.id)}
-                              className={`flex items-center gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors ${
-                                activo
-                                  ? 'border-primary bg-primary/5 text-primary'
-                                  : 'border-border text-muted-foreground hover:border-primary/40'
-                              }`}
-                            >
-                              <span
-                                className={`grid h-4 w-4 shrink-0 place-items-center rounded border ${
-                                  activo
-                                    ? 'border-primary bg-primary text-primary-foreground'
-                                    : 'border-border'
-                                }`}
-                              >
-                                {activo && <CheckCircle2 className="h-3 w-3" />}
-                              </span>
-                              {r.label}
-                            </button>
-                          );
-                        })}
-                      </div>
-                      <Textarea
-                        aria-label="Otros requisitos o aclaraciones"
-                        value={requisitosExtra}
-                        onChange={(e) => setRequisitosExtra(e.target.value)}
-                        placeholder="Otros requisitos o aclaraciones..."
-                        rows={2}
-                      />
-                    </div>
-                  </div>
-                )}
+            {/* El contrato (monto, vigencia, ajustes, comisión) NO se carga acá:
+                este form sólo da de alta la propiedad + dueños. Antes recolectaba
+                el contrato y en prod NO se persistía (trampa de valor). Ahora, al
+                guardar, te llevamos al alta del contrato con la propiedad elegida. */}
+            <Card className="border-dashed">
+              <CardContent className="flex items-start gap-3 p-5">
+                <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-primary/10 text-primary">
+                  <FileText className="h-4 w-4" />
+                </div>
+                <div className="text-sm">
+                  <h3 className="font-semibold">El alquiler va en el próximo paso</h3>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Primero cargás la propiedad y su dueño. Apenas la guardes, te
+                    llevamos a cargar el contrato (monto, vigencia, ajustes) con esta
+                    propiedad ya seleccionada.
+                  </p>
+                </div>
               </CardContent>
             </Card>
           </div>
@@ -993,27 +767,6 @@ function NuevaPropiedadForm() {
                             .join(', ')
                     }
                   />
-                  {contratoActivado && (
-                    <>
-                      <ResumenRow
-                        label="Alquiler"
-                        value={monto ? `${moneda === 'USD' ? 'US$' : '$'} ${monto}` : '—'}
-                      />
-                      <ResumenRow
-                        label="Vigencia"
-                        value={
-                          fechaInicio
-                            ? `${fechaInicio} · ${duracionMeses}m`
-                            : '—'
-                        }
-                      />
-                      <ResumenRow
-                        label="Ajuste"
-                        value={`Cada ${periodicidadAjuste}m · ${indiceAjuste}`}
-                      />
-                      <ResumenRow label="Comisión" value={`${comisionPct || '0'}%`} />
-                    </>
-                  )}
                 </div>
 
                 <div
@@ -1066,7 +819,10 @@ function NuevaPropiedadForm() {
                   className="w-full"
                   disabled={!formValido}
                   title={formValido ? undefined : `Falta: ${motivosFaltantes.join(' · ')}`}
-                  onClick={() => setConfirmando(true)}
+                  // Sin salto de plan (caso típico de la 1ª propiedad) guardamos
+                  // directo: no metemos un diálogo de confirmación de costo cuando
+                  // no cambia la factura. El ConfirmDialog queda sólo para el salto.
+                  onClick={() => (haySaltoDePlan ? setConfirmando(true) : guardar())}
                 >
                   <CheckCircle2 className="h-4 w-4" />
                   Cargar propiedad

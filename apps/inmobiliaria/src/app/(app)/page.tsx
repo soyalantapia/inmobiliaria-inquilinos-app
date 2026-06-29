@@ -658,8 +658,10 @@ function BienvenidaBanner() {
  */
 function PrimerPasoCard() {
   const pasos = [
-    { n: 1, texto: 'Cargás tu primera propiedad y su contrato.' },
-    { n: 2, texto: 'Invitás al inquilino — le llega su acceso por mail.' },
+    // Mencionamos al dueño: el alta exige asignar 1 propietario (gate real del
+    // backend), así que lo anticipamos para que no sea una sorpresa a mitad.
+    { n: 1, texto: 'Cargás tu primera propiedad: dirección y dueño.' },
+    { n: 2, texto: 'Le sumás el alquiler (contrato) y el inquilino entra por mail.' },
     { n: 3, texto: 'Ves cobros, mora y agenda del mes en tu tablero.' },
   ];
   return (

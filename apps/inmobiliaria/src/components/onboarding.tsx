@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useRef, useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   ArrowLeft,
   ArrowRight,
@@ -21,6 +21,8 @@ import {
 } from 'lucide-react';
 import { Button } from '@llave/ui/button';
 import { cn } from '@llave/ui/cn';
+import { apiEnabled } from '@/lib/api/client';
+import { useDashboard } from '@/lib/api/hooks';
 
 // Tutorial guiado paso a paso del panel inmobiliaria. Misma mecánica que en
 // el inquilino: se muestra la primera vez, se persiste en localStorage,
@@ -177,40 +179,22 @@ const STEPS: Step[] = [
 
 export function OnboardingInmo() {
   const router = useRouter();
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState(0);
 
+  // El listener de "relanzar" se registra SIEMPRE (no sólo en `/`): el botón
+  // "Ver tutorial" vive en /configuracion. La AUTO-apertura, en cambio, vive en
+  // <AutoAbrirTour> (sólo se monta en `/`) porque necesita saber si la cuenta
+  // tiene propiedades — en una cuenta NUEVA (vacía) el dashboard muestra el
+  // "primer paso" y el tour de 11 slides lo tapaba.
   useEffect(() => {
     if (typeof window === 'undefined') return;
-
-    // El listener de "relanzar" se registra SIEMPRE (no sólo en `/`): el botón
-    // "Ver tutorial" vive en /configuracion. Antes estaba detrás del guard de
-    // pathname, así que en /configuracion el evento no tenía a quién avisar y el
-    // botón no hacía nada.
     const onRelaunch = () => {
       setStep(0);
       setOpen(true);
     };
     window.addEventListener(RELAUNCH_EVENT, onRelaunch);
-
-    // Auto-apertura SÓLO en `/` (dashboard): el tour explica el panel, no tiene
-    // sentido taparlo en el wizard de "Cargar contrato" o el detalle de un
-    // reclamo. Si quedó a mitad (refresh), reabrimos en el paso guardado en vez
-    // de perder el resto; el flag "completado" se escribe al CERRAR, no al abrir.
-    if (window.location.pathname === '/') {
-      try {
-        if (!window.localStorage.getItem(STORAGE_KEY)) {
-          const guardado = Number(window.localStorage.getItem(STEP_KEY) ?? '0');
-          if (Number.isFinite(guardado) && guardado > 0) {
-            setStep(Math.min(guardado, STEPS.length - 1));
-          }
-          setOpen(true);
-        }
-      } catch {
-        // ignore
-      }
-    }
-
     return () => window.removeEventListener(RELAUNCH_EVENT, onRelaunch);
   }, []);
 
@@ -260,14 +244,24 @@ export function OnboardingInmo() {
     };
   }, [open]);
 
-  if (!open) return null;
-
   const slide = STEPS[step]!;
   const Icon = slide.icon;
   const esUltimo = step === STEPS.length - 1;
   const esPrimero = step === 0;
 
   return (
+    <>
+      {/* Auto-apertura del tour: sólo en `/` y sólo si la cuenta NO está vacía
+          (ver AutoAbrirTour). Se monta acá para no taparlo en otras pantallas. */}
+      {pathname === '/' && (
+        <AutoAbrirTour
+          onAbrir={(s) => {
+            setStep(s);
+            setOpen(true);
+          }}
+        />
+      )}
+      {open && (
     <div className="fixed inset-0 z-50 flex animate-fade-in flex-col items-center justify-center bg-background/95 p-6 backdrop-blur md:p-10">
       <button
         type="button"
@@ -350,7 +344,9 @@ export function OnboardingInmo() {
               {!esUltimo && <ArrowRight className="h-4 w-4" />}
             </Button>
           </div>
-          {!esUltimo && esPrimero && (
+          {/* "Saltar tour" en TODAS las slides menos la última (antes sólo en la
+              primera; desde la 2 había que descubrir la X). */}
+          {!esUltimo && (
             <button
               type="button"
               onClick={cerrar}
@@ -362,7 +358,37 @@ export function OnboardingInmo() {
         </div>
       </div>
     </div>
+      )}
+    </>
   );
+}
+
+/**
+ * Auto-apertura del tour. Vive en su propio componente (sólo montado en `/`)
+ * para que la consulta de "cuántas propiedades tiene la cuenta" no se dispare en
+ * todas las pantallas. NO auto-abre si la cuenta está vacía: ahí el dashboard
+ * muestra el "primer paso" (cargar propiedad) y el tour de 11 slides lo tapaba.
+ */
+function AutoAbrirTour({ onAbrir }: { onAbrir: (step: number) => void }) {
+  const { propiedadesTotal, cargando } = useDashboard();
+  const hecho = useRef(false);
+
+  useEffect(() => {
+    if (hecho.current || cargando) return;
+    hecho.current = true;
+    // En prod, cuenta vacía (0 propiedades) → no tapamos el primer paso. En demo
+    // (!apiEnabled) propiedadesTotal viene de los mocks (>0) → abre como antes.
+    if (apiEnabled && propiedadesTotal === 0) return;
+    try {
+      if (window.localStorage.getItem(STORAGE_KEY)) return;
+      const guardado = Number(window.localStorage.getItem(STEP_KEY) ?? '0');
+      onAbrir(Number.isFinite(guardado) && guardado > 0 ? Math.min(guardado, STEPS.length - 1) : 0);
+    } catch {
+      // ignore
+    }
+  }, [cargando, propiedadesTotal, onAbrir]);
+
+  return null;
 }
 
 // Helper para que /configuracion u otra pantalla pueda relanzar el tour.
