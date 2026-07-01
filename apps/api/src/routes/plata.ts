@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../db.js';
 import { exigirContratoActivo, requireContratoAcceso, requireInquilino, requireUsuario } from '../auth/guards.js';
 import { verificarPinUsuario } from '../auth/pin.js';
-import { devengarTodosLosTenants, generarLiquidacionesContrato } from '../lib/liquidaciones.js';
+import { devengarTodosLosTenants, generarLiquidacionesContrato, marcarLiquidacionesVencidas } from '../lib/liquidaciones.js';
 import { conSaldo, montoPagadoPorLiquidacion } from '../lib/saldos.js';
 import { registrarEvento } from '../lib/auditoria.js';
 import { enviarInvitacionInquilino } from '../mailer.js';
@@ -87,7 +87,9 @@ export async function plataRoutes(app: FastifyInstance) {
       // si falla a la mitad, y un reintento completa lo que falte.
       liquidacionesNuevas += await generarLiquidacionesContrato(prisma, c);
     }
-    return { contratosProcesados: contratos.length, liquidacionesNuevas };
+    // Marca vencidas las liquidaciones del tenant cuyo vencimiento ya pasó (mora).
+    const liquidacionesVencidas = await marcarLiquidacionesVencidas(prisma, u.inmobiliariaId);
+    return { contratosProcesados: contratos.length, liquidacionesNuevas, liquidacionesVencidas };
   });
 
   // Disparo GLOBAL del devengo (TODAS las inmobiliarias). Lo usa un cron externo
@@ -223,9 +225,22 @@ export async function plataRoutes(app: FastifyInstance) {
     const body = z.object({ pin: z.string().optional() }).parse(request.body ?? {});
     if (!(await verificarPin(u.userId, body.pin, reply))) return;
 
-    const pago = await prisma.pago.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
+    const pago = await prisma.pago.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      include: { contrato: { select: { estado: true } } },
+    });
     if (!pago) return reply.code(404).send({ message: 'Pago inexistente' });
     if (pago.estado !== 'INFORMADO') return reply.code(409).send({ message: 'El pago ya fue decidido' });
+    // No conciliar un pago cuyo contrato ya no está ACTIVO: `informar` bloquea los
+    // pagos nuevos sobre un contrato finalizado (exigirContratoActivo), pero un pago
+    // INFORMADO viejo podía validarse DESPUÉS de finalizar el contrato, reabriendo
+    // el ciclo de plata de un contrato muerto (marca la liq PAGADO, entra a
+    // rendición). Lo cortamos acá con un 409 claro.
+    if (pago.contrato && pago.contrato.estado !== 'ACTIVO') {
+      return reply.code(409).send({
+        message: 'El contrato ya no está activo — no se puede conciliar este pago. Revisá el estado del contrato.',
+      });
+    }
 
     // Atómico:
     //  1) La transición INFORMADO→CONCILIADO se hace con updateMany condicionado

@@ -104,16 +104,43 @@ export async function generarLiquidacionesContrato(
 }
 
 /**
+ * Marca VENCIDO las liquidaciones PENDIENTE cuyo vencimiento ya pasó.
+ *
+ * El estado se congelaba al CREAR (computarLiquidacionesContrato:67, `venc < now`)
+ * y NADA lo re-evaluaba después: una liquidación devengada con vencimiento futuro
+ * nacía PENDIENTE y NUNCA pasaba a VENCIDO al vencer, así que los morosos reales
+ * figuraban PENDIENTE y la cobranza no los veía. Este barrido (idempotente) lo
+ * corrige. Se dispara junto al devengo (cron in-process + endpoint del panel).
+ * NO toca PARCIAL (mantiene el dato "pagó una parte"); la mora de un parcial
+ * vencido la resuelve la derivación on-read de estadoPagoActual (core.ts).
+ * `inmobiliariaId` opcional: acota el barrido al tenant (disparo del panel).
+ */
+export async function marcarLiquidacionesVencidas(
+  tx: TxOrClient,
+  inmobiliariaId?: string,
+): Promise<number> {
+  const res = await tx.liquidacion.updateMany({
+    where: {
+      estado: 'PENDIENTE',
+      fechaVencimiento: { lt: new Date() },
+      ...(inmobiliariaId ? { inmobiliariaId } : {}),
+    },
+    data: { estado: 'VENCIDO' },
+  });
+  return res.count;
+}
+
+/**
  * Devenga (top-up) las liquidaciones de TODOS los contratos ACTIVO de TODAS las
  * inmobiliarias. Es la versión global (no tenant-scopeada) que dispara el cron:
  * el endpoint POST /liquidaciones/devengar solo cubre el tenant del usuario, y
  * sin un disparo periódico global cada contrato se queda sin liquidaciones a
  * partir del 2º mes. IDEMPOTENTE (skipDuplicates) → seguro de repetir y seguro
- * aunque corran dos réplicas a la vez.
+ * aunque corran dos réplicas a la vez. Además marca vencidas (top-up + mora).
  */
 export async function devengarTodosLosTenants(
   prisma: PrismaClient,
-): Promise<{ contratosProcesados: number; liquidacionesNuevas: number }> {
+): Promise<{ contratosProcesados: number; liquidacionesNuevas: number; liquidacionesVencidas: number }> {
   const contratos = await prisma.contrato.findMany({
     where: { estado: 'ACTIVO' },
     select: {
@@ -131,5 +158,7 @@ export async function devengarTodosLosTenants(
   for (const c of contratos) {
     liquidacionesNuevas += await generarLiquidacionesContrato(prisma, c);
   }
-  return { contratosProcesados: contratos.length, liquidacionesNuevas };
+  // Tras devengar, marcamos vencidas las que ya pasaron su vencimiento.
+  const liquidacionesVencidas = await marcarLiquidacionesVencidas(prisma);
+  return { contratosProcesados: contratos.length, liquidacionesNuevas, liquidacionesVencidas };
 }
