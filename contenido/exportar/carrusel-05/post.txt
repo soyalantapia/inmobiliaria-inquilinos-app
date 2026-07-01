@@ -1,0 +1,23 @@
+Fin de mes en una inmobiliaria: 20 propietarios esperando su rendición y vos con la calculadora abierta.
+
+Lo raro es que cobrar el alquiler no es el problema.
+
+El problema es armar la rendición. Por cada contrato tenés que resolver cuatro cuentas: cuánto se cobró, cuánto es tu comisión, qué gastos hubo y cuánto neto le queda al propietario.
+
+Multiplicá eso por toda tu cartera. Sumale que algunos contratos están en pesos y otros en dólares.
+
+Un número mal copiado y arrancás de cero.
+
+¿Por qué duele tanto? Porque los datos viven dispersos. Un recibo en un lado, un gasto en el chat, el pago en otra planilla. A fin de mes rearmás todo a mano.
+
+La salida no es trabajar más rápido. Es cambiar el momento: cargar el cobro y los gastos cuando pasan, no todos juntos el día 30. Que la comisión y el neto se calculen solos, por contrato y por moneda. Así la rendición sale lista, no se recalcula.
+
+Eso es lo que hacemos en My Alquiler: cada cobro, comisión y gasto queda en un lugar y la rendición al propietario sale armada.
+
+¿Cuánto tiempo te lleva hoy cerrar las rendiciones del mes? Contame en los comentarios.
+
+Si querés ver cómo quedaría tu cierre en orden, escribime.
+
+Tu alquiler, en orden.
+
+#Inmobiliarias #GestionDeAlquileres #PropTech #AdministracionDePropiedades #RealEstateAR
