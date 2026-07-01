@@ -83,6 +83,25 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   return (await res.json()) as T;
 }
 
+/**
+ * URL absoluta y AUTENTICADA de un archivo servido por el backend
+ * (`/uploads/<tenant>/<name>`), lista para un `<img src>` / `<a href>`.
+ *
+ * Un `<img>` no puede mandar el header Authorization, así que el endpoint
+ * GET /uploads acepta el token por query (`?token=`). Antes se renderizaba la
+ * `fotoUrl` cruda (`/uploads/...`), que es RELATIVA → el browser la pedía al
+ * host del panel (admin.myalquiler.com), no al de la API, y encima sin token:
+ * 404/401 → foto rota. Una URL ya absoluta (http/https/data/blob) se devuelve
+ * tal cual. Devuelve undefined si no hay url.
+ */
+export function urlDeArchivo(url: string | null | undefined): string | undefined {
+  if (!url) return undefined;
+  if (/^(https?:|data:|blob:)/i.test(url)) return url;
+  const token = getToken();
+  const sep = url.includes('?') ? '&' : '?';
+  return `${API_URL}${url}${token ? `${sep}token=${encodeURIComponent(token)}` : ''}`;
+}
+
 export interface ArchivoSubido {
   url: string;
   nombreArchivo: string;

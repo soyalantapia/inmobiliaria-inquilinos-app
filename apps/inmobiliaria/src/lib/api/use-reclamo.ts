@@ -43,6 +43,7 @@ interface ReclamoDetalleApi {
   propiedad: { id: string; direccion: string; ciudad: string } | null;
   contrato: {
     id: string;
+    fechaInicio: string | null;
     inquilinoTitular: {
       id: string;
       nombre: string;
@@ -83,6 +84,7 @@ function mapReclamo(r: ReclamoDetalleApi): Reclamo {
     resolucion: r.resolucion,
     createdAt: r.createdAt,
     resueltoAt: r.resueltoAt,
+    contratoDesde: r.contrato?.fechaInicio ?? null,
     eventos: (r.eventos ?? []).map((e) => ({
       id: e.id,
       tipo: e.tipo,

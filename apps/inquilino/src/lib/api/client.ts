@@ -138,6 +138,21 @@ export async function apiFetchPersona<T>(path: string, init: RequestInit = {}): 
   return (await res.json()) as T;
 }
 
+/**
+ * URL absoluta y AUTENTICADA de un archivo del backend (`/uploads/<tenant>/<name>`)
+ * para un `<img src>`. El endpoint acepta el token por query (`?token=`) porque un
+ * `<img>` no puede mandar Authorization. Antes se usaba la url cruda (relativa) →
+ * pegaba al host del front sin token → 404/401 (foto rota). Absolutas/data/blob
+ * pasan tal cual; undefined si no hay url.
+ */
+export function urlDeArchivo(url: string | null | undefined): string | undefined {
+  if (!url) return undefined;
+  if (/^(https?:|data:|blob:)/i.test(url)) return url;
+  const token = getToken();
+  const sep = url.includes('?') ? '&' : '?';
+  return `${API_URL}${url}${token ? `${sep}token=${encodeURIComponent(token)}` : ''}`;
+}
+
 export interface ArchivoSubido {
   url: string;
   nombreArchivo: string;

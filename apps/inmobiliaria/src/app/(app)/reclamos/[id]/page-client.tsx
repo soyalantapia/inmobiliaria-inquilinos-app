@@ -37,6 +37,7 @@ import {
   categoriaIcono,
   categoriaLabel,
   estadoConfig,
+  tiempoEnPropiedad,
   tiempoRelativo,
   urgenciaConfig,
 } from '@/lib/reclamos-config';
@@ -45,7 +46,7 @@ import {
   asignarOperador,
   cambiarEstado,
 } from '@/lib/reclamos-store';
-import { apiEnabled } from '@/lib/api/client';
+import { apiEnabled, urlDeArchivo } from '@/lib/api/client';
 import { useReclamo } from '@/lib/api/use-reclamo';
 import { mockUser } from '@/lib/auth';
 import type { Reclamo } from '@/lib/types';
@@ -308,12 +309,22 @@ export default function DetalleReclamoPage() {
                       {categoriaLabel[reclamo.categoria]} · {reclamo.direccion} ·{' '}
                       {tiempoRelativo(reclamo.createdAt)}
                     </p>
-                    <Link
-                      href={`/contratos/${reclamo.contratoId}`}
-                      className="inline-block text-xs font-medium text-primary hover:underline"
-                    >
-                      Ver contrato →
-                    </Link>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                      {tiempoEnPropiedad(reclamo.contratoDesde) && (
+                        <span className="text-xs text-muted-foreground">
+                          🏠 En la propiedad hace{' '}
+                          <span className="font-medium text-foreground">
+                            {tiempoEnPropiedad(reclamo.contratoDesde)}
+                          </span>
+                        </span>
+                      )}
+                      <Link
+                        href={`/contratos/${reclamo.contratoId}`}
+                        className="inline-block text-xs font-medium text-primary hover:underline"
+                      >
+                        Ver contrato →
+                      </Link>
+                    </div>
                   </div>
                 </div>
                 <Separator />
@@ -322,7 +333,7 @@ export default function DetalleReclamoPage() {
                   <div className="rounded-md border bg-muted/30 p-2">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src={reclamo.fotoUrl}
+                      src={urlDeArchivo(reclamo.fotoUrl)}
                       alt="Foto del inquilino"
                       className="max-h-80 w-full rounded object-contain"
                     />

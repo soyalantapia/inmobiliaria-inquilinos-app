@@ -64,3 +64,24 @@ export function tiempoRelativo(iso: string): string {
     ? `${fecha.getDate()} ${mes}`
     : `${fecha.getDate()} ${mes} ${fecha.getFullYear()}`;
 }
+
+/**
+ * Antigüedad del inquilino en la propiedad a partir de la fecha de inicio del
+ * contrato: "1 año y 2 meses", "8 meses", "20 días". Devuelve null si no hay
+ * fecha o es futura (contrato que aún no arrancó). Pensado para el reclamo, para
+ * dar contexto de cuánto hace que vive ahí.
+ */
+export function tiempoEnPropiedad(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const inicio = new Date(iso).getTime();
+  if (Number.isNaN(inicio)) return null;
+  const dias = Math.floor((Date.now() - inicio) / 86_400_000);
+  if (dias < 0) return null;
+  if (dias < 31) return `${dias} día${dias === 1 ? '' : 's'}`;
+  const meses = Math.floor(dias / 30);
+  if (meses < 12) return `${meses} mes${meses === 1 ? '' : 'es'}`;
+  const anios = Math.floor(meses / 12);
+  const mesesRest = meses % 12;
+  const aStr = `${anios} año${anios === 1 ? '' : 's'}`;
+  return mesesRest === 0 ? aStr : `${aStr} y ${mesesRest} mes${mesesRest === 1 ? '' : 'es'}`;
+}

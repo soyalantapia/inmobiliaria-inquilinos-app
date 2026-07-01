@@ -92,6 +92,9 @@ export interface Reclamo {
   createdAt: string;
   resueltoAt: string | null;
   eventos: EventoReclamo[];
+  /** Fecha de inicio del contrato del inquilino — para mostrar hace cuánto vive
+   *  en la propiedad (antigüedad). Puede faltar en datos viejos/demo. */
+  contratoDesde?: string | null;
   /** Clasificación que decide quién paga el arreglo. */
   clasificacion?: ClasificacionReclamo | null;
   /** Profesional externo que el admin asignó al reclamo (de la red curada). */

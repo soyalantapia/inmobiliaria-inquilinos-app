@@ -24,7 +24,7 @@ import { NavBar } from '@/components/nav-bar';
 import { RatingReclamoCard } from '@/components/rating-reclamo';
 import { ReclamoTimeline } from '@/components/reclamo-timeline';
 import { inquilinoActual } from '@/lib/mock-data';
-import { apiEnabled } from '@/lib/api/client';
+import { apiEnabled, urlDeArchivo } from '@/lib/api/client';
 import { useMiContrato } from '@/lib/api/hooks';
 import { useMisReclamos } from '@/lib/api/use-mis-reclamos';
 import {
@@ -434,7 +434,7 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
             <div className="rounded-md border bg-muted/30 p-2">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={reclamo.fotoUrl}
+                src={urlDeArchivo(reclamo.fotoUrl)}
                 alt="Foto adjunta"
                 className="max-h-72 w-full rounded object-contain"
               />

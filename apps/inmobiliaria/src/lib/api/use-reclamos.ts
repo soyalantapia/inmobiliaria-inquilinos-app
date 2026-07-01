@@ -27,6 +27,7 @@ interface ReclamoApi {
   propiedad: { id: string; direccion: string; ciudad: string } | null;
   contrato: {
     id: string;
+    fechaInicio: string | null;
     inquilinoTitular: { id: string; nombre: string; apellido: string | null; telefono: string | null } | null;
   } | null;
   profesional: { id: string; nombre: string; categoria: string; telefono: string | null; rating: number } | null;
@@ -50,6 +51,7 @@ function mapReclamo(r: ReclamoApi): Reclamo {
     createdAt: r.createdAt,
     resueltoAt: r.resueltoAt,
     eventos: [],
+    contratoDesde: r.contrato?.fechaInicio ?? null,
     clasificacion: r.clasificacion ?? null,
     profesionalAsignadoId: r.profesional?.id ?? null,
     profesionalAsignadoNombre: r.profesional?.nombre ?? null,

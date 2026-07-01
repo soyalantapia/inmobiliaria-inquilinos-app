@@ -187,6 +187,7 @@ export async function operacionRoutes(app: FastifyInstance) {
         contrato: {
           select: {
             id: true,
+            fechaInicio: true,
             inquilinoTitular: { select: { id: true, nombre: true, apellido: true, telefono: true } },
           },
         },
@@ -208,6 +209,7 @@ export async function operacionRoutes(app: FastifyInstance) {
         contrato: {
           select: {
             id: true,
+            fechaInicio: true,
             inquilinoTitular: { select: { id: true, nombre: true, apellido: true, telefono: true, email: true } },
           },
         },
@@ -596,6 +598,44 @@ export async function operacionRoutes(app: FastifyInstance) {
       },
       orderBy: [{ rating: 'desc' }, { nombre: 'asc' }],
     });
+  });
+
+  // Alta de profesional. Faltaba por completo: el panel "creaba" el profesional
+  // sólo en localStorage (profesionales-storage), que en prod se ignora porque la
+  // lista viene del API → parecía que "no dejaba cargar". Reusamos la capacidad
+  // `profesional.asignar` (gestión de la red, ADMIN+OPERADOR) para no tocar el
+  // registro de permisos. Scopeado a la inmobiliaria del usuario.
+  app.post('/profesionales', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'profesional.asignar');
+    if (!u) return;
+    const body = z
+      .object({
+        nombre: z.string().trim().min(2),
+        categoria: z.enum(['PLOMERO', 'ELECTRICISTA', 'GASISTA', 'CERRAJERO', 'PINTOR', 'TECNICO_AC', 'FLETE']),
+        telefono: z.string().trim().min(3),
+        zona: z.string().trim().optional(),
+        email: z.string().trim().email().optional().or(z.literal('')),
+        notas: z.string().trim().max(500).optional(),
+      })
+      .safeParse(request.body ?? {});
+    if (!body.success) {
+      return reply.code(400).send({
+        message: 'Faltan datos del profesional: nombre, categoría y teléfono son obligatorios.',
+      });
+    }
+    const d = body.data;
+    const prof = await prisma.profesional.create({
+      data: {
+        inmobiliariaId: u.inmobiliariaId,
+        nombre: d.nombre,
+        categoria: d.categoria,
+        telefono: d.telefono,
+        zona: d.zona ?? '',
+        email: d.email ? d.email : null,
+        notas: d.notas ? d.notas : null,
+      },
+    });
+    return reply.code(201).send(prof);
   });
 
   // ===== Consorcios =====

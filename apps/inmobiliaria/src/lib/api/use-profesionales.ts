@@ -64,3 +64,34 @@ export function useProfesionales(): {
   if (q.isError) return { profesionales: [], cargando: false, deApi: true };
   return { profesionales: q.data ?? [], cargando: q.isPending, deApi: true };
 }
+
+/** Datos que la pantalla junta en el form para dar de alta un profesional. */
+export interface NuevoProfesionalInput {
+  nombre: string;
+  categoria: CategoriaProfesional;
+  telefono: string;
+  zona?: string;
+  email?: string | null;
+  notas?: string | null;
+}
+
+/**
+ * Alta real contra POST /profesionales (prod). Antes el panel sólo escribía en
+ * localStorage (ignorado en prod), así que el profesional nunca se persistía.
+ * El caller invalida ['profesionales'] para que aparezca en la lista y en el
+ * selector de "asignar" del reclamo.
+ */
+export async function crearProfesionalApi(data: NuevoProfesionalInput): Promise<void> {
+  await ensureApiSession();
+  await apiFetch('/profesionales', {
+    method: 'POST',
+    body: JSON.stringify({
+      nombre: data.nombre.trim(),
+      categoria: data.categoria,
+      telefono: data.telefono.trim(),
+      ...(data.zona && data.zona.trim() ? { zona: data.zona.trim() } : {}),
+      ...(data.email && data.email.trim() ? { email: data.email.trim() } : {}),
+      ...(data.notas && data.notas.trim() ? { notas: data.notas.trim() } : {}),
+    }),
+  });
+}

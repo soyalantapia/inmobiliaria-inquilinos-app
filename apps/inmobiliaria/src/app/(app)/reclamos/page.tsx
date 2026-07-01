@@ -12,6 +12,7 @@ import {
   categoriaIcono,
   categoriaLabel,
   estadoConfig,
+  tiempoEnPropiedad,
   tiempoRelativo,
   urgenciaConfig,
 } from '@/lib/reclamos-config';
@@ -188,7 +189,7 @@ export default function ReclamosPage() {
               }`}
             >
               {slaCounters.vencidos > 0
-                ? `${slaCounters.vencidos} reclamo${slaCounters.vencidos === 1 ? '' : 's'} fuera del SLA`
+                ? `${slaCounters.vencidos} reclamo${slaCounters.vencidos === 1 ? '' : 's'} sin resolver a tiempo`
                 : `${slaCounters.porVencer} reclamo${slaCounters.porVencer === 1 ? '' : 's'} por vencer pronto`}
             </span>
             <ChevronRight
@@ -268,7 +269,7 @@ function ReclamoRow({ reclamo }: { reclamo: Reclamo }) {
             className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${ESTADO_SLA_COLOR[sla.estado]}`}
           >
             <Clock className="h-3 w-3" />
-            SLA · {ESTADO_SLA_LABEL[sla.estado]}
+            {ESTADO_SLA_LABEL[sla.estado]}
           </span>
         </div>
         <p className="line-clamp-2 text-sm text-muted-foreground">{reclamo.descripcion}</p>
@@ -278,6 +279,12 @@ function ReclamoRow({ reclamo }: { reclamo: Reclamo }) {
           <span>{reclamo.direccion}</span>
           <span>·</span>
           <span>{tiempoRelativo(reclamo.createdAt)}</span>
+          {tiempoEnPropiedad(reclamo.contratoDesde) && (
+            <>
+              <span>·</span>
+              <span>🏠 vive acá hace {tiempoEnPropiedad(reclamo.contratoDesde)}</span>
+            </>
+          )}
           {reclamo.asignadoA && (
             <>
               <span>·</span>

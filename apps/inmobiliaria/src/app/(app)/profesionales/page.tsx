@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Droplets,
   Flame,
@@ -61,7 +62,7 @@ import {
   listarProfesionalesAdmin,
   toggleActivo,
 } from '@/lib/profesionales-storage';
-import { useProfesionales } from '@/lib/api/use-profesionales';
+import { crearProfesionalApi, useProfesionales } from '@/lib/api/use-profesionales';
 import { apiEnabled } from '@/lib/api/client';
 import { listarReclamos } from '@/lib/reclamos-store';
 import {
@@ -86,9 +87,12 @@ type Filtro = 'TODOS' | CategoriaProfesional;
 export default function ProfesionalesAdminPage() {
   // Lista real desde el API (GET /profesionales) o el store local en demo.
   const { profesionales, cargando, deApi } = useProfesionales();
-  // En modo API todavía no hay POST/PATCH/DELETE de profesional: las altas,
-  // ediciones y bajas se gatean a demo para no escribir mock en producción.
+  const qc = useQueryClient();
+  // El ALTA ya va al API real (POST /profesionales). Edición y baja todavía no
+  // tienen endpoint: se gatean a demo (`puedeMutar`) para no escribir mock en prod.
   const puedeMutar = !deApi;
+  // En prod el alta usa el API; en demo, el store local. Ambos habilitan el form.
+  const puedeCrear = puedeMutar || deApi;
   const [hidratado, setHidratado] = useState(false);
   const [filtro, setFiltro] = useState<Filtro>('TODOS');
   const [soloActivos, setSoloActivos] = useState(true);
@@ -162,7 +166,35 @@ export default function ProfesionalesAdminPage() {
     return (valido.reduce((a, b) => a + b, 0) / valido.length).toFixed(1);
   }, [lista, califsPorProf]);
 
-  const handleGuardar = (data: Omit<ProfesionalAdmin, 'id' | 'rating' | 'cantTrabajos' | 'ultimoTrabajo' | 'activo'>) => {
+  const handleGuardar = async (
+    data: Omit<ProfesionalAdmin, 'id' | 'rating' | 'cantTrabajos' | 'ultimoTrabajo' | 'activo'>,
+  ) => {
+    // ALTA en prod → API real (POST /profesionales). Antes esto pasaba por
+    // localStorage con puedeMutar=!deApi → en prod era un no-op silencioso.
+    if (!editando && deApi) {
+      try {
+        await crearProfesionalApi({
+          nombre: data.nombre,
+          categoria: data.categoria,
+          telefono: data.telefono,
+          zona: data.zona,
+          email: data.email,
+          notas: data.notas,
+        });
+        await qc.invalidateQueries({ queryKey: ['profesionales'] });
+        toast({ title: 'Profesional agregado' });
+        setAbrirForm(false);
+        setEditando(null);
+      } catch (e) {
+        toast({
+          variant: 'destructive',
+          title: 'No se pudo agregar el profesional',
+          description: e instanceof Error ? e.message : 'Probá de nuevo en un momento.',
+        });
+      }
+      return;
+    }
+    // Edición y modo demo: store local (editar/eliminar contra API aún sin endpoint).
     if (!puedeMutar) return;
     if (editando) {
       actualizarProfesional(editando.id, data);
@@ -204,8 +236,7 @@ export default function ProfesionalesAdminPage() {
         </div>
         <Button
           onClick={() => { setEditando(null); setAbrirForm(true); }}
-          disabled={!puedeMutar}
-          title={puedeMutar ? undefined : 'Próximamente'}
+          disabled={!puedeCrear}
         >
           <Plus className="h-4 w-4" />
           Agregar profesional
