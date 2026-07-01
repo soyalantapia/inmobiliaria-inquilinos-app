@@ -1729,6 +1729,9 @@ model ReclamoEvento {
   tipo           TipoEventoReclamo
   autor          String // 'Profesional' al cerrar desde visita
   contenido      String?
+  // Adjunto opcional de un mensaje (foto/archivo subido a /uploads). Habilita la
+  // conversación con adjuntos entre inmobiliaria e inquilino dentro del reclamo.
+  adjuntoUrl     String?
   fecha          DateTime          @default(now())
 
   @@index([inmobiliariaId])

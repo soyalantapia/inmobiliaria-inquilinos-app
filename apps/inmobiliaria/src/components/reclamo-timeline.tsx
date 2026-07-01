@@ -13,6 +13,9 @@ import {
 import { cn } from '@llave/ui/cn';
 import type { EventoReclamo, TipoEventoReclamo } from '@/lib/types';
 import { tiempoRelativo } from '@/lib/reclamos-config';
+import { urlDeArchivo } from '@/lib/api/client';
+
+const esImagen = (url: string) => /\.(jpe?g|png|webp|gif|heic)$/i.test(url);
 
 const iconForTipo: Record<TipoEventoReclamo, LucideIcon> = {
   CREADO: Plus,
@@ -85,16 +88,34 @@ export function ReclamoTimeline({ eventos }: { eventos: EventoReclamo[] }) {
               {ev.contenido && !esMensaje && ev.tipo !== 'ASIGNADO' && (
                 <p className="text-sm text-muted-foreground">{ev.contenido}</p>
               )}
-              {esMensaje && ev.contenido && (
+              {esMensaje && (ev.contenido || ev.adjuntoUrl) && (
                 <div
                   className={cn(
-                    'rounded-lg px-3 py-2 text-sm',
+                    'space-y-2 rounded-lg px-3 py-2 text-sm',
                     desdeInmo
                       ? 'bg-primary text-primary-foreground'
                       : 'bg-muted text-foreground',
                   )}
                 >
-                  {ev.contenido}
+                  {ev.contenido && <p className="whitespace-pre-wrap break-words">{ev.contenido}</p>}
+                  {ev.adjuntoUrl &&
+                    (esImagen(ev.adjuntoUrl) ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={urlDeArchivo(ev.adjuntoUrl)}
+                        alt="Adjunto del mensaje"
+                        className="max-h-60 w-full rounded object-contain"
+                      />
+                    ) : (
+                      <a
+                        href={urlDeArchivo(ev.adjuntoUrl)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-xs underline"
+                      >
+                        Ver archivo adjunto
+                      </a>
+                    ))}
                 </div>
               )}
             </div>

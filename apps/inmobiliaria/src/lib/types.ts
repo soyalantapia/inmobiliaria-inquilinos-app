@@ -74,6 +74,8 @@ export interface EventoReclamo {
   tipo: TipoEventoReclamo;
   autor: string;
   contenido: string | null;
+  /** Adjunto opcional del mensaje (foto/archivo servido por /uploads). */
+  adjuntoUrl?: string | null;
   fecha: string; // ISO
 }
 

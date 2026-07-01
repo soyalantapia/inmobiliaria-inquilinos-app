@@ -30,6 +30,7 @@ export interface EventoReclamo {
   tipo: TipoEvento;
   autor: string; // nombre visible
   contenido: string | null; // texto del mensaje o nota de cambio
+  adjuntoUrl?: string | null; // adjunto opcional del mensaje (foto/archivo)
   fecha: string; // ISO
 }
 

@@ -9,10 +9,12 @@ import {
   CheckCircle2,
   Image as ImageIcon,
   MessageCircle,
+  Paperclip,
   Phone,
   Send,
   Sparkles,
   UserCheck,
+  X,
 } from 'lucide-react';
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
@@ -24,7 +26,7 @@ import { NavBar } from '@/components/nav-bar';
 import { RatingReclamoCard } from '@/components/rating-reclamo';
 import { ReclamoTimeline } from '@/components/reclamo-timeline';
 import { inquilinoActual } from '@/lib/mock-data';
-import { apiEnabled, urlDeArchivo } from '@/lib/api/client';
+import { apiEnabled, subirArchivo, urlDeArchivo } from '@/lib/api/client';
 import { useMiContrato } from '@/lib/api/hooks';
 import { useMisReclamos } from '@/lib/api/use-mis-reclamos';
 import {
@@ -69,6 +71,7 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
     hayError,
     confirmarResolucion,
     calificarReclamo,
+    responderReclamo,
   } = useMisReclamos();
   const { inmobiliariaTelefono } = useMiContrato();
   // Teléfono para el atajo "Llamar" en Emergencia activa. En demo, número de
@@ -79,6 +82,7 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
     : TELEFONO_INMO_DEMO;
   const [reclamo, setReclamo] = useState<Reclamo | null | undefined>(undefined);
   const [borrador, setBorrador] = useState('');
+  const [adjunto, setAdjunto] = useState<File | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [decision, setDecision] = useState<DecisionInquilino | null>(null);
   const [persisteOpen, setPersisteOpen] = useState(false);
@@ -268,17 +272,39 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
 
   const enviarMensaje = async () => {
     const texto = borrador.trim();
-    if (!texto) return;
+    if ((!texto && !adjunto) || enviando) return;
     setEnviando(true);
+    // Prod: sube el adjunto (si hay) y postea el mensaje al reclamo. El invalidate
+    // refetchea el timeline con el evento real.
+    if (deApi) {
+      try {
+        let adjuntoUrl: string | undefined;
+        if (adjunto) adjuntoUrl = (await subirArchivo(adjunto)).url;
+        await responderReclamo(reclamo.id, texto, adjuntoUrl);
+        setBorrador('');
+        setAdjunto(null);
+        toast({ title: 'Mensaje enviado' });
+      } catch {
+        toast({
+          variant: 'destructive',
+          title: 'No se pudo enviar el mensaje',
+          description: 'Revisá tu conexión e intentá de nuevo.',
+        });
+      } finally {
+        setEnviando(false);
+      }
+      return;
+    }
+    // Demo: store local (sin subida real de adjunto).
     await new Promise((r) => setTimeout(r, 300));
     const updated = agregarMensajeDelInquilino(reclamo.id, inquilinoActual.nombre, texto);
     setEnviando(false);
     if (updated) {
       setReclamo(updated);
       setBorrador('');
+      setAdjunto(null);
       toast({ title: 'Mensaje enviado' });
     } else {
-      // write falló (cuota de localStorage llena): no limpiamos el borrador.
       toast({
         variant: 'destructive',
         title: 'No se pudo guardar el mensaje',
@@ -386,10 +412,10 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
     (reclamo.estado === 'CERRADO' || resuelto || reclamo.estado === 'RECHAZADO') &&
     decisionActual !== 'PERSISTE';
 
-  // Comentar en el reclamo (composer) sigue siendo demo-only: no hay endpoint
-  // para que el inquilino sume mensajes al timeline en prod. Confirmar resolución
-  // SÍ tiene endpoint, así que se habilita siempre.
-  const puedeComentar = !apiEnabled;
+  // El inquilino ya puede comentar en prod: POST /mis-reclamos/:id/mensaje suma
+  // su mensaje (con adjunto opcional) al timeline. Antes era demo-only (sin
+  // endpoint) y en prod se mostraba un form muerto derivado a WhatsApp.
+  const puedeComentar = true;
 
   return (
     <>
@@ -800,10 +826,46 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
                 onChange={(e) => setBorrador(e.target.value)}
                 disabled={enviando}
               />
+              {adjunto ? (
+                <div className="flex items-center justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2 text-xs">
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <Paperclip className="h-3.5 w-3.5 shrink-0 text-primary" />
+                    <span className="truncate">{adjunto.name}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setAdjunto(null)}
+                    disabled={enviando}
+                    aria-label="Quitar adjunto"
+                    className="shrink-0 text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : (
+                // En demo el adjunto no se sube (no hay backend) → sólo lo ofrecemos en prod.
+                deApi && (
+                  <label className="flex w-fit cursor-pointer items-center gap-1.5 text-xs font-medium text-primary hover:underline">
+                    <Paperclip className="h-3.5 w-3.5" />
+                    Adjuntar foto o archivo
+                    <input
+                      type="file"
+                      accept="image/*,application/pdf"
+                      className="hidden"
+                      disabled={enviando}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) setAdjunto(f);
+                        e.target.value = '';
+                      }}
+                    />
+                  </label>
+                )
+              )}
               <Button
                 type="submit"
                 className="w-full"
-                disabled={!borrador.trim() || enviando}
+                disabled={(!borrador.trim() && !adjunto) || enviando}
                 aria-label="Enviar mensaje"
               >
                 <Send className="h-4 w-4" />

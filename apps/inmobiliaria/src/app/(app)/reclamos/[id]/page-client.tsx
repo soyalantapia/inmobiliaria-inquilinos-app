@@ -9,10 +9,12 @@ import {
   Clock,
   Mail,
   MessageCircle,
+  Paperclip,
   Phone,
   Send,
   ShieldX,
   UserCheck,
+  X,
 } from 'lucide-react';
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
@@ -46,7 +48,7 @@ import {
   asignarOperador,
   cambiarEstado,
 } from '@/lib/reclamos-store';
-import { apiEnabled, urlDeArchivo } from '@/lib/api/client';
+import { apiEnabled, subirArchivo, urlDeArchivo } from '@/lib/api/client';
 import { useReclamo } from '@/lib/api/use-reclamo';
 import { mockUser } from '@/lib/auth';
 import type { Reclamo } from '@/lib/types';
@@ -73,6 +75,7 @@ export default function DetalleReclamoPage() {
   // actualizado y lo pisamos acá; en prod se resincroniza desde la query.
   const [reclamo, setReclamo] = useState<Reclamo | null | undefined>(undefined);
   const [mensaje, setMensaje] = useState('');
+  const [adjuntoMsg, setAdjuntoMsg] = useState<File | null>(null);
   const [resolucion, setResolucion] = useState('');
   const [costoStr, setCostoStr] = useState('');
   const [costoNotas, setCostoNotas] = useState('');
@@ -143,12 +146,15 @@ export default function DetalleReclamoPage() {
   // invalida y trae el evento real); en demo escribe el store local.
   const enviarMensaje = async () => {
     const texto = mensaje.trim();
-    if (!texto || enviandoMsg) return;
+    if ((!texto && !adjuntoMsg) || enviandoMsg) return;
     if (apiEnabled) {
       setEnviandoMsg(true);
       try {
-        await responderApi(texto);
+        let adjuntoUrl: string | undefined;
+        if (adjuntoMsg) adjuntoUrl = (await subirArchivo(adjuntoMsg)).url;
+        await responderApi(texto, adjuntoUrl);
         setMensaje('');
+        setAdjuntoMsg(null);
         toast({ title: 'Mensaje enviado al inquilino' });
       } catch {
         toast({ title: 'No se pudo enviar el mensaje', variant: 'destructive' });
@@ -157,10 +163,12 @@ export default function DetalleReclamoPage() {
       }
       return;
     }
+    // Demo: store local (sin subida real de adjunto).
     const updated = agregarMensajeInmo(reclamo.id, OPERADOR_ACTUAL, texto);
     if (updated) {
       setReclamo(updated);
       setMensaje('');
+      setAdjuntoMsg(null);
       toast({ title: 'Mensaje enviado al inquilino' });
     }
   };
@@ -376,13 +384,49 @@ export default function DetalleReclamoPage() {
                     />
                     <Button
                       onClick={enviarMensaje}
-                      disabled={!mensaje.trim() || enviandoMsg}
+                      disabled={(!mensaje.trim() && !adjuntoMsg) || enviandoMsg}
                       size="icon"
                       aria-label="Enviar mensaje al inquilino"
                     >
                       <Send className="h-4 w-4" />
                     </Button>
                   </div>
+                  {adjuntoMsg ? (
+                    <div className="flex items-center justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2 text-xs">
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <Paperclip className="h-3.5 w-3.5 shrink-0 text-primary" />
+                        <span className="truncate">{adjuntoMsg.name}</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setAdjuntoMsg(null)}
+                        disabled={enviandoMsg}
+                        aria-label="Quitar adjunto"
+                        className="shrink-0 text-muted-foreground hover:text-foreground"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    // El adjunto sólo se sube en prod (en demo no hay backend).
+                    apiEnabled && (
+                      <label className="flex w-fit cursor-pointer items-center gap-1.5 text-xs font-medium text-primary hover:underline">
+                        <Paperclip className="h-3.5 w-3.5" />
+                        Adjuntar foto o archivo
+                        <input
+                          type="file"
+                          accept="image/*,application/pdf"
+                          className="hidden"
+                          disabled={enviandoMsg}
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) setAdjuntoMsg(f);
+                            e.target.value = '';
+                          }}
+                        />
+                      </label>
+                    )
+                  )}
                   <p className="text-[11px] text-muted-foreground">
                     El inquilino lo recibe en la app y por WhatsApp.
                   </p>

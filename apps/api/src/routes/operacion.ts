@@ -346,15 +346,68 @@ export async function operacionRoutes(app: FastifyInstance) {
     const u = await requireUsuario(request, reply, 'reclamos.gestionar');
     if (!u) return;
     const { id } = request.params as { id: string };
-    const body = z.object({ mensaje: z.string().min(1) }).safeParse(request.body ?? {});
-    if (!body.success) return reply.code(400).send({ message: 'Escribí el mensaje para el inquilino' });
+    // Mensaje y/o adjunto (foto/archivo ya subido a /uploads). Se puede mandar
+    // sólo texto, sólo adjunto, o ambos.
+    const body = z
+      .object({
+        mensaje: z.string().trim().max(1000).optional(),
+        adjuntoUrl: z.string().optional(),
+      })
+      .refine((d) => (d.mensaje && d.mensaje.length > 0) || d.adjuntoUrl, {
+        message: 'Escribí un mensaje o adjuntá un archivo',
+      })
+      .safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ message: 'Escribí un mensaje o adjuntá un archivo' });
 
     const reclamo = await prisma.reclamo.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
     if (!reclamo) return reply.code(404).send({ message: 'Reclamo inexistente' });
 
     const autor = await nombreUsuario(u.userId);
     return prisma.reclamoEvento.create({
-      data: { inmobiliariaId: u.inmobiliariaId, reclamoId: id, tipo: 'MENSAJE_INMO', autor, contenido: body.data.mensaje },
+      data: {
+        inmobiliariaId: u.inmobiliariaId,
+        reclamoId: id,
+        tipo: 'MENSAJE_INMO',
+        autor,
+        contenido: body.data.mensaje?.trim() || null,
+        adjuntoUrl: body.data.adjuntoUrl || null,
+      },
+    });
+  });
+
+  // Mensaje libre del inquilino dentro del reclamo (chat bidireccional). Espeja
+  // el /reclamos/:id/responder de la inmo; NO cambia el estado del reclamo.
+  app.post('/mis-reclamos/:id/mensaje', async (request, reply) => {
+    const inq = await requireInquilino(request, reply);
+    if (!inq) return;
+    if (!inq.contratoId) return reply.code(400).send({ message: 'No tenés un contrato activo' });
+    const { id } = request.params as { id: string };
+    const body = z
+      .object({
+        mensaje: z.string().trim().max(1000).optional(),
+        adjuntoUrl: z.string().optional(),
+      })
+      .refine((d) => (d.mensaje && d.mensaje.length > 0) || d.adjuntoUrl, {
+        message: 'Escribí un mensaje o adjuntá un archivo',
+      })
+      .safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ message: 'Escribí un mensaje o adjuntá un archivo' });
+    // El reclamo tiene que ser del inquilino (su contrato + inmobiliaria).
+    const reclamo = await prisma.reclamo.findFirst({
+      where: { id, contratoId: inq.contratoId, inmobiliariaId: inq.inmobiliariaId },
+    });
+    if (!reclamo) return reply.code(404).send({ message: 'Reclamo inexistente' });
+    const inquilino = await prisma.inquilino.findUnique({ where: { id: inq.inquilinoId } });
+    const autor = inquilino ? `${inquilino.nombre} ${inquilino.apellido ?? ''}`.trim() : 'Inquilino';
+    return prisma.reclamoEvento.create({
+      data: {
+        inmobiliariaId: inq.inmobiliariaId,
+        reclamoId: id,
+        tipo: 'MENSAJE_INQUILINO',
+        autor,
+        contenido: body.data.mensaje?.trim() || null,
+        adjuntoUrl: body.data.adjuntoUrl || null,
+      },
     });
   });
 

@@ -43,6 +43,7 @@ interface EventoApi {
   tipo: string;
   autor: string;
   contenido: string | null;
+  adjuntoUrl: string | null;
   fecha: string;
 }
 
@@ -107,6 +108,7 @@ function mapEvento(e: EventoApi): EventoReclamo | null {
     tipo: e.tipo as TipoEvento,
     autor: e.autor,
     contenido: e.contenido,
+    adjuntoUrl: e.adjuntoUrl ?? null,
     fecha: e.fecha,
   };
 }
@@ -189,6 +191,8 @@ export function useMisReclamos(): {
   ) => Promise<void>;
   /** Solo prod: califica un reclamo resuelto (1-5). */
   calificarReclamo: (reclamoId: string, estrellas: number, comentario?: string) => Promise<void>;
+  /** Solo prod: mensaje libre del inquilino en el reclamo (chat), con adjunto opcional. */
+  responderReclamo: (reclamoId: string, mensaje: string, adjuntoUrl?: string) => Promise<void>;
 } {
   const qc = useQueryClient();
   const q = useQuery({
@@ -252,6 +256,7 @@ export function useMisReclamos(): {
         }),
       confirmarResolucion: soloProd,
       calificarReclamo: soloProd,
+      responderReclamo: soloProd,
     };
   }
 
@@ -266,6 +271,7 @@ export function useMisReclamos(): {
       },
       confirmarResolucion: soloProd,
       calificarReclamo: soloProd,
+      responderReclamo: soloProd,
     };
   }
 
@@ -299,6 +305,16 @@ export function useMisReclamos(): {
       await apiFetch(`/mis-reclamos/${reclamoId}/rating`, {
         method: 'POST',
         body: JSON.stringify({ estrellas, comentario: comentario?.trim() || undefined }),
+      });
+      await qc.invalidateQueries({ queryKey: QUERY_KEY });
+    },
+    responderReclamo: async (reclamoId, mensaje, adjuntoUrl) => {
+      await apiFetch(`/mis-reclamos/${reclamoId}/mensaje`, {
+        method: 'POST',
+        body: JSON.stringify({
+          mensaje: mensaje.trim() || undefined,
+          ...(adjuntoUrl ? { adjuntoUrl } : {}),
+        }),
       });
       await qc.invalidateQueries({ queryKey: QUERY_KEY });
     },

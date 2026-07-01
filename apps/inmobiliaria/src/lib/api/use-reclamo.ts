@@ -21,6 +21,7 @@ interface EventoApi {
   tipo: EventoReclamo['tipo'];
   autor: string;
   contenido: string | null;
+  adjuntoUrl: string | null;
   fecha: string;
 }
 
@@ -90,6 +91,7 @@ function mapReclamo(r: ReclamoDetalleApi): Reclamo {
       tipo: e.tipo,
       autor: e.autor,
       contenido: e.contenido,
+      adjuntoUrl: e.adjuntoUrl ?? null,
       fecha: e.fecha,
     })),
     clasificacion: r.clasificacion ?? null,
@@ -120,7 +122,7 @@ export interface UseReclamoResult {
   asignar: (profesionalId: string) => Promise<void>;
   resolver: (resolucion: string) => Promise<void>;
   rechazar: (motivo: string) => Promise<void>;
-  responder: (mensaje: string) => Promise<void>;
+  responder: (mensaje: string, adjuntoUrl?: string) => Promise<void>;
 }
 
 export function useReclamo(id: string | undefined): UseReclamoResult {
@@ -180,11 +182,11 @@ export function useReclamo(id: string | undefined): UseReclamoResult {
   });
 
   const responderM = useMutation({
-    mutationFn: async (mensaje: string) => {
+    mutationFn: async (input: { mensaje?: string; adjuntoUrl?: string }) => {
       await ensureApiSession();
       await apiFetch(`/reclamos/${id}/responder`, {
         method: 'POST',
-        body: JSON.stringify({ mensaje }),
+        body: JSON.stringify(input),
       });
     },
     onSuccess: invalidar,
@@ -223,6 +225,6 @@ export function useReclamo(id: string | undefined): UseReclamoResult {
     asignar: (profesionalId) => asignarM.mutateAsync(profesionalId),
     resolver: (resolucion) => resolverM.mutateAsync(resolucion),
     rechazar: (motivo) => rechazarM.mutateAsync(motivo),
-    responder: (mensaje) => responderM.mutateAsync(mensaje),
+    responder: (mensaje, adjuntoUrl) => responderM.mutateAsync({ mensaje, adjuntoUrl }),
   };
 }
