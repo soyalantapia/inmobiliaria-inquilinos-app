@@ -14,6 +14,7 @@ import {
   Loader2,
   Mail,
   MapPin,
+  Landmark,
   MessageCircle,
   Phone,
   Plus,
@@ -608,7 +609,7 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                         </div>
                       )}
 
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
                         <EditarPropietarioTrigger propietario={o} variant="outline" size="sm" className="flex-1" />
                         {o.telefono.replace(/[^\d]/g, '') && (
                           <Button size="sm" variant="outline" className="flex-1" asChild>
@@ -623,6 +624,15 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                           </Button>
                         )}
                       </div>
+                      {/* Ficha completa del propietario: rendición del mes, ARCA,
+                          historial. Vive fuera del menú (Propietarios ya no es una
+                          página top-level); se llega desde acá. */}
+                      <Button size="sm" variant="secondary" className="w-full" asChild>
+                        <Link href={`/propietarios/${o.id}`}>
+                          <Landmark className="h-3.5 w-3.5" />
+                          Ver ficha y rendir el mes
+                        </Link>
+                      </Button>
                     </CardContent>
                   </Card>
                 ))}

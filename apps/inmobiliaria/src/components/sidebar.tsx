@@ -18,7 +18,6 @@ import {
   CalendarHeart,
   HardHat,
   Wallet,
-  Users,
   Wrench,
   ScrollText,
   X,
@@ -45,7 +44,9 @@ type NavLink = {
 const links: NavLink[] = [
   { href: '/', label: 'Inicio', icon: LayoutDashboard, capacidad: 'home.ver' },
   { href: '/propiedades', label: 'Propiedades', icon: Building2, capacidad: 'propiedades.ver' },
-  { href: '/propietarios', label: 'Propietarios', icon: Users, capacidad: 'propietarios.ver' },
+  // Propietarios ya no es una página top-level: se gestionan DENTRO de cada
+  // propiedad (tab Propietarios, con editar). La ficha del propietario (con
+  // rendición/ARCA/historial) queda accesible desde ahí (link "Ver ficha / rendir").
   { href: '/pagos', label: 'Pagos', icon: CreditCard, capacidad: 'pagos.ver' },
   { href: '/caja', label: 'Caja', icon: Wallet, capacidad: 'caja.ver' },
   { href: '/contratos', label: 'Contratos', icon: FileText, capacidad: 'contratos.ver' },
