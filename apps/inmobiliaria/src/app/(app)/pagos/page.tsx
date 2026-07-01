@@ -219,16 +219,13 @@ export default function PagosPage() {
       cobrables
         .filter((c) => c.estadoPagoActual !== 'PAGADO')
         .reduce((acc, c) => {
-          // Un contrato PARCIAL ya tiene una parte del alquiler conciliada: contamos
-          // sólo lo que falta (canon − ya cobrado), no el mes entero. Si no, el KPI
-          // sobreestima la mora por la porción ya cobrada. montoPagado viene del API
-          // (0/ausente en demo, donde ningún contrato queda PARCIAL). Clamp a ≥0 por
-          // si lo conciliado supera el canon (p.ej. la liq incluye expensas).
-          const pendiente =
-            c.estadoPagoActual === 'PARCIAL'
-              ? Math.max(0, c.monto - (c.montoPagado ?? 0))
-              : c.monto;
-          return acc + pendiente;
+          // Restamos lo ya conciliado del período actual (montoPagado) en CUALQUIER
+          // contrato no pagado, no sólo los PARCIAL: un parcial VENCIDO reporta
+          // estadoPagoActual='VENCIDO' (no 'PARCIAL', tras el fix A2) pero igual tiene
+          // una parte cobrada. Contar el mes entero sobreestimaría la mora. montoPagado
+          // viene del API (0/ausente en demo). Clamp a ≥0 por si lo conciliado supera
+          // el canon (p.ej. la liq incluye expensas).
+          return acc + Math.max(0, c.monto - (c.montoPagado ?? 0));
         }, 0),
     [cobrables],
   );

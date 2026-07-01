@@ -191,15 +191,26 @@ export interface CierreCajaItem {
   direccion: string;
   periodo: string;
   monto: number;
+  moneda: string;
   comision: number;
   metodo: string;
   hora: string;
+}
+export interface CierreMoneda {
+  moneda: string;
+  cobrado: number;
+  comision: number;
+  cantidad: number;
 }
 export interface CierreCaja {
   fecha: string;
   cobrado: number;
   comision: number;
   cantidad: number;
+  /** Cobrado/comisión por moneda. El total plano de arriba sólo es correcto con
+   *  una sola moneda; con multiMoneda el front usa este desglose. */
+  multiMoneda: boolean;
+  porMoneda: CierreMoneda[];
   pagos: CierreCajaItem[];
 }
 

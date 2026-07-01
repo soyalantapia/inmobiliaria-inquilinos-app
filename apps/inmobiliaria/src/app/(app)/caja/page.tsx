@@ -295,10 +295,15 @@ function CierreCajaDelDia() {
   const compartir = () => {
     if (!cierre || cierre.cantidad === 0) return;
     const cuando = esHoy ? 'de hoy' : `del ${fecha}`;
+    // Con varias monedas el total plano no significa nada: exportamos el desglose.
+    const lineasMonto = cierre.multiMoneda
+      ? cierre.porMoneda
+          .map((m) => `${m.moneda} — Cobrado: ${formatMonto(m.cobrado, m.moneda as 'ARS' | 'USD')} · Comisión: ${formatMonto(m.comision, m.moneda as 'ARS' | 'USD')}`)
+          .join('\n')
+      : `Cobrado: ${formatMonto(cierre.cobrado)}\n` + `Comisión (honorarios): ${formatMonto(cierre.comision)}`;
     const msg =
       `*Cierre de caja ${cuando}*\n` +
-      `Cobrado: ${formatMonto(cierre.cobrado)}\n` +
-      `Comisión (honorarios): ${formatMonto(cierre.comision)}\n` +
+      `${lineasMonto}\n` +
       `${cierre.cantidad} cobro${cierre.cantidad === 1 ? '' : 's'} conciliado${cierre.cantidad === 1 ? '' : 's'}.`;
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank', 'noopener,noreferrer');
   };
@@ -332,20 +337,44 @@ function CierreCajaDelDia() {
           </p>
         ) : (
           <>
+            {/* Cobros en varias monedas: sumar ARS+USD en un total no tiene sentido,
+                así que mostramos el desglose por moneda (el backend lo separa). */}
+            {cierre.multiMoneda && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-3 dark:border-amber-900/40 dark:bg-amber-900/10">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                  Cobros en varias monedas — desglose
+                </p>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  {cierre.porMoneda.map((m) => (
+                    <div key={m.moneda} className="rounded-md bg-background/60 p-2 text-sm">
+                      <p className="font-semibold">{m.moneda}</p>
+                      <p className="tabular-nums text-emerald-700 dark:text-emerald-300">
+                        Cobrado {formatMonto(m.cobrado, m.moneda as 'ARS' | 'USD')}
+                      </p>
+                      <p className="tabular-nums text-muted-foreground">
+                        Comisión {formatMonto(m.comision, m.moneda as 'ARS' | 'USD')}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-3 dark:border-emerald-900/40 dark:bg-emerald-900/10">
                 <p className="text-[11px] font-medium uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
                   Cobrado
                 </p>
                 <p className="mt-1 text-2xl font-bold tabular-nums text-emerald-700 dark:text-emerald-300">
-                  {formatMonto(cierre.cobrado)}
+                  {cierre.multiMoneda ? 'ver desglose' : formatMonto(cierre.cobrado)}
                 </p>
               </div>
               <div className="rounded-lg border bg-muted/20 p-3">
                 <p className="flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   <Percent className="h-3 w-3" /> Comisión
                 </p>
-                <p className="mt-1 text-2xl font-bold tabular-nums">{formatMonto(cierre.comision)}</p>
+                <p className="mt-1 text-2xl font-bold tabular-nums">
+                  {cierre.multiMoneda ? 'ver desglose' : formatMonto(cierre.comision)}
+                </p>
                 <p className="text-[10px] text-muted-foreground">tus honorarios sobre el alquiler</p>
               </div>
               <div className="rounded-lg border bg-muted/20 p-3">

@@ -10,6 +10,20 @@ import { conSaldo, montoPagadoPorLiquidacion } from '../lib/saldos.js';
 import { enviarInvitacionInquilino } from '../mailer.js';
 
 /**
+ * Una liquidación cuenta como VENCIDA (a efectos de cobranza) si su estado ya es
+ * VENCIDO, o si todavía no está paga (PENDIENTE/PARCIAL) y su vencimiento pasó.
+ * El estado persistido sólo vira a VENCIDO cuando corre el barrido del devengo
+ * (marcarLiquidacionesVencidas); esta derivación on-read cubre el hueco entre
+ * corridas Y captura el parcial vencido (estado PARCIAL), que si no nunca volvía
+ * a figurar como moroso en el panel (auditoría A2).
+ */
+function liqVencida(l: { estado: string; fechaVencimiento: Date | string }, now: Date): boolean {
+  if (l.estado === 'VENCIDO') return true;
+  if (l.estado === 'PENDIENTE' || l.estado === 'PARCIAL') return new Date(l.fechaVencimiento) < now;
+  return false;
+}
+
+/**
  * Núcleo de datos del panel (Fase 2): contratos, propiedades, propietarios,
  * inquilinos. Solo lectura por ahora — la escritura llega con sus flujos
  * (carga de contrato Fase 3+, etc.). Todo scoped por inmobiliariaId del JWT.
@@ -34,8 +48,9 @@ export async function coreRoutes(app: FastifyInstance) {
     // Liquidación ACTUAL por contrato (la que define estadoPagoActual): cualquier
     // vencida manda; si no, la más reciente. Se reutiliza abajo para exponer su
     // montoPagado/saldo sin recalcular la derivación.
+    const now = new Date();
     const actualPorContrato = contratos.map(
-      (c) => c.liquidaciones.find((l) => l.estado === 'VENCIDO') ?? c.liquidaciones[0] ?? null,
+      (c) => c.liquidaciones.find((l) => liqVencida(l, now)) ?? c.liquidaciones[0] ?? null,
     );
     // montoPagado (suma de pagos CONCILIADO) de la liquidación actual. Sin esto el
     // KPI "Pendiente" del panel contaba el alquiler ENTERO de un contrato PARCIAL,
@@ -45,17 +60,22 @@ export async function coreRoutes(app: FastifyInstance) {
       actualPorContrato.flatMap((l) => (l ? [l.id] : [])),
     );
     // estadoPagoActual / proximoVencimiento DERIVADOS de liquidaciones reales:
-    // cualquier vencida manda; si no, la más reciente; sin liqs → PENDIENTE.
+    // una vencida (incluye parcial/pendiente fuera de término) manda; si no, la más
+    // reciente; sin liqs → PENDIENTE. proximoVencimiento incluye PARCIAL (B6).
     return contratos.map(({ liquidaciones, ...c }, i) => {
       const actual = actualPorContrato[i];
-      const pendiente = liquidaciones.find((l) => l.estado === 'PENDIENTE' || l.estado === 'VENCIDO');
+      const pendiente = liquidaciones.find(
+        (l) => l.estado === 'PENDIENTE' || l.estado === 'VENCIDO' || l.estado === 'PARCIAL',
+      );
       const saldoActual = actual ? conSaldo(actual, pagadoMap) : null;
       return {
         ...c,
-        estadoPagoActual: actual?.estado ?? 'PENDIENTE',
+        // Un parcial/pendiente vencido se reporta VENCIDO (cobranza), no PARCIAL:
+        // el saldo restante lo capta montoPagado/saldo de abajo.
+        estadoPagoActual: actual ? (liqVencida(actual, now) ? 'VENCIDO' : actual.estado) : 'PENDIENTE',
         proximoVencimiento: pendiente?.fechaVencimiento ?? null,
         // montoPagado/saldo del período actual — el front resta lo ya conciliado en
-        // el KPI "Pendiente" cuando el contrato está PARCIAL. Sin liq actual → 0/null.
+        // el KPI "Pendiente". Sin liq actual → 0/null.
         montoPagado: saldoActual?.montoPagado ?? 0,
         saldo: saldoActual?.saldo ?? null,
       };
@@ -96,9 +116,11 @@ export async function coreRoutes(app: FastifyInstance) {
     // traía y el front aproximaba proximoVencimiento con la fecha de AJUSTE del
     // alquiler (dato equivocado: el ajuste no es el vencimiento del mes).
     const { liquidaciones, ...rest } = contrato;
-    const vencida = liquidaciones.find((l) => l.estado === 'VENCIDO');
-    const actual = vencida ?? liquidaciones[0] ?? null;
-    const pendiente = liquidaciones.find((l) => l.estado === 'PENDIENTE' || l.estado === 'VENCIDO');
+    const now = new Date();
+    const actual = liquidaciones.find((l) => liqVencida(l, now)) ?? liquidaciones[0] ?? null;
+    const pendiente = liquidaciones.find(
+      (l) => l.estado === 'PENDIENTE' || l.estado === 'VENCIDO' || l.estado === 'PARCIAL',
+    );
     // Devolvemos las liquidaciones (con montoPagado/saldo) — antes se descartaban
     // y el tab "Pagos" del detalle quedaba SIEMPRE vacío (bug 4): un pago informado
     // o conciliado nunca se veía en el contrato.
@@ -106,7 +128,7 @@ export async function coreRoutes(app: FastifyInstance) {
     return {
       ...rest,
       liquidaciones: liquidaciones.map((l) => conSaldo(l, pagado)),
-      estadoPagoActual: actual?.estado ?? 'PENDIENTE',
+      estadoPagoActual: actual ? (liqVencida(actual, now) ? 'VENCIDO' : actual.estado) : 'PENDIENTE',
       proximoVencimiento: pendiente?.fechaVencimiento ?? null,
     };
   });
@@ -238,12 +260,14 @@ export async function coreRoutes(app: FastifyInstance) {
     let contratoActual = null;
     if (propiedad.contratoActual) {
       const { liquidaciones, ...rest } = propiedad.contratoActual;
-      const vencida = liquidaciones.find((l) => l.estado === 'VENCIDO');
-      const actual = vencida ?? liquidaciones[0] ?? null;
-      const pendiente = liquidaciones.find((l) => l.estado === 'PENDIENTE' || l.estado === 'VENCIDO');
+      const now = new Date();
+      const actual = liquidaciones.find((l) => liqVencida(l, now)) ?? liquidaciones[0] ?? null;
+      const pendiente = liquidaciones.find(
+        (l) => l.estado === 'PENDIENTE' || l.estado === 'VENCIDO' || l.estado === 'PARCIAL',
+      );
       contratoActual = {
         ...rest,
-        estadoPagoActual: actual?.estado ?? 'PENDIENTE',
+        estadoPagoActual: actual ? (liqVencida(actual, now) ? 'VENCIDO' : actual.estado) : 'PENDIENTE',
         proximoVencimiento: pendiente?.fechaVencimiento ?? null,
       };
     }
