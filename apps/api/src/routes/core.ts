@@ -692,6 +692,70 @@ export async function coreRoutes(app: FastifyInstance) {
     }
   });
 
+  // Reenviar el email de bienvenida/onboarding al inquilino TITULAR del contrato,
+  // a demanda desde el panel (botón "Reenviar email de bienvenida"). Es el MISMO
+  // email enriquecido que se envía al crear el contrato — 100% backend, no un
+  // preview simulado. Devuelve 400 si el inquilino no tiene email cargado y 503
+  // si el SMTP no está configurado.
+  app.post('/contratos/:id/reenviar-bienvenida', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'contratos.crear');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const contrato = await prisma.contrato.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      select: {
+        propiedad: { select: { direccion: true } },
+        inquilinoTitular: { select: { nombre: true, email: true } },
+        inmobiliaria: {
+          select: {
+            nombre: true,
+            email: true,
+            telefono: true,
+            direccionCalle: true,
+            direccionAltura: true,
+            direccionCiudad: true,
+            direccionProvincia: true,
+          },
+        },
+      },
+    });
+    if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
+    const inq = contrato.inquilinoTitular;
+    if (!inq?.email) {
+      return reply.code(400).send({
+        message: 'El inquilino no tiene un email cargado — no hay a dónde enviar la bienvenida.',
+      });
+    }
+    const inmo = contrato.inmobiliaria;
+    const direccionInmo = inmo
+      ? [
+          `${inmo.direccionCalle} ${inmo.direccionAltura}`.trim(),
+          inmo.direccionCiudad,
+          inmo.direccionProvincia,
+        ]
+          .filter((p) => p && p.trim())
+          .join(', ')
+      : null;
+    const enviado = await enviarInvitacionInquilino({
+      email: inq.email,
+      inquilinoNombre: inq.nombre,
+      inmobiliaria: {
+        nombre: inmo?.nombre ?? 'Tu inmobiliaria',
+        telefono: inmo?.telefono ?? null,
+        email: inmo?.email ?? null,
+        direccion: direccionInmo || null,
+      },
+      propiedadDireccion: contrato.propiedad?.direccion ?? null,
+    });
+    if (!enviado) {
+      return reply.code(503).send({
+        message: 'El envío de emails no está configurado en este momento. Probá más tarde.',
+      });
+    }
+    request.log.info({ email: inq.email, contratoId: id }, 'Bienvenida de inquilino reenviada');
+    return { enviado: true, email: inq.email };
+  });
+
   // Finalizar un contrato: lo marca FINALIZADO y LIBERA la propiedad (vuelve a
   // DISPONIBLE, contratoActualId=null) + desvincula al inquilino titular. Sin
   // esto, una propiedad quedaba ALQUILADA para siempre y no se le podía cargar

@@ -39,6 +39,12 @@ interface EmailBienvenidaDialogProps {
   propiedad?: string;
   /** Variante del mail: bienvenida inicial vs recordatorio. */
   modo?: 'bienvenida' | 'recordatorio';
+  /**
+   * Envío REAL (prod): cuando se pasa, "Enviar" llama al backend (que manda el
+   * email de verdad) y NO se muestra el cartel de "modo demo". Si no se pasa
+   * (demo sin backend), se simula el envío como antes.
+   */
+  onEnviarReal?: () => Promise<void>;
 }
 
 /**
@@ -54,6 +60,7 @@ export function EmailBienvenidaDialog({
   destinatario,
   propiedad,
   modo = 'bienvenida',
+  onEnviarReal,
 }: EmailBienvenidaDialogProps) {
   const [enviando, setEnviando] = useState(false);
   const [enviado, setEnviado] = useState(false);
@@ -86,14 +93,30 @@ export function EmailBienvenidaDialog({
 
   const onEnviar = async () => {
     setEnviando(true);
-    await new Promise((r) => setTimeout(r, 600));
+    try {
+      if (onEnviarReal) {
+        // Prod: el backend manda el email de verdad.
+        await onEnviarReal();
+      } else {
+        // Demo sin backend: se simula.
+        await new Promise((r) => setTimeout(r, 600));
+      }
+    } catch (e) {
+      setEnviando(false);
+      toast({
+        variant: 'destructive',
+        title: 'No se pudo enviar el email',
+        description: e instanceof Error ? e.message : 'Probá de nuevo en un momento.',
+      });
+      return;
+    }
     setEnviando(false);
     setEnviado(true);
     toast({
       variant: 'success',
       title:
         modo === 'recordatorio' ? 'Recordatorio enviado' : 'Email de bienvenida enviado',
-      description: `Le mandamos a ${destinatario.email} el link para activar su cuenta.`,
+      description: `Le mandamos a ${destinatario.email} el email para ingresar y empezar a usar la app.`,
     });
     // Cerramos el dialog después de un momento (cancelable si se reabre antes).
     closeTimerRef.current = setTimeout(() => {
@@ -264,9 +287,11 @@ export function EmailBienvenidaDialog({
           </div>
         </div>
 
-        <Badge variant="outline" className="text-[10px] gap-1 self-start">
-          Modo demo · el mail se simula
-        </Badge>
+        {!onEnviarReal && (
+          <Badge variant="outline" className="text-[10px] gap-1 self-start">
+            Modo demo · el mail se simula
+          </Badge>
+        )}
       </DialogContent>
     </Dialog>
   );

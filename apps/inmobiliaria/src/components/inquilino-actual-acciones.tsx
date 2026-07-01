@@ -9,6 +9,8 @@ import { ConfirmDialog } from '@llave/ui/confirm-dialog';
 import { toast } from '@llave/ui/use-toast';
 import { type CoInquilinoExtra, PERMISO_LABEL } from '@/lib/co-inquilinos-extra-storage';
 import { useCoInquilinos } from '@/lib/api/use-co-inquilinos';
+import { apiEnabled, apiFetch } from '@/lib/api/client';
+import { ensureApiSession } from '@/lib/api/session';
 import { AgregarCoInquilinoDialog } from './agregar-coinquilino-dialog';
 import { EmailBienvenidaDialog } from './email-bienvenida-dialog';
 
@@ -75,6 +77,8 @@ export function InquilinoActualAcciones({
             size="sm"
             variant="outline"
             onClick={() => setReenviarOpen(true)}
+            disabled={apiEnabled && !inquilinoEmail}
+            title={apiEnabled && !inquilinoEmail ? 'El inquilino no tiene un email cargado' : undefined}
           >
             <Mail className="h-3.5 w-3.5" />
             Reenviar email de bienvenida
@@ -126,6 +130,16 @@ export function InquilinoActualAcciones({
         destinatario={{ nombre: inquilinoNombre, email: inquilinoEmail }}
         propiedad={direccion}
         modo="recordatorio"
+        // Prod: reenvío REAL vía backend (POST /contratos/:id/reenviar-bienvenida).
+        // En demo o sin contratoId no se pasa → el dialog simula como antes.
+        onEnviarReal={
+          apiEnabled && contratoId
+            ? async () => {
+                await ensureApiSession();
+                await apiFetch(`/contratos/${contratoId}/reenviar-bienvenida`, { method: 'POST' });
+              }
+            : undefined
+        }
       />
       <AgregarCoInquilinoDialog
         propiedadId={propiedadId}
