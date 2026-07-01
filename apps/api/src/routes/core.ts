@@ -527,7 +527,7 @@ export async function coreRoutes(app: FastifyInstance) {
     const ids = idsUnicos;
     const existen = await prisma.propietario.count({ where: { id: { in: ids }, inmobiliariaId: u.inmobiliariaId } });
     if (existen !== ids.length) return reply.code(400).send({ message: 'Algún propietario no existe' });
-    return prisma.$transaction(async (tx) => {
+    const creada = await prisma.$transaction(async (tx) => {
       const prop = await tx.propiedad.create({
         data: {
           inmobiliariaId: u.inmobiliariaId,
@@ -553,6 +553,17 @@ export async function coreRoutes(app: FastifyInstance) {
       // DESPUÉS de crearla → falso error + recargas duplicadas.
       return { ...prop, participaciones: d.propietarios };
     });
+    // Auditoría: sin esto, crear propiedades no dejaba rastro y el timeline sólo
+    // mostraba pagos. Best-effort (no rompe el alta).
+    await registrarEvento({
+      inmobiliariaId: u.inmobiliariaId,
+      tipo: 'PROPIEDAD_CARGADA',
+      autorId: u.userId,
+      rolAutor: u.rol,
+      entidadId: creada.id,
+      entidadDescripcion: `${creada.direccion}${creada.ciudad ? ` · ${creada.ciudad}` : ''}`,
+    });
+    return creada;
   });
 
   // Eliminar una propiedad. Pensado para limpiar altas DUPLICADAS: solo permite
@@ -778,6 +789,17 @@ export async function coreRoutes(app: FastifyInstance) {
           );
         }
       }
+      // Auditoría: crear un contrato ahora deja rastro en el timeline (antes solo
+      // aparecían pagos). Best-effort. CARGA lo deja BORRADOR para aprobar; ADMIN/
+      // OPERADOR lo activan directo — en ambos casos queda registrado el alta.
+      await registrarEvento({
+        inmobiliariaId: u.inmobiliariaId,
+        tipo: 'CONTRATO_CARGADO',
+        autorId: u.userId,
+        rolAutor: u.rol,
+        entidadId: contratoCreado.id,
+        entidadDescripcion: `${d.inquilino.nombre} · ${prop.direccion}`,
+      });
       return contratoCreado;
     } catch (e) {
       if (e instanceof Error && e.message === 'PROP_OCUPADA') {
