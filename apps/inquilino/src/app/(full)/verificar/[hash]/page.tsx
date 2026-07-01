@@ -13,6 +13,7 @@ import {
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card, CardContent } from '@llave/ui/card';
+import { Isotipo } from '@/components/isotipo';
 import {
   NIVEL_COLOR,
   NIVEL_LABEL,
@@ -69,9 +70,7 @@ export default function VerificarCertificadoPage({
         <div className="mx-auto max-w-2xl space-y-5">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
-              <div className="grid h-8 w-8 place-items-center rounded-md bg-primary text-[10px] font-bold text-primary-foreground">
-                My
-              </div>
+              <Isotipo size={32} />
               <div>
                 <p className="text-sm font-semibold leading-tight">My Alquiler</p>
                 <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
@@ -124,9 +123,7 @@ export default function VerificarCertificadoPage({
         {/* Header con marca My Alquiler */}
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <div className="grid h-8 w-8 place-items-center rounded-md bg-primary text-[10px] font-bold text-primary-foreground">
-              My
-            </div>
+            <Isotipo size={32} />
             <div>
               <p className="text-sm font-semibold leading-tight">My Alquiler</p>
               <p className="text-[10px] uppercase tracking-wider text-muted-foreground">

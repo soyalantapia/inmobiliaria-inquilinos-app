@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { Isotipo } from './isotipo';
 import {
   Inbox,
   LayoutDashboard,
@@ -107,9 +108,7 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
   return (
     <>
       <div className="flex h-16 items-center gap-2 border-b px-6">
-        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-primary text-[10px] font-bold text-primary-foreground">
-          My
-        </div>
+        <Isotipo size={32} className="shrink-0" />
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold leading-tight" title={inmoNombre || 'My Alquiler'}>
             {inmoNombre || 'My Alquiler'}

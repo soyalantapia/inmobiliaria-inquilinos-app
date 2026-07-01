@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Isotipo } from '@/components/isotipo';
 import {
   ArrowLeft,
   ArrowRight,
@@ -409,9 +410,7 @@ function BrandHero({ compact = false }: { compact?: boolean }) {
   if (compact) {
     return (
       <div className="text-center">
-        <div className="mx-auto mb-2 grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-primary to-fuchsia-600 text-base font-bold text-white shadow-lg shadow-primary/40">
-          My
-        </div>
+        <div className="mx-auto mb-2 w-fit"><Isotipo size={48} /></div>
         <h1 className="text-xl font-bold tracking-tight">My Alquiler</h1>
         <p className="text-xs text-muted-foreground">La app de tu alquiler</p>
       </div>
@@ -419,9 +418,7 @@ function BrandHero({ compact = false }: { compact?: boolean }) {
   }
   return (
     <div className="space-y-4">
-      <div className="grid h-16 w-16 place-items-center rounded-3xl bg-gradient-to-br from-primary to-fuchsia-600 text-xl font-bold text-white shadow-xl shadow-primary/40">
-        My
-      </div>
+      <Isotipo size={64} />
       <div>
         <h1 className="text-4xl font-bold leading-tight tracking-tight lg:text-5xl">
           My Alquiler

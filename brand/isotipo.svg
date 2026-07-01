@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 64 64" role="img" aria-label="My Alquiler">
+  <rect width="64" height="64" rx="16" fill="#6D28D9"/>
+  <path d="M32 14 L50 29 L50 50 L14 50 L14 29 Z" fill="#ffffff"/>
+  <circle cx="32" cy="34" r="4.4" fill="#6D28D9"/>
+  <path d="M29 37.5 H35 L34 50 H30 Z" fill="#6D28D9"/>
+</svg>

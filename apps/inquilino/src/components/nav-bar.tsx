@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { Isotipo } from './isotipo';
 import {
   BadgeCheck,
   CircleHelp,
@@ -124,9 +125,7 @@ export function SideNav() {
   return (
     <aside className="hidden w-64 shrink-0 flex-col border-r bg-card md:flex">
       <div className="flex h-16 items-center gap-3 border-b px-6">
-        <div className="grid h-9 w-9 place-items-center rounded-lg bg-primary text-xs font-bold text-primary-foreground">
-          My
-        </div>
+        <Isotipo size={36} />
         <div>
           <p className="text-sm font-semibold leading-tight">My Alquiler</p>
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Inquilino</p>

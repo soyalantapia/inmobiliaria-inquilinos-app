@@ -19,6 +19,7 @@ import {
 import { HeroSignup } from './_landing/hero-signup';
 import { LivePanel } from './_landing/live-panel';
 import { Reveal } from './_landing/reveal';
+import { Isotipo } from '@/components/isotipo';
 import { AnalyticsProvider } from './_landing/analytics';
 import { HeroHeadline } from './_landing/hero-headline';
 import { TrustLogos } from './_landing/trust-logos';
@@ -125,9 +126,7 @@ function Header() {
     <header className="sticky top-0 z-40 border-b border-black/[0.06] bg-[#faf8f5]/85 backdrop-blur supports-[backdrop-filter]:bg-[#faf8f5]/70">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5 md:px-8">
         <Link href="/inicio" className="flex items-center gap-2.5">
-          <div className="grid h-9 w-9 place-items-center rounded-[10px] bg-primary text-[13px] font-bold text-primary-foreground">
-            My
-          </div>
+          <Isotipo size={36} />
           <span className="display text-[15px] font-bold tracking-tight">My Alquiler</span>
         </Link>
         <div className="flex items-center gap-1.5">
@@ -614,9 +613,7 @@ function Footer() {
     <footer className="border-t border-black/[0.06] bg-[#faf8f5]">
       <div className="mx-auto flex max-w-6xl flex-col gap-6 px-5 py-10 md:flex-row md:items-center md:justify-between md:px-8">
         <div className="flex items-center gap-2.5">
-          <div className="grid h-8 w-8 place-items-center rounded-lg bg-primary text-[11px] font-bold text-primary-foreground">
-            My
-          </div>
+          <Isotipo size={32} />
           <div>
             <p className="display text-sm font-bold">My Alquiler</p>
             <p className="text-xs text-muted-foreground">Hecho en Córdoba para inmobiliarias argentinas.</p>

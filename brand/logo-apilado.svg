@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="336" height="216" viewBox="0 0 168 108" role="img" aria-label="My Alquiler">
+  <style>@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700&amp;display=swap');</style>
+  <g transform="translate(52 6)">
+    <rect width="64" height="64" rx="16" fill="#6D28D9"/>
+    <path d="M32 14 L50 29 L50 50 L14 50 L14 29 Z" fill="#ffffff"/>
+    <circle cx="32" cy="34" r="4.4" fill="#6D28D9"/>
+    <path d="M29 37.5 H35 L34 50 H30 Z" fill="#6D28D9"/>
+  </g>
+  <text x="84" y="98" text-anchor="middle" font-family="'Space Grotesk','Segoe UI',sans-serif" font-weight="700" font-size="22" letter-spacing="-0.4"><tspan fill="#6D28D9">My</tspan><tspan fill="#0F1020"> Alquiler</tspan></text>
+</svg>

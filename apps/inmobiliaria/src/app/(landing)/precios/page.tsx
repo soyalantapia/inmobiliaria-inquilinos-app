@@ -18,6 +18,7 @@ import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card, CardContent } from '@llave/ui/card';
 import { TRAMOS_PLAN, TRAMOS_PLAN_CONSORCIOS } from '@/lib/plan';
+import { Isotipo } from '@/components/isotipo';
 import { CUPONES_VALIDOS } from '@/lib/cupones';
 import { formatMonto } from '@/lib/format';
 
@@ -92,9 +93,7 @@ export default function PreciosPage() {
       <header className="sticky top-0 z-30 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/70">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 md:px-6">
           <Link href="/inicio" className="flex items-center gap-2">
-            <div className="grid h-9 w-9 place-items-center rounded-lg bg-primary text-[12px] font-bold text-primary-foreground">
-              My
-            </div>
+            <Isotipo size={36} />
             <div>
               <p className="text-sm font-semibold leading-tight">My Alquiler</p>
               <p className="text-[10px] uppercase tracking-wider text-muted-foreground">

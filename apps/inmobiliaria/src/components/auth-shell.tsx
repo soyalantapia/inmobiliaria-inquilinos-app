@@ -3,6 +3,7 @@
 import type { JSX } from 'react';
 import { FileText, Rocket, Smartphone, Wallet, type LucideIcon } from 'lucide-react';
 import { AppMockup } from './app-mockup';
+import { Isotipo } from './isotipo';
 
 /**
  * Contenedor de presentación para las pantallas de auth (login / registro).
@@ -18,9 +19,7 @@ export function AuthShell({ children }: { children: React.ReactNode }): JSX.Elem
         <div className="mx-auto flex w-full max-w-[420px] flex-1 flex-col px-6 py-8 sm:px-10">
           {/* Logo */}
           <div className="flex items-center gap-3">
-            <div className="grid h-10 w-10 place-items-center rounded-xl bg-primary text-xs font-bold text-primary-foreground">
-              My
-            </div>
+            <Isotipo size={40} />
             <div>
               <p className="font-semibold leading-tight">My Alquiler</p>
               <p className="text-xs text-muted-foreground">Panel inmobiliaria</p>
