@@ -1534,12 +1534,39 @@ model Rendicion {
   metodo         MetodoRendicion
   notas          String?
 
-  gastos          GastoRendido[]
-  movimientosCaja MovimientoCaja[]
+  gastos             GastoRendido[]
+  alquileresRendidos AlquilerRendido[]
+  movimientosCaja    MovimientoCaja[]
 
-  @@unique([propietarioId, periodo])
+  // SIN @@unique(propietarioId, periodo): rendición INCREMENTAL — un período se
+  // puede rendir varias veces a medida que entran pagos parciales. El anti-doble se
+  // hace por lo YA rendido de cada liquidación (AlquilerRendido), no por período.
   @@index([inmobiliariaId, periodo])
+  @@index([propietarioId, periodo])
   @@map("rendiciones")
+}
+
+// Cuánto ALQUILER (parte del propietario) se rindió de cada liquidación en cada
+// rendición. Análogo a GastoRendido pero para el ingreso: permite rendir un mes en
+// varias tandas (parciales) sin doble-rendir — el bruto de una rendición nueva =
+// alquiler cobrado hasta ahora − lo ya rendido según estas filas.
+model AlquilerRendido {
+  id             String    @id @default(cuid())
+  inmobiliariaId String
+  rendicionId    String
+  rendicion      Rendicion @relation(fields: [rendicionId], references: [id])
+  liquidacionId  String
+  periodo        String
+  monto          Decimal   @db.Decimal(14, 2) // parte del propietario rendida en esta tanda
+  participacion  Float
+  propiedadId    String // snapshot, sin FK
+  direccion      String // snapshot, sin FK
+  createdAt      DateTime  @default(now())
+
+  @@index([inmobiliariaId])
+  @@index([rendicionId])
+  @@index([liquidacionId])
+  @@map("alquileres_rendidos")
 }
 
 // Snapshot congelado del gasto al rendir (el comprobante histórico sobrevive

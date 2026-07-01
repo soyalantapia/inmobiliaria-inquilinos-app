@@ -679,48 +679,82 @@ export async function plataRoutes(app: FastifyInstance) {
     if (!owner) return reply.code(404).send({ message: 'Propietario inexistente' });
     if (!owner.cbuAlias) return reply.code(409).send({ message: 'El propietario no tiene CBU cargado — pedíselo antes de rendir' });
 
-    const yaRendida = await prisma.rendicion.findUnique({
-      where: { propietarioId_periodo: { propietarioId, periodo } },
-    });
-    if (yaRendida) return reply.code(409).send({ message: `El período ${periodo} ya está rendido a este propietario` });
-
-    // Bruto: liquidaciones PAGADAS del período de los contratos de sus propiedades × participación
-    let montoBruto = 0;
+    // Bruto INCREMENTAL: alquiler COBRADO hasta ahora (PAGADO + PARCIAL conciliado)
+    // de las propiedades del dueño, × participación, MENOS lo ya rendido de cada
+    // liquidación. Así un mes se rinde en varias tandas (a medida que entran los
+    // parciales) sin doble-rendir. Antes tomaba sólo estado=PAGADO (mes completo) y
+    // el @@unique impedía rendir dos veces → el parcial cobrado no llegaba al dueño.
     const propIds = owner.participaciones.map((p) => p.propiedadId);
-    const liqsPagadas = await prisma.liquidacion.findMany({
+    const liqsCobradas = await prisma.liquidacion.findMany({
       where: {
         inmobiliariaId: u.inmobiliariaId,
         periodo,
-        estado: 'PAGADO',
+        estado: { in: ['PAGADO', 'PARCIAL'] },
         contrato: { propiedadId: { in: propIds }, modoCobranza: 'INMOBILIARIA' },
       },
-      include: { contrato: { select: { propiedadId: true } } },
+      include: {
+        contrato: { select: { propiedadId: true, propiedad: { select: { direccion: true } } } },
+      },
     });
-    // La Rendicion guarda UN solo montoBruto/comision/neto (una moneda). Si los
-    // cobros del período mezclan ARS y USD, sumarlos daría un bruto sin sentido; el
-    // modelo (@@unique propietarioId_periodo) no permite una rendición por moneda.
-    // Cortamos con un 409 claro en vez de emitir un neto incorrecto.
-    const monedas = [...new Set(liqsPagadas.map((l) => l.moneda))];
+    // Una sola moneda por rendición (la Rendicion guarda un monto). Si mezcla → 409.
+    const monedas = [...new Set(liqsCobradas.map((l) => l.moneda))];
     if (monedas.length > 1) {
       return reply.code(409).send({
         message: `Este propietario tiene cobros en varias monedas (${monedas.join(', ')}) en ${periodo}. Rendí cada moneda por separado (hoy la rendición es de una sola moneda).`,
       });
     }
-    for (const liq of liqsPagadas) {
+    // Cobrado (suma de pagos CONCILIADO) por liq + lo YA rendido a ESTE dueño por liq.
+    const cobradoMap = await montoPagadoPorLiquidacion(liqsCobradas.map((l) => l.id));
+    const prevRend = await prisma.alquilerRendido.groupBy({
+      by: ['liquidacionId'],
+      where: { liquidacionId: { in: liqsCobradas.map((l) => l.id) }, rendicion: { propietarioId } },
+      _sum: { monto: true },
+    });
+    const yaRendMap = new Map(prevRend.map((r) => [r.liquidacionId, Number(r._sum.monto ?? 0)]));
+
+    let montoBruto = 0;
+    const alquilerData: {
+      inmobiliariaId: string;
+      liquidacionId: string;
+      periodo: string;
+      monto: number;
+      participacion: number;
+      propiedadId: string;
+      direccion: string;
+    }[] = [];
+    for (const liq of liqsCobradas) {
       const part = owner.participaciones.find((p) => p.propiedadId === liq.contrato.propiedadId);
-      // Bruto = SOLO el alquiler (no montoTotal): las expensas/punitorios no entran
-      // en la rendición al propietario (las cobra/paga el consorcio). La comisión y
-      // el neto se calculan sobre el alquiler. (Decisión del dueño 2026-06-21.)
-      montoBruto += Number(liq.montoAlquiler) * ((part?.porcentaje ?? 100) / 100);
+      const porcentaje = part?.porcentaje ?? 100;
+      const total = Number(liq.montoTotal);
+      // Porción de ALQUILER dentro de lo cobrado (excluye expensas/punitorios,
+      // proporcional para cubrir parciales). Comisión y neto van sobre el alquiler.
+      const alquilerCobrado = total > 0 ? (cobradoMap.get(liq.id) ?? 0) * (Number(liq.montoAlquiler) / total) : 0;
+      const parteOwner = alquilerCobrado * (porcentaje / 100);
+      const yaRend = yaRendMap.get(liq.id) ?? 0;
+      const rendible = Math.round((parteOwner - yaRend) * 100) / 100;
+      if (rendible <= 0) continue; // ya se rindió todo lo cobrado de esta liq a este dueño
+      montoBruto += rendible;
+      alquilerData.push({
+        inmobiliariaId: u.inmobiliariaId,
+        liquidacionId: liq.id,
+        periodo,
+        monto: rendible,
+        participacion: porcentaje,
+        propiedadId: liq.contrato.propiedadId,
+        direccion: liq.contrato.propiedad?.direccion ?? '—',
+      });
     }
-    if (montoBruto === 0) return reply.code(409).send({ message: `No hay cobros del período ${periodo} para rendir` });
+    montoBruto = Math.round(montoBruto * 100) / 100;
+    if (montoBruto <= 0) {
+      return reply.code(409).send({ message: `No hay cobros nuevos del período ${periodo} para rendir a este propietario` });
+    }
 
     // Gastos pendientes — SOLO del período que se rinde y SOLO de las propiedades
     // que aportaron ingreso a esta rendición (las que tienen liquidación PAGADA del
     // período). Antes descontaba gastos de CUALQUIER propiedad del dueño (p.ej. una
     // solo-expensas, que no aporta alquiler) del neto de sus propiedades de alquiler.
     // (Decisión del dueño 2026-06-21: cada propiedad se rinde por su cuenta.)
-    const propIdsConIngreso = [...new Set(liqsPagadas.map((l) => l.contrato.propiedadId))];
+    const propIdsConIngreso = [...new Set(liqsCobradas.map((l) => l.contrato.propiedadId))];
     const inicioPeriodo = new Date(`${periodo}-01T00:00:00.000Z`);
     const finPeriodo = new Date(inicioPeriodo);
     finPeriodo.setUTCMonth(finPeriodo.getUTCMonth() + 1);
@@ -788,6 +822,13 @@ export async function plataRoutes(app: FastifyInstance) {
             notas: body.data.notas,
           },
         });
+        // Registramos cuánto ALQUILER se rindió de cada liquidación en ESTA tanda.
+        // La próxima rendición del período resta estas filas → no doble-rinde.
+        if (alquilerData.length > 0) {
+          await tx.alquilerRendido.createMany({
+            data: alquilerData.map((a) => ({ ...a, rendicionId: r.id })),
+          });
+        }
         if (gastosData.length > 0) {
           // Cobranza compartida (propiedad con varios dueños): cada gasto se rinde
           // por PARTES (cada dueño descuenta su participación). Sumamos lo ya
@@ -818,11 +859,9 @@ export async function plataRoutes(app: FastifyInstance) {
         return r;
       });
     } catch (e) {
-      // La unicidad (propietarioId, periodo) es el lock anti-doble-rendición del
-      // mismo dueño; dos dueños distintos SÍ rinden el mismo gasto (cada uno su parte).
-      if (e && typeof e === 'object' && (e as { code?: string }).code === 'P2002') {
-        return reply.code(409).send({ message: `El período ${periodo} ya está rendido a este propietario` });
-      }
+      // Ya no hay unique (propietarioId, periodo): la rendición es incremental y el
+      // anti-doble se hace por lo ya rendido de cada liquidación (AlquilerRendido) +
+      // el updateMany condicionado de gastos. Si algo choca, propagamos el error.
       throw e;
     }
 
