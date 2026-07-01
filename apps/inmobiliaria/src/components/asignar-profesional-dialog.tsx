@@ -1,10 +1,12 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
   ArrowRight,
   CheckCircle2,
+  Loader2,
   MessageCircle,
   Search,
   Wrench,
@@ -25,7 +27,10 @@ import {
   type CategoriaProfesional,
   type ProfesionalAdmin,
 } from '@/lib/mock-data';
-import { asignarProfesional, listarReclamos } from '@/lib/reclamos-store';
+import { asignarProfesional } from '@/lib/reclamos-store';
+import { apiFetch } from '@/lib/api/client';
+import { ensureApiSession } from '@/lib/api/session';
+import { useReclamos } from '@/lib/api/use-reclamos';
 import type { CategoriaReclamo, Reclamo, UrgenciaReclamo } from '@/lib/types';
 import { formatFechaCorta } from '@/lib/format';
 
@@ -65,7 +70,12 @@ export function AsignarProfesionalDialog({
   onOpenChange,
   onAsignado,
 }: AsignarProfesionalDialogProps) {
-  const [reclamos, setReclamos] = useState<Reclamo[]>([]);
+  const qc = useQueryClient();
+  // En prod los reclamos salen del API (ya mapeados); en build demo, del store
+  // local. Antes esta lista SIEMPRE venía del store demo → en producción aparecía
+  // vacía y la "asignación" no persistía en ningún lado.
+  const { reclamos: reclamosData, deApi, cargando } = useReclamos();
+  const reclamos = reclamosData ?? [];
   const [filtro, setFiltro] = useState('');
   const [seleccionado, setSeleccionado] = useState<Reclamo | null>(null);
   const [asignando, setAsignando] = useState(false);
@@ -73,11 +83,11 @@ export function AsignarProfesionalDialog({
   // Refrescar al abrir
   useEffect(() => {
     if (!open) return;
-    setReclamos(listarReclamos());
     setFiltro('');
     setSeleccionado(null);
     setAsignando(false);
-  }, [open]);
+    if (deApi) void qc.invalidateQueries({ queryKey: ['reclamos'] });
+  }, [open, deApi, qc]);
 
   // Reclamos elegibles: abiertos o en curso, sin profesional asignado.
   // Si hay match de categoría → arriba; el resto debajo (todavía asignables).
@@ -115,32 +125,56 @@ export function AsignarProfesionalDialog({
   const handleAsignar = async (alsoWhatsapp: boolean) => {
     if (!seleccionado) return;
     setAsignando(true);
-    asignarProfesional(
-      seleccionado.id,
-      {
-        id: profesional.id,
-        nombre: profesional.nombre,
-        telefono: profesional.telefono,
-        categoria: profesional.categoria,
-      },
-      'Inmobiliaria',
-    );
-    await new Promise((r) => setTimeout(r, 250));
-    toast({
-      variant: 'success',
-      title: '¡Profesional asignado!',
-      description: `${profesional.nombre} → reclamo en ${seleccionado.direccion}`,
-    });
-    onAsignado?.(seleccionado.id);
-    onOpenChange(false);
+    try {
+      if (deApi) {
+        // Persistir de verdad (POST /reclamos/:id/asignar). Antes solo se escribía
+        // el store demo → el toast decía "asignado" pero en prod no pasaba nada.
+        await ensureApiSession();
+        await apiFetch(`/reclamos/${seleccionado.id}/asignar`, {
+          method: 'POST',
+          body: JSON.stringify({ profesionalId: profesional.id }),
+        });
+        // refetch (no invalidate): esperamos a que la lista quede fresca ANTES de
+        // cerrar / avisar al padre, para que el contador no muestre datos viejos.
+        // best-effort: si el refetch falla, la asignación YA se guardó → no debe
+        // disparar el toast de error.
+        await qc.refetchQueries({ queryKey: ['reclamos'] }).catch(() => {});
+      } else {
+        asignarProfesional(
+          seleccionado.id,
+          {
+            id: profesional.id,
+            nombre: profesional.nombre,
+            telefono: profesional.telefono,
+            categoria: profesional.categoria,
+          },
+          'Inmobiliaria',
+        );
+        await new Promise((r) => setTimeout(r, 250));
+      }
+      toast({
+        variant: 'success',
+        title: '¡Profesional asignado!',
+        description: `${profesional.nombre} → reclamo en ${seleccionado.direccion}`,
+      });
+      onAsignado?.(seleccionado.id);
+      onOpenChange(false);
 
-    if (alsoWhatsapp) {
-      const mensaje = mensajeWhatsappTrabajo(profesional, seleccionado);
-      const tel = profesional.telefono.replace(/[^\d]/g, '');
-      const url = `https://wa.me/${tel}?text=${encodeURIComponent(mensaje)}`;
-      window.open(url, '_blank', 'noopener,noreferrer');
+      if (alsoWhatsapp) {
+        const mensaje = mensajeWhatsappTrabajo(profesional, seleccionado);
+        const tel = profesional.telefono.replace(/[^\d]/g, '');
+        const url = `https://wa.me/${tel}?text=${encodeURIComponent(mensaje)}`;
+        window.open(url, '_blank', 'noopener,noreferrer');
+      }
+    } catch (e) {
+      toast({
+        variant: 'destructive',
+        title: 'No se pudo asignar',
+        description: e instanceof Error ? e.message : 'Intentá de nuevo.',
+      });
+    } finally {
+      setAsignando(false);
     }
-    setAsignando(false);
   };
 
   const totalElegibles = compatibles.length + otros.length;
@@ -159,7 +193,15 @@ export function AsignarProfesionalDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {totalElegibles === 0 ? (
+        {cargando && totalElegibles === 0 ? (
+          <div className="rounded-md border border-dashed bg-muted/20 p-8 text-center">
+            <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
+            <p className="mt-2 text-sm font-medium">Cargando reclamos…</p>
+            <p className="text-xs text-muted-foreground">
+              Buscando reclamos abiertos sin asignar.
+            </p>
+          </div>
+        ) : totalElegibles === 0 ? (
           <div className="rounded-md border border-dashed bg-muted/20 p-8 text-center">
             <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-500" />
             <p className="mt-2 text-sm font-medium">Sin reclamos pendientes</p>

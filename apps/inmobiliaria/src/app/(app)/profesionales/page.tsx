@@ -65,6 +65,7 @@ import {
 import { crearProfesionalApi, useProfesionales } from '@/lib/api/use-profesionales';
 import { apiEnabled } from '@/lib/api/client';
 import { listarReclamos } from '@/lib/reclamos-store';
+import { useReclamos } from '@/lib/api/use-reclamos';
 import {
   type CalificacionRecibida,
   calificacionesPorProfesional,
@@ -104,10 +105,10 @@ export default function ProfesionalesAdminPage() {
   // En demo las altas/ediciones/bajas viven en localStorage; este contador
   // fuerza un re-render para reflejar el store tras cada mutación local.
   const [versionLocal, setVersionLocal] = useState(0);
-  // Conteo de reclamos activos asignados a cada profesional (id → cant).
-  const [reclamosActivosPorProf, setReclamosActivosPorProf] = useState<
-    Record<string, number>
-  >({});
+  // Reclamos para contar los activos por profesional: del API en prod, del store
+  // demo en build local. Antes SIEMPRE salían del store demo → en producción el
+  // contador "N activos" quedaba en 0 y el bloqueo de borrado no aplicaba.
+  const { reclamos: reclamosParaConteo } = useReclamos();
   // Calificaciones nuevas recibidas del inquilino, agrupadas por profesional.
   const [califsPorProf, setCalifsPorProf] = useState<
     Record<string, CalificacionRecibida[]>
@@ -122,16 +123,17 @@ export default function ProfesionalesAdminPage() {
   );
 
   useEffect(() => {
-    refrescarReclamos();
     // Calificaciones cross-app (localStorage del lado inquilino): solo en demo.
     // En prod (apiEnabled) no leemos ese store; el rating sale del API.
     if (!apiEnabled) setCalifsPorProf(calificacionesPorProfesional());
     setHidratado(true);
   }, []);
 
-  const refrescarReclamos = () => {
+  // Conteo de reclamos activos asignados a cada profesional (id → cantidad).
+  const reclamosActivosPorProf = useMemo<Record<string, number>>(() => {
+    const fuente = apiEnabled ? reclamosParaConteo ?? [] : listarReclamos();
     const map: Record<string, number> = {};
-    listarReclamos().forEach((r) => {
+    fuente.forEach((r) => {
       if (
         r.profesionalAsignadoId &&
         (r.estado === 'ABIERTO' || r.estado === 'EN_CURSO')
@@ -139,8 +141,9 @@ export default function ProfesionalesAdminPage() {
         map[r.profesionalAsignadoId] = (map[r.profesionalAsignadoId] ?? 0) + 1;
       }
     });
-    setReclamosActivosPorProf(map);
-  };
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiEnabled, reclamosParaConteo, versionLocal]);
 
   const filtrados = useMemo(() => {
     let l = lista;
@@ -555,7 +558,7 @@ export default function ProfesionalesAdminPage() {
         profesional={asignando}
         open={!!asignando}
         onOpenChange={(v) => !v && setAsignando(null)}
-        onAsignado={() => refrescarReclamos()}
+        onAsignado={() => setVersionLocal((v) => v + 1)}
       />
 
       <HistorialProfesionalDialog
