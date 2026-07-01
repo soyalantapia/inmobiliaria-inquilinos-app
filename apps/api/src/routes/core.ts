@@ -7,6 +7,7 @@ import { requireUsuario } from '../auth/guards.js';
 import { registrarEvento } from '../lib/auditoria.js';
 import { generarLiquidacionesContrato } from '../lib/liquidaciones.js';
 import { conSaldo, montoPagadoPorLiquidacion } from '../lib/saldos.js';
+import { calcularPunitorio } from '../lib/punitorios.js';
 import { enviarInvitacionInquilino } from '../mailer.js';
 
 /**
@@ -125,9 +126,15 @@ export async function coreRoutes(app: FastifyInstance) {
     // y el tab "Pagos" del detalle quedaba SIEMPRE vacío (bug 4): un pago informado
     // o conciliado nunca se veía en el contrato.
     const pagado = await montoPagadoPorLiquidacion(liquidaciones.map((l) => l.id));
+    // M1: cada liquidación con su mora al día (montoTotal = base + punitorio); una
+    // PAGADA congela la mora en su fechaPago. tasaPunitorioDiaria viene en `rest`.
+    const tasaP = rest.tasaPunitorioDiaria ?? null;
     return {
       ...rest,
-      liquidaciones: liquidaciones.map((l) => conSaldo(l, pagado)),
+      liquidaciones: liquidaciones.map((l) => {
+        const asOf = l.estado === 'PAGADO' && l.fechaPago ? new Date(l.fechaPago) : now;
+        return conSaldo(l, pagado, calcularPunitorio(Number(l.montoTotal), tasaP, l.fechaVencimiento, asOf));
+      }),
       estadoPagoActual: actual ? (liqVencida(actual, now) ? 'VENCIDO' : actual.estado) : 'PENDIENTE',
       proximoVencimiento: pendiente?.fechaVencimiento ?? null,
     };

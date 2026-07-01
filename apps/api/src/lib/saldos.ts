@@ -19,14 +19,27 @@ export async function montoPagadoPorLiquidacion(liqIds: string[]): Promise<Map<s
 }
 
 /**
- * Decora una liquidación con `montoPagado` (suma de conciliados) y `saldo`
- * (montoTotal − pagado, nunca negativo). `pagadoMap` sale de
- * montoPagadoPorLiquidacion; una liq sin pagos conciliados queda montoPagado=0.
+ * Decora una liquidación con `montoPagado` (suma de conciliados), `montoPunitorio`
+ * (mora al día, calculada por el caller) y `saldo` (total exigible − pagado, nunca
+ * negativo). `pagadoMap` sale de montoPagadoPorLiquidacion.
+ *
+ * IMPORTANTE: el `montoTotal` devuelto es el TOTAL EXIGIBLE = base (montoTotal de la
+ * DB) + `punitorio`. Así el front del inquilino (que hace montoOriginal = montoTotal
+ * − montoPunitorio y totalAPagar = montoTotal) muestra base + mora sin cambios.
+ * `punitorio` default 0 → sin mora (contratos sin tasa / endpoints que no la aplican).
  */
 export function conSaldo<T extends { id: string; montoTotal: unknown }>(
   liq: T,
   pagadoMap: Map<string, number>,
-): T & { montoPagado: number; saldo: number } {
+  punitorio = 0,
+): T & { montoPunitorio: number; montoTotal: number; montoPagado: number; saldo: number } {
   const montoPagado = pagadoMap.get(liq.id) ?? 0;
-  return { ...liq, montoPagado, saldo: Math.max(0, Number(liq.montoTotal) - montoPagado) };
+  const total = Math.round((Number(liq.montoTotal) + punitorio) * 100) / 100;
+  return {
+    ...liq,
+    montoPunitorio: punitorio,
+    montoTotal: total,
+    montoPagado,
+    saldo: Math.max(0, Math.round((total - montoPagado) * 100) / 100),
+  };
 }

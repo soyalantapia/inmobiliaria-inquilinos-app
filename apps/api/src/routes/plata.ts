@@ -5,6 +5,7 @@ import { exigirContratoActivo, requireContratoAcceso, requireInquilino, requireU
 import { verificarPinUsuario } from '../auth/pin.js';
 import { devengarTodosLosTenants, generarLiquidacionesContrato, marcarLiquidacionesVencidas } from '../lib/liquidaciones.js';
 import { conSaldo, montoPagadoPorLiquidacion } from '../lib/saldos.js';
+import { calcularPunitorio } from '../lib/punitorios.js';
 import { registrarEvento } from '../lib/auditoria.js';
 import { enviarInvitacionInquilino } from '../mailer.js';
 import { urlEsDelTenant } from './uploads.js';
@@ -291,9 +292,17 @@ export async function plataRoutes(app: FastifyInstance) {
       // ambas ops para que un ID de liquidación ajeno no pueda operar cross-tenant.
       const liq = await tx.liquidacion.findFirst({
         where: { id: pago.liquidacionId, inmobiliariaId: u.inmobiliariaId },
-        select: { montoTotal: true },
+        select: { montoTotal: true, fechaVencimiento: true, contrato: { select: { tasaPunitorioDiaria: true } } },
       });
-      const total = Number(liq?.montoTotal ?? pago.montoLiqTotal ?? 0);
+      const base = Number(liq?.montoTotal ?? pago.montoLiqTotal ?? 0);
+      // M1: el umbral PAGADO incluye la mora a la FECHA DEL PAGO (no la de hoy): así
+      // el inquilino que pagó lo que se le mostró no queda PARCIAL por unos pesos de
+      // mora que crecieron mientras la inmobiliaria demoraba en validar. Al marcar
+      // PAGADO se congela fechaPago → la lectura deja de acumular mora.
+      const punitorio = liq
+        ? calcularPunitorio(base, liq.contrato?.tasaPunitorioDiaria, liq.fechaVencimiento, pago.fechaTransferencia)
+        : 0;
+      const total = base + punitorio;
       await tx.liquidacion.updateMany({
         where: { id: pago.liquidacionId, inmobiliariaId: u.inmobiliariaId },
         data:
@@ -469,16 +478,24 @@ export async function plataRoutes(app: FastifyInstance) {
 
     const liq = await prisma.liquidacion.findFirst({
       where: { id: body.data.liquidacionId, contratoId: inq.contratoId },
+      include: { contrato: { select: { tasaPunitorioDiaria: true } } },
     });
     if (!liq) return reply.code(404).send({ message: 'Liquidación inexistente' });
     if (liq.estado === 'PAGADO') return reply.code(409).send({ message: 'Esta liquidación ya está paga' });
-    // El monto informado no puede superar el saldo pendiente (total − conciliados):
-    // antes, al volver a pagar un parcial, se podía informar más que lo que faltaba.
+    // El monto informado no puede superar el saldo pendiente (total exigible −
+    // conciliados). M1: el total exigible = base + mora al día (para que el inquilino
+    // pueda pagar los punitorios). Antes se podía informar más que lo que faltaba.
     const aggConc = await prisma.pago.aggregate({
       where: { liquidacionId: liq.id, estado: 'CONCILIADO' },
       _sum: { monto: true },
     });
-    const saldoPendiente = Number(liq.montoTotal) - Number(aggConc._sum.monto ?? 0);
+    const punitorio = calcularPunitorio(
+      Number(liq.montoTotal),
+      liq.contrato?.tasaPunitorioDiaria,
+      liq.fechaVencimiento,
+      new Date(),
+    );
+    const saldoPendiente = Number(liq.montoTotal) + punitorio - Number(aggConc._sum.monto ?? 0);
     // Carrera: liq.estado pudo leerse stale como PARCIAL mientras un /validar
     // concurrente ya concilió el total → saldo 0. No dejamos informar sobre una
     // liquidación efectivamente paga (el check de estado=PAGADO de arriba no la agarra).
@@ -550,7 +567,20 @@ export async function plataRoutes(app: FastifyInstance) {
     // montoTotal completo, aunque hubiera informado/conciliado un parcial. Ahora
     // exponemos cuánto se pagó (conciliado) y el saldo real por liquidación.
     const pagado = await montoPagadoPorLiquidacion(liqs.map((l) => l.id));
-    return liqs.map((l) => conSaldo(l, pagado));
+    // M1: mora al día (todas las liqs son del mismo contrato → una sola tasa). El
+    // montoTotal devuelto = base + punitorio; para una liq PAGADA la mora se congela
+    // en su fechaPago.
+    const ctto = await prisma.contrato.findUnique({
+      where: { id: inq.contratoId },
+      select: { tasaPunitorioDiaria: true },
+    });
+    const tasa = ctto?.tasaPunitorioDiaria ?? null;
+    const hoy = new Date();
+    return liqs.map((l) => {
+      const asOf = l.estado === 'PAGADO' && l.fechaPago ? new Date(l.fechaPago) : hoy;
+      const punitorio = calcularPunitorio(Number(l.montoTotal), tasa, l.fechaVencimiento, asOf);
+      return conSaldo(l, pagado, punitorio);
+    });
   });
 
   // ===== Caja de gastos =====
