@@ -65,9 +65,8 @@ export async function solicitarCodigoUnificado(email: string): Promise<Solicitar
   return {
     ok: true,
     email: emailNorm,
-    // El código real viaja por email/log del server. Mientras el server esté en
-    // DEMO_MODE acepta 000000 — lo mostramos en el banner demo del login.
-    codigo: '000000',
+    // En prod el código llega SOLO por email — no lo exponemos en el front (antes
+    // devolvíamos '000000' y aparecía el banner demo en producción, confuso).
     cooldownHasta: Date.now() + SEGUNDOS_COOLDOWN * 1000,
   };
 }

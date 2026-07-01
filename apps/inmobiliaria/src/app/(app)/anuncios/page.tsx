@@ -689,14 +689,23 @@ function CrearAnuncioDialog({ abierto, onClose, onGuardar, contratosApi }: Dialo
 
           {/* Todo anuncio se envía siempre por app y email. */}
           <div className="space-y-2">
-            <p className="text-sm font-medium leading-none">Cómo se envía</p>
-            <div className="flex items-center gap-2 rounded-md border bg-muted/20 px-3 py-2 text-sm">
-              <Smartphone className="h-4 w-4 shrink-0 text-primary" />
-              <Mail className="h-4 w-4 shrink-0 text-primary" />
-              <span className="text-muted-foreground">
-                Por <strong className="text-foreground">app</strong> y{' '}
-                <strong className="text-foreground">email</strong>
-              </span>
+            <p className="text-sm font-medium leading-none">Cómo les llega a tus inquilinos</p>
+            <div className="space-y-2 rounded-md border bg-muted/20 p-3 text-sm">
+              <div className="flex items-start gap-2">
+                <Smartphone className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                <span className="text-muted-foreground">
+                  <strong className="text-foreground">En la app</strong>: les aparece en el inicio y
+                  reciben una notificación. Pueden tocar <strong className="text-foreground">“Estoy
+                  enterado”</strong> y vos ves quiénes ya lo leyeron.
+                </span>
+              </div>
+              <div className="flex items-start gap-2">
+                <Mail className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                <span className="text-muted-foreground">
+                  <strong className="text-foreground">Por email</strong>: se lo mandamos al correo
+                  con el que ingresan, por si no abren la app.
+                </span>
+              </div>
             </div>
           </div>
           <div className="flex justify-end gap-2 pt-2">

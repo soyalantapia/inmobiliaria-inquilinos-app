@@ -148,13 +148,13 @@ function AnuncioRow({
           >
             {anuncio.cuerpo}
           </p>
-          <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2">
+          <div className="mt-2 space-y-2">
             <p className="text-[10px] text-muted-foreground/80">
               {anuncio.enviadoPor} · {formatFechaCorta(anuncio.enviadoAt)}
             </p>
             {confirmado ? (
-              <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-600">
-                <Check className="h-3 w-3" /> Enterado
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1.5 text-sm font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+                <Check className="h-4 w-4" /> Ya avisaste que estás enterado
               </span>
             ) : (
               <button
@@ -163,9 +163,9 @@ function AnuncioRow({
                   e.stopPropagation();
                   onEnterado();
                 }}
-                className="inline-flex items-center gap-1 rounded-full border border-primary/40 px-2.5 py-0.5 text-[10px] font-semibold text-primary transition-colors hover:bg-primary hover:text-primary-foreground"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 active:scale-[0.99] sm:w-auto"
               >
-                <Check className="h-3 w-3" /> Enterado
+                <Check className="h-4 w-4" strokeWidth={2.5} /> Estoy enterado
               </button>
             )}
           </div>
