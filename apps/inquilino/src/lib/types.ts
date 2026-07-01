@@ -81,6 +81,11 @@ export interface Liquidacion {
   fechaPago?: string | null;
   estado: EstadoLiquidacion;
   moneda: Moneda;
+  /** Suma de pagos CONCILIADOS de esta liquidación (lo que la inmo ya validó).
+   *  Viene del API en prod; undefined en la demo offline (se usa el store local). */
+  montoPagado?: number;
+  /** Saldo pendiente real = montoTotal − montoPagado (del API, prod). */
+  saldo?: number;
 }
 
 export interface Contrato {

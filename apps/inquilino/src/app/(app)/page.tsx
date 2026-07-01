@@ -500,6 +500,13 @@ function BannerPagoPendiente({ liq }: { liq: Liquidacion }) {
   const calc = resolverMontos(liq, apiEnabled);
   const diasV = diasHastaVencimiento(liq.fechaVencimiento);
   const vencido = calc.diasAtraso > 0;
+  // Parcial ya conciliado por la inmo: el banner del home debe mostrar el SALDO
+  // restante, no el total (bug 1/3 — era la superficie más visible que seguía
+  // mostrando la deuda completa). En demo montoPagado es undefined → esParcial=false.
+  const montoPagado = liq.montoPagado ?? 0;
+  const saldo = liq.saldo ?? calc.totalAPagar;
+  const esParcial = montoPagado > 0 && saldo > 0;
+  const montoMostrado = esParcial ? saldo : calc.totalAPagar;
 
   // Color según urgencia
   const tono = vencido
@@ -543,8 +550,8 @@ function BannerPagoPendiente({ liq }: { liq: Liquidacion }) {
           </div>
           <div className="flex-1 min-w-0">
             <p className={`text-sm font-semibold leading-tight ${tono.text}`}>
-              {vencido ? 'Tenés un pago atrasado' : 'Tenés un pago pendiente'} ·{' '}
-              <span className="tabular-nums">{formatMonto(calc.totalAPagar, liq.moneda)}</span>
+              {vencido ? 'Tenés un pago atrasado' : esParcial ? 'Te queda un saldo' : 'Tenés un pago pendiente'} ·{' '}
+              <span className="tabular-nums">{formatMonto(montoMostrado, liq.moneda)}</span>
             </p>
             <p className={`truncate text-xs ${tono.sub}`}>
               {vencido
@@ -589,8 +596,15 @@ function BannerPagoPendiente({ liq }: { liq: Liquidacion }) {
             accent
           />
         )}
+        {esParcial && (
+          <DesgloseFila label="Ya pagaste" value={`− ${formatMonto(montoPagado, liq.moneda)}`} />
+        )}
         <div className={`my-1 h-px ${vencido ? 'bg-red-200' : 'bg-primary/20'}`} />
-        <DesgloseFila label="Total a pagar" value={formatMonto(calc.totalAPagar, liq.moneda)} bold />
+        <DesgloseFila
+          label={esParcial ? 'Saldo a pagar' : 'Total a pagar'}
+          value={formatMonto(montoMostrado, liq.moneda)}
+          bold
+        />
       </div>
     </Link>
   );

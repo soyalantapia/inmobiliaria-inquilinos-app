@@ -108,9 +108,13 @@ interface LiquidacionApi {
   fechaPago?: string | null;
   estado: Liquidacion['estado'];
   moneda: Liquidacion['moneda'];
+  montoPagado?: string | number | null;
+  saldo?: string | number | null;
 }
 
 function mapLiquidacion(l: LiquidacionApi): Liquidacion {
+  const montoTotal = Number(l.montoTotal);
+  const montoPagado = l.montoPagado != null ? Number(l.montoPagado) : 0;
   return {
     id: l.id,
     contratoId: l.contratoId,
@@ -118,11 +122,15 @@ function mapLiquidacion(l: LiquidacionApi): Liquidacion {
     montoAlquiler: Number(l.montoAlquiler),
     montoExpensas: l.montoExpensas != null ? Number(l.montoExpensas) : null,
     montoPunitorio: Number(l.montoPunitorio ?? 0),
-    montoTotal: Number(l.montoTotal),
+    montoTotal,
     fechaVencimiento: (l.fechaVencimiento ?? '').slice(0, 10),
     fechaPago: l.fechaPago ?? null,
     estado: l.estado,
     moneda: l.moneda,
+    // Conciliado + saldo real (prod). El API expone saldo; si no viniera, lo
+    // derivamos de montoTotal − pagado como respaldo defensivo.
+    montoPagado,
+    saldo: l.saldo != null ? Number(l.saldo) : Math.max(0, montoTotal - montoPagado),
   };
 }
 

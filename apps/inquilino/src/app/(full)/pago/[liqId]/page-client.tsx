@@ -141,12 +141,18 @@ function DetallePagoView({
   // Mostramos "pendiente de validación" sólo si el inmo todavía no decidió.
   const pendienteValidacion =
     informado?.estado === 'INFORMADO' && !rechazadoPorInmo && !confirmadoPorInmo;
-  // Saldo pendiente considerando todos los parciales informados (excluye
-  // rechazados). Si llega a 0, el inquilino quedó al día por parciales.
-  const saldo = saldoPendiente(liqId, calc.totalAPagar);
+  // Saldo pendiente. En prod sale del API (montoTotal − conciliados = liq.saldo);
+  // en demo, de los parciales del store local. Antes en prod siempre daba el total
+  // completo, así que un parcial ya conciliado no bajaba la deuda mostrada (bug 1/3).
+  const saldo = apiEnabled
+    ? Math.max(0, liq.saldo ?? calc.totalAPagar)
+    : saldoPendiente(liqId, calc.totalAPagar);
   const totalInformado = calc.totalAPagar - saldo;
-  const hayParciales = parciales.length > 0 && saldo > 0;
-  const pagadoEnParciales = !pagado && parciales.length > 0 && saldo === 0;
+  // "Hay parciales / quedó al día por parciales": en prod lo derivamos de
+  // montoPagado (conciliado) en vez del historial local (vacío en prod).
+  const tieneParciales = apiEnabled ? (liq.montoPagado ?? 0) > 0 : parciales.length > 0;
+  const hayParciales = tieneParciales && saldo > 0;
+  const pagadoEnParciales = !pagado && tieneParciales && saldo === 0;
 
   return (
     <>
@@ -253,8 +259,8 @@ function DetallePagoView({
             </p>
             {hayParciales && (
               <p className="text-xs text-muted-foreground">
-                Total del mes {formatMonto(calc.totalAPagar, liq.moneda)} · Ya informaste{' '}
-                {formatMonto(totalInformado, liq.moneda)}
+                Total del mes {formatMonto(calc.totalAPagar, liq.moneda)} · Ya{' '}
+                {apiEnabled ? 'pagaste' : 'informaste'} {formatMonto(totalInformado, liq.moneda)}
               </p>
             )}
             {!pagado && !pagadoEnParciales && (

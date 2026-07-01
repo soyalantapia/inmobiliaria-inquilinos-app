@@ -4,6 +4,7 @@ import { prisma } from '../db.js';
 import { exigirContratoActivo, requireContratoAcceso, requireInquilino, requireUsuario } from '../auth/guards.js';
 import { verificarPinUsuario } from '../auth/pin.js';
 import { devengarTodosLosTenants, generarLiquidacionesContrato } from '../lib/liquidaciones.js';
+import { conSaldo, montoPagadoPorLiquidacion } from '../lib/saldos.js';
 import { registrarEvento } from '../lib/auditoria.js';
 import { enviarInvitacionInquilino } from '../mailer.js';
 import { urlEsDelTenant } from './uploads.js';
@@ -33,7 +34,7 @@ export async function plataRoutes(app: FastifyInstance) {
     const q = z
       .object({ periodo: z.string().optional(), estado: z.enum(['PENDIENTE', 'PAGADO', 'PARCIAL', 'VENCIDO']).optional() })
       .parse(request.query ?? {});
-    return prisma.liquidacion.findMany({
+    const liqs = await prisma.liquidacion.findMany({
       where: { inmobiliariaId: u.inmobiliariaId, ...(q.periodo ? { periodo: q.periodo } : {}), ...(q.estado ? { estado: q.estado } : {}) },
       include: {
         contrato: {
@@ -46,6 +47,10 @@ export async function plataRoutes(app: FastifyInstance) {
       },
       orderBy: { fechaVencimiento: 'desc' },
     });
+    // montoPagado/saldo (suma de conciliados) para que las vistas puedan mostrar
+    // lo cobrado de un PARCIAL, no sólo el estado.
+    const pagado = await montoPagadoPorLiquidacion(liqs.map((l) => l.id));
+    return liqs.map((l) => conSaldo(l, pagado));
   });
 
   // Devenga (top-up) las liquidaciones de meses futuros de TODOS los contratos
@@ -396,7 +401,10 @@ export async function plataRoutes(app: FastifyInstance) {
           contratoId: inq.contratoId,
           liquidacionId: liq.id,
           periodo: liq.periodo,
-          tipo: Number(liq.montoTotal) === body.data.monto ? 'TOTAL' : 'PARCIAL',
+          // TOTAL si el monto CIERRA el saldo pendiente (no si iguala el total
+          // original): un pago que salda el remanente tras un parcial previo debe
+          // nacer TOTAL, no PARCIAL. saldoPendiente = montoTotal − conciliados.
+          tipo: body.data.monto >= saldoPendiente ? 'TOTAL' : 'PARCIAL',
           monto: body.data.monto,
           montoLiqTotal: liq.montoTotal,
           metodo: body.data.metodo,
@@ -427,10 +435,15 @@ export async function plataRoutes(app: FastifyInstance) {
     const inq = await requireContratoAcceso(request, reply);
     if (!inq) return;
     if (!inq.contratoId) return [];
-    return prisma.liquidacion.findMany({
+    const liqs = await prisma.liquidacion.findMany({
       where: { contratoId: inq.contratoId },
       orderBy: { periodo: 'desc' },
     });
+    // CLAVE (bugs 1/3): sin montoPagado/saldo el inquilino veía SIEMPRE el
+    // montoTotal completo, aunque hubiera informado/conciliado un parcial. Ahora
+    // exponemos cuánto se pagó (conciliado) y el saldo real por liquidación.
+    const pagado = await montoPagadoPorLiquidacion(liqs.map((l) => l.id));
+    return liqs.map((l) => conSaldo(l, pagado));
   });
 
   // ===== Caja de gastos =====

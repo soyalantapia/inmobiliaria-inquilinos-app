@@ -1010,8 +1010,11 @@ export interface LiquidacionAdmin {
   montoTotal: number;
   fechaVencimiento: string;
   fechaPago: string | null;
-  estado: 'PAGADO' | 'PENDIENTE' | 'VENCIDO';
+  estado: 'PAGADO' | 'PENDIENTE' | 'VENCIDO' | 'PARCIAL';
   metodoPago: 'TRANSFERENCIA' | 'MERCADOPAGO' | 'EFECTIVO' | null;
+  /** Cobrado (suma de pagos conciliados) y saldo restante. Del API en prod. */
+  montoPagado?: number;
+  saldo?: number;
 }
 
 // Para no inflar el archivo, generamos al vuelo las últimas 12 liquidaciones

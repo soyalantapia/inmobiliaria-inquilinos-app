@@ -6,6 +6,7 @@ import { prisma } from '../db.js';
 import { requireUsuario } from '../auth/guards.js';
 import { registrarEvento } from '../lib/auditoria.js';
 import { generarLiquidacionesContrato } from '../lib/liquidaciones.js';
+import { conSaldo, montoPagadoPorLiquidacion } from '../lib/saldos.js';
 import { enviarInvitacionInquilino } from '../mailer.js';
 
 /**
@@ -65,7 +66,11 @@ export async function coreRoutes(app: FastifyInstance) {
         garantes: true,
         coInquilinos: true,
         documentos: true,
-        liquidaciones: { orderBy: { periodo: 'desc' }, take: 6 },
+        // SIN take: el tab "Pagos" del detalle lista el historial completo y su
+        // ResumenPagos agrega "Total cobrado"/"Pagadas" sobre TODAS las liquidaciones
+        // (con take:6 esos totales quedaban truncados). Están acotadas por la
+        // duración del contrato (una por mes).
+        liquidaciones: { orderBy: { periodo: 'desc' } },
       },
     });
     if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
@@ -77,8 +82,13 @@ export async function coreRoutes(app: FastifyInstance) {
     const vencida = liquidaciones.find((l) => l.estado === 'VENCIDO');
     const actual = vencida ?? liquidaciones[0] ?? null;
     const pendiente = liquidaciones.find((l) => l.estado === 'PENDIENTE' || l.estado === 'VENCIDO');
+    // Devolvemos las liquidaciones (con montoPagado/saldo) — antes se descartaban
+    // y el tab "Pagos" del detalle quedaba SIEMPRE vacío (bug 4): un pago informado
+    // o conciliado nunca se veía en el contrato.
+    const pagado = await montoPagadoPorLiquidacion(liquidaciones.map((l) => l.id));
     return {
       ...rest,
+      liquidaciones: liquidaciones.map((l) => conSaldo(l, pagado)),
       estadoPagoActual: actual?.estado ?? 'PENDIENTE',
       proximoVencimiento: pendiente?.fechaVencimiento ?? null,
     };

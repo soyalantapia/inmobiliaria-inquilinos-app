@@ -55,6 +55,9 @@ const estadoLiqVariant: Record<
   PAGADO: 'success',
   PENDIENTE: 'warning',
   VENCIDO: 'destructive',
+  // Parcial: cobrado en parte. Sin esta key, al mapear liquidaciones reales con
+  // estado PARCIAL el Badge quedaba sin variant (undefined).
+  PARCIAL: 'warning',
 };
 
 // Estado del contrato → color del badge. Antes estaba hardcodeado 'success'
@@ -454,9 +457,12 @@ export default function DetalleContratoPage() {
 function ResumenPagos({ liquidaciones }: { liquidaciones: LiquidacionAdmin[] }) {
   const pagados = liquidaciones.filter((l) => l.estado === 'PAGADO').length;
   const vencidos = liquidaciones.filter((l) => l.estado === 'VENCIDO').length;
-  const totalCobrado = liquidaciones
-    .filter((l) => l.estado === 'PAGADO')
-    .reduce((acc, l) => acc + l.montoTotal, 0);
+  // Total cobrado = montoTotal de las PAGADAS + lo conciliado de las PARCIALES.
+  // Antes sólo sumaba PAGADO → lo cobrado en un parcial no aparecía (bug 3/4).
+  const totalCobrado = liquidaciones.reduce(
+    (acc, l) => acc + (l.estado === 'PAGADO' ? l.montoTotal : l.estado === 'PARCIAL' ? l.montoPagado ?? 0 : 0),
+    0,
+  );
 
   return (
     <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -520,6 +526,13 @@ function LiquidacionRow({ liq }: { liq: LiquidacionAdmin }) {
           {liq.fechaPago && ` · Pagado ${formatFecha(liq.fechaPago)}`}
           {liq.metodoPago && ` · ${liq.metodoPago.toLowerCase()}`}
         </p>
+        {/* Parcial: mostramos lo cobrado y el saldo restante — antes el detalle
+            no reflejaba que ya se había cobrado una parte (bug 4). */}
+        {liq.estado === 'PARCIAL' && (liq.montoPagado ?? 0) > 0 && (
+          <p className="text-xs font-medium text-amber-600 dark:text-amber-400">
+            Cobrado {formatMonto(liq.montoPagado ?? 0)} · Falta {formatMonto(liq.saldo ?? liq.montoTotal)}
+          </p>
+        )}
       </div>
       <div className="flex shrink-0 flex-col items-end gap-1">
         <p className="text-sm font-semibold tabular-nums">{formatMonto(liq.montoTotal)}</p>

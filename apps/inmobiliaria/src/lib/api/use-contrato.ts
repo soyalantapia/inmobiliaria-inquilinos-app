@@ -99,6 +99,21 @@ interface ContratoApi {
     contactoTelefono: string;
     contactoEmail: string | null;
   }[];
+  // Liquidaciones reales del contrato (GET /contratos/:id) con montoPagado/saldo.
+  liquidaciones?: {
+    id: string;
+    contratoId: string;
+    periodo: string;
+    montoAlquiler: string | number;
+    montoExpensas: string | number | null;
+    montoTotal: string | number;
+    fechaVencimiento: string;
+    fechaPago: string | null;
+    estado: LiquidacionAdmin['estado'];
+    metodoPago: LiquidacionAdmin['metodoPago'];
+    montoPagado?: string | number | null;
+    saldo?: string | number | null;
+  }[];
 }
 
 export interface ContratoDetalle {
@@ -198,16 +213,36 @@ function mapPropietarioDirecto(r: ContratoApi): Propietario | null {
   };
 }
 
+function mapLiquidacionAdmin(l: NonNullable<ContratoApi['liquidaciones']>[number]): LiquidacionAdmin {
+  const montoTotal = Number(l.montoTotal);
+  const montoPagado = l.montoPagado != null ? Number(l.montoPagado) : 0;
+  return {
+    id: l.id,
+    contratoId: l.contratoId,
+    periodo: l.periodo,
+    montoAlquiler: Number(l.montoAlquiler),
+    montoExpensas: l.montoExpensas != null ? Number(l.montoExpensas) : 0,
+    montoTotal,
+    fechaVencimiento: (l.fechaVencimiento ?? '').slice(0, 10),
+    fechaPago: l.fechaPago ? l.fechaPago.slice(0, 10) : null,
+    estado: l.estado,
+    metodoPago: l.metodoPago ?? null,
+    montoPagado,
+    saldo: l.saldo != null ? Number(l.saldo) : Math.max(0, montoTotal - montoPagado),
+  };
+}
+
 function mapDetalle(r: ContratoApi): ContratoDetalle {
   const contrato = mapContrato(r);
   return {
     contrato,
     contacto: mapContacto(r),
     propietarioDirecto: mapPropietarioDirecto(r),
-    // En prod NO fabricamos liquidaciones (antes generarLiquidaciones inventaba 12
-    // cuotas a partir del monto → historial de pagos FALSO en el tab Pagos). El
-    // endpoint de detalle no expone las liquidaciones reales todavía → empty state.
-    liquidaciones: [],
+    // Liquidaciones REALES del API (con montoPagado/saldo). Antes se hardcodeaba
+    // `[]` (el endpoint no las traía) → el tab "Pagos" del contrato quedaba SIEMPRE
+    // vacío, aun con pagos informados o conciliados (bug 4). NO fabricamos cuotas
+    // falsas: si el contrato no tiene liquidaciones, el empty state es real.
+    liquidaciones: (r.liquidaciones ?? []).map(mapLiquidacionAdmin),
     // El detalle no expone estos logs todavía → empty state real en prod.
     eventos: [],
     comunicaciones: [],

@@ -123,9 +123,12 @@ export function usePagosInformados(): UsePagosInformados {
 
   const invalidar = () => {
     void qc.invalidateQueries({ queryKey: ['pagos'] });
-    // Conciliar/rechazar mueve la liquidación a PAGADO y cambia la cartera.
+    // Conciliar/rechazar mueve la liquidación a PAGADO/PARCIAL y cambia la cartera.
     void qc.invalidateQueries({ queryKey: ['liquidaciones'] });
     void qc.invalidateQueries({ queryKey: ['contratos'] });
+    // Detalle de contrato (['contrato', id]): sin esto el tab Pagos quedaba stale
+    // tras validar/rechazar y "no impactaba" hasta recargar (bug 4).
+    void qc.invalidateQueries({ queryKey: ['contrato'] });
   };
 
   // Fallback demo: el componente que consume esto ya lee mock + localStorage

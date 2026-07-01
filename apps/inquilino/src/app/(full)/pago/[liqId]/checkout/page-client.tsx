@@ -178,9 +178,14 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
   }
 
   const totalAPagar = calc.totalAPagar;
-  const saldoBase = saldoPendiente(params.liqId, totalAPagar);
-  // En prod arrastramos el remanente tras un parcial (saldoProdRestante);
-  // saldoBase ya viene redondeado (Math.round) desde saldoPendiente.
+  // Saldo real: en prod sale del API (montoTotal − pagos conciliados, campo
+  // liq.saldo); en demo, del store local de parciales. Antes en prod el store
+  // estaba vacío → saldoBase = total completo, y un parcial ya conciliado NO
+  // bajaba el saldo (bug 1/3). saldoProdRestante preserva el remanente dentro de
+  // la sesión tras informar un parcial que el API todavía no concilió.
+  const saldoBase = apiEnabled
+    ? Math.max(0, liq.saldo ?? totalAPagar)
+    : saldoPendiente(params.liqId, totalAPagar);
   const saldo = apiEnabled ? saldoProdRestante ?? saldoBase : saldoBase;
   // Alquiler vigente para el umbral del hint de negociación: en la demo es el
   // mock; en prod, el monto real del contrato (o, si no llegó, el montoAlquiler
@@ -220,9 +225,10 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
           <p className="text-4xl font-semibold tabular-nums">
             {formatMonto(completado ? totalAPagar : saldo, liq.moneda)}
           </p>
-          {!completado && pagosPrevios.length > 0 && (
+          {!completado && totalAPagar - saldo > 0.5 && (
             <p className="text-xs text-muted-foreground">
-              Total del mes {formatMonto(totalAPagar, liq.moneda)} · Ya informaste{' '}
+              Total del mes {formatMonto(totalAPagar, liq.moneda)} · Ya{' '}
+              {apiEnabled ? 'pagaste' : 'informaste'}{' '}
               {formatMonto(totalAPagar - saldo, liq.moneda)}
             </p>
           )}
@@ -1040,9 +1046,9 @@ function StepSubirComprobante({
         );
         return;
       }
-      // Objeto sólo para la pantalla de confirmación (no se persiste local:
-      // el pago ya quedó en la DB; el comprobante adjunto se sube en backend
-      // real cuando exista el endpoint de upload).
+      // Objeto sólo para la pantalla de confirmación: el pago Y su comprobante ya
+      // quedaron en la DB (subirArchivo + POST /pagos/informar). Esto es sólo para
+      // renderizar el "OK" con el preview local del archivo recién subido.
       const informado: PagoInformado = {
         v: 1,
         id: `api_${Date.now().toString(36)}`,
@@ -1312,16 +1318,15 @@ function StepConfirmado({
         </div>
       </Card>
 
-      {/* Prod: el archivo del comprobante todavía NO se sube al backend (no hay
-          endpoint de upload). No fingimos que llegó: registramos los datos del pago
-          y le pedimos al inquilino que mande el comprobante por WhatsApp. El upload
-          real (bucket + endpoint multipart) queda para la Ola 1. */}
+      {/* El comprobante SÍ viaja al backend: subirArchivo() lo sube a /uploads
+          (Railway Volume) y queda adjunto al pago informado; la inmobiliaria lo
+          abre al validar. Antes este cartel decía "todavía no nos llega" (copy
+          obsoleto de cuando no había upload) y hacía dudar de que se guardara. */}
       {apiEnabled && (
-        <Card className="space-y-1 border-amber-300 bg-amber-50/60 p-4 text-sm dark:border-amber-900/40 dark:bg-amber-900/10">
-          <p className="font-semibold text-amber-900 dark:text-amber-200">📎 Falta un paso: enviá el comprobante</p>
-          <p className="text-amber-800 dark:text-amber-300">
-            Registramos los datos de tu pago, pero el archivo todavía no nos llega por la app.
-            Enviáselo por WhatsApp a la inmobiliaria para que puedan validarlo.
+        <Card className="space-y-1 border-emerald-300 bg-emerald-50/60 p-4 text-sm dark:border-emerald-900/40 dark:bg-emerald-900/10">
+          <p className="font-semibold text-emerald-900 dark:text-emerald-200">📎 Recibimos tu comprobante</p>
+          <p className="text-emerald-800 dark:text-emerald-300">
+            Quedó adjunto a tu pago. La inmobiliaria lo revisa y te confirma en 24-48 hs.
           </p>
         </Card>
       )}
@@ -1332,7 +1337,7 @@ function StepConfirmado({
             {informado.tipo === 'PARCIAL' ? 'Parcial que enviaste' : 'Lo que enviaste'}
           </h3>
           <Row label="Monto" value={formatMonto(informado.monto, moneda)} />
-          <Row label={apiEnabled ? 'Archivo a enviar' : 'Archivo'} value={informado.comprobanteFileName ?? '—'} />
+          <Row label="Comprobante" value={informado.comprobanteFileName ?? '—'} />
           {informado.nroOperacion && <Row label="N° operación" value={informado.nroOperacion} />}
           <Row
             label="Estado"
@@ -1360,9 +1365,9 @@ function StepConfirmado({
             </div>
           )}
 
-          {/* En prod NO mostramos el thumbnail "recibido": el archivo no llegó al
-              backend, mostrarlo daría falsa tranquilidad. En demo sí (es local). */}
-          {!apiEnabled && informado.comprobanteDataUrl && (
+          {/* Preview local del comprobante que ya viajó al backend: "esto es lo
+              que mandaste". Se muestra tanto en prod como en demo. */}
+          {informado.comprobanteDataUrl && (
             <div className="pt-2">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img

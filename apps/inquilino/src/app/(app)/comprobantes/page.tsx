@@ -483,6 +483,11 @@ function MovimientoRow({ mov }: { mov: Movimiento }) {
     const calc = resolverMontos(mov.liq, apiEnabled);
     const diasV = diasHastaVencimiento(mov.liq.fechaVencimiento);
     const vencido = mov.kind === 'atrasado';
+    // Parcial ya conciliado (prod): mostramos el saldo restante, no el total.
+    const montoPagado = mov.liq.montoPagado ?? 0;
+    const saldo = apiEnabled ? Math.max(0, mov.liq.saldo ?? calc.totalAPagar) : calc.totalAPagar;
+    const esParcial = apiEnabled && montoPagado > 0 && saldo > 0;
+    const montoMostrado = esParcial ? saldo : calc.totalAPagar;
 
     return (
       <div className="flex items-center gap-3 p-4">
@@ -507,11 +512,12 @@ function MovimientoRow({ mov }: { mov: Movimiento }) {
               : diasV === 0
                 ? 'Vence hoy'
                 : `Vence en ${diasV} día${diasV === 1 ? '' : 's'}`}
+            {esParcial ? ` · ya pagaste ${formatMonto(montoPagado, mov.liq.moneda)}` : ''}
           </p>
         </div>
         <div className="flex flex-col items-end gap-1.5 shrink-0">
           <p className="text-sm font-semibold tabular-nums">
-            {formatMonto(calc.totalAPagar, mov.liq.moneda)}
+            {formatMonto(montoMostrado, mov.liq.moneda)}
           </p>
           <Link
             href={`/pago/${mov.liq.id}`}
@@ -546,7 +552,7 @@ function MovimientoRow({ mov }: { mov: Movimiento }) {
           </p>
         </div>
         <p className="shrink-0 text-sm font-semibold tabular-nums text-muted-foreground">
-          {formatMonto(mov.liq.montoTotal, mov.liq.moneda)}
+          {formatMonto(apiEnabled ? mov.liq.saldo ?? mov.liq.montoTotal : mov.liq.montoTotal, mov.liq.moneda)}
         </p>
       </div>
     );
@@ -620,6 +626,10 @@ function PagoUrgenteCard({ mov }: { mov: Movimiento }) {
   const diasV = diasHastaVencimiento(mov.liq.fechaVencimiento);
   const vencido = mov.kind === 'atrasado';
   const hayPunitorios = calc.punitorioAcumulado > 0;
+  // Parcial ya conciliado (prod): descontamos lo pagado y mostramos el saldo.
+  const montoPagado = mov.liq.montoPagado ?? 0;
+  const saldo = apiEnabled ? Math.max(0, mov.liq.saldo ?? calc.totalAPagar) : calc.totalAPagar;
+  const esParcial = apiEnabled && montoPagado > 0 && saldo > 0;
 
   return (
     <Card
@@ -696,10 +706,18 @@ function PagoUrgenteCard({ mov }: { mov: Movimiento }) {
               </span>
             </div>
           )}
+          {esParcial && (
+            <div className="flex items-center justify-between">
+              <span className="text-emerald-700 dark:text-emerald-300">Ya pagaste</span>
+              <span className="font-medium tabular-nums text-emerald-700 dark:text-emerald-300">
+                − {formatMonto(montoPagado, mov.liq.moneda)}
+              </span>
+            </div>
+          )}
           <div className="mt-1 flex items-baseline justify-between border-t pt-2">
-            <span className="text-sm font-semibold">Total a pagar</span>
+            <span className="text-sm font-semibold">{esParcial ? 'Saldo a pagar' : 'Total a pagar'}</span>
             <span className="text-lg font-bold tabular-nums">
-              {formatMonto(calc.totalAPagar, mov.liq.moneda)}
+              {formatMonto(esParcial ? saldo : calc.totalAPagar, mov.liq.moneda)}
             </span>
           </div>
         </div>
