@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@llave/ui/button';
 import {
   Dialog,
@@ -15,6 +16,7 @@ import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
 import { guardarOverride } from '@/lib/propietarios-overrides-storage';
 import { validarCuit } from '@/lib/cuit';
+import { apiEnabled, apiFetch, ApiError } from '@/lib/api/client';
 import type { Propietario } from '@/lib/types';
 
 interface Props {
@@ -28,6 +30,7 @@ interface Props {
  * de cobro habitual y notas internas del propietario.
  */
 export function EditarPropietarioDialog({ open, onOpenChange, propietario }: Props) {
+  const qc = useQueryClient();
   const [nombre, setNombre] = useState(propietario.nombre);
   const [apellido, setApellido] = useState(propietario.apellido);
   const [cuit, setCuit] = useState(propietario.cuit);
@@ -73,9 +76,7 @@ export function EditarPropietarioDialog({ open, onOpenChange, propietario }: Pro
         return;
       }
     }
-    setGuardando(true);
-    await new Promise((r) => setTimeout(r, 350));
-    guardarOverride(propietario.id, {
+    const datos = {
       nombre: nombre.trim(),
       apellido: apellido.trim(),
       cuit: cuit.trim(),
@@ -83,7 +84,30 @@ export function EditarPropietarioDialog({ open, onOpenChange, propietario }: Pro
       telefono: telefono.trim(),
       cbuAlias: cbuAlias.trim() || null,
       notas: notas.trim() || null,
-    });
+    };
+    setGuardando(true);
+    try {
+      if (apiEnabled) {
+        // Prod: persiste de verdad en la DB (antes iba a localStorage y el cambio
+        // se perdía al recargar → "no me deja editar").
+        await apiFetch(`/propietarios/${propietario.id}`, { method: 'PUT', body: JSON.stringify(datos) });
+        await Promise.all([
+          qc.invalidateQueries({ queryKey: ['propietario', propietario.id] }),
+          qc.invalidateQueries({ queryKey: ['propietarios'] }),
+        ]);
+      } else {
+        await new Promise((r) => setTimeout(r, 350));
+        guardarOverride(propietario.id, datos);
+      }
+    } catch (e) {
+      setGuardando(false);
+      toast({
+        variant: 'destructive',
+        title: 'No se pudo actualizar',
+        description: e instanceof ApiError ? e.message : 'Probá de nuevo en un momento.',
+      });
+      return;
+    }
     setGuardando(false);
     toast({
       variant: 'success',

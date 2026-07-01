@@ -393,6 +393,45 @@ export async function coreRoutes(app: FastifyInstance) {
     });
   });
 
+  // Editar los datos básicos de un propietario. Antes el panel guardaba esto en
+  // localStorage (guardarOverride) → el toast decía "actualizado" pero al recargar
+  // (datos del API) el cambio se perdía: "no me deja editar". Ahora persiste de verdad.
+  app.put('/propietarios/:id', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'propietarios.crear');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const prop = await prisma.propietario.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
+    if (!prop) return reply.code(404).send({ message: 'Propietario inexistente' });
+    const body = z
+      .object({
+        nombre: z.string().trim().min(2),
+        apellido: z.string().trim().min(1),
+        email: z.string().trim().email().optional().or(z.literal('')),
+        telefono: z.string().trim().optional(),
+        cuit: z.string().trim().optional(),
+        cbuAlias: z.string().trim().optional().nullable(),
+        comisionPct: z.number().min(0).max(100).optional(),
+        notas: z.string().optional().nullable(),
+      })
+      .safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ message: 'Datos del propietario incompletos' });
+    const d = body.data;
+    return prisma.propietario.update({
+      where: { id },
+      data: {
+        nombre: d.nombre,
+        apellido: d.apellido,
+        cuit: d.cuit ?? '',
+        email: d.email ?? '',
+        telefono: d.telefono ?? '',
+        cbuAlias: d.cbuAlias || null,
+        ...(d.comisionPct != null ? { comisionPct: d.comisionPct } : {}),
+        notas: d.notas || null,
+      },
+      include: { participaciones: true },
+    });
+  });
+
   // Cuenta de cobranza DIRECTA del propietario (la que ve el inquilino cuando
   // el contrato es PROPIETARIO_DIRECTO). Antes solo vivía en localStorage del
   // panel → el inquilino veía el fallback. Upsert por propietario (@unique).

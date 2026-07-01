@@ -28,6 +28,7 @@ import { Avatar, AvatarFallback } from '@llave/ui/avatar';
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { EditarPropiedadTrigger } from '@/components/editar-propiedad-trigger';
+import { EditarPropietarioTrigger } from '@/components/editar-propietario-trigger';
 import { EliminarPropiedadButton } from '@/components/eliminar-propiedad-button';
 import {
   CargarInquilinoTrigger,
@@ -607,18 +608,21 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                         </div>
                       )}
 
-                      {o.telefono.replace(/[^\d]/g, '') && (
-                        <Button size="sm" variant="outline" className="w-full" asChild>
-                          <a
-                            href={`https://wa.me/${o.telefono.replace(/[^\d]/g, '')}`}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            <MessageCircle className="h-3.5 w-3.5" />
-                            Mensaje
-                          </a>
-                        </Button>
-                      )}
+                      <div className="flex gap-2">
+                        <EditarPropietarioTrigger propietario={o} variant="outline" size="sm" className="flex-1" />
+                        {o.telefono.replace(/[^\d]/g, '') && (
+                          <Button size="sm" variant="outline" className="flex-1" asChild>
+                            <a
+                              href={`https://wa.me/${o.telefono.replace(/[^\d]/g, '')}`}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              <MessageCircle className="h-3.5 w-3.5" />
+                              Mensaje
+                            </a>
+                          </Button>
+                        )}
+                      </div>
                     </CardContent>
                   </Card>
                 ))}
