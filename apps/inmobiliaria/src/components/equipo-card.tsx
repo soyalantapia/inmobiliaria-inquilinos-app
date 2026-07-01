@@ -107,7 +107,8 @@ export function EquipoCard() {
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-xs text-muted-foreground">
-          Cada persona entra con su email y contraseña. El rol define qué puede tocar.
+          Cada persona entra con su email y un código que le llega por mail (sin
+          contraseñas). El rol define qué puede tocar.
           {!esAdmin && ' Para sumar o cambiar gente necesitás permiso de Admin.'}
         </p>
         <div className="divide-y rounded-md border">
@@ -183,7 +184,6 @@ function CrearMiembroDialog({
   const [apellido, setApellido] = useState('');
   const [email, setEmail] = useState('');
   const [rol, setRol] = useState<RolEquipo>('OPERADOR');
-  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
 
@@ -192,7 +192,6 @@ function CrearMiembroDialog({
     setApellido('');
     setEmail('');
     setRol('OPERADOR');
-    setPassword('');
     setError(null);
   };
 
@@ -200,11 +199,11 @@ function CrearMiembroDialog({
     setError(null);
     if (nombre.trim().length < 2 || apellido.trim().length < 1) return setError('Completá nombre y apellido.');
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())) return setError('Email inválido.');
-    if (password.length < 6) return setError('La contraseña tiene que tener al menos 6 caracteres.');
     setGuardando(true);
     try {
-      await crearUsuario({ nombre: nombre.trim(), apellido: apellido.trim(), email: email.trim(), rol, password });
-      toast({ variant: 'success', title: '¡Sumado al equipo!', description: `${nombre} ya puede entrar con su email.` });
+      // Sin contraseña: la persona entra con su email por OTP (código al mail).
+      await crearUsuario({ nombre: nombre.trim(), apellido: apellido.trim(), email: email.trim(), rol });
+      toast({ variant: 'success', title: '¡Sumado al equipo!', description: `Le mandamos un mail a ${email.trim()}. Entra con su email y el código.` });
       reset();
       onCreado();
     } catch (e) {
@@ -254,11 +253,10 @@ function CrearMiembroDialog({
             </Select>
             <p className="text-[11px] text-muted-foreground">{ROL_DESCRIPCION[rol]}</p>
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="eq-password" className="text-xs">Contraseña inicial</Label>
-            <Input id="eq-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" placeholder="Mínimo 6 caracteres" />
-            <p className="text-[11px] text-muted-foreground">Se la pasás a la persona; después puede cambiarla.</p>
-          </div>
+          <p className="rounded-md border bg-muted/30 p-2 text-[11px] text-muted-foreground">
+            No hace falta contraseña: le mandamos un mail y entra con su email + un
+            código de 6 dígitos (igual que vos).
+          </p>
           {error && (
             <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive">{error}</p>
           )}

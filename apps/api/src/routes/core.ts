@@ -8,7 +8,7 @@ import { registrarEvento } from '../lib/auditoria.js';
 import { generarLiquidacionesContrato } from '../lib/liquidaciones.js';
 import { conSaldo, montoPagadoPorLiquidacion } from '../lib/saldos.js';
 import { calcularPunitorio } from '../lib/punitorios.js';
-import { enviarInvitacionInquilino } from '../mailer.js';
+import { enviarInvitacionInquilino, enviarInvitacionEquipo } from '../mailer.js';
 
 /**
  * Una liquidación cuenta como VENCIDA (a efectos de cobranza) si su estado ya es
@@ -1286,7 +1286,10 @@ export async function coreRoutes(app: FastifyInstance) {
         apellido: z.string().trim().min(1, 'Indicá el apellido'),
         email: z.string().trim().email('Email inválido'),
         rol: rolEnum,
-        password: z.string().min(6, 'La contraseña tiene que tener al menos 6 caracteres'),
+        // Password OPCIONAL: el panel entra por OTP (código al email), no por
+        // contraseña. Al invitar alguien no hace falta inventarle una: entra con su
+        // email + el código que le llega. Si se manda una, se guarda igual.
+        password: z.string().min(6, 'La contraseña tiene que tener al menos 6 caracteres').optional(),
       })
       .safeParse(request.body ?? {});
     if (!body.success) return reply.code(400).send({ message: body.error.issues[0]?.message ?? 'Datos inválidos' });
@@ -1302,7 +1305,7 @@ export async function coreRoutes(app: FastifyInstance) {
             nombre: body.data.nombre,
             apellido: body.data.apellido,
             rol: body.data.rol,
-            passwordHash: bcrypt.hashSync(body.data.password, 10),
+            ...(body.data.password ? { passwordHash: bcrypt.hashSync(body.data.password, 10) } : {}),
             activo: true,
           },
           select: { id: true, nombre: true, apellido: true, email: true, rol: true, activo: true },
@@ -1318,7 +1321,7 @@ export async function coreRoutes(app: FastifyInstance) {
         apellido: body.data.apellido,
         email,
         rol: body.data.rol,
-        passwordHash: bcrypt.hashSync(body.data.password, 10),
+        ...(body.data.password ? { passwordHash: bcrypt.hashSync(body.data.password, 10) } : {}),
         activo: true,
       },
       select: { id: true, nombre: true, apellido: true, email: true, rol: true, activo: true },
@@ -1331,6 +1334,22 @@ export async function coreRoutes(app: FastifyInstance) {
       entidadId: creado.id,
       entidadDescripcion: `${creado.nombre} ${creado.apellido} (${creado.rol}) · ${creado.email}`,
     });
+    // Email de invitación (best-effort): le avisamos que puede entrar con su email
+    // (el código le llega al ingresar). Si el SMTP no está, no rompe el alta.
+    try {
+      const inmo = await prisma.inmobiliaria.findUnique({
+        where: { id: u.inmobiliariaId },
+        select: { nombre: true },
+      });
+      await enviarInvitacionEquipo({
+        email: creado.email,
+        nombre: creado.nombre,
+        rol: creado.rol,
+        inmobiliariaNombre: inmo?.nombre ?? 'la inmobiliaria',
+      });
+    } catch (e) {
+      request.log.error({ err: (e as Error).message }, 'Invitación de equipo: fallo el email');
+    }
     return reply.code(201).send({ ...creado, esVos: false });
   });
 

@@ -604,7 +604,8 @@ export async function crearUsuario(input: {
   apellido: string;
   email: string;
   rol: RolEquipo;
-  password: string;
+  // El invitado entra por OTP (código al email); la contraseña es opcional.
+  password?: string;
 }): Promise<void> {
   await ensureApiSession();
   await apiFetch('/usuarios', { method: 'POST', body: JSON.stringify(input) });

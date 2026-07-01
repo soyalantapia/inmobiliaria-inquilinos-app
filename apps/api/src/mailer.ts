@@ -363,3 +363,42 @@ export async function enviarBienvenidaInmobiliaria(
   });
   return true;
 }
+
+const ROL_LABEL_EQUIPO: Record<string, string> = {
+  ADMIN: 'Administrador',
+  OPERADOR: 'Operador',
+  CARGA: 'Carga',
+  LECTURA: 'Solo lectura',
+};
+
+/**
+ * Aviso a un miembro que fue sumado al equipo de una inmobiliaria. Entra con su
+ * email por OTP (código al mail) — sin contraseña. Best-effort.
+ */
+export async function enviarInvitacionEquipo(opts: {
+  email: string;
+  nombre: string;
+  rol: string;
+  inmobiliariaNombre: string;
+  panelUrl?: string;
+}): Promise<boolean> {
+  const t = getTransporter();
+  if (!t) return false;
+  const panelUrl = opts.panelUrl ?? APP_ADMIN_URL;
+  const rolTxt = ROL_LABEL_EQUIPO[opts.rol] ?? opts.rol;
+  await t.sendMail({
+    from,
+    to: opts.email,
+    subject: `Te sumaron al equipo de ${opts.inmobiliariaNombre} en My Alquiler`,
+    text: `¡Hola ${opts.nombre}! ${opts.inmobiliariaNombre} te sumó a su equipo en My Alquiler con el rol de ${rolTxt}.\nEntrá al panel: ${panelUrl}\nIngresás con tu email (${opts.email}) — te mandamos un código por mail para entrar. No hace falta contraseña.`,
+    html: `<div style="font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;max-width:520px;margin:0 auto;color:#0f172a">
+      <h2 style="font-size:18px">Te sumaron al equipo 🎉</h2>
+      <p><strong>${opts.inmobiliariaNombre}</strong> te dio acceso a su panel de My Alquiler con el rol de <strong>${rolTxt}</strong>.</p>
+      <p style="margin:20px 0">
+        <a href="${panelUrl}" style="background:#7c3aed;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600">Entrar al panel</a>
+      </p>
+      <p style="font-size:13px;color:#475569">Ingresás con tu email (<strong>${opts.email}</strong>). Te mandamos un código de 6 dígitos por mail para entrar — sin contraseñas.</p>
+    </div>`,
+  });
+  return true;
+}
