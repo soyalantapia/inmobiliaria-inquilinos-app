@@ -12,6 +12,7 @@ import {
   Plus,
   Trash2,
   TrendingDown,
+  TrendingUp,
   Wallet,
 } from 'lucide-react';
 import { Badge } from '@llave/ui/badge';
@@ -437,26 +438,46 @@ function MovimientoRow({
   propDireccion: string;
   onDelete: () => void;
 }) {
+  const esIngreso = mov.tipo === 'INGRESO_EXTRA';
   return (
     <Card className="flex flex-wrap items-start gap-3 p-4">
-      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300">
-        <TrendingDown className="h-5 w-5" />
+      <div
+        className={`grid h-10 w-10 shrink-0 place-items-center rounded-lg ${
+          esIngreso
+            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+            : 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300'
+        }`}
+      >
+        {esIngreso ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <p className="truncate text-sm font-medium">{mov.descripcion}</p>
-          <Badge variant="outline" className="text-[10px]">
-            {categoriaGastoLabel[mov.categoria]}
+          <Badge
+            variant="outline"
+            className={`text-[10px] ${
+              esIngreso
+                ? 'border-emerald-300 text-emerald-700 dark:border-emerald-900/40 dark:text-emerald-300'
+                : 'border-red-300 text-red-700 dark:border-red-900/40 dark:text-red-300'
+            }`}
+          >
+            {esIngreso ? 'Entrada' : 'Salida'}
           </Badge>
-          {mov.descontadoEnRendicion ? (
-            <Badge variant="success" className="text-[10px]">
-              Descontado
-            </Badge>
-          ) : (
-            <Badge variant="warning" className="text-[10px]">
-              Pendiente
+          {!esIngreso && (
+            <Badge variant="outline" className="text-[10px]">
+              {categoriaGastoLabel[mov.categoria]}
             </Badge>
           )}
+          {!esIngreso &&
+            (mov.descontadoEnRendicion ? (
+              <Badge variant="success" className="text-[10px]">
+                Descontado
+              </Badge>
+            ) : (
+              <Badge variant="warning" className="text-[10px]">
+                Pendiente
+              </Badge>
+            ))}
         </div>
         <p className="truncate text-xs text-muted-foreground">{propDireccion}</p>
         <p className="text-[10px] text-muted-foreground">
@@ -465,8 +486,13 @@ function MovimientoRow({
         </p>
       </div>
       <div className="flex items-center gap-2">
-        <p className="text-base font-semibold tabular-nums text-red-600">
-          −{formatMonto(mov.monto)}
+        <p
+          className={`text-base font-semibold tabular-nums ${
+            esIngreso ? 'text-emerald-600' : 'text-red-600'
+          }`}
+        >
+          {esIngreso ? '+' : '−'}
+          {formatMonto(mov.monto)}
         </p>
         <Button
           size="icon"
@@ -493,6 +519,7 @@ function DialogCargarGasto({
   opciones: PropiedadOpcion[];
   onSubmit: (data: Omit<MovimientoCaja, 'id' | 'createdAt' | 'descontadoEnRendicion'>) => void | Promise<void>;
 }) {
+  const [tipo, setTipo] = useState<'GASTO' | 'INGRESO_EXTRA'>('GASTO');
   const [propiedadId, setPropiedadId] = useState('');
   const [categoria, setCategoria] = useState<CategoriaGasto>('PLOMERIA');
   const [descripcion, setDescripcion] = useState('');
@@ -500,9 +527,11 @@ function DialogCargarGasto({
   const [fecha, setFecha] = useState(fechaHoyLocal());
   const [proveedor, setProveedor] = useState('');
   const [guardando, setGuardando] = useState(false);
+  const esIngreso = tipo === 'INGRESO_EXTRA';
 
   useEffect(() => {
     if (open) {
+      setTipo('GASTO');
       setPropiedadId('');
       setCategoria('PLOMERIA');
       setDescripcion('');
@@ -533,7 +562,7 @@ function DialogCargarGasto({
       await onSubmit({
         propiedadId,
         contratoId: prop?.contratoActualId ?? null,
-        tipo: 'GASTO',
+        tipo,
         categoria,
         descripcion: descripcion.trim(),
         monto: montoNum,
@@ -551,13 +580,40 @@ function DialogCargarGasto({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Cargar gasto a caja</DialogTitle>
+          <DialogTitle>Cargar movimiento a caja</DialogTitle>
           <DialogDescription>
-            Plata que adelantaste por una propiedad. Se descuenta de la próxima rendición
-            al propietario.
+            {esIngreso
+              ? 'Entrada: plata que ingresó por una propiedad (ej. un reintegro del propietario).'
+              : 'Salida: plata que adelantaste por una propiedad. Se descuenta de la próxima rendición al propietario.'}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setTipo('GASTO')}
+              aria-pressed={!esIngreso}
+              className={`rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
+                !esIngreso
+                  ? 'border-red-300 bg-red-50 text-red-700 dark:border-red-900/40 dark:bg-red-900/10 dark:text-red-300'
+                  : 'hover:bg-muted/40'
+              }`}
+            >
+              ↓ Salida (gasto)
+            </button>
+            <button
+              type="button"
+              onClick={() => setTipo('INGRESO_EXTRA')}
+              aria-pressed={esIngreso}
+              className={`rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
+                esIngreso
+                  ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/10 dark:text-emerald-300'
+                  : 'hover:bg-muted/40'
+              }`}
+            >
+              ↑ Entrada (ingreso)
+            </button>
+          </div>
           <div className="space-y-1">
             <Label htmlFor="caj-propiedad" className="text-xs" aria-required>
               Propiedad <span className="text-destructive">*</span>

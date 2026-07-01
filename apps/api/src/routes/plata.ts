@@ -600,7 +600,10 @@ export async function plataRoutes(app: FastifyInstance) {
     const body = z
       .object({
         propiedadId: z.string(),
-        categoria: z.enum(['PLOMERIA', 'ELECTRICIDAD', 'GAS', 'CERRAJERIA', 'PINTURA', 'EXPENSAS', 'MATERIALES', 'OTRO']),
+        // tipo: SALIDA (GASTO) o ENTRADA (INGRESO_EXTRA). Default GASTO (compat).
+        tipo: z.enum(['GASTO', 'INGRESO_EXTRA']).default('GASTO'),
+        // Categoría obligatoria para gastos; opcional para ingresos (cae a OTRO).
+        categoria: z.enum(['PLOMERIA', 'ELECTRICIDAD', 'GAS', 'CERRAJERIA', 'PINTURA', 'EXPENSAS', 'MATERIALES', 'OTRO']).optional(),
         descripcion: z.string().min(3),
         monto: z.number().positive(),
         // coerce.date rechaza strings no-fecha (igual que fechaTransferencia):
@@ -610,19 +613,20 @@ export async function plataRoutes(app: FastifyInstance) {
         proveedor: z.string().nullable().optional(),
       })
       .safeParse(request.body ?? {});
-    if (!body.success) return reply.code(400).send({ message: 'Datos del gasto incompletos' });
+    if (!body.success) return reply.code(400).send({ message: 'Datos del movimiento incompletos' });
 
     const prop = await prisma.propiedad.findFirst({ where: { id: body.data.propiedadId, inmobiliariaId: u.inmobiliariaId } });
     if (!prop) return reply.code(404).send({ message: 'Propiedad inexistente' });
     const usuario = await prisma.usuario.findUnique({ where: { id: u.userId } });
+    const esIngreso = body.data.tipo === 'INGRESO_EXTRA';
 
     const mov = await prisma.movimientoCaja.create({
       data: {
         inmobiliariaId: u.inmobiliariaId,
         propiedadId: prop.id,
         contratoId: prop.contratoActualId,
-        tipo: 'GASTO',
-        categoria: body.data.categoria,
+        tipo: body.data.tipo,
+        categoria: body.data.categoria ?? 'OTRO',
         descripcion: body.data.descripcion,
         monto: body.data.monto,
         fecha: body.data.fecha,
@@ -636,7 +640,7 @@ export async function plataRoutes(app: FastifyInstance) {
       autorId: u.userId,
       rolAutor: u.rol,
       entidadId: mov.id,
-      entidadDescripcion: `Gasto ${body.data.categoria} · $${body.data.monto} · ${body.data.descripcion}`,
+      entidadDescripcion: `${esIngreso ? 'Entrada' : 'Salida'} · $${body.data.monto} · ${body.data.descripcion}`,
     });
     return mov;
   });

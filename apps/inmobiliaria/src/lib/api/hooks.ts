@@ -315,6 +315,8 @@ function mapMovimiento(m: MovimientoCajaApi): MovimientoCaja {
 
 export interface NuevoGasto {
   propiedadId: string;
+  /** GASTO = salida, INGRESO_EXTRA = entrada. Default GASTO. */
+  tipo?: MovimientoCaja['tipo'];
   categoria: MovimientoCaja['categoria'];
   descripcion: string;
   monto: number;
@@ -351,7 +353,7 @@ export function useCaja(): {
         cargarMovimientoLocal({
           propiedadId: g.propiedadId,
           contratoId: null,
-          tipo: 'GASTO',
+          tipo: g.tipo ?? 'GASTO',
           categoria: g.categoria,
           descripcion: g.descripcion,
           monto: g.monto,
