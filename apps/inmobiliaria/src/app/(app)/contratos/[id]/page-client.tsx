@@ -415,23 +415,10 @@ export default function DetalleContratoPage() {
           </TabsContent>
 
           <TabsContent value="documentos" className="space-y-2">
-            {/* El panel de documentos sube/elimina archivos en localStorage
-                (contrato-documentos-storage), sin endpoint todavía. En modo API
-                lo deshabilitamos para no escribir estado fantasma en prod. */}
-            {apiEnabled ? (
-              <Card>
-                <CardContent className="p-10 text-center">
-                  <FileText className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
-                  <p className="text-sm font-medium">Gestión de documentos próximamente</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    La carga y descarga de documentos del expediente estará disponible
-                    en breve.
-                  </p>
-                </CardContent>
-              </Card>
-            ) : (
-              <ContratoDocumentosPanel contrato={c} />
-            )}
+            {/* El panel sube/lista/borra documentos REALES: en prod vía el API
+                (/contratos/:id/documentos + Volume, hook useDocsContrato); en demo
+                localStorage. Acá se sube el CONTRATO FIRMADO en PDF, DNIs, etc. */}
+            <ContratoDocumentosPanel contrato={c} />
           </TabsContent>
         </Tabs>
       </main>

@@ -705,6 +705,7 @@ function CargarContratoApiWizard() {
   const [tipoContrato, setTipoContrato] = useState<TipoContrato>('ALQUILER');
   const [montoExpensas, setMontoExpensas] = useState('');
   const [depositoGarantia, setDepositoGarantia] = useState('');
+  const [comisionInmobiliaria, setComisionInmobiliaria] = useState('');
   const [modoCobranza, setModoCobranza] = useState<ModoCobranza>('INMOBILIARIA');
 
   // Defaults desde la config de Mercado (índice + moneda), una sola vez al
@@ -810,6 +811,9 @@ function CargarContratoApiWizard() {
           : {}),
         ...(Number(depositoGarantia) > 0
           ? { depositoGarantia: Number(depositoGarantia) }
+          : {}),
+        ...(comisionInmobiliaria.trim() !== '' && Number(comisionInmobiliaria) >= 0
+          ? { comisionInmobiliaria: Number(comisionInmobiliaria) }
           : {}),
       };
       await apiFetch<ContratoNuevoApi>('/contratos', {
@@ -1053,9 +1057,9 @@ function CargarContratoApiWizard() {
                     <Input
                       id="monto"
                       inputMode="numeric"
-                      value={monto}
+                      value={monto ? Number(monto).toLocaleString('es-AR') : ''}
                       onChange={(e) => setMonto(e.target.value.replace(/\D/g, '').slice(0, 12))}
-                      placeholder="480000"
+                      placeholder="480.000"
                       className="pl-9"
                       disabled={!requiereAlquiler}
                     />
@@ -1085,9 +1089,9 @@ function CargarContratoApiWizard() {
                     <Input
                       id="montoExpensas"
                       inputMode="numeric"
-                      value={montoExpensas}
+                      value={montoExpensas ? Number(montoExpensas).toLocaleString('es-AR') : ''}
                       onChange={(e) => setMontoExpensas(e.target.value.replace(/\D/g, '').slice(0, 12))}
-                      placeholder="90000"
+                      placeholder="90.000"
                       className="pl-9"
                     />
                   </div>
@@ -1171,6 +1175,27 @@ function CargarContratoApiWizard() {
                 </div>
               </div>
 
+              <div className="space-y-1.5 md:max-w-xs">
+                <Label htmlFor="comision">Comisión de la inmobiliaria (%)</Label>
+                <div className="relative">
+                  <Input
+                    id="comision"
+                    inputMode="decimal"
+                    value={comisionInmobiliaria}
+                    onChange={(e) => setComisionInmobiliaria(e.target.value.replace(/[^\d.]/g, '').slice(0, 5))}
+                    placeholder="8"
+                    className="pr-8"
+                  />
+                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                    %
+                  </span>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Es la comisión que cobrás por ESTE contrato. Si la dejás vacía, se usa la
+                  comisión general en las rendiciones.
+                </p>
+              </div>
+
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="deposito">Depósito en garantía</Label>
@@ -1181,9 +1206,9 @@ function CargarContratoApiWizard() {
                     <Input
                       id="deposito"
                       inputMode="numeric"
-                      value={depositoGarantia}
+                      value={depositoGarantia ? Number(depositoGarantia).toLocaleString('es-AR') : ''}
                       onChange={(e) => setDepositoGarantia(e.target.value.replace(/\D/g, '').slice(0, 12))}
-                      placeholder="480000"
+                      placeholder="480.000"
                       className="pl-9"
                     />
                   </div>

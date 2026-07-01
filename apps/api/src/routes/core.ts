@@ -614,6 +614,9 @@ export async function coreRoutes(app: FastifyInstance) {
         tipoContrato: z.enum(['ALQUILER', 'SOLO_EXPENSAS', 'ALQUILER_Y_EXPENSAS']).default('ALQUILER'),
         depositoGarantia: z.number().positive().optional(),
         modoCobranza: z.enum(['INMOBILIARIA', 'PROPIETARIO_DIRECTO']).default('INMOBILIARIA'),
+        // Comisión de la inmobiliaria para ESTE contrato (%). Opcional: si no se
+        // manda queda null y se usa el default del negocio en las rendiciones.
+        comisionInmobiliaria: z.number().min(0).max(100).optional(),
       })
       .safeParse(request.body ?? {});
     if (!body.success) return reply.code(400).send({ message: 'Datos del contrato incompletos' });
@@ -690,6 +693,7 @@ export async function coreRoutes(app: FastifyInstance) {
           montoExpensas: d.montoExpensas ?? null,
           tipoContrato: d.tipoContrato,
           depositoGarantia: d.depositoGarantia ?? null,
+          comisionInmobiliaria: d.comisionInmobiliaria ?? null,
           modoCobranza: d.modoCobranza,
           cobraDirectoPropietarioId,
           cargadoPor: u.userId,
