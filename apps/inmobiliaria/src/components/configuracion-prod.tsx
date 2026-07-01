@@ -19,7 +19,6 @@ import {
   type CobranzaCuenta,
   type EmpresaDatos,
 } from '@/lib/api/hooks';
-import { PinSeguridadCard } from '@/components/pin-seguridad-card';
 import { SociedadesManager } from '@/components/sociedades-manager';
 import { EquipoCard } from '@/components/equipo-card';
 import { ConfiguracionPais } from '@/components/configuracion-pais';
@@ -87,10 +86,6 @@ export function ConfiguracionProd() {
           <SociedadesManager />
         </div>
         <EquipoCard />
-        <div>
-          <h2 className="mb-2 px-1 text-sm font-semibold text-muted-foreground">Seguridad</h2>
-          <PinSeguridadCard />
-        </div>
         <div>
           <h2 className="mb-2 px-1 text-sm font-semibold text-muted-foreground">Mercado y país</h2>
           <ConfiguracionPais />

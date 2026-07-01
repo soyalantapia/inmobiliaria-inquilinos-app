@@ -19,6 +19,7 @@ import {
   tienePinConfigurado,
   validarPin,
 } from '@/lib/pin-seguridad-storage';
+import { useMe } from '@/lib/api/hooks';
 
 interface PinPromptDialogProps {
   abierto: boolean;
@@ -52,12 +53,16 @@ export function PinPromptDialog({
   onConfirmado,
 }: PinPromptDialogProps) {
   const servidor = validacion === 'servidor';
+  const { me } = useMe();
   const [modo, setModo] = useState<'validar' | 'configurar'>('validar');
   const [pin, setPin] = useState('');
   const [pinConfirm, setPinConfirm] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Corre una sola vez por apertura (evita disparar la acción dos veces si cambia
+  // la identidad de onConfirmado entre renders).
+  const autoRef = useRef(false);
 
   useEffect(() => {
     if (!abierto) return;
@@ -65,10 +70,29 @@ export function PinPromptDialog({
     setPinConfirm('');
     setError(null);
     setEnviando(false);
+    autoRef.current = false;
     // En modo servidor siempre validamos (el alta del PIN no es local).
     setModo(servidor || tienePinConfigurado() ? 'validar' : 'configurar');
     setTimeout(() => inputRef.current?.focus(), 50);
   }, [abierto, servidor]);
+
+  useEffect(() => {
+    // PIN sacado de Configuración: si el usuario NO tiene un PIN configurado, la
+    // acción ya no lo requiere (el server lo permite). Auto-confirmamos sin mostrar
+    // el input — el diálogo pasa a ser transparente para quien no usa PIN.
+    if (!abierto || !servidor || autoRef.current) return;
+    if (me?.tienePin === false) {
+      autoRef.current = true;
+      void Promise.resolve(onConfirmado('')).then((err) => {
+        if (typeof err === 'string') {
+          autoRef.current = false;
+          setError(err);
+        } else {
+          onClose();
+        }
+      });
+    }
+  }, [abierto, servidor, me, onConfirmado, onClose]);
 
   useEffect(() => {
     if (!abierto || servidor) return;

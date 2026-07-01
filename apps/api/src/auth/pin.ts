@@ -13,9 +13,13 @@ export type PinResultado = { ok: true } | { ok: false; code: 400 | 403 | 429; me
  * pinIntentosFallidos + pinBloqueadoHasta (sin migración).
  */
 export async function verificarPinUsuario(userId: string, pin: string | undefined): Promise<PinResultado> {
-  if (!pin) return { ok: false, code: 400, message: 'Esta acción requiere tu PIN de seguridad' };
   const u = await prisma.usuario.findUnique({ where: { id: userId } });
-  if (!u?.pinHash) return { ok: false, code: 403, message: 'No tenés un PIN de seguridad configurado' };
+  // PIN OPCIONAL: se sacó el PIN de Configuración. Si el usuario NO tiene un PIN
+  // configurado, las acciones sensibles NO lo requieren (antes devolvíamos 403 y
+  // bloqueaban conciliar/rendir/etc). Sólo se sigue exigiendo a quien deliberadamente
+  // dejó un pinHash cargado.
+  if (!u?.pinHash) return { ok: true };
+  if (!pin) return { ok: false, code: 400, message: 'Esta acción requiere tu PIN de seguridad' };
 
   // ¿Bloqueado por demasiados intentos?
   if (u.pinBloqueadoHasta && u.pinBloqueadoHasta.getTime() > Date.now()) {
