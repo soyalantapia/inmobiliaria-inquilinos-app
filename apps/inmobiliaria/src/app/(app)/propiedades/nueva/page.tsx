@@ -25,6 +25,7 @@ import { Label } from '@llave/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@llave/ui/select';
 import { toast } from '@llave/ui/use-toast';
 import { Topbar } from '@/components/topbar';
+import { AutocompleteDireccion } from '@/components/autocomplete-direccion';
 import {
   NuevoPropietarioDialog,
   type PropietarioCreado,
@@ -441,6 +442,18 @@ function NuevaPropiedadForm() {
                 <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                   Dirección
                 </h3>
+                <AutocompleteDireccion
+                  onElegir={(d) => {
+                    if (d.calle) setCalle(d.calle);
+                    if (d.altura) setAltura(d.altura);
+                    if (d.ciudad) setCiudad(d.ciudad);
+                    // provincia es un select cerrado: solo la seteamos si coincide con
+                    // una de las opciones (AR); si no, el usuario la elige a mano.
+                    const prov = d.provincia ? provincias.find((p) => p === d.provincia) : undefined;
+                    if (prov) setProvincia(prov);
+                    if (d.codigoPostal) setCodigoPostal(d.codigoPostal);
+                  }}
+                />
                 <div className="grid gap-4 md:grid-cols-3">
                   <div className="space-y-2 md:col-span-2">
                     <Label htmlFor="calle">
