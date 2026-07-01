@@ -171,6 +171,53 @@ export function usePagosInformados(): UsePagosInformados {
   };
 }
 
+export interface UsePagosConciliados {
+  /** Pagos ya conciliados (recientes), para poder anular uno. */
+  pagos: PagoInformado[];
+  cargando: boolean;
+  deApi: boolean;
+  /** Anula (revierte) un pago conciliado con motivo (mín. 5) + PIN. El server
+   *  recomputa la liquidación (vuelve a PARCIAL/PENDIENTE/VENCIDO). */
+  anular: (id: string, motivo: string, pin: string) => Promise<void>;
+}
+
+/**
+ * Pagos ya CONCILIADOS: la bandeja para ANULAR un cobro cargado por error o cuya
+ * transferencia rebotó. GET /pagos?estado=CONCILIADO + POST /pagos/:id/anular.
+ * Sólo prod (en demo el flujo de revertir vive en conciliacion-storage).
+ */
+export function usePagosConciliados(): UsePagosConciliados {
+  const qc = useQueryClient();
+  const q = useQuery({
+    queryKey: ['pagos', 'conciliados'],
+    queryFn: async () => {
+      await ensureApiSession();
+      const data = await apiFetch<PagoApi[]>('/pagos?estado=CONCILIADO');
+      return data.map(mapPago);
+    },
+    enabled: apiEnabled,
+    staleTime: 15_000,
+  });
+  if (!apiEnabled) {
+    return { pagos: [], cargando: false, deApi: false, anular: async () => {} };
+  }
+  return {
+    pagos: q.isError ? [] : (q.data ?? []),
+    cargando: q.isPending,
+    deApi: true,
+    anular: async (id, motivo, pin) => {
+      await apiFetch(`/pagos/${id}/anular`, {
+        method: 'POST',
+        body: JSON.stringify({ pin, observacion: motivo }),
+      });
+      void qc.invalidateQueries({ queryKey: ['pagos'] });
+      void qc.invalidateQueries({ queryKey: ['liquidaciones'] });
+      void qc.invalidateQueries({ queryKey: ['contratos'] });
+      void qc.invalidateQueries({ queryKey: ['contrato'] });
+    },
+  };
+}
+
 export interface DevengoResultado {
   contratosProcesados: number;
   liquidacionesNuevas: number;

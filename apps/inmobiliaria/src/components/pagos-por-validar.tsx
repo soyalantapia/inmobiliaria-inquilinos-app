@@ -47,7 +47,7 @@ import {
 } from '@/lib/extraccion-ia';
 import { PinPromptDialog } from '@/components/pin-prompt-dialog';
 import { apiEnabled } from '@/lib/api/client';
-import { usePagosInformados } from '@/lib/api/use-pagos';
+import { usePagosConciliados, usePagosInformados } from '@/lib/api/use-pagos';
 
 // Sección "Por validar" en /pagos del admin. Muestra los comprobantes que
 // los inquilinos subieron y todavía no fueron conciliados. Cuando el admin
@@ -86,9 +86,12 @@ export function PagosPorValidar(props: PagosPorValidarProps = {}) {
  */
 function PagosPorValidarApi({ onChange }: PagosPorValidarProps = {}) {
   const { pagos, cargando, validar, rechazar } = usePagosInformados();
+  const { pagos: conciliados, anular } = usePagosConciliados();
   const [verComprobante, setVerComprobante] = useState<PagoInformado | null>(null);
   const [rechazando, setRechazando] = useState<PagoInformado | null>(null);
   const [motivoRechazo, setMotivoRechazo] = useState('');
+  const [anulando, setAnulando] = useState<PagoInformado | null>(null);
+  const [motivoAnular, setMotivoAnular] = useState('');
   const [showPin, setShowPin] = useState(false);
   const [pinAccion, setPinAccion] = useState('');
   const [pinSubaccion, setPinSubaccion] = useState<string | undefined>(undefined);
@@ -137,6 +140,24 @@ function PagosPorValidarApi({ onChange }: PagosPorValidarProps = {}) {
     setShowPin(true);
   };
 
+  const triggerAnular = (pago: PagoInformado, motivo: string) => {
+    setPinAccion('Anular pago conciliado');
+    setPinSubaccion(`${pago.inquilino} · ${formatMonto(pago.monto)}`);
+    pendingAction.current = async (pin) => {
+      try {
+        await anular(pago.id, motivo, pin);
+        toast({
+          title: 'Pago anulado',
+          description: `Se revirtió el cobro de ${pago.inquilino}. La liquidación vuelve a quedar pendiente.`,
+        });
+        return null;
+      } catch (e) {
+        return e instanceof Error ? e.message : 'No se pudo anular. Probá de nuevo.';
+      }
+    };
+    setShowPin(true);
+  };
+
   if (cargando) {
     return (
       <Card>
@@ -147,7 +168,7 @@ function PagosPorValidarApi({ onChange }: PagosPorValidarProps = {}) {
     );
   }
 
-  if (pagos.length === 0) {
+  if (pagos.length === 0 && conciliados.length === 0) {
     return (
       <Card>
         <div className="py-10 text-center text-sm text-muted-foreground">
@@ -157,39 +178,77 @@ function PagosPorValidarApi({ onChange }: PagosPorValidarProps = {}) {
     );
   }
 
+  // Mostramos los conciliados MÁS RECIENTES (para anular un error reciente); no
+  // el histórico completo. Anular uno viejo es raro y se hace por caso.
+  const conciliadosRecientes = conciliados.slice(0, 20);
+
   return (
     <>
-      <Card className="border-amber-300 bg-amber-50/50 dark:border-amber-900/40 dark:bg-amber-900/10">
-        <CardContent className="space-y-4 p-5">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <ReceiptText className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-              <h2 className="text-base font-semibold">Pagos por validar</h2>
+      {pagos.length > 0 && (
+        <Card className="border-amber-300 bg-amber-50/50 dark:border-amber-900/40 dark:bg-amber-900/10">
+          <CardContent className="space-y-4 p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <ReceiptText className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                <h2 className="text-base font-semibold">Pagos por validar</h2>
+              </div>
+              <Badge variant="warning" className="shrink-0">
+                {pagos.length}
+              </Badge>
             </div>
-            <Badge variant="warning" className="shrink-0">
-              {pagos.length}
-            </Badge>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Tus inquilinos informaron estos pagos. Verificá el comprobante y confirmá o
-            rechazá.
-          </p>
+            <p className="text-xs text-muted-foreground">
+              Tus inquilinos informaron estos pagos. Verificá el comprobante y confirmá o
+              rechazá.
+            </p>
 
-          <div className="space-y-3">
-            {pagos.map((p) => (
-              <PagoRow
-                key={p.id}
-                pago={p}
-                conIA={false}
-                disabled={showPin}
-                onConciliar={() => triggerConciliar(p)}
-                onRechazar={() => setRechazando(p)}
-                onVerComprobante={() => setVerComprobante(p)}
-              />
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+            <div className="space-y-3">
+              {pagos.map((p) => (
+                <PagoRow
+                  key={p.id}
+                  pago={p}
+                  conIA={false}
+                  disabled={showPin}
+                  onConciliar={() => triggerConciliar(p)}
+                  onRechazar={() => setRechazando(p)}
+                  onVerComprobante={() => setVerComprobante(p)}
+                />
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Conciliados recientes — se pueden ANULAR (cobro por error / transferencia
+          rebotada). El server revierte el pago y recomputa la liquidación. */}
+      {conciliadosRecientes.length > 0 && (
+        <Card>
+          <CardContent className="space-y-3 p-5">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                <h3 className="text-sm font-semibold">Conciliados recientes</h3>
+              </div>
+              <Badge variant="secondary" className="shrink-0">
+                {conciliadosRecientes.length}
+              </Badge>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Si conciliaste un pago por error o la transferencia rebotó, podés anularlo —
+              vuelve a quedar pendiente de cobro.
+            </p>
+            <div className="divide-y rounded-md border">
+              {conciliadosRecientes.map((p) => (
+                <ConciliadoRow
+                  key={p.id}
+                  pago={p}
+                  disabled={showPin}
+                  onAnular={() => setAnulando(p)}
+                />
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Modal comprobante (sin lectura por IA: no la persiste el API) */}
       <Dialog open={!!verComprobante} onOpenChange={(v) => !v && setVerComprobante(null)}>
@@ -307,6 +366,60 @@ function PagosPorValidarApi({ onChange }: PagosPorValidarProps = {}) {
               }}
             >
               Rechazar pago
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal anular con motivo (el server exige mínimo 5 caracteres) */}
+      <Dialog
+        open={!!anulando}
+        onOpenChange={(v) => {
+          if (!v) {
+            setAnulando(null);
+            setMotivoAnular('');
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Anular el pago de {anulando?.inquilino}</DialogTitle>
+            <DialogDescription>
+              Se revierte el cobro conciliado y la liquidación vuelve a quedar pendiente.
+              Contá por qué (queda en la auditoría).
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            rows={4}
+            value={motivoAnular}
+            onChange={(e) => setMotivoAnular(e.target.value)}
+            placeholder="Ej: la transferencia rebotó / lo concilié en el mes equivocado."
+          />
+          <div className="flex gap-2">
+            <Button variant="outline" className="flex-1" onClick={() => setAnulando(null)}>
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              className="flex-1"
+              onClick={() => {
+                if (!anulando) return;
+                if (motivoAnular.trim().length < 5) {
+                  toast({
+                    title: 'Contá por qué se anula (mínimo 5 caracteres)',
+                    variant: 'destructive',
+                  });
+                  return;
+                }
+                const pagoCapturado = anulando;
+                const motivoCapturado = motivoAnular.trim();
+                setAnulando(null);
+                setMotivoAnular('');
+                triggerAnular(pagoCapturado, motivoCapturado);
+              }}
+            >
+              <RotateCcw className="h-4 w-4" />
+              Anular pago
             </Button>
           </div>
         </DialogContent>
@@ -1029,6 +1142,36 @@ function ResueltoRow({
       <Button size="sm" variant="ghost" onClick={onRevertir}>
         <RotateCcw className="h-3.5 w-3.5" />
         Revertir
+      </Button>
+    </div>
+  );
+}
+
+/** Fila de un pago CONCILIADO en la bandeja API, con acción Anular. */
+function ConciliadoRow({
+  pago,
+  disabled,
+  onAnular,
+}: {
+  pago: PagoInformado;
+  disabled: boolean;
+  onAnular: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-3 p-3">
+      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+        <CheckCircle2 className="h-4 w-4" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="truncate text-sm font-medium">{pago.inquilino}</p>
+        <p className="truncate text-xs text-muted-foreground">
+          {formatPeriodo(pago.periodo)} · {formatMonto(pago.monto)}
+          {pago.tipo === 'PARCIAL' ? ' · parcial' : ''} · Conciliado
+        </p>
+      </div>
+      <Button size="sm" variant="ghost" onClick={onAnular} disabled={disabled}>
+        <RotateCcw className="h-3.5 w-3.5" />
+        Anular
       </Button>
     </div>
   );
