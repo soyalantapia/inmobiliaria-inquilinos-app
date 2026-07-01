@@ -57,15 +57,39 @@ function LoginOtp() {
   // ?expirada=1: el cliente nos echó por un 401 (token vencido). Avisamos el
   // motivo para que el rebote al login no parezca un error de la app.
   const [sesionExpirada, setSesionExpirada] = useState(false);
+  // Recién registrado (?recien=1): venimos del alta. Prefillamos el email y
+  // auto-enviamos el código (por seguridad el alta no entra directo).
+  const [recienRegistrado, setRecienRegistrado] = useState(false);
+  const autoEnviadoRef = useRef(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    let limpiar = false;
     if (params.has('expirada')) {
       setSesionExpirada(true);
-      window.history.replaceState(null, '', window.location.pathname);
+      limpiar = true;
     }
+    const em = params.get('email');
+    if (em) {
+      setEmail(em.trim().toLowerCase());
+      limpiar = true;
+    }
+    if (params.get('recien') === '1') {
+      setRecienRegistrado(true);
+      limpiar = true;
+    }
+    if (limpiar) window.history.replaceState(null, '', window.location.pathname);
   }, []);
   const otpRefs = useRef<Array<HTMLInputElement | null>>([]);
+
+  // Auto-enviar el código una sola vez cuando venimos del registro con el email ya
+  // cargado (así el usuario cae directo en el paso del código).
+  useEffect(() => {
+    if (!recienRegistrado || !email || autoEnviadoRef.current || !apiEnabled) return;
+    autoEnviadoRef.current = true;
+    void onSolicitar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recienRegistrado, email]);
 
   /* ----- Paso 1: pedir el código ----- */
   const onSolicitar = async (e?: React.FormEvent) => {

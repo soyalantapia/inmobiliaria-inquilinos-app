@@ -6,7 +6,7 @@
  * para que el panel quede logueado inmediatamente.
  */
 
-import { apiFetch, setToken, ApiError } from './client';
+import { apiFetch, ApiError } from './client';
 
 export interface RegistroInmobiliaria {
   nombre: string;
@@ -35,7 +35,9 @@ export interface RegistroResult {
 }
 
 /**
- * Crea la cuenta y deja la sesión iniciada (guarda el JWT).
+ * Crea la cuenta. NO deja la sesión iniciada: por seguridad, tras el alta el
+ * usuario entra por OTP (mismo flujo que el primer login) — ignoramos el token que
+ * devuelve el server y mandamos al login para verificar el email con un código.
  * @throws Error con mensaje claro si el email ya está registrado (409) o si el
  *         server rechaza los datos / falla la conexión.
  */
@@ -45,7 +47,6 @@ export async function registrar(body: RegistroBody): Promise<RegistroResult> {
       method: 'POST',
       body: JSON.stringify(body),
     });
-    setToken(res.token);
     return { nombre: res.nombre, rol: res.rol };
   } catch (err) {
     if (err instanceof ApiError && err.status === 409) {

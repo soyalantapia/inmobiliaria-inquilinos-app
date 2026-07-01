@@ -11,6 +11,29 @@ import { AuthShell } from '@/components/auth-shell';
 import { apiEnabled } from '@/lib/api/client';
 import { registrar } from '@/lib/api/registro';
 
+// Prefijos telefónicos de LatAm (los más comunes primero). El registro guarda el
+// teléfono con el prefijo elegido, así funciona para inmobiliarias de varios países.
+const PREFIJOS_LATAM = [
+  { pais: 'Argentina', code: '+54' },
+  { pais: 'Uruguay', code: '+598' },
+  { pais: 'Chile', code: '+56' },
+  { pais: 'Paraguay', code: '+595' },
+  { pais: 'Bolivia', code: '+591' },
+  { pais: 'Perú', code: '+51' },
+  { pais: 'Colombia', code: '+57' },
+  { pais: 'Ecuador', code: '+593' },
+  { pais: 'Venezuela', code: '+58' },
+  { pais: 'México', code: '+52' },
+  { pais: 'Brasil', code: '+55' },
+  { pais: 'Costa Rica', code: '+506' },
+  { pais: 'Panamá', code: '+507' },
+  { pais: 'Rep. Dominicana', code: '+1' },
+  { pais: 'Guatemala', code: '+502' },
+  { pais: 'Honduras', code: '+504' },
+  { pais: 'El Salvador', code: '+503' },
+  { pais: 'Nicaragua', code: '+505' },
+];
+
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 type Datos = {
@@ -47,6 +70,7 @@ function RegistroForm() {
     adminApellido: '',
   });
   const [errores, setErrores] = useState<Errores>({});
+  const [prefijo, setPrefijo] = useState('+54');
 
   // Prefill desde la landing o el login: ?email=…&nombre=…&nueva=1. Se setea
   // tras montar (evita mismatch de hidratación) y no pisa lo ya tipeado.
@@ -99,18 +123,22 @@ function RegistroForm() {
         router.push('/?bienvenida=1');
         return;
       }
+      const emailLc = datos.email.trim().toLowerCase();
       await registrar({
         inmobiliaria: {
           nombre: datos.nombre.trim(),
-          email: datos.email.trim().toLowerCase(),
-          telefono: datos.telefono.trim(),
+          email: emailLc,
+          // Guardamos el teléfono con el prefijo del país elegido.
+          telefono: datos.telefono.trim() ? `${prefijo} ${datos.telefono.trim()}` : '',
         },
         admin: {
           nombre: datos.adminNombre.trim(),
           apellido: datos.adminApellido.trim(),
         },
       });
-      router.push('/?bienvenida=1');
+      // Por seguridad, tras el alta pedimos el código por email (mismo flujo que el
+      // primer login) en vez de entrar directo. El login precarga el email + envía.
+      router.push(`/login?email=${encodeURIComponent(emailLc)}&recien=1`);
     } catch (err) {
       setServerError(err instanceof Error ? err.message : 'No se pudo crear la cuenta.');
       setLoading(false);
@@ -175,17 +203,38 @@ function RegistroForm() {
           placeholder="contacto@tuinmobiliaria.com"
           error={errores.email}
         />
-        <Field
-          id="inmo-telefono"
-          label="Teléfono"
-          optional
-          type="tel"
-          autoComplete="tel"
-          value={datos.telefono}
-          onChange={(v) => set('telefono', v)}
-          placeholder="+54 9 11 5555 5555"
-          error={errores.telefono}
-        />
+        <div className="space-y-1.5">
+          <Label htmlFor="inmo-telefono" className="text-sm">
+            Teléfono <span className="text-xs font-normal text-muted-foreground">opcional</span>
+          </Label>
+          <div className="flex gap-2">
+            <select
+              aria-label="Código de país"
+              value={prefijo}
+              onChange={(e) => setPrefijo(e.target.value)}
+              className="h-10 shrink-0 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {PREFIJOS_LATAM.map((p) => (
+                <option key={p.pais} value={p.code}>
+                  {p.code} {p.pais}
+                </option>
+              ))}
+            </select>
+            <Input
+              id="inmo-telefono"
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              value={datos.telefono}
+              onChange={(e) => set('telefono', e.target.value)}
+              placeholder="11 5555 5555"
+              className="flex-1"
+            />
+          </div>
+          {errores.telefono && (
+            <p className="text-xs text-destructive">{errores.telefono}</p>
+          )}
+        </div>
         <div className="grid grid-cols-2 gap-3">
           <Field
             id="admin-nombre"
