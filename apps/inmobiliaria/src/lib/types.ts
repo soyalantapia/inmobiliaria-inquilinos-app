@@ -170,6 +170,14 @@ export interface ContratoListado {
   proximoVencimiento: string;
   estadoPagoActual: EstadoLiquidacion;
   /**
+   * Cobrado y saldo de la liquidación ACTUAL (la que determina estadoPagoActual).
+   * Del API en prod (suma de pagos CONCILIADO, vía montoPagadoPorLiquidacion); en
+   * el demo/mock quedan sin setear. Sirven para NO contar el alquiler entero como
+   * pendiente cuando el mes está PARCIAL: el KPI "Pendiente" resta lo ya conciliado.
+   */
+  montoPagado?: number;
+  saldo?: number | null;
+  /**
    * CBU/alias específico de este contrato. Si está presente, sobreescribe
    * al CBU del propietario para esta unidad. Útil cuando el propietario
    * tiene varias propiedades y quiere recibir cada alquiler en una cuenta

@@ -55,6 +55,9 @@ interface ContratoApi {
   /** Derivados por el server desde liquidaciones reales (Fase 3). */
   estadoPagoActual: ContratoListado['estadoPagoActual'];
   proximoVencimiento: string | null;
+  /** Cobrado/saldo de la liquidación actual (para el KPI "Pendiente" en PARCIAL). */
+  montoPagado?: string | number | null;
+  saldo?: string | number | null;
   modoCobranza?: string | null;
 }
 
@@ -74,6 +77,8 @@ function mapContrato(c: ContratoApi): ContratoListado {
     fechaFin: c.fechaFin.slice(0, 10),
     proximoVencimiento: (c.proximoVencimiento ?? c.fechaFin).slice(0, 10),
     estadoPagoActual: c.estadoPagoActual ?? 'PENDIENTE',
+    ...(c.montoPagado != null ? { montoPagado: Number(c.montoPagado) } : {}),
+    ...(c.saldo != null ? { saldo: Number(c.saldo) } : {}),
     cbuAlias: c.cbuAlias,
     titularCuenta: c.titularCuenta,
     ...(c.tipoContrato ? { tipoContrato: c.tipoContrato } : {}),

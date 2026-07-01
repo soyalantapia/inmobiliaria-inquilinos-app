@@ -31,16 +31,33 @@ export async function coreRoutes(app: FastifyInstance) {
       },
       orderBy: { createdAt: 'asc' },
     });
+    // Liquidación ACTUAL por contrato (la que define estadoPagoActual): cualquier
+    // vencida manda; si no, la más reciente. Se reutiliza abajo para exponer su
+    // montoPagado/saldo sin recalcular la derivación.
+    const actualPorContrato = contratos.map(
+      (c) => c.liquidaciones.find((l) => l.estado === 'VENCIDO') ?? c.liquidaciones[0] ?? null,
+    );
+    // montoPagado (suma de pagos CONCILIADO) de la liquidación actual. Sin esto el
+    // KPI "Pendiente" del panel contaba el alquiler ENTERO de un contrato PARCIAL,
+    // ignorando lo ya cobrado → sobreestimaba la mora. Misma fuente de verdad que
+    // /contratos/:id y /mis-liquidaciones (montoPagadoPorLiquidacion).
+    const pagadoMap = await montoPagadoPorLiquidacion(
+      actualPorContrato.flatMap((l) => (l ? [l.id] : [])),
+    );
     // estadoPagoActual / proximoVencimiento DERIVADOS de liquidaciones reales:
     // cualquier vencida manda; si no, la más reciente; sin liqs → PENDIENTE.
-    return contratos.map(({ liquidaciones, ...c }) => {
-      const vencida = liquidaciones.find((l) => l.estado === 'VENCIDO');
-      const actual = vencida ?? liquidaciones[0] ?? null;
+    return contratos.map(({ liquidaciones, ...c }, i) => {
+      const actual = actualPorContrato[i];
       const pendiente = liquidaciones.find((l) => l.estado === 'PENDIENTE' || l.estado === 'VENCIDO');
+      const saldoActual = actual ? conSaldo(actual, pagadoMap) : null;
       return {
         ...c,
         estadoPagoActual: actual?.estado ?? 'PENDIENTE',
         proximoVencimiento: pendiente?.fechaVencimiento ?? null,
+        // montoPagado/saldo del período actual — el front resta lo ya conciliado en
+        // el KPI "Pendiente" cuando el contrato está PARCIAL. Sin liq actual → 0/null.
+        montoPagado: saldoActual?.montoPagado ?? 0,
+        saldo: saldoActual?.saldo ?? null,
       };
     });
   });

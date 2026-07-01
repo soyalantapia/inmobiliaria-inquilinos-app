@@ -10,6 +10,7 @@ import {
   Clock,
   Download,
   Inbox,
+  PieChart,
   RefreshCw,
   ShieldCheck,
 } from 'lucide-react';
@@ -52,7 +53,7 @@ import {
 } from '@/lib/sociedades-storage';
 import type { EstadoLiquidacion } from '@/lib/types';
 
-type Filtro = 'TODOS' | 'A_RESOLVER' | 'VENCIDO' | 'PENDIENTE' | 'PAGADO';
+type Filtro = 'TODOS' | 'A_RESOLVER' | 'VENCIDO' | 'PENDIENTE' | 'PARCIAL' | 'PAGADO';
 
 const estadoVariant: Record<EstadoLiquidacion, React.ComponentProps<typeof Badge>['variant']> = {
   PENDIENTE: 'warning',
@@ -66,6 +67,15 @@ const estadoLabel: Record<EstadoLiquidacion, string> = {
   PAGADO: 'Pagado',
   PARCIAL: 'Parcial',
   VENCIDO: 'Vencido',
+};
+
+// Plural para el empty-state ("No hay contratos {plural}…"): antes se derivaba
+// concatenando 's' al label, que para PARCIAL daba "parcials". Explícito y correcto.
+const estadoLabelPlural: Record<EstadoLiquidacion, string> = {
+  PENDIENTE: 'pendientes',
+  PAGADO: 'pagados',
+  PARCIAL: 'parciales',
+  VENCIDO: 'vencidos',
 };
 
 // Configuración de los botones de filtro grandes. "A resolver" va primero —
@@ -98,6 +108,17 @@ const FILTROS = [
     colorIdle:
       'border-amber-200 bg-amber-50/60 text-amber-800 hover:bg-amber-100 hover:border-amber-300 dark:border-amber-900/40 dark:bg-amber-900/10 dark:text-amber-300',
     badgeBg: 'bg-amber-500/20',
+  },
+  {
+    // Parcial: el inquilino cobró una parte del mes. Va entre Pendientes y Pagados
+    // (a mitad de camino). Color sky para no confundirse con el ámbar de Pendiente.
+    key: 'PARCIAL' as const,
+    label: 'Parciales',
+    icon: PieChart,
+    colorActive: 'bg-sky-500 text-white border-sky-500 shadow-lg shadow-sky-500/20',
+    colorIdle:
+      'border-sky-200 bg-sky-50/60 text-sky-700 hover:bg-sky-100 hover:border-sky-300 dark:border-sky-900/40 dark:bg-sky-900/10 dark:text-sky-300',
+    badgeBg: 'bg-sky-500/20',
   },
   {
     key: 'PAGADO' as const,
@@ -180,6 +201,7 @@ export default function PagosPage() {
       A_RESOLVER: aResolverCount,
       VENCIDO: cobrables.filter((c) => c.estadoPagoActual === 'VENCIDO').length,
       PENDIENTE: cobrables.filter((c) => c.estadoPagoActual === 'PENDIENTE').length,
+      PARCIAL: cobrables.filter((c) => c.estadoPagoActual === 'PARCIAL').length,
       PAGADO: cobrables.filter((c) => c.estadoPagoActual === 'PAGADO').length,
     }),
     [aResolverCount, cobrables],
@@ -196,7 +218,18 @@ export default function PagosPage() {
     () =>
       cobrables
         .filter((c) => c.estadoPagoActual !== 'PAGADO')
-        .reduce((acc, c) => acc + c.monto, 0),
+        .reduce((acc, c) => {
+          // Un contrato PARCIAL ya tiene una parte del alquiler conciliada: contamos
+          // sólo lo que falta (canon − ya cobrado), no el mes entero. Si no, el KPI
+          // sobreestima la mora por la porción ya cobrada. montoPagado viene del API
+          // (0/ausente en demo, donde ningún contrato queda PARCIAL). Clamp a ≥0 por
+          // si lo conciliado supera el canon (p.ej. la liq incluye expensas).
+          const pendiente =
+            c.estadoPagoActual === 'PARCIAL'
+              ? Math.max(0, c.monto - (c.montoPagado ?? 0))
+              : c.monto;
+          return acc + pendiente;
+        }, 0),
     [cobrables],
   );
 
@@ -205,7 +238,7 @@ export default function PagosPage() {
     return cobrables.filter((c) => c.estadoPagoActual === filtro);
   }, [filtro, cobrables]);
 
-  const togglearFiltro = (f: 'A_RESOLVER' | 'VENCIDO' | 'PENDIENTE' | 'PAGADO') => {
+  const togglearFiltro = (f: 'A_RESOLVER' | 'VENCIDO' | 'PENDIENTE' | 'PARCIAL' | 'PAGADO') => {
     setFiltro((prev) => (prev === f ? 'TODOS' : f));
   };
 
@@ -537,8 +570,8 @@ export default function PagosPage() {
           </div>
         </div>
 
-        {/* 4 botones grandes de filtro, ocupan de punta a punta */}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {/* 5 botones grandes de filtro, ocupan de punta a punta */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
           {FILTROS.map((f) => {
             const Icon = f.icon;
             const activo = filtro === f.key;
@@ -618,7 +651,7 @@ export default function PagosPage() {
             <div className="py-10 text-center text-sm text-muted-foreground">
               {filtro === 'TODOS'
                 ? 'No hay contratos para mostrar en este momento.'
-                : `No hay contratos ${estadoLabel[filtro as EstadoLiquidacion].toLowerCase()}s en este momento.`}
+                : `No hay contratos ${estadoLabelPlural[filtro as EstadoLiquidacion]} en este momento.`}
             </div>
           </Card>
         ) : (
