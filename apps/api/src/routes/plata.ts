@@ -134,7 +134,7 @@ export async function plataRoutes(app: FastifyInstance) {
         contrato: { modoCobranza: 'INMOBILIARIA' },
       },
       include: {
-        liquidacion: { select: { montoAlquiler: true, montoTotal: true, periodo: true } },
+        liquidacion: { select: { montoAlquiler: true, montoTotal: true, periodo: true, moneda: true } },
         contrato: {
           select: {
             propiedad: {
@@ -154,9 +154,19 @@ export async function plataRoutes(app: FastifyInstance) {
 
     let cobrado = 0;
     let comision = 0;
+    // Buckets por moneda: sumar ARS+USD en un mismo total no tiene sentido. El
+    // total plano de abajo sólo es correcto si hay UNA sola moneda; para el caso
+    // mixto exponemos porMoneda + multiMoneda y el front muestra el desglose.
+    const buckets = new Map<string, { moneda: string; cobrado: number; comision: number; cantidad: number }>();
+    const bucket = (m: string) => {
+      let b = buckets.get(m);
+      if (!b) { b = { moneda: m, cobrado: 0, comision: 0, cantidad: 0 }; buckets.set(m, b); }
+      return b;
+    };
     const items = pagos.map((p) => {
       const monto = Number(p.monto);
       cobrado += monto;
+      const moneda = p.liquidacion?.moneda ?? 'ARS';
       const liqTotal = Number(p.liquidacion?.montoTotal ?? 0);
       const liqAlq = Number(p.liquidacion?.montoAlquiler ?? 0);
       // Porción de alquiler dentro del pago (proporcional: cubre parciales y
@@ -173,6 +183,10 @@ export async function plataRoutes(app: FastifyInstance) {
       // entero por pago → drift de centavos al reconciliar cierre vs rendición.
       const comisionPago = Math.round(alquilerPortion * tasa * 100) / 100;
       comision += comisionPago;
+      const b = bucket(moneda);
+      b.cobrado += monto;
+      b.comision += comisionPago;
+      b.cantidad += 1;
       const inq = p.contrato?.inquilinoTitular;
       return {
         id: p.id,
@@ -180,6 +194,7 @@ export async function plataRoutes(app: FastifyInstance) {
         direccion: p.contrato?.propiedad?.direccion ?? '—',
         periodo: p.liquidacion?.periodo ?? p.periodo,
         monto,
+        moneda,
         comision: comisionPago,
         metodo: p.metodo,
         hora: p.decididoAt,
@@ -188,11 +203,21 @@ export async function plataRoutes(app: FastifyInstance) {
 
     // Totales redondeados a centavos: cobrado/comision acumulan floats; sin esto
     // la suma podía arrastrar artefactos binarios (0.1+0.2) en el JSON.
+    const porMoneda = [...buckets.values()].map((b) => ({
+      moneda: b.moneda,
+      cobrado: Math.round(b.cobrado * 100) / 100,
+      comision: Math.round(b.comision * 100) / 100,
+      cantidad: b.cantidad,
+    }));
     return {
       fecha,
+      // Totales planos: correctos con una sola moneda; con multiMoneda el front
+      // debe usar porMoneda (sumar ARS+USD acá no significaría nada).
       cobrado: Math.round(cobrado * 100) / 100,
       comision: Math.round(comision * 100) / 100,
       cantidad: items.length,
+      multiMoneda: porMoneda.length > 1,
+      porMoneda,
       pagos: items,
     };
   });
@@ -332,6 +357,73 @@ export async function plataRoutes(app: FastifyInstance) {
     await registrarEvento({
       inmobiliariaId: u.inmobiliariaId,
       tipo: 'PAGO_RECHAZADO',
+      autorId: u.userId,
+      rolAutor: u.rol,
+      entidadId: pagoOk.id,
+      entidadDescripcion: `Pago ${pagoOk.periodo} · $${Number(pagoOk.monto)}`,
+      detalle: body.data.observacion,
+    });
+    return pagoOk;
+  });
+
+  // Anular (revertir) un pago YA CONCILIADO: un cobro validado por error o una
+  // transferencia que rebotó. Antes un CONCILIADO era terminal (no había forma de
+  // deshacerlo) → la inmo quedaba con una liquidación PAGADO falsa que entraba a
+  // rendición. Devuelve el pago a no-cobrado (reusa RECHAZADO con observación
+  // "Anulado…" para no migrar el enum) y RECOMPUTA la liquidación
+  // (PAGADO→PARCIAL/PENDIENTE/VENCIDO según lo que quede conciliado). Tras anular,
+  // el inquilino puede volver a informar (la liq deja de estar paga).
+  app.post('/pagos/:id/anular', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'pago.conciliar');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const body = z.object({ pin: z.string().optional(), observacion: z.string().min(5) }).safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ message: 'Contá por qué se anula el pago (mínimo 5 caracteres)' });
+    if (!(await verificarPin(u.userId, body.data.pin, reply))) return;
+
+    const pago = await prisma.pago.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
+    if (!pago) return reply.code(404).send({ message: 'Pago inexistente' });
+    if (pago.estado !== 'CONCILIADO') return reply.code(409).send({ message: 'Solo se puede anular un pago ya conciliado' });
+
+    const observacion = `Anulado tras conciliar: ${body.data.observacion}`;
+    const pagoOk = await prisma.$transaction(async (tx) => {
+      // updateMany condicionado (WHERE estado='CONCILIADO'): cierra la carrera de
+      // doble-anulación o anular-mientras-otro-opera. count=0 → 409.
+      const upd = await tx.pago.updateMany({
+        where: { id, estado: 'CONCILIADO' },
+        data: { estado: 'RECHAZADO', observacion, decididoPorId: u.userId, decididoAt: new Date() },
+      });
+      if (upd.count === 0) return null;
+      // Recalcular la liquidación con lo que QUEDA conciliado (incluye inmobiliariaId
+      // en ambas ops: un ID ajeno no puede operar cross-tenant).
+      const liq = await tx.liquidacion.findFirst({
+        where: { id: pago.liquidacionId, inmobiliariaId: u.inmobiliariaId },
+        select: { montoTotal: true, fechaVencimiento: true },
+      });
+      const agg = await tx.pago.aggregate({
+        where: { liquidacionId: pago.liquidacionId, estado: 'CONCILIADO' },
+        _sum: { monto: true },
+      });
+      const cobrado = Number(agg._sum.monto ?? 0);
+      const total = Number(liq?.montoTotal ?? 0);
+      const vencida = liq ? new Date(liq.fechaVencimiento) < new Date() : false;
+      // Sigue PAGADO sólo si OTROS conciliados cubren el total; si no, PARCIAL
+      // (queda algo) o PENDIENTE/VENCIDO (no queda nada). Al dejar de estar PAGADO
+      // limpiamos fechaPago/metodoPago para no dejar un "pagado" fantasma.
+      const nuevoEstado = total > 0 && cobrado >= total ? 'PAGADO' : cobrado > 0 ? 'PARCIAL' : vencida ? 'VENCIDO' : 'PENDIENTE';
+      await tx.liquidacion.updateMany({
+        where: { id: pago.liquidacionId, inmobiliariaId: u.inmobiliariaId },
+        data:
+          nuevoEstado === 'PAGADO'
+            ? { estado: 'PAGADO' }
+            : { estado: nuevoEstado, fechaPago: null, metodoPago: null },
+      });
+      return tx.pago.findUnique({ where: { id } });
+    });
+    if (!pagoOk) return reply.code(409).send({ message: 'El pago ya no estaba conciliado' });
+    await registrarEvento({
+      inmobiliariaId: u.inmobiliariaId,
+      tipo: 'PAGO_REVERTIDO',
       autorId: u.userId,
       rolAutor: u.rol,
       entidadId: pagoOk.id,
@@ -604,6 +696,16 @@ export async function plataRoutes(app: FastifyInstance) {
       },
       include: { contrato: { select: { propiedadId: true } } },
     });
+    // La Rendicion guarda UN solo montoBruto/comision/neto (una moneda). Si los
+    // cobros del período mezclan ARS y USD, sumarlos daría un bruto sin sentido; el
+    // modelo (@@unique propietarioId_periodo) no permite una rendición por moneda.
+    // Cortamos con un 409 claro en vez de emitir un neto incorrecto.
+    const monedas = [...new Set(liqsPagadas.map((l) => l.moneda))];
+    if (monedas.length > 1) {
+      return reply.code(409).send({
+        message: `Este propietario tiene cobros en varias monedas (${monedas.join(', ')}) en ${periodo}. Rendí cada moneda por separado (hoy la rendición es de una sola moneda).`,
+      });
+    }
     for (const liq of liqsPagadas) {
       const part = owner.participaciones.find((p) => p.propiedadId === liq.contrato.propiedadId);
       // Bruto = SOLO el alquiler (no montoTotal): las expensas/punitorios no entran
