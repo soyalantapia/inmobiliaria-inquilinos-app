@@ -638,9 +638,36 @@ export async function coreRoutes(app: FastifyInstance) {
         try {
           const inmo = await prisma.inmobiliaria.findUnique({
             where: { id: u.inmobiliariaId },
-            select: { nombre: true },
+            select: {
+              nombre: true,
+              email: true,
+              telefono: true,
+              direccionCalle: true,
+              direccionAltura: true,
+              direccionCiudad: true,
+              direccionProvincia: true,
+            },
           });
-          const enviado = await enviarInvitacionInquilino(emailInq, inmo?.nombre ?? 'Tu inmobiliaria');
+          const direccionInmo = inmo
+            ? [
+                `${inmo.direccionCalle} ${inmo.direccionAltura}`.trim(),
+                inmo.direccionCiudad,
+                inmo.direccionProvincia,
+              ]
+                .filter((p) => p && p.trim())
+                .join(', ')
+            : null;
+          const enviado = await enviarInvitacionInquilino({
+            email: emailInq,
+            inquilinoNombre: d.inquilino.nombre,
+            inmobiliaria: {
+              nombre: inmo?.nombre ?? 'Tu inmobiliaria',
+              telefono: inmo?.telefono ?? null,
+              email: inmo?.email ?? null,
+              direccion: direccionInmo || null,
+            },
+            propiedadDireccion: prop.direccion,
+          });
           if (enviado) request.log.info({ email: emailInq }, 'Invitación de inquilino enviada');
           else request.log.info({ email: emailInq }, 'Invitación de inquilino: SMTP no configurado');
         } catch (err) {

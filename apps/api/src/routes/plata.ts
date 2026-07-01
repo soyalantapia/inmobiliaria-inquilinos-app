@@ -5,6 +5,7 @@ import { exigirContratoActivo, requireContratoAcceso, requireInquilino, requireU
 import { verificarPinUsuario } from '../auth/pin.js';
 import { devengarTodosLosTenants, generarLiquidacionesContrato } from '../lib/liquidaciones.js';
 import { registrarEvento } from '../lib/auditoria.js';
+import { enviarInvitacionInquilino } from '../mailer.js';
 import { urlEsDelTenant } from './uploads.js';
 
 /**
@@ -864,6 +865,59 @@ export async function plataRoutes(app: FastifyInstance) {
           entidadId: result.updated.entidadId,
           entidadDescripcion: result.updated.titulo,
         });
+        // Al APROBAR, el contrato pasa a ACTIVO → recién ahí le mandamos al
+        // inquilino el email de bienvenida/onboarding (los contratos cargados por
+        // rol CARGA nacen BORRADOR y no lo reciben en POST /contratos). Best-effort.
+        if (accion === 'aprobar') {
+          try {
+            const contrato = await prisma.contrato.findUnique({
+              where: { id: result.updated.entidadId },
+              select: {
+                propiedad: { select: { direccion: true } },
+                inquilinoTitular: { select: { nombre: true, email: true } },
+                inmobiliaria: {
+                  select: {
+                    nombre: true,
+                    email: true,
+                    telefono: true,
+                    direccionCalle: true,
+                    direccionAltura: true,
+                    direccionCiudad: true,
+                    direccionProvincia: true,
+                  },
+                },
+              },
+            });
+            const inq = contrato?.inquilinoTitular;
+            if (inq?.email && contrato?.inmobiliaria) {
+              const inmo = contrato.inmobiliaria;
+              const direccionInmo = [
+                `${inmo.direccionCalle} ${inmo.direccionAltura}`.trim(),
+                inmo.direccionCiudad,
+                inmo.direccionProvincia,
+              ]
+                .filter((p) => p && p.trim())
+                .join(', ');
+              const enviado = await enviarInvitacionInquilino({
+                email: inq.email,
+                inquilinoNombre: inq.nombre,
+                inmobiliaria: {
+                  nombre: inmo.nombre,
+                  telefono: inmo.telefono,
+                  email: inmo.email,
+                  direccion: direccionInmo || null,
+                },
+                propiedadDireccion: contrato.propiedad?.direccion ?? null,
+              });
+              if (enviado) request.log.info({ email: inq.email }, 'Invitación de inquilino enviada (aprobación)');
+            }
+          } catch (err) {
+            request.log.error(
+              { err: (err as Error).message },
+              'Invitación de inquilino (aprobación): fallo el envío (no bloquea)',
+            );
+          }
+        }
       }
       return result.updated;
     });

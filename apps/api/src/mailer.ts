@@ -160,12 +160,46 @@ export async function enviarOtpAdmin(email: string, code: string): Promise<boole
 /** URL de la app del inquilino (para los CTAs del email). */
 const APP_INQUILINO_URL = (process.env.APP_INQUILINO_URL ?? 'https://app.myalquiler.com').replace(/\/$/, '');
 
-/** Cuerpo del email de invitación/onboarding del inquilino (tema claro). */
-function invitacionHtml(opts: { inmobiliaria: string; email: string; appUrl: string }): string {
-  const inmo = esc(opts.inmobiliaria);
+/** Datos de contacto de la inmobiliaria que se muestran en el email al inquilino. */
+export interface InmobiliariaContacto {
+  nombre: string;
+  telefono?: string | null;
+  email?: string | null;
+  direccion?: string | null;
+}
+
+/** Fila de contacto "ícono · valor" para el bloque "Tu inmobiliaria". */
+function filaContacto(icono: string, valor: string): string {
+  return `<p style="margin:0 0 4px;color:#6b6577;font-size:13px;line-height:1.5;">${icono}&nbsp; ${esc(valor)}</p>`;
+}
+
+/** Cuerpo del email de bienvenida/onboarding del inquilino (tema claro). */
+function invitacionHtml(opts: {
+  inquilinoNombre?: string | null;
+  inmobiliaria: InmobiliariaContacto;
+  propiedadDireccion?: string | null;
+  email: string;
+  appUrl: string;
+}): string {
+  const inmoNombre = esc(opts.inmobiliaria.nombre);
+  const primerNombre = opts.inquilinoNombre?.trim().split(/\s+/)[0];
+  const saludo = primerNombre ? `¡Bienvenido/a, ${esc(primerNombre)}! 🎉` : '¡Bienvenido/a a My Alquiler! 🎉';
+
+  // Bloque de contacto de la inmobiliaria (sólo las filas que existen).
+  const contacto = [
+    opts.inmobiliaria.telefono ? filaContacto('📞', opts.inmobiliaria.telefono) : '',
+    opts.inmobiliaria.email ? filaContacto('✉️', opts.inmobiliaria.email) : '',
+    opts.inmobiliaria.direccion ? filaContacto('📍', opts.inmobiliaria.direccion) : '',
+  ].join('');
+
   const inner = `
-    <h1 style="margin:0 0 10px;color:#1c1726;font-size:22px;line-height:1.2;font-weight:800;letter-spacing:-0.02em;">Entrá a tu alquiler</h1>
-    <p style="margin:0 0 18px;color:#6b6577;font-size:15px;line-height:1.65;"><strong style="color:#1c1726;">${inmo}</strong> te sumó a <strong style="color:#1c1726;">My Alquiler</strong>, la app donde ves tu contrato, pagás el alquiler y hacés reclamos — todo desde el celular.</p>
+    <h1 style="margin:0 0 10px;color:#1c1726;font-size:22px;line-height:1.2;font-weight:800;letter-spacing:-0.02em;">${saludo}</h1>
+    <p style="margin:0 0 16px;color:#6b6577;font-size:15px;line-height:1.65;"><strong style="color:#1c1726;">${inmoNombre}</strong> está muy contenta de sumarte a <strong style="color:#1c1726;">My Alquiler</strong> — la app donde vas a gestionar todo tu alquiler desde el celular, sin papeles ni llamados a deshora.</p>
+    ${
+      opts.propiedadDireccion
+        ? `<p style="margin:0 0 18px;color:#6b6577;font-size:14px;line-height:1.5;">Tu alquiler: <strong style="color:#1c1726;">${esc(opts.propiedadDireccion)}</strong></p>`
+        : ''
+    }
 
     <!-- Botón -->
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:4px 0 20px;"><tr>
@@ -174,40 +208,83 @@ function invitacionHtml(opts: { inmobiliaria: string; email: string; appUrl: str
       </td>
     </tr></table>
 
-    <!-- Cómo entra -->
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 6px;">
+    <!-- Cómo entrás -->
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 14px;">
       <tr>
         <td bgcolor="#faf9fd" style="background-color:#faf9fd;border:1px solid #ece8f7;border-radius:10px;padding:12px 16px;">
           <p style="margin:0;color:#6b6577;font-size:13px;line-height:1.5;">
-            Entrás con tu email (<strong style="color:#1c1726;">${esc(opts.email)}</strong>) y un código de 6 dígitos que te mandamos. <strong style="color:#1c1726;">Sin contraseñas.</strong>
+            <strong style="color:#1c1726;">Cómo entrás:</strong> con tu email (<strong style="color:#1c1726;">${esc(opts.email)}</strong>) y un código de 6 dígitos que te mandamos al mail. <strong style="color:#1c1726;">Sin contraseñas.</strong>
           </p>
+        </td>
+      </tr>
+    </table>
+
+    <!-- Qué vas a poder hacer -->
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 14px;">
+      <tr>
+        <td bgcolor="#faf9fd" style="background-color:#faf9fd;border:1px solid #ece8f7;border-radius:10px;padding:14px 16px;">
+          <p style="margin:0 0 8px;color:#1c1726;font-size:13px;font-weight:700;">Con My Alquiler vas a poder:</p>
+          <p style="margin:0 0 4px;color:#6b6577;font-size:13px;line-height:1.6;">✅&nbsp; Pagar el alquiler y subir el comprobante en un toque.</p>
+          <p style="margin:0 0 4px;color:#6b6577;font-size:13px;line-height:1.6;">📄&nbsp; Ver tu contrato, vencimientos, ajustes y descargar tus recibos.</p>
+          <p style="margin:0 0 4px;color:#6b6577;font-size:13px;line-height:1.6;">🛠️&nbsp; Hacer reclamos con foto y seguir la conversación por dentro.</p>
+          <p style="margin:0;color:#6b6577;font-size:13px;line-height:1.6;">💬&nbsp; Chatear con tu inmobiliaria cuando lo necesites.</p>
+        </td>
+      </tr>
+    </table>
+
+    <!-- Tu inmobiliaria (datos de contacto) -->
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 6px;">
+      <tr>
+        <td bgcolor="#f6f4fe" style="background-color:#f6f4fe;border:1px solid #e4dcfb;border-radius:10px;padding:14px 16px;">
+          <p style="margin:0 0 8px;color:#1c1726;font-size:13px;font-weight:700;">Tu inmobiliaria</p>
+          <p style="margin:0 0 4px;color:#1c1726;font-size:14px;font-weight:600;">${inmoNombre}</p>
+          ${contacto || '<p style="margin:0;color:#6b6577;font-size:13px;line-height:1.5;">Cualquier duda, respondé este mail.</p>'}
         </td>
       </tr>
     </table>`;
 
   return shell({
-    preview: `${opts.inmobiliaria} te sumó a My Alquiler — entrá con tu email`,
+    preview: `${opts.inmobiliaria.nombre} te da la bienvenida a My Alquiler — entrá con tu email`,
     inner,
   });
 }
 
 /**
- * Email de onboarding: avisa al inquilino que su inmobiliaria lo sumó a My
- * Alquiler y cómo entrar. Best-effort (el caller no debe romper si falla).
+ * Email de bienvenida/onboarding al inquilino: la inmobiliaria lo sumó a My
+ * Alquiler. Incluye saludo, datos de contacto de la inmobiliaria, cómo ingresar
+ * (email + OTP) y qué puede hacer en la app. Best-effort (el caller no debe
+ * romper el alta si el SMTP falla).
  */
-export async function enviarInvitacionInquilino(
-  email: string,
-  inmobiliariaNombre: string,
-  appUrl: string = APP_INQUILINO_URL,
-): Promise<boolean> {
+export async function enviarInvitacionInquilino(opts: {
+  email: string;
+  inquilinoNombre?: string | null;
+  inmobiliaria: InmobiliariaContacto;
+  propiedadDireccion?: string | null;
+  appUrl?: string;
+}): Promise<boolean> {
   const t = getTransporter();
   if (!t) return false;
+  const appUrl = opts.appUrl ?? APP_INQUILINO_URL;
+  const inmoNombre = opts.inmobiliaria.nombre;
+  const contactoTxt = [
+    opts.inmobiliaria.telefono ? `Tel: ${opts.inmobiliaria.telefono}` : '',
+    opts.inmobiliaria.email ? `Email: ${opts.inmobiliaria.email}` : '',
+    opts.inmobiliaria.direccion ? `Dirección: ${opts.inmobiliaria.direccion}` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
   await t.sendMail({
     from,
-    to: email,
-    subject: `${inmobiliariaNombre} te sumó a My Alquiler`,
-    text: `${inmobiliariaNombre} te sumó a My Alquiler, la app para ver tu contrato, pagar el alquiler y hacer reclamos.\nEntrá con tu email (${email}) y un código que te mandamos: ${appUrl}\nSin contraseñas.`,
-    html: invitacionHtml({ inmobiliaria: inmobiliariaNombre, email, appUrl }),
+    to: opts.email,
+    subject: `${inmoNombre} te da la bienvenida a My Alquiler`,
+    text: `${inmoNombre} está contenta de sumarte a My Alquiler, la app para pagar el alquiler, ver tu contrato y hacer reclamos.\nEntrás con tu email (${opts.email}) y un código que te mandamos. Sin contraseñas.\nEntrá acá: ${appUrl}\n${contactoTxt ? `\nTu inmobiliaria: ${inmoNombre} · ${contactoTxt}` : ''}`,
+    html: invitacionHtml({
+      inquilinoNombre: opts.inquilinoNombre,
+      inmobiliaria: opts.inmobiliaria,
+      propiedadDireccion: opts.propiedadDireccion,
+      email: opts.email,
+      appUrl,
+    }),
   });
   return true;
 }
