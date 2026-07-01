@@ -95,23 +95,56 @@ export function ConfiguracionProd() {
           <h2 className="mb-2 px-1 text-sm font-semibold text-muted-foreground">Mercado y país</h2>
           <ConfiguracionPais />
         </div>
-        <Card className="border-dashed">
-          <CardContent className="flex items-start gap-3 p-5">
-            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
-              <Sparkles className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-sm font-semibold">Más opciones, pronto</p>
-              <p className="text-xs text-muted-foreground">
-                Plan y facturas, convenios, referidos, notificaciones y auditoría están en
-                camino. Lo esencial para operar — empresa, sociedades, cobranza, equipo, PIN
-                y mercado — ya está activo.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+        <AppInquilinoLinkCard />
       </div>
     </main>
+  );
+}
+
+const APP_INQUILINO_URL =
+  (process.env.NEXT_PUBLIC_INQUILINO_URL?.replace(/\/$/, '') || 'https://app.myalquiler.com');
+
+/**
+ * Link a la app del inquilino, a mano en Configuración: la inmobiliaria lo comparte
+ * con sus inquilinos para que entren a pagar / ver su contrato.
+ */
+function AppInquilinoLinkCard() {
+  const copiar = async () => {
+    try {
+      await navigator.clipboard.writeText(APP_INQUILINO_URL);
+      toast({ title: 'Link copiado', description: 'Ya lo podés compartir con tus inquilinos.' });
+    } catch {
+      toast({ title: 'No pudimos copiar', variant: 'destructive' });
+    }
+  };
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Sparkles className="h-5 w-5 text-primary" />
+          Link de la app para tus inquilinos
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-xs text-muted-foreground">
+          Compartí este link con tus inquilinos para que entren a pagar, ver su contrato y
+          cargar reclamos. Ingresan con su email (les llega un código por mail).
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <a
+            href={APP_INQUILINO_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="flex-1 truncate rounded-md border bg-muted/40 px-3 py-2 font-mono text-sm text-primary hover:underline"
+          >
+            {APP_INQUILINO_URL}
+          </a>
+          <Button variant="outline" onClick={copiar}>
+            Copiar link
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

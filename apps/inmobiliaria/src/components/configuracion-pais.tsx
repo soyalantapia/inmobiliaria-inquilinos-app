@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  Building,
   CalendarClock,
   CheckCircle2,
   Clock,
@@ -330,20 +329,6 @@ export function ConfiguracionPais() {
         </>
       )}
 
-      {/* Card con info del identificador fiscal */}
-      <Card>
-        <CardContent className="flex items-start gap-3 p-4 text-sm">
-          <Building className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-          <div>
-            <p className="font-medium">
-              Identificación fiscal en {pais.nombre}: <strong>{pais.identificadorFiscal}</strong>
-            </p>
-            <p className="text-[11px] text-muted-foreground">
-              Formato de identificación fiscal del país elegido (referencia).
-            </p>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }

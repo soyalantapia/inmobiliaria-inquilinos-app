@@ -13,7 +13,6 @@ import {
   Plus,
   Search,
   Store,
-  Wand2,
   Warehouse,
 } from 'lucide-react';
 import { Badge } from '@llave/ui/badge';
@@ -21,7 +20,6 @@ import { Button } from '@llave/ui/button';
 import { Card, CardContent } from '@llave/ui/card';
 import { cn } from '@llave/ui/cn';
 import { Input } from '@llave/ui/input';
-import { MigracionMasivaDialog } from '@/components/migracion-masiva-dialog';
 import { Topbar } from '@/components/topbar';
 import { usePropiedades } from '@/lib/api/hooks';
 import {
@@ -116,7 +114,6 @@ function esAlquilada(p: PropiedadEnriquecida): boolean {
 export default function PropiedadesPage() {
   const [q, setQ] = useState('');
   const [filtro, setFiltro] = useState<Filtro>('TODOS');
-  const [migrarOpen, setMigrarOpen] = useState(false);
   const [sociedadActiva, setSociedadActivaState] =
     useState<SociedadActivaId>(TODAS_LAS_SOCIEDADES);
 
@@ -271,14 +268,6 @@ export default function PropiedadesPage() {
             />
           </div>
           <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setMigrarOpen(true)}
-              className="border-violet-300 text-violet-700 hover:bg-violet-50 dark:border-violet-900/40 dark:text-violet-300 dark:hover:bg-violet-900/10"
-            >
-              <Wand2 className="h-4 w-4" />
-              Migrar mi cartera
-            </Button>
             <Button asChild>
               <Link href="/propiedades/nueva">
                 <Plus className="h-4 w-4" />
@@ -412,19 +401,6 @@ export default function PropiedadesPage() {
           </div>
         )}
       </main>
-
-      <MigracionMasivaDialog
-        open={migrarOpen}
-        onOpenChange={setMigrarOpen}
-        onImportado={(cant) => {
-          // En backend real, acá refrescaríamos el listado. En demo lo
-          // dejamos en el toast del propio dialog.
-          if (typeof window !== 'undefined') {
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-          }
-          void cant;
-        }}
-      />
     </>
   );
 }
