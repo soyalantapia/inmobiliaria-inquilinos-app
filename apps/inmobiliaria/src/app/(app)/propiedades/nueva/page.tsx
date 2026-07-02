@@ -1,9 +1,10 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
+  AlertTriangle,
   ArrowLeft,
   Building2,
   CheckCircle2,
@@ -31,7 +32,7 @@ import {
   type PropietarioCreado,
 } from '@/components/nuevo-propietario-dialog';
 import { apiEnabled } from '@/lib/api/client';
-import { useCrearPropiedad, usePropietarios } from '@/lib/api/hooks';
+import { useCrearPropiedad, useMercado, usePropiedades, usePropietarios } from '@/lib/api/hooks';
 import { propietariosMock } from '@/lib/mock-data';
 import {
   type PropietarioExtra,
@@ -41,11 +42,21 @@ import { calcularResumenPlan, resumenPara } from '@/lib/plan';
 import { formatMonto } from '@/lib/format';
 import type { TipoPropiedad } from '@/lib/types';
 
-const tipos: Array<{ value: TipoPropiedad; label: string; icon: React.ComponentType<{ className?: string }> }> = [
-  { value: 'DEPARTAMENTO', label: 'Departamento', icon: Home },
-  { value: 'CASA', label: 'Casa', icon: Home },
-  { value: 'LOCAL', label: 'Local comercial', icon: Store },
-  { value: 'GALPON', label: 'Galpón', icon: Warehouse },
+// `llevaPiso`: solo las unidades DENTRO de un edificio piden piso/depto. Una
+// casa o un galpón no → el campo se oculta cuando es false (pedido del usuario:
+// "si pongo casa no ponga piso"). `ambientesLabel`: en un local/galpón "3
+// ambientes" no aplica; se pide la superficie.
+const tipos: Array<{
+  value: TipoPropiedad;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  llevaPiso: boolean;
+  llevaAmbientes: boolean;
+}> = [
+  { value: 'DEPARTAMENTO', label: 'Departamento', icon: Home, llevaPiso: true, llevaAmbientes: true },
+  { value: 'CASA', label: 'Casa', icon: Home, llevaPiso: false, llevaAmbientes: true },
+  { value: 'LOCAL', label: 'Local comercial', icon: Store, llevaPiso: true, llevaAmbientes: false },
+  { value: 'GALPON', label: 'Galpón', icon: Warehouse, llevaPiso: false, llevaAmbientes: false },
 ];
 
 const provincias = [
@@ -95,6 +106,12 @@ function NuevaPropiedadForm() {
   // Propietarios reales del API (prod). En demo el hook devuelve propietariosMock,
   // pero ahí seguimos usando el catálogo local (mock + extras de localStorage).
   const { propietarios: propietariosApi } = usePropietarios();
+  // País de la inmobiliaria (config Mercado): acota el autocompletado de
+  // direcciones a ese país (default AR). Sin esto Nominatim mezclaba LatAm.
+  const { config: mercado } = useMercado();
+  const paisCodigo = mercado?.codigo ?? 'AR';
+  // Cartera existente: para avisar (no bloquear) si la dirección ya está cargada.
+  const { propiedades: propiedadesExistentes } = usePropiedades();
 
   // Tipo + dirección
   const [tipo, setTipo] = useState<TipoPropiedad | ''>('');
@@ -118,6 +135,20 @@ function NuevaPropiedadForm() {
   ]);
   const [conDivision, setConDivision] = useState(false);
   const [nuevoPropOpen, setNuevoPropOpen] = useState(false);
+
+  // Metadata del tipo elegido: qué campos aplican. Sin tipo aún, asumimos que
+  // lleva todo (no ocultamos nada hasta que elija).
+  const tipoMeta = tipos.find((t) => t.value === tipo);
+  const llevaPiso = tipoMeta?.llevaPiso ?? true;
+  const llevaAmbientes = tipoMeta?.llevaAmbientes ?? true;
+
+  // Al pasar a un tipo que NO lleva piso (casa/galpón), limpiamos el valor para
+  // no arrastrar "8°C" oculto al payload de la dirección.
+  useEffect(() => {
+    if (!llevaPiso && pisoDpto) setPisoDpto('');
+    if (!llevaAmbientes && ambientes) setAmbientes('');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [llevaPiso, llevaAmbientes]);
 
   // El contrato (monto, vigencia, ajustes, comisión) NO se carga acá: el
   // endpoint POST /propiedades sólo da de alta la propiedad + participaciones, y
@@ -190,6 +221,26 @@ function NuevaPropiedadForm() {
     altura.trim().length >= 1 &&
     ciudad.trim().length >= 2 &&
     propietariosValidos;
+
+  // Aviso (NO bloqueo) si ya hay una propiedad con la misma calle + altura en la
+  // misma ciudad: evita el alta duplicada por tipeo, sin impedir un edificio con
+  // varias unidades en la misma altura (por eso avisa, no frena).
+  const direccionYaCargada = useMemo(() => {
+    const c = calle.trim().toLowerCase();
+    const a = altura.trim().toLowerCase();
+    const ci = ciudad.trim().toLowerCase();
+    if (c.length < 3 || !a) return false;
+    // La altura tiene que coincidir como TOKEN entero, no como substring: sin
+    // esto "Rivadavia 1" marcaba duplicado contra "Rivadavia 123" (el "1" está
+    // dentro de "123"). Bordes = inicio/fin o cualquier no-alfanumérico.
+    const escaped = a.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const alturaRe = new RegExp(`(^|[^0-9a-z])${escaped}([^0-9a-z]|$)`, 'i');
+    return propiedadesExistentes.some(({ propiedad }) => {
+      const dir = (propiedad.direccion ?? '').toLowerCase();
+      const coincideCiudad = !ci || (propiedad.ciudad ?? '').toLowerCase() === ci;
+      return coincideCiudad && dir.includes(c) && alturaRe.test(dir);
+    });
+  }, [calle, altura, ciudad, propiedadesExistentes]);
 
   // Qué falta para poder cargar — así el botón deshabilitado no es un misterio.
   const motivosFaltantes: string[] = [];
@@ -443,6 +494,7 @@ function NuevaPropiedadForm() {
                   Dirección
                 </h3>
                 <AutocompleteDireccion
+                  paisCodigo={paisCodigo}
                   onElegir={(d) => {
                     if (d.calle) setCalle(d.calle);
                     if (d.altura) setAltura(d.altura);
@@ -484,18 +536,22 @@ function NuevaPropiedadForm() {
                       aria-required="true"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="pisoDpto" className="flex items-center gap-1.5">
-                      Piso / Dto
-                      <span className="text-[10px] font-normal text-muted-foreground">opcional</span>
-                    </Label>
-                    <Input
-                      id="pisoDpto"
-                      value={pisoDpto}
-                      onChange={(e) => setPisoDpto(e.target.value)}
-                      placeholder="8°C"
-                    />
-                  </div>
+                  {/* Piso/Dto solo para unidades dentro de un edificio (depto/
+                      local). Una casa o galpón no lleva → se oculta. */}
+                  {llevaPiso && (
+                    <div className="space-y-2">
+                      <Label htmlFor="pisoDpto" className="flex items-center gap-1.5">
+                        Piso / Dto
+                        <span className="text-[10px] font-normal text-muted-foreground">opcional</span>
+                      </Label>
+                      <Input
+                        id="pisoDpto"
+                        value={pisoDpto}
+                        onChange={(e) => setPisoDpto(e.target.value)}
+                        placeholder="8°C"
+                      />
+                    </div>
+                  )}
                   <div className="space-y-2">
                     <Label htmlFor="ciudad">
                       Ciudad / Localidad{' '}
@@ -537,6 +593,15 @@ function NuevaPropiedadForm() {
                     />
                   </div>
                 </div>
+                {direccionYaCargada && (
+                  <p className="flex items-start gap-1.5 rounded-md border border-amber-300 bg-amber-50 p-2.5 text-[11px] text-amber-800 dark:border-amber-900/40 dark:bg-amber-900/10 dark:text-amber-300">
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span>
+                      Ya tenés una propiedad cargada en esta dirección. Si es otra unidad
+                      del mismo edificio, seguí; si no, revisá para no duplicarla.
+                    </span>
+                  </p>
+                )}
               </CardContent>
             </Card>
 
@@ -547,16 +612,20 @@ function NuevaPropiedadForm() {
                   Características
                 </h3>
                 <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="ambientes">Ambientes</Label>
-                    <Input
-                      id="ambientes"
-                      value={ambientes}
-                      onChange={(e) => setAmbientes(e.target.value.replace(/\D/g, ''))}
-                      placeholder="3"
-                      inputMode="numeric"
-                    />
-                  </div>
+                  {/* Ambientes solo para vivienda (depto/casa). Un local o galpón
+                      se mide por superficie, no por ambientes → se oculta. */}
+                  {llevaAmbientes && (
+                    <div className="space-y-2">
+                      <Label htmlFor="ambientes">Ambientes</Label>
+                      <Input
+                        id="ambientes"
+                        value={ambientes}
+                        onChange={(e) => setAmbientes(e.target.value.replace(/\D/g, ''))}
+                        placeholder="3"
+                        inputMode="numeric"
+                      />
+                    </div>
+                  )}
                   <div className="space-y-2">
                     <Label htmlFor="m2">Metros cuadrados</Label>
                     <Input

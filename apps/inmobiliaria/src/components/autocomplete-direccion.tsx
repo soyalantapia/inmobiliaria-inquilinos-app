@@ -9,6 +9,9 @@ import { Input } from '@llave/ui/input';
  * CORS abierto + gratis. Al elegir una opción, completa calle/altura/ciudad/
  * provincia/CP en el form; el usuario puede ajustar después. Debounce 500ms para
  * respetar el rate-limit de Nominatim (~1 req/s).
+ *
+ * Acotado al PAÍS de la inmobiliaria (config Mercado; default AR): buscar en
+ * toda LatAm devolvía "Rivadavia" de México o Brasil antes que la de acá.
  */
 export interface DireccionElegida {
   calle: string;
@@ -25,8 +28,11 @@ interface Sugerencia {
 
 export function AutocompleteDireccion({
   onElegir,
+  paisCodigo = 'AR',
 }: {
   onElegir: (d: DireccionElegida) => void;
+  /** ISO-3166 alpha-2 del país donde busca (config Mercado de la inmobiliaria). */
+  paisCodigo?: string;
 }) {
   const [q, setQ] = useState('');
   const [sugs, setSugs] = useState<Sugerencia[]>([]);
@@ -46,7 +52,7 @@ export function AutocompleteDireccion({
       try {
         const url =
           'https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=6&accept-language=es' +
-          '&countrycodes=ar,uy,cl,py,bo,pe,co,ec,ve,mx,br,cr,pa,do,gt,hn,sv,ni' +
+          `&countrycodes=${encodeURIComponent(paisCodigo.toLowerCase())}` +
           `&q=${encodeURIComponent(q)}`;
         const res = await fetch(url, { headers: { Accept: 'application/json' } });
         const data = (await res.json()) as Sugerencia[];
@@ -61,7 +67,7 @@ export function AutocompleteDireccion({
     return () => {
       if (timer.current) clearTimeout(timer.current);
     };
-  }, [q]);
+  }, [q, paisCodigo]);
 
   // Cerrar el dropdown al clickear afuera.
   useEffect(() => {
