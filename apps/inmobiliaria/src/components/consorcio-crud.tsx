@@ -88,7 +88,9 @@ export function SumarConsorcioDialog({
       const c = await crearConsorcio({
         nombre: nombre.trim(),
         direccion: direccion.trim(),
-        periodoActual: periodo,
+        // Condicional: si el usuario vació el input month, el backend defaultea
+        // al mes actual (mandar '' daría un 400 con mensaje engañoso).
+        ...(/^\d{4}-\d{2}$/.test(periodo) ? { periodoActual: periodo } : {}),
         ...(expensa ? { expensasPeriodoActual: Math.round(parseFloat(expensa)) } : {}),
         ...(encargadoNombre.trim()
           ? {
@@ -258,13 +260,20 @@ export function UnidadDialog({
     e.preventDefault();
     if (!puedeGuardar) return;
     setGuardando(true);
+    // En EDICIÓN los campos vaciables viajan SIEMPRE explícitos: si se omiten
+    // (undefined), el PUT parcial del backend conserva el valor viejo y vaciar
+    // el teléfono o poner el saldo en 0 no tendría efecto (con toast de éxito).
     const input = {
       identificacion: identificacion.trim(),
       titular: titular.trim(),
-      telefono: telefono.trim() || undefined,
+      telefono: unidad ? telefono.trim() : telefono.trim() || undefined,
       coeficiente: coefNum,
       cargoFijo: usaFijo ? Math.round(parseFloat(cargoFijo)) : null,
-      ...(saldoDeudor ? { saldoDeudor: Math.round(parseFloat(saldoDeudor)) } : {}),
+      ...(unidad
+        ? { saldoDeudor: saldoDeudor ? Math.round(parseFloat(saldoDeudor)) : 0 }
+        : saldoDeudor
+          ? { saldoDeudor: Math.round(parseFloat(saldoDeudor)) }
+          : {}),
     };
     try {
       if (unidad) {
@@ -686,6 +695,9 @@ export function BotonEliminar({
   ariaLabel: string;
 }) {
   const [open, setOpen] = useState(false);
+  // loading al ConfirmDialog: deshabilita el botón y bloquea ESC/click-afuera
+  // durante el await (sin esto un doble click disparaba el DELETE dos veces).
+  const [eliminando, setEliminando] = useState(false);
   return (
     <>
       <Button size="icon" variant="ghost" onClick={() => setOpen(true)} aria-label={ariaLabel}>
@@ -698,12 +710,16 @@ export function BotonEliminar({
         description={descripcion}
         confirmLabel="Sí, eliminar"
         variant="destructive"
+        loading={eliminando}
         onConfirm={async () => {
+          setEliminando(true);
           try {
             await onEliminar();
             toast({ title: 'Eliminado', description: titulo });
           } catch (err) {
             toast({ variant: 'destructive', title: 'No se pudo eliminar', description: mensajeDe(err) });
+          } finally {
+            setEliminando(false);
           }
         }}
       />
