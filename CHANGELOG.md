@@ -10,6 +10,19 @@
 
 Plataforma SaaS multi-tenant para inmobiliarias (panel) e inquilinos (PWA). Estado de cambios desde el handoff inicial hasta hoy.
 
+### Consorcios Fase 1 — el tablero se vuelve operable (02/07)
+- CRUD real: alta/edición del edificio, UFs con validación de coeficientes (Σ ≤ 100 en
+  tx Serializable + `@@unique(consorcioId, identificacion)` como backstop — migración
+  `20260702170000`), movimientos del edificio (signo acoplado a categoría; POST con
+  `gasto.caja.cargar`, DELETE solo ADMIN; saldo deudor vedado a CARGA) y asambleas.
+  `cantUf` derivado en la misma tx.
+- Front: dialogs de alta/edición (Sumar consorcio, UF con modalidad monto fijo y saldo
+  deudor inicial para migrar edificios, movimiento, asamblea) + acciones por fila.
+  Prod-only; la demo intacta.
+- Review adversarial (3 lentes) → 9 hallazgos, 9 fixes. Suite E2E local 34/34.
+- Fase 2 diseñada (emisión de expensas por período + cobranza por UF + mora reutilizando
+  la mora dinámica) — pendiente de decisiones del owner (fondo de reserva, honorarios).
+
 ### Landing `/inicio` — upgrades de conversión (27/06)
 - **Medir:** PostHog env-gated y de carga diferida (`_landing/analytics.tsx`) — pageview,
   scroll-depth, `signup_start`, `panel_played`, `calc_used`, `whatsapp_click` + autocapture.

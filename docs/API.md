@@ -426,6 +426,38 @@ Base: rutas registradas bajo el prefijo donde se monte `operacionRoutes`. SLA ca
 - Respuesta: consorcio con `unidades` (id asc), `movimientos` (fecha desc), `asambleas` (fecha desc).
 - Errores: 404 `Consorcio inexistente`; 401/403.
 
+**`POST /consorcios`** — Alta del edificio (Fase 1 CRUD).
+- Auth: `requireUsuario('propiedades.crear')`.
+- Body: `nombre` (≥2, req), `direccion` (≥3, req), `periodoActual?` (`YYYY-MM`, default mes actual), `expensasPeriodoActual?` (≥0, default 0), `encargado?` (`{nombre, sueldo}` | null), `sociedadId?` (min 1, validada al tenant), `desde?` (date).
+- Respuesta: `201` consorcio con `unidades: []` (`cantUf` arranca en 0, derivado).
+- Errores: 400 datos incompletos; 404 `Sociedad inexistente`.
+
+**`PUT /consorcios/:id`** — Edición del edificio (parcial).
+- Auth: `requireUsuario('propiedades.crear')`. Mismo body que POST, todo opcional; `encargado: null` explícito lo saca.
+- Respuesta: consorcio con `unidades`. Errores: 400/404.
+
+**`POST /consorcios/:id/unidades`** — Alta de UF.
+- Auth: `requireUsuario('propiedades.crear')`. `saldoDeudor` con rol CARGA → 403 (plata).
+- Body: `identificacion` (req, única por consorcio case-insensitive), `titular` (req), `coeficiente` (>0 ≤100, req), `telefono?`, `cargoFijo?` (null = prorrateo), `estado?`, `saldoDeudor?` (deuda histórica al migrar).
+- Reglas: validación Σ coeficientes ≤ 100 (tolerancia 0.01) **dentro de tx Serializable** (P2034→409 reintentable); `@@unique(consorcioId, identificacion)` como backstop (P2002→409 amigable); `cantUf` incrementado en la misma tx.
+- Errores: 400 coeficiente supera el disponible; 409 unidad duplicada; 404.
+
+**`PUT /consorcios/:id/unidades/:ufId`** — Edición de UF (parcial, mismas validaciones en tx Serializable).
+
+**`DELETE /consorcios/:id/unidades/:ufId`** — Baja de UF.
+- Auth: `propiedades.crear` + **rol CARGA → 403**. 409 si `saldoDeudor > 0`. `cantUf` decrementado en la misma tx.
+
+**`POST /consorcios/:id/movimientos`** — Movimiento financiero del edificio.
+- Auth: `requireUsuario('gasto.caja.cargar')` (ADMIN/OPERADOR — es plata, no estructura).
+- Body: `fecha` (req), `concepto` (≥2, req), `monto` (≠0; **el signo va acoplado a la categoría**: `COBRANZA` = positivo/ingreso, el resto = negativo/egreso), `categoria` (`COBRANZA|SUELDO|MANTENIMIENTO|SERVICIO|IMPUESTO|OTRO`).
+- Errores: 400 signo≠categoría o datos incompletos; 404.
+
+**`DELETE /consorcios/:id/movimientos/:movId`** — Solo **ADMIN** (precedente `caja.eliminar`). 404 si no existe.
+
+**`POST /consorcios/:id/asambleas`** — Registra el acta (`fecha`, `tipo` `ORDINARIA|EXTRAORDINARIA`, `asunto` ≥3, `asistentes` ≥0, `acuerdoPrincipal` ≥3).
+
+**`DELETE /consorcios/:id/asambleas/:asambleaId`** — `propiedades.crear`, CARGA → 403.
+
 ### Renovaciones
 
 **`GET /renovaciones`** — Contratos activos con datos de vencimiento.
