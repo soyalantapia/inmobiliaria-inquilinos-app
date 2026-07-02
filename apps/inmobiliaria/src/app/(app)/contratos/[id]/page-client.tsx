@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { notFound, useParams } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   AlertCircle,
   ArrowLeft,
@@ -29,6 +30,13 @@ import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@llave/ui/card';
 import { cn } from '@llave/ui/cn';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@llave/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@llave/ui/tabs';
 import { toast } from '@llave/ui/use-toast';
 import { ContratoDocumentosPanel } from '@/components/contrato-documentos-panel';
@@ -36,9 +44,16 @@ import { MensajeInquilinoDialog } from '@/components/mensaje-inquilino-dialog';
 import { ScoringInquilinoCard } from '@/components/scoring-inquilino-card';
 import { Topbar } from '@/components/topbar';
 import { FinalizarContratoButton } from '@/components/finalizar-contrato-button';
+import {
+  descripcionMora,
+  MoraSelector,
+  type MoraSeleccion,
+} from '@/components/mora-selector';
 import { calcularScoringInquilino, type ResumenScoring } from '@/lib/scoring-inquilino';
 import { registrarEvento } from '@/lib/auditoria-storage';
-import { apiEnabled } from '@/lib/api/client';
+import { apiEnabled, apiFetch, ApiError } from '@/lib/api/client';
+import { ensureApiSession } from '@/lib/api/session';
+import { useCobranza } from '@/lib/api/hooks';
 import { useContrato } from '@/lib/api/use-contrato';
 import {
   type CanalComunicacion,
@@ -108,6 +123,7 @@ export default function DetalleContratoPage() {
   if (!apiEnabled && noEncontrado) notFound();
 
   const [abrirMensaje, setAbrirMensaje] = useState(false);
+  const [abrirEditarMora, setAbrirEditarMora] = useState(false);
 
   const c = detalle?.contrato ?? null;
   const contacto = detalle?.contacto ?? null;
@@ -306,6 +322,30 @@ export default function DetalleContratoPage() {
                       />
                     </>
                   )}
+                  {/* Esquema de mora EFECTIVO (resuelto por la cascada contrato →
+                      inmobiliaria). "(heredada)" cuando viene del default. */}
+                  {c.moraEfectiva && (
+                    <Row
+                      label="Interés por mora"
+                      value={
+                        <span className="flex items-center gap-1.5">
+                          <Badge variant={c.moraEfectiva.tipo === 'SIN_MORA' ? 'secondary' : 'warning'}>
+                            {descripcionMora(c.moraEfectiva.tipo, c.moraEfectiva.valor, c.moneda)}
+                            {c.moraEfectiva.origen === 'INMOBILIARIA' ? ' (heredada)' : ''}
+                          </Badge>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-1.5 text-xs"
+                            onClick={() => setAbrirEditarMora(true)}
+                          >
+                            <Pencil className="h-3 w-3" />
+                            Editar
+                          </Button>
+                        </span>
+                      }
+                    />
+                  )}
                   {c.cbuAlias && (
                     <>
                       <Row
@@ -437,7 +477,127 @@ export default function DetalleContratoPage() {
         direccion={c.direccion}
         fechaFin={formatFecha(c.fechaFin)}
       />
+
+      {/* Editar el esquema de mora del contrato (PUT /contratos/:id/mora). */}
+      {c.moraEfectiva && (
+        <EditarMoraDialog
+          open={abrirEditarMora}
+          onOpenChange={setAbrirEditarMora}
+          contrato={c}
+        />
+      )}
     </>
+  );
+}
+
+/**
+ * Diálogo para pisar (o volver a heredar) el interés por mora de ESTE
+ * contrato. "Heredar" manda tipo: null y el backend vuelve a aplicar el
+ * default de la inmobiliaria.
+ */
+function EditarMoraDialog({
+  open,
+  onOpenChange,
+  contrato,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  contrato: ContratoListado;
+}) {
+  const qc = useQueryClient();
+  // Default de la inmobiliaria para el label "Heredar (…)": si el fetch de
+  // /cobranza no está disponible (permiso/carga), caemos a moraEfectiva
+  // cuando el origen ya es INMOBILIARIA.
+  const { mora: moraDefault } = useCobranza();
+  const heredado =
+    moraDefault != null
+      ? { tipo: moraDefault.tipoDefault, valor: moraDefault.valorDefault }
+      : contrato.moraEfectiva && contrato.moraEfectiva.origen === 'INMOBILIARIA'
+        ? { tipo: contrato.moraEfectiva.tipo, valor: contrato.moraEfectiva.valor }
+        : null;
+
+  const [seleccion, setSeleccion] = useState<MoraSeleccion>('HEREDAR');
+  const [valor, setValor] = useState('');
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Al abrir, arrancamos del override actual del contrato (null = hereda).
+  useEffect(() => {
+    if (!open) return;
+    setSeleccion(contrato.moraTipo ?? 'HEREDAR');
+    setValor(contrato.moraValor != null ? String(contrato.moraValor) : '');
+    setError(null);
+  }, [open, contrato.moraTipo, contrato.moraValor]);
+
+  const valido =
+    seleccion === 'HEREDAR' || seleccion === 'SIN_MORA' || Number(valor) > 0;
+
+  const guardar = async () => {
+    setGuardando(true);
+    setError(null);
+    try {
+      await ensureApiSession();
+      await apiFetch(`/contratos/${contrato.id}/mora`, {
+        method: 'PUT',
+        body: JSON.stringify(
+          seleccion === 'HEREDAR'
+            ? { tipo: null }
+            : { tipo: seleccion, valor: seleccion === 'SIN_MORA' ? null : Number(valor) },
+        ),
+      });
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['contrato', contrato.id] }),
+        qc.invalidateQueries({ queryKey: ['contratos'] }),
+      ]);
+      toast({ variant: 'success', title: 'Interés por mora actualizado' });
+      onOpenChange(false);
+    } catch (e) {
+      setError(
+        e instanceof ApiError ? e.message : 'No se pudo guardar la mora. Reintentá en un momento.',
+      );
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Interés por mora</DialogTitle>
+          <DialogDescription>
+            Punitorio que se suma cuando el inquilino paga tarde. Elegí un esquema
+            para ESTE contrato o heredá el default de la inmobiliaria.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <MoraSelector
+            seleccion={seleccion}
+            valor={valor}
+            onSeleccionChange={setSeleccion}
+            onValorChange={setValor}
+            heredado={heredado}
+            conHeredar
+            montoBase={contrato.monto + (contrato.montoExpensas ?? 0)}
+            moneda={contrato.moneda}
+            idPrefix="mora-editar"
+          />
+          {error && (
+            <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive">
+              {error}
+            </p>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={guardando}>
+              Cancelar
+            </Button>
+            <Button onClick={guardar} disabled={guardando || !valido}>
+              {guardando ? 'Guardando…' : 'Guardar'}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -523,6 +683,13 @@ function LiquidacionRow({ liq }: { liq: LiquidacionAdmin }) {
       </div>
       <div className="flex shrink-0 flex-col items-end gap-1">
         <p className="text-sm font-semibold tabular-nums">{formatMonto(liq.montoTotal)}</p>
+        {/* Mora al día (punitorio) ya incluida en el total — chip ámbar para
+            que se vea de un vistazo cuánto del total es interés por atraso. */}
+        {(liq.montoPunitorio ?? 0) > 0 && (
+          <span className="rounded-full border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-300">
+            +{formatMonto(liq.montoPunitorio ?? 0)} mora
+          </span>
+        )}
         <Badge variant={estadoLiqVariant[liq.estado]} className="text-[10px]">
           {liq.estado.charAt(0) + liq.estado.slice(1).toLowerCase()}
         </Badge>

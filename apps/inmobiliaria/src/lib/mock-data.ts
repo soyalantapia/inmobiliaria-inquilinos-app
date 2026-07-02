@@ -1015,6 +1015,8 @@ export interface LiquidacionAdmin {
   /** Cobrado (suma de pagos conciliados) y saldo restante. Del API en prod. */
   montoPagado?: number;
   saldo?: number;
+  /** Mora (punitorio) al día, ya incluida en montoTotal. Del API en prod. */
+  montoPunitorio?: number;
 }
 
 // Para no inflar el archivo, generamos al vuelo las últimas 12 liquidaciones

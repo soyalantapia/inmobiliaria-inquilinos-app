@@ -28,13 +28,11 @@ import {
 } from '@llave/ui/select';
 import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
-import { apiEnabled } from '@/lib/api/client';
+import { useConsorcioServicios } from '@/lib/api/use-consorcio-extra';
 import {
   type ServicioComun,
   type TipoServicioConsorcio,
   TIPO_SERVICIO_CONSORCIO_LABEL,
-  guardarServicioConsorcio,
-  leerServiciosDeConsorcio,
 } from '@/lib/consorcio-servicios-storage';
 import { formatFechaCorta, formatMonto } from '@/lib/format';
 
@@ -63,17 +61,11 @@ interface Props {
 }
 
 export function ConsorcioServiciosTab({ consorcioId }: Props) {
-  const [servicios, setServicios] = useState<ServicioComun[]>([]);
-  const [hidratado, setHidratado] = useState(false);
+  const { servicios, cargando, guardar: guardarServicio } = useConsorcioServicios(consorcioId);
   const [editar, setEditar] = useState<{
     tipo: TipoServicioConsorcio;
     existente?: ServicioComun;
   } | null>(null);
-
-  useEffect(() => {
-    setServicios(leerServiciosDeConsorcio(consorcioId));
-    setHidratado(true);
-  }, [consorcioId]);
 
   const totalMensual = useMemo(
     () =>
@@ -83,24 +75,29 @@ export function ConsorcioServiciosTab({ consorcioId }: Props) {
     [servicios],
   );
 
-  // El alta/edición de servicios escribe sólo a localStorage (no hay endpoint).
-  // En prod (apiEnabled) gateamos las mutaciones para no fingir persistencia;
-  // en build demo (!apiEnabled) queda todo operativo. La lectura sigue libre.
-  const puedeMutar = !apiEnabled;
+  // Los servicios comunes persisten en el backend (GET/PUT /consorcios/:id/servicios);
+  // en build demo van a localStorage. El alta/edición ya no es demo-only.
+  const puedeMutar = true;
 
-  const guardar = (s: ServicioComun) => {
-    if (!puedeMutar) return;
-    guardarServicioConsorcio(consorcioId, s);
-    setServicios(leerServiciosDeConsorcio(consorcioId));
-    setEditar(null);
-    toast({
-      variant: 'success',
-      title: 'Servicio actualizado',
-      description: `${TIPO_SERVICIO_CONSORCIO_LABEL[s.tipo]} · ${s.proveedor}`,
-    });
+  const guardar = async (s: ServicioComun) => {
+    try {
+      await guardarServicio(s);
+      setEditar(null);
+      toast({
+        variant: 'success',
+        title: 'Servicio actualizado',
+        description: `${TIPO_SERVICIO_CONSORCIO_LABEL[s.tipo]} · ${s.proveedor}`,
+      });
+    } catch (e) {
+      toast({
+        variant: 'destructive',
+        title: 'No se pudo guardar',
+        description: e instanceof Error ? e.message : 'Intentá de nuevo.',
+      });
+    }
   };
 
-  if (!hidratado) return null;
+  if (cargando) return null;
 
   const porTipo = new Map(servicios.map((s) => [s.tipo, s]));
 

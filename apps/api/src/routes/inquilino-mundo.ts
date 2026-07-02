@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { rolTienePermiso } from '@llave/shared';
+import { resolverEsquemaMora } from '../lib/punitorios.js';
 import { prisma } from '../db.js';
 import {
   exigirContratoActivo,
@@ -471,7 +472,9 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
       where: { id: inq.contratoId, inmobiliariaId: inq.inmobiliariaId },
       include: {
         propiedad: { select: { direccion: true, ciudad: true } },
-        inmobiliaria: { select: { nombre: true, telefono: true } },
+        inmobiliaria: {
+          select: { nombre: true, telefono: true, moraTipoDefault: true, moraValorDefault: true },
+        },
         sociedad: { select: { cuentaCobranza: true } },
         cobraDirectoPropietario: { include: { cuentaCobranza: true } },
       },
@@ -526,7 +529,17 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
       montoActual: Number(contrato.monto),
       montoExpensas: contrato.montoExpensas != null ? Number(contrato.montoExpensas) : null,
       tipoContrato: contrato.tipoContrato,
-      tasaPunitorioDiaria: contrato.tasaPunitorioDiaria != null ? Number(contrato.tasaPunitorioDiaria) : null,
+      // Esquema de mora RESUELTO (cascada contrato → default inmobiliaria) para
+      // que la app pueda explicar "cómo se calcula el recargo". El campo legacy
+      // se mantiene mapeado (solo % diario) por compat de shape.
+      mora: (() => {
+        const e = resolverEsquemaMora(contrato, contrato.inmobiliaria);
+        return { tipo: e.tipo, valor: e.valor };
+      })(),
+      tasaPunitorioDiaria: (() => {
+        const e = resolverEsquemaMora(contrato, contrato.inmobiliaria);
+        return e.tipo === 'PORCENTAJE_DIARIO' ? e.valor : null;
+      })(),
       moneda: contrato.moneda,
       datosCobranza,
     };

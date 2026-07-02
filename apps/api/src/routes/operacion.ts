@@ -721,6 +721,169 @@ export async function operacionRoutes(app: FastifyInstance) {
     return consorcio;
   });
 
+  // ===== Consorcio: servicios comunes (luz de pasillo, ascensor, ABL…) =====
+  // Reemplaza el store demo (consorcio-servicios-storage) por persistencia real:
+  // el tab de Servicios leía SEEDS de localStorage incluso en prod.
+  app.get('/consorcios/:id/servicios', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'propiedades.ver');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const consorcio = await prisma.consorcio.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      select: { id: true },
+    });
+    if (!consorcio) return reply.code(404).send({ message: 'Consorcio inexistente' });
+    return prisma.servicioComunConsorcio.findMany({
+      where: { consorcioId: id, inmobiliariaId: u.inmobiliariaId },
+      orderBy: { tipo: 'asc' },
+    });
+  });
+
+  // Upsert por (consorcioId, tipo): un servicio por tipo, igual que el store demo
+  // (guardarServicioConsorcio reemplaza por tipo). El @@unique lo garantiza.
+  app.put('/consorcios/:id/servicios', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'propiedades.crear');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const body = z
+      .object({
+        tipo: z.enum(['LUZ_PASILLO', 'GAS_CENTRAL', 'AGUA_GENERAL', 'ASCENSOR', 'CALEFACCION_CENTRAL', 'ABL', 'OTRO']),
+        proveedor: z.string().trim().min(1),
+        nis: z.string().trim().min(1),
+        numeroMedidor: z.string().trim().optional().nullable(),
+        costoPromedioMensual: z.number().nonnegative().optional().nullable(),
+        observaciones: z.string().trim().optional().nullable(),
+      })
+      .safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ message: 'Faltan datos del servicio (proveedor y NIS son obligatorios)' });
+    const consorcio = await prisma.consorcio.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      select: { id: true },
+    });
+    if (!consorcio) return reply.code(404).send({ message: 'Consorcio inexistente' });
+    const d = body.data;
+    const datos = {
+      proveedor: d.proveedor,
+      nis: d.nis,
+      numeroMedidor: d.numeroMedidor || null,
+      costoPromedioMensual: d.costoPromedioMensual ?? null,
+      observaciones: d.observaciones || null,
+    };
+    return prisma.servicioComunConsorcio.upsert({
+      where: { consorcioId_tipo: { consorcioId: id, tipo: d.tipo } },
+      create: { inmobiliariaId: u.inmobiliariaId, consorcioId: id, tipo: d.tipo, ...datos },
+      update: datos,
+    });
+  });
+
+  // ===== Consorcio: inventario de materiales + movimientos de stock =====
+  app.get('/consorcios/:id/inventario', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'propiedades.ver');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const consorcio = await prisma.consorcio.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      select: { id: true },
+    });
+    if (!consorcio) return reply.code(404).send({ message: 'Consorcio inexistente' });
+    const [items, movimientos] = await Promise.all([
+      prisma.itemInventario.findMany({ where: { consorcioId: id, inmobiliariaId: u.inmobiliariaId }, orderBy: { nombre: 'asc' } }),
+      prisma.movimientoInventario.findMany({ where: { consorcioId: id, inmobiliariaId: u.inmobiliariaId }, orderBy: { fecha: 'desc' } }),
+    ]);
+    return { items, movimientos };
+  });
+
+  app.post('/consorcios/:id/inventario/items', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'propiedades.crear');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const body = z
+      .object({
+        categoria: z.enum(['ILUMINACION', 'PLOMERIA', 'CERRAJERIA', 'LIMPIEZA', 'ELECTRICIDAD', 'OFICINA', 'OTRO']),
+        nombre: z.string().trim().min(1),
+        unidad: z.string().trim().min(1),
+        cantidadActual: z.number().int().min(0),
+        minimoStock: z.number().int().min(0),
+        costoUnitario: z.number().nonnegative().optional().nullable(),
+        notas: z.string().trim().optional().nullable(),
+      })
+      .safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ message: 'Faltan datos del item de inventario' });
+    const consorcio = await prisma.consorcio.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      select: { id: true },
+    });
+    if (!consorcio) return reply.code(404).send({ message: 'Consorcio inexistente' });
+    const d = body.data;
+    const item = await prisma.itemInventario.create({
+      data: {
+        inmobiliariaId: u.inmobiliariaId,
+        consorcioId: id,
+        categoria: d.categoria,
+        nombre: d.nombre,
+        unidad: d.unidad,
+        cantidadActual: d.cantidadActual,
+        minimoStock: d.minimoStock,
+        costoUnitario: d.costoUnitario ?? null,
+        notas: d.notas || null,
+      },
+    });
+    return reply.code(201).send(item);
+  });
+
+  // Movimiento de stock: aplica el delta al item (clamp >= 0) y registra el
+  // movimiento, atómico. Espeja moverStock() del store demo.
+  app.post('/consorcios/:id/inventario/movimientos', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'propiedades.crear');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const body = z
+      .object({
+        itemId: z.string().min(1),
+        tipo: z.enum(['ENTRADA', 'SALIDA', 'AJUSTE']),
+        cantidad: z.number().int().min(0),
+        motivo: z.string().trim().min(1),
+        ufDestino: z.string().trim().optional().nullable(),
+      })
+      .safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ message: 'Datos del movimiento incompletos' });
+    const consorcio = await prisma.consorcio.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      select: { id: true },
+    });
+    if (!consorcio) return reply.code(404).send({ message: 'Consorcio inexistente' });
+    const d = body.data;
+    const cargadoPor = await nombreUsuario(u.userId);
+    try {
+      return await prisma.$transaction(async (tx) => {
+        const item = await tx.itemInventario.findFirst({
+          where: { id: d.itemId, consorcioId: id, inmobiliariaId: u.inmobiliariaId },
+        });
+        if (!item) throw new Error('ITEM_NOT_FOUND');
+        // ENTRADA suma, SALIDA resta, AJUSTE fija (delta = objetivo − actual).
+        const delta = d.tipo === 'ENTRADA' ? d.cantidad : d.tipo === 'SALIDA' ? -d.cantidad : d.cantidad - item.cantidadActual;
+        const nuevaCantidad = Math.max(0, item.cantidadActual + delta);
+        await tx.itemInventario.update({ where: { id: item.id }, data: { cantidadActual: nuevaCantidad } });
+        const movimiento = await tx.movimientoInventario.create({
+          data: {
+            inmobiliariaId: u.inmobiliariaId,
+            consorcioId: id,
+            itemId: item.id,
+            tipo: d.tipo,
+            cantidad: d.cantidad,
+            motivo: d.motivo,
+            ufDestino: d.ufDestino || null,
+            cargadoPor,
+          },
+        });
+        return { movimiento, item: { ...item, cantidadActual: nuevaCantidad } };
+      });
+    } catch (e) {
+      if (e instanceof Error && e.message === 'ITEM_NOT_FOUND') return reply.code(404).send({ message: 'Item inexistente' });
+      throw e;
+    }
+  });
+
   // ===== Renovaciones =====
   app.get('/renovaciones', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'contratos.ver');

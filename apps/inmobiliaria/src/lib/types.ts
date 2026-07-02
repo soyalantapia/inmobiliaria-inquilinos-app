@@ -11,6 +11,27 @@ export type EstadoLiquidacion = 'PENDIENTE' | 'PAGADO' | 'PARCIAL' | 'VENCIDO';
  */
 export type TipoContrato = 'ALQUILER' | 'SOLO_EXPENSAS' | 'ALQUILER_Y_EXPENSAS';
 export type IndiceAjuste = 'ICL' | 'IPC' | 'CASA_PROPIA' | 'UVA' | 'CAC' | 'RIPTE' | 'FIJO';
+
+/**
+ * Esquema de interés por mora (punitorio por pago tardío):
+ *  - SIN_MORA: no se cobra punitorio
+ *  - PORCENTAJE_DIARIO: % por día de atraso sobre el monto
+ *  - MONTO_FIJO: monto fijo por cada mes de atraso iniciado (acumula; en la
+ *    moneda del contrato)
+ *  - PORCENTAJE_MENSUAL: % mensual prorrateado por día (días/30)
+ */
+export type TipoMora = 'SIN_MORA' | 'PORCENTAJE_DIARIO' | 'MONTO_FIJO' | 'PORCENTAJE_MENSUAL';
+
+/**
+ * Esquema de mora YA RESUELTO por la cascada default inmobiliaria → override
+ * por contrato. `origen` dice de dónde salió: CONTRATO (override propio),
+ * INMOBILIARIA (heredado del default), LEGACY (tasa vieja migrada) o SIN_MORA.
+ */
+export interface MoraEfectiva {
+  tipo: TipoMora;
+  valor: number | null;
+  origen: 'CONTRATO' | 'LEGACY' | 'INMOBILIARIA' | 'SIN_MORA';
+}
 export type Recomendacion = 'APTO' | 'APTO_CON_GARANTIA' | 'NO_APTO';
 export type Confianza = 'alto' | 'medio' | 'bajo';
 
@@ -215,6 +236,14 @@ export interface ContratoListado {
   modoCobranza?: 'INMOBILIARIA' | 'PROPIETARIO_DIRECTO';
   /** Cuando modoCobranza === 'PROPIETARIO_DIRECTO', a quién va dirigido el pago (FK a Propietario.id). */
   cobraDirectoPropietarioId?: string | null;
+  /**
+   * Interés por mora. moraTipo/moraValor son el override PROPIO del contrato
+   * (null = hereda el default de la inmobiliaria); moraEfectiva es el esquema
+   * ya resuelto por el backend con la cascada. Del API en prod.
+   */
+  moraTipo?: TipoMora | null;
+  moraValor?: number | null;
+  moraEfectiva?: MoraEfectiva;
 }
 
 export interface CampoExtraido {

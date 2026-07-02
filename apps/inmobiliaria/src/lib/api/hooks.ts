@@ -19,8 +19,10 @@ import {
 import type {
   ContratoListado,
   EstadoPropiedad,
+  MoraEfectiva,
   Propiedad,
   Propietario,
+  TipoMora,
   TipoPropiedad,
 } from '@/lib/types';
 import { enriquecerPropiedad, type PropiedadEnriquecida } from '@/lib/propiedades-helpers';
@@ -59,6 +61,14 @@ interface ContratoApi {
   montoPagado?: string | number | null;
   saldo?: string | number | null;
   modoCobranza?: string | null;
+  /** Interés por mora: override propio + esquema resuelto por la cascada. */
+  moraTipo?: TipoMora | null;
+  moraValor?: string | number | null;
+  moraEfectiva?: {
+    tipo: TipoMora;
+    valor: string | number | null;
+    origen: MoraEfectiva['origen'];
+  } | null;
 }
 
 function mapContrato(c: ContratoApi): ContratoListado {
@@ -87,6 +97,17 @@ function mapContrato(c: ContratoApi): ContratoListado {
     ...(c.cargadoPor ? { cargadoPor: c.cargadoPor } : {}),
     ...(c.aprobadoPor ? { aprobadoPor: c.aprobadoPor } : {}),
     ...(c.modoCobranza ? { modoCobranza: c.modoCobranza as ContratoListado['modoCobranza'] } : {}),
+    ...(c.moraTipo !== undefined ? { moraTipo: c.moraTipo } : {}),
+    ...(c.moraValor != null ? { moraValor: Number(c.moraValor) } : {}),
+    ...(c.moraEfectiva
+      ? {
+          moraEfectiva: {
+            tipo: c.moraEfectiva.tipo,
+            valor: c.moraEfectiva.valor != null ? Number(c.moraEfectiva.valor) : null,
+            origen: c.moraEfectiva.origen,
+          },
+        }
+      : {}),
   } as ContratoListado;
 }
 
@@ -539,22 +560,48 @@ export interface CobranzaCuenta {
   cuit: string;
 }
 
-export function useCobranza(): { tieneCuenta: boolean; cuenta: CobranzaCuenta | null; cargando: boolean } {
+/** Esquema de mora por defecto de la inmobiliaria (GET /cobranza → mora). */
+export interface MoraDefault {
+  tipoDefault: TipoMora;
+  valorDefault: number | null;
+}
+
+export function useCobranza(): {
+  tieneCuenta: boolean;
+  cuenta: CobranzaCuenta | null;
+  /** Default de mora de la inmobiliaria; null mientras carga o si falla. */
+  mora: MoraDefault | null;
+  cargando: boolean;
+} {
   const q = useQuery({
     queryKey: ['cobranza'],
     queryFn: async () => {
       await ensureApiSession();
-      return apiFetch<{ tieneCuenta: boolean; cuenta: CobranzaCuenta }>('/cobranza');
+      return apiFetch<{ tieneCuenta: boolean; cuenta: CobranzaCuenta; mora?: MoraDefault }>('/cobranza');
     },
     enabled: apiEnabled,
     staleTime: 60_000,
   });
-  return { tieneCuenta: q.data?.tieneCuenta ?? false, cuenta: q.data?.cuenta ?? null, cargando: q.isPending };
+  return {
+    tieneCuenta: q.data?.tieneCuenta ?? false,
+    cuenta: q.data?.cuenta ?? null,
+    mora: q.data?.mora ?? null,
+    cargando: q.isPending,
+  };
 }
 
 export async function setCobranza(input: CobranzaCuenta): Promise<void> {
   await ensureApiSession();
   await apiFetch('/cobranza', { method: 'PUT', body: JSON.stringify(input) });
+}
+
+/**
+ * Guarda el esquema de mora POR DEFECTO de la inmobiliaria (solo ADMIN).
+ * Se aplica a los contratos que no definen su propio interés.
+ */
+export async function setMoraDefault(input: { tipo: TipoMora; valor?: number | null }): Promise<MoraDefault> {
+  await ensureApiSession();
+  return apiFetch<MoraDefault>('/cobranza/mora', { method: 'PUT', body: JSON.stringify(input) });
 }
 
 /**
@@ -1212,6 +1259,7 @@ export function useDashboard(): DashboardData {
   const { propiedades, cargando: cargP, error: errProps } = usePropiedades();
   const { propietarios, cargando: cargOwn } = usePropietarios();
   const { liquidaciones, cargando: cargLiq } = useLiquidaciones();
+  const { movimientos: movsCaja, cargando: cargCaja } = useCaja();
 
   // Excluye PROPIETARIO_DIRECTO igual que dashboard-helpers (demo) y /pagos: esa
   // plata va directo del inquilino al dueño, no la cobra/rinde la inmo. (El path
@@ -1232,7 +1280,16 @@ export function useDashboard(): DashboardData {
   // con `cobrado`. En el demo se mantiene el 0.08 fijo (parity byte-for-byte).
   const tasaComision = apiEnabled ? comisionEfectiva(propietarios) : COMISION_DASHBOARD;
   const comisionMes = Math.round(cobrado * tasaComision);
-  const aRendirMes = Math.round(cobrado - comisionMes);
+  // A rendir = cobrado − comisión − gastos de caja aún NO descontados en una
+  // rendición (paridad con el demo `calcularDashboardStats`, que resta
+  // gastosPendientes). En prod el path había quedado sin restar los gastos → el
+  // número "A rendir a propietarios" salía inflado hasta que se hacía la rendición.
+  const gastosPendientes = apiEnabled
+    ? movsCaja
+        .filter((m) => m.tipo === 'GASTO' && !m.descontadoEnRendicion)
+        .reduce((a, m) => a + m.monto, 0)
+    : 0;
+  const aRendirMes = Math.max(0, Math.round(cobrado - comisionMes - gastosPendientes));
 
   const totalProps = propiedades.length;
   const alquiladas = propiedades.filter((p) => p.propiedad.estado === 'ALQUILADA').length;
@@ -1290,7 +1347,7 @@ export function useDashboard(): DashboardData {
     proximosVencimientos,
     // Incluye propietarios y liquidaciones: el dashboard deriva comisión/a-rendir y
     // próximos vencimientos de esos datos → sin esto se mostraba antes de tenerlos.
-    cargando: cargC || cargP || cargOwn || cargLiq,
+    cargando: cargC || cargP || cargOwn || cargLiq || cargCaja,
     error: errContratos || errProps,
     propiedadesTotal: propiedades.length,
   };

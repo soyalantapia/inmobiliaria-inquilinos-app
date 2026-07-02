@@ -7,7 +7,8 @@ import { requireUsuario } from '../auth/guards.js';
 import { registrarEvento } from '../lib/auditoria.js';
 import { generarLiquidacionesContrato } from '../lib/liquidaciones.js';
 import { conSaldo, montoPagadoPorLiquidacion } from '../lib/saldos.js';
-import { calcularPunitorio } from '../lib/punitorios.js';
+import { calcularMora, resolverEsquemaMora } from '../lib/punitorios.js';
+import { aplicarEstadoInicial, EstadoInicialInvalido } from '../lib/estado-inicial-contrato.js';
 import { enviarInvitacionInquilino, enviarInvitacionEquipo } from '../mailer.js';
 
 /**
@@ -46,6 +47,12 @@ export async function coreRoutes(app: FastifyInstance) {
       },
       orderBy: { createdAt: 'asc' },
     });
+    // Defaults de mora del tenant (cascada contrato → inmobiliaria): una sola
+    // query para toda la lista.
+    const inmoMora = await prisma.inmobiliaria.findUnique({
+      where: { id: u.inmobiliariaId },
+      select: { moraTipoDefault: true, moraValorDefault: true },
+    });
     // Liquidación ACTUAL por contrato (la que define estadoPagoActual): cualquier
     // vencida manda; si no, la más reciente. Se reutiliza abajo para exponer su
     // montoPagado/saldo sin recalcular la derivación.
@@ -68,9 +75,25 @@ export async function coreRoutes(app: FastifyInstance) {
       const pendiente = liquidaciones.find(
         (l) => l.estado === 'PENDIENTE' || l.estado === 'VENCIDO' || l.estado === 'PARCIAL',
       );
-      const saldoActual = actual ? conSaldo(actual, pagadoMap) : null;
+      // Mora del período actual según el esquema efectivo del contrato: sin esto
+      // el saldo del listado (KPI morosos) ignoraba el punitorio que el detalle
+      // y el inquilino SÍ cobran. PAGADA congela en fechaPago; manual pisa.
+      const esquema = resolverEsquemaMora(c, inmoMora);
+      const punitorioActual = actual
+        ? calcularMora(
+            Number(actual.montoTotal),
+            esquema,
+            actual.fechaVencimiento,
+            actual.estado === 'PAGADO' && actual.fechaPago ? new Date(actual.fechaPago) : now,
+            actual.montoPunitorioManual != null ? Number(actual.montoPunitorioManual) : null,
+          )
+        : 0;
+      const saldoActual = actual ? conSaldo(actual, pagadoMap, punitorioActual) : null;
       return {
         ...c,
+        // Esquema ya resuelto (cascada) para que el panel muestre "Mora: X" con
+        // su origen ("(heredada)" si viene del default de la inmobiliaria).
+        moraEfectiva: { tipo: esquema.tipo, valor: esquema.valor, origen: esquema.origen },
         // Un parcial/pendiente vencido se reporta VENCIDO (cobranza), no PARCIAL:
         // el saldo restante lo capta montoPagado/saldo de abajo.
         estadoPagoActual: actual ? (liqVencida(actual, now) ? 'VENCIDO' : actual.estado) : 'PENDIENTE',
@@ -126,14 +149,27 @@ export async function coreRoutes(app: FastifyInstance) {
     // y el tab "Pagos" del detalle quedaba SIEMPRE vacío (bug 4): un pago informado
     // o conciliado nunca se veía en el contrato.
     const pagado = await montoPagadoPorLiquidacion(liquidaciones.map((l) => l.id));
-    // M1: cada liquidación con su mora al día (montoTotal = base + punitorio); una
-    // PAGADA congela la mora en su fechaPago. tasaPunitorioDiaria viene en `rest`.
-    const tasaP = rest.tasaPunitorioDiaria ?? null;
+    // Cada liquidación con su mora al día según el ESQUEMA EFECTIVO del contrato
+    // (cascada contrato → legacy → default inmobiliaria); una PAGADA congela la
+    // mora en su fechaPago y un montoPunitorioManual (migración) pisa el cálculo.
+    const inmoMora = await prisma.inmobiliaria.findUnique({
+      where: { id: u.inmobiliariaId },
+      select: { moraTipoDefault: true, moraValorDefault: true },
+    });
+    const esquema = resolverEsquemaMora(rest, inmoMora);
     return {
       ...rest,
+      moraEfectiva: { tipo: esquema.tipo, valor: esquema.valor, origen: esquema.origen },
       liquidaciones: liquidaciones.map((l) => {
         const asOf = l.estado === 'PAGADO' && l.fechaPago ? new Date(l.fechaPago) : now;
-        return conSaldo(l, pagado, calcularPunitorio(Number(l.montoTotal), tasaP, l.fechaVencimiento, asOf));
+        const punitorio = calcularMora(
+          Number(l.montoTotal),
+          esquema,
+          l.fechaVencimiento,
+          asOf,
+          l.montoPunitorioManual != null ? Number(l.montoPunitorioManual) : null,
+        );
+        return conSaldo(l, pagado, punitorio);
       }),
       estadoPagoActual: actual ? (liqVencida(actual, now) ? 'VENCIDO' : actual.estado) : 'PENDIENTE',
       proximoVencimiento: pendiente?.fechaVencimiento ?? null,
@@ -628,10 +664,31 @@ export async function coreRoutes(app: FastifyInstance) {
         // Comisión de la inmobiliaria para ESTE contrato (%). Opcional: si no se
         // manda queda null y se usa el default del negocio en las rendiciones.
         comisionInmobiliaria: z.number().min(0).max(100).optional(),
+        // Esquema de mora del contrato ("ventanita Confirmá interés"). Omitido =>
+        // hereda el default de la inmobiliaria (cascada en resolverEsquemaMora).
+        moraTipo: z.enum(['SIN_MORA', 'PORCENTAJE_DIARIO', 'MONTO_FIJO', 'PORCENTAJE_MENSUAL']).optional(),
+        moraValor: z.number().positive().optional(),
+        // Contrato EN CURSO ("está en la cuota 7 de 12"): confirmación por
+        // período YA VENCIDO — pagado fuera del sistema / parcial / adeudado,
+        // con mora histórica manual opcional. Ver lib/estado-inicial-contrato.ts.
+        periodosAnteriores: z
+          .array(
+            z.object({
+              periodo: z.string().regex(/^\d{4}-\d{2}$/),
+              estado: z.enum(['PAGADO', 'PARCIAL', 'ADEUDA']),
+              montoPagado: z.number().positive().optional(),
+              moraManual: z.number().nonnegative().optional(),
+            }),
+          )
+          .max(120)
+          .optional(),
       })
       .safeParse(request.body ?? {});
     if (!body.success) return reply.code(400).send({ message: 'Datos del contrato incompletos' });
     const d = body.data;
+    if (d.moraTipo && d.moraTipo !== 'SIN_MORA' && !d.moraValor) {
+      return reply.code(400).send({ message: 'Indicá el valor del interés por mora' });
+    }
     if (d.fechaFin <= d.fechaInicio) {
       return reply.code(400).send({ message: 'La fecha de fin tiene que ser posterior a la fecha de inicio' });
     }
@@ -646,6 +703,14 @@ export async function coreRoutes(app: FastifyInstance) {
     // CARGA carga contratos para REVISIÓN (permisos.ts: contratos.crear con
     // rolesAprobacion incluye CARGA): NO se activan solos. ADMIN/OPERADOR activan directo.
     const esCarga = u.rol === 'CARGA';
+    // El BORRADOR de CARGA no devenga liquidaciones hasta la aprobación, así que
+    // no hay períodos donde aplicar el estado inicial: lo rechazamos claro en vez
+    // de descartarlo en silencio. (Extensión al flujo de aprobación: pendiente.)
+    if (esCarga && d.periodosAnteriores?.length) {
+      return reply.code(400).send({
+        message: 'La carga para revisión no soporta períodos anteriores — pedile a un Admin/Operador que lo cargue',
+      });
+    }
     const prop = await prisma.propiedad.findFirst({ where: { id: d.propiedadId, inmobiliariaId: u.inmobiliariaId } });
     if (!prop) return reply.code(404).send({ message: 'Propiedad inexistente' });
     if (prop.contratoActualId) return reply.code(409).send({ message: 'La propiedad ya tiene un contrato activo' });
@@ -675,6 +740,9 @@ export async function coreRoutes(app: FastifyInstance) {
       cobraDirectoPropietarioId = part.propietarioId;
     }
     try {
+      // timeout 30s (default 5s): el alta con periodosAnteriores corre varias
+      // queries batcheadas contra una DB remota; el default cortaba carteras
+      // largas a mitad de camino (rollback + 500). maxWait 10s por la cola de pool.
       const contratoCreado = await prisma.$transaction(async (tx) => {
       const inq = await tx.inquilino.create({
         data: {
@@ -705,6 +773,10 @@ export async function coreRoutes(app: FastifyInstance) {
           tipoContrato: d.tipoContrato,
           depositoGarantia: d.depositoGarantia ?? null,
           comisionInmobiliaria: d.comisionInmobiliaria ?? null,
+          // SIN_MORA explícito guarda tipo sin valor; omitido deja ambos null
+          // (hereda el default de la inmobiliaria en la lectura).
+          moraTipo: d.moraTipo ?? null,
+          moraValor: d.moraTipo && d.moraTipo !== 'SIN_MORA' ? (d.moraValor ?? null) : null,
           modoCobranza: d.modoCobranza,
           cobraDirectoPropietarioId,
           cargadoPor: u.userId,
@@ -742,8 +814,14 @@ export async function coreRoutes(app: FastifyInstance) {
       // Devengar las liquidaciones del contrato (cargos mensuales). Sin esto
       // el inquilino no tendría nada para pagar al activar el contrato.
       await generarLiquidacionesContrato(tx, contrato);
+      // Contrato EN CURSO: aplicar la confirmación por período (pagados fuera
+      // del sistema → pago sintético CONCILIADO; adeudados → mora manual). En
+      // la MISMA transacción: o queda todo el estado inicial o no queda nada.
+      if (d.periodosAnteriores?.length) {
+        await aplicarEstadoInicial(tx, contrato, d.periodosAnteriores, u.userId);
+      }
       return contrato;
-      });
+      }, { timeout: 30_000, maxWait: 10_000 });
       // Mail de onboarding al inquilino: solo contratos ACTIVOS (no BORRADOR de
       // CARGA) y con email. Best-effort: si el SMTP falla, NO rompemos el alta.
       if (emailInq && !esCarga) {
@@ -805,6 +883,11 @@ export async function coreRoutes(app: FastifyInstance) {
       if (e instanceof Error && e.message === 'PROP_OCUPADA') {
         return reply.code(409).send({ message: 'La propiedad ya tiene un contrato activo' });
       }
+      // Estado inicial inconsistente (período inexistente/futuro, parcial sin
+      // monto, etc.): 400 con el detalle — la transacción ya hizo rollback.
+      if (e instanceof EstadoInicialInvalido) {
+        return reply.code(400).send({ message: e.message });
+      }
       // Carrera de email duplicado: dos altas concurrentes con el mismo email
       // pasan el pre-check y la 2da viola @@unique([inmobiliariaId,email]) → P2002.
       // Lo convertimos en un 409 claro en vez de un 500.
@@ -813,6 +896,56 @@ export async function coreRoutes(app: FastifyInstance) {
       }
       throw e;
     }
+  });
+
+  // Editar el esquema de mora de un contrato existente. `tipo: null` = volver a
+  // heredar el default de la inmobiliaria (limpia también la tasa legacy, que si
+  // no la cascada la seguiría prefiriendo). Afecta las liquidaciones IMPAGAS
+  // on-read; las PAGADAS ya congelaron su mora en fechaPago y los overrides
+  // manuales (migración) se conservan.
+  app.put('/contratos/:id/mora', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'contratos.crear');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const body = z
+      .object({
+        tipo: z.enum(['SIN_MORA', 'PORCENTAJE_DIARIO', 'MONTO_FIJO', 'PORCENTAJE_MENSUAL']).nullable(),
+        valor: z.number().positive().nullable().optional(),
+      })
+      .safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ message: 'Esquema de mora inválido' });
+    const { tipo, valor } = body.data;
+    if (tipo && tipo !== 'SIN_MORA' && (valor == null || valor <= 0)) {
+      return reply.code(400).send({ message: 'Indicá el valor del interés por mora' });
+    }
+    const contrato = await prisma.contrato.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
+    if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
+    const actualizado = await prisma.contrato.update({
+      where: { id },
+      data: {
+        moraTipo: tipo,
+        moraValor: tipo && tipo !== 'SIN_MORA' ? valor : null,
+        // Este endpoint es la acción EXPLÍCITA del usuario sobre la mora: la
+        // tasa legacy deja de opinar siempre (elija esquema o herencia).
+        tasaPunitorioDiaria: null,
+      },
+    });
+    const inmoMora = await prisma.inmobiliaria.findUnique({
+      where: { id: u.inmobiliariaId },
+      select: { moraTipoDefault: true, moraValorDefault: true },
+    });
+    const esquema = resolverEsquemaMora(actualizado, inmoMora);
+    await registrarEvento({
+      inmobiliariaId: u.inmobiliariaId,
+      tipo: 'MORA_EDITADA',
+      autorId: u.userId,
+      rolAutor: u.rol,
+      entidadId: id,
+      entidadDescripcion: tipo
+        ? `Mora → ${tipo}${valor != null && tipo !== 'SIN_MORA' ? ` (${valor})` : ''}`
+        : 'Mora → hereda el default de la inmobiliaria',
+    });
+    return { ...actualizado, moraEfectiva: { tipo: esquema.tipo, valor: esquema.valor, origen: esquema.origen } };
   });
 
   // Reenviar el email de bienvenida/onboarding al inquilino TITULAR del contrato,
@@ -995,6 +1128,12 @@ export async function coreRoutes(app: FastifyInstance) {
       select: { cuentaCobranza: true },
     });
     const c = (soc?.cuentaCobranza as { banco?: string; titular?: string; cbu?: string; alias?: string; cuit?: string } | null) ?? null;
+    // Mora por defecto del tenant: la heredan los contratos sin esquema propio.
+    // Viaja junto a la config de cobranza (es parte de "cómo cobro").
+    const inmoMora = await prisma.inmobiliaria.findUnique({
+      where: { id: u.inmobiliariaId },
+      select: { moraTipoDefault: true, moraValorDefault: true },
+    });
     return {
       tieneCuenta: !!(c?.cbu && c?.titular),
       cuenta: {
@@ -1004,7 +1143,48 @@ export async function coreRoutes(app: FastifyInstance) {
         alias: c?.alias ?? '',
         cuit: c?.cuit ?? '',
       },
+      mora: {
+        tipoDefault: inmoMora?.moraTipoDefault ?? 'SIN_MORA',
+        valorDefault: inmoMora?.moraValorDefault ?? null,
+      },
     };
+  });
+
+  // Mora POR DEFECTO de la inmobiliaria ("cada inmobiliaria se mueve distinto"):
+  // los contratos sin moraTipo propio la heredan on-read (resolverEsquemaMora),
+  // así cambiarla acá impacta la cartera heredera SIN tocar contrato por contrato.
+  app.put('/cobranza/mora', async (request, reply) => {
+    const u = await requireUsuario(request, reply);
+    if (!u) return;
+    if (u.rol !== 'ADMIN') return reply.code(403).send({ message: 'Solo un Admin puede editar la mora por defecto' });
+    const body = z
+      .object({
+        tipo: z.enum(['SIN_MORA', 'PORCENTAJE_DIARIO', 'MONTO_FIJO', 'PORCENTAJE_MENSUAL']),
+        valor: z.number().positive().nullable().optional(),
+      })
+      .safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ message: 'Esquema de mora inválido' });
+    const { tipo, valor } = body.data;
+    if (tipo !== 'SIN_MORA' && (valor == null || valor <= 0)) {
+      return reply.code(400).send({ message: 'Indicá el valor del interés por mora' });
+    }
+    const actualizada = await prisma.inmobiliaria.update({
+      where: { id: u.inmobiliariaId },
+      data: {
+        moraTipoDefault: tipo,
+        moraValorDefault: tipo !== 'SIN_MORA' ? valor : null,
+      },
+      select: { moraTipoDefault: true, moraValorDefault: true },
+    });
+    await registrarEvento({
+      inmobiliariaId: u.inmobiliariaId,
+      tipo: 'MORA_EDITADA',
+      autorId: u.userId,
+      rolAutor: u.rol,
+      entidadId: u.inmobiliariaId,
+      entidadDescripcion: `Mora default → ${tipo}${tipo !== 'SIN_MORA' && valor != null ? ` (${valor})` : ''}`,
+    });
+    return { tipoDefault: actualizada.moraTipoDefault, valorDefault: actualizada.moraValorDefault };
   });
 
   app.put('/cobranza', async (request, reply) => {

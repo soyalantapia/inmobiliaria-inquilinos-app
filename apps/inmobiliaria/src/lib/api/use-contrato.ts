@@ -29,7 +29,7 @@ import {
   generarLiquidaciones,
   propietariosMock,
 } from '@/lib/mock-data';
-import type { ContratoListado, Propietario } from '@/lib/types';
+import type { ContratoListado, MoraEfectiva, Propietario, TipoMora } from '@/lib/types';
 
 // ---- Shape de la respuesta del API (GET /contratos/:id) ----
 
@@ -72,6 +72,14 @@ interface ContratoApi {
   depositoGarantia: string | number | null;
   modoCobranza: 'INMOBILIARIA' | 'PROPIETARIO_DIRECTO' | null;
   cobraDirectoPropietarioId: string | null;
+  /** Interés por mora: override propio del contrato + esquema resuelto. */
+  moraTipo?: TipoMora | null;
+  moraValor?: string | number | null;
+  moraEfectiva?: {
+    tipo: TipoMora;
+    valor: string | number | null;
+    origen: MoraEfectiva['origen'];
+  } | null;
   cargadoPor: string | null;
   cargadoRol: ContratoListado['cargadoRol'] | null;
   cargadoAt: string | null;
@@ -113,6 +121,8 @@ interface ContratoApi {
     metodoPago: LiquidacionAdmin['metodoPago'];
     montoPagado?: string | number | null;
     saldo?: string | number | null;
+    /** Mora al día (punitorio), ya sumada en montoTotal. */
+    montoPunitorio?: string | number | null;
   }[];
 }
 
@@ -163,6 +173,17 @@ function mapContrato(r: ContratoApi): ContratoListado {
     aprobadoAt: r.aprobadoAt,
     modoCobranza: r.modoCobranza ?? 'INMOBILIARIA',
     cobraDirectoPropietarioId: r.cobraDirectoPropietarioId,
+    moraTipo: r.moraTipo ?? null,
+    moraValor: r.moraValor != null ? Number(r.moraValor) : null,
+    ...(r.moraEfectiva
+      ? {
+          moraEfectiva: {
+            tipo: r.moraEfectiva.tipo,
+            valor: r.moraEfectiva.valor != null ? Number(r.moraEfectiva.valor) : null,
+            origen: r.moraEfectiva.origen,
+          },
+        }
+      : {}),
   };
 }
 
@@ -229,6 +250,7 @@ function mapLiquidacionAdmin(l: NonNullable<ContratoApi['liquidaciones']>[number
     metodoPago: l.metodoPago ?? null,
     montoPagado,
     saldo: l.saldo != null ? Number(l.saldo) : Math.max(0, montoTotal - montoPagado),
+    ...(l.montoPunitorio != null ? { montoPunitorio: Number(l.montoPunitorio) } : {}),
   };
 }
 

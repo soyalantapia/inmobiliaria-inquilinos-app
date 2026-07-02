@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useId, useState } from 'react';
-import { Building2, GraduationCap, Landmark, Lock, ShieldCheck, Sparkles } from 'lucide-react';
+import { Building2, GraduationCap, Landmark, Lock, ShieldCheck, Sparkles, TrendingUp } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@llave/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@llave/ui/card';
@@ -13,12 +13,15 @@ import { ApiError } from '@/lib/api/client';
 import {
   setCobranza,
   setEmpresa,
+  setMoraDefault,
   useCobranza,
   useEmpresa,
   useMe,
   type CobranzaCuenta,
   type EmpresaDatos,
 } from '@/lib/api/hooks';
+import { descripcionMora, MoraSelector, type MoraSeleccion } from '@/components/mora-selector';
+import type { TipoMora } from '@/lib/types';
 import { SociedadesManager } from '@/components/sociedades-manager';
 import { EquipoCard } from '@/components/equipo-card';
 import { ConfiguracionPais } from '@/components/configuracion-pais';
@@ -81,6 +84,7 @@ export function ConfiguracionProd() {
         </Card>
         <EmpresaCard />
         <CuentaCobranzaCard />
+        <MoraDefaultCard />
         <div>
           <h2 className="mb-2 px-1 text-sm font-semibold text-muted-foreground">Sociedades</h2>
           <SociedadesManager />
@@ -313,6 +317,85 @@ function CuentaCobranzaCard() {
           </span>
           <Button onClick={guardar} disabled={guardando}>
             {guardando ? 'Guardando…' : 'Guardar cobranza'}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * Esquema de mora POR DEFECTO de la inmobiliaria (PUT /cobranza/mora, solo
+ * Admin). Es lo que heredan los contratos nuevos que no definen su propio
+ * interés; cada contrato puede pisarlo desde su detalle o desde el wizard.
+ */
+function MoraDefaultCard() {
+  const qc = useQueryClient();
+  const { mora, cargando } = useCobranza();
+  const [tipo, setTipo] = useState<TipoMora>('SIN_MORA');
+  const [valor, setValor] = useState('');
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!mora) return;
+    setTipo(mora.tipoDefault);
+    setValor(mora.valorDefault != null ? String(mora.valorDefault) : '');
+  }, [mora]);
+
+  const guardar = async () => {
+    setError(null);
+    if (tipo !== 'SIN_MORA' && !(Number(valor) > 0)) {
+      setError('Ingresá un valor mayor a 0 para el esquema elegido.');
+      return;
+    }
+    setGuardando(true);
+    try {
+      await setMoraDefault({ tipo, valor: tipo === 'SIN_MORA' ? null : Number(valor) });
+      toast({ variant: 'success', title: 'Mora por defecto guardada' });
+      await qc.invalidateQueries({ queryKey: ['cobranza'] });
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'No se pudo guardar la mora por defecto.');
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  if (cargando) return null;
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <TrendingUp className="h-5 w-5 text-primary" />
+          Mora por defecto
+        </CardTitle>
+        <Badge variant="secondary">
+          {mora ? descripcionMora(mora.tipoDefault, mora.valorDefault) : 'Sin mora'}
+        </Badge>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-xs text-muted-foreground">
+          Se aplica a los contratos nuevos que no definan su propio interés.
+          Podés pisarlo contrato por contrato.
+        </p>
+        <MoraSelector
+          seleccion={tipo}
+          valor={valor}
+          onSeleccionChange={(s: MoraSeleccion) => {
+            if (s !== 'HEREDAR') setTipo(s);
+          }}
+          onValorChange={setValor}
+          montoBase={500_000}
+          notaPreview="Ejemplo con un alquiler de $ 500.000"
+          idPrefix="mora-default"
+        />
+        {error && (
+          <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive">{error}</p>
+        )}
+        <div className="flex justify-end">
+          <Button onClick={guardar} disabled={guardando}>
+            {guardando ? 'Guardando…' : 'Guardar mora'}
           </Button>
         </div>
       </CardContent>

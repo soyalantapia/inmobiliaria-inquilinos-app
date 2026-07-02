@@ -102,6 +102,16 @@ enum EstadoConciliacion {
   RECHAZADO
 }
 
+// Esquema de mora (punitorio por pago tardío). Cascada de resolución:
+// Contrato.moraTipo → legacy Contrato.tasaPunitorioDiaria → default de la
+// Inmobiliaria → SIN_MORA. Ver apps/api/src/lib/punitorios.ts.
+enum TipoMora {
+  SIN_MORA
+  PORCENTAJE_DIARIO // moraValor = % por día sobre el monto (modelo original)
+  MONTO_FIJO // moraValor = $ fijo por cada mes de atraso iniciado (estilo consorcio, acumula)
+  PORCENTAJE_MENSUAL // moraValor = % mensual prorrateado por día (p.ej. tasa Banco Nación)
+}
+
 enum MetodoComprobante {
   MERCADOPAGO
   TRANSFERENCIA
@@ -289,6 +299,7 @@ enum TipoEventoAuditoria {
   PROPIETARIO_CONFIRMO_RECIBO
   PROPIETARIO_RENDIDO
   MODO_COBRANZA_CAMBIADO
+  MORA_EDITADA
 }
 
 enum GrupoCapacidad {
@@ -570,6 +581,10 @@ model Inmobiliaria {
   paisCodigo            String  @default("AR")
   monedaDefault         String  @default("ARS")
   indiceDefaultContrato String  @default("ICL")
+  // Mora por defecto del tenant: la heredan los contratos sin moraTipo propio.
+  // Cada inmobiliaria se mueve distinto (pedido piloto): configurable en Cobranza.
+  moraTipoDefault  TipoMora @default(SIN_MORA)
+  moraValorDefault Float?
   esPiloto            Boolean  @default(true)
   codigoReferido      String   @unique
   mesesGratisGanados  Int      @default(0)
@@ -1152,7 +1167,12 @@ model Contrato {
   titularCuenta             String?
   comisionInmobiliaria      Float?
   depositoGarantia          Decimal?        @db.Decimal(14, 2)
-  tasaPunitorioDiaria       Float? // % por día (default app: 0.15 ≈ 4.5%/mes)
+  tasaPunitorioDiaria       Float? // LEGACY: % por día. Migrado a moraTipo/moraValor; queda por compat de lectura.
+  // Esquema de mora del contrato (override del default de la inmobiliaria).
+  // null => hereda (cascada en resolverEsquemaMora). moraValor se interpreta
+  // según moraTipo: % diario, $ fijo por mes de atraso, o % mensual.
+  moraTipo  TipoMora?
+  moraValor Float?
   modoCobranza              ModoCobranza    @default(INMOBILIARIA)
   cobraDirectoPropietarioId String?
   cobraDirectoPropietario   Propietario?    @relation("CobranzaDirecta", fields: [cobraDirectoPropietarioId], references: [id])
@@ -1343,6 +1363,10 @@ model Liquidacion {
   montoAlquiler    Decimal           @db.Decimal(14, 2)
   montoExpensas    Decimal?          @db.Decimal(14, 2)
   montoPunitorio   Decimal           @default(0) @db.Decimal(14, 2) // se recalcula al día, no congelar
+  // Mora histórica CONGELADA, confirmada a mano al migrar un contrato en curso
+  // ("está en la cuota 7 de 12"). Si no es null, PISA el cálculo del esquema
+  // (calcularMora la respeta). Editable desde el panel.
+  montoPunitorioManual Decimal?      @db.Decimal(14, 2)
   montoTotal       Decimal           @db.Decimal(14, 2)
   fechaVencimiento DateTime
   fechaPago        DateTime?

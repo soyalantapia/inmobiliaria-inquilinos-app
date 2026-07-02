@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   ArrowDown,
@@ -33,17 +33,12 @@ import {
 } from '@llave/ui/select';
 import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
-import { apiEnabled } from '@/lib/api/client';
+import { useConsorcioInventario } from '@/lib/api/use-consorcio-extra';
 import {
   type CategoriaInventario,
   type ItemInventario,
   type MovimientoInventario,
   CATEGORIA_INVENTARIO_LABEL,
-  cargarItem,
-  itemsBajoMinimo,
-  listarInventarioDe,
-  listarMovimientosDe,
-  moverStock,
 } from '@/lib/consorcio-inventario-storage';
 import { formatFechaCorta, formatMonto } from '@/lib/format';
 
@@ -64,27 +59,23 @@ interface Props {
 }
 
 export function ConsorcioInventarioTab({ consorcioId }: Props) {
-  const [items, setItems] = useState<ItemInventario[]>([]);
-  const [movs, setMovs] = useState<MovimientoInventario[]>([]);
-  const [hidratado, setHidratado] = useState(false);
+  const {
+    items,
+    movimientos: movs,
+    cargando,
+    crearItem,
+    moverStock: moverStockApi,
+  } = useConsorcioInventario(consorcioId);
   const [crearAbierto, setCrearAbierto] = useState(false);
   const [moverAbierto, setMoverAbierto] = useState<{
     item: ItemInventario;
     tipo: 'ENTRADA' | 'SALIDA';
   } | null>(null);
 
-  const refrescar = useCallback(() => {
-    setItems(listarInventarioDe(consorcioId));
-    setMovs(listarMovimientosDe(consorcioId));
-  }, [consorcioId]);
-
-  useEffect(() => {
-    refrescar();
-    setHidratado(true);
-  }, [refrescar]);
-
-  // `itemsBajoMinimo` lee de localStorage; `items` actúa como trigger de re-cómputo
-  const bajoMinimo = useMemo(() => itemsBajoMinimo(consorcioId), [items, consorcioId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const bajoMinimo = useMemo(
+    () => items.filter((i) => i.cantidadActual < i.minimoStock),
+    [items],
+  );
   const valorStock = useMemo(() => {
     return items.reduce(
       (acc, i) => acc + (i.costoUnitario ?? 0) * i.cantidadActual,
@@ -92,49 +83,60 @@ export function ConsorcioInventarioTab({ consorcioId }: Props) {
     );
   }, [items]);
 
-  // Alta de items y movimientos de stock escriben sólo a localStorage (sin
-  // endpoint). En prod (apiEnabled) gateamos las mutaciones para no fingir
-  // persistencia; en build demo (!apiEnabled) queda operativo. Lectura libre.
-  const puedeMutar = !apiEnabled;
+  // Inventario y movimientos de stock persisten en el backend
+  // (GET/POST /consorcios/:id/inventario…); en build demo van a localStorage.
+  const puedeMutar = true;
 
-  if (!hidratado) return null;
+  if (cargando) return null;
 
-  const onItemCreado = (data: Omit<ItemInventario, 'id' | 'actualizadoAt'>) => {
-    if (!puedeMutar) return;
-    cargarItem(data);
-    refrescar();
-    setCrearAbierto(false);
-    toast({
-      variant: 'success',
-      title: 'Item agregado',
-      description: data.nombre,
-    });
+  const onItemCreado = async (data: Omit<ItemInventario, 'id' | 'actualizadoAt'>) => {
+    try {
+      await crearItem(data);
+      setCrearAbierto(false);
+      toast({
+        variant: 'success',
+        title: 'Item agregado',
+        description: data.nombre,
+      });
+    } catch (e) {
+      toast({
+        variant: 'destructive',
+        title: 'No se pudo agregar',
+        description: e instanceof Error ? e.message : 'Intentá de nuevo.',
+      });
+    }
   };
 
-  const onMovimiento = (
+  const onMovimiento = async (
     item: ItemInventario,
     tipo: 'ENTRADA' | 'SALIDA',
     cantidad: number,
     motivo: string,
     ufDestino?: string,
   ) => {
-    if (!puedeMutar) return;
-    moverStock({
-      itemId: item.id,
-      consorcioId,
-      tipo,
-      cantidad,
-      motivo,
-      ufDestino,
-      cargadoPor: USUARIO_ACTUAL,
-    });
-    refrescar();
-    setMoverAbierto(null);
-    toast({
-      variant: 'success',
-      title: tipo === 'ENTRADA' ? 'Stock agregado' : 'Stock descontado',
-      description: `${item.nombre} · ${cantidad} ${item.unidad}`,
-    });
+    try {
+      await moverStockApi({
+        itemId: item.id,
+        consorcioId,
+        tipo,
+        cantidad,
+        motivo,
+        ufDestino,
+        cargadoPor: USUARIO_ACTUAL,
+      });
+      setMoverAbierto(null);
+      toast({
+        variant: 'success',
+        title: tipo === 'ENTRADA' ? 'Stock agregado' : 'Stock descontado',
+        description: `${item.nombre} · ${cantidad} ${item.unidad}`,
+      });
+    } catch (e) {
+      toast({
+        variant: 'destructive',
+        title: 'No se pudo registrar',
+        description: e instanceof Error ? e.message : 'Intentá de nuevo.',
+      });
+    }
   };
 
   return (

@@ -17,7 +17,13 @@ import { ConfirmDialog } from '@llave/ui/confirm-dialog';
 import { Topbar } from '@/components/topbar';
 import { apiEnabled, apiFetch, ApiError } from '@/lib/api/client';
 import { ensureApiSession } from '@/lib/api/session';
-import { usePropiedades, useMercado } from '@/lib/api/hooks';
+import { usePropiedades, useMercado, useCobranza } from '@/lib/api/hooks';
+import {
+  calcularMora,
+  descripcionMora,
+  MoraSelector,
+  type MoraSeleccion,
+} from '@/components/mora-selector';
 import { contratoExtraidoMock } from '@/lib/mock-data';
 import { formatFechaCorta, formatMonto } from '@/lib/format';
 import type {
@@ -25,6 +31,7 @@ import type {
   IndiceAjuste,
   Moneda,
   TipoContrato,
+  TipoMora,
 } from '@/lib/types';
 
 const MAX_PDF_MB = 10;
@@ -633,14 +640,18 @@ function formatFechaDeInput(valor: string | number | null | undefined): string {
 // por PDF (eso vive en el wizard mock de arriba, sólo demo).
 // ============================================================================
 
-type PasoApi = 1 | 2 | 3 | 4;
+// El paso 4 (Períodos anteriores) es CONDICIONAL: sólo existe cuando la fecha
+// de inicio es pasada y ya venció al menos un período. Si no aplica, el wizard
+// salta 3 → 5 y el header de pasos no lo muestra.
+type PasoApi = 1 | 2 | 3 | 4 | 5;
 
-const pasosApi = [
+const pasosApi: ReadonlyArray<{ id: PasoApi; label: string }> = [
   { id: 1, label: 'Propiedad' },
   { id: 2, label: 'Inquilino' },
   { id: 3, label: 'Términos' },
-  { id: 4, label: 'Confirmar' },
-] as const;
+  { id: 4, label: 'Períodos anteriores' },
+  { id: 5, label: 'Confirmar' },
+];
 
 const indicesAjuste: Array<{ value: IndiceAjuste; label: string }> = [
   { value: 'ICL', label: 'ICL (BCRA)' },
@@ -674,6 +685,69 @@ interface ContratoNuevoApi {
   id: string;
 }
 
+// ---- Períodos anteriores (contratos con fecha de inicio pasada) ----
+
+type EstadoPeriodoAnterior = 'PAGADO' | 'PARCIAL' | 'ADEUDA';
+
+interface PeriodoVencido {
+  periodo: string; // 'YYYY-MM'
+  vencimiento: string; // 'YYYY-MM-DD'
+  diasAtraso: number; // días de atraso contados a HOY
+}
+
+interface PeriodoAnteriorForm {
+  estado: EstadoPeriodoAnterior;
+  montoPagado: string;
+  moraManual: string;
+  /** Si el usuario editó la mora a mano, no la pisamos con el prefill. */
+  moraEditada: boolean;
+}
+
+const PERIODO_FORM_DEFAULT: PeriodoAnteriorForm = {
+  estado: 'PAGADO',
+  montoPagado: '',
+  moraManual: '',
+  moraEditada: false,
+};
+
+/**
+ * Períodos ya vencidos entre el mes de `fechaInicio` y hoy. Por cada mes, el
+ * vencimiento es min(diaPago, último día del mes); se incluye si ese
+ * vencimiento ya pasó. Cálculo 100% client-side con fechas locales.
+ */
+function calcularPeriodosVencidos(fechaInicio: string, diaPago: number): PeriodoVencido[] {
+  if (fechaInicio.length !== 10 || !(diaPago >= 1 && diaPago <= 31)) return [];
+  const [anio, mes] = fechaInicio.split('-').map(Number);
+  if (!anio || !mes) return [];
+  const hoy = new Date();
+  const hoyLocal = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
+  const out: PeriodoVencido[] = [];
+  let cursor = new Date(anio, mes - 1, 1);
+  // Tope de 10 años por las dudas (input basura no debe colgar el wizard).
+  for (let i = 0; i < 120 && cursor <= hoyLocal; i++) {
+    const ultimoDia = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0).getDate();
+    const venc = new Date(cursor.getFullYear(), cursor.getMonth(), Math.min(diaPago, ultimoDia));
+    if (venc < hoyLocal) {
+      const mm = String(cursor.getMonth() + 1).padStart(2, '0');
+      const dd = String(venc.getDate()).padStart(2, '0');
+      out.push({
+        periodo: `${cursor.getFullYear()}-${mm}`,
+        vencimiento: `${cursor.getFullYear()}-${mm}-${dd}`,
+        diasAtraso: Math.floor((hoyLocal.getTime() - venc.getTime()) / 86_400_000),
+      });
+    }
+    cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+  }
+  return out;
+}
+
+// 'YYYY-MM' → "Marzo 2026".
+function labelPeriodo(periodo: string): string {
+  const [anio = 0, mes = 1] = periodo.split('-').map(Number);
+  const nombre = new Date(anio, mes - 1, 1).toLocaleDateString('es-AR', { month: 'long' });
+  return `${nombre.charAt(0).toUpperCase()}${nombre.slice(1)} ${anio}`;
+}
+
 function CargarContratoApiWizard() {
   const router = useRouter();
   const qc = useQueryClient();
@@ -681,6 +755,9 @@ function CargarContratoApiWizard() {
   // Config de Mercado de la inmobiliaria → define el índice y la moneda por
   // defecto de un contrato nuevo (lo que la inmo eligió en /configuracion#mercado).
   const { config: mercado } = useMercado();
+  // Default de mora de la inmobiliaria (GET /cobranza → mora): es lo que
+  // hereda el contrato si el usuario no elige un esquema explícito.
+  const { mora: moraDefault } = useCobranza();
 
   const [paso, setPaso] = useState<PasoApi>(1);
 
@@ -707,6 +784,15 @@ function CargarContratoApiWizard() {
   const [depositoGarantia, setDepositoGarantia] = useState('');
   const [comisionInmobiliaria, setComisionInmobiliaria] = useState('');
   const [modoCobranza, setModoCobranza] = useState<ModoCobranza>('INMOBILIARIA');
+
+  // Interés por mora: 'HEREDAR' = usa el default de la inmobiliaria y NO se
+  // manda moraTipo/moraValor al API (la cascada la resuelve el backend).
+  const [moraSel, setMoraSel] = useState<MoraSeleccion>('HEREDAR');
+  const [moraValor, setMoraValor] = useState('');
+
+  // Períodos anteriores (sólo si fechaInicio es pasada): estado por período,
+  // keyed por 'YYYY-MM'. Los que no aparecen quedan en el default (PAGADO).
+  const [periodosForm, setPeriodosForm] = useState<Record<string, PeriodoAnteriorForm>>({});
 
   // Defaults desde la config de Mercado (índice + moneda), una sola vez al
   // llegar la config y antes de que el usuario edite los términos.
@@ -767,6 +853,42 @@ function CargarContratoApiWizard() {
     tipoContrato === 'ALQUILER_Y_EXPENSAS' || tipoContrato === 'SOLO_EXPENSAS';
   const requiereAlquiler = tipoContrato !== 'SOLO_EXPENSAS';
 
+  // Base sobre la que se calcula la mora: lo que se debe por mes (alquiler +
+  // expensas si el contrato las incluye). Para el preview y los prefills.
+  const montoBaseMora =
+    (requiereAlquiler ? Number(monto) || 0 : 0) +
+    (incluyeExpensas ? Number(montoExpensas) || 0 : 0);
+
+  // Esquema de mora EFECTIVO del wizard (elegido o heredado) — se usa para el
+  // prefill de la mora de los períodos anteriores.
+  const moraEfectivaWizard: { tipo: TipoMora; valor: number } =
+    moraSel === 'HEREDAR'
+      ? { tipo: moraDefault?.tipoDefault ?? 'SIN_MORA', valor: moraDefault?.valorDefault ?? 0 }
+      : { tipo: moraSel, valor: Number(moraValor) || 0 };
+
+  // Períodos ya vencidos entre el inicio del contrato y hoy. Si hay al menos
+  // uno, aparece el paso 4 "Períodos anteriores".
+  const periodosVencidos = useMemo(
+    () => calcularPeriodosVencidos(fechaInicio, Number(diaPago)),
+    [fechaInicio, diaPago],
+  );
+  const hayPeriodos = periodosVencidos.length > 0;
+  const pasosVisibles = useMemo(
+    () => pasosApi.filter((p) => p.id !== 4 || hayPeriodos),
+    [hayPeriodos],
+  );
+
+  const formDePeriodo = (periodo: string): PeriodoAnteriorForm =>
+    periodosForm[periodo] ?? PERIODO_FORM_DEFAULT;
+
+  // Mora sugerida para un período, calculada a HOY con el esquema elegido.
+  // Redondeo a CENTAVOS (no a pesos): mismo r2 que el backend (punitorios.ts),
+  // para que el prefill coincida con lo que el esquema calcularía server-side.
+  const moraSugerida = (diasAtraso: number): number =>
+    Math.round(
+      calcularMora(moraEfectivaWizard.tipo, moraEfectivaWizard.valor, montoBaseMora, diasAtraso) * 100,
+    ) / 100;
+
   const pasoPropiedadValido = !!propiedadId;
   const pasoInquilinoValido = nombre.trim().length >= 2;
   const pasoTerminosValido =
@@ -776,10 +898,85 @@ function CargarContratoApiWizard() {
     fechaFin > fechaInicio &&
     Number(diaPago) >= 1 &&
     Number(diaPago) <= 31 &&
-    Number(frecuenciaAjusteMeses) > 0;
+    Number(frecuenciaAjusteMeses) > 0 &&
+    // Si eligió un esquema con valor, el valor tiene que ser > 0.
+    (moraSel === 'HEREDAR' || moraSel === 'SIN_MORA' || Number(moraValor) > 0);
+  // Períodos: todo PARCIAL necesita monto pagado > 0 (la mora es opcional).
+  const pasoPeriodosValido = periodosVencidos.every((p) => {
+    const f = formDePeriodo(p.periodo);
+    return f.estado !== 'PARCIAL' || Number(f.montoPagado) > 0;
+  });
 
-  const avanzar = () => setPaso((p) => Math.min(4, p + 1) as PasoApi);
-  const retroceder = () => setPaso((p) => Math.max(1, p - 1) as PasoApi);
+  // Saltamos el paso 4 cuando no hay períodos vencidos que declarar.
+  const avanzar = () =>
+    setPaso((p) => {
+      const sig = Math.min(5, p + 1) as PasoApi;
+      return sig === 4 && !hayPeriodos ? 5 : sig;
+    });
+  const retroceder = () =>
+    setPaso((p) => {
+      const ant = Math.max(1, p - 1) as PasoApi;
+      return ant === 4 && !hayPeriodos ? 3 : ant;
+    });
+
+  const setEstadoPeriodo = (p: PeriodoVencido, estado: EstadoPeriodoAnterior) => {
+    setPeriodosForm((forms) => {
+      const actual = forms[p.periodo] ?? PERIODO_FORM_DEFAULT;
+      const sig: PeriodoAnteriorForm = { ...actual, estado };
+      // Prefill de la mora calculada a HOY con el esquema elegido. Es
+      // editable (override manual para migraciones); si el usuario ya la
+      // tocó, no se la pisamos.
+      if (estado !== 'PAGADO' && !actual.moraEditada) {
+        sig.moraManual = String(moraSugerida(p.diasAtraso));
+      }
+      return { ...forms, [p.periodo]: sig };
+    });
+  };
+  const setMontoPagadoPeriodo = (periodo: string, v: string) => {
+    setPeriodosForm((forms) => ({
+      ...forms,
+      [periodo]: { ...(forms[periodo] ?? PERIODO_FORM_DEFAULT), montoPagado: v },
+    }));
+  };
+  const setMoraPeriodo = (periodo: string, v: string) => {
+    setPeriodosForm((forms) => ({
+      ...forms,
+      [periodo]: { ...(forms[periodo] ?? PERIODO_FORM_DEFAULT), moraManual: v, moraEditada: true },
+    }));
+  };
+
+  // Resumen de deuda inicial (footer del paso 4 + resumen del confirmar).
+  const deudaCapital = periodosVencidos.reduce((acc, p) => {
+    const f = formDePeriodo(p.periodo);
+    if (f.estado === 'ADEUDA') return acc + montoBaseMora;
+    if (f.estado === 'PARCIAL') return acc + Math.max(0, montoBaseMora - (Number(f.montoPagado) || 0));
+    return acc;
+  }, 0);
+  const deudaMora = periodosVencidos.reduce((acc, p) => {
+    const f = formDePeriodo(p.periodo);
+    return f.estado === 'PAGADO' ? acc : acc + (Number(f.moraManual) || 0);
+  }, 0);
+
+  // Si el usuario vuelve al paso 3 y cambia el esquema de mora o el monto,
+  // refrescamos las moras SUGERIDAS de los períodos que no editó a mano.
+  useEffect(() => {
+    setPeriodosForm((forms) => {
+      let cambio = false;
+      const sig = { ...forms };
+      for (const p of periodosVencidos) {
+        const f = forms[p.periodo];
+        if (!f || f.estado === 'PAGADO' || f.moraEditada) continue;
+        const sugerida = String(moraSugerida(p.diasAtraso));
+        if (f.moraManual !== sugerida) {
+          sig[p.periodo] = { ...f, moraManual: sugerida };
+          cambio = true;
+        }
+      }
+      return cambio ? sig : forms;
+    });
+    // moraSugerida se recrea por render pero sólo depende de estas deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [moraEfectivaWizard.tipo, moraEfectivaWizard.valor, montoBaseMora, periodosVencidos]);
 
   const dar_de_alta = async () => {
     setEnviando(true);
@@ -814,6 +1011,33 @@ function CargarContratoApiWizard() {
           : {}),
         ...(comisionInmobiliaria.trim() !== '' && Number(comisionInmobiliaria) >= 0
           ? { comisionInmobiliaria: Number(comisionInmobiliaria) }
+          : {}),
+        // Mora: sólo si eligió un esquema explícito. 'HEREDAR' no manda nada
+        // y el backend aplica el default de la inmobiliaria (cascada).
+        ...(moraSel !== 'HEREDAR'
+          ? {
+              moraTipo: moraSel,
+              ...(moraSel !== 'SIN_MORA' ? { moraValor: Number(moraValor) } : {}),
+            }
+          : {}),
+        // Períodos anteriores: se mandan TODOS (también los pagados — el
+        // backend los cierra con pagos sintéticos).
+        ...(hayPeriodos
+          ? {
+              periodosAnteriores: periodosVencidos.map((p) => {
+                const f = formDePeriodo(p.periodo);
+                return {
+                  periodo: p.periodo,
+                  estado: f.estado,
+                  ...(f.estado === 'PARCIAL' && Number(f.montoPagado) > 0
+                    ? { montoPagado: Number(f.montoPagado) }
+                    : {}),
+                  ...(f.estado !== 'PAGADO' && f.moraManual.trim() !== ''
+                    ? { moraManual: Number(f.moraManual) }
+                    : {}),
+                };
+              }),
+            }
           : {}),
       };
       await apiFetch<ContratoNuevoApi>('/contratos', {
@@ -862,7 +1086,7 @@ function CargarContratoApiWizard() {
               <ArrowLeft className="h-3 w-3" />
               Volver
             </Link>
-            <StepsApi actual={paso} />
+            <StepsApi actual={paso} pasos={pasosVisibles} />
           </div>
           <Button
             variant="ghost"
@@ -1196,6 +1420,34 @@ function CargarContratoApiWizard() {
                 </p>
               </div>
 
+              {/* Interés por mora: por defecto hereda el esquema de la
+                  inmobiliaria; si el usuario elige uno explícito, ese pisa al
+                  default sólo para ESTE contrato. */}
+              <div className="space-y-2 rounded-lg border bg-muted/20 p-3">
+                <div>
+                  <p className="text-sm font-medium">Interés por mora</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Punitorio que se suma cuando el inquilino paga tarde. Si no elegís
+                    nada, se usa el esquema por defecto de la inmobiliaria.
+                  </p>
+                </div>
+                <MoraSelector
+                  seleccion={moraSel}
+                  valor={moraValor}
+                  onSeleccionChange={setMoraSel}
+                  onValorChange={setMoraValor}
+                  heredado={
+                    moraDefault
+                      ? { tipo: moraDefault.tipoDefault, valor: moraDefault.valorDefault }
+                      : null
+                  }
+                  conHeredar
+                  montoBase={montoBaseMora}
+                  moneda={moneda}
+                  idPrefix="mora-contrato"
+                />
+              </div>
+
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="deposito">Depósito en garantía</Label>
@@ -1244,7 +1496,139 @@ function CargarContratoApiWizard() {
           </Card>
         )}
 
-        {paso === 4 && (
+        {paso === 4 && hayPeriodos && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Períodos anteriores</CardTitle>
+              <CardDescription>
+                El contrato arranca en el pasado: contanos cómo quedó cada mes ya
+                vencido. Lo pagado se cierra solo; lo parcial o adeudado queda como
+                deuda inicial del inquilino.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="divide-y rounded-lg border">
+                {periodosVencidos.map((p) => {
+                  const f = formDePeriodo(p.periodo);
+                  return (
+                    <div key={p.periodo} className="space-y-3 p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-medium">{labelPeriodo(p.periodo)}</p>
+                          <p className="text-[11px] text-muted-foreground">
+                            Venció el {formatFechaDeInput(p.vencimiento)} · hace{' '}
+                            {p.diasAtraso} día{p.diasAtraso === 1 ? '' : 's'}
+                          </p>
+                        </div>
+                        <div
+                          role="radiogroup"
+                          aria-label={`Estado de ${labelPeriodo(p.periodo)}`}
+                          className="flex gap-1"
+                        >
+                          {(
+                            [
+                              { value: 'PAGADO', label: 'Pagado' },
+                              { value: 'PARCIAL', label: 'Parcial' },
+                              { value: 'ADEUDA', label: 'Adeuda' },
+                            ] as const
+                          ).map((e) => (
+                            <button
+                              key={e.value}
+                              type="button"
+                              role="radio"
+                              aria-checked={f.estado === e.value}
+                              onClick={() => setEstadoPeriodo(p, e.value)}
+                              className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors ${
+                                f.estado !== e.value
+                                  ? 'text-muted-foreground hover:bg-muted/40'
+                                  : e.value === 'PAGADO'
+                                    ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+                                    : e.value === 'PARCIAL'
+                                      ? 'border-amber-500 bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
+                                      : 'border-red-500 bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300'
+                              }`}
+                            >
+                              {e.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {f.estado !== 'PAGADO' && (
+                        <div className="grid gap-3 md:grid-cols-2">
+                          {f.estado === 'PARCIAL' && (
+                            <div className="space-y-1.5">
+                              <Label htmlFor={`pagado-${p.periodo}`}>Monto pagado</Label>
+                              <div className="relative">
+                                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                                  {monedaSimbolo}
+                                </span>
+                                <Input
+                                  id={`pagado-${p.periodo}`}
+                                  inputMode="numeric"
+                                  value={f.montoPagado ? Number(f.montoPagado).toLocaleString('es-AR') : ''}
+                                  onChange={(e) =>
+                                    setMontoPagadoPeriodo(p.periodo, e.target.value.replace(/\D/g, '').slice(0, 12))
+                                  }
+                                  placeholder="200.000"
+                                  className="pl-9"
+                                />
+                              </div>
+                            </div>
+                          )}
+                          <div className="space-y-1.5">
+                            <Label htmlFor={`mora-${p.periodo}`}>Mora acumulada</Label>
+                            <div className="relative">
+                              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                                {monedaSimbolo}
+                              </span>
+                              <Input
+                                id={`mora-${p.periodo}`}
+                                inputMode="numeric"
+                                value={f.moraManual ? Number(f.moraManual).toLocaleString('es-AR') : ''}
+                                onChange={(e) =>
+                                  setMoraPeriodo(p.periodo, e.target.value.replace(/\D/g, '').slice(0, 12))
+                                }
+                                placeholder="0"
+                                className="pl-9"
+                              />
+                            </div>
+                            <p className="text-[11px] text-muted-foreground">
+                              Sugerida con el esquema elegido, calculada a hoy. Editala si
+                              venís con otra mora acordada.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Resumen de la deuda que arrastra el contrato al darse de alta. */}
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2 text-sm">
+                <span className="text-muted-foreground">Deuda inicial</span>
+                <span className="font-medium tabular-nums">
+                  {monedaSimbolo} {deudaCapital.toLocaleString('es-AR')} (capital) +{' '}
+                  {monedaSimbolo} {deudaMora.toLocaleString('es-AR')} (mora)
+                </span>
+              </div>
+
+              <div className="flex justify-between border-t pt-4">
+                <Button variant="ghost" onClick={retroceder}>
+                  <ArrowLeft className="h-4 w-4" />
+                  Volver
+                </Button>
+                <Button onClick={avanzar} disabled={!pasoPeriodosValido}>
+                  Continuar
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {paso === 5 && (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -1301,6 +1685,22 @@ function CargarContratoApiWizard() {
                       : 'Propietario directo'
                   }
                 />
+                <ResumenItem
+                  label="Interés por mora"
+                  value={
+                    moraSel === 'HEREDAR' && !moraDefault
+                      ? 'Heredado de la inmobiliaria'
+                      : `${descripcionMora(moraEfectivaWizard.tipo, moraEfectivaWizard.valor, moneda)}${
+                          moraSel === 'HEREDAR' ? ' (heredada)' : ''
+                        }`
+                  }
+                />
+                {hayPeriodos && (
+                  <ResumenItem
+                    label="Períodos anteriores"
+                    value={`${periodosVencidos.length} período${periodosVencidos.length === 1 ? '' : 's'} · Deuda inicial: ${monedaSimbolo} ${deudaCapital.toLocaleString('es-AR')} (capital) + ${monedaSimbolo} ${deudaMora.toLocaleString('es-AR')} (mora)`}
+                  />
+                )}
               </div>
 
               <div className="flex flex-col-reverse justify-end gap-2 border-t pt-4 sm:flex-row">
@@ -1339,10 +1739,18 @@ function CargarContratoApiWizard() {
   );
 }
 
-function StepsApi({ actual }: { actual: PasoApi }) {
+// Recibe los pasos VISIBLES (el 4 "Períodos anteriores" sólo cuando aplica) y
+// numera por posición, así el flujo corto se ve 1-2-3-4 sin hueco.
+function StepsApi({
+  actual,
+  pasos,
+}: {
+  actual: PasoApi;
+  pasos: ReadonlyArray<{ id: PasoApi; label: string }>;
+}) {
   return (
     <ol role="list" className="flex flex-wrap items-center gap-x-3 gap-y-2">
-      {pasosApi.map((p, i) => {
+      {pasos.map((p, i) => {
         const completado = p.id < actual;
         const activo = p.id === actual;
         return (
@@ -1356,14 +1764,14 @@ function StepsApi({ actual }: { actual: PasoApi }) {
                     : 'bg-muted text-muted-foreground'
               }`}
             >
-              {completado ? <CheckCircle2 className="h-4 w-4" /> : p.id}
+              {completado ? <CheckCircle2 className="h-4 w-4" /> : i + 1}
             </div>
             <span
               className={`text-xs sm:text-sm ${activo ? 'font-medium' : completado ? 'text-foreground' : 'text-muted-foreground'}`}
             >
               {p.label}
             </span>
-            {i < pasosApi.length - 1 && <span className="hidden h-px w-8 bg-border sm:block" />}
+            {i < pasos.length - 1 && <span className="hidden h-px w-8 bg-border sm:block" />}
           </li>
         );
       })}
