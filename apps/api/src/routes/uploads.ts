@@ -157,6 +157,12 @@ export async function uploadsRoutes(app: FastifyInstance): Promise<void> {
       if (!s.isFile()) throw new Error('not a file');
       reply.header('Content-Type', mimeDeArchivo(safe));
       reply.header('Cache-Control', 'private, max-age=86400');
+      // Helmet pone CORP same-origin GLOBAL → el browser bloqueaba TODO <img>
+      // del panel/app (otro origen) que embebiera estos archivos: fotos de
+      // propiedades, de reclamos y adjuntos aparecían ROTOS aunque el fetch
+      // diera 200. Este endpoint ya exige token del tenant — el embed
+      // cross-origin es exactamente su caso de uso.
+      reply.header('Cross-Origin-Resource-Policy', 'cross-origin');
       return reply.send(createReadStream(file));
     } catch {
       return reply.code(404).send({ message: 'Archivo no encontrado' });

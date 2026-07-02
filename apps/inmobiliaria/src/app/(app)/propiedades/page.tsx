@@ -21,6 +21,7 @@ import { Card, CardContent } from '@llave/ui/card';
 import { cn } from '@llave/ui/cn';
 import { Input } from '@llave/ui/input';
 import { Topbar } from '@/components/topbar';
+import { urlDeArchivo } from '@/lib/api/client';
 import { usePropiedades } from '@/lib/api/hooks';
 import {
   TODAS_LAS_SOCIEDADES,
@@ -337,9 +338,19 @@ export default function PropiedadesPage() {
                   >
                     <CardContent className="space-y-4 p-5">
                       <div className="flex items-start gap-3">
-                        <div className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
-                          <Icon className="h-6 w-6" />
-                        </div>
+                        {/* Con foto real mostramos el thumbnail; sin foto, el ícono del tipo. */}
+                        {propiedad.fotoUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={urlDeArchivo(propiedad.fotoUrl)}
+                            alt=""
+                            className="h-12 w-12 shrink-0 rounded-lg border object-cover"
+                          />
+                        ) : (
+                          <div className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+                            <Icon className="h-6 w-6" />
+                          </div>
+                        )}
                         <div className="flex-1 min-w-0 space-y-1">
                           {/* line-clamp-2 — la direccion es el dato
                               identificatorio de la card. Truncar a 1 linea

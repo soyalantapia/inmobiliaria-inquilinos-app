@@ -61,7 +61,7 @@ import {
   urgenciaConfig,
 } from '@/lib/reclamos-config';
 import { diasHastaVencimiento, formatFechaCorta, formatMonto, formatRangoVigencia } from '@/lib/format';
-import { apiEnabled } from '@/lib/api/client';
+import { apiEnabled, urlDeArchivo } from '@/lib/api/client';
 import { usePropiedad } from '@/lib/api/use-propiedad';
 import type { TipoPropiedad } from '@/lib/types';
 
@@ -140,9 +140,19 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
         <Card>
           <CardContent className="space-y-4 p-6">
             <div className="flex flex-wrap items-start gap-4">
-              <div className="grid h-16 w-16 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
-                <Icon className="h-8 w-8" />
-              </div>
+              {/* Con foto real, el hero de la propiedad; sin foto, el ícono del tipo. */}
+              {propiedad.fotoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={urlDeArchivo(propiedad.fotoUrl)}
+                  alt={`Foto de ${propiedad.direccion}`}
+                  className="h-16 w-24 shrink-0 rounded-xl border object-cover"
+                />
+              ) : (
+                <div className="grid h-16 w-16 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+                  <Icon className="h-8 w-8" />
+                </div>
+              )}
               <div className="flex-1 min-w-0 space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <h1 className="text-2xl font-semibold leading-tight">{propiedad.direccion}</h1>

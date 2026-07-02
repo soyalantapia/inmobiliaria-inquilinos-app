@@ -19,11 +19,54 @@ export interface DireccionElegida {
   ciudad: string;
   provincia: string;
   codigoPostal: string;
+  /**
+   * Tipo de propiedad DEDUCIDO del edificio en OSM (building=house/apartments/
+   * retail/warehouse…). null cuando OSM solo tiene el punto de dirección (no
+   * sabe qué edificio es) — el form NO debe pisar una elección del usuario.
+   */
+  tipoSugerido: 'DEPARTAMENTO' | 'CASA' | 'LOCAL' | 'GALPON' | null;
+  /** true si la opción elegida NO trajo el número de calle (queda por completar). */
+  alturaFaltante: boolean;
 }
 
 interface Sugerencia {
   display_name: string;
   address?: Record<string, string>;
+  // jsonv2 llama `category` a lo que la API vieja llamaba `class`.
+  category?: string;
+  class?: string;
+  type?: string;
+}
+
+// building=* de OSM → nuestro TipoPropiedad. CONSERVADOR a propósito: los
+// resultados category='place' type='house' son solo "punto de dirección" (no
+// dicen qué edificio hay) → null, no sugerimos nada.
+const TIPO_POR_BUILDING: Record<string, DireccionElegida['tipoSugerido']> = {
+  apartments: 'DEPARTAMENTO',
+  flats: 'DEPARTAMENTO',
+  residential: 'DEPARTAMENTO',
+  house: 'CASA',
+  detached: 'CASA',
+  semidetached_house: 'CASA',
+  bungalow: 'CASA',
+  terrace: 'CASA',
+  retail: 'LOCAL',
+  commercial: 'LOCAL',
+  kiosk: 'LOCAL',
+  supermarket: 'LOCAL',
+  warehouse: 'GALPON',
+  industrial: 'GALPON',
+  hangar: 'GALPON',
+  barn: 'GALPON',
+};
+
+function tipoDesdeOsm(s: Sugerencia): DireccionElegida['tipoSugerido'] {
+  const categoria = s.category ?? s.class ?? '';
+  const t = s.type ?? '';
+  if (categoria === 'building') return TIPO_POR_BUILDING[t] ?? null;
+  if (categoria === 'shop') return 'LOCAL';
+  if (categoria === 'industrial' || t === 'warehouse') return 'GALPON';
+  return null;
 }
 
 export function AutocompleteDireccion({
@@ -40,6 +83,10 @@ export function AutocompleteDireccion({
   const [abierto, setAbierto] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
+  // Versión de la elección: si el usuario elige OTRA sugerencia mientras el
+  // fallback de CP de la anterior sigue en vuelo, la vieja NO debe pisar los
+  // campos al llegar tarde.
+  const eleccionRef = useRef(0);
 
   useEffect(() => {
     if (timer.current) clearTimeout(timer.current);
@@ -78,17 +125,48 @@ export function AutocompleteDireccion({
     return () => document.removeEventListener('mousedown', onDoc);
   }, []);
 
-  const elegir = (s: Sugerencia) => {
+  const elegir = async (s: Sugerencia) => {
+    const miEleccion = ++eleccionRef.current;
     const a = s.address ?? {};
+    const ciudad = a.city ?? a.town ?? a.village ?? a.suburb ?? a.municipality ?? a.county ?? '';
+    const provincia = a.state ?? a.region ?? a.province ?? '';
+    let codigoPostal = a.postcode ?? '';
+    setQ(s.display_name);
+    setAbierto(false);
+
+    // CP FALLBACK: muchas direcciones argentinas en OSM no tienen postcode a
+    // nivel calle, pero el centroide de la LOCALIDAD casi siempre sí (el CP
+    // base de 4 dígitos). Segunda consulta puntual solo cuando faltó.
+    if (!codigoPostal && ciudad) {
+      setCargando(true);
+      try {
+        const url =
+          'https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=1&accept-language=es' +
+          `&countrycodes=${encodeURIComponent(paisCodigo.toLowerCase())}` +
+          `&city=${encodeURIComponent(ciudad)}` +
+          (provincia ? `&state=${encodeURIComponent(provincia)}` : '');
+        const res = await fetch(url, { headers: { Accept: 'application/json' } });
+        const data = (await res.json()) as Sugerencia[];
+        codigoPostal = data?.[0]?.address?.postcode ?? '';
+      } catch {
+        // sin CP: el usuario lo completa a mano, no rompemos la elección
+      } finally {
+        setCargando(false);
+      }
+    }
+
+    // Llegó tarde: el usuario ya eligió otra sugerencia → descartamos esta.
+    if (miEleccion !== eleccionRef.current) return;
+
     onElegir({
       calle: a.road ?? a.pedestrian ?? a.residential ?? a.neighbourhood ?? '',
       altura: a.house_number ?? '',
-      ciudad: a.city ?? a.town ?? a.village ?? a.suburb ?? a.municipality ?? a.county ?? '',
-      provincia: a.state ?? a.region ?? a.province ?? '',
-      codigoPostal: a.postcode ?? '',
+      ciudad,
+      provincia,
+      codigoPostal,
+      tipoSugerido: tipoDesdeOsm(s),
+      alturaFaltante: !a.house_number,
     });
-    setQ(s.display_name);
-    setAbierto(false);
   };
 
   return (

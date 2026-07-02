@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -10,7 +10,9 @@ import {
   CheckCircle2,
   FileText,
   Home,
+  ImagePlus,
   Plus,
+  Sparkles,
   Store,
   Trash2,
   UserPlus,
@@ -31,7 +33,7 @@ import {
   NuevoPropietarioDialog,
   type PropietarioCreado,
 } from '@/components/nuevo-propietario-dialog';
-import { apiEnabled } from '@/lib/api/client';
+import { apiEnabled, subirArchivo } from '@/lib/api/client';
 import { useCrearPropiedad, useMercado, usePropiedades, usePropietarios } from '@/lib/api/hooks';
 import { propietariosMock } from '@/lib/mock-data';
 import {
@@ -126,6 +128,18 @@ function NuevaPropiedadForm() {
   const [ambientes, setAmbientes] = useState('');
   const [m2, setM2] = useState('');
 
+  // Foto (opcional): se elige acá con preview local (blob) y se SUBE recién al
+  // guardar (POST /uploads → fotoUrl) — sin archivos huérfanos si abandona.
+  const [fotoFile, setFotoFile] = useState<File | null>(null);
+  const [fotoPreview, setFotoPreview] = useState<string | null>(null);
+  const fotoInputRef = useRef<HTMLInputElement>(null);
+
+  // El mapa eligió una calle sin número → resaltamos Altura para completarla.
+  const [alturaPendiente, setAlturaPendiente] = useState(false);
+  const alturaRef = useRef<HTMLInputElement>(null);
+  // El tipo se pre-seleccionó desde el edificio de OSM (mostrable + pisable).
+  const [tipoSugeridoPorMapa, setTipoSugeridoPorMapa] = useState(false);
+
   // Propietarios (multi)
   const [propietariosExtra, setPropietariosExtra] = useState<PropietarioExtra[]>(
     () => listarPropietariosExtra(),
@@ -149,6 +163,43 @@ function NuevaPropiedadForm() {
     if (!llevaAmbientes && ambientes) setAmbientes('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [llevaPiso, llevaAmbientes]);
+
+  // El blob del preview vive hasta que se reemplaza la foto o se desmonta.
+  useEffect(() => {
+    return () => {
+      if (fotoPreview) URL.revokeObjectURL(fotoPreview);
+    };
+  }, [fotoPreview]);
+
+  const elegirFoto = (file: File | null) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast({ variant: 'destructive', title: 'Elegí una imagen', description: 'JPG, PNG, WEBP o HEIC.' });
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast({ variant: 'destructive', title: 'Foto muy pesada', description: 'El máximo es 10 MB.' });
+      return;
+    }
+    setFotoFile(file);
+    setFotoPreview(URL.createObjectURL(file));
+  };
+
+  const quitarFoto = () => {
+    setFotoFile(null);
+    setFotoPreview(null);
+    if (fotoInputRef.current) fotoInputRef.current.value = '';
+  };
+
+  // Altura: numérica, con la única excepción "S/N" (calles sin numerar). Se
+  // permite el tipeo progresivo de S → S/ → S/N; cualquier otra letra no entra.
+  const sanitizarAltura = (v: string) => {
+    const up = v.toUpperCase();
+    if (/^\d*$/.test(up) || 'S/N'.startsWith(up)) {
+      setAltura(up);
+      if (alturaPendiente && up) setAlturaPendiente(false);
+    }
+  };
 
   // El contrato (monto, vigencia, ajustes, comisión) NO se carga acá: el
   // endpoint POST /propiedades sólo da de alta la propiedad + participaciones, y
@@ -334,6 +385,25 @@ function NuevaPropiedadForm() {
       }
       const ambientesNum = Number(ambientes);
       const m2Num = Number(m2);
+      // Foto: se sube AHORA (no al elegirla) → si el usuario abandonaba el form
+      // no quedaban archivos huérfanos en el Volume. Si falla, avisamos y NO
+      // creamos la propiedad a medias (que reintente).
+      let fotoUrl: string | undefined;
+      if (fotoFile) {
+        try {
+          fotoUrl = (await subirArchivo(fotoFile)).url;
+        } catch (err) {
+          setEnviando(false);
+          setConfirmando(false);
+          toast({
+            variant: 'destructive',
+            title: 'No pudimos subir la foto',
+            description:
+              err instanceof Error ? err.message : 'Probá de nuevo o quitá la foto para cargar sin ella.',
+          });
+          return;
+        }
+      }
       try {
         const creada = await crearPropiedad({
           direccion,
@@ -342,6 +412,7 @@ function NuevaPropiedadForm() {
           tipo: tipo as TipoPropiedad,
           ...(ambientes && Number.isFinite(ambientesNum) ? { ambientes: ambientesNum } : {}),
           ...(m2 && Number.isFinite(m2Num) ? { m2: m2Num } : {}),
+          ...(fotoUrl ? { fotoUrl } : {}),
           propietarios: participaciones,
         });
         setEnviando(false);
@@ -471,7 +542,11 @@ function NuevaPropiedadForm() {
                         key={t.value}
                         type="button"
                         aria-pressed={activo}
-                        onClick={() => setTipo(t.value)}
+                        onClick={() => {
+                          setTipo(t.value);
+                          // Elección manual: la nota "sugerido por el mapa" ya no aplica.
+                          setTipoSugeridoPorMapa(false);
+                        }}
                         className={`flex flex-col items-center gap-2 rounded-lg border p-3 text-sm transition-colors ${
                           activo
                             ? 'border-primary bg-primary/5 text-primary'
@@ -484,6 +559,13 @@ function NuevaPropiedadForm() {
                     );
                   })}
                 </div>
+                {tipoSugeridoPorMapa && tipoMeta && (
+                  <p className="flex items-center gap-1.5 text-[11px] text-primary">
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Sugerido por el mapa: el edificio figura como{' '}
+                    {tipoMeta.label.toLowerCase()}. Cambialo si no es así.
+                  </p>
+                )}
               </CardContent>
             </Card>
 
@@ -497,13 +579,27 @@ function NuevaPropiedadForm() {
                   paisCodigo={paisCodigo}
                   onElegir={(d) => {
                     if (d.calle) setCalle(d.calle);
-                    if (d.altura) setAltura(d.altura);
+                    if (d.altura) setAltura(d.altura.toUpperCase());
                     if (d.ciudad) setCiudad(d.ciudad);
                     // provincia es un select cerrado: solo la seteamos si coincide con
                     // una de las opciones (AR); si no, el usuario la elige a mano.
                     const prov = d.provincia ? provincias.find((p) => p === d.provincia) : undefined;
                     if (prov) setProvincia(prov);
-                    if (d.codigoPostal) setCodigoPostal(d.codigoPostal);
+                    if (d.codigoPostal) setCodigoPostal(d.codigoPostal.replace(/[^A-Za-z0-9]/g, '').slice(0, 8));
+                    // OSM conoce el edificio → pre-elegimos el tipo, SOLO si el
+                    // usuario todavía no eligió uno (nunca pisamos su elección).
+                    if (d.tipoSugerido && !tipo) {
+                      setTipo(d.tipoSugerido);
+                      setTipoSugeridoPorMapa(true);
+                    }
+                    // El mapa no trajo el número → resaltamos Altura y llevamos
+                    // el foco ahí para que no quede la dirección a medias.
+                    if (d.alturaFaltante && !d.altura) {
+                      setAlturaPendiente(true);
+                      setTimeout(() => alturaRef.current?.focus(), 50);
+                    } else {
+                      setAlturaPendiente(false);
+                    }
                   }}
                 />
                 <div className="grid gap-4 md:grid-cols-3">
@@ -528,13 +624,24 @@ function NuevaPropiedadForm() {
                     </Label>
                     <Input
                       id="altura"
+                      ref={alturaRef}
                       value={altura}
-                      onChange={(e) => setAltura(e.target.value)}
-                      placeholder="6420"
+                      onChange={(e) => sanitizarAltura(e.target.value)}
+                      placeholder="6420 o S/N"
                       inputMode="numeric"
                       required
                       aria-required="true"
+                      className={
+                        alturaPendiente
+                          ? 'border-amber-400 ring-2 ring-amber-300/60 focus-visible:ring-amber-400'
+                          : undefined
+                      }
                     />
+                    {alturaPendiente && (
+                      <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                        El mapa no trajo el número — completalo (o poné S/N).
+                      </p>
+                    )}
                   </div>
                   {/* Piso/Dto solo para unidades dentro de un edificio (depto/
                       local). Una casa o galpón no lleva → se oculta. */}
@@ -637,9 +744,58 @@ function NuevaPropiedadForm() {
                     />
                   </div>
                 </div>
-                {/* Foto y notas internas: removidas por ahora — el alta no las
-                    persiste (input de foto sin handler y notas no viajaban en el
-                    payload). Volverán cuando el backend las soporte. */}
+                {/* Foto (opcional): preview local; se sube al Volume al guardar. */}
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-1.5">
+                    Foto
+                    <span className="text-[10px] font-normal text-muted-foreground">opcional</span>
+                  </Label>
+                  <input
+                    ref={fotoInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => elegirFoto(e.target.files?.[0] ?? null)}
+                  />
+                  {fotoPreview ? (
+                    <div className="flex items-start gap-3">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={fotoPreview}
+                        alt="Foto de la propiedad"
+                        className="h-24 w-32 rounded-lg border object-cover"
+                      />
+                      <div className="space-y-1.5">
+                        <p className="max-w-[200px] truncate text-xs text-muted-foreground">
+                          {fotoFile?.name}
+                        </p>
+                        <div className="flex gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => fotoInputRef.current?.click()}
+                          >
+                            Cambiar
+                          </Button>
+                          <Button type="button" variant="ghost" size="sm" onClick={quitarFoto}>
+                            <X className="h-3.5 w-3.5" />
+                            Quitar
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => fotoInputRef.current?.click()}
+                      className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed p-4 text-sm text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+                    >
+                      <ImagePlus className="h-4 w-4" />
+                      Subir una foto de la propiedad
+                    </button>
+                  )}
+                </div>
               </CardContent>
             </Card>
 
@@ -833,6 +989,7 @@ function NuevaPropiedadForm() {
                     label="Ciudad"
                     value={ciudad ? `${ciudad}${codigoPostal ? ` (${codigoPostal})` : ''}` : '—'}
                   />
+                  <ResumenRow label="Foto" value={fotoFile ? 'Cargada ✓' : '—'} />
                   <ResumenRow
                     label="Propietarios"
                     value={

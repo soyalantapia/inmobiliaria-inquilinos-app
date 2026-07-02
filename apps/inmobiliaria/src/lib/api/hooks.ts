@@ -1142,6 +1142,8 @@ export interface NuevaPropiedad {
   tipo: TipoPropiedad;
   ambientes?: number;
   m2?: number;
+  /** URL de /uploads (Volume) subida con subirArchivo — foto de la propiedad. */
+  fotoUrl?: string;
   propietarios: Array<{ propietarioId: string; porcentaje: number }>;
 }
 

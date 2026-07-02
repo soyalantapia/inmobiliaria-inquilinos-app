@@ -9,6 +9,7 @@ import { generarLiquidacionesContrato } from '../lib/liquidaciones.js';
 import { conSaldo, montoPagadoPorLiquidacion } from '../lib/saldos.js';
 import { calcularMora, resolverEsquemaMora } from '../lib/punitorios.js';
 import { aplicarEstadoInicial, EstadoInicialInvalido } from '../lib/estado-inicial-contrato.js';
+import { urlEsDelTenant } from './uploads.js';
 import { enviarInvitacionInquilino, enviarInvitacionEquipo } from '../mailer.js';
 
 /**
@@ -371,6 +372,8 @@ export async function coreRoutes(app: FastifyInstance) {
         tipo: z.enum(['DEPARTAMENTO', 'CASA', 'LOCAL', 'GALPON']),
         ambientes: z.number().int().nonnegative().nullable().optional(),
         m2: z.number().nonnegative().nullable().optional(),
+        // Foto de /uploads del tenant. undefined = no tocar; null/'' = sacarla.
+        fotoUrl: z.string().nullable().optional(),
       })
       .safeParse(request.body);
     if (!parsed.success) {
@@ -382,6 +385,9 @@ export async function coreRoutes(app: FastifyInstance) {
     });
     if (!existe) return reply.code(404).send({ message: 'Propiedad inexistente' });
     const b = parsed.data;
+    if (b.fotoUrl && !urlEsDelTenant(b.fotoUrl, u.inmobiliariaId)) {
+      return reply.code(400).send({ message: 'Foto inválida' });
+    }
     const propiedad = await prisma.propiedad.update({
       where: { id },
       data: {
@@ -391,6 +397,7 @@ export async function coreRoutes(app: FastifyInstance) {
         tipo: b.tipo,
         ambientes: b.ambientes ?? null,
         m2: b.m2 ?? null,
+        ...(b.fotoUrl !== undefined ? { fotoUrl: b.fotoUrl || null } : {}),
       },
     });
     return propiedad;
@@ -583,6 +590,9 @@ export async function coreRoutes(app: FastifyInstance) {
         tipo: z.enum(['DEPARTAMENTO', 'CASA', 'LOCAL', 'GALPON']),
         ambientes: z.number().int().positive().optional(),
         m2: z.number().positive().optional(),
+        // Foto REAL subida a /uploads (Railway Volume) — misma mecánica que los
+        // comprobantes y las fotos de reclamos.
+        fotoUrl: z.string().optional(),
         propietarios: z
           .array(z.object({ propietarioId: z.string(), porcentaje: z.number().positive().max(100) }))
           .min(1),
@@ -590,6 +600,11 @@ export async function coreRoutes(app: FastifyInstance) {
       .safeParse(request.body ?? {});
     if (!body.success) return reply.code(400).send({ message: 'Datos de la propiedad incompletos' });
     const d = body.data;
+    // La foto, si viene, tiene que ser un archivo /uploads de ESTA inmobiliaria
+    // (no una url externa ni de otro tenant).
+    if (d.fotoUrl && !urlEsDelTenant(d.fotoUrl, u.inmobiliariaId)) {
+      return reply.code(400).send({ message: 'Foto inválida' });
+    }
     // B1: mismo propietario duplicado en el array → P2002 en createMany → 500
     const idsUnicos = [...new Set(d.propietarios.map((p) => p.propietarioId))];
     if (idsUnicos.length !== d.propietarios.length) {
@@ -611,6 +626,7 @@ export async function coreRoutes(app: FastifyInstance) {
           tipo: d.tipo,
           ambientes: d.ambientes ?? null,
           m2: d.m2 ?? null,
+          fotoUrl: d.fotoUrl ?? null,
           estado: 'DISPONIBLE',
         },
       });
