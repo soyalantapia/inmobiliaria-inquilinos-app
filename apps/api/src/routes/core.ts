@@ -67,6 +67,26 @@ export async function coreRoutes(app: FastifyInstance) {
     const pagadoMap = await montoPagadoPorLiquidacion(
       actualPorContrato.flatMap((l) => (l ? [l.id] : [])),
     );
+    // Deuda TOTAL por contrato = suma de TODAS las liquidaciones impagas y vencidas
+    // (resto de parciales + vencidas + su mora), no solo la actual. El include de
+    // arriba trae 6 liqs para derivar estado; para la deuda de un contrato "en curso"
+    // (cuota N de M) traemos TODAS las no-PAGADO. Misma fuente de verdad (conSaldo +
+    // calcularMora) que el saldo actual y que el inquilino.
+    const deudaLiqs = await prisma.liquidacion.findMany({
+      where: {
+        inmobiliariaId: u.inmobiliariaId,
+        contratoId: { in: contratos.map((c) => c.id) },
+        estado: { not: 'PAGADO' },
+      },
+      select: { id: true, contratoId: true, montoTotal: true, estado: true, fechaVencimiento: true, montoPunitorioManual: true },
+    });
+    const pagadoDeuda = await montoPagadoPorLiquidacion(deudaLiqs.map((l) => l.id));
+    const deudaPorContrato = new Map<string, typeof deudaLiqs>();
+    for (const l of deudaLiqs) {
+      const arr = deudaPorContrato.get(l.contratoId) ?? [];
+      arr.push(l);
+      deudaPorContrato.set(l.contratoId, arr);
+    }
     // estadoPagoActual / proximoVencimiento DERIVADOS de liquidaciones reales:
     // una vencida (incluye parcial/pendiente fuera de término) manda; si no, la más
     // reciente; sin liqs → PENDIENTE. proximoVencimiento incluye PARCIAL (B6).
@@ -89,8 +109,26 @@ export async function coreRoutes(app: FastifyInstance) {
           )
         : 0;
       const saldoActual = actual ? conSaldo(actual, pagadoMap, punitorioActual) : null;
+      // Deuda total: suma del saldo (con mora) de cada liquidación impaga y VENCIDA
+      // del contrato. Una PENDIENTE futura no cuenta; una PARCIAL o vencida sí.
+      let deudaTotal = 0;
+      for (const l of deudaPorContrato.get(c.id) ?? []) {
+        if (!(liqVencida(l, now) || l.estado === 'PARCIAL')) continue;
+        const punit = calcularMora(
+          Number(l.montoTotal),
+          esquema,
+          l.fechaVencimiento,
+          now,
+          l.montoPunitorioManual != null ? Number(l.montoPunitorioManual) : null,
+        );
+        deudaTotal += conSaldo(l, pagadoDeuda, punit).saldo;
+      }
+      deudaTotal = Math.round(deudaTotal * 100) / 100;
       return {
         ...c,
+        // Deuda acumulada del contrato (todas las cuotas impagas + mora). El resumen
+        // de morosidad/cobranza usa ESTO, no el alquiler mensual ni el saldo de un mes.
+        deudaTotal,
         // Esquema ya resuelto (cascada) para que el panel muestre "Mora: X" con
         // su origen ("(heredada)" si viene del default de la inmobiliaria).
         moraEfectiva: { tipo: esquema.tipo, valor: esquema.valor, origen: esquema.origen },

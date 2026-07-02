@@ -254,10 +254,12 @@ export default function PagosPage() {
         contacto?.titular.telefono ?? '—',
         contacto?.garante ? `${contacto.garante.nombre} · ${contacto.garante.telefono}` : 'Sin garante registrado',
         `${dias} día${dias === 1 ? '' : 's'}`,
-        formatMonto(c.monto, c.moneda),
+        // Deuda REAL acumulada (todas las cuotas impagas + mora), no el alquiler
+        // mensual. En demo (sin deudaTotal) cae al monto del mock.
+        formatMonto(c.deudaTotal ?? c.monto, c.moneda),
       ];
     });
-    const totalDeuda = morosos.reduce((acc, c) => acc + c.monto, 0);
+    const totalDeuda = morosos.reduce((acc, c) => acc + (c.deudaTotal ?? c.monto), 0);
     abrirReporteImprimible({
       titulo: 'Morosos · cobranza',
       subtitulo: `${formatPeriodo(periodoActualFormat())} · ${morosos.length} contrato${morosos.length === 1 ? '' : 's'} con atraso`,
@@ -268,7 +270,7 @@ export default function PagosPage() {
         { header: 'Teléfono', width: '14%' },
         { header: 'Garante (nombre · tel)', width: '26%' },
         { header: 'Atraso', width: '8%', align: 'center' },
-        { header: 'Monto', width: '12%', align: 'right' },
+        { header: 'Deuda total', width: '12%', align: 'right' },
       ],
       filas,
       totales: [
@@ -336,11 +338,11 @@ export default function PagosPage() {
             ownerNombre,
             contacto?.titular.telefono ?? '—',
             `${dias} día${dias === 1 ? '' : 's'}`,
-            formatMonto(c.monto, c.moneda),
+            formatMonto(c.deudaTotal ?? c.monto, c.moneda),
           ];
         });
 
-        const subtotal = morososDeSoc.reduce((acc, c) => acc + c.monto, 0);
+        const subtotal = morososDeSoc.reduce((acc, c) => acc + (c.deudaTotal ?? c.monto), 0);
         return {
           titulo: soc.razonSocial,
           subtitulo: `CUIT ${soc.cuit} · ${CONDICION_FISCAL_LABEL[soc.condicionFiscal]} · ${morososDeSoc.length} contrato${morososDeSoc.length === 1 ? '' : 's'} moroso${morososDeSoc.length === 1 ? '' : 's'}`,
@@ -353,7 +355,7 @@ export default function PagosPage() {
       })
       .filter((s): s is NonNullable<typeof s> => s !== null);
 
-    const totalDeuda = morosos.reduce((acc, c) => acc + c.monto, 0);
+    const totalDeuda = morosos.reduce((acc, c) => acc + (c.deudaTotal ?? c.monto), 0);
 
     abrirReporteImprimible({
       titulo: 'Morosos por sociedad',
@@ -365,7 +367,7 @@ export default function PagosPage() {
         { header: 'Propietario', width: '18%' },
         { header: 'Teléfono', width: '14%' },
         { header: 'Atraso', width: '10%', align: 'center' },
-        { header: 'Monto', width: '14%', align: 'right' },
+        { header: 'Deuda total', width: '14%', align: 'right' },
       ],
       secciones,
       totales: [

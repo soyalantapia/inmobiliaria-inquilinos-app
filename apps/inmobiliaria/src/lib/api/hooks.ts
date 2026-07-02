@@ -60,6 +60,8 @@ interface ContratoApi {
   /** Cobrado/saldo de la liquidación actual (para el KPI "Pendiente" en PARCIAL). */
   montoPagado?: string | number | null;
   saldo?: string | number | null;
+  /** Deuda TOTAL acumulada del contrato (todas las cuotas impagas + mora). */
+  deudaTotal?: string | number | null;
   modoCobranza?: string | null;
   /** Interés por mora: override propio + esquema resuelto por la cascada. */
   moraTipo?: TipoMora | null;
@@ -89,6 +91,7 @@ function mapContrato(c: ContratoApi): ContratoListado {
     estadoPagoActual: c.estadoPagoActual ?? 'PENDIENTE',
     ...(c.montoPagado != null ? { montoPagado: Number(c.montoPagado) } : {}),
     ...(c.saldo != null ? { saldo: Number(c.saldo) } : {}),
+    ...(c.deudaTotal != null ? { deudaTotal: Number(c.deudaTotal) } : {}),
     cbuAlias: c.cbuAlias,
     titularCuenta: c.titularCuenta,
     ...(c.tipoContrato ? { tipoContrato: c.tipoContrato } : {}),

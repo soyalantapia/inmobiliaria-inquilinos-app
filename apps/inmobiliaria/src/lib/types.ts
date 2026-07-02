@@ -199,6 +199,12 @@ export interface ContratoListado {
   montoPagado?: number;
   saldo?: number | null;
   /**
+   * Deuda TOTAL acumulada del contrato: suma del saldo (con mora) de TODAS las
+   * liquidaciones impagas y vencidas, no solo la del mes actual. Del API en prod;
+   * en demo/mock sin setear. Es lo que usa el resumen de morosidad/cobranza.
+   */
+  deudaTotal?: number | null;
+  /**
    * CBU/alias específico de este contrato. Si está presente, sobreescribe
    * al CBU del propietario para esta unidad. Útil cuando el propietario
    * tiene varias propiedades y quiere recibir cada alquiler en una cuenta
