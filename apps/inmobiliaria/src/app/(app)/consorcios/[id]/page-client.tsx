@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import {
@@ -13,6 +14,8 @@ import {
   HardHat,
   MapPin,
   MessageCircle,
+  Pencil,
+  Plus,
   Receipt,
   TrendingDown,
   TrendingUp,
@@ -41,15 +44,30 @@ import {
   ESTADO_UF_LABEL,
   balanceConsorcio,
   morosidadConsorcio,
+  type UnidadFuncional,
 } from '@/lib/consorcios-storage';
 import { apiEnabled } from '@/lib/api/client';
-import { useConsorcio } from '@/lib/api/use-consorcios';
+import { useConsorcio, useConsorcioMutaciones } from '@/lib/api/use-consorcios';
+import {
+  BotonEliminar,
+  NuevaAsambleaDialog,
+  NuevoMovimientoDialog,
+  UnidadDialog,
+} from '@/components/consorcio-crud';
 import { sociedadById } from '@/lib/sociedades-storage';
 import { formatFechaCorta, formatMonto } from '@/lib/format';
 
 export default function DetalleConsorcioPage() {
   const params = useParams<{ id: string }>();
   const { consorcio, cargando } = useConsorcio(params?.id);
+  // Mutaciones + estado de los dialogs ANTES de los early-returns (reglas de hooks).
+  const { eliminarUnidad, eliminarMovimiento, eliminarAsamblea } = useConsorcioMutaciones(params?.id);
+  const [ufDialog, setUfDialog] = useState<{ open: boolean; unidad: UnidadFuncional | null }>({
+    open: false,
+    unidad: null,
+  });
+  const [movOpen, setMovOpen] = useState(false);
+  const [asambleaOpen, setAsambleaOpen] = useState(false);
 
   if (cargando || consorcio === undefined) return <DetalleSkeleton />;
 
@@ -82,6 +100,12 @@ export default function DetalleConsorcioPage() {
   const expensaPorUf = (uf: { coeficiente: number; cargoFijo?: number }) =>
     uf.cargoFijo ??
     Math.round((consorcio.expensasPeriodoActual * uf.coeficiente) / 100);
+
+  // Para el badge "Σ coeficientes" y el disponible del dialog de UF (espejo del
+  // backend: al editar, el coeficiente propio no cuenta contra el disponible).
+  const sumaCoeficientes = consorcio.unidades.reduce((s, u) => s + u.coeficiente, 0);
+  const coefDisponible =
+    100 - sumaCoeficientes + (ufDialog.unidad ? ufDialog.unidad.coeficiente : 0);
 
   return (
     <>
@@ -191,6 +215,20 @@ export default function DetalleConsorcioPage() {
 
           {/* UNIDADES */}
           <TabsContent value="unidades" className="space-y-4">
+            {apiEnabled && (
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Badge
+                  variant={sumaCoeficientes >= 99.99 ? 'success' : 'outline'}
+                  className="text-[11px] tabular-nums"
+                >
+                  Coeficientes: {Math.round(sumaCoeficientes * 100) / 100}% de 100%
+                </Badge>
+                <Button size="sm" onClick={() => setUfDialog({ open: true, unidad: null })}>
+                  <Plus className="h-3.5 w-3.5" />
+                  Agregar unidad
+                </Button>
+              </div>
+            )}
             {morosidad.totalDeuda > 0 && (
               <Card className="border-amber-200 bg-amber-50/60 dark:border-amber-900/40 dark:bg-amber-900/10">
                 <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
@@ -241,6 +279,7 @@ export default function DetalleConsorcioPage() {
                     <TableHead>Servicios</TableHead>
                     <TableHead className="text-right">Saldo deudor</TableHead>
                     <TableHead>Estado</TableHead>
+                    {apiEnabled && <TableHead className="w-24 text-right">Acciones</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -307,6 +346,26 @@ export default function DetalleConsorcioPage() {
                           {ESTADO_UF_LABEL[u.estado]}
                         </Badge>
                       </TableCell>
+                      {apiEnabled && (
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-0.5">
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => setUfDialog({ open: true, unidad: u })}
+                              aria-label={`Editar ${u.identificacion}`}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <BotonEliminar
+                              titulo={`¿Eliminar la unidad ${u.identificacion}?`}
+                              descripcion="Se saca del edificio. Si tiene saldo deudor no se puede eliminar."
+                              onEliminar={() => eliminarUnidad(u.id)}
+                              ariaLabel={`Eliminar ${u.identificacion}`}
+                            />
+                          </div>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -316,6 +375,14 @@ export default function DetalleConsorcioPage() {
 
           {/* MOVIMIENTOS */}
           <TabsContent value="movimientos" className="space-y-4">
+            {apiEnabled && (
+              <div className="flex justify-end">
+                <Button size="sm" onClick={() => setMovOpen(true)}>
+                  <Plus className="h-3.5 w-3.5" />
+                  Cargar movimiento
+                </Button>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
               <Card className="border-emerald-200 bg-emerald-50/40 p-4 dark:border-emerald-900/40 dark:bg-emerald-900/10">
                 <div className="flex items-center gap-2">
@@ -364,6 +431,7 @@ export default function DetalleConsorcioPage() {
                     <TableHead>Concepto</TableHead>
                     <TableHead>Categoría</TableHead>
                     <TableHead className="text-right">Monto</TableHead>
+                    {apiEnabled && <TableHead className="w-14 text-right"></TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -398,6 +466,16 @@ export default function DetalleConsorcioPage() {
                           >
                             {ingreso ? '+' : '−'} {formatMonto(Math.abs(m.monto))}
                           </TableCell>
+                          {apiEnabled && (
+                            <TableCell className="text-right">
+                              <BotonEliminar
+                                titulo="¿Eliminar el movimiento?"
+                                descripcion={`${m.concepto} · ${formatMonto(Math.abs(m.monto))}`}
+                                onEliminar={() => eliminarMovimiento(m.id)}
+                                ariaLabel={`Eliminar ${m.concepto}`}
+                              />
+                            </TableCell>
+                          )}
                         </TableRow>
                       );
                     })}
@@ -418,6 +496,14 @@ export default function DetalleConsorcioPage() {
 
           {/* ASAMBLEAS */}
           <TabsContent value="asambleas" className="space-y-3">
+            {apiEnabled && (
+              <div className="flex justify-end">
+                <Button size="sm" onClick={() => setAsambleaOpen(true)}>
+                  <Plus className="h-3.5 w-3.5" />
+                  Registrar asamblea
+                </Button>
+              </div>
+            )}
             {consorcio.asambleas.length === 0 ? (
               <Card className="p-8 text-center">
                 <Vote className="mx-auto h-8 w-8 text-muted-foreground" />
@@ -448,6 +534,14 @@ export default function DetalleConsorcioPage() {
                           {a.asistentes === 1 ? '' : 's'}
                         </p>
                       </div>
+                      {apiEnabled && (
+                        <BotonEliminar
+                          titulo="¿Eliminar el acta?"
+                          descripcion={a.asunto}
+                          onEliminar={() => eliminarAsamblea(a.id)}
+                          ariaLabel={`Eliminar acta ${a.asunto}`}
+                        />
+                      )}
                     </div>
                     <div className="rounded-md border bg-muted/30 p-3 text-xs">
                       <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
@@ -461,6 +555,29 @@ export default function DetalleConsorcioPage() {
             )}
           </TabsContent>
         </Tabs>
+
+        {/* Dialogs CRUD (prod-only) */}
+        {apiEnabled && (
+          <>
+            <UnidadDialog
+              consorcioId={consorcio.id}
+              unidad={ufDialog.unidad}
+              coeficienteDisponible={coefDisponible}
+              open={ufDialog.open}
+              onOpenChange={(v) => setUfDialog((s) => ({ ...s, open: v }))}
+            />
+            <NuevoMovimientoDialog
+              consorcioId={consorcio.id}
+              open={movOpen}
+              onOpenChange={setMovOpen}
+            />
+            <NuevaAsambleaDialog
+              consorcioId={consorcio.id}
+              open={asambleaOpen}
+              onOpenChange={setAsambleaOpen}
+            />
+          </>
+        )}
       </main>
     </>
   );

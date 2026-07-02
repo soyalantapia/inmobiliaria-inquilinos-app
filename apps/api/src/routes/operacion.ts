@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
+import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../db.js';
 import { requireInquilino, requireUsuario } from '../auth/guards.js';
@@ -719,6 +720,401 @@ export async function operacionRoutes(app: FastifyInstance) {
     });
     if (!consorcio) return reply.code(404).send({ message: 'Consorcio inexistente' });
     return consorcio;
+  });
+
+  // ===== Consorcios: CRUD (Fase 1 — el tablero se vuelve operable) =====
+  // Antes el módulo era de solo-lectura ("Crear consorcio" deshabilitado en prod).
+  // Acá el administrador da de alta el edificio, sus UFs (con validación de
+  // coeficientes), los gastos del mes y las asambleas. La emisión de expensas
+  // persistida por período es Fase 2 (por eso todavía no exigimos Σ=100 al cargar:
+  // se carga incremental; el bloqueo duro Σ=100 va en "emitir expensas").
+
+  const TOLERANCIA_COEF = 0.01; // Float: 33.33*3 = 99.99 debe poder cerrar en 100
+
+  const consorcioBodySchema = z.object({
+    nombre: z.string().trim().min(2).max(200),
+    direccion: z.string().trim().min(3).max(300),
+    periodoActual: z
+      .string()
+      .regex(/^\d{4}-\d{2}$/, 'periodoActual debe ser YYYY-MM')
+      .optional(),
+    expensasPeriodoActual: z.number().nonnegative().optional(),
+    encargado: z
+      .object({ nombre: z.string().trim().min(2).max(120), sueldo: z.number().nonnegative() })
+      .nullable()
+      .optional(),
+    // min(1): un '' es falsy y esquivaría el check de tenant de sociedadDelTenant
+    // para morir después en la FK con un mensaje engañoso.
+    sociedadId: z.string().min(1).nullable().optional(),
+    desde: z.coerce.date().optional(),
+  });
+
+  // La sociedad (si viene) tiene que ser del tenant — nunca linkear una ajena.
+  async function sociedadDelTenant(sociedadId: string, inmobiliariaId: string): Promise<boolean> {
+    const s = await prisma.sociedad.findFirst({ where: { id: sociedadId, inmobiliariaId }, select: { id: true } });
+    return !!s;
+  }
+
+  app.post('/consorcios', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'propiedades.crear');
+    if (!u) return;
+    const body = consorcioBodySchema.safeParse(request.body ?? {});
+    if (!body.success) {
+      return reply.code(400).send({ message: 'Datos del consorcio incompletos (nombre y dirección son obligatorios)' });
+    }
+    const b = body.data;
+    if (b.sociedadId && !(await sociedadDelTenant(b.sociedadId, u.inmobiliariaId))) {
+      return reply.code(404).send({ message: 'Sociedad inexistente' });
+    }
+    const consorcio = await prisma.consorcio.create({
+      data: {
+        inmobiliariaId: u.inmobiliariaId,
+        nombre: b.nombre,
+        direccion: b.direccion,
+        cantUf: 0, // derivado: se actualiza al cargar/eliminar UFs
+        periodoActual: b.periodoActual ?? new Date().toISOString().slice(0, 7),
+        expensasPeriodoActual: b.expensasPeriodoActual ?? 0,
+        encargado: b.encargado ?? undefined,
+        sociedadId: b.sociedadId ?? null,
+        desde: b.desde ?? new Date(),
+      },
+      include: { unidades: true },
+    });
+    return reply.code(201).send(consorcio);
+  });
+
+  app.put('/consorcios/:id', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'propiedades.crear');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const body = consorcioBodySchema.partial().safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ message: 'Datos del consorcio inválidos' });
+    const existe = await prisma.consorcio.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      select: { id: true },
+    });
+    if (!existe) return reply.code(404).send({ message: 'Consorcio inexistente' });
+    const b = body.data;
+    if (b.sociedadId && !(await sociedadDelTenant(b.sociedadId, u.inmobiliariaId))) {
+      return reply.code(404).send({ message: 'Sociedad inexistente' });
+    }
+    return prisma.consorcio.update({
+      // inmobiliariaId también en el WHERE (defensa en profundidad; el findFirst
+      // de arriba ya validó, pero así el write nunca puede pegar en otro tenant).
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      data: {
+        ...(b.nombre !== undefined ? { nombre: b.nombre } : {}),
+        ...(b.direccion !== undefined ? { direccion: b.direccion } : {}),
+        ...(b.periodoActual !== undefined ? { periodoActual: b.periodoActual } : {}),
+        ...(b.expensasPeriodoActual !== undefined ? { expensasPeriodoActual: b.expensasPeriodoActual } : {}),
+        // encargado: null explícito = sacar encargado; undefined = no tocar
+        ...(b.encargado !== undefined ? { encargado: b.encargado ?? Prisma.DbNull } : {}),
+        ...(b.sociedadId !== undefined ? { sociedadId: b.sociedadId } : {}),
+        ...(b.desde !== undefined ? { desde: b.desde } : {}),
+      },
+      include: { unidades: { orderBy: { id: 'asc' } } },
+    });
+  });
+
+  // ===== Consorcios: unidades funcionales =====
+  const ufBodySchema = z.object({
+    identificacion: z.string().trim().min(1).max(60),
+    titular: z.string().trim().min(2).max(200),
+    coeficiente: z.number().positive().max(100),
+    telefono: z.string().trim().max(40).optional(),
+    cargoFijo: z.number().nonnegative().nullable().optional(),
+    estado: z.enum(['AL_DIA', 'PENDIENTE', 'VENCIDO', 'CON_PLAN_PAGO']).optional(),
+    // Manual hasta Fase 2 (expensas emitidas lo derivan). Permite cargar la deuda
+    // histórica al migrar un edificio existente.
+    saldoDeudor: z.number().nonnegative().optional(),
+  });
+
+  app.post('/consorcios/:id/unidades', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'propiedades.crear');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const body = ufBodySchema.safeParse(request.body ?? {});
+    if (!body.success) {
+      return reply.code(400).send({ message: 'Datos de la unidad incompletos (identificación, titular y coeficiente > 0)' });
+    }
+    const b = body.data;
+    // saldoDeudor es plata (deuda de un tercero): CARGA carga estructura, no plata
+    // (misma línea que gasto.caja.cargar, que excluye a CARGA).
+    if (b.saldoDeudor !== undefined && u.rol === 'CARGA') {
+      return reply.code(403).send({ message: 'Tu rol no permite cargar saldos deudores' });
+    }
+    try {
+      // Validación + create + cantUf en UNA tx Serializable: dos altas concurrentes
+      // ya no pueden leer el mismo snapshot y superar Σ=100 (P2034 → 409 global).
+      // El @@unique(consorcioId, identificacion) es el backstop del duplicado.
+      const unidad = await prisma.$transaction(
+        async (tx) => {
+          const consorcio = await tx.consorcio.findFirst({
+            where: { id, inmobiliariaId: u.inmobiliariaId },
+            include: { unidades: { select: { identificacion: true, coeficiente: true } } },
+          });
+          if (!consorcio) throw new Error('CONSORCIO_404');
+          if (consorcio.unidades.some((x) => x.identificacion.toLowerCase() === b.identificacion.toLowerCase())) {
+            throw new Error('UF_DUP');
+          }
+          const suma = consorcio.unidades.reduce((s, x) => s + x.coeficiente, 0);
+          if (suma + b.coeficiente > 100 + TOLERANCIA_COEF) {
+            const disponible = Math.max(0, Math.round((100 - suma) * 100) / 100);
+            throw new Error(`COEF_OVER:${disponible}`);
+          }
+          const creada = await tx.unidadFuncional.create({
+            data: {
+              inmobiliariaId: u.inmobiliariaId,
+              consorcioId: id,
+              identificacion: b.identificacion,
+              titular: b.titular,
+              coeficiente: b.coeficiente,
+              telefono: b.telefono ?? '',
+              cargoFijo: b.cargoFijo ?? null,
+              ...(b.estado ? { estado: b.estado } : {}),
+              ...(b.saldoDeudor !== undefined ? { saldoDeudor: b.saldoDeudor } : {}),
+            },
+          });
+          await tx.consorcio.update({
+            where: { id, inmobiliariaId: u.inmobiliariaId },
+            data: { cantUf: { increment: 1 } },
+          });
+          return creada;
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 15_000 },
+      );
+      return reply.code(201).send(unidad);
+    } catch (e) {
+      if (e instanceof Error) {
+        if (e.message === 'CONSORCIO_404') return reply.code(404).send({ message: 'Consorcio inexistente' });
+        if (e.message === 'UF_DUP') {
+          return reply.code(409).send({ message: `Ya existe la unidad "${b.identificacion}" en este consorcio` });
+        }
+        if (e.message.startsWith('COEF_OVER:')) {
+          return reply.code(400).send({
+            message: `El coeficiente supera el 100% del edificio (disponible: ${e.message.slice(10)}%)`,
+          });
+        }
+      }
+      // P2002 (unique del backstop, carrera exacta) → 409 amigable.
+      if (e && typeof e === 'object' && (e as { code?: string }).code === 'P2002') {
+        return reply.code(409).send({ message: `Ya existe la unidad "${b.identificacion}" en este consorcio` });
+      }
+      throw e; // P2034 (serialization) lo mapea el handler global a 409 reintentable.
+    }
+  });
+
+  app.put('/consorcios/:id/unidades/:ufId', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'propiedades.crear');
+    if (!u) return;
+    const { id, ufId } = request.params as { id: string; ufId: string };
+    const body = ufBodySchema.partial().safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ message: 'Datos de la unidad inválidos' });
+    const b = body.data;
+    if (b.saldoDeudor !== undefined && u.rol === 'CARGA') {
+      return reply.code(403).send({ message: 'Tu rol no permite cargar saldos deudores' });
+    }
+    try {
+      // Misma tx Serializable que el alta: la revalidación de Σ y duplicado ve el
+      // estado consistente aunque haya otra escritura concurrente.
+      const actualizada = await prisma.$transaction(
+        async (tx) => {
+          const consorcio = await tx.consorcio.findFirst({
+            where: { id, inmobiliariaId: u.inmobiliariaId },
+            include: { unidades: { select: { id: true, identificacion: true, coeficiente: true } } },
+          });
+          if (!consorcio) throw new Error('CONSORCIO_404');
+          const uf = consorcio.unidades.find((x) => x.id === ufId);
+          if (!uf) throw new Error('UF_404');
+          if (
+            b.identificacion &&
+            consorcio.unidades.some(
+              (x) => x.id !== ufId && x.identificacion.toLowerCase() === b.identificacion!.toLowerCase(),
+            )
+          ) {
+            throw new Error('UF_DUP');
+          }
+          if (b.coeficiente !== undefined) {
+            const sumaOtras = consorcio.unidades
+              .filter((x) => x.id !== ufId)
+              .reduce((s, x) => s + x.coeficiente, 0);
+            if (sumaOtras + b.coeficiente > 100 + TOLERANCIA_COEF) {
+              const disponible = Math.max(0, Math.round((100 - sumaOtras) * 100) / 100);
+              throw new Error(`COEF_OVER:${disponible}`);
+            }
+          }
+          return tx.unidadFuncional.update({
+            where: { id: ufId, inmobiliariaId: u.inmobiliariaId },
+            data: {
+              ...(b.identificacion !== undefined ? { identificacion: b.identificacion } : {}),
+              ...(b.titular !== undefined ? { titular: b.titular } : {}),
+              ...(b.coeficiente !== undefined ? { coeficiente: b.coeficiente } : {}),
+              ...(b.telefono !== undefined ? { telefono: b.telefono } : {}),
+              ...(b.cargoFijo !== undefined ? { cargoFijo: b.cargoFijo } : {}),
+              ...(b.estado !== undefined ? { estado: b.estado } : {}),
+              ...(b.saldoDeudor !== undefined ? { saldoDeudor: b.saldoDeudor } : {}),
+            },
+          });
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 15_000 },
+      );
+      return actualizada;
+    } catch (e) {
+      if (e instanceof Error) {
+        if (e.message === 'CONSORCIO_404') return reply.code(404).send({ message: 'Consorcio inexistente' });
+        if (e.message === 'UF_404') return reply.code(404).send({ message: 'Unidad inexistente' });
+        if (e.message === 'UF_DUP') {
+          return reply.code(409).send({ message: `Ya existe la unidad "${b.identificacion}" en este consorcio` });
+        }
+        if (e.message.startsWith('COEF_OVER:')) {
+          return reply.code(400).send({
+            message: `El coeficiente supera el 100% del edificio (disponible: ${e.message.slice(10)}%)`,
+          });
+        }
+      }
+      if (e && typeof e === 'object' && (e as { code?: string }).code === 'P2002') {
+        return reply.code(409).send({ message: `Ya existe la unidad "${b.identificacion}" en este consorcio` });
+      }
+      throw e;
+    }
+  });
+
+  app.delete('/consorcios/:id/unidades/:ufId', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'propiedades.crear');
+    if (!u) return;
+    // Destructivo → CARGA afuera (la capacidad *.crear sola lo dejaría pasar).
+    if (u.rol === 'CARGA') return reply.code(403).send({ message: 'Tu rol no permite eliminar unidades' });
+    const { id, ufId } = request.params as { id: string; ufId: string };
+    const uf = await prisma.unidadFuncional.findFirst({
+      where: { id: ufId, consorcioId: id, inmobiliariaId: u.inmobiliariaId },
+    });
+    if (!uf) return reply.code(404).send({ message: 'Unidad inexistente' });
+    if (Number(uf.saldoDeudor) > 0) {
+      return reply.code(409).send({ message: 'La unidad tiene saldo deudor — saldalo o ajustalo antes de eliminarla' });
+    }
+    await prisma.$transaction([
+      prisma.unidadFuncional.delete({ where: { id: ufId, inmobiliariaId: u.inmobiliariaId } }),
+      prisma.consorcio.update({
+        where: { id, inmobiliariaId: u.inmobiliariaId },
+        data: { cantUf: { decrement: 1 } },
+      }),
+    ]);
+    return { ok: true };
+  });
+
+  // ===== Consorcios: movimientos (gastos/cobranzas del edificio) =====
+  // Es PLATA (no estructura): gateado con gasto.caja.cargar (ADMIN/OPERADOR),
+  // igual que la caja — CARGA carga cartera, no movimientos financieros.
+  app.post('/consorcios/:id/movimientos', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'gasto.caja.cargar');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const body = z
+      .object({
+        fecha: z.coerce.date(),
+        concepto: z.string().trim().min(2).max(300),
+        // El SIGNO codifica la dirección (convención del módulo): positivo =
+        // ingreso (cobranza), negativo = egreso (sueldo/mantenimiento/etc.).
+        monto: z.number().refine((n) => n !== 0, 'El monto no puede ser 0'),
+        categoria: z.enum(['COBRANZA', 'SUELDO', 'MANTENIMIENTO', 'SERVICIO', 'IMPUESTO', 'OTRO']),
+      })
+      // Signo acoplado a la categoría: COBRANZA = ingreso (+), el resto = egreso (−).
+      // Sin esto, un cliente API podía inflar ingresos con un "sueldo" positivo.
+      .refine((b) => (b.categoria === 'COBRANZA') === (b.monto > 0), {
+        message: 'El signo del monto no coincide con la categoría (COBRANZA es ingreso; el resto, egreso)',
+      })
+      .safeParse(request.body ?? {});
+    if (!body.success) {
+      const detalle = body.error.issues[0]?.message;
+      return reply.code(400).send({
+        message: detalle && detalle.includes('signo')
+          ? detalle
+          : 'Datos del movimiento incompletos (fecha, concepto, monto distinto de 0 y categoría)',
+      });
+    }
+    const consorcio = await prisma.consorcio.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      select: { id: true },
+    });
+    if (!consorcio) return reply.code(404).send({ message: 'Consorcio inexistente' });
+    const b = body.data;
+    const mov = await prisma.movimientoConsorcio.create({
+      data: {
+        inmobiliariaId: u.inmobiliariaId,
+        consorcioId: id,
+        fecha: b.fecha,
+        concepto: b.concepto,
+        monto: b.monto,
+        categoria: b.categoria,
+      },
+    });
+    return reply.code(201).send(mov);
+  });
+
+  // Borrar un movimiento financiero = solo ADMIN (precedente: caja.eliminar).
+  app.delete('/consorcios/:id/movimientos/:movId', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'gasto.caja.cargar');
+    if (!u) return;
+    if (u.rol !== 'ADMIN') {
+      return reply.code(403).send({ message: 'Solo un Admin puede eliminar movimientos del consorcio' });
+    }
+    const { id, movId } = request.params as { id: string; movId: string };
+    const mov = await prisma.movimientoConsorcio.findFirst({
+      where: { id: movId, consorcioId: id, inmobiliariaId: u.inmobiliariaId },
+    });
+    if (!mov) return reply.code(404).send({ message: 'Movimiento inexistente' });
+    await prisma.movimientoConsorcio.delete({ where: { id: movId, inmobiliariaId: u.inmobiliariaId } });
+    return { ok: true };
+  });
+
+  // ===== Consorcios: asambleas =====
+  app.post('/consorcios/:id/asambleas', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'propiedades.crear');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const body = z
+      .object({
+        fecha: z.coerce.date(),
+        tipo: z.enum(['ORDINARIA', 'EXTRAORDINARIA']),
+        asunto: z.string().trim().min(3).max(300),
+        asistentes: z.number().int().nonnegative(),
+        acuerdoPrincipal: z.string().trim().min(3).max(500),
+      })
+      .safeParse(request.body ?? {});
+    if (!body.success) {
+      return reply.code(400).send({ message: 'Datos de la asamblea incompletos (fecha, tipo, asunto, asistentes y acuerdo)' });
+    }
+    const consorcio = await prisma.consorcio.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      select: { id: true },
+    });
+    if (!consorcio) return reply.code(404).send({ message: 'Consorcio inexistente' });
+    const b = body.data;
+    const asamblea = await prisma.asambleaConsorcio.create({
+      data: {
+        inmobiliariaId: u.inmobiliariaId,
+        consorcioId: id,
+        fecha: b.fecha,
+        tipo: b.tipo,
+        asunto: b.asunto,
+        asistentes: b.asistentes,
+        acuerdoPrincipal: b.acuerdoPrincipal,
+      },
+    });
+    return reply.code(201).send(asamblea);
+  });
+
+  app.delete('/consorcios/:id/asambleas/:asambleaId', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'propiedades.crear');
+    if (!u) return;
+    if (u.rol === 'CARGA') return reply.code(403).send({ message: 'Tu rol no permite eliminar asambleas' });
+    const { id, asambleaId } = request.params as { id: string; asambleaId: string };
+    const asamblea = await prisma.asambleaConsorcio.findFirst({
+      where: { id: asambleaId, consorcioId: id, inmobiliariaId: u.inmobiliariaId },
+    });
+    if (!asamblea) return reply.code(404).send({ message: 'Asamblea inexistente' });
+    await prisma.asambleaConsorcio.delete({ where: { id: asambleaId, inmobiliariaId: u.inmobiliariaId } });
+    return { ok: true };
   });
 
   // ===== Consorcio: servicios comunes (luz de pasillo, ascensor, ABL…) =====

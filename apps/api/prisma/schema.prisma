@@ -1920,6 +1920,9 @@ model UnidadFuncional {
   cargoFijo      Decimal?     @db.Decimal(14, 2)
   serviciosUf    Json? // { luz?/gas?/agua?: { nis, medidor? } }
 
+  // Backstop de la validación case-insensitive de la app: corta la carrera de
+  // doble alta con la misma identificación (P2002 → 409 amigable en el endpoint).
+  @@unique([consorcioId, identificacion])
   @@index([inmobiliariaId])
   @@index([consorcioId])
   @@map("unidades_funcionales")
