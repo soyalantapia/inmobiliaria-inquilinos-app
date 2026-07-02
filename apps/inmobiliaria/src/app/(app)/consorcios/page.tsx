@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import {
   AlertTriangle,
@@ -21,6 +22,7 @@ import {
 } from '@/lib/consorcios-storage';
 import { apiEnabled } from '@/lib/api/client';
 import { useConsorcios } from '@/lib/api/use-consorcios';
+import { SumarConsorcioDialog } from '@/components/consorcio-crud';
 import { sociedadById } from '@/lib/sociedades-storage';
 import { formatMonto } from '@/lib/format';
 
@@ -35,6 +37,7 @@ import { formatMonto } from '@/lib/format';
  */
 export default function ConsorciosPage() {
   const { consorcios, cargando } = useConsorcios();
+  const [sumarOpen, setSumarOpen] = useState(false);
 
   // KPIs cabecera (con guardas por si todavía no llegó la data del API)
   const lista = consorcios ?? [];
@@ -64,29 +67,22 @@ export default function ConsorciosPage() {
               comunes y asambleas.
             </p>
           </div>
-          {/* Alta de consorcio: sin endpoint en el API. En demo (!apiEnabled)
-              queda como stub navegable; en prod lo deshabilitamos con tooltip
-              "próximamente" para no escribir mock sobre datos reales. */}
-          <Button
-            asChild={!apiEnabled}
-            size="sm"
-            variant="outline"
-            disabled={apiEnabled}
-            title={apiEnabled ? 'Próximamente' : undefined}
-            className="opacity-60 hover:opacity-100"
-          >
-            {apiEnabled ? (
-              <>
-                <Plus className="h-4 w-4" />
-                Sumar consorcio
-              </>
-            ) : (
+          {/* Alta de consorcio: en prod abre el dialog contra el API real
+              (Fase 1 CRUD). En demo (!apiEnabled) sigue el stub navegable. */}
+          {apiEnabled ? (
+            <Button size="sm" onClick={() => setSumarOpen(true)}>
+              <Plus className="h-4 w-4" />
+              Sumar consorcio
+            </Button>
+          ) : (
+            <Button asChild size="sm" variant="outline" className="opacity-60 hover:opacity-100">
               <Link href="/consorcios#proximamente">
                 <Plus className="h-4 w-4" />
                 Sumar consorcio
               </Link>
-            )}
-          </Button>
+            </Button>
+          )}
+          <SumarConsorcioDialog open={sumarOpen} onOpenChange={setSumarOpen} />
         </div>
 
         {/* KPIs */}

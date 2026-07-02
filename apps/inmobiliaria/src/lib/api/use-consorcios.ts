@@ -12,7 +12,7 @@
  * Montos del API llegan como string → Number(). Fechas ISO → .slice(0,10)
  * donde la UI espera YYYY-MM-DD.
  */
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiEnabled, apiFetch } from './client';
 import { ensureApiSession } from './session';
 import {
@@ -166,6 +166,147 @@ export function useConsorcios(): {
   if (!apiEnabled) return { consorcios: listarConsorcios(), cargando: false, deApi: false };
   if (q.isError) return { consorcios: [], cargando: false, deApi: true };
   return { consorcios: q.data ?? null, cargando: q.isPending, deApi: true };
+}
+
+/* ============================================================
+ * Mutaciones (Fase 1 CRUD — prod-only: la demo nunca tuvo alta
+ * de consorcios, era un stub, así que no hay fallback local)
+ * ============================================================ */
+
+export interface ConsorcioInput {
+  nombre: string;
+  direccion: string;
+  periodoActual?: string;
+  expensasPeriodoActual?: number;
+  encargado?: { nombre: string; sueldo: number } | null;
+}
+
+export interface UnidadInput {
+  identificacion: string;
+  titular: string;
+  coeficiente: number;
+  telefono?: string;
+  cargoFijo?: number | null;
+  saldoDeudor?: number;
+  estado?: EstadoUF;
+}
+
+export interface MovimientoInput {
+  /** YYYY-MM-DD. El SIGNO del monto codifica ingreso (+) / egreso (−). */
+  fecha: string;
+  concepto: string;
+  monto: number;
+  categoria: MovimientoConsorcio['categoria'];
+}
+
+export interface AsambleaInput {
+  fecha: string;
+  tipo: AsambleaConsorcio['tipo'];
+  asunto: string;
+  asistentes: number;
+  acuerdoPrincipal: string;
+}
+
+export function useConsorcioMutaciones(consorcioId?: string): {
+  deApi: boolean;
+  crearConsorcio: (input: ConsorcioInput) => Promise<Consorcio>;
+  editarConsorcio: (input: Partial<ConsorcioInput>) => Promise<void>;
+  crearUnidad: (input: UnidadInput) => Promise<void>;
+  editarUnidad: (ufId: string, input: Partial<UnidadInput>) => Promise<void>;
+  eliminarUnidad: (ufId: string) => Promise<void>;
+  crearMovimiento: (input: MovimientoInput) => Promise<void>;
+  eliminarMovimiento: (movId: string) => Promise<void>;
+  crearAsamblea: (input: AsambleaInput) => Promise<void>;
+  eliminarAsamblea: (asambleaId: string) => Promise<void>;
+} {
+  const qc = useQueryClient();
+  const invalidar = async () => {
+    await qc.invalidateQueries({ queryKey: ['consorcios'] });
+    if (consorcioId) await qc.invalidateQueries({ queryKey: ['consorcio', consorcioId] });
+  };
+  const requiereId = (): string => {
+    if (!consorcioId) throw new Error('Falta el consorcio');
+    return consorcioId;
+  };
+  const soloProd = async (): Promise<never> => {
+    throw new Error('Disponible solo con servidor');
+  };
+
+  if (!apiEnabled) {
+    return {
+      deApi: false,
+      crearConsorcio: soloProd,
+      editarConsorcio: soloProd,
+      crearUnidad: soloProd,
+      editarUnidad: soloProd,
+      eliminarUnidad: soloProd,
+      crearMovimiento: soloProd,
+      eliminarMovimiento: soloProd,
+      crearAsamblea: soloProd,
+      eliminarAsamblea: soloProd,
+    };
+  }
+
+  return {
+    deApi: true,
+    crearConsorcio: async (input) => {
+      await ensureApiSession();
+      const c = await apiFetch<ConsorcioApi>('/consorcios', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
+      await invalidar();
+      return mapConsorcio(c);
+    },
+    editarConsorcio: async (input) => {
+      const id = requiereId();
+      await ensureApiSession();
+      await apiFetch(`/consorcios/${id}`, { method: 'PUT', body: JSON.stringify(input) });
+      await invalidar();
+    },
+    crearUnidad: async (input) => {
+      const id = requiereId();
+      await ensureApiSession();
+      await apiFetch(`/consorcios/${id}/unidades`, { method: 'POST', body: JSON.stringify(input) });
+      await invalidar();
+    },
+    editarUnidad: async (ufId, input) => {
+      const id = requiereId();
+      await ensureApiSession();
+      await apiFetch(`/consorcios/${id}/unidades/${ufId}`, { method: 'PUT', body: JSON.stringify(input) });
+      await invalidar();
+    },
+    eliminarUnidad: async (ufId) => {
+      const id = requiereId();
+      await ensureApiSession();
+      await apiFetch(`/consorcios/${id}/unidades/${ufId}`, { method: 'DELETE' });
+      await invalidar();
+    },
+    crearMovimiento: async (input) => {
+      const id = requiereId();
+      await ensureApiSession();
+      await apiFetch(`/consorcios/${id}/movimientos`, { method: 'POST', body: JSON.stringify(input) });
+      await invalidar();
+    },
+    eliminarMovimiento: async (movId) => {
+      const id = requiereId();
+      await ensureApiSession();
+      await apiFetch(`/consorcios/${id}/movimientos/${movId}`, { method: 'DELETE' });
+      await invalidar();
+    },
+    crearAsamblea: async (input) => {
+      const id = requiereId();
+      await ensureApiSession();
+      await apiFetch(`/consorcios/${id}/asambleas`, { method: 'POST', body: JSON.stringify(input) });
+      await invalidar();
+    },
+    eliminarAsamblea: async (asambleaId) => {
+      const id = requiereId();
+      await ensureApiSession();
+      await apiFetch(`/consorcios/${id}/asambleas/${asambleaId}`, { method: 'DELETE' });
+      await invalidar();
+    },
+  };
 }
 
 export function useConsorcio(id: string | undefined): {
