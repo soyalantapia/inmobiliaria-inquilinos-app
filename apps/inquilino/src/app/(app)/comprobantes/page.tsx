@@ -537,21 +537,39 @@ function MovimientoRow({ mov }: { mov: Movimiento }) {
 
   if (mov.kind === 'proximo') {
     const dias = diasHastaVencimiento(mov.liq.fechaVencimiento);
+    // Una liq sin pagar con vencimiento PASADO también cae acá (solo la MÁS
+    // vieja sube como card urgente): mostrarla como "próxima" decía
+    // "Vence … en -142 días" con ícono calmo. Ahora se lee como lo que es.
+    const vencida = dias < 0;
     return (
       <div className="flex items-center gap-3 p-4 opacity-90">
-        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
-          <CalendarClock className="h-5 w-5" />
+        <div
+          className={`grid h-10 w-10 shrink-0 place-items-center rounded-lg ${
+            vencida ? 'bg-red-100 text-red-700' : 'bg-primary/10 text-primary'
+          }`}
+        >
+          {vencida ? <AlertTriangle className="h-5 w-5" /> : <CalendarClock className="h-5 w-5" />}
         </div>
         <div className="flex-1 min-w-0">
           <p className="truncate text-sm font-medium leading-tight">
             {formatPeriodo(mov.liq.periodo)}
+            {vencida && (
+              <span className="ml-2 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-700">
+                Vencido
+              </span>
+            )}
           </p>
-          <p className="truncate text-xs text-muted-foreground">
-            Vence el {formatFechaCorta(mov.liq.fechaVencimiento)} · en {dias} día
-            {dias === 1 ? '' : 's'}
+          <p className={`truncate text-xs ${vencida ? 'text-red-700' : 'text-muted-foreground'}`}>
+            {vencida
+              ? `Venció el ${formatFechaCorta(mov.liq.fechaVencimiento)} · hace ${-dias} día${dias === -1 ? '' : 's'}`
+              : `Vence el ${formatFechaCorta(mov.liq.fechaVencimiento)} · en ${dias} día${dias === 1 ? '' : 's'}`}
           </p>
         </div>
-        <p className="shrink-0 text-sm font-semibold tabular-nums text-muted-foreground">
+        <p
+          className={`shrink-0 text-sm font-semibold tabular-nums ${
+            vencida ? 'text-red-700' : 'text-muted-foreground'
+          }`}
+        >
           {formatMonto(apiEnabled ? mov.liq.saldo ?? mov.liq.montoTotal : mov.liq.montoTotal, mov.liq.moneda)}
         </p>
       </div>

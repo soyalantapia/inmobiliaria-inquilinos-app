@@ -342,7 +342,15 @@ function HomeReal() {
     );
   }
 
-  const pendiente = liquidaciones.find((l) => l.estado !== 'PAGADO') ?? null;
+  // El pago que empuja la home es el MÁS VIEJO sin pagar (deuda primero, igual
+  // que Recibos). /mis-liquidaciones viene DESC por período: el find() de antes
+  // agarraba el MÁS NUEVO → a un inquilino con meses vencidos (p.ej. migrado
+  // con deuda) el CTA principal le pedía pagar el mes FUTURO mientras la mora
+  // del más viejo seguía corriendo.
+  const pendiente =
+    [...liquidaciones]
+      .filter((l) => l.estado !== 'PAGADO')
+      .sort((a, b) => a.fechaVencimiento.localeCompare(b.fechaVencimiento))[0] ?? null;
   const pagadas = liquidaciones.filter((l) => l.estado === 'PAGADO').slice(0, 3);
 
   const diasAjuste = contrato?.proximoAjuste ? diasHastaVencimiento(contrato.proximoAjuste) : -1;
