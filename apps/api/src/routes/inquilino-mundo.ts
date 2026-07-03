@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { rolTienePermiso } from '@llave/shared';
 import { resolverEsquemaMora } from '../lib/punitorios.js';
 import { prisma } from '../db.js';
+import { urlEsDelTenant } from './uploads.js';
 import {
   exigirContratoActivo,
   requireAuth,
@@ -887,6 +888,10 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
     const TAMANIO_MAX = 2 * 1024 * 1024;
     if ((body.data.tamanioBytes ?? 0) > TAMANIO_MAX) {
       return reply.code(400).send({ message: 'La boleta no puede superar los 2 MB' });
+    }
+    // La boleta, si trae archivo, tiene que ser un /uploads de ESTA inmobiliaria.
+    if (body.data.archivoUrl && !urlEsDelTenant(body.data.archivoUrl, inq.inmobiliariaId)) {
+      return reply.code(400).send({ message: 'Archivo de boleta inválido' });
     }
     // No se cargan boletas de períodos futuros.
     const [anioBol = 0, mesBol = 0] = body.data.periodo.split('-').map(Number);

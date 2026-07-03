@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { prisma } from '../db.js';
 import { requireInquilino, requireUsuario } from '../auth/guards.js';
 import { verificarPinUsuario } from '../auth/pin.js';
+import { urlEsDelTenant } from './uploads.js';
 
 /**
  * Fase 4 — Operación: reclamos con SLA calculado en el server, asignación de
@@ -359,6 +360,12 @@ export async function operacionRoutes(app: FastifyInstance) {
       })
       .safeParse(request.body ?? {});
     if (!body.success) return reply.code(400).send({ message: 'Escribí un mensaje o adjuntá un archivo' });
+    // El adjunto, si viene, tiene que ser un /uploads de ESTA inmobiliaria (no una
+    // URL externa ni de otro tenant): urlDeArchivo renderiza https:// tal cual en el
+    // panel, así que un adjunto externo sería una imagen inyectada.
+    if (body.data.adjuntoUrl && !urlEsDelTenant(body.data.adjuntoUrl, u.inmobiliariaId)) {
+      return reply.code(400).send({ message: 'Adjunto inválido' });
+    }
 
     const reclamo = await prisma.reclamo.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
     if (!reclamo) return reply.code(404).send({ message: 'Reclamo inexistente' });
@@ -393,6 +400,9 @@ export async function operacionRoutes(app: FastifyInstance) {
       })
       .safeParse(request.body ?? {});
     if (!body.success) return reply.code(400).send({ message: 'Escribí un mensaje o adjuntá un archivo' });
+    if (body.data.adjuntoUrl && !urlEsDelTenant(body.data.adjuntoUrl, inq.inmobiliariaId)) {
+      return reply.code(400).send({ message: 'Adjunto inválido' });
+    }
     // El reclamo tiene que ser del inquilino (su contrato + inmobiliaria).
     const reclamo = await prisma.reclamo.findFirst({
       where: { id, contratoId: inq.contratoId, inmobiliariaId: inq.inmobiliariaId },
@@ -446,6 +456,10 @@ export async function operacionRoutes(app: FastifyInstance) {
       })
       .safeParse(request.body ?? {});
     if (!body.success) return reply.code(400).send({ message: 'Datos del reclamo incompletos' });
+    // La foto, si viene, tiene que ser un /uploads de ESTA inmobiliaria (no externa).
+    if (body.data.fotoUrl && !urlEsDelTenant(body.data.fotoUrl, inq.inmobiliariaId)) {
+      return reply.code(400).send({ message: 'Foto inválida' });
+    }
 
     const contrato = await prisma.contrato.findFirst({
       where: { id: inq.contratoId, inmobiliariaId: inq.inmobiliariaId },
