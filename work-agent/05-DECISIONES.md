@@ -28,6 +28,21 @@ recién cuando las partes cubren el 100% → conservación del total. Commit `da
 Tanto `POST /rendiciones` como `GET /caja/cierre` filtran `modoCobranza='INMOBILIARIA'`:
 en cobranza directa la inmo no cobra ni gana comisión. (B1, auditoría 27/06, `74d519f`.)
 
+### 5. Resumen bancario = CSV/Excel del banco, matching determinístico SIN IA/OCR
+El validador de resumen bancario **parsea el extracto** (CSV/Excel del banco), NO usa OCR
+ni IA. El dueño lo eligió explícitamente. Reglas de confianza del match: **monto ±$50 +
+nombre → ALTA**; **monto solo → MEDIA**; **±5% del saldo real + nombre → MEDIA**; **±5%
+solo → BAJA**. FIFO: la liquidación vencida más vieja primero (`orderBy fechaVencimiento
+asc`). Conciliar (con PIN) crea un **Pago CONCILIADO directo** (TRANSFERENCIA, sin pasar
+por INFORMADO porque lo detectó el banco). Commit `1404004` (2026-07-04). **NO reemplazar
+por IA/OCR sin pedírselo.** Demo intacta / ambos modos andan.
+
+### 6. Migración de cartera = mapeo flexible de columnas
+La migración masiva de cartera deja que el dueño suba **su propia planilla** (Excel/CSV) y
+**mapee qué columna es qué** (con sinónimos auto-sugeridos). NO se impone un formato fijo:
+la inmo trae el archivo como lo tiene y la app se adapta. Commit `b153ebe` (2026-07-04).
+Demo intacta / ambos modos andan.
+
 ## Decisiones de seguridad / acceso (ya implementadas)
 
 - **Email de usuario del panel es GLOBAL** (no por tenant) a propósito: el login busca

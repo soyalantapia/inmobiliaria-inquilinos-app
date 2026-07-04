@@ -14,6 +14,18 @@ workspace Deenex. Servicios:
 
 Otros Postgres del proyecto (`Postgres`, `Postgres-fL7g`) y `MongoDB` están sin uso.
 
+### Último deploy (2026-07-04)
+
+✅ Los **3 servicios** (`myalquiler-back`, `myalquiler-front`, `myalquiler-inquilino`)
+deployados vía `railway up`, **exit 0** cada uno ("Deploy complete"). HEAD == `origin/main`
+== **535d15d**, árbol git **limpio**. **Ambos modos andan / demo intacta.**
+
+- Migración **`20260703110000_avatar_credito_importacion`** aplicada en prod (la API booteó
+  healthy con el schema nuevo).
+- 4 rutas nuevas registradas en `apps/api/src/app.ts` (líneas 79-92): `miPerfilRoutes`,
+  `visitasPublicasRoutes`, `resumenesBancariosRoutes`, `importacionesCarteraRoutes`. Vivas
+  en prod (401 sin auth, 404 token inválido).
+
 ## Cómo deployar
 
 ⚠️ Los servicios **NO están conectados a GitHub** — pushear a `main` **NO** auto-deploya.
@@ -23,6 +35,11 @@ Para desplegar:
 railway up --service <svc> --detach        # back / front / inquilino — solo lo que tocaste
 # (el env activo ya es production; railway environment production si hace falta fijarlo)
 ```
+
+⚠️ **`railway up` sube el WORKING TREE, no solo lo commiteado.** Antes de deployar,
+**verificá que el árbol esté limpio** (`git status`) — si hay cambios sin commitear se van
+a prod igual, aunque no estén en `main`. Combinado con lo de arriba (push a `main` NO
+auto-deploya), la regla es: commiteá primero, confirmá árbol limpio, después `railway up`.
 
 Para saber cuándo quedó live un endpoint nuevo: pollear hasta que pase de **404→401**
 (route registrado pero sin token) en vez de pollear `railway status`. Ej:
@@ -49,6 +66,7 @@ Dockerfile (línea ~26). `migrate deploy` **solo aplica las pendientes, NUNCA re
 20260612042420_nucleo_completo
 20260621000000_audit_unique_constraints      # unique pago(liquidacionId) WHERE INFORMADO + co_inquilinos(contratoId,email)
 20260621010000_sociedad_principal_unique     # unique parcial sociedad principal-activa
+20260703110000_avatar_credito_importacion    # inquilinos.imageUrl + creditos_detectados(conciliado,pagoId 1:1→pagos) + tabla importaciones_cartera + enum EstadoImportacion. Aplicada en prod 2026-07-04
 ```
 
 **Índices parciales**: Prisma NO los expresa en el schema → se crean a mano con

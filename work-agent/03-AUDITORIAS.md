@@ -45,8 +45,14 @@ falsos positivos conocidos. Si no, re-reporta los ~50 fixes ya hechos.
 | **Ola 0** (23/06) | P1–P13 | aplicados | regresiones de v5 + integridad backend |
 | **Keystones** (26/06) | — | file storage + cron | desconexiones estructurales, no "bugs" |
 | **Auditoría 27/06** | 8 | **8 (todos)** | ver abajo — desconexiones + plata, E2E en prod |
+| **Archivos/adjuntos (02-03/07)** | 1 | **1** (`f715055`) | ver abajo — fuga de imagen externa en reclamo/boleta |
+| **Backlog construido (04/07)** | — | 8 features / 6 commits | ver abajo — NO son bugs: 5+2 superficies "schema sin feature", E2E |
 
-**Total ~60 bugs/desconexiones reales arreglados** + decisiones de negocio.
+**Total ~61 bugs/desconexiones reales arreglados** + decisiones de negocio. Julio sumó
+la fuga `f715055` (archivos/adjuntos) y, aparte, la **construcción** de 5+2 superficies
+que existían en el schema pero ningún endpoint usaba (no cuentan como "bug", pero cierran
+el backlog que la auditoría de archivos dejó abierto). Todo con **demo intacta / ambos
+modos andan**.
 
 ### Auditoría 27/06 (8 hallazgos, todos fixeados + deployados + testeados en prod)
 
@@ -67,6 +73,53 @@ Workflow: 6 finders (3 desconexión + 3 bugs) → verificación adversarial por 
 Validación: cada uno `tsc`+`build` 0, deploy Railway, **E2E contra prod con
 cleanup/restore** (5/5, 10/10, 11/11, 12/12, 4/4 según el flujo). B2 con test de
 integración. Script del workflow en `.claude/.../workflows/scripts/myalquiler-audit-backend-bugs-*.js`.
+
+### Auditoría de archivos/adjuntos (02-03/07) — 1 fuga cazada + backlog abierto
+
+Pasada acotada: revisar que **toda** foto/archivo/adjunto de la app esté conectado y
+guarde de verdad en el Volume del tenant. 7 superficies verificadas E2E (comprobante de
+pago, foto/adjunto de reclamo, boleta de servicio, expediente del contrato, etc.). El
+núcleo estaba sano — los uploads pasan por `/uploads` scopeados a `/uploads/<tenant>/…`
+y el `GET` valida `tenantDe(payload)`.
+
+**El hallazgo (1) → hardening `f715055`:** `Reclamo.fotoUrl`, `ReclamoEvento.adjuntoUrl`
+y `BoletaServicio.archivoUrl` se persistían **SIN** pasar por `urlEsDelTenant`. Como
+`urlDeArchivo` renderiza cualquier `https://` tal cual, un inquilino podía inyectar una
+imagen externa (`https://…`) desde el panel y quedaba embebida. Fix: validar
+`urlEsDelTenant` al persistir, en `operacion.ts` + `inquilino-mundo.ts`. Backend-only,
+sin migración. ✅
+
+Esta pasada dejó un **backlog** aparte: campos que existen en el schema pero que **ningún
+endpoint usaba** (avatar del inquilino, documentos DNI/recibos/garante, visita del
+profesional, resumen bancario, migración de cartera, avatar del panel, comprobante de
+caja). Eso NO es un bug de plata ni una fuga — es feature sin construir. Se cerró en la
+tanda del 04/07.
+
+### Backlog construido (04/07) — 5+2 superficies "schema sin feature", E2E
+
+⚠️ **Ojo: esto NO es una auditoría de bugs.** Es la **construcción** de las superficies
+que la auditoría de archivos marcó como "campo en schema, feature inexistente". Se
+construyeron TODAS, de verdad, cada una E2E con **cleanup total (0 residuo)** + typecheck
+limpio. Migración `20260703110000_avatar_credito_importacion` aplicada en prod.
+
+**Metodología** (distinta a las auditorías de bugs, que usan finders/verificadores): el
+**Workflow tool** con un agente de *Explore por app* + **suites HTTP propias contra la DEV
+DB** (no la prod). Cada superficie se prueba end-to-end y se limpia sola. Conteos de checks
+E2E:
+
+| Superficie construida | Commit | E2E | Nota |
+|---|---|---|---|
+| Avatar del inquilino + DOCUMENTOS (DNI/recibos/garante) | `8940981` | **19/19** | con migración (`inquilinos.imageUrl` + slots) |
+| Flujo real del profesional por link mágico (fotos antes/después) | `f05b24d` | **24/24** | token opaco → JWT `kind:'profesional'`, sin cuenta |
+| Validador de resumen bancario (CSV/Excel, **SIN IA**, matching determinístico) | `1404004` | **16/16** | decisión del dueño: parseo del extracto, no OCR |
+| Migración de cartera (Excel/CSV, mapeo flexible de columnas) | `b153ebe` | **17/17** | el dueño sube SU planilla y mapea qué es qué |
+| Avatar del usuario del panel + comprobante en gastos de caja | `535d15d` | backend-ready | usa columnas que YA existían → sin migración; **falta UI del panel** |
+
+Las 5 filas = 5 commits; las "2" del título son las dos piezas del último commit (avatar
+del panel + comprobante de caja) que quedaron **backend-ready sin UI** — el front del panel
+todavía no las consume. Deploy `railway up` de los 3 servicios (exit 0 c/u), push
+`15f641c..535d15d`, árbol limpio, smoke test OK (API/admin/app → 200). **Demo intacta /
+ambos modos andan** en todo el batch. Detalle de endpoints y schema en `01-ARQUITECTURA.md`.
 
 ## La tendencia (por qué seguir re-corriendo)
 

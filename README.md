@@ -32,7 +32,7 @@ Monorepo **pnpm `10.28` + turbo**, **TypeScript** estricto, **Node ≥ 20**.
 | Capa | Qué | Versión |
 |---|---|---|
 | **Backend** `apps/api` | Fastify + Prisma + **Postgres** (multi-tenant por `inmobiliariaId`), ESM, build `tsup` (node22) | Fastify `5.2` · Prisma `6.2` |
-| **Panel** `apps/inmobiliaria` | **Next.js 14** (App Router, desktop-first) + TanStack Query | Next `14.2` · React `18.3` · RQ `5.101` |
+| **Panel** `apps/inmobiliaria` | **Next.js 14** (App Router, desktop-first) + TanStack Query | Next `14.2.35` · React `18.3.1` · RQ `5.101` |
 | **PWA** `apps/inquilino` | **Next.js 14** (App Router, mobile-first, PWA) + TanStack Query | igual que el panel |
 | **Packages** | `@llave/shared` (permisos + schemas JWT), `@llave/ui` (shadcn/Radix, tokens violeta/lavanda), `@llave/config` (tsconfig + tailwind) | — |
 
@@ -43,7 +43,12 @@ Monorepo **pnpm `10.28` + turbo**, **TypeScript** estricto, **Node ≥ 20**.
 - **File storage**: Railway Volume (`/data`) + endpoint `/uploads` (multipart).
 - **Cron de devengo**: in-process (cada 6h, idempotente) — genera liquidaciones futuras.
 
-Cifras: **105 endpoints · 72 modelos Prisma · 72 enums** (schema ~2220 líneas).
+Cifras: **153 endpoints · 75 modelos Prisma · 74 enums** (schema ~2330 líneas).
+
+El **core de archivos/adjuntos está 100% construido** (E2E, con demo intacta):
+avatar del inquilino y del usuario del panel, documentos del inquilino (DNI/recibos/garante),
+flujo del profesional por link mágico (fotos antes/después), validador de resumen bancario
+(CSV/Excel, matching determinístico **sin IA**) y migración de cartera (mapeo flexible de columnas).
 
 ---
 
@@ -53,7 +58,9 @@ Cifras: **105 endpoints · 72 modelos Prisma · 72 enums** (schema ~2220 líneas
 apps/
   api/            # Fastify + Prisma. routes: auth, core, plata, operacion,
                   #   inquilino-mundo, anuncios, uploads, documentos,
-                  #   servicios-publicos, health.  (prisma/schema.prisma + migraciones)
+                  #   servicios-publicos, mi-perfil, visitas-publicas,
+                  #   resumenes-bancarios, importaciones-cartera,
+                  #   health.  (prisma/schema.prisma + migraciones)
   inmobiliaria/   # panel admin (Next 14, desktop-first)
   inquilino/      # PWA inquilino (Next 14, mobile-first)
 packages/
@@ -92,7 +99,7 @@ La carpeta `work-agent/` es la fuente de verdad operativa. Cada archivo:
 
 | Documento | Para qué |
 |---|---|
-| [`docs/API.md`](./docs/API.md) | Referencia de los **105 endpoints** (auth, request, respuesta, errores, reglas). |
+| [`docs/API.md`](./docs/API.md) | Referencia de los **153 endpoints** (auth, request, respuesta, errores, reglas). |
 | [`docs/DATA-MODEL.md`](./docs/DATA-MODEL.md) | **Modelo de datos** — ERD (mermaid), `onDelete` de las FK, multi-tenant, uniques. |
 | [`docs/CONFIG.md`](./docs/CONFIG.md) | **Variables de entorno** por app (requerida, default, dónde se setea). |
 | [`docs/RUNBOOK.md`](./docs/RUNBOOK.md) | **Operaciones / on-call** — incidentes, rollback, DB, rotación de secretos. |

@@ -10,6 +10,60 @@
 
 Plataforma SaaS multi-tenant para inmobiliarias (panel) e inquilinos (PWA). Estado de cambios desde el handoff inicial hasta hoy.
 
+### Backlog de archivos/adjuntos — construido de punta a punta (04/07)
+La auditoría de archivos/adjuntos (02–03/07) dejó un backlog de superficies "no
+construidas en prod": campos que ya vivían en el schema pero ningún endpoint los usaba.
+Esta tanda los construyó TODOS, de verdad, E2E, con la demo intacta y ambos modos andando.
+Migración `20260703110000_avatar_credito_importacion` aplicada en prod (la API booteó
+healthy). Deploy `railway up` de los 3 servicios (back/front/inquilino), push
+`15f641c..535d15d`, árbol limpio.
+- **Avatar del inquilino + documentos reales (DNI/recibos/garante)** (`8940981`). El
+  inquilino sube su foto de perfil (`GET/PUT /mis-datos/avatar`, validado por tenant con
+  `urlEsDelTenant`) y sus documentos por slot (`GET/POST/DELETE /mis-documentos`): catálogo
+  de 7 slots auto-provisionado por tenant (dni-frente/dorso, recibo-1/2, cert-laboral,
+  garante-escritura/recibo), idempotente. El panel los lee read-only
+  (`GET /contratos/:id/documentos-inquilino`, distinto del expediente que carga la inmo).
+  Migración: `inquilinos.imageUrl`.
+- **Flujo real del profesional por link mágico** (`f05b24d`). El profesional entra por un
+  token opaco (`randomBytes(24)`) que la inmo le manda por WhatsApp — sin cuenta ni password.
+  `GET /visitas-publicas/:token` (público) lo canjea por un JWT `kind:'profesional'` (14d) que
+  re-valida contra la DB (revocación real si se reasigna). Máquina de estados idempotente
+  **ASIGNADO→CONFIRMADA→EN_CAMINO→LISTO**, cada transición con su timestamp + `ReclamoEvento`
+  para la timeline. Fotos antes/después a `/uploads` (el guard ahora acepta el JWT del
+  profesional). `POST /reclamos/:id/asignar` hace upsert de la visita y devuelve `visitaToken`;
+  `…/visita/regenerar-link` rota el token sin reasignar.
+- **Validador de resumen bancario — CSV/Excel, matching determinístico SIN IA** (`1404004`).
+  Decisión del dueño: parsear el extracto del banco (con `xlsx`), nada de OCR ni IA.
+  `POST /resumenes-bancarios` sube y detecta créditos; `GET /…/:id` recalcula el matching
+  **LIVE** contra el estado actual (pagos INFORMADO + liquidaciones abiertas con saldo, FIFO
+  por vencimiento). Reglas de confianza: monto ±$50 + nombre → ALTA; monto solo → MEDIA;
+  ±5% del saldo + nombre → MEDIA; ±5% solo → BAJA. Conciliar exige **PIN**, tiene lock atómico
+  anti doble-conciliación y crea un **Pago CONCILIADO directo** (TRANSFERENCIA, sin pasar por
+  INFORMADO porque lo detectó el banco). Todo gated con `pago.conciliar`.
+- **Migración de cartera — Excel/CSV con mapeo flexible de columnas** (`b153ebe`). El dueño
+  sube SU propia planilla y mapea qué columna es qué (sinónimos auto-sugeridos, no hay formato
+  fijo impuesto). 3 pasos: `POST /importaciones-cartera` (parsea headers + filas, máx 2000,
+  no archiva el archivo por PII) → `PUT /…/:id/mapeo` (valida fila-por-fila: OK/ADVERTENCIA/
+  ERROR/DUPLICADO por email) → `POST /…/:id/confirmar` (crea propiedad + propietario
+  find-or-create + inquilino + contrato ACTIVO con liquidaciones devengadas). `403` extra si el
+  rol es CARGA o LECTURA. Gated con `contratos.crear`. CSV se lee RAW para no romper fechas AR
+  dd/mm. Nuevo modelo `ImportacionCartera` + enum `EstadoImportacion`.
+- **Avatar del usuario del panel + comprobante en gastos de caja** (`535d15d`) —
+  **backend-ready, sin UI de panel todavía**. `PUT /me/avatar` (avatar de la inmobiliaria,
+  cualquier rol) y `comprobanteUrl` en el alta de gasto de caja usan columnas que YA existían
+  (`Usuario.imageUrl`, `MovimientoCaja.comprobanteUrl` — del `nucleo_completo`, sin migración).
+  El front del panel aún no las consume: no hay hook de avatar propio ni campo de adjunto en el
+  alta de caja. En el mismo pase se **encontró y arregló** un bug de `POST /caja/movimientos`:
+  el `comprobanteUrl` se validaba por tenant pero **no se persistía** en el `movimientoCaja.create`
+  (el DELETE sí lo lee para limpiar el Volume y `/pagos/informar` sí lo guardaba) — ahora el create
+  lo persiste bien.
+
+### Hardening de uploads — validar tenant en foto/adjunto y boleta (03/07)
+- **Fuga de origen cerrada** (`f715055`): `Reclamo.fotoUrl`, `ReclamoEvento.adjuntoUrl` y
+  `BoletaServicio.archivoUrl` se guardaban SIN pasar por `urlEsDelTenant`, así que un inquilino
+  podía inyectar una imagen externa (`https://…`) en el panel. Fix en `operacion.ts` +
+  `inquilino-mundo.ts`. Backend-only, sin migración. Ambos modos andan, demo intacta.
+
 ### Consorcios Fase 1 — el tablero se vuelve operable (02/07)
 - CRUD real: alta/edición del edificio, UFs con validación de coeficientes (Σ ≤ 100 en
   tx Serializable + `@@unique(consorcioId, identificacion)` como backstop — migración

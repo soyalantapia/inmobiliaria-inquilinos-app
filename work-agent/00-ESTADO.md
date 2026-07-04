@@ -1,7 +1,7 @@
 # Estado del proyecto — My Alquiler
 
 > **Documento de handoff.** Resumen ejecutivo de dónde está el proyecto hoy.
-> Última actualización: **2026-06-27**. Último commit: `23fae36` (auditoría 27/06, D4).
+> Última actualización: **2026-07-04**. Último commit: `535d15d` (origin/main, árbol limpio).
 > Contexto absoluto en [`../PROJECT.MD`](../PROJECT.MD). Detalle en los demás `work-agent/`.
 
 ## Qué es
@@ -44,15 +44,45 @@ auditoría multi-agente arreglaron **~50+ bugs reales** verificados y deployados
   → crítico de completitud) encontró **8 hallazgos, los 8 fixeados/deployados/testeados
   en prod** (E2E con cleanup; B2 con test de regresión). Ver `03-AUDITORIAS.md`.
 
+**Cierre de julio 2026 (02-04/07) — se cerró TODO el backlog de archivos/adjuntos
+(todo en prod vía `railway up` y en `main`, demo intacta / ambos modos andan):**
+
+- ✅ **Consorcios Fase 1** (CRUD real: consorcio, UFs, movimientos, asambleas) — 02/07.
+- ✅ **8 features que cierran el backlog de "campos en schema SIN feature"** (auditoría de
+  archivos/adjuntos): construidas de verdad, E2E, con la demo intacta —
+  - **Avatar del inquilino** + **documentos reales** (DNI/recibos/garante).
+  - **Flujo real del profesional por link mágico** (`/p/:token`, sin cuenta ni password):
+    confirmar → en camino → listo, con **fotos antes/después** a `/uploads`.
+  - **Validador de resumen bancario** (CSV/Excel, **matching determinístico SIN IA/OCR**):
+    parseo del extracto + conciliación con PIN que crea un `Pago` CONCILIADO directo.
+  - **Migración de cartera** (Excel/CSV con **mapeo flexible** de columnas): subir → mapear
+    → validar fila por fila → confirmar crea propiedades + inquilinos + contratos.
+  - **Avatar del usuario del panel** (`PUT /me/avatar`) — backend-ready (falta UI del panel).
+  - **Comprobante en gastos de caja** (`MovimientoCaja.comprobanteUrl`) — backend-ready
+    (falta UI del panel).
+  - **Harden de tenant en uploads** (`f715055`): se cerró la fuga por la que un inquilino
+    podía inyectar una imagen externa (`https://`) en foto/adjunto de reclamo y archivo de
+    boleta (ahora validan `urlEsDelTenant`).
+
 ## Qué falta (próximo chat)
 
-**No hay bugs abiertos conocidos.** Lo pendiente necesita **decisión de producto o
-insumo del owner** (no es bug) — triado en `04-PENDIENTES.md`:
+**No hay bugs abiertos conocidos.** La **conciliación bancaria** y la **migración de
+cartera** ya están (ver julio, arriba), así que salen de esta lista. Lo que queda:
 
-1. **Forma de pago del plan SaaS** (billing): cómo cobra el SaaS a la inmobiliaria.
-2. **Programa de referidos**: reglas comerciales.
-3. **Screening real** (NOSIS) · **Broker IA/OCR** de comprobantes (presupuesto).
-4. **WhatsApp real** (recordatorio a morosos / invitaciones) · conciliación bancaria.
+**Backend-ready, falta solo la UI del panel** (no es decisión, es cablear el front):
+
+1. **Avatar del usuario del panel** — `PUT /me/avatar` vivo; el panel todavía muestra
+   iniciales, no sube foto.
+2. **Comprobante en gastos de caja** — el alta acepta `comprobanteUrl` pero el form de
+   caja no lo adjunta (el comprobante de **pago** del inquilino sí tiene UI).
+
+**Decisión de producto o insumo del owner** (no es bug) — triado en `04-PENDIENTES.md`:
+
+3. **Forma de pago del plan SaaS** (billing): cómo cobra el SaaS a la inmobiliaria.
+4. **Programa de referidos**: reglas comerciales.
+5. **Screening real** (NOSIS) · **IA/OCR opcional** de comprobantes (presupuesto) — hoy
+   el resumen bancario matchea sin IA por decisión del dueño; el OCR sería un extra.
+6. **WhatsApp real** (recordatorio a morosos / invitaciones).
 
 ## Cómo seguir
 

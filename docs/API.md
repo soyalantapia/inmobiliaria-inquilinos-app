@@ -1,14 +1,18 @@
 # Referencia de API — My Alquiler
 
-> Las 105 rutas del backend (`apps/api/src/routes/`), agrupadas por archivo. Para cada
+> Actualizado: **2026-07-04** (HEAD `535d15d`, árbol limpio). Demo intacta / ambos modos andan.
+>
+> Las 153 rutas del backend (`apps/api/src/routes/`), agrupadas por archivo. Para cada
 > endpoint: auth, request, respuesta, errores y reglas de negocio. Generado del código real.
 >
 > **Convenciones:** base sin prefijo de versión. Auth por JWT (header `Authorization:
 > Bearer <token>`); los 3 kinds (usuario/inquilino/co-inquilino) llevan `inmobiliariaId`.
-> Toda query está scopeada por tenant. Errores estándar: `400` validación (zod), `401`
-> sin/mal token, `403` rol/permiso insuficiente, `404` no existe (o no es de tu tenant),
-> `409` conflicto/carrera (Prisma P2002/P2003 → 409, P2025 → 404). Ver
-> [`../PROJECT.MD`](../PROJECT.MD) §5–7 y [`../SECURITY.md`](../SECURITY.md).
+> Hay un 4º kind aparte, `profesional` (link mágico de visitas — ver `visitas-publicas.ts`),
+> que queda FUERA de la unión discriminada del resto. Toda query está scopeada por tenant.
+> Errores estándar: `400` validación (zod), `401` sin/mal token, `403` rol/permiso
+> insuficiente, `404` no existe (o no es de tu tenant), `409` conflicto/carrera (Prisma
+> P2002/P2003 → 409, P2025 → 404). Ver [`../PROJECT.MD`](../PROJECT.MD) §5–7 y
+> [`../SECURITY.md`](../SECURITY.md).
 
 ---
 
@@ -207,6 +211,10 @@ Todas auth + **rol ADMIN** (else 403). Enum rol: `ADMIN|OPERADOR|CARGA|LECTURA`.
 
 - **DELETE `/usuarios/:id`** — Baja lógica (`activo=false`) en **tx Serializable** con la misma verificación de ≥1 Admin. No podés borrarte a vos mismo. Respuesta `{ ok: true }`. **404** `Usuario inexistente`. **409** `No podés quitarte a vos mismo` (id propio), o `Tiene que quedar al menos un Admin activo` (`SIN_ADMIN`).
 
+### Perfil del usuario del panel
+
+- **PUT `/me/avatar`** — `requireUsuario` sin capacidad (cualquier rol edita su propio avatar). Body (req): `imageUrl` (`string | null`). Respuesta `{ imageUrl }`. `null`/`''` quita la foto; si viene una URL debe ser `/uploads` del propio tenant (`urlEsDelTenant`) → si no, **400**. Al reemplazar libera el archivo previo del Volume (best-effort). Usa la columna `Usuario.imageUrl` que ya existía en el schema. ⚠️ **Backend-ready:** el front del panel todavía NO consume este endpoint (no hay UI de avatar propio); falta la UI.
+
 
 ## plata.ts
 
@@ -261,7 +269,7 @@ Todas las rutas montadas bajo el prefijo del plugin `plataRoutes`. Multi-tenant:
 **POST /pagos/informar**
 - Guard: `requireContratoAcceso('VER')` — inquilino o **cualquier co-inquilino** del contrato (incluido permiso VER; pagar no se restringe).
 - Body: `liquidacionId` (string, **req.**), `monto` (number positivo, **req.**), `metodo` (enum `TRANSFERENCIA|MERCADOPAGO|EFECTIVO|CHEQUE`, **req.**), `nroOperacion` (opc.), `fechaTransferencia` (date coercible, **req.**), `nota` (opc.), `comprobanteUrl`/`comprobanteFileName`/`comprobanteMime` (string, opc.), `comprobanteSize` (int ≥0, opc.).
-- Reglas: `comprobanteUrl` (si viene) debe ser `/uploads` del propio tenant (`urlEsDelTenant`). `monto` no puede superar saldo pendiente (`montoTotal − conciliados`). Anti-doble-informe: solo un `INFORMADO` por liquidación (chequeo + índice parcial único → P2002). `tipo`=TOTAL/PARCIAL según monto vs total.
+- Reglas: `comprobanteUrl` (si viene) debe ser `/uploads` del propio tenant (`urlEsDelTenant`) y **se persiste** en `Pago.comprobanteUrl` (+ `comprobanteFileName`/`comprobanteMime`/`comprobanteSize`) — a diferencia del alta de caja, acá sí queda guardado. `monto` no puede superar saldo pendiente (`montoTotal − conciliados`). Anti-doble-informe: solo un `INFORMADO` por liquidación (chequeo + índice parcial único → P2002). `tipo`=TOTAL/PARCIAL según monto vs total.
 - Respuesta: el `Pago` creado.
 - Errores: 400 (no hay contrato activo; datos incompletos; comprobante inválido; monto > saldo), 404 (liquidación inexistente / no del contrato), 409 (liquidación ya paga; saldo ≤ 0 por carrera; ya hay un informe pendiente — secuencial o por P2002 concurrente).
 
@@ -277,10 +285,11 @@ Todas las rutas montadas bajo el prefijo del plugin `plataRoutes`. Multi-tenant:
 
 **POST /caja/movimientos**
 - Guard: `requireUsuario('gasto.caja.cargar')`.
-- Body: `propiedadId` (string, **req.**), `categoria` (enum `PLOMERIA|ELECTRICIDAD|GAS|CERRAJERIA|PINTURA|EXPENSAS|MATERIALES|OTRO`, **req.**), `descripcion` (string, **req.**, min 3), `monto` (number positivo, **req.**), `fecha` (date coercible, **req.**), `proveedor` (string nullable, opc.).
-- Reglas: la propiedad debe ser del tenant; setea `contratoId` = `contratoActualId` de la propiedad y `cargadoPor` = nombre del usuario.
-- Respuesta: el `MovimientoCaja` creado (`tipo=GASTO`).
-- Errores: 400 (datos incompletos), 404 (propiedad inexistente).
+- Body: `propiedadId` (string, **req.**), `tipo` (enum `GASTO|INGRESO_EXTRA`, def `GASTO`), `categoria` (enum `PLOMERIA|ELECTRICIDAD|GAS|CERRAJERIA|PINTURA|EXPENSAS|MATERIALES|OTRO`, opc.), `descripcion` (string, **req.**, min 3), `monto` (number positivo, **req.**), `fecha` (date coercible, **req.**), `proveedor` (string nullable, opc.), `comprobanteUrl` (string, opc.).
+- Reglas: la propiedad debe ser del tenant; setea `contratoId` = `contratoActualId` de la propiedad y `cargadoPor` = nombre del usuario. `comprobanteUrl` (si viene) debe ser `/uploads` del propio tenant (`urlEsDelTenant`) → si no, **400**.
+- Respuesta: el `MovimientoCaja` creado.
+- Errores: 400 (datos incompletos; comprobante inválido), 404 (propiedad inexistente).
+- ✅ **Arreglado (04/07):** antes el `movimientoCaja.create` (`plata.ts`) validaba `comprobanteUrl` por tenant pero **no lo escribía en la fila** — se validaba y se perdía. Ahora el `create` lo persiste. El `DELETE` lo lee para liberar el archivo del Volume. El front del panel todavía no lo sube (la interfaz `NuevoGasto` no tiene el campo) → backend-ready, falta UI.
 
 **DELETE /caja/movimientos/:id**
 - Guard: `requireUsuario('caja.eliminar')`.
@@ -345,12 +354,19 @@ Base: rutas registradas bajo el prefijo donde se monte `operacionRoutes`. SLA ca
 - Respuesta: reclamo con `propiedad`, `contrato` (titular incluye email), `profesional` (completo), `eventos` (orden `fecha asc`), `visita`, `confirmacion`, `rating`, + SLA.
 - Errores: 404 `Reclamo inexistente`; 401/403.
 
-**`POST /reclamos/:id/asignar`** — Asigna profesional al reclamo.
+**`POST /reclamos/:id/asignar`** — Asigna profesional al reclamo. **(Modificado: ahora devuelve `visitaToken` y arma la visita.)**
 - Auth: `requireUsuario('profesional.asignar')`.
 - Params: `id`. Body: `profesionalId` (string, requerido).
-- Reglas: el profesional debe existir, ser de la inmobiliaria y estar `activo`. **Lock atómico** dentro de transacción: `updateMany` condicionado a `estado NOT IN [RESUELTO,CERRADO,RECHAZADO]`; si `count=0` (cerrado por carrera) → 409. Crea evento `PROFESIONAL_ASIGNADO`.
-- Respuesta: reclamo actualizado + SLA.
+- Reglas: el profesional debe existir, ser de la inmobiliaria y estar `activo`. **Lock atómico** dentro de transacción: `updateMany` condicionado a `estado NOT IN [RESUELTO,CERRADO,RECHAZADO]`; si `count=0` (cerrado por carrera) → 409. Crea evento `PROFESIONAL_ASIGNADO`. **Upsert de `VisitaProfesional`** (`reclamoId @unique`): al (re)asignar resetea todo el ciclo (estado → `ASIGNADO`, limpia timestamps/fotos/nota/monto) y **genera token nuevo** (`randomBytes(24).toString('base64url')`, `generarTokenVisita`). Ese token es el link mágico que la inmo le manda al profesional por WhatsApp/SMS (`/p/:token` en la app inquilino).
+- Respuesta: reclamo actualizado + SLA + **`visitaToken`**.
 - Errores: 400 `Indicá qué profesional querés asignar` (body inválido); 404 `Reclamo inexistente`; 409 reclamo ya cerrado (pre-check y lock); 404 `Profesional inexistente o dado de baja`.
+
+**`POST /reclamos/:id/visita/regenerar-link`** — Rota el token de la visita SIN reasignar (mismo profesional).
+- Auth: `requireUsuario('profesional.asignar')`.
+- Params: `id`. Body: ninguno.
+- Reglas: genera un token nuevo para la `VisitaProfesional` del reclamo (mismo profesional, no toca estado ni timestamps). **Invalida el token anterior** para nuevos canjes, pero una sesión JWT ya emitida sigue válida hasta expirar (14d) porque `requireProfesionalVisita` valida por `profesionalId` contra la DB, no por el token.
+- Respuesta: `{ visitaToken }`.
+- Errores: 404 si la visita todavía no tiene profesional asignado; 401/403 (guard).
 
 **`POST /reclamos/:id/resolver`** — Marca el reclamo como RESUELTO.
 - Auth: `requireUsuario('reclamos.gestionar')`.
@@ -648,6 +664,177 @@ Prefijo de rutas: registradas vía `anunciosRoutes(app)`. Multi-tenant: todo fil
   - 401 del guard de inquilino.
 
 
+## mi-perfil.ts
+
+Perfil del **inquilino** desde su propia app: avatar + documentos personales (DNI/recibos/garante). Todo `requireInquilino` (JWT `kind:'inquilino'`, solo titular, no co-inquilino) y scopeado por `inquilinoId` + `inmobiliariaId`. Los archivos se suben primero a `POST /uploads` (devuelve la url); estos endpoints solo persisten la url + metadatos y validan que sea `/uploads` del propio tenant (`urlEsDelTenant`). Backend nuevo esta sesión (feat perfil, commit `8940981`). Demo intacta: en modo demo la app inquilino cae a `localStorage`.
+
+### GET `/mis-datos`
+Datos mínimos de perfil que no viajan en `/auth/me` (hoy: el avatar).
+- **Auth:** `requireInquilino`.
+- **Request:** ninguno.
+- **Respuesta:** `{ imageUrl }` (de `Inquilino.imageUrl`, columna nueva de la migración `20260703110000`).
+- **Errores:** `404` si el inquilino no existe; `401` (guard).
+
+### PUT `/mis-datos/avatar`
+Setea o quita la foto de perfil del inquilino.
+- **Auth:** `requireInquilino`.
+- **Request body:** `imageUrl` (`string | null`).
+- **Respuesta:** `{ imageUrl }`.
+- **Reglas de negocio:** `null`/`''` quita la foto; si viene una URL debe pasar `urlEsDelTenant` (si no, **400**). Al reemplazar libera el archivo previo del Volume (best-effort).
+- **Errores:** `400` url no es del tenant; `404` inquilino inexistente; `401` (guard).
+
+### GET `/mis-documentos`
+Catálogo de documentos personales del inquilino, por slots.
+- **Auth:** `requireInquilino`.
+- **Request:** ninguno.
+- **Respuesta:** `{ slots: [{ ...slot, documento: Documento | null }], libres: Documento[] }`.
+- **Reglas de negocio:** auto-provisiona el catálogo de **7 slots** por tenant de forma idempotente (`createMany` + `skipDuplicates` sobre `@@unique([inmobiliariaId, codigo])`). Slots: `dni-frente`, `dni-dorso`, `recibo-1`, `recibo-2`, `cert-laboral`, `garante-escritura`, `garante-recibo`. `libres` son los documentos sin slot.
+- **Errores:** `401` (guard).
+
+### POST `/mis-documentos`
+Anexa un documento ya subido (a un slot o suelto).
+- **Auth:** `requireInquilino`.
+- **Request body:** `slotId?` (string), `nombre` (req, 1–300), `tipoMime` (req, 1–120), `tamanioBytes` (req, int ≥0), `archivoUrl` (req, 1–500), `vencimiento?` (date).
+- **Respuesta:** `201` con la fila `Documento` creada.
+- **Reglas de negocio:** `archivoUrl` debe pasar `urlEsDelTenant` (si no, **400**). Con `slotId`: valida que el slot sea del tenant (**404** si no), toma su `categoria` y **reemplaza** el documento previo del slot (borra fila + archivo del Volume). Sin `slotId`: `categoria='OTRO'`, `slotId=null`.
+- **Errores:** `400` `archivoUrl` inválido / datos incompletos; `404` slot inexistente; `401` (guard).
+
+### DELETE `/mis-documentos/:id`
+Saca un documento del inquilino y borra el archivo del Volume.
+- **Auth:** `requireInquilino`.
+- **Params:** `id` (string, requerido).
+- **Respuesta:** `{ ok: true }`.
+- **Reglas de negocio:** scopeado a `inquilinoId` + `inmobiliariaId` (nadie borra documentos de otro inquilino aunque adivine el id). Borra fila + archivo del Volume (best-effort).
+- **Errores:** `404` inexistente; `401` (guard).
+
+
+## visitas-publicas.ts
+
+Flujo real del **profesional** (plomero/electricista/etc.) por **link mágico**, sin cuenta ni password. Backend nuevo esta sesión (feat visitas, commit `f05b24d`). El token opaco de la visita se genera en `POST /reclamos/:id/asignar` / `POST /reclamos/:id/visita/regenerar-link` (ver `operacion.ts`). El profesional abre `/p/:token` en la app inquilino; ahí se canjea el token por un JWT corto `kind:'profesional'` que autentica el resto de las acciones. Demo intacta: en modo demo el token = profesional (seed), acá el token = UNA visita puntual.
+
+**Guard `requireProfesionalVisita`** (`auth/guards.ts`): valida `JwtProfesionalSchema` directo (**403** si no matchea — queda FUERA de `JwtPayloadSchema` a propósito) y **re-valida contra la DB** (`prisma.visitaProfesional.findUnique`) que `profesionalId` e `inmobiliariaId` sigan coincidiendo → **401** "Tu acceso a esta visita fue revocado" si la visita se reasignó (revocación real).
+
+**Máquina de estados** (`VisitaProfesional.estado`, orden `{ASIGNADO:0, CONFIRMADA:1, EN_CAMINO:2, LISTO:3}`):
+
+```
+ASIGNADO ──confirmar──▶ CONFIRMADA ──en-camino──▶ EN_CAMINO ──listo──▶ LISTO
+```
+
+Cada transición setea su timestamp (`confirmadaAt`/`enCaminoAt`/`listoAt`) y crea un `ReclamoEvento` (`VISITA_CONFIRMADA`/`VISITA_EN_CAMINO`/`VISITA_LISTO`) para la timeline del reclamo. Subir fotos NO es transición. **Idempotencia** (helper `transicionar`): aplica con `updateMany where estado === desde` (atómico); si el estado actual ya es `>= hacia` (doble-tap) devuelve OK sin re-aplicar; si falta el paso previo → **409** con mensaje según destino.
+
+### GET `/visitas-publicas/:token`
+Canjea el token opaco por la sesión del profesional.
+- **Auth:** **PÚBLICO** (sin bearer; el token del path es la credencial).
+- **Params:** `token` (string, requerido).
+- **Respuesta:** `{ sesion, visita: {...}, reclamo: {...} }` — `sesion` es un JWT `kind:'profesional'` firmado con `expiresIn:'14d'`, payload `{ visitaId, inmobiliariaId, profesionalId }`. Devuelve datos de la visita + reclamo + inquilino titular.
+- **Errores:** `404` "Link inválido o vencido" si el token no matchea.
+
+### POST `/visitas-publicas/confirmar`
+Transición `ASIGNADO → CONFIRMADA`.
+- **Auth:** `requireProfesionalVisita`.
+- **Request body:** `fechaVisita?` (date).
+- **Respuesta:** la `VisitaProfesional` actualizada.
+- **Reglas de negocio:** setea `confirmadaAt`, opcional `fechaVisita`. Evento `VISITA_CONFIRMADA`. Idempotente.
+- **Errores:** `400` fecha inválida; `409` si ya no está pendiente.
+
+### POST `/visitas-publicas/en-camino`
+Transición `CONFIRMADA → EN_CAMINO`.
+- **Auth:** `requireProfesionalVisita`.
+- **Request:** sin body.
+- **Respuesta:** la `VisitaProfesional` actualizada. Setea `enCaminoAt`. Evento `VISITA_EN_CAMINO`.
+- **Errores:** `409` "Confirmá la visita antes de marcar que vas en camino" si falta el paso previo.
+
+### PUT `/visitas-publicas/fotos`
+Sube foto antes/después (no cambia el estado).
+- **Auth:** `requireProfesionalVisita`.
+- **Request body:** `fotoAntes?`, `fotoDespues?` (URLs `/uploads`).
+- **Respuesta:** la `VisitaProfesional` actualizada.
+- **Reglas de negocio:** cada foto que venga debe pasar `urlEsDelTenant` (si no, **400**). No es transición: se puede subir en cualquier momento de la sesión. Las fotos se suben vía `POST /uploads` (el guard de uploads acepta el JWT de profesional — ver `uploads.ts`).
+- **Errores:** `400` si no se manda ninguna foto, o si una url no es del tenant.
+
+### POST `/visitas-publicas/listo`
+Transición `EN_CAMINO → LISTO`.
+- **Auth:** `requireProfesionalVisita`.
+- **Request body:** `notaFinal` (req, 1–1000), `montoCobrado?` (≥0).
+- **Respuesta:** la `VisitaProfesional` actualizada. Setea `listoAt`, `notaFinal`, opcional `montoCobrado`. Evento `VISITA_LISTO` (contenido = `notaFinal`).
+- **Errores:** `400` sin nota; `409` "Marcá que vas en camino antes…" si falta el paso previo.
+
+
+## resumenes-bancarios.ts
+
+**Validador de resumen bancario** (conciliación) — el dueño sube el CSV/Excel del banco y matcheamos las liquidaciones contra los créditos del extracto. Decisión de producto (Alan, esta sesión): matching **determinístico SIN IA/OCR**, parseo del extracto con `xlsx`. Backend nuevo esta sesión (feat pagos, commit `1404004`). Todos los endpoints `requireUsuario` + capacidad **`pago.conciliar`** y scopeados por tenant.
+
+**Reglas de match:** monto ±$50 + nombre → confianza **ALTA**; monto solo → **MEDIA**; ±5% del saldo real + nombre → **MEDIA**; ±5% solo → **BAJA**. **FIFO:** la liquidación vencida más vieja primero (`orderBy fechaVencimiento asc`).
+
+### POST `/resumenes-bancarios`
+Sube y parsea el extracto.
+- **Auth:** `requireUsuario` + cap `pago.conciliar`.
+- **Request:** `multipart/form-data` con archivo `.xlsx/.xls/.csv`.
+- **Respuesta:** `201` `{ id, creditosDetectados, filasIgnoradas }`.
+- **Reglas de negocio:** parseo real con `xlsx` (`sheet_to_json`); `parsearFilasResumen` detecta columnas por sinónimos y extrae créditos (montos positivos). Archiva el original con `guardarBufferSubido` (best-effort). Persiste `ResumenBancario` + `CreditoDetectado[]` en `$transaction`. CSV se lee RAW (`{raw:true}`) para que las fechas AR `dd/mm` no se lean como US `mm/dd`.
+- **Errores:** `400` sin archivo / faltan columnas fecha o monto / 0 créditos; `415` extensión inválida; `413` si >10 MB.
+
+### GET `/resumenes-bancarios`
+Lista los resúmenes del tenant.
+- **Auth:** `requireUsuario` + cap `pago.conciliar`.
+- **Respuesta:** `[{ id, fileName, fileSize, subidoAt, totalCreditos, conciliados }]`.
+
+### GET `/resumenes-bancarios/:id`
+Detalle con matching **LIVE** contra el estado actual.
+- **Auth:** `requireUsuario` + cap `pago.conciliar`.
+- **Params:** `id`.
+- **Respuesta:** `{ id, fileName, fileSize, archivoUrl, subidoAt, creditos: [{ ..., sugerido }], opciones }`.
+- **Reglas de negocio:** **recalcula** candidatos en cada request (pagos `INFORMADO` + liquidaciones `PENDIENTE/VENCIDO/PARCIAL` con saldo, FIFO por `fechaVencimiento`, mora al día) contra el estado ACTUAL. Cada crédito trae un `sugerido` (confianza + liquidación/contrato). `opciones` = dropdown para elección manual.
+- **Errores:** `404` si el resumen no existe.
+
+### POST `/resumenes-bancarios/:id/creditos/:creditoId/conciliar`
+Concilia un crédito contra una liquidación (con PIN).
+- **Auth:** `requireUsuario` + cap `pago.conciliar` **+ PIN** (`verificarPinUsuario`, lockout anti-fuerza-bruta).
+- **Params:** `id`, `creditoId`. **Request body:** `liquidacionId` (≥1), `pin?`.
+- **Respuesta:** el `Pago` creado.
+- **Reglas de negocio:** lock atómico anti doble-conciliación (`updateMany where conciliado:false`); crea un `Pago` **directo `CONCILIADO`** (método `TRANSFERENCIA`, NO pasa por `INFORMADO` porque lo detectó el banco); recomputa el estado de la liquidación (`PAGADO`/`PARCIAL`) con mora. El link 1:1 crédito↔pago vive en `CreditoDetectado.pagoId` (`@unique`).
+- **Errores:** código/mensaje del PIN si falla; `404` crédito/liquidación inexistente; `409` crédito ya conciliado o contrato no `ACTIVO`.
+
+
+## importaciones-cartera.ts
+
+**Migración de cartera** — el dueño sube SU propia planilla (Excel/CSV) con su cartera de contratos y mapea qué columna es qué. Decisión de producto (Alan, esta sesión): **mapeo flexible** de columnas (sinónimos auto-sugeridos), sin formato fijo impuesto. Backend nuevo esta sesión (feat propiedades, commit `b153ebe`). Todos los endpoints `requireUsuario` + capacidad **`contratos.crear`** y scopeados por tenant. Flujo de 3 pasos: subir/parsear → mapear/validar → confirmar/importar.
+
+### GET `/importaciones-cartera/campos`
+Campos destino disponibles para armar el UI de mapeo.
+- **Auth:** `requireUsuario` + cap `contratos.crear`.
+- **Respuesta:** `[{ key, label, requerido }]` (de `CAMPOS_IMPORTACION`).
+
+### GET `/importaciones-cartera`
+Lista las importaciones del tenant.
+- **Auth:** `requireUsuario` + cap `contratos.crear`.
+- **Respuesta:** `[{ id, nombreArchivo, totalFilas, estado, resultado, createdAt }]`.
+
+### POST `/importaciones-cartera`
+Sube el archivo, lo parsea y sugiere mapeo.
+- **Auth:** `requireUsuario` + cap `contratos.crear`.
+- **Request:** `multipart/form-data` con archivo `.xlsx/.xls/.csv`.
+- **Respuesta:** `201` `{ id, columnas, filasPreview (≤20), totalFilas, mapeoSugerido }`.
+- **Reglas de negocio:** lee headers + filas crudas (CSV `raw` para fechas AR en texto; Excel `cellDates`). Máx **2000 filas**, mín **2 filas**. **NO archiva** el archivo original (PII); guarda las filas parseadas. Estado inicial `SUBIDO`. `sugerirMapeo(headers)`. (Gotcha `xlsx`: se usa `Array.from` para rellenar arrays esparcidos, porque `sheet_to_json header:1` deja huecos que `.map` saltea y Prisma rechaza `undefined`.)
+- **Errores:** `400` sin archivo / <2 filas; `415` extensión inválida; `413` si >15 MB.
+
+### PUT `/importaciones-cartera/:id/mapeo`
+Guarda el mapeo de columnas y valida fila por fila.
+- **Auth:** `requireUsuario` + cap `contratos.crear`.
+- **Params:** `id`. **Request body:** `mapeo` (`Record<string, int≥0>` — key destino → índice de columna).
+- **Respuesta:** `{ filas: FilaValidada[], resumen }`.
+- **Reglas de negocio:** valida columnas requeridas; guarda el mapeo, pasa el estado a `MAPEADO`, devuelve validación fila por fila con estado `OK`/`ADVERTENCIA`/`ERROR`/`DUPLICADO` (duplicado por email en DB **o** repetido dentro del archivo).
+- **Errores:** `400` mapeo inválido / faltan columnas requeridas; `404` inexistente; `409` si ya `CONFIRMADO`.
+
+### POST `/importaciones-cartera/:id/confirmar`
+Importa las filas seleccionadas: crea propiedades + inquilinos + contratos.
+- **Auth:** `requireUsuario` + cap `contratos.crear`. **403 extra si el rol es CARGA o LECTURA** ("Solo Admin u Operador").
+- **Params:** `id`. **Request body:** `filas?` (`int[]` — selección de índices).
+- **Respuesta:** `{ creadas, errores: [{ fila, motivo }] }`.
+- **Reglas de negocio:** solo desde estado `MAPEADO`. Por cada fila `OK`/`ADVERTENCIA` seleccionada, en transacción por fila (timeout 30s): find-or-create de propietario (por nombre, cacheado) + crea propiedad `ALQUILADA` + inquilino + contrato `ACTIVO` (ICL, ajuste 12m, cobranza `INMOBILIARIA`) + liquidaciones devengadas (`generarLiquidacionesContrato`). Estado final `CONFIRMADO`.
+- **Errores:** `403` rol CARGA/LECTURA; `404` inexistente; `409` ya confirmado; `400` si el estado != `MAPEADO`.
+
+
 ## uploads.ts
 
 Almacenamiento de archivos real sobre un Railway Volume montado en `/data` (en dev/test cae a `os.tmpdir()/myalquiler-uploads`). Directorio configurable por `UPLOADS_DIR`. Los archivos se guardan scopeados por `inmobiliariaId` (tenant), extraído del JWT. Tope global: **10 MB**. Tipos permitidos: JPG, PNG, WEBP, GIF, HEIC, PDF.
@@ -655,7 +842,7 @@ Almacenamiento de archivos real sobre un Railway Volume montado en `/data` (en d
 ### `POST /uploads`
 Sube un archivo (multipart) y lo guarda en el Volume, scopeado a la inmobiliaria del que sube. Devuelve la URL servible para persistir en el modelo correspondiente (`Comprobante.pdfUrl`, `BoletaServicio.archivoUrl`, `Documento.archivoUrl`, `Reclamo.fotoUrl`).
 
-- **Auth:** `requireAuth` — cualquier identidad autenticada sirve (usuario de panel, inquilino o co-inquilino). No exige capacidad/permiso. Requiere que el JWT tenga `inmobiliariaId`.
+- **Auth:** `requireAuthOProfesional` — cualquier identidad autenticada sirve (usuario de panel, inquilino, co-inquilino **o** profesional de visita). **(Modificado esta sesión:** antes era `requireAuth`; ahora acepta también el JWT `kind:'profesional'` para que el profesional suba `fotoAntes`/`fotoDespues` de la visita.) No exige capacidad/permiso. Requiere que el JWT tenga `inmobiliariaId`.
 - **Request:** `multipart/form-data` con un campo de archivo (`request.file()`). Sin body JSON ni query.
 - **Respuesta (200):**
   - `url` (string) — `/uploads/<tenant>/<uuid>.<ext>`. El nombre en disco es un `randomUUID()` + extensión derivada del MIME (no del nombre original).
@@ -677,7 +864,7 @@ Sube un archivo (multipart) y lo guarda en el Volume, scopeado a la inmobiliaria
 ### `GET /uploads/:tenant/:name`
 Sirve un archivo previamente subido, solo a identidades de la misma inmobiliaria.
 
-- **Auth:** `requireAuth`. **Acepta el token también por query `?token=`** (lo copia a `Authorization: Bearer` solo si no hay header), porque `<a href>`/`<img src>` no pueden mandar headers. Mismo nivel de auth, distinto transporte.
+- **Auth:** `requireAuthOProfesional` (mismo guard que el POST — incluye ahora el JWT de profesional). **Acepta el token también por query `?token=`** (lo copia a `Authorization: Bearer` solo si no hay header), porque `<a href>`/`<img src>` no pueden mandar headers. Mismo nivel de auth, distinto transporte. Header extra `Cross-Origin-Resource-Policy: cross-origin` para permitir el embed cross-origin de las fotos.
 - **Request:**
   - Path: `tenant` (string, requerido), `name` (string, requerido).
   - Query: `token` (string, opcional) — JWT alternativo al header.
@@ -694,6 +881,7 @@ Sirve un archivo previamente subido, solo a identidades de la misma inmobiliaria
 ### Helpers exportados (no son rutas, pero soportan las reglas de aislamiento)
 - `urlEsDelTenant(url, tenant): boolean` — valida que una URL tenga el formato `/uploads/<tenant>/<name>` y pertenezca al tenant indicado (sin `..`, basename exacto). Usado por endpoints que **persisten** una URL (comprobante, documento) para no guardar URLs externas/arbitrarias ni de otra inmobiliaria (defensa en profundidad sobre el re-chequeo del GET).
 - `borrarArchivoSubido(url, tenant): Promise<void>` — borra del Volume el archivo de una URL, **solo si pertenece al tenant** (nunca cross-tenant). Best-effort: si la URL no es nuestra o el archivo no existe, no rompe. Lo usa el DELETE de documentos para no dejar huérfanos en disco.
+- `guardarBufferSubido(buffer, tenant, ext): Promise<string>` — guarda un Buffer que ya está en memoria en el Volume del tenant (`/uploads/<tenant>/<uuid><ext>`), **sin** pasar por el multipart de `/uploads` ni la whitelist de MIMEs. Lo usa `POST /resumenes-bancarios` para archivar el extracto original del banco.
 
 
 ## documentos.ts
@@ -733,6 +921,13 @@ Saca el documento del expediente y borra el archivo del Volume.
 - **Reglas de negocio:** busca con `findFirst` por las tres claves (`id` + `contratoId` + `inmobiliariaId`) → nadie borra documentos de otro contrato u otra inmobiliaria aunque adivine el `docId`. Tras borrar la fila, hace borrado best-effort del archivo en el Volume con `borrarArchivoSubido(...)` (tenant-scopeado). Nota: este endpoint **no** revalida el contrato vía `contratoDelTenant`; la pertenencia se garantiza por las tres claves del `findFirst`.
 - **Respuesta:** `200 { ok: true }` (intencionalmente JSON y no `204`, porque el `apiFetch` del panel siempre llama `res.json()`).
 - **Errores:** `401`/`403` vía guard; `404 { message: 'Documento no encontrado' }` si no existe la fila para ese tenant/contrato.
+
+### GET `/contratos/:contratoId/documentos-inquilino`
+Lee los documentos que el **inquilino** subió desde su app (DNI, recibos, garante). Distinto del expediente `DocumentoContrato` que carga la inmobiliaria: acá se listan filas del modelo `Documento`, por `inquilinoId` del titular del contrato.
+- **Auth/permiso:** usuario, capacidad `contratos.ver`.
+- **Params:** `contratoId` (string, requerido).
+- **Respuesta:** array de filas `Documento` con `slot` (`titulo`, `categoria`) y fechas en ISO string. `[]` si el contrato no tiene inquilino titular.
+- **Errores:** `401`/`403` vía guard; `404` si el contrato no es del tenant.
 
 
 ## servicios-publicos.ts

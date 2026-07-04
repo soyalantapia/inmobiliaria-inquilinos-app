@@ -1,9 +1,10 @@
 # Pendientes — roadmap
 
-> Última actualización: **2026-06-27**. **No hay bugs abiertos conocidos.** El core
-> está en prod y endurecido; las campañas de auditoría convergieron. Lo que queda
-> necesita **decisión de producto o insumo del owner** (no es bug). Historial de lo
-> ya hecho al final.
+> Última actualización: **2026-07-04** (HEAD `535d15d`, árbol limpio, demo intacta /
+> ambos modos andan). **No hay bugs abiertos conocidos.** El core está en prod y
+> endurecido; las campañas de auditoría convergieron. Lo que queda necesita **decisión
+> de producto o insumo del owner** (no es bug), salvo un cableado de front chico.
+> Historial de lo ya hecho al final.
 
 ---
 
@@ -25,28 +26,35 @@ reglas. **Bloqueo:** decisión comercial.
 Hoy el screening es demo. Integrar **NOSIS** (vars `NOSIS_API_KEY`/`NOSIS_BASE_URL` en
 `.env.example`). Endpoints `GET /screenings` + `POST /screening` ya existen como cáscara.
 
-### 4. Broker IA / OCR de comprobantes — [insumo: presupuesto]
+### 4. Broker IA / OCR de comprobantes — [opcional / futuro]
 Lectura por IA del comprobante (extraer monto/fecha/operación) para acelerar la
 validación. Vars `ANTHROPIC_API_KEY`/`ANTHROPIC_MODEL`. El panel de "Por validar" ya
-muestra el comprobante real (la base está); falta el paso de IA.
+muestra el comprobante real (la base está); falta el paso de IA. **No es bloqueante:** la
+conciliación bancaria ya funciona **sin IA** (el CSV/Excel del banco la resuelve, ver
+sección C). IA/OCR sería un plus para tipear menos, no un requisito.
 
 ### 5. WhatsApp real — [insumo: cuenta WhatsApp Business]
 Recordatorio automático a morosos + envío del link de invitación de co-inquilino por
 WhatsApp (hoy el flujo asume que el link se manda a mano). Vars `WHATSAPP_*`.
 
-### 6. Conciliación bancaria — [producto]
-Modelos `DatosBancarios`/`ResumenBancario`/`CreditoDetectado` existen para auto-detectar
-acreditaciones y pre-conciliar pagos. Sin flujo definido.
+### 6. Avatar del usuario del panel + comprobante en gasto de caja — [front]
+El **backend ya existe** (tanda 04/07, ver sección C): `PUT /me/avatar` para la foto del
+usuario del panel (la inmo) y `MovimientoCaja.comprobanteUrl` para adjuntar el
+comprobante al gasto de caja. Falta **cablear el front del panel**: hoy el panel solo
+muestra iniciales (no sube foto propia) y el alta de gasto de caja no tiene UI para
+adjuntar comprobante (el front lee `comprobanteUrl` para mostrarlo pero no lo sube).
+Chico, no bloqueado — es sólo cablear la UI contra endpoints que ya están vivos.
+_(Nota técnica: el `POST /caja/movimientos` ya persiste el `comprobanteUrl` en el `create`
+—se arregló un bug 04/07 donde antes se validaba pero no se guardaba—; sólo falta la UI que lo suba.)_
 
 ---
 
 ## B. Long-tail demo-gated A PROPÓSITO (no son bugs)
 
 Pantallas/features secundarias que muestran "Próximamente" o mock en prod — **no rompen
-el core ni la plata**: negociación iterativa de renovación, migración masiva de cartera,
-reset de PIN olvidado, objetivos/métricas internas (dashboards de la propia inmo), y
-algunas vistas de consorcios. Y los **falsos positivos conocidos** de `03-AUDITORIAS.md`
-(NO re-arreglar).
+el core ni la plata**: negociación iterativa de renovación, reset de PIN olvidado,
+objetivos/métricas internas (dashboards de la propia inmo), y algunas vistas de
+consorcios. Y los **falsos positivos conocidos** de `03-AUDITORIAS.md` (NO re-arreglar).
 
 ---
 
@@ -65,6 +73,36 @@ algunas vistas de consorcios. Y los **falsos positivos conocidos** de `03-AUDITO
     D3 rating al panel + recalc profesional · D4 feed `/mis-notificaciones` real.
   - B1 cierre de caja excluye PROPIETARIO_DIRECTO · B2 gasto multi-dueño conservado ·
     B3 redondeo a centavos consistente · B4 validación de prefijo de tenant en URLs.
+- **Tanda 04/07 — backlog de "campos en schema SIN feature", cerrado E2E** (6 commits,
+  todos en prod vía `railway up` los 3 servicios + en `origin/main` `15f641c..535d15d`;
+  migración `20260703110000_avatar_credito_importacion` aplicada en prod; smoke test
+  OK; demo intacta / ambos modos andan):
+  - **Conciliación bancaria REAL, sin IA** (`1404004`): validador de resumen bancario
+    que parsea el **CSV/Excel del banco** (dep `xlsx`, parseo determinístico, cero
+    OCR/IA). Matching por monto/nombre/saldo con confianza ALTA/MEDIA/BAJA (monto±$50 +
+    nombre → ALTA; monto solo → MEDIA; ±5% del saldo + nombre → MEDIA; ±5% solo → BAJA),
+    FIFO por vencimiento más viejo. Conciliar **con PIN** crea un `Pago` directo
+    **CONCILIADO** (TRANSFERENCIA, no pasa por INFORMADO). Reemplaza el ítem que estaba
+    pendiente en la sección A. Decisión de producto del owner: extracto, no OCR.
+  - **Migración masiva de cartera REAL** (`b153ebe`): el owner sube SU planilla
+    (Excel/CSV) y **mapea qué columna es qué** (sinónimos auto-sugeridos, sin formato
+    fijo). 3 pasos: subir+parsear → mapear+validar fila por fila (OK/ADVERTENCIA/
+    ERROR/DUPLICADO) → confirmar (crea propiedad+propietario+inquilino+contrato ACTIVO
+    con liquidaciones). Sale del long-tail demo-gated de la sección B.
+  - **Avatar del inquilino + documentos del inquilino** (`8940981`): foto de perfil del
+    inquilino + slots reales de DNI/recibos/garante que sube desde su app (migración de
+    esta tanda agrega `inquilinos.imageUrl` + `CreditoDetectado` + `ImportacionCartera`).
+  - **Flujo profesional por link mágico + fotos antes/después** (`f05b24d`): el
+    profesional entra por un token opaco (sin cuenta/password), confirma → en camino →
+    listo, y sube fotos a `/uploads`. Máquina de estados idempotente; revocación real al
+    reasignar.
+  - **Harden tenant en uploads** (`f715055`): validar tenant en foto/adjunto de reclamo
+    y archivo de boleta (cerraba una fuga: un inquilino podía inyectar una imagen
+    externa `https://`). Backend-only, sin migración.
+  - **Avatar del usuario del panel + comprobante en gasto de caja — BACKEND** (`535d15d`):
+    `PUT /me/avatar` y `MovimientoCaja.comprobanteUrl` (usan columnas que ya existían →
+    sin migración). ⚠️ **Falta la UI del panel** que los consuma → queda como pendiente
+    chico de front (sección A, ítem 6).
 
 ---
 
