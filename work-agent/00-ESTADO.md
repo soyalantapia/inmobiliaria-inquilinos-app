@@ -103,6 +103,7 @@ cartera** ya están (ver julio, arriba), así que salen de esta lista. Lo que qu
 | `04-PENDIENTES.md` | Roadmap — lo que falta (decisiones de producto) |
 | `05-DECISIONES.md` | Decisiones de negocio del dueño + reglas duras |
 | `06-ANALISIS-SENIOR.md` | Análisis dev senior / roadmap en olas |
+| `PROMPT-ESTADO-Y-ORIENTACION.md` | **Prompt de orientación** — analizar todo en orden y reportar "dónde estamos parados" (más liviano que el onboarding) |
 | `PROMPT-ONBOARDING-DEV-SENIOR.md` | **Prompt de onboarding** — un dev senior x10 recorre TODO, lo entiende y propone con qué seguir |
 | `PROMPT-LOOP-QA-VISUAL-FUNCIONAL.md` | Prompt reutilizable de auditoría en loop |
 | `historico/` | Docs viejos archivados (auditorías/reportes/prompts) |

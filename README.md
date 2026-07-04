@@ -88,6 +88,8 @@ La carpeta `work-agent/` es la fuente de verdad operativa. Cada archivo:
 | **`04-PENDIENTES.md`** | **Qué falta / roadmap** — el punto de partida del próximo chat. |
 | **`05-DECISIONES.md`** | **Decisiones de negocio del dueño** (no des-arreglar) + reglas duras + datos del tenant real. |
 | **`06-ANALISIS-SENIOR.md`** | Análisis dev senior: dónde estamos / qué falta / roadmap en olas. |
+| **`PROMPT-ESTADO-Y-ORIENTACION.md`** | Prompt para **analizar todo en orden y reportar dónde estamos parados** (orientación rápida, re-corrible). |
+| **`PROMPT-ONBOARDING-DEV-SENIOR.md`** | Prompt de onboarding profundo — un dev senior recorre TODO (docs + código) y propone con qué seguir. |
 | **`PROMPT-LOOP-QA-VISUAL-FUNCIONAL.md`** | Prompt reutilizable para correr una auditoría/QA en loop hasta que no haya errores. |
 
 > Documentos históricos (auditorías/reportes/prompts viejos) archivados en

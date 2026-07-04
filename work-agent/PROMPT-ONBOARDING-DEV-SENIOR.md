@@ -62,12 +62,12 @@ encontraste.
 
 **Fase C — Referencias técnicas (`docs/`)**
 - 🔑 `docs/DATA-MODEL.md` (ERD + comportamiento `onDelete` de las FK + multi-tenant + uniques).
-- 🔑 `docs/API.md` (los 105 endpoints: auth, request, respuesta, errores, reglas).
+- 🔑 `docs/API.md` (los 153 endpoints: auth, request, respuesta, errores, reglas).
 - `docs/CONFIG.md` (env vars), `docs/RUNBOOK.md` (on-call), `docs/TESTING.md`, `docs/FRONTEND.md`, `docs/GLOSARIO.md`.
 - `CONTRIBUTING.md` (convenciones + checklist de review), `SECURITY.md` (modelo de seguridad), `CHANGELOG.md` (historial).
 
 **Fase D — Código real del backend (`apps/api/src` + `prisma`)** — recorré cada archivo:
-- 🔑 `apps/api/prisma/schema.prisma` (72 modelos + 72 enums) — entendé los dominios:
+- 🔑 `apps/api/prisma/schema.prisma` (75 modelos + 74 enums) — entendé los dominios:
   tenant/equipo, inmuebles/partes, contratos/inquilinos, **plata**, reclamos, consorcios.
 - 🔑 `apps/api/src/auth/guards.ts` (los 4 guards) y `auth/pin.ts` (lockout).
 - 🔑 `apps/api/src/lib/liquidaciones.ts` (devengo) y `apps/api/src/routes/plata.ts`
