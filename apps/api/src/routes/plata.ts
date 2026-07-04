@@ -684,6 +684,9 @@ export async function plataRoutes(app: FastifyInstance) {
         monto: body.data.monto,
         fecha: body.data.fecha,
         proveedor: body.data.proveedor,
+        // Respaldo del gasto (foto/PDF ya subido a /uploads): antes se validaba
+        // pero NO se persistía en el create → el comprobante se perdía.
+        comprobanteUrl: body.data.comprobanteUrl,
         cargadoPor: usuario ? `${usuario.nombre} ${usuario.apellido}`.trim() : 'Panel',
       },
     });
