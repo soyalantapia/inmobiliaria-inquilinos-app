@@ -620,6 +620,7 @@ model Inmobiliaria {
   proximosCambiosBancarios   ProximoCambioBancario[]
   resumenesBancarios         ResumenBancario[]
   creditosDetectados         CreditoDetectado[]
+  importacionesCartera       ImportacionCartera[]
   aprobaciones               Aprobacion[]
   eventosAuditoria           EventoAuditoria[]
   reportesPiloto             ReportePiloto[]
@@ -1245,6 +1246,7 @@ model Inquilino {
   telefono       String?
   cuit           String?
   dni            String?
+  imageUrl       String? // avatar (foto de perfil en /uploads del tenant)
   esInvitado     Boolean      @default(false)
   contratoId     String?      @unique // titular 1:1
   contrato       Contrato?    @relation(fields: [contratoId], references: [id])
@@ -1415,6 +1417,8 @@ model Pago {
   decididoPorId       String?
   decididoPor         Usuario?            @relation("PagosDecididos", fields: [decididoPorId], references: [id])
   decididoAt          DateTime?
+  // Créditos que originaron este pago vía conciliación desde extracto bancario (0 o 1).
+  creditoDetectado    CreditoDetectado?
 
   @@index([inmobiliariaId, estado])
   @@index([contratoId])
@@ -1723,10 +1727,43 @@ model CreditoDetectado {
   cbuOrigen         String?
   nroOperacion      String
   bancoOrigen       String
+  // Marca el crédito como ya conciliado (creó un Pago real) para no reconciliar
+  // dos veces la misma línea del extracto.
+  conciliado        Boolean         @default(false)
+  pagoId            String?         @unique
+  pago              Pago?           @relation(fields: [pagoId], references: [id])
 
   @@index([inmobiliariaId])
   @@index([resumenBancarioId])
   @@map("creditos_detectados")
+}
+
+enum EstadoImportacion {
+  SUBIDO // archivo parseado, esperando mapeo de columnas
+  MAPEADO // mapeo confirmado, esperando confirmar import
+  CONFIRMADO // filas procesadas (ver `resultado`)
+}
+
+// Migración de cartera: alta masiva de propiedades/inquilinos/contratos desde un
+// Excel/CSV con mapeo de columnas flexible (el admin elige qué columna es qué).
+model ImportacionCartera {
+  id             String            @id @default(cuid())
+  inmobiliariaId String
+  inmobiliaria   Inmobiliaria      @relation(fields: [inmobiliariaId], references: [id])
+  archivoUrl     String
+  nombreArchivo  String
+  columnas       Json // headers detectados en la hoja, en orden: string[]
+  filas          Json // filas crudas parseadas (preview + datos completos): string[][]
+  mapeoColumnas  Json? // { campoDestino: columnaOrigen } una vez que el admin mapea
+  totalFilas     Int
+  estado         EstadoImportacion @default(SUBIDO)
+  resultado      Json? // { creadas: number, errores: [{ fila: number, motivo: string }] }
+  creadoPor      String
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([inmobiliariaId])
+  @@map("importaciones_cartera")
 }
 
 // =============================================================================

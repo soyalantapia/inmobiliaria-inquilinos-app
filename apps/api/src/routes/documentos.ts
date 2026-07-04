@@ -130,4 +130,26 @@ export async function documentosRoutes(app: FastifyInstance): Promise<void> {
     // 200 + JSON (no 204): el apiFetch del panel hace res.json() siempre.
     return reply.send({ ok: true });
   });
+
+  // GET /contratos/:contratoId/documentos-inquilino — lectura (solo panel) de los
+  // documentos que el INQUILINO subió desde su app (DNI, recibos, garante; ver
+  // POST /mis-documentos en mi-perfil.ts). Distinto de DocumentoContrato (arriba),
+  // que es el expediente que carga la inmobiliaria.
+  app.get('/contratos/:contratoId/documentos-inquilino', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'contratos.ver');
+    if (!u) return;
+    const { contratoId } = request.params as { contratoId: string };
+    const contrato = await prisma.contrato.findFirst({
+      where: { id: contratoId, inmobiliariaId: u.inmobiliariaId },
+      select: { inquilinoTitular: { select: { id: true } } },
+    });
+    if (!contrato) return reply.code(404).send({ message: 'Contrato no encontrado' });
+    if (!contrato.inquilinoTitular) return [];
+    const documentos = await prisma.documento.findMany({
+      where: { inmobiliariaId: u.inmobiliariaId, inquilinoId: contrato.inquilinoTitular.id },
+      include: { slot: { select: { titulo: true, categoria: true } } },
+      orderBy: { subidoAt: 'desc' },
+    });
+    return documentos.map((d) => ({ ...d, subidoAt: d.subidoAt.toISOString(), vencimiento: d.vencimiento?.toISOString() ?? null }));
+  });
 }

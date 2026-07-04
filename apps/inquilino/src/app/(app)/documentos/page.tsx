@@ -10,6 +10,7 @@ import {
   FileText,
   IdCard,
   ImageIcon,
+  Loader2,
   Plus,
   RefreshCw,
   ShieldCheck,
@@ -25,15 +26,14 @@ import { ConfirmDialog } from '@llave/ui/confirm-dialog';
 import { Progress } from '@llave/ui/progress';
 import { toast } from '@llave/ui/use-toast';
 import { NavBar } from '@/components/nav-bar';
-import { Proximamente } from '@/components/proximamente';
 import { apiEnabled } from '@/lib/api/client';
+import { useDocumentos, type DocumentoView, type SlotView } from '@/lib/api/use-documentos';
 import {
   type CategoriaDocumento,
   type Documento,
   type SlotDocumento,
   SLOTS_DOCUMENTOS,
   categoriaDescripcion,
-  categoriaLabel,
   eliminarDocumento,
   formatTamanio,
   guardarDocumento,
@@ -42,7 +42,7 @@ import {
 } from '@/lib/documentos-storage';
 import { formatFecha } from '@/lib/format';
 
-const TAMAÑO_MAX = 2 * 1024 * 1024; // 2MB
+const TAMAÑO_MAX = 2 * 1024 * 1024; // 2MB (demo); en prod el límite real es el de /uploads (10MB)
 
 const iconoCategoria: Record<CategoriaDocumento, React.ReactNode> = {
   IDENTIDAD: <IdCard className="h-4 w-4" />,
@@ -52,23 +52,402 @@ const iconoCategoria: Record<CategoriaDocumento, React.ReactNode> = {
 };
 
 export default function DocumentosPage() {
-  // En producción los documentos no tienen endpoint en el API: subir/eliminar
-  // solo persistiría en localStorage (dataURLs base64). Hasta que exista el
-  // back de documentos mostramos un estado neutro en vez del checklist mock.
-  if (apiEnabled) {
-    return (
-      <Proximamente
-        titulo="Mis documentos"
-        descripcion="Pronto vas a poder subir y tener a mano tu DNI, recibos y garantías desde acá."
-        icon={<FileText className="h-7 w-7" />}
-        volverHref="/cuenta"
-        volverLabel="Volver a Mi cuenta"
-      />
-    );
-  }
-  return <DocumentosDemo />;
+  return apiEnabled ? <DocumentosReal /> : <DocumentosDemo />;
 }
 
+// ============================================================
+// REAL (modo API) — GET/POST/DELETE /mis-documentos
+// ============================================================
+function DocumentosReal() {
+  const { slots, libres, cargando, subir, eliminar } = useDocumentos();
+  const [eliminando, setEliminando] = useState<DocumentoView | null>(null);
+  const [subiendoSlotId, setSubiendoSlotId] = useState<string | 'OTRO' | null>(null);
+  const [borrando, setBorrando] = useState(false);
+  const slotInputRef = useRef<HTMLInputElement>(null);
+  const otroInputRef = useRef<HTMLInputElement>(null);
+  const [slotActivo, setSlotActivo] = useState<SlotView | null>(null);
+
+  const requeridos = useMemo(() => slots.filter((s) => s.requerido), [slots]);
+  const requeridosCargados = requeridos.filter((s) => s.documento).length;
+  const totalRequeridos = requeridos.length;
+  const completitud = totalRequeridos === 0 ? 100 : Math.round((requeridosCargados / totalRequeridos) * 100);
+  const completo = requeridosCargados === totalRequeridos;
+
+  const subirParaSlot = async (file: File, slot: SlotView) => {
+    setSubiendoSlotId(slot.id);
+    try {
+      await subir(file, slot.id);
+      toast({ variant: 'success', title: '¡Documento cargado!', description: slot.titulo });
+    } catch (err) {
+      toast({
+        variant: 'destructive',
+        title: 'No pudimos subirlo',
+        description: err instanceof Error ? err.message : 'Intentá de nuevo.',
+      });
+    } finally {
+      setSubiendoSlotId(null);
+    }
+  };
+
+  const handleUploadSlot = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !slotActivo) return;
+    await subirParaSlot(file, slotActivo);
+    setSlotActivo(null);
+    if (slotInputRef.current) slotInputRef.current.value = '';
+  };
+
+  const handleUploadOtro = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setSubiendoSlotId('OTRO');
+    try {
+      await subir(file);
+      toast({ variant: 'success', title: 'Archivo subido', description: file.name });
+    } catch (err) {
+      toast({
+        variant: 'destructive',
+        title: 'No pudimos subirlo',
+        description: err instanceof Error ? err.message : 'Intentá de nuevo.',
+      });
+    } finally {
+      setSubiendoSlotId(null);
+      if (otroInputRef.current) otroInputRef.current.value = '';
+    }
+  };
+
+  const abrirUploadSlot = (slot: SlotView) => {
+    setSlotActivo(slot);
+    setTimeout(() => slotInputRef.current?.click(), 0);
+  };
+
+  const confirmarEliminar = async () => {
+    if (!eliminando) return;
+    setBorrando(true);
+    try {
+      await eliminar(eliminando.id);
+      toast({ title: 'Eliminado' });
+    } catch (err) {
+      toast({
+        variant: 'destructive',
+        title: 'No pudimos eliminarlo',
+        description: err instanceof Error ? err.message : 'Intentá de nuevo.',
+      });
+    } finally {
+      setBorrando(false);
+      setEliminando(null);
+    }
+  };
+
+  return (
+    <>
+      <header className="flex items-center gap-3 p-5 md:px-8">
+        <Button size="icon" variant="ghost" asChild>
+          <Link href="/cuenta" aria-label="Volver a Mi cuenta">
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+        </Button>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">Mi cuenta</p>
+          <h1 className="text-xl font-semibold md:text-2xl">Mis documentos</h1>
+        </div>
+      </header>
+
+      <main className="flex-1 space-y-5 px-5 pb-28 md:px-8 md:pb-8">
+        {!cargando && (
+          <Card
+            className={cn(
+              'space-y-3 p-5 transition-colors',
+              completo ? 'border-emerald-200 bg-emerald-50/60' : 'border-primary/20 bg-primary/5',
+            )}
+          >
+            <div className="flex items-start gap-3">
+              <div
+                className={cn(
+                  'grid h-12 w-12 shrink-0 place-items-center rounded-xl text-white shadow-sm',
+                  completo ? 'bg-emerald-500' : 'bg-primary',
+                )}
+              >
+                {completo ? (
+                  <CheckCircle2 className="h-6 w-6" strokeWidth={2.5} />
+                ) : (
+                  <FileText className="h-6 w-6" strokeWidth={2.2} />
+                )}
+              </div>
+              <div className="flex-1 min-w-0 space-y-2">
+                <div>
+                  <p className="text-sm font-semibold leading-tight">
+                    {completo
+                      ? '¡Documentación al día!'
+                      : `Te faltan ${totalRequeridos - requeridosCargados} de ${totalRequeridos}`}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {completo
+                      ? 'Cuando renueves o cambies de garantía, los reutilizás en un click.'
+                      : 'Subí los documentos requeridos por la inmobiliaria para tener todo a mano.'}
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <Progress aria-label={`Documentos cargados: ${completitud}%`} value={completitud} className="h-2" />
+                  <p className="text-[11px] text-muted-foreground">
+                    {requeridosCargados} de {totalRequeridos} requeridos · {completitud}%
+                  </p>
+                </div>
+              </div>
+            </div>
+          </Card>
+        )}
+
+        {!cargando && (
+          <>
+            <SeccionSlotsReal
+              titulo="Identidad"
+              icon={<IdCard className="h-4 w-4" />}
+              slots={slots.filter((s) => s.categoria === 'IDENTIDAD')}
+              onSubir={abrirUploadSlot}
+              onEliminar={(d) => setEliminando(d)}
+              subiendoSlotId={subiendoSlotId}
+            />
+            <SeccionSlotsReal
+              titulo="Ingresos"
+              icon={<Wallet className="h-4 w-4" />}
+              slots={slots.filter((s) => s.categoria === 'INGRESOS')}
+              onSubir={abrirUploadSlot}
+              onEliminar={(d) => setEliminando(d)}
+              subiendoSlotId={subiendoSlotId}
+            />
+            <SeccionSlotsReal
+              titulo="Garante"
+              icon={<ShieldCheck className="h-4 w-4" />}
+              slots={slots.filter((s) => s.categoria === 'GARANTE')}
+              onSubir={abrirUploadSlot}
+              onEliminar={(d) => setEliminando(d)}
+              subiendoSlotId={subiendoSlotId}
+            />
+          </>
+        )}
+
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="flex items-center gap-2 px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <FileText className="h-4 w-4" />
+              Otros documentos
+            </h2>
+            <Button size="sm" variant="outline" onClick={() => otroInputRef.current?.click()} disabled={subiendoSlotId === 'OTRO'}>
+              {subiendoSlotId === 'OTRO' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+              Subir
+            </Button>
+          </div>
+          <input
+            ref={otroInputRef}
+            type="file"
+            accept="image/*,application/pdf"
+            className="hidden"
+            onChange={handleUploadOtro}
+          />
+          {libres.length === 0 ? (
+            <Card className="border-dashed bg-muted/20 p-6 text-center">
+              <p className="text-sm font-medium">Sin otros documentos</p>
+              <p className="text-xs text-muted-foreground">{categoriaDescripcion.OTRO}</p>
+            </Card>
+          ) : (
+            <Card className="divide-y">
+              {libres.map((doc) => (
+                <DocumentoRowReal key={doc.id} doc={doc} onDelete={() => setEliminando(doc)} />
+              ))}
+            </Card>
+          )}
+        </section>
+      </main>
+
+      <input
+        ref={slotInputRef}
+        type="file"
+        accept="image/*,application/pdf"
+        className="hidden"
+        onChange={handleUploadSlot}
+      />
+
+      <NavBar />
+
+      <ConfirmDialog
+        open={!!eliminando}
+        onOpenChange={(o) => !o && setEliminando(null)}
+        title={`¿Eliminar "${eliminando?.nombre}"?`}
+        description="Vas a tener que subirlo de nuevo si lo necesitás."
+        confirmLabel={borrando ? 'Eliminando…' : 'Eliminar'}
+        variant="destructive"
+        onConfirm={confirmarEliminar}
+      />
+    </>
+  );
+}
+
+function SeccionSlotsReal({
+  titulo,
+  icon,
+  slots,
+  onSubir,
+  onEliminar,
+  subiendoSlotId,
+}: {
+  titulo: string;
+  icon: React.ReactNode;
+  slots: SlotView[];
+  onSubir: (s: SlotView) => void;
+  onEliminar: (d: DocumentoView) => void;
+  subiendoSlotId: string | null;
+}) {
+  if (slots.length === 0) return null;
+  return (
+    <section className="space-y-3">
+      <h2 className="flex items-center gap-2 px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        {icon}
+        {titulo}
+      </h2>
+      <Card className="divide-y">
+        {slots.map((slot) => (
+          <SlotRowReal
+            key={slot.id}
+            slot={slot}
+            subiendo={subiendoSlotId === slot.id}
+            onSubir={() => onSubir(slot)}
+            onEliminar={onEliminar}
+          />
+        ))}
+      </Card>
+    </section>
+  );
+}
+
+function SlotRowReal({
+  slot,
+  subiendo,
+  onSubir,
+  onEliminar,
+}: {
+  slot: SlotView;
+  subiendo: boolean;
+  onSubir: () => void;
+  onEliminar: (d: DocumentoView) => void;
+}) {
+  const doc = slot.documento;
+  const cargado = !!doc;
+
+  return (
+    <div className="flex items-start gap-3 p-4">
+      <div
+        className={cn(
+          'mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full',
+          cargado ? 'bg-emerald-100 text-emerald-700' : 'bg-muted text-muted-foreground',
+        )}
+      >
+        {cargado ? <CheckCircle2 className="h-4 w-4" strokeWidth={2.5} /> : <Circle className="h-4 w-4" />}
+      </div>
+      <div className="flex-1 min-w-0 space-y-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <p className="text-sm font-medium">{slot.titulo}</p>
+          {!slot.requerido && (
+            <Badge variant="outline" className="text-[10px]">
+              Opcional
+            </Badge>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground">{slot.descripcion}</p>
+        {cargado && doc && (
+          <div className="mt-2 flex items-center gap-2 rounded-md border bg-muted/30 p-2">
+            <PreviewMiniReal doc={doc} />
+            <div className="flex-1 min-w-0">
+              <p className="truncate text-xs font-medium">{doc.nombre}</p>
+              <p className="text-[11px] text-muted-foreground">
+                {formatTamanio(doc.tamanioBytes)} · subido el {formatFecha(doc.subidoAt)}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center">
+              <a
+                href={doc.url}
+                download={doc.nombre}
+                target="_blank"
+                rel="noreferrer"
+                className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                aria-label="Descargar"
+              >
+                <Download className="h-3.5 w-3.5" />
+              </a>
+              <button
+                type="button"
+                onClick={() => onEliminar(doc)}
+                className="grid h-7 w-7 place-items-center rounded-md text-destructive transition-colors hover:bg-destructive/10"
+                aria-label="Eliminar"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+      <Button size="sm" variant={cargado ? 'outline' : 'default'} onClick={onSubir} disabled={subiendo} className="shrink-0">
+        {subiendo ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : cargado ? (
+          <>
+            <RefreshCw className="h-3.5 w-3.5" />
+            Reemplazar
+          </>
+        ) : (
+          <>
+            <Upload className="h-3.5 w-3.5" />
+            Subir
+          </>
+        )}
+      </Button>
+    </div>
+  );
+}
+
+function PreviewMiniReal({ doc }: { doc: DocumentoView }) {
+  const esImagen = doc.tipoMime.startsWith('image/');
+  return (
+    <div className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-md border bg-muted">
+      {esImagen ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={doc.url} alt={doc.nombre} className="h-full w-full object-cover" />
+      ) : doc.tipoMime === 'application/pdf' ? (
+        <FileText className="h-4 w-4 text-muted-foreground" />
+      ) : (
+        <ImageIcon className="h-4 w-4 text-muted-foreground" />
+      )}
+    </div>
+  );
+}
+
+function DocumentoRowReal({ doc, onDelete }: { doc: DocumentoView; onDelete: () => void }) {
+  return (
+    <div className="flex items-center gap-3 p-4">
+      <PreviewMiniReal doc={doc} />
+      <div className="flex-1 min-w-0">
+        <p className="truncate text-sm font-medium">{doc.nombre}</p>
+        <p className="text-xs text-muted-foreground">
+          {formatTamanio(doc.tamanioBytes)} · subido el {formatFecha(doc.subidoAt)}
+        </p>
+      </div>
+      <div className="flex shrink-0 items-center gap-1">
+        <Button size="icon" variant="ghost" asChild>
+          <a href={doc.url} download={doc.nombre} target="_blank" rel="noreferrer" aria-label="Descargar">
+            <Download className="h-4 w-4" />
+          </a>
+        </Button>
+        <Button size="icon" variant="ghost" onClick={onDelete} aria-label="Eliminar">
+          <Trash2 className="h-4 w-4 text-destructive" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// DEMO (!apiEnabled) — localStorage, sin cambios de comportamiento
+// ============================================================
 function DocumentosDemo() {
   const [documentos, setDocumentos] = useState<Documento[]>([]);
   const [hidratado, setHidratado] = useState(false);
@@ -82,7 +461,6 @@ function DocumentosDemo() {
     setHidratado(true);
   }, []);
 
-  // ===== Cálculos sobre el checklist =====
   const requeridos = useMemo(() => SLOTS_DOCUMENTOS.filter((s) => s.requerido), []);
   const opcionales = useMemo(() => SLOTS_DOCUMENTOS.filter((s) => !s.requerido), []);
 
@@ -96,29 +474,18 @@ function DocumentosDemo() {
 
   const requeridosCargados = requeridos.filter((s) => docsPorSlot[s.id]).length;
   const totalRequeridos = requeridos.length;
-  const completitud =
-    totalRequeridos === 0 ? 100 : Math.round((requeridosCargados / totalRequeridos) * 100);
+  const completitud = totalRequeridos === 0 ? 100 : Math.round((requeridosCargados / totalRequeridos) * 100);
   const completo = requeridosCargados === totalRequeridos;
 
-  // Documentos sin slot (otros) — los que el inquilino subió por iniciativa propia
-  const documentosOtros = useMemo(
-    () => documentos.filter((d) => !d.slotId),
-    [documentos],
-  );
+  const documentosOtros = useMemo(() => documentos.filter((d) => !d.slotId), [documentos]);
 
-  // ===== Subida =====
   const subirArchivo = async (file: File, slot: SlotDocumento | null) => {
     if (file.size > TAMAÑO_MAX) {
-      toast({
-        title: 'Archivo muy grande',
-        description: 'Máximo 2 MB en esta demo.',
-        variant: 'destructive',
-      });
+      toast({ title: 'Archivo muy grande', description: 'Máximo 2 MB en esta demo.', variant: 'destructive' });
       return;
     }
     try {
       const dataUrl = await leerArchivoComoDataUrl(file);
-      // Si reemplazamos un slot ya cargado, primero borramos el anterior
       const previo = slot ? docsPorSlot[slot.id] : undefined;
       if (previo) {
         eliminarDocumento(previo.id);
@@ -136,10 +503,7 @@ function DocumentosDemo() {
       };
       guardarDocumento(doc);
       setDocumentos(listarDocumentos());
-      toast({
-        title: slot ? '¡Documento cargado!' : 'Archivo subido',
-        description: slot?.titulo ?? file.name,
-      });
+      toast({ title: slot ? '¡Documento cargado!' : 'Archivo subido', description: slot?.titulo ?? file.name });
     } catch {
       toast({ title: 'No pudimos subirlo', variant: 'destructive' });
     }
@@ -188,14 +552,11 @@ function DocumentosDemo() {
       </header>
 
       <main className="flex-1 space-y-5 px-5 pb-28 md:px-8 md:pb-8">
-        {/* RESUMEN: progreso del checklist */}
         {hidratado && (
           <Card
             className={cn(
               'space-y-3 p-5 transition-colors',
-              completo
-                ? 'border-emerald-200 bg-emerald-50/60'
-                : 'border-primary/20 bg-primary/5',
+              completo ? 'border-emerald-200 bg-emerald-50/60' : 'border-primary/20 bg-primary/5',
             )}
           >
             <div className="flex items-start gap-3">
@@ -235,7 +596,6 @@ function DocumentosDemo() {
           </Card>
         )}
 
-        {/* CHECKLIST DE REQUERIDOS — agrupado por categoría */}
         {hidratado && (
           <>
             <SeccionSlots
@@ -268,7 +628,6 @@ function DocumentosDemo() {
           </>
         )}
 
-        {/* OTROS — documentos libres que el inquilino sube */}
         <section className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="flex items-center gap-2 px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -290,32 +649,19 @@ function DocumentosDemo() {
           {documentosOtros.length === 0 ? (
             <Card className="border-dashed bg-muted/20 p-6 text-center">
               <p className="text-sm font-medium">Sin otros documentos</p>
-              <p className="text-xs text-muted-foreground">
-                {categoriaDescripcion.OTRO}
-              </p>
+              <p className="text-xs text-muted-foreground">{categoriaDescripcion.OTRO}</p>
             </Card>
           ) : (
             <Card className="divide-y">
               {documentosOtros.map((doc) => (
-                <DocumentoRow
-                  key={doc.id}
-                  doc={doc}
-                  onDelete={() => setEliminando(doc)}
-                />
+                <DocumentoRow key={doc.id} doc={doc} onDelete={() => setEliminando(doc)} />
               ))}
             </Card>
           )}
         </section>
       </main>
 
-      {/* Input file oculto compartido para los slots */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*,application/pdf"
-        className="hidden"
-        onChange={handleUploadSlot}
-      />
+      <input ref={fileInputRef} type="file" accept="image/*,application/pdf" className="hidden" onChange={handleUploadSlot} />
 
       <NavBar />
 
@@ -332,9 +678,6 @@ function DocumentosDemo() {
   );
 }
 
-// ============================================================
-// Sección de slots agrupados por categoría
-// ============================================================
 function SeccionSlots({
   titulo,
   icon,
@@ -359,22 +702,13 @@ function SeccionSlots({
       </h2>
       <Card className="divide-y">
         {slots.map((slot) => (
-          <SlotRow
-            key={slot.id}
-            slot={slot}
-            doc={docs[slot.id]}
-            onSubir={() => onSubir(slot)}
-            onEliminar={onEliminar}
-          />
+          <SlotRow key={slot.id} slot={slot} doc={docs[slot.id]} onSubir={() => onSubir(slot)} onEliminar={onEliminar} />
         ))}
       </Card>
     </section>
   );
 }
 
-// ============================================================
-// Fila de un slot: cargado o pendiente
-// ============================================================
 function SlotRow({
   slot,
   doc,
@@ -396,11 +730,7 @@ function SlotRow({
           cargado ? 'bg-emerald-100 text-emerald-700' : 'bg-muted text-muted-foreground',
         )}
       >
-        {cargado ? (
-          <CheckCircle2 className="h-4 w-4" strokeWidth={2.5} />
-        ) : (
-          <Circle className="h-4 w-4" />
-        )}
+        {cargado ? <CheckCircle2 className="h-4 w-4" strokeWidth={2.5} /> : <Circle className="h-4 w-4" />}
       </div>
       <div className="flex-1 min-w-0 space-y-1.5">
         <div className="flex flex-wrap items-center gap-1.5">
@@ -442,12 +772,7 @@ function SlotRow({
           </div>
         )}
       </div>
-      <Button
-        size="sm"
-        variant={cargado ? 'outline' : 'default'}
-        onClick={onSubir}
-        className="shrink-0"
-      >
+      <Button size="sm" variant={cargado ? 'outline' : 'default'} onClick={onSubir} className="shrink-0">
         {cargado ? (
           <>
             <RefreshCw className="h-3.5 w-3.5" />
@@ -480,9 +805,6 @@ function PreviewMini({ doc }: { doc: Documento }) {
   );
 }
 
-// ============================================================
-// Fila libre (sección "Otros")
-// ============================================================
 function DocumentoRow({ doc, onDelete }: { doc: Documento; onDelete: () => void }) {
   return (
     <div className="flex items-center gap-3 p-4">

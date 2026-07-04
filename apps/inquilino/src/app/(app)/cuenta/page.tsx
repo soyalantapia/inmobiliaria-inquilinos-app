@@ -1,17 +1,19 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeftRight,
   CalendarDays,
+  Camera,
   ChevronRight,
   CircleHelp,
   FileText,
   Globe,
   GraduationCap,
   LifeBuoy,
+  Loader2,
   LogOut,
   Mail,
   Phone,
@@ -20,11 +22,12 @@ import {
   Users,
   Wrench,
 } from 'lucide-react';
-import { Avatar, AvatarFallback } from '@llave/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@llave/ui/avatar';
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card, CardContent } from '@llave/ui/card';
 import { ConfirmDialog } from '@llave/ui/confirm-dialog';
+import { toast } from '@llave/ui/use-toast';
 import { DescargarAppCard } from '@/components/instalar-app';
 import { NavBar } from '@/components/nav-bar';
 import { relanzarOnboarding } from '@/components/onboarding';
@@ -34,6 +37,7 @@ import { leerProfile, type ProfileOverride } from '@/lib/profile-override';
 import { useCurrentUser } from '@/lib/use-current-user';
 import { apiEnabled } from '@/lib/api/client';
 import { useMiContrato } from '@/lib/api/hooks';
+import { useAvatar } from '@/lib/api/use-avatar';
 
 export default function CuentaPage() {
   // En prod la LECTURA de los datos del inquilino es real (sesión OTP + API),
@@ -54,6 +58,9 @@ function CuentaReal() {
   const router = useRouter();
   const user = useCurrentUser();
   const { contrato, inmobiliariaTelefono } = useMiContrato();
+  const { imageUrl, subir: subirAvatar, deApi: avatarDeApi } = useAvatar();
+  const [subiendoAvatar, setSubiendoAvatar] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
   const [confirmandoLogout, setConfirmandoLogout] = useState(false);
   // Mostramos el switcher "Cambiar de alquiler" sólo si la persona tiene más de
   // un alquiler (lo setea el login por API en la sesión). Una sola fila → la
@@ -75,6 +82,25 @@ function CuentaReal() {
     ? `https://wa.me/${telWa}?text=${encodeURIComponent('Hola! Tengo una consulta sobre mi contrato.')}`
     : null;
 
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setSubiendoAvatar(true);
+    try {
+      await subirAvatar(file);
+      toast({ variant: 'success', title: 'Foto de perfil actualizada' });
+    } catch (err) {
+      toast({
+        variant: 'destructive',
+        title: 'No pudimos subir la foto',
+        description: err instanceof Error ? err.message : 'Intentá de nuevo.',
+      });
+    } finally {
+      setSubiendoAvatar(false);
+      if (avatarInputRef.current) avatarInputRef.current.value = '';
+    }
+  };
+
   return (
     <>
       <header className="p-5">
@@ -86,11 +112,36 @@ function CuentaReal() {
         {/* Card de perfil (datos reales, edición deshabilitada) */}
         <Card className="space-y-4 p-5">
           <div className="flex items-center gap-4">
-            <Avatar className="h-16 w-16">
-              <AvatarFallback className="bg-primary text-2xl font-semibold text-primary-foreground">
-                {user.initial}
-              </AvatarFallback>
-            </Avatar>
+            <div className="relative shrink-0">
+              <Avatar className="h-16 w-16">
+                {imageUrl && <AvatarImage src={imageUrl} alt={fullName} />}
+                <AvatarFallback className="bg-primary text-2xl font-semibold text-primary-foreground">
+                  {user.initial}
+                </AvatarFallback>
+              </Avatar>
+              {avatarDeApi && (
+                <button
+                  type="button"
+                  onClick={() => avatarInputRef.current?.click()}
+                  disabled={subiendoAvatar}
+                  aria-label="Cambiar foto de perfil"
+                  className="absolute -bottom-1 -right-1 grid h-6 w-6 place-items-center rounded-full border-2 border-background bg-primary text-primary-foreground shadow-sm"
+                >
+                  {subiendoAvatar ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Camera className="h-3 w-3" />
+                  )}
+                </button>
+              )}
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleAvatarChange}
+              />
+            </div>
             <div className="flex-1 min-w-0">
               <p className="truncate text-lg font-semibold">{fullName}</p>
               <p className="truncate text-xs text-muted-foreground">

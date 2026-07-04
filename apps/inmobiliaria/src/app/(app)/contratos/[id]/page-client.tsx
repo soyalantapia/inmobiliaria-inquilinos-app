@@ -40,6 +40,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@llave/ui/tabs';
 import { toast } from '@llave/ui/use-toast';
 import { ContratoDocumentosPanel } from '@/components/contrato-documentos-panel';
+import { DocumentosInquilinoPanel } from '@/components/documentos-inquilino-panel';
 import { MensajeInquilinoDialog } from '@/components/mensaje-inquilino-dialog';
 import { ScoringInquilinoCard } from '@/components/scoring-inquilino-card';
 import { Topbar } from '@/components/topbar';
@@ -459,6 +460,9 @@ export default function DetalleContratoPage() {
                 (/contratos/:id/documentos + Volume, hook useDocsContrato); en demo
                 localStorage. Acá se sube el CONTRATO FIRMADO en PDF, DNIs, etc. */}
             <ContratoDocumentosPanel contrato={c} />
+            {/* Documentos que el INQUILINO subió desde su app (DNI, recibos,
+                garante) — solo lectura, feature nueva sin equivalente demo. */}
+            {apiEnabled && <DocumentosInquilinoPanel contratoId={c.id} />}
           </TabsContent>
         </Tabs>
       </main>

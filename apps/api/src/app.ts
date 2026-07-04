@@ -16,6 +16,7 @@ import { inquilinoMundoRoutes } from './routes/inquilino-mundo.js';
 import { uploadsRoutes } from './routes/uploads.js';
 import { documentosRoutes } from './routes/documentos.js';
 import { serviciosPublicosRoutes } from './routes/servicios-publicos.js';
+import { miPerfilRoutes } from './routes/mi-perfil.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -82,6 +83,7 @@ export async function buildApp(envOverrides: Partial<Record<string, string>> = {
   await app.register(uploadsRoutes);
   await app.register(documentosRoutes);
   await app.register(serviciosPublicosRoutes);
+  await app.register(miPerfilRoutes);
 
   return app;
 }
