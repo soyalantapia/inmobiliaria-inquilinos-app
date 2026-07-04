@@ -10,6 +10,19 @@
 
 Plataforma SaaS multi-tenant para inmobiliarias (panel) e inquilinos (PWA). Estado de cambios desde el handoff inicial hasta hoy.
 
+### Prep del piloto Ramiro + fix de migración de cartera (04/07)
+- **`fix(importaciones)` (`89977a4`, en main `108065e`):** la migración masiva de cartera
+  creaba el contrato ACTIVO desde la fecha de inicio de la planilla y devengaba TODAS las
+  liquidaciones desde ahí → un contrato con inicio viejo nacía con esos meses como VENCIDO
+  = **deuda FALSA** (reproducido en el tenant demo: inicio 6 meses atrás → deudaTotal = 6×
+  el alquiler). Fix: la migración devenga desde el **mes actual** (el contrato conserva su
+  fechaInicio real para antigüedad/ajuste). Validado E2E en prod: contrato migrado nace
+  **PENDIENTE con deuda $0**. El alta manual "en curso" (wizard `periodosAnteriores`) no cambia.
+- **Prep de reunión** (`work-agent/PILOTO-RAMIRO.md`): dry-run E2E del flujo del piloto
+  (registro → cartera → contrato en curso con mora → morosidad) 15/15 contra prod en un
+  tenant demo separado; guión de demo, checklist de la planilla del lunes, y las preguntas
+  de producto para desbloquear Consorcios Fase 2.
+
 ### Backlog de archivos/adjuntos — construido de punta a punta (04/07)
 La auditoría de archivos/adjuntos (02–03/07) dejó un backlog de superficies "no
 construidas en prod": campos que ya vivían en el schema pero ningún endpoint los usaba.
