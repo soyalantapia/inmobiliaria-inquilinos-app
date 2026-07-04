@@ -13,8 +13,11 @@ import {
   Plus,
   Search,
   Store,
+  Upload,
   Warehouse,
 } from 'lucide-react';
+import { apiEnabled } from '@/lib/api/client';
+import { MigracionMasivaApiDialog } from '@/components/migracion-masiva-api-dialog';
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card, CardContent } from '@llave/ui/card';
@@ -115,6 +118,7 @@ function esAlquilada(p: PropiedadEnriquecida): boolean {
 export default function PropiedadesPage() {
   const [q, setQ] = useState('');
   const [filtro, setFiltro] = useState<Filtro>('TODOS');
+  const [migracionOpen, setMigracionOpen] = useState(false);
   const [sociedadActiva, setSociedadActivaState] =
     useState<SociedadActivaId>(TODAS_LAS_SOCIEDADES);
 
@@ -269,6 +273,12 @@ export default function PropiedadesPage() {
             />
           </div>
           <div className="flex gap-2">
+            {apiEnabled && (
+              <Button variant="outline" onClick={() => setMigracionOpen(true)}>
+                <Upload className="h-4 w-4" />
+                Importar cartera
+              </Button>
+            )}
             <Button asChild>
               <Link href="/propiedades/nueva">
                 <Plus className="h-4 w-4" />
@@ -277,6 +287,8 @@ export default function PropiedadesPage() {
             </Button>
           </div>
         </div>
+
+        {apiEnabled && <MigracionMasivaApiDialog open={migracionOpen} onOpenChange={setMigracionOpen} />}
 
         {filtro !== 'TODOS' && (
           <div className="flex items-center justify-between text-xs text-muted-foreground">
