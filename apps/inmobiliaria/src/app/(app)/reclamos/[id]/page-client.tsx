@@ -50,6 +50,7 @@ import {
 } from '@/lib/reclamos-store';
 import { apiEnabled, subirArchivo, urlDeArchivo } from '@/lib/api/client';
 import { useReclamo } from '@/lib/api/use-reclamo';
+import { useVisitaReclamo } from '@/lib/api/use-visita-reclamo';
 import { mockUser } from '@/lib/auth';
 import type { Reclamo } from '@/lib/types';
 
@@ -70,6 +71,7 @@ export default function DetalleReclamoPage() {
     rechazar: rechazarApi,
     responder: responderApi,
   } = useReclamo(params?.id);
+  const { visita } = useVisitaReclamo(params?.id);
 
   // Copia local para respuesta instantánea: en demo el store devuelve el objeto
   // actualizado y lo pisamos acá; en prod se resincroniza desde la query.
@@ -447,6 +449,7 @@ export default function DetalleReclamoPage() {
                 reclamo={reclamo}
                 onUpdate={(r) => setReclamo(r)}
                 asignarApi={asignarApi}
+                visitaToken={visita?.token}
               />
             )}
 

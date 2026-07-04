@@ -44,6 +44,29 @@ export const JwtPersonaSchema = z.object({
 });
 export type JwtPersona = z.infer<typeof JwtPersonaSchema>;
 
+/**
+ * Payload del JWT de un PROFESIONAL con una visita asignada (link mágico
+ * /p/:token). Se emite al validar el token opaco de `VisitaProfesional.token`
+ * (GET /visitas-publicas/:token) — el profesional no tiene cuenta ni password,
+ * así que esta "sesión" dura lo que dura la visita. Habilita confirmar/marcar
+ * en camino/subir fotos/marcar listo vía requireProfesionalVisita.
+ *
+ * Igual que JwtPersonaSchema, queda FUERA de JwtPayloadSchema A PROPÓSITO:
+ * el resto del código asume que un payload normal (requireAuth) es
+ * usuario/inquilino/co-inquilino exhaustivamente (ver ej. /auth/me) — meter
+ * 'profesional' ahí rompería esa exhaustividad en todos lados. Solo los
+ * endpoints que explícitamente lo validan (requireProfesionalVisita, y
+ * POST/GET /uploads que aceptan este tipo además de JwtPayloadSchema) lo
+ * aceptan.
+ */
+export const JwtProfesionalSchema = z.object({
+  kind: z.literal('profesional'),
+  visitaId: z.string(),
+  inmobiliariaId: z.string(),
+  profesionalId: z.string(),
+});
+export type JwtProfesional = z.infer<typeof JwtProfesionalSchema>;
+
 // El token de "persona" queda FUERA de esta unión a propósito: requireAuth (que
 // valida JwtPayloadSchema) debe RECHAZARLO en los endpoints normales. Solo
 // requirePersona lo valida (con JwtPersonaSchema), para listar/elegir alquileres.

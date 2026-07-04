@@ -5,21 +5,26 @@ import {
   CalendarClock,
   CheckCircle2,
   Clock,
+  Copy,
   Truck,
   Wrench,
 } from 'lucide-react';
 import { Badge } from '@llave/ui/badge';
+import { Button } from '@llave/ui/button';
 import { Card, CardContent } from '@llave/ui/card';
 import { cn } from '@llave/ui/cn';
+import { toast } from '@llave/ui/use-toast';
 import { visitaDeReclamo, type VisitaProfesional } from '@/lib/visitas-cross-app';
 import { apiEnabled } from '@/lib/api/client';
+import { useVisitaReclamo } from '@/lib/api/use-visita-reclamo';
 import { formatMonto } from '@/lib/format';
 
 /**
- * Card que muestra el progreso de la visita del profesional al reclamo,
- * tal como la confirmó/actualizó él desde su link mágico /p/[token].
+ * Card que muestra el progreso de la visita del profesional al reclamo, tal
+ * como la confirmó/actualizó él desde su link mágico /p/[token].
  *
- * Polls cada N segundos para que los cambios cross-app se reflejen.
+ * En prod (apiEnabled) lee GET /reclamos/:id (poll cada 20s, no hay push).
+ * En demo lee el cross-app localStorage del lado profesional (poll cada 3s).
  */
 interface ProgresoVisitaCardProps {
   reclamoId: string;
@@ -58,15 +63,72 @@ const ESTADO_INFO: Record<
   },
 };
 
+interface ProgresoDatos {
+  estado: Estado;
+  fechaVisita: string | null;
+  notaFinal: string | null;
+  montoCobrado: number | null;
+  fotoAntes: string | null | undefined;
+  fotoDespues: string | null | undefined;
+}
+
 export function ProgresoVisitaCard({ reclamoId }: ProgresoVisitaCardProps) {
+  return apiEnabled ? <ProgresoVisitaCardReal reclamoId={reclamoId} /> : <ProgresoVisitaCardDemo reclamoId={reclamoId} />;
+}
+
+function ProgresoVisitaCardReal({ reclamoId }: ProgresoVisitaCardProps) {
+  const { visita, cargando, regenerarLink } = useVisitaReclamo(reclamoId);
+  const [copiando, setCopiando] = useState(false);
+
+  if (cargando || !visita) return null;
+
+  const copiarLink = async () => {
+    setCopiando(true);
+    try {
+      const base = process.env.NEXT_PUBLIC_INQUILINO_URL?.replace(/\/$/, '') || 'https://app.myalquiler.com';
+      await navigator.clipboard.writeText(`${base}/p/${visita.token}/`);
+      toast({ variant: 'success', title: 'Link copiado' });
+    } catch {
+      toast({ variant: 'destructive', title: 'No se pudo copiar' });
+    } finally {
+      setCopiando(false);
+    }
+  };
+
+  const reenviarLink = async () => {
+    try {
+      const nuevoToken = await regenerarLink();
+      const base = process.env.NEXT_PUBLIC_INQUILINO_URL?.replace(/\/$/, '') || 'https://app.myalquiler.com';
+      await navigator.clipboard.writeText(`${base}/p/${nuevoToken}/`);
+      toast({ variant: 'success', title: 'Nuevo link generado y copiado' });
+    } catch {
+      toast({ variant: 'destructive', title: 'No se pudo regenerar el link' });
+    }
+  };
+
+  return (
+    <VisitaProgresoBody datos={visita}>
+      <div className="flex gap-1.5 border-t pt-3">
+        <Button size="sm" variant="outline" className="flex-1 gap-1.5" onClick={copiarLink} disabled={copiando}>
+          <Copy className="h-3.5 w-3.5" />
+          Copiar link
+        </Button>
+        {visita.estado === 'ASIGNADO' && (
+          <Button size="sm" variant="ghost" onClick={reenviarLink}>
+            Regenerar
+          </Button>
+        )}
+      </div>
+    </VisitaProgresoBody>
+  );
+}
+
+function ProgresoVisitaCardDemo({ reclamoId }: ProgresoVisitaCardProps) {
   const [visita, setVisita] = useState<VisitaProfesional | null>(null);
   const [hidratado, setHidratado] = useState(false);
 
   useEffect(() => {
     setHidratado(true);
-    // Progreso de visita cross-app (localStorage del lado profesional): solo en
-    // demo. En prod (apiEnabled) no leemos ese store y la card no se renderiza.
-    if (apiEnabled) return;
     setVisita(visitaDeReclamo(reclamoId));
     // Poll cada 3 segs para reflejar updates del profesional. En backend
     // real esto sería un websocket / SSE.
@@ -75,9 +137,12 @@ export function ProgresoVisitaCard({ reclamoId }: ProgresoVisitaCardProps) {
   }, [reclamoId]);
 
   if (!hidratado || !visita) return null;
+  return <VisitaProgresoBody datos={visita} />;
+}
 
-  const idxActual = ESTADOS.indexOf(visita.estado);
-  const info = ESTADO_INFO[visita.estado];
+function VisitaProgresoBody({ datos, children }: { datos: ProgresoDatos; children?: React.ReactNode }) {
+  const idxActual = ESTADOS.indexOf(datos.estado);
+  const info = ESTADO_INFO[datos.estado];
   const Icon = info.icon;
 
   return (
@@ -132,11 +197,11 @@ export function ProgresoVisitaCard({ reclamoId }: ProgresoVisitaCardProps) {
         <div
           className={cn(
             'flex items-start gap-2 rounded-md border p-3 text-xs',
-            visita.estado === 'LISTO'
+            datos.estado === 'LISTO'
               ? 'border-emerald-200 bg-emerald-50/40 dark:border-emerald-900/40 dark:bg-emerald-900/10'
-              : visita.estado === 'EN_CAMINO'
+              : datos.estado === 'EN_CAMINO'
                 ? 'border-amber-200 bg-amber-50/40 dark:border-amber-900/40 dark:bg-amber-900/10'
-                : visita.estado === 'CONFIRMADA'
+                : datos.estado === 'CONFIRMADA'
                   ? 'border-primary/20 bg-primary/5'
                   : 'border-border bg-muted/20',
           )}
@@ -147,11 +212,11 @@ export function ProgresoVisitaCard({ reclamoId }: ProgresoVisitaCardProps) {
           <div className="space-y-0.5">
             <p className="font-medium">{info.label}</p>
             <p className="text-muted-foreground">{info.descripcion}</p>
-            {visita.fechaVisita && visita.estado !== 'LISTO' && (
+            {datos.fechaVisita && datos.estado !== 'LISTO' && (
               <p className="text-muted-foreground">
                 Visita programada:{' '}
                 <strong className="text-foreground">
-                  {new Date(visita.fechaVisita).toLocaleString('es-AR', {
+                  {new Date(datos.fechaVisita).toLocaleString('es-AR', {
                     weekday: 'short',
                     day: '2-digit',
                     month: 'short',
@@ -161,30 +226,24 @@ export function ProgresoVisitaCard({ reclamoId }: ProgresoVisitaCardProps) {
                 </strong>
               </p>
             )}
-            {visita.notaFinal && (
-              <p className="italic text-muted-foreground">
-                &ldquo;{visita.notaFinal}&rdquo;
-              </p>
+            {datos.notaFinal && (
+              <p className="italic text-muted-foreground">&ldquo;{datos.notaFinal}&rdquo;</p>
             )}
-            {visita.montoCobrado ? (
-              <p className="font-medium">
-                Costo cobrado: {formatMonto(visita.montoCobrado)}
-              </p>
+            {datos.montoCobrado ? (
+              <p className="font-medium">Costo cobrado: {formatMonto(datos.montoCobrado)}</p>
             ) : null}
           </div>
         </div>
 
         {/* Fotos antes / después del trabajo */}
-        {(visita.fotoAntes || visita.fotoDespues) && (
+        {(datos.fotoAntes || datos.fotoDespues) && (
           <div className="grid grid-cols-2 gap-2">
-            {visita.fotoAntes && (
-              <FotoCard label="Antes" url={visita.fotoAntes} />
-            )}
-            {visita.fotoDespues && (
-              <FotoCard label="Después" url={visita.fotoDespues} />
-            )}
+            {datos.fotoAntes && <FotoCard label="Antes" url={datos.fotoAntes} />}
+            {datos.fotoDespues && <FotoCard label="Después" url={datos.fotoDespues} />}
           </div>
         )}
+
+        {children}
       </CardContent>
     </Card>
   );
@@ -192,22 +251,10 @@ export function ProgresoVisitaCard({ reclamoId }: ProgresoVisitaCardProps) {
 
 function FotoCard({ label, url }: { label: string; url: string }) {
   return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noreferrer"
-      className="space-y-1"
-      title="Abrir foto"
-    >
-      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-        {label}
-      </p>
+    <a href={url} target="_blank" rel="noreferrer" className="space-y-1" title="Abrir foto">
+      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={url}
-        alt={label}
-        className="aspect-square w-full rounded-md border object-cover"
-      />
+      <img src={url} alt={label} className="aspect-square w-full rounded-md border object-cover" />
     </a>
   );
 }

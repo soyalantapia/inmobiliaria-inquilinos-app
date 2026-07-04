@@ -47,11 +47,14 @@ export function GestionReclamo({
   reclamo,
   onUpdate,
   asignarApi,
+  visitaToken,
 }: {
   reclamo: Reclamo;
   onUpdate: (r: Reclamo) => void;
   /** Acción real de asignación (POST /reclamos/:id/asignar) — usada en prod. */
   asignarApi?: (profesionalId: string) => Promise<void>;
+  /** Token REAL del link mágico de visita (prod) — ver useVisitaReclamo. */
+  visitaToken?: string;
 }) {
   // Red de profesionales: API real en prod, store local en demo.
   const { profesionales: profesionalesApi } = useProfesionales();
@@ -274,6 +277,7 @@ export function GestionReclamo({
           {reclamo.profesionalAsignadoNombre ? (
             <ProfesionalAsignadoCard
               reclamo={reclamo}
+              visitaToken={visitaToken}
               // Reasignar/desasignar no tiene endpoint en el API → solo demo.
               onCambiar={
                 apiEnabled
@@ -429,10 +433,12 @@ function ProfesionalRow({
 function ProfesionalAsignadoCard({
   reclamo,
   onCambiar,
+  visitaToken,
 }: {
   reclamo: Reclamo;
   /** Si falta (prod, sin endpoint de reasignación), no se ofrece "Cambiar". */
   onCambiar?: () => void;
+  visitaToken?: string;
 }) {
   // Reconstruimos un objeto mínimo del profesional para reutilizar el helper
   // de mensaje del dialog. Lo importante para el mensaje es la categoría y el
@@ -453,7 +459,7 @@ function ProfesionalAsignadoCard({
   };
   const tel = (reclamo.profesionalAsignadoTelefono ?? '').replace(/[^\d]/g, '');
   const waUrl = `https://wa.me/${tel}?text=${encodeURIComponent(
-    mensajeWhatsappTrabajo(profMinimo, reclamo),
+    mensajeWhatsappTrabajo(profMinimo, reclamo, visitaToken),
   )}`;
   const telUrl = `tel:${(reclamo.profesionalAsignadoTelefono ?? '').replace(/\s/g, '')}`;
 

@@ -125,15 +125,17 @@ export function AsignarProfesionalDialog({
   const handleAsignar = async (alsoWhatsapp: boolean) => {
     if (!seleccionado) return;
     setAsignando(true);
+    let visitaToken: string | undefined;
     try {
       if (deApi) {
         // Persistir de verdad (POST /reclamos/:id/asignar). Antes solo se escribía
         // el store demo → el toast decía "asignado" pero en prod no pasaba nada.
         await ensureApiSession();
-        await apiFetch(`/reclamos/${seleccionado.id}/asignar`, {
+        const res = await apiFetch<{ visitaToken?: string }>(`/reclamos/${seleccionado.id}/asignar`, {
           method: 'POST',
           body: JSON.stringify({ profesionalId: profesional.id }),
         });
+        visitaToken = res.visitaToken;
         // refetch (no invalidate): esperamos a que la lista quede fresca ANTES de
         // cerrar / avisar al padre, para que el contador no muestre datos viejos.
         // best-effort: si el refetch falla, la asignación YA se guardó → no debe
@@ -161,7 +163,7 @@ export function AsignarProfesionalDialog({
       onOpenChange(false);
 
       if (alsoWhatsapp) {
-        const mensaje = mensajeWhatsappTrabajo(profesional, seleccionado);
+        const mensaje = mensajeWhatsappTrabajo(profesional, seleccionado, visitaToken);
         const tel = profesional.telefono.replace(/[^\d]/g, '');
         const url = `https://wa.me/${tel}?text=${encodeURIComponent(mensaje)}`;
         window.open(url, '_blank', 'noopener,noreferrer');
@@ -369,6 +371,10 @@ export function mensajeWhatsappGenerico(prof: ProfesionalAdmin): string {
 export function mensajeWhatsappTrabajo(
   prof: ProfesionalAdmin,
   reclamo: Reclamo,
+  /** Token REAL de VisitaProfesional (prod, ver POST /reclamos/:id/asignar).
+   *  Sin esto cae a linkMagicoProfesional(prof.id) — un link que no resuelve
+   *  a nada real (solo queda para el flujo 100% demo). */
+  visitaToken?: string,
 ): string {
   const nombrePila = prof.nombre.split(' ')[0] ?? prof.nombre;
   const urg =
@@ -377,7 +383,7 @@ export function mensajeWhatsappTrabajo(
       : reclamo.urgencia === 'ALTA'
         ? '⚠️ '
         : '';
-  const linkProf = linkMagicoProfesional(prof.id);
+  const linkProf = linkMagicoProfesional(visitaToken ?? prof.id);
   return (
     `Hola ${nombrePila}! Soy del equipo de la inmobiliaria. ` +
     `Te paso un trabajo:\n\n` +

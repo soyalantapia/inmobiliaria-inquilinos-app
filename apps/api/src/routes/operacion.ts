@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
@@ -5,6 +6,11 @@ import { prisma } from '../db.js';
 import { requireInquilino, requireUsuario } from '../auth/guards.js';
 import { verificarPinUsuario } from '../auth/pin.js';
 import { urlEsDelTenant } from './uploads.js';
+
+/** Token opaco del link mágico de visita (/p/:token) — 24 bytes base64url, no adivinable. */
+function generarTokenVisita(): string {
+  return randomBytes(24).toString('base64url');
+}
 
 /**
  * Fase 4 — Operación: reclamos con SLA calculado en el server, asignación de
@@ -245,7 +251,7 @@ export async function operacionRoutes(app: FastifyInstance) {
 
     const autor = await nombreUsuario(u.userId);
     try {
-      const actualizado = await prisma.$transaction(async (tx) => {
+      const { reclamo: actualizado, visita } = await prisma.$transaction(async (tx) => {
         // Lock atómico (igual que resolver/rechazar): si un resolver/rechazar
         // concurrente cerró el reclamo entre el pre-check y acá, count=0 → 409.
         // Antes el update incondicional asignaba un profesional a un reclamo cerrado.
@@ -263,13 +269,53 @@ export async function operacionRoutes(app: FastifyInstance) {
             contenido: `${prof.nombre} (${prof.categoria})`,
           },
         });
-        return tx.reclamo.findUniqueOrThrow({ where: { id } });
+        // Upsert de la visita: reclamoId es @unique → 1 visita por reclamo. Si
+        // se reasigna a OTRO profesional (o al mismo, para reenviar el link),
+        // se resetea todo el ciclo — un token viejo emitido a otro profesional
+        // ya no debe poder confirmar/marcar listo esta visita (requireProfesionalVisita
+        // revalida profesionalId contra la DB en cada request).
+        const visitaUpsert = await tx.visitaProfesional.upsert({
+          where: { reclamoId: id },
+          create: { inmobiliariaId: u.inmobiliariaId, reclamoId: id, profesionalId: prof.id, token: generarTokenVisita() },
+          update: {
+            profesionalId: prof.id,
+            token: generarTokenVisita(),
+            estado: 'ASIGNADO',
+            fechaVisita: null,
+            confirmadaAt: null,
+            enCaminoAt: null,
+            listoAt: null,
+            notaFinal: null,
+            montoCobrado: null,
+            fotoAntes: null,
+            fotoDespues: null,
+          },
+        });
+        return { reclamo: await tx.reclamo.findUniqueOrThrow({ where: { id } }), visita: visitaUpsert };
       });
-      return conSla(actualizado);
+      return { ...conSla(actualizado), visitaToken: visita.token };
     } catch (e) {
       if (e instanceof ConflictoEstadoReclamo) return reply.code(409).send({ message: e.message });
       throw e;
     }
+  });
+
+  // Regenerar el link mágico de la visita SIN reasignar (mismo profesional):
+  // útil si el admin sospecha que el link se filtró, o simplemente para
+  // reenviarlo. Invalida el token anterior (cualquier sesión JWT ya emitida
+  // sigue funcionando hasta expirar — 14d — porque valida por profesionalId,
+  // no por token; para revocar esa sesión activa habría que reasignar).
+  app.post('/reclamos/:id/visita/regenerar-link', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'profesional.asignar');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const visita = await prisma.visitaProfesional.findFirst({ where: { reclamoId: id, inmobiliariaId: u.inmobiliariaId } });
+    if (!visita) return reply.code(404).send({ message: 'Esta visita todavía no tiene profesional asignado' });
+    const actualizada = await prisma.visitaProfesional.update({
+      where: { id: visita.id },
+      data: { token: generarTokenVisita() },
+    });
+    return { visitaToken: actualizada.token };
   });
 
   app.post('/reclamos/:id/resolver', async (request, reply) => {

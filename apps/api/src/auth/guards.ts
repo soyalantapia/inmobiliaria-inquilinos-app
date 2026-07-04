@@ -2,6 +2,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import {
   JwtPayloadSchema,
   JwtPersonaSchema,
+  JwtProfesionalSchema,
   rolTienePermiso,
   type Capacidad,
   type JwtPayload,
@@ -54,6 +55,55 @@ export async function requireInquilino(request: FastifyRequest, reply: FastifyRe
     return null;
   }
   return payload;
+}
+
+/** Datos ya re-validados contra DB del profesional con visita asignada. */
+export interface ProfesionalVisitaAcceso {
+  visitaId: string;
+  inmobiliariaId: string;
+  profesionalId: string;
+}
+
+/**
+ * Exige un profesional con una visita asignada (JWT `kind: 'profesional'`,
+ * emitido por GET /visitas-publicas/:token). Re-validamos SIEMPRE contra la DB
+ * (no solo el JWT): si la visita se reasignó a otro profesional después de
+ * emitido este token, `profesionalId` ya no matchea → 401 (mismo patrón que
+ * requireContratoAcceso con co-inquilino: revocación real, no solo confiar en
+ * un JWT de larga vida).
+ */
+export async function requireProfesionalVisita(
+  request: FastifyRequest,
+  reply: FastifyReply,
+): Promise<ProfesionalVisitaAcceso | null> {
+  // Validamos contra JwtProfesionalSchema directo (NO contra JwtPayloadSchema,
+  // que lo excluye a propósito — ver comentario en auth.ts del package shared).
+  // Mismo patrón que requirePersona: separación estricta entre tipos de token.
+  try {
+    await request.jwtVerify();
+  } catch {
+    await reply.code(401).send({ message: 'No autenticado' });
+    return null;
+  }
+  const parsed = JwtProfesionalSchema.safeParse(request.user);
+  if (!parsed.success) {
+    await reply.code(403).send({ message: 'Solo para profesionales con visita asignada' });
+    return null;
+  }
+  const payload = parsed.data;
+  const visita = await prisma.visitaProfesional.findUnique({
+    where: { id: payload.visitaId },
+    select: { inmobiliariaId: true, profesionalId: true },
+  });
+  if (
+    !visita ||
+    visita.profesionalId !== payload.profesionalId ||
+    visita.inmobiliariaId !== payload.inmobiliariaId
+  ) {
+    await reply.code(401).send({ message: 'Tu acceso a esta visita fue revocado' });
+    return null;
+  }
+  return { visitaId: payload.visitaId, inmobiliariaId: visita.inmobiliariaId, profesionalId: visita.profesionalId };
 }
 
 /**

@@ -4,9 +4,8 @@ import { mkdir, stat, unlink } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import os from 'node:os';
 import path from 'node:path';
-import type { FastifyInstance } from 'fastify';
-import type { JwtPayload } from '@llave/shared';
-import { requireAuth } from '../auth/guards.js';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { JwtPayloadSchema, JwtProfesionalSchema, type JwtPayload, type JwtProfesional } from '@llave/shared';
 
 /**
  * File storage REAL sobre un Railway Volume montado en /data.
@@ -38,9 +37,37 @@ const EXT_DE_MIME: Record<string, string> = {
   'application/pdf': '.pdf',
 };
 
-/** Los 3 kinds de JWT (usuario/inquilino/co-inquilino) llevan inmobiliariaId. */
-function tenantDe(payload: JwtPayload): string | null {
+/** Los 4 kinds de JWT (usuario/inquilino/co-inquilino/profesional) llevan inmobiliariaId. */
+function tenantDe(payload: JwtPayload | JwtProfesional): string | null {
   return (payload as { inmobiliariaId?: string }).inmobiliariaId ?? null;
+}
+
+/**
+ * Como requireAuth pero acepta TAMBIÉN un JWT `kind: 'profesional'` (link
+ * mágico de visita — ver visitas-publicas.ts). JwtProfesionalSchema queda
+ * fuera de JwtPayloadSchema a propósito (mismo motivo que JwtPersonaSchema:
+ * no romper la exhaustividad usuario/inquilino/co-inquilino en el resto del
+ * código) — pero /uploads es el ÚNICO endpoint genérico que el profesional
+ * necesita (subir fotoAntes/fotoDespues), así que acá probamos ambos schemas
+ * ANTES de responder (no podemos reusar requireAuth: ya manda 401 apenas el
+ * shape no matchea JwtPayloadSchema, y una reply no se puede mandar dos veces).
+ */
+async function requireAuthOProfesional(
+  request: FastifyRequest,
+  reply: FastifyReply,
+): Promise<JwtPayload | JwtProfesional | null> {
+  try {
+    await request.jwtVerify();
+  } catch {
+    await reply.code(401).send({ message: 'No autenticado' });
+    return null;
+  }
+  const asPayload = JwtPayloadSchema.safeParse(request.user);
+  if (asPayload.success) return asPayload.data;
+  const asProf = JwtProfesionalSchema.safeParse(request.user);
+  if (asProf.success) return asProf.data;
+  await reply.code(401).send({ message: 'Token inválido' });
+  return null;
 }
 
 /**
@@ -93,7 +120,7 @@ export async function uploadsRoutes(app: FastifyInstance): Promise<void> {
   // POST /uploads — sube un archivo. Cualquier usuario autenticado (panel o
   // inquilino/co-inquilino); el archivo queda scopeado a SU inmobiliaria.
   app.post('/uploads', async (request, reply) => {
-    const payload = await requireAuth(request, reply);
+    const payload = await requireAuthOProfesional(request, reply);
     if (!payload) return;
     const tenant = tenantDe(payload);
     if (!tenant) return reply.code(403).send({ message: 'Sin inmobiliaria asociada' });
@@ -140,7 +167,7 @@ export async function uploadsRoutes(app: FastifyInstance): Promise<void> {
     if (qToken && !request.headers.authorization) {
       request.headers.authorization = `Bearer ${qToken}`;
     }
-    const payload = await requireAuth(request, reply);
+    const payload = await requireAuthOProfesional(request, reply);
     if (!payload) return;
     const { tenant, name } = request.params as { tenant: string; name: string };
     if (tenantDe(payload) !== tenant) {
