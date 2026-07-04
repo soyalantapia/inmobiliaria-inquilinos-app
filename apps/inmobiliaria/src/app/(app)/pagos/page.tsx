@@ -33,6 +33,7 @@ import { MorososPanel } from '@/components/morosos-panel';
 import { PagosPorValidar } from '@/components/pagos-por-validar';
 import { Topbar } from '@/components/topbar';
 import { ValidadorResumenDialog } from '@/components/validador-resumen-dialog';
+import { ValidadorResumenApiDialog } from '@/components/validador-resumen-api-dialog';
 import { apiEnabled } from '@/lib/api/client';
 import { useContratos } from '@/lib/api/hooks';
 import { useAResolverCount, useDevengar } from '@/lib/api/use-pagos';
@@ -485,6 +486,12 @@ export default function PagosPage() {
               </>
             )}
             {real && (
+              <Button size="sm" className="gap-1 bg-primary text-primary-foreground hover:bg-primary/90" onClick={() => setValidadorOpen(true)}>
+                <ShieldCheck className="h-4 w-4" />
+                Validar por resumen
+              </Button>
+            )}
+            {real && (
               <Button
                 variant="outline"
                 size="sm"
@@ -737,19 +744,24 @@ export default function PagosPage() {
         )}
       </main>
 
-      {/* Dialog "Validar por resumen": el inmo sube el PDF del banco
-          y conciliamos en bloque contra los pagos informados. */}
-      <ValidadorResumenDialog
-        open={validadorOpen}
-        onOpenChange={setValidadorOpen}
-        onConciliado={() => {
-          // Recalculamos el contador de "a resolver" después de conciliar.
-          const pendientes = pagosInformadosMock.filter(
-            (p) => estadoDePago(p.id) === 'INFORMADO',
-          ).length;
-          setAResolverCount(pendientes);
-        }}
-      />
+      {/* Dialog "Validar por resumen": el inmo sube el extracto del banco y
+          conciliamos contra los pagos/liquidaciones reales. En demo sigue
+          siendo la simulación (PDF/imagen, matching sintético); en prod es
+          el parseo real de CSV/Excel (ver ValidadorResumenApiDialog). */}
+      {!real && (
+        <ValidadorResumenDialog
+          open={validadorOpen}
+          onOpenChange={setValidadorOpen}
+          onConciliado={() => {
+            // Recalculamos el contador de "a resolver" después de conciliar.
+            const pendientes = pagosInformadosMock.filter(
+              (p) => estadoDePago(p.id) === 'INFORMADO',
+            ).length;
+            setAResolverCount(pendientes);
+          }}
+        />
+      )}
+      {real && <ValidadorResumenApiDialog open={validadorOpen} onOpenChange={setValidadorOpen} />}
     </>
   );
 }

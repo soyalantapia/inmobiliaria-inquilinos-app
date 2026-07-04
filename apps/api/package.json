@@ -34,6 +34,7 @@
     "bcryptjs": "^2.4.3",
     "fastify": "^5.2.0",
     "nodemailer": "^8.0.11",
+    "xlsx": "^0.18.5",
     "zod": "^3.24.1"
   },
   "devDependencies": {

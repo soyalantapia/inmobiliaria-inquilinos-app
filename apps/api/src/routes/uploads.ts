@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { createReadStream, createWriteStream, existsSync } from 'node:fs';
-import { mkdir, stat, unlink } from 'node:fs/promises';
+import { mkdir, stat, unlink, writeFile } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -103,6 +103,21 @@ export async function borrarArchivoSubido(url: string, tenant: string): Promise<
   const safe = path.basename(rawName);
   if (safe !== rawName || safe.includes('..')) return;
   await unlink(path.join(UPLOADS_DIR, tenant, safe)).catch(() => {});
+}
+
+/**
+ * Guarda un Buffer arbitrario en el Volume del tenant y devuelve su URL servida.
+ * A diferencia de POST /uploads (que exige un mimetype de la whitelist de fotos/
+ * PDF), esto lo usan flujos que YA leyeron el archivo en memoria para procesarlo
+ * (ej. parsear un extracto bancario) y quieren archivar el original para
+ * trazabilidad — sin pasar dos veces por el multipart de /uploads.
+ */
+export async function guardarBufferSubido(buffer: Buffer, tenant: string, ext: string): Promise<string> {
+  const filename = `${randomUUID()}${ext}`;
+  const dir = path.join(UPLOADS_DIR, tenant);
+  await mkdir(dir, { recursive: true });
+  await writeFile(path.join(dir, filename), buffer);
+  return `/uploads/${tenant}/${filename}`;
 }
 
 function mimeDeArchivo(name: string): string {
