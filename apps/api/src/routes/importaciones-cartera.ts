@@ -325,7 +325,16 @@ async function crearContratoDesdeFila(
       });
       await tx.inquilino.update({ where: { id: inq.id }, data: { contratoId: contrato.id } });
       await tx.propiedad.update({ where: { id: propiedad.id }, data: { contratoActualId: contrato.id } });
-      await generarLiquidacionesContrato(tx, contrato);
+      // Migración de cartera: la app EMPIEZA A DEVENGAR desde el mes actual, NO
+      // desde la fecha de inicio histórica. Si devengáramos desde el inicio (p.ej.
+      // hace 6 meses), esos meses nacerían como VENCIDO = DEUDA FALSA (el inquilino
+      // los venía pagando por afuera). El contrato conserva su fechaInicio real
+      // (antigüedad/ajuste); solo se acota el punto de arranque del devengo. El
+      // alta MANUAL con historial usa el wizard (periodosAnteriores), no esto.
+      const hoy = new Date();
+      const mesActual = new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), 1));
+      const devengarDesde = fechaInicio > mesActual ? fechaInicio : mesActual;
+      await generarLiquidacionesContrato(tx, { ...contrato, fechaInicio: devengarDesde });
     },
     { timeout: 30_000, maxWait: 10_000 },
   );
