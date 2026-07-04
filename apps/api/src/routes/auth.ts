@@ -521,6 +521,8 @@ export async function authRoutes(app: FastifyInstance) {
         nombre: `${u.nombre} ${u.apellido}`.trim(),
         email: u.email,
         rol: u.rol,
+        // Avatar (foto en /uploads del tenant) — editable con PUT /me/avatar.
+        imageUrl: u.imageUrl ?? null,
         inmobiliaria: u.inmobiliaria.nombre,
         esPiloto: u.inmobiliaria.esPiloto,
         // ¿Ya tiene PIN de seguridad en la DB? El panel lo usa para mostrar

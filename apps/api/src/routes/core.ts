@@ -9,7 +9,7 @@ import { generarLiquidacionesContrato } from '../lib/liquidaciones.js';
 import { conSaldo, montoPagadoPorLiquidacion } from '../lib/saldos.js';
 import { calcularMora, resolverEsquemaMora } from '../lib/punitorios.js';
 import { aplicarEstadoInicial, EstadoInicialInvalido } from '../lib/estado-inicial-contrato.js';
-import { urlEsDelTenant } from './uploads.js';
+import { borrarArchivoSubido, urlEsDelTenant } from './uploads.js';
 import { enviarInvitacionInquilino, enviarInvitacionEquipo } from '../mailer.js';
 
 /**
@@ -950,6 +950,28 @@ export async function coreRoutes(app: FastifyInstance) {
       }
       throw e;
     }
+  });
+
+  // Avatar del usuario logueado (foto de perfil en /uploads del tenant).
+  // imageUrl null/'' = sacar la foto. Al reemplazar/quitar, se libera el archivo
+  // anterior del Volume (best effort). Cualquier rol edita SU propia foto.
+  app.put('/me/avatar', async (request, reply) => {
+    const u = await requireUsuario(request, reply);
+    if (!u) return;
+    const body = z
+      .object({ imageUrl: z.string().nullable() })
+      .safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ message: 'Avatar inválido' });
+    const nueva = body.data.imageUrl || null;
+    if (nueva && !urlEsDelTenant(nueva, u.inmobiliariaId)) {
+      return reply.code(400).send({ message: 'Avatar inválido' });
+    }
+    const actual = await prisma.usuario.findUnique({ where: { id: u.userId }, select: { imageUrl: true } });
+    await prisma.usuario.update({ where: { id: u.userId }, data: { imageUrl: nueva } });
+    if (actual?.imageUrl && actual.imageUrl !== nueva) {
+      await borrarArchivoSubido(actual.imageUrl, u.inmobiliariaId);
+    }
+    return { imageUrl: nueva };
   });
 
   // Editar el esquema de mora de un contrato existente. `tipo: null` = volver a

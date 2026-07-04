@@ -8,7 +8,7 @@ import { conSaldo, montoPagadoPorLiquidacion } from '../lib/saldos.js';
 import { calcularMora, resolverEsquemaMora } from '../lib/punitorios.js';
 import { registrarEvento } from '../lib/auditoria.js';
 import { enviarInvitacionInquilino } from '../mailer.js';
-import { urlEsDelTenant } from './uploads.js';
+import { borrarArchivoSubido, urlEsDelTenant } from './uploads.js';
 
 /**
  * Fase 3 — La plata: liquidaciones, validación de pagos informados, caja de
@@ -658,9 +658,15 @@ export async function plataRoutes(app: FastifyInstance) {
         fecha: z.coerce.date(),
         // El front manda null cuando el proveedor queda vacío: aceptar null además de undefined.
         proveedor: z.string().nullable().optional(),
+        // Comprobante/ticket del gasto (foto o PDF ya subido a /uploads): el
+        // respaldo para la rendición al propietario.
+        comprobanteUrl: z.string().optional(),
       })
       .safeParse(request.body ?? {});
     if (!body.success) return reply.code(400).send({ message: 'Datos del movimiento incompletos' });
+    if (body.data.comprobanteUrl && !urlEsDelTenant(body.data.comprobanteUrl, u.inmobiliariaId)) {
+      return reply.code(400).send({ message: 'Comprobante inválido' });
+    }
 
     const prop = await prisma.propiedad.findFirst({ where: { id: body.data.propiedadId, inmobiliariaId: u.inmobiliariaId } });
     if (!prop) return reply.code(404).send({ message: 'Propiedad inexistente' });
@@ -705,7 +711,7 @@ export async function plataRoutes(app: FastifyInstance) {
     // la rendición apuntando a un gasto inexistente).
     const mov = await prisma.movimientoCaja.findFirst({
       where: { id, inmobiliariaId: u.inmobiliariaId },
-      select: { descontadoEnRendicion: true },
+      select: { descontadoEnRendicion: true, comprobanteUrl: true },
     });
     if (!mov) return reply.code(404).send({ message: 'Movimiento inexistente' });
     const res = await prisma.movimientoCaja.deleteMany({
@@ -714,6 +720,8 @@ export async function plataRoutes(app: FastifyInstance) {
     if (res.count === 0) {
       return reply.code(409).send({ message: 'Ya fue descontado en una rendición — no se puede eliminar' });
     }
+    // Best effort: liberar el comprobante del Volume (mismo patrón que documentos).
+    if (mov.comprobanteUrl) await borrarArchivoSubido(mov.comprobanteUrl, u.inmobiliariaId);
     await registrarEvento({
       inmobiliariaId: u.inmobiliariaId,
       tipo: 'GASTO_CAJA_ELIMINADO',
