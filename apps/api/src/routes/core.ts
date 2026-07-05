@@ -1272,6 +1272,56 @@ export async function coreRoutes(app: FastifyInstance) {
     };
   });
 
+  // ===== Depósitos en custodia (plata de terceros que la inmo guarda) =====
+  // Suma los depósitos de garantía RETENIDOS (de contratos activos Y de finalizados que
+  // todavía no se devolvieron): es el pasivo real de plata de terceros a cuidar.
+  app.get('/depositos/en-custodia', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'contratos.ver');
+    if (!u) return;
+    const contratos = await prisma.contrato.findMany({
+      where: {
+        inmobiliariaId: u.inmobiliariaId,
+        estadoDeposito: 'RETENIDO',
+        depositoGarantia: { gt: 0 },
+      },
+      select: {
+        id: true,
+        moneda: true,
+        depositoGarantia: true,
+        estado: true,
+        fechaInicio: true,
+        propiedad: { select: { direccion: true } },
+        inquilinoTitular: { select: { nombre: true, apellido: true } },
+      },
+      orderBy: { fechaInicio: 'desc' },
+    });
+    const porMonedaMap = new Map<string, { total: number; cantidad: number }>();
+    const items = contratos.map((c) => {
+      const monto = Number(c.depositoGarantia ?? 0);
+      const cur = porMonedaMap.get(c.moneda) ?? { total: 0, cantidad: 0 };
+      cur.total += monto;
+      cur.cantidad += 1;
+      porMonedaMap.set(c.moneda, cur);
+      return {
+        contratoId: c.id,
+        propiedad: c.propiedad?.direccion ?? '—',
+        inquilino: `${c.inquilinoTitular?.nombre ?? ''} ${c.inquilinoTitular?.apellido ?? ''}`.trim() || '—',
+        monto: Math.round(monto * 100) / 100,
+        moneda: c.moneda,
+        estadoContrato: c.estado,
+        fechaInicio: c.fechaInicio,
+      };
+    });
+    return {
+      porMoneda: [...porMonedaMap.entries()].map(([moneda, v]) => ({
+        moneda,
+        total: Math.round(v.total * 100) / 100,
+        cantidad: v.cantidad,
+      })),
+      contratos: items,
+    };
+  });
+
   // ===== Garantes del contrato (contacto/póliza) — activa el modelo Garante =====
   const garanteBody = z.object({
     tipo: z.enum(['PROPIETARIA', 'CAUCION', 'SUELDO', 'DIGITAL']),

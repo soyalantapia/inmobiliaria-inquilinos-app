@@ -49,6 +49,16 @@ enum EstadoContrato {
   RESCINDIDO
 }
 
+// Estado del depósito de garantía (plata de terceros en custodia de la inmobiliaria).
+// RETENIDO = lo tiene guardado; DEVUELTO = se lo devolvió al inquilino; NETEADO = se
+// aplicó contra deuda/daños al cerrar; EJECUTADO = se retuvo íntegro por incumplimiento.
+enum EstadoDeposito {
+  RETENIDO
+  DEVUELTO
+  NETEADO
+  EJECUTADO
+}
+
 enum IndiceAjuste {
   ICL
   IPC
@@ -1179,6 +1189,11 @@ model Contrato {
   titularCuenta             String?
   comisionInmobiliaria      Float?
   depositoGarantia          Decimal?       @db.Decimal(14, 2)
+  // Estado/devolución del depósito. RETENIDO por defecto: mientras el contrato vive, la
+  // inmo lo tiene en custodia. Al devolver/netear (rescisión) se registra monto y fecha.
+  estadoDeposito            EstadoDeposito @default(RETENIDO)
+  depositoDevueltoMonto     Decimal?       @db.Decimal(14, 2)
+  depositoDevueltoAt        DateTime?
   tasaPunitorioDiaria       Float? // LEGACY: % por día. Migrado a moraTipo/moraValor; queda por compat de lectura.
   // Esquema de mora del contrato (override del default de la inmobiliaria).
   // null => hereda (cascada en resolverEsquemaMora). moraValor se interpreta

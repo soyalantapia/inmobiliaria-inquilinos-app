@@ -70,6 +70,7 @@ interface ContratoApi {
   titularCuenta: string | null;
   comisionInmobiliaria: number | null;
   depositoGarantia: string | number | null;
+  estadoDeposito: string | null;
   modoCobranza: 'INMOBILIARIA' | 'PROPIETARIO_DIRECTO' | null;
   cobraDirectoPropietarioId: string | null;
   /** Interés por mora: override propio del contrato + esquema resuelto. */
@@ -173,6 +174,8 @@ function mapContrato(r: ContratoApi): ContratoListado {
     aprobadoAt: r.aprobadoAt,
     modoCobranza: r.modoCobranza ?? 'INMOBILIARIA',
     cobraDirectoPropietarioId: r.cobraDirectoPropietarioId,
+    depositoGarantia: r.depositoGarantia != null && r.depositoGarantia !== '' ? Number(r.depositoGarantia) : null,
+    estadoDeposito: r.estadoDeposito ?? undefined,
     moraTipo: r.moraTipo ?? null,
     moraValor: r.moraValor != null ? Number(r.moraValor) : null,
     ...(r.moraEfectiva

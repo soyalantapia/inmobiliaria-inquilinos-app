@@ -218,6 +218,10 @@ export interface ContratoListado {
   tipoContrato?: TipoContrato;
   /** Monto de expensas mensuales (si el contrato lo incluye). */
   montoExpensas?: number | null;
+  /** Depósito de garantía que dejó el inquilino (plata en custodia de la inmo). */
+  depositoGarantia?: number | null;
+  /** Estado del depósito: RETENIDO / DEVUELTO / NETEADO / EJECUTADO. */
+  estadoDeposito?: string;
   /** Índice de actualización del alquiler (ICL, IPC, etc.). Null si no aplica. */
   indiceAjuste?: string | null;
   /** Cada cuántos meses se ajusta el alquiler. Null si no aplica. */

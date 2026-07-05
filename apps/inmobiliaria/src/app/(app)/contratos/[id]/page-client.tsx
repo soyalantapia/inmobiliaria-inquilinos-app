@@ -306,6 +306,16 @@ export default function DetalleContratoPage() {
                       bold={c.tipoContrato === 'SOLO_EXPENSAS'}
                     />
                   )}
+                  {(c.depositoGarantia ?? 0) > 0 && (
+                    <Row
+                      label="Depósito de garantía"
+                      value={`${formatMonto(c.depositoGarantia!, c.moneda)}${
+                        c.estadoDeposito && c.estadoDeposito !== 'RETENIDO'
+                          ? ` · ${c.estadoDeposito.charAt(0)}${c.estadoDeposito.slice(1).toLowerCase()}`
+                          : ' · en custodia'
+                      }`}
+                    />
+                  )}
                   <Row label="Próximo vencimiento" value={formatFecha(c.proximoVencimiento)} />
                   {c.tipoContrato !== 'SOLO_EXPENSAS' && (
                     <>

@@ -17,6 +17,7 @@ import {
   Building2,
   CalendarHeart,
   HardHat,
+  Landmark,
   Users,
   Wallet,
   Wrench,
@@ -50,6 +51,7 @@ const links: NavLink[] = [
   // rendición/ARCA/historial) queda accesible desde ahí (link "Ver ficha / rendir").
   { href: '/pagos', label: 'Pagos', icon: CreditCard, capacidad: 'pagos.ver' },
   { href: '/caja', label: 'Caja', icon: Wallet, capacidad: 'caja.ver' },
+  { href: '/depositos', label: 'Depósitos', icon: Landmark, capacidad: 'contratos.ver' },
   { href: '/contratos', label: 'Contratos', icon: FileText, capacidad: 'contratos.ver' },
   { href: '/inquilinos', label: 'Inquilinos', icon: Users, capacidad: 'contratos.ver' },
   { href: '/aprobaciones', label: 'Aprobaciones', icon: Inbox, capacidad: 'contrato.aprobar' },
