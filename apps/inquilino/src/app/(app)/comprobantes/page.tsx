@@ -46,6 +46,15 @@ const metodoLabel = {
   CRIPTO: 'Cripto',
 } as const;
 
+// Método de un pago CONCILIADO (incluye EFECTIVO/CHEQUE de los cobros manuales
+// que registra la inmobiliaria).
+const metodoPagoLabel: Record<PagoDeLiquidacion['metodo'], string> = {
+  TRANSFERENCIA: 'Transferencia',
+  MERCADOPAGO: 'Mercado Pago',
+  EFECTIVO: 'Efectivo',
+  CHEQUE: 'Cheque',
+};
+
 // Cada fila de la lista unificada es un movimiento de uno de estos tipos.
 type Movimiento =
   | { kind: 'atrasado'; liq: Liquidacion }
@@ -362,6 +371,21 @@ function RecibosReal() {
       }
     : null;
 
+  // Pagos CONCILIADO (confirmados) de todas las liquidaciones → transacciones
+  // explícitas. Antes un cobro —sobre todo un PARCIAL o uno aplicado a un mes
+  // futuro— solo se veía como un badge chico dentro de la liq y pasaba
+  // desapercibido. Incluye los cobros manuales que registra la inmobiliaria (autor null).
+  const pagosRecibidos = useMemo(() => {
+    const rows: { pago: PagoDeLiquidacion; periodo: string; moneda: Liquidacion['moneda'] }[] = [];
+    for (const l of liquidaciones) {
+      for (const p of l.pagos ?? []) {
+        if (p.estado !== 'CONCILIADO') continue;
+        rows.push({ pago: p, periodo: l.periodo, moneda: l.moneda });
+      }
+    }
+    return rows.sort((a, b) => b.pago.fechaTransferencia.localeCompare(a.pago.fechaTransferencia));
+  }, [liquidaciones]);
+
   return (
     <>
       <MobileGreetingHeader />
@@ -417,6 +441,39 @@ function RecibosReal() {
               </p>
             )}
           </Card>
+        )}
+
+        {pagosRecibidos.length > 0 && (
+          <section className="space-y-2">
+            <h2 className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Pagos recibidos
+            </h2>
+            <Card className="divide-y">
+              {pagosRecibidos.map(({ pago, periodo, moneda }) => (
+                <div key={pago.id} className="flex items-center gap-3 p-4">
+                  <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+                    <CheckCircle2 className="h-5 w-5" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="truncate text-sm font-medium leading-tight">
+                      {formatMonto(pago.monto, moneda)} recibido
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {metodoPagoLabel[pago.metodo]} · {formatFechaCorta(pago.fechaTransferencia)}
+                      {pago.autor == null ? ' · registrado por la inmobiliaria' : ''}
+                    </p>
+                    <p className="truncate text-[11px] text-muted-foreground">
+                      A cuenta de {formatPeriodo(periodo)}
+                      {pago.tipo === 'PARCIAL' ? ' · pago parcial' : ''}
+                    </p>
+                  </div>
+                  <span className="shrink-0 self-start rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                    Confirmado
+                  </span>
+                </div>
+              ))}
+            </Card>
+          </section>
         )}
 
         <section className="space-y-2">
