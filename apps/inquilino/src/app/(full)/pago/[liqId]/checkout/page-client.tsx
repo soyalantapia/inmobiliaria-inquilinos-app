@@ -157,6 +157,29 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
     );
   }
 
+  // Contrato finalizado/rescindido: NO se informan pagos. El backend ya no manda la
+  // cuenta de cobranza (datosCobranza=null), así que no hay CBU adónde transferir;
+  // cortamos ANTES del formulario para que nadie mueva plata a un contrato muerto y
+  // reciba el 409 recién después. El ex-inquilino sigue viendo su historial.
+  if (contrato && contrato.estado !== 'ACTIVO') {
+    return (
+      <main className="flex-1 px-5 py-10">
+        <div className="mx-auto max-w-md space-y-3 text-center">
+          <p className="text-base font-medium">
+            Tu contrato ya {contrato.estado === 'RESCINDIDO' ? 'fue rescindido' : 'finalizó'}
+          </p>
+          <p className="text-sm text-muted-foreground">
+            No se pueden informar pagos de un contrato finalizado. Si tenés una deuda
+            pendiente, coordiná con {contrato.inmobiliaria} cómo saldarla.
+          </p>
+          <Button asChild className="mt-2">
+            <Link href="/">Volver al inicio</Link>
+          </Button>
+        </div>
+      </main>
+    );
+  }
+
   // Co-inquilino "Solo lectura" (VER): la pantalla de invitación promete que NO
   // puede informar pagos. Lo hacemos cumplir acá, el único punto donde se informa
   // un pago (el home le muestra el monto, que sí puede ver).

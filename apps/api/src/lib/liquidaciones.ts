@@ -123,6 +123,10 @@ export async function marcarLiquidacionesVencidas(
     where: {
       estado: 'PENDIENTE',
       fechaVencimiento: { lt: new Date() },
+      // Sólo contratos ACTIVO: una liquidación remanente de un contrato finalizado
+      // NO debe vencerse sola y convertirse en morosidad fantasma (finalizar ya
+      // anula las cuotas futuras sin pago; esto es el cinturón de seguridad).
+      contrato: { estado: 'ACTIVO' },
       ...(inmobiliariaId ? { inmobiliariaId } : {}),
     },
     data: { estado: 'VENCIDO' },

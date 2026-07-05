@@ -1095,7 +1095,10 @@ export async function coreRoutes(app: FastifyInstance) {
   app.post('/contratos/:id/finalizar', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'contratos.crear');
     if (!u) return;
-    // Finalizar es irreversible (libera la propiedad + desvincula al inquilino).
+    // Finalizar es irreversible (libera la propiedad). NO desvincula al inquilino:
+    // el vínculo Inquilino→Contrato se conserva a propósito para que el ex-inquilino
+    // mantenga acceso de SOLO LECTURA a su historial (contrato pasado, liquidaciones,
+    // comprobantes) incluso tras re-loguear. Las escrituras las corta exigirContratoActivo.
     // contratos.crear incluye CARGA, pero CARGA solo carga para aprobación → no
     // debería poder finalizar. Mismo guard que DELETE /propietarios y /propiedades.
     if (u.rol === 'CARGA') return reply.code(403).send({ message: 'Solo un Admin u Operador puede finalizar contratos' });
@@ -1118,16 +1121,88 @@ export async function coreRoutes(app: FastifyInstance) {
         where: { id, inmobiliariaId: u.inmobiliariaId, estado: { notIn: ['FINALIZADO', 'RESCINDIDO', 'BORRADOR'] } },
         data: { estado: 'FINALIZADO' },
       });
-      if (upd.count === 0) return false;
+      if (upd.count === 0) return null;
       await tx.propiedad.updateMany({
         where: { id: contrato.propiedadId, contratoActualId: id },
         data: { contratoActualId: null, estado: 'DISPONIBLE' },
       });
-      await tx.inquilino.updateMany({ where: { contratoId: id }, data: { contratoId: null } });
-      return true;
+      // Anular la deuda FANTASMA: las liquidaciones futuras (vencimiento posterior
+      // a la baja) que están PENDIENTE y SIN ningún pago son meras proyecciones del
+      // devengo — el ex-inquilino no ocupó esos meses, así que no las debe. Borrarlas
+      // evita que el barrido de vencidos las convierta en morosidad falsa y que la PWA
+      // ofrezca "pagar" un mes muerto. La deuda YA vencida mientras el contrato estaba
+      // activo se conserva (es deuda real y cobrable). El filtro `pagos: { none }`
+      // protege un pago en vuelo: una cuota con INFORMADO/CONCILIADO NO se toca.
+      const anuladas = await tx.liquidacion.deleteMany({
+        where: {
+          contratoId: id,
+          inmobiliariaId: u.inmobiliariaId,
+          estado: 'PENDIENTE',
+          fechaVencimiento: { gt: new Date() },
+          pagos: { none: {} },
+        },
+      });
+      return { cuotasAnuladas: anuladas.count };
     });
     if (!fin) return reply.code(409).send({ message: 'El contrato ya está finalizado' });
-    return { ok: true };
+    return { ok: true, cuotasAnuladas: fin.cuotasAnuladas };
+  });
+
+  // Preview de la baja: qué colaterales tiene el contrato ANTES de finalizar, para
+  // que el diálogo del panel avise (deuda real que queda, cuotas futuras que se
+  // anulan, pagos en revisión que hay que resolver, co-inquilinos y reclamos abiertos).
+  app.get('/contratos/:id/finalizar-preview', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'contratos.crear');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const contrato = await prisma.contrato.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      include: { inmobiliaria: { select: { moraTipoDefault: true, moraValorDefault: true } } },
+    });
+    if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
+    const now = new Date();
+    const liqs = await prisma.liquidacion.findMany({
+      where: { contratoId: id, inmobiliariaId: u.inmobiliariaId, estado: { in: ['PENDIENTE', 'VENCIDO', 'PARCIAL'] } },
+      include: { _count: { select: { pagos: true } } },
+    });
+    const esquema = resolverEsquemaMora(contrato, contrato.inmobiliaria);
+    const pagadoMap = await montoPagadoPorLiquidacion(liqs.map((l) => l.id));
+    let cuotasFuturasAAnular = 0;
+    let deudaVencida = 0;
+    let cuotasImpagas = 0;
+    for (const l of liqs) {
+      const esFuturaSinPago =
+        l.estado === 'PENDIENTE' && l.fechaVencimiento > now && l._count.pagos === 0;
+      if (esFuturaSinPago) {
+        cuotasFuturasAAnular++;
+        continue;
+      }
+      const punit = calcularMora(
+        Number(l.montoTotal),
+        esquema,
+        l.fechaVencimiento,
+        now,
+        l.montoPunitorioManual != null ? Number(l.montoPunitorioManual) : null,
+      );
+      const { saldo } = conSaldo(l, pagadoMap, punit);
+      if (saldo > 0) {
+        deudaVencida += saldo;
+        cuotasImpagas++;
+      }
+    }
+    const [pagosEnRevision, coInquilinos, reclamosAbiertos] = await Promise.all([
+      prisma.pago.count({ where: { contratoId: id, estado: 'INFORMADO' } }),
+      prisma.coInquilino.count({ where: { contratoId: id, estado: 'ACEPTADO' } }),
+      prisma.reclamo.count({ where: { contratoId: id, estado: { in: ['ABIERTO', 'EN_CURSO'] } } }),
+    ]);
+    return {
+      deudaVencida: Math.round(deudaVencida * 100) / 100,
+      cuotasImpagas,
+      cuotasFuturasAAnular,
+      pagosEnRevision,
+      coInquilinos,
+      reclamosAbiertos,
+    };
   });
 
   // ===== Inquilinos =====

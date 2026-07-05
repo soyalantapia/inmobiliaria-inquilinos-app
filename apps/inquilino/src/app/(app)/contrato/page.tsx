@@ -336,9 +336,25 @@ function ContratoReal() {
           </div>
         </div>
 
+        {c.estado !== 'ACTIVO' && (
+          <Card className="animate-fade-in border-muted-foreground/20 bg-muted/40 p-4">
+            <p className="text-sm font-medium">
+              Este contrato ya {c.estado === 'RESCINDIDO' ? 'fue rescindido' : 'finalizó'}.
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Podés seguir viendo tu historial (recibos y comprobantes), pero ya no se pueden
+              informar pagos. Si tenés dudas, contactá a {c.inmobiliaria}.
+            </p>
+          </Card>
+        )}
+
         <Card className="animate-fade-in space-y-3 p-5">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="success">Activo</Badge>
+            {c.estado === 'ACTIVO' ? (
+              <Badge variant="success">Activo</Badge>
+            ) : (
+              <Badge variant="secondary">{c.estado === 'RESCINDIDO' ? 'Rescindido' : 'Finalizado'}</Badge>
+            )}
             <span className="text-xs text-muted-foreground">
               {formatFechaCorta(c.fechaInicio)} → {formatFechaCorta(c.fechaFin)}
             </span>

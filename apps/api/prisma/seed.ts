@@ -217,7 +217,9 @@ export async function seedBase(prisma: PrismaClient) {
 
   // Caja de gastos (mock de /caja: 2 pendientes + 1 ya descontado en rendición)
   const rendicion = await prisma.rendicion.upsert({
-    where: { propietarioId_periodo: { propietarioId: 'own_001', periodo: '2026-05' } },
+    // Rendición INCREMENTAL: el schema quitó @@unique([propietarioId, periodo]) (un
+    // período se rinde en varias tandas), así que la upsert va por el id fijo del seed.
+    where: { id: 'ren_001' },
     update: {},
     create: {
       id: 'ren_001',

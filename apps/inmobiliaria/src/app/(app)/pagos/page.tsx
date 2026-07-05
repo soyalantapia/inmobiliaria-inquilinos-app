@@ -186,14 +186,14 @@ export default function PagosPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aResolverDeApi]);
 
-  // Cobranza: sólo contratos con liquidaciones reales. Un BORRADOR (p.ej. uno
-  // cargado y luego rechazado) no se cobra y su estadoPagoActual derivado cae a
-  // PENDIENTE → inflaba el KPI "Pendiente" y aparecía en la lista de cobros.
-  // Excluye PROPIETARIO_DIRECTO: ese alquiler va directo del inquilino al dueño,
-  // la inmo no lo cobra → no debe inflar "Pendiente"/"Cobrado" ni aparecer en la
-  // cartera de cobro (alinea con dashboard-helpers, que ya lo excluye).
+  // Cobranza: sólo contratos ACTIVO. Un BORRADOR (p.ej. uno cargado y luego
+  // rechazado) no se cobra y su estadoPagoActual derivado cae a PENDIENTE → inflaba
+  // el KPI "Pendiente". Un FINALIZADO/RESCINDIDO tampoco es cobranza corriente: no
+  // debe aparecer en la cartera de cobro ni en el PDF de morosos activos (su deuda
+  // vencida real queda en el detalle del contrato). Excluye PROPIETARIO_DIRECTO: ese
+  // alquiler va directo del inquilino al dueño, la inmo no lo cobra.
   const cobrables = useMemo(
-    () => contratos.filter((c) => c.estado !== 'BORRADOR' && c.modoCobranza !== 'PROPIETARIO_DIRECTO'),
+    () => contratos.filter((c) => c.estado === 'ACTIVO' && c.modoCobranza !== 'PROPIETARIO_DIRECTO'),
     [contratos],
   );
 
@@ -243,7 +243,7 @@ export default function PagosPage() {
   // PDF de morosos para llevar a cobranza física.
   // Incluye titular + garante con sus teléfonos y los días de atraso.
   const exportarMorososPdf = () => {
-    const morosos = contratos.filter((c) => c.estadoPagoActual === 'VENCIDO');
+    const morosos = cobrables.filter((c) => c.estadoPagoActual === 'VENCIDO');
     const filas: (string | number)[][] = morosos.map((c) => {
       // Teléfono/garante: solo del mock en demo. En prod no hay endpoint que
       // los exponga → '—'/'Sin garante' (no dependemos del mismatch de ids).
@@ -290,7 +290,7 @@ export default function PagosPage() {
   // imprimir un reporte por cada una con su propio CUIT como emisor.
   // Cada sección es una sociedad, con sus contratos morosos.
   const exportarMorososPorSociedadPdf = () => {
-    const morosos = contratos.filter((c) => c.estadoPagoActual === 'VENCIDO');
+    const morosos = cobrables.filter((c) => c.estadoPagoActual === 'VENCIDO');
     if (morosos.length === 0) {
       toast({
         title: 'No hay morosos este mes',

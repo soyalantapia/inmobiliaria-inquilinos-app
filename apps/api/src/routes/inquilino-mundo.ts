@@ -516,8 +516,15 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
       }
     }
 
+    // Un contrato que ya no está ACTIVO no expone datos de cobranza (CBU/alias): la
+    // PWA NO debe ofrecer transferir a un contrato finalizado — el pago caería en 409
+    // recién DESPUÉS de mover la plata. El ex-inquilino conserva la lectura del
+    // contrato (dirección, fechas, historial), pero sin CBU para pagar.
+    if (contrato.estado !== 'ACTIVO') datosCobranza = null;
+
     return {
       id: contrato.id,
+      estado: contrato.estado,
       direccion: contrato.propiedad.direccion,
       ciudad: contrato.propiedad.ciudad,
       inmobiliaria: contrato.inmobiliaria.nombre,
@@ -583,10 +590,19 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
     const { nivel, detalle: nivelDetalle } = calcularNivel(historial);
 
     const ahora = new Date();
+    const contratoVigente = contrato.estado === 'ACTIVO';
+    // Meses cumplidos: para un contrato ACTIVO cuentan hasta hoy; para uno finalizado
+    // se congelan (no siguen creciendo eternamente) al fin del contrato o a hoy, lo
+    // que ocurra antes. Así el certificado no infla la antigüedad de un contrato muerto.
+    const hastaMeses = contratoVigente
+      ? ahora
+      : contrato.fechaFin < ahora
+        ? contrato.fechaFin
+        : ahora;
     const mesesCumplidos = Math.max(
       0,
-      (ahora.getFullYear() - contrato.fechaInicio.getFullYear()) * 12 +
-        (ahora.getMonth() - contrato.fechaInicio.getMonth()),
+      (hastaMeses.getFullYear() - contrato.fechaInicio.getFullYear()) * 12 +
+        (hastaMeses.getMonth() - contrato.fechaInicio.getMonth()),
     );
 
     const semilla = [inquilino.dni ?? inquilino.id, contrato.id, contrato.inmobiliaria.nombre].join('|');
@@ -604,9 +620,14 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
       direccion: contrato.propiedad.direccion,
       inmobiliaria: contrato.inmobiliaria.nombre,
       fechaInicio: contrato.fechaInicio.toISOString().slice(0, 10),
+      fechaFin: contrato.fechaFin.toISOString().slice(0, 10),
       montoMensual: Number(contrato.monto),
       moneda: contrato.moneda,
       mesesCumplidos,
+      // El certificado sigue siendo válido como HISTORIAL, pero deja explícito si el
+      // contrato está vigente o ya finalizó (la página de verificación no debe
+      // presentar un contrato terminado como si el inquilino siguiera viviendo ahí).
+      vigente: contratoVigente,
     };
 
     const cert = await prisma.certificadoInquilino.upsert({
@@ -845,8 +866,13 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
   app.delete('/co-inquilinos/:id', async (request, reply) => {
     const inq = await requireInquilino(request, reply);
     if (!inq) return;
+    if (!inq.contratoId) return reply.code(400).send({ message: 'No tenés un contrato activo' });
+    // Gestionar co-inquilinos es una ESCRITURA: un contrato finalizado no la acepta
+    // (mismo criterio que invitar/cambiar permiso). Antes esta era la única mutación
+    // de co-inquilinos sin el gate.
+    if (!(await exigirContratoActivo(inq.contratoId, inq.inmobiliariaId, reply))) return;
     const { id } = request.params as { id: string };
-    const co = await prisma.coInquilino.findFirst({ where: { id, contratoId: inq.contratoId ?? '' } });
+    const co = await prisma.coInquilino.findFirst({ where: { id, contratoId: inq.contratoId } });
     if (!co) return reply.code(404).send({ message: 'Co-inquilino inexistente' });
     await prisma.coInquilino.delete({ where: { id: co.id } });
     return { ok: true };
@@ -974,6 +1000,14 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
     if (!inq) return;
     if (!inq.contratoId) return [];
     const contratoId = inq.contratoId;
+    // Estado del contrato: si ya no está ACTIVO no generamos alertas de cobro
+    // ("tu alquiler está atrasado / vence en N días"). Un contrato finalizado no
+    // tiene obligación de pago viva y la PWA ni siquiera ofrece la cuenta para pagar.
+    const ctoNotif = await prisma.contrato.findFirst({
+      where: { id: contratoId, inmobiliariaId: inq.inmobiliariaId },
+      select: { estado: true },
+    });
+    const contratoActivo = ctoNotif?.estado === 'ACTIVO';
     const ahora = Date.now();
     const relativo = (d: Date | string): string => {
       const min = Math.floor((ahora - new Date(d).getTime()) / 60000);
@@ -1019,6 +1053,10 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
         });
         continue;
       }
+      // Contrato finalizado/rescindido: no empujamos alertas de cobro (no hay
+      // alquiler vivo que pagar). El "comprobante en revisión" de arriba SÍ pasa
+      // porque un pago en vuelo se resuelve igual tras la baja.
+      if (!contratoActivo) continue;
       const dias = diasHasta(liq.fechaVencimiento);
       if (liq.estado === 'VENCIDO' || dias < 0) {
         out.push({

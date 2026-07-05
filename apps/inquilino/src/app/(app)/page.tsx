@@ -369,13 +369,35 @@ function HomeReal() {
 
   const telLimpio = (inmobiliariaTelefono ?? '').replace(/[^\d]/g, '');
 
+  // Contrato finalizado/rescindido: la home NO ofrece pagar (ni banner de deuda ni
+  // "próximo pago"). El backend además ya no manda datos de cobranza, así que no hay
+  // adónde transferir; sólo mostramos que el contrato terminó y el acceso al historial.
+  const contratoFinalizado = !!contrato && contrato.estado !== 'ACTIVO';
+
   return (
     <>
       <MobileGreetingHeader />
       <main className="flex-1 space-y-5 px-5 pb-6 md:px-8 md:pt-8">
         <h1 className="sr-only">Inicio</h1>
 
-        {pendiente ? (
+        {contratoFinalizado ? (
+          <Card className="animate-fade-in border-muted-foreground/20 bg-muted/40 p-5">
+            <p className="text-base font-semibold">
+              Tu contrato {contrato?.estado === 'RESCINDIDO' ? 'fue rescindido' : 'finalizó'}
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Ya no hay pagos por hacer desde la app. Podés seguir viendo tu historial de
+              recibos y comprobantes. Ante cualquier duda, escribile a{' '}
+              {contrato?.inmobiliaria ?? 'tu inmobiliaria'}.
+            </p>
+            <Link
+              href="/comprobantes"
+              className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+            >
+              Ver mis comprobantes <ChevronRight className="h-4 w-4" />
+            </Link>
+          </Card>
+        ) : pendiente ? (
           <BannerPagoPendiente liq={pendiente} />
         ) : (
           <BannerAlDia
@@ -386,7 +408,7 @@ function HomeReal() {
           />
         )}
 
-        {alertaAjuste && !ajusteCritico && contrato && (
+        {alertaAjuste && !ajusteCritico && contrato && !contratoFinalizado && (
           <Link
             href="/contrato"
             className="flex items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm transition-colors hover:bg-primary/10"
@@ -402,7 +424,7 @@ function HomeReal() {
           </Link>
         )}
 
-        <QuickActions liqPendiente={pendiente} />
+        <QuickActions liqPendiente={contratoFinalizado ? null : pendiente} />
 
         {/* Invitación discreta al tour (opt-in). Faltaba en HomeReal: en
             producción ningún inquilino la veía — sólo estaba en la home demo.

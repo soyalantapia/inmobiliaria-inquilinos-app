@@ -39,6 +39,7 @@ export interface DatosCobranza {
 
 interface ContratoApi {
   id: string;
+  estado?: Contrato['estado'];
   direccion: string;
   ciudad: string;
   inmobiliaria: string;
@@ -75,6 +76,9 @@ export function useMiContrato(): {
   return {
     contrato: {
       id: d.id,
+      // Contratos viejos del API podrían no mandar estado → asumimos ACTIVO por
+      // compat; el backend hoy siempre lo envía en /mi-contrato.
+      estado: d.estado ?? 'ACTIVO',
       direccion: d.direccion,
       ciudad: d.ciudad,
       inmobiliaria: d.inmobiliaria,

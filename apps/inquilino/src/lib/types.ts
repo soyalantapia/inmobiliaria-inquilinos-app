@@ -88,8 +88,13 @@ export interface Liquidacion {
   saldo?: number;
 }
 
+export type EstadoContrato = 'ACTIVO' | 'BORRADOR' | 'FINALIZADO' | 'RESCINDIDO';
+
 export interface Contrato {
   id: string;
+  /** Estado del contrato. Un contrato no ACTIVO (finalizado/rescindido) es de
+   *  SOLO LECTURA: la app no ofrece pagar ni informar comprobantes. */
+  estado: EstadoContrato;
   direccion: string;
   ciudad: string;
   inmobiliaria: string;

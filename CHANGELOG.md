@@ -10,6 +10,33 @@
 
 Plataforma SaaS multi-tenant para inmobiliarias (panel) e inquilinos (PWA). Estado de cambios desde el handoff inicial hasta hoy.
 
+### Baja de contrato: estado real al inquilino + anti-deuda-fantasma (04/07)
+Auditoría multi-agente del proceso de baja (31 hallazgos: 2 CRÍTICOS, 11 ALTOS, 10 MEDIOS,
+8 BAJOS). Bug raíz reportado: al finalizar un contrato el panel lo mostraba dado de baja pero
+la PWA del inquilino lo seguía mostrando **ACTIVO, con el CBU para transferir**. Fix
+(`fix/baja-contrato-estado-inquilino`, test `test/baja-contrato.test.ts` 8/8):
+- **`GET /mi-contrato` ahora devuelve `estado`** y **anula `datosCobranza` (CBU/alias)** si el
+  contrato no está ACTIVO → la PWA no puede ofrecer transferir a un contrato muerto (antes el
+  409 llegaba **después** de mover la plata). La PWA muestra "Contrato finalizado" (home,
+  /contrato, /comprobantes, checkout) y esconde todo CTA de pago.
+- **Finalizar anula las cuotas FUTURAS impagas sin pago** (proyecciones del devengo que el
+  ex-inquilino no ocupó) y **conserva la deuda ya vencida** (real y cobrable). El filtro
+  `pagos: { none }` protege un pago en vuelo. `marcarLiquidacionesVencidas` sólo toca contratos
+  ACTIVO (cinturón anti-morosidad-fantasma). El panel saca los finalizados del KPI/PDF de morosos.
+- **Acceso de SOLO LECTURA del ex-inquilino:** finalizar ya **no desvincula** al inquilino
+  (`contratoId` se conserva) → puede re-loguear y ver su historial; las escrituras las corta
+  `exigirContratoActivo`.
+- **Un pago en vuelo (INFORMADO) se puede validar** aunque el contrato ya esté finalizado (la
+  plata se recibió; entra a rendición). **Notificaciones** dejan de decir "tu alquiler está
+  atrasado" en un contrato finalizado. **Certificado** marca `vigente:false` y congela los meses.
+- **Guards** agregados: aceptar co-invitación y borrar co-inquilino exigen contrato ACTIVO.
+  **Nuevo endpoint** `GET /contratos/:id/finalizar-preview` (deuda/pagos en vuelo/co-inquilinos/
+  reclamos) para que el diálogo del panel avise antes de dar de baja. **Errores 409/409** en la
+  PWA dejan de mostrarse como "revisá tu conexión".
+- **Incidental:** `prisma/seed.ts` upserteaba `Rendicion` por `propietarioId_periodo`, unique
+  que el schema removió (rendición incremental) → `seedBase` estaba **roto** y toda la suite de
+  tests fallaba. Corregido a upsert por `id` fijo.
+
 ### Prep del piloto Ramiro + fix de migración de cartera (04/07)
 - **`fix(importaciones)` (`89977a4`, en main `108065e`):** la migración masiva de cartera
   creaba el contrato ACTIVO desde la fecha de inicio de la planilla y devengaba TODAS las

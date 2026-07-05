@@ -71,6 +71,7 @@ export const hitosContratoMock: HitoContrato[] = [
 
 export const contratoMock: Contrato = {
   id: 'cnt_001',
+  estado: 'ACTIVO',
   direccion: 'Gorriti 4521, 3°B',
   ciudad: 'CABA',
   inmobiliaria: 'Inmobiliaria del Sol',

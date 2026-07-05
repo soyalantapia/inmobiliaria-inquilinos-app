@@ -336,6 +336,10 @@ function RecibosReal() {
   const { contrato, cargando: cargandoContrato } = useMiContrato();
   const { liquidaciones, cargando, isError } = useMisLiquidaciones();
 
+  // Contrato finalizado: se sigue viendo el historial (recibos/comprobantes), pero
+  // sin card de "alquiler vigente" ni CTA para regularizar/pagar.
+  const contratoFinalizado = !!contrato && contrato.estado !== 'ACTIVO';
+
   const noPagadas = liquidaciones.filter((l) => l.estado !== 'PAGADO');
   const pagadas = liquidaciones.filter((l) => l.estado === 'PAGADO');
   const urgenteLiq =
@@ -363,12 +367,12 @@ function RecibosReal() {
       </header>
 
       <main className="flex-1 space-y-4 px-5 pb-6 md:px-8">
-        {pagoUrgente && <PagoUrgenteCard mov={pagoUrgente} />}
+        {pagoUrgente && !contratoFinalizado && <PagoUrgenteCard mov={pagoUrgente} />}
 
         {cargandoContrato && !contrato && (
           <div className="h-[88px] animate-pulse rounded-xl border bg-muted/50" />
         )}
-        {contrato && (
+        {contrato && !contratoFinalizado && (
           <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-primary/90 to-primary/70 p-4 text-primary-foreground shadow-md shadow-primary/10">
             <div className="relative flex items-baseline justify-between gap-2">
               <div>
@@ -386,6 +390,16 @@ function RecibosReal() {
                 de cada mes
               </p>
             </div>
+          </Card>
+        )}
+        {contrato && contratoFinalizado && (
+          <Card className="border-muted-foreground/20 bg-muted/40 p-4">
+            <p className="text-sm font-medium">
+              Contrato {contrato.estado === 'RESCINDIDO' ? 'rescindido' : 'finalizado'}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Este es tu historial de recibos y comprobantes. Ya no se informan pagos desde la app.
+            </p>
           </Card>
         )}
 

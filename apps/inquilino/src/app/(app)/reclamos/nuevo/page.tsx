@@ -197,12 +197,23 @@ export default function NuevoReclamoPage() {
       });
     } catch (e) {
       // El POST falló: feedback al usuario (antes era SILENCIOSO) + liberar el
-      // botón para reintentar. Distinguimos el 403 (co-inquilino sin permiso).
+      // botón para reintentar. Distinguimos el 403 (co-inquilino sin permiso) y el
+      // 409 (contrato finalizado) — antes ambos caían en "Revisá tu conexión", que
+      // confundía (no era un problema de red sino de estado del contrato/permiso).
       const sinPermiso = e instanceof ApiError && e.status === 403;
+      const contratoInactivo = e instanceof ApiError && e.status === 409;
       toast({
         variant: 'destructive',
-        title: sinPermiso ? 'Tu acceso no permite crear reclamos' : 'No pudimos enviar el reclamo',
-        description: sinPermiso ? 'Pedíselo al titular del contrato.' : 'Revisá tu conexión e intentá de nuevo.',
+        title: sinPermiso
+          ? 'Tu acceso no permite crear reclamos'
+          : contratoInactivo
+            ? 'Tu contrato ya no está activo'
+            : 'No pudimos enviar el reclamo',
+        description: sinPermiso
+          ? 'Pedíselo al titular del contrato.'
+          : contratoInactivo
+            ? 'No se pueden abrir reclamos de un contrato finalizado.'
+            : 'Revisá tu conexión e intentá de nuevo.',
       });
       setEnviando(false);
       return;

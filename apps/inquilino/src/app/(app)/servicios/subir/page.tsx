@@ -112,15 +112,22 @@ export default function SubirBoletaPage() {
       });
       router.push('/servicios');
     } catch (e) {
-      // 403: un co-inquilino sin permiso. Antes el catch vacío mostraba "revisá
-      // tu conexión" (engañoso) para un error de permiso.
+      // 403: un co-inquilino sin permiso. 409: contrato finalizado. Antes ambos
+      // mostraban "revisá tu conexión" (engañoso: no era un problema de red).
       const sinPermiso = e instanceof ApiError && e.status === 403;
+      const contratoInactivo = e instanceof ApiError && e.status === 409;
       toast({
         variant: 'destructive',
-        title: sinPermiso ? 'Sin permiso' : 'No pudimos subir la boleta',
+        title: sinPermiso
+          ? 'Sin permiso'
+          : contratoInactivo
+            ? 'Tu contrato ya no está activo'
+            : 'No pudimos subir la boleta',
         description: sinPermiso
           ? 'Solo el titular del contrato puede subir boletas de servicios.'
-          : 'Revisá tu conexión e intentá de nuevo.',
+          : contratoInactivo
+            ? 'No se pueden subir boletas de un contrato finalizado.'
+            : 'Revisá tu conexión e intentá de nuevo.',
       });
     } finally {
       setEnviando(false);

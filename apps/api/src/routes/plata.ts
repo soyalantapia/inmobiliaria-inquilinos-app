@@ -257,16 +257,12 @@ export async function plataRoutes(app: FastifyInstance) {
     });
     if (!pago) return reply.code(404).send({ message: 'Pago inexistente' });
     if (pago.estado !== 'INFORMADO') return reply.code(409).send({ message: 'El pago ya fue decidido' });
-    // No conciliar un pago cuyo contrato ya no está ACTIVO: `informar` bloquea los
-    // pagos nuevos sobre un contrato finalizado (exigirContratoActivo), pero un pago
-    // INFORMADO viejo podía validarse DESPUÉS de finalizar el contrato, reabriendo
-    // el ciclo de plata de un contrato muerto (marca la liq PAGADO, entra a
-    // rendición). Lo cortamos acá con un 409 claro.
-    if (pago.contrato && pago.contrato.estado !== 'ACTIVO') {
-      return reply.code(409).send({
-        message: 'El contrato ya no está activo — no se puede conciliar este pago. Revisá el estado del contrato.',
-      });
-    }
+    // Un pago EN VUELO (INFORMADO) SÍ se valida aunque el contrato ya esté finalizado:
+    // la plata se recibió de verdad y hay que poder conciliarla y rendirla al
+    // propietario (decisión del dueño). Un INFORMADO ya existente prueba que la
+    // relación estaba viva cuando el inquilino transfirió — `exigirContratoActivo` lo
+    // gatea en /pagos/informar. Por eso NO bloqueamos por contrato.estado acá; el único
+    // lock es la doble-decisión (updateMany atómico abajo).
 
     // Atómico:
     //  1) La transición INFORMADO→CONCILIADO se hace con updateMany condicionado

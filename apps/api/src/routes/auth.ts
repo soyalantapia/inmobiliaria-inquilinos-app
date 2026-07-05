@@ -76,7 +76,7 @@ async function alquileresDeEmail(email: string) {
     where: { email, contratoId: { not: null } },
     include: {
       inmobiliaria: { select: { nombre: true } },
-      contrato: { select: { propiedad: { select: { direccion: true, ciudad: true } } } },
+      contrato: { select: { estado: true, propiedad: { select: { direccion: true, ciudad: true } } } },
     },
     orderBy: { createdAt: 'asc' },
   });
@@ -86,6 +86,9 @@ async function alquileresDeEmail(email: string) {
     inmobiliaria: i.inmobiliaria.nombre,
     direccion: i.contrato?.propiedad?.direccion ?? '',
     ciudad: i.contrato?.propiedad?.ciudad ?? '',
+    // Estado del contrato para que la pantalla de selección distinga un alquiler
+    // vigente de uno finalizado (el ex-inquilino conserva acceso de solo lectura).
+    estado: i.contrato?.estado ?? null,
   }));
 }
 
@@ -449,9 +452,15 @@ export async function authRoutes(app: FastifyInstance) {
     if (!inv) return reply.code(400).send({ message: 'Invitación inválida o vencida' });
     const co = await prisma.coInquilino.findUnique({
       where: { id: inv.coInquilinoId },
-      include: { contrato: { select: { propiedad: { select: { direccion: true, ciudad: true } } } } },
+      include: { contrato: { select: { estado: true, propiedad: { select: { direccion: true, ciudad: true } } } } },
     });
     if (!co) return reply.code(404).send({ message: 'Invitación inexistente' });
+    // No se emiten sesiones NUEVAS sobre un contrato que ya no está ACTIVO: un link
+    // de co-invitación pendiente NO debe seguir canjeable después de la baja del
+    // contrato (antes daba acceso pleno de 15 días a un contrato finalizado).
+    if (co.contrato?.estado !== 'ACTIVO') {
+      return reply.code(409).send({ message: 'El contrato ya no está activo: la invitación no puede aceptarse.' });
+    }
     // El link de invitación es de UN SOLO USO. updateMany condicionado por
     // estado != 'ACEPTADO' = lock atómico: sólo la primera aceptación gana y pasa
     // a ACEPTADO; cualquier re-uso del link (o una carrera de dos aceptaciones)
