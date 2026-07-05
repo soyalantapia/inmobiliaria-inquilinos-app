@@ -563,34 +563,34 @@ enum NivelHistorial {
 // =============================================================================
 
 model Inmobiliaria {
-  id                  String   @id @default(cuid())
-  nombre              String
-  cuit                String
-  email               String
-  telefono            String
-  matricula           String
-  direccionCalle      String
-  direccionAltura     String
-  direccionPiso       String   @default("")
-  direccionCiudad     String
-  direccionProvincia  String
-  direccionCp         String
-  notasFiscales       String   @default("")
+  id                    String   @id @default(cuid())
+  nombre                String
+  cuit                  String
+  email                 String
+  telefono              String
+  matricula             String
+  direccionCalle        String
+  direccionAltura       String
+  direccionPiso         String   @default("")
+  direccionCiudad       String
+  direccionProvincia    String
+  direccionCp           String
+  notasFiscales         String   @default("")
   // Config de "Mercado y país de operación" (tab Mercado de /configuracion).
   // Persiste por inmobiliaria; el wizard de contratos usa indiceDefaultContrato
   // y monedaDefault como valores por defecto de un contrato nuevo.
-  paisCodigo            String  @default("AR")
-  monedaDefault         String  @default("ARS")
-  indiceDefaultContrato String  @default("ICL")
+  paisCodigo            String   @default("AR")
+  monedaDefault         String   @default("ARS")
+  indiceDefaultContrato String   @default("ICL")
   // Mora por defecto del tenant: la heredan los contratos sin moraTipo propio.
   // Cada inmobiliaria se mueve distinto (pedido piloto): configurable en Cobranza.
-  moraTipoDefault  TipoMora @default(SIN_MORA)
-  moraValorDefault Float?
-  esPiloto            Boolean  @default(true)
-  codigoReferido      String   @unique
-  mesesGratisGanados  Int      @default(0)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  moraTipoDefault       TipoMora @default(SIN_MORA)
+  moraValorDefault      Float?
+  esPiloto              Boolean  @default(true)
+  codigoReferido        String   @unique
+  mesesGratisGanados    Int      @default(0)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
   usuarios                   Usuario[]
   sociedades                 Sociedad[]
@@ -602,6 +602,7 @@ model Inmobiliaria {
   contratos                  Contrato[]
   contratoDrafts             ContratoDraft[]
   inquilinos                 Inquilino[]
+  personas                   Persona[]
   garantes                   Garante[]
   coInquilinos               CoInquilino[]
   liquidaciones              Liquidacion[]
@@ -663,7 +664,7 @@ model Inmobiliaria {
 // =============================================================================
 
 model Usuario {
-  id                  String    @id @default(cuid())
+  id                  String       @id @default(cuid())
   inmobiliariaId      String
   inmobiliaria        Inmobiliaria @relation(fields: [inmobiliariaId], references: [id])
   nombre              String
@@ -676,17 +677,17 @@ model Usuario {
   // 5 fallos consecutivos => bloqueadoHasta = now+30min; unlock TTL 5min es
   // challenge/token server-side efímero, NO estado persistente.
   pinHash             String?
-  pinIntentosFallidos Int       @default(0)
+  pinIntentosFallidos Int          @default(0)
   pinBloqueadoHasta   DateTime?
-  activo              Boolean   @default(true)
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  activo              Boolean      @default(true)
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
 
-  aprobacionesCargadas  Aprobacion[]      @relation("AprobacionesCargadas")
-  aprobacionesDecididas Aprobacion[]      @relation("AprobacionesDecididas")
+  aprobacionesCargadas  Aprobacion[]       @relation("AprobacionesCargadas")
+  aprobacionesDecididas Aprobacion[]       @relation("AprobacionesDecididas")
   eventosAuditoria      EventoAuditoria[]
   reportesPiloto        ReportePiloto[]
-  pagosDecididos        Pago[]            @relation("PagosDecididos")
+  pagosDecididos        Pago[]             @relation("PagosDecididos")
   codigosOtp            CodigoOtpUsuario[]
 
   @@unique([inmobiliariaId, email])
@@ -707,26 +708,26 @@ model Capacidad {
 }
 
 model Aprobacion {
-  id                   String             @id @default(cuid())
-  inmobiliariaId       String
-  inmobiliaria         Inmobiliaria       @relation(fields: [inmobiliariaId], references: [id])
-  tipo                 TipoAprobacion
-  titulo               String
-  descripcion          String
-  monto                Decimal?           @db.Decimal(14, 2)
-  entidadId            String // polimórfico: cnt_* / mov_* / pago según tipo
-  cargadoPorId         String
-  cargadoPor           Usuario            @relation("AprobacionesCargadas", fields: [cargadoPorId], references: [id])
-  rolAutor             RolAutorAprobacion
-  cargadoAt            DateTime
-  estado               EstadoAprobacion   @default(PENDIENTE)
-  aprobadoPorId        String?
-  aprobadoPor          Usuario?           @relation("AprobacionesDecididas", fields: [aprobadoPorId], references: [id])
-  aprobadoAt           DateTime?
-  comentarioAprobador  String?
-  notas                String?
-  createdAt            DateTime           @default(now())
-  updatedAt            DateTime           @updatedAt
+  id                  String             @id @default(cuid())
+  inmobiliariaId      String
+  inmobiliaria        Inmobiliaria       @relation(fields: [inmobiliariaId], references: [id])
+  tipo                TipoAprobacion
+  titulo              String
+  descripcion         String
+  monto               Decimal?           @db.Decimal(14, 2)
+  entidadId           String // polimórfico: cnt_* / mov_* / pago según tipo
+  cargadoPorId        String
+  cargadoPor          Usuario            @relation("AprobacionesCargadas", fields: [cargadoPorId], references: [id])
+  rolAutor            RolAutorAprobacion
+  cargadoAt           DateTime
+  estado              EstadoAprobacion   @default(PENDIENTE)
+  aprobadoPorId       String?
+  aprobadoPor         Usuario?           @relation("AprobacionesDecididas", fields: [aprobadoPorId], references: [id])
+  aprobadoAt          DateTime?
+  comentarioAprobador String?
+  notas               String?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
 
   @@index([inmobiliariaId, estado])
   @@index([cargadoPorId])
@@ -785,27 +786,27 @@ model CodigoOtpUsuario {
 }
 
 model ReportePiloto {
-  id           String            @id @default(cuid())
+  id             String            @id @default(cuid())
   inmobiliariaId String
-  inmobiliaria Inmobiliaria      @relation(fields: [inmobiliariaId], references: [id])
-  usuarioId    String
-  usuario      Usuario           @relation(fields: [usuarioId], references: [id])
-  rol          String // snapshot del rol del JWT
-  tipo         TipoReporte
-  titulo       String
-  detalle      String
-  url          String
-  pantalla     String
-  urlCompleta  String?
-  navegador    String?
-  viewport     String?
-  severidad    SeveridadReporte?
+  inmobiliaria   Inmobiliaria      @relation(fields: [inmobiliariaId], references: [id])
+  usuarioId      String
+  usuario        Usuario           @relation(fields: [usuarioId], references: [id])
+  rol            String // snapshot del rol del JWT
+  tipo           TipoReporte
+  titulo         String
+  detalle        String
+  url            String
+  pantalla       String
+  urlCompleta    String?
+  navegador      String?
+  viewport       String?
+  severidad      SeveridadReporte?
   // tracking capturado server-side (TODO explícito del código)
-  ip           String?
-  userAgent    String?
-  sessionId    String?
-  build        String?
-  reportadoAt  DateTime          @default(now())
+  ip             String?
+  userAgent      String?
+  sessionId      String?
+  build          String?
+  reportadoAt    DateTime          @default(now())
 
   @@index([inmobiliariaId])
   @@index([usuarioId])
@@ -926,18 +927,18 @@ model Suscripcion {
 
 // Catálogo GLOBAL de convenios/cupones (cupones.ts)
 model Cupon {
-  codigo       String          @id // ej: "CUCICBA10"
-  convenio     String
-  porcentaje   Int
+  codigo        String          @id // ej: "CUCICBA10"
+  convenio      String
+  porcentaje    Int
   vigenciaHasta DateTime?
-  detalle      String
-  sigla        String?
-  cobertura    String?
-  descripcion  String?
-  sitioWeb     String?
-  estado       EstadoConvenio?
-  matriculados Int?
-  beneficios   String[]
+  detalle       String
+  sigla         String?
+  cobertura     String?
+  descripcion   String?
+  sitioWeb      String?
+  estado        EstadoConvenio?
+  matriculados  Int?
+  beneficios    String[]
 
   aplicaciones CuponAplicado[]
 
@@ -1096,25 +1097,25 @@ model CuentaCobranzaDirecta {
 }
 
 model Propiedad {
-  id              String          @id @default(cuid())
-  inmobiliariaId  String
-  inmobiliaria    Inmobiliaria    @relation(fields: [inmobiliariaId], references: [id])
-  direccion       String
-  ciudad          String
-  provincia       String
-  tipo            TipoPropiedad
-  ambientes       Int?
-  m2              Float?
-  fotoUrl         String?
-  estado          EstadoPropiedad @default(EN_EDICION)
-  contratoActualId String?        @unique // null si DISPONIBLE
-  contratoActual  Contrato?       @relation("ContratoActual", fields: [contratoActualId], references: [id])
-  sociedadId      String? // null => sociedad principal (fallback)
-  sociedad        Sociedad?       @relation(fields: [sociedadId], references: [id])
-  consorcioId     String? // FK que reemplaza el match heurístico por dirección
-  consorcio       Consorcio?      @relation(fields: [consorcioId], references: [id])
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  id               String          @id @default(cuid())
+  inmobiliariaId   String
+  inmobiliaria     Inmobiliaria    @relation(fields: [inmobiliariaId], references: [id])
+  direccion        String
+  ciudad           String
+  provincia        String
+  tipo             TipoPropiedad
+  ambientes        Int?
+  m2               Float?
+  fotoUrl          String?
+  estado           EstadoPropiedad @default(EN_EDICION)
+  contratoActualId String?         @unique // null si DISPONIBLE
+  contratoActual   Contrato?       @relation("ContratoActual", fields: [contratoActualId], references: [id])
+  sociedadId       String? // null => sociedad principal (fallback)
+  sociedad         Sociedad?       @relation(fields: [sociedadId], references: [id])
+  consorcioId      String? // FK que reemplaza el match heurístico por dirección
+  consorcio        Consorcio?      @relation(fields: [consorcioId], references: [id])
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
 
   contratos         Contrato[]                 @relation("PropiedadContratos")
   participaciones   ParticipacionPropietario[]
@@ -1147,37 +1148,37 @@ model ParticipacionPropietario {
 }
 
 model Contrato {
-  id                        String          @id @default(cuid())
+  id                        String         @id @default(cuid())
   inmobiliariaId            String
-  inmobiliaria              Inmobiliaria    @relation(fields: [inmobiliariaId], references: [id])
+  inmobiliaria              Inmobiliaria   @relation(fields: [inmobiliariaId], references: [id])
   propiedadId               String
-  propiedad                 Propiedad       @relation("PropiedadContratos", fields: [propiedadId], references: [id])
+  propiedad                 Propiedad      @relation("PropiedadContratos", fields: [propiedadId], references: [id])
   sociedadId                String? // null => sociedad principal
-  sociedad                  Sociedad?       @relation(fields: [sociedadId], references: [id])
-  estado                    EstadoContrato  @default(BORRADOR)
-  monto                     Decimal         @db.Decimal(14, 2)
-  moneda                    Moneda          @default(ARS)
+  sociedad                  Sociedad?      @relation(fields: [sociedadId], references: [id])
+  estado                    EstadoContrato @default(BORRADOR)
+  monto                     Decimal        @db.Decimal(14, 2)
+  moneda                    Moneda         @default(ARS)
   fechaInicio               DateTime
   fechaFin                  DateTime
   diaPago                   Int
   indiceAjuste              IndiceAjuste
   frecuenciaAjusteMeses     Int
   proximoAjuste             DateTime?
-  tipoContrato              TipoContrato    @default(ALQUILER)
-  montoExpensas             Decimal?        @db.Decimal(14, 2)
+  tipoContrato              TipoContrato   @default(ALQUILER)
+  montoExpensas             Decimal?       @db.Decimal(14, 2)
   cbuAlias                  String? // override del CBU del propietario para esta unidad
   titularCuenta             String?
   comisionInmobiliaria      Float?
-  depositoGarantia          Decimal?        @db.Decimal(14, 2)
+  depositoGarantia          Decimal?       @db.Decimal(14, 2)
   tasaPunitorioDiaria       Float? // LEGACY: % por día. Migrado a moraTipo/moraValor; queda por compat de lectura.
   // Esquema de mora del contrato (override del default de la inmobiliaria).
   // null => hereda (cascada en resolverEsquemaMora). moraValor se interpreta
   // según moraTipo: % diario, $ fijo por mes de atraso, o % mensual.
-  moraTipo  TipoMora?
-  moraValor Float?
-  modoCobranza              ModoCobranza    @default(INMOBILIARIA)
+  moraTipo                  TipoMora?
+  moraValor                 Float?
+  modoCobranza              ModoCobranza   @default(INMOBILIARIA)
   cobraDirectoPropietarioId String?
-  cobraDirectoPropietario   Propietario?    @relation("CobranzaDirecta", fields: [cobraDirectoPropietarioId], references: [id])
+  cobraDirectoPropietario   Propietario?   @relation("CobranzaDirecta", fields: [cobraDirectoPropietarioId], references: [id])
 
   // Workflow de carga/aprobación (rol CARGA => BORRADOR + pendienteAprobacion)
   cargadoPor          String?
@@ -1191,7 +1192,7 @@ model Contrato {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  propiedadActualDe   Propiedad?            @relation("ContratoActual")
+  propiedadActualDe   Propiedad?             @relation("ContratoActual")
   inquilinoTitular    Inquilino?
   garantes            Garante[]
   coInquilinos        CoInquilino[]
@@ -1251,6 +1252,12 @@ model Inquilino {
   esInvitado     Boolean      @default(false)
   contratoId     String?      @unique // titular 1:1
   contrato       Contrato?    @relation(fields: [contratoId], references: [id])
+  // Persona a la que pertenece esta fila (una persona agrupa N contratos/inquilinos
+  // dentro del tenant). Nullable: filas viejas quedan sin persona hasta el backfill.
+  // El 1:1 con Contrato (contratoId @unique) NO cambia: cada contrato sigue teniendo
+  // su fila Inquilino; personaId es la capa que las agrupa por encima.
+  personaId      String?
+  persona        Persona?     @relation(fields: [personaId], references: [id])
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
@@ -1261,7 +1268,36 @@ model Inquilino {
 
   @@unique([inmobiliariaId, email])
   @@index([inmobiliariaId])
+  @@index([personaId])
   @@map("inquilinos")
+}
+
+// Persona = identidad reutilizable de un inquilino DENTRO de un tenant. Agrupa las N
+// filas Inquilino (una por contrato) de la misma persona, para la ficha histórica del
+// panel y para reusar un inquilino al armar un contrato nuevo. La identidad se ancla al
+// DNI (único por tenant cuando no es null); sin DNI cada persona es distinta. NO se
+// cascadea nada (Restrict por default, como todo el schema) → preservar el historial.
+model Persona {
+  id             String       @id @default(cuid())
+  inmobiliariaId String
+  inmobiliaria   Inmobiliaria @relation(fields: [inmobiliariaId], references: [id])
+  dni            String?
+  email          String?
+  nombre         String
+  apellido       String?
+  telefono       String?
+  cuit           String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  inquilinos Inquilino[]
+
+  // Único por (tenant, dni) SOLO cuando dni no es null (Postgres trata los NULL como
+  // distintos → varias personas sin DNI conviven). Evita duplicar la misma persona
+  // identificada por DNI y habilita el reuso; no fuerza DNI en quienes no lo tienen.
+  @@unique([inmobiliariaId, dni])
+  @@index([inmobiliariaId])
+  @@map("personas")
 }
 
 model Garante {
@@ -1302,11 +1338,11 @@ model CoInquilino {
   invitadoAt     DateTime           @default(now())
   aceptadoAt     DateTime?
 
-  @@index([inmobiliariaId])
-  @@index([contratoId])
   // Una sola invitación por (contrato, email). La revocación BORRA la fila, así
   // que re-invitar tras revocar no choca. Cierra la carrera de doble-invitación.
   @@unique([contratoId, email])
+  @@index([inmobiliariaId])
+  @@index([contratoId])
   @@map("co_inquilinos")
 }
 
@@ -1357,27 +1393,27 @@ model Screening {
 // =============================================================================
 
 model Liquidacion {
-  id               String            @id @default(cuid())
-  inmobiliariaId   String
-  inmobiliaria     Inmobiliaria      @relation(fields: [inmobiliariaId], references: [id])
-  contratoId       String
-  contrato         Contrato          @relation(fields: [contratoId], references: [id])
-  periodo          String // 'YYYY-MM'
-  montoAlquiler    Decimal           @db.Decimal(14, 2)
-  montoExpensas    Decimal?          @db.Decimal(14, 2)
-  montoPunitorio   Decimal           @default(0) @db.Decimal(14, 2) // se recalcula al día, no congelar
+  id                   String            @id @default(cuid())
+  inmobiliariaId       String
+  inmobiliaria         Inmobiliaria      @relation(fields: [inmobiliariaId], references: [id])
+  contratoId           String
+  contrato             Contrato          @relation(fields: [contratoId], references: [id])
+  periodo              String // 'YYYY-MM'
+  montoAlquiler        Decimal           @db.Decimal(14, 2)
+  montoExpensas        Decimal?          @db.Decimal(14, 2)
+  montoPunitorio       Decimal           @default(0) @db.Decimal(14, 2) // se recalcula al día, no congelar
   // Mora histórica CONGELADA, confirmada a mano al migrar un contrato en curso
   // ("está en la cuota 7 de 12"). Si no es null, PISA el cálculo del esquema
   // (calcularMora la respeta). Editable desde el panel.
-  montoPunitorioManual Decimal?      @db.Decimal(14, 2)
-  montoTotal       Decimal           @db.Decimal(14, 2)
-  fechaVencimiento DateTime
-  fechaPago        DateTime?
-  estado           EstadoLiquidacion @default(PENDIENTE)
-  metodoPago       MetodoPago?
-  moneda           Moneda            @default(ARS)
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
+  montoPunitorioManual Decimal?          @db.Decimal(14, 2)
+  montoTotal           Decimal           @db.Decimal(14, 2)
+  fechaVencimiento     DateTime
+  fechaPago            DateTime?
+  estado               EstadoLiquidacion @default(PENDIENTE)
+  metodoPago           MetodoPago?
+  moneda               Moneda            @default(ARS)
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
 
   pagos        Pago[]
   comprobantes Comprobante[]
@@ -1499,26 +1535,26 @@ model IntencionRenovacion {
 // =============================================================================
 
 model MovimientoCaja {
-  id                     String             @id @default(cuid())
-  inmobiliariaId         String
-  inmobiliaria           Inmobiliaria       @relation(fields: [inmobiliariaId], references: [id])
-  propiedadId            String
-  propiedad              Propiedad          @relation(fields: [propiedadId], references: [id])
-  contratoId             String?
-  contrato               Contrato?          @relation(fields: [contratoId], references: [id])
-  tipo                   TipoMovimientoCaja
-  categoria              CategoriaGasto
-  descripcion            String
-  monto                  Decimal            @db.Decimal(14, 2)
-  fecha                  DateTime
-  proveedor              String?
-  comprobanteUrl         String?
-  cargadoPor             String
+  id                    String             @id @default(cuid())
+  inmobiliariaId        String
+  inmobiliaria          Inmobiliaria       @relation(fields: [inmobiliariaId], references: [id])
+  propiedadId           String
+  propiedad             Propiedad          @relation(fields: [propiedadId], references: [id])
+  contratoId            String?
+  contrato              Contrato?          @relation(fields: [contratoId], references: [id])
+  tipo                  TipoMovimientoCaja
+  categoria             CategoriaGasto
+  descripcion           String
+  monto                 Decimal            @db.Decimal(14, 2)
+  fecha                 DateTime
+  proveedor             String?
+  comprobanteUrl        String?
+  cargadoPor            String
   // Loop caja→rendición: al rendir se marca descontado y se linkea la rendición
-  descontadoEnRendicion  Boolean            @default(false)
-  rendicionId            String?
-  rendicion              Rendicion?         @relation(fields: [rendicionId], references: [id])
-  createdAt              DateTime           @default(now())
+  descontadoEnRendicion Boolean            @default(false)
+  rendicionId           String?
+  rendicion             Rendicion?         @relation(fields: [rendicionId], references: [id])
+  createdAt             DateTime           @default(now())
 
   @@index([inmobiliariaId, fecha])
   @@index([propiedadId])
@@ -1529,18 +1565,18 @@ model MovimientoCaja {
 
 // Snapshot INMUTABLE de auditoría: 1 por (tenant, fecha); re-cerrar reemplaza.
 model CierreCaja {
-  id             String       @id @default(cuid())
-  inmobiliariaId String
-  inmobiliaria   Inmobiliaria @relation(fields: [inmobiliariaId], references: [id])
-  fecha          DateTime     @db.Date
-  ingresos       Decimal      @db.Decimal(14, 2)
-  egresos        Decimal      @db.Decimal(14, 2)
-  balanceDia     Decimal      @db.Decimal(14, 2)
-  efectivoEnMano Decimal      @db.Decimal(14, 2)
-  pendienteRendir Decimal     @db.Decimal(14, 2)
-  movimientos    Int
-  cerradoAt      DateTime
-  cerradoPor     String
+  id              String       @id @default(cuid())
+  inmobiliariaId  String
+  inmobiliaria    Inmobiliaria @relation(fields: [inmobiliariaId], references: [id])
+  fecha           DateTime     @db.Date
+  ingresos        Decimal      @db.Decimal(14, 2)
+  egresos         Decimal      @db.Decimal(14, 2)
+  balanceDia      Decimal      @db.Decimal(14, 2)
+  efectivoEnMano  Decimal      @db.Decimal(14, 2)
+  pendienteRendir Decimal      @db.Decimal(14, 2)
+  movimientos     Int
+  cerradoAt       DateTime
+  cerradoPor      String
 
   @@unique([inmobiliariaId, fecha])
   @@map("cierres_caja")
@@ -1772,28 +1808,28 @@ model ImportacionCartera {
 // =============================================================================
 
 model Reclamo {
-  id              String                @id @default(cuid())
-  inmobiliariaId  String
-  inmobiliaria    Inmobiliaria          @relation(fields: [inmobiliariaId], references: [id])
-  contratoId      String
-  contrato        Contrato              @relation(fields: [contratoId], references: [id])
-  propiedadId     String? // para atribuir gastos en rendiciones
-  propiedad       Propiedad?            @relation(fields: [propiedadId], references: [id])
-  categoria       CategoriaReclamo
-  descripcion     String
-  urgencia        UrgenciaReclamo
-  estado          EstadoReclamo         @default(ABIERTO)
-  asignadoA       String? // operador interno (texto)
-  fotoUrl         String?
-  resolucion      String?
-  clasificacion   ClasificacionReclamo? // decide a quién se imputa costoTrabajo
-  profesionalId   String? // FK reemplaza los campos denormalizados del mock
-  profesional     Profesional?          @relation(fields: [profesionalId], references: [id])
-  costoTrabajo    Decimal?              @db.Decimal(14, 2)
+  id                String                @id @default(cuid())
+  inmobiliariaId    String
+  inmobiliaria      Inmobiliaria          @relation(fields: [inmobiliariaId], references: [id])
+  contratoId        String
+  contrato          Contrato              @relation(fields: [contratoId], references: [id])
+  propiedadId       String? // para atribuir gastos en rendiciones
+  propiedad         Propiedad?            @relation(fields: [propiedadId], references: [id])
+  categoria         CategoriaReclamo
+  descripcion       String
+  urgencia          UrgenciaReclamo
+  estado            EstadoReclamo         @default(ABIERTO)
+  asignadoA         String? // operador interno (texto)
+  fotoUrl           String?
+  resolucion        String?
+  clasificacion     ClasificacionReclamo? // decide a quién se imputa costoTrabajo
+  profesionalId     String? // FK reemplaza los campos denormalizados del mock
+  profesional       Profesional?          @relation(fields: [profesionalId], references: [id])
+  costoTrabajo      Decimal?              @db.Decimal(14, 2)
   costoTrabajoNotas String?
-  createdAt       DateTime              @default(now())
-  resueltoAt      DateTime?
-  updatedAt       DateTime              @updatedAt
+  createdAt         DateTime              @default(now())
+  resueltoAt        DateTime?
+  updatedAt         DateTime              @updatedAt
 
   eventos      ReclamoEvento[]
   visita       VisitaProfesional?
@@ -1914,20 +1950,20 @@ model RatingReclamo {
 // =============================================================================
 
 model Consorcio {
-  id                     String       @id @default(cuid())
-  inmobiliariaId         String
-  inmobiliaria           Inmobiliaria @relation(fields: [inmobiliariaId], references: [id])
-  nombre                 String
-  direccion              String
-  cantUf                 Int // consistente con unidades reales (fix V2b-01)
-  sociedadId             String?
-  sociedad               Sociedad?    @relation(fields: [sociedadId], references: [id])
-  encargado              Json? // { nombre, sueldo }
-  periodoActual          String // 'YYYY-MM'
-  expensasPeriodoActual  Decimal      @db.Decimal(14, 2)
-  desde                  DateTime
-  createdAt              DateTime     @default(now())
-  updatedAt              DateTime     @updatedAt
+  id                    String       @id @default(cuid())
+  inmobiliariaId        String
+  inmobiliaria          Inmobiliaria @relation(fields: [inmobiliariaId], references: [id])
+  nombre                String
+  direccion             String
+  cantUf                Int // consistente con unidades reales (fix V2b-01)
+  sociedadId            String?
+  sociedad              Sociedad?    @relation(fields: [sociedadId], references: [id])
+  encargado             Json? // { nombre, sueldo }
+  periodoActual         String // 'YYYY-MM'
+  expensasPeriodoActual Decimal      @db.Decimal(14, 2)
+  desde                 DateTime
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
 
   unidades              UnidadFuncional[]
   movimientos           MovimientoConsorcio[]
@@ -2228,19 +2264,19 @@ model BoletaServicio {
 
 // Upsert por (propiedad, tipo).
 model ServicioPublico {
-  id                      String       @id @default(cuid())
-  inmobiliariaId          String
-  inmobiliaria            Inmobiliaria @relation(fields: [inmobiliariaId], references: [id])
-  propiedadId             String
-  propiedad               Propiedad    @relation(fields: [propiedadId], references: [id])
-  tipo                    TipoServicio
-  distribuidora           String
-  nis                     String
-  numeroMedidor           String?
-  titular                 String?
-  observaciones           String?
-  consumoPromedioMensual  Decimal?     @db.Decimal(14, 2)
-  actualizadoAt           DateTime     @updatedAt
+  id                     String       @id @default(cuid())
+  inmobiliariaId         String
+  inmobiliaria           Inmobiliaria @relation(fields: [inmobiliariaId], references: [id])
+  propiedadId            String
+  propiedad              Propiedad    @relation(fields: [propiedadId], references: [id])
+  tipo                   TipoServicio
+  distribuidora          String
+  nis                    String
+  numeroMedidor          String?
+  titular                String?
+  observaciones          String?
+  consumoPromedioMensual Decimal?     @db.Decimal(14, 2)
+  actualizadoAt          DateTime     @updatedAt
 
   @@unique([propiedadId, tipo])
   @@index([inmobiliariaId])
