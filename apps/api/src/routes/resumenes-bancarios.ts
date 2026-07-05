@@ -4,7 +4,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { prisma } from '../db.js';
 import { requireUsuario } from '../auth/guards.js';
 import { verificarPinUsuario } from '../auth/pin.js';
-import { calcularPunitorio } from '../lib/punitorios.js';
+import { calcularMora, resolverEsquemaMora } from '../lib/punitorios.js';
 import { parsearFilasResumen, sugerirMatch, type CandidatoLiquidacion, type CandidatoPago } from '../lib/matching-bancario.js';
 import { guardarBufferSubido } from './uploads.js';
 
@@ -31,9 +31,13 @@ async function verificarPin(userId: string, pin: string | undefined, reply: Fast
 
 /** Candidatos vivos para el matching: pagos INFORMADO + liquidaciones con saldo pendiente. */
 async function candidatosVigentes(inmobiliariaId: string): Promise<{ pagos: CandidatoPago[]; liquidaciones: CandidatoLiquidacion[] }> {
-  const [pagosInformados, liquidacionesAbiertas] = await Promise.all([
+  const [pagosInformados, liquidacionesAbiertas, inmo] = await Promise.all([
     prisma.pago.findMany({
-      where: { inmobiliariaId, estado: 'INFORMADO' },
+      // SOLO cobranza por inmobiliaria: la plata de un contrato PROPIETARIO_DIRECTO
+      // va a la cuenta del dueño y NUNCA puede aparecer en el extracto de la inmo —
+      // ofrecerla como candidata permitía marcar paga una deuda ajena con la
+      // transferencia de otro inquilino (mismo filtro que /caja/cierre y /rendiciones).
+      where: { inmobiliariaId, estado: 'INFORMADO', contrato: { modoCobranza: 'INMOBILIARIA' } },
       select: {
         id: true,
         monto: true,
@@ -43,7 +47,7 @@ async function candidatosVigentes(inmobiliariaId: string): Promise<{ pagos: Cand
       },
     }),
     prisma.liquidacion.findMany({
-      where: { inmobiliariaId, estado: { in: ['PENDIENTE', 'VENCIDO', 'PARCIAL'] } },
+      where: { inmobiliariaId, estado: { in: ['PENDIENTE', 'VENCIDO', 'PARCIAL'] }, contrato: { modoCobranza: 'INMOBILIARIA' } },
       // Vencimiento más antiguo primero: si un contrato tiene varios períodos
       // impagos con el mismo monto, un crédito ambiguo debe sugerirse contra
       // la deuda MÁS VIEJA primero (FIFO — misma lógica que cobranza real).
@@ -53,9 +57,18 @@ async function candidatosVigentes(inmobiliariaId: string): Promise<{ pagos: Cand
         contratoId: true,
         montoTotal: true,
         fechaVencimiento: true,
-        contrato: { select: { tasaPunitorioDiaria: true, inquilinoTitular: { select: { nombre: true, apellido: true } } } },
+        montoPunitorioManual: true,
+        contrato: {
+          select: {
+            tasaPunitorioDiaria: true,
+            moraTipo: true,
+            moraValor: true,
+            inquilinoTitular: { select: { nombre: true, apellido: true } },
+          },
+        },
       },
     }),
+    prisma.inmobiliaria.findUnique({ where: { id: inmobiliariaId }, select: { moraTipoDefault: true, moraValorDefault: true } }),
   ]);
 
   const liqIds = liquidacionesAbiertas.map((l) => l.id);
@@ -74,7 +87,16 @@ async function candidatosVigentes(inmobiliariaId: string): Promise<{ pagos: Cand
 
   const ahora = new Date();
   const liquidaciones: CandidatoLiquidacion[] = liquidacionesAbiertas.map((l) => {
-    const punitorio = calcularPunitorio(Number(l.montoTotal), l.contrato.tasaPunitorioDiaria, l.fechaVencimiento, ahora);
+    // Mora con el ESQUEMA EFECTIVO (cascada contrato → default inmobiliaria,
+    // manual pisa) — antes usaba el wrapper legacy (% diario) e ignoraba los
+    // esquemas nuevos: el saldo sugerido no coincidía con el que veía el inquilino.
+    const punitorio = calcularMora(
+      Number(l.montoTotal),
+      resolverEsquemaMora(l.contrato, inmo),
+      l.fechaVencimiento,
+      ahora,
+      l.montoPunitorioManual != null ? Number(l.montoPunitorioManual) : null,
+    );
     const total = Number(l.montoTotal) + punitorio;
     const pagado = pagadoMap.get(l.id) ?? 0;
     return {
@@ -248,11 +270,59 @@ export async function resumenesBancariosRoutes(app: FastifyInstance): Promise<vo
 
     const liq = await prisma.liquidacion.findFirst({
       where: { id: body.data.liquidacionId, inmobiliariaId: u.inmobiliariaId },
-      select: { id: true, contratoId: true, periodo: true, montoTotal: true, fechaVencimiento: true, contrato: { select: { tasaPunitorioDiaria: true, estado: true } } },
+      select: {
+        id: true,
+        contratoId: true,
+        periodo: true,
+        estado: true,
+        montoTotal: true,
+        fechaVencimiento: true,
+        montoPunitorioManual: true,
+        contrato: {
+          select: {
+            tasaPunitorioDiaria: true,
+            moraTipo: true,
+            moraValor: true,
+            estado: true,
+            modoCobranza: true,
+            inmobiliaria: { select: { moraTipoDefault: true, moraValorDefault: true } },
+          },
+        },
+      },
     });
     if (!liq) return reply.code(404).send({ message: 'Liquidación inexistente' });
     if (liq.contrato.estado !== 'ACTIVO') {
       return reply.code(409).send({ message: 'El contrato ya no está activo — no se puede conciliar sobre esta liquidación.' });
+    }
+    // La plata de un contrato de cobranza directa entra al banco del DUEÑO: un
+    // crédito del extracto de la inmo no puede saldarla (candidatosVigentes ya
+    // no la ofrece; este guard cubre el API directo y carreras).
+    if (liq.contrato.modoCobranza !== 'INMOBILIARIA') {
+      return reply.code(409).send({ message: 'Ese contrato cobra directo al propietario — este crédito no puede corresponderle.' });
+    }
+    if (liq.estado === 'PAGADO') {
+      return reply.code(409).send({ message: 'Esa liquidación ya está paga — elegí otra.' });
+    }
+    // Tope de saldo (mismo criterio que /pagos/informar): sin esto se podía
+    // asignar una transferencia de 2 meses a UNA liquidación → sobre-pago que
+    // inflaba rendición y comisión mientras el otro mes seguía VENCIDO con mora.
+    const aggConc = await prisma.pago.aggregate({
+      where: { liquidacionId: liq.id, estado: 'CONCILIADO' },
+      _sum: { monto: true },
+    });
+    const punitorioGuard = calcularMora(
+      Number(liq.montoTotal),
+      resolverEsquemaMora(liq.contrato, liq.contrato.inmobiliaria),
+      liq.fechaVencimiento,
+      credito.fecha,
+      liq.montoPunitorioManual != null ? Number(liq.montoPunitorioManual) : null,
+    );
+    const saldoPendiente = Number(liq.montoTotal) + punitorioGuard - Number(aggConc._sum.monto ?? 0);
+    if (saldoPendiente <= 0) return reply.code(409).send({ message: 'Esa liquidación ya está paga — elegí otra.' });
+    if (Number(credito.monto) > saldoPendiente + 0.01) {
+      return reply.code(400).send({
+        message: 'El crédito supera el saldo de esa liquidación — asignalo a la liquidación correcta (¿son dos meses juntos?).',
+      });
     }
 
     try {
@@ -282,10 +352,17 @@ export async function resumenesBancariosRoutes(app: FastifyInstance): Promise<vo
         });
         await tx.creditoDetectado.update({ where: { id: creditoId }, data: { pagoId: nuevoPago.id } });
 
-        // Recomputar estado de la liquidación (mismo criterio que /pagos/:id/validar).
+        // Recomputar estado de la liquidación (mismo criterio que /pagos/:id/validar:
+        // mora del ESQUEMA EFECTIVO a la fecha del crédito, manual pisa).
         const agg = await tx.pago.aggregate({ where: { liquidacionId: liq.id, estado: 'CONCILIADO' }, _sum: { monto: true } });
         const cobrado = Number(agg._sum.monto ?? 0);
-        const punitorio = calcularPunitorio(Number(liq.montoTotal), liq.contrato.tasaPunitorioDiaria, liq.fechaVencimiento, credito.fecha);
+        const punitorio = calcularMora(
+          Number(liq.montoTotal),
+          resolverEsquemaMora(liq.contrato, liq.contrato.inmobiliaria),
+          liq.fechaVencimiento,
+          credito.fecha,
+          liq.montoPunitorioManual != null ? Number(liq.montoPunitorioManual) : null,
+        );
         const total = Number(liq.montoTotal) + punitorio;
         await tx.liquidacion.update({
           where: { id: liq.id },

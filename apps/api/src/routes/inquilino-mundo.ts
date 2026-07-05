@@ -492,9 +492,16 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
       | { modo: 'PROPIETARIO_DIRECTO' | 'INMOBILIARIA'; titular: string; cuit: string; banco: string | null; cbu: string; alias: string }
       | null = null;
 
-    if (contrato.modoCobranza === 'PROPIETARIO_DIRECTO' && contrato.cobraDirectoPropietario?.cuentaCobranza) {
-      const c = contrato.cobraDirectoPropietario.cuentaCobranza;
-      datosCobranza = { modo: 'PROPIETARIO_DIRECTO', titular: c.titular, cuit: c.cuit, banco: c.banco, cbu: c.cbu, alias: c.alias };
+    if (contrato.modoCobranza === 'PROPIETARIO_DIRECTO') {
+      // SOLO la cuenta del dueño. Si no está cargada, datosCobranza queda null
+      // (la PWA muestra "pedile los datos a la inmobiliaria") — antes caía en
+      // silencio a la cuenta de la INMOBILIARIA y el inquilino transfería el
+      // alquiler a la cuenta equivocada: plata del dueño varada en el banco de
+      // la inmo, sin circuito de rendición (excluida por PROPIETARIO_DIRECTO).
+      const c = contrato.cobraDirectoPropietario?.cuentaCobranza;
+      if (c) {
+        datosCobranza = { modo: 'PROPIETARIO_DIRECTO', titular: c.titular, cuit: c.cuit, banco: c.banco, cbu: c.cbu, alias: c.alias };
+      }
     } else {
       let cuenta = (contrato.sociedad?.cuentaCobranza as CuentaJson | null) ?? null;
       if (!cuenta) {
