@@ -22,12 +22,11 @@ type Metodo = (typeof METODOS)[number];
 export function SaldarDeudaButton({ contratoId, deuda, moneda }: { contratoId: string; deuda: number; moneda: Moneda }) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [pin, setPin] = useState('');
   const [metodo, setMetodo] = useState<Metodo>('TRANSFERENCIA');
   const [condonar, setCondonar] = useState(false);
 
   useEffect(() => {
-    if (open) { setPin(''); setMetodo('TRANSFERENCIA'); setCondonar(false); }
+    if (open) { setMetodo('TRANSFERENCIA'); setCondonar(false); }
   }, [open]);
 
   const saldar = useMutation({
@@ -35,7 +34,7 @@ export function SaldarDeudaButton({ contratoId, deuda, moneda }: { contratoId: s
       await ensureApiSession();
       return apiFetch<{ liquidacionesSaldadas: number; montoAplicado: number }>(
         `/contratos/${contratoId}/saldar-deuda`,
-        { method: 'POST', body: JSON.stringify({ pin: pin || undefined, metodo, condonar: condonar || undefined }) },
+        { method: 'POST', body: JSON.stringify({ metodo, condonar: condonar || undefined }) },
       );
     },
     onSuccess: (res) => {
@@ -75,17 +74,6 @@ export function SaldarDeudaButton({ contratoId, deuda, moneda }: { contratoId: s
             Condonar
           </button>
         </span>
-      </span>
-      <span className="flex items-center justify-between gap-2">
-        <span className="font-medium text-foreground">PIN de seguridad</span>
-        <input
-          type="password"
-          inputMode="numeric"
-          value={pin}
-          onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
-          className="w-28 rounded border border-border bg-background px-2 py-1 text-center tracking-widest"
-          placeholder="••••"
-        />
       </span>
     </span>
   );

@@ -534,10 +534,9 @@ export async function authRoutes(app: FastifyInstance) {
         imageUrl: u.imageUrl ?? null,
         inmobiliaria: u.inmobiliaria.nombre,
         esPiloto: u.inmobiliaria.esPiloto,
-        // ¿Ya tiene PIN de seguridad en la DB? El panel lo usa para mostrar
-        // "Configurar" vs "Cambiar" (antes el PIN era solo localStorage y nunca
-        // llegaba al backend → las acciones sensibles daban 403 para siempre).
-        tienePin: !!u.pinHash,
+        // PIN ELIMINADO de la plataforma: ninguna acción lo requiere. Devolvemos false
+        // fijo para que el panel no muestre estado ni prompts de PIN en ningún lado.
+        tienePin: false,
         // Perfil fiscal incompleto si el auto-onboarding dejó cuit/dirección vacíos.
         perfilFiscalCompleto: !!(u.inmobiliaria.cuit && u.inmobiliaria.direccionCalle),
         trial: trial

@@ -37,7 +37,6 @@ import { descargarCsv } from '@/lib/csv-export';
 import { abrirReporteImprimible } from '@/lib/reportes-pdf';
 import { sociedadPrincipal } from '@/lib/sociedades-storage';
 import { MatrizPermisosCard } from '@/components/matriz-permisos-card';
-import { PinSeguridadCard } from '@/components/pin-seguridad-card';
 import { ConfiguracionProd } from '@/components/configuracion-prod';
 import { relanzarOnboardingInmo } from '@/components/onboarding';
 import { Topbar } from '@/components/topbar';
@@ -582,8 +581,6 @@ export default function ConfiguracionPage() {
                 ))}
               </CardContent>
             </Card>
-
-            <PinSeguridadCard />
 
             <MatrizPermisosCard />
           </TabsContent>
