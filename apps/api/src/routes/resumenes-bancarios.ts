@@ -331,6 +331,16 @@ export async function resumenesBancariosRoutes(app: FastifyInstance): Promise<vo
         const marcado = await tx.creditoDetectado.updateMany({ where: { id: creditoId, conciliado: false }, data: { conciliado: true } });
         if (marcado.count === 0) throw new ConflictoCreditoConciliado();
 
+        // Lock de la LIQUIDACIÓN + re-check del tope DENTRO de la tx: el lock
+        // del crédito impide conciliar el MISMO crédito dos veces, pero no que
+        // dos créditos DISTINTOS sobre-paguen la misma liquidación en paralelo
+        // (ambos pasaban el guard de afuera con el mismo aggregate).
+        await tx.$queryRaw`SELECT id FROM liquidaciones WHERE id = ${liq.id} FOR UPDATE`;
+        const aggTx = await tx.pago.aggregate({ where: { liquidacionId: liq.id, estado: 'CONCILIADO' }, _sum: { monto: true } });
+        const saldoTx = Number(liq.montoTotal) + punitorioGuard - Number(aggTx._sum.monto ?? 0);
+        if (saldoTx <= 0) throw new ConflictoLiquidacionYaPaga();
+        if (Number(credito.monto) > saldoTx + 0.01) throw new ConflictoSobrePago();
+
         // El crédito bancario YA es una acreditación real: nace directo CONCILIADO
         // (no pasa por INFORMADO — no hubo autoreporte del inquilino, lo detectó el banco).
         const nuevoPago = await tx.pago.create({
@@ -376,9 +386,17 @@ export async function resumenesBancariosRoutes(app: FastifyInstance): Promise<vo
       return pago;
     } catch (e) {
       if (e instanceof ConflictoCreditoConciliado) return reply.code(409).send({ message: 'Este crédito ya fue conciliado' });
+      if (e instanceof ConflictoLiquidacionYaPaga) return reply.code(409).send({ message: 'Esa liquidación ya está paga — elegí otra.' });
+      if (e instanceof ConflictoSobrePago) {
+        return reply.code(400).send({
+          message: 'El crédito supera el saldo de esa liquidación — asignalo a la liquidación correcta (¿son dos meses juntos?).',
+        });
+      }
       throw e;
     }
   });
 }
 
 class ConflictoCreditoConciliado extends Error {}
+class ConflictoLiquidacionYaPaga extends Error {}
+class ConflictoSobrePago extends Error {}

@@ -165,7 +165,13 @@ export default function PagosPage() {
 
   // Pagos ya CONCILIADOS (solo prod): el PDF "Cobranzas del mes" se arma desde
   // los cobros reales (fecha/método/monto de cada pago), no desde el canon.
-  const { pagos: pagosConciliados } = usePagosConciliados();
+  // isError/cargando: con la query caída o pendiente el PDF saldría "Total $0"
+  // como si no se hubiera cobrado nada — lo abortamos con un toast.
+  const {
+    pagos: pagosConciliados,
+    isError: conciliadosError,
+    cargando: conciliadosCargando,
+  } = usePagosConciliados();
 
   // En modo API el contador es reactivo (viene del hook): lo reflejamos y
   // defaulteamos a "A resolver" si hay pendientes la primera vez.
@@ -414,15 +420,34 @@ export default function PagosPage() {
   // Se usa para rendir a propietarios y para archivo del estudio.
   const exportarCobradoPdf = () => {
     if (real) {
-      // Prod: filas desde los pagos CONCILIADO reales del período (fecha en que
-      // pagó, método real, monto realmente cobrado — incluye parciales). Antes
-      // salía del contrato: método 'Transferencia' hardcodeado, monto = canon
-      // (no lo cobrado) y fecha = PRÓXIMO vencimiento → el respaldo mentía.
+      // Prod: filas desde los pagos CONCILIADO reales (fecha en que pagó,
+      // método real, monto realmente cobrado — incluye parciales). Antes salía
+      // del contrato: método 'Transferencia' hardcodeado, monto = canon (no lo
+      // cobrado) y fecha = PRÓXIMO vencimiento → el respaldo mentía.
+      if (conciliadosCargando || conciliadosError) {
+        // Con la query caída/pendiente el PDF saldría vacío ('Total $0') como
+        // si el mes no hubiera cobrado nada.
+        toast({
+          title: 'No pudimos cargar los cobros',
+          description: conciliadosError ? 'Reintentá en unos segundos.' : 'Todavía están cargando — probá de nuevo.',
+          variant: 'destructive',
+        });
+        return;
+      }
       const periodo = periodoActualFormat();
-      const delMes = pagosConciliados.filter((p) => p.periodo === periodo);
+      // "Del mes" = cobrados ESTE mes (fecha del pago), no liquidaciones de
+      // este período: un cobro de deuda vieja conciliado hoy es plata que entró
+      // hoy y antes no aparecía en ningún reporte. El período de cada pago va
+      // como columna. Y afuera los PROPIETARIO_DIRECTO (LOCKED: esa plata va
+      // del inquilino al dueño, no es ingreso de la inmo — sumarla descuadraba
+      // contra el KPI Cobrado y contra caja).
+      const delMes = pagosConciliados.filter(
+        (p) => (p.fechaTransferencia ?? '').slice(0, 7) === periodo && p.modoCobranza !== 'PROPIETARIO_DIRECTO',
+      );
       const filasReales: (string | number)[][] = delMes.map((p) => [
         p.inquilino,
         p.direccion,
+        formatPeriodo(p.periodo),
         formatFecha(p.fechaTransferencia),
         metodoPagoLabel[p.metodo],
         formatMonto(p.monto),
@@ -430,14 +455,15 @@ export default function PagosPage() {
       const totalReal = delMes.reduce((acc, p) => acc + p.monto, 0);
       abrirReporteImprimible({
         titulo: 'Cobranzas del mes',
-        subtitulo: `${formatPeriodo(periodo)} · ${delMes.length} pago${delMes.length === 1 ? '' : 's'} acreditado${delMes.length === 1 ? '' : 's'}`,
+        subtitulo: `${formatPeriodo(periodo)} · ${delMes.length} pago${delMes.length === 1 ? '' : 's'} acreditado${delMes.length === 1 ? '' : 's'} en el mes`,
         inmobiliaria: sociedadPrincipal().razonSocial,
         columnas: [
-          { header: 'Inquilino', width: '24%' },
-          { header: 'Propiedad', width: '28%' },
+          { header: 'Inquilino', width: '21%' },
+          { header: 'Propiedad', width: '25%' },
+          { header: 'Período', width: '12%' },
           { header: 'Fecha de pago', width: '14%' },
-          { header: 'Método', width: '14%' },
-          { header: 'Monto', width: '20%', align: 'right' },
+          { header: 'Método', width: '12%' },
+          { header: 'Monto', width: '16%', align: 'right' },
         ],
         filas: filasReales,
         totales: [
@@ -445,8 +471,9 @@ export default function PagosPage() {
           { label: 'Total cobrado', valor: formatMonto(totalReal) },
         ],
         notaFinal:
-          'Este reporte detalla los pagos acreditados y conciliados en el período. Sirve ' +
-          'como respaldo para las rendiciones a propietarios.',
+          'Este reporte detalla los pagos acreditados y conciliados durante el mes (por fecha de cobro; ' +
+          'incluye cobros de períodos anteriores). No incluye contratos con cobranza directa al propietario. ' +
+          'Sirve como respaldo para las rendiciones a propietarios.',
       });
       return;
     }

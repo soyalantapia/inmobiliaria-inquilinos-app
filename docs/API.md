@@ -226,6 +226,7 @@ Todas las rutas montadas bajo el prefijo del plugin `plataRoutes`. Multi-tenant:
 - Guard: `requireUsuario('pagos.ver')`.
 - Query: `periodo` (string, opc.), `estado` (enum `PENDIENTE|PAGADO|PARCIAL|VENCIDO`, opc.).
 - Respuesta: array de `Liquidacion` con `contrato` incluido (`id`, `propiedad.direccion`, `inquilinoTitular.nombre/apellido`), orden `fechaVencimiento` desc.
+- ✅ **Decorado (05/07):** cada liq viene con mora al día (mismo criterio que `/mis-liquidaciones`): `montoTotal` = base + `montoPunitorio` (congelado en `fechaPago` si `PAGADO`), `montoPagado` (conciliados) y `saldo`. Sin esto, el diálogo de cobro manual prefilleaba un "total" sin mora que el server clasificaba PARCIAL → la liq quedaba abierta por una mora invisible.
 
 **POST /liquidaciones/devengar**
 - Guard: `requireUsuario()` + chequeo manual de rol (`ADMIN` u `OPERADOR`).
@@ -251,6 +252,14 @@ Todas las rutas montadas bajo el prefijo del plugin `plataRoutes`. Multi-tenant:
 - Guard: `requireUsuario('pagos.ver')`.
 - Query: `estado` (enum `INFORMADO|CONCILIADO|RECHAZADO`, opc.).
 - Respuesta: array de `Pago` con `contrato` y `liquidacion` incluidos, orden `informadoAt` desc.
+- ✅ **Decorado (05/07):** `contrato` incluye `modoCobranza` y `cobraDirectoPropietario {nombre, apellido}` (el validador ve si la plata fue a la cuenta del DUEÑO). `liquidacion` viene decorada con el saldo REAL: `montoTotal` = base + mora al día (congelada en `fechaPago` si ya está `PAGADO`), `montoPunitorio`, `montoPagado` (suma de conciliados) y `saldo` = max(0, total − pagado). OJO: `saldo` NO descuenta el pago INFORMADO de la propia fila.
+
+**POST /pagos/manual**
+- Guard: `requireUsuario('pago.conciliar')` + PIN.
+- Body: `liquidacionId` (string, **req.**), `monto` (number positivo, **req.**), `metodo` (enum `TRANSFERENCIA|MERCADOPAGO|EFECTIVO|CHEQUE`, def `EFECTIVO`), `fecha` (date coercible, **req.**), `nota` (opc.), `pin` (opc.).
+- Reglas: registra un cobro que NO pasó por la app (efectivo en oficina / "el dueño confirmó que cobró" en contratos `PROPIETARIO_DIRECTO` — antes esas liqs quedaban VENCIDO acumulando mora para siempre). El pago nace `CONCILIADO` (sin comprobante que validar) y recomputa la liq igual que validar (mora del esquema efectivo a la `fecha`). Tope de saldo con tolerancia de 1 centavo. Concurrencia: `SELECT … FOR UPDATE` de la liquidación + re-check del saldo DENTRO de la tx (un pago que nace CONCILIADO no lo cubre el índice de INFORMADO — sin el lock, doble submit duplicaba el cobro). Registra evento `PAGO_CONCILIADO`.
+- Respuesta: `201` con el `Pago` creado.
+- Errores: 400 (datos incompletos; monto supera el saldo), 404 (liq inexistente), 409 (liq ya paga; contrato no activo), y los del PIN.
 
 **POST /pagos/:id/validar**
 - Guard: `requireUsuario('pago.conciliar')`.
@@ -276,6 +285,7 @@ Todas las rutas montadas bajo el prefijo del plugin `plataRoutes`. Multi-tenant:
 **GET /mis-liquidaciones**
 - Guard: `requireContratoAcceso()` (sin capacidad específica).
 - Respuesta: array de `Liquidacion` del contrato del inquilino, orden `periodo` desc. `[]` si no tiene contrato activo.
+- ✅ **Decorado (05/07):** cada liq incluye `pagos[]` del inquilino ordenados por `informadoAt` asc: `{ id, tipo, estado, anulado, monto, metodo, nroOperacion, fechaTransferencia, informadoAt, decididoAt, observacion, comprobanteUrl, comprobanteFileName, comprobanteMime }`. Es la fuente de "pendiente de validación" / "rechazado con motivo" / "confirmado" y del comprobante reabrible en la PWA (antes prod era ciego). Un pago ANULADO por la inmo llega como `RECHAZADO` con `anulado: true` y `observacion` NEUTRA (el motivo interno del admin no se filtra al inquilino).
 
 ### Caja de gastos
 
@@ -793,7 +803,9 @@ Concilia un crédito contra una liquidación (con PIN).
 - **Params:** `id`, `creditoId`. **Request body:** `liquidacionId` (≥1), `pin?`.
 - **Respuesta:** el `Pago` creado.
 - **Reglas de negocio:** lock atómico anti doble-conciliación (`updateMany where conciliado:false`); crea un `Pago` **directo `CONCILIADO`** (método `TRANSFERENCIA`, NO pasa por `INFORMADO` porque lo detectó el banco); recomputa el estado de la liquidación (`PAGADO`/`PARCIAL`) con mora. El link 1:1 crédito↔pago vive en `CreditoDetectado.pagoId` (`@unique`).
-- **Errores:** código/mensaje del PIN si falla; `404` crédito/liquidación inexistente; `409` crédito ya conciliado o contrato no `ACTIVO`.
+- ✅ **Endurecido (05/07):** (1) mora con el **esquema efectivo** (`calcularMora` + `resolverEsquemaMora` + `montoPunitorioManual`) en vez del wrapper legacy `% diario` — antes condonaba mora en silencio o dejaba liqs PARCIAL zombies; (2) guards: liq `PAGADO` → 409, contrato `PROPIETARIO_DIRECTO` → 409 (esa plata va al banco del DUEÑO, no puede estar en el extracto de la inmo), `credito.monto > saldo + $0.01` → 400 (antes una transferencia de 2 meses sobre UNA liq inflaba rendición y comisión); (3) `SELECT … FOR UPDATE` de la liquidación + re-check del tope DENTRO de la tx (dos créditos distintos en paralelo podían sobre-pagar la misma liq). `candidatosVigentes` (matching + dropdown) también filtra `modoCobranza='INMOBILIARIA'` y usa el esquema de mora efectivo.
+- **Errores:** código/mensaje del PIN si falla; `404` crédito/liquidación inexistente; `409` crédito ya conciliado, contrato no `ACTIVO`, liq ya paga o contrato de cobranza directa; `400` crédito supera el saldo.
+- **Relacionado:** `POST /pagos/:id/anular` ahora **libera el crédito** (`conciliado:false, pagoId:null`) si el pago anulado nació del extracto — antes quedaba huérfano sin poder reasignarse — y recomputa la liq con umbral base+mora (espejo de validar; antes solo base → anular el pago de la mora dejaba PAGADO con mora impaga).
 
 
 ## importaciones-cartera.ts

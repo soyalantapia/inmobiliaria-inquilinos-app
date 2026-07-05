@@ -215,6 +215,34 @@ export async function seedBase(prisma: PrismaClient) {
     });
   }
 
+  // Pagos CONCILIADOS de las liquidaciones que el seed marca PAGADO. La
+  // rendición es INCREMENTAL desde los pagos CONCILIADO (montoPagadoPorLiquidacion),
+  // no desde el estado de la liq: sin estas filas, una DB recién seedeada no
+  // tenía NADA para rendir y POST /rendiciones daba 409 "no hay cobros nuevos"
+  // (los tests solo pasaban por pagos residuales de corridas viejas en la DB
+  // compartida).
+  const pagosConciliados = [
+    { id: 'pag_liq002', contratoId: 'cnt_002', liquidacionId: 'liq_002', periodo: '2026-06', monto: 620000, fechaTransferencia: '2026-06-08' },
+    { id: 'pag_liq004', contratoId: 'cnt_004', liquidacionId: 'liq_004', periodo: '2026-06', monto: 720000, fechaTransferencia: '2026-06-01' },
+    { id: 'pag_liq007', contratoId: 'cnt_007', liquidacionId: 'liq_007', periodo: '2026-06', monto: 285000, fechaTransferencia: '2026-06-09' },
+  ];
+  for (const p of pagosConciliados) {
+    const { fechaTransferencia, ...resto } = p;
+    await prisma.pago.upsert({
+      where: { id: p.id },
+      update: {},
+      create: {
+        ...resto,
+        inmobiliariaId: tid,
+        metodo: 'TRANSFERENCIA',
+        estado: 'CONCILIADO',
+        decididoAt: new Date(fechaTransferencia),
+        fechaTransferencia: new Date(fechaTransferencia),
+        montoLiqTotal: p.monto,
+      },
+    });
+  }
+
   // Caja de gastos (mock de /caja: 2 pendientes + 1 ya descontado en rendición)
   // Upsert por id fijo: el @@unique(propietarioId, periodo) se ELIMINÓ del
   // schema (rendición incremental — varios cortes por período), así que el

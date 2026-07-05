@@ -26,6 +26,9 @@ async function resetInquilinoMundo(prisma: PrismaClient, tid: string) {
     data: { estado: 'VENCIDO', fechaPago: null, metodoPago: null },
   });
   await prisma.pago.deleteMany({ where: { contratoId: 'cnt_001', estado: 'RECHAZADO' } });
+  // La suite de plata (P10) FINALIZA cnt_001 y el seed no lo revierte
+  // (upsert update:{}): el mundo-inquilino de Mariela necesita contrato ACTIVO.
+  await prisma.contrato.update({ where: { id: 'cnt_001' }, data: { estado: 'ACTIVO' } });
 }
 
 beforeAll(async () => {

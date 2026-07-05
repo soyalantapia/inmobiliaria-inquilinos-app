@@ -10,6 +10,59 @@
 
 Plataforma SaaS multi-tenant para inmobiliarias (panel) e inquilinos (PWA). Estado de cambios desde el handoff inicial hasta hoy.
 
+### Flujo de pagos completo: visibilidad del inquilino + cobro manual + circuito directo (05/07)
+Auditoría multi-agente del flujo de pagos (23 hallazgos confirmados, 4 CRÍTICOS) a raíz
+del reclamo del owner "no veo que funcione al 100% el pago parcial". Causa raíz: el
+backend nunca exponía al inquilino sus propios pagos → en prod la PWA era CIEGA
+(informabas un pago y la app te seguía pidiendo pagar TODO, empujando a un 409 y a
+transferir dos veces; un rechazo con motivo jamás se mostraba; el comprobante enviado no
+se podía volver a ver). Rama `fix/pagos-visibilidad-inquilino`.
+- **API:** `/mis-liquidaciones` expone `pagos[]` por liq (estado + motivo de rechazo +
+  comprobante; los anulados llegan con `anulado:true` y observación neutra — el motivo
+  interno del admin no se filtra). `GET /pagos` decora la liq con saldo REAL
+  (base+mora−conciliados, mora congelada en `fechaPago` si PAGADO) + `modoCobranza` +
+  nombre del dueño directo. `GET /liquidaciones` idem con mora (el diálogo de cobro
+  manual prefillea el saldo exigible de verdad). **Nuevo `POST /pagos/manual`** (PIN):
+  efectivo en oficina / "el dueño confirmó que cobró" — antes una liq de contrato
+  directo sin informe del inquilino quedaba VENCIDA acumulando mora PARA SIEMPRE; con
+  lock `FOR UPDATE` + re-check en tx (sin eso, doble submit duplicaba el cobro).
+  `POST /pagos/:id/anular` recomputa con umbral base+MORA (espejo de validar; antes
+  anular el pago de la mora dejaba PAGADO con mora impaga) y libera el
+  `CreditoDetectado` del extracto (antes quedaba huérfano, irrecuperable). Conciliación
+  bancaria: esquema de mora EFECTIVO (no legacy), tope de saldo, rechaza liqs PAGADAS y
+  contratos directos, y lock de liq en tx. `/mi-contrato`: contrato directo SIN cuenta
+  del dueño ya NO cae en silencio a la cuenta de la inmobiliaria (devuelve null → la PWA
+  pide los datos); el alta de contrato directo exige la cuenta del dueño cargada.
+- **PWA inquilino:** las cards "Pendiente de validación" / "Tu pago fue rechazado (con
+  motivo) + Volver a subir" / "Pago confirmado" y la lista "Pagos informados (N)"
+  FUNCIONAN en prod (hidratan de `liq.pagos`; decisión más reciente por `decididoAt`;
+  el INFORMADO vivo tiene precedencia; gate anti-zombie si la liq ya está PAGADA).
+  "Ver comprobante enviado" abre el archivo real (`?token=`). Checkout: GUARD temprano
+  "Este pago ya fue informado" ANTES de mostrar el CBU (evita la doble transferencia
+  real); tras un parcial ya no ofrece "Pagar el saldo" (el backend admite un solo
+  INFORMADO): explica que va a poder informarlo al validarse. Banner del home: variante
+  ámbar "Comprobante en revisión" (sin CTA de pagar). Franja "Cuenta del propietario" en
+  cobranza directa. Recibos: badges de estado por pago.
+- **Panel:** bandeja con saldo REAL por fila ("si lo validás queda $X" — antes mocks:
+  deuda fantasma), badge "Cobranza directa al propietario · <dueño>" con datos reales,
+  estado de ERROR con Reintentar (antes un 500 se disfrazaba de "no hay comprobantes"),
+  KPI Cobrado incluye parciales conciliados (Cobrado+Pendiente cierran), "Cargar pago"
+  cableado a `POST /pagos/manual` (contratos directos incluidos, con leyenda), PDF
+  morosos usa `cobrables` (sin directos), PDF Cobranzas del mes desde pagos CONCILIADO
+  reales (método/fecha/monto reales, por FECHA DE COBRO con período como columna, excluye
+  directos, aborta con toast si la query falló).
+- **Tests:** suite verde en schema FRESCO (antes solo pasaba con estado residual de la
+  DB compartida): fix seed (`rendicion.upsert` por id — el unique compuesto ya no existe
+  y rompía TODA la suite), pagos CONCILIADO del seed para las liqs PAGADAS (la rendición
+  incremental rinde desde pagos), curas de estado (cnt_001/liq_003/pag_002), expectativas
+  de la rendición de Silvana alineadas a "comisión SOLO sobre alquiler" (LOCKED), test de
+  anuncios alineado al hardening `comunicaciones.enviar`, y suite nueva de
+  `POST /pagos/manual` (6 casos) + shape de `GET /pagos` y `pagos[]`.
+- **Pendientes anotados (decisiones de producto):** a quién pertenece la mora cobrada en
+  cierre/rendición (hoy se prorratea como alquiler+expensas — MEDIO), PATCH del modo de
+  cobranza post-alta (hoy el contrato queda atrapado en el modo con el que nació), y
+  permitir varios INFORMADOs por liq (la opción A del checkout).
+
 ### Prep del piloto Ramiro + fix de migración de cartera (04/07)
 - **`fix(importaciones)` (`89977a4`, en main `108065e`):** la migración masiva de cartera
   creaba el contrato ACTIVO desde la fecha de inicio de la planilla y devengaba TODAS las

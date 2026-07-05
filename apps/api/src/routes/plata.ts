@@ -41,6 +41,9 @@ export async function plataRoutes(app: FastifyInstance) {
         contrato: {
           select: {
             id: true,
+            tasaPunitorioDiaria: true,
+            moraTipo: true,
+            moraValor: true,
             propiedad: { select: { direccion: true } },
             inquilinoTitular: { select: { nombre: true, apellido: true } },
           },
@@ -49,9 +52,28 @@ export async function plataRoutes(app: FastifyInstance) {
       orderBy: { fechaVencimiento: 'desc' },
     });
     // montoPagado/saldo (suma de conciliados) para que las vistas puedan mostrar
-    // lo cobrado de un PARCIAL, no sólo el estado.
+    // lo cobrado de un PARCIAL, no sólo el estado. El saldo va CON la mora al
+    // día (mismo criterio que /mis-liquidaciones y el tope de /pagos/manual):
+    // sin ella, el diálogo de cobro manual prefilleaba un "total" que el server
+    // clasificaba PARCIAL y la liquidación quedaba abierta por la mora invisible.
     const pagado = await montoPagadoPorLiquidacion(liqs.map((l) => l.id));
-    return liqs.map((l) => conSaldo(l, pagado));
+    const inmoDefaults = await prisma.inmobiliaria.findUnique({
+      where: { id: u.inmobiliariaId },
+      select: { moraTipoDefault: true, moraValorDefault: true },
+    });
+    const hoy = new Date();
+    return liqs.map((l) => {
+      const asOf = l.estado === 'PAGADO' && l.fechaPago ? new Date(l.fechaPago) : hoy;
+      const punitorio = calcularMora(
+        Number(l.montoTotal),
+        resolverEsquemaMora(l.contrato, inmoDefaults),
+        l.fechaVencimiento,
+        asOf,
+        l.montoPunitorioManual != null ? Number(l.montoPunitorioManual) : null,
+      );
+      const { moraTipo: _mt, moraValor: _mv, tasaPunitorioDiaria: _tp, ...contrato } = l.contrato;
+      return conSaldo({ ...l, contrato }, pagado, punitorio);
+    });
   });
 
   // Devenga (top-up) las liquidaciones de meses futuros de TODOS los contratos
@@ -247,7 +269,7 @@ export async function plataRoutes(app: FastifyInstance) {
           },
         },
         liquidacion: {
-          select: { id: true, periodo: true, montoTotal: true, estado: true, fechaVencimiento: true, montoPunitorioManual: true },
+          select: { id: true, periodo: true, montoTotal: true, estado: true, fechaVencimiento: true, fechaPago: true, montoPunitorioManual: true },
         },
       },
       orderBy: { informadoAt: 'desc' },
@@ -263,11 +285,15 @@ export async function plataRoutes(app: FastifyInstance) {
     const hoy = new Date();
     return pagos.map((p) => {
       const base = Number(p.liquidacion.montoTotal);
+      // Una liq PAGADA congela la mora en su fechaPago (mismo criterio que
+      // /mis-liquidaciones): sin esto la bandeja mostraba un saldo fantasma
+      // que seguía creciendo sobre liquidaciones ya cerradas.
+      const asOf = p.liquidacion.estado === 'PAGADO' && p.liquidacion.fechaPago ? new Date(p.liquidacion.fechaPago) : hoy;
       const punitorio = calcularMora(
         base,
         resolverEsquemaMora(p.contrato, inmo),
         p.liquidacion.fechaVencimiento,
-        hoy,
+        asOf,
         p.liquidacion.montoPunitorioManual != null ? Number(p.liquidacion.montoPunitorioManual) : null,
       );
       const montoPagado = pagadoMap.get(p.liquidacion.id) ?? 0;
@@ -601,52 +627,80 @@ export async function plataRoutes(app: FastifyInstance) {
       body.data.fecha,
       liq.montoPunitorioManual != null ? Number(liq.montoPunitorioManual) : null,
     );
-    const saldoPendiente = Number(liq.montoTotal) + punitorio - Number(aggConc._sum.monto ?? 0);
-    if (saldoPendiente <= 0) return reply.code(409).send({ message: 'Esta liquidación ya está paga' });
-    if (body.data.monto > saldoPendiente) {
+    const r2c = (n: number) => Math.round(n * 100) / 100;
+    // Pre-check FUERA de la tx sólo para el error amigable rápido; el check
+    // AUTORITATIVO se repite adentro, con la liquidación lockeada.
+    const saldoPre = r2c(Number(liq.montoTotal) + punitorio - Number(aggConc._sum.monto ?? 0));
+    if (saldoPre <= 0) return reply.code(409).send({ message: 'Esta liquidación ya está paga' });
+    if (body.data.monto > saldoPre + 0.01) {
       return reply.code(400).send({ message: 'El monto supera el saldo pendiente de esta liquidación' });
     }
 
-    const pagoOk = await prisma.$transaction(async (tx) => {
-      const nuevoPago = await tx.pago.create({
-        data: {
-          inmobiliariaId: u.inmobiliariaId,
-          contratoId: liq.contrato.id,
-          liquidacionId: liq.id,
-          periodo: liq.periodo,
-          tipo: body.data.monto >= saldoPendiente ? 'TOTAL' : 'PARCIAL',
-          monto: body.data.monto,
-          montoLiqTotal: liq.montoTotal,
-          metodo: body.data.metodo,
-          fechaTransferencia: body.data.fecha,
-          notaInquilino: body.data.nota
-            ? `Cobro manual registrado por la inmobiliaria: ${body.data.nota}`
-            : 'Cobro manual registrado por la inmobiliaria',
-          estado: 'CONCILIADO',
-          decididoPorId: u.userId,
-          decididoAt: new Date(),
-        },
+    let pagoOk;
+    try {
+      pagoOk = await prisma.$transaction(async (tx) => {
+        // LOCK pesimista de la liquidación: este pago NACE CONCILIADO, así que
+        // no lo cubre el índice único parcial de INFORMADO ni un updateMany
+        // condicionado por estado del pago (los guards del resto del ciclo).
+        // Sin el lock, dos submits concurrentes (doble Enter con el request en
+        // vuelo, dos operadores registrando el mismo efectivo) pasaban ambos el
+        // tope con el mismo aggregate y la misma plata entraba DOS veces a
+        // caja y rendición. FOR UPDATE serializa: el segundo espera y re-valida
+        // contra los conciliados que ya incluyen al primero.
+        await tx.$queryRaw`SELECT id FROM liquidaciones WHERE id = ${liq.id} FOR UPDATE`;
+        const aggTx = await tx.pago.aggregate({
+          where: { liquidacionId: liq.id, estado: 'CONCILIADO' },
+          _sum: { monto: true },
+        });
+        const conciliados = Number(aggTx._sum.monto ?? 0);
+        // Tolerancia de 1 centavo (mismo criterio que el conciliar del extracto):
+        // los Decimal viajan como Number y un redondeo no puede rechazar un
+        // cobro legítimo ni dejar la liq PARCIAL por $0.005.
+        const saldoTx = r2c(Number(liq.montoTotal) + punitorio - conciliados);
+        if (saldoTx <= 0) throw new ManualLiquidacionYaPaga();
+        if (body.data.monto > saldoTx + 0.01) throw new ManualMontoSuperaSaldo();
+        const nuevoPago = await tx.pago.create({
+          data: {
+            inmobiliariaId: u.inmobiliariaId,
+            contratoId: liq.contrato.id,
+            liquidacionId: liq.id,
+            periodo: liq.periodo,
+            tipo: body.data.monto >= saldoTx - 0.01 ? 'TOTAL' : 'PARCIAL',
+            monto: body.data.monto,
+            montoLiqTotal: liq.montoTotal,
+            metodo: body.data.metodo,
+            fechaTransferencia: body.data.fecha,
+            notaInquilino: body.data.nota
+              ? `Cobro manual registrado por la inmobiliaria: ${body.data.nota}`
+              : 'Cobro manual registrado por la inmobiliaria',
+            estado: 'CONCILIADO',
+            decididoPorId: u.userId,
+            decididoAt: new Date(),
+          },
+        });
+        const cobrado = r2c(conciliados + body.data.monto);
+        const total = r2c(Number(liq.montoTotal) + punitorio);
+        await tx.liquidacion.updateMany({
+          where: { id: liq.id, inmobiliariaId: u.inmobiliariaId },
+          data:
+            total > 0 && cobrado >= total - 0.01
+              ? {
+                  estado: 'PAGADO',
+                  fechaPago: body.data.fecha,
+                  metodoPago:
+                    body.data.metodo === 'MERCADOPAGO' ? 'MERCADOPAGO' : body.data.metodo === 'EFECTIVO' ? 'EFECTIVO' : 'TRANSFERENCIA',
+                }
+              : { estado: 'PARCIAL' },
+        });
+        return nuevoPago;
       });
-      const agg = await tx.pago.aggregate({
-        where: { liquidacionId: liq.id, estado: 'CONCILIADO' },
-        _sum: { monto: true },
-      });
-      const cobrado = Number(agg._sum.monto ?? 0);
-      const total = Number(liq.montoTotal) + punitorio;
-      await tx.liquidacion.updateMany({
-        where: { id: liq.id, inmobiliariaId: u.inmobiliariaId },
-        data:
-          total > 0 && cobrado >= total
-            ? {
-                estado: 'PAGADO',
-                fechaPago: body.data.fecha,
-                metodoPago:
-                  body.data.metodo === 'MERCADOPAGO' ? 'MERCADOPAGO' : body.data.metodo === 'EFECTIVO' ? 'EFECTIVO' : 'TRANSFERENCIA',
-              }
-            : { estado: 'PARCIAL' },
-      });
-      return nuevoPago;
-    });
+    } catch (e) {
+      if (e instanceof ManualLiquidacionYaPaga) return reply.code(409).send({ message: 'Esta liquidación ya está paga' });
+      if (e instanceof ManualMontoSuperaSaldo) {
+        return reply.code(400).send({ message: 'El monto supera el saldo pendiente de esta liquidación' });
+      }
+      throw e;
+    }
     await registrarEvento({
       inmobiliariaId: u.inmobiliariaId,
       tipo: 'PAGO_CONCILIADO',
@@ -822,17 +876,25 @@ export async function plataRoutes(app: FastifyInstance) {
     const pagosPorLiq = new Map<string, Array<Record<string, unknown>>>();
     for (const p of pagosRows) {
       const arr = pagosPorLiq.get(p.liquidacionId) ?? [];
+      // Un pago ANULADO por la inmo queda RECHAZADO con una observación interna
+      // ("Anulado tras conciliar: <motivo del admin>") que NO es para el
+      // inquilino: la reemplazamos por un texto neutro y marcamos anulado para
+      // que la PWA pueda distinguirlo de un rechazo de comprobante.
+      const anulado = p.estado === 'RECHAZADO' && (p.observacion ?? '').startsWith('Anulado tras conciliar:');
       arr.push({
         id: p.id,
         tipo: p.tipo,
         estado: p.estado,
+        anulado,
         monto: Number(p.monto),
         metodo: p.metodo,
         nroOperacion: p.nroOperacion,
         fechaTransferencia: p.fechaTransferencia.toISOString(),
         informadoAt: p.informadoAt.toISOString(),
         decididoAt: p.decididoAt ? p.decididoAt.toISOString() : null,
-        observacion: p.observacion,
+        observacion: anulado
+          ? 'La inmobiliaria revirtió este cobro. Si no lo esperabas, consultale el motivo.'
+          : p.observacion,
         comprobanteUrl: p.comprobanteUrl,
         comprobanteFileName: p.comprobanteFileName,
         comprobanteMime: p.comprobanteMime,
@@ -1421,3 +1483,8 @@ export async function plataRoutes(app: FastifyInstance) {
     });
   }
 }
+
+// Señales internas de la tx de /pagos/manual (el re-check con lock decide
+// adentro; el handler las traduce a 409/400 sin filtrar detalles del error).
+class ManualLiquidacionYaPaga extends Error {}
+class ManualMontoSuperaSaldo extends Error {}

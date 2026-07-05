@@ -228,10 +228,12 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
               </div>
               <div className="flex-1">
                 <p className="text-base font-semibold text-amber-900 dark:text-amber-200">
-                  Ya informaste este pago
+                  {/* Copy neutra: pudo informarlo OTRO co-inquilino del contrato
+                      (cualquiera puede pagar) — "ya informaste" acusaba al que no fue. */}
+                  Este pago ya fue informado
                 </p>
                 <p className="text-xs text-amber-900/80 dark:text-amber-200/80">
-                  La inmobiliaria lo está validando. Cuando lo valide vas a
+                  La inmobiliaria lo está validando. Cuando lo valide se va a
                   poder informar el resto.
                 </p>
               </div>

@@ -942,6 +942,8 @@ export interface LiquidacionItem {
   montoAlquiler: number;
   montoExpensas: number | null;
   montoTotal: number;
+  /** Mora al día incluida en montoTotal/saldo (0 si no hay). */
+  montoPunitorio: number;
   /** Lo ya cobrado (pagos conciliados) de esta liquidación. */
   montoPagado: number;
   /** Lo que falta cobrar: max(0, montoTotal − montoPagado). */
@@ -962,6 +964,7 @@ function mapLiquidacion(l: LiquidacionApi): LiquidacionItem {
     montoAlquiler: Number(l.montoAlquiler),
     montoExpensas: l.montoExpensas != null ? Number(l.montoExpensas) : null,
     montoTotal: Number(l.montoTotal),
+    montoPunitorio: Number(l.montoPunitorio ?? 0),
     montoPagado,
     // Fallback local si el server no mandó saldo (backend viejo): total − pagado.
     saldo: l.saldo != null ? Number(l.saldo) : Math.max(0, Number(l.montoTotal) - montoPagado),

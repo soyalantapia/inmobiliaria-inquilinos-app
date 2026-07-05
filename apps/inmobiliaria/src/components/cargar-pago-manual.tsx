@@ -267,6 +267,11 @@ function CargarPagoManualApi({ open, onOpenChange, onDone }: Props) {
                 {liqSel && (
                   <p className="text-[10px] text-muted-foreground">
                     Saldo pendiente: {formatMonto(liqSel.saldo, contratoSel?.moneda)}
+                    {/* El saldo del server ya trae la mora al día: explicitarla
+                        evita el "¿por qué es más que el alquiler?" del operador. */}
+                    {liqSel.montoPunitorio > 0 && (
+                      <> (incluye {formatMonto(liqSel.montoPunitorio, contratoSel?.moneda)} de mora)</>
+                    )}
                   </p>
                 )}
               </div>

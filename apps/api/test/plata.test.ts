@@ -10,10 +10,23 @@ let tokenCarga: string;
 
 /** Devuelve el estado seed mutado por corridas anteriores a su origen. */
 async function resetPlata(prisma: PrismaClient) {
-  await prisma.pago.deleteMany({ where: { id: { notIn: ['pag_001', 'pag_002'] } } });
+  // P10 (al final de este archivo) FINALIZA cnt_001 y el seed upsertea con
+  // update:{} (no lo revierte): sin esta cura, la segunda corrida contra la
+  // misma DB encontraba a Mariela sin contrato activo y caía en cascada.
+  await prisma.contrato.update({ where: { id: 'cnt_001' }, data: { estado: 'ACTIVO' } });
+  await prisma.pago.deleteMany({
+    where: { id: { notIn: ['pag_001', 'pag_002', 'pag_liq002', 'pag_liq004', 'pag_liq007'] } },
+  });
   await prisma.pago.update({
     where: { id: 'pag_001' },
     data: { estado: 'INFORMADO', decididoPorId: null, decididoAt: null, observacion: null },
+  });
+  // pag_002 (liq_001 de Mariela) queda DECIDIDO: el test "Mariela informa"
+  // necesita que su liq VENCIDA no tenga un INFORMADO vivo (un solo INFORMADO
+  // por liquidación). En la DB compartida esto lo tapaba el estado residual.
+  await prisma.pago.update({
+    where: { id: 'pag_002' },
+    data: { estado: 'RECHAZADO', observacion: 'Rechazado por la suite para re-informar', decididoAt: new Date() },
   });
   await prisma.liquidacion.update({
     where: { id: 'liq_005' },
@@ -128,11 +141,14 @@ describe('Rendición — el loop caja→rendición', () => {
     });
     expect(res.statusCode).toBe(201);
     const r = res.json();
-    // Bruto: liq_002 (620k, prp_002 100%) + liq_004 (720k, prp_004 100%) + liq_007 (285k, prp_002 100%) + liq_005 (850k, prp_005)? No: prp_005 es de own_004.
-    expect(Number(r.montoBruto)).toBe(1_625_000);
-    expect(Number(r.comisionMonto)).toBeCloseTo(113_750, 0); // 7%
+    // Bruto = porción de ALQUILER de los pagos CONCILIADO (rendición incremental):
+    // liq_002 620k (prp_002 100%) + liq_004 720k (prp_004 100%). liq_007 es
+    // SOLO_EXPENSAS (montoAlquiler 0) → su cobro NO entra al bruto ni comisiona
+    // (regla del dueño: comisión SOLO sobre el alquiler).
+    expect(Number(r.montoBruto)).toBe(1_340_000);
+    expect(Number(r.comisionMonto)).toBeCloseTo(93_800, 0); // 7% del alquiler cobrado
     expect(Number(r.totalGastos)).toBe(90_500); // mov_002 62k + mov_003 28.5k
-    expect(Number(r.montoNeto)).toBeCloseTo(1_420_750, 0);
+    expect(Number(r.montoNeto)).toBeCloseTo(1_155_700, 0);
 
     // Los gastos quedaron DESCONTADOS y linkeados (lo que el mock nunca cerraba)
     const caja = await app.inject({ method: 'GET', url: '/caja/movimientos', headers: auth(tokenAdmin) });

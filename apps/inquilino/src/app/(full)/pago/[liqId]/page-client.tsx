@@ -140,21 +140,27 @@ function DetallePagoView({
   const prod = useMemo(() => {
     if (!apiEnabled) return null;
     const pagosApi = liq.pagos ?? [];
-    // Precedencia sobre el ÚLTIMO pago: si hay un INFORMADO vivo, manda la
-    // card ámbar "pendiente de validación" — no el rechazo de un pago anterior
-    // ya re-informado. Hay a lo sumo UN INFORMADO (índice único del backend).
+    // Precedencia: si hay un INFORMADO vivo, manda la card ámbar "pendiente de
+    // validación" — no el rechazo de un pago anterior ya re-informado. Hay a lo
+    // sumo UN INFORMADO (índice único del backend).
     const vivo = pagosApi.find((p) => p.estado === 'INFORMADO');
-    const ultimo = pagosApi[pagosApi.length - 1];
-    const relevante = vivo ?? ultimo;
+    // La decisión a mostrar es la MÁS RECIENTE por decididoAt (no la última por
+    // fecha de informe): una anulación de un pago viejo se decide DESPUÉS de
+    // haber conciliado otro más nuevo, y ordenando por informadoAt quedaba
+    // enterrada bajo un "Pago confirmado" desactualizado.
+    const decidido = pagosApi
+      .filter((p) => (p.estado === 'RECHAZADO' || p.estado === 'CONCILIADO') && p.decididoAt)
+      .sort((a, b) => (b.decididoAt ?? '').localeCompare(a.decididoAt ?? ''))[0];
+    const relevante = vivo ?? decidido ?? pagosApi[pagosApi.length - 1];
     let decision: DecisionInmoSobrePago | null = null;
-    if (!vivo && ultimo && (ultimo.estado === 'RECHAZADO' || ultimo.estado === 'CONCILIADO')) {
+    if (!vivo && decidido) {
       decision = {
-        estado: ultimo.estado,
-        motivo: ultimo.observacion,
+        estado: decidido.estado as 'RECHAZADO' | 'CONCILIADO',
+        motivo: decidido.observacion,
         // El API no le cuenta al inquilino QUIÉN decidió: usamos el nombre de
         // la inmobiliaria del contrato (o el genérico si aún no cargó).
         decidiSPor: contrato?.inmobiliaria ?? 'la inmobiliaria',
-        decidiSAt: ultimo.decididoAt ?? ultimo.informadoAt,
+        decidiSAt: decidido.decididoAt ?? decidido.informadoAt,
       };
     }
     return {
@@ -162,6 +168,9 @@ function DetallePagoView({
       parciales: pagosApi.map((p) => pagoApiALocal(p, liqId)),
       informado: relevante ? pagoApiALocal(relevante, liqId) : null,
       decision,
+      // Un cobro manual (efectivo / "el dueño confirmó") no tiene comprobante:
+      // la card verde no puede decir "validó tu comprobante".
+      decisionSinComprobante: !vivo && decidido ? !decidido.comprobanteUrl : false,
       // Link autenticado (?token=) al comprobante real del pago en revisión.
       comprobantePendienteHref: vivo ? urlDeArchivo(vivo.comprobanteUrl) : undefined,
     };
@@ -179,8 +188,12 @@ function DetallePagoView({
   const rechazadoPorInmo = decisionInmo?.estado === 'RECHAZADO';
   const confirmadoPorInmo = decisionInmo?.estado === 'CONCILIADO';
   // Mostramos "pendiente de validación" sólo si el inmo todavía no decidió.
+  // Gate extra por liq PAGADA: si el ciclo se cerró por otro camino (cobro
+  // manual, conciliación bancaria) puede quedar un INFORMADO zombie que ya no
+  // espera validación — sin el gate, "Pagado" y "pendiente de validación"
+  // aparecían juntos.
   const pendienteValidacion =
-    informado?.estado === 'INFORMADO' && !rechazadoPorInmo && !confirmadoPorInmo;
+    informado?.estado === 'INFORMADO' && liq.estado !== 'PAGADO' && !rechazadoPorInmo && !confirmadoPorInmo;
   // Saldo pendiente. En prod sale del API (montoTotal − conciliados = liq.saldo);
   // en demo, de los parciales del store local. Antes en prod siempre daba el total
   // completo, así que un parcial ya conciliado no bajaba la deuda mostrada (bug 1/3).
@@ -247,7 +260,10 @@ function DetallePagoView({
                 Pago confirmado
               </p>
               <p className="text-xs text-emerald-900/80 dark:text-emerald-200/80">
-                {decisionInmo.decidiSPor} validó tu comprobante el{' '}
+                {/* Un cobro manual (efectivo / directo al dueño) no tiene
+                    comprobante: "validó tu comprobante" sería mentira. */}
+                {decisionInmo.decidiSPor}{' '}
+                {prod?.decisionSinComprobante ? 'registró tu pago' : 'validó tu comprobante'} el{' '}
                 {formatFecha(decisionInmo.decidiSAt)}. Ya está acreditado.
               </p>
             </div>

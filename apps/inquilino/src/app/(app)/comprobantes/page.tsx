@@ -486,14 +486,19 @@ function RecibosReal() {
 function PagosBadges({
   pagos,
   moneda,
+  liqPagada,
 }: {
   pagos?: PagoDeLiquidacion[];
   moneda: Liquidacion['moneda'];
+  /** true si la liq ya está PAGADA: un INFORMADO zombie (el ciclo se cerró por
+   *  cobro manual/conciliación) no debe mostrar el chip ámbar "En revisión". */
+  liqPagada?: boolean;
 }) {
-  if (!pagos || pagos.length === 0) return null;
+  const visibles = (pagos ?? []).filter((p) => !(liqPagada && p.estado === 'INFORMADO'));
+  if (visibles.length === 0) return null;
   return (
     <div className="flex flex-wrap gap-1.5 pt-1.5">
-      {pagos.map((p) => (
+      {visibles.map((p) => (
         <span
           key={p.id}
           className={cn(
@@ -616,7 +621,7 @@ function MovimientoRow({ mov }: { mov: Movimiento }) {
               ? `Venció el ${formatFechaCorta(mov.liq.fechaVencimiento)} · hace ${-dias} día${dias === -1 ? '' : 's'}`
               : `Vence el ${formatFechaCorta(mov.liq.fechaVencimiento)} · en ${dias} día${dias === 1 ? '' : 's'}`}
           </p>
-          <PagosBadges pagos={mov.liq.pagos} moneda={mov.liq.moneda} />
+          <PagosBadges pagos={mov.liq.pagos} moneda={mov.liq.moneda} liqPagada={mov.liq.estado === 'PAGADO'} />
         </div>
         <p
           className={`shrink-0 text-sm font-semibold tabular-nums ${
@@ -796,7 +801,7 @@ function PagoUrgenteCard({ mov }: { mov: Movimiento }) {
         {/* Estado de los pagos ya informados (en revisión / rechazado /
             confirmado): sin esto la card empujaba a "Ponerte al día" sin
             contar que ya hay un comprobante esperando validación. */}
-        <PagosBadges pagos={mov.liq.pagos} moneda={mov.liq.moneda} />
+        <PagosBadges pagos={mov.liq.pagos} moneda={mov.liq.moneda} liqPagada={mov.liq.estado === 'PAGADO'} />
 
         <Link
           href={`/pago/${mov.liq.id}`}
