@@ -64,6 +64,14 @@ const ICONO_TIPO: Record<TipoDocContrato, typeof FileText> = {
   CONVENIO_DESOCUPACION: DoorOpen,
   PAGARE: ScrollText,
   FOTO_WHATSAPP: MessageCircle,
+  GARANTIA_PROPIETARIA: ScrollText,
+  SEGURO_CAUCION: ShieldCheck,
+  RECIBO_GARANTE: Wallet,
+  CONSTANCIA_LABORAL: FileText,
+  CONSTANCIA_CUIT: FileText,
+  INVENTARIO_INGRESO: FileText,
+  SERVICIOS_A_NOMBRE: FileText,
+  COMPROBANTE_DEPOSITO: Wallet,
   OTRO: Paperclip,
 };
 
@@ -81,8 +89,8 @@ function gruposParaContrato(garantesCount: number): GrupoUI[] {
     garantes.push({
       key: `garante-${i}`,
       titulo: `Garante ${i}`,
-      ayuda: 'DNI frente y dorso del garante. Sumá recibo de sueldo si lo pide el propietario.',
-      tipos: ['DNI_GARANTE_FRENTE', 'DNI_GARANTE_DORSO', 'RECIBO_SUELDO'],
+      ayuda: 'DNI frente y dorso del garante + recibo de sueldo. Sumá la garantía propietaria si la ofrece.',
+      tipos: ['DNI_GARANTE_FRENTE', 'DNI_GARANTE_DORSO', 'RECIBO_GARANTE', 'GARANTIA_PROPIETARIA'],
       garanteIndex: i,
     });
   }
@@ -102,9 +110,15 @@ function gruposParaContrato(garantesCount: number): GrupoUI[] {
     ...garantes,
     {
       key: 'legales',
-      titulo: 'Convenio y pagarés',
-      ayuda: 'Convenio de desocupación firmado y pagarés en garantía.',
-      tipos: ['CONVENIO_DESOCUPACION', 'PAGARE'],
+      titulo: 'Convenio, pagarés y caución',
+      ayuda: 'Convenio de desocupación, pagarés en garantía y seguro de caución.',
+      tipos: ['CONVENIO_DESOCUPACION', 'PAGARE', 'SEGURO_CAUCION'],
+    },
+    {
+      key: 'documentacion',
+      titulo: 'Documentación legal',
+      ayuda: 'Constancia laboral, CUIT/AFIP, inventario de ingreso, servicios a nombre y comprobante del depósito.',
+      tipos: ['CONSTANCIA_LABORAL', 'CONSTANCIA_CUIT', 'INVENTARIO_INGRESO', 'SERVICIOS_A_NOMBRE', 'COMPROBANTE_DEPOSITO'],
     },
     {
       key: 'fotos',

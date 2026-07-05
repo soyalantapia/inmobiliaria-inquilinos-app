@@ -494,6 +494,15 @@ enum TipoDocContrato {
   CONVENIO_DESOCUPACION
   PAGARE
   FOTO_WHATSAPP
+  // Documentación legal habitual del rubro (req 4): antes caía en OTRO.
+  GARANTIA_PROPIETARIA // escritura/título de la propiedad ofrecida en garantía
+  SEGURO_CAUCION // póliza de caución (nº, cobertura, vigencia viven en el modelo Garante)
+  RECIBO_GARANTE // recibo de sueldo / comprobante de ingresos del garante
+  CONSTANCIA_LABORAL // certificación laboral (antigüedad + remuneración)
+  CONSTANCIA_CUIT // constancia de CUIT/CUIL / inscripción AFIP-ARCA
+  INVENTARIO_INGRESO // acta de estado / inventario de la propiedad al ingreso
+  SERVICIOS_A_NOMBRE // constancia de servicios a nombre del inquilino
+  COMPROBANTE_DEPOSITO // comprobante del depósito de garantía
   OTRO
 }
 

@@ -28,6 +28,14 @@ export type TipoDocContrato =
   | 'CONVENIO_DESOCUPACION'
   | 'PAGARE'
   | 'FOTO_WHATSAPP'
+  | 'GARANTIA_PROPIETARIA'
+  | 'SEGURO_CAUCION'
+  | 'RECIBO_GARANTE'
+  | 'CONSTANCIA_LABORAL'
+  | 'CONSTANCIA_CUIT'
+  | 'INVENTARIO_INGRESO'
+  | 'SERVICIOS_A_NOMBRE'
+  | 'COMPROBANTE_DEPOSITO'
   | 'OTRO';
 
 export interface DocContrato {
@@ -115,6 +123,14 @@ export const TIPO_DOC_LABEL: Record<TipoDocContrato, string> = {
   CONVENIO_DESOCUPACION: 'Convenio de desocupación',
   PAGARE: 'Pagaré',
   FOTO_WHATSAPP: 'Foto de WhatsApp',
+  GARANTIA_PROPIETARIA: 'Garantía propietaria (escritura/título)',
+  SEGURO_CAUCION: 'Seguro de caución (póliza)',
+  RECIBO_GARANTE: 'Recibo de sueldo del garante',
+  CONSTANCIA_LABORAL: 'Constancia laboral',
+  CONSTANCIA_CUIT: 'Constancia de CUIT/CUIL (AFIP)',
+  INVENTARIO_INGRESO: 'Inventario / estado de ingreso',
+  SERVICIOS_A_NOMBRE: 'Servicios a nombre del inquilino',
+  COMPROBANTE_DEPOSITO: 'Comprobante del depósito',
   OTRO: 'Otro documento',
 };
 
