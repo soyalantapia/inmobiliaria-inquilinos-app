@@ -1,6 +1,6 @@
 # Pendientes — roadmap
 
-> Última actualización: **2026-07-04** (HEAD `535d15d`, árbol limpio, demo intacta /
+> Última actualización: **2026-07-05** (HEAD `14929c5`, árbol limpio, demo intacta /
 > ambos modos andan). **No hay bugs abiertos conocidos.** El core está en prod y
 > endurecido; las campañas de auditoría convergieron. Lo que queda necesita **decisión
 > de producto o insumo del owner** (no es bug), salvo un cableado de front chico.

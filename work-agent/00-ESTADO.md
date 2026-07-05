@@ -1,7 +1,9 @@
 # Estado del proyecto — My Alquiler
 
 > **Documento de handoff.** Resumen ejecutivo de dónde está el proyecto hoy.
-> Última actualización: **2026-07-04**. Último commit: `535d15d` (origin/main, árbol limpio).
+> Última actualización: **2026-07-05**. Último commit: `14929c5` (origin/main, árbol limpio).
+> Último hito: **baja de contrato** — estado real al inquilino + anti-deuda-fantasma
+> (test `baja-contrato.test.ts` 8/8, deployado a los 3 servicios, E2E prod OK). Ver `CHANGELOG.md`.
 > Contexto absoluto en [`../PROJECT.MD`](../PROJECT.MD). Detalle en los demás `work-agent/`.
 
 ## Qué es
