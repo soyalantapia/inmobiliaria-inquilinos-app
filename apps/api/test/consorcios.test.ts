@@ -50,6 +50,9 @@ const post = (url: string, t: string, payload: unknown) =>
 const put = (url: string, t: string, payload: unknown) =>
   app.inject({ method: 'PUT', url, headers: auth(t), payload: payload as object });
 const del = (url: string, t: string) => app.inject({ method: 'DELETE', url, headers: auth(t) });
+// Borrar plata (movimiento) exige PIN: variante con body { pin }.
+const delPin = (url: string, t: string, pin: string) =>
+  app.inject({ method: 'DELETE', url, headers: auth(t), payload: { pin } });
 
 async function borrarConsorcios(ids: string[]) {
   for (const cid of ids) {
@@ -182,6 +185,10 @@ describe('Consorcios — CRUD', () => {
     const r = await post('/consorcios', tADMIN, { nombre: `${NAME_PREFIX}-soc`, direccion: 'Av. Test 1', sociedadId: 'no-existe-id' });
     expect(r.statusCode).toBe(404);
   });
+  it('POST con periodoActual de mes inválido (2026-13) → 400', async () => {
+    const r = await post('/consorcios', tADMIN, { nombre: `${NAME_PREFIX}-per`, direccion: 'Av. Test 9', periodoActual: '2026-13' });
+    expect(r.statusCode).toBe(400);
+  });
   it('GET detalle trae unidades/movimientos/asambleas', async () => {
     const id = await nuevoConsorcio();
     const r = await get(`/consorcios/${id}`, tADMIN);
@@ -284,11 +291,21 @@ describe('Consorcios — movimientos financieros (signo↔categoría, RBAC)', ()
     const id = await nuevoConsorcio();
     expect((await post(`/consorcios/${id}/movimientos`, tCARGA, { fecha: '2026-07-01', concepto: 'Movimiento test', monto: -100, categoria: 'SERVICIO' })).statusCode).toBe(403);
   });
-  it('borrar movimiento: OPERADOR 403, ADMIN 200', async () => {
+  it('borrar movimiento: OPERADOR 403 · ADMIN sin PIN 400 · ADMIN con PIN 200 + auditoría', async () => {
     const id = await nuevoConsorcio();
     const mov = (await post(`/consorcios/${id}/movimientos`, tOPERADOR, { fecha: '2026-07-01', concepto: 'Movimiento test', monto: 100, categoria: 'COBRANZA' })).json();
-    expect((await del(`/consorcios/${id}/movimientos/${mov.id}`, tOPERADOR)).statusCode).toBe(403);
-    expect((await del(`/consorcios/${id}/movimientos/${mov.id}`, tADMIN)).statusCode).toBe(200);
+    expect((await del(`/consorcios/${id}/movimientos/${mov.id}`, tOPERADOR)).statusCode).toBe(403); // no es ADMIN
+    expect((await del(`/consorcios/${id}/movimientos/${mov.id}`, tADMIN)).statusCode).toBe(400); // ADMIN sin PIN
+    expect((await delPin(`/consorcios/${id}/movimientos/${mov.id}`, tADMIN, '1234')).statusCode).toBe(200);
+    // Auditoría: borrar plata dejó rastro (antes no registraba nada).
+    const ev = await prisma.eventoAuditoria.findFirst({
+      where: { entidadId: mov.id, tipo: 'MOVIMIENTO_CONSORCIO_ELIMINADO', inmobiliariaId: tid },
+    });
+    expect(ev).not.toBeNull();
+  });
+  it('monto sub-centavo (0.004) → 400 (no se persiste 0.00)', async () => {
+    const id = await nuevoConsorcio();
+    expect((await post(`/consorcios/${id}/movimientos`, tADMIN, { fecha: '2026-07-01', concepto: 'Sub centavo', monto: 0.004, categoria: 'COBRANZA' })).statusCode).toBe(400);
   });
 });
 
@@ -320,7 +337,7 @@ describe('Consorcios — servicios comunes (upsert por tipo)', () => {
 });
 
 describe('Consorcios — inventario (stock, clamp, delta)', () => {
-  it('alta item + ENTRADA/SALIDA/AJUSTE con clamp ≥ 0', async () => {
+  it('alta item + ENTRADA/SALIDA/AJUSTE; SALIDA sin stock se rechaza (ledger consistente)', async () => {
     const id = await nuevoConsorcio();
     const inv0 = (await get(`/consorcios/${id}/inventario`, tADMIN)).json();
     expect(inv0).toEqual({ items: [], movimientos: [] });
@@ -330,9 +347,14 @@ describe('Consorcios — inventario (stock, clamp, delta)', () => {
     let r = await post(`/consorcios/${id}/inventario/movimientos`, tADMIN, { itemId: item.id, tipo: 'ENTRADA', cantidad: 5, motivo: 'compra' });
     expect(r.statusCode).toBe(200);
     expect(r.json().item.cantidadActual).toBe(15);
-    // SALIDA 100 → clamp a 0 (no negativo)
+    // SALIDA 100 (> 15) → 400 y el stock NO cambia (antes clampeaba a 0 y el
+    // movimiento registraba 100 → ledger inconsistente).
     r = await post(`/consorcios/${id}/inventario/movimientos`, tADMIN, { itemId: item.id, tipo: 'SALIDA', cantidad: 100, motivo: 'uso', ufDestino: '1°A' });
-    expect(r.json().item.cantidadActual).toBe(0);
+    expect(r.statusCode).toBe(400);
+    expect((await get(`/consorcios/${id}/inventario`, tADMIN)).json().items[0].cantidadActual).toBe(15);
+    // SALIDA válida 5 → 10
+    r = await post(`/consorcios/${id}/inventario/movimientos`, tADMIN, { itemId: item.id, tipo: 'SALIDA', cantidad: 5, motivo: 'uso' });
+    expect(r.json().item.cantidadActual).toBe(10);
     // AJUSTE fija en 7
     r = await post(`/consorcios/${id}/inventario/movimientos`, tADMIN, { itemId: item.id, tipo: 'AJUSTE', cantidad: 7, motivo: 'recuento' });
     expect(r.json().item.cantidadActual).toBe(7);
@@ -352,8 +374,8 @@ describe('Consorcios — aislamiento multi-tenant (cross-tenant → 404)', () =>
     expect((await put(`/consorcios/${consorcioB}/unidades/${ufB}`, tADMIN, { coeficiente: 99 })).statusCode).toBe(404);
     expect((await del(`/consorcios/${consorcioB}/unidades/${ufB}`, tADMIN)).statusCode).toBe(404);
   });
-  it('tenant A no puede borrar el movimiento de tenant B', async () => {
-    expect((await del(`/consorcios/${consorcioB}/movimientos/${movB}`, tADMIN)).statusCode).toBe(404);
+  it('tenant A no puede borrar el movimiento de tenant B (con PIN válido → 404 por tenant)', async () => {
+    expect((await delPin(`/consorcios/${consorcioB}/movimientos/${movB}`, tADMIN, '1234')).statusCode).toBe(404);
   });
   it('el consorcio de tenant B NO aparece en la lista de tenant A', async () => {
     const lista = (await get('/consorcios', tADMIN)).json() as { id: string }[];

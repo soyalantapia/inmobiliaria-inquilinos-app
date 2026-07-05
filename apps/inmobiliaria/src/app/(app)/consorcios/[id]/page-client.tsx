@@ -59,7 +59,7 @@ import { formatFechaCorta, formatMonto } from '@/lib/format';
 
 export default function DetalleConsorcioPage() {
   const params = useParams<{ id: string }>();
-  const { consorcio, cargando } = useConsorcio(params?.id);
+  const { consorcio, cargando, isError } = useConsorcio(params?.id);
   // Mutaciones + estado de los dialogs ANTES de los early-returns (reglas de hooks).
   const { eliminarUnidad, eliminarMovimiento, eliminarAsamblea } = useConsorcioMutaciones(params?.id);
   const [ufDialog, setUfDialog] = useState<{ open: boolean; unidad: UnidadFuncional | null }>({
@@ -68,6 +68,37 @@ export default function DetalleConsorcioPage() {
   });
   const [movOpen, setMovOpen] = useState(false);
   const [asambleaOpen, setAsambleaOpen] = useState(false);
+
+  // Error de fetch (red/500/sesión) ≠ 404 real: mostramos un estado de error con
+  // reintento en vez de "no encontrado", que le haría creer al usuario que el edificio
+  // se borró cuando el fetch falló transitoriamente.
+  if (isError) {
+    return (
+      <>
+        <Topbar titulo="Detalle de consorcio" />
+        <main className="flex-1 p-4 md:p-6">
+          <Card>
+            <CardContent className="space-y-3 p-8 text-center">
+              <Building2 className="mx-auto h-8 w-8 text-muted-foreground" />
+              <p className="font-medium">No pudimos cargar el consorcio</p>
+              <p className="text-xs text-muted-foreground">
+                Hubo un problema de conexión con el servidor. El edificio está a salvo —
+                reintentá en un momento.
+              </p>
+              <div className="flex justify-center gap-2 pt-1">
+                <Button variant="outline" onClick={() => window.location.reload()}>
+                  Reintentar
+                </Button>
+                <Button asChild variant="ghost">
+                  <Link href="/consorcios">Volver a consorcios</Link>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </main>
+      </>
+    );
+  }
 
   if (cargando || consorcio === undefined) return <DetalleSkeleton />;
 
