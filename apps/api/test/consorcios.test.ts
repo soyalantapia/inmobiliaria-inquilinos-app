@@ -92,7 +92,19 @@ beforeAll(async () => {
 
   // Tenant B + un consorcio con UF y movimiento (para cross-tenant).
   const inmoB = await prisma.inmobiliaria.create({
-    data: { nombre: 'ZZ-TEST-TENANT-B', domicilioFiscal: 'x', email: 'zz-test-b@example.com', telefono: '0' },
+    data: {
+      nombre: 'ZZ-TEST-TENANT-B',
+      cuit: '30-99999999-9',
+      email: 'zz-test-b@example.com',
+      telefono: '0',
+      matricula: 'ZZ-TEST-MAT',
+      direccionCalle: 'Calle B',
+      direccionAltura: '1',
+      direccionCiudad: 'CABA',
+      direccionProvincia: 'CABA',
+      direccionCp: '1000',
+      codigoReferido: 'ZZ-TEST-REF-B',
+    },
   });
   tidB = inmoB.id;
   const cB = await prisma.consorcio.create({
