@@ -1663,6 +1663,9 @@ model IntencionRenovacion {
   contrato       Contrato           @relation(fields: [contratoId], references: [id])
   decision       DecisionRenovacion @default(SIN_RESPUESTA)
   comentario     String?
+  // Preaviso de egreso: cuándo se va el inquilino (cuando avisó que NO renueva).
+  // Permite verlo venir con anticipación y planear la búsqueda de reemplazo.
+  fechaEgreso    DateTime?
   decididoAt     DateTime?
   updatedAt      DateTime           @updatedAt
 

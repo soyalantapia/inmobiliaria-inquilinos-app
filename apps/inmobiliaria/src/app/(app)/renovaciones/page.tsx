@@ -1,13 +1,15 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   ArrowRight,
   CalendarHeart,
   CheckCircle2,
   Clock,
   HelpCircle,
+  LogOut,
   MessageCircle,
   Phone,
   XCircle,
@@ -15,11 +17,13 @@ import {
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card } from '@llave/ui/card';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@llave/ui/dialog';
+import { toast } from '@llave/ui/use-toast';
 import { cn } from '@llave/ui/cn';
 import { type DecisionRenovacionMock } from '@/lib/mock-data';
 import { formatFecha, formatFechaCorta, formatMonto } from '@/lib/format';
 import { apiEnabled } from '@/lib/api/client';
-import { useRenovaciones } from '@/lib/api/use-renovaciones';
+import { useRenovaciones, registrarDecisionApi, type RenovacionFila } from '@/lib/api/use-renovaciones';
 import {
   NegociadorRenovacionPanel,
   ResumenSugerenciasCartera,
@@ -68,6 +72,8 @@ const decisionConfig: Record<
 
 export default function RenovacionesPage() {
   const [filtro, setFiltro] = useState<FiltroEstado>('TODOS');
+  const [decidiendo, setDecidiendo] = useState<RenovacionFila | null>(null);
+  const qc = useQueryClient();
 
   // Renovaciones reales del API (contratos activos + intención); fallback al
   // mock solo en build demo. La decisión se registra desde el detalle del
@@ -210,10 +216,14 @@ export default function RenovacionesPage() {
                     value={`${Math.abs(c.dias)} día${Math.abs(c.dias) === 1 ? '' : 's'}`}
                   />
                   <Stat label="Monto actual" value={formatMonto(c.monto, c.moneda)} />
-                  <Stat
-                    label="Avisó"
-                    value={c.fechaIntencion ? formatFechaCorta(c.fechaIntencion) : '—'}
-                  />
+                  {c.decision === 'NO_RENOVAR' && c.fechaEgreso ? (
+                    <Stat label="Se va el" value={formatFechaCorta(c.fechaEgreso)} />
+                  ) : (
+                    <Stat
+                      label="Avisó"
+                      value={c.fechaIntencion ? formatFechaCorta(c.fechaIntencion) : '—'}
+                    />
+                  )}
                 </div>
 
                 {c.comentario && (
@@ -275,6 +285,12 @@ export default function RenovacionesPage() {
                         </>
                       );
                     })()}
+                    {apiEnabled && (
+                      <Button size="sm" onClick={() => setDecidiendo(c)}>
+                        <LogOut className="h-3.5 w-3.5" />
+                        Registrar aviso
+                      </Button>
+                    )}
                   </div>
                   <Button size="sm" variant="ghost" asChild>
                     <Link href={`/contratos/${c.id}`}>
@@ -288,7 +304,136 @@ export default function RenovacionesPage() {
           })}
         </div>
       )}
+
+      <RegistrarDecisionDialog
+        fila={decidiendo}
+        onClose={() => setDecidiendo(null)}
+        onSaved={() => void qc.invalidateQueries({ queryKey: ['renovaciones'] })}
+      />
     </div>
+  );
+}
+
+// Registrar el aviso del inquilino: renueva / lo piensa / no renueva (se va, con
+// fecha de egreso para verlo venir). Escribe POST /renovaciones/:id/decision.
+function RegistrarDecisionDialog({
+  fila,
+  onClose,
+  onSaved,
+}: {
+  fila: RenovacionFila | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [decision, setDecision] = useState<DecisionRenovacionMock>('SIN_RESPUESTA');
+  const [fechaEgreso, setFechaEgreso] = useState('');
+  const [notas, setNotas] = useState('');
+  const [guardando, setGuardando] = useState(false);
+
+  // Al abrir, precargamos con lo que ya estaba registrado.
+  const filaId = fila?.id ?? null;
+  useEffect(() => {
+    if (fila) {
+      setDecision(fila.decision);
+      setFechaEgreso(fila.fechaEgreso ?? '');
+      setNotas(fila.comentario ?? '');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filaId]);
+
+  const opciones: { value: DecisionRenovacionMock; label: string; sub: string }[] = [
+    { value: 'RENOVAR', label: 'Renueva', sub: 'Quiere seguir' },
+    { value: 'PENSANDO', label: 'Lo está pensando', sub: 'Sin definir' },
+    { value: 'NO_RENOVAR', label: 'No renueva — se va', sub: 'Avisó que deja el inmueble' },
+  ];
+
+  const guardar = async () => {
+    if (!fila || guardando) return;
+    setGuardando(true);
+    try {
+      await registrarDecisionApi(fila.id, { decision, notas, fechaEgreso: fechaEgreso || null });
+      onSaved();
+      toast({
+        variant: 'success',
+        title: 'Aviso registrado',
+        description:
+          decision === 'NO_RENOVAR'
+            ? `${fila.inquilino} no renueva${fechaEgreso ? ` — se va el ${formatFechaCorta(fechaEgreso)}` : ''}.`
+            : 'Actualizamos la intención de renovación.',
+      });
+      onClose();
+    } catch (e) {
+      toast({ variant: 'destructive', title: 'No se pudo registrar', description: e instanceof Error ? e.message : 'Probá de nuevo.' });
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  return (
+    <Dialog open={!!fila} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Aviso del inquilino</DialogTitle>
+        </DialogHeader>
+        {fila && (
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              {fila.inquilino} · {fila.direccion}
+            </p>
+            <div className="space-y-2">
+              {opciones.map((o) => (
+                <button
+                  key={o.value}
+                  type="button"
+                  onClick={() => setDecision(o.value)}
+                  className={cn(
+                    'flex w-full items-center justify-between rounded-lg border px-3 py-2.5 text-left text-sm transition-colors',
+                    decision === o.value
+                      ? o.value === 'NO_RENOVAR'
+                        ? 'border-amber-400 bg-amber-50 dark:bg-amber-950/30'
+                        : 'border-primary bg-primary/5'
+                      : 'border-border hover:bg-muted/40',
+                  )}
+                >
+                  <span>
+                    <span className="font-medium">{o.label}</span>
+                    <span className="block text-xs text-muted-foreground">{o.sub}</span>
+                  </span>
+                  {decision === o.value && <CheckCircle2 className="h-4 w-4 text-primary" />}
+                </button>
+              ))}
+            </div>
+            {decision === 'NO_RENOVAR' && (
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium">¿Cuándo se va? <span className="font-normal text-muted-foreground">(preaviso)</span></span>
+                <input
+                  type="date"
+                  value={fechaEgreso}
+                  onChange={(e) => setFechaEgreso(e.target.value)}
+                  className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-primary"
+                />
+              </label>
+            )}
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium">Nota <span className="font-normal text-muted-foreground">(opcional)</span></span>
+              <textarea
+                value={notas}
+                onChange={(e) => setNotas(e.target.value)}
+                rows={2}
+                placeholder="Ej: avisó por WhatsApp, se muda por trabajo…"
+                className="w-full resize-none rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+              />
+            </label>
+            <div className="flex gap-2 pt-1">
+              <Button variant="outline" className="flex-1" onClick={onClose}>Cancelar</Button>
+              <Button className="flex-1" disabled={guardando} onClick={guardar}>
+                {guardando ? 'Guardando…' : 'Registrar'}
+              </Button>
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 

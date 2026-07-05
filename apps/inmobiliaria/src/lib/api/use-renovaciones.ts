@@ -30,6 +30,8 @@ export interface RenovacionFila {
   decision: DecisionRenovacionMock;
   comentario: string | null;
   fechaIntencion: string | null;
+  /** Preaviso de egreso: cuándo se va (si avisó que NO renueva). */
+  fechaEgreso: string | null;
   dias: number;
   urgencia: 'ALTA' | 'MEDIA' | 'BAJA' | 'NINGUNA';
 }
@@ -49,7 +51,12 @@ interface RenovacionApi {
     email: string | null;
     telefono: string | null;
   } | null;
-  intencionRenovacion: { decision: DecisionRenovacionMock; comentario: string | null; decididoAt: string | null } | null;
+  intencionRenovacion: {
+    decision: DecisionRenovacionMock;
+    comentario: string | null;
+    decididoAt: string | null;
+    fechaEgreso: string | null;
+  } | null;
   diasParaVencimiento: number;
 }
 
@@ -80,6 +87,7 @@ function mapRenovacion(r: RenovacionApi): RenovacionFila {
     decision: r.intencionRenovacion?.decision ?? 'SIN_RESPUESTA',
     comentario: r.intencionRenovacion?.comentario ?? null,
     fechaIntencion: r.intencionRenovacion?.decididoAt ? fechaLocalISO(r.intencionRenovacion.decididoAt) : null,
+    fechaEgreso: r.intencionRenovacion?.fechaEgreso ? fechaLocalISO(r.intencionRenovacion.fechaEgreso) : null,
     dias: r.diasParaVencimiento,
     urgencia: urgenciaDe(r.diasParaVencimiento),
   };
@@ -105,6 +113,7 @@ function filasMock(): RenovacionFila[] {
         decision: intencion?.decision ?? 'SIN_RESPUESTA',
         comentario: intencion?.comentario ?? null,
         fechaIntencion: intencion?.fechaIntencion ?? null,
+        fechaEgreso: null,
         dias,
         urgencia: urgenciaDe(dias),
       };
@@ -126,4 +135,24 @@ export function useRenovaciones(): { renovaciones: RenovacionFila[]; cargando: b
   if (!apiEnabled) return { renovaciones: filasMock(), cargando: false, deApi: false };
   if (q.isError) return { renovaciones: [], cargando: false, deApi: true };
   return { renovaciones: q.data ?? [], cargando: q.isPending, deApi: true };
+}
+
+/**
+ * Registrar la decisión de renovación del inquilino (POST /renovaciones/:id/decision).
+ * Antes el panel sólo LEÍA la intención — no había forma de anotar que el inquilino
+ * avisó que no renueva / se va. `fechaEgreso` sólo aplica a NO_RENOVAR (preaviso).
+ */
+export async function registrarDecisionApi(
+  contratoId: string,
+  input: { decision: DecisionRenovacionMock; notas?: string | null; fechaEgreso?: string | null },
+): Promise<void> {
+  await ensureApiSession();
+  await apiFetch(`/renovaciones/${contratoId}/decision`, {
+    method: 'POST',
+    body: JSON.stringify({
+      decision: input.decision,
+      ...(input.notas && input.notas.trim() ? { notas: input.notas.trim() } : {}),
+      ...(input.decision === 'NO_RENOVAR' && input.fechaEgreso ? { fechaEgreso: input.fechaEgreso } : {}),
+    }),
+  });
 }

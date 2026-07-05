@@ -1672,6 +1672,9 @@ export async function operacionRoutes(app: FastifyInstance) {
       .object({
         decision: z.enum(['RENOVAR', 'NO_RENOVAR', 'PENSANDO', 'SIN_RESPUESTA']),
         notas: z.string().optional(),
+        // Preaviso de egreso: cuándo se va (solo aplica si NO_RENOVAR). coerce.date
+        // rechaza strings inválidas; nullable para poder limpiarla.
+        fechaEgreso: z.coerce.date().optional().nullable(),
         pin: z.string().optional(),
       })
       .safeParse(request.body ?? {});
@@ -1687,14 +1690,18 @@ export async function operacionRoutes(app: FastifyInstance) {
     }
 
     const decididoAt = body.data.decision === 'SIN_RESPUESTA' ? null : new Date();
+    // La fecha de egreso solo tiene sentido si NO renueva; en cualquier otra decisión
+    // la limpiamos para que no quede una fecha huérfana de un cambio de opinión.
+    const fechaEgreso = body.data.decision === 'NO_RENOVAR' ? (body.data.fechaEgreso ?? null) : null;
     return prisma.intencionRenovacion.upsert({
       where: { contratoId },
-      update: { decision: body.data.decision, comentario: body.data.notas ?? null, decididoAt },
+      update: { decision: body.data.decision, comentario: body.data.notas ?? null, fechaEgreso, decididoAt },
       create: {
         inmobiliariaId: u.inmobiliariaId,
         contratoId,
         decision: body.data.decision,
         comentario: body.data.notas ?? null,
+        fechaEgreso,
         decididoAt,
       },
     });
