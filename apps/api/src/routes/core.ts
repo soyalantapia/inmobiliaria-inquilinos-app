@@ -712,6 +712,9 @@ export async function coreRoutes(app: FastifyInstance) {
           telefono: z.string().trim().optional(),
           dni: z.string().trim().optional(),
         }),
+        // Reuso (req 3): si viene, el inquilino nuevo se agrupa bajo una Persona EXISTENTE
+        // (traer historial) en vez de crear/upsertear una. Se valida tenant-scopeado.
+        personaId: z.string().optional(),
         monto: z.number().nonnegative(), // 0 válido para SOLO_EXPENSAS
         moneda: z.enum(['ARS', 'USD']).default('ARS'),
         // coerce.date rechaza strings que no son fecha — antes new Date('xxx')
@@ -786,6 +789,16 @@ export async function coreRoutes(app: FastifyInstance) {
       const yaInq = await prisma.inquilino.findFirst({ where: { inmobiliariaId: u.inmobiliariaId, email: emailInq } });
       if (yaInq) return reply.code(409).send({ message: 'Ya tenés un inquilino con ese email en tu cartera' });
     }
+    // Reuso (req 3): si el alta trae personaId, la Persona debe existir en ESTE tenant.
+    // (El guard de email de arriba sigue aplicando: un 2º contrato reusado no puede
+    // repetir el email de otra fila — se deja vacío o distinto; la identidad vive en Persona.)
+    if (d.personaId) {
+      const per = await prisma.persona.findFirst({
+        where: { id: d.personaId, inmobiliariaId: u.inmobiliariaId },
+        select: { id: true },
+      });
+      if (!per) return reply.code(404).send({ message: 'La persona seleccionada no existe en tu cartera' });
+    }
     // Modo cobranza directa: el contrato apunta al dueño PRINCIPAL (mayor
     // participación). Si la propiedad no tiene dueños cargados, rechazamos acá:
     // si no, el inquilino quedaría sin cuenta real a la cual transferir y /mi-
@@ -852,28 +865,31 @@ export async function coreRoutes(app: FastifyInstance) {
       // Por DNI hacemos upsert idempotente → un 2º contrato del MISMO DNI se agrupa bajo la
       // misma Persona automáticamente (base del reuso). Sin DNI, Persona nueva para este titular.
       const dniPersona = (d.inquilino.dni || '').trim() || null;
-      const persona = dniPersona
-        ? await tx.persona.upsert({
-            where: { inmobiliariaId_dni: { inmobiliariaId: u.inmobiliariaId, dni: dniPersona } },
-            update: {},
-            create: {
-              inmobiliariaId: u.inmobiliariaId,
-              dni: dniPersona,
-              email: emailInq,
-              nombre: d.inquilino.nombre,
-              apellido: d.inquilino.apellido || null,
-              telefono: d.inquilino.telefono || null,
-            },
-          })
-        : await tx.persona.create({
-            data: {
-              inmobiliariaId: u.inmobiliariaId,
-              email: emailInq,
-              nombre: d.inquilino.nombre,
-              apellido: d.inquilino.apellido || null,
-              telefono: d.inquilino.telefono || null,
-            },
-          });
+      const persona = d.personaId
+        ? // Reuso explícito: agrupa bajo la Persona elegida (ya validada como del tenant).
+          await tx.persona.findFirstOrThrow({ where: { id: d.personaId, inmobiliariaId: u.inmobiliariaId } })
+        : dniPersona
+          ? await tx.persona.upsert({
+              where: { inmobiliariaId_dni: { inmobiliariaId: u.inmobiliariaId, dni: dniPersona } },
+              update: {},
+              create: {
+                inmobiliariaId: u.inmobiliariaId,
+                dni: dniPersona,
+                email: emailInq,
+                nombre: d.inquilino.nombre,
+                apellido: d.inquilino.apellido || null,
+                telefono: d.inquilino.telefono || null,
+              },
+            })
+          : await tx.persona.create({
+              data: {
+                inmobiliariaId: u.inmobiliariaId,
+                email: emailInq,
+                nombre: d.inquilino.nombre,
+                apellido: d.inquilino.apellido || null,
+                telefono: d.inquilino.telefono || null,
+              },
+            });
       await tx.inquilino.update({ where: { id: inq.id }, data: { contratoId: contrato.id, personaId: persona.id } });
       if (esCarga) {
         // BORRADOR: NO se reclama la propiedad ni se devengan liquidaciones hasta
@@ -1268,8 +1284,20 @@ export async function coreRoutes(app: FastifyInstance) {
   app.get('/personas', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'contratos.ver');
     if (!u) return;
+    // `?q=` para el autocomplete del reuso (busca por nombre/apellido/dni/email).
+    const { q } = z.object({ q: z.string().trim().optional() }).parse(request.query ?? {});
+    const filtroTexto = q
+      ? {
+          OR: [
+            { nombre: { contains: q, mode: 'insensitive' as const } },
+            { apellido: { contains: q, mode: 'insensitive' as const } },
+            { dni: { contains: q } },
+            { email: { contains: q, mode: 'insensitive' as const } },
+          ],
+        }
+      : {};
     const personas = await prisma.persona.findMany({
-      where: { inmobiliariaId: u.inmobiliariaId },
+      where: { inmobiliariaId: u.inmobiliariaId, ...filtroTexto },
       include: {
         inquilinos: {
           select: { contrato: { select: { id: true, estado: true, propiedad: { select: { direccion: true } } } } },

@@ -17,6 +17,7 @@ import { ConfirmDialog } from '@llave/ui/confirm-dialog';
 import { Topbar } from '@/components/topbar';
 import { apiEnabled, apiFetch, ApiError } from '@/lib/api/client';
 import { ensureApiSession } from '@/lib/api/session';
+import type { PersonaListado } from '@/lib/api/use-inquilinos';
 import { usePropiedades, useMercado, useCobranza } from '@/lib/api/hooks';
 import {
   calcularMora,
@@ -771,6 +772,57 @@ function CargarContratoApiWizard() {
   const [telefono, setTelefono] = useState('');
   const [dni, setDni] = useState('');
 
+  // Reuso (req 3): traer un inquilino que ya está en la cartera. `personaId` no-null =
+  // el alta se agrupa bajo esa Persona existente (historial) en vez de crear una nueva.
+  const [personaId, setPersonaId] = useState<string | null>(null);
+  const [busquedaPersona, setBusquedaPersona] = useState('');
+  const [resultadosPersona, setResultadosPersona] = useState<PersonaListado[]>([]);
+
+  // Buscar personas por texto (debounce) para el autocomplete del reuso.
+  useEffect(() => {
+    const t = busquedaPersona.trim();
+    if (t.length < 2) {
+      setResultadosPersona([]);
+      return;
+    }
+    let vivo = true;
+    const timer = setTimeout(async () => {
+      try {
+        await ensureApiSession();
+        const r = await apiFetch<PersonaListado[]>(`/personas?q=${encodeURIComponent(t)}`);
+        if (vivo) setResultadosPersona(r.slice(0, 8));
+      } catch {
+        if (vivo) setResultadosPersona([]);
+      }
+    }, 250);
+    return () => {
+      vivo = false;
+      clearTimeout(timer);
+    };
+  }, [busquedaPersona]);
+
+  const elegirPersona = (p: PersonaListado) => {
+    setPersonaId(p.id);
+    setNombre(p.nombre);
+    setApellido(p.apellido ?? '');
+    setDni(p.dni ?? '');
+    setTelefono(p.telefono ?? '');
+    // Email NO se precarga: el @@unique([inmobiliariaId,email]) impide repetir el email
+    // en un 2º contrato. La identidad de login vive en su 1er contrato; acá va vacío.
+    setEmail('');
+    setBusquedaPersona('');
+    setResultadosPersona([]);
+  };
+
+  const limpiarReuso = () => {
+    setPersonaId(null);
+    setNombre('');
+    setApellido('');
+    setDni('');
+    setTelefono('');
+    setEmail('');
+  };
+
   // Términos
   const [monto, setMonto] = useState('');
   const [moneda, setMoneda] = useState<Moneda>('ARS');
@@ -994,6 +1046,8 @@ function CargarContratoApiWizard() {
           ...(telefono.trim() ? { telefono: telefono.trim() } : {}),
           ...(dni.trim() ? { dni: dni.trim() } : {}),
         },
+        // Reuso: agrupa el contrato bajo la Persona elegida (trae su historial a la ficha).
+        ...(personaId ? { personaId } : {}),
         monto: requiereAlquiler ? Number(monto) : 0,
         moneda,
         fechaInicio,
@@ -1171,6 +1225,56 @@ function CargarContratoApiWizard() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* Reuso (req 3): traer un inquilino existente por su historial. */}
+              <div className="space-y-1.5">
+                <Label htmlFor="buscar-persona">¿Ya está en tu cartera?</Label>
+                {personaId ? (
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
+                    <span>
+                      Reusando el historial de{' '}
+                      <strong>{`${nombre} ${apellido}`.trim()}</strong>
+                      {dni ? ` · DNI ${dni}` : ''}
+                    </span>
+                    <Button variant="ghost" size="sm" onClick={limpiarReuso}>
+                      Cargar uno nuevo
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <Input
+                      id="buscar-persona"
+                      value={busquedaPersona}
+                      onChange={(e) => setBusquedaPersona(e.target.value)}
+                      placeholder="Buscá por nombre, DNI o email para traer su historial…"
+                      autoComplete="off"
+                    />
+                    {resultadosPersona.length > 0 && (
+                      <div className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-md border bg-popover shadow-md">
+                        {resultadosPersona.map((p) => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => elegirPersona(p)}
+                            className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-muted"
+                          >
+                            <span className="truncate">
+                              {`${p.nombre} ${p.apellido ?? ''}`.trim()}
+                              {p.dni ? ` · DNI ${p.dni}` : p.email ? ` · ${p.email}` : ''}
+                            </span>
+                            <span className="shrink-0 text-xs text-muted-foreground">
+                              {p.totalContratos} contrato{p.totalContratos === 1 ? '' : 's'}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Opcional. Si es un inquilino nuevo, completá los datos abajo.
+                </p>
+              </div>
+
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="nombre">
