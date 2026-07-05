@@ -1,7 +1,7 @@
 # Estado del proyecto — My Alquiler
 
 > **Documento de handoff.** Resumen ejecutivo de dónde está el proyecto hoy.
-> Última actualización: **2026-07-05**. Último commit: `afd8300` (origin/main, árbol limpio).
+> Última actualización: **2026-07-05**. Último commit: `b3325e9` (origin/main, árbol limpio).
 > Último hito: **historial de inquilinos** (deployado back+front, E2E prod OK, backfill aplicado).
 > Nueva entidad **Persona** por tenant (identidad reutilizable del inquilino) + pestaña Inquilinos
 > con ficha (contratos/propiedades/reclamos/morosidad), **historial de contratos anteriores** en la

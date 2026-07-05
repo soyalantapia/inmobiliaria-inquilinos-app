@@ -23,6 +23,10 @@ back+front, E2E prod OK):
 - **Ajuste de alquiler (manual-asistido)**: cerró el gap #1 de plata — antes el alquiler NUNCA
   subía (el devengo usaba el monto fijo). `POST /contratos/:id/ajustar` actualiza el canon y las
   cuotas futuras impagas (no las ya devengadas), con historial (`AjusteAlquiler`). Botón en el detalle.
+- **Saldar cuentas por cobrar de ex-inquilinos**: `POST /contratos/:id/saldar-deuda` (con PIN)
+  crea un Pago CONCILIADO por cada cuota vencida (o condona la deuda) y la marca PAGADO — antes
+  la deuda de un contrato finalizado quedaba visible pero inmovilizada (`/pagos/informar` la gatea
+  `exigirContratoActivo`). Botón "Saldar deuda" en la ficha del inquilino.
 Migraciones `estado_deposito`, `cargo_rescision`, `ajuste_alquiler`.
 
 ### Historial de inquilinos: entidad Persona + ficha + reuso + expediente (05/07)
