@@ -372,6 +372,16 @@ function DetallePagoView({
                         : p.estado === 'RECHAZADO'
                           ? 'Rechazado'
                           : 'En revisión'}
+                      {/* Quién informó el pago (solo prod): cualquiera de los
+                          co-inquilinos puede pagar, así que aclaramos si fuiste
+                          vos u otro miembro del contrato. En demo `autor` es
+                          undefined → no se muestra nada. */}
+                      {autorPagoLabel(p.autor) && (
+                        <>
+                          {' · '}
+                          {autorPagoLabel(p.autor)}
+                        </>
+                      )}
                     </p>
                   </div>
                 </div>
@@ -522,6 +532,19 @@ function DetallePagoView({
       </main>
     </>
   );
+}
+
+/**
+ * Etiqueta corta de quién informó un pago (solo prod). Cualquier co-inquilino
+ * puede pagar, así que aclaramos la autoría para que el inquilino no dude de un
+ * pago que no hizo él. En demo `autor` es undefined → devuelve null (sin chip).
+ */
+function autorPagoLabel(autor: 'vos' | 'otro' | null | undefined): string | null {
+  if (autor === 'vos') return 'lo informaste vos';
+  if (autor === 'otro') return 'lo informó otro miembro del contrato';
+  // null = registrado por la inmobiliaria; undefined = demo (sin dato).
+  if (autor === null) return 'registrado por la inmobiliaria';
+  return null;
 }
 
 function Row({

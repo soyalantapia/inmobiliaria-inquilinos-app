@@ -10,6 +10,50 @@
 
 Plataforma SaaS multi-tenant para inmobiliarias (panel) e inquilinos (PWA). Estado de cambios desde el handoff inicial hasta hoy.
 
+### Auditoría profunda del ciclo de plata + plan de 12 pasos (05/07)
+Segunda auditoría multi-agente (36 agentes) del ciclo COMPLETO "desde que hay contrato":
+alta → devengo → pago (parcial, y con DOS co-inquilinos) → validación → conciliación →
+rendición. 21 hallazgos confirmados (2 CRÍTICOS). Se implementó el plan completo de 12
+pasos sobre la rama `fix/pagos-visibilidad-inquilino`. Migración nueva
+`20260705120000_pago_autor_informe` (2 columnas nullable en `pagos`).
+- **CRÍTICO — validar ya no sobre-cobra.** `POST /pagos/:id/validar` era el único de los
+  tres caminos que crean cobros CONCILIADO SIN lock ni re-tope. Con el cobro mixto de dos
+  co-inquilinos (A informa + la inmo registra el efectivo de B + valida a A) la cuota
+  quedaba con más plata que su total, se sobre-rendía al dueño y se inflaba la comisión.
+  Ahora toma `SELECT … FOR UPDATE` + recomputa el saldo y rechaza el excedente (espejo de
+  `/pagos/manual`).
+- **CRÍTICO — rendición reversible.** Anular una rendición daba 500 SIEMPRE (FK RESTRICT
+  sobre `alquileres_rendidos` sin borrar los hijos) → la única corrección hacia el dueño
+  estaba rota. Se borran los `AlquilerRendido` antes; y `/pagos/:id/anular` bloquea con 409
+  un pago cuya liquidación ya fue rendida (anulá primero la rendición).
+- **Concurrencia de rendición:** todo el cálculo va dentro de un `pg_advisory_xact_lock`
+  por dueño+período (dos rendiciones simultáneas ya no doble-rinden), y el `updateMany` de
+  gastos ahora ABORTA de verdad si otra rendición tomó el gasto (el comentario lo prometía;
+  el código no lo hacía).
+- **Comisión solo sobre alquiler (LOCKED):** la porción de alquiler se capea a la base
+  (`min(cobrado, montoTotal)`) en la rendición y en el cierre de caja → la mora cobrada ya
+  no infla la comisión.
+- **Pago parcial:** tolerancia de centavos en `/pagos/informar` (pagar EXACTO el saldo ya
+  no da "supera el saldo" ni nace PARCIAL por milésimas); el checkout refresca el saldo al
+  entrar y usa el `tipo` real del POST (aviso "la mora subió mientras pagabas" en vez de un
+  "al día" falso).
+- **Fecha de transferencia acotada** (informar + manual): no futura, no anterior al inicio
+  del contrato (evita backdatear para esquivar la mora / falsear el certificado).
+- **Co-inquilinos:** el Pago guarda el autor del informe (`informadoPor*`); `/mis-liquidaciones`
+  expone `autor: 'vos'|'otro'|null` y las notificaciones pasan a copy neutral a nivel
+  contrato ("Se confirmó el pago de …") — a B ya no le llega "TU pago" por un pago de A.
+- **Devengo:** la primera liquidación ya no nace VENCIDA con mora pre-inicio cuando el
+  contrato arranca a mitad de mes; el comprobante huérfano se libera si el informe falla.
+- **Certificado:** un pago ANULADO por la inmo ya no penaliza el nivel de buen pagador.
+- **Ajuste por índice (feature nueva):** el alta setea `proximoAjuste`; nuevo
+  `PATCH /contratos/:id/monto` (permiso + PIN) sube el monto y RE-DEVENGA las liquidaciones
+  futuras sin pagos (registra `AJUSTE_APLICADO`); el panel muestra "Próximo ajuste" y un
+  botón "Ajustar monto". (El coeficiente ICL/IPC lo entra el operador: el sistema no tiene
+  la serie del índice.)
+- **Tests:** suite completa verde en schema fresco + tests nuevos (validar over-cobro,
+  anular rendición con AlquilerRendido, anular pago rendido, fechas, primer devengo,
+  `sumarMesesUTC`, `recomputarLiquidacionesFuturas`, PATCH de monto).
+
 ### Flujo de pagos completo: visibilidad del inquilino + cobro manual + circuito directo (05/07)
 Auditoría multi-agente del flujo de pagos (23 hallazgos confirmados, 4 CRÍTICOS) a raíz
 del reclamo del owner "no veo que funcione al 100% el pago parcial". Causa raíz: el

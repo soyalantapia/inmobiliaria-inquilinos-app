@@ -4,8 +4,14 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '../db.js';
 import { requireUsuario } from '../auth/guards.js';
+import { verificarPinUsuario } from '../auth/pin.js';
 import { registrarEvento } from '../lib/auditoria.js';
-import { generarLiquidacionesContrato } from '../lib/liquidaciones.js';
+import {
+  generarLiquidacionesContrato,
+  sumarMesesUTC,
+  periodoDe,
+  recomputarLiquidacionesFuturas,
+} from '../lib/liquidaciones.js';
 import { conSaldo, montoPagadoPorLiquidacion } from '../lib/saldos.js';
 import { calcularMora, resolverEsquemaMora } from '../lib/punitorios.js';
 import { aplicarEstadoInicial, EstadoInicialInvalido } from '../lib/estado-inicial-contrato.js';
@@ -834,6 +840,11 @@ export async function coreRoutes(app: FastifyInstance) {
           diaPago: d.diaPago,
           indiceAjuste: d.indiceAjuste,
           frecuenciaAjusteMeses: d.frecuenciaAjusteMeses,
+          // Próximo ajuste = inicio + frecuencia (month-end aware, UTC). Antes NO
+          // se completaba nunca, así que el panel/PWA mostraba "—". Con esto ya
+          // queda la fecha esperada del 1er reajuste (el operador la puede pisar
+          // luego vía PATCH /contratos/:id/monto). NO cambia el monto del alta.
+          proximoAjuste: sumarMesesUTC(d.fechaInicio, d.frecuenciaAjusteMeses),
           montoExpensas: d.montoExpensas ?? null,
           tipoContrato: d.tipoContrato,
           depositoGarantia: d.depositoGarantia ?? null,
@@ -1705,5 +1716,126 @@ export async function coreRoutes(app: FastifyInstance) {
       orderBy: { fecha: 'desc' },
       take: q.limit,
     });
+  });
+
+  // ===== Ajuste MANUAL de monto (PATCH /contratos/:id/monto) =====
+  // El sistema NO tiene la data del índice (ICL/IPC/UVA...), así que el ajuste
+  // por índice es MANUAL: cuando llega la fecha de ajuste, el operador entra el
+  // monto nuevo. Este endpoint (a) actualiza contrato.monto, (b) reprograma
+  // proximoAjuste (+frecuencia), (c) RE-DEVENGA las liquidaciones FUTURAS sin
+  // plata en juego para que tomen el monto nuevo, y (d) deja rastro AJUSTE_APLICADO.
+  // Money code: NO toca liquidaciones pagadas/parciales/con-pago ni meses pasados.
+  app.patch('/contratos/:id/monto', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'contratos.crear');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const body = z
+      .object({
+        monto: z.number().positive(),
+        // Opcional: si el operador quiere fijar a mano la próxima fecha de ajuste;
+        // omitido => se calcula sobre la actual (o hoy) + frecuencia.
+        proximoAjuste: z.coerce.date().optional(),
+        motivo: z.string().optional(),
+        pin: z.string().optional(),
+      })
+      .safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ message: 'Datos del ajuste inválidos' });
+    const d = body.data;
+
+    // PIN de seguridad (mismo patrón que plata.ts): verificarPinUsuario agrega el
+    // lockout anti-fuerza-bruta; acá traducimos el resultado a la reply.
+    const pinCheck = await verificarPinUsuario(u.userId, d.pin);
+    if (!pinCheck.ok) return reply.code(pinCheck.code).send({ message: pinCheck.message });
+
+    // Scopeado por inmobiliariaId (multi-tenant): un id de otro tenant => 404.
+    const contrato = await prisma.contrato.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      select: {
+        id: true,
+        monto: true,
+        montoExpensas: true,
+        tipoContrato: true,
+        moneda: true,
+        proximoAjuste: true,
+        frecuenciaAjusteMeses: true,
+      },
+    });
+    if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
+
+    const montoViejo = Number(contrato.monto);
+    // Base para reprogramar el próximo ajuste: lo que mande el body pisa; si no,
+    // el proximoAjuste actual (la fecha que se cumplió) o, si nunca se fijó, hoy.
+    const proximoAjuste = d.proximoAjuste
+      ? d.proximoAjuste
+      : sumarMesesUTC(contrato.proximoAjuste ?? new Date(), contrato.frecuenciaAjusteMeses);
+    const periodoActual = periodoDe(new Date());
+
+    const resultado = await prisma.$transaction(async (tx) => {
+      // (a) + (b): nuevo monto y próxima fecha de ajuste.
+      await tx.contrato.update({
+        where: { id: contrato.id },
+        data: { monto: d.monto, proximoAjuste },
+      });
+
+      // (c) RE-DEVENGO de futuras. Traemos las liqs candidatas (>= mes actual,
+      // PENDIENTE/VENCIDO) con su conteo de pagos, y el filtro PURO decide cuáles
+      // reajustar (excluye las que tengan CUALQUIER pago, informado o conciliado).
+      const liqs = await tx.liquidacion.findMany({
+        where: {
+          contratoId: contrato.id,
+          inmobiliariaId: u.inmobiliariaId,
+          periodo: { gte: periodoActual },
+          estado: { in: ['PENDIENTE', 'VENCIDO'] },
+        },
+        select: {
+          id: true,
+          periodo: true,
+          estado: true,
+          montoExpensas: true,
+          _count: { select: { pagos: true } },
+        },
+      });
+      const aReajustar = recomputarLiquidacionesFuturas(
+        liqs.map((l) => ({
+          id: l.id,
+          periodo: l.periodo,
+          estado: l.estado,
+          montoExpensas: l.montoExpensas,
+          cantidadPagos: l._count.pagos,
+        })),
+        { montoNuevo: d.monto, tipoContrato: contrato.tipoContrato, periodoActual },
+      );
+      for (const r of aReajustar) {
+        // updateMany scopeado por inmobiliariaId (defensa cross-tenant redundante).
+        await tx.liquidacion.updateMany({
+          where: { id: r.id, inmobiliariaId: u.inmobiliariaId },
+          data: { montoAlquiler: r.montoAlquiler, montoTotal: r.montoTotal },
+        });
+      }
+
+      // (d) Evento de contrato AJUSTE_APLICADO (timeline del contrato). Va DENTRO
+      // de la tx: el ajuste y su rastro caen juntos (a diferencia de la auditoría
+      // best-effort, que es post-commit). 'autor' es el nombre del que ajustó.
+      await tx.eventoContrato.create({
+        data: {
+          inmobiliariaId: u.inmobiliariaId,
+          contratoId: contrato.id,
+          tipo: 'AJUSTE_APLICADO',
+          titulo: `Ajuste de alquiler: ${montoViejo} → ${d.monto} ${contrato.moneda}`,
+          detalle: d.motivo ?? null,
+          fecha: new Date(),
+          autor: u.userId,
+        },
+      });
+
+      const actualizado = await tx.contrato.findUniqueOrThrow({ where: { id: contrato.id } });
+      return { actualizado, reajustadas: aReajustar.length };
+    });
+
+    // El rastro "quién ajustó qué" queda en el timeline del contrato como
+    // EventoContrato AJUSTE_APLICADO (creado dentro de la tx, arriba) — el tipo
+    // semánticamente correcto. No duplicamos en EventoAuditoria porque su enum no
+    // tiene un valor de "ajuste de monto" y no vamos a migrar el schema.
+    return { contrato: resultado.actualizado, liquidacionesReajustadas: resultado.reajustadas };
   });
 }

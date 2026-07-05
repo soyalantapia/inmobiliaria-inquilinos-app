@@ -1,7 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
   computarLiquidacionesContrato,
+  sumarMesesUTC,
+  recomputarLiquidacionesFuturas,
   type ContratoParaLiquidar,
+  type LiquidacionParaReajustar,
 } from '../src/lib/liquidaciones.js';
 
 /**
@@ -90,5 +93,103 @@ describe('computarLiquidacionesContrato', () => {
     );
     expect(data.every((l) => l.montoExpensas === null)).toBe(true);
     expect(data.every((l) => Number(l.montoTotal) === 300_000)).toBe(true);
+  });
+
+  it('contrato arranca 15/07 con diaPago 5: la 1ª cuota NO nace vencida pre-inicio', () => {
+    // venc natural del 1er período = 05/07 < inicio 15/07 → antes nacía VENCIDA
+    // con mora imposible. Ahora se saltea julio: el 1er cobro es agosto (05/08).
+    const now = new Date('2026-07-20T12:00:00Z');
+    const data = computarLiquidacionesContrato(
+      contrato('2026-07-15T00:00:00Z', '2028-07-15T00:00:00Z', { diaPago: 5 }),
+      now,
+    );
+    // El período 2026-07 (venc pre-inicio) NO existe; arranca en 2026-08.
+    expect(data.map((l) => l.periodo)).toEqual(['2026-08']);
+    const primera = data[0];
+    // La 1ª cuota vence DESPUÉS del inicio del contrato (no antes).
+    expect((primera.fechaVencimiento as Date) >= new Date('2026-07-15T00:00:00Z')).toBe(true);
+    expect((primera.fechaVencimiento as Date).toISOString().slice(0, 10)).toBe('2026-08-05');
+  });
+
+  it('contrato arranca 01/07 con diaPago 5: NO se saltea (venc 05/07 >= inicio 01/07)', () => {
+    // Borde: cuando el inicio es día 1, el venc del día 5 NO es pre-inicio, así
+    // que el 1er período se conserva (el skip solo aplica a venc < fechaInicio).
+    const now = new Date('2026-07-20T12:00:00Z');
+    const data = computarLiquidacionesContrato(
+      contrato('2026-07-01T00:00:00Z', '2028-07-01T00:00:00Z', { diaPago: 5 }),
+      now,
+    );
+    expect(data[0].periodo).toBe('2026-07');
+    expect((data[0].fechaVencimiento as Date).toISOString().slice(0, 10)).toBe('2026-07-05');
+  });
+});
+
+describe('sumarMesesUTC (proximoAjuste)', () => {
+  it('suma meses simples en UTC', () => {
+    expect(sumarMesesUTC(new Date('2026-07-15T00:00:00Z'), 12).toISOString().slice(0, 10)).toBe('2027-07-15');
+    expect(sumarMesesUTC(new Date('2026-07-15T00:00:00Z'), 6).toISOString().slice(0, 10)).toBe('2027-01-15');
+  });
+
+  it('clampa fin de mes (31/01 + 1 mes = 28/02, no 03/03)', () => {
+    expect(sumarMesesUTC(new Date('2026-01-31T00:00:00Z'), 1).toISOString().slice(0, 10)).toBe('2026-02-28');
+    // Año bisiesto: 31/01/2028 + 1 mes = 29/02.
+    expect(sumarMesesUTC(new Date('2028-01-31T00:00:00Z'), 1).toISOString().slice(0, 10)).toBe('2028-02-29');
+  });
+});
+
+describe('recomputarLiquidacionesFuturas (ajuste manual de monto)', () => {
+  const periodoActual = '2026-07';
+  function liq(over: Partial<LiquidacionParaReajustar>): LiquidacionParaReajustar {
+    return {
+      id: 'liq_x',
+      periodo: '2026-07',
+      estado: 'PENDIENTE',
+      montoExpensas: 80_000,
+      cantidadPagos: 0,
+      ...over,
+    };
+  }
+
+  it('reajusta las futuras SIN pagos (PENDIENTE/VENCIDO) al monto nuevo + expensas', () => {
+    const out = recomputarLiquidacionesFuturas(
+      [
+        liq({ id: 'jul', periodo: '2026-07', estado: 'PENDIENTE' }),
+        liq({ id: 'ago', periodo: '2026-08', estado: 'PENDIENTE' }),
+        liq({ id: 'venc', periodo: '2026-07', estado: 'VENCIDO' }),
+      ],
+      { montoNuevo: 600_000, tipoContrato: 'ALQUILER', periodoActual },
+    );
+    expect(out.map((r) => r.id).sort()).toEqual(['ago', 'jul', 'venc']);
+    // Alquiler nuevo 600k + expensas 80k = 680k.
+    expect(out.every((r) => r.montoAlquiler === 600_000 && r.montoTotal === 680_000)).toBe(true);
+  });
+
+  it('NO toca meses pasados, ni PAGADO/PARCIAL, ni las que tienen algún pago', () => {
+    const out = recomputarLiquidacionesFuturas(
+      [
+        liq({ id: 'pasado', periodo: '2026-06', estado: 'PENDIENTE' }), // mes pasado
+        liq({ id: 'pagado', periodo: '2026-07', estado: 'PAGADO' }), // ya paga
+        liq({ id: 'parcial', periodo: '2026-08', estado: 'PARCIAL' }), // parcial
+        liq({ id: 'conPago', periodo: '2026-09', estado: 'PENDIENTE', cantidadPagos: 1 }), // pago informado
+      ],
+      { montoNuevo: 600_000, tipoContrato: 'ALQUILER', periodoActual },
+    );
+    expect(out).toEqual([]);
+  });
+
+  it('SOLO_EXPENSAS: el alquiler nuevo es 0, el total = solo expensas', () => {
+    const out = recomputarLiquidacionesFuturas(
+      [liq({ id: 'ago', periodo: '2026-08', estado: 'PENDIENTE', montoExpensas: 50_000 })],
+      { montoNuevo: 600_000, tipoContrato: 'SOLO_EXPENSAS', periodoActual },
+    );
+    expect(out).toEqual([{ id: 'ago', montoAlquiler: 0, montoTotal: 50_000 }]);
+  });
+
+  it('sin expensas (null): total = solo el alquiler nuevo', () => {
+    const out = recomputarLiquidacionesFuturas(
+      [liq({ id: 'ago', periodo: '2026-08', estado: 'PENDIENTE', montoExpensas: null })],
+      { montoNuevo: 600_000, tipoContrato: 'ALQUILER', periodoActual },
+    );
+    expect(out).toEqual([{ id: 'ago', montoAlquiler: 600_000, montoTotal: 600_000 }]);
   });
 });

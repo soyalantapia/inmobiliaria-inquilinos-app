@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -52,6 +53,7 @@ import {
   pagoApiALocal,
   useInformarPago,
   useLiquidacion,
+  type PagoInformadoApi,
 } from '@/lib/api/use-pago';
 import { subirArchivo, urlDeArchivo } from '@/lib/api/client';
 
@@ -60,6 +62,7 @@ const MAX_FILE_MB = 5;
 
 export default function CheckoutPage({ params }: { params: { liqId: string } }) {
   const router = useRouter();
+  const qc = useQueryClient();
   // Liquidación: API en prod (useLiquidacion → useMisLiquidaciones), mock en
   // la demo offline. La búsqueda por liqId vive dentro del hook.
   const { liquidacion: liqApi, cargando } = useLiquidacion(params.liqId);
@@ -90,6 +93,11 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
   const [pagosPreviosLocal, setPagosPreviosLocal] = useState<PagoInformado[]>([]);
   /** Último pago hecho en esta sesión (lo que mostramos en step='ok'). */
   const [ultimoEnviado, setUltimoEnviado] = useState<PagoInformado | null>(null);
+  /** El inquilino eligió "saldo completo" pero el server devolvió tipo PARCIAL:
+   *  la mora subió mientras pagaba. Dispara el aviso claro en StepConfirmado
+   *  ("La mora subió mientras pagabas; te queda un saldo de $X") en vez de un
+   *  "quedaste al día" mentiroso. Solo prod. */
+  const [moraSubioAlPagar, setMoraSubioAlPagar] = useState(false);
   /** Monto que el inquilino eligió pagar AHORA (puede ser saldo o parcial). */
   const [montoElegido, setMontoElegido] = useState<number | null>(null);
   /** En prod NO hay historial local de parciales (pagosPrevios queda []); este
@@ -106,6 +114,18 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
   useEffect(() => {
     setSesion(leerSesion());
   }, []);
+
+  // Al montar el checkout (prod) refrescamos ['mis-liquidaciones'] para tomar el
+  // saldo FRESCO: si el inquilino dejó la pantalla abierta y la mora subió de
+  // día, el "saldo completo" que clampamos del cliente quedaría corto. Antes se
+  // usaba el saldo cacheado (staleTime 30s) y podía pagar un total que el server
+  // ya consideraba parcial. En demo (!apiEnabled) no hay query que invalidar.
+  useEffect(() => {
+    if (!apiEnabled) return;
+    void qc.invalidateQueries({ queryKey: ['mis-liquidaciones'] });
+    // Solo al montar / cambiar de liq — qc es estable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.liqId]);
 
   useEffect(() => {
     // Historial de parciales + decisión del inmo de la DEMO offline (store
@@ -366,7 +386,16 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
               parcial={!cubreTodo}
               inmobiliariaTelefono={inmobiliariaTelefono}
               datosCobranza={datosCobranza}
-              onContinuar={() => setStep('comprobante')}
+              onContinuar={() => {
+                // Refrescamos el saldo justo antes de subir el comprobante: si la
+                // mora subió mientras el inquilino miraba los datos bancarios, la
+                // pantalla de éxito usa igual el `tipo` real que devuelve el POST,
+                // pero esto además mantiene el saldo mostrado al día.
+                if (apiEnabled) {
+                  void qc.invalidateQueries({ queryKey: ['mis-liquidaciones'] });
+                }
+                setStep('comprobante');
+              }}
             />
           </>
         )}
@@ -386,6 +415,12 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
             onAtras={() => setStep('datos')}
             onEnviado={(p) => {
               setUltimoEnviado(p);
+              // "PARCIAL sorpresa": el inquilino eligió cubrir todo (cubreTodo)
+              // pero el server devolvió tipo PARCIAL → la mora subió mientras
+              // pagaba y lo que transfirió ya no alcanza el saldo. Solo prod
+              // (en demo p.tipo lo decide el propio cliente, nunca sorprende).
+              const sorpresa = apiEnabled && cubreTodo && p.tipo === 'PARCIAL';
+              setMoraSubioAlPagar(sorpresa);
               // El historial local sólo aplica a la demo; en prod los pagos
               // reales llegan solos al refrescarse ['mis-liquidaciones'].
               if (!apiEnabled) setPagosPreviosLocal(listarPagosDeLiq(params.liqId));
@@ -403,12 +438,17 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
           <StepConfirmado
             informado={ultimoEnviado ?? pagosPrevios[pagosPrevios.length - 1] ?? null}
             // En prod no hay historial de parciales: el saldo restante se
-            // deriva del pago recién enviado (total - lo informado ahora).
+            // deriva del pago recién enviado (saldo fresco − lo informado ahora).
+            // Como refrescamos ['mis-liquidaciones'] al montar/continuar, `saldo`
+            // ya trae la mora al día: si subió mientras pagaba, el remanente es
+            // correcto (no un 0 falso).
             saldoRestante={
               apiEnabled
                 ? Math.max(0, saldo - (ultimoEnviado?.monto ?? saldo))
                 : saldo
             }
+            // Solo prod: eligió cubrir todo pero el server lo dejó PARCIAL.
+            moraSubio={moraSubioAlPagar}
             moneda={liq.moneda}
             allowReenviar={!apiEnabled}
             onPagarOtroParcial={() => {
@@ -417,6 +457,7 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
               if (apiEnabled) {
                 setSaldoProdRestante(Math.max(0, saldo - (ultimoEnviado?.monto ?? saldo)));
               }
+              setMoraSubioAlPagar(false);
               setMontoElegido(null);
               setUltimoEnviado(null);
               setStep('datos');
@@ -425,6 +466,7 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
               olvidarPagoInformado(liq.id);
               setPagosPreviosLocal([]);
               setUltimoEnviado(null);
+              setMoraSubioAlPagar(false);
               setMontoElegido(null);
               setSaldoProdRestante(null);
               setStep('datos');
@@ -493,6 +535,14 @@ function ParcialesAnteriores({
                   : p.estado === 'RECHAZADO'
                     ? 'Rechazado'
                     : 'En revisión'}
+                {/* Quién informó el pago (solo prod): cualquier co-inquilino
+                    puede pagar. En demo `autor` es undefined → no se muestra. */}
+                {autorPagoLabel(p.autor) && (
+                  <>
+                    {' · '}
+                    {autorPagoLabel(p.autor)}
+                  </>
+                )}
               </p>
             </div>
           </div>
@@ -1023,8 +1073,10 @@ function StepSubirComprobante({
   monto: number;
   tipo: 'TOTAL' | 'PARCIAL';
   /**
-   * En prod: POST real `/pagos/informar`. Si es null, estamos en la demo
-   * offline y persistimos en el store local (`agregarPago`).
+   * En prod: POST real `/pagos/informar`. Devuelve el Pago creado con el `tipo`
+   * ('TOTAL'|'PARCIAL') y `monto` REALES que decidió el server (con tolerancia
+   * de centavos): esos valores mandan sobre la intención del cliente. Si es
+   * null, estamos en la demo offline y persistimos en el store local.
    */
   informarPagoApi:
     | ((input: {
@@ -1037,7 +1089,7 @@ function StepSubirComprobante({
         comprobanteFileName?: string;
         comprobanteMime?: string;
         comprobanteSize?: number;
-      }) => Promise<unknown>)
+      }) => Promise<PagoInformadoApi>)
     | null;
   onAtras: () => void;
   onEnviado: (p: PagoInformado) => void;
@@ -1133,10 +1185,11 @@ function StepSubirComprobante({
 
     // ===== Prod: subir el comprobante REAL + POST /pagos/informar =====
     if (informarPagoApi) {
+      let creado: PagoInformadoApi;
       try {
         // El archivo ahora SÍ llega al backend (Railway Volume), no solo metadatos.
         const subido = await subirArchivo(file);
-        await informarPagoApi({
+        creado = await informarPagoApi({
           liquidacionId: liqId,
           monto,
           metodo: 'TRANSFERENCIA',
@@ -1159,13 +1212,18 @@ function StepSubirComprobante({
       // Objeto sólo para la pantalla de confirmación: el pago Y su comprobante ya
       // quedaron en la DB (subirArchivo + POST /pagos/informar). Esto es sólo para
       // renderizar el "OK" con el preview local del archivo recién subido.
+      // CRÍTICO: usamos `tipo` y `monto` que devolvió el SERVER, no la intención
+      // del cliente (`tipo`/`monto` de las props). Si la mora subió mientras el
+      // inquilino pagaba, eligió "saldo completo" pero el server lo dejó PARCIAL:
+      // sin esto, la pantalla decía "quedaste al día" y le reaparecía un resto sin
+      // aviso. El `tipo` real del server dispara el aviso de saldo en StepConfirmado.
       const informado: PagoInformado = {
         v: 1,
-        id: `api_${Date.now().toString(36)}`,
+        id: creado.id ?? `api_${Date.now().toString(36)}`,
         liqId,
-        tipo,
-        estado: 'INFORMADO',
-        monto,
+        tipo: creado.tipo,
+        estado: creado.estado ?? 'INFORMADO',
+        monto: Number(creado.monto),
         nroOperacion: nroOp,
         comprobanteFileName: file.name,
         comprobanteDataUrl: preview,
@@ -1364,6 +1422,7 @@ function StepSubirComprobante({
 function StepConfirmado({
   informado,
   saldoRestante,
+  moraSubio,
   moneda,
   allowReenviar,
   onPagarOtroParcial,
@@ -1372,6 +1431,12 @@ function StepConfirmado({
 }: {
   informado: PagoInformado | null;
   saldoRestante: number;
+  /**
+   * Solo prod: el inquilino eligió "saldo completo" pero el server lo dejó
+   * PARCIAL (la mora subió mientras pagaba). Cambia el copy a un aviso claro
+   * de que le quedó un resto, en vez del "quedaste al día" genérico.
+   */
+  moraSubio: boolean;
   moneda: 'ARS' | 'USD';
   /**
    * "Borrar todos los pagos y reenviar" es una operación del store local
@@ -1405,9 +1470,11 @@ function StepConfirmado({
         <div>
           <h2 className="text-lg font-semibold">
             {quedoSaldo
-              ? apiEnabled
-                ? 'Parcial informado'
-                : 'Parcial recibido'
+              ? moraSubio
+                ? 'La mora subió mientras pagabas'
+                : apiEnabled
+                  ? 'Parcial informado'
+                  : 'Parcial recibido'
               : apiEnabled
                 ? 'Pago informado'
                 : 'Comprobante recibido'}
@@ -1416,7 +1483,22 @@ function StepConfirmado({
             // Prod: el backend NO acepta un segundo INFORMADO mientras este
             // está en revisión (índice único) — no prometemos "cuando
             // quieras". En demo el flujo local sí permite encadenar (intacto).
-            apiEnabled ? (
+            moraSubio ? (
+              // "PARCIAL sorpresa": eligió cubrir todo, pero la mora subió de día
+              // mientras pagaba y lo que transfirió ya no alcanza el saldo. Se lo
+              // decimos claro en vez de un "quedaste al día" que después le
+              // reaparece como deuda sin aviso.
+              <p className="text-sm text-muted-foreground">
+                Elegiste pagar el saldo completo, pero los punitorios por mora
+                subieron mientras hacías la transferencia. Tu pago quedó como{' '}
+                <strong className="text-foreground">parcial</strong> y te queda un
+                saldo de{' '}
+                <strong className="text-foreground tabular-nums">
+                  {formatMonto(saldoRestante, moneda)}
+                </strong>
+                . Lo vas a poder informar cuando la inmobiliaria valide este pago.
+              </p>
+            ) : apiEnabled ? (
               <p className="text-sm text-muted-foreground">
                 Te queda un saldo de{' '}
                 <strong className="text-foreground tabular-nums">
@@ -1546,6 +1628,18 @@ function Row({ label, value }: { label: string; value: string }) {
       <span className="truncate text-right font-medium">{value}</span>
     </div>
   );
+}
+
+/**
+ * Etiqueta corta de quién informó un pago (solo prod). Cualquier co-inquilino
+ * puede pagar, así que aclaramos la autoría. En demo `autor` es undefined →
+ * devuelve null (sin etiqueta).
+ */
+function autorPagoLabel(autor: 'vos' | 'otro' | null | undefined): string | null {
+  if (autor === 'vos') return 'lo informaste vos';
+  if (autor === 'otro') return 'lo informó otro miembro del contrato';
+  if (autor === null) return 'registrado por la inmobiliaria';
+  return null;
 }
 
 function DetalleIA({

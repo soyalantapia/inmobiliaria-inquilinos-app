@@ -28,6 +28,30 @@ import {
  * al día".
  * ============================================================ */
 
+/**
+ * Prefijo con el que la inmo marca un pago REVERTIDO operativamente (anulado
+ * tras conciliar). Un pago así queda estado='RECHAZADO' con observacion
+ * `Anulado tras conciliar: <motivo>` — misma convención que plata.ts
+ * (/pagos/anular y el mapeo neutro de /mis-liquidaciones).
+ */
+const PREFIJO_ANULADO = 'Anulado tras conciliar:';
+
+/**
+ * Predicado Prisma reutilizable: pagos RECHAZADOS que SÍ cuentan como rechazo
+ * real del inquilino, EXCLUYENDO las anulaciones operativas de la inmo.
+ *
+ * POR QUÉ: un "anulado tras conciliar" es una reversión que hace la
+ * inmobiliaria (p. ej. cargó mal un cobro y lo revierte), NO un comprobante
+ * que el inquilino mandó y le rebotó. Contarlo como rechazo le bajaba
+ * injustamente el nivel de buen pagador en el certificado por algo que no es
+ * su culpa. `not: { startsWith }` deja pasar los rechazos genuinos y descarta
+ * las reversiones internas.
+ */
+const PAGO_RECHAZADO_REAL: Prisma.PagoWhereInput = {
+  estado: 'RECHAZADO',
+  NOT: { observacion: { startsWith: PREFIJO_ANULADO } },
+};
+
 type NivelHistorial = 'EXCELENTE' | 'BUENO' | 'REGULAR' | 'NUEVO';
 
 // type (no interface): los type alias tienen index signature implícita y
@@ -575,8 +599,11 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
     // Historial desde las liquidaciones REALES del contrato — si da REGULAR,
     // se devuelve honesto.
     const liqs = await prisma.liquidacion.findMany({ where: { contratoId: contrato.id } });
+    // Rechazos REALES del inquilino: excluimos las anulaciones operativas de la
+    // inmo (RECHAZADO + 'Anulado tras conciliar:') para no penalizar el nivel
+    // de buen pagador por una reversión que no es culpa suya. Ver PAGO_RECHAZADO_REAL.
     const pagosRechazados = await prisma.pago.count({
-      where: { contratoId: contrato.id, estado: 'RECHAZADO' },
+      where: { contratoId: contrato.id, ...PAGO_RECHAZADO_REAL },
     });
     const ratings = await prisma.ratingReclamo.aggregate({
       where: { reclamo: { contratoId: contrato.id } },
@@ -1058,20 +1085,47 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
       take: 10,
     });
     for (const p of decididos) {
+      // El feed lo consumen TODOS los miembros del contrato (titular + co-inquilinos,
+      // mismo requireContratoAcceso) y CUALQUIERA puede pagar. Por eso el copy va
+      // NEUTRAL a nivel contrato: a un co-inquilino B no debe llegarle "TU pago
+      // fue rechazado" por un pago que informó A. Solo personalizamos a "Tu
+      // comprobante…" cuando el pago lo informó exactamente quien consulta.
+      const loInformoQuienConsulta =
+        (p.informadoPorInquilinoId != null && p.informadoPorInquilinoId === inq.inquilinoId) ||
+        (p.informadoPorCoInquilinoId != null && p.informadoPorCoInquilinoId === inq.coInquilinoId);
       if (p.estado === 'RECHAZADO') {
-        out.push({
-          id: `pago-rech-${p.id}`,
-          titulo: 'Tu pago fue rechazado',
-          detalle: p.observacion ? p.observacion.slice(0, 80) : 'Volvé a mandar el comprobante.',
-          href: `/pago/${p.liquidacionId}`,
-          cuando: p.decididoAt ? relativo(p.decididoAt) : 'reciente',
-          icono: 'pago_rechazado',
-          severidad: 'critica',
-        });
+        // Un pago ANULADO por la inmo queda RECHAZADO con observacion interna
+        // ('Anulado tras conciliar: …'): es una reversión operativa, NO un rechazo
+        // de comprobante. Copy distinto y observacion NUNCA expuesta al inquilino.
+        const anulado = (p.observacion ?? '').startsWith(PREFIJO_ANULADO);
+        if (anulado) {
+          out.push({
+            id: `pago-anul-${p.id}`,
+            titulo: 'La inmobiliaria revirtió un cobro del contrato',
+            detalle: 'Se anuló un pago ya registrado. Si no lo esperabas, consultá el motivo con la inmobiliaria.',
+            href: `/pago/${p.liquidacionId}`,
+            cuando: p.decididoAt ? relativo(p.decididoAt) : 'reciente',
+            icono: 'pago_rechazado',
+            severidad: 'critica',
+          });
+        } else {
+          // Motivo de rechazo truncado como antes (80 chars); título neutral salvo
+          // que lo haya informado quien consulta.
+          const motivo = p.observacion ? p.observacion.slice(0, 80) : null;
+          out.push({
+            id: `pago-rech-${p.id}`,
+            titulo: loInformoQuienConsulta ? 'Tu comprobante fue rechazado' : 'Se rechazó un pago del contrato',
+            detalle: motivo ?? 'Hay que volver a enviar el comprobante.',
+            href: `/pago/${p.liquidacionId}`,
+            cuando: p.decididoAt ? relativo(p.decididoAt) : 'reciente',
+            icono: 'pago_rechazado',
+            severidad: 'critica',
+          });
+        }
       } else {
         out.push({
           id: `pago-ok-${p.id}`,
-          titulo: 'Tu pago fue confirmado',
+          titulo: loInformoQuienConsulta ? 'Tu comprobante fue confirmado' : `Se confirmó el pago de ${p.periodo}`,
           detalle: `$${Math.round(Number(p.monto)).toLocaleString('es-AR')} acreditado.`,
           href: `/pago/${p.liquidacionId}`,
           cuando: p.decididoAt ? relativo(p.decididoAt) : 'reciente',

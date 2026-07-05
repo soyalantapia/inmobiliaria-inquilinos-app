@@ -7,6 +7,8 @@ import { seedBase } from '../prisma/seed.js';
 let app: FastifyInstance;
 let tokenAdmin: string;
 let tokenCarga: string;
+// Cliente para setup directo de escenarios (insertar un INFORMADO "colgado", etc.).
+const prismaTest = new PrismaClient();
 
 /** Devuelve el estado seed mutado por corridas anteriores a su origen. */
 async function resetPlata(prisma: PrismaClient) {
@@ -27,6 +29,16 @@ async function resetPlata(prisma: PrismaClient) {
   await prisma.pago.update({
     where: { id: 'pag_002' },
     data: { estado: 'RECHAZADO', observacion: 'Rechazado por la suite para re-informar', decididoAt: new Date() },
+  });
+  // Los CONCILIADO del seed que alimentan la rendición: algún test los puede
+  // anular; volverlos a CONCILIADO + sus liqs a PAGADO para la re-corrida.
+  await prisma.pago.updateMany({
+    where: { id: { in: ['pag_liq002', 'pag_liq004', 'pag_liq007'] } },
+    data: { estado: 'CONCILIADO', observacion: null },
+  });
+  await prisma.liquidacion.updateMany({
+    where: { id: { in: ['liq_002', 'liq_004', 'liq_007'] } },
+    data: { estado: 'PAGADO' },
   });
   await prisma.liquidacion.update({
     where: { id: 'liq_005' },
@@ -78,6 +90,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await app.close();
+  await prismaTest.$disconnect();
 });
 
 const auth = (t: string) => ({ authorization: `Bearer ${t}` });
@@ -120,6 +133,32 @@ describe('Validación de pagos (PIN + permisos)', () => {
     const res = await app.inject({ method: 'POST', url: '/pagos/pag_001/validar', headers: auth(tokenAdmin), payload: { pin: '1234' } });
     expect(res.statusCode).toBe(409);
   });
+
+  // El CRÍTICO del cobro mixto (dos co-inquilinos): validar NO debe sobre-cobrar
+  // una liquidación que otro cobro ya cubrió. liq_005 quedó PAGADA por pag_001
+  // arriba; inyectamos un INFORMADO "colgado" y validarlo debe dar 409.
+  it('validar un INFORMADO sobre una liq ya cubierta → 409 (no sobre-cobra)', async () => {
+    const colgado = await prismaTest.pago.create({
+      data: {
+        inmobiliariaId: (await prismaTest.liquidacion.findUniqueOrThrow({ where: { id: 'liq_005' }, select: { inmobiliariaId: true } })).inmobiliariaId,
+        contratoId: 'cnt_005',
+        liquidacionId: 'liq_005',
+        periodo: '2026-06',
+        monto: 850000,
+        montoLiqTotal: 850000,
+        metodo: 'TRANSFERENCIA',
+        fechaTransferencia: new Date('2026-06-10'),
+        estado: 'INFORMADO',
+      },
+    });
+    const res = await app.inject({ method: 'POST', url: `/pagos/${colgado.id}/validar`, headers: auth(tokenAdmin), payload: { pin: '1234' } });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().message).toMatch(/ya fue cubierta|supera el saldo/i);
+    // El INFORMADO NO se concilió (sigue INFORMADO): no hubo over-cobro.
+    const sigue = await prismaTest.pago.findUniqueOrThrow({ where: { id: colgado.id } });
+    expect(sigue.estado).toBe('INFORMADO');
+    await prismaTest.pago.delete({ where: { id: colgado.id } });
+  });
 });
 
 describe('Inquilino informa pago', () => {
@@ -143,6 +182,31 @@ describe('Inquilino informa pago', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().estado).toBe('INFORMADO');
     expect(res.json().tipo).toBe('TOTAL');
+  });
+
+  // La fecha la elige el inquilino: sin cota, backdatearla esquiva la mora. Los
+  // dos guards (futura / anterior al inicio del contrato) corren ANTES del
+  // chequeo de "ya informaste", así que dan 400 aunque liq_001 ya tenga informe.
+  it('fecha de transferencia FUTURA → 400', async () => {
+    const demo = await app.inject({ method: 'POST', url: '/auth/demo' });
+    const tk = demo.json().token;
+    const res = await app.inject({
+      method: 'POST', url: '/pagos/informar', headers: auth(tk),
+      payload: { liquidacionId: 'liq_001', monto: 1000, metodo: 'TRANSFERENCIA', fechaTransferencia: '2031-01-01' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().message).toMatch(/futura/i);
+  });
+
+  it('fecha de transferencia ANTERIOR al inicio del contrato → 400', async () => {
+    const demo = await app.inject({ method: 'POST', url: '/auth/demo' });
+    const tk = demo.json().token;
+    const res = await app.inject({
+      method: 'POST', url: '/pagos/informar', headers: auth(tk),
+      payload: { liquidacionId: 'liq_001', monto: 1000, metodo: 'TRANSFERENCIA', fechaTransferencia: '2019-01-01' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().message).toMatch(/anterior al inicio/i);
   });
 });
 
@@ -191,6 +255,43 @@ describe('Rendición — el loop caja→rendición', () => {
     });
     expect(res.statusCode).toBe(409);
     expect(res.json().message).toContain('CBU');
+  });
+});
+
+// Corre DESPUÉS de la rendición de Silvana (own_002, 2026-06 ya rendido, con
+// AlquilerRendido real). Cubre: no anular un pago rendido, anular la rendición
+// (el fix del FK RESTRICT), y que tras anular la rendición el pago sí se anula.
+describe('Anular rendición y pago rendido', () => {
+  it('anular un pago cuya liquidación YA fue rendida → 409', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/pagos/pag_liq002/anular', headers: auth(tokenAdmin),
+      payload: { pin: '1234', observacion: 'intento anular un pago ya rendido' },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().message).toMatch(/ya fue rendido/i);
+  });
+
+  it('anular la rendición (con AlquilerRendido) → 200 y libera los gastos', async () => {
+    const rend = await prismaTest.rendicion.findFirstOrThrow({
+      where: { propietarioId: 'own_002', periodo: '2026-06' },
+    });
+    const res = await app.inject({
+      method: 'POST', url: `/rendiciones/${rend.id}/anular`, headers: auth(tokenAdmin),
+      payload: { pin: '1234' },
+    });
+    expect(res.statusCode).toBe(200); // antes 500 (FK RESTRICT sobre alquileres_rendidos)
+    const caja = await app.inject({ method: 'GET', url: '/caja/movimientos', headers: auth(tokenAdmin) });
+    expect(caja.json().find((m: { id: string }) => m.id === 'mov_002').descontadoEnRendicion).toBe(false);
+    // No quedaron AlquilerRendido huérfanos de esa rendición.
+    expect(await prismaTest.alquilerRendido.count({ where: { rendicionId: rend.id } })).toBe(0);
+  });
+
+  it('tras anular la rendición, el pago SÍ se puede anular → 200', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/pagos/pag_liq002/anular', headers: auth(tokenAdmin),
+      payload: { pin: '1234', observacion: 'ahora sí, la rendición fue anulada' },
+    });
+    expect(res.statusCode).toBe(200);
   });
 });
 

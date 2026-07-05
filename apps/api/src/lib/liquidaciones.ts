@@ -49,6 +49,26 @@ export function computarLiquidacionesContrato(
   let y = inicio.getUTCFullYear();
   let m = inicio.getUTCMonth();
 
+  // PRIMER DEVENGO: si el contrato arranca a mitad de mes (ej. 15/07) y el
+  // diaPago es temprano (ej. 5), la fechaVencimiento del primer período caería
+  // ANTES de fechaInicio (venc 05/07 < inicio 15/07) → nacería VENCIDA con mora
+  // por un atraso IMPOSIBLE (la cuota no podía pagarse antes de existir el
+  // contrato). Si eso pasa, saltamos ese mes: el PRIMER cobro va al mes
+  // siguiente (venc >= fechaInicio garantizado). Solo aplica al primer período;
+  // los meses siguientes ya vencen naturalmente después del inicio.
+  {
+    const diasMes = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+    const dia = Math.min(contrato.diaPago, diasMes);
+    const vencPrimero = new Date(Date.UTC(y, m, dia));
+    if (vencPrimero < inicio) {
+      m += 1;
+      if (m > 11) {
+        m = 0;
+        y += 1;
+      }
+    }
+  }
+
   const data: Prisma.LiquidacionCreateManyInput[] = [];
   let guard = 0;
   while (guard < 600) {
@@ -161,4 +181,104 @@ export async function devengarTodosLosTenants(
   // Tras devengar, marcamos vencidas las que ya pasaron su vencimiento.
   const liquidacionesVencidas = await marcarLiquidacionesVencidas(prisma);
   return { contratosProcesados: contratos.length, liquidacionesNuevas, liquidacionesVencidas };
+}
+
+/**
+ * Suma `meses` a una fecha en UTC, con clamp de fin de mes ("month-end aware"):
+ * 31/01 + 1 mes = 28/02 (no 03/03, como haría el rollover nativo de Date). Se
+ * usa para calcular `proximoAjuste` (fechaInicio/último ajuste + frecuencia) sin
+ * desbordes de días largos. Trabaja SOLO en UTC (evita el corrimiento por huso
+ * que daría usar los getters/setters locales del server).
+ */
+export function sumarMesesUTC(fecha: Date, meses: number): Date {
+  const y = fecha.getUTCFullYear();
+  const m = fecha.getUTCMonth();
+  const d = fecha.getUTCDate();
+  const totalMes = m + meses;
+  const targetY = y + Math.floor(totalMes / 12);
+  // ((totalMes % 12) + 12) % 12 => índice de mes 0-11 aunque `meses` fuera negativo.
+  const targetM = ((totalMes % 12) + 12) % 12;
+  // Días del mes destino: si el día original no existe (31 en un mes de 30),
+  // clampeamos al último día del mes destino.
+  const diasMesDestino = new Date(Date.UTC(targetY, targetM + 1, 0)).getUTCDate();
+  const targetD = Math.min(d, diasMesDestino);
+  return new Date(
+    Date.UTC(
+      targetY,
+      targetM,
+      targetD,
+      fecha.getUTCHours(),
+      fecha.getUTCMinutes(),
+      fecha.getUTCSeconds(),
+      fecha.getUTCMilliseconds(),
+    ),
+  );
+}
+
+/**
+ * Alquiler que corresponde según el tipo de contrato: en SOLO_EXPENSAS el
+ * alquiler es SIEMPRE 0 (solo se cobran expensas), en el resto es el `monto`
+ * base del contrato. Aísla la regla para que el ajuste manual (PATCH monto) y el
+ * devengo compartan el mismo criterio y no dupliquen el `if`.
+ */
+export function montoAlquilerSegunTipo(
+  tipoContrato: 'ALQUILER' | 'SOLO_EXPENSAS' | 'ALQUILER_Y_EXPENSAS',
+  monto: number,
+): number {
+  return tipoContrato === 'SOLO_EXPENSAS' ? 0 : monto;
+}
+
+/** Período 'YYYY-MM' (UTC) de una fecha. El corte de "liquidación futura" del
+ *  ajuste manual usa el período (mes calendario), no la fecha exacta. */
+export function periodoDe(fecha: Date): string {
+  return `${fecha.getUTCFullYear()}-${String(fecha.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+/** Liquidación tal como la necesita el recompute del ajuste manual. */
+export type LiquidacionParaReajustar = {
+  id: string;
+  periodo: string;
+  estado: 'PENDIENTE' | 'PAGADO' | 'PARCIAL' | 'VENCIDO';
+  montoExpensas: Prisma.Decimal | number | null;
+  /** Cantidad de pagos (de cualquier estado) asociados a la liquidación. */
+  cantidadPagos: number;
+};
+
+/**
+ * Filtra (PURO, sin DB) qué liquidaciones deben RE-DEVENGARSE al aplicar un
+ * ajuste manual de monto, y devuelve el nuevo montoAlquiler/montoTotal de cada
+ * una. Criterio (money code — conservador a propósito):
+ *
+ *  - período >= mes actual (`periodoActual`): NO tocamos meses pasados (histórico
+ *    cerrado; el inquilino ya vio/pagó ese valor).
+ *  - estado PENDIENTE o VENCIDO: NO tocamos PAGADO ni PARCIAL (ya hay plata en
+ *    juego contra el monto viejo).
+ *  - SIN ningún pago (cantidadPagos === 0): defensa extra — aunque una liq siga
+ *    PENDIENTE/VENCIDO, si tiene un pago INFORMADO en revisión no la reajustamos
+ *    (el inquilino informó contra el total que vio).
+ *
+ * El montoAlquiler nuevo respeta el tipo de contrato (SOLO_EXPENSAS => 0) y el
+ * total = alquiler + expensas de LA liquidación (no del contrato: una liq pudo
+ * tener expensas distintas). Devuelve solo las que cambian.
+ */
+export function recomputarLiquidacionesFuturas(
+  liquidaciones: LiquidacionParaReajustar[],
+  params: {
+    montoNuevo: number;
+    tipoContrato: 'ALQUILER' | 'SOLO_EXPENSAS' | 'ALQUILER_Y_EXPENSAS';
+    periodoActual: string;
+  },
+): Array<{ id: string; montoAlquiler: number; montoTotal: number }> {
+  const alquilerNuevo = montoAlquilerSegunTipo(params.tipoContrato, params.montoNuevo);
+  const out: Array<{ id: string; montoAlquiler: number; montoTotal: number }> = [];
+  for (const l of liquidaciones) {
+    // Comparación lexicográfica de 'YYYY-MM': correcta porque ambos tienen el
+    // mismo formato ancho-fijo (2026-07 >= 2026-07 incluye el mes en curso).
+    if (l.periodo < params.periodoActual) continue;
+    if (l.estado !== 'PENDIENTE' && l.estado !== 'VENCIDO') continue;
+    if (l.cantidadPagos > 0) continue;
+    const expensas = l.montoExpensas != null ? Number(l.montoExpensas) : 0;
+    out.push({ id: l.id, montoAlquiler: alquilerNuevo, montoTotal: alquilerNuevo + expensas });
+  }
+  return out;
 }

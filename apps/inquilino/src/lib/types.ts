@@ -96,6 +96,15 @@ export interface PagoDeLiquidacion {
   comprobanteUrl: string | null;
   comprobanteFileName: string | null;
   comprobanteMime: string | null;
+  /**
+   * Quién informó el pago, desde la perspectiva del inquilino que consulta
+   * (solo prod/API):
+   * - 'vos'  → lo informó la sesión actual.
+   * - 'otro' → lo informó otro co-inquilino del contrato (cualquiera puede pagar).
+   * - null   → cobro registrado por la inmobiliaria (pago manual, sin autor inquilino).
+   * En la demo offline el API no existe: queda undefined y no se muestra etiqueta.
+   */
+  autor?: 'vos' | 'otro' | null;
 }
 
 export interface Liquidacion {

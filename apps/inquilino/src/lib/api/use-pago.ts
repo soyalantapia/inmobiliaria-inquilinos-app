@@ -57,6 +57,9 @@ export function pagoApiALocal(p: PagoDeLiquidacion, liqId: string): PagoInformad
     comprobanteSize: 0,
     comprobanteMime: p.comprobanteMime ?? '',
     enviadoAt: p.informadoAt,
+    // Autoría real del pago (solo prod): quién de los co-inquilinos lo informó.
+    // undefined en la demo → la etiqueta no se muestra.
+    autor: p.autor,
   };
 }
 

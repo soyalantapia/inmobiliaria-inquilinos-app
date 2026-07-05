@@ -27,6 +27,10 @@ async function verificarPin(userId: string, pin: string | undefined, reply: Fast
   return true;
 }
 
+/** Redondeo a centavos: los Decimal viajan como Number y no queremos que un
+ *  artefacto de float rechace un cobro legítimo ni deje una liq PARCIAL por $0.005. */
+const r2c = (n: number) => Math.round(n * 100) / 100;
+
 export async function plataRoutes(app: FastifyInstance) {
   // ===== Liquidaciones =====
   app.get('/liquidaciones', async (request, reply) => {
@@ -193,8 +197,10 @@ export async function plataRoutes(app: FastifyInstance) {
       const liqTotal = Number(p.liquidacion?.montoTotal ?? 0);
       const liqAlq = Number(p.liquidacion?.montoAlquiler ?? 0);
       // Porción de alquiler dentro del pago (proporcional: cubre parciales y
-      // excluye las expensas, sobre las que NO se cobra comisión).
-      const alquilerPortion = liqTotal > 0 ? monto * (liqAlq / liqTotal) : 0;
+      // excluye las expensas, sobre las que NO se cobra comisión). CAP del monto a
+      // la base (montoTotal sin mora): un pago que incluye mora no infla la porción
+      // de alquiler ni la comisión (misma regla que la rendición).
+      const alquilerPortion = liqTotal > 0 ? Math.min(monto, liqTotal) * (liqAlq / liqTotal) : 0;
       // Tasa de comisión ponderada por la participación de cada dueño de la propiedad.
       const parts = p.contrato?.propiedad?.participaciones ?? [];
       const tasa = parts.reduce(
@@ -339,87 +345,104 @@ export async function plataRoutes(app: FastifyInstance) {
     }
 
     // Atómico:
-    //  1) La transición INFORMADO→CONCILIADO se hace con updateMany condicionado
+    //  1) LOCK de la liquidación (FOR UPDATE) + re-tope del saldo. Validar es el
+    //     TERCER camino que crea un cobro CONCILIADO y hasta ahora era el ÚNICO
+    //     que no re-verificaba el saldo (informar tiene el índice único; manual y
+    //     el extracto bancario toman lock+tope). Sin esto, un informe que quedó
+    //     colgado + un cobro por otra vía (efectivo/banco) sobre la misma cuota la
+    //     SOBRE-COBRABAN: el 2º cobro nace CONCILIADO directo y el índice único de
+    //     INFORMADO no lo frena → la liq quedaba con más plata que su total, se
+    //     sobre-rendía al dueño y se inflaba la comisión. Espejo de /pagos/manual.
+    //  2) La transición INFORMADO→CONCILIADO se hace con updateMany condicionado
     //     (WHERE estado='INFORMADO'). Si otra request (validar/rechazar) ya lo
     //     decidió, count=0 → 409. Cierra la carrera de doble-decisión.
-    //  2) La liquidación pasa a PAGADO SÓLO si la suma de pagos conciliados llega
-    //     al total; si es un pago parcial, queda PARCIAL. Antes un pago parcial la
-    //     marcaba PAGADO → el inquilino no podía pagar el resto y al propietario
-    //     se le acreditaba el monto completo (no el realmente cobrado).
-    const pagoOk = await prisma.$transaction(async (tx) => {
-      const upd = await tx.pago.updateMany({
-        where: { id, estado: 'INFORMADO' },
-        data: { estado: 'CONCILIADO', decididoPorId: u.userId, decididoAt: new Date() },
-      });
-      if (upd.count === 0) return null;
-      const agg = await tx.pago.aggregate({
-        where: { liquidacionId: pago.liquidacionId, estado: 'CONCILIADO' },
-        _sum: { monto: true },
-      });
-      const cobrado = Number(agg._sum.monto ?? 0);
-      // Total AUTORITATIVO de la liquidación (montoLiqTotal del pago es nullable;
-      // Number(null)=0 marcaría PAGADO siempre). H-2: incluimos inmobiliariaId en
-      // ambas ops para que un ID de liquidación ajeno no pueda operar cross-tenant.
-      const liq = await tx.liquidacion.findFirst({
-        where: { id: pago.liquidacionId, inmobiliariaId: u.inmobiliariaId },
-        select: {
-          montoTotal: true,
-          fechaVencimiento: true,
-          montoPunitorioManual: true,
-          contrato: {
-            select: {
-              tasaPunitorioDiaria: true,
-              moraTipo: true,
-              moraValor: true,
-              inmobiliaria: { select: { moraTipoDefault: true, moraValorDefault: true } },
+    //  3) La liquidación pasa a PAGADO SÓLO si la suma de conciliados llega al
+    //     total; si es parcial, queda PARCIAL.
+    let pagoOk;
+    try {
+      pagoOk = await prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM liquidaciones WHERE id = ${pago.liquidacionId} FOR UPDATE`;
+        // Total AUTORITATIVO = base + mora a la FECHA DEL PAGO (no la de hoy): el
+        // inquilino que pagó lo que se le mostró no queda PARCIAL por mora que
+        // creció mientras la inmo demoraba en validar. El esquema sale de la
+        // cascada (contrato → default inmobiliaria); manual pisa. H-2:
+        // inmobiliariaId en todas las ops (un ID ajeno no opera cross-tenant).
+        const liq = await tx.liquidacion.findFirst({
+          where: { id: pago.liquidacionId, inmobiliariaId: u.inmobiliariaId },
+          select: {
+            montoTotal: true,
+            fechaVencimiento: true,
+            montoPunitorioManual: true,
+            contrato: {
+              select: {
+                tasaPunitorioDiaria: true,
+                moraTipo: true,
+                moraValor: true,
+                inmobiliaria: { select: { moraTipoDefault: true, moraValorDefault: true } },
+              },
             },
           },
-        },
-      });
-      const base = Number(liq?.montoTotal ?? pago.montoLiqTotal ?? 0);
-      // El umbral PAGADO incluye la mora a la FECHA DEL PAGO (no la de hoy): así
-      // el inquilino que pagó lo que se le mostró no queda PARCIAL por unos pesos de
-      // mora que crecieron mientras la inmobiliaria demoraba en validar. Al marcar
-      // PAGADO se congela fechaPago → la lectura deja de acumular mora. El esquema
-      // sale de la cascada (contrato → default inmobiliaria); manual pisa.
-      // Carrera ACEPTADA (Read Committed, igual que el resto del ciclo de plata):
-      // si un PUT /contratos/:id/mora commitea entre esta lectura y el update, el
-      // pago se decide con el esquema vigente AL INICIAR la validación — ventana de
-      // ms; un cierre discutido se revierte con Anular (M2). Serializable+retry es
-      // hardening futuro (mismo criterio que rendiciones/M3).
-      const punitorio = liq
-        ? calcularMora(
-            base,
-            resolverEsquemaMora(liq.contrato, liq.contrato?.inmobiliaria),
-            liq.fechaVencimiento,
-            pago.fechaTransferencia,
-            liq.montoPunitorioManual != null ? Number(liq.montoPunitorioManual) : null,
-          )
-        : 0;
-      const total = base + punitorio;
-      await tx.liquidacion.updateMany({
-        where: { id: pago.liquidacionId, inmobiliariaId: u.inmobiliariaId },
-        data:
-          total > 0 && cobrado >= total
+        });
+        const base = Number(liq?.montoTotal ?? pago.montoLiqTotal ?? 0);
+        const punitorio = liq
+          ? calcularMora(
+              base,
+              resolverEsquemaMora(liq.contrato, liq.contrato?.inmobiliaria),
+              liq.fechaVencimiento,
+              pago.fechaTransferencia,
+              liq.montoPunitorioManual != null ? Number(liq.montoPunitorioManual) : null,
+            )
+          : 0;
+        const total = r2c(base + punitorio);
+        // Conciliados ANTES de este pago (P sigue INFORMADO): si ya cubren el
+        // total, o si sumar este pago excede el saldo, otro cobro se adelantó →
+        // NO conciliamos (sería over-cobro). El operador rechaza o reasigna el
+        // comprobante con un 409 claro.
+        const aggPrev = await tx.pago.aggregate({
+          where: { liquidacionId: pago.liquidacionId, estado: 'CONCILIADO' },
+          _sum: { monto: true },
+        });
+        const conciliadosPrev = Number(aggPrev._sum.monto ?? 0);
+        const saldo = r2c(total - conciliadosPrev);
+        if (saldo <= 0.01) throw new ValidarLiquidacionYaCubierta();
+        if (Number(pago.monto) > saldo + 0.01) throw new ValidarExcedeSaldo();
+
+        const upd = await tx.pago.updateMany({
+          where: { id, estado: 'INFORMADO' },
+          data: { estado: 'CONCILIADO', decididoPorId: u.userId, decididoAt: new Date() },
+        });
+        if (upd.count === 0) return null;
+        const cobrado = r2c(conciliadosPrev + Number(pago.monto));
+        const cierra = total > 0 && cobrado >= total - 0.01;
+        await tx.liquidacion.updateMany({
+          where: { id: pago.liquidacionId, inmobiliariaId: u.inmobiliariaId },
+          data: cierra
             ? {
                 estado: 'PAGADO',
                 fechaPago: pago.fechaTransferencia,
-                // Método REAL del pago (no hardcodear): MetodoPagoInformado incluye
-                // CHEQUE, que no existe en MetodoPago → lo mapeamos a TRANSFERENCIA.
+                // Método REAL del pago: MetodoPagoInformado incluye CHEQUE, que no
+                // existe en MetodoPago → lo mapeamos a TRANSFERENCIA.
                 metodoPago:
                   pago.metodo === 'MERCADOPAGO' ? 'MERCADOPAGO' : pago.metodo === 'EFECTIVO' ? 'EFECTIVO' : 'TRANSFERENCIA',
               }
             : { estado: 'PARCIAL' },
+        });
+        // El pago que CIERRA el ciclo (con parciales previos) queda etiquetado
+        // TOTAL → el toast del panel no muestra un saldo restante falso.
+        if (cierra) {
+          await tx.pago.updateMany({ where: { id, tipo: 'PARCIAL' }, data: { tipo: 'TOTAL' } });
+        }
+        return tx.pago.findUnique({ where: { id } });
       });
-      // El pago que CIERRA el ciclo (con parciales previos) queda etiquetado TOTAL,
-      // no PARCIAL → el toast del panel no muestra un saldo restante falso.
-      if (total > 0 && cobrado >= total) {
-        await tx.pago.updateMany({ where: { id, tipo: 'PARCIAL' }, data: { tipo: 'TOTAL' } });
+    } catch (e) {
+      if (e instanceof ValidarLiquidacionYaCubierta) {
+        return reply.code(409).send({ message: 'Esta liquidación ya fue cubierta por otro cobro. Rechazá o reasigná este comprobante.' });
       }
-      // Devolvemos el pago DENTRO de la tx: si el findUnique fallara afuera, el
-      // estado ya estaría cambiado y el cliente vería un error engañoso.
-      return tx.pago.findUnique({ where: { id } });
-    });
+      if (e instanceof ValidarExcedeSaldo) {
+        return reply.code(409).send({ message: 'El monto supera el saldo pendiente — parte ya fue cubierta por otro cobro. Rechazá o reasigná este comprobante.' });
+      }
+      throw e;
+    }
     if (!pagoOk) return reply.code(409).send({ message: 'El pago ya fue decidido' });
     await registrarEvento({
       inmobiliariaId: u.inmobiliariaId,
@@ -487,6 +510,19 @@ export async function plataRoutes(app: FastifyInstance) {
     const pago = await prisma.pago.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
     if (!pago) return reply.code(404).send({ message: 'Pago inexistente' });
     if (pago.estado !== 'CONCILIADO') return reply.code(409).send({ message: 'Solo se puede anular un pago ya conciliado' });
+    // Si la liquidación de este pago YA fue rendida al propietario, anular el
+    // pago acá desincronizaría lo cobrado de lo rendido (al dueño se le rindió
+    // plata que ahora se revierte, sin corrección). Forzamos a anular primero la
+    // rendición del período (ahora es posible) para no dejar un descuadre mudo.
+    const yaRendido = await prisma.alquilerRendido.findFirst({
+      where: { liquidacionId: pago.liquidacionId, inmobiliariaId: u.inmobiliariaId },
+      select: { id: true },
+    });
+    if (yaRendido) {
+      return reply.code(409).send({
+        message: 'Este pago ya fue rendido al propietario. Anulá primero la rendición del período y volvé a intentar.',
+      });
+    }
 
     const observacion = `Anulado tras conciliar: ${body.data.observacion}`;
     const pagoOk = await prisma.$transaction(async (tx) => {
@@ -593,6 +629,11 @@ export async function plataRoutes(app: FastifyInstance) {
       .safeParse(request.body ?? {});
     if (!body.success) return reply.code(400).send({ message: 'Datos del cobro incompletos' });
     if (!(await verificarPin(u.userId, body.data.pin, reply))) return;
+    // La fecha del cobro fija la mora (umbral PAGADO) y la fechaPago: una fecha
+    // futura falsearía ambos. El operador la controla, pero igual la acotamos.
+    if (body.data.fecha.getTime() > Date.now() + 24 * 3600 * 1000) {
+      return reply.code(400).send({ message: 'La fecha del cobro no puede ser futura.' });
+    }
 
     const liq = await prisma.liquidacion.findFirst({
       where: { id: body.data.liquidacionId, inmobiliariaId: u.inmobiliariaId },
@@ -627,7 +668,6 @@ export async function plataRoutes(app: FastifyInstance) {
       body.data.fecha,
       liq.montoPunitorioManual != null ? Number(liq.montoPunitorioManual) : null,
     );
-    const r2c = (n: number) => Math.round(n * 100) / 100;
     // Pre-check FUERA de la tx sólo para el error amigable rápido; el check
     // AUTORITATIVO se repite adentro, con la liquidación lockeada.
     const saldoPre = r2c(Number(liq.montoTotal) + punitorio - Number(aggConc._sum.monto ?? 0));
@@ -746,12 +786,28 @@ export async function plataRoutes(app: FastifyInstance) {
     if (body.data.comprobanteUrl && !urlEsDelTenant(body.data.comprobanteUrl, inq.inmobiliariaId)) {
       return reply.code(400).send({ message: 'Comprobante inválido' });
     }
+    // El front sube el comprobante a /uploads ANTES de este POST. Si el informe
+    // falla (ya informado, saldo cubierto, carrera), el archivo queda huérfano en
+    // el Volume. Lo liberamos best-effort en cada return de error posterior.
+    const limpiarComprobante = async () => {
+      if (body.data.comprobanteUrl) {
+        await borrarArchivoSubido(body.data.comprobanteUrl, inq.inmobiliariaId).catch(() => {});
+      }
+    };
+    // La fecha de transferencia la elige el inquilino. Sin cota, backdatearla
+    // esquiva la mora (la validación calcula el umbral con esa fecha) y falsea el
+    // certificado de buen pagador. No puede ser futura ni anterior al contrato.
+    if (body.data.fechaTransferencia.getTime() > Date.now() + 24 * 3600 * 1000) {
+      await limpiarComprobante();
+      return reply.code(400).send({ message: 'La fecha de transferencia no puede ser futura.' });
+    }
 
     const liq = await prisma.liquidacion.findFirst({
       where: { id: body.data.liquidacionId, contratoId: inq.contratoId },
       include: {
         contrato: {
           select: {
+            fechaInicio: true,
             tasaPunitorioDiaria: true,
             moraTipo: true,
             moraValor: true,
@@ -760,12 +816,24 @@ export async function plataRoutes(app: FastifyInstance) {
         },
       },
     });
-    if (!liq) return reply.code(404).send({ message: 'Liquidación inexistente' });
-    if (liq.estado === 'PAGADO') return reply.code(409).send({ message: 'Esta liquidación ya está paga' });
+    if (!liq) {
+      await limpiarComprobante();
+      return reply.code(404).send({ message: 'Liquidación inexistente' });
+    }
+    if (body.data.fechaTransferencia < liq.contrato.fechaInicio) {
+      await limpiarComprobante();
+      return reply.code(400).send({ message: 'La fecha de transferencia no puede ser anterior al inicio del contrato.' });
+    }
+    if (liq.estado === 'PAGADO') {
+      await limpiarComprobante();
+      return reply.code(409).send({ message: 'Esta liquidación ya está paga' });
+    }
     // El monto informado no puede superar el saldo pendiente (total exigible −
     // conciliados). El total exigible = base + mora al día según el ESQUEMA
-    // EFECTIVO (para que el inquilino pueda pagar los punitorios). Antes se
-    // podía informar más que lo que faltaba.
+    // EFECTIVO (para que el inquilino pueda pagar los punitorios). Redondeo a
+    // centavos + tolerancia ±0.01 (igual que manual/banco): sin esto, pagar
+    // EXACTO el saldo que muestra la app a veces daba "supera el saldo" o nacía
+    // PARCIAL por milésimas de float y la cuota nunca cerraba desde el inquilino.
     const aggConc = await prisma.pago.aggregate({
       where: { liquidacionId: liq.id, estado: 'CONCILIADO' },
       _sum: { monto: true },
@@ -777,14 +845,16 @@ export async function plataRoutes(app: FastifyInstance) {
       new Date(),
       liq.montoPunitorioManual != null ? Number(liq.montoPunitorioManual) : null,
     );
-    const saldoPendiente = Number(liq.montoTotal) + punitorio - Number(aggConc._sum.monto ?? 0);
+    const saldoPendiente = r2c(Number(liq.montoTotal) + punitorio - Number(aggConc._sum.monto ?? 0));
     // Carrera: liq.estado pudo leerse stale como PARCIAL mientras un /validar
     // concurrente ya concilió el total → saldo 0. No dejamos informar sobre una
     // liquidación efectivamente paga (el check de estado=PAGADO de arriba no la agarra).
-    if (saldoPendiente <= 0) {
+    if (saldoPendiente <= 0.01) {
+      await limpiarComprobante();
       return reply.code(409).send({ message: 'Esta liquidación ya está paga' });
     }
-    if (body.data.monto > saldoPendiente) {
+    if (body.data.monto > saldoPendiente + 0.01) {
+      await limpiarComprobante();
       return reply.code(400).send({ message: 'El monto supera el saldo pendiente de esta liquidación' });
     }
 
@@ -795,6 +865,7 @@ export async function plataRoutes(app: FastifyInstance) {
       where: { liquidacionId: liq.id, estado: 'INFORMADO' },
     });
     if (yaInformado) {
+      await limpiarComprobante();
       return reply
         .code(409)
         .send({ message: 'Ya informaste un pago de este mes; esperá que la inmobiliaria lo valide.' });
@@ -807,10 +878,14 @@ export async function plataRoutes(app: FastifyInstance) {
           contratoId: inq.contratoId,
           liquidacionId: liq.id,
           periodo: liq.periodo,
+          // Autor del pago (co-inquilinos): quién lo informó, para atribución en
+          // notificaciones y en la lista "Pagos informados".
+          informadoPorInquilinoId: inq.esCoInquilino ? null : inq.inquilinoId,
+          informadoPorCoInquilinoId: inq.coInquilinoId,
           // TOTAL si el monto CIERRA el saldo pendiente (no si iguala el total
           // original): un pago que salda el remanente tras un parcial previo debe
-          // nacer TOTAL, no PARCIAL. saldoPendiente = montoTotal − conciliados.
-          tipo: body.data.monto >= saldoPendiente ? 'TOTAL' : 'PARCIAL',
+          // nacer TOTAL, no PARCIAL. Tolerancia ±0.01.
+          tipo: body.data.monto >= saldoPendiente - 0.01 ? 'TOTAL' : 'PARCIAL',
           monto: body.data.monto,
           montoLiqTotal: liq.montoTotal,
           metodo: body.data.metodo,
@@ -828,6 +903,7 @@ export async function plataRoutes(app: FastifyInstance) {
       // arriba a la vez): el índice parcial único (un solo INFORMADO por
       // liquidación) la corta con P2002 → mismo 409 amigable que el caso secuencial.
       if (e && typeof e === 'object' && (e as { code?: string }).code === 'P2002') {
+        await limpiarComprobante();
         return reply
           .code(409)
           .send({ message: 'Ya informaste un pago de este mes; esperá que la inmobiliaria lo valide.' });
@@ -871,6 +947,8 @@ export async function plataRoutes(app: FastifyInstance) {
         comprobanteUrl: true,
         comprobanteFileName: true,
         comprobanteMime: true,
+        informadoPorInquilinoId: true,
+        informadoPorCoInquilinoId: true,
       },
     });
     const pagosPorLiq = new Map<string, Array<Record<string, unknown>>>();
@@ -881,11 +959,21 @@ export async function plataRoutes(app: FastifyInstance) {
       // inquilino: la reemplazamos por un texto neutro y marcamos anulado para
       // que la PWA pueda distinguirlo de un rechazo de comprobante.
       const anulado = p.estado === 'RECHAZADO' && (p.observacion ?? '').startsWith('Anulado tras conciliar:');
+      // Autor del informe (co-inquilinos): "vos" si lo informó quien consulta,
+      // "otro" si fue otro miembro del contrato, null si es un cobro registrado
+      // por la inmo (efectivo/banco, sin autor inquilino).
+      const autor = p.informadoPorInquilinoId == null && p.informadoPorCoInquilinoId == null
+        ? null
+        : (p.informadoPorInquilinoId != null && p.informadoPorInquilinoId === inq.inquilinoId) ||
+            (p.informadoPorCoInquilinoId != null && p.informadoPorCoInquilinoId === inq.coInquilinoId)
+          ? 'vos'
+          : 'otro';
       arr.push({
         id: p.id,
         tipo: p.tipo,
         estado: p.estado,
         anulado,
+        autor,
         monto: Number(p.monto),
         metodo: p.metodo,
         nroOperacion: p.nroOperacion,
@@ -1094,111 +1182,113 @@ export async function plataRoutes(app: FastifyInstance) {
         message: `Este propietario tiene cobros en varias monedas (${monedas.join(', ')}) en ${periodo}. Rendí cada moneda por separado (hoy la rendición es de una sola moneda).`,
       });
     }
-    // Cobrado (suma de pagos CONCILIADO) por liq + lo YA rendido a ESTE dueño por liq.
-    const cobradoMap = await montoPagadoPorLiquidacion(liqsCobradas.map((l) => l.id));
-    const prevRend = await prisma.alquilerRendido.groupBy({
-      by: ['liquidacionId'],
-      where: { liquidacionId: { in: liqsCobradas.map((l) => l.id) }, rendicion: { propietarioId } },
-      _sum: { monto: true },
-    });
-    const yaRendMap = new Map(prevRend.map((r) => [r.liquidacionId, Number(r._sum.monto ?? 0)]));
-
-    let montoBruto = 0;
-    const alquilerData: {
-      inmobiliariaId: string;
-      liquidacionId: string;
-      periodo: string;
-      monto: number;
-      participacion: number;
-      propiedadId: string;
-      direccion: string;
-    }[] = [];
-    for (const liq of liqsCobradas) {
-      const part = owner.participaciones.find((p) => p.propiedadId === liq.contrato.propiedadId);
-      const porcentaje = part?.porcentaje ?? 100;
-      const total = Number(liq.montoTotal);
-      // Porción de ALQUILER dentro de lo cobrado (excluye expensas/punitorios,
-      // proporcional para cubrir parciales). Comisión y neto van sobre el alquiler.
-      const alquilerCobrado = total > 0 ? (cobradoMap.get(liq.id) ?? 0) * (Number(liq.montoAlquiler) / total) : 0;
-      const parteOwner = alquilerCobrado * (porcentaje / 100);
-      const yaRend = yaRendMap.get(liq.id) ?? 0;
-      const rendible = Math.round((parteOwner - yaRend) * 100) / 100;
-      if (rendible <= 0) continue; // ya se rindió todo lo cobrado de esta liq a este dueño
-      montoBruto += rendible;
-      alquilerData.push({
-        inmobiliariaId: u.inmobiliariaId,
-        liquidacionId: liq.id,
-        periodo,
-        monto: rendible,
-        participacion: porcentaje,
-        propiedadId: liq.contrato.propiedadId,
-        direccion: liq.contrato.propiedad?.direccion ?? '—',
-      });
-    }
-    montoBruto = Math.round(montoBruto * 100) / 100;
-    if (montoBruto <= 0) {
-      return reply.code(409).send({ message: `No hay cobros nuevos del período ${periodo} para rendir a este propietario` });
-    }
-
-    // Gastos pendientes — SOLO del período que se rinde y SOLO de las propiedades
-    // que aportaron ingreso a esta rendición (las que tienen liquidación PAGADA del
-    // período). Antes descontaba gastos de CUALQUIER propiedad del dueño (p.ej. una
-    // solo-expensas, que no aporta alquiler) del neto de sus propiedades de alquiler.
-    // (Decisión del dueño 2026-06-21: cada propiedad se rinde por su cuenta.)
-    const propIdsConIngreso = [...new Set(liqsCobradas.map((l) => l.contrato.propiedadId))];
-    const inicioPeriodo = new Date(`${periodo}-01T00:00:00.000Z`);
-    const finPeriodo = new Date(inicioPeriodo);
-    finPeriodo.setUTCMonth(finPeriodo.getUTCMonth() + 1);
-    const gastosPend = await prisma.movimientoCaja.findMany({
-      where: {
-        inmobiliariaId: u.inmobiliariaId,
-        propiedadId: { in: propIdsConIngreso },
-        tipo: 'GASTO',
-        descontadoEnRendicion: false,
-        fecha: { gte: inicioPeriodo, lt: finPeriodo },
-      },
-      include: { propiedad: { select: { direccion: true } } },
-    });
-
-    const comisionMonto = montoBruto * (owner.comisionPct / 100);
-    let totalGastos = 0;
-    const gastosData = gastosPend.map((g) => {
-      const part = owner.participaciones.find((p) => p.propiedadId === g.propiedadId);
-      const porcentaje = part?.porcentaje ?? 100;
-      const parteOwner = Number(g.monto) * (porcentaje / 100);
-      totalGastos += parteOwner;
-      return {
-        inmobiliariaId: u.inmobiliariaId,
-        refId: g.id,
-        tipo: 'CAJA' as const,
-        fecha: g.fecha,
-        descripcion: g.descripcion,
-        proveedor: g.proveedor,
-        monto: parteOwner,
-        montoTotal: g.monto,
-        participacion: porcentaje,
-        propiedadId: g.propiedadId,
-        direccion: g.propiedad.direccion,
-      };
-    });
-    const montoNeto = montoBruto - comisionMonto - totalGastos;
-    // Si los gastos adelantados + comisión superan lo cobrado, el neto daría
-    // negativo (el propietario "debería" plata). No emitimos una rendición
-    // negativa: el operador tiene que resolverlo a mano (cobrar primero o ajustar).
-    if (montoNeto < 0) {
-      return reply.code(409).send({
-        message: 'Los gastos adelantados y la comisión superan lo cobrado este período. Revisá los gastos antes de rendir.',
-      });
-    }
-
-    // Transacción: crear rendición + snapshots + marcar gastos DESCONTADOS.
-    // El updateMany de gastos es un LOCK condicionado (WHERE descontadoEnRendicion
-    // =false): si otra rendición concurrente ya tomó alguno, el count no cuadra y
-    // abortamos toda la transacción (antes dos rendiciones simultáneas podían
-    // descontar el mismo gasto dos veces).
+    // TODO EL CÁLCULO + ESCRITURA va DENTRO de UNA tx con advisory lock por
+    // dueño+período. Antes las lecturas (lo ya rendido, cobrado, gastos) corrían
+    // FUERA de la tx: dos rendiciones concurrentes del MISMO dueño+período leían
+    // ambas "ya rendido"=0, construían el mismo AlquilerRendido y creaban dos
+    // rendiciones → el dueño quedaba rendido DOS veces. Con el lock, la 2ª espera
+    // el commit de la 1ª y RE-LEE lo ya rendido adentro, viendo lo recién rendido.
     let rendicion;
     try {
       rendicion = await prisma.$transaction(async (tx) => {
+        // hashtext(int4)×2 → overload pg_advisory_xact_lock(int4,int4). Se libera
+        // al terminar la tx. Serializa SOLO este dueño+período (no bloquea otros).
+        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${u.inmobiliariaId}), hashtext(${`${propietarioId}|${periodo}`}))`;
+
+        // Cobrado (CONCILIADO) + lo YA rendido a ESTE dueño por liq — leído DENTRO
+        // del lock para ver lo que otra rendición del período ya committeó.
+        const liqIds = liqsCobradas.map((l) => l.id);
+        const cobradoRows = await tx.pago.groupBy({
+          by: ['liquidacionId'],
+          where: { liquidacionId: { in: liqIds }, estado: 'CONCILIADO' },
+          _sum: { monto: true },
+        });
+        const cobradoMap = new Map(cobradoRows.map((row) => [row.liquidacionId, Number(row._sum.monto ?? 0)]));
+        const prevRend = await tx.alquilerRendido.groupBy({
+          by: ['liquidacionId'],
+          where: { liquidacionId: { in: liqIds }, rendicion: { propietarioId } },
+          _sum: { monto: true },
+        });
+        const yaRendMap = new Map(prevRend.map((row) => [row.liquidacionId, Number(row._sum.monto ?? 0)]));
+
+        let montoBruto = 0;
+        const alquilerData: {
+          inmobiliariaId: string;
+          liquidacionId: string;
+          periodo: string;
+          monto: number;
+          participacion: number;
+          propiedadId: string;
+          direccion: string;
+        }[] = [];
+        for (const liq of liqsCobradas) {
+          const part = owner.participaciones.find((p) => p.propiedadId === liq.contrato.propiedadId);
+          const porcentaje = part?.porcentaje ?? 100;
+          const total = Number(liq.montoTotal);
+          // Porción de ALQUILER de lo cobrado, capeada a la base (montoTotal sin
+          // mora): un pago con mora hace cobrado > total y sin cap la porción de
+          // alquiler superaba montoAlquiler×participación → se rendía de más y se
+          // comisionaba sobre la mora (viola "comisión solo sobre alquiler").
+          const cobradoCapeado = Math.min(cobradoMap.get(liq.id) ?? 0, total);
+          const alquilerCobrado = total > 0 ? cobradoCapeado * (Number(liq.montoAlquiler) / total) : 0;
+          const parteOwner = alquilerCobrado * (porcentaje / 100);
+          const yaRend = yaRendMap.get(liq.id) ?? 0;
+          const rendible = r2c(parteOwner - yaRend);
+          if (rendible <= 0) continue; // ya se rindió todo lo cobrado de esta liq a este dueño
+          montoBruto += rendible;
+          alquilerData.push({
+            inmobiliariaId: u.inmobiliariaId,
+            liquidacionId: liq.id,
+            periodo,
+            monto: rendible,
+            participacion: porcentaje,
+            propiedadId: liq.contrato.propiedadId,
+            direccion: liq.contrato.propiedad?.direccion ?? '—',
+          });
+        }
+        montoBruto = r2c(montoBruto);
+        if (montoBruto <= 0) throw new RendicionSinCobros();
+
+        // Gastos pendientes del período (dentro del lock, misma foto que el bruto).
+        const propIdsConIngreso = [...new Set(liqsCobradas.map((l) => l.contrato.propiedadId))];
+        const inicioPeriodo = new Date(`${periodo}-01T00:00:00.000Z`);
+        const finPeriodo = new Date(inicioPeriodo);
+        finPeriodo.setUTCMonth(finPeriodo.getUTCMonth() + 1);
+        const gastosPend = await tx.movimientoCaja.findMany({
+          where: {
+            inmobiliariaId: u.inmobiliariaId,
+            propiedadId: { in: propIdsConIngreso },
+            tipo: 'GASTO',
+            descontadoEnRendicion: false,
+            fecha: { gte: inicioPeriodo, lt: finPeriodo },
+          },
+          include: { propiedad: { select: { direccion: true } } },
+        });
+        const comisionMonto = r2c(montoBruto * (owner.comisionPct / 100));
+        let totalGastos = 0;
+        const gastosData = gastosPend.map((g) => {
+          const part = owner.participaciones.find((p) => p.propiedadId === g.propiedadId);
+          const porcentaje = part?.porcentaje ?? 100;
+          const parteOwner = Number(g.monto) * (porcentaje / 100);
+          totalGastos += parteOwner;
+          return {
+            inmobiliariaId: u.inmobiliariaId,
+            refId: g.id,
+            tipo: 'CAJA' as const,
+            fecha: g.fecha,
+            descripcion: g.descripcion,
+            proveedor: g.proveedor,
+            monto: parteOwner,
+            montoTotal: g.monto,
+            participacion: porcentaje,
+            propiedadId: g.propiedadId,
+            direccion: g.propiedad.direccion,
+          };
+        });
+        totalGastos = r2c(totalGastos);
+        const montoNeto = r2c(montoBruto - comisionMonto - totalGastos);
+        if (montoNeto < 0) throw new RendicionNetoNegativo();
+
         const r = await tx.rendicion.create({
           data: {
             inmobiliariaId: u.inmobiliariaId,
@@ -1213,20 +1303,12 @@ export async function plataRoutes(app: FastifyInstance) {
             notas: body.data.notas,
           },
         });
-        // Registramos cuánto ALQUILER se rindió de cada liquidación en ESTA tanda.
-        // La próxima rendición del período resta estas filas → no doble-rinde.
         if (alquilerData.length > 0) {
-          await tx.alquilerRendido.createMany({
-            data: alquilerData.map((a) => ({ ...a, rendicionId: r.id })),
-          });
+          await tx.alquilerRendido.createMany({ data: alquilerData.map((a) => ({ ...a, rendicionId: r.id })) });
         }
         if (gastosData.length > 0) {
-          // Cobranza compartida (propiedad con varios dueños): cada gasto se rinde
-          // por PARTES (cada dueño descuenta su participación). Sumamos lo ya
-          // rendido por OTROS dueños y marcamos el gasto como descontado-total SOLO
-          // cuando las partes cubren el monto completo. Antes se marcaba entero tras
-          // la primera parte → en propiedades multi-dueño el resto de los dueños
-          // nunca recibía su descuento y la inmobiliaria absorbía la diferencia.
+          // Cobranza compartida (propiedad multi-dueño): cada gasto se rinde por
+          // PARTES; se marca descontado-total SOLO cuando las partes cubren el monto.
           const ids = gastosPend.map((g) => g.id);
           const previas = await tx.gastoRendido.groupBy({
             by: ['refId'],
@@ -1235,24 +1317,35 @@ export async function plataRoutes(app: FastifyInstance) {
           });
           const yaRendido = new Map(previas.map((p) => [p.refId, Number(p._sum.monto ?? 0)]));
           await tx.gastoRendido.createMany({ data: gastosData.map((g) => ({ ...g, rendicionId: r.id })) });
-          // El gasto queda descontado-total cuando (lo ya rendido + esta parte)
-          // cubre el monto completo; si no, sigue PENDIENTE para los demás dueños.
           const idsCompletos = gastosData
             .filter((g) => (yaRendido.get(g.refId) ?? 0) + Number(g.monto) >= Number(g.montoTotal) - 0.01)
             .map((g) => g.refId);
           if (idsCompletos.length > 0) {
-            await tx.movimientoCaja.updateMany({
+            const upd = await tx.movimientoCaja.updateMany({
               where: { id: { in: idsCompletos }, descontadoEnRendicion: false },
               data: { descontadoEnRendicion: true, rendicionId: r.id },
             });
+            // ABORT REAL: el comentario viejo prometía este chequeo pero el código no
+            // lo hacía. Si otra rendición tomó un gasto entre el findMany y este
+            // update (multi-dueño, distinta clave de advisory lock), el count no
+            // cuadra → revertimos la tx para no descontar el gasto dos veces.
+            if (upd.count !== idsCompletos.length) throw new GastoYaDescontado();
           }
         }
         return r;
       });
     } catch (e) {
-      // Ya no hay unique (propietarioId, periodo): la rendición es incremental y el
-      // anti-doble se hace por lo ya rendido de cada liquidación (AlquilerRendido) +
-      // el updateMany condicionado de gastos. Si algo choca, propagamos el error.
+      if (e instanceof RendicionSinCobros) {
+        return reply.code(409).send({ message: `No hay cobros nuevos del período ${periodo} para rendir a este propietario` });
+      }
+      if (e instanceof RendicionNetoNegativo) {
+        return reply.code(409).send({
+          message: 'Los gastos adelantados y la comisión superan lo cobrado este período. Revisá los gastos antes de rendir.',
+        });
+      }
+      if (e instanceof GastoYaDescontado) {
+        return reply.code(409).send({ message: 'Un gasto fue tomado por otra rendición al mismo tiempo. Reintentá.' });
+      }
       throw e;
     }
 
@@ -1284,6 +1377,10 @@ export async function plataRoutes(app: FastifyInstance) {
         // cross-tenant aunque la verificación previa ya lo garantice por FK.
         await tx.movimientoCaja.updateMany({ where: { rendicionId: id, inmobiliariaId: u.inmobiliariaId }, data: { descontadoEnRendicion: false, rendicionId: null } });
         await tx.gastoRendido.deleteMany({ where: { rendicionId: id } });
+        // Los AlquilerRendido cuelgan de la Rendicion con FK RESTRICT: sin borrarlos
+        // ANTES, el rendicion.deleteMany de abajo violaba la FK → P2003 → 500 SIEMPRE
+        // (toda rendición real crea ≥1 AlquilerRendido). La anulación era imposible.
+        await tx.alquilerRendido.deleteMany({ where: { rendicionId: id } });
         // Lock atómico: el deleteMany condicionado es el lock. Dos anulaciones
         // concurrentes pasan el findFirst de arriba a la vez; sólo la primera
         // borra la fila (count 1), la segunda ve count 0 → 409 (antes daba 404
@@ -1488,3 +1585,12 @@ export async function plataRoutes(app: FastifyInstance) {
 // adentro; el handler las traduce a 409/400 sin filtrar detalles del error).
 class ManualLiquidacionYaPaga extends Error {}
 class ManualMontoSuperaSaldo extends Error {}
+// Señales de la tx de /pagos/:id/validar (lock + re-tope): otro cobro cubrió la
+// liq antes de validar este informe → no conciliar (sería over-cobro).
+class ValidarLiquidacionYaCubierta extends Error {}
+class ValidarExcedeSaldo extends Error {}
+// Señales de la tx de POST /rendiciones (todo el cálculo va dentro del advisory
+// lock por dueño+período): el handler las traduce a 409 claros.
+class RendicionSinCobros extends Error {}
+class RendicionNetoNegativo extends Error {}
+class GastoYaDescontado extends Error {}
