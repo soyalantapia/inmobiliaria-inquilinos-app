@@ -56,8 +56,8 @@ features que muestran **"Próximamente"** (28 archivos con gate en los dos front
 > Corrige al `REPORTE-PM-PRODUCTO.md`, que marca como "mock" cosas que ya leen real.
 
 **Panel — REAL en prod:** dashboard · propiedades (+alta) · propietarios · contratos
-(+alta wizard) · pagos (tabla + cola "a resolver" + conciliar/rechazar con PIN) · caja
-(CRUD) · aprobaciones (+PIN) · renovaciones · reclamos (+gestión) · anuncios (+acuses
+(+alta wizard) · pagos (tabla + cola "a resolver" + conciliar/rechazar) · caja
+(CRUD) · aprobaciones · renovaciones · reclamos (+gestión + ¿quién paga?) · anuncios (+acuses
 reales) · consorcios y profesionales (lectura) · configuración (empresa/cobranza/PIN/
 equipo/sociedades).
 **Panel — GATEADO/DEMO en prod:** screening (popup "beta", no ejecuta) · recordar a

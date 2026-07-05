@@ -33,7 +33,7 @@ apps/
         liquidaciones.ts  # computar/generar liquidaciones + devengarTodosLosTenants
       auth/
         guards.ts      # requireAuth / requireUsuario / requireInquilino / requireContratoAcceso
-        pin.ts         # verificarPinUsuario (lockout anti-fuerza-bruta)
+        pin.ts         # verificarPinUsuario (kill-switch: siempre ok — PIN eliminado 05/07)
       routes/
         auth.ts        # login panel, OTP inquilino, PIN, co-invitación, registro
         core.ts        # contratos, propiedades (+PUT), propietarios, sociedades, usuarios,
@@ -158,5 +158,6 @@ seteado):
   cross-tenant (identidad desde el hash del OTP por inquilino).
 - **Co-inquilino**: invitación por link (JWT `kind:'co-invitacion'`), acepta y
   recibe su propia sesión (`kind:'co-inquilino'`) sin OTP.
-- **PIN de seguridad** (4 dígitos, acciones de plata): `verificarPinUsuario` en
-  `auth/pin.ts` con **lockout anti-fuerza-bruta** (5 intentos → 15 min).
+- **PIN de seguridad — ELIMINADO (05/07):** ninguna acción pide PIN. `verificarPinUsuario`
+  (`auth/pin.ts`) es un kill-switch que **siempre** aprueba; las acciones sensibles protegen
+  por rol/capacidad + multi-tenant. `me.tienePin=false`. Ver `05-DECISIONES.md` §7. **No re-agregar.**

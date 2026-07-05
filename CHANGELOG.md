@@ -10,6 +10,39 @@
 
 Plataforma SaaS multi-tenant para inmobiliarias (panel) e inquilinos (PWA). Estado de cambios desde el handoff inicial hasta hoy.
 
+### Comprobantes del inquilino: "Pagos recibidos" (05/07)
+Un cobro CONCILIADO —sobre todo un pago **PARCIAL** o uno aplicado a un mes futuro (ej: cobro
+manual en efectivo que registra la inmobiliaria)— solo se veía como un badge chico dentro de la
+liquidación y pasaba desapercibido. Se agregó una sección **"Pagos recibidos"** en `/comprobantes`
+(PWA) que lista cada pago CONCILIADO como **transacción explícita**: monto, método, fecha, a cuenta
+de qué período y si es parcial. Incluye los cobros manuales de la inmobiliaria (`autor = null`).
+Front-only (el dato ya salía de `GET /mis-liquidaciones` en `liq.pagos`). Commit `7e34765`.
+
+### Reclamos "¿Quién paga?": pagador + costo + impacto real en la plata (05/07)
+Antes toda la plata del reclamo (costo, quién paga, gasto) vivía **solo en el build demo**; la
+API/prod no la tenía (la clasificación era demo-only, `/resolver` solo guardaba la resolución, y la
+rendición nunca incluía reclamos). Ahora es real en prod:
+- Enum `PagadorReclamo` (PROPIETARIO/INQUILINO/DEPOSITO) + `Reclamo.pagador`; `CargoContrato.reclamoId`
+  (@unique) + `contraDeposito`; `TipoCargo.REPARACION`. Migración `reclamo_pagador_cargo`.
+- `POST /reclamos/:id/clasificar` (nuevo, persiste quién paga + evento CLASIFICADO) y
+  `POST /reclamos/:id/resolver` (extendido: persiste `costoTrabajo`/notas/`pagador`, **suma el
+  trabajo al profesional** —`cantTrabajos`+`ultimoTrabajo`— y deja historial).
+- **3 caminos de plata** según pagador: **Propietario** → `GastoRendido` tipo TRABAJO en la rendición
+  del dueño (`plata.ts`); **Inquilino** → `CargoContrato`; **Depósito** → `CargoContrato contraDeposito`
+  que `GET /depositos/en-custodia` netea (retenido/deducido/disponible).
+- Front del panel: clasificación de 3 opciones real, resolver manda costo+pagador (antes se
+  descartaba) y **formatea la moneda del contrato** (fix del "$ 200000" sin formato). Commit `ac243d0`.
+- ⚠️ Gap conocido: el cargo al INQUILINO se ve en el panel pero **no llega todavía a la PWA del
+  inquilino** (`CargoContrato` es write-only; el saldo del inquilino es solo-liquidaciones). Follow-up.
+
+### Eliminación del PIN de seguridad (05/07)
+Decisión de producto del owner: **ninguna acción sensible pide PIN** en toda la plataforma. Las
+acciones siguen protegidas por rol/capacidad (`requireUsuario` + capacidad) y aislamiento
+multi-tenant. Kill-switch de un solo punto: `verificarPinUsuario()` (`auth/pin.ts`) siempre aprueba;
+`me.tienePin → false`. Front: `PinPromptDialog` es un pass-through (sin prompt), se sacó el input de
+PIN de "Saldar deuda" y la card "Configurar PIN". Endpoints `/auth/pin*` quedan dead pero inofensivos
+(ninguna UI los llama). Commit `614c31d` + `1f2bb51` (tests). **No re-agregar prompts de PIN.**
+
 ### Ciclo de vida del contrato: depósitos, rescisión y ajuste de alquiler (05/07)
 Tras un gap-analysis de la plataforma, se atacaron los 3 gaps de mayor valor (todos deployados
 back+front, E2E prod OK):
@@ -23,8 +56,8 @@ back+front, E2E prod OK):
 - **Ajuste de alquiler (manual-asistido)**: cerró el gap #1 de plata — antes el alquiler NUNCA
   subía (el devengo usaba el monto fijo). `POST /contratos/:id/ajustar` actualiza el canon y las
   cuotas futuras impagas (no las ya devengadas), con historial (`AjusteAlquiler`). Botón en el detalle.
-- **Saldar cuentas por cobrar de ex-inquilinos**: `POST /contratos/:id/saldar-deuda` (con PIN)
-  crea un Pago CONCILIADO por cada cuota vencida (o condona la deuda) y la marca PAGADO — antes
+- **Saldar cuentas por cobrar de ex-inquilinos**: `POST /contratos/:id/saldar-deuda` (capacidad
+  `pago.conciliar`) crea un Pago CONCILIADO por cada cuota vencida (o condona la deuda) y la marca PAGADO — antes
   la deuda de un contrato finalizado quedaba visible pero inmovilizada (`/pagos/informar` la gatea
   `exigirContratoActivo`). Botón "Saldar deuda" en la ficha del inquilino.
 - **Renovación de contrato**: `POST /contratos/:id/renovar` extiende el plazo y fija un nuevo canon

@@ -33,15 +33,36 @@ El validador de resumen bancario **parsea el extracto** (CSV/Excel del banco), N
 ni IA. El dueño lo eligió explícitamente. Reglas de confianza del match: **monto ±$50 +
 nombre → ALTA**; **monto solo → MEDIA**; **±5% del saldo real + nombre → MEDIA**; **±5%
 solo → BAJA**. FIFO: la liquidación vencida más vieja primero (`orderBy fechaVencimiento
-asc`). Conciliar (con PIN) crea un **Pago CONCILIADO directo** (TRANSFERENCIA, sin pasar
-por INFORMADO porque lo detectó el banco). Commit `1404004` (2026-07-04). **NO reemplazar
-por IA/OCR sin pedírselo.** Demo intacta / ambos modos andan.
+asc`). Conciliar crea un **Pago CONCILIADO directo** (TRANSFERENCIA, sin pasar por INFORMADO
+porque lo detectó el banco). Commit `1404004` (2026-07-04). **NO reemplazar por IA/OCR sin
+pedírselo.** Demo intacta / ambos modos andan. _(Nota: la conciliación ya no pide PIN — ver
+decisión 7.)_
 
 ### 6. Migración de cartera = mapeo flexible de columnas
 La migración masiva de cartera deja que el dueño suba **su propia planilla** (Excel/CSV) y
 **mapee qué columna es qué** (con sinónimos auto-sugeridos). NO se impone un formato fijo:
 la inmo trae el archivo como lo tiene y la app se adapta. Commit `b153ebe` (2026-07-04).
 Demo intacta / ambos modos andan.
+
+### 7. El PIN de seguridad se ELIMINÓ de toda la plataforma
+Decisión de producto (2026-07-05): **ninguna acción sensible pide PIN**. Las acciones siguen
+protegidas por **rol/capacidad** (`requireUsuario` + la capacidad correspondiente) y por el
+aislamiento multi-tenant — el PIN no agregaba seguridad real y molestaba. Kill-switch de un solo
+punto: `verificarPinUsuario()` en `auth/pin.ts` **siempre** devuelve `{ ok: true }`; `me.tienePin
+→ false`. Todas las rutas PIN-gated ya tenían `pin: z.string().optional()`, así que mandar `''`/
+ausente pasa el zod y cae en el kill-switch. Front: `PinPromptDialog` es pass-through. Endpoints
+`/auth/pin/verify` y `POST /auth/pin` quedan dead pero inofensivos (ninguna UI los llama). Commit
+`614c31d`. **NO re-agregar prompts de PIN.** (Las menciones "con PIN" en docs viejos son legado.)
+
+### 8. Reclamos: "¿Quién paga?" con 3 pagadores e impacto real en la plata
+Al resolver un reclamo con costo, se define **quién paga** (`PagadorReclamo`): **PROPIETARIO**,
+**INQUILINO** o **DEPOSITO** (reemplaza a la clasificación legada de 2 valores uso-y-goce/desperfecto).
+El costo impacta de verdad según el pagador: propietario → `GastoRendido` tipo TRABAJO en su rendición
+(refId `reclamo:<id>`, dedup por refId); inquilino → `CargoContrato`; depósito → `CargoContrato
+contraDeposito` que descuenta del depósito retenido (neteado en `/depositos/en-custodia`). El profesional
+suma el trabajo (`cantTrabajos`+`ultimoTrabajo`) al resolver. Commit `ac243d0` (2026-07-05). Regla LOCKED
+de plata: **el costo del reclamo NO se cuenta dos veces** — el propietario va por la rendición (no crea
+cargo), inquilino/depósito van por cargo (no entran a la rendición).
 
 ## Decisiones de seguridad / acceso (ya implementadas)
 
@@ -71,6 +92,6 @@ Demo intacta / ambos modos andan.
 ## Tenant real (datos canónicos)
 
 - Inmobiliaria: **Tapia Propiedades**.
-- Admin: `alannaimtapia@gmail.com` / `Tapia.2026!` / **PIN 1234**.
+- Admin: `alannaimtapia@gmail.com` / `Tapia.2026!` (el **PIN se eliminó** — ver decisión 7).
 - (Datos de ejemplo cargados durante el desarrollo: propiedad Av. Santa Fe 4922 5°A;
   inquilino Martín Gómez. Verificar contra la DB de prod antes de asumir que siguen.)

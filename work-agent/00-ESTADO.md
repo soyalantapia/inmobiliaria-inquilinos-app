@@ -1,13 +1,16 @@
 # Estado del proyecto — My Alquiler
 
 > **Documento de handoff.** Resumen ejecutivo de dónde está el proyecto hoy.
-> Última actualización: **2026-07-05**. Último commit: `b3325e9` (origin/main, árbol limpio).
-> Último hito: **historial de inquilinos** (deployado back+front, E2E prod OK, backfill aplicado).
-> Nueva entidad **Persona** por tenant (identidad reutilizable del inquilino) + pestaña Inquilinos
-> con ficha (contratos/propiedades/reclamos/morosidad), **historial de contratos anteriores** en la
-> propiedad, **reuso** del inquilino al armar contrato (autocomplete), y 8 tipos de doc legales
-> nuevos. Migración `persona_inquilino` + `doc_contrato_tipos_legales` aplicadas en prod; backfill
-> idempotente corrido (7 personas). Hito previo: baja de contrato + auditoría adversarial. Ver `CHANGELOG.md`.
+> Última actualización: **2026-07-05**. Último commit: `7e34765` (origin/main).
+> Últimos hitos (todo en prod, back+front, E2E/verificación OK):
+> **(1) Eliminación del PIN** de seguridad en TODA la plataforma (kill-switch `verificarPinUsuario`
+> siempre-ok; ninguna acción pide PIN). **(2) Reclamos "¿quién paga?"** — propietario/inquilino/
+> depósito con **impacto real en la plata** (rendición del dueño / cargo al inquilino / deducción del
+> depósito) + costo + moneda formateada + historial del profesional. **(3) "Pagos recibidos"** en los
+> comprobantes del inquilino: los cobros (incluidos los manuales de la inmo) se ven como transacciones.
+> Hitos previos (05/07): **ciclo de vida del contrato** (depósitos en custodia, rescisión con
+> penalidad+neteo, ajuste de alquiler, saldar deuda de ex-inquilinos, renovación) e **historial de
+> inquilinos** (entidad `Persona` + ficha + reuso + expediente). Ver `CHANGELOG.md` para el detalle.
 > Contexto absoluto en [`../PROJECT.MD`](../PROJECT.MD). Detalle en los demás `work-agent/`.
 
 ## Qué es
@@ -28,7 +31,8 @@ alquileres para **Tapia Propiedades** (y futuras inmobiliarias). Dos frentes:
 | PWA inquilino | **https://app.myalquiler.com** |
 | API | https://api-production-262e.up.railway.app (`GET /health`) |
 
-Tenant real: **Tapia Propiedades** · admin `alannaimtapia@gmail.com / Tapia.2026! / PIN 1234`.
+Tenant real: **Tapia Propiedades** · admin `alannaimtapia@gmail.com / Tapia.2026!`
+(el **PIN de seguridad se eliminó** — ninguna acción lo pide).
 
 ## Dónde estamos
 
@@ -60,7 +64,7 @@ auditoría multi-agente arreglaron **~50+ bugs reales** verificados y deployados
   - **Flujo real del profesional por link mágico** (`/p/:token`, sin cuenta ni password):
     confirmar → en camino → listo, con **fotos antes/después** a `/uploads`.
   - **Validador de resumen bancario** (CSV/Excel, **matching determinístico SIN IA/OCR**):
-    parseo del extracto + conciliación con PIN que crea un `Pago` CONCILIADO directo.
+    parseo del extracto + conciliación que crea un `Pago` CONCILIADO directo.
   - **Migración de cartera** (Excel/CSV con **mapeo flexible** de columnas): subir → mapear
     → validar fila por fila → confirmar crea propiedades + inquilinos + contratos.
   - **Avatar del usuario del panel** (`PUT /me/avatar`) — backend-ready (falta UI del panel).
@@ -70,25 +74,53 @@ auditoría multi-agente arreglaron **~50+ bugs reales** verificados y deployados
     podía inyectar una imagen externa (`https://`) en foto/adjunto de reclamo y archivo de
     boleta (ahora validan `urlEsDelTenant`).
 
+**Julio 2026 (05/07) — ciclo de vida del contrato, reclamos con plata real y baja del PIN
+(todo en prod, back+front):**
+
+- ✅ **Historial de inquilinos** — entidad `Persona` por tenant (identidad reutilizable) + pestaña
+  Inquilinos con ficha (contratos/propiedades/reclamos/morosidad on-read) + historial de contratos
+  anteriores en la propiedad + reuso del inquilino al armar contrato + 8 tipos de doc legales.
+  Migraciones `persona_inquilino` + `doc_contrato_tipos_legales`; backfill idempotente (7 personas).
+- ✅ **Ciclo de vida del contrato** (gap-analysis → 5 gaps de plata): **depósitos en custodia**
+  (`GET /depositos/en-custodia`, enum `EstadoDeposito`), **rescisión** con penalidad + neteo del
+  depósito (`CargoContrato`, `finalizar`/`finalizar-preview`), **ajuste de alquiler** manual-asistido
+  (`AjusteAlquiler` — el alquiler antes NUNCA subía), **saldar deuda** de ex-inquilinos
+  (`saldar-deuda`) y **renovación** de contrato (`RenovacionContrato`). Migraciones `estado_deposito`,
+  `cargo_rescision`, `ajuste_alquiler`, `renovacion_contrato`.
+- ✅ **Reclamos "¿quién paga?"** — `PagadorReclamo` (propietario/inquilino/depósito) con impacto real
+  en la plata: propietario → rendición (`GastoRendido` tipo TRABAJO), inquilino → `CargoContrato`,
+  depósito → deducción neteada en `/depositos/en-custodia`. `POST /reclamos/:id/clasificar` +
+  `/resolver` extendido (costo + pagador + suma al profesional + historial). Moneda formateada.
+  Migración `reclamo_pagador_cargo`. ⚠️ El cargo al inquilino aún no llega a su PWA (write-only).
+- ✅ **Eliminación del PIN** de seguridad — kill-switch `verificarPinUsuario` siempre-ok; ninguna
+  acción pide PIN (rol/capacidad + aislamiento multi-tenant siguen protegiendo). Tests actualizados.
+- ✅ **"Pagos recibidos"** en los comprobantes del inquilino — los cobros CONCILIADO (incl. manuales
+  de la inmo, parciales o de meses futuros) se muestran como transacciones explícitas.
+
 ## Qué falta (próximo chat)
 
 **No hay bugs abiertos conocidos.** La **conciliación bancaria** y la **migración de
 cartera** ya están (ver julio, arriba), así que salen de esta lista. Lo que queda:
 
-**Backend-ready, falta solo la UI del panel** (no es decisión, es cablear el front):
+**Follow-ups de features recientes** (no es decisión, es cablear):
 
-1. **Avatar del usuario del panel** — `PUT /me/avatar` vivo; el panel todavía muestra
+1. **Cargo de reparación del reclamo → PWA del inquilino** — al resolver un reclamo con pagador
+   `INQUILINO` se crea un `CargoContrato`, pero `CargoContrato` es **write-only**: ningún endpoint lo
+   lee y el saldo del inquilino sale solo de liquidaciones (`lib/saldos.ts`). Se ve en el panel (detalle
+   del reclamo) pero NO en la app del inquilino ni suma a su deuda. Falta un read-path (surfacear los
+   cargos en `/mis-liquidaciones` o un `/mis-cargos` + UI). Aplica igual al cargo de penalidad de rescisión.
+2. **Avatar del usuario del panel** — `PUT /me/avatar` vivo; el panel todavía muestra
    iniciales, no sube foto.
-2. **Comprobante en gastos de caja** — el alta acepta `comprobanteUrl` pero el form de
+3. **Comprobante en gastos de caja** — el alta acepta `comprobanteUrl` pero el form de
    caja no lo adjunta (el comprobante de **pago** del inquilino sí tiene UI).
 
 **Decisión de producto o insumo del owner** (no es bug) — triado en `04-PENDIENTES.md`:
 
-3. **Forma de pago del plan SaaS** (billing): cómo cobra el SaaS a la inmobiliaria.
-4. **Programa de referidos**: reglas comerciales.
-5. **Screening real** (NOSIS) · **IA/OCR opcional** de comprobantes (presupuesto) — hoy
+4. **Forma de pago del plan SaaS** (billing): cómo cobra el SaaS a la inmobiliaria.
+5. **Programa de referidos**: reglas comerciales.
+6. **Screening real** (NOSIS) · **IA/OCR opcional** de comprobantes (presupuesto) — hoy
    el resumen bancario matchea sin IA por decisión del dueño; el OCR sería un extra.
-6. **WhatsApp real** (recordatorio a morosos / invitaciones).
+7. **WhatsApp real** (recordatorio a morosos / invitaciones).
 
 ## Cómo seguir
 

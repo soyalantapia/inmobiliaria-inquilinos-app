@@ -1,10 +1,11 @@
 # Pendientes — roadmap
 
-> Última actualización: **2026-07-05** (HEAD `14929c5`, árbol limpio, demo intacta /
-> ambos modos andan). **No hay bugs abiertos conocidos.** El core está en prod y
-> endurecido; las campañas de auditoría convergieron. Lo que queda necesita **decisión
-> de producto o insumo del owner** (no es bug), salvo un cableado de front chico.
-> Historial de lo ya hecho al final.
+> Última actualización: **2026-07-05** (HEAD `7e34765`, demo intacta / ambos modos andan).
+> **No hay bugs abiertos conocidos.** El core está en prod y endurecido; se cerró el **ciclo de
+> vida del contrato** (depósitos/rescisión/ajuste/saldar/renovación), **reclamos "¿quién paga?"**
+> con impacto real en la plata, la **eliminación del PIN** y los **"pagos recibidos"** del inquilino
+> (ver sección C). Lo que queda necesita **decisión de producto o insumo del owner** (no es bug),
+> salvo un par de cableados de front chicos. Historial de lo ya hecho al final.
 
 ---
 
@@ -47,12 +48,22 @@ Chico, no bloqueado — es sólo cablear la UI contra endpoints que ya están vi
 _(Nota técnica: el `POST /caja/movimientos` ya persiste el `comprobanteUrl` en el `create`
 —se arregló un bug 04/07 donde antes se validaba pero no se guardaba—; sólo falta la UI que lo suba.)_
 
+### 7. Cargo de reparación del reclamo → PWA del inquilino — [front + backend]
+Al resolver un reclamo con pagador `INQUILINO` (o el cargo de penalidad de rescisión) se crea un
+`CargoContrato`, pero **`CargoContrato` es write-only**: ningún endpoint lo lee y el saldo del inquilino
+sale **solo de liquidaciones** (`lib/saldos.ts`). Hoy el cargo se ve en el panel (detalle del reclamo)
+pero **no llega a la app del inquilino** ni suma a su deuda. Falta el read-path: exponer los cargos del
+contrato (en `/mis-liquidaciones` como línea aparte, o un `/mis-cargos` nuevo) + la UI en la PWA.
+Decisión de producto pendiente: ¿el cargo se suma al saldo exigible (se paga como una cuota) o es
+informativo hasta que la inmo lo concilie? No bloquea el core; los caminos propietario/depósito ya
+impactan de verdad. Ver `CHANGELOG.md` → "Reclamos ¿quién paga?".
+
 ---
 
 ## B. Long-tail demo-gated A PROPÓSITO (no son bugs)
 
 Pantallas/features secundarias que muestran "Próximamente" o mock en prod — **no rompen
-el core ni la plata**: negociación iterativa de renovación, reset de PIN olvidado,
+el core ni la plata**: negociación iterativa de renovación,
 objetivos/métricas internas (dashboards de la propia inmo), y algunas vistas de
 consorcios. Y los **falsos positivos conocidos** de `03-AUDITORIAS.md` (NO re-arreglar).
 
@@ -81,7 +92,7 @@ consorcios. Y los **falsos positivos conocidos** de `03-AUDITORIAS.md` (NO re-ar
     que parsea el **CSV/Excel del banco** (dep `xlsx`, parseo determinístico, cero
     OCR/IA). Matching por monto/nombre/saldo con confianza ALTA/MEDIA/BAJA (monto±$50 +
     nombre → ALTA; monto solo → MEDIA; ±5% del saldo + nombre → MEDIA; ±5% solo → BAJA),
-    FIFO por vencimiento más viejo. Conciliar **con PIN** crea un `Pago` directo
+    FIFO por vencimiento más viejo. Conciliar crea un `Pago` directo
     **CONCILIADO** (TRANSFERENCIA, no pasa por INFORMADO). Reemplaza el ítem que estaba
     pendiente en la sección A. Decisión de producto del owner: extracto, no OCR.
   - **Migración masiva de cartera REAL** (`b153ebe`): el owner sube SU planilla
@@ -103,6 +114,21 @@ consorcios. Y los **falsos positivos conocidos** de `03-AUDITORIAS.md` (NO re-ar
     `PUT /me/avatar` y `MovimientoCaja.comprobanteUrl` (usan columnas que ya existían →
     sin migración). ⚠️ **Falta la UI del panel** que los consuma → queda como pendiente
     chico de front (sección A, ítem 6).
+- **Tanda 05/07 — ciclo de vida del contrato, reclamos con plata real y baja del PIN** (todo en
+  prod back+front; migraciones aplicadas):
+  - **Historial de inquilinos**: entidad `Persona` por tenant + ficha + reuso al armar contrato +
+    8 tipos de doc legales. Migr. `persona_inquilino`, `doc_contrato_tipos_legales`; backfill (7 personas).
+  - **Ciclo de vida del contrato** (gap-analysis, 5 gaps de plata): **depósitos en custodia**
+    (`/depositos/en-custodia`), **rescisión** con penalidad+neteo (`CargoContrato`, `finalizar`),
+    **ajuste de alquiler** (`AjusteAlquiler` — antes el alquiler NUNCA subía), **saldar deuda** de
+    ex-inquilinos (`saldar-deuda`), **renovación** (`RenovacionContrato`). Migr. `estado_deposito`,
+    `cargo_rescision`, `ajuste_alquiler`, `renovacion_contrato`.
+  - **Reclamos "¿quién paga?"** (`ac243d0`): `PagadorReclamo` + `/reclamos/:id/clasificar` + `/resolver`
+    extendido (costo+pagador+profesional+historial) + 3 caminos de plata (rendición/cargo/depósito).
+    Migr. `reclamo_pagador_cargo`. ⚠️ el cargo al inquilino aún no llega a su PWA → sección A, ítem 7.
+  - **Eliminación del PIN** (`614c31d`): ninguna acción pide PIN; kill-switch `verificarPinUsuario`.
+  - **"Pagos recibidos"** en los comprobantes del inquilino (`7e34765`): los cobros CONCILIADO
+    (incl. manuales/parciales/de meses futuros) se muestran como transacciones explícitas.
 
 ---
 

@@ -97,22 +97,15 @@ Sesión actual (resuelve según el kind del token).
 - **Errores:** `401` si el guard falla, o si la entidad (`usuario`/`co-inquilino`/`inquilino`) ya no existe en la DB ("... inexistente").
 - **Reglas:** `diasRestantes` = ceil de `(trial.hasta - now)/día`, mínimo 0; `vigente` si `hasta >= now`.
 
-### POST /auth/pin/verify
-Verifica el PIN de seguridad de un usuario del panel.
-- **Auth:** `requireUsuario` (solo sesión usuario).
-- **Body:** `{ pin: string (≥4) }` (req).
-- **Respuesta:** `{ valid: true }`.
-- **Errores:** `400` "PIN requerido"; código/mensaje de `verificarPinUsuario` con `{ valid:false }` si no valida (incluye lockout anti-fuerza-bruta).
+### PIN de seguridad — ⚠️ ELIMINADO (2026-07-05)
 
-### POST /auth/pin
-Configura o cambia el PIN de seguridad (persiste en `usuario.pinHash`).
-- **Auth:** `requireUsuario` (solo sesión usuario; cada usuario configura su propio PIN).
-- **Body:** `{ pinNuevo: string (regex /^\d{4,6}$/, req), pinActual?: string }`.
-- **Respuesta:** `{ ok: true, tienePin: true }`.
-- **Errores:** `400` PIN inválido (mensaje del issue zod, ej. "El PIN debe tener 4 a 6 dígitos"); `401` "Usuario inexistente"; código/mensaje de `verificarPinUsuario` si ya hay PIN y el `pinActual` es incorrecto.
-- **Reglas de negocio:**
-  - Si ya existe `pinHash`, exige `pinActual` correcto vía `verificarPinUsuario` (hereda lockout anti-fuerza-bruta; evita oráculo de adivinanza sin límite).
-  - Guarda el nuevo PIN con `bcrypt` cost 10.
+El **PIN de seguridad se eliminó de toda la plataforma** (decisión de producto — ver
+`work-agent/05-DECISIONES.md` §7). `verificarPinUsuario()` (`auth/pin.ts`) **siempre** devuelve
+`{ ok: true }`; ninguna acción pide PIN. Las acciones sensibles siguen protegidas por **rol/capacidad**
+(`requireUsuario` + capacidad) + aislamiento multi-tenant. Los endpoints `POST /auth/pin/verify` (verify
+siempre aprueba) y `POST /auth/pin` (setup, persiste un `pinHash` que nunca se chequea) **siguen
+existiendo pero están muertos** — ninguna UI los llama. `me.tienePin → false`. **No re-agregar prompts
+de PIN.** El campo `pin` en los bodies de plata/operación es `optional()` y se ignora.
 
 
 ## core.ts
@@ -136,6 +129,17 @@ Rutas del núcleo del panel de la inmobiliaria. **Todas** usan `requireUsuario` 
   - **400** datos incompletos / fechas / monto 0 / faltan expensas / falta dueño para cobranza directa. **404** `Propiedad inexistente`. **409** propiedad ya con contrato activo (pre-check o `PROP_OCUPADA`); `Ya tenés un inquilino con ese email en tu cartera` (pre-check o P2002 sobre `@@unique([inmobiliariaId,email])`).
 
 - **POST `/contratos/:id/finalizar`** — cap `contratos.crear`, **pero rol CARGA → 403** (irreversible). Marca `FINALIZADO`, libera propiedad (`contratoActualId=null`, estado `DISPONIBLE`) y desvincula al inquilino titular. **Lock atómico**: `updateMany` condicionado por estado `notIn [FINALIZADO,RESCINDIDO,BORRADOR]` → `count=0` ⇒ 409. Respuesta `{ ok: true }`. **404** `Contrato inexistente`. **409** ya finalizado/rescindido, o BORRADOR (rechazar la aprobación en su lugar).
+  - **Rescisión anticipada (extendido 05/07):** acepta `tipo` (`FINALIZAR|RESCINDIR`), `montoPenalidad?`, `motivoRescision?`, `decisionDeposito?` (`DEVOLVER|NETEAR|RETENER`), `montoDepositoDevuelto?`. Si `RESCINDIR`: emite un `CargoContrato` `PENALIDAD_RESCISION` (si `montoPenalidad>0`), setea `estadoDeposito`/`depositoDevueltoMonto`/`depositoDevueltoAt`/`fechaEfectivaRescision`/`motivoRescision`.
+
+- **GET `/contratos/:id/finalizar-preview`** — cap `contratos.ver`. Devuelve `depositoEnCustodia`, `mesesPenalidad`, `penalidadSugerida` (cánones × alquiler, default por inmo/contrato), `saldoNeto` y `moneda` para armar la liquidación de la rescisión en vivo.
+
+- **POST `/contratos/:id/ajustar`** + **GET `/contratos/:id/ajustes`** — cap `contratos.crear`. Ajuste manual-asistido del alquiler: actualiza `contrato.monto` y las cuotas **PENDIENTE** con `periodo >= montoDesde` (no las ya devengadas). Registra `AjusteAlquiler` (antes/después, motivo). Cerró el gap #1 de plata (el alquiler nunca subía). El GET lista el historial.
+
+- **POST `/contratos/:id/saldar-deuda`** — cap `pago.conciliar`. Salda las cuentas por cobrar de un **ex-inquilino** (contrato finalizado, que `/pagos/informar` gatea con `exigirContratoActivo`): por cada liquidación vencida crea un `Pago` **CONCILIADO** (o **condona** con `condonar:true`) y la marca `PAGADO`. Body: `metodo`, `condonar?`. _(El campo `pin` ya no aplica — PIN eliminado.)_
+
+- **POST `/contratos/:id/renovar`** + **GET `/contratos/:id/renovaciones`** — cap `contratos.crear`. Extiende `fechaFin` y (opc) fija un nuevo canon desde un período — **mismo contrato** (continuidad de inquilino/depósito/historial). Actualiza las cuotas futuras impagas y devenga los nuevos períodos (`generarLiquidacionesContrato`). Registra `RenovacionContrato`.
+
+- **GET `/depositos/en-custodia`** — cap `contratos.ver`. Depósitos de garantía retenidos (plata de terceros que la inmo cuida). Devuelve `porMoneda` (`total`/`deducciones`/`disponible`/`cantidad`) + `contratos` (con `monto`/`deducciones`/`disponible`). Las **deducciones** son los `CargoContrato contraDeposito` (reparaciones de reclamos imputadas al depósito).
 
 ### Propiedades
 
@@ -329,7 +333,10 @@ Todas las rutas montadas bajo el prefijo del plugin `plataRoutes`. Multi-tenant:
 - Respuesta: `{ ok: true }`.
 - Errores: 404 (inexistente), 409 (ya anulada — carrera, `count=0`).
 
-### Aprobaciones (no monetarias, con PIN)
+### Aprobaciones (no monetarias)
+
+> El **PIN se eliminó** (ver §PIN de seguridad arriba): el campo `pin` en los bodies de abajo es
+> `optional()` y se ignora. Protege el rol/capacidad (`contrato.aprobar`), no el PIN.
 
 **GET /aprobaciones**
 - Guard: `requireUsuario('contratos.ver')`.
@@ -337,7 +344,7 @@ Todas las rutas montadas bajo el prefijo del plugin `plataRoutes`. Multi-tenant:
 
 **POST /aprobaciones/:id/aprobar** y **POST /aprobaciones/:id/rechazar** (generadas en bucle, misma firma)
 - Guard: `requireUsuario('contrato.aprobar')`.
-- Params: `id`. Body: `pin` (opc.), `comentario` (opc. en aprobar; **requerido min 5** en rechazar).
+- Params: `id`. Body: `pin` (opc., ignorado), `comentario` (opc. en aprobar; **requerido min 5** en rechazar).
 - Reglas: tx atómica única. Lock = `updateMany WHERE estado='PENDIENTE'` (solo la primera request gana) → `APROBADA`/`RECHAZADA`. Si `tipo='CONTRATO_CARGADO'`:
   - aprobar: contrato → `ACTIVO`, `pendienteAprobacion=false`; claim atómico de propiedad (`updateMany WHERE contratoActualId=null` → `ALQUILADA`, lock anti-doble-activación) y devenga liquidaciones (`generarLiquidacionesContrato`).
   - rechazar: contrato queda `BORRADOR` sin pendiente; borra el inquilino del borrador y sus hijos FK (`CodigoOtp`, `AnuncioAcuse`, `Documento`, `CertificadoInquilino`) para liberar el email único.
@@ -378,12 +385,18 @@ Base: rutas registradas bajo el prefijo donde se monte `operacionRoutes`. SLA ca
 - Respuesta: `{ visitaToken }`.
 - Errores: 404 si la visita todavía no tiene profesional asignado; 401/403 (guard).
 
-**`POST /reclamos/:id/resolver`** — Marca el reclamo como RESUELTO.
+**`POST /reclamos/:id/clasificar`** — Define **quién paga** el costo del trabajo (antes de resolver). _(Nuevo 2026-07-05.)_
 - Auth: `requireUsuario('reclamos.gestionar')`.
-- Params: `id`. Body: `resolucion` (string, min 5, requerido).
-- Reglas: **Lock por estado** en transacción (`updateMany` con `estado NOT IN cerrados`; `count=0` → 409) — evita resolver/rechazar concurrentes. Setea `estado=RESUELTO`, `resolucion`, `resueltoAt=now`. Crea evento `RESUELTO`.
+- Params: `id`. Body: `pagador` (`'PROPIETARIO'|'INQUILINO'|'DEPOSITO'`, requerido).
+- Reglas: setea `Reclamo.pagador` + crea evento `CLASIFICADO`. El cargo real se emite al RESOLVER (cuando se conoce el monto). Persiste en la DB (antes la clasificación era demo-only).
+- Respuesta: reclamo + SLA. Errores: 400 (pagador inválido); 404 `Reclamo inexistente`.
+
+**`POST /reclamos/:id/resolver`** — Marca RESUELTO + costo + quién paga + **impacto en la plata**. _(Extendido 2026-07-05.)_
+- Auth: `requireUsuario('reclamos.gestionar')`.
+- Params: `id`. Body: `resolucion` (string, min 5, req), `costoTrabajo?` (number ≥0), `costoTrabajoNotas?` (string), `pagador?` (`'PROPIETARIO'|'INQUILINO'|'DEPOSITO'`).
+- Reglas: **Lock por estado** en tx (`updateMany estado NOT IN cerrados`; `count=0` → 409). Setea `estado=RESUELTO`, `resolucion`, `resueltoAt` y (si vienen) `costoTrabajo`/`costoTrabajoNotas`/`pagador`; denormaliza `propiedadId` desde el contrato si falta. Crea evento `RESUELTO` (+ `CLASIFICADO` si se define pagador acá). Con profesional asignado, **suma el trabajo** (`cantTrabajos++`, `ultimoTrabajo=now`). **Impacto en la plata** (idempotente por `reclamoId`): `PROPIETARIO` → sin cargo, lo toma la rendición como `GastoRendido` tipo TRABAJO (refId `reclamo:<id>`); `INQUILINO` → `CargoContrato` tipo `REPARACION`; `DEPOSITO` → `CargoContrato contraDeposito` (descuenta del depósito, ver `GET /depositos/en-custodia`).
 - Respuesta: reclamo + SLA.
-- Errores: 400 `Contá cómo se resolvió (mínimo 5 caracteres)`; 404 `Reclamo inexistente`; 409 `El reclamo ya fue decidido`.
+- Errores: 400 `Contá cómo se resolvió (mínimo 5 caracteres)` o `Indicá quién paga el costo del trabajo` (si `costoTrabajo>0` sin pagador); 404 `Reclamo inexistente`; 409 `El reclamo ya fue decidido`.
 
 **`POST /reclamos/:id/rechazar`** — Rechaza el reclamo.
 - Auth: `requireUsuario('reclamos.gestionar')`.
@@ -798,13 +811,13 @@ Detalle con matching **LIVE** contra el estado actual.
 - **Errores:** `404` si el resumen no existe.
 
 ### POST `/resumenes-bancarios/:id/creditos/:creditoId/conciliar`
-Concilia un crédito contra una liquidación (con PIN).
-- **Auth:** `requireUsuario` + cap `pago.conciliar` **+ PIN** (`verificarPinUsuario`, lockout anti-fuerza-bruta).
-- **Params:** `id`, `creditoId`. **Request body:** `liquidacionId` (≥1), `pin?`.
+Concilia un crédito contra una liquidación.
+- **Auth:** `requireUsuario` + cap `pago.conciliar`. _(El PIN se eliminó; el `pin` del body se ignora.)_
+- **Params:** `id`, `creditoId`. **Request body:** `liquidacionId` (≥1), `pin?` (ignorado).
 - **Respuesta:** el `Pago` creado.
 - **Reglas de negocio:** lock atómico anti doble-conciliación (`updateMany where conciliado:false`); crea un `Pago` **directo `CONCILIADO`** (método `TRANSFERENCIA`, NO pasa por `INFORMADO` porque lo detectó el banco); recomputa el estado de la liquidación (`PAGADO`/`PARCIAL`) con mora. El link 1:1 crédito↔pago vive en `CreditoDetectado.pagoId` (`@unique`).
 - ✅ **Endurecido (05/07):** (1) mora con el **esquema efectivo** (`calcularMora` + `resolverEsquemaMora` + `montoPunitorioManual`) en vez del wrapper legacy `% diario` — antes condonaba mora en silencio o dejaba liqs PARCIAL zombies; (2) guards: liq `PAGADO` → 409, contrato `PROPIETARIO_DIRECTO` → 409 (esa plata va al banco del DUEÑO, no puede estar en el extracto de la inmo), `credito.monto > saldo + $0.01` → 400 (antes una transferencia de 2 meses sobre UNA liq inflaba rendición y comisión); (3) `SELECT … FOR UPDATE` de la liquidación + re-check del tope DENTRO de la tx (dos créditos distintos en paralelo podían sobre-pagar la misma liq). `candidatosVigentes` (matching + dropdown) también filtra `modoCobranza='INMOBILIARIA'` y usa el esquema de mora efectivo.
-- **Errores:** código/mensaje del PIN si falla; `404` crédito/liquidación inexistente; `409` crédito ya conciliado, contrato no `ACTIVO`, liq ya paga o contrato de cobranza directa; `400` crédito supera el saldo.
+- **Errores:** `404` crédito/liquidación inexistente; `409` crédito ya conciliado, contrato no `ACTIVO`, liq ya paga o contrato de cobranza directa; `400` crédito supera el saldo.
 - **Relacionado:** `POST /pagos/:id/anular` ahora **libera el crédito** (`conciliado:false, pagoId:null`) si el pago anulado nació del extracto — antes quedaba huérfano sin poder reasignarse — y recomputa la liq con umbral base+mora (espejo de validar; antes solo base → anular el pago de la mora dejaba PAGADO con mora impaga).
 
 

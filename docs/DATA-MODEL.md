@@ -132,7 +132,7 @@ Bundle de 3 features de la auditoría de archivos/adjuntos (avatar del inquilino
 - `conciliado Boolean @default(false)` — marca el crédito como ya conciliado (creó un `Pago` real) para no reconciliar dos veces la misma línea del extracto.
 - `pagoId String? @unique` + `pago Pago?` — link 1:1 opcional al `Pago` creado. Back-relation en `Pago`: `creditoDetectado CreditoDetectado?`.
 
-Al conciliar (`POST /resumenes-bancarios/:id/creditos/:creditoId/conciliar`, con PIN) se crea un `Pago` **directo CONCILIADO** (TRANSFERENCIA, no pasa por `INFORMADO` porque lo detectó el banco) y se linkea vía `pagoId`. Lock atómico anti doble-conciliación: `updateMany where conciliado:false`. FK `pagoId → pagos(id)` con **`ON DELETE SET NULL`** (borrar el `Pago` no borra el crédito).
+Al conciliar (`POST /resumenes-bancarios/:id/creditos/:creditoId/conciliar`) se crea un `Pago` **directo CONCILIADO** (TRANSFERENCIA, no pasa por `INFORMADO` porque lo detectó el banco) y se linkea vía `pagoId`. Lock atómico anti doble-conciliación: `updateMany where conciliado:false`. FK `pagoId → pagos(id)` con **`ON DELETE SET NULL`** (borrar el `Pago` no borra el crédito).
 
 **`ImportacionCartera` — modelo nuevo** (`@@map("importaciones_cartera")`). Es el backend real de la **migración de cartera**: el dueño sube SU propia planilla (Excel/CSV) y mapea qué columna es qué (mapeo flexible, sinónimos auto-sugeridos; no hay formato fijo impuesto). Campos: `archivoUrl`, `nombreArchivo`, `columnas Json` (headers en orden), `filas Json` (filas crudas parseadas), `mapeoColumnas Json?` (`{ campoDestino: columnaOrigen }` una vez mapeado), `totalFilas Int`, `estado EstadoImportacion @default(SUBIDO)`, `resultado Json?` (`{ creadas, errores:[{fila,motivo}] }`), `creadoPor`, timestamps. Relación a `Inmobiliaria` vía `inmobiliariaId` con `@@index([inmobiliariaId])`; FK con **`ON DELETE RESTRICT`** (no se puede borrar la inmobiliaria si tiene importaciones).
 
@@ -142,4 +142,23 @@ Al conciliar (`POST /resumenes-bancarios/:id/creditos/:creditoId/conciliar`, con
 - `CONFIRMADO` — filas procesadas (ver `resultado`).
 
 **Columnas que YA existían (NO son de esta migración).** `Usuario.imageUrl String?`, `MovimientoCaja.comprobanteUrl String?` y `Pago.comprobanteUrl String?` vienen todas de la migración base `20260612042420_nucleo_completo`, no de `20260703110000`. `PUT /me/avatar` y el comprobante de gasto de caja usan esas columnas preexistentes → **sin migración**. ⚠️ **OJO (backend-ready sin UI):** el `POST /caja/movimientos` ya valida y persiste `comprobanteUrl` (se arregló 04/07 un bug donde el `create` lo validaba pero no lo guardaba), pero el front del panel todavía NO consume el avatar propio del usuario ni sube el comprobante en el alta de gasto de caja. Ver `../API.md`.
+
+### Novedades del schema (05/07) — historial de inquilinos, ciclo de vida del contrato, reclamos-pagador
+
+Bundle de features de julio (todas en prod; migraciones aplicadas por `prisma migrate deploy` al bootear el backend). Demo intacta / ambos modos andan.
+
+**Historial de inquilinos** — migraciones `persona_inquilino`, `doc_contrato_tipos_legales`:
+- **`Persona` — modelo nuevo** por tenant: identidad reutilizable del inquilino que agrupa las N filas `Inquilino` (una por contrato — el `contratoId @unique` sigue intacto). `Inquilino.personaId String?` + back-relation. **Backfill idempotente** (agrupa por DNI → email → persona propia). No rompe el login OTP. 7 personas en prod, 0 fusiones.
+- **8 tipos de doc legales** nuevos en el enum de documentos del contrato.
+
+**Ciclo de vida del contrato** — migraciones `estado_deposito`, `cargo_rescision`, `ajuste_alquiler`, `renovacion_contrato`:
+- **`enum EstadoDeposito { RETENIDO DEVUELTO NETEADO EJECUTADO }`** + en `Contrato`: `estadoDeposito` (@default RETENIDO), `depositoDevueltoMonto`, `depositoDevueltoAt`, `fechaEfectivaRescision`, `motivoRescision`, `penalidadRescisionMeses`. En `Inmobiliaria`: `preavisoRescisionMesesDefault` (2) + `penalidadRescisionMesesDefault` (1.5).
+- **`CargoContrato` — modelo nuevo** (`@@map("cargos_contrato")`): cargo one-off sobre un contrato — `tipo TipoCargo`, `concepto`, `monto Decimal(14,2)`, `moneda`, `creadoPorId`. ⚠️ Hoy es **write-only** (ningún endpoint lo lee; el saldo del inquilino sale **solo de liquidaciones** — `lib/saldos.ts`). El cargo de penalidad de rescisión y el de reparación al inquilino se crean pero **no llegan a la PWA del inquilino** todavía → follow-up en `../../work-agent/04-PENDIENTES.md` §A.7.
+- **`AjusteAlquiler` — modelo nuevo**: historial de ajustes del canon (`montoAnterior`/`montoNuevo`, `periodoDesde`, `motivo`). El ajuste actualiza `contrato.monto` + las cuotas PENDIENTE futuras.
+- **`RenovacionContrato` — modelo nuevo**: historial de renovaciones (fechaFin y monto antes/después) — el contrato es el mismo (continuidad de inquilino/depósito/historial).
+
+**Reclamos "¿quién paga?"** — migración `reclamo_pagador_cargo`:
+- **`enum PagadorReclamo { PROPIETARIO INQUILINO DEPOSITO }`** + `Reclamo.pagador`. Reemplaza a la clasificación legada `ClasificacionReclamo` (USO_Y_GOCE/DESPERFECTO), que queda nullable por compatibilidad.
+- **`CargoContrato`** gana `reclamoId String? @unique` (**1 cargo por reclamo**, idempotente; FK `ON DELETE SET NULL`) + `contraDeposito Boolean @default(false)` (true = descuenta del depósito retenido, no es deuda que el inquilino paga ahora). **`enum TipoCargo`** gana `REPARACION`.
+- **`GastoRendido`** ya soportaba `refId 'reclamo:<id>'` + `tipo TRABAJO`: la rendición ahora **sí** incluye los reclamos resueltos con pagador PROPIETARIO (antes solo juntaba gastos de caja `tipo CAJA`). Dedup por `refId` (los reclamos no tienen flag `descontadoEnRendicion`).
 
