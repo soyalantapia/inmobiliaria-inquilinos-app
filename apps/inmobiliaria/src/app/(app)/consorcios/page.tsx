@@ -36,7 +36,7 @@ import { formatMonto } from '@/lib/format';
  * (expensas, gastos comunes, asambleas, libro de actas).
  */
 export default function ConsorciosPage() {
-  const { consorcios, cargando } = useConsorcios();
+  const { consorcios, cargando, isError } = useConsorcios();
   const [sumarOpen, setSumarOpen] = useState(false);
 
   // KPIs cabecera (con guardas por si todavía no llegó la data del API)
@@ -132,7 +132,23 @@ export default function ConsorciosPage() {
               ))
             : null}
 
-          {!cargando && lista.length === 0 ? (
+          {!cargando && isError ? (
+            <Card>
+              <CardContent className="space-y-3 p-8 text-center">
+                <Building2 className="mx-auto h-8 w-8 text-muted-foreground" />
+                <p className="text-sm font-medium">No pudimos cargar tus consorcios</p>
+                <p className="text-xs text-muted-foreground">
+                  Hubo un problema de conexión con el servidor. Tus edificios están a
+                  salvo — reintentá en un momento.
+                </p>
+                <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
+                  Reintentar
+                </Button>
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {!cargando && !isError && lista.length === 0 ? (
             <Card>
               <CardContent className="space-y-2 p-8 text-center">
                 <Building2 className="mx-auto h-8 w-8 text-muted-foreground" />

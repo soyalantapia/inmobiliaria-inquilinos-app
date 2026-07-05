@@ -13,7 +13,7 @@
  * donde la UI espera YYYY-MM-DD.
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiEnabled, apiFetch } from './client';
+import { apiEnabled, apiFetch, ApiError } from './client';
 import { ensureApiSession } from './session';
 import {
   consorcioPorId,
@@ -152,6 +152,7 @@ export function useConsorcios(): {
   consorcios: Consorcio[] | null;
   cargando: boolean;
   deApi: boolean;
+  isError: boolean;
 } {
   const q = useQuery({
     queryKey: ['consorcios'],
@@ -163,9 +164,12 @@ export function useConsorcios(): {
     enabled: apiEnabled,
     staleTime: 30_000,
   });
-  if (!apiEnabled) return { consorcios: listarConsorcios(), cargando: false, deApi: false };
-  if (q.isError) return { consorcios: [], cargando: false, deApi: true };
-  return { consorcios: q.data ?? null, cargando: q.isPending, deApi: true };
+  if (!apiEnabled) return { consorcios: listarConsorcios(), cargando: false, deApi: false, isError: false };
+  // Un fallo del API (red/500/sesión) expone `isError` en vez de colapsar a lista
+  // vacía: antes la página lo mostraba como "Sin consorcios todavía" (falso vacío),
+  // haciéndole creer a una inmobiliaria que SÍ tiene edificios que no tiene ninguno.
+  if (q.isError) return { consorcios: null, cargando: false, deApi: true, isError: true };
+  return { consorcios: q.data ?? null, cargando: q.isPending, deApi: true, isError: false };
 }
 
 /* ============================================================
@@ -313,6 +317,7 @@ export function useConsorcio(id: string | undefined): {
   consorcio: Consorcio | null | undefined;
   cargando: boolean;
   deApi: boolean;
+  isError: boolean;
 } {
   const q = useQuery({
     queryKey: ['consorcio', id],
@@ -325,12 +330,20 @@ export function useConsorcio(id: string | undefined): {
     staleTime: 30_000,
     retry: false,
   });
-  if (!apiEnabled) return { consorcio: id ? consorcioPorId(id) : null, cargando: false, deApi: false };
-  if (q.isError) return { consorcio: null, cargando: false, deApi: true };
+  if (!apiEnabled) return { consorcio: id ? consorcioPorId(id) : null, cargando: false, deApi: false, isError: false };
+  if (q.isError) {
+    // Distinguimos el 404 REAL (el consorcio no existe → "no encontrado") de un fallo
+    // de fetch (red/500/sesión → estado de error con reintento). Antes cualquier error
+    // colapsaba a `consorcio: null` y la UI decía "Consorcio no encontrado", haciéndole
+    // creer al usuario que el edificio se borró cuando el fetch falló transitoriamente.
+    const noExiste = q.error instanceof ApiError && q.error.status === 404;
+    return { consorcio: noExiste ? null : undefined, cargando: false, deApi: true, isError: !noExiste };
+  }
   // undefined mientras carga (la pantalla muestra skeleton); null = no existe.
   return {
     consorcio: q.isPending ? undefined : (q.data ?? null),
     cargando: q.isPending,
     deApi: true,
+    isError: false,
   };
 }

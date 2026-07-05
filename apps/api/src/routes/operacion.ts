@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { prisma } from '../db.js';
 import { requireInquilino, requireUsuario } from '../auth/guards.js';
 import { verificarPinUsuario } from '../auth/pin.js';
+import { registrarEvento } from '../lib/auditoria.js';
 import { urlEsDelTenant } from './uploads.js';
 
 /** Token opaco del link mágico de visita (/p/:token) — 24 bytes base64url, no adivinable. */
@@ -795,8 +796,11 @@ export async function operacionRoutes(app: FastifyInstance) {
     nombre: z.string().trim().min(2).max(200),
     direccion: z.string().trim().min(3).max(300),
     periodoActual: z
+      // Valida el RANGO del mes (01-12), no solo "dos dígitos": antes 2026-13 o
+      // 2026-00 pasaban y quedaban persistidos, rompiendo la invariante YYYY-MM que
+      // ancla la emisión de expensas (Fase 2).
       .string()
-      .regex(/^\d{4}-\d{2}$/, 'periodoActual debe ser YYYY-MM')
+      .regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'periodoActual debe ser YYYY-MM (mes 01-12)')
       .optional(),
     expensasPeriodoActual: z.number().nonnegative().optional(),
     encargado: z
@@ -1045,21 +1049,37 @@ export async function operacionRoutes(app: FastifyInstance) {
     // Destructivo → CARGA afuera (la capacidad *.crear sola lo dejaría pasar).
     if (u.rol === 'CARGA') return reply.code(403).send({ message: 'Tu rol no permite eliminar unidades' });
     const { id, ufId } = request.params as { id: string; ufId: string };
-    const uf = await prisma.unidadFuncional.findFirst({
-      where: { id: ufId, consorcioId: id, inmobiliariaId: u.inmobiliariaId },
-    });
-    if (!uf) return reply.code(404).send({ message: 'Unidad inexistente' });
-    if (Number(uf.saldoDeudor) > 0) {
-      return reply.code(409).send({ message: 'La unidad tiene saldo deudor — saldalo o ajustalo antes de eliminarla' });
+    try {
+      // El chequeo saldoDeudor + el delete + el decremento de cantUf van en UNA tx
+      // Serializable: antes el check estaba FUERA de la transacción, así que un PUT
+      // concurrente que cargara deuda entre el check y el delete permitía borrar una
+      // UF con saldo (viola la regla LOCKED "no borrar UF con deuda").
+      await prisma.$transaction(
+        async (tx) => {
+          const uf = await tx.unidadFuncional.findFirst({
+            where: { id: ufId, consorcioId: id, inmobiliariaId: u.inmobiliariaId },
+            select: { id: true, saldoDeudor: true },
+          });
+          if (!uf) throw new Error('UF_404');
+          if (Number(uf.saldoDeudor) > 0) throw new Error('UF_CON_DEUDA');
+          await tx.unidadFuncional.delete({ where: { id: ufId, inmobiliariaId: u.inmobiliariaId } });
+          await tx.consorcio.update({
+            where: { id, inmobiliariaId: u.inmobiliariaId },
+            data: { cantUf: { decrement: 1 } },
+          });
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 15_000 },
+      );
+      return { ok: true };
+    } catch (e) {
+      if (e instanceof Error) {
+        if (e.message === 'UF_404') return reply.code(404).send({ message: 'Unidad inexistente' });
+        if (e.message === 'UF_CON_DEUDA') {
+          return reply.code(409).send({ message: 'La unidad tiene saldo deudor — saldalo o ajustalo antes de eliminarla' });
+        }
+      }
+      throw e; // P2034 (serialization) → 409 reintentable por el handler global.
     }
-    await prisma.$transaction([
-      prisma.unidadFuncional.delete({ where: { id: ufId, inmobiliariaId: u.inmobiliariaId } }),
-      prisma.consorcio.update({
-        where: { id, inmobiliariaId: u.inmobiliariaId },
-        data: { cantUf: { decrement: 1 } },
-      }),
-    ]);
-    return { ok: true };
   });
 
   // ===== Consorcios: movimientos (gastos/cobranzas del edificio) =====
@@ -1075,7 +1095,10 @@ export async function operacionRoutes(app: FastifyInstance) {
         concepto: z.string().trim().min(2).max(300),
         // El SIGNO codifica la dirección (convención del módulo): positivo =
         // ingreso (cobranza), negativo = egreso (sueldo/mantenimiento/etc.).
-        monto: z.number().refine((n) => n !== 0, 'El monto no puede ser 0'),
+        // Chequeamos el valor REDONDEADO a 2 decimales (el campo es Decimal(14,2)):
+        // antes un sub-centavo como 0.004 pasaba `!== 0` pero se persistía como 0.00,
+        // dejando un asiento de valor nulo. Ahora 0.004 → redondea a 0 → rechazado.
+        monto: z.number().refine((n) => Math.round(n * 100) / 100 !== 0, 'El monto no puede ser 0'),
         categoria: z.enum(['COBRANZA', 'SUELDO', 'MANTENIMIENTO', 'SERVICIO', 'IMPUESTO', 'OTRO']),
       })
       // Signo acoplado a la categoría: COBRANZA = ingreso (+), el resto = egreso (−).
@@ -1104,26 +1127,41 @@ export async function operacionRoutes(app: FastifyInstance) {
         consorcioId: id,
         fecha: b.fecha,
         concepto: b.concepto,
-        monto: b.monto,
+        // Persistimos el monto ya redondeado a 2 decimales (coincide con Decimal(14,2)
+        // y con el chequeo ≠ 0 de arriba): nunca guardamos un valor sub-centavo.
+        monto: Math.round(b.monto * 100) / 100,
         categoria: b.categoria,
       },
     });
     return reply.code(201).send(mov);
   });
 
-  // Borrar un movimiento financiero = solo ADMIN (precedente: caja.eliminar).
+  // Borrar un movimiento financiero = ADMIN + PIN + auditoría, igual que el
+  // precedente caja.eliminar (DELETE /caja/movimientos/:id): es plata. Antes solo
+  // chequeaba rol=ADMIN y borraba, sin segundo factor y SIN registrar evento →
+  // se podía descuadrar el libro del consorcio de forma no auditable.
   app.delete('/consorcios/:id/movimientos/:movId', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'gasto.caja.cargar');
     if (!u) return;
     if (u.rol !== 'ADMIN') {
       return reply.code(403).send({ message: 'Solo un Admin puede eliminar movimientos del consorcio' });
     }
+    const body = z.object({ pin: z.string().optional() }).parse(request.body ?? {});
+    if (!(await verificarPin(u.userId, body.pin, reply))) return;
     const { id, movId } = request.params as { id: string; movId: string };
     const mov = await prisma.movimientoConsorcio.findFirst({
       where: { id: movId, consorcioId: id, inmobiliariaId: u.inmobiliariaId },
     });
     if (!mov) return reply.code(404).send({ message: 'Movimiento inexistente' });
     await prisma.movimientoConsorcio.delete({ where: { id: movId, inmobiliariaId: u.inmobiliariaId } });
+    await registrarEvento({
+      inmobiliariaId: u.inmobiliariaId,
+      tipo: 'MOVIMIENTO_CONSORCIO_ELIMINADO',
+      autorId: u.userId,
+      rolAutor: u.rol,
+      entidadId: movId,
+      entidadDescripcion: `Movimiento de consorcio eliminado: ${mov.concepto} ($${Number(mov.monto)})`,
+    });
     return { ok: true };
   });
 
@@ -1311,32 +1349,45 @@ export async function operacionRoutes(app: FastifyInstance) {
     const d = body.data;
     const cargadoPor = await nombreUsuario(u.userId);
     try {
-      return await prisma.$transaction(async (tx) => {
-        const item = await tx.itemInventario.findFirst({
-          where: { id: d.itemId, consorcioId: id, inmobiliariaId: u.inmobiliariaId },
-        });
-        if (!item) throw new Error('ITEM_NOT_FOUND');
-        // ENTRADA suma, SALIDA resta, AJUSTE fija (delta = objetivo − actual).
-        const delta = d.tipo === 'ENTRADA' ? d.cantidad : d.tipo === 'SALIDA' ? -d.cantidad : d.cantidad - item.cantidadActual;
-        const nuevaCantidad = Math.max(0, item.cantidadActual + delta);
-        await tx.itemInventario.update({ where: { id: item.id }, data: { cantidadActual: nuevaCantidad } });
-        const movimiento = await tx.movimientoInventario.create({
-          data: {
-            inmobiliariaId: u.inmobiliariaId,
-            consorcioId: id,
-            itemId: item.id,
-            tipo: d.tipo,
-            cantidad: d.cantidad,
-            motivo: d.motivo,
-            ufDestino: d.ufDestino || null,
-            cargadoPor,
-          },
-        });
-        return { movimiento, item: { ...item, cantidadActual: nuevaCantidad } };
-      });
+      // Serializable (mismo criterio que las UFs): el patrón read-modify-write del
+      // stock, bajo READ COMMITTED, permitía que dos SALIDA concurrentes leyeran el
+      // mismo stock y ambas escribieran el mismo resultado (lost-update → oversell).
+      return await prisma.$transaction(
+        async (tx) => {
+          const item = await tx.itemInventario.findFirst({
+            where: { id: d.itemId, consorcioId: id, inmobiliariaId: u.inmobiliariaId },
+          });
+          if (!item) throw new Error('ITEM_NOT_FOUND');
+          // Una SALIDA no puede despachar más de lo que hay: antes el clamp a 0 lo
+          // absorbía en silencio y el movimiento quedaba registrado con MÁS unidades
+          // de las que físicamente salieron (el ledger no reconstruía el stock real).
+          if (d.tipo === 'SALIDA' && d.cantidad > item.cantidadActual) throw new Error('STOCK_INSUFICIENTE');
+          // ENTRADA suma, SALIDA resta, AJUSTE fija (delta = objetivo − actual).
+          const delta = d.tipo === 'ENTRADA' ? d.cantidad : d.tipo === 'SALIDA' ? -d.cantidad : d.cantidad - item.cantidadActual;
+          const nuevaCantidad = Math.max(0, item.cantidadActual + delta);
+          await tx.itemInventario.update({ where: { id: item.id }, data: { cantidadActual: nuevaCantidad } });
+          const movimiento = await tx.movimientoInventario.create({
+            data: {
+              inmobiliariaId: u.inmobiliariaId,
+              consorcioId: id,
+              itemId: item.id,
+              tipo: d.tipo,
+              cantidad: d.cantidad,
+              motivo: d.motivo,
+              ufDestino: d.ufDestino || null,
+              cargadoPor,
+            },
+          });
+          return { movimiento, item: { ...item, cantidadActual: nuevaCantidad } };
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 15_000 },
+      );
     } catch (e) {
       if (e instanceof Error && e.message === 'ITEM_NOT_FOUND') return reply.code(404).send({ message: 'Item inexistente' });
-      throw e;
+      if (e instanceof Error && e.message === 'STOCK_INSUFICIENTE') {
+        return reply.code(400).send({ message: 'No hay stock suficiente para esa salida' });
+      }
+      throw e; // P2034 (serialization) → 409 reintentable por el handler global.
     }
   });
 
