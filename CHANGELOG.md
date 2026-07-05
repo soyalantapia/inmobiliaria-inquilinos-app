@@ -27,7 +27,10 @@ back+front, E2E prod OK):
   crea un Pago CONCILIADO por cada cuota vencida (o condona la deuda) y la marca PAGADO — antes
   la deuda de un contrato finalizado quedaba visible pero inmovilizada (`/pagos/informar` la gatea
   `exigirContratoActivo`). Botón "Saldar deuda" en la ficha del inquilino.
-Migraciones `estado_deposito`, `cargo_rescision`, `ajuste_alquiler`.
+- **Renovación de contrato**: `POST /contratos/:id/renovar` extiende el plazo y fija un nuevo canon
+  desde un período — el mismo contrato (continuidad de inquilino/depósito/historial); actualiza las
+  cuotas futuras impagas y devenga los nuevos períodos (`RenovacionContrato`). Botón "Renovar" en el detalle.
+Migraciones `estado_deposito`, `cargo_rescision`, `ajuste_alquiler`, `renovacion_contrato`.
 
 ### Historial de inquilinos: entidad Persona + ficha + reuso + expediente (05/07)
 Feature completa (deployada back+front, E2E prod OK). Cubre 5 pedidos del owner:

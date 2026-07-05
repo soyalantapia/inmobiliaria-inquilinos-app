@@ -1435,6 +1435,86 @@ export async function coreRoutes(app: FastifyInstance) {
     });
   });
 
+  // ===== Renovación del contrato (extiende plazo + nuevo canon) =====
+  // El mismo contrato (continuidad de inquilino/depósito/historial): extiende fechaFin, fija
+  // el nuevo monto desde un período, actualiza las cuotas futuras impagas y devenga los nuevos.
+  app.post('/contratos/:id/renovar', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'contratos.crear');
+    if (!u) return;
+    if (u.rol === 'CARGA') return reply.code(403).send({ message: 'Solo un Admin u Operador puede renovar contratos' });
+    const { id } = request.params as { id: string };
+    const parsed = z
+      .object({
+        fechaFinNueva: z.coerce.date(),
+        montoNuevo: z.number().positive(),
+        montoDesde: z.string().regex(/^\d{4}-\d{2}$/, 'Período inválido (YYYY-MM)'),
+        diaPago: z.number().int().min(1).max(31).optional(),
+        motivo: z.string().trim().max(200).optional(),
+      })
+      .safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ message: 'Datos de la renovación inválidos', detalle: parsed.error.flatten() });
+    }
+    const b = parsed.data;
+    const contrato = await prisma.contrato.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
+    if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
+    if (contrato.estado !== 'ACTIVO') return reply.code(409).send({ message: 'Solo se renueva un contrato activo' });
+    if (b.fechaFinNueva <= contrato.fechaFin) {
+      return reply.code(400).send({ message: 'La nueva fecha de fin debe ser posterior a la actual' });
+    }
+    const montoAnterior = Number(contrato.monto);
+    const expensas = contrato.montoExpensas != null ? Number(contrato.montoExpensas) : 0;
+    const res = await prisma.$transaction(async (tx) => {
+      const renov = await tx.renovacionContrato.create({
+        data: {
+          inmobiliariaId: u.inmobiliariaId,
+          contratoId: id,
+          fechaFinAnterior: contrato.fechaFin,
+          fechaFinNueva: b.fechaFinNueva,
+          montoAnterior,
+          montoNuevo: b.montoNuevo,
+          montoDesde: b.montoDesde,
+          motivo: b.motivo || null,
+          creadoPorId: u.userId,
+        },
+      });
+      await tx.contrato.update({
+        where: { id },
+        data: { fechaFin: b.fechaFinNueva, monto: b.montoNuevo, ...(b.diaPago ? { diaPago: b.diaPago } : {}) },
+      });
+      // Cuotas futuras impagas (>= montoDesde) al nuevo canon (igual que el ajuste).
+      await tx.liquidacion.updateMany({
+        where: {
+          contratoId: id,
+          inmobiliariaId: u.inmobiliariaId,
+          periodo: { gte: b.montoDesde },
+          estado: 'PENDIENTE',
+          pagos: { none: {} },
+        },
+        data: { montoAlquiler: b.montoNuevo, montoTotal: b.montoNuevo + expensas },
+      });
+      // Devengar los nuevos períodos (hasta el tope del devengo) con la nueva fechaFin + monto.
+      // Idempotente (skipDuplicates); el cron completa el resto mes a mes.
+      const nuevas = await generarLiquidacionesContrato(tx, {
+        ...contrato,
+        fechaFin: b.fechaFinNueva,
+        monto: b.montoNuevo,
+      });
+      return { renovacionId: renov.id, liquidacionesNuevas: nuevas };
+    });
+    return { ok: true, montoAnterior, montoNuevo: b.montoNuevo, ...res };
+  });
+
+  app.get('/contratos/:id/renovaciones', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'contratos.ver');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    return prisma.renovacionContrato.findMany({
+      where: { contratoId: id, inmobiliariaId: u.inmobiliariaId },
+      orderBy: { createdAt: 'desc' },
+    });
+  });
+
   // ===== Depósitos en custodia (plata de terceros que la inmo guarda) =====
   // Suma los depósitos de garantía RETENIDOS (de contratos activos Y de finalizados que
   // todavía no se devolvieron): es el pasivo real de plata de terceros a cuidar.
