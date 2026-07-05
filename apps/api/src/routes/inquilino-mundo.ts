@@ -591,14 +591,18 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
 
     const ahora = new Date();
     const contratoVigente = contrato.estado === 'ACTIVO';
-    // Meses cumplidos: para un contrato ACTIVO cuentan hasta hoy; para uno finalizado
-    // se congelan (no siguen creciendo eternamente) al fin del contrato o a hoy, lo
-    // que ocurra antes. Así el certificado no infla la antigüedad de un contrato muerto.
-    const hastaMeses = contratoVigente
-      ? ahora
-      : contrato.fechaFin < ahora
-        ? contrato.fechaFin
-        : ahora;
+    // Meses cumplidos: un contrato ACTIVO cuenta hasta hoy; uno dado de baja se CONGELA en
+    // la fecha de la baja para que su antigüedad no siga creciendo mes a mes como si el
+    // ex-inquilino nunca se hubiera ido (contradiría `vigente: false`). El modelo Contrato
+    // no persiste una fecha de baja, así que usamos `updatedAt` como proxy (finalizar/
+    // rescindir es el último update típico del contrato) y nunca contamos más allá del fin
+    // natural (`fechaFin`). Para una baja EN la fecha de fin (fechaFin ya pasada) esto da
+    // fechaFin, igual que antes; el fix cubre la baja ANTICIPADA (fechaFin todavía futura),
+    // donde antes caíamos a `ahora` e inflábamos la tenencia sin tope. Nota: si a futuro se
+    // persiste un `finalizadoAt` explícito, reemplazar `updatedAt` por ese campo.
+    const finBaja =
+      contrato.updatedAt < contrato.fechaFin ? contrato.updatedAt : contrato.fechaFin;
+    const hastaMeses = contratoVigente ? ahora : finBaja;
     const mesesCumplidos = Math.max(
       0,
       (hastaMeses.getFullYear() - contrato.fechaInicio.getFullYear()) * 12 +
