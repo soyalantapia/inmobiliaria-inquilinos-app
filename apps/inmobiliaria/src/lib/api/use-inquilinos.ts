@@ -4,91 +4,150 @@ import { useQuery } from '@tanstack/react-query';
 import { apiEnabled, apiFetch } from './client';
 import { ensureApiSession } from './session';
 import { contratosMock } from '@/lib/mock-data';
+import type { Moneda } from '@/lib/types';
 
-export type EstadoInquilino = 'ACTIVO' | 'INACTIVO' | 'SIN_CONTRATO';
+export type EstadoInquilino = 'ACTIVO' | 'INACTIVO';
 
-/** Fila de la pestaña Inquilinos (una por titular; hoy = una por contrato). */
-export interface InquilinoListado {
-  id: string;
-  nombre: string;
-  email: string | null;
-  telefono: string | null;
-  dni: string | null;
-  /** Dirección de la propiedad de su contrato (el actual o el que tuvo). */
-  propiedad: string | null;
-  /** Contrato al que está vinculado (para linkear al detalle). */
-  contratoId: string | null;
-  /** ACTIVO si su contrato está vigente; INACTIVO si finalizó/rescindió; SIN_CONTRATO si no tiene. */
-  estado: EstadoInquilino;
-}
-
-interface InquilinoApi {
+/** Fila de la pestaña Inquilinos: una PERSONA (deduplicada, agrupa sus N contratos). */
+export interface PersonaListado {
   id: string;
   nombre: string;
   apellido: string | null;
+  dni: string | null;
   email: string | null;
   telefono: string | null;
-  dni: string | null;
-  contrato: { id: string; estado: string; propiedad: { direccion: string } | null } | null;
+  totalContratos: number;
+  estado: EstadoInquilino;
+  /** Propiedad de referencia (la del contrato vigente o la más reciente). */
+  propiedad: string | null;
 }
 
-function mapInquilino(i: InquilinoApi): InquilinoListado {
-  const nombre = `${i.nombre} ${i.apellido ?? ''}`.trim();
-  const estado: EstadoInquilino = !i.contrato
-    ? 'SIN_CONTRATO'
-    : i.contrato.estado === 'ACTIVO'
-      ? 'ACTIVO'
-      : 'INACTIVO';
-  return {
-    id: i.id,
-    nombre: nombre || '—',
-    email: i.email,
-    telefono: i.telefono,
-    dni: i.dni,
-    propiedad: i.contrato?.propiedad?.direccion ?? null,
-    contratoId: i.contrato?.id ?? null,
-    estado,
+export interface PersonaContrato {
+  id: string;
+  estado: string;
+  monto: number;
+  moneda: Moneda;
+  fechaInicio: string;
+  fechaFin: string;
+  propiedad: { id: string; direccion: string } | null;
+  deuda: number;
+  cuotasVencidas: number;
+}
+
+export interface PersonaReclamo {
+  id: string;
+  contratoId: string;
+  categoria: string;
+  descripcion: string;
+  estado: string;
+  urgencia: string;
+  createdAt: string;
+}
+
+export interface PersonaFicha {
+  id: string;
+  nombre: string;
+  apellido: string | null;
+  dni: string | null;
+  email: string | null;
+  telefono: string | null;
+  cuit: string | null;
+  contratos: PersonaContrato[];
+  reclamos: PersonaReclamo[];
+  resumen: {
+    totalContratos: number;
+    activos: number;
+    deudaVigente: number;
+    tuvoMora: boolean;
+    reclamosAbiertos: number;
   };
 }
 
-// Demo (!apiEnabled): derivamos la lista de los contratos mock para que la pestaña
-// no aparezca vacía en el build demo. En prod sale del backend (GET /inquilinos).
-function inquilinosMock(): InquilinoListado[] {
+// Demo (!apiEnabled): derivamos de los contratos mock (cada uno = una persona). En prod
+// sale del backend (GET /personas), ya deduplicado por persona.
+function personasMock(): PersonaListado[] {
   return contratosMock.map((c) => ({
-    id: `inq_${c.id}`,
+    id: `per_${c.id}`,
     nombre: c.inquilino,
+    apellido: null,
+    dni: null,
     email: null,
     telefono: null,
-    dni: null,
-    propiedad: c.direccion,
-    contratoId: c.id,
+    totalContratos: 1,
     estado: c.estado === 'ACTIVO' ? 'ACTIVO' : 'INACTIVO',
+    propiedad: c.direccion,
   }));
 }
 
+function personaFichaMock(id: string): PersonaFicha | null {
+  const c = contratosMock.find((x) => `per_${x.id}` === id);
+  if (!c) return null;
+  return {
+    id,
+    nombre: c.inquilino,
+    apellido: null,
+    dni: null,
+    email: null,
+    telefono: null,
+    cuit: null,
+    contratos: [
+      {
+        id: c.id,
+        estado: c.estado,
+        monto: c.monto,
+        moneda: c.moneda,
+        fechaInicio: c.fechaInicio,
+        fechaFin: c.fechaFin,
+        propiedad: { id: `prp_${c.id}`, direccion: c.direccion },
+        deuda: 0,
+        cuotasVencidas: 0,
+      },
+    ],
+    reclamos: [],
+    resumen: { totalContratos: 1, activos: c.estado === 'ACTIVO' ? 1 : 0, deudaVigente: 0, tuvoMora: false, reclamosAbiertos: 0 },
+  };
+}
+
 /**
- * Lista de inquilinos del tenant (activos + inactivos/pasados). Hoy devuelve una fila
- * por contrato (el titular es 1:1 con su contrato); la deduplicación por persona llega
- * con la entidad Persona. Mismo patrón que useContratos: NUNCA cae a mock ante error en
- * prod (mostraría una cartera fabricada) → lista vacía + flag error.
+ * Lista de personas (inquilinos deduplicados) del tenant. Mismo patrón que useContratos:
+ * NUNCA cae a mock ante error en prod (mostraría una cartera fabricada) → lista vacía + flag.
  */
-export function useInquilinos(): {
-  inquilinos: InquilinoListado[];
+export function usePersonas(): {
+  personas: PersonaListado[];
   cargando: boolean;
   deApi: boolean;
   error: boolean;
 } {
   const q = useQuery({
-    queryKey: ['inquilinos'],
+    queryKey: ['personas'],
     queryFn: async () => {
       await ensureApiSession();
-      const data = await apiFetch<InquilinoApi[]>('/inquilinos');
-      return data.map(mapInquilino);
+      return apiFetch<PersonaListado[]>('/personas');
     },
     enabled: apiEnabled,
     staleTime: 15_000,
   });
-  if (!apiEnabled) return { inquilinos: inquilinosMock(), cargando: false, deApi: false, error: false };
-  if (q.isError) return { inquilinos: [], cargando: false, deApi: true, error: true };
-  return { inquilinos: q.data ?? [], cargando: q.isPending, deApi: true, error: false };
+  if (!apiEnabled) return { personas: personasMock(), cargando: false, deApi: false, error: false };
+  if (q.isError) return { personas: [], cargando: false, deApi: true, error: true };
+  return { personas: q.data ?? [], cargando: q.isPending, deApi: true, error: false };
+}
+
+/** Ficha de una persona (contratos, propiedades, reclamos, morosidad). */
+export function usePersona(id: string): {
+  persona: PersonaFicha | null;
+  cargando: boolean;
+  error: boolean;
+} {
+  const q = useQuery({
+    queryKey: ['persona', id],
+    queryFn: async () => {
+      await ensureApiSession();
+      return apiFetch<PersonaFicha>(`/personas/${id}`);
+    },
+    enabled: apiEnabled && !!id,
+    staleTime: 15_000,
+  });
+  if (!apiEnabled) return { persona: personaFichaMock(id), cargando: false, error: false };
+  if (q.isError) return { persona: null, cargando: false, error: true };
+  return { persona: q.data ?? null, cargando: q.isPending, error: false };
 }

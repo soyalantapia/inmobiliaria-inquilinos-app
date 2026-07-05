@@ -9,20 +9,18 @@ import { cn } from '@llave/ui/cn';
 import { Input } from '@llave/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@llave/ui/table';
 import { Topbar } from '@/components/topbar';
-import { useInquilinos, type EstadoInquilino, type InquilinoListado } from '@/lib/api/use-inquilinos';
+import { usePersonas, type EstadoInquilino, type PersonaListado } from '@/lib/api/use-inquilinos';
 
 type Filtro = 'TODOS' | 'ACTIVO' | 'INACTIVO';
 
 const ESTADO_LABEL: Record<EstadoInquilino, string> = {
   ACTIVO: 'Activo',
   INACTIVO: 'Inactivo',
-  SIN_CONTRATO: 'Sin contrato',
 };
 
 const ESTADO_VARIANT: Record<EstadoInquilino, React.ComponentProps<typeof Badge>['variant']> = {
   ACTIVO: 'success',
   INACTIVO: 'secondary',
-  SIN_CONTRATO: 'outline',
 };
 
 const FILTROS: { key: Filtro; label: string }[] = [
@@ -31,52 +29,49 @@ const FILTROS: { key: Filtro; label: string }[] = [
   { key: 'INACTIVO', label: 'Inactivos' },
 ];
 
-function contacto(i: InquilinoListado): string {
-  return i.dni ? `DNI ${i.dni}` : i.email ?? i.telefono ?? '—';
+function contacto(p: PersonaListado): string {
+  return p.dni ? `DNI ${p.dni}` : p.email ?? p.telefono ?? '—';
 }
 
 export default function InquilinosPage() {
   const router = useRouter();
-  const { inquilinos, cargando, error } = useInquilinos();
+  const { personas, cargando, error } = usePersonas();
   const [q, setQ] = useState('');
   const [filtro, setFiltro] = useState<Filtro>('TODOS');
 
   const counts = useMemo(
     () => ({
-      TODOS: inquilinos.length,
-      ACTIVO: inquilinos.filter((i) => i.estado === 'ACTIVO').length,
-      // "Inactivos" agrupa finalizados/rescindidos (INACTIVO) y sin contrato.
-      INACTIVO: inquilinos.filter((i) => i.estado !== 'ACTIVO').length,
+      TODOS: personas.length,
+      ACTIVO: personas.filter((p) => p.estado === 'ACTIVO').length,
+      INACTIVO: personas.filter((p) => p.estado !== 'ACTIVO').length,
     }),
-    [inquilinos],
+    [personas],
   );
 
   const filtradas = useMemo(() => {
     const texto = q.trim().toLowerCase();
-    return inquilinos.filter((i) => {
-      const matchFiltro =
-        filtro === 'TODOS' || (filtro === 'ACTIVO' ? i.estado === 'ACTIVO' : i.estado !== 'ACTIVO');
+    return personas.filter((p) => {
+      const matchFiltro = filtro === 'TODOS' || p.estado === filtro;
       if (!matchFiltro) return false;
       if (!texto) return true;
       return (
-        i.nombre.toLowerCase().includes(texto) ||
-        (i.dni ?? '').toLowerCase().includes(texto) ||
-        (i.email ?? '').toLowerCase().includes(texto) ||
-        (i.propiedad ?? '').toLowerCase().includes(texto)
+        p.nombre.toLowerCase().includes(texto) ||
+        (p.dni ?? '').toLowerCase().includes(texto) ||
+        (p.email ?? '').toLowerCase().includes(texto) ||
+        (p.propiedad ?? '').toLowerCase().includes(texto)
       );
     });
-  }, [inquilinos, filtro, q]);
+  }, [personas, filtro, q]);
 
   return (
     <>
       <Topbar titulo="Inquilinos" />
       <main className="flex-1 space-y-6 p-4 md:p-6">
         <p className="text-sm text-muted-foreground">
-          Todos los inquilinos que pasaron por tu cartera, activos e inactivos. Desde acá
-          entrás a su contrato para ver reclamos, propiedad y estado de pago.
+          Todos los inquilinos que pasaron por tu cartera, activos e inactivos. Entrá a la ficha
+          para ver su historial: contratos, propiedades, reclamos y si tuvo morosidad.
         </p>
 
-        {/* Filtros por estado */}
         <div className="flex flex-wrap gap-2">
           {FILTROS.map((f) => (
             <button
@@ -96,7 +91,6 @@ export default function InquilinosPage() {
           ))}
         </div>
 
-        {/* Búsqueda */}
         <div className="relative max-w-sm">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -132,10 +126,10 @@ export default function InquilinosPage() {
           <Card className="flex flex-col items-center gap-2 p-10 text-center">
             <Users className="h-10 w-10 text-muted-foreground" />
             <p className="font-medium">
-              {inquilinos.length === 0 ? 'Todavía no hay inquilinos' : 'Sin resultados'}
+              {personas.length === 0 ? 'Todavía no hay inquilinos' : 'Sin resultados'}
             </p>
             <p className="text-sm text-muted-foreground">
-              {inquilinos.length === 0
+              {personas.length === 0
                 ? 'Cuando cargues un contrato, su inquilino aparece acá.'
                 : 'Probá con otro texto o cambiá el filtro.'}
             </p>
@@ -148,39 +142,40 @@ export default function InquilinosPage() {
                   <TableHead>Inquilino</TableHead>
                   <TableHead className="hidden sm:table-cell">Contacto</TableHead>
                   <TableHead className="hidden md:table-cell">Propiedad</TableHead>
+                  <TableHead className="text-center">Contratos</TableHead>
                   <TableHead>Estado</TableHead>
                   <TableHead className="w-10" />
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtradas.map((i) => {
-                  // La fila entra al contrato del inquilino (que ya muestra sus datos,
-                  // reclamos, docs). La ficha por-persona cross-contrato llega con Persona.
-                  const ir = () => i.contratoId && router.push(`/contratos/${i.contratoId}`);
+                {filtradas.map((p) => {
+                  const ir = () => router.push(`/inquilinos/${p.id}`);
+                  const nombre = `${p.nombre} ${p.apellido ?? ''}`.trim();
                   return (
                     <TableRow
-                      key={i.id}
+                      key={p.id}
                       onClick={ir}
                       onKeyDown={(e) => {
-                        if (i.contratoId && (e.key === 'Enter' || e.key === ' ')) {
+                        if (e.key === 'Enter' || e.key === ' ') {
                           e.preventDefault();
                           ir();
                         }
                       }}
-                      tabIndex={i.contratoId ? 0 : undefined}
-                      role={i.contratoId ? 'link' : undefined}
-                      className={i.contratoId ? 'cursor-pointer' : undefined}
+                      tabIndex={0}
+                      role="link"
+                      className="cursor-pointer"
                     >
-                      <TableCell className="font-medium">{i.nombre}</TableCell>
-                      <TableCell className="hidden text-muted-foreground sm:table-cell">{contacto(i)}</TableCell>
+                      <TableCell className="font-medium">{nombre}</TableCell>
+                      <TableCell className="hidden text-muted-foreground sm:table-cell">{contacto(p)}</TableCell>
                       <TableCell className="hidden text-muted-foreground md:table-cell">
-                        {i.propiedad ?? '—'}
+                        {p.propiedad ?? '—'}
                       </TableCell>
+                      <TableCell className="text-center tabular-nums">{p.totalContratos}</TableCell>
                       <TableCell>
-                        <Badge variant={ESTADO_VARIANT[i.estado]}>{ESTADO_LABEL[i.estado]}</Badge>
+                        <Badge variant={ESTADO_VARIANT[p.estado]}>{ESTADO_LABEL[p.estado]}</Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        {i.contratoId && <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
                       </TableCell>
                     </TableRow>
                   );

@@ -848,7 +848,33 @@ export async function coreRoutes(app: FastifyInstance) {
           cargadoAt: new Date(),
         },
       });
-      await tx.inquilino.update({ where: { id: inq.id }, data: { contratoId: contrato.id } });
+      // Persona: identidad reutilizable del tenant para la ficha histórica del inquilino.
+      // Por DNI hacemos upsert idempotente → un 2º contrato del MISMO DNI se agrupa bajo la
+      // misma Persona automáticamente (base del reuso). Sin DNI, Persona nueva para este titular.
+      const dniPersona = (d.inquilino.dni || '').trim() || null;
+      const persona = dniPersona
+        ? await tx.persona.upsert({
+            where: { inmobiliariaId_dni: { inmobiliariaId: u.inmobiliariaId, dni: dniPersona } },
+            update: {},
+            create: {
+              inmobiliariaId: u.inmobiliariaId,
+              dni: dniPersona,
+              email: emailInq,
+              nombre: d.inquilino.nombre,
+              apellido: d.inquilino.apellido || null,
+              telefono: d.inquilino.telefono || null,
+            },
+          })
+        : await tx.persona.create({
+            data: {
+              inmobiliariaId: u.inmobiliariaId,
+              email: emailInq,
+              nombre: d.inquilino.nombre,
+              apellido: d.inquilino.apellido || null,
+              telefono: d.inquilino.telefono || null,
+            },
+          });
+      await tx.inquilino.update({ where: { id: inq.id }, data: { contratoId: contrato.id, personaId: persona.id } });
       if (esCarga) {
         // BORRADOR: NO se reclama la propiedad ni se devengan liquidaciones hasta
         // que un ADMIN/OPERADOR apruebe. Creamos la Aprobacion que aparece en la
@@ -1234,6 +1260,147 @@ export async function coreRoutes(app: FastifyInstance) {
       include: { contrato: { select: { id: true, estado: true, propiedad: { select: { direccion: true } } } } },
       orderBy: { nombre: 'asc' },
     });
+  });
+
+  // ===== Personas (identidad reutilizable del inquilino: ficha histórica) =====
+  // Lista DEDUPLICADA por persona (no una fila por contrato como /inquilinos). Cada
+  // persona con su cantidad de contratos y estado derivado (activo si tiene ≥1 vigente).
+  app.get('/personas', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'contratos.ver');
+    if (!u) return;
+    const personas = await prisma.persona.findMany({
+      where: { inmobiliariaId: u.inmobiliariaId },
+      include: {
+        inquilinos: {
+          select: { contrato: { select: { id: true, estado: true, propiedad: { select: { direccion: true } } } } },
+        },
+      },
+      orderBy: { nombre: 'asc' },
+    });
+    return personas.map((p) => {
+      const contratos = p.inquilinos.map((i) => i.contrato).filter((c): c is NonNullable<typeof c> => !!c);
+      const activo = contratos.find((c) => c.estado === 'ACTIVO');
+      return {
+        id: p.id,
+        nombre: p.nombre,
+        apellido: p.apellido,
+        dni: p.dni,
+        email: p.email,
+        telefono: p.telefono,
+        totalContratos: contratos.length,
+        estado: activo ? 'ACTIVO' : 'INACTIVO',
+        // Propiedad de referencia: la del contrato vigente o, si no hay, la más reciente.
+        propiedad: activo?.propiedad?.direccion ?? contratos[0]?.propiedad?.direccion ?? null,
+      };
+    });
+  });
+
+  // Ficha de una persona: todos sus contratos → propiedades, sus reclamos (a través de
+  // los contratos) y su morosidad (deuda vencida derivada on-read, misma fuente de verdad
+  // que /contratos). Tenant-scopeada: una persona de otro tenant → 404.
+  app.get('/personas/:id', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'contratos.ver');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const persona = await prisma.persona.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      include: {
+        inquilinos: {
+          include: {
+            contrato: {
+              include: {
+                propiedad: { select: { id: true, direccion: true, ciudad: true } },
+                liquidaciones: true,
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!persona) return reply.code(404).send({ message: 'Persona inexistente' });
+
+    const now = new Date();
+    const inmoMora = await prisma.inmobiliaria.findUnique({
+      where: { id: u.inmobiliariaId },
+      select: { moraTipoDefault: true, moraValorDefault: true },
+    });
+    const contratosRaw = persona.inquilinos
+      .map((i) => i.contrato)
+      .filter((c): c is NonNullable<typeof c> => !!c);
+    const contratoIds = contratosRaw.map((c) => c.id);
+    const pagado = await montoPagadoPorLiquidacion(contratosRaw.flatMap((c) => c.liquidaciones.map((l) => l.id)));
+
+    let tuvoMora = false;
+    let deudaVigente = 0;
+    const contratos = contratosRaw.map((c) => {
+      const esquema = resolverEsquemaMora(c, inmoMora);
+      let deuda = 0;
+      let vencidas = 0;
+      for (const l of c.liquidaciones) {
+        if (!(liqVencida(l, now) || l.estado === 'PARCIAL')) continue;
+        const punit = calcularMora(
+          Number(l.montoTotal),
+          esquema,
+          l.fechaVencimiento,
+          now,
+          l.montoPunitorioManual != null ? Number(l.montoPunitorioManual) : null,
+        );
+        const saldo = conSaldo(l, pagado, punit).saldo;
+        if (saldo > 0) {
+          deuda += saldo;
+          vencidas++;
+        }
+      }
+      if (vencidas > 0) tuvoMora = true;
+      deudaVigente += deuda;
+      return {
+        id: c.id,
+        estado: c.estado,
+        monto: Number(c.monto),
+        moneda: c.moneda,
+        fechaInicio: c.fechaInicio,
+        fechaFin: c.fechaFin,
+        propiedad: c.propiedad ? { id: c.propiedad.id, direccion: c.propiedad.direccion } : null,
+        deuda: Math.round(deuda * 100) / 100,
+        cuotasVencidas: vencidas,
+      };
+    });
+
+    const reclamos = contratoIds.length
+      ? await prisma.reclamo.findMany({
+          where: { contratoId: { in: contratoIds }, inmobiliariaId: u.inmobiliariaId },
+          select: {
+            id: true,
+            contratoId: true,
+            categoria: true,
+            descripcion: true,
+            estado: true,
+            urgencia: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: 'desc' },
+        })
+      : [];
+
+    return {
+      id: persona.id,
+      nombre: persona.nombre,
+      apellido: persona.apellido,
+      dni: persona.dni,
+      email: persona.email,
+      telefono: persona.telefono,
+      cuit: persona.cuit,
+      contratos,
+      reclamos,
+      resumen: {
+        totalContratos: contratos.length,
+        activos: contratos.filter((c) => c.estado === 'ACTIVO').length,
+        deudaVigente: Math.round(deudaVigente * 100) / 100,
+        // Morosidad = tiene deuda vencida hoy (derivada on-read, nunca un flag congelado).
+        tuvoMora,
+        reclamosAbiertos: reclamos.filter((r) => r.estado === 'ABIERTO' || r.estado === 'EN_CURSO').length,
+      },
+    };
   });
 
   // ===== Configuración: datos de la empresa (fiscales/contacto) =====
