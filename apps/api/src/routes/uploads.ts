@@ -28,14 +28,52 @@ const UPLOADS_DIR =
 
 const MAX_BYTES = 10 * 1024 * 1024; // 10 MB
 
+// MIMEs aceptados → extensión con la que GUARDAMOS. La extensión sale SIEMPRE
+// de este mapa (o de EXT_PERMITIDAS abajo), NUNCA del MIME crudo: así jamás
+// guardamos/servimos un svg/html ejecutable aunque el cliente mienta el tipo.
+// Incluye las variantes que mandan los celulares en la vida real: image/jpg
+// (Android), image/heif y *-sequence (iPhone), y se matchea case-insensitive.
 const EXT_DE_MIME: Record<string, string> = {
   'image/jpeg': '.jpg',
+  'image/jpg': '.jpg',
+  'image/pjpeg': '.jpg',
   'image/png': '.png',
   'image/webp': '.webp',
   'image/gif': '.gif',
   'image/heic': '.heic',
+  'image/heic-sequence': '.heic',
+  'image/heif': '.heif',
+  'image/heif-sequence': '.heif',
   'application/pdf': '.pdf',
 };
+
+// Extensiones seguras aceptadas cuando el celular NO reporta un MIME útil
+// (algunos file pickers de Android mandan '' o application/octet-stream). En ese
+// caso derivamos por la extensión del nombre original — pero solo si está acá,
+// así nunca cae un .svg/.html/ejecutable. (.jpeg se normaliza a .jpg.)
+const EXT_PERMITIDAS: Record<string, string> = {
+  '.jpg': '.jpg',
+  '.jpeg': '.jpg',
+  '.png': '.png',
+  '.webp': '.webp',
+  '.gif': '.gif',
+  '.heic': '.heic',
+  '.heif': '.heif',
+  '.pdf': '.pdf',
+};
+
+/**
+ * Resuelve la extensión con la que guardamos el archivo subido, o null si el
+ * tipo no está permitido. Matchea el MIME case-insensitive; si el MIME no sirve
+ * (vacío/raro), cae a la extensión del nombre — siempre dentro de la whitelist.
+ * Nunca confía en el MIME para la extensión guardada (evita servir svg inline).
+ */
+export function resolverExtensionUpload(mime: string | undefined, filename: string | undefined): string | null {
+  const m = (mime ?? '').trim().toLowerCase();
+  if (EXT_DE_MIME[m]) return EXT_DE_MIME[m];
+  const e = path.extname(filename ?? '').toLowerCase();
+  return EXT_PERMITIDAS[e] ?? null;
+}
 
 /** Los 4 kinds de JWT (usuario/inquilino/co-inquilino/profesional) llevan inmobiliariaId. */
 function tenantDe(payload: JwtPayload | JwtProfesional): string | null {
@@ -127,6 +165,7 @@ function mimeDeArchivo(name: string): string {
   if (e === '.webp') return 'image/webp';
   if (e === '.gif') return 'image/gif';
   if (e === '.heic') return 'image/heic';
+  if (e === '.heif') return 'image/heif';
   if (e === '.pdf') return 'application/pdf';
   return 'application/octet-stream';
 }
@@ -142,20 +181,34 @@ export async function uploadsRoutes(app: FastifyInstance): Promise<void> {
 
     const data = await request.file();
     if (!data) return reply.code(400).send({ message: 'Falta el archivo' });
-    if (!EXT_DE_MIME[data.mimetype]) {
+    const ext = resolverExtensionUpload(data.mimetype, data.filename);
+    if (!ext) {
       return reply.code(415).send({
-        message: 'Tipo de archivo no permitido. Aceptamos JPG, PNG, WEBP, GIF, HEIC o PDF.',
+        message: 'Tipo de archivo no permitido. Aceptamos JPG, PNG, WEBP, GIF, HEIC/HEIF o PDF.',
       });
     }
 
-    const filename = `${randomUUID()}${EXT_DE_MIME[data.mimetype]}`;
+    const filename = `${randomUUID()}${ext}`;
     const dir = path.join(UPLOADS_DIR, tenant);
-    await mkdir(dir, { recursive: true });
     const dest = path.join(dir, filename);
     try {
+      await mkdir(dir, { recursive: true });
       await pipeline(data.file, createWriteStream(dest));
     } catch (e) {
       await unlink(dest).catch(() => {});
+      // Disco lleno / permisos del Volume: devolvemos un mensaje claro en vez de
+      // un 500 opaco (el inquilino veía "algo falló" sin saber que era del server).
+      const code = (e as NodeJS.ErrnoException)?.code;
+      if (code === 'ENOSPC') {
+        return reply.code(507).send({
+          message: 'No pudimos guardar el comprobante: el servidor se quedó sin espacio. Avisale a la inmobiliaria.',
+        });
+      }
+      if (code === 'EACCES' || code === 'EPERM') {
+        return reply.code(503).send({
+          message: 'No pudimos guardar el comprobante en este momento. Reintentá en un ratito.',
+        });
+      }
       throw e;
     }
     // @fastify/multipart trunca el stream al superar el límite → borramos el parcial.

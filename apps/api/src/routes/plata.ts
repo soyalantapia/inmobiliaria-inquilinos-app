@@ -980,11 +980,14 @@ export async function plataRoutes(app: FastifyInstance) {
         },
       });
     } catch (e) {
+      // Si el create() falla, el Pago NO se persistió → el comprobante ya subido
+      // queda huérfano en el Volume. Lo liberamos SIEMPRE (no solo en P2002),
+      // antes de propagar o responder.
+      await limpiarComprobante();
       // Carrera de doble-informe concurrente (dos requests pasan el findFirst de
       // arriba a la vez): el índice parcial único (un solo INFORMADO por
       // liquidación) la corta con P2002 → mismo 409 amigable que el caso secuencial.
       if (e && typeof e === 'object' && (e as { code?: string }).code === 'P2002') {
-        await limpiarComprobante();
         return reply
           .code(409)
           .send({ message: 'Ya informaste un pago de este mes; esperá que la inmobiliaria lo valide.' });

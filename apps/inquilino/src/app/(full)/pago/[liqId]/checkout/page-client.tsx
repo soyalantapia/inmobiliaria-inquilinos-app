@@ -1133,8 +1133,15 @@ function StepSubirComprobante({
   const handleFile = (f: File) => {
     setError(null);
     setExtraccion(null);
-    if (!/(image\/|application\/pdf)/.test(f.type)) {
-      setError('Solo aceptamos imágenes o PDF.');
+    // Aceptamos el mismo set que el backend (uploads.ts): fotos comunes + PDF.
+    // Si el celular NO reporta MIME (f.type === ''), dejamos pasar y que el
+    // server decida por la extensión — así no bloqueamos fotos válidas cuyo
+    // navegador manda image/jpg, image/heif, etc. o directamente un tipo vacío.
+    const tipoOk =
+      f.type === '' ||
+      /^(image\/(jpe?g|pjpeg|png|webp|gif|heic|heif)(-sequence)?|application\/pdf)$/i.test(f.type);
+    if (!tipoOk) {
+      setError('Aceptamos fotos (JPG, PNG, HEIC) o PDF. Si es una foto del teléfono y no anda, probá elegirla desde la galería.');
       return;
     }
     const mb = f.size / 1024 / 1024;
