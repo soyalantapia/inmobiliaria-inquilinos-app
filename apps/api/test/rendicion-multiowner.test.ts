@@ -22,6 +22,8 @@ const prisma = new PrismaClient();
 
 async function limpiar() {
   await prisma.gastoRendido.deleteMany({ where: { refId: `${P}gasto` } });
+  // AlquilerRendido cuelga de Rendicion con FK RESTRICT → borrarlo antes.
+  await prisma.alquilerRendido.deleteMany({ where: { rendicion: { propietarioId: { in: [`${P}ownA`, `${P}ownB`] } } } });
   await prisma.rendicion.deleteMany({ where: { propietarioId: { in: [`${P}ownA`, `${P}ownB`] } } });
   await prisma.movimientoCaja.deleteMany({ where: { id: `${P}gasto` } });
   await prisma.pago.deleteMany({ where: { id: `${P}pago` } });

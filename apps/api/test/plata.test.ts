@@ -38,6 +38,12 @@ async function resetPlata(prisma: PrismaClient) {
     data: { estado: 'VENCIDO', fechaPago: null, metodoPago: null },
   });
   await prisma.gastoRendido.deleteMany({ where: { rendicion: { id: { not: 'ren_001' } } } });
+  // Los AlquilerRendido cuelgan de la Rendicion con FK RESTRICT: hay que
+  // borrarlos ANTES que la rendición. Antes esto no hacía falta porque "rendir
+  // Silvana" daba 409 (sin pagos CONCILIADO en el seed no había nada que rendir)
+  // y no se creaba ninguna rendición con hijos; ahora el seed trae los cobros
+  // conciliados → la rendición se crea de verdad y su borrado tropezaba con el FK.
+  await prisma.alquilerRendido.deleteMany({ where: { rendicion: { id: { not: 'ren_001' } } } });
   await prisma.movimientoCaja.updateMany({
     where: { id: { in: ['mov_002', 'mov_003'] } },
     data: { descontadoEnRendicion: false, rendicionId: null },
@@ -51,6 +57,11 @@ async function resetPlata(prisma: PrismaClient) {
     where: { id: 'cnt_006' },
     data: { estado: 'BORRADOR', pendienteAprobacion: true, aprobadoAt: null },
   });
+  // Aprobar cnt_006 ocupa su propiedad (prp_006.contratoActualId = cnt_006):
+  // sin revertirlo, la 2ª corrida contra la misma DB da 409 PROP_OCUPADA al
+  // re-aprobar. cnt_006 vuelve a BORRADOR arriba, así que liberar la propiedad
+  // deja el par consistente.
+  await prisma.propiedad.update({ where: { id: 'prp_006' }, data: { contratoActualId: null } });
 }
 
 beforeAll(async () => {
@@ -119,11 +130,15 @@ describe('Inquilino informa pago', () => {
     const vencida = mias.json().find((l: { estado: string }) => l.estado === 'VENCIDO');
     expect(vencida.id).toBe('liq_001');
 
+    // Informa el SALDO EXIGIBLE completo (base + mora al día) que devuelve el API,
+    // no la base pelada: cnt_001 tiene tasa legacy 0.001%/día, así que a >0 días de
+    // atraso liq_001 exige base+mora y pagar solo la base sería PARCIAL. Tomar el
+    // monto del propio API hace el test independiente de la fecha en que corre.
     const res = await app.inject({
       method: 'POST',
       url: '/pagos/informar',
       headers: auth(tk),
-      payload: { liquidacionId: 'liq_001', monto: 572000, metodo: 'TRANSFERENCIA', nroOperacion: 'TRF-TEST-1', fechaTransferencia: '2026-06-12', nota: 'test' },
+      payload: { liquidacionId: 'liq_001', monto: Number(vencida.montoTotal), metodo: 'TRANSFERENCIA', nroOperacion: 'TRF-TEST-1', fechaTransferencia: '2026-06-12', nota: 'test' },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().estado).toBe('INFORMADO');

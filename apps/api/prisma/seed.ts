@@ -269,8 +269,12 @@ export async function seedBase(prisma: PrismaClient) {
 
   const movimientos = [
     { id: 'mov_001', propiedadId: 'prp_001', contratoId: 'cnt_001', categoria: 'PLOMERIA' as const, descripcion: 'Reparación pérdida cocina', monto: 45000, fecha: '2026-04-30', proveedor: 'Sergio Almeida (plomero)', cargadoPor: 'Roberto Tapia', descontadoEnRendicion: true, rendicionId: rendicion.id },
-    { id: 'mov_002', propiedadId: 'prp_004', contratoId: 'cnt_004', categoria: 'EXPENSAS' as const, descripcion: 'Expensa extraordinaria — fachada', monto: 62000, fecha: '2026-05-02', proveedor: 'Consorcio', cargadoPor: 'Roberto Tapia', descontadoEnRendicion: false },
-    { id: 'mov_003', propiedadId: 'prp_002', contratoId: 'cnt_002', categoria: 'ELECTRICIDAD' as const, descripcion: 'Cambio de térmica del tablero', monto: 28500, fecha: '2026-05-04', proveedor: 'Diego Ferrari (electricista)', cargadoPor: 'Luciana Vidal', descontadoEnRendicion: false },
+    // mov_002/mov_003 en JUNIO (mismo período que las liqs cobradas de Silvana:
+    // liq_002 prp_002 + liq_004 prp_004). La rendición descuenta gastos SOLO del
+    // período que se rinde (decisión del dueño 21/06); con fecha de mayo, la
+    // rendición de junio de Silvana no los tomaba (totalGastos 0).
+    { id: 'mov_002', propiedadId: 'prp_004', contratoId: 'cnt_004', categoria: 'EXPENSAS' as const, descripcion: 'Expensa extraordinaria — fachada', monto: 62000, fecha: '2026-06-02', proveedor: 'Consorcio', cargadoPor: 'Roberto Tapia', descontadoEnRendicion: false },
+    { id: 'mov_003', propiedadId: 'prp_002', contratoId: 'cnt_002', categoria: 'ELECTRICIDAD' as const, descripcion: 'Cambio de térmica del tablero', monto: 28500, fecha: '2026-06-04', proveedor: 'Diego Ferrari (electricista)', cargadoPor: 'Luciana Vidal', descontadoEnRendicion: false },
   ];
   for (const m of movimientos) {
     const { fecha, ...resto } = m;
