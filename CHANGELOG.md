@@ -10,6 +10,25 @@
 
 Plataforma SaaS multi-tenant para inmobiliarias (panel) e inquilinos (PWA). Estado de cambios desde el handoff inicial hasta hoy.
 
+### Historial de inquilinos: entidad Persona + ficha + reuso + expediente (05/07)
+Feature completa (deployada back+front, E2E prod OK). Cubre 5 pedidos del owner:
+- **Entidad `Persona`** por tenant (identidad reutilizable del inquilino): agrupa las N filas
+  Inquilino (una por contrato) sin romper el 1:1 `contratoId @unique` ni el login OTP. Migración
+  aditiva + **backfill idempotente** (agrupa por DNI; sin DNI, por email; sin ambos, persona propia).
+  Corrido en prod: 7 personas, 0 fusiones (ningún tenant tenía una persona con 2 contratos).
+- **Pestaña Inquilinos** (deduplicada por persona, activos/inactivos, búsqueda) + **ficha**
+  (`GET /personas/:id`): todos sus contratos→propiedades, sus reclamos y su **morosidad derivada
+  on-read** (deuda vencida vía `liqVencida`/`conSaldo`, nunca un flag congelado). Tenant-scopeada.
+- **Historial de contratos anteriores** en el detalle de propiedad (línea de corte con badge
+  FINALIZADO/RESCINDIDO): el dato ya persistía (0 `onDelete`), sólo faltaba exponerlo.
+- **Reuso** del inquilino al armar contrato: `POST /contratos` acepta `personaId`; el wizard tiene
+  un autocomplete (`GET /personas?q=`) para traer el historial. El alta también auto-linkea por DNI
+  (un 2º contrato del mismo DNI agrupa solo).
+- **Expediente**: 8 tipos de doc legales nuevos en `TipoDocContrato` (garantía propietaria, seguro
+  de caución, recibo del garante, constancia laboral, CUIT/AFIP, inventario de ingreso, servicios a
+  nombre, comprobante del depósito). _Follow-up: contacto estructurado del garante (modelo listo)._
+Migraciones `20260705120000_persona_inquilino` + `20260705130000_doc_contrato_tipos_legales`.
+
 ### Baja de contrato — auditoría adversarial + cierre del lado panel (05/07)
 Auditoría multi-agente (25 agentes, 7 dimensiones, verificación adversarial doble) del ship de
 baja de contrato. Veredicto: **SEGURO_CON_OBSERVACIONES** — núcleo sólido (multi-tenant/auth/plata

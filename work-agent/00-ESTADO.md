@@ -1,13 +1,13 @@
 # Estado del proyecto — My Alquiler
 
 > **Documento de handoff.** Resumen ejecutivo de dónde está el proyecto hoy.
-> Última actualización: **2026-07-05**. Último commit: `3921edc` (origin/main, árbol limpio).
-> Último hito: **baja de contrato** — estado real al inquilino + anti-deuda-fantasma, y su
-> **auditoría adversarial** (25 agentes, veredicto SEGURO_CON_OBSERVACIONES) con los fixes de
-> cierre del lado panel: se cableó el diálogo de baja al `/finalizar-preview`, se corrigió el
-> copy, la deuda de ex-inquilinos aparece en el PDF de morosos, y se endureció el preview
-> (guard CARGA + anti-deuda-fantasma). Test `baja-contrato.test.ts` 10/10, deployado (back+front),
-> E2E prod OK. Ver `CHANGELOG.md`.
+> Última actualización: **2026-07-05**. Último commit: `0519046` (origin/main, árbol limpio).
+> Último hito: **historial de inquilinos** (deployado back+front, E2E prod OK, backfill aplicado).
+> Nueva entidad **Persona** por tenant (identidad reutilizable del inquilino) + pestaña Inquilinos
+> con ficha (contratos/propiedades/reclamos/morosidad), **historial de contratos anteriores** en la
+> propiedad, **reuso** del inquilino al armar contrato (autocomplete), y 8 tipos de doc legales
+> nuevos. Migración `persona_inquilino` + `doc_contrato_tipos_legales` aplicadas en prod; backfill
+> idempotente corrido (7 personas). Hito previo: baja de contrato + auditoría adversarial. Ver `CHANGELOG.md`.
 > Contexto absoluto en [`../PROJECT.MD`](../PROJECT.MD). Detalle en los demás `work-agent/`.
 
 ## Qué es
