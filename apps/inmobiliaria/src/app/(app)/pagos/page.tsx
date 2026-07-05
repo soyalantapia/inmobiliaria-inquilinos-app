@@ -243,10 +243,11 @@ export default function PagosPage() {
   // PDF de morosos para llevar a cobranza física.
   // Incluye titular + garante con sus teléfonos y los días de atraso.
   const exportarMorososPdf = () => {
-    const morosos = cobrables.filter((c) => c.estadoPagoActual === 'VENCIDO');
-    const filas: (string | number)[][] = morosos.map((c) => {
-      // Teléfono/garante: solo del mock en demo. En prod no hay endpoint que
-      // los exponga → '—'/'Sin garante' (no dependemos del mismatch de ids).
+    // Teléfono/garante: solo del mock en demo. En prod no hay endpoint que
+    // los exponga → '—'/'Sin garante' (no dependemos del mismatch de ids).
+    // Deuda REAL acumulada (todas las cuotas impagas + mora), no el alquiler
+    // mensual. En demo (sin deudaTotal) cae al monto del mock.
+    const filaDe = (c: (typeof cobrables)[number]): (string | number)[] => {
       const contacto = apiEnabled ? undefined : contactosCobranzaMock.find((x) => x.contratoId === c.id);
       const dias = -diasHastaVencimiento(c.proximoVencimiento);
       return [
@@ -255,32 +256,78 @@ export default function PagosPage() {
         contacto?.titular.telefono ?? '—',
         contacto?.garante ? `${contacto.garante.nombre} · ${contacto.garante.telefono}` : 'Sin garante registrado',
         `${dias} día${dias === 1 ? '' : 's'}`,
-        // Deuda REAL acumulada (todas las cuotas impagas + mora), no el alquiler
-        // mensual. En demo (sin deudaTotal) cae al monto del mock.
         formatMonto(c.deudaTotal ?? c.monto, c.moneda),
       ];
-    });
-    const totalDeuda = morosos.reduce((acc, c) => acc + (c.deudaTotal ?? c.monto), 0);
+    };
+
+    const morosos = cobrables.filter((c) => c.estadoPagoActual === 'VENCIDO');
+    // Ex-inquilinos: la baja CONSERVA la deuda ya vencida ("real y cobrable"), pero el
+    // contrato finalizado/rescindido sale de `cobrables` (estado==='ACTIVO'). Sin esta
+    // sección, esa deuda quedaba visible sólo en el detalle del contrato → no-accionable
+    // desde la cartera de cobro. La incluimos aparte para que se pueda ir a cobrar.
+    const exMorosos = contratos.filter(
+      (c) => c.estado !== 'ACTIVO' && c.estadoPagoActual === 'VENCIDO' && c.modoCobranza !== 'PROPIETARIO_DIRECTO',
+    );
+    const totalDeuda = [...morosos, ...exMorosos].reduce((acc, c) => acc + (c.deudaTotal ?? c.monto), 0);
+
+    const columnas = [
+      { header: 'Inquilino', width: '20%' },
+      { header: 'Propiedad', width: '20%' },
+      { header: 'Teléfono', width: '14%' },
+      { header: 'Garante (nombre · tel)', width: '26%' },
+      { header: 'Atraso', width: '8%', align: 'center' as const },
+      { header: 'Deuda total', width: '12%', align: 'right' as const },
+    ];
+    const totales = [
+      { label: 'Contratos con deuda', valor: (morosos.length + exMorosos.length).toString() },
+      { label: 'Deuda total', valor: formatMonto(totalDeuda) },
+    ];
+    const notaFinal =
+      'Imprimí esta hoja para llevar de visita o pegar en el tablero. Al ' +
+      'volver, marcá las gestiones realizadas en la ficha del contrato.';
+
+    // Si hay ex-inquilinos con deuda, partimos en dos secciones (activos + ex);
+    // si no, mantenemos el reporte flat clásico.
+    if (exMorosos.length > 0) {
+      abrirReporteImprimible({
+        titulo: 'Morosos · cobranza',
+        subtitulo: `${formatPeriodo(periodoActualFormat())} · ${morosos.length + exMorosos.length} contrato${morosos.length + exMorosos.length === 1 ? '' : 's'} con deuda`,
+        inmobiliaria: sociedadPrincipal().razonSocial,
+        columnas,
+        secciones: [
+          {
+            titulo: 'Contratos activos',
+            subtitulo: `${morosos.length} con atraso`,
+            filas: morosos.map(filaDe),
+            subtotal: {
+              label: 'Subtotal activos',
+              valor: formatMonto(morosos.reduce((acc, c) => acc + (c.deudaTotal ?? c.monto), 0)),
+            },
+          },
+          {
+            titulo: 'Ex-inquilinos · contrato finalizado con deuda',
+            subtitulo: 'Deuda conservada tras la baja — sigue siendo cobrable',
+            filas: exMorosos.map(filaDe),
+            subtotal: {
+              label: 'Subtotal ex-inquilinos',
+              valor: formatMonto(exMorosos.reduce((acc, c) => acc + (c.deudaTotal ?? c.monto), 0)),
+            },
+          },
+        ],
+        totales,
+        notaFinal,
+      });
+      return;
+    }
+
     abrirReporteImprimible({
       titulo: 'Morosos · cobranza',
       subtitulo: `${formatPeriodo(periodoActualFormat())} · ${morosos.length} contrato${morosos.length === 1 ? '' : 's'} con atraso`,
       inmobiliaria: sociedadPrincipal().razonSocial,
-      columnas: [
-        { header: 'Inquilino', width: '20%' },
-        { header: 'Propiedad', width: '20%' },
-        { header: 'Teléfono', width: '14%' },
-        { header: 'Garante (nombre · tel)', width: '26%' },
-        { header: 'Atraso', width: '8%', align: 'center' },
-        { header: 'Deuda total', width: '12%', align: 'right' },
-      ],
-      filas,
-      totales: [
-        { label: 'Cantidad', valor: morosos.length.toString() },
-        { label: 'Deuda total', valor: formatMonto(totalDeuda) },
-      ],
-      notaFinal:
-        'Imprimí esta hoja para llevar de visita o pegar en el tablero. Al ' +
-        'volver, marcá las gestiones realizadas en la ficha del contrato.',
+      columnas,
+      filas: morosos.map(filaDe),
+      totales,
+      notaFinal,
     });
   };
 
@@ -386,7 +433,10 @@ export default function PagosPage() {
   // PDF detallado de lo cobrado en el mes.
   // Se usa para rendir a propietarios y para archivo del estudio.
   const exportarCobradoPdf = () => {
-    const pagados = contratos.filter((c) => c.estadoPagoActual === 'PAGADO');
+    // Deriva de `cobrables` (no de `contratos`) para que las filas y el "Total cobrado"
+    // del pie compartan la MISMA base: si no, un contrato FINALIZADO-PAGADO aparecía como
+    // fila pero quedaba fuera del total (que ya usaba cobrables) → el reporte no cuadraba.
+    const pagados = cobrables.filter((c) => c.estadoPagoActual === 'PAGADO');
     const filas: (string | number)[][] = pagados.map((c) => [
       c.inquilino,
       c.direccion,

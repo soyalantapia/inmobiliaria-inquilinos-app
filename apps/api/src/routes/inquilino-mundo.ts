@@ -834,8 +834,13 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
   app.post('/co-inquilinos/:id/aceptar', async (request, reply) => {
     const inq = await requireInquilino(request, reply);
     if (!inq) return;
+    if (!inq.contratoId) return reply.code(400).send({ message: 'No tenés un contrato activo' });
+    // Aceptar una co-invitación es una escritura: mismo gate de contrato ACTIVO que el
+    // path real (auth.ts) y que los demás mutadores de co-inquilino. Antes este path
+    // (demo) lo omitía → asimetría con prod: la demo aceptaba sobre un contrato finalizado.
+    if (!(await exigirContratoActivo(inq.contratoId, inq.inmobiliariaId, reply))) return;
     const { id } = request.params as { id: string };
-    const co = await prisma.coInquilino.findFirst({ where: { id, contratoId: inq.contratoId ?? '' } });
+    const co = await prisma.coInquilino.findFirst({ where: { id, contratoId: inq.contratoId } });
     if (!co) return reply.code(404).send({ message: 'Invitación inexistente' });
     if (co.estado === 'ACEPTADO') return reply.code(409).send({ message: 'La invitación ya fue aceptada' });
     if (!app.env.DEMO_MODE) {

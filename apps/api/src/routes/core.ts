@@ -1154,6 +1154,10 @@ export async function coreRoutes(app: FastifyInstance) {
   app.get('/contratos/:id/finalizar-preview', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'contratos.crear');
     if (!u) return;
+    // Mismo guard de rol explícito que POST /finalizar: CARGA tiene contratos.crear
+    // pero NO pagos.ver ni reclamos.ver, y este preview expone pagosEnRevision y
+    // reclamosAbiertos. Sin esto, un rol de carga vería datos que el resto de la app le niega.
+    if (u.rol === 'CARGA') return reply.code(403).send({ message: 'Solo un Admin u Operador puede finalizar contratos' });
     const { id } = request.params as { id: string };
     const contrato = await prisma.contrato.findFirst({
       where: { id, inmobiliariaId: u.inmobiliariaId },
@@ -1177,6 +1181,12 @@ export async function coreRoutes(app: FastifyInstance) {
         cuotasFuturasAAnular++;
         continue;
       }
+      // Sólo cuenta como "deuda que queda" la cuota realmente EXIGIBLE (vencida, o
+      // parcial ya vencida). Una cuota FUTURA con un pago no conciliado adjunto
+      // (INFORMADO/RECHAZADO) no cae en esFuturaSinPago —tiene pagos— pero TAMPOCO es
+      // deuda vencida: sin este filtro se sumaba su montoTotal completo e inflaba el
+      // número del diálogo, contradiciendo la deudaTotal del panel (que excluye futuras).
+      if (!liqVencida(l, now)) continue;
       const punit = calcularMora(
         Number(l.montoTotal),
         esquema,

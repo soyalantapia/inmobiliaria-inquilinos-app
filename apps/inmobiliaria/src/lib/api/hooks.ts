@@ -1187,18 +1187,53 @@ export async function anularRendicion(rendicionId: string, pin: string): Promise
   await apiFetch(`/rendiciones/${rendicionId}/anular`, { method: 'POST', body: JSON.stringify({ pin }) });
 }
 
-/** Finalizar un contrato: lo cierra y libera la propiedad (vuelve a DISPONIBLE). */
-export function useFinalizarContrato(): { finalizar: (id: string) => Promise<void> } {
+/** Colaterales de una baja de contrato, para avisar en el diálogo ANTES de confirmar. */
+export interface FinalizarPreview {
+  /** Deuda YA vencida que SOBREVIVE a la baja (sigue siendo cobrable). */
+  deudaVencida: number;
+  /** Cantidad de cuotas impagas vencidas que componen esa deuda. */
+  cuotasImpagas: number;
+  /** Cuotas futuras impagas sin pago que la baja ANULA. */
+  cuotasFuturasAAnular: number;
+  /** Pagos INFORMADO en revisión (se pueden validar/rendir después de la baja). */
+  pagosEnRevision: number;
+  /** Co-inquilinos ACEPTADOS que pierden el acceso de escritura al finalizar. */
+  coInquilinos: number;
+  /** Reclamos abiertos/en curso del contrato. */
+  reclamosAbiertos: number;
+}
+
+/**
+ * Preview de la baja: consulta los colaterales del contrato para que el diálogo de
+ * "Finalizar" los muestre antes de confirmar la acción irreversible. En demo
+ * (!apiEnabled) devuelve null → el diálogo usa el copy base sin números.
+ */
+export function useFinalizarPreview(): { obtenerPreview: (id: string) => Promise<FinalizarPreview | null> } {
+  return {
+    obtenerPreview: async (id) => {
+      if (!apiEnabled) return null;
+      await ensureApiSession();
+      return (await apiFetch(`/contratos/${id}/finalizar-preview`)) as FinalizarPreview;
+    },
+  };
+}
+
+/** Finalizar un contrato: lo cierra y libera la propiedad (vuelve a DISPONIBLE).
+ *  Devuelve cuántas cuotas futuras impagas se anularon (para el toast de éxito). */
+export function useFinalizarContrato(): { finalizar: (id: string) => Promise<{ cuotasAnuladas: number }> } {
   const qc = useQueryClient();
   return {
     finalizar: async (id) => {
       await ensureApiSession();
-      await apiFetch(`/contratos/${id}/finalizar`, { method: 'POST' });
+      const res = (await apiFetch(`/contratos/${id}/finalizar`, { method: 'POST' })) as {
+        cuotasAnuladas?: number;
+      };
       await Promise.all([
         qc.invalidateQueries({ queryKey: ['contratos'] }),
         qc.invalidateQueries({ queryKey: ['contrato', id] }),
         qc.invalidateQueries({ queryKey: ['propiedades'] }),
       ]);
+      return { cuotasAnuladas: res?.cuotasAnuladas ?? 0 };
     },
   };
 }

@@ -23,6 +23,7 @@ let tid: string; // inmobiliariaId
 const auth = (t: string) => ({ authorization: `Bearer ${t}` });
 const PERIODO_FUTURO = '2099-01';
 const PERIODO_VENCIDO = '2099-02'; // periodo distinto; lo marcamos VENCIDO a mano
+const PERIODO_FUT_CON_PAGO = '2099-03'; // cuota FUTURA con un pago RECHAZADO (regresión M4)
 
 const DEMO_CONTRATO = 'cnt_001';
 const DEMO_INQ_EMAIL = 'mariela.sosa@gmail.com';
@@ -59,9 +60,12 @@ beforeAll(async () => {
   const demo = await app.inject({ method: 'POST', url: '/auth/demo' });
   tokenInq = demo.json().token;
 
-  // Limpieza idempotente de corridas previas.
+  // Limpieza idempotente de corridas previas (pagos primero por la FK).
+  await prisma.pago.deleteMany({
+    where: { contratoId: cid, periodo: { in: [PERIODO_FUTURO, PERIODO_VENCIDO, PERIODO_FUT_CON_PAGO] } },
+  });
   await prisma.liquidacion.deleteMany({
-    where: { contratoId: cid, periodo: { in: [PERIODO_FUTURO, PERIODO_VENCIDO] } },
+    where: { contratoId: cid, periodo: { in: [PERIODO_FUTURO, PERIODO_VENCIDO, PERIODO_FUT_CON_PAGO] } },
   });
 
   // Cuota FUTURA impaga sin pago → debe anularse al finalizar.
@@ -91,8 +95,12 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // Los pagos primero (FK) — el test M4 crea uno sobre PERIODO_FUT_CON_PAGO.
+  await prisma.pago.deleteMany({
+    where: { contratoId: cid, periodo: { in: [PERIODO_FUTURO, PERIODO_VENCIDO, PERIODO_FUT_CON_PAGO] } },
+  });
   await prisma.liquidacion.deleteMany({
-    where: { contratoId: cid, periodo: { in: [PERIODO_FUTURO, PERIODO_VENCIDO] } },
+    where: { contratoId: cid, periodo: { in: [PERIODO_FUTURO, PERIODO_VENCIDO, PERIODO_FUT_CON_PAGO] } },
   });
   // Restaurar el contrato compartido del seed a ACTIVO: este test lo finaliza, y
   // seedBase no resetea `estado` → sin esto dejaríamos cnt_001 FINALIZADO y podríamos
@@ -128,6 +136,74 @@ describe('Baja de contrato — estado y colaterales', () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().cuotasFuturasAAnular).toBeGreaterThanOrEqual(1);
+  });
+
+  it('finalizar-preview: 403 para rol CARGA (no expone pagos/reclamos) [B1]', async () => {
+    const carga = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { email: 'camila@delsol.com', password: 'delsol123' },
+    });
+    expect(carga.statusCode).toBe(200);
+    const res = await app.inject({
+      method: 'GET',
+      url: `/contratos/${cid}/finalizar-preview`,
+      headers: auth(carga.json().token),
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('finalizar-preview: una cuota futura con pago no-conciliado NO infla deudaVencida [M4]', async () => {
+    // Delta robusto (no asume conteos absolutos: cnt_001 puede tener liqs del seed).
+    const base = await app.inject({
+      method: 'GET',
+      url: `/contratos/${cid}/finalizar-preview`,
+      headers: auth(tokenAdmin),
+    });
+    expect(base.statusCode).toBe(200);
+    const antes = base.json();
+
+    // Cuota FUTURA (vencimiento a 90 días) con un pago RECHAZADO: no se anula (tiene un
+    // pago) pero TAMPOCO es deuda vencida. Con el bug se sumaba su montoTotal completo.
+    const liqFP = await prisma.liquidacion.create({
+      data: {
+        inmobiliariaId: tid,
+        contratoId: cid,
+        periodo: PERIODO_FUT_CON_PAGO,
+        montoAlquiler: 100000,
+        montoTotal: 100000,
+        fechaVencimiento: new Date(Date.now() + 90 * 86400000),
+        estado: 'PENDIENTE',
+      },
+    });
+    await prisma.pago.create({
+      data: {
+        inmobiliariaId: tid,
+        contratoId: cid,
+        liquidacionId: liqFP.id,
+        periodo: PERIODO_FUT_CON_PAGO,
+        monto: 100000,
+        metodo: 'TRANSFERENCIA',
+        fechaTransferencia: new Date(),
+        estado: 'RECHAZADO',
+      },
+    });
+
+    const after = await app.inject({
+      method: 'GET',
+      url: `/contratos/${cid}/finalizar-preview`,
+      headers: auth(tokenAdmin),
+    });
+    const despues = after.json();
+
+    // La cuota futura-con-pago no debe sumar cuotas impagas ni entrar a "futuras a anular"
+    // (tiene un pago), y no debe inflar deudaVencida (crecería ~100000 con el bug).
+    expect(despues.cuotasImpagas).toBe(antes.cuotasImpagas);
+    expect(despues.cuotasFuturasAAnular).toBe(antes.cuotasFuturasAAnular);
+    expect(despues.deudaVencida).toBeLessThan(antes.deudaVencida + 1);
+
+    await prisma.pago.deleteMany({ where: { liquidacionId: liqFP.id } });
+    await prisma.liquidacion.delete({ where: { id: liqFP.id } });
   });
 
   it('finalizar: 200 + anula al menos la cuota futura', async () => {
