@@ -10,6 +10,27 @@
 
 Plataforma SaaS multi-tenant para inmobiliarias (panel) e inquilinos (PWA). Estado de cambios desde el handoff inicial hasta hoy.
 
+### Baja de contrato — auditoría adversarial + cierre del lado panel (05/07)
+Auditoría multi-agente (25 agentes, 7 dimensiones, verificación adversarial doble) del ship de
+baja de contrato. Veredicto: **SEGURO_CON_OBSERVACIONES** — núcleo sólido (multi-tenant/auth/plata
+verificados limpios, 0 bloqueantes; 2 falsos positivos refutados con evidencia). Se cerraron los
+hallazgos reales, todos en el lado panel/front (`fix/baja-contrato-panel`, `3921edc`):
+- **Cableado del preview**: el diálogo de "Finalizar" ahora consulta `GET /contratos/:id/finalizar-preview`
+  y muestra los colaterales (deuda que queda, cuotas a anular, pagos en revisión, co-inquilinos,
+  reclamos) antes de confirmar — el endpoint estaba sin consumidor y la baja se confirmaba a ciegas.
+- **Copy corregido**: el diálogo decía "las liquidaciones se conservan" cuando finalizar anula las
+  cuotas futuras impagas; ahora lo aclara y el toast reporta cuántas se anularon.
+- **Cobranza de ex-inquilinos**: el PDF de morosos suma una sección "Ex-inquilinos · contrato
+  finalizado con deuda" para que la deuda conservada tras la baja sea accionable (antes sólo se veía
+  en el detalle del contrato). `exportarCobradoPdf` deriva de `cobrables` → el reporte cuadra.
+- **Preview endurecido**: guard de rol CARGA (→403) igual que finalizar; y ya no cuenta como
+  `deudaVencida` una cuota futura con pago no conciliado (INFORMADO/RECHAZADO).
+- **Simetría demo**: `/co-inquilinos/:id/aceptar` (demo) suma `exigirContratoActivo`.
+- Test `baja-contrato.test.ts` +2 regresiones (guard CARGA, delta anti-deuda-fantasma) → **10/10**.
+  Sin migración. Deployado a back+front; E2E prod OK. Pendiente menor: congelar `mesesCumplidos` del
+  certificado en baja anticipada (necesita `finalizadoAt`).
+
+
 ### Baja de contrato: estado real al inquilino + anti-deuda-fantasma (04/07)
 Auditoría multi-agente del proceso de baja (31 hallazgos: 2 CRÍTICOS, 11 ALTOS, 10 MEDIOS,
 8 BAJOS). Bug raíz reportado: al finalizar un contrato el panel lo mostraba dado de baja pero
