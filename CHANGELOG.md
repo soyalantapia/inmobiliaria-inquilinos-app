@@ -26,8 +26,13 @@ Feature completa (deployada back+front, E2E prod OK). Cubre 5 pedidos del owner:
   (un 2º contrato del mismo DNI agrupa solo).
 - **Expediente**: 8 tipos de doc legales nuevos en `TipoDocContrato` (garantía propietaria, seguro
   de caución, recibo del garante, constancia laboral, CUIT/AFIP, inventario de ingreso, servicios a
-  nombre, comprobante del depósito). _Follow-up: contacto estructurado del garante (modelo listo)._
-Migraciones `20260705120000_persona_inquilino` + `20260705130000_doc_contrato_tipos_legales`.
+  nombre, comprobante del depósito).
+- **Contacto estructurado del garante**: se activó el modelo `Garante` (estaba huérfano):
+  tab "Garantes" en el detalle del contrato con alta/edición/borrado (persona o póliza de
+  caución), CRUD `GET/POST/PUT/DELETE /contratos/:id/garantes` tenant-scopeado. Se relajaron
+  los campos de póliza (montoCobertura/vigenciaHasta) a opcionales + campo `dni` (garante persona).
+Migraciones `20260705120000_persona_inquilino` + `20260705130000_doc_contrato_tipos_legales` +
+`20260705140000_garante_persona`. Todo deployado (back+front) y verificado E2E en prod.
 
 ### Baja de contrato — auditoría adversarial + cierre del lado panel (05/07)
 Auditoría multi-agente (25 agentes, 7 dimensiones, verificación adversarial doble) del ship de
