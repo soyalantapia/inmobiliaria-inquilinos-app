@@ -14,7 +14,7 @@ import { apiEnabled, apiFetch } from './client';
 import { ensureApiSession } from './session';
 import { obtenerReclamo } from '@/lib/reclamos-store';
 import { profesionalCategoriaLabelAdmin, type CategoriaProfesional } from '@/lib/mock-data';
-import type { EventoReclamo, Reclamo } from '@/lib/types';
+import type { CargoReclamo, EventoReclamo, Moneda, PagadorReclamo, Reclamo } from '@/lib/types';
 
 interface EventoApi {
   id: string;
@@ -39,12 +39,14 @@ interface ReclamoDetalleApi {
   resueltoAt: string | null;
   fotoUrl: string | null;
   clasificacion: Reclamo['clasificacion'] | null;
+  pagador: PagadorReclamo | null;
   costoTrabajo: number | string | null;
   costoTrabajoNotas: string | null;
   propiedad: { id: string; direccion: string; ciudad: string } | null;
   contrato: {
     id: string;
     fechaInicio: string | null;
+    moneda: Moneda;
     inquilinoTitular: {
       id: string;
       nombre: string;
@@ -53,6 +55,15 @@ interface ReclamoDetalleApi {
       email: string | null;
     } | null;
   } | null;
+  cargos?: {
+    id: string;
+    tipo: string;
+    concepto: string;
+    monto: number | string;
+    moneda: Moneda;
+    contraDeposito: boolean;
+    createdAt: string;
+  }[];
   profesional: {
     id: string;
     nombre: string;
@@ -95,6 +106,17 @@ function mapReclamo(r: ReclamoDetalleApi): Reclamo {
       fecha: e.fecha,
     })),
     clasificacion: r.clasificacion ?? null,
+    pagador: r.pagador ?? null,
+    moneda: r.contrato?.moneda ?? 'ARS',
+    cargos: (r.cargos ?? []).map((c) => ({
+      id: c.id,
+      tipo: c.tipo,
+      concepto: c.concepto,
+      monto: Number(c.monto),
+      moneda: c.moneda,
+      contraDeposito: c.contraDeposito,
+      createdAt: c.createdAt,
+    })),
     profesionalAsignadoId: r.profesional?.id ?? null,
     profesionalAsignadoNombre: r.profesional?.nombre ?? null,
     profesionalAsignadoTelefono: r.profesional?.telefono ?? null,
@@ -113,6 +135,14 @@ export interface ContactoInquilino {
   email: string | null;
 }
 
+/** Payload de resolución: además de la descripción, el costo del trabajo y a quién se imputa. */
+export interface ResolverReclamoInput {
+  resolucion: string;
+  costoTrabajo?: number;
+  costoTrabajoNotas?: string;
+  pagador?: PagadorReclamo;
+}
+
 export interface UseReclamoResult {
   reclamo: Reclamo | null | undefined;
   cargando: boolean;
@@ -120,7 +150,8 @@ export interface UseReclamoResult {
   /** Contacto real del inquilino del API en prod; null en demo (lo resuelve el mock). */
   contacto: ContactoInquilino | null;
   asignar: (profesionalId: string) => Promise<void>;
-  resolver: (resolucion: string) => Promise<void>;
+  resolver: (input: ResolverReclamoInput) => Promise<void>;
+  clasificar: (pagador: PagadorReclamo) => Promise<void>;
   rechazar: (motivo: string) => Promise<void>;
   responder: (mensaje: string, adjuntoUrl?: string) => Promise<void>;
 }
@@ -160,11 +191,22 @@ export function useReclamo(id: string | undefined): UseReclamoResult {
   });
 
   const resolverM = useMutation({
-    mutationFn: async (resolucion: string) => {
+    mutationFn: async (input: ResolverReclamoInput) => {
       await ensureApiSession();
       await apiFetch(`/reclamos/${id}/resolver`, {
         method: 'POST',
-        body: JSON.stringify({ resolucion }),
+        body: JSON.stringify(input),
+      });
+    },
+    onSuccess: invalidar,
+  });
+
+  const clasificarM = useMutation({
+    mutationFn: async (pagador: PagadorReclamo) => {
+      await ensureApiSession();
+      await apiFetch(`/reclamos/${id}/clasificar`, {
+        method: 'POST',
+        body: JSON.stringify({ pagador }),
       });
     },
     onSuccess: invalidar,
@@ -210,6 +252,7 @@ export function useReclamo(id: string | undefined): UseReclamoResult {
       contacto: null,
       asignar: async () => {},
       resolver: async () => {},
+      clasificar: async () => {},
       rechazar: async () => {},
       responder: async () => {},
     };
@@ -223,7 +266,8 @@ export function useReclamo(id: string | undefined): UseReclamoResult {
     deApi: true,
     contacto: q.data?.contacto ?? null,
     asignar: (profesionalId) => asignarM.mutateAsync(profesionalId),
-    resolver: (resolucion) => resolverM.mutateAsync(resolucion),
+    resolver: (input) => resolverM.mutateAsync(input),
+    clasificar: (pagador) => clasificarM.mutateAsync(pagador),
     rechazar: (motivo) => rechazarM.mutateAsync(motivo),
     responder: (mensaje, adjuntoUrl) => responderM.mutateAsync({ mensaje, adjuntoUrl }),
   };

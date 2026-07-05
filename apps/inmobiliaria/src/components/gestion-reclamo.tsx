@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   CheckCircle2,
   HardHat,
-  Home,
   MessageCircle,
   Phone,
   ShieldCheck,
@@ -27,7 +26,7 @@ import { listarProfesionalesAdmin } from '@/lib/profesionales-storage';
 import { asignarProfesional, clasificarReclamo } from '@/lib/reclamos-store';
 import { apiEnabled } from '@/lib/api/client';
 import { useProfesionales } from '@/lib/api/use-profesionales';
-import type { Reclamo, CategoriaReclamo, ClasificacionReclamo } from '@/lib/types';
+import type { Reclamo, CategoriaReclamo, PagadorReclamo } from '@/lib/types';
 import { formatFechaCorta } from '@/lib/format';
 
 // Bloque de gestión que va en /reclamos/[id] del admin.
@@ -43,16 +42,29 @@ const sugerenciaCategoria: Partial<Record<CategoriaReclamo, CategoriaProfesional
   CALEFACCION: 'GASISTA',
 };
 
+// ¿Quién paga? — los 3 pagadores reales. Definen hacia dónde impacta el costo al resolver.
+const PAGADOR_OPCIONES: { v: PagadorReclamo; label: string; hint: string }[] = [
+  { v: 'PROPIETARIO', label: 'Propietario', hint: 'Se descuenta en su rendición' },
+  { v: 'DEPOSITO', label: 'Depósito', hint: 'Se descuenta del depósito' },
+  { v: 'INQUILINO', label: 'Inquilino', hint: 'Se le cobra al inquilino' },
+];
+function pagadorLabel(p: PagadorReclamo): string {
+  return p === 'PROPIETARIO' ? 'Propietario' : p === 'INQUILINO' ? 'Inquilino' : 'Depósito de garantía';
+}
+
 export function GestionReclamo({
   reclamo,
   onUpdate,
   asignarApi,
+  clasificarApi,
   visitaToken,
 }: {
   reclamo: Reclamo;
   onUpdate: (r: Reclamo) => void;
   /** Acción real de asignación (POST /reclamos/:id/asignar) — usada en prod. */
   asignarApi?: (profesionalId: string) => Promise<void>;
+  /** Acción real de clasificación (POST /reclamos/:id/clasificar) — usada en prod. */
+  clasificarApi?: (pagador: PagadorReclamo) => Promise<void>;
   /** Token REAL del link mágico de visita (prod) — ver useVisitaReclamo. */
   visitaToken?: string;
 }) {
@@ -61,6 +73,8 @@ export function GestionReclamo({
   const [profesionalesDemo, setProfesionalesDemo] = useState<ProfesionalAdmin[]>([]);
   const [seleccionProf, setSeleccionProf] = useState<string>('');
   const [asignando, setAsignando] = useState(false);
+  const [clasificando, setClasificando] = useState(false);
+  const [reclasificando, setReclasificando] = useState(false);
 
   useEffect(() => {
     if (!apiEnabled) setProfesionalesDemo(listarProfesionalesAdmin().filter((p) => p.activo));
@@ -82,23 +96,30 @@ export function GestionReclamo({
     };
   }, [profesionales, sugerida]);
 
-  // La clasificación (uso y goce / desperfecto) no tiene endpoint en el API:
-  // solo opera en build demo (store). En prod se mantiene deshabilitada.
-  const handleClasificar = (clasificacion: ClasificacionReclamo) => {
-    if (apiEnabled) return;
-    const actualizado = clasificarReclamo(reclamo.id, clasificacion, 'Roberto Tapia');
+  // Clasificar quién paga: en prod pega al API (POST /reclamos/:id/clasificar);
+  // en demo escribe el store local (mapeando al enum legado de 2 valores).
+  const handleClasificar = async (p: PagadorReclamo) => {
+    if (apiEnabled) {
+      if (!clasificarApi) return;
+      setClasificando(true);
+      try {
+        await clasificarApi(p);
+        setReclasificando(false);
+        toast({ title: `Paga: ${pagadorLabel(p)}`, description: 'Impacta la plata al resolver el reclamo.' });
+      } catch {
+        toast({ title: 'No se pudo clasificar', variant: 'destructive' });
+      } finally {
+        setClasificando(false);
+      }
+      return;
+    }
+    // Demo: el store usa el enum legado (2 valores); depósito ≈ desperfecto.
+    const clasif = p === 'INQUILINO' ? 'USO_Y_GOCE' : 'DESPERFECTO';
+    const actualizado = clasificarReclamo(reclamo.id, clasif, 'Roberto Tapia');
     if (actualizado) {
-      onUpdate(actualizado);
-      toast({
-        title:
-          clasificacion === 'USO_Y_GOCE'
-            ? 'Marcado como Uso y goce'
-            : 'Marcado como Desperfecto',
-        description:
-          clasificacion === 'USO_Y_GOCE'
-            ? 'Lo paga el inquilino.'
-            : 'Lo paga el propietario.',
-      });
+      onUpdate({ ...actualizado, pagador: p });
+      setReclasificando(false);
+      toast({ title: `Paga: ${pagadorLabel(p)}` });
     }
   };
 
@@ -160,66 +181,49 @@ export function GestionReclamo({
             <UserCog className="h-4 w-4 text-primary" />
             <h3 className="text-sm font-semibold">Clasificación · ¿Quién paga?</h3>
           </div>
-          {reclamo.clasificacion ? (
+          {reclamo.pagador && !reclasificando ? (
             <div className="flex items-center gap-2 rounded-md bg-muted/50 p-3 text-sm">
               <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
-              <span className="font-medium">
-                {reclamo.clasificacion === 'USO_Y_GOCE'
-                  ? 'Uso y goce — paga el inquilino'
-                  : 'Desperfecto — paga el propietario'}
-              </span>
-              {/* Re-clasificar no tiene endpoint en el API → solo demo. */}
-              {!apiEnabled && (
-                <button
-                  type="button"
-                  onClick={() => onUpdate({ ...reclamo, clasificacion: null })}
-                  className="ml-auto text-xs text-muted-foreground hover:text-foreground"
-                >
-                  Cambiar
-                </button>
-              )}
+              <span className="font-medium">Paga: {pagadorLabel(reclamo.pagador)}</span>
+              <button
+                type="button"
+                onClick={() => setReclasificando(true)}
+                className="ml-auto text-xs text-muted-foreground hover:text-foreground"
+              >
+                Cambiar
+              </button>
             </div>
-          ) : apiEnabled ? (
-            // En prod la clasificación todavía no tiene endpoint: mostramos el
-            // estado real (sin clasificar) sin acciones que no persistan.
-            <p className="text-xs text-muted-foreground">Sin clasificar todavía.</p>
           ) : (
             <>
               <p className="text-xs text-muted-foreground">
-                Antes de asignar un profesional, decidí quién se hace cargo del costo.
+                Decidí quién se hace cargo del costo del arreglo. Impacta la plata al resolver.
               </p>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleClasificar('USO_Y_GOCE')}
-                  className={cn(
-                    'flex items-start gap-3 rounded-md border p-3 text-left transition-colors hover:bg-muted/40',
-                  )}
-                >
-                  <Home className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-                  <div>
-                    <p className="text-sm font-medium">Uso y goce</p>
-                    <p className="text-xs text-muted-foreground">
-                      Rotura por uso normal. Lo paga el inquilino.
-                    </p>
-                  </div>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleClasificar('DESPERFECTO')}
-                  className={cn(
-                    'flex items-start gap-3 rounded-md border p-3 text-left transition-colors hover:bg-muted/40',
-                  )}
-                >
-                  <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
-                  <div>
-                    <p className="text-sm font-medium">Desperfecto</p>
-                    <p className="text-xs text-muted-foreground">
-                      Problema del inmueble. Lo paga el propietario.
-                    </p>
-                  </div>
-                </button>
+              <div className="grid grid-cols-3 gap-2">
+                {PAGADOR_OPCIONES.map((o) => (
+                  <button
+                    key={o.v}
+                    type="button"
+                    disabled={clasificando}
+                    onClick={() => handleClasificar(o.v)}
+                    className={cn(
+                      'flex flex-col items-start gap-1 rounded-md border p-3 text-left transition-colors hover:bg-muted/40 disabled:opacity-50',
+                      reclamo.pagador === o.v && 'border-primary bg-primary/5',
+                    )}
+                  >
+                    <span className="text-sm font-medium">{o.label}</span>
+                    <span className="text-[11px] text-muted-foreground">{o.hint}</span>
+                  </button>
+                ))}
               </div>
+              {reclasificando && (
+                <button
+                  type="button"
+                  onClick={() => setReclasificando(false)}
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Cancelar
+                </button>
+              )}
             </>
           )}
         </CardContent>

@@ -52,9 +52,16 @@ import { apiEnabled, subirArchivo, urlDeArchivo } from '@/lib/api/client';
 import { useReclamo } from '@/lib/api/use-reclamo';
 import { useVisitaReclamo } from '@/lib/api/use-visita-reclamo';
 import { mockUser } from '@/lib/auth';
-import type { Reclamo } from '@/lib/types';
+import type { PagadorReclamo, Reclamo } from '@/lib/types';
 
 const OPERADOR_ACTUAL = mockUser.user.fullName; // Roberto Tapia en mock
+
+// Opciones de "¿Quién paga?" en el diálogo de resolución (define el impacto en la plata).
+const PAGADORES: { v: PagadorReclamo; label: string; hint: string }[] = [
+  { v: 'PROPIETARIO', label: 'Propietario', hint: 'A su rendición' },
+  { v: 'DEPOSITO', label: 'Depósito', hint: 'Del depósito' },
+  { v: 'INQUILINO', label: 'Inquilino', hint: 'Se le cobra' },
+];
 
 export default function DetalleReclamoPage() {
   const params = useParams<{ id: string }>();
@@ -68,6 +75,7 @@ export default function DetalleReclamoPage() {
     contacto: contactoApi,
     asignar: asignarApi,
     resolver: resolverApi,
+    clasificar: clasificarApi,
     rechazar: rechazarApi,
     responder: responderApi,
   } = useReclamo(params?.id);
@@ -81,6 +89,7 @@ export default function DetalleReclamoPage() {
   const [resolucion, setResolucion] = useState('');
   const [costoStr, setCostoStr] = useState('');
   const [costoNotas, setCostoNotas] = useState('');
+  const [pagador, setPagador] = useState<PagadorReclamo | null>(null);
   const [dialogo, setDialogo] = useState<'resolver' | 'rechazar' | 'cerrar' | null>(null);
   const [dialogoCargando, setDialogoCargando] = useState(false);
   // Guard de re-entrancia SÍNCRONO contra el doble-click: setDialogoCargando es un
@@ -177,6 +186,19 @@ export default function DetalleReclamoPage() {
 
   const confirmarDialogo = async () => {
     if (!dialogo || confirmandoRef.current) return;
+    // Validación ANTES de tomar el lock (si retornamos, no dejamos el ref sucio):
+    // en prod, si se carga un costo hay que decir quién paga (el backend lo exige).
+    if (dialogo === 'resolver' && apiEnabled) {
+      const costoNum = Number(costoStr.replace(/\D/g, '')) || 0;
+      if (costoNum > 0 && !pagador) {
+        toast({
+          title: 'Indicá quién paga el costo del trabajo',
+          description: 'Elegí propietario, inquilino o depósito.',
+          variant: 'destructive',
+        });
+        return;
+      }
+    }
     const reclamoId = reclamo.id;
     // El ref bloquea el 2do click ANTES de que React re-renderice (sin esto el
     // doble-click creaba dos eventos en el timeline). setDialogoCargando es solo
@@ -187,11 +209,30 @@ export default function DetalleReclamoPage() {
     if (dialogo === 'resolver') {
       const resolucionTxt = resolucion.trim();
       if (apiEnabled) {
-        // El endpoint /resolver solo recibe la resolución; el costo del trabajo
-        // no tiene endpoint propio todavía, así que en prod no se persiste.
+        // Ahora /resolver persiste costo + quién paga e impacta la plata:
+        // propietario → rendición, inquilino → cargo, depósito → deducción.
+        const costoNum = Number(costoStr.replace(/\D/g, '')) || 0;
         try {
-          await resolverApi(resolucionTxt);
-          toast({ title: 'Reclamo resuelto', description: 'El inquilino fue notificado.' });
+          await resolverApi({
+            resolucion: resolucionTxt,
+            ...(costoNum > 0
+              ? {
+                  costoTrabajo: costoNum,
+                  costoTrabajoNotas: costoNotas.trim() || undefined,
+                  pagador: pagador ?? undefined,
+                }
+              : {}),
+          });
+          const m = formatMonto(costoNum, reclamo.moneda ?? 'ARS');
+          const desc =
+            costoNum <= 0 || !pagador
+              ? 'El inquilino fue notificado.'
+              : pagador === 'PROPIETARIO'
+                ? `${m} se descuenta al propietario en su próxima rendición.`
+                : pagador === 'INQUILINO'
+                  ? `${m} cargado al inquilino.`
+                  : `${m} descontado del depósito de garantía.`;
+          toast({ title: 'Reclamo resuelto', description: desc });
         } catch {
           toast({ title: 'No se pudo resolver el reclamo', variant: 'destructive' });
         }
@@ -242,6 +283,7 @@ export default function DetalleReclamoPage() {
     setResolucion('');
     setCostoStr('');
     setCostoNotas('');
+    setPagador(null);
   };
 
   return (
@@ -449,6 +491,7 @@ export default function DetalleReclamoPage() {
                 reclamo={reclamo}
                 onUpdate={(r) => setReclamo(r)}
                 asignarApi={asignarApi}
+                clasificarApi={clasificarApi}
                 visitaToken={visita?.token}
               />
             )}
@@ -504,7 +547,10 @@ export default function DetalleReclamoPage() {
                     <Button
                       variant="outline"
                       className="w-full"
-                      onClick={() => setDialogo('resolver')}
+                      onClick={() => {
+                        setPagador(reclamo.pagador ?? null);
+                        setDialogo('resolver');
+                      }}
                     >
                       <CheckCircle2 className="h-4 w-4" />
                       Marcar como resuelto
@@ -632,6 +678,7 @@ export default function DetalleReclamoPage() {
             setResolucion('');
             setCostoStr('');
             setCostoNotas('');
+            setPagador(null);
           }
         }}
         title="Marcar como resuelto"
@@ -656,50 +703,61 @@ export default function DetalleReclamoPage() {
                 </p>
               )}
             </div>
-            {reclamo?.profesionalAsignadoNombre ? (
-              <div className="space-y-2 rounded-md border border-primary/20 bg-primary/5 p-3">
-                <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-primary">
-                  Costo del trabajo
-                  <span className="ml-1 rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] font-normal text-primary">
-                    {reclamo.clasificacion === 'USO_Y_GOCE'
-                      ? 'Se cobra al inquilino'
-                      : reclamo.clasificacion === 'DESPERFECTO'
-                        ? 'Se descuenta al propietario'
-                        : 'Sin clasificar'}
+            <div className="space-y-3 rounded-md border border-primary/20 bg-primary/5 p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-primary">
+                Costo del trabajo · ¿Quién paga?
+              </p>
+              <div className="grid gap-2 sm:grid-cols-[160px_1fr]">
+                <div className="relative">
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                    $
                   </span>
-                </p>
-                <div className="grid gap-2 sm:grid-cols-[140px_1fr]">
-                  <div className="relative">
-                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                      $
-                    </span>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={costoStr}
-                      onChange={(e) =>
-                        setCostoStr(e.target.value.replace(/\D/g, '').slice(0, 12))
-                      }
-                      placeholder="25000"
-                      aria-label="Costo del trabajo"
-                      className="w-full rounded-md border bg-background px-3 py-1.5 pl-7 text-sm"
-                    />
-                  </div>
                   <input
                     type="text"
-                    value={costoNotas}
-                    onChange={(e) => setCostoNotas(e.target.value)}
-                    placeholder="Concepto: cambio de flexible y silicona"
-                    aria-label="Concepto del trabajo"
-                    className="rounded-md border bg-background px-3 py-1.5 text-sm"
+                    inputMode="numeric"
+                    value={costoStr ? Number(costoStr).toLocaleString('es-AR') : ''}
+                    onChange={(e) => setCostoStr(e.target.value.replace(/\D/g, '').slice(0, 12))}
+                    placeholder="200.000"
+                    aria-label="Costo del trabajo"
+                    className="w-full rounded-md border bg-background px-3 py-1.5 pl-7 text-sm tabular-nums"
                   />
                 </div>
-                <p className="text-[10px] text-muted-foreground">
-                  Opcional. Si lo cargás, aparece en la rendición del propietario
-                  con el detalle.
-                </p>
+                <input
+                  type="text"
+                  value={costoNotas}
+                  onChange={(e) => setCostoNotas(e.target.value)}
+                  placeholder="Concepto: cambio de flexible y silicona"
+                  aria-label="Concepto del trabajo"
+                  className="rounded-md border bg-background px-3 py-1.5 text-sm"
+                />
               </div>
-            ) : null}
+              <div className="grid grid-cols-3 gap-1.5">
+                {PAGADORES.map((p) => {
+                  const activo = pagador === p.v;
+                  return (
+                    <button
+                      key={p.v}
+                      type="button"
+                      onClick={() => setPagador(activo ? null : p.v)}
+                      aria-pressed={activo}
+                      className={cn(
+                        'rounded-md border px-2 py-2 text-left transition-colors',
+                        activo
+                          ? 'border-primary bg-primary/10 ring-1 ring-primary/30'
+                          : 'border-border hover:bg-muted/40',
+                      )}
+                    >
+                      <span className="block text-xs font-medium">{p.label}</span>
+                      <span className="block text-[10px] text-muted-foreground">{p.hint}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-[10px] text-muted-foreground">
+                Opcional. Si cargás un costo, elegí quién lo paga: impacta la rendición del
+                propietario, un cargo al inquilino, o el depósito de garantía.
+              </p>
+            </div>
           </div>
         }
         confirmLabel="Confirmar resolución"

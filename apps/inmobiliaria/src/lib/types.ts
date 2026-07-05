@@ -100,6 +100,20 @@ export interface EventoReclamo {
   fecha: string; // ISO
 }
 
+/** Quién se hace cargo del costo del trabajo de un reclamo. */
+export type PagadorReclamo = 'PROPIETARIO' | 'INQUILINO' | 'DEPOSITO';
+
+/** Cargo generado al resolver un reclamo (reparación a cargo del inquilino o del depósito). */
+export interface CargoReclamo {
+  id: string;
+  tipo: string;
+  concepto: string;
+  monto: number;
+  moneda: Moneda;
+  contraDeposito: boolean;
+  createdAt: string;
+}
+
 export interface Reclamo {
   id: string;
   contratoId: string;
@@ -118,8 +132,14 @@ export interface Reclamo {
   /** Fecha de inicio del contrato del inquilino — para mostrar hace cuánto vive
    *  en la propiedad (antigüedad). Puede faltar en datos viejos/demo. */
   contratoDesde?: string | null;
-  /** Clasificación que decide quién paga el arreglo. */
+  /** Clasificación legada (2 valores). Reemplazada por `pagador`. */
   clasificacion?: ClasificacionReclamo | null;
+  /** Quién paga el costo del trabajo: propietario / inquilino / depósito. */
+  pagador?: PagadorReclamo | null;
+  /** Moneda del contrato — para formatear costoTrabajo/cargos en la moneda correcta. */
+  moneda?: Moneda;
+  /** Cargos de reparación emitidos al resolver (inquilino paga o contra depósito). */
+  cargos?: CargoReclamo[];
   /** Profesional externo que el admin asignó al reclamo (de la red curada). */
   profesionalAsignadoId?: string | null;
   profesionalAsignadoNombre?: string | null;

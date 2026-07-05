@@ -1369,6 +1369,57 @@ export async function plataRoutes(app: FastifyInstance) {
             direccion: g.propiedad.direccion,
           };
         });
+
+        // Reclamos resueltos del período con el costo A CARGO DEL PROPIETARIO: entran a
+        // la rendición como GastoRendido tipo TRABAJO (refId `reclamo:<id>`). Antes NO
+        // impactaban — el costo del trabajo quedaba sólo en el reclamo y nunca se
+        // descontaba al dueño. Dedup por refId (los reclamos no tienen flag descontado).
+        const reclamosProp = await tx.reclamo.findMany({
+          where: {
+            inmobiliariaId: u.inmobiliariaId,
+            pagador: 'PROPIETARIO',
+            estado: { in: ['RESUELTO', 'CERRADO'] },
+            costoTrabajo: { gt: 0 },
+            propiedadId: { in: propIdsConIngreso },
+            resueltoAt: { gte: inicioPeriodo, lt: finPeriodo },
+          },
+          include: { propiedad: { select: { direccion: true } } },
+        });
+        const reclamoRefIds = reclamosProp.map((rec) => `reclamo:${rec.id}`);
+        const reclamosYaRendidos = reclamoRefIds.length
+          ? new Set(
+              (
+                await tx.gastoRendido.findMany({
+                  where: { refId: { in: reclamoRefIds }, tipo: 'TRABAJO' },
+                  select: { refId: true },
+                })
+              ).map((g) => g.refId),
+            )
+          : new Set<string>();
+        const gastosReclamos = reclamosProp
+          .filter((rec) => rec.propiedadId != null && !reclamosYaRendidos.has(`reclamo:${rec.id}`))
+          .map((rec) => {
+            const part = owner.participaciones.find((p) => p.propiedadId === rec.propiedadId);
+            const porcentaje = part?.porcentaje ?? 100;
+            const total = Number(rec.costoTrabajo);
+            const parteOwner = total * (porcentaje / 100);
+            totalGastos += parteOwner;
+            return {
+              inmobiliariaId: u.inmobiliariaId,
+              refId: `reclamo:${rec.id}`,
+              tipo: 'TRABAJO' as const,
+              fecha: rec.resueltoAt ?? rec.updatedAt,
+              descripcion:
+                rec.costoTrabajoNotas || `Reparación (${rec.categoria.toLowerCase()}): ${rec.descripcion.slice(0, 60)}`,
+              proveedor: null as string | null,
+              monto: parteOwner,
+              montoTotal: total,
+              participacion: porcentaje,
+              propiedadId: rec.propiedadId as string,
+              direccion: rec.propiedad?.direccion ?? '—',
+            };
+          });
+
         totalGastos = r2c(totalGastos);
         const montoNeto = r2c(montoBruto - comisionMonto - totalGastos);
         if (montoNeto < 0) throw new RendicionNetoNegativo();
@@ -1415,6 +1466,9 @@ export async function plataRoutes(app: FastifyInstance) {
             // cuadra → revertimos la tx para no descontar el gasto dos veces.
             if (upd.count !== idsCompletos.length) throw new GastoYaDescontado();
           }
+        }
+        if (gastosReclamos.length > 0) {
+          await tx.gastoRendido.createMany({ data: gastosReclamos.map((g) => ({ ...g, rendicionId: r.id })) });
         }
         return r;
       });

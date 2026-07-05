@@ -167,6 +167,7 @@ enum TipoGarante {
 enum TipoCargo {
   PENALIDAD_RESCISION
   DANOS
+  REPARACION // costo de trabajo de un reclamo imputado al inquilino o al depósito
   OTRO
 }
 
@@ -415,6 +416,18 @@ enum EstadoReclamo {
 enum ClasificacionReclamo {
   USO_Y_GOCE
   DESPERFECTO
+}
+
+// Quién se hace cargo del costo del trabajo de un reclamo. Reemplaza a la
+// clasificación de 2 valores (uso y goce / desperfecto) con los 3 pagadores
+// reales; define hacia dónde impacta la plata al resolver:
+//  - PROPIETARIO → gasto en la rendición del dueño (GastoRendido tipo TRABAJO)
+//  - INQUILINO   → CargoContrato (deuda del inquilino, visible en su cuenta)
+//  - DEPOSITO    → CargoContrato contraDeposito (descuenta del depósito retenido)
+enum PagadorReclamo {
+  PROPIETARIO
+  INQUILINO
+  DEPOSITO
 }
 
 enum TipoEventoReclamo {
@@ -1386,6 +1399,12 @@ model CargoContrato {
   concepto       String
   monto          Decimal      @db.Decimal(14, 2)
   moneda         Moneda       @default(ARS)
+  // Si el cargo nace de un reclamo (REPARACION): 1 cargo por reclamo (idempotente).
+  reclamoId      String?      @unique
+  reclamo        Reclamo?     @relation(fields: [reclamoId], references: [id])
+  // true → el costo se descuenta del DEPÓSITO retenido (no es deuda que el
+  // inquilino paga ahora); false → deuda normal del inquilino / cargo del contrato.
+  contraDeposito Boolean      @default(false)
   creadoPorId    String? // userId del usuario que lo generó
   createdAt      DateTime     @default(now())
 
@@ -1943,7 +1962,8 @@ model Reclamo {
   asignadoA         String? // operador interno (texto)
   fotoUrl           String?
   resolucion        String?
-  clasificacion     ClasificacionReclamo? // decide a quién se imputa costoTrabajo
+  clasificacion     ClasificacionReclamo? // legado (2 valores); reemplazado por `pagador`
+  pagador           PagadorReclamo? // quién paga el costoTrabajo (propietario/inquilino/depósito)
   profesionalId     String? // FK reemplaza los campos denormalizados del mock
   profesional       Profesional?          @relation(fields: [profesionalId], references: [id])
   costoTrabajo      Decimal?              @db.Decimal(14, 2)
@@ -1957,6 +1977,7 @@ model Reclamo {
   confirmacion ConfirmacionReclamo?
   rating       RatingReclamo?
   cargoPagado  CargoPagado?
+  cargos       CargoContrato[]
 
   @@index([inmobiliariaId, estado])
   @@index([contratoId])

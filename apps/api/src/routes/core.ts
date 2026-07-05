@@ -1538,18 +1538,34 @@ export async function coreRoutes(app: FastifyInstance) {
       },
       orderBy: { fechaInicio: 'desc' },
     });
-    const porMonedaMap = new Map<string, { total: number; cantidad: number }>();
+    // Deducciones al depósito: reparaciones de reclamos imputadas al depósito
+    // (CargoContrato contraDeposito). Reducen lo que queda para devolver.
+    const ids = contratos.map((c) => c.id);
+    const deduRows = ids.length
+      ? await prisma.cargoContrato.groupBy({
+          by: ['contratoId'],
+          where: { inmobiliariaId: u.inmobiliariaId, contraDeposito: true, contratoId: { in: ids } },
+          _sum: { monto: true },
+        })
+      : [];
+    const deduPorContrato = new Map(deduRows.map((r) => [r.contratoId, Number(r._sum.monto ?? 0)]));
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    const porMonedaMap = new Map<string, { total: number; deducciones: number; cantidad: number }>();
     const items = contratos.map((c) => {
       const monto = Number(c.depositoGarantia ?? 0);
-      const cur = porMonedaMap.get(c.moneda) ?? { total: 0, cantidad: 0 };
+      const deducciones = deduPorContrato.get(c.id) ?? 0;
+      const cur = porMonedaMap.get(c.moneda) ?? { total: 0, deducciones: 0, cantidad: 0 };
       cur.total += monto;
+      cur.deducciones += deducciones;
       cur.cantidad += 1;
       porMonedaMap.set(c.moneda, cur);
       return {
         contratoId: c.id,
         propiedad: c.propiedad?.direccion ?? '—',
         inquilino: `${c.inquilinoTitular?.nombre ?? ''} ${c.inquilinoTitular?.apellido ?? ''}`.trim() || '—',
-        monto: Math.round(monto * 100) / 100,
+        monto: r2(monto),
+        deducciones: r2(deducciones),
+        disponible: r2(Math.max(0, monto - deducciones)),
         moneda: c.moneda,
         estadoContrato: c.estado,
         fechaInicio: c.fechaInicio,
@@ -1558,7 +1574,9 @@ export async function coreRoutes(app: FastifyInstance) {
     return {
       porMoneda: [...porMonedaMap.entries()].map(([moneda, v]) => ({
         moneda,
-        total: Math.round(v.total * 100) / 100,
+        total: r2(v.total),
+        deducciones: r2(v.deducciones),
+        disponible: r2(v.total - v.deducciones),
         cantidad: v.cantidad,
       })),
       contratos: items,

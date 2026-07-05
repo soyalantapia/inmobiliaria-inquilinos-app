@@ -168,6 +168,11 @@ async function nombreUsuario(userId: string): Promise<string> {
   return usuario ? `${usuario.nombre} ${usuario.apellido}`.trim() : 'Panel';
 }
 
+type Pagador = 'PROPIETARIO' | 'INQUILINO' | 'DEPOSITO';
+function labelPagador(p: Pagador): string {
+  return p === 'PROPIETARIO' ? 'Propietario' : p === 'INQUILINO' ? 'Inquilino' : 'Depósito de garantía';
+}
+
 const ESTADOS_CERRADOS = ['RESUELTO', 'CERRADO', 'RECHAZADO'] as const;
 
 // Señal interna para abortar una transacción cuando el reclamo ya cambió de
@@ -198,6 +203,7 @@ export async function operacionRoutes(app: FastifyInstance) {
           select: {
             id: true,
             fechaInicio: true,
+            moneda: true,
             inquilinoTitular: { select: { id: true, nombre: true, apellido: true, telefono: true } },
           },
         },
@@ -220,6 +226,9 @@ export async function operacionRoutes(app: FastifyInstance) {
           select: {
             id: true,
             fechaInicio: true,
+            moneda: true,
+            depositoGarantia: true,
+            estadoDeposito: true,
             inquilinoTitular: { select: { id: true, nombre: true, apellido: true, telefono: true, email: true } },
           },
         },
@@ -228,6 +237,7 @@ export async function operacionRoutes(app: FastifyInstance) {
         visita: true,
         confirmacion: true,
         rating: true,
+        cargos: true,
       },
     });
     if (!reclamo) return reply.code(404).send({ message: 'Reclamo inexistente' });
@@ -320,15 +330,58 @@ export async function operacionRoutes(app: FastifyInstance) {
     return { visitaToken: actualizada.token };
   });
 
+  // Clasificar quién paga el costo del trabajo ANTES de resolver (uso normal: el
+  // operador decide propietario/inquilino/depósito al recibir el reclamo). Deja
+  // historial (evento CLASIFICADO). El cargo real se emite al RESOLVER, cuando
+  // ya se conoce el monto. Persiste en la DB (antes era solo demo).
+  app.post('/reclamos/:id/clasificar', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'reclamos.gestionar');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const body = z.object({ pagador: z.enum(['PROPIETARIO', 'INQUILINO', 'DEPOSITO']) }).safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ message: 'Indicá quién paga: propietario, inquilino o depósito' });
+
+    const reclamo = await prisma.reclamo.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
+    if (!reclamo) return reply.code(404).send({ message: 'Reclamo inexistente' });
+
+    const autor = await nombreUsuario(u.userId);
+    const actualizado = await prisma.$transaction(async (tx) => {
+      await tx.reclamo.update({ where: { id }, data: { pagador: body.data.pagador } });
+      await tx.reclamoEvento.create({
+        data: { inmobiliariaId: u.inmobiliariaId, reclamoId: id, tipo: 'CLASIFICADO', autor, contenido: `Paga: ${labelPagador(body.data.pagador)}` },
+      });
+      return tx.reclamo.findUniqueOrThrow({ where: { id } });
+    });
+    return conSla(actualizado);
+  });
+
   app.post('/reclamos/:id/resolver', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'reclamos.gestionar');
     if (!u) return;
     const { id } = request.params as { id: string };
-    const body = z.object({ resolucion: z.string().min(5) }).safeParse(request.body ?? {});
+    const body = z
+      .object({
+        resolucion: z.string().min(5),
+        costoTrabajo: z.number().nonnegative().optional(),
+        costoTrabajoNotas: z.string().trim().max(300).optional(),
+        pagador: z.enum(['PROPIETARIO', 'INQUILINO', 'DEPOSITO']).optional(),
+      })
+      .safeParse(request.body ?? {});
     if (!body.success) return reply.code(400).send({ message: 'Contá cómo se resolvió (mínimo 5 caracteres)' });
 
-    const reclamo = await prisma.reclamo.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
+    const reclamo = await prisma.reclamo.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      include: { contrato: { select: { moneda: true, propiedadId: true } } },
+    });
     if (!reclamo) return reply.code(404).send({ message: 'Reclamo inexistente' });
+
+    // Costo y pagador efectivos: lo que venga en el body pisa lo ya guardado.
+    const costo = body.data.costoTrabajo ?? (reclamo.costoTrabajo != null ? Number(reclamo.costoTrabajo) : 0);
+    const pagador: Pagador | null = body.data.pagador ?? reclamo.pagador ?? null;
+    // Con costo hay que saber a quién imputarlo para mover la plata bien.
+    if (costo > 0 && !pagador) {
+      return reply.code(400).send({ message: 'Indicá quién paga el costo del trabajo (propietario, inquilino o depósito)' });
+    }
 
     const ahora = new Date();
     const autor = await nombreUsuario(u.userId);
@@ -340,19 +393,64 @@ export async function operacionRoutes(app: FastifyInstance) {
         // contradictorios.
         const res = await tx.reclamo.updateMany({
           where: { id, estado: { notIn: [...ESTADOS_CERRADOS] } },
-          data: { estado: 'RESUELTO', resolucion: body.data.resolucion, resueltoAt: ahora },
-        });
-        if (res.count === 0) throw new ConflictoEstadoReclamo('El reclamo ya fue decidido');
-        await tx.reclamoEvento.create({
           data: {
-            inmobiliariaId: u.inmobiliariaId,
-            reclamoId: id,
-            tipo: 'RESUELTO',
-            autor,
-            contenido: body.data.resolucion,
-            fecha: ahora,
+            estado: 'RESUELTO',
+            resolucion: body.data.resolucion,
+            resueltoAt: ahora,
+            ...(body.data.costoTrabajo != null ? { costoTrabajo: body.data.costoTrabajo } : {}),
+            ...(body.data.costoTrabajoNotas !== undefined ? { costoTrabajoNotas: body.data.costoTrabajoNotas || null } : {}),
+            ...(pagador ? { pagador } : {}),
+            // La rendición atribuye el gasto por propiedad → denormalizamos si falta.
+            ...(reclamo.propiedadId == null && reclamo.contrato.propiedadId ? { propiedadId: reclamo.contrato.propiedadId } : {}),
           },
         });
+        if (res.count === 0) throw new ConflictoEstadoReclamo('El reclamo ya fue decidido');
+
+        // Historial del caso: RESUELTO (+ CLASIFICADO si se define quién paga acá).
+        await tx.reclamoEvento.create({
+          data: { inmobiliariaId: u.inmobiliariaId, reclamoId: id, tipo: 'RESUELTO', autor, contenido: body.data.resolucion, fecha: ahora },
+        });
+        if (pagador && pagador !== reclamo.pagador) {
+          await tx.reclamoEvento.create({
+            data: { inmobiliariaId: u.inmobiliariaId, reclamoId: id, tipo: 'CLASIFICADO', autor, contenido: `Paga: ${labelPagador(pagador)}` },
+          });
+        }
+
+        // Impacto en el profesional: suma un trabajo + marca la fecha (stats/historial).
+        if (reclamo.profesionalId) {
+          await tx.profesional.update({
+            where: { id: reclamo.profesionalId },
+            data: { cantTrabajos: { increment: 1 }, ultimoTrabajo: ahora },
+          });
+        }
+
+        // Impacto en la plata según quién paga (idempotente por reclamoId):
+        //  PROPIETARIO → sin cargo (lo toma la rendición como GastoRendido tipo TRABAJO).
+        //  INQUILINO   → CargoContrato (deuda del inquilino).
+        //  DEPOSITO    → CargoContrato contraDeposito (descuenta del depósito retenido).
+        if (pagador === 'PROPIETARIO' || costo <= 0) {
+          await tx.cargoContrato.deleteMany({ where: { reclamoId: id } });
+        } else if (pagador === 'INQUILINO' || pagador === 'DEPOSITO') {
+          const concepto =
+            body.data.costoTrabajoNotas?.trim() ||
+            `Reparación (${reclamo.categoria.toLowerCase()}): ${reclamo.descripcion.slice(0, 60)}`;
+          await tx.cargoContrato.upsert({
+            where: { reclamoId: id },
+            create: {
+              inmobiliariaId: u.inmobiliariaId,
+              contratoId: reclamo.contratoId,
+              reclamoId: id,
+              tipo: 'REPARACION',
+              concepto,
+              monto: costo,
+              moneda: reclamo.contrato.moneda,
+              contraDeposito: pagador === 'DEPOSITO',
+              creadoPorId: u.userId,
+            },
+            update: { monto: costo, moneda: reclamo.contrato.moneda, concepto, contraDeposito: pagador === 'DEPOSITO', tipo: 'REPARACION' },
+          });
+        }
+
         return tx.reclamo.findUniqueOrThrow({ where: { id } });
       });
       return conSla(actualizado);
