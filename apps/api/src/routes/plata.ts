@@ -1193,7 +1193,10 @@ export async function plataRoutes(app: FastifyInstance) {
       rendicion = await prisma.$transaction(async (tx) => {
         // hashtext(int4)×2 → overload pg_advisory_xact_lock(int4,int4). Se libera
         // al terminar la tx. Serializa SOLO este dueño+período (no bloquea otros).
-        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${u.inmobiliariaId}), hashtext(${`${propietarioId}|${periodo}`}))`;
+        // $executeRaw (no $queryRaw): pg_advisory_xact_lock devuelve void y
+        // $queryRaw no puede deserializar esa columna → 500. $executeRaw ejecuta
+        // el lock e ignora el result set.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${u.inmobiliariaId}), hashtext(${`${propietarioId}|${periodo}`}))`;
 
         // Cobrado (CONCILIADO) + lo YA rendido a ESTE dueño por liq — leído DENTRO
         // del lock para ver lo que otra rendición del período ya committeó.
