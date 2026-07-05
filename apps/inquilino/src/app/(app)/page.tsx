@@ -373,6 +373,12 @@ function HomeReal() {
   // "próximo pago"). El backend además ya no manda datos de cobranza, así que no hay
   // adónde transferir; sólo mostramos que el contrato terminó y el acceso al historial.
   const contratoFinalizado = !!contrato && contrato.estado !== 'ACTIVO';
+  // Deuda impaga que quedó tras la baja: aviso de "cuentas impagas" al ex-inquilino
+  // (suma del saldo de las liquidaciones no pagadas). Sin botón de pago — se coordina
+  // con la inmobiliaria — pero el ex-inquilino ve claro cuánto y por qué debe.
+  const deudaExInquilino = contratoFinalizado
+    ? liquidaciones.reduce((s, l) => s + (l.estado !== 'PAGADO' ? l.saldo ?? 0 : 0), 0)
+    : 0;
 
   return (
     <>
@@ -381,15 +387,27 @@ function HomeReal() {
         <h1 className="sr-only">Inicio</h1>
 
         {contratoFinalizado ? (
-          <Card className="animate-fade-in border-muted-foreground/20 bg-muted/40 p-5">
+          <Card
+            className={`animate-fade-in p-5 ${
+              deudaExInquilino > 0 ? 'border-amber-300 bg-amber-50/60' : 'border-muted-foreground/20 bg-muted/40'
+            }`}
+          >
             <p className="text-base font-semibold">
               Tu contrato {contrato?.estado === 'RESCINDIDO' ? 'fue rescindido' : 'finalizó'}
             </p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Ya no hay pagos por hacer desde la app. Podés seguir viendo tu historial de
-              recibos y comprobantes. Ante cualquier duda, escribile a{' '}
-              {contrato?.inmobiliaria ?? 'tu inmobiliaria'}.
-            </p>
+            {deudaExInquilino > 0 ? (
+              <p className="mt-1 text-sm text-muted-foreground">
+                Quedó una <strong className="text-amber-700">deuda pendiente de{' '}
+                {formatMonto(deudaExInquilino, contrato?.moneda ?? 'ARS')}</strong>. Ya no se paga desde
+                la app: coordiná cómo saldarla con {contrato?.inmobiliaria ?? 'tu inmobiliaria'}.
+              </p>
+            ) : (
+              <p className="mt-1 text-sm text-muted-foreground">
+                Ya no hay pagos por hacer desde la app. Podés seguir viendo tu historial de
+                recibos y comprobantes. Ante cualquier duda, escribile a{' '}
+                {contrato?.inmobiliaria ?? 'tu inmobiliaria'}.
+              </p>
+            )}
             <Link
               href="/comprobantes"
               className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"

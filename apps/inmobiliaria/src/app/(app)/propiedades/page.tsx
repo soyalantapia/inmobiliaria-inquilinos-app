@@ -25,7 +25,7 @@ import { cn } from '@llave/ui/cn';
 import { Input } from '@llave/ui/input';
 import { Topbar } from '@/components/topbar';
 import { urlDeArchivo } from '@/lib/api/client';
-import { usePropiedades } from '@/lib/api/hooks';
+import { usePropiedades, useContratos } from '@/lib/api/hooks';
 import {
   TODAS_LAS_SOCIEDADES,
   leerSociedadActiva,
@@ -132,6 +132,20 @@ export default function PropiedadesPage() {
   const principalId = useMemo(() => sociedadPrincipal().id, []);
 
   const { propiedades, cargando } = usePropiedades();
+  const { contratos } = useContratos();
+
+  // Deuda de EX-INQUILINOS por propiedad: cruzamos los contratos finalizados/rescindidos
+  // con deuda real contra el listado, para avisar en la propiedad que quedó algo por
+  // cobrar del inquilino anterior (la deuda se conserva al dar de baja el contrato).
+  const deudaExPorPropiedad = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const c of contratos) {
+      if ((c.estado === 'FINALIZADO' || c.estado === 'RESCINDIDO') && (c.deudaTotal ?? 0) > 0 && c.propiedadId) {
+        m.set(c.propiedadId, (m.get(c.propiedadId) ?? 0) + (c.deudaTotal ?? 0));
+      }
+    }
+    return m;
+  }, [contratos]);
 
   const enriquecidas = useMemo(
     () =>
@@ -380,6 +394,13 @@ export default function PropiedadesPage() {
                           {estadoCfg.label}
                         </Badge>
                       </div>
+
+                      {deudaExPorPropiedad.has(propiedad.id) && (
+                        <div className="rounded-md border border-amber-300 bg-amber-50/60 px-2.5 py-1.5 text-xs text-amber-800">
+                          Deuda de ex-inquilino por cobrar:{' '}
+                          <strong>{formatMonto(deudaExPorPropiedad.get(propiedad.id) ?? 0)}</strong>
+                        </div>
+                      )}
 
                       <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
                         {propiedad.ambientes !== null && (

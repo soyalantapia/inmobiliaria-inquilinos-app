@@ -342,6 +342,10 @@ function RecibosReal() {
 
   const noPagadas = liquidaciones.filter((l) => l.estado !== 'PAGADO');
   const pagadas = liquidaciones.filter((l) => l.estado === 'PAGADO');
+  // Deuda que quedó impaga si el contrato ya terminó (aviso de cuentas impagas).
+  const deudaExInquilino = contratoFinalizado
+    ? noPagadas.reduce((s, l) => s + (l.saldo ?? 0), 0)
+    : 0;
   const urgenteLiq =
     [...noPagadas].sort((a, b) => a.fechaVencimiento.localeCompare(b.fechaVencimiento))[0] ?? null;
   const proximas = noPagadas.filter((l) => l.id !== urgenteLiq?.id);
@@ -393,13 +397,23 @@ function RecibosReal() {
           </Card>
         )}
         {contrato && contratoFinalizado && (
-          <Card className="border-muted-foreground/20 bg-muted/40 p-4">
+          <Card
+            className={`p-4 ${deudaExInquilino > 0 ? 'border-amber-300 bg-amber-50/60' : 'border-muted-foreground/20 bg-muted/40'}`}
+          >
             <p className="text-sm font-medium">
               Contrato {contrato.estado === 'RESCINDIDO' ? 'rescindido' : 'finalizado'}
             </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Este es tu historial de recibos y comprobantes. Ya no se informan pagos desde la app.
-            </p>
+            {deudaExInquilino > 0 ? (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Quedó una <strong className="text-amber-700">deuda pendiente de{' '}
+                {formatMonto(deudaExInquilino, contrato.moneda)}</strong>. Coordiná cómo saldarla con{' '}
+                {contrato.inmobiliaria}. Abajo está tu historial completo.
+              </p>
+            ) : (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Este es tu historial de recibos y comprobantes. Ya no se informan pagos desde la app.
+              </p>
+            )}
           </Card>
         )}
 

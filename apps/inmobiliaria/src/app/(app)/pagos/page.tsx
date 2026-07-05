@@ -197,6 +197,21 @@ export default function PagosPage() {
     [contratos],
   );
 
+  // Cuentas por cobrar de EX-INQUILINOS: contratos finalizados/rescindidos que quedaron
+  // con deuda vencida real (se conserva al dar de baja). No son cobranza corriente
+  // —salen del KPI de morosos activos— pero hay que poder verlos y cobrarlos.
+  const porCobrarExInquilinos = useMemo(
+    () =>
+      contratos
+        .filter((c) => (c.estado === 'FINALIZADO' || c.estado === 'RESCINDIDO') && (c.deudaTotal ?? 0) > 0)
+        .sort((a, b) => (b.deudaTotal ?? 0) - (a.deudaTotal ?? 0)),
+    [contratos],
+  );
+  const totalPorCobrarEx = useMemo(
+    () => porCobrarExInquilinos.reduce((s, c) => s + (c.deudaTotal ?? 0), 0),
+    [porCobrarExInquilinos],
+  );
+
   const counters = useMemo(
     () => ({
       A_RESOLVER: aResolverCount,
@@ -791,6 +806,51 @@ export default function PagosPage() {
               </Table>
             </Card>
           </>
+        )}
+
+        {/* Cuentas por cobrar de EX-INQUILINOS: contratos dados de baja que quedaron
+            con deuda real. Salen del KPI de morosos activos (no son cobranza corriente)
+            pero acá se ven y se pueden ir a cobrar (por fuera de la app del inquilino). */}
+        {porCobrarExInquilinos.length > 0 && (
+          <section className="mt-8 space-y-3">
+            <div className="flex items-end justify-between gap-3 px-1">
+              <div>
+                <h2 className="text-sm font-semibold">Por cobrar — ex-inquilinos</h2>
+                <p className="text-xs text-muted-foreground">
+                  Contratos dados de baja que quedaron con deuda. Coordiná el cobro por fuera de la app.
+                </p>
+              </div>
+              <div className="text-right shrink-0">
+                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Total</p>
+                <p className="text-base font-semibold tabular-nums text-amber-700">
+                  {formatMonto(totalPorCobrarEx)}
+                </p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              {porCobrarExInquilinos.map((c) => (
+                <Link key={c.id} href={`/contratos/${c.id}`} className="block">
+                  <Card className="flex items-center justify-between gap-3 p-4 transition-colors hover:bg-muted/30">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="truncate font-medium">{c.inquilino}</p>
+                        <Badge variant="outline" className="shrink-0 text-[10px]">
+                          {c.estado === 'RESCINDIDO' ? 'Rescindido' : 'Finalizado'}
+                        </Badge>
+                      </div>
+                      <p className="truncate text-xs text-muted-foreground">{c.direccion}</p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Deuda</p>
+                      <p className="text-base font-semibold tabular-nums text-amber-700">
+                        {formatMonto(c.deudaTotal ?? 0, c.moneda)}
+                      </p>
+                    </div>
+                  </Card>
+                </Link>
+              ))}
+            </div>
+          </section>
         )}
       </main>
 

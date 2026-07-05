@@ -82,6 +82,7 @@ function mapContrato(c: ContratoApi): ContratoListado {
     // Defensa: una respuesta sin la relación `propiedad` (p.ej. un POST que
     // devuelve la fila pelada) no debe crashear con "reading 'direccion'".
     direccion: c.propiedad?.direccion ?? '—',
+    propiedadId: c.propiedad?.id,
     monto: Number(c.monto),
     moneda: c.moneda,
     estado: c.estado,
