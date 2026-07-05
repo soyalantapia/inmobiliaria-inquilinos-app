@@ -104,12 +104,9 @@ describe('Contratos con estado de pago derivado', () => {
   });
 });
 
-describe('Validación de pagos (PIN + permisos)', () => {
-  it('PIN incorrecto → 403 y el pago sigue INFORMADO', async () => {
-    const res = await app.inject({ method: 'POST', url: '/pagos/pag_001/validar', headers: auth(tokenAdmin), payload: { pin: '9999' } });
-    expect(res.statusCode).toBe(403);
-  });
-
+describe('Validación de pagos (permisos)', () => {
+  // (El PIN se eliminó de la plataforma: ya no hay test de "PIN incorrecto → 403".
+  //  Las acciones sensibles siguen protegidas por rol/capacidad.)
   it('rol CARGA no puede conciliar → 403', async () => {
     const res = await app.inject({ method: 'POST', url: '/pagos/pag_001/validar', headers: auth(tokenCarga), payload: { pin: '1234' } });
     expect(res.statusCode).toBe(403);
@@ -319,7 +316,7 @@ describe('Alta de gasto en caja', () => {
   });
 });
 
-describe('Aprobaciones con PIN', () => {
+describe('Aprobaciones', () => {
   it('aprobar el contrato de Tomás Bravo → APROBADA + contrato ACTIVO', async () => {
     const res = await app.inject({
       method: 'POST',
@@ -367,16 +364,6 @@ describe('POST /pagos/manual — cobro registrado por la inmobiliaria', () => {
       url: '/pagos/manual',
       headers: auth(tokenCarga),
       payload: { liquidacionId: 'liq_003', monto: 1000, fecha: FECHA, pin: '1234' },
-    });
-    expect(res.statusCode).toBe(403);
-  });
-
-  it('PIN incorrecto → 403 y no se crea el pago', async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: '/pagos/manual',
-      headers: auth(tokenAdmin),
-      payload: { liquidacionId: 'liq_003', monto: 1000, fecha: FECHA, pin: '9999' },
     });
     expect(res.statusCode).toBe(403);
   });

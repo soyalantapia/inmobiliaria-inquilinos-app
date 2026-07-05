@@ -180,24 +180,21 @@ describe('Sesión + PIN', () => {
     expect(res.json()).toMatchObject({ kind: 'usuario', rol: 'ADMIN' });
   });
 
-  it('PIN correcto valida, PIN incorrecto 403', async () => {
+  // El PIN se eliminó de la plataforma: verificarPinUsuario siempre aprueba, así
+  // que /auth/pin/verify valida con CUALQUIER PIN (incluido uno "incorrecto").
+  // Guardia de regresión para que no vuelva a bloquear.
+  it('PIN eliminado: /auth/pin/verify aprueba cualquier PIN', async () => {
     const token = await loginRoberto();
-    const ok = await app.inject({
-      method: 'POST',
-      url: '/auth/pin/verify',
-      headers: { authorization: `Bearer ${token}` },
-      payload: { pin: '1234' },
-    });
-    expect(ok.statusCode).toBe(200);
-    expect(ok.json().valid).toBe(true);
-
-    const bad = await app.inject({
-      method: 'POST',
-      url: '/auth/pin/verify',
-      headers: { authorization: `Bearer ${token}` },
-      payload: { pin: '9999' },
-    });
-    expect(bad.statusCode).toBe(403);
+    for (const pin of ['1234', '9999']) {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/auth/pin/verify',
+        headers: { authorization: `Bearer ${token}` },
+        payload: { pin },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().valid).toBe(true);
+    }
   });
 
   it('demo devuelve sesión de Mariela', async () => {

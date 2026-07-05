@@ -376,26 +376,8 @@ describe('Renovaciones', () => {
     expect(c3.intencionRenovacion.decision).toBe('PENSANDO');
   });
 
-  it('decisión sin PIN → 400', async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: '/renovaciones/cnt_001/decision',
-      headers: auth(tokenAdmin),
-      payload: { decision: 'RENOVAR' },
-    });
-    expect(res.statusCode).toBe(400);
-  });
-
-  it('decisión con PIN incorrecto → 403', async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: '/renovaciones/cnt_001/decision',
-      headers: auth(tokenAdmin),
-      payload: { decision: 'RENOVAR', pin: '9999' },
-    });
-    expect(res.statusCode).toBe(403);
-  });
-
+  // (El PIN se eliminó de la plataforma: se quitaron los tests "sin PIN → 400" y
+  //  "PIN incorrecto → 403". La decisión sigue protegida por rol/capacidad.)
   it('rol CARGA no decide renovaciones → 403', async () => {
     const res = await app.inject({
       method: 'POST',
