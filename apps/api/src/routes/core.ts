@@ -1158,8 +1158,20 @@ export async function coreRoutes(app: FastifyInstance) {
     // Tipo de baja: FINALIZADO (fin natural del plazo) vs RESCINDIDO (rescisión
     // anticipada). Antes toda baja colapsaba en FINALIZADO y se perdía el dato para
     // el historial y el certificado. Default FINALIZADO por compat (callers sin body).
-    const body = z.object({ tipo: z.enum(['FINALIZADO', 'RESCINDIDO']).optional() }).safeParse(request.body ?? {});
-    const nuevoEstado: 'FINALIZADO' | 'RESCINDIDO' = body.success && body.data.tipo ? body.data.tipo : 'FINALIZADO';
+    const body = z
+      .object({
+        tipo: z.enum(['FINALIZADO', 'RESCINDIDO']).optional(),
+        // Sólo aplican cuando tipo === RESCINDIDO:
+        motivoRescision: z.string().trim().max(500).optional(),
+        fechaEfectiva: z.coerce.date().optional(),
+        montoPenalidad: z.number().nonnegative().optional(),
+        // Qué se hace con el depósito al cerrar. MANTENER = sigue RETENIDO (se resuelve después).
+        decisionDeposito: z.enum(['MANTENER', 'DEVOLVER', 'NETEAR', 'EJECUTAR']).optional(),
+        montoDepositoDevuelto: z.number().nonnegative().optional(),
+      })
+      .safeParse(request.body ?? {});
+    const b = body.success ? body.data : {};
+    const nuevoEstado: 'FINALIZADO' | 'RESCINDIDO' = b.tipo ?? 'FINALIZADO';
     const contrato = await prisma.contrato.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
     if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
     if (contrato.estado === 'FINALIZADO' || contrato.estado === 'RESCINDIDO') {
@@ -1199,10 +1211,51 @@ export async function coreRoutes(app: FastifyInstance) {
           pagos: { none: {} },
         },
       });
-      return { cuotasAnuladas: anuladas.count };
+      // RESCISIÓN: penalidad como cargo one-off (no cabe en Liquidacion, @@unique período) +
+      // decisión sobre el depósito (devolver/netear/ejecutar) + fecha efectiva y motivo.
+      let cargoPenalidad = 0;
+      if (nuevoEstado === 'RESCINDIDO') {
+        if (b.montoPenalidad && b.montoPenalidad > 0) {
+          await tx.cargoContrato.create({
+            data: {
+              inmobiliariaId: u.inmobiliariaId,
+              contratoId: id,
+              tipo: 'PENALIDAD_RESCISION',
+              concepto: 'Penalidad por rescisión anticipada',
+              monto: b.montoPenalidad,
+              moneda: contrato.moneda,
+              creadoPorId: u.userId,
+            },
+          });
+          cargoPenalidad = b.montoPenalidad;
+        }
+        const estadoDep =
+          b.decisionDeposito === 'DEVOLVER'
+            ? 'DEVUELTO'
+            : b.decisionDeposito === 'NETEAR'
+              ? 'NETEADO'
+              : b.decisionDeposito === 'EJECUTAR'
+                ? 'EJECUTADO'
+                : null;
+        await tx.contrato.update({
+          where: { id },
+          data: {
+            motivoRescision: b.motivoRescision || null,
+            fechaEfectivaRescision: b.fechaEfectiva ?? new Date(),
+            ...(estadoDep
+              ? {
+                  estadoDeposito: estadoDep,
+                  depositoDevueltoMonto: b.montoDepositoDevuelto ?? null,
+                  depositoDevueltoAt: new Date(),
+                }
+              : {}),
+          },
+        });
+      }
+      return { cuotasAnuladas: anuladas.count, cargoPenalidad };
     });
     if (!fin) return reply.code(409).send({ message: 'El contrato ya está finalizado' });
-    return { ok: true, estado: nuevoEstado, cuotasAnuladas: fin.cuotasAnuladas };
+    return { ok: true, estado: nuevoEstado, cuotasAnuladas: fin.cuotasAnuladas, cargoPenalidad: fin.cargoPenalidad };
   });
 
   // Preview de la baja: qué colaterales tiene el contrato ANTES de finalizar, para
@@ -1218,7 +1271,11 @@ export async function coreRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     const contrato = await prisma.contrato.findFirst({
       where: { id, inmobiliariaId: u.inmobiliariaId },
-      include: { inmobiliaria: { select: { moraTipoDefault: true, moraValorDefault: true } } },
+      include: {
+        inmobiliaria: {
+          select: { moraTipoDefault: true, moraValorDefault: true, penalidadRescisionMesesDefault: true },
+        },
+      },
     });
     if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
     const now = new Date();
@@ -1262,13 +1319,29 @@ export async function coreRoutes(app: FastifyInstance) {
       prisma.coInquilino.count({ where: { contratoId: id, estado: 'ACEPTADO' } }),
       prisma.reclamo.count({ where: { contratoId: id, estado: { in: ['ABIERTO', 'EN_CURSO'] } } }),
     ]);
+    // Rescisión: penalidad sugerida (cánones × alquiler, override contrato > default inmo),
+    // depósito en custodia disponible a netear, y el saldo neto = deuda + penalidad − depósito
+    // (>0 el ex-inquilino debe; <0 hay que devolverle). El operador puede editar la penalidad.
+    const alquiler = Number(contrato.monto);
+    const mesesPenalidad = contrato.penalidadRescisionMeses ?? contrato.inmobiliaria.penalidadRescisionMesesDefault;
+    const penalidadSugerida = Math.round(alquiler * mesesPenalidad * 100) / 100;
+    const depositoEnCustodia =
+      contrato.estadoDeposito === 'RETENIDO' ? Number(contrato.depositoGarantia ?? 0) : 0;
+    const dv = Math.round(deudaVencida * 100) / 100;
+    const saldoNeto = Math.round((dv + penalidadSugerida - depositoEnCustodia) * 100) / 100;
     return {
-      deudaVencida: Math.round(deudaVencida * 100) / 100,
+      deudaVencida: dv,
       cuotasImpagas,
       cuotasFuturasAAnular,
       pagosEnRevision,
       coInquilinos,
       reclamosAbiertos,
+      // Datos de rescisión (el diálogo los usa sólo si el operador elige RESCINDIDO):
+      depositoEnCustodia,
+      mesesPenalidad,
+      penalidadSugerida,
+      saldoNeto,
+      moneda: contrato.moneda,
     };
   });
 

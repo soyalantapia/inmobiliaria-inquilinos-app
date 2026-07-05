@@ -1202,6 +1202,25 @@ export interface FinalizarPreview {
   coInquilinos: number;
   /** Reclamos abiertos/en curso del contrato. */
   reclamosAbiertos: number;
+  // ---- Rescisión (el diálogo los usa sólo si el operador elige RESCINDIDO) ----
+  /** Depósito de garantía RETENIDO disponible a netear/devolver. */
+  depositoEnCustodia?: number;
+  /** Meses de penalidad efectivos (override contrato > default inmo). */
+  mesesPenalidad?: number;
+  /** Penalidad sugerida = mesesPenalidad × alquiler (el operador puede editarla). */
+  penalidadSugerida?: number;
+  /** Saldo neto = deuda + penalidad − depósito. >0 el ex-inquilino debe; <0 hay que devolverle. */
+  saldoNeto?: number;
+  moneda?: string;
+}
+
+/** Parámetros de la baja/rescisión que el diálogo manda al confirmar. */
+export interface FinalizarOpts {
+  tipo?: 'FINALIZADO' | 'RESCINDIDO';
+  motivoRescision?: string;
+  montoPenalidad?: number;
+  decisionDeposito?: 'MANTENER' | 'DEVOLVER' | 'NETEAR' | 'EJECUTAR';
+  montoDepositoDevuelto?: number;
 }
 
 /**
@@ -1226,23 +1245,29 @@ export function useFinalizarPreview(): { obtenerPreview: (id: string) => Promise
 export function useFinalizarContrato(): {
   finalizar: (
     id: string,
-    tipo?: 'FINALIZADO' | 'RESCINDIDO',
-  ) => Promise<{ cuotasAnuladas: number; estado: 'FINALIZADO' | 'RESCINDIDO' }>;
+    opts?: FinalizarOpts,
+  ) => Promise<{ cuotasAnuladas: number; estado: 'FINALIZADO' | 'RESCINDIDO'; cargoPenalidad: number }>;
 } {
   const qc = useQueryClient();
   return {
-    finalizar: async (id, tipo) => {
+    finalizar: async (id, opts) => {
       await ensureApiSession();
+      const tieneBody = opts && Object.values(opts).some((v) => v !== undefined);
       const res = (await apiFetch(`/contratos/${id}/finalizar`, {
         method: 'POST',
-        ...(tipo ? { body: JSON.stringify({ tipo }) } : {}),
-      })) as { cuotasAnuladas?: number; estado?: 'FINALIZADO' | 'RESCINDIDO' };
+        ...(tieneBody ? { body: JSON.stringify(opts) } : {}),
+      })) as { cuotasAnuladas?: number; estado?: 'FINALIZADO' | 'RESCINDIDO'; cargoPenalidad?: number };
       await Promise.all([
         qc.invalidateQueries({ queryKey: ['contratos'] }),
         qc.invalidateQueries({ queryKey: ['contrato', id] }),
         qc.invalidateQueries({ queryKey: ['propiedades'] }),
+        qc.invalidateQueries({ queryKey: ['depositos-en-custodia'] }),
       ]);
-      return { cuotasAnuladas: res?.cuotasAnuladas ?? 0, estado: res?.estado ?? 'FINALIZADO' };
+      return {
+        cuotasAnuladas: res?.cuotasAnuladas ?? 0,
+        estado: res?.estado ?? 'FINALIZADO',
+        cargoPenalidad: res?.cargoPenalidad ?? 0,
+      };
     },
   };
 }

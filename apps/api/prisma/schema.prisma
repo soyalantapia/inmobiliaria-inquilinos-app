@@ -162,6 +162,14 @@ enum TipoGarante {
   DIGITAL
 }
 
+// Cargo one-off a un contrato, fuera del devengo mensual (Liquidacion es @@unique por
+// período): penalidad por rescisión, daños al egreso, u otro ajuste puntual.
+enum TipoCargo {
+  PENALIDAD_RESCISION
+  DANOS
+  OTRO
+}
+
 enum PermisoCoInquilino {
   VER
   PAGAR
@@ -605,6 +613,10 @@ model Inmobiliaria {
   // Cada inmobiliaria se mueve distinto (pedido piloto): configurable en Cobranza.
   moraTipoDefault       TipoMora @default(SIN_MORA)
   moraValorDefault      Float?
+  // Rescisión anticipada (configurable, cambia con la desregulación): preaviso en meses y
+  // penalidad en cánones de alquiler. Default AR ~2 meses de preaviso y 1.5 cánones de multa.
+  preavisoRescisionMesesDefault  Int   @default(2)
+  penalidadRescisionMesesDefault Float @default(1.5)
   esPiloto              Boolean  @default(true)
   codigoReferido        String   @unique
   mesesGratisGanados    Int      @default(0)
@@ -623,6 +635,7 @@ model Inmobiliaria {
   inquilinos                 Inquilino[]
   personas                   Persona[]
   garantes                   Garante[]
+  cargosContrato             CargoContrato[]
   coInquilinos               CoInquilino[]
   liquidaciones              Liquidacion[]
   pagos                      Pago[]
@@ -1194,6 +1207,11 @@ model Contrato {
   estadoDeposito            EstadoDeposito @default(RETENIDO)
   depositoDevueltoMonto     Decimal?       @db.Decimal(14, 2)
   depositoDevueltoAt        DateTime?
+  // Rescisión anticipada: fecha efectiva, motivo y penalidad en cánones (override del
+  // default de la inmobiliaria). La penalidad se emite como CargoContrato al rescindir.
+  fechaEfectivaRescision    DateTime?
+  motivoRescision           String?
+  penalidadRescisionMeses   Float?
   tasaPunitorioDiaria       Float? // LEGACY: % por día. Migrado a moraTipo/moraValor; queda por compat de lectura.
   // Esquema de mora del contrato (override del default de la inmobiliaria).
   // null => hereda (cascada en resolverEsquemaMora). moraValor se interpreta
@@ -1219,6 +1237,7 @@ model Contrato {
   propiedadActualDe   Propiedad?             @relation("ContratoActual")
   inquilinoTitular    Inquilino?
   garantes            Garante[]
+  cargos              CargoContrato[]
   coInquilinos        CoInquilino[]
   liquidaciones       Liquidacion[]
   pagos               Pago[]
@@ -1348,6 +1367,27 @@ model Garante {
   @@index([inmobiliariaId])
   @@index([contratoId])
   @@map("garantes")
+}
+
+// Cargo one-off a un contrato (penalidad de rescisión, daños, ajuste puntual). Fuera del
+// devengo mensual porque Liquidacion es @@unique([contratoId, periodo]) y no tiene concepto.
+// Restrict por default (como todo el schema): no se cascadea al borrar contrato.
+model CargoContrato {
+  id             String       @id @default(cuid())
+  inmobiliariaId String
+  inmobiliaria   Inmobiliaria @relation(fields: [inmobiliariaId], references: [id])
+  contratoId     String
+  contrato       Contrato     @relation(fields: [contratoId], references: [id])
+  tipo           TipoCargo
+  concepto       String
+  monto          Decimal      @db.Decimal(14, 2)
+  moneda         Moneda       @default(ARS)
+  creadoPorId    String? // userId del usuario que lo generó
+  createdAt      DateTime     @default(now())
+
+  @@index([inmobiliariaId])
+  @@index([contratoId])
+  @@map("cargos_contrato")
 }
 
 model CoInquilino {

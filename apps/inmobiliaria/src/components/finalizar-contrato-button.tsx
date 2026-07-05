@@ -9,15 +9,23 @@ import { toast } from '@llave/ui/use-toast';
 import { ApiError } from '@/lib/api/client';
 import { useFinalizarContrato, useFinalizarPreview, type FinalizarPreview } from '@/lib/api/hooks';
 import { formatMonto } from '@/lib/format';
+import type { Moneda } from '@/lib/types';
+
+type DecisionDeposito = 'NETEAR' | 'DEVOLVER' | 'EJECUTAR' | 'MANTENER';
+
+const DECISIONES: { k: DecisionDeposito; label: string; ayuda: string }[] = [
+  { k: 'NETEAR', label: 'Netear', ayuda: 'Aplicar contra la deuda/penalidad' },
+  { k: 'DEVOLVER', label: 'Devolver', ayuda: 'Devolvérselo íntegro' },
+  { k: 'EJECUTAR', label: 'Retener', ayuda: 'Quedártelo por incumplimiento' },
+  { k: 'MANTENER', label: 'Después', ayuda: 'Resolverlo más tarde' },
+];
 
 /**
- * Finaliza un contrato y libera la propiedad (vuelve a DISPONIBLE). Sin esto, una
- * propiedad cuyo contrato venció quedaba ALQUILADA para siempre y no se le podía
- * cargar un contrato nuevo.
- *
- * Al abrir el diálogo consulta GET /contratos/:id/finalizar-preview y muestra los
- * colaterales (deuda que queda, cuotas que se anulan, pagos en revisión,
- * co-inquilinos, reclamos) para que la baja —irreversible— no se confirme a ciegas.
+ * Da de baja un contrato (finalización por fin de plazo o RESCISIÓN anticipada) y libera
+ * la propiedad. Al abrir consulta /finalizar-preview (deuda que queda, cuotas a anular,
+ * pagos en revisión, y —para rescisión— depósito en custodia + penalidad sugerida).
+ * En rescisión el operador confirma la penalidad y qué hacer con el depósito (netear/
+ * devolver/retener), y ve el saldo neto (a cobrar o a devolver) antes de confirmar.
  */
 export function FinalizarContratoButton({ contratoId, direccion }: { contratoId: string; direccion: string }) {
   const qc = useQueryClient();
@@ -27,48 +35,81 @@ export function FinalizarContratoButton({ contratoId, direccion }: { contratoId:
   const [enviando, setEnviando] = useState(false);
   const [preview, setPreview] = useState<FinalizarPreview | null>(null);
   const [cargandoPreview, setCargandoPreview] = useState(false);
-  // Tipo de baja: finalización (fin del plazo) vs rescisión anticipada. Se guarda
-  // como estado del contrato (FINALIZADO/RESCINDIDO) para el historial y el certificado.
   const [tipo, setTipo] = useState<'FINALIZADO' | 'RESCINDIDO'>('FINALIZADO');
+  const [montoPenalidad, setMontoPenalidad] = useState('');
+  const [motivo, setMotivo] = useState('');
+  const [decisionDeposito, setDecisionDeposito] = useState<DecisionDeposito>('NETEAR');
 
-  // Al abrir, traemos el preview. Si falla (o en demo devuelve null), el diálogo
-  // igual funciona con el copy base — el preview es una ayuda, no un bloqueo.
   useEffect(() => {
     if (!open) return;
     let vivo = true;
     setPreview(null);
     setTipo('FINALIZADO');
+    setMontoPenalidad('');
+    setMotivo('');
+    setDecisionDeposito('NETEAR');
     setCargandoPreview(true);
     obtenerPreview(contratoId)
       .then((p) => { if (vivo) setPreview(p); })
-      .catch(() => { /* preview best-effort: seguimos con el copy base */ })
+      .catch(() => { /* best-effort */ })
       .finally(() => { if (vivo) setCargandoPreview(false); });
     return () => { vivo = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, contratoId]);
 
   const esRescision = tipo === 'RESCINDIDO';
+  const moneda = (preview?.moneda ?? 'ARS') as Moneda;
+  const deudaV = preview?.deudaVencida ?? 0;
+  const depositoCust = preview?.depositoEnCustodia ?? 0;
+  const penalidadNum = montoPenalidad === '' ? 0 : Math.max(0, Number(montoPenalidad) || 0);
+
+  // Al pasar a RESCISIÓN, precargamos la penalidad sugerida (editable por el operador).
+  const elegirRescision = () => {
+    setTipo('RESCINDIDO');
+    if (montoPenalidad === '' && preview?.penalidadSugerida != null) {
+      setMontoPenalidad(String(preview.penalidadSugerida));
+    }
+  };
+
+  const depositoAplicado = depositoCust > 0 && (decisionDeposito === 'NETEAR' || decisionDeposito === 'EJECUTAR') ? depositoCust : 0;
+  const saldoNeto = Math.round((deudaV + penalidadNum - depositoAplicado) * 100) / 100;
+  const montoDevuelto =
+    decisionDeposito === 'DEVOLVER'
+      ? depositoCust
+      : decisionDeposito === 'NETEAR'
+        ? Math.max(0, Math.round((depositoCust - (deudaV + penalidadNum)) * 100) / 100)
+        : 0; // EJECUTAR / MANTENER
 
   const confirmar = async () => {
     if (enviando) return;
     setEnviando(true);
     try {
-      const { cuotasAnuladas } = await finalizar(contratoId, tipo);
+      const opts = esRescision
+        ? {
+            tipo,
+            motivoRescision: motivo.trim() || undefined,
+            montoPenalidad: penalidadNum || undefined,
+            decisionDeposito,
+            montoDepositoDevuelto: decisionDeposito === 'MANTENER' ? undefined : montoDevuelto,
+          }
+        : { tipo };
+      const { cuotasAnuladas, cargoPenalidad } = await finalizar(contratoId, opts);
       await qc.invalidateQueries({ queryKey: ['contrato', contratoId] });
       toast({
         variant: 'success',
         title: esRescision ? 'Contrato rescindido' : 'Contrato finalizado',
         description:
           `${direccion} quedó disponible para un nuevo contrato.` +
+          (cargoPenalidad > 0 ? ` Penalidad de ${formatMonto(cargoPenalidad, moneda)} registrada.` : '') +
           (cuotasAnuladas > 0
-            ? ` Se anularon ${cuotasAnuladas} cuota${cuotasAnuladas === 1 ? '' : 's'} futura${cuotasAnuladas === 1 ? '' : 's'} impaga${cuotasAnuladas === 1 ? '' : 's'}.`
+            ? ` Se anularon ${cuotasAnuladas} cuota${cuotasAnuladas === 1 ? '' : 's'} futura${cuotasAnuladas === 1 ? '' : 's'}.`
             : ''),
       });
       setOpen(false);
     } catch (e) {
       toast({
         variant: 'destructive',
-        title: 'No se pudo finalizar',
+        title: 'No se pudo dar de baja',
         description: e instanceof ApiError ? e.message : 'Probá de nuevo en un momento.',
       });
     } finally {
@@ -76,40 +117,24 @@ export function FinalizarContratoButton({ contratoId, direccion }: { contratoId:
     }
   };
 
-  // Sólo mostramos las líneas que aplican (deuda > 0, cuotas a anular > 0, etc.).
   const colaterales: string[] = [];
   if (preview) {
-    if (preview.deudaVencida > 0) {
-      colaterales.push(
-        `Queda deuda vencida por ${formatMonto(preview.deudaVencida)} (${preview.cuotasImpagas} cuota${preview.cuotasImpagas === 1 ? '' : 's'}) — se conserva y sigue siendo cobrable.`,
-      );
-    }
-    if (preview.cuotasFuturasAAnular > 0) {
-      colaterales.push(
-        `Se anularán ${preview.cuotasFuturasAAnular} cuota${preview.cuotasFuturasAAnular === 1 ? '' : 's'} futura${preview.cuotasFuturasAAnular === 1 ? '' : 's'} impaga${preview.cuotasFuturasAAnular === 1 ? '' : 's'}.`,
-      );
-    }
-    if (preview.pagosEnRevision > 0) {
-      colaterales.push(
-        `Hay ${preview.pagosEnRevision} pago${preview.pagosEnRevision === 1 ? '' : 's'} en revisión — vas a poder validarlo${preview.pagosEnRevision === 1 ? '' : 's'} después de la baja.`,
-      );
-    }
-    if (preview.coInquilinos > 0) {
-      colaterales.push(
-        `${preview.coInquilinos} co-inquilino${preview.coInquilinos === 1 ? '' : 's'} perderá${preview.coInquilinos === 1 ? '' : 'n'} el acceso para operar.`,
-      );
-    }
-    if (preview.reclamosAbiertos > 0) {
-      colaterales.push(
-        `Hay ${preview.reclamosAbiertos} reclamo${preview.reclamosAbiertos === 1 ? '' : 's'} abierto${preview.reclamosAbiertos === 1 ? '' : 's'}.`,
-      );
-    }
+    if (preview.deudaVencida > 0)
+      colaterales.push(`Queda deuda vencida por ${formatMonto(preview.deudaVencida, moneda)} (${preview.cuotasImpagas} cuota${preview.cuotasImpagas === 1 ? '' : 's'}) — se conserva y sigue siendo cobrable.`);
+    if (preview.cuotasFuturasAAnular > 0)
+      colaterales.push(`Se anularán ${preview.cuotasFuturasAAnular} cuota${preview.cuotasFuturasAAnular === 1 ? '' : 's'} futura${preview.cuotasFuturasAAnular === 1 ? '' : 's'} impaga${preview.cuotasFuturasAAnular === 1 ? '' : 's'}.`);
+    if (preview.pagosEnRevision > 0)
+      colaterales.push(`Hay ${preview.pagosEnRevision} pago${preview.pagosEnRevision === 1 ? '' : 's'} en revisión — vas a poder validarlo${preview.pagosEnRevision === 1 ? '' : 's'} después.`);
+    if (preview.coInquilinos > 0)
+      colaterales.push(`${preview.coInquilinos} co-inquilino${preview.coInquilinos === 1 ? '' : 's'} perderá${preview.coInquilinos === 1 ? '' : 'n'} el acceso.`);
+    if (preview.reclamosAbiertos > 0)
+      colaterales.push(`Hay ${preview.reclamosAbiertos} reclamo${preview.reclamosAbiertos === 1 ? '' : 's'} abierto${preview.reclamosAbiertos === 1 ? '' : 's'}.`);
   }
 
   const opcionCls = (activo: boolean) =>
-    `flex-1 rounded-md border p-2 text-left text-xs transition-colors ${
-      activo ? 'border-primary bg-primary/5 text-foreground' : 'border-border text-muted-foreground hover:bg-muted/50'
-    }`;
+    `flex-1 rounded-md border p-2 text-left text-xs transition-colors ${activo ? 'border-primary bg-primary/5 text-foreground' : 'border-border text-muted-foreground hover:bg-muted/50'}`;
+  const chipCls = (activo: boolean) =>
+    `rounded-full border px-2 py-0.5 text-[11px] transition-colors ${activo ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:bg-muted/50'}`;
 
   const descripcion = (
     <span className="block space-y-2">
@@ -120,20 +145,21 @@ export function FinalizarContratoButton({ contratoId, direccion }: { contratoId:
             <span className="block font-medium text-foreground">Finalización</span>
             <span className="block">Se cumplió el plazo pactado</span>
           </button>
-          <button type="button" aria-pressed={esRescision} className={opcionCls(esRescision)} onClick={() => setTipo('RESCINDIDO')}>
+          <button type="button" aria-pressed={esRescision} className={opcionCls(esRescision)} onClick={elegirRescision}>
             <span className="block font-medium text-foreground">Rescisión</span>
             <span className="block">Baja anticipada</span>
           </button>
         </span>
       </span>
+
       <span className="block">
         El contrato pasa a <strong>{esRescision ? 'rescindido' : 'finalizado'}</strong> y la propiedad vuelve a estar
-        disponible. Las cuotas <strong>futuras impagas se anulan</strong>; la <strong>deuda ya vencida se conserva</strong>{' '}
-        (sigue siendo cobrable). El historial de pagos y comprobantes se mantiene. No se puede deshacer.
+        disponible. Las cuotas <strong>futuras impagas se anulan</strong>; la <strong>deuda ya vencida se conserva</strong>.
+        No se puede deshacer.
       </span>
-      {cargandoPreview && (
-        <span className="block text-xs text-muted-foreground">Revisando el contrato…</span>
-      )}
+
+      {cargandoPreview && <span className="block text-xs text-muted-foreground">Revisando el contrato…</span>}
+
       {colaterales.length > 0 && (
         <span className="block rounded-md border border-border bg-muted/40 p-3 text-xs">
           <span className="block font-medium text-foreground">Antes de confirmar, tené en cuenta:</span>
@@ -142,6 +168,60 @@ export function FinalizarContratoButton({ contratoId, direccion }: { contratoId:
               <span key={i} className="block text-muted-foreground">• {c}</span>
             ))}
           </span>
+        </span>
+      )}
+
+      {/* Liquidación de la rescisión: penalidad + depósito + saldo neto */}
+      {esRescision && preview && (
+        <span className="block space-y-2 rounded-md border border-primary/30 bg-primary/5 p-3 text-xs">
+          <span className="block font-medium text-foreground">Liquidación de la rescisión</span>
+
+          <span className="flex items-center justify-between gap-2">
+            <span>Penalidad (multa){preview.mesesPenalidad ? ` · ${preview.mesesPenalidad} canon${preview.mesesPenalidad === 1 ? '' : 'es'}` : ''}</span>
+            <input
+              type="number"
+              inputMode="decimal"
+              value={montoPenalidad}
+              onChange={(e) => setMontoPenalidad(e.target.value)}
+              className="w-32 rounded border border-border bg-background px-2 py-1 text-right"
+              placeholder="0"
+            />
+          </span>
+
+          {depositoCust > 0 && (
+            <span className="block space-y-1">
+              <span className="flex items-center justify-between">
+                <span>Depósito en custodia</span>
+                <span className="font-medium text-foreground">{formatMonto(depositoCust, moneda)}</span>
+              </span>
+              <span className="flex flex-wrap gap-1">
+                {DECISIONES.map((d) => (
+                  <button key={d.k} type="button" className={chipCls(decisionDeposito === d.k)} onClick={() => setDecisionDeposito(d.k)} title={d.ayuda}>
+                    {d.label}
+                  </button>
+                ))}
+              </span>
+              {montoDevuelto > 0 && (
+                <span className="block text-muted-foreground">Se le devuelve {formatMonto(montoDevuelto, moneda)}.</span>
+              )}
+            </span>
+          )}
+
+          <span className="flex items-center justify-between border-t border-primary/20 pt-1 font-medium text-foreground">
+            <span>{saldoNeto >= 0 ? 'Saldo a cobrar al inquilino' : 'Saldo a devolver al inquilino'}</span>
+            <span className={saldoNeto > 0 ? 'text-destructive' : 'text-emerald-600 dark:text-emerald-400'}>
+              {formatMonto(Math.abs(saldoNeto), moneda)}
+            </span>
+          </span>
+
+          <input
+            type="text"
+            value={motivo}
+            onChange={(e) => setMotivo(e.target.value)}
+            className="w-full rounded border border-border bg-background px-2 py-1"
+            placeholder="Motivo de la rescisión (opcional)"
+            maxLength={500}
+          />
         </span>
       )}
     </span>
