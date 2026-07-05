@@ -22,8 +22,11 @@ const prisma = new PrismaClient();
 
 async function limpiar() {
   await prisma.gastoRendido.deleteMany({ where: { refId: `${P}gasto` } });
+  // AlquilerRendido cuelga de Rendicion con FK RESTRICT → borrarlo antes.
+  await prisma.alquilerRendido.deleteMany({ where: { rendicion: { propietarioId: { in: [`${P}ownA`, `${P}ownB`] } } } });
   await prisma.rendicion.deleteMany({ where: { propietarioId: { in: [`${P}ownA`, `${P}ownB`] } } });
   await prisma.movimientoCaja.deleteMany({ where: { id: `${P}gasto` } });
+  await prisma.pago.deleteMany({ where: { id: `${P}pago` } });
   await prisma.liquidacion.deleteMany({ where: { id: `${P}liq` } });
   await prisma.contrato.deleteMany({ where: { id: `${P}cnt` } });
   await prisma.participacionPropietario.deleteMany({ where: { propiedadId: `${P}prop` } });
@@ -89,6 +92,23 @@ beforeAll(async () => {
       montoTotal: 1000,
       fechaVencimiento: new Date('2026-05-10T00:00:00.000Z'),
       estado: 'PAGADO',
+    },
+  });
+  // La rendición es INCREMENTAL desde los pagos CONCILIADO: una liq PAGADO sin
+  // fila Pago no tiene nada que rendir (409 "no hay cobros nuevos").
+  await prisma.pago.create({
+    data: {
+      id: `${P}pago`,
+      inmobiliariaId,
+      contratoId: `${P}cnt`,
+      liquidacionId: `${P}liq`,
+      periodo: '2026-05',
+      monto: 1000,
+      montoLiqTotal: 1000,
+      metodo: 'TRANSFERENCIA',
+      fechaTransferencia: new Date('2026-05-10T00:00:00.000Z'),
+      estado: 'CONCILIADO',
+      decididoAt: new Date('2026-05-10T00:00:00.000Z'),
     },
   });
   await prisma.movimientoCaja.create({

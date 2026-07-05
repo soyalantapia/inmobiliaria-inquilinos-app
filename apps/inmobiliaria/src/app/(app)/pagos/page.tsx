@@ -36,12 +36,13 @@ import { ValidadorResumenDialog } from '@/components/validador-resumen-dialog';
 import { ValidadorResumenApiDialog } from '@/components/validador-resumen-api-dialog';
 import { apiEnabled } from '@/lib/api/client';
 import { useContratos } from '@/lib/api/hooks';
-import { useAResolverCount, useDevengar } from '@/lib/api/use-pagos';
+import { useAResolverCount, useDevengar, usePagosConciliados } from '@/lib/api/use-pagos';
 import {
   contactosCobranzaMock,
   pagosInformadosMock,
   propiedadesMock,
   propietariosMock,
+  type MetodoPagoInformado,
 } from '@/lib/mock-data';
 import { estadoDePago } from '@/lib/conciliacion-storage';
 import { formatFecha, formatFechaCorta, formatMonto, formatPeriodo, periodoActualFormat } from '@/lib/format';
@@ -77,6 +78,15 @@ const estadoLabelPlural: Record<EstadoLiquidacion, string> = {
   PAGADO: 'pagados',
   PARCIAL: 'parciales',
   VENCIDO: 'vencidos',
+};
+
+// Label humano del método de pago para el PDF de cobranzas (mismos textos que
+// la bandeja de validación).
+const metodoPagoLabel: Record<MetodoPagoInformado, string> = {
+  TRANSFERENCIA: 'Transferencia',
+  MERCADOPAGO: 'Mercado Pago',
+  EFECTIVO: 'Efectivo',
+  CHEQUE: 'Cheque',
 };
 
 // Configuración de los botones de filtro grandes. "A resolver" va primero —
@@ -150,7 +160,18 @@ export default function PagosPage() {
 
   // Conteo de comprobantes "a resolver". En prod sale de /pagos (estado
   // INFORMADO); en demo, del mock + localStorage. El hook ya hace el branch.
-  const { count: aResolverApi, deApi: aResolverDeApi } = useAResolverCount();
+  // isError: con la query caída el count es un 0 FALSO → el botón muestra '—'.
+  const { count: aResolverApi, deApi: aResolverDeApi, isError: aResolverError } = useAResolverCount();
+
+  // Pagos ya CONCILIADOS (solo prod): el PDF "Cobranzas del mes" se arma desde
+  // los cobros reales (fecha/método/monto de cada pago), no desde el canon.
+  // isError/cargando: con la query caída o pendiente el PDF saldría "Total $0"
+  // como si no se hubiera cobrado nada — lo abortamos con un toast.
+  const {
+    pagos: pagosConciliados,
+    isError: conciliadosError,
+    cargando: conciliadosCargando,
+  } = usePagosConciliados();
 
   // En modo API el contador es reactivo (viene del hook): lo reflejamos y
   // defaulteamos a "A resolver" si hay pendientes la primera vez.
@@ -225,9 +246,18 @@ export default function PagosPage() {
 
   const totalCobrado = useMemo(
     () =>
-      cobrables
-        .filter((c) => c.estadoPagoActual === 'PAGADO')
-        .reduce((acc, c) => acc + c.monto, 0),
+      // Suma lo REALMENTE cobrado del período por contrato (montoPagado, del
+      // API), no solo el canon de los PAGADO: validar un parcial mueve 'Cobrado'
+      // al instante y Cobrado+Pendiente cierran (antes el parcial bajaba
+      // 'Pendiente' pero 'Cobrado' no se movía → descuadre visible). En PAGADO
+      // usamos montoPagado si vino (puede incluir mora cobrada); demo (sin
+      // montoPagado) cae al comportamiento de siempre: canon si PAGADO, 0 si no.
+      cobrables.reduce(
+        (acc, c) =>
+          acc +
+          (c.estadoPagoActual === 'PAGADO' ? (c.montoPagado ?? c.monto) : (c.montoPagado ?? 0)),
+        0,
+      ),
     [cobrables],
   );
   const totalPendiente = useMemo(
@@ -448,6 +478,64 @@ export default function PagosPage() {
   // PDF detallado de lo cobrado en el mes.
   // Se usa para rendir a propietarios y para archivo del estudio.
   const exportarCobradoPdf = () => {
+    if (real) {
+      // Prod: filas desde los pagos CONCILIADO reales (fecha en que pagó,
+      // método real, monto realmente cobrado — incluye parciales). Antes salía
+      // del contrato: método 'Transferencia' hardcodeado, monto = canon (no lo
+      // cobrado) y fecha = PRÓXIMO vencimiento → el respaldo mentía.
+      if (conciliadosCargando || conciliadosError) {
+        // Con la query caída/pendiente el PDF saldría vacío ('Total $0') como
+        // si el mes no hubiera cobrado nada.
+        toast({
+          title: 'No pudimos cargar los cobros',
+          description: conciliadosError ? 'Reintentá en unos segundos.' : 'Todavía están cargando — probá de nuevo.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      const periodo = periodoActualFormat();
+      // "Del mes" = cobrados ESTE mes (fecha del pago), no liquidaciones de
+      // este período: un cobro de deuda vieja conciliado hoy es plata que entró
+      // hoy y antes no aparecía en ningún reporte. El período de cada pago va
+      // como columna. Y afuera los PROPIETARIO_DIRECTO (LOCKED: esa plata va
+      // del inquilino al dueño, no es ingreso de la inmo — sumarla descuadraba
+      // contra el KPI Cobrado y contra caja).
+      const delMes = pagosConciliados.filter(
+        (p) => (p.fechaTransferencia ?? '').slice(0, 7) === periodo && p.modoCobranza !== 'PROPIETARIO_DIRECTO',
+      );
+      const filasReales: (string | number)[][] = delMes.map((p) => [
+        p.inquilino,
+        p.direccion,
+        formatPeriodo(p.periodo),
+        formatFecha(p.fechaTransferencia),
+        metodoPagoLabel[p.metodo],
+        formatMonto(p.monto),
+      ]);
+      const totalReal = delMes.reduce((acc, p) => acc + p.monto, 0);
+      abrirReporteImprimible({
+        titulo: 'Cobranzas del mes',
+        subtitulo: `${formatPeriodo(periodo)} · ${delMes.length} pago${delMes.length === 1 ? '' : 's'} acreditado${delMes.length === 1 ? '' : 's'} en el mes`,
+        inmobiliaria: sociedadPrincipal().razonSocial,
+        columnas: [
+          { header: 'Inquilino', width: '21%' },
+          { header: 'Propiedad', width: '25%' },
+          { header: 'Período', width: '12%' },
+          { header: 'Fecha de pago', width: '14%' },
+          { header: 'Método', width: '12%' },
+          { header: 'Monto', width: '16%', align: 'right' },
+        ],
+        filas: filasReales,
+        totales: [
+          { label: 'Cantidad', valor: delMes.length.toString() },
+          { label: 'Total cobrado', valor: formatMonto(totalReal) },
+        ],
+        notaFinal:
+          'Este reporte detalla los pagos acreditados y conciliados durante el mes (por fecha de cobro; ' +
+          'incluye cobros de períodos anteriores). No incluye contratos con cobranza directa al propietario. ' +
+          'Sirve como respaldo para las rendiciones a propietarios.',
+      });
+      return;
+    }
     // Deriva de `cobrables` (no de `contratos`) para que las filas y el "Total cobrado"
     // del pie compartan la MISMA base: si no, un contrato FINALIZADO-PAGADO aparecía como
     // fila pero quedaba fuera del total (que ya usaba cobrables) → el reporte no cuadraba.
@@ -551,10 +639,17 @@ export default function PagosPage() {
               </>
             )}
             {real && (
-              <Button size="sm" className="gap-1 bg-primary text-primary-foreground hover:bg-primary/90" onClick={() => setValidadorOpen(true)}>
-                <ShieldCheck className="h-4 w-4" />
-                Validar por resumen
-              </Button>
+              <>
+                <Button size="sm" className="gap-1 bg-primary text-primary-foreground hover:bg-primary/90" onClick={() => setValidadorOpen(true)}>
+                  <ShieldCheck className="h-4 w-4" />
+                  Validar por resumen
+                </Button>
+                {/* Registrar un cobro que no pasó por la app: efectivo en la
+                    oficina o "el dueño confirmó que cobró" (PROPIETARIO_DIRECTO).
+                    Sin esto los contratos directos quedaban VENCIDO acumulando
+                    mora para siempre. El dialog cablea POST /pagos/manual. */}
+                <CargarPagoManualButton />
+              </>
             )}
             {real && (
               <Button
@@ -647,6 +742,9 @@ export default function PagosPage() {
             const Icon = f.icon;
             const activo = filtro === f.key;
             const count = counters[f.key];
+            // Con la query de pagos informados caída el count de "A resolver"
+            // es un 0 FALSO (query error, no bandeja vacía) → mostramos '—'.
+            const conError = f.key === 'A_RESOLVER' && aResolverError;
             return (
               <button
                 key={f.key}
@@ -670,7 +768,7 @@ export default function PagosPage() {
                   <div>
                     <p className="text-sm font-semibold uppercase tracking-wide">{f.label}</p>
                     <p className={cn('text-xs', activo ? 'opacity-90' : 'opacity-70')}>
-                      {count} contrato{count === 1 ? '' : 's'}
+                      {conError ? 'sin conexión' : `${count} contrato${count === 1 ? '' : 's'}`}
                     </p>
                   </div>
                 </div>
@@ -680,7 +778,7 @@ export default function PagosPage() {
                     activo ? 'text-white' : '',
                   )}
                 >
-                  {count}
+                  {conError ? '—' : count}
                 </span>
               </button>
             );

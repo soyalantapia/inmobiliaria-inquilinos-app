@@ -1545,6 +1545,11 @@ model Pago {
   decididoPorId       String?
   decididoPor         Usuario?            @relation("PagosDecididos", fields: [decididoPorId], references: [id])
   decididoAt          DateTime?
+  // Autor del informe (co-inquilinos): quién de los miembros del contrato informó
+  // este pago. Nullable (los cobros manuales/bancarios nacen sin autor inquilino).
+  // Sirve para atribuir en notificaciones y en la lista "Pagos informados".
+  informadoPorInquilinoId   String?
+  informadoPorCoInquilinoId String?
   // Créditos que originaron este pago vía conciliación desde extracto bancario (0 o 1).
   creditoDetectado    CreditoDetectado?
 

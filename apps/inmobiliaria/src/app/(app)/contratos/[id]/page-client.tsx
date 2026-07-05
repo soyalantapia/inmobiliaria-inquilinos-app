@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { notFound, useParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
@@ -37,9 +37,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@llave/ui/dialog';
+import { Input } from '@llave/ui/input';
+import { Label } from '@llave/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@llave/ui/tabs';
+import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
 import { ContratoDocumentosPanel } from '@/components/contrato-documentos-panel';
+import { PinPromptDialog } from '@/components/pin-prompt-dialog';
 import { DocumentosInquilinoPanel } from '@/components/documentos-inquilino-panel';
 import { ContratoGarantesPanel } from '@/components/contrato-garantes-panel';
 import { MensajeInquilinoDialog } from '@/components/mensaje-inquilino-dialog';
@@ -127,6 +131,7 @@ export default function DetalleContratoPage() {
 
   const [abrirMensaje, setAbrirMensaje] = useState(false);
   const [abrirEditarMora, setAbrirEditarMora] = useState(false);
+  const [abrirAjustarMonto, setAbrirAjustarMonto] = useState(false);
 
   const c = detalle?.contrato ?? null;
   const contacto = detalle?.contacto ?? null;
@@ -241,6 +246,32 @@ export default function DetalleContratoPage() {
                 Editar
               </Button>
             )}
+            {/* Ajustar el monto del alquiler (PATCH /contratos/:id/monto): re-devenga
+                las liquidaciones futuras sin pagos. Solo prod (necesita endpoint +
+                PIN); en demo queda deshabilitado con el mismo patrón que otras
+                acciones solo-conectadas del panel. */}
+            {apiEnabled ? (
+              c.estado === 'ACTIVO' && (
+                <Button
+                  variant="outline"
+                  className="flex-1 sm:flex-none"
+                  onClick={() => setAbrirAjustarMonto(true)}
+                >
+                  <TrendingUp className="h-4 w-4" />
+                  Ajustar monto
+                </Button>
+              )
+            ) : (
+              <Button
+                variant="outline"
+                className="flex-1 sm:flex-none"
+                disabled
+                title="Disponible en la versión conectada"
+              >
+                <TrendingUp className="h-4 w-4" />
+                Ajustar monto
+              </Button>
+            )}
             {apiEnabled && c.estado === 'ACTIVO' && (
               <AjustarAlquilerButton contratoId={c.id} montoActual={c.monto} moneda={c.moneda} />
             )}
@@ -335,6 +366,19 @@ export default function DetalleContratoPage() {
                               ? `${c.frecuenciaAjusteMeses} meses`
                               : '—'
                             : '12 meses'
+                        }
+                      />
+                      {/* Próximo ajuste programado del alquiler. En prod sale de
+                          contrato.proximoAjuste (lo setea el backend al alta); si
+                          es null, "sin ajuste programado". En demo no hay dato. */}
+                      <Row
+                        label="Próximo ajuste"
+                        value={
+                          apiEnabled
+                            ? c.proximoAjuste
+                              ? formatFecha(c.proximoAjuste)
+                              : 'sin ajuste programado'
+                            : '—'
                         }
                       />
                     </>
@@ -510,6 +554,16 @@ export default function DetalleContratoPage() {
           contrato={c}
         />
       )}
+
+      {/* Ajustar el monto del alquiler (PATCH /contratos/:id/monto, con PIN).
+          Solo prod: en demo el botón está deshabilitado y esto no se monta. */}
+      {apiEnabled && (
+        <AjustarMontoDialog
+          open={abrirAjustarMonto}
+          onOpenChange={setAbrirAjustarMonto}
+          contrato={c}
+        />
+      )}
     </>
   );
 }
@@ -622,6 +676,193 @@ function EditarMoraDialog({
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * Diálogo para ajustar MANUALMENTE el monto del alquiler (PATCH /contratos/:id/monto).
+ * El sistema no tiene la data del índice (ICL/IPC/UVA...), así que cuando llega la
+ * fecha de ajuste el operador entra el monto nuevo acá. El endpoint actualiza el
+ * monto, reprograma proximoAjuste y RE-DEVENGA las liquidaciones futuras sin pagos.
+ * Como es "money code", va con PIN — mismo régimen que cargar pago manual / validar
+ * (el server lo exige si el usuario tiene PIN configurado).
+ */
+function AjustarMontoDialog({
+  open,
+  onOpenChange,
+  contrato,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  contrato: ContratoListado;
+}) {
+  const qc = useQueryClient();
+  const [monto, setMonto] = useState('');
+  const [proximoAjuste, setProximoAjuste] = useState('');
+  const [motivo, setMotivo] = useState('');
+  const [showPin, setShowPin] = useState(false);
+  // Acción que ejecuta el PIN: devuelve null si salió bien, o el message del
+  // server (PIN inválido, datos inválidos, 404) para reintentar en el diálogo.
+  const pendingAction = useRef<((pin: string) => Promise<string | null>) | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      // Sugerimos el monto actual como base editable; el próximo ajuste arranca
+      // vacío (opcional: si se deja, el server reprograma con la frecuencia).
+      setMonto(String(contrato.monto));
+      setProximoAjuste(contrato.proximoAjuste ?? '');
+      setMotivo('');
+      setShowPin(false);
+      pendingAction.current = null;
+    }
+  }, [open, contrato.monto, contrato.proximoAjuste]);
+
+  const guardar = () => {
+    const montoNum = Number(monto);
+    if (!Number.isFinite(montoNum) || montoNum <= 0) {
+      toast({ title: 'El monto tiene que ser positivo', variant: 'destructive' });
+      return;
+    }
+    // El date puede quedar a medio tipear (yyyy-mm-dd = 10 chars); si tiene algo
+    // pero no es una fecha completa, frenamos con un mensaje claro.
+    if (proximoAjuste && proximoAjuste.length !== 10) {
+      toast({ title: 'Completá la fecha del próximo ajuste', variant: 'destructive' });
+      return;
+    }
+    const proximoTrim = proximoAjuste.trim();
+    const motivoTrim = motivo.trim();
+    pendingAction.current = async (pin) => {
+      try {
+        await ensureApiSession();
+        const res = await apiFetch<{ liquidacionesReajustadas: number }>(
+          `/contratos/${contrato.id}/monto`,
+          {
+            method: 'PATCH',
+            body: JSON.stringify({
+              monto: montoNum,
+              ...(proximoTrim ? { proximoAjuste: proximoTrim } : {}),
+              ...(motivoTrim ? { motivo: motivoTrim } : {}),
+              pin,
+            }),
+          },
+        );
+        // El ajuste toca el monto + re-devenga liquidaciones futuras: refrescamos
+        // el detalle del contrato, la lista y las liquidaciones (tab Pagos).
+        await Promise.all([
+          qc.invalidateQueries({ queryKey: ['contrato', contrato.id] }),
+          qc.invalidateQueries({ queryKey: ['contratos'] }),
+          qc.invalidateQueries({ queryKey: ['liquidaciones'] }),
+        ]);
+        const n = res.liquidacionesReajustadas;
+        toast({
+          variant: 'success',
+          title: 'Monto del alquiler actualizado',
+          description:
+            n > 0
+              ? `Se re-devengaron ${n} liquidación${n === 1 ? '' : 'es'} futura${n === 1 ? '' : 's'} con el monto nuevo.`
+              : 'No había liquidaciones futuras sin pagos para re-devengar.',
+        });
+        onOpenChange(false);
+        return null;
+      } catch (e) {
+        // El message del server (400/403/404/PIN) se muestra en el diálogo de PIN,
+        // que queda abierto para corregir y reintentar.
+        return e instanceof ApiError
+          ? e.message
+          : 'No se pudo ajustar el monto. Reintentá en un momento.';
+      }
+    };
+    setShowPin(true);
+  };
+
+  return (
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Ajustar monto del alquiler</DialogTitle>
+            <DialogDescription>
+              Entrá el monto nuevo del alquiler (por índice, acuerdo, etc.). Se
+              actualiza el contrato y se re-devengan las liquidaciones futuras que
+              todavía no tengan pagos. Los meses ya pagados o con pago no se tocan.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label htmlFor="ajm-monto" className="text-xs" aria-required>
+                Monto nuevo <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="ajm-monto"
+                type="number"
+                inputMode="decimal"
+                value={monto}
+                onChange={(e) => setMonto(e.target.value)}
+                placeholder="0"
+                required
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Monto actual: {formatMonto(contrato.monto, contrato.moneda)}
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <Label htmlFor="ajm-proximo" className="text-xs">
+                Próximo ajuste (opcional)
+              </Label>
+              <Input
+                id="ajm-proximo"
+                type="date"
+                value={proximoAjuste}
+                onChange={(e) => setProximoAjuste(e.target.value)}
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Si lo dejás vacío, se reprograma automáticamente según la frecuencia del contrato.
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <Label htmlFor="ajm-motivo" className="text-xs">
+                Motivo (opcional)
+              </Label>
+              <Textarea
+                id="ajm-motivo"
+                rows={2}
+                value={motivo}
+                onChange={(e) => setMotivo(e.target.value)}
+                placeholder="Ej: ajuste ICL semestral · acuerdo con el propietario."
+              />
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
+              Cancelar
+            </Button>
+            <Button className="flex-1" onClick={guardar} disabled={showPin}>
+              <TrendingUp className="h-4 w-4" />
+              Ajustar monto
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <PinPromptDialog
+        abierto={showPin}
+        accion="Confirmar ajuste de monto"
+        subaccion={`${contrato.inquilino} · ${formatMonto(contrato.monto, contrato.moneda)} → ${formatMonto(Number(monto) || 0, contrato.moneda)}`}
+        validacion="servidor"
+        onClose={() => setShowPin(false)}
+        onConfirmado={async (pin) => {
+          const run = pendingAction.current;
+          if (!run) return null;
+          const err = await run(pin);
+          if (err) return err; // mantiene el diálogo abierto para reintentar
+          pendingAction.current = null;
+          return null;
+        }}
+      />
+    </>
   );
 }
 

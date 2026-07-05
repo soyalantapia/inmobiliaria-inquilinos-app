@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -49,16 +50,19 @@ import { aplicarEstadoDemo, useDemoEstado } from '@/lib/demo-estado';
 import { useMiContrato, type DatosCobranza } from '@/lib/api/hooks';
 import {
   apiEnabled,
+  pagoApiALocal,
   useInformarPago,
   useLiquidacion,
+  type PagoInformadoApi,
 } from '@/lib/api/use-pago';
-import { subirArchivo } from '@/lib/api/client';
+import { subirArchivo, urlDeArchivo } from '@/lib/api/client';
 
 type Step = 'datos' | 'comprobante' | 'ok';
 const MAX_FILE_MB = 5;
 
 export default function CheckoutPage({ params }: { params: { liqId: string } }) {
   const router = useRouter();
+  const qc = useQueryClient();
   // Liquidación: API en prod (useLiquidacion → useMisLiquidaciones), mock en
   // la demo offline. La búsqueda por liqId vive dentro del hook.
   const { liquidacion: liqApi, cargando } = useLiquidacion(params.liqId);
@@ -85,10 +89,15 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
   const { contrato, inmobiliariaTelefono, datosCobranza } = useMiContrato();
 
   const [step, setStep] = useState<Step>('datos');
-  /** Pagos previos (parciales o total) ya informados para esta liq. */
-  const [pagosPrevios, setPagosPrevios] = useState<PagoInformado[]>([]);
+  /** Pagos previos (parciales o total) ya informados para esta liq — demo. */
+  const [pagosPreviosLocal, setPagosPreviosLocal] = useState<PagoInformado[]>([]);
   /** Último pago hecho en esta sesión (lo que mostramos en step='ok'). */
   const [ultimoEnviado, setUltimoEnviado] = useState<PagoInformado | null>(null);
+  /** El inquilino eligió "saldo completo" pero el server devolvió tipo PARCIAL:
+   *  la mora subió mientras pagaba. Dispara el aviso claro en StepConfirmado
+   *  ("La mora subió mientras pagabas; te queda un saldo de $X") en vez de un
+   *  "quedaste al día" mentiroso. Solo prod. */
+  const [moraSubioAlPagar, setMoraSubioAlPagar] = useState(false);
   /** Monto que el inquilino eligió pagar AHORA (puede ser saldo o parcial). */
   const [montoElegido, setMontoElegido] = useState<number | null>(null);
   /** En prod NO hay historial local de parciales (pagosPrevios queda []); este
@@ -106,13 +115,41 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
     setSesion(leerSesion());
   }, []);
 
+  // Al montar el checkout (prod) refrescamos ['mis-liquidaciones'] para tomar el
+  // saldo FRESCO: si el inquilino dejó la pantalla abierta y la mora subió de
+  // día, el "saldo completo" que clampamos del cliente quedaría corto. Antes se
+  // usaba el saldo cacheado (staleTime 30s) y podía pagar un total que el server
+  // ya consideraba parcial. En demo (!apiEnabled) no hay query que invalidar.
   useEffect(() => {
-    // Historial de parciales + decisión del inmo: sólo en la demo offline.
-    // En prod el API no expone esos datos al inquilino.
+    if (!apiEnabled) return;
+    void qc.invalidateQueries({ queryKey: ['mis-liquidaciones'] });
+    // Solo al montar / cambiar de liq — qc es estable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.liqId]);
+
+  useEffect(() => {
+    // Historial de parciales + decisión del inmo de la DEMO offline (store
+    // local). En prod los pagos vienen en `liq.pagos` del API (memo de abajo).
     if (apiEnabled) return;
-    setPagosPrevios(listarPagosDeLiq(params.liqId));
+    setPagosPreviosLocal(listarPagosDeLiq(params.liqId));
     setDecisionInmoUltima(decisionInmoPago(params.liqId));
   }, [params.liqId]);
+
+  // Prod: los pagos previos son los CONCILIADOS reales de la liq (API). Antes
+  // quedaba [] y el remanente tras un parcial vivía sólo en memoria de la
+  // sesión (saldoProdRestante): al reabrir el checkout reaparecía el total.
+  // useMemo (no estado + efecto): `liqApi` se re-mapea en cada render del
+  // hook y un setState colgado de esa referencia loopearía.
+  const pagosPreviosProd = useMemo(
+    () =>
+      apiEnabled
+        ? (liqApi?.pagos ?? [])
+            .filter((p) => p.estado === 'CONCILIADO')
+            .map((p) => pagoApiALocal(p, params.liqId))
+        : [],
+    [liqApi?.pagos, params.liqId],
+  );
+  const pagosPrevios = apiEnabled ? pagosPreviosProd : pagosPreviosLocal;
 
   // CRÍTICO: el monto que se INFORMA al pagar deriva de calc.totalAPagar. En
   // prod (apiEnabled) debe ser liq.montoTotal real del API (server = verdad),
@@ -197,6 +234,79 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
           </Button>
         </div>
       </main>
+    );
+  }
+
+  // GUARD prod: ya hay un pago INFORMADO vivo (en revisión) para esta liq → NO
+  // mostramos el flujo de pago (CBU + upload). El backend rechaza un segundo
+  // INFORMADO (409, índice único), pero ese 409 llegaba DESPUÉS de que el
+  // inquilino transfiriera plata REAL de nuevo y re-subiera el comprobante.
+  // Cortamos acá, antes de que vea un CBU al que transferir. `ultimoEnviado` /
+  // step='ok' excluyen el pago recién informado en ESTA sesión, para no pisar
+  // la pantalla de éxito cuando la lista se refresca tras el POST.
+  const pagoVivo =
+    apiEnabled && !ultimoEnviado && step !== 'ok'
+      ? ((liq.pagos ?? []).find((p) => p.estado === 'INFORMADO') ?? null)
+      : null;
+  if (pagoVivo) {
+    const comprobanteHref = urlDeArchivo(pagoVivo.comprobanteUrl);
+    return (
+      <>
+        <header className="flex items-center gap-3 p-5">
+          <button
+            type="button"
+            onClick={() => router.push(`/pago/${params.liqId}`)}
+            className="rounded-full p-2 hover:bg-muted"
+            aria-label="Volver"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <h1 className="text-lg font-semibold">Pagar por transferencia</h1>
+        </header>
+        <main className="flex-1 space-y-5 px-5 pb-6">
+          <Card className="space-y-3 border-amber-200 bg-amber-50/60 p-5 dark:border-amber-900/40 dark:bg-amber-900/10">
+            <div className="flex items-start gap-3">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-amber-500 text-white">
+                <Clock className="h-5 w-5" />
+              </div>
+              <div className="flex-1">
+                <p className="text-base font-semibold text-amber-900 dark:text-amber-200">
+                  {/* Copy neutra: pudo informarlo OTRO co-inquilino del contrato
+                      (cualquiera puede pagar) — "ya informaste" acusaba al que no fue. */}
+                  Este pago ya fue informado
+                </p>
+                <p className="text-xs text-amber-900/80 dark:text-amber-200/80">
+                  La inmobiliaria lo está validando. Cuando lo valide se va a
+                  poder informar el resto.
+                </p>
+              </div>
+            </div>
+            <div className="space-y-2 rounded-md bg-background/60 p-3">
+              <Row label="Monto informado" value={formatMonto(pagoVivo.monto, liq.moneda)} />
+              <Row label="Fecha" value={formatFecha(pagoVivo.informadoAt)} />
+              {pagoVivo.comprobanteFileName && (
+                <Row label="Comprobante" value={pagoVivo.comprobanteFileName} />
+              )}
+            </div>
+            {/* Abre el ARCHIVO real subido a /uploads: link autenticado con
+                ?token= porque un <a> no puede mandar el header Authorization. */}
+            {comprobanteHref && (
+              <a
+                href={comprobanteHref}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-amber-300 bg-background/60 px-3 py-2.5 text-sm font-medium text-amber-900 transition-colors hover:bg-background dark:border-amber-900/40 dark:text-amber-200"
+              >
+                <FileImage className="h-4 w-4" />
+                Ver comprobante enviado
+              </a>
+            )}
+          </Card>
+          <Button asChild size="xl" className="w-full">
+            <Link href={`/pago/${params.liqId}`}>Volver al detalle</Link>
+          </Button>
+        </main>
+      </>
     );
   }
 
@@ -299,7 +409,16 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
               parcial={!cubreTodo}
               inmobiliariaTelefono={inmobiliariaTelefono}
               datosCobranza={datosCobranza}
-              onContinuar={() => setStep('comprobante')}
+              onContinuar={() => {
+                // Refrescamos el saldo justo antes de subir el comprobante: si la
+                // mora subió mientras el inquilino miraba los datos bancarios, la
+                // pantalla de éxito usa igual el `tipo` real que devuelve el POST,
+                // pero esto además mantiene el saldo mostrado al día.
+                if (apiEnabled) {
+                  void qc.invalidateQueries({ queryKey: ['mis-liquidaciones'] });
+                }
+                setStep('comprobante');
+              }}
             />
           </>
         )}
@@ -319,8 +438,15 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
             onAtras={() => setStep('datos')}
             onEnviado={(p) => {
               setUltimoEnviado(p);
-              // El historial local sólo aplica a la demo: en prod queda vacío.
-              if (!apiEnabled) setPagosPrevios(listarPagosDeLiq(params.liqId));
+              // "PARCIAL sorpresa": el inquilino eligió cubrir todo (cubreTodo)
+              // pero el server devolvió tipo PARCIAL → la mora subió mientras
+              // pagaba y lo que transfirió ya no alcanza el saldo. Solo prod
+              // (en demo p.tipo lo decide el propio cliente, nunca sorprende).
+              const sorpresa = apiEnabled && cubreTodo && p.tipo === 'PARCIAL';
+              setMoraSubioAlPagar(sorpresa);
+              // El historial local sólo aplica a la demo; en prod los pagos
+              // reales llegan solos al refrescarse ['mis-liquidaciones'].
+              if (!apiEnabled) setPagosPreviosLocal(listarPagosDeLiq(params.liqId));
               setMontoElegido(null);
               setStep('ok');
               toast({
@@ -335,12 +461,17 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
           <StepConfirmado
             informado={ultimoEnviado ?? pagosPrevios[pagosPrevios.length - 1] ?? null}
             // En prod no hay historial de parciales: el saldo restante se
-            // deriva del pago recién enviado (total - lo informado ahora).
+            // deriva del pago recién enviado (saldo fresco − lo informado ahora).
+            // Como refrescamos ['mis-liquidaciones'] al montar/continuar, `saldo`
+            // ya trae la mora al día: si subió mientras pagaba, el remanente es
+            // correcto (no un 0 falso).
             saldoRestante={
               apiEnabled
                 ? Math.max(0, saldo - (ultimoEnviado?.monto ?? saldo))
                 : saldo
             }
+            // Solo prod: eligió cubrir todo pero el server lo dejó PARCIAL.
+            moraSubio={moraSubioAlPagar}
             moneda={liq.moneda}
             allowReenviar={!apiEnabled}
             onPagarOtroParcial={() => {
@@ -349,14 +480,16 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
               if (apiEnabled) {
                 setSaldoProdRestante(Math.max(0, saldo - (ultimoEnviado?.monto ?? saldo)));
               }
+              setMoraSubioAlPagar(false);
               setMontoElegido(null);
               setUltimoEnviado(null);
               setStep('datos');
             }}
             onReenviar={() => {
               olvidarPagoInformado(liq.id);
-              setPagosPrevios([]);
+              setPagosPreviosLocal([]);
               setUltimoEnviado(null);
+              setMoraSubioAlPagar(false);
               setMontoElegido(null);
               setSaldoProdRestante(null);
               setStep('datos');
@@ -425,6 +558,14 @@ function ParcialesAnteriores({
                   : p.estado === 'RECHAZADO'
                     ? 'Rechazado'
                     : 'En revisión'}
+                {/* Quién informó el pago (solo prod): cualquier co-inquilino
+                    puede pagar. En demo `autor` es undefined → no se muestra. */}
+                {autorPagoLabel(p.autor) && (
+                  <>
+                    {' · '}
+                    {autorPagoLabel(p.autor)}
+                  </>
+                )}
               </p>
             </div>
           </div>
@@ -587,7 +728,12 @@ function SelectorMonto({
             <div>
               <p className="font-medium">Pagar un parcial</p>
               <p className="text-[11px] text-muted-foreground">
-                Después podés volver y pagar el resto.
+                {/* Prod: el resto recién se puede informar cuando la inmo
+                    valida este pago (índice único de INFORMADO en el back);
+                    no prometemos que puede "volver" en cualquier momento. */}
+                {apiEnabled
+                  ? 'Después podés volver y pagar el resto, cuando este pago sea validado.'
+                  : 'Después podés volver y pagar el resto.'}
               </p>
             </div>
             {modoParcial && (
@@ -750,6 +896,20 @@ function StepDatosBancarios({
             Copiar todos
           </button>
         </div>
+        {/* Contrato PROPIETARIO_DIRECTO: la cuenta es del DUEÑO, no de la
+            inmobiliaria. Sin esta marca el inquilino ve un titular desconocido
+            y duda si el CBU es legítimo (o cree que le paga a la inmo). En
+            demo/cuenta de la inmo no se muestra nada (datosCobranza mock=null). */}
+        {datosCobranza?.modo === 'PROPIETARIO_DIRECTO' && (
+          <div className="flex items-start gap-2 border-b bg-violet-50/70 px-5 py-2.5 dark:bg-violet-900/10">
+            <UserRound className="mt-0.5 h-3.5 w-3.5 shrink-0 text-violet-700 dark:text-violet-300" />
+            <p className="text-xs text-violet-900 dark:text-violet-200">
+              <span className="font-semibold">Cuenta del propietario.</span> En
+              este contrato transferís directo al dueño de la propiedad, no a
+              la inmobiliaria.
+            </p>
+          </div>
+        )}
         <div className="divide-y">
           {filas.map((f) => (
             <CopyRow
@@ -936,8 +1096,10 @@ function StepSubirComprobante({
   monto: number;
   tipo: 'TOTAL' | 'PARCIAL';
   /**
-   * En prod: POST real `/pagos/informar`. Si es null, estamos en la demo
-   * offline y persistimos en el store local (`agregarPago`).
+   * En prod: POST real `/pagos/informar`. Devuelve el Pago creado con el `tipo`
+   * ('TOTAL'|'PARCIAL') y `monto` REALES que decidió el server (con tolerancia
+   * de centavos): esos valores mandan sobre la intención del cliente. Si es
+   * null, estamos en la demo offline y persistimos en el store local.
    */
   informarPagoApi:
     | ((input: {
@@ -950,7 +1112,7 @@ function StepSubirComprobante({
         comprobanteFileName?: string;
         comprobanteMime?: string;
         comprobanteSize?: number;
-      }) => Promise<unknown>)
+      }) => Promise<PagoInformadoApi>)
     | null;
   onAtras: () => void;
   onEnviado: (p: PagoInformado) => void;
@@ -1046,10 +1208,11 @@ function StepSubirComprobante({
 
     // ===== Prod: subir el comprobante REAL + POST /pagos/informar =====
     if (informarPagoApi) {
+      let creado: PagoInformadoApi;
       try {
         // El archivo ahora SÍ llega al backend (Railway Volume), no solo metadatos.
         const subido = await subirArchivo(file);
-        await informarPagoApi({
+        creado = await informarPagoApi({
           liquidacionId: liqId,
           monto,
           metodo: 'TRANSFERENCIA',
@@ -1072,13 +1235,18 @@ function StepSubirComprobante({
       // Objeto sólo para la pantalla de confirmación: el pago Y su comprobante ya
       // quedaron en la DB (subirArchivo + POST /pagos/informar). Esto es sólo para
       // renderizar el "OK" con el preview local del archivo recién subido.
+      // CRÍTICO: usamos `tipo` y `monto` que devolvió el SERVER, no la intención
+      // del cliente (`tipo`/`monto` de las props). Si la mora subió mientras el
+      // inquilino pagaba, eligió "saldo completo" pero el server lo dejó PARCIAL:
+      // sin esto, la pantalla decía "quedaste al día" y le reaparecía un resto sin
+      // aviso. El `tipo` real del server dispara el aviso de saldo en StepConfirmado.
       const informado: PagoInformado = {
         v: 1,
-        id: `api_${Date.now().toString(36)}`,
+        id: creado.id ?? `api_${Date.now().toString(36)}`,
         liqId,
-        tipo,
-        estado: 'INFORMADO',
-        monto,
+        tipo: creado.tipo,
+        estado: creado.estado ?? 'INFORMADO',
+        monto: Number(creado.monto),
         nroOperacion: nroOp,
         comprobanteFileName: file.name,
         comprobanteDataUrl: preview,
@@ -1277,6 +1445,7 @@ function StepSubirComprobante({
 function StepConfirmado({
   informado,
   saldoRestante,
+  moraSubio,
   moneda,
   allowReenviar,
   onPagarOtroParcial,
@@ -1285,6 +1454,12 @@ function StepConfirmado({
 }: {
   informado: PagoInformado | null;
   saldoRestante: number;
+  /**
+   * Solo prod: el inquilino eligió "saldo completo" pero el server lo dejó
+   * PARCIAL (la mora subió mientras pagaba). Cambia el copy a un aviso claro
+   * de que le quedó un resto, en vez del "quedaste al día" genérico.
+   */
+  moraSubio: boolean;
   moneda: 'ARS' | 'USD';
   /**
    * "Borrar todos los pagos y reenviar" es una operación del store local
@@ -1318,21 +1493,51 @@ function StepConfirmado({
         <div>
           <h2 className="text-lg font-semibold">
             {quedoSaldo
-              ? apiEnabled
-                ? 'Parcial informado'
-                : 'Parcial recibido'
+              ? moraSubio
+                ? 'La mora subió mientras pagabas'
+                : apiEnabled
+                  ? 'Parcial informado'
+                  : 'Parcial recibido'
               : apiEnabled
                 ? 'Pago informado'
                 : 'Comprobante recibido'}
           </h2>
           {quedoSaldo ? (
-            <p className="text-sm text-muted-foreground">
-              Te queda un saldo pendiente de{' '}
-              <strong className="text-foreground tabular-nums">
-                {formatMonto(saldoRestante, moneda)}
-              </strong>
-              . Lo podés pagar cuando quieras.
-            </p>
+            // Prod: el backend NO acepta un segundo INFORMADO mientras este
+            // está en revisión (índice único) — no prometemos "cuando
+            // quieras". En demo el flujo local sí permite encadenar (intacto).
+            moraSubio ? (
+              // "PARCIAL sorpresa": eligió cubrir todo, pero la mora subió de día
+              // mientras pagaba y lo que transfirió ya no alcanza el saldo. Se lo
+              // decimos claro en vez de un "quedaste al día" que después le
+              // reaparece como deuda sin aviso.
+              <p className="text-sm text-muted-foreground">
+                Elegiste pagar el saldo completo, pero los punitorios por mora
+                subieron mientras hacías la transferencia. Tu pago quedó como{' '}
+                <strong className="text-foreground">parcial</strong> y te queda un
+                saldo de{' '}
+                <strong className="text-foreground tabular-nums">
+                  {formatMonto(saldoRestante, moneda)}
+                </strong>
+                . Lo vas a poder informar cuando la inmobiliaria valide este pago.
+              </p>
+            ) : apiEnabled ? (
+              <p className="text-sm text-muted-foreground">
+                Te queda un saldo de{' '}
+                <strong className="text-foreground tabular-nums">
+                  {formatMonto(saldoRestante, moneda)}
+                </strong>
+                . Vas a poder informarlo cuando la inmobiliaria valide este pago.
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Te queda un saldo pendiente de{' '}
+                <strong className="text-foreground tabular-nums">
+                  {formatMonto(saldoRestante, moneda)}
+                </strong>
+                . Lo podés pagar cuando quieras.
+              </p>
+            )
           ) : (
             <p className="text-sm text-muted-foreground">
               Validamos en 24-48 hs hábiles y te avisamos por WhatsApp.
@@ -1405,14 +1610,23 @@ function StepConfirmado({
 
       <div className="space-y-2">
         {quedoSaldo ? (
-          <>
-            <Button size="xl" className="w-full" onClick={onPagarOtroParcial}>
-              Pagar el saldo ({formatMonto(saldoRestante, moneda)})
-            </Button>
-            <Button variant="outline" className="w-full" onClick={onVolver}>
+          apiEnabled ? (
+            // Prod: NO ofrecemos "Pagar el saldo" con un INFORMADO vivo — el
+            // backend lo rechaza con 409 (índice único) y el 409 llegaría
+            // DESPUÉS de que el inquilino transfiera plata real de nuevo.
+            <Button size="xl" className="w-full" onClick={onVolver}>
               Volver al inicio
             </Button>
-          </>
+          ) : (
+            <>
+              <Button size="xl" className="w-full" onClick={onPagarOtroParcial}>
+                Pagar el saldo ({formatMonto(saldoRestante, moneda)})
+              </Button>
+              <Button variant="outline" className="w-full" onClick={onVolver}>
+                Volver al inicio
+              </Button>
+            </>
+          )
         ) : (
           <>
             <Button size="xl" className="w-full" onClick={onVolver}>
@@ -1437,6 +1651,18 @@ function Row({ label, value }: { label: string; value: string }) {
       <span className="truncate text-right font-medium">{value}</span>
     </div>
   );
+}
+
+/**
+ * Etiqueta corta de quién informó un pago (solo prod). Cualquier co-inquilino
+ * puede pagar, así que aclaramos la autoría. En demo `autor` es undefined →
+ * devuelve null (sin etiqueta).
+ */
+function autorPagoLabel(autor: 'vos' | 'otro' | null | undefined): string | null {
+  if (autor === 'vos') return 'lo informaste vos';
+  if (autor === 'otro') return 'lo informó otro miembro del contrato';
+  if (autor === null) return 'registrado por la inmobiliaria';
+  return null;
 }
 
 function DetalleIA({

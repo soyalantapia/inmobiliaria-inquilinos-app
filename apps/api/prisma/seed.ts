@@ -215,7 +215,39 @@ export async function seedBase(prisma: PrismaClient) {
     });
   }
 
+  // Pagos CONCILIADOS de las liquidaciones que el seed marca PAGADO. La
+  // rendición es INCREMENTAL desde los pagos CONCILIADO (montoPagadoPorLiquidacion),
+  // no desde el estado de la liq: sin estas filas, una DB recién seedeada no
+  // tenía NADA para rendir y POST /rendiciones daba 409 "no hay cobros nuevos"
+  // (los tests solo pasaban por pagos residuales de corridas viejas en la DB
+  // compartida).
+  const pagosConciliados = [
+    { id: 'pag_liq002', contratoId: 'cnt_002', liquidacionId: 'liq_002', periodo: '2026-06', monto: 620000, fechaTransferencia: '2026-06-08' },
+    { id: 'pag_liq004', contratoId: 'cnt_004', liquidacionId: 'liq_004', periodo: '2026-06', monto: 720000, fechaTransferencia: '2026-06-01' },
+    { id: 'pag_liq007', contratoId: 'cnt_007', liquidacionId: 'liq_007', periodo: '2026-06', monto: 285000, fechaTransferencia: '2026-06-09' },
+  ];
+  for (const p of pagosConciliados) {
+    const { fechaTransferencia, ...resto } = p;
+    await prisma.pago.upsert({
+      where: { id: p.id },
+      update: {},
+      create: {
+        ...resto,
+        inmobiliariaId: tid,
+        metodo: 'TRANSFERENCIA',
+        estado: 'CONCILIADO',
+        decididoAt: new Date(fechaTransferencia),
+        fechaTransferencia: new Date(fechaTransferencia),
+        montoLiqTotal: p.monto,
+      },
+    });
+  }
+
   // Caja de gastos (mock de /caja: 2 pendientes + 1 ya descontado en rendición)
+  // Upsert por id fijo: el @@unique(propietarioId, periodo) se ELIMINÓ del
+  // schema (rendición incremental — varios cortes por período), así que el
+  // upsert compuesto explotaba con "Unknown argument propietarioId_periodo"
+  // y rompía TODA la suite en el seed.
   const rendicion = await prisma.rendicion.upsert({
     // Rendición INCREMENTAL: el schema quitó @@unique([propietarioId, periodo]) (un
     // período se rinde en varias tandas), así que la upsert va por el id fijo del seed.
@@ -239,8 +271,12 @@ export async function seedBase(prisma: PrismaClient) {
 
   const movimientos = [
     { id: 'mov_001', propiedadId: 'prp_001', contratoId: 'cnt_001', categoria: 'PLOMERIA' as const, descripcion: 'Reparación pérdida cocina', monto: 45000, fecha: '2026-04-30', proveedor: 'Sergio Almeida (plomero)', cargadoPor: 'Roberto Tapia', descontadoEnRendicion: true, rendicionId: rendicion.id },
-    { id: 'mov_002', propiedadId: 'prp_004', contratoId: 'cnt_004', categoria: 'EXPENSAS' as const, descripcion: 'Expensa extraordinaria — fachada', monto: 62000, fecha: '2026-05-02', proveedor: 'Consorcio', cargadoPor: 'Roberto Tapia', descontadoEnRendicion: false },
-    { id: 'mov_003', propiedadId: 'prp_002', contratoId: 'cnt_002', categoria: 'ELECTRICIDAD' as const, descripcion: 'Cambio de térmica del tablero', monto: 28500, fecha: '2026-05-04', proveedor: 'Diego Ferrari (electricista)', cargadoPor: 'Luciana Vidal', descontadoEnRendicion: false },
+    // mov_002/mov_003 en JUNIO (mismo período que las liqs cobradas de Silvana:
+    // liq_002 prp_002 + liq_004 prp_004). La rendición descuenta gastos SOLO del
+    // período que se rinde (decisión del dueño 21/06); con fecha de mayo, la
+    // rendición de junio de Silvana no los tomaba (totalGastos 0).
+    { id: 'mov_002', propiedadId: 'prp_004', contratoId: 'cnt_004', categoria: 'EXPENSAS' as const, descripcion: 'Expensa extraordinaria — fachada', monto: 62000, fecha: '2026-06-02', proveedor: 'Consorcio', cargadoPor: 'Roberto Tapia', descontadoEnRendicion: false },
+    { id: 'mov_003', propiedadId: 'prp_002', contratoId: 'cnt_002', categoria: 'ELECTRICIDAD' as const, descripcion: 'Cambio de térmica del tablero', monto: 28500, fecha: '2026-06-04', proveedor: 'Diego Ferrari (electricista)', cargadoPor: 'Luciana Vidal', descontadoEnRendicion: false },
   ];
   for (const m of movimientos) {
     const { fecha, ...resto } = m;

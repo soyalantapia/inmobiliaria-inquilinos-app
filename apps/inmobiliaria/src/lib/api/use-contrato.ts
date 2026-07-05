@@ -166,6 +166,9 @@ function mapContrato(r: ContratoApi): ContratoListado {
     montoExpensas: expensas,
     indiceAjuste: r.indiceAjuste,
     frecuenciaAjusteMeses: r.frecuenciaAjusteMeses,
+    // Próximo ajuste programado (ISO); el backend lo setea al alta. La ficha lo
+    // muestra en el resumen. null si no hay ajuste programado.
+    proximoAjuste: r.proximoAjuste ? r.proximoAjuste.slice(0, 10) : null,
     cargadoPor: r.cargadoPor ?? undefined,
     cargadoAt: r.cargadoAt ?? undefined,
     cargadoRol: r.cargadoRol ?? undefined,

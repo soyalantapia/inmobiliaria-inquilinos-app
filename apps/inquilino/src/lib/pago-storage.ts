@@ -44,6 +44,12 @@ export interface PagoInformado {
    * pre-existentes; se setea cuando el inquilino sube el archivo.
    */
   extraccionIA?: ExtraccionIA;
+  /**
+   * Quién informó el pago (solo prod/API, viene de `PagoDeLiquidacion.autor`):
+   * 'vos' | 'otro' | null. En la demo offline queda undefined (no hay co-inquilinos
+   * reales que informen), así que la etiqueta no se muestra.
+   */
+  autor?: 'vos' | 'otro' | null;
 }
 
 interface PagosWrapper {

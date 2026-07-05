@@ -19,7 +19,8 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiEnabled, apiFetch } from './client';
 import { useMisLiquidaciones } from './hooks';
-import type { Liquidacion } from '@/lib/types';
+import type { Liquidacion, PagoDeLiquidacion } from '@/lib/types';
+import type { PagoInformado } from '@/lib/pago-storage';
 
 /** Liquidación puntual por id, derivada de la lista del inquilino. */
 export function useLiquidacion(liqId: string): {
@@ -32,6 +33,34 @@ export function useLiquidacion(liqId: string): {
   // Mientras carga todavía no sabemos si existe: liquidacion=null + cargando.
   const liquidacion = liquidaciones.find((l) => l.id === liqId) ?? null;
   return { liquidacion, cargando, isError, deApi };
+}
+
+/**
+ * Adapta un pago del API (`liq.pagos`) al shape local `PagoInformado` que ya
+ * consumen las cards del detalle y el checkout (nacieron para el store de la
+ * demo offline). Así las pantallas muestran el historial real de prod sin
+ * duplicar componentes. El comprobante real vive en el backend
+ * (`comprobanteUrl`), no como dataUrl local: quien quiera abrirlo debe pasar
+ * por `urlDeArchivo` (token por query).
+ */
+export function pagoApiALocal(p: PagoDeLiquidacion, liqId: string): PagoInformado {
+  return {
+    v: 1,
+    id: p.id,
+    liqId,
+    tipo: p.tipo,
+    estado: p.estado,
+    monto: p.monto,
+    nroOperacion: p.nroOperacion,
+    comprobanteFileName: p.comprobanteFileName,
+    comprobanteDataUrl: null,
+    comprobanteSize: 0,
+    comprobanteMime: p.comprobanteMime ?? '',
+    enviadoAt: p.informadoAt,
+    // Autoría real del pago (solo prod): quién de los co-inquilinos lo informó.
+    // undefined en la demo → la etiqueta no se muestra.
+    autor: p.autor,
+  };
 }
 
 /** Método de pago que entiende el API (`POST /pagos/informar`). */

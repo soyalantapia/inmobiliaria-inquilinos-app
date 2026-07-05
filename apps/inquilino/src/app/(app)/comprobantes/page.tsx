@@ -7,9 +7,11 @@ import {
   CalendarClock,
   CheckCircle2,
   ChevronRight,
+  Clock,
   Download,
   Receipt,
   Wrench,
+  XCircle,
 } from 'lucide-react';
 import { Card, CardContent } from '@llave/ui/card';
 import { cn } from '@llave/ui/cn';
@@ -24,7 +26,7 @@ import {
 } from '@/lib/cross-app-inmo';
 import { diasHastaVencimiento, formatFecha, formatFechaCorta, formatMonto, formatPeriodo } from '@/lib/format';
 import { descargarCsv } from '@/lib/csv-export';
-import type { Comprobante, Liquidacion } from '@/lib/types';
+import type { Comprobante, Liquidacion, PagoDeLiquidacion } from '@/lib/types';
 import { apiEnabled } from '@/lib/api/client';
 import { useMiContrato, useMisLiquidaciones } from '@/lib/api/hooks';
 
@@ -502,6 +504,61 @@ function RecibosReal() {
 }
 
 // ============================================================
+// PagosBadges: estado de los pagos informados de una liq (prod)
+// ============================================================
+// Badges chicos con el mismo lenguaje visual del detalle (/pago/[liqId]):
+// ámbar = en revisión, rojo = rechazado, verde = confirmado. Sin esto la
+// lista de Recibos no contaba que ya había un comprobante en revisión (o
+// rechazado) y el inquilino creía que su pago se había perdido. En la demo
+// `liq.pagos` no existe (mocks) → no renderiza nada.
+function PagosBadges({
+  pagos,
+  moneda,
+  liqPagada,
+}: {
+  pagos?: PagoDeLiquidacion[];
+  moneda: Liquidacion['moneda'];
+  /** true si la liq ya está PAGADA: un INFORMADO zombie (el ciclo se cerró por
+   *  cobro manual/conciliación) no debe mostrar el chip ámbar "En revisión". */
+  liqPagada?: boolean;
+}) {
+  const visibles = (pagos ?? []).filter((p) => !(liqPagada && p.estado === 'INFORMADO'));
+  if (visibles.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-1.5 pt-1.5">
+      {visibles.map((p) => (
+        <span
+          key={p.id}
+          className={cn(
+            'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium',
+            p.estado === 'CONCILIADO'
+              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+              : p.estado === 'RECHAZADO'
+                ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+                : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+          )}
+        >
+          {p.estado === 'CONCILIADO' ? (
+            <CheckCircle2 className="h-3 w-3" />
+          ) : p.estado === 'RECHAZADO' ? (
+            <XCircle className="h-3 w-3" />
+          ) : (
+            <Clock className="h-3 w-3" />
+          )}
+          {formatMonto(p.monto, moneda)}
+          {' · '}
+          {p.estado === 'CONCILIADO'
+            ? 'Confirmado'
+            : p.estado === 'RECHAZADO'
+              ? 'Rechazado'
+              : 'En revisión'}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+// ============================================================
 // MovimientoRow: una fila con icono, título, sub, monto y acción
 // ============================================================
 function MovimientoRow({ mov }: { mov: Movimiento }) {
@@ -592,6 +649,7 @@ function MovimientoRow({ mov }: { mov: Movimiento }) {
               ? `Venció el ${formatFechaCorta(mov.liq.fechaVencimiento)} · hace ${-dias} día${dias === -1 ? '' : 's'}`
               : `Vence el ${formatFechaCorta(mov.liq.fechaVencimiento)} · en ${dias} día${dias === 1 ? '' : 's'}`}
           </p>
+          <PagosBadges pagos={mov.liq.pagos} moneda={mov.liq.moneda} liqPagada={mov.liq.estado === 'PAGADO'} />
         </div>
         <p
           className={`shrink-0 text-sm font-semibold tabular-nums ${
@@ -767,6 +825,11 @@ function PagoUrgenteCard({ mov }: { mov: Movimiento }) {
             </span>
           </div>
         </div>
+
+        {/* Estado de los pagos ya informados (en revisión / rechazado /
+            confirmado): sin esto la card empujaba a "Ponerte al día" sin
+            contar que ya hay un comprobante esperando validación. */}
+        <PagosBadges pagos={mov.liq.pagos} moneda={mov.liq.moneda} liqPagada={mov.liq.estado === 'PAGADO'} />
 
         <Link
           href={`/pago/${mov.liq.id}`}

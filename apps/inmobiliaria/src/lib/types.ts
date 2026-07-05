@@ -227,6 +227,12 @@ export interface ContratoListado {
   /** Cada cuántos meses se ajusta el alquiler. Null si no aplica. */
   frecuenciaAjusteMeses?: number | null;
   /**
+   * Fecha (ISO) del próximo ajuste programado del alquiler. Del API en prod (el
+   * backend lo setea al alta); null/undefined si no hay ajuste programado. En el
+   * demo/mock no se setea.
+   */
+  proximoAjuste?: string | null;
+  /**
    * Trazabilidad: quién cargó el contrato y cuándo. Si lo cargó alguien con
    * rol CARGA, queda PENDIENTE_APROBACION (estado BORRADOR + pendienteAprobacion=true)
    * hasta que un ADMIN lo apruebe.

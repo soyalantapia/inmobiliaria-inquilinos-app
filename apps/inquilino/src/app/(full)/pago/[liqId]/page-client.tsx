@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { notFound, useRouter } from 'next/navigation';
 import {
@@ -35,7 +35,8 @@ import {
   type DecisionInmoSobrePago,
 } from '@/lib/cross-app-inmo';
 import { aplicarEstadoDemo, useDemoEstado } from '@/lib/demo-estado';
-import { apiEnabled, useLiquidacion } from '@/lib/api/use-pago';
+import { apiEnabled, pagoApiALocal, useLiquidacion } from '@/lib/api/use-pago';
+import { urlDeArchivo } from '@/lib/api/client';
 import { useMiContrato } from '@/lib/api/hooks';
 import { useCurrentUser } from '@/lib/use-current-user';
 import type { Liquidacion } from '@/lib/types';
@@ -114,22 +115,70 @@ function DetallePagoView({
   liqId: string;
   router: ReturnType<typeof useRouter>;
 }) {
-  const [informado, setInformado] = useState<PagoInformado | null>(null);
-  const [parciales, setParciales] = useState<PagoInformado[]>([]);
-  const [decisionInmo, setDecisionInmo] = useState<DecisionInmoSobrePago | null>(null);
+  const [informadoLocal, setInformadoLocal] = useState<PagoInformado | null>(null);
+  const [parcialesLocal, setParcialesLocal] = useState<PagoInformado[]>([]);
+  const [decisionLocal, setDecisionLocal] = useState<DecisionInmoSobrePago | null>(null);
   // Datos reales para el recibo imprimible en prod: nombre de la sesión OTP +
   // dirección/inmobiliaria del contrato real. En demo no se usan (ver abajo).
   const user = useCurrentUser();
   const { contrato } = useMiContrato();
   useEffect(() => {
-    // Historial de parciales + decisión del inmo: sólo en la demo offline.
-    // En prod el API no expone esos datos al inquilino, así que quedan vacíos
-    // (la liq de por sí ya refleja PAGADO cuando el inmo concilia).
+    // Historial de parciales + decisión del inmo de la DEMO offline (store
+    // local). En prod estos datos vienen en `liq.pagos` del API (memo de abajo).
     if (apiEnabled) return;
-    setInformado(leerPagoInformado(liqId));
-    setParciales(listarPagosDeLiq(liqId));
-    setDecisionInmo(decisionInmoPago(liqId));
+    setInformadoLocal(leerPagoInformado(liqId));
+    setParcialesLocal(listarPagosDeLiq(liqId));
+    setDecisionLocal(decisionInmoPago(liqId));
   }, [liqId]);
+
+  // Prod: derivamos los mismos estados desde `liq.pagos` (API). Antes esto
+  // quedaba vacío ("en prod el API no expone esos datos") y la pantalla era
+  // ciega: un pago informado seguía mostrando "Pagar $TOTAL", un rechazo con
+  // motivo nunca aparecía y el comprobante enviado no se podía volver a ver.
+  // Es useMemo (no estado + efecto) porque `liq` se re-mapea en cada render
+  // del hook: un setState dependiente de esa referencia loopearía.
+  const prod = useMemo(() => {
+    if (!apiEnabled) return null;
+    const pagosApi = liq.pagos ?? [];
+    // Precedencia: si hay un INFORMADO vivo, manda la card ámbar "pendiente de
+    // validación" — no el rechazo de un pago anterior ya re-informado. Hay a lo
+    // sumo UN INFORMADO (índice único del backend).
+    const vivo = pagosApi.find((p) => p.estado === 'INFORMADO');
+    // La decisión a mostrar es la MÁS RECIENTE por decididoAt (no la última por
+    // fecha de informe): una anulación de un pago viejo se decide DESPUÉS de
+    // haber conciliado otro más nuevo, y ordenando por informadoAt quedaba
+    // enterrada bajo un "Pago confirmado" desactualizado.
+    const decidido = pagosApi
+      .filter((p) => (p.estado === 'RECHAZADO' || p.estado === 'CONCILIADO') && p.decididoAt)
+      .sort((a, b) => (b.decididoAt ?? '').localeCompare(a.decididoAt ?? ''))[0];
+    const relevante = vivo ?? decidido ?? pagosApi[pagosApi.length - 1];
+    let decision: DecisionInmoSobrePago | null = null;
+    if (!vivo && decidido) {
+      decision = {
+        estado: decidido.estado as 'RECHAZADO' | 'CONCILIADO',
+        motivo: decidido.observacion,
+        // El API no le cuenta al inquilino QUIÉN decidió: usamos el nombre de
+        // la inmobiliaria del contrato (o el genérico si aún no cargó).
+        decidiSPor: contrato?.inmobiliaria ?? 'la inmobiliaria',
+        decidiSAt: decidido.decididoAt ?? decidido.informadoAt,
+      };
+    }
+    return {
+      // TODOS los pagos (alimenta la lista "Pagos informados (N)").
+      parciales: pagosApi.map((p) => pagoApiALocal(p, liqId)),
+      informado: relevante ? pagoApiALocal(relevante, liqId) : null,
+      decision,
+      // Un cobro manual (efectivo / "el dueño confirmó") no tiene comprobante:
+      // la card verde no puede decir "validó tu comprobante".
+      decisionSinComprobante: !vivo && decidido ? !decidido.comprobanteUrl : false,
+      // Link autenticado (?token=) al comprobante real del pago en revisión.
+      comprobantePendienteHref: vivo ? urlDeArchivo(vivo.comprobanteUrl) : undefined,
+    };
+  }, [liq.pagos, liqId, contrato?.inmobiliaria]);
+
+  const informado = apiEnabled ? (prod?.informado ?? null) : informadoLocal;
+  const parciales = apiEnabled ? (prod?.parciales ?? []) : parcialesLocal;
+  const decisionInmo = apiEnabled ? (prod?.decision ?? null) : decisionLocal;
 
   // `liq` ya viene resuelta (API en prod, mock en demo). En prod total/punitorio
   // salen del API (server = verdad), no del re-cálculo con la tasa default.
@@ -139,8 +188,12 @@ function DetallePagoView({
   const rechazadoPorInmo = decisionInmo?.estado === 'RECHAZADO';
   const confirmadoPorInmo = decisionInmo?.estado === 'CONCILIADO';
   // Mostramos "pendiente de validación" sólo si el inmo todavía no decidió.
+  // Gate extra por liq PAGADA: si el ciclo se cerró por otro camino (cobro
+  // manual, conciliación bancaria) puede quedar un INFORMADO zombie que ya no
+  // espera validación — sin el gate, "Pagado" y "pendiente de validación"
+  // aparecían juntos.
   const pendienteValidacion =
-    informado?.estado === 'INFORMADO' && !rechazadoPorInmo && !confirmadoPorInmo;
+    informado?.estado === 'INFORMADO' && liq.estado !== 'PAGADO' && !rechazadoPorInmo && !confirmadoPorInmo;
   // Saldo pendiente. En prod sale del API (montoTotal − conciliados = liq.saldo);
   // en demo, de los parciales del store local. Antes en prod siempre daba el total
   // completo, así que un parcial ya conciliado no bajaba la deuda mostrada (bug 1/3).
@@ -207,7 +260,10 @@ function DetallePagoView({
                 Pago confirmado
               </p>
               <p className="text-xs text-emerald-900/80 dark:text-emerald-200/80">
-                {decisionInmo.decidiSPor} validó tu comprobante el{' '}
+                {/* Un cobro manual (efectivo / directo al dueño) no tiene
+                    comprobante: "validó tu comprobante" sería mentira. */}
+                {decisionInmo.decidiSPor}{' '}
+                {prod?.decisionSinComprobante ? 'registró tu pago' : 'validó tu comprobante'} el{' '}
                 {formatFecha(decisionInmo.decidiSAt)}. Ya está acreditado.
               </p>
             </div>
@@ -316,6 +372,16 @@ function DetallePagoView({
                         : p.estado === 'RECHAZADO'
                           ? 'Rechazado'
                           : 'En revisión'}
+                      {/* Quién informó el pago (solo prod): cualquiera de los
+                          co-inquilinos puede pagar, así que aclaramos si fuiste
+                          vos u otro miembro del contrato. En demo `autor` es
+                          undefined → no se muestra nada. */}
+                      {autorPagoLabel(p.autor) && (
+                        <>
+                          {' · '}
+                          {autorPagoLabel(p.autor)}
+                        </>
+                      )}
                     </p>
                   </div>
                 </div>
@@ -420,12 +486,29 @@ function DetallePagoView({
           </div>
         ) : pendienteValidacion ? (
           <div className="space-y-3">
-            <Button variant="outline" size="xl" className="w-full" asChild>
-              <Link href={`/pago/${liq.id}/checkout`}>
-                Ver comprobante enviado
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
+            {/* Prod: abre el ARCHIVO real subido a /uploads (link autenticado
+                con ?token= — un <a> no puede mandar Authorization). En demo, o
+                si el pago se informó sin archivo, cae al checkout que muestra
+                el estado "ya informaste este pago". */}
+            {apiEnabled && prod?.comprobantePendienteHref ? (
+              <Button variant="outline" size="xl" className="w-full" asChild>
+                <a
+                  href={prod.comprobantePendienteHref}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Ver comprobante enviado
+                  <ArrowRight className="h-4 w-4" />
+                </a>
+              </Button>
+            ) : (
+              <Button variant="outline" size="xl" className="w-full" asChild>
+                <Link href={`/pago/${liq.id}/checkout`}>
+                  Ver comprobante enviado
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
+            )}
             <p className="flex items-center justify-center gap-1 text-center text-xs text-muted-foreground">
               <CheckCircle2 className="h-3 w-3 text-emerald-500" />
               Pausamos los punitorios hasta validar
@@ -449,6 +532,19 @@ function DetallePagoView({
       </main>
     </>
   );
+}
+
+/**
+ * Etiqueta corta de quién informó un pago (solo prod). Cualquier co-inquilino
+ * puede pagar, así que aclaramos la autoría para que el inquilino no dude de un
+ * pago que no hizo él. En demo `autor` es undefined → devuelve null (sin chip).
+ */
+function autorPagoLabel(autor: 'vos' | 'otro' | null | undefined): string | null {
+  if (autor === 'vos') return 'lo informaste vos';
+  if (autor === 'otro') return 'lo informó otro miembro del contrato';
+  // null = registrado por la inmobiliaria; undefined = demo (sin dato).
+  if (autor === null) return 'registrado por la inmobiliaria';
+  return null;
 }
 
 function Row({

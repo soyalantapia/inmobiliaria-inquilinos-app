@@ -7,6 +7,7 @@ import {
   ExternalLink,
   FileText,
   ReceiptText,
+  RefreshCw,
   RotateCcw,
   Sparkles,
   XCircle,
@@ -47,7 +48,11 @@ import {
 } from '@/lib/extraccion-ia';
 import { PinPromptDialog } from '@/components/pin-prompt-dialog';
 import { apiEnabled } from '@/lib/api/client';
-import { usePagosConciliados, usePagosInformados } from '@/lib/api/use-pagos';
+import {
+  usePagosConciliados,
+  usePagosInformados,
+  type PagoInformadoApi,
+} from '@/lib/api/use-pagos';
 
 // Sección "Por validar" en /pagos del admin. Muestra los comprobantes que
 // los inquilinos subieron y todavía no fueron conciliados. Cuando el admin
@@ -85,8 +90,13 @@ export function PagosPorValidar(props: PagosPorValidarProps = {}) {
  * el server (validacion="servidor").
  */
 function PagosPorValidarApi({ onChange }: PagosPorValidarProps = {}) {
-  const { pagos, cargando, validar, rechazar } = usePagosInformados();
-  const { pagos: conciliados, anular } = usePagosConciliados();
+  const { pagos, cargando, isError, reintentar, validar, rechazar } = usePagosInformados();
+  const {
+    pagos: conciliados,
+    isError: conciliadosError,
+    reintentar: reintentarConciliados,
+    anular,
+  } = usePagosConciliados();
   const [verComprobante, setVerComprobante] = useState<PagoInformado | null>(null);
   const [rechazando, setRechazando] = useState<PagoInformado | null>(null);
   const [motivoRechazo, setMotivoRechazo] = useState('');
@@ -168,7 +178,31 @@ function PagosPorValidarApi({ onChange }: PagosPorValidarProps = {}) {
     );
   }
 
-  if (pagos.length === 0 && conciliados.length === 0) {
+  // Query caída ≠ bandeja vacía: mostrar el empty-state acá sería un FALSO
+  // vacío (la inmo creería que no hay nada que validar cuando en realidad no
+  // pudimos cargar). Error explícito + reintento.
+  if (isError) {
+    return (
+      <Card>
+        <div className="space-y-3 py-10 text-center text-sm text-muted-foreground">
+          <p>No pudimos cargar los pagos informados.</p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              reintentar();
+              reintentarConciliados();
+            }}
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            Reintentar
+          </Button>
+        </div>
+      </Card>
+    );
+  }
+
+  if (pagos.length === 0 && conciliados.length === 0 && !conciliadosError) {
     return (
       <Card>
         <div className="py-10 text-center text-sm text-muted-foreground">
@@ -215,6 +249,20 @@ function PagosPorValidarApi({ onChange }: PagosPorValidarProps = {}) {
               ))}
             </div>
           </CardContent>
+        </Card>
+      )}
+
+      {/* La bandeja de informados cargó pero la de conciliados falló: error
+          acotado a esta sección (no escondemos los pendientes de arriba). */}
+      {conciliadosError && (
+        <Card>
+          <div className="space-y-3 py-6 text-center text-sm text-muted-foreground">
+            <p>No pudimos cargar los conciliados recientes.</p>
+            <Button variant="outline" size="sm" onClick={reintentarConciliados}>
+              <RefreshCw className="h-3.5 w-3.5" />
+              Reintentar
+            </Button>
+          </div>
         </Card>
       )}
 
@@ -832,7 +880,7 @@ function PagoRow({
   onRechazar,
   onVerComprobante,
 }: {
-  pago: PagoInformado;
+  pago: PagoInformadoApi;
   /** Mostrar el bloque "Lectura por IA". En modo API lo apagamos: el API
    *  todavía no persiste la extracción, así que no inventamos datos. */
   conIA?: boolean;
@@ -843,19 +891,39 @@ function PagoRow({
   onRechazar: () => void;
   onVerComprobante: () => void;
 }) {
-  const contrato = contratosMock.find((c) => c.id === pago.contratoId);
-  const propiedad = propiedadesMock.find((p) => p.contratoActualId === pago.contratoId);
+  // En prod los ids reales NUNCA matchean contra los mocks: buscar ahí daba
+  // saldo fantasma (ignoraba parciales conciliados y la mora) y escondía el
+  // badge de cobranza directa. En API todo sale del propio pago (liq + modo
+  // de cobranza del server); los mocks quedan solo para la demo.
+  const deApi = apiEnabled;
+  const contrato = deApi
+    ? undefined
+    : contratosMock.find((c) => c.id === pago.contratoId);
+  const propiedad = deApi
+    ? undefined
+    : propiedadesMock.find((p) => p.contratoActualId === pago.contratoId);
   const propietarioId =
     contrato?.cobraDirectoPropietarioId ?? propiedad?.propietariosIds[0] ?? null;
   const propietario = propietarioId
     ? propietariosMock.find((p) => p.id === propietarioId)
     : null;
-  const modoDirecto = conIA && contrato?.modoCobranza === 'PROPIETARIO_DIRECTO';
-  const afipOn = conIA && !!propietario?.afip?.conectado;
-  const esParcial = pago.tipo === 'PARCIAL' && pago.montoLiqTotal !== undefined;
-  // Restamos también los parciales YA conciliados de la MISMA liquidación; si no,
-  // el "saldo" muestra una deuda fantasma (ignora lo ya cobrado de esa liq).
-  const yaConciliadoLiq = pago.liquidacionId
+  // Cobranza directa: en API viene del contrato real (independiente de conIA —
+  // antes el gate `conIA && contratosMock` hacía que el badge jamás apareciera
+  // en prod y el validador rechazaba pagos legítimos buscándolos en SU banco).
+  const modoDirecto = deApi
+    ? pago.modoCobranza === 'PROPIETARIO_DIRECTO'
+    : conIA && contrato?.modoCobranza === 'PROPIETARIO_DIRECTO';
+  const nombreDirecto = deApi ? (pago.cobraDirectoNombre ?? '—') : (propietario?.nombre ?? '—');
+  const afipOn = !deApi && conIA && !!propietario?.afip?.conectado;
+  // Liquidación fresca del server (solo API): total exigible con mora al día,
+  // conciliados y saldo. El saldo NO descuenta este pago INFORMADO → "queda
+  // tras validar" = max(0, saldo − monto de esta fila).
+  const liq = deApi ? pago.liq : undefined;
+  const quedaTrasValidar = liq ? Math.max(0, liq.saldo - pago.monto) : 0;
+  const esParcial = pago.tipo === 'PARCIAL' && (liq != null || pago.montoLiqTotal !== undefined);
+  // Demo: restamos también los parciales YA conciliados de la MISMA liquidación;
+  // si no, el "saldo" muestra una deuda fantasma (ignora lo ya cobrado de esa liq).
+  const yaConciliadoLiq = !deApi && pago.liquidacionId
     ? pagosInformadosMock
         .filter(
           (p) =>
@@ -904,9 +972,13 @@ function PagoRow({
                 <Badge
                   variant="outline"
                   className="text-[10px]"
-                  title="El inquilino transfirió directo a la cuenta del propietario. La inmobiliaria sólo audita el pago."
+                  title={
+                    deApi
+                      ? 'La transferencia fue a la cuenta del dueño (verificalo con él) — no entra a tu caja.'
+                      : 'El inquilino transfirió directo a la cuenta del propietario. La inmobiliaria sólo audita el pago.'
+                  }
                 >
-                  Cobranza directa al propietario · {propietario?.nombre ?? '—'}
+                  Cobranza directa al propietario · {nombreDirecto}
                 </Badge>
               )}
               {afipOn && (
@@ -915,19 +987,43 @@ function PagoRow({
                 </Badge>
               )}
             </div>
+            {/* Subtexto SIEMPRE visible (el tooltip solo se ve al hover): el
+                validador tiene que enterarse ANTES de rechazar por "no está
+                en mi banco" — la plata fue a la cuenta del dueño. */}
+            {deApi && modoDirecto && (
+              <p className="mt-1 text-[10px] text-amber-700 dark:text-amber-400">
+                La transferencia fue a la cuenta del dueño (verificalo con él) — no
+                entra a tu caja.
+              </p>
+            )}
           </div>
         </div>
         <div className="shrink-0 text-right">
           <p className="text-base font-semibold tabular-nums">
             {formatMonto(pago.monto)}
           </p>
-          {esParcial && (
-            <p className="text-[10px] text-muted-foreground">
-              de {formatMonto(pago.montoLiqTotal ?? 0)} · saldo{' '}
-              <span className="font-semibold text-amber-700 dark:text-amber-400">
-                {formatMonto(saldoRestanteLiq)}
-              </span>
-            </p>
+          {/* Saldo con datos REALES del server (API): total exigible con mora y
+              lo que queda si se valida este pago. Se muestra también en pagos
+              TOTAL si igual queda saldo (p.ej. mora acumulada desde que informó).
+              En demo, el cálculo mock de siempre. */}
+          {liq ? (
+            (esParcial || quedaTrasValidar > 0) && (
+              <p className="text-[10px] text-muted-foreground">
+                de {formatMonto(liq.montoTotal)} · si lo validás queda{' '}
+                <span className="font-semibold text-amber-700 dark:text-amber-400">
+                  {formatMonto(quedaTrasValidar)}
+                </span>
+              </p>
+            )
+          ) : (
+            esParcial && (
+              <p className="text-[10px] text-muted-foreground">
+                de {formatMonto(pago.montoLiqTotal ?? 0)} · saldo{' '}
+                <span className="font-semibold text-amber-700 dark:text-amber-400">
+                  {formatMonto(saldoRestanteLiq)}
+                </span>
+              </p>
+            )
           )}
         </div>
       </div>

@@ -27,6 +27,9 @@ async function resetOperacion(prisma: PrismaClient, tid: string) {
     where: { id: 'cnt_006' },
     data: { estado: 'BORRADOR', pendienteAprobacion: true, aprobadoAt: null },
   });
+  // La suite de plata (P10) FINALIZA cnt_001 y el seed no lo revierte
+  // (upsert update:{}): los tests de Mariela necesitan su contrato ACTIVO.
+  await prisma.contrato.update({ where: { id: 'cnt_001' }, data: { estado: 'ACTIVO' } });
   await prisma.reclamoEvento.deleteMany({ where: { id: { notIn: SEED_EVENTOS } } });
   await prisma.reclamo.deleteMany({ where: { id: { notIn: SEED_RECLAMOS } } });
   await prisma.reclamo.update({

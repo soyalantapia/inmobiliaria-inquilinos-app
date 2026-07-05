@@ -68,6 +68,45 @@ export interface Reclamo {
   } | null;
 }
 
+/**
+ * Un pago informado por el inquilino, tal como lo expone el API dentro de
+ * `Liquidacion.pagos` (GET /mis-liquidaciones). Espejo read-only de la tabla
+ * `Pago`: INFORMADO = en revisión de la inmobiliaria, CONCILIADO = acreditado,
+ * RECHAZADO = rechazado (la `observacion` trae el motivo; un pago anulado
+ * después de conciliar también queda RECHAZADO, con observacion
+ * "Anulado tras conciliar: ...").
+ */
+export interface PagoDeLiquidacion {
+  id: string;
+  tipo: 'TOTAL' | 'PARCIAL';
+  estado: 'INFORMADO' | 'CONCILIADO' | 'RECHAZADO';
+  monto: number;
+  metodo: 'TRANSFERENCIA' | 'MERCADOPAGO' | 'EFECTIVO' | 'CHEQUE';
+  nroOperacion: string | null;
+  /** Fecha de la transferencia declarada por el inquilino (ISO). */
+  fechaTransferencia: string;
+  /** Cuándo lo informó en la app (ISO). El API ordena la lista ASC por esto. */
+  informadoAt: string;
+  /** Cuándo la inmo decidió (conciliar/rechazar); null si sigue en revisión. */
+  decididoAt: string | null;
+  /** Motivo del rechazo (solo tiene sentido en RECHAZADO). */
+  observacion: string | null;
+  /** Comprobante real en /uploads del backend. Un <a>/<img> no puede mandar
+   *  Authorization: abrirlo requiere pasar por `urlDeArchivo` (?token=). */
+  comprobanteUrl: string | null;
+  comprobanteFileName: string | null;
+  comprobanteMime: string | null;
+  /**
+   * Quién informó el pago, desde la perspectiva del inquilino que consulta
+   * (solo prod/API):
+   * - 'vos'  → lo informó la sesión actual.
+   * - 'otro' → lo informó otro co-inquilino del contrato (cualquiera puede pagar).
+   * - null   → cobro registrado por la inmobiliaria (pago manual, sin autor inquilino).
+   * En la demo offline el API no existe: queda undefined y no se muestra etiqueta.
+   */
+  autor?: 'vos' | 'otro' | null;
+}
+
 export interface Liquidacion {
   id: string;
   contratoId: string;
@@ -86,6 +125,10 @@ export interface Liquidacion {
   montoPagado?: number;
   /** Saldo pendiente real = montoTotal − montoPagado (del API, prod). */
   saldo?: number;
+  /** Pagos informados por el inquilino (en revisión / conciliados / rechazados),
+   *  ordenados por informadoAt ASC. Vienen del API en prod; undefined en la
+   *  demo offline (ahí los pagos viven en el store local `pago-storage`). */
+  pagos?: PagoDeLiquidacion[];
 }
 
 export type EstadoContrato = 'ACTIVO' | 'BORRADOR' | 'FINALIZADO' | 'RESCINDIDO';

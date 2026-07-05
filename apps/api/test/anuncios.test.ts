@@ -14,6 +14,11 @@ const SEED_IDS = ['anu_seed_1', 'anu_seed_2', 'anu_seed_3'];
 
 /** Devuelve el estado seed mutado por corridas anteriores a su origen. */
 async function resetAnuncios(prisma: PrismaClient) {
+  // La suite de plata (P10) FINALIZA cnt_001 y seedBase no lo revierte (upsert
+  // update:{}): Mariela necesita su contrato ACTIVO para entrar a las audiencias
+  // (sin esto, sobre una DB ya usada por P10, no ve ningún anuncio y su flujo
+  // de acuses da 403).
+  await prisma.contrato.update({ where: { id: 'cnt_001' }, data: { estado: 'ACTIVO' } });
   // Anuncios creados por tests previos (y sus acuses)
   await prisma.anuncioAcuse.deleteMany({ where: { anuncioId: { notIn: SEED_IDS } } });
   await prisma.anuncio.deleteMany({ where: { id: { notIn: SEED_IDS } } });
@@ -67,9 +72,13 @@ describe('Permisos', () => {
     expect(res.statusCode).toBe(401);
   });
 
-  it('rol CARGA puede VER (contratos.ver) pero no ENVIAR (comunicaciones.enviar)', async () => {
+  it('rol CARGA no puede ni VER ni ENVIAR comunicaciones (endurecido a comunicaciones.enviar)', async () => {
+    // GET /anuncios se endureció a comunicaciones.enviar (ADMIN/OPERADOR):
+    // antes, con contratos.ver, CARGA/LECTURA leían el cuerpo de TODAS las
+    // comunicaciones vía API directa aunque el sidebar las ocultara. El assert
+    // viejo (VER → 200) validaba justo ese agujero.
     const ver = await app.inject({ method: 'GET', url: '/anuncios', headers: auth(tokenCarga) });
-    expect(ver.statusCode).toBe(200);
+    expect(ver.statusCode).toBe(403);
     const enviar = await app.inject({
       method: 'POST',
       url: '/anuncios',

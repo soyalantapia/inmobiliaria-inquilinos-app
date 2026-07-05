@@ -8,6 +8,7 @@ import {
   ArrowUpRight,
   CheckCircle2,
   ChevronRight,
+  Clock,
   CreditCard,
   FileText,
   Info,
@@ -30,7 +31,7 @@ import { MobileGreetingHeader } from '@/components/mobile-greeting-header';
 import { contratoMock, liquidacionesMock } from '@/lib/mock-data';
 import { movimientosMock, type Movimiento } from '@/lib/movimientos-mock';
 import { resolverMontos } from '@/lib/punitorios';
-import { diasHastaVencimiento, formatFecha, formatFechaCorta, formatMonto } from '@/lib/format';
+import { diasHastaVencimiento, formatFecha, formatFechaCorta, formatMonto, formatPeriodo } from '@/lib/format';
 import {
   aplicarEstadoDemo,
   useDemoEstado,
@@ -542,6 +543,37 @@ function HomeReal() {
 // click "Regularizar pago" → checkout. 2 clicks para la acción más
 // crítica. Ahora 1 click directo.
 function BannerPagoPendiente({ liq }: { liq: Liquidacion }) {
+  // Prod: si YA hay un pago INFORMADO vivo (en revisión) para esta liq, el
+  // banner NO debe empujar de nuevo al checkout — el inquilino terminaba
+  // transfiriendo plata real dos veces y recién ahí veía el 409 del API.
+  // Variante ámbar informativa que linkea al DETALLE (no al checkout) y sin
+  // pill de pagar. En demo `liq.pagos` no existe (mocks) → comportamiento igual.
+  const pagoVivo = apiEnabled
+    ? ((liq.pagos ?? []).find((p) => p.estado === 'INFORMADO') ?? null)
+    : null;
+  if (pagoVivo) {
+    return (
+      <Link
+        href={`/pago/${liq.id}`}
+        className="flex items-center gap-3 rounded-xl border border-amber-300 bg-amber-50/70 px-3 py-3 transition-colors hover:bg-amber-100/70 active:scale-[0.99] dark:border-amber-900/40 dark:bg-amber-900/10"
+      >
+        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-amber-500 text-white shadow-sm">
+          <Clock className="h-4 w-4" strokeWidth={2.5} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold leading-tight text-amber-900 dark:text-amber-100">
+            Comprobante en revisión ·{' '}
+            <span className="tabular-nums">{formatMonto(pagoVivo.monto, liq.moneda)}</span>
+          </p>
+          <p className="truncate text-xs text-amber-800/80 dark:text-amber-200/80">
+            {formatPeriodo(liq.periodo)} · la inmobiliaria valida tu pago en 24-48 hs
+          </p>
+        </div>
+        <ChevronRight className="h-4 w-4 shrink-0 text-amber-700 dark:text-amber-300" />
+      </Link>
+    );
+  }
+
   // `apiEnabled` es constante de módulo y la rama es consistente: HomeReal sólo
   // se monta con apiEnabled=true, HomeDemo con false. En prod total/punitorio
   // salen de la liq del API (server = verdad); en demo, recálculo local.

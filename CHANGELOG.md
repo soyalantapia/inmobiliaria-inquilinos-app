@@ -100,6 +100,102 @@ la PWA del inquilino lo seguía mostrando **ACTIVO, con el CBU para transferir**
 - **Incidental:** `prisma/seed.ts` upserteaba `Rendicion` por `propietarioId_periodo`, unique
   que el schema removió (rendición incremental) → `seedBase` estaba **roto** y toda la suite de
   tests fallaba. Corregido a upsert por `id` fijo.
+### Auditoría profunda del ciclo de plata + plan de 12 pasos (05/07)
+Segunda auditoría multi-agente (36 agentes) del ciclo COMPLETO "desde que hay contrato":
+alta → devengo → pago (parcial, y con DOS co-inquilinos) → validación → conciliación →
+rendición. 21 hallazgos confirmados (2 CRÍTICOS). Se implementó el plan completo de 12
+pasos sobre la rama `fix/pagos-visibilidad-inquilino`. Migración nueva
+`20260705120000_pago_autor_informe` (2 columnas nullable en `pagos`).
+- **CRÍTICO — validar ya no sobre-cobra.** `POST /pagos/:id/validar` era el único de los
+  tres caminos que crean cobros CONCILIADO SIN lock ni re-tope. Con el cobro mixto de dos
+  co-inquilinos (A informa + la inmo registra el efectivo de B + valida a A) la cuota
+  quedaba con más plata que su total, se sobre-rendía al dueño y se inflaba la comisión.
+  Ahora toma `SELECT … FOR UPDATE` + recomputa el saldo y rechaza el excedente (espejo de
+  `/pagos/manual`).
+- **CRÍTICO — rendición reversible.** Anular una rendición daba 500 SIEMPRE (FK RESTRICT
+  sobre `alquileres_rendidos` sin borrar los hijos) → la única corrección hacia el dueño
+  estaba rota. Se borran los `AlquilerRendido` antes; y `/pagos/:id/anular` bloquea con 409
+  un pago cuya liquidación ya fue rendida (anulá primero la rendición).
+- **Concurrencia de rendición:** todo el cálculo va dentro de un `pg_advisory_xact_lock`
+  por dueño+período (dos rendiciones simultáneas ya no doble-rinden), y el `updateMany` de
+  gastos ahora ABORTA de verdad si otra rendición tomó el gasto (el comentario lo prometía;
+  el código no lo hacía).
+- **Comisión solo sobre alquiler (LOCKED):** la porción de alquiler se capea a la base
+  (`min(cobrado, montoTotal)`) en la rendición y en el cierre de caja → la mora cobrada ya
+  no infla la comisión.
+- **Pago parcial:** tolerancia de centavos en `/pagos/informar` (pagar EXACTO el saldo ya
+  no da "supera el saldo" ni nace PARCIAL por milésimas); el checkout refresca el saldo al
+  entrar y usa el `tipo` real del POST (aviso "la mora subió mientras pagabas" en vez de un
+  "al día" falso).
+- **Fecha de transferencia acotada** (informar + manual): no futura, no anterior al inicio
+  del contrato (evita backdatear para esquivar la mora / falsear el certificado).
+- **Co-inquilinos:** el Pago guarda el autor del informe (`informadoPor*`); `/mis-liquidaciones`
+  expone `autor: 'vos'|'otro'|null` y las notificaciones pasan a copy neutral a nivel
+  contrato ("Se confirmó el pago de …") — a B ya no le llega "TU pago" por un pago de A.
+- **Devengo:** la primera liquidación ya no nace VENCIDA con mora pre-inicio cuando el
+  contrato arranca a mitad de mes; el comprobante huérfano se libera si el informe falla.
+- **Certificado:** un pago ANULADO por la inmo ya no penaliza el nivel de buen pagador.
+- **Ajuste por índice (feature nueva):** el alta setea `proximoAjuste`; nuevo
+  `PATCH /contratos/:id/monto` (permiso + PIN) sube el monto y RE-DEVENGA las liquidaciones
+  futuras sin pagos (registra `AJUSTE_APLICADO`); el panel muestra "Próximo ajuste" y un
+  botón "Ajustar monto". (El coeficiente ICL/IPC lo entra el operador: el sistema no tiene
+  la serie del índice.)
+- **Tests:** suite completa verde en schema fresco + tests nuevos (validar over-cobro,
+  anular rendición con AlquilerRendido, anular pago rendido, fechas, primer devengo,
+  `sumarMesesUTC`, `recomputarLiquidacionesFuturas`, PATCH de monto).
+
+### Flujo de pagos completo: visibilidad del inquilino + cobro manual + circuito directo (05/07)
+Auditoría multi-agente del flujo de pagos (23 hallazgos confirmados, 4 CRÍTICOS) a raíz
+del reclamo del owner "no veo que funcione al 100% el pago parcial". Causa raíz: el
+backend nunca exponía al inquilino sus propios pagos → en prod la PWA era CIEGA
+(informabas un pago y la app te seguía pidiendo pagar TODO, empujando a un 409 y a
+transferir dos veces; un rechazo con motivo jamás se mostraba; el comprobante enviado no
+se podía volver a ver). Rama `fix/pagos-visibilidad-inquilino`.
+- **API:** `/mis-liquidaciones` expone `pagos[]` por liq (estado + motivo de rechazo +
+  comprobante; los anulados llegan con `anulado:true` y observación neutra — el motivo
+  interno del admin no se filtra). `GET /pagos` decora la liq con saldo REAL
+  (base+mora−conciliados, mora congelada en `fechaPago` si PAGADO) + `modoCobranza` +
+  nombre del dueño directo. `GET /liquidaciones` idem con mora (el diálogo de cobro
+  manual prefillea el saldo exigible de verdad). **Nuevo `POST /pagos/manual`** (PIN):
+  efectivo en oficina / "el dueño confirmó que cobró" — antes una liq de contrato
+  directo sin informe del inquilino quedaba VENCIDA acumulando mora PARA SIEMPRE; con
+  lock `FOR UPDATE` + re-check en tx (sin eso, doble submit duplicaba el cobro).
+  `POST /pagos/:id/anular` recomputa con umbral base+MORA (espejo de validar; antes
+  anular el pago de la mora dejaba PAGADO con mora impaga) y libera el
+  `CreditoDetectado` del extracto (antes quedaba huérfano, irrecuperable). Conciliación
+  bancaria: esquema de mora EFECTIVO (no legacy), tope de saldo, rechaza liqs PAGADAS y
+  contratos directos, y lock de liq en tx. `/mi-contrato`: contrato directo SIN cuenta
+  del dueño ya NO cae en silencio a la cuenta de la inmobiliaria (devuelve null → la PWA
+  pide los datos); el alta de contrato directo exige la cuenta del dueño cargada.
+- **PWA inquilino:** las cards "Pendiente de validación" / "Tu pago fue rechazado (con
+  motivo) + Volver a subir" / "Pago confirmado" y la lista "Pagos informados (N)"
+  FUNCIONAN en prod (hidratan de `liq.pagos`; decisión más reciente por `decididoAt`;
+  el INFORMADO vivo tiene precedencia; gate anti-zombie si la liq ya está PAGADA).
+  "Ver comprobante enviado" abre el archivo real (`?token=`). Checkout: GUARD temprano
+  "Este pago ya fue informado" ANTES de mostrar el CBU (evita la doble transferencia
+  real); tras un parcial ya no ofrece "Pagar el saldo" (el backend admite un solo
+  INFORMADO): explica que va a poder informarlo al validarse. Banner del home: variante
+  ámbar "Comprobante en revisión" (sin CTA de pagar). Franja "Cuenta del propietario" en
+  cobranza directa. Recibos: badges de estado por pago.
+- **Panel:** bandeja con saldo REAL por fila ("si lo validás queda $X" — antes mocks:
+  deuda fantasma), badge "Cobranza directa al propietario · <dueño>" con datos reales,
+  estado de ERROR con Reintentar (antes un 500 se disfrazaba de "no hay comprobantes"),
+  KPI Cobrado incluye parciales conciliados (Cobrado+Pendiente cierran), "Cargar pago"
+  cableado a `POST /pagos/manual` (contratos directos incluidos, con leyenda), PDF
+  morosos usa `cobrables` (sin directos), PDF Cobranzas del mes desde pagos CONCILIADO
+  reales (método/fecha/monto reales, por FECHA DE COBRO con período como columna, excluye
+  directos, aborta con toast si la query falló).
+- **Tests:** suite verde en schema FRESCO (antes solo pasaba con estado residual de la
+  DB compartida): fix seed (`rendicion.upsert` por id — el unique compuesto ya no existe
+  y rompía TODA la suite), pagos CONCILIADO del seed para las liqs PAGADAS (la rendición
+  incremental rinde desde pagos), curas de estado (cnt_001/liq_003/pag_002), expectativas
+  de la rendición de Silvana alineadas a "comisión SOLO sobre alquiler" (LOCKED), test de
+  anuncios alineado al hardening `comunicaciones.enviar`, y suite nueva de
+  `POST /pagos/manual` (6 casos) + shape de `GET /pagos` y `pagos[]`.
+- **Pendientes anotados (decisiones de producto):** a quién pertenece la mora cobrada en
+  cierre/rendición (hoy se prorratea como alquiler+expensas — MEDIO), PATCH del modo de
+  cobranza post-alta (hoy el contrato queda atrapado en el modo con el que nació), y
+  permitir varios INFORMADOs por liq (la opción A del checkout).
 
 ### Prep del piloto Ramiro + fix de migración de cartera (04/07)
 - **`fix(importaciones)` (`89977a4`, en main `108065e`):** la migración masiva de cartera

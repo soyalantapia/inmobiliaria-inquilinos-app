@@ -7,19 +7,55 @@ import { seedBase } from '../prisma/seed.js';
 let app: FastifyInstance;
 let tokenAdmin: string;
 let tokenCarga: string;
+// Cliente para setup directo de escenarios (insertar un INFORMADO "colgado", etc.).
+const prismaTest = new PrismaClient();
 
 /** Devuelve el estado seed mutado por corridas anteriores a su origen. */
 async function resetPlata(prisma: PrismaClient) {
-  await prisma.pago.deleteMany({ where: { id: { notIn: ['pag_001', 'pag_002'] } } });
+  // P10 (al final de este archivo) FINALIZA cnt_001 y el seed upsertea con
+  // update:{} (no lo revierte): sin esta cura, la segunda corrida contra la
+  // misma DB encontraba a Mariela sin contrato activo y caía en cascada.
+  await prisma.contrato.update({ where: { id: 'cnt_001' }, data: { estado: 'ACTIVO' } });
+  await prisma.pago.deleteMany({
+    where: { id: { notIn: ['pag_001', 'pag_002', 'pag_liq002', 'pag_liq004', 'pag_liq007'] } },
+  });
   await prisma.pago.update({
     where: { id: 'pag_001' },
     data: { estado: 'INFORMADO', decididoPorId: null, decididoAt: null, observacion: null },
+  });
+  // pag_002 (liq_001 de Mariela) queda DECIDIDO: el test "Mariela informa"
+  // necesita que su liq VENCIDA no tenga un INFORMADO vivo (un solo INFORMADO
+  // por liquidación). En la DB compartida esto lo tapaba el estado residual.
+  await prisma.pago.update({
+    where: { id: 'pag_002' },
+    data: { estado: 'RECHAZADO', observacion: 'Rechazado por la suite para re-informar', decididoAt: new Date() },
+  });
+  // Los CONCILIADO del seed que alimentan la rendición: algún test los puede
+  // anular; volverlos a CONCILIADO + sus liqs a PAGADO para la re-corrida.
+  await prisma.pago.updateMany({
+    where: { id: { in: ['pag_liq002', 'pag_liq004', 'pag_liq007'] } },
+    data: { estado: 'CONCILIADO', observacion: null },
+  });
+  await prisma.liquidacion.updateMany({
+    where: { id: { in: ['liq_002', 'liq_004', 'liq_007'] } },
+    data: { estado: 'PAGADO' },
   });
   await prisma.liquidacion.update({
     where: { id: 'liq_005' },
     data: { estado: 'PENDIENTE', fechaPago: null, metodoPago: null },
   });
+  // liq_003 la muta la suite de /pagos/manual (cobro manual → PARCIAL/PAGADO).
+  await prisma.liquidacion.update({
+    where: { id: 'liq_003' },
+    data: { estado: 'VENCIDO', fechaPago: null, metodoPago: null },
+  });
   await prisma.gastoRendido.deleteMany({ where: { rendicion: { id: { not: 'ren_001' } } } });
+  // Los AlquilerRendido cuelgan de la Rendicion con FK RESTRICT: hay que
+  // borrarlos ANTES que la rendición. Antes esto no hacía falta porque "rendir
+  // Silvana" daba 409 (sin pagos CONCILIADO en el seed no había nada que rendir)
+  // y no se creaba ninguna rendición con hijos; ahora el seed trae los cobros
+  // conciliados → la rendición se crea de verdad y su borrado tropezaba con el FK.
+  await prisma.alquilerRendido.deleteMany({ where: { rendicion: { id: { not: 'ren_001' } } } });
   await prisma.movimientoCaja.updateMany({
     where: { id: { in: ['mov_002', 'mov_003'] } },
     data: { descontadoEnRendicion: false, rendicionId: null },
@@ -33,6 +69,11 @@ async function resetPlata(prisma: PrismaClient) {
     where: { id: 'cnt_006' },
     data: { estado: 'BORRADOR', pendienteAprobacion: true, aprobadoAt: null },
   });
+  // Aprobar cnt_006 ocupa su propiedad (prp_006.contratoActualId = cnt_006):
+  // sin revertirlo, la 2ª corrida contra la misma DB da 409 PROP_OCUPADA al
+  // re-aprobar. cnt_006 vuelve a BORRADOR arriba, así que liberar la propiedad
+  // deja el par consistente.
+  await prisma.propiedad.update({ where: { id: 'prp_006' }, data: { contratoActualId: null } });
 }
 
 beforeAll(async () => {
@@ -49,6 +90,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await app.close();
+  await prismaTest.$disconnect();
 });
 
 const auth = (t: string) => ({ authorization: `Bearer ${t}` });
@@ -91,6 +133,32 @@ describe('Validación de pagos (PIN + permisos)', () => {
     const res = await app.inject({ method: 'POST', url: '/pagos/pag_001/validar', headers: auth(tokenAdmin), payload: { pin: '1234' } });
     expect(res.statusCode).toBe(409);
   });
+
+  // El CRÍTICO del cobro mixto (dos co-inquilinos): validar NO debe sobre-cobrar
+  // una liquidación que otro cobro ya cubrió. liq_005 quedó PAGADA por pag_001
+  // arriba; inyectamos un INFORMADO "colgado" y validarlo debe dar 409.
+  it('validar un INFORMADO sobre una liq ya cubierta → 409 (no sobre-cobra)', async () => {
+    const colgado = await prismaTest.pago.create({
+      data: {
+        inmobiliariaId: (await prismaTest.liquidacion.findUniqueOrThrow({ where: { id: 'liq_005' }, select: { inmobiliariaId: true } })).inmobiliariaId,
+        contratoId: 'cnt_005',
+        liquidacionId: 'liq_005',
+        periodo: '2026-06',
+        monto: 850000,
+        montoLiqTotal: 850000,
+        metodo: 'TRANSFERENCIA',
+        fechaTransferencia: new Date('2026-06-10'),
+        estado: 'INFORMADO',
+      },
+    });
+    const res = await app.inject({ method: 'POST', url: `/pagos/${colgado.id}/validar`, headers: auth(tokenAdmin), payload: { pin: '1234' } });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().message).toMatch(/ya fue cubierta|supera el saldo/i);
+    // El INFORMADO NO se concilió (sigue INFORMADO): no hubo over-cobro.
+    const sigue = await prismaTest.pago.findUniqueOrThrow({ where: { id: colgado.id } });
+    expect(sigue.estado).toBe('INFORMADO');
+    await prismaTest.pago.delete({ where: { id: colgado.id } });
+  });
 });
 
 describe('Inquilino informa pago', () => {
@@ -101,15 +169,44 @@ describe('Inquilino informa pago', () => {
     const vencida = mias.json().find((l: { estado: string }) => l.estado === 'VENCIDO');
     expect(vencida.id).toBe('liq_001');
 
+    // Informa el SALDO EXIGIBLE completo (base + mora al día) que devuelve el API,
+    // no la base pelada: cnt_001 tiene tasa legacy 0.001%/día, así que a >0 días de
+    // atraso liq_001 exige base+mora y pagar solo la base sería PARCIAL. Tomar el
+    // monto del propio API hace el test independiente de la fecha en que corre.
     const res = await app.inject({
       method: 'POST',
       url: '/pagos/informar',
       headers: auth(tk),
-      payload: { liquidacionId: 'liq_001', monto: 572000, metodo: 'TRANSFERENCIA', nroOperacion: 'TRF-TEST-1', fechaTransferencia: '2026-06-12', nota: 'test' },
+      payload: { liquidacionId: 'liq_001', monto: Number(vencida.montoTotal), metodo: 'TRANSFERENCIA', nroOperacion: 'TRF-TEST-1', fechaTransferencia: '2026-06-12', nota: 'test' },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().estado).toBe('INFORMADO');
     expect(res.json().tipo).toBe('TOTAL');
+  });
+
+  // La fecha la elige el inquilino: sin cota, backdatearla esquiva la mora. Los
+  // dos guards (futura / anterior al inicio del contrato) corren ANTES del
+  // chequeo de "ya informaste", así que dan 400 aunque liq_001 ya tenga informe.
+  it('fecha de transferencia FUTURA → 400', async () => {
+    const demo = await app.inject({ method: 'POST', url: '/auth/demo' });
+    const tk = demo.json().token;
+    const res = await app.inject({
+      method: 'POST', url: '/pagos/informar', headers: auth(tk),
+      payload: { liquidacionId: 'liq_001', monto: 1000, metodo: 'TRANSFERENCIA', fechaTransferencia: '2031-01-01' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().message).toMatch(/futura/i);
+  });
+
+  it('fecha de transferencia ANTERIOR al inicio del contrato → 400', async () => {
+    const demo = await app.inject({ method: 'POST', url: '/auth/demo' });
+    const tk = demo.json().token;
+    const res = await app.inject({
+      method: 'POST', url: '/pagos/informar', headers: auth(tk),
+      payload: { liquidacionId: 'liq_001', monto: 1000, metodo: 'TRANSFERENCIA', fechaTransferencia: '2019-01-01' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().message).toMatch(/anterior al inicio/i);
   });
 });
 
@@ -123,11 +220,14 @@ describe('Rendición — el loop caja→rendición', () => {
     });
     expect(res.statusCode).toBe(201);
     const r = res.json();
-    // Bruto: liq_002 (620k, prp_002 100%) + liq_004 (720k, prp_004 100%) + liq_007 (285k, prp_002 100%) + liq_005 (850k, prp_005)? No: prp_005 es de own_004.
-    expect(Number(r.montoBruto)).toBe(1_625_000);
-    expect(Number(r.comisionMonto)).toBeCloseTo(113_750, 0); // 7%
+    // Bruto = porción de ALQUILER de los pagos CONCILIADO (rendición incremental):
+    // liq_002 620k (prp_002 100%) + liq_004 720k (prp_004 100%). liq_007 es
+    // SOLO_EXPENSAS (montoAlquiler 0) → su cobro NO entra al bruto ni comisiona
+    // (regla del dueño: comisión SOLO sobre el alquiler).
+    expect(Number(r.montoBruto)).toBe(1_340_000);
+    expect(Number(r.comisionMonto)).toBeCloseTo(93_800, 0); // 7% del alquiler cobrado
     expect(Number(r.totalGastos)).toBe(90_500); // mov_002 62k + mov_003 28.5k
-    expect(Number(r.montoNeto)).toBeCloseTo(1_420_750, 0);
+    expect(Number(r.montoNeto)).toBeCloseTo(1_155_700, 0);
 
     // Los gastos quedaron DESCONTADOS y linkeados (lo que el mock nunca cerraba)
     const caja = await app.inject({ method: 'GET', url: '/caja/movimientos', headers: auth(tokenAdmin) });
@@ -155,6 +255,43 @@ describe('Rendición — el loop caja→rendición', () => {
     });
     expect(res.statusCode).toBe(409);
     expect(res.json().message).toContain('CBU');
+  });
+});
+
+// Corre DESPUÉS de la rendición de Silvana (own_002, 2026-06 ya rendido, con
+// AlquilerRendido real). Cubre: no anular un pago rendido, anular la rendición
+// (el fix del FK RESTRICT), y que tras anular la rendición el pago sí se anula.
+describe('Anular rendición y pago rendido', () => {
+  it('anular un pago cuya liquidación YA fue rendida → 409', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/pagos/pag_liq002/anular', headers: auth(tokenAdmin),
+      payload: { pin: '1234', observacion: 'intento anular un pago ya rendido' },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().message).toMatch(/ya fue rendido/i);
+  });
+
+  it('anular la rendición (con AlquilerRendido) → 200 y libera los gastos', async () => {
+    const rend = await prismaTest.rendicion.findFirstOrThrow({
+      where: { propietarioId: 'own_002', periodo: '2026-06' },
+    });
+    const res = await app.inject({
+      method: 'POST', url: `/rendiciones/${rend.id}/anular`, headers: auth(tokenAdmin),
+      payload: { pin: '1234' },
+    });
+    expect(res.statusCode).toBe(200); // antes 500 (FK RESTRICT sobre alquileres_rendidos)
+    const caja = await app.inject({ method: 'GET', url: '/caja/movimientos', headers: auth(tokenAdmin) });
+    expect(caja.json().find((m: { id: string }) => m.id === 'mov_002').descontadoEnRendicion).toBe(false);
+    // No quedaron AlquilerRendido huérfanos de esa rendición.
+    expect(await prismaTest.alquilerRendido.count({ where: { rendicionId: rend.id } })).toBe(0);
+  });
+
+  it('tras anular la rendición, el pago SÍ se puede anular → 200', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/pagos/pag_liq002/anular', headers: auth(tokenAdmin),
+      payload: { pin: '1234', observacion: 'ahora sí, la rendición fue anulada' },
+    });
+    expect(res.statusCode).toBe(200);
   });
 });
 
@@ -213,6 +350,126 @@ describe('Aprobaciones con PIN', () => {
       payload: { pin: '1234' },
     });
     expect(res.statusCode).toBe(400);
+  });
+});
+
+// Cobro MANUAL (efectivo en oficina / "el dueño confirmó que cobró" en cobranza
+// directa): el único camino en prod para marcar cobrada una liquidación cuando el
+// inquilino no informa por la app. Usa liq_003 (cnt_003, VENCIDO, $510.000) que
+// ningún otro test toca; fecha = fechaVencimiento → 0 días de atraso → mora 0
+// (determinístico, no depende del día en que corra la suite).
+describe('POST /pagos/manual — cobro registrado por la inmobiliaria', () => {
+  const FECHA = '2026-06-02'; // = fechaVencimiento de liq_003
+
+  it('rol CARGA no puede → 403', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/pagos/manual',
+      headers: auth(tokenCarga),
+      payload: { liquidacionId: 'liq_003', monto: 1000, fecha: FECHA, pin: '1234' },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('PIN incorrecto → 403 y no se crea el pago', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/pagos/manual',
+      headers: auth(tokenAdmin),
+      payload: { liquidacionId: 'liq_003', monto: 1000, fecha: FECHA, pin: '9999' },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('monto que supera el saldo → 400', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/pagos/manual',
+      headers: auth(tokenAdmin),
+      payload: { liquidacionId: 'liq_003', monto: 999999999, fecha: FECHA, pin: '1234' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().message).toMatch(/supera el saldo/i);
+  });
+
+  it('cobro parcial en efectivo → 201, nace CONCILIADO y la liq queda PARCIAL', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/pagos/manual',
+      headers: auth(tokenAdmin),
+      payload: { liquidacionId: 'liq_003', monto: 200000, metodo: 'EFECTIVO', fecha: FECHA, nota: 'pagó en la oficina', pin: '1234' },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().estado).toBe('CONCILIADO');
+    expect(res.json().tipo).toBe('PARCIAL');
+    const liqs = await app.inject({ method: 'GET', url: '/liquidaciones?periodo=2026-06', headers: auth(tokenAdmin) });
+    const liq3 = liqs.json().find((l: { id: string }) => l.id === 'liq_003');
+    expect(liq3.estado).toBe('PARCIAL');
+    expect(Number(liq3.montoPagado)).toBe(200000);
+  });
+
+  it('cobro del resto → cierra el ciclo: liq PAGADO con metodoPago EFECTIVO', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/pagos/manual',
+      headers: auth(tokenAdmin),
+      payload: { liquidacionId: 'liq_003', monto: 310000, metodo: 'EFECTIVO', fecha: FECHA, pin: '1234' },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().tipo).toBe('TOTAL'); // el pago que CIERRA nace TOTAL
+    const liqs = await app.inject({ method: 'GET', url: '/liquidaciones?periodo=2026-06', headers: auth(tokenAdmin) });
+    const liq3 = liqs.json().find((l: { id: string }) => l.id === 'liq_003');
+    expect(liq3.estado).toBe('PAGADO');
+  });
+
+  it('sobre una liq ya paga → 409', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/pagos/manual',
+      headers: auth(tokenAdmin),
+      payload: { liquidacionId: 'liq_003', monto: 1000, fecha: FECHA, pin: '1234' },
+    });
+    expect(res.statusCode).toBe(409);
+  });
+});
+
+// La bandeja GET /pagos ahora decora cada fila con el saldo REAL de la liquidación
+// y el modo de cobranza del contrato (antes el panel calculaba el saldo contra
+// mocks y no distinguía contratos PROPIETARIO_DIRECTO).
+describe('GET /pagos — decoración de liquidación y modo de cobranza', () => {
+  it('cada pago trae liquidacion.{montoPagado,saldo} y contrato.modoCobranza', async () => {
+    const res = await app.inject({ method: 'GET', url: '/pagos', headers: auth(tokenAdmin) });
+    expect(res.statusCode).toBe(200);
+    const pagos = res.json();
+    expect(pagos.length).toBeGreaterThan(0);
+    for (const p of pagos) {
+      expect(p.contrato.modoCobranza).toBeDefined();
+      expect(p.liquidacion.montoPagado).toBeDefined();
+      expect(p.liquidacion.saldo).toBeDefined();
+      expect(p.liquidacion.montoPunitorio).toBeDefined();
+    }
+  });
+});
+
+// /mis-liquidaciones ahora expone los pagos del inquilino (estado + motivo de
+// rechazo + comprobante): la fuente que la PWA necesitaba para mostrar
+// "pendiente de validación" / "rechazado" / "confirmado" en prod.
+describe('GET /mis-liquidaciones — pagos[] del inquilino', () => {
+  it('cada liquidación trae su lista de pagos con estado y monto numérico', async () => {
+    const demo = await app.inject({ method: 'POST', url: '/auth/demo' });
+    const tk = demo.json().token;
+    const res = await app.inject({ method: 'GET', url: '/mis-liquidaciones', headers: auth(tk) });
+    expect(res.statusCode).toBe(200);
+    const liqs = res.json();
+    expect(liqs.length).toBeGreaterThan(0);
+    for (const l of liqs) expect(Array.isArray(l.pagos)).toBe(true);
+    // liq_001 tiene pag_002 (INFORMADO del seed, o el estado en que lo dejó la suite)
+    const liq1 = liqs.find((l: { id: string }) => l.id === 'liq_001');
+    expect(liq1.pagos.length).toBeGreaterThan(0);
+    const pago = liq1.pagos.find((p: { id: string }) => p.id === 'pag_002');
+    expect(pago).toBeDefined();
+    expect(typeof pago.monto).toBe('number');
+    expect(['INFORMADO', 'CONCILIADO', 'RECHAZADO']).toContain(pago.estado);
   });
 });
 
