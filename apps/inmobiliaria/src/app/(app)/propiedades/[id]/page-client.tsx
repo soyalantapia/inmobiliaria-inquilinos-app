@@ -119,7 +119,7 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
     );
   }
 
-  const { propiedad, contrato, propietarios, reclamos, reclamosAbiertos, sociedad, inquilinoEmail } = detalle;
+  const { propiedad, contrato, contratosPasados, propietarios, reclamos, reclamosAbiertos, sociedad, inquilinoEmail } = detalle;
 
   const Icon = tipoIcono[propiedad.tipo];
   const estadoCfg = estadoPropiedadConfig[propiedad.estado];
@@ -710,6 +710,44 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                   </Button>
                 </CardContent>
               </Card>
+            )}
+
+            {/* Contratos ANTERIORES: el historial de inquilinos que pasaron por esta
+                propiedad. La "línea de corte" (separador + badge FINALIZADO/RESCINDIDO)
+                marca que son de un inquilino pasado. El dato persiste entero en la DB. */}
+            {contratosPasados.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-3 pt-2">
+                  <Separator className="flex-1" />
+                  <span className="shrink-0 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Contratos anteriores · {contratosPasados.length}
+                  </span>
+                  <Separator className="flex-1" />
+                </div>
+                {contratosPasados.map((c) => (
+                  <Card key={c.id} className="border-dashed">
+                    <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
+                      <div className="min-w-0">
+                        <p className="truncate font-medium">{c.inquilino}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {formatRangoVigencia(c.fechaInicio, c.fechaFin)} · {formatMonto(c.monto, c.moneda)}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <Badge variant="secondary">
+                          {c.estado.charAt(0) + c.estado.slice(1).toLowerCase()}
+                        </Badge>
+                        <Button variant="ghost" size="sm" asChild>
+                          <Link href={`/contratos/${c.id}`}>
+                            <FileText className="h-4 w-4" />
+                            Ver
+                          </Link>
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
             )}
           </TabsContent>
 

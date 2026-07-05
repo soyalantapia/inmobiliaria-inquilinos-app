@@ -331,7 +331,17 @@ export async function coreRoutes(app: FastifyInstance) {
             liquidaciones: { orderBy: { periodo: 'desc' }, take: 6 },
           },
         },
-        contratos: { orderBy: { fechaInicio: 'desc' } },
+        // Historial completo de la propiedad: TODOS los contratos (pasados + actual)
+        // con su inquilino titular, para la sección "Contratos anteriores" del detalle.
+        // Nada se borra al finalizar (0 onDelete en el schema) → el histórico persiste
+        // entero; acá solo lo exponemos. El front descarta el contrato vigente de esta
+        // lista (ya lo muestra como contratoActual) y renderiza el resto como pasados.
+        contratos: {
+          orderBy: { fechaInicio: 'desc' },
+          include: {
+            inquilinoTitular: { select: { nombre: true, apellido: true, email: true, dni: true } },
+          },
+        },
         sociedad: { select: { id: true, nombreComercial: true } },
       },
     });

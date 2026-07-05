@@ -45,6 +45,12 @@ export interface SociedadGestora {
 export interface PropiedadDetalle {
   propiedad: Propiedad;
   contrato: ContratoListado | null;
+  /**
+   * Contratos ANTERIORES de la propiedad (finalizados/rescindidos), ordenados del
+   * más reciente al más viejo. El historial persiste en la DB (nada se borra al
+   * finalizar) → acá se muestra quién fue el inquilino pasado y desde/hasta cuándo.
+   */
+  contratosPasados: ContratoListado[];
   propietarios: Propietario[];
   reclamos: Reclamo[];
   reclamosAbiertos: number;
@@ -206,6 +212,14 @@ function mapPropiedad(p: PropiedadApi): PropiedadDetalle {
 
   const contrato = p.contratoActual ? mapContrato(p.contratoActual) : null;
 
+  // Contratos anteriores: todos los de la propiedad EXCEPTO el vigente (que ya se
+  // muestra como `contrato`). El backend los devuelve ordenados desc con su
+  // inquilinoTitular. Un contrato FINALIZADO/RESCINDIDO acá es la "línea de corte":
+  // el inquilino pasado + su período, sin perder nada del historial.
+  const contratosPasados: ContratoListado[] = (p.contratos ?? [])
+    .filter((c) => c.id !== p.contratoActualId)
+    .map(mapContrato);
+
   const sociedad: SociedadGestora = {
     id: p.sociedad?.id ?? p.sociedadId ?? '',
     nombreComercial: p.sociedad?.nombreComercial ?? '—',
@@ -219,6 +233,7 @@ function mapPropiedad(p: PropiedadApi): PropiedadDetalle {
   return {
     propiedad,
     contrato,
+    contratosPasados,
     propietarios,
     // El detalle no expone reclamos: lista vacía en API (sin mock en prod).
     reclamos: [],
@@ -238,6 +253,9 @@ function detalleMock(id: string): PropiedadDetalle | null {
   const soc = sociedadById(propiedadActiva.sociedadId) ?? sociedadPrincipal();
   return {
     ...enriquecida,
+    // En demo no simulamos historial de contratos anteriores (la demo es de una
+    // sola foto); en prod sale del backend. Lista vacía para no fabricar datos.
+    contratosPasados: [],
     sociedad: { id: soc.id, nombreComercial: soc.nombreComercial, cuit: soc.cuit },
     // En demo la pantalla resuelve el email por contactosCobranzaMock/emailDeNombre
     // (rama !apiEnabled), así que este campo queda neutro acá.
