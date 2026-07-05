@@ -120,11 +120,11 @@ beforeAll(async () => {
   });
   consorcioB = cB.id;
   const uB = await prisma.unidadFuncional.create({
-    data: { inmobiliariaId: tidB, consorcioId: consorcioB, identificacion: '1A', titular: 'B', coeficiente: 50, telefono: '' },
+    data: { inmobiliariaId: tidB, consorcioId: consorcioB, identificacion: '1A', titular: 'Beto', coeficiente: 50, telefono: '' },
   });
   ufB = uB.id;
   const mB = await prisma.movimientoConsorcio.create({
-    data: { inmobiliariaId: tidB, consorcioId: consorcioB, fecha: new Date(), concepto: 'x', monto: 100, categoria: 'COBRANZA' },
+    data: { inmobiliariaId: tidB, consorcioId: consorcioB, fecha: new Date(), concepto: 'Movimiento test', monto: 100, categoria: 'COBRANZA' },
   });
   movB = mB.id;
 
@@ -212,8 +212,8 @@ describe('Consorcios — unidades funcionales (coeficientes)', () => {
   });
   it('Σ coeficientes > 100 → 400 con disponible', async () => {
     const id = await nuevoConsorcio();
-    expect((await post(`/consorcios/${id}/unidades`, tADMIN, { identificacion: 'A', titular: 'A', coeficiente: 70 })).statusCode).toBe(201);
-    const r = await post(`/consorcios/${id}/unidades`, tADMIN, { identificacion: 'B', titular: 'B', coeficiente: 40 });
+    expect((await post(`/consorcios/${id}/unidades`, tADMIN, { identificacion: 'A', titular: 'Ana', coeficiente: 70 })).statusCode).toBe(201);
+    const r = await post(`/consorcios/${id}/unidades`, tADMIN, { identificacion: 'B', titular: 'Beto', coeficiente: 40 });
     expect(r.statusCode).toBe(400);
     expect(r.json().message).toMatch(/100%|disponible/i);
     // La segunda NO se creó → cantUf sigue en 1.
@@ -222,28 +222,28 @@ describe('Consorcios — unidades funcionales (coeficientes)', () => {
   it('tolerancia: 33.33 * 3 = 99.99 cierra sin error', async () => {
     const id = await nuevoConsorcio();
     for (const ident of ['A', 'B', 'C']) {
-      expect((await post(`/consorcios/${id}/unidades`, tADMIN, { identificacion: ident, titular: ident, coeficiente: 33.33 })).statusCode).toBe(201);
+      expect((await post(`/consorcios/${id}/unidades`, tADMIN, { identificacion: ident, titular: `Titular ${ident}`, coeficiente: 33.33 })).statusCode).toBe(201);
     }
   });
   it('identificación duplicada (case-insensitive) → 409', async () => {
     const id = await nuevoConsorcio();
-    expect((await post(`/consorcios/${id}/unidades`, tADMIN, { identificacion: 'PB', titular: 'A', coeficiente: 10 })).statusCode).toBe(201);
-    const r = await post(`/consorcios/${id}/unidades`, tADMIN, { identificacion: 'pb', titular: 'B', coeficiente: 10 });
+    expect((await post(`/consorcios/${id}/unidades`, tADMIN, { identificacion: 'PB', titular: 'Ana', coeficiente: 10 })).statusCode).toBe(201);
+    const r = await post(`/consorcios/${id}/unidades`, tADMIN, { identificacion: 'pb', titular: 'Beto', coeficiente: 10 });
     expect(r.statusCode).toBe(409);
   });
   it('CARGA no puede setear saldoDeudor → 403', async () => {
     const id = await nuevoConsorcio();
-    const r = await post(`/consorcios/${id}/unidades`, tCARGA, { identificacion: 'X', titular: 'X', coeficiente: 10, saldoDeudor: 5000 });
+    const r = await post(`/consorcios/${id}/unidades`, tCARGA, { identificacion: 'X', titular: 'Xenia', coeficiente: 10, saldoDeudor: 5000 });
     expect(r.statusCode).toBe(403);
   });
   it('CARGA sí puede crear UF estructural (sin saldoDeudor) → 201', async () => {
     const id = await nuevoConsorcio();
-    expect((await post(`/consorcios/${id}/unidades`, tCARGA, { identificacion: 'Y', titular: 'Y', coeficiente: 10 })).statusCode).toBe(201);
+    expect((await post(`/consorcios/${id}/unidades`, tCARGA, { identificacion: 'Y', titular: 'Yago', coeficiente: 10 })).statusCode).toBe(201);
   });
   it('PUT UF recalcula Σ excluyendo la propia', async () => {
     const id = await nuevoConsorcio();
-    const a = (await post(`/consorcios/${id}/unidades`, tADMIN, { identificacion: 'A', titular: 'A', coeficiente: 60 })).json();
-    await post(`/consorcios/${id}/unidades`, tADMIN, { identificacion: 'B', titular: 'B', coeficiente: 30 });
+    const a = (await post(`/consorcios/${id}/unidades`, tADMIN, { identificacion: 'A', titular: 'Ana', coeficiente: 60 })).json();
+    await post(`/consorcios/${id}/unidades`, tADMIN, { identificacion: 'B', titular: 'Beto', coeficiente: 30 });
     // Subir A a 70 → 70+30=100 OK
     expect((await put(`/consorcios/${id}/unidades/${a.id}`, tADMIN, { coeficiente: 70 })).statusCode).toBe(200);
     // Subir A a 80 → 80+30=110 > 100 → 400
@@ -251,14 +251,14 @@ describe('Consorcios — unidades funcionales (coeficientes)', () => {
   });
   it('DELETE UF decrementa cantUf; CARGA no puede borrar (403)', async () => {
     const id = await nuevoConsorcio();
-    const uf = (await post(`/consorcios/${id}/unidades`, tADMIN, { identificacion: 'A', titular: 'A', coeficiente: 10 })).json();
+    const uf = (await post(`/consorcios/${id}/unidades`, tADMIN, { identificacion: 'A', titular: 'Ana', coeficiente: 10 })).json();
     expect((await del(`/consorcios/${id}/unidades/${uf.id}`, tCARGA)).statusCode).toBe(403);
     expect((await del(`/consorcios/${id}/unidades/${uf.id}`, tADMIN)).statusCode).toBe(200);
     expect((await get(`/consorcios/${id}`, tADMIN)).json().cantUf).toBe(0);
   });
   it('DELETE UF con saldoDeudor > 0 → 409', async () => {
     const id = await nuevoConsorcio();
-    const uf = (await post(`/consorcios/${id}/unidades`, tADMIN, { identificacion: 'A', titular: 'A', coeficiente: 10, saldoDeudor: 15000 })).json();
+    const uf = (await post(`/consorcios/${id}/unidades`, tADMIN, { identificacion: 'A', titular: 'Ana', coeficiente: 10, saldoDeudor: 15000 })).json();
     expect((await del(`/consorcios/${id}/unidades/${uf.id}`, tADMIN)).statusCode).toBe(409);
   });
 });
@@ -272,21 +272,21 @@ describe('Consorcios — movimientos financieros (signo↔categoría, RBAC)', ()
   it('signo que no coincide con categoría → 400', async () => {
     const id = await nuevoConsorcio();
     // COBRANZA negativa
-    expect((await post(`/consorcios/${id}/movimientos`, tADMIN, { fecha: '2026-07-01', concepto: 'x', monto: -100, categoria: 'COBRANZA' })).statusCode).toBe(400);
+    expect((await post(`/consorcios/${id}/movimientos`, tADMIN, { fecha: '2026-07-01', concepto: 'Movimiento test', monto: -100, categoria: 'COBRANZA' })).statusCode).toBe(400);
     // SUELDO positivo (inflar ingresos)
-    expect((await post(`/consorcios/${id}/movimientos`, tADMIN, { fecha: '2026-07-01', concepto: 'x', monto: 100, categoria: 'SUELDO' })).statusCode).toBe(400);
+    expect((await post(`/consorcios/${id}/movimientos`, tADMIN, { fecha: '2026-07-01', concepto: 'Movimiento test', monto: 100, categoria: 'SUELDO' })).statusCode).toBe(400);
   });
   it('monto 0 → 400', async () => {
     const id = await nuevoConsorcio();
-    expect((await post(`/consorcios/${id}/movimientos`, tADMIN, { fecha: '2026-07-01', concepto: 'x', monto: 0, categoria: 'OTRO' })).statusCode).toBe(400);
+    expect((await post(`/consorcios/${id}/movimientos`, tADMIN, { fecha: '2026-07-01', concepto: 'Movimiento test', monto: 0, categoria: 'OTRO' })).statusCode).toBe(400);
   });
   it('CARGA no tiene gasto.caja.cargar → 403', async () => {
     const id = await nuevoConsorcio();
-    expect((await post(`/consorcios/${id}/movimientos`, tCARGA, { fecha: '2026-07-01', concepto: 'x', monto: -100, categoria: 'SERVICIO' })).statusCode).toBe(403);
+    expect((await post(`/consorcios/${id}/movimientos`, tCARGA, { fecha: '2026-07-01', concepto: 'Movimiento test', monto: -100, categoria: 'SERVICIO' })).statusCode).toBe(403);
   });
   it('borrar movimiento: OPERADOR 403, ADMIN 200', async () => {
     const id = await nuevoConsorcio();
-    const mov = (await post(`/consorcios/${id}/movimientos`, tOPERADOR, { fecha: '2026-07-01', concepto: 'x', monto: 100, categoria: 'COBRANZA' })).json();
+    const mov = (await post(`/consorcios/${id}/movimientos`, tOPERADOR, { fecha: '2026-07-01', concepto: 'Movimiento test', monto: 100, categoria: 'COBRANZA' })).json();
     expect((await del(`/consorcios/${id}/movimientos/${mov.id}`, tOPERADOR)).statusCode).toBe(403);
     expect((await del(`/consorcios/${id}/movimientos/${mov.id}`, tADMIN)).statusCode).toBe(200);
   });
