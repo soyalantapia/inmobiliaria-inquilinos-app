@@ -10,6 +10,21 @@
 
 Plataforma SaaS multi-tenant para inmobiliarias (panel) e inquilinos (PWA). Estado de cambios desde el handoff inicial hasta hoy.
 
+### Ciclo de vida del contrato: depósitos, rescisión y ajuste de alquiler (05/07)
+Tras un gap-analysis de la plataforma, se atacaron los 3 gaps de mayor valor (todos deployados
+back+front, E2E prod OK):
+- **Depósitos en custodia**: enum `EstadoDeposito` (RETENIDO/DEVUELTO/NETEADO/EJECUTADO) en el
+  contrato + `GET /depositos/en-custodia` (total por moneda + listado). Página `/depositos` y card
+  en el detalle del contrato. Es la plata de terceros que la inmo debe cuidar, antes invisible.
+- **Rescisión con penalidad + neteo**: al rescindir se emite un cargo one-off de penalidad
+  (modelo `CargoContrato`, cánones × alquiler configurable por inmo/contrato) y se decide el
+  depósito (netear/devolver/retener). `finalizar-preview` calcula depósito, penalidad sugerida y
+  saldo neto; el diálogo de baja muestra la liquidación de la rescisión en vivo.
+- **Ajuste de alquiler (manual-asistido)**: cerró el gap #1 de plata — antes el alquiler NUNCA
+  subía (el devengo usaba el monto fijo). `POST /contratos/:id/ajustar` actualiza el canon y las
+  cuotas futuras impagas (no las ya devengadas), con historial (`AjusteAlquiler`). Botón en el detalle.
+Migraciones `estado_deposito`, `cargo_rescision`, `ajuste_alquiler`.
+
 ### Historial de inquilinos: entidad Persona + ficha + reuso + expediente (05/07)
 Feature completa (deployada back+front, E2E prod OK). Cubre 5 pedidos del owner:
 - **Entidad `Persona`** por tenant (identidad reutilizable del inquilino): agrupa las N filas
