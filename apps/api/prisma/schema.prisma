@@ -637,6 +637,7 @@ model Inmobiliaria {
   garantes                   Garante[]
   cargosContrato             CargoContrato[]
   ajustesAlquiler            AjusteAlquiler[]
+  renovacionesContrato       RenovacionContrato[]
   coInquilinos               CoInquilino[]
   liquidaciones              Liquidacion[]
   pagos                      Pago[]
@@ -1240,6 +1241,7 @@ model Contrato {
   garantes            Garante[]
   cargos              CargoContrato[]
   ajustes             AjusteAlquiler[]
+  renovaciones        RenovacionContrato[]
   coInquilinos        CoInquilino[]
   liquidaciones       Liquidacion[]
   pagos               Pago[]
@@ -1411,6 +1413,29 @@ model AjusteAlquiler {
   @@index([inmobiliariaId])
   @@index([contratoId])
   @@map("ajustes_alquiler")
+}
+
+// Renovación del contrato: extiende el plazo y (opcional) fija un nuevo canon desde un
+// período. Registra el historial (fechaFin y monto anterior/nuevo). El contrato es el mismo
+// (continuidad del inquilino/depósito/historial); no se crea uno nuevo.
+model RenovacionContrato {
+  id               String       @id @default(cuid())
+  inmobiliariaId   String
+  inmobiliaria     Inmobiliaria @relation(fields: [inmobiliariaId], references: [id])
+  contratoId       String
+  contrato         Contrato     @relation(fields: [contratoId], references: [id])
+  fechaFinAnterior DateTime
+  fechaFinNueva    DateTime
+  montoAnterior    Decimal      @db.Decimal(14, 2)
+  montoNuevo       Decimal      @db.Decimal(14, 2)
+  montoDesde       String // 'YYYY-MM' desde el que aplica el nuevo canon
+  motivo           String?
+  creadoPorId      String?
+  createdAt        DateTime     @default(now())
+
+  @@index([inmobiliariaId])
+  @@index([contratoId])
+  @@map("renovaciones_contrato")
 }
 
 model CoInquilino {
