@@ -2000,6 +2000,12 @@ model Profesional {
   verificado     Boolean              @default(false)
   notas          String?
   activo         Boolean              @default(true)
+  // Ecosistema: `publico` = esta inmo comparte este profesional con la red.
+  // `profesionalRedId` linkea esta ficha privada a la identidad global (por teléfono)
+  // sobre la que se agrega la reputación cross-tenant.
+  publico          Boolean         @default(false)
+  profesionalRedId String?
+  profesionalRed   ProfesionalRed? @relation(fields: [profesionalRedId], references: [id])
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
 
@@ -2007,7 +2013,33 @@ model Profesional {
   visitas  VisitaProfesional[]
 
   @@index([inmobiliariaId])
+  @@index([profesionalRedId])
   @@map("profesionales")
+}
+
+// Identidad GLOBAL del profesional en el ecosistema (sin inmobiliariaId): la misma
+// persona que trabaja para varias inmobiliarias es UN solo ProfesionalRed. Clave
+// natural = teléfono normalizado (solo dígitos). La reputación NO se guarda acá: se
+// DERIVA on-read cruzando todos los reclamos/visitas/ratings de los Profesional
+// (privados por tenant) que linkean a este id, y se expone SANITIZADA (sin PII).
+model ProfesionalRed {
+  id             String               @id @default(cuid())
+  telefono       String               @unique // normalizado (solo dígitos) = clave de dedup
+  nombre         String
+  categoria      CategoriaProfesional
+  zona           String               @default("")
+  email          String?
+  // Fase 2: sello "Garantizado/Asegurado por My Alquiler" (verificación a nivel
+  // plataforma, distinto del `verificado` per-tenant). Arranca en false.
+  garantizado    Boolean              @default(false)
+  publicadoPorId String? // inmobiliaria que lo publicó primero (provenance, no PII pública)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  profesionales Profesional[]
+
+  @@index([categoria])
+  @@map("profesionales_red")
 }
 
 // Flujo del profesional vía link mágico /p/[token] (sin login).

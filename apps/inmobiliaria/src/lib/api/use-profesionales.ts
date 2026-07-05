@@ -24,6 +24,10 @@ interface ProfesionalApi {
   zona: string | null;
   notas: string | null;
   createdAt: string;
+  cantTrabajos?: number;
+  ultimoTrabajo?: string | null;
+  publico?: boolean;
+  profesionalRedId?: string | null;
 }
 
 function mapProfesional(p: ProfesionalApi): ProfesionalAdmin {
@@ -35,13 +39,16 @@ function mapProfesional(p: ProfesionalApi): ProfesionalAdmin {
     telefono: p.telefono,
     email: p.email ?? null,
     rating: p.rating != null ? Number(p.rating) : 0,
-    // El API aún no expone estos derivados de la operación.
-    cantTrabajos: 0,
-    ultimoTrabajo: null,
+    // Derivados REALES de la operación (Fase 0 los computa al marcar LISTO).
+    cantTrabajos: p.cantTrabajos ?? 0,
+    ultimoTrabajo: p.ultimoTrabajo ?? null,
     // El API no marca verificación; en prod no asumimos verificado.
     verificado: false,
     notas: p.notas ?? null,
     activo: p.activo,
+    // Ecosistema: si esta ficha está compartida con la red compartida.
+    publico: p.publico ?? false,
+    profesionalRedId: p.profesionalRedId ?? null,
   };
 }
 

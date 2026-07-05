@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Droplets,
@@ -63,6 +64,7 @@ import {
   toggleActivo,
 } from '@/lib/profesionales-storage';
 import { crearProfesionalApi, useProfesionales } from '@/lib/api/use-profesionales';
+import { publicarProfesionalApi, despublicarProfesionalApi } from '@/lib/api/use-red-profesionales';
 import { apiEnabled } from '@/lib/api/client';
 import { listarReclamos } from '@/lib/reclamos-store';
 import { useReclamos } from '@/lib/api/use-reclamos';
@@ -99,6 +101,30 @@ export default function ProfesionalesAdminPage() {
   const [soloActivos, setSoloActivos] = useState(true);
   const [abrirForm, setAbrirForm] = useState(false);
   const [editando, setEditando] = useState<ProfesionalAdmin | null>(null);
+  const [compartiendo, setCompartiendo] = useState<string | null>(null);
+
+  // Compartir / dejar de compartir un profesional con la red del ecosistema (opt-in).
+  const toggleCompartir = async (p: ProfesionalAdmin) => {
+    if (!deApi) return; // solo prod
+    setCompartiendo(p.id);
+    try {
+      if (p.publico) await despublicarProfesionalApi(p.id);
+      else await publicarProfesionalApi(p.id);
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['profesionales'] }),
+        qc.invalidateQueries({ queryKey: ['red-profesionales'] }),
+      ]);
+      toast({
+        variant: 'success',
+        title: p.publico ? 'Dejaste de compartirlo' : 'Compartido con la red',
+        description: p.publico ? 'Ya no aparece en la red compartida.' : 'Otras inmobiliarias ya pueden verlo con su ficha técnica.',
+      });
+    } catch (e) {
+      toast({ variant: 'destructive', title: 'No se pudo actualizar', description: e instanceof Error ? e.message : 'Probá de nuevo.' });
+    } finally {
+      setCompartiendo(null);
+    }
+  };
   const [eliminando, setEliminando] = useState<ProfesionalAdmin | null>(null);
   const [asignando, setAsignando] = useState<ProfesionalAdmin | null>(null);
   const [verHistorial, setVerHistorial] = useState<ProfesionalAdmin | null>(null);
@@ -237,13 +263,21 @@ export default function ProfesionalesAdminPage() {
             Plomeros, electricistas y técnicos que recomendás a tus inquilinos.
           </p>
         </div>
-        <Button
-          onClick={() => { setEditando(null); setAbrirForm(true); }}
-          disabled={!puedeCrear}
-        >
-          <Plus className="h-4 w-4" />
-          Agregar profesional
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline">
+            <Link href="/profesionales/red">
+              <ShieldCheck className="h-4 w-4" />
+              Red compartida
+            </Link>
+          </Button>
+          <Button
+            onClick={() => { setEditando(null); setAbrirForm(true); }}
+            disabled={!puedeCrear}
+          >
+            <Plus className="h-4 w-4" />
+            Agregar profesional
+          </Button>
+        </div>
       </div>
 
       {/* KPIs */}
@@ -364,6 +398,23 @@ export default function ProfesionalesAdminPage() {
                       >
                         {p.activo ? 'Activo' : 'Oculto'}
                       </Badge>
+                    )}
+                    {deApi && (
+                      <button
+                        type="button"
+                        disabled={compartiendo === p.id}
+                        onClick={() => toggleCompartir(p)}
+                        title={p.publico ? 'Compartido con la red — clic para dejar de compartir' : 'Compartir con la red compartida'}
+                        className={cn(
+                          'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium transition-colors',
+                          p.publico
+                            ? 'border-primary/40 bg-primary/10 text-primary'
+                            : 'border-border text-muted-foreground hover:bg-muted/40',
+                        )}
+                      >
+                        <ShieldCheck className="h-3 w-3" />
+                        {compartiendo === p.id ? '…' : p.publico ? 'En la red' : 'Compartir'}
+                      </button>
                     )}
                   </div>
                 </div>

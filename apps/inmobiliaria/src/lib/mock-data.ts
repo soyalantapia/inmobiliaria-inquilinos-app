@@ -1522,6 +1522,9 @@ export interface ProfesionalAdmin {
   verificado: boolean;
   notas: string | null;
   activo: boolean;
+  /** Ecosistema: esta ficha está compartida con la red compartida de profesionales. */
+  publico?: boolean;
+  profesionalRedId?: string | null;
 }
 
 export const profesionalCategoriaLabelAdmin: Record<CategoriaProfesional, string> = {

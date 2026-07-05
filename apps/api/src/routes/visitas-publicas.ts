@@ -218,6 +218,30 @@ export async function visitasPublicasRoutes(app: FastifyInstance): Promise<void>
         contenido: body.data.notaFinal,
       },
     });
+    // Reputación REAL: al terminar el trabajo cerramos el reclamo (RESUELTO), imputamos
+    // el costo que declaró el profesional y sumamos el trabajo a su track record. Antes
+    // el /listo dejaba la visita en LISTO pero NO cerraba el reclamo ni tocaba cantTrabajos
+    // /ultimoTrabajo (quedaban congelados) → la reputación del panel era ficticia.
+    // IDEMPOTENTE: el updateMany condicionado por estado no-terminal solo pega la primera
+    // vez; un doble-tap del /listo (o un reintento) no re-cierra ni re-cuenta.
+    const cerrado = await prisma.reclamo.updateMany({
+      where: {
+        id: visita!.reclamoId,
+        inmobiliariaId: acc.inmobiliariaId,
+        estado: { notIn: ['RESUELTO', 'CERRADO', 'RECHAZADO'] },
+      },
+      data: {
+        estado: 'RESUELTO',
+        resueltoAt: new Date(),
+        ...(visita!.montoCobrado != null ? { costoTrabajo: visita!.montoCobrado } : {}),
+      },
+    });
+    if (cerrado.count > 0) {
+      await prisma.profesional.update({
+        where: { id: acc.profesionalId },
+        data: { cantTrabajos: { increment: 1 }, ultimoTrabajo: new Date() },
+      });
+    }
     return visita;
   });
 }

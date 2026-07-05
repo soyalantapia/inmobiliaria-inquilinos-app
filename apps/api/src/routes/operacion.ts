@@ -6,6 +6,7 @@ import { prisma } from '../db.js';
 import { requireInquilino, requireUsuario } from '../auth/guards.js';
 import { verificarPinUsuario } from '../auth/pin.js';
 import { registrarEvento } from '../lib/auditoria.js';
+import { fichaReputacion, resumenReputacionMasivo, normalizarTelefono } from '../lib/reputacion-red.js';
 import { urlEsDelTenant } from './uploads.js';
 
 /** Token opaco del link mágico de visita (/p/:token) — 24 bytes base64url, no adivinable. */
@@ -748,6 +749,150 @@ export async function operacionRoutes(app: FastifyInstance) {
         zona: d.zona ?? '',
         email: d.email ? d.email : null,
         notas: d.notas ? d.notas : null,
+      },
+    });
+    return reply.code(201).send(prof);
+  });
+
+  // ===== Ecosistema: red compartida de profesionales =====
+  // Publicar un profesional a la red (opt-in de la inmobiliaria): lo linkea a una
+  // identidad global ProfesionalRed (dedup por teléfono normalizado). Desde ahí,
+  // cualquier inmobiliaria lo ve en el directorio y su reputación suma cross-tenant.
+  app.post('/profesionales/:id/publicar', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'profesional.asignar');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const prof = await prisma.profesional.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
+    if (!prof) return reply.code(404).send({ message: 'Profesional inexistente' });
+    const tel = normalizarTelefono(prof.telefono);
+    if (tel.length < 6) {
+      return reply.code(400).send({ message: 'El profesional necesita un teléfono válido para compartirlo con la red' });
+    }
+    // Upsert por teléfono: si esa identidad ya existe en la red (la publicó otra inmo),
+    // la reusamos SIN pisar sus datos canónicos; si no, la creamos con estos datos.
+    const red = await prisma.profesionalRed.upsert({
+      where: { telefono: tel },
+      update: {},
+      create: {
+        telefono: tel,
+        nombre: prof.nombre,
+        categoria: prof.categoria,
+        zona: prof.zona ?? '',
+        email: prof.email,
+        publicadoPorId: u.inmobiliariaId,
+      },
+    });
+    await prisma.profesional.update({
+      where: { id: prof.id },
+      data: { publico: true, profesionalRedId: red.id },
+    });
+    return { ok: true, profesionalRedId: red.id, publico: true };
+  });
+
+  // Dejar de compartir (opt-out): oculta MI ficha de la red. La identidad global
+  // sigue existiendo si otra inmo la comparte; el vínculo se conserva para historial.
+  app.post('/profesionales/:id/despublicar', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'profesional.asignar');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const prof = await prisma.profesional.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
+    if (!prof) return reply.code(404).send({ message: 'Profesional inexistente' });
+    await prisma.profesional.update({ where: { id: prof.id }, data: { publico: false } });
+    return { ok: true, publico: false };
+  });
+
+  // Directorio de la RED: identidades con ≥1 ficha compartida, con resumen reputacional
+  // AGREGADO cross-tenant (rating, trabajos) y sin ningún dato privado de otra inmo.
+  app.get('/red/profesionales', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'profesionales.ver');
+    if (!u) return;
+    const q = z
+      .object({
+        categoria: z.enum(['PLOMERO', 'ELECTRICISTA', 'GASISTA', 'CERRAJERO', 'PINTOR', 'TECNICO_AC', 'FLETE']).optional(),
+        zona: z.string().trim().optional(),
+        q: z.string().trim().optional(),
+      })
+      .parse(request.query ?? {});
+    const redes = await prisma.profesionalRed.findMany({
+      where: {
+        profesionales: { some: { publico: true } },
+        ...(q.categoria ? { categoria: q.categoria } : {}),
+        ...(q.zona ? { zona: { contains: q.zona, mode: 'insensitive' } } : {}),
+        ...(q.q ? { nombre: { contains: q.q, mode: 'insensitive' } } : {}),
+      },
+      orderBy: { nombre: 'asc' },
+      include: {
+        // Sólo para saber si YA lo tengo en mi cartera (no expone otras inmos).
+        profesionales: { where: { inmobiliariaId: u.inmobiliariaId }, select: { id: true } },
+      },
+    });
+    const resumen = await resumenReputacionMasivo(redes.map((r) => r.id));
+    return redes.map((r) => {
+      const rep = resumen.get(r.id) ?? { trabajos: 0, resueltos: 0, ratingPromedio: 0, reseñas: 0 };
+      return {
+        id: r.id,
+        nombre: r.nombre,
+        categoria: r.categoria,
+        zona: r.zona,
+        garantizado: r.garantizado,
+        ratingPromedio: rep.ratingPromedio,
+        reseñas: rep.reseñas,
+        trabajos: rep.trabajos,
+        enMiCartera: r.profesionales.length > 0,
+      };
+    });
+  });
+
+  // Ficha técnica pública de un profesional de la red: agregados + trabajos
+  // ANONIMIZADOS (ver lib/reputacion-red.ts — nunca dirección, inquilino, comentarios ni fotos).
+  app.get('/red/profesionales/:id', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'profesionales.ver');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const red = await prisma.profesionalRed.findUnique({ where: { id } });
+    if (!red) return reply.code(404).send({ message: 'Profesional inexistente en la red' });
+    const ficha = await fichaReputacion(red.id);
+    const miVinculo = await prisma.profesional.findFirst({
+      where: { profesionalRedId: red.id, inmobiliariaId: u.inmobiliariaId },
+      select: { id: true, telefono: true, email: true },
+    });
+    return {
+      id: red.id,
+      nombre: red.nombre,
+      categoria: red.categoria,
+      zona: red.zona,
+      garantizado: red.garantizado,
+      ...ficha,
+      // El teléfono/email de contacto sólo si ya lo contraté (es mío); si no, null
+      // hasta que lo agregue a mi cartera con "contratar".
+      contacto: miVinculo ? { telefono: miVinculo.telefono, email: miVinculo.email } : null,
+      enMiCartera: !!miVinculo,
+    };
+  });
+
+  // Contratar de la red: crea (idempotente) MI ficha privada de este profesional,
+  // linkeada a la identidad global, para poder asignarlo a mis reclamos.
+  app.post('/red/profesionales/:id/contratar', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'profesional.asignar');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const red = await prisma.profesionalRed.findUnique({ where: { id } });
+    if (!red) return reply.code(404).send({ message: 'Profesional inexistente en la red' });
+    const ya = await prisma.profesional.findFirst({
+      where: { profesionalRedId: red.id, inmobiliariaId: u.inmobiliariaId },
+    });
+    if (ya) return reply.code(200).send(ya);
+    const prof = await prisma.profesional.create({
+      data: {
+        inmobiliariaId: u.inmobiliariaId,
+        nombre: red.nombre,
+        categoria: red.categoria,
+        zona: red.zona,
+        telefono: red.telefono,
+        email: red.email,
+        profesionalRedId: red.id,
+        // Al contratar de la red NO lo re-publico automáticamente: publico=false; si
+        // esta inmo quiere compartir sus propios trabajos, lo activa aparte.
       },
     });
     return reply.code(201).send(prof);
