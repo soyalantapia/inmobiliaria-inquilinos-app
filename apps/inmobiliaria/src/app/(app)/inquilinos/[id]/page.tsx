@@ -8,6 +8,7 @@ import { Card, CardContent } from '@llave/ui/card';
 import { Separator } from '@llave/ui/separator';
 import { Topbar } from '@/components/topbar';
 import { usePersona } from '@/lib/api/use-inquilinos';
+import { SaldarDeudaButton } from '@/components/saldar-deuda-button';
 import { formatFechaCorta, formatMonto, formatRangoVigencia } from '@/lib/format';
 
 function Stat({ label, value, accent }: { label: string; value: string; accent?: 'red' | 'green' | 'muted' }) {
@@ -124,10 +125,11 @@ export default function InquilinoFichaPage({ params }: { params: { id: string } 
                         )}
                       </p>
                     </div>
-                    <div className="flex shrink-0 items-center gap-2">
+                    <div className="flex shrink-0 flex-wrap items-center gap-2">
                       <Badge variant={c.estado === 'ACTIVO' ? 'success' : 'secondary'}>
                         {c.estado.charAt(0) + c.estado.slice(1).toLowerCase()}
                       </Badge>
+                      {c.deuda > 0 && <SaldarDeudaButton contratoId={c.id} deuda={c.deuda} moneda={c.moneda} />}
                       <Button variant="ghost" size="sm" asChild>
                         <Link href={`/contratos/${c.id}`}>
                           <FileText className="h-4 w-4" />

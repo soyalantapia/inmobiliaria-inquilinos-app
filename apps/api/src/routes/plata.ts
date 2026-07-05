@@ -462,6 +462,91 @@ export async function plataRoutes(app: FastifyInstance) {
     return pagoOk;
   });
 
+  // Saldar la deuda de un contrato (cuentas por cobrar). La inmo registra el cobro de la
+  // deuda vencida (típicamente de un EX-inquilino: /pagos/informar lo gatea exigirContratoActivo
+  // → no puede cobrarse un contrato finalizado por la vía del inquilino). Crea un Pago
+  // CONCILIADO por cada cuota vencida (o condona la deuda) y las marca PAGADO. Con PIN.
+  app.post('/contratos/:id/saldar-deuda', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'pago.conciliar');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const parsed = z
+      .object({
+        pin: z.string().optional(),
+        metodo: z.enum(['TRANSFERENCIA', 'MERCADOPAGO', 'EFECTIVO', 'CHEQUE']).default('TRANSFERENCIA'),
+        condonar: z.boolean().optional(),
+      })
+      .safeParse(request.body ?? {});
+    if (!parsed.success) return reply.code(400).send({ message: 'Datos inválidos', detalle: parsed.error.flatten() });
+    const b = parsed.data;
+    if (!(await verificarPin(u.userId, b.pin, reply))) return;
+    const contrato = await prisma.contrato.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      include: {
+        inmobiliaria: { select: { moraTipoDefault: true, moraValorDefault: true } },
+      },
+    });
+    if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
+    const now = new Date();
+    const liqs = await prisma.liquidacion.findMany({
+      where: { contratoId: id, inmobiliariaId: u.inmobiliariaId, estado: { in: ['PENDIENTE', 'VENCIDO', 'PARCIAL'] } },
+      orderBy: { fechaVencimiento: 'asc' },
+    });
+    const esquema = resolverEsquemaMora(contrato, contrato.inmobiliaria);
+    const pagadoMap = await montoPagadoPorLiquidacion(liqs.map((l) => l.id));
+    const metodoPagoLiq = b.metodo === 'MERCADOPAGO' ? 'MERCADOPAGO' : b.metodo === 'EFECTIVO' ? 'EFECTIVO' : 'TRANSFERENCIA';
+    const res = await prisma.$transaction(async (tx) => {
+      let saldadas = 0;
+      let montoAplicado = 0;
+      for (const l of liqs) {
+        // Sólo las EXIGIBLES: vencidas o parciales vencidas. Una futura no se salda acá.
+        const vencida = l.estado === 'VENCIDO' || ((l.estado === 'PENDIENTE' || l.estado === 'PARCIAL') && new Date(l.fechaVencimiento) < now);
+        if (!vencida) continue;
+        const punit = calcularMora(
+          Number(l.montoTotal),
+          esquema,
+          l.fechaVencimiento,
+          now,
+          l.montoPunitorioManual != null ? Number(l.montoPunitorioManual) : null,
+        );
+        const { saldo } = conSaldo(l, pagadoMap, punit);
+        if (saldo <= 0) continue;
+        await tx.pago.create({
+          data: {
+            inmobiliariaId: u.inmobiliariaId,
+            contratoId: id,
+            liquidacionId: l.id,
+            periodo: l.periodo,
+            monto: saldo,
+            montoLiqTotal: Number(l.montoTotal) + punit,
+            metodo: b.metodo,
+            fechaTransferencia: now,
+            estado: 'CONCILIADO',
+            decididoPorId: u.userId,
+            decididoAt: now,
+            observacion: b.condonar ? 'Condonación de deuda (ex-inquilino)' : 'Cobro registrado por la inmobiliaria',
+          },
+        });
+        await tx.liquidacion.update({
+          where: { id: l.id },
+          data: { estado: 'PAGADO', fechaPago: now, metodoPago: metodoPagoLiq },
+        });
+        saldadas++;
+        montoAplicado += saldo;
+      }
+      return { liquidacionesSaldadas: saldadas, montoAplicado: Math.round(montoAplicado * 100) / 100 };
+    });
+    await registrarEvento({
+      inmobiliariaId: u.inmobiliariaId,
+      tipo: 'PAGO_CONCILIADO',
+      autorId: u.userId,
+      rolAutor: u.rol,
+      entidadId: id,
+      entidadDescripcion: `${b.condonar ? 'Condonación' : 'Cobro'} de deuda: ${res.liquidacionesSaldadas} cuota(s) por $${res.montoAplicado}`,
+    });
+    return { ok: true, condonado: !!b.condonar, ...res };
+  });
+
   // Inquilino o CUALQUIER co-inquilino del contrato (incluido permiso VER) informa
   // un pago. Decisión del dueño (2026-06-21): pagar el alquiler no se restringe —
   // cualquier miembro del contrato puede hacerlo (el tier PAGAR ya no aplica acá).
