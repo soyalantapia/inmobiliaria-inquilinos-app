@@ -1316,11 +1316,15 @@ model Garante {
   contratoId       String
   contrato         Contrato     @relation(fields: [contratoId], references: [id])
   tipo             TipoGarante
+  // nombreProveedor = nombre del garante (persona) o de la aseguradora (caución).
   nombreProveedor  String
+  dni              String? // DNI/CUIT del garante persona
   numeroPoliza     String?
-  montoCobertura   Decimal      @db.Decimal(14, 2)
-  vigenciaHasta    DateTime
-  contactoNombre   String
+  // Montos/vigencia son de una PÓLIZA (caución/digital): opcionales para un garante
+  // persona (propietaria/sueldo), que no tiene cobertura ni vencimiento.
+  montoCobertura   Decimal?     @db.Decimal(14, 2)
+  vigenciaHasta    DateTime?
+  contactoNombre   String? // contacto alternativo (broker de la póliza); un garante persona usa su propio nombre
   contactoTelefono String
   contactoEmail    String?
   createdAt        DateTime     @default(now())

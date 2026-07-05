@@ -41,6 +41,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@llave/ui/tabs';
 import { toast } from '@llave/ui/use-toast';
 import { ContratoDocumentosPanel } from '@/components/contrato-documentos-panel';
 import { DocumentosInquilinoPanel } from '@/components/documentos-inquilino-panel';
+import { ContratoGarantesPanel } from '@/components/contrato-garantes-panel';
 import { MensajeInquilinoDialog } from '@/components/mensaje-inquilino-dialog';
 import { ScoringInquilinoCard } from '@/components/scoring-inquilino-card';
 import { Topbar } from '@/components/topbar';
@@ -262,6 +263,7 @@ export default function DetalleContratoPage() {
               </Badge>
             </TabsTrigger>
             <TabsTrigger value="documentos">Documentos</TabsTrigger>
+            <TabsTrigger value="garantes">Garantes</TabsTrigger>
           </TabsList>
 
           <TabsContent value="resumen" className="space-y-4">
@@ -463,6 +465,10 @@ export default function DetalleContratoPage() {
             {/* Documentos que el INQUILINO subió desde su app (DNI, recibos,
                 garante) — solo lectura, feature nueva sin equivalente demo. */}
             {apiEnabled && <DocumentosInquilinoPanel contratoId={c.id} />}
+          </TabsContent>
+
+          <TabsContent value="garantes" className="space-y-2">
+            <ContratoGarantesPanel contratoId={c.id} />
           </TabsContent>
         </Tabs>
       </main>

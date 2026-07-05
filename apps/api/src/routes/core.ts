@@ -1272,6 +1272,86 @@ export async function coreRoutes(app: FastifyInstance) {
     };
   });
 
+  // ===== Garantes del contrato (contacto/póliza) — activa el modelo Garante =====
+  const garanteBody = z.object({
+    tipo: z.enum(['PROPIETARIA', 'CAUCION', 'SUELDO', 'DIGITAL']),
+    nombreProveedor: z.string().trim().min(2).max(200),
+    dni: z.string().trim().max(20).optional(),
+    numeroPoliza: z.string().trim().max(100).optional(),
+    montoCobertura: z.number().nonnegative().optional(),
+    vigenciaHasta: z.coerce.date().optional(),
+    contactoNombre: z.string().trim().max(200).optional(),
+    contactoTelefono: z.string().trim().min(3).max(50),
+    contactoEmail: z.string().trim().email().optional().or(z.literal('')),
+  });
+  const garanteData = (b: z.infer<typeof garanteBody>) => ({
+    tipo: b.tipo,
+    nombreProveedor: b.nombreProveedor,
+    dni: b.dni || null,
+    numeroPoliza: b.numeroPoliza || null,
+    montoCobertura: b.montoCobertura ?? null,
+    vigenciaHasta: b.vigenciaHasta ?? null,
+    contactoNombre: b.contactoNombre || null,
+    contactoTelefono: b.contactoTelefono,
+    contactoEmail: b.contactoEmail || null,
+  });
+
+  app.get('/contratos/:id/garantes', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'contratos.ver');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    return prisma.garante.findMany({
+      where: { contratoId: id, inmobiliariaId: u.inmobiliariaId },
+      orderBy: { createdAt: 'asc' },
+    });
+  });
+
+  app.post('/contratos/:id/garantes', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'contratos.crear');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const contrato = await prisma.contrato.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      select: { id: true },
+    });
+    if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
+    const parsed = garanteBody.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ message: 'Datos del garante incompletos', detalle: parsed.error.flatten() });
+    }
+    return prisma.garante.create({
+      data: { inmobiliariaId: u.inmobiliariaId, contratoId: id, ...garanteData(parsed.data) },
+    });
+  });
+
+  app.put('/contratos/:id/garantes/:garanteId', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'contratos.crear');
+    if (!u) return;
+    const { id, garanteId } = request.params as { id: string; garanteId: string };
+    const parsed = garanteBody.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ message: 'Datos del garante incompletos', detalle: parsed.error.flatten() });
+    }
+    // updateMany scopeado por contrato + tenant → 404 si no es tuyo (regla de oro).
+    const upd = await prisma.garante.updateMany({
+      where: { id: garanteId, contratoId: id, inmobiliariaId: u.inmobiliariaId },
+      data: garanteData(parsed.data),
+    });
+    if (upd.count === 0) return reply.code(404).send({ message: 'Garante inexistente' });
+    return prisma.garante.findFirst({ where: { id: garanteId, inmobiliariaId: u.inmobiliariaId } });
+  });
+
+  app.delete('/contratos/:id/garantes/:garanteId', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'contratos.crear');
+    if (!u) return;
+    const { id, garanteId } = request.params as { id: string; garanteId: string };
+    const del = await prisma.garante.deleteMany({
+      where: { id: garanteId, contratoId: id, inmobiliariaId: u.inmobiliariaId },
+    });
+    if (del.count === 0) return reply.code(404).send({ message: 'Garante inexistente' });
+    return { ok: true };
+  });
+
   // ===== Inquilinos =====
   app.get('/inquilinos', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'contratos.ver');
