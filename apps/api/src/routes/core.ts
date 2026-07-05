@@ -1155,6 +1155,11 @@ export async function coreRoutes(app: FastifyInstance) {
     // debería poder finalizar. Mismo guard que DELETE /propietarios y /propiedades.
     if (u.rol === 'CARGA') return reply.code(403).send({ message: 'Solo un Admin u Operador puede finalizar contratos' });
     const { id } = request.params as { id: string };
+    // Tipo de baja: FINALIZADO (fin natural del plazo) vs RESCINDIDO (rescisión
+    // anticipada). Antes toda baja colapsaba en FINALIZADO y se perdía el dato para
+    // el historial y el certificado. Default FINALIZADO por compat (callers sin body).
+    const body = z.object({ tipo: z.enum(['FINALIZADO', 'RESCINDIDO']).optional() }).safeParse(request.body ?? {});
+    const nuevoEstado: 'FINALIZADO' | 'RESCINDIDO' = body.success && body.data.tipo ? body.data.tipo : 'FINALIZADO';
     const contrato = await prisma.contrato.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
     if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
     if (contrato.estado === 'FINALIZADO' || contrato.estado === 'RESCINDIDO') {
@@ -1171,7 +1176,7 @@ export async function coreRoutes(app: FastifyInstance) {
     const fin = await prisma.$transaction(async (tx) => {
       const upd = await tx.contrato.updateMany({
         where: { id, inmobiliariaId: u.inmobiliariaId, estado: { notIn: ['FINALIZADO', 'RESCINDIDO', 'BORRADOR'] } },
-        data: { estado: 'FINALIZADO' },
+        data: { estado: nuevoEstado },
       });
       if (upd.count === 0) return null;
       await tx.propiedad.updateMany({
@@ -1197,7 +1202,7 @@ export async function coreRoutes(app: FastifyInstance) {
       return { cuotasAnuladas: anuladas.count };
     });
     if (!fin) return reply.code(409).send({ message: 'El contrato ya está finalizado' });
-    return { ok: true, cuotasAnuladas: fin.cuotasAnuladas };
+    return { ok: true, estado: nuevoEstado, cuotasAnuladas: fin.cuotasAnuladas };
   });
 
   // Preview de la baja: qué colaterales tiene el contrato ANTES de finalizar, para
