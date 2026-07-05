@@ -49,10 +49,11 @@ import { aplicarEstadoDemo, useDemoEstado } from '@/lib/demo-estado';
 import { useMiContrato, type DatosCobranza } from '@/lib/api/hooks';
 import {
   apiEnabled,
+  pagoApiALocal,
   useInformarPago,
   useLiquidacion,
 } from '@/lib/api/use-pago';
-import { subirArchivo } from '@/lib/api/client';
+import { subirArchivo, urlDeArchivo } from '@/lib/api/client';
 
 type Step = 'datos' | 'comprobante' | 'ok';
 const MAX_FILE_MB = 5;
@@ -85,8 +86,8 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
   const { contrato, inmobiliariaTelefono, datosCobranza } = useMiContrato();
 
   const [step, setStep] = useState<Step>('datos');
-  /** Pagos previos (parciales o total) ya informados para esta liq. */
-  const [pagosPrevios, setPagosPrevios] = useState<PagoInformado[]>([]);
+  /** Pagos previos (parciales o total) ya informados para esta liq — demo. */
+  const [pagosPreviosLocal, setPagosPreviosLocal] = useState<PagoInformado[]>([]);
   /** Último pago hecho en esta sesión (lo que mostramos en step='ok'). */
   const [ultimoEnviado, setUltimoEnviado] = useState<PagoInformado | null>(null);
   /** Monto que el inquilino eligió pagar AHORA (puede ser saldo o parcial). */
@@ -107,12 +108,28 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
   }, []);
 
   useEffect(() => {
-    // Historial de parciales + decisión del inmo: sólo en la demo offline.
-    // En prod el API no expone esos datos al inquilino.
+    // Historial de parciales + decisión del inmo de la DEMO offline (store
+    // local). En prod los pagos vienen en `liq.pagos` del API (memo de abajo).
     if (apiEnabled) return;
-    setPagosPrevios(listarPagosDeLiq(params.liqId));
+    setPagosPreviosLocal(listarPagosDeLiq(params.liqId));
     setDecisionInmoUltima(decisionInmoPago(params.liqId));
   }, [params.liqId]);
+
+  // Prod: los pagos previos son los CONCILIADOS reales de la liq (API). Antes
+  // quedaba [] y el remanente tras un parcial vivía sólo en memoria de la
+  // sesión (saldoProdRestante): al reabrir el checkout reaparecía el total.
+  // useMemo (no estado + efecto): `liqApi` se re-mapea en cada render del
+  // hook y un setState colgado de esa referencia loopearía.
+  const pagosPreviosProd = useMemo(
+    () =>
+      apiEnabled
+        ? (liqApi?.pagos ?? [])
+            .filter((p) => p.estado === 'CONCILIADO')
+            .map((p) => pagoApiALocal(p, params.liqId))
+        : [],
+    [liqApi?.pagos, params.liqId],
+  );
+  const pagosPrevios = apiEnabled ? pagosPreviosProd : pagosPreviosLocal;
 
   // CRÍTICO: el monto que se INFORMA al pagar deriva de calc.totalAPagar. En
   // prod (apiEnabled) debe ser liq.montoTotal real del API (server = verdad),
@@ -174,6 +191,77 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
           </Button>
         </div>
       </main>
+    );
+  }
+
+  // GUARD prod: ya hay un pago INFORMADO vivo (en revisión) para esta liq → NO
+  // mostramos el flujo de pago (CBU + upload). El backend rechaza un segundo
+  // INFORMADO (409, índice único), pero ese 409 llegaba DESPUÉS de que el
+  // inquilino transfiriera plata REAL de nuevo y re-subiera el comprobante.
+  // Cortamos acá, antes de que vea un CBU al que transferir. `ultimoEnviado` /
+  // step='ok' excluyen el pago recién informado en ESTA sesión, para no pisar
+  // la pantalla de éxito cuando la lista se refresca tras el POST.
+  const pagoVivo =
+    apiEnabled && !ultimoEnviado && step !== 'ok'
+      ? ((liq.pagos ?? []).find((p) => p.estado === 'INFORMADO') ?? null)
+      : null;
+  if (pagoVivo) {
+    const comprobanteHref = urlDeArchivo(pagoVivo.comprobanteUrl);
+    return (
+      <>
+        <header className="flex items-center gap-3 p-5">
+          <button
+            type="button"
+            onClick={() => router.push(`/pago/${params.liqId}`)}
+            className="rounded-full p-2 hover:bg-muted"
+            aria-label="Volver"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <h1 className="text-lg font-semibold">Pagar por transferencia</h1>
+        </header>
+        <main className="flex-1 space-y-5 px-5 pb-6">
+          <Card className="space-y-3 border-amber-200 bg-amber-50/60 p-5 dark:border-amber-900/40 dark:bg-amber-900/10">
+            <div className="flex items-start gap-3">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-amber-500 text-white">
+                <Clock className="h-5 w-5" />
+              </div>
+              <div className="flex-1">
+                <p className="text-base font-semibold text-amber-900 dark:text-amber-200">
+                  Ya informaste este pago
+                </p>
+                <p className="text-xs text-amber-900/80 dark:text-amber-200/80">
+                  La inmobiliaria lo está validando. Cuando lo valide vas a
+                  poder informar el resto.
+                </p>
+              </div>
+            </div>
+            <div className="space-y-2 rounded-md bg-background/60 p-3">
+              <Row label="Monto informado" value={formatMonto(pagoVivo.monto, liq.moneda)} />
+              <Row label="Fecha" value={formatFecha(pagoVivo.informadoAt)} />
+              {pagoVivo.comprobanteFileName && (
+                <Row label="Comprobante" value={pagoVivo.comprobanteFileName} />
+              )}
+            </div>
+            {/* Abre el ARCHIVO real subido a /uploads: link autenticado con
+                ?token= porque un <a> no puede mandar el header Authorization. */}
+            {comprobanteHref && (
+              <a
+                href={comprobanteHref}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-amber-300 bg-background/60 px-3 py-2.5 text-sm font-medium text-amber-900 transition-colors hover:bg-background dark:border-amber-900/40 dark:text-amber-200"
+              >
+                <FileImage className="h-4 w-4" />
+                Ver comprobante enviado
+              </a>
+            )}
+          </Card>
+          <Button asChild size="xl" className="w-full">
+            <Link href={`/pago/${params.liqId}`}>Volver al detalle</Link>
+          </Button>
+        </main>
+      </>
     );
   }
 
@@ -296,8 +384,9 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
             onAtras={() => setStep('datos')}
             onEnviado={(p) => {
               setUltimoEnviado(p);
-              // El historial local sólo aplica a la demo: en prod queda vacío.
-              if (!apiEnabled) setPagosPrevios(listarPagosDeLiq(params.liqId));
+              // El historial local sólo aplica a la demo; en prod los pagos
+              // reales llegan solos al refrescarse ['mis-liquidaciones'].
+              if (!apiEnabled) setPagosPreviosLocal(listarPagosDeLiq(params.liqId));
               setMontoElegido(null);
               setStep('ok');
               toast({
@@ -332,7 +421,7 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
             }}
             onReenviar={() => {
               olvidarPagoInformado(liq.id);
-              setPagosPrevios([]);
+              setPagosPreviosLocal([]);
               setUltimoEnviado(null);
               setMontoElegido(null);
               setSaldoProdRestante(null);
@@ -564,7 +653,12 @@ function SelectorMonto({
             <div>
               <p className="font-medium">Pagar un parcial</p>
               <p className="text-[11px] text-muted-foreground">
-                Después podés volver y pagar el resto.
+                {/* Prod: el resto recién se puede informar cuando la inmo
+                    valida este pago (índice único de INFORMADO en el back);
+                    no prometemos que puede "volver" en cualquier momento. */}
+                {apiEnabled
+                  ? 'Después podés volver y pagar el resto, cuando este pago sea validado.'
+                  : 'Después podés volver y pagar el resto.'}
               </p>
             </div>
             {modoParcial && (
@@ -727,6 +821,20 @@ function StepDatosBancarios({
             Copiar todos
           </button>
         </div>
+        {/* Contrato PROPIETARIO_DIRECTO: la cuenta es del DUEÑO, no de la
+            inmobiliaria. Sin esta marca el inquilino ve un titular desconocido
+            y duda si el CBU es legítimo (o cree que le paga a la inmo). En
+            demo/cuenta de la inmo no se muestra nada (datosCobranza mock=null). */}
+        {datosCobranza?.modo === 'PROPIETARIO_DIRECTO' && (
+          <div className="flex items-start gap-2 border-b bg-violet-50/70 px-5 py-2.5 dark:bg-violet-900/10">
+            <UserRound className="mt-0.5 h-3.5 w-3.5 shrink-0 text-violet-700 dark:text-violet-300" />
+            <p className="text-xs text-violet-900 dark:text-violet-200">
+              <span className="font-semibold">Cuenta del propietario.</span> En
+              este contrato transferís directo al dueño de la propiedad, no a
+              la inmobiliaria.
+            </p>
+          </div>
+        )}
         <div className="divide-y">
           {filas.map((f) => (
             <CopyRow
@@ -1303,13 +1411,26 @@ function StepConfirmado({
                 : 'Comprobante recibido'}
           </h2>
           {quedoSaldo ? (
-            <p className="text-sm text-muted-foreground">
-              Te queda un saldo pendiente de{' '}
-              <strong className="text-foreground tabular-nums">
-                {formatMonto(saldoRestante, moneda)}
-              </strong>
-              . Lo podés pagar cuando quieras.
-            </p>
+            // Prod: el backend NO acepta un segundo INFORMADO mientras este
+            // está en revisión (índice único) — no prometemos "cuando
+            // quieras". En demo el flujo local sí permite encadenar (intacto).
+            apiEnabled ? (
+              <p className="text-sm text-muted-foreground">
+                Te queda un saldo de{' '}
+                <strong className="text-foreground tabular-nums">
+                  {formatMonto(saldoRestante, moneda)}
+                </strong>
+                . Vas a poder informarlo cuando la inmobiliaria valide este pago.
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Te queda un saldo pendiente de{' '}
+                <strong className="text-foreground tabular-nums">
+                  {formatMonto(saldoRestante, moneda)}
+                </strong>
+                . Lo podés pagar cuando quieras.
+              </p>
+            )
           ) : (
             <p className="text-sm text-muted-foreground">
               Validamos en 24-48 hs hábiles y te avisamos por WhatsApp.
@@ -1382,14 +1503,23 @@ function StepConfirmado({
 
       <div className="space-y-2">
         {quedoSaldo ? (
-          <>
-            <Button size="xl" className="w-full" onClick={onPagarOtroParcial}>
-              Pagar el saldo ({formatMonto(saldoRestante, moneda)})
-            </Button>
-            <Button variant="outline" className="w-full" onClick={onVolver}>
+          apiEnabled ? (
+            // Prod: NO ofrecemos "Pagar el saldo" con un INFORMADO vivo — el
+            // backend lo rechaza con 409 (índice único) y el 409 llegaría
+            // DESPUÉS de que el inquilino transfiera plata real de nuevo.
+            <Button size="xl" className="w-full" onClick={onVolver}>
               Volver al inicio
             </Button>
-          </>
+          ) : (
+            <>
+              <Button size="xl" className="w-full" onClick={onPagarOtroParcial}>
+                Pagar el saldo ({formatMonto(saldoRestante, moneda)})
+              </Button>
+              <Button variant="outline" className="w-full" onClick={onVolver}>
+                Volver al inicio
+              </Button>
+            </>
+          )
         ) : (
           <>
             <Button size="xl" className="w-full" onClick={onVolver}>

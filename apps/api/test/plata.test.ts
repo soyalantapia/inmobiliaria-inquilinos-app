@@ -19,6 +19,11 @@ async function resetPlata(prisma: PrismaClient) {
     where: { id: 'liq_005' },
     data: { estado: 'PENDIENTE', fechaPago: null, metodoPago: null },
   });
+  // liq_003 la muta la suite de /pagos/manual (cobro manual → PARCIAL/PAGADO).
+  await prisma.liquidacion.update({
+    where: { id: 'liq_003' },
+    data: { estado: 'VENCIDO', fechaPago: null, metodoPago: null },
+  });
   await prisma.gastoRendido.deleteMany({ where: { rendicion: { id: { not: 'ren_001' } } } });
   await prisma.movimientoCaja.updateMany({
     where: { id: { in: ['mov_002', 'mov_003'] } },
@@ -213,6 +218,126 @@ describe('Aprobaciones con PIN', () => {
       payload: { pin: '1234' },
     });
     expect(res.statusCode).toBe(400);
+  });
+});
+
+// Cobro MANUAL (efectivo en oficina / "el dueño confirmó que cobró" en cobranza
+// directa): el único camino en prod para marcar cobrada una liquidación cuando el
+// inquilino no informa por la app. Usa liq_003 (cnt_003, VENCIDO, $510.000) que
+// ningún otro test toca; fecha = fechaVencimiento → 0 días de atraso → mora 0
+// (determinístico, no depende del día en que corra la suite).
+describe('POST /pagos/manual — cobro registrado por la inmobiliaria', () => {
+  const FECHA = '2026-06-02'; // = fechaVencimiento de liq_003
+
+  it('rol CARGA no puede → 403', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/pagos/manual',
+      headers: auth(tokenCarga),
+      payload: { liquidacionId: 'liq_003', monto: 1000, fecha: FECHA, pin: '1234' },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('PIN incorrecto → 403 y no se crea el pago', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/pagos/manual',
+      headers: auth(tokenAdmin),
+      payload: { liquidacionId: 'liq_003', monto: 1000, fecha: FECHA, pin: '9999' },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('monto que supera el saldo → 400', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/pagos/manual',
+      headers: auth(tokenAdmin),
+      payload: { liquidacionId: 'liq_003', monto: 999999999, fecha: FECHA, pin: '1234' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().message).toMatch(/supera el saldo/i);
+  });
+
+  it('cobro parcial en efectivo → 201, nace CONCILIADO y la liq queda PARCIAL', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/pagos/manual',
+      headers: auth(tokenAdmin),
+      payload: { liquidacionId: 'liq_003', monto: 200000, metodo: 'EFECTIVO', fecha: FECHA, nota: 'pagó en la oficina', pin: '1234' },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().estado).toBe('CONCILIADO');
+    expect(res.json().tipo).toBe('PARCIAL');
+    const liqs = await app.inject({ method: 'GET', url: '/liquidaciones?periodo=2026-06', headers: auth(tokenAdmin) });
+    const liq3 = liqs.json().find((l: { id: string }) => l.id === 'liq_003');
+    expect(liq3.estado).toBe('PARCIAL');
+    expect(Number(liq3.montoPagado)).toBe(200000);
+  });
+
+  it('cobro del resto → cierra el ciclo: liq PAGADO con metodoPago EFECTIVO', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/pagos/manual',
+      headers: auth(tokenAdmin),
+      payload: { liquidacionId: 'liq_003', monto: 310000, metodo: 'EFECTIVO', fecha: FECHA, pin: '1234' },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().tipo).toBe('TOTAL'); // el pago que CIERRA nace TOTAL
+    const liqs = await app.inject({ method: 'GET', url: '/liquidaciones?periodo=2026-06', headers: auth(tokenAdmin) });
+    const liq3 = liqs.json().find((l: { id: string }) => l.id === 'liq_003');
+    expect(liq3.estado).toBe('PAGADO');
+  });
+
+  it('sobre una liq ya paga → 409', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/pagos/manual',
+      headers: auth(tokenAdmin),
+      payload: { liquidacionId: 'liq_003', monto: 1000, fecha: FECHA, pin: '1234' },
+    });
+    expect(res.statusCode).toBe(409);
+  });
+});
+
+// La bandeja GET /pagos ahora decora cada fila con el saldo REAL de la liquidación
+// y el modo de cobranza del contrato (antes el panel calculaba el saldo contra
+// mocks y no distinguía contratos PROPIETARIO_DIRECTO).
+describe('GET /pagos — decoración de liquidación y modo de cobranza', () => {
+  it('cada pago trae liquidacion.{montoPagado,saldo} y contrato.modoCobranza', async () => {
+    const res = await app.inject({ method: 'GET', url: '/pagos', headers: auth(tokenAdmin) });
+    expect(res.statusCode).toBe(200);
+    const pagos = res.json();
+    expect(pagos.length).toBeGreaterThan(0);
+    for (const p of pagos) {
+      expect(p.contrato.modoCobranza).toBeDefined();
+      expect(p.liquidacion.montoPagado).toBeDefined();
+      expect(p.liquidacion.saldo).toBeDefined();
+      expect(p.liquidacion.montoPunitorio).toBeDefined();
+    }
+  });
+});
+
+// /mis-liquidaciones ahora expone los pagos del inquilino (estado + motivo de
+// rechazo + comprobante): la fuente que la PWA necesitaba para mostrar
+// "pendiente de validación" / "rechazado" / "confirmado" en prod.
+describe('GET /mis-liquidaciones — pagos[] del inquilino', () => {
+  it('cada liquidación trae su lista de pagos con estado y monto numérico', async () => {
+    const demo = await app.inject({ method: 'POST', url: '/auth/demo' });
+    const tk = demo.json().token;
+    const res = await app.inject({ method: 'GET', url: '/mis-liquidaciones', headers: auth(tk) });
+    expect(res.statusCode).toBe(200);
+    const liqs = res.json();
+    expect(liqs.length).toBeGreaterThan(0);
+    for (const l of liqs) expect(Array.isArray(l.pagos)).toBe(true);
+    // liq_001 tiene pag_002 (INFORMADO del seed, o el estado en que lo dejó la suite)
+    const liq1 = liqs.find((l: { id: string }) => l.id === 'liq_001');
+    expect(liq1.pagos.length).toBeGreaterThan(0);
+    const pago = liq1.pagos.find((p: { id: string }) => p.id === 'pag_002');
+    expect(pago).toBeDefined();
+    expect(typeof pago.monto).toBe('number');
+    expect(['INFORMADO', 'CONCILIADO', 'RECHAZADO']).toContain(pago.estado);
   });
 });
 

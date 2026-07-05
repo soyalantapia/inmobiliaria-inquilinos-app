@@ -216,8 +216,12 @@ export async function seedBase(prisma: PrismaClient) {
   }
 
   // Caja de gastos (mock de /caja: 2 pendientes + 1 ya descontado en rendición)
+  // Upsert por id fijo: el @@unique(propietarioId, periodo) se ELIMINÓ del
+  // schema (rendición incremental — varios cortes por período), así que el
+  // upsert compuesto explotaba con "Unknown argument propietarioId_periodo"
+  // y rompía TODA la suite en el seed.
   const rendicion = await prisma.rendicion.upsert({
-    where: { propietarioId_periodo: { propietarioId: 'own_001', periodo: '2026-05' } },
+    where: { id: 'ren_001' },
     update: {},
     create: {
       id: 'ren_001',

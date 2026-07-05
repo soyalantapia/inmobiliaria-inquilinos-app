@@ -8,7 +8,7 @@ import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiEnabled, apiFetch } from './client';
 import { contratoMock, liquidacionesMock } from '@/lib/mock-data';
-import type { Contrato, Liquidacion } from '@/lib/types';
+import type { Contrato, Liquidacion, PagoDeLiquidacion } from '@/lib/types';
 import {
   listarAnunciosParaInquilino,
   type AnuncioInquilino,
@@ -110,6 +110,9 @@ interface LiquidacionApi {
   moneda: Liquidacion['moneda'];
   montoPagado?: string | number | null;
   saldo?: string | number | null;
+  // Pagos del inquilino sobre la liq. Prisma serializa Decimal como string:
+  // `monto` puede venir string o number, el resto llega con el shape final.
+  pagos?: Array<Omit<PagoDeLiquidacion, 'monto'> & { monto: string | number }> | null;
 }
 
 function mapLiquidacion(l: LiquidacionApi): Liquidacion {
@@ -131,6 +134,10 @@ function mapLiquidacion(l: LiquidacionApi): Liquidacion {
     // derivamos de montoTotal − pagado como respaldo defensivo.
     montoPagado,
     saldo: l.saldo != null ? Number(l.saldo) : Math.max(0, montoTotal - montoPagado),
+    // Historial de pagos del inquilino (INFORMADO/CONCILIADO/RECHAZADO), ya
+    // ordenado ASC por informadoAt en el server. Defensivo: [] si un API viejo
+    // todavía no manda el campo, para que las pantallas no ramifiquen en null.
+    pagos: (l.pagos ?? []).map((p) => ({ ...p, monto: Number(p.monto) })),
   };
 }
 

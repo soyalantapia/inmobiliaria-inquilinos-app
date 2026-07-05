@@ -785,10 +785,21 @@ export async function coreRoutes(app: FastifyInstance) {
       const part = await prisma.participacionPropietario.findFirst({
         where: { propiedadId: prop.id },
         orderBy: { porcentaje: 'desc' },
+        include: { propietario: { select: { cuentaCobranza: { select: { id: true } }, nombre: true, apellido: true } } },
       });
       if (!part) {
         return reply.code(400).send({
           message: 'La propiedad necesita dueños cargados para usar cobranza directa al propietario',
+        });
+      }
+      // Y el dueño necesita su CUENTA cargada: el checkout del inquilino solo
+      // muestra la cuenta del propietario en modo directo (nunca la de la inmo);
+      // sin cuenta, el contrato nacía "directo" pero el inquilino no tenía a
+      // dónde transferir.
+      if (!part.propietario.cuentaCobranza) {
+        return reply.code(400).send({
+          message: `Cargale la cuenta de cobro a ${part.propietario.nombre} ${part.propietario.apellido ?? ''}`.trim() +
+            ' (CBU/alias, en su ficha) antes de crear el contrato con cobranza directa',
         });
       }
       cobraDirectoPropietarioId = part.propietarioId;

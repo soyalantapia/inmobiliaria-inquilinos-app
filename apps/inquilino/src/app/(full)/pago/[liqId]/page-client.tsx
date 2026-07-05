@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { notFound, useRouter } from 'next/navigation';
 import {
@@ -35,7 +35,8 @@ import {
   type DecisionInmoSobrePago,
 } from '@/lib/cross-app-inmo';
 import { aplicarEstadoDemo, useDemoEstado } from '@/lib/demo-estado';
-import { apiEnabled, useLiquidacion } from '@/lib/api/use-pago';
+import { apiEnabled, pagoApiALocal, useLiquidacion } from '@/lib/api/use-pago';
+import { urlDeArchivo } from '@/lib/api/client';
 import { useMiContrato } from '@/lib/api/hooks';
 import { useCurrentUser } from '@/lib/use-current-user';
 import type { Liquidacion } from '@/lib/types';
@@ -114,22 +115,61 @@ function DetallePagoView({
   liqId: string;
   router: ReturnType<typeof useRouter>;
 }) {
-  const [informado, setInformado] = useState<PagoInformado | null>(null);
-  const [parciales, setParciales] = useState<PagoInformado[]>([]);
-  const [decisionInmo, setDecisionInmo] = useState<DecisionInmoSobrePago | null>(null);
+  const [informadoLocal, setInformadoLocal] = useState<PagoInformado | null>(null);
+  const [parcialesLocal, setParcialesLocal] = useState<PagoInformado[]>([]);
+  const [decisionLocal, setDecisionLocal] = useState<DecisionInmoSobrePago | null>(null);
   // Datos reales para el recibo imprimible en prod: nombre de la sesión OTP +
   // dirección/inmobiliaria del contrato real. En demo no se usan (ver abajo).
   const user = useCurrentUser();
   const { contrato } = useMiContrato();
   useEffect(() => {
-    // Historial de parciales + decisión del inmo: sólo en la demo offline.
-    // En prod el API no expone esos datos al inquilino, así que quedan vacíos
-    // (la liq de por sí ya refleja PAGADO cuando el inmo concilia).
+    // Historial de parciales + decisión del inmo de la DEMO offline (store
+    // local). En prod estos datos vienen en `liq.pagos` del API (memo de abajo).
     if (apiEnabled) return;
-    setInformado(leerPagoInformado(liqId));
-    setParciales(listarPagosDeLiq(liqId));
-    setDecisionInmo(decisionInmoPago(liqId));
+    setInformadoLocal(leerPagoInformado(liqId));
+    setParcialesLocal(listarPagosDeLiq(liqId));
+    setDecisionLocal(decisionInmoPago(liqId));
   }, [liqId]);
+
+  // Prod: derivamos los mismos estados desde `liq.pagos` (API). Antes esto
+  // quedaba vacío ("en prod el API no expone esos datos") y la pantalla era
+  // ciega: un pago informado seguía mostrando "Pagar $TOTAL", un rechazo con
+  // motivo nunca aparecía y el comprobante enviado no se podía volver a ver.
+  // Es useMemo (no estado + efecto) porque `liq` se re-mapea en cada render
+  // del hook: un setState dependiente de esa referencia loopearía.
+  const prod = useMemo(() => {
+    if (!apiEnabled) return null;
+    const pagosApi = liq.pagos ?? [];
+    // Precedencia sobre el ÚLTIMO pago: si hay un INFORMADO vivo, manda la
+    // card ámbar "pendiente de validación" — no el rechazo de un pago anterior
+    // ya re-informado. Hay a lo sumo UN INFORMADO (índice único del backend).
+    const vivo = pagosApi.find((p) => p.estado === 'INFORMADO');
+    const ultimo = pagosApi[pagosApi.length - 1];
+    const relevante = vivo ?? ultimo;
+    let decision: DecisionInmoSobrePago | null = null;
+    if (!vivo && ultimo && (ultimo.estado === 'RECHAZADO' || ultimo.estado === 'CONCILIADO')) {
+      decision = {
+        estado: ultimo.estado,
+        motivo: ultimo.observacion,
+        // El API no le cuenta al inquilino QUIÉN decidió: usamos el nombre de
+        // la inmobiliaria del contrato (o el genérico si aún no cargó).
+        decidiSPor: contrato?.inmobiliaria ?? 'la inmobiliaria',
+        decidiSAt: ultimo.decididoAt ?? ultimo.informadoAt,
+      };
+    }
+    return {
+      // TODOS los pagos (alimenta la lista "Pagos informados (N)").
+      parciales: pagosApi.map((p) => pagoApiALocal(p, liqId)),
+      informado: relevante ? pagoApiALocal(relevante, liqId) : null,
+      decision,
+      // Link autenticado (?token=) al comprobante real del pago en revisión.
+      comprobantePendienteHref: vivo ? urlDeArchivo(vivo.comprobanteUrl) : undefined,
+    };
+  }, [liq.pagos, liqId, contrato?.inmobiliaria]);
+
+  const informado = apiEnabled ? (prod?.informado ?? null) : informadoLocal;
+  const parciales = apiEnabled ? (prod?.parciales ?? []) : parcialesLocal;
+  const decisionInmo = apiEnabled ? (prod?.decision ?? null) : decisionLocal;
 
   // `liq` ya viene resuelta (API en prod, mock en demo). En prod total/punitorio
   // salen del API (server = verdad), no del re-cálculo con la tasa default.
@@ -420,12 +460,29 @@ function DetallePagoView({
           </div>
         ) : pendienteValidacion ? (
           <div className="space-y-3">
-            <Button variant="outline" size="xl" className="w-full" asChild>
-              <Link href={`/pago/${liq.id}/checkout`}>
-                Ver comprobante enviado
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
+            {/* Prod: abre el ARCHIVO real subido a /uploads (link autenticado
+                con ?token= — un <a> no puede mandar Authorization). En demo, o
+                si el pago se informó sin archivo, cae al checkout que muestra
+                el estado "ya informaste este pago". */}
+            {apiEnabled && prod?.comprobantePendienteHref ? (
+              <Button variant="outline" size="xl" className="w-full" asChild>
+                <a
+                  href={prod.comprobantePendienteHref}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Ver comprobante enviado
+                  <ArrowRight className="h-4 w-4" />
+                </a>
+              </Button>
+            ) : (
+              <Button variant="outline" size="xl" className="w-full" asChild>
+                <Link href={`/pago/${liq.id}/checkout`}>
+                  Ver comprobante enviado
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
+            )}
             <p className="flex items-center justify-center gap-1 text-center text-xs text-muted-foreground">
               <CheckCircle2 className="h-3 w-3 text-emerald-500" />
               Pausamos los punitorios hasta validar

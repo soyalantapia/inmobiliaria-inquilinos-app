@@ -920,6 +920,10 @@ interface LiquidacionApi {
   montoExpensas: string | number | null;
   montoPunitorio: string | number | null;
   montoTotal: string | number;
+  // Suma de pagos CONCILIADO y saldo = max(0, montoTotal − montoPagado), del
+  // decorador conSaldo del server. Opcionales por compat con backends viejos.
+  montoPagado?: string | number | null;
+  saldo?: string | number | null;
   fechaVencimiento: string;
   fechaPago: string | null;
   estado: string;
@@ -938,6 +942,10 @@ export interface LiquidacionItem {
   montoAlquiler: number;
   montoExpensas: number | null;
   montoTotal: number;
+  /** Lo ya cobrado (pagos conciliados) de esta liquidación. */
+  montoPagado: number;
+  /** Lo que falta cobrar: max(0, montoTotal − montoPagado). */
+  saldo: number;
   estado: string;
   fechaVencimiento: string;
   fechaPago: string | null;
@@ -946,6 +954,7 @@ export interface LiquidacionItem {
 }
 
 function mapLiquidacion(l: LiquidacionApi): LiquidacionItem {
+  const montoPagado = Number(l.montoPagado ?? 0);
   return {
     id: l.id,
     contratoId: l.contratoId,
@@ -953,6 +962,9 @@ function mapLiquidacion(l: LiquidacionApi): LiquidacionItem {
     montoAlquiler: Number(l.montoAlquiler),
     montoExpensas: l.montoExpensas != null ? Number(l.montoExpensas) : null,
     montoTotal: Number(l.montoTotal),
+    montoPagado,
+    // Fallback local si el server no mandó saldo (backend viejo): total − pagado.
+    saldo: l.saldo != null ? Number(l.saldo) : Math.max(0, Number(l.montoTotal) - montoPagado),
     estado: l.estado,
     fechaVencimiento: (l.fechaVencimiento ?? '').slice(0, 10),
     fechaPago: l.fechaPago ? l.fechaPago.slice(0, 10) : null,

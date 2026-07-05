@@ -68,6 +68,36 @@ export interface Reclamo {
   } | null;
 }
 
+/**
+ * Un pago informado por el inquilino, tal como lo expone el API dentro de
+ * `Liquidacion.pagos` (GET /mis-liquidaciones). Espejo read-only de la tabla
+ * `Pago`: INFORMADO = en revisión de la inmobiliaria, CONCILIADO = acreditado,
+ * RECHAZADO = rechazado (la `observacion` trae el motivo; un pago anulado
+ * después de conciliar también queda RECHAZADO, con observacion
+ * "Anulado tras conciliar: ...").
+ */
+export interface PagoDeLiquidacion {
+  id: string;
+  tipo: 'TOTAL' | 'PARCIAL';
+  estado: 'INFORMADO' | 'CONCILIADO' | 'RECHAZADO';
+  monto: number;
+  metodo: 'TRANSFERENCIA' | 'MERCADOPAGO' | 'EFECTIVO' | 'CHEQUE';
+  nroOperacion: string | null;
+  /** Fecha de la transferencia declarada por el inquilino (ISO). */
+  fechaTransferencia: string;
+  /** Cuándo lo informó en la app (ISO). El API ordena la lista ASC por esto. */
+  informadoAt: string;
+  /** Cuándo la inmo decidió (conciliar/rechazar); null si sigue en revisión. */
+  decididoAt: string | null;
+  /** Motivo del rechazo (solo tiene sentido en RECHAZADO). */
+  observacion: string | null;
+  /** Comprobante real en /uploads del backend. Un <a>/<img> no puede mandar
+   *  Authorization: abrirlo requiere pasar por `urlDeArchivo` (?token=). */
+  comprobanteUrl: string | null;
+  comprobanteFileName: string | null;
+  comprobanteMime: string | null;
+}
+
 export interface Liquidacion {
   id: string;
   contratoId: string;
@@ -86,6 +116,10 @@ export interface Liquidacion {
   montoPagado?: number;
   /** Saldo pendiente real = montoTotal − montoPagado (del API, prod). */
   saldo?: number;
+  /** Pagos informados por el inquilino (en revisión / conciliados / rechazados),
+   *  ordenados por informadoAt ASC. Vienen del API en prod; undefined en la
+   *  demo offline (ahí los pagos viven en el store local `pago-storage`). */
+  pagos?: PagoDeLiquidacion[];
 }
 
 export interface Contrato {

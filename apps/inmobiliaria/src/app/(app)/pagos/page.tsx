@@ -36,12 +36,13 @@ import { ValidadorResumenDialog } from '@/components/validador-resumen-dialog';
 import { ValidadorResumenApiDialog } from '@/components/validador-resumen-api-dialog';
 import { apiEnabled } from '@/lib/api/client';
 import { useContratos } from '@/lib/api/hooks';
-import { useAResolverCount, useDevengar } from '@/lib/api/use-pagos';
+import { useAResolverCount, useDevengar, usePagosConciliados } from '@/lib/api/use-pagos';
 import {
   contactosCobranzaMock,
   pagosInformadosMock,
   propiedadesMock,
   propietariosMock,
+  type MetodoPagoInformado,
 } from '@/lib/mock-data';
 import { estadoDePago } from '@/lib/conciliacion-storage';
 import { formatFecha, formatFechaCorta, formatMonto, formatPeriodo, periodoActualFormat } from '@/lib/format';
@@ -77,6 +78,15 @@ const estadoLabelPlural: Record<EstadoLiquidacion, string> = {
   PAGADO: 'pagados',
   PARCIAL: 'parciales',
   VENCIDO: 'vencidos',
+};
+
+// Label humano del método de pago para el PDF de cobranzas (mismos textos que
+// la bandeja de validación).
+const metodoPagoLabel: Record<MetodoPagoInformado, string> = {
+  TRANSFERENCIA: 'Transferencia',
+  MERCADOPAGO: 'Mercado Pago',
+  EFECTIVO: 'Efectivo',
+  CHEQUE: 'Cheque',
 };
 
 // Configuración de los botones de filtro grandes. "A resolver" va primero —
@@ -150,7 +160,12 @@ export default function PagosPage() {
 
   // Conteo de comprobantes "a resolver". En prod sale de /pagos (estado
   // INFORMADO); en demo, del mock + localStorage. El hook ya hace el branch.
-  const { count: aResolverApi, deApi: aResolverDeApi } = useAResolverCount();
+  // isError: con la query caída el count es un 0 FALSO → el botón muestra '—'.
+  const { count: aResolverApi, deApi: aResolverDeApi, isError: aResolverError } = useAResolverCount();
+
+  // Pagos ya CONCILIADOS (solo prod): el PDF "Cobranzas del mes" se arma desde
+  // los cobros reales (fecha/método/monto de cada pago), no desde el canon.
+  const { pagos: pagosConciliados } = usePagosConciliados();
 
   // En modo API el contador es reactivo (viene del hook): lo reflejamos y
   // defaulteamos a "A resolver" si hay pendientes la primera vez.
@@ -210,9 +225,18 @@ export default function PagosPage() {
 
   const totalCobrado = useMemo(
     () =>
-      cobrables
-        .filter((c) => c.estadoPagoActual === 'PAGADO')
-        .reduce((acc, c) => acc + c.monto, 0),
+      // Suma lo REALMENTE cobrado del período por contrato (montoPagado, del
+      // API), no solo el canon de los PAGADO: validar un parcial mueve 'Cobrado'
+      // al instante y Cobrado+Pendiente cierran (antes el parcial bajaba
+      // 'Pendiente' pero 'Cobrado' no se movía → descuadre visible). En PAGADO
+      // usamos montoPagado si vino (puede incluir mora cobrada); demo (sin
+      // montoPagado) cae al comportamiento de siempre: canon si PAGADO, 0 si no.
+      cobrables.reduce(
+        (acc, c) =>
+          acc +
+          (c.estadoPagoActual === 'PAGADO' ? (c.montoPagado ?? c.monto) : (c.montoPagado ?? 0)),
+        0,
+      ),
     [cobrables],
   );
   const totalPendiente = useMemo(
@@ -243,7 +267,10 @@ export default function PagosPage() {
   // PDF de morosos para llevar a cobranza física.
   // Incluye titular + garante con sus teléfonos y los días de atraso.
   const exportarMorososPdf = () => {
-    const morosos = contratos.filter((c) => c.estadoPagoActual === 'VENCIDO');
+    // Sobre `cobrables` (no `contratos` crudo): un BORRADOR no se cobra y un
+    // PROPIETARIO_DIRECTO lo cobra el dueño — ninguna de esas deudas es de la
+    // inmo y no van en el PDF que se lleva a cobranza.
+    const morosos = cobrables.filter((c) => c.estadoPagoActual === 'VENCIDO');
     const filas: (string | number)[][] = morosos.map((c) => {
       // Teléfono/garante: solo del mock en demo. En prod no hay endpoint que
       // los exponga → '—'/'Sin garante' (no dependemos del mismatch de ids).
@@ -386,6 +413,43 @@ export default function PagosPage() {
   // PDF detallado de lo cobrado en el mes.
   // Se usa para rendir a propietarios y para archivo del estudio.
   const exportarCobradoPdf = () => {
+    if (real) {
+      // Prod: filas desde los pagos CONCILIADO reales del período (fecha en que
+      // pagó, método real, monto realmente cobrado — incluye parciales). Antes
+      // salía del contrato: método 'Transferencia' hardcodeado, monto = canon
+      // (no lo cobrado) y fecha = PRÓXIMO vencimiento → el respaldo mentía.
+      const periodo = periodoActualFormat();
+      const delMes = pagosConciliados.filter((p) => p.periodo === periodo);
+      const filasReales: (string | number)[][] = delMes.map((p) => [
+        p.inquilino,
+        p.direccion,
+        formatFecha(p.fechaTransferencia),
+        metodoPagoLabel[p.metodo],
+        formatMonto(p.monto),
+      ]);
+      const totalReal = delMes.reduce((acc, p) => acc + p.monto, 0);
+      abrirReporteImprimible({
+        titulo: 'Cobranzas del mes',
+        subtitulo: `${formatPeriodo(periodo)} · ${delMes.length} pago${delMes.length === 1 ? '' : 's'} acreditado${delMes.length === 1 ? '' : 's'}`,
+        inmobiliaria: sociedadPrincipal().razonSocial,
+        columnas: [
+          { header: 'Inquilino', width: '24%' },
+          { header: 'Propiedad', width: '28%' },
+          { header: 'Fecha de pago', width: '14%' },
+          { header: 'Método', width: '14%' },
+          { header: 'Monto', width: '20%', align: 'right' },
+        ],
+        filas: filasReales,
+        totales: [
+          { label: 'Cantidad', valor: delMes.length.toString() },
+          { label: 'Total cobrado', valor: formatMonto(totalReal) },
+        ],
+        notaFinal:
+          'Este reporte detalla los pagos acreditados y conciliados en el período. Sirve ' +
+          'como respaldo para las rendiciones a propietarios.',
+      });
+      return;
+    }
     const pagados = contratos.filter((c) => c.estadoPagoActual === 'PAGADO');
     const filas: (string | number)[][] = pagados.map((c) => [
       c.inquilino,
@@ -486,10 +550,17 @@ export default function PagosPage() {
               </>
             )}
             {real && (
-              <Button size="sm" className="gap-1 bg-primary text-primary-foreground hover:bg-primary/90" onClick={() => setValidadorOpen(true)}>
-                <ShieldCheck className="h-4 w-4" />
-                Validar por resumen
-              </Button>
+              <>
+                <Button size="sm" className="gap-1 bg-primary text-primary-foreground hover:bg-primary/90" onClick={() => setValidadorOpen(true)}>
+                  <ShieldCheck className="h-4 w-4" />
+                  Validar por resumen
+                </Button>
+                {/* Registrar un cobro que no pasó por la app: efectivo en la
+                    oficina o "el dueño confirmó que cobró" (PROPIETARIO_DIRECTO).
+                    Sin esto los contratos directos quedaban VENCIDO acumulando
+                    mora para siempre. El dialog cablea POST /pagos/manual. */}
+                <CargarPagoManualButton />
+              </>
             )}
             {real && (
               <Button
@@ -582,6 +653,9 @@ export default function PagosPage() {
             const Icon = f.icon;
             const activo = filtro === f.key;
             const count = counters[f.key];
+            // Con la query de pagos informados caída el count de "A resolver"
+            // es un 0 FALSO (query error, no bandeja vacía) → mostramos '—'.
+            const conError = f.key === 'A_RESOLVER' && aResolverError;
             return (
               <button
                 key={f.key}
@@ -605,7 +679,7 @@ export default function PagosPage() {
                   <div>
                     <p className="text-sm font-semibold uppercase tracking-wide">{f.label}</p>
                     <p className={cn('text-xs', activo ? 'opacity-90' : 'opacity-70')}>
-                      {count} contrato{count === 1 ? '' : 's'}
+                      {conError ? 'sin conexión' : `${count} contrato${count === 1 ? '' : 's'}`}
                     </p>
                   </div>
                 </div>
@@ -615,7 +689,7 @@ export default function PagosPage() {
                     activo ? 'text-white' : '',
                   )}
                 >
-                  {count}
+                  {conError ? '—' : count}
                 </span>
               </button>
             );

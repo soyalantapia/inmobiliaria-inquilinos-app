@@ -36,10 +36,47 @@ interface PagoApi {
   observacion: string | null;
   contrato: {
     id: string;
+    // Cobranza directa: el validador necesita saber que la plata fue a la
+    // cuenta del DUEÑO (no a la de la inmo) para no rechazar pagos legítimos.
+    modoCobranza?: 'INMOBILIARIA' | 'PROPIETARIO_DIRECTO' | null;
+    cobraDirectoPropietario?: { nombre: string; apellido: string | null } | null;
     propiedad: { direccion: string } | null;
     inquilinoTitular: { nombre: string; apellido: string | null } | null;
   } | null;
-  liquidacion: { id: string; periodo: string; montoTotal: string | number; estado: string } | null;
+  liquidacion: {
+    id: string;
+    periodo: string;
+    // montoTotal es el TOTAL EXIGIBLE (base + mora al día); montoPagado la suma
+    // de conciliados; saldo = max(0, montoTotal − montoPagado). OJO: el saldo NO
+    // descuenta el pago INFORMADO de esta fila (solo conciliados).
+    montoTotal: string | number;
+    montoPunitorio?: string | number | null;
+    montoPagado?: string | number | null;
+    saldo?: string | number | null;
+    estado: string;
+  } | null;
+}
+
+/**
+ * Fila de la bandeja en modo API: el `PagoInformado` que ya renderiza la UI
+ * más los datos REALES de la liquidación (saldo/mora del server) y el modo de
+ * cobranza del contrato. Todos opcionales → una fila del mock demo también
+ * satisface este tipo (la UI comparte el componente entre modos).
+ */
+export interface PagoInformadoApi extends PagoInformado {
+  /** Estado fresco de la liquidación según el server (solo modo API). */
+  liq?: {
+    /** Total exigible: base + mora al día. */
+    montoTotal: number;
+    montoPunitorio: number;
+    /** Suma de pagos ya CONCILIADOS (no incluye este pago INFORMADO). */
+    montoPagado: number;
+    /** max(0, montoTotal − montoPagado). */
+    saldo: number;
+  };
+  modoCobranza?: 'INMOBILIARIA' | 'PROPIETARIO_DIRECTO';
+  /** Nombre del dueño que cobra directo (solo PROPIETARIO_DIRECTO). */
+  cobraDirectoNombre?: string;
 }
 
 /**
@@ -57,10 +94,11 @@ function urlComprobante(raw: string | null): string {
   return raw;
 }
 
-function mapPago(p: PagoApi): PagoInformado {
+function mapPago(p: PagoApi): PagoInformadoApi {
   const inquilino = p.contrato?.inquilinoTitular
     ? `${p.contrato.inquilinoTitular.nombre} ${p.contrato.inquilinoTitular.apellido ?? ''}`.trim()
     : '—';
+  const directo = p.contrato?.cobraDirectoPropietario;
   return {
     id: p.id,
     contratoId: p.contratoId,
@@ -76,13 +114,35 @@ function mapPago(p: PagoApi): PagoInformado {
     comprobanteUrl: urlComprobante(p.comprobanteUrl),
     notaInquilino: p.notaInquilino,
     liquidacionId: p.liquidacion?.id ?? '',
+    // Saldo REAL de la liquidación (base + mora al día − conciliados). Antes el
+    // panel lo calculaba contra mocks (los ids reales nunca matcheaban) → mostraba
+    // deuda fantasma ignorando parciales ya conciliados y la mora.
+    ...(p.liquidacion && p.liquidacion.saldo != null
+      ? {
+          liq: {
+            montoTotal: Number(p.liquidacion.montoTotal),
+            montoPunitorio: Number(p.liquidacion.montoPunitorio ?? 0),
+            montoPagado: Number(p.liquidacion.montoPagado ?? 0),
+            saldo: Number(p.liquidacion.saldo),
+          },
+        }
+      : {}),
+    ...(p.contrato?.modoCobranza ? { modoCobranza: p.contrato.modoCobranza } : {}),
+    ...(directo
+      ? { cobraDirectoNombre: `${directo.nombre} ${directo.apellido ?? ''}`.trim() }
+      : {}),
   };
 }
 
 export interface UsePagosInformados {
   /** Comprobantes informados pendientes de validar (estado INFORMADO). */
-  pagos: PagoInformado[];
+  pagos: PagoInformadoApi[];
   cargando: boolean;
+  /** La query falló (red/permiso): pagos=[] NO significa "bandeja vacía".
+   *  La UI debe mostrar error + reintento en vez del empty-state (falso vacío). */
+  isError: boolean;
+  /** Reintenta la carga (invalidate → refetch de la key de la bandeja). */
+  reintentar: () => void;
   /** true cuando los datos vienen del API real (no del mock demo). */
   deApi: boolean;
   /** Confirma (concilia) un pago. Exige PIN — lo valida el server.
@@ -97,13 +157,19 @@ export interface UsePagosInformados {
  * validación. La usa /pagos para el contador "A resolver" en prod.
  * En demo cae al mock + estado de localStorage.
  */
-export function useAResolverCount(): { count: number; deApi: boolean; cargando: boolean } {
-  const { pagos, cargando, deApi } = usePagosInformados();
+export function useAResolverCount(): {
+  count: number;
+  deApi: boolean;
+  cargando: boolean;
+  /** Con la query caída el count es 0 FALSO: el caller muestra '—', no un cero. */
+  isError: boolean;
+} {
+  const { pagos, cargando, deApi, isError } = usePagosInformados();
   if (!deApi) {
     const count = pagosInformadosMock.filter((p) => estadoDePago(p.id) === 'INFORMADO').length;
-    return { count, deApi: false, cargando: false };
+    return { count, deApi: false, cargando: false, isError: false };
   }
-  return { count: pagos.length, deApi: true, cargando };
+  return { count: pagos.length, deApi: true, cargando, isError };
 }
 
 export function usePagosInformados(): UsePagosInformados {
@@ -137,6 +203,10 @@ export function usePagosInformados(): UsePagosInformados {
     () => ({
       pagos: pagosInformadosMock.filter((p) => estadoDePago(p.id) === 'INFORMADO'),
       cargando: false,
+      isError: false,
+      reintentar: () => {
+        /* en demo la fuente es local: no hay nada que reintentar */
+      },
       deApi: false,
       validar: async () => {
         /* en demo el componente concilia vía conciliacion-storage */
@@ -153,6 +223,10 @@ export function usePagosInformados(): UsePagosInformados {
   return {
     pagos: q.isError ? [] : (q.data ?? []),
     cargando: q.isPending,
+    isError: q.isError,
+    // invalidate (no refetch directo): resetea el estado de error de la query y
+    // dispara el fetch para todos los componentes montados sobre la misma key.
+    reintentar: () => void qc.invalidateQueries({ queryKey: ['pagos', 'informados'] }),
     deApi: true,
     validar: async (id, pin) => {
       await apiFetch(`/pagos/${id}/validar`, {
@@ -173,8 +247,12 @@ export function usePagosInformados(): UsePagosInformados {
 
 export interface UsePagosConciliados {
   /** Pagos ya conciliados (recientes), para poder anular uno. */
-  pagos: PagoInformado[];
+  pagos: PagoInformadoApi[];
   cargando: boolean;
+  /** La query falló: pagos=[] no significa "sin conciliados" (falso vacío). */
+  isError: boolean;
+  /** Reintenta la carga (invalidate → refetch de la key de conciliados). */
+  reintentar: () => void;
   deApi: boolean;
   /** Anula (revierte) un pago conciliado con motivo (mín. 5) + PIN. El server
    *  recomputa la liquidación (vuelve a PARCIAL/PENDIENTE/VENCIDO). */
@@ -199,11 +277,20 @@ export function usePagosConciliados(): UsePagosConciliados {
     staleTime: 15_000,
   });
   if (!apiEnabled) {
-    return { pagos: [], cargando: false, deApi: false, anular: async () => {} };
+    return {
+      pagos: [],
+      cargando: false,
+      isError: false,
+      reintentar: () => {},
+      deApi: false,
+      anular: async () => {},
+    };
   }
   return {
     pagos: q.isError ? [] : (q.data ?? []),
     cargando: q.isPending,
+    isError: q.isError,
+    reintentar: () => void qc.invalidateQueries({ queryKey: ['pagos', 'conciliados'] }),
     deApi: true,
     anular: async (id, motivo, pin) => {
       await apiFetch(`/pagos/${id}/anular`, {
