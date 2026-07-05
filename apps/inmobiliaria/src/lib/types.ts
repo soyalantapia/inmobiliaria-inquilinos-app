@@ -183,6 +183,8 @@ export interface ContratoListado {
   id: string;
   inquilino: string;
   direccion: string;
+  /** FK a Propiedad.id — para cruzar la deuda de ex-inquilinos contra el listado de propiedades. */
+  propiedadId?: string;
   monto: number;
   moneda: Moneda;
   estado: EstadoContrato;
