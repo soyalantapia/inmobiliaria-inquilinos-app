@@ -46,6 +46,7 @@ import { MensajeInquilinoDialog } from '@/components/mensaje-inquilino-dialog';
 import { ScoringInquilinoCard } from '@/components/scoring-inquilino-card';
 import { Topbar } from '@/components/topbar';
 import { FinalizarContratoButton } from '@/components/finalizar-contrato-button';
+import { AjustarAlquilerButton } from '@/components/ajustar-alquiler-button';
 import {
   descripcionMora,
   MoraSelector,
@@ -239,6 +240,9 @@ export default function DetalleContratoPage() {
                 <Pencil className="h-4 w-4" />
                 Editar
               </Button>
+            )}
+            {apiEnabled && c.estado === 'ACTIVO' && (
+              <AjustarAlquilerButton contratoId={c.id} montoActual={c.monto} moneda={c.moneda} />
             )}
             {apiEnabled && c.estado === 'ACTIVO' && (
               <FinalizarContratoButton contratoId={c.id} direccion={c.direccion} />

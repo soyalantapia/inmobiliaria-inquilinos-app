@@ -636,6 +636,7 @@ model Inmobiliaria {
   personas                   Persona[]
   garantes                   Garante[]
   cargosContrato             CargoContrato[]
+  ajustesAlquiler            AjusteAlquiler[]
   coInquilinos               CoInquilino[]
   liquidaciones              Liquidacion[]
   pagos                      Pago[]
@@ -1238,6 +1239,7 @@ model Contrato {
   inquilinoTitular    Inquilino?
   garantes            Garante[]
   cargos              CargoContrato[]
+  ajustes             AjusteAlquiler[]
   coInquilinos        CoInquilino[]
   liquidaciones       Liquidacion[]
   pagos               Pago[]
@@ -1388,6 +1390,27 @@ model CargoContrato {
   @@index([inmobiliariaId])
   @@index([contratoId])
   @@map("cargos_contrato")
+}
+
+// Ajuste del monto del alquiler (manual-asistido): el operador confirma el nuevo canon y
+// desde qué período aplica. Registra el historial (antes/después) y actualiza las cuotas
+// futuras impagas. Con la desregulación el índice/frecuencia varían por contrato.
+model AjusteAlquiler {
+  id             String       @id @default(cuid())
+  inmobiliariaId String
+  inmobiliaria   Inmobiliaria @relation(fields: [inmobiliariaId], references: [id])
+  contratoId     String
+  contrato       Contrato     @relation(fields: [contratoId], references: [id])
+  montoAnterior  Decimal      @db.Decimal(14, 2)
+  montoNuevo     Decimal      @db.Decimal(14, 2)
+  periodoDesde   String // 'YYYY-MM' desde el que aplica el nuevo canon
+  motivo         String? // p.ej. "ICL 12 meses (+45%)"
+  creadoPorId    String?
+  createdAt      DateTime     @default(now())
+
+  @@index([inmobiliariaId])
+  @@index([contratoId])
+  @@map("ajustes_alquiler")
 }
 
 model CoInquilino {
