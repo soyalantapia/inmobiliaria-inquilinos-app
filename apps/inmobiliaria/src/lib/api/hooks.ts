@@ -1219,21 +1219,29 @@ export function useFinalizarPreview(): { obtenerPreview: (id: string) => Promise
 }
 
 /** Finalizar un contrato: lo cierra y libera la propiedad (vuelve a DISPONIBLE).
- *  Devuelve cuántas cuotas futuras impagas se anularon (para el toast de éxito). */
-export function useFinalizarContrato(): { finalizar: (id: string) => Promise<{ cuotasAnuladas: number }> } {
+ *  `tipo` distingue la finalización (fin natural) de la rescisión anticipada
+ *  (RESCINDIDO); default FINALIZADO. Devuelve cuántas cuotas futuras impagas se
+ *  anularon y el estado resultante (para el toast de éxito). */
+export function useFinalizarContrato(): {
+  finalizar: (
+    id: string,
+    tipo?: 'FINALIZADO' | 'RESCINDIDO',
+  ) => Promise<{ cuotasAnuladas: number; estado: 'FINALIZADO' | 'RESCINDIDO' }>;
+} {
   const qc = useQueryClient();
   return {
-    finalizar: async (id) => {
+    finalizar: async (id, tipo) => {
       await ensureApiSession();
-      const res = (await apiFetch(`/contratos/${id}/finalizar`, { method: 'POST' })) as {
-        cuotasAnuladas?: number;
-      };
+      const res = (await apiFetch(`/contratos/${id}/finalizar`, {
+        method: 'POST',
+        ...(tipo ? { body: JSON.stringify({ tipo }) } : {}),
+      })) as { cuotasAnuladas?: number; estado?: 'FINALIZADO' | 'RESCINDIDO' };
       await Promise.all([
         qc.invalidateQueries({ queryKey: ['contratos'] }),
         qc.invalidateQueries({ queryKey: ['contrato', id] }),
         qc.invalidateQueries({ queryKey: ['propiedades'] }),
       ]);
-      return { cuotasAnuladas: res?.cuotasAnuladas ?? 0 };
+      return { cuotasAnuladas: res?.cuotasAnuladas ?? 0, estado: res?.estado ?? 'FINALIZADO' };
     },
   };
 }

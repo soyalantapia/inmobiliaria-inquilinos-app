@@ -27,6 +27,9 @@ export function FinalizarContratoButton({ contratoId, direccion }: { contratoId:
   const [enviando, setEnviando] = useState(false);
   const [preview, setPreview] = useState<FinalizarPreview | null>(null);
   const [cargandoPreview, setCargandoPreview] = useState(false);
+  // Tipo de baja: finalización (fin del plazo) vs rescisión anticipada. Se guarda
+  // como estado del contrato (FINALIZADO/RESCINDIDO) para el historial y el certificado.
+  const [tipo, setTipo] = useState<'FINALIZADO' | 'RESCINDIDO'>('FINALIZADO');
 
   // Al abrir, traemos el preview. Si falla (o en demo devuelve null), el diálogo
   // igual funciona con el copy base — el preview es una ayuda, no un bloqueo.
@@ -34,6 +37,7 @@ export function FinalizarContratoButton({ contratoId, direccion }: { contratoId:
     if (!open) return;
     let vivo = true;
     setPreview(null);
+    setTipo('FINALIZADO');
     setCargandoPreview(true);
     obtenerPreview(contratoId)
       .then((p) => { if (vivo) setPreview(p); })
@@ -43,15 +47,17 @@ export function FinalizarContratoButton({ contratoId, direccion }: { contratoId:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, contratoId]);
 
+  const esRescision = tipo === 'RESCINDIDO';
+
   const confirmar = async () => {
     if (enviando) return;
     setEnviando(true);
     try {
-      const { cuotasAnuladas } = await finalizar(contratoId);
+      const { cuotasAnuladas } = await finalizar(contratoId, tipo);
       await qc.invalidateQueries({ queryKey: ['contrato', contratoId] });
       toast({
         variant: 'success',
-        title: 'Contrato finalizado',
+        title: esRescision ? 'Contrato rescindido' : 'Contrato finalizado',
         description:
           `${direccion} quedó disponible para un nuevo contrato.` +
           (cuotasAnuladas > 0
@@ -100,12 +106,30 @@ export function FinalizarContratoButton({ contratoId, direccion }: { contratoId:
     }
   }
 
+  const opcionCls = (activo: boolean) =>
+    `flex-1 rounded-md border p-2 text-left text-xs transition-colors ${
+      activo ? 'border-primary bg-primary/5 text-foreground' : 'border-border text-muted-foreground hover:bg-muted/50'
+    }`;
+
   const descripcion = (
     <span className="block space-y-2">
       <span className="block">
-        El contrato pasa a <strong>finalizado</strong> y la propiedad vuelve a estar disponible.
-        Las cuotas <strong>futuras impagas se anulan</strong>; la <strong>deuda ya vencida se conserva</strong> (sigue
-        siendo cobrable). El historial de pagos y comprobantes se mantiene. No se puede deshacer.
+        <span className="mb-1 block text-xs font-medium text-foreground">Motivo de la baja</span>
+        <span className="flex gap-2">
+          <button type="button" aria-pressed={!esRescision} className={opcionCls(!esRescision)} onClick={() => setTipo('FINALIZADO')}>
+            <span className="block font-medium text-foreground">Finalización</span>
+            <span className="block">Se cumplió el plazo pactado</span>
+          </button>
+          <button type="button" aria-pressed={esRescision} className={opcionCls(esRescision)} onClick={() => setTipo('RESCINDIDO')}>
+            <span className="block font-medium text-foreground">Rescisión</span>
+            <span className="block">Baja anticipada</span>
+          </button>
+        </span>
+      </span>
+      <span className="block">
+        El contrato pasa a <strong>{esRescision ? 'rescindido' : 'finalizado'}</strong> y la propiedad vuelve a estar
+        disponible. Las cuotas <strong>futuras impagas se anulan</strong>; la <strong>deuda ya vencida se conserva</strong>{' '}
+        (sigue siendo cobrable). El historial de pagos y comprobantes se mantiene. No se puede deshacer.
       </span>
       {cargandoPreview && (
         <span className="block text-xs text-muted-foreground">Revisando el contrato…</span>
@@ -132,9 +156,9 @@ export function FinalizarContratoButton({ contratoId, direccion }: { contratoId:
       <ConfirmDialog
         open={open}
         onOpenChange={setOpen}
-        title="¿Finalizar este contrato?"
+        title="¿Dar de baja este contrato?"
         description={descripcion}
-        confirmLabel="Sí, finalizar"
+        confirmLabel={esRescision ? 'Sí, rescindir' : 'Sí, finalizar'}
         variant="destructive"
         loading={enviando}
         onConfirm={confirmar}
