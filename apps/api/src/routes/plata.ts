@@ -674,7 +674,18 @@ export async function plataRoutes(app: FastifyInstance) {
         saldadas++;
         montoAplicado += saldo;
       }
-      return { liquidacionesSaldadas: saldadas, montoAplicado: Math.round(montoAplicado * 100) / 100 };
+      // Además saldamos los cargos pendientes del inquilino (reparaciones imputadas +
+      // penalidad de rescisión) que NO van contra el depósito: "saldar deuda" = dejar
+      // la cuenta del inquilino en cero, no sólo las liquidaciones.
+      const cargos = await tx.cargoContrato.updateMany({
+        where: { contratoId: id, inmobiliariaId: u.inmobiliariaId, contraDeposito: false, saldadoAt: null },
+        data: { saldadoAt: now, saldadoPorId: u.userId },
+      });
+      return {
+        liquidacionesSaldadas: saldadas,
+        montoAplicado: Math.round(montoAplicado * 100) / 100,
+        cargosSaldados: cargos.count,
+      };
     });
     await registrarEvento({
       inmobiliariaId: u.inmobiliariaId,
@@ -685,6 +696,65 @@ export async function plataRoutes(app: FastifyInstance) {
       entidadDescripcion: `${b.condonar ? 'Condonación' : 'Cobro'} de deuda: ${res.liquidacionesSaldadas} cuota(s) por $${res.montoAplicado}`,
     });
     return { ok: true, condonado: !!b.condonar, ...res };
+  });
+
+  // Cargos del contrato para el PANEL: reparaciones imputadas (al inquilino o al
+  // depósito) + penalidades de rescisión, con su estado (pendiente/saldado). Sirve
+  // para surfacearlos en el detalle del contrato y poder marcarlos cobrados.
+  app.get('/contratos/:id/cargos', async (request, reply) => {
+    const u = await requireUsuario(request, reply);
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const contrato = await prisma.contrato.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      select: { id: true },
+    });
+    if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
+    const cargos = await prisma.cargoContrato.findMany({
+      where: { contratoId: id, inmobiliariaId: u.inmobiliariaId },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true, tipo: true, concepto: true, monto: true, moneda: true,
+        contraDeposito: true, reclamoId: true, saldadoAt: true, createdAt: true,
+      },
+    });
+    return cargos.map((c) => ({
+      id: c.id,
+      tipo: c.tipo,
+      concepto: c.concepto,
+      monto: Number(c.monto),
+      moneda: c.moneda,
+      contraDeposito: c.contraDeposito,
+      reclamoId: c.reclamoId,
+      saldadoAt: c.saldadoAt ? c.saldadoAt.toISOString() : null,
+      fecha: c.createdAt.toISOString(),
+    }));
+  });
+
+  // Marca un cargo del inquilino como cobrado/saldado → deja de ser deuda (sale de
+  // /mis-cargos y del total que ve el inquilino). Sólo cargos que NO van contra el
+  // depósito (esos se netean en /depositos/en-custodia). Idempotente.
+  app.post('/cargos/:id/saldar', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'pago.conciliar');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const cargo = await prisma.cargoContrato.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
+    if (!cargo) return reply.code(404).send({ message: 'Cargo inexistente' });
+    if (cargo.contraDeposito) {
+      return reply.code(400).send({ message: 'Ese cargo se descuenta del depósito, no se cobra al inquilino' });
+    }
+    if (!cargo.saldadoAt) {
+      await prisma.cargoContrato.update({ where: { id }, data: { saldadoAt: new Date(), saldadoPorId: u.userId } });
+      await registrarEvento({
+        inmobiliariaId: u.inmobiliariaId,
+        tipo: 'PAGO_CONCILIADO',
+        autorId: u.userId,
+        rolAutor: u.rol,
+        entidadId: id,
+        entidadDescripcion: `Cargo saldado: ${cargo.concepto} · $${Number(cargo.monto)}`,
+      });
+    }
+    return { ok: true };
   });
 
   // Cobro MANUAL registrado por la inmobiliaria (con PIN): efectivo en la

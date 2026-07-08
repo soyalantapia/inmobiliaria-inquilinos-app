@@ -584,6 +584,33 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
     };
   });
 
+  // ===== Cargos del inquilino (deuda que NO nace de una liquidación) =====
+  // Reparación de un reclamo imputada al inquilino (pagador INQUILINO) y penalidad
+  // por rescisión anticipada. Antes eran write-only: se creaban en el panel pero el
+  // inquilino no los veía ni sumaban a su deuda. Excluye los `contraDeposito` (se
+  // netean contra el depósito, no los paga el inquilino ahora) y los ya saldados por
+  // la inmo. La LECTURA no exige contrato ACTIVO: un ex-inquilino debe poder ver la
+  // penalidad de su rescisión.
+  app.get('/mis-cargos', async (request, reply) => {
+    const inq = await requireContratoAcceso(request, reply);
+    if (!inq) return;
+    if (!inq.contratoId) return [];
+    const cargos = await prisma.cargoContrato.findMany({
+      where: { contratoId: inq.contratoId, contraDeposito: false, saldadoAt: null },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, tipo: true, concepto: true, monto: true, moneda: true, createdAt: true, reclamoId: true },
+    });
+    return cargos.map((c) => ({
+      id: c.id,
+      tipo: c.tipo,
+      concepto: c.concepto,
+      monto: Number(c.monto),
+      moneda: c.moneda,
+      fecha: c.createdAt.toISOString(),
+      origen: c.reclamoId ? 'RECLAMO' : c.tipo === 'PENALIDAD_RESCISION' ? 'RESCISION' : 'OTRO',
+    }));
+  });
+
   // ===== Certificado del inquilino (el "reemplazo del garante") =====
   app.get('/certificado', async (request, reply) => {
     const inq = await requireInquilino(request, reply);

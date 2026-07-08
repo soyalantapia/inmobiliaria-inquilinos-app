@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { Card } from '@llave/ui/card';
 import { AnunciosFeed } from '@/components/anuncios-feed';
+import { CargosAdicionales } from '@/components/cargos-adicionales';
 import { InstallPrompt } from '@/components/install-prompt';
 import { NavBar } from '@/components/nav-bar';
 import { OnboardingInvite } from '@/components/onboarding';
@@ -444,6 +445,11 @@ function HomeReal() {
         )}
 
         <QuickActions liqPendiente={contratoFinalizado ? null : pendiente} />
+
+        {/* Cargos que NO nacen de una liquidación (reparación imputada al inquilino,
+            penalidad de rescisión). Antes eran write-only: el inquilino no los veía.
+            Se rinde solo si hay cargos (null si no) → no ensucia el home ni la demo. */}
+        <CargosAdicionales inmobiliaria={contrato?.inmobiliaria} />
 
         {/* Invitación discreta al tour (opt-in). Faltaba en HomeReal: en
             producción ningún inquilino la veía — sólo estaba en la home demo.

@@ -1406,6 +1406,11 @@ model CargoContrato {
   // inquilino paga ahora); false → deuda normal del inquilino / cargo del contrato.
   contraDeposito Boolean      @default(false)
   creadoPorId    String? // userId del usuario que lo generó
+  // Cargo cobrado/saldado por la inmo → deja de ser deuda del inquilino (sale de
+  // /mis-cargos y del total adeudado). null = pendiente. Sólo aplica a los que NO
+  // son contraDeposito (esos se netean contra el depósito, no los paga el inquilino).
+  saldadoAt      DateTime?
+  saldadoPorId   String? // userId que lo marcó cobrado
   createdAt      DateTime     @default(now())
 
   @@index([inmobiliariaId])
