@@ -1496,10 +1496,14 @@ export async function plataRoutes(app: FastifyInstance) {
           };
         });
 
-        // Reclamos resueltos del período con el costo A CARGO DEL PROPIETARIO: entran a
-        // la rendición como GastoRendido tipo TRABAJO (refId `reclamo:<id>`). Antes NO
-        // impactaban — el costo del trabajo quedaba sólo en el reclamo y nunca se
-        // descontaba al dueño. Dedup por refId (los reclamos no tienen flag descontado).
+        // Reclamos resueltos con el costo A CARGO DEL PROPIETARIO: entran a la rendición
+        // como GastoRendido tipo TRABAJO (refId `reclamo:<id>`). Antes NO impactaban — el
+        // costo quedaba sólo en el reclamo y nunca se descontaba al dueño.
+        // CARRY-OVER (fix R22): tomamos los resueltos HASTA el cierre del período (no solo
+        // los del mismo mes). Antes, un reclamo resuelto en un mes ya rendido (o en una
+        // propiedad sin ingreso ese mes) quedaba fuera de la ventana y el costo desaparecía
+        // para siempre. El dedup por `refId` (abajo) garantiza que entre UNA sola vez: una
+        // vez rendido, el `GastoRendido reclamo:<id>` existe y lo excluye de futuras rendiciones.
         const reclamosProp = await tx.reclamo.findMany({
           where: {
             inmobiliariaId: u.inmobiliariaId,
@@ -1507,7 +1511,7 @@ export async function plataRoutes(app: FastifyInstance) {
             estado: { in: ['RESUELTO', 'CERRADO'] },
             costoTrabajo: { gt: 0 },
             propiedadId: { in: propIdsConIngreso },
-            resueltoAt: { gte: inicioPeriodo, lt: finPeriodo },
+            resueltoAt: { lt: finPeriodo },
           },
           include: { propiedad: { select: { direccion: true } } },
         });
