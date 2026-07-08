@@ -90,3 +90,41 @@ export function usePropiedadSeguros(id: string) {
 export function usePropiedadTimeline(id: string) {
   return usePropiedadRecurso<{ eventos: EventoTimeline[] }>(id, 'timeline', 'propiedad-timeline');
 }
+
+/* ---------- Gastos / mantenimiento ---------- */
+export interface GastoItem {
+  id: string;
+  categoria: string;
+  descripcion: string;
+  monto: number;
+  fecha: string;
+  proveedor: string | null;
+  contratoId: string | null;
+  comprobanteUrl: string | null;
+}
+export interface Gastos {
+  total: number;
+  cantidad: number;
+  porCategoria: Record<string, { monto: number; cantidad: number }>;
+  gastos: GastoItem[];
+}
+export function usePropiedadGastos(id: string) {
+  return usePropiedadRecurso<Gastos>(id, 'gastos', 'propiedad-gastos');
+}
+
+/* ---------- Documentos ---------- */
+export interface DocumentoItem {
+  id: string;
+  contratoId: string;
+  tipo: string;
+  etiqueta: string;
+  nombreArchivo: string;
+  tipoMime: string;
+  tamanioBytes: number;
+  archivoUrl: string;
+  subidoAt: string;
+  inquilino: string;
+}
+export function usePropiedadDocumentos(id: string) {
+  return usePropiedadRecurso<{ documentos: DocumentoItem[] }>(id, 'documentos', 'propiedad-documentos');
+}

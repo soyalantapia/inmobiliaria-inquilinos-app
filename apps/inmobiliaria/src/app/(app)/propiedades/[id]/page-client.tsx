@@ -43,6 +43,7 @@ import { BoletasInquilinoPanel } from '@/components/boletas-inquilino-panel';
 import { ServiciosPublicosPanel } from '@/components/servicios-publicos-panel';
 import { GananciaPropiedadCard } from '@/components/ganancia-propiedad-card';
 import { ExpedientePropiedadTab } from '@/components/expediente-propiedad-tab';
+import { DocumentosPropiedadPanel } from '@/components/documentos-propiedad-panel';
 import { Topbar } from '@/components/topbar';
 import {
   type CoInquilinoAdmin,
@@ -869,16 +870,7 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                 todavía. En modo API no mostramos documentos fantasma: mismo
                 patrón "Próximamente" que contratos/[id]. */}
             {apiEnabled ? (
-              <Card>
-                <CardContent className="p-10 text-center">
-                  <FileText className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
-                  <p className="text-sm font-medium">Gestión de documentos próximamente</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    La carga y descarga de documentos del expediente estará disponible
-                    en breve.
-                  </p>
-                </CardContent>
-              </Card>
+              <DocumentosPropiedadPanel propiedadId={propiedad.id} />
             ) : (
               <Card>
                 <CardContent className="space-y-3 p-6">

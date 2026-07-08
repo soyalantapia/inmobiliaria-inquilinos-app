@@ -12,6 +12,7 @@ import {
   usePropiedadSaludPago,
   usePropiedadSeguros,
   usePropiedadTimeline,
+  usePropiedadGastos,
   type Garantia,
 } from '@/lib/api/use-propiedad-expediente';
 import { formatMonto, formatFecha } from '@/lib/format';
@@ -35,6 +36,7 @@ function estadoPolizaColor(e: Garantia['estadoPoliza']): string {
 export function ExpedientePropiedadTab({ propiedadId }: { propiedadId: string }) {
   const { data: salud } = usePropiedadSaludPago(propiedadId);
   const { data: seguros } = usePropiedadSeguros(propiedadId);
+  const { data: gastos } = usePropiedadGastos(propiedadId);
   const { data: tl } = usePropiedadTimeline(propiedadId);
 
   if (!apiEnabled) {
@@ -147,6 +149,47 @@ export function ExpedientePropiedadTab({ propiedadId }: { propiedadId: string })
                   </li>
                 ))}
               </ul>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* GASTOS / MANTENIMIENTO */}
+      {gastos && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
+            <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              Gastos / mantenimiento
+            </CardTitle>
+            <span className="text-sm font-semibold">{formatMonto(gastos.total, 'ARS')}</span>
+          </CardHeader>
+          <CardContent className="text-sm">
+            {gastos.gastos.length === 0 ? (
+              <p className="text-muted-foreground">Sin gastos cargados en esta propiedad.</p>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex flex-wrap gap-1.5">
+                  {Object.entries(gastos.porCategoria).map(([cat, v]) => (
+                    <Badge key={cat} variant="secondary">
+                      {titulo(cat)}: {formatMonto(v.monto, 'ARS')}
+                    </Badge>
+                  ))}
+                </div>
+                <ul role="list" className="divide-y">
+                  {gastos.gastos.slice(0, 8).map((g) => (
+                    <li key={g.id} className="flex items-center justify-between gap-3 py-2">
+                      <div className="min-w-0">
+                        <p className="truncate font-medium">{g.descripcion}</p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {titulo(g.categoria)} · {formatFecha(g.fecha.slice(0, 10))}
+                          {g.proveedor ? ` · ${g.proveedor}` : ''}
+                        </p>
+                      </div>
+                      <span className="shrink-0 font-semibold">{formatMonto(g.monto, 'ARS')}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
           </CardContent>
         </Card>
