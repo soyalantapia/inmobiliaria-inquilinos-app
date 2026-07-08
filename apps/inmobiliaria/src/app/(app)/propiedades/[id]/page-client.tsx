@@ -42,6 +42,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@llave/ui/tabs';
 import { BoletasInquilinoPanel } from '@/components/boletas-inquilino-panel';
 import { ServiciosPublicosPanel } from '@/components/servicios-publicos-panel';
 import { GananciaPropiedadCard } from '@/components/ganancia-propiedad-card';
+import { ExpedientePropiedadTab } from '@/components/expediente-propiedad-tab';
 import { Topbar } from '@/components/topbar';
 import {
   type CoInquilinoAdmin,
@@ -267,6 +268,7 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
             <TabsTrigger value="personas">Personas</TabsTrigger>
             <TabsTrigger value="servicios">Servicios</TabsTrigger>
             <TabsTrigger value="documentos">Documentos</TabsTrigger>
+            <TabsTrigger value="expediente">Expediente</TabsTrigger>
           </TabsList>
 
           {/* RESUMEN */}
@@ -895,6 +897,10 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                 </CardContent>
               </Card>
             )}
+          </TabsContent>
+
+          <TabsContent value="expediente" className="space-y-4">
+            <ExpedientePropiedadTab propiedadId={propiedad.id} />
           </TabsContent>
         </Tabs>
       </main>

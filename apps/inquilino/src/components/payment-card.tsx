@@ -22,8 +22,20 @@ const estadoLabel: Record<Liquidacion['estado'], string> = {
 export function PaymentCard({ liquidacion }: { liquidacion: Liquidacion }) {
   const dias = diasHastaVencimiento(liquidacion.fechaVencimiento);
   const isPagado = liquidacion.estado === 'PAGADO';
+  // Puntualidad REAL: comparamos la fecha de pago (conciliación) con el vencimiento,
+  // en vez de afirmar "a tiempo" siempre. Sin fechaPago no inventamos: solo "Pagado".
+  const diasPago =
+    isPagado && liquidacion.fechaPago
+      ? Math.floor(
+          (new Date(liquidacion.fechaPago).getTime() - new Date(liquidacion.fechaVencimiento).getTime()) / 86_400_000,
+        )
+      : null;
   const subtitulo = isPagado
-    ? 'Pagado a tiempo'
+    ? diasPago == null
+      ? 'Pagado'
+      : diasPago > 0
+        ? `Pagado con ${diasPago} día${diasPago === 1 ? '' : 's'} de atraso`
+        : 'Pagado a tiempo'
     : dias < 0
       ? `Venció hace ${Math.abs(dias)} día${Math.abs(dias) === 1 ? '' : 's'}`
       : dias === 0
