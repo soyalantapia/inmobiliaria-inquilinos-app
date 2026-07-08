@@ -1,16 +1,20 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { AlertCircle, ChevronRight, ShieldCheck } from 'lucide-react';
 import { Badge } from '@llave/ui/badge';
+import { Button } from '@llave/ui/button';
 import { Card, CardContent } from '@llave/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@llave/ui/table';
+import { ResolverDepositoDialog } from '@/components/resolver-deposito-dialog';
 import { Topbar } from '@/components/topbar';
-import { useDepositosEnCustodia } from '@/lib/api/use-depositos';
+import { useDepositosEnCustodia, type DepositoContrato } from '@/lib/api/use-depositos';
 import { formatFechaCorta, formatMonto } from '@/lib/format';
 
 export default function DepositosPage() {
-  const { data, cargando, disponible, error } = useDepositosEnCustodia();
+  const { data, cargando, disponible, error, resolver } = useDepositosEnCustodia();
+  const [resolviendo, setResolviendo] = useState<DepositoContrato | null>(null);
 
   return (
     <>
@@ -104,9 +108,18 @@ export default function DepositosPage() {
                           {formatMonto(c.monto, c.moneda)}
                         </TableCell>
                         <TableCell className="text-right">
-                          <Link href={`/contratos/${c.contratoId}`} aria-label="Ver contrato">
-                            <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                          </Link>
+                          <div className="flex items-center justify-end gap-1">
+                            {/* Solo se resuelve el depósito de un contrato TERMINADO (el de
+                                un contrato ACTIVO sigue en custodia hasta que el inquilino se va). */}
+                            {c.estadoContrato !== 'ACTIVO' && (
+                              <Button size="sm" variant="outline" onClick={() => setResolviendo(c)}>
+                                Resolver
+                              </Button>
+                            )}
+                            <Link href={`/contratos/${c.contratoId}`} aria-label="Ver contrato">
+                              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                            </Link>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -117,6 +130,11 @@ export default function DepositosPage() {
           </>
         )}
       </main>
+      <ResolverDepositoDialog
+        deposito={resolviendo}
+        resolver={resolver}
+        onClose={() => setResolviendo(null)}
+      />
     </>
   );
 }

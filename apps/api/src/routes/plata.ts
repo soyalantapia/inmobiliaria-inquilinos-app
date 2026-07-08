@@ -757,6 +757,59 @@ export async function plataRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
+  // Resolver el DEPÓSITO de garantía al egreso: devolver todo / netear (devolver
+  // menos por deuda o daños) / ejecutar ("pelear"/retener). Antes esto SOLO ocurría en
+  // la rescisión → un contrato FINALIZADO natural dejaba el depósito RETENIDO para
+  // siempre en /depositos/en-custodia, sin forma de saldarlo. Válido sobre un contrato
+  // ya terminado (FINALIZADO/RESCINDIDO) con depósito aún RETENIDO. Idempotente (409).
+  app.post('/contratos/:id/deposito/resolver', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'contratos.crear');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const body = z
+      .object({
+        decision: z.enum(['DEVOLVER', 'NETEAR', 'EJECUTAR']),
+        montoDevuelto: z.number().min(0),
+        motivo: z.string().optional(),
+      })
+      .safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ message: 'Datos de resolución inválidos' });
+    const contrato = await prisma.contrato.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
+    if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
+    if (contrato.estado !== 'FINALIZADO' && contrato.estado !== 'RESCINDIDO') {
+      return reply.code(400).send({ message: 'El depósito se resuelve cuando el contrato termina (finalizado o rescindido)' });
+    }
+    if (contrato.estadoDeposito !== 'RETENIDO') {
+      return reply.code(409).send({ message: 'El depósito de este contrato ya fue resuelto' });
+    }
+    const deposito = Number(contrato.depositoGarantia ?? 0);
+    if (deposito <= 0) return reply.code(400).send({ message: 'Este contrato no tiene depósito en custodia' });
+    const monto = Math.round(body.data.montoDevuelto * 100) / 100;
+    if (monto > deposito) return reply.code(400).send({ message: 'No podés devolver más que el depósito en custodia' });
+    // DEVOLVER = se devuelve todo; NETEAR = se devuelve una parte; EJECUTAR = se retiene
+    // todo ("pelear"). El monto que efectivamente se le devuelve al inquilino queda registrado.
+    const estadoDeposito =
+      body.data.decision === 'DEVOLVER' ? 'DEVUELTO' : body.data.decision === 'NETEAR' ? 'NETEADO' : 'EJECUTADO';
+    await prisma.contrato.update({
+      where: { id },
+      data: {
+        estadoDeposito,
+        depositoDevueltoMonto: monto,
+        depositoDevueltoAt: new Date(),
+        motivoDeposito: body.data.motivo?.trim() || null,
+      },
+    });
+    await registrarEvento({
+      inmobiliariaId: u.inmobiliariaId,
+      tipo: 'PAGO_CONCILIADO',
+      autorId: u.userId,
+      rolAutor: u.rol,
+      entidadId: id,
+      entidadDescripcion: `Depósito ${estadoDeposito.toLowerCase()} · se devolvió $${monto} de $${deposito}${body.data.motivo ? ` · ${body.data.motivo.trim()}` : ''}`,
+    });
+    return { ok: true, estadoDeposito, depositoDevueltoMonto: monto };
+  });
+
   // Cobro MANUAL registrado por la inmobiliaria (con PIN): efectivo en la
   // oficina, o "el dueño confirmó que recibió la plata" en contratos de
   // cobranza directa. Antes NO existía ningún camino en prod para marcar

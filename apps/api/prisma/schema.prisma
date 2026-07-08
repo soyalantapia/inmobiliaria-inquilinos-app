@@ -1222,6 +1222,9 @@ model Contrato {
   estadoDeposito            EstadoDeposito @default(RETENIDO)
   depositoDevueltoMonto     Decimal?       @db.Decimal(14, 2)
   depositoDevueltoAt        DateTime?
+  // Motivo de la resolución del depósito (por qué se neteó/ejecutó): el caso "pelear
+  // la garantía" (retener por daños/deuda). Se resuelve al egreso, no solo en rescisión.
+  motivoDeposito            String?
   // Rescisión anticipada: fecha efectiva, motivo y penalidad en cánones (override del
   // default de la inmobiliaria). La penalidad se emite como CargoContrato al rescindir.
   fechaEfectivaRescision    DateTime?
