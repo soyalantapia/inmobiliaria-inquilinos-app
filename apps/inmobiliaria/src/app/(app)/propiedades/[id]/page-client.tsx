@@ -41,6 +41,7 @@ import { Separator } from '@llave/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@llave/ui/tabs';
 import { BoletasInquilinoPanel } from '@/components/boletas-inquilino-panel';
 import { ServiciosPublicosPanel } from '@/components/servicios-publicos-panel';
+import { GananciaPropiedadCard } from '@/components/ganancia-propiedad-card';
 import { Topbar } from '@/components/topbar';
 import {
   type CoInquilinoAdmin,
@@ -654,6 +655,7 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
 
           {/* CONTRATO */}
           <TabsContent value="contrato" className="space-y-4">
+            <GananciaPropiedadCard propiedadId={propiedad.id} />
             {contrato ? (
               <Card>
                 <CardContent className="space-y-4 p-6">
