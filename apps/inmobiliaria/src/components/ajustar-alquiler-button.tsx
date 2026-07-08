@@ -6,6 +6,7 @@ import { Button } from '@llave/ui/button';
 import { ConfirmDialog } from '@llave/ui/confirm-dialog';
 import { toast } from '@llave/ui/use-toast';
 import { ApiError } from '@/lib/api/client';
+import { MoneyInput } from '@/components/money-input';
 import { useAjustarAlquiler } from '@/lib/api/use-ajustes';
 import { formatMonto } from '@/lib/format';
 import type { Moneda } from '@/lib/types';
@@ -72,12 +73,11 @@ export function AjustarAlquilerButton({
       </span>
       <span className="flex items-center justify-between gap-2">
         <span className="font-medium text-foreground">Nuevo alquiler</span>
-        <input
-          type="number"
-          inputMode="decimal"
+        <MoneyInput
           value={montoNuevo}
-          onChange={(e) => setMontoNuevo(e.target.value)}
-          className="w-36 rounded border border-border bg-background px-2 py-1 text-right"
+          onChange={setMontoNuevo}
+          moneda={moneda}
+          className="inline-block w-36"
           placeholder="0"
         />
       </span>

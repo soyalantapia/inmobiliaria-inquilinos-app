@@ -160,7 +160,7 @@ function HomeDemo() {
         {/* Acciones rápidas: 4 atajos visuales para las cosas que más hace un
             inquilino. Reemplaza la sensación de "tengo que buscar dónde está
             cada cosa" con un acceso directo desde la pantalla principal. */}
-        <QuickActions liqPendiente={pendiente ?? null} />
+        <QuickActions />
 
         {/* J3 (walkthrough Jorge): invitación discreta y opt-in al tour, en
             lugar del muro full-screen que se auto-abría. Jorge ve primero su
@@ -349,10 +349,19 @@ function HomeReal() {
   // agarraba el MÁS NUEVO → a un inquilino con meses vencidos (p.ej. migrado
   // con deuda) el CTA principal le pedía pagar el mes FUTURO mientras la mora
   // del más viejo seguía corriendo.
-  const pendiente =
+  // Alertamos por un pago SÓLO cuando está vencido o faltan ≤10 días para el
+  // vencimiento. Antes empujábamos por cualquier cuota impaga —incluida una futura
+  // ya devengada por el cron— con demasiada antelación: la gente pagaba de más o el
+  // mes equivocado. La deuda vencida (días negativos) siempre entra (≤10).
+  const DIAS_ALERTA_PAGO = 10;
+  const impagaMasVieja =
     [...liquidaciones]
       .filter((l) => l.estado !== 'PAGADO')
       .sort((a, b) => a.fechaVencimiento.localeCompare(b.fechaVencimiento))[0] ?? null;
+  const pendiente =
+    impagaMasVieja && diasHastaVencimiento(impagaMasVieja.fechaVencimiento) <= DIAS_ALERTA_PAGO
+      ? impagaMasVieja
+      : null;
   const pagadas = liquidaciones.filter((l) => l.estado === 'PAGADO').slice(0, 3);
 
   const diasAjuste = contrato?.proximoAjuste ? diasHastaVencimiento(contrato.proximoAjuste) : -1;
@@ -444,7 +453,7 @@ function HomeReal() {
           </Link>
         )}
 
-        <QuickActions liqPendiente={contratoFinalizado ? null : pendiente} />
+        <QuickActions />
 
         {/* Cargos que NO nacen de una liquidación (reparación imputada al inquilino,
             penalidad de rescisión). Antes eran write-only: el inquilino no los veía.
@@ -617,7 +626,7 @@ function BannerPagoPendiente({ liq }: { liq: Liquidacion }) {
   // "¿esto es solo info o lo puedo tocar para pagar?" detectada en la auditoría.
   return (
     <Link
-      href={`/pago/${liq.id}/checkout`}
+      href="/comprobantes"
       className={`flex flex-col gap-3 rounded-xl border ${tono.border} ${tono.bg} px-3 py-3 transition-colors hover:bg-opacity-100 active:scale-[0.99]`}
     >
       {/* En mobile angosto (<sm), el monto + texto compite con el pill por
@@ -770,12 +779,12 @@ function BannerAlDia({
 // pantalla en algo accionable: en un tap el inquilino llega a las 4
 // cosas que más quiere hacer (pagar, hacer un reclamo, ver el contrato
 // o subir una boleta de servicios).
-function QuickActions({ liqPendiente }: { liqPendiente: Liquidacion | null }) {
-  // El atajo "Pagar" lleva DIRECTO al checkout del pago pendiente si
-  // existe — antes iba a la lista /comprobantes y obligaba a un
-  // segundo click. Si no hay nada pendiente, lleva a la lista para
-  // que el usuario igual encuentre comprobantes pasados.
-  const pagarHref = liqPendiente ? `/pago/${liqPendiente.id}/checkout` : '/comprobantes';
+function QuickActions() {
+  // Pagar SIEMPRE se hace desde la lista de Pagos (/comprobantes), nunca con un
+  // checkout directo desde el home: así el inquilino ve sus cuotas y elige la
+  // correcta, en vez de pagar el mes equivocado (pedido del owner: "que pague
+  // solo yendo a pagos, así la gente no se equivoca").
+  const pagarHref = '/comprobantes';
   const acciones: Array<{
     href: string;
     label: string;

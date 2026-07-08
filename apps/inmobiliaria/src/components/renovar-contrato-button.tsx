@@ -8,6 +8,7 @@ import { ConfirmDialog } from '@llave/ui/confirm-dialog';
 import { toast } from '@llave/ui/use-toast';
 import { ApiError, apiFetch } from '@/lib/api/client';
 import { ensureApiSession } from '@/lib/api/session';
+import { MoneyInput } from '@/components/money-input';
 import { formatMonto } from '@/lib/format';
 import type { Moneda } from '@/lib/types';
 
@@ -92,7 +93,7 @@ export function RenovarContratoButton({
       </span>
       <span className="flex items-center justify-between gap-2">
         <span className="font-medium text-foreground">Nuevo alquiler</span>
-        <input type="number" inputMode="decimal" value={montoNuevo} onChange={(e) => setMontoNuevo(e.target.value)} className="w-40 rounded border border-border bg-background px-2 py-1 text-right" />
+        <MoneyInput value={montoNuevo} onChange={setMontoNuevo} moneda={moneda} className="inline-block w-40" />
       </span>
       <span className="flex items-center justify-between gap-2">
         <span className="font-medium text-foreground">El nuevo canon aplica desde</span>

@@ -6,6 +6,7 @@ import { CalendarX } from 'lucide-react';
 import { Button } from '@llave/ui/button';
 import { ConfirmDialog } from '@llave/ui/confirm-dialog';
 import { toast } from '@llave/ui/use-toast';
+import { MoneyInput } from '@/components/money-input';
 import { ApiError } from '@/lib/api/client';
 import { useFinalizarContrato, useFinalizarPreview, type FinalizarPreview } from '@/lib/api/hooks';
 import { formatMonto } from '@/lib/format';
@@ -178,12 +179,11 @@ export function FinalizarContratoButton({ contratoId, direccion }: { contratoId:
 
           <span className="flex items-center justify-between gap-2">
             <span>Penalidad (multa){preview.mesesPenalidad ? ` · ${preview.mesesPenalidad} canon${preview.mesesPenalidad === 1 ? '' : 'es'}` : ''}</span>
-            <input
-              type="number"
-              inputMode="decimal"
+            <MoneyInput
               value={montoPenalidad}
-              onChange={(e) => setMontoPenalidad(e.target.value)}
-              className="w-32 rounded border border-border bg-background px-2 py-1 text-right"
+              onChange={setMontoPenalidad}
+              moneda={moneda}
+              className="inline-block w-32"
               placeholder="0"
             />
           </span>

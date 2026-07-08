@@ -46,7 +46,17 @@ export default function DepositosPage() {
                 </p>
               </Card>
             ) : (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              // Columnas = cantidad de monedas (tope 3): con una sola moneda el KPI
+              // ocupa TODO el ancho en vez de quedar como un cuadradito al costado.
+              <div
+                className={`grid gap-3 ${
+                  data.porMoneda.length === 1
+                    ? 'grid-cols-1'
+                    : data.porMoneda.length === 2
+                      ? 'grid-cols-1 sm:grid-cols-2'
+                      : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'
+                }`}
+              >
                 {data.porMoneda.map((m) => (
                   <Card key={m.moneda} className="border-primary/20 bg-primary/5">
                     <CardContent className="p-5">

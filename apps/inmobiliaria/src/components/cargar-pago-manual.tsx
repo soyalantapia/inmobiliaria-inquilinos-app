@@ -21,6 +21,7 @@ import { formatMonto, formatPeriodo, fechaHoyLocal } from '@/lib/format';
 import { PinPromptDialog } from '@/components/pin-prompt-dialog';
 import { apiEnabled, apiFetch } from '@/lib/api/client';
 import { useContratos, useLiquidaciones } from '@/lib/api/hooks';
+import { MoneyInput } from '@/components/money-input';
 
 // Dialog para que la administradora cargue manualmente un pago que recibió
 // (efectivo, transferencia que vino fuera de la app, cheque). Se concilia
@@ -255,12 +256,11 @@ function CargarPagoManualApi({ open, onOpenChange, onDone }: Props) {
                 <Label htmlFor="cpm-monto" className="text-xs" aria-required>
                   Monto <span className="text-destructive">*</span>
                 </Label>
-                <Input
+                <MoneyInput
                   id="cpm-monto"
-                  type="number"
-                  inputMode="decimal"
                   value={monto}
-                  onChange={(e) => setMonto(e.target.value)}
+                  onChange={setMonto}
+                  moneda={contratoSel?.moneda}
                   placeholder="0"
                   required
                 />
@@ -458,12 +458,11 @@ function CargarPagoManualDemo({ open, onOpenChange, onDone }: Props) {
               <Label htmlFor="cpm-monto" className="text-xs" aria-required>
                 Monto <span className="text-destructive">*</span>
               </Label>
-              <Input
+              <MoneyInput
                 id="cpm-monto"
-                type="number"
-                inputMode="decimal"
                 value={monto}
-                onChange={(e) => setMonto(e.target.value)}
+                onChange={setMonto}
+                moneda={contratoSel?.moneda}
                 placeholder="0"
                 required
               />

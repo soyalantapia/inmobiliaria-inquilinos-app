@@ -33,6 +33,7 @@ import {
 } from '@llave/ui/select';
 import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
+import { MoneyInput } from '@/components/money-input';
 import { useConsorcioInventario } from '@/lib/api/use-consorcio-extra';
 import {
   type CategoriaInventario,
@@ -482,14 +483,12 @@ function CrearItemDialog({ abierto, onClose, consorcioId, onGuardar, puedeMutar 
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="costo">Costo unitario (ARS)</Label>
-            <Input
+            <MoneyInput
               id="costo"
-              type="number"
-              inputMode="decimal"
               min="0"
               placeholder="Opcional"
               value={costo}
-              onChange={(e) => setCosto(e.target.value)}
+              onChange={setCosto}
             />
           </div>
           <div className="space-y-1.5">

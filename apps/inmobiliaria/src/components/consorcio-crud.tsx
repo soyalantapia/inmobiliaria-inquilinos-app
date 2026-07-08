@@ -30,6 +30,7 @@ import {
 } from '@llave/ui/select';
 import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
+import { MoneyInput } from '@/components/money-input';
 import {
   useConsorcioMutaciones,
   type AsambleaInput,
@@ -152,13 +153,11 @@ export function SumarConsorcioDialog({
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="cs-expensa">Expensas del período (ARS)</Label>
-              <Input
+              <MoneyInput
                 id="cs-expensa"
-                type="number"
-                inputMode="decimal"
                 min="0"
                 value={expensa}
-                onChange={(e) => setExpensa(e.target.value)}
+                onChange={setExpensa}
                 placeholder="Total a prorratear"
               />
             </div>
@@ -178,13 +177,11 @@ export function SumarConsorcioDialog({
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="cs-sueldo">Sueldo (ARS)</Label>
-              <Input
+              <MoneyInput
                 id="cs-sueldo"
-                type="number"
-                inputMode="decimal"
                 min="0"
                 value={encargadoSueldo}
-                onChange={(e) => setEncargadoSueldo(e.target.value)}
+                onChange={setEncargadoSueldo}
                 disabled={!encargadoNombre.trim()}
               />
             </div>
@@ -368,12 +365,10 @@ export function UnidadDialog({
               Paga un monto fijo (en vez del prorrateo por coeficiente)
             </label>
             {usaFijo && (
-              <Input
-                type="number"
-                inputMode="decimal"
+              <MoneyInput
                 min="0"
                 value={cargoFijo}
-                onChange={(e) => setCargoFijo(e.target.value)}
+                onChange={setCargoFijo}
                 placeholder="Monto fijo mensual (ARS)"
                 aria-label="Monto fijo mensual"
               />
@@ -386,13 +381,11 @@ export function UnidadDialog({
                 opcional · deuda histórica al migrar el edificio
               </span>
             </Label>
-            <Input
+            <MoneyInput
               id="uf-saldo"
-              type="number"
-              inputMode="decimal"
               min="0"
               value={saldoDeudor}
-              onChange={(e) => setSaldoDeudor(e.target.value)}
+              onChange={setSaldoDeudor}
               placeholder="0"
             />
           </div>
@@ -519,13 +512,11 @@ export function NuevoMovimientoDialog({
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="mv-monto">Monto (ARS)</Label>
-            <Input
+            <MoneyInput
               id="mv-monto"
-              type="number"
-              inputMode="decimal"
               min="1"
               value={monto}
-              onChange={(e) => setMonto(e.target.value)}
+              onChange={setMonto}
               placeholder="85000"
             />
             <p className="text-[11px] text-muted-foreground">

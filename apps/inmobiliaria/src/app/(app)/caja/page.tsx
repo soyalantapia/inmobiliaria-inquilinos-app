@@ -31,6 +31,7 @@ import { Input } from '@llave/ui/input';
 import { Label } from '@llave/ui/label';
 import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
+import { MoneyInput } from '@/components/money-input';
 import { PinPromptDialog } from '@/components/pin-prompt-dialog';
 import { Topbar } from '@/components/topbar';
 import {
@@ -674,12 +675,10 @@ function DialogCargarGasto({
               <Label htmlFor="caj-monto" className="text-xs" aria-required>
                 Monto <span className="text-destructive">*</span>
               </Label>
-              <Input
+              <MoneyInput
                 id="caj-monto"
-                type="number"
-                inputMode="decimal"
                 value={monto}
-                onChange={(e) => setMonto(e.target.value)}
+                onChange={setMonto}
                 placeholder="0"
                 required
               />

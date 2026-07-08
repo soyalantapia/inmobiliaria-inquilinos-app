@@ -28,6 +28,7 @@ import {
 } from '@llave/ui/select';
 import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
+import { MoneyInput } from '@/components/money-input';
 import {
   type DatosServicio,
   type TipoServicio,
@@ -303,14 +304,12 @@ function ServicioDialog({ abierto, onClose, tipo, existente, onGuardar }: Dialog
 
           <div className="space-y-1.5">
             <Label htmlFor="consumo">Consumo promedio mensual (ARS)</Label>
-            <Input
+            <MoneyInput
               id="consumo"
-              type="number"
-              inputMode="decimal"
               min="0"
               placeholder="Opcional · alertar si difiere"
               value={consumo}
-              onChange={(e) => setConsumo(e.target.value)}
+              onChange={setConsumo}
             />
           </div>
 

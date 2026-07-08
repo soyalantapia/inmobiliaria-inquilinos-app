@@ -9,6 +9,7 @@ import { Input } from '@llave/ui/input';
 import { Label } from '@llave/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@llave/ui/select';
 import { toast } from '@llave/ui/use-toast';
+import { MoneyInput } from '@/components/money-input';
 import { ApiError } from '@/lib/api/client';
 import {
   TIPO_GARANTE_LABEL,
@@ -117,12 +118,7 @@ function GaranteForm({
               </div>
               <div className="space-y-1.5">
                 <Label>Monto de cobertura</Label>
-                <Input
-                  type="number"
-                  inputMode="decimal"
-                  value={montoCobertura}
-                  onChange={(e) => setMontoCobertura(e.target.value)}
-                />
+                <MoneyInput value={montoCobertura} onChange={setMontoCobertura} />
               </div>
               <div className="space-y-1.5">
                 <Label>Vigencia hasta</Label>
