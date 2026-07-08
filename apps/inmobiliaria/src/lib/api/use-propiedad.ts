@@ -11,8 +11,8 @@
  * Notas de mapeo:
  *  - Montos del API llegan como string → Number().
  *  - Fechas ISO → .slice(0,10) donde la UI espera YYYY-MM-DD.
- *  - El endpoint de detalle no trae reclamos: en modo API la lista queda vacía
- *    (la UI ya muestra el empty state "Sin reclamos"). Sin mock en prod.
+ *  - Los reclamos salen de un endpoint aparte (GET /propiedades/:id/reclamos), que
+ *    trae los del inquilino actual y los de contratos pasados. Sin mock en prod.
  */
 import { useQuery } from '@tanstack/react-query';
 import { apiEnabled, apiFetch } from './client';
@@ -31,6 +31,9 @@ import type {
   Propiedad,
   Propietario,
   Reclamo,
+  CategoriaReclamo,
+  EstadoReclamo,
+  UrgenciaReclamo,
   TipoPropiedad,
 } from '@/lib/types';
 
@@ -100,6 +103,21 @@ interface ContratoApi {
   frecuenciaAjusteMeses?: number | null;
   /** Inquilino titular embebido: de acá salen nombre y email reales (sin fabricar). */
   inquilinoTitular?: { nombre?: string | null; apellido?: string | null; email?: string | null } | null;
+}
+
+/** Reclamo tal cual lo devuelve GET /propiedades/:id/reclamos. */
+interface ReclamoApi {
+  id: string;
+  contratoId: string;
+  categoria: string;
+  descripcion: string;
+  urgencia: UrgenciaReclamo;
+  estado: EstadoReclamo;
+  fotoUrl: string | null;
+  resolucion: string | null;
+  resueltoAt: string | null;
+  createdAt: string;
+  inquilino: string;
 }
 
 interface SociedadApi {
@@ -180,7 +198,32 @@ function mapContrato(c: ContratoApi): ContratoListado {
   };
 }
 
-function mapPropiedad(p: PropiedadApi): PropiedadDetalle {
+/**
+ * Reclamo del API → tipo de pantalla. `direccion` es la de la propiedad (la lista
+ * no necesita más); `inquilino` distingue de quién fue (actual vs ex-inquilino).
+ * `asignadoA`/`eventos` quedan neutros: la lista no los usa y el detalle del
+ * reclamo (/reclamos/:id) los trae completos.
+ */
+function mapReclamo(r: ReclamoApi, direccion: string): Reclamo {
+  return {
+    id: r.id,
+    contratoId: r.contratoId,
+    inquilino: r.inquilino || '—',
+    direccion,
+    categoria: r.categoria as CategoriaReclamo,
+    descripcion: r.descripcion,
+    urgencia: r.urgencia,
+    estado: r.estado,
+    asignadoA: null,
+    fotoUrl: r.fotoUrl,
+    resolucion: r.resolucion,
+    createdAt: r.createdAt,
+    resueltoAt: r.resueltoAt,
+    eventos: [],
+  };
+}
+
+function mapPropiedad(p: PropiedadApi, reclamosApi: ReclamoApi[]): PropiedadDetalle {
   // `?? []`: el POST /propiedades puede devolver la fila pelada sin la relación
   // participaciones eager-loaded → sin esto, .map crasheaba la pantalla (mismo
   // patrón ya guardado en hooks.ts y use-propietario.ts).
@@ -230,14 +273,20 @@ function mapPropiedad(p: PropiedadApi): PropiedadDetalle {
   // ocultar el botón en vez de fabricar uno).
   const emailTitular = p.contratoActual?.inquilinoTitular?.email ?? null;
 
+  // Reclamos de la propiedad (actuales + de contratos pasados), de un endpoint
+  // aparte. reclamosAbiertos = ABIERTO/EN_CURSO (igual criterio que la ficha de Persona).
+  const reclamos: Reclamo[] = (reclamosApi ?? []).map((r) => mapReclamo(r, p.direccion));
+  const reclamosAbiertos = reclamos.filter(
+    (r) => r.estado === 'ABIERTO' || r.estado === 'EN_CURSO',
+  ).length;
+
   return {
     propiedad,
     contrato,
     contratosPasados,
     propietarios,
-    // El detalle no expone reclamos: lista vacía en API (sin mock en prod).
-    reclamos: [],
-    reclamosAbiertos: 0,
+    reclamos,
+    reclamosAbiertos,
     sociedad,
     inquilinoEmail: emailTitular,
   };
@@ -279,8 +328,15 @@ export function usePropiedad(id: string): {
     queryKey: ['propiedad', id],
     queryFn: async () => {
       await ensureApiSession();
-      const data = await apiFetch<PropiedadApi>(`/propiedades/${id}`);
-      return mapPropiedad(data);
+      // Detalle + reclamos (endpoint aparte) en paralelo. Si el de reclamos falla,
+      // no rompemos la pantalla: cae a lista vacía.
+      const [data, rec] = await Promise.all([
+        apiFetch<PropiedadApi>(`/propiedades/${id}`),
+        apiFetch<{ reclamos: ReclamoApi[] }>(`/propiedades/${id}/reclamos`).catch(
+          () => ({ reclamos: [] as ReclamoApi[] }),
+        ),
+      ]);
+      return mapPropiedad(data, rec.reclamos ?? []);
     },
     enabled: apiEnabled && id.length > 0,
     staleTime: 30_000,
