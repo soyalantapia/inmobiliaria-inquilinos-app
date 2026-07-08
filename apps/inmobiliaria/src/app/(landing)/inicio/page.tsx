@@ -25,6 +25,7 @@ import { HeroHeadline } from './_landing/hero-headline';
 import { TrustLogos } from './_landing/trust-logos';
 import { Calculadora } from './_landing/calculadora';
 import { WhatsappFab } from './_landing/whatsapp-fab';
+import { SITE_URL, SITE_NAME } from '@/lib/site';
 
 /**
  * Pantalla de inicio de My Alquiler — landing de alta conversión.
@@ -59,7 +60,7 @@ const DESC =
   'El software de alquileres donde tus inquilinos pagan solos, la mora aparece sola y la rendición a propietarios sale calculada. Gratis hasta el lanzamiento, sin tarjeta.';
 
 export const metadata = {
-  metadataBase: new URL('https://admin.myalquiler.com'),
+  metadataBase: new URL(SITE_URL),
   title: 'My Alquiler · Cobrá tus alquileres sin perseguir a nadie',
   description: DESC,
   alternates: { canonical: '/inicio' },
@@ -87,10 +88,86 @@ const STYLES = `
 @keyframes kpiPulse { 0% { box-shadow: 0 0 0 0 rgba(16,185,129,0.45); } 100% { box-shadow: 0 0 0 9px rgba(16,185,129,0); } }
 `;
 
+// FAQs: fuente única para la sección visible Y el schema FAQPage (que la IA extrae).
+const FAQS = [
+  {
+    q: '¿Y si mi inquilino no se baja la app?',
+    a: 'Igual le llega el link de pago por WhatsApp y sube el comprobante desde el navegador. La app es un plus, no un requisito.',
+  },
+  {
+    q: '¿Tengo que migrar toda mi cartera de una?',
+    a: 'No. Podés arrancar con una sola propiedad para probar, o traer tu cartera completa desde tu Excel/planilla e importarla en minutos. Vos elegís el ritmo — nadie te apura ni te cobra por probar.',
+  },
+  {
+    q: '¿Sirve si administro pocas propiedades?',
+    a: 'Sí. Muchos arrancan con 5 o 10. El precio acompaña el tamaño de tu cartera, así que no pagás como una inmobiliaria grande por administrar poco.',
+  },
+  {
+    q: '¿Qué pasa cuando termina el período gratis?',
+    a: 'Te avisamos antes. Elegís un plan o te llevás tus datos. Cero cargo por irte.',
+  },
+  {
+    q: '¿Es seguro? Manejo plata de terceros.',
+    a: 'No conectamos tu cuenta bancaria ni tocamos tu dinero. La plata va directo a tu CBU; vos subís el resumen y validás los pagos. Nosotros sólo organizamos la información.',
+  },
+  {
+    q: '¿Cómo paga el inquilino?',
+    a: 'Por transferencia a tu CBU/alias o por Mercado Pago. Sube el comprobante y lo validás vos — el dinero nunca pasa por nosotros.',
+  },
+  {
+    q: '¿Tengo con quién hablar si me trabo?',
+    a: 'Sí: soporte por WhatsApp con gente real, no un bot. Te damos una mano para migrar y arrancar.',
+  },
+];
+
+// Structured data (JSON-LD) para SEO + AI-SEO: identifica la entidad (Organization),
+// el producto y sus precios (SoftwareApplication) y las FAQ (FAQPage, que los motores
+// de IA extraen como respuestas). Los precios coinciden con /precios y /pricing.md.
+const JSONLD = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'Organization',
+      '@id': `${SITE_URL}/#organization`,
+      name: SITE_NAME,
+      url: SITE_URL,
+      logo: `${SITE_URL}/icon.svg`,
+      description: DESC,
+      areaServed: { '@type': 'Country', name: 'Argentina' },
+      foundingLocation: 'Córdoba, Argentina',
+    },
+    {
+      '@type': 'SoftwareApplication',
+      name: SITE_NAME,
+      applicationCategory: 'BusinessApplication',
+      operatingSystem: 'Web',
+      url: `${SITE_URL}/inicio`,
+      inLanguage: 'es-AR',
+      description: DESC,
+      offers: {
+        '@type': 'AggregateOffer',
+        priceCurrency: 'ARS',
+        lowPrice: '50000',
+        highPrice: '350000',
+        offerCount: 4,
+      },
+    },
+    {
+      '@type': 'FAQPage',
+      mainEntity: FAQS.map((f) => ({
+        '@type': 'Question',
+        name: f.q,
+        acceptedAnswer: { '@type': 'Answer', text: f.a },
+      })),
+    },
+  ],
+};
+
 export default function InicioPage() {
   return (
     <div className={`ml-landing ${display.variable} ${serif.variable} min-h-screen bg-[#faf8f5] text-foreground`}>
       <style dangerouslySetInnerHTML={{ __html: STYLES }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(JSONLD) }} />
       {/* Sin JS (crawlers, lectores), el fade-up no debe esconder contenido. */}
       <noscript>
         <style
@@ -502,8 +579,9 @@ function Precio() {
                 Gratis hasta el lanzamiento. Después, un precio fijo y claro.
               </h2>
               <p className="mt-5 max-w-xl text-lg leading-relaxed text-muted-foreground">
-                Un valor por mes según el tamaño de tu cartera. Sin comisión por transferencia y sin
-                permanencia. Las primeras 50 inmobiliarias entran a la beta con{' '}
+                Después de la beta, un precio fijo por mes según el tamaño de tu cartera —{' '}
+                <span className="font-semibold text-foreground">desde $50.000/mes</span>, sin comisión
+                por transferencia y sin permanencia. Las primeras 50 inmobiliarias entran con{' '}
                 <span className="font-semibold text-foreground">−20% para siempre</span>.
               </p>
             </div>
@@ -539,36 +617,7 @@ function Precio() {
 
 /* ── Preguntas (NO acordeón: texto corrido, primera persona) ────────────── */
 function Preguntas() {
-  const qs = [
-    {
-      q: '¿Y si mi inquilino no se baja la app?',
-      a: 'Igual le llega el link de pago por WhatsApp y sube el comprobante desde el navegador. La app es un plus, no un requisito.',
-    },
-    {
-      q: '¿Tengo que migrar toda mi cartera de una?',
-      a: 'No. Podés arrancar con una sola propiedad para probar, o traer tu cartera completa desde tu Excel/planilla e importarla en minutos. Vos elegís el ritmo — nadie te apura ni te cobra por probar.',
-    },
-    {
-      q: '¿Sirve si administro pocas propiedades?',
-      a: 'Sí. Muchos arrancan con 5 o 10. El precio acompaña el tamaño de tu cartera, así que no pagás como una inmobiliaria grande por administrar poco.',
-    },
-    {
-      q: '¿Qué pasa cuando termina el período gratis?',
-      a: 'Te avisamos antes. Elegís un plan o te llevás tus datos. Cero cargo por irte.',
-    },
-    {
-      q: '¿Es seguro? Manejo plata de terceros.',
-      a: 'No conectamos tu cuenta bancaria ni tocamos tu dinero. La plata va directo a tu CBU; vos subís el resumen y validás los pagos. Nosotros sólo organizamos la información.',
-    },
-    {
-      q: '¿Cómo paga el inquilino?',
-      a: 'Por transferencia a tu CBU/alias o por Mercado Pago. Sube el comprobante y lo validás vos — el dinero nunca pasa por nosotros.',
-    },
-    {
-      q: '¿Tengo con quién hablar si me trabo?',
-      a: 'Sí: soporte por WhatsApp con gente real, no un bot. Te damos una mano para migrar y arrancar.',
-    },
-  ];
+  const qs = FAQS;
   return (
     <section className="mx-auto max-w-4xl px-5 py-20 md:px-8 md:py-24">
       <Reveal>
