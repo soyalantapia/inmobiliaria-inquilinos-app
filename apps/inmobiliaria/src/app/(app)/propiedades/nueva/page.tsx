@@ -420,12 +420,13 @@ function NuevaPropiedadForm() {
         toast({
           variant: 'success',
           title: '¡Propiedad cargada!',
-          description: 'Ahora cargale el alquiler para verla andando.',
+          description: 'Desde su ficha podés cargarle el contrato y el inquilino.',
         });
-        // Encadenamos al alta del contrato con la propiedad ya elegida: es el
-        // "momento ajá" (ver cobros/mora/agenda). Si todavía no hay inquilino,
-        // desde ahí puede cancelar y la propiedad ya quedó en su cartera.
-        router.push(`/contratos/nuevo?propiedad=${creada.id}`);
+        // Aterrizamos EN la ficha de la propiedad, no en el alta de contrato: el
+        // flujo es "primero la propiedad; el contrato y el inquilino se cargan
+        // después, desde adentro" (el botón "Cargar contrato" de la ficha ya
+        // lleva ?propiedad= y salta directo al paso del inquilino).
+        router.push(`/propiedades/${creada.id}`);
       } catch (err) {
         setEnviando(false);
         setConfirmando(false);

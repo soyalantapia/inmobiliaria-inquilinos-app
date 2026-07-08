@@ -703,7 +703,7 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                   <FileText className="mx-auto h-10 w-10 text-muted-foreground" />
                   <p className="font-medium">Propiedad sin contrato activo</p>
                   <Button size="sm" asChild>
-                    <Link href="/contratos/nuevo">
+                    <Link href={`/contratos/nuevo?propiedad=${propiedad.id}`}>
                       <Plus className="h-4 w-4" />
                       Cargar contrato
                     </Link>
