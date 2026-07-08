@@ -52,6 +52,7 @@ import { CargosContratoCard } from '@/components/cargos-contrato-card';
 import { Topbar } from '@/components/topbar';
 import { FinalizarContratoButton } from '@/components/finalizar-contrato-button';
 import { AjustarAlquilerButton } from '@/components/ajustar-alquiler-button';
+import { GananciaInmoCard } from '@/components/ganancia-inmo-card';
 import { RenovarContratoButton } from '@/components/renovar-contrato-button';
 import {
   descripcionMora,
@@ -307,6 +308,7 @@ export default function DetalleContratoPage() {
           </TabsList>
 
           <TabsContent value="resumen" className="space-y-4">
+            <GananciaInmoCard contratoId={c.id} moneda={c.moneda} />
             <div className="grid gap-4 md:grid-cols-2">
               <Card>
                 <CardHeader>

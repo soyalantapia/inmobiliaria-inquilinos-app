@@ -21,6 +21,7 @@ import { visitasPublicasRoutes } from './routes/visitas-publicas.js';
 import { resumenesBancariosRoutes } from './routes/resumenes-bancarios.js';
 import { importacionesCarteraRoutes } from './routes/importaciones-cartera.js';
 import { propiedadReclamosRoutes } from './routes/propiedad-reclamos.js';
+import { contratoGananciaRoutes } from './routes/contrato-ganancia.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -92,6 +93,7 @@ export async function buildApp(envOverrides: Partial<Record<string, string>> = {
   await app.register(resumenesBancariosRoutes);
   await app.register(importacionesCarteraRoutes);
   await app.register(propiedadReclamosRoutes);
+  await app.register(contratoGananciaRoutes);
 
   return app;
 }
