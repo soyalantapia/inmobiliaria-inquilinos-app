@@ -153,7 +153,7 @@ function Header() {
 function Hero() {
   return (
     <section className="relative overflow-hidden">
-      <div className="mx-auto grid max-w-6xl items-center gap-12 px-5 py-16 md:px-8 md:py-24 lg:grid-cols-[1.05fr_0.95fr] lg:gap-8">
+      <div className="mx-auto grid max-w-6xl items-center gap-12 px-5 py-16 md:px-8 md:py-24 lg:grid-cols-[0.92fr_1.08fr] lg:gap-10">
         <div>
           <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-primary">
             Software de alquileres · hecho en Córdoba
@@ -173,8 +173,9 @@ function Hero() {
           </div>
         </div>
 
-        {/* El producto antes del fold — el signature move */}
-        <div className="lg:pl-4">
+        {/* El producto antes del fold — el signature move. Ocupa más ancho para que
+            domine el hero (es el diferenciador: nadie más muestra la plata en vivo). */}
+        <div className="lg:-mr-4 lg:pl-2">
           <LivePanel />
         </div>
       </div>
@@ -206,7 +207,7 @@ function Semana() {
     'El propietario ve su liquidación el mismo día que cobrás.',
   ];
   return (
-    <section className="mx-auto max-w-6xl px-5 py-20 md:px-8 md:py-28">
+    <section className="mx-auto max-w-6xl px-5 py-16 md:px-8 md:py-24">
       <Reveal>
         <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-primary">El lunes del administrador</p>
         <h2 className="mt-3 max-w-2xl text-[clamp(1.9rem,4vw,3rem)] font-bold leading-[1.08] tracking-[-0.015em]">
@@ -271,7 +272,7 @@ function TresActores() {
   ];
   return (
     <section className="border-y border-black/[0.06] bg-white/50">
-      <div className="mx-auto max-w-6xl px-5 py-20 md:px-8 md:py-24">
+      <div className="mx-auto max-w-6xl px-5 py-14 md:px-8 md:py-20">
         <Reveal>
           <h2 className="max-w-3xl text-[clamp(1.9rem,4vw,3rem)] font-bold leading-[1.08] tracking-[-0.015em]">
             Una sola plataforma. Tres personas más tranquilas.
@@ -545,7 +546,11 @@ function Preguntas() {
     },
     {
       q: '¿Tengo que migrar toda mi cartera de una?',
-      a: 'No. Cargás una propiedad, ves cómo funciona y seguís a tu ritmo. Nadie te apura ni te cobra por probar.',
+      a: 'No. Podés arrancar con una sola propiedad para probar, o traer tu cartera completa desde tu Excel/planilla e importarla en minutos. Vos elegís el ritmo — nadie te apura ni te cobra por probar.',
+    },
+    {
+      q: '¿Sirve si administro pocas propiedades?',
+      a: 'Sí. Muchos arrancan con 5 o 10. El precio acompaña el tamaño de tu cartera, así que no pagás como una inmobiliaria grande por administrar poco.',
     },
     {
       q: '¿Qué pasa cuando termina el período gratis?',
