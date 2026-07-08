@@ -25,6 +25,8 @@ import { contratoMock } from '@/lib/mock-data';
 
 // ===== Servicios públicos de la propiedad =====
 
+export type PagadorServicio = 'INQUILINO' | 'INMOBILIARIA' | 'PROPIETARIO' | 'EXPENSAS';
+
 export interface ServicioPublico {
   id: string;
   tipo: TipoServicio;
@@ -34,6 +36,8 @@ export interface ServicioPublico {
   titular: string | null;
   observaciones: string | null;
   consumoPromedioMensual: number | null;
+  /** Quién paga el servicio. Si no es INQUILINO, la app no le pide subir boleta. */
+  pagador: PagadorServicio;
 }
 
 interface ServicioPublicoApi {
@@ -45,6 +49,7 @@ interface ServicioPublicoApi {
   titular: string | null;
   observaciones: string | null;
   consumoPromedioMensual: string | number | null;
+  pagador?: PagadorServicio | null;
 }
 
 function mapServicio(s: ServicioPublicoApi): ServicioPublico {
@@ -58,6 +63,8 @@ function mapServicio(s: ServicioPublicoApi): ServicioPublico {
     observaciones: s.observaciones ?? null,
     consumoPromedioMensual:
       s.consumoPromedioMensual != null ? Number(s.consumoPromedioMensual) : null,
+    // Defensivo: un API viejo sin el campo → asumimos INQUILINO (comportamiento previo).
+    pagador: s.pagador ?? 'INQUILINO',
   };
 }
 

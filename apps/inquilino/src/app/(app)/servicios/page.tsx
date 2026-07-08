@@ -376,6 +376,14 @@ export default function ServiciosPage() {
 // ============================================================
 // ServiciosPublicosCard — NIS / distribuidora / medidor de la propiedad
 // ============================================================
+// Quién paga el servicio (cuando NO es el inquilino) → se muestra como aviso para
+// que no suba una boleta que no le corresponde ni haga la consulta.
+const PAGADOR_LABEL: Record<Exclude<ServicioPublico['pagador'], 'INQUILINO'>, string> = {
+  INMOBILIARIA: 'Lo paga la inmobiliaria',
+  PROPIETARIO: 'Lo paga el propietario',
+  EXPENSAS: 'Va por expensas',
+};
+
 function ServiciosPublicosCard({ servicios }: { servicios: ServicioPublico[] }) {
   return (
     <Card>
@@ -410,6 +418,11 @@ function ServiciosPublicosCard({ servicios }: { servicios: ServicioPublico[] }) 
                     <p className="truncate text-[10px] text-muted-foreground">
                       Titular: {s.titular}
                     </p>
+                  )}
+                  {s.pagador !== 'INQUILINO' && (
+                    <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                      {PAGADOR_LABEL[s.pagador]} · no subas la boleta
+                    </span>
                   )}
                 </div>
               </li>

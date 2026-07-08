@@ -27,6 +27,9 @@ const upsertSchema = z.object({
   titular: z.string().trim().max(200).optional(),
   observaciones: z.string().trim().max(500).optional(),
   consumoPromedioMensual: z.number().nonnegative().optional(),
+  // Quién paga el servicio (default INQUILINO). Si NO lo paga el inquilino, su app lo
+  // muestra informativo (sin pedirle subir boleta).
+  pagador: z.enum(['INQUILINO', 'INMOBILIARIA', 'PROPIETARIO', 'EXPENSAS']).optional(),
 });
 
 type ServicioRow = {
@@ -40,6 +43,7 @@ type ServicioRow = {
   titular: string | null;
   observaciones: string | null;
   consumoPromedioMensual: { toString(): string } | number | null;
+  pagador: string;
   actualizadoAt: Date;
 };
 
@@ -102,6 +106,8 @@ export async function serviciosPublicosRoutes(app: FastifyInstance): Promise<voi
       titular: b.titular ?? null,
       observaciones: b.observaciones ?? null,
       consumoPromedioMensual: b.consumoPromedioMensual ?? null,
+      // undefined → en create aplica el default (INQUILINO); en update conserva el valor.
+      pagador: b.pagador,
     };
     const servicio = await prisma.servicioPublico.upsert({
       where: { propiedadId_tipo: { propiedadId, tipo: tipoParsed.data } },

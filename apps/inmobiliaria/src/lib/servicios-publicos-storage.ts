@@ -15,6 +15,8 @@ const STORAGE_KEY = 'llave-inmo:servicios-publicos:v1';
 
 export type TipoServicio = 'LUZ' | 'GAS' | 'AGUA' | 'INTERNET' | 'ABL' | 'CABLE';
 
+export type PagadorServicio = 'INQUILINO' | 'INMOBILIARIA' | 'PROPIETARIO' | 'EXPENSAS';
+
 export interface DatosServicio {
   tipo: TipoServicio;
   distribuidora: string;
@@ -27,6 +29,9 @@ export interface DatosServicio {
   observaciones?: string;
   /** Promedio mensual del último año, para alertas de consumo anómalo. */
   consumoPromedioMensual?: number;
+  /** Quién paga el servicio (default INQUILINO). Si no es el inquilino, su app lo
+   *  muestra informativo (sin pedirle subir boleta). */
+  pagador?: PagadorServicio;
   actualizadoAt: string;
 }
 

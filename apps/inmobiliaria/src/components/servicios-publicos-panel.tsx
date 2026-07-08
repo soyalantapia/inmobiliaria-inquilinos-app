@@ -31,6 +31,7 @@ import { toast } from '@llave/ui/use-toast';
 import { MoneyInput } from '@/components/money-input';
 import {
   type DatosServicio,
+  type PagadorServicio,
   type TipoServicio,
   DISTRIBUIDORAS_SUGERIDAS,
   TIPO_SERVICIO_LABEL,
@@ -209,6 +210,7 @@ function ServicioDialog({ abierto, onClose, tipo, existente, onGuardar }: Dialog
   const [titular, setTitular] = useState('');
   const [consumo, setConsumo] = useState('');
   const [observaciones, setObservaciones] = useState('');
+  const [pagador, setPagador] = useState<PagadorServicio>('INQUILINO');
 
   useEffect(() => {
     if (!abierto) return;
@@ -218,6 +220,7 @@ function ServicioDialog({ abierto, onClose, tipo, existente, onGuardar }: Dialog
     setTitular(existente?.titular ?? '');
     setConsumo(existente?.consumoPromedioMensual?.toString() ?? '');
     setObservaciones(existente?.observaciones ?? '');
+    setPagador(existente?.pagador ?? 'INQUILINO');
   }, [abierto, existente]);
 
   const sugerencias = DISTRIBUIDORAS_SUGERIDAS[tipo];
@@ -239,6 +242,7 @@ function ServicioDialog({ abierto, onClose, tipo, existente, onGuardar }: Dialog
       titular: titular.trim() || undefined,
       consumoPromedioMensual: consumo ? parseInt(consumo, 10) : undefined,
       observaciones: observaciones.trim() || undefined,
+      pagador,
       actualizadoAt: new Date().toISOString(),
     });
   };
@@ -300,6 +304,24 @@ function ServicioDialog({ abierto, onClose, tipo, existente, onGuardar }: Dialog
               value={titular}
               onChange={(e) => setTitular(e.target.value)}
             />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="pagador">¿Quién paga este servicio?</Label>
+            <Select value={pagador} onValueChange={(v) => setPagador(v as PagadorServicio)}>
+              <SelectTrigger id="pagador">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="INQUILINO">El inquilino</SelectItem>
+                <SelectItem value="INMOBILIARIA">La inmobiliaria</SelectItem>
+                <SelectItem value="PROPIETARIO">El propietario</SelectItem>
+                <SelectItem value="EXPENSAS">Va por expensas</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Si no lo paga el inquilino, en su app aparece informativo (sin pedirle subir la boleta).
+            </p>
           </div>
 
           <div className="space-y-1.5">

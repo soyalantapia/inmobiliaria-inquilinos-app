@@ -11,6 +11,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { apiEnabled, apiFetch } from './client';
 import {
   type DatosServicio,
+  type PagadorServicio,
   type TipoServicio,
   guardarServicio,
   leerServiciosDe,
@@ -25,6 +26,7 @@ interface ServicioApi {
   titular: string | null;
   observaciones: string | null;
   consumoPromedioMensual: number | null;
+  pagador?: PagadorServicio | null;
   actualizadoAt: string;
 }
 
@@ -37,6 +39,7 @@ function mapServicio(s: ServicioApi): DatosServicio {
     titular: s.titular ?? undefined,
     observaciones: s.observaciones ?? undefined,
     consumoPromedioMensual: s.consumoPromedioMensual ?? undefined,
+    pagador: s.pagador ?? 'INQUILINO',
     actualizadoAt: s.actualizadoAt,
   };
 }
@@ -87,6 +90,7 @@ export function useServiciosPublicos(propiedadId: string): {
           ...(input.consumoPromedioMensual != null
             ? { consumoPromedioMensual: input.consumoPromedioMensual }
             : {}),
+          ...(input.pagador ? { pagador: input.pagador } : {}),
         }),
       });
       await recargar();

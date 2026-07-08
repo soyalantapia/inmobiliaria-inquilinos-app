@@ -2461,11 +2461,22 @@ model ServicioPublico {
   titular                String?
   observaciones          String?
   consumoPromedioMensual Decimal?     @db.Decimal(14, 2)
+  // Quién paga este servicio: el INQUILINO (default, sube la boleta), la INMOBILIARIA,
+  // el PROPIETARIO o va por EXPENSAS. Si NO lo paga el inquilino, su app lo muestra
+  // como informativo (sin pedirle subir boleta) → evita consultas y confusión.
+  pagador                PagadorServicio @default(INQUILINO)
   actualizadoAt          DateTime     @updatedAt
 
   @@unique([propiedadId, tipo])
   @@index([inmobiliariaId])
   @@map("servicios_publicos")
+}
+
+enum PagadorServicio {
+  INQUILINO
+  INMOBILIARIA
+  PROPIETARIO
+  EXPENSAS
 }
 
 // Asistente IA del contrato; citas = [{ clausula, texto }].
