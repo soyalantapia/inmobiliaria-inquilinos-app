@@ -8,13 +8,17 @@ import { Button } from '@llave/ui/button';
 import { Card } from '@llave/ui/card';
 import { Badge } from '@llave/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@llave/ui/dialog';
+import { Input } from '@llave/ui/input';
+import { Label } from '@llave/ui/label';
 import { toast } from '@llave/ui/use-toast';
 import { cn } from '@llave/ui/cn';
 import {
   useRedProfesionales,
   useFichaRed,
   contratarDeRedApi,
+  cargarSeguroApi,
   type RedFiltros,
+  type RedProfesionalFicha,
 } from '@/lib/api/use-red-profesionales';
 import { profesionalCategoriaLabelAdmin, type CategoriaProfesional } from '@/lib/mock-data';
 import { formatMonto } from '@/lib/format';
@@ -130,7 +134,7 @@ export default function RedProfesionalesPage() {
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5">
                     <p className="truncate font-semibold">{p.nombre}</p>
-                    {p.garantizado && (
+                    {p.asegurado && (
                       <Badge variant="success" className="gap-1 text-[10px]"><ShieldCheck className="h-3 w-3" /> Asegurado</Badge>
                     )}
                   </div>
@@ -173,6 +177,72 @@ function MetricBox({ label, value, sub }: { label: string; value: string; sub?: 
   );
 }
 
+// Seguro self-serve del profesional (solo si está en mi cartera). Cargo aseguradora +
+// póliza + vencimiento; el badge "Asegurado" aparece en la red mientras esté vigente.
+function SeguroSection({ ficha }: { ficha: RedProfesionalFicha }) {
+  const qc = useQueryClient();
+  const [editando, setEditando] = useState(false);
+  const [aseguradora, setAseguradora] = useState(ficha.aseguradora ?? '');
+  const [nroPoliza, setNroPoliza] = useState('');
+  const [polizaVence, setPolizaVence] = useState(ficha.polizaVence ?? '');
+  const [guardando, setGuardando] = useState(false);
+
+  const guardar = async () => {
+    setGuardando(true);
+    try {
+      await cargarSeguroApi(ficha.id, {
+        aseguradora: aseguradora.trim() || undefined,
+        nroPoliza: nroPoliza.trim() || undefined,
+        polizaVence: polizaVence || null,
+      });
+      await qc.invalidateQueries({ queryKey: ['red-profesional', ficha.id] });
+      await qc.invalidateQueries({ queryKey: ['red-profesionales'] });
+      toast({ title: 'Seguro actualizado' });
+      setEditando(false);
+    } catch (e) {
+      toast({ title: 'No se pudo guardar', description: e instanceof Error ? e.message : '', variant: 'destructive' });
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  return (
+    <div className="rounded-lg border border-border p-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-medium">Seguro / póliza</p>
+        <Button variant="ghost" size="sm" onClick={() => setEditando((v) => !v)}>
+          {editando ? 'Cerrar' : ficha.asegurado ? 'Editar' : 'Cargar'}
+        </Button>
+      </div>
+      {!editando &&
+        (ficha.asegurado ? (
+          <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-300">
+            <ShieldCheck className="mr-1 inline h-3.5 w-3.5" />
+            Asegurado{ficha.aseguradora ? ` por ${ficha.aseguradora}` : ''}
+            {ficha.polizaVence ? ` · vence ${new Date(ficha.polizaVence).toLocaleDateString('es-AR')}` : ''}
+          </p>
+        ) : (
+          <p className="mt-1 text-xs text-muted-foreground">
+            Sin póliza vigente. Cargá el seguro para que figure “Asegurado” en la red.
+          </p>
+        ))}
+      {editando && (
+        <div className="mt-2 space-y-2">
+          <Input placeholder="Aseguradora (ej: La Caja)" value={aseguradora} onChange={(e) => setAseguradora(e.target.value)} />
+          <Input placeholder="N° de póliza (opcional)" value={nroPoliza} onChange={(e) => setNroPoliza(e.target.value)} />
+          <div className="space-y-1">
+            <Label htmlFor="pol-vence" className="text-xs">Vence</Label>
+            <Input id="pol-vence" type="date" value={polizaVence} onChange={(e) => setPolizaVence(e.target.value)} />
+          </div>
+          <Button size="sm" className="w-full" disabled={guardando} onClick={guardar}>
+            {guardando ? 'Guardando…' : 'Guardar seguro'}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FichaRedDialog({
   id, onClose, onContratar, contratando,
 }: { id: string | null; onClose: () => void; onContratar: (id: string) => void; contratando: string | null }) {
@@ -183,7 +253,7 @@ function FichaRedDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {ficha?.nombre ?? 'Ficha técnica'}
-            {ficha?.garantizado && <Badge variant="success" className="gap-1 text-[10px]"><ShieldCheck className="h-3 w-3" /> Asegurado</Badge>}
+            {ficha?.asegurado && <Badge variant="success" className="gap-1 text-[10px]"><ShieldCheck className="h-3 w-3" /> Asegurado</Badge>}
           </DialogTitle>
         </DialogHeader>
         {cargando || !ficha ? (
@@ -237,6 +307,9 @@ function FichaRedDialog({
                 </p>
               </div>
             )}
+            {/* Seguro self-serve: sólo la inmo que tiene al profesional en su cartera lo carga.
+                'Asegurado' aparece en la red mientras la póliza esté vigente. */}
+            {ficha.enMiCartera && <SeguroSection ficha={ficha} />}
             <div className="flex items-center gap-2 border-t pt-3">
               {ficha.enMiCartera ? (
                 <div className="flex-1 text-xs text-muted-foreground">

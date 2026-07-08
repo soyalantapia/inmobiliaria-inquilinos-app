@@ -15,7 +15,8 @@ export interface RedProfesionalItem {
   nombre: string;
   categoria: CategoriaProfesional;
   zona: string;
-  garantizado: boolean;
+  /** Tiene póliza de seguro vigente (se computa server-side). */
+  asegurado: boolean;
   ratingPromedio: number;
   reseñas: number;
   trabajos: number;
@@ -23,6 +24,8 @@ export interface RedProfesionalItem {
 }
 
 export interface RedProfesionalFicha extends RedProfesionalItem {
+  aseguradora: string | null;
+  polizaVence: string | null;
   asignados: number;
   resueltos: number;
   tasaResolucion: number;
@@ -32,6 +35,18 @@ export interface RedProfesionalFicha extends RedProfesionalItem {
   preciosPorCategoria: { categoria: string; min: number; max: number; promedio: number; n: number }[];
   trabajosRecientes: { categoria: string; ciudad: string | null; estrellas: number | null; fecha: string }[];
   contacto: { telefono: string; email: string | null } | null;
+}
+
+export interface DatosSeguro {
+  aseguradora?: string;
+  nroPoliza?: string;
+  polizaVence?: string | null;
+}
+
+/** Carga/actualiza el seguro de un profesional de MI cartera (self-serve). */
+export async function cargarSeguroApi(redId: string, datos: DatosSeguro): Promise<void> {
+  await ensureApiSession();
+  await apiFetch(`/red/profesionales/${redId}/seguro`, { method: 'PUT', body: JSON.stringify(datos) });
 }
 
 export interface RedFiltros {

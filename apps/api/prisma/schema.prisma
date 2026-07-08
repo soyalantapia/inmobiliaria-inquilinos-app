@@ -2064,6 +2064,12 @@ model ProfesionalRed {
   // Fase 2: sello "Garantizado/Asegurado por My Alquiler" (verificación a nivel
   // plataforma, distinto del `verificado` per-tenant). Arranca en false.
   garantizado    Boolean              @default(false)
+  // Seguro self-serve: la inmo que tiene al profesional en su cartera carga estos
+  // datos. "Asegurado" se COMPUTA on-read = polizaVence vigente (no un flag que se
+  // olvida de expirar). Ver estaAsegurado() en operacion.ts.
+  aseguradora    String?
+  nroPoliza      String?
+  polizaVence    DateTime?
   publicadoPorId String? // inmobiliaria que lo publicó primero (provenance, no PII pública)
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt

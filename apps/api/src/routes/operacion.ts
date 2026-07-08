@@ -856,6 +856,15 @@ export async function operacionRoutes(app: FastifyInstance) {
   // Publicar un profesional a la red (opt-in de la inmobiliaria): lo linkea a una
   // identidad global ProfesionalRed (dedup por teléfono normalizado). Desde ahí,
   // cualquier inmobiliaria lo ve en el directorio y su reputación suma cross-tenant.
+  // "Asegurado" = tiene póliza con vencimiento VIGENTE (se computa on-read, no es un flag
+  // que se olvida de expirar). La inmo carga los datos con PUT /red/profesionales/:id/seguro.
+  const estaAsegurado = (red: { polizaVence: Date | null }): boolean => {
+    if (!red.polizaVence) return false;
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+    return red.polizaVence.getTime() >= hoy.getTime();
+  };
+
   app.post('/profesionales/:id/publicar', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'profesional.asignar');
     if (!u) return;
@@ -899,6 +908,40 @@ export async function operacionRoutes(app: FastifyInstance) {
     return { ok: true, publico: false };
   });
 
+  // Cargar/actualizar el SEGURO del profesional (self-serve): la inmo que lo tiene en su
+  // cartera carga aseguradora + póliza + vencimiento. Se muestra "Asegurado" en la red
+  // mientras la póliza esté vigente. Los datos viven en la identidad global (ProfesionalRed).
+  app.put('/red/profesionales/:id/seguro', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'profesional.asignar');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const body = z
+      .object({
+        aseguradora: z.string().trim().max(120).optional(),
+        nroPoliza: z.string().trim().max(120).optional(),
+        polizaVence: z.coerce.date().nullable().optional(),
+      })
+      .safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ message: 'Datos del seguro inválidos' });
+    const red = await prisma.profesionalRed.findUnique({ where: { id } });
+    if (!red) return reply.code(404).send({ message: 'Profesional inexistente en la red' });
+    // Solo puede cargar el seguro una inmo que TIENE a este profesional en su cartera.
+    const miVinculo = await prisma.profesional.findFirst({
+      where: { profesionalRedId: id, inmobiliariaId: u.inmobiliariaId },
+      select: { id: true },
+    });
+    if (!miVinculo) return reply.code(403).send({ message: 'Solo podés cargar el seguro de un profesional de tu cartera' });
+    await prisma.profesionalRed.update({
+      where: { id },
+      data: {
+        aseguradora: body.data.aseguradora?.trim() || null,
+        nroPoliza: body.data.nroPoliza?.trim() || null,
+        polizaVence: body.data.polizaVence ?? null,
+      },
+    });
+    return { ok: true };
+  });
+
   // Directorio de la RED: identidades con ≥1 ficha compartida, con resumen reputacional
   // AGREGADO cross-tenant (rating, trabajos) y sin ningún dato privado de otra inmo.
   app.get('/red/profesionales', async (request, reply) => {
@@ -932,7 +975,7 @@ export async function operacionRoutes(app: FastifyInstance) {
         nombre: r.nombre,
         categoria: r.categoria,
         zona: r.zona,
-        garantizado: r.garantizado,
+        asegurado: estaAsegurado(r),
         ratingPromedio: rep.ratingPromedio,
         reseñas: rep.reseñas,
         trabajos: rep.trabajos,
@@ -959,7 +1002,9 @@ export async function operacionRoutes(app: FastifyInstance) {
       nombre: red.nombre,
       categoria: red.categoria,
       zona: red.zona,
-      garantizado: red.garantizado,
+      asegurado: estaAsegurado(red),
+      aseguradora: red.aseguradora ?? null,
+      polizaVence: red.polizaVence ? red.polizaVence.toISOString().slice(0, 10) : null,
       ...ficha,
       // El teléfono/email de contacto sólo si ya lo contraté (es mío); si no, null
       // hasta que lo agregue a mi cartera con "contratar".
