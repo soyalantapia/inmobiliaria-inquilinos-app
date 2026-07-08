@@ -26,6 +26,8 @@ import { propiedadGananciasRoutes } from './routes/propiedad-ganancias.js';
 import { propiedadSaludPagoRoutes } from './routes/propiedad-salud-pago.js';
 import { propiedadSegurosRoutes } from './routes/propiedad-seguros.js';
 import { propiedadTimelineRoutes } from './routes/propiedad-timeline.js';
+import { propiedadGastosRoutes } from './routes/propiedad-gastos.js';
+import { propiedadDocumentosRoutes } from './routes/propiedad-documentos.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -102,6 +104,8 @@ export async function buildApp(envOverrides: Partial<Record<string, string>> = {
   await app.register(propiedadSaludPagoRoutes);
   await app.register(propiedadSegurosRoutes);
   await app.register(propiedadTimelineRoutes);
+  await app.register(propiedadGastosRoutes);
+  await app.register(propiedadDocumentosRoutes);
 
   return app;
 }
