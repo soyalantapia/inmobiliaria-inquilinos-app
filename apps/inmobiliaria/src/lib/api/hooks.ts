@@ -347,6 +347,8 @@ export interface NuevoGasto {
   monto: number;
   fecha: string;
   proveedor?: string | null;
+  /** Comprobante/ticket del gasto: URL de /uploads (ya subida). Opcional. */
+  comprobanteUrl?: string | null;
 }
 
 export function useCaja(): {

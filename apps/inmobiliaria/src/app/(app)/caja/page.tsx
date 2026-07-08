@@ -8,12 +8,14 @@ import {
   ChevronDown,
   ChevronUp,
   MessageCircle,
+  Paperclip,
   Percent,
   Plus,
   Trash2,
   TrendingDown,
   TrendingUp,
   Wallet,
+  X,
 } from 'lucide-react';
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
@@ -41,7 +43,7 @@ import {
 } from '@/lib/caja-storage';
 import { useCaja, usePropiedades } from '@/lib/api/hooks';
 import { useCierreCaja } from '@/lib/api/use-pagos';
-import { apiEnabled } from '@/lib/api/client';
+import { apiEnabled, subirArchivo } from '@/lib/api/client';
 import { formatFechaCorta, formatMonto, fechaHoyLocal } from '@/lib/format';
 import { propiedadesMock } from '@/lib/mock-data';
 
@@ -234,6 +236,7 @@ export default function CajaPage() {
               monto: data.monto,
               fecha: data.fecha,
               proveedor: data.proveedor,
+              comprobanteUrl: data.comprobante,
             });
             setAbrirForm(false);
             toast({
@@ -527,6 +530,10 @@ function DialogCargarGasto({
   const [monto, setMonto] = useState('');
   const [fecha, setFecha] = useState(fechaHoyLocal());
   const [proveedor, setProveedor] = useState('');
+  // Comprobante/ticket del gasto (opcional): se sube a /uploads al elegirlo y
+  // queda su URL para mandarla en el alta. El backend la persiste (validada por tenant).
+  const [comprobanteUrl, setComprobanteUrl] = useState<string | null>(null);
+  const [subiendoComprobante, setSubiendoComprobante] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const esIngreso = tipo === 'INGRESO_EXTRA';
 
@@ -539,6 +546,7 @@ function DialogCargarGasto({
       setMonto('');
       setFecha(fechaHoyLocal());
       setProveedor('');
+      setComprobanteUrl(null);
     }
   }, [open]);
 
@@ -569,7 +577,7 @@ function DialogCargarGasto({
         monto: montoNum,
         fecha,
         proveedor: proveedor.trim() || null,
-        comprobante: null,
+        comprobante: comprobanteUrl,
         cargadoPor: 'Roberto Tapia',
       });
     } finally {
@@ -693,6 +701,56 @@ function DialogCargarGasto({
               />
             </div>
           </div>
+
+          {/* Comprobante/ticket del gasto (opcional): foto o PDF. Se sube a
+              /uploads al elegirlo; el backend persiste comprobanteUrl (validada
+              por tenant) para el respaldo de la rendición. Solo en prod: la demo
+              no tiene backend de uploads. */}
+          {apiEnabled && (
+          <div className="space-y-1">
+            <Label htmlFor="caj-comprobante" className="text-xs">Comprobante (opcional)</Label>
+            {comprobanteUrl ? (
+              <div className="flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-xs">
+                <Paperclip className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <span className="min-w-0 flex-1 truncate">Comprobante adjunto</span>
+                <button
+                  type="button"
+                  onClick={() => setComprobanteUrl(null)}
+                  className="text-muted-foreground transition-colors hover:text-destructive"
+                  aria-label="Quitar comprobante"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ) : (
+              <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground transition-colors hover:bg-muted/40">
+                <Paperclip className="h-3.5 w-3.5 shrink-0" />
+                <span>{subiendoComprobante ? 'Subiendo…' : 'Adjuntar foto o PDF del ticket'}</span>
+                <input
+                  id="caj-comprobante"
+                  type="file"
+                  accept="image/*,application/pdf"
+                  className="sr-only"
+                  disabled={subiendoComprobante}
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    setSubiendoComprobante(true);
+                    try {
+                      const { url } = await subirArchivo(file);
+                      setComprobanteUrl(url);
+                    } catch {
+                      toast({ title: 'No se pudo subir el comprobante', variant: 'destructive' });
+                    } finally {
+                      setSubiendoComprobante(false);
+                      e.target.value = '';
+                    }
+                  }}
+                />
+              </label>
+            )}
+          </div>
+          )}
         </div>
         <div className="flex gap-2">
           <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
