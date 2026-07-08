@@ -1706,4 +1706,70 @@ export async function operacionRoutes(app: FastifyInstance) {
       },
     });
   });
+
+  // ===== "Mi Inmobiliaria": reglas de negocio que no cubren /empresa /mercado /cobranza =====
+  // Rescisión por defecto (editable), resumen de comisión (vive por-propietario) y plan.
+  // Va acá (route panel ya registrada) para no tocar app.ts; la página /mi-inmobiliaria
+  // consolida esto con empresa/mora/mercado (que siguen en sus endpoints). Solo ADMIN.
+  app.get('/mi-inmobiliaria/reglas', async (request, reply) => {
+    const u = await requireUsuario(request, reply);
+    if (!u) return;
+    if (u.rol !== 'ADMIN') return reply.code(403).send({ message: 'Necesitás permiso de Admin para ver esta sección' });
+    const i = await prisma.inmobiliaria.findUnique({
+      where: { id: u.inmobiliariaId },
+      select: {
+        preavisoRescisionMesesDefault: true,
+        penalidadRescisionMesesDefault: true,
+        esPiloto: true,
+        mesesGratisGanados: true,
+      },
+    });
+    if (!i) return reply.code(404).send({ message: 'Inmobiliaria inexistente' });
+    // Comisión: por PROPIETARIO (Propietario.comisionPct, default 8; se cobra SOBRE EL
+    // ALQUILER, regla LOCKED). No hay default a nivel tenant → resumimos la cartera.
+    const props = await prisma.propietario.findMany({
+      where: { inmobiliariaId: u.inmobiliariaId },
+      select: { comisionPct: true },
+    });
+    const pcts = props.map((p) => p.comisionPct);
+    const prom = pcts.length ? pcts.reduce((a, b) => a + b, 0) / pcts.length : null;
+    return {
+      rescision: {
+        preavisoMeses: i.preavisoRescisionMesesDefault,
+        penalidadMeses: i.penalidadRescisionMesesDefault,
+      },
+      comision: {
+        propietarios: pcts.length,
+        promedioPct: prom != null ? Math.round(prom * 100) / 100 : null,
+        minPct: pcts.length ? Math.min(...pcts) : null,
+        maxPct: pcts.length ? Math.max(...pcts) : null,
+      },
+      plan: { esPiloto: i.esPiloto, mesesGratisGanados: i.mesesGratisGanados },
+    };
+  });
+
+  // Rescisión anticipada por defecto: preaviso (meses) + penalidad (cánones de alquiler).
+  // La heredan los contratos sin valor propio (core.ts la lee al finalizar).
+  app.put('/mi-inmobiliaria/rescision', async (request, reply) => {
+    const u = await requireUsuario(request, reply);
+    if (!u) return;
+    if (u.rol !== 'ADMIN') return reply.code(403).send({ message: 'Necesitás permiso de Admin para editar esta sección' });
+    const body = z
+      .object({
+        preavisoMeses: z.number().int().min(0).max(12),
+        penalidadMeses: z.number().min(0).max(12),
+      })
+      .safeParse(request.body ?? {});
+    if (!body.success) {
+      return reply.code(400).send({ message: 'Preaviso (0–12 meses) y penalidad (0–12 cánones) inválidos' });
+    }
+    await prisma.inmobiliaria.update({
+      where: { id: u.inmobiliariaId },
+      data: {
+        preavisoRescisionMesesDefault: body.data.preavisoMeses,
+        penalidadRescisionMesesDefault: body.data.penalidadMeses,
+      },
+    });
+    return { preavisoMeses: body.data.preavisoMeses, penalidadMeses: body.data.penalidadMeses };
+  });
 }

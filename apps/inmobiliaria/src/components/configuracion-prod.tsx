@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useId, useState } from 'react';
 import { Building2, GraduationCap, Landmark, Lock, ShieldCheck, Sparkles, TrendingUp } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -82,6 +83,24 @@ export function ConfiguracionProd() {
             </Button>
           </CardContent>
         </Card>
+        {/* Acceso a la vista consolidada "Mi Inmobiliaria" (identidad + comisiones +
+            reglas + mercado + plan en un solo lugar). */}
+        <Link href="/mi-inmobiliaria" className="block">
+          <Card className="border-primary/30 bg-primary/5 transition-colors hover:bg-primary/10">
+            <CardContent className="flex items-center gap-3 p-4">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-primary text-primary-foreground">
+                <Building2 className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium">Mi Inmobiliaria</p>
+                <p className="text-xs text-muted-foreground">
+                  Todos tus datos, comisiones y reglas de negocio en un solo lugar.
+                </p>
+              </div>
+              <span className="shrink-0 text-xs font-medium text-primary">Abrir →</span>
+            </CardContent>
+          </Card>
+        </Link>
         <EmpresaCard />
         <CuentaCobranzaCard />
         <MoraDefaultCard />
@@ -161,7 +180,7 @@ const EMPRESA_VACIA: Omit<EmpresaDatos, 'perfilFiscalCompleto'> = {
   direccionCp: '',
 };
 
-function EmpresaCard() {
+export function EmpresaCard() {
   const qc = useQueryClient();
   const { empresa, cargando } = useEmpresa();
   const [form, setForm] = useState(EMPRESA_VACIA);
@@ -241,7 +260,7 @@ function EmpresaCard() {
 
 const COBRANZA_VACIA: CobranzaCuenta = { banco: '', titular: '', cbu: '', alias: '', cuit: '' };
 
-function CuentaCobranzaCard() {
+export function CuentaCobranzaCard() {
   const qc = useQueryClient();
   const { tieneCuenta, cuenta, cargando } = useCobranza();
   const [form, setForm] = useState(COBRANZA_VACIA);
@@ -329,7 +348,7 @@ function CuentaCobranzaCard() {
  * Admin). Es lo que heredan los contratos nuevos que no definen su propio
  * interés; cada contrato puede pisarlo desde su detalle o desde el wizard.
  */
-function MoraDefaultCard() {
+export function MoraDefaultCard() {
   const qc = useQueryClient();
   const { mora, cargando } = useCobranza();
   const [tipo, setTipo] = useState<TipoMora>('SIN_MORA');
