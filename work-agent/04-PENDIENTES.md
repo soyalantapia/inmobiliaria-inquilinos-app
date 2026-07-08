@@ -48,15 +48,14 @@ Chico, no bloqueado — es sólo cablear la UI contra endpoints que ya están vi
 _(Nota técnica: el `POST /caja/movimientos` ya persiste el `comprobanteUrl` en el `create`
 —se arregló un bug 04/07 donde antes se validaba pero no se guardaba—; sólo falta la UI que lo suba.)_
 
-### 7. Cargo de reparación del reclamo → PWA del inquilino — [front + backend]
-Al resolver un reclamo con pagador `INQUILINO` (o el cargo de penalidad de rescisión) se crea un
-`CargoContrato`, pero **`CargoContrato` es write-only**: ningún endpoint lo lee y el saldo del inquilino
-sale **solo de liquidaciones** (`lib/saldos.ts`). Hoy el cargo se ve en el panel (detalle del reclamo)
-pero **no llega a la app del inquilino** ni suma a su deuda. Falta el read-path: exponer los cargos del
-contrato (en `/mis-liquidaciones` como línea aparte, o un `/mis-cargos` nuevo) + la UI en la PWA.
-Decisión de producto pendiente: ¿el cargo se suma al saldo exigible (se paga como una cuota) o es
-informativo hasta que la inmo lo concilie? No bloquea el core; los caminos propietario/depósito ya
-impactan de verdad. Ver `CHANGELOG.md` → "Reclamos ¿quién paga?".
+### 7. Cargo de reparación/rescisión → PWA del inquilino — ✅ HECHO (08/07)
+Se construyó el read-path: **`GET /mis-cargos`** (inquilino) expone los cargos que debe (reparación
+imputada + penalidad de rescisión; excluye los `contraDeposito` y los saldados) → sección **"Cargos
+adicionales"** en el home de la PWA. Panel: **`GET /contratos/:id/cargos`** + **`POST /cargos/:id/saldar`**
+("Marcar cobrado") en el detalle del contrato; **`saldar-deuda`** también salda los cargos. Migración
+`20260708120000_cargo_saldado` (`saldadoAt`/`saldadoPorId`). **Decisión tomada:** el cargo se muestra como
+deuda visible pero NO se paga desde la app (se coordina/saldar con la inmo), para no fingir un checkout
+por cargo. Backend 19/19 E2E, demo intacta. ⚠️ **Falta deployar** (ver nota multi-chat al final).
 
 ---
 

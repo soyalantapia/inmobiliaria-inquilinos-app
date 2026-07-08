@@ -135,7 +135,10 @@ Rutas del núcleo del panel de la inmobiliaria. **Todas** usan `requireUsuario` 
 
 - **POST `/contratos/:id/ajustar`** + **GET `/contratos/:id/ajustes`** — cap `contratos.crear`. Ajuste manual-asistido del alquiler: actualiza `contrato.monto` y las cuotas **PENDIENTE** con `periodo >= montoDesde` (no las ya devengadas). Registra `AjusteAlquiler` (antes/después, motivo). Cerró el gap #1 de plata (el alquiler nunca subía). El GET lista el historial.
 
-- **POST `/contratos/:id/saldar-deuda`** — cap `pago.conciliar`. Salda las cuentas por cobrar de un **ex-inquilino** (contrato finalizado, que `/pagos/informar` gatea con `exigirContratoActivo`): por cada liquidación vencida crea un `Pago` **CONCILIADO** (o **condona** con `condonar:true`) y la marca `PAGADO`. Body: `metodo`, `condonar?`. _(El campo `pin` ya no aplica — PIN eliminado.)_
+- **POST `/contratos/:id/saldar-deuda`** — cap `pago.conciliar`. Salda las cuentas por cobrar de un **ex-inquilino** (contrato finalizado, que `/pagos/informar` gatea con `exigirContratoActivo`): por cada liquidación vencida crea un `Pago` **CONCILIADO** (o **condona** con `condonar:true`) y la marca `PAGADO`. Body: `metodo`, `condonar?`. **Además (08/07) salda los `CargoContrato` pendientes del inquilino** (no `contraDeposito`) → `cargosSaldados` en la respuesta (cuenta a cero). _(El campo `pin` ya no aplica — PIN eliminado.)_
+
+- **GET `/contratos/:id/cargos`** — usuario del panel (tenant-scoped). Lista los `CargoContrato` del contrato (reparaciones imputadas + penalidad de rescisión) con `contraDeposito`, `reclamoId`, `saldadoAt`, `fecha`. Para surfacear los cargos + su estado en el detalle del contrato.
+- **POST `/cargos/:id/saldar`** — cap `pago.conciliar`. Marca un cargo como cobrado (`saldadoAt`/`saldadoPorId`) → deja de ser deuda del inquilino (sale de `/mis-cargos`). **400** si el cargo es `contraDeposito` (se netea contra el depósito, no se cobra). Idempotente.
 
 - **POST `/contratos/:id/renovar`** + **GET `/contratos/:id/renovaciones`** — cap `contratos.crear`. Extiende `fechaFin` y (opc) fija un nuevo canon desde un período — **mismo contrato** (continuidad de inquilino/depósito/historial). Actualiza las cuotas futuras impagas y devenga los nuevos períodos (`generarLiquidacionesContrato`). Registra `RenovacionContrato`.
 
@@ -290,6 +293,10 @@ Todas las rutas montadas bajo el prefijo del plugin `plataRoutes`. Multi-tenant:
 - Guard: `requireContratoAcceso()` (sin capacidad específica).
 - Respuesta: array de `Liquidacion` del contrato del inquilino, orden `periodo` desc. `[]` si no tiene contrato activo.
 - ✅ **Decorado (05/07):** cada liq incluye `pagos[]` del inquilino ordenados por `informadoAt` asc: `{ id, tipo, estado, anulado, monto, metodo, nroOperacion, fechaTransferencia, informadoAt, decididoAt, observacion, comprobanteUrl, comprobanteFileName, comprobanteMime }`. Es la fuente de "pendiente de validación" / "rechazado con motivo" / "confirmado" y del comprobante reabrible en la PWA (antes prod era ciego). Un pago ANULADO por la inmo llega como `RECHAZADO` con `anulado: true` y `observacion` NEUTRA (el motivo interno del admin no se filtra al inquilino).
+
+**GET /mis-cargos** _(en `inquilino-mundo.ts`)_
+- Guard: `requireContratoAcceso()` (la lectura no exige contrato ACTIVO: un ex-inquilino ve la penalidad de su rescisión).
+- Respuesta: array de cargos que el inquilino **debe** — `{ id, tipo, concepto, monto, moneda, fecha, origen }` (`origen` = RECLAMO | RESCISION | OTRO). Excluye los `contraDeposito` (se netean contra el depósito) y los ya saldados (`saldadoAt`). `[]` si no tiene contrato. Alimenta la sección "Cargos adicionales" del home de la PWA (deuda visible, no pagable por checkout — se coordina con la inmo).
 
 ### Caja de gastos
 

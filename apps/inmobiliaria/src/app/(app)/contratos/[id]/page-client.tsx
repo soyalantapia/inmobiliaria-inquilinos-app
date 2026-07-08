@@ -48,6 +48,7 @@ import { DocumentosInquilinoPanel } from '@/components/documentos-inquilino-pane
 import { ContratoGarantesPanel } from '@/components/contrato-garantes-panel';
 import { MensajeInquilinoDialog } from '@/components/mensaje-inquilino-dialog';
 import { ScoringInquilinoCard } from '@/components/scoring-inquilino-card';
+import { CargosContratoCard } from '@/components/cargos-contrato-card';
 import { Topbar } from '@/components/topbar';
 import { FinalizarContratoButton } from '@/components/finalizar-contrato-button';
 import { AjustarAlquilerButton } from '@/components/ajustar-alquiler-button';
@@ -451,6 +452,11 @@ export default function DetalleContratoPage() {
             </div>
 
             {scoring && <ScoringInquilinoCard scoring={scoring} />}
+
+            {/* Cargos del inquilino (reparaciones imputadas + penalidad de rescisión):
+                los pendientes suman a la deuda que ve el inquilino; se pueden marcar
+                cobrados. Se rinde sola (null si no hay cargos). */}
+            <CargosContratoCard contratoId={c.id} />
           </TabsContent>
 
           {/* PAGOS */}

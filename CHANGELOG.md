@@ -10,6 +10,20 @@
 
 Plataforma SaaS multi-tenant para inmobiliarias (panel) e inquilinos (PWA). Estado de cambios desde el handoff inicial hasta hoy.
 
+### Cargos del inquilino: del panel a la app + saldables (08/07)
+El cargo de una reparación imputada al inquilino (reclamo con pagador `INQUILINO`) y la **penalidad
+de rescisión** eran `CargoContrato` **write-only**: se creaban en el panel pero el inquilino no los
+veía ni sumaban a su deuda. Ahora:
+- **PWA del inquilino:** `GET /mis-cargos` expone los cargos que el inquilino debe (excluye los que van
+  contra el depósito y los ya saldados) → sección **"Cargos adicionales"** en el home. Se muestran como
+  deuda visible pero **no se pagan desde la app** (se coordinan con la inmo): decisión de producto para
+  no fingir un checkout por cargo.
+- **Panel:** `GET /contratos/:id/cargos` + **"Marcar cobrado"** (`POST /cargos/:id/saldar`) en el detalle
+  del contrato; `saldar-deuda` de un ex-inquilino ahora **también** salda los cargos (cuenta a cero).
+- **Schema:** `CargoContrato` gana `saldadoAt`/`saldadoPorId` (migración `20260708120000_cargo_saldado`);
+  un cargo saldado deja de ser deuda. Los `contraDeposito` siguen neteándose en `/depositos/en-custodia`.
+- Backend verificado E2E 19/19 (filtrado, aislamiento multi-tenant, auth, idempotencia); demo intacta.
+
 ### Comprobantes del inquilino: "Pagos recibidos" (05/07)
 Un cobro CONCILIADO —sobre todo un pago **PARCIAL** o uno aplicado a un mes futuro (ej: cobro
 manual en efectivo que registra la inmobiliaria)— solo se veía como un badge chico dentro de la

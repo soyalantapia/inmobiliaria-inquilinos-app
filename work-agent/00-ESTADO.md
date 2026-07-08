@@ -104,15 +104,16 @@ cartera** ya están (ver julio, arriba), así que salen de esta lista. Lo que qu
 
 **Follow-ups de features recientes** (no es decisión, es cablear):
 
-1. **Cargo de reparación del reclamo → PWA del inquilino** — al resolver un reclamo con pagador
-   `INQUILINO` se crea un `CargoContrato`, pero `CargoContrato` es **write-only**: ningún endpoint lo
-   lee y el saldo del inquilino sale solo de liquidaciones (`lib/saldos.ts`). Se ve en el panel (detalle
-   del reclamo) pero NO en la app del inquilino ni suma a su deuda. Falta un read-path (surfacear los
-   cargos en `/mis-liquidaciones` o un `/mis-cargos` + UI). Aplica igual al cargo de penalidad de rescisión.
-2. **Avatar del usuario del panel** — `PUT /me/avatar` vivo; el panel todavía muestra
+1. **Avatar del usuario del panel** — `PUT /me/avatar` vivo; el panel todavía muestra
    iniciales, no sube foto.
-3. **Comprobante en gastos de caja** — el alta acepta `comprobanteUrl` pero el form de
+2. **Comprobante en gastos de caja** — el alta acepta `comprobanteUrl` pero el form de
    caja no lo adjunta (el comprobante de **pago** del inquilino sí tiene UI).
+
+_✅ **Cerrado 08/07** (falta deployar — ver colisión multi-chat): el **cargo de reclamo/rescisión ya
+llega a la PWA del inquilino**. `GET /mis-cargos` + sección "Cargos adicionales" en el home; panel con
+"Marcar cobrado" (`POST /cargos/:id/saldar`) en el detalle del contrato; `saldar-deuda` también salda
+cargos. Migración `cargo_saldado` (`saldadoAt`). Los `contraDeposito` se siguen neteando en el depósito.
+19/19 E2E. Ver `CHANGELOG.md` → "Cargos del inquilino"._
 
 **Decisión de producto o insumo del owner** (no es bug) — triado en `04-PENDIENTES.md`:
 
