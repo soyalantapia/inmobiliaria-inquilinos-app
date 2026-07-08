@@ -9,6 +9,7 @@
 - ✅ **EJE 2.1** — reclamos de la propiedad (actuales + de ex-inquilinos): endpoint nuevo `GET /propiedades/:id/reclamos` + front. Verificado E2E (401/200/404, datos reales). `6f3b469`.
 - 🟡 **EJE 2.2** — contratos en la ficha: el código está correcto; la query a la DB de prod quedó inconclusa (`railway ssh` no respondió en la sesión headless). Verificar post-deploy: si esa propiedad no muestra contratos, es porque no tiene contrato cargado.
 - ✅ **EJE 3** — ganancia por contrato (**rendido/congelado + proyección**, decisión del dueño): endpoint nuevo `GET /contratos/:id/ganancia` + card en el detalle. Verificado E2E. `d0e0256`.
+- ✅ **EJE 3+** — ganancia también en la **ficha de propiedad**: cuánto ganó la inmo (rendido + proyección) en **cada contrato** (actual + histórico) + **total** de la propiedad. Helper compartido `lib/ganancia-contrato.ts` + endpoint batcheado `GET /propiedades/:id/ganancias` + card en el tab Contrato. Verificado E2E (incl. `PROPIETARIO_DIRECTO` → 0, regresión del por-contrato OK). `0655ddc`.
 - ⏳ **DEPLOY BLOQUEADO**: otra sesión tiene WIP pesado sin commitear (cargo→PWA del inquilino + canal email de anuncios; incluye migración `cargo_saldado`, `plata.ts`, `core.ts`, `schema.prisma`). `railway up` subiría ese trabajo a medias → **NO deployar** hasta que su árbol esté limpio. Todo lo mío quedó en `main` aislado con `git commit --only` (nunca toqué sus archivos; hice los backend como rutas NUEVAS para no editar `core.ts`).
 
 ---
