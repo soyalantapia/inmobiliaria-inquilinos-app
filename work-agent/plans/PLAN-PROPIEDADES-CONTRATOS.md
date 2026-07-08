@@ -4,6 +4,15 @@
 > Aún NO implementado — este doc es para acordar el alcance antes de avanzar.
 > Fuente de verdad: `apps/api/src/routes/core.ts`, `plata.ts`, `apps/inmobiliaria/.../propiedades|contratos`, `schema.prisma`.
 
+## Estado (08/07) — implementado en `main`, PENDIENTE DEPLOY
+- ✅ **EJE 1** — flujo property-first (alta → ficha → contrato+inquilino desde la ficha). `cf4b7b1`.
+- ✅ **EJE 2.1** — reclamos de la propiedad (actuales + de ex-inquilinos): endpoint nuevo `GET /propiedades/:id/reclamos` + front. Verificado E2E (401/200/404, datos reales). `6f3b469`.
+- 🟡 **EJE 2.2** — contratos en la ficha: el código está correcto; la query a la DB de prod quedó inconclusa (`railway ssh` no respondió en la sesión headless). Verificar post-deploy: si esa propiedad no muestra contratos, es porque no tiene contrato cargado.
+- ✅ **EJE 3** — ganancia por contrato (**rendido/congelado + proyección**, decisión del dueño): endpoint nuevo `GET /contratos/:id/ganancia` + card en el detalle. Verificado E2E. `d0e0256`.
+- ⏳ **DEPLOY BLOQUEADO**: otra sesión tiene WIP pesado sin commitear (cargo→PWA del inquilino + canal email de anuncios; incluye migración `cargo_saldado`, `plata.ts`, `core.ts`, `schema.prisma`). `railway up` subiría ese trabajo a medias → **NO deployar** hasta que su árbol esté limpio. Todo lo mío quedó en `main` aislado con `git commit --only` (nunca toqué sus archivos; hice los backend como rutas NUEVAS para no editar `core.ts`).
+
+---
+
 ## Objetivo (lo que pidió el dueño)
 1. **Propiedades:** el alta debe cargar **únicamente la propiedad**; el **contrato + el inquilino** se cargan **después, desde dentro de la propiedad**.
 2. En cada propiedad, ver el **tracking de todos los contratos con sus ex-inquilinos** y **todos los reclamos (actuales + pasados con su resolución)**.
