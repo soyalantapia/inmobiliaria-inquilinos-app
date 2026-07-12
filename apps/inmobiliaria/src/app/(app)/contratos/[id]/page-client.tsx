@@ -54,6 +54,7 @@ import { FinalizarContratoButton } from '@/components/finalizar-contrato-button'
 import { AjustarAlquilerButton } from '@/components/ajustar-alquiler-button';
 import { GananciaInmoCard } from '@/components/ganancia-inmo-card';
 import { RenovarContratoButton } from '@/components/renovar-contrato-button';
+import { AvisarRenovacionButton } from '@/components/avisar-renovacion-button';
 import {
   descripcionMora,
   MoraSelector,
@@ -274,6 +275,9 @@ export default function DetalleContratoPage() {
                 <TrendingUp className="h-4 w-4" />
                 Ajustar monto
               </Button>
+            )}
+            {apiEnabled && c.estado === 'ACTIVO' && (
+              <AvisarRenovacionButton contratoId={c.id} inquilino={c.inquilino} direccion={c.direccion} />
             )}
             {apiEnabled && c.estado === 'ACTIVO' && (
               <RenovarContratoButton contratoId={c.id} montoActual={c.monto} fechaFinActual={c.fechaFin} moneda={c.moneda} />
