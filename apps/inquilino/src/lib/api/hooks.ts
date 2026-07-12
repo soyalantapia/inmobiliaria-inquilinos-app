@@ -52,6 +52,9 @@ interface ContratoApi {
   montoActual: number;
   montoExpensas: number | null;
   moneda: Contrato['moneda'];
+  // Reglas de la unidad, visibles para el inquilino (evitan consultas).
+  mascotasPermitidas?: boolean | null;
+  reglasConvivencia?: string | null;
   datosCobranza?: DatosCobranza | null;
 }
 
@@ -59,6 +62,8 @@ export function useMiContrato(): {
   contrato: Contrato | null;
   inmobiliariaTelefono: string | null;
   datosCobranza: DatosCobranza | null;
+  mascotasPermitidas: boolean | null;
+  reglasConvivencia: string | null;
   cargando: boolean;
   isError: boolean;
   deApi: boolean;
@@ -69,10 +74,10 @@ export function useMiContrato(): {
     enabled: apiEnabled,
     staleTime: 60_000,
   });
-  if (!apiEnabled) return { contrato: contratoMock, inmobiliariaTelefono: null, datosCobranza: null, cargando: false, isError: false, deApi: false };
-  if (q.isError) return { contrato: null, inmobiliariaTelefono: null, datosCobranza: null, cargando: false, isError: true, deApi: true };
+  if (!apiEnabled) return { contrato: contratoMock, inmobiliariaTelefono: null, datosCobranza: null, mascotasPermitidas: null, reglasConvivencia: null, cargando: false, isError: false, deApi: false };
+  if (q.isError) return { contrato: null, inmobiliariaTelefono: null, datosCobranza: null, mascotasPermitidas: null, reglasConvivencia: null, cargando: false, isError: true, deApi: true };
   const d = q.data;
-  if (!d) return { contrato: null, inmobiliariaTelefono: null, datosCobranza: null, cargando: q.isPending, isError: false, deApi: true };
+  if (!d) return { contrato: null, inmobiliariaTelefono: null, datosCobranza: null, mascotasPermitidas: null, reglasConvivencia: null, cargando: q.isPending, isError: false, deApi: true };
   return {
     contrato: {
       id: d.id,
@@ -92,6 +97,8 @@ export function useMiContrato(): {
     },
     inmobiliariaTelefono: d.inmobiliariaTelefono,
     datosCobranza: d.datosCobranza ?? null,
+    mascotasPermitidas: d.mascotasPermitidas ?? null,
+    reglasConvivencia: d.reglasConvivencia ?? null,
     cargando: false,
     isError: false,
     deApi: true,

@@ -26,6 +26,7 @@ import { ConfirmDialog } from '@llave/ui/confirm-dialog';
 import { Input } from '@llave/ui/input';
 import { Label } from '@llave/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@llave/ui/select';
+import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
 import { Topbar } from '@/components/topbar';
 import { AutocompleteDireccion } from '@/components/autocomplete-direccion';
@@ -127,6 +128,8 @@ function NuevaPropiedadForm() {
   // Características
   const [ambientes, setAmbientes] = useState('');
   const [m2, setM2] = useState('');
+  // Reglas básicas de convivencia (visibles al inquilino en su PWA): mudanza, ruidos, etc.
+  const [reglasConvivencia, setReglasConvivencia] = useState('');
 
   // Foto (opcional): se elige acá con preview local (blob) y se SUBE recién al
   // guardar (POST /uploads → fotoUrl) — sin archivos huérfanos si abandona.
@@ -413,6 +416,7 @@ function NuevaPropiedadForm() {
           ...(ambientes && Number.isFinite(ambientesNum) ? { ambientes: ambientesNum } : {}),
           ...(m2 && Number.isFinite(m2Num) ? { m2: m2Num } : {}),
           ...(fotoUrl ? { fotoUrl } : {}),
+          ...(reglasConvivencia.trim() ? { reglasConvivencia: reglasConvivencia.trim() } : {}),
           propietarios: participaciones,
         });
         setEnviando(false);
@@ -796,6 +800,21 @@ function NuevaPropiedadForm() {
                       Subir una foto de la propiedad
                     </button>
                   )}
+                </div>
+                {/* Reglas de convivencia (opcional): las ve el inquilino en su app.
+                    Pensadas para responder de antemano lo que suele consultar. */}
+                <div className="space-y-2">
+                  <Label htmlFor="reglas-convivencia" className="flex items-center gap-1.5">
+                    Reglas de convivencia
+                    <span className="text-[10px] font-normal text-muted-foreground">opcional · las ve el inquilino</span>
+                  </Label>
+                  <Textarea
+                    id="reglas-convivencia"
+                    value={reglasConvivencia}
+                    onChange={(e) => setReglasConvivencia(e.target.value.slice(0, 2000))}
+                    rows={4}
+                    placeholder={'Ej: mudanzas de 8 a 20 hs. Silencio después de las 22. No colgar ropa en el frente. Expensas incluyen agua…'}
+                  />
                 </div>
               </CardContent>
             </Card>

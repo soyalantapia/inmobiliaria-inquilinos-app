@@ -14,8 +14,9 @@ import { Progress } from '@llave/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@llave/ui/select';
 import { toast } from '@llave/ui/use-toast';
 import { ConfirmDialog } from '@llave/ui/confirm-dialog';
+import { cn } from '@llave/ui/cn';
 import { Topbar } from '@/components/topbar';
-import { apiEnabled, apiFetch, ApiError } from '@/lib/api/client';
+import { apiEnabled, apiFetch, ApiError, subirArchivo } from '@/lib/api/client';
 import { ensureApiSession } from '@/lib/api/session';
 import type { PersonaListado } from '@/lib/api/use-inquilinos';
 import { usePropiedades, useMercado, useCobranza } from '@/lib/api/hooks';
@@ -686,6 +687,56 @@ interface ContratoNuevoApi {
   id: string;
 }
 
+/** Un file input compacto para una foto de DNI (frente o dorso) del wizard. */
+function DniFileInput({
+  id,
+  label,
+  file,
+  onPick,
+}: {
+  id: string;
+  label: string;
+  file: File | null;
+  onPick: (f: File | null) => void;
+}) {
+  return (
+    <div className="space-y-1">
+      <Label htmlFor={id} className="text-xs text-muted-foreground">{label}</Label>
+      {file ? (
+        <div className="flex items-center justify-between gap-2 rounded-md border border-border bg-background px-2.5 py-2 text-xs">
+          <span className="truncate">{file.name}</span>
+          <button
+            type="button"
+            onClick={() => onPick(null)}
+            className="shrink-0 text-muted-foreground hover:text-destructive"
+            aria-label={`Quitar ${label}`}
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      ) : (
+        <label
+          htmlFor={id}
+          className="flex cursor-pointer items-center gap-2 rounded-md border border-dashed border-border bg-background px-2.5 py-2 text-xs text-muted-foreground transition-colors hover:border-primary/60"
+        >
+          <FileUp className="h-3.5 w-3.5" /> Elegir foto o PDF
+        </label>
+      )}
+      <input
+        id={id}
+        type="file"
+        accept="image/*,application/pdf"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) onPick(f);
+          e.target.value = '';
+        }}
+      />
+    </div>
+  );
+}
+
 // ---- Períodos anteriores (contratos con fecha de inicio pasada) ----
 
 type EstadoPeriodoAnterior = 'PAGADO' | 'PARCIAL' | 'ADEUDA';
@@ -771,6 +822,12 @@ function CargarContratoApiWizard() {
   const [email, setEmail] = useState('');
   const [telefono, setTelefono] = useState('');
   const [dni, setDni] = useState('');
+  // Fotos del DNI del titular (frente/dorso), opcionales. Se guardan como File
+  // y se suben al expediente del contrato DESPUÉS del alta (necesitan el
+  // contratoId). No duplican nada: van al mismo DocumentoContrato que ya se ve
+  // en el detalle (grupo "Inquilino titular").
+  const [dniFrente, setDniFrente] = useState<File | null>(null);
+  const [dniDorso, setDniDorso] = useState<File | null>(null);
 
   // Reuso (req 3): traer un inquilino que ya está en la cartera. `personaId` no-null =
   // el alta se agrupa bajo esa Persona existente (historial) en vez de crear una nueva.
@@ -836,6 +893,8 @@ function CargarContratoApiWizard() {
   const [depositoGarantia, setDepositoGarantia] = useState('');
   const [comisionInmobiliaria, setComisionInmobiliaria] = useState('');
   const [modoCobranza, setModoCobranza] = useState<ModoCobranza>('INMOBILIARIA');
+  // ¿Mascotas? tri-estado: null = no especificado (default), true = permitidas, false = no.
+  const [mascotasPermitidas, setMascotasPermitidas] = useState<boolean | null>(null);
 
   // Interés por mora: 'HEREDAR' = usa el default de la inmobiliaria y NO se
   // manda moraTipo/moraValor al API (la cascada la resuelve el backend).
@@ -1063,6 +1122,7 @@ function CargarContratoApiWizard() {
         ...(Number(depositoGarantia) > 0
           ? { depositoGarantia: Number(depositoGarantia) }
           : {}),
+        ...(mascotasPermitidas !== null ? { mascotasPermitidas } : {}),
         ...(comisionInmobiliaria.trim() !== '' && Number(comisionInmobiliaria) >= 0
           ? { comisionInmobiliaria: Number(comisionInmobiliaria) }
           : {}),
@@ -1094,18 +1154,46 @@ function CargarContratoApiWizard() {
             }
           : {}),
       };
-      await apiFetch<ContratoNuevoApi>('/contratos', {
+      const creado = await apiFetch<ContratoNuevoApi>('/contratos', {
         method: 'POST',
         body: JSON.stringify(body),
       });
+      // Fotos del DNI (si las cargaron): al expediente del contrato recién
+      // creado. Best-effort — si una subida falla, el contrato YA quedó dado de
+      // alta; no lo revertimos, solo avisamos que suban el DNI desde el detalle.
+      const dnis: { file: File; tipo: string; etiqueta: string }[] = [
+        ...(dniFrente ? [{ file: dniFrente, tipo: 'DNI_TITULAR_FRENTE', etiqueta: 'DNI titular · frente' }] : []),
+        ...(dniDorso ? [{ file: dniDorso, tipo: 'DNI_TITULAR_DORSO', etiqueta: 'DNI titular · dorso' }] : []),
+      ];
+      let dniFallo = false;
+      for (const d of dnis) {
+        try {
+          const up = await subirArchivo(d.file);
+          await apiFetch(`/contratos/${creado.id}/documentos`, {
+            method: 'POST',
+            body: JSON.stringify({
+              tipo: d.tipo,
+              etiqueta: d.etiqueta,
+              nombreArchivo: up.nombreArchivo,
+              tipoMime: up.tipoMime,
+              tamanioBytes: up.tamanioBytes,
+              archivoUrl: up.url,
+            }),
+          });
+        } catch {
+          dniFallo = true;
+        }
+      }
       // La propiedad pasa a ALQUILADA y el contrato aparece en la lista.
       void qc.invalidateQueries({ queryKey: ['contratos'] });
       void qc.invalidateQueries({ queryKey: ['propiedades'] });
       setConfirmando(false);
       toast({
-        variant: 'success',
+        variant: dniFallo ? 'default' : 'success',
         title: 'Contrato dado de alta',
-        description: 'Generamos la primera liquidación y la propiedad pasó a alquilada.',
+        description: dniFallo
+          ? 'Se creó el contrato, pero no pudimos subir alguna foto del DNI. Cargalas desde el detalle.'
+          : 'Generamos la primera liquidación y la propiedad pasó a alquilada.',
       });
       router.push('/contratos');
     } catch (e) {
@@ -1325,6 +1413,19 @@ function CargarContratoApiWizard() {
                     placeholder="30111222"
                   />
                 </div>
+              </div>
+
+              {/* Fotos del DNI del titular (opcional): quedan en el expediente del
+                  contrato. Se suben tras el alta (necesitan el contratoId). */}
+              <div className="space-y-2 rounded-lg border border-dashed border-border bg-muted/20 p-3">
+                <p className="text-sm font-medium">Fotos del DNI del inquilino <span className="font-normal text-muted-foreground">(opcional)</span></p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <DniFileInput id="dni-frente" label="Frente" file={dniFrente} onPick={setDniFrente} />
+                  <DniFileInput id="dni-dorso" label="Dorso" file={dniDorso} onPick={setDniDorso} />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Las guardamos en el expediente del contrato. También podés cargarlas después desde el detalle.
+                </p>
               </div>
 
               <div className="flex justify-between border-t pt-4">
@@ -1583,6 +1684,33 @@ function CargarContratoApiWizard() {
                       <SelectItem value="PROPIETARIO_DIRECTO">Cobra el propietario directo</SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+              </div>
+
+              {/* Mascotas: se muestra en el contrato del inquilino (evita consultas). */}
+              <div className="space-y-1.5">
+                <Label>¿Se permiten mascotas?</Label>
+                <div className="flex gap-2">
+                  {([
+                    { val: true, label: 'Sí' },
+                    { val: false, label: 'No' },
+                    { val: null, label: 'Sin especificar' },
+                  ] as { val: boolean | null; label: string }[]).map((o) => (
+                    <button
+                      key={String(o.val)}
+                      type="button"
+                      aria-pressed={mascotasPermitidas === o.val}
+                      onClick={() => setMascotasPermitidas(o.val)}
+                      className={cn(
+                        'rounded-md border px-3 py-1.5 text-sm transition-colors',
+                        mascotasPermitidas === o.val
+                          ? 'border-primary bg-primary text-primary-foreground'
+                          : 'border-border bg-background hover:bg-muted/40',
+                      )}
+                    >
+                      {o.label}
+                    </button>
+                  ))}
                 </div>
               </div>
 
