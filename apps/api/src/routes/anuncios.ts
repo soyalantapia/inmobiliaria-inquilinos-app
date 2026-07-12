@@ -4,6 +4,7 @@ import type { AudienciaAnuncio } from '@prisma/client';
 import type { JwtInquilino } from '@llave/shared';
 import { prisma } from '../db.js';
 import { requireInquilino, requireUsuario } from '../auth/guards.js';
+import { enviarAnuncioEmail, mailerConfigured } from '../mailer.js';
 
 /**
  * Fase 5 — Comunicación: anuncios masivos del panel con acuses REALES.
@@ -184,6 +185,79 @@ async function resolverAudiencia(
   }
 }
 
+/** Pausa entre emails del fan-out (envío "uno a uno", no ráfaga). */
+const dormir = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+const PAUSA_ENTRE_EMAILS_MS = 400;
+
+/**
+ * Canal EMAIL de los anuncios — antes NO existía: el POST guardaba
+ * canales ['APP','EMAIL'] pero jamás se mandaba un mail (bug "los avisos no
+ * llegan al email", 07/07). Envío en BACKGROUND (no bloquea el 201) y UNO A
+ * UNO con throttle, cuidando deliverability:
+ *  - un destinatario por mail (nunca BCC/listas → menos spam-score),
+ *  - secuencial con pausa entre envíos (no ráfaga que dispare rate-limits),
+ *  - best-effort por destinatario: un mail que falla no corta el resto.
+ * TODOS_CONSORCIOS no tiene email en el modelo → solo canal APP (se loguea).
+ */
+async function enviarEmailsAnuncio(
+  app: FastifyInstance,
+  anuncio: { id: string; inmobiliariaId: string; titulo: string; cuerpo: string; prioridad: string; audiencia: AudienciaAnuncio },
+  inquilinoIds: string[],
+): Promise<void> {
+  const inmo = await prisma.inmobiliaria.findUnique({
+    where: { id: anuncio.inmobiliariaId },
+    select: { nombre: true },
+  });
+  const inmoNombre = inmo?.nombre ?? 'Tu inmobiliaria';
+
+  // Destinatarios con email real, deduplicados (co-titulares pueden compartir casilla).
+  const destinos: Array<{ email: string; paraInquilino: boolean }> = [];
+  if (anuncio.audiencia === 'TODOS_PROPIETARIOS') {
+    const owners = await prisma.propietario.findMany({
+      where: { inmobiliariaId: anuncio.inmobiliariaId },
+      select: { email: true },
+    });
+    for (const o of owners) destinos.push({ email: o.email, paraInquilino: false });
+  } else if (anuncio.audiencia === 'TODOS_CONSORCIOS') {
+    app.log.info({ anuncioId: anuncio.id }, 'anuncio a consorcios: sin email en el modelo, solo canal APP');
+  } else if (inquilinoIds.length > 0) {
+    const inqs = await prisma.inquilino.findMany({
+      where: { id: { in: inquilinoIds } },
+      select: { email: true },
+    });
+    for (const i of inqs) {
+      if (i.email) destinos.push({ email: i.email, paraInquilino: true });
+    }
+  }
+  const unicos = [...new Map(destinos.map((d) => [d.email.toLowerCase(), d])).values()];
+  if (unicos.length === 0) {
+    app.log.info({ anuncioId: anuncio.id }, 'anuncio sin destinatarios con email');
+    return;
+  }
+
+  let ok = 0;
+  let fallidos = 0;
+  for (const d of unicos) {
+    try {
+      const enviado = await enviarAnuncioEmail({
+        email: d.email,
+        titulo: anuncio.titulo,
+        cuerpo: anuncio.cuerpo,
+        prioridad: anuncio.prioridad,
+        inmobiliariaNombre: inmoNombre,
+        paraInquilino: d.paraInquilino,
+      });
+      if (enviado) ok += 1;
+      else fallidos += 1; // SMTP sin configurar
+    } catch (e) {
+      fallidos += 1;
+      app.log.warn({ anuncioId: anuncio.id, err: e }, 'fallo el email de un destinatario del anuncio');
+    }
+    await dormir(PAUSA_ENTRE_EMAILS_MS);
+  }
+  app.log.info({ anuncioId: anuncio.id, ok, fallidos, total: unicos.length }, 'emails del anuncio enviados');
+}
+
 export async function anunciosRoutes(app: FastifyInstance) {
   // ===== Panel: listado con conteos REALES desde AnuncioAcuse =====
   app.get('/anuncios', async (request, reply) => {
@@ -247,6 +321,15 @@ export async function anunciosRoutes(app: FastifyInstance) {
         destinatariosCount: destino.destinatariosCount,
       },
     });
+    // Canal EMAIL en background: el 201 no espera al SMTP (un fan-out de N
+    // mails con throttle tarda N×~0.5s). Si algo explota, queda logueado.
+    if (mailerConfigured) {
+      void enviarEmailsAnuncio(app, anuncio, destino.inquilinoIds).catch((e) =>
+        app.log.error({ anuncioId: anuncio.id, err: e }, 'fan-out de emails del anuncio falló'),
+      );
+    } else {
+      app.log.warn({ anuncioId: anuncio.id }, 'SMTP sin configurar: anuncio sin canal EMAIL');
+    }
     return reply.code(201).send({ ...anuncio, conteos: { leido: 0, confirmado: 0, total: anuncio.destinatariosCount } });
   });
 

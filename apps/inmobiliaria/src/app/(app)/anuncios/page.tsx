@@ -114,20 +114,32 @@ export default function AnunciosPage() {
       ? anuncios
       : anuncios.filter((a) => a.prioridad === filtroPrioridad);
 
-  const handleCrear = (data: Omit<Anuncio, 'id' | 'enviadoAt'>) => {
-    void crear({
-      titulo: data.titulo,
-      cuerpo: data.cuerpo,
-      prioridad: data.prioridad,
-      audiencia: data.audiencia,
-      audienciaIds: data.audienciaIds,
-    });
-    setCrearAbierto(false);
-    toast({
-      variant: 'success',
-      title: 'Anuncio enviado',
-      description: `${data.titulo} · ${data.destinatariosCount} destinatario${data.destinatariosCount === 1 ? '' : 's'}`,
-    });
+  const handleCrear = async (data: Omit<Anuncio, 'id' | 'enviadoAt'>) => {
+    // Esperamos el POST de verdad: antes era `void crear(...)` + toast de éxito
+    // incondicional → si el server rechazaba (409 audiencia vacía, 400, red),
+    // el toast MENTÍA "Anuncio enviado", no aparecía nada en la lista y el
+    // usuario leía "no me deja enviar más de un aviso" (bug 07/07).
+    try {
+      await crear({
+        titulo: data.titulo,
+        cuerpo: data.cuerpo,
+        prioridad: data.prioridad,
+        audiencia: data.audiencia,
+        audienciaIds: data.audienciaIds,
+      });
+      setCrearAbierto(false);
+      toast({
+        variant: 'success',
+        title: 'Anuncio enviado',
+        description: `${data.titulo} · ${data.destinatariosCount} destinatario${data.destinatariosCount === 1 ? '' : 's'} · app + email`,
+      });
+    } catch (e) {
+      toast({
+        variant: 'destructive',
+        title: 'No se pudo enviar el anuncio',
+        description: e instanceof Error ? e.message : 'Probá de nuevo.',
+      });
+    }
   };
 
   const ejecutarEliminar = (a: Anuncio) => {
@@ -511,7 +523,11 @@ function CrearAnuncioDialog({ abierto, onClose, onGuardar, contratosApi }: Dialo
   };
 
   const enviar = () => {
-    onGuardar({
+    // onGuardar ahora es async (espera el POST): cerramos el paso de
+    // confirmación acá; el resultado (éxito o error) lo comunica el toast del
+    // caller. Si falló, el diálogo principal sigue abierto para reintentar.
+    setConfirmando(false);
+    void onGuardar({
       titulo: titulo.trim(),
       cuerpo: cuerpo.trim(),
       prioridad,
