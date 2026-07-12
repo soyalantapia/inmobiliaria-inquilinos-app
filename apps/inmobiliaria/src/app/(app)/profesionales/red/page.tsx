@@ -38,14 +38,27 @@ export default function RedProfesionalesPage() {
   const qc = useQueryClient();
   const [cat, setCat] = useState<CategoriaProfesional | 'TODOS'>('TODOS');
   const [q, setQ] = useState('');
+  const [zona, setZona] = useState('');
+  const [soloAsegurados, setSoloAsegurados] = useState(false);
   const [fichaId, setFichaId] = useState<string | null>(null);
   const [contratando, setContratando] = useState<string | null>(null);
 
   const filtros: RedFiltros = useMemo(
-    () => ({ ...(cat !== 'TODOS' ? { categoria: cat } : {}), ...(q.trim() ? { q: q.trim() } : {}) }),
-    [cat, q],
+    () => ({
+      ...(cat !== 'TODOS' ? { categoria: cat } : {}),
+      ...(q.trim() ? { q: q.trim() } : {}),
+      ...(zona.trim() ? { zona: zona.trim() } : {}),
+    }),
+    [cat, q, zona],
   );
-  const { profesionales, cargando, isError } = useRedProfesionales(filtros);
+  const { profesionales: profesionalesRaw, cargando, isError } = useRedProfesionales(filtros);
+  // "Solo asegurados" — el diferencial comercial del ecosistema — se filtra en el
+  // cliente sobre p.asegurado (ya viene en el payload); no necesita backend.
+  const profesionales = useMemo(
+    () => (soloAsegurados ? profesionalesRaw.filter((p) => p.asegurado) : profesionalesRaw),
+    [profesionalesRaw, soloAsegurados],
+  );
+  const asegCount = profesionalesRaw.filter((p) => p.asegurado).length;
 
   const contratar = async (redId: string) => {
     setContratando(redId);
@@ -98,12 +111,41 @@ export default function RedProfesionalesPage() {
             </button>
           ))}
         </div>
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Buscar por nombre…"
-          className="w-full max-w-xs rounded-md border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-primary"
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Buscar por nombre…"
+            className="w-full max-w-xs rounded-md border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-primary"
+          />
+          <input
+            value={zona}
+            onChange={(e) => setZona(e.target.value)}
+            placeholder="Zona (ej: Palermo)"
+            className="w-full max-w-[12rem] rounded-md border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-primary"
+          />
+          {/* Toggle "Solo asegurados": el gancho comercial del ecosistema
+              (profesionales con póliza vigente). Filtra client-side. */}
+          <button
+            type="button"
+            aria-pressed={soloAsegurados}
+            onClick={() => setSoloAsegurados((v) => !v)}
+            className={cn(
+              'inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
+              soloAsegurados
+                ? 'border-emerald-500 bg-emerald-500 text-white'
+                : 'border-border bg-background hover:bg-muted/40',
+            )}
+          >
+            <ShieldCheck className="h-3.5 w-3.5" />
+            Solo asegurados
+            {asegCount > 0 && (
+              <span className={cn('tabular-nums', soloAsegurados ? 'text-white/90' : 'text-muted-foreground')}>
+                · {asegCount}
+              </span>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Directorio */}
@@ -272,6 +314,28 @@ function FichaRedDialog({
               <MetricBox label="Rating" value={ficha.ratingPromedio > 0 ? ficha.ratingPromedio.toFixed(1) : '—'} sub={`${ficha.reseñas} reseñas`} />
               <MetricBox label="Respuesta" value={ficha.tiempoPromedioHoras != null ? `${ficha.tiempoPromedioHoras}h` : '—'} />
             </div>
+            {/* Rubros y zonas donde ya trabajó (agregados, anonimizados): datos que
+                el backend ya devolvía pero la UI no mostraba. Refuerzan la confianza. */}
+            {(ficha.categorias.length > 0 || ficha.zonas.length > 0) && (
+              <div className="space-y-2">
+                {ficha.categorias.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-xs font-medium text-muted-foreground">Rubros:</span>
+                    {ficha.categorias.map((c) => (
+                      <Badge key={c} variant="secondary" className="text-[10px]">{c}</Badge>
+                    ))}
+                  </div>
+                )}
+                {ficha.zonas.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-xs font-medium text-muted-foreground">Trabajó en:</span>
+                    {ficha.zonas.map((z) => (
+                      <Badge key={z} variant="outline" className="gap-1 text-[10px]"><MapPin className="h-2.5 w-2.5" />{z}</Badge>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             {ficha.preciosPorCategoria.length > 0 && (
               <div>
                 <p className="mb-1 text-xs font-medium">Rango de precios</p>
