@@ -4,13 +4,14 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { ArrowRight, Menu, X } from 'lucide-react';
 import { Isotipo } from '@/components/isotipo';
+import { HAY_TESTIMONIOS } from './testimonios';
 
 /**
  * Header FLOTANTE tipo cápsula (pill) — no es la barra pegada al borde de siempre.
  * Flota separado del tope, redondeado, con blur, y un segmented-control de tabs
- * que resalta la sección visible mientras scrolleás (scroll-spy con
- * IntersectionObserver). Los tabs son anclas suaves a cada sección de la landing.
- * En mobile los tabs viven en un menú desplegable dentro de la misma cápsula.
+ * que resalta la sección visible mientras scrolleás (scroll-spy por posición).
+ * Los tabs son anclas suaves a cada sección de la landing. En mobile viven en un
+ * menú desplegable dentro de la misma cápsula.
  */
 
 const TABS = [
@@ -19,6 +20,10 @@ const TABS = [
   { label: 'Testimonios', href: '#testimonios' },
   { label: 'Preguntas', href: '#preguntas' },
 ];
+
+// Sin videos reales la sección Testimonios no se monta (ver testimonios.tsx):
+// tampoco mostramos su tab, para no scrollear a una sección inexistente.
+const TABS_VISIBLES = HAY_TESTIMONIOS ? TABS : TABS.filter((t) => t.href !== '#testimonios');
 
 export function Header() {
   const [active, setActive] = useState('');
@@ -29,7 +34,7 @@ export function Header() {
   // posición (determinístico y fácil de testear). Activa = la última sección
   // cuyo tope ya cruzó la línea imaginaria debajo del header flotante.
   useEffect(() => {
-    const ids = TABS.map((t) => t.href.slice(1));
+    const ids = TABS_VISIBLES.map((t) => t.href.slice(1));
     const onScroll = () => {
       setScrolled(window.scrollY > 20);
       // Activa = la sección MÁS ABAJO cuyo tope ya cruzó la línea del header.
@@ -60,6 +65,7 @@ export function Header() {
   return (
     <header className="pointer-events-none fixed inset-x-0 top-3 z-50 px-4 md:top-4">
       <nav
+        aria-label="Navegación de la landing"
         className={[
           'pointer-events-auto mx-auto flex max-w-3xl items-center justify-between gap-2 rounded-[1.75rem] border border-black/[0.06] py-2 pl-3 pr-2 transition-all duration-300',
           scrolled
@@ -74,14 +80,15 @@ export function Header() {
 
         {/* Tabs desktop — segmented control con highlight de la sección activa */}
         <div className="hidden items-center gap-0.5 rounded-full bg-black/[0.035] p-1 md:flex">
-          {TABS.map((t) => {
+          {TABS_VISIBLES.map((t) => {
             const on = active === t.href.slice(1);
             return (
               <a
                 key={t.href}
                 href={t.href}
+                aria-current={on ? 'page' : undefined}
                 className={[
-                  'rounded-full px-3.5 py-1.5 text-[13px] font-medium transition-all duration-200',
+                  'rounded-full px-3.5 py-1.5 text-[13px] font-medium outline-none transition-all duration-200 focus-visible:ring-2 focus-visible:ring-primary/40',
                   on
                     ? 'bg-white text-primary shadow-sm'
                     : 'text-muted-foreground hover:text-foreground',
@@ -113,7 +120,8 @@ export function Header() {
             onClick={() => setMenuOpen((v) => !v)}
             aria-label={menuOpen ? 'Cerrar menú' : 'Abrir menú'}
             aria-expanded={menuOpen}
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-foreground/70 transition-colors hover:bg-black/[0.04] md:hidden"
+            aria-controls="landing-menu-mobile"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-foreground/70 outline-none transition-colors hover:bg-black/[0.04] focus-visible:ring-2 focus-visible:ring-primary/40 md:hidden"
           >
             {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
@@ -122,8 +130,8 @@ export function Header() {
 
       {/* Menú desplegable de tabs (mobile) — flota bajo la cápsula */}
       {menuOpen && (
-        <div className="pointer-events-auto mx-auto mt-2 max-w-3xl rounded-3xl border border-black/[0.06] bg-[#faf8f5]/90 p-2 shadow-[0_14px_44px_-14px_rgba(80,40,160,0.3)] backdrop-blur-xl md:hidden">
-          {TABS.map((t) => (
+        <div id="landing-menu-mobile" className="pointer-events-auto mx-auto mt-2 max-w-3xl rounded-3xl border border-black/[0.06] bg-[#faf8f5]/90 p-2 shadow-[0_14px_44px_-14px_rgba(80,40,160,0.3)] backdrop-blur-xl md:hidden">
+          {TABS_VISIBLES.map((t) => (
             <a
               key={t.href}
               href={t.href}

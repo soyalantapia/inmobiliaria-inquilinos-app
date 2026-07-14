@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { ArrowRight, Clock, TrendingUp } from 'lucide-react';
 import { formatMonto } from '@/lib/format';
+import { tramoPara } from '@/lib/plan';
 import { track } from './analytics';
 
 /**
@@ -15,16 +16,6 @@ import { track } from './analytics';
 
 const MIN_POR_PROP = 12; // min/mes de cobranza + seguimiento + rendición manual
 
-// Precio mensual de My Alquiler según el tamaño de la cartera (mismos tramos que
-// /precios y el schema). Se muestra al lado del valor del tiempo para que la
-// inmobiliaria COMPARE la inversión con lo que se ahorra. Hoy es gratis (beta).
-function precioMensual(props: number): number {
-  if (props <= 10) return 50_000;
-  if (props <= 50) return 100_000;
-  if (props <= 100) return 200_000;
-  return 350_000;
-}
-
 export function Calculadora() {
   const [props, setProps] = useState(60);
   // Valor de la hora EDITABLE (no inventamos un sueldo): el usuario pone el suyo
@@ -34,9 +25,11 @@ export function Calculadora() {
   const horasMes = Math.round((props * MIN_POR_PROP) / 60);
   const diasAnio = Math.round((horasMes * 12) / 8); // jornadas de 8 hs al año
   const pesosMes = horasMes * (Number.isFinite(valorHora) ? valorHora : 0);
-  const precio = precioMensual(props);
-  // "A favor" = valor del tiempo recuperado menos lo que costaría el plan. Sólo
-  // se muestra cuando es positivo (nunca un número que desanime).
+  // Precio por tramo desde la fuente canónica (@/lib/plan) — misma tabla que
+  // /precios y el schema. Se muestra al lado del valor del tiempo para comparar
+  // la inversión con lo que se ahorra. Hoy es gratis (beta).
+  const precio = tramoPara(props).precio;
+  // "A favor" = valor del tiempo recuperado menos lo que costaría el plan.
   const aFavor = pesosMes > 0 ? pesosMes - precio : 0;
 
   return (
@@ -128,12 +121,16 @@ export function Calculadora() {
             </div>
           </div>
 
-          {aFavor > 0 && (
-            <p className="mt-3 flex items-center gap-2 rounded-xl bg-emerald-400/10 px-3.5 py-2.5 text-[13px] font-semibold text-emerald-300">
-              <TrendingUp className="h-4 w-4 shrink-0" />
-              Aun pagándolo, te queda a favor {formatMonto(aFavor)}/mes de tu tiempo.
-            </p>
-          )}
+          {/* Refuerzo SIEMPRE positivo: si el tiempo ahorrado supera el costo,
+              mostramos el neto a favor; si no (carteras chicas / hora baja),
+              la realidad de la beta —hoy es gratis— para que el costo nunca
+              quede solo dominando el default. Ambos casos honestos. */}
+          <p className="mt-3 flex items-center gap-2 rounded-xl bg-emerald-400/10 px-3.5 py-2.5 text-[13px] font-semibold text-emerald-300">
+            <TrendingUp className="h-4 w-4 shrink-0" />
+            {aFavor > 0
+              ? `Aun pagándolo, te queda a favor ${formatMonto(aFavor)}/mes de tu tiempo.`
+              : 'Hoy es gratis: recuperás ese tiempo sin pagar nada.'}
+          </p>
 
           <p className="mt-3 text-[11px] leading-relaxed text-white/45">
             Estimado, según el valor de hora que pusiste. El precio va según el tamaño de tu

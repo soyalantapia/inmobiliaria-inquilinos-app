@@ -34,7 +34,14 @@ const TESTIMONIOS: Testimonio[] = [
   { nombre: '', rol: '' },
 ];
 
+/** ¿Hay al menos un video real cargado? Si no, ni la sección ni su tab en el
+ *  header se montan — una sección de "testimonios" vacía lee como rota y daña
+ *  más la confianza que no tenerla (audit P2). Se enciende sola al cargar el
+ *  primer { youtubeId | videoSrc }. */
+export const HAY_TESTIMONIOS = TESTIMONIOS.some((t) => t.youtubeId || t.videoSrc);
+
 export function Testimonios() {
+  if (!HAY_TESTIMONIOS) return null;
   return (
     <section id="testimonios" className="scroll-mt-28 border-y border-black/[0.06] bg-white/50">
       <div className="mx-auto max-w-6xl px-5 py-20 md:px-8 md:py-24">
