@@ -1653,37 +1653,58 @@ function CargarContratoApiWizard() {
                 />
               </div>
 
-              <div className="grid gap-3 md:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label htmlFor="deposito">Depósito en garantía</Label>
-                  <div className="relative">
-                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                      {monedaSimbolo}
-                    </span>
-                    <Input
-                      id="deposito"
-                      inputMode="numeric"
-                      value={depositoGarantia ? Number(depositoGarantia).toLocaleString('es-AR') : ''}
-                      onChange={(e) => setDepositoGarantia(e.target.value.replace(/\D/g, '').slice(0, 12))}
-                      placeholder="480.000"
-                      className="pl-9"
-                    />
-                  </div>
+              <div className="max-w-xs space-y-1.5">
+                <Label htmlFor="deposito">Depósito en garantía</Label>
+                <div className="relative">
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                    {monedaSimbolo}
+                  </span>
+                  <Input
+                    id="deposito"
+                    inputMode="numeric"
+                    value={depositoGarantia ? Number(depositoGarantia).toLocaleString('es-AR') : ''}
+                    onChange={(e) => setDepositoGarantia(e.target.value.replace(/\D/g, '').slice(0, 12))}
+                    placeholder="480.000"
+                    className="pl-9"
+                  />
                 </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="modoCobranza">Cobranza</Label>
-                  <Select
-                    value={modoCobranza}
-                    onValueChange={(v) => setModoCobranza(v as ModoCobranza)}
-                  >
-                    <SelectTrigger id="modoCobranza">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="INMOBILIARIA">Cobra la inmobiliaria</SelectItem>
-                      <SelectItem value="PROPIETARIO_DIRECTO">Cobra el propietario directo</SelectItem>
-                    </SelectContent>
-                  </Select>
+              </div>
+
+              {/* Modo de cobranza: elección EXPLÍCITA (radio-cards) en vez de un
+                  <Select> colapsado. Antes quedabas en el default INMOBILIARIA
+                  ("cuenta recaudadora") sin darte cuenta y sin entender el impacto.
+                  Ahora se ven las 2 opciones con lo que implica cada una. */}
+              <div className="space-y-1.5">
+                <Label>¿Quién cobra el alquiler?</Label>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {([
+                    {
+                      val: 'INMOBILIARIA' as ModoCobranza,
+                      title: 'La inmobiliaria (cuenta recaudadora)',
+                      sub: 'El inquilino transfiere a TU cuenta y vos le rendís al propietario.',
+                    },
+                    {
+                      val: 'PROPIETARIO_DIRECTO' as ModoCobranza,
+                      title: 'El propietario (directo)',
+                      sub: 'El inquilino transfiere directo al CBU del propietario; vos solo auditás. Requiere cargar la cuenta de cobranza del propietario.',
+                    },
+                  ]).map((o) => (
+                    <button
+                      key={o.val}
+                      type="button"
+                      aria-pressed={modoCobranza === o.val}
+                      onClick={() => setModoCobranza(o.val)}
+                      className={cn(
+                        'rounded-lg border p-3 text-left text-sm transition-colors',
+                        modoCobranza === o.val
+                          ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                          : 'border-border hover:bg-muted/40',
+                      )}
+                    >
+                      <span className="font-medium">{o.title}</span>
+                      <span className="mt-0.5 block text-xs text-muted-foreground">{o.sub}</span>
+                    </button>
+                  ))}
                 </div>
               </div>
 
