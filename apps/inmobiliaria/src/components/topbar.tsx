@@ -1,33 +1,14 @@
 'use client';
 
 import { SignOutButton, UserButton } from '@clerk/nextjs';
-import { useRouter } from 'next/navigation';
 import { LogOut } from 'lucide-react';
-import { Avatar, AvatarFallback } from '@llave/ui/avatar';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@llave/ui/dropdown-menu';
 import { isClerkEnabled } from '@/lib/auth';
-import { setToken } from '@/lib/api/client';
-import { useMe } from '@/lib/api/hooks';
 import { ConvenioBadgeTopbar } from './convenio-badge-topbar';
 import { MobileSidebarTrigger } from './sidebar';
 import { NotificationsBell } from './notifications-bell';
 import { PilotoBadgeTopbar } from './piloto-badge-topbar';
 
 export function Topbar({ titulo }: { titulo: string }) {
-  const router = useRouter();
-  const { me } = useMe();
-  const nombreCompleto = me?.nombre ?? 'Cargando…';
-  const inicialesCuenta = me?.iniciales ?? '·';
-  const cerrarSesion = () => {
-    setToken(null);
-    router.replace('/login');
-  };
   return (
     <header className="flex h-16 items-center justify-between gap-2 border-b bg-background px-3 md:gap-3 md:px-6">
       <div className="flex flex-shrink-0 items-center gap-2">
@@ -47,7 +28,11 @@ export function Topbar({ titulo }: { titulo: string }) {
         <ConvenioBadgeTopbar />
         <NotificationsBell />
 
-        {isClerkEnabled() ? (
+        {/* El avatar con iniciales (y su menú de cuenta) se quitó del topbar:
+            la cuenta y el "Cerrar sesión" viven ahora en el footer del sidebar
+            (visible también en el drawer mobile). Con Clerk activo se conserva
+            su UserButton, que además maneja el sign-out. */}
+        {isClerkEnabled() && (
           <>
             <UserButton afterSignOutUrl="/login" />
             <SignOutButton redirectUrl="/login">
@@ -56,41 +41,6 @@ export function Topbar({ titulo }: { titulo: string }) {
               </button>
             </SignOutButton>
           </>
-        ) : (
-          // El "Cerrar sesión" vivía como botón suelto siempre visible al lado
-          // del avatar — muy fácil de tocar sin querer. Ahora vive detrás del
-          // avatar, en un menú (click avatar → Cerrar sesión).
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                aria-label="Menú de cuenta"
-                className="rounded-full outline-none transition-shadow hover:ring-2 hover:ring-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              >
-                <Avatar>
-                  <AvatarFallback className="bg-primary/10 text-primary">
-                    {inicialesCuenta}
-                  </AvatarFallback>
-                </Avatar>
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-[12rem]">
-              <div className="px-2 py-1.5">
-                <p className="text-sm font-medium leading-none">{nombreCompleto}</p>
-                {me?.email && (
-                  <p className="mt-1 text-xs text-muted-foreground">{me.email}</p>
-                )}
-              </div>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={cerrarSesion}
-                className="text-destructive hover:bg-destructive/10 hover:text-destructive focus:bg-destructive/10 focus:text-destructive"
-              >
-                <LogOut className="mr-2 h-4 w-4" />
-                Cerrar sesión
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
         )}
       </div>
     </header>

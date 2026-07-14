@@ -402,3 +402,77 @@ export async function enviarInvitacionEquipo(opts: {
   });
   return true;
 }
+
+// ─── Anuncios (canal EMAIL) ───────────────────────────────────────────────────
+
+/** Chip de prioridad para el email del anuncio (solo IMPORTANTE/URGENTE). */
+const PRIORIDAD_CHIP: Record<string, string> = {
+  IMPORTANTE:
+    '<span style="display:inline-block;background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:999px;padding:2px 10px;font-size:11px;font-weight:700;letter-spacing:0.4px;">IMPORTANTE</span>',
+  URGENTE:
+    '<span style="display:inline-block;background:#fee2e2;color:#991b1b;border:1px solid #fecaca;border-radius:999px;padding:2px 10px;font-size:11px;font-weight:700;letter-spacing:0.4px;">URGENTE</span>',
+};
+
+function anuncioHtml(opts: {
+  titulo: string;
+  cuerpo: string;
+  prioridad: string;
+  inmobiliariaNombre: string;
+  ctaUrl: string | null;
+}): string {
+  const chip = PRIORIDAD_CHIP[opts.prioridad] ?? '';
+  // El cuerpo del anuncio conserva los saltos de línea del panel.
+  const cuerpoHtml = esc(opts.cuerpo).replace(/\n/g, '<br>');
+  const inner = `
+    ${chip ? `<div style="margin:0 0 10px;">${chip}</div>` : ''}
+    <h1 style="margin:0 0 6px;color:#1c1726;font-size:21px;line-height:1.25;font-weight:800;letter-spacing:-0.02em;">${esc(opts.titulo)}</h1>
+    <p style="margin:0 0 18px;color:#8a85a0;font-size:12px;">Aviso de <strong style="color:#5b556e;">${esc(opts.inmobiliariaNombre)}</strong></p>
+    <p style="margin:0 0 22px;color:#3f3a4d;font-size:15px;line-height:1.7;">${cuerpoHtml}</p>
+    ${
+      opts.ctaUrl
+        ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 6px;"><tr>
+      <td align="center" bgcolor="#7c3aed" style="background-color:#7c3aed;border-radius:12px;">
+        <a href="${opts.ctaUrl}" target="_blank" style="display:inline-block;padding:12px 26px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:14px;font-weight:800;color:#ffffff;text-decoration:none;">Ver en la app &rarr;</a>
+      </td>
+    </tr></table>`
+        : ''
+    }
+    <p style="margin:16px 0 0;color:#8a85a0;font-size:11px;line-height:1.6;">Recibís este aviso porque ${esc(opts.inmobiliariaNombre)} gestiona tu alquiler/propiedad con My Alquiler.</p>`;
+  return shell({ preview: `${opts.inmobiliariaNombre}: ${opts.titulo}`, inner });
+}
+
+/**
+ * Email de un ANUNCIO del panel a UN destinatario. El canal EMAIL de los
+ * anuncios existía como decisión de producto (canales ['APP','EMAIL']) pero
+ * nunca se enviaba nada — este export lo hace real. Un destinatario por email
+ * (nunca listas/BCC), pensado para mandarse en loop secuencial con throttle
+ * (deliverability: parecer humano, no ráfaga). Best-effort: el caller loguea.
+ */
+export async function enviarAnuncioEmail(opts: {
+  email: string;
+  titulo: string;
+  cuerpo: string;
+  prioridad: string;
+  inmobiliariaNombre: string;
+  /** true → CTA a la app del inquilino; false (propietarios) → sin CTA. */
+  paraInquilino: boolean;
+}): Promise<boolean> {
+  const t = getTransporter();
+  if (!t) return false;
+  const urgente = opts.prioridad === 'URGENTE';
+  await t.sendMail({
+    from,
+    to: opts.email,
+    subject: `${urgente ? 'URGENTE — ' : ''}${opts.titulo} · ${opts.inmobiliariaNombre}`,
+    text: `${opts.titulo}\n\nAviso de ${opts.inmobiliariaNombre}:\n\n${opts.cuerpo}\n\n${opts.paraInquilino ? `Velo en la app: ${APP_INQUILINO_URL}\n\n` : ''}Recibís este aviso porque ${opts.inmobiliariaNombre} gestiona tu alquiler/propiedad con My Alquiler.`,
+    html: anuncioHtml({
+      titulo: opts.titulo,
+      cuerpo: opts.cuerpo,
+      prioridad: opts.prioridad,
+      inmobiliariaNombre: opts.inmobiliariaNombre,
+      // Los anuncios viven en el home de la PWA (no hay ruta /anuncios).
+      ctaUrl: opts.paraInquilino ? APP_INQUILINO_URL : null,
+    }),
+  });
+  return true;
+}

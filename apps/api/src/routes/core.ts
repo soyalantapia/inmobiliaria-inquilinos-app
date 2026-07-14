@@ -33,6 +33,32 @@ function liqVencida(l: { estado: string; fechaVencimiento: Date | string }, now:
 }
 
 /**
+ * Liquidación que define `estadoPagoActual` de un contrato. Prioridad:
+ * (1) la vencida más reciente — la cobranza manda; (2) la del período en curso
+ * o, si no existe, la más reciente NO futura; (3) contrato que recién arranca
+ * (solo liqs futuras): la próxima. `liqs` DEBE venir ordenada periodo desc.
+ *
+ * Antes era `vencida ?? liqs[0]`: como el devengo genera la liq del mes
+ * SIGUIENTE por adelantado, `[0]` era esa futura y un contrato con el mes en
+ * curso PAGADO reportaba el estado de la cuota del mes que viene → el
+ * dashboard "Plata · <mes>" mostraba Cobrado $0 con el mes al día, Por cobrar
+ * con plata del mes siguiente, y un adelanto PARCIAL futuro hacía desaparecer
+ * el contrato de todos los KPIs (bug "estadísticas principales", 07/07).
+ * El período se toma en hora argentina (UTC-3), igual que /caja/cierre.
+ */
+function liqQueDefineEstado<
+  T extends { periodo: string; estado: string; fechaVencimiento: Date | string },
+>(liqs: T[], now: Date): T | null {
+  const periodoActual = new Date(now.getTime() - 3 * 3600 * 1000).toISOString().slice(0, 7);
+  return (
+    liqs.find((l) => liqVencida(l, now)) ??
+    liqs.find((l) => l.periodo <= periodoActual) ??
+    liqs[0] ??
+    null
+  );
+}
+
+/**
  * Núcleo de datos del panel (Fase 2): contratos, propiedades, propietarios,
  * inquilinos. Solo lectura por ahora — la escritura llega con sus flujos
  * (carga de contrato Fase 3+, etc.). Todo scoped por inmobiliariaId del JWT.
@@ -61,12 +87,10 @@ export async function coreRoutes(app: FastifyInstance) {
       select: { moraTipoDefault: true, moraValorDefault: true },
     });
     // Liquidación ACTUAL por contrato (la que define estadoPagoActual): cualquier
-    // vencida manda; si no, la más reciente. Se reutiliza abajo para exponer su
-    // montoPagado/saldo sin recalcular la derivación.
+    // vencida manda; si no, la del período en curso (NO la futura ya devengada).
+    // Se reutiliza abajo para exponer su montoPagado/saldo sin recalcular.
     const now = new Date();
-    const actualPorContrato = contratos.map(
-      (c) => c.liquidaciones.find((l) => liqVencida(l, now)) ?? c.liquidaciones[0] ?? null,
-    );
+    const actualPorContrato = contratos.map((c) => liqQueDefineEstado(c.liquidaciones, now));
     // montoPagado (suma de pagos CONCILIADO) de la liquidación actual. Sin esto el
     // KPI "Pendiente" del panel contaba el alquiler ENTERO de un contrato PARCIAL,
     // ignorando lo ya cobrado → sobreestimaba la mora. Misma fuente de verdad que
@@ -186,7 +210,7 @@ export async function coreRoutes(app: FastifyInstance) {
     // alquiler (dato equivocado: el ajuste no es el vencimiento del mes).
     const { liquidaciones, ...rest } = contrato;
     const now = new Date();
-    const actual = liquidaciones.find((l) => liqVencida(l, now)) ?? liquidaciones[0] ?? null;
+    const actual = liqQueDefineEstado(liquidaciones, now);
     const pendiente = liquidaciones.find(
       (l) => l.estado === 'PENDIENTE' || l.estado === 'VENCIDO' || l.estado === 'PARCIAL',
     );
@@ -359,7 +383,7 @@ export async function coreRoutes(app: FastifyInstance) {
     if (propiedad.contratoActual) {
       const { liquidaciones, ...rest } = propiedad.contratoActual;
       const now = new Date();
-      const actual = liquidaciones.find((l) => liqVencida(l, now)) ?? liquidaciones[0] ?? null;
+      const actual = liqQueDefineEstado(liquidaciones, now);
       const pendiente = liquidaciones.find(
         (l) => l.estado === 'PENDIENTE' || l.estado === 'VENCIDO' || l.estado === 'PARCIAL',
       );
@@ -390,6 +414,8 @@ export async function coreRoutes(app: FastifyInstance) {
         m2: z.number().nonnegative().nullable().optional(),
         // Foto de /uploads del tenant. undefined = no tocar; null/'' = sacarla.
         fotoUrl: z.string().nullable().optional(),
+        // Reglas de convivencia (texto libre, visible al inquilino). undefined = no tocar.
+        reglasConvivencia: z.string().trim().max(2000).nullable().optional(),
       })
       .safeParse(request.body);
     if (!parsed.success) {
@@ -414,6 +440,7 @@ export async function coreRoutes(app: FastifyInstance) {
         ambientes: b.ambientes ?? null,
         m2: b.m2 ?? null,
         ...(b.fotoUrl !== undefined ? { fotoUrl: b.fotoUrl || null } : {}),
+        ...(b.reglasConvivencia !== undefined ? { reglasConvivencia: b.reglasConvivencia?.trim() || null } : {}),
       },
     });
     return propiedad;
@@ -609,6 +636,8 @@ export async function coreRoutes(app: FastifyInstance) {
         // Foto REAL subida a /uploads (Railway Volume) — misma mecánica que los
         // comprobantes y las fotos de reclamos.
         fotoUrl: z.string().optional(),
+        // Reglas básicas de convivencia (texto libre, visible al inquilino en su PWA).
+        reglasConvivencia: z.string().trim().max(2000).nullable().optional(),
         propietarios: z
           .array(z.object({ propietarioId: z.string(), porcentaje: z.number().positive().max(100) }))
           .min(1),
@@ -643,6 +672,7 @@ export async function coreRoutes(app: FastifyInstance) {
           ambientes: d.ambientes ?? null,
           m2: d.m2 ?? null,
           fotoUrl: d.fotoUrl ?? null,
+          reglasConvivencia: d.reglasConvivencia?.trim() || null,
           estado: 'DISPONIBLE',
         },
       });
@@ -733,6 +763,8 @@ export async function coreRoutes(app: FastifyInstance) {
         montoExpensas: z.number().positive().optional(),
         tipoContrato: z.enum(['ALQUILER', 'SOLO_EXPENSAS', 'ALQUILER_Y_EXPENSAS']).default('ALQUILER'),
         depositoGarantia: z.number().positive().optional(),
+        // ¿Se permiten mascotas? Se muestra en el contrato del inquilino. Omitido = no especificado.
+        mascotasPermitidas: z.boolean().optional(),
         modoCobranza: z.enum(['INMOBILIARIA', 'PROPIETARIO_DIRECTO']).default('INMOBILIARIA'),
         // Comisión de la inmobiliaria para ESTE contrato (%). Opcional: si no se
         // manda queda null y se usa el default del negocio en las rendiciones.
@@ -871,6 +903,7 @@ export async function coreRoutes(app: FastifyInstance) {
           montoExpensas: d.montoExpensas ?? null,
           tipoContrato: d.tipoContrato,
           depositoGarantia: d.depositoGarantia ?? null,
+          mascotasPermitidas: d.mascotasPermitidas ?? null,
           comisionInmobiliaria: d.comisionInmobiliaria ?? null,
           // SIN_MORA explícito guarda tipo sin valor; omitido deja ambos null
           // (hereda el default de la inmobiliaria en la lectura).
@@ -1849,6 +1882,15 @@ export async function coreRoutes(app: FastifyInstance) {
       direccionCiudad: i.direccionCiudad,
       direccionProvincia: i.direccionProvincia,
       direccionCp: i.direccionCp,
+      notasFiscales: i.notasFiscales,
+      // Identidad y contacto público del perfil.
+      whatsapp: i.whatsapp,
+      sitioWeb: i.sitioWeb,
+      instagram: i.instagram,
+      facebook: i.facebook,
+      horariosAtencion: i.horariosAtencion,
+      condicionIva: i.condicionIva,
+      iibb: i.iibb,
       perfilFiscalCompleto: !!(i.cuit && i.direccionCalle),
     };
   });
@@ -1870,6 +1912,15 @@ export async function coreRoutes(app: FastifyInstance) {
         direccionCiudad: z.string().trim().optional(),
         direccionProvincia: z.string().trim().optional(),
         direccionCp: z.string().trim().optional(),
+        notasFiscales: z.string().trim().max(1000).optional(),
+        // Identidad y contacto público (todos opcionales, texto libre acotado).
+        whatsapp: z.string().trim().max(40).optional(),
+        sitioWeb: z.string().trim().max(200).optional(),
+        instagram: z.string().trim().max(100).optional(),
+        facebook: z.string().trim().max(100).optional(),
+        horariosAtencion: z.string().trim().max(300).optional(),
+        condicionIva: z.string().trim().max(60).optional(),
+        iibb: z.string().trim().max(60).optional(),
       })
       .safeParse(request.body ?? {});
     if (!body.success) return reply.code(400).send({ message: 'Datos de la empresa inválidos' });

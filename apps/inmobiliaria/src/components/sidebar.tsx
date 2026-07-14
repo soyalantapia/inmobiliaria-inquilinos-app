@@ -2,12 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { Isotipo } from './isotipo';
 import {
   Inbox,
   LayoutDashboard,
   FileText,
+  LogOut,
   Megaphone,
   ShieldCheck,
   CreditCard,
@@ -25,7 +26,7 @@ import {
   X,
 } from 'lucide-react';
 import { listarPendientes } from '@/lib/aprobaciones-storage';
-import { apiEnabled } from '@/lib/api/client';
+import { apiEnabled, setToken } from '@/lib/api/client';
 import { useAprobaciones, useMe } from '@/lib/api/hooks';
 import { cn } from '@llave/ui/cn';
 import { CountBadge } from '@/components/count-badge';
@@ -60,12 +61,24 @@ const links: NavLink[] = [
   { href: '/reclamos', label: 'Reclamos', icon: Wrench, capacidad: 'reclamos.ver' },
   { href: '/anuncios', label: 'Anuncios', icon: Megaphone, capacidad: 'comunicaciones.enviar' },
   { href: '/profesionales', label: 'Profesionales', icon: HardHat, capacidad: 'profesionales.ver' },
+  // Red compartida: acceso directo al ecosistema cross-tenant (antes solo se
+  // llegaba desde dentro de "Profesionales"). Es el gancho comercial del producto.
+  { href: '/profesionales/red', label: 'Red compartida', icon: ShieldCheck, sub: true, capacidad: 'profesionales.ver' },
   { href: '/screening', label: 'Verificar inquilino', icon: ShieldCheck, capacidad: 'screening.ver' },
   { href: '/auditoria', label: 'Auditoría', icon: ScrollText, capacidad: 'auditoria.ver' },
   { href: '/configuracion', label: 'Configuración', icon: Settings },
 ];
 
 function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {
+  const router = useRouter();
+  // El "Cerrar sesión" vivía detrás del avatar del topbar (menú de cuenta):
+  // costaba encontrarlo y el avatar no aportaba nada. Ahora vive acá, en el
+  // footer del sidebar, junto a los datos de la cuenta (I/2026-07: pedido del
+  // dueño — sacar el avatar del header).
+  const cerrarSesion = () => {
+    setToken(null);
+    router.replace('/login');
+  };
   const plan = calcularResumenPlan();
   const trial = leerTrial();
   const trialActivo = trialVigente(trial);
@@ -103,7 +116,12 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
   }, []);
 
   const linksVisibles = links.filter(
-    (l) => !l.capacidad || rolTienePermiso(rol, l.capacidad),
+    (l) =>
+      (!l.capacidad || rolTienePermiso(rol, l.capacidad)) &&
+      // "Verificar inquilino" OCULTO en prod (pedido del dueño 07/07): el
+      // screening actual no funciona bien y se rehace la semana próxima. En el
+      // build demo queda visible (ahí el mock anda y se usa para demos).
+      !(apiEnabled && l.href === '/screening'),
   );
 
   // El header muestra el nombre de la inmobiliaria (que se sienta SU panel).
@@ -123,7 +141,10 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
           </p>
         </div>
       </div>
-      <nav aria-label="Navegación principal" className="flex-1 space-y-1 p-3">
+      {/* overflow-y-auto: con el sidebar fijo a viewport (sticky h-screen) la
+          nav scrollea sola si no entra, y el footer (cuenta + Cerrar sesión)
+          queda SIEMPRE visible abajo. */}
+      <nav aria-label="Navegación principal" className="flex-1 space-y-1 overflow-y-auto p-3">
         {linksVisibles.map((l) => {
           const active =
             l.href === '/'
@@ -198,6 +219,14 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
           )}
         </>
         )}
+        <button
+          type="button"
+          onClick={cerrarSesion}
+          className="mt-2 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+        >
+          <LogOut className="h-4 w-4" />
+          Cerrar sesión
+        </button>
       </div>
     </>
   );
@@ -206,7 +235,10 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
 export function Sidebar() {
   const pathname = usePathname() ?? '/';
   return (
-    <aside className="hidden w-64 shrink-0 border-r bg-card md:flex md:flex-col">
+    // sticky + h-screen: antes el aside se estiraba a la altura de la página
+    // entera y el footer (con "Cerrar sesión") quedaba enterrado al fondo del
+    // scroll. Fijo a viewport, la nav scrollea adentro y el footer se ve siempre.
+    <aside className="sticky top-0 hidden h-screen w-64 shrink-0 border-r bg-card md:flex md:flex-col">
       <SidebarBody pathname={pathname} />
     </aside>
   );

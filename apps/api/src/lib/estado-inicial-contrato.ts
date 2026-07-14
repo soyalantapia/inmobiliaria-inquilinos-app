@@ -63,7 +63,6 @@ export async function aplicarEstadoInicial(
   const pagosData: Prisma.PagoCreateManyInput[] = [];
   const idsPagado: string[] = [];
   const updatesIndividuales: { id: string; data: Prisma.LiquidacionUpdateInput }[] = [];
-  const decididoAt = new Date();
 
   let cerrados = 0;
   let parciales = 0;
@@ -82,7 +81,7 @@ export async function aplicarEstadoInicial(
     const moraManual = p.moraManual != null ? Math.max(0, p.moraManual) : null;
 
     if (p.estado === 'PAGADO') {
-      pagosData.push(pagoSintetico(contrato, liq, total, 'TOTAL', decididoPorId, decididoAt));
+      pagosData.push(pagoSintetico(contrato, liq, total, 'TOTAL', decididoPorId));
       idsPagado.push(liq.id);
       cerrados += 1;
     } else if (p.estado === 'PARCIAL') {
@@ -95,7 +94,7 @@ export async function aplicarEstadoInicial(
           `El pago del período ${p.periodo} cubre el total — marcalo como Pagado`,
         );
       }
-      pagosData.push(pagoSintetico(contrato, liq, pagado, 'PARCIAL', decididoPorId, decididoAt));
+      pagosData.push(pagoSintetico(contrato, liq, pagado, 'PARCIAL', decididoPorId));
       updatesIndividuales.push({
         id: liq.id,
         data: { estado: 'PARCIAL', ...(moraManual != null ? { montoPunitorioManual: moraManual } : {}) },
@@ -135,7 +134,6 @@ function pagoSintetico(
   monto: number,
   tipo: 'TOTAL' | 'PARCIAL',
   decididoPorId: string,
-  decididoAt: Date,
 ): Prisma.PagoCreateManyInput {
   return {
     inmobiliariaId: contrato.inmobiliariaId,
@@ -151,6 +149,13 @@ function pagoSintetico(
     estado: 'CONCILIADO',
     observacion: NOTA_MIGRACION,
     decididoPorId,
-    decididoAt,
+    // informadoAt/decididoAt HISTÓRICOS (= vencimiento, igual que
+    // fechaTransferencia): con decididoAt = new Date() esta plata vieja caía en
+    // el CIERRE DE CAJA DE HOY como "cobrado hoy" (el dueño veía cobros que
+    // nunca aprobó — bug caja 07/07) y el inquilino recibía "te validamos el
+    // pago de <mes viejo>" como actividad reciente (ventana de 30 días de
+    // /mis-novedades). La historia queda contada en su fecha real.
+    informadoAt: liq.fechaVencimiento,
+    decididoAt: liq.fechaVencimiento,
   };
 }

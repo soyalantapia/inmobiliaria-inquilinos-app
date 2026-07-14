@@ -58,7 +58,49 @@ import {
 import { subirArchivo, urlDeArchivo } from '@/lib/api/client';
 
 type Step = 'datos' | 'comprobante' | 'ok';
-const MAX_FILE_MB = 5;
+// Alineado con el server (uploads.ts MAX_BYTES + multipart fileSize, ambos 10MB):
+// antes el cliente cortaba en 5MB y una foto de celular moderno (5-12MB) rebotaba
+// ACÁ, antes de intentar subir → el inquilino no podía informar el pago. Igual
+// casi nunca se llega al tope: comprimimos la foto antes del chequeo (ver abajo).
+const MAX_FILE_MB = 10;
+// Lado máximo al redimensionar: un comprobante sigue perfectamente legible a
+// 2200px y baja de varios MB a &lt;1MB.
+const MAX_LADO_PX = 2200;
+
+/**
+ * Comprime/redimensiona una imagen en el cliente antes de subirla: una foto de
+ * celular de 5-12MB se convierte en un JPEG de &lt;1MB sin perder legibilidad del
+ * comprobante, y de paso HEIC → JPEG (que sí se visualiza en el panel de la inmo,
+ * cosa que el HEIC crudo no hace en Chrome/Firefox de escritorio). Best-effort:
+ * si el navegador no puede decodificar (p. ej. HEIC en Chrome desktop) devuelve el
+ * archivo original — el server igual lo acepta. Nunca toca PDFs ni GIF (posible animado).
+ */
+async function comprimirImagenSiHaceFalta(file: File): Promise<File> {
+  const esImagen = file.type.startsWith('image/') || file.type === '';
+  if (!esImagen || file.type === 'image/gif') return file;
+  if (typeof createImageBitmap !== 'function' || typeof document === 'undefined') return file;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const escala = Math.min(1, MAX_LADO_PX / Math.max(bitmap.width, bitmap.height));
+    const w = Math.max(1, Math.round(bitmap.width * escala));
+    const h = Math.max(1, Math.round(bitmap.height * escala));
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return file;
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    bitmap.close?.();
+    const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/jpeg', 0.82));
+    if (!blob) return file;
+    // Si comprimir no ayudó (ya era chico) y encima entra en el límite, dejamos el original.
+    if (blob.size >= file.size && file.size <= MAX_FILE_MB * 1024 * 1024) return file;
+    const nombre = file.name.replace(/\.[^.]+$/, '') + '.jpg';
+    return new File([blob], nombre, { type: 'image/jpeg', lastModified: file.lastModified });
+  } catch {
+    return file; // el navegador no pudo decodificar (HEIC desktop, etc.) → original, el server lo acepta
+  }
+}
 
 export default function CheckoutPage({ params }: { params: { liqId: string } }) {
   const router = useRouter();
@@ -1128,9 +1170,10 @@ function StepSubirComprobante({
   // mostramos el spinner con "Leyendo el comprobante…". Después de unos
   // segundos cae la extracción y mostramos los campos detectados.
   const [analizando, setAnalizando] = useState(false);
+  const [optimizando, setOptimizando] = useState(false);
   const [extraccion, setExtraccion] = useState<ExtraccionIA | null>(null);
 
-  const handleFile = (f: File) => {
+  const handleFile = async (original: File) => {
     setError(null);
     setExtraccion(null);
     // Aceptamos el mismo set que el backend (uploads.ts): fotos comunes + PDF.
@@ -1138,15 +1181,20 @@ function StepSubirComprobante({
     // server decida por la extensión — así no bloqueamos fotos válidas cuyo
     // navegador manda image/jpg, image/heif, etc. o directamente un tipo vacío.
     const tipoOk =
-      f.type === '' ||
-      /^(image\/(jpe?g|pjpeg|png|webp|gif|heic|heif)(-sequence)?|application\/pdf)$/i.test(f.type);
+      original.type === '' ||
+      /^(image\/(jpe?g|pjpeg|png|webp|gif|heic|heif)(-sequence)?|application\/pdf)$/i.test(original.type);
     if (!tipoOk) {
       setError('Aceptamos fotos (JPG, PNG, HEIC) o PDF. Si es una foto del teléfono y no anda, probá elegirla desde la galería.');
       return;
     }
+    // Comprimir/redimensionar ANTES del chequeo de tamaño: una foto de celular
+    // grande se achica bajo el límite en vez de rebotar.
+    setOptimizando(true);
+    const f = await comprimirImagenSiHaceFalta(original);
+    setOptimizando(false);
     const mb = f.size / 1024 / 1024;
     if (mb > MAX_FILE_MB) {
-      setError(`El archivo pesa ${mb.toFixed(1)} MB y el máximo es ${MAX_FILE_MB} MB.`);
+      setError(`El archivo pesa ${mb.toFixed(1)} MB y el máximo es ${MAX_FILE_MB} MB. Probá sacarle una foto directa o una captura.`);
       return;
     }
     setFile(f);
@@ -1327,8 +1375,12 @@ function StepSubirComprobante({
           >
             <Upload className="h-8 w-8 text-primary" />
             <div>
-              <p className="text-sm font-medium">Tocá o arrastrá un archivo</p>
-              <p className="text-xs text-muted-foreground">JPG, PNG o PDF</p>
+              <p className="text-sm font-medium">
+                {optimizando ? 'Optimizando la foto…' : 'Tocá o arrastrá un archivo'}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {optimizando ? 'Casi listo' : 'JPG, PNG o PDF · desde la galería o la cámara'}
+              </p>
             </div>
             <input
               ref={inputRef}
@@ -1338,7 +1390,7 @@ function StepSubirComprobante({
               className="hidden"
               onChange={(e) => {
                 const f = e.target.files?.[0];
-                if (f) handleFile(f);
+                if (f) void handleFile(f);
                 // Limpiamos el value para que, si el archivo fue rechazado, el
                 // usuario pueda volver a elegir EL MISMO archivo (corregido) y
                 // el onChange dispare igual.

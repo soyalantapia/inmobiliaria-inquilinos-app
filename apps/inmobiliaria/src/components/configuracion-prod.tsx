@@ -178,6 +178,14 @@ const EMPRESA_VACIA: Omit<EmpresaDatos, 'perfilFiscalCompleto'> = {
   direccionCiudad: '',
   direccionProvincia: '',
   direccionCp: '',
+  notasFiscales: '',
+  whatsapp: '',
+  sitioWeb: '',
+  instagram: '',
+  facebook: '',
+  horariosAtencion: '',
+  condicionIva: '',
+  iibb: '',
 };
 
 export function EmpresaCard() {
@@ -244,6 +252,21 @@ export function EmpresaCard() {
           <Field label="Ciudad" value={form.direccionCiudad} onChange={set('direccionCiudad')} />
           <Field label="Provincia" value={form.direccionProvincia} onChange={set('direccionProvincia')} />
           <Field label="Código postal" value={form.direccionCp} onChange={set('direccionCp')} />
+          <Field label="Condición IVA" value={form.condicionIva} onChange={set('condicionIva')} placeholder="Responsable Inscripto / Monotributo / Exento" />
+          <Field label="Ingresos Brutos (IIBB)" value={form.iibb} onChange={set('iibb')} placeholder="N° de inscripción / Convenio Multilateral" />
+        </div>
+
+        {/* Identidad y contacto público: lo que puede figurar en comunicaciones
+            al inquilino/propietario. Todo opcional. */}
+        <div className="space-y-3 border-t pt-4">
+          <p className="text-xs font-medium text-muted-foreground">Contacto y presencia</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="WhatsApp" value={form.whatsapp} onChange={set('whatsapp')} placeholder="11 5555 5555" />
+            <Field label="Sitio web" value={form.sitioWeb} onChange={set('sitioWeb')} placeholder="www.inmobiliaria.com" />
+            <Field label="Instagram" value={form.instagram} onChange={set('instagram')} placeholder="@inmobiliaria" />
+            <Field label="Facebook" value={form.facebook} onChange={set('facebook')} placeholder="/inmobiliaria" />
+            <Field label="Horarios de atención" value={form.horariosAtencion} onChange={set('horariosAtencion')} placeholder="Lun a Vie 9 a 18 hs" />
+          </div>
         </div>
         {error && (
           <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive">{error}</p>

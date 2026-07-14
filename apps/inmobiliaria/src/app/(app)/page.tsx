@@ -365,16 +365,12 @@ function DashboardReal() {
         {/* Bienvenida post-registro (?bienvenida=1), una sola vez. */}
         <BienvenidaBanner />
 
-        {/* Header con saludo + CTAs */}
+        {/* Header con saludo + CTAs. El CTA "Verificar inquilino" se OCULTÓ en
+            prod (pedido del dueño 07/07): el screening se rehace la semana
+            próxima. El render demo (arriba) lo conserva para las demos. */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <DashboardGreeting />
           <div className="flex flex-wrap gap-2">
-            <Button asChild variant="outline">
-              <Link href="/screening">
-                <ShieldCheck className="h-4 w-4" />
-                Verificar inquilino
-              </Link>
-            </Button>
             <Button asChild>
               <Link href="/contratos/nuevo">
                 <Plus className="h-4 w-4" />

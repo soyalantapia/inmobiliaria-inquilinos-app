@@ -496,7 +496,7 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
     const contrato = await prisma.contrato.findFirst({
       where: { id: inq.contratoId, inmobiliariaId: inq.inmobiliariaId },
       include: {
-        propiedad: { select: { direccion: true, ciudad: true } },
+        propiedad: { select: { direccion: true, ciudad: true, reglasConvivencia: true } },
         inmobiliaria: {
           select: { nombre: true, telefono: true, moraTipoDefault: true, moraValorDefault: true },
         },
@@ -568,6 +568,10 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
       montoActual: Number(contrato.monto),
       montoExpensas: contrato.montoExpensas != null ? Number(contrato.montoExpensas) : null,
       tipoContrato: contrato.tipoContrato,
+      // Mascotas (Sí/No/no especificado) y reglas de convivencia: se muestran en
+      // el contrato del inquilino para que no tenga que preguntar.
+      mascotasPermitidas: contrato.mascotasPermitidas,
+      reglasConvivencia: contrato.propiedad.reglasConvivencia ?? null,
       // Esquema de mora RESUELTO (cascada contrato → default inmobiliaria) para
       // que la app pueda explicar "cómo se calcula el recargo". El campo legacy
       // se mantiene mapeado (solo % diario) por compat de shape.

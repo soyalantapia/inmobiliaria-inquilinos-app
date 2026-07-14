@@ -616,6 +616,17 @@ model Inmobiliaria {
   direccionProvincia    String
   direccionCp           String
   notasFiscales         String   @default("")
+  // Identidad y contacto público del perfil (Mi inmobiliaria). Todos opcionales
+  // (@default("")) → aditivos, no rompen la fila existente. condicionIva/iibb son
+  // informativos del perfil; la condición fiscal que MANDA para facturar vive en
+  // Sociedad.condicionFiscal (no se toca acá).
+  whatsapp              String   @default("")
+  sitioWeb              String   @default("")
+  instagram             String   @default("")
+  facebook              String   @default("")
+  horariosAtencion      String   @default("")
+  condicionIva          String   @default("")
+  iibb                  String   @default("")
   // Config de "Mercado y país de operación" (tab Mercado de /configuracion).
   // Persiste por inmobiliaria; el wizard de contratos usa indiceDefaultContrato
   // y monedaDefault como valores por defecto de un contrato nuevo.
@@ -1154,6 +1165,9 @@ model Propiedad {
   ambientes        Int?
   m2               Float?
   fotoUrl          String?
+  // Reglas básicas de convivencia visibles para el inquilino en su PWA (mudanza,
+  // ruidos, uso de espacios comunes, etc.). Texto libre; reduce consultas. null = sin cargar.
+  reglasConvivencia String?
   estado           EstadoPropiedad @default(EN_EDICION)
   contratoActualId String?         @unique // null si DISPONIBLE
   contratoActual   Contrato?       @relation("ContratoActual", fields: [contratoActualId], references: [id])
@@ -1212,6 +1226,9 @@ model Contrato {
   frecuenciaAjusteMeses     Int
   proximoAjuste             DateTime?
   tipoContrato              TipoContrato   @default(ALQUILER)
+  // ¿Se permiten mascotas en esta unidad? Visible en el contrato para el inquilino.
+  // null = no especificado (no afirmamos ni Sí ni No).
+  mascotasPermitidas        Boolean?
   montoExpensas             Decimal?       @db.Decimal(14, 2)
   cbuAlias                  String? // override del CBU del propietario para esta unidad
   titularCuenta             String?

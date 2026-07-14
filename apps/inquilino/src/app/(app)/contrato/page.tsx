@@ -11,7 +11,9 @@ import {
   KeyRound,
   Mail,
   MessageCircle,
+  PawPrint,
   Phone,
+  ScrollText,
   ShieldCheck,
   TrendingUp,
 } from 'lucide-react';
@@ -277,7 +279,7 @@ export default function ContratoPage() {
 // CONTRATO REAL (modo API)
 // ============================================================
 function ContratoReal() {
-  const { contrato: c, inmobiliariaTelefono, cargando } = useMiContrato();
+  const { contrato: c, inmobiliariaTelefono, mascotasPermitidas, reglasConvivencia, cargando } = useMiContrato();
 
   // Sólo mostramos el spinner mientras realmente está cargando. Si terminó de
   // cargar y no hay contrato (error de API o inquilino sin contrato asignado),
@@ -394,8 +396,35 @@ function ContratoReal() {
               value={formatMonto(c.montoActual, c.moneda)}
               hint="1 mes — te lo devuelven al final"
             />
+            {mascotasPermitidas != null && (
+              <Row
+                icon={<PawPrint className="h-4 w-4" />}
+                label="Mascotas"
+                value={mascotasPermitidas ? 'Permitidas' : 'No permitidas'}
+              />
+            )}
           </Card>
         </section>
+
+        {reglasConvivencia && reglasConvivencia.trim() && (
+          <section className="space-y-2">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Reglas de convivencia
+            </h2>
+            <Card className="space-y-2 p-5">
+              <div className="flex items-center gap-2">
+                <ScrollText className="h-4 w-4 text-primary" />
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  De la propiedad
+                </p>
+              </div>
+              {/* Texto plano (whitespace-pre-line respeta saltos de línea); nunca HTML. */}
+              <p className="whitespace-pre-line text-sm leading-relaxed text-foreground">
+                {reglasConvivencia}
+              </p>
+            </Card>
+          </section>
+        )}
 
         <section className="space-y-2">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">

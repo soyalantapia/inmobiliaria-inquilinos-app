@@ -288,7 +288,7 @@ export default function RenovacionesPage() {
                     {apiEnabled && (
                       <Button size="sm" onClick={() => setDecidiendo(c)}>
                         <LogOut className="h-3.5 w-3.5" />
-                        Registrar aviso
+                        Avisar: renueva / se va
                       </Button>
                     )}
                   </div>

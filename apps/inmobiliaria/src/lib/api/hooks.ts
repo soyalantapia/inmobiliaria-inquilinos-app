@@ -501,6 +501,15 @@ export interface EmpresaDatos {
   direccionCiudad: string;
   direccionProvincia: string;
   direccionCp: string;
+  // Identidad y contacto público del perfil (opcionales; '' si sin cargar).
+  notasFiscales: string;
+  whatsapp: string;
+  sitioWeb: string;
+  instagram: string;
+  facebook: string;
+  horariosAtencion: string;
+  condicionIva: string;
+  iibb: string;
   perfilFiscalCompleto: boolean;
 }
 
@@ -1162,6 +1171,8 @@ export interface NuevaPropiedad {
   m2?: number;
   /** URL de /uploads (Volume) subida con subirArchivo — foto de la propiedad. */
   fotoUrl?: string;
+  /** Reglas de convivencia (texto libre) visibles para el inquilino en su PWA. */
+  reglasConvivencia?: string;
   propietarios: Array<{ propietarioId: string; porcentaje: number }>;
 }
 
@@ -1358,10 +1369,36 @@ export function useDashboard(): DashboardData {
   const activos = contratos.filter(
     (c) => c.estado === 'ACTIVO' && c.modoCobranza !== 'PROPIETARIO_DIRECTO',
   );
-  const cobrado = activos.filter((c) => c.estadoPagoActual === 'PAGADO').reduce((a, c) => a + c.monto, 0);
-  const porCobrar = activos.filter((c) => c.estadoPagoActual === 'PENDIENTE').reduce((a, c) => a + c.monto, 0);
+  // KPIs del período en curso con la plata REAL de la liquidación actual (el
+  // API expone montoPagado/saldo/deudaTotal): un PARCIAL suma lo ya cobrado a
+  // "Cobrado" y su resto a "Por cobrar" (antes desaparecía de los TRES KPIs),
+  // un PAGADO usa lo conciliado (cae al canon si la liq quedó PAGADA por
+  // migración, sin Pagos), y "En mora" muestra la DEUDA TOTAL del contrato
+  // (todas las cuotas vencidas + mora, `deudaTotal`), no solo la cuota del mes
+  // — un moroso de 10 meses figuraba por 1 sola cuota.
+  let cobrado = 0;
+  let porCobrar = 0;
+  for (const c of activos) {
+    switch (c.estadoPagoActual) {
+      case 'PAGADO':
+        cobrado += c.montoPagado || c.monto;
+        break;
+      case 'PARCIAL':
+        cobrado += c.montoPagado ?? 0;
+        porCobrar += c.saldo ?? Math.max(0, c.monto - (c.montoPagado ?? 0));
+        break;
+      case 'PENDIENTE':
+        porCobrar += c.saldo ?? c.monto;
+        break;
+      default:
+        break; // VENCIDO va a "En mora"
+    }
+  }
   const moraContratos = activos.filter((c) => c.estadoPagoActual === 'VENCIDO');
-  const enMora = { monto: moraContratos.reduce((a, c) => a + c.monto, 0), cantidad: moraContratos.length };
+  const enMora = {
+    monto: moraContratos.reduce((a, c) => a + (c.deudaTotal ?? c.saldo ?? c.monto), 0),
+    cantidad: moraContratos.length,
+  };
   const totalActivos = cobrado + porCobrar + enMora.monto;
 
   // Comisión real (sólo en prod): cada propietario trae su comisionPct y lo que se
@@ -1406,7 +1443,8 @@ export function useDashboard(): DashboardData {
     contratoId: c.id,
     inquilino: c.inquilino,
     direccion: c.direccion,
-    monto: c.monto,
+    // Deuda real acumulada (cuotas vencidas + mora), no la cuota del mes.
+    monto: c.deudaTotal ?? c.saldo ?? c.monto,
     moneda: c.moneda,
   }));
 
