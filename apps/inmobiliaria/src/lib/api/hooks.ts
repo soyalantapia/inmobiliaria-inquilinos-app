@@ -1083,13 +1083,18 @@ export function usePropietarios(): {
     if (prop.contratoActual?.modoCobranza === 'PROPIETARIO_DIRECTO') continue;
     // Alquiler efectivamente cobrado (sobre el ALQUILER, no montoTotal: las
     // expensas no le corresponden al dueño). PAGADO = alquiler completo; PARCIAL
-    // = la porción de alquiler del montoPagado (conciliado), prorrateada igual
-    // que el cierre de caja (min(pagado, total) × alquiler/total).
+    // = la porción de alquiler del montoPagado (conciliado). CLAVE: se prorratea
+    // sobre la BASE sin mora (montoTotal − montoPunitorio), NO sobre el
+    // montoTotal que devuelve el API (ese YA incluye el punitorio). El server
+    // (POST /rendiciones) y el cierre de caja prorratean/capean sobre la base
+    // sin mora; usar montoTotal-con-mora en el denominador subestimaba el
+    // rendible de toda PARCIAL vencida con recargo.
+    const baseSinMora = Math.max(0, l.montoTotal - l.montoPunitorio);
     const alquilerCobrado =
       l.estado === 'PAGADO'
         ? l.montoAlquiler
-        : l.montoTotal > 0
-          ? Math.min(l.montoPagado, l.montoTotal) * (l.montoAlquiler / l.montoTotal)
+        : baseSinMora > 0
+          ? Math.min(l.montoPagado, baseSinMora) * (l.montoAlquiler / baseSinMora)
           : 0;
     for (const part of prop.participaciones) {
       cobradoByOwner[part.propietarioId] =
