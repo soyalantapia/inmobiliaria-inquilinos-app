@@ -16,14 +16,16 @@
 - **Plan:** (a) UX: elección explícita del modo en el wizard (radio-cards con explicación clara de cada uno), unificar labels. (b) Backend: `PATCH /contratos/:id/modo-cobranza` (plantilla = PATCH /monto), replicando la validación del alta (PROPIETARIO_DIRECTO exige cuenta del dueño), con guard si hay pagos/liquidaciones del período en curso. (c) Front: cablear la card de edición al PATCH real.
 - **Riesgo:** cambiar el modo a mitad de contrato afecta rendiciones/cobranza y a dónde transfiere el inquilino. Guardas necesarias.
 
-### FB2 · Nombre de complejo (agrupar propiedades/contratos) — `P2` · 🔴 pendiente
+### FB2 · Nombre de complejo (agrupar propiedades/contratos) — `P2` · 🟢 hecho (rama `feat/feedback-cobranza`)
+> **Resuelto (commit 2027212):** `Propiedad.complejo` (texto libre) + índice + migración aditiva; POST/PUT /propiedades; input en el alta; badge en el listado; búsqueda por complejo. Display híbrido consorcio→complejo. E2E ok. _Migración NO aplicada a prod (NIVEL=pr)._
 - **Reportó:** "no me deja poner a qué complejo pertenece; no tengo nombre de complejo. Es importante para agrupar — varios del mismo complejo que no pagan o con reclamos."
 - **Entendí:** quieren un **rótulo de complejo** para etiquetar propiedades y poder identificar/filtrar rápido las del mismo complejo (mora, reclamos).
 - **Causa raíz:** existe un modelo `Consorcio` pesado (expensas/UFs/asambleas) con `Propiedad.consorcioId`, pero esa FK **no se puede setear desde la UI de alquileres** (solo seeds); y no existe un campo simple de nombre de complejo.
 - **Plan (recomendado):** agregar `Propiedad.complejo String?` (texto libre) + índice. Display híbrido: `consorcio?.nombre ?? complejo`. Migración aditiva. UI: campo en alta/edición de propiedad + mostrar el complejo en listados + filtro por complejo (propiedades, pagos, reclamos). NO reusar el módulo Consorcio.
 - **Riesgo:** bajo (aditivo). Migración en 2 DBs (dev 23651 + prod 57779).
 
-### FB3 · CBU/alias del propietario: flujo confuso, el alta falla — `P1` · 🔴 pendiente
+### FB3 · CBU/alias del propietario: flujo confuso, el alta falla — `P1` · 🟢 hecho quick-win (rama `feat/feedback-cobranza`)
+> **Resuelto (commit 029372c):** copy — label + hint del CBU del propietario (aclara que es para rendirle, no cobro directo) + mensajes de error del alta/PATCH que nombran la card exacta 'Cuenta de cobranza directa'. _La parte 'media' (unificar dónde se carga la cuenta directa) queda como follow-up._
 - **Reportó:** "cargué propietario, puse el alias como pide, llené el contrato, le quise dar el alta y me dice que falta CBU o alias en el propietario. No sé dónde cargarlo o qué hice mal."
 - **Entendí:** el usuario cargó el alias en la ficha del propietario, pero al dar de alta un contrato de cobranza directa el sistema exige **otra** cuenta (la de cobro directo) que se carga en otro lado → cree que ya lo hizo y el alta le falla.
 - **Causa raíz:** **dos modelos distintos** para "la cuenta del propietario": `Propietario.cbuAlias` (para que la inmo le **rinda**) vs `CuentaCobranzaDirecta` (para que el **inquilino le transfiera directo**). El form del propietario captura solo `cbuAlias` con un **hint FALSO** ("los pagos del inquilino se acreditan directo a esta cuenta" — eso lo hace la otra). El alta de contrato `PROPIETARIO_DIRECTO` exige la `CuentaCobranzaDirecta`, con un mensaje que no dice dónde cargarla.
