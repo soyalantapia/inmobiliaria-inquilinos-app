@@ -130,6 +130,8 @@ function NuevaPropiedadForm() {
   const [m2, setM2] = useState('');
   // Reglas básicas de convivencia (visibles al inquilino en su PWA): mudanza, ruidos, etc.
   const [reglasConvivencia, setReglasConvivencia] = useState('');
+  // Nombre de complejo/edificio para agrupar (feedback 14/07).
+  const [complejo, setComplejo] = useState('');
 
   // Foto (opcional): se elige acá con preview local (blob) y se SUBE recién al
   // guardar (POST /uploads → fotoUrl) — sin archivos huérfanos si abandona.
@@ -417,6 +419,7 @@ function NuevaPropiedadForm() {
           ...(m2 && Number.isFinite(m2Num) ? { m2: m2Num } : {}),
           ...(fotoUrl ? { fotoUrl } : {}),
           ...(reglasConvivencia.trim() ? { reglasConvivencia: reglasConvivencia.trim() } : {}),
+          ...(complejo.trim() ? { complejo: complejo.trim() } : {}),
           propietarios: participaciones,
         });
         setEnviando(false);
@@ -800,6 +803,20 @@ function NuevaPropiedadForm() {
                       Subir una foto de la propiedad
                     </button>
                   )}
+                </div>
+                {/* Complejo/edificio (opcional): rótulo para agrupar propiedades y
+                    ubicar rápido varias del mismo complejo (mora, reclamos). */}
+                <div className="space-y-2">
+                  <Label htmlFor="complejo" className="flex items-center gap-1.5">
+                    Complejo / edificio
+                    <span className="text-[10px] font-normal text-muted-foreground">opcional · para agrupar</span>
+                  </Label>
+                  <Input
+                    id="complejo"
+                    value={complejo}
+                    onChange={(e) => setComplejo(e.target.value.slice(0, 120))}
+                    placeholder="Ej: Torres del Sol, Complejo Aires, Edificio Belgrano…"
+                  />
                 </div>
                 {/* Reglas de convivencia (opcional): las ve el inquilino en su app.
                     Pensadas para responder de antemano lo que suele consultar. */}

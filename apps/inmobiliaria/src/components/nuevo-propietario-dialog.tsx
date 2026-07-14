@@ -235,7 +235,7 @@ export function NuevoPropietarioDialog({
 
           <div className="space-y-1.5">
             <Label htmlFor="np-cbu" className="flex items-center gap-1.5">
-              CBU / Alias para cobrar
+              CBU / Alias del propietario (para rendirle)
               <span className="text-[10px] font-normal text-muted-foreground">
                 opcional
               </span>
@@ -248,8 +248,11 @@ export function NuevoPropietarioDialog({
               placeholder="alias.propietario.mp"
             />
             <p id="np-cbu-hint" className="text-[11px] text-muted-foreground">
-              Si lo cargás ahora, los pagos del inquilino se acreditan directo a
-              esta cuenta.
+              Es la cuenta a la que <strong>la inmobiliaria</strong> le transfiere
+              lo que cobra del inquilino (rendición). Para que el inquilino
+              transfiera <strong>directo</strong> al propietario (cobranza
+              directa), cargá su cuenta en la ficha del propietario → “Cuenta de
+              cobranza directa”.
             </p>
           </div>
 

@@ -342,6 +342,9 @@ export async function coreRoutes(app: FastifyInstance) {
       include: {
         participaciones: { include: { propietario: { select: { id: true, nombre: true, apellido: true } } } },
         contratoActual: { select: { id: true, estado: true, monto: true, moneda: true, modoCobranza: true } },
+        // Para el display de complejo: si la propiedad está ligada a un Consorcio
+        // real, el front muestra ese nombre; si no, el texto libre `complejo`.
+        consorcio: { select: { nombre: true } },
       },
       orderBy: { createdAt: 'asc' },
     });
@@ -416,6 +419,8 @@ export async function coreRoutes(app: FastifyInstance) {
         fotoUrl: z.string().nullable().optional(),
         // Reglas de convivencia (texto libre, visible al inquilino). undefined = no tocar.
         reglasConvivencia: z.string().trim().max(2000).nullable().optional(),
+        // Nombre libre de complejo/edificio. undefined = no tocar.
+        complejo: z.string().trim().max(120).nullable().optional(),
       })
       .safeParse(request.body);
     if (!parsed.success) {
@@ -441,6 +446,7 @@ export async function coreRoutes(app: FastifyInstance) {
         m2: b.m2 ?? null,
         ...(b.fotoUrl !== undefined ? { fotoUrl: b.fotoUrl || null } : {}),
         ...(b.reglasConvivencia !== undefined ? { reglasConvivencia: b.reglasConvivencia?.trim() || null } : {}),
+        ...(b.complejo !== undefined ? { complejo: b.complejo?.trim() || null } : {}),
       },
     });
     return propiedad;
@@ -638,6 +644,8 @@ export async function coreRoutes(app: FastifyInstance) {
         fotoUrl: z.string().optional(),
         // Reglas básicas de convivencia (texto libre, visible al inquilino en su PWA).
         reglasConvivencia: z.string().trim().max(2000).nullable().optional(),
+        // Nombre libre de complejo/edificio para agrupar (feedback 14/07).
+        complejo: z.string().trim().max(120).nullable().optional(),
         propietarios: z
           .array(z.object({ propietarioId: z.string(), porcentaje: z.number().positive().max(100) }))
           .min(1),
@@ -673,6 +681,7 @@ export async function coreRoutes(app: FastifyInstance) {
           m2: d.m2 ?? null,
           fotoUrl: d.fotoUrl ?? null,
           reglasConvivencia: d.reglasConvivencia?.trim() || null,
+          complejo: d.complejo?.trim() || null,
           estado: 'DISPONIBLE',
         },
       });
@@ -859,8 +868,8 @@ export async function coreRoutes(app: FastifyInstance) {
       // dónde transferir.
       if (!part.propietario.cuentaCobranza) {
         return reply.code(400).send({
-          message: `Cargale la cuenta de cobro a ${part.propietario.nombre} ${part.propietario.apellido ?? ''}`.trim() +
-            ' (CBU/alias, en su ficha) antes de crear el contrato con cobranza directa',
+          message: `Falta la cuenta de cobro directo de ${part.propietario.nombre} ${part.propietario.apellido ?? ''}`.trim() +
+            '. Entrá a la ficha del propietario → "Cuenta de cobranza directa" y cargá banco + CBU (22 dígitos) + alias. (El CBU/alias del alta del propietario NO alcanza para el cobro directo.)',
         });
       }
       cobraDirectoPropietarioId = part.propietarioId;
@@ -2552,5 +2561,86 @@ export async function coreRoutes(app: FastifyInstance) {
     // semánticamente correcto. No duplicamos en EventoAuditoria porque su enum no
     // tiene un valor de "ajuste de monto" y no vamos a migrar el schema.
     return { contrato: resultado.actualizado, liquidacionesReajustadas: resultado.reajustadas };
+  });
+
+  // PATCH modo de cobranza de un contrato YA creado (feedback 14/07: quedaba en
+  // el default y no se podía editar). Cambiar el modo afecta a dónde transfiere
+  // el inquilino y si el contrato entra/sale del circuito de rendición → guardas
+  // fuertes: misma validación de cuenta que el alta + bloqueo si ya hay cobros
+  // conciliados del mes (que descuadrarían la rendición).
+  app.patch('/contratos/:id/modo-cobranza', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'contratos.crear');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const body = z
+      .object({
+        modoCobranza: z.enum(['INMOBILIARIA', 'PROPIETARIO_DIRECTO']),
+        pin: z.string().optional(),
+      })
+      .safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ message: 'Modo de cobranza inválido' });
+    const pinCheck = await verificarPinUsuario(u.userId, body.data.pin);
+    if (!pinCheck.ok) return reply.code(pinCheck.code).send({ message: pinCheck.message });
+
+    // Scopeado por inmobiliariaId (multi-tenant): un id ajeno => 404.
+    const contrato = await prisma.contrato.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      select: { id: true, modoCobranza: true, propiedadId: true },
+    });
+    if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
+    if (contrato.modoCobranza === body.data.modoCobranza) {
+      return { ok: true, modoCobranza: contrato.modoCobranza, sinCambios: true };
+    }
+
+    // GUARD rendición: si ya hay cobros CONCILIADO del período en curso, cambiar
+    // el modo dejaría esa plata ya cobrada fuera del circuito de rendición
+    // (POST /rendiciones y /caja/cierre filtran modoCobranza='INMOBILIARIA'). No
+    // se puede cambiar hasta cerrar/revertir esos cobros.
+    const periodoActual = periodoDe(new Date());
+    const cobrosPeriodo = await prisma.pago.count({
+      where: { contratoId: contrato.id, estado: 'CONCILIADO', liquidacion: { periodo: periodoActual } },
+    });
+    if (cobrosPeriodo > 0) {
+      return reply.code(409).send({
+        message: 'No se puede cambiar el modo de cobranza: ya hay cobros conciliados este mes. Cambialo el mes que viene o revertí los cobros primero.',
+      });
+    }
+
+    let cobraDirectoPropietarioId: string | null = null;
+    if (body.data.modoCobranza === 'PROPIETARIO_DIRECTO') {
+      // Misma validación que el alta (core.ts POST /contratos): el dueño principal
+      // necesita su CUENTA de cobro cargada, si no el inquilino queda sin CBU destino.
+      const part = await prisma.participacionPropietario.findFirst({
+        where: { propiedadId: contrato.propiedadId },
+        orderBy: { porcentaje: 'desc' },
+        include: { propietario: { select: { cuentaCobranza: { select: { id: true } }, nombre: true, apellido: true } } },
+      });
+      if (!part) {
+        return reply.code(400).send({ message: 'La propiedad necesita dueños cargados para usar cobranza directa al propietario' });
+      }
+      if (!part.propietario.cuentaCobranza) {
+        return reply.code(400).send({
+          message: `Falta la cuenta de cobro directo de ${part.propietario.nombre} ${part.propietario.apellido ?? ''}`.trim() +
+            '. Entrá a la ficha del propietario → "Cuenta de cobranza directa" y cargá banco + CBU (22 dígitos) + alias. (El CBU/alias del alta del propietario NO alcanza para el cobro directo.)',
+        });
+      }
+      cobraDirectoPropietarioId = part.propietarioId;
+    }
+
+    const actualizado = await prisma.contrato.update({
+      where: { id: contrato.id },
+      data: { modoCobranza: body.data.modoCobranza, cobraDirectoPropietarioId },
+    });
+    // Auditoría real del backend (el enum ya existe): antes el cambio solo se
+    // registraba en localStorage (demo) → sin traza en prod.
+    await registrarEvento({
+      inmobiliariaId: u.inmobiliariaId,
+      tipo: 'MODO_COBRANZA_CAMBIADO',
+      autorId: u.userId,
+      rolAutor: u.rol,
+      entidadId: contrato.id,
+      entidadDescripcion: `${contrato.modoCobranza} → ${body.data.modoCobranza}`,
+    });
+    return { ok: true, modoCobranza: actualizado.modoCobranza };
   });
 }

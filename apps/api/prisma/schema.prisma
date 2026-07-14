@@ -1168,6 +1168,11 @@ model Propiedad {
   // Reglas básicas de convivencia visibles para el inquilino en su PWA (mudanza,
   // ruidos, uso de espacios comunes, etc.). Texto libre; reduce consultas. null = sin cargar.
   reglasConvivencia String?
+  // Nombre libre de COMPLEJO/edificio para agrupar propiedades de la inmobiliaria
+  // (identificar rápido varios inquilinos del mismo complejo con mora/reclamos).
+  // Es un rótulo simple, distinto del módulo Consorcio (expensas/UFs). Si la
+  // propiedad está ligada a un Consorcio real, se muestra consorcio.nombre; si no, este texto.
+  complejo         String?
   estado           EstadoPropiedad @default(EN_EDICION)
   contratoActualId String?         @unique // null si DISPONIBLE
   contratoActual   Contrato?       @relation("ContratoActual", fields: [contratoActualId], references: [id])
@@ -1188,6 +1193,7 @@ model Propiedad {
   @@index([inmobiliariaId])
   @@index([sociedadId])
   @@index([consorcioId])
+  @@index([inmobiliariaId, complejo])
   @@map("propiedades")
 }
 
