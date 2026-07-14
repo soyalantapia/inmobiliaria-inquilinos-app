@@ -246,17 +246,13 @@ function Trust({ children }: { children: React.ReactNode }) {
 
 /* ── La semana del administrador (PAS: problema + agitación) ─────────────── */
 function Semana() {
-  const antes = [
-    'Rastreás quién pagó por WhatsApp, uno por uno.',
-    'La rendición del mes la hacés a mano, en una planilla.',
-    'Los ajustes por ICL quedan desactualizados entre contratos.',
-    'El propietario te llama para preguntar si cobraste.',
-  ];
-  const despues = [
-    'El inquilino paga desde la app y sube el comprobante.',
-    'La rendición sale calculada: alquiler, comisión y gastos.',
-    'El ajuste por índice se aplica solo, sin tocar Excel.',
-    'El propietario ve su liquidación el mismo día que cobrás.',
+  // Pares problema→solución (index-alineados): se muestran en la MISMA fila para
+  // que se lea la transformación directa, no dos listas sueltas en paralelo.
+  const PARES = [
+    { antes: 'Rastreás quién pagó por WhatsApp, uno por uno.', despues: 'El inquilino paga desde la app y sube el comprobante.' },
+    { antes: 'La rendición del mes la hacés a mano, en una planilla.', despues: 'La rendición sale calculada: alquiler, comisión y gastos.' },
+    { antes: 'Los ajustes por ICL quedan desactualizados entre contratos.', despues: 'El ajuste por índice se aplica solo, sin tocar Excel.' },
+    { antes: 'El propietario te llama para preguntar si cobraste.', despues: 'El propietario ve su liquidación el mismo día que cobrás.' },
   ];
   return (
     <section className="mx-auto max-w-6xl px-5 py-16 md:px-8 md:py-24">
@@ -267,38 +263,36 @@ function Semana() {
         </h2>
       </Reveal>
 
-      <div className="mt-12 grid gap-5 md:grid-cols-2">
-        <Reveal>
-          <div className="h-full rounded-3xl border border-black/[0.07] bg-white/40 p-7">
-            <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Con Excel y WhatsApp</p>
-            <ul className="mt-5 space-y-3.5">
-              {antes.map((t) => (
-                <li key={t} className="flex items-start gap-3 text-[15px] leading-snug text-muted-foreground">
-                  <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-red-50 text-red-400">
-                    <X className="h-3 w-3" strokeWidth={3} />
-                  </span>
-                  {t}
-                </li>
-              ))}
-            </ul>
+      <Reveal>
+        <div className="mt-12 overflow-hidden rounded-3xl border border-black/[0.07] bg-white/40">
+          {/* Encabezados de las dos columnas */}
+          <div className="grid grid-cols-1 md:grid-cols-2">
+            <p className="px-5 py-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground md:px-7">
+              Con Excel y WhatsApp
+            </p>
+            <p className="border-t border-black/[0.06] bg-primary/[0.03] px-5 py-3 text-sm font-semibold uppercase tracking-wide text-primary md:border-l md:border-t-0 md:px-7">
+              Con My Alquiler
+            </p>
           </div>
-        </Reveal>
-        <Reveal delay={90}>
-          <div className="h-full rounded-3xl border border-primary/20 bg-gradient-to-br from-white to-primary/[0.04] p-7 shadow-[0_24px_60px_-32px_rgba(80,40,160,0.4)]">
-            <p className="text-sm font-semibold uppercase tracking-wide text-primary">Con My Alquiler</p>
-            <ul className="mt-5 space-y-3.5">
-              {despues.map((t) => (
-                <li key={t} className="flex items-start gap-3 text-[15px] font-medium leading-snug text-foreground">
-                  <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-emerald-100 text-emerald-600">
-                    <Check className="h-3 w-3" strokeWidth={3} />
-                  </span>
-                  {t}
-                </li>
-              ))}
-            </ul>
-          </div>
-        </Reveal>
-      </div>
+          {/* Cada problema, pareado con su solución en la MISMA fila */}
+          {PARES.map((par) => (
+            <div key={par.antes} className="grid grid-cols-1 border-t border-black/[0.06] md:grid-cols-2">
+              <div className="flex items-start gap-3 px-5 py-4 text-[15px] leading-snug text-muted-foreground md:px-7">
+                <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-red-50 text-red-400">
+                  <X className="h-3 w-3" strokeWidth={3} />
+                </span>
+                {par.antes}
+              </div>
+              <div className="flex items-start gap-3 border-t border-black/[0.06] bg-primary/[0.03] px-5 py-4 text-[15px] font-medium leading-snug text-foreground md:border-l md:border-t-0 md:px-7">
+                <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-emerald-100 text-emerald-600">
+                  <Check className="h-3 w-3" strokeWidth={3} />
+                </span>
+                {par.despues}
+              </div>
+            </div>
+          ))}
+        </div>
+      </Reveal>
     </section>
   );
 }
