@@ -1215,19 +1215,19 @@ function ModoCobranzaCard({
   contrato: ContratoListado;
   propietarioDirecto: Propietario | null;
 }) {
+  const qc = useQueryClient();
   const inicial: 'INMOBILIARIA' | 'PROPIETARIO_DIRECTO' =
     contrato.modoCobranza ?? 'INMOBILIARIA';
   const [modo, setModo] = useState<'INMOBILIARIA' | 'PROPIETARIO_DIRECTO'>(inicial);
+  const [guardando, setGuardando] = useState(false);
+  // El estado local sigue al contrato si cambia (re-fetch tras el PATCH).
+  useEffect(() => {
+    setModo(contrato.modoCobranza ?? 'INMOBILIARIA');
+  }, [contrato.modoCobranza]);
 
-  function cambiarA(nuevo: 'INMOBILIARIA' | 'PROPIETARIO_DIRECTO') {
-    if (nuevo === modo) return;
-    // Sin endpoint PATCH del modo de cobranza todavía: en modo API esto sólo
-    // escribiría auditoría local fantasma. Lo bloqueamos en prod.
-    if (apiEnabled) {
-      toast({ title: 'Cambiar el modo de cobranza estará disponible próximamente.' });
-      return;
-    }
-    if (nuevo === 'PROPIETARIO_DIRECTO' && !propietarioDirecto?.cuentaCobranza) {
+  async function cambiarA(nuevo: 'INMOBILIARIA' | 'PROPIETARIO_DIRECTO') {
+    if (nuevo === modo || guardando) return;
+    if (nuevo === 'PROPIETARIO_DIRECTO' && apiEnabled === false && !propietarioDirecto?.cuentaCobranza) {
       toast({
         title: 'Cargá la cuenta del propietario primero',
         description: 'Para cobrar directo necesitás el CBU del propietario.',
@@ -1235,6 +1235,41 @@ function ModoCobranzaCard({
       });
       return;
     }
+    if (apiEnabled) {
+      // Prod: PATCH real. El server valida la cuenta del propietario y bloquea el
+      // cambio si ya hay cobros conciliados del mes (guard de rendición).
+      setGuardando(true);
+      try {
+        await ensureApiSession();
+        await apiFetch(`/contratos/${contrato.id}/modo-cobranza`, {
+          method: 'PATCH',
+          body: JSON.stringify({ modoCobranza: nuevo }),
+        });
+        setModo(nuevo);
+        await Promise.all([
+          qc.invalidateQueries({ queryKey: ['contrato'] }),
+          qc.invalidateQueries({ queryKey: ['contratos'] }),
+        ]);
+        toast({
+          variant: 'success',
+          title: 'Modo de cobranza actualizado',
+          description:
+            nuevo === 'INMOBILIARIA'
+              ? 'El inquilino transfiere a la cuenta recaudadora.'
+              : `El inquilino transfiere directo al CBU del propietario.`,
+        });
+      } catch (e) {
+        toast({
+          variant: 'destructive',
+          title: 'No se pudo cambiar el modo de cobranza',
+          description: e instanceof ApiError ? e.message : 'Probá de nuevo.',
+        });
+      } finally {
+        setGuardando(false);
+      }
+      return;
+    }
+    // Demo (!apiEnabled): estado local + auditoría local.
     setModo(nuevo);
     registrarEvento({
       tipo: 'MODO_COBRANZA_CAMBIADO',
@@ -1268,11 +1303,10 @@ function ModoCobranzaCard({
         <div className="grid gap-3 md:grid-cols-2">
           <button
             type="button"
-            onClick={() => cambiarA('INMOBILIARIA')}
-            disabled={apiEnabled && modo !== 'INMOBILIARIA'}
-            title={apiEnabled ? 'Próximamente' : undefined}
+            onClick={() => void cambiarA('INMOBILIARIA')}
+            disabled={guardando}
             className={cn(
-              'flex flex-col gap-2 rounded-lg border p-3 text-left transition-all disabled:cursor-not-allowed',
+              'flex flex-col gap-2 rounded-lg border p-3 text-left transition-all disabled:opacity-60',
               modo === 'INMOBILIARIA'
                 ? 'border-primary bg-primary/5 ring-1 ring-primary'
                 : 'hover:bg-muted/40',
@@ -1293,11 +1327,10 @@ function ModoCobranzaCard({
 
           <button
             type="button"
-            onClick={() => cambiarA('PROPIETARIO_DIRECTO')}
-            disabled={apiEnabled && modo !== 'PROPIETARIO_DIRECTO'}
-            title={apiEnabled ? 'Próximamente' : undefined}
+            onClick={() => void cambiarA('PROPIETARIO_DIRECTO')}
+            disabled={guardando}
             className={cn(
-              'flex flex-col gap-2 rounded-lg border p-3 text-left transition-all disabled:cursor-not-allowed',
+              'flex flex-col gap-2 rounded-lg border p-3 text-left transition-all disabled:opacity-60',
               modo === 'PROPIETARIO_DIRECTO'
                 ? 'border-primary bg-primary/5 ring-1 ring-primary'
                 : 'hover:bg-muted/40',

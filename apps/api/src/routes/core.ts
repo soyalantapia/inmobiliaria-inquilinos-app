@@ -2553,4 +2553,85 @@ export async function coreRoutes(app: FastifyInstance) {
     // tiene un valor de "ajuste de monto" y no vamos a migrar el schema.
     return { contrato: resultado.actualizado, liquidacionesReajustadas: resultado.reajustadas };
   });
+
+  // PATCH modo de cobranza de un contrato YA creado (feedback 14/07: quedaba en
+  // el default y no se podía editar). Cambiar el modo afecta a dónde transfiere
+  // el inquilino y si el contrato entra/sale del circuito de rendición → guardas
+  // fuertes: misma validación de cuenta que el alta + bloqueo si ya hay cobros
+  // conciliados del mes (que descuadrarían la rendición).
+  app.patch('/contratos/:id/modo-cobranza', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'contratos.crear');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const body = z
+      .object({
+        modoCobranza: z.enum(['INMOBILIARIA', 'PROPIETARIO_DIRECTO']),
+        pin: z.string().optional(),
+      })
+      .safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ message: 'Modo de cobranza inválido' });
+    const pinCheck = await verificarPinUsuario(u.userId, body.data.pin);
+    if (!pinCheck.ok) return reply.code(pinCheck.code).send({ message: pinCheck.message });
+
+    // Scopeado por inmobiliariaId (multi-tenant): un id ajeno => 404.
+    const contrato = await prisma.contrato.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      select: { id: true, modoCobranza: true, propiedadId: true },
+    });
+    if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
+    if (contrato.modoCobranza === body.data.modoCobranza) {
+      return { ok: true, modoCobranza: contrato.modoCobranza, sinCambios: true };
+    }
+
+    // GUARD rendición: si ya hay cobros CONCILIADO del período en curso, cambiar
+    // el modo dejaría esa plata ya cobrada fuera del circuito de rendición
+    // (POST /rendiciones y /caja/cierre filtran modoCobranza='INMOBILIARIA'). No
+    // se puede cambiar hasta cerrar/revertir esos cobros.
+    const periodoActual = periodoDe(new Date());
+    const cobrosPeriodo = await prisma.pago.count({
+      where: { contratoId: contrato.id, estado: 'CONCILIADO', liquidacion: { periodo: periodoActual } },
+    });
+    if (cobrosPeriodo > 0) {
+      return reply.code(409).send({
+        message: 'No se puede cambiar el modo de cobranza: ya hay cobros conciliados este mes. Cambialo el mes que viene o revertí los cobros primero.',
+      });
+    }
+
+    let cobraDirectoPropietarioId: string | null = null;
+    if (body.data.modoCobranza === 'PROPIETARIO_DIRECTO') {
+      // Misma validación que el alta (core.ts POST /contratos): el dueño principal
+      // necesita su CUENTA de cobro cargada, si no el inquilino queda sin CBU destino.
+      const part = await prisma.participacionPropietario.findFirst({
+        where: { propiedadId: contrato.propiedadId },
+        orderBy: { porcentaje: 'desc' },
+        include: { propietario: { select: { cuentaCobranza: { select: { id: true } }, nombre: true, apellido: true } } },
+      });
+      if (!part) {
+        return reply.code(400).send({ message: 'La propiedad necesita dueños cargados para usar cobranza directa al propietario' });
+      }
+      if (!part.propietario.cuentaCobranza) {
+        return reply.code(400).send({
+          message: `Cargale la cuenta de cobro a ${part.propietario.nombre} ${part.propietario.apellido ?? ''}`.trim() +
+            ' (CBU/alias, en su ficha) antes de pasar a cobranza directa',
+        });
+      }
+      cobraDirectoPropietarioId = part.propietarioId;
+    }
+
+    const actualizado = await prisma.contrato.update({
+      where: { id: contrato.id },
+      data: { modoCobranza: body.data.modoCobranza, cobraDirectoPropietarioId },
+    });
+    // Auditoría real del backend (el enum ya existe): antes el cambio solo se
+    // registraba en localStorage (demo) → sin traza en prod.
+    await registrarEvento({
+      inmobiliariaId: u.inmobiliariaId,
+      tipo: 'MODO_COBRANZA_CAMBIADO',
+      autorId: u.userId,
+      rolAutor: u.rol,
+      entidadId: contrato.id,
+      entidadDescripcion: `${contrato.modoCobranza} → ${body.data.modoCobranza}`,
+    });
+    return { ok: true, modoCobranza: actualizado.modoCobranza };
+  });
 }
