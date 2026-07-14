@@ -25,8 +25,8 @@ Proyecto **maduro / ya lanzado en prod**. El backlog accionable-y-sin-bloqueos e
 - **Qué era:** `usePropietarios` (KPI "por rendir" + preview del diálogo de rendir) contaba solo liqs `PAGADO` y **excluía `PARCIAL`**, pero el server (`POST /rendiciones`) sí rinde lo conciliado de las PARCIAL. Un dueño con cobro parcial mostraba $0 y no aparecía en "por rendir".
 - **Qué hice:** incluir PARCIAL con la porción de alquiler efectivamente cobrada: `min(montoPagado, montoTotal) × (montoAlquiler / montoTotal)` (sin expensas), prorrateada igual que el cierre de caja. PAGADO sigue usando el alquiler completo. Mantiene la exclusión de `PROPIETARIO_DIRECTO`.
 - **Archivo:** `apps/inmobiliaria/src/lib/api/hooks.ts` (commit `13ff5e8`).
-- **Verificación:** typecheck ✅ + verificación de la fórmula con 4 casos (todos OK, incluido montoTotal>0 y el antes/después). **Honesto:** la UI **no** se ejerció en runtime (requiere el panel levantado + datos con cobro parcial del mes en curso); la fórmula replica la proración del server.
-- **Estado:** HECHO (lógica verificada; UI no ejercida).
+- **Verificación:** typecheck ✅ + fórmula (6 casos, todos OK). **La auditoría encontró un P2** (prorrateaba con mora en el denominador) → **arreglado** en commit `5de629e` (ver §7). **Honesto:** la UI **no** se ejerció en runtime (requiere panel + datos con cobro parcial del mes); la fórmula ahora replica exactamente la proración del server (base sin mora).
+- **Estado:** HECHO (lógica verificada + hallazgo de auditoría corregido; UI no ejercida).
 
 ### ⏸️ #3 — Quitar el PIN residual (parkeado)
 - **Qué es:** el PIN se eliminó de la plataforma (kill-switch `verificarPin` no-op), pero el front todavía muestra `PinPromptDialog` en **9 pantallas** (caja, detalle de contrato, validador de resumen, rendir propietario, cargar pago manual, anular rendición, bandeja de aprobaciones, pagos por validar…). Pide un PIN que no hace nada.
@@ -47,7 +47,11 @@ No accionables sin insumo tuyo; los dejo documentados:
 
 ## 3. Commits / PRs / deploys
 - Rama: **`fix/followups-noche-2026-07-14`** (desde `main` `7009f12`).
-- Commits: `2249151` (fix conciliación #1), `13ff5e8` (fix rendiciones #2). Cada uno un solo archivo, mío.
+- Commits (cada uno un solo archivo, mío):
+  - `2249151` fix conciliación #1
+  - `13ff5e8` fix rendiciones #2 (base)
+  - `a88acbc` docs: este reporte
+  - `5de629e` fix rendiciones #2 — prorrateo sobre base sin mora (**hallazgo P2 de la auditoría, arreglado**)
 - **PR #4** abierto contra `main`: https://github.com/soyalantapia/inmobiliaria-inquilinos-app/pull/4
 - **Deploys:** ninguno (NIVEL=pr).
 
@@ -70,28 +74,24 @@ No accionables sin insumo tuyo; los dejo documentados:
 5. Avatar panel: decidir si va y dónde.
 
 ---
-## 7. Auditoría (hecha inline — el workflow de auditoría se interrumpió por inestabilidad del entorno)
+## 7. Auditoría adversarial (workflow de 3 agentes + revisión inline)
 
-Revisión adversarial de los 2 cambios, a mano:
+El workflow **sí completó** (había concluido erróneamente que se interrumpió; terminó tarde). Encontró **1 hallazgo P2 REAL en mi propio commit #2**, que **arreglé** (commit `5de629e`). Los demás son P3 documentados.
 
-**#1 (auto-reject INFORMADO):**
-- No toca el pago CONCILIADO nuevo (filtra `estado='INFORMADO'`) — verificado en E2E.
-- `count=0` si no hay INFORMADO → no-op. Idempotente (tras cerrar, la liq queda PAGADO y el re-conciliar se bloquea; el updateMany re-corrido encuentra 0).
-- El prefijo `"Anulado tras conciliar:"` **matchea** el mapeo neutro de `/mis-liquidaciones` (`plata.ts` `.startsWith('Anulado tras conciliar:')`) → el inquilino ve un mensaje neutro, no un "rechazado" alarmante.
-- Gate `cierra` correcto: solo rechaza cuando la liq queda saldada (regresión verificada: crédito parcial NO rechaza).
-- **Hallazgo P3 (hardening, NO aplicado):** mi `updateMany` filtra por `liquidacionId + estado`, sin `inmobiliariaId`. **No es un leak** (`liquidacionId` es tenant-única — la liq ya se buscó con `inmobiliariaId`), pero sumar `inmobiliariaId` sería defensa-en-profundidad, consistente con el resto de `plata.ts`. **No lo apliqué** porque el archivo se volvió volátil (otra sesión lo editaba en vivo) → forzar el cambio era alto riesgo/bajo valor. Follow-up de 1 línea: agregar `inmobiliariaId: u.inmobiliariaId` al `where`.
-- **Hallazgo P3:** el endpoint de conciliar no registra evento de auditoría (ni para el CONCILIADO que crea ni para este rechazo) — inconsistente con `/pagos/:id/rechazar`, pero pre-existente y consistente dentro del endpoint. Follow-up opcional.
+### 🔴→✅ P2 (ARREGLADO) — #2 prorrateaba con mora en el denominador
+- **Bug:** la porción de alquiler cobrada de una PARCIAL se prorrateaba sobre `l.montoTotal`, pero ese monto de `GET /liquidaciones` **ya incluye el punitorio** (`conSaldo` lo suma). El server (`POST /rendiciones`) y el cierre de caja prorratean/capean sobre la **base sin mora**. → Para toda liq PARCIAL vencida con recargo, el KPI **subestimaba** el alquiler rendible (~9–17%). Ej: alquiler 100k + mora 10k, pagó 55k → el panel mostraba 50k, el server rinde 55k. Conservador (nunca sobre-rinde) y display-only, pero contradecía el objetivo del commit ("igual que el cierre de caja").
+- **Fix:** usar `base = montoTotal − montoPunitorio` como denominador y tope. **Verificado** con 6 casos (mora, mora+expensas, cap, SOLO_EXPENSAS, PAGADO). typecheck ✅. Commit `5de629e`.
+- _Confirmado independientemente por 2 de los 3 agentes de auditoría._
 
-**#2 (PARCIAL en rendir):**
-- `montoTotal=0` (SOLO_EXPENSAS): guard `l.montoTotal > 0 ? … : 0` evita división por cero. ✓
-- `PROPIETARIO_DIRECTO` sigue excluido (el `continue` está antes del cálculo). ✓
-- `montoPagado` viene de `/liquidaciones` (`conSaldo` → suma **solo CONCILIADO**), no incluye informado → no cuenta plata no cobrada. ✓
-- Proración = `min(pagado,total)×alquiler/total`, igual que el cierre de caja (patrón ya en el repo). Sin doble-conteo (una vez por participación). Redondeo final con `Math.round`. ✓
-- **Sin hallazgos P0–P2.**
+### P3 (documentados — follow-ups, no bloqueantes)
+1. **#2 KPI es bruto, no neto de lo ya rendido.** El server `/rendiciones` es **incremental** (resta `AlquilerRendido` previo por liq, para rendir un mes en varias tandas — el caso que #2 habilita). El KPI/preview muestra el bruto acumulado, así que si a un dueño ya se le rindió una tanda del mes, "a rendir" sobreestima lo que **queda**. **No mueve plata mal** (el server es la fuente de verdad: `rendible<=0 → continue`/409), pero engaña al operador sobre el remanente. **Pre-existente** (afectaba PAGADO); ahora también PARCIAL. Fix real requiere exponer lo ya-rendido por liq al front → cambio más grande, no lo hice de noche. `hooks.ts:1095-1102` / `rendir-propietario-dialog.tsx:114`.
+2. **#1 no registra evento de auditoría** en el auto-rechazo. Es parte de un gap pre-existente: **todo** el endpoint de conciliación bancaria no emite eventos (ni el CONCILIADO del crédito), a diferencia de los conciliar de `plata.ts`. Follow-up: emitir `PAGO_RECHAZADO`/`PAGO_CONCILIADO` en `resumenes-bancarios.ts`.
+3. **#1 hardening `inmobiliariaId`** en el `updateMany` (defensa-en-profundidad; NO es leak — `liquidacionId` es tenant-única). No lo apliqué en el momento por la volatilidad del archivo compartido; follow-up de 1 línea.
 
-**Seguridad:** `.env` gitignoreado, sin `.env` trackeados, sin secretos hardcodeados en `src`. Multi-tenant respetado en ambos cambios. **Sin P0/P1.**
-
-**Veredicto:** ambos cambios **SÓLIDOS**. 2 hallazgos P3 (hardening/auditoría) documentados como follow-ups, no bloqueantes.
+### Verificado sólido (sin hallazgos)
+- #1: no toca el CONCILIADO nuevo; idempotente; prefijo `"Anulado tras conciliar:"` matchea el mapeo neutro de la PWA; gate `cierra` correcto (regresión E2E OK).
+- #2 (post-fix): `PROPIETARIO_DIRECTO` excluido; `montoPagado` = solo CONCILIADO; sin doble-conteo; división por cero guardada.
+- **Seguridad:** `.env` ignorado, sin `.env` trackeados, sin secretos hardcodeados. Multi-tenant OK. **Sin P0/P1.**
 
 ## 8. Incidente operativo (importante)
 Durante la noche, **otra sesión concurrente tomó el checkout local compartido**: cambió el branch a `feat/landing-mejoras` y commiteó ahí su trabajo de landing (`f22f35f`), moviendo el `HEAD` local fuera de mi rama. **Mi trabajo NO se perdió** — mis 2 commits están en `origin/fix/followups-noche-2026-07-14` y en el **PR #4** (verificado). Dejé de operar git en el checkout compartido para no colisionar con la sesión activa. Esto confirma el riesgo ya conocido: **el working tree se comparte entre sesiones** — conviene que cada sesión trabaje en su propio `git worktree`, o coordinar para no pisarse el `HEAD`.
