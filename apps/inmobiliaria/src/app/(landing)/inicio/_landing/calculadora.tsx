@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
-import { ArrowRight, Clock } from 'lucide-react';
+import { ArrowRight, Clock, TrendingUp } from 'lucide-react';
 import { formatMonto } from '@/lib/format';
 import { track } from './analytics';
 
@@ -15,6 +15,16 @@ import { track } from './analytics';
 
 const MIN_POR_PROP = 12; // min/mes de cobranza + seguimiento + rendición manual
 
+// Precio mensual de My Alquiler según el tamaño de la cartera (mismos tramos que
+// /precios y el schema). Se muestra al lado del valor del tiempo para que la
+// inmobiliaria COMPARE la inversión con lo que se ahorra. Hoy es gratis (beta).
+function precioMensual(props: number): number {
+  if (props <= 10) return 50_000;
+  if (props <= 50) return 100_000;
+  if (props <= 100) return 200_000;
+  return 350_000;
+}
+
 export function Calculadora() {
   const [props, setProps] = useState(60);
   // Valor de la hora EDITABLE (no inventamos un sueldo): el usuario pone el suyo
@@ -24,6 +34,10 @@ export function Calculadora() {
   const horasMes = Math.round((props * MIN_POR_PROP) / 60);
   const diasAnio = Math.round((horasMes * 12) / 8); // jornadas de 8 hs al año
   const pesosMes = horasMes * (Number.isFinite(valorHora) ? valorHora : 0);
+  const precio = precioMensual(props);
+  // "A favor" = valor del tiempo recuperado menos lo que costaría el plan. Sólo
+  // se muestra cuando es positivo (nunca un número que desanime).
+  const aFavor = pesosMes > 0 ? pesosMes - precio : 0;
 
   return (
     <section className="mx-auto max-w-6xl px-5 py-20 md:px-8 md:py-24">
@@ -88,17 +102,43 @@ export function Calculadora() {
             Son cerca de <strong className="text-white">{diasAnio} jornadas</strong> de 8 horas al año que
             dejás de perder en planillas y WhatsApp.
           </p>
-          {pesosMes > 0 && (
-            <div className="mt-5 border-t border-white/15 pt-4">
-              <p className="flex items-baseline gap-2">
-                <span className="display text-3xl font-extrabold tabular-nums">{formatMonto(pesosMes)}</span>
-                <span className="text-sm font-medium text-white/70">/ mes de tu tiempo</span>
-              </p>
-              <p className="mt-1 text-[12px] text-white/50">
-                Estimado, según el valor de hora que pusiste arriba.
-              </p>
+          {/* Comparación tiempo ↔ inversión — el argumento de venta: cuánto vale
+              el tiempo que recuperás vs. lo que cuesta el plan según tu cartera. */}
+          <div className="mt-6 space-y-2 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+            {pesosMes > 0 && (
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[13px] text-white/70">Ese tiempo vale</span>
+                <span className="display text-xl font-extrabold tabular-nums">
+                  {formatMonto(pesosMes)}
+                  <span className="text-[12px] font-medium text-white/50"> /mes</span>
+                </span>
+              </div>
+            )}
+            <div className="flex items-center justify-between gap-3 border-t border-white/10 pt-2">
+              <span className="text-[13px] text-white/70">My Alquiler te cuesta</span>
+              <span className="text-right leading-tight">
+                <span className="display text-xl font-extrabold tabular-nums text-violet-200">
+                  desde {formatMonto(precio)}
+                  <span className="text-[12px] font-medium text-white/50"> /mes</span>
+                </span>
+                <span className="block text-[10.5px] font-semibold uppercase tracking-wide text-emerald-300">
+                  Gratis hasta el lanzamiento
+                </span>
+              </span>
             </div>
+          </div>
+
+          {aFavor > 0 && (
+            <p className="mt-3 flex items-center gap-2 rounded-xl bg-emerald-400/10 px-3.5 py-2.5 text-[13px] font-semibold text-emerald-300">
+              <TrendingUp className="h-4 w-4 shrink-0" />
+              Aun pagándolo, te queda a favor {formatMonto(aFavor)}/mes de tu tiempo.
+            </p>
           )}
+
+          <p className="mt-3 text-[11px] leading-relaxed text-white/45">
+            Estimado, según el valor de hora que pusiste. El precio va según el tamaño de tu
+            cartera; las primeras 50 inmobiliarias entran con −20% para siempre.
+          </p>
           <Link
             href="/registro"
             onClick={() => track('cta_click', { from: 'calculadora', props })}

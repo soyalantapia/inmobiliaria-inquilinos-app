@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   Check,
   X,
+  Plus,
   MessageCircle,
   ShieldCheck,
 } from 'lucide-react';
@@ -24,7 +25,9 @@ import { AnalyticsProvider } from './_landing/analytics';
 import { HeroHeadline } from './_landing/hero-headline';
 import { TrustLogos } from './_landing/trust-logos';
 import { Calculadora } from './_landing/calculadora';
+import { Testimonios } from './_landing/testimonios';
 import { WhatsappFab } from './_landing/whatsapp-fab';
+import { Header } from './_landing/header';
 import { SITE_URL, SITE_NAME } from '@/lib/site';
 
 /**
@@ -187,6 +190,7 @@ export default function InicioPage() {
         <Calculadora />
         <Reclamos />
         <CitaRelevamiento />
+        <Testimonios />
         <Precio />
         <Preguntas />
         <CierreCta />
@@ -197,43 +201,14 @@ export default function InicioPage() {
   );
 }
 
-/* ── Header ─────────────────────────────────────────────────────────────── */
-function Header() {
-  return (
-    <header className="sticky top-0 z-40 border-b border-black/[0.06] bg-[#faf8f5]/85 backdrop-blur supports-[backdrop-filter]:bg-[#faf8f5]/70">
-      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5 md:px-8">
-        <Link href="/inicio" className="flex items-center gap-2.5">
-          <Isotipo size={36} />
-          <span className="display text-[15px] font-bold tracking-tight">My Alquiler</span>
-        </Link>
-        <div className="flex items-center gap-1.5">
-          <Link
-            href="/login"
-            className="hidden rounded-full px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground sm:inline-flex"
-          >
-            Entrar
-          </Link>
-          <Link
-            href="/registro"
-            className="inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
-          >
-            Empezá gratis
-            <ArrowRight className="h-3.5 w-3.5" />
-          </Link>
-        </div>
-      </div>
-    </header>
-  );
-}
-
 /* ── Hero ───────────────────────────────────────────────────────────────── */
 function Hero() {
   return (
     <section className="relative overflow-hidden">
-      <div className="mx-auto grid max-w-6xl items-center gap-12 px-5 py-16 md:px-8 md:py-24 lg:grid-cols-[0.92fr_1.08fr] lg:gap-10">
+      <div className="mx-auto grid max-w-6xl items-center gap-12 px-5 pb-16 pt-28 md:px-8 md:pb-24 md:pt-32 lg:grid-cols-[0.92fr_1.08fr] lg:gap-10">
         <div>
           <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-primary">
-            Software de alquileres · hecho en Córdoba
+            Software hecho por inmobiliarios, para inmobiliarios
           </p>
           <HeroHeadline />
           <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground">
@@ -376,7 +351,7 @@ function TresActores() {
 /* ── Features (bento asimétrico, NO grid de 3 iguales) ───────────────────── */
 function Features() {
   return (
-    <section className="mx-auto max-w-6xl px-5 py-20 md:px-8 md:py-28">
+    <section id="producto" className="mx-auto max-w-6xl scroll-mt-28 px-5 py-20 md:px-8 md:py-28">
       <Reveal>
         <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-primary">Todo en un panel</p>
         <h2 className="mt-3 max-w-2xl text-[clamp(1.9rem,4vw,3rem)] font-bold leading-[1.08] tracking-[-0.015em]">
@@ -570,7 +545,7 @@ function CitaRelevamiento() {
 /* ── Precio (sin fake 3 columnas) ───────────────────────────────────────── */
 function Precio() {
   return (
-    <section className="border-y border-black/[0.06] bg-white/50">
+    <section id="precio" className="scroll-mt-28 border-y border-black/[0.06] bg-white/50">
       <div className="mx-auto max-w-6xl px-5 py-20 md:px-8 md:py-24">
         <div className="grid items-center gap-8 md:grid-cols-[1.1fr_0.9fr]">
           <Reveal>
@@ -615,26 +590,43 @@ function Precio() {
   );
 }
 
-/* ── Preguntas (NO acordeón: texto corrido, primera persona) ────────────── */
+/* ── Preguntas (acordeón nativo <details> — sin JS, accesible y SEO-friendly) ─ */
 function Preguntas() {
-  const qs = FAQS;
   return (
-    <section className="mx-auto max-w-4xl px-5 py-20 md:px-8 md:py-24">
+    <section id="preguntas" className="mx-auto max-w-3xl scroll-mt-28 px-5 py-20 md:px-8 md:py-24">
       <Reveal>
-        <h2 className="text-[clamp(1.6rem,3.5vw,2.4rem)] font-bold tracking-[-0.015em]">
-          Las preguntas que nos hacen siempre
+        <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-primary">Preguntas frecuentes</p>
+        <h2 className="mt-3 text-[clamp(1.7rem,3.5vw,2.5rem)] font-bold tracking-[-0.015em]">
+          Todo lo que te preguntás antes de arrancar.
         </h2>
+        <p className="mt-3 text-[15px] text-muted-foreground">
+          ¿Te queda una duda que no está acá?{' '}
+          <a
+            href="https://wa.me/5491154596266?text=Hola%2C%20tengo%20una%20duda%20sobre%20My%20Alquiler"
+            target="_blank"
+            rel="noreferrer"
+            className="font-semibold text-primary hover:underline"
+          >
+            Escribinos por WhatsApp
+          </a>
+          .
+        </p>
       </Reveal>
-      <div className="mt-10 space-y-9">
-        {qs.map((qa, i) => (
-          <Reveal key={qa.q} delay={i * 60}>
-            <div>
-              <h3 className="text-lg font-bold">{qa.q}</h3>
-              <p className="mt-2 max-w-2xl text-[15.5px] leading-relaxed text-muted-foreground">{qa.a}</p>
-            </div>
-          </Reveal>
-        ))}
-      </div>
+      <Reveal>
+        <div className="mt-10 divide-y divide-black/[0.07] overflow-hidden rounded-3xl border border-black/[0.07] bg-white">
+          {FAQS.map((qa) => (
+            <details key={qa.q} className="group px-6">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-5 text-left [&::-webkit-details-marker]:hidden">
+                <span className="text-[16px] font-semibold leading-snug">{qa.q}</span>
+                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-primary/[0.08] text-primary transition-transform duration-200 group-open:rotate-45">
+                  <Plus className="h-4 w-4" strokeWidth={2.5} />
+                </span>
+              </summary>
+              <p className="max-w-2xl pb-5 text-[15px] leading-relaxed text-muted-foreground">{qa.a}</p>
+            </details>
+          ))}
+        </div>
+      </Reveal>
     </section>
   );
 }

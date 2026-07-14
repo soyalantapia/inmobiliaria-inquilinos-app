@@ -1,10 +1,10 @@
 import { ShieldCheck } from 'lucide-react';
 
 /**
- * Banda de confianza. Prueba REAL, no inventada: convenios con colegios y
- * cámaras inmobiliarias (CPI Córdoba, CUCICBA, Edifica) + la escasez honesta de
- * la beta. No mostramos números de adopción porque estamos en pre-launch y un
- * conteo inflado es lo que más rompe la confianza.
+ * Banda de confianza: colegios y cámaras inmobiliarias que acompañan el
+ * proyecto (CPI Córdoba, CUCICBA, Edifica) + la escasez honesta de la beta. No
+ * mostramos números de adopción porque estamos en pre-launch y un conteo
+ * inflado es lo que más rompe la confianza.
  *
  * Los "logos" se recrean en HTML/CSS (el de CPI ya existía en el login). Para
  * usar los assets oficiales: dejar el SVG en /public y reemplazar cada chip.
@@ -14,7 +14,7 @@ export function TrustLogos() {
     <section className="border-y border-black/[0.06] bg-white/60">
       <div className="mx-auto max-w-6xl px-5 py-9 md:px-8">
         <p className="text-center text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-          Con convenio para los matriculados de
+          Nos apoyan
         </p>
         <div className="mt-6 flex flex-wrap items-center justify-center gap-x-10 gap-y-6">
           <CpiLogo />
