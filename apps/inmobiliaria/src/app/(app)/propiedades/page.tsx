@@ -188,6 +188,9 @@ export default function PropiedadesPage() {
       return (
         p.propiedad.direccion.toLowerCase().includes(term) ||
         p.propiedad.ciudad.toLowerCase().includes(term) ||
+        // Complejo: buscar el nombre del complejo lista todas sus propiedades
+        // (feedback 14/07: identificar rápido varias del mismo complejo).
+        (p.propiedad.complejo?.toLowerCase().includes(term) ?? false) ||
         p.propietarios.some((o) =>
           `${o.nombre} ${o.apellido}`.toLowerCase().includes(term),
         ) ||
@@ -282,7 +285,7 @@ export default function PropiedadesPage() {
               value={q}
               onChange={(e) => setQ(e.target.value)}
               className="pl-9"
-              placeholder="Buscar dirección, inquilino o propietario"
+              placeholder="Buscar dirección, complejo, inquilino o propietario"
               aria-label="Buscar propiedades"
             />
           </div>
@@ -389,6 +392,12 @@ export default function PropiedadesPage() {
                             {propiedad.ciudad}, {propiedad.provincia} ·{' '}
                             {tipoPropiedadLabel[propiedad.tipo]}
                           </p>
+                          {propiedad.complejo && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                              <Building2 className="h-3 w-3" />
+                              {propiedad.complejo}
+                            </span>
+                          )}
                         </div>
                         <Badge variant={estadoCfg.variant} className="shrink-0">
                           {estadoCfg.label}

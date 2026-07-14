@@ -776,6 +776,8 @@ interface PropiedadApi {
   estado: string;
   contratoActualId: string | null;
   sociedadId: string | null;
+  complejo?: string | null;
+  consorcio?: { nombre: string } | null;
   participaciones: Array<{
     propietarioId: string;
     porcentaje: number;
@@ -837,6 +839,8 @@ function mapPropiedad(p: PropiedadApi): Propiedad {
     })),
     contratoActualId: p.contratoActualId,
     ...(p.sociedadId ? { sociedadId: p.sociedadId } : {}),
+    // Complejo EFECTIVO: consorcio real si está ligado, si no el texto libre.
+    complejo: p.consorcio?.nombre ?? p.complejo ?? null,
     createdAt: '',
   };
 }
@@ -1173,6 +1177,8 @@ export interface NuevaPropiedad {
   fotoUrl?: string;
   /** Reglas de convivencia (texto libre) visibles para el inquilino en su PWA. */
   reglasConvivencia?: string;
+  /** Nombre de complejo/edificio para agrupar propiedades. */
+  complejo?: string;
   propietarios: Array<{ propietarioId: string; porcentaje: number }>;
 }
 

@@ -342,6 +342,9 @@ export async function coreRoutes(app: FastifyInstance) {
       include: {
         participaciones: { include: { propietario: { select: { id: true, nombre: true, apellido: true } } } },
         contratoActual: { select: { id: true, estado: true, monto: true, moneda: true, modoCobranza: true } },
+        // Para el display de complejo: si la propiedad está ligada a un Consorcio
+        // real, el front muestra ese nombre; si no, el texto libre `complejo`.
+        consorcio: { select: { nombre: true } },
       },
       orderBy: { createdAt: 'asc' },
     });
@@ -416,6 +419,8 @@ export async function coreRoutes(app: FastifyInstance) {
         fotoUrl: z.string().nullable().optional(),
         // Reglas de convivencia (texto libre, visible al inquilino). undefined = no tocar.
         reglasConvivencia: z.string().trim().max(2000).nullable().optional(),
+        // Nombre libre de complejo/edificio. undefined = no tocar.
+        complejo: z.string().trim().max(120).nullable().optional(),
       })
       .safeParse(request.body);
     if (!parsed.success) {
@@ -441,6 +446,7 @@ export async function coreRoutes(app: FastifyInstance) {
         m2: b.m2 ?? null,
         ...(b.fotoUrl !== undefined ? { fotoUrl: b.fotoUrl || null } : {}),
         ...(b.reglasConvivencia !== undefined ? { reglasConvivencia: b.reglasConvivencia?.trim() || null } : {}),
+        ...(b.complejo !== undefined ? { complejo: b.complejo?.trim() || null } : {}),
       },
     });
     return propiedad;
@@ -638,6 +644,8 @@ export async function coreRoutes(app: FastifyInstance) {
         fotoUrl: z.string().optional(),
         // Reglas básicas de convivencia (texto libre, visible al inquilino en su PWA).
         reglasConvivencia: z.string().trim().max(2000).nullable().optional(),
+        // Nombre libre de complejo/edificio para agrupar (feedback 14/07).
+        complejo: z.string().trim().max(120).nullable().optional(),
         propietarios: z
           .array(z.object({ propietarioId: z.string(), porcentaje: z.number().positive().max(100) }))
           .min(1),
@@ -673,6 +681,7 @@ export async function coreRoutes(app: FastifyInstance) {
           m2: d.m2 ?? null,
           fotoUrl: d.fotoUrl ?? null,
           reglasConvivencia: d.reglasConvivencia?.trim() || null,
+          complejo: d.complejo?.trim() || null,
           estado: 'DISPONIBLE',
         },
       });

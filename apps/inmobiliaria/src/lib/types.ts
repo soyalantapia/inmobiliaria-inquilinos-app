@@ -66,6 +66,9 @@ export interface Propiedad {
    * en qué sociedad agrupa los reportes. Si falta, asume la principal.
    */
   sociedadId?: string;
+  /** Nombre de complejo/edificio para agrupar (feedback 14/07). Es el efectivo:
+   *  consorcio real si está ligado, si no el texto libre. null = sin complejo. */
+  complejo?: string | null;
   createdAt: string;
 }
 
