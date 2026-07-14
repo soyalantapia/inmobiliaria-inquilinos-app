@@ -859,8 +859,8 @@ export async function coreRoutes(app: FastifyInstance) {
       // dónde transferir.
       if (!part.propietario.cuentaCobranza) {
         return reply.code(400).send({
-          message: `Cargale la cuenta de cobro a ${part.propietario.nombre} ${part.propietario.apellido ?? ''}`.trim() +
-            ' (CBU/alias, en su ficha) antes de crear el contrato con cobranza directa',
+          message: `Falta la cuenta de cobro directo de ${part.propietario.nombre} ${part.propietario.apellido ?? ''}`.trim() +
+            '. Entrá a la ficha del propietario → "Cuenta de cobranza directa" y cargá banco + CBU (22 dígitos) + alias. (El CBU/alias del alta del propietario NO alcanza para el cobro directo.)',
         });
       }
       cobraDirectoPropietarioId = part.propietarioId;
@@ -2611,8 +2611,8 @@ export async function coreRoutes(app: FastifyInstance) {
       }
       if (!part.propietario.cuentaCobranza) {
         return reply.code(400).send({
-          message: `Cargale la cuenta de cobro a ${part.propietario.nombre} ${part.propietario.apellido ?? ''}`.trim() +
-            ' (CBU/alias, en su ficha) antes de pasar a cobranza directa',
+          message: `Falta la cuenta de cobro directo de ${part.propietario.nombre} ${part.propietario.apellido ?? ''}`.trim() +
+            '. Entrá a la ficha del propietario → "Cuenta de cobranza directa" y cargá banco + CBU (22 dígitos) + alias. (El CBU/alias del alta del propietario NO alcanza para el cobro directo.)',
         });
       }
       cobraDirectoPropietarioId = part.propietarioId;
