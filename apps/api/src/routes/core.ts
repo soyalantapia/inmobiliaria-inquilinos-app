@@ -2643,4 +2643,37 @@ export async function coreRoutes(app: FastifyInstance) {
     });
     return { ok: true, modoCobranza: actualizado.modoCobranza };
   });
+
+  // Editar el WhatsApp/teléfono del inquilino titular sin rehacer el contrato.
+  // Antes el teléfono del inquilino SOLO se podía cargar en el alta → si quedaba
+  // vacío no había forma de agregarlo, y la cobranza por WhatsApp se quedaba sin
+  // número. Scope: solo teléfono (el email es la identidad de login OTP y tiene
+  // @@unique([inmobiliariaId,email]) → no se toca acá). Sin auditoría/migración:
+  // cambiar el teléfono no rerutea plata (eso es CBU / modo de cobranza).
+  app.patch('/contratos/:id/inquilino-contacto', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'contratos.crear');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const body = z
+      .object({ telefono: z.string().trim().max(40).optional() })
+      .safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ message: 'Teléfono inválido' });
+
+    // Scopeado por inmobiliariaId (multi-tenant): un id ajeno => 404.
+    const contrato = await prisma.contrato.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      select: { id: true, inquilinoTitular: { select: { id: true } } },
+    });
+    if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
+    if (!contrato.inquilinoTitular) {
+      return reply.code(400).send({ message: 'El contrato todavía no tiene inquilino titular cargado' });
+    }
+
+    const telefono = body.data.telefono?.trim() || null;
+    await prisma.inquilino.update({
+      where: { id: contrato.inquilinoTitular.id },
+      data: { telefono },
+    });
+    return { ok: true, telefono };
+  });
 }
