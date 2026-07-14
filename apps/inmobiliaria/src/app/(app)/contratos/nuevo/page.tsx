@@ -1395,13 +1395,19 @@ function CargarContratoApiWizard() {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="telefono">Teléfono</Label>
+                  <Label htmlFor="telefono" className="flex items-center gap-1.5">
+                    💬 WhatsApp del inquilino
+                  </Label>
                   <Input
                     id="telefono"
                     value={telefono}
                     onChange={(e) => setTelefono(e.target.value)}
                     placeholder="11 5555 5555"
                   />
+                  <p className="text-[11px] text-muted-foreground">
+                    Es el número al que le vas a escribir y cobrar por WhatsApp. Distinto del
+                    teléfono del propietario (ese va en la ficha del propietario).
+                  </p>
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="dni">DNI</Label>
