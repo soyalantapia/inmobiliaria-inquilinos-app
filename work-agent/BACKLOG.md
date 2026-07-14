@@ -8,7 +8,8 @@
 
 ## Feedback del día (WhatsApp 14/07) — 4 ítems
 
-### FB1 · Modo de cobranza: default silencioso + no editable — `P1` · 🟡 en curso
+### FB1 · Modo de cobranza: default silencioso + no editable — `P1` · 🟢 hecho (rama `feat/feedback-cobranza`)
+> **Resuelto:** (a) wizard con radio-cards explícitas (commit 3e7d692); (b) `PATCH /contratos/:id/modo-cobranza` + card editable, con guard de rendición (409 si hay cobros del mes) y validación de cuenta del dueño (commit 7f69774). E2E verificado. _Nota: el seed dev tiene cnt_005 PROPIETARIO_DIRECTO sin cuenta del dueño (inconsistente); no afecta prod porque el alta exige la cuenta._
 - **Reportó:** "cargué contrato y no puse que cobra el propietario, por defecto me puso *banco recaudador* y no me deja editar el modo de cobranza."
 - **Entendí:** al no tocar el selector, el contrato queda en modo `INMOBILIARIA` (lo que el panel llama "cuenta recaudadora" / "banco recaudador") sin avisar el impacto; y una vez creado el contrato **no hay forma de cambiar el modo** (el botón dice "Próximamente" y no existe endpoint).
 - **Causa raíz:** (1) UX — el modo es un `<Select>` con default silencioso `INMOBILIARIA` y labels inconsistentes entre wizard ("Cobra la inmobiliaria") y detalle ("Cuenta recaudadora"). (2) Feature faltante — nunca se construyó `PATCH /contratos/:id/modo-cobranza`; la card de edición está bloqueada en prod a propósito (para no escribir auditoría fantasma).
