@@ -443,7 +443,18 @@ export default function DetalleContratoPage() {
                       contratoId (API en prod, mock en demo). Antes eran strings
                       hardcoded idénticos para todos los contratos. */}
                   <Row label="Nombre" value={c.inquilino} />
-                  <Row label="WhatsApp" value={contacto?.titular.telefono ?? '—'} />
+                  <Row
+                    label="WhatsApp"
+                    value={
+                      <span className="inline-flex items-center gap-1.5">
+                        {contacto?.titular.telefono ?? '—'}
+                        <EditarWhatsappInquilinoButton
+                          contratoId={c.id}
+                          telefonoActual={contacto?.titular.telefono ?? null}
+                        />
+                      </span>
+                    }
+                  />
                   <Row label="Email" value={contacto?.titular.email ?? '—'} />
                   <Row
                     label="Garante"
@@ -1079,6 +1090,91 @@ function Row({ label, value, bold }: { label: string; value: React.ReactNode; bo
       <span className="text-muted-foreground">{label}</span>
       <span className={bold ? 'font-semibold' : ''}>{value}</span>
     </div>
+  );
+}
+
+/**
+ * Lápiz para editar el WhatsApp del inquilino titular sin rehacer el contrato.
+ * Antes el teléfono del inquilino solo se cargaba en el alta → si quedaba vacío
+ * no había forma de agregarlo y la cobranza por WhatsApp se quedaba sin número.
+ */
+function EditarWhatsappInquilinoButton({
+  contratoId,
+  telefonoActual,
+}: {
+  contratoId: string;
+  telefonoActual: string | null;
+}) {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [valor, setValor] = useState('');
+  const [guardando, setGuardando] = useState(false);
+
+  useEffect(() => {
+    if (open) setValor(telefonoActual && telefonoActual !== '—' ? telefonoActual : '');
+  }, [open, telefonoActual]);
+
+  const guardar = async () => {
+    setGuardando(true);
+    try {
+      await apiFetch(`/contratos/${contratoId}/inquilino-contacto`, {
+        method: 'PATCH',
+        body: JSON.stringify({ telefono: valor.trim() }),
+      });
+      await qc.invalidateQueries({ queryKey: ['contrato', contratoId] });
+      toast({ variant: 'success', title: 'WhatsApp del inquilino actualizado' });
+      setOpen(false);
+    } catch (e) {
+      toast({
+        variant: 'destructive',
+        title: 'No se pudo guardar',
+        description: e instanceof ApiError ? e.message : 'Probá de nuevo.',
+      });
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="text-muted-foreground transition-colors hover:text-foreground"
+        aria-label="Editar WhatsApp del inquilino"
+      >
+        <Pencil className="h-3 w-3" />
+      </button>
+      <Dialog open={open} onOpenChange={(o) => !guardando && setOpen(o)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>WhatsApp del inquilino</DialogTitle>
+            <DialogDescription>
+              Es el número al que le escribís y le cobrás por WhatsApp. Distinto del teléfono
+              del propietario (ese va en la ficha del propietario).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-wa-inq">Número</Label>
+            <Input
+              id="edit-wa-inq"
+              value={valor}
+              onChange={(e) => setValor(e.target.value)}
+              placeholder="11 5555 5555"
+              autoFocus
+            />
+          </div>
+          <div className="flex gap-2 pt-2">
+            <Button variant="outline" className="flex-1" onClick={() => setOpen(false)} disabled={guardando}>
+              Cancelar
+            </Button>
+            <Button className="flex-1" onClick={guardar} disabled={guardando}>
+              {guardando ? 'Guardando…' : 'Guardar'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 

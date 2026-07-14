@@ -66,16 +66,34 @@ export function MensajeInquilinoDialog({
       toast({ title: 'Falta el mensaje', variant: 'destructive' });
       return;
     }
-    // En backend real: POST a /api/comunicaciones. Acá simulamos.
-    if (canal === 'WHATSAPP' && inquilino.telefono) {
-      const tel = inquilino.telefono.replace(/[^\d]/g, '');
+    // Antes: si el canal elegido no tenía el dato de contacto (ej. inquilino sin
+    // teléfono), caía en el else sin hacer nada pero igual toasteaba "enviado"
+    // → falso éxito. Ahora frenamos con un mensaje claro y NO decimos que salió.
+    const tel = inquilino.telefono?.replace(/[^\d]/g, '') || '';
+    if ((canal === 'WHATSAPP' || canal === 'LLAMADA') && !tel) {
+      toast({
+        variant: 'destructive',
+        title: 'Este inquilino no tiene WhatsApp/teléfono cargado',
+        description: 'Cargá el número del inquilino desde el contrato para poder escribirle o llamarlo.',
+      });
+      return;
+    }
+    if (canal === 'EMAIL' && !inquilino.email) {
+      toast({
+        variant: 'destructive',
+        title: 'Este inquilino no tiene email cargado',
+        description: 'Cargá el email del inquilino desde el contrato para escribirle por ahí.',
+      });
+      return;
+    }
+    // En backend real: POST a /api/comunicaciones. Acá abrimos el canal.
+    if (canal === 'WHATSAPP') {
       window.open(`https://wa.me/${tel}?text=${encodeURIComponent(cuerpo)}`, '_blank');
-    } else if (canal === 'EMAIL' && inquilino.email) {
+    } else if (canal === 'EMAIL') {
       const subject = encodeURIComponent(asunto || 'Sobre tu contrato');
       const body = encodeURIComponent(cuerpo);
       window.location.href = `mailto:${inquilino.email}?subject=${subject}&body=${body}`;
-    } else if (canal === 'LLAMADA' && inquilino.telefono) {
-      const tel = inquilino.telefono.replace(/[^\d]/g, '');
+    } else if (canal === 'LLAMADA') {
       window.location.href = `tel:${tel}`;
     }
     toast({ title: 'Mensaje enviado (queda registrado en Comunicaciones)' });
