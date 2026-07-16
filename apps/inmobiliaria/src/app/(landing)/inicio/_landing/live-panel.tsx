@@ -145,9 +145,11 @@ export function LivePanel() {
         </div>
       </div>
 
-      {/* hint de interactividad */}
+      {/* hint de interactividad — el copy se adapta: en desktop se pausa con el
+          mouse; en mobile (sin hover) se invita a tocar "Validar" (que sí anda al tap). */}
       <p className="mt-9 text-center text-[12px] text-muted-foreground">
-        Pasá el mouse para pausarlo y validá el pago vos mismo.
+        <span className="hidden md:inline">Pasá el mouse para pausarlo y validá el pago vos mismo.</span>
+        <span className="md:hidden">Tocá “Validar” y confirmá el pago vos mismo.</span>
       </p>
     </div>
   );
