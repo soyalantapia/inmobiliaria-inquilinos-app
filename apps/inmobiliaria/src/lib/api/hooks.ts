@@ -1072,7 +1072,12 @@ export function usePropietarios(): {
   const props = propsQ.data ?? [];
   const cobradoByOwner: Record<string, number> = {};
   for (const l of liquidaciones) {
-    if (l.periodo !== period || l.estado !== 'PAGADO') continue;
+    // Incluye PARCIAL además de PAGADO: la rendición real del server rinde lo
+    // CONCILIADO de las liqs PARCIAL (plata.ts POST /rendiciones, estado IN
+    // PAGADO/PARCIAL). Antes acá contábamos SOLO PAGADO → un dueño con cobro
+    // parcial este mes mostraba $0 cobrado y NO aparecía en "por rendir",
+    // aunque hubiera plata parcial para rendirle.
+    if (l.periodo !== period || (l.estado !== 'PAGADO' && l.estado !== 'PARCIAL')) continue;
     const prop = props.find((p) => p.contratoActualId === l.contratoId);
     if (!prop) continue;
     // El KPI "cobrado / a rendir" refleja lo que la inmobiliaria va a RENDIR al
@@ -1080,12 +1085,24 @@ export function usePropietarios(): {
     // modoCobranza=INMOBILIARIA; en PROPIETARIO_DIRECTO el dueño cobra él mismo y no
     // se rinde → contarlo acá inflaba el bruto y no coincidía con la rendición real.
     if (prop.contratoActual?.modoCobranza === 'PROPIETARIO_DIRECTO') continue;
+    // Alquiler efectivamente cobrado (sobre el ALQUILER, no montoTotal: las
+    // expensas no le corresponden al dueño). PAGADO = alquiler completo; PARCIAL
+    // = la porción de alquiler del montoPagado (conciliado). CLAVE: se prorratea
+    // sobre la BASE sin mora (montoTotal − montoPunitorio), NO sobre el
+    // montoTotal que devuelve el API (ese YA incluye el punitorio). El server
+    // (POST /rendiciones) y el cierre de caja prorratean/capean sobre la base
+    // sin mora; usar montoTotal-con-mora en el denominador subestimaba el
+    // rendible de toda PARCIAL vencida con recargo.
+    const baseSinMora = Math.max(0, l.montoTotal - l.montoPunitorio);
+    const alquilerCobrado =
+      l.estado === 'PAGADO'
+        ? l.montoAlquiler
+        : baseSinMora > 0
+          ? Math.min(l.montoPagado, baseSinMora) * (l.montoAlquiler / baseSinMora)
+          : 0;
     for (const part of prop.participaciones) {
-      // Sobre el ALQUILER (no montoTotal): igual que la rendición real del server,
-      // las expensas no le corresponden al propietario. Antes inflaba el KPI y el
-      // preview del diálogo de rendición.
       cobradoByOwner[part.propietarioId] =
-        (cobradoByOwner[part.propietarioId] ?? 0) + l.montoAlquiler * (part.porcentaje / 100);
+        (cobradoByOwner[part.propietarioId] ?? 0) + alquilerCobrado * (part.porcentaje / 100);
     }
   }
 

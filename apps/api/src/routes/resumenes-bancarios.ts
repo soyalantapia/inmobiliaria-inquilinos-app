@@ -374,12 +374,28 @@ export async function resumenesBancariosRoutes(app: FastifyInstance): Promise<vo
           liq.montoPunitorioManual != null ? Number(liq.montoPunitorioManual) : null,
         );
         const total = Number(liq.montoTotal) + punitorio;
+        const cierra = total > 0 && cobrado >= total;
         await tx.liquidacion.update({
           where: { id: liq.id },
-          data: total > 0 && cobrado >= total ? { estado: 'PAGADO', fechaPago: credito.fecha, metodoPago: 'TRANSFERENCIA' } : { estado: 'PARCIAL' },
+          data: cierra ? { estado: 'PAGADO', fechaPago: credito.fecha, metodoPago: 'TRANSFERENCIA' } : { estado: 'PARCIAL' },
         });
-        if (total > 0 && cobrado >= total) {
+        if (cierra) {
           await tx.pago.update({ where: { id: nuevoPago.id }, data: { tipo: 'TOTAL' } });
+          // La liq quedó saldada por el extracto. Un aviso de pago del inquilino
+          // (INFORMADO) que siga pendiente sobre esta liq YA no se puede validar
+          // —el tope-al-saldo lo rechazaría con un 409 confuso— y ensucia "Pagos a
+          // validar": es el MISMO pago que ahora confirmó el banco. Lo cerramos con
+          // el patrón neutro "Anulado tras conciliar:" (la PWA del inquilino lo
+          // muestra como anulado, sin alarmarlo; el cobro figura en "Pagos recibidos").
+          await tx.pago.updateMany({
+            where: { liquidacionId: liq.id, estado: 'INFORMADO' },
+            data: {
+              estado: 'RECHAZADO',
+              observacion: 'Anulado tras conciliar: el pago se confirmó por el extracto bancario.',
+              decididoPorId: u.userId,
+              decididoAt: new Date(),
+            },
+          });
         }
         return nuevoPago;
       });
