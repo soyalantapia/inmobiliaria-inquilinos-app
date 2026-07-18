@@ -24,6 +24,8 @@ import {
   DialogTitle,
 } from '@llave/ui/dialog';
 import { propiedadesMock, contratosMock } from '@/lib/mock-data';
+import { apiEnabled } from '@/lib/api/client';
+import { useRendicionesList } from '@/lib/api/use-rendiciones';
 import {
   listarRendicionesDePropietario,
   type Rendicion,
@@ -58,11 +60,31 @@ export function HistorialPropietarioDialog({
   open,
   onOpenChange,
 }: HistorialPropietarioDialogProps) {
+  // En prod las rendiciones salen del server (GET /rendiciones); en demo, de
+  // localStorage. Antes solo leía localStorage → historial en $0 en prod aunque
+  // ya le hubieras rendido.
+  const { rendiciones: rendicionesApi } = useRendicionesList();
   const rendiciones = useMemo(() => {
     if (!propietario) return [];
+    if (apiEnabled) {
+      return rendicionesApi
+        .filter((r) => r.propietarioId === propietario.id)
+        .map((r) => ({
+          id: r.id,
+          propietarioId: r.propietarioId,
+          periodo: r.periodo,
+          montoBruto: Number(r.montoBruto),
+          comisionPct: r.comisionPct,
+          totalGastos: Number(r.totalGastos),
+          montoNeto: Number(r.montoNeto),
+          rendidoAt: r.createdAt ?? `${r.periodo}-01`,
+          metodo: r.metodo,
+          notas: r.notas,
+        }));
+    }
     return listarRendicionesDePropietario(propietario.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [propietario, open]);
+  }, [propietario, open, rendicionesApi]);
 
   const propiedades = useMemo(() => {
     if (!propietario) return [];
@@ -113,7 +135,7 @@ export function HistorialPropietarioDialog({
         <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
           <MetricBox
             label="Unidades"
-            value={propiedades.length.toString()}
+            value={(apiEnabled ? (propietario.propiedadesIds?.length ?? 0) : propiedades.length).toString()}
             icon={<MapPin className="h-3 w-3 text-primary" />}
           />
           <MetricBox
