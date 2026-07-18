@@ -111,10 +111,17 @@ export default function DepositosPage() {
                           <div className="flex items-center justify-end gap-1">
                             {/* Solo se resuelve el depósito de un contrato TERMINADO (el de
                                 un contrato ACTIVO sigue en custodia hasta que el inquilino se va). */}
-                            {c.estadoContrato !== 'ACTIVO' && (
+                            {c.estadoContrato !== 'ACTIVO' ? (
                               <Button size="sm" variant="outline" onClick={() => setResolviendo(c)}>
                                 Resolver
                               </Button>
+                            ) : (
+                              <span
+                                className="text-[11px] text-muted-foreground"
+                                title="El depósito se resuelve (devolver/retener) cuando termina el contrato y el inquilino se va."
+                              >
+                                En custodia
+                              </span>
                             )}
                             <Link href={`/contratos/${c.contratoId}`} aria-label="Ver contrato">
                               <ChevronRight className="h-4 w-4 text-muted-foreground" />

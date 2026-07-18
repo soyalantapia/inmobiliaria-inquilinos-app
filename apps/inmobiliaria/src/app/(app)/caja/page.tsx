@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ArrowDown,
   Banknote,
@@ -34,7 +34,6 @@ import { Label } from '@llave/ui/label';
 import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
 import { MoneyInput } from '@/components/money-input';
-import { PinPromptDialog } from '@/components/pin-prompt-dialog';
 import { Topbar } from '@/components/topbar';
 import {
   type CategoriaGasto,
@@ -74,8 +73,6 @@ export default function CajaPage() {
   const [abrirForm, setAbrirForm] = useState(false);
   const [eliminando, setEliminando] = useState<MovimientoCaja | null>(null);
   const [filtroProp, setFiltroProp] = useState<string>('TODAS');
-  const [showPin, setShowPin] = useState(false);
-  const transitioningToPin = useRef(false);
 
   const filtrados = useMemo(() => {
     if (filtroProp === 'TODAS') return movimientos;
@@ -93,18 +90,17 @@ export default function CajaPage() {
     .reduce((acc, m) => acc + m.monto, 0);
   const cantidadMov = filtrados.length;
 
-  // Devuelve null si salió bien o el mensaje de error si el server rechazó
-  // (PIN incorrecto, gasto ya rendido 409, etc.): en modo servidor el diálogo
-  // de PIN lo muestra inline y queda abierto para reintentar.
-  const handleEliminar = async (pin: string): Promise<string | null> => {
-    if (!eliminando) return null;
+  // El PIN se eliminó de la plataforma (auth/pin.ts): el borrado se confirma con
+  // un ConfirmDialog común (mantiene el "¿estás seguro?", saca el código muerto).
+  const handleEliminar = async () => {
+    if (!eliminando) return;
+    const id = eliminando.id;
+    setEliminando(null);
     try {
-      await eliminarGasto(eliminando.id, pin);
-      setEliminando(null);
+      await eliminarGasto(id, '');
       toast({ title: 'Movimiento eliminado' });
-      return null;
     } catch (e) {
-      return e instanceof Error ? e.message : 'No se pudo eliminar.';
+      toast({ variant: 'destructive', title: 'No se pudo eliminar', description: e instanceof Error ? e.message : 'Probá de nuevo.' });
     }
   };
 
@@ -259,30 +255,12 @@ export default function CajaPage() {
 
       <ConfirmDialog
         open={!!eliminando}
-        onOpenChange={(o) => !o && !transitioningToPin.current && setEliminando(null)}
+        onOpenChange={(o) => !o && setEliminando(null)}
         title="¿Eliminar movimiento?"
         description={eliminando?.descripcion}
-        confirmLabel="Eliminar · pedir PIN"
+        confirmLabel="Eliminar movimiento"
         variant="destructive"
-        onConfirm={() => {
-          transitioningToPin.current = true;
-          setShowPin(true);
-        }}
-      />
-
-      <PinPromptDialog
-        abierto={showPin}
-        accion="Eliminar gasto de caja"
-        subaccion={eliminando?.descripcion}
-        validacion={apiEnabled ? 'servidor' : 'local'}
-        onClose={() => {
-          transitioningToPin.current = false;
-          setShowPin(false);
-          // Limpiar `eliminando` también: si no, ConfirmDialog (open={!!eliminando})
-          // reaparece al cancelar el PIN.
-          setEliminando(null);
-        }}
-        onConfirmado={(pin) => handleEliminar(pin)}
+        onConfirm={() => void handleEliminar()}
       />
     </>
   );
