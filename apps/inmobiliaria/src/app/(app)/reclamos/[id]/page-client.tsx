@@ -585,6 +585,22 @@ export default function DetalleReclamoPage() {
                       {tiempoRelativo(reclamo.resueltoAt)} · {reclamo.asignadoA ?? '—'}
                     </p>
                   )}
+                  {reclamo.costoTrabajo != null && Number(reclamo.costoTrabajo) > 0 && (
+                    <p className="text-xs">
+                      Costo del trabajo:{' '}
+                      <strong>{formatMonto(Number(reclamo.costoTrabajo), reclamo.moneda ?? 'ARS')}</strong>
+                      {reclamo.pagador && (
+                        <>
+                          {' · '}lo paga{' '}
+                          {reclamo.pagador === 'INQUILINO'
+                            ? 'el inquilino'
+                            : reclamo.pagador === 'DEPOSITO'
+                              ? 'el depósito de garantía'
+                              : 'el propietario'}
+                        </>
+                      )}
+                    </p>
+                  )}
                   {/* "Cerrar definitivamente" (CERRADO) no tiene endpoint → demo. */}
                   {!apiEnabled && (
                     <Button
