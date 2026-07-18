@@ -1001,7 +1001,10 @@ function CargarContratoApiWizard() {
     ) / 100;
 
   const pasoPropiedadValido = !!propiedadId;
-  const pasoInquilinoValido = nombre.trim().length >= 2;
+  // El server exige email con formato válido si se carga → validamos acá para no
+  // frenar el alta con un 400 genérico al final. Vacío se permite (opcional).
+  const emailInquilinoOk = !email.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  const pasoInquilinoValido = nombre.trim().length >= 2 && emailInquilinoOk;
   const pasoTerminosValido =
     (!requiereAlquiler || Number(monto) > 0) &&
     fechaInicio.length === 10 &&
@@ -1392,7 +1395,13 @@ function CargarContratoApiWizard() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="juan@email.com"
+                    aria-invalid={!!email.trim() && !emailInquilinoOk}
                   />
+                  {!!email.trim() && !emailInquilinoOk && (
+                    <p className="text-[11px] text-destructive">
+                      El email no tiene un formato válido (ej: nombre@correo.com).
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="telefono" className="flex items-center gap-1.5">

@@ -123,7 +123,7 @@ export default function PropietariosPage() {
             <CardContent className="p-5">
               <p className="text-xs uppercase tracking-wide text-muted-foreground">Propietarios</p>
               <p className="mt-1 text-2xl font-semibold">{propietarios.length}</p>
-              <p className="text-xs text-muted-foreground">{totalPropiedades} contrato{totalPropiedades === 1 ? '' : 's'}</p>
+              <p className="text-xs text-muted-foreground">{totalPropiedades} propiedad{totalPropiedades === 1 ? '' : 'es'}</p>
             </CardContent>
           </Card>
           <Card>
@@ -349,17 +349,31 @@ export default function PropietariosPage() {
 
                     {/* Acciones primarias: WhatsApp pre-armado + Rendir. */}
                     <div className="grid grid-cols-[1fr_1fr_auto] gap-1.5 border-t pt-3">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="gap-1.5 border-emerald-200 bg-emerald-50/60 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-900/40 dark:bg-emerald-900/10 dark:text-emerald-300"
-                        asChild
-                      >
-                        <a href={waUrl} target="_blank" rel="noreferrer">
+                      {tel ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="gap-1.5 border-emerald-200 bg-emerald-50/60 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-900/40 dark:bg-emerald-900/10 dark:text-emerald-300"
+                          asChild
+                        >
+                          <a href={waUrl} target="_blank" rel="noreferrer">
+                            <MessageCircle className="h-3.5 w-3.5" />
+                            WhatsApp
+                          </a>
+                        </Button>
+                      ) : (
+                        // Sin teléfono el wa.me quedaba sin número (pantalla de error).
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="gap-1.5"
+                          disabled
+                          title="Sin teléfono cargado — agregalo en la ficha del propietario"
+                        >
                           <MessageCircle className="h-3.5 w-3.5" />
                           WhatsApp
-                        </a>
-                      </Button>
+                        </Button>
+                      )}
                       <Button
                         size="sm"
                         onClick={() => setRendiendoA(p)}

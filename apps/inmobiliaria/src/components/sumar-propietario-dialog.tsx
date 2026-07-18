@@ -61,6 +61,12 @@ export function SumarPropietarioDialog({ open, onOpenChange }: Props) {
       });
       return;
     }
+    // El diálogo no está dentro de un <form>, así que la validación nativa de
+    // type=email no dispara. El server exige .email() → validamos el formato acá.
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      toast({ title: 'Revisá el email', description: 'El email no tiene un formato válido (ej: nombre@correo.com).', variant: 'destructive' });
+      return;
+    }
     const checkCuit = validarCuit(cuit);
     if (!checkCuit.valido) {
       toast({

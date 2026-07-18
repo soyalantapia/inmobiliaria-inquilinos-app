@@ -120,6 +120,10 @@ export function useResumenBancarioDetalle(id: string | null): {
         await qc.invalidateQueries({ queryKey: ['resumenes-bancarios'] });
         await qc.invalidateQueries({ queryKey: ['pagos'] });
         await qc.invalidateQueries({ queryKey: ['liquidaciones'] });
+        // Conciliar salda deuda del contrato → refrescar lista y detalle de
+        // contratos (si no, siguen mostrando la deuda vieja). Patrón use-pagos.
+        await qc.invalidateQueries({ queryKey: ['contratos'] });
+        await qc.invalidateQueries({ queryKey: ['contrato'] });
         return null;
       } catch (e) {
         return e instanceof Error ? e.message : 'No se pudo conciliar';

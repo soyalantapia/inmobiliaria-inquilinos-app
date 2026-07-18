@@ -41,6 +41,10 @@ export function SaldarDeudaButton({ contratoId, deuda, moneda }: { contratoId: s
       qc.invalidateQueries({ queryKey: ['persona'] });
       qc.invalidateQueries({ queryKey: ['contrato', contratoId] });
       qc.invalidateQueries({ queryKey: ['contratos'] });
+      // Crea Pagos CONCILIADO y salda cuotas → refrescar también las listas
+      // globales de pagos y liquidaciones (mismo patrón que use-pagos/cargar-pago).
+      qc.invalidateQueries({ queryKey: ['pagos'] });
+      qc.invalidateQueries({ queryKey: ['liquidaciones'] });
       toast({
         variant: 'success',
         title: condonar ? 'Deuda condonada' : 'Cobro registrado',

@@ -560,6 +560,16 @@ function DialogCargarGasto({
       });
       return;
     }
+    // El server exige descripción de al menos 3 caracteres; validamos igual acá
+    // para no comerse un 400 críptico después de completar todo.
+    if (descripcion.trim().length < 3) {
+      toast({
+        title: 'Descripción muy corta',
+        description: 'Contá en pocas palabras de qué es el movimiento (mínimo 3 caracteres).',
+        variant: 'destructive',
+      });
+      return;
+    }
     const montoNum = Number(monto);
     if (!Number.isFinite(montoNum) || montoNum <= 0) {
       toast({ title: 'El monto tiene que ser positivo', variant: 'destructive' });

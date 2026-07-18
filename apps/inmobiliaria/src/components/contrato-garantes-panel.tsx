@@ -51,6 +51,15 @@ function GaranteForm({
       toast({ variant: 'destructive', title: 'Faltan datos', description: 'El nombre y el teléfono son obligatorios.' });
       return;
     }
+    // Mínimos que exige el server (evita un 400 genérico): nombre 2+, teléfono 3+.
+    if (nombre.trim().length < 2) {
+      toast({ variant: 'destructive', title: 'Nombre muy corto', description: 'Escribí el nombre completo del garante.' });
+      return;
+    }
+    if (telefono.trim().length < 3) {
+      toast({ variant: 'destructive', title: 'Teléfono inválido', description: 'Cargá un teléfono de contacto válido.' });
+      return;
+    }
     const input: GaranteInput = {
       tipo,
       nombreProveedor: nombre.trim(),

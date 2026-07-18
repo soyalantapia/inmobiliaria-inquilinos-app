@@ -142,10 +142,20 @@ export default function AnunciosPage() {
     }
   };
 
-  const ejecutarEliminar = (a: Anuncio) => {
-    void eliminar(a.id);
-    setAnuncioAEliminar(null);
-    toast({ title: 'Anuncio eliminado' });
+  const ejecutarEliminar = async (a: Anuncio) => {
+    // Antes hacía `void eliminar(...)` y toasteaba "eliminado" aunque el DELETE
+    // fallara (falso éxito). Ahora esperamos el resultado y avisamos si falla.
+    try {
+      await eliminar(a.id);
+      setAnuncioAEliminar(null);
+      toast({ title: 'Anuncio eliminado' });
+    } catch (e) {
+      toast({
+        variant: 'destructive',
+        title: 'No se pudo eliminar el anuncio',
+        description: e instanceof Error ? e.message : 'Probá de nuevo.',
+      });
+    }
   };
 
   if (!hidratado) return null;
@@ -699,7 +709,7 @@ function CrearAnuncioDialog({ abierto, onClose, onGuardar, contratosApi }: Dialo
             <span>
               Llega a{' '}
               <strong className="text-foreground tabular-nums">{destinatarios}</strong>{' '}
-              destinatarios · {AUDIENCIA_LABEL[audiencia]}
+              destinatario{destinatarios === 1 ? '' : 's'} · {AUDIENCIA_LABEL[audiencia]}
             </span>
           </div>
 
@@ -741,8 +751,8 @@ function CrearAnuncioDialog({ abierto, onClose, onGuardar, contratosApi }: Dialo
         open={confirmando}
         onOpenChange={setConfirmando}
         title="¿Enviar el anuncio?"
-        description={`Vas a avisar a ${destinatarios} destinatarios (${AUDIENCIA_LABEL[audiencia].toLowerCase()}) por app y email. Esto no se puede deshacer.`}
-        confirmLabel={`Enviar a ${destinatarios}`}
+        description={`Vas a avisar a ${destinatarios} destinatario${destinatarios === 1 ? '' : 's'} (${AUDIENCIA_LABEL[audiencia].toLowerCase()}) por app y email. Esto no se puede deshacer.`}
+        confirmLabel={`Enviar a ${destinatarios} destinatario${destinatarios === 1 ? '' : 's'}`}
         onConfirm={enviar}
       />
     </>

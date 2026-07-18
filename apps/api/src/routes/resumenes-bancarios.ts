@@ -373,12 +373,16 @@ export async function resumenesBancariosRoutes(app: FastifyInstance): Promise<vo
           credito.fecha,
           liq.montoPunitorioManual != null ? Number(liq.montoPunitorioManual) : null,
         );
+        // Tolerancia de 1 centavo, igual que validar/manual (plata.ts): `montoTotal
+        // + punitorio` en float puede quedar epsilon por encima de `cobrado` y dejar
+        // la liq PARCIAL con saldo fantasma de fracción de centavo.
         const total = Number(liq.montoTotal) + punitorio;
+        const cubierta = total > 0 && cobrado >= total - 0.01;
         await tx.liquidacion.update({
           where: { id: liq.id },
-          data: total > 0 && cobrado >= total ? { estado: 'PAGADO', fechaPago: credito.fecha, metodoPago: 'TRANSFERENCIA' } : { estado: 'PARCIAL' },
+          data: cubierta ? { estado: 'PAGADO', fechaPago: credito.fecha, metodoPago: 'TRANSFERENCIA' } : { estado: 'PARCIAL' },
         });
-        if (total > 0 && cobrado >= total) {
+        if (cubierta) {
           await tx.pago.update({ where: { id: nuevoPago.id }, data: { tipo: 'TOTAL' } });
         }
         return nuevoPago;

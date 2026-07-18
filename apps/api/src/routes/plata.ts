@@ -579,7 +579,10 @@ export async function plataRoutes(app: FastifyInstance) {
       // Sigue PAGADO sólo si OTROS conciliados cubren el total; si no, PARCIAL
       // (queda algo) o PENDIENTE/VENCIDO (no queda nada). Al dejar de estar PAGADO
       // limpiamos fechaPago/metodoPago para no dejar un "pagado" fantasma.
-      const nuevoEstado = total > 0 && cobrado >= total ? 'PAGADO' : cobrado > 0 ? 'PARCIAL' : vencida ? 'VENCIDO' : 'PENDIENTE';
+      // Tolerancia de 1 centavo (mismo umbral que validar/manual): `base + punitorio`
+      // se suma en float sin r2c, así que un epsilon binario podía volver FALSE un
+      // `cobrado >= total` que debía ser TRUE y degradar un PAGADO real a PARCIAL.
+      const nuevoEstado = total > 0 && cobrado >= total - 0.01 ? 'PAGADO' : cobrado > 0 ? 'PARCIAL' : vencida ? 'VENCIDO' : 'PENDIENTE';
       await tx.liquidacion.updateMany({
         where: { id: pago.liquidacionId, inmobiliariaId: u.inmobiliariaId },
         data:
