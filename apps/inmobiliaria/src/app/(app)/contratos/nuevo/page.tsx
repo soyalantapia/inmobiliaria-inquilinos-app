@@ -1007,6 +1007,9 @@ function CargarContratoApiWizard() {
   const pasoInquilinoValido = nombre.trim().length >= 2 && emailInquilinoOk;
   const pasoTerminosValido =
     (!requiereAlquiler || Number(monto) > 0) &&
+    // Si el contrato incluye expensas, el monto de expensas es obligatorio (antes
+    // el botón avanzaba y el server rechazaba con un 400 al final).
+    (!incluyeExpensas || Number(montoExpensas) > 0) &&
     fechaInicio.length === 10 &&
     fechaFin.length === 10 &&
     fechaFin > fechaInicio &&
@@ -1562,8 +1565,15 @@ function CargarContratoApiWizard() {
                     id="fechaFin"
                     type="date"
                     value={fechaFin}
+                    min={fechaInicio || undefined}
                     onChange={(e) => setFechaFin(e.target.value)}
+                    aria-invalid={fechaFin.length === 10 && fechaInicio.length === 10 && fechaFin <= fechaInicio}
                   />
+                  {fechaFin.length === 10 && fechaInicio.length === 10 && fechaFin <= fechaInicio && (
+                    <p className="text-[11px] text-destructive">
+                      La fecha de fin tiene que ser posterior a la de inicio.
+                    </p>
+                  )}
                 </div>
               </div>
 
