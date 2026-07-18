@@ -18,6 +18,7 @@ import {
   Building2,
   CalendarHeart,
   HardHat,
+  KeyRound,
   Landmark,
   Users,
   Wallet,
@@ -47,9 +48,10 @@ type NavLink = {
 const links: NavLink[] = [
   { href: '/', label: 'Inicio', icon: LayoutDashboard, capacidad: 'home.ver' },
   { href: '/propiedades', label: 'Propiedades', icon: Building2, capacidad: 'propiedades.ver' },
-  // Propietarios ya no es una página top-level: se gestionan DENTRO de cada
-  // propiedad (tab Propietarios, con editar). La ficha del propietario (con
-  // rendición/ARCA/historial) queda accesible desde ahí (link "Ver ficha / rendir").
+  // Propietarios como sección propia: la inmobiliaria piensa por dueño ("rendirle
+  // a X", "cargar el CBU de Y"), no sólo por propiedad. Antes sólo se llegaba de
+  // rebote desde tarjetas del dashboard y nadie la encontraba.
+  { href: '/propietarios', label: 'Propietarios', icon: KeyRound, capacidad: 'propiedades.ver' },
   { href: '/pagos', label: 'Pagos', icon: CreditCard, capacidad: 'pagos.ver' },
   { href: '/caja', label: 'Caja', icon: Wallet, capacidad: 'caja.ver' },
   { href: '/depositos', label: 'Depósitos', icon: Landmark, capacidad: 'contratos.ver' },

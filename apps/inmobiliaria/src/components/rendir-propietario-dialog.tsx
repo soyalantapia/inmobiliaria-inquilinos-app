@@ -391,12 +391,20 @@ export function RendirPropietarioDialog({
           </Badge>
         )}
 
+        {/* El CBU sólo hace falta para TRANSFERENCIA. Para Efectivo/Mercado Pago
+            se puede rendir sin CBU (antes el botón quedaba gris siempre). */}
+        {metodo === 'TRANSFERENCIA' && !propietario.cbuAlias && (
+          <p className="rounded-md bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
+            Para rendir por transferencia necesitás el CBU/alias del propietario (cargalo en su ficha),
+            o elegí Efectivo / Mercado Pago si le pagás por otra vía.
+          </p>
+        )}
         <div className="flex flex-col gap-2 sm:flex-row">
           <Button
             variant="outline"
             className="flex-1"
             onClick={() => { alsoWhatsappRef.current = false; setShowPin(true); }}
-            disabled={guardando}
+            disabled={guardando || (metodo === 'TRANSFERENCIA' && !propietario.cbuAlias)}
           >
             {guardando ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : null}
             Marcar como rendido
@@ -404,7 +412,7 @@ export function RendirPropietarioDialog({
           <Button
             className="flex-1 gap-1.5"
             onClick={() => { alsoWhatsappRef.current = true; setShowPin(true); }}
-            disabled={guardando}
+            disabled={guardando || (metodo === 'TRANSFERENCIA' && !propietario.cbuAlias)}
           >
             <MessageCircle className="h-3.5 w-3.5" />
             Rendir + WhatsApp

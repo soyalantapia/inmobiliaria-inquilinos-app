@@ -191,16 +191,12 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                 </p>
               </div>
               <div className="flex gap-2">
-                {/* La edición de propiedad escribe a overrides locales (sin
-                    endpoint PATCH todavía). En modo API la deshabilitamos. */}
-                {apiEnabled ? (
-                  <Button variant="outline" size="sm" disabled title="Próximamente">
-                    <FileText className="h-4 w-4" />
-                    Editar
-                  </Button>
-                ) : (
-                  <EditarPropiedadTrigger propiedad={propiedad} />
-                )}
+                {/* Editar propiedad persiste de verdad: en prod hace PUT
+                    /propiedades/:id (editar-propiedad-dialog); en demo, override
+                    local. El botón estaba mal deshabilitado ("Próximamente")
+                    cuando la feature ya funcionaba → no se podía corregir ni un
+                    typo de dirección/tipo/m²/complejo. */}
+                <EditarPropiedadTrigger propiedad={propiedad} />
                 {apiEnabled && propiedad.estado === 'DISPONIBLE' && (
                   <EliminarPropiedadButton propiedadId={propiedad.id} direccion={propiedad.direccion} />
                 )}
