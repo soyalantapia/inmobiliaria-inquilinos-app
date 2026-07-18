@@ -53,9 +53,24 @@ export function RenovarContratoButton({
     }
   }, [open, montoActual, fechaFinActual]);
 
+  const finActualCorta = fechaFinActual ? fechaFinActual.slice(0, 10) : '';
   const nuevoNum = montoNuevo === '' ? 0 : Math.max(0, Number(montoNuevo) || 0);
-  const finOk = !!fechaFinNueva && (!fechaFinActual || fechaFinNueva > fechaFinActual.slice(0, 10));
-  const valido = finOk && nuevoNum > 0 && /^\d{4}-\d{2}$/.test(montoDesde);
+  const finOk = !!fechaFinNueva && (!fechaFinActual || fechaFinNueva > finActualCorta);
+  const desdeOk = /^\d{4}-\d{2}$/.test(montoDesde);
+  const valido = finOk && nuevoNum > 0 && desdeOk;
+
+  // Antes el botón "Renovar" quedaba deshabilitado SIN decir por qué (Camila:
+  // "pongo fecha y precio pero no me da el botón azul"). Ahora le decimos justo
+  // qué falta, priorizando el bloqueante más común (fecha no posterior a la actual).
+  const faltante = !fechaFinNueva
+    ? 'Elegí la nueva fecha de fin.'
+    : !finOk
+      ? `La nueva fecha de fin tiene que ser posterior a la actual${finActualCorta ? ` (hoy vence el ${finActualCorta})` : ''}.`
+      : nuevoNum <= 0
+        ? 'Poné el monto del nuevo alquiler.'
+        : !desdeOk
+          ? 'Elegí desde qué mes arranca el nuevo alquiler.'
+          : null;
 
   const renovar = useMutation({
     mutationFn: async () => {
@@ -88,8 +103,19 @@ export function RenovarContratoButton({
         canon desde el período que elijas. Alquiler actual: <strong className="text-foreground">{formatMonto(montoActual, moneda)}</strong>.
       </span>
       <span className="flex items-center justify-between gap-2">
-        <span className="font-medium text-foreground">Nueva fecha de fin</span>
-        <input type="date" value={fechaFinNueva} onChange={(e) => setFechaFinNueva(e.target.value)} className="w-40 rounded border border-border bg-background px-2 py-1" />
+        <span className="font-medium text-foreground">
+          Nueva fecha de fin
+          {finActualCorta && (
+            <span className="block text-[10px] font-normal text-muted-foreground">Actual: vence el {finActualCorta}</span>
+          )}
+        </span>
+        <input
+          type="date"
+          value={fechaFinNueva}
+          min={finActualCorta || undefined}
+          onChange={(e) => setFechaFinNueva(e.target.value)}
+          className="w-40 rounded border border-border bg-background px-2 py-1"
+        />
       </span>
       <span className="flex items-center justify-between gap-2">
         <span className="font-medium text-foreground">Nuevo alquiler</span>
@@ -100,6 +126,11 @@ export function RenovarContratoButton({
         <input type="month" value={montoDesde} onChange={(e) => setMontoDesde(e.target.value)} className="w-40 rounded border border-border bg-background px-2 py-1" />
       </span>
       <input type="text" value={motivo} onChange={(e) => setMotivo(e.target.value)} className="w-full rounded border border-border bg-background px-2 py-1" placeholder="Motivo (opcional)" maxLength={200} />
+      {faltante && (
+        <span className="block rounded-md bg-destructive/10 px-2 py-1.5 text-[11px] font-medium text-destructive">
+          Para poder confirmar: {faltante}
+        </span>
+      )}
     </span>
   );
 
