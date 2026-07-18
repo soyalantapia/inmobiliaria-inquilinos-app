@@ -571,7 +571,11 @@ function DashboardReal() {
                 </p>
               ) : (
                 proximosVencimientos.map((v) => (
-                  <div key={v.id} className="flex items-center justify-between gap-2 text-sm">
+                  <Link
+                    key={v.id}
+                    href={`/contratos/${v.contratoId}`}
+                    className="-mx-2 flex items-center justify-between gap-2 rounded-md px-2 py-1 text-sm transition-colors hover:bg-muted/50"
+                  >
                     <div className="min-w-0">
                       <p className="truncate font-medium">{v.inquilino}</p>
                       <p className="truncate text-xs text-muted-foreground">{v.direccion}</p>
@@ -580,7 +584,7 @@ function DashboardReal() {
                       <p className="text-xs text-muted-foreground">{formatFechaCorta(v.fecha)}</p>
                       <p className="text-sm font-semibold tabular-nums">{formatMonto(v.monto)}</p>
                     </div>
-                  </div>
+                  </Link>
                 ))
               )}
             </CardContent>

@@ -262,7 +262,10 @@ function interpolar(
     .replace(/\{\{nombre\}\}/g, inquilino.nombre.split(' ')[0] ?? inquilino.nombre)
     .replace(/\{\{direccion\}\}/g, extra.direccion ?? '')
     .replace(/\{\{fechaFin\}\}/g, extra.fechaFin ?? '')
-    .replace(/\{\{porcentaje\}\}/g, '—')
-    .replace(/\{\{nuevoMonto\}\}/g, '—')
+    // El % y el monto del ajuste no los tenemos acá; en vez de un "—" inútil,
+    // dejamos un prompt claro para que la inmo lo complete (el cuerpo es editable
+    // antes de enviar).
+    .replace(/\{\{porcentaje\}\}/g, '[completá el %]')
+    .replace(/\{\{nuevoMonto\}\}/g, '[completá el nuevo monto]')
     .replace(/\{\{detalle\}\}/g, '…');
 }

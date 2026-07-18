@@ -1328,7 +1328,7 @@ export interface DashboardData {
   morosos: { contratoId: string; inquilino: string; direccion: string; monto: number; moneda: ContratoListado['moneda'] }[];
   propietariosSinCbu: number;
   porRendir: number;
-  proximosVencimientos: { id: string; direccion: string; inquilino: string; fecha: string; monto: number }[];
+  proximosVencimientos: { id: string; contratoId: string; direccion: string; inquilino: string; fecha: string; monto: number }[];
   cargando: boolean;
   /** Alguna fuente (contratos o propiedades) falló al cargar. El dashboard NO
    *  debe mostrar el estado vacío "cuenta nueva" en este caso: 0 propiedades por
@@ -1468,6 +1468,7 @@ export function useDashboard(): DashboardData {
     .sort((a, b) => a.ts - b.ts)
     .map(({ l }) => ({
       id: l.id,
+      contratoId: l.contratoId,
       direccion: l.direccion,
       inquilino: l.inquilino,
       fecha: l.fechaVencimiento,
