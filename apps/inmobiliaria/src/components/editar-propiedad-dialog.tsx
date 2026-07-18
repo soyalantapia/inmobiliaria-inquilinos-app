@@ -47,6 +47,7 @@ export function EditarPropiedadDialog({ open, onOpenChange, propiedad, onGuardad
     propiedad.ambientes != null ? String(propiedad.ambientes) : '',
   );
   const [m2, setM2] = useState<string>(propiedad.m2 != null ? String(propiedad.m2) : '');
+  const [complejo, setComplejo] = useState(propiedad.complejo ?? '');
   const [guardando, setGuardando] = useState(false);
   const qc = useQueryClient();
 
@@ -60,6 +61,7 @@ export function EditarPropiedadDialog({ open, onOpenChange, propiedad, onGuardad
       setTipo(propiedad.tipo);
       setAmbientes(propiedad.ambientes != null ? String(propiedad.ambientes) : '');
       setM2(propiedad.m2 != null ? String(propiedad.m2) : '');
+      setComplejo(propiedad.complejo ?? '');
     }
   }, [open, propiedad]);
 
@@ -80,6 +82,7 @@ export function EditarPropiedadDialog({ open, onOpenChange, propiedad, onGuardad
       tipo,
       ambientes: ambientes ? Number(ambientes) : null,
       m2: m2 ? Number(m2) : null,
+      complejo: complejo.trim() || null,
     };
     try {
       if (apiEnabled) {
@@ -210,6 +213,22 @@ export function EditarPropiedadDialog({ open, onOpenChange, propiedad, onGuardad
                 inputMode="numeric"
               />
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="ep-complejo" className="flex items-center gap-1.5">
+              Complejo / edificio
+              <span className="text-[10px] font-normal text-muted-foreground">opcional</span>
+            </Label>
+            <Input
+              id="ep-complejo"
+              value={complejo}
+              onChange={(e) => setComplejo(e.target.value)}
+              placeholder="Ej: Torres del Parque"
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Para agrupar propiedades del mismo complejo (útil cuando varias reclaman o se atrasan).
+            </p>
           </div>
         </div>
 
