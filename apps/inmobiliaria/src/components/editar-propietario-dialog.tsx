@@ -76,6 +76,12 @@ export function EditarPropietarioDialog({ open, onOpenChange, propietario }: Pro
         return;
       }
     }
+    // El server (PUT /propietarios) exige email con formato válido → validamos acá
+    // para no comernos un 400 genérico. Es opcional: solo si se cargó algo.
+    if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      toast({ variant: 'destructive', title: 'Revisá el email', description: 'El email no tiene un formato válido (ej: nombre@correo.com).' });
+      return;
+    }
     const datos = {
       nombre: nombre.trim(),
       apellido: apellido.trim(),
