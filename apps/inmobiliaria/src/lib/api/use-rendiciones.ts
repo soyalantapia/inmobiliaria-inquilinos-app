@@ -14,7 +14,7 @@
  * Sigue el estilo de use-reclamos / use-pagos: ensureApiSession + apiFetch e
  * invalidación de las queries que cambian al rendir.
  */
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiEnabled, apiFetch } from './client';
 import { ensureApiSession } from './session';
 
@@ -42,6 +42,7 @@ export interface RendicionApi {
   montoNeto: string | number;
   metodo: RendirInput['metodo'];
   notas: string | null;
+  createdAt?: string;
 }
 
 export interface UseRendiciones {
@@ -79,4 +80,24 @@ export function useRendiciones(): UseRendiciones {
       return rendicion;
     },
   };
+}
+
+/**
+ * Lista de rendiciones ya hechas (GET /rendiciones), key ['rendiciones'] — la
+ * misma que invalida `rendir`. Antes el panel de propietarios leía el estado
+ * "rendido" SOLO de localStorage (vacío en prod) → tras rendir, al refrescar el
+ * dueño volvía a aparecer "Por rendir" y el historial mostraba $0. Con esto el
+ * estado sale del server y persiste.
+ */
+export function useRendicionesList(): { rendiciones: RendicionApi[]; cargando: boolean } {
+  const q = useQuery({
+    queryKey: ['rendiciones'],
+    queryFn: async () => {
+      await ensureApiSession();
+      return apiFetch<RendicionApi[]>('/rendiciones');
+    },
+    enabled: apiEnabled,
+    staleTime: 30_000,
+  });
+  return { rendiciones: q.data ?? [], cargando: q.isPending };
 }
