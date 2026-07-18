@@ -31,6 +31,7 @@ import {
 import { SumarPropietarioDialog } from '@/components/sumar-propietario-dialog';
 import { Topbar } from '@/components/topbar';
 import { usePropietarios } from '@/lib/api/hooks';
+import { useRendicionesList, type RendicionApi } from '@/lib/api/use-rendiciones';
 import type { Propietario } from '@/lib/types';
 import {
   obtenerRendicion,
@@ -49,6 +50,24 @@ const FILTRO_FROM_PARAM: Record<string, FiltroPropietarios> = {
   'sin-rendir': 'SIN_RENDIR',
 };
 
+// Mapea una rendición del API (GET /rendiciones) al shape que usa la pantalla
+// (badge "Rendido", mensaje de WhatsApp, deshacer). Los montos vienen como
+// string|number de Prisma → los pasamos a number.
+function apiRendicionALocal(r: RendicionApi): Rendicion {
+  return {
+    id: r.id,
+    propietarioId: r.propietarioId,
+    periodo: r.periodo,
+    montoBruto: Number(r.montoBruto),
+    comisionPct: r.comisionPct,
+    totalGastos: Number(r.totalGastos),
+    montoNeto: Number(r.montoNeto),
+    rendidoAt: r.createdAt ?? `${r.periodo}-01`,
+    metodo: r.metodo,
+    notas: r.notas,
+  };
+}
+
 export default function PropietariosPage() {
   const searchParams = useSearchParams();
   const [q, setQ] = useState('');
@@ -59,14 +78,24 @@ export default function PropietariosPage() {
   const [rendicionesMap, setRendicionesMap] = useState<Record<string, Rendicion | null>>({});
 
   const { propietarios, cargando } = usePropietarios();
+  // En prod el estado "rendido" sale del server (GET /rendiciones); en demo, de
+  // localStorage. Antes SOLO leía localStorage → en prod todo aparecía "por
+  // rendir" y el historial en $0, y "rendido" se perdía al refrescar.
+  const { rendiciones: rendicionesApi } = useRendicionesList();
 
   const periodo = periodoActual();
 
   const refrescarRendiciones = () => {
     const map: Record<string, Rendicion | null> = {};
-    propietarios.forEach((p) => {
-      map[p.id] = obtenerRendicion(p.id, periodo);
-    });
+    if (apiEnabled) {
+      for (const r of rendicionesApi) {
+        if (r.periodo === periodo) map[r.propietarioId] = apiRendicionALocal(r);
+      }
+    } else {
+      propietarios.forEach((p) => {
+        map[p.id] = obtenerRendicion(p.id, periodo);
+      });
+    }
     setRendicionesMap(map);
   };
 
@@ -75,10 +104,13 @@ export default function PropietariosPage() {
   // no de la ref: si no, el effect setea rendicionesMap en cada render → loop
   // infinito (React #185), que el re-render del Radix Dialog disparaba al abrir.
   const propietariosKey = propietarios.map((p) => p.id).join(',');
+  // Key estable de las rendiciones del API: reconstruye el mapa cuando el GET
+  // /rendiciones carga o cambia (ej. tras rendir, que invalida ['rendiciones']).
+  const rendicionesApiKey = rendicionesApi.map((r) => `${r.id}:${r.periodo}`).join(',');
   useEffect(() => {
     refrescarRendiciones();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [propietariosKey]);
+  }, [propietariosKey, rendicionesApiKey]);
 
   // Aplica el filtro inicial si llegamos con ?filtro=sin-cbu/sin-rendir.
   useEffect(() => {
