@@ -131,7 +131,13 @@ export default function AnunciosPage() {
       toast({
         variant: 'success',
         title: 'Anuncio enviado',
-        description: `${data.titulo} · ${data.destinatariosCount} destinatario${data.destinatariosCount === 1 ? '' : 's'} · app + email`,
+        // Propietarios/consorcios reciben SOLO email (no tienen app). Para
+        // inquilinos va por la app + email. Antes decía "app + email" siempre.
+        description: `${data.titulo} · ${data.destinatariosCount} destinatario${data.destinatariosCount === 1 ? '' : 's'} · ${
+          data.audiencia === 'TODOS_PROPIETARIOS' || data.audiencia === 'TODOS_CONSORCIOS'
+            ? 'por email'
+            : 'por la app y email'
+        }`,
       });
     } catch (e) {
       toast({
