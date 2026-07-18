@@ -37,6 +37,7 @@ export function EditarPropietarioDialog({ open, onOpenChange, propietario }: Pro
   const [email, setEmail] = useState(propietario.email);
   const [telefono, setTelefono] = useState(propietario.telefono);
   const [cbuAlias, setCbuAlias] = useState(propietario.cbuAlias ?? '');
+  const [comisionPct, setComisionPct] = useState(String(propietario.comisionPct ?? 8));
   const [notas, setNotas] = useState(propietario.notas ?? '');
   const [guardando, setGuardando] = useState(false);
 
@@ -48,6 +49,7 @@ export function EditarPropietarioDialog({ open, onOpenChange, propietario }: Pro
       setEmail(propietario.email);
       setTelefono(propietario.telefono);
       setCbuAlias(propietario.cbuAlias ?? '');
+      setComisionPct(String(propietario.comisionPct ?? 8));
       setNotas(propietario.notas ?? '');
     }
   }, [open, propietario]);
@@ -82,6 +84,11 @@ export function EditarPropietarioDialog({ open, onOpenChange, propietario }: Pro
       toast({ variant: 'destructive', title: 'Revisá el email', description: 'El email no tiene un formato válido (ej: nombre@correo.com).' });
       return;
     }
+    const comisionNum = Number(comisionPct);
+    if (!Number.isFinite(comisionNum) || comisionNum < 0 || comisionNum > 100) {
+      toast({ variant: 'destructive', title: 'Revisá la comisión', description: 'La comisión tiene que ser un porcentaje entre 0 y 100.' });
+      return;
+    }
     const datos = {
       nombre: nombre.trim(),
       apellido: apellido.trim(),
@@ -89,6 +96,7 @@ export function EditarPropietarioDialog({ open, onOpenChange, propietario }: Pro
       email: email.trim(),
       telefono: telefono.trim(),
       cbuAlias: cbuAlias.trim() || null,
+      comisionPct: comisionNum,
       notas: notas.trim() || null,
     };
     setGuardando(true);
@@ -184,6 +192,21 @@ export function EditarPropietarioDialog({ open, onOpenChange, propietario }: Pro
             />
             <p id="ed-cbu-hint" className="text-[11px] text-muted-foreground">
               Es el destino donde se transfiere el neto al rendir el mes.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="ed-comision">Comisión de la inmobiliaria (%)</Label>
+            <Input
+              id="ed-comision"
+              inputMode="decimal"
+              value={comisionPct}
+              onChange={(e) => setComisionPct(e.target.value.replace(/[^\d.,]/g, '').replace(',', '.'))}
+              placeholder="8"
+              className="w-32"
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Lo que te quedás vos al rendirle. Se descuenta del bruto en cada rendición.
             </p>
           </div>
 
