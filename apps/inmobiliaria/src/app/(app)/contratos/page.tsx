@@ -12,6 +12,7 @@ import {
   FileText,
   Plus,
   Search,
+  TrendingUp,
   X,
 } from 'lucide-react';
 import { Badge } from '@llave/ui/badge';
@@ -21,6 +22,7 @@ import { cn } from '@llave/ui/cn';
 import { Input } from '@llave/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@llave/ui/table';
 import { Topbar } from '@/components/topbar';
+import { AjusteMasivoDialog } from '@/components/ajuste-masivo-dialog';
 import { useContratos, usePropiedades } from '@/lib/api/hooks';
 import { formatMonto, formatRangoVigencia } from '@/lib/format';
 import type { EstadoLiquidacion } from '@/lib/types';
@@ -95,6 +97,7 @@ export default function ContratosPage() {
   const { contratos, cargando } = useContratos();
   const [q, setQ] = useState('');
   const [filtro, setFiltro] = useState<Filtro>('TODOS');
+  const [ajusteMasivoOpen, setAjusteMasivoOpen] = useState(false);
 
   // Filtro por propietario via query string ?propietario=own_xxx
   // Linkeado desde /propietarios/[id] y /propietarios list.
@@ -275,6 +278,14 @@ export default function ContratosPage() {
               aria-label="Buscar contratos"
             />
           </div>
+          <Button
+            variant="outline"
+            className="w-full sm:w-auto"
+            onClick={() => setAjusteMasivoOpen(true)}
+          >
+            <TrendingUp className="h-4 w-4" />
+            Ajuste masivo
+          </Button>
           <Button asChild className="w-full sm:w-auto">
             <Link href="/contratos/nuevo">
               <Plus className="h-4 w-4" />
@@ -282,6 +293,7 @@ export default function ContratosPage() {
             </Link>
           </Button>
         </div>
+        <AjusteMasivoDialog open={ajusteMasivoOpen} onOpenChange={setAjusteMasivoOpen} />
 
         {filtro !== 'TODOS' && (
           <div className="flex items-center justify-between text-xs text-muted-foreground">
