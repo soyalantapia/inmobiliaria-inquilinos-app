@@ -1737,6 +1737,13 @@ function CargarContratoApiWizard() {
                     </button>
                   ))}
                 </div>
+                {modoCobranza === 'PROPIETARIO_DIRECTO' && (
+                  <p className="mt-2 rounded-md bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
+                    Para cobranza directa, el dueño principal de la propiedad tiene que tener
+                    cargada su <strong>&quot;Cuenta de cobranza directa&quot;</strong> (banco + CBU + alias) en
+                    su ficha. Si no la tiene, el alta te la va a pedir al confirmar.
+                  </p>
+                )}
               </div>
 
               {/* Mascotas: se muestra en el contrato del inquilino (evita consultas). */}

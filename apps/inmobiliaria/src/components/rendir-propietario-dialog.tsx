@@ -191,7 +191,7 @@ export function RendirPropietarioDialog({
       toast({
         variant: 'success',
         title: `¡${propietario.nombre} rendido!`,
-        description: `Transferimos ${formatMonto(rendicion.montoNeto)} por ${metodo.toLowerCase()}.`,
+        description: `Registrado: le rendiste ${formatMonto(rendicion.montoNeto)} por ${metodo.toLowerCase()}. (La transferencia la hacés vos por fuera.)`,
       });
       onRendido?.(rendicion);
       onOpenChange(false);
@@ -230,7 +230,7 @@ export function RendirPropietarioDialog({
     toast({
       variant: 'success',
       title: `¡${propietario.nombre} rendido!`,
-      description: `Transferimos ${formatMonto(rendicion.montoNeto)} por ${metodo.toLowerCase()}.`,
+      description: `Registrado: le rendiste ${formatMonto(rendicion.montoNeto)} por ${metodo.toLowerCase()}. (La transferencia la hacés vos por fuera.)`,
     });
     onRendido?.(rendicion);
     onOpenChange(false);
