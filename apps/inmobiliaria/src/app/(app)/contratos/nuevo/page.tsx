@@ -1405,6 +1405,12 @@ function CargarContratoApiWizard() {
                       El email no tiene un formato válido (ej: nombre@correo.com).
                     </p>
                   )}
+                  {personaId && !email.trim() && (
+                    <p className="text-[11px] text-muted-foreground">
+                      Este inquilino ya usa su email en otro contrato. Dejalo vacío o poné
+                      uno distinto para este contrato.
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="telefono" className="flex items-center gap-1.5">
