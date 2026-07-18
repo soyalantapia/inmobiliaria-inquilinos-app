@@ -1024,8 +1024,10 @@ function NuevaPropiedadForm() {
                   />
                   <ResumenRow
                     label="Ciudad"
-                    value={ciudad ? `${ciudad}${codigoPostal ? ` (${codigoPostal})` : ''}` : '—'}
-                  />
+                    value={ciudad || '—'}
+                  />{/* El código postal no se persiste (no hay columna en Propiedad):
+                       no lo mostramos en el resumen final para no dar por guardado
+                       un dato que se pierde. Si se quiere, agregar la columna. */}
                   <ResumenRow label="Foto" value={fotoFile ? 'Cargada ✓' : '—'} />
                   <ResumenRow
                     label="Propietarios"
