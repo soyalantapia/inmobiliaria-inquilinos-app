@@ -47,7 +47,10 @@ export function ResolverDepositoDialog({
 
   const cambiarDecision = (d: DecisionDeposito) => {
     setDecision(d);
-    if (deposito) setMonto(d === 'EJECUTAR' ? '0' : String(Math.round(deposito.disponible)));
+    // DEVOLVER (todo) = disponible completo. EJECUTAR (retener todo) = 0.
+    // NETEAR (devolver menos) = vacío: la inmo tiene que decidir cuánto devuelve;
+    // antes se pre-llenaba con el total y era fácil devolver de más sin querer.
+    if (deposito) setMonto(d === 'DEVOLVER' ? String(Math.round(deposito.disponible)) : d === 'EJECUTAR' ? '0' : '');
   };
 
   const confirmar = async () => {
@@ -55,6 +58,11 @@ export function ResolverDepositoDialog({
     const montoNum = Number(monto) || 0;
     if ((decision === 'NETEAR' || decision === 'EJECUTAR') && !motivo.trim()) {
       toast({ title: 'Contá por qué retenés', description: 'Poné el motivo (deuda, daños, etc.).', variant: 'destructive' });
+      return;
+    }
+    // "Devolver menos" = devolver algo, pero menos que el total.
+    if (decision === 'NETEAR' && !(montoNum > 0 && montoNum < deposito.disponible)) {
+      toast({ title: 'Revisá el monto a devolver', description: `Tiene que ser mayor a $0 y menor a ${formatMonto(deposito.disponible)} (lo disponible). Si devolvés todo usá "Devolver", y si no devolvés nada usá "Retener todo".`, variant: 'destructive' });
       return;
     }
     setGuardando(true);

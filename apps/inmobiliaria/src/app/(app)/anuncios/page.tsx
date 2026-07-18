@@ -318,6 +318,11 @@ function AnuncioCard({
   const esNormal = anuncio.prioridad === 'NORMAL';
   const { leido, confirmado, total } = anuncio.conteos ?? { leido: 0, confirmado: 0, total: anuncio.destinatariosCount };
   const faltan = total - leido;
+  // Los acuses "leído/confirmado" salen de la app del inquilino. Propietarios y
+  // consorcios reciben sólo email (no tienen app) → mostrarles "Leído 0/N" y
+  // "recordar a los que faltan" confunde. Ocultamos el bloque para esas audiencias.
+  const audienciaConAcuses =
+    anuncio.audiencia !== 'TODOS_PROPIETARIOS' && anuncio.audiencia !== 'TODOS_CONSORCIOS';
   const recordar = () => {
     // En prod no hay endpoint de re-envío: evitar falso éxito
     if (apiEnabled) {
@@ -382,7 +387,9 @@ function AnuncioCard({
         </div>
 
         {/* Acuse: cuántos leyeron / confirmaron + recordar a los que faltan.
-            En backend lo calcula el server desde los acuses reales. */}
+            Solo para audiencias con app (inquilinos); el server lo calcula desde
+            los acuses reales. */}
+        {audienciaConAcuses && (
         <div className="space-y-1.5">
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
             <span className="inline-flex items-center gap-3 text-muted-foreground">
@@ -401,7 +408,9 @@ function AnuncioCard({
                 </strong>
               </span>
             </span>
-            {faltan > 0 && (
+            {/* El re-envío todavía no tiene endpoint: en prod el botón sólo
+                mostraba "Próximamente" (dead-end). Lo ocultamos en prod. */}
+            {faltan > 0 && !apiEnabled && (
               <button
                 type="button"
                 onClick={recordar}
@@ -418,6 +427,7 @@ function AnuncioCard({
             />
           </div>
         </div>
+        )}
       </CardContent>
     </Card>
   );

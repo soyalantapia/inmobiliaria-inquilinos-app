@@ -96,7 +96,17 @@ export function MensajeInquilinoDialog({
     } else if (canal === 'LLAMADA') {
       window.location.href = `tel:${tel}`;
     }
-    toast({ title: 'Mensaje enviado (queda registrado en Comunicaciones)' });
+    // Honesto: abrimos el canal con el mensaje listo, pero NO se está guardando en
+    // "Comunicaciones" (todavía no hay backend para eso). Antes el toast decía
+    // "enviado · queda registrado en Comunicaciones" y era un falso éxito.
+    toast({
+      title:
+        canal === 'WHATSAPP'
+          ? 'Abrimos WhatsApp con el mensaje listo 📲'
+          : canal === 'EMAIL'
+            ? 'Abrimos tu correo con el mensaje listo 📧'
+            : 'Abrimos el marcador para llamar 📞',
+    });
     onOpenChange(false);
   };
 

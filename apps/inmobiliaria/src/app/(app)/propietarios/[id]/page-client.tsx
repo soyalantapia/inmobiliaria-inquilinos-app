@@ -92,10 +92,14 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
   // montos vienen en 0. Mostramos '—' en vez de un $0 engañoso (en demo hay data).
   const finanzasNoDisponibles = apiEnabled && propietario.totalCobradoMes === 0;
 
-  // En prod (API real) la edición de datos básicos / ARCA todavía no tiene
-  // endpoint: la dejamos deshabilitada con tooltip. En build demo seguimos
-  // usando los triggers que escriben a localStorage.
-  const edicionHabilitada = !apiEnabled;
+  // Editar datos básicos (nombre, CUIT, email, teléfono, CBU, comisión) SÍ tiene
+  // endpoint real (PUT /propietarios/:id) → editable en prod. Antes estaba
+  // deshabilitado con "Próximamente" por error, dejando al usuario sin forma de
+  // completar CUIT/CBU tras el alta rápida (que promete "se completa después").
+  const edicionDatosHabilitada = true;
+  // ARCA todavía es demo-only (ConectarArcaDialog solo escribe a localStorage,
+  // sin endpoint) → sigue gateado en prod para no crear un falso-éxito.
+  const arcaHabilitada = !apiEnabled;
   // La cuenta de cobranza directa SÍ tiene endpoint (PUT /propietarios/:id/
   // cuenta-cobranza-directa) → editable también en prod.
   const cobranzaEditable = true;
@@ -151,7 +155,7 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
                     </a>
                   </Button>
                 )}
-                {edicionHabilitada ? (
+                {edicionDatosHabilitada ? (
                   <EditarPropietarioTrigger propietario={propietario} />
                 ) : (
                   <Button variant="outline" disabled title="Próximamente">
@@ -343,7 +347,7 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
                       </p>
                     </div>
                   </div>
-                  {edicionHabilitada ? (
+                  {arcaHabilitada ? (
                     <ConectarArcaTrigger
                       propietario={propietario}
                       variant="outline"
@@ -368,7 +372,7 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
                       </p>
                     </div>
                   </div>
-                  {edicionHabilitada ? (
+                  {arcaHabilitada ? (
                     <ConectarArcaTrigger propietario={propietario} className="w-full" />
                   ) : (
                     <Button size="sm" disabled className="w-full" title="Próximamente">
