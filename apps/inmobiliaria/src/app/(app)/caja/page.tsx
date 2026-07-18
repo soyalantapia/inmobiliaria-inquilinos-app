@@ -231,6 +231,9 @@ export default function CajaPage() {
           try {
             await crearGasto({
               propiedadId: data.propiedadId,
+              // Antes NO se reenviaba el tipo → una "Entrada (ingreso)" se
+              // guardaba como GASTO/salida. Ahora respeta lo elegido.
+              tipo: data.tipo,
               categoria: data.categoria,
               descripcion: data.descripcion,
               monto: data.monto,
@@ -239,10 +242,11 @@ export default function CajaPage() {
               comprobanteUrl: data.comprobante,
             });
             setAbrirForm(false);
-            toast({
-              title: 'Gasto cargado',
-              description: `Se descontará en la próxima rendición.`,
-            });
+            toast(
+              data.tipo === 'INGRESO_EXTRA'
+                ? { title: 'Entrada registrada', description: 'Queda como ingreso en la caja de la propiedad.' }
+                : { title: 'Gasto cargado', description: 'Se descontará en la próxima rendición.' },
+            );
           } catch (e) {
             toast({
               variant: 'destructive',

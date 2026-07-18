@@ -713,26 +713,26 @@ export default function PagosPage() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() =>
-                real
-                  ? toast({
-                      title: 'Próximamente',
-                      description:
-                        'El recordatorio automático a morosos por WhatsApp y mail todavía no está disponible.',
-                    })
-                  : toast({
-                      title: 'Recordatorios simulados',
-                      description:
-                        'En producción se envían WhatsApp y mail a los inquilinos con pagos vencidos. En la demo no se manda nada.',
-                    })
-              }
-            >
-              <Bell className="h-4 w-4" />
-              Recordar a morosos
-            </Button>
+            {/* El recordatorio MASIVO a morosos todavía no tiene backend: en prod
+                el botón solo mostraba "Próximamente" (dead-end). Lo ocultamos en
+                prod; los recordatorios individuales por WhatsApp siguen disponibles
+                en cada fila de la lista de morosos. */}
+            {!real && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() =>
+                  toast({
+                    title: 'Recordatorios simulados',
+                    description:
+                      'En producción se envían WhatsApp y mail a los inquilinos con pagos vencidos. En la demo no se manda nada.',
+                  })
+                }
+              >
+                <Bell className="h-4 w-4" />
+                Recordar a morosos
+              </Button>
+            )}
           </div>
         </div>
 

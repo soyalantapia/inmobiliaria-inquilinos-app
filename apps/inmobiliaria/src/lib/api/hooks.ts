@@ -89,6 +89,10 @@ function mapContrato(c: ContratoApi): ContratoListado {
     fechaInicio: c.fechaInicio.slice(0, 10),
     fechaFin: c.fechaFin.slice(0, 10),
     proximoVencimiento: (c.proximoVencimiento ?? c.fechaFin).slice(0, 10),
+    // Fecha del próximo AJUSTE de alquiler (distinto del vencimiento del
+    // contrato). El ajuste masivo lo usa para pre-tildar "los que ajustan este
+    // mes"; sin mapearlo, quedaba siempre en null → 0 pre-tildados.
+    proximoAjuste: c.proximoAjuste ? c.proximoAjuste.slice(0, 10) : null,
     estadoPagoActual: c.estadoPagoActual ?? 'PENDIENTE',
     ...(c.montoPagado != null ? { montoPagado: Number(c.montoPagado) } : {}),
     ...(c.saldo != null ? { saldo: Number(c.saldo) } : {}),

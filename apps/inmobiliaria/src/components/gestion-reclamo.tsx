@@ -105,7 +105,7 @@ export function GestionReclamo({
       try {
         await clasificarApi(p);
         setReclasificando(false);
-        toast({ title: `Paga: ${pagadorLabel(p)}`, description: 'Impacta la plata al resolver el reclamo.' });
+        toast({ title: `Paga: ${pagadorLabel(p)}`, description: 'Todavía no se cobró nada: se aplica recién cuando resolvés el reclamo y cargás el costo.' });
       } catch {
         toast({ title: 'No se pudo clasificar', variant: 'destructive' });
       } finally {
