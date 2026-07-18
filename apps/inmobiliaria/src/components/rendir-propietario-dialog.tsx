@@ -132,8 +132,18 @@ export function RendirPropietarioDialog({
   // eligió "Rendir + WhatsApp". Los montos del mensaje los toma de la
   // rendición resultante (en prod, los locales coinciden con el desglose).
   const abrirWhatsapp = (rendicion: Rendicion) => {
-    const mensaje = mensajeRendicion(propietario, rendicion);
     const tel = propietario.telefono.replace(/[^\d]/g, '');
+    // Sin número no se puede abrir WhatsApp: antes abría wa.me/ vacío (pantalla
+    // de error de WhatsApp). Avisamos y no abrimos nada.
+    if (!tel) {
+      toast({
+        variant: 'destructive',
+        title: 'El propietario no tiene WhatsApp cargado',
+        description: 'Cargá su número en la ficha del propietario para avisarle por WhatsApp.',
+      });
+      return;
+    }
+    const mensaje = mensajeRendicion(propietario, rendicion);
     const url = `https://wa.me/${tel}?text=${encodeURIComponent(mensaje)}`;
     window.open(url, '_blank', 'noopener,noreferrer');
   };

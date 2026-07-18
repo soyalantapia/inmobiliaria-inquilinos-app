@@ -136,24 +136,31 @@ export function HistorialPropietarioDialog({
           />
         </div>
 
-        {/* Acciones rápidas */}
-        <div className="grid grid-cols-2 gap-2">
-          <Button
-            className="gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700"
-            asChild
-          >
-            <a href={waUrl} target="_blank" rel="noreferrer">
-              <MessageCircle className="h-4 w-4" />
-              WhatsApp
-            </a>
-          </Button>
-          <Button variant="outline" asChild>
-            <a href={telUrl}>
-              <Phone className="h-4 w-4" />
-              Llamar
-            </a>
-          </Button>
-        </div>
+        {/* Acciones rápidas — solo si hay teléfono cargado (si no, wa.me/tel
+            quedaban sin número y abrían una pantalla de error). */}
+        {tel ? (
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              className="gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700"
+              asChild
+            >
+              <a href={waUrl} target="_blank" rel="noreferrer">
+                <MessageCircle className="h-4 w-4" />
+                WhatsApp
+              </a>
+            </Button>
+            <Button variant="outline" asChild>
+              <a href={telUrl}>
+                <Phone className="h-4 w-4" />
+                Llamar
+              </a>
+            </Button>
+          </div>
+        ) : (
+          <p className="rounded-md bg-muted/50 px-2 py-1.5 text-center text-xs text-muted-foreground">
+            Sin teléfono cargado — agregalo en la ficha del propietario para escribirle o llamarlo.
+          </p>
+        )}
 
         {/* CBU si lo tiene */}
         {propietario.cbuAlias && (
