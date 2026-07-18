@@ -308,6 +308,12 @@ export function RendirPropietarioDialog({
                 </div>
               )}
             </div>
+          ) : apiEnabled ? (
+            <div className="rounded-md border border-dashed bg-background/40 p-2 text-[11px] text-muted-foreground">
+              Al confirmar, el sistema descuenta los gastos del mes (caja +
+              reparaciones a cargo del propietario). El neto final puede ser menor
+              al estimado.
+            </div>
           ) : (
             <div className="rounded-md border border-dashed bg-background/40 p-2 text-[11px] text-muted-foreground">
               Sin gastos atribuidos este mes — la rendición se transfiere
@@ -317,7 +323,7 @@ export function RendirPropietarioDialog({
 
           <div className="my-2 border-t" />
           <DesgloseRow
-            label="A transferir"
+            label={apiEnabled ? 'A transferir (estimado)' : 'A transferir'}
             value={formatMonto(neto)}
             highlight
           />

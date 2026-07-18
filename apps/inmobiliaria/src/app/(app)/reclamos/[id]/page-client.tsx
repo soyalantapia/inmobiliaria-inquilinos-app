@@ -244,9 +244,13 @@ export default function DetalleReclamoPage() {
           setReclamo(updated);
           toast({
             title: 'Reclamo resuelto',
-            description: costo
-              ? `Costo ${formatMonto(costoNum)} asociado al propietario.`
-              : 'El inquilino fue notificado.',
+            description: !costo
+              ? 'El inquilino fue notificado.'
+              : pagador === 'INQUILINO'
+                ? `Costo ${formatMonto(costoNum)} cargado al inquilino.`
+                : pagador === 'DEPOSITO'
+                  ? `Costo ${formatMonto(costoNum)} descontado del depósito de garantía.`
+                  : `Costo ${formatMonto(costoNum)} asociado al propietario.`,
           });
         }
       }
