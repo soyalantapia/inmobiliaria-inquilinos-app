@@ -779,6 +779,9 @@ function AjustarMontoDialog({
           qc.invalidateQueries({ queryKey: ['contrato', contrato.id] }),
           qc.invalidateQueries({ queryKey: ['contratos'] }),
           qc.invalidateQueries({ queryKey: ['liquidaciones'] }),
+          // La comisión proyectada (GananciaInmoCard, misma página) depende del
+          // monto: sin esto queda mostrando la proyección vieja tras el ajuste.
+          qc.invalidateQueries({ queryKey: ['contrato-ganancia', contrato.id] }),
         ]);
         const n = res.liquidacionesReajustadas;
         toast({

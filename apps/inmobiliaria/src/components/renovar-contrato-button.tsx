@@ -83,7 +83,9 @@ export function RenovarContratoButton({
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ['contrato', contratoId] });
       qc.invalidateQueries({ queryKey: ['contratos'] });
-      qc.invalidateQueries({ queryKey: ['renovaciones', contratoId] });
+      // La lista de Renovaciones usa la key ['renovaciones'] (sin id); invalidar
+      // ['renovaciones', contratoId] no matcheaba nada. El prefijo cubre ambas.
+      qc.invalidateQueries({ queryKey: ['renovaciones'] });
       toast({
         variant: 'success',
         title: 'Contrato renovado',
