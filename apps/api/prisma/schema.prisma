@@ -1776,6 +1776,7 @@ model Rendicion {
   notas          String?
 
   gastos             GastoRendido[]
+  ingresosRendidos   IngresoRendido[]
   alquileresRendidos AlquilerRendido[]
   movimientosCaja    MovimientoCaja[]
 
@@ -1833,6 +1834,30 @@ model GastoRendido {
   @@index([inmobiliariaId])
   @@index([rendicionId])
   @@map("gastos_rendidos")
+}
+
+// Ledger de ingresos extra de caja rendidos al propietario (espejo de
+// GastoRendido pero SUMANDO). Necesario para el reparto multi-dueño: cada parte
+// rendida queda registrada y el movimiento se marca descontado solo cuando las
+// partes cubren el total. inmobiliariaId es snapshot escalar (sin FK).
+model IngresoRendido {
+  id             String    @id @default(cuid())
+  inmobiliariaId String
+  rendicionId    String
+  rendicion      Rendicion @relation(fields: [rendicionId], references: [id])
+  refId          String // movimientoCaja.id
+  fecha          DateTime
+  descripcion    String
+  monto          Decimal   @db.Decimal(14, 2) // parte del propietario
+  montoTotal     Decimal   @db.Decimal(14, 2)
+  participacion  Float
+  propiedadId    String // snapshot, sin FK
+  direccion      String // snapshot, sin FK
+
+  @@index([inmobiliariaId])
+  @@index([rendicionId])
+  @@index([refId])
+  @@map("ingresos_rendidos")
 }
 
 // Marca que el cargo USO_Y_GOCE de un reclamo ya fue cobrado al inquilino.

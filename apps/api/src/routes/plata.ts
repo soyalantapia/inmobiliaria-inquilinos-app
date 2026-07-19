@@ -1423,6 +1423,18 @@ export async function plataRoutes(app: FastifyInstance) {
           _sum: { monto: true },
         });
         const yaRendMap = new Map(prevRend.map((row) => [row.liquidacionId, Number(row._sum.monto ?? 0)]));
+        // Lo ya rendido por TODOS los dueños de cada liq (sin filtrar por
+        // propietarioId). Sirve para capear el total rendido de una liquidación al
+        // alquiler cobrado: si se editó el reparto (un dueño vendió su parte)
+        // DESPUÉS de rendir el período al set anterior, el nuevo dueño cobraría su
+        // porción ENCIMA de lo ya pagado → la inmobiliaria terminaba rindiendo más
+        // que lo cobrado. El cap garantiza Σ rendido por liq ≤ alquiler cobrado.
+        const prevRendTotal = await tx.alquilerRendido.groupBy({
+          by: ['liquidacionId'],
+          where: { liquidacionId: { in: liqIds } },
+          _sum: { monto: true },
+        });
+        const yaRendTotalMap = new Map(prevRendTotal.map((row) => [row.liquidacionId, Number(row._sum.monto ?? 0)]));
 
         let montoBruto = 0;
         const alquilerData: {
@@ -1446,8 +1458,12 @@ export async function plataRoutes(app: FastifyInstance) {
           const alquilerCobrado = total > 0 ? cobradoCapeado * (Number(liq.montoAlquiler) / total) : 0;
           const parteOwner = alquilerCobrado * (porcentaje / 100);
           const yaRend = yaRendMap.get(liq.id) ?? 0;
-          const rendible = r2c(parteOwner - yaRend);
-          if (rendible <= 0) continue; // ya se rindió todo lo cobrado de esta liq a este dueño
+          const yaRendTotal = yaRendTotalMap.get(liq.id) ?? 0;
+          // Doble cap: (1) lo que le falta a ESTE dueño de su parte, y (2) el
+          // remanente de alquiler cobrado de la liq sumando TODOS los dueños. El (2)
+          // evita el sobre-pago cuando se cambió el reparto tras rendir el período.
+          const rendible = Math.min(r2c(parteOwner - yaRend), r2c(alquilerCobrado - yaRendTotal));
+          if (rendible <= 0) continue; // ya se rindió todo lo cobrado de esta liq (a este dueño o entre todos)
           montoBruto += rendible;
           alquilerData.push({
             inmobiliariaId: u.inmobiliariaId,
@@ -1559,8 +1575,10 @@ export async function plataRoutes(app: FastifyInstance) {
         // la propiedad (ej. un reintegro del propietario) y que le CORRESPONDE al
         // dueño → SUMAN al neto. Antes la rendición solo restaba gastos y jamás
         // sumaba estos ingresos: la plata quedaba en la caja sin rendir nunca.
-        // Misma ventana que los gastos (período + propiedades con ingreso) y mismo
-        // marcado descontadoEnRendicion para que no se rindan dos veces.
+        // Misma ventana que los gastos (período + propiedades con ingreso). Multi-
+        // dueño: se rinde POR PARTES (× %) y se marca el movimiento como descontado
+        // SOLO cuando las partes cubren el total (igual que los gastos, con ledger
+        // IngresoRendido) — sino un co-dueño se quedaba sin su parte.
         const ingresosPend = await tx.movimientoCaja.findMany({
           where: {
             inmobiliariaId: u.inmobiliariaId,
@@ -1569,13 +1587,26 @@ export async function plataRoutes(app: FastifyInstance) {
             descontadoEnRendicion: false,
             fecha: { gte: inicioPeriodo, lt: finPeriodo },
           },
+          include: { propiedad: { select: { direccion: true } } },
         });
         let totalIngresos = 0;
-        for (const mov of ingresosPend) {
+        const ingresosData = ingresosPend.map((mov) => {
           const part = owner.participaciones.find((p) => p.propiedadId === mov.propiedadId);
           const porcentaje = part?.porcentaje ?? 100;
-          totalIngresos += Number(mov.monto) * (porcentaje / 100);
-        }
+          const parteOwner = Number(mov.monto) * (porcentaje / 100);
+          totalIngresos += parteOwner;
+          return {
+            inmobiliariaId: u.inmobiliariaId,
+            refId: mov.id,
+            fecha: mov.fecha,
+            descripcion: mov.descripcion,
+            monto: parteOwner,
+            montoTotal: mov.monto,
+            participacion: porcentaje,
+            propiedadId: mov.propiedadId,
+            direccion: mov.propiedad.direccion,
+          };
+        });
         totalIngresos = r2c(totalIngresos);
 
         const montoNeto = r2c(montoBruto - comisionMonto - totalGastos + totalIngresos);
@@ -1596,18 +1627,29 @@ export async function plataRoutes(app: FastifyInstance) {
             notas: body.data.notas,
           },
         });
-        // Marcar los ingresos extra como rendidos (linkeados a esta rendición),
-        // con el mismo guard de concurrencia que los gastos: si otra rendición
-        // los tomó entre el findMany y el update, el count no cuadra → abortamos.
-        if (ingresosPend.length > 0) {
-          const upd = await tx.movimientoCaja.updateMany({
-            where: {
-              id: { in: ingresosPend.map((m) => m.id) },
-              descontadoEnRendicion: false,
-            },
-            data: { descontadoEnRendicion: true, rendicionId: r.id },
+        if (ingresosData.length > 0) {
+          // Igual que los gastos (multi-dueño): cada ingreso se rinde por PARTES;
+          // se marca descontado-total SOLO cuando las partes rendidas cubren el
+          // monto. Sin esto, al rendir al 1er dueño se marcaba completo y los
+          // co-dueños perdían su parte (quedaba varada en caja).
+          const ids = ingresosPend.map((m) => m.id);
+          const previas = await tx.ingresoRendido.groupBy({
+            by: ['refId'],
+            where: { refId: { in: ids } },
+            _sum: { monto: true },
           });
-          if (upd.count !== ingresosPend.length) throw new GastoYaDescontado();
+          const yaRendido = new Map(previas.map((p) => [p.refId, Number(p._sum.monto ?? 0)]));
+          await tx.ingresoRendido.createMany({ data: ingresosData.map((g) => ({ ...g, rendicionId: r.id })) });
+          const idsCompletos = ingresosData
+            .filter((g) => (yaRendido.get(g.refId) ?? 0) + Number(g.monto) >= Number(g.montoTotal) - 0.01)
+            .map((g) => g.refId);
+          if (idsCompletos.length > 0) {
+            const upd = await tx.movimientoCaja.updateMany({
+              where: { id: { in: idsCompletos }, descontadoEnRendicion: false },
+              data: { descontadoEnRendicion: true, rendicionId: r.id },
+            });
+            if (upd.count !== idsCompletos.length) throw new GastoYaDescontado();
+          }
         }
         if (alquilerData.length > 0) {
           await tx.alquilerRendido.createMany({ data: alquilerData.map((a) => ({ ...a, rendicionId: r.id })) });
@@ -1686,6 +1728,10 @@ export async function plataRoutes(app: FastifyInstance) {
         // cross-tenant aunque la verificación previa ya lo garantice por FK.
         await tx.movimientoCaja.updateMany({ where: { rendicionId: id, inmobiliariaId: u.inmobiliariaId }, data: { descontadoEnRendicion: false, rendicionId: null } });
         await tx.gastoRendido.deleteMany({ where: { rendicionId: id } });
+        // IngresoRendido cuelga con FK RESTRICT (igual que AlquilerRendido): borrarlo
+        // ANTES del delete de la rendición, sino P2003. Al revertir el movimiento
+        // (updateMany de arriba) el ingreso vuelve a quedar pendiente para rendir.
+        await tx.ingresoRendido.deleteMany({ where: { rendicionId: id } });
         // Los AlquilerRendido cuelgan de la Rendicion con FK RESTRICT: sin borrarlos
         // ANTES, el rendicion.deleteMany de abajo violaba la FK → P2003 → 500 SIEMPRE
         // (toda rendición real crea ≥1 AlquilerRendido). La anulación era imposible.

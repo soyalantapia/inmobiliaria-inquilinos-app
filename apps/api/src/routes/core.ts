@@ -501,6 +501,30 @@ export async function coreRoutes(app: FastifyInstance) {
     if (propietariosDelTenant !== ids.length) {
       return reply.code(400).send({ message: 'Alguno de los propietarios no existe' });
     }
+    // Guard cobranza directa: no se puede QUITAR a un dueño que hoy recibe el pago
+    // directo del inquilino (contrato PROPIETARIO_DIRECTO) — sino el inquilino
+    // seguiría transfiriendo a un ex-dueño. Hay que reasignar la cobranza primero.
+    const cobranzaHuerfana = await prisma.contrato.findFirst({
+      where: {
+        propiedadId: id,
+        inmobiliariaId: u.inmobiliariaId,
+        estado: 'ACTIVO',
+        modoCobranza: 'PROPIETARIO_DIRECTO',
+        cobraDirectoPropietarioId: { notIn: ids },
+        NOT: { cobraDirectoPropietarioId: null },
+      },
+      select: { id: true },
+    });
+    if (cobranzaHuerfana) {
+      return reply.code(409).send({
+        message:
+          'No podés quitar a ese propietario: es quien cobra directo del inquilino en un contrato activo. Reasigná la cobranza directa antes de cambiar los dueños.',
+      });
+    }
+    // NOTA (limitación conocida): cambiar el reparto de un período ya cobrado no
+    // re-atribuye lo cobrado-no-rendido del dueño saliente. El cap cruzado en la
+    // rendición (plata.ts) evita que la inmobiliaria pague MÁS que lo cobrado; la
+    // re-atribución fina requeriría snapshotear participaciones por período.
 
     await prisma.$transaction(async (tx) => {
       await tx.participacionPropietario.deleteMany({ where: { propiedadId: id } });
@@ -1489,7 +1513,9 @@ export async function coreRoutes(app: FastifyInstance) {
     const parsed = z
       .object({
         montoNuevo: z.number().positive(),
-        periodoDesde: z.string().regex(/^\d{4}-\d{2}$/, 'Período inválido (YYYY-MM)'),
+        // Mes 01-12 estricto: sin esto '2026-00'/'2026-13' pasaba y el
+        // new Date(`${periodoDesde}-01`) de reprogramar proximoAjuste daba Invalid Date.
+        periodoDesde: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Período inválido (YYYY-MM)'),
         motivo: z.string().trim().max(200).optional(),
       })
       .safeParse(request.body);

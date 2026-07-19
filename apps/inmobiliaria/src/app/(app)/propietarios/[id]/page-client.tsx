@@ -205,18 +205,18 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
           />
           <Kpi
             label="Alquiler bruto/mes"
-            value={finanzasNoDisponibles ? '—' : formatMonto(propietario.totalCobradoMes)}
+            value={finanzasNoDisponibles ? '—' : formatMonto(propietario.totalCobradoMes, propietario.monedaMensual ?? undefined)}
             icon={<Wallet className="h-4 w-4" />}
           />
           <Kpi
             label="A rendir/mes (est.)"
-            value={finanzasNoDisponibles ? '—' : formatMonto(propietario.totalRecibirMes)}
+            value={finanzasNoDisponibles ? '—' : formatMonto(propietario.totalRecibirMes, propietario.monedaMensual ?? undefined)}
             icon={<Wallet className="h-4 w-4" />}
             highlight
           />
           <Kpi
             label="Ingreso anual est."
-            value={finanzasNoDisponibles ? '—' : formatMonto(ingresoAnualEstimado)}
+            value={finanzasNoDisponibles ? '—' : formatMonto(ingresoAnualEstimado, propietario.monedaMensual ?? undefined)}
             icon={<Building2 className="h-4 w-4" />}
           />
         </div>
