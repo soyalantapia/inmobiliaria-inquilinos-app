@@ -1542,6 +1542,21 @@ export async function coreRoutes(app: FastifyInstance) {
         fechaFin: b.fechaFinNueva,
         monto: b.montoNuevo,
       });
+      // Rastro en el Historial del contrato (antes la renovación no dejaba evento
+      // → la pestaña Historial seguía "Sin eventos"). Reusamos AJUSTE_APLICADO (el
+      // enum no tiene un valor propio de renovación) con un título explícito.
+      const finNuevaTxt = b.fechaFinNueva.toISOString().slice(0, 10);
+      await tx.eventoContrato.create({
+        data: {
+          inmobiliariaId: u.inmobiliariaId,
+          contratoId: id,
+          tipo: 'AJUSTE_APLICADO',
+          titulo: `Renovación: plazo hasta ${finNuevaTxt} · canon ${montoAnterior} → ${b.montoNuevo} ${contrato.moneda}`,
+          detalle: b.motivo ?? null,
+          fecha: new Date(),
+          autor: u.userId,
+        },
+      });
       return { renovacionId: renov.id, liquidacionesNuevas: nuevas };
     });
     return { ok: true, montoAnterior, montoNuevo: b.montoNuevo, ...res };
