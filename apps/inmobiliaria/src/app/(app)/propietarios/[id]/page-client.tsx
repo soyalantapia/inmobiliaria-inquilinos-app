@@ -93,9 +93,10 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
   const { propietario, propiedades, contratos } = detalle;
   const tel = propietario.telefono.replace(/[^\d]/g, '');
   const ingresoAnualEstimado = propietario.totalRecibirMes * 12;
-  // En prod el endpoint /propietarios/:id todavía no devuelve liquidaciones → los
-  // montos vienen en 0. Mostramos '—' en vez de un $0 engañoso (en demo hay data).
-  const finanzasNoDisponibles = apiEnabled && propietario.totalCobradoMes === 0;
+  // Los montos son el mensual esperado según el canon vigente de los contratos
+  // activos (no liquidaciones pagadas). Si no hay contratos activos quedan en 0 →
+  // mostramos '—' en vez de un $0 engañoso.
+  const finanzasNoDisponibles = propietario.totalCobradoMes === 0;
 
   // Editar datos básicos (nombre, CUIT, email, teléfono, CBU, comisión) SÍ tiene
   // endpoint real (PUT /propietarios/:id) → editable en prod. Antes estaba
@@ -203,12 +204,12 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
             icon={<Home className="h-4 w-4" />}
           />
           <Kpi
-            label="Bruto cobrado/mes"
+            label="Alquiler bruto/mes"
             value={finanzasNoDisponibles ? '—' : formatMonto(propietario.totalCobradoMes)}
             icon={<Wallet className="h-4 w-4" />}
           />
           <Kpi
-            label="A rendir/mes"
+            label="A rendir/mes (est.)"
             value={finanzasNoDisponibles ? '—' : formatMonto(propietario.totalRecibirMes)}
             icon={<Wallet className="h-4 w-4" />}
             highlight
