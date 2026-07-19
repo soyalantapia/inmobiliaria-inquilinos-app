@@ -33,6 +33,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="supported-color-schemes" content="light" />
         <meta name="darkreader-lock" />
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        {/* Sonar: reporte de errores del portfolio. async → si Sonar se cae, NO bloquea la app.
+            La key es pública a propósito; el guard real es allowedOrigins del proyecto en Sonar. */}
+        {/* eslint-disable-next-line @next/next/no-sync-scripts */}
+        <script
+          src="https://sonar-api-production-77b5.up.railway.app/v1/loader.js?key=son_pub_live_L4ZgFYmfd8ITxrofS_uDPhst"
+          async
+        />
       </head>
       <body className="min-h-screen bg-background font-sans" style={{ backgroundColor: '#ffffff' }}>
         <QueryProvider>
