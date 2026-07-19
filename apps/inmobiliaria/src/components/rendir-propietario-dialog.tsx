@@ -68,6 +68,20 @@ interface RendirPropietarioDialogProps {
 // que devuelve capitalizado ("Mayo 2026"). Unificamos al helper compartido.
 const periodoLabel = (p: string): string => formatPeriodo(p);
 
+// Últimos N períodos (YYYY-MM) desde el mes actual hacia atrás, para poder rendir
+// un mes que se pasó (el server acepta cualquier período en POST /rendiciones).
+function ultimosPeriodos(n: number): string[] {
+  const actual = periodoActual(); // "YYYY-MM"
+  const y = Number(actual.slice(0, 4));
+  const m = Number(actual.slice(5, 7));
+  const out: string[] = [];
+  for (let i = 0; i < n; i += 1) {
+    const d = new Date(Date.UTC(y, m - 1 - i, 1));
+    out.push(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`);
+  }
+  return out;
+}
+
 export function RendirPropietarioDialog({
   propietario,
   open,
@@ -80,7 +94,10 @@ export function RendirPropietarioDialog({
   const [showPin, setShowPin] = useState(false);
   const alsoWhatsappRef = useRef(false);
   const [gastosOpen, setGastosOpen] = useState(true);
-  const periodo = periodoActual();
+  // Período a rendir: default mes actual, pero se puede elegir un mes pasado que
+  // se haya salteado (el server lo soporta). Antes estaba clavado a periodoActual().
+  const [periodo, setPeriodo] = useState(periodoActual());
+  const esMesActual = periodo === periodoActual();
   // El badge "ya rendido" sale de localStorage → solo válido en demo. En prod
   // queda null (no se inventa estado) hasta que haya un GET real de rendiciones.
   const yaRendido = !apiEnabled && propietario ? obtenerRendicion(propietario.id, periodo) : null;
@@ -106,6 +123,7 @@ export function RendirPropietarioDialog({
       setNotas('');
       setGuardando(false);
       setGastosOpen(true);
+      setPeriodo(periodoActual());
     }
   }, [open]);
 
@@ -364,6 +382,30 @@ export function RendirPropietarioDialog({
             </div>
           </div>
         )}
+
+        {/* Período a rendir — permite regularizar un mes que se pasó. */}
+        <div className="space-y-1">
+          <Label htmlFor="rpd-periodo" className="text-xs">Mes que rendís</Label>
+          <Select value={periodo} onValueChange={setPeriodo}>
+            <SelectTrigger id="rpd-periodo">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {ultimosPeriodos(6).map((p) => (
+                <SelectItem key={p} value={p}>
+                  {periodoLabel(p)}
+                  {p === periodoActual() ? ' (mes actual)' : ''}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {!esMesActual && (
+            <p className="text-[11px] text-amber-700 dark:text-amber-300">
+              Estás rindiendo un mes pasado. Los montos del sistema se calculan sobre lo cobrado
+              de {periodoLabel(periodo)} (el desglose de arriba es una referencia del mes actual).
+            </p>
+          )}
+        </div>
 
         {/* Método */}
         <div className="space-y-1">
