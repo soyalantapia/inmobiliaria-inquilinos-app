@@ -75,7 +75,7 @@ export async function coreRoutes(app: FastifyInstance) {
       where: { inmobiliariaId: u.inmobiliariaId },
       include: {
         propiedad: { select: { id: true, direccion: true, ciudad: true, consorcio: { select: { nombre: true } } } },
-        inquilinoTitular: { select: { id: true, nombre: true, apellido: true, email: true } },
+        inquilinoTitular: { select: { id: true, nombre: true, apellido: true, email: true, telefono: true } },
         liquidaciones: { orderBy: { periodo: 'desc' }, take: 6 },
       },
       orderBy: { createdAt: 'asc' },

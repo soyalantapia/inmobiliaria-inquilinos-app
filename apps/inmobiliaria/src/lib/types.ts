@@ -205,6 +205,8 @@ export interface Propietario {
 export interface ContratoListado {
   id: string;
   inquilino: string;
+  /** Teléfono del inquilino titular (para WhatsApp/PDF de cobranza). */
+  inquilinoTelefono?: string | null;
   direccion: string;
   /** FK a Propiedad.id — para cruzar la deuda de ex-inquilinos contra el listado de propiedades. */
   propiedadId?: string;

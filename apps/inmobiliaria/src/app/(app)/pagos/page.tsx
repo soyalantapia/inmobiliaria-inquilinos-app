@@ -295,10 +295,12 @@ export default function PagosPage() {
     const filaDe = (c: (typeof cobrables)[number]): (string | number)[] => {
       const contacto = apiEnabled ? undefined : contactosCobranzaMock.find((x) => x.contratoId === c.id);
       const dias = -diasHastaVencimiento(c.proximoVencimiento);
+      // Teléfono: en prod sale del listado real (inquilinoTelefono); en demo, del mock.
+      const telefono = apiEnabled ? (c.inquilinoTelefono ?? '—') : (contacto?.titular.telefono ?? '—');
       return [
         c.inquilino,
         c.direccion,
-        contacto?.titular.telefono ?? '—',
+        telefono,
         contacto?.garante ? `${contacto.garante.nombre} · ${contacto.garante.telefono}` : 'Sin garante registrado',
         `${dias} día${dias === 1 ? '' : 's'}`,
         formatMonto(c.deudaTotal ?? c.monto, c.moneda),
