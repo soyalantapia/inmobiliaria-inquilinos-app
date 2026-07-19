@@ -15,6 +15,7 @@ import {
   marcarComoPrincipal as principalLocal,
   desactivarSociedad as bajaLocal,
   reactivarSociedad as reactivarLocal,
+  hidratarSociedadesDesdeApi,
   type NuevaSociedadInput,
   type Sociedad,
 } from '@/lib/sociedades-storage';
@@ -58,7 +59,12 @@ export async function cargarSociedades(opts: { incluirInactivas?: boolean } = {}
   await ensureApiSession();
   const qs = opts.incluirInactivas ? '?incluirInactivas=true' : '';
   const rows = await apiFetch<SociedadApi[]>(`/sociedades${qs}`);
-  return rows.map(mapSociedad);
+  const mapped = rows.map(mapSociedad);
+  // Mantener localStorage sincronizado con el API: los PDF de cobranza usan
+  // sociedadPrincipal() (síncrona, lee localStorage). Sin esto sembraban el SEED
+  // demo → documentos con razón social + CUIT falsos en prod.
+  hidratarSociedadesDesdeApi(mapped);
+  return mapped;
 }
 
 export async function crearSociedad(input: NuevaSociedadInput): Promise<void> {

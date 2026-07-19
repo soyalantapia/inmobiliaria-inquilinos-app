@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { listarPendientes } from '@/lib/aprobaciones-storage';
 import { apiEnabled, setToken } from '@/lib/api/client';
+import { cargarSociedades } from '@/lib/api/use-sociedades';
 import { useAprobaciones, useMe } from '@/lib/api/hooks';
 import { cn } from '@llave/ui/cn';
 import { CountBadge } from '@/components/count-badge';
@@ -73,6 +74,12 @@ const links: NavLink[] = [
 
 function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {
   const router = useRouter();
+  // Hidratar las sociedades reales del tenant apenas se entra a la app, para que
+  // los PDF de cobranza (que leen sociedadPrincipal() de localStorage) usen la
+  // razón social + CUIT reales y no el SEED demo. Idempotente.
+  useEffect(() => {
+    void cargarSociedades();
+  }, []);
   // El "Cerrar sesión" vivía detrás del avatar del topbar (menú de cuenta):
   // costaba encontrarlo y el avatar no aportaba nada. Ahora vive acá, en el
   // footer del sidebar, junto a los datos de la cuenta (I/2026-07: pedido del

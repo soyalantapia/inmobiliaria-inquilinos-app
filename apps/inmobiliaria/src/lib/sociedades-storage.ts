@@ -169,6 +169,16 @@ function persistir(lista: Sociedad[]): void {
   }
 }
 
+/**
+ * Vuelca en localStorage las sociedades REALES del API (prod). Sin esto,
+ * sociedadPrincipal()/listarSociedades() (síncronas, leen localStorage) siembran
+ * los SEEDS demo → los PDF de cobranza salían con la razón social y CUIT de una
+ * inmobiliaria falsa. Se llama al hidratar desde el API (ver use-sociedades).
+ */
+export function hidratarSociedadesDesdeApi(lista: Sociedad[]): void {
+  if (lista.length > 0) persistir(lista);
+}
+
 export function listarSociedades(opts: { incluirInactivas?: boolean } = {}): Sociedad[] {
   const lista = leerLista();
   return opts.incluirInactivas ? lista : lista.filter((s) => s.activa);

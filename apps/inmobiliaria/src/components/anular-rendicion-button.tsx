@@ -46,6 +46,10 @@ export function AnularRendicionButton({
             return e instanceof ApiError ? e.message : 'No se pudo deshacer. Probá de nuevo.';
           }
           await qc.invalidateQueries({ queryKey: ['propietarios'] });
+          // También la lista de rendiciones (historial): sin esto el "Deshacer"
+          // limpiaba el badge local pero la cache de GET /rendiciones seguía
+          // mostrando la rendición deshecha.
+          await qc.invalidateQueries({ queryKey: ['rendiciones'] });
           toast({ variant: 'success', title: 'Rendición deshecha', description: 'Podés volver a rendir cuando quieras.' });
           onAnulada?.();
           setPinOpen(false);
