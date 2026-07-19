@@ -37,7 +37,7 @@ import { calcularDashboardStats } from '@/lib/dashboard-helpers';
 import { totalGastosPendientesGlobal } from '@/lib/caja-storage';
 import { listarReclamos } from '@/lib/reclamos-store';
 import { apiEnabled } from '@/lib/api/client';
-import { useDashboard } from '@/lib/api/hooks';
+import { useDashboard, useCobranza } from '@/lib/api/hooks';
 import { diasHastaVencimiento, formatFechaCorta, formatMonto, formatPeriodo, periodoActualFormat } from '@/lib/format';
 
 export default function DashboardPage() {
@@ -304,6 +304,10 @@ export default function DashboardPage() {
 function DashboardReal() {
   const { stats, morosos, propietariosSinCbu, porRendir, proximosVencimientos, cargando, error, propiedadesTotal } =
     useDashboard();
+  // ¿La inmobiliaria cargó SU cuenta de cobranza (la que ve el inquilino para
+  // pagarle)? El dato existe (GET /cobranza) pero nadie lo mostraba → nunca se le
+  // pedía cargarla. Sin ella el inquilino no tiene a dónde transferir.
+  const { tieneCuenta: inmoTieneCuenta } = useCobranza();
 
   // Durante el fetch inicial, stats viene en $0 y los KPIs mostraban un falso
   // "Todo al día". Mostramos un estado de carga hasta tener los datos reales.
@@ -379,6 +383,25 @@ function DashboardReal() {
             </Button>
           </div>
         </div>
+
+        {/* Nudge: cargar la cuenta de cobranza de la inmobiliaria (foundational:
+            sin ella el inquilino no tiene a dónde pagar). */}
+        {!inmoTieneCuenta && (
+          <Link href="/configuracion">
+            <Card className="cursor-pointer border-amber-300 bg-amber-50/60 transition-shadow hover:shadow-md dark:border-amber-900/40 dark:bg-amber-900/10">
+              <CardContent className="flex items-center gap-3 p-4 text-sm">
+                <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600" />
+                <div>
+                  <p className="font-medium">Cargá tu cuenta de cobranza</p>
+                  <p className="text-xs text-muted-foreground">
+                    Todavía no tenés cargada la cuenta (CBU/alias) donde tus inquilinos te transfieren.
+                    Cargala en Configuración para poder cobrar.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+        )}
 
         {/* Para resolver hoy (derivado de datos reales) */}
         <section className="space-y-3">
