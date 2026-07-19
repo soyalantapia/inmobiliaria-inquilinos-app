@@ -39,6 +39,8 @@ export interface RendicionApi {
   comisionPct: number;
   comisionMonto: string | number;
   totalGastos: string | number;
+  // Ingresos extra de caja del período que SUMAN al neto (default 0).
+  totalIngresos?: string | number;
   montoNeto: string | number;
   metodo: RendirInput['metodo'];
   notas: string | null;

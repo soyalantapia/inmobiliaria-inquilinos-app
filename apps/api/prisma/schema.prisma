@@ -1768,6 +1768,8 @@ model Rendicion {
   comisionPct    Float
   comisionMonto  Decimal         @db.Decimal(14, 2) // snapshot congelado
   totalGastos    Decimal         @default(0) @db.Decimal(14, 2)
+  // Ingresos extra de caja (INGRESO_EXTRA) del período que SUMAN al dueño.
+  totalIngresos  Decimal         @default(0) @db.Decimal(14, 2)
   montoNeto      Decimal         @db.Decimal(14, 2)
   rendidoAt      DateTime        @default(now())
   metodo         MetodoRendicion

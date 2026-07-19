@@ -1554,7 +1554,31 @@ export async function plataRoutes(app: FastifyInstance) {
           });
 
         totalGastos = r2c(totalGastos);
-        const montoNeto = r2c(montoBruto - comisionMonto - totalGastos);
+
+        // Ingresos extra de caja (INGRESO_EXTRA) del período: plata que entró por
+        // la propiedad (ej. un reintegro del propietario) y que le CORRESPONDE al
+        // dueño → SUMAN al neto. Antes la rendición solo restaba gastos y jamás
+        // sumaba estos ingresos: la plata quedaba en la caja sin rendir nunca.
+        // Misma ventana que los gastos (período + propiedades con ingreso) y mismo
+        // marcado descontadoEnRendicion para que no se rindan dos veces.
+        const ingresosPend = await tx.movimientoCaja.findMany({
+          where: {
+            inmobiliariaId: u.inmobiliariaId,
+            propiedadId: { in: propIdsConIngreso },
+            tipo: 'INGRESO_EXTRA',
+            descontadoEnRendicion: false,
+            fecha: { gte: inicioPeriodo, lt: finPeriodo },
+          },
+        });
+        let totalIngresos = 0;
+        for (const mov of ingresosPend) {
+          const part = owner.participaciones.find((p) => p.propiedadId === mov.propiedadId);
+          const porcentaje = part?.porcentaje ?? 100;
+          totalIngresos += Number(mov.monto) * (porcentaje / 100);
+        }
+        totalIngresos = r2c(totalIngresos);
+
+        const montoNeto = r2c(montoBruto - comisionMonto - totalGastos + totalIngresos);
         if (montoNeto < 0) throw new RendicionNetoNegativo();
 
         const r = await tx.rendicion.create({
@@ -1566,11 +1590,25 @@ export async function plataRoutes(app: FastifyInstance) {
             comisionPct: owner.comisionPct,
             comisionMonto,
             totalGastos,
+            totalIngresos,
             montoNeto,
             metodo: body.data.metodo,
             notas: body.data.notas,
           },
         });
+        // Marcar los ingresos extra como rendidos (linkeados a esta rendición),
+        // con el mismo guard de concurrencia que los gastos: si otra rendición
+        // los tomó entre el findMany y el update, el count no cuadra → abortamos.
+        if (ingresosPend.length > 0) {
+          const upd = await tx.movimientoCaja.updateMany({
+            where: {
+              id: { in: ingresosPend.map((m) => m.id) },
+              descontadoEnRendicion: false,
+            },
+            data: { descontadoEnRendicion: true, rendicionId: r.id },
+          });
+          if (upd.count !== ingresosPend.length) throw new GastoYaDescontado();
+        }
         if (alquilerData.length > 0) {
           await tx.alquilerRendido.createMany({ data: alquilerData.map((a) => ({ ...a, rendicionId: r.id })) });
         }
