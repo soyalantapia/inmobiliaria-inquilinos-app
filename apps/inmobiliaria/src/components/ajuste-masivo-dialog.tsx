@@ -99,7 +99,7 @@ export function AjusteMasivoDialog({
     if (!pctValido || elegidos.length === 0) return;
     setAplicando(true);
     setProgreso({ hechos: 0, total: elegidos.length });
-    let ok = 0;
+    const exitosos: string[] = [];
     const errores: string[] = [];
     try {
       await ensureApiSession();
@@ -112,11 +112,22 @@ export function AjusteMasivoDialog({
               motivo: `Ajuste masivo +${pct}%`,
             }),
           });
-          ok += 1;
+          exitosos.push(c.id);
         } catch (e) {
           errores.push(`${c.inquilino}: ${e instanceof ApiError ? e.message : 'error'}`);
         }
-        setProgreso({ hechos: ok + errores.length, total: elegidos.length });
+        setProgreso({ hechos: exitosos.length + errores.length, total: elegidos.length });
+      }
+      // CRÍTICO (plata): destildar los que salieron OK para que un reintento tras
+      // un error parcial NO les vuelva a aplicar el aumento (15% sobre 15%). Así
+      // "Aplicar" de nuevo corre SOLO sobre los que fallaron.
+      if (exitosos.length > 0) {
+        const okSet = new Set(exitosos);
+        setSeleccion((s) => {
+          const next = { ...s };
+          for (const id of okSet) next[id] = false;
+          return next;
+        });
       }
       await Promise.all([
         qc.invalidateQueries({ queryKey: ['contratos'] }),
@@ -124,13 +135,13 @@ export function AjusteMasivoDialog({
         qc.invalidateQueries({ queryKey: ['liquidaciones'] }),
       ]);
       if (errores.length === 0) {
-        toast({ variant: 'success', title: `¡Listo! Ajustaste ${ok} contrato${ok === 1 ? '' : 's'}`, description: `Aumento del ${pct}% aplicado.` });
+        toast({ variant: 'success', title: `¡Listo! Ajustaste ${exitosos.length} contrato${exitosos.length === 1 ? '' : 's'}`, description: `Aumento del ${pct}% aplicado.` });
         onOpenChange(false);
       } else {
         toast({
           variant: 'destructive',
-          title: `${ok} ajustados, ${errores.length} con error`,
-          description: errores.slice(0, 3).join(' · '),
+          title: `${exitosos.length} ajustados, ${errores.length} con error`,
+          description: `Dejamos tildados solo los que fallaron para que reintentes sin re-aumentar a nadie. ${errores.slice(0, 2).join(' · ')}`,
         });
       }
     } finally {
