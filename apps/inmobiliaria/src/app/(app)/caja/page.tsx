@@ -88,6 +88,11 @@ export default function CajaPage() {
   const pendienteDescuento = filtrados
     .filter((m) => m.tipo === 'GASTO' && !m.descontadoEnRendicion)
     .reduce((acc, m) => acc + m.monto, 0);
+  // Ingresos extra de caja: antes no aparecían en ningún KPI (parecían perderse).
+  // Ahora suman al neto de la rendición → mostramos lo pendiente a sumar.
+  const pendienteSumar = filtrados
+    .filter((m) => m.tipo === 'INGRESO_EXTRA' && !m.descontadoEnRendicion)
+    .reduce((acc, m) => acc + m.monto, 0);
   const cantidadMov = filtrados.length;
 
   // El PIN se eliminó de la plataforma (auth/pin.ts): el borrado se confirma con
@@ -154,6 +159,17 @@ export default function CajaPage() {
               {formatMonto(pendienteDescuento)}
             </p>
           </Card>
+          {pendienteSumar > 0 && (
+            <Card className="p-4 sm:col-span-2 md:col-span-1">
+              <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300">
+                <TrendingUp className="h-4 w-4" />
+                <p className="text-xs font-medium">A sumar en próxima rendición</p>
+              </div>
+              <p className="mt-1 text-2xl font-semibold tabular-nums text-emerald-700 dark:text-emerald-300">
+                {formatMonto(pendienteSumar)}
+              </p>
+            </Card>
+          )}
         </div>
 
         {/* Cierre de caja del día (cobrado + comisión) — solo prod (data real) */}
@@ -458,6 +474,16 @@ function MovimientoRow({
             (mov.descontadoEnRendicion ? (
               <Badge variant="success" className="text-[10px]">
                 Descontado
+              </Badge>
+            ) : (
+              <Badge variant="warning" className="text-[10px]">
+                Pendiente
+              </Badge>
+            ))}
+          {esIngreso &&
+            (mov.descontadoEnRendicion ? (
+              <Badge variant="success" className="text-[10px]">
+                Sumado en rendición
               </Badge>
             ) : (
               <Badge variant="warning" className="text-[10px]">

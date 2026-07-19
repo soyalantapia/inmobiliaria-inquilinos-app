@@ -166,6 +166,28 @@ function mapDetalle(d: PropietarioDetalleApi): PropietarioDetalle {
     .filter((p): p is PropiedadEmbebidaApi => p?.contratoActual != null)
     .map((p) => mapContratoActual(p.contratoActual as ContratoActualApi, p.direccion));
 
+  // Mensual esperado según los contratos ACTIVOS embebidos (canon × % de
+  // participación). El endpoint no trae liquidaciones pagadas, pero el canon
+  // vigente SÍ viene: alcanza para mostrar "cuánto le entra por mes" en vez de
+  // un '—' o $0 que hacía ver la ficha vacía. Es un estimado (no descuenta mora).
+  const comisionPct = d.comisionPct ?? 0;
+  let brutoMensual = 0;
+  const monedas = new Set<string>();
+  for (const part of participaciones) {
+    const c = part.propiedad?.contratoActual;
+    if (!c) continue;
+    const canon = Number(c.monto) || 0;
+    if (canon <= 0) continue;
+    monedas.add(c.moneda);
+    brutoMensual += (canon * (Number(part.porcentaje) || 0)) / 100;
+  }
+  // Si el dueño mezcla ARS y USD, sumar en un solo número no tiene sentido → lo
+  // dejamos en 0 (la ficha muestra '—') en vez de un total cross-moneda engañoso.
+  const monedasMezcladas = monedas.size > 1;
+  if (monedasMezcladas) brutoMensual = 0;
+  const monedaMensual = monedas.size === 1 ? ([...monedas][0] as Moneda) : null;
+  const recibirMensual = brutoMensual * (1 - comisionPct / 100);
+
   const propietario: Propietario = {
     id: d.id,
     nombre: d.nombre,
@@ -178,9 +200,11 @@ function mapDetalle(d: PropietarioDetalleApi): PropietarioDetalle {
     notas: d.notas,
     createdAt: (d.createdAt ?? '').slice(0, 10),
     propiedadesIds: participaciones.map((part) => part.propiedadId),
-    // El detalle no trae liquidaciones pagadas → métricas en 0 (no inventamos).
-    totalCobradoMes: 0,
-    totalRecibirMes: 0,
+    // Mensual esperado según canon vigente (ver arriba). Si no hay contratos
+    // activos queda en 0 → la ficha muestra '—' (correcto: sin alquiler no hay ingreso).
+    totalCobradoMes: brutoMensual,
+    totalRecibirMes: recibirMensual,
+    monedaMensual,
     ...(d.arca
       ? {
           afip: {

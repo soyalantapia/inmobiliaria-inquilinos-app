@@ -328,9 +328,9 @@ export function RendirPropietarioDialog({
             </div>
           ) : apiEnabled ? (
             <div className="rounded-md border border-dashed bg-background/40 p-2 text-[11px] text-muted-foreground">
-              Al confirmar, el sistema descuenta los gastos del mes (caja +
-              reparaciones a cargo del propietario). El neto final puede ser menor
-              al estimado.
+              Al confirmar, el sistema ajusta el neto con los movimientos del mes:
+              descuenta los gastos (caja + reparaciones a cargo del propietario) y
+              suma los ingresos extra de caja. El neto final puede diferir del estimado.
             </div>
           ) : (
             <div className="rounded-md border border-dashed bg-background/40 p-2 text-[11px] text-muted-foreground">

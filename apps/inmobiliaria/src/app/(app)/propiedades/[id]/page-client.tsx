@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import {
@@ -30,6 +31,7 @@ import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { EditarPropiedadTrigger } from '@/components/editar-propiedad-trigger';
 import { EditarPropietarioTrigger } from '@/components/editar-propietario-trigger';
+import { EditarParticipacionesDialog } from '@/components/editar-participaciones-dialog';
 import { EliminarPropiedadButton } from '@/components/eliminar-propiedad-button';
 import {
   CargarInquilinoTrigger,
@@ -66,6 +68,7 @@ import {
 import { diasHastaVencimiento, formatFechaCorta, formatMonto, formatRangoVigencia } from '@/lib/format';
 import { apiEnabled, urlDeArchivo } from '@/lib/api/client';
 import { usePropiedad } from '@/lib/api/use-propiedad';
+import { usePropietarios } from '@/lib/api/hooks';
 import type { TipoPropiedad } from '@/lib/types';
 
 const tipoIcono: Record<TipoPropiedad, React.ComponentType<{ className?: string }>> = {
@@ -81,6 +84,10 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
   // mismo shape enriquecido que consumía esta pantalla (propiedad + contrato
   // + propietarios + reclamos) más la sociedad gestora del hero.
   const { propiedad: detalle, cargando, deApi, noEncontrada } = usePropiedad(params.id);
+  // Catálogo de propietarios del tenant + estado del editor de reparto. Se
+  // declaran ANTES de los early-returns para respetar las reglas de hooks.
+  const { propietarios: catalogoPropietarios } = usePropietarios();
+  const [editarRepartoOpen, setEditarRepartoOpen] = useState(false);
 
   // En build demo el mock es síncrono: si no existe el id → 404 real de Next.
   if (!deApi && noEncontrada) notFound();
@@ -543,11 +550,19 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                         <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                           Reparto de la propiedad
                         </h3>
-                        {validacion.balanceado ? (
-                          <Badge variant="success">Suma 100%</Badge>
-                        ) : (
-                          <Badge variant="warning">Suma {validacion.suma}% — falta ajustar</Badge>
-                        )}
+                        <div className="flex items-center gap-2">
+                          {validacion.balanceado ? (
+                            <Badge variant="success">Suma 100%</Badge>
+                          ) : (
+                            <Badge variant="warning">Suma {validacion.suma}% — falta ajustar</Badge>
+                          )}
+                          {apiEnabled && (
+                            <Button variant="outline" size="sm" onClick={() => setEditarRepartoOpen(true)}>
+                              <Users className="h-3.5 w-3.5" />
+                              Editar reparto
+                            </Button>
+                          )}
+                        </div>
                       </div>
                       <div className="space-y-2">
                         {parts.map((p) => {
@@ -577,6 +592,14 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                       </div>
                     </CardContent>
                   </Card>
+
+                  <EditarParticipacionesDialog
+                    open={editarRepartoOpen}
+                    onOpenChange={setEditarRepartoOpen}
+                    propiedadId={propiedad.id}
+                    participacionesActuales={parts}
+                    propietarios={catalogoPropietarios}
+                  />
 
                   <div className="grid gap-4 md:grid-cols-2">
                 {propietarios.map((o) => (

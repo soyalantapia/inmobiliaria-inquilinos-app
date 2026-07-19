@@ -196,6 +196,8 @@ export interface Propietario {
   propiedadesIds: string[]; // FK a Propiedad.id (no a Contrato)
   totalCobradoMes: number;
   totalRecibirMes: number;
+  /** Moneda de los montos mensuales (null si el dueño mezcla ARS+USD → no se agregan en un total). */
+  monedaMensual?: Moneda | null;
   /** Configuración AFIP — si está conectada, al conciliar un pago se emite factura/recibo automático. */
   afip?: ArcaConfig;
   /** Cuenta directa del propietario (modo PROPIETARIO_DIRECTO). */

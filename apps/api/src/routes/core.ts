@@ -452,6 +452,98 @@ export async function coreRoutes(app: FastifyInstance) {
     return propiedad;
   });
 
+  // Editar los DUEÑOS y sus % de una propiedad. Antes no había forma de cambiar
+  // esto tras el alta: si un dueño vendía su parte o cambiaban las proporciones,
+  // quedaba clavado para siempre (y los % afectan el split de cada rendición).
+  // Reemplaza el set completo de participaciones de forma atómica, validando que
+  // los % sumen 100, sin duplicados y con propietarios del propio tenant.
+  app.put('/propiedades/:id/participaciones', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'propiedades.crear');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const parsed = z
+      .object({
+        participaciones: z
+          .array(
+            z.object({
+              propietarioId: z.string().min(1),
+              porcentaje: z.number().positive().max(100),
+            }),
+          )
+          .min(1, 'Al menos un propietario'),
+      })
+      .safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ message: 'Datos de propietarios inválidos', detalle: parsed.error.flatten() });
+    }
+    const parts = parsed.data.participaciones;
+
+    // Sin duplicados (la PK compuesta lo rechazaría, pero damos un error claro).
+    const ids = parts.map((p) => p.propietarioId);
+    if (new Set(ids).size !== ids.length) {
+      return reply.code(400).send({ message: 'Un mismo propietario no puede aparecer dos veces' });
+    }
+    // Los % deben sumar 100 (tolerancia por floats).
+    const suma = parts.reduce((s, p) => s + p.porcentaje, 0);
+    if (Math.abs(suma - 100) > 0.01) {
+      return reply.code(400).send({ message: `Los porcentajes deben sumar 100% (suman ${suma}%)` });
+    }
+    // La propiedad es del tenant.
+    const prop = await prisma.propiedad.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      select: { id: true },
+    });
+    if (!prop) return reply.code(404).send({ message: 'Propiedad inexistente' });
+    // Todos los propietarios son del tenant (no se puede asignar uno ajeno).
+    const propietariosDelTenant = await prisma.propietario.count({
+      where: { id: { in: ids }, inmobiliariaId: u.inmobiliariaId },
+    });
+    if (propietariosDelTenant !== ids.length) {
+      return reply.code(400).send({ message: 'Alguno de los propietarios no existe' });
+    }
+    // Guard cobranza directa: no se puede QUITAR a un dueño que hoy recibe el pago
+    // directo del inquilino (contrato PROPIETARIO_DIRECTO) — sino el inquilino
+    // seguiría transfiriendo a un ex-dueño. Hay que reasignar la cobranza primero.
+    const cobranzaHuerfana = await prisma.contrato.findFirst({
+      where: {
+        propiedadId: id,
+        inmobiliariaId: u.inmobiliariaId,
+        estado: 'ACTIVO',
+        modoCobranza: 'PROPIETARIO_DIRECTO',
+        cobraDirectoPropietarioId: { notIn: ids },
+        NOT: { cobraDirectoPropietarioId: null },
+      },
+      select: { id: true },
+    });
+    if (cobranzaHuerfana) {
+      return reply.code(409).send({
+        message:
+          'No podés quitar a ese propietario: es quien cobra directo del inquilino en un contrato activo. Reasigná la cobranza directa antes de cambiar los dueños.',
+      });
+    }
+    // NOTA (limitación conocida): cambiar el reparto de un período ya cobrado no
+    // re-atribuye lo cobrado-no-rendido del dueño saliente. El cap cruzado en la
+    // rendición (plata.ts) evita que la inmobiliaria pague MÁS que lo cobrado; la
+    // re-atribución fina requeriría snapshotear participaciones por período.
+
+    await prisma.$transaction(async (tx) => {
+      await tx.participacionPropietario.deleteMany({ where: { propiedadId: id } });
+      await tx.participacionPropietario.createMany({
+        data: parts.map((p) => ({
+          inmobiliariaId: u.inmobiliariaId,
+          propiedadId: id,
+          propietarioId: p.propietarioId,
+          porcentaje: p.porcentaje,
+        })),
+      });
+    });
+
+    return prisma.propiedad.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      include: { participaciones: { include: { propietario: { select: { id: true, nombre: true, apellido: true } } } } },
+    });
+  });
+
   // ===== Propietarios =====
   app.get('/propietarios', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'propietarios.ver');
@@ -1421,7 +1513,9 @@ export async function coreRoutes(app: FastifyInstance) {
     const parsed = z
       .object({
         montoNuevo: z.number().positive(),
-        periodoDesde: z.string().regex(/^\d{4}-\d{2}$/, 'Período inválido (YYYY-MM)'),
+        // Mes 01-12 estricto: sin esto '2026-00'/'2026-13' pasaba y el
+        // new Date(`${periodoDesde}-01`) de reprogramar proximoAjuste daba Invalid Date.
+        periodoDesde: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Período inválido (YYYY-MM)'),
         motivo: z.string().trim().max(200).optional(),
       })
       .safeParse(request.body);
@@ -1437,6 +1531,13 @@ export async function coreRoutes(app: FastifyInstance) {
       return reply.code(400).send({ message: 'El monto nuevo es igual al actual' });
     }
     const expensas = contrato.montoExpensas != null ? Number(contrato.montoExpensas) : 0;
+    // Reprogramar el próximo ajuste = mes de este ajuste (periodoDesde) + frecuencia.
+    // Antes este endpoint (botón "Ajustar" de la ficha) NO tocaba proximoAjuste →
+    // el contrato seguía figurando "a ajustar" y el ajuste masivo lo re-aumentaba.
+    // El PATCH /monto (ajuste masivo) sí lo reprogramaba: los dos caminos quedaban
+    // inconsistentes. Ahora ambos dejan la próxima fecha bien.
+    const baseAjuste = new Date(`${b.periodoDesde}-01T00:00:00.000Z`);
+    const nuevoProximoAjuste = sumarMesesUTC(baseAjuste, contrato.frecuenciaAjusteMeses);
     const res = await prisma.$transaction(async (tx) => {
       const ajuste = await tx.ajusteAlquiler.create({
         data: {
@@ -1449,7 +1550,7 @@ export async function coreRoutes(app: FastifyInstance) {
           creadoPorId: u.userId,
         },
       });
-      await tx.contrato.update({ where: { id }, data: { monto: b.montoNuevo } });
+      await tx.contrato.update({ where: { id }, data: { monto: b.montoNuevo, proximoAjuste: nuevoProximoAjuste } });
       // Cuotas FUTURAS impagas (periodo >= periodoDesde, PENDIENTE, sin pagos) → nuevo canon.
       // NO se tocan las pagadas/parciales/vencidas: ya se devengaron con su monto histórico.
       const upd = await tx.liquidacion.updateMany({

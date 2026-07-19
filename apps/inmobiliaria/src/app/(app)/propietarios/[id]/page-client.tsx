@@ -33,12 +33,17 @@ import { EliminarPropietarioButton } from '@/components/eliminar-propietario-but
 import { Topbar } from '@/components/topbar';
 import { apiEnabled } from '@/lib/api/client';
 import { usePropietario } from '@/lib/api/use-propietario';
+import { useRendicionesList } from '@/lib/api/use-rendiciones';
 import { formatFechaCorta, formatMonto, formatPeriodo, formatRangoVigencia } from '@/lib/format';
 import { descargarCsv } from '@/lib/csv-export';
 import { toast } from '@llave/ui/use-toast';
 
 export default function DetallePropietarioPage({ params }: { params: { id: string } }) {
   const { detalle, cargando } = usePropietario(params.id);
+  // Rendiciones reales del propietario (GET /rendiciones). Antes la card mostraba
+  // "Disponible pronto" en prod aunque el endpoint ya existía.
+  const { rendiciones: rendicionesApi } = useRendicionesList();
+  const rendicionesReales = rendicionesApi.filter((r) => r.propietarioId === params.id);
 
   // En build demo (!apiEnabled) un id inexistente es un 404 real. En prod, si el
   // API no devuelve el propietario (caído/404), mostramos un estado vacío en vez
@@ -88,9 +93,10 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
   const { propietario, propiedades, contratos } = detalle;
   const tel = propietario.telefono.replace(/[^\d]/g, '');
   const ingresoAnualEstimado = propietario.totalRecibirMes * 12;
-  // En prod el endpoint /propietarios/:id todavía no devuelve liquidaciones → los
-  // montos vienen en 0. Mostramos '—' en vez de un $0 engañoso (en demo hay data).
-  const finanzasNoDisponibles = apiEnabled && propietario.totalCobradoMes === 0;
+  // Los montos son el mensual esperado según el canon vigente de los contratos
+  // activos (no liquidaciones pagadas). Si no hay contratos activos quedan en 0 →
+  // mostramos '—' en vez de un $0 engañoso.
+  const finanzasNoDisponibles = propietario.totalCobradoMes === 0;
 
   // Editar datos básicos (nombre, CUIT, email, teléfono, CBU, comisión) SÍ tiene
   // endpoint real (PUT /propietarios/:id) → editable en prod. Antes estaba
@@ -198,19 +204,19 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
             icon={<Home className="h-4 w-4" />}
           />
           <Kpi
-            label="Bruto cobrado/mes"
-            value={finanzasNoDisponibles ? '—' : formatMonto(propietario.totalCobradoMes)}
+            label="Alquiler bruto/mes"
+            value={finanzasNoDisponibles ? '—' : formatMonto(propietario.totalCobradoMes, propietario.monedaMensual ?? undefined)}
             icon={<Wallet className="h-4 w-4" />}
           />
           <Kpi
-            label="A rendir/mes"
-            value={finanzasNoDisponibles ? '—' : formatMonto(propietario.totalRecibirMes)}
+            label="A rendir/mes (est.)"
+            value={finanzasNoDisponibles ? '—' : formatMonto(propietario.totalRecibirMes, propietario.monedaMensual ?? undefined)}
             icon={<Wallet className="h-4 w-4" />}
             highlight
           />
           <Kpi
             label="Ingreso anual est."
-            value={finanzasNoDisponibles ? '—' : formatMonto(ingresoAnualEstimado)}
+            value={finanzasNoDisponibles ? '—' : formatMonto(ingresoAnualEstimado, propietario.monedaMensual ?? undefined)}
             icon={<Building2 className="h-4 w-4" />}
           />
         </div>
@@ -464,12 +470,31 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
                 Últimas rendiciones
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-6 pt-0 text-center">
-              <Receipt className="mx-auto mb-2 h-8 w-8 text-muted-foreground/50" />
-              <p className="text-sm font-medium">Disponible pronto</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                El historial de rendiciones al propietario estará disponible en breve.
-              </p>
+            <CardContent className="p-0">
+              {rendicionesReales.length === 0 ? (
+                <div className="p-6 pt-0 text-center">
+                  <Receipt className="mx-auto mb-2 h-8 w-8 text-muted-foreground/50" />
+                  <p className="text-sm font-medium">Sin rendiciones todavía</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Cuando le rindas un mes al propietario, va a aparecer acá.
+                  </p>
+                </div>
+              ) : (
+                <div className="divide-y">
+                  {rendicionesReales.map((r) => (
+                    <div key={r.id} className="flex items-center justify-between gap-3 px-5 py-3 text-sm">
+                      <div>
+                        <p className="font-medium">{formatPeriodo(r.periodo)}</p>
+                        <p className="text-xs text-muted-foreground">{r.metodo.toLowerCase()}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-semibold tabular-nums">{formatMonto(Number(r.montoNeto))}</p>
+                        <p className="text-[11px] text-muted-foreground">neto rendido</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         ) : (
