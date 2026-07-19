@@ -53,7 +53,7 @@ interface ContratoApi {
   cargadoAt: string | null;
   aprobadoPor: string | null;
   propiedad: { id: string; direccion: string; ciudad: string; consorcio?: { nombre: string } | null };
-  inquilinoTitular: { id: string; nombre: string; apellido: string | null } | null;
+  inquilinoTitular: { id: string; nombre: string; apellido: string | null; telefono?: string | null } | null;
   /** Derivados por el server desde liquidaciones reales (Fase 3). */
   estadoPagoActual: ContratoListado['estadoPagoActual'];
   proximoVencimiento: string | null;
@@ -79,6 +79,9 @@ function mapContrato(c: ContratoApi): ContratoListado {
     inquilino: c.inquilinoTitular
       ? `${c.inquilinoTitular.nombre} ${c.inquilinoTitular.apellido ?? ''}`.trim()
       : (c.propiedad?.consorcio?.nombre ?? '—'),
+    // Teléfono del inquilino titular en el listado → habilita el WhatsApp/PDF de
+    // cobranza de morosos en prod (antes el listado no lo traía).
+    inquilinoTelefono: c.inquilinoTitular?.telefono ?? null,
     // Defensa: una respuesta sin la relación `propiedad` (p.ej. un POST que
     // devuelve la fila pelada) no debe crashear con "reading 'direccion'".
     direccion: c.propiedad?.direccion ?? '—',
