@@ -27,6 +27,26 @@ export function useAjustes(contratoId: string): { ajustes: AjusteAlquiler[]; dis
   return { ajustes: apiEnabled ? (q.data ?? []) : [], disponible: apiEnabled };
 }
 
+/** Reemplaza los dueños y sus % de una propiedad (PUT /propiedades/:id/participaciones).
+ *  El server valida que sumen 100, sin duplicados y con propietarios del tenant. */
+export function useEditarParticipaciones(propiedadId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (participaciones: { propietarioId: string; porcentaje: number }[]) => {
+      await ensureApiSession();
+      return apiFetch(`/propiedades/${propiedadId}/participaciones`, {
+        method: 'PUT',
+        body: JSON.stringify({ participaciones }),
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['propiedad', propiedadId] });
+      qc.invalidateQueries({ queryKey: ['propiedades'] });
+      qc.invalidateQueries({ queryKey: ['propietarios'] });
+    },
+  });
+}
+
 /** Ajustar el alquiler: nuevo canon + desde qué período. Actualiza el contrato y las
  *  cuotas futuras impagas, y registra el ajuste en el historial. */
 export function useAjustarAlquiler(contratoId: string) {
