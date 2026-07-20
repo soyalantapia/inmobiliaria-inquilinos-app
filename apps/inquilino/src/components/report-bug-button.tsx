@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Bug, Send } from 'lucide-react';
 import { Button } from '@llave/ui/button';
 import {
@@ -13,7 +13,8 @@ import {
 import { Label } from '@llave/ui/label';
 import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
-import { reportarBug, type SonarSeverity } from '@/lib/sonar-client';
+import { useCurrentUser } from '@/lib/use-current-user';
+import { identificarSonarUser, reportarBug, type SonarSeverity } from '@/lib/sonar-client';
 
 type UserSeverity = Extract<SonarSeverity, 'low' | 'medium' | 'high'>;
 
@@ -28,10 +29,22 @@ const SEV_LABELS: Record<UserSeverity, string> = {
  * Posicionado en bottom-left para no chocar con la barra inferior de la PWA.
  */
 export function ReportBugButton() {
+  const user = useCurrentUser();
   const [open, setOpen] = useState(false);
   const [msg, setMsg] = useState('');
   const [sev, setSev] = useState<UserSeverity>('medium');
   const [sending, setSending] = useState(false);
+
+  // Identidad en Sonar: sin esto los tickets llegan anónimos y usersAffected queda en 0.
+  useEffect(() => {
+    if (!user.isSignedIn || !user.email) return;
+    identificarSonarUser({
+      id: user.email,
+      name: user.fullName,
+      email: user.email,
+      role: 'inquilino',
+    });
+  }, [user.isSignedIn, user.email, user.fullName]);
 
   function cerrar() {
     setOpen(false);

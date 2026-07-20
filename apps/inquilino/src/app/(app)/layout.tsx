@@ -3,6 +3,7 @@ import { DesktopTopbar } from '@/components/desktop-topbar';
 import { Onboarding } from '@/components/onboarding';
 import { PullToRefresh } from '@/components/pull-to-refresh';
 import { WhatsappFab } from '@/components/whatsapp-fab';
+import { ReportBugButton } from '@/components/report-bug-button';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -29,6 +30,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </div>
       <PullToRefresh />
       <WhatsappFab />
+      {/* Va acá y no en el layout raíz: así no aparece en /login ni en las
+          pantallas públicas (/pago, /verificar, /invitacion), donde no hay
+          sesión que atribuirle al reporte. */}
+      <ReportBugButton />
       <Onboarding />
     </div>
   );

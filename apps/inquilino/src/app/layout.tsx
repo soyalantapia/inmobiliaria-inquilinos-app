@@ -7,7 +7,6 @@ import { Toaster } from '@llave/ui/use-toast';
 import { themeScript } from '@llave/ui/theme-toggle';
 import { AuthProvider } from '@/components/auth-provider';
 import { QueryProvider } from '@/components/query-provider';
-import { ReportBugButton } from '@/components/report-bug-button';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
 
@@ -59,8 +58,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <AuthProvider>
             {children}
             <Toaster />
-            {/* FAB de Sonar: botón flotante para que el inquilino reporte bugs. */}
-            <ReportBugButton />
           </AuthProvider>
         </QueryProvider>
         <PwaRegister />

@@ -115,3 +115,62 @@ describe('/api/soporte/* exige sesión del panel', () => {
     expect(res.statusCode).toBe(403);
   });
 });
+
+describe('capacidades: leer vs mutar tickets', () => {
+  const tokenDe = (rol: 'ADMIN' | 'OPERADOR' | 'CARGA' | 'LECTURA') =>
+    app.jwt.sign({ kind: 'usuario', userId: `u_${rol}`, inmobiliariaId: 'inmo_1', rol });
+
+  // Leer usa 'auditoria.ver' → ADMIN y LECTURA. Mutar usa 'equipo.gestionar' → solo ADMIN.
+  // Un 403 lo decide el guard sin tocar Sonar; los roles habilitados pasan el guard y
+  // recién ahí fallan contra Sonar (no configurado en test) — por eso NO esperamos 200.
+  it.each([
+    ['OPERADOR', 403],
+    ['CARGA', 403],
+  ] as const)('GET /issues con rol %s → %i', async (rol, esperado) => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/soporte/issues',
+      headers: { authorization: `Bearer ${tokenDe(rol)}` },
+    });
+    expect(res.statusCode).toBe(esperado);
+  });
+
+  it.each([
+    ['LECTURA', 403],
+    ['OPERADOR', 403],
+    ['CARGA', 403],
+  ] as const)('PATCH /issues/:id con rol %s → %i (no puede cerrar tickets)', async (rol, esperado) => {
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/soporte/issues/abc123',
+      headers: { authorization: `Bearer ${tokenDe(rol)}` },
+      payload: { status: 'resolved' },
+    });
+    expect(res.statusCode).toBe(esperado);
+  });
+
+  it('LECTURA SÍ pasa el guard de lectura (no da 403)', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/soporte/issues',
+      headers: { authorization: `Bearer ${tokenDe('LECTURA')}` },
+    });
+    expect(res.statusCode).not.toBe(403);
+    expect(res.statusCode).not.toBe(401);
+  });
+
+  it('ADMIN pasa ambos guards (no da 401/403)', async () => {
+    for (const [method, url] of [
+      ['GET', '/api/soporte/issues'],
+      ['PATCH', '/api/soporte/issues/abc123'],
+    ] as const) {
+      const res = await app.inject({
+        method,
+        url,
+        headers: { authorization: `Bearer ${tokenDe('ADMIN')}` },
+        ...(method === 'PATCH' ? { payload: { status: 'resolved' } } : {}),
+      });
+      expect([401, 403]).not.toContain(res.statusCode);
+    }
+  });
+});

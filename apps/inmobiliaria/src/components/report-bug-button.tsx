@@ -1,6 +1,7 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { Bug, Send } from 'lucide-react';
 import { Button } from '@llave/ui/button';
 import {
@@ -13,7 +14,9 @@ import {
 import { Label } from '@llave/ui/label';
 import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
-import { reportarBug, type SonarSeverity } from '@/lib/sonar-client';
+import { apiEnabled } from '@/lib/api/client';
+import { useMe } from '@/lib/api/hooks';
+import { identificarSonarUser, reportarBug, type SonarSeverity } from '@/lib/sonar-client';
 
 type UserSeverity = Extract<SonarSeverity, 'low' | 'medium' | 'high'>;
 
@@ -29,15 +32,23 @@ const SEV_LABELS: Record<UserSeverity, string> = {
  * window.Sonar.capture (kind: 'manual'). El loader adjunta automáticamente la
  * pantalla/ruta, breadcrumbs, contexto y el usuario identificado.
  *
- * En /configuracion lo movemos a la izquierda para no tapar los CTAs de esa pantalla.
+ * Además identifica al usuario en Sonar, así TODO reporte (manual y automático) queda
+ * atribuido y `usersAffected` cuenta gente real en vez de quedarse en 0.
  */
 export function ReportBugButton() {
+  const pathname = usePathname() ?? '';
+  const { me } = useMe();
   const [open, setOpen] = useState(false);
   const [msg, setMsg] = useState('');
   const [sev, setSev] = useState<UserSeverity>('medium');
   const [sending, setSending] = useState(false);
-  // Timer del toast: cancelamos el anterior antes de programar el nuevo.
-  const timerRef = useRef<number | null>(null);
+
+  // Identidad en Sonar. Sin esto los tickets llegan anónimos: usersAffected queda
+  // siempre en 0 y no se puede saber a quién le pasó. Idempotente.
+  useEffect(() => {
+    if (!me) return;
+    identificarSonarUser({ id: me.email, name: me.nombre, email: me.email, role: me.rol });
+  }, [me]);
 
   function cerrar() {
     setOpen(false);
@@ -54,7 +65,6 @@ export function ReportBugButton() {
     setSending(false);
     if (ok) {
       cerrar();
-      if (timerRef.current) window.clearTimeout(timerRef.current);
       toast({
         variant: 'success',
         title: 'Bug reportado',
@@ -71,11 +81,19 @@ export function ReportBugButton() {
 
   return (
     <>
-      {/* FAB: en mobile sube para no tapar la barra inferior (h-16 = pb-16 del layout) */}
+      {/* Posición del FAB. Dos colisiones reales que evitar:
+          1) PilotoFab vive en la MISMA esquina (bottom-20 right-5 / md:bottom-5) y se
+             monta cuando NO hay API (dev y demo). Ahí subimos un piso para apilarlos
+             en vez de superponerlos.
+          2) /configuracion tiene CTAs primarios al pie ("Guardar cambios"): igual que
+             PilotoFab, nos corremos a la izquierda.
+          En mobile subimos siempre para no tapar la barra inferior (h-16 = pb-16 del layout). */}
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="fixed bottom-20 right-4 z-40 flex items-center gap-2 rounded-full bg-violet-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-violet-600/30 transition-all hover:bg-violet-700 hover:shadow-xl active:scale-95 md:bottom-5 md:right-6"
+        className={`fixed z-40 flex items-center gap-2 rounded-full bg-violet-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-violet-600/30 transition-all hover:bg-violet-700 hover:shadow-xl active:scale-95 ${
+          pathname.startsWith('/configuracion') ? 'left-4 md:left-6' : 'right-4 md:right-6'
+        } ${apiEnabled ? 'bottom-20 md:bottom-5' : 'bottom-36 md:bottom-20'}`}
         aria-label="Reportar un bug"
       >
         <Bug className="h-4 w-4" aria-hidden="true" />

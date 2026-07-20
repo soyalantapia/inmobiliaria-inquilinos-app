@@ -45,12 +45,26 @@ function assertConfigured(): void {
 //    refrescamos a los 6 para no cortar a mitad de una sesión de trabajo. ──
 let tokenCache: { token: string; mintedAt: number } | null = null;
 const TOKEN_TTL_MS = 6 * 24 * 60 * 60 * 1000;
+const SONAR_TIMEOUT_MS = 10_000;
+
+// Dedup del mint: N requests concurrentes con el token vencido dispararían N logins
+// contra Sonar. Todas esperan la MISMA promesa en vuelo.
+let mintInFlight: Promise<string> | null = null;
 
 async function mintToken(): Promise<string> {
+  if (mintInFlight) return mintInFlight;
+  mintInFlight = doMint().finally(() => {
+    mintInFlight = null;
+  });
+  return mintInFlight;
+}
+
+async function doMint(): Promise<string> {
   const res = await fetch(`${API_URL()}/auth/dev-login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email: LOGIN_EMAIL(), secret: LOGIN_SECRET() }),
+    signal: AbortSignal.timeout(SONAR_TIMEOUT_MS),
   }).catch(() => null);
   if (!res) throw sonarErr(502, 'No se pudo comunicar con el servicio de soporte.');
   if (!res.ok) {
@@ -76,6 +90,8 @@ async function sonarFetch<T>(
   init: { method: string; body?: unknown } = { method: 'GET' },
 ): Promise<T> {
   assertConfigured();
+  // Timeout: sin esto una request colgada a Sonar mantiene ocupado un handler de Fastify
+  // hasta que el socket muera solo. Soporte es una pantalla secundaria: mejor fallar rápido.
   const call = async (token: string): Promise<Response | null> =>
     fetch(`${API_URL()}${path}`, {
       method: init.method,
@@ -83,11 +99,17 @@ async function sonarFetch<T>(
         Authorization: `Bearer ${token}`,
         ...(init.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
       },
+      signal: AbortSignal.timeout(SONAR_TIMEOUT_MS),
       ...(init.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
     }).catch(() => null);
 
   let res = await call(await getToken());
-  if (res && res.status === 401) res = await call(await getToken(true)); // token vencido → re-mintear
+  if (res && res.status === 401) {
+    // Drenamos el body del intento fallido: si no, el socket queda a medio leer y el
+    // agente HTTP no lo devuelve al pool.
+    await res.text().catch(() => undefined);
+    res = await call(await getToken(true)); // token vencido → re-mintear
+  }
   if (!res) throw sonarErr(502, 'No se pudo comunicar con el servicio de soporte.');
   if (!res.ok) {
     const detail = (await res.json().catch(() => ({}))) as { message?: string; error?: string };
@@ -114,7 +136,13 @@ interface SonarProjectSummary {
 export async function sonarProjectOverview(): Promise<SonarProjectSummary> {
   const { projects } = await sonarFetch<{ projects: SonarProjectSummary[] }>('/v1/projects');
   const envId = PROJECT_ID_ENV();
-  const project = envId ? projects.find((p) => p.id === envId) : projects[0];
+  // Sin id explícito caemos al slug ANTES que a projects[0]: si el bot dejara de estar
+  // scopeado (o se lo promoviera a owner) vería otros proyectos del portfolio, y tomar el
+  // primero significaría leer —y escribir— tickets de OTRO producto.
+  const project =
+    (envId ? projects.find((p) => p.id === envId) : undefined) ??
+    projects.find((p) => p.slug === 'myalquiler') ??
+    (projects.length === 1 ? projects[0] : undefined);
   if (!project)
     throw sonarErr(502, 'No se encontró el proyecto en el servicio de soporte.');
   projectIdCache = project.id;

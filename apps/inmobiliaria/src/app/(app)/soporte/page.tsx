@@ -132,8 +132,11 @@ export default function SoportePage() {
     getSoporteConfig()
       .then((c) => { if (alive) { setCfg(c); setCfgErr(null); } })
       .catch((e: unknown) => {
-        if (alive)
-          setCfgErr(e instanceof ApiError ? e.message : 'Error al cargar la configuración');
+        if (!alive) return;
+        setCfgErr(e instanceof ApiError ? e.message : 'Error al cargar la configuración');
+        // Sin esto la pantalla queda colgada: el efecto de la lista está gateado por
+        // `cfg`, que acá se queda en null para siempre, y `loading` arranca en true.
+        setLoading(false);
       });
     return () => { alive = false; };
   }, [backend, refreshKey]);
@@ -265,6 +268,12 @@ export default function SoportePage() {
           <div className="rounded-lg border bg-background">
             {loading ? (
               <p className="p-8 text-center text-sm text-muted-foreground">Cargando tickets…</p>
+            ) : cfgErr && !cfg ? (
+              // Si la config nunca cargó no sabemos si hay tickets: mostrar el empty state
+              // "sin tickets" acá mentiría (se lee como "todo bien" cuando en realidad falló).
+              <p className="p-8 text-center text-sm text-destructive">
+                No se pudo conectar con el servicio de soporte.
+              </p>
             ) : error ? (
               <p className="p-8 text-center text-sm text-destructive">{error}</p>
             ) : !rows || rows.length === 0 ? (
