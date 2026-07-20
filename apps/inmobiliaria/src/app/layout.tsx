@@ -33,6 +33,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="supported-color-schemes" content="light" />
         <meta name="darkreader-lock" />
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        {/* Sonar corre acá en PRODUCCIÓN aunque el dominio sea *.up.railway.app. Sin este
+            meta, su heurística por hostname lo toma como staging y los tickets quedan
+            clasificados según por qué dominio entró el usuario, no según lo que son. */}
+        <meta name="sonar-env" content="production" />
         {/* Sonar: reporte de errores del portfolio. async → si Sonar se cae, NO bloquea la app.
             La key es pública a propósito; el guard real es allowedOrigins del proyecto en Sonar. */}
         {/* eslint-disable-next-line @next/next/no-sync-scripts */}
