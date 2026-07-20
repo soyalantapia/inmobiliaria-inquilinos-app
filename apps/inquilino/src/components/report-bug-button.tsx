@@ -52,12 +52,21 @@ export function ReportBugButton() {
     setSev('medium');
   }
 
-  function enviar() {
+  async function enviar() {
     const text = msg.trim();
     if (!text || sending) return;
     setSending(true);
     const titulo = `🐛 ${text.split('\n')[0]}`.slice(0, 120);
-    const ok = reportarBug({ message: text, severity: sev, title: titulo });
+    // Cerramos ANTES de capturar y esperamos dos frames a que el DOM se repinte: si no,
+    // la foto que acompaña al reporte es la de este modal tapando la pantalla que el
+    // usuario quería mostrar. (Cuando hubo un fallo previo el loader usa la foto que
+    // congeló en ese momento, y esto no cambia nada.)
+    setOpen(false);
+    const ok = await new Promise<boolean>((resolve) =>
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => resolve(reportarBug({ message: text, severity: sev, title: titulo }))),
+      ),
+    );
     setSending(false);
     if (ok) {
       cerrar();
