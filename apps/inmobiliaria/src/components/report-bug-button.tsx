@@ -67,8 +67,8 @@ export function ReportBugButton() {
       cerrar();
       toast({
         variant: 'success',
-        title: 'Bug reportado',
-        description: 'El reporte llegó al equipo con el contexto de la pantalla.',
+        title: 'Reporte enviado',
+        description: 'Va con la captura de pantalla y el contexto técnico. ¡Gracias!',
       });
     } else {
       toast({

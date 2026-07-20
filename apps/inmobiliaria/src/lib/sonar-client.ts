@@ -37,7 +37,10 @@ export function sonarReady(): boolean {
   return typeof window !== 'undefined' && !!window.Sonar && typeof window.Sonar.capture === 'function';
 }
 
-/** Reporte manual de un bug por el usuario. Devuelve false si el loader no está listo. */
+/** Reporte manual de un bug por el usuario.
+ *  OJO con el valor de retorno: `capture()` del loader es fire-and-forget (encola y postea
+ *  async, sin callback). `true` significa "se encoló", NO "llegó a Sonar" — por eso el copy
+ *  del botón no promete entrega. `false` es el caso claro: el loader no cargó. */
 export function reportarBug(input: {
   message: string;
   severity: SonarSeverity;

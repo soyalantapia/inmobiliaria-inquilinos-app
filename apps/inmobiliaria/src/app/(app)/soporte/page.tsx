@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Bug,
@@ -15,6 +15,7 @@ import { Button } from '@llave/ui/button';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from '@llave/ui/dialog';
@@ -39,6 +40,9 @@ import {
 import { ApiError } from '@/lib/api/client';
 
 type StatusTab = SoporteStatus | 'all';
+
+/** Techo de la lista. Sin paginación: el aviso al pie avisa cuando se toca. */
+const LIMITE = 200;
 
 /* ── helpers ── */
 
@@ -152,7 +156,7 @@ export default function SoportePage() {
     listarIssues({
       status: tab === 'all' ? undefined : tab,
       severity: severity || undefined,
-      limit: 200,
+      limit: LIMITE,
     })
       .then((r) => { if (alive) setRows(r.issues); })
       .catch((e: unknown) => {
@@ -161,7 +165,11 @@ export default function SoportePage() {
       })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
-  }, [backend, cfg, tab, severity, refreshKey]);
+    // Depende de `cfg?.configured` (booleano estable) y NO del objeto `cfg`: cada refresh
+    // devuelve un objeto nuevo, así que con `cfg` en las deps un solo click en "Actualizar"
+    // disparaba DOS veces el GET de issues (una por refreshKey, otra por el cfg recién llegado).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [backend, cfg?.configured, tab, severity, refreshKey]);
 
   const configured = cfg?.configured === true;
   const openCount = cfg?.configured ? cfg.project.counts.open : null;
@@ -301,14 +309,22 @@ export default function SoportePage() {
                     {rows.map((r) => (
                       <tr
                         key={r.id}
-                        className="cursor-pointer hover:bg-muted/30"
+                        className="cursor-pointer hover:bg-muted/30 focus-within:bg-muted/30"
                         onClick={() => setDetailId(r.id)}
                       >
                         <td className="px-4 py-3">
                           <SevBadge sev={r.severity} />
                         </td>
                         <td className="px-4 py-3">
-                          <div className="font-medium text-foreground">{r.title}</div>
+                          {/* El título es un botón real: la fila entera es clickeable con el
+                              mouse, pero con teclado se llega y se abre desde acá. */}
+                          <button
+                            type="button"
+                            className="text-left font-medium text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                            onClick={(e) => { e.stopPropagation(); setDetailId(r.id); }}
+                          >
+                            {r.title}
+                          </button>
                           <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                             <span className="rounded bg-muted px-1.5 py-0.5">{humanize(r.kind)}</span>
                             {r.route && <span className="font-mono">{r.route}</span>}
@@ -331,6 +347,13 @@ export default function SoportePage() {
               </div>
             )}
           </div>
+
+          {/* No hay paginación: sin este aviso, tocar el techo se ve igual que "no hay más". */}
+          {rows && rows.length >= LIMITE && (
+            <p className="text-center text-xs text-muted-foreground">
+              Mostrando los {LIMITE} más recientes. Filtrá por estado o severidad para ver el resto.
+            </p>
+          )}
         </>
       )}
 
@@ -399,13 +422,24 @@ function DetalleModal({
   }
 
   const latest = d?.occurrences[0];
-  const rawObj = latest
-    ? { payload: latest.payload, serverContext: latest.serverContext ?? undefined }
-    : { context: d?.context };
   const hasPayload = latest ? latest.payload != null || latest.serverContext != null : d?.context != null;
-  const rawJson = (() => {
-    try { return JSON.stringify(rawObj, null, 2); } catch { return ''; }
-  })();
+  // Memoizado y sin domGz: la captura de pantalla viaja como base64 gzippeado de cientos de
+  // KB. Serializarla en cada render (cada tecla de la nota re-renderiza) congela la pantalla,
+  // y como texto no le sirve a nadie — para eso está el visor de captura del panel de Sonar.
+  const rawJson = useMemo(() => {
+    const obj = latest
+      ? { payload: latest.payload, serverContext: latest.serverContext ?? undefined }
+      : { context: d?.context };
+    try {
+      return JSON.stringify(
+        obj,
+        (k, v) => (k === 'domGz' ? '[captura de pantalla omitida]' : v),
+        2,
+      );
+    } catch {
+      return '';
+    }
+  }, [latest, d?.context]);
 
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
@@ -414,6 +448,11 @@ function DetalleModal({
           <DialogTitle className="text-base">
             {d ? d.title : 'Detalle del ticket'}
           </DialogTitle>
+          <DialogDescription>
+            {d
+              ? `${d.occurrenceCount} ocurrencia${d.occurrenceCount === 1 ? '' : 's'} · ${d.usersAffected} usuario${d.usersAffected === 1 ? '' : 's'} afectado${d.usersAffected === 1 ? '' : 's'}`
+              : 'Cargando el detalle del ticket…'}
+          </DialogDescription>
         </DialogHeader>
 
         {loading ? (

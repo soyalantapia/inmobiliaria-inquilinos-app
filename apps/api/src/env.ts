@@ -42,7 +42,9 @@ const EnvSchema = z.object({
   CRON_DEVENGO: z.string().optional(),
   // Sonar (error-reporting): proxy server-a-server para la vista Soporte del admin.
   // Todas opcionales: si no están seteadas, /api/soporte/config devuelve { configured: false }.
-  SONAR_API_URL: z.string().optional(),
+  // .url() como el resto: una URL mal escrita falla en el ARRANQUE con mensaje claro,
+  // en vez de convertirse en un 502 confuso la primera vez que alguien abre Soporte.
+  SONAR_API_URL: z.string().url().optional(),
   SONAR_LOGIN_EMAIL: z.string().optional(),
   SONAR_LOGIN_SECRET: z.string().optional(),
   SONAR_PROJECT_ID: z.string().optional(),

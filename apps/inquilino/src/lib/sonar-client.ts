@@ -32,6 +32,7 @@ export function sonarReady(): boolean {
   return typeof window !== 'undefined' && !!window.Sonar && typeof window.Sonar.capture === 'function';
 }
 
+/** OJO: `capture()` es fire-and-forget. `true` = se encoló, NO = llegó a Sonar. */
 export function reportarBug(input: { message: string; severity: SonarSeverity; title?: string }): boolean {
   if (!sonarReady()) return false;
   try {
