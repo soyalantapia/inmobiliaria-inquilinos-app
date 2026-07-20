@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   Bug,
@@ -121,9 +121,8 @@ export default function SoportePage() {
   const [detailId, setDetailId] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  const timerRef = useRef<number | null>(null);
+  // El timing del toast lo maneja el Toaster de Radix; no necesitamos timer propio.
   const flash = useCallback((msg: string, ok = true) => {
-    if (timerRef.current) window.clearTimeout(timerRef.current);
     toast({ variant: ok ? 'success' : 'destructive', title: msg });
   }, []);
 
