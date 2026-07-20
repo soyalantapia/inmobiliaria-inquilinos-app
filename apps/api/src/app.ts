@@ -28,6 +28,7 @@ import { propiedadSegurosRoutes } from './routes/propiedad-seguros.js';
 import { propiedadTimelineRoutes } from './routes/propiedad-timeline.js';
 import { propiedadGastosRoutes } from './routes/propiedad-gastos.js';
 import { propiedadDocumentosRoutes } from './routes/propiedad-documentos.js';
+import { soporteRoutes } from './routes/soporte.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -80,6 +81,14 @@ export async function buildApp(envOverrides: Partial<Record<string, string>> = {
     if (typeof status === 'number' && status >= 400 && status < 500) {
       return reply.code(status).send({ message: (err as Error).message });
     }
+    // 5xx que el código marcó como seguro de exponer (`expose: true`): errores de un
+    // servicio EXTERNO (p.ej. Sonar caído / mal configurado), donde el mensaje describe
+    // al tercero y no filtra internals nuestros. Sin esto el front recibe "Error interno"
+    // y no puede distinguir "el servicio de soporte no responde" de un bug del API.
+    if (typeof status === 'number' && status >= 500 && (err as { expose?: boolean }).expose === true) {
+      req.log?.error(err);
+      return reply.code(status).send({ message: (err as Error).message });
+    }
     req.log?.error(err);
     return reply.code(500).send({ message: 'Error interno' });
   });
@@ -106,6 +115,7 @@ export async function buildApp(envOverrides: Partial<Record<string, string>> = {
   await app.register(propiedadTimelineRoutes);
   await app.register(propiedadGastosRoutes);
   await app.register(propiedadDocumentosRoutes);
+  await app.register(soporteRoutes);
 
   return app;
 }

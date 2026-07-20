@@ -40,6 +40,12 @@ const EnvSchema = z.object({
   // un follow-up.) Todas opcionales: el código ya tiene defaults razonables.
   CRON_SECRET: z.string().optional(),
   CRON_DEVENGO: z.string().optional(),
+  // Sonar (error-reporting): proxy server-a-server para la vista Soporte del admin.
+  // Todas opcionales: si no están seteadas, /api/soporte/config devuelve { configured: false }.
+  SONAR_API_URL: z.string().optional(),
+  SONAR_LOGIN_EMAIL: z.string().optional(),
+  SONAR_LOGIN_SECRET: z.string().optional(),
+  SONAR_PROJECT_ID: z.string().optional(),
   UPLOADS_DIR: z.string().optional(),
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.string().optional(),
