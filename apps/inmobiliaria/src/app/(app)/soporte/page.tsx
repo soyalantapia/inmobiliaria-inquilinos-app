@@ -181,8 +181,11 @@ export default function SoportePage() {
     { id: 'all', label: 'Todos' },
   ];
 
+  // El contenedor es el MISMO que usa el resto del panel (auditoria/pagos/inquilinos):
+  // `flex-1` para ser flex item de #main-content y encoger con él, y padding responsive.
+  // Con `mx-auto max-w-6xl p-6` la página no encogía y desbordaba en pantallas angostas.
   return (
-    <div className="mx-auto max-w-6xl space-y-6 p-6">
+    <div className="flex-1 space-y-6 p-4 md:p-6">
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
@@ -231,28 +234,31 @@ export default function SoportePage() {
         </div>
       ) : (
         <>
-          {/* Filtros */}
-          <div className="flex flex-wrap items-center gap-3">
-            {/* Tabs de estado */}
-            <div className="flex rounded-lg border bg-muted/40 p-1">
-              {tabs.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => setTab(t.id)}
-                  className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                    tab === t.id
-                      ? 'bg-background text-foreground shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  {t.label}
-                </button>
-              ))}
+          {/* Filtros. min-w-0 en el contenedor: sin eso los tabs (5 botones que en mobile
+              miden más que la pantalla) estiran el flex y desbordan la página entera. */}
+          <div className="flex min-w-0 flex-wrap items-center gap-3">
+            {/* Tabs de estado: scrollean en horizontal cuando no entran, en vez de empujar. */}
+            <div className="-mx-1 min-w-0 max-w-full overflow-x-auto px-1">
+              <div className="flex w-max rounded-lg border bg-muted/40 p-1">
+                {tabs.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setTab(t.id)}
+                    className={`shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                      tab === t.id
+                        ? 'bg-background text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
             </div>
             {/* Filtro de severidad */}
             <select
-              className="rounded-md border bg-background px-3 py-1.5 text-sm text-foreground"
+              className="min-w-0 rounded-md border bg-background px-3 py-1.5 text-sm text-foreground"
               value={severity}
               onChange={(e) => setSeverity(e.target.value as SoporteSeverity | '')}
               aria-label="Filtrar por severidad"
@@ -292,16 +298,21 @@ export default function SoportePage() {
                 </p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[800px] text-sm">
+              /* min-w-0 + max-w-full: sin eso la tabla ancha estira el contenedor en lugar
+                 de scrollear adentro, y arrastra toda la página (sidebar incluida). */
+              <div className="w-full min-w-0 max-w-full overflow-x-auto">
+                {/* Sin min-w en mobile: la tabla entra entera (las columnas de más se ocultan
+                    abajo y su dato se muestra inline bajo el título). Desde sm sí forzamos un
+                    ancho para que las columnas no se aplasten. */}
+                <table className="w-full text-sm sm:min-w-[420px]">
                   <thead>
                     <tr className="border-b text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      <th className="px-4 py-3">Severidad</th>
-                      <th className="px-4 py-3">Ticket</th>
-                      <th className="px-4 py-3">Estado</th>
-                      <th className="px-4 py-3 text-right">Ocurrencias</th>
-                      <th className="px-4 py-3 font-medium">Último visto</th>
-                      <th className="px-4 py-3" />
+                      <th className="px-3 py-3 sm:px-4">Sev.</th>
+                      <th className="px-3 py-3 sm:px-4">Ticket</th>
+                      <th className="hidden px-4 py-3 sm:table-cell">Estado</th>
+                      <th className="hidden px-4 py-3 text-right lg:table-cell">Ocurrencias</th>
+                      <th className="hidden px-4 py-3 font-medium xl:table-cell">Último visto</th>
+                      <th className="hidden px-4 py-3 sm:table-cell" />
                     </tr>
                   </thead>
                   <tbody className="divide-y">
@@ -311,32 +322,43 @@ export default function SoportePage() {
                         className="cursor-pointer hover:bg-muted/30 focus-within:bg-muted/30"
                         onClick={() => setDetailId(r.id)}
                       >
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-3 align-top sm:px-4 sm:align-middle">
                           <SevBadge sev={r.severity} />
                         </td>
-                        <td className="px-4 py-3">
+                        {/* w-full + max-w-0: obliga a esta celda a absorber el ancho sobrante,
+                            y es lo que hace que el truncate del título funcione de verdad
+                            (sin esto la celda crece con el texto y desborda la tabla). */}
+                        <td className="w-full max-w-0 px-3 py-3 sm:px-4">
                           {/* El título es un botón real: la fila entera es clickeable con el
                               mouse, pero con teclado se llega y se abre desde acá. */}
                           <button
                             type="button"
-                            className="text-left font-medium text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                            className="block w-full truncate text-left font-medium text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
                             onClick={(e) => { e.stopPropagation(); setDetailId(r.id); }}
+                            title={r.title}
                           >
                             {r.title}
                           </button>
-                          <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                             <span className="rounded bg-muted px-1.5 py-0.5">{humanize(r.kind)}</span>
-                            {r.route && <span className="font-mono">{r.route}</span>}
+                            {/* Estas se ocultan como columna en pantallas chicas: acá va el dato
+                                para no perderlo. */}
+                            <span className="sm:hidden"><StatusBadge status={r.status} /></span>
+                            {r.route && <span className="truncate font-mono">{r.route}</span>}
+                            <span className="lg:hidden">· {r.occurrenceCount}×</span>
+                            {r.lastSeenAt && <span className="xl:hidden">· {fmtRelativo(r.lastSeenAt)}</span>}
                           </div>
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="hidden px-4 py-3 sm:table-cell">
                           <StatusBadge status={r.status} />
                         </td>
-                        <td className="px-4 py-3 text-right font-semibold">{r.occurrenceCount}</td>
-                        <td className="px-4 py-3 text-xs text-muted-foreground">
+                        <td className="hidden px-4 py-3 text-right font-semibold lg:table-cell">
+                          {r.occurrenceCount}
+                        </td>
+                        <td className="hidden px-4 py-3 text-xs text-muted-foreground xl:table-cell">
                           {r.lastSeenAt ? fmtRelativo(r.lastSeenAt) : '—'}
                         </td>
-                        <td className="px-4 py-3 text-right">
+                        <td className="hidden px-4 py-3 text-right sm:table-cell">
                           <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" aria-hidden />
                         </td>
                       </tr>
