@@ -24,6 +24,7 @@ import {
   Wallet,
   Wrench,
   ScrollText,
+  Bug,
   X,
 } from 'lucide-react';
 import { listarPendientes } from '@/lib/aprobaciones-storage';
@@ -69,6 +70,7 @@ const links: NavLink[] = [
   { href: '/profesionales/red', label: 'Red compartida', icon: ShieldCheck, sub: true, capacidad: 'profesionales.ver' },
   { href: '/screening', label: 'Verificar inquilino', icon: ShieldCheck, capacidad: 'screening.ver' },
   { href: '/auditoria', label: 'Auditoría', icon: ScrollText, capacidad: 'auditoria.ver' },
+  { href: '/soporte', label: 'Soporte', icon: Bug, capacidad: 'auditoria.ver' },
   { href: '/configuracion', label: 'Configuración', icon: Settings },
 ];
 
