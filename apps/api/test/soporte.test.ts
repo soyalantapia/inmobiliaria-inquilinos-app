@@ -1,0 +1,117 @@
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import type { FastifyInstance } from 'fastify';
+import { buildApp } from '../src/app.js';
+
+/**
+ * Tests del proxy de Soporte (Sonar) y del contrato del error-handler. No tocan la
+ * DB: el gate de auth falla antes de cualquier query, y las rutas de prueba del
+ * error-handler lanzan directo.
+ */
+
+let app: FastifyInstance;
+
+beforeAll(async () => {
+  app = await buildApp({ NODE_ENV: 'test' });
+
+  // Rutas sintéticas para ejercitar el setErrorHandler sin depender de que Sonar
+  // esté caído. Se registran DESPUÉS de las reales, así que no pisan nada.
+  app.get('/__test/err-5xx-expose', async () => {
+    const err = new Error('El servicio de soporte no responde.') as Error & {
+      statusCode: number;
+      expose: boolean;
+    };
+    err.statusCode = 502;
+    err.expose = true;
+    throw err;
+  });
+
+  app.get('/__test/err-5xx-interno', async () => {
+    // Sin `expose`: es un error nuestro, el mensaje NO debe llegar al cliente.
+    const err = new Error('connect ECONNREFUSED 10.0.0.5:5432 password=hunter2') as Error & {
+      statusCode: number;
+    };
+    err.statusCode = 500;
+    throw err;
+  });
+
+  app.get('/__test/err-crudo', async () => {
+    throw new Error('boom sin statusCode');
+  });
+
+  await app.ready();
+});
+
+afterAll(async () => {
+  await app.close();
+});
+
+describe('setErrorHandler: 5xx con expose', () => {
+  it('un 5xx marcado expose:true conserva status y mensaje (servicio externo)', async () => {
+    const res = await app.inject({ method: 'GET', url: '/__test/err-5xx-expose' });
+    expect(res.statusCode).toBe(502);
+    expect(res.json().message).toBe('El servicio de soporte no responde.');
+  });
+
+  it('un 5xx SIN expose sigue siendo "Error interno" (no filtra internals)', async () => {
+    const res = await app.inject({ method: 'GET', url: '/__test/err-5xx-interno' });
+    expect(res.statusCode).toBe(500);
+    expect(res.json().message).toBe('Error interno');
+    // Lo importante: nada del mensaje original se escapa.
+    expect(res.body).not.toContain('ECONNREFUSED');
+    expect(res.body).not.toContain('hunter2');
+  });
+
+  it('un error sin statusCode sigue cayendo al 500 genérico', async () => {
+    const res = await app.inject({ method: 'GET', url: '/__test/err-crudo' });
+    expect(res.statusCode).toBe(500);
+    expect(res.json().message).toBe('Error interno');
+    expect(res.body).not.toContain('boom sin statusCode');
+  });
+});
+
+describe('/api/soporte/* exige sesión del panel', () => {
+  const rutas: [string, string][] = [
+    ['GET', '/api/soporte/config'],
+    ['GET', '/api/soporte/issues'],
+    ['GET', '/api/soporte/issues/abc123'],
+    ['PATCH', '/api/soporte/issues/abc123'],
+  ];
+
+  for (const [method, url] of rutas) {
+    it(`${method} ${url} sin token → 401`, async () => {
+      const res = await app.inject({
+        method: method as 'GET' | 'PATCH',
+        url,
+        ...(method === 'PATCH' ? { payload: { status: 'resolved' } } : {}),
+      });
+      expect(res.statusCode).toBe(401);
+      expect(res.json().message).toBe('No autenticado');
+    });
+
+    it(`${method} ${url} con token basura → 401`, async () => {
+      const res = await app.inject({
+        method: method as 'GET' | 'PATCH',
+        url,
+        headers: { authorization: 'Bearer no-es-un-jwt' },
+        ...(method === 'PATCH' ? { payload: { status: 'resolved' } } : {}),
+      });
+      expect(res.statusCode).toBe(401);
+    });
+  }
+
+  it('un token de INQUILINO no entra al panel de soporte → 403', async () => {
+    // Los inquilinos tienen kind:'inquilino'; requireUsuario solo deja pasar 'usuario'.
+    const token = app.jwt.sign({
+      kind: 'inquilino',
+      inquilinoId: 'inq_1',
+      contratoId: 'cnt_1',
+      inmobiliariaId: 'inmo_1',
+    });
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/soporte/config',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+});
