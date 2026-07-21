@@ -75,6 +75,36 @@ function recortar(v: string | undefined, max: number): string | undefined {
   return v.length > max ? v.slice(0, max) : v;
 }
 
+/**
+ * Saca los ARGUMENTOS de un error de Prisma dejando la causa.
+ *
+ * Prisma serializa el `data`/`where` COMPLETO —con los valores literales— dentro del
+ * `message` (y por lo tanto del `stack`). En MyAlquiler eso es el payload de dominio:
+ * nombre del inquilino, DNI adentro del path del archivo, ids de tenant, montos. Ejemplo real:
+ *
+ *   Invalid `prisma.documento.create()` invocation:
+ *   {  data: { nombre: "DNI frente - Marta Gonzalez.pdf", archivoUrl: "/uploads/…", … }  }
+ *   Argument `vencimiento`: Invalid value provided. Expected DateTime or Null, provided String.
+ *
+ * El scrub de Sonar NO alcanza acá: su defensa fuerte es por NOMBRE de clave (dni, nombre,
+ * telefono…) y esto viaja embebido en un string bajo la clave `message`, que no es sensible.
+ * Un DNI suelto de 8 dígitos y un nombre propio le pasan por al lado.
+ *
+ * Nos quedamos con la invocación y con la causa, que es lo que sirve para depurar, y tiramos
+ * el bloque de argumentos, que es donde están los datos de la persona.
+ */
+export function sanitizarMensajePrisma(msg: string | undefined): string | undefined {
+  if (typeof msg !== 'string' || !msg.includes('Invalid `prisma.')) return msg;
+  const abre = msg.indexOf('{');
+  const cierra = msg.lastIndexOf('}');
+  if (abre === -1 || cierra === -1 || cierra < abre) return msg;
+  const cabeza = msg.slice(0, abre).trimEnd();
+  const causa = msg.slice(cierra + 1).trim();
+  return [cabeza, '{ … argumentos omitidos: pueden contener datos del inquilino … }', causa]
+    .filter(Boolean)
+    .join('\n');
+}
+
 // Promesas en vuelo: solo para que los tests puedan esperar el fire-and-forget sin sleeps.
 // En producción nadie las awaitea.
 const enVuelo = new Set<Promise<void>>();
@@ -95,13 +125,19 @@ export function reportarErrorAlSonar(env: SonarEnv, input: ReportarInput): void 
     if (!apiUrl || !serverKey) return; // inerte y en silencio
     if (!permitidoPorRate()) return;
 
+    // El saneado va ACÁ y no en el error-handler a propósito: así protege a cualquier
+    // llamador futuro (un catch de ruta, el cron) y no solo al camino del 500 global.
+    const msgLimpio = sanitizarMensajePrisma(input.serverError.message);
+    const stackLimpio = sanitizarMensajePrisma(input.serverError.stack);
+
     const body = {
-      service: envClean(env.SONAR_SERVICE_NAME) || 'myalquiler-api',
+      // Recortado: Sonar valida largos con zod y rechaza con 400 si nos pasamos.
+      service: recortar(envClean(env.SONAR_SERVICE_NAME), 120) || 'myalquiler-api',
       ...(input.correlationId ? { correlationId: input.correlationId } : {}),
       serverError: {
         ...(input.serverError.errorType ? { errorType: recortar(input.serverError.errorType, 200) } : {}),
-        ...(input.serverError.message ? { message: recortar(input.serverError.message, MAX_MESSAGE) } : {}),
-        ...(input.serverError.stack ? { stack: recortar(input.serverError.stack, MAX_STACK) } : {}),
+        ...(msgLimpio ? { message: recortar(msgLimpio, MAX_MESSAGE) } : {}),
+        ...(stackLimpio ? { stack: recortar(stackLimpio, MAX_STACK) } : {}),
         ...(input.serverError.route ? { route: recortar(input.serverError.route, MAX_ROUTE) } : {}),
         ...(typeof input.serverError.statusCode === 'number'
           ? { statusCode: input.serverError.statusCode }

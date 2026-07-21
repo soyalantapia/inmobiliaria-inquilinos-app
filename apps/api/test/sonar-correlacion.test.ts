@@ -4,6 +4,8 @@ import { buildApp } from '../src/app.js';
 import {
   flushSonarServerEvents,
   _resetRateLimitSonarServerEvents,
+  reportarErrorAlSonar,
+  sanitizarMensajePrisma,
 } from '../src/lib/sonar-server-events.js';
 
 /**
@@ -245,7 +247,15 @@ describe('sin SONAR_SERVER_KEY (mecanismo inerte)', () => {
   let fetchMock: ReturnType<typeof mockFetch>;
 
   beforeAll(async () => {
-    app = await buildApp({ NODE_ENV: 'test', DEMO_MODE: 'true', SONAR_SERVER_KEY: '' });
+    // SONAR_API_URL SÍ configurada a propósito: si no, el mecanismo quedaría inerte por
+    // falta de URL y este bloque pasaría sin probar el gate de la key, que es lo que dice
+    // verificar. La única pieza ausente tiene que ser la key.
+    app = await buildApp({
+      NODE_ENV: 'test',
+      DEMO_MODE: 'true',
+      SONAR_API_URL: 'https://sonar.test',
+      SONAR_SERVER_KEY: '',
+    });
     registrarRutasDePrueba(app);
     await app.ready();
   });
@@ -273,5 +283,150 @@ describe('sin SONAR_SERVER_KEY (mecanismo inerte)', () => {
     const err = await app.inject({ method: 'GET', url: '/__test/boom' });
     expect(ok.headers[HEADER]).toMatch(UUID_RE);
     expect(err.headers[HEADER]).toMatch(UUID_RE);
+  });
+});
+
+/**
+ * Lo que sigue nació de una auditoría adversarial: cada bloque cubre un agujero que se
+ * encontró REPRODUCIENDO el problema, no leyendo el código.
+ */
+describe('lo que NO puede escaparse a Sonar', () => {
+  beforeEach(() => {
+    _resetRateLimitSonarServerEvents();
+  });
+
+  // El hallazgo más caro: Prisma mete el `data`/`where` COMPLETO —con los valores— adentro
+  // del message. En esta app eso es el nombre del inquilino y el DNI en el path del archivo.
+  it('saca los argumentos de un error de Prisma y deja la causa', () => {
+    const real = [
+      'Invalid `prisma.documento.create()` invocation:',
+      '',
+      '{',
+      '  data: {',
+      '    nombre: "DNI frente - Marta Gonzalez.pdf",',
+      '    archivoUrl: "/uploads/inmob_77/dni-marta-gonzalez-27345678.pdf",',
+      '    inquilinoId: "clx9inq0001",',
+      '  }',
+      '}',
+      '',
+      'Argument `vencimiento`: Invalid value provided. Expected DateTime or Null, provided String.',
+    ].join('\n');
+
+    const limpio = sanitizarMensajePrisma(real)!;
+
+    // lo que identifica a la persona NO puede sobrevivir
+    expect(limpio).not.toContain('Marta Gonzalez');
+    expect(limpio).not.toContain('27345678');
+    expect(limpio).not.toContain('clx9inq0001');
+    // lo que sirve para depurar SÍ tiene que sobrevivir
+    expect(limpio).toContain('prisma.documento.create()');
+    expect(limpio).toContain('Expected DateTime or Null');
+  });
+
+  it('deja intacto un mensaje que no es de Prisma', () => {
+    const msg = 'El pago de 5000 excede el saldo abierto de 4200';
+    expect(sanitizarMensajePrisma(msg)).toBe(msg);
+  });
+
+  it('no rompe con undefined ni con un Prisma sin bloque de argumentos', () => {
+    expect(sanitizarMensajePrisma(undefined)).toBeUndefined();
+    const sinArgs = 'Invalid `prisma.documento.create()` invocation: algo salió mal';
+    expect(sanitizarMensajePrisma(sinArgs)).toBe(sinArgs);
+  });
+
+  it('el saneado se aplica al emitir, no solo en la función suelta', async () => {
+    const fetchMock = mockFetch();
+    const app = await buildApp({
+      NODE_ENV: 'test',
+      DEMO_MODE: 'true',
+      SONAR_API_URL: 'https://sonar.test',
+      SONAR_SERVER_KEY: 'k',
+    });
+    app.get('/__test/prisma-boom', async () => {
+      throw new Error(
+        'Invalid `prisma.documento.create()` invocation:\n{\n  data: { nombre: "Marta Gonzalez" }\n}\nArgument `vencimiento`: Invalid value.',
+      );
+    });
+    await app.ready();
+
+    await app.inject({ method: 'GET', url: '/__test/prisma-boom' });
+    await flushSonarServerEvents();
+
+    const enviado = JSON.stringify(fetchMock.mock.calls[0]?.[1]?.body ?? '');
+    expect(enviado).not.toContain('Marta Gonzalez');
+    expect(enviado).toContain('prisma.documento.create()');
+    await app.close();
+    vi.unstubAllGlobals();
+  });
+});
+
+describe('lo que NO merece un ticket', () => {
+  beforeEach(() => {
+    _resetRateLimitSonarServerEvents();
+  });
+
+  // Que el usuario cierre la pestaña a mitad de una subida no es un bug: sin este filtro,
+  // cada usuario con mala conexión genera tickets que nadie puede accionar.
+  it('una desconexión del cliente no dispara ningún POST', async () => {
+    const fetchMock = mockFetch();
+    const app = await buildApp({
+      NODE_ENV: 'test',
+      DEMO_MODE: 'true',
+      SONAR_API_URL: 'https://sonar.test',
+      SONAR_SERVER_KEY: 'k',
+    });
+    app.get('/__test/corte', async () => {
+      const e = new Error('Premature close') as NodeJS.ErrnoException;
+      e.code = 'ERR_STREAM_PREMATURE_CLOSE';
+      throw e;
+    });
+    await app.ready();
+
+    const res = await app.inject({ method: 'GET', url: '/__test/corte' });
+    await flushSonarServerEvents();
+
+    expect(res.statusCode).toBe(500); // al cliente se le sigue respondiendo igual
+    expect(fetchMock).not.toHaveBeenCalled();
+    await app.close();
+    vi.unstubAllGlobals();
+  });
+});
+
+describe('tope anti-tormenta', () => {
+  beforeEach(() => {
+    _resetRateLimitSonarServerEvents();
+  });
+
+  it('corta a los 30 envíos por ventana', async () => {
+    const fetchMock = mockFetch();
+    const env = {
+      SONAR_API_URL: 'https://sonar.test',
+      SONAR_SERVER_KEY: 'k',
+      SONAR_SERVICE_NAME: 'test',
+    };
+    for (let i = 0; i < 35; i++) {
+      reportarErrorAlSonar(env as never, { serverError: { message: `boom ${i}` } });
+    }
+    await flushSonarServerEvents();
+
+    expect(fetchMock).toHaveBeenCalledTimes(30);
+    vi.unstubAllGlobals();
+  });
+
+  it('el nombre del servicio se recorta para que Sonar no lo rechace', async () => {
+    const fetchMock = mockFetch();
+    reportarErrorAlSonar(
+      {
+        SONAR_API_URL: 'https://sonar.test',
+        SONAR_SERVER_KEY: 'k',
+        SONAR_SERVICE_NAME: 'x'.repeat(500),
+      } as never,
+      { serverError: { message: 'boom' } },
+    );
+    await flushSonarServerEvents();
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(body.service.length).toBeLessThanOrEqual(120);
+    vi.unstubAllGlobals();
   });
 });

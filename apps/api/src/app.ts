@@ -143,12 +143,24 @@ export async function buildApp(envOverrides: Partial<Record<string, string>> = {
       return reply.code(status).send({ message: (err as Error).message });
     }
     req.log?.error(err);
+    // Que el usuario corte la conexión NO es un bug nuestro. Una subida cancelada a mitad
+    // (cerrar la pestaña, perder señal) hace que `pipeline()` en uploads.ts rechace con
+    // ERR_STREAM_PREMATURE_CLOSE y cae acá como si fuera un 500. Sin este filtro, cada
+    // usuario con mala conexión genera tickets que nadie puede accionar.
+    const codigo = (err as NodeJS.ErrnoException).code;
+    const clienteCortó =
+      codigo === 'ERR_STREAM_PREMATURE_CLOSE' ||
+      codigo === 'ECONNRESET' ||
+      codigo === 'ECONNABORTED' ||
+      req.raw.aborted === true ||
+      req.raw.socket?.destroyed === true;
+
     // Único punto donde reportamos a Sonar: los 500 REALES (bugs nuestros). Todo lo de
     // arriba ya salió por `return`, así que acá no llegan ni los 4xx esperados (Zod,
     // P2002/P2003/P2025/P2034, 401, 429) ni —clave— los 5xx `expose:true`, que son
     // justamente "Sonar no responde": reportarlos generaría un LAZO (cada fallo de Sonar
     // produciría otro reporte a Sonar). Fire-and-forget: no se awaitea, no puede tirar.
-    reportarErrorAlSonar(env, {
+    if (!clienteCortó) reportarErrorAlSonar(env, {
       correlationId: req.sonarCorrelationId || undefined,
       serverError: {
         errorType: (err as Error).name || (err as { constructor?: { name?: string } }).constructor?.name || 'Error',
