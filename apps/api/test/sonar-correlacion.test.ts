@@ -6,6 +6,8 @@ import {
   _resetRateLimitSonarServerEvents,
   reportarErrorAlSonar,
   sanitizarMensajePrisma,
+  setAvisadorDeVentanaSonar,
+  setAvisadorDeRechazoSonar,
 } from '../src/lib/sonar-server-events.js';
 
 /**
@@ -397,19 +399,22 @@ describe('tope anti-tormenta', () => {
     _resetRateLimitSonarServerEvents();
   });
 
-  it('corta a los 30 envíos por ventana', async () => {
+  it('corta a los 6 envíos por identidad de error', async () => {
     const fetchMock = mockFetch();
     const env = {
       SONAR_API_URL: 'https://sonar.test',
       SONAR_SERVER_KEY: 'k',
       SONAR_SERVICE_NAME: 'test',
     };
+    // Mismo errorType y misma route = misma identidad, aunque el mensaje varíe.
     for (let i = 0; i < 35; i++) {
-      reportarErrorAlSonar(env as never, { serverError: { message: `boom ${i}` } });
+      reportarErrorAlSonar(env as never, {
+        serverError: { errorType: 'Error', route: '/api/x', message: `boom ${i}` },
+      });
     }
     await flushSonarServerEvents();
 
-    expect(fetchMock).toHaveBeenCalledTimes(30);
+    expect(fetchMock).toHaveBeenCalledTimes(6);
     vi.unstubAllGlobals();
   });
 
@@ -427,6 +432,109 @@ describe('tope anti-tormenta', () => {
 
     const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
     expect(body.service.length).toBeLessThanOrEqual(120);
+    vi.unstubAllGlobals();
+  });
+});
+
+describe('el onSend cubre el preflight (el único caso donde es load-bearing)', () => {
+  it('el header sale en el 204 de un OPTIONS de CORS', async () => {
+    const app = await buildApp({ NODE_ENV: 'test', DEMO_MODE: 'true' });
+    await app.ready();
+    const res = await app.inject({
+      method: 'OPTIONS',
+      url: '/__test/lo-que-sea',
+      headers: { origin: 'http://localhost:3000', 'access-control-request-method': 'GET' },
+    });
+    // @fastify/cors responde el preflight desde su propio hook, registrado ANTES que el
+    // nuestro: acá el onRequest no llega a poner el header y el onSend es el que lo salva.
+    expect(res.headers[HEADER]).toBeDefined();
+    await app.close();
+  });
+});
+
+describe('el tope no deja que un error ruidoso tape a los demás', () => {
+  beforeEach(() => _resetRateLimitSonarServerEvents());
+
+  it('un error repetido consume su cupo pero otro distinto sigue pasando', async () => {
+    const fetchMock = mockFetch();
+    const env = { SONAR_API_URL: 'https://sonar.test', SONAR_SERVER_KEY: 'k' } as never;
+
+    // El escenario real: se cae el pool de Postgres y todas las requests fallan igual.
+    for (let i = 0; i < 40; i++) {
+      reportarErrorAlSonar(env, { serverError: { errorType: 'PrismaError', route: '/api/pagos', message: 'pool' } });
+    }
+    // Y entonces aparece un bug DISTINTO, que es el que nadie querría perderse.
+    reportarErrorAlSonar(env, { serverError: { errorType: 'TypeError', route: '/api/recibos', message: 'otro bug' } });
+    await flushSonarServerEvents();
+
+    const cuerpos = fetchMock.mock.calls.map((c) => String((c[1] as RequestInit).body));
+    const delRuidoso = cuerpos.filter((b) => b.includes('/api/pagos')).length;
+    const delOtro = cuerpos.filter((b) => b.includes('/api/recibos')).length;
+
+    expect(delRuidoso).toBeLessThanOrEqual(6); // el ruidoso quedó acotado
+    expect(delOtro).toBe(1); // y el otro NO se perdió
+    vi.unstubAllGlobals();
+  });
+
+  it('avisa cuántos eventos descartó al cerrar la ventana', async () => {
+    mockFetch();
+    const avisos: { enviados: number; descartados: number }[] = [];
+    setAvisadorDeVentanaSonar((i) => avisos.push(i));
+    const env = { SONAR_API_URL: 'https://sonar.test', SONAR_SERVER_KEY: 'k' } as never;
+
+    vi.useFakeTimers();
+    for (let i = 0; i < 20; i++) {
+      reportarErrorAlSonar(env, { serverError: { errorType: 'X', route: '/r', message: 'a' } });
+    }
+    vi.advanceTimersByTime(61_000);
+    reportarErrorAlSonar(env, { serverError: { errorType: 'X', route: '/r', message: 'a' } });
+    vi.useRealTimers();
+    await flushSonarServerEvents();
+
+    expect(avisos).toHaveLength(1);
+    expect(avisos[0].descartados).toBe(14); // 20 intentos - 6 de cupo
+    setAvisadorDeVentanaSonar(null);
+    vi.unstubAllGlobals();
+  });
+});
+
+describe('si Sonar rechaza, no puede pasar en silencio', () => {
+  beforeEach(() => _resetRateLimitSonarServerEvents());
+
+  it('avisa cuando Sonar responde 401 (key rotada o mal pegada)', async () => {
+    const rechazos: { status: number; cuerpo: string }[] = [];
+    setAvisadorDeRechazoSonar((i) => rechazos.push(i));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: false, status: 401, text: async () => '{"error":"invalid_server_key"}' })),
+    );
+
+    reportarErrorAlSonar({ SONAR_API_URL: 'https://sonar.test', SONAR_SERVER_KEY: 'mala' } as never, {
+      serverError: { message: 'boom' },
+    });
+    await flushSonarServerEvents();
+
+    expect(rechazos).toHaveLength(1);
+    expect(rechazos[0].status).toBe(401);
+    setAvisadorDeRechazoSonar(null);
+    vi.unstubAllGlobals();
+  });
+
+  it('avisa cuando Sonar acepta pero DESCARTA (proyecto pausado)', async () => {
+    const rechazos: { status: number; cuerpo: string }[] = [];
+    setAvisadorDeRechazoSonar((i) => rechazos.push(i));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true, status: 202, text: async () => '{"dropped":"ingest_paused"}' })),
+    );
+
+    reportarErrorAlSonar({ SONAR_API_URL: 'https://sonar.test', SONAR_SERVER_KEY: 'k' } as never, {
+      serverError: { message: 'boom' },
+    });
+    await flushSonarServerEvents();
+
+    expect(rechazos).toHaveLength(1); // un 202 NO garantiza que el evento se haya guardado
+    setAvisadorDeRechazoSonar(null);
     vi.unstubAllGlobals();
   });
 });

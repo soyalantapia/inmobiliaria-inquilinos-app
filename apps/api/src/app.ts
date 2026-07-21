@@ -30,7 +30,11 @@ import { propiedadTimelineRoutes } from './routes/propiedad-timeline.js';
 import { propiedadGastosRoutes } from './routes/propiedad-gastos.js';
 import { propiedadDocumentosRoutes } from './routes/propiedad-documentos.js';
 import { soporteRoutes } from './routes/soporte.js';
-import { reportarErrorAlSonar } from './lib/sonar-server-events.js';
+import {
+  reportarErrorAlSonar,
+  setAvisadorDeVentanaSonar,
+  setAvisadorDeRechazoSonar,
+} from './lib/sonar-server-events.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -91,15 +95,30 @@ export async function buildApp(envOverrides: Partial<Record<string, string>> = {
   // entre requests.
   app.decorateRequest('sonarCorrelationId', '');
 
+  // El emisor es fire-and-forget y no puede tirar, así que sin esto sus dos modos de fallo
+  // serían INVISIBLES: (a) que Sonar rechace todo —key rotada, proyecto pausado— y la
+  // correlación quede muerta para siempre; (b) que el tope anti-tormenta descarte eventos
+  // durante un incidente, que es justo cuando más se los necesita. Un hueco silencioso en
+  // los datos es peor que el hueco: nadie sabe que hay que desconfiar de lo que ve.
+  setAvisadorDeRechazoSonar(({ status, cuerpo }) =>
+    app.log.warn({ status, cuerpo }, '[sonar] rechazó nuestros eventos — la correlación no está llegando'),
+  );
+  setAvisadorDeVentanaSonar(({ enviados, descartados }) =>
+    app.log.warn({ enviados, descartados }, '[sonar] tope anti-tormenta: se descartaron eventos'),
+  );
+
   app.addHook('onRequest', async (req, reply) => {
     req.sonarCorrelationId = correlationIdDe(req.headers[CORRELATION_HEADER]);
     reply.header(CORRELATION_HEADER, req.sonarCorrelationId);
   });
 
-  // Red de seguridad: `onSend` corre en TODA respuesta que salga, incluidas las que arma
-  // el setErrorHandler y las que cortan ANTES de nuestro onRequest (p.ej. el 429 del
-  // rate-limit, cuyo hook se registró primero). Nunca puede tirar: si acá explota, se cae
-  // la respuesta entera.
+  // Red de seguridad: `onSend` corre en TODA respuesta que salga, incluidas las que arma el
+  // setErrorHandler y las que cortan antes de que nuestro onRequest llegue a poner el header.
+  // El caso concreto que cubre es el PREFLIGHT `OPTIONS`: @fastify/cors lo responde con un
+  // 204 desde su propio hook, registrado antes que el nuestro, y sin esto el header no sale.
+  // (El 429 del rate-limit NO es uno de esos casos: ahí nuestro onRequest sí corre. El
+  // comentario anterior lo afirmaba y era falso — verificado gatillando un 429 real.)
+  // Nunca puede tirar: si acá explota, se cae la respuesta entera.
   app.addHook('onSend', async (req, reply, payload) => {
     try {
       if (!reply.getHeader(CORRELATION_HEADER)) {

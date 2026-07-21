@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { reportarErrorAlSonar } from '../lib/sonar-server-events.js';
 import bcrypt from 'bcryptjs';
 import { randomInt } from 'node:crypto';
 import { z } from 'zod';
@@ -182,10 +183,40 @@ export async function authRoutes(app: FastifyInstance) {
         const msg = (err as Error).message;
         if (intento < 4 && /codigoReferido|Unique constraint/i.test(msg)) continue; // colisión de código → reintentar
         request.log.error({ err: msg }, 'Fallo el registro auto-servicio');
+        // Este 500 lo armamos a mano, así que NUNCA pasa por el setErrorHandler y sin esta
+        // línea no llegaría a Sonar. Es el peor lugar para tener un punto ciego: si una
+        // migración rompe el create(), todas las altas nuevas fallan, el prospecto reporta
+        // el bug desde el browser y el ticket llega sin contexto del backend — exactamente
+        // el problema que la correlación viene a resolver. No re-lanzamos porque el mensaje
+        // amable de acá es mejor que el "Error interno" genérico del handler global.
+        reportarErrorAlSonar(app.env, {
+          correlationId: request.sonarCorrelationId || undefined,
+          serverError: {
+            errorType: (err as Error).name || 'Error',
+            message: msg,
+            stack: (err as Error).stack,
+            route: request.routeOptions?.url ?? request.url,
+            statusCode: 500,
+          },
+          context: { method: request.method, flujo: 'registro-auto-servicio' },
+        });
         return reply.code(500).send({ message: 'No se pudo crear la cuenta. Intentá de nuevo.' });
       }
     }
-    if (!usuario) return reply.code(500).send({ message: 'No se pudo crear la cuenta. Intentá de nuevo.' });
+    if (!usuario) {
+      // Mismo punto ciego que el catch de arriba: 500 armado a mano, no pasa por el handler.
+      reportarErrorAlSonar(app.env, {
+        correlationId: request.sonarCorrelationId || undefined,
+        serverError: {
+          errorType: 'RegistroSinUsuario',
+          message: 'El registro auto-servicio agotó los 5 reintentos sin crear el usuario',
+          route: request.routeOptions?.url ?? request.url,
+          statusCode: 500,
+        },
+        context: { method: request.method, flujo: 'registro-auto-servicio' },
+      });
+      return reply.code(500).send({ message: 'No se pudo crear la cuenta. Intentá de nuevo.' });
+    }
 
     // Email de bienvenida — best-effort, FUERA de la transacción: confirma el
     // alta, da los primeros pasos y deja a mano el link del panel. Si el SMTP

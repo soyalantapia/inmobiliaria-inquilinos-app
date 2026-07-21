@@ -29,18 +29,76 @@ const TIMEOUT_MS = 4_000;
 
 // Tope anti-tormenta: si el backend entra en un loop de 500s no queremos convertirlo en un
 // loop de requests salientes. Sonar deduplica del lado servidor, pero la red es nuestra.
-const MAX_POR_VENTANA = 30;
+//
+// El cupo es POR IDENTIDAD del error (errorType+route), no global. Con un contador global
+// un solo error ruidoso se come todas las ranuras y a partir de ahí se descarta TODO —
+// incluido el primer avistamiento de un bug distinto, y el evento de la request que un
+// usuario está por reportar desde el browser, que es justamente el caso de uso de esto.
+// Escenario real: se agota el pool de Postgres, en dos segundos todas las requests fallan
+// con el mismo error, y el bug de recibos que aparece tres minutos después no llega nunca.
+const MAX_POR_IDENTIDAD = 6;
+// Techo global igual: red de seguridad para que muchas identidades distintas no se
+// conviertan en una tormenta. Holgado, porque el límite real lo pone el cupo por identidad.
+const MAX_GLOBAL = 90;
 const VENTANA_MS = 60_000;
+// Cota del Map: si superamos esto lo vaciamos entero. Sin esto, un atacante (o un bug que
+// genere rutas dinámicas) haría crecer el Map indefinidamente = memory leak.
+const MAX_IDENTIDADES = 500;
+
 let ventanaDesde = 0;
 let enviadosEnVentana = 0;
+let descartadosEnVentana = 0;
+const porIdentidad = new Map<string, number>();
 
-function permitidoPorRate(): boolean {
+/** Se llama al cerrar la ventana. Lo setea app.ts para que los descartes queden en los logs. */
+type Avisador = (info: { enviados: number; descartados: number }) => void;
+let avisarCierreDeVentana: Avisador | null = null;
+export function setAvisadorDeVentanaSonar(fn: Avisador | null): void {
+  avisarCierreDeVentana = fn;
+}
+
+/** Se llama cuando Sonar RECHAZA un evento. Throttleado a uno por ventana: el modo de fallo
+ *  típico (key rotada → 401 en todos) generaría un log por cada 500 de la app. */
+type AvisadorRechazo = (info: { status: number; cuerpo: string }) => void;
+let avisarRechazoRaw: AvisadorRechazo | null = null;
+let ultimoAvisoRechazo = 0;
+export function setAvisadorDeRechazoSonar(fn: AvisadorRechazo | null): void {
+  avisarRechazoRaw = fn;
+  ultimoAvisoRechazo = 0;
+}
+function avisarRechazo(info: { status: number; cuerpo: string }): void {
+  if (!avisarRechazoRaw) return;
+  const ahora = Date.now();
+  if (ahora - ultimoAvisoRechazo < VENTANA_MS) return;
+  ultimoAvisoRechazo = ahora;
+  avisarRechazoRaw(info);
+}
+
+function permitidoPorRate(identidad: string): boolean {
   const ahora = Date.now();
   if (ahora - ventanaDesde > VENTANA_MS) {
+    // Cerramos la ventana anterior. Si hubo descartes, que se sepa: un hueco silencioso
+    // en los datos es peor que el hueco mismo, porque nadie sabe que hay que desconfiar.
+    if (descartadosEnVentana > 0 && avisarCierreDeVentana) {
+      try {
+        avisarCierreDeVentana({ enviados: enviadosEnVentana, descartados: descartadosEnVentana });
+      } catch {
+        /* el avisador jamás puede romper el reporte */
+      }
+    }
     ventanaDesde = ahora;
     enviadosEnVentana = 0;
+    descartadosEnVentana = 0;
+    porIdentidad.clear();
   }
-  if (enviadosEnVentana >= MAX_POR_VENTANA) return false;
+  if (porIdentidad.size > MAX_IDENTIDADES) porIdentidad.clear();
+
+  const usadas = porIdentidad.get(identidad) ?? 0;
+  if (usadas >= MAX_POR_IDENTIDAD || enviadosEnVentana >= MAX_GLOBAL) {
+    descartadosEnVentana += 1;
+    return false;
+  }
+  porIdentidad.set(identidad, usadas + 1);
   enviadosEnVentana += 1;
   return true;
 }
@@ -123,7 +181,9 @@ export function reportarErrorAlSonar(env: SonarEnv, input: ReportarInput): void 
     const apiUrl = envClean(env.SONAR_API_URL).replace(/\/$/, '');
     const serverKey = envClean(env.SONAR_SERVER_KEY);
     if (!apiUrl || !serverKey) return; // inerte y en silencio
-    if (!permitidoPorRate()) return;
+    // Identidad = qué error y en qué ruta. Es la misma noción con la que Sonar deduplica.
+    const identidad = `${input.serverError.errorType ?? 'Error'}|${input.serverError.route ?? '?'}`;
+    if (!permitidoPorRate(identidad)) return;
 
     // El saneado va ACÁ y no en el error-handler a propósito: así protege a cualquier
     // llamador futuro (un catch de ruta, el cron) y no solo al camino del 500 global.
@@ -155,8 +215,24 @@ export function reportarErrorAlSonar(env: SonarEnv, input: ReportarInput): void 
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
       // Drenamos el body: si no, el socket queda a medio leer y el agente HTTP no lo
-      // devuelve al pool. El status NO nos importa — si Sonar rechaza, silencio.
-      await res?.text?.();
+      // devuelve al pool.
+      const texto = await res?.text?.();
+
+      // Sí nos importa si Sonar RECHAZA. Antes esto era silencio total, y el modo de fallo
+      // era pésimo: si el server_secret se rota o se pega mal, Sonar responde 401 a cada
+      // evento y la correlación queda muerta PARA SIEMPRE, sin un log, sin un contador, sin
+      // nada. El único síntoma sería que los tickets vuelven a llegar sin contexto del
+      // servidor — o sea, indistinguible de "todavía no lo instalamos".
+      // Casos reales del lado de Sonar: 401 invalid_server_key, 400 invalid_event,
+      // 202 {dropped:'ingest_paused'} si el proyecto está pausado, 429 de su rate-limit.
+      const rechazado = (res && res.status >= 400) || (texto ?? '').includes('"dropped"');
+      if (rechazado) {
+        try {
+          avisarRechazo({ status: res?.status ?? 0, cuerpo: (texto ?? '').slice(0, 200) });
+        } catch {
+          /* avisar jamás puede romper el reporte */
+        }
+      }
     })()
       .catch(() => undefined)
       .finally(() => {
@@ -173,4 +249,7 @@ export function reportarErrorAlSonar(env: SonarEnv, input: ReportarInput): void 
 export function _resetRateLimitSonarServerEvents(): void {
   ventanaDesde = 0;
   enviadosEnVentana = 0;
+  descartadosEnVentana = 0;
+  ultimoAvisoRechazo = 0;
+  porIdentidad.clear();
 }
