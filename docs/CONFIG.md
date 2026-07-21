@@ -32,6 +32,28 @@ Referencia de configuración de las tres apps del monorepo. Las marcadas **no ca
 | `CRON_DEVENGO` | No | (sin valor → cron activo) | Railway service `api` | Si vale `off` deshabilita el cron de devengo (`apps/api/src/cron.ts`). |
 | `CRON_SECRET` | No | — | Railway service `api` | Secreto para autorizar el endpoint de cron de plata (`apps/api/src/routes/plata.ts`). |
 
+#### Sonar (error-reporting propio)
+
+Dos integraciones **independientes** con el mismo servicio. Podés tener una sin la otra.
+
+**A. Leer tickets** — proxy server-a-server de la vista Soporte del admin (`apps/api/src/lib/sonar.ts`). Si falta alguna, `/api/soporte/config` devuelve `{ configured: false }`.
+
+| Variable | Requerida? | Default | Dónde se setea | Para qué |
+|---|---|---|---|---|
+| `SONAR_API_URL` | No (gate) | — | Railway service `api` | Base URL de Sonar. Validada con `.url()`: mal escrita **falla en el arranque**. Compartida con la integración B. |
+| `SONAR_LOGIN_EMAIL` | No (gate) | — | Railway service `api` | Email del bot `project_admin` scopeado a `myalquiler` (mintea el JWT vía `/auth/dev-login`). |
+| `SONAR_LOGIN_SECRET` | No (gate) | — | Railway service `api` | **Secreto** de ese login. Solo Railway, nunca en git ni en el bundle. |
+| `SONAR_PROJECT_ID` | No | — (se descubre por slug `myalquiler`) | Railway service `api` | Override del id de proyecto. |
+
+**B. Emitir excepciones** — correlación browser↔backend (`apps/api/src/lib/sonar-server-events.ts` + hooks de `app.ts`). El backend devuelve `x-sonar-correlation` en **toda** respuesta (expuesto por CORS) y postea sus 500 reales a `POST {SONAR_API_URL}/v1/server-events`, para que el ticket que abre el usuario desde el browser traiga el stack del backend.
+
+| Variable | Requerida? | Default | Dónde se setea | Para qué |
+|---|---|---|---|---|
+| `SONAR_SERVER_KEY` | No (gate) | — | Railway service `api` | **Secreto** distinto del login: es el `server_secret` del proyecto en Sonar, va en el header `x-sonar-server-key`. Sin ella (o sin `SONAR_API_URL`) el emisor queda **inerte y en silencio** — es el estado normal en local y en tests. |
+| `SONAR_SERVICE_NAME` | No | `myalquiler-api` | Railway service `api` | Nombre del emisor que se ve en el ticket de Sonar. |
+
+> El header `x-sonar-correlation` sale siempre, incluso sin `SONAR_SERVER_KEY`: no depende de la config. Lo que la key habilita es el POST saliente.
+
 ### Panel inmobiliaria (`apps/inmobiliaria` — Next.js 14)
 
 Las `NEXT_PUBLIC_*` se **hornean en el bundle en build-time**, no en runtime.

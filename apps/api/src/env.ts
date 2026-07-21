@@ -48,6 +48,14 @@ const EnvSchema = z.object({
   SONAR_LOGIN_EMAIL: z.string().optional(),
   SONAR_LOGIN_SECRET: z.string().optional(),
   SONAR_PROJECT_ID: z.string().optional(),
+  // Ingesta server→server (POST /v1/server-events): es el OTRO sentido del vínculo con
+  // Sonar. Las de arriba LEEN tickets; ésta EMITE nuestras excepciones para que el ticket
+  // que abre el usuario desde el browser traiga el stack del backend. Es un secreto
+  // distinto del login (server_secret del proyecto): va solo en Railway, nunca en git.
+  // Opcional a propósito: sin ella todo el mecanismo queda INERTE y en silencio (local/tests).
+  SONAR_SERVER_KEY: z.string().optional(),
+  // Nombre del emisor que se ve en el ticket. Default para no depender de configuración.
+  SONAR_SERVICE_NAME: z.string().default('myalquiler-api'),
   UPLOADS_DIR: z.string().optional(),
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.string().optional(),
