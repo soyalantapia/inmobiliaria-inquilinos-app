@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import Fastify, { type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
@@ -29,11 +30,34 @@ import { propiedadTimelineRoutes } from './routes/propiedad-timeline.js';
 import { propiedadGastosRoutes } from './routes/propiedad-gastos.js';
 import { propiedadDocumentosRoutes } from './routes/propiedad-documentos.js';
 import { soporteRoutes } from './routes/soporte.js';
+import {
+  reportarErrorAlSonar,
+  setAvisadorDeVentanaSonar,
+  setAvisadorDeRechazoSonar,
+} from './lib/sonar-server-events.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
     env: Env;
   }
+  interface FastifyRequest {
+    /** Id que une el error que ve el BROWSER con la excepción del BACKEND en un mismo
+     *  ticket de Sonar. Se genera (o se respeta el entrante) en el hook `onRequest` y
+     *  vuelve al cliente en el header `x-sonar-correlation`. */
+    sonarCorrelationId: string;
+  }
+}
+
+const CORRELATION_HEADER = 'x-sonar-correlation';
+// El header entrante es input del cliente y termina en un header de RESPUESTA: si trae
+// CR/LF o basura, Node tira ERR_INVALID_CHAR al escribirlo y nos comemos un 500 en TODAS
+// las respuestas. Solo aceptamos un id inocuo; cualquier otra cosa se descarta en silencio
+// y generamos uno nuevo. 200 = tope del campo en Sonar.
+const CORRELATION_OK = /^[A-Za-z0-9._:-]{1,200}$/;
+
+function correlationIdDe(headerCrudo: string | string[] | undefined): string {
+  const v = (Array.isArray(headerCrudo) ? headerCrudo[0] : headerCrudo)?.trim();
+  return v && CORRELATION_OK.test(v) ? v : randomUUID();
 }
 
 /**
@@ -54,10 +78,58 @@ export async function buildApp(envOverrides: Partial<Record<string, string>> = {
   await app.register(cors, {
     origin: env.CORS_ORIGINS,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+    // CRÍTICO: los fronts corren en OTRO origen que la API. Sin `Access-Control-Expose-Headers`
+    // el browser recibe el header pero le PROHÍBE leerlo al JS — el loader de Sonar nunca vería
+    // el correlationId y toda la correlación browser↔backend quedaría muerta sin dar ningún error.
+    exposedHeaders: [CORRELATION_HEADER],
   });
   await app.register(jwt, { secret: env.JWT_SECRET });
   // Uploads de archivos (comprobantes/boletas/fotos/documentos) → Railway Volume.
   await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024, files: 1 } });
+
+  // ── Correlación con Sonar ──────────────────────────────────────────────────────────
+  // Un id por request que viaja de ida y de vuelta: el loader del browser lo lee de la
+  // respuesta y lo adjunta cuando el usuario reporta un bug; el backend lo manda con su
+  // excepción a /v1/server-events. Sonar une las dos puntas en un solo ticket.
+  // Primitivo (string) a propósito: `decorateRequest` con objetos comparte la referencia
+  // entre requests.
+  app.decorateRequest('sonarCorrelationId', '');
+
+  // El emisor es fire-and-forget y no puede tirar, así que sin esto sus dos modos de fallo
+  // serían INVISIBLES: (a) que Sonar rechace todo —key rotada, proyecto pausado— y la
+  // correlación quede muerta para siempre; (b) que el tope anti-tormenta descarte eventos
+  // durante un incidente, que es justo cuando más se los necesita. Un hueco silencioso en
+  // los datos es peor que el hueco: nadie sabe que hay que desconfiar de lo que ve.
+  setAvisadorDeRechazoSonar(({ status, cuerpo }) =>
+    app.log.warn({ status, cuerpo }, '[sonar] rechazó nuestros eventos — la correlación no está llegando'),
+  );
+  setAvisadorDeVentanaSonar(({ enviados, descartados }) =>
+    app.log.warn({ enviados, descartados }, '[sonar] tope anti-tormenta: se descartaron eventos'),
+  );
+
+  app.addHook('onRequest', async (req, reply) => {
+    req.sonarCorrelationId = correlationIdDe(req.headers[CORRELATION_HEADER]);
+    reply.header(CORRELATION_HEADER, req.sonarCorrelationId);
+  });
+
+  // Red de seguridad: `onSend` corre en TODA respuesta que salga, incluidas las que arma el
+  // setErrorHandler y las que cortan antes de que nuestro onRequest llegue a poner el header.
+  // El caso concreto que cubre es el PREFLIGHT `OPTIONS`: @fastify/cors lo responde con un
+  // 204 desde su propio hook, registrado antes que el nuestro, y sin esto el header no sale.
+  // (El 429 del rate-limit NO es uno de esos casos: ahí nuestro onRequest sí corre. El
+  // comentario anterior lo afirmaba y era falso — verificado gatillando un 429 real.)
+  // Nunca puede tirar: si acá explota, se cae la respuesta entera.
+  app.addHook('onSend', async (req, reply, payload) => {
+    try {
+      if (!reply.getHeader(CORRELATION_HEADER)) {
+        if (!req.sonarCorrelationId) req.sonarCorrelationId = randomUUID();
+        reply.header(CORRELATION_HEADER, req.sonarCorrelationId);
+      }
+    } catch {
+      /* jamás romper la respuesta por el header de correlación */
+    }
+    return payload;
+  });
 
   // Error-handler global: sin esto cualquier z.parse() o error de Prisma no
   // atrapado cae al 500 genérico de Fastify (entrada malformada o conflicto se
@@ -90,6 +162,37 @@ export async function buildApp(envOverrides: Partial<Record<string, string>> = {
       return reply.code(status).send({ message: (err as Error).message });
     }
     req.log?.error(err);
+    // Que el usuario corte la conexión NO es un bug nuestro. Una subida cancelada a mitad
+    // (cerrar la pestaña, perder señal) hace que `pipeline()` en uploads.ts rechace con
+    // ERR_STREAM_PREMATURE_CLOSE y cae acá como si fuera un 500. Sin este filtro, cada
+    // usuario con mala conexión genera tickets que nadie puede accionar.
+    const codigo = (err as NodeJS.ErrnoException).code;
+    const clienteCortó =
+      codigo === 'ERR_STREAM_PREMATURE_CLOSE' ||
+      codigo === 'ECONNRESET' ||
+      codigo === 'ECONNABORTED' ||
+      req.raw.aborted === true ||
+      req.raw.socket?.destroyed === true;
+
+    // Único punto donde reportamos a Sonar: los 500 REALES (bugs nuestros). Todo lo de
+    // arriba ya salió por `return`, así que acá no llegan ni los 4xx esperados (Zod,
+    // P2002/P2003/P2025/P2034, 401, 429) ni —clave— los 5xx `expose:true`, que son
+    // justamente "Sonar no responde": reportarlos generaría un LAZO (cada fallo de Sonar
+    // produciría otro reporte a Sonar). Fire-and-forget: no se awaitea, no puede tirar.
+    if (!clienteCortó) reportarErrorAlSonar(env, {
+      correlationId: req.sonarCorrelationId || undefined,
+      serverError: {
+        errorType: (err as Error).name || (err as { constructor?: { name?: string } }).constructor?.name || 'Error',
+        message: (err as Error).message,
+        stack: (err as Error).stack,
+        // La URL del ROUTE (con placeholders, p.ej. /api/contratos/:id), no la url cruda:
+        // los ids reales agrupan mal y pueden ser PII.
+        route: req.routeOptions?.url ?? req.url,
+        statusCode: 500,
+      },
+      // Metadata acotada. Nada del body ni de los objetos de dominio (DNI, montos, emails).
+      context: { method: req.method },
+    });
     return reply.code(500).send({ message: 'Error interno' });
   });
 
