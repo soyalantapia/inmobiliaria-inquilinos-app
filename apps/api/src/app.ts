@@ -68,7 +68,14 @@ export async function buildApp(envOverrides: Partial<Record<string, string>> = {
   const env = loadEnv(envOverrides);
   const app = Fastify({
     logger: env.NODE_ENV !== 'test',
-    trustProxy: true, // Railway: x-forwarded-for trae la IP real del cliente
+    // Railway pone UN proxy adelante. `1` = confiar solo en ese hop, así `req.ip` es la
+    // entrada que escribió Railway (el cliente real).
+    //
+    // NO volver a `true`: con `true` se confía en TODA la cadena, y entonces `req.ip` pasa
+    // a ser el primer valor de `x-forwarded-for` — un header que escribe el cliente. Como
+    // el rate-limit usa `req.ip` como key, rotando ese header el techo de 300/min
+    // desaparecía y quedaba libre la fuerza bruta contra OTP y login (auditoría 21/07).
+    trustProxy: 1,
   });
 
   app.decorate('env', env);

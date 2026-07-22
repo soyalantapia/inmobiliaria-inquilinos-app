@@ -45,13 +45,18 @@ import {
   imprimirContratoPdf,
   type VariablesContrato,
 } from '@/lib/contrato-generator';
-import { propiedadesMock, propietariosMock } from '@/lib/mock-data';
 import { sociedadPrincipal } from '@/lib/sociedades-storage';
 import { formatFechaCorta } from '@/lib/format';
-import type { ContratoListado } from '@/lib/types';
+import type { ContratoListado, Propietario } from '@/lib/types';
 
 interface Props {
   contrato: ContratoListado;
+  /**
+   * Dueños de la propiedad = LOCADOR del contrato de locación. Vienen de `useContrato`
+   * (`propiedad.participaciones` del API). Obligatorio a propósito: derivarlos acá contra
+   * los mocks es lo que hacía que todos los contratos salieran con un propietario falso.
+   */
+  propietarios: Propietario[];
 }
 
 const ICONO_TIPO: Record<TipoDocContrato, typeof FileText> = {
@@ -129,7 +134,7 @@ function gruposParaContrato(garantesCount: number): GrupoUI[] {
   ];
 }
 
-export function ContratoDocumentosPanel({ contrato }: Props) {
+export function ContratoDocumentosPanel({ contrato, propietarios }: Props) {
   // Documentos REALES vía API en prod (CRUD + Volume); localStorage en demo.
   const { docs, hidratado, subir, eliminar: eliminarDoc } = useDocsContrato(contrato.id);
   const [grupoActivo, setGrupoActivo] = useState<GrupoUI | null>(null);
@@ -237,14 +242,14 @@ export function ContratoDocumentosPanel({ contrato }: Props) {
 
   const variables = useMemo<VariablesContrato>(() => {
     const sociedad = sociedadPrincipal();
-    // Propietarios REALES del contrato (no los primeros 2): buscamos la propiedad
-    // por contratoActualId y filtramos por sus propietariosIds. Antes el Word/PDF
-    // salía SIEMPRE con Eduardo Castro + Silvana Morales (un documento legal con
-    // los nombres del LOCADOR equivocados en todos los contratos menos el primero).
-    const prp = propiedadesMock.find((p) => p.contratoActualId === contrato.id);
-    const propietarios = prp
-      ? propietariosMock.filter((o) => prp.propietariosIds.includes(o.id))
-      : propietariosMock.slice(0, 1);
+    // Los propietarios (= LOCADOR) llegan por prop desde `useContrato`, que los saca de
+    // `propiedad.participaciones` del API.
+    //
+    // NO volver a derivarlos acá cruzando contra los mocks: esa era la causa del bug por
+    // el que TODOS los contratos de locación se descargaban a nombre de Eduardo Castro.
+    // El `find` contra `propiedadesMock` nunca matchea en prod (ids cuid vs `cnt_00X`) y
+    // el fallback devolvía el primer propietario del mock. Si no hay propietarios, el
+    // generador lo dice explícitamente en vez de inventar uno.
     return {
       contrato,
       propietarios,
@@ -262,7 +267,7 @@ export function ContratoDocumentosPanel({ contrato }: Props) {
         direccion: sociedad.domicilioFiscal,
       },
     };
-  }, [contrato]);
+  }, [contrato, propietarios]);
 
   if (!hidratado) return null;
 

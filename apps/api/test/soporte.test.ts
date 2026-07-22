@@ -11,7 +11,10 @@ import { buildApp } from '../src/app.js';
 let app: FastifyInstance;
 
 beforeAll(async () => {
-  app = await buildApp({ NODE_ENV: 'test' });
+  // `inmo_1` queda habilitada en el allowlist de Soporte para poder seguir probando las
+  // CAPACIDADES (leer vs mutar). La frontera de tenant en sí se prueba aparte, con una
+  // inmobiliaria que NO está en la lista.
+  app = await buildApp({ NODE_ENV: 'test', SOPORTE_TENANT_IDS: 'inmo_1' });
 
   // Rutas sintéticas para ejercitar el setErrorHandler sin depender de que Sonar
   // esté caído. Se registran DESPUÉS de las reales, así que no pisan nada.
@@ -171,6 +174,64 @@ describe('capacidades: leer vs mutar tickets', () => {
         ...(method === 'PATCH' ? { payload: { status: 'resolved' } } : {}),
       });
       expect([401, 403]).not.toContain(res.statusCode);
+    }
+  });
+});
+
+/**
+ * REGRESIÓN del P0 de la auditoría 21/07: Sonar es UN proyecto global para todo
+ * MyAlquiler, así que la capacidad NO alcanza como frontera. Como `/auth/registro` es
+ * alta pública, cualquiera se registraba (quedando ADMIN de su propia inmobiliaria) y
+ * leía los tickets —con la PII de los inquilinos— de TODOS los tenants.
+ */
+describe('frontera de tenant: solo el allowlist entra a Soporte', () => {
+  // ADMIN legítimo de SU inmobiliaria, pero fuera del allowlist. Es exactamente el
+  // atacante del hallazgo: no necesita robar nada, le alcanza con registrarse.
+  const tokenAjeno = () =>
+    app.jwt.sign({ kind: 'usuario', userId: 'u_intruso', inmobiliariaId: 'inmo_ajena', rol: 'ADMIN' });
+
+  it.each([
+    ['GET', '/api/soporte/issues'],
+    ['GET', '/api/soporte/issues/abc123'],
+    ['PATCH', '/api/soporte/issues/abc123'],
+  ] as const)('%s %s desde un tenant no habilitado → 403', async (method, url) => {
+    const res = await app.inject({
+      method,
+      url,
+      headers: { authorization: `Bearer ${tokenAjeno()}` },
+      ...(method === 'PATCH' ? { payload: { status: 'resolved' } } : {}),
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('/config no rompe ni filtra: degrada a { configured: false }', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/soporte/config',
+      headers: { authorization: `Bearer ${tokenAjeno()}` },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ configured: false });
+  });
+
+  it('FAIL-CLOSED: sin SOPORTE_TENANT_IDS no entra nadie, ni el ADMIN del allowlist previo', async () => {
+    const cerrada = await buildApp({ NODE_ENV: 'test' }); // sin la var
+    try {
+      const res = await cerrada.inject({
+        method: 'GET',
+        url: '/api/soporte/issues',
+        headers: {
+          authorization: `Bearer ${cerrada.jwt.sign({
+            kind: 'usuario',
+            userId: 'u_admin',
+            inmobiliariaId: 'inmo_1',
+            rol: 'ADMIN',
+          })}`,
+        },
+      });
+      expect(res.statusCode).toBe(403);
+    } finally {
+      await cerrada.close();
     }
   });
 });

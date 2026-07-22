@@ -546,7 +546,7 @@ export default function DetalleContratoPage() {
             {/* El panel sube/lista/borra documentos REALES: en prod vía el API
                 (/contratos/:id/documentos + Volume, hook useDocsContrato); en demo
                 localStorage. Acá se sube el CONTRATO FIRMADO en PDF, DNIs, etc. */}
-            <ContratoDocumentosPanel contrato={c} />
+            <ContratoDocumentosPanel contrato={c} propietarios={detalle?.propietarios ?? []} />
             {/* Documentos que el INQUILINO subió desde su app (DNI, recibos,
                 garante) — solo lectura, feature nueva sin equivalente demo. */}
             {apiEnabled && <DocumentosInquilinoPanel contratoId={c.id} />}

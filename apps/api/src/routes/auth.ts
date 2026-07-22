@@ -19,6 +19,16 @@ import { enviarOtp, enviarBienvenidaInmobiliaria } from '../mailer.js';
 
 const TOKEN_TTL = '15d';
 const OTP_TTL_MS = 10 * 60 * 1000;
+
+/**
+ * El código OTP NUNCA va al log en producción. Loguearlo era un fallback de desarrollo
+ * (cuando no hay SMTP configurado) que quedó activo en prod: ante cualquier excepción del
+ * SMTP se escribía el código junto al email, y los logs de Railway los ve cualquiera con
+ * acceso al proyecto — o sea, un canal de login a cualquier cuenta. Fuera de producción
+ * sigue apareciendo, que es donde hace falta para probar sin mail.
+ */
+const codeEnLog = (code: string): { code?: string } =>
+  process.env.NODE_ENV === 'production' ? {} : { code };
 /** Email del inquilino demo (Mariela). El front entra con ?demo=1. */
 const DEMO_INQUILINO_EMAIL = 'mariela.sosa@gmail.com';
 
@@ -263,6 +273,17 @@ export async function authRoutes(app: FastifyInstance) {
     const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
     const codeHash = bcrypt.hashSync(code, 8);
     const expiresAt = new Date(Date.now() + OTP_TTL_MS);
+    // Invalidamos los códigos anteriores sin usar ANTES de emitir el nuevo: pedir un
+    // código nuevo deja sin efecto al viejo (que es lo que el usuario espera).
+    //
+    // Es también defensa contra fuerza bruta: sin esto, cada request dejaba OTRO código
+    // vivo durante 10 minutos, así que pidiendo N veces se multiplicaba por N la chance de
+    // acertar 6 dígitos al azar. Además acota el loop de bcrypt del verify a 1 comparación,
+    // que era el otro problema (bcryptjs es JS puro y bloquea el event loop del proceso).
+    await prisma.codigoOtpUsuario.updateMany({
+      where: { usuarioId: { in: usuarios.map((u) => u.id) }, usedAt: null },
+      data: { usedAt: new Date() },
+    });
     await prisma.codigoOtpUsuario.createMany({
       data: usuarios.map((u) => ({ usuarioId: u.id, codeHash, expiresAt })),
     });
@@ -270,10 +291,10 @@ export async function authRoutes(app: FastifyInstance) {
     // (dev). No filtramos el resultado al cliente.
     try {
       const enviado = await enviarOtp(emailLc, code);
-      if (!enviado) app.log.info({ email: emailLc, code }, 'OTP admin generado (SMTP no configurado — código por log)');
+      if (!enviado) app.log.info({ email: emailLc, ...codeEnLog(code) }, 'OTP admin generado (SMTP no configurado)');
       else app.log.info({ email: emailLc }, 'OTP admin enviado por email');
     } catch (err) {
-      app.log.error({ email: emailLc, code, err: (err as Error).message }, 'OTP admin: fallo el envío SMTP — código por log');
+      app.log.error({ email: emailLc, ...codeEnLog(code), err: (err as Error).message }, 'OTP admin: fallo el envío SMTP');
     }
     return { ok: true, existe: true };
   });
@@ -334,6 +355,13 @@ export async function authRoutes(app: FastifyInstance) {
     const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
     const codeHash = bcrypt.hashSync(code, 8);
     const expiresAt = new Date(Date.now() + OTP_TTL_MS);
+    // Igual que en el OTP del panel: pedir un código nuevo invalida el anterior. Sin esto
+    // se acumulaban códigos válidos y cada pedido aumentaba la chance de acertar por
+    // fuerza bruta (además de alargar el loop de bcrypt del verify).
+    await prisma.codigoOtp.updateMany({
+      where: { inquilinoId: { in: inquilinos.map((i) => i.id) }, usedAt: null },
+      data: { usedAt: new Date() },
+    });
     await prisma.codigoOtp.createMany({
       data: inquilinos.map((i) => ({ inquilinoId: i.id, codeHash, expiresAt })),
     });
@@ -342,11 +370,11 @@ export async function authRoutes(app: FastifyInstance) {
     const destino = emailLc;
     try {
       const enviado = await enviarOtp(destino, code);
-      if (!enviado) app.log.info({ email: destino, code }, 'OTP generado (SMTP no configurado — código por log)');
+      if (!enviado) app.log.info({ email: destino, ...codeEnLog(code) }, 'OTP generado (SMTP no configurado)');
       else app.log.info({ email: destino }, 'OTP enviado por email');
     } catch (err) {
-      // No romper el login si el SMTP falla: logueamos el código como respaldo.
-      app.log.error({ email: destino, code, err: (err as Error).message }, 'OTP: fallo el envío SMTP — código por log');
+      // No romper el login si el SMTP falla.
+      app.log.error({ email: destino, ...codeEnLog(code), err: (err as Error).message }, 'OTP: fallo el envío SMTP');
     }
     return { ok: true };
   });

@@ -27,6 +27,7 @@ import {
   contratosMock,
   eventosContratoMock,
   generarLiquidaciones,
+  propiedadesMock,
   propietariosMock,
 } from '@/lib/mock-data';
 import type { ContratoListado, MoraEfectiva, Propietario, TipoMora } from '@/lib/types';
@@ -130,6 +131,8 @@ interface ContratoApi {
 export interface ContratoDetalle {
   contrato: ContratoListado;
   contacto: ContactoCobranza | null;
+  /** Dueños de la propiedad = LOCADOR del contrato de locación (para generar el Word/PDF). */
+  propietarios: Propietario[];
   propietarioDirecto: Propietario | null;
   liquidaciones: LiquidacionAdmin[];
   eventos: EventoContrato[];
@@ -216,12 +219,8 @@ function mapContacto(r: ContratoApi): ContactoCobranza | null {
   };
 }
 
-function mapPropietarioDirecto(r: ContratoApi): Propietario | null {
-  if (!r.cobraDirectoPropietarioId || !r.propiedad) return null;
-  const p = r.propiedad.participaciones
-    .map((x) => x.propietario)
-    .find((x) => x.id === r.cobraDirectoPropietarioId);
-  if (!p) return null;
+/** Shape común Propietario (API → front); lo comparten el directo y la lista completa. */
+function mapPropietario(p: PropietarioApi): Propietario {
   return {
     id: p.id,
     nombre: p.nombre,
@@ -238,6 +237,25 @@ function mapPropietarioDirecto(r: ContratoApi): Propietario | null {
     totalRecibirMes: 0,
     cuentaCobranza: p.cuentaCobranza ?? undefined,
   };
+}
+
+/**
+ * TODOS los propietarios de la propiedad del contrato — son el LOCADOR del contrato de
+ * locación. El generador de documentos los necesita: antes los buscaba contra los mocks
+ * (`propiedadesMock.find(p => p.contratoActualId === contrato.id)`), y como en prod los
+ * ids son cuids y los del mock son `cnt_00X`, el find NUNCA matcheaba → caía a
+ * `propietariosMock.slice(0,1)` y TODOS los contratos salían a nombre de Eduardo Castro.
+ */
+function mapPropietarios(r: ContratoApi): Propietario[] {
+  return (r.propiedad?.participaciones ?? []).map((x) => mapPropietario(x.propietario));
+}
+
+function mapPropietarioDirecto(r: ContratoApi): Propietario | null {
+  if (!r.cobraDirectoPropietarioId || !r.propiedad) return null;
+  const p = r.propiedad.participaciones
+    .map((x) => x.propietario)
+    .find((x) => x.id === r.cobraDirectoPropietarioId);
+  return p ? mapPropietario(p) : null;
 }
 
 function mapLiquidacionAdmin(l: NonNullable<ContratoApi['liquidaciones']>[number]): LiquidacionAdmin {
@@ -265,6 +283,7 @@ function mapDetalle(r: ContratoApi): ContratoDetalle {
   return {
     contrato,
     contacto: mapContacto(r),
+    propietarios: mapPropietarios(r),
     propietarioDirecto: mapPropietarioDirecto(r),
     // Liquidaciones REALES del API (con montoPagado/saldo). Antes se hardcodeaba
     // `[]` (el endpoint no las traía) → el tab "Pagos" del contrato quedaba SIEMPRE
@@ -286,9 +305,15 @@ function detalleMock(id: string): ContratoDetalle | null {
   const propietarioDirecto = c.cobraDirectoPropietarioId
     ? propietariosMock.find((p) => p.id === c.cobraDirectoPropietarioId) ?? null
     : null;
+  // Demo: acá SÍ tiene sentido cruzar contra los mocks (los ids son los del mock).
+  const prpMock = propiedadesMock.find((p) => p.contratoActualId === c.id);
+  const propietarios = prpMock
+    ? propietariosMock.filter((o) => prpMock.propietariosIds.includes(o.id))
+    : [];
   return {
     contrato: c,
     contacto,
+    propietarios,
     propietarioDirecto,
     liquidaciones: generarLiquidaciones(c.id, c.monto, c.montoExpensas ?? 0),
     eventos: eventosContratoMock.filter((e) => e.contratoId === id),

@@ -56,6 +56,22 @@ const EnvSchema = z.object({
   SONAR_SERVER_KEY: z.string().optional(),
   // Nombre del emisor que se ve en el ticket. Default para no depender de configuración.
   SONAR_SERVICE_NAME: z.string().default('myalquiler-api'),
+  // Allowlist de tenants que pueden VER el panel de Soporte (ids de inmobiliaria,
+  // separados por coma).
+  //
+  // POR QUÉ EXISTE: Sonar es UN proyecto global para todo MyAlquiler — los tickets de
+  // todas las inmobiliarias (y la PII de sus inquilinos: nombre, email, texto del
+  // reporte) viven juntos. Gatear por capacidad NO alcanza: `auditoria.ver` la tiene
+  // cualquier ADMIN, y `/auth/registro` es alta pública auto-servicio → cualquiera con
+  // un email se registraba y leía los tickets de todos los tenants.
+  //
+  // FAIL-CLOSED a propósito: vacío o sin setear = NADIE entra. Es una herramienta interna
+  // del operador del SaaS, no un feature por inquilino; que se rompa por defecto es
+  // preferible a que filtre por defecto.
+  SOPORTE_TENANT_IDS: z
+    .string()
+    .default('')
+    .transform((v) => v.split(',').map((s) => s.trim()).filter(Boolean)),
   UPLOADS_DIR: z.string().optional(),
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.string().optional(),
