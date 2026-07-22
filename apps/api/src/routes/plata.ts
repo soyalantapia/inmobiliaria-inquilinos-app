@@ -1242,7 +1242,22 @@ export async function plataRoutes(app: FastifyInstance) {
     const esquema = resolverEsquemaMora(ctto, ctto?.inmobiliaria);
     const hoy = new Date();
     return liqs.map((l) => {
-      const asOf = l.estado === 'PAGADO' && l.fechaPago ? new Date(l.fechaPago) : hoy;
+      // La mora se CONGELA cuando ya hay un pago esperando validación, con la fecha de
+      // transferencia declarada — que es exactamente la que usa /pagos/:id/validar para
+      // calcular el total autoritativo. Sin esto la app le prometía al inquilino
+      // "pausamos los punitorios hasta validar" y al día siguiente le mostraba MÁS deuda,
+      // creciendo cada día que la inmo tardara en validar: un número que además el
+      // backend nunca iba a cobrar. Si hay varios informados, manda el más viejo.
+      const informados = (pagosPorLiq.get(l.id) ?? []).filter((p) => p.estado === 'INFORMADO');
+      const congeladoPorInforme = informados.reduce<Date | null>((min, p) => {
+        const f = new Date(String(p.fechaTransferencia));
+        if (Number.isNaN(f.getTime())) return min;
+        return min === null || f < min ? f : min;
+      }, null);
+      const asOf =
+        l.estado === 'PAGADO' && l.fechaPago
+          ? new Date(l.fechaPago)
+          : (congeladoPorInforme ?? hoy);
       const punitorio = calcularMora(
         Number(l.montoTotal),
         esquema,
