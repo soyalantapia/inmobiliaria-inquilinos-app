@@ -499,7 +499,11 @@ export async function plataRoutes(app: FastifyInstance) {
   // (PAGADO→PARCIAL/PENDIENTE/VENCIDO según lo que quede conciliado). Tras anular,
   // el inquilino puede volver a informar (la liq deja de estar paga).
   app.post('/pagos/:id/anular', async (request, reply) => {
-    const u = await requireUsuario(request, reply, 'pago.conciliar');
+    // `pago.revertir` (ADMIN) — NO `pago.conciliar`, que incluye a OPERADOR. Anular
+    // devuelve la liquidación a PENDIENTE y libera el crédito bancario: el propio handler
+    // registra el evento PAGO_REVERTIDO, que la matriz declara ADMIN. La capacidad existía
+    // pero no se usaba, así que un OPERADOR podía deshacer cobros ya conciliados.
+    const u = await requireUsuario(request, reply, 'pago.revertir');
     if (!u) return;
     const { id } = request.params as { id: string };
     const body = z.object({ pin: z.string().optional(), observacion: z.string().min(5) }).safeParse(request.body ?? {});
@@ -773,7 +777,12 @@ export async function plataRoutes(app: FastifyInstance) {
   // siempre en /depositos/en-custodia, sin forma de saldarlo. Válido sobre un contrato
   // ya terminado (FINALIZADO/RESCINDIDO) con depósito aún RETENIDO. Idempotente (409).
   app.post('/contratos/:id/deposito/resolver', async (request, reply) => {
-    const u = await requireUsuario(request, reply, 'contratos.crear');
+    // `deposito.devolver` (ADMIN) — NO `contratos.crear`, que incluye a OPERADOR y CARGA.
+    // Devolver o ejecutar el depósito mueve plata de un tercero y es irreversible por API
+    // (después el propio handler da 409 si ya no está RETENIDO). La matriz siempre lo
+    // declaró ADMIN, pero la capacidad no se usaba en ningún lado: un rol CARGA —"solo
+    // carga inicial, queda pendiente de aprobación"— podía retener el depósito entero.
+    const u = await requireUsuario(request, reply, 'deposito.devolver');
     if (!u) return;
     const { id } = request.params as { id: string };
     const body = z
