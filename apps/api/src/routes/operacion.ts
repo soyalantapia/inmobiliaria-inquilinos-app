@@ -6,6 +6,7 @@ import { prisma } from '../db.js';
 import { requireInquilino, requireUsuario } from '../auth/guards.js';
 import { verificarPinUsuario } from '../auth/pin.js';
 import { registrarEvento } from '../lib/auditoria.js';
+import { imputarCostoReclamo, conceptoReclamo } from '../lib/imputar-reclamo.js';
 import { fichaReputacion, resumenReputacionMasivo, normalizarTelefono } from '../lib/reputacion-red.js';
 import { urlEsDelTenant } from './uploads.js';
 
@@ -345,14 +346,33 @@ export async function operacionRoutes(app: FastifyInstance) {
     if (!reclamo) return reply.code(404).send({ message: 'Reclamo inexistente' });
 
     const autor = await nombreUsuario(u.userId);
-    const actualizado = await prisma.$transaction(async (tx) => {
-      await tx.reclamo.update({ where: { id }, data: { pagador: body.data.pagador } });
-      await tx.reclamoEvento.create({
-        data: { inmobiliariaId: u.inmobiliariaId, reclamoId: id, tipo: 'CLASIFICADO', autor, contenido: `Paga: ${labelPagador(body.data.pagador)}` },
+    try {
+      const actualizado = await prisma.$transaction(async (tx) => {
+        // Guard de estado, igual que resolver/rechazar. Sin esto se podía reclasificar un
+        // reclamo YA CERRADO: el CargoContrato de la resolución anterior quedaba colgado,
+        // imputado a quien ya no es el pagador, y encima la rendición levantaba el mismo
+        // trabajo para cobrárselo al propietario → el arreglo cobrado dos veces.
+        // Reclasificar un reclamo REABIERTO (PERSISTE lo devuelve a EN_CURSO) sigue
+        // permitido: ése es el flujo legítimo para corregir a quién se le imputa.
+        const res = await tx.reclamo.updateMany({
+          where: { id, estado: { notIn: [...ESTADOS_CERRADOS] } },
+          data: { pagador: body.data.pagador },
+        });
+        if (res.count === 0) {
+          throw new ConflictoEstadoReclamo(
+            'El reclamo ya está cerrado. Reabrilo antes de cambiar quién paga.',
+          );
+        }
+        await tx.reclamoEvento.create({
+          data: { inmobiliariaId: u.inmobiliariaId, reclamoId: id, tipo: 'CLASIFICADO', autor, contenido: `Paga: ${labelPagador(body.data.pagador)}` },
+        });
+        return tx.reclamo.findUniqueOrThrow({ where: { id } });
       });
-      return tx.reclamo.findUniqueOrThrow({ where: { id } });
-    });
-    return conSla(actualizado);
+      return conSla(actualizado);
+    } catch (e) {
+      if (e instanceof ConflictoEstadoReclamo) return reply.code(409).send({ message: e.message });
+      throw e;
+    }
   });
 
   app.post('/reclamos/:id/resolver', async (request, reply) => {
@@ -381,6 +401,24 @@ export async function operacionRoutes(app: FastifyInstance) {
     // Con costo hay que saber a quién imputarlo para mover la plata bien.
     if (costo > 0 && !pagador) {
       return reply.code(400).send({ message: 'Indicá quién paga el costo del trabajo (propietario, inquilino o depósito)' });
+    }
+
+    // Si este trabajo YA se le descontó al propietario en una rendición, no se puede
+    // reimputar a otro pagador: el débito al dueño vive en una rendición ya cerrada y nada
+    // lo revierte, así que crear ahora un cargo al inquilino/depósito cobraría el mismo
+    // arreglo DOS veces. Pasaba al reabrir un reclamo (PERSISTE) y reclasificarlo.
+    // Frenamos con instrucción concreta en vez de duplicar plata en silencio.
+    if (costo > 0 && pagador && pagador !== 'PROPIETARIO') {
+      const yaRendido = await prisma.gastoRendido.findFirst({
+        where: { refId: `reclamo:${id}`, tipo: 'TRABAJO' },
+        select: { id: true },
+      });
+      if (yaRendido) {
+        return reply.code(409).send({
+          message:
+            'Este trabajo ya se le descontó al propietario en una rendición. Anulá esa rendición antes de cambiar quién paga.',
+        });
+      }
     }
 
     const ahora = new Date();
@@ -424,32 +462,21 @@ export async function operacionRoutes(app: FastifyInstance) {
           });
         }
 
-        // Impacto en la plata según quién paga (idempotente por reclamoId):
-        //  PROPIETARIO → sin cargo (lo toma la rendición como GastoRendido tipo TRABAJO).
-        //  INQUILINO   → CargoContrato (deuda del inquilino).
-        //  DEPOSITO    → CargoContrato contraDeposito (descuenta del depósito retenido).
-        if (pagador === 'PROPIETARIO' || costo <= 0) {
-          await tx.cargoContrato.deleteMany({ where: { reclamoId: id } });
-        } else if (pagador === 'INQUILINO' || pagador === 'DEPOSITO') {
-          const concepto =
+        // Impacto en la plata según quién paga. La lógica vive en `imputarCostoReclamo`
+        // porque el profesional también cierra reclamos (/visitas-publicas/listo) y los dos
+        // caminos tienen que imputar igual.
+        await imputarCostoReclamo(tx, {
+          inmobiliariaId: u.inmobiliariaId,
+          reclamoId: id,
+          contratoId: reclamo.contratoId,
+          pagador,
+          costo,
+          moneda: reclamo.contrato.moneda,
+          concepto:
             body.data.costoTrabajoNotas?.trim() ||
-            `Reparación (${reclamo.categoria.toLowerCase()}): ${reclamo.descripcion.slice(0, 60)}`;
-          await tx.cargoContrato.upsert({
-            where: { reclamoId: id },
-            create: {
-              inmobiliariaId: u.inmobiliariaId,
-              contratoId: reclamo.contratoId,
-              reclamoId: id,
-              tipo: 'REPARACION',
-              concepto,
-              monto: costo,
-              moneda: reclamo.contrato.moneda,
-              contraDeposito: pagador === 'DEPOSITO',
-              creadoPorId: u.userId,
-            },
-            update: { monto: costo, moneda: reclamo.contrato.moneda, concepto, contraDeposito: pagador === 'DEPOSITO', tipo: 'REPARACION' },
-          });
-        }
+            conceptoReclamo(reclamo.categoria, reclamo.descripcion),
+          creadoPorId: u.userId,
+        });
 
         return tx.reclamo.findUniqueOrThrow({ where: { id } });
       });

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../db.js';
 import { requireProfesionalVisita } from '../auth/guards.js';
 import { urlEsDelTenant } from './uploads.js';
+import { imputarCostoReclamo, conceptoReclamo } from '../lib/imputar-reclamo.js';
 
 /**
  * Flujo del profesional asignado a un reclamo, vía link mágico (/p/:token en
@@ -224,24 +225,59 @@ export async function visitasPublicasRoutes(app: FastifyInstance): Promise<void>
     // /ultimoTrabajo (quedaban congelados) → la reputación del panel era ficticia.
     // IDEMPOTENTE: el updateMany condicionado por estado no-terminal solo pega la primera
     // vez; un doble-tap del /listo (o un reintento) no re-cierra ni re-cuenta.
-    const cerrado = await prisma.reclamo.updateMany({
-      where: {
-        id: visita!.reclamoId,
-        inmobiliariaId: acc.inmobiliariaId,
-        estado: { notIn: ['RESUELTO', 'CERRADO', 'RECHAZADO'] },
-      },
-      data: {
-        estado: 'RESUELTO',
-        resueltoAt: new Date(),
-        ...(visita!.montoCobrado != null ? { costoTrabajo: visita!.montoCobrado } : {}),
-      },
-    });
-    if (cerrado.count > 0) {
-      await prisma.profesional.update({
-        where: { id: acc.profesionalId },
-        data: { cantTrabajos: { increment: 1 }, ultimoTrabajo: new Date() },
+    // Cerrar el reclamo, acreditarle el trabajo al profesional e IMPUTAR el costo, todo en
+    // una transacción. La imputación faltaba: el costo quedaba escrito en el reclamo pero
+    // no se le cobraba a nadie si el pagador era INQUILINO o DEPOSITO (no aparecía en
+    // /mis-cargos, no deducía el depósito, y la rendición lo ignoraba por no ser
+    // PROPIETARIO) — y quedaba irrecuperable, porque con el reclamo ya RESUELTO el
+    // /reclamos/:id/resolver del panel responde 409.
+    const ahora = new Date();
+    await prisma.$transaction(async (tx) => {
+      const cerrado = await tx.reclamo.updateMany({
+        where: {
+          id: visita!.reclamoId,
+          inmobiliariaId: acc.inmobiliariaId,
+          estado: { notIn: ['RESUELTO', 'CERRADO', 'RECHAZADO'] },
+        },
+        data: {
+          estado: 'RESUELTO',
+          resueltoAt: ahora,
+          ...(visita!.montoCobrado != null ? { costoTrabajo: visita!.montoCobrado } : {}),
+        },
       });
-    }
+      // El updateMany condicionado por estado es el lock: si no pegó, otro cerró primero →
+      // no re-contamos el trabajo ni re-imputamos.
+      if (cerrado.count === 0) return;
+
+      await tx.profesional.update({
+        where: { id: acc.profesionalId },
+        data: { cantTrabajos: { increment: 1 }, ultimoTrabajo: ahora },
+      });
+
+      const rec = await tx.reclamo.findUnique({
+        where: { id: visita!.reclamoId },
+        select: {
+          contratoId: true,
+          pagador: true,
+          costoTrabajo: true,
+          categoria: true,
+          descripcion: true,
+          contrato: { select: { moneda: true } },
+        },
+      });
+      if (!rec) return;
+      await imputarCostoReclamo(tx, {
+        inmobiliariaId: acc.inmobiliariaId,
+        reclamoId: visita!.reclamoId,
+        contratoId: rec.contratoId,
+        pagador: rec.pagador,
+        costo: rec.costoTrabajo != null ? Number(rec.costoTrabajo) : 0,
+        moneda: rec.contrato.moneda,
+        concepto: conceptoReclamo(rec.categoria, rec.descripcion),
+        // Lo cerró el profesional por link mágico: no hay usuario del panel detrás.
+        creadoPorId: null,
+      });
+    });
     return visita;
   });
 }
