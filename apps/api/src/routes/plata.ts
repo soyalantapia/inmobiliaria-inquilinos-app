@@ -32,6 +32,17 @@ async function verificarPin(userId: string, pin: string | undefined, reply: Fast
  *  artefacto de float rechace un cobro legítimo ni deje una liq PARCIAL por $0.005. */
 const r2c = (n: number) => Math.round(n * 100) / 100;
 
+/** Monto de plata que un usuario/API ingresa: positivo y REDONDEADO a centavos.
+ *  Sin esto un sub-centavo (0.004) pasaba `.positive()` y se guardaba 0.00 en el
+ *  Decimal(14,2) (pago/movimiento fantasma de $0), y un monto tipo 100.006 se
+ *  guardaba 100.01 dejando el pago 0.01 por encima del saldo. El `.transform` fija
+ *  el valor a 2 decimales antes de usarlo en el guard, el `tipo` y el create. */
+const montoCents = z
+  .number()
+  .positive()
+  .transform(r2c)
+  .refine((n) => n > 0, { message: 'El monto debe ser mayor a 0' });
+
 export async function plataRoutes(app: FastifyInstance) {
   // ===== Liquidaciones =====
   app.get('/liquidaciones', async (request, reply) => {
@@ -881,7 +892,7 @@ export async function plataRoutes(app: FastifyInstance) {
     const body = z
       .object({
         liquidacionId: z.string(),
-        monto: z.number().positive(),
+        monto: montoCents,
         metodo: z.enum(['TRANSFERENCIA', 'MERCADOPAGO', 'EFECTIVO', 'CHEQUE']).default('EFECTIVO'),
         fecha: z.coerce.date(),
         nota: z.string().optional(),
@@ -1026,7 +1037,7 @@ export async function plataRoutes(app: FastifyInstance) {
     const body = z
       .object({
         liquidacionId: z.string(),
-        monto: z.number().positive(),
+        monto: montoCents,
         metodo: z.enum(['TRANSFERENCIA', 'MERCADOPAGO', 'EFECTIVO', 'CHEQUE']),
         nroOperacion: z.string().optional(),
         // coerce.date rechaza strings que no son fecha (antes new Date('xxx') =
@@ -1326,7 +1337,7 @@ export async function plataRoutes(app: FastifyInstance) {
         // Categoría obligatoria para gastos; opcional para ingresos (cae a OTRO).
         categoria: z.enum(['PLOMERIA', 'ELECTRICIDAD', 'GAS', 'CERRAJERIA', 'PINTURA', 'EXPENSAS', 'MATERIALES', 'OTRO']).optional(),
         descripcion: z.string().min(3),
-        monto: z.number().positive(),
+        monto: montoCents,
         // coerce.date rechaza strings no-fecha (igual que fechaTransferencia):
         // antes new Date('xxx')=Invalid Date hacía explotar el create con 500.
         fecha: z.coerce.date(),
