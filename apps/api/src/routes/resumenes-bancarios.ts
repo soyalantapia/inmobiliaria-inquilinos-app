@@ -128,7 +128,15 @@ export async function resumenesBancariosRoutes(app: FastifyInstance): Promise<vo
 
     let filas: unknown[][];
     try {
-      const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true });
+      // `raw: true` = NO dejar que xlsx adivine tipos. Con `cellDates: true` la librería
+      // interpretaba las fechas de un CSV con criterio en-US: "05/07/2026" entraba como
+      // 7 de MAYO en vez de 5 de julio (sólo se salvaban los días > 12, que en mm/dd son
+      // imposibles). Esa fecha es el `asOf` de la mora y la fechaPago de la liquidación,
+      // así que un extracto podía condonar o inventar mora en silencio. Con raw, los
+      // valores llegan como texto y los resuelven `parsearFecha`/`parsearMonto`, que
+      // entienden formato argentino. En un .xlsx real las fechas llegan como serial de
+      // Excel (numérico, sin ambigüedad) y `parsearFecha` también lo maneja.
+      const wb = XLSX.read(buffer, { type: 'buffer', raw: true });
       const nombreHoja = wb.SheetNames[0];
       if (!nombreHoja) return reply.code(400).send({ message: 'El archivo no tiene hojas para leer' });
       const hoja = wb.Sheets[nombreHoja]!;

@@ -643,7 +643,6 @@ export async function plataRoutes(app: FastifyInstance) {
       orderBy: { fechaVencimiento: 'asc' },
     });
     const esquema = resolverEsquemaMora(contrato, contrato.inmobiliaria);
-    const pagadoMap = await montoPagadoPorLiquidacion(liqs.map((l) => l.id));
     const metodoPagoLiq = b.metodo === 'MERCADOPAGO' ? 'MERCADOPAGO' : b.metodo === 'EFECTIVO' ? 'EFECTIVO' : 'TRANSFERENCIA';
     const res = await prisma.$transaction(async (tx) => {
       let saldadas = 0;
@@ -652,6 +651,18 @@ export async function plataRoutes(app: FastifyInstance) {
         // Sólo las EXIGIBLES: vencidas o parciales vencidas. Una futura no se salda acá.
         const vencida = l.estado === 'VENCIDO' || ((l.estado === 'PENDIENTE' || l.estado === 'PARCIAL') && new Date(l.fechaVencimiento) < now);
         if (!vencida) continue;
+        // LOCK pesimista + re-lectura DENTRO de la tx, igual que /pagos/manual y el
+        // conciliar bancario. Antes el saldo salía de un agregado leído FUERA de la
+        // transacción: con dos submits simultáneos (doble click, dos operadores) ambos
+        // veían el saldo completo y creaban un Pago CONCILIADO por el total → la
+        // liquidación quedaba con el doble cobrado, inflando el cierre de caja del día y
+        // la comisión. Era el único de los cuatro caminos que crean pagos conciliados sin
+        // serializar.
+        await tx.$queryRaw`SELECT id FROM liquidaciones WHERE id = ${l.id} FOR UPDATE`;
+        const yaConc = await tx.pago.aggregate({
+          where: { liquidacionId: l.id, estado: 'CONCILIADO' },
+          _sum: { monto: true },
+        });
         const punit = calcularMora(
           Number(l.montoTotal),
           esquema,
@@ -659,7 +670,7 @@ export async function plataRoutes(app: FastifyInstance) {
           now,
           l.montoPunitorioManual != null ? Number(l.montoPunitorioManual) : null,
         );
-        const { saldo } = conSaldo(l, pagadoMap, punit);
+        const saldo = r2c(Number(l.montoTotal) + punit - Number(yaConc._sum.monto ?? 0));
         if (saldo <= 0) continue;
         await tx.pago.create({
           data: {
