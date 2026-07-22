@@ -91,6 +91,7 @@ La carpeta `work-agent/` es la fuente de verdad operativa. Cada archivo:
 | **`PROMPT-ESTADO-Y-ORIENTACION.md`** | Prompt para **analizar todo en orden y reportar dónde estamos parados** (orientación rápida, re-corrible). |
 | **`PROMPT-ONBOARDING-DEV-SENIOR.md`** | Prompt de onboarding profundo — un dev senior recorre TODO (docs + código) y propone con qué seguir. |
 | **`PROMPT-LOOP-QA-VISUAL-FUNCIONAL.md`** | Prompt reutilizable para correr una auditoría/QA en loop hasta que no haya errores. |
+| **`PROMPT-CAZABUG-LOOP.md`** | **Cazabug en loop**: barrido total sección por sección contra la lógica real (backend/plata/multi-tenant), con causa raíz + blast radius. Complementa al QA visual. |
 
 > Documentos históricos (auditorías/reportes/prompts viejos) archivados en
 > [`work-agent/historico/`](./work-agent/historico/).
