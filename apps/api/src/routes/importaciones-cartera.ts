@@ -334,7 +334,12 @@ async function crearContratoDesdeFila(
       const hoy = new Date();
       const mesActual = new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), 1));
       const devengarDesde = fechaInicio > mesActual ? fechaInicio : mesActual;
-      await generarLiquidacionesContrato(tx, { ...contrato, fechaInicio: devengarDesde });
+      // PERSISTIR la decisión, no sólo aplicarla acá: el cron de devengo (y el botón
+      // "Devengar" del panel) releen el contrato de la DB, así que con la fechaInicio real
+      // volvían a generar TODOS los meses históricos como VENCIDO —deuda falsa, encima con
+      // el monto actual post-ajustes— entre 30s y 6h después de importar la cartera.
+      await tx.contrato.update({ where: { id: contrato.id }, data: { devengarDesde } });
+      await generarLiquidacionesContrato(tx, { ...contrato, devengarDesde });
     },
     { timeout: 30_000, maxWait: 10_000 },
   );

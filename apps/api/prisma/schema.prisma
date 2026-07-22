@@ -1226,6 +1226,14 @@ model Contrato {
   monto                     Decimal        @db.Decimal(14, 2)
   moneda                    Moneda         @default(ARS)
   fechaInicio               DateTime
+  // Desde qué mes ESTE contrato devenga liquidaciones, cuando NO coincide con
+  // `fechaInicio`. Lo setea la migración de cartera: un contrato importado conserva su
+  // fecha de inicio real (antigüedad, ajustes) pero la app arranca a devengar desde el mes
+  // en curso — los meses anteriores el inquilino ya los pagó por afuera y devengarlos los
+  // haría nacer VENCIDO = deuda falsa. Antes esa decisión vivía sólo en una variable local
+  // de la importación, así que el cron releía `fechaInicio` de la DB y regeneraba TODO el
+  // historial como deuda. null = devengar desde `fechaInicio` (el caso normal).
+  devengarDesde             DateTime?
   fechaFin                  DateTime
   diaPago                   Int
   indiceAjuste              IndiceAjuste

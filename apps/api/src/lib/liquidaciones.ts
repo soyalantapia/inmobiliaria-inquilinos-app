@@ -11,6 +11,11 @@ export type ContratoParaLiquidar = {
   fechaInicio: Date;
   fechaFin: Date;
   diaPago: number;
+  /**
+   * Mes desde el que ESTE contrato devenga, si difiere de `fechaInicio` (cartera
+   * importada). null/undefined = devengar desde `fechaInicio`.
+   */
+  devengarDesde?: Date | null;
 };
 
 /**
@@ -36,7 +41,15 @@ export function computarLiquidacionesContrato(
   const expensas = contrato.montoExpensas != null ? Number(contrato.montoExpensas) : null;
   const total = alquiler + (expensas ?? 0);
 
-  const inicio = new Date(contrato.fechaInicio);
+  // El devengo arranca en `devengarDesde` cuando existe (cartera importada: el contrato
+  // conserva su fechaInicio real para antigüedad/ajustes, pero los meses previos NO se
+  // devengan porque el inquilino ya los pagó por afuera y nacerían VENCIDO = deuda falsa).
+  // Se toma el MAYOR de los dos por seguridad: nunca devengar antes del inicio real.
+  const arranque =
+    contrato.devengarDesde && new Date(contrato.devengarDesde) > new Date(contrato.fechaInicio)
+      ? new Date(contrato.devengarDesde)
+      : new Date(contrato.fechaInicio);
+  const inicio = arranque;
   const fin = new Date(contrato.fechaFin);
 
   // Tope = el menor entre (mes que viene) y (mes de fin del contrato).
@@ -174,6 +187,9 @@ export async function devengarTodosLosTenants(
       montoExpensas: true,
       moneda: true,
       fechaInicio: true,
+      // Sin esto el cron devengaba desde fechaInicio e ignoraba la decisión de la
+      // importación de cartera → resucitaba los meses históricos como deuda falsa.
+      devengarDesde: true,
       fechaFin: true,
       diaPago: true,
     },

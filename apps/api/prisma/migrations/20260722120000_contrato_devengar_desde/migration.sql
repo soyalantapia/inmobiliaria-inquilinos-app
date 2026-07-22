@@ -1,0 +1,11 @@
+-- Punto de arranque del devengo, cuando difiere de `fechaInicio`.
+--
+-- La migración de cartera decide devengar desde el mes en curso (los meses anteriores el
+-- inquilino ya los pagó por afuera; devengarlos los haría nacer VENCIDO = deuda falsa),
+-- pero esa decisión vivía sólo en una variable local: el contrato guardaba su `fechaInicio`
+-- real y el cron —que la relee de la DB— regeneraba todo el historial como deuda vencida,
+-- con el monto ACTUAL post-ajustes. Persistirla es lo que hace que la decisión sobreviva.
+--
+-- Aditiva y nullable → no toca ninguna fila existente (null = devengar desde fechaInicio,
+-- que es el comportamiento normal de un contrato cargado a mano).
+ALTER TABLE "contratos" ADD COLUMN IF NOT EXISTS "devengarDesde" TIMESTAMP(3);

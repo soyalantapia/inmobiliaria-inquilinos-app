@@ -193,3 +193,48 @@ describe('recomputarLiquidacionesFuturas (ajuste manual de monto)', () => {
     expect(out).toEqual([{ id: 'ago', montoAlquiler: 600_000, montoTotal: 600_000 }]);
   });
 });
+
+describe('devengarDesde — cartera importada (no inventar deuda histórica)', () => {
+  // El cron y el botón "Devengar" releen el contrato de la DB. Si el punto de arranque
+  // no está PERSISTIDO, vuelven a generar todos los meses desde `fechaInicio` como
+  // VENCIDO: deuda falsa masiva para una cartera recién importada, encima con el monto
+  // actual (post-ajustes). Estos tests fijan que la decisión se respeta.
+  const INICIO_HISTORICO = '2025-03-01T00:00:00Z';
+  const FIN = '2028-03-01T00:00:00Z';
+  const now = new Date('2026-07-22T12:00:00Z');
+
+  it('sin devengarDesde devenga TODO el historial (el comportamiento que causaba la deuda falsa)', () => {
+    const data = computarLiquidacionesContrato(contrato(INICIO_HISTORICO, FIN), now);
+    // 2025-03 .. 2026-08 (mes que viene) = 18 períodos.
+    expect(data.length).toBe(18);
+    expect(data[0]?.periodo).toBe('2025-03');
+    expect(data.filter((l) => l.estado === 'VENCIDO').length).toBeGreaterThan(12);
+  });
+
+  it('con devengarDesde en el mes actual arranca ahí: cero meses históricos', () => {
+    const data = computarLiquidacionesContrato(
+      contrato(INICIO_HISTORICO, FIN, { devengarDesde: new Date('2026-07-01T00:00:00Z') }),
+      now,
+    );
+    expect(data.map((l) => l.periodo)).toEqual(['2026-07', '2026-08']);
+    // CERO períodos anteriores al arranque: ésa es la deuda falsa que se evitaba.
+    expect(data.filter((l) => l.periodo < '2026-07').length).toBe(0);
+    // A lo sumo vence el mes en curso (diaPago 10 < 22 de julio), no 17 meses de
+    // historia. Sin el fix, este mismo contrato nacía con 16 cuotas VENCIDO.
+    expect(data.filter((l) => l.estado === 'VENCIDO').length).toBeLessThanOrEqual(1);
+  });
+
+  it('devengarDesde ANTERIOR al inicio real no puede adelantar el devengo', () => {
+    const data = computarLiquidacionesContrato(
+      contrato(INICIO_HISTORICO, FIN, { devengarDesde: new Date('2024-01-01T00:00:00Z') }),
+      now,
+    );
+    expect(data[0]?.periodo).toBe('2025-03');
+  });
+
+  it('devengarDesde null se comporta igual que no tenerlo', () => {
+    const conNull = computarLiquidacionesContrato(contrato(INICIO_HISTORICO, FIN, { devengarDesde: null }), now);
+    const sin = computarLiquidacionesContrato(contrato(INICIO_HISTORICO, FIN), now);
+    expect(conNull.map((l) => l.periodo)).toEqual(sin.map((l) => l.periodo));
+  });
+});
