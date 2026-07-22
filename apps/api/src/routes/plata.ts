@@ -154,6 +154,9 @@ export async function plataRoutes(app: FastifyInstance) {
       where: {
         inmobiliariaId: u.inmobiliariaId,
         estado: 'CONCILIADO',
+        // Una condonación cancela deuda, no ingresa plata: no va al cierre del día
+        // (antes inflaba lo cobrado y la comisión con dinero que nunca entró).
+        condonado: false,
         decididoAt: { gte: desde, lt: hasta },
         // SOLO contratos de cobranza por inmobiliaria: en PROPIETARIO_DIRECTO la
         // inmo no cobra ni gana comisión, así que esos pagos no van al cierre del
@@ -665,6 +668,10 @@ export async function plataRoutes(app: FastifyInstance) {
             metodo: b.metodo,
             fechaTransferencia: now,
             estado: 'CONCILIADO',
+            // Condonar cancela la deuda pero NO es plata que entró: la marca hace que el
+            // cierre de caja y la rendición al propietario la ignoren, mientras el saldo
+            // del inquilino sí la cuenta (que es el punto de condonar).
+            condonado: !!b.condonar,
             decididoPorId: u.userId,
             decididoAt: now,
             observacion: b.condonar ? 'Condonación de deuda (ex-inquilino)' : 'Cobro registrado por la inmobiliaria',
@@ -1413,7 +1420,12 @@ export async function plataRoutes(app: FastifyInstance) {
         const liqIds = liqsCobradas.map((l) => l.id);
         const cobradoRows = await tx.pago.groupBy({
           by: ['liquidacionId'],
-          where: { liquidacionId: { in: liqIds }, estado: 'CONCILIADO' },
+          where: {
+            liquidacionId: { in: liqIds },
+            estado: 'CONCILIADO',
+            // La deuda condonada no se le rinde al propietario: no entró esa plata.
+            condonado: false,
+          },
           _sum: { monto: true },
         });
         const cobradoMap = new Map(cobradoRows.map((row) => [row.liquidacionId, Number(row._sum.monto ?? 0)]));
@@ -1489,7 +1501,14 @@ export async function plataRoutes(app: FastifyInstance) {
             propiedadId: { in: propIdsConIngreso },
             tipo: 'GASTO',
             descontadoEnRendicion: false,
-            fecha: { gte: inicioPeriodo, lt: finPeriodo },
+            // CARRY-OVER: todo gasto pendiente ANTERIOR al fin del período, no sólo los del
+            // mes. Con la ventana estricta (`gte: inicioPeriodo`), un gasto cargado tarde
+            // —o de un mes ya rendido— quedaba huérfano para siempre: rendir ese período de
+            // nuevo daba 409 "sin cobros nuevos" y el período siguiente ya no lo miraba, así
+            // que la inmobiliaria nunca lo recuperaba del dueño. El anti-doble no es la
+            // fecha sino `descontadoEnRendicion`. Mismo criterio que ya usaban los reclamos
+            // (`resueltoAt: { lt: finPeriodo }`), que no se había replicado acá.
+            fecha: { lt: finPeriodo },
           },
           include: { propiedad: { select: { direccion: true } } },
         });
@@ -1585,7 +1604,10 @@ export async function plataRoutes(app: FastifyInstance) {
             propiedadId: { in: propIdsConIngreso },
             tipo: 'INGRESO_EXTRA',
             descontadoEnRendicion: false,
-            fecha: { gte: inicioPeriodo, lt: finPeriodo },
+            // CARRY-OVER, igual que los gastos: un ingreso cargado tarde no puede quedar
+            // varado. Acá el perjudicado es el PROPIETARIO — es plata suya que nunca se le
+            // rendía. El anti-doble sigue siendo `descontadoEnRendicion`, no la fecha.
+            fecha: { lt: finPeriodo },
           },
           include: { propiedad: { select: { direccion: true } } },
         });
@@ -1684,7 +1706,13 @@ export async function plataRoutes(app: FastifyInstance) {
           await tx.gastoRendido.createMany({ data: gastosReclamos.map((g) => ({ ...g, rendicionId: r.id })) });
         }
         return r;
-      });
+      },
+      // La rendición hace MUCHO adentro de la tx (advisory lock, varios groupBy del
+      // ledger, createMany de alquileres/gastos/ingresos). Con el default de 5s de Prisma
+      // ya rozaba el límite y fallaba con P2028 "Transaction already closed" apenas crecía
+      // el trabajo — un error 500 opaco, y la plata sin rendir. El lock por dueño+período
+      // sigue serializando, así que un timeout más holgado no aumenta la contención.
+      { timeout: 30_000, maxWait: 10_000 });
     } catch (e) {
       if (e instanceof RendicionSinCobros) {
         return reply.code(409).send({ message: `No hay cobros nuevos del período ${periodo} para rendir a este propietario` });

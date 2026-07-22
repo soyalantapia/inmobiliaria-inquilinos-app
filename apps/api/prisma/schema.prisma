@@ -1603,6 +1603,12 @@ model Pago {
   liquidacion         Liquidacion         @relation(fields: [liquidacionId], references: [id])
   periodo             String // 'YYYY-MM'
   tipo                TipoPago            @default(TOTAL)
+  // CONDONACIÓN: la inmo perdonó la deuda. Cancela el saldo del inquilino igual que un
+  // cobro (por eso sigue siendo un Pago CONCILIADO y cuenta en montoPagado/saldo), pero
+  // NO es un ingreso: se excluye del cierre de caja y de lo que se le rinde al propietario.
+  // Antes condonar creaba un pago idéntico a un cobro real → inflaba caja, comisión y le
+  // transfería al dueño plata que nunca entró.
+  condonado           Boolean             @default(false)
   monto               Decimal             @db.Decimal(14, 2)
   montoLiqTotal       Decimal?            @db.Decimal(14, 2) // snapshot del total al informar
   metodo              MetodoPagoInformado

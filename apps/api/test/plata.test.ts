@@ -10,8 +10,39 @@ let tokenCarga: string;
 // Cliente para setup directo de escenarios (insertar un INFORMADO "colgado", etc.).
 const prismaTest = new PrismaClient();
 
+/** Contratos del seed cuyas aserciones dependen de tener SOLO las liquidaciones sembradas. */
+const CONTRATOS_SEED = ['cnt_001', 'cnt_002', 'cnt_003', 'cnt_004', 'cnt_005', 'cnt_006'];
+
+/**
+ * Borra las liquidaciones que NO son del seed (id cuid, no `liq_*`) de los contratos
+ * sembrados.
+ *
+ * POR QUÉ: el devengo —el cron in-process, `POST /liquidaciones/devengar` y las suites de
+ * ajuste/renovación— genera TODOS los períodos desde `fechaInicio` de cada contrato. Para
+ * un contrato real eso está bien, pero los contratos del seed arrancan en 2025 y esta suite
+ * asume que sólo existen las `liq_*` sembradas. Sin esta limpieza se acumulaban decenas de
+ * liquidaciones VENCIDO por corrida y las aserciones se caían de a una: cnt_002 pasaba a
+ * VENCIDO, la liq vencida más vieja de Mariela dejaba de ser `liq_001`, y la rendición
+ * cambiaba de propiedades-con-ingreso (totalGastos 0). Era estado sucio, no bugs de código:
+ * los mismos 3 tests fallaban con el árbol limpio.
+ *
+ * Ojo con el orden: `Pago` y `AlquilerRendido` apuntan a `Liquidacion` con FK RESTRICT.
+ */
+async function limpiarLiquidacionesNoSeed(prisma: PrismaClient) {
+  const extras = await prisma.liquidacion.findMany({
+    where: { contratoId: { in: CONTRATOS_SEED }, NOT: { id: { startsWith: 'liq_' } } },
+    select: { id: true },
+  });
+  if (extras.length === 0) return;
+  const ids = extras.map((l) => l.id);
+  await prisma.alquilerRendido.deleteMany({ where: { liquidacionId: { in: ids } } });
+  await prisma.pago.deleteMany({ where: { liquidacionId: { in: ids } } });
+  await prisma.liquidacion.deleteMany({ where: { id: { in: ids } } });
+}
+
 /** Devuelve el estado seed mutado por corridas anteriores a su origen. */
 async function resetPlata(prisma: PrismaClient) {
+  await limpiarLiquidacionesNoSeed(prisma);
   // P10 (al final de este archivo) FINALIZA cnt_001 y el seed upsertea con
   // update:{} (no lo revierte): sin esta cura, la segunda corrida contra la
   // misma DB encontraba a Mariela sin contrato activo y caía en cascada.
