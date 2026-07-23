@@ -487,4 +487,36 @@ describe('Alta de reclamo POR LA INMOBILIARIA (POST /reclamos)', () => {
     });
     expect(res.statusCode).toBe(401);
   });
+
+  // La costura que importa: lo que carga la inmobiliaria tiene que verlo el inquilino
+  // en SU app. GET /mis-reclamos filtra por contratoId (no por quién lo creó), así que
+  // el reclamo del panel aparece en la PWA del inquilino de ese contrato.
+  it('el reclamo que carga la inmobiliaria aparece en la app del inquilino (GET /mis-reclamos)', async () => {
+    const crear = await app.inject({
+      method: 'POST',
+      url: '/reclamos',
+      headers: auth(tokenAdmin),
+      payload: {
+        contratoId: 'cnt_001',
+        titulo: 'Humedad en el techo',
+        descripcion: 'Mancha grande en el dormitorio, lo pasó por WhatsApp.',
+        categoria: 'OTRO',
+        urgencia: 'MEDIA',
+        canal: 'WHATSAPP',
+      },
+    });
+    expect(crear.statusCode).toBe(201);
+    const id = crear.json().id;
+
+    // Mariela (inquilina de cnt_001, token vía /auth/demo) lo ve en su app.
+    const mis = await app.inject({ method: 'GET', url: '/mis-reclamos', headers: auth(tokenInquilino) });
+    expect(mis.statusCode).toBe(200);
+    const encontrado = (mis.json() as Array<{ id: string; descripcion: string; eventos: Array<{ tipo: string; contenido: string | null }> }>)
+      .find((r) => r.id === id);
+    expect(encontrado).toBeTruthy();
+    expect(encontrado!.descripcion).toContain('Humedad en el techo');
+    // Y en su timeline ve que lo registró la inmobiliaria (sin el nombre del operador).
+    const creadoEv = encontrado!.eventos.find((e) => e.tipo === 'CREADO');
+    expect(creadoEv?.contenido).toContain('WhatsApp');
+  });
 });
