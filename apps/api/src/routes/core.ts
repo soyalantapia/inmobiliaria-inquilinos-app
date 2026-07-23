@@ -2568,6 +2568,13 @@ export async function coreRoutes(app: FastifyInstance) {
   app.patch('/contratos/:id/monto', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'contratos.crear');
     if (!u) return;
+    // MISMO gate que POST /contratos/:id/ajustar: `contratos.crear` incluye a CARGA,
+    // y la propia matriz declara `rolesAprobacion: ['CARGA']` — lo que hace un CARGA
+    // requiere aprobación. Sin esta línea, este endpoint era el camino sin control
+    // para subir el alquiler: /ajustar bloqueaba a CARGA y /monto no, así que un rol
+    // de "solo carga inicial" cambiaba el canon (y re-devengaba las cuotas futuras)
+    // sin que nadie lo aprobara.
+    if (u.rol === 'CARGA') return reply.code(403).send({ message: 'Solo un Admin u Operador puede ajustar el alquiler' });
     const { id } = request.params as { id: string };
     const body = z
       .object({

@@ -345,6 +345,99 @@ describe('Alta de gasto en caja', () => {
     });
     expect(del.statusCode).toBe(200);
   });
+
+  // Regresión del bug que Camila reportó en la reunión del 23/07: al agregar el
+  // comprobante opcional, el zod quedó en `.optional()` (acepta undefined, RECHAZA
+  // null) mientras el form manda null cuando no se adjuntó nada → "Datos del
+  // movimiento incompletos" en TODA carga de caja sin comprobante. Mismo caso que
+  // el `proveedor: null` de arriba.
+  it('crea un gasto sin comprobante (comprobanteUrl null) → 200 y persiste', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/caja/movimientos',
+      headers: auth(tokenAdmin),
+      payload: {
+        propiedadId: 'prp_003',
+        categoria: 'PLOMERIA',
+        descripcion: 'QA alta sin comprobante',
+        monto: 1000,
+        fecha: '2026-07-22',
+        proveedor: null,
+        comprobanteUrl: null,
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const creado = res.json();
+    expect(creado.comprobanteUrl).toBeNull();
+    const del = await app.inject({
+      method: 'DELETE',
+      url: `/caja/movimientos/${creado.id}`,
+      headers: auth(tokenAdmin),
+      payload: { pin: '1234' },
+    });
+    expect(del.statusCode).toBe(200);
+  });
+});
+
+describe('Ajuste manual de monto · gate de rol', () => {
+  // `contratos.crear` incluye a CARGA y la matriz declara rolesAprobacion:['CARGA'],
+  // pero PATCH /monto no lo bloqueaba mientras POST /ajustar sí → era el camino sin
+  // control para subir el alquiler (y re-devengar las cuotas futuras).
+  it('un usuario CARGA no puede cambiar el monto del contrato → 403', async () => {
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/contratos/cnt_001/monto',
+      headers: auth(tokenCarga),
+      payload: { monto: 999999, pin: '1234' },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+});
+
+describe('Saldar un cargo del inquilino', () => {
+  // Antes esto sólo marcaba saldadoAt: la deuda del inquilino bajaba y la plata no
+  // entraba a ningún lado. Ahora deja el ingreso registrado en la caja.
+  it('marcar un cargo como cobrado deja un INGRESO_EXTRA en la caja por el mismo monto', async () => {
+    const contrato = await prismaTest.contrato.findFirst({
+      where: { id: 'cnt_001' },
+      select: { id: true, inmobiliariaId: true, propiedadId: true },
+    });
+    expect(contrato).toBeTruthy();
+    const cargo = await prismaTest.cargoContrato.create({
+      data: {
+        inmobiliariaId: contrato!.inmobiliariaId,
+        contratoId: contrato!.id,
+        tipo: 'REPARACION',
+        concepto: 'QA canilla rota',
+        monto: 25000,
+        contraDeposito: false,
+      },
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/cargos/${cargo.id}/saldar`,
+      headers: auth(tokenAdmin),
+    });
+    expect(res.statusCode).toBe(200);
+
+    const mov = await prismaTest.movimientoCaja.findFirst({
+      where: { contratoId: contrato!.id, tipo: 'INGRESO_EXTRA', descripcion: { contains: 'QA canilla rota' } },
+    });
+    expect(mov).toBeTruthy();
+    expect(Number(mov!.monto)).toBe(25000);
+    expect(mov!.propiedadId).toBe(contrato!.propiedadId);
+
+    // idempotencia: volver a saldar no duplica el ingreso
+    await app.inject({ method: 'POST', url: `/cargos/${cargo.id}/saldar`, headers: auth(tokenAdmin) });
+    const movs = await prismaTest.movimientoCaja.count({
+      where: { contratoId: contrato!.id, tipo: 'INGRESO_EXTRA', descripcion: { contains: 'QA canilla rota' } },
+    });
+    expect(movs).toBe(1);
+
+    await prismaTest.movimientoCaja.deleteMany({ where: { id: mov!.id } });
+    await prismaTest.cargoContrato.deleteMany({ where: { id: cargo.id } });
+  });
 });
 
 describe('Aprobaciones', () => {
