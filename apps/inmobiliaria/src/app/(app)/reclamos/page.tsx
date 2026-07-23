@@ -3,11 +3,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { AlertTriangle, ChevronRight, Clock, Inbox, Timer } from 'lucide-react';
+import { AlertTriangle, ChevronRight, Clock, Inbox, Plus, Timer } from 'lucide-react';
 import { Badge } from '@llave/ui/badge';
+import { Button } from '@llave/ui/button';
 import { Card, CardContent } from '@llave/ui/card';
 import { Skeleton } from '@llave/ui/skeleton';
 import { Topbar } from '@/components/topbar';
+import { NuevoReclamoDialog } from '@/components/nuevo-reclamo-dialog';
+import { useMe } from '@/lib/api/hooks';
+import { rolTienePermiso } from '@/lib/permisos';
+import type { Rol } from '@/lib/permisos';
 import {
   categoriaIcono,
   categoriaLabel,
@@ -50,7 +55,12 @@ const FILTRO_FROM_PARAM: Record<string, FiltroReclamos> = {
 export default function ReclamosPage() {
   const searchParams = useSearchParams();
   const { reclamos } = useReclamos();
+  const { me } = useMe();
   const [filtro, setFiltro] = useState<FiltroReclamos>('TODOS');
+  const [nuevoAbierto, setNuevoAbierto] = useState(false);
+  // Solo ADMIN/OPERADOR cargan reclamos (misma capacidad que gestiona el backend).
+  // Mientras `me` carga o si es LECTURA, el botón no aparece; el POST igual gatea.
+  const puedeCargar = !!me && rolTienePermiso(me.rol as Rol, 'reclamos.gestionar');
 
   // Si el usuario llegó con ?filtro=sin-asignar (típico desde el card
   // del dashboard), aplicamos el filtro al mount. No reseteamos al
@@ -140,6 +150,15 @@ export default function ReclamosPage() {
     <>
       <Topbar titulo="Reclamos" />
       <main className="flex-1 space-y-4 p-4 md:p-6">
+        {puedeCargar && (
+          <div className="flex justify-end">
+            <Button size="sm" onClick={() => setNuevoAbierto(true)}>
+              <Plus className="mr-1.5 h-4 w-4" />
+              Cargar reclamo
+            </Button>
+          </div>
+        )}
+
         {counters && counters.EMERGENCIA > 0 && (
           <button
             type="button"
@@ -240,6 +259,7 @@ export default function ReclamosPage() {
           </Card>
         )}
       </main>
+      <NuevoReclamoDialog open={nuevoAbierto} onOpenChange={setNuevoAbierto} />
     </>
   );
 }

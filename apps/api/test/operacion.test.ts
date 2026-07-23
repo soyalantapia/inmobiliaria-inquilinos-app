@@ -426,3 +426,65 @@ describe('Renovaciones', () => {
     expect(res.statusCode).toBe(404);
   });
 });
+
+describe('Alta de reclamo POR LA INMOBILIARIA (POST /reclamos)', () => {
+  it('ADMIN carga un reclamo sobre un contrato activo → 201, ABIERTO, con el canal en el timeline', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/reclamos',
+      headers: auth(tokenAdmin),
+      payload: {
+        contratoId: 'cnt_001',
+        titulo: 'Pérdida de agua',
+        descripcion: 'La canilla de la cocina pierde desde ayer, lo pasó por WhatsApp.',
+        categoria: 'PLOMERIA',
+        urgencia: 'ALTA',
+        canal: 'WHATSAPP',
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    const creado = res.json();
+    expect(creado.estado).toBe('ABIERTO');
+    expect(creado.categoria).toBe('PLOMERIA');
+    expect(creado.descripcion).toContain('Pérdida de agua');
+
+    // Aparece en la bandeja
+    const lista = await app.inject({ method: 'GET', url: '/reclamos', headers: auth(tokenAdmin) });
+    expect(lista.json().some((r: { id: string }) => r.id === creado.id)).toBe(true);
+
+    // El evento CREADO registra el canal por el que llegó
+    const detalle = await app.inject({ method: 'GET', url: `/reclamos/${creado.id}`, headers: auth(tokenAdmin) });
+    const eventos = detalle.json().eventos as Array<{ tipo: string; contenido: string | null }>;
+    const creadoEv = eventos.find((e) => e.tipo === 'CREADO');
+    expect(creadoEv?.contenido).toContain('WhatsApp');
+  });
+
+  it('rol CARGA no puede cargar reclamos → 403', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/reclamos',
+      headers: auth(tokenCarga),
+      payload: { contratoId: 'cnt_001', titulo: 'x y z', descripcion: 'algo largo acá', categoria: 'OTRO', urgencia: 'BAJA' },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('contrato inexistente → 404', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/reclamos',
+      headers: auth(tokenAdmin),
+      payload: { contratoId: 'cnt_no_existe', titulo: 'x y z', descripcion: 'algo largo acá', categoria: 'OTRO', urgencia: 'BAJA' },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('sin token → 401', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/reclamos',
+      payload: { contratoId: 'cnt_001', titulo: 'x y z', descripcion: 'algo largo acá', categoria: 'OTRO', urgencia: 'BAJA' },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+});

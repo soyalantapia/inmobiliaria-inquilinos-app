@@ -245,6 +245,84 @@ export async function operacionRoutes(app: FastifyInstance) {
     return conSla(reclamo);
   });
 
+  // Alta de reclamo POR LA INMOBILIARIA, en nombre del inquilino. Hasta acá el único
+  // create era POST /mis-reclamos (gateado a `requireInquilino`): el módulo asumía que
+  // el reclamo SIEMPRE nace del inquilino desde la app. Pero en la operación real las
+  // quejas llegan por WhatsApp/teléfono a la oficina y las carga la empleada — sin esto
+  // vivían en un Excel paralelo y "se le olvidaban". Es aditivo: no toca el flujo del
+  // inquilino. El canal (por dónde llegó) queda registrado en el evento CREADO junto a
+  // quién la cargó, sin necesidad de columnas nuevas.
+  app.post('/reclamos', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'reclamos.gestionar');
+    if (!u) return;
+    const body = z
+      .object({
+        contratoId: z.string().min(1),
+        titulo: z.string().min(3),
+        descripcion: z.string().min(5),
+        categoria: z.enum(['PLOMERIA', 'ELECTRICIDAD', 'CERRADURA', 'CALEFACCION', 'OTRO']),
+        urgencia: z.enum(['BAJA', 'MEDIA', 'ALTA', 'EMERGENCIA']),
+        // Por dónde llegó la queja. Metadato del alta (va al timeline), no una columna.
+        canal: z.enum(['WHATSAPP', 'TELEFONO', 'PRESENCIAL', 'EMAIL', 'OTRO']).default('OTRO'),
+        // El front puede mandar null cuando no se adjuntó foto (mismo criterio nullish
+        // que caja): aceptar null además de undefined.
+        fotoUrl: z.string().nullable().optional(),
+      })
+      .safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ message: 'Datos del reclamo incompletos' });
+    if (body.data.fotoUrl && !urlEsDelTenant(body.data.fotoUrl, u.inmobiliariaId)) {
+      return reply.code(400).send({ message: 'Foto inválida' });
+    }
+
+    // Contrato del tenant y ACTIVO (mismo gate que POST /mis-reclamos): no se abren
+    // reclamos sobre un contrato finalizado/borrador.
+    const contrato = await prisma.contrato.findFirst({
+      where: { id: body.data.contratoId, inmobiliariaId: u.inmobiliariaId },
+    });
+    if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
+    if (contrato.estado !== 'ACTIVO') {
+      return reply.code(409).send({ message: 'El contrato ya no está activo' });
+    }
+
+    const usuario = await prisma.usuario.findUnique({ where: { id: u.userId } });
+    const autor = usuario ? `${usuario.nombre} ${usuario.apellido}`.trim() : 'Inmobiliaria';
+    const canalTxt: Record<typeof body.data.canal, string> = {
+      WHATSAPP: 'WhatsApp',
+      TELEFONO: 'teléfono',
+      PRESENCIAL: 'de forma presencial',
+      EMAIL: 'email',
+      OTRO: 'otro medio',
+    };
+
+    // Mismo shape que POST /mis-reclamos: sin campo `titulo` en el modelo, va como
+    // encabezado de la descripción.
+    const reclamo = await prisma.$transaction(async (tx) => {
+      const r = await tx.reclamo.create({
+        data: {
+          inmobiliariaId: u.inmobiliariaId,
+          contratoId: contrato.id,
+          propiedadId: contrato.propiedadId,
+          categoria: body.data.categoria,
+          descripcion: `${body.data.titulo} — ${body.data.descripcion}`,
+          urgencia: body.data.urgencia,
+          estado: 'ABIERTO',
+          fotoUrl: body.data.fotoUrl ?? undefined,
+        },
+      });
+      await tx.reclamoEvento.create({
+        data: {
+          inmobiliariaId: u.inmobiliariaId,
+          reclamoId: r.id,
+          tipo: 'CREADO',
+          autor,
+          contenido: `Cargado por la inmobiliaria · recibido por ${canalTxt[body.data.canal]}`,
+        },
+      });
+      return r;
+    });
+    return reply.code(201).send(conSla(reclamo));
+  });
+
   app.post('/reclamos/:id/asignar', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'profesional.asignar');
     if (!u) return;
