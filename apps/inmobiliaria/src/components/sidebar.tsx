@@ -37,7 +37,7 @@ import { calcularResumenPlan } from '@/lib/plan';
 import { diasRestantesTrial, leerTrial, trialVigente } from '@/lib/trial-storage';
 import type { Capacidad, Rol } from '@/lib/permisos';
 import { rolTienePermiso } from '@/lib/permisos';
-import { getRolActual, ROL_CHANGE_EVENT } from '@/lib/rol-storage';
+import { getRolActual, normalizarRol, ROL_CHANGE_EVENT } from '@/lib/rol-storage';
 
 type NavLink = {
   href: string;
@@ -95,7 +95,9 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
   const trialActivo = trialVigente(trial);
   const diasTrial = trialActivo ? diasRestantesTrial(trial) : 0;
   const [pendientesLocal, setPendientesLocal] = useState(0);
-  const [rol, setRol] = useState<Rol>('ADMIN');
+  // rolDemo: SOLO para el build demo (sin API), donde el rol se elige localmente.
+  // En prod el rol efectivo se deriva de la sesión real (`me.rol`) más abajo.
+  const [rolDemo, setRolDemo] = useState<Rol>('ADMIN');
 
   // En producción el badge cuenta las aprobaciones reales del API; en build
   // demo (!apiEnabled) usa el store local.
@@ -116,8 +118,9 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
   }, [pathname]);
 
   useEffect(() => {
-    setRol(getRolActual());
-    const handleRolChange = () => setRol(getRolActual());
+    if (apiEnabled) return; // en prod el rol viene de me.rol, no del localStorage
+    setRolDemo(getRolActual());
+    const handleRolChange = () => setRolDemo(getRolActual());
     window.addEventListener('storage', handleRolChange);
     window.addEventListener(ROL_CHANGE_EVENT, handleRolChange);
     return () => {
@@ -125,6 +128,13 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
       window.removeEventListener(ROL_CHANGE_EVENT, handleRolChange);
     };
   }, []);
+
+  // Rol EFECTIVO con el que se filtra el menú. En prod sale de la sesión real
+  // (`me.rol` de /auth/me); antes se leía del localStorage, que nadie seteaba
+  // nunca, así que TODO usuario —auditora incluida— veía el menú de ADMIN y
+  // comía 403 al clickear (por eso "parecía roto" y nadie creaba usuarios
+  // secundarios). Mientras `me` carga, piso a LECTURA: nunca de más.
+  const rol: Rol = apiEnabled ? normalizarRol(me?.rol, 'LECTURA') : rolDemo;
 
   const linksVisibles = links.filter(
     (l) =>
