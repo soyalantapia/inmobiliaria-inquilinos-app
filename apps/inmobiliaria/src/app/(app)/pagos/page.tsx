@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import {
   AlertTriangle,
   Bell,
@@ -34,8 +35,12 @@ import { PagosPorValidar } from '@/components/pagos-por-validar';
 import { Topbar } from '@/components/topbar';
 import { ValidadorResumenDialog } from '@/components/validador-resumen-dialog';
 import { ValidadorResumenApiDialog } from '@/components/validador-resumen-api-dialog';
+import { BandejaAprobaciones } from '@/components/bandeja-aprobaciones';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@llave/ui/tabs';
 import { apiEnabled } from '@/lib/api/client';
-import { useContratos } from '@/lib/api/hooks';
+import { useContratos, useAprobaciones, useMe } from '@/lib/api/hooks';
+import { rolTienePermiso } from '@/lib/permisos';
+import type { Rol } from '@/lib/permisos';
 import { useAResolverCount, useDevengar, usePagosConciliados } from '@/lib/api/use-pagos';
 import {
   contactosCobranzaMock,
@@ -147,6 +152,16 @@ export default function PagosPage() {
   // primero que ve el usuario es lo que tiene que decidir.
   const [filtro, setFiltro] = useState<Filtro>('TODOS');
   const [aResolverCount, setAResolverCount] = useState(0);
+  // Aprobaciones dentro de Pagos: el equipo carga acciones sensibles (aprobar un
+  // contrato, eliminar un gasto de caja, devolver un depósito, un ajuste fuera de
+  // índice) y el admin las resuelve acá mismo, no en una pantalla suelta que Camila
+  // no encontraba. El tab solo aparece para quien puede aprobar; el resto ve Cobros.
+  const searchParams = useSearchParams();
+  const { me } = useMe();
+  const puedeAprobar = !!me && rolTienePermiso(me.rol as Rol, 'contrato.aprobar');
+  const { aprobaciones } = useAprobaciones();
+  const pendientesAprob = aprobaciones.filter((a) => a.estado === 'PENDIENTE').length;
+  const [tab, setTab] = useState(searchParams?.get('tab') === 'aprobaciones' ? 'aprobaciones' : 'cobros');
   const [validadorOpen, setValidadorOpen] = useState(false);
   const [devengando, setDevengando] = useState(false);
   const { devengar } = useDevengar();
@@ -574,11 +589,24 @@ export default function PagosPage() {
   return (
     <>
       <Topbar titulo="Pagos del mes" />
-      <main className="flex-1 space-y-6 p-4 md:p-6">
+      <main className="flex-1 p-4 md:p-6">
+        <Tabs value={puedeAprobar ? tab : 'cobros'} onValueChange={setTab}>
+          {puedeAprobar && (
+            <TabsList className="mb-4">
+              <TabsTrigger value="cobros">Cobros del mes</TabsTrigger>
+              <TabsTrigger value="aprobaciones">
+                Aprobaciones{pendientesAprob > 0 ? ` (${pendientesAprob})` : ''}
+              </TabsTrigger>
+            </TabsList>
+          )}
+          {puedeAprobar && (
+            <TabsContent value="aprobaciones">
+              <BandejaAprobaciones />
+            </TabsContent>
+          )}
+          <TabsContent value="cobros" className="space-y-6">
         <p className="text-sm text-muted-foreground">
-          La plata del mes: quién pagó, quién debe y los pagos a validar. Las
-          autorizaciones que carga tu equipo van en{' '}
-          <span className="font-medium text-foreground">Aprobaciones</span>.
+          La plata del mes: quién pagó, quién debe y los pagos a validar.
         </p>
         {/* 2 stats GRANDES: montos cobrado y pendiente */}
         <div className="grid gap-4 md:grid-cols-2">
@@ -952,6 +980,8 @@ export default function PagosPage() {
             </div>
           </section>
         )}
+          </TabsContent>
+        </Tabs>
       </main>
 
       {/* Dialog "Validar por resumen": el inmo sube el extracto del banco y
