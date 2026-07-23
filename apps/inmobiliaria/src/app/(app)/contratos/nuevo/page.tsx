@@ -38,6 +38,16 @@ import type {
 
 const MAX_PDF_MB = 10;
 
+// Resumen de la ficha de una persona (subconjunto de GET /personas/:id → `resumen`)
+// que alimenta el semáforo del inquilino en el paso 1 del alta.
+type FichaPersonaResumen = {
+  totalContratos: number;
+  activos: number;
+  deudaVigente: number;
+  tuvoMora: boolean;
+  reclamosAbiertos: number;
+};
+
 type Paso = 1 | 2 | 3 | 4;
 
 const pasos = [
@@ -834,6 +844,13 @@ function CargarContratoApiWizard() {
   const [personaId, setPersonaId] = useState<string | null>(null);
   const [busquedaPersona, setBusquedaPersona] = useState('');
   const [resultadosPersona, setResultadosPersona] = useState<PersonaListado[]>([]);
+  // Semáforo del inquilino: deuda / mora / reclamos que ESTA inmobiliaria ya tiene
+  // registrados de la persona. El scoring y la deuda ya se calculan on-read en el
+  // back (GET /personas/:id); acá se muestran al elegir a alguien de la cartera, para
+  // no firmarle a ciegas a quien ya te debe. (Compartir el dato ENTRE inmobiliarias
+  // es otro pedido, hoy bloqueado por decisión de negocio.)
+  const [fichaPersona, setFichaPersona] = useState<FichaPersonaResumen | null>(null);
+  const [cargandoFicha, setCargandoFicha] = useState(false);
 
   // Buscar personas por texto (debounce) para el autocomplete del reuso.
   useEffect(() => {
@@ -869,6 +886,21 @@ function CargarContratoApiWizard() {
     setEmail('');
     setBusquedaPersona('');
     setResultadosPersona([]);
+    // Traer la ficha para el semáforo. En demo (sin API) no hay endpoint: se omite.
+    setFichaPersona(null);
+    if (!apiEnabled) return;
+    setCargandoFicha(true);
+    void (async () => {
+      try {
+        await ensureApiSession();
+        const f = await apiFetch<{ resumen: FichaPersonaResumen }>(`/personas/${p.id}`);
+        setFichaPersona(f.resumen);
+      } catch {
+        setFichaPersona(null);
+      } finally {
+        setCargandoFicha(false);
+      }
+    })();
   };
 
   const limpiarReuso = () => {
@@ -878,6 +910,8 @@ function CargarContratoApiWizard() {
     setDni('');
     setTelefono('');
     setEmail('');
+    setFichaPersona(null);
+    setCargandoFicha(false);
   };
 
   // Términos
@@ -1323,15 +1357,70 @@ function CargarContratoApiWizard() {
               <div className="space-y-1.5">
                 <Label htmlFor="buscar-persona">¿Ya está en tu cartera?</Label>
                 {personaId ? (
-                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
-                    <span>
-                      Reusando el historial de{' '}
-                      <strong>{`${nombre} ${apellido}`.trim()}</strong>
-                      {dni ? ` · DNI ${dni}` : ''}
-                    </span>
-                    <Button variant="ghost" size="sm" onClick={limpiarReuso}>
-                      Cargar uno nuevo
-                    </Button>
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
+                      <span>
+                        Reusando el historial de{' '}
+                        <strong>{`${nombre} ${apellido}`.trim()}</strong>
+                        {dni ? ` · DNI ${dni}` : ''}
+                      </span>
+                      <Button variant="ghost" size="sm" onClick={limpiarReuso}>
+                        Cargar uno nuevo
+                      </Button>
+                    </div>
+                    {/* Semáforo: lo que ESTA inmobiliaria ya tiene registrado de la
+                        persona (deuda/mora/reclamos). Evita firmarle a ciegas a quien
+                        ya te debe — el pedido de Camila sobre inquilinos morosos. */}
+                    {cargandoFicha ? (
+                      <div className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        Revisando su historial con vos…
+                      </div>
+                    ) : fichaPersona ? (
+                      (() => {
+                        const alerta =
+                          fichaPersona.deudaVigente > 0 ||
+                          fichaPersona.tuvoMora ||
+                          fichaPersona.reclamosAbiertos > 0;
+                        return (
+                          <div
+                            className={cn(
+                              'flex flex-wrap items-center gap-x-4 gap-y-1 rounded-md border px-3 py-2 text-xs',
+                              alerta
+                                ? 'border-amber-500/50 bg-amber-500/10 text-amber-900 dark:text-amber-200'
+                                : 'border-emerald-500/50 bg-emerald-500/10 text-emerald-900 dark:text-emerald-200',
+                            )}
+                          >
+                            {alerta ? (
+                              <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
+                            ) : (
+                              <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
+                            )}
+                            {fichaPersona.deudaVigente > 0 && (
+                              <span className="font-medium">
+                                Te debe ${fichaPersona.deudaVigente.toLocaleString('es-AR')} vencidos
+                              </span>
+                            )}
+                            {fichaPersona.deudaVigente === 0 && fichaPersona.tuvoMora && (
+                              <span className="font-medium">Tuvo mora en el pasado</span>
+                            )}
+                            {fichaPersona.reclamosAbiertos > 0 && (
+                              <span>
+                                {fichaPersona.reclamosAbiertos} reclamo
+                                {fichaPersona.reclamosAbiertos === 1 ? '' : 's'} abierto
+                                {fichaPersona.reclamosAbiertos === 1 ? '' : 's'}
+                              </span>
+                            )}
+                            {!alerta && <span className="font-medium">Sin deuda ni reclamos con vos</span>}
+                            <span className="text-muted-foreground">
+                              {fichaPersona.totalContratos} contrato
+                              {fichaPersona.totalContratos === 1 ? '' : 's'} · {fichaPersona.activos} activo
+                              {fichaPersona.activos === 1 ? '' : 's'}
+                            </span>
+                          </div>
+                        );
+                      })()
+                    ) : null}
                   </div>
                 ) : (
                   <div className="relative">
