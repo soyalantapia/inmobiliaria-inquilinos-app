@@ -864,9 +864,10 @@ function CargarContratoApiWizard() {
     setApellido(p.apellido ?? '');
     setDni(p.dni ?? '');
     setTelefono(p.telefono ?? '');
-    // Email NO se precarga: el @@unique([inmobiliariaId,email]) impide repetir el email
-    // en un 2º contrato. La identidad de login vive en su 1er contrato; acá va vacío.
-    setEmail('');
+    // Precargamos su email de login: un mismo inquilino comparte su email en TODOS sus
+    // contratos (multi-alquiler). Antes iba vacío por el viejo unique a nivel Inquilino,
+    // y así el 2º contrato quedaba sin email → el inquilino no podía loguearse.
+    setEmail(p.email ?? '');
     setBusquedaPersona('');
     setResultadosPersona([]);
   };
@@ -1405,10 +1406,10 @@ function CargarContratoApiWizard() {
                       El email no tiene un formato válido (ej: nombre@correo.com).
                     </p>
                   )}
-                  {personaId && !email.trim() && (
+                  {personaId && email.trim() && (
                     <p className="text-[11px] text-muted-foreground">
-                      Este inquilino ya usa su email en otro contrato. Dejalo vacío o poné
-                      uno distinto para este contrato.
+                      Es el email de login de este inquilino; se comparte entre todos sus
+                      contratos.
                     </p>
                   )}
                 </div>

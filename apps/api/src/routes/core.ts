@@ -924,10 +924,9 @@ export async function coreRoutes(app: FastifyInstance) {
     // Lo chequeamos acá para devolver un 409 claro en vez de un 500 por violación
     // de constraint.
     const emailInq = d.inquilino.email ? d.inquilino.email.toLowerCase() : null;
-    if (emailInq) {
-      const yaInq = await prisma.inquilino.findFirst({ where: { inmobiliariaId: u.inmobiliariaId, email: emailInq } });
-      if (yaInq) return reply.code(409).send({ message: 'Ya tenés un inquilino con ese email en tu cartera' });
-    }
+    // El email PUEDE repetirse entre contratos del MISMO inquilino (multi-alquiler): ya
+    // no hay pre-check que lo bloquee. La única colisión posible es que ese email lo use
+    // OTRA persona (distinto DNI) → la atrapa el unique de Persona (P2002, abajo).
     // Reuso (req 3): si el alta trae personaId, la Persona debe existir en ESTE tenant.
     // (El guard de email de arriba sigue aplicando: un 2º contrato reusado no puede
     // repetir el email de otra fila — se deja vacío o distinto; la identidad vive en Persona.)
@@ -1150,11 +1149,14 @@ export async function coreRoutes(app: FastifyInstance) {
       if (e instanceof EstadoInicialInvalido) {
         return reply.code(400).send({ message: e.message });
       }
-      // Carrera de email duplicado: dos altas concurrentes con el mismo email
-      // pasan el pre-check y la 2da viola @@unique([inmobiliariaId,email]) → P2002.
-      // Lo convertimos en un 409 claro en vez de un 500.
+      // Email de OTRA persona: el unique de Persona (inmobiliariaId,email) impide que
+      // dos personas DISTINTAS (distinto DNI) compartan el mismo email de login. Si es
+      // el mismo inquilino, hay que reusarlo ("¿Ya está en tu cartera?"), no cargarlo
+      // de nuevo. Lo convertimos en un 409 claro en vez de un 500.
       if (e && typeof e === 'object' && (e as { code?: string }).code === 'P2002') {
-        return reply.code(409).send({ message: 'Ya tenés un inquilino con ese email en tu cartera' });
+        return reply.code(409).send({
+          message: 'Ese email ya lo usa otra persona en tu cartera. Si es el mismo inquilino, buscalo en "¿Ya está en tu cartera?"; si no, poné otro email.',
+        });
       }
       throw e;
     }
