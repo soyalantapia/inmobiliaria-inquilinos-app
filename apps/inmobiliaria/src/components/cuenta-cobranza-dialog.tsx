@@ -13,7 +13,7 @@ import { Input } from '@llave/ui/input';
 import { Label } from '@llave/ui/label';
 import { toast } from '@llave/ui/use-toast';
 import { guardarOverride } from '@/lib/propietarios-overrides-storage';
-import { apiEnabled, ApiError } from '@/lib/api/client';
+import { apiEnabled, ApiError, varianteError } from '@/lib/api/client';
 import { setCuentaCobranzaDirecta } from '@/lib/api/hooks';
 import type { Propietario } from '@/lib/types';
 
@@ -87,7 +87,7 @@ export function CuentaCobranzaDialog({ open, onOpenChange, propietario, onSaved 
     } catch (e) {
       setGuardando(false);
       toast({
-        variant: 'destructive',
+        variant: varianteError(e),
         title: 'No se pudo guardar',
         description: e instanceof ApiError ? e.message : 'Probá de nuevo en un momento.',
       });

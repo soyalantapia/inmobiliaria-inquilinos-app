@@ -31,7 +31,7 @@ import {
   SelectValue,
 } from '@llave/ui/select';
 import { toast } from '@llave/ui/use-toast';
-import { apiEnabled } from '@/lib/api/client';
+import { apiEnabled, varianteError } from '@/lib/api/client';
 import {
   CONDICION_FISCAL_LABEL,
   type Sociedad,
@@ -99,7 +99,7 @@ export function SociedadesManager() {
 
   const conError = (e: unknown) =>
     toast({
-      variant: 'destructive',
+      variant: varianteError(e),
       title: 'No se pudo guardar',
       description: e instanceof ApiError ? e.message : 'Probá de nuevo en un momento.',
     });
@@ -569,7 +569,7 @@ function SociedadDialog({
       onGuardado();
     } catch (e) {
       toast({
-        variant: 'destructive',
+        variant: varianteError(e),
         title: 'No se pudo guardar',
         description: e instanceof ApiError ? e.message : 'Probá de nuevo en un momento.',
       });

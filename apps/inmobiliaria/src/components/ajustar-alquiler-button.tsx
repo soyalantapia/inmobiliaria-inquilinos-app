@@ -5,7 +5,7 @@ import { TrendingUp } from 'lucide-react';
 import { Button } from '@llave/ui/button';
 import { ConfirmDialog } from '@llave/ui/confirm-dialog';
 import { toast } from '@llave/ui/use-toast';
-import { ApiError } from '@/lib/api/client';
+import { ApiError, varianteError } from '@/lib/api/client';
 import { MoneyInput } from '@/components/money-input';
 import { useAjustarAlquiler } from '@/lib/api/use-ajustes';
 import { formatMonto } from '@/lib/format';
@@ -61,7 +61,7 @@ export function AjustarAlquilerButton({
       });
       setOpen(false);
     } catch (e) {
-      toast({ variant: 'destructive', title: 'No se pudo ajustar', description: e instanceof ApiError ? e.message : 'Probá de nuevo.' });
+      toast({ variant: varianteError(e), title: 'No se pudo ajustar', description: e instanceof ApiError ? e.message : 'Probá de nuevo.' });
     }
   };
 

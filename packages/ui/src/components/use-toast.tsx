@@ -16,7 +16,7 @@ import {
 export interface ToastInput {
   title?: React.ReactNode;
   description?: React.ReactNode;
-  variant?: 'default' | 'destructive' | 'success';
+  variant?: 'default' | 'destructive' | 'warning' | 'success';
   duration?: number;
 }
 

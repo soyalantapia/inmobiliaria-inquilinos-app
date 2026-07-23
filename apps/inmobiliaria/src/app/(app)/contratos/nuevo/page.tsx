@@ -16,7 +16,7 @@ import { toast } from '@llave/ui/use-toast';
 import { ConfirmDialog } from '@llave/ui/confirm-dialog';
 import { cn } from '@llave/ui/cn';
 import { Topbar } from '@/components/topbar';
-import { apiEnabled, apiFetch, ApiError, subirArchivo } from '@/lib/api/client';
+import { apiEnabled, apiFetch, ApiError, subirArchivo, varianteError } from '@/lib/api/client';
 import { ensureApiSession } from '@/lib/api/session';
 import type { PersonaListado } from '@/lib/api/use-inquilinos';
 import { usePropiedades, useMercado, useCobranza } from '@/lib/api/hooks';
@@ -1212,7 +1212,7 @@ function CargarContratoApiWizard() {
       setEnviando(false);
       setConfirmando(false);
       toast({
-        variant: 'destructive',
+        variant: varianteError(e),
         title: 'No se pudo dar de alta el contrato',
         description: msg,
       });
