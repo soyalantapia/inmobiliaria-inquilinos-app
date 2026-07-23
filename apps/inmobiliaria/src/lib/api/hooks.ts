@@ -356,6 +356,8 @@ export interface NuevoGasto {
   proveedor?: string | null;
   /** Comprobante/ticket del gasto: URL de /uploads (ya subida). Opcional. */
   comprobanteUrl?: string | null;
+  /** Cuenta de caja de dónde sale / a dónde entra la plata. Opcional. */
+  cuentaId?: string | null;
 }
 
 export function useCaja(): {

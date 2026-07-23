@@ -232,6 +232,16 @@ enum TipoMovimientoCaja {
   INGRESO_EXTRA
 }
 
+// Dirección permitida de una cuenta de caja (pedido de Camila): "hay cuentas que
+// solamente van a poder entrar plata y otras que pueden salir, y otras ambas".
+// ENTRADA = solo ingresos (ej. cuenta recaudadora); SALIDA = solo egresos (ej. una
+// cuenta que solo se usa para pagar); AMBAS = efectivo, Mercado Pago, etc.
+enum DireccionCuenta {
+  ENTRADA
+  SALIDA
+  AMBAS
+}
+
 enum CategoriaGasto {
   PLOMERIA
   ELECTRICIDAD
@@ -670,6 +680,7 @@ model Inmobiliaria {
   eventosContrato            EventoContrato[]
   intencionesRenovacion      IntencionRenovacion[]
   movimientosCaja            MovimientoCaja[]
+  cuentasCaja                CuentaCaja[]
   cierresCaja                CierreCaja[]
   rendiciones                Rendicion[]
   gastosRendidos             GastoRendido[]
@@ -1732,6 +1743,11 @@ model MovimientoCaja {
   contrato              Contrato?          @relation(fields: [contratoId], references: [id])
   tipo                  TipoMovimientoCaja
   categoria             CategoriaGasto
+  // Cuenta de caja (de dónde sale / a dónde entra la plata): MP Gaspar, efectivo,
+  // banco… La define la inmobiliaria. Nullable: los movimientos viejos no la tienen,
+  // y se puede cargar un movimiento sin cuenta si todavía no cargó ninguna.
+  cuentaId              String?
+  cuenta                CuentaCaja?        @relation(fields: [cuentaId], references: [id])
   descripcion           String
   monto                 Decimal            @db.Decimal(14, 2)
   fecha                 DateTime
@@ -1748,7 +1764,31 @@ model MovimientoCaja {
   @@index([propiedadId])
   @@index([contratoId])
   @@index([rendicionId])
+  @@index([cuentaId])
   @@map("movimientos_caja")
+}
+
+// Cuentas de caja que la inmobiliaria carga a gusto y nombra ("Gaspar Mercado Pago",
+// "bebé MP", "efectivo", "Líder…"). Cada movimiento de caja sale de / entra a una.
+// Pedido de Camila (criterio de permanencia): "que tenga diferentes cuentas… la caja y
+// los números de cuenta, si tengo que usar otro sistema estamos en el horno". Solo el
+// admin las define (la cajera no las toca).
+model CuentaCaja {
+  id             String           @id @default(cuid())
+  inmobiliariaId String
+  inmobiliaria   Inmobiliaria     @relation(fields: [inmobiliariaId], references: [id])
+  nombre         String
+  direccion      DireccionCuenta  @default(AMBAS)
+  // Soft-delete: una cuenta con movimientos no se borra (rompería el historial), se
+  // archiva. `activa=false` la saca del selector de carga pero conserva sus movimientos.
+  activa         Boolean          @default(true)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  movimientos MovimientoCaja[]
+
+  @@index([inmobiliariaId])
+  @@map("cuentas_caja")
 }
 
 // Snapshot INMUTABLE de auditoría: 1 por (tenant, fecha); re-cerrar reemplaza.

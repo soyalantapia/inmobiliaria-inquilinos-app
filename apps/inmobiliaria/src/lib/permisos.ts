@@ -52,6 +52,7 @@ export type Capacidad =
   | 'reclamos.ver'
   | 'screening.ver'
   | 'caja.ver'
+  | 'cuentas.ver'
   | 'propietarios.ver'
   | 'profesionales.ver'
   | 'auditoria.ver'
@@ -61,6 +62,7 @@ export type Capacidad =
   | 'propietarios.crear'
   | 'pago.manual.cargar'
   | 'gasto.caja.cargar'
+  | 'cuentas.gestionar'
   /* Acciones operativas */
   | 'reclamos.gestionar'
   | 'profesional.asignar'
@@ -99,6 +101,7 @@ export const CAPACIDADES: DefinicionCapacidad[] = [
   { key: 'reclamos.ver', label: 'Ver reclamos', roles: ['ADMIN', 'OPERADOR', 'LECTURA'], grupo: 'lectura' },
   { key: 'screening.ver', label: 'Ver screening', roles: ['ADMIN', 'OPERADOR'], grupo: 'lectura' },
   { key: 'caja.ver', label: 'Ver caja diaria', roles: ['ADMIN', 'OPERADOR', 'LECTURA'], grupo: 'lectura' },
+  { key: 'cuentas.ver', label: 'Ver cuentas de caja', roles: ['ADMIN', 'OPERADOR', 'LECTURA'], grupo: 'lectura' },
   { key: 'propietarios.ver', label: 'Ver propietarios', roles: ['ADMIN', 'OPERADOR', 'CARGA', 'LECTURA'], grupo: 'lectura' },
   { key: 'profesionales.ver', label: 'Ver profesionales', roles: ['ADMIN', 'OPERADOR'], grupo: 'lectura' },
   { key: 'auditoria.ver', label: 'Ver auditoría', roles: ['ADMIN', 'LECTURA'], grupo: 'lectura' },
@@ -109,6 +112,7 @@ export const CAPACIDADES: DefinicionCapacidad[] = [
   { key: 'propietarios.crear', label: 'Cargar propietario', roles: ['ADMIN', 'OPERADOR', 'CARGA'], grupo: 'carga' },
   { key: 'pago.manual.cargar', label: 'Cargar pago manual', roles: ['ADMIN', 'OPERADOR'], rolesAprobacion: ['OPERADOR'], grupo: 'carga' },
   { key: 'gasto.caja.cargar', label: 'Cargar gasto de caja', roles: ['ADMIN', 'OPERADOR'], grupo: 'carga' },
+  { key: 'cuentas.gestionar', label: 'Definir cuentas de caja', roles: ['ADMIN'], grupo: 'sensible' },
 
   /* Operativa */
   { key: 'reclamos.gestionar', label: 'Gestionar reclamos', roles: ['ADMIN', 'OPERADOR'], grupo: 'operativa' },
