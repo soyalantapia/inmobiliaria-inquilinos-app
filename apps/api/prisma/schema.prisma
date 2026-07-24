@@ -1360,7 +1360,12 @@ model Inquilino {
   certificados CertificadoInquilino[]
   codigosOtp   CodigoOtp[]
 
-  @@unique([inmobiliariaId, email])
+  // El email NO es único a nivel Inquilino (fila-por-contrato): un mismo inquilino
+  // puede tener VARIOS contratos en la misma inmobiliaria (3 locales, 10 deptos de un
+  // consorcio) y todos comparten su email de login. El login OTP ya está hecho para
+  // eso (findMany por email → persona-token → elegir alquiler). La unicidad del email
+  // vive un nivel arriba, en Persona (la identidad de login). Antes el unique acá
+  // rompía el multi-alquiler: cargar el 2º contrato daba "ya está en tu cartera".
   @@index([inmobiliariaId])
   @@index([personaId])
   @@map("inquilinos")
@@ -1390,6 +1395,9 @@ model Persona {
   // distintos → varias personas sin DNI conviven). Evita duplicar la misma persona
   // identificada por DNI y habilita el reuso; no fuerza DNI en quienes no lo tienen.
   @@unique([inmobiliariaId, dni])
+  // El email es la identidad de LOGIN: único por inmobiliaria a nivel Persona (no de
+  // Inquilino). Postgres trata los NULL como distintos → personas sin email conviven.
+  @@unique([inmobiliariaId, email])
   @@index([inmobiliariaId])
   @@map("personas")
 }
