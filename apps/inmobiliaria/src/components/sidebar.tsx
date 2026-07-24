@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Isotipo } from './isotipo';
 import {
+  BarChart3,
   Inbox,
   LayoutDashboard,
   FileText,
@@ -49,6 +50,7 @@ type NavLink = {
 
 const links: NavLink[] = [
   { href: '/', label: 'Inicio', icon: LayoutDashboard, capacidad: 'home.ver' },
+  { href: '/estadisticas', label: 'Estadísticas', icon: BarChart3, capacidad: 'metricas.ver' },
   { href: '/propiedades', label: 'Propiedades', icon: Building2, capacidad: 'propiedades.ver' },
   // Propietarios como sección propia: la inmobiliaria piensa por dueño ("rendirle
   // a X", "cargar el CBU de Y"), no sólo por propiedad. Antes sólo se llegaba de
