@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
+import { enumerarPeriodosContrato } from '@llave/shared/periodos';
 
 type TxOrClient = Prisma.TransactionClient | PrismaClient;
 
@@ -41,77 +42,24 @@ export function computarLiquidacionesContrato(
   const expensas = contrato.montoExpensas != null ? Number(contrato.montoExpensas) : null;
   const total = alquiler + (expensas ?? 0);
 
-  // El devengo arranca en `devengarDesde` cuando existe (cartera importada: el contrato
-  // conserva su fechaInicio real para antigüedad/ajustes, pero los meses previos NO se
-  // devengan porque el inquilino ya los pagó por afuera y nacerían VENCIDO = deuda falsa).
-  // Se toma el MAYOR de los dos por seguridad: nunca devengar antes del inicio real.
-  const arranque =
-    contrato.devengarDesde && new Date(contrato.devengarDesde) > new Date(contrato.fechaInicio)
-      ? new Date(contrato.devengarDesde)
-      : new Date(contrato.fechaInicio);
-  const inicio = arranque;
-  const fin = new Date(contrato.fechaFin);
-
-  // Tope = el menor entre (mes que viene) y (mes de fin del contrato).
-  const proximoMes = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
-  const finMes = new Date(Date.UTC(fin.getUTCFullYear(), fin.getUTCMonth(), 1));
-  const tope = proximoMes < finMes ? proximoMes : finMes;
-  const topeY = tope.getUTCFullYear();
-  const topeM = tope.getUTCMonth();
-
-  let y = inicio.getUTCFullYear();
-  let m = inicio.getUTCMonth();
-
-  // PRIMER DEVENGO: si el contrato arranca a mitad de mes (ej. 15/07) y el
-  // diaPago es temprano (ej. 5), la fechaVencimiento del primer período caería
-  // ANTES de fechaInicio (venc 05/07 < inicio 15/07) → nacería VENCIDA con mora
-  // por un atraso IMPOSIBLE (la cuota no podía pagarse antes de existir el
-  // contrato). Si eso pasa, saltamos ese mes: el PRIMER cobro va al mes
-  // siguiente (venc >= fechaInicio garantizado). Solo aplica al primer período;
-  // los meses siguientes ya vencen naturalmente después del inicio.
-  {
-    const diasMes = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
-    const dia = Math.min(contrato.diaPago, diasMes);
-    const vencPrimero = new Date(Date.UTC(y, m, dia));
-    if (vencPrimero < inicio) {
-      m += 1;
-      if (m > 11) {
-        m = 0;
-        y += 1;
-      }
-    }
-  }
-
-  const data: Prisma.LiquidacionCreateManyInput[] = [];
-  let guard = 0;
-  while (guard < 600) {
-    const periodo = `${y}-${String(m + 1).padStart(2, '0')}`;
-    const diasMes = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
-    const dia = Math.min(contrato.diaPago, diasMes);
-    const venc = new Date(Date.UTC(y, m, dia));
-    data.push({
-      inmobiliariaId: contrato.inmobiliariaId,
-      contratoId: contrato.id,
-      periodo,
-      montoAlquiler: alquiler,
-      montoExpensas: expensas,
-      montoTotal: total,
-      fechaVencimiento: venc,
-      estado: venc < now ? 'VENCIDO' : 'PENDIENTE',
-      moneda: contrato.moneda,
-    });
-    // Generamos hasta el tope inclusive; si el inicio ya superó el tope
-    // (contrato futuro), queda solo el primer mes.
-    if (y > topeY || (y === topeY && m >= topeM)) break;
-    m += 1;
-    if (m > 11) {
-      m = 0;
-      y += 1;
-    }
-    guard += 1;
-  }
-
-  return data;
+  // La ENUMERACIÓN de períodos (arranque = max(devengarDesde, fechaInicio), skip
+  // del primer mes cuando vence antes del inicio, tope al mes que viene / fin del
+  // contrato) es la FUENTE ÚNICA compartida con el front (@llave/shared): el
+  // wizard de alta usa la MISMA función para ofrecer los "períodos anteriores",
+  // así nunca manda un período que este devengo no haya generado (era el bug i36:
+  // período huérfano → 400 en aplicarEstadoInicial → rollback del alta entera).
+  // Acá sólo le agregamos los montos/estado propios de la liquidación.
+  return enumerarPeriodosContrato(contrato, now).map((p) => ({
+    inmobiliariaId: contrato.inmobiliariaId,
+    contratoId: contrato.id,
+    periodo: p.periodo,
+    montoAlquiler: alquiler,
+    montoExpensas: expensas,
+    montoTotal: total,
+    fechaVencimiento: p.vencimiento,
+    estado: p.vencido ? 'VENCIDO' : 'PENDIENTE',
+    moneda: contrato.moneda,
+  }));
 }
 
 /**

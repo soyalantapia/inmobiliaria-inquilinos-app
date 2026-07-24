@@ -8,7 +8,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./auth": "./src/auth.ts",
-    "./permisos": "./src/permisos.ts"
+    "./permisos": "./src/permisos.ts",
+    "./periodos": "./src/periodos.ts"
   },
   "dependencies": {
     "zod": "^3.24.1"

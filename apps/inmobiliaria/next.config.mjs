@@ -11,7 +11,7 @@ const clerkNoop = path.resolve(__dirname, '../../scripts/clerk-noop.js');
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  transpilePackages: ['@llave/ui'],
+  transpilePackages: ['@llave/ui', '@llave/shared'],
   ...(isExport
     ? {
         output: 'export',
