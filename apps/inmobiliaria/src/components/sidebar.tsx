@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Isotipo } from './isotipo';
 import {
-  Inbox,
   LayoutDashboard,
   FileText,
   LogOut,
@@ -59,7 +58,6 @@ const links: NavLink[] = [
   { href: '/depositos', label: 'Depósitos', icon: Landmark, capacidad: 'contratos.ver' },
   { href: '/contratos', label: 'Contratos', icon: FileText, capacidad: 'contratos.ver' },
   { href: '/inquilinos', label: 'Inquilinos', icon: Users, capacidad: 'contratos.ver' },
-  { href: '/aprobaciones', label: 'Aprobaciones', icon: Inbox, capacidad: 'contrato.aprobar' },
   { href: '/renovaciones', label: 'Renovaciones', icon: CalendarHeart, capacidad: 'contratos.ver' },
   { href: '/consorcios', label: 'Consorcios', icon: Building, capacidad: 'propiedades.ver' },
   { href: '/reclamos', label: 'Reclamos', icon: Wrench, capacidad: 'reclamos.ver' },
@@ -181,7 +179,7 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
             >
               <Icon className={esSub ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
               <span className="flex-1">{l.label}</span>
-              {l.href === '/aprobaciones' && (
+              {l.href === '/pagos' && pendientes > 0 && (
                 <CountBadge count={pendientes} />
               )}
             </Link>
