@@ -15,7 +15,7 @@ import { Label } from '@llave/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@llave/ui/select';
 import { toast } from '@llave/ui/use-toast';
 import { guardarOverride } from '@/lib/propiedades-overrides-storage';
-import { apiEnabled, apiFetch, ApiError } from '@/lib/api/client';
+import { apiEnabled, apiFetch, ApiError, varianteError } from '@/lib/api/client';
 import type { Propiedad, TipoPropiedad } from '@/lib/types';
 
 interface Props {
@@ -111,7 +111,7 @@ export function EditarPropiedadDialog({ open, onOpenChange, propiedad, onGuardad
     } catch (e) {
       const sinPermiso = e instanceof ApiError && e.status === 403;
       toast({
-        variant: 'destructive',
+        variant: varianteError(e),
         title: sinPermiso ? 'Sin permiso' : 'No se pudo guardar',
         description: sinPermiso
           ? 'Tu rol no permite editar propiedades.'

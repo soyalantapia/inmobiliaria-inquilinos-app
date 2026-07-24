@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from '@llave/ui/select';
 import { toast } from '@llave/ui/use-toast';
-import { ApiError } from '@/lib/api/client';
+import { ApiError, varianteError } from '@/lib/api/client';
 import { useEditarParticipaciones } from '@/lib/api/use-ajustes';
 import type { ParticipacionPropietario, Propietario } from '@/lib/types';
 
@@ -121,7 +121,7 @@ export function EditarParticipacionesDialog({
       onOpenChange(false);
     } catch (e) {
       toast({
-        variant: 'destructive',
+        variant: varianteError(e),
         title: 'No se pudo guardar',
         description: e instanceof ApiError ? e.message : 'Reintentá en un momento.',
       });

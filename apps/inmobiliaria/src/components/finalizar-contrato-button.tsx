@@ -7,7 +7,7 @@ import { Button } from '@llave/ui/button';
 import { ConfirmDialog } from '@llave/ui/confirm-dialog';
 import { toast } from '@llave/ui/use-toast';
 import { MoneyInput } from '@/components/money-input';
-import { ApiError } from '@/lib/api/client';
+import { ApiError, varianteError } from '@/lib/api/client';
 import { useFinalizarContrato, useFinalizarPreview, type FinalizarPreview } from '@/lib/api/hooks';
 import { formatMonto } from '@/lib/format';
 import type { Moneda } from '@/lib/types';
@@ -109,7 +109,7 @@ export function FinalizarContratoButton({ contratoId, direccion }: { contratoId:
       setOpen(false);
     } catch (e) {
       toast({
-        variant: 'destructive',
+        variant: varianteError(e),
         title: 'No se pudo dar de baja',
         description: e instanceof ApiError ? e.message : 'Probá de nuevo en un momento.',
       });

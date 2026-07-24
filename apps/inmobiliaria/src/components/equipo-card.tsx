@@ -23,7 +23,7 @@ import {
   SelectValue,
 } from '@llave/ui/select';
 import { toast } from '@llave/ui/use-toast';
-import { ApiError } from '@/lib/api/client';
+import { ApiError, varianteError } from '@/lib/api/client';
 import {
   cambiarUsuario,
   crearUsuario,
@@ -53,7 +53,7 @@ export function EquipoCard() {
 
   const onError = (e: unknown) =>
     toast({
-      variant: 'destructive',
+      variant: varianteError(e),
       title: 'No se pudo guardar',
       description: e instanceof ApiError ? e.message : 'Probá de nuevo en un momento.',
     });

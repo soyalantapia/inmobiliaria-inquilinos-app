@@ -30,6 +30,10 @@ const toastVariants = cva(
       variant: {
         default: 'border bg-background text-foreground',
         destructive: 'destructive group border-destructive bg-destructive text-destructive-foreground',
+        // ADVERTENCIA (regla de negocio, no error fatal): ámbar, no rojo. Antes el design
+        // system solo tenía `destructive`, así que todo aviso —incluido "no podés cambiar
+        // el modo de cobranza este mes"— se veía como un error rojo. Pedido de la clienta.
+        warning: 'warning group border-amber-500/40 bg-amber-50 text-amber-900 dark:border-amber-400/40 dark:bg-amber-950 dark:text-amber-100',
         success: 'success group border-emerald-500/30 bg-emerald-50 text-emerald-900 dark:border-emerald-400/30 dark:bg-emerald-950 dark:text-emerald-100',
       },
     },
