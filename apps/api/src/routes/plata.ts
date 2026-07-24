@@ -769,7 +769,38 @@ export async function plataRoutes(app: FastifyInstance) {
       return reply.code(400).send({ message: 'Ese cargo se descuenta del depósito, no se cobra al inquilino' });
     }
     if (!cargo.saldadoAt) {
-      await prisma.cargoContrato.update({ where: { id }, data: { saldadoAt: new Date(), saldadoPorId: u.userId } });
+      // La plata TIENE que quedar registrada: antes esto sólo marcaba `saldadoAt`, así
+      // que el cargo desaparecía de la deuda del inquilino y no entraba a ningún lado.
+      // Cobrabas una reparación, al inquilino se le borraba la deuda y en la caja no
+      // figuraba un peso ("es plata que pierdo si no entra a caja", Camila 46:37).
+      // Se registra como INGRESO_EXTRA de caja —no como Pago— porque `Pago` exige
+      // `liquidacionId` (schema: String, no opcional) y un cargo NO es una liquidación:
+      // colgarlo de una liquidación ajena le inflaría el monto pagado a ese período.
+      // La rendición al propietario filtra `tipo: 'GASTO'`, así que un INGRESO_EXTRA
+      // no le altera la liquidación al dueño.
+      const contrato = await prisma.contrato.findFirst({
+        where: { id: cargo.contratoId, inmobiliariaId: u.inmobiliariaId },
+        select: { id: true, propiedadId: true },
+      });
+      const usuario = await prisma.usuario.findUnique({ where: { id: u.userId } });
+      await prisma.$transaction(async (tx) => {
+        await tx.cargoContrato.update({ where: { id }, data: { saldadoAt: new Date(), saldadoPorId: u.userId } });
+        if (contrato) {
+          await tx.movimientoCaja.create({
+            data: {
+              inmobiliariaId: u.inmobiliariaId,
+              propiedadId: contrato.propiedadId,
+              contratoId: contrato.id,
+              tipo: 'INGRESO_EXTRA',
+              categoria: 'OTRO',
+              descripcion: `Cobro de cargo al inquilino: ${cargo.concepto}`,
+              monto: cargo.monto,
+              fecha: new Date(),
+              cargadoPor: usuario ? `${usuario.nombre} ${usuario.apellido}`.trim() : 'Panel',
+            },
+          });
+        }
+      });
       await registrarEvento({
         inmobiliariaId: u.inmobiliariaId,
         tipo: 'PAGO_CONCILIADO',
@@ -1299,7 +1330,13 @@ export async function plataRoutes(app: FastifyInstance) {
         proveedor: z.string().nullable().optional(),
         // Comprobante/ticket del gasto (foto o PDF ya subido a /uploads): el
         // respaldo para la rendición al propietario.
-        comprobanteUrl: z.string().optional(),
+        // MISMO caso que `proveedor` de arriba: el form manda null cuando no se
+        // adjuntó comprobante (caja/page.tsx:543 es useState<string | null>(null)),
+        // y `.optional()` acepta undefined pero RECHAZA null → el safeParse fallaba
+        // y TODO movimiento de caja sin comprobante moría en "Datos del movimiento
+        // incompletos". Es decir: al agregar el comprobante se rompió la carga de
+        // caja entera. El tipo del front (hooks.ts:358) ya decía `string | null`.
+        comprobanteUrl: z.string().nullable().optional(),
       })
       .safeParse(request.body ?? {});
     if (!body.success) return reply.code(400).send({ message: 'Datos del movimiento incompletos' });
