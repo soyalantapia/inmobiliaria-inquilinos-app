@@ -426,3 +426,97 @@ describe('Renovaciones', () => {
     expect(res.statusCode).toBe(404);
   });
 });
+
+describe('Alta de reclamo POR LA INMOBILIARIA (POST /reclamos)', () => {
+  it('ADMIN carga un reclamo sobre un contrato activo → 201, ABIERTO, con el canal en el timeline', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/reclamos',
+      headers: auth(tokenAdmin),
+      payload: {
+        contratoId: 'cnt_001',
+        titulo: 'Pérdida de agua',
+        descripcion: 'La canilla de la cocina pierde desde ayer, lo pasó por WhatsApp.',
+        categoria: 'PLOMERIA',
+        urgencia: 'ALTA',
+        canal: 'WHATSAPP',
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    const creado = res.json();
+    expect(creado.estado).toBe('ABIERTO');
+    expect(creado.categoria).toBe('PLOMERIA');
+    expect(creado.descripcion).toContain('Pérdida de agua');
+
+    // Aparece en la bandeja
+    const lista = await app.inject({ method: 'GET', url: '/reclamos', headers: auth(tokenAdmin) });
+    expect(lista.json().some((r: { id: string }) => r.id === creado.id)).toBe(true);
+
+    // El evento CREADO registra el canal por el que llegó
+    const detalle = await app.inject({ method: 'GET', url: `/reclamos/${creado.id}`, headers: auth(tokenAdmin) });
+    const eventos = detalle.json().eventos as Array<{ tipo: string; contenido: string | null }>;
+    const creadoEv = eventos.find((e) => e.tipo === 'CREADO');
+    expect(creadoEv?.contenido).toContain('WhatsApp');
+  });
+
+  it('rol CARGA no puede cargar reclamos → 403', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/reclamos',
+      headers: auth(tokenCarga),
+      payload: { contratoId: 'cnt_001', titulo: 'x y z', descripcion: 'algo largo acá', categoria: 'OTRO', urgencia: 'BAJA' },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('contrato inexistente → 404', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/reclamos',
+      headers: auth(tokenAdmin),
+      payload: { contratoId: 'cnt_no_existe', titulo: 'x y z', descripcion: 'algo largo acá', categoria: 'OTRO', urgencia: 'BAJA' },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('sin token → 401', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/reclamos',
+      payload: { contratoId: 'cnt_001', titulo: 'x y z', descripcion: 'algo largo acá', categoria: 'OTRO', urgencia: 'BAJA' },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  // La costura que importa: lo que carga la inmobiliaria tiene que verlo el inquilino
+  // en SU app. GET /mis-reclamos filtra por contratoId (no por quién lo creó), así que
+  // el reclamo del panel aparece en la PWA del inquilino de ese contrato.
+  it('el reclamo que carga la inmobiliaria aparece en la app del inquilino (GET /mis-reclamos)', async () => {
+    const crear = await app.inject({
+      method: 'POST',
+      url: '/reclamos',
+      headers: auth(tokenAdmin),
+      payload: {
+        contratoId: 'cnt_001',
+        titulo: 'Humedad en el techo',
+        descripcion: 'Mancha grande en el dormitorio, lo pasó por WhatsApp.',
+        categoria: 'OTRO',
+        urgencia: 'MEDIA',
+        canal: 'WHATSAPP',
+      },
+    });
+    expect(crear.statusCode).toBe(201);
+    const id = crear.json().id;
+
+    // Mariela (inquilina de cnt_001, token vía /auth/demo) lo ve en su app.
+    const mis = await app.inject({ method: 'GET', url: '/mis-reclamos', headers: auth(tokenInquilino) });
+    expect(mis.statusCode).toBe(200);
+    const encontrado = (mis.json() as Array<{ id: string; descripcion: string; eventos: Array<{ tipo: string; contenido: string | null }> }>)
+      .find((r) => r.id === id);
+    expect(encontrado).toBeTruthy();
+    expect(encontrado!.descripcion).toContain('Humedad en el techo');
+    // Y en su timeline ve que lo registró la inmobiliaria (sin el nombre del operador).
+    const creadoEv = encontrado!.eventos.find((e) => e.tipo === 'CREADO');
+    expect(creadoEv?.contenido).toContain('WhatsApp');
+  });
+});
