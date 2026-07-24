@@ -13,6 +13,7 @@
   "dependencies": {
     "@clerk/nextjs": "^6.6.0",
     "@hookform/resolvers": "^3.9.0",
+    "@llave/shared": "workspace:*",
     "@llave/ui": "workspace:*",
     "@tanstack/react-query": "^5.101.0",
     "lucide-react": "^0.453.0",

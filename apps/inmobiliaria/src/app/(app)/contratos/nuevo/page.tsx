@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from '@llave/ui/use-toast';
 import { ConfirmDialog } from '@llave/ui/confirm-dialog';
 import { cn } from '@llave/ui/cn';
+import { enumerarPeriodosContrato } from '@llave/shared/periodos';
 import { Topbar } from '@/components/topbar';
 import { apiEnabled, apiFetch, ApiError, subirArchivo } from '@/lib/api/client';
 import { ensureApiSession } from '@/lib/api/session';
@@ -763,34 +764,32 @@ const PERIODO_FORM_DEFAULT: PeriodoAnteriorForm = {
 };
 
 /**
- * Períodos ya vencidos entre el mes de `fechaInicio` y hoy. Por cada mes, el
- * vencimiento es min(diaPago, último día del mes); se incluye si ese
- * vencimiento ya pasó. Cálculo 100% client-side con fechas locales.
+ * Períodos YA VENCIDOS del contrato (para el paso "Períodos anteriores"). Toma la
+ * enumeración CANÓNICA compartida con el back (`enumerarPeriodosContrato` de
+ * @llave/shared) y se queda con el subconjunto vencido, adaptándolo al shape del
+ * wizard. ANTES esto se calculaba con una fórmula propia del front (fechas
+ * locales, sin el "skip" del primer mes) que divergía del devengo del back: un
+ * contrato a mitad de mes con diaPago temprano listaba un período que el back
+ * nunca devengaba → período huérfano → el alta fallaba con 400 (bug i36). Al usar
+ * la única fuente de verdad, el wizard sólo ofrece períodos que el back va a crear.
  */
-function calcularPeriodosVencidos(fechaInicio: string, diaPago: number): PeriodoVencido[] {
-  if (fechaInicio.length !== 10 || !(diaPago >= 1 && diaPago <= 31)) return [];
-  const [anio, mes] = fechaInicio.split('-').map(Number);
-  if (!anio || !mes) return [];
-  const hoy = new Date();
-  const hoyLocal = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
-  const out: PeriodoVencido[] = [];
-  let cursor = new Date(anio, mes - 1, 1);
-  // Tope de 10 años por las dudas (input basura no debe colgar el wizard).
-  for (let i = 0; i < 120 && cursor <= hoyLocal; i++) {
-    const ultimoDia = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0).getDate();
-    const venc = new Date(cursor.getFullYear(), cursor.getMonth(), Math.min(diaPago, ultimoDia));
-    if (venc < hoyLocal) {
-      const mm = String(cursor.getMonth() + 1).padStart(2, '0');
-      const dd = String(venc.getDate()).padStart(2, '0');
-      out.push({
-        periodo: `${cursor.getFullYear()}-${mm}`,
-        vencimiento: `${cursor.getFullYear()}-${mm}-${dd}`,
-        diasAtraso: Math.floor((hoyLocal.getTime() - venc.getTime()) / 86_400_000),
-      });
-    }
-    cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
-  }
-  return out;
+function calcularPeriodosVencidos(
+  fechaInicio: string,
+  fechaFin: string,
+  diaPago: number,
+  now: Date,
+): PeriodoVencido[] {
+  if (fechaInicio.length !== 10 || fechaFin.length !== 10) return [];
+  if (!(diaPago >= 1 && diaPago <= 31)) return [];
+  return enumerarPeriodosContrato({ fechaInicio, fechaFin, diaPago }, now)
+    .filter((p) => p.vencido)
+    .map((p) => ({
+      periodo: p.periodo,
+      // El back guarda fechaVencimiento con esta misma fecha UTC (Date.UTC en la
+      // enumeración) → el string coincide con lo que verá el inquilino.
+      vencimiento: p.vencimiento.toISOString().slice(0, 10),
+      diasAtraso: Math.max(0, Math.floor((now.getTime() - p.vencimiento.getTime()) / 86_400_000)),
+    }));
 }
 
 // 'YYYY-MM' → "Marzo 2026".
@@ -980,8 +979,8 @@ function CargarContratoApiWizard() {
   // Períodos ya vencidos entre el inicio del contrato y hoy. Si hay al menos
   // uno, aparece el paso 4 "Períodos anteriores".
   const periodosVencidos = useMemo(
-    () => calcularPeriodosVencidos(fechaInicio, Number(diaPago)),
-    [fechaInicio, diaPago],
+    () => calcularPeriodosVencidos(fechaInicio, fechaFin, Number(diaPago), new Date()),
+    [fechaInicio, fechaFin, diaPago],
   );
   const hayPeriodos = periodosVencidos.length > 0;
   const pasosVisibles = useMemo(
