@@ -1275,7 +1275,11 @@ export async function plataRoutes(app: FastifyInstance) {
     if (!u) return;
     return prisma.movimientoCaja.findMany({
       where: { inmobiliariaId: u.inmobiliariaId },
-      include: { propiedad: { select: { id: true, direccion: true } } },
+      include: {
+        propiedad: { select: { id: true, direccion: true } },
+        // La cuenta de dónde salió / entró la plata, para mostrarla en la lista.
+        cuenta: { select: { id: true, nombre: true } },
+      },
       orderBy: { fecha: 'desc' },
     });
   });
@@ -1298,13 +1302,33 @@ export async function plataRoutes(app: FastifyInstance) {
         // El front manda null cuando el proveedor queda vacío: aceptar null además de undefined.
         proveedor: z.string().nullable().optional(),
         // Comprobante/ticket del gasto (foto o PDF ya subido a /uploads): el
-        // respaldo para la rendición al propietario.
-        comprobanteUrl: z.string().optional(),
+        // respaldo para la rendición al propietario. `.nullish()`: el front manda
+        // null cuando no se adjunta nada; con `.optional()` (solo undefined) eso
+        // daba un 400 "Datos del movimiento incompletos" en TODO movimiento sin ticket.
+        comprobanteUrl: z.string().nullish(),
+        // Cuenta de caja de dónde sale / a dónde entra la plata (MP Gaspar, efectivo…).
+        // Opcional: se puede cargar un movimiento sin cuenta (o si aún no cargó ninguna).
+        cuentaId: z.string().nullable().optional(),
       })
       .safeParse(request.body ?? {});
     if (!body.success) return reply.code(400).send({ message: 'Datos del movimiento incompletos' });
     if (body.data.comprobanteUrl && !urlEsDelTenant(body.data.comprobanteUrl, u.inmobiliariaId)) {
       return reply.code(400).send({ message: 'Comprobante inválido' });
+    }
+
+    // Cuenta: del tenant + la dirección tiene que permitir el tipo del movimiento
+    // (una cuenta "solo entrada" no acepta un gasto; una "solo salida" no acepta un ingreso).
+    if (body.data.cuentaId) {
+      const cuenta = await prisma.cuentaCaja.findFirst({
+        where: { id: body.data.cuentaId, inmobiliariaId: u.inmobiliariaId },
+      });
+      if (!cuenta) return reply.code(404).send({ message: 'Cuenta inexistente' });
+      if (cuenta.direccion === 'ENTRADA' && body.data.tipo === 'GASTO') {
+        return reply.code(409).send({ message: `La cuenta "${cuenta.nombre}" es solo de entrada: no podés cargarle un gasto` });
+      }
+      if (cuenta.direccion === 'SALIDA' && body.data.tipo === 'INGRESO_EXTRA') {
+        return reply.code(409).send({ message: `La cuenta "${cuenta.nombre}" es solo de salida: no podés cargarle un ingreso` });
+      }
     }
 
     const prop = await prisma.propiedad.findFirst({ where: { id: body.data.propiedadId, inmobiliariaId: u.inmobiliariaId } });
@@ -1326,6 +1350,7 @@ export async function plataRoutes(app: FastifyInstance) {
         // Respaldo del gasto (foto/PDF ya subido a /uploads): antes se validaba
         // pero NO se persistía en el create → el comprobante se perdía.
         comprobanteUrl: body.data.comprobanteUrl,
+        cuentaId: body.data.cuentaId ?? null,
         cargadoPor: usuario ? `${usuario.nombre} ${usuario.apellido}`.trim() : 'Panel',
       },
     });

@@ -31,6 +31,8 @@ export interface MovimientoCaja {
   fecha: string; // ISO date YYYY-MM-DD
   proveedor: string | null; // ej. "Sergio Almeida (plomero)"
   comprobante: string | null; // dataURL o ref
+  cuentaId?: string | null; // cuenta de caja (de dónde sale / a dónde entra)
+  cuentaNombre?: string | null; // nombre de esa cuenta (para mostrar en la lista)
   cargadoPor: string;
   createdAt: string;
   // Ya descontado en una rendición? Si no, queda pendiente de descuento.

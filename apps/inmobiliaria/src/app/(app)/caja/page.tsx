@@ -41,6 +41,7 @@ import {
   categoriaGastoLabel,
 } from '@/lib/caja-storage';
 import { useCaja, usePropiedades } from '@/lib/api/hooks';
+import { useCuentas } from '@/lib/api/use-cuentas';
 import { useCierreCaja } from '@/lib/api/use-pagos';
 import { apiEnabled, subirArchivo } from '@/lib/api/client';
 import { formatFechaCorta, formatMonto, fechaHoyLocal } from '@/lib/format';
@@ -252,6 +253,7 @@ export default function CajaPage() {
               fecha: data.fecha,
               proveedor: data.proveedor,
               comprobanteUrl: data.comprobante,
+              cuentaId: data.cuentaId ?? null,
             });
             setAbrirForm(false);
             toast(
@@ -494,6 +496,7 @@ function MovimientoRow({
         <p className="truncate text-xs text-muted-foreground">{propDireccion}</p>
         <p className="text-[10px] text-muted-foreground">
           {formatFechaCorta(mov.fecha)}
+          {mov.cuentaNombre && ` · ${mov.cuentaNombre}`}
           {mov.proveedor && ` · ${mov.proveedor}`} · cargó {mov.cargadoPor}
         </p>
       </div>
@@ -543,7 +546,24 @@ function DialogCargarGasto({
   const [comprobanteUrl, setComprobanteUrl] = useState<string | null>(null);
   const [subiendoComprobante, setSubiendoComprobante] = useState(false);
   const [guardando, setGuardando] = useState(false);
+  // Cuenta de caja de dónde sale / a dónde entra la plata (Camila: "Gaspar retira
+  // Mercado Pago, la otra bebé retiro"). Solo prod: las cuentas gatean cuentas.*.
+  const [cuentaId, setCuentaId] = useState('');
+  const { cuentas } = useCuentas();
   const esIngreso = tipo === 'INGRESO_EXTRA';
+
+  // Solo ofrecemos cuentas activas y compatibles con la dirección del movimiento:
+  // una entrada solo puede caer en una cuenta ENTRADA/AMBAS; una salida en SALIDA/AMBAS
+  // (Camila: "solo lo puedes usar para salir a esa o para entrada a la que yo marco").
+  const cuentasCompatibles = useMemo(
+    () =>
+      cuentas.filter(
+        (c) =>
+          c.activa &&
+          (c.direccion === 'AMBAS' || c.direccion === (esIngreso ? 'ENTRADA' : 'SALIDA')),
+      ),
+    [cuentas, esIngreso],
+  );
 
   useEffect(() => {
     if (open) {
@@ -555,8 +575,15 @@ function DialogCargarGasto({
       setFecha(fechaHoyLocal());
       setProveedor('');
       setComprobanteUrl(null);
+      setCuentaId('');
     }
   }, [open]);
+
+  // Si cambia la dirección (entrada/salida), la cuenta elegida puede dejar de ser
+  // válida: la limpiamos para no mandar una cuenta incompatible (el server la rechaza).
+  useEffect(() => {
+    setCuentaId('');
+  }, [tipo]);
 
   const guardar = async () => {
     if (guardando) return;
@@ -596,6 +623,7 @@ function DialogCargarGasto({
         fecha,
         proveedor: proveedor.trim() || null,
         comprobante: comprobanteUrl,
+        cuentaId: cuentaId || null,
         cargadoPor: 'Roberto Tapia',
       });
     } finally {
@@ -641,6 +669,26 @@ function DialogCargarGasto({
               ↑ Entrada (ingreso)
             </button>
           </div>
+          {apiEnabled && cuentasCompatibles.length > 0 && (
+            <div className="space-y-1">
+              <Label htmlFor="caj-cuenta" className="text-xs">
+                Cuenta {esIngreso ? '(a dónde entra)' : '(de dónde sale)'}
+              </Label>
+              <select
+                id="caj-cuenta"
+                value={cuentaId}
+                onChange={(e) => setCuentaId(e.target.value)}
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+              >
+                <option value="">Sin cuenta asignada</option>
+                {cuentasCompatibles.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.nombre}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="space-y-1">
             <Label htmlFor="caj-propiedad" className="text-xs" aria-required>
               Propiedad <span className="text-destructive">*</span>
