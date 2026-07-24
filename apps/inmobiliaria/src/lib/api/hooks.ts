@@ -322,6 +322,8 @@ interface MovimientoCajaApi {
   fecha: string;
   proveedor: string | null;
   comprobanteUrl: string | null;
+  cuentaId: string | null;
+  cuenta: { id: string; nombre: string } | null;
   cargadoPor: string;
   createdAt: string;
   descontadoEnRendicion: boolean;
@@ -339,6 +341,8 @@ function mapMovimiento(m: MovimientoCajaApi): MovimientoCaja {
     fecha: m.fecha.slice(0, 10),
     proveedor: m.proveedor,
     comprobante: m.comprobanteUrl,
+    cuentaId: m.cuentaId,
+    cuentaNombre: m.cuenta?.nombre ?? null,
     cargadoPor: m.cargadoPor,
     createdAt: m.createdAt,
     descontadoEnRendicion: m.descontadoEnRendicion,

@@ -1275,7 +1275,11 @@ export async function plataRoutes(app: FastifyInstance) {
     if (!u) return;
     return prisma.movimientoCaja.findMany({
       where: { inmobiliariaId: u.inmobiliariaId },
-      include: { propiedad: { select: { id: true, direccion: true } } },
+      include: {
+        propiedad: { select: { id: true, direccion: true } },
+        // La cuenta de dónde salió / entró la plata, para mostrarla en la lista.
+        cuenta: { select: { id: true, nombre: true } },
+      },
       orderBy: { fecha: 'desc' },
     });
   });

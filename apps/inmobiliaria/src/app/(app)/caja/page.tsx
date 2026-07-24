@@ -496,6 +496,7 @@ function MovimientoRow({
         <p className="truncate text-xs text-muted-foreground">{propDireccion}</p>
         <p className="text-[10px] text-muted-foreground">
           {formatFechaCorta(mov.fecha)}
+          {mov.cuentaNombre && ` · ${mov.cuentaNombre}`}
           {mov.proveedor && ` · ${mov.proveedor}`} · cargó {mov.cargadoPor}
         </p>
       </div>
