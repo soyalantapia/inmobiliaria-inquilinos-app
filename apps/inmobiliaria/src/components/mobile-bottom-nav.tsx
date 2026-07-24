@@ -13,12 +13,13 @@ import {
 } from 'lucide-react';
 import { cn } from '@llave/ui/cn';
 import { apiEnabled } from '@/lib/api/client';
+import { useMe } from '@/lib/api/hooks';
 import { estadoDePago } from '@/lib/conciliacion-storage';
 import { pagosInformadosMock } from '@/lib/mock-data';
 import { listarReclamos } from '@/lib/reclamos-store';
 import type { Capacidad, Rol } from '@/lib/permisos';
 import { rolTienePermiso } from '@/lib/permisos';
-import { getRolActual, ROL_CHANGE_EVENT } from '@/lib/rol-storage';
+import { getRolActual, normalizarRol, ROL_CHANGE_EVENT } from '@/lib/rol-storage';
 
 // Barra de navegación inferior tipo app, SOLO en mobile (`md:hidden`; en
 // desktop manda la Sidebar). Trae las 4 secciones del día a día —Inicio,
@@ -69,13 +70,16 @@ function contarReclamosSinAsignar(): number {
 
 export function MobileBottomNav() {
   const pathname = usePathname() ?? '/';
-  const [rol, setRol] = useState<Rol>('ADMIN');
+  const { me } = useMe();
+  // rolDemo: solo build demo (sin API). En prod el rol sale de me.rol (abajo).
+  const [rolDemo, setRolDemo] = useState<Rol>('ADMIN');
   const [pagosBadge, setPagosBadge] = useState(0);
   const [reclamosBadge, setReclamosBadge] = useState(0);
 
   useEffect(() => {
-    setRol(getRolActual());
-    const handler = () => setRol(getRolActual());
+    if (apiEnabled) return; // en prod el rol viene de me.rol, no del localStorage
+    setRolDemo(getRolActual());
+    const handler = () => setRolDemo(getRolActual());
     window.addEventListener('storage', handler);
     window.addEventListener(ROL_CHANGE_EVENT, handler);
     return () => {
@@ -83,6 +87,10 @@ export function MobileBottomNav() {
       window.removeEventListener(ROL_CHANGE_EVENT, handler);
     };
   }, []);
+
+  // Rol EFECTIVO (mismo criterio que la Sidebar): en prod desde la sesión real,
+  // piso a LECTURA mientras carga para no mostrar de más en la barra inferior.
+  const rol: Rol = apiEnabled ? normalizarRol(me?.rol, 'LECTURA') : rolDemo;
 
   // Refrescamos los badges al montar, al navegar (pathname) y cuando otra
   // pestaña/app toca el localStorage — igual que el badge de la Sidebar.
