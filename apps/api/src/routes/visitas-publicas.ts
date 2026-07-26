@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../db.js';
 import { requireProfesionalVisita } from '../auth/guards.js';
 import { urlEsDelTenant } from './uploads.js';
-import { imputarCostoReclamo, conceptoReclamo } from '../lib/imputar-reclamo.js';
+import { imputarCostoReclamo, conceptoReclamo, ReclamoYaRendido } from '../lib/imputar-reclamo.js';
 
 /**
  * Flujo del profesional asignado a un reclamo, vía link mágico (/p/:token en
@@ -232,7 +232,8 @@ export async function visitasPublicasRoutes(app: FastifyInstance): Promise<void>
     // PROPIETARIO) — y quedaba irrecuperable, porque con el reclamo ya RESUELTO el
     // /reclamos/:id/resolver del panel responde 409.
     const ahora = new Date();
-    await prisma.$transaction(async (tx) => {
+    try {
+      await prisma.$transaction(async (tx) => {
       const cerrado = await tx.reclamo.updateMany({
         where: {
           id: visita!.reclamoId,
@@ -277,7 +278,13 @@ export async function visitasPublicasRoutes(app: FastifyInstance): Promise<void>
         // Lo cerró el profesional por link mágico: no hay usuario del panel detrás.
         creadoPorId: null,
       });
-    });
+      });
+    } catch (e) {
+      // El costo ya se le rindió al propietario y este /listo lo reimputaría al inquilino
+      // o al depósito → 409. Sin este catch sería 500: la tx no tenía manejo de error.
+      if (e instanceof ReclamoYaRendido) return reply.code(409).send({ message: e.message });
+      throw e;
+    }
     return visita;
   });
 }

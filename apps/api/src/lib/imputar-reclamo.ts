@@ -1,5 +1,15 @@
 import type { Prisma, Moneda, PagadorReclamo } from '@prisma/client';
 
+/** El costo del reclamo ya se le descontó al propietario en una rendición; reimputarlo
+ *  a inquilino/depósito lo cobraría dos veces. La lanzan ambos caminos que cierran un
+ *  reclamo (/resolver y /listo) → cada uno la mapea a 409. */
+export class ReclamoYaRendido extends Error {
+  constructor() {
+    super('Este trabajo ya se le descontó al propietario en una rendición. Anulá esa rendición antes de cambiar quién paga.');
+    this.name = 'ReclamoYaRendido';
+  }
+}
+
 /**
  * Imputa el costo de un reclamo resuelto a quien corresponda.
  *
@@ -45,6 +55,18 @@ export async function imputarCostoReclamo(
     await tx.cargoContrato.deleteMany({ where: { reclamoId, saldadoAt: null } });
     return;
   }
+
+  // Anti-doble-cobro (choke point de /resolver y /listo): si el costo YA se le descontó al
+  // propietario en una rendición (GastoRendido TRABAJO), imputarlo ahora al inquilino o al
+  // depósito lo cobraría DOS VECES —son dos libros sin dedup entre sí y el débito al dueño
+  // vive en una rendición ya cerrada que nada revierte—. Se corta de forma ATÓMICA dentro
+  // de la tx del cierre. Pasa al reabrir un reclamo (PERSISTE) y reclasificar el pagador.
+  // Antes el guard vivía sólo inline en /resolver; /listo no lo tenía → doble-cobro.
+  const yaRendido = await tx.gastoRendido.findFirst({
+    where: { inmobiliariaId, refId: `reclamo:${reclamoId}`, tipo: 'TRABAJO' },
+    select: { id: true },
+  });
+  if (yaRendido) throw new ReclamoYaRendido();
 
   await tx.cargoContrato.upsert({
     where: { reclamoId },
