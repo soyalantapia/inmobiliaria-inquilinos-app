@@ -6,6 +6,7 @@ import { prisma } from '../db.js';
 import { requireUsuario } from '../auth/guards.js';
 import { verificarPinUsuario } from '../auth/pin.js';
 import { registrarEvento } from '../lib/auditoria.js';
+import { componerDeposito, deduccionesPorContrato, estadoDepositoContrato } from '../lib/deposito.js';
 import {
   generarLiquidacionesContrato,
   sumarMesesUTC,
@@ -1481,8 +1482,20 @@ export async function coreRoutes(app: FastifyInstance) {
     const alquiler = Number(contrato.monto);
     const mesesPenalidad = contrato.penalidadRescisionMeses ?? contrato.inmobiliaria.penalidadRescisionMesesDefault;
     const penalidadSugerida = Math.round(alquiler * mesesPenalidad * 100) / 100;
-    const depositoEnCustodia =
-      contrato.estadoDeposito === 'RETENIDO' ? Number(contrato.depositoGarantia ?? 0) : 0;
+    // El depósito que se puede netear es el DISPONIBLE (bruto − reparaciones ya imputadas
+    // contra él), no el bruto. Con el bruto, este preview contradecía a
+    // /depositos/en-custodia —dos pantallas mostraban depósitos distintos del mismo
+    // contrato el mismo día— y el saldo neto subestimaba la deuda del ex-inquilino
+    // exactamente en el monto de esas reparaciones: se contaba el mismo depósito dos veces.
+    const dep =
+      contrato.estadoDeposito === 'RETENIDO'
+        ? await estadoDepositoContrato(prisma, {
+            contratoId: id,
+            inmobiliariaId: u.inmobiliariaId,
+            depositoGarantia: contrato.depositoGarantia,
+          })
+        : { bruto: 0, deducciones: 0, disponible: 0, excedente: 0 };
+    const depositoEnCustodia = dep.disponible;
     const dv = Math.round(deudaVencida * 100) / 100;
     const saldoNeto = Math.round((dv + penalidadSugerida - depositoEnCustodia) * 100) / 100;
     return {
@@ -1494,6 +1507,12 @@ export async function coreRoutes(app: FastifyInstance) {
       reclamosAbiertos,
       // Datos de rescisión (el diálogo los usa sólo si el operador elige RESCINDIDO):
       depositoEnCustodia,
+      // Desglose para que el diálogo pueda explicar por qué el neteo no es el depósito
+      // completo (antes el operador veía un número menor sin ninguna explicación).
+      depositoBruto: dep.bruto,
+      depositoDeducciones: dep.deducciones,
+      // Reparaciones que exceden el depósito: no se cobran de acá, se reclaman aparte.
+      depositoExcedente: dep.excedente,
       mesesPenalidad,
       penalidadSugerida,
       saldoNeto,
@@ -1699,31 +1718,34 @@ export async function coreRoutes(app: FastifyInstance) {
     // Deducciones al depósito: reparaciones de reclamos imputadas al depósito
     // (CargoContrato contraDeposito). Reducen lo que queda para devolver.
     const ids = contratos.map((c) => c.id);
-    const deduRows = ids.length
-      ? await prisma.cargoContrato.groupBy({
-          by: ['contratoId'],
-          where: { inmobiliariaId: u.inmobiliariaId, contraDeposito: true, contratoId: { in: ids } },
-          _sum: { monto: true },
-        })
-      : [];
-    const deduPorContrato = new Map(deduRows.map((r) => [r.contratoId, Number(r._sum.monto ?? 0)]));
+    const deduPorContrato = await deduccionesPorContrato(prisma, ids, u.inmobiliariaId);
     const r2 = (n: number) => Math.round(n * 100) / 100;
-    const porMonedaMap = new Map<string, { total: number; deducciones: number; cantidad: number }>();
+    // El total por moneda acumula el DISPONIBLE ya clampeado de cada contrato. Antes hacía
+    // `total - deducciones` sobre los brutos: con un contrato sobre-deducido (reparaciones
+    // > depósito) el total no cuadraba con la suma de las filas, y ese excedente se
+    // evaporaba en silencio en vez de quedar expuesto como deuda a reclamar aparte.
+    const porMonedaMap = new Map<
+      string,
+      { total: number; deducciones: number; disponible: number; excedente: number; cantidad: number }
+    >();
     const items = contratos.map((c) => {
-      const monto = Number(c.depositoGarantia ?? 0);
-      const deducciones = deduPorContrato.get(c.id) ?? 0;
-      const cur = porMonedaMap.get(c.moneda) ?? { total: 0, deducciones: 0, cantidad: 0 };
-      cur.total += monto;
-      cur.deducciones += deducciones;
+      const dep = componerDeposito(Number(c.depositoGarantia ?? 0), deduPorContrato.get(c.id) ?? 0);
+      const cur =
+        porMonedaMap.get(c.moneda) ?? { total: 0, deducciones: 0, disponible: 0, excedente: 0, cantidad: 0 };
+      cur.total += dep.bruto;
+      cur.deducciones += dep.deducciones;
+      cur.disponible += dep.disponible;
+      cur.excedente += dep.excedente;
       cur.cantidad += 1;
       porMonedaMap.set(c.moneda, cur);
       return {
         contratoId: c.id,
         propiedad: c.propiedad?.direccion ?? '—',
         inquilino: `${c.inquilinoTitular?.nombre ?? ''} ${c.inquilinoTitular?.apellido ?? ''}`.trim() || '—',
-        monto: r2(monto),
-        deducciones: r2(deducciones),
-        disponible: r2(Math.max(0, monto - deducciones)),
+        monto: dep.bruto,
+        deducciones: dep.deducciones,
+        disponible: dep.disponible,
+        excedente: dep.excedente,
         moneda: c.moneda,
         estadoContrato: c.estado,
         fechaInicio: c.fechaInicio,
@@ -1734,7 +1756,8 @@ export async function coreRoutes(app: FastifyInstance) {
         moneda,
         total: r2(v.total),
         deducciones: r2(v.deducciones),
-        disponible: r2(v.total - v.deducciones),
+        disponible: r2(v.disponible),
+        excedente: r2(v.excedente),
         cantidad: v.cantidad,
       })),
       contratos: items,

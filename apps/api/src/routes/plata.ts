@@ -7,6 +7,7 @@ import { devengarTodosLosTenants, generarLiquidacionesContrato, marcarLiquidacio
 import { conSaldo, montoPagadoPorLiquidacion } from '../lib/saldos.js';
 import { calcularMora, resolverEsquemaMora } from '../lib/punitorios.js';
 import { registrarEvento } from '../lib/auditoria.js';
+import { estadoDepositoContrato } from '../lib/deposito.js';
 import { enviarInvitacionInquilino } from '../mailer.js';
 import { borrarArchivoSubido, urlEsDelTenant } from './uploads.js';
 
@@ -815,19 +816,45 @@ export async function plataRoutes(app: FastifyInstance) {
     const deposito = Number(contrato.depositoGarantia ?? 0);
     if (deposito <= 0) return reply.code(400).send({ message: 'Este contrato no tiene depósito en custodia' });
     const monto = Math.round(body.data.montoDevuelto * 100) / 100;
-    if (monto > deposito) return reply.code(400).send({ message: 'No podés devolver más que el depósito en custodia' });
+    // El tope es el DISPONIBLE, no el bruto: si hay reparaciones imputadas contra el
+    // depósito (CargoContrato contraDeposito), esa plata ya está comprometida. Antes se
+    // validaba contra el bruto y se podía devolver el 100% teniendo arreglos imputados →
+    // la inmobiliaria los terminaba pagando de su bolsillo, y sin vuelta atrás (al
+    // resolver, el contrato sale de /depositos/en-custodia y el cargo queda huérfano).
+    const dep = await estadoDepositoContrato(prisma, {
+      contratoId: id,
+      inmobiliariaId: u.inmobiliariaId,
+      depositoGarantia: contrato.depositoGarantia,
+    });
+    if (monto > dep.disponible) {
+      return reply.code(400).send({
+        message:
+          dep.deducciones > 0
+            ? `Sólo quedan $${dep.disponible} para devolver: hay $${dep.deducciones} en reparaciones imputadas a este depósito.`
+            : 'No podés devolver más que el depósito en custodia',
+      });
+    }
     // DEVOLVER = se devuelve todo; NETEAR = se devuelve una parte; EJECUTAR = se retiene
     // todo ("pelear"). El monto que efectivamente se le devuelve al inquilino queda registrado.
     const estadoDeposito =
       body.data.decision === 'DEVOLVER' ? 'DEVUELTO' : body.data.decision === 'NETEAR' ? 'NETEADO' : 'EJECUTADO';
-    await prisma.contrato.update({
-      where: { id },
-      data: {
-        estadoDeposito,
-        depositoDevueltoMonto: monto,
-        depositoDevueltoAt: new Date(),
-        motivoDeposito: body.data.motivo?.trim() || null,
-      },
+    await prisma.$transaction(async (tx) => {
+      await tx.contrato.update({
+        where: { id },
+        data: {
+          estadoDeposito,
+          depositoDevueltoMonto: monto,
+          depositoDevueltoAt: new Date(),
+          motivoDeposito: body.data.motivo?.trim() || null,
+        },
+      });
+      // Cerrar los cargos que se cobraron CONTRA este depósito: la plata ya se retuvo acá,
+      // así que dejan de estar pendientes. Sin esto quedaban abiertos para siempre —
+      // invisibles en custodia (el contrato ya no está RETENIDO) e imposibles de saldar.
+      await tx.cargoContrato.updateMany({
+        where: { contratoId: id, inmobiliariaId: u.inmobiliariaId, contraDeposito: true, saldadoAt: null },
+        data: { saldadoAt: new Date(), saldadoPorId: u.userId },
+      });
     });
     await registrarEvento({
       inmobiliariaId: u.inmobiliariaId,

@@ -391,7 +391,11 @@ export async function operacionRoutes(app: FastifyInstance) {
 
     const reclamo = await prisma.reclamo.findFirst({
       where: { id, inmobiliariaId: u.inmobiliariaId },
-      include: { contrato: { select: { moneda: true, propiedadId: true } } },
+      include: {
+        contrato: {
+          select: { moneda: true, propiedadId: true, depositoGarantia: true, estadoDeposito: true },
+        },
+      },
     });
     if (!reclamo) return reply.code(404).send({ message: 'Reclamo inexistente' });
 
@@ -401,6 +405,22 @@ export async function operacionRoutes(app: FastifyInstance) {
     // Con costo hay que saber a quién imputarlo para mover la plata bien.
     if (costo > 0 && !pagador) {
       return reply.code(400).send({ message: 'Indicá quién paga el costo del trabajo (propietario, inquilino o depósito)' });
+    }
+
+    // Imputar al DEPÓSITO exige que haya un depósito vivo: si el contrato no tiene o ya se
+    // resolvió (devuelto/neteado/ejecutado), el cargo nace incobrable — no aparece en
+    // /depositos/en-custodia (filtra RETENIDO), está excluido de /mis-cargos, /cargos/:id/saldar
+    // lo rechaza y saldar-deuda lo ignora. Plata real que nadie puede cobrar nunca.
+    if (costo > 0 && pagador === 'DEPOSITO') {
+      const dg = Number(reclamo.contrato.depositoGarantia ?? 0);
+      if (dg <= 0 || reclamo.contrato.estadoDeposito !== 'RETENIDO') {
+        return reply.code(409).send({
+          message:
+            dg <= 0
+              ? 'Este contrato no tiene depósito de garantía cargado: elegí si lo paga el propietario o el inquilino.'
+              : 'El depósito de este contrato ya fue resuelto: elegí si lo paga el propietario o el inquilino.',
+        });
+      }
     }
 
     // Si este trabajo YA se le descontó al propietario en una rendición, no se puede
@@ -958,12 +978,20 @@ export async function operacionRoutes(app: FastifyInstance) {
       select: { id: true },
     });
     if (!miVinculo) return reply.code(403).send({ message: 'Solo podés cargar el seguro de un profesional de tu cartera' });
+    // NO destructivo: sólo se escribe lo que vino en el body. Antes los tres campos se
+    // pisaban con `?? null`, así que OMITIR uno lo borraba — y este registro es COMPARTIDO
+    // por toda la red: editar la aseguradora desde un panel que ni siquiera precarga el
+    // número de póliza (el GET no lo devuelve) borraba la póliza que había cargado otra
+    // inmobiliaria, para todas. Mandar el campo vacío ('' o null) sigue significando
+    // "borralo": eso es intención explícita del usuario.
     await prisma.profesionalRed.update({
       where: { id },
       data: {
-        aseguradora: body.data.aseguradora?.trim() || null,
-        nroPoliza: body.data.nroPoliza?.trim() || null,
-        polizaVence: body.data.polizaVence ?? null,
+        ...(body.data.aseguradora !== undefined
+          ? { aseguradora: body.data.aseguradora.trim() || null }
+          : {}),
+        ...(body.data.nroPoliza !== undefined ? { nroPoliza: body.data.nroPoliza.trim() || null } : {}),
+        ...(body.data.polizaVence !== undefined ? { polizaVence: body.data.polizaVence } : {}),
       },
     });
     return { ok: true };
@@ -1017,7 +1045,11 @@ export async function operacionRoutes(app: FastifyInstance) {
     const u = await requireUsuario(request, reply, 'profesionales.ver');
     if (!u) return;
     const { id } = request.params as { id: string };
-    const red = await prisma.profesionalRed.findUnique({ where: { id } });
+    // Mismo filtro que el listado: sin esto, despublicar era cosmético — quien tuviera el
+    // id (lo vio mientras estaba publicado, o quedó en caché) seguía leyendo la ficha.
+    const red = await prisma.profesionalRed.findFirst({
+      where: { id, profesionales: { some: { publico: true } } },
+    });
     if (!red) return reply.code(404).send({ message: 'Profesional inexistente en la red' });
     const ficha = await fichaReputacion(red.id);
     const miVinculo = await prisma.profesional.findFirst({
@@ -1046,7 +1078,14 @@ export async function operacionRoutes(app: FastifyInstance) {
     const u = await requireUsuario(request, reply, 'profesional.asignar');
     if (!u) return;
     const { id } = request.params as { id: string };
-    const red = await prisma.profesionalRed.findUnique({ where: { id } });
+    // Sólo identidades PUBLICADAS en el directorio (mismo criterio que el listado). Antes
+    // bastaba con tener el id —de una ficha que se despublicó, o guardado de antes— para
+    // "contratar" a cualquiera; y como ese vínculo es exactamente el gate del PUT de
+    // seguro, contratar era el atajo para auto-habilitarse a escribir sobre un registro
+    // compartido por toda la red.
+    const red = await prisma.profesionalRed.findFirst({
+      where: { id, profesionales: { some: { publico: true } } },
+    });
     if (!red) return reply.code(404).send({ message: 'Profesional inexistente en la red' });
     const ya = await prisma.profesional.findFirst({
       where: { profesionalRedId: red.id, inmobiliariaId: u.inmobiliariaId },
