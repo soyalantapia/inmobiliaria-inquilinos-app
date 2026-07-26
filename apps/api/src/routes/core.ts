@@ -1372,12 +1372,32 @@ export async function coreRoutes(app: FastifyInstance) {
       // ofrezca "pagar" un mes muerto. La deuda YA vencida mientras el contrato estaba
       // activo se conserva (es deuda real y cobrable). El filtro `pagos: { none }`
       // protege un pago en vuelo: una cuota con INFORMADO/CONCILIADO NO se toca.
+      // Antes de anular las cuotas fantasma hay que SOLTAR sus pagos MUERTOS
+      // (RECHAZADO / cualquiera que no sea INFORMADO ni CONCILIADO): una cuota
+      // futura con sólo un pago rechazado es deuda fantasma igual que una sin
+      // pagos, pero la FK Pago→Liquidacion es RESTRICT y haría fallar el borrado
+      // (500). Sólo se sueltan los pagos de cuotas SIN ningún pago vivo (las que
+      // se van a anular); una cuota con un pago en vuelo conserva TODOS sus pagos.
+      await tx.pago.deleteMany({
+        where: {
+          contratoId: id,
+          inmobiliariaId: u.inmobiliariaId,
+          estado: { notIn: ['INFORMADO', 'CONCILIADO'] },
+          liquidacion: {
+            estado: 'PENDIENTE',
+            fechaVencimiento: { gt: new Date() },
+            pagos: { none: { estado: { in: ['INFORMADO', 'CONCILIADO'] } } },
+          },
+        },
+      });
       const anuladas = await tx.liquidacion.deleteMany({
         where: {
           contratoId: id,
           inmobiliariaId: u.inmobiliariaId,
           estado: 'PENDIENTE',
           fechaVencimiento: { gt: new Date() },
+          // Tras soltar los pagos muertos, la cuota fantasma queda con 0 pagos y
+          // entra acá; la cuota con un pago vivo conserva su pago y NO se toca.
           pagos: { none: {} },
         },
       });
@@ -1591,7 +1611,7 @@ export async function coreRoutes(app: FastifyInstance) {
           inmobiliariaId: u.inmobiliariaId,
           periodo: { gte: b.periodoDesde },
           estado: 'PENDIENTE',
-          pagos: { none: {} },
+          pagos: { none: { estado: { in: ['INFORMADO', 'CONCILIADO'] } } },
         },
         data: { montoAlquiler: b.montoNuevo, montoTotal: b.montoNuevo + expensas },
       });
@@ -1664,7 +1684,7 @@ export async function coreRoutes(app: FastifyInstance) {
           inmobiliariaId: u.inmobiliariaId,
           periodo: { gte: b.montoDesde },
           estado: 'PENDIENTE',
-          pagos: { none: {} },
+          pagos: { none: { estado: { in: ['INFORMADO', 'CONCILIADO'] } } },
         },
         data: { montoAlquiler: b.montoNuevo, montoTotal: b.montoNuevo + expensas },
       });
