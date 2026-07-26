@@ -261,11 +261,16 @@ export function ContratoDocumentosPanel({ contrato, propietarios }: Props) {
       comisionInmobiliariaPct: 4.17,
       depositoGarantia: contrato.monto,
       ciudadFirma: 'Ciudad Autónoma de Buenos Aires',
-      sociedad: {
-        razonSocial: sociedad.razonSocial,
-        cuit: sociedad.cuit,
-        direccion: sociedad.domicilioFiscal,
-      },
+      // Sin sociedad cargada omitimos el "representado por ..." del contrato: el
+      // template ya lo trata como opcional. Antes se caía al seed de la demo y el
+      // contrato salía representado por "Inmobiliaria del Sol S.R.L." con CUIT ajeno.
+      sociedad: sociedad
+        ? {
+            razonSocial: sociedad.razonSocial,
+            cuit: sociedad.cuit,
+            direccion: sociedad.domicilioFiscal,
+          }
+        : undefined,
     };
   }, [contrato, propietarios]);
 

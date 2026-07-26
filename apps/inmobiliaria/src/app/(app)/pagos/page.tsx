@@ -287,7 +287,28 @@ export default function PagosPage() {
 
   // PDF de morosos para llevar a cobranza física.
   // Incluye titular + garante con sus teléfonos y los días de atraso.
+  /**
+   * Sociedad EMISORA de un documento (razón social + CUIT impresos). Devuelve null y avisa
+   * si el tenant todavía no la cargó: antes se caía al seed de la demo y se emitían
+   * intimaciones de cobranza a nombre de "Inmobiliaria del Sol S.R.L." con un CUIT ajeno.
+   */
+  const emisorDocumento = () => {
+    const soc = sociedadPrincipal();
+    if (!soc) {
+      toast({
+        variant: 'destructive',
+        title: 'Cargá los datos de tu inmobiliaria',
+        description:
+          'Para emitir documentos de cobranza necesitamos tu razón social y CUIT. Cargalos en Configuración → Sociedades.',
+      });
+      return null;
+    }
+    return soc;
+  };
+
   const exportarMorososPdf = () => {
+    const emisor = emisorDocumento();
+    if (!emisor) return;
     // Teléfono/garante: solo del mock en demo. En prod no hay endpoint que
     // los exponga → '—'/'Sin garante' (no dependemos del mismatch de ids).
     // Deuda REAL acumulada (todas las cuotas impagas + mora), no el alquiler
@@ -339,7 +360,7 @@ export default function PagosPage() {
       abrirReporteImprimible({
         titulo: 'Morosos · cobranza',
         subtitulo: `${formatPeriodo(periodoActualFormat())} · ${morosos.length + exMorosos.length} contrato${morosos.length + exMorosos.length === 1 ? '' : 's'} con deuda`,
-        inmobiliaria: sociedadPrincipal().razonSocial,
+        inmobiliaria: emisor.razonSocial,
         columnas,
         secciones: [
           {
@@ -370,7 +391,7 @@ export default function PagosPage() {
     abrirReporteImprimible({
       titulo: 'Morosos · cobranza',
       subtitulo: `${formatPeriodo(periodoActualFormat())} · ${morosos.length} contrato${morosos.length === 1 ? '' : 's'} con atraso`,
-      inmobiliaria: sociedadPrincipal().razonSocial,
+      inmobiliaria: emisor.razonSocial,
       columnas,
       filas: morosos.map(filaDe),
       totales,
@@ -384,6 +405,8 @@ export default function PagosPage() {
   // imprimir un reporte por cada una con su propio CUIT como emisor.
   // Cada sección es una sociedad, con sus contratos morosos.
   const exportarMorososPorSociedadPdf = () => {
+    const emisor = emisorDocumento();
+    if (!emisor) return;
     const morosos = cobrables.filter((c) => c.estadoPagoActual === 'VENCIDO');
     if (morosos.length === 0) {
       toast({
@@ -394,7 +417,7 @@ export default function PagosPage() {
     }
 
     const sociedades = listarSociedades();
-    const principal = sociedadPrincipal();
+    const principal = emisor;
 
     const secciones = sociedades
       .map((soc) => {
@@ -480,6 +503,8 @@ export default function PagosPage() {
   // PDF detallado de lo cobrado en el mes.
   // Se usa para rendir a propietarios y para archivo del estudio.
   const exportarCobradoPdf = () => {
+    const emisor = emisorDocumento();
+    if (!emisor) return;
     if (real) {
       // Prod: filas desde los pagos CONCILIADO reales (fecha en que pagó,
       // método real, monto realmente cobrado — incluye parciales). Antes salía
@@ -517,7 +542,7 @@ export default function PagosPage() {
       abrirReporteImprimible({
         titulo: 'Cobranzas del mes',
         subtitulo: `${formatPeriodo(periodo)} · ${delMes.length} pago${delMes.length === 1 ? '' : 's'} acreditado${delMes.length === 1 ? '' : 's'} en el mes`,
-        inmobiliaria: sociedadPrincipal().razonSocial,
+        inmobiliaria: emisor.razonSocial,
         columnas: [
           { header: 'Inquilino', width: '21%' },
           { header: 'Propiedad', width: '25%' },
@@ -552,7 +577,7 @@ export default function PagosPage() {
     abrirReporteImprimible({
       titulo: 'Cobranzas del mes',
       subtitulo: `${formatPeriodo(periodoActualFormat())} · ${pagados.length} pago${pagados.length === 1 ? '' : 's'} acreditado${pagados.length === 1 ? '' : 's'}`,
-      inmobiliaria: sociedadPrincipal().razonSocial,
+      inmobiliaria: emisor.razonSocial,
       columnas: [
         { header: 'Inquilino', width: '24%' },
         { header: 'Propiedad', width: '28%' },
@@ -619,7 +644,7 @@ export default function PagosPage() {
         {!real && (
           <>
             <CargosACobrar />
-            <MorososPanel inmobiliaria={sociedadPrincipal().nombreComercial} />
+            <MorososPanel inmobiliaria={sociedadPrincipal()?.nombreComercial ?? ""} />
             <AlertasServiciosCard />
           </>
         )}

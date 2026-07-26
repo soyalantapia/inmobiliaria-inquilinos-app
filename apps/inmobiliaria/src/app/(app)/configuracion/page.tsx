@@ -866,7 +866,7 @@ export default function ConfiguracionPage() {
                               abrirReporteImprimible({
                                 titulo: `Factura ${formatPeriodo(f.periodo)}`,
                                 subtitulo: `My Alquiler · servicio de gestión inmobiliaria`,
-                                inmobiliaria: sociedadPrincipal().razonSocial,
+                                inmobiliaria: sociedadPrincipal()?.razonSocial ?? '',
                                 columnas: [
                                   { header: 'Concepto', width: '60%' },
                                   { header: 'Cantidad', width: '15%', align: 'right' },

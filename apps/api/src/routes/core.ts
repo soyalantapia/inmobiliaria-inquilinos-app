@@ -2253,10 +2253,14 @@ export async function coreRoutes(app: FastifyInstance) {
     afip: z.record(z.unknown()).optional(),
   });
 
+  // LEER las sociedades no es ADMIN-only: es el EMISOR de los documentos (razón social y
+  // CUIT que salen impresos en los PDF de cobranza/morosos y en el contrato). Un OPERADOR
+  // —justo el rol que imprime morosos— recibía 403 acá, el front no hidrataba y caía a la
+  // sociedad demo: emitía intimaciones a nombre de "Inmobiliaria del Sol S.R.L." con un
+  // CUIT que no es el del tenant. Escribir (POST/PUT/PATCH) sigue siendo ADMIN.
   app.get('/sociedades', async (request, reply) => {
     const u = await requireUsuario(request, reply);
     if (!u) return;
-    if (u.rol !== 'ADMIN') return reply.code(403).send({ message: 'Necesitás permiso de Admin para ver esta sección' });
     const q = z.object({ incluirInactivas: z.coerce.boolean().optional() }).parse(request.query ?? {});
     return prisma.sociedad.findMany({
       where: { inmobiliariaId: u.inmobiliariaId, ...(q.incluirInactivas ? {} : { activa: true }) },

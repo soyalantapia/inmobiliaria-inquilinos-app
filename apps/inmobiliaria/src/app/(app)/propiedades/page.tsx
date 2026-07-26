@@ -129,7 +129,7 @@ export default function PropiedadesPage() {
     return onSociedadCambiada(setSociedadActivaState);
   }, []);
 
-  const principalId = useMemo(() => sociedadPrincipal().id, []);
+  const principalId = useMemo(() => sociedadPrincipal()?.id ?? '', []);
 
   const { propiedades, cargando } = usePropiedades();
   const { contratos } = useContratos();

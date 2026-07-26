@@ -305,7 +305,11 @@ function detalleMock(id: string): PropiedadDetalle | null {
     // En demo no simulamos historial de contratos anteriores (la demo es de una
     // sola foto); en prod sale del backend. Lista vacía para no fabricar datos.
     contratosPasados: [],
-    sociedad: { id: soc.id, nombreComercial: soc.nombreComercial, cuit: soc.cuit },
+    // Rama SOLO DEMO: acá sociedadPrincipal() siempre resuelve (hay seeds). El fallback
+    // vacío es por tipos — no inventamos un emisor si algún día no hubiera ninguna.
+    sociedad: soc
+      ? { id: soc.id, nombreComercial: soc.nombreComercial, cuit: soc.cuit }
+      : { id: '', nombreComercial: '', cuit: '' },
     // En demo la pantalla resuelve el email por contactosCobranzaMock/emailDeNombre
     // (rama !apiEnabled), así que este campo queda neutro acá.
     inquilinoEmail: null,

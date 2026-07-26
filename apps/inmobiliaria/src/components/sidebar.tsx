@@ -30,6 +30,7 @@ import {
 import { listarPendientes } from '@/lib/aprobaciones-storage';
 import { apiEnabled, setToken } from '@/lib/api/client';
 import { cargarSociedades } from '@/lib/api/use-sociedades';
+import { limpiarSociedadesCache } from '@/lib/sociedades-storage';
 import { useAprobaciones, useMe } from '@/lib/api/hooks';
 import { cn } from '@llave/ui/cn';
 import { CountBadge } from '@/components/count-badge';
@@ -88,6 +89,10 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
   // dueño — sacar el avatar del header).
   const cerrarSesion = () => {
     setToken(null);
+    // Limpiar el cache de sociedades: es dato del TENANT, no de la app. En una PC
+    // compartida (el mostrador de la inmobiliaria) el siguiente que entraba heredaba la
+    // razón social y el CUIT del anterior y los imprimía en sus PDF de cobranza.
+    limpiarSociedadesCache();
     router.replace('/login');
   };
   const plan = calcularResumenPlan();

@@ -85,8 +85,8 @@ export function ReferidosManager() {
     const soc = sociedadPrincipal();
     abrirReporteImprimible({
       titulo: 'My Alquiler · Invitación a colegas',
-      subtitulo: `Te recomienda ${soc.nombreComercial} · Código ${state.codigo}`,
-      inmobiliaria: soc.razonSocial,
+      subtitulo: `Te recomienda ${soc?.nombreComercial ?? 'tu inmobiliaria'} · Código ${state.codigo}`,
+      inmobiliaria: soc?.razonSocial ?? '',
       columnas: [
         { header: 'Lo que resolvés', width: '50%' },
         { header: 'En la plataforma', width: '50%' },
@@ -115,7 +115,7 @@ export function ReferidosManager() {
     abrirReporteImprimible({
       titulo: 'FAQ · My Alquiler para inmobiliarias',
       subtitulo: 'Lo que más nos preguntan',
-      inmobiliaria: sociedadPrincipal().razonSocial,
+      inmobiliaria: sociedadPrincipal()?.razonSocial ?? '',
       columnas: [
         { header: 'Pregunta', width: '40%' },
         { header: 'Respuesta', width: '60%' },

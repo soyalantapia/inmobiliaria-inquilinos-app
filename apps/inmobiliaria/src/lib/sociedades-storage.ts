@@ -1,3 +1,4 @@
+import { apiEnabled } from '@/lib/api/client';
 /**
  * Sociedades de la inmobiliaria.
  *
@@ -142,21 +143,33 @@ const SEEDS: Sociedad[] = [
   },
 ];
 
+/**
+ * Fallback de la demo. En modo API es SIEMPRE `[]`: los datos de "Inmobiliaria del Sol
+ * S.R.L." son de la demo y no pueden aparecer en un tenant real ni por accidente — se
+ * imprimen como emisor (razón social + CUIT) en los PDF de cobranza y en el contrato.
+ */
+function fallbackDemo(): Sociedad[] {
+  return apiEnabled ? [] : SEEDS;
+}
+
 function leerLista(): Sociedad[] {
-  if (typeof window === 'undefined') return SEEDS;
+  if (typeof window === 'undefined') return fallbackDemo();
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) {
-      // Primera vez: persistimos los seeds para que después se puedan editar.
+      // En demo persistimos los seeds para que después se puedan editar. En modo API NO
+      // sembramos nada: si el tenant todavía no cargó su sociedad, la respuesta correcta
+      // es "no hay", no una inmobiliaria inventada.
+      if (apiEnabled) return [];
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(SEEDS));
       return SEEDS;
     }
     const parsed = JSON.parse(raw);
     // Guard de forma: un JSON válido pero no-array (corrupción externa) pasaba el
     // catch y crasheaba en .filter/.find de los callers (topbar incluido).
-    return Array.isArray(parsed) ? (parsed as Sociedad[]) : SEEDS;
+    return Array.isArray(parsed) ? (parsed as Sociedad[]) : fallbackDemo();
   } catch {
-    return SEEDS;
+    return fallbackDemo();
   }
 }
 
@@ -176,7 +189,25 @@ function persistir(lista: Sociedad[]): void {
  * inmobiliaria falsa. Se llama al hidratar desde el API (ver use-sociedades).
  */
 export function hidratarSociedadesDesdeApi(lista: Sociedad[]): void {
-  if (lista.length > 0) persistir(lista);
+  // Persistimos SIEMPRE, incluso una lista vacía: el guard `if (lista.length > 0)` hacía
+  // que un tenant sin sociedades cargadas nunca limpiara lo que hubiera en localStorage
+  // (los seeds de demo, o —en una PC compartida— las sociedades del tenant anterior).
+  // 0 sociedades tiene que significar 0 sociedades.
+  persistir(lista);
+}
+
+/**
+ * Borra las sociedades cacheadas. Se llama al cerrar sesión: en una PC compartida (el
+ * mostrador de la inmobiliaria) el tenant siguiente heredaba la razón social y el CUIT
+ * del anterior y los imprimía en sus PDF de cobranza.
+ */
+export function limpiarSociedadesCache(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // ignore
+  }
 }
 
 export function listarSociedades(opts: { incluirInactivas?: boolean } = {}): Sociedad[] {
@@ -190,9 +221,20 @@ export function sociedadById(id: string | null | undefined): Sociedad | null {
 }
 
 /** Sociedad por default (la que se usa cuando una propiedad no especifica). */
-export function sociedadPrincipal(): Sociedad {
+/**
+ * Sociedad EMISORA del tenant (la que firma los documentos).
+ *
+ * Devuelve `null` cuando el tenant todavía no cargó ninguna: antes el fallback final era
+ * `SEEDS[0]`, así que aunque el storage estuviera limpio SIEMPRE se terminaba emitiendo a
+ * nombre de "Inmobiliaria del Sol S.R.L." con un CUIT que no existe. Los PDF de cobranza
+ * y morosos salían con ese emisor falso — un documento de intimación con CUIT ajeno.
+ *
+ * Los callers DEBEN contemplar el null (no imprimir el documento y avisar que falta cargar
+ * la sociedad, en vez de inventar un emisor). En demo nunca es null: hay seeds.
+ */
+export function sociedadPrincipal(): Sociedad | null {
   const lista = leerLista().filter((s) => s.activa);
-  return lista.find((s) => s.esPrincipal) ?? lista[0] ?? SEEDS[0]!;
+  return lista.find((s) => s.esPrincipal) ?? lista[0] ?? (apiEnabled ? null : SEEDS[0]!);
 }
 
 export interface NuevaSociedadInput {

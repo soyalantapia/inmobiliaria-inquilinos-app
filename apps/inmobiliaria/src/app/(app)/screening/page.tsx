@@ -694,7 +694,7 @@ function Informe({
                   abrirReporteImprimible({
                     titulo: `Verificación de inquilino — ${resultado.nombre} ${resultado.apellido}`,
                     subtitulo: `DNI ${resultado.dni} · CUIT ${resultado.cuit} · Score Nosis ${resultado.scoreNosis}`,
-                    inmobiliaria: sociedadPrincipal().razonSocial,
+                    inmobiliaria: sociedadPrincipal()?.razonSocial ?? '',
                     columnas: [
                       { header: 'Sección', width: '30%' },
                       { header: 'Dato', width: '70%' },
