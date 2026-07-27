@@ -1575,13 +1575,33 @@ export async function plataRoutes(app: FastifyInstance) {
           include: { propiedad: { select: { direccion: true } } },
         });
         const comisionMonto = r2c(montoBruto * (owner.comisionPct / 100));
+        // Lo que ESTE dueño ya tiene rendido de cada gasto. Sin este cap, la parte se
+        // calculaba siempre sobre el monto total: en multi-dueño el movimiento queda
+        // `descontadoEnRendicion=false` hasta que las partes cubren el 100%, así que una
+        // SEGUNDA rendición del MISMO dueño+período (flujo normal: entra otra tanda de
+        // alquiler) volvía a tomar el gasto entero y le descontaba su parte DOS VECES —
+        // y encima marcaba el gasto como cubierto, dejando al co-dueño sin pagar la suya.
+        // Es el mismo cap que el alquiler ya hacía con yaRendMap.
+        const gastoIds = gastosPend.map((g) => g.id);
+        const míoGastos = gastoIds.length
+          ? await tx.gastoRendido.groupBy({
+              by: ['refId'],
+              where: { refId: { in: gastoIds }, tipo: 'CAJA', rendicion: { propietarioId } },
+              _sum: { monto: true },
+            })
+          : [];
+        const míoGastoMap = new Map(míoGastos.map((r) => [r.refId, Number(r._sum.monto ?? 0)]));
+
         let totalGastos = 0;
-        const gastosData = gastosPend.map((g) => {
+        const gastosData = gastosPend.flatMap((g) => {
           const part = owner.participaciones.find((p) => p.propiedadId === g.propiedadId);
           const porcentaje = part?.porcentaje ?? 100;
-          const parteOwner = Number(g.monto) * (porcentaje / 100);
+          const leToca = Number(g.monto) * (porcentaje / 100);
+          const parteOwner = r2c(Math.max(0, leToca - (míoGastoMap.get(g.id) ?? 0)));
+          // Ya rindió todo lo suyo de este gasto: no vuelve a entrar.
+          if (parteOwner <= 0.009) return [];
           totalGastos += parteOwner;
-          return {
+          return [{
             inmobiliariaId: u.inmobiliariaId,
             refId: g.id,
             tipo: 'CAJA' as const,
@@ -1593,7 +1613,7 @@ export async function plataRoutes(app: FastifyInstance) {
             participacion: porcentaje,
             propiedadId: g.propiedadId,
             direccion: g.propiedad.direccion,
-          };
+          }];
         });
 
         // Reclamos resueltos con el costo A CARGO DEL PROPIETARIO: entran a la rendición
@@ -1615,26 +1635,31 @@ export async function plataRoutes(app: FastifyInstance) {
           },
           include: { propiedad: { select: { direccion: true } } },
         });
+        // Dedup POR COBERTURA de ESTE dueño, no por existencia del refId. El dedup viejo
+        // era un Set binario sobre TODAS las rendiciones: apenas el dueño A rendía su 50%,
+        // el `GastoRendido reclamo:<id>` existía y el dueño B quedaba excluido PARA SIEMPRE
+        // → la inmobiliaria se comía la mitad del arreglo. Ahora cada dueño paga su parte
+        // (y sólo una vez), igual que los gastos de caja.
         const reclamoRefIds = reclamosProp.map((rec) => `reclamo:${rec.id}`);
-        const reclamosYaRendidos = reclamoRefIds.length
-          ? new Set(
-              (
-                await tx.gastoRendido.findMany({
-                  where: { refId: { in: reclamoRefIds }, tipo: 'TRABAJO' },
-                  select: { refId: true },
-                })
-              ).map((g) => g.refId),
-            )
-          : new Set<string>();
+        const míoReclamos = reclamoRefIds.length
+          ? await tx.gastoRendido.groupBy({
+              by: ['refId'],
+              where: { refId: { in: reclamoRefIds }, tipo: 'TRABAJO', rendicion: { propietarioId } },
+              _sum: { monto: true },
+            })
+          : [];
+        const míoReclamoMap = new Map(míoReclamos.map((r) => [r.refId, Number(r._sum.monto ?? 0)]));
         const gastosReclamos = reclamosProp
-          .filter((rec) => rec.propiedadId != null && !reclamosYaRendidos.has(`reclamo:${rec.id}`))
-          .map((rec) => {
+          .filter((rec) => rec.propiedadId != null)
+          .flatMap((rec) => {
             const part = owner.participaciones.find((p) => p.propiedadId === rec.propiedadId);
             const porcentaje = part?.porcentaje ?? 100;
             const total = Number(rec.costoTrabajo);
-            const parteOwner = total * (porcentaje / 100);
+            const leToca = total * (porcentaje / 100);
+            const parteOwner = r2c(Math.max(0, leToca - (míoReclamoMap.get(`reclamo:${rec.id}`) ?? 0)));
+            if (parteOwner <= 0.009) return [];
             totalGastos += parteOwner;
-            return {
+            return [{
               inmobiliariaId: u.inmobiliariaId,
               refId: `reclamo:${rec.id}`,
               tipo: 'TRABAJO' as const,
@@ -1647,7 +1672,7 @@ export async function plataRoutes(app: FastifyInstance) {
               participacion: porcentaje,
               propiedadId: rec.propiedadId as string,
               direccion: rec.propiedad?.direccion ?? '—',
-            };
+            }];
           });
 
         totalGastos = r2c(totalGastos);
@@ -1673,13 +1698,29 @@ export async function plataRoutes(app: FastifyInstance) {
           },
           include: { propiedad: { select: { direccion: true } } },
         });
+        // Mismo cap por dueño que gastos y reclamos. Acá el error se paga al revés: sin
+        // cap, una segunda rendición del mismo dueño+período le ACREDITABA su parte otra
+        // vez (cobraba el ingreso entero de una propiedad que comparte al 50%) y el
+        // co-dueño no veía un peso. Es plata que sale de la caja de la inmobiliaria.
+        const ingresoIds = ingresosPend.map((m) => m.id);
+        const míoIngresos = ingresoIds.length
+          ? await tx.ingresoRendido.groupBy({
+              by: ['refId'],
+              where: { refId: { in: ingresoIds }, rendicion: { propietarioId } },
+              _sum: { monto: true },
+            })
+          : [];
+        const míoIngresoMap = new Map(míoIngresos.map((r) => [r.refId, Number(r._sum.monto ?? 0)]));
+
         let totalIngresos = 0;
-        const ingresosData = ingresosPend.map((mov) => {
+        const ingresosData = ingresosPend.flatMap((mov) => {
           const part = owner.participaciones.find((p) => p.propiedadId === mov.propiedadId);
           const porcentaje = part?.porcentaje ?? 100;
-          const parteOwner = Number(mov.monto) * (porcentaje / 100);
+          const leToca = Number(mov.monto) * (porcentaje / 100);
+          const parteOwner = r2c(Math.max(0, leToca - (míoIngresoMap.get(mov.id) ?? 0)));
+          if (parteOwner <= 0.009) return [];
           totalIngresos += parteOwner;
-          return {
+          return [{
             inmobiliariaId: u.inmobiliariaId,
             refId: mov.id,
             fecha: mov.fecha,
@@ -1689,7 +1730,7 @@ export async function plataRoutes(app: FastifyInstance) {
             participacion: porcentaje,
             propiedadId: mov.propiedadId,
             direccion: mov.propiedad.direccion,
-          };
+          }];
         });
         totalIngresos = r2c(totalIngresos);
 
