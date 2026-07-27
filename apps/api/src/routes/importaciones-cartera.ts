@@ -101,11 +101,19 @@ export async function importacionesCarteraRoutes(app: FastifyInstance): Promise<
       },
     });
 
+    // Truncado EXPLÍCITO: `slice(1, 1 + MAX_FILAS)` cortaba el archivo en silencio y el
+    // admin veía "2000 filas" creyendo que era la cartera completa — las de más nunca se
+    // importaban y nadie se enteraba hasta que faltaba un contrato.
+    const filasDelArchivo = filas.length - 1;
+    const filasDescartadas = Math.max(0, filasDelArchivo - cuerpo.length);
     return reply.code(201).send({
       id: imp.id,
       columnas: headers,
       filasPreview: cuerpo.slice(0, 20),
       totalFilas: cuerpo.length,
+      filasDelArchivo,
+      filasDescartadas,
+      maxFilas: MAX_FILAS,
       mapeoSugerido,
     });
   });
