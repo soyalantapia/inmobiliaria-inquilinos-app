@@ -160,8 +160,23 @@ export interface ValidacionFila {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/** Valida una fila mapeada. `emailsExistentes` = emails de inquilinos ya en la cartera. */
-export function validarFila(d: FilaMapeada, emailsExistentes: Set<string>): ValidacionFila {
+/**
+ * Dirección normalizada, para detectar la MISMA propiedad escrita distinto
+ * ("Av. Colón 1234" / "av colon  1234"). Es la clave natural de una cartera.
+ */
+export function normalizarDireccion(d: string): string {
+  return normalizarHeader(d);
+}
+
+/**
+ * Valida una fila mapeada. `emailsExistentes` = emails de inquilinos ya en la cartera;
+ * `direccionesExistentes` = direcciones de propiedades ya cargadas (normalizadas).
+ */
+export function validarFila(
+  d: FilaMapeada,
+  emailsExistentes: Set<string>,
+  direccionesExistentes?: Set<string>,
+): ValidacionFila {
   if (!d.direccion) return { estado: 'ERROR', motivo: 'Falta la dirección de la propiedad' };
   if (!d.inquilinoNombre) return { estado: 'ERROR', motivo: 'Falta el nombre del inquilino' };
   if (!Number.isFinite(d.monto) || d.monto <= 0) return { estado: 'ERROR', motivo: 'Monto del alquiler inválido' };
@@ -169,6 +184,12 @@ export function validarFila(d: FilaMapeada, emailsExistentes: Set<string>): Vali
   if (d.inquilinoEmail && !EMAIL_RE.test(d.inquilinoEmail)) return { estado: 'ERROR', motivo: 'Email del inquilino con formato inválido' };
   if (d.inquilinoEmail && emailsExistentes.has(d.inquilinoEmail)) {
     return { estado: 'DUPLICADO', motivo: 'Ya existe un inquilino con ese email en tu cartera' };
+  }
+  // El email NO alcanza como dedup: es opcional (las filas sin email se importan a
+  // propósito), así que re-subir la misma planilla duplicaba propiedades, inquilinos y
+  // contratos —con sus liquidaciones— sin avisar. La dirección es la clave natural.
+  if (direccionesExistentes?.has(normalizarDireccion(d.direccion))) {
+    return { estado: 'DUPLICADO', motivo: 'Ya existe una propiedad con esa dirección en tu cartera' };
   }
   const faltantes: string[] = [];
   if (!d.inquilinoDni) faltantes.push('DNI');
