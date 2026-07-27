@@ -19,6 +19,11 @@
 - Deploy a Railway (`MYALQ`/production, servicios `myalquiler-back` y `myalquiler-front`) **requiere confirmación explícita del usuario**. `railway up` adelanta prod respecto de main → hay que mergear el PR después.
 - NO refactorizar las ~12 queryKeys en esta entrega (deuda anotada en el spec).
 - Enum de estado de contrato: `BORRADOR | ACTIVO | FINALIZADO | RESCINDIDO` (`apps/api/prisma/schema.prisma:45-50`).
+
+**Gotchas de entorno descubiertos al ejecutar la Task 1 (aplican a todas las tareas que levanten la PWA):**
+- El puerto **3000 suele estar ocupado** por otro proyecto del usuario (`palta-app-admin-onb`). NO matar ese proceso: levantar la PWA en otro puerto (ej. 3050).
+- Si la PWA no corre en 3000/3001, el API la bloquea por CORS (`CORS_ORIGINS` en `apps/api/src/env.ts` tiene esos dos por default) y los POST fallan con `net::ERR_FAILED` sin log del lado server. Solución sin tocar código: levantar el API con `CORS_ORIGINS="http://localhost:3000,http://localhost:3001,http://localhost:3050,https://soyalantapia.github.io"`.
+- El escenario local ya está armado en la DB `myalq_multiprop` y el script es idempotente: re-correrlo no duplica nada.
 - Commits en español, imperativo, con el prefijo `fix(inquilino):` / `feat(inquilino):`. Terminar el mensaje con `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`.
 
 ---
@@ -330,10 +335,22 @@ Ojo con `router`: en `mis-alquileres/page.tsx` se sigue usando (`router.replace(
 
 - [ ] **Step 5: Verificar E2E que el bug murió**
 
-Con el escenario de la Task 1 corriendo, repetir el recorrido del Step 4 de la Task 1:
-entrar a **Mendoza 3344** ($999999) → `/mis-alquileres` → cambiar a **Gorriti 4521** ($480000).
+⚠️ **CORREGIDO con lo observado en la Task 1.** El síntoma NO es el que predecía este plan. Verificado en el navegador: al cambiar de propiedad **el monto SÍ se actualiza** (`/mis-liquidaciones` y `/mis-cargos` se re-piden), pero **`/mi-contrato` NO se re-pide** (`queryKey: ['mi-contrato']` global + `staleTime: 60_000` + observer montado permanentemente en el SideNav) → los datos del contrato quedan con los de la propiedad ANTERIOR.
 
-Expected: la home ahora muestra la deuda de **Gorriti ($480000)**, no la de Mendoza. Y a la inversa: volviendo a Mendoza, se ve $999999. Sacar screenshot de ambos sentidos.
+**La señal confiable es el nombre de la inmobiliaria** en el panel "Administra {inmobiliaria}" de la home (`apps/inquilino/src/app/(app)/page.tsx`, alimentado por `useMiContrato`). Medir el monto NO sirve como test: da verde aun sin el fix.
+
+Recorrido (con el escenario de la Task 1 y la PWA levantada según los gotchas de las Global Constraints):
+
+1. Login `mariela.sosa@gmail.com` / código `000000` → entrar a **Mendoza 3344** (Alquileres del Norte).
+2. La home debe decir "Administra **Alquileres del Norte**".
+3. Ir a `/mis-alquileres` → cambiar a **Gorriti 4521** (Inmobiliaria del Sol).
+4. **Expected CON el fix:** la home dice "Administra **Inmobiliaria del Sol**". (Sin el fix decía "Alquileres del Norte" hasta pasados 60s o un reload duro.)
+5. Repetir en sentido inverso (Gorriti → Mendoza) y confirmar "Administra **Alquileres del Norte**".
+6. Chequeo secundario: el monto acompaña ($481.560 en Gorriti, $999.999 en Mendoza).
+
+Transcribir en el reporte los textos EXACTOS vistos en cada paso.
+
+Nota: el hard nav arregla de una **toda la familia** de este bug (cualquier hook con `queryKey` global y `staleTime` largo), no solo `useMiContrato` — por eso no hace falta auditar hook por hook en esta entrega.
 
 - [ ] **Step 6: Commit**
 
@@ -1142,14 +1159,15 @@ Expected: un número **≤ 259** (baseline preexistente). Si sube, hay regresió
 Con el escenario local, verificar en una sola pasada:
 
 1. Login con `mariela.sosa@gmail.com` → aparece el selector con las propiedades.
-2. Entrar a **Mendoza 3344** → la home muestra $999999.
+2. Entrar a **Mendoza 3344** → la home dice "Administra **Alquileres del Norte**" y $999.999.
 3. Volver a la lista **desde el sidenav** (desktop) y **desde el header** (mobile).
-4. Cambiar a **Gorriti 4521** → la home muestra **$480000**, NO $999999. ← *el test que importa*
-5. Volver a Mendoza → $999999 de nuevo.
+4. Cambiar a **Gorriti 4521** → la home dice "Administra **Inmobiliaria del Sol**". ← *el test que importa* (ver la nota de la Task 2 Step 5: el nombre de la inmobiliaria es la señal confiable, el monto NO — se actualiza igual sin el fix).
+5. Volver a Mendoza → "Administra **Alquileres del Norte**" de nuevo.
 6. `/cuenta` muestra la fila "Mis propiedades" siempre.
-7. **No regresión:** con un email de un solo alquiler, el login entra directo sin pasar por el selector.
+7. Un alquiler FINALIZADO muestra el badge en `/mis-alquileres` (usar el UPDATE de la Task 3 Step 5 y revertirlo después).
+8. **No regresión:** con un email de un solo alquiler, el login entra directo sin pasar por el selector.
 
-Expected: los 7 puntos en verde. Sacar screenshots de los pasos 2, 4 y 6.
+Expected: los 8 puntos en verde. Transcribir los textos exactos vistos.
 
 - [ ] **Step 4: Push y PR**
 

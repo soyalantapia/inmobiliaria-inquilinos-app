@@ -35,9 +35,13 @@ La capa de identidad cross-inmobiliaria **ya existe en producción**: `JwtPerson
 
 ## Gaps reales
 
-### P0 — Al cambiar de propiedad se ve la plata de la otra
+### P0 — Al cambiar de propiedad sobreviven datos de la anterior
 
-Al elegir otro alquiler, la app muestra la **deuda y el contrato de la propiedad anterior** junto a la dirección nueva. Sin error ni aviso.
+Al elegir otro alquiler, la app sigue mostrando **datos del contrato de la propiedad anterior** junto a la dirección nueva. Sin error ni aviso.
+
+> **Corregido 2026-07-27 tras verificarlo en el navegador.** La primera versión de este spec afirmaba que se veía "la deuda de la otra propiedad". El recorrido real (mismo email, 2 alquileres, montos $999.999 vs $481.560) mostró algo más preciso: **el monto SÍ se actualiza** (`/mis-liquidaciones` y `/mis-cargos` se re-piden al cambiar), pero **`/mi-contrato` NO se re-pide** — su observer vive montado permanentemente en el `SideNav` y su `staleTime` de 60s nunca se agota. El síntoma reproducible en ambas direcciones es el panel **"Administra {inmobiliaria}"** de la home, que queda con la inmobiliaria vieja hasta que pasan 60s o hay un reload duro.
+>
+> La causa raíz y el fix no cambian (es la misma familia de bug: caché que sobrevive a la soft nav). Lo que cambia es **cómo se testea**: medir el monto daría un falso verde. La señal confiable es el nombre de la inmobiliaria.
 
 Causa (tres factores que se suman):
 - Ninguna queryKey lleva el contrato/inquilino: `['mi-contrato']` (`hooks.ts:72`), `['mis-liquidaciones']` (`hooks.ts:162`), `['mis-anuncios']` (`hooks.ts:187`).
