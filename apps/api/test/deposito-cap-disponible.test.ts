@@ -25,7 +25,9 @@ async function limpiar() {
 async function reset() {
   await prisma.contrato.updateMany({
     where: { id: CID },
-    data: { estado: 'ACTIVO', estadoDeposito: null, depositoGarantia: null, depositoDevueltoMonto: null, depositoDevueltoAt: null, motivoDeposito: null },
+    // estadoDeposito es NO-NULLABLE (@default(RETENIDO)) desde el refactor "una sola
+    // cuenta del depósito": el reset lo devuelve a RETENIDO, no a null.
+    data: { estado: 'ACTIVO', estadoDeposito: 'RETENIDO', depositoGarantia: null, depositoDevueltoMonto: null, depositoDevueltoAt: null, motivoDeposito: null },
   });
 }
 
