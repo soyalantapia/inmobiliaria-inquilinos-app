@@ -46,6 +46,11 @@ async function limpiar() {
     await prisma.propiedad.deleteMany({ where: { id: { in: ids } } });
   }
   await prisma.importacionCartera.deleteMany({ where: { nombreArchivo: `${P}cartera.csv` } });
+  // Las filas sin columna de propietario generan un "Propietario a definir": si no lo
+  // borramos, queda contando en las suites que asertan cuántos propietarios hay.
+  await prisma.propietario.deleteMany({
+    where: { inmobiliariaId, nombre: 'Propietario a definir', participaciones: { none: {} } },
+  });
 }
 
 beforeAll(async () => {

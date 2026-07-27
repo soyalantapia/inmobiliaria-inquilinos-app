@@ -180,6 +180,7 @@ export function RendirPropietarioDialog({
     comisionPct: resp.comisionPct,
     gastos,
     totalGastos: Number(resp.totalGastos),
+    totalIngresos: Number(resp.totalIngresos ?? 0),
     montoNeto: Number(resp.montoNeto),
     rendidoAt: new Date().toISOString(),
     metodo,
@@ -545,22 +546,32 @@ export function mensajeRendicion(prop: Propietario, rend: Rendicion): string {
   const nombrePila = prop.nombre.split(' ')[0] ?? prop.nombre;
   const comisionMonto = Math.round(rend.montoBruto * (rend.comisionPct / 100));
   const gastos = rend.gastos ?? [];
+  const totalGastos = rend.totalGastos ?? 0;
+  const totalIngresos = rend.totalIngresos ?? 0;
+  // Las líneas de gastos e ingresos van SIEMPRE que haya monto, tengamos o no el detalle
+  // ítem por ítem. Antes la de gastos dependía de `gastos.length > 0` —y en prod ese
+  // detalle es [] por diseño— y la de ingresos no existía, mientras el `montoNeto` que
+  // manda el server YA los aplicó: el dueño recibía "Bruto − Comisión" y un "A
+  // transferirte" que no cerraba, sin ninguna línea que explicara la diferencia.
   const detalleGastos =
-    gastos.length > 0
-      ? `\n*Gastos del mes:* -${formatMonto(rend.totalGastos ?? 0)}\n` +
-        gastos
-          .map((g) => {
-            const prov = g.proveedor ? `${g.proveedor} · ` : '';
-            return `  • ${prov}${g.descripcion} (${formatMonto(g.monto)})`;
-          })
-          .join('\n') +
-        '\n'
+    totalGastos > 0
+      ? `\n*Gastos del mes:* -${formatMonto(totalGastos)}\n` +
+        (gastos.length > 0
+          ? gastos
+              .map((g) => {
+                const prov = g.proveedor ? `${g.proveedor} · ` : '';
+                return `  • ${prov}${g.descripcion} (${formatMonto(g.monto)})`;
+              })
+              .join('\n') + '\n'
+          : '')
       : '';
+  const detalleIngresos = totalIngresos > 0 ? `\n*Ingresos del mes:* +${formatMonto(totalIngresos)}\n` : '';
   return (
     `Hola ${nombrePila}! Te paso la rendición de ${periodoLabel(rend.periodo)}:\n\n` +
     `*Bruto cobrado:* ${formatMonto(rend.montoBruto)}\n` +
     `*Comisión (${rend.comisionPct}%):* -${formatMonto(comisionMonto)}\n` +
     detalleGastos +
+    detalleIngresos +
     `\n*A transferirte:* ${formatMonto(rend.montoNeto)}\n\n` +
     `Te transferimos por ${rend.metodo.toLowerCase()} en el día. ` +
     `Cualquier cosa avisame.`

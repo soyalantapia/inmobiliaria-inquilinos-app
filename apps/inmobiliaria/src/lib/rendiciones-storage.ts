@@ -38,6 +38,8 @@ export interface Rendicion {
   gastos?: GastoRendido[];
   /** Suma de gastos.monto — denormalizado para evitar recalcular. */
   totalGastos?: number;
+  /** Ingresos extra de caja rendidos al dueño (SUMAN al neto). */
+  totalIngresos?: number;
   montoNeto: number;
   rendidoAt: string;
   /** Método (transferencia, mercadopago, efectivo). */

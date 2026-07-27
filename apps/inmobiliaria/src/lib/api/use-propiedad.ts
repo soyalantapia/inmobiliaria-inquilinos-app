@@ -142,6 +142,11 @@ interface PropiedadApi {
   contratoActual: ContratoApi | null;
   contratos?: ContratoApi[];
   sociedad: SociedadApi | null;
+  /** Texto libre de complejo/edificio + el consorcio real (si está ligado). El detalle
+   *  no los mapeaba, así que el editor precargaba vacío y GUARDABA null → cualquier
+   *  edición de la propiedad borraba el complejo en silencio. */
+  complejo?: string | null;
+  consorcio?: { nombre: string } | null;
 }
 
 /* ---------- Mappers API → tipos de pantalla ---------- */
@@ -242,6 +247,7 @@ function mapPropiedad(p: PropiedadApi, reclamosApi: ReclamoApi[]): PropiedadDeta
     ciudad: p.ciudad,
     provincia: p.provincia,
     tipo: p.tipo,
+    complejo: p.consorcio?.nombre ?? p.complejo ?? null,
     ambientes: numOrNull(p.ambientes),
     m2: numOrNull(p.m2),
     fotoUrl: p.fotoUrl,

@@ -75,6 +75,15 @@ export function EditarPropiedadDialog({ open, onOpenChange, propiedad, onGuardad
       return;
     }
     setGuardando(true);
+    // `complejo` SÓLO viaja si el usuario lo tocó. El backend trata `undefined` como
+    // "no tocar", pero el front lo mandaba SIEMPRE: como el valor mostrado es el EFECTIVO
+    // (consorcio real si está ligado, si no el texto libre), guardar cualquier otro campo
+    // —corregir un typo de la dirección, cargar los m²— pisaba la columna. Y mientras el
+    // detalle no lo mapeaba, precargaba vacío y lo mandaba en null: BORRABA el complejo en
+    // silencio. Además, si la propiedad tiene consorcio real, no copiamos su nombre al
+    // campo de texto libre.
+    const original = propiedad.complejo ?? '';
+    const complejoCambio = complejo.trim() !== original.trim();
     const datos = {
       direccion: direccion.trim(),
       ciudad: ciudad.trim(),
@@ -82,7 +91,7 @@ export function EditarPropiedadDialog({ open, onOpenChange, propiedad, onGuardad
       tipo,
       ambientes: ambientes ? Number(ambientes) : null,
       m2: m2 ? Number(m2) : null,
-      complejo: complejo.trim() || null,
+      ...(complejoCambio ? { complejo: complejo.trim() || null } : {}),
     };
     try {
       if (apiEnabled) {

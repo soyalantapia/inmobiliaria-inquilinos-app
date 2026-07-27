@@ -358,6 +358,10 @@ export async function coreRoutes(app: FastifyInstance) {
     const propiedad = await prisma.propiedad.findFirst({
       where: { id, inmobiliariaId: u.inmobiliariaId },
       include: {
+        // El display de `complejo` es el EFECTIVO: consorcio real si está ligado, si no el
+        // texto libre. El listado ya lo incluía; el detalle no, así que la ficha no podía
+        // distinguirlos y el editor terminaba pisando el campo.
+        consorcio: { select: { nombre: true } },
         participaciones: { include: { propietario: true } },
         contratoActual: {
           include: {
