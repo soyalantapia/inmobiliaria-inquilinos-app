@@ -31,7 +31,7 @@ import { toast } from '@llave/ui/use-toast';
 import { DescargarAppCard } from '@/components/instalar-app';
 import { NavBar } from '@/components/nav-bar';
 import { relanzarOnboarding } from '@/components/onboarding';
-import { cerrarSesion, leerSesion } from '@/lib/auth-otp';
+import { cerrarSesion } from '@/lib/auth-otp';
 import { contratoMock } from '@/lib/mock-data';
 import { leerProfile, type ProfileOverride } from '@/lib/profile-override';
 import { useCurrentUser } from '@/lib/use-current-user';
@@ -61,13 +61,6 @@ function CuentaReal() {
   const [subiendoAvatar, setSubiendoAvatar] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [confirmandoLogout, setConfirmandoLogout] = useState(false);
-  // Mostramos el switcher "Cambiar de alquiler" sólo si la persona tiene más de
-  // un alquiler (lo setea el login por API en la sesión). Una sola fila → la
-  // entrada no aporta y la ocultamos.
-  const [variosAlquileres, setVariosAlquileres] = useState(false);
-  useEffect(() => {
-    setVariosAlquileres((leerSesion()?.alquileresCount ?? 1) > 1);
-  }, []);
 
   const fullName = user.fullName;
   const email = user.email ?? '';
@@ -176,14 +169,16 @@ function CuentaReal() {
             Tu hogar
           </h2>
           <Card className="divide-y">
-            {variosAlquileres && (
-              <LinkRow
-                icon={<ArrowLeftRight className="h-4 w-4" />}
-                label="Cambiar de alquiler"
-                descripcion="Tenés más de un alquiler con este email"
-                href="/mis-alquileres"
-              />
-            )}
+            {/* Siempre visible: el contador de alquileres se congelaba en el login,
+                así que si el inquilino firmaba su 2ª propiedad DESPUÉS de entrar,
+                esta fila no aparecía nunca (el token dura 15 días). La pantalla
+                destino maneja bien el caso de un solo alquiler. */}
+            <LinkRow
+              icon={<ArrowLeftRight className="h-4 w-4" />}
+              label="Mis propiedades"
+              descripcion="Ver tus alquileres y cambiar de propiedad"
+              href="/mis-alquileres"
+            />
             <LinkRow
               icon={<FileText className="h-4 w-4" />}
               label="Mis documentos"

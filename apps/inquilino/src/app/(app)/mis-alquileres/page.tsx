@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { ArrowLeft, Building2, Check, Loader2, MapPin, RotateCcw } from 'lucide-react';
 import { Button } from '@llave/ui/button';
 import { Card } from '@llave/ui/card';
@@ -76,14 +77,16 @@ export default function MisAlquileresPage() {
   return (
     <>
       <header className="flex items-center gap-3 p-5">
-        <button
-          type="button"
-          onClick={() => router.back()}
+        {/* href fijo, no router.back(): a esta pantalla se puede llegar desde el
+            sidenav, el header mobile o Mi cuenta, y con back el destino era
+            impredecible (o salía de la app si fue la primera pantalla). */}
+        <Link
+          href="/"
           className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          aria-label="Volver"
+          aria-label="Volver al inicio"
         >
           <ArrowLeft className="h-4 w-4" />
-        </button>
+        </Link>
         <div>
           <h1 className="text-2xl font-semibold md:text-3xl">Mis alquileres</h1>
           <p className="text-sm text-muted-foreground">Cambiá de alquiler sin volver a entrar</p>
@@ -119,7 +122,16 @@ export default function MisAlquileresPage() {
           </Card>
         )}
 
-        {estado === 'ok' && alquileres && (
+        {estado === 'ok' && alquileres && alquileres.length === 0 && (
+          <Card className="space-y-2 p-5 text-center">
+            <p className="text-sm font-medium">No encontramos alquileres con tu email</p>
+            <p className="text-xs text-muted-foreground">
+              Si acabás de firmar, puede que tu inmobiliaria todavía no lo haya cargado.
+            </p>
+          </Card>
+        )}
+
+        {estado === 'ok' && alquileres && alquileres.length > 0 && (
           <ul role="list" className="space-y-2.5">
             {alquileres.map((a) => {
               const esActual = a.inquilinoId === actualId;
