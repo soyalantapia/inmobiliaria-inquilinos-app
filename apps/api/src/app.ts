@@ -67,7 +67,32 @@ function correlationIdDe(headerCrudo: string | string[] | undefined): string {
 export async function buildApp(envOverrides: Partial<Record<string, string>> = {}): Promise<FastifyInstance> {
   const env = loadEnv(envOverrides);
   const app = Fastify({
-    logger: env.NODE_ENV !== 'test',
+    logger:
+      env.NODE_ENV !== 'test' && {
+        serializers: {
+          // El JWT de sesión (15 días) viaja por query en GET /uploads/:tenant/:name
+          // —un <img src> no puede mandar el header Authorization— y el serializer por
+          // defecto de Fastify loguea `req.url` ENTERA. Resultado: cada foto de
+          // propiedad, comprobante o documento que alguien abría escribía una sesión
+          // válida en texto plano en el log de Railway, donde queda para cualquiera que
+          // lo lea. Redactamos el valor y dejamos el resto de la URL intacta para poder
+          // debuggear. Se replican los campos del serializer default (si no, se pierden).
+          req(req: {
+            method: string;
+            url: string;
+            headers?: Record<string, unknown>;
+            socket?: { remoteAddress?: string; remotePort?: number };
+          }) {
+            return {
+              method: req.method,
+              url: String(req.url ?? '').replace(/([?&](?:token|access_token)=)[^&]*/gi, '$1[REDACTED]'),
+              hostname: req.headers?.host,
+              remoteAddress: req.socket?.remoteAddress,
+              remotePort: req.socket?.remotePort,
+            };
+          },
+        },
+      },
     // Railway pone UN proxy adelante. `1` = confiar solo en ese hop, así `req.ip` es la
     // entrada que escribió Railway (el cliente real).
     //

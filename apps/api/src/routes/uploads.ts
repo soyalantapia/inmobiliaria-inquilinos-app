@@ -144,6 +144,28 @@ export async function borrarArchivoSubido(url: string, tenant: string): Promise<
 }
 
 /**
+ * Borra un archivo del Volume SOLO si ya no lo referencia ninguna fila.
+ *
+ * POR QUÉ: `borrarArchivoSubido` valida el TENANT del path, no la PROPIEDAD del recurso, y
+ * los caminos de limpieza (el rollback de /pagos/informar, cambiar de avatar, reemplazar un
+ * documento) borran la URL que vino en el BODY. Un co-inquilino con permiso de sólo lectura
+ * podía leer el `comprobanteUrl` del titular en /mis-liquidaciones, mandarlo en un request
+ * destinado a fallar, y hacer que el rollback borrara del disco el comprobante del otro —
+ * dejando el Pago con una URL rota y a la inmobiliaria sin el respaldo.
+ *
+ * El caller pasa `sigueEnUso` porque sólo él sabe qué tablas apuntan a esa URL. Si el
+ * archivo todavía está referenciado, NO se borra: no era basura de esta request.
+ */
+export async function borrarArchivoSiHuerfano(
+  url: string,
+  tenant: string,
+  sigueEnUso: () => Promise<boolean>,
+): Promise<void> {
+  if (await sigueEnUso().catch(() => true)) return; // ante la duda, NO borrar
+  await borrarArchivoSubido(url, tenant);
+}
+
+/**
  * Guarda un Buffer arbitrario en el Volume del tenant y devuelve su URL servida.
  * A diferencia de POST /uploads (que exige un mimetype de la whitelist de fotos/
  * PDF), esto lo usan flujos que YA leyeron el archivo en memoria para procesarlo

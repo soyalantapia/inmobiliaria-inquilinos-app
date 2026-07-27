@@ -9,7 +9,7 @@ import { calcularMora, resolverEsquemaMora } from '../lib/punitorios.js';
 import { registrarEvento } from '../lib/auditoria.js';
 import { estadoDepositoContrato } from '../lib/deposito.js';
 import { enviarInvitacionInquilino } from '../mailer.js';
-import { borrarArchivoSubido, urlEsDelTenant } from './uploads.js';
+import { borrarArchivoSiHuerfano, urlEsDelTenant } from './uploads.js';
 
 /**
  * Fase 3 — La plata: liquidaciones, validación de pagos informados, caja de
@@ -1050,10 +1050,18 @@ export async function plataRoutes(app: FastifyInstance) {
     // El front sube el comprobante a /uploads ANTES de este POST. Si el informe
     // falla (ya informado, saldo cubierto, carrera), el archivo queda huérfano en
     // el Volume. Lo liberamos best-effort en cada return de error posterior.
+    // Sólo se borra si NINGÚN Pago lo referencia. Sin ese chequeo, un co-inquilino (basta
+    // permiso VER) podía leer el `comprobanteUrl` del titular en /mis-liquidaciones,
+    // mandarlo acá con una fecha inválida a propósito y hacer que este rollback borrara del
+    // disco el comprobante del otro: el Pago quedaba con una URL rota y la inmobiliaria sin
+    // el respaldo para validar. Repetible sobre cada comprobante del contrato.
     const limpiarComprobante = async () => {
-      if (body.data.comprobanteUrl) {
-        await borrarArchivoSubido(body.data.comprobanteUrl, inq.inmobiliariaId).catch(() => {});
-      }
+      const url = body.data.comprobanteUrl;
+      if (!url) return;
+      await borrarArchivoSiHuerfano(url, inq.inmobiliariaId, async () => {
+        const enUso = await prisma.pago.count({ where: { comprobanteUrl: url } });
+        return enUso > 0;
+      }).catch(() => {});
     };
     // La fecha de transferencia la elige el inquilino. Sin cota, backdatearla
     // esquiva la mora (la validación calcula el umbral con esa fecha) y falsea el
@@ -1390,7 +1398,16 @@ export async function plataRoutes(app: FastifyInstance) {
       return reply.code(409).send({ message: 'Ya fue descontado en una rendición — no se puede eliminar' });
     }
     // Best effort: liberar el comprobante del Volume (mismo patrón que documentos).
-    if (mov.comprobanteUrl) await borrarArchivoSubido(mov.comprobanteUrl, u.inmobiliariaId);
+    if (mov.comprobanteUrl) {
+      const urlMov = mov.comprobanteUrl;
+      await borrarArchivoSiHuerfano(urlMov, u.inmobiliariaId, async () => {
+        const [movs, pagos] = await Promise.all([
+          prisma.movimientoCaja.count({ where: { comprobanteUrl: urlMov } }),
+          prisma.pago.count({ where: { comprobanteUrl: urlMov } }),
+        ]);
+        return movs + pagos > 0;
+      });
+    }
     await registrarEvento({
       inmobiliariaId: u.inmobiliariaId,
       tipo: 'GASTO_CAJA_ELIMINADO',

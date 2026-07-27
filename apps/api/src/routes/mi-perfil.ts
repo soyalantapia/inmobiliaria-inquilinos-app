@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../db.js';
 import { requireInquilino } from '../auth/guards.js';
-import { urlEsDelTenant, borrarArchivoSubido } from './uploads.js';
+import { urlEsDelTenant, borrarArchivoSiHuerfano } from './uploads.js';
 
 /**
  * Catálogo fijo de documentos que la inmobiliaria espera del inquilino (DNI,
@@ -51,7 +51,18 @@ export async function miPerfilRoutes(app: FastifyInstance): Promise<void> {
     if (!actual) return reply.code(404).send({ message: 'Inquilino inexistente' });
     await prisma.inquilino.update({ where: { id: inq.inquilinoId }, data: { imageUrl: nueva } });
     if (actual.imageUrl && actual.imageUrl !== nueva) {
-      await borrarArchivoSubido(actual.imageUrl, inq.inmobiliariaId);
+      // Sólo si nadie más lo referencia: el avatar viejo podría ser una URL AJENA que el
+      // atacante puso acá en un paso previo justamente para que este borrado la destruya
+      // (urlEsDelTenant valida el tenant, no de quién es el archivo).
+      const vieja = actual.imageUrl;
+      await borrarArchivoSiHuerfano(vieja, inq.inmobiliariaId, async () => {
+        const [inqs, docs, pagos] = await Promise.all([
+          prisma.inquilino.count({ where: { imageUrl: vieja } }),
+          prisma.documento.count({ where: { archivoUrl: vieja } }),
+          prisma.pago.count({ where: { comprobanteUrl: vieja } }),
+        ]);
+        return inqs + docs + pagos > 0;
+      });
     }
     return { imageUrl: nueva };
   });
@@ -118,8 +129,17 @@ export async function miPerfilRoutes(app: FastifyInstance): Promise<void> {
         where: { inmobiliariaId: inq.inmobiliariaId, inquilinoId: inq.inquilinoId, slotId: slot.id },
       });
       if (previo) {
+        const urlPrevia = previo.archivoUrl;
         await prisma.documento.delete({ where: { id: previo.id } });
-        await borrarArchivoSubido(previo.archivoUrl, inq.inmobiliariaId);
+        // Mismo cuidado que el avatar: no borrar un archivo que otra fila sigue usando.
+        await borrarArchivoSiHuerfano(urlPrevia, inq.inmobiliariaId, async () => {
+          const [docs, inqs, pagos] = await Promise.all([
+            prisma.documento.count({ where: { archivoUrl: urlPrevia } }),
+            prisma.inquilino.count({ where: { imageUrl: urlPrevia } }),
+            prisma.pago.count({ where: { comprobanteUrl: urlPrevia } }),
+          ]);
+          return docs + inqs + pagos > 0;
+        });
       }
     }
     const doc = await prisma.documento.create({
@@ -146,8 +166,16 @@ export async function miPerfilRoutes(app: FastifyInstance): Promise<void> {
       where: { id, inmobiliariaId: inq.inmobiliariaId, inquilinoId: inq.inquilinoId },
     });
     if (!doc) return reply.code(404).send({ message: 'Documento inexistente' });
+    const urlDoc = doc.archivoUrl;
     await prisma.documento.delete({ where: { id: doc.id } });
-    await borrarArchivoSubido(doc.archivoUrl, inq.inmobiliariaId);
+    await borrarArchivoSiHuerfano(urlDoc, inq.inmobiliariaId, async () => {
+      const [docs, inqs, pagos] = await Promise.all([
+        prisma.documento.count({ where: { archivoUrl: urlDoc } }),
+        prisma.inquilino.count({ where: { imageUrl: urlDoc } }),
+        prisma.pago.count({ where: { comprobanteUrl: urlDoc } }),
+      ]);
+      return docs + inqs + pagos > 0;
+    });
     return reply.send({ ok: true });
   });
 }

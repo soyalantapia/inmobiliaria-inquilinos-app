@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../db.js';
 import { requireUsuario } from '../auth/guards.js';
-import { borrarArchivoSubido, urlEsDelTenant } from './uploads.js';
+import { borrarArchivoSiHuerfano, urlEsDelTenant } from './uploads.js';
 
 /**
  * Documentos del expediente de un contrato (lado inmobiliaria): DNI titular y
@@ -134,7 +134,15 @@ export async function documentosRoutes(app: FastifyInstance): Promise<void> {
 
     await prisma.documentoContrato.delete({ where: { id: doc.id } });
     // Best effort: liberamos el archivo del Volume (tenant-scopeado).
-    await borrarArchivoSubido(doc.archivoUrl, u.inmobiliariaId);
+    // No borrar un archivo que otra fila sigue referenciando (mismo criterio que
+    // mi-perfil): la URL de una fila puede apuntar a un archivo que no creó esa fila.
+    await borrarArchivoSiHuerfano(doc.archivoUrl, u.inmobiliariaId, async () => {
+      const [docs, pagos] = await Promise.all([
+        prisma.documento.count({ where: { archivoUrl: doc.archivoUrl } }),
+        prisma.pago.count({ where: { comprobanteUrl: doc.archivoUrl } }),
+      ]);
+      return docs + pagos > 0;
+    });
     // 200 + JSON (no 204): el apiFetch del panel hace res.json() siempre.
     return reply.send({ ok: true });
   });

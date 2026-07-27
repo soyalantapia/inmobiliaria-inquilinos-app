@@ -16,7 +16,7 @@ import {
 import { conSaldo, montoPagadoPorLiquidacion } from '../lib/saldos.js';
 import { calcularMora, resolverEsquemaMora } from '../lib/punitorios.js';
 import { aplicarEstadoInicial, EstadoInicialInvalido } from '../lib/estado-inicial-contrato.js';
-import { borrarArchivoSubido, urlEsDelTenant } from './uploads.js';
+import { borrarArchivoSiHuerfano, urlEsDelTenant } from './uploads.js';
 import { enviarInvitacionInquilino, enviarInvitacionEquipo } from '../mailer.js';
 
 /**
@@ -1180,7 +1180,14 @@ export async function coreRoutes(app: FastifyInstance) {
     const actual = await prisma.usuario.findUnique({ where: { id: u.userId }, select: { imageUrl: true } });
     await prisma.usuario.update({ where: { id: u.userId }, data: { imageUrl: nueva } });
     if (actual?.imageUrl && actual.imageUrl !== nueva) {
-      await borrarArchivoSubido(actual.imageUrl, u.inmobiliariaId);
+      const previa = actual.imageUrl;
+      await borrarArchivoSiHuerfano(previa, u.inmobiliariaId, async () => {
+        const [usuarios, inquilinos] = await Promise.all([
+          prisma.usuario.count({ where: { imageUrl: previa } }),
+          prisma.inquilino.count({ where: { imageUrl: previa } }),
+        ]);
+        return usuarios + inquilinos > 0;
+      });
     }
     return { imageUrl: nueva };
   });
