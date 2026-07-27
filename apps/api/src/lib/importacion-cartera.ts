@@ -5,6 +5,7 @@
  * — sin IA. Auto-sugerimos el mapeo por sinónimos de header, pero el admin lo
  * confirma/corrige.
  */
+import { parsearMonto } from './monto.js';
 
 export type TipoPropiedadImport = 'DEPARTAMENTO' | 'CASA' | 'LOCAL' | 'GALPON';
 
@@ -122,7 +123,10 @@ export function parsearFilaMapeada(fila: unknown[], mapeo: Record<string, number
     nombre = partes[0]!;
     apellido = partes.slice(1).join(' ');
   }
-  const monto = Number(texto(celda(fila, mapeo, 'monto')).replace(/[^\d.,-]/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.'));
+  // MISMO parser que el extracto bancario (lib/monto.ts). El de acá manejaba AR pero
+  // rompía con planillas en locale US: "1,500" entraba como 1.5 (1000x más chico) y
+  // pasaba la validación de monto > 0 sin que nadie lo notara.
+  const monto = parsearMonto(celda(fila, mapeo, 'monto'));
   const monedaRaw = normalizarHeader(texto(celda(fila, mapeo, 'moneda')));
   const moneda: 'ARS' | 'USD' = monedaRaw.includes('usd') || monedaRaw.includes('dolar') || monedaRaw.includes('u$s') ? 'USD' : 'ARS';
   const diaPagoRaw = Number(texto(celda(fila, mapeo, 'diaPago')));
