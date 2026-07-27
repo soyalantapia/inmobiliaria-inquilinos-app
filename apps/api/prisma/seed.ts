@@ -169,9 +169,11 @@ export async function seedBase(prisma: PrismaClient) {
     { email: 'lucia.fernandez@inquilino.demo', nombre: 'Lucía', apellido: 'Fernández', contratoId: 'cnt_008' },
   ];
   for (const i of inquilinos) {
+    // Upsert por contratoId (1:1 @unique): el email ya no es único a nivel Inquilino
+    // (multi-alquiler → varios contratos comparten el email de login).
     await prisma.inquilino.upsert({
-      where: { inmobiliariaId_email: { inmobiliariaId: tid, email: i.email } },
-      update: { nombre: i.nombre, apellido: i.apellido, contratoId: i.contratoId },
+      where: { contratoId: i.contratoId },
+      update: { nombre: i.nombre, apellido: i.apellido, email: i.email },
       create: { ...i, inmobiliariaId: tid },
     });
   }
