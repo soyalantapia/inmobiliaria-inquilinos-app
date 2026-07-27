@@ -5,7 +5,7 @@ import { prisma } from '../db.js';
 import { requireUsuario } from '../auth/guards.js';
 import { verificarPinUsuario } from '../auth/pin.js';
 import { calcularMora, resolverEsquemaMora } from '../lib/punitorios.js';
-import { parsearFilasResumen, sugerirMatch, type CandidatoLiquidacion, type CandidatoPago } from '../lib/matching-bancario.js';
+import { parsearFilasResumen, sugerirMatch, type CandidatoLiquidacion, type CandidatoPago , claveCredito} from '../lib/matching-bancario.js';
 import { guardarBufferSubido } from './uploads.js';
 
 /**
@@ -182,20 +182,12 @@ export async function resumenesBancariosRoutes(app: FastifyInstance): Promise<vo
       // contra dos liquidaciones → dos pagos por una sola plata, que después se rinden al
       // propietario. El nroOperacion solo no sirve como clave: cuando el extracto no trae
       // esa columna, el parser usa el índice de fila. Comparamos la línea entera.
-      const clave = (c: { fecha: Date | string; monto: unknown; titularOrigen: string | null; concepto: string | null; nroOperacion: string | null }) =>
-        [
-          new Date(c.fecha).toISOString().slice(0, 10),
-          Number(c.monto),
-          (c.titularOrigen ?? '').trim().toLowerCase(),
-          (c.concepto ?? '').trim().toLowerCase(),
-          c.nroOperacion ?? '',
-        ].join('|');
       const yaCargados = await tx.creditoDetectado.findMany({
         where: { inmobiliariaId: u.inmobiliariaId, fecha: { in: parseo.creditos.map((c) => c.fecha) } },
         select: { fecha: true, monto: true, titularOrigen: true, concepto: true, nroOperacion: true },
       });
-      const vistos = new Set(yaCargados.map(clave));
-      const nuevos = parseo.creditos.filter((c) => !vistos.has(clave(c)));
+      const vistos = new Set(yaCargados.map(claveCredito));
+      const nuevos = parseo.creditos.filter((c) => !vistos.has(claveCredito(c)));
       await tx.creditoDetectado.createMany({
         data: nuevos.map((c) => ({
           inmobiliariaId: u.inmobiliariaId,

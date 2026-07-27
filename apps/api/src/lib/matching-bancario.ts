@@ -168,6 +168,32 @@ export interface ParseoResumen {
 }
 
 /** Parsea filas ya tabuladas (array de arrays) — la 1ra fila son headers. */
+/**
+ * Clave de identidad de una línea de extracto, para no re-cargar el MISMO crédito cuando el
+ * operador sube rangos de fechas SOLAPADOS (o re-sube el archivo). Sin esto la misma
+ * transferencia entraba dos veces y el matcher la ofrecía contra dos liquidaciones → dos
+ * pagos por una sola plata, que después se rinden al propietario.
+ *
+ * Se compara la LÍNEA ENTERA a propósito: `nroOperacion` solo no sirve como clave porque,
+ * cuando el extracto no trae esa columna, el parser usa el índice de fila (colisionaría
+ * entre extractos distintos). `monto` puede llegar como number (parser) o Decimal (DB).
+ */
+export function claveCredito(c: {
+  fecha: Date | string;
+  monto: unknown;
+  titularOrigen: string | null;
+  concepto: string | null;
+  nroOperacion: string | null;
+}): string {
+  return [
+    new Date(c.fecha).toISOString().slice(0, 10),
+    Number(c.monto),
+    (c.titularOrigen ?? '').trim().toLowerCase(),
+    (c.concepto ?? '').trim().toLowerCase(),
+    c.nroOperacion ?? '',
+  ].join('|');
+}
+
 export function parsearFilasResumen(filas: unknown[][]): ParseoResumen {
   if (filas.length === 0) return { creditos: [], filasIgnoradas: 0, columnasFaltantes: ['fecha', 'monto'] };
   const headers = (filas[0] ?? []).map((h) => String(h ?? ''));
