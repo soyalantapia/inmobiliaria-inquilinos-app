@@ -153,6 +153,7 @@ export function SideNav() {
       {contrato && (
         <Link
           href="/mis-alquileres"
+          aria-label={`Ver mis propiedades. Tu hogar actual: ${contrato.direccion}, ${contrato.inmobiliaria}`}
           className="group flex items-start gap-2 border-t p-3 text-xs transition-colors hover:bg-muted"
         >
           <div className="min-w-0 flex-1">
@@ -164,7 +165,6 @@ export function SideNav() {
             className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground transition-colors group-hover:text-primary"
             aria-hidden="true"
           />
-          <span className="sr-only">Ver mis propiedades</span>
         </Link>
       )}
     </aside>

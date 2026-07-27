@@ -37,14 +37,27 @@ export function MobileGreetingHeader() {
           )}
         </p>
         {contrato?.direccion && (
-          <Link
-            href="/mis-alquileres"
-            className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <span className="truncate">{contrato.direccion}</span>
-            <ArrowLeftRight className="h-3 w-3 shrink-0" aria-hidden="true" />
-            <span className="sr-only">Ver mis propiedades</span>
-          </Link>
+          <div className="mt-0.5 flex">
+            {/*
+             * `py-3.5 -my-3.5` en el <Link>: agranda el área táctil a 44px
+             * de alto (mínimo WCAG 2.5.5 / Apple HIG) sin correr el layout.
+             * El padding y el margen negativo son simétricos, así que el
+             * aporte neto de este nodo al flujo del documento no cambia
+             * (el wrapper `flex` evita que ese margen negativo colapse con
+             * el párrafo del nombre de arriba): el texto se ve exactamente
+             * en la misma posición, pero el link ahora "come" el espacio
+             * muerto de alrededor en vez de que el dedo caiga en la
+             * tarjeta de Pagos que está justo debajo.
+             */}
+            <Link
+              href="/mis-alquileres"
+              aria-label={`Ver mis propiedades. Actual: ${contrato.direccion}`}
+              className="flex items-center gap-1 py-3.5 -my-3.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <span className="truncate">{contrato.direccion}</span>
+              <ArrowLeftRight className="h-3 w-3 shrink-0" aria-hidden="true" />
+            </Link>
+          </div>
         )}
       </div>
       <UserMenu compact />
