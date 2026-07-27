@@ -23,5 +23,8 @@ ENV NODE_ENV=production
 COPY --from=build /repo /repo
 WORKDIR /repo/apps/api
 EXPOSE 3002
-# migrate deploy aplica migraciones pendientes (no-op si está al día) y arranca
-CMD ["sh", "-c", "pnpm db:deploy && node dist/index.js"]
+# migrate deploy aplica migraciones pendientes (no-op si está al día) y arranca.
+# `exec` es IMPRESCINDIBLE: hace que node REEMPLACE al shell y reciba el SIGTERM de Railway
+# en cada redeploy. Sin él, node queda como hijo de `sh`, la señal se la come el shell y el
+# apagado ordenado de index.ts (drenar requests en vuelo) nunca corre.
+CMD ["sh", "-c", "pnpm db:deploy && exec node dist/index.js"]
