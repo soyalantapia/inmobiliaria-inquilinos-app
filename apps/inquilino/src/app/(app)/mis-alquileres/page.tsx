@@ -53,7 +53,12 @@ export default function MisAlquileresPage() {
     try {
       const sesion = await elegirAlquiler(a.inquilinoId, alquileres?.length ?? 1);
       toast({ title: 'Cambiaste de alquiler', description: sesion.direccion || a.direccion });
-      router.replace('/');
+      // HARD nav a propósito (no router.replace): el QueryClient vive en el layout
+      // raíz y sobrevive a la navegación client-side, así que con soft nav la home
+      // se pintaba con la caché del alquiler ANTERIOR (deuda de la otra propiedad).
+      // Recargar la app entera la destruye, y de paso mata el race de un refetch
+      // disparado con el token viejo que resuelve después del setToken.
+      window.location.assign('/');
     } catch (e) {
       setCambiando(null);
       if (e instanceof ApiError && e.status === 401) {

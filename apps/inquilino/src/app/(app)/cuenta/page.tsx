@@ -55,7 +55,6 @@ export default function CuentaPage() {
 // La edición (/cuenta/editar) NO tiene endpoint en el API: el botón queda
 // deshabilitado con copy "próximamente" en vez de guardar en localStorage.
 function CuentaReal() {
-  const router = useRouter();
   const user = useCurrentUser();
   const { contrato, inmobiliariaTelefono } = useMiContrato();
   const { imageUrl, subir: subirAvatar, deApi: avatarDeApi } = useAvatar();
@@ -311,7 +310,10 @@ function CuentaReal() {
         variant="destructive"
         onConfirm={() => {
           cerrarSesion();
-          router.push('/login');
+          // HARD nav: cerrarSesion() borra los tokens de localStorage pero NO la
+          // caché en memoria de react-query. Con soft nav, el próximo que entre en
+          // este dispositivo podía ver datos del anterior.
+          window.location.assign('/login');
         }}
       />
     </>

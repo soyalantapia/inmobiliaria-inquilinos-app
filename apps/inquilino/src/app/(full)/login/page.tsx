@@ -194,7 +194,9 @@ export default function LoginPage() {
       title: `¡Hola ${r.sesion.nombre}!`,
       description: 'Ingresaste con éxito.',
     });
-    router.replace('/');
+    // HARD nav: arranca la app con el QueryClient limpio (si en el mismo browser
+    // hubo antes otra sesión, su caché no debe sobrevivir al login).
+    window.location.assign('/');
   };
 
   /* ============================================================
@@ -207,7 +209,8 @@ export default function LoginPage() {
     try {
       const sesion = await elegirAlquiler(inquilinoId, alquileres.length);
       toast({ title: `¡Hola ${sesion.nombre}!`, description: 'Entraste a tu alquiler.' });
-      router.replace('/');
+      // HARD nav: ver el comentario del switcher (/mis-alquileres).
+      window.location.assign('/');
     } catch {
       setEligiendo(null);
       setErrorElegir('No pudimos entrar a ese alquiler. Probá de nuevo.');
