@@ -157,15 +157,41 @@ export async function importacionesCarteraRoutes(app: FastifyInstance): Promise<
 
     const emailsExistentes = await emailsInquilinos(u.inmobiliariaId);
     const propietarioCache = new Map<string, string>();
-    let creadas = 0;
-    const errores: Array<{ fila: number; motivo: string }> = [];
+
+    // REANUDABLE. Cada contrato se crea en su propia transacción dentro de UNA request
+    // HTTP: si el proceso muere a mitad (redeploy, timeout del proxy, el navegador), quedan
+    // K contratos creados y la importación sigue en MAPEADO. Al reintentar, la única
+    // deduplicación era `emailsExistentes` — así que las filas SIN email se volvían a crear
+    // ENTERAS: propiedad + inquilino + contrato + liquidaciones duplicados en la cartera
+    // real del cliente. Ahora vamos anotando qué filas ya se procesaron (en `resultado`,
+    // que ya es Json y no necesita migración) y el reintento las saltea.
+    const previo = (imp.resultado ?? {}) as { creadas?: number; errores?: typeof errores; procesadas?: number[] };
+    const procesadas = new Set<number>(previo.procesadas ?? []);
+    const errores: Array<{ fila: number; motivo: string }> = [...(previo.errores ?? [])];
+    let creadas = previo.creadas ?? 0;
+    let sinGuardar = 0;
+
+    // Checkpoint cada N filas: un update por fila duplicaría el costo de la importación,
+    // y perder ≤10 filas de progreso ante una caída es aceptable (el reintento las repite,
+    // y para las que tienen email la dedup por email las frena igual).
+    const CHECKPOINT = 10;
+    const guardarProgreso = async () => {
+      await prisma.importacionCartera.update({
+        where: { id },
+        data: { resultado: { creadas, errores, procesadas: [...procesadas] } },
+      });
+      sinGuardar = 0;
+    };
 
     for (let i = 0; i < filas.length; i++) {
       if (seleccion && !seleccion.has(i)) continue;
+      if (procesadas.has(i)) continue; // ya se resolvió en un intento anterior
       const d = parsearFilaMapeada(filas[i] ?? [], mapeo);
       const v = validarFila(d, emailsExistentes);
       if (v.estado === 'ERROR' || v.estado === 'DUPLICADO') {
         errores.push({ fila: i, motivo: v.motivo ?? 'Fila inválida' });
+        procesadas.add(i);
+        if (++sinGuardar >= CHECKPOINT) await guardarProgreso();
         continue;
       }
       try {
@@ -178,11 +204,15 @@ export async function importacionesCarteraRoutes(app: FastifyInstance): Promise<
           : e instanceof Error ? e.message : 'Error al crear el contrato';
         errores.push({ fila: i, motivo: msg });
       }
+      // Se marca procesada TAMBIÉN si falló: el error ya quedó registrado y reintentarla a
+      // ciegas es lo que duplicaba filas. El operador la corrige y la vuelve a subir.
+      procesadas.add(i);
+      if (++sinGuardar >= CHECKPOINT) await guardarProgreso();
     }
 
-    const resultado = { creadas, errores };
+    const resultado = { creadas, errores, procesadas: [...procesadas] };
     await prisma.importacionCartera.update({ where: { id }, data: { estado: 'CONFIRMADO', resultado } });
-    return resultado;
+    return { creadas, errores };
   });
 }
 
