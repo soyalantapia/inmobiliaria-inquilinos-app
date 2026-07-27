@@ -78,6 +78,26 @@ Los archivos viven en el **Volume `myalquiler-back-volume`** montado en `/data`.
 montado (dashboard Railway → servicio back → Volumes). El Volume **persiste** entre
 deploys; no se borra al redeployar.
 
+### 8. `prisma migrate deploy` falla al levantar: "migration not found in migrations directory"
+
+Síntoma: el back **no arranca** (el `CMD` corre `pnpm db:deploy` antes de `node`) y el log
+dice que una migración **aplicada en la DB no existe en el repo**. Casi siempre es una
+migración que se **renombró** después de aplicarse: Prisma matchea por nombre de carpeta,
+así que para la DB quedó una entrada huérfana en `_prisma_migrations`.
+
+El caso conocido de este repo: `20260612042420_nucleo_completo`. Si restaurás un dump
+viejo (o levantás una DB nueva desde un backup previo al rename), marcá la migración como
+ya aplicada **sin volver a correrla**:
+```bash
+railway ssh --service myalquiler-back \
+  "npx prisma migrate resolve --applied 20260612042420_nucleo_completo"
+```
+`resolve --applied` **sólo escribe la fila en `_prisma_migrations`**; no toca el esquema.
+Es lo correcto acá justamente porque el SQL ya está aplicado en esa DB.
+
+🚫 **Nunca** `prisma migrate reset` contra prod: borra todos los datos. Si `resolve` no
+alcanza, parar y escalar al owner — no improvisar sobre la DB del cliente.
+
 ## Acceso a la DB de prod (read-only / queries puntuales)
 
 El host de prod es **interno** (no resuelve desde tu Mac). Corré la query **dentro** del
@@ -101,6 +121,8 @@ del owner (regla dura).
 
 - **DB**: Railway hace backups del Postgres (ver el plan/servicio en el dashboard). Para
   un backup manual: `pg_dump` contra la DB (vía `railway ssh` o la URL si está expuesta).
+- ⚠️ **Al restaurar un dump viejo**, `migrate deploy` puede fallar por la migración
+  renombrada → ver el incidente 8 (`migrate resolve --applied`, nunca `reset`).
 - **Volume `/data`**: contiene los archivos subidos. Railway no versiona el Volume
   automáticamente → para un respaldo, copiar `/data/uploads` vía `railway ssh` + `tar`.
 

@@ -1,8 +1,10 @@
 # Estado del proyecto — My Alquiler
 
 > **Documento de handoff.** Resumen ejecutivo de dónde está el proyecto hoy.
-> Última actualización: **2026-07-05**. Último commit: `7e34765` (origin/main).
-> Últimos hitos (todo en prod, back+front, E2E/verificación OK):
+> Última actualización: **2026-07-27**. Último commit: `e133b10` (origin/main).
+> **Último hito (27/07): cacería sistemática de bugs** — ~75 hallazgos, **40 corregidos y
+> deployados** (los 5 P0 activos incluidos). Detalle en `03-AUDITORIAS.md` §cacería 27/07.
+> Hitos previos (todo en prod, back+front, E2E/verificación OK):
 > **(1) Eliminación del PIN** de seguridad en TODA la plataforma (kill-switch `verificarPinUsuario`
 > siempre-ok; ninguna acción pide PIN). **(2) Reclamos "¿quién paga?"** — propietario/inquilino/
 > depósito con **impacto real en la plata** (rendición del dueño / cargo al inquilino / deducción del
@@ -99,8 +101,18 @@ auditoría multi-agente arreglaron **~50+ bugs reales** verificados y deployados
 
 ## Qué falta (próximo chat)
 
-**No hay bugs abiertos conocidos.** La **conciliación bancaria** y la **migración de
-cartera** ya están (ver julio, arriba), así que salen de esta lista. Lo que queda:
+**Bugs abiertos: 0 de los detectados** — la cacería del 27/07 cerró los 40 hallazgos
+accionables (ver `03-AUDITORIAS.md`). Lo único que quedó **sin resolver es una decisión de
+producto, no código**:
+
+0. 🔴 **`usuarios.email` no es único a nivel global.** Prod hoy tiene **0 duplicados**
+   (verificado read-only), pero el registro público permite la carrera: dos altas
+   simultáneas con el mismo mail crean dos usuarios y el login queda ambiguo. La
+   restricción es trivial (`@unique` + migración) pero **rompería a quien hoy use el mismo
+   mail en dos inmobiliarias** — por eso no se aplicó sin tu OK. Decidir: ¿un mail = una
+   sola cuenta en toda la plataforma?
+
+Lo demás que queda es cableado:
 
 **Follow-ups de features recientes** (no es decisión, es cablear):
 

@@ -121,6 +121,46 @@ todavía no las consume. Deploy `railway up` de los 3 servicios (exit 0 c/u), pu
 `15f641c..535d15d`, árbol limpio, smoke test OK (API/admin/app → 200). **Demo intacta /
 ambos modos andan** en todo el batch. Detalle de endpoints y schema en `01-ARQUITECTURA.md`.
 
+### Cacería sistemática 27/07 — ~75 hallazgos, **40 corregidos y deployados**
+
+La pasada más grande hasta hoy. Método: **8 investigaciones de dominio en paralelo** +
+**39 escépticos adversariales** (uno por hallazgo, con la consigna de *refutarlo*).
+Después, **queries read-only contra prod** para separar *incendio activo* de *bomba
+dormida* — esto cambió la prioridad de varios: p. ej. el doble cobro al co-propietario
+era P0 por lógica, pero prod tiene **0 propiedades multi-dueño**, así que no había plata
+mal hoy. Al revés, el borrado de archivos ajenos sí estaba activo.
+
+**Aprendizajes de método (nuevos, valen para la próxima):**
+
+- **Verificar contra prod ANTES de priorizar.** Sin ese paso, la lista ordena por
+  gravedad teórica y se trabaja en el orden equivocado.
+- **Re-verificar los hallazgos viejos contra el código de HOY.** De 31 pendientes,
+  **30 seguían vivos, 1 ya estaba arreglado** por otra sesión, y **5 descripciones
+  estaban mal**: una (`N5`) era **peor** que lo escrito; cuatro, más angostas. Un
+  hallazgo sin re-verificar es una hipótesis, no un bug.
+- **Verificar el comportamiento en prod, no el "deploy OK".** Un deploy exitoso no
+  prueba nada: se chequeó allowlist de Soporte (200 en Tapia / 403 en otro tenant),
+  el campo `excedente` nuevo, `GET /sociedades` con rol OPERADOR, `?token=[REDACTED]`
+  en los logs y `pid=1` (que prueba que el `exec` del Dockerfile funciona).
+- **Antes de culpar al código, descartar el entorno.** Dos "regresiones" no lo eran:
+  una era **estado sucio en la DB de test** dejado por otra suite del mismo run, y otra
+  un `node_modules` viejo. Se verifican con `git stash` (¿falla también SIN mi cambio?).
+- **Cuando un test falla, la sospechosa #1 es la aserción.** Un test propio afirmaba
+  "ningún mes nace VENCIDO"; con `diaPago:10` importando un 22, el mes corriente vence
+  legítimamente. El código estaba bien; la aserción medía mal.
+
+**Lo que salió de la cacería** (11 commits, todo en `main` y deployado): imputación de
+reclamos unificada, tope por dueño en la rendición, anulación que ya no deja plata
+varada, apagado ordenado del back, importación de cartera reanudable, borrado de
+archivos sólo si quedan huérfanos, tokens redactados en logs, moneda en la caja,
+permiso vigente del co-inquilino, totales por moneda. Tests nuevos: `deposito`,
+`matching-bancario`, `importacion-reanudable`, + `rendicion-multiowner` 3→9.
+
+**Único hallazgo NO cerrado** (es decisión, no código): `usuarios.email` sin `@unique`
+global. Ojo — **no** confundir con el falso positivo de acá abajo: scopear el email
+**por tenant** rompe el 2do tenant; lo que está en discusión es lo contrario, un mail =
+una cuenta en toda la plataforma.
+
 ## La tendencia (por qué seguir re-corriendo)
 
 24 → 12 bugs entre pasadas: **el loop converge**. Cada ejecución encuentra menos y de
