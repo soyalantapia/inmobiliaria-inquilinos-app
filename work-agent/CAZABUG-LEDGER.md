@@ -15,6 +15,16 @@ mergearon a main. Se rearmó la rama desde `origin/main` y se descartaron los du
 | rendición: co-dueño cobrado dos veces | **ya en main** (`52c5699`) |
 | contratos importados devengan deuda falsa | **ya en main** (`8743e78`, campo `devengarDesde`) |
 | pago de conciliación con `tipo: TOTAL` siendo parcial | **ya en main** (ahora condicional a `cubierta`) |
+| reintentar una importación cortada duplica la cartera | **ya en main** (`81d5199`), y **mejor**: la hace REANUDABLE (anota filas procesadas + checkpoint cada 10) |
+
+### Por qué se descartó mi fix H (lock atómico del confirmar)
+Yo había resuelto la duplicación con un `updateMany` condicionado por estado que marcaba
+CONFIRMADO **al arrancar**. Eso habría **roto** el diseño de main: una importación que se
+corta a mitad quedaría CONFIRMADO y sin forma de retomarla. El de main cubre el caso común
+(el proceso muere y el operador reintenta). Queda un hueco menor que ninguno de los dos
+cubre: **dos requests SIMULTÁNEAS** (doble click) — ambas arrancan con `procesadas` vacío
+y corren en paralelo. Cerrarlo bien pide un estado intermedio en `EstadoImportacion`
+(migración), así que se deja anotado en vez de forzar un lock que rompa la reanudación.
 
 Mis tests de esas causas **se conservaron igual**: pasan a ser la auditoría que valida las
 implementaciones de main y las blinda contra regresiones.
@@ -28,10 +38,9 @@ implementaciones de main y las blinda contra regresiones.
 | E | `38e0776` | /listo imputa sin el guard anti-doble-cobro que sí tiene /resolver | imputar-reclamo-ya-rendido (2) |
 | F | `d339c6e` | devengo sin canon por período → vigencia futura cobra los meses intermedios al canon nuevo | canon-por-periodo (7) |
 | G2 | `0c22c64` | la cartera tenía su propio parser de montos: locale US entraba 1000x más chico | monto-ar (7) + extracto-csv-parseo (4) |
-| H | `03f7400` | confirmar importación sin lock atómico → un reintento duplica la cartera entera | — (necesita DB) |
 | I | `c115ced` | dedup de importación sólo por email (opcional) → re-subir duplica todo | import-dedup-direccion (6) |
 | J | `10dd562` | extractos solapados duplican créditos · conciliación sin control de moneda (ARS salda USD 1:1) | — (necesita DB) |
-| H2 | `847e334` | el panel mostraba el total ya truncado por MAX_FILAS | — (UI) |
+| H2 | (ver git log) | MAX_FILAS truncaba el archivo en silencio: el admin creía haber migrado toda la cartera | — (UI + API) |
 
 ## Trampas encontradas (el fix "obvio" habría roto algo)
 - **D**: FK `Pago→Liquidacion` = ON DELETE RESTRICT → hay que soltar los pagos muertos ANTES
