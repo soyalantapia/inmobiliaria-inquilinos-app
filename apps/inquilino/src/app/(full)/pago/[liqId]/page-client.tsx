@@ -161,6 +161,7 @@ function DetallePagoView({
         // la inmobiliaria del contrato (o el genérico si aún no cargó).
         decidiSPor: contrato?.inmobiliaria ?? 'la inmobiliaria',
         decidiSAt: decidido.decididoAt ?? decidido.informadoAt,
+        anulado: decidido.anulado === true,
       };
     }
     return {
@@ -230,7 +231,7 @@ function DetallePagoView({
               </div>
               <div className="flex-1 space-y-1">
                 <p className="text-sm font-semibold text-destructive">
-                  Tu pago fue rechazado
+                  {decisionInmo.anulado ? 'La inmobiliaria revirtió este cobro' : 'Tu pago fue rechazado'}
                 </p>
                 {decisionInmo.motivo && (
                   <p className="rounded-md bg-background/60 p-2 text-xs italic">
@@ -238,17 +239,27 @@ function DetallePagoView({
                   </p>
                 )}
                 <p className="text-[11px] text-muted-foreground">
-                  Rechazado por {decisionInmo.decidiSPor} ·{' '}
+                  {decisionInmo.anulado ? 'Revertido' : 'Rechazado'} por {decisionInmo.decidiSPor} ·{' '}
                   {formatFecha(decisionInmo.decidiSAt)}
                 </p>
               </div>
             </div>
-            <Button asChild size="lg" variant="destructive" className="w-full">
-              <Link href={`/pago/${liq.id}/checkout`}>
-                <RotateCcw className="h-4 w-4" />
-                Volver a subir comprobante
-              </Link>
-            </Button>
+            {/* Una REVERSIÓN no se arregla re-subiendo el mismo comprobante: el problema
+                no fue del inquilino (rebote bancario, error de carga de la inmo). Mandarlo
+                a "volver a subir" lo culpaba y no resolvía nada. */}
+            {decisionInmo.anulado ? (
+              <p className="rounded-md bg-background/60 p-2 text-xs text-muted-foreground">
+                Si no esperabas esto, consultale el motivo a {decisionInmo.decidiSPor}. La cuota
+                vuelve a figurar pendiente hasta que se resuelva.
+              </p>
+            ) : (
+              <Button asChild size="lg" variant="destructive" className="w-full">
+                <Link href={`/pago/${liq.id}/checkout`}>
+                  <RotateCcw className="h-4 w-4" />
+                  Volver a subir comprobante
+                </Link>
+              </Button>
+            )}
           </Card>
         )}
 

@@ -203,6 +203,10 @@ export interface DecisionInmoSobrePago {
   motivo: string | null;
   decidiSPor: string;
   decidiSAt: string;
+  /** true = la inmo REVIRTIÓ un cobro que ya había conciliado (rebote bancario, error de
+   *  carga), no rechazó el comprobante. El backend ya lo distingue en /mis-liquidaciones;
+   *  sin consumirlo la app culpaba al inquilino y lo mandaba a re-subir lo mismo. */
+  anulado?: boolean;
 }
 
 interface AccionConciliacionCrossApp {

@@ -80,6 +80,8 @@ export interface PagoDeLiquidacion {
   id: string;
   tipo: 'TOTAL' | 'PARCIAL';
   estado: 'INFORMADO' | 'CONCILIADO' | 'RECHAZADO';
+  /** RECHAZADO + anulado = la inmo revirtió un cobro suyo, no rechazó al inquilino. */
+  anulado?: boolean;
   monto: number;
   metodo: 'TRANSFERENCIA' | 'MERCADOPAGO' | 'EFECTIVO' | 'CHEQUE';
   nroOperacion: string | null;
@@ -148,6 +150,12 @@ export interface Contrato {
   proximoAjuste: string;
   montoActual: number;
   moneda: Moneda;
+  /** Depósito de garantía REALMENTE entregado. null = el contrato no lo tiene cargado.
+   *  Antes la app mostraba el alquiler ACTUAL como depósito: tras los ajustes por índice
+   *  ese número no tiene relación con lo que el inquilino entregó al firmar. */
+  depositoGarantia?: number | null;
+  estadoDeposito?: 'RETENIDO' | 'DEVUELTO' | 'NETEADO' | 'EJECUTADO';
+  depositoDevueltoMonto?: number | null;
 }
 
 export interface MensajeChat {

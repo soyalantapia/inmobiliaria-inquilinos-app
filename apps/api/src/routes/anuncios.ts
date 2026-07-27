@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { AudienciaAnuncio } from '@prisma/client';
 import type { JwtInquilino } from '@llave/shared';
 import { prisma } from '../db.js';
-import { requireInquilino, requireUsuario } from '../auth/guards.js';
+import { requireContratoAcceso, requireInquilino, requireUsuario } from '../auth/guards.js';
 import { enviarAnuncioEmail, mailerConfigured } from '../mailer.js';
 
 /**
@@ -348,13 +348,28 @@ export async function anunciosRoutes(app: FastifyInstance) {
   });
 
   // ===== Inquilino: los anuncios que le aplican + su acuse propio =====
+  // Lo puede leer CUALQUIER miembro del contrato, no sólo el titular. Con requireInquilino
+  // un co-inquilino recibía 403 y el front se lo comía en silencio (ante error muestra
+  // lista vacía y no renderiza la sección): nunca se enteraba de un anuncio — ni de un
+  // cambio de CBU, que es exactamente el caso en que no enterarse cuesta plata.
+  // El ACUSE sigue siendo del titular (está keyed por inquilinoId): el co-inquilino lee,
+  // pero no acusa recibo por él. Por eso `puedeAcusar`.
   app.get('/mis-anuncios', async (request, reply) => {
-    const inq = await requireInquilino(request, reply);
-    if (!inq) return;
+    const acc = await requireContratoAcceso(request, reply, 'VER');
+    if (!acc) return;
+    const inq = {
+      inmobiliariaId: acc.inmobiliariaId,
+      contratoId: acc.contratoId,
+      inquilinoId: acc.inquilinoId,
+    } as JwtInquilino;
     const ctx = await contextoContrato(inq);
     const anuncios = await prisma.anuncio.findMany({
-      where: { inmobiliariaId: inq.inmobiliariaId, audiencia: { in: AUDIENCIAS_INQUILINO } },
-      include: { acuses: { where: { inquilinoId: inq.inquilinoId }, select: { leidoAt: true, confirmadoAt: true } } },
+      where: { inmobiliariaId: acc.inmobiliariaId, audiencia: { in: AUDIENCIAS_INQUILINO } },
+      include: {
+        acuses: acc.inquilinoId
+          ? { where: { inquilinoId: acc.inquilinoId }, select: { leidoAt: true, confirmadoAt: true } }
+          : { where: { inquilinoId: '__ninguno__' }, select: { leidoAt: true, confirmadoAt: true } },
+      },
       orderBy: { enviadoAt: 'desc' },
     });
     const consorcioIds = [
@@ -363,7 +378,13 @@ export async function anunciosRoutes(app: FastifyInstance) {
     const bases = await basesConsorcio(inq.inmobiliariaId, consorcioIds);
     return anuncios
       .filter((a) => aplicaAlContrato(a, ctx.contrato, ctx.estadoPago, bases))
-      .map(({ acuses, ...a }) => ({ ...a, acuse: acuses[0] ?? null }));
+      .map(({ acuses, ...a }) => ({
+        ...a,
+        acuse: acuses[0] ?? null,
+        // false para co-inquilinos: el front oculta el botón "Enterado" en vez de
+        // ofrecerlo y comerse un 403.
+        puedeAcusar: !!acc.inquilinoId,
+      }));
   });
 
   // ===== Inquilino: acuses reales (leído al abrir / "Enterado" explícito) =====

@@ -136,12 +136,28 @@ export default function ContratoPage() {
               value={formatFechaCorta(c.proximoAjuste)}
               hint={diasAjuste >= 0 ? `en ${diasAjuste} días` : undefined}
             />
-            <Row
-              icon={<KeyRound className="h-4 w-4" />}
-              label="Depósito en garantía"
-              value={formatMonto(c.montoActual, c.moneda)}
-              hint="1 mes — te lo devuelven al final"
-            />
+            {/* Depósito REAL del contrato. Antes esta fila mostraba el alquiler ACTUAL
+                con el texto "1 mes — te lo devuelven al final": después de un par de
+                ajustes por índice era un número inventado (muy superior al que el
+                inquilino entregó al firmar), y prometía la devolución entera aunque ya
+                hubiera reparaciones imputadas. Sin depósito cargado no mostramos la fila:
+                mejor no decir nada que decir algo falso. */}
+            {c.depositoGarantia != null && c.depositoGarantia > 0 && (
+              <Row
+                icon={<KeyRound className="h-4 w-4" />}
+                label="Depósito en garantía"
+                value={formatMonto(c.depositoGarantia, c.moneda)}
+                hint={
+                  c.estadoDeposito === 'DEVUELTO'
+                    ? 'Ya te lo devolvieron'
+                    : c.estadoDeposito === 'NETEADO'
+                      ? `Se te devolvió ${formatMonto(c.depositoDevueltoMonto ?? 0, c.moneda)}`
+                      : c.estadoDeposito === 'EJECUTADO'
+                        ? 'Retenido por la inmobiliaria'
+                        : 'Lo tiene la inmobiliaria hasta que termine el contrato'
+                }
+              />
+            )}
             {/* Quitamos la row de Dirección: ya aparece arriba en el header
                 de la página ("Mi contrato · Gorriti 4521…"). */}
           </Card>

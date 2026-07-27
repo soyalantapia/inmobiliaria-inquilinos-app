@@ -52,6 +52,9 @@ interface ContratoApi {
   montoActual: number;
   montoExpensas: number | null;
   moneda: Contrato['moneda'];
+  depositoGarantia?: number | null;
+  estadoDeposito?: Contrato['estadoDeposito'];
+  depositoDevueltoMonto?: number | null;
   // Reglas de la unidad, visibles para el inquilino (evitan consultas).
   mascotasPermitidas?: boolean | null;
   reglasConvivencia?: string | null;
@@ -94,6 +97,9 @@ export function useMiContrato(): {
       proximoAjuste: d.proximoAjuste ?? '',
       montoActual: d.montoActual,
       moneda: d.moneda,
+      depositoGarantia: d.depositoGarantia ?? null,
+      estadoDeposito: d.estadoDeposito,
+      depositoDevueltoMonto: d.depositoDevueltoMonto ?? null,
     },
     inmobiliariaTelefono: d.inmobiliariaTelefono,
     datosCobranza: d.datosCobranza ?? null,

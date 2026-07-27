@@ -207,15 +207,23 @@ export function useBoletas(): {
 
   // ===== Modo API (prod) =====
   if (q.isError) {
+    // Las acciones TIRAN en vez de resolver en silencio. Eran no-ops que resolvían OK, así
+    // que la pantalla de subir boleta hacía `await subirBoleta(...)`, no entraba nunca al
+    // catch y mostraba "Boleta subida ✔" — mientras el archivo quedaba huérfano en el
+    // Volume y no se creaba ninguna fila. El inquilino creía que había rendido la boleta
+    // de luz y la inmobiliaria nunca la veía.
+    const sinConexion = async (): Promise<never> => {
+      throw new Error('No pudimos conectar con el servidor. Revisá tu conexión e intentá de nuevo.');
+    };
     return {
       boletas: [],
       cargando: false,
       hidratado: true,
       deApi: true,
       puedeGestionar: false,
-      subirBoleta: async () => {},
-      marcarPagada: async () => {},
-      eliminar: async () => {},
+      subirBoleta: sinConexion,
+      marcarPagada: sinConexion,
+      eliminar: sinConexion,
     };
   }
 

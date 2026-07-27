@@ -568,6 +568,15 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
       montoActual: Number(contrato.monto),
       montoExpensas: contrato.montoExpensas != null ? Number(contrato.montoExpensas) : null,
       tipoContrato: contrato.tipoContrato,
+      // Depósito de garantía REAL. La app lo mostraba como "1 mes" usando el alquiler
+      // ACTUAL: tras un par de ajustes por índice ese número no tiene nada que ver con lo
+      // que el inquilino entregó al firmar (que suele ser un mes del canon ORIGINAL), y
+      // además prometía que se devuelve entero aunque ya hubiera reparaciones imputadas.
+      // null = el contrato no tiene depósito cargado → la app no muestra la fila.
+      depositoGarantia: contrato.depositoGarantia != null ? Number(contrato.depositoGarantia) : null,
+      estadoDeposito: contrato.estadoDeposito,
+      depositoDevueltoMonto:
+        contrato.depositoDevueltoMonto != null ? Number(contrato.depositoDevueltoMonto) : null,
       // Mascotas (Sí/No/no especificado) y reglas de convivencia: se muestran en
       // el contrato del inquilino para que no tenga que preguntar.
       mascotasPermitidas: contrato.mascotasPermitidas,

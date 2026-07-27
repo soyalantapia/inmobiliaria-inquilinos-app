@@ -208,6 +208,19 @@ export async function seedBase(prisma: PrismaClient) {
     { id: 'pag_001', contratoId: 'cnt_005', liquidacionId: 'liq_005', periodo: '2026-06', monto: 850000, metodo: 'TRANSFERENCIA' as const, nroOperacion: 'TRF-882341', fechaTransferencia: '2026-06-10', notaInquilino: 'Transferí desde mi cuenta del Galicia.' },
     { id: 'pag_002', contratoId: 'cnt_001', liquidacionId: 'liq_001', periodo: '2026-05', monto: 572000, metodo: 'TRANSFERENCIA' as const, nroOperacion: 'TRF-901122', fechaTransferencia: '2026-06-11', notaInquilino: 'Pago de mayo completo, perdón la demora.' },
   ];
+  // El índice único PARCIAL `pagos_liquidacionId_informado_key` permite UN SOLO pago
+  // INFORMADO por liquidación. Una suite que informa un pago y no lo limpia deja un
+  // huérfano (id cuid) sobre una liquidación del seed, y a partir de ahí el upsert de acá
+  // revienta con P2002 → el beforeAll de CUALQUIER suite falla y todos sus tests quedan en
+  // skipped. El seed tiene que poder correr sobre una DB sucia: barremos los INFORMADO que
+  // no son del seed sobre las liquidaciones que sembramos.
+  await prisma.pago.deleteMany({
+    where: {
+      liquidacionId: { in: pagos.map((p) => p.liquidacionId) },
+      estado: 'INFORMADO',
+      id: { notIn: pagos.map((p) => p.id) },
+    },
+  });
   for (const p of pagos) {
     const { fechaTransferencia, ...resto } = p;
     await prisma.pago.upsert({
