@@ -25,7 +25,8 @@ interface CargoApi extends Omit<CargoInquilino, 'monto'> {
 
 export function useMisCargos(): {
   cargos: CargoInquilino[];
-  total: number;
+  /** Un total POR MONEDA: los cargos de un contrato pueden no compartirla. */
+  totales: Array<{ moneda: CargoInquilino['moneda']; total: number }>;
   cargando: boolean;
   isError: boolean;
 } {
@@ -35,13 +36,19 @@ export function useMisCargos(): {
     enabled: apiEnabled,
     staleTime: 30_000,
   });
-  if (!apiEnabled) return { cargos: [], total: 0, cargando: false, isError: false };
-  if (q.isError) return { cargos: [], total: 0, cargando: false, isError: true };
+  if (!apiEnabled) return { cargos: [], totales: [], cargando: false, isError: false };
+  if (q.isError) return { cargos: [], totales: [], cargando: false, isError: true };
   // Prisma serializa Decimal como string → normalizamos monto a number.
   const cargos = (q.data ?? []).map((c) => ({ ...c, monto: Number(c.monto) }));
+  // Total POR MONEDA. Antes era un `reduce` plano rotulado con la moneda del primer cargo:
+  // con una penalidad en USD y una reparación en ARS daba un número sin sentido y con el
+  // símbolo equivocado. Cada CargoContrato lleva su propia moneda, así que no se pueden
+  // sumar entre sí.
+  const porMoneda = new Map<CargoInquilino['moneda'], number>();
+  for (const c of cargos) porMoneda.set(c.moneda, (porMoneda.get(c.moneda) ?? 0) + c.monto);
   return {
     cargos,
-    total: cargos.reduce((s, c) => s + c.monto, 0),
+    totales: [...porMoneda.entries()].map(([moneda, total]) => ({ moneda, total })),
     cargando: q.isPending,
     isError: false,
   };

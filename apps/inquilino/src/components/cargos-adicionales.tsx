@@ -16,9 +16,8 @@ import { useMisCargos, type CargoInquilino } from '@/lib/api/use-cargos';
 import { formatFechaCorta, formatMonto } from '@/lib/format';
 
 export function CargosAdicionales({ inmobiliaria }: { inmobiliaria?: string }) {
-  const { cargos, total, cargando } = useMisCargos();
+  const { cargos, totales, cargando } = useMisCargos();
   if (cargando || cargos.length === 0) return null;
-  const moneda = cargos[0]?.moneda ?? 'ARS';
 
   return (
     <section className="space-y-2 animate-fade-in">
@@ -26,8 +25,11 @@ export function CargosAdicionales({ inmobiliaria }: { inmobiliaria?: string }) {
         <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Cargos adicionales
         </h2>
-        <span className="text-xs font-bold tabular-nums text-amber-700 dark:text-amber-300">
-          {formatMonto(total, moneda)}
+        {/* Un total POR MONEDA: sumar ARS con USD daría un número sin sentido. */}
+        <span className="flex flex-wrap items-center justify-end gap-x-2 text-xs font-bold tabular-nums text-amber-700 dark:text-amber-300">
+          {totales.map((t) => (
+            <span key={t.moneda}>{formatMonto(t.total, t.moneda)}</span>
+          ))}
         </span>
       </div>
       <Card className="divide-y divide-amber-100 border-amber-200 bg-amber-50/60 dark:divide-amber-900/30 dark:border-amber-900/40 dark:bg-amber-900/10">

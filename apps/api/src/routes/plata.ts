@@ -1473,6 +1473,7 @@ export async function plataRoutes(app: FastifyInstance) {
     });
     // Una sola moneda por rendición (la Rendicion guarda un monto). Si mezcla → 409.
     const monedas = [...new Set(liqsCobradas.map((l) => l.moneda))];
+    const monedaRendicion = monedas[0] ?? 'ARS';
     if (monedas.length > 1) {
       return reply.code(409).send({
         message: `Este propietario tiene cobros en varias monedas (${monedas.join(', ')}) en ${periodo}. Rendí cada moneda por separado (hoy la rendición es de una sola moneda).`,
@@ -1579,6 +1580,10 @@ export async function plataRoutes(app: FastifyInstance) {
             inmobiliariaId: u.inmobiliariaId,
             propiedadId: { in: propIdsConIngreso },
             tipo: 'GASTO',
+            // Sólo los de la MISMA moneda que la rendición: un gasto en pesos no puede
+            // restarse del neto de una rendición en dólares (la rendición guarda un solo
+            // monto y ya exige una moneda única del lado de las liquidaciones).
+            moneda: monedaRendicion,
             descontadoEnRendicion: false,
             // CARRY-OVER: todo gasto pendiente ANTERIOR al fin del período, no sólo los del
             // mes. Con la ventana estricta (`gte: inicioPeriodo`), un gasto cargado tarde
@@ -1707,6 +1712,7 @@ export async function plataRoutes(app: FastifyInstance) {
             inmobiliariaId: u.inmobiliariaId,
             propiedadId: { in: propIdsConIngreso },
             tipo: 'INGRESO_EXTRA',
+            moneda: monedaRendicion, // idem gastos: no mezclar monedas en el neto
             descontadoEnRendicion: false,
             // CARRY-OVER, igual que los gastos: un ingreso cargado tarde no puede quedar
             // varado. Acá el perjudicado es el PROPIETARIO — es plata suya que nunca se le

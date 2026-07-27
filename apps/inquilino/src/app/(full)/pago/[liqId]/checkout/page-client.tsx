@@ -128,7 +128,7 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
   // Teléfono real de la inmobiliaria (sólo en prod) para el CTA de WhatsApp
   // del estado neutro de datos bancarios + el hint de negociar. En demo es
   // null. El contrato real aporta el alquiler vigente (umbral del hint).
-  const { contrato, inmobiliariaTelefono, datosCobranza } = useMiContrato();
+  const { contrato, inmobiliariaTelefono, datosCobranza, permiso, esCoInquilino } = useMiContrato();
 
   const [step, setStep] = useState<Step>('datos');
   /** Pagos previos (parciales o total) ya informados para esta liq — demo. */
@@ -262,7 +262,13 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
   // Co-inquilino "Solo lectura" (VER): la pantalla de invitación promete que NO
   // puede informar pagos. Lo hacemos cumplir acá, el único punto donde se informa
   // un pago (el home le muestra el monto, que sí puede ver).
-  if (sesion?.esCoInquilino && sesion.permiso === 'VER') {
+  // El permiso del SERVER manda; el de la sesión local es sólo el fallback mientras
+  // /mi-contrato no respondió. Antes se leía únicamente de localStorage, escrito una vez al
+  // aceptar la invitación: ascender a un co-inquilino de VER a PAGAR no llegaba nunca a su
+  // app —el backend ya lo dejaba pagar— y el link de invitación ya estaba consumido.
+  const esCo = esCoInquilino ?? sesion?.esCoInquilino ?? false;
+  const permisoVigente = permiso ?? sesion?.permiso;
+  if (esCo && permisoVigente === 'VER') {
     return (
       <main className="flex-1 px-5 py-10">
         <div className="mx-auto max-w-md space-y-3 text-center">

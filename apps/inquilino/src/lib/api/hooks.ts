@@ -55,6 +55,9 @@ interface ContratoApi {
   depositoGarantia?: number | null;
   estadoDeposito?: Contrato['estadoDeposito'];
   depositoDevueltoMonto?: number | null;
+  /** Permiso VIGENTE de quien consulta (el server lo revalida en cada request). */
+  permiso?: 'VER' | 'PAGAR' | 'COMPLETO';
+  esCoInquilino?: boolean;
   // Reglas de la unidad, visibles para el inquilino (evitan consultas).
   mascotasPermitidas?: boolean | null;
   reglasConvivencia?: string | null;
@@ -64,6 +67,9 @@ interface ContratoApi {
 export function useMiContrato(): {
   contrato: Contrato | null;
   inmobiliariaTelefono: string | null;
+  /** Permiso VIGENTE de quien consulta, revalidado por el server en cada request. */
+  permiso?: 'VER' | 'PAGAR' | 'COMPLETO';
+  esCoInquilino?: boolean;
   datosCobranza: DatosCobranza | null;
   mascotasPermitidas: boolean | null;
   reglasConvivencia: string | null;
@@ -102,6 +108,10 @@ export function useMiContrato(): {
       depositoDevueltoMonto: d.depositoDevueltoMonto ?? null,
     },
     inmobiliariaTelefono: d.inmobiliariaTelefono,
+    // Permiso del SERVER: es la fuente de verdad, no el localStorage escrito al aceptar
+    // la invitación (que nunca se refrescaba tras un cambio de permiso).
+    permiso: d.permiso,
+    esCoInquilino: d.esCoInquilino,
     datosCobranza: d.datosCobranza ?? null,
     mascotasPermitidas: d.mascotasPermitidas ?? null,
     reglasConvivencia: d.reglasConvivencia ?? null,

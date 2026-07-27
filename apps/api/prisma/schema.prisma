@@ -1742,6 +1742,12 @@ model MovimientoCaja {
   categoria             CategoriaGasto
   descripcion           String
   monto                 Decimal            @db.Decimal(14, 2)
+  // Moneda del movimiento. La rendición valida UNA sola moneda por rendición (mira las
+  // liquidaciones), pero los gastos/ingresos de caja no la tenían: un gasto en pesos se
+  // restaba tal cual del neto de una rendición en USD, como si $80.000 fueran US$80.000.
+  // Default ARS: es la única moneda que la UI de caja permite cargar hoy, así que las
+  // filas existentes quedan correctas.
+  moneda                Moneda             @default(ARS)
   fecha                 DateTime
   proveedor             String?
   comprobanteUrl        String?

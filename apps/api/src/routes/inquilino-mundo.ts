@@ -568,6 +568,14 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
       montoActual: Number(contrato.monto),
       montoExpensas: contrato.montoExpensas != null ? Number(contrato.montoExpensas) : null,
       tipoContrato: contrato.tipoContrato,
+      // Permiso VIGENTE de quien consulta (el guard ya lo revalida contra la DB en cada
+      // request). El front lo tenía sólo en localStorage, escrito UNA vez al aceptar la
+      // invitación y nunca refrescado: si el titular ascendía a un co-inquilino de VER a
+      // PAGAR, el backend ya lo dejaba pagar pero su app seguía mostrando "solo lectura"
+      // para siempre — y el link de invitación ya estaba consumido, así que no había forma
+      // de arreglarlo desde la app.
+      permiso: inq.permiso,
+      esCoInquilino: inq.esCoInquilino,
       // Depósito de garantía REAL. La app lo mostraba como "1 mes" usando el alquiler
       // ACTUAL: tras un par de ajustes por índice ese número no tiene nada que ver con lo
       // que el inquilino entregó al firmar (que suele ser un mes del canon ORIGINAL), y
