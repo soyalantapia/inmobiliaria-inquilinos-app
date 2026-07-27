@@ -27,6 +27,9 @@ import {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/** Estados posibles del contrato de un alquiler (enum EstadoContrato del API). */
+export type EstadoContratoAlquiler = 'BORRADOR' | 'ACTIVO' | 'FINALIZADO' | 'RESCINDIDO';
+
 /** Un alquiler (contrato) de la persona, tal como lo lista el API. */
 export interface Alquiler {
   inquilinoId: string;
@@ -34,6 +37,17 @@ export interface Alquiler {
   inmobiliaria: string;
   direccion: string;
   ciudad: string;
+  /** El API ya lo manda; puede faltar en respuestas viejas cacheadas. */
+  estado?: EstadoContratoAlquiler | null;
+}
+
+/**
+ * ¿Este alquiler ya terminó? Solo FINALIZADO y RESCINDIDO llevan el cartel:
+ * un BORRADOR es un contrato cargado para revisión que todavía no arrancó, y
+ * marcarlo como "Finalizado" sería mentirle al inquilino.
+ */
+export function esAlquilerTerminado(estado: Alquiler['estado']): boolean {
+  return estado === 'FINALIZADO' || estado === 'RESCINDIDO';
 }
 
 /**

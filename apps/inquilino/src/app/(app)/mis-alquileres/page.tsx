@@ -9,7 +9,7 @@ import { toast } from '@llave/ui/use-toast';
 import { NavBar } from '@/components/nav-bar';
 import { apiEnabled, ApiError } from '@/lib/api/client';
 import { leerSesion } from '@/lib/auth-otp';
-import { elegirAlquiler, listarAlquileres, type Alquiler } from '@/lib/auth-otp-api';
+import { elegirAlquiler, esAlquilerTerminado, listarAlquileres, type Alquiler } from '@/lib/auth-otp-api';
 
 /**
  * Switcher "Mis alquileres": una persona (email) con varios contratos puede
@@ -141,7 +141,14 @@ export default function MisAlquileresPage() {
                       <MapPin className="h-5 w-5" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-semibold">{a.direccion || 'Tu alquiler'}</p>
+                      <p className="flex items-center gap-2 truncate font-semibold">
+                        <span className="truncate">{a.direccion || 'Tu alquiler'}</span>
+                        {esAlquilerTerminado(a.estado) && (
+                          <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                            Finalizado
+                          </span>
+                        )}
+                      </p>
                       <p className="flex items-center gap-1 truncate text-xs text-muted-foreground">
                         <Building2 className="h-3 w-3 shrink-0" />
                         <span className="truncate">
