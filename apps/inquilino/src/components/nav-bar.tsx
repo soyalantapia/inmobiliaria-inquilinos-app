@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Isotipo } from './isotipo';
 import {
+  ArrowLeftRight,
   BadgeCheck,
   CircleHelp,
   FileText,
@@ -150,11 +151,21 @@ export function SideNav() {
         </div>
       </nav>
       {contrato && (
-        <div className="border-t p-3 text-xs">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Tu hogar</p>
-          <p className="mt-0.5 font-medium leading-tight">{contrato.direccion}</p>
-          <p className="text-[10px] text-muted-foreground">{contrato.inmobiliaria}</p>
-        </div>
+        <Link
+          href="/mis-alquileres"
+          className="group flex items-start gap-2 border-t p-3 text-xs transition-colors hover:bg-muted"
+        >
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Tu hogar</p>
+            <p className="mt-0.5 truncate font-medium leading-tight">{contrato.direccion}</p>
+            <p className="truncate text-[10px] text-muted-foreground">{contrato.inmobiliaria}</p>
+          </div>
+          <ArrowLeftRight
+            className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground transition-colors group-hover:text-primary"
+            aria-hidden="true"
+          />
+          <span className="sr-only">Ver mis propiedades</span>
+        </Link>
       )}
     </aside>
   );
