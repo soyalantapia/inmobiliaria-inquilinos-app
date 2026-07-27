@@ -766,7 +766,7 @@ function PasoElegir({
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="flex items-center gap-2 truncate font-semibold">
-                    <span className="truncate">{a.direccion || 'Tu alquiler'}</span>
+                    <span className="min-w-0 truncate">{a.direccion || 'Tu alquiler'}</span>
                     {esAlquilerTerminado(a.estado) && (
                       <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
                         Finalizado
