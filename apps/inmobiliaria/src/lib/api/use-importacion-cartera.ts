@@ -20,6 +20,10 @@ export interface SubidaImportacion {
   columnas: string[];
   filasPreview: string[][];
   totalFilas: number;
+  /** Filas de datos que traía el archivo (antes del tope) y cuántas se descartaron por el tope. */
+  filasDelArchivo?: number;
+  filasDescartadas?: number;
+  maxFilas?: number;
   mapeoSugerido: Record<string, number>;
 }
 

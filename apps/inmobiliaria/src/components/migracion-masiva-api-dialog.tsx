@@ -158,7 +158,16 @@ export function MigracionMasivaApiDialog({ open, onOpenChange }: Props) {
         {step === 'mapeo' && subida && (
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Detectamos <strong className="text-foreground">{subida.totalFilas}</strong> filas. Confirmá a qué dato corresponde
+              Detectamos <strong className="text-foreground">{subida.totalFilas}</strong> filas
+              {(subida.filasDescartadas ?? 0) > 0 && (
+                <>
+                  {' '}
+                  <strong className="text-destructive">
+                    (el archivo traía {subida.filasDelArchivo}: se descartaron {subida.filasDescartadas} por el tope de {subida.maxFilas}; subí el resto en otro archivo)
+                  </strong>
+                </>
+              )}
+              . Confirmá a qué dato corresponde
               cada columna de tu planilla (ya sugerimos las que reconocimos).
             </p>
             <div className="grid gap-2 sm:grid-cols-2">
