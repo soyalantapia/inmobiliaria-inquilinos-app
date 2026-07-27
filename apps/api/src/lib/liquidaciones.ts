@@ -20,6 +20,34 @@ export type ContratoParaLiquidar = {
 };
 
 /**
+ * Una vigencia de canon TODAVÍA NO EN VIGOR (ajuste o renovación con período futuro).
+ * `montoAnterior` es el canon que seguía rigiendo ANTES de esa vigencia.
+ */
+export type VigenciaCanon = { desde: string; montoAnterior: number };
+
+/**
+ * Canon que corresponde a `periodo`.
+ *
+ * `contrato.monto` es la AUTORIDAD (lo pisa el ajuste masivo PATCH /contratos/:id/monto,
+ * que no deja fila de ajuste). Las vigencias sólo sirven para RETROCEDER los períodos
+ * anteriores a un ajuste/renovación que todavía no entró en vigor: manda la PRIMera
+ * vigencia posterior al período, y su `montoAnterior` es el canon que aún regía.
+ *
+ * Sin esto, ajustar o renovar con vigencia futura (renovar por adelantado es el flujo
+ * normal: se pacta el canon nuevo para cuando termina el plazo) bumpeaba contrato.monto
+ * al toque y el devengo cobraba los meses intermedios —que todavía son del canon viejo—
+ * al canon NUEVO. Sobrecobro al inquilino y comisión inflada (sale de montoAlquiler).
+ */
+export function canonDelPeriodo(periodo: string, montoActual: number, vigencias?: VigenciaCanon[]): number {
+  if (!vigencias || vigencias.length === 0) return montoActual;
+  let proxima: VigenciaCanon | undefined;
+  for (const v of vigencias) {
+    if (v.desde > periodo && (!proxima || v.desde < proxima.desde)) proxima = v;
+  }
+  return proxima ? proxima.montoAnterior : montoActual;
+}
+
+/**
  * Calcula (puro, sin tocar la DB) las liquidaciones que corresponden a un
  * contrato a una fecha `now` dada. Separado del writer para poder testear el
  * cómputo de períodos/vencimientos sin una base de datos, y para que `now` sea
@@ -37,10 +65,10 @@ export type ContratoParaLiquidar = {
 export function computarLiquidacionesContrato(
   contrato: ContratoParaLiquidar,
   now: Date,
+  vigencias?: VigenciaCanon[],
 ): Prisma.LiquidacionCreateManyInput[] {
-  const alquiler = Number(contrato.monto);
+  const montoActual = Number(contrato.monto);
   const expensas = contrato.montoExpensas != null ? Number(contrato.montoExpensas) : null;
-  const total = alquiler + (expensas ?? 0);
 
   // La ENUMERACIÓN de períodos (arranque = max(devengarDesde, fechaInicio), skip
   // del primer mes cuando vence antes del inicio, tope al mes que viene / fin del
@@ -49,17 +77,22 @@ export function computarLiquidacionesContrato(
   // así nunca manda un período que este devengo no haya generado (era el bug i36:
   // período huérfano → 400 en aplicarEstadoInicial → rollback del alta entera).
   // Acá sólo le agregamos los montos/estado propios de la liquidación.
-  return enumerarPeriodosContrato(contrato, now).map((p) => ({
-    inmobiliariaId: contrato.inmobiliariaId,
-    contratoId: contrato.id,
-    periodo: p.periodo,
-    montoAlquiler: alquiler,
-    montoExpensas: expensas,
-    montoTotal: total,
-    fechaVencimiento: p.vencimiento,
-    estado: p.vencido ? 'VENCIDO' : 'PENDIENTE',
-    moneda: contrato.moneda,
-  }));
+  return enumerarPeriodosContrato(contrato, now).map((p) => {
+    // Canon POR PERÍODO: un ajuste/renovación con vigencia futura no puede cobrarle el
+    // canon nuevo a los meses intermedios, que todavía son del viejo.
+    const alquiler = canonDelPeriodo(p.periodo, montoActual, vigencias);
+    return {
+      inmobiliariaId: contrato.inmobiliariaId,
+      contratoId: contrato.id,
+      periodo: p.periodo,
+      montoAlquiler: alquiler,
+      montoExpensas: expensas,
+      montoTotal: alquiler + (expensas ?? 0),
+      fechaVencimiento: p.vencimiento,
+      estado: p.vencido ? 'VENCIDO' : 'PENDIENTE',
+      moneda: contrato.moneda,
+    };
+  });
 }
 
 /**
@@ -74,11 +107,36 @@ export function computarLiquidacionesContrato(
  * del tiempo, volver a llamarla (cron / acción del panel). Devuelve cuántas
  * liquidaciones nuevas se crearon.
  */
+/**
+ * Ajustes y renovaciones del contrato cuya vigencia TODAVÍA no llegó. Sólo esas importan
+ * (`canonDelPeriodo`), así que filtramos por período en la query: en la enorme mayoría de
+ * los contratos devuelve 0 filas y no pesa en el barrido del cron.
+ */
+async function vigenciasFuturas(tx: TxOrClient, contratoId: string, now: Date): Promise<VigenciaCanon[] | undefined> {
+  const periodo = periodoDe(now);
+  const [ajustes, renovaciones] = await Promise.all([
+    tx.ajusteAlquiler.findMany({
+      where: { contratoId, periodoDesde: { gt: periodo } },
+      select: { periodoDesde: true, montoAnterior: true },
+    }),
+    tx.renovacionContrato.findMany({
+      where: { contratoId, montoDesde: { gt: periodo } },
+      select: { montoDesde: true, montoAnterior: true },
+    }),
+  ]);
+  const vigencias = [
+    ...ajustes.map((a) => ({ desde: a.periodoDesde, montoAnterior: Number(a.montoAnterior) })),
+    ...renovaciones.map((r) => ({ desde: r.montoDesde, montoAnterior: Number(r.montoAnterior) })),
+  ];
+  return vigencias.length > 0 ? vigencias : undefined;
+}
+
 export async function generarLiquidacionesContrato(
   tx: TxOrClient,
   contrato: ContratoParaLiquidar,
 ): Promise<number> {
-  const data = computarLiquidacionesContrato(contrato, new Date());
+  const now = new Date();
+  const data = computarLiquidacionesContrato(contrato, now, await vigenciasFuturas(tx, contrato.id, now));
   if (data.length === 0) return 0;
   const res = await tx.liquidacion.createMany({ data, skipDuplicates: true });
   return res.count;
