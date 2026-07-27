@@ -8,7 +8,7 @@ import { Button } from '@llave/ui/button';
 import { Card } from '@llave/ui/card';
 import { toast } from '@llave/ui/use-toast';
 import { NavBar } from '@/components/nav-bar';
-import { apiEnabled, ApiError } from '@/lib/api/client';
+import { apiEnabled, ApiError, setPersonaToken } from '@/lib/api/client';
 import { leerSesion } from '@/lib/auth-otp';
 import { elegirAlquiler, esAlquilerTerminado, listarAlquileres, type Alquiler } from '@/lib/auth-otp-api';
 
@@ -44,9 +44,26 @@ export default function MisAlquileresPage() {
     }
   }, []);
 
+  // Esta pantalla es del TITULAR: lista los alquileres de SU email y deja
+  // cambiar entre ellos. A un co-inquilino lo invitaron a UN contrato ajeno, así
+  // que no tiene nada para elegir acá; y si quedó un persona-token en el
+  // dispositivo, es del titular que lo usó antes. Lo limpiamos y lo sacamos con
+  // un mensaje propio: mandarlo a /login?force=1 (lo que hace el estado
+  // "vencido") lo dejaría en un loop, porque el OTP solo reconoce titulares y le
+  // responde "Código inválido" para siempre.
   useEffect(() => {
-    if (apiEnabled) void cargar();
-  }, [cargar]);
+    if (!apiEnabled) return;
+    if (leerSesion()?.esCoInquilino === true) {
+      setPersonaToken(null);
+      toast({
+        title: 'Esta sección es del titular del alquiler',
+        description: 'Si además alquilás una propiedad a tu nombre, entrá con tu email para verla.',
+      });
+      router.replace('/');
+      return;
+    }
+    void cargar();
+  }, [cargar, router]);
 
   const onCambiar = async (a: Alquiler) => {
     if (cambiando || a.inquilinoId === actualId) return;

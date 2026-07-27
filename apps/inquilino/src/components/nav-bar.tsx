@@ -154,7 +154,7 @@ export function SideNav() {
       </nav>
       {/* Oculto para co-inquilinos: ver nota en cuenta/page.tsx y
           mobile-greeting-header.tsx — no tienen persona-token propio. */}
-      {contrato && !user.esCoInquilino && (
+      {contrato && user.isLoaded && !user.esCoInquilino && (
         <Link
           href="/mis-alquileres"
           aria-label={`Ver mis propiedades. Tu hogar actual: ${contrato.direccion}, ${contrato.inmobiliaria}`}

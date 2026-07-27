@@ -17,8 +17,10 @@ import {
 } from './api/client';
 import {
   SEGUNDOS_COOLDOWN,
+  cerrarSesion,
   guardarSesion,
   iniciarSesionDemo,
+  leerSesion,
   solicitarCodigo,
   verificarCodigo,
   type InquilinoSesion,
@@ -100,6 +102,15 @@ export async function verificarCodigoUnificado(
         body: JSON.stringify({ email: emailNorm, code: codigo.replace(/\s/g, '') }),
       },
     );
+    // Entrar con un email REEMPLAZA lo que hubiera en este dispositivo: si quedó
+    // la sesión de un co-inquilino (o de otra persona), la descartamos ahora. Sin
+    // esto el login se rompía: getPersonaToken borra el persona-token mientras la
+    // sesión activa sea de un co-inquilino, así que el token recién emitido moría
+    // antes de poder elegir alquiler.
+    const previa = leerSesion();
+    if (previa && (previa.esCoInquilino === true || previa.email?.toLowerCase() !== emailNorm)) {
+      cerrarSesion();
+    }
     // Guardamos el persona-token: habilita /elegir y /alquileres (switcher).
     setPersonaToken(r.personaToken);
     if (r.alquileres.length === 0) {

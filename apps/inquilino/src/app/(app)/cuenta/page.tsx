@@ -179,7 +179,11 @@ function CuentaReal() {
                 de otra sesión (ej. el titular se logueó antes en el mismo
                 teléfono y no cerró sesión), /mis-alquileres mostraría los
                 alquileres de ESA otra persona. Se oculta directamente. */}
-            {!user.esCoInquilino && (
+            {/* `isLoaded`: la sesión se lee de localStorage en un efecto, así que
+                el PRIMER render dice esCoInquilino=false. Sin este gate la fila
+                se pintaba y quedaba tocable esa ventana (acá no hay ningún fetch
+                que la tape, a diferencia del sidenav y el header). */}
+            {user.isLoaded && !user.esCoInquilino && (
               <LinkRow
                 icon={<ArrowLeftRight className="h-4 w-4" />}
                 label="Mis propiedades"

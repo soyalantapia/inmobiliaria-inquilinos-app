@@ -40,7 +40,7 @@ export function MobileGreetingHeader() {
             link manda a /mis-alquileres, que lista los alquileres del
             persona-token guardado en el dispositivo (podría ser el de otra
             sesión, ej. el titular, si no cerró sesión antes). */}
-        {!user.esCoInquilino && contrato?.direccion && (
+        {user.isLoaded && !user.esCoInquilino && contrato?.direccion && (
           <div className="mt-0.5 flex">
             {/*
              * `py-3.5 -my-3.5` en el <Link>: agranda el área táctil a 44px
