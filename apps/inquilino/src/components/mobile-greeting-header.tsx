@@ -36,7 +36,11 @@ export function MobileGreetingHeader() {
             <span aria-hidden="true">👋</span>
           )}
         </p>
-        {contrato?.direccion && (
+        {/* Oculto para co-inquilinos: no tienen persona-token propio y este
+            link manda a /mis-alquileres, que lista los alquileres del
+            persona-token guardado en el dispositivo (podría ser el de otra
+            sesión, ej. el titular, si no cerró sesión antes). */}
+        {!user.esCoInquilino && contrato?.direccion && (
           <div className="mt-0.5 flex">
             {/*
              * `py-3.5 -my-3.5` en el <Link>: agranda el área táctil a 44px
@@ -48,11 +52,22 @@ export function MobileGreetingHeader() {
              * en la misma posición, pero el link ahora "come" el espacio
              * muerto de alrededor en vez de que el dedo caiga en la
              * tarjeta de Pagos que está justo debajo.
+             *
+             * `relative z-10`: el margen negativo hace que este <a> se
+             * superponga con el <main> de abajo (hermano posterior, sin
+             * position, en el mismo stacking context). Sin esto, en esa
+             * franja de superposición el hit-test lo ganaba el <main> (pinta
+             * después en orden de árbol) — medido con elementFromPoint: el
+             * área táctil efectiva hacia abajo quedaba en ~32px de los 44px
+             * pretendidos. `relative` mueve el link a la capa de elementos
+             * posicionados, que siempre pinta por encima del contenido en
+             * flujo normal sin position, sin mover nada visualmente (no hay
+             * top/left/right/bottom).
              */}
             <Link
               href="/mis-alquileres"
               aria-label={`Ver mis propiedades. Actual: ${contrato.direccion}`}
-              className="flex items-center gap-1 py-3.5 -my-3.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+              className="relative z-10 flex items-center gap-1 py-3.5 -my-3.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
             >
               <span className="truncate">{contrato.direccion}</span>
               <ArrowLeftRight className="h-3 w-3 shrink-0" aria-hidden="true" />

@@ -169,16 +169,24 @@ function CuentaReal() {
             Tu hogar
           </h2>
           <Card className="divide-y">
-            {/* Siempre visible: el contador de alquileres se congelaba en el login,
-                así que si el inquilino firmaba su 2ª propiedad DESPUÉS de entrar,
-                esta fila no aparecía nunca (el token dura 15 días). La pantalla
-                destino maneja bien el caso de un solo alquiler. */}
-            <LinkRow
-              icon={<ArrowLeftRight className="h-4 w-4" />}
-              label="Mis propiedades"
-              descripcion="Ver tus alquileres y cambiar de propiedad"
-              href="/mis-alquileres"
-            />
+            {/* Siempre visible PARA EL TITULAR: el contador de alquileres se
+                congelaba en el login, así que si el inquilino firmaba su 2ª
+                propiedad DESPUÉS de entrar, esta fila no aparecía nunca (el
+                token dura 15 días). La pantalla destino maneja bien el caso
+                de un solo alquiler.
+                Un co-inquilino NO tiene persona-token propio: si mostráramos
+                este link y el dispositivo tuviera guardado el persona-token
+                de otra sesión (ej. el titular se logueó antes en el mismo
+                teléfono y no cerró sesión), /mis-alquileres mostraría los
+                alquileres de ESA otra persona. Se oculta directamente. */}
+            {!user.esCoInquilino && (
+              <LinkRow
+                icon={<ArrowLeftRight className="h-4 w-4" />}
+                label="Mis propiedades"
+                descripcion="Ver tus alquileres y cambiar de propiedad"
+                href="/mis-alquileres"
+              />
+            )}
             <LinkRow
               icon={<FileText className="h-4 w-4" />}
               label="Mis documentos"

@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@llave/ui/cn';
 import { useMiContrato } from '@/lib/api/hooks';
+import { useCurrentUser } from '@/lib/use-current-user';
 
 interface NavItem {
   href: string;
@@ -123,6 +124,7 @@ export function NavBar() {
 export function SideNav() {
   const pathname = usePathname() ?? '/';
   const { contrato } = useMiContrato();
+  const user = useCurrentUser();
   return (
     <aside className="hidden w-64 shrink-0 flex-col border-r bg-card md:flex">
       <div className="flex h-16 items-center gap-3 border-b px-6">
@@ -150,7 +152,9 @@ export function SideNav() {
           </ul>
         </div>
       </nav>
-      {contrato && (
+      {/* Oculto para co-inquilinos: ver nota en cuenta/page.tsx y
+          mobile-greeting-header.tsx — no tienen persona-token propio. */}
+      {contrato && !user.esCoInquilino && (
         <Link
           href="/mis-alquileres"
           aria-label={`Ver mis propiedades. Tu hogar actual: ${contrato.direccion}, ${contrato.inmobiliaria}`}

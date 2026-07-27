@@ -13,6 +13,11 @@ export interface CurrentUserView {
   initial: string;
   phone: string | null;
   email: string | null;
+  /** true si la sesión activa es de un CO-INQUILINO (no el titular). Un
+   *  co-inquilino no tiene persona-token propio: nunca debe ver accesos a
+   *  /mis-alquileres (podría heredar el persona-token de otra sesión en el
+   *  mismo dispositivo y ver los alquileres de ESA persona). */
+  esCoInquilino: boolean;
 }
 
 /**
@@ -41,6 +46,7 @@ export function useCurrentUser(): CurrentUserView {
       initial,
       phone: null,
       email: sesion.email,
+      esCoInquilino: sesion.esCoInquilino === true,
     };
   }
 
@@ -56,6 +62,7 @@ export function useCurrentUser(): CurrentUserView {
       initial: '',
       phone: null,
       email: null,
+      esCoInquilino: false,
     };
   }
 
@@ -69,5 +76,6 @@ export function useCurrentUser(): CurrentUserView {
     initial: mockUser.user.firstName.slice(0, 1),
     phone: mockUser.user.primaryPhoneNumber.phoneNumber,
     email: mockUser.user.primaryEmailAddress.emailAddress,
+    esCoInquilino: false,
   };
 }

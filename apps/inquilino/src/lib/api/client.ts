@@ -91,6 +91,12 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
       try {
         window.localStorage.removeItem(TOKEN_KEY);
         window.localStorage.removeItem('llave-inquilino:auth:sesion:v1');
+        // El persona-token es OTRA credencial (habilita /mis-alquileres) que
+        // sobrevive aparte del token del contrato: si no la limpiamos acá
+        // también, queda huérfana en el dispositivo y una sesión posterior
+        // (ej. un co-inquilino que entra por invitación) puede heredarla y
+        // ver los alquileres de la persona que se deslogueó.
+        window.localStorage.removeItem(PERSONA_KEY);
       } catch {
         // ignore
       }

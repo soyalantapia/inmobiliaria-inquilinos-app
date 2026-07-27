@@ -209,6 +209,12 @@ export async function aceptarInvitacionCoInquilino(token: string): Promise<Inqui
     ciudad: string;
   }>(`/co-invitacion/${encodeURIComponent(token)}/aceptar`, { method: 'POST' });
   setToken(r.token);
+  // Si este dispositivo tenía guardado el persona-token de OTRA sesión (ej. el
+  // titular se logueó antes acá y no cerró sesión), hay que pisarlo: si no,
+  // /mis-alquileres seguiría devolviendo los alquileres de esa otra persona
+  // aunque la sesión activa ahora sea la de este co-inquilino. El co-inquilino
+  // no tiene (ni debe tener) persona-token propio.
+  setPersonaToken(null);
   const partes = r.nombre.trim().split(' ');
   const sesion: InquilinoSesion = {
     email: r.email ?? '',
