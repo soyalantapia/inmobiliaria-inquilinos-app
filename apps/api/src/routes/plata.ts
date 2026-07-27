@@ -1858,11 +1858,69 @@ export async function plataRoutes(app: FastifyInstance) {
         // H-3: inmobiliariaId en los deletes/updates para que un id ajeno no opere
         // cross-tenant aunque la verificación previa ya lo garantice por FK.
         await tx.movimientoCaja.updateMany({ where: { rendicionId: id, inmobiliariaId: u.inmobiliariaId }, data: { descontadoEnRendicion: false, rendicionId: null } });
+
+        // Qué movimientos tocaba esta rendición ANTES de borrar sus filas del ledger.
+        // Hace falta para el recálculo de abajo: en multi-dueño el `rendicionId` del
+        // movimiento apunta a la rendición que lo COMPLETÓ (la última), no a todas las que
+        // aportaron, así que el updateMany de arriba no alcanza.
+        const refsGasto = (
+          await tx.gastoRendido.findMany({ where: { rendicionId: id, tipo: 'CAJA' }, select: { refId: true } })
+        ).map((g) => g.refId);
+        const refsIngreso = (
+          await tx.ingresoRendido.findMany({ where: { rendicionId: id }, select: { refId: true } })
+        ).map((g) => g.refId);
+
         await tx.gastoRendido.deleteMany({ where: { rendicionId: id } });
         // IngresoRendido cuelga con FK RESTRICT (igual que AlquilerRendido): borrarlo
         // ANTES del delete de la rendición, sino P2003. Al revertir el movimiento
         // (updateMany de arriba) el ingreso vuelve a quedar pendiente para rendir.
         await tx.ingresoRendido.deleteMany({ where: { rendicionId: id } });
+
+        // REABRIR lo que dejó de estar cubierto. Escenario: gasto $100 entre dos dueños
+        // 50/50. A rinde (ledger 50, movimiento sigue abierto), B rinde y COMPLETA →
+        // `descontadoEnRendicion=true, rendicionId=<B>`. Si después se anula la rendición
+        // de A, el updateMany de arriba no matchea (el movimiento apunta a B) pero la fila
+        // de A sí se borró: el movimiento quedaba cerrado con sólo la mitad rendida y esos
+        // $50 no se recuperaban NUNCA. Ahora recalculamos la cobertura real contra el
+        // ledger que queda y reabrimos el movimiento si ya no está cubierto.
+        const refsTocados = [...new Set([...refsGasto, ...refsIngreso])];
+        if (refsTocados.length > 0) {
+          const movs = await tx.movimientoCaja.findMany({
+            where: { id: { in: refsTocados }, inmobiliariaId: u.inmobiliariaId, descontadoEnRendicion: true },
+            select: { id: true, monto: true, tipo: true },
+          });
+          // Cobertura restante EN BATCH (dos groupBy), no una query por movimiento: dentro
+          // de la transacción, el N+1 se comía el timeout y tiraba P2028 → 500.
+          const [covGasto, covIngreso] = await Promise.all([
+            tx.gastoRendido.groupBy({
+              by: ['refId'],
+              where: { refId: { in: refsTocados }, tipo: 'CAJA' },
+              _sum: { monto: true },
+            }),
+            tx.ingresoRendido.groupBy({
+              by: ['refId'],
+              where: { refId: { in: refsTocados } },
+              _sum: { monto: true },
+            }),
+          ]);
+          const covGastoMap = new Map(covGasto.map((r) => [r.refId, Number(r._sum.monto ?? 0)]));
+          const covIngresoMap = new Map(covIngreso.map((r) => [r.refId, Number(r._sum.monto ?? 0)]));
+          const reabrir = movs
+            .filter((mov) => {
+              const cubierto =
+                mov.tipo === 'INGRESO_EXTRA'
+                  ? (covIngresoMap.get(mov.id) ?? 0)
+                  : (covGastoMap.get(mov.id) ?? 0);
+              return cubierto < Number(mov.monto) - 0.01;
+            })
+            .map((m) => m.id);
+          if (reabrir.length > 0) {
+            await tx.movimientoCaja.updateMany({
+              where: { id: { in: reabrir }, inmobiliariaId: u.inmobiliariaId },
+              data: { descontadoEnRendicion: false, rendicionId: null },
+            });
+          }
+        }
         // Los AlquilerRendido cuelgan de la Rendicion con FK RESTRICT: sin borrarlos
         // ANTES, el rendicion.deleteMany de abajo violaba la FK → P2003 → 500 SIEMPRE
         // (toda rendición real crea ≥1 AlquilerRendido). La anulación era imposible.
@@ -1873,7 +1931,10 @@ export async function plataRoutes(app: FastifyInstance) {
         // por el P2025 de rendicion.delete sobre una fila ya borrada).
         const del = await tx.rendicion.deleteMany({ where: { id, inmobiliariaId: u.inmobiliariaId } });
         if (del.count === 0) throw new Error('YA_ANULADA');
-      });
+      },
+      // Igual que la tx de rendir: el default de 5s de Prisma queda corto y falla con
+      // P2028 (500 opaco, anulación imposible) apenas la rendición tiene varias filas.
+      { timeout: 30_000, maxWait: 10_000 });
     } catch (e) {
       if (e instanceof Error && e.message === 'YA_ANULADA') {
         return reply.code(409).send({ message: 'La rendición ya fue anulada' });

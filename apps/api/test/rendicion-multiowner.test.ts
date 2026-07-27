@@ -21,14 +21,14 @@ let inmobiliariaId: string;
 const prisma = new PrismaClient();
 
 async function limpiar() {
-  await prisma.gastoRendido.deleteMany({ where: { refId: { in: [`${P}gasto`, `${P}gasto2`] } } });
+  await prisma.gastoRendido.deleteMany({ where: { refId: { in: [`${P}gasto`, `${P}gasto2`, `${P}gasto3`] } } });
   await prisma.ingresoRendido.deleteMany({ where: { rendicion: { propietarioId: { in: [`${P}ownA`, `${P}ownB`] } } } });
   // AlquilerRendido cuelga de Rendicion con FK RESTRICT → borrarlo antes.
   await prisma.alquilerRendido.deleteMany({ where: { rendicion: { propietarioId: { in: [`${P}ownA`, `${P}ownB`] } } } });
   await prisma.rendicion.deleteMany({ where: { propietarioId: { in: [`${P}ownA`, `${P}ownB`] } } });
-  await prisma.movimientoCaja.deleteMany({ where: { id: { in: [`${P}gasto`, `${P}gasto2`] } } });
-  await prisma.pago.deleteMany({ where: { id: { in: [`${P}pago`, `${P}pago2a`, `${P}pago2b`] } } });
-  await prisma.liquidacion.deleteMany({ where: { id: { in: [`${P}liq`, `${P}liq2`] } } });
+  await prisma.movimientoCaja.deleteMany({ where: { id: { in: [`${P}gasto`, `${P}gasto2`, `${P}gasto3`] } } });
+  await prisma.pago.deleteMany({ where: { id: { in: [`${P}pago`, `${P}pago2a`, `${P}pago2b`, `${P}pago3`] } } });
+  await prisma.liquidacion.deleteMany({ where: { id: { in: [`${P}liq`, `${P}liq2`, `${P}liq3`] } } });
   await prisma.contrato.deleteMany({ where: { id: `${P}cnt` } });
   await prisma.participacionPropietario.deleteMany({ where: { propiedadId: `${P}prop` } });
   await prisma.propietario.deleteMany({ where: { id: { in: [`${P}ownA`, `${P}ownB`] } } });
@@ -302,5 +302,117 @@ describe('Rendición INCREMENTAL al mismo dueño: no se le cobra dos veces la mi
     expect(Number(agg._sum.monto ?? 0)).toBe(200);
     const gasto = await prisma.movimientoCaja.findUnique({ where: { id: `${P}gasto2` } });
     expect(gasto?.descontadoEnRendicion).toBe(true);
+  });
+});
+
+/**
+ * ANULAR una rendición PARCIAL no puede dejar plata varada.
+ *
+ * En multi-dueño el `rendicionId` del movimiento apunta a la rendición que lo COMPLETÓ, no
+ * a todas las que aportaron. Al anular una anterior, su fila del ledger se borraba pero el
+ * movimiento seguía marcado como descontado → esa parte no se rendía nunca más.
+ */
+describe('Anular una rendición parcial: el gasto vuelve a quedar pendiente', () => {
+  const PERIODO = '2026-07';
+
+  beforeAll(async () => {
+    await prisma.liquidacion.create({
+      data: {
+        id: `${P}liq3`,
+        inmobiliariaId,
+        contratoId: `${P}cnt`,
+        periodo: PERIODO,
+        montoAlquiler: 1000,
+        montoTotal: 1000,
+        fechaVencimiento: new Date('2026-07-10T00:00:00.000Z'),
+        estado: 'PAGADO',
+        moneda: 'ARS',
+      },
+    });
+    await prisma.pago.create({
+      data: {
+        id: `${P}pago3`,
+        inmobiliariaId,
+        contratoId: `${P}cnt`,
+        liquidacionId: `${P}liq3`,
+        periodo: PERIODO,
+        monto: 1000,
+        montoLiqTotal: 1000,
+        metodo: 'TRANSFERENCIA',
+        fechaTransferencia: new Date('2026-07-05T00:00:00.000Z'),
+        estado: 'CONCILIADO',
+      },
+    });
+    await prisma.movimientoCaja.create({
+      data: {
+        id: `${P}gasto3`,
+        inmobiliariaId,
+        propiedadId: `${P}prop`,
+        tipo: 'GASTO',
+        categoria: 'ELECTRICIDAD',
+        descripcion: 'Tablero',
+        monto: 200,
+        fecha: new Date('2026-07-03T00:00:00.000Z'),
+        cargadoPor: 'test',
+        descontadoEnRendicion: false,
+      },
+    });
+  });
+
+  it('A y B rinden: el gasto queda cubierto y cerrado', async () => {
+    for (const own of [`${P}ownA`, `${P}ownB`]) {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/rendiciones',
+        headers: auth(token),
+        payload: { propietarioId: own, periodo: PERIODO, metodo: 'TRANSFERENCIA' },
+      });
+      expect(res.statusCode).toBe(201);
+      expect(Number(res.json().totalGastos)).toBe(100);
+    }
+    const gasto = await prisma.movimientoCaja.findUnique({ where: { id: `${P}gasto3` } });
+    expect(gasto?.descontadoEnRendicion).toBe(true);
+  });
+
+  it('anular la rendición de A lo REABRE (antes quedaba cerrado con la mitad rendida)', async () => {
+    const rendA = await prisma.rendicion.findFirst({
+      where: { propietarioId: `${P}ownA`, periodo: PERIODO },
+      select: { id: true },
+    });
+    expect(rendA).not.toBeNull();
+    const res = await app.inject({
+      method: 'POST',
+      url: `/rendiciones/${rendA!.id}/anular`,
+      headers: auth(token),
+      payload: {},
+    });
+    expect(res.statusCode).toBe(200);
+
+    const gasto = await prisma.movimientoCaja.findUnique({ where: { id: `${P}gasto3` } });
+    // EL BUG: el movimiento apuntaba a la rendición de B, así que el updateMany por
+    // rendicionId no lo tocaba y quedaba descontado=true con sólo $100 en el ledger.
+    expect(gasto?.descontadoEnRendicion).toBe(false);
+    expect(gasto?.rendicionId).toBeNull();
+    const agg = await prisma.gastoRendido.aggregate({
+      where: { refId: `${P}gasto3`, tipo: 'CAJA' },
+      _sum: { monto: true },
+    });
+    expect(Number(agg._sum.monto ?? 0)).toBe(100); // sólo queda la parte de B
+  });
+
+  it('A puede volver a rendir su parte: el total se conserva', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/rendiciones',
+      headers: auth(token),
+      payload: { propietarioId: `${P}ownA`, periodo: PERIODO, metodo: 'TRANSFERENCIA' },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(Number(res.json().totalGastos)).toBe(100);
+    const agg = await prisma.gastoRendido.aggregate({
+      where: { refId: `${P}gasto3`, tipo: 'CAJA' },
+      _sum: { monto: true },
+    });
+    expect(Number(agg._sum.monto ?? 0)).toBe(200);
   });
 });
