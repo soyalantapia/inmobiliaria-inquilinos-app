@@ -70,7 +70,28 @@ beforeAll(async () => {
   app = await buildApp({ NODE_ENV: 'test', DEMO_MODE: 'true' });
 });
 
+// Este test crea filas directo en el tenant del seed ("Inmobiliaria del Sol"); la DB de
+// test es compartida entre archivos (core.test.ts espera los counts del seed puro), así
+// que limpiamos lo creado para no contaminar. A diferencia de multi-alquiler.test.ts, acá
+// el Inquilino no pasa por Persona (se crea con email directo), así que identificamos las
+// filas por ese email y por la dirección de las propiedades creadas. Orden de borrado por
+// FK: liq → inquilino → contrato → participación → propiedad.
 afterAll(async () => {
+  const inquilinos = await prisma.inquilino.findMany({
+    where: { email: EMAIL },
+    select: { contratoId: true },
+  });
+  const contratoIds = inquilinos.map((i) => i.contratoId).filter((c): c is string => !!c);
+  const props = await prisma.propiedad.findMany({
+    where: { direccion: { in: ['Test multi 1', 'Test multi 2'] } },
+    select: { id: true },
+  });
+  const propIds = props.map((p) => p.id);
+  await prisma.liquidacion.deleteMany({ where: { contratoId: { in: contratoIds } } });
+  await prisma.inquilino.deleteMany({ where: { email: EMAIL } });
+  await prisma.contrato.deleteMany({ where: { id: { in: contratoIds } } });
+  await prisma.participacionPropietario.deleteMany({ where: { propiedadId: { in: propIds } } });
+  await prisma.propiedad.deleteMany({ where: { id: { in: propIds } } });
   await app.close();
   await prisma.$disconnect();
 });
