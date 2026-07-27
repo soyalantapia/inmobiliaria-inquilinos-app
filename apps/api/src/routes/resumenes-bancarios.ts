@@ -47,7 +47,9 @@ async function candidatosVigentes(inmobiliariaId: string): Promise<{ pagos: Cand
       },
     }),
     prisma.liquidacion.findMany({
-      where: { inmobiliariaId, estado: { in: ['PENDIENTE', 'VENCIDO', 'PARCIAL'] }, contrato: { modoCobranza: 'INMOBILIARIA' } },
+      // Sólo ARS: el extracto no declara moneda, así que una liquidación en USD no puede
+      // sugerirse como candidata (se saldaría 1:1 con pesos). El conciliar la corta igual.
+      where: { inmobiliariaId, moneda: 'ARS', estado: { in: ['PENDIENTE', 'VENCIDO', 'PARCIAL'] }, contrato: { modoCobranza: 'INMOBILIARIA' } },
       // Vencimiento más antiguo primero: si un contrato tiene varios períodos
       // impagos con el mismo monto, un crédito ambiguo debe sugerirse contra
       // la deuda MÁS VIEJA primero (FIFO — misma lógica que cobranza real).
@@ -174,8 +176,28 @@ export async function resumenesBancariosRoutes(app: FastifyInstance): Promise<vo
           subidoPor: u.userId,
         },
       });
+      // DEDUP entre extractos. Los bancos exportan por rango de fechas y el operador
+      // sube rangos SOLAPADOS (o re-sube el mismo archivo): sin esto la MISMA
+      // transferencia entraba dos veces como créditos distintos y el matcher la ofrecía
+      // contra dos liquidaciones → dos pagos por una sola plata, que después se rinden al
+      // propietario. El nroOperacion solo no sirve como clave: cuando el extracto no trae
+      // esa columna, el parser usa el índice de fila. Comparamos la línea entera.
+      const clave = (c: { fecha: Date | string; monto: unknown; titularOrigen: string | null; concepto: string | null; nroOperacion: string | null }) =>
+        [
+          new Date(c.fecha).toISOString().slice(0, 10),
+          Number(c.monto),
+          (c.titularOrigen ?? '').trim().toLowerCase(),
+          (c.concepto ?? '').trim().toLowerCase(),
+          c.nroOperacion ?? '',
+        ].join('|');
+      const yaCargados = await tx.creditoDetectado.findMany({
+        where: { inmobiliariaId: u.inmobiliariaId, fecha: { in: parseo.creditos.map((c) => c.fecha) } },
+        select: { fecha: true, monto: true, titularOrigen: true, concepto: true, nroOperacion: true },
+      });
+      const vistos = new Set(yaCargados.map(clave));
+      const nuevos = parseo.creditos.filter((c) => !vistos.has(clave(c)));
       await tx.creditoDetectado.createMany({
-        data: parseo.creditos.map((c) => ({
+        data: nuevos.map((c) => ({
           inmobiliariaId: u.inmobiliariaId,
           resumenBancarioId: r.id,
           fecha: c.fecha,
@@ -187,10 +209,17 @@ export async function resumenesBancariosRoutes(app: FastifyInstance): Promise<vo
           bancoOrigen: c.bancoOrigen,
         })),
       });
-      return r;
+      return { r, nuevos: nuevos.length, duplicados: parseo.creditos.length - nuevos.length };
     });
 
-    return reply.code(201).send({ id: resumen.id, creditosDetectados: parseo.creditos.length, filasIgnoradas: parseo.filasIgnoradas });
+    return reply.code(201).send({
+      id: resumen.r.id,
+      creditosDetectados: resumen.nuevos,
+      // Explícito: el operador tiene que ver que se omitieron líneas ya cargadas, no que
+      // el extracto "trajo menos" sin explicación.
+      creditosDuplicados: resumen.duplicados,
+      filasIgnoradas: parseo.filasIgnoradas,
+    });
   });
 
   app.get('/resumenes-bancarios', async (request, reply) => {
@@ -283,6 +312,7 @@ export async function resumenesBancariosRoutes(app: FastifyInstance): Promise<vo
         contratoId: true,
         periodo: true,
         estado: true,
+        moneda: true,
         montoTotal: true,
         fechaVencimiento: true,
         montoPunitorioManual: true,
@@ -310,6 +340,15 @@ export async function resumenesBancariosRoutes(app: FastifyInstance): Promise<vo
     }
     if (liq.estado === 'PAGADO') {
       return reply.code(409).send({ message: 'Esa liquidación ya está paga — elegí otra.' });
+    }
+    // MONEDA: el extracto no declara en qué moneda está, así que un crédito sólo puede
+    // saldar deuda en PESOS. Sin este guard, un crédito de $500.000 cancelaba una
+    // liquidación de USD 500.000 a 1:1 — el inquilino quedaba al día habiendo pagado una
+    // fracción, y esa diferencia se rendía al propietario como si hubiera entrado.
+    if (liq.moneda !== 'ARS') {
+      return reply.code(409).send({
+        message: `Esa liquidación está en ${liq.moneda} y el extracto bancario no declara moneda. Registrá ese cobro a mano desde el contrato.`,
+      });
     }
     // Tope de saldo (mismo criterio que /pagos/informar): sin esto se podía
     // asignar una transferencia de 2 meses a UNA liquidación → sobre-pago que

@@ -57,7 +57,7 @@ export interface ResumenBancarioResumen {
 export function useResumenesBancarios(): {
   resumenes: ResumenBancarioResumen[];
   cargando: boolean;
-  subir: (file: File) => Promise<{ id: string; creditosDetectados: number; filasIgnoradas: number }>;
+  subir: (file: File) => Promise<{ id: string; creditosDetectados: number; creditosDuplicados: number; filasIgnoradas: number }>;
 } {
   const qc = useQueryClient();
   const q = useQuery({

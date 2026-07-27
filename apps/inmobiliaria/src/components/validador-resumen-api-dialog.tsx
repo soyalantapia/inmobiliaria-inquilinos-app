@@ -64,7 +64,14 @@ export function ValidadorResumenApiDialog({ open, onOpenChange }: Props) {
       toast({
         variant: 'success',
         title: `Detectamos ${r.creditosDetectados} crédito${r.creditosDetectados === 1 ? '' : 's'}`,
-        description: r.filasIgnoradas > 0 ? `${r.filasIgnoradas} fila(s) sin monto positivo se ignoraron.` : undefined,
+        // El dedup entre extractos solapados NO puede ser silencioso: si omitimos líneas
+        // ya cargadas, el operador tiene que saberlo (si no, cree que el banco exportó de menos).
+        description: [
+          r.creditosDuplicados > 0 ? `${r.creditosDuplicados} ya estaban cargados de otro extracto.` : null,
+          r.filasIgnoradas > 0 ? `${r.filasIgnoradas} fila(s) sin monto positivo se ignoraron.` : null,
+        ]
+          .filter(Boolean)
+          .join(' ') || undefined,
       });
     } catch (err) {
       toast({ variant: 'destructive', title: 'No pudimos leer el archivo', description: err instanceof Error ? err.message : undefined });
