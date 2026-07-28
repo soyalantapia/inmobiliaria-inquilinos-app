@@ -28,7 +28,7 @@ function liqVencida(l: { estado: string; fechaVencimiento: Date | string }, now:
  */
 export async function propiedadSaludPagoRoutes(app: FastifyInstance) {
   app.get('/propiedades/:id/salud-pago', async (request, reply) => {
-    const u = await requireUsuario(request, reply);
+    const u = await requireUsuario(request, reply, 'pagos.ver');
     if (!u) return;
     const { id } = request.params as { id: string };
     const now = new Date();

@@ -14,7 +14,7 @@ const POR_VENCER_DIAS = 30;
  */
 export async function propiedadSegurosRoutes(app: FastifyInstance) {
   app.get('/propiedades/:id/seguros', async (request, reply) => {
-    const u = await requireUsuario(request, reply);
+    const u = await requireUsuario(request, reply, 'propiedades.ver');
     if (!u) return;
     const { id } = request.params as { id: string };
     const now = new Date();

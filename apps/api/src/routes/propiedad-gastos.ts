@@ -12,7 +12,7 @@ const r2c = (n: number) => Math.round(n * 100) / 100;
  */
 export async function propiedadGastosRoutes(app: FastifyInstance) {
   app.get('/propiedades/:id/gastos', async (request, reply) => {
-    const u = await requireUsuario(request, reply);
+    const u = await requireUsuario(request, reply, 'caja.ver');
     if (!u) return;
     const { id } = request.params as { id: string };
 

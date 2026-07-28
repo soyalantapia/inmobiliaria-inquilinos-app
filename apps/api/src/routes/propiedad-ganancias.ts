@@ -12,7 +12,7 @@ import { armarGanancia, r2c, tasaComisionDeParticipaciones } from '../lib/gananc
  */
 export async function propiedadGananciasRoutes(app: FastifyInstance) {
   app.get('/propiedades/:id/ganancias', async (request, reply) => {
-    const u = await requireUsuario(request, reply);
+    const u = await requireUsuario(request, reply, 'pagos.ver');
     if (!u) return;
     const { id } = request.params as { id: string };
 
@@ -73,8 +73,12 @@ export async function propiedadGananciasRoutes(app: FastifyInstance) {
       rendidoPorContrato.set(cid, (rendidoPorContrato.get(cid) ?? 0) + aporte);
     }
 
-    let totalGanado = 0;
-    let totalProyeccion = 0;
+    // Totales POR MONEDA. Antes eran dos escalares planos que sumaban todos los contratos
+    // de la propiedad y el response se etiquetaba con `contratos[0].moneda`: una propiedad
+    // con un contrato en USD y otro en ARS devolvía la SUMA de los dos rotulada con una
+    // sola moneda — un número que no existe. La comisión sale de ahí, así que el error se
+    // lee como plata ganada.
+    const porMoneda = new Map<string, { ganado: number; proyeccion: number }>();
     const salida = contratos.map((c) => {
       const g = armarGanancia(
         c.modoCobranza,
@@ -82,8 +86,10 @@ export async function propiedadGananciasRoutes(app: FastifyInstance) {
         tasa,
         rendidoPorContrato.get(c.id) ?? 0,
       );
-      totalGanado += g.ganado;
-      totalProyeccion += g.proyeccion;
+      const acum = porMoneda.get(c.moneda) ?? { ganado: 0, proyeccion: 0 };
+      acum.ganado += g.ganado;
+      acum.proyeccion += g.proyeccion;
+      porMoneda.set(c.moneda, acum);
       return {
         contratoId: c.id,
         inquilino: c.inquilinoTitular
@@ -97,14 +103,24 @@ export async function propiedadGananciasRoutes(app: FastifyInstance) {
       };
     });
 
+    const totales = [...porMoneda.entries()]
+      .map(([moneda, t]) => ({
+        moneda,
+        ganado: r2c(t.ganado),
+        proyeccion: r2c(t.proyeccion),
+        faltaGanar: r2c(Math.max(t.proyeccion - t.ganado, 0)),
+      }))
+      .sort((a, b) => b.proyeccion - a.proyeccion);
+    // `moneda` + `total` se conservan para no romper el panel, pero YA NO son una mezcla:
+    // son los de la moneda principal. `totalesPorMoneda` trae el desglose completo para
+    // que el front pueda mostrar las dos sin inventar una conversión (no hay cotización
+    // en el sistema y el modelo de plata está congelado).
+    const principal = totales[0] ?? { moneda: 'ARS', ganado: 0, proyeccion: 0, faltaGanar: 0 };
     return {
-      moneda: contratos[0]?.moneda ?? 'ARS',
+      moneda: principal.moneda,
       tasaComision: r2c(tasa * 100),
-      total: {
-        ganado: r2c(totalGanado),
-        proyeccion: r2c(totalProyeccion),
-        faltaGanar: r2c(Math.max(totalProyeccion - totalGanado, 0)),
-      },
+      total: { ganado: principal.ganado, proyeccion: principal.proyeccion, faltaGanar: principal.faltaGanar },
+      totalesPorMoneda: totales,
       contratos: salida,
     };
   });

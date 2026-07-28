@@ -21,7 +21,7 @@ interface EventoTimeline {
  */
 export async function propiedadTimelineRoutes(app: FastifyInstance) {
   app.get('/propiedades/:id/timeline', async (request, reply) => {
-    const u = await requireUsuario(request, reply);
+    const u = await requireUsuario(request, reply, 'contratos.ver');
     if (!u) return;
     const { id } = request.params as { id: string };
     const tenant = u.inmobiliariaId;

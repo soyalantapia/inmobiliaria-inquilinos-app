@@ -10,7 +10,7 @@ import { armarGanancia, tasaComisionDeParticipaciones } from '../lib/ganancia-co
  */
 export async function contratoGananciaRoutes(app: FastifyInstance) {
   app.get('/contratos/:id/ganancia', async (request, reply) => {
-    const u = await requireUsuario(request, reply);
+    const u = await requireUsuario(request, reply, 'pagos.ver');
     if (!u) return;
     const { id } = request.params as { id: string };
 

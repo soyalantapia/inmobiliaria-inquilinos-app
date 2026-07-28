@@ -10,7 +10,7 @@ import { requireUsuario } from '../auth/guards.js';
  */
 export async function propiedadDocumentosRoutes(app: FastifyInstance) {
   app.get('/propiedades/:id/documentos', async (request, reply) => {
-    const u = await requireUsuario(request, reply);
+    const u = await requireUsuario(request, reply, 'propiedades.ver');
     if (!u) return;
     const { id } = request.params as { id: string };
 
