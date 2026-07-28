@@ -114,12 +114,12 @@ producto, no código**:
 
 Lo demás que queda es cableado:
 
-**Follow-ups de features recientes** (no es decisión, es cablear):
+**Follow-ups de features recientes: ✅ los dos cerrados el 27/07.**
 
-1. **Avatar del usuario del panel** — `PUT /me/avatar` vivo; el panel todavía muestra
-   iniciales, no sube foto.
-2. **Comprobante en gastos de caja** — el alta acepta `comprobanteUrl` pero el form de
-   caja no lo adjunta (el comprobante de **pago** del inquilino sí tiene UI).
+1. ✅ **Avatar del usuario del panel** — el footer del sidebar sube y quita la foto
+   (`avatar-usuario.tsx` → `PUT /me/avatar`), con vuelta a iniciales si la imagen falla.
+2. ✅ **Comprobante en gastos de caja** — el form ya adjunta el ticket (se sube a
+   `/uploads` y el alta persiste `comprobanteUrl`).
 
 _✅ **Cerrado 08/07** (falta deployar — ver colisión multi-chat): el **cargo de reclamo/rescisión ya
 llega a la PWA del inquilino**. `GET /mis-cargos` + sección "Cargos adicionales" en el home; panel con
