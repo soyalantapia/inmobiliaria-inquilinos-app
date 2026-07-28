@@ -200,12 +200,14 @@ describe('Inquilino informa pago', () => {
     // Informa el SALDO EXIGIBLE completo (base + mora al día) que devuelve el API,
     // no la base pelada: cnt_001 tiene tasa legacy 0.001%/día, así que a >0 días de
     // atraso liq_001 exige base+mora y pagar solo la base sería PARCIAL. Tomar el
-    // monto del propio API hace el test independiente de la fecha en que corre.
+    // monto del propio API hace el test independiente de la fecha en que corre. La fecha
+    // de transferencia va HOY por la misma razón: informar un pago de hace más de 30 días
+    // se rechaza (backdatear esquivaba la mora), y una fecha fija envejece sola.
     const res = await app.inject({
       method: 'POST',
       url: '/pagos/informar',
       headers: auth(tk),
-      payload: { liquidacionId: 'liq_001', monto: Number(vencida.montoTotal), metodo: 'TRANSFERENCIA', nroOperacion: 'TRF-TEST-1', fechaTransferencia: '2026-06-12', nota: 'test' },
+      payload: { liquidacionId: 'liq_001', monto: Number(vencida.montoTotal), metodo: 'TRANSFERENCIA', nroOperacion: 'TRF-TEST-1', fechaTransferencia: new Date().toISOString().slice(0, 10), nota: 'test' },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().estado).toBe('INFORMADO');

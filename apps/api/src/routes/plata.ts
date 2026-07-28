@@ -1104,6 +1104,20 @@ export async function plataRoutes(app: FastifyInstance) {
       await limpiarComprobante();
       return reply.code(400).send({ message: 'La fecha de transferencia no puede ser anterior al inicio del contrato.' });
     }
+    // El piso "inicio del contrato" es demasiado laxo: en un contrato de 3 años deja
+    // backdatear MESES. Y esa fecha es la que usa la validación como `asOf` de la mora
+    // (plata.ts:403), así que el inquilino se auto-condonaba los punitorios fechando la
+    // transferencia antes del vencimiento — y de paso se falseaba el certificado de buen
+    // pagador. Ventana real: "transferí hace unos días y recién informo". Más atrás que
+    // eso no es un olvido de informar, es esquivar la mora.
+    const DIAS_BACKDATE = 30;
+    const pisoBackdate = new Date(Date.now() - DIAS_BACKDATE * 24 * 3600 * 1000);
+    if (body.data.fechaTransferencia < pisoBackdate) {
+      await limpiarComprobante();
+      return reply.code(400).send({
+        message: `La fecha de transferencia no puede ser de hace más de ${DIAS_BACKDATE} días. Si el pago es más viejo, pedile a la inmobiliaria que lo registre.`,
+      });
+    }
     if (liq.estado === 'PAGADO') {
       await limpiarComprobante();
       return reply.code(409).send({ message: 'Esta liquidación ya está paga' });
