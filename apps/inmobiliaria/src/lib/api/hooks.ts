@@ -19,6 +19,7 @@ import {
 import type {
   ContratoListado,
   EstadoPropiedad,
+  Moneda,
   MoraEfectiva,
   Propiedad,
   Propietario,
@@ -1004,6 +1005,9 @@ export interface LiquidacionItem {
   /** Lo que falta cobrar: max(0, montoTotal − montoPagado). */
   saldo: number;
   estado: string;
+  /** Moneda de la liquidación. Se descartaba en el mapper, y sin ella la atribución
+   *  por propietario sumaba pesos con dólares en un solo número. */
+  moneda: Moneda;
   fechaVencimiento: string;
   fechaPago: string | null;
   direccion: string;
@@ -1024,6 +1028,7 @@ function mapLiquidacion(l: LiquidacionApi): LiquidacionItem {
     // Fallback local si el server no mandó saldo (backend viejo): total − pagado.
     saldo: l.saldo != null ? Number(l.saldo) : Math.max(0, Number(l.montoTotal) - montoPagado),
     estado: l.estado,
+    moneda: (l.moneda === 'USD' ? 'USD' : 'ARS') as Moneda,
     fechaVencimiento: (l.fechaVencimiento ?? '').slice(0, 10),
     fechaPago: l.fechaPago ? l.fechaPago.slice(0, 10) : null,
     direccion: l.contrato?.propiedad?.direccion ?? '—',
@@ -1110,6 +1115,12 @@ export function usePropietarios(): {
   const period = periodoActualYM();
   const props = propsQ.data ?? [];
   const cobradoByOwner: Record<string, number> = {};
+  // Monedas que vio cada dueño este período. Si mezcla ARS+USD no existe UN total
+  // que signifique algo: el listado y el diálogo mostraban 900.000 + 1.200 = 901.200
+  // con símbolo de pesos, y el operador decidía cuánto transferir sobre ese número
+  // inventado — recién al confirmar el server tiraba 409 "cobros en varias monedas".
+  // Es el mismo guard que la ficha del propietario ya tenía (use-propietario.ts).
+  const monedasByOwner: Record<string, Set<Moneda>> = {};
   for (const l of liquidaciones) {
     if (l.periodo !== period || l.estado !== 'PAGADO') continue;
     const prop = props.find((p) => p.contratoActualId === l.contratoId);
@@ -1125,12 +1136,17 @@ export function usePropietarios(): {
       // preview del diálogo de rendición.
       cobradoByOwner[part.propietarioId] =
         (cobradoByOwner[part.propietarioId] ?? 0) + l.montoAlquiler * (part.porcentaje / 100);
+      (monedasByOwner[part.propietarioId] ??= new Set()).add(l.moneda);
     }
   }
 
   const propietarios: Propietario[] = (ownersQ.data ?? []).map((o) => {
-    const cobrado = Math.round(cobradoByOwner[o.id] ?? 0);
+    const monedas = monedasByOwner[o.id] ?? new Set<Moneda>();
+    const mezcladas = monedas.size > 1;
+    // Mezcladas → 0 y sin moneda: la UI muestra "—" en vez de un total falso.
+    const cobrado = mezcladas ? 0 : Math.round(cobradoByOwner[o.id] ?? 0);
     const recibir = Math.round(cobrado * (1 - (o.comisionPct ?? 0) / 100));
+    const monedaMensual = monedas.size === 1 ? [...monedas][0] : null;
     return {
       id: o.id,
       nombre: o.nombre,
@@ -1145,6 +1161,7 @@ export function usePropietarios(): {
       propiedadesIds: (o.participaciones ?? []).map((x) => x.propiedadId),
       totalCobradoMes: cobrado,
       totalRecibirMes: recibir,
+      monedaMensual,
     };
   });
 

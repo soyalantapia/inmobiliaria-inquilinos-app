@@ -32,7 +32,7 @@ import { SumarPropietarioDialog } from '@/components/sumar-propietario-dialog';
 import { Topbar } from '@/components/topbar';
 import { usePropietarios } from '@/lib/api/hooks';
 import { useRendicionesList, type RendicionApi } from '@/lib/api/use-rendiciones';
-import type { Propietario } from '@/lib/types';
+import type { Moneda, Propietario } from '@/lib/types';
 import {
   obtenerRendicion,
   periodoActual,
@@ -145,7 +145,17 @@ export default function PropietariosPage() {
   }, [propietarios, q, filtroExtra, rendicionesMap]);
 
   const totalPropiedades = propietarios.reduce((acc, p) => acc + p.propiedadesIds.length, 0);
-  const totalRecibir = propietarios.reduce((acc, p) => acc + p.totalRecibirMes, 0);
+  // Por moneda: un dueño con contratos en dólares sumaba su neto a un total rotulado
+  // con "$". Con una sola moneda (el caso normal) se ve exactamente igual que antes.
+  const totalRecibirPorMoneda = (() => {
+    const acc = new Map<Moneda, number>();
+    for (const p of propietarios) {
+      if (p.totalRecibirMes <= 0) continue;
+      const m = p.monedaMensual ?? 'ARS';
+      acc.set(m, (acc.get(m) ?? 0) + p.totalRecibirMes);
+    }
+    return [...acc.entries()].sort((a, b) => (a[0] === 'ARS' ? -1 : b[0] === 'ARS' ? 1 : 0));
+  })();
   const sinCbu = propietarios.filter((p) => !p.cbuAlias).length;
   const porRendir = propietarios.filter(
     (p) => !rendicionesMap[p.id] && p.totalRecibirMes > 0,
@@ -166,7 +176,13 @@ export default function PropietariosPage() {
           <Card>
             <CardContent className="p-5">
               <p className="text-xs uppercase tracking-wide text-muted-foreground">A rendir este mes</p>
-              <p className="mt-1 text-2xl font-semibold text-primary">{formatMonto(totalRecibir)}</p>
+              <div className="mt-1 text-2xl font-semibold text-primary">
+                {totalRecibirPorMoneda.length === 0 ? (
+                  <p>{formatMonto(0)}</p>
+                ) : (
+                  totalRecibirPorMoneda.map(([m, t]) => <p key={m}>{formatMonto(t, m)}</p>)
+                )}
+              </div>
               <p className="text-xs text-muted-foreground">Después de comisión</p>
             </CardContent>
           </Card>
@@ -368,8 +384,18 @@ export default function PropietariosPage() {
                           {rendido ? 'Rendido este mes' : 'A rendir este mes'}
                         </p>
                         <p className="text-lg font-semibold">
-                          {formatMonto(rendido?.montoNeto ?? p.totalRecibirMes)}
+                          {p.monedaMensual === null
+                            ? '—'
+                            : formatMonto(rendido?.montoNeto ?? p.totalRecibirMes, p.monedaMensual ?? 'ARS')}
                         </p>
+                        {p.monedaMensual === null && (
+                          // Cobros en dos monedas: no existe UN número que signifique algo.
+                          // Antes se mostraba la suma cruda con símbolo de pesos y el operador
+                          // decidía sobre eso; el server recién lo frenaba al confirmar.
+                          <p className="text-[10px] text-muted-foreground">
+                            Cobros en pesos y dólares · rendí cada moneda por separado
+                          </p>
+                        )}
                         <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
                           Comisión {p.comisionPct}% · Bruto{' '}
                           {formatMonto(rendido?.montoBruto ?? p.totalCobradoMes)}

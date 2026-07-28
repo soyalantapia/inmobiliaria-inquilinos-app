@@ -129,6 +129,7 @@ export function RendirPropietarioDialog({
 
   if (!propietario) return null;
 
+  const mon = propietario.monedaMensual ?? 'ARS';
   const bruto = propietario.totalCobradoMes;
   const comisionMonto = Math.round(bruto * (propietario.comisionPct / 100));
   // Piso en 0: si los gastos superan lo cobrado, el neto a transferir no puede
@@ -286,7 +287,7 @@ export function RendirPropietarioDialog({
 
         {/* Desglose */}
         <div className="space-y-2 rounded-lg border bg-muted/20 p-4 text-sm">
-          <DesgloseRow label="Bruto cobrado" value={formatMonto(bruto)} />
+          <DesgloseRow label="Bruto cobrado" value={formatMonto(bruto, mon)} />
           <DesgloseRow
             label={`Comisión inmo (${propietario.comisionPct}%)`}
             value={`− ${formatMonto(comisionMonto)}`}
@@ -343,7 +344,7 @@ export function RendirPropietarioDialog({
           <div className="my-2 border-t" />
           <DesgloseRow
             label={apiEnabled ? 'A transferir (estimado)' : 'A transferir'}
-            value={formatMonto(neto)}
+            value={formatMonto(neto, mon)}
             highlight
           />
           {netoCrudo < 0 && (
@@ -472,7 +473,7 @@ export function RendirPropietarioDialog({
     <PinPromptDialog
       abierto={showPin}
       accion={`Rendir a ${propietario.nombre} ${propietario.apellido}`}
-      subaccion={`${formatMonto(neto)} · ${periodoLabel(periodo)}`}
+      subaccion={`${formatMonto(neto, mon)} · ${periodoLabel(periodo)}`}
       // En prod el PIN lo valida el server (POST /rendiciones); en demo el
       // dialog lo valida localmente como hasta ahora.
       validacion={apiEnabled ? 'servidor' : 'local'}
@@ -544,6 +545,9 @@ function GastoRow({ gasto }: { gasto: GastoAtribuido }) {
  * ============================================================ */
 export function mensajeRendicion(prop: Propietario, rend: Rendicion): string {
   const nombrePila = prop.nombre.split(' ')[0] ?? prop.nombre;
+  // Moneda REAL de la rendición. Con el default ARS, "US$ 1.104" salía como "$ 1.104"
+  // y en Argentina eso se lee 1.104 pesos: el dueño esperaba mil veces menos plata.
+  const mon = prop.monedaMensual ?? 'ARS';
   const comisionMonto = Math.round(rend.montoBruto * (rend.comisionPct / 100));
   const gastos = rend.gastos ?? [];
   const totalGastos = rend.totalGastos ?? 0;
@@ -560,19 +564,19 @@ export function mensajeRendicion(prop: Propietario, rend: Rendicion): string {
           ? gastos
               .map((g) => {
                 const prov = g.proveedor ? `${g.proveedor} · ` : '';
-                return `  • ${prov}${g.descripcion} (${formatMonto(g.monto)})`;
+                return `  • ${prov}${g.descripcion} (${formatMonto(g.monto, mon)})`;
               })
               .join('\n') + '\n'
           : '')
       : '';
-  const detalleIngresos = totalIngresos > 0 ? `\n*Ingresos del mes:* +${formatMonto(totalIngresos)}\n` : '';
+  const detalleIngresos = totalIngresos > 0 ? `\n*Ingresos del mes:* +${formatMonto(totalIngresos, mon)}\n` : '';
   return (
     `Hola ${nombrePila}! Te paso la rendición de ${periodoLabel(rend.periodo)}:\n\n` +
-    `*Bruto cobrado:* ${formatMonto(rend.montoBruto)}\n` +
-    `*Comisión (${rend.comisionPct}%):* -${formatMonto(comisionMonto)}\n` +
+    `*Bruto cobrado:* ${formatMonto(rend.montoBruto, mon)}\n` +
+    `*Comisión (${rend.comisionPct}%):* -${formatMonto(comisionMonto, mon)}\n` +
     detalleGastos +
     detalleIngresos +
-    `\n*A transferirte:* ${formatMonto(rend.montoNeto)}\n\n` +
+    `\n*A transferirte:* ${formatMonto(rend.montoNeto, mon)}\n\n` +
     `Te transferimos por ${rend.metodo.toLowerCase()} en el día. ` +
     `Cualquier cosa avisame.`
   );
