@@ -55,14 +55,7 @@ export async function miPerfilRoutes(app: FastifyInstance): Promise<void> {
       // atacante puso acá en un paso previo justamente para que este borrado la destruya
       // (urlEsDelTenant valida el tenant, no de quién es el archivo).
       const vieja = actual.imageUrl;
-      await borrarArchivoSiHuerfano(vieja, inq.inmobiliariaId, async () => {
-        const [inqs, docs, pagos] = await Promise.all([
-          prisma.inquilino.count({ where: { imageUrl: vieja } }),
-          prisma.documento.count({ where: { archivoUrl: vieja } }),
-          prisma.pago.count({ where: { comprobanteUrl: vieja } }),
-        ]);
-        return inqs + docs + pagos > 0;
-      });
+      await borrarArchivoSiHuerfano(vieja, inq.inmobiliariaId);
     }
     return { imageUrl: nueva };
   });
@@ -132,14 +125,7 @@ export async function miPerfilRoutes(app: FastifyInstance): Promise<void> {
         const urlPrevia = previo.archivoUrl;
         await prisma.documento.delete({ where: { id: previo.id } });
         // Mismo cuidado que el avatar: no borrar un archivo que otra fila sigue usando.
-        await borrarArchivoSiHuerfano(urlPrevia, inq.inmobiliariaId, async () => {
-          const [docs, inqs, pagos] = await Promise.all([
-            prisma.documento.count({ where: { archivoUrl: urlPrevia } }),
-            prisma.inquilino.count({ where: { imageUrl: urlPrevia } }),
-            prisma.pago.count({ where: { comprobanteUrl: urlPrevia } }),
-          ]);
-          return docs + inqs + pagos > 0;
-        });
+        await borrarArchivoSiHuerfano(urlPrevia, inq.inmobiliariaId);
       }
     }
     const doc = await prisma.documento.create({
@@ -168,14 +154,7 @@ export async function miPerfilRoutes(app: FastifyInstance): Promise<void> {
     if (!doc) return reply.code(404).send({ message: 'Documento inexistente' });
     const urlDoc = doc.archivoUrl;
     await prisma.documento.delete({ where: { id: doc.id } });
-    await borrarArchivoSiHuerfano(urlDoc, inq.inmobiliariaId, async () => {
-      const [docs, inqs, pagos] = await Promise.all([
-        prisma.documento.count({ where: { archivoUrl: urlDoc } }),
-        prisma.inquilino.count({ where: { imageUrl: urlDoc } }),
-        prisma.pago.count({ where: { comprobanteUrl: urlDoc } }),
-      ]);
-      return docs + inqs + pagos > 0;
-    });
+    await borrarArchivoSiHuerfano(urlDoc, inq.inmobiliariaId);
     return reply.send({ ok: true });
   });
 }

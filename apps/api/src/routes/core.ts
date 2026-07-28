@@ -1185,13 +1185,7 @@ export async function coreRoutes(app: FastifyInstance) {
     await prisma.usuario.update({ where: { id: u.userId }, data: { imageUrl: nueva } });
     if (actual?.imageUrl && actual.imageUrl !== nueva) {
       const previa = actual.imageUrl;
-      await borrarArchivoSiHuerfano(previa, u.inmobiliariaId, async () => {
-        const [usuarios, inquilinos] = await Promise.all([
-          prisma.usuario.count({ where: { imageUrl: previa } }),
-          prisma.inquilino.count({ where: { imageUrl: previa } }),
-        ]);
-        return usuarios + inquilinos > 0;
-      });
+      await borrarArchivoSiHuerfano(previa, u.inmobiliariaId);
     }
     return { imageUrl: nueva };
   });

@@ -1069,10 +1069,7 @@ export async function plataRoutes(app: FastifyInstance) {
     const limpiarComprobante = async () => {
       const url = body.data.comprobanteUrl;
       if (!url) return;
-      await borrarArchivoSiHuerfano(url, inq.inmobiliariaId, async () => {
-        const enUso = await prisma.pago.count({ where: { comprobanteUrl: url } });
-        return enUso > 0;
-      }).catch(() => {});
+      await borrarArchivoSiHuerfano(url, inq.inmobiliariaId).catch(() => {});
     };
     // La fecha de transferencia la elige el inquilino. Sin cota, backdatearla
     // esquiva la mora (la validación calcula el umbral con esa fecha) y falsea el
@@ -1430,13 +1427,7 @@ export async function plataRoutes(app: FastifyInstance) {
     // Best effort: liberar el comprobante del Volume (mismo patrón que documentos).
     if (mov.comprobanteUrl) {
       const urlMov = mov.comprobanteUrl;
-      await borrarArchivoSiHuerfano(urlMov, u.inmobiliariaId, async () => {
-        const [movs, pagos] = await Promise.all([
-          prisma.movimientoCaja.count({ where: { comprobanteUrl: urlMov } }),
-          prisma.pago.count({ where: { comprobanteUrl: urlMov } }),
-        ]);
-        return movs + pagos > 0;
-      });
+      await borrarArchivoSiHuerfano(urlMov, u.inmobiliariaId);
     }
     await registrarEvento({
       inmobiliariaId: u.inmobiliariaId,

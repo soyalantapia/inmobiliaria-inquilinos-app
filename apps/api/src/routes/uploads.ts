@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { JwtPayloadSchema, JwtProfesionalSchema, type JwtPayload, type JwtProfesional } from '@llave/shared';
+import { prisma } from '../db.js';
 
 /**
  * File storage REAL sobre un Railway Volume montado en /data.
@@ -153,15 +154,55 @@ export async function borrarArchivoSubido(url: string, tenant: string): Promise<
  * destinado a fallar, y hacer que el rollback borrara del disco el comprobante del otro —
  * dejando el Pago con una URL rota y a la inmobiliaria sin el respaldo.
  *
- * El caller pasa `sigueEnUso` porque sólo él sabe qué tablas apuntan a esa URL. Si el
- * archivo todavía está referenciado, NO se borra: no era basura de esta request.
+ * El chequeo de "¿sigue en uso?" es COMPLETO y vive acá (archivoSigueEnUso): antes lo
+ * pasaba cada caller y ninguno miraba todas las tablas. Si el archivo todavía está
+ * referenciado, NO se borra: no era basura de esta request.
  */
-export async function borrarArchivoSiHuerfano(
-  url: string,
-  tenant: string,
-  sigueEnUso: () => Promise<boolean>,
-): Promise<void> {
-  if (await sigueEnUso().catch(() => true)) return; // ante la duda, NO borrar
+/**
+ * ¿Alguna fila del sistema sigue apuntando a esta URL?
+ *
+ * Chequea TODAS las columnas que guardan una URL de archivo. Antes cada call site escribía
+ * a mano su propia lista y ninguno estaba completo: los seis miraban entre 1 y 3 tablas de
+ * las 16 que existen. Un archivo referenciado por la foto de un reclamo, el PDF de un
+ * contrato, el comprobante de un movimiento de caja o el extracto de un resumen bancario
+ * daba "no está en uso" y se BORRABA DEL DISCO, dejando esa otra fila con una URL rota y a
+ * la inmobiliaria sin el respaldo. Irreversible.
+ *
+ * La asimetría manda el diseño: un falso "sí está en uso" sólo deja un archivo de más en el
+ * Volume (barato y reversible); un falso "no está en uso" DESTRUYE un archivo ajeno. Por eso
+ * se incluye todo, y cualquier error de la query se trata como "sí está en uso".
+ *
+ * Si mañana se agrega una columna de URL nueva, va acá — es el ÚNICO lugar que hay que tocar.
+ */
+export async function archivoSigueEnUso(url: string): Promise<boolean> {
+  if (!url) return true;
+  try {
+    const counts = await Promise.all([
+      prisma.inquilino.count({ where: { imageUrl: url } }),
+      prisma.usuario.count({ where: { imageUrl: url } }),
+      prisma.propiedad.count({ where: { fotoUrl: url } }),
+      prisma.documento.count({ where: { archivoUrl: url } }),
+      prisma.documentoContrato.count({ where: { archivoUrl: url } }),
+      prisma.documentoAdjuntoInvitado.count({ where: { archivoUrl: url } }),
+      prisma.pago.count({ where: { comprobanteUrl: url } }),
+      prisma.movimientoCaja.count({ where: { comprobanteUrl: url } }),
+      prisma.comprobante.count({ where: { pdfUrl: url } }),
+      prisma.factura.count({ where: { pdfUrl: url } }),
+      prisma.boletaServicio.count({ where: { archivoUrl: url } }),
+      prisma.reclamo.count({ where: { fotoUrl: url } }),
+      prisma.reclamoEvento.count({ where: { adjuntoUrl: url } }),
+      prisma.resumenBancario.count({ where: { archivoUrl: url } }),
+      prisma.importacionCartera.count({ where: { archivoUrl: url } }),
+      prisma.reportePiloto.count({ where: { url } }),
+    ]);
+    return counts.some((c) => c > 0);
+  } catch {
+    return true; // ante la duda, NO borrar
+  }
+}
+
+export async function borrarArchivoSiHuerfano(url: string, tenant: string): Promise<void> {
+  if (await archivoSigueEnUso(url)) return;
   await borrarArchivoSubido(url, tenant);
 }
 

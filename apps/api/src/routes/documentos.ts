@@ -136,13 +136,7 @@ export async function documentosRoutes(app: FastifyInstance): Promise<void> {
     // Best effort: liberamos el archivo del Volume (tenant-scopeado).
     // No borrar un archivo que otra fila sigue referenciando (mismo criterio que
     // mi-perfil): la URL de una fila puede apuntar a un archivo que no creó esa fila.
-    await borrarArchivoSiHuerfano(doc.archivoUrl, u.inmobiliariaId, async () => {
-      const [docs, pagos] = await Promise.all([
-        prisma.documento.count({ where: { archivoUrl: doc.archivoUrl } }),
-        prisma.pago.count({ where: { comprobanteUrl: doc.archivoUrl } }),
-      ]);
-      return docs + pagos > 0;
-    });
+    await borrarArchivoSiHuerfano(doc.archivoUrl, u.inmobiliariaId);
     // 200 + JSON (no 204): el apiFetch del panel hace res.json() siempre.
     return reply.send({ ok: true });
   });
