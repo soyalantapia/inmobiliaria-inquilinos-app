@@ -1204,6 +1204,11 @@ export async function coreRoutes(app: FastifyInstance) {
   app.put('/contratos/:id/mora', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'contratos.crear');
     if (!u) return;
+    // `contratos.crear` incluye a CARGA porque ese rol carga contratos PARA APROBACIÓN
+    // (nacen BORRADOR). Pero editar la mora de un contrato ya vigente recalcula los
+    // punitorios de TODAS sus liquidaciones impagas: le borra la deuda por mora a un
+    // moroso. Mismo guard que finalizar/ajustar/renovar.
+    if (u.rol === 'CARGA') return reply.code(403).send({ message: 'Solo un Admin u Operador puede editar la mora del contrato' });
     const { id } = request.params as { id: string };
     const body = z
       .object({
@@ -2628,6 +2633,11 @@ export async function coreRoutes(app: FastifyInstance) {
   app.patch('/contratos/:id/monto', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'contratos.crear');
     if (!u) return;
+    // Este endpoint es el OTRO camino del ajuste de canon (el masivo): pisa contrato.monto
+    // y re-devenga las cuotas futuras impagas, igual que POST /ajustar — que sí bloquea a
+    // CARGA. Sin este guard, un rol "sólo carga para aprobación" podía dejar el alquiler
+    // de cualquier contrato en $1 (y con él la comisión, que sale de montoAlquiler).
+    if (u.rol === 'CARGA') return reply.code(403).send({ message: 'Solo un Admin u Operador puede ajustar el alquiler' });
     const { id } = request.params as { id: string };
     const body = z
       .object({
@@ -2747,6 +2757,9 @@ export async function coreRoutes(app: FastifyInstance) {
   app.patch('/contratos/:id/modo-cobranza', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'contratos.crear');
     if (!u) return;
+    // Cambia a QUÉ CBU transfiere el inquilino y si el contrato entra o sale del circuito
+    // de rendición y caja. No es una acción de carga para aprobación.
+    if (u.rol === 'CARGA') return reply.code(403).send({ message: 'Solo un Admin u Operador puede cambiar el modo de cobranza' });
     const { id } = request.params as { id: string };
     const body = z
       .object({
