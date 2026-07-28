@@ -1,9 +1,12 @@
 # Estado del proyecto — My Alquiler
 
 > **Documento de handoff.** Resumen ejecutivo de dónde está el proyecto hoy.
-> Última actualización: **2026-07-27**. Último commit: `e133b10` (origin/main).
-> **Último hito (27/07): cacería sistemática de bugs** — ~75 hallazgos, **40 corregidos y
-> deployados** (los 5 P0 activos incluidos). Detalle en `03-AUDITORIAS.md` §cacería 27/07.
+> Última actualización: **2026-07-28**. Último commit: `09b454a`.
+> **Último hito (28/07): caza de REGRESIONES sobre los fixes del 27** — 14 confirmados,
+> **los 14 cerrados**, 3 de ellos regresiones directas de los fixes del día anterior
+> (una costaba plata). ⚠️ **En `main`, TODAVÍA SIN DEPLOYAR.** Detalle en
+> `03-AUDITORIAS.md` §caza de regresiones 28/07.
+> Hito previo (27/07): cacería sistemática — ~75 hallazgos, **40 corregidos y deployados**.
 > Hitos previos (todo en prod, back+front, E2E/verificación OK):
 > **(1) Eliminación del PIN** de seguridad en TODA la plataforma (kill-switch `verificarPinUsuario`
 > siempre-ok; ninguna acción pide PIN). **(2) Reclamos "¿quién paga?"** — propietario/inquilino/
@@ -111,6 +114,15 @@ producto, no código**:
    restricción es trivial (`@unique` + migración) pero **rompería a quien hoy use el mismo
    mail en dos inmobiliarias** — por eso no se aplicó sin tu OK. Decidir: ¿un mail = una
    sola cuenta en toda la plataforma?
+
+1. 🟡 **¿La rendición debería poder ser PARCIAL?** Hoy, si los gastos de un período
+   superan lo cobrado, el server rechaza (409) y el gasto se vuelve a presentar el mes
+   siguiente: el dueño cobra tarde hasta que el operador toca el gasto. **La plata no se
+   pierde** (los períodos salteados se rinden retroactivamente) y hay salida no
+   destructiva (cargar un ingreso extra). La alternativa —transferir lo cobrado y
+   arrastrar el faltante como saldo del dueño— es una decisión de producto, no un bug.
+   El 28/07 se arregló la información (el 409 ahora da los números y las salidas; el
+   panel dejó de prometer una amortización que no existe), no la política.
 
 Lo demás que queda es cableado:
 

@@ -161,6 +161,46 @@ global. Ojo — **no** confundir con el falso positivo de acá abajo: scopear el
 **por tenant** rompe el 2do tenant; lo que está en discusión es lo contrario, un mail =
 una cuenta en toda la plataforma.
 
+### Caza de REGRESIONES 28/07 — 14 confirmados sobre los fixes del día anterior
+
+Pasada distinta a las demás: en vez de auditar el producto, auditó **los fixes recién
+hechos**. 5 revisores de dominio + 2 escépticos por hallazgo con lentes distintos
+(¿el código hace lo que dice? / ¿le pasa algo a un usuario real?), y sólo sobrevivía lo
+que **ningún** lente refutaba. De ~14 candidatos quedaron 14 confirmados y **los 14 se
+cerraron**.
+
+**Por qué valió la pena:** 3 de los 14 eran regresiones directas de los fixes del día
+anterior, incluida una que costaba plata — el tope por dueño en la rendición (`52c5699`)
+evitaba el doble cobro a una persona pero **no** el sobre-cobro cuando cambia el reparto:
+cada dueño nuevo de la propiedad se comía el arreglo entero, indefinidamente, porque los
+reclamos no tienen estado terminal. Un fix sin auditar es una hipótesis.
+
+**El patrón dominante (4 de 14): el arreglo existe y no llega a la pantalla.**
+- El depósito de garantía corregido había quedado en la rama **demo** de
+  `contrato/page.tsx` — la única que los inquilinos NO usan (Railway hornea
+  `NEXT_PUBLIC_API_URL` → se renderiza `ContratoReal`). Y el mock no traía el campo, así
+  que era código muerto en los DOS builds.
+- `puedeAcusar` se agregó en el API y el front nunca lo leyó → botón muerto con 403 mudo.
+- `PUT /me/avatar` llevaba semanas vivo sin un solo caller.
+- `totalIngresos` viajaba desde el server y el mapper del panel lo tiraba.
+
+**Regla nueva que salió de acá:** *nunca borrar del disco un archivo cuya URL vino en el
+body de la request*. El predicado "¿sigue en uso?" se puede ampliar a todas las tablas
+(y así está hoy, centralizado en `archivoSigueEnUso`), pero esa lista se pudre en
+silencio con la próxima tabla que guarde archivos. En los demás borrados eso cuesta un
+huérfano; en `/pagos/informar` costaba el documento de otra persona, porque es el único
+lugar donde el atacante elige el archivo.
+
+**Verificar que el test falla sin el fix.** En el bug de plata revertí el tope y confirmé
+que el test daba "expected 300 to be close to 200". Un test que pasa antes y después no
+protege nada.
+
+**Lo que un escéptico salvó de ser mal arreglado:** el hallazgo P1 "el propietario no
+cobra nunca más" era en realidad "cobra tarde, todo recuperable", y tenía una salida no
+destructiva que el reporte no vio (cargar un ingreso extra destraba la rendición sin
+borrar el gasto). Se arregló la información al operador, no la política — que es decisión
+del dueño del producto.
+
 ## La tendencia (por qué seguir re-corriendo)
 
 24 → 12 bugs entre pasadas: **el loop converge**. Cada ejecución encuentra menos y de
