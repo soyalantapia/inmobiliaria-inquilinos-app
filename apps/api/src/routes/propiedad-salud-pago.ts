@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { prisma } from '../db.js';
 import { requireUsuario } from '../auth/guards.js';
 import { conSaldo, montoPagadoPorLiquidacion } from '../lib/saldos.js';
+import { calcularMora, resolverEsquemaMora } from '../lib/punitorios.js';
 
 const r2c = (n: number) => Math.round(n * 100) / 100;
 const DIA_MS = 24 * 60 * 60 * 1000;
@@ -44,6 +45,10 @@ export async function propiedadSaludPagoRoutes(app: FastifyInstance) {
         id: true,
         moneda: true,
         estado: true,
+        // Campos del esquema de mora: sin ellos no se puede recalcular el punitorio al día.
+        moraTipo: true,
+        moraValor: true,
+        tasaPunitorioDiaria: true,
         depositoGarantia: true,
         estadoDeposito: true,
         depositoDevueltoMonto: true,
@@ -61,7 +66,9 @@ export async function propiedadSaludPagoRoutes(app: FastifyInstance) {
             id: true,
             contratoId: true,
             montoTotal: true,
-            montoPunitorio: true,
+            // `montoPunitorio` NO se usa: es una columna muerta (@default(0), "se recalcula
+            // al día, no congelar"). Lo que pisa el cálculo es el punitorio MANUAL.
+            montoPunitorioManual: true,
             estado: true,
             fechaVencimiento: true,
             fechaPago: true,
@@ -69,6 +76,15 @@ export async function propiedadSaludPagoRoutes(app: FastifyInstance) {
         })
       : [];
     const pagadoMap = await montoPagadoPorLiquidacion(liqs.map((l) => l.id));
+    // Mora al día con el esquema EFECTIVO (cascada contrato → default de la inmobiliaria,
+    // el manual pisa). Antes esta vista leía `l.montoPunitorio`, una columna que siempre
+    // vale 0: la deuda impaga salía SIN mora y no coincidía con la que ven el detalle del
+    // contrato, el inquilino y la cobranza.
+    const inmoMora = await prisma.inmobiliaria.findUnique({
+      where: { id: u.inmobiliariaId },
+      select: { moraTipoDefault: true, moraValorDefault: true },
+    });
+    const esquemaPorContrato = new Map(contratos.map((c) => [c.id, resolverEsquemaMora(c, inmoMora)]));
 
     // Agregación por contrato.
     const porContrato = new Map<
@@ -81,7 +97,13 @@ export async function propiedadSaludPagoRoutes(app: FastifyInstance) {
     for (const l of liqs) {
       const agg = porContrato.get(l.contratoId);
       if (!agg) continue;
-      const dec = conSaldo(l, pagadoMap, Number(l.montoPunitorio));
+      // PAGADA congela en fechaPago (no sigue devengando mora); impaga corre hasta hoy.
+      const asOf = l.estado === 'PAGADO' && l.fechaPago ? new Date(l.fechaPago) : now;
+      const esquema = esquemaPorContrato.get(l.contratoId);
+      const punitorio = esquema
+        ? calcularMora(Number(l.montoTotal), esquema, l.fechaVencimiento, asOf, l.montoPunitorioManual != null ? Number(l.montoPunitorioManual) : null)
+        : 0;
+      const dec = conSaldo(l, pagadoMap, punitorio);
       if (liqVencida(l, now) && dec.saldo > 0) {
         agg.deudaImpaga += dec.saldo;
         agg.cuotasVencidas += 1;
