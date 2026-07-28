@@ -34,6 +34,7 @@ import { limpiarSociedadesCache } from '@/lib/sociedades-storage';
 import { useAprobaciones, useMe } from '@/lib/api/hooks';
 import { cn } from '@llave/ui/cn';
 import { CountBadge } from '@/components/count-badge';
+import { AvatarUsuario } from '@/components/avatar-usuario';
 import { calcularResumenPlan } from '@/lib/plan';
 import { diasRestantesTrial, leerTrial, trialVigente } from '@/lib/trial-storage';
 import type { Capacidad, Rol } from '@/lib/permisos';
@@ -195,10 +196,17 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
       </nav>
       <div className="border-t p-3 text-xs text-muted-foreground">
         {apiEnabled ? (
-          <>
-            <p className="font-medium text-foreground">{me?.nombre ?? 'Mi cuenta'}</p>
-            {me?.email && <p className="truncate">{me.email}</p>}
-          </>
+          <div className="flex items-center gap-2">
+            <AvatarUsuario
+              imageUrl={me?.imageUrl ?? null}
+              iniciales={me?.iniciales ?? '?'}
+              editable={!!me}
+            />
+            <div className="min-w-0">
+              <p className="truncate font-medium text-foreground">{me?.nombre ?? 'Mi cuenta'}</p>
+              {me?.email && <p className="truncate">{me.email}</p>}
+            </div>
+          </div>
         ) : (
         <>
         <p className="font-medium text-foreground">Inmobiliaria del Sol</p>
