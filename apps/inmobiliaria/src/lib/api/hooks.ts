@@ -1162,6 +1162,7 @@ export function usePropietarios(): {
       totalCobradoMes: cobrado,
       totalRecibirMes: recibir,
       monedaMensual,
+      monedasMes: [...monedas],
     };
   });
 

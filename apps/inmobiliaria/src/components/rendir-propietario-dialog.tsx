@@ -97,6 +97,13 @@ export function RendirPropietarioDialog({
   // Período a rendir: default mes actual, pero se puede elegir un mes pasado que
   // se haya salteado (el server lo soporta). Antes estaba clavado a periodoActual().
   const [periodo, setPeriodo] = useState(periodoActual());
+  const [monedaElegida, setMonedaElegida] = useState<'ARS' | 'USD'>('ARS');
+  // Arranca en la primera moneda que el dueño efectivamente cobró: si sólo tiene dólares
+  // el default ARS dejaba el selector marcando algo que no existe.
+  const primeraMoneda = propietario?.monedasMes?.[0];
+  useEffect(() => {
+    if (primeraMoneda) setMonedaElegida(primeraMoneda);
+  }, [primeraMoneda, open]);
   const esMesActual = periodo === periodoActual();
   // El badge "ya rendido" sale de localStorage → solo válido en demo. En prod
   // queda null (no se inventa estado) hasta que haya un GET real de rendiciones.
@@ -129,7 +136,12 @@ export function RendirPropietarioDialog({
 
   if (!propietario) return null;
 
-  const mon = propietario.monedaMensual ?? 'ARS';
+  const monedasMes = propietario.monedasMes ?? [];
+  const mezcla = monedasMes.length > 1;
+  // Con cobros en dos monedas el server hace UNA rendición por moneda: el operador elige
+  // cuál. Antes el endpoint no aceptaba el parámetro que su propio 409 pedía, así que el
+  // dueño quedaba trabado — como máximo se rendía la moneda que hubiera cobrado primero.
+  const mon = mezcla ? monedaElegida : (propietario.monedaMensual ?? 'ARS');
   const bruto = propietario.totalCobradoMes;
   const comisionMonto = Math.round(bruto * (propietario.comisionPct / 100));
   // Piso en 0: si los gastos superan lo cobrado, el neto a transferir no puede
@@ -203,6 +215,8 @@ export function RendirPropietarioDialog({
         metodo,
         pin: pin || undefined,
         notas: notas.trim() || undefined,
+        // Sólo cuando hay mezcla: con una sola moneda el server la deduce de los cobros.
+        moneda: mezcla ? monedaElegida : undefined,
       });
       // Rendición efímera solo para el comprobante/toast (NO persiste en prod:
       // la fuente de verdad es el server, ya invalidamos sus queries). Usa el
@@ -287,7 +301,32 @@ export function RendirPropietarioDialog({
 
         {/* Desglose */}
         <div className="space-y-2 rounded-lg border bg-muted/20 p-4 text-sm">
-          <DesgloseRow label="Bruto cobrado" value={formatMonto(bruto, mon)} />
+          {mezcla && (
+            <div className="space-y-1 rounded-md bg-amber-50 px-3 py-2 dark:bg-amber-950">
+              <p className="text-xs text-amber-800 dark:text-amber-200">
+                Este propietario cobró en {monedasMes.length} monedas este mes. Se hace una
+                rendición por moneda: elegí cuál estás rindiendo ahora.
+              </p>
+              <div className="flex gap-1.5">
+                {monedasMes.map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setMonedaElegida(m)}
+                    aria-pressed={monedaElegida === m}
+                    className={`rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
+                      monedaElegida === m
+                        ? 'border-primary bg-primary text-primary-foreground'
+                        : 'bg-background hover:bg-muted'
+                    }`}
+                  >
+                    {m === 'USD' ? 'Dólares' : 'Pesos'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          <DesgloseRow label="Bruto cobrado" value={mezcla ? '—' : formatMonto(bruto, mon)} />
           <DesgloseRow
             label={`Comisión inmo (${propietario.comisionPct}%)`}
             value={`− ${formatMonto(comisionMonto)}`}
@@ -344,7 +383,7 @@ export function RendirPropietarioDialog({
           <div className="my-2 border-t" />
           <DesgloseRow
             label={apiEnabled ? 'A transferir (estimado)' : 'A transferir'}
-            value={formatMonto(neto, mon)}
+            value={mezcla ? '—' : formatMonto(neto, mon)}
             highlight
           />
           {netoCrudo < 0 && (

@@ -198,6 +198,8 @@ export interface Propietario {
   totalRecibirMes: number;
   /** Moneda de los montos mensuales (null si el dueño mezcla ARS+USD → no se agregan en un total). */
   monedaMensual?: Moneda | null;
+  /** Todas las monedas que cobró este período. Con más de una hay que rendir de a una. */
+  monedasMes?: Moneda[];
   /** Configuración AFIP — si está conectada, al conciliar un pago se emite factura/recibo automático. */
   afip?: ArcaConfig;
   /** Cuenta directa del propietario (modo PROPIETARIO_DIRECTO). */

@@ -27,6 +27,8 @@ export interface RendirInput {
   /** PIN de seguridad — el server lo valida y responde 4xx si es inválido. */
   pin?: string;
   notas?: string;
+  /** Acota la rendición a UNA moneda. Obligatoria cuando el dueño cobró en varias. */
+  moneda?: 'ARS' | 'USD';
 }
 
 // Shape de la rendición que devuelve el server (201). No la tipamos completa:

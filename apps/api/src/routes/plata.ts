@@ -1497,12 +1497,15 @@ export async function plataRoutes(app: FastifyInstance) {
         metodo: z.enum(['TRANSFERENCIA', 'MERCADOPAGO', 'EFECTIVO']).default('TRANSFERENCIA'),
         pin: z.string().optional(),
         notas: z.string().optional(),
+        // Acota la rendición a UNA moneda. Es la salida del 409 de abajo: el mensaje
+        // decía "rendí cada moneda por separado" y no había con qué hacerlo.
+        moneda: z.enum(['ARS', 'USD']).optional(),
       })
       .safeParse(request.body ?? {});
     if (!body.success) return reply.code(400).send({ message: 'Datos de la rendición incompletos' });
     if (!(await verificarPin(u.userId, body.data.pin, reply))) return;
 
-    const { propietarioId, periodo } = body.data;
+    const { propietarioId, periodo, moneda: monedaPedida } = body.data;
     const owner = await prisma.propietario.findFirst({
       where: { id: propietarioId, inmobiliariaId: u.inmobiliariaId },
       include: { participaciones: { include: { propiedad: true } } },
@@ -1522,17 +1525,24 @@ export async function plataRoutes(app: FastifyInstance) {
         periodo,
         estado: { in: ['PAGADO', 'PARCIAL'] },
         contrato: { propiedadId: { in: propIds }, modoCobranza: 'INMOBILIARIA' },
+        // Acotar por moneda es lo que hace rendible al dueño que cobra en pesos Y en
+        // dólares el mismo mes. Sin esto quedaba trabado para siempre: como máximo se
+        // rendía UNA de las dos (la que cobró primero) y la otra ya no salía nunca,
+        // porque la moneda ya rendida seguía envenenando el chequeo en cada intento.
+        ...(monedaPedida ? { moneda: monedaPedida } : {}),
       },
       include: {
         contrato: { select: { propiedadId: true, propiedad: { select: { direccion: true } } } },
       },
     });
-    // Una sola moneda por rendición (la Rendicion guarda un monto). Si mezcla → 409.
+    // Una sola moneda por rendición (la Rendicion guarda un monto). Si el operador no
+    // eligió cuál y hay mezcla → 409 pidiéndole que elija, ahora sí con la forma de hacerlo.
     const monedas = [...new Set(liqsCobradas.map((l) => l.moneda))];
-    const monedaRendicion = monedas[0] ?? 'ARS';
+    const monedaRendicion = monedaPedida ?? monedas[0] ?? 'ARS';
     if (monedas.length > 1) {
       return reply.code(409).send({
-        message: `Este propietario tiene cobros en varias monedas (${monedas.join(', ')}) en ${periodo}. Rendí cada moneda por separado (hoy la rendición es de una sola moneda).`,
+        message: `Este propietario tiene cobros en varias monedas (${monedas.join(', ')}) en ${periodo}. Elegí cuál rendir: se hace una rendición por moneda.`,
+        monedas,
       });
     }
     // TODO EL CÁLCULO + ESCRITURA va DENTRO de UNA tx con advisory lock por

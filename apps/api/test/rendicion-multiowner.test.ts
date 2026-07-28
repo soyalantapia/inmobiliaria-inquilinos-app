@@ -33,10 +33,11 @@ async function limpiar() {
   await prisma.movimientoCaja.deleteMany({ where: { id: { startsWith: P } } });
   await prisma.pago.deleteMany({ where: { id: { startsWith: P } } });
   await prisma.liquidacion.deleteMany({ where: { id: { startsWith: P } } });
-  await prisma.contrato.deleteMany({ where: { id: `${P}cnt` } });
-  await prisma.participacionPropietario.deleteMany({ where: { propiedadId: `${P}prop` } });
+  await prisma.propiedad.updateMany({ where: { id: { startsWith: P } }, data: { contratoActualId: null } });
+  await prisma.contrato.deleteMany({ where: { id: { startsWith: P } } });
+  await prisma.participacionPropietario.deleteMany({ where: { propiedadId: { startsWith: P } } });
   await prisma.propietario.deleteMany({ where: { id: { in: [`${P}ownA`, `${P}ownB`] } } });
-  await prisma.propiedad.deleteMany({ where: { id: `${P}prop` } });
+  await prisma.propiedad.deleteMany({ where: { id: { startsWith: P } } });
 }
 
 beforeAll(async () => {
@@ -602,5 +603,94 @@ describe('Cambia el dueño: el arreglo ya pagado no se vuelve a cobrar', () => {
   it('entre todos los dueños nunca se recauda más que el costo del arreglo', async () => {
     const partes = await prisma.gastoRendido.findMany({ where: { refId: refRec(), tipo: 'TRABAJO' } });
     expect(partes.reduce((a, g) => a + Number(g.monto), 0)).toBeCloseTo(200, 2);
+  });
+});
+
+/**
+ * Un dueño que cobra en pesos Y en dólares el mismo mes quedaba trabado.
+ *
+ * La rendición guarda UN monto, así que exige una sola moneda y respondía 409 diciendo
+ * "rendí cada moneda por separado" — pero POST /rendiciones no aceptaba ningún parámetro
+ * de moneda. La instrucción era imposible de ejecutar. Peor: como el chequeo mira TODAS
+ * las liquidaciones cobradas del período (incluidas las ya rendidas), la moneda que se
+ * llegó a rendir seguía envenenando el intento siguiente. Resultado: por período se
+ * rendía como máximo UNA de las dos —la que cobró primero— y la otra no salía nunca.
+ */
+describe('Dueño con cobros en dos monedas: se rinde una por vez', () => {
+  const PERIODO = '2026-11';
+
+  beforeAll(async () => {
+    // Segunda propiedad del MISMO dueño, con contrato en dólares (una liquidación por
+    // contrato+período, así que la mezcla necesita dos contratos).
+    await prisma.propiedad.create({
+      data: {
+        id: `${P}prop2`, inmobiliariaId, direccion: 'Multi-moneda 456',
+        ciudad: 'CABA', provincia: 'Buenos Aires', tipo: 'DEPARTAMENTO',
+      },
+    });
+    await prisma.participacionPropietario.create({
+      data: { inmobiliariaId, propiedadId: `${P}prop2`, propietarioId: `${P}ownA`, porcentaje: 100 },
+    });
+    await prisma.contrato.create({
+      data: {
+        id: `${P}cnt2`, inmobiliariaId, propiedadId: `${P}prop2`, monto: 500,
+        fechaInicio: new Date('2026-01-01T00:00:00.000Z'), fechaFin: new Date('2027-01-01T00:00:00.000Z'),
+        diaPago: 10, indiceAjuste: 'ICL', frecuenciaAjusteMeses: 12,
+        estado: 'ACTIVO', modoCobranza: 'INMOBILIARIA', moneda: 'USD',
+      },
+    });
+    for (const [cnt, moneda, monto] of [
+      [`${P}cnt`, 'ARS', 1000],
+      [`${P}cnt2`, 'USD', 500],
+    ] as const) {
+      const liqId = `${P}liq7${moneda}`;
+      await prisma.liquidacion.create({
+        data: {
+          id: liqId, inmobiliariaId, contratoId: cnt, periodo: PERIODO,
+          montoAlquiler: monto, montoTotal: monto,
+          fechaVencimiento: new Date('2026-11-10T00:00:00.000Z'), estado: 'PAGADO', moneda,
+        },
+      });
+      await prisma.pago.create({
+        data: {
+          id: `${P}pago7${moneda}`, inmobiliariaId, contratoId: cnt, liquidacionId: liqId,
+          periodo: PERIODO, monto, montoLiqTotal: monto, metodo: 'TRANSFERENCIA',
+          fechaTransferencia: new Date('2026-11-05T00:00:00.000Z'), estado: 'CONCILIADO',
+        },
+      });
+    }
+  });
+
+  const rendir = (moneda?: 'ARS' | 'USD') =>
+    app.inject({
+      method: 'POST', url: '/rendiciones', headers: auth(token),
+      payload: { propietarioId: `${P}ownA`, periodo: PERIODO, metodo: 'TRANSFERENCIA', ...(moneda ? { moneda } : {}) },
+    });
+
+  it('sin elegir moneda → 409, y ahora dice cuáles hay', async () => {
+    const res = await rendir();
+    expect(res.statusCode).toBe(409);
+    expect(res.json().monedas.sort()).toEqual(['ARS', 'USD']);
+  });
+
+  it('eligiendo ARS rinde SOLO lo cobrado en pesos', async () => {
+    const res = await rendir('ARS');
+    expect(res.statusCode).toBe(201);
+    expect(Number(res.json().montoBruto)).toBe(1000); // no 1500: el USD no entra
+  });
+
+  it('y después la de dólares TAMBIÉN sale (antes quedaba trabada para siempre)', async () => {
+    const res = await rendir('USD');
+    expect(res.statusCode).toBe(201);
+    // EL BUG: la liq ARS ya rendida seguía contando en el chequeo de monedas → 409 eterno.
+    expect(Number(res.json().montoBruto)).toBe(500);
+  });
+
+  it('las dos rendiciones existen, cada una con su moneda', async () => {
+    const rends = await prisma.rendicion.findMany({
+      where: { propietarioId: `${P}ownA`, periodo: PERIODO }, orderBy: { montoBruto: 'desc' },
+    });
+    expect(rends).toHaveLength(2);
+    expect(rends.map((r) => Number(r.montoBruto))).toEqual([1000, 500]);
   });
 });
