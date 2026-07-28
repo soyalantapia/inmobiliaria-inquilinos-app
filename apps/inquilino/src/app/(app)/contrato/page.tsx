@@ -406,12 +406,31 @@ function ContratoReal() {
                 hint={diasAjuste >= 0 ? `en ${diasAjuste} días` : undefined}
               />
             )}
-            <Row
-              icon={<KeyRound className="h-4 w-4" />}
-              label="Depósito en garantía"
-              value={formatMonto(c.montoActual, c.moneda)}
-              hint="1 mes — te lo devuelven al final"
-            />
+            {/* Depósito REAL del contrato. Esta fila mostraba el alquiler ACTUAL con el
+                texto "1 mes — te lo devuelven al final", y se renderizaba SIEMPRE: después
+                de un par de ajustes por índice era un número muy superior al que el
+                inquilino entregó al firmar, prometía la devolución entera aunque ya hubiera
+                reparaciones imputadas, y en un contrato sin depósito cargado inventaba una
+                cifra que no correspondía a ninguna plata existente. Sin depósito no
+                mostramos la fila: mejor no decir nada que decir algo falso.
+                (El arreglo existía desde 55b556e pero había quedado sólo en la rama demo
+                de arriba — o sea, en la única que los inquilinos NO usan.) */}
+            {c.depositoGarantia != null && c.depositoGarantia > 0 && (
+              <Row
+                icon={<KeyRound className="h-4 w-4" />}
+                label="Depósito en garantía"
+                value={formatMonto(c.depositoGarantia, c.moneda)}
+                hint={
+                  c.estadoDeposito === 'DEVUELTO'
+                    ? 'Ya te lo devolvieron'
+                    : c.estadoDeposito === 'NETEADO'
+                      ? `Se te devolvió ${formatMonto(c.depositoDevueltoMonto ?? 0, c.moneda)}`
+                      : c.estadoDeposito === 'EJECUTADO'
+                        ? 'Retenido por la inmobiliaria'
+                        : 'Lo tiene la inmobiliaria hasta que termine el contrato'
+                }
+              />
+            )}
             {mascotasPermitidas != null && (
               <Row
                 icon={<PawPrint className="h-4 w-4" />}

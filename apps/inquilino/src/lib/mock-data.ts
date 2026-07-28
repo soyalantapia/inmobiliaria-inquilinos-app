@@ -82,6 +82,12 @@ export const contratoMock: Contrato = {
   proximoAjuste: '2026-06-01',
   montoActual: 480000,
   moneda: 'ARS',
+  // Depósito de la firma, deliberadamente distinto del alquiler de hoy: la demo
+  // tiene que mostrar la diferencia que motivó el fix (antes se mostraba
+  // montoActual rotulado como depósito). Sin este campo la fila no se renderiza
+  // y el arreglo era código muerto también acá.
+  depositoGarantia: 320000,
+  estadoDeposito: 'RETENIDO',
 };
 
 export const liquidacionesMock: Liquidacion[] = [

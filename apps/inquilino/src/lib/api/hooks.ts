@@ -23,6 +23,10 @@ import {
 interface MiAnuncioApi extends Omit<AnuncioInquilino, 'enviadoAt'> {
   enviadoAt: string;
   acuse: { leidoAt: string | null; confirmadoAt: string | null } | null;
+  // false para co-inquilinos: los endpoints de acuse son sólo del titular. El API
+  // lo expone desde que el co-inquilino ve los anuncios; el front no lo leía y le
+  // ofrecía un botón que respondía 403 en silencio.
+  puedeAcusar?: boolean;
 }
 
 // ===== Mi contrato =====
@@ -190,6 +194,8 @@ export function useMisAnuncios(): {
   acuses: Record<string, Acuse>;
   marcarLeido: (id: string) => Promise<void>;
   marcarEnterado: (id: string) => Promise<void>;
+  /** El usuario puede acusar recibo (titular). Los co-inquilinos leen, no acusan. */
+  puedeAcusar: boolean;
   hidratado: boolean;
 } {
   const qc = useQueryClient();
@@ -218,6 +224,7 @@ export function useMisAnuncios(): {
       marcarEnterado: async (id) => {
         marcarEnteradoLocal(id);
       },
+      puedeAcusar: true, // la demo se recorre como titular
       // false hasta montar en el cliente → server y primer render del cliente
       // coinciden (ambos sin anuncios) y recién después aparece el <section>.
       hidratado: montado,
@@ -233,6 +240,7 @@ export function useMisAnuncios(): {
       acuses: {},
       marcarLeido: async () => {},
       marcarEnterado: async () => {},
+      puedeAcusar: false,
       hidratado: true,
     };
   }
@@ -247,6 +255,11 @@ export function useMisAnuncios(): {
       };
     }
   }
+  // El flag viene por anuncio pero es una propiedad del USUARIO (titular o no):
+  // alcanza con mirar el primero. Sin anuncios no hay botón que ofrecer.
+  // `?? true` para un backend viejo que todavía no manda el campo: preserva el
+  // comportamiento del titular, que es el 99% de los casos.
+  const puedeAcusar = (q.data ?? []).length === 0 ? false : ((q.data ?? [])[0]?.puedeAcusar ?? true);
   return {
     anuncios,
     acuses,
@@ -258,6 +271,7 @@ export function useMisAnuncios(): {
       await apiFetch(`/anuncios/${id}/enterado`, { method: 'POST' });
       invalidar();
     },
+    puedeAcusar,
     hidratado: !q.isPending,
   };
 }

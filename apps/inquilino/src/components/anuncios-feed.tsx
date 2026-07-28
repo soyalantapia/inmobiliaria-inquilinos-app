@@ -17,18 +17,21 @@ import { useMisAnuncios } from '@/lib/api/hooks';
 import { formatFechaCorta } from '@/lib/format';
 
 export function AnunciosFeed({ compacto = false }: { compacto?: boolean }) {
-  const { anuncios, acuses, marcarLeido, marcarEnterado, hidratado } = useMisAnuncios();
+  const { anuncios, acuses, marcarLeido, marcarEnterado, puedeAcusar, hidratado } = useMisAnuncios();
 
   if (!hidratado || anuncios.length === 0) return null;
 
   const aMostrar = compacto ? anuncios.slice(0, 3) : anuncios;
   const noLeidos = anuncios.filter((a) => !acuses[a.id]?.leidoAt).length;
 
+  // Los acuses son best-effort: si el POST falla, el anuncio ya se está leyendo y no
+  // hay nada que el inquilino pueda hacer al respecto. Lo que NO puede pasar es que
+  // el rechazo quede sin manejar — antes reventaba como unhandled rejection.
   const abrir = (id: string) => {
-    void marcarLeido(id);
+    void marcarLeido(id).catch(() => {});
   };
   const confirmar = (id: string) => {
-    void marcarEnterado(id);
+    void marcarEnterado(id).catch(() => {});
   };
 
   return (
@@ -52,6 +55,7 @@ export function AnunciosFeed({ compacto = false }: { compacto?: boolean }) {
             acuse={acuses[a.id]}
             onAbrir={() => abrir(a.id)}
             onEnterado={() => confirmar(a.id)}
+            puedeAcusar={puedeAcusar}
           />
         ))}
       </div>
@@ -64,11 +68,15 @@ function AnuncioRow({
   acuse,
   onAbrir,
   onEnterado,
+  puedeAcusar,
 }: {
   anuncio: AnuncioInquilino;
   acuse?: Acuse;
   onAbrir: () => void;
   onEnterado: () => void;
+  /** Sólo el titular acusa recibo. Al co-inquilino se le explica en vez de darle
+   *  un botón que el server rechaza con 403 sin que la app diga nada. */
+  puedeAcusar: boolean;
 }) {
   // Anuncio colapsable: por default solo título + preview, click para expandir.
   const [expandido, setExpandido] = useState(false);
@@ -156,6 +164,10 @@ function AnuncioRow({
               <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1.5 text-sm font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
                 <Check className="h-4 w-4" /> Ya avisaste que estás enterado
               </span>
+            ) : !puedeAcusar ? (
+              <p className="text-[11px] text-muted-foreground">
+                El acuse de recibo lo hace el titular del contrato.
+              </p>
             ) : (
               <button
                 type="button"

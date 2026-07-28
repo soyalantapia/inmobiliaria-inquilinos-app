@@ -61,6 +61,11 @@ function apiRendicionALocal(r: RendicionApi): Rendicion {
     montoBruto: Number(r.montoBruto),
     comisionPct: r.comisionPct,
     totalGastos: Number(r.totalGastos),
+    // Sin esto el comprobante de WhatsApp NO cuadraba: montoNeto ya trae sumados los
+    // ingresos extra de caja, pero al perderse el total la línea "Ingresos del mes"
+    // no se imprimía y al propietario le quedaba un "Bruto − Comisión − Gastos" que
+    // no daba el "A transferirte", sin ninguna línea que explicara la diferencia.
+    totalIngresos: r.totalIngresos != null ? Number(r.totalIngresos) : undefined,
     montoNeto: Number(r.montoNeto),
     rendidoAt: r.createdAt ?? `${r.periodo}-01`,
     metodo: r.metodo,

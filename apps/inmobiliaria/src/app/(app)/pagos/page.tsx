@@ -53,7 +53,7 @@ import {
   listarSociedades,
   sociedadPrincipal,
 } from '@/lib/sociedades-storage';
-import type { EstadoLiquidacion } from '@/lib/types';
+import type { EstadoLiquidacion, Moneda } from '@/lib/types';
 
 type Filtro = 'TODOS' | 'A_RESOLVER' | 'VENCIDO' | 'PENDIENTE' | 'PARCIAL' | 'PAGADO';
 
@@ -336,7 +336,17 @@ export default function PagosPage() {
     const exMorosos = contratos.filter(
       (c) => c.estado !== 'ACTIVO' && c.estadoPagoActual === 'VENCIDO' && c.modoCobranza !== 'PROPIETARIO_DIRECTO',
     );
-    const totalDeuda = [...morosos, ...exMorosos].reduce((acc, c) => acc + (c.deudaTotal ?? c.monto), 0);
+    // Agrupado por moneda: cada FILA ya imprime su moneda ("US$ 1.200"), pero el total
+    // sumaba dólares y pesos y lo imprimía con "$". Esta hoja se lleva a cobrar y se usa
+    // para reportarle la mora al dueño: un total que subestima la deuda en dólares por
+    // el orden del tipo de cambio no es un redondeo, es otro número.
+    const deudaPorMoneda = (items: typeof morosos) => {
+      const acc = new Map<Moneda, number>();
+      for (const c of items) acc.set(c.moneda, (acc.get(c.moneda) ?? 0) + (c.deudaTotal ?? c.monto));
+      const partes = [...acc.entries()].sort((a, b) => (a[0] === 'ARS' ? -1 : b[0] === 'ARS' ? 1 : 0));
+      // Una sola moneda (el caso normal) imprime igual que antes.
+      return partes.length === 0 ? formatMonto(0) : partes.map(([m, t]) => formatMonto(t, m)).join('  ·  ');
+    };
 
     const columnas = [
       { header: 'Inquilino', width: '20%' },
@@ -348,7 +358,7 @@ export default function PagosPage() {
     ];
     const totales = [
       { label: 'Contratos con deuda', valor: (morosos.length + exMorosos.length).toString() },
-      { label: 'Deuda total', valor: formatMonto(totalDeuda) },
+      { label: 'Deuda total', valor: deudaPorMoneda([...morosos, ...exMorosos]) },
     ];
     const notaFinal =
       'Imprimí esta hoja para llevar de visita o pegar en el tablero. Al ' +
@@ -369,7 +379,7 @@ export default function PagosPage() {
             filas: morosos.map(filaDe),
             subtotal: {
               label: 'Subtotal activos',
-              valor: formatMonto(morosos.reduce((acc, c) => acc + (c.deudaTotal ?? c.monto), 0)),
+              valor: deudaPorMoneda(morosos),
             },
           },
           {
@@ -378,7 +388,7 @@ export default function PagosPage() {
             filas: exMorosos.map(filaDe),
             subtotal: {
               label: 'Subtotal ex-inquilinos',
-              valor: formatMonto(exMorosos.reduce((acc, c) => acc + (c.deudaTotal ?? c.monto), 0)),
+              valor: deudaPorMoneda(exMorosos),
             },
           },
         ],
