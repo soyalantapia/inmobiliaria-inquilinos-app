@@ -127,3 +127,51 @@ describe('Importación de cartera: el reintento no duplica', () => {
     expect(r?.procesadas).toEqual([0, 1]);
   });
 });
+
+/**
+ * Dos requests SIMULTÁNEAS confirmando la misma importación (el doble click del operador,
+ * o el panel reintentando tras un timeout del proxy mientras la corrida original sigue
+ * viva del lado del server). Ni el email del inquilino ni la dirección de la propiedad
+ * tienen unique —a propósito, por el multi-alquiler— así que nada frenaba la segunda:
+ * las dos arrancaban con `procesadas` vacío y creaban la cartera ENTERA dos veces.
+ *
+ * El corte es un reclamo con vencimiento, no un cambio de estado: marcar CONFIRMADO al
+ * arrancar habría roto la reanudación de una importación cortada.
+ */
+describe('Importación de cartera: dos confirmaciones a la vez', () => {
+  it('sólo UNA corre; la otra recibe 409 y no duplica nada', async () => {
+    await limpiar();
+    const id = await crearImportacion();
+    const dos = await Promise.all([
+      app.inject({ method: 'POST', url: `/importaciones-cartera/${id}/confirmar`, headers: auth(), payload: {} }),
+      app.inject({ method: 'POST', url: `/importaciones-cartera/${id}/confirmar`, headers: auth(), payload: {} }),
+    ]);
+    const codigos = dos.map((r) => r.statusCode).sort();
+    expect(codigos).toEqual([200, 409]);
+    // EL BUG: sin el reclamo, las dos corrían enteras → 4 propiedades para una cartera de 2.
+    expect(await contarPropiedades()).toBe(2);
+  });
+
+  it('un reclamo VENCIDO no traba el reintento (si no, una caída dejaría la importación muerta)', async () => {
+    await limpiar();
+    // Simula el proceso muerto: reclamo viejo, sin filas procesadas.
+    const id = await crearImportacion({
+      creadas: 0, errores: [], procesadas: [],
+      enCursoDesde: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+    });
+    const res = await app.inject({ method: 'POST', url: `/importaciones-cartera/${id}/confirmar`, headers: auth(), payload: {} });
+    expect(res.statusCode).toBe(200);
+    expect(await contarPropiedades()).toBe(2);
+  });
+
+  it('cada fila creada queda anotada en el mismo commit (sin ventana de checkpoint)', async () => {
+    const imp = await prisma.importacionCartera.findFirst({
+      where: { nombreArchivo: `${P}cartera.csv` }, orderBy: { createdAt: 'desc' },
+    });
+    const r = imp?.resultado as { procesadas?: number[]; enCursoDesde?: string } | null;
+    expect(r?.procesadas).toEqual([0, 1]);
+    // Al terminar el reclamo se suelta: si quedara puesto, el próximo intento daría 409
+    // durante 15 minutos sin que nada esté corriendo.
+    expect(r?.enCursoDesde).toBeUndefined();
+  });
+});

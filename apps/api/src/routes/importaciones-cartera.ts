@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import * as XLSX from 'xlsx';
 import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
@@ -159,6 +160,33 @@ export async function importacionesCarteraRoutes(app: FastifyInstance): Promise<
     if (imp.estado === 'CONFIRMADO') return reply.code(409).send({ message: 'Esta importación ya se confirmó' });
     if (imp.estado !== 'MAPEADO') return reply.code(400).send({ message: 'Primero confirmá el mapeo de columnas' });
 
+    // RECLAMO ATÓMICO contra dos requests simultáneas (el doble click del operador, o el
+    // panel reintentando después de un timeout del proxy mientras la corrida original sigue
+    // viva del lado del server: Node no aborta el handler cuando el cliente se desconecta).
+    // Sin esto las dos corridas arrancan con `procesadas` vacío y crean la cartera ENTERA
+    // dos veces — ni el email ni la dirección tienen unique, así que nada las frena.
+    //
+    // Es un reclamo con vencimiento, NO un cambio de estado: marcar CONFIRMADO al arrancar
+    // rompería la reanudación (una importación cortada quedaría cerrada y sin forma de
+    // retomarla). Si el proceso muere, el reclamo caduca solo y el reintento sigue donde
+    // quedó. Va en `resultado`, que ya es Json → sin migración.
+    const RECLAMO_VENCE_MS = 15 * 60 * 1000;
+    const ahoraISO = new Date().toISOString();
+    const limiteISO = new Date(Date.now() - RECLAMO_VENCE_MS).toISOString();
+    // UPDATE condicional en una sola sentencia: si dos requests llegan juntas, sólo una
+    // ve rowsAffected=1. Prisma no puede expresar el WHERE sobre el Json, va en SQL.
+    const reclamado = await prisma.$executeRaw`
+      UPDATE importaciones_cartera
+      SET resultado = jsonb_set(COALESCE(resultado, '{}'::jsonb), '{enCursoDesde}', to_jsonb(${ahoraISO}::text))
+      WHERE id = ${id}
+        AND estado = 'MAPEADO'
+        AND (resultado->>'enCursoDesde' IS NULL OR resultado->>'enCursoDesde' < ${limiteISO})`;
+    if (reclamado === 0) {
+      return reply.code(409).send({
+        message: 'Esta importación ya se está procesando. Esperá a que termine antes de reintentar.',
+      });
+    }
+
     const mapeo = imp.mapeoColumnas as Record<string, number>;
     const filas = imp.filas as unknown[][];
     const seleccion = body.data.filas ? new Set(body.data.filas) : null;
@@ -179,15 +207,21 @@ export async function importacionesCarteraRoutes(app: FastifyInstance): Promise<
     let creadas = previo.creadas ?? 0;
     let sinGuardar = 0;
 
-    // Checkpoint cada N filas: un update por fila duplicaría el costo de la importación,
-    // y perder ≤10 filas de progreso ante una caída es aceptable (el reintento las repite,
-    // y para las que tienen email la dedup por email las frena igual).
+    // El progreso de las filas que CREAN algo se persiste DENTRO de la misma transacción
+    // que las crea (ver `alTerminar` abajo): antes se anotaba después, y un checkpoint cada
+    // 10 dejaba hasta 9 contratos creados y sin anotar. Si el proceso moría en esa ventana
+    // —un redeploy la abre: el apagado ordenado corta a los 12s y 2000 filas no entran en
+    // 12s— el reintento los volvía a crear enteros, duplicados en la cartera real del
+    // cliente, y el contador que veía el operador subestimaba lo realmente creado.
+    // Para las filas que sólo registran un ERROR no hace falta: no crean nada, así que
+    // repetirlas en un reintento es inocuo y ahí sí conviene el checkpoint agrupado.
     const CHECKPOINT = 10;
+    // El reclamo se REFRESCA en cada anotación (latido), no se deja clavado en el instante
+    // de arranque: una cartera grande tarda más que el vencimiento, y con la marca vieja el
+    // reclamo caducaba con la importación todavía corriendo — justo lo que evita.
+    const estadoActual = () => ({ creadas, errores, procesadas: [...procesadas], enCursoDesde: new Date().toISOString() });
     const guardarProgreso = async () => {
-      await prisma.importacionCartera.update({
-        where: { id },
-        data: { resultado: { creadas, errores, procesadas: [...procesadas] } },
-      });
+      await prisma.importacionCartera.update({ where: { id }, data: { resultado: estadoActual() } });
       sinGuardar = 0;
     };
 
@@ -203,9 +237,20 @@ export async function importacionesCarteraRoutes(app: FastifyInstance): Promise<
         continue;
       }
       try {
-        await crearContratoDesdeFila(u.inmobiliariaId, u.userId, d, propietarioCache);
+        // El estado que va a quedar SI la fila se crea. Se escribe dentro de la misma tx:
+        // o quedan las dos cosas (contrato + "fila i procesada") o no queda ninguna.
+        const siguiente = {
+          creadas: creadas + 1, errores, procesadas: [...procesadas, i],
+          enCursoDesde: new Date().toISOString(), // latido: ver estadoActual()
+        };
+        await crearContratoDesdeFila(u.inmobiliariaId, u.userId, d, propietarioCache, async (tx) => {
+          await tx.importacionCartera.update({ where: { id }, data: { resultado: siguiente } });
+        });
         if (d.inquilinoEmail) emailsExistentes.add(d.inquilinoEmail); // evita duplicar en filas siguientes
         creadas++;
+        procesadas.add(i);
+        sinGuardar = 0;
+        continue; // ya quedó anotada de forma atómica
       } catch (e) {
         const msg = e && typeof e === 'object' && (e as { code?: string }).code === 'P2002'
           ? 'Email o dato único ya existente'
@@ -309,6 +354,9 @@ async function crearContratoDesdeFila(
   userId: string,
   d: FilaMapeada,
   propietarioCache: Map<string, string>,
+  /** Corre DENTRO de la transacción de la fila: sirve para anotar el progreso de forma
+   *  atómica con la creación (o quedan las dos cosas, o no queda ninguna). */
+  alTerminar?: (tx: Prisma.TransactionClient) => Promise<void>,
 ): Promise<void> {
   const fechaInicio = d.fechaInicio!;
   const fechaFin = d.fechaFin && d.fechaFin > fechaInicio ? d.fechaFin : fechaFinPorDefecto(fechaInicio);
@@ -378,6 +426,8 @@ async function crearContratoDesdeFila(
       // el monto actual post-ajustes— entre 30s y 6h después de importar la cartera.
       await tx.contrato.update({ where: { id: contrato.id }, data: { devengarDesde } });
       await generarLiquidacionesContrato(tx, { ...contrato, devengarDesde });
+      // Último dentro de la tx: el progreso se commitea junto con la fila creada.
+      await alTerminar?.(tx);
     },
     { timeout: 30_000, maxWait: 10_000 },
   );
