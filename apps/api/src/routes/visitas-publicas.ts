@@ -22,6 +22,11 @@ import { imputarCostoReclamo, conceptoReclamo, ReclamoYaRendido } from '../lib/i
 const ORDEN_ESTADO = { ASIGNADO: 0, CONFIRMADA: 1, EN_CAMINO: 2, LISTO: 3 } as const;
 type EstadoVisita = keyof typeof ORDEN_ESTADO;
 
+/** Gracia tras marcar LISTO: el profesional todavía ve la pantalla de confirmación. */
+const GRACIA_POST_LISTO_MS = 48 * 60 * 60 * 1000;
+/** Tope duro de vida del link, contado desde que se abrió el reclamo. */
+const VIDA_MAX_LINK_MS = 60 * 24 * 60 * 60 * 1000;
+
 export async function visitasPublicasRoutes(app: FastifyInstance): Promise<void> {
   // GET /visitas-publicas/:token — PÚBLICO (sin bearer): valida el token opaco
   // del link mágico y devuelve la info de la visita + un JWT de sesión corto
@@ -35,6 +40,10 @@ export async function visitasPublicasRoutes(app: FastifyInstance): Promise<void>
         reclamo: {
           select: {
             id: true,
+            // Para acotar la vida del link: la visita no tiene createdAt, pero es 1:1 con
+            // el reclamo (reclamoId @unique), así que su antigüedad sirve de reloj.
+            createdAt: true,
+            estado: true,
             categoria: true,
             urgencia: true,
             descripcion: true,
@@ -49,9 +58,33 @@ export async function visitasPublicasRoutes(app: FastifyInstance): Promise<void>
     });
     if (!visita) return reply.code(404).send({ message: 'Link inválido o vencido' });
 
+    // VIGENCIA del link mágico. El token es permanente y `@unique`, y hasta acá NADA lo
+    // vencía ni lo consumía: cualquiera que tuviera el link —reenviado por WhatsApp, en el
+    // historial del teléfono de un profesional que ya no trabaja con la inmobiliaria—
+    // seguía canjeándolo por sesiones de 14 días para siempre. Y la respuesta incluye la
+    // dirección de la propiedad y el nombre y teléfono del inquilino.
+    //
+    // Sin migración: la visita no tiene createdAt, pero es 1:1 con el reclamo, así que
+    // usamos ESE reloj + los hitos que ya se persisten.
+    const vencido = (() => {
+      const ahora = Date.now();
+      // (a) Trabajo terminado: se deja una ventana de gracia para que el profesional vea
+      //     la pantalla de confirmación y refresque, y después el link muere.
+      if (visita.listoAt && ahora - new Date(visita.listoAt).getTime() > GRACIA_POST_LISTO_MS) return true;
+      // (b) Reclamo cerrado o rechazado: no hay trabajo que hacer, no hay razón para entrar.
+      if (visita.reclamo.estado === 'CERRADO' || visita.reclamo.estado === 'RECHAZADO') return true;
+      // (c) Tope duro por antigüedad, para el link que quedó abierto y nunca se completó.
+      if (ahora - new Date(visita.reclamo.createdAt).getTime() > VIDA_MAX_LINK_MS) return true;
+      return false;
+    })();
+    if (vencido) return reply.code(410).send({ message: 'Este link ya venció. Pedile uno nuevo a la inmobiliaria.' });
+
     const sesion = app.jwt.sign(
       { kind: 'profesional', visitaId: visita.id, inmobiliariaId: visita.inmobiliariaId, profesionalId: visita.profesionalId },
-      { expiresIn: '14d' },
+      // 3 días, no 14: una visita normal se resuelve en ese plazo y, si tarda más, el
+      // profesional vuelve a abrir el link y saca una sesión nueva (el token sigue vivo
+      // mientras el reclamo lo esté). Acorta la ventana de una sesión filtrada.
+      { expiresIn: '3d' },
     );
 
     const titular = visita.reclamo.contrato.inquilinoTitular;
