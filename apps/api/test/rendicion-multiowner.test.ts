@@ -21,14 +21,16 @@ let inmobiliariaId: string;
 const prisma = new PrismaClient();
 
 async function limpiar() {
-  await prisma.gastoRendido.deleteMany({ where: { refId: { in: [`${P}gasto`, `${P}gasto2`, `${P}gasto3`] } } });
+  await prisma.gastoRendido.deleteMany({ where: { refId: { startsWith: P } } });
   await prisma.ingresoRendido.deleteMany({ where: { rendicion: { propietarioId: { in: [`${P}ownA`, `${P}ownB`] } } } });
   // AlquilerRendido cuelga de Rendicion con FK RESTRICT → borrarlo antes.
   await prisma.alquilerRendido.deleteMany({ where: { rendicion: { propietarioId: { in: [`${P}ownA`, `${P}ownB`] } } } });
   await prisma.rendicion.deleteMany({ where: { propietarioId: { in: [`${P}ownA`, `${P}ownB`] } } });
-  await prisma.movimientoCaja.deleteMany({ where: { id: { in: [`${P}gasto`, `${P}gasto2`, `${P}gasto3`] } } });
-  await prisma.pago.deleteMany({ where: { id: { in: [`${P}pago`, `${P}pago2a`, `${P}pago2b`, `${P}pago3`] } } });
-  await prisma.liquidacion.deleteMany({ where: { id: { in: [`${P}liq`, `${P}liq2`, `${P}liq3`] } } });
+  // startsWith en vez de una lista de ids a mano: cada test nuevo que agregaba un
+  // fixture y olvidaba sumarlo a la lista dejaba basura en la DB compartida.
+  await prisma.movimientoCaja.deleteMany({ where: { id: { startsWith: P } } });
+  await prisma.pago.deleteMany({ where: { id: { startsWith: P } } });
+  await prisma.liquidacion.deleteMany({ where: { id: { startsWith: P } } });
   await prisma.contrato.deleteMany({ where: { id: `${P}cnt` } });
   await prisma.participacionPropietario.deleteMany({ where: { propiedadId: `${P}prop` } });
   await prisma.propietario.deleteMany({ where: { id: { in: [`${P}ownA`, `${P}ownB`] } } });
@@ -414,5 +416,105 @@ describe('Anular una rendición parcial: el gasto vuelve a quedar pendiente', ()
       _sum: { monto: true },
     });
     expect(Number(agg._sum.monto ?? 0)).toBe(200);
+  });
+});
+
+/**
+ * La rendición guarda UN monto y UNA moneda (la valida contra las liquidaciones), pero
+ * los movimientos de caja no llevaban moneda: entraban al neto sin mirar en cuál estaban.
+ * Un gasto de $200 (pesos) sobre una propiedad con contrato en dólares se descontaba
+ * como si fueran US$200 — el propietario cobraba US$200 de menos.
+ */
+describe('Moneda de la caja: la rendición sólo descuenta los gastos de SU moneda', () => {
+  const PERIODO = '2026-08';
+
+  beforeAll(async () => {
+    await prisma.liquidacion.create({
+      data: {
+        id: `${P}liq4`,
+        inmobiliariaId,
+        contratoId: `${P}cnt`,
+        periodo: PERIODO,
+        montoAlquiler: 1000,
+        montoTotal: 1000,
+        fechaVencimiento: new Date('2026-08-10T00:00:00.000Z'),
+        estado: 'PAGADO',
+        moneda: 'ARS',
+      },
+    });
+    await prisma.pago.create({
+      data: {
+        id: `${P}pago4`,
+        inmobiliariaId,
+        contratoId: `${P}cnt`,
+        liquidacionId: `${P}liq4`,
+        periodo: PERIODO,
+        monto: 1000,
+        montoLiqTotal: 1000,
+        metodo: 'TRANSFERENCIA',
+        fechaTransferencia: new Date('2026-08-05T00:00:00.000Z'),
+        estado: 'CONCILIADO',
+      },
+    });
+    // Dos gastos iguales en número, distintos en moneda, sobre la MISMA propiedad.
+    for (const [sufijo, moneda] of [['ars', 'ARS'], ['usd', 'USD']] as const) {
+      await prisma.movimientoCaja.create({
+        data: {
+          id: `${P}gasto4${sufijo}`,
+          inmobiliariaId,
+          propiedadId: `${P}prop`,
+          tipo: 'GASTO',
+          categoria: 'PLOMERIA',
+          descripcion: `Gasto en ${moneda}`,
+          monto: 200,
+          moneda,
+          fecha: new Date('2026-08-03T00:00:00.000Z'),
+          cargadoPor: 'test',
+          descontadoEnRendicion: false,
+        },
+      });
+    }
+  });
+
+  it('la rendición en ARS toma el gasto en ARS y NO el que está en USD', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/rendiciones',
+      headers: auth(token),
+      payload: { propietarioId: `${P}ownA`, periodo: PERIODO, metodo: 'TRANSFERENCIA' },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(Number(res.json().montoBruto)).toBe(500); // 1000 cobrado × 50%
+    // EL BUG: sin el filtro por moneda daba 200 (la mitad de los 200 ARS + la mitad
+    // de los 200 USD sumados como si fueran la misma plata).
+    expect(Number(res.json().totalGastos)).toBe(100); // sólo su mitad de los 200 ARS
+  });
+
+  it('el gasto en USD queda intacto y pendiente (no se lo comió una rendición ajena)', async () => {
+    const usd = await prisma.movimientoCaja.findUniqueOrThrow({ where: { id: `${P}gasto4usd` } });
+    expect(usd.descontadoEnRendicion).toBe(false);
+    expect(usd.rendicionId).toBeNull();
+    // Y el que sí correspondía quedó tomado a medias (el co-dueño B debe su mitad).
+    const ars = await prisma.movimientoCaja.findUniqueOrThrow({ where: { id: `${P}gasto4ars` } });
+    expect(ars.descontadoEnRendicion).toBe(false); // sólo A rindió: falta la mitad de B
+    const partes = await prisma.gastoRendido.findMany({ where: { refId: `${P}gasto4ars` } });
+    expect(partes).toHaveLength(1);
+    expect(Number(partes[0].monto)).toBe(100);
+  });
+
+  it('un gasto en USD tampoco se le cobra al co-dueño', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/rendiciones',
+      headers: auth(token),
+      payload: { propietarioId: `${P}ownB`, periodo: PERIODO, metodo: 'TRANSFERENCIA' },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(Number(res.json().totalGastos)).toBe(100);
+    // Con las dos mitades cobradas, el gasto en ARS sí queda cerrado.
+    const ars = await prisma.movimientoCaja.findUniqueOrThrow({ where: { id: `${P}gasto4ars` } });
+    expect(ars.descontadoEnRendicion).toBe(true);
+    const usd = await prisma.movimientoCaja.findUniqueOrThrow({ where: { id: `${P}gasto4usd` } });
+    expect(usd.descontadoEnRendicion).toBe(false);
   });
 });

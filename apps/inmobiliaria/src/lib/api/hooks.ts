@@ -319,6 +319,7 @@ interface MovimientoCajaApi {
   categoria: MovimientoCaja['categoria'];
   descripcion: string;
   monto: string | number;
+  moneda?: MovimientoCaja['moneda'];
   fecha: string;
   proveedor: string | null;
   comprobanteUrl: string | null;
@@ -336,6 +337,9 @@ function mapMovimiento(m: MovimientoCajaApi): MovimientoCaja {
     categoria: m.categoria,
     descripcion: m.descripcion,
     monto: Number(m.monto),
+    // ?? 'ARS': el back la agregó con default ARS, pero un cliente viejo cacheado
+    // puede recibir la fila sin el campo. Sin el fallback el KPI queda "undefined".
+    moneda: m.moneda ?? 'ARS',
     fecha: m.fecha.slice(0, 10),
     proveedor: m.proveedor,
     comprobante: m.comprobanteUrl,
@@ -352,6 +356,8 @@ export interface NuevoGasto {
   categoria: MovimientoCaja['categoria'];
   descripcion: string;
   monto: number;
+  /** Moneda del movimiento. Default ARS. La rendición sólo toma los de SU moneda. */
+  moneda?: MovimientoCaja['moneda'];
   fecha: string;
   proveedor?: string | null;
   /** Comprobante/ticket del gasto: URL de /uploads (ya subida). Opcional. */
@@ -391,6 +397,7 @@ export function useCaja(): {
           categoria: g.categoria,
           descripcion: g.descripcion,
           monto: g.monto,
+          moneda: g.moneda ?? 'ARS',
           fecha: g.fecha,
           proveedor: g.proveedor ?? null,
           comprobante: null,

@@ -6,6 +6,8 @@
 // ahora vive en localStorage. Cargamos algunos movimientos de ejemplo si
 // el storage está vacío para que la demo tenga sustancia.
 
+import type { Moneda } from '@/lib/types';
+
 const STORAGE_KEY = 'llave-inmo:caja:v1';
 
 export type CategoriaGasto =
@@ -28,6 +30,9 @@ export interface MovimientoCaja {
   categoria: CategoriaGasto;
   descripcion: string;
   monto: number; // siempre positivo, el tipo define si suma o resta
+  // Moneda del movimiento: la rendición sólo toma los de SU moneda, así que
+  // un gasto en pesos NO se descuenta de una rendición en dólares.
+  moneda: Moneda;
   fecha: string; // ISO date YYYY-MM-DD
   proveedor: string | null; // ej. "Sergio Almeida (plomero)"
   comprobante: string | null; // dataURL o ref
@@ -46,6 +51,7 @@ const SEED: MovimientoCaja[] = [
     categoria: 'PLOMERIA',
     descripcion: 'Reparación pérdida cocina',
     monto: 45000,
+    moneda: 'ARS',
     fecha: '2026-04-30',
     proveedor: 'Sergio Almeida (plomero)',
     comprobante: null,
@@ -61,6 +67,7 @@ const SEED: MovimientoCaja[] = [
     categoria: 'ELECTRICIDAD',
     descripcion: 'Cambio de térmica del tablero',
     monto: 28500,
+    moneda: 'ARS',
     fecha: '2026-05-04',
     proveedor: 'Diego Ferrari (electricista)',
     comprobante: null,
@@ -76,6 +83,7 @@ const SEED: MovimientoCaja[] = [
     categoria: 'EXPENSAS',
     descripcion: 'Expensa extraordinaria — fachada',
     monto: 62000,
+    moneda: 'ARS',
     fecha: '2026-05-02',
     proveedor: 'Consorcio',
     comprobante: null,
@@ -117,6 +125,19 @@ export function totalPendienteDescuento(propiedadId: string): number {
   return movimientosDePropiedad(propiedadId)
     .filter((m) => m.tipo === 'GASTO' && !m.descontadoEnRendicion)
     .reduce((acc, m) => acc + m.monto, 0);
+}
+
+/**
+ * Agrupa por moneda en vez de devolver un número plano. Sumar un gasto en dólares
+ * con uno en pesos da un número sin significado, y el símbolo de la primera moneda
+ * lo disfraza de total válido. Devuelve ARS primero (el caso normal).
+ */
+export function totalesPorMoneda(movs: MovimientoCaja[]): Array<{ moneda: Moneda; total: number }> {
+  const acc = new Map<Moneda, number>();
+  for (const m of movs) acc.set(m.moneda, (acc.get(m.moneda) ?? 0) + m.monto);
+  return [...acc.entries()]
+    .map(([moneda, total]) => ({ moneda, total }))
+    .sort((a, b) => (a.moneda === 'ARS' ? -1 : b.moneda === 'ARS' ? 1 : 0));
 }
 
 // Suma global de TODOS los gastos pendientes de descontar (sin propiedad). Se

@@ -1338,6 +1338,10 @@ export async function plataRoutes(app: FastifyInstance) {
         categoria: z.enum(['PLOMERIA', 'ELECTRICIDAD', 'GAS', 'CERRAJERIA', 'PINTURA', 'EXPENSAS', 'MATERIALES', 'OTRO']).optional(),
         descripcion: z.string().min(3),
         monto: montoCents,
+        // Moneda del movimiento. La rendición sólo toma los de SU moneda, así que
+        // un gasto mal rotulado no se descuenta (mejor que descontarse mal).
+        // Default ARS por compatibilidad: es lo que mandaban los clientes viejos.
+        moneda: z.enum(['ARS', 'USD']).default('ARS'),
         // coerce.date rechaza strings no-fecha (igual que fechaTransferencia):
         // antes new Date('xxx')=Invalid Date hacía explotar el create con 500.
         fecha: z.coerce.date(),
@@ -1367,6 +1371,7 @@ export async function plataRoutes(app: FastifyInstance) {
         categoria: body.data.categoria ?? 'OTRO',
         descripcion: body.data.descripcion,
         monto: body.data.monto,
+        moneda: body.data.moneda,
         fecha: body.data.fecha,
         proveedor: body.data.proveedor,
         // Respaldo del gasto (foto/PDF ya subido a /uploads): antes se validaba
@@ -1381,7 +1386,7 @@ export async function plataRoutes(app: FastifyInstance) {
       autorId: u.userId,
       rolAutor: u.rol,
       entidadId: mov.id,
-      entidadDescripcion: `${esIngreso ? 'Entrada' : 'Salida'} · $${body.data.monto} · ${body.data.descripcion}`,
+      entidadDescripcion: `${esIngreso ? 'Entrada' : 'Salida'} · ${body.data.moneda === 'USD' ? 'US$' : '$'}${body.data.monto} · ${body.data.descripcion}`,
     });
     return mov;
   });

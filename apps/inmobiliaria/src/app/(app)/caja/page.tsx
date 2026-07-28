@@ -39,18 +39,44 @@ import {
   type CategoriaGasto,
   type MovimientoCaja,
   categoriaGastoLabel,
+  totalesPorMoneda,
 } from '@/lib/caja-storage';
 import { useCaja, usePropiedades } from '@/lib/api/hooks';
 import { useCierreCaja } from '@/lib/api/use-pagos';
 import { apiEnabled, subirArchivo } from '@/lib/api/client';
 import { formatFechaCorta, formatMonto, fechaHoyLocal } from '@/lib/format';
+import type { Moneda } from '@/lib/types';
 import { propiedadesMock } from '@/lib/mock-data';
 
 /** Opción mínima de propiedad para el select/filtros de caja. */
+/**
+ * Un renglón por moneda. Con una sola (el 99% de los casos) se ve exactamente igual
+ * que antes; con dos, el usuario ve "$ 120.000" y "US$ 800" en vez de un 120.800
+ * inventado. Sin movimientos muestra el cero de la moneda local.
+ */
+function MontosPorMoneda({
+  items,
+  className,
+}: {
+  items: Array<{ moneda: Moneda; total: number }>;
+  className?: string;
+}) {
+  if (items.length === 0) return <p className={className}>{formatMonto(0)}</p>;
+  return (
+    <div className={className}>
+      {items.map((i) => (
+        <p key={i.moneda}>{formatMonto(i.total, i.moneda)}</p>
+      ))}
+    </div>
+  );
+}
+
 interface PropiedadOpcion {
   id: string;
   direccion: string;
   contratoActualId: string | null;
+  /** Moneda del contrato vigente: la rendición sólo descuenta gastos de ESA moneda. */
+  moneda: Moneda;
 }
 
 export default function CajaPage() {
@@ -64,11 +90,13 @@ export default function CajaPage() {
         id: p.propiedad.id,
         direccion: p.propiedad.direccion,
         contratoActualId: p.propiedad.contratoActualId,
+        moneda: p.contrato?.moneda ?? 'ARS',
       }))
     : propiedadesMock.map((p) => ({
         id: p.id,
         direccion: p.direccion,
         contratoActualId: p.contratoActualId,
+        moneda: 'ARS' as Moneda,
       }));
   const [abrirForm, setAbrirForm] = useState(false);
   const [eliminando, setEliminando] = useState<MovimientoCaja | null>(null);
@@ -82,17 +110,18 @@ export default function CajaPage() {
   // KPIs derivados de `filtrados` (no de `movimientos`): al activar un chip de
   // propiedad la lista se acotaba pero los KPIs seguían mostrando el total global,
   // sin coincidir con las filas visibles. Con filtroProp='TODAS', filtrados===movimientos.
-  const totalGastado = filtrados
-    .filter((m) => m.tipo === 'GASTO')
-    .reduce((acc, m) => acc + m.monto, 0);
-  const pendienteDescuento = filtrados
-    .filter((m) => m.tipo === 'GASTO' && !m.descontadoEnRendicion)
-    .reduce((acc, m) => acc + m.monto, 0);
+  // Los KPIs van agrupados POR MONEDA: sumar un gasto en dólares con uno en pesos
+  // da un número sin significado, y el símbolo de la primera moneda lo disfraza de
+  // total válido. Con una sola moneda (el caso normal) se ve una sola línea.
+  const totalGastado = totalesPorMoneda(filtrados.filter((m) => m.tipo === 'GASTO'));
+  const pendienteDescuento = totalesPorMoneda(
+    filtrados.filter((m) => m.tipo === 'GASTO' && !m.descontadoEnRendicion),
+  );
   // Ingresos extra de caja: antes no aparecían en ningún KPI (parecían perderse).
   // Ahora suman al neto de la rendición → mostramos lo pendiente a sumar.
-  const pendienteSumar = filtrados
-    .filter((m) => m.tipo === 'INGRESO_EXTRA' && !m.descontadoEnRendicion)
-    .reduce((acc, m) => acc + m.monto, 0);
+  const pendienteSumar = totalesPorMoneda(
+    filtrados.filter((m) => m.tipo === 'INGRESO_EXTRA' && !m.descontadoEnRendicion),
+  );
   const cantidadMov = filtrados.length;
 
   // El PIN se eliminó de la plataforma (auth/pin.ts): el borrado se confirma con
@@ -146,28 +175,28 @@ export default function CajaPage() {
               <TrendingDown className="h-4 w-4" />
               <p className="text-xs">Gastado total</p>
             </div>
-            <p className="mt-1 text-2xl font-semibold tabular-nums">
-              {formatMonto(totalGastado)}
-            </p>
+            <MontosPorMoneda items={totalGastado} className="mt-1 text-2xl font-semibold tabular-nums" />
           </Card>
           <Card className="p-4 sm:col-span-2 md:col-span-1">
             <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300">
               <ArrowDown className="h-4 w-4" />
               <p className="text-xs font-medium">A descontar en próxima rendición</p>
             </div>
-            <p className="mt-1 text-2xl font-semibold tabular-nums text-amber-700 dark:text-amber-300">
-              {formatMonto(pendienteDescuento)}
-            </p>
+            <MontosPorMoneda
+              items={pendienteDescuento}
+              className="mt-1 text-2xl font-semibold tabular-nums text-amber-700 dark:text-amber-300"
+            />
           </Card>
-          {pendienteSumar > 0 && (
+          {pendienteSumar.length > 0 && (
             <Card className="p-4 sm:col-span-2 md:col-span-1">
               <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300">
                 <TrendingUp className="h-4 w-4" />
                 <p className="text-xs font-medium">A sumar en próxima rendición</p>
               </div>
-              <p className="mt-1 text-2xl font-semibold tabular-nums text-emerald-700 dark:text-emerald-300">
-                {formatMonto(pendienteSumar)}
-              </p>
+              <MontosPorMoneda
+                items={pendienteSumar}
+                className="mt-1 text-2xl font-semibold tabular-nums text-emerald-700 dark:text-emerald-300"
+              />
             </Card>
           )}
         </div>
@@ -504,7 +533,7 @@ function MovimientoRow({
           }`}
         >
           {esIngreso ? '+' : '−'}
-          {formatMonto(mov.monto)}
+          {formatMonto(mov.monto, mov.moneda)}
         </p>
         <Button
           size="icon"
@@ -536,6 +565,10 @@ function DialogCargarGasto({
   const [categoria, setCategoria] = useState<CategoriaGasto>('PLOMERIA');
   const [descripcion, setDescripcion] = useState('');
   const [monto, setMonto] = useState('');
+  // Moneda del movimiento. Arranca en la del contrato de la propiedad elegida: la
+  // rendición sólo descuenta los gastos de SU moneda, así que el default correcto
+  // es el que hace que el gasto efectivamente se descuente.
+  const [moneda, setMoneda] = useState<Moneda>('ARS');
   const [fecha, setFecha] = useState(fechaHoyLocal());
   const [proveedor, setProveedor] = useState('');
   // Comprobante/ticket del gasto (opcional): se sube a /uploads al elegirlo y
@@ -552,11 +585,23 @@ function DialogCargarGasto({
       setCategoria('PLOMERIA');
       setDescripcion('');
       setMonto('');
+      setMoneda('ARS');
       setFecha(fechaHoyLocal());
       setProveedor('');
       setComprobanteUrl(null);
     }
   }, [open]);
+
+  const propSel = opciones.find((p) => p.id === propiedadId) ?? null;
+  // Al cambiar de propiedad seguimos la moneda de SU contrato. Si el usuario ya la
+  // tocó a mano no la pisamos: el efecto depende sólo de propiedadId.
+  useEffect(() => {
+    if (propSel) setMoneda(propSel.moneda);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [propiedadId]);
+  // Un gasto en una moneda distinta a la del contrato NUNCA se va a descontar de la
+  // rendición de ese propietario: mejor decirlo antes que dejarlo colgado en silencio.
+  const monedaDistinta = !!propSel?.contratoActualId && moneda !== propSel.moneda;
 
   const guardar = async () => {
     if (guardando) return;
@@ -593,6 +638,7 @@ function DialogCargarGasto({
         categoria,
         descripcion: descripcion.trim(),
         monto: montoNum,
+        moneda,
         fecha,
         proveedor: proveedor.trim() || null,
         comprobante: comprobanteUrl,
@@ -701,13 +747,26 @@ function DialogCargarGasto({
               <Label htmlFor="caj-monto" className="text-xs" aria-required>
                 Monto <span className="text-destructive">*</span>
               </Label>
-              <MoneyInput
-                id="caj-monto"
-                value={monto}
-                onChange={setMonto}
-                placeholder="0"
-                required
-              />
+              <div className="flex gap-1">
+                <select
+                  value={moneda}
+                  onChange={(e) => setMoneda(e.target.value as Moneda)}
+                  aria-label="Moneda del movimiento"
+                  className="h-9 rounded-md border border-input bg-background px-1.5 text-sm"
+                >
+                  <option value="ARS">$</option>
+                  <option value="USD">US$</option>
+                </select>
+                <MoneyInput
+                  id="caj-monto"
+                  value={monto}
+                  onChange={setMonto}
+                  moneda={moneda}
+                  placeholder="0"
+                  required
+                  className="flex-1"
+                />
+              </div>
             </div>
             <div className="space-y-1">
               <Label htmlFor="caj-proveedor" className="text-xs">Proveedor (opcional)</Label>
@@ -719,6 +778,15 @@ function DialogCargarGasto({
               />
             </div>
           </div>
+
+          {monedaDistinta && (
+            <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+              El contrato de esta propiedad está en{' '}
+              <strong>{propSel?.moneda === 'USD' ? 'dólares' : 'pesos'}</strong>, así que un
+              movimiento en {moneda === 'USD' ? 'dólares' : 'pesos'} <strong>no</strong> se va a
+              descontar de la rendición al propietario. Convertí el importe o cambiá la moneda.
+            </p>
+          )}
 
           {/* Comprobante/ticket del gasto (opcional): foto o PDF. Se sube a
               /uploads al elegirlo; el backend persiste comprobanteUrl (validada
