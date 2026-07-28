@@ -11,6 +11,7 @@ import {
   parsearFilaMapeada,
   sugerirMapeo,
   validarFila,
+  normalizarDireccion,
   type FilaMapeada,
 } from '../lib/importacion-cartera.js';
 
@@ -192,6 +193,7 @@ export async function importacionesCarteraRoutes(app: FastifyInstance): Promise<
     const seleccion = body.data.filas ? new Set(body.data.filas) : null;
 
     const emailsExistentes = await emailsInquilinos(u.inmobiliariaId);
+    const direccionesExistentes = await direccionesPropiedades(u.inmobiliariaId);
     const propietarioCache = new Map<string, string>();
 
     // REANUDABLE. Cada contrato se crea en su propia transacción dentro de UNA request
@@ -229,7 +231,7 @@ export async function importacionesCarteraRoutes(app: FastifyInstance): Promise<
       if (seleccion && !seleccion.has(i)) continue;
       if (procesadas.has(i)) continue; // ya se resolvió en un intento anterior
       const d = parsearFilaMapeada(filas[i] ?? [], mapeo);
-      const v = validarFila(d, emailsExistentes);
+      const v = validarFila(d, emailsExistentes, direccionesExistentes);
       if (v.estado === 'ERROR' || v.estado === 'DUPLICADO') {
         errores.push({ fila: i, motivo: v.motivo ?? 'Fila inválida' });
         procesadas.add(i);
@@ -247,6 +249,7 @@ export async function importacionesCarteraRoutes(app: FastifyInstance): Promise<
           await tx.importacionCartera.update({ where: { id }, data: { resultado: siguiente } });
         });
         if (d.inquilinoEmail) emailsExistentes.add(d.inquilinoEmail); // evita duplicar en filas siguientes
+        direccionesExistentes.add(normalizarDireccion(d.direccion)); // idem: dos filas con la misma dirección
         creadas++;
         procesadas.add(i);
         sinGuardar = 0;
@@ -270,6 +273,12 @@ export async function importacionesCarteraRoutes(app: FastifyInstance): Promise<
 }
 
 /* ============================================================ helpers ============================================================ */
+
+/** Direcciones (normalizadas) de las propiedades ya cargadas: dedup de re-importación. */
+async function direccionesPropiedades(inmobiliariaId: string): Promise<Set<string>> {
+  const rows = await prisma.propiedad.findMany({ where: { inmobiliariaId }, select: { direccion: true } });
+  return new Set(rows.map((r) => normalizarDireccion(r.direccion)).filter(Boolean));
+}
 
 async function emailsInquilinos(inmobiliariaId: string): Promise<Set<string>> {
   const rows = await prisma.inquilino.findMany({ where: { inmobiliariaId, email: { not: null } }, select: { email: true } });
@@ -296,12 +305,13 @@ interface FilaValidada {
 
 async function validarFilas(filas: unknown[][], mapeo: Record<string, number>, inmobiliariaId: string): Promise<{ filas: FilaValidada[]; resumen: Record<string, number> }> {
   const emailsExistentes = await emailsInquilinos(inmobiliariaId);
+  const direccionesExistentes = await direccionesPropiedades(inmobiliariaId);
   const emailsEnArchivo = new Set<string>();
   const out: FilaValidada[] = [];
   const resumen: Record<string, number> = { OK: 0, ADVERTENCIA: 0, ERROR: 0, DUPLICADO: 0 };
   for (let i = 0; i < filas.length; i++) {
     const d = parsearFilaMapeada(filas[i] ?? [], mapeo);
-    let v = validarFila(d, emailsExistentes);
+    let v = validarFila(d, emailsExistentes, direccionesExistentes);
     // Duplicado DENTRO del mismo archivo (dos filas con el mismo email).
     if (v.estado !== 'ERROR' && d.inquilinoEmail) {
       if (emailsEnArchivo.has(d.inquilinoEmail)) v = { estado: 'DUPLICADO', motivo: 'Email repetido dentro del archivo' };

@@ -49,12 +49,12 @@ describe('CAZABUG — dedup de importación por dirección', () => {
     expect(validarFila(sinEmail, new Set(), dirs).estado).toBe('ADVERTENCIA');
   });
 
-  it('sin el set de direcciones el comportamiento previo se mantiene (compatible)', () => {
-    expect(validarFila(base, new Set()).estado).toBe('OK');
+  it('con un set vacío de direcciones, una fila nueva pasa OK', () => {
+    expect(validarFila(base, new Set(), new Set()).estado).toBe('OK');
   });
 
   it('el dedup por email sigue funcionando', () => {
-    const v = validarFila(base, new Set(['juan.perez@mail.com']));
+    const v = validarFila(base, new Set(['juan.perez@mail.com']), new Set());
     expect(v.estado).toBe('DUPLICADO');
     expect(v.motivo).toMatch(/email/i);
   });

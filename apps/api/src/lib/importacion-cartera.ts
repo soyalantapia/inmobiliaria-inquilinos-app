@@ -175,7 +175,10 @@ export function normalizarDireccion(d: string): string {
 export function validarFila(
   d: FilaMapeada,
   emailsExistentes: Set<string>,
-  direccionesExistentes?: Set<string>,
+  // OBLIGATORIO a propósito. Cuando era opcional, un refactor de la ruta se llevó el
+  // cableado y el dedup por dirección quedó APAGADO sin que nada fallara: el test cubría
+  // esta función pura, no el call site. Requerido, el compilador no deja que vuelva a pasar.
+  direccionesExistentes: Set<string>,
 ): ValidacionFila {
   if (!d.direccion) return { estado: 'ERROR', motivo: 'Falta la dirección de la propiedad' };
   if (!d.inquilinoNombre) return { estado: 'ERROR', motivo: 'Falta el nombre del inquilino' };
@@ -188,7 +191,7 @@ export function validarFila(
   // El email NO alcanza como dedup: es opcional (las filas sin email se importan a
   // propósito), así que re-subir la misma planilla duplicaba propiedades, inquilinos y
   // contratos —con sus liquidaciones— sin avisar. La dirección es la clave natural.
-  if (direccionesExistentes?.has(normalizarDireccion(d.direccion))) {
+  if (direccionesExistentes.has(normalizarDireccion(d.direccion))) {
     return { estado: 'DUPLICADO', motivo: 'Ya existe una propiedad con esa dirección en tu cartera' };
   }
   const faltantes: string[] = [];
