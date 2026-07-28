@@ -22,6 +22,8 @@ const prisma = new PrismaClient();
 
 async function limpiar() {
   await prisma.gastoRendido.deleteMany({ where: { refId: { startsWith: P } } });
+  await prisma.gastoRendido.deleteMany({ where: { refId: { startsWith: `reclamo:${P}` } } });
+  await prisma.reclamo.deleteMany({ where: { id: { startsWith: P } } });
   await prisma.ingresoRendido.deleteMany({ where: { rendicion: { propietarioId: { in: [`${P}ownA`, `${P}ownB`] } } } });
   // AlquilerRendido cuelga de Rendicion con FK RESTRICT → borrarlo antes.
   await prisma.alquilerRendido.deleteMany({ where: { rendicion: { propietarioId: { in: [`${P}ownA`, `${P}ownB`] } } } });
@@ -516,5 +518,89 @@ describe('Moneda de la caja: la rendición sólo descuenta los gastos de SU mone
     expect(ars.descontadoEnRendicion).toBe(true);
     const usd = await prisma.movimientoCaja.findUniqueOrThrow({ where: { id: `${P}gasto4usd` } });
     expect(usd.descontadoEnRendicion).toBe(false);
+  });
+});
+
+/**
+ * Cambiar el reparto de una propiedad volvía a cobrar el arreglo desde cero.
+ *
+ * El tope por dueño evita que a UNA persona se le cobre dos veces SU parte, pero no
+ * impide que la inmobiliaria recaude más que el gasto cuando el reparto CAMBIA: al dueño
+ * nuevo "le toca" el total y nunca rindió nada, así que paga entero lo que el anterior ya
+ * pagó. Con los reclamos era peor que con la caja: no tienen ningún estado terminal, así
+ * que la query los volvía a traer para CADA dueño nuevo, indefinidamente. Y si el arreglo
+ * era grande frente al alquiler, el dueño entrante ni podía cobrar su rendición (409 por
+ * neto negativo) con un mensaje que lo mandaba a revisar gastos de caja inexistentes.
+ */
+describe('Cambia el dueño: el arreglo ya pagado no se vuelve a cobrar', () => {
+  const PERIODO = '2026-09';
+  const SIG = '2026-10';
+
+  beforeAll(async () => {
+    for (const [id, periodo, fecha] of [
+      [`${P}liq5`, PERIODO, '2026-09'],
+      [`${P}liq6`, SIG, '2026-10'],
+    ] as const) {
+      await prisma.liquidacion.create({
+        data: {
+          id, inmobiliariaId, contratoId: `${P}cnt`, periodo,
+          montoAlquiler: 1000, montoTotal: 1000,
+          fechaVencimiento: new Date(`${fecha}-10T00:00:00.000Z`), estado: 'PAGADO', moneda: 'ARS',
+        },
+      });
+      await prisma.pago.create({
+        data: {
+          id: `${P}pago${periodo}`, inmobiliariaId, contratoId: `${P}cnt`, liquidacionId: id,
+          periodo, monto: 1000, montoLiqTotal: 1000, metodo: 'TRANSFERENCIA',
+          fechaTransferencia: new Date(`${fecha}-05T00:00:00.000Z`), estado: 'CONCILIADO',
+        },
+      });
+    }
+    await prisma.reclamo.create({
+      data: {
+        id: `${P}rec`, inmobiliariaId, contratoId: `${P}cnt`, propiedadId: `${P}prop`,
+        categoria: 'PLOMERIA', urgencia: 'MEDIA', descripcion: 'Arreglo del dueño anterior',
+        estado: 'RESUELTO', pagador: 'PROPIETARIO', costoTrabajo: 200,
+        resueltoAt: new Date('2026-09-15T00:00:00.000Z'),
+      },
+    });
+  });
+
+  const refRec = () => `reclamo:${P}rec`;
+
+  it('A y B (50/50) pagan cada uno su mitad del arreglo', async () => {
+    for (const own of [`${P}ownA`, `${P}ownB`]) {
+      const res = await app.inject({
+        method: 'POST', url: '/rendiciones', headers: auth(token),
+        payload: { propietarioId: own, periodo: PERIODO, metodo: 'TRANSFERENCIA' },
+      });
+      expect(res.statusCode).toBe(201);
+    }
+    const partes = await prisma.gastoRendido.findMany({ where: { refId: refRec(), tipo: 'TRABAJO' } });
+    expect(partes.reduce((a, g) => a + Number(g.monto), 0)).toBeCloseTo(200, 2);
+  });
+
+  it('A pasa a ser dueño único y rinde otro mes: NO se le vuelve a cobrar el arreglo', async () => {
+    // Sale B, A queda al 100% — el flujo real de una venta o una corrección del reparto.
+    await prisma.participacionPropietario.deleteMany({
+      where: { propiedadId: `${P}prop`, propietarioId: `${P}ownB` },
+    });
+    await prisma.participacionPropietario.updateMany({
+      where: { propiedadId: `${P}prop`, propietarioId: `${P}ownA` }, data: { porcentaje: 100 },
+    });
+
+    const res = await app.inject({
+      method: 'POST', url: '/rendiciones', headers: auth(token),
+      payload: { propietarioId: `${P}ownA`, periodo: SIG, metodo: 'TRANSFERENCIA' },
+    });
+    expect(res.statusCode).toBe(201);
+    // EL BUG: a A "le tocaba" 200 y sólo tenía 100 rendido → se le cobraban 100 más,
+    // sobre un arreglo de 200 que ya estaba pagado entero. Total recaudado: 300.
+    expect(Number(res.json().totalGastos)).toBe(0);
+  });
+
+  it('entre todos los dueños nunca se recauda más que el costo del arreglo', async () => {
+    const partes = await prisma.gastoRendido.findMany({ where: { refId: refRec(), tipo: 'TRABAJO' } });
+    expect(partes.reduce((a, g) => a + Number(g.monto), 0)).toBeCloseTo(200, 2);
   });
 });

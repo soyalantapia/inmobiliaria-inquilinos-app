@@ -1,12 +1,25 @@
 import type { Prisma, Moneda, PagadorReclamo } from '@prisma/client';
 
-/** El costo del reclamo ya se le descontó al propietario en una rendición; reimputarlo
- *  a inquilino/depósito lo cobraría dos veces. La lanzan ambos caminos que cierran un
- *  reclamo (/resolver y /listo) → cada uno la mapea a 409. */
-export class ReclamoYaRendido extends Error {
+/** Base de los cortes anti-doble-cobro. El costo del reclamo YA se cobró por algún
+ *  camino, así que volver a imputarlo cobraría el mismo arreglo dos veces. La lanzan
+ *  los dos caminos que cierran un reclamo (/resolver y /listo) → cada uno la mapea a 409. */
+export class ReclamoNoReimputable extends Error {}
+
+/** Ya se le descontó al propietario en una rendición. */
+export class ReclamoYaRendido extends ReclamoNoReimputable {
   constructor() {
     super('Este trabajo ya se le descontó al propietario en una rendición. Anulá esa rendición antes de cambiar quién paga.');
     this.name = 'ReclamoYaRendido';
+  }
+}
+
+/** El inquilino ya pagó el cargo de este reclamo (`saldadoAt`). */
+export class ReclamoYaCobradoAlInquilino extends ReclamoNoReimputable {
+  constructor() {
+    super(
+      'El inquilino ya pagó este arreglo. Deshacé ese cobro en el detalle del contrato antes de cambiar el importe o quién paga.',
+    );
+    this.name = 'ReclamoYaCobradoAlInquilino';
   }
 }
 
@@ -48,6 +61,31 @@ export async function imputarCostoReclamo(
   },
 ): Promise<void> {
   const { inmobiliariaId, reclamoId, contratoId, pagador, costo, moneda, concepto, creadoPorId } = args;
+
+  // Anti-doble-cobro #2: el inquilino YA PAGÓ el cargo de este reclamo. El cobro vive
+  // sólo en `saldadoAt` —no genera Pago ni movimiento de caja—, así que nada lo revierte
+  // ni lo acredita si el costo se reimputa. Sin este corte:
+  //   · a PROPIETARIO → el cargo cobrado sobrevive (a propósito, es la evidencia) pero
+  //     la rendición igual le descuenta el arreglo al dueño: se cobra dos veces.
+  //   · a DEPOSITO → el upsert muta la MISMA fila cobrada poniéndole contraDeposito,
+  //     y al egreso se le descuenta del depósito lo que ya había pagado en efectivo.
+  //   · mismo pagador con OTRO importe → el update pisa `monto` y el libro pasa a decir
+  //     que se cobró una cifra distinta de la que realmente se cobró.
+  // Reejecutar el cierre con exactamente lo mismo NO rompe nada, así que eso se deja
+  // pasar: el helper tiene que seguir siendo idempotente.
+  const previo = await tx.cargoContrato.findUnique({
+    where: { reclamoId },
+    select: { monto: true, contraDeposito: true, saldadoAt: true },
+  });
+  if (previo?.saldadoAt) {
+    const mismoDestino = pagador === 'INQUILINO' || pagador === 'DEPOSITO';
+    const cambia =
+      !mismoDestino ||
+      previo.contraDeposito !== (pagador === 'DEPOSITO') ||
+      Number(previo.monto) !== costo;
+    if (cambia) throw new ReclamoYaCobradoAlInquilino();
+    return; // re-cierre idéntico: nada que hacer.
+  }
 
   // Sin pagador o sin costo no hay nada que imputar. Limpiamos un cargo previo SOLO si
   // todavía no se cobró: borrar uno saldado destruiría la única evidencia del cobro.

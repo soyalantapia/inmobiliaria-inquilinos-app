@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../db.js';
 import { requireProfesionalVisita } from '../auth/guards.js';
 import { urlEsDelTenant } from './uploads.js';
-import { imputarCostoReclamo, conceptoReclamo, ReclamoYaRendido } from '../lib/imputar-reclamo.js';
+import { imputarCostoReclamo, conceptoReclamo, ReclamoYaRendido, ReclamoNoReimputable } from '../lib/imputar-reclamo.js';
 
 /**
  * Flujo del profesional asignado a un reclamo, vía link mágico (/p/:token en
@@ -315,7 +315,7 @@ export async function visitasPublicasRoutes(app: FastifyInstance): Promise<void>
     } catch (e) {
       // El costo ya se le rindió al propietario y este /listo lo reimputaría al inquilino
       // o al depósito → 409. Sin este catch sería 500: la tx no tenía manejo de error.
-      if (e instanceof ReclamoYaRendido) return reply.code(409).send({ message: e.message });
+      if (e instanceof ReclamoNoReimputable) return reply.code(409).send({ message: e.message });
       throw e;
     }
     return visita;

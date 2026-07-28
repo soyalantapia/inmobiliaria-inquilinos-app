@@ -794,6 +794,30 @@ export async function plataRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
+  // Deshacer un "Marcar cobrado". Existe porque el corte anti-doble-cobro de
+  // imputarCostoReclamo le pide al operador exactamente esto cuando quiere reimputar un
+  // reclamo cuyo cargo ya se cobró — sin este endpoint ese 409 sería un callejón sin
+  // salida (nada en toda la API limpiaba `saldadoAt`). Vuelve a ser deuda del inquilino:
+  // reaparece en /mis-cargos y en el total adeudado.
+  app.post('/cargos/:id/descobrar', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'pago.conciliar');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const cargo = await prisma.cargoContrato.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
+    if (!cargo) return reply.code(404).send({ message: 'Cargo inexistente' });
+    if (!cargo.saldadoAt) return { ok: true }; // idempotente, igual que saldar
+    await prisma.cargoContrato.update({ where: { id }, data: { saldadoAt: null, saldadoPorId: null } });
+    await registrarEvento({
+      inmobiliariaId: u.inmobiliariaId,
+      tipo: 'PAGO_REVERTIDO',
+      autorId: u.userId,
+      rolAutor: u.rol,
+      entidadId: id,
+      entidadDescripcion: `Cobro deshecho: ${cargo.concepto} · ${cargo.moneda === 'USD' ? 'US$' : '$'}${Number(cargo.monto)}`,
+    });
+    return { ok: true };
+  });
+
   // Resolver el DEPÓSITO de garantía al egreso: devolver todo / netear (devolver
   // menos por deuda o daños) / ejecutar ("pelear"/retener). Antes esto SOLO ocurría en
   // la rescisión → un contrato FINALIZADO natural dejaba el depósito RETENIDO para
@@ -1058,18 +1082,29 @@ export async function plataRoutes(app: FastifyInstance) {
     if (body.data.comprobanteUrl && !urlEsDelTenant(body.data.comprobanteUrl, inq.inmobiliariaId)) {
       return reply.code(400).send({ message: 'Comprobante inválido' });
     }
-    // El front sube el comprobante a /uploads ANTES de este POST. Si el informe
-    // falla (ya informado, saldo cubierto, carrera), el archivo queda huérfano en
-    // el Volume. Lo liberamos best-effort en cada return de error posterior.
-    // Sólo se borra si NINGÚN Pago lo referencia. Sin ese chequeo, un co-inquilino (basta
-    // permiso VER) podía leer el `comprobanteUrl` del titular en /mis-liquidaciones,
-    // mandarlo acá con una fecha inválida a propósito y hacer que este rollback borrara del
-    // disco el comprobante del otro: el Pago quedaba con una URL rota y la inmobiliaria sin
-    // el respaldo para validar. Repetible sobre cada comprobante del contrato.
+    // REGLA: NUNCA borrar del disco un archivo cuya URL vino en el body de la request.
+    //
+    // El front sube el comprobante a /uploads ANTES de este POST, así que si el informe
+    // falla el archivo queda huérfano en el Volume, y este handler lo liberaba. El problema
+    // es que el que elige QUÉ URL se borra es quien manda la request. El chequeo anterior
+    // ("sólo si ningún Pago lo referencia") no alcanza: cubre los comprobantes de pago y
+    // deja expuesto todo el resto. Concretamente, un co-inquilino con permiso VER —el tier
+    // más bajo— lee el `archivoUrl` de una boleta de servicio del titular en GET /boletas,
+    // la manda acá con una fecha futura a propósito, y el rollback le borra el PDF: la fila
+    // BoletaServicio queda apuntando a un 404 y no hay ningún endpoint para borrarla ni
+    // resubirla. Irreversible, repetible sobre cada boleta del contrato.
+    //
+    // `archivoSigueEnUso` (uploads.ts) ya cubre hoy las ~16 tablas que guardan URLs de
+    // /uploads, boletas incluidas, y falla cerrado. Aun así este handler no borra: esa
+    // lista es la única defensa y se pudre en silencio la próxima vez que alguien agregue
+    // un campo de archivo y no la actualice. En los demás sitios eso sólo cuesta un
+    // huérfano; acá cuesta el documento de otra persona, porque es el único borrado donde
+    // el atacante elige el archivo. Dos capas, no una.
+    //
+    // Trade-off aceptado: un comprobante huérfano en el Volume por cada informe fallido.
+    // Son KB y los limpia un barrido; el documento de otro no se recupera con nada.
     const limpiarComprobante = async () => {
-      const url = body.data.comprobanteUrl;
-      if (!url) return;
-      await borrarArchivoSiHuerfano(url, inq.inmobiliariaId).catch(() => {});
+      /* no-op deliberado — ver la regla de arriba */
     };
     // La fecha de transferencia la elige el inquilino. Sin cota, backdatearla
     // esquiva la mora (la validación calcula el umbral con esa fecha) y falsea el
@@ -1634,13 +1669,31 @@ export async function plataRoutes(app: FastifyInstance) {
             })
           : [];
         const míoGastoMap = new Map(míoGastos.map((r) => [r.refId, Number(r._sum.monto ?? 0)]));
+        // Tope GLOBAL (todos los dueños juntos), además del tope por dueño de arriba. El
+        // cap por dueño solo evita que a UNA persona se le cobre dos veces su parte; no
+        // impide que la inmobiliaria recaude más que el gasto cuando el reparto CAMBIA.
+        // Caso real: A 50% rinde su mitad; después se re-arma la participación y B pasa a
+        // 100% → a B "le toca" el total y nunca rindió nada, así que paga el gasto entero
+        // sobre la mitad que A ya pagó. Con el tope global, entre todos nunca se recauda
+        // más que el monto del gasto.
+        const rendidoGastos = gastoIds.length
+          ? await tx.gastoRendido.groupBy({
+              by: ['refId'],
+              where: { refId: { in: gastoIds }, tipo: 'CAJA' },
+              _sum: { monto: true },
+            })
+          : [];
+        const rendidoGastoMap = new Map(rendidoGastos.map((r) => [r.refId, Number(r._sum.monto ?? 0)]));
 
         let totalGastos = 0;
         const gastosData = gastosPend.flatMap((g) => {
           const part = owner.participaciones.find((p) => p.propiedadId === g.propiedadId);
           const porcentaje = part?.porcentaje ?? 100;
           const leToca = Number(g.monto) * (porcentaje / 100);
-          const parteOwner = r2c(Math.max(0, leToca - (míoGastoMap.get(g.id) ?? 0)));
+          const restanteGlobal = Number(g.monto) - (rendidoGastoMap.get(g.id) ?? 0);
+          const parteOwner = r2c(
+            Math.max(0, Math.min(leToca - (míoGastoMap.get(g.id) ?? 0), restanteGlobal)),
+          );
           // Ya rindió todo lo suyo de este gasto: no vuelve a entrar.
           if (parteOwner <= 0.009) return [];
           totalGastos += parteOwner;
@@ -1692,6 +1745,22 @@ export async function plataRoutes(app: FastifyInstance) {
             })
           : [];
         const míoReclamoMap = new Map(míoReclamos.map((r) => [r.refId, Number(r._sum.monto ?? 0)]));
+        // Tope GLOBAL, igual que en los gastos de caja — y acá es todavía más necesario:
+        // el reclamo no tiene NINGÚN estado terminal (el gasto de caja al menos se cierra
+        // con descontadoEnRendicion cuando las partes cubren el 100%), así que sin este
+        // tope la query lo vuelve a traer para cada dueño nuevo de la propiedad, para
+        // siempre. Al vender la propiedad, el dueño entrante se comía entero un arreglo
+        // que el saliente ya había pagado, y si era grande frente al alquiler ni siquiera
+        // podía cobrar su rendición: saltaba 409 por neto negativo, mandándolo a revisar
+        // gastos de caja que no existen.
+        const rendidoReclamos = reclamoRefIds.length
+          ? await tx.gastoRendido.groupBy({
+              by: ['refId'],
+              where: { refId: { in: reclamoRefIds }, tipo: 'TRABAJO' },
+              _sum: { monto: true },
+            })
+          : [];
+        const rendidoReclamoMap = new Map(rendidoReclamos.map((r) => [r.refId, Number(r._sum.monto ?? 0)]));
         const gastosReclamos = reclamosProp
           .filter((rec) => rec.propiedadId != null)
           .flatMap((rec) => {
@@ -1699,7 +1768,10 @@ export async function plataRoutes(app: FastifyInstance) {
             const porcentaje = part?.porcentaje ?? 100;
             const total = Number(rec.costoTrabajo);
             const leToca = total * (porcentaje / 100);
-            const parteOwner = r2c(Math.max(0, leToca - (míoReclamoMap.get(`reclamo:${rec.id}`) ?? 0)));
+            const restanteGlobal = total - (rendidoReclamoMap.get(`reclamo:${rec.id}`) ?? 0);
+            const parteOwner = r2c(
+              Math.max(0, Math.min(leToca - (míoReclamoMap.get(`reclamo:${rec.id}`) ?? 0), restanteGlobal)),
+            );
             if (parteOwner <= 0.009) return [];
             totalGastos += parteOwner;
             return [{

@@ -6,7 +6,7 @@ import { prisma } from '../db.js';
 import { requireInquilino, requireUsuario } from '../auth/guards.js';
 import { verificarPinUsuario } from '../auth/pin.js';
 import { registrarEvento } from '../lib/auditoria.js';
-import { imputarCostoReclamo, conceptoReclamo, ReclamoYaRendido } from '../lib/imputar-reclamo.js';
+import { imputarCostoReclamo, conceptoReclamo, ReclamoYaRendido, ReclamoNoReimputable } from '../lib/imputar-reclamo.js';
 import { fichaReputacion, resumenReputacionMasivo, normalizarTelefono } from '../lib/reputacion-red.js';
 import { urlEsDelTenant } from './uploads.js';
 
@@ -506,7 +506,7 @@ export async function operacionRoutes(app: FastifyInstance) {
       // Backstop atómico del guard inline de arriba: si una rendición concurrente descontó
       // el trabajo al dueño ENTRE el check inline (fuera de tx) y la imputación, el helper
       // corta acá (dentro de la tx) → 409 en vez de duplicar la plata.
-      if (e instanceof ReclamoYaRendido) return reply.code(409).send({ message: e.message });
+      if (e instanceof ReclamoNoReimputable) return reply.code(409).send({ message: e.message });
       throw e;
     }
   });
