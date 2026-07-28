@@ -105,7 +105,8 @@ async function alquileresDeEmail(email: string) {
 
 export async function authRoutes(app: FastifyInstance) {
   // --- Panel inmobiliaria: email + password ---
-  app.post('/auth/login', async (request, reply) => {
+  // Login por contraseña: misma clase de ataque (fuerza bruta sobre un secreto).
+  app.post('/auth/login', { config: { rateLimit: { max: 30, timeWindow: '15 minutes' } } }, async (request, reply) => {
     const body = LoginRequestSchema.safeParse(request.body);
     if (!body.success) return reply.code(400).send({ message: 'Email y contraseña requeridos' });
 
@@ -253,7 +254,9 @@ export async function authRoutes(app: FastifyInstance) {
   // Mismo motor que el OTP del inquilino, pero contra el modelo Usuario. El
   // /auth/login con contraseña sigue existiendo como backstop de emergencia,
   // pero el panel ya entra por código.
-  app.post('/auth/usuario/otp/request', async (request, reply) => {
+  // Pedir código también se acota: sin esto se puede bombardear de mails a un usuario
+  // (y regenerar códigos en loop para ampliar la superficie de adivinanza).
+  app.post('/auth/usuario/otp/request', { config: { rateLimit: { max: 10, timeWindow: '15 minutes' } } }, async (request, reply) => {
     const body = OtpRequestSchema.safeParse(request.body);
     if (!body.success) return reply.code(400).send({ message: 'Email requerido' });
 
@@ -299,7 +302,19 @@ export async function authRoutes(app: FastifyInstance) {
     return { ok: true, existe: true };
   });
 
-  app.post('/auth/usuario/otp/verify', async (request, reply) => {
+  // Rate-limit ESTRICTO por ruta (el global es 300/min por IP, pensado para tráfico normal,
+  // no para adivinar un secreto). El código es de 6 dígitos y vive 10 minutos: con el techo
+  // global un atacante metía ~3.000 intentos por ventana desde una sola IP y, repitiendo
+  // ventanas, la probabilidad acumulada sube rápido. Acá el espacio de búsqueda se vuelve
+  // impracticable. OJO: la protección que los comentarios de este archivo daban por sentada
+  // ("hereda el lockout anti-fuerza-bruta de verificarPinUsuario") ya NO existe: el PIN se
+  // eliminó y esa función devuelve {ok:true}.
+  // Los topes dejan aire para una OFICINA detrás de una sola IP/NAT (varios empleados
+  // entrando a la misma hora) y aun así 20 intentos por ventana contra 1.000.000 de
+  // combinaciones es despreciable.
+  // Limitación conocida: la clave es la IP, así que un atacante distribuido lo diluye. El
+  // cierre completo pide un contador de intentos POR CÓDIGO en CodigoOtp* (migración).
+  app.post('/auth/usuario/otp/verify', { config: { rateLimit: { max: 20, timeWindow: '15 minutes' } } }, async (request, reply) => {
     const body = OtpVerifySchema.safeParse(request.body);
     if (!body.success) return reply.code(400).send({ message: 'Email y código de 6 dígitos requeridos' });
 
@@ -338,7 +353,7 @@ export async function authRoutes(app: FastifyInstance) {
   });
 
   // --- Inquilino: OTP por email ---
-  app.post('/auth/otp/request', async (request, reply) => {
+  app.post('/auth/otp/request', { config: { rateLimit: { max: 10, timeWindow: '15 minutes' } } }, async (request, reply) => {
     const body = OtpRequestSchema.safeParse(request.body);
     if (!body.success) return reply.code(400).send({ message: 'Email requerido' });
 
@@ -379,7 +394,9 @@ export async function authRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
-  app.post('/auth/otp/verify', async (request, reply) => {
+  // Mismo criterio que el OTP del panel (ver arriba): adivinar 6 dígitos no puede tener
+  // el techo del tráfico normal.
+  app.post('/auth/otp/verify', { config: { rateLimit: { max: 20, timeWindow: '15 minutes' } } }, async (request, reply) => {
     const body = OtpVerifySchema.safeParse(request.body);
     if (!body.success) return reply.code(400).send({ message: 'Email y código de 6 dígitos requeridos' });
 
