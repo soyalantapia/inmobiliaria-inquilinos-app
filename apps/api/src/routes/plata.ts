@@ -1861,7 +1861,12 @@ export async function plataRoutes(app: FastifyInstance) {
         totalIngresos = r2c(totalIngresos);
 
         const montoNeto = r2c(montoBruto - comisionMonto - totalGastos + totalIngresos);
-        if (montoNeto < 0) throw new RendicionNetoNegativo();
+        if (montoNeto < 0) {
+          throw new RendicionNetoNegativo({
+            bruto: montoBruto, comision: comisionMonto, gastos: totalGastos,
+            ingresos: totalIngresos, moneda: monedaRendicion,
+          });
+        }
 
         const r = await tx.rendicion.create({
           data: {
@@ -1947,8 +1952,21 @@ export async function plataRoutes(app: FastifyInstance) {
         return reply.code(409).send({ message: `No hay cobros nuevos del período ${periodo} para rendir a este propietario` });
       }
       if (e instanceof RendicionNetoNegativo) {
+        const d = e.detalle;
+        const sim = d.moneda === 'USD' ? 'US$' : '$';
+        const falta = Math.round((d.gastos + d.comision - d.bruto - d.ingresos) * 100) / 100;
         return reply.code(409).send({
-          message: 'Los gastos adelantados y la comisión superan lo cobrado este período. Revisá los gastos antes de rendir.',
+          // Los números, no una instrucción vaga: el operador tiene que poder decidir sin
+          // salir a buscar. El faltante NO se arrastra solo a la próxima rendición —el
+          // panel llegó a prometerlo y no es cierto—, así que el mensaje dice qué hacer.
+          message:
+            `No se puede rendir: los gastos (${sim}${d.gastos}) más la comisión (${sim}${d.comision}) ` +
+            `superan por ${sim}${falta} lo cobrado (${sim}${d.bruto})` +
+            (d.ingresos > 0 ? ` más los ingresos extra (${sim}${d.ingresos})` : '') +
+            `. Cobrá más del período, cargá un ingreso extra por lo que el propietario aporte, ` +
+            `o sacá de la caja el gasto que no corresponda. Ojo: puede tratarse del costo de un ` +
+            `reclamo a cargo del propietario, que no figura en la lista de gastos de caja.`,
+          detalle: d,
         });
       }
       if (e instanceof GastoYaDescontado) {
@@ -2265,5 +2283,14 @@ class ValidarExcedeSaldo extends Error {}
 // Señales de la tx de POST /rendiciones (todo el cálculo va dentro del advisory
 // lock por dueño+período): el handler las traduce a 409 claros.
 class RendicionSinCobros extends Error {}
-class RendicionNetoNegativo extends Error {}
+/** Lleva los números: sin ellos el 409 mandaba al operador a "revisar los gastos" sin
+ *  decirle cuánto falta ni cuál gasto lo traba, y el que traba puede ser el arreglo de un
+ *  reclamo —que no figura en la lista de gastos de caja que el mensaje lo manda a mirar. */
+class RendicionNetoNegativo extends Error {
+  constructor(
+    readonly detalle: { bruto: number; comision: number; gastos: number; ingresos: number; moneda: string },
+  ) {
+    super('RendicionNetoNegativo');
+  }
+}
 class GastoYaDescontado extends Error {}

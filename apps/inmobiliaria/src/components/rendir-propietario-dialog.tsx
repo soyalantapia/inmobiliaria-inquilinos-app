@@ -388,9 +388,15 @@ export function RendirPropietarioDialog({
           />
           {netoCrudo < 0 && (
             <p className="mt-1 rounded-md bg-amber-50 p-2 text-[11px] text-amber-700">
-              Los gastos del período ({formatMonto(totalGastos)}) superan lo cobrado;
-              no queda saldo a transferir este mes (mostramos $0). El faltante de{' '}
-              {formatMonto(Math.abs(netoCrudo))} queda pendiente para la próxima rendición.
+              Los gastos del período ({formatMonto(totalGastos, mon)}) superan lo cobrado por{' '}
+              {formatMonto(Math.abs(netoCrudo), mon)}, así que <strong>el servidor va a
+              rechazar esta rendición</strong>: no existe la rendición con saldo negativo ni
+              se amortiza el faltante. Cobrá más del período, cargá un ingreso extra por lo
+              que aporte el propietario, o sacá de la caja el gasto que no corresponda.
+              {/* Antes esto decía que el faltante "queda pendiente para la próxima
+                  rendición". No es cierto: el backend tira 409 y el gasto vuelve a
+                  presentarse igual el mes siguiente. Prometer una amortización que no
+                  existe hace que el operador confirme esperando algo que no va a pasar. */}
             </p>
           )}
         </div>
