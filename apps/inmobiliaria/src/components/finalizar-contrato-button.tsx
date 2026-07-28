@@ -35,6 +35,10 @@ export function FinalizarContratoButton({ contratoId, direccion }: { contratoId:
   const [open, setOpen] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [preview, setPreview] = useState<FinalizarPreview | null>(null);
+  // El preview NO es cosmético: de él salen la penalidad, el motivo y la decisión del
+  // depósito. Sin él, "Rescindir" mandaba NETEAR con $0 devuelto y sin penalidad, y el
+  // operador nunca veía esas secciones — el depósito entero del inquilino quedaba
+  // registrado como resuelto con cero devuelto, sin forma de volver atrás.
   const [cargandoPreview, setCargandoPreview] = useState(false);
   const [tipo, setTipo] = useState<'FINALIZADO' | 'RESCINDIDO'>('FINALIZADO');
   const [montoPenalidad, setMontoPenalidad] = useState('');
@@ -52,7 +56,7 @@ export function FinalizarContratoButton({ contratoId, direccion }: { contratoId:
     setCargandoPreview(true);
     obtenerPreview(contratoId)
       .then((p) => { if (vivo) setPreview(p); })
-      .catch(() => { /* best-effort */ })
+      .catch(() => { /* queda preview=null → el diálogo bloquea la rescisión */ })
       .finally(() => { if (vivo) setCargandoPreview(false); });
     return () => { vivo = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -172,6 +176,18 @@ export function FinalizarContratoButton({ contratoId, direccion }: { contratoId:
         </span>
       )}
 
+      {/* Sin preview no se puede rescindir: la penalidad, el motivo y la decisión del
+          depósito salen de acá. Antes esta sección simplemente no se renderizaba y el
+          botón seguía activo → el POST salía con NETEAR/$0 y sin penalidad, sin que el
+          operador viera nunca lo que estaba decidiendo. Y es irreversible. */}
+      {esRescision && !preview && !cargandoPreview && (
+        <span className="block rounded-md border border-destructive/40 bg-destructive/5 p-3 text-xs text-destructive">
+          No se pudieron cargar los datos de la liquidación (penalidad y depósito). Cerrá y
+          volvé a abrir en un momento: rescindir sin esos datos dejaría el depósito resuelto
+          con cero devuelto y sin forma de volver atrás.
+        </span>
+      )}
+
       {/* Liquidación de la rescisión: penalidad + depósito + saldo neto */}
       {esRescision && preview && (
         <span className="block space-y-2 rounded-md border border-primary/30 bg-primary/5 p-3 text-xs">
@@ -241,6 +257,8 @@ export function FinalizarContratoButton({ contratoId, direccion }: { contratoId:
         confirmLabel={esRescision ? 'Sí, rescindir' : 'Sí, finalizar'}
         variant="destructive"
         loading={enviando}
+        // Finalizar sin rescisión no usa el preview, así que sólo se bloquea la rescisión.
+        confirmDisabled={esRescision && (cargandoPreview || !preview)}
         onConfirm={confirmar}
       />
     </>
