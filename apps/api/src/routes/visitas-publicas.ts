@@ -120,22 +120,29 @@ export async function visitasPublicasRoutes(app: FastifyInstance): Promise<void>
   /** Aplica una transición si la visita está en un estado previo válido; si ya
    * está en el estado destino (o más adelante), es idempotente (200 sin
    * volver a aplicar). Si falta un paso anterior, 409 con mensaje claro. */
+  /** La visita tal como está hoy, para responder sin repetir los efectos del cierre. */
+  async function visitaActualDe(visitaId: string) {
+    return prisma.visitaProfesional.findUnique({ where: { id: visitaId } });
+  }
+
   async function transicionar(
     visitaId: string,
     desde: EstadoVisita,
     hacia: EstadoVisita,
     data: Record<string, unknown>,
     reply: FastifyReply,
-  ): Promise<boolean> {
+  ): Promise<{ ok: boolean; transiciono: boolean }> {
     const res = await prisma.visitaProfesional.updateMany({
       where: { id: visitaId, estado: desde },
       data,
     });
-    if (res.count > 0) return true;
+    if (res.count > 0) return { ok: true, transiciono: true };
     const actual = await prisma.visitaProfesional.findUnique({ where: { id: visitaId }, select: { estado: true } });
     if (actual && ORDEN_ESTADO[actual.estado] >= ORDEN_ESTADO[hacia]) {
-      // Ya está en este estado o más adelante (doble-tap / reintento) → OK.
-      return true;
+      // Ya está en este estado o más adelante (doble-tap / reintento) → OK, pero el caller
+      // tiene que saber que NO hubo transición: repetir los efectos de cerrar el trabajo
+      // (contar el trabajo, imputar el costo, cerrar el reclamo) sería cobrarlo dos veces.
+      return { ok: true, transiciono: false };
     }
     await reply.code(409).send({
       message:
@@ -145,7 +152,7 @@ export async function visitasPublicasRoutes(app: FastifyInstance): Promise<void>
             ? 'Confirmá la visita antes de marcar que vas en camino.'
             : 'Marcá que vas en camino antes de dar la visita por terminada.',
     });
-    return false;
+    return { ok: false, transiciono: false };
   }
 
   app.post('/visitas-publicas/confirmar', async (request, reply) => {
@@ -153,7 +160,7 @@ export async function visitasPublicasRoutes(app: FastifyInstance): Promise<void>
     if (!acc) return;
     const body = z.object({ fechaVisita: z.coerce.date().optional() }).safeParse(request.body ?? {});
     if (!body.success) return reply.code(400).send({ message: 'Fecha de visita inválida' });
-    const ok = await transicionar(
+    const { ok } = await transicionar(
       acc.visitaId,
       'ASIGNADO',
       'CONFIRMADA',
@@ -180,7 +187,7 @@ export async function visitasPublicasRoutes(app: FastifyInstance): Promise<void>
   app.post('/visitas-publicas/en-camino', async (request, reply) => {
     const acc = await requireProfesionalVisita(request, reply);
     if (!acc) return;
-    const ok = await transicionar(acc.visitaId, 'CONFIRMADA', 'EN_CAMINO', { estado: 'EN_CAMINO', enCaminoAt: new Date() }, reply);
+    const { ok } = await transicionar(acc.visitaId, 'CONFIRMADA', 'EN_CAMINO', { estado: 'EN_CAMINO', enCaminoAt: new Date() }, reply);
     if (!ok) return;
     const [visita, prof] = await Promise.all([
       prisma.visitaProfesional.findUnique({ where: { id: acc.visitaId } }),
@@ -206,6 +213,15 @@ export async function visitasPublicasRoutes(app: FastifyInstance): Promise<void>
   app.put('/visitas-publicas/fotos', async (request, reply) => {
     const acc = await requireProfesionalVisita(request, reply);
     if (!acc) return;
+    // Una visita ya cerrada no acepta cambiar sus fotos: son el respaldo del trabajo que se
+    // cobró y ya pudo haberse rendido al propietario. Antes se podían reemplazar siempre.
+    const estadoActual = await prisma.visitaProfesional.findUnique({
+      where: { id: acc.visitaId },
+      select: { estado: true },
+    });
+    if (estadoActual?.estado === 'LISTO') {
+      return reply.code(409).send({ message: 'La visita ya está cerrada: no se pueden cambiar las fotos.' });
+    }
     const body = fotosSchema.safeParse(request.body ?? {});
     if (!body.success) return reply.code(400).send({ message: 'Datos de foto inválidos' });
     if (body.data.fotoAntes && !urlEsDelTenant(body.data.fotoAntes, acc.inmobiliariaId)) {
@@ -231,7 +247,7 @@ export async function visitasPublicasRoutes(app: FastifyInstance): Promise<void>
     if (!acc) return;
     const body = listoSchema.safeParse(request.body ?? {});
     if (!body.success) return reply.code(400).send({ message: 'Contanos brevemente qué se hizo' });
-    const ok = await transicionar(
+    const { ok, transiciono } = await transicionar(
       acc.visitaId,
       'EN_CAMINO',
       'LISTO',
@@ -239,6 +255,13 @@ export async function visitasPublicasRoutes(app: FastifyInstance): Promise<void>
       reply,
     );
     if (!ok) return;
+    // La visita YA estaba en LISTO: doble-tap, reintento, o —el caso caro— el link reabierto
+    // después de que el inquilino marcó PERSISTE y el reclamo volvió a EN_CURSO. Sin este
+    // corte se repetían TODOS los efectos del cierre: se re-cerraba el reclamo (el guard del
+    // updateMany sólo mira estados terminales, y uno reabierto ya no lo está), se le sumaba
+    // OTRO trabajo al profesional y se volvía a imputar el costo. Volver a cerrar pide una
+    // visita nueva, no re-abrir el link viejo.
+    if (!transiciono) return visitaActualDe(acc.visitaId);
     const [visita, prof] = await Promise.all([
       prisma.visitaProfesional.findUnique({ where: { id: acc.visitaId } }),
       prisma.profesional.findUnique({ where: { id: acc.profesionalId }, select: { nombre: true } }),
