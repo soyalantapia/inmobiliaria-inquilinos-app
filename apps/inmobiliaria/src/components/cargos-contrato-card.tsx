@@ -16,6 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@llave/ui/card';
 import { AlertTriangle, Check, Loader2, Wrench } from 'lucide-react';
 import { apiEnabled, apiFetch } from '@/lib/api/client';
 import { formatFecha, formatMonto } from '@/lib/format';
+import { toast } from '@llave/ui/use-toast';
 
 interface CargoPanel {
   id: string;
@@ -53,6 +54,26 @@ export function CargosContratoCard({ contratoId }: { contratoId: string }) {
     }
   };
 
+  // Deshacer el cobro. No es un lujo: cuando se quiere reimputar un reclamo cuyo cargo ya
+  // se cobró, el backend corta con 409 y le pide al operador exactamente esto. Sin el
+  // botón, ese mensaje mandaba a hacer algo que no se podía hacer desde ningún lado.
+  const descobrar = async (id: string) => {
+    setSaldando(id);
+    try {
+      await apiFetch(`/cargos/${id}/descobrar`, { method: 'POST' });
+      await qc.invalidateQueries({ queryKey: ['cargos-contrato', contratoId] });
+      toast({ title: 'Cobro deshecho', description: 'El cargo vuelve a figurar como deuda del inquilino.' });
+    } catch (e) {
+      toast({
+        variant: 'destructive',
+        title: 'No se pudo deshacer',
+        description: e instanceof Error ? e.message : 'Probá de nuevo.',
+      });
+    } finally {
+      setSaldando(null);
+    }
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -81,8 +102,19 @@ export function CargosContratoCard({ contratoId }: { contratoId: string }) {
                 </p>
               </div>
               {saldado ? (
-                <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
-                  <Check className="h-3.5 w-3.5" /> Cobrado
+                <span className="flex shrink-0 items-center gap-1.5">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+                    <Check className="h-3.5 w-3.5" /> Cobrado
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => descobrar(c.id)}
+                    disabled={saldando === c.id}
+                    className="rounded px-1.5 py-1 text-xs text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline disabled:opacity-60"
+                    title="Volver a marcarlo como deuda pendiente del inquilino"
+                  >
+                    {saldando === c.id ? '…' : 'Deshacer'}
+                  </button>
                 </span>
               ) : c.contraDeposito ? (
                 <span className="shrink-0 rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
