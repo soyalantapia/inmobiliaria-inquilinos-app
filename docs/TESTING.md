@@ -85,6 +85,26 @@ del código. Síntomas típicos, todos ya vividos:
 | `consorcios.test.ts`: `Unique constraint failed on (codigoReferido)` | su tenant B anterior nunca se borró |
 | `multi-alquiler.test.ts`: 409 "ya está en tu cartera" | un inquilino sobreviviente |
 | `Can't reach database server` | saturación de conexiones, no código: re-corré |
+| `expected ['Morales','Repro']` (o cualquier nombre del seed cambiado) | una corrida renombró una fila del seed. `seedBase()` ya restaura los datos de referencia; si persiste, corré `test:clean` |
+| Un test asegura un comportamiento **ya eliminado a propósito** (ej. el PIN) | el test quedó viejo, no el código. Actualizalo, no "arregles" el código |
+| Falla que sólo pasa en tu máquina y no en prod | **tu DB de test está atrasada de migraciones** — ver abajo |
+
+### La DB de test se atrasa de migraciones y parece un bug de producto
+
+Pasó de verdad: `multi-alquiler.test.ts` empezó a dar 409 "ya está en tu cartera",
+reproducía en aislado con la base limpia, y parecía una regresión P1 **en producción**.
+No lo era: a la DB de test le faltaban **7 migraciones** (algunas aplicadas a mano con
+`prisma db execute`, que corre el SQL pero **no anota la fila** en `_prisma_migrations`).
+El índice único viejo de `inquilinos(inmobiliariaId,email)` seguía vivo ahí y en prod no.
+
+```bash
+npx prisma migrate deploy          # desde apps/api, contra la DB de test
+```
+
+Antes de reportar una regresión de producción, **verificá contra prod** (solo lectura):
+si la migración figura en su `_prisma_migrations`, el bug es de tu entorno.
+⚠️ Al consultar `pg_indexes` filtrá por `schemaname`: la DB de test tiene además schemas
+de worktrees (`wt_feat`, `wt_cmp`) y los índices aparecen duplicados.
 
 Antes de abrir el código, corré:
 
