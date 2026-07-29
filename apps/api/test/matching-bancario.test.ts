@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import * as XLSX from 'xlsx';
-import { parsearMonto, parsearFilasResumen } from '../src/lib/matching-bancario.js';
+// parsearMonto se mudó a lib/monto.ts (lo comparten el extracto bancario y la
+// importación de cartera); matching-bancario ya no lo re-exporta.
+import { parsearMonto } from '../src/lib/monto.js';
+import { parsearFilasResumen } from '../src/lib/matching-bancario.js';
 
 /**
  * Tests PUROS (sin DB) del parseo del extracto bancario.
