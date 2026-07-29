@@ -55,6 +55,7 @@ export type Capacidad =
   | 'propietarios.ver'
   | 'profesionales.ver'
   | 'auditoria.ver'
+  | 'metricas.ver'
   /* Carga de datos (no aprobada) */
   | 'contratos.crear'
   | 'propiedades.crear'
@@ -102,6 +103,7 @@ export const CAPACIDADES: DefinicionCapacidad[] = [
   { key: 'propietarios.ver', label: 'Ver propietarios', roles: ['ADMIN', 'OPERADOR', 'CARGA', 'LECTURA'], grupo: 'lectura' },
   { key: 'profesionales.ver', label: 'Ver profesionales', roles: ['ADMIN', 'OPERADOR'], grupo: 'lectura' },
   { key: 'auditoria.ver', label: 'Ver auditoría', roles: ['ADMIN', 'LECTURA'], grupo: 'lectura' },
+  { key: 'metricas.ver', label: 'Ver estadisticas', roles: ['ADMIN'], grupo: 'lectura' },
 
   /* Carga */
   { key: 'contratos.crear', label: 'Cargar contrato', roles: ['ADMIN', 'OPERADOR', 'CARGA'], rolesAprobacion: ['CARGA'], grupo: 'carga' },
