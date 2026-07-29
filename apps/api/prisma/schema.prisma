@@ -727,7 +727,13 @@ model Usuario {
   inmobiliaria        Inmobiliaria @relation(fields: [inmobiliariaId], references: [id])
   nombre              String
   apellido            String
-  email               String
+  // ÚNICO EN TODA LA PLATAFORMA (decisión del owner, 29/07): un mail = una cuenta.
+  // El login del panel busca el email GLOBALMENTE a propósito, así que sin esta
+  // restricción dos altas simultáneas con el mismo mail creaban dos usuarios y el
+  // login quedaba ambiguo. El @@unique por tenant de abajo queda igual: es redundante
+  // como restricción pero da el índice nombrado que usan los upsert por
+  // `inmobiliariaId_email`.
+  email               String       @unique
   imageUrl            String?
   rol                 Rol
   passwordHash        String?

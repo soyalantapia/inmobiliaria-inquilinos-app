@@ -192,7 +192,16 @@ export async function authRoutes(app: FastifyInstance) {
         break;
       } catch (err) {
         const msg = (err as Error).message;
-        if (intento < 4 && /codigoReferido|Unique constraint/i.test(msg)) continue; // colisión de código → reintentar
+        // El email es ÚNICO GLOBAL desde 29/07. Un duplicado que se cuele acá (carrera
+        // con el chequeo previo, que es justo lo que la restricción viene a cerrar) es
+        // definitivo: reintentar 5 veces no lo arregla y termina en un 500 genérico.
+        // Se separa del reintento por `codigoReferido`, que sí es una colisión al azar.
+        const target = (err as { meta?: { target?: string[] | string } })?.meta?.target;
+        const esEmail =
+          (err as { code?: string })?.code === 'P2002' &&
+          (Array.isArray(target) ? target.includes('email') : String(target ?? '').includes('email'));
+        if (esEmail) return reply.code(409).send({ message: 'Ya existe una cuenta con ese email' });
+        if (intento < 4 && /codigoReferido/i.test(msg)) continue; // colisión de código → reintentar
         request.log.error({ err: msg }, 'Fallo el registro auto-servicio');
         // Este 500 lo armamos a mano, así que NUNCA pasa por el setErrorHandler y sin esta
         // línea no llegaría a Sonar. Es el peor lugar para tener un punto ciego: si una
@@ -637,19 +646,6 @@ export async function authRoutes(app: FastifyInstance) {
     const i = await prisma.inquilino.findUnique({ where: { id: payload.inquilinoId } });
     if (!i) return reply.code(401).send({ message: 'Inquilino inexistente' });
     return { kind: 'inquilino', nombre: `${i.nombre} ${i.apellido ?? ''}`.trim(), email: i.email, telefono: i.telefono, dni: i.dni, contratoId: i.contratoId };
-  });
-
-  // --- PIN de seguridad (acciones sensibles) ---
-  app.post('/auth/pin/verify', async (request, reply) => {
-    const usuario = await requireUsuario(request, reply);
-    if (!usuario) return;
-    const body = z.object({ pin: z.string().min(4) }).safeParse(request.body);
-    if (!body.success) return reply.code(400).send({ message: 'PIN requerido' });
-    // verificarPinUsuario aplica el bloqueo anti-fuerza-bruta (lockout por
-    // intentos), igual que las acciones de plata/operación.
-    const r = await verificarPinUsuario(usuario.userId, body.data.pin);
-    if (!r.ok) return reply.code(r.code).send({ message: r.message, valid: false });
-    return { valid: true };
   });
 
   // Configurar / cambiar el PIN de seguridad → lo PERSISTE en la DB

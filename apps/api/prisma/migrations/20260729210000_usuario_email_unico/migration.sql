@@ -1,0 +1,13 @@
+-- Un mail = una cuenta en toda la plataforma (decisión del owner, 29/07/2026).
+--
+-- El login del panel busca el email GLOBALMENTE a propósito (scopearlo por tenant
+-- rompe el 2do tenant). Sin esta restricción, dos registros simultáneos con el mismo
+-- mail creaban dos usuarios y el login quedaba ambiguo: la carrera vivía en la DB y
+-- ningún chequeo previo en el código la podía cerrar.
+--
+-- SEGURIDAD DEL DEPLOY: verificado contra prod el 29/07 — 9 usuarios, 0 duplicados
+-- exactos, 0 duplicados case-insensitive, 0 emails con mayúsculas (el código ya
+-- normaliza a minúsculas al crear y al loguear). Si esta migración fallara por
+-- duplicados, el back NO ARRANCA (el CMD corre `db:deploy && node`), así que hay que
+-- re-verificar que no haya duplicados ANTES de deployar.
+CREATE UNIQUE INDEX "usuarios_email_key" ON "usuarios"("email");

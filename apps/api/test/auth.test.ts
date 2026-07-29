@@ -180,21 +180,20 @@ describe('Sesión + PIN', () => {
     expect(res.json()).toMatchObject({ kind: 'usuario', rol: 'ADMIN' });
   });
 
-  // El PIN se eliminó de la plataforma: verificarPinUsuario siempre aprueba, así
-  // que /auth/pin/verify valida con CUALQUIER PIN (incluido uno "incorrecto").
-  // Guardia de regresión para que no vuelva a bloquear.
-  it('PIN eliminado: /auth/pin/verify aprueba cualquier PIN', async () => {
+  // El PIN se eliminó de la plataforma y /auth/pin/verify se BORRÓ (29/07). Mientras
+  // existió, con verificarPinUsuario ya neutralizado, aprobaba CUALQUIER PIN: una API
+  // con forma de control de seguridad que no validaba nada, y ningún front la llamaba.
+  // El riesgo no era funcional sino de lectura — que alguien la viera y asumiera que
+  // protege algo. Este test pasa de asegurar su comportamiento a asegurar su ausencia.
+  it('PIN eliminado: /auth/pin/verify ya no existe', async () => {
     const token = await loginRoberto();
-    for (const pin of ['1234', '9999']) {
-      const res = await app.inject({
-        method: 'POST',
-        url: '/auth/pin/verify',
-        headers: { authorization: `Bearer ${token}` },
-        payload: { pin },
-      });
-      expect(res.statusCode).toBe(200);
-      expect(res.json().valid).toBe(true);
-    }
+    const res = await app.inject({
+      method: 'POST',
+      url: '/auth/pin/verify',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { pin: '1234' },
+    });
+    expect(res.statusCode).toBe(404);
   });
 
   it('demo devuelve sesión de Mariela', async () => {

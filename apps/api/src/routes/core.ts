@@ -2494,18 +2494,30 @@ export async function coreRoutes(app: FastifyInstance) {
       }
       return reply.code(409).send({ message: 'Ya existe una cuenta con ese email' });
     }
-    const creado = await prisma.usuario.create({
-      data: {
-        inmobiliariaId: u.inmobiliariaId,
-        nombre: body.data.nombre,
-        apellido: body.data.apellido,
-        email,
-        rol: body.data.rol,
-        ...(body.data.password ? { passwordHash: bcrypt.hashSync(body.data.password, 10) } : {}),
-        activo: true,
-      },
-      select: { id: true, nombre: true, apellido: true, email: true, rol: true, activo: true },
-    });
+    // El findFirst de arriba cubre el caso normal, pero entre ese chequeo y este create
+    // hay una ventana: dos altas simultáneas con el mismo mail la atraviesan. Desde que
+    // el email es ÚNICO GLOBAL, la segunda choca contra la restricción — sin este catch
+    // sería un 500 en vez del mismo 409 que ya devuelve el camino no-concurrente.
+    let creado;
+    try {
+      creado = await prisma.usuario.create({
+        data: {
+          inmobiliariaId: u.inmobiliariaId,
+          nombre: body.data.nombre,
+          apellido: body.data.apellido,
+          email,
+          rol: body.data.rol,
+          ...(body.data.password ? { passwordHash: bcrypt.hashSync(body.data.password, 10) } : {}),
+          activo: true,
+        },
+        select: { id: true, nombre: true, apellido: true, email: true, rol: true, activo: true },
+      });
+    } catch (e) {
+      if ((e as { code?: string })?.code === 'P2002') {
+        return reply.code(409).send({ message: 'Ya existe una cuenta con ese email' });
+      }
+      throw e;
+    }
     await registrarEvento({
       inmobiliariaId: u.inmobiliariaId,
       tipo: 'EQUIPO_INVITADO',
