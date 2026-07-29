@@ -1,80 +1,97 @@
 # CAZABUG — Ledger
 
-> Barrido de **PLATA** del backend de My Alquiler. Rama `fix/cazabug-v2`, rebasada sobre
-> `origin/main` (52c5699). Objetivo: mergear a main.
+> Barrido completo del backend de My Alquiler: primero **PLATA**, después la superficie
+> restante (multi-tenant, permisos, endpoints públicos, archivos, mundo del inquilino).
+> **18 causas raíz cerradas y mergeadas a main.** Nada deployado (el deploy es manual
+> con `railway up`).
 
-## ⚠️ Reconciliación con main (leer antes de tocar nada)
-Mientras corría esta pasada, **otras sesiones cazaron varios de los mismos bugs** y los
-mergearon a main. Se rearmó la rama desde `origin/main` y se descartaron los duplicados:
+## Las 18 causas
 
-| Causa | Estado |
+### Plata mal calculada
+| # | Causa raíz |
 |---|---|
-| saldar-deuda sin lock (doble-cobro) | **ya en main** (`c27496f`) — mismo enfoque: FOR UPDATE + re-aggregate |
-| extracto: xlsx coacciona monto/fecha | **ya en main** (`c27496f`) — `raw:true` + `parsearMonto` |
-| depósito capeado contra el bruto | **ya en main** (`afb9efe`) |
-| rendición: co-dueño cobrado dos veces | **ya en main** (`52c5699`) |
-| contratos importados devengan deuda falsa | **ya en main** (`8743e78`, campo `devengarDesde`) |
-| pago de conciliación con `tipo: TOTAL` siendo parcial | **ya en main** (ahora condicional a `cubierta`) |
-| reintentar una importación cortada duplica la cartera | **ya en main** (`81d5199`), y **mejor**: la hace REANUDABLE (anota filas procesadas + checkpoint cada 10) |
+| F | El devengo no tenía canon POR PERÍODO: renovar por adelantado —el flujo normal— cobraba los meses intermedios al canon nuevo |
+| L | La salud de pago mostraba la deuda SIN mora: leía `montoPunitorio`, una columna muerta que siempre vale 0 |
+| P3 | Montos de pago sin redondear: un sub-centavo se guardaba como pago de $0 y `100.006` quedaba por encima del saldo |
+| G2 | La importación de cartera tenía su propio parser de montos: una planilla en locale US entraba 1000x más chica |
+| Q | Las ganancias de propiedad sumaban ARS + USD en un total y lo rotulaban con una sola moneda |
 
-### Por qué se descartó mi fix H (lock atómico del confirmar)
-Yo había resuelto la duplicación con un `updateMany` condicionado por estado que marcaba
-CONFIRMADO **al arrancar**. Eso habría **roto** el diseño de main: una importación que se
-corta a mitad quedaría CONFIRMADO y sin forma de retomarla. El de main cubre el caso común
-(el proceso muere y el operador reintenta). Queda un hueco menor que ninguno de los dos
-cubre: **dos requests SIMULTÁNEAS** (doble click) — ambas arrancan con `procesadas` vacío
-y corren en paralelo. Cerrarlo bien pide un estado intermedio en `EstadoImportacion`
-(migración), así que se deja anotado en vez de forzar un lock que rompa la reanudación.
+### Plata cobrada dos veces (o perdida)
+| # | Causa raíz |
+|---|---|
+| E | `/listo` imputaba el costo del reclamo sin el guard anti-doble-cobro que sí tenía `/resolver` |
+| J | Extractos con rangos solapados duplicaban créditos · un crédito en pesos cancelaba deuda en USD a 1:1 |
+| I·S | El dedup de importación miraba sólo el email (opcional) → re-subir duplicaba la cartera entera |
+| D | Al finalizar, la cuota futura con un pago RECHAZADO sobrevivía como deuda fantasma cobrable |
+| R | Por link mágico se re-cerraba un reclamo reabierto: otro trabajo al profesional y el costo imputado de nuevo |
 
-Mis tests de esas causas **se conservaron igual**: pasan a ser la auditoría que valida las
-implementaciones de main y las blinda contra regresiones.
+### Permisos, seguridad y datos
+| # | Causa raíz |
+|---|---|
+| N | Login OTP y password sin tope de intentos: fuerza bruta de 6 dígitos contra el panel |
+| O | El chequeo de "archivo huérfano" miraba 3 de 16 columnas de URL → borraba del Volume archivos ajenos vivos |
+| K | Un rol CARGA podía dejar el alquiler en $1, cambiar el CBU de cobro o borrarle la mora a un moroso |
+| M | El inquilino se auto-condonaba los punitorios backdateando la fecha de transferencia |
+| P | El token del link mágico no vencía ni se consumía: sesiones de 14 días para siempre, con PII del inquilino |
+| Q | Los 8 endpoints del expediente no pedían capacidad: un CARGA leía deuda, caja y comisiones |
+| T | `/uploads` no revalidaba contra la DB: un co-inquilino revocado y un profesional con la visita cerrada seguían subiendo |
+| T | `reenviar-bienvenida` pedía `contratos.crear`: un CARGA disparaba mails al inquilino |
+| H2 | `MAX_FILAS` truncaba el archivo en silencio: el admin creía haber migrado la cartera completa |
 
-## Causas cerradas en esta rama
+## Trampas que cambiaron el fix (el "obvio" habría roto algo)
 
-| # | Commit | Causa raíz | Test |
-|---|---|---|---|
-| P3 | `a48231f` | monto de pago sin redondear → sub-centavo fantasma / drift | pago-monto-centavos (3) |
-| D | `d80eec6` | finalizar no anula la cuota futura con pago RECHAZADO (FK RESTRICT → 500) | finalizar-cuota-rechazada (3) |
-| E | `38e0776` | /listo imputa sin el guard anti-doble-cobro que sí tiene /resolver | imputar-reclamo-ya-rendido (2) |
-| F | `d339c6e` | devengo sin canon por período → vigencia futura cobra los meses intermedios al canon nuevo | canon-por-periodo (7) |
-| G2 | `0c22c64` | la cartera tenía su propio parser de montos: locale US entraba 1000x más chico | monto-ar (7) + extracto-csv-parseo (4) |
-| I | `c115ced` | dedup de importación sólo por email (opcional) → re-subir duplica todo | import-dedup-direccion (6) |
-| J | `10dd562` | extractos solapados duplican créditos · conciliación sin control de moneda (ARS salda USD 1:1) | — (necesita DB) |
-| H2 | (ver git log) | MAX_FILAS truncaba el archivo en silencio: el admin creía haber migrado toda la cartera | — (UI + API) |
+- **D** — la FK `Pago→Liquidacion` es `ON DELETE RESTRICT`: cambiar sólo el filtro daba 500.
+  Hay que soltar los pagos muertos ANTES de anular la cuota.
+- **F** — `PATCH /contratos/:id/monto` cambia el canon **sin dejar fila de ajuste**. La regla
+  intuitiva ("manda el último ajuste") habría revertido ese cambio en silencio.
+- **F (producto)** — el primer fix bloqueaba la vigencia futura con 400, pero **renovar por
+  adelantado es el flujo normal**. Se reemplazó por el motor de canon por período.
+- **N** — los comentarios afirmaban que estas rutas heredaban "el lockout anti-fuerza-bruta
+  de `verificarPinUsuario`". Esa protección **ya no existe**: el PIN se eliminó y esa función
+  devuelve `{ok:true}`. Quedó el comentario, no el candado.
+- **O** — la asimetría manda el diseño: un falso "sí está en uso" deja un archivo de más
+  (barato, reversible); un falso "no está en uso" **destruye** un archivo ajeno.
+- **J** — `nroOperacion` no sirve solo como clave de dedup: cuando el extracto no trae esa
+  columna, el parser usa el índice de fila. Y el monto vuelve de la DB como `Decimal` y del
+  parser como `number`: sin normalizar los dos, el dedup nunca encuentra el duplicado.
+- **K** — el guard va por ROL, no cambiando la capacidad: mover `contratos.crear` le habría
+  sacado el acceso al OPERADOR, que es quien legítimamente ajusta el canon.
+- **M** — el tope de backdating rompía un test con fecha hardcodeada. El test declaraba
+  querer ser "independiente de la fecha en que corre": se arregló el test, no el guard.
 
-## Trampas encontradas (el fix "obvio" habría roto algo)
-- **D**: FK `Pago→Liquidacion` = ON DELETE RESTRICT → hay que soltar los pagos muertos ANTES
-  de borrar la cuota; cambiar sólo el filtro daba 500. `CreditoDetectado.pagoId` es SET NULL.
-- **F**: `PATCH /contratos/:id/monto` cambia el canon **sin dejar fila de ajuste**. La regla
-  intuitiva ("manda el último ajuste") habría revertido ese cambio en silencio. Por eso
-  `contrato.monto` es la autoridad y las vigencias sólo retroceden los meses previos.
-- **F (producto)**: el primer fix bloqueaba la vigencia futura con 400, pero **renovar por
-  adelantado es el flujo normal** (el default del panel es el mes siguiente al fin del
-  contrato). Se decidió con el usuario reemplazarlo por el motor de canon por período.
-- **J**: `nroOperacion` NO sirve solo como clave de dedup: si el extracto no trae esa
-  columna, el parser usa el índice de fila. Se compara la línea entera.
-- **J**: el dedup NO puede ser silencioso → se informa `creditosDuplicados` en la respuesta
-  y en el panel; si no, el operador cree que el banco exportó de menos.
+## ⚠️ La lección más importante (causa S)
 
-## Pendiente NO resuelto (decisión de producto)
-- **[P2] Rendición multi-moneda sin salida**: un propietario con contratos en ARS y USD
-  recibe 409 y no se puede rendir nunca (la Rendicion guarda un solo monto/moneda). El
-  mensaje es explícito y el modelo de plata está LOCKED, así que soportarlo es una feature
-  (rendición por moneda), no un fix. Queda anotado para decidir.
+El dedup por dirección se mergeó, y **un refactor posterior de otra sesión se llevó el
+cableado de la ruta**. Como el parámetro era OPCIONAL, no falló nada: el dedup simplemente
+dejó de existir. **Y el test seguía verde**, porque cubría la función pura y no el call site.
+
+Un test unitario no puede detectar que a la función dejaron de llamarla.
+
+Por eso el arreglo fue en dos capas: re-cablear, y hacer el parámetro **obligatorio** para
+que el compilador lo exija. Más un test contra el ENDPOINT.
+
+**Regla para el que siga:** si el fix vive en una función y el bug real estaba en *usarla*,
+el test tiene que ejercitar el cableado.
+
+## Reconciliación con otras sesiones
+Hay ~9 worktrees trabajando el mismo repo. Varias causas se cazaron **en paralelo**: cuando
+main ya la tenía, se descartó el duplicado y **se conservó el test**, que pasa a auditar la
+implementación ajena. Los cuatro dan verde: `saldar-deuda-concurrencia`,
+`deposito-cap-disponible`, `rendicion-reclamo-multiduenio`, `extracto-csv-parseo`.
+
+Un fix propio se descartó **por ser peor que el ajeno**: mi lock del import marcaba
+CONFIRMADO al arrancar y habría roto la reanudación que implementó main.
 
 ## Verificación
-- Gate por commit: `tsc --noEmit` 0 errores en **api y panel**, `tsup build` OK.
-- Tests puros (sin DB, instantáneos): canon-por-periodo (7), monto-ar (7),
-  extracto-csv-parseo (4), import-dedup-direccion (6), liquidaciones (18).
-- Tests con DB que auditan los fixes de main: saldar-deuda-concurrencia,
-  deposito-cap-disponible, rendicion-reclamo-multiduenio, pago-monto-centavos,
-  finalizar-cuota-rechazada, imputar-reclamo-ya-rendido.
+Gate por commit: `tsc --noEmit` 0 errores en las 3 apps + `tsup build`. Los fixes sutiles
+con rojo-antes/verde-después real (el de doble-cobro pasó de crear 5 pagos por una deuda a 1).
 
-⚠️ **La DB de test es COMPARTIDA entre sesiones.** `core.test.ts` afirma conteos exactos
-del seed y falla cada vez que otra sesión deja datos (se vio una propiedad extra, 2
-inquilinos de más y `own_001` renombrado a "Repro"). También aparecieron 401 de login y un
-"Can't reach database server" de Railway. Cada file re-corrido aislado pasa.
+⚠️ **La DB de test es COMPARTIDA entre sesiones y Railway se cae seguido.** `core.test.ts`
+afirma conteos exactos del seed y falla cada vez que otra sesión deja datos (se vio una
+propiedad extra, 2 inquilinos de más y `own_001` renombrado a "Repro"). También aparecen 401
+de login y `Can't reach database server`. **Cada file re-corrido aislado pasa.** No confundir
+ese ruido con una regresión: reproducir la causa antes de dar por bueno un fallo.
 
 ## Falsos positivos (NO tocar)
-email global de /usuarios · rendiciones "fuera de tx" · tamanioBytes en /boletas ·
-PIN eliminado de la plataforma (`verificarPin` devuelve `{ok:true}`).
+email global de /usuarios (el unique es compuesto `inmobiliariaId_email`) · rendiciones
+"fuera de tx" · tamanioBytes en /boletas · PIN eliminado (`verificarPin` devuelve `{ok:true}`).
