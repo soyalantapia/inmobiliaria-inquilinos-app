@@ -1470,7 +1470,23 @@ export function useDashboard(): DashboardData {
   // propietario, reemplazando el 0.08 fijo por la tasa real sin perder coherencia
   // con `cobrado`. En el demo se mantiene el 0.08 fijo (parity byte-for-byte).
   const tasaComision = apiEnabled ? comisionEfectiva(propietarios) : COMISION_DASHBOARD;
-  const comisionMes = Math.round(cobrado * tasaComision);
+  // La comisión va sobre el ALQUILER cobrado, NO sobre todo lo que entró (regla congelada
+  // del modelo de plata). `cobrado` incluye expensas y mora, así que aplicarle la tasa
+  // directo inflaba la comisión que ve la inmobiliaria —y con ella el "A rendir", que sale
+  // de restarla—. Se prorratea igual que el backend en la rendición
+  // (alquilerCobrado = cobrado capeado × montoAlquiler / montoTotal): la mora queda afuera
+  // porque el cap la corta, y las expensas por la proporción.
+  const alquilerCobrado = apiEnabled
+    ? activos.reduce((acc, c) => {
+        const pagado = c.estadoPagoActual === 'PAGADO' ? (c.montoPagado || c.monto) : c.estadoPagoActual === 'PARCIAL' ? (c.montoPagado ?? 0) : 0;
+        if (pagado <= 0) return acc;
+        const expensas = c.montoExpensas ?? 0;
+        const total = c.monto + expensas;
+        if (total <= 0) return acc;
+        return acc + Math.min(pagado, total) * (c.monto / total);
+      }, 0)
+    : cobrado;
+  const comisionMes = Math.round(alquilerCobrado * tasaComision);
   // A rendir = cobrado − comisión − gastos de caja aún NO descontados en una
   // rendición (paridad con el demo `calcularDashboardStats`, que resta
   // gastosPendientes). En prod el path había quedado sin restar los gastos → el
