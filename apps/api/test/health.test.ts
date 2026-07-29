@@ -20,4 +20,25 @@ describe('GET /health', () => {
     expect(body.ok).toBe(true);
     expect(body.db).toBe('up');
   });
+
+  // Sin esto no había forma de saber QUÉ está corriendo en prod: no hay tags ni releases,
+  // así que después de un `railway up` no se podía verificar que el deploy entró.
+  it('expone la versión que está corriendo (o "desconocido", nunca un valor inventado)', async () => {
+    const res = await app.inject({ method: 'GET', url: '/health' });
+    const body = res.json();
+    expect(typeof body.version).toBe('string');
+    expect(body.version.length).toBeGreaterThan(0);
+  });
+
+  it('toma el commit real cuando Railway lo inyecta', async () => {
+    const previo = process.env.RAILWAY_GIT_COMMIT_SHA;
+    process.env.RAILWAY_GIT_COMMIT_SHA = 'abcdef1234567890';
+    try {
+      const res = await app.inject({ method: 'GET', url: '/health' });
+      expect(res.json().version).toBe('abcdef1');
+    } finally {
+      if (previo === undefined) delete process.env.RAILWAY_GIT_COMMIT_SHA;
+      else process.env.RAILWAY_GIT_COMMIT_SHA = previo;
+    }
+  });
 });
