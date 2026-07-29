@@ -102,9 +102,42 @@ async function requireAuthOProfesional(
     return null;
   }
   const asPayload = JwtPayloadSchema.safeParse(request.user);
-  if (asPayload.success) return asPayload.data;
+  if (asPayload.success) {
+    // MISMA regla que requireContratoAcceso (guards.ts): el token dura días, así que NO se
+    // confía en el estado que trae — se revalida contra la DB en cada request. /uploads era
+    // la excepción: un co-inquilino al que el titular ya le sacó el acceso seguía subiendo
+    // archivos al Volume del tenant hasta que venciera su token.
+    const p = asPayload.data;
+    if (p.kind === 'co-inquilino') {
+      const co = await prisma.coInquilino.findUnique({ where: { id: p.coInquilinoId } });
+      if (!co || co.estado !== 'ACEPTADO' || co.inmobiliariaId !== p.inmobiliariaId) {
+        await reply.code(401).send({ message: 'Tu acceso fue revocado' });
+        return null;
+      }
+    }
+    return p;
+  }
   const asProf = JwtProfesionalSchema.safeParse(request.user);
-  if (asProf.success) return asProf.data;
+  if (asProf.success) {
+    // Idem para el link mágico: la sesión dura días y sobrevivía a que la visita se
+    // cerrara o al reclamo terminado, así que un profesional que ya no trabaja para la
+    // inmobiliaria seguía pudiendo subir archivos con el token viejo.
+    const visita = await prisma.visitaProfesional.findUnique({
+      where: { id: asProf.data.visitaId },
+      select: { estado: true, inmobiliariaId: true, reclamo: { select: { estado: true } } },
+    });
+    const cerrada =
+      !visita ||
+      visita.inmobiliariaId !== asProf.data.inmobiliariaId ||
+      visita.estado === 'LISTO' ||
+      visita.reclamo.estado === 'CERRADO' ||
+      visita.reclamo.estado === 'RECHAZADO';
+    if (cerrada) {
+      await reply.code(401).send({ message: 'Esta visita ya está cerrada.' });
+      return null;
+    }
+    return asProf.data;
+  }
   await reply.code(401).send({ message: 'Token inválido' });
   return null;
 }

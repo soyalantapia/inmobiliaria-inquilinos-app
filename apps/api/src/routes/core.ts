@@ -1251,7 +1251,10 @@ export async function coreRoutes(app: FastifyInstance) {
   // preview simulado. Devuelve 400 si el inquilino no tiene email cargado y 503
   // si el SMTP no está configurado.
   app.post('/contratos/:id/reenviar-bienvenida', async (request, reply) => {
-    const u = await requireUsuario(request, reply, 'contratos.crear');
+    // `comunicaciones.enviar` (ADMIN/OPERADOR), no `contratos.crear`: esto le manda un mail
+    // AL INQUILINO en nombre de la inmobiliaria. `contratos.crear` incluye a CARGA porque
+    // ese rol carga contratos para aprobación — cargar no es comunicarse con el cliente.
+    const u = await requireUsuario(request, reply, 'comunicaciones.enviar');
     if (!u) return;
     const { id } = request.params as { id: string };
     const contrato = await prisma.contrato.findFirst({
