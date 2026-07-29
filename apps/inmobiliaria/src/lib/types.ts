@@ -249,6 +249,14 @@ export interface ContratoListado {
   montoExpensas?: number | null;
   /** Depósito de garantía que dejó el inquilino (plata en custodia de la inmo). */
   depositoGarantia?: number | null;
+  /** Día de vencimiento pactado. Lo usa el generador del contrato de locación: antes
+   *  imprimía un 5 fijo aunque el contrato dijera otra cosa. */
+  diaPago?: number | null;
+  /** % de comisión pactado. Sin dato el contrato generado deja el blanco a completar,
+   *  NO inventa un porcentaje. */
+  comisionInmobiliaria?: number | null;
+  /** Ciudad de la propiedad, para el encabezado del contrato ("En la ciudad de ..."). */
+  ciudad?: string | null;
   /** Estado del depósito: RETENIDO / DEVUELTO / NETEADO / EJECUTADO. */
   estadoDeposito?: string;
   /** Índice de actualización del alquiler (ICL, IPC, etc.). Null si no aplica. */

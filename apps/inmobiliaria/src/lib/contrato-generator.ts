@@ -93,12 +93,19 @@ function bloqueGarantes(garantes: VariablesContrato['garantes']): string {
  */
 export function generarContratoHTML(v: VariablesContrato): string {
   const { contrato, propietarios, sociedad } = v;
-  const diaPago = v.diaPago ?? 5;
+  // BLANCO a completar, NO un default. Estos valores se estampan en un documento que se
+  // FIRMA: un 5, un 4,17% o "CABA" inventados salen impresos como si fueran lo pactado.
+  // Los defaults que había acá eran la red de la demo (donde coincidían) y hacían que el
+  // Word de prod se viera perfecto y dijera cualquier cosa. Se sacan a propósito: si el
+  // dato no está, el contrato sale con una línea para llenar a mano. Un blanco se corrige;
+  // un número falso se firma.
+  const BLANCO = '__________';
+  const diaPago = v.diaPago != null ? String(v.diaPago) : BLANCO;
   const indice = v.indiceAjuste ?? 'ICL';
   const frecuencia = v.frecuenciaAjusteMeses ?? 6;
-  const comision = v.comisionInmobiliariaPct ?? 4.17;
-  const deposito = v.depositoGarantia ?? contrato.monto;
-  const ciudad = v.ciudadFirma ?? 'Ciudad Autónoma de Buenos Aires';
+  const comision = v.comisionInmobiliariaPct != null ? String(v.comisionInmobiliariaPct) : BLANCO;
+  const deposito = v.depositoGarantia != null ? formatMonto(v.depositoGarantia, contrato.moneda) : BLANCO;
+  const ciudad = v.ciudadFirma ?? BLANCO;
   const propietarioNombre = nombrarPropietarios(propietarios);
   const meses = duracionMeses(contrato.fechaInicio, contrato.fechaFin);
   const plazoTexto = `${MESES_EN_PALABRAS[meses] ?? meses} (${meses}) MESES`;
@@ -158,7 +165,7 @@ export function generarContratoHTML(v: VariablesContrato): string {
 
   <h2>Tercera — Precio</h2>
   <p>El precio inicial del alquiler queda establecido en la suma de
-  <strong>${formatMonto(contrato.monto)}</strong> mensuales, pagaderos
+  <strong>${formatMonto(contrato.monto, contrato.moneda)}</strong> mensuales, pagaderos
   por adelantado del 1 al ${diaPago} de cada mes en la cuenta
   bancaria que el LOCADOR comunique al LOCATARIO. La falta de pago en
   término dará lugar a los intereses punitorios previstos en este
@@ -175,7 +182,7 @@ export function generarContratoHTML(v: VariablesContrato): string {
 
   <h2>Quinta — Depósito en garantía</h2>
   <p>En este acto el LOCATARIO entrega al LOCADOR la suma de
-  <strong>${formatMonto(deposito)}</strong> en concepto de depósito en
+  <strong>${deposito}</strong> en concepto de depósito en
   garantía, que será restituida al finalizar la locación, una vez
   verificado el cumplimiento de las obligaciones contractuales y la
   inexistencia de daños no derivados del uso normal y prudente del

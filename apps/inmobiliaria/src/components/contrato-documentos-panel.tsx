@@ -253,14 +253,22 @@ export function ContratoDocumentosPanel({ contrato, propietarios }: Props) {
     return {
       contrato,
       propietarios,
-      diaPago: 5,
+      // Del contrato REAL. Antes eran constantes de la demo estampadas en un documento que
+      // se FIRMA: el día de pago salía siempre 5, la comisión 4,17% (nunca pactada), la
+      // ciudad CABA aunque la propiedad estuviera en Córdoba, y el depósito salía igual al
+      // alquiler VIGENTE — que después de un par de ajustes por índice es muy superior al
+      // que el inquilino entregó al firmar. En la demo coincidían y el Word salía perfecto.
+      // Mismo criterio que ya usa este panel con la sociedad: si el dato no está, el
+      // generador deja el blanco a completar. Un blanco se corrige a mano; un número falso
+      // se firma.
+      diaPago: contrato.diaPago ?? undefined,
       // Del contrato, no fijos: un contrato IPC/12m generaba un Word que decía
       // "ICL cada 6 meses". El generador ya aplica los mismos fallbacks.
       indiceAjuste: contrato.indiceAjuste ?? 'ICL',
       frecuenciaAjusteMeses: contrato.frecuenciaAjusteMeses ?? 6,
-      comisionInmobiliariaPct: 4.17,
-      depositoGarantia: contrato.monto,
-      ciudadFirma: 'Ciudad Autónoma de Buenos Aires',
+      comisionInmobiliariaPct: contrato.comisionInmobiliaria ?? undefined,
+      depositoGarantia: contrato.depositoGarantia ?? undefined,
+      ciudadFirma: contrato.ciudad ?? undefined,
       // Sin sociedad cargada omitimos el "representado por ..." del contrato: el
       // template ya lo trata como opcional. Antes se caía al seed de la demo y el
       // contrato salía representado por "Inmobiliaria del Sol S.R.L." con CUIT ajeno.

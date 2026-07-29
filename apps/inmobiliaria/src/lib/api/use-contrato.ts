@@ -154,6 +154,12 @@ function mapContrato(r: ContratoApi): ContratoListado {
       ? nombreCompleto(r.inquilinoTitular.nombre, r.inquilinoTitular.apellido)
       : '—',
     direccion: r.propiedad?.direccion ?? '—',
+    // El API ya devolvía diaPago/comisionInmobiliaria/ciudad, pero no se mapeaban: el
+    // generador del contrato de locación los inventaba (5, 4.17%, CABA) en un documento
+    // que se FIRMA.
+    diaPago: r.diaPago,
+    comisionInmobiliaria: r.comisionInmobiliaria,
+    ciudad: r.propiedad?.ciudad ?? null,
     monto: Number(r.monto),
     moneda: r.moneda,
     estado: r.estado,
