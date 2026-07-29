@@ -7,6 +7,7 @@ import { devengarTodosLosTenants, generarLiquidacionesContrato, marcarLiquidacio
 import { conSaldo, montoPagadoPorLiquidacion } from '../lib/saldos.js';
 import { calcularMora, resolverEsquemaMora } from '../lib/punitorios.js';
 import { registrarEvento } from '../lib/auditoria.js';
+import { aplicarDepositoADeuda } from '../lib/aplicar-deposito.js';
 import { estadoDepositoContrato } from '../lib/deposito.js';
 import { enviarInvitacionInquilino } from '../mailer.js';
 import { borrarArchivoSiHuerfano, urlEsDelTenant } from './uploads.js';
@@ -873,7 +874,24 @@ export async function plataRoutes(app: FastifyInstance) {
     // todo ("pelear"). El monto que efectivamente se le devuelve al inquilino queda registrado.
     const estadoDeposito =
       body.data.decision === 'DEVOLVER' ? 'DEVUELTO' : body.data.decision === 'NETEAR' ? 'NETEADO' : 'EJECUTADO';
+    // Lo que NO se devuelve es lo que la inmobiliaria retiene contra la deuda. Hasta acá se
+    // marcaba el depósito NETEADO/EJECUTADO y no se tocaba una sola liquidación: la garantía
+    // se consumía, la deuda quedaba intacta sumando punitorios, y el panel mostraba un
+    // "saldo a cobrar" con el depósito ya restado que el backend nunca ejecutaba.
+    // DEVOLVER no imputa nada (se le devuelve todo al inquilino, no hay retención).
+    const aRetener = body.data.decision === 'DEVOLVER' ? 0 : r2c(dep.disponible - monto);
+    let aplicacion = { aplicado: 0, sobrante: 0, cuotasSaldadas: 0 };
+    // timeout holgado: la aplicación del depósito recorre las cuotas exigibles y con el
+    // proxy de por medio la tx se pasaba de los 5s por defecto de Prisma → 500.
     await prisma.$transaction(async (tx) => {
+      if (aRetener > 0) {
+        aplicacion = await aplicarDepositoADeuda(tx, {
+          contratoId: id,
+          inmobiliariaId: u.inmobiliariaId,
+          disponible: aRetener,
+          usuarioId: u.userId,
+        });
+      }
       await tx.contrato.update({
         where: { id },
         data: {
@@ -890,7 +908,7 @@ export async function plataRoutes(app: FastifyInstance) {
         where: { contratoId: id, inmobiliariaId: u.inmobiliariaId, contraDeposito: true, saldadoAt: null },
         data: { saldadoAt: new Date(), saldadoPorId: u.userId },
       });
-    });
+    }, { timeout: 20000 });
     await registrarEvento({
       inmobiliariaId: u.inmobiliariaId,
       tipo: 'PAGO_CONCILIADO',
@@ -899,7 +917,16 @@ export async function plataRoutes(app: FastifyInstance) {
       entidadId: id,
       entidadDescripcion: `Depósito ${estadoDeposito.toLowerCase()} · se devolvió $${monto} de $${deposito}${body.data.motivo ? ` · ${body.data.motivo.trim()}` : ''}`,
     });
-    return { ok: true, estadoDeposito, depositoDevueltoMonto: monto };
+    // El front necesita saber qué pasó de verdad con la retención: cuánto canceló deuda y
+    // cuánto sobró tras cubrirla toda (ese sobrante es plata que sigue siendo del inquilino).
+    return {
+      ok: true,
+      estadoDeposito,
+      depositoDevueltoMonto: monto,
+      depositoAplicadoADeuda: aplicacion.aplicado,
+      depositoSobrante: aplicacion.sobrante,
+      cuotasSaldadas: aplicacion.cuotasSaldadas,
+    };
   });
 
   // Cobro MANUAL registrado por la inmobiliaria (con PIN): efectivo en la

@@ -14,6 +14,7 @@ import {
   recomputarLiquidacionesFuturas,
 } from '../lib/liquidaciones.js';
 import { conSaldo, montoPagadoPorLiquidacion } from '../lib/saldos.js';
+import { aplicarDepositoADeuda } from '../lib/aplicar-deposito.js';
 import { calcularMora, resolverEsquemaMora } from '../lib/punitorios.js';
 import { aplicarEstadoInicial, EstadoInicialInvalido } from '../lib/estado-inicial-contrato.js';
 import { borrarArchivoSiHuerfano, urlEsDelTenant } from './uploads.js';
@@ -1357,6 +1358,7 @@ export async function coreRoutes(app: FastifyInstance) {
     }
     // Lock atómico: el updateMany condicionado por estado evita la doble
     // finalización concurrente (sólo la primera gana; la segunda da count 0 → 409).
+    let aplicacionDeposito = { aplicado: 0, sobrante: 0, cuotasSaldadas: 0 };
     const fin = await prisma.$transaction(async (tx) => {
       const upd = await tx.contrato.updateMany({
         where: { id, inmobiliariaId: u.inmobiliariaId, estado: { notIn: ['FINALIZADO', 'RESCINDIDO', 'BORRADOR'] } },
@@ -1429,6 +1431,27 @@ export async function coreRoutes(app: FastifyInstance) {
               : b.decisionDeposito === 'EJECUTAR'
                 ? 'EJECUTADO'
                 : null;
+        // NETEAR/EJECUTAR = la inmobiliaria RETIENE parte (o todo) del depósito contra la
+        // deuda. Hasta acá sólo se marcaba el estado: la garantía se consumía y la deuda
+        // quedaba intacta, sumando punitorios, más la penalidad recién creada. Y el diálogo
+        // de baja ya le mostraba al operador un "saldo a cobrar" con el depósito restado —
+        // un neto que este endpoint nunca ejecutaba.
+        if (estadoDep === 'NETEADO' || estadoDep === 'EJECUTADO') {
+          const dep = await estadoDepositoContrato(tx, {
+            contratoId: id,
+            inmobiliariaId: u.inmobiliariaId,
+            depositoGarantia: contrato.depositoGarantia,
+          });
+          const aRetener = Math.max(0, Math.round((dep.disponible - (b.montoDepositoDevuelto ?? 0)) * 100) / 100);
+          if (aRetener > 0) {
+            aplicacionDeposito = await aplicarDepositoADeuda(tx, {
+              contratoId: id,
+              inmobiliariaId: u.inmobiliariaId,
+              disponible: aRetener,
+              usuarioId: u.userId,
+            });
+          }
+        }
         await tx.contrato.update({
           where: { id },
           data: {
@@ -1445,9 +1468,19 @@ export async function coreRoutes(app: FastifyInstance) {
         });
       }
       return { cuotasAnuladas: anuladas.count, cargoPenalidad };
-    });
+      // timeout holgado: si hay que aplicar el depósito, la tx recorre las cuotas exigibles
+      // y con el proxy de por medio se pasaba de los 5s por defecto de Prisma → 500.
+    }, { timeout: 20000 });
     if (!fin) return reply.code(409).send({ message: 'El contrato ya está finalizado' });
-    return { ok: true, estado: nuevoEstado, cuotasAnuladas: fin.cuotasAnuladas, cargoPenalidad: fin.cargoPenalidad };
+    return {
+      ok: true,
+      estado: nuevoEstado,
+      cuotasAnuladas: fin.cuotasAnuladas,
+      cargoPenalidad: fin.cargoPenalidad,
+      depositoAplicadoADeuda: aplicacionDeposito.aplicado,
+      depositoSobrante: aplicacionDeposito.sobrante,
+      cuotasSaldadasConDeposito: aplicacionDeposito.cuotasSaldadas,
+    };
   });
 
   // Preview de la baja: qué colaterales tiene el contrato ANTES de finalizar, para
