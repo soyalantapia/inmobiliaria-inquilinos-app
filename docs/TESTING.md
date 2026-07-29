@@ -72,6 +72,33 @@ Claves del patrón:
 
 ## Cómo escribir un test nuevo con fixtures propios
 
+## 🔴 Antes de sospechar del código: la DB de test está sucia
+
+La DB de test es **COMPARTIDA** entre sesiones y la suite corre con `fileParallelism:
+false`. Una corrida que muere antes de su `afterAll` —Ctrl-C, un kill, la sesión que se
+cae— deja sus fixtures adentro, y eso rompe suites **ajenas** con fallas que parecen bugs
+del código. Síntomas típicos, todos ya vividos:
+
+| Falla | Qué es en realidad |
+|---|---|
+| `core.test.ts`: "devuelve los 8 del seed" → recibió 10 | contratos de otra corrida |
+| `consorcios.test.ts`: `Unique constraint failed on (codigoReferido)` | su tenant B anterior nunca se borró |
+| `multi-alquiler.test.ts`: 409 "ya está en tu cartera" | un inquilino sobreviviente |
+| `Can't reach database server` | saturación de conexiones, no código: re-corré |
+
+Antes de abrir el código, corré:
+
+```bash
+pnpm --filter @llave/api test:clean
+```
+
+Borra los tenants `ZZ-TEST-*` enteros y, del tenant del seed, todo lo que no tenga un id
+estable del seed (`cnt_001`, `prp_002`…). Al terminar imprime los conteos y avisa si no
+dan 8/6/5/7. Nunca corre contra producción: aborta si la `DATABASE_URL` huele a prod.
+
+La otra mitad de la regla: **verificá que tu test falla SIN el fix**. Un test que pasa
+antes y después no protege nada.
+
 Cuando el dato que necesitás no está en el seed, sembralo vos en `beforeAll` con un **prefijo de id** propio y limpialo en `afterAll`. Modelo: `apps/api/test/rendicion-multiowner.test.ts`.
 
 ```ts
