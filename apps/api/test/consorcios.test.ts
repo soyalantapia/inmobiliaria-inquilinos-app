@@ -139,12 +139,21 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await borrarConsorcios(creados);
-  await borrarConsorcios([consorcioB]);
-  await prisma.usuario.deleteMany({ where: { inmobiliariaId: tid, email: 'lectura@delsol.com' } });
-  await prisma.inmobiliaria.deleteMany({ where: { id: tidB } });
-  await app.close();
-  await prisma.$disconnect();
+  // Todo opcional/tolerante: si el beforeAll murió (típico: la DB de test rechaza la
+  // conexión), `app` y los ids no existen y este afterAll reventaba con "Cannot read
+  // properties of undefined (reading 'close')" — un segundo error que TAPA el primero
+  // y manda a investigar el lugar equivocado. Además, sin limpiar, el tenant B queda
+  // huérfano y la próxima corrida falla con "Unique constraint on codigoReferido".
+  try {
+    await borrarConsorcios(creados);
+    await borrarConsorcios([consorcioB]);
+    if (tid) await prisma.usuario.deleteMany({ where: { inmobiliariaId: tid, email: 'lectura@delsol.com' } });
+    if (tidB) await prisma.inmobiliaria.deleteMany({ where: { id: tidB } });
+  } catch {
+    // el diagnóstico útil es el error del beforeAll, no el de esta limpieza
+  }
+  await app?.close();
+  await prisma?.$disconnect();
 });
 
 // Crea un consorcio de test y lo registra para cleanup.
@@ -291,12 +300,15 @@ describe('Consorcios — movimientos financieros (signo↔categoría, RBAC)', ()
     const id = await nuevoConsorcio();
     expect((await post(`/consorcios/${id}/movimientos`, tCARGA, { fecha: '2026-07-01', concepto: 'Movimiento test', monto: -100, categoria: 'SERVICIO' })).statusCode).toBe(403);
   });
-  it('borrar movimiento: OPERADOR 403 · ADMIN sin PIN 400 · ADMIN con PIN 200 + auditoría', async () => {
+  // El PIN se ELIMINÓ de la plataforma (verificarPinUsuario quedó como kill-switch
+  // siempre-ok): ninguna acción lo pide. Este test todavía aseguraba el mundo viejo
+  // —"ADMIN sin PIN → 400"— y por eso fallaba con 200. Lo que sigue vigente, y es lo
+  // que importa, es el RBAC: sólo ADMIN borra plata, y queda auditado.
+  it('borrar movimiento: OPERADOR 403 · ADMIN 200 + auditoría', async () => {
     const id = await nuevoConsorcio();
     const mov = (await post(`/consorcios/${id}/movimientos`, tOPERADOR, { fecha: '2026-07-01', concepto: 'Movimiento test', monto: 100, categoria: 'COBRANZA' })).json();
     expect((await del(`/consorcios/${id}/movimientos/${mov.id}`, tOPERADOR)).statusCode).toBe(403); // no es ADMIN
-    expect((await del(`/consorcios/${id}/movimientos/${mov.id}`, tADMIN)).statusCode).toBe(400); // ADMIN sin PIN
-    expect((await delPin(`/consorcios/${id}/movimientos/${mov.id}`, tADMIN, '1234')).statusCode).toBe(200);
+    expect((await del(`/consorcios/${id}/movimientos/${mov.id}`, tADMIN)).statusCode).toBe(200);
     // Auditoría: borrar plata dejó rastro (antes no registraba nada).
     const ev = await prisma.eventoAuditoria.findFirst({
       where: { entidadId: mov.id, tipo: 'MOVIMIENTO_CONSORCIO_ELIMINADO', inmobiliariaId: tid },

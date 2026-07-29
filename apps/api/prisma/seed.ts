@@ -77,8 +77,16 @@ export async function seedBase(prisma: PrismaClient) {
       cuentaCobranza: undefined, afip: { conectado: false }, esPrincipal: false,
     },
   ];
-  await Promise.all(sociedades.map((s) =>
-    prisma.sociedad.upsert({ where: { id: s.id }, update: {}, create: { ...s, inmobiliariaId: tid } }),
+  // `update` restaura los campos, no `{}`. Estas tres son DATOS DE REFERENCIA (catálogo
+  // del tenant) y varios tests asertan sobre ellos por nombre/dirección. Con `update: {}`
+  // el seed sólo los creaba: si un test renombraba una fila y moría antes de restaurarla,
+  // quedaba envenenada para SIEMPRE en la DB compartida, y el próximo veía fallar
+  // core.test.ts con `['Morales','Repro']` en vez de `['Castro','Morales']` — un síntoma
+  // que no apunta a ningún lado. Restaurar en cada seedBase() hace la base auto-sanable.
+  // Las entidades TRANSACCIONALES (contratos, liquidaciones, pagos) siguen con `update: {}`
+  // a propósito: ahí el estado lo mueven los tests como parte de lo que prueban.
+  await Promise.all(sociedades.map(({ id, ...campos }) =>
+    prisma.sociedad.upsert({ where: { id }, update: campos, create: { id, ...campos, inmobiliariaId: tid } }),
   ));
 
   // ===== Propietarios =====
@@ -90,7 +98,11 @@ export async function seedBase(prisma: PrismaClient) {
     { id: 'own_005', nombre: 'Martín', apellido: 'Bravo', cuit: '20-56789012-6', email: 'martin.bravo@gmail.com', telefono: '+54 11 3322 1144', cbuAlias: 'bravo.martin.usd', comisionPct: 8, notas: 'Inmueble en USD; cobra en pesos al MEP.' },
   ];
   await Promise.all(propietarios.map((p) =>
-    prisma.propietario.upsert({ where: { id: p.id }, update: {}, create: { ...p, inmobiliariaId: tid } }),
+    prisma.propietario.upsert({
+      where: { id: p.id },
+      update: { nombre: p.nombre, apellido: p.apellido, cuit: p.cuit, email: p.email, telefono: p.telefono, cbuAlias: p.cbuAlias, comisionPct: p.comisionPct },
+      create: { ...p, inmobiliariaId: tid },
+    }),
   ));
 
   // ===== Propiedades =====
@@ -103,7 +115,12 @@ export async function seedBase(prisma: PrismaClient) {
     { id: 'prp_006', direccion: 'Olleros 3920', ciudad: 'Las Cañitas, CABA', provincia: 'Buenos Aires', tipo: 'DEPARTAMENTO' as const, ambientes: 2, m2: 55, estado: 'EN_EDICION' as const, sociedadId: 'soc_001' },
   ];
   await Promise.all(propiedades.map((p) =>
-    prisma.propiedad.upsert({ where: { id: p.id }, update: {}, create: { ...p, inmobiliariaId: tid } }),
+    // `estado` NO se restaura: lo mueve el ciclo de vida del contrato (alquilar, rescindir).
+    prisma.propiedad.upsert({
+      where: { id: p.id },
+      update: { direccion: p.direccion, ciudad: p.ciudad, provincia: p.provincia, tipo: p.tipo, ambientes: p.ambientes, m2: p.m2, sociedadId: p.sociedadId },
+      create: { ...p, inmobiliariaId: tid },
+    }),
   ));
 
   // Participaciones (cotitularidad)
