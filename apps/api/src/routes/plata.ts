@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../db.js';
 import { exigirContratoActivo, requireContratoAcceso, requireInquilino, requireUsuario } from '../auth/guards.js';
 import { verificarPinUsuario } from '../auth/pin.js';
@@ -10,6 +11,7 @@ import { registrarEvento } from '../lib/auditoria.js';
 import { estadoDepositoContrato } from '../lib/deposito.js';
 import { enviarInvitacionInquilino } from '../mailer.js';
 import { borrarArchivoSiHuerfano, urlEsDelTenant } from './uploads.js';
+import { aplicarEstadoInicial, EstadoInicialInvalido } from '../lib/estado-inicial-contrato.js';
 
 /**
  * Fase 3 — La plata: liquidaciones, validación de pagos informados, caja de
@@ -1989,6 +1991,20 @@ export async function plataRoutes(app: FastifyInstance) {
     });
   });
 
+  /**
+   * Re-validación del estado inicial guardado en el borrador. Ya fue validado por el
+   * Zod de POST /contratos al cargarlo, pero es una columna Json: la volvemos a
+   * validar antes de tocar plata, en vez de castearla a ciegas.
+   */
+  const PeriodosAnterioresSchema = z.array(
+    z.object({
+      periodo: z.string().regex(/^\d{4}-\d{2}$/),
+      estado: z.enum(['PAGADO', 'PARCIAL', 'ADEUDA']),
+      montoPagado: z.number().positive().optional(),
+      moraManual: z.number().nonnegative().optional(),
+    }),
+  );
+
   for (const accion of ['aprobar', 'rechazar'] as const) {
     app.post(`/aprobaciones/:id/${accion}`, async (request, reply) => {
       const u = await requireUsuario(request, reply, 'contrato.aprobar');
@@ -2048,6 +2064,20 @@ export async function plataRoutes(app: FastifyInstance) {
             });
             if (claim.count === 0) throw new Error('PROP_OCUPADA');
             await generarLiquidacionesContrato(tx, contratoActualizado);
+            // Estado inicial del contrato EN CURSO: el alta lo guardó en el borrador
+            // porque todavía no había liquidaciones donde impactarlo. Recién ahora,
+            // devengado, se aplica — en la MISMA transacción que la activación: o
+            // queda todo el estado inicial o no queda nada.
+            const pendientes = PeriodosAnterioresSchema.safeParse(
+              contratoActualizado.periodosAnterioresPendientes,
+            );
+            if (pendientes.success && pendientes.data.length > 0) {
+              await aplicarEstadoInicial(tx, contratoActualizado, pendientes.data, u.userId);
+              await tx.contrato.update({
+                where: { id: contratoActualizado.id },
+                data: { periodosAnterioresPendientes: Prisma.DbNull },
+              });
+            }
           }
           if (accion === 'rechazar') {
             // El borrador rechazado se descarta: borramos el inquilino que se creó
@@ -2086,8 +2116,13 @@ export async function plataRoutes(app: FastifyInstance) {
         // rollback TOTAL → la aprobación vuelve a PENDIENTE. Lo mapeamos a 409 acá
         // porque el handler global no mapea un Error genérico (caería en 500).
         if (e instanceof Error && e.message === 'PROP_OCUPADA') return { http: 409 as const, motivo: 'PROP_OCUPADA' as const };
+        // Estado inicial inconsistente (período que no existe, parcial sin monto…):
+        // 400 con el detalle, igual que hace POST /contratos. La transacción ya
+        // revirtió, así que la aprobación sigue PENDIENTE y se puede reintentar.
+        if (e instanceof EstadoInicialInvalido) return { http: 400 as const, mensaje: e.message };
         throw e;
       });
+      if (result.http === 400) return reply.code(400).send({ message: result.mensaje });
       if (result.http === 404) return reply.code(404).send({ message: 'Aprobación inexistente' });
       if (result.http === 409) {
         return reply
