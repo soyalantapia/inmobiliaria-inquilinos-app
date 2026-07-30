@@ -249,7 +249,10 @@ export async function importacionesCarteraRoutes(app: FastifyInstance): Promise<
         await crearContratoDesdeFila(u.inmobiliariaId, u.userId, d, propietarioCache, async (tx) => {
           await tx.importacionCartera.update({ where: { id }, data: { resultado: siguiente } });
         });
-        if (d.inquilinoEmail) emailsExistentes.add(d.inquilinoEmail); // evita duplicar en filas siguientes
+        // El email ya NO bloquea nada (ver validarFila): esto es para que las filas
+        // siguientes del mismo archivo con este email salgan como ADVERTENCIA "ya hay un
+        // inquilino con este email en tu cartera" en vez de pasar calladas como OK.
+        if (d.inquilinoEmail) emailsExistentes.add(d.inquilinoEmail);
         direccionesExistentes.add(normalizarDireccion(d.direccion)); // idem: dos filas con la misma dirección
         creadas++;
         procesadas.add(i);
@@ -307,32 +310,52 @@ interface FilaValidada {
 async function validarFilas(filas: unknown[][], mapeo: Record<string, number>, inmobiliariaId: string): Promise<{ filas: FilaValidada[]; resumen: Record<string, number> }> {
   const emailsExistentes = await emailsInquilinos(inmobiliariaId);
   const direccionesExistentes = await direccionesPropiedades(inmobiliariaId);
-  // email → filas (índices) donde ya apareció, en orden. Para avisar "es el mismo inquilino
-  // que la fila N" en vez de rechazar: el mismo inquilino puede tener varias filas propias
-  // dentro del MISMO archivo (multi-alquiler cargado de una — 3 locales, 10 deptos de un
-  // consorcio). Separado de `emailsExistentes` (cartera YA guardada en la DB) a propósito.
-  const emailsEnArchivo = new Map<string, number[]>();
+  // email → filas (índice + DNI) donde ya apareció, en orden. Para avisar "es el mismo
+  // inquilino que la fila N" en vez de rechazar: el mismo inquilino puede tener varias filas
+  // propias dentro del MISMO archivo (multi-alquiler cargado de una — 3 locales, 10 deptos de
+  // un consorcio). Separado de `emailsExistentes` (cartera YA guardada en la DB) a propósito.
+  const emailsEnArchivo = new Map<string, Array<{ fila: number; dni: string | null }>>();
+  // Direcciones ya vistas EN ESTE archivo (aunque todavía no existan en la DB). Espeja lo que
+  // hace el confirm: ahí `direccionesExistentes.add(...)` corre apenas se crea una fila, así
+  // que la 2da fila del archivo con la MISMA dirección choca contra ese Set y se rechaza como
+  // DUPLICADO — aunque esa dirección no estuviera en la DB al arrancar. Sin este Set acá, el
+  // preview mostraba esa 2da fila como ADVERTENCIA/seleccionada por defecto y recién el
+  // confirm la frenaba: el operador decidía con una vista que no reflejaba lo que iba a pasar.
+  const direccionesEnArchivo = new Set<string>();
   const out: FilaValidada[] = [];
   const resumen: Record<string, number> = { OK: 0, ADVERTENCIA: 0, ERROR: 0, DUPLICADO: 0 };
   for (let i = 0; i < filas.length; i++) {
     const d = parsearFilaMapeada(filas[i] ?? [], mapeo);
     let v = validarFila(d, emailsExistentes, direccionesExistentes);
+    const direccionNorm = normalizarDireccion(d.direccion);
+    if (v.estado !== 'ERROR' && v.estado !== 'DUPLICADO' && direccionesEnArchivo.has(direccionNorm)) {
+      v = { estado: 'DUPLICADO', motivo: 'Ya existe una propiedad con esa dirección en tu cartera' };
+    }
     // Repetido DENTRO del mismo archivo (dos filas con el mismo email): ya NO es DUPLICADO,
     // es el mismo inquilino con otro alquiler — advertencia informativa con la fila donde
     // apareció por primera vez y qué número de alquiler es este.
     if (v.estado !== 'ERROR' && v.estado !== 'DUPLICADO' && d.inquilinoEmail) {
       const previas = emailsEnArchivo.get(d.inquilinoEmail);
+      const dniActual = (d.inquilinoDni ?? '').trim() || null;
       if (previas) {
-        const primeraFila = previas[0]! + 1; // 1-indexado: lo que ve el usuario en el preview
+        const primera = previas[0]!;
+        const primeraFila = primera.fila + 2; // igual que el front (encabezado + 1-indexado): ver migracion-masiva-api-dialog.tsx
         const numeroAlquiler = previas.length + 1;
-        v = {
-          estado: 'ADVERTENCIA',
-          motivo: `Es el mismo inquilino que la fila ${primeraFila}: se carga como su alquiler N°${numeroAlquiler}`,
-        };
-        previas.push(i);
+        // El email repetido no prueba que sea la MISMA persona si el DNI —el dato más
+        // confiable, a mano acá— difiere: pudo ser un error de tipeo o un email compartido
+        // (pareja, oficina administrativa). No lo bloqueamos (sigue siendo multi-alquiler
+        // legítimo la mayoría de las veces), pero el aviso no puede afirmar algo que el
+        // propio DNI contradice.
+        v = primera.dni && dniActual && primera.dni !== dniActual
+          ? { estado: 'ADVERTENCIA', motivo: `Mismo email que la fila ${primeraFila} pero con DNI distinto: revisá si son la misma persona` }
+          : { estado: 'ADVERTENCIA', motivo: `Es el mismo inquilino que la fila ${primeraFila}: se carga como su alquiler N°${numeroAlquiler}` };
+        previas.push({ fila: i, dni: dniActual });
       } else {
-        emailsEnArchivo.set(d.inquilinoEmail, [i]);
+        emailsEnArchivo.set(d.inquilinoEmail, [{ fila: i, dni: dniActual }]);
       }
+    }
+    if (v.estado !== 'ERROR' && v.estado !== 'DUPLICADO') {
+      direccionesEnArchivo.add(direccionNorm);
     }
     resumen[v.estado] = (resumen[v.estado] ?? 0) + 1;
     out.push({

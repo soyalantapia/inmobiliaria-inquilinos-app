@@ -29,10 +29,46 @@ export async function buscarOCrearPersona(tx: Prisma.TransactionClient, d: Datos
   const email = d.email ? d.email.trim().toLowerCase() || null : null;
 
   if (dni) {
-    return tx.persona.upsert({
+    const porDni = await tx.persona.findUnique({
       where: { inmobiliariaId_dni: { inmobiliariaId: d.inmobiliariaId, dni } },
-      update: {},
-      create: {
+    });
+    if (porDni) return porDni;
+
+    if (email) {
+      // El DNI no matcheó ninguna Persona, pero el email SÍ podría estar tomado por otra —
+      // p.ej. una fila anterior del MISMO inquilino sin DNI (o un alta manual sin DNI) ya
+      // creó Persona{dni:null, email}. Un create() ciego acá reventaría con P2002 contra
+      // @@unique([inmobiliariaId, email]) y la fila se perdía como "Email o dato único ya
+      // existente" — Y QUEDABA MARCADA COMO PROCESADA (importaciones-cartera.ts), sin forma
+      // de reintentarla sin editar antes la planilla.
+      //
+      // Por eso se chequea ACÁ, antes del create, y no con un try/catch alrededor de un
+      // upsert: `buscarOCrearPersona` corre DENTRO de la transacción de Postgres de la fila
+      // (crearContratoDesdeFila). Si un statement de esa transacción falla por violación de
+      // unique, Postgres deja la transacción en estado "aborted" — cualquier query
+      // POSTERIOR en esa misma tx (el fallback de reconciliación) fallaría también con
+      // "current transaction is aborted", aunque el error original esté en un catch de JS.
+      const porEmail = await tx.persona.findFirst({ where: { inmobiliariaId: d.inmobiliariaId, email } });
+      if (porEmail) {
+        // Si esa Persona no tenía DNI, es justo el dato que esta fila está aportando:
+        // completarlo agrupa la fila bajo la identidad correcta (el caso real: fila 1 sin
+        // DNI crea la Persona, fila 2 del mismo inquilino trae el DNI).
+        //
+        // Si YA tenía uno, tiene que ser DISTINTO al de esta fila (si fuera igual, el
+        // findUnique de arriba ya la habría encontrado) — es "mismo email, DNI distinto",
+        // que el preview marca como ADVERTENCIA sin bloquear (ver validarFilas en
+        // importaciones-cartera.ts). No pisamos un DNI ya confirmado con uno sin confirmar:
+        // devolvemos la Persona tal cual y que el operador la reconcilie a mano si resultan
+        // ser dos personas distintas.
+        if (!porEmail.dni) {
+          return tx.persona.update({ where: { id: porEmail.id }, data: { dni } });
+        }
+        return porEmail;
+      }
+    }
+
+    return tx.persona.create({
+      data: {
         inmobiliariaId: d.inmobiliariaId,
         dni,
         email,
@@ -44,14 +80,13 @@ export async function buscarOCrearPersona(tx: Prisma.TransactionClient, d: Datos
   }
 
   if (email) {
-    // Sin DNI: el email es la única pista de identidad. find-or-create explícito (NO un
-    // upsert por email) porque acá no hay columna unique de Postgres sobre la que apoyarse
-    // de forma atómica sin arriesgar un create() ciego chocando contra el unique de otra
-    // Persona con el mismo email.
-    const existente = await tx.persona.findFirst({ where: { inmobiliariaId: d.inmobiliariaId, email } });
-    if (existente) return existente;
-    return tx.persona.create({
-      data: { inmobiliariaId: d.inmobiliariaId, email, nombre: d.nombre, apellido: d.apellido, telefono: d.telefono },
+    // Sin DNI: acá SÍ hay una sola columna unique en juego (inmobiliariaId_email) — el
+    // create de este branch nunca setea `dni`, así que no puede chocar con el otro unique
+    // como en la rama de arriba. upsert es atómico y correcto.
+    return tx.persona.upsert({
+      where: { inmobiliariaId_email: { inmobiliariaId: d.inmobiliariaId, email } },
+      update: {},
+      create: { inmobiliariaId: d.inmobiliariaId, email, nombre: d.nombre, apellido: d.apellido, telefono: d.telefono },
     });
   }
 
