@@ -9,7 +9,7 @@ import { Separator } from '@llave/ui/separator';
 import { Topbar } from '@/components/topbar';
 import { usePersona } from '@/lib/api/use-inquilinos';
 import { SaldarDeudaButton } from '@/components/saldar-deuda-button';
-import { formatFechaCorta, formatMonto, formatRangoVigencia } from '@/lib/format';
+import { formatFechaCorta, formatMonto, formatRangoVigencia, formatTotalPorMoneda } from '@/lib/format';
 
 function Stat({ label, value, accent }: { label: string; value: string; accent?: 'red' | 'green' | 'muted' }) {
   return (
@@ -91,8 +91,8 @@ export default function InquilinoFichaPage({ params }: { params: { id: string } 
               <Stat label="Activos" value={String(persona.resumen.activos)} accent="green" />
               <Stat
                 label="Deuda vigente"
-                value={formatMonto(persona.resumen.deudaVigente)}
-                accent={persona.resumen.deudaVigente > 0 ? 'red' : 'muted'}
+                value={formatTotalPorMoneda(persona.resumen.deudaVigentePorMoneda)}
+                accent={persona.resumen.deudaVigentePorMoneda.length > 0 ? 'red' : 'muted'}
               />
               <Stat
                 label="Reclamos abiertos"

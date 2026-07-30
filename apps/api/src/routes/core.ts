@@ -2035,7 +2035,11 @@ export async function coreRoutes(app: FastifyInstance) {
     const pagado = await montoPagadoPorLiquidacion(contratosRaw.flatMap((c) => c.liquidaciones.map((l) => l.id)));
 
     let tuvoMora = false;
-    let deudaVigente = 0;
+    // La deuda se acumula POR MONEDA. Con multi-alquiler una persona puede tener
+    // un contrato en pesos y otro en dólares: sumarlos en un solo número da plata
+    // inventada, y el panel lo mostraba con signo de pesos (`formatMonto` cae a ARS
+    // cuando no le pasás la moneda).
+    const deudaPorMoneda = new Map<'ARS' | 'USD', number>();
     const contratos = contratosRaw.map((c) => {
       const esquema = resolverEsquemaMora(c, inmoMora);
       let deuda = 0;
@@ -2056,7 +2060,7 @@ export async function coreRoutes(app: FastifyInstance) {
         }
       }
       if (vencidas > 0) tuvoMora = true;
-      deudaVigente += deuda;
+      if (deuda > 0) deudaPorMoneda.set(c.moneda, (deudaPorMoneda.get(c.moneda) ?? 0) + deuda);
       return {
         id: c.id,
         estado: c.estado,
@@ -2099,7 +2103,13 @@ export async function coreRoutes(app: FastifyInstance) {
       resumen: {
         totalContratos: contratos.length,
         activos: contratos.filter((c) => c.estado === 'ACTIVO').length,
-        deudaVigente: Math.round(deudaVigente * 100) / 100,
+        // `deudaVigente` queda como la deuda EN PESOS (no la suma de todas las
+        // monedas, que era plata inventada). El desglose completo va aparte: un
+        // panel viejo contra un backend nuevo muestra de menos, nunca de más.
+        deudaVigente: Math.round((deudaPorMoneda.get('ARS') ?? 0) * 100) / 100,
+        deudaVigentePorMoneda: [...deudaPorMoneda.entries()]
+          .map(([moneda, monto]) => ({ moneda, monto: Math.round(monto * 100) / 100 }))
+          .sort((a, b) => a.moneda.localeCompare(b.moneda)),
         // Morosidad = tiene deuda vencida hoy (derivada on-read, nunca un flag congelado).
         tuvoMora,
         reclamosAbiertos: reclamos.filter((r) => r.estado === 'ABIERTO' || r.estado === 'EN_CURSO').length,

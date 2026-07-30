@@ -10,6 +10,27 @@ export function formatMonto(monto: number, moneda: Moneda = 'ARS'): string {
 }
 
 /**
+ * Total de una lista que puede venir en VARIAS monedas, desglosado.
+ *
+ * Sumar pesos con dólares en un solo número es plata inventada, y encima
+ * `formatMonto` sin moneda lo pinta como pesos (el default tapa el error). Esto
+ * agrupa y devuelve "$ 1.200.000 · US$ 800". Con una sola moneda se ve igual
+ * que antes, así que no ensucia el caso normal.
+ */
+export function formatTotalPorMoneda(items: { monto: number; moneda?: Moneda | null }[]): string {
+  const por = new Map<Moneda, number>();
+  for (const i of items) {
+    const m = i.moneda ?? 'ARS';
+    por.set(m, (por.get(m) ?? 0) + i.monto);
+  }
+  if (por.size === 0) return formatMonto(0);
+  return [...por.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([m, v]) => formatMonto(v, m))
+    .join(' · ');
+}
+
+/**
  * Parsea una fecha respetando la zona horaria local del usuario.
  *
  * Tomar `new Date('2026-08-31')` directo es peligroso: JS lo interpreta

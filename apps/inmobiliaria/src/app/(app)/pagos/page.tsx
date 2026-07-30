@@ -50,7 +50,7 @@ import {
   type MetodoPagoInformado,
 } from '@/lib/mock-data';
 import { estadoDePago } from '@/lib/conciliacion-storage';
-import { formatFecha, formatFechaCorta, formatMonto, formatPeriodo, periodoActualFormat } from '@/lib/format';
+import { formatFecha, formatFechaCorta, formatMonto, formatPeriodo, formatTotalPorMoneda, periodoActualFormat } from '@/lib/format';
 import { abrirReporteImprimible } from '@/lib/reportes-pdf';
 import { diasHastaVencimiento } from '@/lib/format';
 import {
@@ -485,20 +485,26 @@ export default function PagosPage() {
           ];
         });
 
-        const subtotal = morososDeSoc.reduce((acc, c) => acc + (c.deudaTotal ?? c.monto), 0);
+        // Desglosado por moneda: un contrato en dólares no se suma al total en
+        // pesos (el PDF va al estudio y al propietario — el número tiene que cerrar).
+        const subtotal = formatTotalPorMoneda(
+          morososDeSoc.map((c) => ({ monto: c.deudaTotal ?? c.monto, moneda: c.moneda })),
+        );
         return {
           titulo: soc.razonSocial,
           subtitulo: `CUIT ${soc.cuit} · ${CONDICION_FISCAL_LABEL[soc.condicionFiscal]} · ${morososDeSoc.length} contrato${morososDeSoc.length === 1 ? '' : 's'} moroso${morososDeSoc.length === 1 ? '' : 's'}`,
           filas,
           subtotal: {
             label: 'Subtotal de la sociedad',
-            valor: formatMonto(subtotal),
+            valor: subtotal,
           },
         };
       })
       .filter((s): s is NonNullable<typeof s> => s !== null);
 
-    const totalDeuda = morosos.reduce((acc, c) => acc + (c.deudaTotal ?? c.monto), 0);
+    const totalDeuda = formatTotalPorMoneda(
+      morosos.map((c) => ({ monto: c.deudaTotal ?? c.monto, moneda: c.moneda })),
+    );
 
     abrirReporteImprimible({
       titulo: 'Morosos por sociedad',
@@ -516,7 +522,7 @@ export default function PagosPage() {
       totales: [
         { label: 'Sociedades afectadas', valor: secciones.length.toString() },
         { label: 'Contratos morosos', valor: morosos.length.toString() },
-        { label: 'Deuda total', valor: formatMonto(totalDeuda) },
+        { label: 'Deuda total', valor: totalDeuda },
       ],
       notaFinal:
         'Cada sección representa una sociedad de la inmobiliaria con su propio CUIT. ' +

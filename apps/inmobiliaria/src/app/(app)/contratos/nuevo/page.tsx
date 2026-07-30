@@ -28,7 +28,7 @@ import {
   type MoraSeleccion,
 } from '@/components/mora-selector';
 import { contratoExtraidoMock } from '@/lib/mock-data';
-import { formatFechaCorta, formatMonto } from '@/lib/format';
+import { formatFechaCorta, formatMonto, formatTotalPorMoneda } from '@/lib/format';
 import type {
   ContratoExtraido,
   IndiceAjuste,
@@ -44,7 +44,9 @@ const MAX_PDF_MB = 10;
 type FichaPersonaResumen = {
   totalContratos: number;
   activos: number;
+  /** Deuda EN PESOS. El total real (puede haber contratos en dólares) va en el desglose. */
   deudaVigente: number;
+  deudaVigentePorMoneda: { moneda: 'ARS' | 'USD'; monto: number }[];
   tuvoMora: boolean;
   reclamosAbiertos: number;
 };
@@ -1402,8 +1404,9 @@ function CargarContratoApiWizard() {
                       </div>
                     ) : fichaPersona ? (
                       (() => {
+                        const debe = (fichaPersona.deudaVigentePorMoneda ?? []).length > 0;
                         const alerta =
-                          fichaPersona.deudaVigente > 0 ||
+                          debe ||
                           fichaPersona.tuvoMora ||
                           fichaPersona.reclamosAbiertos > 0;
                         return (
@@ -1420,12 +1423,12 @@ function CargarContratoApiWizard() {
                             ) : (
                               <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
                             )}
-                            {fichaPersona.deudaVigente > 0 && (
+                            {debe && (
                               <span className="font-medium">
-                                Te debe ${fichaPersona.deudaVigente.toLocaleString('es-AR')} vencidos
+                                Te debe {formatTotalPorMoneda(fichaPersona.deudaVigentePorMoneda)} vencidos
                               </span>
                             )}
-                            {fichaPersona.deudaVigente === 0 && fichaPersona.tuvoMora && (
+                            {!debe && fichaPersona.tuvoMora && (
                               <span className="font-medium">Tuvo mora en el pasado</span>
                             )}
                             {fichaPersona.reclamosAbiertos > 0 && (

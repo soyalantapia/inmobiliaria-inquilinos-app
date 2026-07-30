@@ -57,7 +57,9 @@ export interface PersonaFicha {
   resumen: {
     totalContratos: number;
     activos: number;
+    /** Deuda EN PESOS. Para el total real usar `deudaVigentePorMoneda`. */
     deudaVigente: number;
+    deudaVigentePorMoneda: { moneda: Moneda; monto: number }[];
     tuvoMora: boolean;
     reclamosAbiertos: number;
   };
@@ -104,7 +106,7 @@ function personaFichaMock(id: string): PersonaFicha | null {
       },
     ],
     reclamos: [],
-    resumen: { totalContratos: 1, activos: c.estado === 'ACTIVO' ? 1 : 0, deudaVigente: 0, tuvoMora: false, reclamosAbiertos: 0 },
+    resumen: { totalContratos: 1, activos: c.estado === 'ACTIVO' ? 1 : 0, deudaVigente: 0, deudaVigentePorMoneda: [], tuvoMora: false, reclamosAbiertos: 0 },
   };
 }
 
