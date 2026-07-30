@@ -119,6 +119,49 @@ compositor de anuncios muestra destinatarios y consorcios DE LOS MOCKS en prod (
 un envío masivo a ciegas); y el botón "Devengar" del panel resucita la deuda histórica falsa
 de la cartera importada.
 
+## Ronda 30/07 — causas AH a AK (las cuatro en main)
+
+**AH · El día de pago se cortaba en UTC.** Los vencimientos se guardan como medianoche UTC
+del día civil (`Date.UTC(y,m,dia)`), y **ocho** lugares los comparaban contra el instante
+UTC. En Argentina (UTC-3) el 10 vive en `10T00:00Z` = 9 a las 21:00 local: desde esa hora el
+sistema daba por vencido un día que todavía no empezaba. El barrido marcaba VENCIDO, la mora
+devengaba un día entero durante el propio día de pago, finalizar un contrato después de las
+21:00 dejaba viva la cuota de mañana (el mismo defecto al revés) y el wizard de estado
+inicial aceptaba como vencido un período que no lo era. Causa terminal: cada sitio escribía
+la comparación a mano. Se centralizó en `shared`: `diaCivilAR` + los predicados `yaVencio` /
+`venceDespuesDeHoy`, que **no son negación uno del otro** — el propio día del vencimiento no
+es ninguna de las dos cosas, y esa franja es la que hay que respetar.
+
+**AI · El barrido resucitaba contratos finalizados a mitad de corrida.** Los dos barridos
+arrancan con un `findMany({estado:'ACTIVO'})` y recién después iteran contra la DB remota:
+con carteras grandes el loop dura minutos y el snapshot envejece. Finalizar un contrato en el
+medio no lo sacaba del loop, y como finalizar ya había anulado las cuotas futuras impagas, el
+barrido **las volvía a crear**. `devengarSiSigueActivo` re-verifica bajo `SELECT ... FOR
+UPDATE` dentro de la misma tx que crea. El lock es lo que lo hace correcto en los DOS órdenes:
+un `findFirst` sin lock no alcanza, entre leer y crear la otra tx puede commitear.
+
+**AJ · Un cobro que no cubría la cuota se guardaba como TOTAL.** `Pago.tipo` tenía
+`@default(TOTAL)` y tres de los caminos que crean pagos no lo pasaban. El campo es lo único
+que mira el front para marcar "· pago parcial": el inquilino veía un comprobante liso y creía
+estar al día debiendo. Se sacó el default del schema (migración `DROP DEFAULT`, no toca
+filas) y el compilador marcó exactamente los tres.
+
+**AK · La deuda sumaba pesos con dólares.** Con multi-alquiler en prod, una persona puede
+tener un contrato en cada moneda. Tres lugares los sumaban en un solo número y lo formateaban
+sin moneda → salía con signo de pesos. Backend: `deudaVigentePorMoneda` desglosado, y
+`deudaVigente` pasa a ser sólo la parte en pesos (los servicios deployan por separado: un
+panel viejo tiene que mostrar de menos, nunca un total inventado). Front:
+`formatTotalPorMoneda`. **Casi se cuela una regresión propia**: al partir el campo, el
+semáforo del alta —que preguntaba `deudaVigente > 0`— dejaba de prender para un deudor sólo
+en dólares.
+
+### El patrón, por sexta vez: el default que decide por vos
+AJ (`tipo @default(TOTAL)`) y AK (`formatMonto(monto, moneda = 'ARS')`) son la MISMA falla
+que S, V, AB y AA: **un default que parece razonable deja que un camino nuevo se saltee la
+decisión en silencio, y nada falla**. La contramedida que sí funcionó las dos veces fue
+sacarlo y dejar que el compilador enumere los call sites. En AJ marcó los tres al instante.
+Si el default puede estar mal en algún caso, no va default.
+
 ## Reconciliación con otras sesiones
 Hay ~9 worktrees trabajando el mismo repo. Varias causas se cazaron **en paralelo**: cuando
 main ya la tenía, se descartó el duplicado y **se conservó el test**, que pasa a auditar la
