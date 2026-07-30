@@ -42,10 +42,19 @@ export function ConfirmDialog({
   confirmDisabled = false,
   onConfirm,
 }: ConfirmDialogProps) {
+  // `loading` se lee por REF, no por closure. El handler se crea en el render ANTERIOR al
+  // click, así que la variable capturada vale lo que valía entonces (false): el `if (!loading)`
+  // de abajo nunca veía el `true` que el padre setea al empezar la operación, y el diálogo se
+  // cerraba igual. Cuando el padre no espera a su mutación (fire-and-forget), eso cerraba el
+  // diálogo con el request EN VUELO — el usuario veía "listo" sin saber si había terminado.
+  // El bloqueo de ESC/click-afuera de más abajo sí funcionaba porque se evalúa en cada render.
+  const loadingRef = React.useRef(loading);
+  loadingRef.current = loading;
+
   const handleConfirm = async () => {
     if (confirmDisabled) return;
     await onConfirm();
-    if (!loading) onOpenChange(false);
+    if (!loadingRef.current) onOpenChange(false);
   };
 
   return (
