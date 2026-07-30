@@ -686,6 +686,8 @@ type ModoCobranza = 'INMOBILIARIA' | 'PROPIETARIO_DIRECTO';
 
 interface ContratoNuevoApi {
   id: string;
+  /** 'BORRADOR' cuando quedó pendiente de aprobación; 'ACTIVO' cuando se activó. */
+  estado?: string;
 }
 
 /** Un file input compacto para una foto de DNI (frente o dorso) del wizard. */
@@ -1164,6 +1166,10 @@ function CargarContratoApiWizard() {
         method: 'POST',
         body: JSON.stringify(body),
       });
+      // El contrato puede haber quedado PENDIENTE de aprobación: hay que decirlo, en
+      // vez de afirmar que se activó. Antes el copy mentía cuando la inmobiliaria
+      // tenía prendida la aprobación obligatoria.
+      const quedoPendiente = creado.estado === 'BORRADOR';
       // Fotos del DNI (si las cargaron): al expediente del contrato recién
       // creado. Best-effort — si una subida falla, el contrato YA quedó dado de
       // alta; no lo revertimos, solo avisamos que suban el DNI desde el detalle.
@@ -1196,10 +1202,12 @@ function CargarContratoApiWizard() {
       setConfirmando(false);
       toast({
         variant: dniFallo ? 'default' : 'success',
-        title: 'Contrato dado de alta',
+        title: quedoPendiente ? 'Contrato cargado — queda pendiente de aprobación' : 'Contrato dado de alta',
         description: dniFallo
           ? 'Se creó el contrato, pero no pudimos subir alguna foto del DNI. Cargalas desde el detalle.'
-          : 'Generamos la primera liquidación y la propiedad pasó a alquilada.',
+          : quedoPendiente
+            ? 'Un Admin tiene que aprobarlo. Hasta entonces no genera cuotas ni ocupa la propiedad.'
+            : 'Generamos la primera liquidación y la propiedad pasó a alquilada.',
       });
       router.push('/contratos');
     } catch (e) {
