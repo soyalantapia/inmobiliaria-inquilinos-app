@@ -87,7 +87,11 @@ export default function InvitacionPage() {
     setErrorMsg('');
     try {
       await aceptarInvitacionCoInquilino(token);
-      router.replace('/');
+      // HARD nav a propósito (no router.replace): mismo bug que el switcher de
+      // /mis-alquileres. Si ya había sesión activa en OTRO contrato, con soft nav
+      // el QueryClient del layout raíz sobrevive y la home se pinta con la caché
+      // del contrato anterior. Recargar la app entera lo destruye.
+      window.location.assign('/');
     } catch {
       setAceptando(false);
       setErrorMsg('No pudimos confirmar la invitación. Probá de nuevo.');

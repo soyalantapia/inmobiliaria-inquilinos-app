@@ -35,9 +35,39 @@ export function setToken(token: string | null): void {
   }
 }
 
+// Clave de la sesión local (la define auth-otp.ts). Se lee acá a mano, sin
+// importar auth-otp, para no armar un ciclo: auth-otp-api importa de los dos.
+const SESION_KEY = 'llave-inquilino:auth:sesion:v1';
+
+/** ¿La sesión activa es de un co-inquilino (invitado a compartir un contrato)? */
+function sesionEsCoInquilino(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const raw = window.localStorage.getItem(SESION_KEY);
+    return raw ? JSON.parse(raw)?.esCoInquilino === true : false;
+  } catch {
+    return false;
+  }
+}
+
 export function getPersonaToken(): string | null {
   if (typeof window === 'undefined') return null;
   try {
+    // El persona-token pertenece al EMAIL que hizo el OTP, y habilita listar y
+    // entrar a TODOS los alquileres de ese email. Un co-inquilino no es titular
+    // de nada: si la sesión activa es suya, el token que haya quedado guardado
+    // es de otra persona (el titular que usó antes este dispositivo) y no debe
+    // usarse. Lo borramos acá, que es el ÚNICO punto por el que pasan todos los
+    // usos del token — incluido entrar a /mis-alquileres escribiendo la URL.
+    //
+    // Ojo: NO alcanza con limpiarlo al aceptar la invitación (aceptar es de un
+    // solo uso: el back devuelve 409 la segunda vez), ni con ocultar los links
+    // que llevan a la pantalla. Esto se encarga también de los dispositivos que
+    // ya venían en ese estado: se limpian solos en la primera lectura.
+    if (sesionEsCoInquilino()) {
+      window.localStorage.removeItem(PERSONA_KEY);
+      return null;
+    }
     return window.localStorage.getItem(PERSONA_KEY);
   } catch {
     return null;
@@ -91,6 +121,12 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
       try {
         window.localStorage.removeItem(TOKEN_KEY);
         window.localStorage.removeItem('llave-inquilino:auth:sesion:v1');
+        // El persona-token es OTRA credencial (habilita /mis-alquileres) que
+        // sobrevive aparte del token del contrato: si no la limpiamos acá
+        // también, queda huérfana en el dispositivo y una sesión posterior
+        // (ej. un co-inquilino que entra por invitación) puede heredarla y
+        // ver los alquileres de la persona que se deslogueó.
+        window.localStorage.removeItem(PERSONA_KEY);
       } catch {
         // ignore
       }

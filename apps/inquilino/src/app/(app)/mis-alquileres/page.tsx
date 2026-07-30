@@ -2,14 +2,15 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { ArrowLeft, Building2, Check, Loader2, MapPin, RotateCcw } from 'lucide-react';
 import { Button } from '@llave/ui/button';
 import { Card } from '@llave/ui/card';
 import { toast } from '@llave/ui/use-toast';
 import { NavBar } from '@/components/nav-bar';
-import { apiEnabled, ApiError } from '@/lib/api/client';
+import { apiEnabled, ApiError, setPersonaToken } from '@/lib/api/client';
 import { leerSesion } from '@/lib/auth-otp';
-import { elegirAlquiler, listarAlquileres, type Alquiler } from '@/lib/auth-otp-api';
+import { elegirAlquiler, esAlquilerTerminado, listarAlquileres, type Alquiler } from '@/lib/auth-otp-api';
 
 /**
  * Switcher "Mis alquileres": una persona (email) con varios contratos puede
@@ -43,9 +44,26 @@ export default function MisAlquileresPage() {
     }
   }, []);
 
+  // Esta pantalla es del TITULAR: lista los alquileres de SU email y deja
+  // cambiar entre ellos. A un co-inquilino lo invitaron a UN contrato ajeno, así
+  // que no tiene nada para elegir acá; y si quedó un persona-token en el
+  // dispositivo, es del titular que lo usó antes. Lo limpiamos y lo sacamos con
+  // un mensaje propio: mandarlo a /login?force=1 (lo que hace el estado
+  // "vencido") lo dejaría en un loop, porque el OTP solo reconoce titulares y le
+  // responde "Código inválido" para siempre.
   useEffect(() => {
-    if (apiEnabled) void cargar();
-  }, [cargar]);
+    if (!apiEnabled) return;
+    if (leerSesion()?.esCoInquilino === true) {
+      setPersonaToken(null);
+      toast({
+        title: 'Esta sección es del titular del alquiler',
+        description: 'Si además alquilás una propiedad a tu nombre, entrá con tu email para verla.',
+      });
+      router.replace('/');
+      return;
+    }
+    void cargar();
+  }, [cargar, router]);
 
   const onCambiar = async (a: Alquiler) => {
     if (cambiando || a.inquilinoId === actualId) return;
@@ -53,7 +71,12 @@ export default function MisAlquileresPage() {
     try {
       const sesion = await elegirAlquiler(a.inquilinoId, alquileres?.length ?? 1);
       toast({ title: 'Cambiaste de alquiler', description: sesion.direccion || a.direccion });
-      router.replace('/');
+      // HARD nav a propósito (no router.replace): el QueryClient vive en el layout
+      // raíz y sobrevive a la navegación client-side, así que con soft nav la home
+      // se pintaba con la caché del alquiler ANTERIOR (deuda de la otra propiedad).
+      // Recargar la app entera la destruye, y de paso mata el race de un refetch
+      // disparado con el token viejo que resuelve después del setToken.
+      window.location.assign('/');
     } catch (e) {
       setCambiando(null);
       if (e instanceof ApiError && e.status === 401) {
@@ -71,14 +94,16 @@ export default function MisAlquileresPage() {
   return (
     <>
       <header className="flex items-center gap-3 p-5">
-        <button
-          type="button"
-          onClick={() => router.back()}
+        {/* href fijo, no router.back(): a esta pantalla se puede llegar desde el
+            sidenav, el header mobile o Mi cuenta, y con back el destino era
+            impredecible (o salía de la app si fue la primera pantalla). */}
+        <Link
+          href="/"
           className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          aria-label="Volver"
+          aria-label="Volver al inicio"
         >
           <ArrowLeft className="h-4 w-4" />
-        </button>
+        </Link>
         <div>
           <h1 className="text-2xl font-semibold md:text-3xl">Mis alquileres</h1>
           <p className="text-sm text-muted-foreground">Cambiá de alquiler sin volver a entrar</p>
@@ -114,7 +139,16 @@ export default function MisAlquileresPage() {
           </Card>
         )}
 
-        {estado === 'ok' && alquileres && (
+        {estado === 'ok' && alquileres && alquileres.length === 0 && (
+          <Card className="space-y-2 p-5 text-center">
+            <p className="text-sm font-medium">No encontramos alquileres con tu email</p>
+            <p className="text-xs text-muted-foreground">
+              Si acabás de firmar, puede que tu inmobiliaria todavía no lo haya cargado.
+            </p>
+          </Card>
+        )}
+
+        {estado === 'ok' && alquileres && alquileres.length > 0 && (
           <ul role="list" className="space-y-2.5">
             {alquileres.map((a) => {
               const esActual = a.inquilinoId === actualId;
@@ -136,7 +170,14 @@ export default function MisAlquileresPage() {
                       <MapPin className="h-5 w-5" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-semibold">{a.direccion || 'Tu alquiler'}</p>
+                      <p className="flex items-center gap-2 truncate font-semibold">
+                        <span className="min-w-0 truncate">{a.direccion || 'Tu alquiler'}</span>
+                        {esAlquilerTerminado(a.estado) && (
+                          <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                            Finalizado
+                          </span>
+                        )}
+                      </p>
                       <p className="flex items-center gap-1 truncate text-xs text-muted-foreground">
                         <Building2 className="h-3 w-3 shrink-0" />
                         <span className="truncate">

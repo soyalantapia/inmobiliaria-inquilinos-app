@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Isotipo } from './isotipo';
 import {
+  ArrowLeftRight,
   BadgeCheck,
   CircleHelp,
   FileText,
@@ -17,6 +18,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@llave/ui/cn';
 import { useMiContrato } from '@/lib/api/hooks';
+import { useCurrentUser } from '@/lib/use-current-user';
 
 interface NavItem {
   href: string;
@@ -122,6 +124,7 @@ export function NavBar() {
 export function SideNav() {
   const pathname = usePathname() ?? '/';
   const { contrato } = useMiContrato();
+  const user = useCurrentUser();
   return (
     <aside className="hidden w-64 shrink-0 flex-col border-r bg-card md:flex">
       <div className="flex h-16 items-center gap-3 border-b px-6">
@@ -149,12 +152,24 @@ export function SideNav() {
           </ul>
         </div>
       </nav>
-      {contrato && (
-        <div className="border-t p-3 text-xs">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Tu hogar</p>
-          <p className="mt-0.5 font-medium leading-tight">{contrato.direccion}</p>
-          <p className="text-[10px] text-muted-foreground">{contrato.inmobiliaria}</p>
-        </div>
+      {/* Oculto para co-inquilinos: ver nota en cuenta/page.tsx y
+          mobile-greeting-header.tsx — no tienen persona-token propio. */}
+      {contrato && user.isLoaded && !user.esCoInquilino && (
+        <Link
+          href="/mis-alquileres"
+          aria-label={`Ver mis propiedades. Tu hogar actual: ${contrato.direccion}, ${contrato.inmobiliaria}`}
+          className="group flex items-start gap-2 border-t p-3 text-xs transition-colors hover:bg-muted"
+        >
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Tu hogar</p>
+            <p className="mt-0.5 truncate font-medium leading-tight">{contrato.direccion}</p>
+            <p className="truncate text-[10px] text-muted-foreground">{contrato.inmobiliaria}</p>
+          </div>
+          <ArrowLeftRight
+            className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground transition-colors group-hover:text-primary"
+            aria-hidden="true"
+          />
+        </Link>
       )}
     </aside>
   );

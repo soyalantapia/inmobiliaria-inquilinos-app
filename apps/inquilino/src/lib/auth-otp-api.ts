@@ -17,8 +17,10 @@ import {
 } from './api/client';
 import {
   SEGUNDOS_COOLDOWN,
+  cerrarSesion,
   guardarSesion,
   iniciarSesionDemo,
+  leerSesion,
   solicitarCodigo,
   verificarCodigo,
   type InquilinoSesion,
@@ -27,6 +29,9 @@ import {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/** Estados posibles del contrato de un alquiler (enum EstadoContrato del API). */
+export type EstadoContratoAlquiler = 'BORRADOR' | 'ACTIVO' | 'FINALIZADO' | 'RESCINDIDO';
+
 /** Un alquiler (contrato) de la persona, tal como lo lista el API. */
 export interface Alquiler {
   inquilinoId: string;
@@ -34,6 +39,17 @@ export interface Alquiler {
   inmobiliaria: string;
   direccion: string;
   ciudad: string;
+  /** El API ya lo manda; puede faltar en respuestas viejas cacheadas. */
+  estado?: EstadoContratoAlquiler | null;
+}
+
+/**
+ * ¿Este alquiler ya terminó? Solo FINALIZADO y RESCINDIDO llevan el cartel:
+ * un BORRADOR es un contrato cargado para revisión que todavía no arrancó, y
+ * marcarlo como "Finalizado" sería mentirle al inquilino.
+ */
+export function esAlquilerTerminado(estado: Alquiler['estado']): boolean {
+  return estado === 'FINALIZADO' || estado === 'RESCINDIDO';
 }
 
 /**
@@ -86,6 +102,15 @@ export async function verificarCodigoUnificado(
         body: JSON.stringify({ email: emailNorm, code: codigo.replace(/\s/g, '') }),
       },
     );
+    // Entrar con un email REEMPLAZA lo que hubiera en este dispositivo: si quedó
+    // la sesión de un co-inquilino (o de otra persona), la descartamos ahora. Sin
+    // esto el login se rompía: getPersonaToken borra el persona-token mientras la
+    // sesión activa sea de un co-inquilino, así que el token recién emitido moría
+    // antes de poder elegir alquiler.
+    const previa = leerSesion();
+    if (previa && (previa.esCoInquilino === true || previa.email?.toLowerCase() !== emailNorm)) {
+      cerrarSesion();
+    }
     // Guardamos el persona-token: habilita /elegir y /alquileres (switcher).
     setPersonaToken(r.personaToken);
     if (r.alquileres.length === 0) {
@@ -195,6 +220,12 @@ export async function aceptarInvitacionCoInquilino(token: string): Promise<Inqui
     ciudad: string;
   }>(`/co-invitacion/${encodeURIComponent(token)}/aceptar`, { method: 'POST' });
   setToken(r.token);
+  // Si este dispositivo tenía guardado el persona-token de OTRA sesión (ej. el
+  // titular se logueó antes acá y no cerró sesión), hay que pisarlo: si no,
+  // /mis-alquileres seguiría devolviendo los alquileres de esa otra persona
+  // aunque la sesión activa ahora sea la de este co-inquilino. El co-inquilino
+  // no tiene (ni debe tener) persona-token propio.
+  setPersonaToken(null);
   const partes = r.nombre.trim().split(' ');
   const sesion: InquilinoSesion = {
     email: r.email ?? '',

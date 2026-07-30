@@ -25,6 +25,7 @@ import { apiEnabled } from '@/lib/api/client';
 import { SEGUNDOS_COOLDOWN, leerSesion } from '@/lib/auth-otp';
 import {
   elegirAlquiler,
+  esAlquilerTerminado,
   iniciarSesionDemoUnificada,
   solicitarCodigoUnificado,
   verificarCodigoUnificado,
@@ -194,7 +195,9 @@ export default function LoginPage() {
       title: `¡Hola ${r.sesion.nombre}!`,
       description: 'Ingresaste con éxito.',
     });
-    router.replace('/');
+    // HARD nav: arranca la app con el QueryClient limpio (si en el mismo browser
+    // hubo antes otra sesión, su caché no debe sobrevivir al login).
+    window.location.assign('/');
   };
 
   /* ============================================================
@@ -207,7 +210,8 @@ export default function LoginPage() {
     try {
       const sesion = await elegirAlquiler(inquilinoId, alquileres.length);
       toast({ title: `¡Hola ${sesion.nombre}!`, description: 'Entraste a tu alquiler.' });
-      router.replace('/');
+      // HARD nav: ver el comentario del switcher (/mis-alquileres).
+      window.location.assign('/');
     } catch {
       setEligiendo(null);
       setErrorElegir('No pudimos entrar a ese alquiler. Probá de nuevo.');
@@ -761,7 +765,14 @@ function PasoElegir({
                   <MapPin className="h-5 w-5" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-semibold">{a.direccion || 'Tu alquiler'}</p>
+                  <p className="flex items-center gap-2 truncate font-semibold">
+                    <span className="min-w-0 truncate">{a.direccion || 'Tu alquiler'}</span>
+                    {esAlquilerTerminado(a.estado) && (
+                      <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                        Finalizado
+                      </span>
+                    )}
+                  </p>
                   <p className="flex items-center gap-1 truncate text-xs text-muted-foreground">
                     <Building2 className="h-3 w-3 shrink-0" />
                     <span className="truncate">

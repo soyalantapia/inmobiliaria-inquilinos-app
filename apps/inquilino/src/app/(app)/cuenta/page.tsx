@@ -31,7 +31,7 @@ import { toast } from '@llave/ui/use-toast';
 import { DescargarAppCard } from '@/components/instalar-app';
 import { NavBar } from '@/components/nav-bar';
 import { relanzarOnboarding } from '@/components/onboarding';
-import { cerrarSesion, leerSesion } from '@/lib/auth-otp';
+import { cerrarSesion } from '@/lib/auth-otp';
 import { contratoMock } from '@/lib/mock-data';
 import { leerProfile, type ProfileOverride } from '@/lib/profile-override';
 import { useCurrentUser } from '@/lib/use-current-user';
@@ -55,20 +55,12 @@ export default function CuentaPage() {
 // La edición (/cuenta/editar) NO tiene endpoint en el API: el botón queda
 // deshabilitado con copy "próximamente" en vez de guardar en localStorage.
 function CuentaReal() {
-  const router = useRouter();
   const user = useCurrentUser();
   const { contrato, inmobiliariaTelefono } = useMiContrato();
   const { imageUrl, subir: subirAvatar, deApi: avatarDeApi } = useAvatar();
   const [subiendoAvatar, setSubiendoAvatar] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [confirmandoLogout, setConfirmandoLogout] = useState(false);
-  // Mostramos el switcher "Cambiar de alquiler" sólo si la persona tiene más de
-  // un alquiler (lo setea el login por API en la sesión). Una sola fila → la
-  // entrada no aporta y la ocultamos.
-  const [variosAlquileres, setVariosAlquileres] = useState(false);
-  useEffect(() => {
-    setVariosAlquileres((leerSesion()?.alquileresCount ?? 1) > 1);
-  }, []);
 
   const fullName = user.fullName;
   const email = user.email ?? '';
@@ -177,11 +169,25 @@ function CuentaReal() {
             Tu hogar
           </h2>
           <Card className="divide-y">
-            {variosAlquileres && (
+            {/* Siempre visible PARA EL TITULAR: el contador de alquileres se
+                congelaba en el login, así que si el inquilino firmaba su 2ª
+                propiedad DESPUÉS de entrar, esta fila no aparecía nunca (el
+                token dura 15 días). La pantalla destino maneja bien el caso
+                de un solo alquiler.
+                Un co-inquilino NO tiene persona-token propio: si mostráramos
+                este link y el dispositivo tuviera guardado el persona-token
+                de otra sesión (ej. el titular se logueó antes en el mismo
+                teléfono y no cerró sesión), /mis-alquileres mostraría los
+                alquileres de ESA otra persona. Se oculta directamente. */}
+            {/* `isLoaded`: la sesión se lee de localStorage en un efecto, así que
+                el PRIMER render dice esCoInquilino=false. Sin este gate la fila
+                se pintaba y quedaba tocable esa ventana (acá no hay ningún fetch
+                que la tape, a diferencia del sidenav y el header). */}
+            {user.isLoaded && !user.esCoInquilino && (
               <LinkRow
                 icon={<ArrowLeftRight className="h-4 w-4" />}
-                label="Cambiar de alquiler"
-                descripcion="Tenés más de un alquiler con este email"
+                label="Mis propiedades"
+                descripcion="Ver tus alquileres y cambiar de propiedad"
                 href="/mis-alquileres"
               />
             )}
@@ -311,7 +317,10 @@ function CuentaReal() {
         variant="destructive"
         onConfirm={() => {
           cerrarSesion();
-          router.push('/login');
+          // HARD nav: cerrarSesion() borra los tokens de localStorage pero NO la
+          // caché en memoria de react-query. Con soft nav, el próximo que entre en
+          // este dispositivo podía ver datos del anterior.
+          window.location.assign('/login');
         }}
       />
     </>

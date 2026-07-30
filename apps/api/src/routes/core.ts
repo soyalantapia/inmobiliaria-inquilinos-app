@@ -926,9 +926,9 @@ export async function coreRoutes(app: FastifyInstance) {
     const prop = await prisma.propiedad.findFirst({ where: { id: d.propiedadId, inmobiliariaId: u.inmobiliariaId } });
     if (!prop) return reply.code(404).send({ message: 'Propiedad inexistente' });
     if (prop.contratoActualId) return reply.code(409).send({ message: 'La propiedad ya tiene un contrato activo' });
-    // Email del inquilino único por inmobiliaria (@@unique([inmobiliariaId,email])).
-    // Lo chequeamos acá para devolver un 409 claro en vez de un 500 por violación
-    // de constraint.
+    // El email de inquilino YA NO es único a nivel Inquilino: el
+    // @@unique([inmobiliariaId, email]) que tenía esta fila se sacó (multi-alquiler)
+    // y se movió a Persona.email — ver el comentario de abajo. Acá solo normalizamos.
     const emailInq = d.inquilino.email ? d.inquilino.email.toLowerCase() : null;
     // El email PUEDE repetirse entre contratos del MISMO inquilino (multi-alquiler): ya
     // no hay pre-check que lo bloquee. La única colisión posible es que ese email lo use
