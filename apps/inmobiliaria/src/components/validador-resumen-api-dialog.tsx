@@ -185,8 +185,14 @@ function DetalleResumen({ resumenId, onCerrar }: { resumenId: string; onCerrar: 
                       ))}
                     </SelectContent>
                   </Select>
-                  <Button size="sm" onClick={() => abrirConciliar(c)} disabled={!liquidacionElegida(c)}>
-                    Conciliar
+                  {/* Deshabilitado mientras hay UNA conciliación en vuelo: si el operador
+                      apretaba "Conciliar" en un segundo crédito antes de que terminara el
+                      primero, `abrirConciliar` pisaba el pendingRef pero el guard de
+                      reentrada del diálogo cortaba el efecto — el segundo NUNCA se ejecutaba
+                      y el toast verde del primero lo hacía parecer conciliado. Plata que el
+                      operador daba por imputada y no lo estaba. */}
+                  <Button size="sm" onClick={() => abrirConciliar(c)} disabled={!liquidacionElegida(c) || pinAbierto}>
+                    {pinAbierto ? 'Conciliando…' : 'Conciliar'}
                   </Button>
                 </div>
               </CardContent>
