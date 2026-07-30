@@ -145,6 +145,21 @@ export function requiereAprobacion(rol: Rol, capacidad: Capacidad): boolean {
   return def.rolesAprobacion.includes(rol);
 }
 
+/**
+ * ¿El contrato que carga este rol queda PENDIENTE de aprobación?
+ *
+ * Dos fuentes se suman:
+ *  1. El baseline del catálogo (`rolesAprobacion` de `contratos.crear` — hoy: CARGA).
+ *  2. El switch de la inmobiliaria: si lo prendió, queda pendiente todo el que NO
+ *     pueda aprobar. Derivar del permiso (y no de una lista de roles suelta) evita
+ *     dos cosas: que la regla se desincronice de la matriz, y que alguien se deje
+ *     afuera a sí mismo — quien aprueba nunca necesita que le aprueben.
+ */
+export function contratoQuedaPendiente(rol: Rol, contratosRequierenAprobacion: boolean): boolean {
+  if (requiereAprobacion(rol, 'contratos.crear')) return true;
+  return contratosRequierenAprobacion && !rolTienePermiso(rol, 'contrato.aprobar');
+}
+
 export const GRUPO_LABEL: Record<DefinicionCapacidad['grupo'], string> = {
   lectura: 'Lectura · qué módulos ve',
   carga: 'Carga · qué puede cargar (queda pendiente si no es Admin)',
