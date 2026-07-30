@@ -16,7 +16,7 @@
 - **NO** implementar avisos/notificaciones: está fuera de alcance del spec y anotado como riesgo conocido.
 - Tests del back: `pnpm vitest run <archivo>` desde `apps/api`, SIEMPRE contra **Postgres local efímero**. NUNCA contra la DB remota/compartida.
 - Binarios de Postgres NO están en el PATH: usar `/opt/homebrew/opt/postgresql@18/bin/<cmd>`.
-- `apps/api` typechea con `pnpm lint` (`tsc --noEmit`) y tiene **~259 errores PREEXISTENTES** en archivos no relacionados → comparar contra baseline con `git stash`, no son regresión. `apps/inmobiliaria` usa `pnpm typecheck` y está limpio.
+- **Baseline de tipos = CERO, verificado el 27/07 en este worktree** (`apps/api` con `pnpm lint` y `apps/inmobiliaria` con `pnpm typecheck`, ambos en 0). Main se limpió en los commits de cazabug. Por lo tanto **cualquier error de tipo es una regresión** — no hay margen de errores preexistentes que tolerar.
 - El puerto 3000 suele estar ocupado por otro proyecto del usuario (`palta-app-admin-onb`): **NO matarlo**. El `pnpm build` del front tiene guard de puerto → usar `rm -rf .next && npx next build`.
 - Commits en español, imperativo, terminando con: `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`
 - Deploy a Railway requiere confirmación explícita del usuario.
@@ -783,7 +783,7 @@ Después del cierre del `app.put('/mi-inmobiliaria/rescision', ...)` (línea ~18
 cd ~/dev/myalq-aprobacion/apps/api && pnpm lint 2>&1 | grep -c "error TS"
 ```
 
-Expected: un número **≤ 259** (baseline preexistente). Si sube, hay regresión: corregirla.
+Expected: **0**. El baseline es cero (verificado), así que cualquier error es una regresión de esta tarea: corregirla antes de seguir.
 
 - [ ] **Step 4: Commit**
 
@@ -1052,8 +1052,9 @@ Transcribir en el reporte los textos exactos vistos.
 
 ```bash
 cd ~/dev/myalq-aprobacion/apps/api && pnpm lint 2>&1 | grep -c "error TS"
+cd ~/dev/myalq-aprobacion/apps/inmobiliaria && pnpm typecheck 2>&1 | grep -c "error TS"
 ```
-Expected: ≤ 259.
+Expected: **0 en los dos**.
 
 - [ ] **Step 4: Push y PR**
 
