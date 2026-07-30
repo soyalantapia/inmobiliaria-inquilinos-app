@@ -21,7 +21,14 @@ export async function healthRoutes(app: FastifyInstance) {
     return {
       ok: db === 'up',
       db,
-      version: process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7) ?? 'desconocido',
+      // El SHA sólo llega cuando el deploy sale de un repo conectado a GitHub o de un clon
+      // normal: `railway up` desde un WORKTREE de git no manda metadata (el .git es un
+      // archivo, no un directorio, y el CLI no lo lee) y el campo quedaba en 'desconocido' —
+      // justo lo que este endpoint venía a resolver. `RAILWAY_DEPLOYMENT_ID` está SIEMPRE, y
+      // se cruza con `railway deployment list` para saber qué se subió y cuándo.
+      version:
+        process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7) ??
+        (process.env.RAILWAY_DEPLOYMENT_ID ? `deploy:${process.env.RAILWAY_DEPLOYMENT_ID.slice(0, 8)}` : 'desconocido'),
       ts: new Date().toISOString(),
     };
   });
