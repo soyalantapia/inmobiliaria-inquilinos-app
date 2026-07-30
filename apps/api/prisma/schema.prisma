@@ -1364,7 +1364,13 @@ model Inquilino {
   // El 1:1 con Contrato (contratoId @unique) NO cambia: cada contrato sigue teniendo
   // su fila Inquilino; personaId es la capa que las agrupa por encima.
   personaId      String?
-  persona        Persona?     @relation(fields: [personaId], references: [id])
+  // onDelete Restrict explícito: Persona agrupa el historial de contratos del
+  // inquilino (ficha histórica + reuso al armar un contrato nuevo). No se puede
+  // borrar una Persona mientras tenga filas Inquilino colgando. Sin esto acá,
+  // Prisma asume SetNull para relaciones opcionales y cada `migrate dev` propone
+  // un DROP CONSTRAINT + recrear cambiando RESTRICT -> SET NULL contra la base
+  // real (fijado por la migración 20260705120000_persona_inquilino).
+  persona        Persona?     @relation(fields: [personaId], references: [id], onDelete: Restrict)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 

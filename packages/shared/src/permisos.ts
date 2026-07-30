@@ -148,14 +148,27 @@ export function requiereAprobacion(rol: Rol, capacidad: Capacidad): boolean {
 /**
  * ¿El contrato que carga este rol queda PENDIENTE de aprobación?
  *
- * Dos fuentes se suman:
+ * Precondición esperada del caller: que `rol` ya tenga el permiso base
+ * `contratos.crear` (el flujo de alta lo valida antes de llegar acá). Si un
+ * bug futuro rompiera esa precondición, esta función falla CERRADO: un rol
+ * sin permiso para crear contratos no tiene ninguna razón para activar uno
+ * solo, así que se lo trata como pendiente en vez de asumir que está bien.
+ *
+ * Con la precondición cumplida, dos fuentes se suman:
  *  1. El baseline del catálogo (`rolesAprobacion` de `contratos.crear` — hoy: CARGA).
  *  2. El switch de la inmobiliaria: si lo prendió, queda pendiente todo el que NO
  *     pueda aprobar. Derivar del permiso (y no de una lista de roles suelta) evita
- *     dos cosas: que la regla se desincronice de la matriz, y que alguien se deje
- *     afuera a sí mismo — quien aprueba nunca necesita que le aprueben.
+ *     que la regla se desincronice de la matriz.
+ *
+ * Garantía real: quien puede aprobar (`contrato.aprobar`) queda exento, así que
+ * quien prende el switch no se bloquea a sí mismo. Esto NO garantiza que el
+ * lockout sea imposible en general — una inmobiliaria sin ningún ADMIN activo
+ * y el flag prendido deja los contratos de OPERADOR pendientes para siempre;
+ * eso es un problema operativo de la inmobiliaria, no algo que esta función
+ * pueda resolver.
  */
 export function contratoQuedaPendiente(rol: Rol, contratosRequierenAprobacion: boolean): boolean {
+  if (!rolTienePermiso(rol, 'contratos.crear')) return true;
   if (requiereAprobacion(rol, 'contratos.crear')) return true;
   return contratosRequierenAprobacion && !rolTienePermiso(rol, 'contrato.aprobar');
 }

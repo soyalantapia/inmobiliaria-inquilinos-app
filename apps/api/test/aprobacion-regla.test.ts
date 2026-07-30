@@ -21,9 +21,11 @@ describe('contratoQuedaPendiente', () => {
     expect(contratoQuedaPendiente('ADMIN', true)).toBe(false);
   });
 
-  it('con el flag prendido y un solo ADMIN, no hay lockout posible', () => {
-    // Si el único usuario que puede cargar es ADMIN y ADMIN está exento,
-    // prender el flag nunca deja a la inmobiliaria sin poder dar de alta.
-    expect(contratoQuedaPendiente('ADMIN', true)).toBe(false);
+  it('LECTURA falla CERRADO: no tiene permiso de cargar contratos, así que queda pendiente pase lo que pase', () => {
+    // LECTURA no está en `roles` de `contratos.crear` — no puede cargar contratos.
+    // Si por un bug futuro igual llegara a crear uno, la regla no debe activarlo
+    // solo: debe quedar pendiente tanto con el flag apagado como prendido.
+    expect(contratoQuedaPendiente('LECTURA', false)).toBe(true);
+    expect(contratoQuedaPendiente('LECTURA', true)).toBe(true);
   });
 });
