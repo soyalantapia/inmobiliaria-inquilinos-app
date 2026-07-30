@@ -57,7 +57,7 @@ interface Props {
 export function ServiciosPublicosPanel({ propiedadId }: Props) {
   // Servicios REALES vía API en prod (la misma tabla que lee el inquilino);
   // localStorage en demo.
-  const { servicios, hidratado, guardar: guardarServicioApi } = useServiciosPublicos(propiedadId);
+  const { servicios, hidratado, error: errorCarga, guardar: guardarServicioApi } = useServiciosPublicos(propiedadId);
   const [editar, setEditar] = useState<{ tipo: TipoServicio; existente?: DatosServicio } | null>(
     null,
   );
@@ -106,6 +106,17 @@ export function ServiciosPublicosPanel({ propiedadId }: Props) {
         </CardContent>
       </Card>
 
+      {/* Un GET que falla NO es "no hay servicios cargados". Antes se veían idénticos, así
+          que el operador completaba el formulario creyendo que estaba vacío y PISABA los
+          datos reales del servidor (medidor, titular, NIS). Con el error a la vista y la
+          edición cortada, eso no puede pasar. */}
+      {errorCarga && (
+        <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+          No pudimos cargar los servicios de esta propiedad. <strong>No es que no tenga</strong>: recargá la
+          página antes de editar, para no sobrescribir lo que ya está cargado.
+        </div>
+      )}
+
       <div className="grid gap-3 md:grid-cols-2">
         {ORDEN.map((tipo) => {
           const Icon = ICONO_SERVICIO[tipo];
@@ -125,13 +136,14 @@ export function ServiciosPublicosPanel({ propiedadId }: Props) {
                     <div>
                       <p className="text-sm font-semibold">{TIPO_SERVICIO_LABEL[tipo]}</p>
                       <p className="text-[11px] text-muted-foreground">
-                        {datos ? datos.distribuidora : 'Sin datos cargados'}
+                        {datos ? datos.distribuidora : errorCarga ? 'No se pudo cargar' : 'Sin datos cargados'}
                       </p>
                     </div>
                   </div>
                   <Button
                     variant={datos ? 'ghost' : 'secondary'}
                     size="sm"
+                    disabled={errorCarga}
                     onClick={() => setEditar({ tipo, existente: datos })}
                   >
                     {datos ? (

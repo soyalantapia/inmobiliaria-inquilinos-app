@@ -47,10 +47,15 @@ function mapServicio(s: ServicioApi): DatosServicio {
 export function useServiciosPublicos(propiedadId: string): {
   servicios: DatosServicio[];
   hidratado: boolean;
+  /** true = la carga FALLÓ (≠ "no hay servicios"). El panel no debe dejar editar a ciegas. */
+  error: boolean;
   guardar: (input: DatosServicio) => Promise<void>;
 } {
   const [servicios, setServicios] = useState<DatosServicio[]>([]);
   const [hidratado, setHidratado] = useState(false);
+  // Un GET que falla NO es 'no hay servicios cargados': si se muestran igual, el operador
+  // completa el formulario creyendo que está vacío y PISA los datos reales del servidor.
+  const [error, setError] = useState(false);
 
   const recargar = useCallback(async () => {
     if (!apiEnabled) {
@@ -61,8 +66,10 @@ export function useServiciosPublicos(propiedadId: string): {
     try {
       const filas = await apiFetch<ServicioApi[]>(`/propiedades/${propiedadId}/servicios`);
       setServicios(filas.map(mapServicio));
+      setError(false);
     } catch {
       setServicios([]);
+      setError(true);
     } finally {
       setHidratado(true);
     }
@@ -98,5 +105,5 @@ export function useServiciosPublicos(propiedadId: string): {
     [propiedadId, recargar],
   );
 
-  return { servicios, hidratado, guardar };
+  return { servicios, hidratado, error, guardar };
 }
