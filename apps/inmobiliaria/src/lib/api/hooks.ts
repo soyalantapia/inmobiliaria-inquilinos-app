@@ -1128,7 +1128,12 @@ export function usePropietarios(): {
   // Es el mismo guard que la ficha del propietario ya tenía (use-propietario.ts).
   const monedasByOwner: Record<string, Set<Moneda>> = {};
   for (const l of liquidaciones) {
-    if (l.periodo !== period || l.estado !== 'PAGADO') continue;
+    // PARCIAL cuenta: el server rinde `estado IN (PAGADO, PARCIAL)` desde que la rendición
+    // es incremental — su propio comentario dice "antes tomaba sólo PAGADO (mes completo) y
+    // el parcial cobrado no llegaba al dueño". El KPI del panel se quedó filtrando sólo
+    // PAGADO, así que un mes cobrado a medias mostraba $0 a rendir y el operador no le
+    // transfería NADA al propietario: plata cobrada que nunca llegaba.
+    if (l.periodo !== period || (l.estado !== 'PAGADO' && l.estado !== 'PARCIAL')) continue;
     const prop = props.find((p) => p.contratoActualId === l.contratoId);
     if (!prop) continue;
     // El KPI "cobrado / a rendir" refleja lo que la inmobiliaria va a RENDIR al
@@ -1140,8 +1145,14 @@ export function usePropietarios(): {
       // Sobre el ALQUILER (no montoTotal): igual que la rendición real del server,
       // las expensas no le corresponden al propietario. Antes inflaba el KPI y el
       // preview del diálogo de rendición.
+      // Porción de ALQUILER de lo REALMENTE cobrado, con el mismo prorrateo que el server
+      // (alquilerCobrado = cobrado capeado × montoAlquiler / montoTotal). En una PAGADA da
+      // el alquiler entero; en una PARCIAL, la parte proporcional. El cap deja afuera la
+      // mora — que no se rinde al propietario.
+      const cobradoLiq = Math.min(l.montoPagado, l.montoTotal);
+      const alquilerCobradoLiq = l.montoTotal > 0 ? cobradoLiq * (l.montoAlquiler / l.montoTotal) : 0;
       cobradoByOwner[part.propietarioId] =
-        (cobradoByOwner[part.propietarioId] ?? 0) + l.montoAlquiler * (part.porcentaje / 100);
+        (cobradoByOwner[part.propietarioId] ?? 0) + alquilerCobradoLiq * (part.porcentaje / 100);
       (monedasByOwner[part.propietarioId] ??= new Set()).add(l.moneda);
     }
   }
