@@ -1996,14 +1996,16 @@ export async function plataRoutes(app: FastifyInstance) {
    * Zod de POST /contratos al cargarlo, pero es una columna Json: la volvemos a
    * validar antes de tocar plata, en vez de castearla a ciegas.
    */
-  const PeriodosAnterioresSchema = z.array(
-    z.object({
-      periodo: z.string().regex(/^\d{4}-\d{2}$/),
-      estado: z.enum(['PAGADO', 'PARCIAL', 'ADEUDA']),
-      montoPagado: z.number().positive().optional(),
-      moraManual: z.number().nonnegative().optional(),
-    }),
-  );
+  const PeriodosAnterioresSchema = z
+    .array(
+      z.object({
+        periodo: z.string().regex(/^\d{4}-\d{2}$/),
+        estado: z.enum(['PAGADO', 'PARCIAL', 'ADEUDA']),
+        montoPagado: z.number().positive().optional(),
+        moraManual: z.number().nonnegative().optional(),
+      }),
+    )
+    .max(120);
 
   for (const accion of ['aprobar', 'rechazar'] as const) {
     app.post(`/aprobaciones/:id/${accion}`, async (request, reply) => {
@@ -2068,15 +2070,34 @@ export async function plataRoutes(app: FastifyInstance) {
             // porque todavía no había liquidaciones donde impactarlo. Recién ahora,
             // devengado, se aplica — en la MISMA transacción que la activación: o
             // queda todo el estado inicial o no queda nada.
-            const pendientes = PeriodosAnterioresSchema.safeParse(
-              contratoActualizado.periodosAnterioresPendientes,
-            );
-            if (pendientes.success && pendientes.data.length > 0) {
-              await aplicarEstadoInicial(tx, contratoActualizado, pendientes.data, u.userId);
-              await tx.contrato.update({
-                where: { id: contratoActualizado.id },
-                data: { periodosAnterioresPendientes: Prisma.DbNull },
-              });
+            //
+            // La columna Json distingue dos casos que el safeParse por sí solo NO
+            // separaba (ambos fallaban igual con `z.array(...)`): columna null/undefined
+            // = NO HAY estado inicial (el camino normal — la inmensa mayoría de los
+            // contratos se activan directo), vs. columna CON contenido que no pasa el
+            // schema = estado inicial CORRUPTO. Tratar los dos como no-op silencioso
+            // (como hacía antes) perdía la deuda histórica del contrato sin dejar
+            // rastro: se activaba con 200 como si nunca hubiera habido nada que
+            // aplicar. Ahora el caso corrupto EXPLOTA con el mismo mecanismo que un
+            // estado inicial inconsistente (EstadoInicialInvalido → 400, rollback,
+            // la aprobación queda PENDIENTE y reintentable) en vez de perderse mudo.
+            const periodosGuardados = contratoActualizado.periodosAnterioresPendientes;
+            if (periodosGuardados != null) {
+              const pendientes = PeriodosAnterioresSchema.safeParse(periodosGuardados);
+              if (!pendientes.success) {
+                throw new EstadoInicialInvalido(
+                  'El estado inicial guardado con este contrato está corrupto (no pasa el schema esperado) — revisá periodosAnterioresPendientes antes de volver a aprobar.',
+                );
+              }
+              // Array vacío válido = "no hay períodos anteriores", no un error: no
+              // hace falta aplicar nada ni tocar la columna.
+              if (pendientes.data.length > 0) {
+                await aplicarEstadoInicial(tx, contratoActualizado, pendientes.data, u.userId);
+                await tx.contrato.update({
+                  where: { id: contratoActualizado.id },
+                  data: { periodosAnterioresPendientes: Prisma.DbNull },
+                });
+              }
             }
           }
           if (accion === 'rechazar') {
