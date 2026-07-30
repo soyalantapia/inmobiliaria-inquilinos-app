@@ -203,12 +203,12 @@ export function BandejaAprobaciones() {
               </div>
               <div className="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/5 p-2 text-xs">
                 <KeyRound className="h-3.5 w-3.5 text-primary" />
-                Al confirmar te pedimos el PIN del usuario.
+                Al confirmar, la aprobación queda registrada con tu nombre.
               </div>
             </div>
           ) : null
         }
-        confirmLabel="Confirmar y pedir PIN"
+        confirmLabel="Confirmar aprobación"
         onConfirm={() => {
           transitioningToPin.current = true;
           setShowPin(true);
@@ -256,7 +256,7 @@ export function BandejaAprobaciones() {
             </div>
           ) : null
         }
-        confirmLabel="Rechazar y pedir PIN"
+        confirmLabel="Rechazar solicitud"
         variant="destructive"
         onConfirm={ejecutarRechazo}
       />

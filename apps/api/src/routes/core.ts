@@ -1762,6 +1762,11 @@ export async function coreRoutes(app: FastifyInstance) {
         inmobiliariaId: u.inmobiliariaId,
         estadoDeposito: 'RETENIDO',
         depositoGarantia: { gt: 0 },
+        // Excluye BORRADOR (no ACTIVO a secas: FINALIZADO/RESCINDIDO deben seguir
+        // apareciendo — el depósito puede seguir retenido después de terminado el
+        // contrato). Un BORRADOR con depósito cargado todavía no existe de verdad
+        // (puede rechazarse); estadoDeposito default RETENIDO lo inflaba igual.
+        estado: { not: 'BORRADOR' },
       },
       select: {
         id: true,

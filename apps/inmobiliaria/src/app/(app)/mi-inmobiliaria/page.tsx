@@ -253,7 +253,11 @@ function AprobacionContratosCard({ reglas }: { reglas: ReglasMiInmobiliaria | nu
   const [error, setError] = useState<string | null>(null);
 
   if (!reglas) return null;
-  const activo = reglas.aprobaciones.contratosRequierenAprobacion;
+  // Defensivo (igual que reglas?.comision / reglas?.plan en esta misma página):
+  // front y back son servicios separados en Railway. Si el front deploya antes
+  // que el back, GET /mi-inmobiliaria/reglas todavía no devuelve `aprobaciones`
+  // y este acceso tiraría TypeError, tumbando TODA la página (no solo esta card).
+  const activo = reglas.aprobaciones?.contratosRequierenAprobacion ?? false;
 
   const cambiar = async (valor: boolean) => {
     // Guard de reentrancia: un doble click muy rápido o auto-repeat de teclado

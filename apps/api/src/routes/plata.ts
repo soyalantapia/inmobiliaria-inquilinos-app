@@ -2049,7 +2049,12 @@ export async function plataRoutes(app: FastifyInstance) {
             data:
               accion === 'aprobar'
                 ? { estado: 'ACTIVO', pendienteAprobacion: false, aprobadoAt: new Date() }
-                : { pendienteAprobacion: false },
+                // Al rechazar también se limpia el estado inicial declarado en el
+                // alta: el contrato rechazado nunca se va a aprobar, así que esa
+                // deuda histórica queda colgada para siempre si no la borramos acá.
+                // Prisma.DbNull (no `null` pelado): en un campo Json, `null` es
+                // ambiguo entre "borrar la columna" y "no tocarla".
+                : { pendienteAprobacion: false, periodosAnterioresPendientes: Prisma.DbNull },
           });
           // Al aprobar, el contrato se activa → reclamar la propiedad + devengar
           // sus liquidaciones, IGUAL que POST /contratos (core.ts). Antes este path
@@ -2131,7 +2136,15 @@ export async function plataRoutes(app: FastifyInstance) {
           include: { cargadoPor: { select: { nombre: true, apellido: true, rol: true } } },
         });
         return { http: 200 as const, updated };
-      }).catch((e: unknown) => {
+      },
+      // timeout 30s (default 5s): al aprobar, esta tx aplica el estado inicial
+      // (aplicarEstadoInicial) además de activar el contrato y devengar — hasta
+      // 120 períodos con updates secuenciales contra una DB remota. Mismo motivo
+      // que core.ts:978 (el alta con periodosAnteriores), pero acá se suma el
+      // claim de la propiedad y el devengo: con carteras de ~30 períodos el
+      // default de 5s ya se pasaba y tiraba P2028 (500 opaco, determinístico —
+      // el admin reintenta y le sigue saliendo 500).
+      { timeout: 30_000, maxWait: 10_000 }).catch((e: unknown) => {
         // PROP_OCUPADA: al aprobar, la propiedad ya fue reclamada por otro contrato
         // (carrera o un segundo BORRADOR sobre la misma propiedad). El throw hizo
         // rollback TOTAL → la aprobación vuelve a PENDIENTE. Lo mapeamos a 409 acá
