@@ -64,6 +64,14 @@ export function useDepositosEnCustodia(): {
       body: JSON.stringify({ decision, montoDevuelto, motivo }),
     });
     await qc.invalidateQueries({ queryKey: ['depositos-en-custodia'] });
+    // Resolver el depósito con NETEAR/EJECUTAR ahora IMPUTA la retención contra la deuda
+    // (crea pagos y salda cuotas). Sin invalidar esto, el operador resolvía el depósito y el
+    // panel seguía mostrando la deuda impaga y las cuotas sin pagar — invitándolo a volver a
+    // cobrarlas. La aplicación se agregó recién, así que esta invalidación no existía.
+    await qc.invalidateQueries({ queryKey: ['liquidaciones'] });
+    await qc.invalidateQueries({ queryKey: ['pagos'] });
+    await qc.invalidateQueries({ queryKey: ['contrato', contratoId] });
+    await qc.invalidateQueries({ queryKey: ['contratos'] });
   };
   if (!apiEnabled) return { data: VACIO, cargando: false, disponible: false, error: false, resolver };
   if (q.isError) return { data: VACIO, cargando: false, disponible: true, error: true, resolver };

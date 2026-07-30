@@ -63,6 +63,11 @@ export function useAjustarAlquiler(contratoId: string) {
       qc.invalidateQueries({ queryKey: ['ajustes', contratoId] });
       qc.invalidateQueries({ queryKey: ['contrato', contratoId] });
       qc.invalidateQueries({ queryKey: ['contratos'] });
+      // El ajuste re-escribe el monto de las cuotas futuras impagas: sin invalidar el
+      // listado, el panel seguía mostrando —y COBRANDO— el canon viejo hasta que la cache
+      // expiraba. El resto de las mutaciones de plata (use-pagos.ts) ya lo invalidaba.
+      qc.invalidateQueries({ queryKey: ['liquidaciones'] });
+      qc.invalidateQueries({ queryKey: ['pagos'] });
     },
   });
 }
