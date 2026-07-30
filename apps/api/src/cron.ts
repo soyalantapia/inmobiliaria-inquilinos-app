@@ -27,7 +27,13 @@ export function iniciarCronDevengo(app: FastifyInstance): void {
   const correr = async (): Promise<void> => {
     try {
       const r = await devengarTodosLosTenants(prisma);
-      app.log.info(r, '[cron] devengo global ejecutado');
+      // Los contratos que fallaron van a WARN: dentro de un info se pierden, y un devengo
+      // con errores comidos es indistinguible de uno que anduvo bien.
+      if (r.fallidos.length > 0) {
+        app.log.warn({ ...r, fallidos: r.fallidos }, `[cron] devengo global: ${r.fallidos.length} contrato(s) fallaron`);
+      } else {
+        app.log.info(r, '[cron] devengo global ejecutado');
+      }
     } catch (err) {
       app.log.error(err, '[cron] devengo global falló');
     }

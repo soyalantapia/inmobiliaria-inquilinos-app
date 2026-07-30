@@ -189,7 +189,7 @@ export async function marcarLiquidacionesVencidas(
  */
 export async function devengarTodosLosTenants(
   prisma: PrismaClient,
-): Promise<{ contratosProcesados: number; liquidacionesNuevas: number; liquidacionesVencidas: number }> {
+): Promise<{ contratosProcesados: number; liquidacionesNuevas: number; liquidacionesVencidas: number; fallidos: { contratoId: string; error: string }[] }> {
   const contratos = await prisma.contrato.findMany({
     where: { estado: 'ACTIVO' },
     select: {
@@ -207,12 +207,30 @@ export async function devengarTodosLosTenants(
     },
   });
   let liquidacionesNuevas = 0;
+  // AISLAMIENTO POR CONTRATO. Este barrido es GLOBAL (todos los tenants), así que sin el
+  // try/catch un solo contrato con datos raros —o un error transitorio de la DB— tiraba la
+  // función entera: los contratos siguientes se quedaban sin devengar Y, peor, el barrido de
+  // vencidos de abajo NUNCA corría, para TODAS las inmobiliarias. Un dato malo de un cliente
+  // dejaba sin facturar a los demás.
+  const fallidos: { contratoId: string; error: string }[] = [];
   for (const c of contratos) {
-    liquidacionesNuevas += await generarLiquidacionesContrato(prisma, c);
+    try {
+      liquidacionesNuevas += await generarLiquidacionesContrato(prisma, c);
+    } catch (e) {
+      fallidos.push({ contratoId: c.id, error: e instanceof Error ? e.message : String(e) });
+    }
   }
-  // Tras devengar, marcamos vencidas las que ya pasaron su vencimiento.
-  const liquidacionesVencidas = await marcarLiquidacionesVencidas(prisma);
-  return { contratosProcesados: contratos.length, liquidacionesNuevas, liquidacionesVencidas };
+  // El barrido de vencidos corre SIEMPRE, aunque algún contrato haya fallado: marcar la mora
+  // no depende de haber devengado bien, y saltearlo deja morosos invisibles para la cobranza.
+  let liquidacionesVencidas = 0;
+  try {
+    liquidacionesVencidas = await marcarLiquidacionesVencidas(prisma);
+  } catch (e) {
+    fallidos.push({ contratoId: '(barrido de vencidos)', error: e instanceof Error ? e.message : String(e) });
+  }
+  // `fallidos` viaja en el resultado: un devengo que se comió errores en silencio es
+  // indistinguible de uno que anduvo bien, y el cron lo loguea.
+  return { contratosProcesados: contratos.length, liquidacionesNuevas, liquidacionesVencidas, fallidos };
 }
 
 /**
