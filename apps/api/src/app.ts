@@ -31,6 +31,7 @@ import { propiedadGastosRoutes } from './routes/propiedad-gastos.js';
 import { propiedadDocumentosRoutes } from './routes/propiedad-documentos.js';
 import { soporteRoutes } from './routes/soporte.js';
 import { metricasRoutes } from './routes/metricas.js';
+import { cuentasRoutes } from './routes/cuentas.js';
 import {
   reportarErrorAlSonar,
   setAvisadorDeVentanaSonar,
@@ -253,6 +254,7 @@ export async function buildApp(envOverrides: Partial<Record<string, string>> = {
   await app.register(propiedadDocumentosRoutes);
   await app.register(soporteRoutes);
   await app.register(metricasRoutes);
+  await app.register(cuentasRoutes);
 
   return app;
 }
