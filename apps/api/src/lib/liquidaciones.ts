@@ -14,9 +14,15 @@ export type ContratoParaLiquidar = {
   diaPago: number;
   /**
    * Mes desde el que ESTE contrato devenga, si difiere de `fechaInicio` (cartera
-   * importada). null/undefined = devengar desde `fechaInicio`.
+   * importada). null = devengar desde `fechaInicio`.
+   *
+   * OBLIGATORIO a propósito (aunque acepte null). Cuando era opcional, de los cinco callers
+   * sólo DOS lo pasaban: el cron y la importación. Los otros tres —el botón "Devengar" del
+   * panel, la activación de contrato y la renovación— lo omitían en silencio y devengaban
+   * desde `fechaInicio`, RESUCITANDO la deuda histórica que la importación había decidido no
+   * cobrar. Requerido, el compilador no deja que un caller nuevo se lo saltee.
    */
-  devengarDesde?: Date | null;
+  devengarDesde: Date | null;
 };
 
 /**

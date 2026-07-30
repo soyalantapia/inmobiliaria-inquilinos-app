@@ -118,6 +118,11 @@ export async function plataRoutes(app: FastifyInstance) {
         montoExpensas: true,
         moneda: true,
         fechaInicio: true,
+        // Sin esto, el botón "Devengar" del panel devengaba desde `fechaInicio` e ignoraba
+        // la decisión de la importación de cartera: le RESUCITABA al cliente los meses
+        // históricos como deuda. El cron ya lo respetaba (devengarTodosLosTenants); este
+        // camino gemelo se había quedado afuera del fix.
+        devengarDesde: true,
         fechaFin: true,
         diaPago: true,
       },
