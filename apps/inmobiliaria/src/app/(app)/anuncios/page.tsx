@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useConsorcios } from '@/lib/api/use-consorcios';
 import {
   AlertCircle,
   Bell,
@@ -471,7 +472,14 @@ function CrearAnuncioDialog({ abierto, onClose, onGuardar, contratosApi }: Dialo
     setConfirmando(false);
   }, [abierto]);
 
-  const consorcios = consorciosAlcanzables();
+  // Consorcios REALES del tenant cuando hay API. Antes esto era SIEMPRE el mock: en prod el
+  // combo listaba los consorcios de la demo, así que el operador elegía uno que no existe en
+  // su cartera y confirmaba un envío masivo contra una audiencia que el server resolvía
+  // distinto (o vacía). El endpoint ya existía y la propia página de Consorcios lo usa.
+  const { consorcios: consorciosApi } = useConsorcios();
+  const consorcios = apiEnabled
+    ? (consorciosApi ?? []).map((c) => ({ id: c.id, nombre: c.nombre }))
+    : consorciosAlcanzables();
   // Inquilinos alcanzables: del API (activos, con inquilino real, sin
   // SOLO_EXPENSAS) cuando hay API; si no, del mock.
   const contratos = contratosApi
@@ -516,7 +524,12 @@ function CrearAnuncioDialog({ abierto, onClose, onGuardar, contratosApi }: Dialo
           ? contratos.filter((c) => c.estadoPago === 'PENDIENTE').length
           : audiencia === 'CONTRATOS_ESPECIFICOS'
             ? audienciaIds.length
-            : contarDestinatarios(audiencia, audienciaIds)
+            // Consorcio y propietarios NO se pueden contar con los datos que tiene el panel.
+            // Antes caía a `contarDestinatarios` (el mock) y mostraba un alcance INVENTADO
+            // sobre el que el operador confirmaba un envío real. `null` = "no lo sabemos":
+            // la UI muestra "—" en vez de un número falso, y el server informa el alcance
+            // real al confirmar.
+            : null
     : contarDestinatarios(audiencia, audienciaIds);
 
   const revisar = () => {
@@ -536,6 +549,8 @@ function CrearAnuncioDialog({ abierto, onClose, onGuardar, contratosApi }: Dialo
       toast({ variant: 'destructive', title: 'Elegí al menos un contrato' });
       return;
     }
+    // `null` = no lo sabemos (lo resuelve el server), NO "es cero": cortar acá bloquearía
+    // un envío legítimo a un consorcio real.
     if (destinatarios === 0) {
       toast({
         variant: 'destructive',
@@ -561,7 +576,9 @@ function CrearAnuncioDialog({ abierto, onClose, onGuardar, contratosApi }: Dialo
       audienciaIds,
       canales,
       enviadoPor: USUARIO_ACTUAL,
-      destinatariosCount: destinatarios,
+      // Si el panel no puede contarlo (consorcio/propietarios en modo API), manda 0 y el
+      // server responde el alcance REAL — el toast de éxito muestra ese, no una estimación.
+      destinatariosCount: destinatarios ?? 0,
     });
   };
 
@@ -723,9 +740,18 @@ function CrearAnuncioDialog({ abierto, onClose, onGuardar, contratosApi }: Dialo
           <div className="flex items-center gap-2 rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
             <Users className="h-3.5 w-3.5 shrink-0 text-primary" />
             <span>
-              Llega a{' '}
-              <strong className="text-foreground tabular-nums">{destinatarios}</strong>{' '}
-              destinatario{destinatarios === 1 ? '' : 's'} · {AUDIENCIA_LABEL[audiencia]}
+              {destinatarios === null ? (
+                <>
+                  Llega a los de <strong className="text-foreground">{AUDIENCIA_LABEL[audiencia]}</strong>. El
+                  sistema resuelve cuántos son al enviar.
+                </>
+              ) : (
+                <>
+                  Llega a{' '}
+                  <strong className="text-foreground tabular-nums">{destinatarios}</strong>{' '}
+                  destinatario{destinatarios === 1 ? '' : 's'} · {AUDIENCIA_LABEL[audiencia]}
+                </>
+              )}
             </span>
           </div>
 
@@ -767,8 +793,12 @@ function CrearAnuncioDialog({ abierto, onClose, onGuardar, contratosApi }: Dialo
         open={confirmando}
         onOpenChange={setConfirmando}
         title="¿Enviar el anuncio?"
-        description={`Vas a avisar a ${destinatarios} destinatario${destinatarios === 1 ? '' : 's'} (${AUDIENCIA_LABEL[audiencia].toLowerCase()}) por app y email. Esto no se puede deshacer.`}
-        confirmLabel={`Enviar a ${destinatarios} destinatario${destinatarios === 1 ? '' : 's'}`}
+        description={
+          destinatarios === null
+            ? `Vas a avisar a ${AUDIENCIA_LABEL[audiencia].toLowerCase()} por app y email. Desde acá no podemos contar cuántos son: los resuelve el sistema al enviar. Esto no se puede deshacer.`
+            : `Vas a avisar a ${destinatarios} destinatario${destinatarios === 1 ? '' : 's'} (${AUDIENCIA_LABEL[audiencia].toLowerCase()}) por app y email. Esto no se puede deshacer.`
+        }
+        confirmLabel={destinatarios === null ? 'Enviar anuncio' : `Enviar a ${destinatarios} destinatario${destinatarios === 1 ? '' : 's'}`}
         onConfirm={enviar}
       />
     </>
