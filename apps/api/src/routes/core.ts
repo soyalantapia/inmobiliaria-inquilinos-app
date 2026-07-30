@@ -17,6 +17,7 @@ import { conSaldo, montoPagadoPorLiquidacion } from '../lib/saldos.js';
 import { aplicarDepositoADeuda } from '../lib/aplicar-deposito.js';
 import { calcularMora, resolverEsquemaMora } from '../lib/punitorios.js';
 import { aplicarEstadoInicial, EstadoInicialInvalido } from '../lib/estado-inicial-contrato.js';
+import { buscarOCrearPersona } from '../lib/persona.js';
 import { borrarArchivoSiHuerfano, urlEsDelTenant } from './uploads.js';
 import { enviarInvitacionInquilino, enviarInvitacionEquipo } from '../mailer.js';
 import { contratoQuedaPendiente } from '@llave/shared';
@@ -1029,35 +1030,21 @@ export async function coreRoutes(app: FastifyInstance) {
           cargadoAt: new Date(),
         },
       });
-      // Persona: identidad reutilizable del tenant para la ficha histórica del inquilino.
-      // Por DNI hacemos upsert idempotente → un 2º contrato del MISMO DNI se agrupa bajo la
-      // misma Persona automáticamente (base del reuso). Sin DNI, Persona nueva para este titular.
-      const dniPersona = (d.inquilino.dni || '').trim() || null;
+      // Persona: identidad reutilizable del tenant para la ficha histórica del inquilino
+      // (agrupa contratos/inquilinos del mismo titular — multi-alquiler). Find-or-create por
+      // DNI/email COMPARTIDO con la importación de cartera (lib/persona.ts): una sola
+      // definición, para que las dos altas agrupen igual y ninguna reviente con P2002.
       const persona = d.personaId
         ? // Reuso explícito: agrupa bajo la Persona elegida (ya validada como del tenant).
           await tx.persona.findFirstOrThrow({ where: { id: d.personaId, inmobiliariaId: u.inmobiliariaId } })
-        : dniPersona
-          ? await tx.persona.upsert({
-              where: { inmobiliariaId_dni: { inmobiliariaId: u.inmobiliariaId, dni: dniPersona } },
-              update: {},
-              create: {
-                inmobiliariaId: u.inmobiliariaId,
-                dni: dniPersona,
-                email: emailInq,
-                nombre: d.inquilino.nombre,
-                apellido: d.inquilino.apellido || null,
-                telefono: d.inquilino.telefono || null,
-              },
-            })
-          : await tx.persona.create({
-              data: {
-                inmobiliariaId: u.inmobiliariaId,
-                email: emailInq,
-                nombre: d.inquilino.nombre,
-                apellido: d.inquilino.apellido || null,
-                telefono: d.inquilino.telefono || null,
-              },
-            });
+        : await buscarOCrearPersona(tx, {
+            inmobiliariaId: u.inmobiliariaId,
+            dni: d.inquilino.dni || null,
+            email: emailInq,
+            nombre: d.inquilino.nombre,
+            apellido: d.inquilino.apellido || null,
+            telefono: d.inquilino.telefono || null,
+          });
       await tx.inquilino.update({ where: { id: inq.id }, data: { contratoId: contrato.id, personaId: persona.id } });
       if (contratoPendiente) {
         // BORRADOR: NO se reclama la propiedad ni se devengan liquidaciones hasta

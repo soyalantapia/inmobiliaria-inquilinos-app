@@ -53,9 +53,24 @@ describe('CAZABUG — dedup de importación por dirección', () => {
     expect(validarFila(base, new Set(), new Set()).estado).toBe('OK');
   });
 
-  it('el dedup por email sigue funcionando', () => {
+  // FIX multi-alquiler (migración 20260723120000_multi_alquiler_email_persona): el email
+  // repetido YA NO es DUPLICADO — un mismo inquilino puede alquilar varias propiedades
+  // (3 locales en La Rioja, 10 deptos de un consorcio) y antes esto rechazaba justo el 2º
+  // alquiler. Ver apps/api/test/import-multi-alquiler.test.ts para el flujo completo.
+  it('el email repetido ya NO bloquea: pasa a ser una advertencia informativa', () => {
     const v = validarFila(base, new Set(['juan.perez@mail.com']), new Set());
-    expect(v.estado).toBe('DUPLICADO');
+    expect(v.estado).toBe('ADVERTENCIA');
     expect(v.motivo).toMatch(/email/i);
+  });
+
+  it('si la dirección Y el email repiten a la vez, sigue ganando el bloqueo por dirección', () => {
+    // Re-subir la MISMA planilla: dirección y email coinciden con lo ya cargado. El chequeo
+    // de dirección tiene que cortar ANTES de llegar al de email — si no, la fila "pasaría"
+    // como advertencia y duplicaría la propiedad.
+    const dirs = new Set([normalizarDireccion('Av. Colón 1234')]);
+    const emails = new Set(['juan.perez@mail.com']);
+    const v = validarFila(base, emails, dirs);
+    expect(v.estado).toBe('DUPLICADO');
+    expect(v.motivo).toMatch(/dirección/i);
   });
 });

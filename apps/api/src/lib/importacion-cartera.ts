@@ -185,14 +185,27 @@ export function validarFila(
   if (!Number.isFinite(d.monto) || d.monto <= 0) return { estado: 'ERROR', motivo: 'Monto del alquiler inválido' };
   if (!d.fechaInicio) return { estado: 'ERROR', motivo: 'Fecha de inicio inválida o vacía' };
   if (d.inquilinoEmail && !EMAIL_RE.test(d.inquilinoEmail)) return { estado: 'ERROR', motivo: 'Email del inquilino con formato inválido' };
-  if (d.inquilinoEmail && emailsExistentes.has(d.inquilinoEmail)) {
-    return { estado: 'DUPLICADO', motivo: 'Ya existe un inquilino con ese email en tu cartera' };
-  }
-  // El email NO alcanza como dedup: es opcional (las filas sin email se importan a
-  // propósito), así que re-subir la misma planilla duplicaba propiedades, inquilinos y
-  // contratos —con sus liquidaciones— sin avisar. La dirección es la clave natural.
+  // La dirección SIGUE siendo la clave natural de dedup real (dos filas para la MISMA
+  // propiedad duplicarían propiedad+inquilino+contrato+liquidaciones) — va ANTES del chequeo
+  // de email a propósito: si re-subís la misma planilla, el email también repite, y el
+  // bloqueo por dirección tiene que seguir cortando aunque el email ya no sea motivo de
+  // rechazo (ver abajo). Si este orden se invirtiera, el chequeo de email cortaría primero
+  // y la fila NUNCA llegaría a evaluarse contra dirección.
   if (direccionesExistentes.has(normalizarDireccion(d.direccion))) {
     return { estado: 'DUPLICADO', motivo: 'Ya existe una propiedad con esa dirección en tu cartera' };
+  }
+  // El email repetido YA NO bloquea: un mismo inquilino puede alquilar varias propiedades
+  // (multi-alquiler — 3 locales, 10 deptos de un consorcio; migración
+  // 20260723120000_multi_alquiler_email_persona que sacó el unique de `inquilinos` y lo
+  // movió a `personas`). Antes esto era DUPLICADO y rechazaba justo el 2º alquiler del mismo
+  // inquilino — el momento en que más hace falta poder migrar la cartera. Queda como
+  // ADVERTENCIA informativa; el find-or-create de Persona (lib/persona.ts) agrupa la fila
+  // bajo la misma identidad al confirmar.
+  if (d.inquilinoEmail && emailsExistentes.has(d.inquilinoEmail)) {
+    return {
+      estado: 'ADVERTENCIA',
+      motivo: 'Ya hay un inquilino con este email en tu cartera: se carga como otro alquiler del mismo inquilino',
+    };
   }
   const faltantes: string[] = [];
   if (!d.inquilinoDni) faltantes.push('DNI');

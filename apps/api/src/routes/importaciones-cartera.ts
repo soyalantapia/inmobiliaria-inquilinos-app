@@ -5,6 +5,7 @@ import type { FastifyInstance } from 'fastify';
 import { prisma } from '../db.js';
 import { requireUsuario } from '../auth/guards.js';
 import { generarLiquidacionesContrato } from '../lib/liquidaciones.js';
+import { buscarOCrearPersona } from '../lib/persona.js';
 import {
   CAMPOS_IMPORTACION,
   fechaFinPorDefecto,
@@ -306,16 +307,32 @@ interface FilaValidada {
 async function validarFilas(filas: unknown[][], mapeo: Record<string, number>, inmobiliariaId: string): Promise<{ filas: FilaValidada[]; resumen: Record<string, number> }> {
   const emailsExistentes = await emailsInquilinos(inmobiliariaId);
   const direccionesExistentes = await direccionesPropiedades(inmobiliariaId);
-  const emailsEnArchivo = new Set<string>();
+  // email → filas (índices) donde ya apareció, en orden. Para avisar "es el mismo inquilino
+  // que la fila N" en vez de rechazar: el mismo inquilino puede tener varias filas propias
+  // dentro del MISMO archivo (multi-alquiler cargado de una — 3 locales, 10 deptos de un
+  // consorcio). Separado de `emailsExistentes` (cartera YA guardada en la DB) a propósito.
+  const emailsEnArchivo = new Map<string, number[]>();
   const out: FilaValidada[] = [];
   const resumen: Record<string, number> = { OK: 0, ADVERTENCIA: 0, ERROR: 0, DUPLICADO: 0 };
   for (let i = 0; i < filas.length; i++) {
     const d = parsearFilaMapeada(filas[i] ?? [], mapeo);
     let v = validarFila(d, emailsExistentes, direccionesExistentes);
-    // Duplicado DENTRO del mismo archivo (dos filas con el mismo email).
-    if (v.estado !== 'ERROR' && d.inquilinoEmail) {
-      if (emailsEnArchivo.has(d.inquilinoEmail)) v = { estado: 'DUPLICADO', motivo: 'Email repetido dentro del archivo' };
-      else emailsEnArchivo.add(d.inquilinoEmail);
+    // Repetido DENTRO del mismo archivo (dos filas con el mismo email): ya NO es DUPLICADO,
+    // es el mismo inquilino con otro alquiler — advertencia informativa con la fila donde
+    // apareció por primera vez y qué número de alquiler es este.
+    if (v.estado !== 'ERROR' && v.estado !== 'DUPLICADO' && d.inquilinoEmail) {
+      const previas = emailsEnArchivo.get(d.inquilinoEmail);
+      if (previas) {
+        const primeraFila = previas[0]! + 1; // 1-indexado: lo que ve el usuario en el preview
+        const numeroAlquiler = previas.length + 1;
+        v = {
+          estado: 'ADVERTENCIA',
+          motivo: `Es el mismo inquilino que la fila ${primeraFila}: se carga como su alquiler N°${numeroAlquiler}`,
+        };
+        previas.push(i);
+      } else {
+        emailsEnArchivo.set(d.inquilinoEmail, [i]);
+      }
     }
     resumen[v.estado] = (resumen[v.estado] ?? 0) + 1;
     out.push({
@@ -374,6 +391,20 @@ async function crearContratoDesdeFila(
   await prisma.$transaction(
     async (tx) => {
       const propietarioId = await propietarioParaFila(tx, inmobiliariaId, d.propietarioNombre, propietarioCache);
+      // Find-or-create COMPARTIDO con el alta manual (lib/persona.ts): agrupa esta fila bajo
+      // la misma Persona que el resto de los alquileres del inquilino (por DNI o, si falta,
+      // por email). Va JUNTO con haber sacado el rechazo por email repetido en validarFila:
+      // sin esto, la 2da fila del mismo inquilino se creaba igual pero como Inquilino
+      // huérfano (sin personaId) — o, peor, con un create() ciego de Persona, reventaba con
+      // P2002 contra el unique de Persona a mitad de la cartera real del cliente.
+      const persona = await buscarOCrearPersona(tx, {
+        inmobiliariaId,
+        dni: d.inquilinoDni,
+        email: d.inquilinoEmail,
+        nombre: d.inquilinoNombre,
+        apellido: d.inquilinoApellido,
+        telefono: d.inquilinoTelefono,
+      });
 
       const propiedad = await tx.propiedad.create({
         data: {
@@ -398,6 +429,7 @@ async function crearContratoDesdeFila(
           telefono: d.inquilinoTelefono,
           dni: d.inquilinoDni,
           esInvitado: false,
+          personaId: persona.id,
         },
       });
 
