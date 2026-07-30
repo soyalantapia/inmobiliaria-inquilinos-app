@@ -256,6 +256,11 @@ function AprobacionContratosCard({ reglas }: { reglas: ReglasMiInmobiliaria | nu
   const activo = reglas.aprobaciones.contratosRequierenAprobacion;
 
   const cambiar = async (valor: boolean) => {
+    // Guard de reentrancia: un doble click muy rápido o auto-repeat de teclado
+    // (mantener Espacio con foco en el checkbox) puede disparar dos llamadas
+    // antes de que React commitee el re-render que pone `guardando` en true y
+    // deshabilita el input. Cortamos acá, no sólo con `disabled`.
+    if (guardando) return;
     setError(null);
     setGuardando(true);
     try {
@@ -296,7 +301,9 @@ function AprobacionContratosCard({ reglas }: { reglas: ReglasMiInmobiliaria | nu
             <span className="mt-0.5 block text-xs text-muted-foreground">
               Quedan pendientes en la bandeja y no se activan —ni reclaman la propiedad, ni
               generan cuotas— hasta que los apruebes. Vos y cualquiera que pueda aprobar
-              siguen cargando directo.
+              siguen cargando directo. Si después apagás el switch, los que ya quedaron
+              pendientes no se activan solos: siguen esperando tu aprobación o rechazo en
+              la bandeja.
             </span>
           </span>
         </label>
