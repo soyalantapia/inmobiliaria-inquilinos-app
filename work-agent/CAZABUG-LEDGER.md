@@ -2,7 +2,7 @@
 
 > Barrido completo del backend de My Alquiler: primero **PLATA**, después la superficie
 > restante (multi-tenant, permisos, endpoints públicos, archivos, mundo del inquilino).
-> **20 causas raíz cerradas y mergeadas a main.** Nada deployado (el deploy es manual
+> **26 causas raíz cerradas y mergeadas a main.** Nada deployado (el deploy es manual
 > con `railway up`).
 
 ## Las 20 causas
@@ -87,6 +87,25 @@ que el compilador lo exija. Más un test contra el ENDPOINT.
 
 **Regla para el que siga:** si el fix vive en una función y el bug real estaba en *usarla*,
 el test tiene que ejercitar el cableado.
+
+### La misma clase apareció CUATRO veces en un día
+1. **S** — `direccionesExistentes` opcional → un refactor se llevó el cableado y el dedup murió.
+2. **V** — los 4 defaults del generador de contratos (`?? 5`, `?? 4.17`, `?? contrato.monto`,
+   `?? 'CABA'`) dejaban que el documento falso volviera desde cualquier caller nuevo.
+3. **AB** — `devengarDesde` opcional → el botón "Devengar" del panel lo omitía y resucitaba
+   la deuda histórica de la cartera. El cron sí lo pasaba.
+4. **AA** — resolver el depósito empezó a mover plata (fix W) y el front no invalidó la cache.
+   Ese lo introduje yo, horas después de escribir esta misma regla.
+
+**Conclusión operativa:** cuando un fix depende de que el caller *se acuerde* de algo —pasar
+un parámetro, invalidar una key, incluir un campo en el `select`— el bug VUELVE. Las tres
+formas de cerrarlo de verdad, en orden de preferencia:
+- hacer el parámetro/campo **obligatorio** y dejar que el compilador liste los callers;
+- **borrar el default** que permite el valor falso (mejor un blanco que un número inventado);
+- si no hay forma de que el tipo lo exija, un test que ejercite **el endpoint**, no la función.
+
+Y cada vez que un endpoint empieza a escribir algo nuevo, preguntarse: **¿quién más lee este
+dato?** Ahí vive la mitad de los bugs de esta ronda.
 
 ## Pendiente: 23 hallazgos confirmados del barrido de front/costuras
 La última cacería (front del panel + PWA, costura demo/prod, cron, routes restantes) devolvió
