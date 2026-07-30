@@ -1,20 +1,71 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
+import { PrismaClient } from '@prisma/client';
 import { buildApp } from '../src/app.js';
 
 /**
- * Tests del proxy de Soporte (Sonar) y del contrato del error-handler. No tocan la
- * DB: el gate de auth falla antes de cualquier query, y las rutas de prueba del
- * error-handler lanzan directo.
+ * Tests del proxy de Soporte (Sonar) y del contrato del error-handler.
+ *
+ * Los usuarios de estos tests son FILAS REALES, no payloads de JWT inventados:
+ * `requireUsuario` revalida contra la tabla en cada request (el token dura 15 días
+ * y antes un usuario dado de baja seguía operando — ver usuario-revalidado.test.ts),
+ * así que un token acuñado con un userId que no existe da 401 y nunca llega al
+ * chequeo de rol que este archivo quiere probar.
  */
 
 let app: FastifyInstance;
+let prisma: PrismaClient;
+
+const TID = 'ZZsop-inmo'; // en el allowlist de Soporte
+const TID_AJENA = 'ZZsop-ajena'; // NO está en el allowlist
+const uid = (rol: string) => `ZZsop-u-${rol}`;
+const UID_INTRUSO = 'ZZsop-u-intruso';
+
+const datosInmo = (id: string, nombre: string) => ({
+  id,
+  nombre,
+  cuit: `30-${id.length}0000000-0`,
+  email: `${id}@test.local`,
+  telefono: '1100000000',
+  matricula: 'M-0001',
+  direccionCalle: 'Calle',
+  direccionAltura: '1',
+  direccionCiudad: 'CABA',
+  direccionProvincia: 'Buenos Aires',
+  direccionCp: '1000',
+  codigoReferido: `REF-${id}`,
+});
+
+const datosUsuario = (id: string, inmobiliariaId: string, rol: 'ADMIN' | 'OPERADOR' | 'CARGA' | 'LECTURA') => ({
+  id,
+  inmobiliariaId,
+  nombre: 'Test',
+  apellido: rol,
+  email: `${id}@test.local`,
+  rol,
+  activo: true,
+});
+
+async function limpiar() {
+  await prisma.usuario.deleteMany({ where: { id: { startsWith: 'ZZsop-u-' } } });
+  await prisma.inmobiliaria.deleteMany({ where: { id: { startsWith: 'ZZsop-' } } });
+}
 
 beforeAll(async () => {
-  // `inmo_1` queda habilitada en el allowlist de Soporte para poder seguir probando las
-  // CAPACIDADES (leer vs mutar). La frontera de tenant en sí se prueba aparte, con una
-  // inmobiliaria que NO está en la lista.
-  app = await buildApp({ NODE_ENV: 'test', SOPORTE_TENANT_IDS: 'inmo_1' });
+  prisma = new PrismaClient();
+  await limpiar();
+  await prisma.inmobiliaria.create({ data: datosInmo(TID, 'Soporte Habilitada') });
+  await prisma.inmobiliaria.create({ data: datosInmo(TID_AJENA, 'Soporte Ajena') });
+  for (const rol of ['ADMIN', 'OPERADOR', 'CARGA', 'LECTURA'] as const) {
+    await prisma.usuario.create({ data: datosUsuario(uid(rol), TID, rol) });
+  }
+  // ADMIN legítimo de SU inmobiliaria, pero fuera del allowlist.
+  await prisma.usuario.create({ data: datosUsuario(UID_INTRUSO, TID_AJENA, 'ADMIN') });
+
+  // Sólo TID queda habilitada, para poder seguir probando las CAPACIDADES (leer vs
+  // mutar). La frontera de tenant en sí se prueba aparte, con la inmobiliaria que NO
+  // está en la lista.
+  app = await buildApp({ NODE_ENV: 'test', SOPORTE_TENANT_IDS: TID });
 
   // Rutas sintéticas para ejercitar el setErrorHandler sin depender de que Sonar
   // esté caído. Se registran DESPUÉS de las reales, así que no pisan nada.
@@ -46,6 +97,8 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await app.close();
+  await limpiar();
+  await prisma.$disconnect();
 });
 
 describe('setErrorHandler: 5xx con expose', () => {
@@ -121,7 +174,7 @@ describe('/api/soporte/* exige sesión del panel', () => {
 
 describe('capacidades: leer vs mutar tickets', () => {
   const tokenDe = (rol: 'ADMIN' | 'OPERADOR' | 'CARGA' | 'LECTURA') =>
-    app.jwt.sign({ kind: 'usuario', userId: `u_${rol}`, inmobiliariaId: 'inmo_1', rol });
+    app.jwt.sign({ kind: 'usuario', userId: uid(rol), inmobiliariaId: TID, rol });
 
   // Leer usa 'auditoria.ver' → ADMIN y LECTURA. Mutar usa 'equipo.gestionar' → solo ADMIN.
   // Un 403 lo decide el guard sin tocar Sonar; los roles habilitados pasan el guard y
@@ -188,7 +241,7 @@ describe('frontera de tenant: solo el allowlist entra a Soporte', () => {
   // ADMIN legítimo de SU inmobiliaria, pero fuera del allowlist. Es exactamente el
   // atacante del hallazgo: no necesita robar nada, le alcanza con registrarse.
   const tokenAjeno = () =>
-    app.jwt.sign({ kind: 'usuario', userId: 'u_intruso', inmobiliariaId: 'inmo_ajena', rol: 'ADMIN' });
+    app.jwt.sign({ kind: 'usuario', userId: UID_INTRUSO, inmobiliariaId: TID_AJENA, rol: 'ADMIN' });
 
   it.each([
     ['GET', '/api/soporte/issues'],
@@ -223,8 +276,8 @@ describe('frontera de tenant: solo el allowlist entra a Soporte', () => {
         headers: {
           authorization: `Bearer ${cerrada.jwt.sign({
             kind: 'usuario',
-            userId: 'u_admin',
-            inmobiliariaId: 'inmo_1',
+            userId: uid('ADMIN'),
+            inmobiliariaId: TID,
             rol: 'ADMIN',
           })}`,
         },

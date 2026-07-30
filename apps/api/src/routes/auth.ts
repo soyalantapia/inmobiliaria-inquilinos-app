@@ -605,7 +605,11 @@ export async function authRoutes(app: FastifyInstance) {
         where: { id: payload.userId },
         include: { inmobiliaria: { include: { trial: true } } },
       });
-      if (!u) return reply.code(401).send({ message: 'Usuario inexistente' });
+      // `activo` también acá: si no, el panel de alguien dado de baja levanta la
+      // sesión como si nada y recién se rompe endpoint por endpoint. Con el 401
+      // el front lo manda al login, que es lo que la inmobiliaria espera al
+      // darlo de baja.
+      if (!u || !u.activo) return reply.code(401).send({ message: 'Usuario inexistente' });
       const trial = u.inmobiliaria.trial;
       const diasRestantes = trial
         ? Math.max(0, Math.ceil((trial.hasta.getTime() - Date.now()) / 86_400_000))

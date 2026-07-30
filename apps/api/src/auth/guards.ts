@@ -27,7 +27,21 @@ export async function requireAuth(request: FastifyRequest, reply: FastifyReply):
   return parsed.data;
 }
 
-/** Exige un usuario de inmobiliaria (no inquilino), opcionalmente con una capacidad. */
+/**
+ * Exige un usuario de inmobiliaria (no inquilino), opcionalmente con una capacidad.
+ *
+ * REVALIDA CONTRA LA DB en cada request, igual que los guards del co-inquilino y
+ * del profesional. No es paranoia: el token dura 15 días (TOKEN_TTL), y hasta
+ * ahora el rol salía del JWT y `activo` se miraba SÓLO en el login. O sea que
+ * dar de baja a un empleado no le sacaba el acceso —seguía conciliando pagos y
+ * rindiendo a propietarios desde su sesión abierta hasta que venciera el token—
+ * y bajarle el rol de ADMIN a LECTURA tampoco tenía efecto.
+ *
+ * El rol AUTORITATIVO es el de la tabla, no el del token: se devuelve ese, así
+ * que todo lo que lee `u.rol` aguas abajo ve el vigente. El costo es un lookup
+ * por PK por request, dentro del datacenter; el agujero que cierra no admite
+ * una ventana de 15 días.
+ */
 export async function requireUsuario(
   request: FastifyRequest,
   reply: FastifyReply,
@@ -39,11 +53,29 @@ export async function requireUsuario(
     await reply.code(403).send({ message: 'Solo para usuarios del panel' });
     return null;
   }
-  if (capacidad && !rolTienePermiso(payload.rol, capacidad)) {
+  const vigente = await prisma.usuario.findUnique({
+    where: { id: payload.userId },
+    select: { activo: true, rol: true, inmobiliariaId: true },
+  });
+  // Borrado o dado de baja → 401 (no 403): la sesión ya no existe, el panel
+  // tiene que mandarlo al login en vez de mostrarle un shell roto.
+  if (!vigente || !vigente.activo) {
+    await reply.code(401).send({ message: 'Tu acceso fue dado de baja' });
+    return null;
+  }
+  // El tenant también sale de la DB: un token no puede seguir apuntando a la
+  // inmobiliaria vieja si el usuario se movió (la regla de oro es el aislamiento
+  // por inmobiliariaId, y este es el único lugar donde entra al request).
+  const actual: JwtUsuario = {
+    ...payload,
+    rol: vigente.rol,
+    inmobiliariaId: vigente.inmobiliariaId,
+  };
+  if (capacidad && !rolTienePermiso(actual.rol, capacidad)) {
     await reply.code(403).send({ message: `Tu rol no permite: ${capacidad}` });
     return null;
   }
-  return payload;
+  return actual;
 }
 
 /** Exige un inquilino TITULAR autenticado (no co-inquilino). */
