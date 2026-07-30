@@ -1062,6 +1062,20 @@ export async function coreRoutes(app: FastifyInstance) {
         // BORRADOR: NO se reclama la propiedad ni se devengan liquidaciones hasta
         // que un ADMIN/OPERADOR apruebe. Creamos la Aprobacion que aparece en la
         // bandeja; la activación + claim + devengado ocurren al aprobar (plata.ts).
+        //
+        // Invariante: acá solo puede llegar OPERADOR o CARGA (los dos valores del
+        // enum RolAutorAprobacion de Prisma). Hoy lo sostienen TRES piezas en
+        // archivos distintos: el gate del endpoint (requireUsuario ... 'contratos.crear',
+        // que excluye LECTURA) y, en packages/shared/src/permisos.ts, los `roles` de
+        // 'contratos.crear' y 'contrato.aprobar' (contratoQuedaPendiente nunca da true
+        // para quien tenga 'contrato.aprobar', hoy ADMIN). Si mañana alguien toca una
+        // de esas tres sin las otras dos, este guard explota FUERTE y con el rol real
+        // en vez de que Prisma tire un 500 crudo por un valor de enum inválido.
+        if (u.rol !== 'OPERADOR' && u.rol !== 'CARGA') {
+          throw new Error(
+            `Invariante roto: el rol '${u.rol}' llegó a crear una Aprobación de contrato, pero RolAutorAprobacion solo admite OPERADOR/CARGA`,
+          );
+        }
         await tx.aprobacion.create({
           data: {
             inmobiliariaId: u.inmobiliariaId,
@@ -1071,8 +1085,9 @@ export async function coreRoutes(app: FastifyInstance) {
             entidadId: contrato.id,
             cargadoPorId: u.userId,
             // El rol REAL de quien cargó (antes hardcodeaba 'CARGA' y con un
-            // OPERADOR la bandeja mostraba un autor equivocado).
-            rolAutor: u.rol as 'OPERADOR' | 'CARGA',
+            // OPERADOR la bandeja mostraba un autor equivocado). El guard de
+            // arriba ya angostó el tipo a 'OPERADOR' | 'CARGA': sin cast.
+            rolAutor: u.rol,
             cargadoAt: new Date(),
           },
         });
