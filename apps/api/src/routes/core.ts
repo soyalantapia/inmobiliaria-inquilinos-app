@@ -19,6 +19,7 @@ import { calcularMora, resolverEsquemaMora } from '../lib/punitorios.js';
 import { aplicarEstadoInicial, EstadoInicialInvalido } from '../lib/estado-inicial-contrato.js';
 import { borrarArchivoSiHuerfano, urlEsDelTenant } from './uploads.js';
 import { enviarInvitacionInquilino, enviarInvitacionEquipo } from '../mailer.js';
+import { contratoQuedaPendiente } from '@llave/shared';
 
 /**
  * Una liquidación cuenta como VENCIDA (a efectos de cobranza) si su estado ya es
@@ -912,17 +913,20 @@ export async function coreRoutes(app: FastifyInstance) {
     if ((d.tipoContrato === 'ALQUILER_Y_EXPENSAS' || d.tipoContrato === 'SOLO_EXPENSAS') && !d.montoExpensas) {
       return reply.code(400).send({ message: 'Este tipo de contrato requiere el monto de expensas' });
     }
-    // CARGA carga contratos para REVISIÓN (permisos.ts: contratos.crear con
-    // rolesAprobacion incluye CARGA): NO se activan solos. ADMIN/OPERADOR activan directo.
-    const esCarga = u.rol === 'CARGA';
-    // El BORRADOR de CARGA no devenga liquidaciones hasta la aprobación, así que
-    // no hay períodos donde aplicar el estado inicial: lo rechazamos claro en vez
-    // de descartarlo en silencio. (Extensión al flujo de aprobación: pendiente.)
-    if (esCarga && d.periodosAnteriores?.length) {
-      return reply.code(400).send({
-        message: 'La carga para revisión no soporta períodos anteriores — pedile a un Admin/Operador que lo cargue',
-      });
-    }
+    // ¿Este contrato queda pendiente de aprobación? La regla vive en shared y se
+    // deriva del PERMISO (contratoQuedaPendiente): el baseline del catálogo (CARGA)
+    // más el switch de la inmobiliaria, que alcanza a todo el que no pueda aprobar.
+    const inmoFlags = await prisma.inmobiliaria.findUnique({
+      where: { id: u.inmobiliariaId },
+      select: { contratosRequierenAprobacion: true },
+    });
+    const contratoPendiente = contratoQuedaPendiente(
+      u.rol,
+      inmoFlags?.contratosRequierenAprobacion ?? false,
+    );
+    // Los períodos anteriores YA NO se rechazan: el borrador los guarda y se aplican
+    // al aprobar (plata.ts), cuando ya existen las liquidaciones sobre las que impactar.
+    // Antes daban 400 y eso dejaba al equipo sin poder cargar la cartera en curso.
     const prop = await prisma.propiedad.findFirst({ where: { id: d.propiedadId, inmobiliariaId: u.inmobiliariaId } });
     if (!prop) return reply.code(404).send({ message: 'Propiedad inexistente' });
     if (prop.contratoActualId) return reply.code(409).send({ message: 'La propiedad ya tiene un contrato activo' });
@@ -992,8 +996,11 @@ export async function coreRoutes(app: FastifyInstance) {
         data: {
           inmobiliariaId: u.inmobiliariaId,
           propiedadId: prop.id,
-          estado: esCarga ? 'BORRADOR' : 'ACTIVO',
-          pendienteAprobacion: esCarga,
+          estado: contratoPendiente ? 'BORRADOR' : 'ACTIVO',
+          pendienteAprobacion: contratoPendiente,
+          // El estado inicial se guarda con el borrador y se aplica al aprobar.
+          periodosAnterioresPendientes:
+            contratoPendiente && d.periodosAnteriores?.length ? d.periodosAnteriores : undefined,
           monto: d.monto,
           moneda: d.moneda,
           fechaInicio: d.fechaInicio,
@@ -1052,10 +1059,24 @@ export async function coreRoutes(app: FastifyInstance) {
               },
             });
       await tx.inquilino.update({ where: { id: inq.id }, data: { contratoId: contrato.id, personaId: persona.id } });
-      if (esCarga) {
+      if (contratoPendiente) {
         // BORRADOR: NO se reclama la propiedad ni se devengan liquidaciones hasta
         // que un ADMIN/OPERADOR apruebe. Creamos la Aprobacion que aparece en la
         // bandeja; la activación + claim + devengado ocurren al aprobar (plata.ts).
+        //
+        // Invariante: acá solo puede llegar OPERADOR o CARGA (los dos valores del
+        // enum RolAutorAprobacion de Prisma). Hoy lo sostienen TRES piezas en
+        // archivos distintos: el gate del endpoint (requireUsuario ... 'contratos.crear',
+        // que excluye LECTURA) y, en packages/shared/src/permisos.ts, los `roles` de
+        // 'contratos.crear' y 'contrato.aprobar' (contratoQuedaPendiente nunca da true
+        // para quien tenga 'contrato.aprobar', hoy ADMIN). Si mañana alguien toca una
+        // de esas tres sin las otras dos, este guard explota FUERTE y con el rol real
+        // en vez de que Prisma tire un 500 crudo por un valor de enum inválido.
+        if (u.rol !== 'OPERADOR' && u.rol !== 'CARGA') {
+          throw new Error(
+            `Invariante roto: el rol '${u.rol}' llegó a crear una Aprobación de contrato, pero RolAutorAprobacion solo admite OPERADOR/CARGA`,
+          );
+        }
         await tx.aprobacion.create({
           data: {
             inmobiliariaId: u.inmobiliariaId,
@@ -1064,7 +1085,10 @@ export async function coreRoutes(app: FastifyInstance) {
             descripcion: `Contrato cargado para revisión (${d.tipoContrato}).`,
             entidadId: contrato.id,
             cargadoPorId: u.userId,
-            rolAutor: 'CARGA',
+            // El rol REAL de quien cargó (antes hardcodeaba 'CARGA' y con un
+            // OPERADOR la bandeja mostraba un autor equivocado). El guard de
+            // arriba ya angostó el tipo a 'OPERADOR' | 'CARGA': sin cast.
+            rolAutor: u.rol,
             cargadoAt: new Date(),
           },
         });
@@ -1084,6 +1108,8 @@ export async function coreRoutes(app: FastifyInstance) {
       // Contrato EN CURSO: aplicar la confirmación por período (pagados fuera
       // del sistema → pago sintético CONCILIADO; adeudados → mora manual). En
       // la MISMA transacción: o queda todo el estado inicial o no queda nada.
+      // Solo el camino que ACTIVA aplica el estado inicial acá; si quedó pendiente,
+      // los períodos viajan en periodosAnterioresPendientes y los aplica la aprobación.
       if (d.periodosAnteriores?.length) {
         await aplicarEstadoInicial(tx, contrato, d.periodosAnteriores, u.userId);
       }
@@ -1091,7 +1117,7 @@ export async function coreRoutes(app: FastifyInstance) {
       }, { timeout: 30_000, maxWait: 10_000 });
       // Mail de onboarding al inquilino: solo contratos ACTIVOS (no BORRADOR de
       // CARGA) y con email. Best-effort: si el SMTP falla, NO rompemos el alta.
-      if (emailInq && !esCarga) {
+      if (emailInq && !contratoPendiente) {
         try {
           const inmo = await prisma.inmobiliaria.findUnique({
             where: { id: u.inmobiliariaId },
@@ -1771,6 +1797,11 @@ export async function coreRoutes(app: FastifyInstance) {
         inmobiliariaId: u.inmobiliariaId,
         estadoDeposito: 'RETENIDO',
         depositoGarantia: { gt: 0 },
+        // Excluye BORRADOR (no ACTIVO a secas: FINALIZADO/RESCINDIDO deben seguir
+        // apareciendo — el depósito puede seguir retenido después de terminado el
+        // contrato). Un BORRADOR con depósito cargado todavía no existe de verdad
+        // (puede rechazarse); estadoDeposito default RETENIDO lo inflaba igual.
+        estado: { not: 'BORRADOR' },
       },
       select: {
         id: true,

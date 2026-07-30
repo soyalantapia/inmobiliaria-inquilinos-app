@@ -11,8 +11,9 @@ export default function AprobacionesPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Aprobaciones</h1>
           <p className="text-sm text-muted-foreground">
-            Lo que tu equipo (Operadores y Carga) cargó y necesita tu visto, con
-            PIN: contratos, gastos, devoluciones y ajustes.{' '}
+            Lo que tu equipo (Operadores y Carga) cargó y necesita tu visto:
+            contratos, gastos, devoluciones y ajustes. Aprobar o rechazar queda
+            registrado con tu nombre.{' '}
             <span className="font-medium text-foreground">
               Los pagos se validan en Pagos.
             </span>

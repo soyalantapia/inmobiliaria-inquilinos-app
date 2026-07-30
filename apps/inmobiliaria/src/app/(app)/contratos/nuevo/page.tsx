@@ -686,6 +686,12 @@ type ModoCobranza = 'INMOBILIARIA' | 'PROPIETARIO_DIRECTO';
 
 interface ContratoNuevoApi {
   id: string;
+  /**
+   * 'BORRADOR' cuando quedó pendiente de aprobación; 'ACTIVO' cuando se activó.
+   * Opcional: si no viene (o viene un valor que no reconocemos) el copy del
+   * toast NO debe afirmar ninguno de los dos estados — ver `estadoContrato`.
+   */
+  estado?: string;
 }
 
 /** Un file input compacto para una foto de DNI (frente o dorso) del wizard. */
@@ -1164,6 +1170,15 @@ function CargarContratoApiWizard() {
         method: 'POST',
         body: JSON.stringify(body),
       });
+      // El contrato puede haber quedado PENDIENTE de aprobación: hay que decirlo, en
+      // vez de afirmar que se activó. Antes el copy mentía cuando la inmobiliaria
+      // tenía prendida la aprobación obligatoria.
+      // `estado` es opcional: si el backend no lo manda (o manda un valor que no
+      // reconocemos) el fallback NO puede afirmar "se activó" — por eso acá no
+      // hay un booleano de dos caminos sino tres, y el tercero es un mensaje
+      // neutro que no miente en ninguna dirección.
+      const estadoContrato: 'activo' | 'pendiente' | 'desconocido' =
+        creado.estado === 'ACTIVO' ? 'activo' : creado.estado === 'BORRADOR' ? 'pendiente' : 'desconocido';
       // Fotos del DNI (si las cargaron): al expediente del contrato recién
       // creado. Best-effort — si una subida falla, el contrato YA quedó dado de
       // alta; no lo revertimos, solo avisamos que suban el DNI desde el detalle.
@@ -1196,10 +1211,19 @@ function CargarContratoApiWizard() {
       setConfirmando(false);
       toast({
         variant: dniFallo ? 'default' : 'success',
-        title: 'Contrato dado de alta',
+        title:
+          estadoContrato === 'pendiente'
+            ? 'Contrato cargado — queda pendiente de aprobación'
+            : estadoContrato === 'activo'
+              ? 'Contrato dado de alta'
+              : 'Contrato cargado',
         description: dniFallo
           ? 'Se creó el contrato, pero no pudimos subir alguna foto del DNI. Cargalas desde el detalle.'
-          : 'Generamos la primera liquidación y la propiedad pasó a alquilada.',
+          : estadoContrato === 'pendiente'
+            ? 'Un Admin tiene que aprobarlo. Hasta entonces no genera cuotas ni ocupa la propiedad.'
+            : estadoContrato === 'activo'
+              ? 'Generamos la primera liquidación y la propiedad pasó a alquilada.'
+              : 'Entrá al detalle del contrato para confirmar en qué estado quedó.',
       });
       router.push('/contratos');
     } catch (e) {

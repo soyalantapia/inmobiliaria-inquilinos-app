@@ -642,6 +642,12 @@ model Inmobiliaria {
   preavisoRescisionMesesDefault  Int   @default(2)
   penalidadRescisionMesesDefault Float @default(1.5)
   esPiloto              Boolean  @default(true)
+  /**
+   * Si está en true, los contratos cargados por quien NO tiene `contrato.aprobar`
+   * quedan BORRADOR pendientes de aprobación en vez de activarse solos.
+   * Default false: prenderlo es una decisión explícita de cada inmobiliaria.
+   */
+  contratosRequierenAprobacion Boolean @default(false)
   codigoReferido        String   @unique
   mesesGratisGanados    Int      @default(0)
   createdAt             DateTime @default(now())
@@ -1284,6 +1290,13 @@ model Contrato {
   pendienteAprobacion Boolean   @default(false)
   aprobadoPor         String?
   aprobadoAt          DateTime?
+  /**
+   * Estado inicial declarado en el alta (períodos ya vencidos: pagado / parcial /
+   * adeuda), guardado mientras el contrato es BORRADOR. Se aplica al APROBARLO,
+   * porque recién ahí existen las liquidaciones sobre las que impactar. Se limpia
+   * al aplicarlo. Shape: PeriodoAnterior[] de lib/estado-inicial-contrato.ts.
+   */
+  periodosAnterioresPendientes Json?
 
   // DERIVADOS (no persistidos): estadoPagoActual, proximoVencimiento
   createdAt DateTime @default(now())
@@ -1357,7 +1370,13 @@ model Inquilino {
   // El 1:1 con Contrato (contratoId @unique) NO cambia: cada contrato sigue teniendo
   // su fila Inquilino; personaId es la capa que las agrupa por encima.
   personaId      String?
-  persona        Persona?     @relation(fields: [personaId], references: [id])
+  // onDelete Restrict explícito: Persona agrupa el historial de contratos del
+  // inquilino (ficha histórica + reuso al armar un contrato nuevo). No se puede
+  // borrar una Persona mientras tenga filas Inquilino colgando. Sin esto acá,
+  // Prisma asume SetNull para relaciones opcionales y cada `migrate dev` propone
+  // un DROP CONSTRAINT + recrear cambiando RESTRICT -> SET NULL contra la base
+  // real (fijado por la migración 20260705120000_persona_inquilino).
+  persona        Persona?     @relation(fields: [personaId], references: [id], onDelete: Restrict)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 

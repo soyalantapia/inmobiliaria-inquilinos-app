@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../db.js';
 import { exigirContratoActivo, requireContratoAcceso, requireInquilino, requireUsuario } from '../auth/guards.js';
 import { verificarPinUsuario } from '../auth/pin.js';
@@ -11,6 +12,7 @@ import { aplicarDepositoADeuda } from '../lib/aplicar-deposito.js';
 import { estadoDepositoContrato } from '../lib/deposito.js';
 import { enviarInvitacionInquilino } from '../mailer.js';
 import { borrarArchivoSiHuerfano, urlEsDelTenant } from './uploads.js';
+import { aplicarEstadoInicial, EstadoInicialInvalido } from '../lib/estado-inicial-contrato.js';
 
 /**
  * Fase 3 — La plata: liquidaciones, validación de pagos informados, caja de
@@ -2169,6 +2171,22 @@ export async function plataRoutes(app: FastifyInstance) {
     });
   });
 
+  /**
+   * Re-validación del estado inicial guardado en el borrador. Ya fue validado por el
+   * Zod de POST /contratos al cargarlo, pero es una columna Json: la volvemos a
+   * validar antes de tocar plata, en vez de castearla a ciegas.
+   */
+  const PeriodosAnterioresSchema = z
+    .array(
+      z.object({
+        periodo: z.string().regex(/^\d{4}-\d{2}$/),
+        estado: z.enum(['PAGADO', 'PARCIAL', 'ADEUDA']),
+        montoPagado: z.number().positive().optional(),
+        moraManual: z.number().nonnegative().optional(),
+      }),
+    )
+    .max(120);
+
   for (const accion of ['aprobar', 'rechazar'] as const) {
     app.post(`/aprobaciones/:id/${accion}`, async (request, reply) => {
       const u = await requireUsuario(request, reply, 'contrato.aprobar');
@@ -2211,7 +2229,12 @@ export async function plataRoutes(app: FastifyInstance) {
             data:
               accion === 'aprobar'
                 ? { estado: 'ACTIVO', pendienteAprobacion: false, aprobadoAt: new Date() }
-                : { pendienteAprobacion: false },
+                // Al rechazar también se limpia el estado inicial declarado en el
+                // alta: el contrato rechazado nunca se va a aprobar, así que esa
+                // deuda histórica queda colgada para siempre si no la borramos acá.
+                // Prisma.DbNull (no `null` pelado): en un campo Json, `null` es
+                // ambiguo entre "borrar la columna" y "no tocarla".
+                : { pendienteAprobacion: false, periodosAnterioresPendientes: Prisma.DbNull },
           });
           // Al aprobar, el contrato se activa → reclamar la propiedad + devengar
           // sus liquidaciones, IGUAL que POST /contratos (core.ts). Antes este path
@@ -2228,6 +2251,39 @@ export async function plataRoutes(app: FastifyInstance) {
             });
             if (claim.count === 0) throw new Error('PROP_OCUPADA');
             await generarLiquidacionesContrato(tx, contratoActualizado);
+            // Estado inicial del contrato EN CURSO: el alta lo guardó en el borrador
+            // porque todavía no había liquidaciones donde impactarlo. Recién ahora,
+            // devengado, se aplica — en la MISMA transacción que la activación: o
+            // queda todo el estado inicial o no queda nada.
+            //
+            // La columna Json distingue dos casos que el safeParse por sí solo NO
+            // separaba (ambos fallaban igual con `z.array(...)`): columna null/undefined
+            // = NO HAY estado inicial (el camino normal — la inmensa mayoría de los
+            // contratos se activan directo), vs. columna CON contenido que no pasa el
+            // schema = estado inicial CORRUPTO. Tratar los dos como no-op silencioso
+            // (como hacía antes) perdía la deuda histórica del contrato sin dejar
+            // rastro: se activaba con 200 como si nunca hubiera habido nada que
+            // aplicar. Ahora el caso corrupto EXPLOTA con el mismo mecanismo que un
+            // estado inicial inconsistente (EstadoInicialInvalido → 400, rollback,
+            // la aprobación queda PENDIENTE y reintentable) en vez de perderse mudo.
+            const periodosGuardados = contratoActualizado.periodosAnterioresPendientes;
+            if (periodosGuardados != null) {
+              const pendientes = PeriodosAnterioresSchema.safeParse(periodosGuardados);
+              if (!pendientes.success) {
+                throw new EstadoInicialInvalido(
+                  'El estado inicial guardado con este contrato está corrupto (no pasa el schema esperado) — revisá periodosAnterioresPendientes antes de volver a aprobar.',
+                );
+              }
+              // Array vacío válido = "no hay períodos anteriores", no un error: no
+              // hace falta aplicar nada ni tocar la columna.
+              if (pendientes.data.length > 0) {
+                await aplicarEstadoInicial(tx, contratoActualizado, pendientes.data, u.userId);
+                await tx.contrato.update({
+                  where: { id: contratoActualizado.id },
+                  data: { periodosAnterioresPendientes: Prisma.DbNull },
+                });
+              }
+            }
           }
           if (accion === 'rechazar') {
             // El borrador rechazado se descarta: borramos el inquilino que se creó
@@ -2260,14 +2316,27 @@ export async function plataRoutes(app: FastifyInstance) {
           include: { cargadoPor: { select: { nombre: true, apellido: true, rol: true } } },
         });
         return { http: 200 as const, updated };
-      }).catch((e: unknown) => {
+      },
+      // timeout 30s (default 5s): al aprobar, esta tx aplica el estado inicial
+      // (aplicarEstadoInicial) además de activar el contrato y devengar — hasta
+      // 120 períodos con updates secuenciales contra una DB remota. Mismo motivo
+      // que core.ts:978 (el alta con periodosAnteriores), pero acá se suma el
+      // claim de la propiedad y el devengo: con carteras de ~30 períodos el
+      // default de 5s ya se pasaba y tiraba P2028 (500 opaco, determinístico —
+      // el admin reintenta y le sigue saliendo 500).
+      { timeout: 30_000, maxWait: 10_000 }).catch((e: unknown) => {
         // PROP_OCUPADA: al aprobar, la propiedad ya fue reclamada por otro contrato
         // (carrera o un segundo BORRADOR sobre la misma propiedad). El throw hizo
         // rollback TOTAL → la aprobación vuelve a PENDIENTE. Lo mapeamos a 409 acá
         // porque el handler global no mapea un Error genérico (caería en 500).
         if (e instanceof Error && e.message === 'PROP_OCUPADA') return { http: 409 as const, motivo: 'PROP_OCUPADA' as const };
+        // Estado inicial inconsistente (período que no existe, parcial sin monto…):
+        // 400 con el detalle, igual que hace POST /contratos. La transacción ya
+        // revirtió, así que la aprobación sigue PENDIENTE y se puede reintentar.
+        if (e instanceof EstadoInicialInvalido) return { http: 400 as const, mensaje: e.message };
         throw e;
       });
+      if (result.http === 400) return reply.code(400).send({ message: result.mensaje });
       if (result.http === 404) return reply.code(404).send({ message: 'Aprobación inexistente' });
       if (result.http === 409) {
         return reply

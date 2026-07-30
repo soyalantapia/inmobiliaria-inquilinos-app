@@ -1837,6 +1837,7 @@ export async function operacionRoutes(app: FastifyInstance) {
         penalidadRescisionMesesDefault: true,
         esPiloto: true,
         mesesGratisGanados: true,
+        contratosRequierenAprobacion: true,
       },
     });
     if (!i) return reply.code(404).send({ message: 'Inmobiliaria inexistente' });
@@ -1859,6 +1860,7 @@ export async function operacionRoutes(app: FastifyInstance) {
         minPct: pcts.length ? Math.min(...pcts) : null,
         maxPct: pcts.length ? Math.max(...pcts) : null,
       },
+      aprobaciones: { contratosRequierenAprobacion: i.contratosRequierenAprobacion },
       plan: { esPiloto: i.esPiloto, mesesGratisGanados: i.mesesGratisGanados },
     };
   });
@@ -1886,5 +1888,23 @@ export async function operacionRoutes(app: FastifyInstance) {
       },
     });
     return { preavisoMeses: body.data.preavisoMeses, penalidadMeses: body.data.penalidadMeses };
+  });
+
+  // Switch: ¿los contratos que carga el equipo requieren aprobación del admin?
+  // El disparador real vive en contratoQuedaPendiente (shared): quien puede
+  // aprobar queda exento, así que prenderlo nunca deja a nadie sin poder cargar.
+  app.put('/mi-inmobiliaria/aprobaciones', async (request, reply) => {
+    const u = await requireUsuario(request, reply);
+    if (!u) return;
+    if (u.rol !== 'ADMIN') return reply.code(403).send({ message: 'Necesitás permiso de Admin para editar esta sección' });
+    const body = z
+      .object({ contratosRequierenAprobacion: z.boolean() })
+      .safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ message: 'Valor inválido' });
+    await prisma.inmobiliaria.update({
+      where: { id: u.inmobiliariaId },
+      data: { contratosRequierenAprobacion: body.data.contratosRequierenAprobacion },
+    });
+    return { contratosRequierenAprobacion: body.data.contratosRequierenAprobacion };
   });
 }

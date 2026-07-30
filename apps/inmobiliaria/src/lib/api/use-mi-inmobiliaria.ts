@@ -17,6 +17,7 @@ export interface ReglasMiInmobiliaria {
     minPct: number | null;
     maxPct: number | null;
   };
+  aprobaciones: { contratosRequierenAprobacion: boolean };
   plan: { esPiloto: boolean; mesesGratisGanados: number };
 }
 
@@ -44,4 +45,15 @@ export async function setRescisionDefault(input: {
 }): Promise<{ preavisoMeses: number; penalidadMeses: number }> {
   await ensureApiSession();
   return apiFetch('/mi-inmobiliaria/rescision', { method: 'PUT', body: JSON.stringify(input) });
+}
+
+/** Prende o apaga la aprobación obligatoria de contratos del equipo. Solo ADMIN. */
+export async function setContratosRequierenAprobacion(
+  valor: boolean,
+): Promise<{ contratosRequierenAprobacion: boolean }> {
+  await ensureApiSession();
+  return apiFetch('/mi-inmobiliaria/aprobaciones', {
+    method: 'PUT',
+    body: JSON.stringify({ contratosRequierenAprobacion: valor }),
+  });
 }

@@ -19,6 +19,7 @@ import {
   Percent,
   Receipt,
   ShieldAlert,
+  ShieldCheck,
   Sparkles,
   Users,
 } from 'lucide-react';
@@ -37,6 +38,7 @@ import {
 import { ConfiguracionPais } from '@/components/configuracion-pais';
 import { apiEnabled, ApiError } from '@/lib/api/client';
 import {
+  setContratosRequierenAprobacion,
   setRescisionDefault,
   useReglasMiInmobiliaria,
   type ReglasMiInmobiliaria,
@@ -79,6 +81,7 @@ function MiInmobiliariaReal() {
             <ComisionCard reglas={reglas} cargando={cargando} />
             <MoraDefaultCard />
             <RescisionCard reglas={reglas} />
+            <AprobacionContratosCard reglas={reglas} />
             <section>
               <h2 className="mb-2 px-1 text-sm font-semibold text-muted-foreground">
                 Mercado y ajuste
@@ -238,6 +241,81 @@ function RescisionCard({ reglas }: { reglas: ReglasMiInmobiliaria | null }) {
             {guardando ? 'Guardando…' : 'Guardar rescisión'}
           </Button>
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ===== Aprobación de contratos del equipo =====
+function AprobacionContratosCard({ reglas }: { reglas: ReglasMiInmobiliaria | null }) {
+  const qc = useQueryClient();
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!reglas) return null;
+  // Defensivo (igual que reglas?.comision / reglas?.plan en esta misma página):
+  // front y back son servicios separados en Railway. Si el front deploya antes
+  // que el back, GET /mi-inmobiliaria/reglas todavía no devuelve `aprobaciones`
+  // y este acceso tiraría TypeError, tumbando TODA la página (no solo esta card).
+  const activo = reglas.aprobaciones?.contratosRequierenAprobacion ?? false;
+
+  const cambiar = async (valor: boolean) => {
+    // Guard de reentrancia: un doble click muy rápido o auto-repeat de teclado
+    // (mantener Espacio con foco en el checkbox) puede disparar dos llamadas
+    // antes de que React commitee el re-render que pone `guardando` en true y
+    // deshabilita el input. Cortamos acá, no sólo con `disabled`.
+    if (guardando) return;
+    setError(null);
+    setGuardando(true);
+    try {
+      await setContratosRequierenAprobacion(valor);
+      toast({
+        variant: 'success',
+        title: valor
+          ? 'Los contratos del equipo van a quedar pendientes de tu aprobación'
+          : 'Los contratos del equipo se activan directo',
+      });
+      await qc.invalidateQueries({ queryKey: ['mi-inmobiliaria-reglas'] });
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'No se pudo guardar el cambio.');
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <ShieldCheck className="h-5 w-5 text-primary" />
+          Aprobación de contratos
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <label className="flex cursor-pointer items-start gap-3">
+          <input
+            type="checkbox"
+            checked={activo}
+            disabled={guardando}
+            onChange={(e) => void cambiar(e.target.checked)}
+            className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+          />
+          <span className="text-sm">
+            Los contratos que carga el equipo requieren mi aprobación
+            <span className="mt-0.5 block text-xs text-muted-foreground">
+              Quedan pendientes en la bandeja y no se activan —ni reclaman la propiedad, ni
+              generan cuotas— hasta que los apruebes. Vos y cualquiera que pueda aprobar
+              siguen cargando directo. Si después apagás el switch, los que ya quedaron
+              pendientes no se activan solos: siguen esperando tu aprobación o rechazo en
+              la bandeja.
+            </span>
+          </span>
+        </label>
+        {error && (
+          <p role="alert" className="text-xs text-destructive">
+            {error}
+          </p>
+        )}
       </CardContent>
     </Card>
   );
