@@ -149,6 +149,37 @@ export async function generarLiquidacionesContrato(
 }
 
 /**
+ * Devenga UN contrato tomado de un snapshot, re-verificando BAJO LOCK que siga
+ * ACTIVO.
+ *
+ * Los dos barridos (el cron global y el disparo del panel) empiezan con un
+ * `findMany({ estado: 'ACTIVO' })` y recién después iteran contra la DB remota:
+ * con carteras grandes ese loop dura minutos y el snapshot envejece. Si en el
+ * medio alguien finaliza un contrato, el barrido le seguía creando cuotas — y
+ * como finalizar ya había anulado las futuras impagas, el barrido LAS VOLVÍA A
+ * CREAR: deuda fantasma a nombre de un inquilino que se fue, que además pasa a
+ * VENCIDO sola y devenga mora.
+ *
+ * El `FOR UPDATE` serializa contra finalizar/rescindir (que hacen UPDATE del
+ * contrato) y por eso alcanza en los DOS órdenes posibles: si el devengo entra
+ * primero, finalizar espera y después borra lo que se creó; si finalizar entra
+ * primero, acá ya se lee el estado nuevo y no se crea nada. Un re-`findFirst`
+ * sin lock no serviría: entre leer y crear la otra transacción puede commitear.
+ */
+export async function devengarSiSigueActivo(
+  prisma: PrismaClient,
+  contrato: ContratoParaLiquidar,
+): Promise<number> {
+  return prisma.$transaction(async (tx) => {
+    const filas = await tx.$queryRaw<{ estado: string }[]>`
+      SELECT estado FROM contratos WHERE id = ${contrato.id} FOR UPDATE
+    `;
+    if (filas[0]?.estado !== 'ACTIVO') return 0;
+    return generarLiquidacionesContrato(tx, contrato);
+  });
+}
+
+/**
  * Marca VENCIDO las liquidaciones PENDIENTE cuyo vencimiento ya pasó.
  *
  * El estado se congelaba al CREAR (computarLiquidacionesContrato:67, `venc < now`)
@@ -221,7 +252,7 @@ export async function devengarTodosLosTenants(
   const fallidos: { contratoId: string; error: string }[] = [];
   for (const c of contratos) {
     try {
-      liquidacionesNuevas += await generarLiquidacionesContrato(prisma, c);
+      liquidacionesNuevas += await devengarSiSigueActivo(prisma, c);
     } catch (e) {
       fallidos.push({ contratoId: c.id, error: e instanceof Error ? e.message : String(e) });
     }

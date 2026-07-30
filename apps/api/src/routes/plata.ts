@@ -5,7 +5,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../db.js';
 import { exigirContratoActivo, requireContratoAcceso, requireInquilino, requireUsuario } from '../auth/guards.js';
 import { verificarPinUsuario } from '../auth/pin.js';
-import { devengarTodosLosTenants, generarLiquidacionesContrato, marcarLiquidacionesVencidas } from '../lib/liquidaciones.js';
+import { devengarSiSigueActivo, devengarTodosLosTenants, generarLiquidacionesContrato, marcarLiquidacionesVencidas } from '../lib/liquidaciones.js';
 import { conSaldo, montoPagadoPorLiquidacion } from '../lib/saldos.js';
 import { calcularMora, resolverEsquemaMora } from '../lib/punitorios.js';
 import { registrarEvento } from '../lib/auditoria.js';
@@ -133,7 +133,7 @@ export async function plataRoutes(app: FastifyInstance) {
       // Una llamada idempotente por contrato (cada generar es su propio
       // createMany skipDuplicates). No hace falta una tx global: nada se corrompe
       // si falla a la mitad, y un reintento completa lo que falte.
-      liquidacionesNuevas += await generarLiquidacionesContrato(prisma, c);
+      liquidacionesNuevas += await devengarSiSigueActivo(prisma, c);
     }
     // Marca vencidas las liquidaciones del tenant cuyo vencimiento ya pasó (mora).
     const liquidacionesVencidas = await marcarLiquidacionesVencidas(prisma, u.inmobiliariaId);
