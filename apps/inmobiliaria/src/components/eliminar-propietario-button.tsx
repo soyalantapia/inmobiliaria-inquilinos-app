@@ -6,7 +6,7 @@ import { Trash2 } from 'lucide-react';
 import { Button } from '@llave/ui/button';
 import { ConfirmDialog } from '@llave/ui/confirm-dialog';
 import { toast } from '@llave/ui/use-toast';
-import { ApiError } from '@/lib/api/client';
+import { ApiError, varianteError } from '@/lib/api/client';
 import { useEliminarPropietario } from '@/lib/api/hooks';
 
 /**
@@ -29,7 +29,7 @@ export function EliminarPropietarioButton({ propietarioId, nombre }: { propietar
       router.push('/propietarios');
     } catch (e) {
       toast({
-        variant: 'destructive',
+        variant: varianteError(e),
         title: 'No se pudo eliminar',
         description: e instanceof ApiError ? e.message : 'Probá de nuevo en un momento.',
       });

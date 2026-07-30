@@ -6,7 +6,7 @@ import { CalendarPlus } from 'lucide-react';
 import { Button } from '@llave/ui/button';
 import { ConfirmDialog } from '@llave/ui/confirm-dialog';
 import { toast } from '@llave/ui/use-toast';
-import { ApiError, apiFetch } from '@/lib/api/client';
+import { ApiError, apiFetch, varianteError } from '@/lib/api/client';
 import { ensureApiSession } from '@/lib/api/session';
 import { MoneyInput } from '@/components/money-input';
 import { formatMonto } from '@/lib/format';
@@ -94,7 +94,7 @@ export function RenovarContratoButton({
       setOpen(false);
     },
     onError: (e) => {
-      toast({ variant: 'destructive', title: 'No se pudo renovar', description: e instanceof ApiError ? e.message : 'Probá de nuevo.' });
+      toast({ variant: varianteError(e), title: 'No se pudo renovar', description: e instanceof ApiError ? e.message : 'Probá de nuevo.' });
     },
   });
 

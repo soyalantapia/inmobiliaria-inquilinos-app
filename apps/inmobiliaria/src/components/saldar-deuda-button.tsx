@@ -6,7 +6,7 @@ import { HandCoins } from 'lucide-react';
 import { Button } from '@llave/ui/button';
 import { ConfirmDialog } from '@llave/ui/confirm-dialog';
 import { toast } from '@llave/ui/use-toast';
-import { ApiError, apiFetch } from '@/lib/api/client';
+import { ApiError, apiFetch, varianteError } from '@/lib/api/client';
 import { ensureApiSession } from '@/lib/api/session';
 import { formatMonto } from '@/lib/format';
 import type { Moneda } from '@/lib/types';
@@ -53,7 +53,7 @@ export function SaldarDeudaButton({ contratoId, deuda, moneda }: { contratoId: s
       setOpen(false);
     },
     onError: (e) => {
-      toast({ variant: 'destructive', title: 'No se pudo saldar', description: e instanceof ApiError ? e.message : 'Probá de nuevo.' });
+      toast({ variant: varianteError(e), title: 'No se pudo saldar', description: e instanceof ApiError ? e.message : 'Probá de nuevo.' });
     },
   });
 

@@ -62,7 +62,7 @@ import {
 } from '@/components/mora-selector';
 import { calcularScoringInquilino, type ResumenScoring } from '@/lib/scoring-inquilino';
 import { registrarEvento } from '@/lib/auditoria-storage';
-import { apiEnabled, apiFetch, ApiError } from '@/lib/api/client';
+import { apiEnabled, apiFetch, ApiError, varianteError } from '@/lib/api/client';
 import { ensureApiSession } from '@/lib/api/session';
 import { useCobranza } from '@/lib/api/hooks';
 import { useContrato } from '@/lib/api/use-contrato';
@@ -1129,7 +1129,7 @@ function EditarWhatsappInquilinoButton({
       setOpen(false);
     } catch (e) {
       toast({
-        variant: 'destructive',
+        variant: varianteError(e),
         title: 'No se pudo guardar',
         description: e instanceof ApiError ? e.message : 'Probá de nuevo.',
       });
@@ -1359,7 +1359,7 @@ function ModoCobranzaCard({
         });
       } catch (e) {
         toast({
-          variant: 'destructive',
+          variant: varianteError(e),
           title: 'No se pudo cambiar el modo de cobranza',
           description: e instanceof ApiError ? e.message : 'Probá de nuevo.',
         });

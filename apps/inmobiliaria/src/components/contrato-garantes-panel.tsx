@@ -10,7 +10,7 @@ import { Label } from '@llave/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@llave/ui/select';
 import { toast } from '@llave/ui/use-toast';
 import { MoneyInput } from '@/components/money-input';
-import { ApiError } from '@/lib/api/client';
+import { ApiError, varianteError } from '@/lib/api/client';
 import {
   TIPO_GARANTE_LABEL,
   useGarantes,
@@ -77,7 +77,7 @@ function GaranteForm({
       onDone();
     } catch (e) {
       toast({
-        variant: 'destructive',
+        variant: varianteError(e),
         title: 'No se pudo guardar',
         description: e instanceof ApiError ? e.message : 'Probá de nuevo en un momento.',
       });
@@ -183,7 +183,7 @@ export function ContratoGarantesPanel({ contratoId }: { contratoId: string }) {
       toast({ variant: 'success', title: 'Garante eliminado' });
     } catch (e) {
       toast({
-        variant: 'destructive',
+        variant: varianteError(e),
         title: 'No se pudo eliminar',
         description: e instanceof ApiError ? e.message : 'Probá de nuevo.',
       });

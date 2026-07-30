@@ -41,6 +41,18 @@ export class ApiError extends Error {
 }
 
 /**
+ * Variante de toast para un error atrapado en un catch. Un 409 del backend NO es un
+ * fallo: es una REGLA DE NEGOCIO que bloquea la acción (ya hay cobros conciliados este
+ * mes, el contrato ya no está activo, el reclamo ya fue decidido…). Esos avisos van en
+ * ámbar ('warning'), no en rojo. Cualquier otra cosa —500, red, validación 4xx— sigue
+ * siendo 'destructive'. Es seguro usarlo en todo catch de una llamada al API: si esa
+ * llamada nunca devuelve 409, el resultado es 'destructive', igual que antes.
+ */
+export function varianteError(e: unknown): 'warning' | 'destructive' {
+  return e instanceof ApiError && e.status === 409 ? 'warning' : 'destructive';
+}
+
+/**
  * Sesión vencida/invalidada: si mandamos un token y el server lo rechaza (401),
  * limpiamos la sesión y mandamos a re-loguear. Sin esto, un admin con el token
  * vencido (vive 15 días) quedaba mirando pantallas vacías sin entender por qué
