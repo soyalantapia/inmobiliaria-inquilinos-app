@@ -431,6 +431,30 @@ export async function resumenesBancariosRoutes(app: FastifyInstance): Promise<vo
           where: { id: nuevoPago.id },
           data: { tipo: cubierta ? 'TOTAL' : 'PARCIAL' },
         });
+
+        // El aviso del inquilino sobre ESTA liquidación ya no tiene nada que decidir:
+        // el banco confirmó la plata. Sin esto quedaba en INFORMADO para siempre y
+        // alguien tenía que rechazarlo A MANO desde "Pagos a validar" —una bandeja
+        // cuyo sentido es mostrar lo que falta decidir— por cada aviso que el extracto
+        // después confirmaba. Validarlo tampoco era opción: el tope al saldo lo corta
+        // con 409 (correcto: sumarlo contaría la plata dos veces).
+        //
+        // Sólo cuando el crédito CUBRE el total. Si quedó saldo, el comprobante puede
+        // corresponder a la parte que falta y la decisión sigue siendo del operador.
+        //
+        // RECHAZADO y no CONCILIADO: CONCILIADO entra en el agregado de cobrado y
+        // duplicaría la plata. La observación deja el rastro de por qué se cerró.
+        if (cubierta) {
+          await tx.pago.updateMany({
+            where: { liquidacionId: liq.id, estado: 'INFORMADO' },
+            data: {
+              estado: 'RECHAZADO',
+              observacion: `Cerrado automáticamente: el extracto bancario confirmó este cobro (op. ${credito.nroOperacion}).`,
+              decididoPorId: u.userId,
+              decididoAt: new Date(),
+            },
+          });
+        }
         return nuevoPago;
       });
       return pago;
