@@ -106,6 +106,7 @@ beforeAll(async () => {
     data: {
       id: `${P}pago`,
       inmobiliariaId,
+      tipo: 'TOTAL', // 1000 de 1000
       contratoId: `${P}cnt`,
       liquidacionId: `${P}liq`,
       periodo: '2026-05',
@@ -224,6 +225,8 @@ describe('Rendición INCREMENTAL al mismo dueño: no se le cobra dos veces la mi
         contratoId: `${P}cnt`,
         liquidacionId: `${P}liq2`,
         periodo: PERIODO,
+        // 400 de 1000: no cubre la cuota.
+        tipo: 'PARCIAL',
         monto: 400,
         montoLiqTotal: 1000,
         metodo: 'TRANSFERENCIA',
@@ -268,6 +271,8 @@ describe('Rendición INCREMENTAL al mismo dueño: no se le cobra dos veces la mi
         contratoId: `${P}cnt`,
         liquidacionId: `${P}liq2`,
         periodo: PERIODO,
+        // Con los 400 anteriores completa los 1000.
+        tipo: 'TOTAL',
         monto: 600,
         montoLiqTotal: 1000,
         metodo: 'TRANSFERENCIA',
@@ -338,6 +343,7 @@ describe('Anular una rendición parcial: el gasto vuelve a quedar pendiente', ()
       data: {
         id: `${P}pago3`,
         inmobiliariaId,
+        tipo: 'TOTAL', // 1000 de 1000
         contratoId: `${P}cnt`,
         liquidacionId: `${P}liq3`,
         periodo: PERIODO,
@@ -449,6 +455,7 @@ describe('Moneda de la caja: la rendición sólo descuenta los gastos de SU mone
       data: {
         id: `${P}pago4`,
         inmobiliariaId,
+        tipo: 'TOTAL', // 1000 de 1000
         contratoId: `${P}cnt`,
         liquidacionId: `${P}liq4`,
         periodo: PERIODO,
@@ -552,7 +559,7 @@ describe('Cambia el dueño: el arreglo ya pagado no se vuelve a cobrar', () => {
       await prisma.pago.create({
         data: {
           id: `${P}pago${periodo}`, inmobiliariaId, contratoId: `${P}cnt`, liquidacionId: id,
-          periodo, monto: 1000, montoLiqTotal: 1000, metodo: 'TRANSFERENCIA',
+          periodo, tipo: 'TOTAL', monto: 1000, montoLiqTotal: 1000, metodo: 'TRANSFERENCIA',
           fechaTransferencia: new Date(`${fecha}-05T00:00:00.000Z`), estado: 'CONCILIADO',
         },
       });
@@ -654,7 +661,7 @@ describe('Dueño con cobros en dos monedas: se rinde una por vez', () => {
       await prisma.pago.create({
         data: {
           id: `${P}pago7${moneda}`, inmobiliariaId, contratoId: cnt, liquidacionId: liqId,
-          periodo: PERIODO, monto, montoLiqTotal: monto, metodo: 'TRANSFERENCIA',
+          periodo: PERIODO, tipo: 'TOTAL', monto, montoLiqTotal: monto, metodo: 'TRANSFERENCIA',
           fechaTransferencia: new Date('2026-11-05T00:00:00.000Z'), estado: 'CONCILIADO',
         },
       });

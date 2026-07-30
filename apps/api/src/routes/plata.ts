@@ -700,6 +700,8 @@ export async function plataRoutes(app: FastifyInstance) {
             liquidacionId: l.id,
             periodo: l.periodo,
             monto: saldo,
+            // Cancela el saldo COMPLETO de la cuota (`monto: saldo`), así que es TOTAL.
+            tipo: 'TOTAL',
             montoLiqTotal: Number(l.montoTotal) + punit,
             metodo: b.metodo,
             fechaTransferencia: now,

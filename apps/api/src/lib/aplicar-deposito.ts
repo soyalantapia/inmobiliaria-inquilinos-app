@@ -115,6 +115,10 @@ export async function aplicarDepositoADeuda(
         liquidacionId: l.id,
         periodo: l.periodo,
         monto: imputa,
+        // `imputa` es min(saldo, lo que queda del depósito): sobre la ÚLTIMA cuota
+        // que alcanza a tocar suele quedar corto, y ahí el pago es PARCIAL. La
+        // tolerancia de un centavo es la misma que usan validar/manual.
+        tipo: imputa >= saldo - 0.01 ? 'TOTAL' : 'PARCIAL',
         montoLiqTotal: r2c(Number(l.montoTotal) + punit),
         metodo: 'TRANSFERENCIA',
         fechaTransferencia: now,

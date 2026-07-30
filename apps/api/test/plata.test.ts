@@ -172,6 +172,7 @@ describe('Validación de pagos (permisos)', () => {
         contratoId: 'cnt_005',
         liquidacionId: 'liq_005',
         periodo: '2026-06',
+        tipo: 'TOTAL',
         monto: 850000,
         montoLiqTotal: 850000,
         metodo: 'TRANSFERENCIA',

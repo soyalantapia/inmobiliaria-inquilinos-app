@@ -1654,7 +1654,11 @@ model Pago {
   liquidacionId       String
   liquidacion         Liquidacion         @relation(fields: [liquidacionId], references: [id])
   periodo             String // 'YYYY-MM'
-  tipo                TipoPago            @default(TOTAL)
+  // SIN default a propósito: cuatro de los seis caminos que crean pagos heredaban
+  // TOTAL sin decidir nada y etiquetaban como completo un cobro parcial (el front
+  // usa este campo para marcar "· pago parcial" en el comprobante del inquilino).
+  // Requerido, el compilador no deja que un camino nuevo se lo saltee.
+  tipo                TipoPago
   // CONDONACIÓN: la inmo perdonó la deuda. Cancela el saldo del inquilino igual que un
   // cobro (por eso sigue siendo un Pago CONCILIADO y cuenta en montoPagado/saldo), pero
   // NO es un ingreso: se excluye del cierre de caja y de lo que se le rinde al propietario.

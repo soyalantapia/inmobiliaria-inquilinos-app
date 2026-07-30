@@ -182,6 +182,7 @@ describe('Baja de contrato — estado y colaterales', () => {
         contratoId: cid,
         liquidacionId: liqFP.id,
         periodo: PERIODO_FUT_CON_PAGO,
+        tipo: 'TOTAL',
         monto: 100000,
         metodo: 'TRANSFERENCIA',
         fechaTransferencia: new Date(),

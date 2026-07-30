@@ -389,6 +389,10 @@ export async function resumenesBancariosRoutes(app: FastifyInstance): Promise<vo
             liquidacionId: liq.id,
             periodo: liq.periodo,
             monto: credito.monto,
+            // PROVISORIO y conservador: el tipo definitivo se fija unas líneas más
+            // abajo, cuando se sabe si el crédito cubrió el total CON la mora a la
+            // fecha del crédito. Nunca nace diciendo que cubrió más de lo que cubrió.
+            tipo: 'PARCIAL',
             montoLiqTotal: liq.montoTotal,
             metodo: 'TRANSFERENCIA',
             nroOperacion: credito.nroOperacion,
@@ -421,9 +425,12 @@ export async function resumenesBancariosRoutes(app: FastifyInstance): Promise<vo
           where: { id: liq.id },
           data: cubierta ? { estado: 'PAGADO', fechaPago: credito.fecha, metodoPago: 'TRANSFERENCIA' } : { estado: 'PARCIAL' },
         });
-        if (cubierta) {
-          await tx.pago.update({ where: { id: nuevoPago.id }, data: { tipo: 'TOTAL' } });
-        }
+        // El tipo se fija en las DOS ramas: antes sólo se "ascendía" a TOTAL y el
+        // crédito que no cubría se quedaba con el TOTAL heredado del default.
+        await tx.pago.update({
+          where: { id: nuevoPago.id },
+          data: { tipo: cubierta ? 'TOTAL' : 'PARCIAL' },
+        });
         return nuevoPago;
       });
       return pago;

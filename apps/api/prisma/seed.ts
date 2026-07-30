@@ -243,7 +243,7 @@ export async function seedBase(prisma: PrismaClient) {
     await prisma.pago.upsert({
       where: { id: p.id },
       update: {},
-      create: { ...resto, inmobiliariaId: tid, fechaTransferencia: new Date(fechaTransferencia), montoLiqTotal: p.monto },
+      create: { ...resto, inmobiliariaId: tid, tipo: 'TOTAL', fechaTransferencia: new Date(fechaTransferencia), montoLiqTotal: p.monto },
     });
   }
 
@@ -268,6 +268,8 @@ export async function seedBase(prisma: PrismaClient) {
         inmobiliariaId: tid,
         metodo: 'TRANSFERENCIA',
         estado: 'CONCILIADO',
+        // Los pagos del seed cubren la cuota entera (montoLiqTotal = monto).
+        tipo: 'TOTAL',
         decididoAt: new Date(fechaTransferencia),
         fechaTransferencia: new Date(fechaTransferencia),
         montoLiqTotal: p.monto,
