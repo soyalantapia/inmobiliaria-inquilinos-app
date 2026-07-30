@@ -795,24 +795,30 @@ export async function plataRoutes(app: FastifyInstance) {
         where: { id: cargo.contratoId, inmobiliariaId: u.inmobiliariaId },
         select: { id: true, propiedadId: true },
       });
+      // Sin contrato no hay dónde registrar el ingreso, y marcar el cargo como
+      // saldado igual sería volver al bug exacto que este fix corrige: la deuda
+      // desaparece del inquilino y la plata no entra a ningún lado, en silencio.
+      // Con el cargo ya scopeado al tenant esto no debería pasar nunca, así que
+      // preferimos frenar la operación entera antes que perder el rastro.
+      if (!contrato) {
+        return reply.code(409).send({ message: 'El cargo no tiene un contrato válido en tu cartera' });
+      }
       const usuario = await prisma.usuario.findUnique({ where: { id: u.userId } });
       await prisma.$transaction(async (tx) => {
         await tx.cargoContrato.update({ where: { id }, data: { saldadoAt: new Date(), saldadoPorId: u.userId } });
-        if (contrato) {
-          await tx.movimientoCaja.create({
-            data: {
-              inmobiliariaId: u.inmobiliariaId,
-              propiedadId: contrato.propiedadId,
-              contratoId: contrato.id,
-              tipo: 'INGRESO_EXTRA',
-              categoria: 'OTRO',
-              descripcion: `Cobro de cargo al inquilino: ${cargo.concepto}`,
-              monto: cargo.monto,
-              fecha: new Date(),
-              cargadoPor: usuario ? `${usuario.nombre} ${usuario.apellido}`.trim() : 'Panel',
-            },
-          });
-        }
+        await tx.movimientoCaja.create({
+          data: {
+            inmobiliariaId: u.inmobiliariaId,
+            propiedadId: contrato.propiedadId,
+            contratoId: contrato.id,
+            tipo: 'INGRESO_EXTRA',
+            categoria: 'OTRO',
+            descripcion: `Cobro de cargo al inquilino: ${cargo.concepto}`,
+            monto: cargo.monto,
+            fecha: new Date(),
+            cargadoPor: usuario ? `${usuario.nombre} ${usuario.apellido}`.trim() : 'Panel',
+          },
+        });
       });
       await registrarEvento({
         inmobiliariaId: u.inmobiliariaId,
