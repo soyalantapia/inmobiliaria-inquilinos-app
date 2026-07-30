@@ -259,7 +259,10 @@ export default function PagosPage() {
     [aResolverCount, cobrables],
   );
 
-  const totalCobrado = useMemo(
+  // Cada monto viaja CON su moneda: la cartera puede tener contratos en pesos y en
+  // dólares, y un reduce plano los sumaba en un número que no es plata de ninguna
+  // de las dos (y salía impreso con signo de pesos).
+  const cobradoPorMoneda = useMemo(
     () =>
       // Suma lo REALMENTE cobrado del período por contrato (montoPagado, del
       // API), no solo el canon de los PAGADO: validar un parcial mueve 'Cobrado'
@@ -267,29 +270,29 @@ export default function PagosPage() {
       // 'Pendiente' pero 'Cobrado' no se movía → descuadre visible). En PAGADO
       // usamos montoPagado si vino (puede incluir mora cobrada); demo (sin
       // montoPagado) cae al comportamiento de siempre: canon si PAGADO, 0 si no.
-      cobrables.reduce(
-        (acc, c) =>
-          acc +
-          (c.estadoPagoActual === 'PAGADO' ? (c.montoPagado ?? c.monto) : (c.montoPagado ?? 0)),
-        0,
-      ),
+      cobrables.map((c) => ({
+        monto: c.estadoPagoActual === 'PAGADO' ? (c.montoPagado ?? c.monto) : (c.montoPagado ?? 0),
+        moneda: c.moneda,
+      })),
     [cobrables],
   );
-  const totalPendiente = useMemo(
+  const totalCobrado = useMemo(() => formatTotalPorMoneda(cobradoPorMoneda), [cobradoPorMoneda]);
+  const pendientePorMoneda = useMemo(
     () =>
       cobrables
         .filter((c) => c.estadoPagoActual !== 'PAGADO')
-        .reduce((acc, c) => {
+        .map((c) => {
           // Restamos lo ya conciliado del período actual (montoPagado) en CUALQUIER
           // contrato no pagado, no sólo los PARCIAL: un parcial VENCIDO reporta
           // estadoPagoActual='VENCIDO' (no 'PARCIAL', tras el fix A2) pero igual tiene
           // una parte cobrada. Contar el mes entero sobreestimaría la mora. montoPagado
           // viene del API (0/ausente en demo). Clamp a ≥0 por si lo conciliado supera
           // el canon (p.ej. la liq incluye expensas).
-          return acc + Math.max(0, c.monto - (c.montoPagado ?? 0));
-        }, 0),
+          return { monto: Math.max(0, c.monto - (c.montoPagado ?? 0)), moneda: c.moneda };
+        }),
     [cobrables],
   );
+  const totalPendiente = useMemo(() => formatTotalPorMoneda(pendientePorMoneda), [pendientePorMoneda]);
 
   const filtradas = useMemo(() => {
     if (filtro === 'TODOS' || filtro === 'A_RESOLVER') return cobrables;
@@ -355,13 +358,12 @@ export default function PagosPage() {
     // sumaba dólares y pesos y lo imprimía con "$". Esta hoja se lleva a cobrar y se usa
     // para reportarle la mora al dueño: un total que subestima la deuda en dólares por
     // el orden del tipo de cambio no es un redondeo, es otro número.
-    const deudaPorMoneda = (items: typeof morosos) => {
-      const acc = new Map<Moneda, number>();
-      for (const c of items) acc.set(c.moneda, (acc.get(c.moneda) ?? 0) + (c.deudaTotal ?? c.monto));
-      const partes = [...acc.entries()].sort((a, b) => (a[0] === 'ARS' ? -1 : b[0] === 'ARS' ? 1 : 0));
-      // Una sola moneda (el caso normal) imprime igual que antes.
-      return partes.length === 0 ? formatMonto(0) : partes.map(([m, t]) => formatMonto(t, m)).join('  ·  ');
-    };
+    // Delega en el helper compartido (lib/format): tener DOS implementaciones de
+    // "total por moneda" es justamente cómo nació la clase de bug que esto arregla
+    // —la comparación escrita a mano en cada sitio— así que acá sólo se adapta la
+    // forma de los items.
+    const deudaPorMoneda = (items: typeof morosos) =>
+      formatTotalPorMoneda(items.map((c) => ({ monto: c.deudaTotal ?? c.monto, moneda: c.moneda })));
 
     const columnas = [
       { header: 'Inquilino', width: '20%' },
@@ -619,7 +621,7 @@ export default function PagosPage() {
       filas,
       totales: [
         { label: 'Cantidad', valor: pagados.length.toString() },
-        { label: 'Total cobrado', valor: formatMonto(totalCobrado) },
+        { label: 'Total cobrado', valor: totalCobrado },
       ],
       notaFinal:
         'Este reporte detalla los pagos acreditados y conciliados en el período. Sirve ' +
@@ -658,7 +660,7 @@ export default function PagosPage() {
                 <p className="text-xs font-semibold uppercase tracking-wide">Cobrado</p>
               </div>
               <p className="mt-2 text-3xl font-bold text-emerald-700 tabular-nums dark:text-emerald-300 md:text-4xl">
-                {formatMonto(totalCobrado)}
+                {totalCobrado}
               </p>
               <p className="text-xs text-emerald-700/70 dark:text-emerald-300/70">
                 {counters.PAGADO} propiedad{counters.PAGADO === 1 ? '' : 'es'} al día este mes
@@ -672,7 +674,7 @@ export default function PagosPage() {
                 <p className="text-xs font-semibold uppercase tracking-wide">Pendiente</p>
               </div>
               <p className="mt-2 text-3xl font-bold text-amber-700 tabular-nums dark:text-amber-300 md:text-4xl">
-                {formatMonto(totalPendiente)}
+                {totalPendiente}
               </p>
               <p className="text-xs text-amber-700/70 dark:text-amber-300/70">
                 Suma de alquileres no cobrados todavía
