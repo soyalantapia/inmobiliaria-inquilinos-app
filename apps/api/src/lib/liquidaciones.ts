@@ -1,5 +1,5 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
-import { enumerarPeriodosContrato } from '@llave/shared/periodos';
+import { diaCivilAR, enumerarPeriodosContrato } from '@llave/shared/periodos';
 
 type TxOrClient = Prisma.TransactionClient | PrismaClient;
 
@@ -163,11 +163,17 @@ export async function generarLiquidacionesContrato(
 export async function marcarLiquidacionesVencidas(
   tx: TxOrClient,
   inmobiliariaId?: string,
+  now: Date = new Date(),
 ): Promise<number> {
   const res = await tx.liquidacion.updateMany({
     where: {
       estado: 'PENDIENTE',
-      fechaVencimiento: { lt: new Date() },
+      // El corte va en el DÍA CIVIL argentino, no en el instante UTC: los
+      // vencimientos se guardan como medianoche UTC del día (`Date.UTC(y,m,dia)`),
+      // así que `< new Date()` daba por vencida la cuota del 10 a las 21:00 del 9
+      // —hora local— y el inquilino aparecía moroso con el día de pago sin empezar.
+      // `lt` contra el día civil de hoy: vence recién cuando el día de pago pasó.
+      fechaVencimiento: { lt: diaCivilAR(now) },
       // Sólo contratos ACTIVO: una liquidación remanente de un contrato finalizado
       // NO debe vencerse sola y convertirse en morosidad fantasma (finalizar ya
       // anula las cuotas futuras sin pago; esto es el cinturón de seguridad).

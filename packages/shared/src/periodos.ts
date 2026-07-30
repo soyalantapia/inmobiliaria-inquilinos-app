@@ -105,3 +105,44 @@ export function enumerarPeriodosContrato(params: ParamsEnumerarPeriodos, now: Da
 
   return out;
 }
+
+/**
+ * Argentina no aplica horario de verano desde 2009: el offset es fijo en UTC-3.
+ * Se declara acá (y no en cada call site) porque el corte del día civil aparece
+ * en varios lugares —cierre de caja, métricas, vencimientos— y cada copia a mano
+ * es una oportunidad de que uno quede comparando contra UTC.
+ */
+const OFFSET_AR_MS = 3 * 60 * 60 * 1000;
+
+/**
+ * El día civil ARGENTINO de `instante`, normalizado a medianoche UTC — que es la
+ * misma convención con la que se guardan las fechas civiles del sistema
+ * (`fechaVencimiento` se arma con `Date.UTC(y, m, dia)`, ver arriba).
+ *
+ * Existe porque comparar una fecha civil contra `new Date()` corre el día: un
+ * vencimiento del 10 vive en el instante `10T00:00Z`, que en Argentina son las
+ * 21:00 del 9. Todo lo que compare "¿ya pasó esta fecha?" contra el instante UTC
+ * da por vencido el día ANTERIOR, a las 21:00 hora local.
+ */
+export function diaCivilAR(instante: Date): Date {
+  const ar = new Date(instante.getTime() - OFFSET_AR_MS);
+  return new Date(Date.UTC(ar.getUTCFullYear(), ar.getUTCMonth(), ar.getUTCDate()));
+}
+
+/**
+ * ¿El día de pago YA PASÓ? (la cuota es deuda exigible).
+ * El día del vencimiento NO cuenta: si vence el 10, recién es deuda el 11.
+ */
+export function yaVencio(fechaVencimiento: Date | string, now: Date): boolean {
+  return new Date(fechaVencimiento) < diaCivilAR(now);
+}
+
+/**
+ * ¿El día de pago todavía NO LLEGÓ? (la cuota es futura).
+ * No es la negación de `yaVencio`: el propio día del vencimiento no es ninguna
+ * de las dos cosas —ya está devengada pero todavía no es deuda—, y esa franja
+ * es justamente la que hay que respetar.
+ */
+export function venceDespuesDeHoy(fechaVencimiento: Date | string, now: Date): boolean {
+  return new Date(fechaVencimiento) > diaCivilAR(now);
+}

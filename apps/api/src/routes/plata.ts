@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
+import { yaVencio } from '@llave/shared';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../db.js';
@@ -602,7 +603,7 @@ export async function plataRoutes(app: FastifyInstance) {
           )
         : 0;
       const total = base + punitorio;
-      const vencida = liq ? new Date(liq.fechaVencimiento) < new Date() : false;
+      const vencida = liq ? yaVencio(liq.fechaVencimiento, new Date()) : false;
       // Sigue PAGADO sólo si OTROS conciliados cubren el total; si no, PARCIAL
       // (queda algo) o PENDIENTE/VENCIDO (no queda nada). Al dejar de estar PAGADO
       // limpiamos fechaPago/metodoPago para no dejar un "pagado" fantasma.
@@ -669,7 +670,7 @@ export async function plataRoutes(app: FastifyInstance) {
       let montoAplicado = 0;
       for (const l of liqs) {
         // Sólo las EXIGIBLES: vencidas o parciales vencidas. Una futura no se salda acá.
-        const vencida = l.estado === 'VENCIDO' || ((l.estado === 'PENDIENTE' || l.estado === 'PARCIAL') && new Date(l.fechaVencimiento) < now);
+        const vencida = l.estado === 'VENCIDO' || ((l.estado === 'PENDIENTE' || l.estado === 'PARCIAL') && yaVencio(l.fechaVencimiento, now));
         if (!vencida) continue;
         // LOCK pesimista + re-lectura DENTRO de la tx, igual que /pagos/manual y el
         // conciliar bancario. Antes el saldo salía de un agregado leído FUERA de la

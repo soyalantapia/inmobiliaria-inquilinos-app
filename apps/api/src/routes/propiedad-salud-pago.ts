@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { yaVencio } from '@llave/shared';
 import { prisma } from '../db.js';
 import { requireUsuario } from '../auth/guards.js';
 import { conSaldo, montoPagadoPorLiquidacion } from '../lib/saldos.js';
@@ -15,7 +16,7 @@ const DIA_MS = 24 * 60 * 60 * 1000;
  */
 function liqVencida(l: { estado: string; fechaVencimiento: Date | string }, now: Date): boolean {
   if (l.estado === 'VENCIDO') return true;
-  if (l.estado === 'PENDIENTE' || l.estado === 'PARCIAL') return new Date(l.fechaVencimiento) < now;
+  if (l.estado === 'PENDIENTE' || l.estado === 'PARCIAL') return yaVencio(l.fechaVencimiento, now);
   return false;
 }
 

@@ -1,4 +1,5 @@
 import type { Prisma } from '@prisma/client';
+import { yaVencio } from '@llave/shared';
 import { conSaldo } from './saldos.js';
 import { calcularMora, resolverEsquemaMora } from './punitorios.js';
 
@@ -8,7 +9,7 @@ const r2c = (n: number) => Math.round(n * 100) / 100;
  *  VENCIDO o si sigue impaga y su vencimiento pasó. Una cuota FUTURA no se toca. */
 function esExigible(l: { estado: string; fechaVencimiento: Date | string }, now: Date): boolean {
   if (l.estado === 'VENCIDO') return true;
-  if (l.estado === 'PENDIENTE' || l.estado === 'PARCIAL') return new Date(l.fechaVencimiento) < now;
+  if (l.estado === 'PENDIENTE' || l.estado === 'PARCIAL') return yaVencio(l.fechaVencimiento, now);
   return false;
 }
 

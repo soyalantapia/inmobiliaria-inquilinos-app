@@ -19,7 +19,7 @@ import { calcularMora, resolverEsquemaMora } from '../lib/punitorios.js';
 import { aplicarEstadoInicial, EstadoInicialInvalido } from '../lib/estado-inicial-contrato.js';
 import { borrarArchivoSiHuerfano, urlEsDelTenant } from './uploads.js';
 import { enviarInvitacionInquilino, enviarInvitacionEquipo } from '../mailer.js';
-import { contratoQuedaPendiente } from '@llave/shared';
+import { contratoQuedaPendiente, diaCivilAR, venceDespuesDeHoy, yaVencio } from '@llave/shared';
 
 /**
  * Una liquidación cuenta como VENCIDA (a efectos de cobranza) si su estado ya es
@@ -31,7 +31,7 @@ import { contratoQuedaPendiente } from '@llave/shared';
  */
 function liqVencida(l: { estado: string; fechaVencimiento: Date | string }, now: Date): boolean {
   if (l.estado === 'VENCIDO') return true;
-  if (l.estado === 'PENDIENTE' || l.estado === 'PARCIAL') return new Date(l.fechaVencimiento) < now;
+  if (l.estado === 'PENDIENTE' || l.estado === 'PARCIAL') return yaVencio(l.fechaVencimiento, now);
   return false;
 }
 
@@ -1415,7 +1415,7 @@ export async function coreRoutes(app: FastifyInstance) {
           estado: { notIn: ['INFORMADO', 'CONCILIADO'] },
           liquidacion: {
             estado: 'PENDIENTE',
-            fechaVencimiento: { gt: new Date() },
+            fechaVencimiento: { gt: diaCivilAR(new Date()) },
             pagos: { none: { estado: { in: ['INFORMADO', 'CONCILIADO'] } } },
           },
         },
@@ -1425,7 +1425,7 @@ export async function coreRoutes(app: FastifyInstance) {
           contratoId: id,
           inmobiliariaId: u.inmobiliariaId,
           estado: 'PENDIENTE',
-          fechaVencimiento: { gt: new Date() },
+          fechaVencimiento: { gt: diaCivilAR(new Date()) },
           // Tras soltar los pagos muertos, la cuota fantasma queda con 0 pagos y
           // entra acá; la cuota con un pago vivo conserva su pago y NO se toca.
           pagos: { none: {} },
@@ -1541,7 +1541,7 @@ export async function coreRoutes(app: FastifyInstance) {
     let cuotasImpagas = 0;
     for (const l of liqs) {
       const esFuturaSinPago =
-        l.estado === 'PENDIENTE' && l.fechaVencimiento > now && l._count.pagos === 0;
+        l.estado === 'PENDIENTE' && venceDespuesDeHoy(l.fechaVencimiento, now) && l._count.pagos === 0;
       if (esFuturaSinPago) {
         cuotasFuturasAAnular++;
         continue;

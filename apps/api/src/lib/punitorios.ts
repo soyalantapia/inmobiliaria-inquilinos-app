@@ -1,4 +1,5 @@
 import type { TipoMora } from '@prisma/client';
+import { diaCivilAR } from '@llave/shared';
 
 /**
  * Mora (punitorio por pago tardío) DINÁMICA, calculada ON-READ (no se congela
@@ -73,8 +74,11 @@ const DIA_MS = 86400000;
 function diasAtraso(fechaVencimiento: Date | string, asOf: Date): number {
   const venc = new Date(fechaVencimiento);
   venc.setUTCHours(0, 0, 0, 0);
-  const ref = new Date(asOf);
-  ref.setUTCHours(0, 0, 0, 0);
+  // `asOf` es un INSTANTE; el vencimiento es un DÍA CIVIL. Normalizarlo con
+  // setUTCHours lo llevaba al día UTC, que desde las 21:00 hora argentina ya es
+  // el día siguiente: cobraba un día de mora mientras al inquilino todavía le
+  // quedaban tres horas del día de pago. El corte va en hora local.
+  const ref = diaCivilAR(asOf);
   return Math.max(0, Math.floor((ref.getTime() - venc.getTime()) / DIA_MS));
 }
 

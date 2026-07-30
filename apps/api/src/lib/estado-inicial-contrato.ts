@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { yaVencio } from '@llave/shared';
 
 /**
  * Estado inicial de un contrato EN CURSO ("está en la cuota 7 de 12"):
@@ -74,7 +75,9 @@ export async function aplicarEstadoInicial(
       throw new EstadoInicialInvalido(`El período ${p.periodo} no corresponde a este contrato`);
     }
     // Solo períodos YA VENCIDOS: el estado inicial es historia, no futuro.
-    if (liq.fechaVencimiento >= ahora) {
+    // El corte va en día civil argentino: comparar contra el instante UTC daba
+    // por vencido el período desde las 21:00 del día anterior al vencimiento.
+    if (!yaVencio(liq.fechaVencimiento, ahora)) {
       throw new EstadoInicialInvalido(`El período ${p.periodo} todavía no venció — no lleva estado inicial`);
     }
     const total = Number(liq.montoTotal);
