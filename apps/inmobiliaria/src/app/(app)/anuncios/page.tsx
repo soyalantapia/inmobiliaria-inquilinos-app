@@ -459,6 +459,7 @@ function CrearAnuncioDialog({ abierto, onClose, onGuardar, contratosApi }: Dialo
   const [contratosSel, setContratosSel] = useState<string[]>([]);
   const [buscarContrato, setBuscarContrato] = useState('');
   const [confirmando, setConfirmando] = useState(false);
+  const [enviando, setEnviando] = useState(false);
 
   useEffect(() => {
     if (!abierto) return;
@@ -563,12 +564,16 @@ function CrearAnuncioDialog({ abierto, onClose, onGuardar, contratosApi }: Dialo
     setConfirmando(true);
   };
 
-  const enviar = () => {
-    // onGuardar ahora es async (espera el POST): cerramos el paso de
-    // confirmación acá; el resultado (éxito o error) lo comunica el toast del
-    // caller. Si falló, el diálogo principal sigue abierto para reintentar.
-    setConfirmando(false);
-    void onGuardar({
+  const enviar = async () => {
+    // ESPERAMOS el POST. Antes esto cerraba el diálogo de confirmación y disparaba el envío
+    // con `void` (fire-and-forget): el operador no veía nada pasar, el diálogo principal
+    // seguía abierto, y volvía a apretar "Enviar" — mandando el anuncio DOS VECES (mail +
+    // notificación a cada inquilino, sin deshacer). Ahora el botón queda en "Procesando…"
+    // mientras vuela y el diálogo recién se cierra cuando terminó.
+    if (enviando) return;
+    setEnviando(true);
+    try {
+      await onGuardar({
       titulo: titulo.trim(),
       cuerpo: cuerpo.trim(),
       prioridad,
@@ -578,8 +583,14 @@ function CrearAnuncioDialog({ abierto, onClose, onGuardar, contratosApi }: Dialo
       enviadoPor: USUARIO_ACTUAL,
       // Si el panel no puede contarlo (consorcio/propietarios en modo API), manda 0 y el
       // server responde el alcance REAL — el toast de éxito muestra ese, no una estimación.
-      destinatariosCount: destinatarios ?? 0,
-    });
+        destinatariosCount: destinatarios ?? 0,
+      });
+      setConfirmando(false);
+    } finally {
+      // Pase lo que pase se libera el botón: si falló, el diálogo sigue abierto para
+      // reintentar a mano (el toast del caller dice qué pasó), pero sin quedar trabado.
+      setEnviando(false);
+    }
   };
 
   return (
@@ -799,6 +810,7 @@ function CrearAnuncioDialog({ abierto, onClose, onGuardar, contratosApi }: Dialo
             : `Vas a avisar a ${destinatarios} destinatario${destinatarios === 1 ? '' : 's'} (${AUDIENCIA_LABEL[audiencia].toLowerCase()}) por app y email. Esto no se puede deshacer.`
         }
         confirmLabel={destinatarios === null ? 'Enviar anuncio' : `Enviar a ${destinatarios} destinatario${destinatarios === 1 ? '' : 's'}`}
+        loading={enviando}
         onConfirm={enviar}
       />
     </>
