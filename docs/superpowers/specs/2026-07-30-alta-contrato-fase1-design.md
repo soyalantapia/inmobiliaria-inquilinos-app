@@ -8,8 +8,13 @@
 
 Esta es la **Fase 1 de 3** del rediseño. Se eligió así porque **no depende de ninguna decisión de negocio que Camila todavía no tomó**, y resuelve el dolor más caro. Las fases 2 (documentación obligatoria) y 3 (garantía, servicios, rescisión) están bloqueadas esperando respuestas suyas y tienen su propio spec.
 
+> 🔴 **Corregido el 03/08.** La primera versión de este spec daba por inexistente el borrador y
+> planificaba construirlo, más un refactor a `useReducer` para habilitarlo. **Las dos cosas se
+> cayeron al verificar contra el código**: el borrador ya está en main desde el 30/07. Se sacaron las
+> dos tareas más grandes de la fase. Lo que queda abajo es lo que de verdad falta.
+
 **Entra en Fase 1:**
-1. Borrador con guardado automático del wizard.
+1. Completar el borrador que ya existe (`beforeunload` + aviso de adjuntos).
 2. Separar el paso "Términos" en dos: **Plazo y salida** / **Dinero**, con preview en vivo de las consecuencias de las fechas.
 3. Exponer el arranque de cuenta: **"empezar a cobrar desde este mes"** (`devengarDesde`).
 4. Stepper clickeable hacia atrás y errores de validación visibles.
@@ -29,7 +34,20 @@ Tampoco es cierto que no se pueda volver atrás: `avanzar()`/`retroceder()` (`:1
 
 ### Lo que sí está roto
 
-1. **No existe ningún borrador.** 34 `useState` en un componente, sin `localStorage`, sin persistencia, sin `beforeunload`. Cerrar la pestaña, tocar atrás en el navegador o que venza la sesión **borra todo sin aviso**. El único guard es el botón "Cancelar carga", que no cubre ninguno de esos casos.
+1. ~~**No existe ningún borrador.**~~ 🔴 **CORREGIDO EL 03/08: el borrador YA EXISTE y funciona.**
+   Entró el 30/07 en `df23fab` y **ya estaba en `cbf00a6`**, la misma base contra la que se escribió
+   este spec. Esta sección afirmaba lo contrario sin verificarlo.
+
+   Lo que hay hoy (`apps/inmobiliaria/src/lib/contrato-borrador-storage.ts` + el wizard):
+   autosave a `localStorage` namespaceado por `userId:inmobiliariaId` sacado del JWT; guarda **los 27
+   campos serializables**, incluido `periodosForm`; diálogo al entrar con *"Retomar" / "Empezar de
+   cero"*; se borra al dar de alta con éxito (`:1487`) y al descartar (`:1136`); y al restaurar
+   corrige el paso 4 cuando ya no hay períodos vencidos.
+
+   **Lo que sí falta del borrador** (esto es lo único que queda de este punto):
+   - No hay `beforeunload`: cerrar la pestaña con cambios recientes puede perder lo posterior al último guardado.
+   - El diálogo de retomar **no avisa que las fotos del DNI hay que volver a adjuntarlas**. Los `File`
+     no se guardan (correcto), pero el copy no lo dice.
 
 2. **El paso "Términos" mezcla dos decisiones distintas** (`:1582-1901`): cuánto dura el contrato (fechas, día de pago, índice, frecuencia) y cuánta plata mueve (monto, expensas, depósito, comisión, mora, cobranza). Y las fechas son las que **determinan todo lo que sigue**: si aparece el paso de períodos anteriores, cuántos son, y si el contrato nace con deuda. Hoy esa consecuencia recién se ve dos pantallas después.
 
@@ -49,33 +67,28 @@ Tampoco es cierto que no se pueda volver atrás: `avanzar()`/`retroceder()` (`:1
 
 ## Diseño
 
-### 1. Estado único serializable (habilitante)
+### 1. ~~Estado único serializable~~ — **DADO DE BAJA (03/08)**
 
-Los 34 `useState` no se pueden serializar ni escalar a más pasos. Se refactorizan a **un solo `useReducer`** con la forma:
+Este spec proponía refactorizar los 34 `useState` a un `useReducer`, con esta justificación: *"no se
+pueden serializar"*. **Es falso**: el autosave que ya está en main los serializa en cada tecleo
+(`page.tsx:1178`). La otra mitad del argumento — *"ni escalar a más pasos"* — no se sostiene sola:
+partir un paso en dos no requiere cambiar el manejo de estado.
 
-```ts
-type EstadoAlta = {
-  paso: number;
-  datos: DatosAlta;      // TODO lo que va al body del POST — serializable
-  ui: EstadoUI;          // busqueda, resultados, dialogs — NO se persiste
-  archivos: ArchivosUI;  // File objects — NO serializables, NO se persisten
-};
-```
+Era la tarea más grande y más riesgosa de la fase, sobre el flujo más crítico del panel, **y existía
+solo para habilitar un borrador que ya existe**. Se saca. El wizard sigue con `useState`.
 
-La separación `datos` / `ui` / `archivos` es la que hace posible el autosave sin mentir.
+### 2. Borrador — **CASI TODO YA ESTÁ HECHO**
 
-**Esto es trabajo de ingeniería real, no cosmético.** Es la parte más riesgosa de la fase y va primero, con el wizard funcionando igual que hoy antes de tocar nada más.
+No se construye nada nuevo: no hay migración, no hay endpoints, no se toca `ContratoDraft` (que sigue
+siendo del flujo de OCR muerto). Solo se completan las dos puntas que faltan:
 
-### 2. Borrador con guardado automático
+- **`beforeunload`** mientras haya datos cargados y el alta no se haya confirmado.
+- **El diálogo de retomar avisa por los adjuntos**: agregar al copy que las fotos del DNI hay que
+  volver a adjuntarlas. Prometer que guarda todo y perder los adjuntos es peor que avisar.
 
-- **Modelo**: `ContratoDraft` + tres campos nuevos — `actualizadoAt DateTime @updatedAt`, `paso Int @default(1)`, y `@@unique([inmobiliariaId, creadoPor])` (un borrador activo por usuario).
-- **Endpoints nuevos** en `apps/api/src/routes/core.ts`, gateados por `contratos.crear`:
-  - `PUT /contratos/borrador` — upsert del borrador del usuario actual.
-  - `GET /contratos/borrador` — devuelve el borrador si existe.
-  - `DELETE /contratos/borrador` — al confirmar el alta o al descartar.
-- **Front**: se guarda con debounce (2 s) desde el primer campo. Al entrar al alta, si hay borrador, se ofrece retomarlo o descartarlo. Al dar de alta con éxito, se borra.
-- 🔴 **Los archivos NO se guardan.** Los `File` no son serializables. Si el borrador se recupera con adjuntos pendientes, **la pantalla tiene que decirlo explícitamente** (*"las fotos que habías cargado hay que volver a adjuntarlas"*). Prometer que guarda todo y perder los adjuntos es peor que no tener borrador.
-- Además: `beforeunload` cuando hay cambios sin guardar.
+🔴 **Integración obligatoria:** el campo nuevo de la sección 4 (`devengarDesde`) **tiene que sumarse a
+`BorradorContrato`**. Si se agrega un campo al wizard y no a la interfaz del borrador, el campo se
+pierde en silencio al retomar — y nadie se entera hasta que un contrato nace con la deuda equivocada.
 
 ### 3. Separar Plazo y Dinero
 
@@ -143,10 +156,13 @@ problema **ahí mismo** en vez de mandar al usuario a otra sección:
 
 ## Testing
 
-- **Unit (sin DB)**: el reducer — cada acción produce el estado esperado; `datos` es serializable (round-trip `JSON.parse(JSON.stringify(...))` sin pérdida); `archivos` nunca entra en lo que se persiste.
-- **Integración del borrador**: `PUT` crea y luego actualiza el mismo (no duplica, por el unique); `GET` de otro usuario **no** devuelve el borrador ajeno; `DELETE` lo borra; el borrador es tenant-scopeado.
+- **Unit del borrador (sin DB)**: `BorradorContrato` incluye **todos** los campos del wizard que van al
+  POST, `devengarDesde` entre ellos — un test que compare las claves guardadas contra la lista esperada
+  y falle si alguien agrega un campo al wizard y se olvida del borrador.
 - **Integración de `devengarDesde`**: alta con `devengarDesde` del mes en curso → cero liquidaciones anteriores; alta con `devengarDesde` **y** `periodosAnteriores` → **400**; alta sin `devengarDesde` → comportamiento idéntico al de hoy (no regresión).
-- **E2E en navegador**: cargar medio contrato → cerrar la pestaña → volver a entrar → el borrador se ofrece y se recupera, con el aviso de los adjuntos. Y: contrato que arrancó hace 6 meses → "cobrar desde este mes" → se crea con 1 cuota, no 7.
+- **E2E en navegador**: cargar medio contrato → cerrar la pestaña → volver a entrar → el borrador se
+  ofrece y se recupera **con el aviso de los adjuntos** (no regresión de lo que ya funciona, más el
+  copy nuevo). Y: contrato que arrancó hace 6 meses → "cobrar desde este mes" → se crea con 1 cuota, no 7.
 - **E2E de la cuenta del propietario**: propiedad cuyo propietario **no** tiene cuenta → elegir
   cobranza directa → cargar la cuenta desde el aviso → **el alta se completa sin recargar la página
   y sin perder ningún campo ya tipeado**. Y el caso negativo: propiedad **sin propietarios** → sigue
@@ -157,8 +173,10 @@ problema **ahí mismo** en vez de mandar al usuario a otra sección:
 
 | Riesgo | Mitigación |
 |---|---|
-| El refactor a reducer rompe el alta, que es el flujo más crítico del panel | Va primero y solo, sin cambios de comportamiento, con el E2E del alta pasando antes de seguir |
+| **Diseñar sobre lo que ya existe sin verificarlo** — pasó en este mismo spec: dos tareas completas para construir un borrador que ya estaba en main | Cada tarea del plan arranca leyendo el código que va a tocar. La regla vale para las fases 2 y 3 |
+| Partir el paso 3 rompe el alta, que es el flujo más crítico del panel | El E2E del alta simple corre antes y después; el estado sigue en el padre, así que partir el render no mueve datos |
 | El borrador promete guardar todo y pierde los adjuntos | La UI lo dice explícitamente al recuperar; los archivos nunca entran en `datos` |
+| Se agrega `devengarDesde` al wizard y no al borrador → se pierde al retomar | Test unitario que compara las claves de `BorradorContrato` contra los campos del alta |
 | `devengarDesde` + `periodosAnteriores` juntos corrompen la deuda | Excluyentes, validado en el servidor con 400 y su test |
 | Más pasos hacen el alta más lenta contra el mostrador | Plazo y Dinero son cortos; el simple pasa de 4 a 5 pantallas. Si se siente pesado, se revisa antes de la Fase 2 |
 | El dialog dentro del wizard desmonta el alta o pierde el estado | El dialog es un overlay, no una navegación; el E2E verifica explícitamente que ningún campo tipeado se pierda |
