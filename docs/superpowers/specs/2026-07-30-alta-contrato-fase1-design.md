@@ -156,9 +156,11 @@ problema **ahí mismo** en vez de mandar al usuario a otra sección:
 
 ## Testing
 
-- **Unit del borrador (sin DB)**: `BorradorContrato` incluye **todos** los campos del wizard que van al
-  POST, `devengarDesde` entre ellos — un test que compare las claves guardadas contra la lista esperada
-  y falle si alguien agrega un campo al wizard y se olvida del borrador.
+- ⚠️ **`apps/inmobiliaria` no tiene runner de tests** (no hay vitest ni jest ni un solo `.test.tsx`).
+  Montar uno para esta fase sería scope que nadie pidió, así que **el front se verifica en el navegador**
+  más `tsc --noEmit` (baseline 0). Vale la pena montarlo en algún momento; no acá.
+- **El riesgo de "agregué un campo al wizard y me olvidé del borrador"** se cubre sin test: el borrador
+  lleva `version`, y al cambiar de versión los viejos se descartan en vez de restaurarse mal.
 - **Integración de `devengarDesde`**: alta con `devengarDesde` del mes en curso → cero liquidaciones anteriores; alta con `devengarDesde` **y** `periodosAnteriores` → **400**; alta sin `devengarDesde` → comportamiento idéntico al de hoy (no regresión).
 - **E2E en navegador**: cargar medio contrato → cerrar la pestaña → volver a entrar → el borrador se
   ofrece y se recupera **con el aviso de los adjuntos** (no regresión de lo que ya funciona, más el
