@@ -28,6 +28,7 @@ import {
   obtenerNamespaceBorrador,
   type BorradorContrato,
 } from '@/lib/contrato-borrador-storage';
+import { TAMANIO_MAX, formatTamanio } from '@/lib/contrato-documentos-storage';
 import type { PersonaListado } from '@/lib/api/use-inquilinos';
 import { usePropiedades, useMercado, useCobranza } from '@/lib/api/hooks';
 import {
@@ -715,7 +716,7 @@ interface ContratoNuevoApi {
   estado?: string;
 }
 
-/** Un file input compacto para una foto de DNI (frente o dorso) del wizard. */
+/** Un file input compacto para un papel del expediente (foto o PDF) del wizard. */
 function DniFileInput({
   id,
   label,
@@ -727,6 +728,24 @@ function DniFileInput({
   file: File | null;
   onPick: (f: File | null) => void;
 }) {
+  // El tamaño se valida acá y no al confirmar: la subida ocurre DESPUÉS del alta,
+  // así que un archivo pasado de tope no fallaba al elegirlo sino en un 413 al
+  // final, con el contrato ya creado y un toast genérico que no decía cuál de
+  // los archivos era el problema.
+  const elegir = (f: File) => {
+    if (f.size > TAMANIO_MAX) {
+      toast({
+        variant: 'destructive',
+        title: 'Archivo muy grande',
+        description: `"${f.name}" pesa ${formatTamanio(f.size)}. El máximo es ${formatTamanio(
+          TAMANIO_MAX,
+        )} por archivo — probá con una foto de menor calidad o un PDF más liviano.`,
+      });
+      return;
+    }
+    onPick(f);
+  };
+
   return (
     <div className="space-y-1">
       <Label htmlFor={id} className="text-xs text-muted-foreground">{label}</Label>
@@ -757,7 +776,7 @@ function DniFileInput({
         className="hidden"
         onChange={(e) => {
           const f = e.target.files?.[0];
-          if (f) onPick(f);
+          if (f) elegir(f);
           e.target.value = '';
         }}
       />
@@ -2123,7 +2142,9 @@ function CargarContratoApiWizard() {
                   <DniFileInput id="dni-dorso" label="Dorso" file={dniDorso} onPick={setDniDorso} />
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Las guardamos en el expediente del contrato. También podés cargarlas después desde el detalle.
+                  Las guardamos en el expediente del contrato. Fotos o PDF de hasta{' '}
+                  {formatTamanio(TAMANIO_MAX)} cada una. También podés cargarlas después desde el
+                  detalle.
                 </p>
               </div>
 
