@@ -18,7 +18,7 @@ import { aplicarDepositoADeuda } from '../lib/aplicar-deposito.js';
 import { calcularMora, resolverEsquemaMora } from '../lib/punitorios.js';
 import { aplicarEstadoInicial, EstadoInicialInvalido } from '../lib/estado-inicial-contrato.js';
 import { ajustesDeVigenciasCanon, validarVigenciasCanon } from '@llave/shared/vigencias-canon';
-import { buscarOCrearPersona } from '../lib/persona.js';
+import { buscarOCrearPersona, EmailDeOtraPersona } from '../lib/persona.js';
 import { borrarArchivoSiHuerfano, urlEsDelTenant } from './uploads.js';
 import { enviarInvitacionInquilino, enviarInvitacionEquipo } from '../mailer.js';
 import { contratoQuedaPendiente, diaCivilAR, venceDespuesDeHoy, yaVencio } from '@llave/shared';
@@ -972,7 +972,7 @@ export async function coreRoutes(app: FastifyInstance) {
     const emailInq = d.inquilino.email ? d.inquilino.email.toLowerCase() : null;
     // El email PUEDE repetirse entre contratos del MISMO inquilino (multi-alquiler): ya
     // no hay pre-check que lo bloquee. La única colisión posible es que ese email lo use
-    // OTRA persona (distinto DNI) → la atrapa el unique de Persona (P2002, abajo).
+    // OTRA persona (distinto DNI) → la corta `buscarOCrearPersona` con 409 (más abajo).
     // Reuso (req 3): si el alta trae personaId, la Persona debe existir en ESTE tenant.
     // (El guard de email de arriba sigue aplicando: un 2º contrato reusado no puede
     // repetir el email de otra fila — se deja vacío o distinto; la identidad vive en Persona.)
@@ -1099,14 +1099,21 @@ export async function coreRoutes(app: FastifyInstance) {
       const persona = d.personaId
         ? // Reuso explícito: agrupa bajo la Persona elegida (ya validada como del tenant).
           await tx.persona.findFirstOrThrow({ where: { id: d.personaId, inmobiliariaId: u.inmobiliariaId } })
-        : await buscarOCrearPersona(tx, {
-            inmobiliariaId: u.inmobiliariaId,
-            dni: d.inquilino.dni || null,
-            email: emailInq,
-            nombre: d.inquilino.nombre,
-            apellido: d.inquilino.apellido || null,
-            telefono: d.inquilino.telefono || null,
-          });
+        : await buscarOCrearPersona(
+            tx,
+            {
+              inmobiliariaId: u.inmobiliariaId,
+              dni: d.inquilino.dni || null,
+              email: emailInq,
+              nombre: d.inquilino.nombre,
+              apellido: d.inquilino.apellido || null,
+              telefono: d.inquilino.telefono || null,
+            },
+            // El alta manual corta cuando el email es de otra persona (ver abajo, el 409):
+            // sin esto el contrato queda colgando de la Persona ajena y el 409 no dispara
+            // nunca, porque `buscarOCrearPersona` reusa la Persona y el unique jamás se viola.
+            { alColisionarEmailConOtroDni: 'rechazar' },
+          );
       await tx.inquilino.update({ where: { id: inq.id }, data: { contratoId: contrato.id, personaId: persona.id } });
       if (contratoPendiente) {
         // BORRADOR: NO se reclama la propiedad ni se devengan liquidaciones hasta
@@ -1230,10 +1237,19 @@ export async function coreRoutes(app: FastifyInstance) {
       if (e instanceof EstadoInicialInvalido) {
         return reply.code(400).send({ message: e.message });
       }
-      // Email de OTRA persona: el unique de Persona (inmobiliariaId,email) impide que
-      // dos personas DISTINTAS (distinto DNI) compartan el mismo email de login. Si es
-      // el mismo inquilino, hay que reusarlo ("¿Ya está en tu cartera?"), no cargarlo
-      // de nuevo. Lo convertimos en un 409 claro en vez de un 500.
+      // Email de OTRA persona: dos personas DISTINTAS (distinto DNI) no pueden compartir el
+      // mismo email, que es la identidad de LOGIN (@@unique([inmobiliariaId, email]) en
+      // Persona). Si es el mismo inquilino, hay que reusarlo ("¿Ya está en tu cartera?"), no
+      // cargarlo de nuevo. Lo convertimos en un 409 claro en vez de un 500.
+      // Vienen por dos caminos: `EmailDeOtraPersona` lo tira `buscarOCrearPersona` cuando la
+      // detecta antes del create (el caso normal), y el P2002 queda como red por si alguna
+      // vez el unique se viola igual — sin el primero el 409 no salía nunca, porque el
+      // find-or-create compartido con la importación reusaba la Persona ajena y devolvía 200.
+      if (e instanceof EmailDeOtraPersona) {
+        return reply.code(409).send({
+          message: 'Ese email ya lo usa otra persona en tu cartera. Si es el mismo inquilino, buscalo en "¿Ya está en tu cartera?"; si no, poné otro email.',
+        });
+      }
       if (e && typeof e === 'object' && (e as { code?: string }).code === 'P2002') {
         return reply.code(409).send({
           message: 'Ese email ya lo usa otra persona en tu cartera. Si es el mismo inquilino, buscalo en "¿Ya está en tu cartera?"; si no, poné otro email.',
