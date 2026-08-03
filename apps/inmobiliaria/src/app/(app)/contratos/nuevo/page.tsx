@@ -28,7 +28,17 @@ import {
   obtenerNamespaceBorrador,
   type BorradorContrato,
 } from '@/lib/contrato-borrador-storage';
-import { TAMANIO_MAX, formatTamanio } from '@/lib/contrato-documentos-storage';
+import type { TipoDocContrato } from '@/lib/contrato-documentos-storage';
+import {
+  claveDocumento,
+  etiquetaDocumento,
+  faltantesDeExpediente,
+} from '@/lib/documentos-requeridos';
+import {
+  PasoDocumentacionAlta,
+  type DocsElegidos,
+} from '@/components/paso-documentacion-alta';
+import { ServiciosPublicosPanel } from '@/components/servicios-publicos-panel';
 import type { PersonaListado } from '@/lib/api/use-inquilinos';
 import { usePropiedades, useMercado, useCobranza } from '@/lib/api/hooks';
 import {
@@ -668,14 +678,20 @@ function formatFechaDeInput(valor: string | number | null | undefined): string {
 // El paso 4 (Períodos anteriores) es CONDICIONAL: sólo existe cuando la fecha
 // de inicio es pasada y ya venció al menos un período. Si no aplica, el wizard
 // salta 3 → 5 y el header de pasos no lo muestra.
-type PasoApi = 1 | 2 | 3 | 4 | 5;
+//
+// Documentación y Servicios van DESPUÉS del 4 a propósito: metidos antes,
+// correrían el paso condicional un lugar y el salto `sig === 4 && !hayPeriodos`
+// saltearía el paso equivocado, en silencio.
+type PasoApi = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
 const pasosApi: ReadonlyArray<{ id: PasoApi; label: string }> = [
   { id: 1, label: 'Propiedad' },
   { id: 2, label: 'Inquilino' },
   { id: 3, label: 'Términos' },
   { id: 4, label: 'Períodos anteriores' },
-  { id: 5, label: 'Confirmar' },
+  { id: 5, label: 'Documentación' },
+  { id: 6, label: 'Servicios' },
+  { id: 7, label: 'Confirmar' },
 ];
 
 const indicesAjuste: Array<{ value: IndiceAjuste; label: string }> = [
@@ -714,74 +730,6 @@ interface ContratoNuevoApi {
    * toast NO debe afirmar ninguno de los dos estados — ver `estadoContrato`.
    */
   estado?: string;
-}
-
-/** Un file input compacto para un papel del expediente (foto o PDF) del wizard. */
-function DniFileInput({
-  id,
-  label,
-  file,
-  onPick,
-}: {
-  id: string;
-  label: string;
-  file: File | null;
-  onPick: (f: File | null) => void;
-}) {
-  // El tamaño se valida acá y no al confirmar: la subida ocurre DESPUÉS del alta,
-  // así que un archivo pasado de tope no fallaba al elegirlo sino en un 413 al
-  // final, con el contrato ya creado y un toast genérico que no decía cuál de
-  // los archivos era el problema.
-  const elegir = (f: File) => {
-    if (f.size > TAMANIO_MAX) {
-      toast({
-        variant: 'destructive',
-        title: 'Archivo muy grande',
-        description: `"${f.name}" pesa ${formatTamanio(f.size)}. El máximo es ${formatTamanio(
-          TAMANIO_MAX,
-        )} por archivo — probá con una foto de menor calidad o un PDF más liviano.`,
-      });
-      return;
-    }
-    onPick(f);
-  };
-
-  return (
-    <div className="space-y-1">
-      <Label htmlFor={id} className="text-xs text-muted-foreground">{label}</Label>
-      {file ? (
-        <div className="flex items-center justify-between gap-2 rounded-md border border-border bg-background px-2.5 py-2 text-xs">
-          <span className="truncate">{file.name}</span>
-          <button
-            type="button"
-            onClick={() => onPick(null)}
-            className="shrink-0 text-muted-foreground hover:text-destructive"
-            aria-label={`Quitar ${label}`}
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      ) : (
-        <label
-          htmlFor={id}
-          className="flex cursor-pointer items-center gap-2 rounded-md border border-dashed border-border bg-background px-2.5 py-2 text-xs text-muted-foreground transition-colors hover:border-primary/60"
-        >
-          <FileUp className="h-3.5 w-3.5" /> Elegir foto o PDF
-        </label>
-      )}
-      <input
-        id={id}
-        type="file"
-        accept="image/*,application/pdf"
-        className="hidden"
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) elegir(f);
-          e.target.value = '';
-        }}
-      />
-    </div>
-  );
 }
 
 // ---- Períodos anteriores (contratos con fecha de inicio pasada) ----
@@ -940,7 +888,12 @@ function borradorTieneContenido(b: BorradorContrato): boolean {
       (b.depositoGarantia && b.depositoGarantia.trim().length > 0) ||
       (b.comisionInmobiliaria && b.comisionInmobiliaria.trim().length > 0) ||
       (b.moraValor && b.moraValor.trim().length > 0) ||
-      (b.periodosForm && Object.keys(b.periodosForm).length > 0),
+      (b.periodosForm && Object.keys(b.periodosForm).length > 0) ||
+      // Los archivos del paso Documentación NO se guardan (un File no
+      // serializa), pero la cantidad de garantes sí. Sin este chequeo, alguien
+      // que solo pasó por ese paso no vería el diálogo de "retomar" y su
+      // borrador se pisaría en silencio con el form vacío.
+      (typeof b.garantesCount === 'number' && b.garantesCount > 0),
   );
 }
 
@@ -972,12 +925,6 @@ function CargarContratoApiWizard() {
   const [email, setEmail] = useState('');
   const [telefono, setTelefono] = useState('');
   const [dni, setDni] = useState('');
-  // Fotos del DNI del titular (frente/dorso), opcionales. Se guardan como File
-  // y se suben al expediente del contrato DESPUÉS del alta (necesitan el
-  // contratoId). No duplican nada: van al mismo DocumentoContrato que ya se ve
-  // en el detalle (grupo "Inquilino titular").
-  const [dniFrente, setDniFrente] = useState<File | null>(null);
-  const [dniDorso, setDniDorso] = useState<File | null>(null);
 
   // Reuso (req 3): traer un inquilino que ya está en la cartera. `personaId` no-null =
   // el alta se agrupa bajo esa Persona existente (historial) en vez de crear una nueva.
@@ -1112,9 +1059,72 @@ function CargarContratoApiWizard() {
     }
   }, [mercado]);
 
+  // Documentación (paso 5). Los papeles elegidos van en UN objeto indexado por
+  // `claveDocumento` en vez de un useState por papel: son 4 del titular + hasta
+  // 3×3 de garantes + 11 tipos sueltos, y este componente ya arrastra 42 estados
+  // planos. Se suben DESPUÉS del alta (necesitan el contratoId).
+  const [docsExpediente, setDocsExpediente] = useState<DocsElegidos>({});
+  // Cuántos garantes tiene el contrato. Acá NO se crea ningún Garante (el alta
+  // no los recibe): define cuántos pares de inputs se muestran y qué
+  // `garanteIndex` viaja en cada documento.
+  const [garantesCount, setGarantesCount] = useState(0);
+
+  const cambiarDoc = (
+    tipo: TipoDocContrato,
+    garanteIndex: number | undefined,
+    file: File | null,
+  ) => {
+    const clave = claveDocumento(tipo, garanteIndex);
+    setDocsExpediente((prev) => {
+      const sig = { ...prev };
+      if (file) {
+        sig[clave] = {
+          file,
+          tipo,
+          ...(garanteIndex != null ? { garanteIndex } : {}),
+          etiqueta: etiquetaDocumento(tipo, garanteIndex),
+        };
+      } else {
+        delete sig[clave];
+      }
+      return sig;
+    });
+  };
+
+  /**
+   * Bajar la cantidad de garantes tiene que TIRAR sus papeles. Si no, el DNI del
+   * garante 3 seguiría en memoria después de decir "tengo 1 garante" y se
+   * subiría igual al expediente, con un `garanteIndex` que el contrato no tiene.
+   */
+  const cambiarGarantesCount = (n: number) => {
+    setGarantesCount(n);
+    setDocsExpediente((prev) =>
+      Object.fromEntries(
+        Object.entries(prev).filter(([, d]) => d.garanteIndex == null || d.garanteIndex <= n),
+      ),
+    );
+  };
+
+  // Lo mismo que muestra el paso 5, para el resumen del paso 7: la misma
+  // fórmula que el checklist del detalle, calculada sobre los File en memoria.
+  const docsElegidos = useMemo(() => Object.values(docsExpediente), [docsExpediente]);
+  const expedienteAlta = useMemo(
+    () =>
+      faltantesDeExpediente(
+        docsElegidos.map((d) => ({ tipo: d.tipo, garanteIndex: d.garanteIndex })),
+        garantesCount,
+      ),
+    [docsElegidos, garantesCount],
+  );
+  /** Papeles cargados que no tapan ningún requerido (pagaré, inventario, etc.). */
+  const docsSueltos = docsElegidos.length - expedienteAlta.presentes;
+
   // Flow
   const [confirmando, setConfirmando] = useState(false);
   const [enviando, setEnviando] = useState(false);
+  // Progreso de la subida post-alta: con 8 papeles son 16 requests seguidos y
+  // sin esto la pantalla parece colgada.
+  const [subiendoDocs, setSubiendoDocs] = useState<{ hechos: number; total: number } | null>(null);
   const [errorServidor, setErrorServidor] = useState<string | null>(null);
   const [cancelarAbierto, setCancelarAbierto] = useState(false);
 
@@ -1215,6 +1225,9 @@ function CargarContratoApiWizard() {
     setDesdeCanonActual(b.desdeCanonActual ?? '');
     setDeclaraHistorialCanon(previas.length > 0);
     setMoraHistoricaCongelada(b.moraHistoricaCongelada ?? false);
+    // Default conservador: sin garantes. Los archivos no vuelven (no se guardan),
+    // así que el paso Documentación arranca vacío y el aviso de faltantes lo dice.
+    setGarantesCount(b.garantesCount ?? 0);
 
     const propiedadSigueDisponible = disponibles.some((p) => p.propiedad.id === b.propiedadId);
     if (b.propiedadId && propiedadSigueDisponible) {
@@ -1231,7 +1244,7 @@ function CargarContratoApiWizard() {
       );
       let pasoRestaurado = b.paso as PasoApi;
       if (pasoRestaurado === 4 && periodosBorrador.length === 0) pasoRestaurado = 3;
-      if (!(pasoRestaurado >= 1 && pasoRestaurado <= 5)) pasoRestaurado = 1;
+      if (!(pasoRestaurado >= 1 && pasoRestaurado <= 7)) pasoRestaurado = 1;
       setPaso(pasoRestaurado);
     } else {
       setPaso(1);
@@ -1296,6 +1309,10 @@ function CargarContratoApiWizard() {
         vigenciasPrevias: vigenciasPrevias.map((v) => ({ desde: v.desde, monto: v.monto })),
         desdeCanonActual,
         moraHistoricaCongelada,
+        // Del paso Documentación entra SOLO esto: los File no se pueden
+        // serializar (quedan como `{}`) y restaurarlos mostraría archivos que ya
+        // no existen, que es peor que perderlos.
+        garantesCount,
       };
       guardarBorradorContrato(namespaceBorrador, datos);
       setMostrarGuardado(true);
@@ -1337,6 +1354,9 @@ function CargarContratoApiWizard() {
     vigenciasPrevias,
     desdeCanonActual,
     moraHistoricaCongelada,
+    // Sin esta dep el campo se guardaría solo cuando cambia OTRO campo: la
+    // prueba manual da verde y en uso real se pierde.
+    garantesCount,
   ]);
 
   // Limpieza del timer del indicador "Guardado hace un momento" al desmontar.
@@ -1537,7 +1557,7 @@ function CargarContratoApiWizard() {
   // Saltamos el paso 4 cuando no hay períodos vencidos que declarar.
   const avanzar = () =>
     setPaso((p) => {
-      const sig = Math.min(5, p + 1) as PasoApi;
+      const sig = Math.min(7, p + 1) as PasoApi;
       return sig === 4 && !hayPeriodos ? 5 : sig;
     });
   const retroceder = () =>
@@ -1785,15 +1805,15 @@ function CargarContratoApiWizard() {
       // neutro que no miente en ninguna dirección.
       const estadoContrato: 'activo' | 'pendiente' | 'desconocido' =
         creado.estado === 'ACTIVO' ? 'activo' : creado.estado === 'BORRADOR' ? 'pendiente' : 'desconocido';
-      // Fotos del DNI (si las cargaron): al expediente del contrato recién
+      // Documentación (si cargaron algo): al expediente del contrato recién
       // creado. Best-effort — si una subida falla, el contrato YA quedó dado de
-      // alta; no lo revertimos, solo avisamos que suban el DNI desde el detalle.
-      const dnis: { file: File; tipo: string; etiqueta: string }[] = [
-        ...(dniFrente ? [{ file: dniFrente, tipo: 'DNI_TITULAR_FRENTE', etiqueta: 'DNI titular · frente' }] : []),
-        ...(dniDorso ? [{ file: dniDorso, tipo: 'DNI_TITULAR_DORSO', etiqueta: 'DNI titular · dorso' }] : []),
-      ];
-      let dniFallo = false;
-      for (const d of dnis) {
+      // alta; no lo revertimos, solo avisamos cuántos papeles quedaron afuera.
+      // Son 2 requests por papel (upload + alta del documento), secuenciales:
+      // por eso el contador de progreso.
+      const documentos = Object.values(docsExpediente);
+      let docsFallados = 0;
+      if (documentos.length > 0) setSubiendoDocs({ hechos: 0, total: documentos.length });
+      for (const [i, d] of documentos.entries()) {
         try {
           const up = await subirArchivo(d.file);
           await apiFetch(`/contratos/${creado.id}/documentos`, {
@@ -1801,6 +1821,7 @@ function CargarContratoApiWizard() {
             body: JSON.stringify({
               tipo: d.tipo,
               etiqueta: d.etiqueta,
+              ...(d.garanteIndex != null ? { garanteIndex: d.garanteIndex } : {}),
               nombreArchivo: up.nombreArchivo,
               tipoMime: up.tipoMime,
               tamanioBytes: up.tamanioBytes,
@@ -1808,23 +1829,27 @@ function CargarContratoApiWizard() {
             }),
           });
         } catch {
-          dniFallo = true;
+          docsFallados += 1;
         }
+        setSubiendoDocs({ hechos: i + 1, total: documentos.length });
       }
+      setSubiendoDocs(null);
       // La propiedad pasa a ALQUILADA y el contrato aparece en la lista.
       void qc.invalidateQueries({ queryKey: ['contratos'] });
       void qc.invalidateQueries({ queryKey: ['propiedades'] });
       setConfirmando(false);
       toast({
-        variant: dniFallo ? 'default' : 'success',
+        variant: docsFallados > 0 ? 'default' : 'success',
         title:
           estadoContrato === 'pendiente'
             ? 'Contrato cargado — queda pendiente de aprobación'
             : estadoContrato === 'activo'
               ? 'Contrato dado de alta'
               : 'Contrato cargado',
-        description: dniFallo
-          ? 'Se creó el contrato, pero no pudimos subir alguna foto del DNI. Cargalas desde el detalle.'
+        // El copy dice CUÁNTOS quedaron sin subir: antes hablaba de "alguna foto
+        // del DNI" y con un expediente de 8 papeles eso mentía.
+        description: docsFallados > 0
+          ? `Se creó el contrato, pero ${docsFallados === 1 ? 'quedó 1 documento sin subir' : `quedaron ${docsFallados} documentos sin subir`}. Cargalo${docsFallados === 1 ? '' : 's'} desde el detalle del contrato.`
           : estadoContrato === 'pendiente'
             ? 'Un Admin tiene que aprobarlo. Hasta entonces no genera cuotas ni ocupa la propiedad.'
             : estadoContrato === 'activo'
@@ -2133,20 +2158,8 @@ function CargarContratoApiWizard() {
                 </div>
               </div>
 
-              {/* Fotos del DNI del titular (opcional): quedan en el expediente del
-                  contrato. Se suben tras el alta (necesitan el contratoId). */}
-              <div className="space-y-2 rounded-lg border border-dashed border-border bg-muted/20 p-3">
-                <p className="text-sm font-medium">Fotos del DNI del inquilino <span className="font-normal text-muted-foreground">(opcional)</span></p>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <DniFileInput id="dni-frente" label="Frente" file={dniFrente} onPick={setDniFrente} />
-                  <DniFileInput id="dni-dorso" label="Dorso" file={dniDorso} onPick={setDniDorso} />
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Las guardamos en el expediente del contrato. Fotos o PDF de hasta{' '}
-                  {formatTamanio(TAMANIO_MAX)} cada una. También podés cargarlas después desde el
-                  detalle.
-                </p>
-              </div>
+              {/* Las fotos del DNI vivían acá. Se mudaron al paso Documentación
+                  para que el expediente entero se cargue en UN solo lugar. */}
 
               <div className="flex justify-between border-t pt-4">
                 <Button variant="ghost" onClick={retroceder}>
@@ -2883,6 +2896,49 @@ function CargarContratoApiWizard() {
         )}
 
         {paso === 5 && (
+          <PasoDocumentacionAlta
+            docs={docsExpediente}
+            onCambiarDoc={cambiarDoc}
+            garantesCount={garantesCount}
+            onGarantesCount={cambiarGarantesCount}
+            onVolver={retroceder}
+            onContinuar={avanzar}
+          />
+        )}
+
+        {paso === 6 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Servicios de la propiedad</CardTitle>
+              <CardDescription>
+                Distribuidora, número de cuenta y medidor de cada servicio. Todo opcional.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              {/* No es cosmético: el panel escribe contra la PROPIEDAD apenas se
+                  aprieta Guardar en su dialog, así que el dato queda aunque
+                  después se cancele el alta. Que nadie se entere por sorpresa. */}
+              <p className="text-sm text-muted-foreground">
+                Estos datos quedan guardados en la propiedad y los va a ver el inquilino en su
+                app. Si mañana entra otro inquilino, se mantienen.
+              </p>
+              <ServiciosPublicosPanel propiedadId={propiedadId} />
+              <div className="flex justify-between border-t pt-4">
+                <Button variant="ghost" onClick={retroceder}>
+                  <ArrowLeft className="h-4 w-4" />
+                  Volver
+                </Button>
+                {/* Sin disabled: los servicios nunca frenan el alta. */}
+                <Button onClick={avanzar}>
+                  Continuar
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {paso === 7 && (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -2949,6 +3005,20 @@ function CargarContratoApiWizard() {
                         }`
                   }
                 />
+                {/* Lo que se va a subir después del alta. Que el operador no se
+                    entere recién en el detalle de que subió 2 de 6 papeles. */}
+                <ResumenItem
+                  label="Documentación"
+                  value={
+                    docsElegidos.length === 0
+                      ? 'Sin papeles — se cargan después desde el detalle'
+                      : `${expedienteAlta.presentes} de ${expedienteAlta.total} papeles${
+                          docsSueltos > 0
+                            ? ` (+ ${docsSueltos} suelto${docsSueltos === 1 ? '' : 's'})`
+                            : ''
+                        }`
+                  }
+                />
                 {vigenciasCanonPayload && (
                   <ResumenItem
                     label="Historial de alquiler"
@@ -2992,7 +3062,7 @@ function CargarContratoApiWizard() {
               </div>
 
               {/* Última compuerta: a este paso se puede llegar por un borrador
-                  restaurado, que puede tener guardado `paso: 5` con meses todavía
+                  restaurado, que puede tener guardado `paso: 7` con meses todavía
                   sin declarar. Sin esto el alta saldría con menos períodos
                   declarados que devengados. */}
               {hayPeriodos && motivoPeriodosIncompleto && (
@@ -3054,6 +3124,11 @@ function CargarContratoApiWizard() {
         }
         confirmLabel="Sí, dar de alta"
         loading={enviando}
+        // El contrato ya se creó y ahora está subiendo papeles de a uno: sin el
+        // contador, 16 requests seguidos se ven como una pantalla trabada.
+        {...(subiendoDocs
+          ? { loadingLabel: `Subiendo documentación… ${subiendoDocs.hechos} de ${subiendoDocs.total}` }
+          : {})}
         onConfirm={dar_de_alta}
       />
 

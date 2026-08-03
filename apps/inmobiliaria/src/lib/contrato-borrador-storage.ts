@@ -36,6 +36,12 @@ export interface BorradorContrato {
   /** Mes desde el que rige el monto actual del contrato. */
   desdeCanonActual?: string;
   moraHistoricaCongelada?: boolean;
+  /**
+   * Cuántos garantes declaró el paso Documentación. Es lo ÚNICO de ese paso que
+   * entra al borrador: los `File` no, porque `JSON.stringify` los serializa como
+   * `{}` y al restaurar la pantalla mostraría archivos que ya no existen.
+   */
+  garantesCount?: number;
 }
 
 export function obtenerNamespaceBorrador(): string | null {

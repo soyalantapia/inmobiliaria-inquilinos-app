@@ -97,12 +97,22 @@ export const TIPO_SERVICIO_LABEL: Record<TipoServicio, string> = {
   CABLE: 'Cable / TV',
 };
 
+/**
+ * Sugerencias del `<Select>` de distribuidora. NO es un enum: `distribuidora` es
+ * texto libre (max 120) en el back, y el campo de abajo del select acepta
+ * cualquier cosa. Igual importa que la de la zona esté acá: si el valor guardado
+ * no figura en la lista, el trigger del select se ve VACÍO y el dato solo
+ * aparece en el input, que se lee como "no está cargado".
+ *
+ * La Rioja (EDELAR, Aguas Riojanas, DGR La Rioja) se sumó por el primer cliente
+ * de la provincia. Gas no necesita nada: Ecogas ya es la distribuidora de allá.
+ */
 export const DISTRIBUIDORAS_SUGERIDAS: Record<TipoServicio, string[]> = {
-  LUZ: ['Edenor', 'Edesur', 'EPEC', 'EDEA', 'Edelap'],
+  LUZ: ['Edenor', 'Edesur', 'EPEC', 'EDEA', 'Edelap', 'EDELAR'],
   GAS: ['Metrogas', 'Naturgy', 'Camuzzi', 'Ecogas'],
-  AGUA: ['AySA', 'Aguas Cordobesas', 'OSSE', 'Aguas Bonaerenses'],
+  AGUA: ['AySA', 'Aguas Cordobesas', 'OSSE', 'Aguas Bonaerenses', 'Aguas Riojanas'],
   INTERNET: ['Fibertel', 'Telecentro', 'Movistar', 'Personal', 'Claro'],
-  ABL: ['GCBA · Rentas CABA', 'ARBA', 'DGR Córdoba'],
+  ABL: ['GCBA · Rentas CABA', 'ARBA', 'DGR Córdoba', 'DGR La Rioja'],
   CABLE: ['Cablevisión', 'DirecTV', 'Telecentro'],
 };
 
