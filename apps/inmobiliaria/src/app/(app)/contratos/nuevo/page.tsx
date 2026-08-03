@@ -1583,7 +1583,7 @@ function CargarContratoApiWizard() {
               <ArrowLeft className="h-3 w-3" />
               Volver
             </Link>
-            <StepsApi actual={paso} pasos={pasosVisibles} />
+            <StepsApi actual={paso} pasos={pasosVisibles} onIr={(p) => setPaso(p)} />
             {mostrarGuardado && (
               <p className="mt-1.5 text-xs text-muted-foreground">Guardado hace un momento</p>
             )}
@@ -1652,11 +1652,18 @@ function CargarContratoApiWizard() {
                 </div>
               )}
 
-              <div className="flex justify-end border-t pt-4">
-                <Button onClick={avanzar} disabled={!pasoPropiedadValido}>
-                  Continuar
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
+              <div className="space-y-2 border-t pt-4">
+                <div className="flex justify-end">
+                  <Button onClick={avanzar} disabled={!pasoPropiedadValido}>
+                    Continuar
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </div>
+                {!pasoPropiedadValido && (
+                  <p className="text-right text-xs text-muted-foreground">
+                    Elegí una propiedad para seguir.
+                  </p>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -1860,15 +1867,22 @@ function CargarContratoApiWizard() {
                 </p>
               </div>
 
-              <div className="flex justify-between border-t pt-4">
-                <Button variant="ghost" onClick={retroceder}>
-                  <ArrowLeft className="h-4 w-4" />
-                  Volver
-                </Button>
-                <Button onClick={avanzar} disabled={!pasoInquilinoValido}>
-                  Continuar
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
+              <div className="space-y-2 border-t pt-4">
+                <div className="flex justify-between">
+                  <Button variant="ghost" onClick={retroceder}>
+                    <ArrowLeft className="h-4 w-4" />
+                    Volver
+                  </Button>
+                  <Button onClick={avanzar} disabled={!pasoInquilinoValido}>
+                    Continuar
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </div>
+                {!pasoInquilinoValido && (
+                  <p className="text-right text-xs text-muted-foreground">
+                    Completá el nombre del inquilino.
+                  </p>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -1987,15 +2001,22 @@ function CargarContratoApiWizard() {
                 </div>
               </div>
 
-              <div className="flex justify-between border-t pt-4">
-                <Button variant="ghost" onClick={retroceder}>
-                  <ArrowLeft className="h-4 w-4" />
-                  Volver
-                </Button>
-                <Button onClick={avanzar} disabled={!pasoPlazoValido}>
-                  Continuar
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
+              <div className="space-y-2 border-t pt-4">
+                <div className="flex justify-between">
+                  <Button variant="ghost" onClick={retroceder}>
+                    <ArrowLeft className="h-4 w-4" />
+                    Volver
+                  </Button>
+                  <Button onClick={avanzar} disabled={!pasoPlazoValido}>
+                    Continuar
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </div>
+                {!pasoPlazoValido && (
+                  <p className="text-right text-xs text-muted-foreground">
+                    Revisá las fechas: la de fin tiene que ser posterior a la de inicio.
+                  </p>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -2284,15 +2305,20 @@ function CargarContratoApiWizard() {
                 </div>
               </div>
 
-              <div className="flex justify-between border-t pt-4">
-                <Button variant="ghost" onClick={retroceder}>
-                  <ArrowLeft className="h-4 w-4" />
-                  Volver
-                </Button>
-                <Button onClick={avanzar} disabled={!pasoDineroValido}>
-                  Continuar
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
+              <div className="space-y-2 border-t pt-4">
+                <div className="flex justify-between">
+                  <Button variant="ghost" onClick={retroceder}>
+                    <ArrowLeft className="h-4 w-4" />
+                    Volver
+                  </Button>
+                  <Button onClick={avanzar} disabled={!pasoDineroValido}>
+                    Continuar
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </div>
+                {!pasoDineroValido && (
+                  <p className="text-right text-xs text-muted-foreground">Cargá el monto del alquiler.</p>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -2416,15 +2442,22 @@ function CargarContratoApiWizard() {
                 </span>
               </div>
 
-              <div className="flex justify-between border-t pt-4">
-                <Button variant="ghost" onClick={retroceder}>
-                  <ArrowLeft className="h-4 w-4" />
-                  Volver
-                </Button>
-                <Button onClick={avanzar} disabled={!pasoPeriodosValido}>
-                  Continuar
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
+              <div className="space-y-2 border-t pt-4">
+                <div className="flex justify-between">
+                  <Button variant="ghost" onClick={retroceder}>
+                    <ArrowLeft className="h-4 w-4" />
+                    Volver
+                  </Button>
+                  <Button onClick={avanzar} disabled={!pasoPeriodosValido}>
+                    Continuar
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </div>
+                {!pasoPeriodosValido && (
+                  <p className="text-right text-xs text-muted-foreground">
+                    Cargá el monto pagado en los períodos que marcaste como parciales.
+                  </p>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -2579,33 +2612,52 @@ function CargarContratoApiWizard() {
 function StepsApi({
   actual,
   pasos,
+  onIr,
 }: {
   actual: PasoApi;
   pasos: ReadonlyArray<{ id: PasoApi; label: string }>;
+  onIr: (p: PasoApi) => void;
 }) {
   return (
     <ol role="list" className="flex flex-wrap items-center gap-x-3 gap-y-2">
       {pasos.map((p, i) => {
+        // `completado` (id < actual) es también nuestra definición de "paso ya
+        // visitado": como sólo se llega a `actual` avanzando de a un paso por
+        // vez (avanzar/retroceder saltean el 5 condicional pero nunca saltan
+        // hacia adelante), cualquier id menor que actual fue recorrido antes.
+        // Reusamos la MISMA condición para habilitar el click — no hay una
+        // lógica de "visitado" separada que se pueda desincronizar.
         const completado = p.id < actual;
         const activo = p.id === actual;
         return (
           <li key={p.id} aria-current={activo ? 'step' : undefined} className="flex items-center gap-2 sm:gap-3">
-            <div
-              className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-semibold ${
-                completado
-                  ? 'bg-primary text-primary-foreground'
-                  : activo
-                    ? 'bg-primary/20 text-primary'
-                    : 'bg-muted text-muted-foreground'
-              }`}
+            <button
+              type="button"
+              disabled={!completado}
+              onClick={() => completado && onIr(p.id)}
+              className={cn(
+                'flex items-center gap-2 sm:gap-3',
+                completado ? 'cursor-pointer hover:opacity-80' : 'cursor-default',
+              )}
+              aria-label={completado ? `Volver a ${p.label}` : undefined}
             >
-              {completado ? <CheckCircle2 className="h-4 w-4" /> : i + 1}
-            </div>
-            <span
-              className={`text-xs sm:text-sm ${activo ? 'font-medium' : completado ? 'text-foreground' : 'text-muted-foreground'}`}
-            >
-              {p.label}
-            </span>
+              <div
+                className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-semibold ${
+                  completado
+                    ? 'bg-primary text-primary-foreground'
+                    : activo
+                      ? 'bg-primary/20 text-primary'
+                      : 'bg-muted text-muted-foreground'
+                }`}
+              >
+                {completado ? <CheckCircle2 className="h-4 w-4" /> : i + 1}
+              </div>
+              <span
+                className={`text-xs sm:text-sm ${activo ? 'font-medium' : completado ? 'text-foreground' : 'text-muted-foreground'}`}
+              >
+                {p.label}
+              </span>
+            </button>
             {i < pasos.length - 1 && <span className="hidden h-px w-8 bg-border sm:block" />}
           </li>
         );
