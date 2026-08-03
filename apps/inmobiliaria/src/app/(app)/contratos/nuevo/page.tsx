@@ -916,6 +916,13 @@ function CargarContratoApiWizard() {
 
   const [paso, setPaso] = useState<PasoApi>(1);
 
+  /**
+   * Si el operador llegó al paso 6, el panel de servicios pudo haber escrito ya
+   * sobre la PROPIEDAD (su PUT es inmediato, no espera al alta). Lo usamos solo
+   * para que el diálogo de cancelar no le mienta diciendo que pierde todo.
+   */
+  const serviciosVisitados = paso >= 6;
+
   // Propiedad
   const [propiedadId, setPropiedadId] = useState('');
 
@@ -3100,11 +3107,20 @@ function CargarContratoApiWizard() {
         )}
       </main>
 
+      {/*
+        Los servicios NO se pierden al cancelar: el paso 5 escribe directo sobre la
+        PROPIEDAD y ese PUT ya se ejecutó. Decir "vas a perder el progreso" a secas
+        era falso justo en el dato que sí quedó guardado.
+      */}
       <ConfirmDialog
         open={cancelarAbierto}
         onOpenChange={setCancelarAbierto}
         title="¿Cancelar la carga?"
-        description="Vas a perder el progreso de este contrato. Esta acción no se puede deshacer."
+        description={
+          serviciosVisitados
+            ? 'Vas a perder el progreso de este contrato. Los servicios que hayas guardado quedan en la propiedad: eso no se borra.'
+            : 'Vas a perder el progreso de este contrato. Esta acción no se puede deshacer.'
+        }
         confirmLabel="Sí, cancelar"
         onConfirm={() => router.push('/contratos')}
       />
