@@ -23,6 +23,15 @@ import { enviarInvitacionInquilino, enviarInvitacionEquipo } from '../mailer.js'
 import { contratoQuedaPendiente, diaCivilAR, venceDespuesDeHoy, yaVencio } from '@llave/shared';
 
 /**
+ * Mensaje único para el 400 de "falta cuenta de cobro directo": antes estaba
+ * duplicado (alta de contrato y cambio de modoCobranza), con riesgo de que uno
+ * de los dos lugares se desactualizara. Misma validación, mismo texto.
+ */
+const faltaCuentaCobranzaDirecta = (nombre: string) =>
+  `Falta la cuenta de cobro directo de ${nombre}`.trim() +
+  '. Entrá a la ficha del propietario → "Cuenta de cobranza directa" y cargá banco + CBU (22 dígitos) + alias. (El CBU/alias del alta del propietario NO alcanza para el cobro directo.)';
+
+/**
  * Una liquidación cuenta como VENCIDA (a efectos de cobranza) si su estado ya es
  * VENCIDO, o si todavía no está paga (PENDIENTE/PARCIAL) y su vencimiento pasó.
  * El estado persistido sólo vira a VENCIDO cuando corre el barrido del devengo
@@ -562,6 +571,12 @@ export async function coreRoutes(app: FastifyInstance) {
         participaciones: {
           include: { propiedad: { select: { id: true, direccion: true, estado: true } } },
         },
+        // El wizard de alta de contrato (paso Dinero) necesita saber si el
+        // propietario YA tiene la cuenta de cobro directo cargada para no
+        // mandar a la persona a otra pantalla; sin este include el listado
+        // siempre venía sin cuenta y el aviso de "falta cargarla" aparecía
+        // incluso para dueños que sí la tenían.
+        cuentaCobranza: true,
       },
       orderBy: { apellido: 'asc' },
     });
@@ -970,8 +985,7 @@ export async function coreRoutes(app: FastifyInstance) {
       // dónde transferir.
       if (!part.propietario.cuentaCobranza) {
         return reply.code(400).send({
-          message: `Falta la cuenta de cobro directo de ${part.propietario.nombre} ${part.propietario.apellido ?? ''}`.trim() +
-            '. Entrá a la ficha del propietario → "Cuenta de cobranza directa" y cargá banco + CBU (22 dígitos) + alias. (El CBU/alias del alta del propietario NO alcanza para el cobro directo.)',
+          message: faltaCuentaCobranzaDirecta(`${part.propietario.nombre} ${part.propietario.apellido ?? ''}`),
         });
       }
       cobraDirectoPropietarioId = part.propietarioId;
@@ -2879,8 +2893,7 @@ export async function coreRoutes(app: FastifyInstance) {
       }
       if (!part.propietario.cuentaCobranza) {
         return reply.code(400).send({
-          message: `Falta la cuenta de cobro directo de ${part.propietario.nombre} ${part.propietario.apellido ?? ''}`.trim() +
-            '. Entrá a la ficha del propietario → "Cuenta de cobranza directa" y cargá banco + CBU (22 dígitos) + alias. (El CBU/alias del alta del propietario NO alcanza para el cobro directo.)',
+          message: faltaCuentaCobranzaDirecta(`${part.propietario.nombre} ${part.propietario.apellido ?? ''}`),
         });
       }
       cobraDirectoPropietarioId = part.propietarioId;
