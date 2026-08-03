@@ -33,7 +33,7 @@ erDiagram
     Propiedad ||--o{ Contrato : "PropiedadContratos"
     Propiedad ||--o| Contrato : "contratoActual (1:1)"
     Propiedad ||--o{ ServicioPublico : "tiene"
-    Propiedad ||--o{ MovimientoCaja : "genera"
+    Propiedad |o--o{ MovimientoCaja : "genera (propiedad OPCIONAL)"
     Propiedad ||--o{ Reclamo : "recibe"
 
     Contrato ||--o| Inquilino : "titular (1:1)"
@@ -55,6 +55,8 @@ erDiagram
 
     Rendicion ||--o{ GastoRendido : "incluye"
     Rendicion ||--o{ MovimientoCaja : "descuenta"
+
+    CuentaCaja |o--o{ MovimientoCaja : "de dónde sale / a dónde entra"
 
     Reclamo ||--o{ ReclamoEvento : "timeline"
     Reclamo ||--o| VisitaProfesional : "1:1"

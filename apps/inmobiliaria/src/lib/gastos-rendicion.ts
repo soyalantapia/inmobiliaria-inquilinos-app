@@ -69,6 +69,9 @@ function gastoDesdeCaja(
   propietarioId: string,
 ): GastoAtribuido | null {
   if (mov.tipo !== 'GASTO') return null;
+  // Sin propiedad no hay dueño a quien atribuírselo (gastos de oficina, movimientos
+  // entre socios): no entra en la rendición de nadie. Espejo del filtro del server.
+  if (!mov.propiedadId) return null;
   const part = participacionDe(propietarioId, mov.propiedadId);
   if (part === 0) return null;
   const prop = propiedadesMock.find((p) => p.id === mov.propiedadId);

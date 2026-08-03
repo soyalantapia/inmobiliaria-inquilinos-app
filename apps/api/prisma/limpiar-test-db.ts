@@ -102,6 +102,14 @@ async function main() {
       );
     }
 
+    // Movimientos de caja SIN propiedad: el borrado de arriba filtra por `propiedadId in
+    // (...)`, así que a estos no los alcanza nunca y se acumulan corrida tras corrida.
+    // Como /cuentas y /metricas agregan sin filtrar por propiedad, esa basura se suma a
+    // sus totales y hace fallar asserts de otras suites — rojos que parecen regresión y
+    // no lo son. El seed no crea ninguno, así que todo lo que haya acá es de una corrida.
+    const huerfanos = await prisma.movimientoCaja.deleteMany({ where: { propiedadId: null } }).catch(() => null);
+    if (huerfanos && huerfanos.count > 0) borrado.push(`${huerfanos.count} movimientos de caja sin propiedad`);
+
     const [c, p, o, i] = await Promise.all([
       prisma.contrato.count({ where: w }),
       prisma.propiedad.count({ where: w }),

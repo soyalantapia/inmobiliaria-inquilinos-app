@@ -314,7 +314,8 @@ export function useAprobaciones(): {
 
 interface MovimientoCajaApi {
   id: string;
-  propiedadId: string;
+  /** Opcional: los gastos de oficina y los movimientos entre socios no son de una unidad. */
+  propiedadId: string | null;
   contratoId: string | null;
   tipo: MovimientoCaja['tipo'];
   categoria: MovimientoCaja['categoria'];
@@ -355,7 +356,8 @@ function mapMovimiento(m: MovimientoCajaApi): MovimientoCaja {
 }
 
 export interface NuevoGasto {
-  propiedadId: string;
+  /** Opcional: sin propiedad el movimiento no entra en ninguna rendición. */
+  propiedadId?: string | null;
   /** GASTO = salida, INGRESO_EXTRA = entrada. Default GASTO. */
   tipo?: MovimientoCaja['tipo'];
   categoria: MovimientoCaja['categoria'];
@@ -398,7 +400,7 @@ export function useCaja(): {
       cargando: false,
       crearGasto: async (g) => {
         cargarMovimientoLocal({
-          propiedadId: g.propiedadId,
+          propiedadId: g.propiedadId ?? null,
           contratoId: null,
           tipo: g.tipo ?? 'GASTO',
           categoria: g.categoria,
@@ -1508,9 +1510,13 @@ export function useDashboard(): DashboardData {
   // rendición (paridad con el demo `calcularDashboardStats`, que resta
   // gastosPendientes). En prod el path había quedado sin restar los gastos → el
   // número "A rendir a propietarios" salía inflado hasta que se hacía la rendición.
+  // Sólo los que ALGUNA VEZ van a descontarse. Un gasto sin propiedad no entra en
+  // ninguna rendición, así que su `descontadoEnRendicion` se queda en false para
+  // siempre: contarlo acá restaba de "A rendir a propietarios" una plata que nunca
+  // se le iba a descontar a nadie, y el número no se corregía nunca más.
   const gastosPendientes = apiEnabled
     ? movsCaja
-        .filter((m) => m.tipo === 'GASTO' && !m.descontadoEnRendicion)
+        .filter((m) => m.tipo === 'GASTO' && !m.descontadoEnRendicion && !!m.propiedadId)
         .reduce((a, m) => a + m.monto, 0)
     : 0;
   const aRendirMes = Math.max(0, Math.round(cobrado - comisionMes - gastosPendientes));

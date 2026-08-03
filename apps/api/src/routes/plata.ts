@@ -814,6 +814,22 @@ export async function plataRoutes(app: FastifyInstance) {
         return reply.code(409).send({ message: 'El cargo no tiene un contrato válido en tu cartera' });
       }
       const usuario = await prisma.usuario.findUnique({ where: { id: u.userId } });
+      // A qué cuenta entra este cobro. Acá NO hay nadie eligiendo —lo crea el sistema—
+      // así que va a la cuenta predeterminada de la inmobiliaria. Se re-chequea que
+      // acepte entradas aunque la API ya lo valide al marcarla: si alguien después le
+      // cambia la dirección a "solo salida", este ingreso no puede caer ahí.
+      // Si no hay ninguna predeterminada el movimiento entra IGUAL, sin cuenta: este
+      // cobro jamás puede fallar por una cuenta sin configurar. Perder el registro de
+      // la plata es exactamente el bug que este bloque existe para evitar.
+      const cuentaDestino = await prisma.cuentaCaja.findFirst({
+        where: {
+          inmobiliariaId: u.inmobiliariaId,
+          esPredeterminada: true,
+          activa: true,
+          direccion: { in: ['ENTRADA', 'AMBAS'] },
+        },
+        select: { id: true },
+      });
       await prisma.$transaction(async (tx) => {
         await tx.cargoContrato.update({ where: { id }, data: { saldadoAt: new Date(), saldadoPorId: u.userId } });
         await tx.movimientoCaja.create({
@@ -823,6 +839,7 @@ export async function plataRoutes(app: FastifyInstance) {
             contratoId: contrato.id,
             tipo: 'INGRESO_EXTRA',
             categoria: 'OTRO',
+            cuentaId: cuentaDestino?.id ?? null,
             descripcion: `Cobro de cargo al inquilino: ${cargo.concepto}`,
             monto: cargo.monto,
             fecha: new Date(),
@@ -1455,7 +1472,10 @@ export async function plataRoutes(app: FastifyInstance) {
     if (!u) return;
     const body = z
       .object({
-        propiedadId: z.string(),
+        // Propiedad OPCIONAL: no toda la plata de la caja es de una unidad (gastos de
+        // oficina, movimientos entre socios). Sin propiedad el movimiento no entra en
+        // ninguna rendición, que es exactamente lo que se busca.
+        propiedadId: z.string().nullish(),
         // tipo: SALIDA (GASTO) o ENTRADA (INGRESO_EXTRA). Default GASTO (compat).
         tipo: z.enum(['GASTO', 'INGRESO_EXTRA']).default('GASTO'),
         // Categoría obligatoria para gastos; opcional para ingresos (cae a OTRO).
@@ -1482,7 +1502,10 @@ export async function plataRoutes(app: FastifyInstance) {
         // (`.nullish()` es exactamente `.nullable().optional()`.)
         comprobanteUrl: z.string().nullish(),
         // Cuenta de caja de dónde sale / a dónde entra la plata (MP Gaspar, efectivo…).
-        // Opcional: se puede cargar un movimiento sin cuenta (o si aún no cargó ninguna).
+        // OBLIGATORIA en cuanto existe una cuenta activa que pueda RECIBIR este
+        // movimiento (ver la validación de abajo: depende de datos, por eso no se
+        // expresa acá). Sigue nullable en el schema para no romperle la caja a quien
+        // todavía no definió ninguna cuenta que sirva.
         cuentaId: z.string().nullable().optional(),
       })
       .safeParse(request.body ?? {});
@@ -1490,14 +1513,54 @@ export async function plataRoutes(app: FastifyInstance) {
     if (body.data.comprobanteUrl && !urlEsDelTenant(body.data.comprobanteUrl, u.inmobiliariaId)) {
       return reply.code(400).send({ message: 'Comprobante inválido' });
     }
+    // Un id vacío es "sin nada", no un id. Sin esto, un `""` se saltea los guards de
+    // abajo (es falsy) pero sobrevive al `?? null` del create (que sólo atrapa null y
+    // undefined) y llega a la FK como cadena vacía → 500. El panel manda null, pero la
+    // API es pública para el tenant y no puede depender de eso.
+    const propiedadId = body.data.propiedadId || null;
+    const cuentaId = body.data.cuentaId || null;
+
+    // La cuenta es obligatoria DESDE QUE existe una cuenta que pueda recibir este
+    // movimiento. En una frase: si hay dónde imputarlo, hay que imputarlo.
+    //
+    // Por qué "compatible" y no "cualquier cuenta activa": la dirección de la cuenta
+    // manda (una de solo entrada no acepta un gasto). "AyV alquileres y ventas" tiene
+    // hoy UNA cuenta y es de solo entrada — con la regla atada a "tiene alguna cuenta",
+    // sus gastos quedaban imposibles de cargar. Bloquear a la cajera es peor que un
+    // movimiento sin imputar: el gasto no se registraría en ningún lado, que es
+    // exactamente la plata que Camila decía perder. El panel avisa cuando pasa esto
+    // y lleva a crear la cuenta que falta; en cuanto exista, cargar la cuenta es
+    // obligatorio otra vez, sin tocar una línea de código.
+    if (!cuentaId) {
+      const compatibles = await prisma.cuentaCaja.count({
+        where: {
+          inmobiliariaId: u.inmobiliariaId,
+          activa: true,
+          direccion: { in: body.data.tipo === 'INGRESO_EXTRA' ? ['ENTRADA', 'AMBAS'] : ['SALIDA', 'AMBAS'] },
+        },
+      });
+      if (compatibles > 0) {
+        return reply.code(400).send({
+          message:
+            body.data.tipo === 'INGRESO_EXTRA'
+              ? 'Elegí a qué cuenta entra la plata.'
+              : 'Elegí de qué cuenta sale la plata.',
+        });
+      }
+    }
 
     // Cuenta: del tenant + la dirección tiene que permitir el tipo del movimiento
     // (una cuenta "solo entrada" no acepta un gasto; una "solo salida" no acepta un ingreso).
-    if (body.data.cuentaId) {
+    if (cuentaId) {
       const cuenta = await prisma.cuentaCaja.findFirst({
-        where: { id: body.data.cuentaId, inmobiliariaId: u.inmobiliariaId },
+        where: { id: cuentaId, inmobiliariaId: u.inmobiliariaId },
       });
       if (!cuenta) return reply.code(404).send({ message: 'Cuenta inexistente' });
+      // Una cuenta archivada sale del selector pero nada impedía mandarla igual por API:
+      // la plata terminaba imputada a una cuenta que la inmobiliaria ya había dado de baja.
+      if (!cuenta.activa) {
+        return reply.code(409).send({ message: `La cuenta "${cuenta.nombre}" está archivada: elegí una activa` });
+      }
       if (cuenta.direccion === 'ENTRADA' && body.data.tipo === 'GASTO') {
         return reply.code(409).send({ message: `La cuenta "${cuenta.nombre}" es solo de entrada: no podés cargarle un gasto` });
       }
@@ -1506,16 +1569,23 @@ export async function plataRoutes(app: FastifyInstance) {
       }
     }
 
-    const prop = await prisma.propiedad.findFirst({ where: { id: body.data.propiedadId, inmobiliariaId: u.inmobiliariaId } });
-    if (!prop) return reply.code(404).send({ message: 'Propiedad inexistente' });
+    // La propiedad es opcional, pero si viene tiene que ser de ESTA inmobiliaria: este
+    // lookup no es sólo para leer el contrato, es el control de tenant que evita que te
+    // cuelguen un movimiento de la cartera de otra.
+    const prop = propiedadId
+      ? await prisma.propiedad.findFirst({
+          where: { id: propiedadId, inmobiliariaId: u.inmobiliariaId },
+        })
+      : null;
+    if (propiedadId && !prop) return reply.code(404).send({ message: 'Propiedad inexistente' });
     const usuario = await prisma.usuario.findUnique({ where: { id: u.userId } });
     const esIngreso = body.data.tipo === 'INGRESO_EXTRA';
 
     const mov = await prisma.movimientoCaja.create({
       data: {
         inmobiliariaId: u.inmobiliariaId,
-        propiedadId: prop.id,
-        contratoId: prop.contratoActualId,
+        propiedadId: prop?.id ?? null,
+        contratoId: prop?.contratoActualId ?? null,
         tipo: body.data.tipo,
         categoria: body.data.categoria ?? 'OTRO',
         descripcion: body.data.descripcion,
@@ -1526,7 +1596,7 @@ export async function plataRoutes(app: FastifyInstance) {
         // Respaldo del gasto (foto/PDF ya subido a /uploads): antes se validaba
         // pero NO se persistía en el create → el comprobante se perdía.
         comprobanteUrl: body.data.comprobanteUrl,
-        cuentaId: body.data.cuentaId ?? null,
+        cuentaId: cuentaId ?? null,
         cargadoPor: usuario ? `${usuario.nombre} ${usuario.apellido}`.trim() : 'Panel',
       },
     });
@@ -1801,6 +1871,12 @@ export async function plataRoutes(app: FastifyInstance) {
 
         let totalGastos = 0;
         const gastosData = gastosPend.flatMap((g) => {
+          // Un gasto sin propiedad no le corresponde a ningún dueño (gastos de oficina,
+          // movimientos entre socios): no entra en ninguna rendición. La consulta de
+          // arriba ya los deja afuera —un NULL nunca cae dentro de un `IN`— así que esto
+          // no debería dispararse nunca; está para que la garantía sea explícita y no
+          // dependa de un detalle sutil de SQL si alguien toca ese where.
+          if (!g.propiedadId || !g.propiedad) return [];
           const part = owner.participaciones.find((p) => p.propiedadId === g.propiedadId);
           const porcentaje = part?.porcentaje ?? 100;
           const leToca = Number(g.monto) * (porcentaje / 100);
@@ -1944,6 +2020,9 @@ export async function plataRoutes(app: FastifyInstance) {
 
         let totalIngresos = 0;
         const ingresosData = ingresosPend.flatMap((mov) => {
+          // Espejo del filtro de los gastos: un ingreso sin propiedad no es de ningún
+          // dueño, así que no se le acredita a nadie. Ver el comentario de gastosData.
+          if (!mov.propiedadId || !mov.propiedad) return [];
           const part = owner.participaciones.find((p) => p.propiedadId === mov.propiedadId);
           const porcentaje = part?.porcentaje ?? 100;
           const leToca = Number(mov.monto) * (porcentaje / 100);

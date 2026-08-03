@@ -1774,15 +1774,29 @@ model MovimientoCaja {
   id                    String             @id @default(cuid())
   inmobiliariaId        String
   inmobiliaria          Inmobiliaria       @relation(fields: [inmobiliariaId], references: [id])
-  propiedadId           String
-  propiedad             Propiedad          @relation(fields: [propiedadId], references: [id])
+  // Propiedad a la que corresponde el movimiento. OPCIONAL: no toda la plata que pasa
+  // por la caja es de una unidad. Camila carga gastos de la oficina y compensaciones
+  // entre socios que no le corresponden a ningún propietario. Un movimiento SIN
+  // propiedad simplemente no entra en ninguna rendición (las consultas de rendición
+  // filtran `propiedadId: { in: [...] }`, y en SQL un NULL nunca cae dentro de un IN).
+  // `onDelete: Restrict` EXPLÍCITO, no por gusto: el default de Prisma depende de si la
+  // relación es requerida (Restrict) u opcional (SetNull). Al volverla opcional, dejarlo
+  // implícito le cambiaba el significado a la FK sin que nadie lo pidiera — de "no podés
+  // borrar una propiedad que tiene movimientos de caja" (que es lo que core.ts ya valida
+  // contando movimientos antes de borrar) a "se borra y los movimientos quedan huérfanos
+  // en silencio", desprendidos del historial de rendiciones de ese dueño. La FK en la
+  // base ya es RESTRICT: esto la mantiene así y evita que un `migrate dev` la dé vuelta.
+  propiedadId           String?
+  propiedad             Propiedad?         @relation(fields: [propiedadId], references: [id], onDelete: Restrict)
   contratoId            String?
   contrato              Contrato?          @relation(fields: [contratoId], references: [id])
   tipo                  TipoMovimientoCaja
   categoria             CategoriaGasto
   // Cuenta de caja (de dónde sale / a dónde entra la plata): MP Gaspar, efectivo,
-  // banco… La define la inmobiliaria. Nullable: los movimientos viejos no la tienen,
-  // y se puede cargar un movimiento sin cuenta si todavía no cargó ninguna.
+  // banco… La define la inmobiliaria. La carga MANUAL la exige (el server rechaza sin
+  // ella), pero la columna sigue siendo nullable a propósito: los movimientos viejos no
+  // la tienen y el ingreso AUTOMÁTICO al saldar un cargo (plata.ts) puede no encontrar
+  // cuenta predeterminada. Ese cobro NUNCA puede fallar por una cuenta sin configurar.
   cuentaId              String?
   cuenta                CuentaCaja?        @relation(fields: [cuentaId], references: [id])
   descripcion           String
@@ -1825,6 +1839,17 @@ model CuentaCaja {
   // Soft-delete: una cuenta con movimientos no se borra (rompería el historial), se
   // archiva. `activa=false` la saca del selector de carga pero conserva sus movimientos.
   activa         Boolean          @default(true)
+  // Cuenta a la que van los movimientos que el sistema crea SOLO (hoy: el ingreso que
+  // se registra al saldar un cargo del inquilino, en plata.ts). Sin esto esa plata
+  // entra a la caja pero no a ninguna cuenta, y los totales por cuenta nunca cierran
+  // contra el total de la caja — que es justamente para lo que sirven las cuentas.
+  // Ese movimiento automático es un INGRESO, así que la predeterminada tiene que
+  // aceptar entradas (direccion ENTRADA o AMBAS); la API lo valida al marcarla.
+  // Una sola por inmobiliaria: lo garantiza un índice UNIQUE PARCIAL creado con SQL
+  // crudo en la migración (Prisma no sabe expresar `WHERE esPredeterminada = true`,
+  // así que `prisma migrate dev` va a reportar drift acá — es esperado, igual que en
+  // `pagos_liquidacionId_informado_key`).
+  esPredeterminada Boolean        @default(false)
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 

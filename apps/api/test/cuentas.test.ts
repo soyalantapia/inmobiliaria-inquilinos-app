@@ -99,24 +99,70 @@ describe('Cuentas de caja — movimientos respetan la dirección', () => {
     expect(res.statusCode).toBe(404);
   });
 
-  it('un movimiento SIN cuenta sigue permitido (cuentaId null) → 200', async () => {
+  // CAMBIO DE REGLA (03/08/2026): antes se podía cargar un movimiento sin cuenta y
+  // quedaba fuera de todos los totales por cuenta. Ahora la cuenta es obligatoria en
+  // cuanto EXISTE alguna que pueda recibir ese movimiento.
+  it('sin cuenta, habiendo cuentas que aceptan salidas → 400', async () => {
     const res = await cargarMov(tokenAdmin, 'GASTO', 1000, null, 'sin cuenta');
-    expect(res.statusCode).toBe(200);
-    expect(res.json().cuentaId).toBeNull();
+    expect(res.statusCode).toBe(400);
+    expect(res.json().message).toMatch(/de qué cuenta sale/i);
+  });
+
+  it('sin cuenta, habiendo cuentas que aceptan entradas → 400', async () => {
+    const res = await cargarMov(tokenAdmin, 'INGRESO_EXTRA', 1000, null, 'sin cuenta ingreso');
+    expect(res.statusCode).toBe(400);
+    expect(res.json().message).toMatch(/a qué cuenta entra/i);
+  });
+
+  // La contracara, y es la que evita que la regla sea una trampa: si NINGUNA cuenta
+  // puede recibir el movimiento, exigirla dejaría a la cajera sin poder registrar la
+  // plata — que es justo lo que la caja existe para evitar. Se permite y queda sin
+  // cuenta; el panel avisa y lleva a crear la que falta.
+  it('sin cuenta y sin ninguna cuenta compatible → 200 (no se bloquea el registro)', async () => {
+    // Archivamos las tres que aceptan salidas: no queda ninguna para un GASTO.
+    await prismaTest.cuentaCaja.updateMany({
+      where: { id: { in: [idGaspar, idEfectivo, idVacia] } },
+      data: { activa: false },
+    });
+    try {
+      const res = await cargarMov(tokenAdmin, 'GASTO', 1000, null, 'sin compatibles');
+      expect(res.statusCode).toBe(200);
+      expect(res.json().cuentaId).toBeNull();
+    } finally {
+      await prismaTest.cuentaCaja.updateMany({
+        where: { id: { in: [idGaspar, idEfectivo, idVacia] } },
+        data: { activa: true },
+      });
+    }
+  });
+
+  it('una cuenta ARCHIVADA no acepta movimientos → 409', async () => {
+    await prismaTest.cuentaCaja.update({ where: { id: idEfectivo }, data: { activa: false } });
+    try {
+      const res = await cargarMov(tokenAdmin, 'GASTO', 1000, idEfectivo, 'a cuenta archivada');
+      expect(res.statusCode).toBe(409);
+      expect(res.json().message).toMatch(/archivada/i);
+    } finally {
+      await prismaTest.cuentaCaja.update({ where: { id: idEfectivo }, data: { activa: true } });
+    }
   });
 });
 
 describe('Cuentas de caja — totales y detalle', () => {
-  it('GET /cuentas refleja entradas / salidas / saldo por cuenta', async () => {
+  // Los totales vienen POR MONEDA (`totales: [{moneda, entradas, salidas, saldo}]`), no
+  // como un número plano: sumar dólares y pesos uno a uno daba un saldo sin significado.
+  // Con una sola moneda —el caso normal— hay un único renglón, en ARS.
+  it('GET /cuentas refleja entradas / salidas / saldo por cuenta y por moneda', async () => {
     const res = await app.inject({ method: 'GET', url: '/cuentas', headers: auth(tokenAdmin) });
     expect(res.statusCode).toBe(200);
-    const porId = new Map<string, { entradas: number; salidas: number; saldo: number }>(
-      res.json().map((c: { id: string; entradas: number; salidas: number; saldo: number }) => [c.id, c]),
+    type Total = { moneda: string; entradas: number; salidas: number; saldo: number };
+    const ars = new Map<string, Total | undefined>(
+      res.json().map((c: { id: string; totales: Total[] }) => [c.id, c.totales.find((t) => t.moneda === 'ARS')]),
     );
-    expect(porId.get(idGaspar)).toMatchObject({ entradas: 0, salidas: 10000, saldo: -10000 });
-    expect(porId.get(idReintegros)).toMatchObject({ entradas: 5000, salidas: 0, saldo: 5000 });
-    expect(porId.get(idEfectivo)).toMatchObject({ entradas: 0, salidas: 3000, saldo: -3000 });
-    expect(porId.get(idVacia)).toMatchObject({ entradas: 0, salidas: 0, saldo: 0 });
+    expect(ars.get(idGaspar)).toMatchObject({ entradas: 0, salidas: 10000, saldo: -10000 });
+    expect(ars.get(idReintegros)).toMatchObject({ entradas: 5000, salidas: 0, saldo: 5000 });
+    expect(ars.get(idEfectivo)).toMatchObject({ entradas: 0, salidas: 3000, saldo: -3000 });
+    expect(ars.get(idVacia)).toMatchObject({ entradas: 0, salidas: 0, saldo: 0 });
   });
 
   it('GET /cuentas/:id/movimientos devuelve el detalle de esa cuenta', async () => {
@@ -144,7 +190,11 @@ describe('Cuentas de caja — borrado', () => {
     const lista = await app.inject({ method: 'GET', url: '/cuentas', headers: auth(tokenAdmin) });
     const gaspar = lista.json().find((c: { id: string }) => c.id === idGaspar);
     expect(gaspar.activa).toBe(false);
-    expect(gaspar.salidas).toBe(10000);
+    expect(gaspar.totales.find((t: { moneda: string }) => t.moneda === 'ARS').salidas).toBe(10000);
+    // Archivar por DELETE —el camino del botón de la pantalla— también tiene que dejarla
+    // sin la marca de predeterminada, sino los cobros automáticos apuntan a una cuenta
+    // inactiva y pasan a registrarse sin cuenta en silencio.
+    expect(gaspar.esPredeterminada).toBe(false);
   });
 });
 
