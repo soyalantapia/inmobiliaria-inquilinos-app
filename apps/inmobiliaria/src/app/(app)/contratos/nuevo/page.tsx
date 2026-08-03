@@ -1273,8 +1273,22 @@ function CargarContratoApiWizard() {
     const MES_MS = 1000 * 60 * 60 * 24 * 30.44;
     const meses = Math.round((fin.getTime() - inicio.getTime()) / MES_MS);
     const mesesDesdeInicio = Math.max(0, Math.round((Date.now() - inicio.getTime()) / MES_MS));
+    // Mismo clamp que `enumerarPeriodosContrato` (packages/shared/src/periodos.ts):
+    // Math.min(dia, diasDelMesDestino). Sin esto, `setMonth` no clampea sino que
+    // desborda al mes siguiente cuando el día de inicio (29/30/31) no existe en
+    // el mes destino: sumarle 1 mes al 31 de enero da 3 de marzo en vez del 28 de
+    // febrero. Seteamos el día en 1 antes de `setMonth` para que ese mismo
+    // desborde no contamine el cálculo del mes/año destino.
+    const diaInicio = inicio.getDate();
     const primerAjuste = new Date(inicio);
+    primerAjuste.setDate(1);
     primerAjuste.setMonth(primerAjuste.getMonth() + (Number(frecuenciaAjusteMeses) || 12));
+    const diasMesDestino = new Date(
+      primerAjuste.getFullYear(),
+      primerAjuste.getMonth() + 1,
+      0,
+    ).getDate();
+    primerAjuste.setDate(Math.min(diaInicio, diasMesDestino));
 
     return { meses, mesesDesdeInicio, primerAjuste, error: null };
   }, [fechaInicio, fechaFin, frecuenciaAjusteMeses]);
@@ -1882,7 +1896,9 @@ function CargarContratoApiWizard() {
                 </div>
               </div>
 
-              {resumenPlazo?.error && <p className="text-sm text-destructive">{resumenPlazo.error}</p>}
+              {/* Si hay error de fechas, el cartel puntual bajo "Fin" (arriba) ya lo
+                  avisa — no lo repetimos acá para no mostrar el mismo texto dos
+                  veces con distinto tamaño de letra. */}
               {resumenPlazo && resumenPlazo.error === null && (
                 <div className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">
                   <p>Dura {resumenPlazo.meses} meses.</p>
