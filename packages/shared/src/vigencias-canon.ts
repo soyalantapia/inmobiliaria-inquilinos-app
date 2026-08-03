@@ -15,6 +15,11 @@
  *
  * Puro (sin DB): la validación corre ANTES de abrir la transacción del alta, así
  * un historial mal declarado devuelve 400 sin haber escrito nada.
+ *
+ * Vive en `shared` y NO en `apps/api` porque el wizard corre exactamente la misma
+ * validación mientras se tipea, para que el error se vea antes de confirmar y no
+ * como un 400 que tira el alta entera. Dos copias de la misma regla es el bug que
+ * ya nos costó F4 (`venc < now` en el front contra `yaVencio` en el back).
  */
 
 /** Una vigencia tal como la declara el wizard: "desde este mes, el canon es éste". */

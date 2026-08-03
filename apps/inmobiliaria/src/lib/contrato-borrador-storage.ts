@@ -28,6 +28,14 @@ export interface BorradorContrato {
   moraSel: string;
   moraValor: string;
   periodosForm: Record<string, { estado: string; montoPagado: string; moraManual: string; moraEditada: boolean }>;
+  // Campos nuevos: OPCIONALES a propósito. Un borrador guardado antes de esta
+  // versión sigue en localStorage y se lee con el mismo tipo; si fueran
+  // obligatorios el restore mentiría sobre lo que hay guardado.
+  /** Historial de canon declarado, SIN la última vigencia (esa se deriva del monto). */
+  vigenciasPrevias?: Array<{ desde: string; monto: string }>;
+  /** Mes desde el que rige el monto actual del contrato. */
+  desdeCanonActual?: string;
+  moraHistoricaCongelada?: boolean;
 }
 
 export function obtenerNamespaceBorrador(): string | null {

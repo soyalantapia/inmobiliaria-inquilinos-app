@@ -17,7 +17,7 @@ import { conSaldo, montoPagadoPorLiquidacion } from '../lib/saldos.js';
 import { aplicarDepositoADeuda } from '../lib/aplicar-deposito.js';
 import { calcularMora, resolverEsquemaMora } from '../lib/punitorios.js';
 import { aplicarEstadoInicial, EstadoInicialInvalido } from '../lib/estado-inicial-contrato.js';
-import { ajustesDeVigenciasCanon, validarVigenciasCanon } from '../lib/vigencias-canon.js';
+import { ajustesDeVigenciasCanon, validarVigenciasCanon } from '@llave/shared/vigencias-canon';
 import { buscarOCrearPersona } from '../lib/persona.js';
 import { borrarArchivoSiHuerfano, urlEsDelTenant } from './uploads.js';
 import { enviarInvitacionInquilino, enviarInvitacionEquipo } from '../mailer.js';
@@ -900,7 +900,8 @@ export async function coreRoutes(app: FastifyInstance) {
         // Historial de canon del contrato EN CURSO ("desde 2025-10 valía X, desde
         // 2026-04 vale Y"): los montos existen en el contrato en papel y son la
         // única forma de que cada mes viejo se devengue a SU precio. Se materializa
-        // como AjusteAlquiler retroactivos (lib/vigencias-canon.ts). Sin esto todos
+        // como AjusteAlquiler retroactivos (shared/vigencias-canon.ts, el MISMO
+        // módulo con el que el wizard valida mientras se tipea). Sin esto todos
         // los meses históricos toman el monto de hoy = deuda inflada.
         vigenciasCanon: z
           .array(
