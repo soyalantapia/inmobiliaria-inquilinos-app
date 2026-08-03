@@ -18,7 +18,6 @@ import {
 } from '@/lib/paises';
 import type {
   ContratoListado,
-  CuentaCobranzaDirecta,
   EstadoPropiedad,
   Moneda,
   MoraEfectiva,
@@ -1085,9 +1084,6 @@ interface PropietarioApi {
   notas: string | null;
   createdAt: string;
   participaciones: Array<{ propiedadId: string; porcentaje: number }>;
-  // Cuenta de cobro directo (modo PROPIETARIO_DIRECTO). Viene del include
-  // `cuentaCobranza: true` de GET /propietarios; null si el dueño no la cargó.
-  cuentaCobranza?: CuentaCobranzaDirecta | null;
 }
 
 export function usePropietarios(): {
@@ -1184,7 +1180,6 @@ export function usePropietarios(): {
       totalRecibirMes: recibir,
       monedaMensual,
       monedasMes: [...monedas],
-      cuentaCobranza: o.cuentaCobranza ?? undefined,
     };
   });
 

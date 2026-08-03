@@ -571,12 +571,6 @@ export async function coreRoutes(app: FastifyInstance) {
         participaciones: {
           include: { propiedad: { select: { id: true, direccion: true, estado: true } } },
         },
-        // El wizard de alta de contrato (paso Dinero) necesita saber si el
-        // propietario YA tiene la cuenta de cobro directo cargada para no
-        // mandar a la persona a otra pantalla; sin este include el listado
-        // siempre venía sin cuenta y el aviso de "falta cargarla" aparecía
-        // incluso para dueños que sí la tenían.
-        cuentaCobranza: true,
       },
       orderBy: { apellido: 'asc' },
     });

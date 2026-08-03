@@ -29,7 +29,8 @@ import {
   type BorradorContrato,
 } from '@/lib/contrato-borrador-storage';
 import type { PersonaListado } from '@/lib/api/use-inquilinos';
-import { usePropiedades, usePropietarios, useMercado, useCobranza } from '@/lib/api/hooks';
+import { usePropiedades, useMercado, useCobranza } from '@/lib/api/hooks';
+import { usePropietario } from '@/lib/api/use-propietario';
 import {
   calcularMora,
   descripcionMora,
@@ -859,11 +860,6 @@ function CargarContratoApiWizard() {
   const router = useRouter();
   const qc = useQueryClient();
   const { propiedades, cargando } = usePropiedades();
-  // Detalle real de los propietarios (con cuentaCobranza): los propietarios
-  // embebidos en /propiedades vienen "lite" (sólo id/nombre/apellido), así que
-  // para saber si el dueño elegido ya tiene la cuenta de cobro directo hay que
-  // cruzar contra este listado.
-  const { propietarios } = usePropietarios();
   // Config de Mercado de la inmobiliaria → define el índice y la moneda por
   // defecto de un contrato nuevo (lo que la inmo eligió en /configuracion#mercado).
   const { config: mercado } = useMercado();
@@ -1026,17 +1022,22 @@ function CargarContratoApiWizard() {
     () => propiedades.find((p) => p.propiedad.id === propiedadId) ?? null,
     [propiedades, propiedadId],
   );
-  // Dueño de la propiedad elegida, con la cuenta de cobranza directa resuelta.
-  // El id sale de la propiedad (embebido); el propietario "lite" que trae esa
-  // lista NUNCA tiene cuentaCobranza (sólo copia id/nombre/apellido) — por eso
-  // buscamos el mismo id en usePropietarios(), que sí trae el detalle completo.
-  // Si por lo que sea no está en ese listado (todavía cargando, etc.), nos
-  // quedamos con el "lite" para no perder al menos el nombre.
-  const propietarioDeLaPropiedad = useMemo(() => {
-    const lite = propiedadElegida?.propietarios[0];
-    if (!lite) return null;
-    return propietarios.find((o) => o.id === lite.id) ?? lite;
-  }, [propiedadElegida, propietarios]);
+  // Id del dueño de la propiedad elegida (embebido en /propiedades, "lite":
+  // sólo id/nombre/apellido, nunca trae cuentaCobranza).
+  const propietarioIdElegido = propiedadElegida?.propietarios[0]?.id ?? null;
+  // Detalle real de ESE ÚNICO propietario (con cuentaCobranza) vía GET
+  // /propietarios/:id — el mismo endpoint acotado que usa la ficha del
+  // propietario. Deliberadamente NO usamos usePropietarios() (el listado
+  // completo): traer el listado entero para leer un solo campo de un solo
+  // propietario expondría el CBU/alias/titular de TODOS los propietarios de
+  // la inmobiliaria a cualquiera con permiso de sólo-lectura (bug real:
+  // GET /propietarios lo gatea `propietarios.ver`, que incluye el rol
+  // LECTURA). Ver commit 32f6bf8 / fix posterior.
+  const { detalle: detallePropietarioElegido, cargando: cargandoPropietarioElegido } =
+    usePropietario(propietarioIdElegido ?? '');
+  const propietarioDeLaPropiedad = propietarioIdElegido
+    ? (detallePropietarioElegido?.propietario ?? null)
+    : null;
   const [cuentaDialogAbierto, setCuentaDialogAbierto] = useState(false);
 
   // Encadenado desde "cargar propiedad": /contratos/nuevo?propiedad=<id> llega
@@ -2188,46 +2189,54 @@ function CargarContratoApiWizard() {
                   ))}
                 </div>
                 {modoCobranza === 'PROPIETARIO_DIRECTO' && (
-                  propietarioDeLaPropiedad ? (
-                    propietarioDeLaPropiedad.cuentaCobranza ? (
-                      <div className="mt-2 rounded-md border bg-muted/40 p-3 text-sm">
-                        <p className="font-medium">Cuenta de {propietarioDeLaPropiedad.nombre}</p>
-                        <p className="text-muted-foreground">
-                          {propietarioDeLaPropiedad.cuentaCobranza.banco} · CBU ····
-                          {propietarioDeLaPropiedad.cuentaCobranza.cbu.slice(-4)} ·{' '}
-                          {propietarioDeLaPropiedad.cuentaCobranza.alias}
-                        </p>
-                        <Button
-                          variant="link"
-                          className="h-auto p-0"
-                          onClick={() => setCuentaDialogAbierto(true)}
-                        >
-                          Editar
-                        </Button>
-                      </div>
-                    ) : (
-                      <div className="mt-2 rounded-md border border-amber-500/50 bg-amber-500/5 p-3 text-sm">
-                        <p className="font-medium">
-                          {propietarioDeLaPropiedad.nombre} todavía no tiene cuenta de cobro directo
-                        </p>
-                        <p className="text-muted-foreground">
-                          Sin la cuenta, el inquilino no tiene a dónde transferir. Cargala acá y
-                          seguí con el alta.
-                        </p>
-                        <Button
-                          size="sm"
-                          className="mt-2"
-                          onClick={() => setCuentaDialogAbierto(true)}
-                        >
-                          Cargar la cuenta del propietario
-                        </Button>
-                      </div>
-                    )
-                  ) : (
+                  !propietarioIdElegido ? (
                     <p className="mt-2 rounded-md bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
                       La propiedad necesita dueños cargados para usar cobranza directa al
                       propietario.
                     </p>
+                  ) : cargandoPropietarioElegido || !propietarioDeLaPropiedad ? (
+                    // Todavía no tenemos el detalle real de la cuenta (fetch en
+                    // vuelo, o sin resolver por algún error puntual): NO afirmamos
+                    // "tiene cuenta" ni "le falta" — ambos carteles de abajo dan
+                    // por hecho un dato que en este instante no tenemos, y antes
+                    // el aviso ámbar parpadeaba en falso para dueños que sí la
+                    // tenían cargada mientras el fetch estaba en curso.
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Confirmando la cuenta del propietario…
+                    </p>
+                  ) : propietarioDeLaPropiedad.cuentaCobranza ? (
+                    <div className="mt-2 rounded-md border bg-muted/40 p-3 text-sm">
+                      <p className="font-medium">Cuenta de {propietarioDeLaPropiedad.nombre}</p>
+                      <p className="text-muted-foreground">
+                        {propietarioDeLaPropiedad.cuentaCobranza.banco} · CBU ····
+                        {propietarioDeLaPropiedad.cuentaCobranza.cbu.slice(-4)} ·{' '}
+                        {propietarioDeLaPropiedad.cuentaCobranza.alias}
+                      </p>
+                      <Button
+                        variant="link"
+                        className="h-auto p-0"
+                        onClick={() => setCuentaDialogAbierto(true)}
+                      >
+                        Editar
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="mt-2 rounded-md border border-amber-500/50 bg-amber-500/5 p-3 text-sm">
+                      <p className="font-medium">
+                        {propietarioDeLaPropiedad.nombre} todavía no tiene cuenta de cobro directo
+                      </p>
+                      <p className="text-muted-foreground">
+                        Sin la cuenta, el inquilino no tiene a dónde transferir. Cargala acá y
+                        seguí con el alta.
+                      </p>
+                      <Button
+                        size="sm"
+                        className="mt-2"
+                        onClick={() => setCuentaDialogAbierto(true)}
+                      >
+                        Cargar la cuenta del propietario
+                      </Button>
+                    </div>
                   )
                 )}
                 {propietarioDeLaPropiedad && (
@@ -2235,7 +2244,15 @@ function CargarContratoApiWizard() {
                     open={cuentaDialogAbierto}
                     onOpenChange={setCuentaDialogAbierto}
                     propietario={propietarioDeLaPropiedad}
-                    onSaved={() => void qc.invalidateQueries({ queryKey: ['propietarios'] })}
+                    onSaved={() => {
+                      // Invalidamos el detalle puntual (lo que este wizard lee)
+                      // y el listado (lo que leen propietarios/page.tsx y otras
+                      // pantallas), igual que CuentaCobranzaTrigger en la ficha.
+                      void qc.invalidateQueries({
+                        queryKey: ['propietario', propietarioIdElegido],
+                      });
+                      void qc.invalidateQueries({ queryKey: ['propietarios'] });
+                    }}
                   />
                 )}
               </div>
