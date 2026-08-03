@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Que el alta de contrato deje de morder — partir "Términos" en Plazo y Dinero, permitir arrancar a cobrar desde este mes sin declarar 7 meses a mano, y cargar la cuenta del propietario sin salir del wizard.
+**Goal:** Partir el alta de contrato en pasos que pidan mejor la información — separar Plazo de Dinero, adelantar las consecuencias de las fechas, poder cargar la cuenta del propietario sin salir del wizard, y cerrar las dos puntas que le faltan al borrador.
 
-**Architecture:** El wizard (`CargarContratoApiWizard`) mantiene sus `useState` en el componente padre — **no hay refactor a reducer** (ver spec, sección 1: se dio de baja). Los pasos pasan de 5 a 6 partiendo el actual paso 3. El backend suma un solo campo opcional al body de `POST /contratos` (`devengarDesde`), que la maquinaria de devengo **ya honra** de punta a punta. La cuenta del propietario se resuelve reusando un dialog que ya existe.
+**Architecture:** El wizard (`CargarContratoApiWizard`) mantiene sus `useState` en el componente padre — **no hay refactor a reducer** (spec §1: dado de baja). Los pasos pasan de 5 a 6 partiendo el actual paso 3. **Todo el trabajo es de front**, salvo unificar un mensaje duplicado en el backend: no se agregan campos al modelo, no hay migración, no cambia el contrato de la API.
 
 **Tech Stack:** pnpm monorepo · `apps/api` Fastify + Prisma + Postgres + vitest · `apps/inmobiliaria` Next 14 (App Router) · `packages/shared` TS crudo sin build.
 
@@ -13,10 +13,12 @@
 ## Global Constraints
 
 - **Worktree:** `~/dev/myalq-altapasos`, rama `feat/alta-contrato-pasos`, base `origin/main` = `cbf00a6`.
+- ⚠️ **Hay otras sesiones commiteando en esta misma rama.** Antes de empezar cada tarea: `git pull --rebase` o al menos `git log --oneline -3` para no trabajar sobre una base vieja.
 - **Nunca push ni merge a `main`.** Se trabaja en la rama y se abre PR.
 - **Tests SIEMPRE contra Postgres local efímero. NUNCA la base remota/compartida.**
-- **Baseline de typecheck: 0 errores.** Si `tsc --noEmit` tira algo, lo introdujo la tarea en curso. No se acepta "ya venía roto".
-- **El front NO tiene runner de tests** (no hay vitest/jest en `apps/inmobiliaria`). Las tareas de front se verifican **en el navegador** con las tools de preview, y con `pnpm --filter inmobiliaria typecheck`. No inventar `pnpm test` en el front: no existe.
+- **Baseline de typecheck: 0 errores.** Si `tsc --noEmit` tira algo, lo introdujo la tarea en curso.
+- **El front NO tiene runner de tests** (no hay vitest/jest en `apps/inmobiliaria`). Las tareas de front se verifican **en el navegador** con las tools de preview, más `pnpm --filter inmobiliaria typecheck`. No inventar `pnpm test` en el front: no existe.
+- 🔴 **NO agregar `devengarDesde` ni ningún camino de "empezar a cobrar desde este mes".** Alan lo descartó el 03/08: la deuda anterior al alta tiene que quedar **declarada, trackeada y cobrable**. Declarar mes por mes — lo que ya hace el wizard — es el comportamiento correcto. No "optimizarlo".
 - **El wizard de OCR/PDF (`CargarContratoWizard`, `page.tsx:132-661`) es código muerto en prod.** No tocarlo, no arreglarlo, no revivirlo. Todo este plan es sobre `CargarContratoApiWizard`.
 - **El servidor sigue validando todo lo que valida hoy.** Ninguna tarea afloja una regla del backend para mejorar la UI.
 - Copy en **español rioplatense**, tuteo, sin jerga técnica en pantalla.
@@ -27,218 +29,23 @@
 
 | Archivo | Responsabilidad | Tareas |
 |---|---|---|
-| `apps/api/src/routes/core.ts` | `POST /contratos`: acepta `devengarDesde`, lo persiste, valida exclusión con `periodosAnteriores`; constante única del mensaje de cobranza directa | 1, 5 |
-| `apps/api/test/devengar-desde-alta.test.ts` | **(nuevo)** integración de `devengarDesde` | 1 |
-| `apps/inmobiliaria/src/lib/contrato-borrador-storage.ts` | `BorradorContrato`: sumar `devengarDesde` y `versionBorrador` | 2, 4 |
-| `apps/inmobiliaria/src/app/(app)/contratos/nuevo/page.tsx` | El wizard: pasos, preview, arranque de cuenta, stepper, cuenta del propietario, `beforeunload` | 2-7 |
+| `apps/inmobiliaria/src/lib/contrato-borrador-storage.ts` | `BorradorContrato`: versionado del esquema | 1 |
+| `apps/inmobiliaria/src/app/(app)/contratos/nuevo/page.tsx` | El wizard: pasos, preview, cuenta del propietario, stepper, `beforeunload` | 1-5 |
+| `apps/api/src/routes/core.ts` | Unificar el mensaje duplicado de cobranza directa | 3 |
 
 ---
 
-## Task 1: Backend — `devengarDesde` en el alta
-
-**Files:**
-- Modify: `apps/api/src/routes/core.ts` (schema del body ~`:867-897`, `tx.contrato.create` ~`:996`)
-- Test: `apps/api/test/devengar-desde-alta.test.ts` (crear)
-
-**Interfaces:**
-- Consumes: `enumerarPeriodosContrato` (`packages/shared/src/periodos.ts`) y `generarLiquidacionesContrato` (`apps/api/src/lib/liquidaciones.ts`) — **ya honran `devengarDesde`**, arrancando en `max(devengarDesde, fechaInicio)`. No se tocan.
-- Produces: `POST /contratos` acepta `devengarDesde?: string | Date`. Lo consume el front en la Tarea 4.
-
-**Contexto que el implementador necesita:**
-`Contrato.devengarDesde` **ya existe** en el schema (`schema.prisma:1259`) y la importación masiva ya lo usa (`importaciones-cartera.ts:487-493`). Lo único que falta es que el alta manual lo acepte. **No hay migración en esta tarea.**
-
-- [ ] **Step 1: Escribir el test que falla**
-
-Crear `apps/api/test/devengar-desde-alta.test.ts`. Copiar el andamiaje (`beforeAll`/`afterAll`/`auth`) de `apps/api/test/alta-contrato-integracion.test.ts:1-40` — mismo seed, mismo login (`roberto@delsol.com` / `delsol123`), misma `buildApp({ NODE_ENV: 'test', DEMO_MODE: 'true' })`.
-
-```ts
-/**
- * `devengarDesde` en el alta manual: un contrato que arrancó hace meses puede
- * nacer cobrando SOLO desde el mes en curso, sin declarar cada período vencido.
- * La maquinaria (enumerarPeriodosContrato → generarLiquidacionesContrato) ya lo
- * honraba; lo que faltaba era que POST /contratos lo aceptara.
- */
-it('con devengarDesde del mes en curso, no genera cuotas anteriores', async () => {
-  const hoy = new Date();
-  const primeroDeEsteMes = new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), 1));
-  const inicioHace6Meses = new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth() - 6, 1));
-  const fin = new Date(Date.UTC(hoy.getUTCFullYear() + 1, hoy.getUTCMonth(), 1));
-
-  const res = await app.inject({
-    method: 'POST',
-    url: '/contratos',
-    headers: auth(),
-    payload: {
-      propiedadId: await propiedadDisponible(),
-      inquilino: { nombre: 'Devengo', apellido: 'Desde' },
-      monto: 100000,
-      fechaInicio: inicioHace6Meses.toISOString(),
-      fechaFin: fin.toISOString(),
-      diaPago: 10,
-      indiceAjuste: 'ICL',
-      frecuenciaAjusteMeses: 12,
-      devengarDesde: primeroDeEsteMes.toISOString(),
-    },
-  });
-
-  expect(res.statusCode).toBe(201);
-  const contratoId = res.json().id as string;
-
-  const prisma = new PrismaClient();
-  const liqs = await prisma.liquidacion.findMany({ where: { contratoId }, select: { periodo: true } });
-  await prisma.$disconnect();
-
-  // Sin devengarDesde serían 7 (los 6 vencidos + el actual). Con él, sólo el actual.
-  expect(liqs).toHaveLength(1);
-});
-
-it('devengarDesde junto con periodosAnteriores es 400', async () => {
-  const hoy = new Date();
-  const primeroDeEsteMes = new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), 1));
-  const inicioHace6Meses = new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth() - 6, 1));
-  const mesPasado = `${hoy.getUTCFullYear()}-${String(hoy.getUTCMonth()).padStart(2, '0')}`;
-
-  const res = await app.inject({
-    method: 'POST',
-    url: '/contratos',
-    headers: auth(),
-    payload: {
-      propiedadId: await propiedadDisponible(),
-      inquilino: { nombre: 'Doble', apellido: 'Declaracion' },
-      monto: 100000,
-      fechaInicio: inicioHace6Meses.toISOString(),
-      fechaFin: new Date(Date.UTC(hoy.getUTCFullYear() + 1, hoy.getUTCMonth(), 1)).toISOString(),
-      diaPago: 10,
-      indiceAjuste: 'ICL',
-      frecuenciaAjusteMeses: 12,
-      devengarDesde: primeroDeEsteMes.toISOString(),
-      periodosAnteriores: [{ periodo: mesPasado, estado: 'ADEUDA' }],
-    },
-  });
-
-  expect(res.statusCode).toBe(400);
-  expect(res.json().message).toMatch(/una sola/i);
-});
-
-it('sin devengarDesde, el alta se comporta igual que siempre (no regresión)', async () => {
-  const hoy = new Date();
-  const inicioHace2Meses = new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth() - 2, 1));
-
-  const res = await app.inject({
-    method: 'POST',
-    url: '/contratos',
-    headers: auth(),
-    payload: {
-      propiedadId: await propiedadDisponible(),
-      inquilino: { nombre: 'Sin', apellido: 'Devengo' },
-      monto: 100000,
-      fechaInicio: inicioHace2Meses.toISOString(),
-      fechaFin: new Date(Date.UTC(hoy.getUTCFullYear() + 1, hoy.getUTCMonth(), 1)).toISOString(),
-      diaPago: 10,
-      indiceAjuste: 'ICL',
-      frecuenciaAjusteMeses: 12,
-    },
-  });
-
-  expect(res.statusCode).toBe(201);
-  const prisma = new PrismaClient();
-  const liqs = await prisma.liquidacion.count({ where: { contratoId: res.json().id } });
-  await prisma.$disconnect();
-  expect(liqs).toBeGreaterThan(1); // los períodos vencidos siguen devengándose
-});
-```
-
-Escribir también el helper `propiedadDisponible()` que devuelve el `id` de una propiedad en estado `DISPONIBLE` del tenant del seed (una por test — el alta la deja `ALQUILADA`):
-
-```ts
-async function propiedadDisponible(): Promise<string> {
-  const res = await app.inject({ method: 'GET', url: '/propiedades?estado=DISPONIBLE', headers: auth() });
-  const lista = res.json();
-  const items = Array.isArray(lista) ? lista : lista.items;
-  if (!items?.length) throw new Error('El seed no dejó propiedades DISPONIBLE para el test');
-  return items[0].id;
-}
-```
-
-- [ ] **Step 2: Correr el test y verificar que falla**
-
-```bash
-cd ~/dev/myalq-altapasos/apps/api && pnpm vitest run test/devengar-desde-alta.test.ts
-```
-
-Esperado: **FAIL**. El primero da 7 liquidaciones en vez de 1 (zod descarta `devengarDesde` por no estar en el schema); el segundo da 201 en vez de 400.
-
-- [ ] **Step 3: Sumar `devengarDesde` al schema del body**
-
-En `apps/api/src/routes/core.ts`, dentro del `z.object({...})` de `POST /contratos`, justo **después** del bloque `periodosAnteriores` (~`:896`):
-
-```ts
-        // Contrato EN CURSO, camino corto: "empezar a cobrar desde este mes".
-        // No devenga nada anterior a esta fecha — lo previo se saldó por afuera.
-        // Es lo que la importación masiva ya hace (importaciones-cartera.ts:487).
-        // EXCLUYENTE con periodosAnteriores: expresan lo mismo de dos maneras.
-        devengarDesde: z.coerce.date().optional(),
-```
-
-- [ ] **Step 4: Validar la exclusión, antes de abrir la transacción**
-
-En el mismo handler, junto a la validación de mora que ya está (~`:903`, `if (d.moraTipo && ...)`):
-
-```ts
-    if (d.devengarDesde && d.periodosAnteriores?.length) {
-      return reply.code(400).send({
-        message:
-          'Elegí una sola forma de arrancar la cuenta: "empezar a cobrar desde este mes" o declarar los períodos anteriores uno por uno.',
-      });
-    }
-```
-
-- [ ] **Step 5: Persistir el campo**
-
-En `tx.contrato.create({ data: {...} })` (~`:996`), sumar al `data`:
-
-```ts
-          devengarDesde: d.devengarDesde ?? null,
-```
-
-⚠️ Va **solo** en el `create`. `generarLiquidacionesContrato(tx, contrato)` (~`:1094`) recibe el contrato ya creado y lee el campo de ahí: no hay que pasarle nada aparte.
-
-- [ ] **Step 6: Correr los tests y verificar que pasan**
-
-```bash
-cd ~/dev/myalq-altapasos/apps/api && pnpm vitest run test/devengar-desde-alta.test.ts
-```
-
-Esperado: **3 passed**.
-
-- [ ] **Step 7: No regresión + typecheck**
-
-```bash
-cd ~/dev/myalq-altapasos/apps/api && pnpm vitest run && pnpm lint
-```
-
-Esperado: suite entera verde, `tsc --noEmit` sin output.
-
-- [ ] **Step 8: Commit**
-
-```bash
-git add apps/api/src/routes/core.ts apps/api/test/devengar-desde-alta.test.ts
-git commit -m "feat(alta): POST /contratos acepta devengarDesde, excluyente con periodosAnteriores"
-```
-
----
-
-## Task 2: Partir "Términos" en "Plazo y salida" + "Dinero"
+## Task 1: Partir "Términos" en "Plazo y salida" + "Dinero"
 
 **Files:**
 - Modify: `apps/inmobiliaria/src/app/(app)/contratos/nuevo/page.tsx`
 - Modify: `apps/inmobiliaria/src/lib/contrato-borrador-storage.ts`
 
 **Interfaces:**
-- Produces: `type PasoApi = 1 | 2 | 3 | 4 | 5 | 6` con el mapa nuevo. Las tareas 3-7 asumen esta numeración.
+- Produces: `type PasoApi = 1 | 2 | 3 | 4 | 5 | 6` con el mapa nuevo. Las tareas 2-5 asumen esta numeración.
 
 **Contexto crítico — la trampa del borrador:**
-El borrador guarda `paso` en `localStorage` (`BorradorContrato.paso`). Los borradores que ya existen en el navegador de los usuarios tienen la numeración **vieja** (5 pasos). Si se renumera sin más, un borrador guardado en "Períodos anteriores" (viejo 4) se restaura en "Dinero" (nuevo 4) con los datos de otro paso. **Por eso esta tarea versiona el borrador y descarta los de versión anterior.**
+El borrador guarda `paso` en `localStorage` (`BorradorContrato.paso`). Los borradores que **ya existen en el navegador de los usuarios** tienen la numeración vieja (5 pasos). Si se renumera sin más, un borrador guardado en "Períodos anteriores" (viejo 4) se restaura en "Dinero" (nuevo 4), con los datos de otro paso. **Por eso esta tarea versiona el borrador y descarta los de versión anterior.**
 
 **Mapa de la renumeración:**
 
@@ -252,7 +59,7 @@ El borrador guarda `paso` en `localStorage` (`BorradorContrato.paso`). Los borra
 
 - [ ] **Step 1: Versionar el borrador**
 
-En `apps/inmobiliaria/src/lib/contrato-borrador-storage.ts`, sumar a la interfaz `BorradorContrato` (arriba de todo, junto a `paso`):
+En `apps/inmobiliaria/src/lib/contrato-borrador-storage.ts`, sumar a `BorradorContrato`, arriba de `paso`:
 
 ```ts
 export interface BorradorContrato {
@@ -267,7 +74,7 @@ export interface BorradorContrato {
   // ...el resto queda igual
 ```
 
-Y exportar la constante, en el mismo archivo:
+Y exportar la constante en el mismo archivo:
 
 ```ts
 export const VERSION_BORRADOR = 2;
@@ -283,7 +90,7 @@ En `leerBorradorContrato` (`:65`), después de parsear el JSON y antes de devolv
 
 - [ ] **Step 3: Escribir la versión al guardar**
 
-En el wizard (`page.tsx:1178`), donde se arma el objeto que va a `guardarBorradorContrato`, sumar `version: VERSION_BORRADOR` al literal, e importar la constante desde `@/lib/contrato-borrador-storage` (el import ya existe en `:24-29`, agregarla ahí).
+En el wizard (`page.tsx:1178`), donde se arma el objeto que va a `guardarBorradorContrato`, sumar `version: VERSION_BORRADOR` al literal. Importar la constante en el bloque de import que ya existe (`:24-29`).
 
 - [ ] **Step 4: Renumerar los pasos**
 
@@ -302,10 +109,16 @@ const pasosApi: ReadonlyArray<{ id: PasoApi; label: string }> = [
 ];
 ```
 
-Y actualizar **todos** los lugares que referencian la numeración vieja. Buscar con `grep -n "paso === [0-9]\|pasoRestaurado\|p.id !== 4" page.tsx` y ajustar:
+Actualizar **todos** los lugares con la numeración vieja. Encontrarlos con:
+
+```bash
+grep -n "paso === [0-9]\|pasoRestaurado\|p.id !== 4\|setPaso(" 'apps/inmobiliaria/src/app/(app)/contratos/nuevo/page.tsx'
+```
+
+Los que hay que tocar sí o sí:
 - `pasosVisibles` (`:1248-1249`): el filtro condicional pasa de `p.id !== 4` a **`p.id !== 5`**.
-- `aplicarBorrador` (`:1114`): `if (pasoRestaurado === 4 && periodosBorrador.length === 0) pasoRestaurado = 3;` pasa a **`=== 5` … `= 4`** (si no hay períodos, cae en Dinero, que es el paso anterior).
-- Los bloques de render: `{paso === 4 && hayPeriodos && (` → `{paso === 5 && hayPeriodos && (`; `{paso === 5 && (` (Confirmar) → `{paso === 6 && (`.
+- `aplicarBorrador` (`:1114`): `if (pasoRestaurado === 4 && periodosBorrador.length === 0) pasoRestaurado = 3;` pasa a **`=== 5` … `= 4`** (sin períodos, cae en Dinero, el paso anterior).
+- Render: `{paso === 4 && hayPeriodos && (` → `{paso === 5 && …`; `{paso === 5 && (` (Confirmar) → `{paso === 6 && (`.
 - `avanzar()`/`retroceder()` (`:1068-1077`) y el salto condicional del paso de períodos: donde hoy salta `3 → 5`, ahora salta **`4 → 6`**.
 
 ⚠️ Renumerar **de mayor a menor** (primero 5→6, después 4→5) para no pisar un número con otro a mitad de camino.
@@ -317,15 +130,15 @@ El bloque `{paso === 3 && (` (`:1812`) contiene hoy los dos grupos. Se parte en 
 - `{paso === 3 && (` → **Plazo y salida**: `fechaInicio`, `fechaFin`, `diaPago`, `indiceAjuste`, `frecuenciaAjusteMeses`.
 - `{paso === 4 && (` → **Dinero**: `tipoContrato`, `monto`, `moneda`, `montoExpensas`, `depositoGarantia`, `comisionInmobiliaria`, `moraSel`/`moraValor`, `modoCobranza`, `mascotasPermitidas`.
 
-Actualizar el `CardTitle`/`CardDescription` de cada uno:
+Títulos:
 - Plazo: *"Plazo y salida"* / *"Cuándo arranca, cuándo termina y cada cuánto se ajusta."*
 - Dinero: *"Dinero"* / *"Cuánto paga el inquilino y cómo se cobra."*
 
-- [ ] **Step 6: Mover la validación de "Continuar" al paso que corresponde**
+- [ ] **Step 6: Repartir la validación de "Continuar"**
 
-La validación que hoy gatea el paso 3 se reparte: lo que valida fechas queda en 3, lo que valida montos pasa a 4. Ningún campo queda sin validar y ninguno se valida en el paso donde no se ve.
+La condición que hoy gatea el paso 3 se reparte: lo de fechas queda en 3, lo de montos pasa a 4. **Ningún campo queda sin validar y ninguno se valida en un paso donde no se ve.**
 
-- [ ] **Step 7: Verificar en el navegador**
+- [ ] **Step 7: Verificar**
 
 ```bash
 cd ~/dev/myalq-altapasos && pnpm --filter inmobiliaria typecheck
@@ -333,64 +146,59 @@ cd ~/dev/myalq-altapasos && pnpm --filter inmobiliaria typecheck
 
 Esperado: sin output (baseline 0).
 
-Después, con el preview levantado, recorrer el alta entera de un contrato **que arranca hoy** (el caso simple): las 5 pantallas visibles (sin períodos anteriores) se navegan, se puede volver atrás, y el alta termina en 201. Y probar el borrador: cargar medio contrato, recargar, retomar → cae en el paso correcto.
+En el navegador: recorrer el alta de un contrato **que arranca hoy** (caso simple) — las 5 pantallas visibles se navegan, se puede volver atrás, termina en 201. Y el borrador: cargar medio contrato, recargar, retomar → cae en el paso correcto.
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add apps/inmobiliaria/src/app/\(app\)/contratos/nuevo/page.tsx apps/inmobiliaria/src/lib/contrato-borrador-storage.ts
+git add "apps/inmobiliaria/src/app/(app)/contratos/nuevo/page.tsx" apps/inmobiliaria/src/lib/contrato-borrador-storage.ts
 git commit -m "feat(alta): partir Terminos en Plazo y salida + Dinero, versionar el borrador"
 ```
 
 ---
 
-## Task 3: Preview en vivo de las consecuencias de las fechas
+## Task 2: Preview en vivo de las consecuencias de las fechas
 
 **Files:**
 - Modify: `apps/inmobiliaria/src/app/(app)/contratos/nuevo/page.tsx` (bloque `{paso === 3 && (`)
 
 **Interfaces:**
-- Consumes: `enumerarPeriodosContrato` de `@llave/shared/periodos` — **ya está importada en el wizard** y es la fuente única compartida con el back. No duplicar el cálculo.
+- Consumes: nada nuevo. **No duplicar el cálculo de períodos**: `enumerarPeriodosContrato` de `@llave/shared/periodos` ya está importada en el wizard y es la fuente única compartida con el back (fix i36). Si hace falta contar períodos vencidos, usar la que ya está.
 
 - [ ] **Step 1: Calcular el preview**
 
-Debajo de los inputs de fecha del paso 3, con `useMemo` sobre `fechaInicio`/`fechaFin`/`diaPago`/`frecuenciaAjusteMeses`:
+Con `useMemo` sobre las fechas, junto a los otros `useMemo` del componente:
 
-```tsx
+```ts
 const resumenPlazo = useMemo(() => {
   if (!fechaInicio || !fechaFin) return null;
   const inicio = new Date(`${fechaInicio}T12:00:00`);
   const fin = new Date(`${fechaFin}T12:00:00`);
   if (Number.isNaN(inicio.getTime()) || Number.isNaN(fin.getTime())) return null;
-  if (fin <= inicio) return { error: 'La fecha de fin tiene que ser posterior a la de inicio.' };
+  if (fin <= inicio) return { error: 'La fecha de fin tiene que ser posterior a la de inicio.' as string | null };
 
-  const meses = Math.round((fin.getTime() - inicio.getTime()) / (1000 * 60 * 60 * 24 * 30.44));
-  const mesesDesdeInicio = Math.max(
-    0,
-    Math.round((Date.now() - inicio.getTime()) / (1000 * 60 * 60 * 24 * 30.44)),
-  );
-  const freq = Number(frecuenciaAjusteMeses) || 12;
+  const MES_MS = 1000 * 60 * 60 * 24 * 30.44;
+  const meses = Math.round((fin.getTime() - inicio.getTime()) / MES_MS);
+  const mesesDesdeInicio = Math.max(0, Math.round((Date.now() - inicio.getTime()) / MES_MS));
   const primerAjuste = new Date(inicio);
-  primerAjuste.setMonth(primerAjuste.getMonth() + freq);
+  primerAjuste.setMonth(primerAjuste.getMonth() + (Number(frecuenciaAjusteMeses) || 12));
 
   return { meses, mesesDesdeInicio, primerAjuste, error: null as string | null };
 }, [fechaInicio, fechaFin, frecuenciaAjusteMeses]);
 ```
 
-- [ ] **Step 2: Mostrarlo**
+- [ ] **Step 2: Mostrarlo debajo de los inputs de fecha**
 
 ```tsx
-{resumenPlazo?.error && (
-  <p className="text-sm text-destructive">{resumenPlazo.error}</p>
-)}
+{resumenPlazo?.error && <p className="text-sm text-destructive">{resumenPlazo.error}</p>}
 {resumenPlazo && !resumenPlazo.error && (
   <div className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">
     <p>Dura {resumenPlazo.meses} meses.</p>
     {resumenPlazo.mesesDesdeInicio > 0 && (
       <p className="text-foreground">
         Este contrato arrancó hace {resumenPlazo.mesesDesdeInicio}{' '}
-        {resumenPlazo.mesesDesdeInicio === 1 ? 'mes' : 'meses'}: más adelante vas a
-        elegir desde cuándo cobrarlo.
+        {resumenPlazo.mesesDesdeInicio === 1 ? 'mes' : 'meses'}: más adelante vas a tener
+        que declarar qué pasó con cada uno de esos períodos.
       </p>
     )}
     <p>Primer ajuste: {formatFechaCortaStr(resumenPlazo.primerAjuste.toISOString().slice(0, 10))}.</p>
@@ -400,9 +208,9 @@ const resumenPlazo = useMemo(() => {
 
 ⚠️ El error de `fechaFin <= fechaInicio` **también sigue gateando el botón Continuar**. El preview lo explica; no lo reemplaza.
 
-- [ ] **Step 3: Verificar en el navegador**
+- [ ] **Step 3: Verificar**
 
-Typecheck limpio. En el preview: poner un inicio de hace 6 meses → aparece *"arrancó hace 6 meses"*; poner `fechaFin` anterior al inicio → aparece el error en rojo **ahí**, y Continuar queda deshabilitado.
+Typecheck limpio. En el navegador: inicio de hace 6 meses → aparece *"arrancó hace 6 meses"*; `fechaFin` anterior al inicio → el error sale **ahí** y Continuar queda deshabilitado.
 
 - [ ] **Step 4: Commit**
 
@@ -412,106 +220,18 @@ git commit -am "feat(alta): preview en vivo de las consecuencias de las fechas"
 
 ---
 
-## Task 4: Arranque de cuenta — "empezar a cobrar desde este mes"
-
-**Files:**
-- Modify: `apps/inmobiliaria/src/app/(app)/contratos/nuevo/page.tsx` (paso 5, el de períodos)
-- Modify: `apps/inmobiliaria/src/lib/contrato-borrador-storage.ts`
-
-**Interfaces:**
-- Consumes: `POST /contratos` con `devengarDesde` (Tarea 1).
-
-- [ ] **Step 1: Estado nuevo + al borrador**
-
-En el wizard:
-
-```ts
-type ArranqueCuenta = 'DESDE_ESTE_MES' | 'MES_POR_MES';
-const [arranqueCuenta, setArranqueCuenta] = useState<ArranqueCuenta>('MES_POR_MES');
-```
-
-🔴 **Sumarlo a `BorradorContrato`** (`arranqueCuenta: string`), al objeto que se guarda en `:1178`, y a `aplicarBorrador`. Si se agrega al wizard y no al borrador, se pierde en silencio al retomar y el contrato nace con la deuda equivocada. **Subir `VERSION_BORRADOR` a 3.**
-
-- [ ] **Step 2: Los dos caminos en el paso 5**
-
-Arriba de la tabla de períodos que ya existe, dos opciones excluyentes:
-
-```tsx
-<div className="space-y-2">
-  <button
-    type="button"
-    onClick={() => setArranqueCuenta('DESDE_ESTE_MES')}
-    className={`w-full rounded-md border p-3 text-left text-sm ${arranqueCuenta === 'DESDE_ESTE_MES' ? 'border-primary bg-primary/5' : ''}`}
-  >
-    <span className="font-medium">Empezar a cobrar desde este mes</span>
-    <span className="block text-muted-foreground">
-      Lo anterior no se carga al sistema: queda saldado por afuera. Es lo más rápido.
-    </span>
-  </button>
-  <button
-    type="button"
-    onClick={() => setArranqueCuenta('MES_POR_MES')}
-    className={`w-full rounded-md border p-3 text-left text-sm ${arranqueCuenta === 'MES_POR_MES' ? 'border-primary bg-primary/5' : ''}`}
-  >
-    <span className="font-medium">Declarar mes por mes</span>
-    <span className="block text-muted-foreground">
-      Cargás qué pasó con cada uno de los {periodosVencidos.length} períodos vencidos.
-    </span>
-  </button>
-</div>
-```
-
-La tabla de períodos se muestra **solo** con `arranqueCuenta === 'MES_POR_MES'`.
-
-- [ ] **Step 3: Mandar el campo correcto en el alta**
-
-En `dar_de_alta`, donde hoy se arma `periodosAnteriores`:
-
-```ts
-      ...(arranqueCuenta === 'DESDE_ESTE_MES'
-        ? { devengarDesde: primerDiaDelMesActualISO() }
-        : { periodosAnteriores: periodosVencidos.map((p) => { /* lo de hoy */ }) }),
-```
-
-Con el helper, junto a los otros de fecha del archivo:
-
-```ts
-function primerDiaDelMesActualISO(): string {
-  const h = new Date();
-  return new Date(Date.UTC(h.getUTCFullYear(), h.getUTCMonth(), 1)).toISOString();
-}
-```
-
-🔴 **Nunca los dos juntos**: el backend responde 400 (Tarea 1) y el contrato no se crea.
-
-- [ ] **Step 4: Reflejarlo en Confirmar**
-
-En el paso 6, donde se resume el alta, mostrar cuál se eligió: *"Se empieza a cobrar desde {mes actual}. Los {N} meses anteriores no se cargan."* o *"Se declaran {N} períodos anteriores."*
-
-- [ ] **Step 5: Verificar en el navegador**
-
-Typecheck limpio. Alta de un contrato que arrancó hace 6 meses eligiendo *"desde este mes"* → se crea con **1 cuota, no 7** (verificar en el detalle del contrato). Y el otro camino sigue funcionando igual que hoy.
-
-- [ ] **Step 6: Commit**
-
-```bash
-git commit -am "feat(alta): empezar a cobrar desde este mes, sin declarar mes por mes"
-```
-
----
-
-## Task 5: Cuenta del propietario, sin salir del alta
+## Task 3: Cuenta del propietario, sin salir del alta
 
 **Files:**
 - Modify: `apps/inmobiliaria/src/app/(app)/contratos/nuevo/page.tsx` (paso 4, Dinero)
 - Modify: `apps/api/src/routes/core.ts` (unificar el mensaje duplicado)
 
 **Interfaces:**
-- Consumes: `CuentaCobranzaDialog` de `@/components/cuenta-cobranza-dialog`, props `{ open, onOpenChange, propietario, onSaved? }`. Ya ramifica bien: con `apiEnabled` pega a `setCuentaCobranzaDirecta`; solo en demo escribe localStorage.
+- Consumes: `CuentaCobranzaDialog` de `@/components/cuenta-cobranza-dialog`, props `{ open, onOpenChange, propietario, onSaved? }`. Ya ramifica bien: con `apiEnabled` pega a `setCuentaCobranzaDirecta`; solo en demo escribe localStorage. **No hay endpoint nuevo**: `PUT /propietarios/:id/cuenta-cobranza-directa` (`core.ts:668`) ya hace upsert.
 
 - [ ] **Step 1: Unificar el mensaje duplicado del backend**
 
-El mismo texto está hardcodeado en `core.ts:974` y `core.ts:2883`. Extraerlo a una constante junto a los otros helpers del módulo:
+El mismo texto está hardcodeado en `core.ts:974` y `core.ts:2883`. Extraerlo a una constante del módulo:
 
 ```ts
 const faltaCuentaCobranzaDirecta = (nombre: string) =>
@@ -521,13 +241,19 @@ const faltaCuentaCobranzaDirecta = (nombre: string) =>
 
 y usarla en los dos lugares. **No se cambia el texto ni se afloja la validación**: sigue siendo 400.
 
-- [ ] **Step 2: Traer el estado de la cuenta al wizard**
+```bash
+cd ~/dev/myalq-altapasos/apps/api && pnpm vitest run && pnpm lint
+```
+
+Esperado: suite verde, typecheck sin output.
+
+- [ ] **Step 2: Resolver el propietario con su cuenta**
 
 🔴 **La trampa que hay que evitar:** la propiedad elegida ya expone `propietarios: Propietario[]`
 (`PropiedadEnriquecida`, `lib/propiedades-helpers.ts:16`), **pero esos son "lite"**: `propietarioLite`
 (`lib/api/hooks.ts:895`) solo copia `id`, `nombre` y `apellido` de lo que viene embebido en
-`/propiedades`. **`cuentaCobranza` siempre viene `undefined` ahí.** Si se lee de esa lista, el aviso
-de "no tiene cuenta" aparece **siempre**, incluso para propietarios que sí la tienen cargada.
+`/propiedades`. **`cuentaCobranza` siempre viene `undefined` ahí.** Si se lee de esa lista, el aviso de
+"no tiene cuenta" aparece **siempre**, incluso para propietarios que sí la tienen cargada.
 
 El detalle completo lo trae `usePropietarios()` (`hooks.ts:1089`, queryKey `['propietarios']`), cuyo
 `Propietario` sí tiene `cuentaCobranza?: CuentaCobranzaDirecta`. Entonces: **id desde la propiedad,
@@ -545,9 +271,7 @@ const propietarioDeLaPropiedad = useMemo(() => {
 }, [disponibles, propiedadId, propietarios]);
 ```
 
-🔴 **Si la propiedad no tiene propietarios cargados** (`propietarioDeLaPropiedad === null`), no hay a
-quién cargarle la cuenta: mostrar el mensaje que ya existe (*"La propiedad necesita dueños cargados…"*)
-y **no** el botón. El dialog no resuelve ese caso.
+`usePropietarios` se importa del mismo módulo que `usePropiedades` (`@/lib/api/hooks`, import en `:31`).
 
 - [ ] **Step 3: El aviso con el botón**
 
@@ -588,11 +312,13 @@ y **no** el botón. El dialog no resuelve ese caso.
 />
 ```
 
-⚠️ El query client en este componente se llama **`qc`** (`page.tsx:857`), no `queryClient`. Y la key a invalidar es **`['propietarios']`** — la de `usePropietarios()`, que es de donde sale `cuentaCobranza`. Invalidar `['propiedades']` no sirve: ese listado trae los dueños "lite", sin cuenta.
+⚠️ El query client en este componente se llama **`qc`** (`page.tsx:857`), no `queryClient`. Y la key a invalidar es **`['propietarios']`** — la de `usePropietarios()`, de donde sale `cuentaCobranza`. Invalidar `['propiedades']` no sirve: ese listado trae los dueños "lite", sin cuenta.
 
-- [ ] **Step 4: Verificar en el navegador**
+🔴 **Si la propiedad no tiene propietarios cargados** (`propietarioDeLaPropiedad === null`), no hay a quién cargarle la cuenta: mostrar el mensaje que ya existe (*"La propiedad necesita dueños cargados…"*) y **no** el botón. El dialog no resuelve ese caso.
 
-Typecheck limpio. Con una propiedad cuyo propietario **no** tiene cuenta: elegir cobranza directa → aparece el aviso → cargar la cuenta en el dialog → el aviso se reemplaza por los datos → **seguir el alta sin recargar y sin perder ningún campo ya tipeado** → 201. Y el caso negativo: propiedad sin propietarios → sale el mensaje de la ficha de la propiedad, no el botón.
+- [ ] **Step 4: Verificar**
+
+Typecheck limpio (front y api). En el navegador, con una propiedad cuyo propietario **no** tiene cuenta: elegir cobranza directa → aparece el aviso → cargar la cuenta en el dialog → el aviso se reemplaza por los datos → **seguir el alta sin recargar y sin perder ningún campo ya tipeado** → 201. Caso negativo: propiedad sin propietarios → sale el mensaje de la ficha de la propiedad, no el botón.
 
 - [ ] **Step 5: Commit**
 
@@ -602,14 +328,14 @@ git commit -am "feat(alta): cargar la cuenta del propietario sin salir del wizar
 
 ---
 
-## Task 6: Stepper clickeable hacia atrás + errores visibles
+## Task 4: Stepper clickeable hacia atrás + errores visibles
 
 **Files:**
 - Modify: `apps/inmobiliaria/src/app/(app)/contratos/nuevo/page.tsx` (`StepsApi`, `:2411`)
 
 - [ ] **Step 1: Hacer clickeables los pasos ya visitados**
 
-Hoy `StepsApi` pinta un `<div>` (`:2426`) y no recibe callback. Sumarle `onIr` y `maxVisitado`:
+Hoy `StepsApi` pinta un `<div>` (`:2426`) y no recibe callback. Sumarle `onIr`:
 
 ```tsx
 function StepsApi({
@@ -623,7 +349,7 @@ function StepsApi({
 }) {
 ```
 
-y en el `map`, envolver el círculo + label en un `<button>` cuando `p.id < actual`:
+y en el `map`, envolver el círculo + label en un `<button>`:
 
 ```tsx
 const visitado = p.id < actual;
@@ -645,7 +371,7 @@ En `:1521`: `<StepsApi actual={paso} pasos={pasosVisibles} onIr={(p) => setPaso(
 
 - [ ] **Step 3: Explicar por qué no se puede avanzar**
 
-Donde hoy el botón "Continuar" queda `disabled` sin decir nada, mostrar el motivo debajo:
+Donde hoy "Continuar" queda `disabled` sin decir nada, mostrar el motivo debajo:
 
 ```tsx
 {!puedeAvanzar && motivoNoAvanza && (
@@ -653,11 +379,11 @@ Donde hoy el botón "Continuar" queda `disabled` sin decir nada, mostrar el moti
 )}
 ```
 
-con `motivoNoAvanza` derivado de la misma condición que ya gatea el botón — un string por paso (*"Elegí una propiedad para seguir."*, *"Completá el nombre del inquilino."*, *"Revisá las fechas: la de fin tiene que ser posterior a la de inicio."*, *"Cargá el monto del alquiler."*). **No duplicar la lógica**: la condición es la que ya existe, el string es nuevo.
+`motivoNoAvanza` se deriva de **la misma condición que ya gatea el botón** — un string por paso: *"Elegí una propiedad para seguir."* · *"Completá el nombre del inquilino."* · *"Revisá las fechas: la de fin tiene que ser posterior a la de inicio."* · *"Cargá el monto del alquiler."* **No duplicar la lógica**: la condición ya existe, el string es lo nuevo.
 
-- [ ] **Step 4: Verificar en el navegador**
+- [ ] **Step 4: Verificar**
 
-Typecheck limpio. Llegar al paso 4, clickear "Propiedad" en el stepper → vuelve al 1 **con todo cargado**; clickear un paso adelantado → no hace nada. Dejar el monto vacío → el botón está deshabilitado **y dice por qué**.
+Typecheck limpio. En el navegador: llegar al paso 4, clickear "Propiedad" en el stepper → vuelve al 1 **con todo cargado**; clickear un paso adelantado → no hace nada. Dejar el monto vacío → el botón está deshabilitado **y dice por qué**.
 
 - [ ] **Step 5: Commit**
 
@@ -667,7 +393,7 @@ git commit -am "feat(alta): stepper clickeable hacia atras y motivo visible al n
 
 ---
 
-## Task 7: Cerrar el borrador — `beforeunload` y aviso de adjuntos
+## Task 5: Cerrar el borrador — `beforeunload` y aviso de adjuntos
 
 **Files:**
 - Modify: `apps/inmobiliaria/src/app/(app)/contratos/nuevo/page.tsx`
@@ -678,8 +404,8 @@ git commit -am "feat(alta): stepper clickeable hacia atras y motivo visible al n
 
 ```ts
 // El borrador ya se guarda en cada tecleo, pero entre el último guardado y el
-// cierre de la pestaña puede haber tipeo sin persistir. Además, el usuario que
-// cierra sin querer no tiene forma de saber que hay un borrador esperándolo.
+// cierre de la pestaña puede haber tipeo sin persistir. Además, el que cierra
+// sin querer no tiene forma de saber que hay un borrador esperándolo.
 useEffect(() => {
   if (paso === 1 && !propiedadId) return; // wizard vacío: no molestar
   if (enviando) return; // alta en curso: el 'estás seguro' del navegador estorba
@@ -694,7 +420,7 @@ useEffect(() => {
 
 - [ ] **Step 2: Avisar por los adjuntos al retomar**
 
-En el `DialogDescription` del diálogo de borrador (`:2385-2388`), agregar debajo del texto que ya está:
+En el `DialogDescription` del diálogo de borrador (`:2385-2388`), debajo del texto que ya está:
 
 ```tsx
 <span className="mt-2 block">
@@ -705,9 +431,9 @@ En el `DialogDescription` del diálogo de borrador (`:2385-2388`), agregar debaj
 
 ⚠️ Mostrarlo **siempre** que se ofrece retomar: el borrador no sabe si había archivos cargados (los `File` nunca se guardan), así que no se puede condicionar sin mentir.
 
-- [ ] **Step 3: Verificar en el navegador**
+- [ ] **Step 3: Verificar**
 
-Typecheck limpio. Cargar medio contrato → intentar cerrar la pestaña → el navegador pregunta. Recargar → el diálogo de retomar aparece **con el aviso de las fotos**. Retomar → todo vuelve menos los archivos. Dar de alta con éxito → cerrar la pestaña **no** pregunta (el borrador ya se borró).
+Typecheck limpio. En el navegador: cargar medio contrato → intentar cerrar la pestaña → el navegador pregunta. Recargar → el diálogo de retomar aparece **con el aviso de las fotos**. Retomar → vuelve todo menos los archivos. Dar de alta con éxito → cerrar la pestaña **no** pregunta (el borrador ya se borró).
 
 - [ ] **Step 4: Commit**
 
@@ -730,13 +456,14 @@ Esperado: suite de API verde, ambos typechecks sin output (baseline 0 errores).
 - [ ] **Recorrido E2E de los dos casos que importan**
 
 1. **Alta simple** (contrato que arranca hoy): 5 pantallas, sin paso de períodos, 201.
-2. **Cartera en curso** (arrancó hace 6 meses, cobranza directa, propietario sin cuenta): preview avisa que arrancó hace 6 meses → en Dinero se carga la cuenta del propietario sin salir → *"empezar a cobrar desde este mes"* → se crea con **1 cuota**.
+2. **Cartera en curso** (arrancó hace 6 meses, cobranza directa, propietario sin cuenta): el preview avisa que arrancó hace 6 meses → en Dinero se carga la cuenta del propietario sin salir → se declaran los 6 períodos mes por mes → el contrato nace con **esa deuda trackeada y cobrable**.
 
 - [ ] **Abrir el PR** contra `main`. 🔴 **No mergear ni pushear a `main`.**
 
 ## Lo que este plan NO hace
 
+- **No agrega `devengarDesde` ni "empezar a cobrar desde este mes"**: Alan lo descartó el 03/08. La deuda anterior se declara y queda cobrable.
 - No refactoriza los `useState` a `useReducer` (dado de baja en el spec: su justificación era falsa).
 - No crea modelo, migración ni endpoints de borrador en servidor. El borrador es de `localStorage` y ya funciona.
 - No toca `ContratoDraft` ni el wizard de OCR muerto.
-- No agrega documentación obligatoria, garantía, servicios ni rescisión: son Fases 2 y 3, bloqueadas esperando decisiones de Camila.
+- No agrega documentación obligatoria, garantía, servicios ni rescisión: son Fases 2 y 3. De esas, **#4 (servicios) y #5 (rescisión) están respondidas a medias** — falta si el número de cuenta es obligatorio y qué forma tiene el valor de la rescisión.

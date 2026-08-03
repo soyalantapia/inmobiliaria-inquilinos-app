@@ -16,9 +16,8 @@ Esta es la **Fase 1 de 3** del rediseño. Se eligió así porque **no depende de
 **Entra en Fase 1:**
 1. Completar el borrador que ya existe (`beforeunload` + aviso de adjuntos).
 2. Separar el paso "Términos" en dos: **Plazo y salida** / **Dinero**, con preview en vivo de las consecuencias de las fechas.
-3. Exponer el arranque de cuenta: **"empezar a cobrar desde este mes"** (`devengarDesde`).
-4. Stepper clickeable hacia atrás y errores de validación visibles.
-5. **Cargar la cuenta del propietario sin salir del alta** cuando se elige cobranza directa.
+3. Stepper clickeable hacia atrás y errores de validación visibles.
+4. **Cargar la cuenta del propietario sin salir del alta** cuando se elige cobranza directa.
 
 **No entra:** documentación obligatoria, paso de garantía, paso de servicios, cláusula de rescisión por contrato, scoring/veraz.
 
@@ -58,7 +57,9 @@ Tampoco es cierto que no se pueda volver atrás: `avanzar()`/`retroceder()` (`:1
    Como hoy no hay borrador, irse a la ficha del propietario **destruye el alta entera**. Es el peor
    cruce posible entre los dos problemas.
 
-4. **La cartera en curso se carga a mano, mes por mes.** El caso mayoritario de A&B son contratos que arrancaron hace meses. Hoy el alta obliga a declarar cada período vencido uno por uno. **`Contrato.devengarDesde` ya existe y la importación masiva ya lo usa** (`importaciones-cartera.ts:432`), pero `POST /contratos` **no lo acepta** (cero menciones en `core.ts`).
+4. ~~**La cartera en curso se carga a mano, mes por mes.**~~ **NO es un problema** (Alan, 03/08):
+   declarar cada período vencido es lo que se quiere, porque esa deuda tiene que quedar trackeada y
+   cobrable. Se registra acá porque este spec lo trataba como un dolor a resolver y no lo es.
 
 ### Contexto que conviene saber
 
@@ -86,9 +87,9 @@ siendo del flujo de OCR muerto). Solo se completan las dos puntas que faltan:
 - **El diálogo de retomar avisa por los adjuntos**: agregar al copy que las fotos del DNI hay que
   volver a adjuntarlas. Prometer que guarda todo y perder los adjuntos es peor que avisar.
 
-🔴 **Integración obligatoria:** el campo nuevo de la sección 4 (`devengarDesde`) **tiene que sumarse a
-`BorradorContrato`**. Si se agrega un campo al wizard y no a la interfaz del borrador, el campo se
-pierde en silencio al retomar — y nadie se entera hasta que un contrato nace con la deuda equivocada.
+🔴 **Regla permanente:** todo campo nuevo del wizard **tiene que sumarse a `BorradorContrato`**. Si se
+agrega al wizard y no a la interfaz del borrador, se pierde en silencio al retomar — y nadie se entera
+hasta que un contrato nace con los datos equivocados.
 
 ### 3. Separar Plazo y Dinero
 
@@ -96,7 +97,7 @@ El paso 3 actual se parte en dos:
 
 **Plazo y salida** — `fechaInicio`, `fechaFin`, `diaPago`, `indiceAjuste`, `frecuenciaAjusteMeses`.
 Con **preview en vivo** debajo de las fechas:
-- *"Este contrato arrancó hace 7 meses"* → adelanta que va a haber que definir el arranque de cuenta.
+- *"Este contrato arrancó hace 7 meses"* → adelanta que va a haber que declarar 7 períodos vencidos, dos pantallas antes de encontrárselos.
 - *"Primer ajuste: 14/01/2027"*.
 - Si `fechaFin <= fechaInicio`, el error se explica **ahí**, no al confirmar.
 
@@ -104,16 +105,22 @@ Con **preview en vivo** debajo de las fechas:
 
 Va Plazo **antes** que Dinero porque determina el resto del wizard.
 
-### 4. Arranque de cuenta
+### 4. ~~Arranque de cuenta~~ — **DADO DE BAJA (03/08, respuesta de Alan)**
 
-El paso de períodos anteriores (hoy el 4) pasa a ofrecer **dos caminos** cuando el contrato ya arrancó:
+Este spec proponía un camino de un click — *"empezar a cobrar desde este mes"* — que seteaba
+`devengarDesde` y **no devengaba nada anterior**, más el `devengarDesde` en `POST /contratos` para
+habilitarlo.
 
-- **"Empezar a cobrar desde este mes"** (un click) → setea `devengarDesde` al 1º del mes en curso. Lo anterior no se devenga: se salda por afuera. Es el camino que la importación masiva ya usa.
-- **"Declarar mes por mes"** → el flujo actual, sin cambios.
+**Alan lo descartó explícitamente** (`2026-08-03-preguntas-camila.md`, pregunta 1):
 
-**Backend**: `POST /contratos` acepta `devengarDesde` (`z.coerce.date().optional()`).
+> *"Debería tener el trackeo de todo el pasado para poder ir a cobrarle."*
 
-🔴 **`devengarDesde` y `periodosAnteriores` son EXCLUYENTES.** Expresan lo mismo de dos formas: si llegan los dos, el contrato pierde deuda real o la duplica. **Se valida en el servidor con un 400 explícito**, no solo en la UI.
+La deuda anterior al alta tiene que quedar **declarada, trackeada y cobrable**. Saltearla es
+exactamente lo que no se quiere. El camino de **declarar mes por mes — que ya existe y funciona — es
+el correcto**, no el atajo.
+
+Se saca la sección entera: no se toca `POST /contratos` y no se agrega `devengarDesde` al alta manual.
+(El campo sigue existiendo en el modelo y lo sigue usando la importación masiva, que es otro caso.)
 
 ### 5. Stepper y errores
 
@@ -161,10 +168,10 @@ problema **ahí mismo** en vez de mandar al usuario a otra sección:
   más `tsc --noEmit` (baseline 0). Vale la pena montarlo en algún momento; no acá.
 - **El riesgo de "agregué un campo al wizard y me olvidé del borrador"** se cubre sin test: el borrador
   lleva `version`, y al cambiar de versión los viejos se descartan en vez de restaurarse mal.
-- **Integración de `devengarDesde`**: alta con `devengarDesde` del mes en curso → cero liquidaciones anteriores; alta con `devengarDesde` **y** `periodosAnteriores` → **400**; alta sin `devengarDesde` → comportamiento idéntico al de hoy (no regresión).
 - **E2E en navegador**: cargar medio contrato → cerrar la pestaña → volver a entrar → el borrador se
   ofrece y se recupera **con el aviso de los adjuntos** (no regresión de lo que ya funciona, más el
-  copy nuevo). Y: contrato que arrancó hace 6 meses → "cobrar desde este mes" → se crea con 1 cuota, no 7.
+  copy nuevo). Y: contrato que arrancó hace 6 meses → se declaran los 6 períodos mes por mes → el
+  contrato nace con esa deuda trackeada (no regresión del camino que Alan confirmó como el correcto).
 - **E2E de la cuenta del propietario**: propiedad cuyo propietario **no** tiene cuenta → elegir
   cobranza directa → cargar la cuenta desde el aviso → **el alta se completa sin recargar la página
   y sin perder ningún campo ya tipeado**. Y el caso negativo: propiedad **sin propietarios** → sigue
@@ -178,7 +185,7 @@ problema **ahí mismo** en vez de mandar al usuario a otra sección:
 | **Diseñar sobre lo que ya existe sin verificarlo** — pasó en este mismo spec: dos tareas completas para construir un borrador que ya estaba en main | Cada tarea del plan arranca leyendo el código que va a tocar. La regla vale para las fases 2 y 3 |
 | Partir el paso 3 rompe el alta, que es el flujo más crítico del panel | El E2E del alta simple corre antes y después; el estado sigue en el padre, así que partir el render no mueve datos |
 | El borrador promete guardar todo y pierde los adjuntos | La UI lo dice explícitamente al recuperar; los archivos nunca entran en `datos` |
-| Se agrega `devengarDesde` al wizard y no al borrador → se pierde al retomar | Test unitario que compara las claves de `BorradorContrato` contra los campos del alta |
+| Se agrega un campo al wizard y no al borrador → se pierde al retomar | El borrador lleva `version`: al cambiarla, los viejos se descartan en vez de restaurarse mal |
 | `devengarDesde` + `periodosAnteriores` juntos corrompen la deuda | Excluyentes, validado en el servidor con 400 y su test |
 | Más pasos hacen el alta más lenta contra el mostrador | Plazo y Dinero son cortos; el simple pasa de 4 a 5 pantallas. Si se siente pesado, se revisa antes de la Fase 2 |
 | El dialog dentro del wizard desmonta el alta o pierde el estado | El dialog es un overlay, no una navegación; el E2E verifica explícitamente que ningún campo tipeado se pierda |
