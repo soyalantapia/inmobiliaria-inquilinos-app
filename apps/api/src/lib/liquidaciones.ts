@@ -36,8 +36,8 @@ export type VigenciaCanon = { desde: string; montoAnterior: number };
  *
  * `contrato.monto` es la AUTORIDAD (lo pisa el ajuste masivo PATCH /contratos/:id/monto,
  * que no deja fila de ajuste). Las vigencias sólo sirven para RETROCEDER los períodos
- * anteriores a un ajuste/renovación que todavía no entró en vigor: manda la PRIMera
- * vigencia posterior al período, y su `montoAnterior` es el canon que aún regía.
+ * anteriores a un ajuste/renovación POSTERIOR a ellos: manda la PRIMera vigencia
+ * posterior al período, y su `montoAnterior` es el canon que aún regía.
  *
  * Sin esto, ajustar o renovar con vigencia futura (renovar por adelantado es el flujo
  * normal: se pacta el canon nuevo para cuando termina el plazo) bumpeaba contrato.monto
@@ -114,19 +114,29 @@ export function computarLiquidacionesContrato(
  * liquidaciones nuevas se crearon.
  */
 /**
- * Ajustes y renovaciones del contrato cuya vigencia TODAVÍA no llegó. Sólo esas importan
- * (`canonDelPeriodo`), así que filtramos por período en la query: en la enorme mayoría de
- * los contratos devuelve 0 filas y no pesa en el barrido del cron.
+ * TODAS las vigencias de canon del contrato (ajustes + renovaciones), sin filtrar por
+ * período.
+ *
+ * Antes esta query traía sólo las FUTURAS (`periodoDesde > mes actual`), porque el único
+ * caso contemplado era "renové/ajusté por adelantado y los meses intermedios todavía son
+ * del canon viejo". Pero el alta de un contrato EN CURSO devenga meses VIEJOS de una, y
+ * sus vigencias son retroactivas por definición: con el filtro puesto, las filas que
+ * materializa el alta (`origenAlta`) no las veía nadie y todos los meses históricos
+ * seguían tomando el monto de hoy — el P0 que esta rama cierra.
+ *
+ * Traer también las pasadas no cambia el resultado del cron: `canonDelPeriodo` sólo mira
+ * las vigencias POSTERIORES al período que está calculando, y el cron sólo crea el mes en
+ * curso y el que viene (los meses ya existentes no se recrean, skipDuplicates). Son un
+ * puñado de filas por contrato, así que el barrido tampoco lo siente.
  */
-async function vigenciasFuturas(tx: TxOrClient, contratoId: string, now: Date): Promise<VigenciaCanon[] | undefined> {
-  const periodo = periodoDe(now);
+async function vigenciasDelContrato(tx: TxOrClient, contratoId: string): Promise<VigenciaCanon[] | undefined> {
   const [ajustes, renovaciones] = await Promise.all([
     tx.ajusteAlquiler.findMany({
-      where: { contratoId, periodoDesde: { gt: periodo } },
+      where: { contratoId },
       select: { periodoDesde: true, montoAnterior: true },
     }),
     tx.renovacionContrato.findMany({
-      where: { contratoId, montoDesde: { gt: periodo } },
+      where: { contratoId },
       select: { montoDesde: true, montoAnterior: true },
     }),
   ]);
@@ -142,7 +152,7 @@ export async function generarLiquidacionesContrato(
   contrato: ContratoParaLiquidar,
 ): Promise<number> {
   const now = new Date();
-  const data = computarLiquidacionesContrato(contrato, now, await vigenciasFuturas(tx, contrato.id, now));
+  const data = computarLiquidacionesContrato(contrato, now, await vigenciasDelContrato(tx, contrato.id));
   if (data.length === 0) return 0;
   const res = await tx.liquidacion.createMany({ data, skipDuplicates: true });
   return res.count;
@@ -182,8 +192,8 @@ export async function devengarSiSigueActivo(
 /**
  * Marca VENCIDO las liquidaciones PENDIENTE cuyo vencimiento ya pasó.
  *
- * El estado se congelaba al CREAR (computarLiquidacionesContrato:67, `venc < now`)
- * y NADA lo re-evaluaba después: una liquidación devengada con vencimiento futuro
+ * El estado se congela al CREAR (computarLiquidacionesContrato, `p.vencido`) y
+ * NADA lo re-evaluaba después: una liquidación devengada con vencimiento futuro
  * nacía PENDIENTE y NUNCA pasaba a VENCIDO al vencer, así que los morosos reales
  * figuraban PENDIENTE y la cobranza no los veía. Este barrido (idempotente) lo
  * corrige. Se dispara junto al devengo (cron in-process + endpoint del panel).

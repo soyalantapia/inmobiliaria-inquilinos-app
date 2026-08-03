@@ -88,9 +88,16 @@ const r2 = (n: number) => Math.round(n * 100) / 100;
  * Mora de UNA liquidación según el esquema, a la fecha `asOf`.
  *
  * `manual` (Liquidacion.montoPunitorioManual) PISA el cálculo: es la mora
- * histórica confirmada al migrar un contrato en curso — congelada (no sigue
- * creciendo) y editable desde el panel. Un manual de 0 también pisa (permite
- * condonar la mora de un período puntual sin tocar el esquema).
+ * histórica confirmada al migrar un contrato en curso — congelada, no sigue
+ * creciendo. Un manual de 0 también pisa (permite condonar la mora de un
+ * período puntual sin tocar el esquema).
+ *
+ * Llega `null` cuando el contrato tiene moraHistoricaCongelada = false (el
+ * default): ahí la mora vieja NO se congela y este cálculo sigue corriendo con
+ * los días, que es justo para lo que está escrito el `if` de abajo.
+ *
+ * ⚠️ El manual NO se edita desde ningún lado: no existe el endpoint (falta un
+ * PATCH /liquidaciones/:id/mora). Se escribe una sola vez, en el alta.
  */
 export function calcularMora(
   base: number,

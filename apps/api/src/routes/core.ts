@@ -17,6 +17,7 @@ import { conSaldo, montoPagadoPorLiquidacion } from '../lib/saldos.js';
 import { aplicarDepositoADeuda } from '../lib/aplicar-deposito.js';
 import { calcularMora, resolverEsquemaMora } from '../lib/punitorios.js';
 import { aplicarEstadoInicial, EstadoInicialInvalido } from '../lib/estado-inicial-contrato.js';
+import { ajustesDeVigenciasCanon, validarVigenciasCanon } from '../lib/vigencias-canon.js';
 import { buscarOCrearPersona } from '../lib/persona.js';
 import { borrarArchivoSiHuerfano, urlEsDelTenant } from './uploads.js';
 import { enviarInvitacionInquilino, enviarInvitacionEquipo } from '../mailer.js';
@@ -896,6 +897,26 @@ export async function coreRoutes(app: FastifyInstance) {
           )
           .max(120)
           .optional(),
+        // Historial de canon del contrato EN CURSO ("desde 2025-10 valía X, desde
+        // 2026-04 vale Y"): los montos existen en el contrato en papel y son la
+        // única forma de que cada mes viejo se devengue a SU precio. Se materializa
+        // como AjusteAlquiler retroactivos (lib/vigencias-canon.ts). Sin esto todos
+        // los meses históricos toman el monto de hoy = deuda inflada.
+        vigenciasCanon: z
+          .array(
+            z.object({
+              // Mes 01-12 estricto, igual que POST /contratos/:id/ajustar: '2026-13'
+              // pasaría el \d{2} y después ordenaría mal contra el resto.
+              desde: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Período inválido (YYYY-MM)'),
+              monto: z.number().nonnegative(),
+            }),
+          )
+          .max(120)
+          .optional(),
+        // Interruptor de mora de los meses viejos. false (default) = la mora SIGUE
+        // CORRIENDO con el esquema; true = queda congelada en lo que se declaró.
+        // Antes no se elegía: el input del wizard se prefilaba solo y congelaba.
+        moraHistoricaCongelada: z.boolean().default(false),
       })
       .safeParse(request.body ?? {});
     if (!body.success) return reply.code(400).send({ message: 'Datos del contrato incompletos' });
@@ -913,6 +934,19 @@ export async function coreRoutes(app: FastifyInstance) {
     }
     if ((d.tipoContrato === 'ALQUILER_Y_EXPENSAS' || d.tipoContrato === 'SOLO_EXPENSAS') && !d.montoExpensas) {
       return reply.code(400).send({ message: 'Este tipo de contrato requiere el monto de expensas' });
+    }
+    // Historial de canon: se valida ANTES de abrir la transacción, así un historial
+    // incoherente devuelve 400 sin haber escrito una sola fila (y sin gastar el
+    // rollback de un alta entera, que es exactamente lo que se está tratando de
+    // evitar en esta rama). El mes en curso va en día civil argentino, el mismo
+    // corte con el que el resto del sistema decide "qué mes es hoy".
+    if (d.vigenciasCanon) {
+      const errorVigencias = validarVigenciasCanon(d.vigenciasCanon, {
+        periodoInicio: periodoDe(d.fechaInicio),
+        periodoActual: periodoDe(diaCivilAR(new Date())),
+        montoContrato: d.monto,
+      });
+      if (errorVigencias) return reply.code(400).send({ message: errorVigencias });
     }
     // ¿Este contrato queda pendiente de aprobación? La regla vive en shared y se
     // deriva del PERMISO (contratoQuedaPendiente): el baseline del catálogo (CARGA)
@@ -1023,6 +1057,7 @@ export async function coreRoutes(app: FastifyInstance) {
           // (hereda el default de la inmobiliaria en la lectura).
           moraTipo: d.moraTipo ?? null,
           moraValor: d.moraTipo && d.moraTipo !== 'SIN_MORA' ? (d.moraValor ?? null) : null,
+          moraHistoricaCongelada: d.moraHistoricaCongelada,
           modoCobranza: d.modoCobranza,
           cobraDirectoPropietarioId,
           cargadoPor: u.userId,
@@ -1030,6 +1065,32 @@ export async function coreRoutes(app: FastifyInstance) {
           cargadoAt: new Date(),
         },
       });
+      // Historial de canon → vigencias RETROACTIVAS, antes de devengar. Tienen que
+      // existir ya en la DB cuando corre generarLiquidacionesContrato: de ahí las
+      // lee `canonDelPeriodo` para retroceder cada mes viejo a SU precio (si no,
+      // como el contrato se crea en esta misma transacción, no hay ninguna vigencia
+      // y todos los meses toman el monto de hoy).
+      //
+      // Van ANTES del branch de BORRADOR a propósito: un contrato que espera
+      // aprobación devenga recién al aprobarse (plata.ts), y para entonces estas
+      // filas ya tienen que estar — si no, la aprobación repite el mismo bug.
+      if (d.vigenciasCanon) {
+        const ajustes = ajustesDeVigenciasCanon(d.vigenciasCanon);
+        if (ajustes.length > 0) {
+          await tx.ajusteAlquiler.createMany({
+            data: ajustes.map((a) => ({
+              inmobiliariaId: u.inmobiliariaId,
+              contratoId: contrato.id,
+              ...a,
+              motivo: 'Canon histórico declarado al cargar el contrato en curso',
+              // Marca de origen: estas filas NO son un ajuste que la inmobiliaria
+              // aplicó hoy, son la historia que el contrato ya traía en papel.
+              origenAlta: true,
+              creadoPorId: u.userId,
+            })),
+          });
+        }
+      }
       // Persona: identidad reutilizable del tenant para la ficha histórica del inquilino
       // (agrupa contratos/inquilinos del mismo titular — multi-alquiler). Find-or-create por
       // DNI/email COMPARTIDO con la importación de cartera (lib/persona.ts): una sola

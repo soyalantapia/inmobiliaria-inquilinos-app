@@ -1290,6 +1290,13 @@ model Contrato {
   // según moraTipo: % diario, $ fijo por mes de atraso, o % mensual.
   moraTipo                  TipoMora?
   moraValor                 Float?
+  // ¿La mora de los meses VIEJOS (los declarados en el alta de un contrato en curso)
+  // queda congelada en el monto que declaró la inmobiliaria, o sigue corriendo con el
+  // esquema? Lo elige la inmobiliaria por contrato: el input de mora del wizard se
+  // prefila solo, así que mandarlo siempre CONGELABA la deuda vieja sin que nadie lo
+  // decidiera. false (default) => no se persiste montoPunitorioManual y el punitorio
+  // sigue creciendo con los días. Ver lib/estado-inicial-contrato.ts.
+  moraHistoricaCongelada    Boolean        @default(false)
   modoCobranza              ModoCobranza   @default(INMOBILIARIA)
   cobraDirectoPropietarioId String?
   cobraDirectoPropietario   Propietario?   @relation("CobranzaDirecta", fields: [cobraDirectoPropietarioId], references: [id])
@@ -1509,6 +1516,13 @@ model AjusteAlquiler {
   montoNuevo     Decimal      @db.Decimal(14, 2)
   periodoDesde   String // 'YYYY-MM' desde el que aplica el nuevo canon
   motivo         String? // p.ej. "ICL 12 meses (+45%)"
+  // ¿Esta fila nació en el ALTA de un contrato en curso (vigenciasCanon), o es un
+  // ajuste que la inmobiliaria aplicó de verdad? Las del alta son la HISTORIA del
+  // canon que el contrato ya traía en papel: se materializan retroactivas para que
+  // `canonDelPeriodo` pueda retroceder y cada mes viejo se devengue a su precio
+  // real (antes todos tomaban el monto de hoy). Sin este flag las pantallas de
+  // ajustes/timeline las mostrarían como "se ajustó el alquiler hoy", que es falso.
+  origenAlta     Boolean      @default(false)
   creadoPorId    String?
   createdAt      DateTime     @default(now())
 
@@ -1622,7 +1636,12 @@ model Liquidacion {
   montoPunitorio       Decimal           @default(0) @db.Decimal(14, 2) // se recalcula al día, no congelar
   // Mora histórica CONGELADA, confirmada a mano al migrar un contrato en curso
   // ("está en la cuota 7 de 12"). Si no es null, PISA el cálculo del esquema
-  // (calcularMora la respeta). Editable desde el panel.
+  // (calcularMora la respeta). Se escribe UNA sola vez, al aplicar el estado
+  // inicial, y sólo si el contrato tiene moraHistoricaCongelada = true.
+  // ⚠️ NO es editable desde el panel: acá decía que sí y era falso — no existe
+  // ningún endpoint que la modifique. Falta un PATCH /liquidaciones/:id/mora
+  // (condonar / corregir la mora de un período puntual); queda anotado, no se
+  // construye en esta rama.
   montoPunitorioManual Decimal?          @db.Decimal(14, 2)
   montoTotal           Decimal           @db.Decimal(14, 2)
   fechaVencimiento     DateTime
