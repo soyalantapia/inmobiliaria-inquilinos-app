@@ -791,6 +791,17 @@ function PagoUrgenteCard({ mov }: { mov: Movimiento }) {
   const montoPagado = mov.liq.montoPagado ?? 0;
   const saldo = apiEnabled ? Math.max(0, mov.liq.saldo ?? calc.totalAPagar) : calc.totalAPagar;
   const esParcial = apiEnabled && montoPagado > 0 && saldo > 0;
+  // Lo que informó y todavía nadie miró. NO baja el saldo (el saldo sólo cuenta
+  // lo CONCILIADO), pero desde el lado del inquilino esa plata ya salió: pedirle
+  // el total otra vez lo empuja a pagar dos veces. `restante` es lo que le falta
+  // poner de verdad; si da 0 y hay algo en revisión, la pelota es de la
+  // inmobiliaria. Los RECHAZADO no cuentan: esa plata hay que volver a ponerla.
+  const totalCard = esParcial ? saldo : calc.totalAPagar;
+  const enRevision = (mov.liq.pagos ?? [])
+    .filter((p) => p.estado === 'INFORMADO')
+    .reduce((acc, p) => acc + p.monto, 0);
+  const restante = Math.max(0, totalCard - enRevision);
+  const esperandoVisto = enRevision > 0 && restante === 0;
 
   return (
     <Card
@@ -875,10 +886,22 @@ function PagoUrgenteCard({ mov }: { mov: Movimiento }) {
               </span>
             </div>
           )}
+          {/* Sin esta línea el total decía 550.000 y el botón 250.000, y no había
+              forma de saber de dónde salía la diferencia. */}
+          {enRevision > 0 && (
+            <div className="flex items-center justify-between">
+              <span className="text-amber-700 dark:text-amber-300">Informaste (en revisión)</span>
+              <span className="font-medium tabular-nums text-amber-700 dark:text-amber-300">
+                − {formatMonto(enRevision, mov.liq.moneda)}
+              </span>
+            </div>
+          )}
           <div className="mt-1 flex items-baseline justify-between border-t pt-2">
-            <span className="text-sm font-semibold">{esParcial ? 'Saldo a pagar' : 'Total a pagar'}</span>
+            <span className="text-sm font-semibold">
+              {esperandoVisto ? 'Ya cubriste el total' : enRevision > 0 || esParcial ? 'Falta pagar' : 'Total a pagar'}
+            </span>
             <span className="text-lg font-bold tabular-nums">
-              {formatMonto(esParcial ? saldo : calc.totalAPagar, mov.liq.moneda)}
+              {formatMonto(esperandoVisto ? totalCard : restante, mov.liq.moneda)}
             </span>
           </div>
         </div>
@@ -888,18 +911,35 @@ function PagoUrgenteCard({ mov }: { mov: Movimiento }) {
             contar que ya hay un comprobante esperando validación. */}
         <PagosBadges pagos={mov.liq.pagos} moneda={mov.liq.moneda} liqPagada={mov.liq.estado === 'PAGADO'} />
 
-        <Link
-          href={`/pago/${mov.liq.id}`}
-          className={cn(
-            'flex w-full items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-semibold transition-colors',
-            vencido
-              ? 'bg-red-600 text-white hover:bg-red-700'
-              : 'bg-primary text-primary-foreground hover:bg-primary/90',
-          )}
-        >
-          {vencido ? 'Ponerte al día' : 'Pagar ahora'}
-          <ChevronRight className="h-4 w-4" />
-        </Link>
+        {esperandoVisto ? (
+          /* Ya informó lo que faltaba: pedirle "Pagar" de nuevo lo empuja a pagar
+             dos veces. Lo que falta no es plata suya, es el visto de la
+             inmobiliaria. Sigue siendo link para que pueda ver su comprobante. */
+          <Link
+            href={`/pago/${mov.liq.id}`}
+            className="flex w-full items-center justify-center gap-2 rounded-lg border bg-background/60 px-4 py-3 text-sm font-semibold text-muted-foreground transition-colors hover:bg-muted"
+          >
+            <Clock className="h-4 w-4" />
+            La inmobiliaria tiene que aceptar
+            <ChevronRight className="h-4 w-4" />
+          </Link>
+        ) : (
+          <Link
+            href={`/pago/${mov.liq.id}`}
+            className={cn(
+              'flex w-full items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-semibold transition-colors',
+              vencido
+                ? 'bg-red-600 text-white hover:bg-red-700'
+                : 'bg-primary text-primary-foreground hover:bg-primary/90',
+            )}
+          >
+            {/* Con el monto adentro: antes decía "Pagar ahora" y el número de
+                arriba era el total, sin descontar lo que ya había informado —
+                así que pedía de más sin decirlo. */}
+            {vencido ? 'Ponerte al día' : 'Pagar'} {formatMonto(restante, mov.liq.moneda)}
+            <ChevronRight className="h-4 w-4" />
+          </Link>
+        )}
       </CardContent>
     </Card>
   );

@@ -31,7 +31,6 @@ export interface BorradorContrato {
   depositoGarantia: string;
   comisionInmobiliaria: string;
   modoCobranza: string;
-  mascotasPermitidas: boolean | null;
   moraSel: string;
   moraValor: string;
   periodosForm: Record<string, { estado: string; montoPagado: string; moraManual: string; moraEditada: boolean }>;

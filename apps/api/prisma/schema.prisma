@@ -1191,6 +1191,13 @@ model Propiedad {
   // Reglas básicas de convivencia visibles para el inquilino en su PWA (mudanza,
   // ruidos, uso de espacios comunes, etc.). Texto libre; reduce consultas. null = sin cargar.
   reglasConvivencia String?
+  // ¿Se permiten mascotas en esta unidad? Es un atributo del INMUEBLE (no del
+  // contrato): antes se preguntaba en cada alta de contrato y había que
+  // recargarlo si se armaba un contrato nuevo sobre la misma propiedad, o
+  // editar el contrato si cambiaba. null = no especificado (no afirmamos ni
+  // Sí ni No). Ver Contrato.mascotasPermitidas — ese campo queda DEPRECADO
+  // (se conserva por los datos ya cargados; el alta de contrato ya no lo pide).
+  mascotasPermitidas Boolean?
   // Nombre libre de COMPLEJO/edificio para agrupar propiedades de la inmobiliaria
   // (identificar rápido varios inquilinos del mismo complejo con mora/reclamos).
   // Es un rótulo simple, distinto del módulo Consorcio (expensas/UFs). Si la
@@ -1263,8 +1270,12 @@ model Contrato {
   frecuenciaAjusteMeses     Int
   proximoAjuste             DateTime?
   tipoContrato              TipoContrato   @default(ALQUILER)
-  // ¿Se permiten mascotas en esta unidad? Visible en el contrato para el inquilino.
-  // null = no especificado (no afirmamos ni Sí ni No).
+  // DEPRECADO (03/08): pasó a ser un atributo de la PROPIEDAD (Propiedad.mascotasPermitidas)
+  // porque es del inmueble, no del contrato — antes había que recargarlo en cada contrato
+  // nuevo sobre la misma unidad. La columna se conserva (NO se borra: hay datos reales de
+  // clientes y con migrate-on-boot un DROP COLUMN no se revierte con un git revert) pero ya
+  // no se lee ni se escribe desde el alta de contrato; /mi-contrato la usa solo como
+  // fallback si la propiedad no tiene el valor cargado (backfill incompleto).
   mascotasPermitidas        Boolean?
   montoExpensas             Decimal?       @db.Decimal(14, 2)
   cbuAlias                  String? // override del CBU del propietario para esta unidad

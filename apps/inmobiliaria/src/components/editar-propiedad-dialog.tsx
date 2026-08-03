@@ -10,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@llave/ui/dialog';
+import { cn } from '@llave/ui/cn';
 import { Input } from '@llave/ui/input';
 import { Label } from '@llave/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@llave/ui/select';
@@ -48,6 +49,11 @@ export function EditarPropiedadDialog({ open, onOpenChange, propiedad, onGuardad
   );
   const [m2, setM2] = useState<string>(propiedad.m2 != null ? String(propiedad.m2) : '');
   const [complejo, setComplejo] = useState(propiedad.complejo ?? '');
+  // ¿Mascotas? tri-estado: null = no especificado, true = permitidas, false = no.
+  // Atributo del inmueble (antes se preguntaba por contrato — ver feedback 03/08).
+  const [mascotasPermitidas, setMascotasPermitidas] = useState<boolean | null>(
+    propiedad.mascotasPermitidas ?? null,
+  );
   const [guardando, setGuardando] = useState(false);
   const qc = useQueryClient();
 
@@ -62,6 +68,7 @@ export function EditarPropiedadDialog({ open, onOpenChange, propiedad, onGuardad
       setAmbientes(propiedad.ambientes != null ? String(propiedad.ambientes) : '');
       setM2(propiedad.m2 != null ? String(propiedad.m2) : '');
       setComplejo(propiedad.complejo ?? '');
+      setMascotasPermitidas(propiedad.mascotasPermitidas ?? null);
     }
   }, [open, propiedad]);
 
@@ -92,6 +99,11 @@ export function EditarPropiedadDialog({ open, onOpenChange, propiedad, onGuardad
       ambientes: ambientes ? Number(ambientes) : null,
       m2: m2 ? Number(m2) : null,
       ...(complejoCambio ? { complejo: complejo.trim() || null } : {}),
+      // Tri-estado: siempre viaja (igual que ambientes/m2). Si no se tocó, es el
+      // mismo valor que ya tenía la propiedad → no-op. El backend distingue
+      // `undefined` (no tocar) de `null` (volver a "no especificado"), pero acá
+      // no hay ambigüedad: el estado siempre refleja una elección explícita.
+      mascotasPermitidas,
     };
     try {
       if (apiEnabled) {
@@ -238,6 +250,32 @@ export function EditarPropiedadDialog({ open, onOpenChange, propiedad, onGuardad
             <p className="text-[11px] text-muted-foreground">
               Para agrupar propiedades del mismo complejo (útil cuando varias reclaman o se atrasan).
             </p>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>¿Se permiten mascotas?</Label>
+            <div className="flex gap-2">
+              {([
+                { val: true, label: 'Sí' },
+                { val: false, label: 'No' },
+                { val: null, label: 'Sin especificar' },
+              ] as { val: boolean | null; label: string }[]).map((o) => (
+                <button
+                  key={String(o.val)}
+                  type="button"
+                  aria-pressed={mascotasPermitidas === o.val}
+                  onClick={() => setMascotasPermitidas(o.val)}
+                  className={cn(
+                    'rounded-md border px-3 py-1.5 text-sm transition-colors',
+                    mascotasPermitidas === o.val
+                      ? 'border-primary bg-primary text-primary-foreground'
+                      : 'border-border bg-background hover:bg-muted/40',
+                  )}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 

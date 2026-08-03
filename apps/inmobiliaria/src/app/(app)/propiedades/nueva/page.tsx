@@ -22,6 +22,7 @@ import {
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card, CardContent } from '@llave/ui/card';
+import { cn } from '@llave/ui/cn';
 import { ConfirmDialog } from '@llave/ui/confirm-dialog';
 import { Input } from '@llave/ui/input';
 import { Label } from '@llave/ui/label';
@@ -132,6 +133,9 @@ function NuevaPropiedadForm() {
   const [reglasConvivencia, setReglasConvivencia] = useState('');
   // Nombre de complejo/edificio para agrupar (feedback 14/07).
   const [complejo, setComplejo] = useState('');
+  // ¿Mascotas? tri-estado: null = no especificado (default), true = permitidas, false = no.
+  // Atributo del INMUEBLE (antes se preguntaba por contrato — ver feedback 03/08).
+  const [mascotasPermitidas, setMascotasPermitidas] = useState<boolean | null>(null);
 
   // Foto (opcional): se elige acá con preview local (blob) y se SUBE recién al
   // guardar (POST /uploads → fotoUrl) — sin archivos huérfanos si abandona.
@@ -420,6 +424,7 @@ function NuevaPropiedadForm() {
           ...(fotoUrl ? { fotoUrl } : {}),
           ...(reglasConvivencia.trim() ? { reglasConvivencia: reglasConvivencia.trim() } : {}),
           ...(complejo.trim() ? { complejo: complejo.trim() } : {}),
+          ...(mascotasPermitidas !== null ? { mascotasPermitidas } : {}),
           propietarios: participaciones,
         });
         setEnviando(false);
@@ -832,6 +837,33 @@ function NuevaPropiedadForm() {
                     rows={4}
                     placeholder={'Ej: mudanzas de 8 a 20 hs. Silencio después de las 22. No colgar ropa en el frente. Expensas incluyen agua…'}
                   />
+                </div>
+                {/* Mascotas: atributo del inmueble (se ve en la ficha y en el
+                    contrato del inquilino, sin volver a preguntarlo por contrato). */}
+                <div className="space-y-1.5">
+                  <Label>¿Se permiten mascotas?</Label>
+                  <div className="flex gap-2">
+                    {([
+                      { val: true, label: 'Sí' },
+                      { val: false, label: 'No' },
+                      { val: null, label: 'Sin especificar' },
+                    ] as { val: boolean | null; label: string }[]).map((o) => (
+                      <button
+                        key={String(o.val)}
+                        type="button"
+                        aria-pressed={mascotasPermitidas === o.val}
+                        onClick={() => setMascotasPermitidas(o.val)}
+                        className={cn(
+                          'rounded-md border px-3 py-1.5 text-sm transition-colors',
+                          mascotasPermitidas === o.val
+                            ? 'border-primary bg-primary text-primary-foreground'
+                            : 'border-border bg-background hover:bg-muted/40',
+                        )}
+                      >
+                        {o.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </CardContent>
             </Card>

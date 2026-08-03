@@ -496,7 +496,7 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
     const contrato = await prisma.contrato.findFirst({
       where: { id: inq.contratoId, inmobiliariaId: inq.inmobiliariaId },
       include: {
-        propiedad: { select: { direccion: true, ciudad: true, reglasConvivencia: true } },
+        propiedad: { select: { direccion: true, ciudad: true, reglasConvivencia: true, mascotasPermitidas: true } },
         inmobiliaria: {
           select: { nombre: true, telefono: true, moraTipoDefault: true, moraValorDefault: true },
         },
@@ -586,8 +586,12 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
       depositoDevueltoMonto:
         contrato.depositoDevueltoMonto != null ? Number(contrato.depositoDevueltoMonto) : null,
       // Mascotas (Sí/No/no especificado) y reglas de convivencia: se muestran en
-      // el contrato del inquilino para que no tenga que preguntar.
-      mascotasPermitidas: contrato.mascotasPermitidas,
+      // el contrato del inquilino para que no tenga que preguntar. Mascotas pasó
+      // a ser un atributo de la PROPIEDAD (no del contrato); el fallback al valor
+      // legacy del contrato es defensivo por si el backfill de la migración no
+      // cubrió algún caso — así ninguna propiedad que hoy muestra el dato deja
+      // de mostrarlo.
+      mascotasPermitidas: contrato.propiedad.mascotasPermitidas ?? contrato.mascotasPermitidas,
       reglasConvivencia: contrato.propiedad.reglasConvivencia ?? null,
       // Esquema de mora RESUELTO (cascada contrato → default inmobiliaria) para
       // que la app pueda explicar "cómo se calcula el recargo". El campo legacy
