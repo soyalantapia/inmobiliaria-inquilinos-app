@@ -967,7 +967,7 @@ function CargarContratoApiWizard() {
     setCargandoFicha(false);
   };
 
-  // Términos
+  // Términos: campos de los pasos 3 (Plazo y salida) y 4 (Dinero).
   const [monto, setMonto] = useState('');
   const [moneda, setMoneda] = useState<Moneda>('ARS');
   const [fechaInicio, setFechaInicio] = useState('');
@@ -1022,8 +1022,15 @@ function CargarContratoApiWizard() {
     () => propiedades.find((p) => p.propiedad.id === propiedadId) ?? null,
     [propiedades, propiedadId],
   );
-  // Id del dueño de la propiedad elegida (embebido en /propiedades, "lite":
-  // sólo id/nombre/apellido, nunca trae cuentaCobranza).
+  // Id del dueño PRINCIPAL de la propiedad elegida (embebido en /propiedades,
+  // "lite": sólo id/nombre/apellido, nunca trae cuentaCobranza). `propietarios`
+  // ya viene ordenado por mayor porcentaje desde usePropiedades() (hooks.ts),
+  // así que [0] es el mismo dueño que el server va a usar en
+  // `cobraDirectoPropietarioId` (participacionPropietario.findFirst orderBy
+  // porcentaje desc, core.ts). Con un solo dueño esto no cambia nada. Antes
+  // tomaba el primero del orden crudo de la API, que no era necesariamente el
+  // mayoritario: el wizard le pedía la cuenta a un dueño y el server usaba
+  // otro.
   const propietarioIdElegido = propiedadElegida?.propietarios[0]?.id ?? null;
   // Detalle real de ESE ÚNICO propietario (con cuentaCobranza) vía GET
   // /propietarios/:id — el mismo endpoint acotado que usa la ficha del
@@ -1121,7 +1128,7 @@ function CargarContratoApiWizard() {
     const propiedadSigueDisponible = disponibles.some((p) => p.propiedad.id === b.propiedadId);
     if (b.propiedadId && propiedadSigueDisponible) {
       setPropiedadId(b.propiedadId);
-      // Mismo criterio que avanzar()/retroceder(): el paso 4 (períodos
+      // Mismo criterio que avanzar()/retroceder(): el paso 5 (períodos
       // anteriores) sólo existe si con los datos restaurados hay períodos
       // vencidos que declarar — si no, no lo salteamos, directamente no
       // dejamos al usuario en un paso que ya no aplica.
@@ -1280,7 +1287,7 @@ function CargarContratoApiWizard() {
       : { tipo: moraSel, valor: Number(moraValor) || 0 };
 
   // Períodos ya vencidos entre el inicio del contrato y hoy. Si hay al menos
-  // uno, aparece el paso 4 "Períodos anteriores".
+  // uno, aparece el paso 5 "Períodos anteriores".
   const periodosVencidos = useMemo(
     () => calcularPeriodosVencidos(fechaInicio, fechaFin, Number(diaPago), new Date()),
     [fechaInicio, fechaFin, diaPago],
@@ -1310,7 +1317,6 @@ function CargarContratoApiWizard() {
 
     const MES_MS = 1000 * 60 * 60 * 24 * 30.44;
     const meses = Math.round((fin.getTime() - inicio.getTime()) / MES_MS);
-    const mesesDesdeInicio = Math.max(0, Math.round((Date.now() - inicio.getTime()) / MES_MS));
     // Mismo clamp que `enumerarPeriodosContrato` (packages/shared/src/periodos.ts):
     // Math.min(dia, diasDelMesDestino). Sin esto, `setMonth` no clampea sino que
     // desborda al mes siguiente cuando el día de inicio (29/30/31) no existe en
@@ -1328,7 +1334,7 @@ function CargarContratoApiWizard() {
     ).getDate();
     primerAjuste.setDate(Math.min(diaInicio, diasMesDestino));
 
-    return { meses, mesesDesdeInicio, primerAjuste, error: null };
+    return { meses, primerAjuste, error: null };
   }, [fechaInicio, fechaFin, frecuenciaAjusteMeses]);
 
   const formDePeriodo = (periodo: string): PeriodoAnteriorForm =>
@@ -1437,7 +1443,7 @@ function CargarContratoApiWizard() {
     }));
   };
 
-  // Resumen de deuda inicial (footer del paso 4 + resumen del confirmar).
+  // Resumen de deuda inicial (footer del paso 5 + resumen del confirmar).
   const deudaCapital = periodosVencidos.reduce((acc, p) => {
     const f = formDePeriodo(p.periodo);
     if (f.estado === 'ADEUDA') return acc + montoBaseMora;
@@ -1449,7 +1455,7 @@ function CargarContratoApiWizard() {
     return f.estado === 'PAGADO' ? acc : acc + (Number(f.moraManual) || 0);
   }, 0);
 
-  // Si el usuario vuelve al paso 3 y cambia el esquema de mora o el monto,
+  // Si el usuario vuelve al paso 4 y cambia el esquema de mora o el monto,
   // refrescamos las moras SUGERIDAS de los períodos que no editó a mano.
   useEffect(() => {
     setPeriodosForm((forms) => {
@@ -1983,18 +1989,31 @@ function CargarContratoApiWizard() {
                   veces con distinto tamaño de letra. */}
               {resumenPlazo && resumenPlazo.error === null && (
                 <div className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">
-                  <p>Dura {resumenPlazo.meses} meses.</p>
-                  {resumenPlazo.mesesDesdeInicio > 0 && (
+                  <p>
+                    {resumenPlazo.meses > 0
+                      ? `Dura ${resumenPlazo.meses} ${resumenPlazo.meses === 1 ? 'mes' : 'meses'}.`
+                      : 'Dura menos de un mes.'}
+                  </p>
+                  {/* Gateado con `hayPeriodos` (la MISMA fuente canónica —
+                      enumerarPeriodosContrato — que decide si el paso 5 existe) y
+                      no con `mesesDesdeInicio` (una fórmula propia de este
+                      preview): con esa fórmula había fechas donde el cartel
+                      prometía el paso 5 y no aparecía, y otras donde aparecía sin
+                      aviso previo. El número también es el real: la cantidad de
+                      períodos vencidos, no una cuenta de meses aproximada. */}
+                  {hayPeriodos && (
                     <p className="text-foreground">
-                      Este contrato arrancó hace {resumenPlazo.mesesDesdeInicio}{' '}
-                      {resumenPlazo.mesesDesdeInicio === 1 ? 'mes' : 'meses'}: más adelante vas a tener
-                      que declarar qué pasó con cada uno de esos períodos.
+                      Este contrato ya tiene {periodosVencidos.length}{' '}
+                      {periodosVencidos.length === 1 ? 'período vencido' : 'períodos vencidos'}: más
+                      adelante vas a tener que declarar qué pasó con cada uno.
                     </p>
                   )}
-                  <p>
-                    Primer ajuste:{' '}
-                    {formatFechaDeInput(resumenPlazo.primerAjuste.toISOString().slice(0, 10))}.
-                  </p>
+                  {indiceAjuste !== 'FIJO' && (
+                    <p>
+                      Primer ajuste:{' '}
+                      {formatFechaDeInput(resumenPlazo.primerAjuste.toISOString().slice(0, 10))}.
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -2277,6 +2296,11 @@ function CargarContratoApiWizard() {
                   ) : propietarioDeLaPropiedad.cuentaCobranza ? (
                     <div className="mt-2 rounded-md border bg-muted/40 p-3 text-sm">
                       <p className="font-medium">Cuenta de {propietarioDeLaPropiedad.nombre}</p>
+                      {/* Titular: a nombre de quién está la cuenta bancaria — puede no
+                          coincidir con el propietario (cónyuge, sociedad). Spec §6. */}
+                      <p className="text-muted-foreground">
+                        Titular: {propietarioDeLaPropiedad.cuentaCobranza.titular}
+                      </p>
                       <p className="text-muted-foreground">
                         {propietarioDeLaPropiedad.cuentaCobranza.banco} · CBU ····
                         {propietarioDeLaPropiedad.cuentaCobranza.cbu.slice(-4)} ·{' '}

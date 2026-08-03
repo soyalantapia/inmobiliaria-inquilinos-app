@@ -951,8 +951,19 @@ export function usePropiedades(): {
     // filter: el API puede devolver una participación con propietario null
     // (participación huérfana, estado de DB válido) → propietarioLite crashea al
     // desestructurar. Mismo guard que use-propiedad.ts.
+    // sort por mayor porcentaje: mismo criterio que el server para elegir el
+    // dueño PRINCIPAL en cobranza directa (POST /contratos hace
+    // participacionPropietario.findFirst({ orderBy: { porcentaje: 'desc' } })).
+    // Antes quedaba en el orden crudo que devuelve /propiedades (sin orderBy),
+    // así que `propietarios[0]` no era necesariamente el mayoritario — el
+    // wizard de alta de contrato (page.tsx) lee ESTE [0] para decidir de quién
+    // pedir la cuenta de cobranza directa, y terminaba pidiendo la cuenta de un
+    // dueño distinto del que el server iba a usar. Array.prototype.sort es
+    // estable, así que un empate de porcentaje conserva el orden original (best
+    // effort: el server tampoco tiene desempate explícito).
     const propietarios = (p.participaciones ?? [])
       .filter((pp) => pp.propietario != null)
+      .sort((a, b) => b.porcentaje - a.porcentaje)
       .map((pp) => propietarioLite(pp.propietario, p.id));
     const reclamosAbiertos = reclamos.filter(
       (r) => r.contratoId === p.contratoActualId && (r.estado === 'ABIERTO' || r.estado === 'EN_CURSO'),
