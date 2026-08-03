@@ -422,3 +422,37 @@ describe('Cuentas — los totales no mezclan monedas', () => {
     expect(dolar.moneda).toBe('USD');
   });
 });
+
+describe('Cobro automático — respeta la moneda del cargo', () => {
+  it('saldar un cargo en USD registra el ingreso en USD, no en pesos', async () => {
+    // `CargoContrato` tiene su propia moneda, y el create de caja no la copiaba: se
+    // guardaba con el default ARS y el MISMO número. Ese ingreso después no se le sumaba
+    // al propietario en una rendición en dólares (la rendición filtra por moneda) y caía
+    // en el renglón equivocado de los totales por cuenta.
+    const contrato = await prismaTest.contrato.findFirst({
+      where: { id: 'cnt_001' },
+      select: { id: true, inmobiliariaId: true },
+    });
+    const cargo = await prismaTest.cargoContrato.create({
+      data: {
+        inmobiliariaId: contrato!.inmobiliariaId,
+        contratoId: contrato!.id,
+        tipo: 'REPARACION',
+        concepto: `${MARCA} cargo en dolares`,
+        monto: 300,
+        moneda: 'USD',
+        contraDeposito: false,
+      },
+    });
+    const res = await app.inject({ method: 'POST', url: `/cargos/${cargo.id}/saldar`, headers: auth(tokenAdmin) });
+    expect(res.statusCode).toBe(200);
+    const mov = await prismaTest.movimientoCaja.findFirst({
+      where: { contratoId: contrato!.id, descripcion: { contains: `${MARCA} cargo en dolares` } },
+    });
+    expect(mov).toBeTruthy();
+    expect(mov!.moneda).toBe('USD');
+    expect(Number(mov!.monto)).toBe(300);
+    await prismaTest.movimientoCaja.deleteMany({ where: { id: mov!.id } });
+    await prismaTest.cargoContrato.deleteMany({ where: { id: cargo.id } });
+  });
+});

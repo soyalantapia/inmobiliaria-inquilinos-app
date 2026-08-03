@@ -1514,9 +1514,17 @@ export function useDashboard(): DashboardData {
   // ninguna rendición, así que su `descontadoEnRendicion` se queda en false para
   // siempre: contarlo acá restaba de "A rendir a propietarios" una plata que nunca
   // se le iba a descontar a nadie, y el número no se corregía nunca más.
+  // `moneda === 'ARS'` además: este tablero está declarado en pesos, y `cobrado` y
+  // `comisionMes` salen de ahí. Restarle un gasto en dólares con su número tal cual —
+  // US$800 restando como $800— daba un "A rendir" que no significaba nada. Antes no se
+  // notaba porque el panel nunca reenviaba la moneda y todo se guardaba ARS; ese era
+  // justamente el bug que este cambio arregla, así que ahora la mezcla sería real.
   const gastosPendientes = apiEnabled
     ? movsCaja
-        .filter((m) => m.tipo === 'GASTO' && !m.descontadoEnRendicion && !!m.propiedadId)
+        .filter(
+          (m) =>
+            m.tipo === 'GASTO' && !m.descontadoEnRendicion && !!m.propiedadId && m.moneda === 'ARS',
+        )
         .reduce((a, m) => a + m.monto, 0)
     : 0;
   const aRendirMes = Math.max(0, Math.round(cobrado - comisionMes - gastosPendientes));

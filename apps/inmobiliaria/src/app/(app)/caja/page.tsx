@@ -42,7 +42,9 @@ import {
   categoriaGastoLabel,
   totalesPorMoneda,
 } from '@/lib/caja-storage';
-import { useCaja, usePropiedades } from '@/lib/api/hooks';
+import { useCaja, usePropiedades, useMe } from '@/lib/api/hooks';
+import { rolTienePermiso } from '@/lib/permisos';
+import type { Rol } from '@/lib/permisos';
 import { useCuentas } from '@/lib/api/use-cuentas';
 import { useCierreCaja } from '@/lib/api/use-pagos';
 import { apiEnabled, subirArchivo } from '@/lib/api/client';
@@ -229,8 +231,12 @@ export default function CajaPage() {
           >
             Todas las propiedades
           </button>
-          {/* Sólo aparece si hay alguno: un chip que siempre filtra a vacío es ruido. */}
-          {movimientos.some((m) => !m.propiedadId) && (
+          {/* Sólo aparece si hay alguno: un chip que siempre filtra a vacío es ruido.
+              El `|| filtroProp === 'SIN_PROPIEDAD'` no es redundante: si borrás el último
+              movimiento sin propiedad TENIENDO el filtro puesto, el chip desaparecía y
+              quedaba una lista vacía sin ningún filtro marcado — parecía que la caja
+              entera se había vaciado, sin forma de ver qué estaba pasando. */}
+          {(movimientos.some((m) => !m.propiedadId) || filtroProp === 'SIN_PROPIEDAD') && (
             <button
               type="button"
               aria-pressed={filtroProp === 'SIN_PROPIEDAD'}
@@ -321,21 +327,33 @@ export default function CajaPage() {
               cuentaId: data.cuentaId ?? null,
             });
             setAbrirForm(false);
+            // El texto tiene que decir la verdad de ESTE movimiento. Hay DOS motivos por
+            // los que puede no entrar en ninguna rendición, y los dos hay que decirlos:
+            // no tener propiedad, y estar en una moneda distinta a la del contrato (la
+            // rendición filtra por moneda, así que un gasto en dólares sobre un contrato
+            // en pesos no se descuenta nunca). El formulario ya avisa lo segundo antes de
+            // guardar; el toast no puede después prometer lo contrario.
+            const propDeMov = data.propiedadId
+              ? opcionesProp.find((p) => p.id === data.propiedadId)
+              : undefined;
+            const monedaNoCoincide = !!propDeMov?.contratoActualId && data.moneda !== propDeMov.moneda;
+            const entraEnRendicion = !!data.propiedadId && !monedaNoCoincide;
+            const porQueNo = monedaNoCoincide
+              ? `Está en ${data.moneda === 'USD' ? 'dólares' : 'pesos'} y el contrato es en ${propDeMov?.moneda === 'USD' ? 'dólares' : 'pesos'}: queda en la caja y no entra en la rendición.`
+              : 'Queda en la caja. No entra en la rendición de ningún propietario.';
             toast(
               data.tipo === 'INGRESO_EXTRA'
-                // El texto tiene que decir la verdad de ESTE movimiento: sin propiedad
-                // no hay rendición que lo toque, y prometerla sería mentir.
                 ? {
                     title: 'Entrada registrada',
-                    description: data.propiedadId
+                    description: entraEnRendicion
                       ? 'Se le va a sumar al propietario en la próxima rendición.'
-                      : 'Queda en la caja. No entra en la rendición de ningún propietario.',
+                      : porQueNo,
                   }
                 : {
                     title: 'Gasto cargado',
-                    description: data.propiedadId
+                    description: entraEnRendicion
                       ? 'Se le va a descontar al propietario en la próxima rendición.'
-                      : 'Queda en la caja. No entra en la rendición de ningún propietario.',
+                      : porQueNo,
                   },
             );
           } catch (e) {
@@ -661,6 +679,11 @@ function DialogCargarGasto({
   // "todavía no configuraste cuentas" de "ninguna de las tuyas acepta esta dirección":
   // son dos problemas distintos y se arreglan distinto.
   const hayCuentas = useMemo(() => cuentas.some((c) => c.activa), [cuentas]);
+  // Definir cuentas es SOLO del admin (`cuentas.gestionar`). A la cajera —que sí puede
+  // cargar caja— mandarla a "Creá una" era un callejón: llega a /cuentas y el botón no
+  // está. Tiene que saber que el arreglo no depende de ella.
+  const { me } = useMe();
+  const puedeGestionarCuentas = !!me && rolTienePermiso(me.rol as Rol, 'cuentas.gestionar');
 
   useEffect(() => {
     if (open) {
@@ -823,6 +846,9 @@ function DialogCargarGasto({
                 id="caj-cuenta"
                 value={cuentaId}
                 onChange={(e) => setCuentaId(e.target.value)}
+                // `aria-required` en el control, no sólo en la etiqueta: un lector de
+                // pantalla lo anuncia al enfocar el campo, que es cuando importa.
+                aria-required={cuentasCompatibles.length > 0}
                 disabled={cuentasCompatibles.length === 0}
                 className="w-full rounded-md border bg-background px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
               >
@@ -865,12 +891,20 @@ function DialogCargarGasto({
                   <p className="text-xs text-muted-foreground">
                     {hayCuentas
                       ? `Ninguna de tus cuentas acepta ${esIngreso ? 'entradas' : 'salidas'}. `
-                      : 'Todavía no cargaste ninguna cuenta. '}
-                    <Link href="/cuentas" className="font-medium underline underline-offset-2">
-                      {hayCuentas ? 'Revisá tus cuentas' : 'Creá una'}
-                    </Link>{' '}
-                    para saber siempre dónde está la plata. El movimiento se puede guardar
-                    igual, pero va a quedar sin cuenta.
+                      : 'Todavía no hay ninguna cuenta cargada. '}
+                    {puedeGestionarCuentas ? (
+                      <>
+                        <Link href="/cuentas" className="font-medium underline underline-offset-2">
+                          {hayCuentas ? 'Revisá tus cuentas' : 'Creá una'}
+                        </Link>{' '}
+                        para saber siempre dónde está la plata.
+                      </>
+                    ) : (
+                      // Sin `cuentas.gestionar` el link llevaba a una pantalla donde el
+                      // botón no existe. Mejor decir de quién depende.
+                      <>Las define un administrador de la inmobiliaria.</>
+                    )}{' '}
+                    El movimiento se puede guardar igual, pero va a quedar sin cuenta.
                   </p>
                 )
               )}

@@ -40,7 +40,18 @@ entró, los totales por cuenta nunca cierran contra el total de la caja.
 - Otros: una cuenta **archivada** ya no acepta movimientos (antes se podía imputar por API); los
   KPIs y el tablero dejan de contar como "pendiente de descontar" lo que nunca se va a descontar;
   filtro **"Sin propiedad"**; badge **"Solo caja"** en vez de un "Pendiente" que no baja nunca.
-- 19 tests nuevos. Suite: 483/488 (las 5 que fallan **ya fallan en `origin/main`**, verificado con
+- 🔴 **El cobro automático no copiaba la moneda del cargo**: `CargoContrato` tiene la suya y
+  el movimiento se guardaba con el default ARS y el mismo número, así que un cargo cobrado en
+  dólares no se le sumaba al propietario en una rendición en USD.
+- Hallazgos de la revisión adversarial (todos verificados a mano antes de tocar nada): el botón
+  **Archivar** de la pantalla usa el DELETE, no el PATCH, y ese camino **no limpiaba la marca de
+  predeterminada** — quedaba en una cuenta inactiva y cada cobro automático pasaba a registrarse
+  sin cuenta mientras la card seguía diciendo lo contrario (mi test lo tapaba: probaba el PATCH);
+  no había forma de **desmarcar** la predeterminada y editar su dirección a "solo salidas" daba un
+  409 sin salida; si `GET /cuentas` fallaba la pantalla afirmaba "no tenés cuentas" y el server
+  respondía 400; y a un OPERADOR el aviso lo mandaba a crear una cuenta en una pantalla donde no
+  tiene el botón.
+- 22 tests nuevos. Suite: 490/495 (las 5 que fallan **ya fallan en `origin/main`**, verificado con
   el mismo commit base y base limpia: son restos de la DB de test compartida, ver `limpiar-test-db.ts`).
 
 ### Cargos del inquilino: del panel a la app + saldables (08/07)

@@ -322,8 +322,23 @@ function EditarCuentaDialog({
     if (!valido || guardando) return;
     setGuardando(true);
     try {
+      const creada = cuenta
+        ? null
+        : await crearCuenta({ nombre: nombre.trim(), direccion });
       if (cuenta) await editarCuenta(cuenta.id, { nombre: nombre.trim(), direccion });
-      else await crearCuenta({ nombre: nombre.trim(), direccion });
+      // La primera cuenta que acepta entradas queda predeterminada sola. Es lo correcto
+      // —sino los cobros automáticos siguen sin cuenta— pero tiene que decirse: es una
+      // decisión sobre dónde va a caer plata.
+      if (creada?.esPredeterminada) {
+        toast({
+          variant: 'success',
+          title: `Cuenta creada — los cobros automáticos entran a "${creada.nombre}"`,
+          description:
+            'Es la primera cuenta que acepta entradas, así que ahí se van a registrar los cobros que hagas desde un cargo al inquilino. Podés cambiarla con la estrella.',
+        });
+        onGuardado();
+        return;
+      }
       // Pasar la predeterminada a "solo salidas" le saca la marca del lado del server
       // (ahí no pueden caer los cobros automáticos, que son ingresos). Decirlo acá, en
       // vez de dejar que el usuario lo descubra cuando los totales no cierren.

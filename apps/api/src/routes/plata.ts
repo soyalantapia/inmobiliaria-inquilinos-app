@@ -842,6 +842,12 @@ export async function plataRoutes(app: FastifyInstance) {
             cuentaId: cuentaDestino?.id ?? null,
             descripcion: `Cobro de cargo al inquilino: ${cargo.concepto}`,
             monto: cargo.monto,
+            // La moneda del CARGO, no el default ARS. `CargoContrato` tiene su propia
+            // moneda: cobrar un cargo en dólares registraba un ingreso rotulado en pesos,
+            // con el mismo número. Ese movimiento después no se le sumaba al propietario
+            // en una rendición en USD (la rendición filtra por moneda) y ahora, además,
+            // caía en el renglón equivocado de los totales por cuenta.
+            moneda: cargo.moneda,
             fecha: new Date(),
             cargadoPor: usuario ? `${usuario.nombre} ${usuario.apellido}`.trim() : 'Panel',
           },

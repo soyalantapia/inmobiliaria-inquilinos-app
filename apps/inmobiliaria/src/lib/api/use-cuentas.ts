@@ -75,9 +75,17 @@ export function useCuentas(): {
   };
 }
 
-export async function crearCuenta(input: { nombre: string; direccion: DireccionCuenta }): Promise<void> {
+/**
+ * Devuelve la cuenta creada (antes descartaba la respuesta). Hace falta para saber si el
+ * server la marcó como predeterminada: eso decide dónde caen los cobros automáticos y no
+ * puede pasar en silencio.
+ */
+export async function crearCuenta(input: {
+  nombre: string;
+  direccion: DireccionCuenta;
+}): Promise<{ id: string; nombre: string; esPredeterminada: boolean }> {
   await ensureApiSession();
-  await apiFetch('/cuentas', { method: 'POST', body: JSON.stringify(input) });
+  return apiFetch('/cuentas', { method: 'POST', body: JSON.stringify(input) });
 }
 
 export async function editarCuenta(
