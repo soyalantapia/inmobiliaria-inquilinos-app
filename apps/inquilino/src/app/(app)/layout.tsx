@@ -3,7 +3,6 @@ import { DesktopTopbar } from '@/components/desktop-topbar';
 import { Onboarding } from '@/components/onboarding';
 import { PullToRefresh } from '@/components/pull-to-refresh';
 import { WhatsappFab } from '@/components/whatsapp-fab';
-import { ReportBugButton } from '@/components/report-bug-button';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -30,10 +29,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </div>
       <PullToRefresh />
       <WhatsappFab />
-      {/* Va acá y no en el layout raíz: así no aparece en /login ni en las
-          pantallas públicas (/pago, /verificar, /invitacion), donde no hay
-          sesión que atribuirle al reporte. */}
-      <ReportBugButton />
+      {/* Reportar un problema ya NO vive acá: pasó a ser una fila dentro de Mi
+          cuenta (ver app/(app)/cuenta/page.tsx). Como botón flotante tapaba
+          contenido en todas las pantallas para una acción muy poco frecuente.
+          Sigue quedando fuera de /login y de las pantallas públicas, porque
+          /cuenta ya exige sesión. */}
       <Onboarding />
     </div>
   );
