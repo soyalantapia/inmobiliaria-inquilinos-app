@@ -1243,6 +1243,25 @@ function CargarContratoApiWizard() {
     };
   }, []);
 
+  // Aviso al cerrar la pestaña con un alta a medias: el borrador se guarda en
+  // cada tecleo, pero entre el último guardado y el cierre puede haber tipeo
+  // sin persistir, y el que cierra sin querer no tiene forma de saber que
+  // queda un borrador esperándolo. No molesta con el wizard recién abierto y
+  // vacío (paso 1 sin propiedad elegida), ni mientras `dar_de_alta` está en
+  // curso: ahí el propio "¿estás seguro?" del navegador estorba, y al éxito
+  // `enviando` sigue en true hasta el redirect (nunca vuelve a false), así
+  // que el listener no vuelve a engancharse después de un alta exitosa.
+  useEffect(() => {
+    if (paso === 1 && !propiedadId) return;
+    if (enviando) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [paso, propiedadId, enviando]);
+
   const incluyeExpensas =
     tipoContrato === 'ALQUILER_Y_EXPENSAS' || tipoContrato === 'SOLO_EXPENSAS';
   const requiereAlquiler = tipoContrato !== 'SOLO_EXPENSAS';
@@ -2616,6 +2635,10 @@ function CargarContratoApiWizard() {
             <DialogDescription>
               Encontramos datos de un contrato que habías empezado a cargar. ¿Querés retomarlo o
               preferís empezar de cero?
+              <span className="mt-2 block">
+                Ojo: las fotos del DNI que hayas adjuntado no se guardan en el borrador, hay que
+                volver a elegirlas.
+              </span>
             </DialogDescription>
           </DialogHeader>
           {cargando && (
