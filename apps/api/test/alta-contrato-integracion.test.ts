@@ -18,11 +18,56 @@ import { enumerarPeriodosContrato } from '@llave/shared/periodos';
 
 let app: FastifyInstance;
 let token: string;
+let prisma: PrismaClient;
+
+const PREFIJO_DIRECCION = 'Test i36 ';
+
+/**
+ * La DB de test es UNA SOLA para los 63 archivos (`fileParallelism: false`) y NO se
+ * resetea entre corridas: `seedBase` es todo upsert y el POST /propiedades no deduplica
+ * por dirección, así que lo que esta suite crea se ACUMULA en silencio. Cada corrida le
+ * sumaba dos participaciones a `own_001` —que el seed deja con UNA sola (prp_001)— y eso
+ * ensucia cualquier aserto sobre /propietarios y /propiedades: la forma exacta de rojo
+ * que parece una regresión del endpoint y no lo es.
+ *
+ * Corre en `beforeAll` Y en `afterAll`: al principio para no arrastrar lo que dejó una
+ * corrida interrumpida, al final para no dejarle nada a nadie.
+ */
+async function limpiar() {
+  const props = await prisma.propiedad.findMany({
+    where: { direccion: { startsWith: PREFIJO_DIRECCION } },
+    select: { id: true },
+  });
+  const propIds = props.map((p) => p.id);
+  if (propIds.length === 0) return;
+  const contratos = await prisma.contrato.findMany({
+    where: { propiedadId: { in: propIds } },
+    select: { id: true },
+  });
+  const contratoIds = contratos.map((c) => c.id);
+  // Las Personas se crean al vuelo en el alta (una por inquilino) y sobreviven al
+  // contrato: hay que juntarlas ANTES de borrar los inquilinos que las apuntan.
+  const inquilinos = await prisma.inquilino.findMany({
+    where: { contratoId: { in: contratoIds } },
+    select: { personaId: true },
+  });
+  const personaIds = inquilinos.map((i) => i.personaId).filter((id): id is string => id != null);
+  // Orden por FK: pagos → liquidaciones → ajustes → inquilinos → contratos → propiedades.
+  await prisma.pago.deleteMany({ where: { contratoId: { in: contratoIds } } });
+  await prisma.liquidacion.deleteMany({ where: { contratoId: { in: contratoIds } } });
+  await prisma.ajusteAlquiler.deleteMany({ where: { contratoId: { in: contratoIds } } });
+  await prisma.inquilino.deleteMany({ where: { contratoId: { in: contratoIds } } });
+  await prisma.propiedad.updateMany({ where: { id: { in: propIds } }, data: { contratoActualId: null } });
+  await prisma.contrato.deleteMany({ where: { id: { in: contratoIds } } });
+  await prisma.participacionPropietario.deleteMany({ where: { propiedadId: { in: propIds } } });
+  await prisma.propiedad.deleteMany({ where: { id: { in: propIds } } });
+  if (personaIds.length > 0) await prisma.persona.deleteMany({ where: { id: { in: personaIds } } });
+}
 
 beforeAll(async () => {
-  const prisma = new PrismaClient();
+  prisma = new PrismaClient();
   await seedBase(prisma);
-  await prisma.$disconnect();
+  await limpiar();
   app = await buildApp({ NODE_ENV: 'test', DEMO_MODE: 'true' });
   const login = await app.inject({
     method: 'POST',
@@ -33,7 +78,9 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await limpiar();
   await app.close();
+  await prisma.$disconnect();
 });
 
 const auth = () => ({ authorization: `Bearer ${token}` });
@@ -45,7 +92,7 @@ async function crearPropiedadLibre(nombre: string): Promise<string> {
     url: '/propiedades',
     headers: auth(),
     payload: {
-      direccion: `Test i36 ${nombre}`,
+      direccion: `${PREFIJO_DIRECCION}${nombre}`,
       ciudad: 'CABA',
       provincia: 'Buenos Aires',
       tipo: 'DEPARTAMENTO',
@@ -104,13 +151,11 @@ describe('POST /contratos — alta con inicio a mitad de mes (regresión i36)', 
     expect(res.statusCode, `alta i36: ${res.body}`).toBeLessThan(300);
 
     // El contrato quedó con liquidaciones y NINGUNA para el mes de inicio saltado.
-    const prisma = new PrismaClient();
     const contratoId = res.json().id;
     const liqs = await prisma.liquidacion.findMany({
       where: { contratoId },
       select: { periodo: true },
     });
-    await prisma.$disconnect();
     const periodos = liqs.map((l) => l.periodo);
     expect(periodos.length).toBeGreaterThan(0);
     expect(periodos).not.toContain(periodoMesInicio);
