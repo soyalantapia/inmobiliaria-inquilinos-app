@@ -1253,6 +1253,32 @@ function CargarContratoApiWizard() {
     [hayPeriodos],
   );
 
+  // Preview en vivo del paso 3 (Plazo y salida): cuántos meses dura, si ya
+  // arrancó (y por lo tanto va a haber períodos para declarar más adelante) y
+  // cuándo cae el primer ajuste. No reemplaza la validación de fechaFin >
+  // fechaInicio que sigue gateando el botón Continuar (pasoPlazoValido).
+  const resumenPlazo = useMemo(() => {
+    if (!fechaInicio || !fechaFin) return null;
+    const inicio = new Date(`${fechaInicio}T12:00:00`);
+    const fin = new Date(`${fechaFin}T12:00:00`);
+    if (Number.isNaN(inicio.getTime()) || Number.isNaN(fin.getTime())) return null;
+    if (fin <= inicio) {
+      // Rama con `error` literal (string) vs. `error: null` de la rama de abajo:
+      // eso arma una unión discriminada real, así el JSX puede angostar con
+      // `resumenPlazo.error` sin que TS marque `meses`/`primerAjuste` como
+      // posiblemente `undefined`.
+      return { error: 'La fecha de fin tiene que ser posterior a la de inicio.' };
+    }
+
+    const MES_MS = 1000 * 60 * 60 * 24 * 30.44;
+    const meses = Math.round((fin.getTime() - inicio.getTime()) / MES_MS);
+    const mesesDesdeInicio = Math.max(0, Math.round((Date.now() - inicio.getTime()) / MES_MS));
+    const primerAjuste = new Date(inicio);
+    primerAjuste.setMonth(primerAjuste.getMonth() + (Number(frecuenciaAjusteMeses) || 12));
+
+    return { meses, mesesDesdeInicio, primerAjuste, error: null };
+  }, [fechaInicio, fechaFin, frecuenciaAjusteMeses]);
+
   const formDePeriodo = (periodo: string): PeriodoAnteriorForm =>
     periodosForm[periodo] ?? PERIODO_FORM_DEFAULT;
 
@@ -1855,6 +1881,24 @@ function CargarContratoApiWizard() {
                   )}
                 </div>
               </div>
+
+              {resumenPlazo?.error && <p className="text-sm text-destructive">{resumenPlazo.error}</p>}
+              {resumenPlazo && resumenPlazo.error === null && (
+                <div className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">
+                  <p>Dura {resumenPlazo.meses} meses.</p>
+                  {resumenPlazo.mesesDesdeInicio > 0 && (
+                    <p className="text-foreground">
+                      Este contrato arrancó hace {resumenPlazo.mesesDesdeInicio}{' '}
+                      {resumenPlazo.mesesDesdeInicio === 1 ? 'mes' : 'meses'}: más adelante vas a tener
+                      que declarar qué pasó con cada uno de esos períodos.
+                    </p>
+                  )}
+                  <p>
+                    Primer ajuste:{' '}
+                    {formatFechaDeInput(resumenPlazo.primerAjuste.toISOString().slice(0, 10))}.
+                  </p>
+                </div>
+              )}
 
               <div className="grid gap-3 md:grid-cols-3">
                 <div className="space-y-1.5">
