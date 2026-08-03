@@ -6,8 +6,13 @@ export interface BorradorContrato {
   /**
    * Versión del ESQUEMA del borrador, no de los datos. Se sube cuando cambia la
    * numeración de los pasos o se agrega/quita un campo que rompe la restauración.
-   * Un borrador con versión distinta se descarta en silencio: es preferible a
-   * restaurar al usuario en el paso equivocado con los datos de otro.
+   *
+   * Una versión vieja NO se descarta: se MIGRA (ver `migrarBorrador`). Descartarla
+   * significaba que una operadora con un alta a medias —propiedad, inquilino, DNI,
+   * fechas, montos— la perdía entera con sólo abrir la pantalla después del deploy,
+   * sin un aviso: la lectura devolvía null, el diálogo de "tenés un contrato a medio
+   * cargar" no aparecía, y el autosave escribía el formulario vacío encima. Y todo
+   * eso para un cambio de esquema donde el ÚNICO campo incompatible era `paso`.
    */
   version: number;
   paso: number;
@@ -70,6 +75,29 @@ export function obtenerNamespaceBorrador(): string | null {
   }
 }
 
+/**
+ * Lleva un borrador viejo al esquema actual. Hoy sólo hay un salto (v1 → v2), y lo
+ * único que cambió fue la numeración de los pasos: "Términos" (3 de 4) se partió en
+ * "Plazo y salida" (3) y "Dinero" (4), y "Confirmar" pasó de 4 a 5. Todos los DATOS
+ * son idénticos, así que no hay nada que tirar.
+ *
+ * Devuelve null sólo si el borrador es de una versión que no sabemos migrar (futura,
+ * o tan vieja que no la contemplamos): ahí sí es preferible descartarlo antes que
+ * restaurar a alguien en el paso equivocado con datos de otra estructura.
+ */
+function migrarBorrador(parsed: Partial<BorradorContrato>): BorradorContrato | null {
+  const version = typeof parsed.version === 'number' ? parsed.version : 1;
+  if (version === VERSION_BORRADOR) return parsed as BorradorContrato;
+  if (version === 1) {
+    const pasoViejo = typeof parsed.paso === 'number' ? parsed.paso : 1;
+    // 1→1, 2→2, 3 (Términos)→3 (Plazo y salida: la primera mitad de lo que era
+    // Términos, para que pueda revisar el plazo antes del dinero), 4 (Confirmar)→5.
+    const paso = pasoViejo <= 2 ? pasoViejo : pasoViejo === 3 ? 3 : 5;
+    return { ...(parsed as BorradorContrato), version: VERSION_BORRADOR, paso };
+  }
+  return null;
+}
+
 export function leerBorradorContrato(namespace: string): BorradorContrato | null {
   if (typeof window === 'undefined') return null;
   try {
@@ -77,8 +105,8 @@ export function leerBorradorContrato(namespace: string): BorradorContrato | null
     const raw = window.localStorage.getItem(key);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<BorradorContrato> | null;
-    if (parsed?.version !== VERSION_BORRADOR) return null;
-    return parsed as BorradorContrato;
+    if (!parsed || typeof parsed !== 'object') return null;
+    return migrarBorrador(parsed);
   } catch {
     return null;
   }

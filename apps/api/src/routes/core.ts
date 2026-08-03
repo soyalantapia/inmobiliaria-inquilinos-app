@@ -975,7 +975,12 @@ export async function coreRoutes(app: FastifyInstance) {
     if (d.modoCobranza === 'PROPIETARIO_DIRECTO') {
       const part = await prisma.participacionPropietario.findFirst({
         where: { propiedadId: prop.id },
-        orderBy: { porcentaje: 'desc' },
+        // Desempate ESTABLE por id: con dos dueños al 50/50 el `porcentaje desc`
+        // solo dejaba la elección librada al orden que devuelva Postgres, que puede
+        // cambiar entre consultas (editar la propiedad hace deleteMany+createMany de
+        // las participaciones). El panel ordena igual, así que las dos capas señalan
+        // siempre al mismo propietario.
+        orderBy: [{ porcentaje: 'desc' }, { propietarioId: 'asc' }],
         include: { propietario: { select: { cuentaCobranza: { select: { id: true } }, nombre: true, apellido: true } } },
       });
       if (!part) {
@@ -2890,7 +2895,8 @@ export async function coreRoutes(app: FastifyInstance) {
       // necesita su CUENTA de cobro cargada, si no el inquilino queda sin CBU destino.
       const part = await prisma.participacionPropietario.findFirst({
         where: { propiedadId: contrato.propiedadId },
-        orderBy: { porcentaje: 'desc' },
+        // Mismo desempate estable que en el alta (ver POST /contratos).
+        orderBy: [{ porcentaje: 'desc' }, { propietarioId: 'asc' }],
         include: { propietario: { select: { cuentaCobranza: { select: { id: true } }, nombre: true, apellido: true } } },
       });
       if (!part) {

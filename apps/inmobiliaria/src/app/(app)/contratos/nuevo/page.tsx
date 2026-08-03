@@ -18,7 +18,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { cn } from '@llave/ui/cn';
 import { enumerarPeriodosContrato } from '@llave/shared/periodos';
 import { Topbar } from '@/components/topbar';
-import { apiEnabled, apiFetch, ApiError, subirArchivo, varianteError } from '@/lib/api/client';
+import { apiEnabled, apiFetch, ApiError, getToken, subirArchivo, varianteError } from '@/lib/api/client';
 import { ensureApiSession } from '@/lib/api/session';
 import {
   borrarBorradorContrato,
@@ -1021,14 +1021,14 @@ function CargarContratoApiWizard() {
     [propiedades, propiedadId],
   );
   // Id del dueño PRINCIPAL de la propiedad elegida (embebido en /propiedades,
-  // "lite": sólo id/nombre/apellido, nunca trae cuentaCobranza). `propietarios`
-  // ya viene ordenado por mayor porcentaje desde usePropiedades() (hooks.ts),
-  // así que [0] es el mismo dueño que el server va a usar en
-  // `cobraDirectoPropietarioId` (participacionPropietario.findFirst orderBy
-  // porcentaje desc, core.ts). Con un solo dueño esto no cambia nada. Antes
-  // tomaba el primero del orden crudo de la API, que no era necesariamente el
-  // mayoritario: el wizard le pedía la cuenta a un dueño y el server usaba
-  // otro.
+  // "lite": sólo id/nombre/apellido, nunca trae cuentaCobranza).
+  //
+  // `[0]` es el de MAYOR participación: `usePropiedades` ordena por porcentaje desc
+  // con desempate por id (hooks.ts), el mismo criterio con el que el backend elige a
+  // quién le cobra directo el inquilino (core.ts, `orderBy: [{ porcentaje: 'desc' },
+  // { propietarioId: 'asc' }]`). Las dos capas TIENEN que coincidir: si acá sale otro
+  // dueño, la pantalla le pide/carga el CBU a una persona y el server valida —y le
+  // rutea la plata— a otra. Con un solo dueño no cambia nada.
   const propietarioIdElegido = propiedadElegida?.propietarios[0]?.id ?? null;
   // Detalle real de ESE ÚNICO propietario (con cuentaCobranza) vía GET
   // /propietarios/:id — el mismo endpoint acotado que usa la ficha del
@@ -1038,8 +1038,12 @@ function CargarContratoApiWizard() {
   // la inmobiliaria a cualquiera con permiso de sólo-lectura (bug real:
   // GET /propietarios lo gatea `propietarios.ver`, que incluye el rol
   // LECTURA). Ver commit 32f6bf8 / fix posterior.
-  const { detalle: detallePropietarioElegido, cargando: cargandoPropietarioElegido } =
-    usePropietario(propietarioIdElegido ?? '');
+  const {
+    detalle: detallePropietarioElegido,
+    cargando: cargandoPropietarioElegido,
+    error: errorPropietarioElegido,
+    reintentar: reintentarPropietarioElegido,
+  } = usePropietario(propietarioIdElegido ?? '');
   const propietarioDeLaPropiedad = propietarioIdElegido
     ? (detallePropietarioElegido?.propietario ?? null)
     : null;
@@ -1200,6 +1204,12 @@ function CargarContratoApiWizard() {
         moraValor,
         periodosForm,
       };
+      // Nunca escribir un formulario VACÍO encima de lo guardado. Sin esta guarda,
+      // abrir /contratos/nuevo y no tocar nada pisaba el borrador anterior a los
+      // 500 ms. Se vuelve crítico cuando la lectura no devuelve borrador (versión
+      // desconocida, JSON corrupto): ahí `borradorPendiente` queda en false, este
+      // efecto corre igual, y una visita accidental borraba un alta a medias.
+      if (!borradorTieneContenido(datos)) return;
       guardarBorradorContrato(namespaceBorrador, datos);
       setMostrarGuardado(true);
       if (guardadoTimeoutRef.current) clearTimeout(guardadoTimeoutRef.current);
@@ -1257,6 +1267,12 @@ function CargarContratoApiWizard() {
     if (paso === 1 && !propiedadId) return;
     if (enviando) return;
     const handler = (e: BeforeUnloadEvent) => {
+      // Si ya no hay token, el que está navegando NO es el usuario: es el redirect
+      // a /login que dispara el cliente cuando la sesión vence (client.ts hace
+      // `removeItem` y después `location.assign`). Bloquearlo con el "¿seguro que
+      // querés salir?" es una trampa: si elige quedarse, la pestaña sobrevive sin
+      // sesión, cada request siguiente da 401 y el alta ya no se puede enviar nunca.
+      if (!getToken()) return;
       e.preventDefault();
       e.returnValue = '';
     };
@@ -2176,7 +2192,18 @@ function CargarContratoApiWizard() {
                     id="comision"
                     inputMode="decimal"
                     value={comisionInmobiliaria}
-                    onChange={(e) => setComisionInmobiliaria(e.target.value.replace(/[^\d.]/g, '').slice(0, 5))}
+                    // La coma se TRADUCE a punto, no se descarta. Antes el filtro
+                    // `[^\d.]` la borraba: quien tipeaba la comisión como se escribe
+                    // acá, "8,5", terminaba con "85" → un contrato al 85% de
+                    // comisión, que ningún resumen posterior muestra. Y "4,17" daba
+                    // "417", rebotado por el server con un mensaje que no nombra el
+                    // campo. Se normaliza a un solo punto decimal.
+                    onChange={(e) => {
+                      const crudo = e.target.value.replace(',', '.').replace(/[^\d.]/g, '');
+                      const [entera = '', ...resto] = crudo.split('.');
+                      const normalizado = resto.length ? `${entera}.${resto.join('')}` : entera;
+                      setComisionInmobiliaria(normalizado.slice(0, 5));
+                    }}
                     placeholder="8"
                     className="pr-8"
                   />
@@ -2276,6 +2303,21 @@ function CargarContratoApiWizard() {
                     <p className="mt-2 rounded-md bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
                       La propiedad necesita dueños cargados para usar cobranza directa al
                       propietario.
+                    </p>
+                  ) : errorPropietarioElegido ? (
+                    // Falló el fetch. Antes esto caía en el "Confirmando la cuenta…"
+                    // de abajo y se quedaba ahí PARA SIEMPRE: sin error, sin
+                    // reintento, y sin poder saber si el dueño tenía cuenta o no.
+                    <p className="mt-2 text-xs text-destructive">
+                      No pudimos confirmar si {propiedadElegida?.propietarios[0]?.nombre ?? 'el propietario'} tiene
+                      cuenta de cobro directo.{' '}
+                      <button
+                        type="button"
+                        onClick={() => reintentarPropietarioElegido()}
+                        className="font-medium underline underline-offset-2"
+                      >
+                        Reintentar
+                      </button>
                     </p>
                   ) : cargandoPropietarioElegido || !propietarioDeLaPropiedad ? (
                     // Todavía no tenemos el detalle real de la cuenta (fetch en
@@ -2593,12 +2635,16 @@ function CargarContratoApiWizard() {
         )}
       </main>
 
+      {/* El texto decía "vas a perder el progreso… no se puede deshacer", pero el
+          onConfirm sólo navega: el borrador sigue guardado y al reabrir el alta vuelve
+          todo. Mentía en la dirección más cara —asustaba con una pérdida que no ocurre—
+          y encima escondía que el trabajo quedaba a salvo. Ahora dice lo que pasa. */}
       <ConfirmDialog
         open={cancelarAbierto}
         onOpenChange={setCancelarAbierto}
-        title="¿Cancelar la carga?"
-        description="Vas a perder el progreso de este contrato. Esta acción no se puede deshacer."
-        confirmLabel="Sí, cancelar"
+        title="¿Salir de la carga?"
+        description="Lo cargado queda guardado como borrador: cuando vuelvas a entrar te lo ofrecemos para retomar."
+        confirmLabel="Sí, salir"
         onConfirm={() => router.push('/contratos')}
       />
 
