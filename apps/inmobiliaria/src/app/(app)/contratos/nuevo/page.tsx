@@ -25,6 +25,7 @@ import {
   guardarBorradorContrato,
   leerBorradorContrato,
   obtenerNamespaceBorrador,
+  VERSION_BORRADOR,
   type BorradorContrato,
 } from '@/lib/contrato-borrador-storage';
 import type { PersonaListado } from '@/lib/api/use-inquilinos';
@@ -663,17 +664,18 @@ function formatFechaDeInput(valor: string | number | null | undefined): string {
 // por PDF (eso vive en el wizard mock de arriba, sólo demo).
 // ============================================================================
 
-// El paso 4 (Períodos anteriores) es CONDICIONAL: sólo existe cuando la fecha
+// El paso 5 (Períodos anteriores) es CONDICIONAL: sólo existe cuando la fecha
 // de inicio es pasada y ya venció al menos un período. Si no aplica, el wizard
-// salta 3 → 5 y el header de pasos no lo muestra.
-type PasoApi = 1 | 2 | 3 | 4 | 5;
+// salta 4 → 6 y el header de pasos no lo muestra.
+type PasoApi = 1 | 2 | 3 | 4 | 5 | 6;
 
 const pasosApi: ReadonlyArray<{ id: PasoApi; label: string }> = [
   { id: 1, label: 'Propiedad' },
   { id: 2, label: 'Inquilino' },
-  { id: 3, label: 'Términos' },
-  { id: 4, label: 'Períodos anteriores' },
-  { id: 5, label: 'Confirmar' },
+  { id: 3, label: 'Plazo y salida' },
+  { id: 4, label: 'Dinero' },
+  { id: 5, label: 'Períodos anteriores' },
+  { id: 6, label: 'Confirmar' },
 ];
 
 const indicesAjuste: Array<{ value: IndiceAjuste; label: string }> = [
@@ -1111,8 +1113,8 @@ function CargarContratoApiWizard() {
         new Date(),
       );
       let pasoRestaurado = b.paso as PasoApi;
-      if (pasoRestaurado === 4 && periodosBorrador.length === 0) pasoRestaurado = 3;
-      if (!(pasoRestaurado >= 1 && pasoRestaurado <= 5)) pasoRestaurado = 1;
+      if (pasoRestaurado === 5 && periodosBorrador.length === 0) pasoRestaurado = 4;
+      if (!(pasoRestaurado >= 1 && pasoRestaurado <= 6)) pasoRestaurado = 1;
       setPaso(pasoRestaurado);
     } else {
       setPaso(1);
@@ -1149,6 +1151,7 @@ function CargarContratoApiWizard() {
     const timer = setTimeout(() => {
       if (!vivo) return;
       const datos: BorradorContrato = {
+        version: VERSION_BORRADOR,
         paso,
         propiedadId,
         nombre,
@@ -1246,7 +1249,7 @@ function CargarContratoApiWizard() {
   );
   const hayPeriodos = periodosVencidos.length > 0;
   const pasosVisibles = useMemo(
-    () => pasosApi.filter((p) => p.id !== 4 || hayPeriodos),
+    () => pasosApi.filter((p) => p.id !== 5 || hayPeriodos),
     [hayPeriodos],
   );
 
@@ -1266,17 +1269,20 @@ function CargarContratoApiWizard() {
   // frenar el alta con un 400 genérico al final. Vacío se permite (opcional).
   const emailInquilinoOk = !email.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   const pasoInquilinoValido = nombre.trim().length >= 2 && emailInquilinoOk;
-  const pasoTerminosValido =
-    (!requiereAlquiler || Number(monto) > 0) &&
-    // Si el contrato incluye expensas, el monto de expensas es obligatorio (antes
-    // el botón avanzaba y el server rechazaba con un 400 al final).
-    (!incluyeExpensas || Number(montoExpensas) > 0) &&
+  // Paso 3 (Plazo y salida): sólo fechas y periodicidad de ajuste.
+  const pasoPlazoValido =
     fechaInicio.length === 10 &&
     fechaFin.length === 10 &&
     fechaFin > fechaInicio &&
     Number(diaPago) >= 1 &&
     Number(diaPago) <= 31 &&
-    Number(frecuenciaAjusteMeses) > 0 &&
+    Number(frecuenciaAjusteMeses) > 0;
+  // Paso 4 (Dinero): montos y esquema de mora.
+  const pasoDineroValido =
+    (!requiereAlquiler || Number(monto) > 0) &&
+    // Si el contrato incluye expensas, el monto de expensas es obligatorio (antes
+    // el botón avanzaba y el server rechazaba con un 400 al final).
+    (!incluyeExpensas || Number(montoExpensas) > 0) &&
     // Si eligió un esquema con valor, el valor tiene que ser > 0.
     (moraSel === 'HEREDAR' || moraSel === 'SIN_MORA' || Number(moraValor) > 0);
   // Períodos: todo PARCIAL necesita monto pagado > 0 (la mora es opcional).
@@ -1285,16 +1291,16 @@ function CargarContratoApiWizard() {
     return f.estado !== 'PARCIAL' || Number(f.montoPagado) > 0;
   });
 
-  // Saltamos el paso 4 cuando no hay períodos vencidos que declarar.
+  // Saltamos el paso 5 cuando no hay períodos vencidos que declarar.
   const avanzar = () =>
     setPaso((p) => {
-      const sig = Math.min(5, p + 1) as PasoApi;
-      return sig === 4 && !hayPeriodos ? 5 : sig;
+      const sig = Math.min(6, p + 1) as PasoApi;
+      return sig === 5 && !hayPeriodos ? 6 : sig;
     });
   const retroceder = () =>
     setPaso((p) => {
       const ant = Math.max(1, p - 1) as PasoApi;
-      return ant === 4 && !hayPeriodos ? 3 : ant;
+      return ant === 5 && !hayPeriodos ? 4 : ant;
     });
 
   const setEstadoPeriodo = (p: PeriodoVencido, estado: EstadoPeriodoAnterior) => {
@@ -1812,88 +1818,12 @@ function CargarContratoApiWizard() {
         {paso === 3 && (
           <Card>
             <CardHeader>
-              <CardTitle>Términos del contrato</CardTitle>
+              <CardTitle>Plazo y salida</CardTitle>
               <CardDescription>
-                Monto, vigencia, ajuste y forma de cobranza.
+                Cuándo arranca, cuándo termina y cada cuánto se ajusta.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
-              <div className="space-y-1.5">
-                <Label htmlFor="tipoContrato">Tipo de contrato</Label>
-                <Select
-                  value={tipoContrato}
-                  onValueChange={(v) => setTipoContrato(v as TipoContrato)}
-                >
-                  <SelectTrigger id="tipoContrato">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {tiposContrato.map((t) => (
-                      <SelectItem key={t.value} value={t.value}>
-                        {t.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="grid gap-3 md:grid-cols-[1fr_140px]">
-                <div className="space-y-1.5">
-                  <Label htmlFor="monto">
-                    {requiereAlquiler ? (
-                      <>Alquiler mensual <span aria-hidden="true" className="text-destructive">*</span></>
-                    ) : (
-                      'Alquiler mensual'
-                    )}
-                  </Label>
-                  <div className="relative">
-                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                      {monedaSimbolo}
-                    </span>
-                    <Input
-                      id="monto"
-                      inputMode="numeric"
-                      value={monto ? Number(monto).toLocaleString('es-AR') : ''}
-                      onChange={(e) => setMonto(e.target.value.replace(/\D/g, '').slice(0, 12))}
-                      placeholder="480.000"
-                      className="pl-9"
-                      disabled={!requiereAlquiler}
-                    />
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="moneda">Moneda</Label>
-                  <Select value={moneda} onValueChange={(v) => setMoneda(v as Moneda)}>
-                    <SelectTrigger id="moneda">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="ARS">ARS — Pesos</SelectItem>
-                      <SelectItem value="USD">USD — Dólares</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              {incluyeExpensas && (
-                <div className="space-y-1.5 md:max-w-xs">
-                  <Label htmlFor="montoExpensas">Expensas mensuales</Label>
-                  <div className="relative">
-                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                      {monedaSimbolo}
-                    </span>
-                    <Input
-                      id="montoExpensas"
-                      inputMode="numeric"
-                      value={montoExpensas ? Number(montoExpensas).toLocaleString('es-AR') : ''}
-                      onChange={(e) => setMontoExpensas(e.target.value.replace(/\D/g, '').slice(0, 12))}
-                      placeholder="90.000"
-                      className="pl-9"
-                    />
-                  </div>
-                </div>
-              )}
-
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="fechaInicio">
@@ -1977,6 +1907,105 @@ function CargarContratoApiWizard() {
                   </Select>
                 </div>
               </div>
+
+              <div className="flex justify-between border-t pt-4">
+                <Button variant="ghost" onClick={retroceder}>
+                  <ArrowLeft className="h-4 w-4" />
+                  Volver
+                </Button>
+                <Button onClick={avanzar} disabled={!pasoPlazoValido}>
+                  Continuar
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {paso === 4 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Dinero</CardTitle>
+              <CardDescription>
+                Cuánto paga el inquilino y cómo se cobra.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="space-y-1.5">
+                <Label htmlFor="tipoContrato">Tipo de contrato</Label>
+                <Select
+                  value={tipoContrato}
+                  onValueChange={(v) => setTipoContrato(v as TipoContrato)}
+                >
+                  <SelectTrigger id="tipoContrato">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {tiposContrato.map((t) => (
+                      <SelectItem key={t.value} value={t.value}>
+                        {t.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-[1fr_140px]">
+                <div className="space-y-1.5">
+                  <Label htmlFor="monto">
+                    {requiereAlquiler ? (
+                      <>Alquiler mensual <span aria-hidden="true" className="text-destructive">*</span></>
+                    ) : (
+                      'Alquiler mensual'
+                    )}
+                  </Label>
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                      {monedaSimbolo}
+                    </span>
+                    <Input
+                      id="monto"
+                      inputMode="numeric"
+                      value={monto ? Number(monto).toLocaleString('es-AR') : ''}
+                      onChange={(e) => setMonto(e.target.value.replace(/\D/g, '').slice(0, 12))}
+                      placeholder="480.000"
+                      className="pl-9"
+                      disabled={!requiereAlquiler}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="moneda">Moneda</Label>
+                  <Select value={moneda} onValueChange={(v) => setMoneda(v as Moneda)}>
+                    <SelectTrigger id="moneda">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ARS">ARS — Pesos</SelectItem>
+                      <SelectItem value="USD">USD — Dólares</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {incluyeExpensas && (
+                <div className="space-y-1.5 md:max-w-xs">
+                  <Label htmlFor="montoExpensas">Expensas mensuales</Label>
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                      {monedaSimbolo}
+                    </span>
+                    <Input
+                      id="montoExpensas"
+                      inputMode="numeric"
+                      value={montoExpensas ? Number(montoExpensas).toLocaleString('es-AR') : ''}
+                      onChange={(e) => setMontoExpensas(e.target.value.replace(/\D/g, '').slice(0, 12))}
+                      placeholder="90.000"
+                      className="pl-9"
+                    />
+                  </div>
+                </div>
+              )}
 
               <div className="space-y-1.5 md:max-w-xs">
                 <Label htmlFor="comision">Comisión de la inmobiliaria (%)</Label>
@@ -2121,7 +2150,7 @@ function CargarContratoApiWizard() {
                   <ArrowLeft className="h-4 w-4" />
                   Volver
                 </Button>
-                <Button onClick={avanzar} disabled={!pasoTerminosValido}>
+                <Button onClick={avanzar} disabled={!pasoDineroValido}>
                   Continuar
                   <ArrowRight className="h-4 w-4" />
                 </Button>
@@ -2130,7 +2159,7 @@ function CargarContratoApiWizard() {
           </Card>
         )}
 
-        {paso === 4 && hayPeriodos && (
+        {paso === 5 && hayPeriodos && (
           <Card>
             <CardHeader>
               <CardTitle>Períodos anteriores</CardTitle>
@@ -2262,7 +2291,7 @@ function CargarContratoApiWizard() {
           </Card>
         )}
 
-        {paso === 5 && (
+        {paso === 6 && (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -2406,7 +2435,7 @@ function CargarContratoApiWizard() {
   );
 }
 
-// Recibe los pasos VISIBLES (el 4 "Períodos anteriores" sólo cuando aplica) y
+// Recibe los pasos VISIBLES (el 5 "Períodos anteriores" sólo cuando aplica) y
 // numera por posición, así el flujo corto se ve 1-2-3-4 sin hueco.
 function StepsApi({
   actual,

@@ -3,6 +3,13 @@
 import { getToken } from './api/client';
 
 export interface BorradorContrato {
+  /**
+   * Versión del ESQUEMA del borrador, no de los datos. Se sube cuando cambia la
+   * numeración de los pasos o se agrega/quita un campo que rompe la restauración.
+   * Un borrador con versión distinta se descarta en silencio: es preferible a
+   * restaurar al usuario en el paso equivocado con los datos de otro.
+   */
+  version: number;
   paso: number;
   propiedadId: string;
   nombre: string;
@@ -29,6 +36,8 @@ export interface BorradorContrato {
   moraValor: string;
   periodosForm: Record<string, { estado: string; montoPagado: string; moraManual: string; moraEditada: boolean }>;
 }
+
+export const VERSION_BORRADOR = 2;
 
 export function obtenerNamespaceBorrador(): string | null {
   try {
@@ -68,7 +77,9 @@ export function leerBorradorContrato(namespace: string): BorradorContrato | null
     const key = `llave-inmo:contrato-borrador:v1:${namespace}`;
     const raw = window.localStorage.getItem(key);
     if (!raw) return null;
-    return JSON.parse(raw) as BorradorContrato;
+    const parsed = JSON.parse(raw) as Partial<BorradorContrato> | null;
+    if (parsed?.version !== VERSION_BORRADOR) return null;
+    return parsed as BorradorContrato;
   } catch {
     return null;
   }
