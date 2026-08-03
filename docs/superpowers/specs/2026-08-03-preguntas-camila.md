@@ -21,9 +21,30 @@ que lo pruebe.
 
 ---
 
+## Respuestas recibidas (Alan, 03/08)
+
+Tres de las seis del bloque 1 ya tienen respuesta del dueño del producto. Dos son
+parciales: la parte que falta queda marcada.
+
+| # | Respuesta | Estado |
+|---|---|---|
+| 1 | **"Debería tener el trackeo de todo el pasado para poder ir a cobrarle."** La deuda de los meses anteriores al alta tiene que quedar declarada, trackeada y **cobrable**. El camino de un click ("empezar a cobrar desde este mes") **no es lo que se quiere**. | ✅ completa, y **da vuelta el diseño de la Fase 1** |
+| 4 | **"Se puede cargar el número de cuenta de los servicios."** El número de cuenta / NIS tiene que existir como campo. | ⚠️ parcial: falta si es **obligatorio** o solo posible, qué servicios entran en la lista, y si la **tasa municipal** va como servicio o aparte |
+| 5 | **"Sería por contrato."** La cláusula de rescisión se define contrato por contrato, no como regla única de la inmobiliaria. | ⚠️ parcial: falta la **forma del valor** (10% sobre los meses que quedan vs un mes fijo), que decide si el campo es un porcentaje, un monto, o los dos con un selector |
+
+**Todavía sin respuesta del bloque 1:** #2 (dónde perdió los datos exactamente), #3 (lista de
+documentos y cuáles bloquean), #6 (InfoExperto).
+
+---
+
 ## Bloque 1 — Las seis que urgen (mandar ahora)
 
-### 1. La cartera en curso: un click o mes por mes
+### 1. La cartera en curso: un click o mes por mes ✅ RESPONDIDA
+
+> **Respuesta:** trackeo completo del pasado, cobrable. No al camino de un click.
+
+La pregunta original queda abajo como registro.
+
 > Cuando cargás un contrato que **ya venía andando** hace meses, ¿qué preferís: empezar a
 > cobrar desde este mes y lo viejo lo arreglás por afuera, o necesitás declarar mes por mes
 > lo que quedó debiendo para que quede registrado?
@@ -54,19 +75,30 @@ problema por cerrado.
 
 **Destraba:** la Fase 2 completa del rediseño del alta.
 
-### 4. Servicios por propiedad
+### 4. Servicios por propiedad ⚠️ RESPONDIDA A MEDIAS
 > ¿Qué servicios querés que queden registrados en cada propiedad (luz, gas, agua,
 > expensas, municipal)? ¿Y el número de cuenta o NIS real es obligatorio, o alcanza con
 > tildar que la propiedad tiene ese servicio?
 >
 > La tasa municipal, ¿la tratamos como un servicio más o va aparte?
 
+**Respuesta:** el número de cuenta se puede cargar, o sea el campo tiene que existir.
+
+**Sigue abierto:** si es obligatorio para cerrar el contrato, cuál es la lista de servicios,
+y dónde entra la tasa municipal. Sin eso no sé si el paso bloquea o solo avisa.
+
 **Destraba:** el paso de servicios de la Fase 3.
 
-### 5. Rescisión anticipada
+### 5. Rescisión anticipada ⚠️ RESPONDIDA A MEDIAS
 > La cláusula de salida anticipada, ¿es el 10% sobre los meses que quedan o un mes de
 > alquiler fijo? ¿Y eso se define contrato por contrato al cargarlo, o es la misma regla
 > para toda la inmobiliaria?
+
+**Respuesta:** se define **por contrato**.
+
+**Sigue abierto:** la forma del valor. "10% de lo que queda" es un porcentaje que se calcula
+contra un saldo variable; "un mes fijo" es un monto. No es lo mismo un campo que el otro, y
+si conviven hace falta un selector. Es la diferencia entre un campo y tres.
 
 **Destraba:** el paso de salida de la Fase 3 y el aviso de los 60 días.
 
