@@ -1345,7 +1345,16 @@ function CargarContratoApiWizard() {
     ).getDate();
     primerAjuste.setDate(Math.min(diaInicio, diasMesDestino));
 
-    return { meses, primerAjuste, error: null };
+    // ¿El ajuste llega a ocurrir? Con la frecuencia por defecto (12 meses) y un
+    // contrato de 12, el "primer ajuste" cae EL DÍA que el contrato termina; con
+    // uno de 6 meses cae medio año después de terminado. La cuenta es fiel a lo
+    // que guarda el back (`proximoAjuste = inicio + frecuencia`, que tampoco topea
+    // a fechaFin), pero anunciarlo a secas le promete al operador —que está usando
+    // este preview justamente para entender las consecuencias de las fechas— un
+    // evento que no va a pasar nunca.
+    const ajusteLlega = primerAjuste < fin;
+
+    return { meses, primerAjuste, ajusteLlega, error: null };
   }, [fechaInicio, fechaFin, frecuenciaAjusteMeses]);
 
   const formDePeriodo = (periodo: string): PeriodoAnteriorForm =>
@@ -1393,13 +1402,28 @@ function CargarContratoApiWizard() {
             ? 'Cargá el día de pago (entre 1 y 31).'
             : 'Elegí la frecuencia de ajuste.';
   // Paso 4 (Dinero): montos y esquema de mora.
+  // Cobranza directa SIN cuenta del propietario: el 400 del server ya es seguro
+  // (core.ts lo rechaza si el dueño principal no tiene `cuentaCobranza`). Es el
+  // mismo criterio que ya se aplicaba a las expensas dos líneas más abajo, y acá
+  // faltaba: el wizard dejaba avanzar hasta "Confirmar y dar de alta", disparaba
+  // el POST y recién ahí aparecía el error — con el agravante de que esta feature
+  // existe justamente para resolver la cuenta sin salir de la pantalla.
+  //
+  // Sólo frena cuando SABEMOS que falta: mientras el detalle está en vuelo o el
+  // fetch falló, `propietarioDeLaPropiedad` es null y no bloqueamos, porque no
+  // tenemos el dato (bloquear por no saber deja a la persona sin salida).
+  const faltaCuentaCobranzaDirecta =
+    modoCobranza === 'PROPIETARIO_DIRECTO' &&
+    (!propietarioIdElegido ||
+      (propietarioDeLaPropiedad !== null && !propietarioDeLaPropiedad.cuentaCobranza));
   const pasoDineroValido =
     (!requiereAlquiler || Number(monto) > 0) &&
     // Si el contrato incluye expensas, el monto de expensas es obligatorio (antes
     // el botón avanzaba y el server rechazaba con un 400 al final).
     (!incluyeExpensas || Number(montoExpensas) > 0) &&
     // Si eligió un esquema con valor, el valor tiene que ser > 0.
-    (moraSel === 'HEREDAR' || moraSel === 'SIN_MORA' || Number(moraValor) > 0);
+    (moraSel === 'HEREDAR' || moraSel === 'SIN_MORA' || Number(moraValor) > 0) &&
+    !faltaCuentaCobranzaDirecta;
   // Mensaje derivado de las MISMAS subcondiciones de pasoDineroValido, en el
   // mismo orden. Importante: el monto de alquiler puede estar bien cargado y
   // ser otro campo (expensas o mora) el que falta, así que no se puede asumir
@@ -1409,7 +1433,11 @@ function CargarContratoApiWizard() {
       ? 'Cargá el monto del alquiler.'
       : incluyeExpensas && !(Number(montoExpensas) > 0)
         ? 'Cargá el monto de las expensas.'
-        : 'Cargá el valor de la mora.';
+        : faltaCuentaCobranzaDirecta
+          ? !propietarioIdElegido
+            ? 'La propiedad no tiene dueños cargados: sin eso no se puede cobrar directo.'
+            : 'Cargá la cuenta de cobro directo del propietario (el botón está acá arriba).'
+          : 'Cargá el valor de la mora.';
   // Períodos: todo PARCIAL necesita monto pagado > 0 (la mora es opcional).
   const pasoPeriodosValido = periodosVencidos.every((p) => {
     const f = formDePeriodo(p.periodo);
@@ -2018,12 +2046,20 @@ function CargarContratoApiWizard() {
                       adelante vas a tener que declarar qué pasó con cada uno.
                     </p>
                   )}
-                  {indiceAjuste !== 'FIJO' && (
-                    <p>
-                      Primer ajuste:{' '}
-                      {formatFechaDeInput(resumenPlazo.primerAjuste.toISOString().slice(0, 10))}.
-                    </p>
-                  )}
+                  {indiceAjuste !== 'FIJO' &&
+                    (resumenPlazo.ajusteLlega ? (
+                      <p>
+                        Primer ajuste:{' '}
+                        {formatFechaDeInput(resumenPlazo.primerAjuste.toISOString().slice(0, 10))}.
+                      </p>
+                    ) : (
+                      <p>
+                        Con esta frecuencia el contrato <strong>no llega a ajustarse</strong>: el
+                        primer ajuste caería el{' '}
+                        {formatFechaDeInput(resumenPlazo.primerAjuste.toISOString().slice(0, 10))},
+                        cuando ya terminó.
+                      </p>
+                    ))}
                 </div>
               )}
 
@@ -2721,13 +2757,24 @@ function StepsApi({
         const completado = p.id < actual;
         const activo = p.id === actual;
         return (
-          <li key={p.id} aria-current={activo ? 'step' : undefined} className="flex items-center gap-2 sm:gap-3">
+          <li key={p.id} className="flex items-center gap-2 sm:gap-3">
+            {/* El paso ACTUAL no se deshabilita, aunque tampoco navegue a ningún
+                lado. Con `disabled={!completado}` el botón que acabás de activar
+                pasaba a ser el actual y se deshabilitaba EN EL MISMO click: el
+                navegador saca el foco de un control que se deshabilita mientras
+                está enfocado, así que caía al body y el próximo Tab arrancaba
+                desde el principio del documento. Dejándolo habilitado el foco se
+                queda donde estaba y `aria-current` anuncia dónde quedó parado.
+                `aria-current` va en el BOTÓN y no en el <li>: recorriendo con
+                Tab, el lector sólo pisa los controles. */}
             <button
               type="button"
-              disabled={!completado}
+              disabled={!completado && !activo}
+              aria-current={activo ? 'step' : undefined}
               onClick={() => completado && onIr(p.id)}
               className={cn(
-                'flex items-center gap-2 sm:gap-3',
+                'flex items-center gap-2 rounded-md sm:gap-3',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
                 completado ? 'cursor-pointer hover:opacity-80' : 'cursor-default',
               )}
               aria-label={completado ? `Volver a ${p.label}` : undefined}
