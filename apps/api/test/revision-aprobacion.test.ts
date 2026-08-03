@@ -88,9 +88,14 @@ describe('revisionAprobacion — preview de qué pasa al aprobar', () => {
         indiceAjuste: 'ICL',
         frecuenciaAjusteMeses: 12,
         periodosAnteriores: [
-          { periodo: per(4), estado: 'PAGADO' },
-          { periodo: per(3), estado: 'PARCIAL', montoPagado: 50000 },
-          { periodo: per(2), estado: 'ADEUDA' },
+          // moraManual en LOS TRES estados: PAGADO es el caso Critical — según
+          // aplicarEstadoInicial (estado-inicial-contrato.ts) la rama PAGADO NUNCA
+          // toca montoPunitorioManual (la mora queda congelada en 0), así que este
+          // 9999 NO se tiene que ver reflejado en ningún lado del preview ni de lo
+          // persistido. PARCIAL y ADEUDA sí la aplican.
+          { periodo: per(4), estado: 'PAGADO', moraManual: 9999 },
+          { periodo: per(3), estado: 'PARCIAL', montoPagado: 50000, moraManual: 1500 },
+          { periodo: per(2), estado: 'ADEUDA', moraManual: 2000 },
         ],
       },
     });
@@ -120,7 +125,9 @@ describe('revisionAprobacion — preview de qué pasa al aprobar', () => {
     });
     expect(ap.statusCode, ap.body).toBe(200);
 
-    // 3) Lo anunciado tiene que coincidir con lo aplicado
+    // 3) Lo anunciado tiene que coincidir con lo aplicado — contra el estado
+    // REALMENTE persistido, no contra una constante calculada a mano: si algún día
+    // cambia el monto/expensas del contrato de prueba, el test sigue siendo válido.
     const prisma = new PrismaClient();
     const liqs = await prisma.liquidacion.findMany({ where: { contratoId } });
     const pagos = await prisma.pago.findMany({ where: { contratoId } });
@@ -128,13 +135,41 @@ describe('revisionAprobacion — preview de qué pasa al aprobar', () => {
 
     expect(liqs).toHaveLength(rev.alAprobar.cuotasAGenerar);
 
+    const liqPorPeriodo = new Map(liqs.map((l) => [l.periodo, l]));
+    const pagadoPorPeriodo = new Map<string, number>();
+    for (const p of pagos) {
+      pagadoPorPeriodo.set(p.periodo, (pagadoPorPeriodo.get(p.periodo) ?? 0) + Number(p.monto));
+    }
+
     const conciliadoReal = pagos.reduce((s, p) => s + Number(p.monto), 0);
     expect(conciliadoReal).toBeCloseTo(rev.alAprobar.conciliado.monto, 2);
 
-    // El total del período PAGADO (120000) + lo pagado del PARCIAL (50000)
-    expect(rev.alAprobar.conciliado.monto).toBeCloseTo(170000, 2);
-    // El remanente del PARCIAL (120000-50000) + el total del ADEUDA (120000)
-    expect(rev.alAprobar.deudaInicial.capital).toBeCloseTo(190000, 2);
+    // conciliado = PAGADO (per(4)) + lo pagado del PARCIAL (per(3)): 2 períodos.
+    // deudaInicial = el remanente del PARCIAL (per(3)) + el ADEUDA (per(2)): 2
+    // períodos — el PARCIAL cuenta en LOS DOS lados (invariante documentado en
+    // resumenRevisionAprobacion).
+    expect(rev.alAprobar.conciliado.periodos).toBe(2);
+    expect(rev.alAprobar.deudaInicial.periodos).toBe(2);
+
+    // Capital de deudaInicial contra las liquidaciones que quedaron REALMENTE sin
+    // cubrir en la DB (montoTotal real - lo realmente pagado), no un número tipeado.
+    const liqParcial = liqPorPeriodo.get(per(3));
+    const liqAdeuda = liqPorPeriodo.get(per(2));
+    if (!liqParcial || !liqAdeuda) throw new Error('faltan liquidaciones esperadas en la DB');
+    const remanenteParcialReal =
+      Number(liqParcial.montoTotal) - (pagadoPorPeriodo.get(per(3)) ?? 0);
+    const capitalEsperado = remanenteParcialReal + Number(liqAdeuda.montoTotal);
+    expect(rev.alAprobar.deudaInicial.capital).toBeCloseTo(capitalEsperado, 2);
+
+    // Mora: PAGADO (per(4)) tiene que quedar en 0 (aplicarEstadoInicial no la
+    // aplica ahí) — este es el caso Critical. PARCIAL y ADEUDA sí la aplican, y el
+    // preview tiene que anunciar SOLO esas dos, nunca la del período PAGADO.
+    const liqPagado = liqPorPeriodo.get(per(4));
+    if (!liqPagado) throw new Error('falta la liquidación PAGADO esperada en la DB');
+    expect(Number(liqPagado.montoPunitorioManual ?? 0)).toBe(0);
+    expect(Number(liqParcial.montoPunitorioManual)).toBe(1500);
+    expect(Number(liqAdeuda.montoPunitorioManual)).toBe(2000);
+    expect(rev.alAprobar.deudaInicial.mora).toBeCloseTo(1500 + 2000, 2);
   });
 
   it('un contrato ya activo no trae revisionAprobacion', async () => {
@@ -161,5 +196,54 @@ describe('revisionAprobacion — preview de qué pasa al aprobar', () => {
       headers: { authorization: `Bearer ${tokenAdmin}` },
     });
     expect(det.json().revisionAprobacion).toBeUndefined();
+  });
+
+  it('periodosAnterioresPendientes corrupto en la DB no rompe el preview (200, no 500)', async () => {
+    // POST /contratos valida periodosAnteriores con el mismo Zod que
+    // PeriodosAnterioresSchema, así que no hay forma de mandar un Json corrupto vía
+    // la API. Simulamos una fila legacy / corrupción de datos escribiendo directo
+    // en la columna, como haría una migración vieja o una edición manual en la DB.
+    const hoy = new Date();
+    const alta = await app.inject({
+      method: 'POST',
+      url: '/contratos',
+      headers: { authorization: `Bearer ${tokenCarga}` },
+      payload: {
+        propiedadId: await propiedadDisponible(),
+        inquilino: { nombre: 'Json', apellido: 'Corrupto' },
+        monto: 100000,
+        fechaInicio: new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth() - 1, 1)).toISOString(),
+        fechaFin: new Date(Date.UTC(hoy.getUTCFullYear() + 1, hoy.getUTCMonth(), 1)).toISOString(),
+        diaPago: 10,
+        indiceAjuste: 'ICL',
+        frecuenciaAjusteMeses: 12,
+        // Sin periodosAnteriores: lo corrompemos después, directo en la DB.
+      },
+    });
+    expect(alta.statusCode, alta.body).toBeLessThan(300);
+    const contratoId = alta.json().id as string;
+
+    const prisma = new PrismaClient();
+    await prisma.contrato.update({
+      where: { id: contratoId },
+      // No es un array (PeriodosAnterioresSchema espera z.array(...)) → falla el
+      // safeParse, exactamente el caso "columna con contenido que no pasa el schema".
+      data: { periodosAnterioresPendientes: { esto: 'no es un array' } },
+    });
+    await prisma.$disconnect();
+
+    const det = await app.inject({
+      method: 'GET',
+      url: `/contratos/${contratoId}`,
+      headers: { authorization: `Bearer ${tokenAdmin}` },
+    });
+    expect(det.statusCode).toBe(200);
+    const rev = det.json().revisionAprobacion;
+    expect(rev).toBeTruthy();
+    // Degrada a "no hay períodos declarados" en vez de tirar 500 — el resto del
+    // preview (cuotas a generar) no depende de este Json y sigue andando.
+    expect(rev.periodosDeclarados).toEqual([]);
+    expect(rev.alAprobar.deudaInicial).toEqual({ periodos: 0, capital: 0, mora: 0 });
+    expect(rev.alAprobar.cuotasAGenerar).toBeGreaterThan(0);
   });
 });

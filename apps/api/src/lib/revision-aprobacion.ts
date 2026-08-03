@@ -41,9 +41,11 @@ export function resumenRevisionAprobacion(
     // Un período declarado que el devengo no genera es el bug i36: no lo inventamos,
     // lo salteamos — aplicarEstadoInicial lo va a rechazar con 400 al aprobar.
     if (total == null) continue;
-    if (p.moraManual != null) deudaMora += Math.max(0, p.moraManual);
 
     if (p.estado === 'PAGADO') {
+      // Espeja aplicarEstadoInicial: PAGADO no toca montoPunitorioManual, la mora
+      // queda congelada en 0. Un moraManual declarado acá NUNCA se aplica — no
+      // sumarlo, aunque venga en el período.
       conciliadoMonto += total;
       conciliadoPeriodos += 1;
     } else if (p.estado === 'PARCIAL') {
@@ -52,9 +54,11 @@ export function resumenRevisionAprobacion(
       conciliadoPeriodos += 1;
       deudaCapital += Math.max(0, total - pagado);
       deudaPeriodos += 1;
+      if (p.moraManual != null) deudaMora += Math.max(0, p.moraManual);
     } else {
       deudaCapital += total;
       deudaPeriodos += 1;
+      if (p.moraManual != null) deudaMora += Math.max(0, p.moraManual);
     }
   }
 
