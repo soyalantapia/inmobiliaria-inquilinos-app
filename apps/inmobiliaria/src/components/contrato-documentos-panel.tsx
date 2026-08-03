@@ -43,10 +43,8 @@ import {
   MAX_GARANTES,
   claveDocumento,
   enumerarFaltantes,
-  faltantesDeExpediente,
 } from '@/lib/documentos-requeridos';
-import { useDocsContrato } from '@/lib/api/use-documentos';
-import { useGarantes } from '@/lib/api/use-garantes';
+import { useExpedienteContrato } from '@/lib/api/use-expediente-contrato';
 import {
   descargarContratoWord,
   imprimirContratoPdf,
@@ -146,18 +144,13 @@ function gruposParaContrato(garantesCount: number): GrupoUI[] {
 }
 
 export function ContratoDocumentosPanel({ contrato, propietarios }: Props) {
-  // Documentos REALES vía API en prod (CRUD + Volume); localStorage en demo.
-  const { docs, hidratado, subir, eliminar: eliminarDoc } = useDocsContrato(contrato.id);
-  const {
-    garantes,
-    disponible: garantesDisponibles,
-    cargando: garantesCargando,
-  } = useGarantes(contrato.id);
   const [grupoActivo, setGrupoActivo] = useState<GrupoUI | null>(null);
   const [tipoElegido, setTipoElegido] = useState<TipoDocContrato>('DNI_TITULAR_FRENTE');
   const [garantesOverride, setGarantesOverride] = useState<number | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // Documentos REALES vía API en prod (CRUD + Volume); localStorage en demo.
+  //
   // Cuántos garantes tiene ESTE contrato sale de los garantes reales
   // (GET /contratos/:id/garantes), no de lo que haya tocado alguien en la
   // pantalla. Antes era un `useState(1)`: el mismo contrato mostraba "4 de 6" o
@@ -166,11 +159,18 @@ export function ContratoDocumentosPanel({ contrato, propietarios }: Props) {
   //
   // El <Select> de abajo sobrevive como override VISUAL —sirve para ver qué
   // pasaría con un garante más antes de darlo de alta— y por eso se guarda
-  // aparte, en `garantesOverride`. En demo no existe el endpoint de garantes
-  // (`disponible === false`): ahí el Select es la única fuente y arranca en 1,
-  // como venía.
-  const garantesReales = garantesDisponibles ? garantes.length : 1;
-  const garantesCount = garantesOverride ?? garantesReales;
+  // aparte, en `garantesOverride` y se le pasa al hook. El badge del tab, que
+  // no tiene override, siempre muestra la cantidad real.
+  const {
+    docs,
+    resumen: expediente,
+    garantesReales,
+    garantesCount,
+    garantesDisponibles,
+    listo,
+    subir,
+    eliminar: eliminarDoc,
+  } = useExpedienteContrato(contrato.id, garantesOverride);
 
   const grupos = useMemo(() => gruposParaContrato(garantesCount), [garantesCount]);
 
@@ -189,12 +189,6 @@ export function ContratoDocumentosPanel({ contrato, propietarios }: Props) {
     return map;
   }, [docs]);
 
-  // La fórmula de "qué se requiere" vive en un módulo único que también usa el
-  // alta: si acá se recalculara aparte, las dos pantallas dirían cosas distintas.
-  const expediente = useMemo(
-    () => faltantesDeExpediente(docs, garantesCount),
-    [docs, garantesCount],
-  );
   const pct =
     expediente.total === 0 ? 0 : Math.round((expediente.presentes / expediente.total) * 100);
 
@@ -302,7 +296,7 @@ export function ContratoDocumentosPanel({ contrato, propietarios }: Props) {
   // Esperar también a los garantes: si no, el checklist se pinta con 0 garantes
   // y salta a la cantidad real un instante después. Ese parpadeo del "X de Y"
   // se lee como un bug.
-  if (!hidratado || (garantesDisponibles && garantesCargando)) return null;
+  if (!listo) return null;
 
   return (
     <div className="space-y-5">

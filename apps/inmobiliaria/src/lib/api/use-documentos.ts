@@ -9,7 +9,8 @@
  * hay dataUrl: mapeamos `archivoUrl` (/uploads/...) a una URL servible con el
  * token en query (un <img>/<a> no manda el header Authorization).
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { API_URL, apiEnabled, apiFetch, getToken, subirArchivo } from './client';
 import {
   type DocContrato,
@@ -66,6 +67,17 @@ export interface NuevoDocInput {
   periodoLiquidacion?: string;
 }
 
+/** Una sola definición de la clave: la usan la consulta y la invalidación. */
+const keyDocs = (contratoId: string) => ['docs-contrato', contratoId] as const;
+
+/**
+ * El expediente se lee desde DOS lugares a la vez —el badge del tab
+ * "Documentos" y el panel de adentro— y por eso vive en la caché de
+ * react-query y no en un `useState` propio de cada instancia: con estado local,
+ * subir un papel actualizaba el checklist y dejaba el badge con el número
+ * viejo hasta recargar la página. Dos números distintos del mismo expediente
+ * es exactamente lo que este trabajo vino a sacar.
+ */
 export function useDocsContrato(contratoId: string): {
   docs: DocContrato[];
   hidratado: boolean;
@@ -73,28 +85,29 @@ export function useDocsContrato(contratoId: string): {
   subir: (input: NuevoDocInput) => Promise<void>;
   eliminar: (doc: DocContrato) => Promise<void>;
 } {
-  const [docs, setDocs] = useState<DocContrato[]>([]);
-  const [hidratado, setHidratado] = useState(false);
+  const qc = useQueryClient();
 
-  const recargar = useCallback(async () => {
-    if (!apiEnabled) {
-      setDocs(listarDocsContrato(contratoId));
-      setHidratado(true);
-      return;
-    }
-    try {
-      const filas = await apiFetch<DocApi[]>(`/contratos/${contratoId}/documentos`);
-      setDocs(filas.map(mapDoc));
-    } catch {
-      setDocs([]);
-    } finally {
-      setHidratado(true);
-    }
-  }, [contratoId]);
+  const q = useQuery({
+    queryKey: keyDocs(contratoId),
+    queryFn: async (): Promise<DocContrato[]> => {
+      if (!apiEnabled) return listarDocsContrato(contratoId);
+      try {
+        const filas = await apiFetch<DocApi[]>(`/contratos/${contratoId}/documentos`);
+        return filas.map(mapDoc);
+      } catch {
+        // Un expediente que no se pudo leer no puede tapar la pantalla del
+        // contrato: se muestra vacío y el panel sigue dejando subir.
+        return [];
+      }
+    },
+    enabled: !!contratoId,
+    staleTime: 15_000,
+  });
 
-  useEffect(() => {
-    void recargar();
-  }, [recargar]);
+  const recargar = useCallback(
+    () => qc.invalidateQueries({ queryKey: keyDocs(contratoId) }),
+    [qc, contratoId],
+  );
 
   const subir = useCallback(
     async (input: NuevoDocInput) => {
@@ -114,7 +127,7 @@ export function useDocsContrato(contratoId: string): {
           subidoAt: new Date().toISOString(),
           subidoPor: 'admin',
         });
-        setDocs(listarDocsContrato(contratoId));
+        await recargar();
         return;
       }
       const subido = await subirArchivo(input.file);
@@ -140,7 +153,7 @@ export function useDocsContrato(contratoId: string): {
     async (doc: DocContrato) => {
       if (!apiEnabled) {
         eliminarDocContrato(doc.contratoId, doc.id);
-        setDocs(listarDocsContrato(contratoId));
+        await recargar();
         return;
       }
       await apiFetch(`/contratos/${contratoId}/documentos/${doc.id}`, { method: 'DELETE' });
@@ -149,5 +162,14 @@ export function useDocsContrato(contratoId: string): {
     [contratoId, recargar],
   );
 
-  return { docs, hidratado, deApi: apiEnabled, subir, eliminar };
+  return {
+    docs: q.data ?? [],
+    // `isPending` solo baja cuando la consulta terminó, con datos o con el
+    // array vacío del catch: el panel espera esto para no pintar un "0 de 6"
+    // que un instante después cambia.
+    hidratado: !q.isPending,
+    deApi: apiEnabled,
+    subir,
+    eliminar,
+  };
 }
