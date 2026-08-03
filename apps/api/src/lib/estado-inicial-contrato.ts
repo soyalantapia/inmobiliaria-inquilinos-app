@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { z } from 'zod';
 import { yaVencio } from '@llave/shared';
 
 /**
@@ -27,6 +28,26 @@ export type PeriodoAnterior = {
   montoPagado?: number;
   moraManual?: number;
 };
+
+/**
+ * Re-validación del estado inicial guardado en el borrador. Ya fue validado por el
+ * Zod de POST /contratos al cargarlo, pero es una columna Json: la volvemos a
+ * validar antes de tocar plata, en vez de castearla a ciegas. Vive acá (y no en la
+ * ruta) porque los DOS caminos que leen `periodosAnterioresPendientes` —aprobar
+ * (plata.ts) y el preview de revisión (revision-aprobacion.ts, core.ts)— necesitan
+ * el MISMO schema: si cada uno tuviera el suyo, podrían divergir en silencio sobre
+ * qué Json cuenta como válido.
+ */
+export const PeriodosAnterioresSchema = z
+  .array(
+    z.object({
+      periodo: z.string().regex(/^\d{4}-\d{2}$/),
+      estado: z.enum(['PAGADO', 'PARCIAL', 'ADEUDA']),
+      montoPagado: z.number().positive().optional(),
+      moraManual: z.number().nonnegative().optional(),
+    }),
+  )
+  .max(120);
 
 export class EstadoInicialInvalido extends Error {}
 
