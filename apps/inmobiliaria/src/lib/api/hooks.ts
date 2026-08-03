@@ -823,6 +823,7 @@ interface PropiedadApi {
   contratoActualId: string | null;
   sociedadId: string | null;
   complejo?: string | null;
+  mascotasPermitidas?: boolean | null;
   consorcio?: { nombre: string } | null;
   participaciones: Array<{
     propietarioId: string;
@@ -887,6 +888,7 @@ function mapPropiedad(p: PropiedadApi): Propiedad {
     ...(p.sociedadId ? { sociedadId: p.sociedadId } : {}),
     // Complejo EFECTIVO: consorcio real si está ligado, si no el texto libre.
     complejo: p.consorcio?.nombre ?? p.complejo ?? null,
+    mascotasPermitidas: p.mascotasPermitidas ?? null,
     createdAt: '',
   };
 }
@@ -1253,6 +1255,8 @@ export interface NuevaPropiedad {
   reglasConvivencia?: string;
   /** Nombre de complejo/edificio para agrupar propiedades. */
   complejo?: string;
+  /** ¿Se permiten mascotas? Tri-estado: omitido/null = no especificado. */
+  mascotasPermitidas?: boolean | null;
   propietarios: Array<{ propietarioId: string; porcentaje: number }>;
 }
 

@@ -69,6 +69,10 @@ export interface Propiedad {
   /** Nombre de complejo/edificio para agrupar (feedback 14/07). Es el efectivo:
    *  consorcio real si está ligado, si no el texto libre. null = sin complejo. */
   complejo?: string | null;
+  /** ¿Se permiten mascotas en esta unidad? Tri-estado: true/false = respuesta
+   *  explícita, null/undefined = no especificado. Atributo del inmueble (no del
+   *  contrato) — se ve en la ficha de la propiedad y en el contrato del inquilino. */
+  mascotasPermitidas?: boolean | null;
   createdAt: string;
 }
 

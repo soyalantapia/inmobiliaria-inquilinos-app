@@ -976,8 +976,6 @@ function CargarContratoApiWizard() {
   const [depositoGarantia, setDepositoGarantia] = useState('');
   const [comisionInmobiliaria, setComisionInmobiliaria] = useState('');
   const [modoCobranza, setModoCobranza] = useState<ModoCobranza>('INMOBILIARIA');
-  // ¿Mascotas? tri-estado: null = no especificado (default), true = permitidas, false = no.
-  const [mascotasPermitidas, setMascotasPermitidas] = useState<boolean | null>(null);
 
   // Interés por mora: 'HEREDAR' = usa el default de la inmobiliaria y NO se
   // manda moraTipo/moraValor al API (la cascada la resuelve el backend).
@@ -1092,7 +1090,6 @@ function CargarContratoApiWizard() {
     setDepositoGarantia(b.depositoGarantia);
     setComisionInmobiliaria(b.comisionInmobiliaria);
     setModoCobranza(b.modoCobranza as ModoCobranza);
-    setMascotasPermitidas(b.mascotasPermitidas);
     setMoraSel(b.moraSel as MoraSeleccion);
     setMoraValor(b.moraValor);
     setPeriodosForm(b.periodosForm as Record<string, PeriodoAnteriorForm>);
@@ -1170,7 +1167,6 @@ function CargarContratoApiWizard() {
         depositoGarantia,
         comisionInmobiliaria,
         modoCobranza,
-        mascotasPermitidas,
         moraSel,
         moraValor,
         periodosForm,
@@ -1208,7 +1204,6 @@ function CargarContratoApiWizard() {
     depositoGarantia,
     comisionInmobiliaria,
     modoCobranza,
-    mascotasPermitidas,
     moraSel,
     moraValor,
     periodosForm,
@@ -1389,7 +1384,6 @@ function CargarContratoApiWizard() {
         ...(Number(depositoGarantia) > 0
           ? { depositoGarantia: Number(depositoGarantia) }
           : {}),
-        ...(mascotasPermitidas !== null ? { mascotasPermitidas } : {}),
         ...(comisionInmobiliaria.trim() !== '' && Number(comisionInmobiliaria) >= 0
           ? { comisionInmobiliaria: Number(comisionInmobiliaria) }
           : {}),
@@ -2087,33 +2081,6 @@ function CargarContratoApiWizard() {
                     su ficha. Si no la tiene, el alta te la va a pedir al confirmar.
                   </p>
                 )}
-              </div>
-
-              {/* Mascotas: se muestra en el contrato del inquilino (evita consultas). */}
-              <div className="space-y-1.5">
-                <Label>¿Se permiten mascotas?</Label>
-                <div className="flex gap-2">
-                  {([
-                    { val: true, label: 'Sí' },
-                    { val: false, label: 'No' },
-                    { val: null, label: 'Sin especificar' },
-                  ] as { val: boolean | null; label: string }[]).map((o) => (
-                    <button
-                      key={String(o.val)}
-                      type="button"
-                      aria-pressed={mascotasPermitidas === o.val}
-                      onClick={() => setMascotasPermitidas(o.val)}
-                      className={cn(
-                        'rounded-md border px-3 py-1.5 text-sm transition-colors',
-                        mascotasPermitidas === o.val
-                          ? 'border-primary bg-primary text-primary-foreground'
-                          : 'border-border bg-background hover:bg-muted/40',
-                      )}
-                    >
-                      {o.label}
-                    </button>
-                  ))}
-                </div>
               </div>
 
               <div className="flex justify-between border-t pt-4">

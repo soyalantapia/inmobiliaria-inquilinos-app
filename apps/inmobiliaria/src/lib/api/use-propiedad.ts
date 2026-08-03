@@ -147,6 +147,9 @@ interface PropiedadApi {
    *  edición de la propiedad borraba el complejo en silencio. */
   complejo?: string | null;
   consorcio?: { nombre: string } | null;
+  /** ¿Se permiten mascotas? Tri-estado: true/false = respuesta explícita, null = no
+   *  especificado. Atributo del inmueble (Propiedad.mascotasPermitidas). */
+  mascotasPermitidas?: boolean | null;
 }
 
 /* ---------- Mappers API → tipos de pantalla ---------- */
@@ -248,6 +251,7 @@ function mapPropiedad(p: PropiedadApi, reclamosApi: ReclamoApi[]): PropiedadDeta
     provincia: p.provincia,
     tipo: p.tipo,
     complejo: p.consorcio?.nombre ?? p.complejo ?? null,
+    mascotasPermitidas: p.mascotasPermitidas ?? null,
     ambientes: numOrNull(p.ambientes),
     m2: numOrNull(p.m2),
     fotoUrl: p.fotoUrl,
