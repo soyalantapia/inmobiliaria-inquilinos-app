@@ -567,6 +567,14 @@ function BannerPagoPendiente({ liq }: { liq: Liquidacion }) {
     ? ((liq.pagos ?? []).find((p) => p.estado === 'INFORMADO') ?? null)
     : null;
   if (pagoVivo) {
+    // Cuánto informó vs cuánto debía: si informó de MENOS, decirle sólo
+    // "en revisión" le hace creer que terminó y se entera del saldo recién
+    // cuando la inmobiliaria le reclama. Mostramos el faltante. Igual seguimos
+    // linkeando al DETALLE y no al checkout: la razón original de esta rama
+    // (que no transfiera dos veces y coma un 409) sigue valiendo.
+    const cTot = resolverMontos(liq, apiEnabled).totalAPagar;
+    const totalDeuda = Math.max(0, liq.saldo ?? cTot);
+    const faltan = Math.max(0, totalDeuda - pagoVivo.monto);
     return (
       <Link
         href={`/pago/${liq.id}`}
@@ -577,11 +585,22 @@ function BannerPagoPendiente({ liq }: { liq: Liquidacion }) {
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold leading-tight text-amber-900 dark:text-amber-100">
-            Comprobante en revisión ·{' '}
-            <span className="tabular-nums">{formatMonto(pagoVivo.monto, liq.moneda)}</span>
+            {faltan > 0 ? (
+              <>
+                Te faltan{' '}
+                <span className="tabular-nums">{formatMonto(faltan, liq.moneda)}</span>
+              </>
+            ) : (
+              <>
+                Comprobante en revisión ·{' '}
+                <span className="tabular-nums">{formatMonto(pagoVivo.monto, liq.moneda)}</span>
+              </>
+            )}
           </p>
           <p className="truncate text-xs text-amber-800/80 dark:text-amber-200/80">
-            {formatPeriodo(liq.periodo)} · la inmobiliaria valida tu pago en 24-48 hs
+            {faltan > 0
+              ? `Informaste ${formatMonto(pagoVivo.monto, liq.moneda)} de ${formatMonto(totalDeuda, liq.moneda)} · ${formatPeriodo(liq.periodo)}`
+              : `${formatPeriodo(liq.periodo)} · la inmobiliaria valida tu pago en 24-48 hs`}
           </p>
         </div>
         <ChevronRight className="h-4 w-4 shrink-0 text-amber-700 dark:text-amber-300" />

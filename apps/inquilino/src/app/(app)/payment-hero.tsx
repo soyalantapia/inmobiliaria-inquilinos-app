@@ -8,6 +8,7 @@ import {
   ChevronDown,
   ChevronRight,
   ChevronUp,
+  Clock,
   TrendingUp,
   Wallet,
 } from 'lucide-react';
@@ -41,6 +42,16 @@ export function PaymentHero({
   const diasV = diasHastaVencimiento(liq.fechaVencimiento);
   const vencido = calc.diasAtraso > 0;
   const urgente = !vencido && diasV >= 0 && diasV <= 3;
+  // Lo que YA salió de su bolsillo: conciliado (el server lo descuenta en
+  // `saldo`) + lo informado esperando visto (que NO baja el saldo). El número
+  // grande es lo que le falta poner; mostrar el total pelado le pedía de nuevo
+  // plata que ya había pagado. Los RECHAZADO no cuentan: esos hay que rehacerlos.
+  const totalHero = apiEnabled ? Math.max(0, liq.saldo ?? calc.totalAPagar) : calc.totalAPagar;
+  const enRevision = (liq.pagos ?? [])
+    .filter((p) => p.estado === 'INFORMADO')
+    .reduce((acc, p) => acc + p.monto, 0);
+  const restante = Math.max(0, totalHero - enRevision);
+  const esperandoVisto = enRevision > 0 && restante === 0;
 
   const bg = vencido
     ? 'from-red-600 to-red-500'
@@ -77,8 +88,15 @@ export function PaymentHero({
 
           <div className="space-y-1">
             <p className="text-4xl font-bold leading-none tracking-tight md:text-5xl">
-              {formatMonto(calc.totalAPagar, liq.moneda)}
+              {formatMonto(esperandoVisto ? totalHero : restante, liq.moneda)}
             </p>
+            {enRevision > 0 && (
+              <p className="text-xs opacity-85">
+                {esperandoVisto
+                  ? 'Ya lo informaste · esperando que lo acepten'
+                  : `Ya informaste ${formatMonto(enRevision, liq.moneda)} · en revisión`}
+              </p>
+            )}
             <p className="text-sm opacity-90">
               {vencido
                 ? `${calc.diasAtraso} día${calc.diasAtraso === 1 ? '' : 's'} de atraso · venció ${formatFecha(liq.fechaVencimiento)}`
@@ -167,11 +185,22 @@ export function PaymentHero({
 
           <div className="flex items-center justify-between gap-3 pt-2">
             <p className="flex items-center gap-1.5 text-xs opacity-85">
-              <Wallet className="h-3.5 w-3.5" />
-              Pagás por transferencia
+              {esperandoVisto ? (
+                <>
+                  <Clock className="h-3.5 w-3.5" />
+                  La inmobiliaria tiene que aceptar
+                </>
+              ) : (
+                <>
+                  <Wallet className="h-3.5 w-3.5" />
+                  Pagás por transferencia
+                </>
+              )}
             </p>
             <span className="inline-flex items-center gap-1 rounded-full bg-white/20 px-4 py-2 text-sm font-semibold backdrop-blur">
-              {vencido ? 'Regularizar' : 'Pagar ahora'}
+              {esperandoVisto
+                ? 'Ver mi comprobante'
+                : `${vencido ? 'Regularizar' : 'Pagar'} ${formatMonto(restante, liq.moneda)}`}
               <ChevronRight className="h-4 w-4" />
             </span>
           </div>
