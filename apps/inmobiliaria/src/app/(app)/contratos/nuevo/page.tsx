@@ -14,11 +14,19 @@ import { Progress } from '@llave/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@llave/ui/select';
 import { toast } from '@llave/ui/use-toast';
 import { ConfirmDialog } from '@llave/ui/confirm-dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@llave/ui/dialog';
 import { cn } from '@llave/ui/cn';
 import { enumerarPeriodosContrato } from '@llave/shared/periodos';
 import { Topbar } from '@/components/topbar';
 import { apiEnabled, apiFetch, ApiError, subirArchivo, varianteError } from '@/lib/api/client';
 import { ensureApiSession } from '@/lib/api/session';
+import {
+  borrarBorradorContrato,
+  guardarBorradorContrato,
+  leerBorradorContrato,
+  obtenerNamespaceBorrador,
+  type BorradorContrato,
+} from '@/lib/contrato-borrador-storage';
 import type { PersonaListado } from '@/lib/api/use-inquilinos';
 import { usePropiedades, useMercado, useCobranza } from '@/lib/api/hooks';
 import {
@@ -817,6 +825,33 @@ function labelPeriodo(periodo: string): string {
   return `${nombre.charAt(0).toUpperCase()}${nombre.slice(1)} ${anio}`;
 }
 
+// ---- Borrador (autosave) ----
+
+// Criterio simple para decidir si vale la pena ofrecer "retomar": al menos un
+// campo con contenido real. Defensivo ante datos corruptos en localStorage
+// (nunca confiamos en que el JSON guardado matchea el shape al 100%): cada
+// chequeo usa `&&` corto-circuito antes de `.trim()`/`.length`, así un campo
+// faltante o de otro tipo no rompe la lectura, sólo cuenta como "vacío".
+function borradorTieneContenido(b: BorradorContrato): boolean {
+  return Boolean(
+    (b.propiedadId && b.propiedadId.length > 0) ||
+      (b.nombre && b.nombre.trim().length > 0) ||
+      (b.apellido && b.apellido.trim().length > 0) ||
+      (b.email && b.email.trim().length > 0) ||
+      (b.telefono && b.telefono.trim().length > 0) ||
+      (b.dni && b.dni.trim().length > 0) ||
+      (b.busquedaPersona && b.busquedaPersona.trim().length > 0) ||
+      (b.monto && b.monto.trim().length > 0) ||
+      (b.fechaInicio && b.fechaInicio.length > 0) ||
+      (b.fechaFin && b.fechaFin.length > 0) ||
+      (b.montoExpensas && b.montoExpensas.trim().length > 0) ||
+      (b.depositoGarantia && b.depositoGarantia.trim().length > 0) ||
+      (b.comisionInmobiliaria && b.comisionInmobiliaria.trim().length > 0) ||
+      (b.moraValor && b.moraValor.trim().length > 0) ||
+      (b.periodosForm && Object.keys(b.periodosForm).length > 0),
+  );
+}
+
 function CargarContratoApiWizard() {
   const router = useRouter();
   const qc = useQueryClient();
@@ -827,6 +862,12 @@ function CargarContratoApiWizard() {
   // Default de mora de la inmobiliaria (GET /cobranza → mora): es lo que
   // hereda el contrato si el usuario no elige un esquema explícito.
   const { mora: moraDefault } = useCobranza();
+
+  // Namespace del borrador (userId:inmobiliariaId, del JWT). Se calcula una
+  // sola vez al montar: si no hay sesión válida queda en `null` y todo el
+  // autosave (lectura, guardado, diálogo, indicador) se desactiva — el
+  // wizard funciona exactamente igual que antes de esta feature.
+  const namespaceBorrador = useMemo(() => obtenerNamespaceBorrador(), []);
 
   const [paso, setPaso] = useState<PasoApi>(1);
 
@@ -1001,6 +1042,184 @@ function CargarContratoApiWizard() {
       setPaso(2);
     }
   }, [cargando, disponibles]);
+
+  // ---- Borrador: restaurar / autosave ----
+
+  // Borrador leído de localStorage que todavía no fue resuelto (ni aplicado
+  // ni descartado). Mientras sea no-null, el autosave queda en pausa: así
+  // evitamos que el propio autosave lo sobreescriba con el form vacío antes
+  // de que la persona decida qué hacer con él.
+  const [borradorPendiente, setBorradorPendiente] = useState<BorradorContrato | null>(null);
+  const [borradorDialogAbierto, setBorradorDialogAbierto] = useState(false);
+  const [mostrarGuardado, setMostrarGuardado] = useState(false);
+  const guardadoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Lectura del borrador pendiente: una sola vez al montar (mismo patrón que
+  // la preselección de ?propiedad= arriba). NO aplica nada todavía — sólo
+  // decide si corresponde ofrecer el diálogo de "retomar / empezar de cero".
+  const borradorRevisado = useRef(false);
+  useEffect(() => {
+    if (borradorRevisado.current || !namespaceBorrador) return;
+    borradorRevisado.current = true;
+    const b = leerBorradorContrato(namespaceBorrador);
+    if (!b || !borradorTieneContenido(b)) return;
+    setBorradorPendiente(b);
+    setBorradorDialogAbierto(true);
+  }, [namespaceBorrador]);
+
+  // Aplica un borrador ya decidido ("Retomar"). Restaura TODOS los campos
+  // salvo que `propiedadId` haya dejado de estar disponible (otra persona
+  // cargó un contrato sobre esa propiedad mientras tanto): en ese caso no la
+  // reasignamos y mandamos al paso 1 para que elija una nueva, sin perder el
+  // resto de lo tipeado.
+  const aplicarBorrador = (b: BorradorContrato) => {
+    setNombre(b.nombre);
+    setApellido(b.apellido);
+    setEmail(b.email);
+    setTelefono(b.telefono);
+    setDni(b.dni);
+    setPersonaId(b.personaId);
+    setBusquedaPersona(b.busquedaPersona);
+    setMonto(b.monto);
+    setMoneda(b.moneda as Moneda);
+    setFechaInicio(b.fechaInicio);
+    setFechaFin(b.fechaFin);
+    setDiaPago(b.diaPago);
+    setIndiceAjuste(b.indiceAjuste as IndiceAjuste);
+    setFrecuenciaAjusteMeses(b.frecuenciaAjusteMeses);
+    setTipoContrato(b.tipoContrato as TipoContrato);
+    setMontoExpensas(b.montoExpensas);
+    setDepositoGarantia(b.depositoGarantia);
+    setComisionInmobiliaria(b.comisionInmobiliaria);
+    setModoCobranza(b.modoCobranza as ModoCobranza);
+    setMascotasPermitidas(b.mascotasPermitidas);
+    setMoraSel(b.moraSel as MoraSeleccion);
+    setMoraValor(b.moraValor);
+    setPeriodosForm(b.periodosForm as Record<string, PeriodoAnteriorForm>);
+
+    const propiedadSigueDisponible = disponibles.some((p) => p.propiedad.id === b.propiedadId);
+    if (b.propiedadId && propiedadSigueDisponible) {
+      setPropiedadId(b.propiedadId);
+      // Mismo criterio que avanzar()/retroceder(): el paso 4 (períodos
+      // anteriores) sólo existe si con los datos restaurados hay períodos
+      // vencidos que declarar — si no, no lo salteamos, directamente no
+      // dejamos al usuario en un paso que ya no aplica.
+      const periodosBorrador = calcularPeriodosVencidos(
+        b.fechaInicio,
+        b.fechaFin,
+        Number(b.diaPago),
+        new Date(),
+      );
+      let pasoRestaurado = b.paso as PasoApi;
+      if (pasoRestaurado === 4 && periodosBorrador.length === 0) pasoRestaurado = 3;
+      if (!(pasoRestaurado >= 1 && pasoRestaurado <= 5)) pasoRestaurado = 1;
+      setPaso(pasoRestaurado);
+    } else {
+      setPaso(1);
+      if (b.propiedadId) {
+        toast({
+          title: 'Esa propiedad ya no está disponible',
+          description:
+            'Otro contrato la ocupó mientras tanto. Elegí otra para continuar — el resto de los datos que habías cargado se mantuvo.',
+        });
+      }
+    }
+  };
+
+  const handleRetomarBorrador = () => {
+    if (borradorPendiente) aplicarBorrador(borradorPendiente);
+    setBorradorDialogAbierto(false);
+    setBorradorPendiente(null);
+  };
+
+  const handleEmpezarDeCero = () => {
+    if (namespaceBorrador) borrarBorradorContrato(namespaceBorrador);
+    setBorradorDialogAbierto(false);
+    setBorradorPendiente(null);
+  };
+
+  // Autosave con debounce: guarda el estado actual del wizard ~500ms después
+  // del último cambio. Gateado a que exista namespace y a que no haya un
+  // borrador pendiente sin resolver (ver comentario arriba de
+  // `borradorPendiente`) — así el cierre por ESC/click afuera del diálogo de
+  // "borrador pendiente" nunca termina pisando el localStorage.
+  useEffect(() => {
+    if (!namespaceBorrador || borradorPendiente) return;
+    let vivo = true;
+    const timer = setTimeout(() => {
+      if (!vivo) return;
+      const datos: BorradorContrato = {
+        paso,
+        propiedadId,
+        nombre,
+        apellido,
+        email,
+        telefono,
+        dni,
+        personaId,
+        busquedaPersona,
+        monto,
+        moneda,
+        fechaInicio,
+        fechaFin,
+        diaPago,
+        indiceAjuste,
+        frecuenciaAjusteMeses,
+        tipoContrato,
+        montoExpensas,
+        depositoGarantia,
+        comisionInmobiliaria,
+        modoCobranza,
+        mascotasPermitidas,
+        moraSel,
+        moraValor,
+        periodosForm,
+      };
+      guardarBorradorContrato(namespaceBorrador, datos);
+      setMostrarGuardado(true);
+      if (guardadoTimeoutRef.current) clearTimeout(guardadoTimeoutRef.current);
+      guardadoTimeoutRef.current = setTimeout(() => setMostrarGuardado(false), 3000);
+    }, 500);
+    return () => {
+      vivo = false;
+      clearTimeout(timer);
+    };
+  }, [
+    namespaceBorrador,
+    borradorPendiente,
+    paso,
+    propiedadId,
+    nombre,
+    apellido,
+    email,
+    telefono,
+    dni,
+    personaId,
+    busquedaPersona,
+    monto,
+    moneda,
+    fechaInicio,
+    fechaFin,
+    diaPago,
+    indiceAjuste,
+    frecuenciaAjusteMeses,
+    tipoContrato,
+    montoExpensas,
+    depositoGarantia,
+    comisionInmobiliaria,
+    modoCobranza,
+    mascotasPermitidas,
+    moraSel,
+    moraValor,
+    periodosForm,
+  ]);
+
+  // Limpieza del timer del indicador "Guardado hace un momento" al desmontar.
+  useEffect(() => {
+    return () => {
+      if (guardadoTimeoutRef.current) clearTimeout(guardadoTimeoutRef.current);
+    };
+  }, []);
 
   const incluyeExpensas =
     tipoContrato === 'ALQUILER_Y_EXPENSAS' || tipoContrato === 'SOLO_EXPENSAS';
@@ -1261,6 +1480,11 @@ function CargarContratoApiWizard() {
               ? 'Generamos la primera liquidación y la propiedad pasó a alquilada.'
               : 'Entrá al detalle del contrato para confirmar en qué estado quedó.',
       });
+      // Alta exitosa: no tiene sentido seguir ofreciendo "retomar" un
+      // contrato que ya se creó. En el catch de abajo NO se borra — si el
+      // alta falló (ej. 409 porque la propiedad se ocupó), la persona tiene
+      // que poder reintentar sin perder lo que cargó.
+      if (namespaceBorrador) borrarBorradorContrato(namespaceBorrador);
       router.push('/contratos');
     } catch (e) {
       // Mostramos el mensaje del server (ej. 409 propiedad ya tiene contrato).
@@ -1295,6 +1519,9 @@ function CargarContratoApiWizard() {
               Volver
             </Link>
             <StepsApi actual={paso} pasos={pasosVisibles} />
+            {mostrarGuardado && (
+              <p className="mt-1.5 text-xs text-muted-foreground">Guardado hace un momento</p>
+            )}
           </div>
           <Button
             variant="ghost"
@@ -2142,6 +2369,39 @@ function CargarContratoApiWizard() {
         loading={enviando}
         onConfirm={dar_de_alta}
       />
+
+      {/*
+        No usamos ConfirmDialog acá: su botón de cancelar sólo dispara
+        onOpenChange(false), lo mismo que ESC/click afuera — no hay forma de
+        distinguir "eligió Empezar de cero" de "cerró sin elegir". Con los
+        primitivos de Dialog, cada botón tiene su propio onClick y
+        onOpenChange queda libre para el cierre accidental: ESC/click afuera
+        sólo esconde el diálogo, sin aplicar ni borrar el borrador guardado.
+      */}
+      <Dialog open={borradorDialogAbierto} onOpenChange={setBorradorDialogAbierto}>
+        <DialogContent variant="compact" className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Tenés un contrato a medio cargar</DialogTitle>
+            <DialogDescription>
+              Encontramos datos de un contrato que habías empezado a cargar. ¿Querés retomarlo o
+              preferís empezar de cero?
+            </DialogDescription>
+          </DialogHeader>
+          {cargando && (
+            <p className="text-xs text-muted-foreground">
+              Esperando a que carguen las propiedades para poder validar la que habías elegido…
+            </p>
+          )}
+          <div className="mt-4 flex justify-end gap-2">
+            <Button variant="outline" onClick={handleEmpezarDeCero}>
+              Empezar de cero
+            </Button>
+            <Button variant="default" onClick={handleRetomarBorrador} disabled={cargando}>
+              Retomar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
