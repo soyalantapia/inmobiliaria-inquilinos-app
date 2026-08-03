@@ -30,6 +30,7 @@ import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@llave/ui/card';
 import { cn } from '@llave/ui/cn';
+import { ConfirmDialog } from '@llave/ui/confirm-dialog';
 import {
   Dialog,
   DialogContent,
@@ -64,7 +65,7 @@ import { calcularScoringInquilino, type ResumenScoring } from '@/lib/scoring-inq
 import { registrarEvento } from '@/lib/auditoria-storage';
 import { apiEnabled, apiFetch, ApiError, varianteError } from '@/lib/api/client';
 import { ensureApiSession } from '@/lib/api/session';
-import { useCobranza } from '@/lib/api/hooks';
+import { useAprobaciones, useCobranza } from '@/lib/api/hooks';
 import { useContrato } from '@/lib/api/use-contrato';
 import {
   type CanalComunicacion,
@@ -72,7 +73,7 @@ import {
   type TipoEventoContrato,
 } from '@/lib/mock-data';
 import type { ContratoListado, EstadoContrato, Propietario } from '@/lib/types';
-import { formatFecha, formatMonto } from '@/lib/format';
+import { formatFecha, formatMonto, formatPeriodo } from '@/lib/format';
 
 const estadoLiqVariant: Record<
   LiquidacionAdmin['estado'],
@@ -209,6 +210,8 @@ export default function DetalleContratoPage() {
             cargadoPor={c.cargadoPor ?? 'Usuario desconocido'}
             cargadoAt={c.cargadoAt ?? ''}
             inquilino={c.inquilino}
+            moneda={c.moneda}
+            revision={c.revisionAprobacion}
           />
         )}
 
@@ -1186,13 +1189,23 @@ function AprobacionContratoCard({
   cargadoPor,
   cargadoAt,
   inquilino,
+  moneda,
+  revision,
 }: {
   contratoId: string;
   cargadoPor: string;
   cargadoAt: string;
   inquilino: string;
+  moneda: ContratoListado['moneda'];
+  revision?: NonNullable<ContratoListado['revisionAprobacion']>;
 }) {
   const [resuelto, setResuelto] = useState<'APROBADO' | 'RECHAZADO' | null>(null);
+  const { aprobarApi, rechazarApi } = useAprobaciones();
+  const [dialogAprobar, setDialogAprobar] = useState(false);
+  const [dialogRechazar, setDialogRechazar] = useState(false);
+  const [comentarioAprobar, setComentarioAprobar] = useState('');
+  const [motivoRechazar, setMotivoRechazar] = useState('');
+  const [enviando, setEnviando] = useState(false);
 
   if (resuelto === 'APROBADO') {
     return (
@@ -1220,6 +1233,8 @@ function AprobacionContratoCard({
     );
   }
 
+  // Demo (!apiEnabled): sin endpoint, registra en auditoría local y resuelve
+  // en el momento. SIN TOCAR — es la rama que sigue usando la demo.
   const handleAprobar = () => {
     // Acá registramos en auditoría — el evento queda visible en /configuracion.
     registrarEvento({
@@ -1253,50 +1268,223 @@ function AprobacionContratoCard({
     });
   };
 
+  // Camino real: pega a /aprobaciones/:id/aprobar|rechazar con el aprobacionId
+  // que trajo GET /contratos/:id. Sin PIN (a diferencia de la bandeja) — el
+  // server también lo acepta opcional.
+  const confirmarAprobar = async () => {
+    if (!revision) return;
+    setEnviando(true);
+    try {
+      await aprobarApi(revision.aprobacionId, undefined, comentarioAprobar.trim() || undefined);
+      setResuelto('APROBADO');
+      toast({
+        variant: 'success',
+        title: 'Contrato aprobado',
+        description: `${inquilino} pasa a Activo. Se notifica al inquilino y a ${cargadoPor}.`,
+      });
+      setDialogAprobar(false);
+    } catch (e) {
+      toast({
+        variant: varianteError(e),
+        title: 'No se pudo aprobar',
+        description: e instanceof ApiError ? e.message : 'Probá de nuevo.',
+      });
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  const confirmarRechazar = async () => {
+    if (!revision) return;
+    // Mismo mínimo que bandeja-aprobaciones.tsx:96 — el server igual devuelve
+    // 400 si el motivo es corto, esto solo evita el viaje.
+    if (motivoRechazar.trim().length < 5) {
+      toast({
+        variant: 'destructive',
+        title: 'Falta el motivo',
+        description: 'Contale a quien lo cargó por qué lo rechazás (mínimo 5 caracteres).',
+      });
+      return;
+    }
+    setEnviando(true);
+    try {
+      await rechazarApi(revision.aprobacionId, undefined, motivoRechazar.trim());
+      setResuelto('RECHAZADO');
+      toast({
+        title: 'Contrato rechazado',
+        description: `Avisale a ${cargadoPor} qué corregir.`,
+      });
+      setDialogRechazar(false);
+    } catch (e) {
+      toast({
+        variant: varianteError(e),
+        title: 'No se pudo rechazar',
+        description: e instanceof ApiError ? e.message : 'Probá de nuevo.',
+      });
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  // Sin revision (contrato pendiente pero sin aprobación PENDIENTE encontrada,
+  // o modo demo) los botones se comportan EXACTO como hoy: deshabilitados con
+  // "Próximamente" en prod, habilitados hacia el camino local en demo.
+  const sinCaminoReal = apiEnabled && !revision;
+
   return (
-    <Card className="border-amber-300 bg-amber-50 dark:border-amber-900/40 dark:bg-amber-950/30">
-      <CardContent className="space-y-3 p-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <AlertCircle className="h-5 w-5 text-amber-700 dark:text-amber-300" />
-            <div>
-              <h3 className="text-sm font-semibold">Pendiente de aprobación</h3>
-              <p className="text-xs text-muted-foreground">
-                Cargado por <strong>{cargadoPor}</strong>
-                {cargadoAt && ` · ${formatFecha(cargadoAt)}`}
-              </p>
+    <>
+      <Card className="border-amber-300 bg-amber-50 dark:border-amber-900/40 dark:bg-amber-950/30">
+        <CardContent className="space-y-3 p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-amber-700 dark:text-amber-300" />
+              <div>
+                <h3 className="text-sm font-semibold">Pendiente de aprobación</h3>
+                <p className="text-xs text-muted-foreground">
+                  Cargado por <strong>{cargadoPor}</strong>
+                  {cargadoAt && ` · ${formatFecha(cargadoAt)}`}
+                </p>
+              </div>
+            </div>
+            <Badge variant="warning">Borrador</Badge>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Revisá los datos en el resumen y los documentos. Si está todo en orden,
+            aprobalo para que pase a ACTIVO y empiece a facturar.
+          </p>
+
+          {!!revision?.periodosDeclarados.length && (
+            <div className="space-y-1.5">
+              <p className="text-sm font-medium">Lo que se declaró del pasado</p>
+              <ul className="space-y-1 text-sm text-muted-foreground">
+                {revision.periodosDeclarados.map((p) => (
+                  <li key={p.periodo} className="flex justify-between gap-3">
+                    <span>{formatPeriodo(p.periodo)}</span>
+                    <span>
+                      {p.estado === 'PAGADO' && 'Pagado fuera del sistema'}
+                      {p.estado === 'PARCIAL' && `Pagó ${formatMonto(p.montoPagado ?? 0, moneda)}`}
+                      {p.estado === 'ADEUDA' && 'Adeuda'}
+                      {p.moraManual != null && ` · mora ${formatMonto(p.moraManual, moneda)}`}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {revision && (
+            <div className="rounded-md border bg-background/60 p-3 text-sm">
+              <p className="font-medium">Al aprobar este contrato</p>
+              <ul className="mt-1.5 space-y-1 text-muted-foreground">
+                <li>La propiedad pasa a alquilada.</li>
+                <li>
+                  Se generan {revision.alAprobar.cuotasAGenerar}{' '}
+                  {revision.alAprobar.cuotasAGenerar === 1 ? 'cuota' : 'cuotas'}
+                  {revision.alAprobar.rangoCuotas &&
+                    ` (${formatPeriodo(revision.alAprobar.rangoCuotas.desde)} → ${formatPeriodo(revision.alAprobar.rangoCuotas.hasta)})`}
+                  .
+                </li>
+                {revision.alAprobar.conciliado.monto > 0 && (
+                  <li className="font-medium text-amber-700 dark:text-amber-300">
+                    Se dan por cobrados {formatMonto(revision.alAprobar.conciliado.monto, moneda)} que
+                    quedan conciliados sin que nadie los transfiera.
+                  </li>
+                )}
+                {revision.alAprobar.deudaInicial.capital > 0 && (
+                  <li className="text-foreground">
+                    El inquilino arranca debiendo{' '}
+                    {formatMonto(revision.alAprobar.deudaInicial.capital, moneda)}
+                    {revision.alAprobar.deudaInicial.mora > 0 &&
+                      ` + ${formatMonto(revision.alAprobar.deudaInicial.mora, moneda)} de mora`}
+                    .
+                  </li>
+                )}
+              </ul>
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              onClick={() => (revision ? setDialogRechazar(true) : handleRechazar())}
+              disabled={sinCaminoReal}
+              title={sinCaminoReal ? 'Próximamente' : undefined}
+            >
+              <XCircle className="h-4 w-4" />
+              Rechazar
+            </Button>
+            <Button
+              onClick={() => (revision ? setDialogAprobar(true) : handleAprobar())}
+              disabled={sinCaminoReal}
+              title={sinCaminoReal ? 'Próximamente' : undefined}
+            >
+              <ShieldCheck className="h-4 w-4" />
+              Aprobar contrato
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <ConfirmDialog
+        open={dialogAprobar}
+        onOpenChange={(o) => !enviando && setDialogAprobar(o)}
+        title="¿Aprobar este contrato?"
+        description={
+          <div className="space-y-3 pt-2">
+            <p className="text-sm text-muted-foreground">
+              {inquilino} pasa a Activo y empieza a facturar.
+            </p>
+            <div className="space-y-2">
+              <Label htmlFor="apr-card-coment">Comentario (opcional)</Label>
+              <Textarea
+                id="apr-card-coment"
+                rows={2}
+                placeholder="Notas internas o instrucciones de seguimiento."
+                value={comentarioAprobar}
+                onChange={(e) => setComentarioAprobar(e.target.value)}
+                disabled={enviando}
+              />
             </div>
           </div>
-          <Badge variant="warning">Borrador</Badge>
-        </div>
-        <p className="text-sm text-muted-foreground">
-          Revisá los datos en el resumen y los documentos. Si está todo en orden,
-          aprobalo para que pase a ACTIVO y empiece a facturar.
-        </p>
-        {/* Aprobar/Rechazar registran en auditoría local (registrarEvento) sin
-            endpoint todavía. En modo API los deshabilitamos para no escribir
-            estado fantasma en prod. */}
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            onClick={handleRechazar}
-            disabled={apiEnabled}
-            title={apiEnabled ? 'Próximamente' : undefined}
-          >
-            <XCircle className="h-4 w-4" />
-            Rechazar
-          </Button>
-          <Button
-            onClick={handleAprobar}
-            disabled={apiEnabled}
-            title={apiEnabled ? 'Próximamente' : undefined}
-          >
-            <ShieldCheck className="h-4 w-4" />
-            Aprobar contrato
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+        }
+        confirmLabel="Aprobar contrato"
+        loading={enviando}
+        onConfirm={confirmarAprobar}
+      />
+
+      <ConfirmDialog
+        open={dialogRechazar}
+        onOpenChange={(o) => !enviando && setDialogRechazar(o)}
+        title="¿Rechazar este contrato?"
+        description={
+          <div className="space-y-3 pt-2">
+            <p className="text-sm text-muted-foreground">Avisamos a {cargadoPor} con el motivo.</p>
+            <div className="space-y-2">
+              <Label htmlFor="rech-card-mot">Motivo del rechazo</Label>
+              <Textarea
+                id="rech-card-mot"
+                rows={2}
+                placeholder="Ej: faltó adjuntar el comprobante (mínimo 5 caracteres)"
+                value={motivoRechazar}
+                onChange={(e) => setMotivoRechazar(e.target.value)}
+                disabled={enviando}
+              />
+            </div>
+          </div>
+        }
+        confirmLabel="Rechazar contrato"
+        variant="destructive"
+        loading={enviando}
+        // Sin esto, un motivo corto dispara el toast en confirmarRechazar PERO
+        // igual cierra el diálogo: ConfirmDialog.handleConfirm() llama
+        // onOpenChange(false) después de onConfirm() salvo que loadingRef ya
+        // esté en true, y acá nunca llega a estarlo si la validación corta el
+        // envío antes del setEnviando(true). confirmDisabled bloquea el click
+        // ANTES de eso — el usuario no pierde lo que escribió.
+        confirmDisabled={motivoRechazar.trim().length < 5}
+        onConfirm={confirmarRechazar}
+      />
+    </>
   );
 }
 

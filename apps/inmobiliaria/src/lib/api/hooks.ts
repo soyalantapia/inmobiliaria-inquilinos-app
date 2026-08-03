@@ -242,8 +242,14 @@ function mapAprobacion(a: AprobacionApi): Aprobacion {
 export function useAprobaciones(): {
   aprobaciones: Aprobacion[];
   cargando: boolean;
-  aprobarApi: (id: string, pin: string, comentario?: string) => Promise<Aprobacion>;
-  rechazarApi: (id: string, pin: string, motivo: string) => Promise<Aprobacion>;
+  // pin es string | undefined (no opcional-por-posición: "motivo" viene
+  // después y un parámetro requerido no puede seguir a uno opcional). El
+  // server también lo acepta undefined (verificarPin, plata.ts) — hoy
+  // verificarPinUsuario está stubbeado en ok:true siempre. La tarjeta de
+  // aprobación del detalle de contrato no pide PIN (a diferencia de la
+  // bandeja, que sí lo pide vía PinPromptDialog) y llama con undefined.
+  aprobarApi: (id: string, pin: string | undefined, comentario?: string) => Promise<Aprobacion>;
+  rechazarApi: (id: string, pin: string | undefined, motivo: string) => Promise<Aprobacion>;
 } {
   const qc = useQueryClient();
   const q = useQuery({
