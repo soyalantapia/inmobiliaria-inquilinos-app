@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { usePathname } from 'next/navigation';
 import { Bug, Send } from 'lucide-react';
 import { Button } from '@llave/ui/button';
 import {
@@ -14,7 +13,6 @@ import {
 import { Label } from '@llave/ui/label';
 import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
-import { apiEnabled } from '@/lib/api/client';
 import { useMe } from '@/lib/api/hooks';
 import { identificarSonarUser, reportarBug, type SonarSeverity } from '@/lib/sonar-client';
 
@@ -36,7 +34,6 @@ const SEV_LABELS: Record<UserSeverity, string> = {
  * atribuido y `usersAffected` cuenta gente real en vez de quedarse en 0.
  */
 export function ReportBugButton() {
-  const pathname = usePathname() ?? '';
   const { me } = useMe();
   const [open, setOpen] = useState(false);
   const [msg, setMsg] = useState('');
@@ -90,23 +87,18 @@ export function ReportBugButton() {
 
   return (
     <>
-      {/* Posición del FAB. Dos colisiones reales que evitar:
-          1) PilotoFab vive en la MISMA esquina (bottom-20 right-5 / md:bottom-5) y se
-             monta cuando NO hay API (dev y demo). Ahí subimos un piso para apilarlos
-             en vez de superponerlos.
-          2) /configuracion tiene CTAs primarios al pie ("Guardar cambios"): igual que
-             PilotoFab, nos corremos a la izquierda.
-          En mobile subimos siempre para no tapar la barra inferior (h-16 = pb-16 del layout). */}
+      {/* Icono en el pie del sidebar, al lado de la cuenta. Antes era un botón
+          flotante violeta que tapaba contenido y chocaba con los CTA del pie de
+          /configuracion y con el FAB del piloto. Como acción secundaria que es,
+          vive junto a "Cerrar sesión" y no compite con la pantalla. */}
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className={`fixed z-40 flex items-center gap-2 rounded-full bg-violet-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-violet-600/30 transition-all hover:bg-violet-700 hover:shadow-xl active:scale-95 ${
-          pathname.startsWith('/configuracion') ? 'left-4 md:left-6' : 'right-4 md:right-6'
-        } ${apiEnabled ? 'bottom-20 md:bottom-5' : 'bottom-36 md:bottom-20'}`}
+        className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         aria-label="Reportar un bug"
+        title="Reportar un bug"
       >
         <Bug className="h-4 w-4" aria-hidden="true" />
-        <span className="hidden sm:inline">Reportar bug</span>
       </button>
 
       <Dialog open={open} onOpenChange={(v) => !v && cerrar()}>

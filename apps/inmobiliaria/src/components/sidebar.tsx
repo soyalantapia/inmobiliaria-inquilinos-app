@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Isotipo } from './isotipo';
+import { ReportBugButton } from './report-bug-button';
 import {
   BarChart3,
   LayoutDashboard,
@@ -214,9 +215,23 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
               iniciales={me?.iniciales ?? '?'}
               editable={!!me}
             />
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <p className="truncate font-medium text-foreground">{me?.nombre ?? 'Mi cuenta'}</p>
               {me?.email && <p className="truncate">{me.email}</p>}
+            </div>
+            {/* Acciones secundarias como iconos, pegadas a la cuenta: reportar un
+                bug (antes un FAB flotante que tapaba contenido) y cerrar sesión. */}
+            <div className="flex shrink-0 items-center gap-0.5">
+              <ReportBugButton />
+              <button
+                type="button"
+                onClick={cerrarSesion}
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label="Cerrar sesión"
+                title="Cerrar sesión"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
             </div>
           </div>
         ) : (
@@ -255,14 +270,19 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
           )}
         </>
         )}
-        <button
-          type="button"
-          onClick={cerrarSesion}
-          className="mt-2 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-        >
-          <LogOut className="h-4 w-4" />
-          Cerrar sesión
-        </button>
+        {/* Con API, cerrar sesión vive arriba como icono al lado de la cuenta.
+            En demo (sin API) no hay bloque de cuenta, así que mantenemos el
+            botón con texto para que no quede un icono suelto sin contexto. */}
+        {!apiEnabled && (
+          <button
+            type="button"
+            onClick={cerrarSesion}
+            className="mt-2 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+          >
+            <LogOut className="h-4 w-4" />
+            Cerrar sesión
+          </button>
+        )}
       </div>
     </>
   );

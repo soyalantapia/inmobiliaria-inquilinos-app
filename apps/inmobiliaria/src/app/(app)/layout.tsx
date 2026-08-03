@@ -1,7 +1,6 @@
 import { MobileBottomNav } from '@/components/mobile-bottom-nav';
 import { OnboardingInmo } from '@/components/onboarding';
 import { PilotoFab } from '@/components/piloto-fab';
-import { ReportBugButton } from '@/components/report-bug-button';
 import { Sidebar } from '@/components/sidebar';
 import { AuthGuard } from '@/components/auth-guard';
 import { TrialBanner } from '@/components/trial-banner';
@@ -38,9 +37,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       {/* FAB para clientes piloto — sólo aparece si la cuenta tiene
           el modo activo (los 9-10 beta testers). */}
       <PilotoFab />
-      {/* FAB de Sonar: visible para todos los usuarios del panel.
-          Manda el reporte con captura, breadcrumbs y contexto automático. */}
-      <ReportBugButton />
+      {/* Reportar un bug ya NO vive acá: pasó a ser un icono en el pie del
+          sidebar, junto a la cuenta (ver components/sidebar.tsx). Como botón
+          flotante tapaba contenido y chocaba con los CTA del pie. */}
     </div>
     </AuthGuard>
   );
