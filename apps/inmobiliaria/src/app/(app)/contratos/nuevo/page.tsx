@@ -1328,6 +1328,14 @@ function CargarContratoApiWizard() {
   // frenar el alta con un 400 genérico al final. Vacío se permite (opcional).
   const emailInquilinoOk = !email.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   const pasoInquilinoValido = nombre.trim().length >= 2 && emailInquilinoOk;
+  // Mensaje derivado de las MISMAS subcondiciones de pasoInquilinoValido, en el
+  // mismo orden: se muestra la primera que falla. Si en vez de esto se escribe
+  // una validación paralela, en cuanto una de las dos cambie el mensaje le
+  // dice al usuario que arregle un campo que ya está bien (ver commit 7e1c185).
+  const mensajeInquilino =
+    nombre.trim().length < 2
+      ? 'Completá el nombre del inquilino.'
+      : 'El email del inquilino no tiene un formato válido.';
   // Paso 3 (Plazo y salida): sólo fechas y periodicidad de ajuste.
   const pasoPlazoValido =
     fechaInicio.length === 10 &&
@@ -1336,6 +1344,18 @@ function CargarContratoApiWizard() {
     Number(diaPago) >= 1 &&
     Number(diaPago) <= 31 &&
     Number(frecuenciaAjusteMeses) > 0;
+  // Mensaje derivado de las MISMAS subcondiciones de pasoPlazoValido, en el
+  // mismo orden.
+  const mensajePlazo =
+    fechaInicio.length !== 10
+      ? 'Cargá la fecha de inicio.'
+      : fechaFin.length !== 10
+        ? 'Cargá la fecha de fin.'
+        : fechaFin <= fechaInicio
+          ? 'Revisá las fechas: la de fin tiene que ser posterior a la de inicio.'
+          : !(Number(diaPago) >= 1 && Number(diaPago) <= 31)
+            ? 'Cargá el día de pago (entre 1 y 31).'
+            : 'Elegí la frecuencia de ajuste.';
   // Paso 4 (Dinero): montos y esquema de mora.
   const pasoDineroValido =
     (!requiereAlquiler || Number(monto) > 0) &&
@@ -1344,6 +1364,16 @@ function CargarContratoApiWizard() {
     (!incluyeExpensas || Number(montoExpensas) > 0) &&
     // Si eligió un esquema con valor, el valor tiene que ser > 0.
     (moraSel === 'HEREDAR' || moraSel === 'SIN_MORA' || Number(moraValor) > 0);
+  // Mensaje derivado de las MISMAS subcondiciones de pasoDineroValido, en el
+  // mismo orden. Importante: el monto de alquiler puede estar bien cargado y
+  // ser otro campo (expensas o mora) el que falta, así que no se puede asumir
+  // que si el paso está inválido siempre es culpa del alquiler.
+  const mensajeDinero =
+    requiereAlquiler && !(Number(monto) > 0)
+      ? 'Cargá el monto del alquiler.'
+      : incluyeExpensas && !(Number(montoExpensas) > 0)
+        ? 'Cargá el monto de las expensas.'
+        : 'Cargá el valor de la mora.';
   // Períodos: todo PARCIAL necesita monto pagado > 0 (la mora es opcional).
   const pasoPeriodosValido = periodosVencidos.every((p) => {
     const f = formDePeriodo(p.periodo);
@@ -1880,7 +1910,7 @@ function CargarContratoApiWizard() {
                 </div>
                 {!pasoInquilinoValido && (
                   <p className="text-right text-xs text-muted-foreground">
-                    Completá el nombre del inquilino.
+                    {mensajeInquilino}
                   </p>
                 )}
               </div>
@@ -2014,7 +2044,7 @@ function CargarContratoApiWizard() {
                 </div>
                 {!pasoPlazoValido && (
                   <p className="text-right text-xs text-muted-foreground">
-                    Revisá las fechas: la de fin tiene que ser posterior a la de inicio.
+                    {mensajePlazo}
                   </p>
                 )}
               </div>
@@ -2317,7 +2347,7 @@ function CargarContratoApiWizard() {
                   </Button>
                 </div>
                 {!pasoDineroValido && (
-                  <p className="text-right text-xs text-muted-foreground">Cargá el monto del alquiler.</p>
+                  <p className="text-right text-xs text-muted-foreground">{mensajeDinero}</p>
                 )}
               </div>
             </CardContent>
