@@ -429,6 +429,9 @@ export async function coreRoutes(app: FastifyInstance) {
         reglasConvivencia: z.string().trim().max(2000).nullable().optional(),
         // Nombre libre de complejo/edificio. undefined = no tocar.
         complejo: z.string().trim().max(120).nullable().optional(),
+        // ¿Se permiten mascotas? Tri-estado (Sí/No/no especificado): undefined = no
+        // tocar, null = volver a "no especificado", true/false = valor explícito.
+        mascotasPermitidas: z.boolean().nullable().optional(),
       })
       .safeParse(request.body);
     if (!parsed.success) {
@@ -455,6 +458,7 @@ export async function coreRoutes(app: FastifyInstance) {
         ...(b.fotoUrl !== undefined ? { fotoUrl: b.fotoUrl || null } : {}),
         ...(b.reglasConvivencia !== undefined ? { reglasConvivencia: b.reglasConvivencia?.trim() || null } : {}),
         ...(b.complejo !== undefined ? { complejo: b.complejo?.trim() || null } : {}),
+        ...(b.mascotasPermitidas !== undefined ? { mascotasPermitidas: b.mascotasPermitidas } : {}),
       },
     });
     return propiedad;
@@ -746,6 +750,9 @@ export async function coreRoutes(app: FastifyInstance) {
         reglasConvivencia: z.string().trim().max(2000).nullable().optional(),
         // Nombre libre de complejo/edificio para agrupar (feedback 14/07).
         complejo: z.string().trim().max(120).nullable().optional(),
+        // ¿Se permiten mascotas? Atributo del inmueble (ya no del contrato).
+        // Omitido/null = no especificado.
+        mascotasPermitidas: z.boolean().nullable().optional(),
         propietarios: z
           .array(z.object({ propietarioId: z.string(), porcentaje: z.number().positive().max(100) }))
           .min(1),
@@ -782,6 +789,7 @@ export async function coreRoutes(app: FastifyInstance) {
           fotoUrl: d.fotoUrl ?? null,
           reglasConvivencia: d.reglasConvivencia?.trim() || null,
           complejo: d.complejo?.trim() || null,
+          mascotasPermitidas: d.mascotasPermitidas ?? null,
           estado: 'DISPONIBLE',
         },
       });
@@ -872,8 +880,10 @@ export async function coreRoutes(app: FastifyInstance) {
         montoExpensas: z.number().positive().optional(),
         tipoContrato: z.enum(['ALQUILER', 'SOLO_EXPENSAS', 'ALQUILER_Y_EXPENSAS']).default('ALQUILER'),
         depositoGarantia: z.number().positive().optional(),
-        // ¿Se permiten mascotas? Se muestra en el contrato del inquilino. Omitido = no especificado.
-        mascotasPermitidas: z.boolean().optional(),
+        // "mascotasPermitidas" YA NO se carga acá (pasó a ser un atributo de la
+        // Propiedad — ver POST/PUT /propiedades). No está en el schema a propósito:
+        // si un cliente viejo todavía lo manda en el body, zod lo descarta en
+        // silencio (no rompe con un 400).
         modoCobranza: z.enum(['INMOBILIARIA', 'PROPIETARIO_DIRECTO']).default('INMOBILIARIA'),
         // Comisión de la inmobiliaria para ESTE contrato (%). Opcional: si no se
         // manda queda null y se usa el default del negocio en las rendiciones.
@@ -1017,7 +1027,8 @@ export async function coreRoutes(app: FastifyInstance) {
           montoExpensas: d.montoExpensas ?? null,
           tipoContrato: d.tipoContrato,
           depositoGarantia: d.depositoGarantia ?? null,
-          mascotasPermitidas: d.mascotasPermitidas ?? null,
+          // mascotasPermitidas YA NO se persiste desde acá (ver comentario en el
+          // zod schema): la columna del Contrato queda deprecada, sin escribir.
           comisionInmobiliaria: d.comisionInmobiliaria ?? null,
           // SIN_MORA explícito guarda tipo sin valor; omitido deja ambos null
           // (hereda el default de la inmobiliaria en la lectura).
