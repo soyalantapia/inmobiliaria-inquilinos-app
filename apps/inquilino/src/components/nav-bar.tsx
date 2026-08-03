@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@llave/ui/cn';
 import { useMiContrato } from '@/lib/api/hooks';
+import { InstalarAppNavItem } from './instalar-app';
 import { useCurrentUser } from '@/lib/use-current-user';
 
 interface NavItem {
@@ -149,6 +150,11 @@ export function SideNav() {
             {itemsSecundarios.map((item) => (
               <NavLink key={item.href} item={item} active={isActive(pathname, item.href)} />
             ))}
+            {/* La puerta permanente a la instalación en escritorio. El banner flotante
+                se puede cerrar; ésta no: se queda hasta que la app esté instalada.
+                Se borra sola en ese momento (y también si el navegador no puede
+                instalar), así que no queda ocupando lugar para siempre. */}
+            <InstalarAppNavItem />
           </ul>
         </div>
       </nav>
