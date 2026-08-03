@@ -1487,6 +1487,19 @@ function CargarContratoApiWizard() {
     return f.estado === 'PARCIAL' && !(Number(f.montoPagado) > 0);
   });
   /**
+   * PARCIAL que cubre el mes entero: el back lo rechaza con 400 y eso tira el alta
+   * COMPLETA (`estado-inicial-contrato.ts`, `pagado >= total`). Replicamos la regla acá
+   * porque el 400 después de tipear todo es exactamente el síntoma que esta rama vino a
+   * eliminar. El total del período es el MISMO que compara el back (canon del período +
+   * expensas), no el canon de hoy: con historial de canon la franja que dispara el `>=`
+   * es más ancha en los meses viejos.
+   */
+  const parcialesQueCubrenTodo = periodosVencidos.filter((p) => {
+    const f = formDePeriodo(p.periodo);
+    const total = montoBaseDePeriodo(p.periodo);
+    return f.estado === 'PARCIAL' && Number(f.montoPagado) > 0 && total > 0 && Number(f.montoPagado) >= total;
+  });
+  /**
    * Por qué NO se puede avanzar, escrito para que se lea. Un botón deshabilitado
    * sin explicación deja al operador buscando qué le falta entre 9 tarjetas.
    */
@@ -1497,7 +1510,9 @@ function CargarContratoApiWizard() {
         : `Te faltan ${periodosSinDeclarar.length} meses por declarar`
       : parcialesSinMonto.length > 0
         ? `Indicá cuánto pagó en ${parcialesSinMonto.length === 1 ? 'el mes marcado como parcial' : `los ${parcialesSinMonto.length} meses marcados como parciales`}`
-        : null;
+        : parcialesQueCubrenTodo.length > 0
+          ? `El pago de ${parcialesQueCubrenTodo.length === 1 ? labelPeriodo(parcialesQueCubrenTodo[0]!.periodo) : `${parcialesQueCubrenTodo.length} meses`} cubre el total — marcalo como Pagado`
+          : null;
   const pasoPeriodosValido = motivoPeriodosIncompleto === null;
 
   // Saltamos el paso 4 cuando no hay períodos vencidos que declarar.
@@ -1641,8 +1656,12 @@ function CargarContratoApiWizard() {
         ...(estado === 'PARCIAL' && Number(f.montoPagado) > 0
           ? { montoPagado: Number(f.montoPagado) }
           : {}),
-        ...(moraHistoricaCongelada && estado !== 'PAGADO' && f.moraManual.trim() !== ''
-          ? { moraManual: Number(f.moraManual) }
+        // Con el interruptor en CONGELADA, la mora se manda SIEMPRE — el campo vacío
+        // vale 0, no "no dije nada". Omitirlo dejaba `montoPunitorioManual` en null y
+        // el esquema seguía corriendo desde el vencimiento original: el operador que
+        // borró el número para decir "este mes no debe mora" terminaba cobrándola.
+        ...(moraHistoricaCongelada && estado !== 'PAGADO'
+          ? { moraManual: f.moraManual.trim() === '' ? 0 : Number(f.moraManual) }
           : {}),
       },
     ];

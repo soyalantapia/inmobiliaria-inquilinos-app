@@ -27,9 +27,55 @@ let app: FastifyInstance;
 let token: string;
 let prisma: PrismaClient;
 
+const PREFIJO_DIRECCION = 'Deuda histórica ';
+
+/**
+ * La DB de test es UNA SOLA para los 63 archivos (`fileParallelism: false`) y NO se
+ * resetea entre corridas. Esta suite da de alta propiedades y contratos POR ENDPOINT,
+ * todos colgados de `own_001`: sin limpiar, el propietario que el seed deja con UNA
+ * participación termina con diez, y `core.test.ts` —que corre antes por orden
+ * alfabético, pero después de la corrida ANTERIOR— afirma sobre esa lista. Es la forma
+ * exacta de rojo que parece una regresión de /propietarios y no lo es.
+ *
+ * Corre en `beforeAll` Y en `afterAll`: al principio para no arrastrar lo que dejó una
+ * corrida interrumpida (y para que el POST /propiedades no choque contra la dirección
+ * repetida), al final para no dejarle nada a nadie.
+ */
+async function limpiar() {
+  const props = await prisma.propiedad.findMany({
+    where: { direccion: { startsWith: PREFIJO_DIRECCION } },
+    select: { id: true },
+  });
+  const propIds = props.map((p) => p.id);
+  if (propIds.length === 0) return;
+  const contratos = await prisma.contrato.findMany({
+    where: { propiedadId: { in: propIds } },
+    select: { id: true },
+  });
+  const contratoIds = contratos.map((c) => c.id);
+  // Las Personas se crean al vuelo en el alta (una por inquilino) y sobreviven al
+  // contrato: hay que juntarlas ANTES de borrar los inquilinos que las apuntan.
+  const inquilinos = await prisma.inquilino.findMany({
+    where: { contratoId: { in: contratoIds } },
+    select: { personaId: true },
+  });
+  const personaIds = inquilinos.map((i) => i.personaId).filter((id): id is string => id != null);
+  // Orden por FK: pagos → liquidaciones → ajustes → inquilinos → contratos → propiedades.
+  await prisma.pago.deleteMany({ where: { contratoId: { in: contratoIds } } });
+  await prisma.liquidacion.deleteMany({ where: { contratoId: { in: contratoIds } } });
+  await prisma.ajusteAlquiler.deleteMany({ where: { contratoId: { in: contratoIds } } });
+  await prisma.inquilino.deleteMany({ where: { contratoId: { in: contratoIds } } });
+  await prisma.propiedad.updateMany({ where: { id: { in: propIds } }, data: { contratoActualId: null } });
+  await prisma.contrato.deleteMany({ where: { id: { in: contratoIds } } });
+  await prisma.participacionPropietario.deleteMany({ where: { propiedadId: { in: propIds } } });
+  await prisma.propiedad.deleteMany({ where: { id: { in: propIds } } });
+  if (personaIds.length > 0) await prisma.persona.deleteMany({ where: { id: { in: personaIds } } });
+}
+
 beforeAll(async () => {
   prisma = new PrismaClient();
   await seedBase(prisma);
+  await limpiar();
   app = await buildApp({ NODE_ENV: 'test', DEMO_MODE: 'true' });
   const login = await app.inject({
     method: 'POST',
@@ -40,6 +86,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await limpiar();
   await app.close();
   await prisma.$disconnect();
 });
@@ -52,7 +99,7 @@ async function crearPropiedadLibre(nombre: string): Promise<string> {
     url: '/propiedades',
     headers: auth(),
     payload: {
-      direccion: `Deuda histórica ${nombre}`,
+      direccion: `${PREFIJO_DIRECCION}${nombre}`,
       ciudad: 'CABA',
       provincia: 'Buenos Aires',
       tipo: 'DEPARTAMENTO',
@@ -146,6 +193,54 @@ describe('F1 — el canon de cada mes viejo (vigencias retroactivas)', () => {
     expect(Number(ajustes[0]!.montoAnterior)).toBe(CANON_VIEJO);
     expect(Number(ajustes[0]!.montoNuevo)).toBe(MONTO_HOY);
     expect(ajustes[0]!.origenAlta).toBe(true);
+  });
+
+  it('con TRES vigencias cada tramo va a SU canon (dos o más siguen funcionando)', async () => {
+    // El guard nuevo rechaza el historial de UNA sola vigencia. Este test fija que la
+    // regla se detiene ahí: con más de dos la cadena de `montoAnterior` sigue armando
+    // un tramo por cambio, que es el mecanismo que el guard protege.
+    const CANON_MEDIO = 200_000;
+    const propiedadId = await crearPropiedadLibre('F1-tres');
+    const c = contratoEnCurso();
+    const corte1 = c.periodos[3]!;
+    const corte2 = c.periodos[6]!;
+    const res = await app.inject({
+      method: 'POST',
+      url: '/contratos',
+      headers: auth(),
+      payload: {
+        ...payloadBase(propiedadId, 'Tres vigencias'),
+        vigenciasCanon: [
+          { desde: c.periodos[0]!, monto: CANON_VIEJO },
+          { desde: corte1, monto: CANON_MEDIO },
+          { desde: corte2, monto: MONTO_HOY },
+        ],
+      },
+    });
+    expect(res.statusCode, `alta con tres vigencias: ${res.body}`).toBeLessThan(300);
+    const contratoId = res.json().id;
+
+    const liqs = await prisma.liquidacion.findMany({
+      where: { contratoId },
+      select: { periodo: true, montoAlquiler: true },
+      orderBy: { periodo: 'asc' },
+    });
+    const distintos = new Set(liqs.map((l) => Number(l.montoAlquiler)));
+    expect([...distintos].sort((a, b) => a - b)).toEqual([CANON_VIEJO, CANON_MEDIO, MONTO_HOY]);
+    for (const l of liqs) {
+      const esperado =
+        l.periodo < corte1 ? CANON_VIEJO : l.periodo < corte2 ? CANON_MEDIO : MONTO_HOY;
+      expect(Number(l.montoAlquiler), `canon de ${l.periodo}`).toBe(esperado);
+    }
+    // Dos CAMBIOS de canon = dos filas de ajuste (la más vieja es el punto de partida).
+    const ajustes = await prisma.ajusteAlquiler.findMany({
+      where: { contratoId },
+      orderBy: { periodoDesde: 'asc' },
+    });
+    expect(ajustes).toHaveLength(2);
+    expect(ajustes.map((a) => a.periodoDesde)).toEqual([corte1, corte2]);
+    expect(ajustes.map((a) => Number(a.montoAnterior))).toEqual([CANON_VIEJO, CANON_MEDIO]);
+    expect(ajustes.map((a) => Number(a.montoNuevo))).toEqual([CANON_MEDIO, MONTO_HOY]);
   });
 
   it('sin vigenciasCanon el alta queda idéntica a hoy (no regresión)', async () => {
@@ -242,6 +337,28 @@ describe('F1 — un historial que contradice al contrato se rechaza con 400', ()
     ]);
     expect(res.statusCode, res.body).toBe(400);
     expect(res.json().message).toMatch(/tienen que coincidir/i);
+  });
+
+  /**
+   * El P0 que no se veía. Una sola vigencia pasa TODAS las demás reglas (arranca en el
+   * inicio del contrato, no es futura, su monto coincide con el del contrato) y sin
+   * embargo `ajustesDeVigenciasCanon` —que arranca en `i = 1`— devuelve `[]`: no queda
+   * ninguna fila de ajuste, `canonDelPeriodo` no tiene con qué retroceder y los nueve
+   * meses viejos se devengan al monto de HOY. Es decir: el operador declara el historial,
+   * recibe un 201, y la deuda queda igual de inflada que antes de que existiera el
+   * historial. Un 200 mentiroso es peor que un 400.
+   */
+  it('de UNA SOLA vigencia (sería un 201 que no cambia nada y devenga todo a hoy)', async () => {
+    const c = contratoEnCurso();
+    const res = await altaCon([{ desde: c.periodos[0]!, monto: MONTO_HOY }]);
+    expect(res.statusCode, res.body).toBe(400);
+    expect(res.json().message).toMatch(/una sola vigencia/i);
+  });
+
+  it('vacío (el historial declarado sin ninguna vigencia)', async () => {
+    const res = await altaCon([]);
+    expect(res.statusCode, res.body).toBe(400);
+    expect(res.json().message).toMatch(/no mandaste ninguna vigencia/i);
   });
 
   it('ninguno de los rechazos dejó basura: la propiedad sigue libre y sin contrato', async () => {
@@ -347,5 +464,95 @@ describe('F3 — interruptor de mora de los meses viejos', () => {
     expect(calcularMora(base, esquema, liq.fechaVencimiento, enUnAnio, liq.montoPunitorioManual)).toBe(
       MORA_DECLARADA,
     );
+  });
+});
+
+/**
+ * F3 bis — "este mes no debe mora".
+ *
+ * El wizard PREFILA la mora sugerida en cada mes vencido. El operador que borra ese
+ * número está diciendo algo concreto: *este mes no debe punitorio*. El front omitía el
+ * campo cuando quedaba vacío, así que `montoPunitorioManual` quedaba en null y
+ * `calcularMora` volvía al esquema: el mes que se declaró SIN mora seguía devengándola
+ * desde su vencimiento original, y encima creciendo. Un 0 declarado tiene que valer 0.
+ *
+ * El contraste va DENTRO de la misma alta y con el mismo interruptor en CONGELADA: la
+ * única diferencia entre los dos períodos es que uno manda `moraManual: 0` y el otro no
+ * manda el campo. Así el test aísla exactamente lo que se arregló ("0" vs "no dije
+ * nada") y no el interruptor, que ya lo cubre el describe de arriba.
+ */
+describe('F3 bis — un 0 declarado es un 0, no un "no dije nada"', () => {
+  const ESQUEMA = { tipo: 'PORCENTAJE_DIARIO' as const, valor: 0.5 };
+  let alta: { statusCode: number; body: string };
+  // Inicializado en '' a propósito: si el alta fallara, los `where` de abajo no
+  // matchean nada y los `findFirstOrThrow` explotan, en vez de traer la liquidación
+  // de cualquier otro contrato (`contratoId: undefined` en Prisma es "sin filtro").
+  let contratoId = '';
+  let conCero = '';
+  let sinDecir = '';
+
+  beforeAll(async () => {
+    const propiedadId = await crearPropiedadLibre('F3-cero');
+    const c = contratoEnCurso();
+    conCero = c.vencidos[0]!;
+    sinDecir = c.vencidos[1]!;
+    alta = await app.inject({
+      method: 'POST',
+      url: '/contratos',
+      headers: auth(),
+      payload: {
+        ...payloadBase(propiedadId, 'Mora cero'),
+        moraTipo: 'PORCENTAJE_DIARIO',
+        moraValor: 0.5,
+        moraHistoricaCongelada: true,
+        periodosAnteriores: [
+          { periodo: conCero, estado: 'ADEUDA' as const, moraManual: 0 },
+          { periodo: sinDecir, estado: 'ADEUDA' as const },
+        ],
+      },
+    });
+    if (alta.statusCode < 300) contratoId = alta.json().id;
+  });
+
+  it('el endpoint ACEPTA moraManual: 0 (el zod es nonnegative(), no positive())', () => {
+    // Si el esquema fuera `positive()`, el 0 que manda el front rebotaría con el 400
+    // genérico "Datos del contrato incompletos" y el alta ENTERA se caería. Se afirma
+    // corriendo, no leyendo core.ts.
+    expect(alta.statusCode, `alta con moraManual 0: ${alta.body}`).toBeLessThan(300);
+    expect(contratoId).not.toBe('');
+  });
+
+  it('el 0 QUEDA GUARDADO: montoPunitorioManual es 0 y NO null', async () => {
+    const liq = await prisma.liquidacion.findFirstOrThrow({ where: { contratoId, periodo: conCero } });
+    // El orden de estos dos asertos importa: `Number(null)` también da 0, así que
+    // afirmar sólo el número quedaba VERDE con el campo en null — que es el bug entero.
+    expect(liq.montoPunitorioManual).not.toBeNull();
+    expect(Number(liq.montoPunitorioManual)).toBe(0);
+  });
+
+  it('con el 0 guardado el punitorio no corre: sigue en 0 dentro de un año', async () => {
+    const liq = await prisma.liquidacion.findFirstOrThrow({ where: { contratoId, periodo: conCero } });
+    // Mismo destilado que hace el server al leer (core.ts): Decimal → number, null → null.
+    const manual = liq.montoPunitorioManual != null ? Number(liq.montoPunitorioManual) : null;
+    const base = Number(liq.montoTotal);
+    // Sin esto, un montoTotal 0 haría dar 0 a `calcularMora` por otro motivo y el test
+    // pasaría sin probar nada.
+    expect(base).toBeGreaterThan(0);
+    const enUnAnio = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+    expect(calcularMora(base, ESQUEMA, liq.fechaVencimiento, enUnAnio, manual)).toBe(0);
+  });
+
+  it('el período que NO declaró mora (misma alta, mismo interruptor) sí sigue corriendo', async () => {
+    const liq = await prisma.liquidacion.findFirstOrThrow({ where: { contratoId, periodo: sinDecir } });
+    expect(liq.montoPunitorioManual).toBeNull();
+    const base = Number(liq.montoTotal);
+    const hoy = new Date();
+    const enDiezDias = new Date(hoy.getTime() + 10 * 24 * 60 * 60 * 1000);
+    const moraHoy = calcularMora(base, ESQUEMA, liq.fechaVencimiento, hoy, null);
+    const moraDespues = calcularMora(base, ESQUEMA, liq.fechaVencimiento, enDiezDias, null);
+    expect(moraHoy).toBeGreaterThan(0);
+    // 10 días más al 0,5% diario = 5% del total. Es el número que el mes con el 0
+    // declarado NO tiene que devengar.
+    expect(moraDespues - moraHoy).toBeCloseTo(base * 0.05, 2);
   });
 });

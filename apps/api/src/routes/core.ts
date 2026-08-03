@@ -560,8 +560,15 @@ export async function coreRoutes(app: FastifyInstance) {
     return prisma.propietario.findMany({
       where: { inmobiliariaId: u.inmobiliariaId },
       include: {
+        // ORDEN EXPLÍCITO (y no el físico de Postgres). Sin orderBy, el orden de las
+        // participaciones es el que devuelva el heap: hoy coincide con el de inserción
+        // y mañana, después de un UPDATE de porcentaje o de un VACUUM, no. Eso reordena
+        // sin aviso la lista de propiedades que el operador ve en cada propietario, y
+        // deja verde/rojo al azar cualquier aserto por índice. Por dirección porque es
+        // como se lee la lista; `propiedadId` desempata dos direcciones iguales.
         participaciones: {
           include: { propiedad: { select: { id: true, direccion: true, estado: true } } },
+          orderBy: [{ propiedad: { direccion: 'asc' } }, { propiedadId: 'asc' }],
         },
       },
       orderBy: { apellido: 'asc' },
@@ -575,10 +582,13 @@ export async function coreRoutes(app: FastifyInstance) {
     const propietario = await prisma.propietario.findFirst({
       where: { id, inmobiliariaId: u.inmobiliariaId },
       include: {
+        // Mismo orden estable que la lista de arriba: es la MISMA lista de propiedades,
+        // vista desde la ficha del propietario.
         participaciones: {
           include: {
             propiedad: { include: { contratoActual: { include: { inquilinoTitular: true } } } },
           },
+          orderBy: [{ propiedad: { direccion: 'asc' } }, { propiedadId: 'asc' }],
         },
         arca: true,
         cuentaCobranza: true,

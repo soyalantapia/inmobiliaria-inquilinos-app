@@ -91,8 +91,28 @@ describe('Core (Fase 2)', () => {
     const res = await app.inject({ method: 'GET', url: '/propietarios', headers: auth() });
     const lista = res.json();
     esperarQueContenga(lista.map((p: { id: string }) => p.id), PROPIETARIOS_SEED);
+    // Por ID de propiedad y NO por `participaciones[0]`: own_001 tiene UNA participación
+    // en el seed, pero las suites que corren antes le cuelgan las suyas por endpoint. El
+    // índice 0 apostaba a la vez al orden físico de Postgres y a quién escribió último.
     const castro = lista.find((p: { id: string }) => p.id === 'own_001');
-    expect(castro.participaciones[0].propiedad.direccion).toBe('Gorriti 4521, 3°B');
+    const gorriti = castro.participaciones.find(
+      (p: { propiedad: { id: string } }) => p.propiedad.id === 'prp_001',
+    );
+    expect(gorriti.propiedad.direccion).toBe('Gorriti 4521, 3°B');
+  });
+
+  it('las participaciones vienen ORDENADAS por dirección, no en el orden físico', async () => {
+    const res = await app.inject({ method: 'GET', url: '/propietarios', headers: auth() });
+    const morales = res.json().find((p: { id: string }) => p.id === 'own_002');
+    // own_002 tiene TRES propiedades en el seed (prp_001, prp_002, prp_004) y sus
+    // direcciones arrancan con letras distintas: A(v. Cabildo) < G(orriti) < H(onduras).
+    // Sólo se afirma el orden RELATIVO de esas tres, así que lo que hayan agregado las
+    // suites vecinas no puede volver rojo este aserto, y una vuelta al orden del heap sí.
+    const posicion = (id: string) =>
+      morales.participaciones.findIndex((p: { propiedad: { id: string } }) => p.propiedad.id === id);
+    expect(posicion('prp_002')).toBeGreaterThanOrEqual(0); // Av. Cabildo 2890, 7°A
+    expect(posicion('prp_001')).toBeGreaterThan(posicion('prp_002')); // Gorriti 4521, 3°B
+    expect(posicion('prp_004')).toBeGreaterThan(posicion('prp_001')); // Honduras 4490, PB
   });
 
   it('GET /inquilinos → 7 vinculados a contrato', async () => {

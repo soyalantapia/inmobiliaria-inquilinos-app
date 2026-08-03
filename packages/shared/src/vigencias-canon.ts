@@ -42,12 +42,19 @@ export type AjusteDeVigencia = { periodoDesde: string; montoAnterior: number; mo
  *    va por POST /contratos/:id/ajustar, que además mueve `proximoAjuste`.
  *  - La ÚLTIMA tiene que coincidir con `monto`: si no, el contrato dice que hoy
  *    vale X y su propio historial dice que vale Y.
+ *  - AL MENOS DOS: `ajustesDeVigenciasCanon` arranca en `i = 1`, así que una sola
+ *    vigencia devuelve `[]` y TODOS los meses viejos se devengan al monto de hoy —
+ *    el P0 que este módulo existe para cerrar, con un 200 y sin decir nada. La regla
+ *    vive acá y no en el front porque este módulo es la copia única de la regla.
  */
 export function validarVigenciasCanon(
   vigencias: VigenciaCanonInput[],
   ctx: { periodoInicio: string; periodoActual: string; montoContrato: number },
 ): string | null {
   if (vigencias.length === 0) return 'Declarás el historial de canon pero no mandaste ninguna vigencia';
+  if (vigencias.length === 1) {
+    return 'Un historial de una sola vigencia no cambia nada: o cargás desde cuándo valía cada monto anterior, o no mandes historial';
+  }
 
   for (let i = 0; i < vigencias.length; i += 1) {
     const v = vigencias[i]!;
