@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Bug, Send } from 'lucide-react';
+import { Bug, ChevronRight, Send } from 'lucide-react';
 import { Button } from '@llave/ui/button';
 import {
   Dialog,
@@ -86,15 +86,17 @@ export function ReportBugButton() {
 
   return (
     <>
-      {/* FAB: izquierda para no chocar con botones de navegación a la derecha */}
+      {/* Fila dentro de Mi cuenta, junto al resto de las acciones. Antes era un
+          botón flotante violeta fijo abajo a la izquierda: tapaba contenido en
+          todas las pantallas para una acción que se usa muy de vez en cuando. */}
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="fixed bottom-20 left-4 z-40 flex items-center gap-2 rounded-full bg-violet-600 px-3 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-600/25 transition-all hover:bg-violet-700 active:scale-95 md:bottom-5"
-        aria-label="Reportar un problema"
+        className="flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-muted/50"
       >
-        <Bug className="h-4 w-4" aria-hidden="true" />
-        <span className="hidden sm:inline">Reportar</span>
+        <Bug className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+        <span className="flex-1 text-sm font-medium">Reportar un problema</span>
+        <ChevronRight className="h-4 w-4 opacity-50" aria-hidden="true" />
       </button>
 
       <Dialog open={open} onOpenChange={(v) => !v && cerrar()}>

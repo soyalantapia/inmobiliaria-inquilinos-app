@@ -38,6 +38,7 @@ import { useCurrentUser } from '@/lib/use-current-user';
 import { apiEnabled } from '@/lib/api/client';
 import { useMiContrato } from '@/lib/api/hooks';
 import { useAvatar } from '@/lib/api/use-avatar';
+import { ReportBugButton } from '@/components/report-bug-button';
 
 export default function CuentaPage() {
   // En prod la LECTURA de los datos del inquilino es real (sesión OTP + API),
@@ -281,7 +282,7 @@ function CuentaReal() {
           <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Sobre My Alquiler
           </h2>
-          <Card>
+          <Card className="divide-y">
             <div className="flex items-center gap-3 p-4">
               <Globe className="h-4 w-4 text-muted-foreground" />
               <div className="flex-1 text-sm">
@@ -289,6 +290,10 @@ function CuentaReal() {
                 <p className="text-xs text-muted-foreground">Última actualización: hoy</p>
               </div>
             </div>
+            {/* Antes era un botón flotante violeta fijo en la esquina, visible en
+                TODAS las pantallas para una acción que se usa muy de vez en
+                cuando. Acá convive con el resto de las acciones de la cuenta. */}
+            <ReportBugButton />
           </Card>
         </section>
 
