@@ -1364,7 +1364,13 @@ function AprobacionContratoCard({
                       {p.estado === 'PAGADO' && 'Pagado fuera del sistema'}
                       {p.estado === 'PARCIAL' && `Pagó ${formatMonto(p.montoPagado ?? 0, moneda)}`}
                       {p.estado === 'ADEUDA' && 'Adeuda'}
-                      {p.moraManual != null && ` · mora ${formatMonto(p.moraManual, moneda)}`}
+                      {/* La mora declarada sólo se muestra donde el sistema la va a
+                          aplicar de verdad. En un período PAGADO, aplicarEstadoInicial
+                          la congela en 0 y nunca la escribe: mostrarla acá sería
+                          anunciar algo que no va a pasar. */}
+                      {p.moraManual != null &&
+                        p.estado !== 'PAGADO' &&
+                        ` · mora ${formatMonto(p.moraManual, moneda)}`}
                     </span>
                   </li>
                 ))}
