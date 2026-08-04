@@ -56,6 +56,7 @@ export type Capacidad =
   | 'propietarios.ver'
   | 'profesionales.ver'
   | 'auditoria.ver'
+  | 'configuracion.ver'
   | 'metricas.ver'
   /* Carga de datos (no aprobada) */
   | 'contratos.crear'
@@ -106,6 +107,10 @@ export const CAPACIDADES: DefinicionCapacidad[] = [
   { key: 'propietarios.ver', label: 'Ver propietarios', roles: ['ADMIN', 'OPERADOR', 'CARGA', 'LECTURA'], grupo: 'lectura' },
   { key: 'profesionales.ver', label: 'Ver profesionales', roles: ['ADMIN', 'OPERADOR'], grupo: 'lectura' },
   { key: 'auditoria.ver', label: 'Ver auditoría', roles: ['ADMIN', 'LECTURA'], grupo: 'lectura' },
+  // Configuración en prod es ADMIN y nada más (ver ConfiguracionProd: los
+  // demás roles comen una card 'Solo Admin'). Era el ÚNICO ítem del sidebar
+  // sin capacidad, así que los 4 roles lo veían y 3 chocaban con esa pared.
+  { key: 'configuracion.ver', label: 'Ver configuración', roles: ['ADMIN'], grupo: 'lectura' },
   { key: 'metricas.ver', label: 'Ver estadisticas', roles: ['ADMIN'], grupo: 'lectura' },
 
   /* Carga */

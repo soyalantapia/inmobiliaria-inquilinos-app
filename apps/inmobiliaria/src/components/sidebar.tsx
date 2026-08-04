@@ -43,40 +43,83 @@ import type { Capacidad, Rol } from '@/lib/permisos';
 import { rolTienePermiso } from '@/lib/permisos';
 import { getRolActual, normalizarRol, ROL_CHANGE_EVENT } from '@/lib/rol-storage';
 
+/**
+ * Los bloques del menú, en orden. El menú tenía 19 filas planas donde una
+ * entidad real (Propiedades) y una vista derivada (Inquilinos, que no tiene ni
+ * una acción de escritura) se dibujaban con exactamente el mismo peso.
+ * Agrupar no saca ninguna sección: sólo deja de pedirle al usuario que ordene
+ * 19 cosas en la cabeza cada vez que busca una.
+ */
+const GRUPOS = ['Día a día', 'Personas', 'Plata', 'Seguimiento', 'Sistema'] as const;
+type Grupo = (typeof GRUPOS)[number];
+
+/**
+ * A partir de cuántos ítems visibles conviene agrupar. Con menos, los
+ * encabezados cuestan más de lo que ordenan: el rol CARGA ve 9 ítems y dos de
+ * los bloques le quedarían con UNA fila cada uno, que se lee peor que la lista
+ * plana. Se descubrió mirando el mockup con el selector de rol.
+ */
+const MINIMO_PARA_AGRUPAR = 11;
+
 type NavLink = {
   href: string;
   label: string;
   icon: React.ElementType;
   sub?: boolean;
   capacidad?: Capacidad;
+  grupo: Grupo;
 };
 
+// El orden del array define el orden dentro de cada bloque.
+// Los RENOMBRES son de la auditoría 03/08: el problema no era sólo la cantidad
+// de filas, era que el mismo sustantivo significaba dos cosas distintas en dos
+// ítems distintos ("está todo bien dicho y me confundo igual").
 const links: NavLink[] = [
-  { href: '/', label: 'Inicio', icon: LayoutDashboard, capacidad: 'home.ver' },
-  { href: '/estadisticas', label: 'Estadísticas', icon: BarChart3, capacidad: 'metricas.ver' },
-  { href: '/propiedades', label: 'Propiedades', icon: Building2, capacidad: 'propiedades.ver' },
+  /* ---- Día a día: lo que se toca todos los días ---- */
+  { href: '/', label: 'Inicio', icon: LayoutDashboard, capacidad: 'home.ver', grupo: 'Día a día' },
+  { href: '/propiedades', label: 'Propiedades', icon: Building2, capacidad: 'propiedades.ver', grupo: 'Día a día' },
+  { href: '/contratos', label: 'Contratos', icon: FileText, capacidad: 'contratos.ver', grupo: 'Día a día' },
+  { href: '/pagos', label: 'Pagos', icon: CreditCard, capacidad: 'pagos.ver', grupo: 'Día a día' },
+  { href: '/reclamos', label: 'Reclamos', icon: Wrench, capacidad: 'reclamos.ver', grupo: 'Día a día' },
+
+  /* ---- Personas ---- */
   // Propietarios como sección propia: la inmobiliaria piensa por dueño ("rendirle
   // a X", "cargar el CBU de Y"), no sólo por propiedad. Antes sólo se llegaba de
   // rebote desde tarjetas del dashboard y nadie la encontraba.
-  { href: '/propietarios', label: 'Propietarios', icon: KeyRound, capacidad: 'propiedades.ver' },
-  { href: '/pagos', label: 'Pagos', icon: CreditCard, capacidad: 'pagos.ver' },
-  { href: '/caja', label: 'Caja', icon: Wallet, capacidad: 'caja.ver' },
-  { href: '/cuentas', label: 'Cuentas', icon: WalletCards, capacidad: 'cuentas.ver' },
-  { href: '/depositos', label: 'Depósitos', icon: Landmark, capacidad: 'contratos.ver' },
-  { href: '/contratos', label: 'Contratos', icon: FileText, capacidad: 'contratos.ver' },
-  { href: '/inquilinos', label: 'Inquilinos', icon: Users, capacidad: 'contratos.ver' },
-  { href: '/renovaciones', label: 'Renovaciones', icon: CalendarHeart, capacidad: 'contratos.ver' },
-  { href: '/consorcios', label: 'Consorcios', icon: Building, capacidad: 'propiedades.ver' },
-  { href: '/reclamos', label: 'Reclamos', icon: Wrench, capacidad: 'reclamos.ver' },
-  { href: '/anuncios', label: 'Anuncios', icon: Megaphone, capacidad: 'comunicaciones.enviar' },
-  { href: '/profesionales', label: 'Profesionales', icon: HardHat, capacidad: 'profesionales.ver' },
+  { href: '/propietarios', label: 'Propietarios', icon: KeyRound, capacidad: 'propiedades.ver', grupo: 'Personas' },
+  { href: '/inquilinos', label: 'Inquilinos', icon: Users, capacidad: 'contratos.ver', grupo: 'Personas' },
+  { href: '/profesionales', label: 'Profesionales', icon: HardHat, capacidad: 'profesionales.ver', grupo: 'Personas' },
   // Red compartida: acceso directo al ecosistema cross-tenant (antes solo se
   // llegaba desde dentro de "Profesionales"). Es el gancho comercial del producto.
-  { href: '/profesionales/red', label: 'Red compartida', icon: ShieldCheck, sub: true, capacidad: 'profesionales.ver' },
-  { href: '/screening', label: 'Verificar inquilino', icon: ShieldCheck, capacidad: 'screening.ver' },
-  { href: '/auditoria', label: 'Auditoría', icon: ScrollText, capacidad: 'auditoria.ver' },
-  { href: '/soporte', label: 'Soporte', icon: Bug, capacidad: 'auditoria.ver' },
-  { href: '/configuracion', label: 'Configuración', icon: Settings },
+  { href: '/profesionales/red', label: 'Red compartida', icon: ShieldCheck, sub: true, capacidad: 'profesionales.ver', grupo: 'Personas' },
+
+  /* ---- Plata ---- */
+  // "Caja" a secas se confundía con la caja del día y con Cuentas; el ícono de
+  // "Depósitos" es un banco, y para una recepcionista un depósito es primero un
+  // depósito bancario, no la garantía del inquilino.
+  { href: '/caja', label: 'Caja de gastos', icon: Wallet, capacidad: 'caja.ver', grupo: 'Plata' },
+  { href: '/cuentas', label: 'Cuentas', icon: WalletCards, capacidad: 'cuentas.ver', grupo: 'Plata' },
+  { href: '/depositos', label: 'Depósitos de garantía', icon: Landmark, capacidad: 'contratos.ver', grupo: 'Plata' },
+
+  /* ---- Seguimiento ---- */
+  { href: '/estadisticas', label: 'Estadísticas', icon: BarChart3, capacidad: 'metricas.ver', grupo: 'Seguimiento' },
+  // OJO: "Renovaciones" NO se renombra todavía. Esa pantalla registra una
+  // intención y NO renueva el contrato (la renovación real es
+  // POST /contratos/:id/renovar, y su botón vive sólo en la ficha del contrato).
+  // Cambiarle el nombre sin arreglar eso es hacer que mienta un poco menos.
+  { href: '/renovaciones', label: 'Renovaciones', icon: CalendarHeart, capacidad: 'contratos.ver', grupo: 'Seguimiento' },
+  { href: '/anuncios', label: 'Anuncios', icon: Megaphone, capacidad: 'comunicaciones.enviar', grupo: 'Seguimiento' },
+  { href: '/consorcios', label: 'Consorcios', icon: Building, capacidad: 'propiedades.ver', grupo: 'Seguimiento' },
+
+  /* ---- Sistema ---- */
+  { href: '/screening', label: 'Verificar inquilino', icon: ShieldCheck, capacidad: 'screening.ver', grupo: 'Sistema' },
+  // "Auditoría" y "Soporte" decían otra cosa de la que son: la primera es el
+  // historial de lo que hizo el equipo, y la segunda NO es ayuda al usuario
+  // sino la bandeja de bugs de Sonar. El que se trababa y buscaba ayuda en el
+  // menú caía justamente ahí.
+  { href: '/auditoria', label: 'Historial de acciones', icon: ScrollText, capacidad: 'auditoria.ver', grupo: 'Sistema' },
+  { href: '/soporte', label: 'Bugs reportados', icon: Bug, capacidad: 'auditoria.ver', grupo: 'Sistema' },
+  { href: '/configuracion', label: 'Configuración', icon: Settings, capacidad: 'configuracion.ver', grupo: 'Sistema' },
 ];
 
 function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {
@@ -175,41 +218,60 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
           nav scrollea sola si no entra, y el footer (cuenta + Cerrar sesión)
           queda SIEMPRE visible abajo. */}
       <nav aria-label="Navegación principal" className="flex-1 space-y-1 overflow-y-auto p-3">
-        {linksVisibles.map((l) => {
+        {(() => {
           // El padre NO se prende si otro ítem visible matchea la ruta exacta.
           // Sin esto, en /profesionales/red se prendían las dos filas a la vez
           // (Profesionales por el startsWith y Red compartida por el match).
           const hayHijoExacto = linksVisibles.some((otro) => otro.href === pathname);
-          const active =
-            l.href === '/'
-              ? pathname === '/'
-              : pathname === l.href || (!hayHijoExacto && pathname.startsWith(`${l.href}/`));
-          const Icon = l.icon;
-          const esSub = l.sub === true;
-          return (
-            <Link
-              key={l.href}
-              href={l.href}
-              onClick={onNavigate}
-              aria-current={active ? 'page' : undefined}
-              className={cn(
-                'flex items-center gap-3 rounded-md py-2 text-sm transition-colors',
-                // Los sub-items van indentados con el ícono más chico,
-                // para que se lean como "acción de Contratos".
-                esSub ? 'pl-10 pr-3' : 'px-3',
-                active
-                  ? 'bg-primary/10 font-medium text-primary'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-              )}
-            >
-              <Icon className={esSub ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
-              <span className="flex-1">{l.label}</span>
-              {l.href === '/pagos' && pendientes > 0 && (
-                <CountBadge count={pendientes} />
-              )}
-            </Link>
-          );
-        })}
+
+          const fila = (l: NavLink) => {
+            const active =
+              l.href === '/'
+                ? pathname === '/'
+                : pathname === l.href || (!hayHijoExacto && pathname.startsWith(`${l.href}/`));
+            const Icon = l.icon;
+            const esSub = l.sub === true;
+            return (
+              <Link
+                key={l.href}
+                href={l.href}
+                onClick={onNavigate}
+                aria-current={active ? 'page' : undefined}
+                className={cn(
+                  'flex items-center gap-3 rounded-md py-2 text-sm transition-colors',
+                  // Los sub-items van indentados con el ícono más chico,
+                  // para que se lean como "acción de Contratos".
+                  esSub ? 'pl-10 pr-3' : 'px-3',
+                  active
+                    ? 'bg-primary/10 font-medium text-primary'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                )}
+              >
+                <Icon className={esSub ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
+                <span className="flex-1">{l.label}</span>
+                {l.href === '/pagos' && pendientes > 0 && <CountBadge count={pendientes} />}
+              </Link>
+            );
+          };
+
+          // Con pocos ítems los encabezados estorban más de lo que ordenan
+          // (ver MINIMO_PARA_AGRUPAR): el rol CARGA queda mejor con la lista plana.
+          if (linksVisibles.length < MINIMO_PARA_AGRUPAR) return linksVisibles.map(fila);
+
+          return GRUPOS.map((grupo) => {
+            const items = linksVisibles.filter((l) => l.grupo === grupo);
+            // El encabezado no se dibuja si al rol no le quedó ningún hijo visible.
+            if (items.length === 0) return null;
+            return (
+              <div key={grupo} className="space-y-1 pt-3 first:pt-0">
+                <p className="px-3 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+                  {grupo}
+                </p>
+                {items.map(fila)}
+              </div>
+            );
+          });
+        })()}
       </nav>
       <div className="border-t p-3 text-xs text-muted-foreground">
         {apiEnabled ? (
