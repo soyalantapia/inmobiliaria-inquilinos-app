@@ -238,8 +238,21 @@ export async function coreRoutes(app: FastifyInstance) {
       select: { moraTipoDefault: true, moraValorDefault: true },
     });
     const esquema = resolverEsquemaMora(rest, inmoMora);
+    // `cargadoPor` guarda el USER ID, y la card de aprobación del detalle lo
+    // imprimía crudo: "Cargado por cmse5hsjg0002ruglkjr9mtfv". Quien aprueba tiene
+    // que saber a QUIÉN le está por devolver el contrato, así que lo resolvemos a
+    // nombre acá (la bandeja ya lo hacía por su join). Si el usuario ya no existe
+    // dejamos el valor original en vez de inventar uno.
+    const autor = rest.cargadoPor
+      ? await prisma.usuario.findFirst({
+          where: { id: rest.cargadoPor, inmobiliariaId: u.inmobiliariaId },
+          select: { nombre: true, apellido: true },
+        })
+      : null;
+
     return {
       ...rest,
+      cargadoPor: autor ? `${autor.nombre} ${autor.apellido}`.trim() : rest.cargadoPor,
       moraEfectiva: { tipo: esquema.tipo, valor: esquema.valor, origen: esquema.origen },
       liquidaciones: liquidaciones.map((l) => {
         const asOf = l.estado === 'PAGADO' && l.fechaPago ? new Date(l.fechaPago) : now;

@@ -2193,20 +2193,14 @@ export async function plataRoutes(app: FastifyInstance) {
   });
 
   // ===== Aprobaciones (no-monetarias, con PIN) =====
-  app.get('/aprobaciones', async (request, reply) => {
-    const u = await requireUsuario(request, reply, 'contratos.ver');
-    if (!u) return;
-    return prisma.aprobacion.findMany({
-      where: { inmobiliariaId: u.inmobiliariaId },
-      include: { cargadoPor: { select: { nombre: true, apellido: true, rol: true } } },
-      orderBy: { cargadoAt: 'desc' },
-    });
-  });
 
   /**
    * Re-validación del estado inicial guardado en el borrador. Ya fue validado por el
    * Zod de POST /contratos al cargarlo, pero es una columna Json: la volvemos a
    * validar antes de tocar plata, en vez de castearla a ciegas.
+   *
+   * Declarado ACÁ, antes del primer uso: lo leen tanto el GET (para mostrar la deuda
+   * declarada en la bandeja) como el POST de aprobar (para aplicarla).
    */
   const PeriodosAnterioresSchema = z
     .array(
@@ -2218,6 +2212,125 @@ export async function plataRoutes(app: FastifyInstance) {
       }),
     )
     .max(120);
+
+  app.get('/aprobaciones', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'contratos.ver');
+    if (!u) return;
+    const aprobaciones = await prisma.aprobacion.findMany({
+      where: { inmobiliariaId: u.inmobiliariaId },
+      include: { cargadoPor: { select: { nombre: true, apellido: true, rol: true } } },
+      orderBy: { cargadoAt: 'desc' },
+    });
+
+    // `titulo`/`descripcion` son un texto CONGELADO al cargar el contrato ("Juan ·
+    // Artigas 1744" + "Contrato cargado para revisión"), y para CONTRATO_CARGADO
+    // `monto` ni siquiera se setea. Con eso solo, aprobar activaba el contrato,
+    // reclamaba la propiedad, devengaba TODAS las liquidaciones y aplicaba la deuda
+    // histórica declarada — plata real decidida sobre dos renglones de texto.
+    // Acá adjuntamos el objeto que se está aprobando, leído del contrato REAL (no
+    // del snapshot), en UNA query para toda la bandeja.
+    const contratoIds = aprobaciones
+      .filter((a) => a.tipo === 'CONTRATO_CARGADO')
+      .map((a) => a.entidadId);
+    if (contratoIds.length === 0) return aprobaciones;
+
+    const contratos = await prisma.contrato.findMany({
+      // inmobiliariaId además del id: entidadId es polimórfico y sin scope de tenant
+      // un id de otra inmobiliaria devolvería su contrato.
+      where: { id: { in: contratoIds }, inmobiliariaId: u.inmobiliariaId },
+      select: {
+        id: true,
+        estado: true,
+        monto: true,
+        moneda: true,
+        montoExpensas: true,
+        depositoGarantia: true,
+        fechaInicio: true,
+        fechaFin: true,
+        diaPago: true,
+        tipoContrato: true,
+        modoCobranza: true,
+        periodosAnterioresPendientes: true,
+        propiedad: { select: { direccion: true, consorcio: { select: { nombre: true } } } },
+        inquilinoTitular: { select: { nombre: true, apellido: true } },
+        cobraDirectoPropietario: { select: { nombre: true, apellido: true, cuentaCobranza: true } },
+      },
+    });
+    const porId = new Map(contratos.map((c) => [c.id, c]));
+
+    return aprobaciones.map((a) => {
+      if (a.tipo !== 'CONTRATO_CARGADO') return { ...a, contexto: null };
+      const c = porId.get(a.entidadId);
+      // El contrato puede no existir (borrado) — la fila sigue mostrándose, pero
+      // sin contexto, y el panel avisa en vez de fingir que hay algo que revisar.
+      if (!c) return { ...a, contexto: null };
+
+      // Deuda histórica declarada en el alta. NO la re-calculamos en plata: el monto
+      // que termina cobrándose lo decide el devengado al aprobar. Reportamos lo que
+      // se DECLARÓ (cuántos períodos y cuáles adeudan), que es lo verificable.
+      // safeParse y no throw: una columna corrupta no puede tumbar la bandeja entera
+      // — el aprobar sí la rechaza fuerte (EstadoInicialInvalido), que es donde
+      // importa.
+      let deudaDeclarada: {
+        periodos: number;
+        adeudan: number;
+        desde: string;
+        hasta: string;
+      } | null = null;
+      let deudaIlegible = false;
+      if (c.periodosAnterioresPendientes != null) {
+        const parsed = PeriodosAnterioresSchema.safeParse(c.periodosAnterioresPendientes);
+        if (!parsed.success) {
+          deudaIlegible = true;
+        } else if (parsed.data.length > 0) {
+          const periodos = parsed.data.map((p) => p.periodo).sort();
+          deudaDeclarada = {
+            periodos: parsed.data.length,
+            adeudan: parsed.data.filter((p) => p.estado !== 'PAGADO').length,
+            desde: periodos[0]!,
+            hasta: periodos[periodos.length - 1]!,
+          };
+        }
+      }
+
+      return {
+        ...a,
+        contexto: {
+          contratoId: c.id,
+          estadoContrato: c.estado,
+          // El titular es opcional en el modelo: si falta, mandamos null y el panel
+          // omite el dato, en vez de mostrar un nombre vacío que se lee como "ok".
+          inquilino: c.inquilinoTitular
+            ? `${c.inquilinoTitular.nombre} ${c.inquilinoTitular.apellido}`.trim()
+            : null,
+          // El complejo primero: la oficina identifica la unidad por el nombre del
+          // complejo, no por la dirección (pedido de Camila, 03/08).
+          propiedad: c.propiedad.consorcio?.nombre
+            ? `${c.propiedad.consorcio.nombre} · ${c.propiedad.direccion}`
+            : c.propiedad.direccion,
+          monto: c.monto.toString(),
+          moneda: c.moneda,
+          montoExpensas: c.montoExpensas?.toString() ?? null,
+          depositoGarantia: c.depositoGarantia?.toString() ?? null,
+          fechaInicio: c.fechaInicio,
+          fechaFin: c.fechaFin,
+          diaPago: c.diaPago,
+          tipoContrato: c.tipoContrato,
+          // A dónde va a ir la plata una vez aprobado. Es la mitad de la decisión y
+          // hoy no se veía en ningún lado de la bandeja.
+          modoCobranza: c.modoCobranza,
+          cobraDirectoA: c.cobraDirectoPropietario
+            ? {
+                nombre: `${c.cobraDirectoPropietario.nombre} ${c.cobraDirectoPropietario.apellido}`.trim(),
+                tieneCuenta: Boolean(c.cobraDirectoPropietario.cuentaCobranza),
+              }
+            : null,
+          deudaDeclarada,
+          deudaIlegible,
+        },
+      };
+    });
+  });
 
   for (const accion of ['aprobar', 'rechazar'] as const) {
     app.post(`/aprobaciones/:id/${accion}`, async (request, reply) => {
