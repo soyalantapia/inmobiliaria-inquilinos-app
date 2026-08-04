@@ -2301,28 +2301,15 @@ export async function plataRoutes(app: FastifyInstance) {
             }
           }
           if (accion === 'rechazar') {
-            // El borrador rechazado se descarta: borramos el inquilino que se creó
-            // para él. Si no, su email queda tomado (@@unique [inmobiliariaId,email])
-            // y bloquea para siempre volver a cargar un contrato con ese inquilino.
-            // El contrato queda BORRADOR-rechazado (inquilinoTitular pasa a null, ya
-            // manejado por los mappers); no genera liquidaciones ni reclamó propiedad.
-            // Antes de borrar el inquilino hay que borrar sus hijos con FK requerida
-            // (sin onDelete → Restrict por default): CodigoOtp / AnuncioAcuse /
-            // Documento / CertificadoInquilino. Si el inquilino abrió la PWA y pidió
-            // un OTP (crea un CodigoOtp), el deleteMany tiraría P2003 → rollback → la
-            // aprobación volvía a PENDIENTE y no se podía rechazar nunca más.
-            const inqs = await tx.inquilino.findMany({
-              where: { contratoId: apr.entidadId, inmobiliariaId: u.inmobiliariaId },
-              select: { id: true },
-            });
-            const inqIds = inqs.map((i) => i.id);
-            if (inqIds.length > 0) {
-              await tx.codigoOtp.deleteMany({ where: { inquilinoId: { in: inqIds } } });
-              await tx.anuncioAcuse.deleteMany({ where: { inquilinoId: { in: inqIds } } });
-              await tx.documento.deleteMany({ where: { inquilinoId: { in: inqIds } } });
-              await tx.certificadoInquilino.deleteMany({ where: { inquilinoId: { in: inqIds } } });
-              await tx.inquilino.deleteMany({ where: { id: { in: inqIds } } });
-            }
+            // Antes acá se borraba el Inquilino del borrador (y sus hijos: CodigoOtp,
+            // AnuncioAcuse, Documento, CertificadoInquilino) porque "su email queda
+            // tomado (@@unique [inmobiliariaId,email]) y bloquea volver a cargarlo".
+            // Esa razón MURIÓ con multi-alquiler: Inquilino ya NO tiene unique de email
+            // (el schema lo documenta), el unique vive en Persona — que este handler no
+            // toca — y buscarOCrearPersona (lib/persona.ts) es find-or-create, así que
+            // un email repetido se reusa en vez de chocar.
+            // Conservarlo es lo que permite CORREGIR el contrato rechazado y reenviarlo
+            // en vez de cargarlo de cero. No volver a agregar el borrado.
           }
         }
         // Mismo shape que GET /aprobaciones: el front mapea cargadoPor.nombre.

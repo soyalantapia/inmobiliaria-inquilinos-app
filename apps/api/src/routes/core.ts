@@ -1977,7 +1977,14 @@ export async function coreRoutes(app: FastifyInstance) {
     const u = await requireUsuario(request, reply, 'contratos.ver');
     if (!u) return;
     return prisma.inquilino.findMany({
-      where: { inmobiliariaId: u.inmobiliariaId },
+      where: {
+        inmobiliariaId: u.inmobiliariaId,
+        // Un inquilino de un contrato en BORRADOR (pendiente de aprobación o ya
+        // rechazado) todavía no es inquilino: lo es recién cuando el contrato se
+        // aprueba. Filtramos por el ESTADO del contrato, no por pendienteAprobacion:
+        // un contrato rechazado la tiene en false y tiene que seguir excluido igual.
+        contrato: { isNot: { estado: 'BORRADOR' } },
+      },
       include: { contrato: { select: { id: true, estado: true, propiedad: { select: { direccion: true } } } } },
       orderBy: { nombre: 'asc' },
     });
@@ -2002,7 +2009,15 @@ export async function coreRoutes(app: FastifyInstance) {
         }
       : {};
     const personas = await prisma.persona.findMany({
-      where: { inmobiliariaId: u.inmobiliariaId, ...filtroTexto },
+      where: {
+        inmobiliariaId: u.inmobiliariaId,
+        ...filtroTexto,
+        // Mismo criterio que /inquilinos: si TODOS los inquilinos de esta persona
+        // cuelgan de un contrato en BORRADOR, todavía no es inquilino de nadie — no
+        // debe figurar en el listado (el where filtra Persona, así que la exclusión
+        // va sobre la relación inquilinos).
+        inquilinos: { some: { contrato: { isNot: { estado: 'BORRADOR' } } } },
+      },
       include: {
         inquilinos: {
           select: { contrato: { select: { id: true, estado: true, propiedad: { select: { direccion: true } } } } },
