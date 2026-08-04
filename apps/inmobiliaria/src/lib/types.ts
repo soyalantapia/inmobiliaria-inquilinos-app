@@ -309,6 +309,13 @@ export interface ContratoListado {
       deudaInicial: { periodos: number; capital: number; mora: number };
     };
   };
+  /** Última decisión de aprobación, cuando ya se decidió. */
+  decisionAprobacion?: {
+    estado: 'APROBADA' | 'RECHAZADA';
+    comentario: string | null;
+    decididoPor: string;
+    decididoAt: string | null;
+  };
   /**
    * Modo de cobranza:
    * - INMOBILIARIA: el inquilino paga a la cuenta recaudadora de la inmo, y la

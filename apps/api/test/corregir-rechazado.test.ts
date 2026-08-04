@@ -156,4 +156,26 @@ describe('corregir contrato rechazado — el rechazo ya no vacía el contrato', 
     const nomPersonas = (personas.json() as Array<{ nombre: string }>).map((p) => p.nombre);
     expect(nomPersonas).not.toContain('Tomas');
   });
+
+  it('el contrato rechazado expone la decisión con su motivo', async () => {
+    const { contratoId, aprobacionId } = await cargarContratoPendiente({
+      inquilino: { nombre: 'Ivan', apellido: 'Motivo', email: 'ivan.motivo@mail.com', dni: '39900033' },
+    });
+    await app.inject({
+      method: 'POST',
+      url: `/aprobaciones/${aprobacionId}/rechazar`,
+      headers: authAdmin(),
+      payload: { comentario: 'Las expensas no coinciden con la liquidación del consorcio' },
+    });
+
+    const det = await app.inject({ method: 'GET', url: `/contratos/${contratoId}`, headers: authAdmin() });
+    const d = det.json().decisionAprobacion;
+    expect(d).toBeTruthy();
+    expect(d.estado).toBe('RECHAZADA');
+    expect(d.comentario).toContain('consorcio');
+    expect(d.decididoPor).toContain('Roberto'); // el NOMBRE, no el user id
+    expect(d.decididoAt).toEqual(expect.any(String));
+    // Y ya no está pendiente, así que no viaja la revisión
+    expect(det.json().revisionAprobacion).toBeUndefined();
+  });
 });

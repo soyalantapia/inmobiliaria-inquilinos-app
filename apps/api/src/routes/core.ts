@@ -231,34 +231,56 @@ export async function coreRoutes(app: FastifyInstance) {
       select: { moraTipoDefault: true, moraValorDefault: true },
     });
     const esquema = resolverEsquemaMora(rest, inmoMora);
-    // Revisión previa a la aprobación: solo cuando el contrato está esperando
-    // decisión. El que aprueba tiene que ver la deuda declarada y lo que se le va
-    // a dar por cobrado — hoy eso vivía en un Json que no leía nadie.
+    // Revisión previa a la aprobación (si está PENDIENTE) o motivo de la decisión
+    // (si ya se decidió): las dos ramas salen de la ÚLTIMA Aprobación de este
+    // contrato, en una sola query. Antes se filtraba por estado PENDIENTE y un
+    // rechazo no dejaba rastro en el contrato — el cartel de "rechazado" vivía
+    // solo en estado local del componente que lo rechazó, se perdía al recargar.
     let revisionAprobacion:
       | (RevisionAprobacion & { aprobacionId: string; cargadoPorNombre: string; cargadoPorRol: string })
       | undefined;
-    if (rest.pendienteAprobacion) {
-      const aprobacion = await prisma.aprobacion.findFirst({
-        where: {
-          inmobiliariaId: u.inmobiliariaId,
-          tipo: 'CONTRATO_CARGADO',
-          entidadId: rest.id,
-          estado: 'PENDIENTE',
-        },
+    let decisionAprobacion:
+      | { estado: 'APROBADA' | 'RECHAZADA'; comentario: string | null; decididoPor: string; decididoAt: string | null }
+      | undefined;
+    // La ÚLTIMA aprobación de este contrato: si está PENDIENTE alimenta la revisión
+    // previa; si ya se decidió, alimenta el cartel con el motivo. Antes se filtraba
+    // por estado PENDIENTE y el rechazo no dejaba rastro en el contrato.
+    // orderBy con aprobadoAt desc deja las PENDIENTE (aprobadoAt null) al final en
+    // Postgres si no se cuida el orden de nulls — cargadoAt desc como desempate
+    // asegura que una PENDIENTE recién cargada gane sobre una decisión vieja.
+    const aprobacion = await prisma.aprobacion.findFirst({
+      where: { inmobiliariaId: u.inmobiliariaId, tipo: 'CONTRATO_CARGADO', entidadId: rest.id },
+      orderBy: [{ aprobadoAt: 'desc' }, { cargadoAt: 'desc' }],
+      select: {
+        id: true,
+        estado: true,
+        comentarioAprobador: true,
+        aprobadoAt: true,
         // cargadoPor viene de la Aprobación, no del contrato: Contrato.cargadoPor
         // guarda el USER ID pelado, y la pantalla de revisión lo mostraba crudo
         // ("Cargado por cmsdwdi89..."). Quien decide necesita el nombre.
-        select: { id: true, cargadoPor: { select: { nombre: true, apellido: true, rol: true } } },
-      });
-      if (aprobacion) {
-        const declarados = PeriodosAnterioresSchema.safeParse(rest.periodosAnterioresPendientes);
-        revisionAprobacion = {
-          aprobacionId: aprobacion.id,
-          cargadoPorNombre: `${aprobacion.cargadoPor.nombre} ${aprobacion.cargadoPor.apellido ?? ''}`.trim(),
-          cargadoPorRol: aprobacion.cargadoPor.rol,
-          ...resumenRevisionAprobacion(rest, declarados.success ? declarados.data : [], now, esquema),
-        };
-      }
+        cargadoPor: { select: { nombre: true, apellido: true, rol: true } },
+        aprobadoPor: { select: { nombre: true, apellido: true } },
+      },
+    });
+    if (rest.pendienteAprobacion && aprobacion?.estado === 'PENDIENTE') {
+      const declarados = PeriodosAnterioresSchema.safeParse(rest.periodosAnterioresPendientes);
+      revisionAprobacion = {
+        aprobacionId: aprobacion.id,
+        cargadoPorNombre: `${aprobacion.cargadoPor.nombre} ${aprobacion.cargadoPor.apellido ?? ''}`.trim(),
+        cargadoPorRol: aprobacion.cargadoPor.rol,
+        ...resumenRevisionAprobacion(rest, declarados.success ? declarados.data : [], now, esquema),
+      };
+    }
+    if (aprobacion && aprobacion.estado !== 'PENDIENTE') {
+      decisionAprobacion = {
+        estado: aprobacion.estado,
+        comentario: aprobacion.comentarioAprobador,
+        decididoPor: aprobacion.aprobadoPor
+          ? `${aprobacion.aprobadoPor.nombre} ${aprobacion.aprobadoPor.apellido ?? ''}`.trim()
+          : 'Alguien de la inmobiliaria',
+        decididoAt: aprobacion.aprobadoAt?.toISOString() ?? null,
+      };
     }
     return {
       ...rest,
@@ -277,6 +299,7 @@ export async function coreRoutes(app: FastifyInstance) {
       estadoPagoActual: actual ? (liqVencida(actual, now) ? 'VENCIDO' : actual.estado) : 'PENDIENTE',
       proximoVencimiento: pendiente?.fechaVencimiento ?? null,
       ...(revisionAprobacion ? { revisionAprobacion } : {}),
+      ...(decisionAprobacion ? { decisionAprobacion } : {}),
     };
   });
 

@@ -203,9 +203,11 @@ export default function DetalleContratoPage() {
     <>
       <Topbar titulo="Contrato" />
       <main className="flex-1 space-y-6 p-4 md:p-6">
-        {/* Card de aprobación: aparece cuando el contrato lo cargó un usuario
-            con rol CARGA y todavía no fue aprobado por un ADMIN. */}
-        {c.pendienteAprobacion && (
+        {/* Card de aprobación: aparece mientras el contrato espera decisión
+            (lo cargó un usuario con rol CARGA) o, ya decidido, cuando lo
+            rechazaron — persiste para que quien lo cargó sepa qué corregir,
+            aunque recargue la página o vuelva otro día. */}
+        {(c.pendienteAprobacion || c.decisionAprobacion?.estado === 'RECHAZADA') && (
           <AprobacionContratoCard
             contratoId={c.id}
             cargadoPor={
@@ -225,6 +227,8 @@ export default function DetalleContratoPage() {
             inquilino={c.inquilino}
             moneda={c.moneda}
             revision={c.revisionAprobacion}
+            pendienteAprobacion={!!c.pendienteAprobacion}
+            decisionAprobacion={c.decisionAprobacion}
           />
         )}
 
@@ -1204,6 +1208,8 @@ function AprobacionContratoCard({
   inquilino,
   moneda,
   revision,
+  pendienteAprobacion,
+  decisionAprobacion,
 }: {
   contratoId: string;
   cargadoPor: string;
@@ -1211,8 +1217,16 @@ function AprobacionContratoCard({
   inquilino: string;
   moneda: ContratoListado['moneda'];
   revision?: NonNullable<ContratoListado['revisionAprobacion']>;
+  pendienteAprobacion: boolean;
+  decisionAprobacion?: ContratoListado['decisionAprobacion'];
 }) {
-  const [resuelto, setResuelto] = useState<'APROBADO' | 'RECHAZADO' | null>(null);
+  const qc = useQueryClient();
+  // Demo (!apiEnabled): no hay backend real, así que no hay decisionAprobacion
+  // que persista — este estado local solo resuelve la sesión de demo (como el
+  // resto de la demo, no sobrevive a un F5). El camino real ya no usa estado
+  // local para esto: tras decidir se invalida ['contrato', id] y la tarjeta
+  // se re-renderiza con `decisionAprobacion`, el dato real del servidor.
+  const [demoResuelto, setDemoResuelto] = useState<'APROBADO' | 'RECHAZADO' | null>(null);
   const { aprobarApi, rechazarApi } = useAprobaciones();
   // El servidor exige `contrato.aprobar` (solo ADMIN — plata.ts + permisos.ts)
   // y devuelve 403 si no lo tenés. `revision` viaja para cualquiera con
@@ -1228,7 +1242,7 @@ function AprobacionContratoCard({
   const [motivoRechazar, setMotivoRechazar] = useState('');
   const [enviando, setEnviando] = useState(false);
 
-  if (resuelto === 'APROBADO') {
+  if (demoResuelto === 'APROBADO') {
     return (
       <div className="rounded-lg border border-emerald-300 bg-emerald-50 p-4 dark:border-emerald-900/40 dark:bg-emerald-950/30">
         <div className="flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-300">
@@ -1241,18 +1255,36 @@ function AprobacionContratoCard({
     );
   }
 
-  if (resuelto === 'RECHAZADO') {
+  // Persistente: viene del servidor (decisionAprobacion), sobrevive a un
+  // recargado y la ve cualquiera que abra el contrato — antes este cartel
+  // era useState local, solo lo veía quien rechazó, en esa misma sesión.
+  // demoResuelto cubre el camino de demo, sin backend real.
+  if (decisionAprobacion?.estado === 'RECHAZADA' || demoResuelto === 'RECHAZADO') {
     return (
       <div className="rounded-lg border border-red-300 bg-red-50 p-4 dark:border-red-900/40 dark:bg-red-950/30">
-        <div className="flex items-center gap-2 text-sm text-red-700 dark:text-red-300">
-          <XCircle className="h-4 w-4" />
-          <span className="font-medium">
-            Contrato rechazado. {cargadoPor} ya recibió la notificación.
-          </span>
+        <div className="flex items-start gap-2 text-sm text-red-700 dark:text-red-300">
+          <XCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <div className="space-y-1">
+            <p className="font-medium">
+              Contrato rechazado
+              {decisionAprobacion?.decididoPor && ` por ${decisionAprobacion.decididoPor}`}
+              {decisionAprobacion?.decididoAt && ` · ${formatFecha(decisionAprobacion.decididoAt)}`}
+            </p>
+            {decisionAprobacion?.comentario && <p>{decisionAprobacion.comentario}</p>}
+            {/* Lo que pasa de verdad: el backend NO manda ningún aviso al
+                rechazar (el único mail automático es la bienvenida al
+                inquilino cuando se APRUEBA). Antes decía "ya recibió la
+                notificación", falso. */}
+            <p className="text-xs text-red-700/80 dark:text-red-300/80">
+              Queda para corregir. {cargadoPor} lo va a ver en su panel.
+            </p>
+          </div>
         </div>
       </div>
     );
   }
+
+  if (!pendienteAprobacion) return null; // no debería pasar (el padre ya filtra), guarda por las dudas.
 
   // Demo (!apiEnabled): sin endpoint, registra en auditoría local y resuelve
   // en el momento. SIN TOCAR — es la rama que sigue usando la demo.
@@ -1266,7 +1298,7 @@ function AprobacionContratoCard({
       entidadDescripcion: `Contrato ${contratoId} · ${inquilino}`,
       detalle: `Revisión OK. Activado el ${new Date().toLocaleDateString('es-AR')}.`,
     });
-    setResuelto('APROBADO');
+    setDemoResuelto('APROBADO');
     toast({
       title: 'Contrato aprobado',
       description: `${inquilino} pasa a Activo. Se notifica al inquilino y a ${cargadoPor}.`,
@@ -1282,10 +1314,10 @@ function AprobacionContratoCard({
       entidadDescripcion: `Contrato ${contratoId} · ${inquilino}`,
       detalle: `Cargado por ${cargadoPor} · rechazado por el admin`,
     });
-    setResuelto('RECHAZADO');
+    setDemoResuelto('RECHAZADO');
     toast({
       title: 'Contrato rechazado',
-      description: `Avísale a ${cargadoPor} qué corregir.`,
+      description: `Queda para corregir. ${cargadoPor} lo va a ver en su panel.`,
     });
   };
 
@@ -1297,7 +1329,9 @@ function AprobacionContratoCard({
     setEnviando(true);
     try {
       await aprobarApi(revision.aprobacionId, undefined, comentarioAprobar.trim() || undefined);
-      setResuelto('APROBADO');
+      // Sin estado local: se invalida la query y la tarjeta (y el resto de la
+      // pantalla) se re-renderiza con el contrato real ya ACTIVO.
+      await qc.invalidateQueries({ queryKey: ['contrato', contratoId] });
       toast({
         variant: 'success',
         title: 'Contrato aprobado',
@@ -1330,10 +1364,12 @@ function AprobacionContratoCard({
     setEnviando(true);
     try {
       await rechazarApi(revision.aprobacionId, undefined, motivoRechazar.trim());
-      setResuelto('RECHAZADO');
+      // Sin estado local: se invalida la query y la tarjeta se re-renderiza
+      // con decisionAprobacion, el motivo real que guardó el servidor.
+      await qc.invalidateQueries({ queryKey: ['contrato', contratoId] });
       toast({
         title: 'Contrato rechazado',
-        description: `Avisale a ${cargadoPor} qué corregir.`,
+        description: `Queda para corregir. ${cargadoPor} lo va a ver en su panel.`,
       });
       setDialogRechazar(false);
     } catch (e) {
@@ -1498,7 +1534,11 @@ function AprobacionContratoCard({
         title="¿Rechazar este contrato?"
         description={
           <div className="space-y-3 pt-2">
-            <p className="text-sm text-muted-foreground">Avisamos a {cargadoPor} con el motivo.</p>
+            {/* Nadie manda un aviso automático: queda para corregir y {cargadoPor}
+                lo va a ver al abrir el contrato (antes decía "avisamos", falso). */}
+            <p className="text-sm text-muted-foreground">
+              Queda para corregir con este motivo. {cargadoPor} lo va a ver en su panel.
+            </p>
             <div className="space-y-2">
               <Label htmlFor="rech-card-mot">Motivo del rechazo</Label>
               <Textarea
