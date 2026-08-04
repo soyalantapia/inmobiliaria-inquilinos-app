@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import {
   CheckCircle2,
   Clock,
@@ -258,6 +259,13 @@ export function BandejaAprobaciones() {
         }
         confirmLabel="Rechazar solicitud"
         variant="destructive"
+        // Sin esto, un motivo corto dispara el toast en ejecutarRechazo PERO
+        // igual cierra el diálogo: ConfirmDialog.handleConfirm() llama
+        // onOpenChange(false) después de onConfirm() salvo que loading esté en
+        // true, y acá nunca llega a estarlo porque la validación corta antes
+        // de setShowPin(true). confirmDisabled bloquea el click ANTES de eso
+        // (mismo fix que contratos/[id]/page-client.tsx) — no se pierde lo tipeado.
+        confirmDisabled={motivoRechazo.trim().length < 5}
         onConfirm={ejecutarRechazo}
       />
     </div>
@@ -344,7 +352,19 @@ function AprobacionCard({ aprobacion, disabled = false, onAprobar, onRechazar }:
           </p>
         )}
 
-        {pendiente && (
+        {pendiente && aprobacion.tipo === 'CONTRATO_CARGADO' && (
+          // Contrato: nada de Aprobar/Rechazar acá — se decide en el detalle,
+          // donde se ven los períodos declarados y el impacto de aprobar.
+          <div className="flex flex-wrap gap-2 pt-1">
+            <Button size="sm" asChild>
+              <Link href={`/contratos/${aprobacion.entidadId}`}>
+                Revisar y decidir
+              </Link>
+            </Button>
+          </div>
+        )}
+
+        {pendiente && aprobacion.tipo !== 'CONTRATO_CARGADO' && (
           <div className="flex flex-wrap gap-2 pt-1">
             <Button size="sm" onClick={onAprobar} disabled={disabled}>
               <CheckCircle2 className="h-4 w-4" />

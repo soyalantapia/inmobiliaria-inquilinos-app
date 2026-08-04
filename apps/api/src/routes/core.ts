@@ -16,7 +16,8 @@ import {
 import { conSaldo, montoPagadoPorLiquidacion } from '../lib/saldos.js';
 import { aplicarDepositoADeuda } from '../lib/aplicar-deposito.js';
 import { calcularMora, resolverEsquemaMora } from '../lib/punitorios.js';
-import { aplicarEstadoInicial, EstadoInicialInvalido } from '../lib/estado-inicial-contrato.js';
+import { aplicarEstadoInicial, EstadoInicialInvalido, PeriodosAnterioresSchema } from '../lib/estado-inicial-contrato.js';
+import { resumenRevisionAprobacion, type RevisionAprobacion } from '../lib/revision-aprobacion.js';
 import { buscarOCrearPersona } from '../lib/persona.js';
 import { borrarArchivoSiHuerfano, urlEsDelTenant } from './uploads.js';
 import { enviarInvitacionInquilino, enviarInvitacionEquipo } from '../mailer.js';
@@ -230,6 +231,35 @@ export async function coreRoutes(app: FastifyInstance) {
       select: { moraTipoDefault: true, moraValorDefault: true },
     });
     const esquema = resolverEsquemaMora(rest, inmoMora);
+    // Revisión previa a la aprobación: solo cuando el contrato está esperando
+    // decisión. El que aprueba tiene que ver la deuda declarada y lo que se le va
+    // a dar por cobrado — hoy eso vivía en un Json que no leía nadie.
+    let revisionAprobacion:
+      | (RevisionAprobacion & { aprobacionId: string; cargadoPorNombre: string; cargadoPorRol: string })
+      | undefined;
+    if (rest.pendienteAprobacion) {
+      const aprobacion = await prisma.aprobacion.findFirst({
+        where: {
+          inmobiliariaId: u.inmobiliariaId,
+          tipo: 'CONTRATO_CARGADO',
+          entidadId: rest.id,
+          estado: 'PENDIENTE',
+        },
+        // cargadoPor viene de la Aprobación, no del contrato: Contrato.cargadoPor
+        // guarda el USER ID pelado, y la pantalla de revisión lo mostraba crudo
+        // ("Cargado por cmsdwdi89..."). Quien decide necesita el nombre.
+        select: { id: true, cargadoPor: { select: { nombre: true, apellido: true, rol: true } } },
+      });
+      if (aprobacion) {
+        const declarados = PeriodosAnterioresSchema.safeParse(rest.periodosAnterioresPendientes);
+        revisionAprobacion = {
+          aprobacionId: aprobacion.id,
+          cargadoPorNombre: `${aprobacion.cargadoPor.nombre} ${aprobacion.cargadoPor.apellido ?? ''}`.trim(),
+          cargadoPorRol: aprobacion.cargadoPor.rol,
+          ...resumenRevisionAprobacion(rest, declarados.success ? declarados.data : [], now, esquema),
+        };
+      }
+    }
     return {
       ...rest,
       moraEfectiva: { tipo: esquema.tipo, valor: esquema.valor, origen: esquema.origen },
@@ -246,6 +276,7 @@ export async function coreRoutes(app: FastifyInstance) {
       }),
       estadoPagoActual: actual ? (liqVencida(actual, now) ? 'VENCIDO' : actual.estado) : 'PENDIENTE',
       proximoVencimiento: pendiente?.fechaVencimiento ?? null,
+      ...(revisionAprobacion ? { revisionAprobacion } : {}),
     };
   });
 
