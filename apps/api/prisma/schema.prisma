@@ -769,6 +769,7 @@ model Usuario {
   eventosAuditoria      EventoAuditoria[]
   reportesPiloto        ReportePiloto[]
   pagosDecididos        Pago[]             @relation("PagosDecididos")
+  pagosRegistrados      Pago[]             @relation("PagosRegistrados")
   codigosOtp            CodigoOtpUsuario[]
 
   @@unique([inmobiliariaId, email])
@@ -1698,6 +1699,13 @@ model Pago {
   // Sirve para atribuir en notificaciones y en la lista "Pagos informados".
   informadoPorInquilinoId   String?
   informadoPorCoInquilinoId String?
+  /// Usuario del STAFF que registró el cobro manual. Distinto de `decididoPor`:
+  /// antes el cobro manual escribía `decididoPorId = quien lo cargaba` en el mismo
+  /// instante que lo dejaba CONCILIADO, así que cargar y autorizar eran la misma
+  /// acción de la misma persona y no quedaba forma de saber quién había pedido qué.
+  /// Nullable: los pagos informados por el inquilino no tienen autor del staff.
+  registradoPorId     String?
+  registradoPor       Usuario?            @relation("PagosRegistrados", fields: [registradoPorId], references: [id])
   // Créditos que originaron este pago vía conciliación desde extracto bancario (0 o 1).
   creditoDetectado    CreditoDetectado?
 

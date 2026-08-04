@@ -5,7 +5,6 @@ import {
   CheckCircle2,
   Eye,
   FileEdit,
-  KeyRound,
   Settings2,
   ShieldCheck,
   Workflow,
@@ -48,13 +47,12 @@ export function MatrizPermisosCard() {
           <div className="flex-1">
             <p className="text-sm font-semibold">Matriz de permisos</p>
             <p className="text-xs text-muted-foreground">
-              Quién puede ver y hacer qué en el panel. Las acciones marcadas con
-              <KeyRound className="mx-1 inline-block h-3 w-3 text-primary" />
-              piden el PIN del usuario. Las que tienen
+              Quién puede ver y hacer qué en el panel. Las que tienen
               <Badge variant="warning" className="mx-1 align-middle text-[8px]">
                 pendiente
               </Badge>
-              quedan en bandeja del Admin si las carga un rol menor.
+              no quedan hechas al cargarlas: esperan que otra persona las
+              autorice.
             </p>
           </div>
         </div>
@@ -127,15 +125,15 @@ function FilaCapacidad({ cap }: { cap: DefinicionCapacidad }) {
   return (
     <tr className="border-b border-border/50 last:border-0">
       <td className="sticky left-0 bg-background px-2 py-2 text-xs">
-        <div className="flex items-center gap-1.5">
-          <span>{cap.label}</span>
-          {cap.requierePin && (
-            <KeyRound
-              className="h-3 w-3 text-primary"
-              aria-label="Requiere PIN"
-            />
-          )}
-        </div>
+        {/* El candado de "Requiere PIN" NO se dibuja más: el PIN fue eliminado de
+            la plataforma (verificarPinUsuario devuelve ok siempre, ver
+            apps/api/src/auth/pin.ts), pero el catálogo conserva requierePin y la
+            matriz lo pintaba igual. Le mostraba a la administradora un candado
+            sobre conciliar / rechazar / revertir que hace rato no existe: es la
+            misma clase de problema que el badge "pendiente" del cobro manual,
+            un control que sólo vivía en la pantalla. Si algún día vuelve el PIN,
+            esto se re-dibuja leyendo del server, no del catálogo. */}
+        <span>{cap.label}</span>
       </td>
       {ROLES_ORDEN.map((r) => {
         const tiene = cap.roles.includes(r);

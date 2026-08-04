@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import { yaVencio } from '@llave/shared';
+import { requiereAprobacion, yaVencio } from '@llave/shared';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../db.js';
@@ -357,6 +357,17 @@ export async function plataRoutes(app: FastifyInstance) {
     });
     if (!pago) return reply.code(404).send({ message: 'Pago inexistente' });
     if (pago.estado !== 'INFORMADO') return reply.code(409).send({ message: 'El pago ya fue decidido' });
+    // Cuatro ojos. Sin esto el circuito sería teatro: quien carga un cobro que
+    // "queda pendiente" podría darse el visto a sí misma un segundo después y el
+    // resultado sería idéntico al de antes (cargar y autorizar en un paso), sólo
+    // que con dos clicks. Aplica sólo a los cobros que registró el STAFF: un pago
+    // informado por el inquilino no tiene registradoPor y lo valida cualquiera
+    // con el permiso, como siempre.
+    if (pago.registradoPorId && pago.registradoPorId === u.userId) {
+      return reply.code(409).send({
+        message: 'No podés validar un cobro que cargaste vos. Lo tiene que autorizar otra persona.',
+      });
+    }
     // Un pago EN VUELO (INFORMADO) SÍ se valida aunque el contrato ya esté finalizado:
     // la plata se recibió de verdad y hay que poder conciliarla y rendirla al
     // propietario (decisión del dueño). Un INFORMADO ya existente prueba que la
@@ -483,6 +494,11 @@ export async function plataRoutes(app: FastifyInstance) {
     if (!body.success) return reply.code(400).send({ message: 'Contale al inquilino por qué se rechaza (mínimo 5 caracteres)' });
     if (!(await verificarPin(u.userId, body.data.pin, reply))) return;
 
+    // ASIMETRÍA DELIBERADA con /validar: acá NO bloqueamos que rechaces un cobro
+    // que cargaste vos. Validar el propio crea plata (la liquidación pasa a
+    // cobrada); rechazarlo la saca, y es el único "deshacer" de un cobro mal
+    // tipeado. Si lo bloqueáramos, corregir una coma obligaría a molestar a la
+    // administradora. No lo "emparejes" sin pensar en eso.
     const pago = await prisma.pago.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
     if (!pago) return reply.code(404).send({ message: 'Pago inexistente' });
     if (pago.estado !== 'INFORMADO') return reply.code(409).send({ message: 'El pago ya fue decidido' });
@@ -981,12 +997,26 @@ export async function plataRoutes(app: FastifyInstance) {
   // cobranza directa. Antes NO existía ningún camino en prod para marcar
   // cobrada una liquidación si el inquilino no informaba por la app: la liq
   // de un contrato PROPIETARIO_DIRECTO quedaba VENCIDO acumulando mora para
-  // siempre aunque el dueño ya hubiera cobrado. El pago nace CONCILIADO
-  // (no hay comprobante que validar: la constancia es la palabra del que cobró)
-  // y el recompute de la liquidación es el mismo de /pagos/:id/validar.
+  // siempre aunque el dueño ya hubiera cobrado.
+  //
+  // 🔴 El permiso es 'pago.manual.cargar', no 'pago.conciliar'. Antes este
+  // endpoint pedía 'pago.conciliar' y el pago nacía CONCILIADO con
+  // decididoPorId = quien lo cargaba: CARGAR y AUTORIZAR eran la misma acción,
+  // de la misma persona, en el mismo instante. El catálogo declara
+  // `pago.manual.cargar` con rolesAprobacion: ['OPERADOR'] — o sea, el cobro de
+  // un OPERADOR DEBERÍA quedar pendiente — pero `requiereAprobacion()` no la
+  // llamaba NADIE (el único camino cableado era contratoQuedaPendiente, para
+  // contratos). Era un control que existía sólo en el catálogo: una operadora
+  // registraba un cobro por el monto que fuera y entraba contado como plata
+  // cobrada sin que la administradora lo autorizara. Camila: "vi 850k cobrados
+  // habiendo autorizado 550k" (reunión 03/08).
   app.post('/pagos/manual', async (request, reply) => {
-    const u = await requireUsuario(request, reply, 'pago.conciliar');
+    const u = await requireUsuario(request, reply, 'pago.manual.cargar');
     if (!u) return;
+    // Si el rol de quien carga está en rolesAprobacion, el cobro NO se
+    // contabiliza solo: nace INFORMADO y cae en la cola de "Pagos por validar",
+    // el mismo circuito que ya usan los pagos que informa el inquilino.
+    const quedaPendiente = requiereAprobacion(u.rol, 'pago.manual.cargar');
     const body = z
       .object({
         liquidacionId: z.string(),
@@ -1025,6 +1055,23 @@ export async function plataRoutes(app: FastifyInstance) {
       return reply.code(409).send({ message: 'El contrato ya no está activo — no se puede registrar un cobro.' });
     }
     if (liq.estado === 'PAGADO') return reply.code(409).send({ message: 'Esta liquidación ya está paga' });
+    // Sobre `pagos` hay un índice ÚNICO PARCIAL (liquidacionId) WHERE
+    // estado='INFORMADO': sólo puede haber UN pago informado por liquidación.
+    // Un cobro que queda pendiente nace INFORMADO, así que si el inquilino ya
+    // informó uno, el create reventaría con un error de constraint crudo.
+    // Lo cortamos acá con un mensaje que se entiende.
+    if (quedaPendiente) {
+      const yaInformado = await prisma.pago.findFirst({
+        where: { liquidacionId: liq.id, inmobiliariaId: u.inmobiliariaId, estado: 'INFORMADO' },
+        select: { id: true },
+      });
+      if (yaInformado) {
+        return reply.code(409).send({
+          message:
+            'Este período ya tiene un pago esperando validación. Resolvé ese antes de registrar otro cobro.',
+        });
+      }
+    }
     // Mismo tope que /pagos/informar: no registrar más que el saldo pendiente
     // (base + mora a la fecha del cobro − conciliados).
     const aggConc = await prisma.pago.aggregate({
@@ -1083,11 +1130,20 @@ export async function plataRoutes(app: FastifyInstance) {
             notaInquilino: body.data.nota
               ? `Cobro manual registrado por la inmobiliaria: ${body.data.nota}`
               : 'Cobro manual registrado por la inmobiliaria',
-            estado: 'CONCILIADO',
-            decididoPorId: u.userId,
-            decididoAt: new Date(),
+            // Quién lo cargó queda SIEMPRE, apruebe o no: es la pregunta que
+            // Camila no podía contestar cuando los totales no le cerraban.
+            registradoPorId: u.userId,
+            ...(quedaPendiente
+              ? // Pendiente: nadie lo decidió todavía. `decididoPor` se completa
+                // recién en /pagos/:id/validar, con el usuario que lo autorice.
+                { estado: 'INFORMADO' as const }
+              : { estado: 'CONCILIADO' as const, decididoPorId: u.userId, decididoAt: new Date() }),
           },
         });
+        // Un pago pendiente NO mueve la liquidación: el recompute cuenta sólo los
+        // CONCILIADO, así que dejarla intacta es lo que evita que el cobro se
+        // contabilice sin autorización. Se aplica al validarlo.
+        if (quedaPendiente) return nuevoPago;
         const cobrado = r2c(conciliados + body.data.monto);
         const total = r2c(Number(liq.montoTotal) + punitorio);
         await tx.liquidacion.updateMany({
@@ -1118,9 +1174,15 @@ export async function plataRoutes(app: FastifyInstance) {
       rolAutor: u.rol,
       entidadId: pagoOk.id,
       entidadDescripcion: `Cobro manual ${pagoOk.periodo} · $${Number(pagoOk.monto)}`,
-      detalle: body.data.nota ?? 'Cobro registrado a mano (efectivo / cobranza directa)',
+      // El detalle no puede decir "cobrado" cuando todavía no lo está: la
+      // auditoría es justamente donde se va a mirar si los totales no cierran.
+      detalle: quedaPendiente
+        ? `Cobro registrado a mano, PENDIENTE de validación${body.data.nota ? `: ${body.data.nota}` : ''}`
+        : (body.data.nota ?? 'Cobro registrado a mano (efectivo / cobranza directa)'),
     });
-    return reply.code(201).send(pagoOk);
+    // `pendienteValidacion` para que el panel muestre "queda esperando tu visto"
+    // en vez de un "cobro registrado" que haría pensar que la plata ya entró.
+    return reply.code(201).send({ ...pagoOk, pendienteValidacion: quedaPendiente });
   });
 
   // Inquilino o CUALQUIER co-inquilino del contrato (incluido permiso VER) informa

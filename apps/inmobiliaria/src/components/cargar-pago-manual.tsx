@@ -37,8 +37,10 @@ interface Props {
 
 /**
  * Dispatcher: en producción (apiEnabled) el cobro se registra contra el API
- * real (POST /pagos/manual, nace CONCILIADO). En el build demo (!apiEnabled)
- * se mantiene el flujo localStorage de siempre, intacto.
+ * real (POST /pagos/manual). Según el rol de quien lo carga nace CONCILIADO o
+ * queda INFORMADO esperando que OTRA persona lo autorice (el server lo decide
+ * con rolesAprobacion de 'pago.manual.cargar' y lo avisa en la respuesta). En
+ * el build demo (!apiEnabled) se mantiene el flujo localStorage de siempre.
  */
 export function CargarPagoManualDialog(props: Props) {
   if (apiEnabled) return <CargarPagoManualApi {...props} />;
@@ -134,7 +136,7 @@ function CargarPagoManualApi({ open, onOpenChange, onDone }: Props) {
     const notaTrim = nota.trim();
     pendingAction.current = async (pin) => {
       try {
-        await apiFetch('/pagos/manual', {
+        const r = await apiFetch<{ pendienteValidacion?: boolean }>('/pagos/manual', {
           method: 'POST',
           body: JSON.stringify({
             liquidacionId: liqId,
@@ -145,18 +147,30 @@ function CargarPagoManualApi({ open, onOpenChange, onDone }: Props) {
             pin,
           }),
         });
-        // El cobro nace CONCILIADO y mueve la liquidación (PARCIAL/PAGADO):
-        // refrescamos bandejas de pagos, cartera, liquidaciones, el detalle
-        // del contrato y la caja (cierre del día incluye lo conciliado).
+        // Según el rol de quien carga, el cobro nace CONCILIADO (y mueve la
+        // liquidación a PARCIAL/PAGADO) o queda INFORMADO esperando que otra
+        // persona lo autorice. Refrescamos igual en los dos casos: la cola de
+        // pagos por validar también cambia.
         void qc.invalidateQueries({ queryKey: ['pagos'] });
         void qc.invalidateQueries({ queryKey: ['contratos'] });
         void qc.invalidateQueries({ queryKey: ['contrato'] });
         void qc.invalidateQueries({ queryKey: ['liquidaciones'] });
         void qc.invalidateQueries({ queryKey: ['caja'] });
-        toast({
-          title: `Pago de ${contratoSel.inquilino} registrado`,
-          description: `${formatMonto(montoNum, contratoSel.moneda)} · ${metodo.toLowerCase()} · ${formatPeriodo(liqSel.periodo)}`,
-        });
+        const detalle = `${formatMonto(montoNum, contratoSel.moneda)} · ${metodo.toLowerCase()} · ${formatPeriodo(liqSel.periodo)}`;
+        // Decir "registrado" a secas cuando todavía no se contabilizó haría
+        // pensar que la plata ya entró: es exactamente el malentendido que hizo
+        // que los totales no cerraran.
+        toast(
+          r?.pendienteValidacion
+            ? {
+                title: 'Cobro cargado, falta que lo autoricen',
+                description: `${detalle}. Queda en Pagos por validar hasta que otra persona le dé el visto.`,
+              }
+            : {
+                title: `Pago de ${contratoSel.inquilino} registrado`,
+                description: detalle,
+              },
+        );
         onOpenChange(false);
         onDone?.();
         return null;
