@@ -212,6 +212,13 @@ export default function DetalleContratoPage() {
           />
         )}
 
+        {/* Corregir el borrador. Aparece SÓLO mientras el contrato está en
+            BORRADOR, que es cuando todavía no devengó nada: después las cuotas ya
+            existen y cambiar la vigencia es otro problema (lo dice el 409 del
+            server). Antes, una fecha mal tipeada no tenía salida: había que
+            rechazar el contrato y cargarlo entero de nuevo. */}
+        {c.estado === 'BORRADOR' && apiEnabled && <CorregirBorradorCard contrato={c} />}
+
         <ModoCobranzaCard contrato={c} propietarioDirecto={detalle.propietarioDirecto} />
 
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1178,6 +1185,145 @@ function EditarWhatsappInquilinoButton({
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+/**
+ * Corregir la vigencia y el canon de un contrato que todavía está en BORRADOR.
+ *
+ * `fechaInicio` no tenía ningún camino de escritura después del alta y no es un
+ * dato cosmético: es el arranque del devengo. Cargada de más, el contrato nace
+ * con cuotas vencidas que el inquilino nunca debió; de menos, esos meses no se
+ * facturan nunca. La única salida era rechazar el contrato y cargarlo entero de
+ * nuevo.
+ *
+ * Sólo BORRADOR: en un contrato ya activo las cuotas existen, pueden tener pagos
+ * conciliados que movieron caja y rendiciones, y eso es una decisión de dominio
+ * aparte. El server lo corta con 409 aunque alguien llame al endpoint a mano.
+ */
+function CorregirBorradorCard({ contrato }: { contrato: ContratoListado }) {
+  const qc = useQueryClient();
+  const [abierto, setAbierto] = useState(false);
+  const [guardando, setGuardando] = useState(false);
+  const iso = (d: string | null | undefined) => (d ? String(d).slice(0, 10) : '');
+  const [fechaInicio, setFechaInicio] = useState(iso(contrato.fechaInicio));
+  const [fechaFin, setFechaFin] = useState(iso(contrato.fechaFin));
+  const [monto, setMonto] = useState(String(contrato.monto ?? ''));
+
+  // Si el contrato cambia por debajo (re-fetch tras guardar), los campos siguen.
+  useEffect(() => {
+    setFechaInicio(iso(contrato.fechaInicio));
+    setFechaFin(iso(contrato.fechaFin));
+    setMonto(String(contrato.monto ?? ''));
+  }, [contrato.fechaInicio, contrato.fechaFin, contrato.monto]);
+
+  async function guardar() {
+    if (guardando) return;
+    // Misma validación que el server para no gastar un viaje ni perder el tipeo.
+    if (fechaInicio && fechaFin && fechaFin <= fechaInicio) {
+      toast({
+        variant: 'destructive',
+        title: 'Revisá las fechas',
+        description: 'El fin tiene que ser posterior al inicio.',
+      });
+      return;
+    }
+    // Coma o punto: en el teclado de la oficina sale coma y Number('355,000')
+    // es NaN, que mandaría un monto vacío sin que nadie se entere.
+    const montoNum = Number(monto.replace(/\./g, '').replace(',', '.'));
+    if (!Number.isFinite(montoNum) || montoNum <= 0) {
+      toast({ variant: 'destructive', title: 'Revisá el monto del alquiler' });
+      return;
+    }
+    setGuardando(true);
+    try {
+      await apiFetch(`/contratos/${contrato.id}/borrador`, {
+        method: 'PUT',
+        body: JSON.stringify({ fechaInicio, fechaFin, monto: montoNum }),
+      });
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['contrato'] }),
+        qc.invalidateQueries({ queryKey: ['contratos'] }),
+        // La bandeja muestra estos mismos datos antes de aprobar: si no la
+        // invalidamos, quien aprueba sigue viendo la fecha vieja.
+        qc.invalidateQueries({ queryKey: ['aprobaciones'] }),
+      ]);
+      setAbierto(false);
+      toast({ variant: 'success', title: 'Borrador corregido' });
+    } catch (e) {
+      toast({
+        variant: 'destructive',
+        title: 'No se pudo corregir',
+        description: e instanceof Error ? e.message : 'Probá de nuevo.',
+      });
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  if (!abierto) {
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/30 px-4 py-3">
+        <p className="text-xs text-muted-foreground">
+          Todavía es un borrador: podés corregir la vigencia y el alquiler antes de aprobarlo.
+        </p>
+        <Button size="sm" variant="outline" onClick={() => setAbierto(true)}>
+          <Pencil className="h-4 w-4" />
+          Corregir datos
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <Card>
+      <CardContent className="space-y-3 p-4">
+        <p className="text-sm font-semibold">Corregir el borrador</p>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="corr-inicio" className="text-xs">
+              Inicio
+            </Label>
+            <Input
+              id="corr-inicio"
+              type="date"
+              value={fechaInicio}
+              onChange={(e) => setFechaInicio(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="corr-fin" className="text-xs">
+              Fin
+            </Label>
+            <Input
+              id="corr-fin"
+              type="date"
+              value={fechaFin}
+              onChange={(e) => setFechaFin(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="corr-monto" className="text-xs">
+              Alquiler
+            </Label>
+            <Input
+              id="corr-monto"
+              inputMode="decimal"
+              value={monto}
+              onChange={(e) => setMonto(e.target.value)}
+            />
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" onClick={guardar} disabled={guardando}>
+            {guardando ? 'Guardando…' : 'Guardar'}
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setAbierto(false)} disabled={guardando}>
+            Cancelar
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
