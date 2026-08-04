@@ -568,4 +568,143 @@ describe('corregir contrato rechazado — el rechazo ya no vacía el contrato', 
     expect(ct.propiedadId).toBe(c.propiedadId); // sigue en su propiedad original
     expect(Number(ct.monto)).toBe(50000); // no se tocó nada
   });
+
+  it('reenviar crea una aprobación nueva y el ciclo cierra con los datos corregidos', async () => {
+    const { contratoId, aprobacionId } = await cargarContratoPendiente({
+      inquilino: { nombre: 'Ciclo', apellido: 'Completo', email: 'ciclo.completo@mail.com', dni: '39900111' },
+      monto: 100000,
+    });
+    await app.inject({
+      method: 'POST',
+      url: `/aprobaciones/${aprobacionId}/rechazar`,
+      headers: authAdmin(),
+      payload: { comentario: 'El monto está mal, son 150.000' },
+    });
+
+    const c = (
+      await app.inject({ method: 'GET', url: `/contratos/${contratoId}`, headers: authCarga() })
+    ).json();
+    await app.inject({
+      method: 'PUT',
+      url: `/contratos/${contratoId}/borrador`,
+      headers: authCarga(),
+      payload: {
+        propiedadId: c.propiedadId,
+        inquilino: { nombre: 'Ciclo', apellido: 'Completo' },
+        monto: 150000,
+        fechaInicio: c.fechaInicio,
+        fechaFin: c.fechaFin,
+        diaPago: c.diaPago,
+        indiceAjuste: c.indiceAjuste,
+        frecuenciaAjusteMeses: c.frecuenciaAjusteMeses,
+      },
+    });
+
+    const re = await app.inject({
+      method: 'POST',
+      url: `/contratos/${contratoId}/reenviar-aprobacion`,
+      headers: authCarga(),
+      payload: {},
+    });
+    expect(re.statusCode, `reenviar: ${re.body}`).toBe(200);
+
+    // La NUEVA aprobación es la que ve el detalle
+    const det = (
+      await app.inject({ method: 'GET', url: `/contratos/${contratoId}`, headers: authAdmin() })
+    ).json();
+    expect(det.pendienteAprobacion).toBe(true);
+    expect(det.revisionAprobacion).toBeTruthy();
+    const nuevaId = det.revisionAprobacion.aprobacionId;
+    expect(nuevaId).not.toBe(aprobacionId); // no reusó la rechazada
+    expect(det.decisionAprobacion).toBeUndefined(); // ya no muestra el rechazo viejo
+
+    // Se aprueba y queda activo CON EL MONTO CORREGIDO
+    const ap = await app.inject({
+      method: 'POST',
+      url: `/aprobaciones/${nuevaId}/aprobar`,
+      headers: authAdmin(),
+      payload: { comentario: 'Ahora sí' },
+    });
+    expect(ap.statusCode, `aprobar: ${ap.body}`).toBe(200);
+
+    const prisma = new PrismaClient();
+    const ct = await prisma.contrato.findUniqueOrThrow({ where: { id: contratoId } });
+    const liq = await prisma.liquidacion.findFirst({ where: { contratoId } });
+    await prisma.$disconnect();
+    expect(ct.estado).toBe('ACTIVO');
+    expect(Number(ct.monto)).toBe(150000);
+    expect(Number(liq!.montoTotal)).toBe(150000); // las cuotas salieron con el monto corregido
+  });
+
+  it('no se puede reenviar dos veces: una sola aprobación pendiente por contrato', async () => {
+    const { contratoId, aprobacionId } = await cargarContratoPendiente({
+      inquilino: { nombre: 'Doble', apellido: 'Reenvio', email: 'doble.reenvio@mail.com', dni: '39900122' },
+    });
+    await app.inject({
+      method: 'POST',
+      url: `/aprobaciones/${aprobacionId}/rechazar`,
+      headers: authAdmin(),
+      payload: { comentario: 'Corregilo por favor' },
+    });
+
+    const uno = await app.inject({
+      method: 'POST',
+      url: `/contratos/${contratoId}/reenviar-aprobacion`,
+      headers: authCarga(),
+      payload: {},
+    });
+    expect(uno.statusCode, `reenviar #1: ${uno.body}`).toBe(200);
+    const dos = await app.inject({
+      method: 'POST',
+      url: `/contratos/${contratoId}/reenviar-aprobacion`,
+      headers: authCarga(),
+      payload: {},
+    });
+    expect(dos.statusCode).toBe(409);
+
+    const prisma = new PrismaClient();
+    const pendientes = await prisma.aprobacion.count({ where: { entidadId: contratoId, estado: 'PENDIENTE' } });
+    await prisma.$disconnect();
+    expect(pendientes).toBe(1);
+  });
+
+  it('la carrera de reenvíos SIMULTÁNEOS la cierra el índice, no el pre-chequeo', async () => {
+    // El test anterior es secuencial: la 2ª request arranca después de que la 1ª ya
+    // commiteó, así que el findFirst de "¿hay una pendiente?" solo, sin el índice,
+    // ya alcanzaría para pasarlo. Este test dispara 5 reenvíos EN PARALELO sobre el
+    // mismo contrato (mismo patrón que saldar-deuda-concurrencia.test.ts): todos
+    // pasan el findFirst casi a la vez (dos clicks rápidos, dos pestañas), y solo el
+    // índice único parcial puede garantizar que gane uno solo.
+    const { contratoId, aprobacionId } = await cargarContratoPendiente({
+      inquilino: { nombre: 'Carrera', apellido: 'Concurrente', email: 'carrera.concurrente@mail.com', dni: '39900133' },
+    });
+    await app.inject({
+      method: 'POST',
+      url: `/aprobaciones/${aprobacionId}/rechazar`,
+      headers: authAdmin(),
+      payload: { comentario: 'Corregilo' },
+    });
+
+    const reenviar = () =>
+      app.inject({
+        method: 'POST',
+        url: `/contratos/${contratoId}/reenviar-aprobacion`,
+        headers: authCarga(),
+        payload: {},
+      });
+    const rs = await Promise.all([reenviar(), reenviar(), reenviar(), reenviar(), reenviar()]);
+    const oks = rs.filter((r) => r.statusCode === 200);
+    const conflictos = rs.filter((r) => r.statusCode === 409);
+    // Ninguna se cae con un 500 crudo: el P2002 del índice se mapea a 409.
+    expect(rs.every((r) => r.statusCode === 200 || r.statusCode === 409), rs.map((r) => r.statusCode).join(',')).toBe(
+      true,
+    );
+    expect(oks.length).toBe(1);
+    expect(conflictos.length).toBe(4);
+
+    const prisma = new PrismaClient();
+    const pendientes = await prisma.aprobacion.count({ where: { entidadId: contratoId, estado: 'PENDIENTE' } });
+    await prisma.$disconnect();
+    expect(pendientes).toBe(1); // el índice garantizó exactamente UNA, no cero ni varias
+  });
 });

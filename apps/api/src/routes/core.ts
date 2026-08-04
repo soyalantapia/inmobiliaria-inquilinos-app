@@ -1402,6 +1402,91 @@ export async function coreRoutes(app: FastifyInstance) {
     return { ok: true, contrato: actualizado };
   });
 
+  /**
+   * Vuelve a mandar a aprobación un contrato en BORRADOR que ya fue corregido
+   * (típicamente uno rechazado que se editó con el PUT de arriba). Crea una
+   * Aprobacion NUEVA — no reusa la rechazada: el histórico tiene que conservar
+   * qué se rechazó y por qué, y GET /contratos/:id ya resuelve "la última
+   * decisión" con un orderBy que deja ganar a la PENDIENTE más nueva sobre una
+   * RECHAZADA vieja (ver el comentario ahí).
+   *
+   * El candado real contra dos PENDIENTE del mismo contrato es el índice único
+   * parcial de la migración 20260803150000 (aprobaciones_una_pendiente_por_
+   * entidad). El findFirst de acá es solo para devolver un 409 lindo en el caso
+   * normal — entre el findFirst y el create hay una carrera (dos clicks
+   * rápidos, dos pestañas) que solo el índice cierra de verdad, así que el
+   * P2002 de ESE índice se mapea a 409 también, nunca deja salir un 500.
+   */
+  app.post('/contratos/:id/reenviar-aprobacion', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'contratos.crear');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const contrato = await prisma.contrato.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      include: { propiedad: { select: { direccion: true } }, inquilinoTitular: { select: { nombre: true } } },
+    });
+    if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
+    if (contrato.estado !== 'BORRADOR') {
+      return reply.code(409).send({ message: 'Este contrato ya no está en borrador.' });
+    }
+    // Chequeo previo (no es el candado real, ver comentario de arriba): evita el
+    // viaje a la DB con un P2002 en el camino normal (sin carrera).
+    const pendienteYa = await prisma.aprobacion.findFirst({
+      where: { entidadId: contrato.id, estado: 'PENDIENTE' },
+      select: { id: true },
+    });
+    if (pendienteYa) {
+      return reply.code(409).send({ message: 'Este contrato ya tiene una aprobación pendiente.' });
+    }
+    // Mismo invariante que el alta (POST /contratos, arriba): solo OPERADOR/CARGA
+    // pueden llegar hasta acá con un contrato en BORRADOR pendiente de aprobar
+    // (contratoQuedaPendiente nunca da true para quien tenga 'contrato.aprobar').
+    // Asignado a una const ANTES de entrar al closure de la transacción: el
+    // angostamiento de `u.rol` por el `if` de abajo no sobrevive el cruce a
+    // otra función (prisma.$transaction(async (tx) => ...)) porque es una
+    // propiedad de un objeto capturado, no una variable — TS lo invalida ahí.
+    if (u.rol !== 'OPERADOR' && u.rol !== 'CARGA') {
+      throw new Error(
+        `Invariante roto: el rol '${u.rol}' llegó a reenviar un contrato a aprobación, pero RolAutorAprobacion solo admite OPERADOR/CARGA`,
+      );
+    }
+    const rolAutor = u.rol;
+    try {
+      await prisma.$transaction(async (tx) => {
+        await tx.aprobacion.create({
+          data: {
+            inmobiliariaId: u.inmobiliariaId,
+            tipo: 'CONTRATO_CARGADO',
+            titulo: `${contrato.inquilinoTitular?.nombre ?? 'Inquilino'} · ${contrato.propiedad.direccion}`,
+            descripcion: 'Contrato corregido y reenviado para revisión.',
+            entidadId: contrato.id,
+            cargadoPorId: u.userId,
+            rolAutor,
+            cargadoAt: new Date(),
+          },
+        });
+        await tx.contrato.update({ where: { id: contrato.id }, data: { pendienteAprobacion: true } });
+      });
+    } catch (e) {
+      // P2002 del índice único parcial (aprobaciones_una_pendiente_por_entidad):
+      // la carrera que el findFirst de arriba no alcanza a cerrar. 409, no 500.
+      if (e && typeof e === 'object' && (e as { code?: string }).code === 'P2002') {
+        return reply.code(409).send({ message: 'Este contrato ya tiene una aprobación pendiente.' });
+      }
+      throw e;
+    }
+    await registrarEvento({
+      inmobiliariaId: u.inmobiliariaId,
+      tipo: 'CONTRATO_CARGADO',
+      autorId: u.userId,
+      rolAutor: u.rol,
+      entidadId: contrato.id,
+      entidadDescripcion: `${contrato.inquilinoTitular?.nombre ?? 'Inquilino'} · ${contrato.propiedad.direccion}`,
+    });
+    const actualizadoReenvio = await prisma.contrato.findUniqueOrThrow({ where: { id: contrato.id } });
+    return { ok: true, contrato: actualizadoReenvio };
+  });
+
   // Avatar del usuario logueado (foto de perfil en /uploads del tenant).
   // imageUrl null/'' = sacar la foto. Al reemplazar/quitar, se libera el archivo
   // anterior del Volume (best effort). Cualquier rol edita SU propia foto.

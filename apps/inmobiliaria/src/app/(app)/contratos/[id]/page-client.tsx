@@ -13,6 +13,7 @@ import {
   FileText,
   Flag,
   Landmark,
+  Loader2,
   Mail,
   MessageCircle,
   MessageSquare,
@@ -1257,6 +1258,39 @@ function AprobacionContratoCard({
   const [comentarioAprobar, setComentarioAprobar] = useState('');
   const [motivoRechazar, setMotivoRechazar] = useState('');
   const [enviando, setEnviando] = useState(false);
+  const [reenviando, setReenviando] = useState(false);
+
+  // Reenviar a aprobación (POST /contratos/:id/reenviar-aprobacion): crea una
+  // Aprobacion NUEVA sobre el mismo contrato, ya corregido. Vive acá (no en
+  // useAprobaciones) porque no opera sobre una Aprobacion existente, sino
+  // sobre el contrato — mismo patrón que el PUT de /editar (apiFetch directo).
+  const reenviarAAprobacion = async () => {
+    setReenviando(true);
+    try {
+      await ensureApiSession();
+      await apiFetch(`/contratos/${contratoId}/reenviar-aprobacion`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      });
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['contrato', contratoId] }),
+        qc.invalidateQueries({ queryKey: ['aprobaciones'] }),
+      ]);
+      toast({
+        variant: 'success',
+        title: 'Reenviado a aprobación',
+        description: 'Vuelve a la bandeja para que lo revisen de nuevo.',
+      });
+    } catch (e) {
+      toast({
+        variant: varianteError(e),
+        title: 'No se pudo reenviar',
+        description: e instanceof ApiError ? e.message : 'Probá de nuevo.',
+      });
+    } finally {
+      setReenviando(false);
+    }
+  };
 
   if (demoResuelto === 'APROBADO') {
     return (
@@ -1294,6 +1328,26 @@ function AprobacionContratoCard({
             <p className="text-xs text-red-700/80 dark:text-red-300/80">
               Queda para corregir. {cargadoPor} lo va a ver en su panel.
             </p>
+            {/* Cierra el ciclo: corregir (edita el borrador, PUT /borrador) y
+                reenviar (crea una Aprobacion NUEVA, POST /reenviar-aprobacion)
+                son dos acciones DISTINTAS a propósito — se puede guardar una
+                corrección sin reenviar todavía, o reenviar sin haber tocado
+                nada si el rechazo fue un malentendido. Solo en el camino real:
+                en demo no hay backend que sostenga ninguna de las dos. */}
+            {apiEnabled && (
+              <div className="flex flex-wrap gap-2 pt-1">
+                <Button asChild size="sm" variant="outline">
+                  <Link href={`/contratos/${contratoId}/editar`}>
+                    <Pencil className="h-3.5 w-3.5" />
+                    Corregir y reenviar
+                  </Link>
+                </Button>
+                <Button size="sm" onClick={() => void reenviarAAprobacion()} disabled={reenviando}>
+                  {reenviando && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  Reenviar a aprobación
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       </div>

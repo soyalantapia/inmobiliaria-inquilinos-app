@@ -9,8 +9,12 @@
  * ahí adentro es más de lo que entra en esta tarea — hubiese significado tocar
  * un flujo de 2400 líneas que hoy funciona. Esta pantalla es deliberadamente
  * chica: los mismos campos que pide `contratoBodySchema` en el back, sin pasos
- * ni IA, para que un borrador rechazado se pueda corregir y (en la próxima
- * tarea) reenviar a aprobación.
+ * ni IA, para que un borrador rechazado se pueda corregir.
+ *
+ * El reenvío (POST /contratos/:id/reenviar-aprobacion) es una acción DISTINTA
+ * y vive en la tarjeta roja del detalle del contrato (page-client.tsx), no
+ * acá — "Guardar cambios" redirige a esa pantalla, donde el botón "Reenviar a
+ * aprobación" queda a un click (Tarea 4 del plan).
  *
  * Gate real: el servidor (no esta pantalla) es quien decide si se puede editar
  * — PUT /contratos/:id/borrador da 409 fuera de BORRADOR. Acá replicamos el
