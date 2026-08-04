@@ -814,6 +814,77 @@ export function useContratos(): { contratos: ContratoListado[]; cargando: boolea
   return { contratos: q.data ?? [], cargando: q.isPending, deApi: true, error: false };
 }
 
+// ===== Contratos rechazados propios, pendientes de corregir =====
+
+export interface ContratoRechazadoPropio {
+  aprobacionId: string;
+  contratoId: string;
+  motivo: string;
+  inquilino: string;
+  direccion: string;
+}
+
+/**
+ * El aviso del panel de inicio: contratos que YO cargué, que un ADMIN
+ * rechazó, y que TODAVÍA no corregí ni reenviá — para que la carga se entere
+ * sin tener que ir a buscar el contrato. GET /aprobaciones no trae el estado
+ * del contrato (Tarea 5 del plan), así que en vez de un endpoint nuevo
+ * cruzamos por `entidadId` contra useContratos(), que el panel YA carga
+ * (mismo queryKey ['contratos'] que useDashboard(), sin pedido de red extra).
+ *
+ * "Pendiente de corregir de verdad" = RECHAZADA + el contrato sigue en
+ * BORRADOR + `!pendienteAprobacion`. Ese último chequeo es el que importa:
+ * POST /contratos/:id/reenviar-aprobacion crea una Aprobacion NUEVA (no
+ * reutiliza la rechazada — así el historial conserva qué se rechazó) y solo
+ * prende `pendienteAprobacion`; el contrato sigue en BORRADOR hasta que el
+ * ADMIN decida la nueva. Filtrar solo por estado === 'BORRADOR' seguiría
+ * mostrando el aviso para un contrato que la carga YA corrigió y reenvió,
+ * mientras espera la nueva decisión.
+ *
+ * `cargadoPor` se compara por NOMBRE (`"Nombre Apellido"`), no por id: ni
+ * GET /aprobaciones ni GET /auth/me exponen el userId al front hoy, y ambos
+ * arman ese string con el mismo `${nombre} ${apellido}`.trim() (ver
+ * mapAprobacion acá arriba y auth.ts `/auth/me`), así que coinciden para el
+ * mismo usuario. Dos personas con nombre y apellido idénticos en la misma
+ * inmobiliaria colisionarían — improbable, y agregar un id requeriría tocar
+ * el backend fuera del alcance de esta tarea.
+ *
+ * Mientras cualquiera de las 3 fuentes está cargando, devolvemos `items: []`
+ * en vez de arriesgar un cruce a medio completar: mostrar de más (falso
+ * positivo con datos viejos) o de menos (esconder un rechazo real) son
+ * igual de malos, y `cargando` le permite al caller no pintar nada — ni
+ * siquiera el "todo al día" — hasta tener certeza. En la práctica los tres
+ * hooks arrancan su fetch en paralelo al montar el panel, así que casi
+ * nunca se nota.
+ */
+export function useContratosRechazadosPropios(): {
+  items: ContratoRechazadoPropio[];
+  cargando: boolean;
+} {
+  const { aprobaciones, cargando: cargandoAprob } = useAprobaciones();
+  const { contratos, cargando: cargandoContratos } = useContratos();
+  const { me, cargando: cargandoMe } = useMe();
+
+  const cargando = cargandoAprob || cargandoContratos || cargandoMe;
+  if (cargando || !me) return { items: [], cargando: true };
+
+  const contratosPorId = new Map(contratos.map((c) => [c.id, c]));
+  const items: ContratoRechazadoPropio[] = [];
+  for (const a of aprobaciones) {
+    if (a.estado !== 'RECHAZADA' || a.cargadoPor !== me.nombre) continue;
+    const c = contratosPorId.get(a.entidadId);
+    if (!c || c.estado !== 'BORRADOR' || c.pendienteAprobacion) continue;
+    items.push({
+      aprobacionId: a.id,
+      contratoId: c.id,
+      motivo: a.comentarioAprobador?.trim() || 'Sin motivo especificado',
+      inquilino: c.inquilino,
+      direccion: c.direccion,
+    });
+  }
+  return { items, cargando: false };
+}
+
 // ===== Propiedades (enriquecidas con contrato + propietarios) =====
 
 interface PropiedadApi {

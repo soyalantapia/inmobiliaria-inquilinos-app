@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   Clock,
   DollarSign,
+  FileEdit,
   FileText,
   KeyRound,
   Plus,
@@ -37,7 +38,7 @@ import { calcularDashboardStats } from '@/lib/dashboard-helpers';
 import { totalGastosPendientesGlobal } from '@/lib/caja-storage';
 import { listarReclamos } from '@/lib/reclamos-store';
 import { apiEnabled } from '@/lib/api/client';
-import { useDashboard, useCobranza } from '@/lib/api/hooks';
+import { useDashboard, useCobranza, useContratosRechazadosPropios } from '@/lib/api/hooks';
 import { diasHastaVencimiento, formatFechaCorta, formatMonto, formatPeriodo, periodoActualFormat } from '@/lib/format';
 
 export default function DashboardPage() {
@@ -308,6 +309,9 @@ function DashboardReal() {
   // pagarle)? El dato existe (GET /cobranza) pero nadie lo mostraba → nunca se le
   // pedía cargarla. Sin ella el inquilino no tiene a dónde transferir.
   const { tieneCuenta: inmoTieneCuenta } = useCobranza();
+  // Aviso "tenés un rechazado para corregir" (Tarea 5): solo lo que YO cargué
+  // y sigue realmente pendiente — ver el porqué del cruce en el hook.
+  const { items: rechazados } = useContratosRechazadosPropios();
 
   // Durante el fetch inicial, stats viene en $0 y los KPIs mostraban un falso
   // "Todo al día". Mostramos un estado de carga hasta tener los datos reales.
@@ -408,7 +412,7 @@ function DashboardReal() {
           <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Para resolver hoy
           </h2>
-          {morosos.length === 0 && propietariosSinCbu === 0 && porRendir === 0 ? (
+          {morosos.length === 0 && propietariosSinCbu === 0 && porRendir === 0 && rechazados.length === 0 ? (
             <Card>
               <CardContent className="flex items-center gap-3 p-5 text-sm text-muted-foreground">
                 <CheckCircle2 className="h-5 w-5 text-emerald-600" />
@@ -417,6 +421,30 @@ function DashboardReal() {
             </Card>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {rechazados.length > 0 && (
+                <Link href={rechazados.length === 1 ? `/contratos/${rechazados[0]!.contratoId}` : '/contratos?filtro=BORRADOR'}>
+                  <Card className="cursor-pointer border-amber-200 bg-amber-50/40 transition-shadow hover:shadow-md dark:border-amber-900/40 dark:bg-amber-900/10">
+                    <CardContent className="flex items-center justify-between gap-3 p-5">
+                      <div className="min-w-0">
+                        <p className="flex items-center gap-1 text-sm font-medium text-amber-700 dark:text-amber-300">
+                          <FileEdit className="h-4 w-4 shrink-0" />
+                          {rechazados.length === 1
+                            ? 'Tenés 1 contrato rechazado para corregir'
+                            : `Tenés ${rechazados.length} contratos rechazados para corregir`}
+                        </p>
+                        <p className="mt-1 truncate text-xs text-muted-foreground">
+                          {rechazados.length === 1
+                            ? `"${rechazados[0]!.motivo}"`
+                            : 'Ver el listado filtrado por borradores'}
+                        </p>
+                      </div>
+                      <span className="text-3xl font-bold tabular-nums text-amber-600">
+                        {rechazados.length}
+                      </span>
+                    </CardContent>
+                  </Card>
+                </Link>
+              )}
               {morosos.length > 0 && (
                 <Link href="/pagos">
                   <Card className="cursor-pointer border-red-200 bg-red-50/40 transition-shadow hover:shadow-md dark:border-red-900/40 dark:bg-red-900/10">
