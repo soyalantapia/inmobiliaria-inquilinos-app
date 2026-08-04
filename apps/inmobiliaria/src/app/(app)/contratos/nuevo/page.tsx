@@ -18,23 +18,26 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { cn } from '@llave/ui/cn';
 import { enumerarPeriodosContrato } from '@llave/shared/periodos';
 import { Topbar } from '@/components/topbar';
-import { apiEnabled, apiFetch, ApiError, subirArchivo, varianteError } from '@/lib/api/client';
+import { apiEnabled, apiFetch, ApiError, getToken, subirArchivo, varianteError } from '@/lib/api/client';
 import { ensureApiSession } from '@/lib/api/session';
 import {
   borrarBorradorContrato,
   guardarBorradorContrato,
   leerBorradorContrato,
   obtenerNamespaceBorrador,
+  VERSION_BORRADOR,
   type BorradorContrato,
 } from '@/lib/contrato-borrador-storage';
 import type { PersonaListado } from '@/lib/api/use-inquilinos';
 import { usePropiedades, useMercado, useCobranza } from '@/lib/api/hooks';
+import { usePropietario } from '@/lib/api/use-propietario';
 import {
   calcularMora,
   descripcionMora,
   MoraSelector,
   type MoraSeleccion,
 } from '@/components/mora-selector';
+import { CuentaCobranzaDialog } from '@/components/cuenta-cobranza-dialog';
 import { contratoExtraidoMock } from '@/lib/mock-data';
 import { formatFechaCorta, formatMonto, formatTotalPorMoneda } from '@/lib/format';
 import type {
@@ -663,17 +666,18 @@ function formatFechaDeInput(valor: string | number | null | undefined): string {
 // por PDF (eso vive en el wizard mock de arriba, sólo demo).
 // ============================================================================
 
-// El paso 4 (Períodos anteriores) es CONDICIONAL: sólo existe cuando la fecha
+// El paso 5 (Períodos anteriores) es CONDICIONAL: sólo existe cuando la fecha
 // de inicio es pasada y ya venció al menos un período. Si no aplica, el wizard
-// salta 3 → 5 y el header de pasos no lo muestra.
-type PasoApi = 1 | 2 | 3 | 4 | 5;
+// salta 4 → 6 y el header de pasos no lo muestra.
+type PasoApi = 1 | 2 | 3 | 4 | 5 | 6;
 
 const pasosApi: ReadonlyArray<{ id: PasoApi; label: string }> = [
   { id: 1, label: 'Propiedad' },
   { id: 2, label: 'Inquilino' },
-  { id: 3, label: 'Términos' },
-  { id: 4, label: 'Períodos anteriores' },
-  { id: 5, label: 'Confirmar' },
+  { id: 3, label: 'Plazo y salida' },
+  { id: 4, label: 'Dinero' },
+  { id: 5, label: 'Períodos anteriores' },
+  { id: 6, label: 'Confirmar' },
 ];
 
 const indicesAjuste: Array<{ value: IndiceAjuste; label: string }> = [
@@ -963,7 +967,7 @@ function CargarContratoApiWizard() {
     setCargandoFicha(false);
   };
 
-  // Términos
+  // Términos: campos de los pasos 3 (Plazo y salida) y 4 (Dinero).
   const [monto, setMonto] = useState('');
   const [moneda, setMoneda] = useState<Moneda>('ARS');
   const [fechaInicio, setFechaInicio] = useState('');
@@ -1016,6 +1020,34 @@ function CargarContratoApiWizard() {
     () => propiedades.find((p) => p.propiedad.id === propiedadId) ?? null,
     [propiedades, propiedadId],
   );
+  // Id del dueño PRINCIPAL de la propiedad elegida (embebido en /propiedades,
+  // "lite": sólo id/nombre/apellido, nunca trae cuentaCobranza).
+  //
+  // `[0]` es el de MAYOR participación: `usePropiedades` ordena por porcentaje desc
+  // con desempate por id (hooks.ts), el mismo criterio con el que el backend elige a
+  // quién le cobra directo el inquilino (core.ts, `orderBy: [{ porcentaje: 'desc' },
+  // { propietarioId: 'asc' }]`). Las dos capas TIENEN que coincidir: si acá sale otro
+  // dueño, la pantalla le pide/carga el CBU a una persona y el server valida —y le
+  // rutea la plata— a otra. Con un solo dueño no cambia nada.
+  const propietarioIdElegido = propiedadElegida?.propietarios[0]?.id ?? null;
+  // Detalle real de ESE ÚNICO propietario (con cuentaCobranza) vía GET
+  // /propietarios/:id — el mismo endpoint acotado que usa la ficha del
+  // propietario. Deliberadamente NO usamos usePropietarios() (el listado
+  // completo): traer el listado entero para leer un solo campo de un solo
+  // propietario expondría el CBU/alias/titular de TODOS los propietarios de
+  // la inmobiliaria a cualquiera con permiso de sólo-lectura (bug real:
+  // GET /propietarios lo gatea `propietarios.ver`, que incluye el rol
+  // LECTURA). Ver commit 32f6bf8 / fix posterior.
+  const {
+    detalle: detallePropietarioElegido,
+    cargando: cargandoPropietarioElegido,
+    error: errorPropietarioElegido,
+    reintentar: reintentarPropietarioElegido,
+  } = usePropietario(propietarioIdElegido ?? '');
+  const propietarioDeLaPropiedad = propietarioIdElegido
+    ? (detallePropietarioElegido?.propietario ?? null)
+    : null;
+  const [cuentaDialogAbierto, setCuentaDialogAbierto] = useState(false);
 
   // Encadenado desde "cargar propiedad": /contratos/nuevo?propiedad=<id> llega
   // con la propiedad recién creada. La preseleccionamos y saltamos al paso del
@@ -1097,7 +1129,7 @@ function CargarContratoApiWizard() {
     const propiedadSigueDisponible = disponibles.some((p) => p.propiedad.id === b.propiedadId);
     if (b.propiedadId && propiedadSigueDisponible) {
       setPropiedadId(b.propiedadId);
-      // Mismo criterio que avanzar()/retroceder(): el paso 4 (períodos
+      // Mismo criterio que avanzar()/retroceder(): el paso 5 (períodos
       // anteriores) sólo existe si con los datos restaurados hay períodos
       // vencidos que declarar — si no, no lo salteamos, directamente no
       // dejamos al usuario en un paso que ya no aplica.
@@ -1108,8 +1140,8 @@ function CargarContratoApiWizard() {
         new Date(),
       );
       let pasoRestaurado = b.paso as PasoApi;
-      if (pasoRestaurado === 4 && periodosBorrador.length === 0) pasoRestaurado = 3;
-      if (!(pasoRestaurado >= 1 && pasoRestaurado <= 5)) pasoRestaurado = 1;
+      if (pasoRestaurado === 5 && periodosBorrador.length === 0) pasoRestaurado = 4;
+      if (!(pasoRestaurado >= 1 && pasoRestaurado <= 6)) pasoRestaurado = 1;
       setPaso(pasoRestaurado);
     } else {
       setPaso(1);
@@ -1146,6 +1178,7 @@ function CargarContratoApiWizard() {
     const timer = setTimeout(() => {
       if (!vivo) return;
       const datos: BorradorContrato = {
+        version: VERSION_BORRADOR,
         paso,
         propiedadId,
         nombre,
@@ -1171,6 +1204,12 @@ function CargarContratoApiWizard() {
         moraValor,
         periodosForm,
       };
+      // Nunca escribir un formulario VACÍO encima de lo guardado. Sin esta guarda,
+      // abrir /contratos/nuevo y no tocar nada pisaba el borrador anterior a los
+      // 500 ms. Se vuelve crítico cuando la lectura no devuelve borrador (versión
+      // desconocida, JSON corrupto): ahí `borradorPendiente` queda en false, este
+      // efecto corre igual, y una visita accidental borraba un alta a medias.
+      if (!borradorTieneContenido(datos)) return;
       guardarBorradorContrato(namespaceBorrador, datos);
       setMostrarGuardado(true);
       if (guardadoTimeoutRef.current) clearTimeout(guardadoTimeoutRef.current);
@@ -1216,6 +1255,31 @@ function CargarContratoApiWizard() {
     };
   }, []);
 
+  // Aviso al cerrar la pestaña con un alta a medias: el borrador se guarda en
+  // cada tecleo, pero entre el último guardado y el cierre puede haber tipeo
+  // sin persistir, y el que cierra sin querer no tiene forma de saber que
+  // queda un borrador esperándolo. No molesta con el wizard recién abierto y
+  // vacío (paso 1 sin propiedad elegida), ni mientras `dar_de_alta` está en
+  // curso: ahí el propio "¿estás seguro?" del navegador estorba, y al éxito
+  // `enviando` sigue en true hasta el redirect (nunca vuelve a false), así
+  // que el listener no vuelve a engancharse después de un alta exitosa.
+  useEffect(() => {
+    if (paso === 1 && !propiedadId) return;
+    if (enviando) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      // Si ya no hay token, el que está navegando NO es el usuario: es el redirect
+      // a /login que dispara el cliente cuando la sesión vence (client.ts hace
+      // `removeItem` y después `location.assign`). Bloquearlo con el "¿seguro que
+      // querés salir?" es una trampa: si elige quedarse, la pestaña sobrevive sin
+      // sesión, cada request siguiente da 401 y el alta ya no se puede enviar nunca.
+      if (!getToken()) return;
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [paso, propiedadId, enviando]);
+
   const incluyeExpensas =
     tipoContrato === 'ALQUILER_Y_EXPENSAS' || tipoContrato === 'SOLO_EXPENSAS';
   const requiereAlquiler = tipoContrato !== 'SOLO_EXPENSAS';
@@ -1234,16 +1298,64 @@ function CargarContratoApiWizard() {
       : { tipo: moraSel, valor: Number(moraValor) || 0 };
 
   // Períodos ya vencidos entre el inicio del contrato y hoy. Si hay al menos
-  // uno, aparece el paso 4 "Períodos anteriores".
+  // uno, aparece el paso 5 "Períodos anteriores".
   const periodosVencidos = useMemo(
     () => calcularPeriodosVencidos(fechaInicio, fechaFin, Number(diaPago), new Date()),
     [fechaInicio, fechaFin, diaPago],
   );
   const hayPeriodos = periodosVencidos.length > 0;
   const pasosVisibles = useMemo(
-    () => pasosApi.filter((p) => p.id !== 4 || hayPeriodos),
+    () => pasosApi.filter((p) => p.id !== 5 || hayPeriodos),
     [hayPeriodos],
   );
+
+  // Preview en vivo del paso 3 (Plazo y salida): cuántos meses dura, si ya
+  // arrancó (y por lo tanto va a haber períodos para declarar más adelante) y
+  // cuándo cae el primer ajuste. No reemplaza la validación de fechaFin >
+  // fechaInicio que sigue gateando el botón Continuar (pasoPlazoValido).
+  const resumenPlazo = useMemo(() => {
+    if (!fechaInicio || !fechaFin) return null;
+    const inicio = new Date(`${fechaInicio}T12:00:00`);
+    const fin = new Date(`${fechaFin}T12:00:00`);
+    if (Number.isNaN(inicio.getTime()) || Number.isNaN(fin.getTime())) return null;
+    if (fin <= inicio) {
+      // Rama con `error` literal (string) vs. `error: null` de la rama de abajo:
+      // eso arma una unión discriminada real, así el JSX puede angostar con
+      // `resumenPlazo.error` sin que TS marque `meses`/`primerAjuste` como
+      // posiblemente `undefined`.
+      return { error: 'La fecha de fin tiene que ser posterior a la de inicio.' };
+    }
+
+    const MES_MS = 1000 * 60 * 60 * 24 * 30.44;
+    const meses = Math.round((fin.getTime() - inicio.getTime()) / MES_MS);
+    // Mismo clamp que `enumerarPeriodosContrato` (packages/shared/src/periodos.ts):
+    // Math.min(dia, diasDelMesDestino). Sin esto, `setMonth` no clampea sino que
+    // desborda al mes siguiente cuando el día de inicio (29/30/31) no existe en
+    // el mes destino: sumarle 1 mes al 31 de enero da 3 de marzo en vez del 28 de
+    // febrero. Seteamos el día en 1 antes de `setMonth` para que ese mismo
+    // desborde no contamine el cálculo del mes/año destino.
+    const diaInicio = inicio.getDate();
+    const primerAjuste = new Date(inicio);
+    primerAjuste.setDate(1);
+    primerAjuste.setMonth(primerAjuste.getMonth() + (Number(frecuenciaAjusteMeses) || 12));
+    const diasMesDestino = new Date(
+      primerAjuste.getFullYear(),
+      primerAjuste.getMonth() + 1,
+      0,
+    ).getDate();
+    primerAjuste.setDate(Math.min(diaInicio, diasMesDestino));
+
+    // ¿El ajuste llega a ocurrir? Con la frecuencia por defecto (12 meses) y un
+    // contrato de 12, el "primer ajuste" cae EL DÍA que el contrato termina; con
+    // uno de 6 meses cae medio año después de terminado. La cuenta es fiel a lo
+    // que guarda el back (`proximoAjuste = inicio + frecuencia`, que tampoco topea
+    // a fechaFin), pero anunciarlo a secas le promete al operador —que está usando
+    // este preview justamente para entender las consecuencias de las fechas— un
+    // evento que no va a pasar nunca.
+    const ajusteLlega = primerAjuste < fin;
+
+    return { meses, primerAjuste, ajusteLlega, error: null };
+  }, [fechaInicio, fechaFin, frecuenciaAjusteMeses]);
 
   const formDePeriodo = (periodo: string): PeriodoAnteriorForm =>
     periodosForm[periodo] ?? PERIODO_FORM_DEFAULT;
@@ -1261,35 +1373,87 @@ function CargarContratoApiWizard() {
   // frenar el alta con un 400 genérico al final. Vacío se permite (opcional).
   const emailInquilinoOk = !email.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   const pasoInquilinoValido = nombre.trim().length >= 2 && emailInquilinoOk;
-  const pasoTerminosValido =
-    (!requiereAlquiler || Number(monto) > 0) &&
-    // Si el contrato incluye expensas, el monto de expensas es obligatorio (antes
-    // el botón avanzaba y el server rechazaba con un 400 al final).
-    (!incluyeExpensas || Number(montoExpensas) > 0) &&
+  // Mensaje derivado de las MISMAS subcondiciones de pasoInquilinoValido, en el
+  // mismo orden: se muestra la primera que falla. Si en vez de esto se escribe
+  // una validación paralela, en cuanto una de las dos cambie el mensaje le
+  // dice al usuario que arregle un campo que ya está bien (ver commit 7e1c185).
+  const mensajeInquilino =
+    nombre.trim().length < 2
+      ? 'Completá el nombre del inquilino.'
+      : 'El email del inquilino no tiene un formato válido.';
+  // Paso 3 (Plazo y salida): sólo fechas y periodicidad de ajuste.
+  const pasoPlazoValido =
     fechaInicio.length === 10 &&
     fechaFin.length === 10 &&
     fechaFin > fechaInicio &&
     Number(diaPago) >= 1 &&
     Number(diaPago) <= 31 &&
-    Number(frecuenciaAjusteMeses) > 0 &&
+    Number(frecuenciaAjusteMeses) > 0;
+  // Mensaje derivado de las MISMAS subcondiciones de pasoPlazoValido, en el
+  // mismo orden.
+  const mensajePlazo =
+    fechaInicio.length !== 10
+      ? 'Cargá la fecha de inicio.'
+      : fechaFin.length !== 10
+        ? 'Cargá la fecha de fin.'
+        : fechaFin <= fechaInicio
+          ? 'Revisá las fechas: la de fin tiene que ser posterior a la de inicio.'
+          : !(Number(diaPago) >= 1 && Number(diaPago) <= 31)
+            ? 'Cargá el día de pago (entre 1 y 31).'
+            : 'Elegí la frecuencia de ajuste.';
+  // Paso 4 (Dinero): montos y esquema de mora.
+  // Cobranza directa SIN cuenta del propietario: el 400 del server ya es seguro
+  // (core.ts lo rechaza si el dueño principal no tiene `cuentaCobranza`). Es el
+  // mismo criterio que ya se aplicaba a las expensas dos líneas más abajo, y acá
+  // faltaba: el wizard dejaba avanzar hasta "Confirmar y dar de alta", disparaba
+  // el POST y recién ahí aparecía el error — con el agravante de que esta feature
+  // existe justamente para resolver la cuenta sin salir de la pantalla.
+  //
+  // Sólo frena cuando SABEMOS que falta: mientras el detalle está en vuelo o el
+  // fetch falló, `propietarioDeLaPropiedad` es null y no bloqueamos, porque no
+  // tenemos el dato (bloquear por no saber deja a la persona sin salida).
+  const faltaCuentaCobranzaDirecta =
+    modoCobranza === 'PROPIETARIO_DIRECTO' &&
+    (!propietarioIdElegido ||
+      (propietarioDeLaPropiedad !== null && !propietarioDeLaPropiedad.cuentaCobranza));
+  const pasoDineroValido =
+    (!requiereAlquiler || Number(monto) > 0) &&
+    // Si el contrato incluye expensas, el monto de expensas es obligatorio (antes
+    // el botón avanzaba y el server rechazaba con un 400 al final).
+    (!incluyeExpensas || Number(montoExpensas) > 0) &&
     // Si eligió un esquema con valor, el valor tiene que ser > 0.
-    (moraSel === 'HEREDAR' || moraSel === 'SIN_MORA' || Number(moraValor) > 0);
+    (moraSel === 'HEREDAR' || moraSel === 'SIN_MORA' || Number(moraValor) > 0) &&
+    !faltaCuentaCobranzaDirecta;
+  // Mensaje derivado de las MISMAS subcondiciones de pasoDineroValido, en el
+  // mismo orden. Importante: el monto de alquiler puede estar bien cargado y
+  // ser otro campo (expensas o mora) el que falta, así que no se puede asumir
+  // que si el paso está inválido siempre es culpa del alquiler.
+  const mensajeDinero =
+    requiereAlquiler && !(Number(monto) > 0)
+      ? 'Cargá el monto del alquiler.'
+      : incluyeExpensas && !(Number(montoExpensas) > 0)
+        ? 'Cargá el monto de las expensas.'
+        : faltaCuentaCobranzaDirecta
+          ? !propietarioIdElegido
+            ? 'La propiedad no tiene dueños cargados: sin eso no se puede cobrar directo.'
+            : 'Cargá la cuenta de cobro directo del propietario (el botón está acá arriba).'
+          : 'Cargá el valor de la mora.';
   // Períodos: todo PARCIAL necesita monto pagado > 0 (la mora es opcional).
   const pasoPeriodosValido = periodosVencidos.every((p) => {
     const f = formDePeriodo(p.periodo);
     return f.estado !== 'PARCIAL' || Number(f.montoPagado) > 0;
   });
 
-  // Saltamos el paso 4 cuando no hay períodos vencidos que declarar.
+  // Saltamos el paso 5 cuando no hay períodos vencidos que declarar.
   const avanzar = () =>
     setPaso((p) => {
-      const sig = Math.min(5, p + 1) as PasoApi;
-      return sig === 4 && !hayPeriodos ? 5 : sig;
+      const sig = Math.min(6, p + 1) as PasoApi;
+      return sig === 5 && !hayPeriodos ? 6 : sig;
     });
   const retroceder = () =>
     setPaso((p) => {
       const ant = Math.max(1, p - 1) as PasoApi;
-      return ant === 4 && !hayPeriodos ? 3 : ant;
+      return ant === 5 && !hayPeriodos ? 4 : ant;
     });
 
   const setEstadoPeriodo = (p: PeriodoVencido, estado: EstadoPeriodoAnterior) => {
@@ -1318,7 +1482,7 @@ function CargarContratoApiWizard() {
     }));
   };
 
-  // Resumen de deuda inicial (footer del paso 4 + resumen del confirmar).
+  // Resumen de deuda inicial (footer del paso 5 + resumen del confirmar).
   const deudaCapital = periodosVencidos.reduce((acc, p) => {
     const f = formDePeriodo(p.periodo);
     if (f.estado === 'ADEUDA') return acc + montoBaseMora;
@@ -1330,7 +1494,7 @@ function CargarContratoApiWizard() {
     return f.estado === 'PAGADO' ? acc : acc + (Number(f.moraManual) || 0);
   }, 0);
 
-  // Si el usuario vuelve al paso 3 y cambia el esquema de mora o el monto,
+  // Si el usuario vuelve al paso 4 y cambia el esquema de mora o el monto,
   // refrescamos las moras SUGERIDAS de los períodos que no editó a mano.
   useEffect(() => {
     setPeriodosForm((forms) => {
@@ -1512,7 +1676,7 @@ function CargarContratoApiWizard() {
               <ArrowLeft className="h-3 w-3" />
               Volver
             </Link>
-            <StepsApi actual={paso} pasos={pasosVisibles} />
+            <StepsApi actual={paso} pasos={pasosVisibles} onIr={(p) => setPaso(p)} />
             {mostrarGuardado && (
               <p className="mt-1.5 text-xs text-muted-foreground">Guardado hace un momento</p>
             )}
@@ -1581,11 +1745,18 @@ function CargarContratoApiWizard() {
                 </div>
               )}
 
-              <div className="flex justify-end border-t pt-4">
-                <Button onClick={avanzar} disabled={!pasoPropiedadValido}>
-                  Continuar
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
+              <div className="space-y-2 border-t pt-4">
+                <div className="flex justify-end">
+                  <Button onClick={avanzar} disabled={!pasoPropiedadValido}>
+                    Continuar
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </div>
+                {!pasoPropiedadValido && (
+                  <p className="text-right text-xs text-muted-foreground">
+                    Elegí una propiedad para seguir.
+                  </p>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -1789,15 +1960,22 @@ function CargarContratoApiWizard() {
                 </p>
               </div>
 
-              <div className="flex justify-between border-t pt-4">
-                <Button variant="ghost" onClick={retroceder}>
-                  <ArrowLeft className="h-4 w-4" />
-                  Volver
-                </Button>
-                <Button onClick={avanzar} disabled={!pasoInquilinoValido}>
-                  Continuar
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
+              <div className="space-y-2 border-t pt-4">
+                <div className="flex justify-between">
+                  <Button variant="ghost" onClick={retroceder}>
+                    <ArrowLeft className="h-4 w-4" />
+                    Volver
+                  </Button>
+                  <Button onClick={avanzar} disabled={!pasoInquilinoValido}>
+                    Continuar
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </div>
+                {!pasoInquilinoValido && (
+                  <p className="text-right text-xs text-muted-foreground">
+                    {mensajeInquilino}
+                  </p>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -1806,9 +1984,164 @@ function CargarContratoApiWizard() {
         {paso === 3 && (
           <Card>
             <CardHeader>
-              <CardTitle>Términos del contrato</CardTitle>
+              <CardTitle>Plazo y salida</CardTitle>
               <CardDescription>
-                Monto, vigencia, ajuste y forma de cobranza.
+                Cuándo arranca, cuándo termina y cada cuánto se ajusta.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="fechaInicio">
+                    Inicio <span aria-hidden="true" className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id="fechaInicio"
+                    type="date"
+                    value={fechaInicio}
+                    onChange={(e) => setFechaInicio(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="fechaFin">
+                    Fin <span aria-hidden="true" className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id="fechaFin"
+                    type="date"
+                    value={fechaFin}
+                    min={fechaInicio || undefined}
+                    onChange={(e) => setFechaFin(e.target.value)}
+                    aria-invalid={fechaFin.length === 10 && fechaInicio.length === 10 && fechaFin <= fechaInicio}
+                  />
+                  {fechaFin.length === 10 && fechaInicio.length === 10 && fechaFin <= fechaInicio && (
+                    <p className="text-[11px] text-destructive">
+                      La fecha de fin tiene que ser posterior a la de inicio.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Si hay error de fechas, el cartel puntual bajo "Fin" (arriba) ya lo
+                  avisa — no lo repetimos acá para no mostrar el mismo texto dos
+                  veces con distinto tamaño de letra. */}
+              {resumenPlazo && resumenPlazo.error === null && (
+                <div className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">
+                  <p>
+                    {resumenPlazo.meses > 0
+                      ? `Dura ${resumenPlazo.meses} ${resumenPlazo.meses === 1 ? 'mes' : 'meses'}.`
+                      : 'Dura menos de un mes.'}
+                  </p>
+                  {/* Gateado con `hayPeriodos` (la MISMA fuente canónica —
+                      enumerarPeriodosContrato — que decide si el paso 5 existe) y
+                      no con `mesesDesdeInicio` (una fórmula propia de este
+                      preview): con esa fórmula había fechas donde el cartel
+                      prometía el paso 5 y no aparecía, y otras donde aparecía sin
+                      aviso previo. El número también es el real: la cantidad de
+                      períodos vencidos, no una cuenta de meses aproximada. */}
+                  {hayPeriodos && (
+                    <p className="text-foreground">
+                      Este contrato ya tiene {periodosVencidos.length}{' '}
+                      {periodosVencidos.length === 1 ? 'período vencido' : 'períodos vencidos'}: más
+                      adelante vas a tener que declarar qué pasó con cada uno.
+                    </p>
+                  )}
+                  {indiceAjuste !== 'FIJO' &&
+                    (resumenPlazo.ajusteLlega ? (
+                      <p>
+                        Primer ajuste:{' '}
+                        {formatFechaDeInput(resumenPlazo.primerAjuste.toISOString().slice(0, 10))}.
+                      </p>
+                    ) : (
+                      <p>
+                        Con esta frecuencia el contrato <strong>no llega a ajustarse</strong>: el
+                        primer ajuste caería el{' '}
+                        {formatFechaDeInput(resumenPlazo.primerAjuste.toISOString().slice(0, 10))},
+                        cuando ya terminó.
+                      </p>
+                    ))}
+                </div>
+              )}
+
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="diaPago">Día de pago</Label>
+                  <Input
+                    id="diaPago"
+                    inputMode="numeric"
+                    value={diaPago}
+                    onChange={(e) => {
+                      const n = e.target.value.replace(/\D/g, '').slice(0, 2);
+                      setDiaPago(n);
+                    }}
+                    placeholder="10"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="indiceAjuste">Índice de ajuste</Label>
+                  <Select
+                    value={indiceAjuste}
+                    onValueChange={(v) => setIndiceAjuste(v as IndiceAjuste)}
+                  >
+                    <SelectTrigger id="indiceAjuste">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {indicesAjuste.map((i) => (
+                        <SelectItem key={i.value} value={i.value}>
+                          {i.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="frecuenciaAjuste">Frecuencia ajuste</Label>
+                  <Select
+                    value={frecuenciaAjusteMeses}
+                    onValueChange={setFrecuenciaAjusteMeses}
+                  >
+                    <SelectTrigger id="frecuenciaAjuste">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {frecuenciasAjuste.map((f) => (
+                        <SelectItem key={f.value} value={f.value}>
+                          {f.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-2 border-t pt-4">
+                <div className="flex justify-between">
+                  <Button variant="ghost" onClick={retroceder}>
+                    <ArrowLeft className="h-4 w-4" />
+                    Volver
+                  </Button>
+                  <Button onClick={avanzar} disabled={!pasoPlazoValido}>
+                    Continuar
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </div>
+                {!pasoPlazoValido && (
+                  <p className="text-right text-xs text-muted-foreground">
+                    {mensajePlazo}
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {paso === 4 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Dinero</CardTitle>
+              <CardDescription>
+                Cuánto paga el inquilino y cómo se cobra.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
@@ -1888,90 +2221,6 @@ function CargarContratoApiWizard() {
                 </div>
               )}
 
-              <div className="grid gap-3 md:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label htmlFor="fechaInicio">
-                    Inicio <span aria-hidden="true" className="text-destructive">*</span>
-                  </Label>
-                  <Input
-                    id="fechaInicio"
-                    type="date"
-                    value={fechaInicio}
-                    onChange={(e) => setFechaInicio(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="fechaFin">
-                    Fin <span aria-hidden="true" className="text-destructive">*</span>
-                  </Label>
-                  <Input
-                    id="fechaFin"
-                    type="date"
-                    value={fechaFin}
-                    min={fechaInicio || undefined}
-                    onChange={(e) => setFechaFin(e.target.value)}
-                    aria-invalid={fechaFin.length === 10 && fechaInicio.length === 10 && fechaFin <= fechaInicio}
-                  />
-                  {fechaFin.length === 10 && fechaInicio.length === 10 && fechaFin <= fechaInicio && (
-                    <p className="text-[11px] text-destructive">
-                      La fecha de fin tiene que ser posterior a la de inicio.
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              <div className="grid gap-3 md:grid-cols-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="diaPago">Día de pago</Label>
-                  <Input
-                    id="diaPago"
-                    inputMode="numeric"
-                    value={diaPago}
-                    onChange={(e) => {
-                      const n = e.target.value.replace(/\D/g, '').slice(0, 2);
-                      setDiaPago(n);
-                    }}
-                    placeholder="10"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="indiceAjuste">Índice de ajuste</Label>
-                  <Select
-                    value={indiceAjuste}
-                    onValueChange={(v) => setIndiceAjuste(v as IndiceAjuste)}
-                  >
-                    <SelectTrigger id="indiceAjuste">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {indicesAjuste.map((i) => (
-                        <SelectItem key={i.value} value={i.value}>
-                          {i.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="frecuenciaAjuste">Frecuencia ajuste</Label>
-                  <Select
-                    value={frecuenciaAjusteMeses}
-                    onValueChange={setFrecuenciaAjusteMeses}
-                  >
-                    <SelectTrigger id="frecuenciaAjuste">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {frecuenciasAjuste.map((f) => (
-                        <SelectItem key={f.value} value={f.value}>
-                          {f.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
               <div className="space-y-1.5 md:max-w-xs">
                 <Label htmlFor="comision">Comisión de la inmobiliaria (%)</Label>
                 <div className="relative">
@@ -1979,7 +2228,18 @@ function CargarContratoApiWizard() {
                     id="comision"
                     inputMode="decimal"
                     value={comisionInmobiliaria}
-                    onChange={(e) => setComisionInmobiliaria(e.target.value.replace(/[^\d.]/g, '').slice(0, 5))}
+                    // La coma se TRADUCE a punto, no se descarta. Antes el filtro
+                    // `[^\d.]` la borraba: quien tipeaba la comisión como se escribe
+                    // acá, "8,5", terminaba con "85" → un contrato al 85% de
+                    // comisión, que ningún resumen posterior muestra. Y "4,17" daba
+                    // "417", rebotado por el server con un mensaje que no nombra el
+                    // campo. Se normaliza a un solo punto decimal.
+                    onChange={(e) => {
+                      const crudo = e.target.value.replace(',', '.').replace(/[^\d.]/g, '');
+                      const [entera = '', ...resto] = crudo.split('.');
+                      const normalizado = resto.length ? `${entera}.${resto.join('')}` : entera;
+                      setComisionInmobiliaria(normalizado.slice(0, 5));
+                    }}
                     placeholder="8"
                     className="pr-8"
                   />
@@ -2075,29 +2335,115 @@ function CargarContratoApiWizard() {
                   ))}
                 </div>
                 {modoCobranza === 'PROPIETARIO_DIRECTO' && (
-                  <p className="mt-2 rounded-md bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
-                    Para cobranza directa, el dueño principal de la propiedad tiene que tener
-                    cargada su <strong>&quot;Cuenta de cobranza directa&quot;</strong> (banco + CBU + alias) en
-                    su ficha. Si no la tiene, el alta te la va a pedir al confirmar.
-                  </p>
+                  !propietarioIdElegido ? (
+                    <p className="mt-2 rounded-md bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
+                      La propiedad necesita dueños cargados para usar cobranza directa al
+                      propietario.
+                    </p>
+                  ) : errorPropietarioElegido ? (
+                    // Falló el fetch. Antes esto caía en el "Confirmando la cuenta…"
+                    // de abajo y se quedaba ahí PARA SIEMPRE: sin error, sin
+                    // reintento, y sin poder saber si el dueño tenía cuenta o no.
+                    <p className="mt-2 text-xs text-destructive">
+                      No pudimos confirmar si {propiedadElegida?.propietarios[0]?.nombre ?? 'el propietario'} tiene
+                      cuenta de cobro directo.{' '}
+                      <button
+                        type="button"
+                        onClick={() => reintentarPropietarioElegido()}
+                        className="font-medium underline underline-offset-2"
+                      >
+                        Reintentar
+                      </button>
+                    </p>
+                  ) : cargandoPropietarioElegido || !propietarioDeLaPropiedad ? (
+                    // Todavía no tenemos el detalle real de la cuenta (fetch en
+                    // vuelo, o sin resolver por algún error puntual): NO afirmamos
+                    // "tiene cuenta" ni "le falta" — ambos carteles de abajo dan
+                    // por hecho un dato que en este instante no tenemos, y antes
+                    // el aviso ámbar parpadeaba en falso para dueños que sí la
+                    // tenían cargada mientras el fetch estaba en curso.
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Confirmando la cuenta del propietario…
+                    </p>
+                  ) : propietarioDeLaPropiedad.cuentaCobranza ? (
+                    <div className="mt-2 rounded-md border bg-muted/40 p-3 text-sm">
+                      <p className="font-medium">Cuenta de {propietarioDeLaPropiedad.nombre}</p>
+                      {/* Titular: a nombre de quién está la cuenta bancaria — puede no
+                          coincidir con el propietario (cónyuge, sociedad). Spec §6. */}
+                      <p className="text-muted-foreground">
+                        Titular: {propietarioDeLaPropiedad.cuentaCobranza.titular}
+                      </p>
+                      <p className="text-muted-foreground">
+                        {propietarioDeLaPropiedad.cuentaCobranza.banco} · CBU ····
+                        {propietarioDeLaPropiedad.cuentaCobranza.cbu.slice(-4)} ·{' '}
+                        {propietarioDeLaPropiedad.cuentaCobranza.alias}
+                      </p>
+                      <Button
+                        variant="link"
+                        className="h-auto p-0"
+                        onClick={() => setCuentaDialogAbierto(true)}
+                      >
+                        Editar
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="mt-2 rounded-md border border-amber-500/50 bg-amber-500/5 p-3 text-sm">
+                      <p className="font-medium">
+                        {propietarioDeLaPropiedad.nombre} todavía no tiene cuenta de cobro directo
+                      </p>
+                      <p className="text-muted-foreground">
+                        Sin la cuenta, el inquilino no tiene a dónde transferir. Cargala acá y
+                        seguí con el alta.
+                      </p>
+                      <Button
+                        size="sm"
+                        className="mt-2"
+                        onClick={() => setCuentaDialogAbierto(true)}
+                      >
+                        Cargar la cuenta del propietario
+                      </Button>
+                    </div>
+                  )
+                )}
+                {propietarioDeLaPropiedad && (
+                  <CuentaCobranzaDialog
+                    open={cuentaDialogAbierto}
+                    onOpenChange={setCuentaDialogAbierto}
+                    propietario={propietarioDeLaPropiedad}
+                    onSaved={() => {
+                      // Invalidamos el detalle puntual (lo que este wizard lee)
+                      // y el listado (lo que leen propietarios/page.tsx y otras
+                      // pantallas), igual que CuentaCobranzaTrigger en la ficha.
+                      void qc.invalidateQueries({
+                        queryKey: ['propietario', propietarioIdElegido],
+                      });
+                      void qc.invalidateQueries({ queryKey: ['propietarios'] });
+                    }}
+                  />
                 )}
               </div>
 
-              <div className="flex justify-between border-t pt-4">
-                <Button variant="ghost" onClick={retroceder}>
-                  <ArrowLeft className="h-4 w-4" />
-                  Volver
-                </Button>
-                <Button onClick={avanzar} disabled={!pasoTerminosValido}>
-                  Continuar
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
+              {/* Mascotas ya NO se carga acá: vive en la propiedad (main, 898e451). */}
+              <div className="space-y-2 border-t pt-4">
+                <div className="flex justify-between">
+                  <Button variant="ghost" onClick={retroceder}>
+                    <ArrowLeft className="h-4 w-4" />
+                    Volver
+                  </Button>
+                  <Button onClick={avanzar} disabled={!pasoDineroValido}>
+                    Continuar
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </div>
+                {!pasoDineroValido && (
+                  <p className="text-right text-xs text-muted-foreground">{mensajeDinero}</p>
+                )}
               </div>
             </CardContent>
           </Card>
         )}
 
-        {paso === 4 && hayPeriodos && (
+        {paso === 5 && hayPeriodos && (
           <Card>
             <CardHeader>
               <CardTitle>Períodos anteriores</CardTitle>
@@ -2215,21 +2561,28 @@ function CargarContratoApiWizard() {
                 </span>
               </div>
 
-              <div className="flex justify-between border-t pt-4">
-                <Button variant="ghost" onClick={retroceder}>
-                  <ArrowLeft className="h-4 w-4" />
-                  Volver
-                </Button>
-                <Button onClick={avanzar} disabled={!pasoPeriodosValido}>
-                  Continuar
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
+              <div className="space-y-2 border-t pt-4">
+                <div className="flex justify-between">
+                  <Button variant="ghost" onClick={retroceder}>
+                    <ArrowLeft className="h-4 w-4" />
+                    Volver
+                  </Button>
+                  <Button onClick={avanzar} disabled={!pasoPeriodosValido}>
+                    Continuar
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </div>
+                {!pasoPeriodosValido && (
+                  <p className="text-right text-xs text-muted-foreground">
+                    Cargá el monto pagado en los períodos que marcaste como parciales.
+                  </p>
+                )}
               </div>
             </CardContent>
           </Card>
         )}
 
-        {paso === 5 && (
+        {paso === 6 && (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -2318,12 +2671,16 @@ function CargarContratoApiWizard() {
         )}
       </main>
 
+      {/* El texto decía "vas a perder el progreso… no se puede deshacer", pero el
+          onConfirm sólo navega: el borrador sigue guardado y al reabrir el alta vuelve
+          todo. Mentía en la dirección más cara —asustaba con una pérdida que no ocurre—
+          y encima escondía que el trabajo quedaba a salvo. Ahora dice lo que pasa. */}
       <ConfirmDialog
         open={cancelarAbierto}
         onOpenChange={setCancelarAbierto}
-        title="¿Cancelar la carga?"
-        description="Vas a perder el progreso de este contrato. Esta acción no se puede deshacer."
-        confirmLabel="Sí, cancelar"
+        title="¿Salir de la carga?"
+        description="Lo cargado queda guardado como borrador: cuando vuelvas a entrar te lo ofrecemos para retomar."
+        confirmLabel="Sí, salir"
         onConfirm={() => router.push('/contratos')}
       />
 
@@ -2352,6 +2709,10 @@ function CargarContratoApiWizard() {
             <DialogDescription>
               Encontramos datos de un contrato que habías empezado a cargar. ¿Querés retomarlo o
               preferís empezar de cero?
+              <span className="mt-2 block">
+                Ojo: las fotos del DNI que hayas adjuntado no se guardan en el borrador, hay que
+                volver a elegirlas.
+              </span>
             </DialogDescription>
           </DialogHeader>
           {cargando && (
@@ -2373,38 +2734,68 @@ function CargarContratoApiWizard() {
   );
 }
 
-// Recibe los pasos VISIBLES (el 4 "Períodos anteriores" sólo cuando aplica) y
+// Recibe los pasos VISIBLES (el 5 "Períodos anteriores" sólo cuando aplica) y
 // numera por posición, así el flujo corto se ve 1-2-3-4 sin hueco.
 function StepsApi({
   actual,
   pasos,
+  onIr,
 }: {
   actual: PasoApi;
   pasos: ReadonlyArray<{ id: PasoApi; label: string }>;
+  onIr: (p: PasoApi) => void;
 }) {
   return (
     <ol role="list" className="flex flex-wrap items-center gap-x-3 gap-y-2">
       {pasos.map((p, i) => {
+        // `completado` (id < actual) es también nuestra definición de "paso ya
+        // visitado": como sólo se llega a `actual` avanzando de a un paso por
+        // vez (avanzar/retroceder saltean el 5 condicional pero nunca saltan
+        // hacia adelante), cualquier id menor que actual fue recorrido antes.
+        // Reusamos la MISMA condición para habilitar el click — no hay una
+        // lógica de "visitado" separada que se pueda desincronizar.
         const completado = p.id < actual;
         const activo = p.id === actual;
         return (
-          <li key={p.id} aria-current={activo ? 'step' : undefined} className="flex items-center gap-2 sm:gap-3">
-            <div
-              className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-semibold ${
-                completado
-                  ? 'bg-primary text-primary-foreground'
-                  : activo
-                    ? 'bg-primary/20 text-primary'
-                    : 'bg-muted text-muted-foreground'
-              }`}
+          <li key={p.id} className="flex items-center gap-2 sm:gap-3">
+            {/* El paso ACTUAL no se deshabilita, aunque tampoco navegue a ningún
+                lado. Con `disabled={!completado}` el botón que acabás de activar
+                pasaba a ser el actual y se deshabilitaba EN EL MISMO click: el
+                navegador saca el foco de un control que se deshabilita mientras
+                está enfocado, así que caía al body y el próximo Tab arrancaba
+                desde el principio del documento. Dejándolo habilitado el foco se
+                queda donde estaba y `aria-current` anuncia dónde quedó parado.
+                `aria-current` va en el BOTÓN y no en el <li>: recorriendo con
+                Tab, el lector sólo pisa los controles. */}
+            <button
+              type="button"
+              disabled={!completado && !activo}
+              aria-current={activo ? 'step' : undefined}
+              onClick={() => completado && onIr(p.id)}
+              className={cn(
+                'flex items-center gap-2 rounded-md sm:gap-3',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                completado ? 'cursor-pointer hover:opacity-80' : 'cursor-default',
+              )}
+              aria-label={completado ? `Volver a ${p.label}` : undefined}
             >
-              {completado ? <CheckCircle2 className="h-4 w-4" /> : i + 1}
-            </div>
-            <span
-              className={`text-xs sm:text-sm ${activo ? 'font-medium' : completado ? 'text-foreground' : 'text-muted-foreground'}`}
-            >
-              {p.label}
-            </span>
+              <div
+                className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-semibold ${
+                  completado
+                    ? 'bg-primary text-primary-foreground'
+                    : activo
+                      ? 'bg-primary/20 text-primary'
+                      : 'bg-muted text-muted-foreground'
+                }`}
+              >
+                {completado ? <CheckCircle2 className="h-4 w-4" /> : i + 1}
+              </div>
+              <span
+                className={`text-xs sm:text-sm ${activo ? 'font-medium' : completado ? 'text-foreground' : 'text-muted-foreground'}`}
+              >
+                {p.label}
+              </span>
+            </button>
             {i < pasos.length - 1 && <span className="hidden h-px w-8 bg-border sm:block" />}
           </li>
         );
