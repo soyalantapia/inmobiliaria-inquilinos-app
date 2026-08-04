@@ -2026,7 +2026,13 @@ export async function coreRoutes(app: FastifyInstance) {
       orderBy: { nombre: 'asc' },
     });
     return personas.map((p) => {
-      const contratos = p.inquilinos.map((i) => i.contrato).filter((c): c is NonNullable<typeof c> => !!c);
+      // Los BORRADOR se excluyen también acá, no sólo del `where` de la fila: si no, una
+      // persona con un contrato real y otro rechazado contaba 2 en totalContratos, y la
+      // "propiedad de referencia" podía caer en la del rechazado cuando no hay ninguno
+      // activo (contratos[0] depende del orden que devuelva Prisma, que no está fijado).
+      const contratos = p.inquilinos
+        .map((i) => i.contrato)
+        .filter((c): c is NonNullable<typeof c> => !!c && c.estado !== 'BORRADOR');
       const activo = contratos.find((c) => c.estado === 'ACTIVO');
       return {
         id: p.id,
