@@ -207,7 +207,13 @@ export default function DetalleContratoPage() {
         {c.pendienteAprobacion && (
           <AprobacionContratoCard
             contratoId={c.id}
-            cargadoPor={c.cargadoPor ?? 'Usuario desconocido'}
+            cargadoPor={
+              // El nombre sale de la Aprobación: c.cargadoPor guarda el user id pelado
+              // y la tarjeta lo mostraba crudo ("Cargado por cmsdwdi89...").
+              c.revisionAprobacion
+                ? `${c.revisionAprobacion.cargadoPorNombre} · ${c.revisionAprobacion.cargadoPorRol}`
+                : (c.cargadoPor ?? 'Usuario desconocido')
+            }
             cargadoAt={c.cargadoAt ?? ''}
             inquilino={c.inquilino}
             moneda={c.moneda}

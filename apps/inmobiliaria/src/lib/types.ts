@@ -293,6 +293,9 @@ export interface ContratoListado {
    */
   revisionAprobacion?: {
     aprobacionId: string;
+    /** Nombre de quien lo cargó. Sale de la Aprobación: Contrato.cargadoPor guarda el user id pelado. */
+    cargadoPorNombre: string;
+    cargadoPorRol: string;
     periodosDeclarados: Array<{
       periodo: string;
       estado: 'PAGADO' | 'PARCIAL' | 'ADEUDA';
