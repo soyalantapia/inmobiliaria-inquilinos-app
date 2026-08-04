@@ -51,6 +51,7 @@ import {
   mensajeWhatsappGenerico,
 } from '@/components/asignar-profesional-dialog';
 import { HistorialProfesionalDialog } from '@/components/historial-profesional-dialog';
+import { Topbar } from '@/components/topbar';
 import {
   type CategoriaProfesional,
   type ProfesionalAdmin,
@@ -252,13 +253,14 @@ export default function ProfesionalesAdminPage() {
   };
 
   return (
-    <div className="space-y-6 p-6 md:p-8">
+    <>
+      {/* El Topbar es el que monta MobileSidebarTrigger: sin él, en el celular
+          esta pantalla no tenía NINGUNA forma de abrir el menú (el nav inferior
+          sólo lleva a Inicio, Propiedades, Pagos y Reclamos). */}
+      <Topbar titulo="Profesionales" />
+      <div className="space-y-6 p-6 md:p-8">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Tu red
-          </p>
-          <h1 className="text-2xl font-semibold md:text-3xl">Profesionales</h1>
           <p className="text-sm text-muted-foreground">
             Plomeros, electricistas y técnicos que recomendás a tus inquilinos.
           </p>
@@ -617,7 +619,8 @@ export default function ProfesionalesAdminPage() {
         open={!!verHistorial}
         onOpenChange={(v) => !v && setVerHistorial(null)}
       />
-    </div>
+      </div>
+    </>
   );
 }
 

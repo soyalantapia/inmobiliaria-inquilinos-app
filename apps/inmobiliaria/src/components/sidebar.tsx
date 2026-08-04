@@ -176,10 +176,14 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
           queda SIEMPRE visible abajo. */}
       <nav aria-label="Navegación principal" className="flex-1 space-y-1 overflow-y-auto p-3">
         {linksVisibles.map((l) => {
+          // El padre NO se prende si otro ítem visible matchea la ruta exacta.
+          // Sin esto, en /profesionales/red se prendían las dos filas a la vez
+          // (Profesionales por el startsWith y Red compartida por el match).
+          const hayHijoExacto = linksVisibles.some((otro) => otro.href === pathname);
           const active =
             l.href === '/'
               ? pathname === '/'
-              : pathname === l.href || pathname.startsWith(`${l.href}/`);
+              : pathname === l.href || (!hayHijoExacto && pathname.startsWith(`${l.href}/`));
           const Icon = l.icon;
           const esSub = l.sub === true;
           return (
