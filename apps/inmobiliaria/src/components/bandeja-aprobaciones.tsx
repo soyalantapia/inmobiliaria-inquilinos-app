@@ -1,7 +1,10 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import {
+  AlertTriangle,
+  ArrowUpRight,
   CheckCircle2,
   Clock,
   FileSignature,
@@ -24,6 +27,7 @@ import { toast } from '@llave/ui/use-toast';
 import { PinPromptDialog } from '@/components/pin-prompt-dialog';
 import {
   type Aprobacion,
+  type ContextoContrato,
   type TipoAprobacion,
   TIPO_APROBACION_LABEL,
 } from '@/lib/aprobaciones-storage';
@@ -331,6 +335,11 @@ function AprobacionCard({ aprobacion, disabled = false, onAprobar, onRechazar }:
           <span>{formatFechaCorta(aprobacion.cargadoAt)}</span>
         </div>
 
+        {/* QUÉ se está aprobando. Sin esto, aprobar activaba el contrato, reclamaba
+            la propiedad, devengaba las liquidaciones y aplicaba la deuda histórica
+            declarada — todo a partir del título y una línea de descripción. */}
+        {aprobacion.contexto && <ResumenContrato ctx={aprobacion.contexto} />}
+
         {aprobacion.notas && (
           <p className="rounded-md border bg-muted/40 p-2 text-xs italic text-muted-foreground">
             “{aprobacion.notas}”
@@ -358,5 +367,111 @@ function AprobacionCard({ aprobacion, disabled = false, onAprobar, onRechazar }:
         )}
       </CardContent>
     </Card>
+  );
+}
+
+/** Un dato del resumen. Sin valor no se dibuja: mejor ausente que un "—" que se lee como cero. */
+function Dato({ label, valor }: { label: string; valor: string | null }) {
+  if (!valor) return null;
+  return (
+    <div className="min-w-0">
+      <dt className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</dt>
+      <dd className="truncate text-xs font-medium tabular-nums">{valor}</dd>
+    </div>
+  );
+}
+
+/**
+ * El contrato que se está por aprobar, resumido. La bandeja mostraba sólo el título
+ * congelado al cargarlo; esto es el contrato REAL leído por el server en el momento
+ * de abrir la bandeja, más el link para ir a verlo entero antes de decidir.
+ */
+function ResumenContrato({ ctx }: { ctx: ContextoContrato }) {
+  const moneda = ctx.moneda === 'USD' ? 'USD' : 'ARS';
+  const monto = Number(ctx.monto);
+  const expensas = ctx.montoExpensas != null ? Number(ctx.montoExpensas) : null;
+  const deposito = ctx.depositoGarantia != null ? Number(ctx.depositoGarantia) : null;
+  // Un contrato que ya no está en BORRADOR no debería tener una aprobación pendiente:
+  // si pasa, lo decimos en vez de dejar que se apriete Aprobar contra un 409 críptico.
+  const yaResuelto = ctx.estadoContrato !== 'BORRADOR';
+
+  return (
+    <div className="space-y-2 rounded-md border bg-muted/30 p-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <p className="min-w-0 truncate text-xs font-semibold">{ctx.propiedad}</p>
+        <Link
+          href={`/contratos/${ctx.contratoId}`}
+          className="inline-flex shrink-0 items-center gap-0.5 text-xs font-medium text-primary hover:underline"
+        >
+          Ver contrato completo
+          <ArrowUpRight className="h-3 w-3" />
+        </Link>
+      </div>
+
+      <dl className="grid grid-cols-2 gap-x-3 gap-y-2 sm:grid-cols-3">
+        <Dato label="Inquilino" valor={ctx.inquilino} />
+        <Dato label="Alquiler" valor={Number.isFinite(monto) ? formatMonto(monto, moneda) : null} />
+        <Dato
+          label="Expensas"
+          valor={expensas != null && Number.isFinite(expensas) ? formatMonto(expensas, moneda) : null}
+        />
+        <Dato label="Desde" valor={formatFechaCorta(ctx.fechaInicio)} />
+        <Dato label="Hasta" valor={formatFechaCorta(ctx.fechaFin)} />
+        <Dato label="Día de pago" valor={String(ctx.diaPago)} />
+        <Dato
+          label="Depósito"
+          valor={deposito != null && Number.isFinite(deposito) ? formatMonto(deposito, moneda) : null}
+        />
+        <Dato
+          label="Cobranza"
+          valor={
+            ctx.modoCobranza === 'PROPIETARIO_DIRECTO'
+              ? `Directo a ${ctx.cobraDirectoA?.nombre ?? 'el propietario'}`
+              : 'Cuenta recaudadora'
+          }
+        />
+      </dl>
+
+      {/* Cobranza directa sin cuenta cargada: aprobar deja al inquilino sin a dónde
+          pagar. Se avisa acá, no después de que la plata no llegue. */}
+      {ctx.modoCobranza === 'PROPIETARIO_DIRECTO' && ctx.cobraDirectoA?.tieneCuenta === false && (
+        <p className="flex items-start gap-1.5 rounded-md bg-amber-50 p-2 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
+          <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+          Cobra directo el propietario, pero no tiene cuenta cargada: el inquilino no va a
+          tener a dónde transferir.
+        </p>
+      )}
+
+      {/* Lo más caro de aprobar a ciegas: la deuda vieja declarada en el alta se
+          cobra recién cuando se aprueba. */}
+      {ctx.deudaDeclarada && (
+        <p className="flex items-start gap-1.5 rounded-md bg-amber-50 p-2 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
+          <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+          <span>
+            Declara <strong>{ctx.deudaDeclarada.periodos}</strong>{' '}
+            {ctx.deudaDeclarada.periodos === 1 ? 'período anterior' : 'períodos anteriores'} (
+            {ctx.deudaDeclarada.desde} a {ctx.deudaDeclarada.hasta}), de los cuales{' '}
+            <strong>{ctx.deudaDeclarada.adeudan}</strong> quedan adeudados. Se le cobran al
+            inquilino al aprobar.
+          </span>
+        </p>
+      )}
+
+      {ctx.deudaIlegible && (
+        <p className="flex items-start gap-1.5 rounded-md bg-red-50 p-2 text-xs text-red-800 dark:bg-red-950/30 dark:text-red-300">
+          <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+          El estado inicial declarado en el alta no se puede leer. Revisá el contrato antes
+          de aprobar.
+        </p>
+      )}
+
+      {yaResuelto && (
+        <p className="flex items-start gap-1.5 rounded-md bg-muted p-2 text-xs text-muted-foreground">
+          <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+          El contrato ya está en estado {ctx.estadoContrato}. Refrescá la bandeja: puede
+          haberlo resuelto otra persona.
+        </p>
+      )}
+    </div>
   );
 }

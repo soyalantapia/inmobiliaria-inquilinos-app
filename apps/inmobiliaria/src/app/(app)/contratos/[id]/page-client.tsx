@@ -64,7 +64,7 @@ import { calcularScoringInquilino, type ResumenScoring } from '@/lib/scoring-inq
 import { registrarEvento } from '@/lib/auditoria-storage';
 import { apiEnabled, apiFetch, ApiError, varianteError } from '@/lib/api/client';
 import { ensureApiSession } from '@/lib/api/session';
-import { useCobranza } from '@/lib/api/hooks';
+import { useAprobaciones, useCobranza } from '@/lib/api/hooks';
 import { useContrato } from '@/lib/api/use-contrato';
 import {
   type CanalComunicacion,
@@ -1193,6 +1193,20 @@ function AprobacionContratoCard({
   inquilino: string;
 }) {
   const [resuelto, setResuelto] = useState<'APROBADO' | 'RECHAZADO' | null>(null);
+  // Ésta es la ÚNICA pantalla donde se ve el contrato entero antes de decidir, y
+  // hasta ahora sus botones estaban deshabilitados con "Próximamente": para aprobar
+  // de verdad había que ir a la bandeja, que no muestra el contrato. Camila quedó
+  // justo en el medio de esas dos mitades ("no pude verlo para darle Ok", 03/08).
+  const { aprobaciones, aprobarApi, rechazarApi } = useAprobaciones();
+  const [rechazando, setRechazando] = useState(false);
+  const [motivo, setMotivo] = useState('');
+  const [enCurso, setEnCurso] = useState(false);
+  // La Aprobacion es una fila aparte del contrato: la ubicamos por entidadId. Si el
+  // contrato dice pendienteAprobacion pero no hay fila PENDIENTE, NO habilitamos los
+  // botones — mejor decir que no se puede que tirar un 404 después del click.
+  const aprobacion = aprobaciones.find(
+    (a) => a.entidadId === contratoId && a.estado === 'PENDIENTE',
+  );
 
   if (resuelto === 'APROBADO') {
     return (
@@ -1219,6 +1233,66 @@ function AprobacionContratoCard({
       </div>
     );
   }
+
+  // Camino REAL (prod): el mismo endpoint que usa la bandeja, así activar el
+  // contrato desde acá y desde allá son exactamente la misma operación (activa,
+  // reclama la propiedad, devenga y aplica la deuda declarada) y no dos caminos
+  // que puedan divergir.
+  const aprobarViaApi = async () => {
+    if (!aprobacion || enCurso) return;
+    setEnCurso(true);
+    try {
+      await aprobarApi(aprobacion.id, '');
+      // No seteamos `resuelto`: al invalidarse el contrato, pendienteAprobacion pasa
+      // a false y la card desaparece sola. Un cartel verde acá quedaría afirmando un
+      // resultado que ya se ve en la pantalla real.
+      toast({
+        variant: 'success',
+        title: 'Contrato aprobado',
+        description: `${inquilino} pasa a Activo y empieza a devengar.`,
+      });
+    } catch (e) {
+      toast({
+        variant: 'destructive',
+        title: 'No se pudo aprobar',
+        description: e instanceof Error ? e.message : 'Probá de nuevo.',
+      });
+    } finally {
+      setEnCurso(false);
+    }
+  };
+
+  const rechazarViaApi = async () => {
+    if (!aprobacion || enCurso) return;
+    // Mismo mínimo que exige el server (400 si son menos de 5): validarlo acá evita
+    // que el motivo se pierda contra un error del backend.
+    if (motivo.trim().length < 5) {
+      toast({
+        variant: 'destructive',
+        title: 'Falta el motivo',
+        description: 'Escribí por qué lo rechazás (mínimo 5 caracteres): lo recibe quien lo cargó.',
+      });
+      return;
+    }
+    setEnCurso(true);
+    try {
+      await rechazarApi(aprobacion.id, '', motivo.trim());
+      setRechazando(false);
+      setMotivo('');
+      toast({
+        title: 'Contrato rechazado',
+        description: `${cargadoPor} recibe el motivo para corregirlo.`,
+      });
+    } catch (e) {
+      toast({
+        variant: 'destructive',
+        title: 'No se pudo rechazar',
+        description: e instanceof Error ? e.message : 'Probá de nuevo.',
+      });
+    } finally {
+      setEnCurso(false);
+    }
+  };
 
   const handleAprobar = () => {
     // Acá registramos en auditoría — el evento queda visible en /configuracion.
@@ -1273,28 +1347,62 @@ function AprobacionContratoCard({
           Revisá los datos en el resumen y los documentos. Si está todo en orden,
           aprobalo para que pase a ACTIVO y empiece a facturar.
         </p>
-        {/* Aprobar/Rechazar registran en auditoría local (registrarEvento) sin
-            endpoint todavía. En modo API los deshabilitamos para no escribir
-            estado fantasma en prod. */}
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            onClick={handleRechazar}
-            disabled={apiEnabled}
-            title={apiEnabled ? 'Próximamente' : undefined}
-          >
-            <XCircle className="h-4 w-4" />
-            Rechazar
-          </Button>
-          <Button
-            onClick={handleAprobar}
-            disabled={apiEnabled}
-            title={apiEnabled ? 'Próximamente' : undefined}
-          >
-            <ShieldCheck className="h-4 w-4" />
-            Aprobar contrato
-          </Button>
-        </div>
+
+        {/* Sin fila de aprobación pendiente no hay nada que decidir desde acá. Pasa
+            si otra persona ya lo resolvió mientras esta pantalla estaba abierta. */}
+        {apiEnabled && !aprobacion ? (
+          <p className="rounded-md border bg-muted/40 p-2 text-xs text-muted-foreground">
+            No encontramos la solicitud de aprobación de este contrato. Puede que ya la
+            haya resuelto otra persona: refrescá la página.
+          </p>
+        ) : rechazando ? (
+          <div className="space-y-2">
+            <Label htmlFor="motivo-rechazo" className="text-xs">
+              Motivo del rechazo (lo recibe {cargadoPor})
+            </Label>
+            <Textarea
+              id="motivo-rechazo"
+              rows={2}
+              placeholder="Ej: falta el DNI del garante"
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+            />
+            <div className="flex flex-wrap gap-2">
+              <Button variant="destructive" onClick={rechazarViaApi} disabled={enCurso}>
+                <XCircle className="h-4 w-4" />
+                Confirmar rechazo
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setRechazando(false);
+                  setMotivo('');
+                }}
+                disabled={enCurso}
+              >
+                Cancelar
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              onClick={apiEnabled ? () => setRechazando(true) : handleRechazar}
+              disabled={enCurso}
+            >
+              <XCircle className="h-4 w-4" />
+              Rechazar
+            </Button>
+            <Button
+              onClick={apiEnabled ? aprobarViaApi : handleAprobar}
+              disabled={enCurso}
+            >
+              <ShieldCheck className="h-4 w-4" />
+              {enCurso ? 'Aprobando…' : 'Aprobar contrato'}
+            </Button>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

@@ -70,6 +70,37 @@ export interface Aprobacion {
   comentarioAprobador?: string;
   /** Notas adicionales del autor para el aprobador. */
   notas?: string;
+  /**
+   * QUÉ se está aprobando, leído del contrato real por el server (no del `titulo`,
+   * que es un texto congelado al cargarlo). Sólo viene para CONTRATO_CARGADO, y es
+   * null si el contrato ya no existe. En modo local (sin API) siempre es null: la
+   * bandeja cae al texto plano de antes.
+   */
+  contexto?: ContextoContrato | null;
+}
+
+/** Resumen del contrato que la bandeja muestra ANTES de aprobar. */
+export interface ContextoContrato {
+  contratoId: string;
+  estadoContrato: string;
+  /** null si el contrato no tiene titular cargado. */
+  inquilino: string | null;
+  propiedad: string;
+  /** Decimal serializado por Prisma: llega string. */
+  monto: string;
+  moneda: string;
+  montoExpensas: string | null;
+  depositoGarantia: string | null;
+  fechaInicio: string;
+  fechaFin: string;
+  diaPago: number;
+  tipoContrato: string;
+  modoCobranza: 'INMOBILIARIA' | 'PROPIETARIO_DIRECTO';
+  cobraDirectoA: { nombre: string; tieneCuenta: boolean } | null;
+  /** Deuda histórica declarada en el alta; se aplica recién AL APROBAR. */
+  deudaDeclarada: { periodos: number; adeudan: number; desde: string; hasta: string } | null;
+  /** La columna Json existe pero no se pudo leer: no afirmamos que no hay deuda. */
+  deudaIlegible: boolean;
 }
 
 function leer(): Aprobacion[] {
