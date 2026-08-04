@@ -13,6 +13,7 @@ import {
   FileText,
   Flag,
   Landmark,
+  Loader2,
   Mail,
   MessageCircle,
   MessageSquare,
@@ -30,6 +31,7 @@ import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@llave/ui/card';
 import { cn } from '@llave/ui/cn';
+import { ConfirmDialog } from '@llave/ui/confirm-dialog';
 import {
   Dialog,
   DialogContent,
@@ -64,15 +66,16 @@ import { calcularScoringInquilino, type ResumenScoring } from '@/lib/scoring-inq
 import { registrarEvento } from '@/lib/auditoria-storage';
 import { apiEnabled, apiFetch, ApiError, varianteError } from '@/lib/api/client';
 import { ensureApiSession } from '@/lib/api/session';
-import { useCobranza } from '@/lib/api/hooks';
+import { useAprobaciones, useCobranza, useMe } from '@/lib/api/hooks';
 import { useContrato } from '@/lib/api/use-contrato';
+import { rolTienePermiso, ROL_LABEL, type Rol } from '@/lib/permisos';
 import {
   type CanalComunicacion,
   type LiquidacionAdmin,
   type TipoEventoContrato,
 } from '@/lib/mock-data';
 import type { ContratoListado, EstadoContrato, Propietario } from '@/lib/types';
-import { formatFecha, formatMonto } from '@/lib/format';
+import { formatFecha, formatMonto, formatPeriodo } from '@/lib/format';
 
 const estadoLiqVariant: Record<
   LiquidacionAdmin['estado'],
@@ -201,14 +204,35 @@ export default function DetalleContratoPage() {
     <>
       <Topbar titulo="Contrato" />
       <main className="flex-1 space-y-6 p-4 md:p-6">
-        {/* Card de aprobación: aparece cuando el contrato lo cargó un usuario
-            con rol CARGA y todavía no fue aprobado por un ADMIN. */}
-        {c.pendienteAprobacion && (
+        {/* Card de aprobación: aparece mientras el contrato espera decisión
+            (lo cargó un usuario con rol CARGA) o, ya decidido, cuando lo
+            rechazaron — persiste para que quien lo cargó sepa qué corregir,
+            aunque recargue la página o vuelva otro día. */}
+        {(c.pendienteAprobacion || c.decisionAprobacion?.estado === 'RECHAZADA') && (
           <AprobacionContratoCard
             contratoId={c.id}
-            cargadoPor={c.cargadoPor ?? 'Usuario desconocido'}
+            cargadoPor={
+              // El nombre sale de la Aprobación: c.cargadoPor guarda el user id pelado
+              // y la tarjeta lo mostraba crudo ("Cargado por cmsdwdi89...").
+              // cargadoPorRol también viaja crudo desde el enum de Prisma
+              // ("CARGA") — se lo pasamos por la misma etiqueta legible que usa
+              // el resto del panel (ROL_LABEL), no el identificador.
+              c.revisionAprobacion
+                ? `${c.revisionAprobacion.cargadoPorNombre} · ${
+                    ROL_LABEL[c.revisionAprobacion.cargadoPorRol as Rol] ??
+                    c.revisionAprobacion.cargadoPorRol
+                  }`
+                : // Ya decidido (rechazado): la revisión no viaja más, pero la decisión
+                  // sí trae el nombre. Sin esto la tarjeta de rechazo decía
+                  // "cmsdwdi89... lo va a ver en su panel".
+                  (c.decisionAprobacion?.cargadoPorNombre ?? c.cargadoPor ?? 'Usuario desconocido')
+            }
             cargadoAt={c.cargadoAt ?? ''}
             inquilino={c.inquilino}
+            moneda={c.moneda}
+            revision={c.revisionAprobacion}
+            pendienteAprobacion={!!c.pendienteAprobacion}
+            decisionAprobacion={c.decisionAprobacion}
           />
         )}
 
@@ -237,10 +261,26 @@ export default function DetalleContratoPage() {
               <span className="sm:hidden">Mensaje</span>
             </Button>
             {apiEnabled ? (
-              <Button className="flex-1 sm:flex-none" disabled title="Próximamente">
-                <Pencil className="h-4 w-4" />
-                Editar
-              </Button>
+              // Editar solo tiene sentido en BORRADOR (típicamente uno rechazado a
+              // corregir): un contrato ACTIVO ya tiene cuotas emitidas y, quizás,
+              // pagos — se edita con las acciones puntuales (ajustar monto, mora,
+              // modo de cobranza), no reescribiendo el contrato entero. El servidor
+              // también lo gatea (PUT /contratos/:id/borrador da 409 fuera de
+              // BORRADOR): esto es solo para no prometer un botón que el back va a
+              // rechazar.
+              c.estado === 'BORRADOR' ? (
+                <Button asChild className="flex-1 sm:flex-none">
+                  <Link href={`/contratos/${c.id}/editar`}>
+                    <Pencil className="h-4 w-4" />
+                    Editar
+                  </Link>
+                </Button>
+              ) : (
+                <Button className="flex-1 sm:flex-none" disabled title="Próximamente">
+                  <Pencil className="h-4 w-4" />
+                  Editar
+                </Button>
+              )
             ) : (
               <Button
                 className="flex-1 sm:flex-none"
@@ -1186,15 +1226,76 @@ function AprobacionContratoCard({
   cargadoPor,
   cargadoAt,
   inquilino,
+  moneda,
+  revision,
+  pendienteAprobacion,
+  decisionAprobacion,
 }: {
   contratoId: string;
   cargadoPor: string;
   cargadoAt: string;
   inquilino: string;
+  moneda: ContratoListado['moneda'];
+  revision?: NonNullable<ContratoListado['revisionAprobacion']>;
+  pendienteAprobacion: boolean;
+  decisionAprobacion?: ContratoListado['decisionAprobacion'];
 }) {
-  const [resuelto, setResuelto] = useState<'APROBADO' | 'RECHAZADO' | null>(null);
+  const qc = useQueryClient();
+  // Demo (!apiEnabled): no hay backend real, así que no hay decisionAprobacion
+  // que persista — este estado local solo resuelve la sesión de demo (como el
+  // resto de la demo, no sobrevive a un F5). El camino real ya no usa estado
+  // local para esto: tras decidir se invalida ['contrato', id] y la tarjeta
+  // se re-renderiza con `decisionAprobacion`, el dato real del servidor.
+  const [demoResuelto, setDemoResuelto] = useState<'APROBADO' | 'RECHAZADO' | null>(null);
+  const { aprobarApi, rechazarApi } = useAprobaciones();
+  // El servidor exige `contrato.aprobar` (solo ADMIN — plata.ts + permisos.ts)
+  // y devuelve 403 si no lo tenés. `revision` viaja para cualquiera con
+  // `contratos.ver` (incluido CARGA, que suele ser quien cargó este mismo
+  // contrato), así que sin este chequeo el botón quedaba habilitado para
+  // gente que el servidor iba a rechazar igual. Mismo mecanismo que el resto
+  // del panel (pagos/page.tsx: `puedeAprobar`), no uno inventado acá.
+  const { me } = useMe();
+  const puedeAprobar = !!me && rolTienePermiso(me.rol as Rol, 'contrato.aprobar');
+  const [dialogAprobar, setDialogAprobar] = useState(false);
+  const [dialogRechazar, setDialogRechazar] = useState(false);
+  const [comentarioAprobar, setComentarioAprobar] = useState('');
+  const [motivoRechazar, setMotivoRechazar] = useState('');
+  const [enviando, setEnviando] = useState(false);
+  const [reenviando, setReenviando] = useState(false);
 
-  if (resuelto === 'APROBADO') {
+  // Reenviar a aprobación (POST /contratos/:id/reenviar-aprobacion): crea una
+  // Aprobacion NUEVA sobre el mismo contrato, ya corregido. Vive acá (no en
+  // useAprobaciones) porque no opera sobre una Aprobacion existente, sino
+  // sobre el contrato — mismo patrón que el PUT de /editar (apiFetch directo).
+  const reenviarAAprobacion = async () => {
+    setReenviando(true);
+    try {
+      await ensureApiSession();
+      await apiFetch(`/contratos/${contratoId}/reenviar-aprobacion`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      });
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['contrato', contratoId] }),
+        qc.invalidateQueries({ queryKey: ['aprobaciones'] }),
+      ]);
+      toast({
+        variant: 'success',
+        title: 'Reenviado a aprobación',
+        description: 'Vuelve a la bandeja para que lo revisen de nuevo.',
+      });
+    } catch (e) {
+      toast({
+        variant: varianteError(e),
+        title: 'No se pudo reenviar',
+        description: e instanceof ApiError ? e.message : 'Probá de nuevo.',
+      });
+    } finally {
+      setReenviando(false);
+    }
+  };
+
+  if (demoResuelto === 'APROBADO') {
     return (
       <div className="rounded-lg border border-emerald-300 bg-emerald-50 p-4 dark:border-emerald-900/40 dark:bg-emerald-950/30">
         <div className="flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-300">
@@ -1207,19 +1308,59 @@ function AprobacionContratoCard({
     );
   }
 
-  if (resuelto === 'RECHAZADO') {
+  // Persistente: viene del servidor (decisionAprobacion), sobrevive a un
+  // recargado y la ve cualquiera que abra el contrato — antes este cartel
+  // era useState local, solo lo veía quien rechazó, en esa misma sesión.
+  // demoResuelto cubre el camino de demo, sin backend real.
+  if (decisionAprobacion?.estado === 'RECHAZADA' || demoResuelto === 'RECHAZADO') {
     return (
       <div className="rounded-lg border border-red-300 bg-red-50 p-4 dark:border-red-900/40 dark:bg-red-950/30">
-        <div className="flex items-center gap-2 text-sm text-red-700 dark:text-red-300">
-          <XCircle className="h-4 w-4" />
-          <span className="font-medium">
-            Contrato rechazado. {cargadoPor} ya recibió la notificación.
-          </span>
+        <div className="flex items-start gap-2 text-sm text-red-700 dark:text-red-300">
+          <XCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <div className="space-y-1">
+            <p className="font-medium">
+              Contrato rechazado
+              {decisionAprobacion?.decididoPor && ` por ${decisionAprobacion.decididoPor}`}
+              {decisionAprobacion?.decididoAt && ` · ${formatFecha(decisionAprobacion.decididoAt)}`}
+            </p>
+            {decisionAprobacion?.comentario && <p>{decisionAprobacion.comentario}</p>}
+            {/* Lo que pasa de verdad: el backend NO manda ningún aviso al
+                rechazar (el único mail automático es la bienvenida al
+                inquilino cuando se APRUEBA). Antes decía "ya recibió la
+                notificación", falso. */}
+            <p className="text-xs text-red-700/80 dark:text-red-300/80">
+              Queda para corregir. {cargadoPor} lo va a ver en su panel.
+            </p>
+            {/* Cierra el ciclo: corregir (edita el borrador, PUT /borrador) y
+                reenviar (crea una Aprobacion NUEVA, POST /reenviar-aprobacion)
+                son dos acciones DISTINTAS a propósito — se puede guardar una
+                corrección sin reenviar todavía, o reenviar sin haber tocado
+                nada si el rechazo fue un malentendido. Solo en el camino real:
+                en demo no hay backend que sostenga ninguna de las dos. */}
+            {apiEnabled && (
+              <div className="flex flex-wrap gap-2 pt-1">
+                <Button asChild size="sm" variant="outline">
+                  <Link href={`/contratos/${contratoId}/editar`}>
+                    <Pencil className="h-3.5 w-3.5" />
+                    Corregir y reenviar
+                  </Link>
+                </Button>
+                <Button size="sm" onClick={() => void reenviarAAprobacion()} disabled={reenviando}>
+                  {reenviando && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  Reenviar a aprobación
+                </Button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     );
   }
 
+  if (!pendienteAprobacion) return null; // no debería pasar (el padre ya filtra), guarda por las dudas.
+
+  // Demo (!apiEnabled): sin endpoint, registra en auditoría local y resuelve
+  // en el momento. SIN TOCAR — es la rama que sigue usando la demo.
   const handleAprobar = () => {
     // Acá registramos en auditoría — el evento queda visible en /configuracion.
     registrarEvento({
@@ -1230,10 +1371,10 @@ function AprobacionContratoCard({
       entidadDescripcion: `Contrato ${contratoId} · ${inquilino}`,
       detalle: `Revisión OK. Activado el ${new Date().toLocaleDateString('es-AR')}.`,
     });
-    setResuelto('APROBADO');
+    setDemoResuelto('APROBADO');
     toast({
       title: 'Contrato aprobado',
-      description: `${inquilino} pasa a Activo. Se notifica al inquilino y a ${cargadoPor}.`,
+      description: `${inquilino} pasa a Activo y se le manda la invitación por mail.`,
     });
   };
 
@@ -1246,57 +1387,257 @@ function AprobacionContratoCard({
       entidadDescripcion: `Contrato ${contratoId} · ${inquilino}`,
       detalle: `Cargado por ${cargadoPor} · rechazado por el admin`,
     });
-    setResuelto('RECHAZADO');
+    setDemoResuelto('RECHAZADO');
     toast({
       title: 'Contrato rechazado',
-      description: `Avísale a ${cargadoPor} qué corregir.`,
+      description: `Queda para corregir. ${cargadoPor} lo va a ver en su panel.`,
     });
   };
 
+  // Camino real: pega a /aprobaciones/:id/aprobar|rechazar con el aprobacionId
+  // que trajo GET /contratos/:id. Sin PIN (a diferencia de la bandeja) — el
+  // server también lo acepta opcional.
+  const confirmarAprobar = async () => {
+    if (!revision) return;
+    setEnviando(true);
+    try {
+      await aprobarApi(revision.aprobacionId, undefined, comentarioAprobar.trim() || undefined);
+      // Sin estado local: se invalida la query y la tarjeta (y el resto de la
+      // pantalla) se re-renderiza con el contrato real ya ACTIVO.
+      await qc.invalidateQueries({ queryKey: ['contrato', contratoId] });
+      toast({
+        variant: 'success',
+        title: 'Contrato aprobado',
+        description: `${inquilino} pasa a Activo y se le manda la invitación por mail.`,
+      });
+      setDialogAprobar(false);
+    } catch (e) {
+      toast({
+        variant: varianteError(e),
+        title: 'No se pudo aprobar',
+        description: e instanceof ApiError ? e.message : 'Probá de nuevo.',
+      });
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  const confirmarRechazar = async () => {
+    if (!revision) return;
+    // Mismo mínimo que bandeja-aprobaciones.tsx:96 — el server igual devuelve
+    // 400 si el motivo es corto, esto solo evita el viaje.
+    if (motivoRechazar.trim().length < 5) {
+      toast({
+        variant: 'destructive',
+        title: 'Falta el motivo',
+        description: 'Contale a quien lo cargó por qué lo rechazás (mínimo 5 caracteres).',
+      });
+      return;
+    }
+    setEnviando(true);
+    try {
+      await rechazarApi(revision.aprobacionId, undefined, motivoRechazar.trim());
+      // Sin estado local: se invalida la query y la tarjeta se re-renderiza
+      // con decisionAprobacion, el motivo real que guardó el servidor.
+      await qc.invalidateQueries({ queryKey: ['contrato', contratoId] });
+      toast({
+        title: 'Contrato rechazado',
+        description: `Queda para corregir. ${cargadoPor} lo va a ver en su panel.`,
+      });
+      setDialogRechazar(false);
+    } catch (e) {
+      toast({
+        variant: varianteError(e),
+        title: 'No se pudo rechazar',
+        description: e instanceof ApiError ? e.message : 'Probá de nuevo.',
+      });
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  // Sin revision (contrato pendiente pero sin aprobación PENDIENTE encontrada,
+  // o modo demo) los botones se comportan EXACTO como hoy: deshabilitados con
+  // "Próximamente" en prod, habilitados hacia el camino local en demo.
+  const sinCaminoReal = apiEnabled && !revision;
+  // Deshabilitado si no hay camino real O si el usuario logueado no tiene el
+  // permiso que el servidor va a exigir igual (contrato.aprobar → solo ADMIN).
+  // El título explica el motivo REAL: antes decía siempre "Próximamente",
+  // incluso cuando el verdadero motivo era el rol del usuario.
+  const deshabilitado = sinCaminoReal || !puedeAprobar;
+  const tituloDeshabilitado = sinCaminoReal
+    ? 'Próximamente'
+    : !puedeAprobar
+      ? 'Solo un Admin puede aprobar o rechazar un contrato'
+      : undefined;
+
   return (
-    <Card className="border-amber-300 bg-amber-50 dark:border-amber-900/40 dark:bg-amber-950/30">
-      <CardContent className="space-y-3 p-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <AlertCircle className="h-5 w-5 text-amber-700 dark:text-amber-300" />
-            <div>
-              <h3 className="text-sm font-semibold">Pendiente de aprobación</h3>
-              <p className="text-xs text-muted-foreground">
-                Cargado por <strong>{cargadoPor}</strong>
-                {cargadoAt && ` · ${formatFecha(cargadoAt)}`}
-              </p>
+    <>
+      <Card className="border-amber-300 bg-amber-50 dark:border-amber-900/40 dark:bg-amber-950/30">
+        <CardContent className="space-y-3 p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-amber-700 dark:text-amber-300" />
+              <div>
+                <h3 className="text-sm font-semibold">Pendiente de aprobación</h3>
+                <p className="text-xs text-muted-foreground">
+                  Cargado por <strong>{cargadoPor}</strong>
+                  {cargadoAt && ` · ${formatFecha(cargadoAt)}`}
+                </p>
+              </div>
+            </div>
+            <Badge variant="warning">Borrador</Badge>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Revisá los datos en el resumen y los documentos. Si está todo en orden,
+            aprobalo para que pase a ACTIVO y empiece a facturar.
+          </p>
+
+          {!!revision?.periodosDeclarados.length && (
+            <div className="space-y-1.5">
+              <p className="text-sm font-medium">Lo que se declaró del pasado</p>
+              <ul className="space-y-1 text-sm text-muted-foreground">
+                {revision.periodosDeclarados.map((p) => (
+                  <li key={p.periodo} className="flex justify-between gap-3">
+                    <span>{formatPeriodo(p.periodo)}</span>
+                    <span>
+                      {p.estado === 'PAGADO' && 'Pagado fuera del sistema'}
+                      {p.estado === 'PARCIAL' && `Pagó ${formatMonto(p.montoPagado ?? 0, moneda)}`}
+                      {p.estado === 'ADEUDA' && 'Adeuda'}
+                      {/* La mora declarada sólo se muestra donde el sistema la va a
+                          aplicar de verdad. En un período PAGADO, aplicarEstadoInicial
+                          la congela en 0 y nunca la escribe: mostrarla acá sería
+                          anunciar algo que no va a pasar. */}
+                      {p.moraManual != null &&
+                        p.estado !== 'PAGADO' &&
+                        ` · mora ${formatMonto(p.moraManual, moneda)}`}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {revision && (
+            <div className="rounded-md border bg-background/60 p-3 text-sm">
+              <p className="font-medium">Al aprobar este contrato</p>
+              <ul className="mt-1.5 space-y-1 text-muted-foreground">
+                <li>La propiedad pasa a alquilada.</li>
+                <li>
+                  Se generan {revision.alAprobar.cuotasAGenerar}{' '}
+                  {revision.alAprobar.cuotasAGenerar === 1 ? 'cuota' : 'cuotas'}
+                  {revision.alAprobar.rangoCuotas &&
+                    ` (${formatPeriodo(revision.alAprobar.rangoCuotas.desde)} → ${formatPeriodo(revision.alAprobar.rangoCuotas.hasta)})`}
+                  .
+                </li>
+                {revision.alAprobar.conciliado.monto > 0 && (
+                  <li className="font-medium text-amber-700 dark:text-amber-300">
+                    Se dan por cobrados {formatMonto(revision.alAprobar.conciliado.monto, moneda)} que
+                    quedan conciliados sin que nadie los transfiera.
+                  </li>
+                )}
+                {revision.alAprobar.deudaInicial.capital > 0 && (
+                  <li className="text-foreground">
+                    El inquilino arranca debiendo{' '}
+                    {formatMonto(revision.alAprobar.deudaInicial.capital, moneda)}
+                    {revision.alAprobar.deudaInicial.mora > 0 &&
+                      // La mora que no vino declarada a mano sigue el esquema del
+                      // contrato y crece por día (calcularMora, on-read): este número
+                      // es "a hoy", no una cifra que se congela al aprobar.
+                      ` + ${formatMonto(revision.alAprobar.deudaInicial.mora, moneda)} de mora al día de hoy`}
+                    .
+                  </li>
+                )}
+              </ul>
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              onClick={() => (revision ? setDialogRechazar(true) : handleRechazar())}
+              disabled={deshabilitado}
+              title={tituloDeshabilitado}
+            >
+              <XCircle className="h-4 w-4" />
+              Rechazar
+            </Button>
+            <Button
+              onClick={() => (revision ? setDialogAprobar(true) : handleAprobar())}
+              disabled={deshabilitado}
+              title={tituloDeshabilitado}
+            >
+              <ShieldCheck className="h-4 w-4" />
+              Aprobar contrato
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <ConfirmDialog
+        open={dialogAprobar}
+        onOpenChange={(o) => !enviando && setDialogAprobar(o)}
+        title="¿Aprobar este contrato?"
+        description={
+          <div className="space-y-3 pt-2">
+            <p className="text-sm text-muted-foreground">
+              {inquilino} pasa a Activo y empieza a facturar.
+            </p>
+            <div className="space-y-2">
+              <Label htmlFor="apr-card-coment">Comentario (opcional)</Label>
+              <Textarea
+                id="apr-card-coment"
+                rows={2}
+                placeholder="Notas internas o instrucciones de seguimiento."
+                value={comentarioAprobar}
+                onChange={(e) => setComentarioAprobar(e.target.value)}
+                disabled={enviando}
+              />
             </div>
           </div>
-          <Badge variant="warning">Borrador</Badge>
-        </div>
-        <p className="text-sm text-muted-foreground">
-          Revisá los datos en el resumen y los documentos. Si está todo en orden,
-          aprobalo para que pase a ACTIVO y empiece a facturar.
-        </p>
-        {/* Aprobar/Rechazar registran en auditoría local (registrarEvento) sin
-            endpoint todavía. En modo API los deshabilitamos para no escribir
-            estado fantasma en prod. */}
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            onClick={handleRechazar}
-            disabled={apiEnabled}
-            title={apiEnabled ? 'Próximamente' : undefined}
-          >
-            <XCircle className="h-4 w-4" />
-            Rechazar
-          </Button>
-          <Button
-            onClick={handleAprobar}
-            disabled={apiEnabled}
-            title={apiEnabled ? 'Próximamente' : undefined}
-          >
-            <ShieldCheck className="h-4 w-4" />
-            Aprobar contrato
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+        }
+        confirmLabel="Aprobar contrato"
+        loading={enviando}
+        onConfirm={confirmarAprobar}
+      />
+
+      <ConfirmDialog
+        open={dialogRechazar}
+        onOpenChange={(o) => !enviando && setDialogRechazar(o)}
+        title="¿Rechazar este contrato?"
+        description={
+          <div className="space-y-3 pt-2">
+            {/* Nadie manda un aviso automático: queda para corregir y {cargadoPor}
+                lo va a ver al abrir el contrato (antes decía "avisamos", falso). */}
+            <p className="text-sm text-muted-foreground">
+              Queda para corregir con este motivo. {cargadoPor} lo va a ver en su panel.
+            </p>
+            <div className="space-y-2">
+              <Label htmlFor="rech-card-mot">Motivo del rechazo</Label>
+              <Textarea
+                id="rech-card-mot"
+                rows={2}
+                placeholder="Ej: faltó adjuntar el comprobante (mínimo 5 caracteres)"
+                value={motivoRechazar}
+                onChange={(e) => setMotivoRechazar(e.target.value)}
+                disabled={enviando}
+              />
+            </div>
+          </div>
+        }
+        confirmLabel="Rechazar contrato"
+        variant="destructive"
+        loading={enviando}
+        // Sin esto, un motivo corto dispara el toast en confirmarRechazar PERO
+        // igual cierra el diálogo: ConfirmDialog.handleConfirm() llama
+        // onOpenChange(false) después de onConfirm() salvo que loadingRef ya
+        // esté en true, y acá nunca llega a estarlo si la validación corta el
+        // envío antes del setEnviando(true). confirmDisabled bloquea el click
+        // ANTES de eso — el usuario no pierde lo que escribió.
+        confirmDisabled={motivoRechazar.trim().length < 5}
+        onConfirm={confirmarRechazar}
+      />
+    </>
   );
 }
 

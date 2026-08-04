@@ -62,6 +62,8 @@ export interface Aprobacion {
   entidadId: string;
   /** Quién cargó / pidió la aprobación. */
   cargadoPor: string;
+  /** Id del usuario que la cargó. El nombre no sirve para 'es mía': dos empleados pueden llamarse igual. */
+  cargadoPorId?: string;
   rolAutor: 'OPERADOR' | 'CARGA';
   cargadoAt: string;
   estado: EstadoAprobacion;

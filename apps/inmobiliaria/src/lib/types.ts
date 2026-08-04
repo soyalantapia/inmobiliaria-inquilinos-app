@@ -285,6 +285,40 @@ export interface ContratoListado {
   aprobadoPor?: string | null;
   aprobadoAt?: string | null;
   /**
+   * Lo que va a pasar si se aprueba este contrato: la deuda histórica que se
+   * declaró al cargarlo y las consecuencias en plata (qué queda conciliado y
+   * qué arranca debiendo). Solo viaja cuando el contrato está esperando
+   * decisión (ver GET /contratos/:id, revisionAprobacion en core.ts). Del API
+   * en prod; el demo/mock no lo setea.
+   */
+  revisionAprobacion?: {
+    aprobacionId: string;
+    /** Nombre de quien lo cargó. Sale de la Aprobación: Contrato.cargadoPor guarda el user id pelado. */
+    cargadoPorNombre: string;
+    cargadoPorRol: string;
+    periodosDeclarados: Array<{
+      periodo: string;
+      estado: 'PAGADO' | 'PARCIAL' | 'ADEUDA';
+      montoPagado?: number;
+      moraManual?: number;
+    }>;
+    alAprobar: {
+      cuotasAGenerar: number;
+      rangoCuotas: { desde: string; hasta: string } | null;
+      conciliado: { periodos: number; monto: number };
+      deudaInicial: { periodos: number; capital: number; mora: number };
+    };
+  };
+  /** Última decisión de aprobación, cuando ya se decidió. */
+  decisionAprobacion?: {
+    estado: 'APROBADA' | 'RECHAZADA';
+    comentario: string | null;
+    decididoPor: string;
+    decididoAt: string | null;
+    /** Quien lo cargó, por nombre: Contrato.cargadoPor guarda el user id pelado. */
+    cargadoPorNombre: string;
+  };
+  /**
    * Modo de cobranza:
    * - INMOBILIARIA: el inquilino paga a la cuenta recaudadora de la inmo, y la
    *   inmo después rinde al propietario.

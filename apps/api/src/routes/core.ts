@@ -1,5 +1,9 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import type { Prisma } from '@prisma/client';
+// Import de VALOR (no `import type`): PUT /contratos/:id/borrador usa
+// Prisma.DbNull para limpiar el Json de periodosAnterioresPendientes, que es un
+// valor en runtime — los usos de `Prisma.<Tipo>` que ya había siguen andando
+// igual (un namespace importado como valor sirve también en posición de tipo).
+import { Prisma } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '../db.js';
@@ -16,7 +20,8 @@ import {
 import { conSaldo, montoPagadoPorLiquidacion } from '../lib/saldos.js';
 import { aplicarDepositoADeuda } from '../lib/aplicar-deposito.js';
 import { calcularMora, resolverEsquemaMora } from '../lib/punitorios.js';
-import { aplicarEstadoInicial, EstadoInicialInvalido } from '../lib/estado-inicial-contrato.js';
+import { aplicarEstadoInicial, EstadoInicialInvalido, PeriodosAnterioresSchema } from '../lib/estado-inicial-contrato.js';
+import { resumenRevisionAprobacion, type RevisionAprobacion } from '../lib/revision-aprobacion.js';
 import { buscarOCrearPersona } from '../lib/persona.js';
 import { borrarArchivoSiHuerfano, urlEsDelTenant } from './uploads.js';
 import { enviarInvitacionInquilino, enviarInvitacionEquipo } from '../mailer.js';
@@ -238,6 +243,67 @@ export async function coreRoutes(app: FastifyInstance) {
       select: { moraTipoDefault: true, moraValorDefault: true },
     });
     const esquema = resolverEsquemaMora(rest, inmoMora);
+    // Revisión previa a la aprobación (si está PENDIENTE) o motivo de la decisión
+    // (si ya se decidió): las dos ramas salen de la ÚLTIMA Aprobación de este
+    // contrato, en una sola query. Antes se filtraba por estado PENDIENTE y un
+    // rechazo no dejaba rastro en el contrato — el cartel de "rechazado" vivía
+    // solo en estado local del componente que lo rechazó, se perdía al recargar.
+    let revisionAprobacion:
+      | (RevisionAprobacion & { aprobacionId: string; cargadoPorNombre: string; cargadoPorRol: string })
+      | undefined;
+    let decisionAprobacion:
+      | {
+          estado: 'APROBADA' | 'RECHAZADA';
+          comentario: string | null;
+          decididoPor: string;
+          decididoAt: string | null;
+          cargadoPorNombre: string;
+        }
+      | undefined;
+    // La ÚLTIMA aprobación de este contrato: si está PENDIENTE alimenta la revisión
+    // previa; si ya se decidió, alimenta el cartel con el motivo. Antes se filtraba
+    // por estado PENDIENTE y el rechazo no dejaba rastro en el contrato.
+    // orderBy con aprobadoAt desc deja las PENDIENTE (aprobadoAt null) al final en
+    // Postgres si no se cuida el orden de nulls — cargadoAt desc como desempate
+    // asegura que una PENDIENTE recién cargada gane sobre una decisión vieja.
+    const aprobacion = await prisma.aprobacion.findFirst({
+      where: { inmobiliariaId: u.inmobiliariaId, tipo: 'CONTRATO_CARGADO', entidadId: rest.id },
+      orderBy: [{ aprobadoAt: 'desc' }, { cargadoAt: 'desc' }],
+      select: {
+        id: true,
+        estado: true,
+        comentarioAprobador: true,
+        aprobadoAt: true,
+        // cargadoPor viene de la Aprobación, no del contrato: Contrato.cargadoPor
+        // guarda el USER ID pelado, y la pantalla de revisión lo mostraba crudo
+        // ("Cargado por cmsdwdi89..."). Quien decide necesita el nombre.
+        cargadoPor: { select: { nombre: true, apellido: true, rol: true } },
+        aprobadoPor: { select: { nombre: true, apellido: true } },
+      },
+    });
+    if (rest.pendienteAprobacion && aprobacion?.estado === 'PENDIENTE') {
+      const declarados = PeriodosAnterioresSchema.safeParse(rest.periodosAnterioresPendientes);
+      revisionAprobacion = {
+        aprobacionId: aprobacion.id,
+        cargadoPorNombre: `${aprobacion.cargadoPor.nombre} ${aprobacion.cargadoPor.apellido ?? ''}`.trim(),
+        cargadoPorRol: aprobacion.cargadoPor.rol,
+        ...resumenRevisionAprobacion(rest, declarados.success ? declarados.data : [], now, esquema),
+      };
+    }
+    if (aprobacion && aprobacion.estado !== 'PENDIENTE') {
+      decisionAprobacion = {
+        estado: aprobacion.estado,
+        comentario: aprobacion.comentarioAprobador,
+        decididoPor: aprobacion.aprobadoPor
+          ? `${aprobacion.aprobadoPor.nombre} ${aprobacion.aprobadoPor.apellido ?? ''}`.trim()
+          : 'Alguien de la inmobiliaria',
+        decididoAt: aprobacion.aprobadoAt?.toISOString() ?? null,
+        // Quien lo cargó, por NOMBRE. Contrato.cargadoPor guarda el user id pelado y
+        // la tarjeta de rechazo lo mostraba crudo ("Fulano cmsdwdi89... lo va a ver").
+        // La Aprobación ya tiene la relación, así que no cuesta una query extra.
+        cargadoPorNombre: `${aprobacion.cargadoPor.nombre} ${aprobacion.cargadoPor.apellido ?? ''}`.trim(),
+      };
+    }
     return {
       ...rest,
       moraEfectiva: { tipo: esquema.tipo, valor: esquema.valor, origen: esquema.origen },
@@ -254,6 +320,8 @@ export async function coreRoutes(app: FastifyInstance) {
       }),
       estadoPagoActual: actual ? (liqVencida(actual, now) ? 'VENCIDO' : actual.estado) : 'PENDIENTE',
       proximoVencimiento: pendiente?.fechaVencimiento ?? null,
+      ...(revisionAprobacion ? { revisionAprobacion } : {}),
+      ...(decisionAprobacion ? { decisionAprobacion } : {}),
     };
   });
 
@@ -860,62 +928,66 @@ export async function coreRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
+  // Body del alta de contrato — extraído a una constante (antes vivía inline en
+  // POST /contratos) porque PUT /contratos/:id/borrador (más abajo) también lo
+  // usa: editar un borrador manda el MISMO body que crearlo. Extracción mecánica,
+  // el schema en sí no cambió un bit.
+  const contratoBodySchema = z.object({
+    propiedadId: z.string(),
+    inquilino: z.object({
+      nombre: z.string().trim().min(2),
+      apellido: z.string().trim().optional(),
+      email: z.string().trim().email().optional().or(z.literal('')),
+      telefono: z.string().trim().optional(),
+      dni: z.string().trim().optional(),
+    }),
+    // Reuso (req 3): si viene, el inquilino nuevo se agrupa bajo una Persona EXISTENTE
+    // (traer historial) en vez de crear/upsertear una. Se valida tenant-scopeado.
+    personaId: z.string().optional(),
+    monto: z.number().nonnegative(), // 0 válido para SOLO_EXPENSAS
+    moneda: z.enum(['ARS', 'USD']).default('ARS'),
+    // coerce.date rechaza strings que no son fecha — antes new Date('xxx')
+    // producía Invalid Date, que Prisma aceptaba y guardaba como null/epoch.
+    fechaInicio: z.coerce.date(),
+    fechaFin: z.coerce.date(),
+    diaPago: z.number().int().min(1).max(31),
+    indiceAjuste: z.enum(['ICL', 'IPC', 'CASA_PROPIA', 'UVA', 'CAC', 'RIPTE', 'FIJO']),
+    frecuenciaAjusteMeses: z.number().int().positive(),
+    montoExpensas: z.number().positive().optional(),
+    tipoContrato: z.enum(['ALQUILER', 'SOLO_EXPENSAS', 'ALQUILER_Y_EXPENSAS']).default('ALQUILER'),
+    depositoGarantia: z.number().positive().optional(),
+    // "mascotasPermitidas" YA NO se carga acá (pasó a ser un atributo de la
+    // Propiedad — ver POST/PUT /propiedades). No está en el schema a propósito:
+    // si un cliente viejo todavía lo manda en el body, zod lo descarta en
+    // silencio (no rompe con un 400).
+    modoCobranza: z.enum(['INMOBILIARIA', 'PROPIETARIO_DIRECTO']).default('INMOBILIARIA'),
+    // Comisión de la inmobiliaria para ESTE contrato (%). Opcional: si no se
+    // manda queda null y se usa el default del negocio en las rendiciones.
+    comisionInmobiliaria: z.number().min(0).max(100).optional(),
+    // Esquema de mora del contrato ("ventanita Confirmá interés"). Omitido =>
+    // hereda el default de la inmobiliaria (cascada en resolverEsquemaMora).
+    moraTipo: z.enum(['SIN_MORA', 'PORCENTAJE_DIARIO', 'MONTO_FIJO', 'PORCENTAJE_MENSUAL']).optional(),
+    moraValor: z.number().positive().optional(),
+    // Contrato EN CURSO ("está en la cuota 7 de 12"): confirmación por
+    // período YA VENCIDO — pagado fuera del sistema / parcial / adeudado,
+    // con mora histórica manual opcional. Ver lib/estado-inicial-contrato.ts.
+    periodosAnteriores: z
+      .array(
+        z.object({
+          periodo: z.string().regex(/^\d{4}-\d{2}$/),
+          estado: z.enum(['PAGADO', 'PARCIAL', 'ADEUDA']),
+          montoPagado: z.number().positive().optional(),
+          moraManual: z.number().nonnegative().optional(),
+        }),
+      )
+      .max(120)
+      .optional(),
+  });
+
   app.post('/contratos', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'contratos.crear');
     if (!u) return;
-    const body = z
-      .object({
-        propiedadId: z.string(),
-        inquilino: z.object({
-          nombre: z.string().trim().min(2),
-          apellido: z.string().trim().optional(),
-          email: z.string().trim().email().optional().or(z.literal('')),
-          telefono: z.string().trim().optional(),
-          dni: z.string().trim().optional(),
-        }),
-        // Reuso (req 3): si viene, el inquilino nuevo se agrupa bajo una Persona EXISTENTE
-        // (traer historial) en vez de crear/upsertear una. Se valida tenant-scopeado.
-        personaId: z.string().optional(),
-        monto: z.number().nonnegative(), // 0 válido para SOLO_EXPENSAS
-        moneda: z.enum(['ARS', 'USD']).default('ARS'),
-        // coerce.date rechaza strings que no son fecha — antes new Date('xxx')
-        // producía Invalid Date, que Prisma aceptaba y guardaba como null/epoch.
-        fechaInicio: z.coerce.date(),
-        fechaFin: z.coerce.date(),
-        diaPago: z.number().int().min(1).max(31),
-        indiceAjuste: z.enum(['ICL', 'IPC', 'CASA_PROPIA', 'UVA', 'CAC', 'RIPTE', 'FIJO']),
-        frecuenciaAjusteMeses: z.number().int().positive(),
-        montoExpensas: z.number().positive().optional(),
-        tipoContrato: z.enum(['ALQUILER', 'SOLO_EXPENSAS', 'ALQUILER_Y_EXPENSAS']).default('ALQUILER'),
-        depositoGarantia: z.number().positive().optional(),
-        // "mascotasPermitidas" YA NO se carga acá (pasó a ser un atributo de la
-        // Propiedad — ver POST/PUT /propiedades). No está en el schema a propósito:
-        // si un cliente viejo todavía lo manda en el body, zod lo descarta en
-        // silencio (no rompe con un 400).
-        modoCobranza: z.enum(['INMOBILIARIA', 'PROPIETARIO_DIRECTO']).default('INMOBILIARIA'),
-        // Comisión de la inmobiliaria para ESTE contrato (%). Opcional: si no se
-        // manda queda null y se usa el default del negocio en las rendiciones.
-        comisionInmobiliaria: z.number().min(0).max(100).optional(),
-        // Esquema de mora del contrato ("ventanita Confirmá interés"). Omitido =>
-        // hereda el default de la inmobiliaria (cascada en resolverEsquemaMora).
-        moraTipo: z.enum(['SIN_MORA', 'PORCENTAJE_DIARIO', 'MONTO_FIJO', 'PORCENTAJE_MENSUAL']).optional(),
-        moraValor: z.number().positive().optional(),
-        // Contrato EN CURSO ("está en la cuota 7 de 12"): confirmación por
-        // período YA VENCIDO — pagado fuera del sistema / parcial / adeudado,
-        // con mora histórica manual opcional. Ver lib/estado-inicial-contrato.ts.
-        periodosAnteriores: z
-          .array(
-            z.object({
-              periodo: z.string().regex(/^\d{4}-\d{2}$/),
-              estado: z.enum(['PAGADO', 'PARCIAL', 'ADEUDA']),
-              montoPagado: z.number().positive().optional(),
-              moraManual: z.number().nonnegative().optional(),
-            }),
-          )
-          .max(120)
-          .optional(),
-      })
-      .safeParse(request.body ?? {});
+    const body = contratoBodySchema.safeParse(request.body ?? {});
     if (!body.success) return reply.code(400).send({ message: 'Datos del contrato incompletos' });
     const d = body.data;
     if (d.moraTipo && d.moraTipo !== 'SIN_MORA' && !d.moraValor) {
@@ -1198,6 +1270,239 @@ export async function coreRoutes(app: FastifyInstance) {
       }
       throw e;
     }
+  });
+
+  /**
+   * Edición de un contrato en BORRADOR (típicamente uno rechazado que se va a
+   * corregir y reenviar). Deliberadamente NO es un PUT genérico de contrato: los
+   * contratos ACTIVOS se modifican con las acciones puntuales que ya existen
+   * (PATCH /monto recalcula liquidaciones, PATCH /modo-cobranza valida la cuenta
+   * del propietario, PUT /mora), que tienen lógica que un PUT general pisaría.
+   * Acá no hay liquidaciones ni pagos: el borrador todavía no devengó nada.
+   *
+   * Mismo body que el alta (contratoBodySchema) — y por eso mismas validaciones de
+   * negocio que el alta (fechas, monto, expensas, cobranza directa): "editar" no
+   * puede dejar un borrador en un estado que el alta nunca hubiese permitido crear.
+   *
+   * Lo que NO hace: no activa, no genera liquidaciones, no reclama la propiedad,
+   * no toca pendienteAprobacion. Editar y reenviar son dos acciones distintas:
+   * alguien puede guardar a mitad de camino (la Tarea 4 agrega el reenvío).
+   */
+  app.put('/contratos/:id/borrador', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'contratos.crear');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const body = contratoBodySchema.safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ message: 'Datos del contrato incompletos' });
+    const d = body.data;
+    if (d.moraTipo && d.moraTipo !== 'SIN_MORA' && !d.moraValor) {
+      return reply.code(400).send({ message: 'Indicá el valor del interés por mora' });
+    }
+    if (d.fechaFin <= d.fechaInicio) {
+      return reply.code(400).send({ message: 'La fecha de fin tiene que ser posterior a la fecha de inicio' });
+    }
+    if (d.monto === 0 && d.tipoContrato !== 'SOLO_EXPENSAS') {
+      return reply.code(400).send({ message: 'El monto del alquiler tiene que ser mayor a cero' });
+    }
+    if ((d.tipoContrato === 'ALQUILER_Y_EXPENSAS' || d.tipoContrato === 'SOLO_EXPENSAS') && !d.montoExpensas) {
+      return reply.code(400).send({ message: 'Este tipo de contrato requiere el monto de expensas' });
+    }
+
+    // Scopeado por inmobiliariaId (multi-tenant): un id ajeno => 404, igual que el
+    // resto de los endpoints de contrato.
+    const actual = await prisma.contrato.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      select: { id: true, estado: true, propiedadId: true, inquilinoTitular: { select: { id: true } } },
+    });
+    if (!actual) return reply.code(404).send({ message: 'Contrato inexistente' });
+    // El gate real: un PUT sobre un contrato que ya está ACTIVO no puede pasar acá
+    // (tiene cuotas emitidas y, quizás, pagos) — 409 y no tocamos nada.
+    if (actual.estado !== 'BORRADOR') {
+      return reply.code(409).send({
+        message:
+          'Este contrato ya está activo: modificá el monto, la mora o la cobranza desde las acciones del contrato.',
+      });
+    }
+
+    const prop = await prisma.propiedad.findFirst({ where: { id: d.propiedadId, inmobiliariaId: u.inmobiliariaId } });
+    if (!prop) return reply.code(404).send({ message: 'Propiedad inexistente' });
+    // Si cambia de propiedad, el mismo chequeo del alta: la nueva tiene que estar
+    // libre (si es la MISMA propiedad de siempre, un borrador nunca la reclamó —
+    // contratoActualId sigue null salvo que otro contrato la haya tomado después).
+    if (prop.id !== actual.propiedadId && prop.contratoActualId) {
+      return reply.code(409).send({ message: 'La propiedad ya tiene un contrato activo' });
+    }
+
+    // Modo cobranza directa: misma validación que el alta (core.ts POST /contratos)
+    // — el dueño principal necesita su cuenta de cobro cargada, si no el inquilino
+    // queda sin CBU destino al aprobar. No es la guarda de PATCH /modo-cobranza (esa
+    // además bloquea si hay cobros conciliados del mes — no aplica: un borrador
+    // nunca devengó ni cobró nada).
+    let cobraDirectoPropietarioId: string | null = null;
+    if (d.modoCobranza === 'PROPIETARIO_DIRECTO') {
+      const part = await prisma.participacionPropietario.findFirst({
+        where: { propiedadId: prop.id },
+        orderBy: { porcentaje: 'desc' },
+        include: { propietario: { select: { cuentaCobranza: { select: { id: true } }, nombre: true, apellido: true } } },
+      });
+      if (!part) {
+        return reply.code(400).send({
+          message: 'La propiedad necesita dueños cargados para usar cobranza directa al propietario',
+        });
+      }
+      if (!part.propietario.cuentaCobranza) {
+        return reply.code(400).send({
+          message: `Falta la cuenta de cobro directo de ${part.propietario.nombre} ${part.propietario.apellido ?? ''}`.trim() +
+            '. Entrá a la ficha del propietario → "Cuenta de cobranza directa" y cargá banco + CBU (22 dígitos) + alias. (El CBU/alias del alta del propietario NO alcanza para el cobro directo.)',
+        });
+      }
+      cobraDirectoPropietarioId = part.propietarioId;
+    }
+
+    const emailInq = d.inquilino.email ? d.inquilino.email.toLowerCase() : null;
+
+    await prisma.$transaction(async (tx) => {
+      await tx.contrato.update({
+        where: { id: actual.id },
+        data: {
+          propiedadId: prop.id,
+          monto: d.monto,
+          moneda: d.moneda,
+          fechaInicio: d.fechaInicio,
+          fechaFin: d.fechaFin,
+          diaPago: d.diaPago,
+          indiceAjuste: d.indiceAjuste,
+          frecuenciaAjusteMeses: d.frecuenciaAjusteMeses,
+          montoExpensas: d.montoExpensas ?? null,
+          tipoContrato: d.tipoContrato,
+          depositoGarantia: d.depositoGarantia ?? null,
+          comisionInmobiliaria: d.comisionInmobiliaria ?? null,
+          // SIN_MORA explícito guarda tipo sin valor; omitido deja ambos null
+          // (hereda el default de la inmobiliaria en la lectura) — igual que el alta.
+          moraTipo: d.moraTipo ?? null,
+          moraValor: d.moraTipo && d.moraTipo !== 'SIN_MORA' ? (d.moraValor ?? null) : null,
+          modoCobranza: d.modoCobranza,
+          cobraDirectoPropietarioId,
+          // Ausencia (`undefined`, el campo no vino en el body) ≠ vacío (`[]`, el
+          // caller dice explícitamente "no hay períodos"). Este endpoint recibe el
+          // body COMPLETO y no puede asumir que el único cliente de hoy (la pantalla
+          // de editar) siempre reenvía el campo — cualquier otro caller que omita
+          // periodosAnteriores estaría "borrando" la deuda histórica sin querer.
+          // `undefined` acá hace que Prisma OMITA el campo del UPDATE (no lo toca);
+          // `[]` sí limpia con Prisma.DbNull (un `null` a secas en un campo Json no
+          // alcanza, Prisma lo interpreta ambiguo); con contenido, reemplaza.
+          periodosAnterioresPendientes:
+            d.periodosAnteriores === undefined
+              ? undefined
+              : d.periodosAnteriores.length
+                ? d.periodosAnteriores
+                : Prisma.DbNull,
+        },
+      });
+      // El inquilino titular ya existe (el rechazo dejó de borrarlo — ver Tarea 1):
+      // solo actualizamos SUS datos. No tocamos Persona ni personaId: reagrupar la
+      // identidad del inquilino es un caso distinto al de corregir un borrador.
+      if (actual.inquilinoTitular) {
+        await tx.inquilino.update({
+          where: { id: actual.inquilinoTitular.id },
+          data: {
+            nombre: d.inquilino.nombre,
+            apellido: d.inquilino.apellido || null,
+            email: emailInq,
+            telefono: d.inquilino.telefono || null,
+            dni: d.inquilino.dni || null,
+          },
+        });
+      }
+    });
+
+    const actualizado = await prisma.contrato.findUniqueOrThrow({ where: { id: actual.id } });
+    return { ok: true, contrato: actualizado };
+  });
+
+  /**
+   * Vuelve a mandar a aprobación un contrato en BORRADOR que ya fue corregido
+   * (típicamente uno rechazado que se editó con el PUT de arriba). Crea una
+   * Aprobacion NUEVA — no reusa la rechazada: el histórico tiene que conservar
+   * qué se rechazó y por qué, y GET /contratos/:id ya resuelve "la última
+   * decisión" con un orderBy que deja ganar a la PENDIENTE más nueva sobre una
+   * RECHAZADA vieja (ver el comentario ahí).
+   *
+   * El candado real contra dos PENDIENTE del mismo contrato es el índice único
+   * parcial de la migración 20260803150000 (aprobaciones_una_pendiente_por_
+   * entidad). El findFirst de acá es solo para devolver un 409 lindo en el caso
+   * normal — entre el findFirst y el create hay una carrera (dos clicks
+   * rápidos, dos pestañas) que solo el índice cierra de verdad, así que el
+   * P2002 de ESE índice se mapea a 409 también, nunca deja salir un 500.
+   */
+  app.post('/contratos/:id/reenviar-aprobacion', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'contratos.crear');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const contrato = await prisma.contrato.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      include: { propiedad: { select: { direccion: true } }, inquilinoTitular: { select: { nombre: true } } },
+    });
+    if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
+    if (contrato.estado !== 'BORRADOR') {
+      return reply.code(409).send({ message: 'Este contrato ya no está en borrador.' });
+    }
+    // Chequeo previo (no es el candado real, ver comentario de arriba): evita el
+    // viaje a la DB con un P2002 en el camino normal (sin carrera).
+    const pendienteYa = await prisma.aprobacion.findFirst({
+      where: { entidadId: contrato.id, estado: 'PENDIENTE' },
+      select: { id: true },
+    });
+    if (pendienteYa) {
+      return reply.code(409).send({ message: 'Este contrato ya tiene una aprobación pendiente.' });
+    }
+    // Mismo invariante que el alta (POST /contratos, arriba): solo OPERADOR/CARGA
+    // pueden llegar hasta acá con un contrato en BORRADOR pendiente de aprobar
+    // (contratoQuedaPendiente nunca da true para quien tenga 'contrato.aprobar').
+    // Asignado a una const ANTES de entrar al closure de la transacción: el
+    // angostamiento de `u.rol` por el `if` de abajo no sobrevive el cruce a
+    // otra función (prisma.$transaction(async (tx) => ...)) porque es una
+    // propiedad de un objeto capturado, no una variable — TS lo invalida ahí.
+    if (u.rol !== 'OPERADOR' && u.rol !== 'CARGA') {
+      throw new Error(
+        `Invariante roto: el rol '${u.rol}' llegó a reenviar un contrato a aprobación, pero RolAutorAprobacion solo admite OPERADOR/CARGA`,
+      );
+    }
+    const rolAutor = u.rol;
+    try {
+      await prisma.$transaction(async (tx) => {
+        await tx.aprobacion.create({
+          data: {
+            inmobiliariaId: u.inmobiliariaId,
+            tipo: 'CONTRATO_CARGADO',
+            titulo: `${contrato.inquilinoTitular?.nombre ?? 'Inquilino'} · ${contrato.propiedad.direccion}`,
+            descripcion: 'Contrato corregido y reenviado para revisión.',
+            entidadId: contrato.id,
+            cargadoPorId: u.userId,
+            rolAutor,
+            cargadoAt: new Date(),
+          },
+        });
+        await tx.contrato.update({ where: { id: contrato.id }, data: { pendienteAprobacion: true } });
+      });
+    } catch (e) {
+      // P2002 del índice único parcial (aprobaciones_una_pendiente_por_entidad):
+      // la carrera que el findFirst de arriba no alcanza a cerrar. 409, no 500.
+      if (e && typeof e === 'object' && (e as { code?: string }).code === 'P2002') {
+        return reply.code(409).send({ message: 'Este contrato ya tiene una aprobación pendiente.' });
+      }
+      throw e;
+    }
+    await registrarEvento({
+      inmobiliariaId: u.inmobiliariaId,
+      tipo: 'CONTRATO_CARGADO',
+      autorId: u.userId,
+      rolAutor: u.rol,
+      entidadId: contrato.id,
+      entidadDescripcion: `${contrato.inquilinoTitular?.nombre ?? 'Inquilino'} · ${contrato.propiedad.direccion}`,
+    });
+    const actualizadoReenvio = await prisma.contrato.findUniqueOrThrow({ where: { id: contrato.id } });
+    return { ok: true, contrato: actualizadoReenvio };
   });
 
   // Avatar del usuario logueado (foto de perfil en /uploads del tenant).
@@ -1954,7 +2259,14 @@ export async function coreRoutes(app: FastifyInstance) {
     const u = await requireUsuario(request, reply, 'contratos.ver');
     if (!u) return;
     return prisma.inquilino.findMany({
-      where: { inmobiliariaId: u.inmobiliariaId },
+      where: {
+        inmobiliariaId: u.inmobiliariaId,
+        // Un inquilino de un contrato en BORRADOR (pendiente de aprobación o ya
+        // rechazado) todavía no es inquilino: lo es recién cuando el contrato se
+        // aprueba. Filtramos por el ESTADO del contrato, no por pendienteAprobacion:
+        // un contrato rechazado la tiene en false y tiene que seguir excluido igual.
+        contrato: { isNot: { estado: 'BORRADOR' } },
+      },
       include: { contrato: { select: { id: true, estado: true, propiedad: { select: { direccion: true } } } } },
       orderBy: { nombre: 'asc' },
     });
@@ -1979,7 +2291,15 @@ export async function coreRoutes(app: FastifyInstance) {
         }
       : {};
     const personas = await prisma.persona.findMany({
-      where: { inmobiliariaId: u.inmobiliariaId, ...filtroTexto },
+      where: {
+        inmobiliariaId: u.inmobiliariaId,
+        ...filtroTexto,
+        // Mismo criterio que /inquilinos: si TODOS los inquilinos de esta persona
+        // cuelgan de un contrato en BORRADOR, todavía no es inquilino de nadie — no
+        // debe figurar en el listado (el where filtra Persona, así que la exclusión
+        // va sobre la relación inquilinos).
+        inquilinos: { some: { contrato: { isNot: { estado: 'BORRADOR' } } } },
+      },
       include: {
         inquilinos: {
           select: { contrato: { select: { id: true, estado: true, propiedad: { select: { direccion: true } } } } },
@@ -1988,7 +2308,13 @@ export async function coreRoutes(app: FastifyInstance) {
       orderBy: { nombre: 'asc' },
     });
     return personas.map((p) => {
-      const contratos = p.inquilinos.map((i) => i.contrato).filter((c): c is NonNullable<typeof c> => !!c);
+      // Los BORRADOR se excluyen también acá, no sólo del `where` de la fila: si no, una
+      // persona con un contrato real y otro rechazado contaba 2 en totalContratos, y la
+      // "propiedad de referencia" podía caer en la del rechazado cuando no hay ninguno
+      // activo (contratos[0] depende del orden que devuelva Prisma, que no está fijado).
+      const contratos = p.inquilinos
+        .map((i) => i.contrato)
+        .filter((c): c is NonNullable<typeof c> => !!c && c.estado !== 'BORRADOR');
       const activo = contratos.find((c) => c.estado === 'ACTIVO');
       return {
         id: p.id,
