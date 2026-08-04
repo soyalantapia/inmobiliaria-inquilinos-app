@@ -101,10 +101,13 @@ export default function RenovacionesPage() {
       {/* El Topbar es el que monta MobileSidebarTrigger: sin él, en el celular
           esta pantalla no tenía NINGUNA forma de abrir el menú (el nav inferior
           sólo lleva a Inicio, Propiedades, Pagos y Reclamos). */}
-      <Topbar titulo="Renovaciones" />
+      <Topbar titulo="Vencimientos y avisos" />
       <div className="space-y-6 p-6 md:p-8">
       <p className="text-sm text-muted-foreground">
-        Quién vence pronto, qué decidió cada inquilino y a quién falta avisar.
+        Quién vence pronto, qué decidió cada inquilino y a quién falta avisar.{' '}
+        <span className="text-foreground">
+          Acá anotás la decisión; el contrato se renueva desde su ficha.
+        </span>
       </p>
 
       {/* KPIs */}
@@ -292,9 +295,17 @@ export default function RenovacionesPage() {
                       </Button>
                     )}
                   </div>
-                  <Button size="sm" variant="ghost" asChild>
+                  {/* Marcar "Quiere renovar" NO renueva: guarda la intención del
+                      inquilino y no toca el contrato. La renovación de verdad
+                      (estirar fechaFin, fijar el canon nuevo, regenerar cuotas)
+                      es POST /contratos/:id/renovar y su botón vive en la ficha
+                      del contrato. Cuando la decisión ya es RENOVAR, el CTA lo
+                      dice y lleva hasta ahí, en vez de un "Ver contrato" neutro
+                      que dejaba a la inmobiliaria creyendo que ya estaba hecho.
+                      El punto de escritura sigue siendo UNO SOLO: la ficha. */}
+                  <Button size="sm" variant={c.decision === 'RENOVAR' ? 'default' : 'ghost'} asChild>
                     <Link href={`/contratos/${c.id}`}>
-                      Ver contrato
+                      {c.decision === 'RENOVAR' ? 'Renovar el contrato' : 'Ver contrato'}
                       <ArrowRight className="h-3.5 w-3.5" />
                     </Link>
                   </Button>

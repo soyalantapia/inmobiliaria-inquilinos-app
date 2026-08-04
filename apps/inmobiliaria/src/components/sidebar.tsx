@@ -103,11 +103,13 @@ const links: NavLink[] = [
 
   /* ---- Seguimiento ---- */
   { href: '/estadisticas', label: 'Estadísticas', icon: BarChart3, capacidad: 'metricas.ver', grupo: 'Seguimiento' },
-  // OJO: "Renovaciones" NO se renombra todavía. Esa pantalla registra una
-  // intención y NO renueva el contrato (la renovación real es
-  // POST /contratos/:id/renovar, y su botón vive sólo en la ficha del contrato).
-  // Cambiarle el nombre sin arreglar eso es hacer que mienta un poco menos.
-  { href: '/renovaciones', label: 'Renovaciones', icon: CalendarHeart, capacidad: 'contratos.ver', grupo: 'Seguimiento' },
+  // "Renovaciones" pasó a "Vencimientos y avisos" porque eso es lo que hace:
+  // registra la intención del inquilino (y el preaviso de egreso) sin tocar el
+  // contrato. La renovación real es POST /contratos/:id/renovar, desde la ficha.
+  // El renombre sale JUNTO con el CTA "Renovar el contrato" que ahora aparece
+  // en las filas ya marcadas como RENOVAR y lleva hasta ahí: renombrarlo solo
+  // habría sido hacer que mintiera un poco menos, dejando el hueco.
+  { href: '/renovaciones', label: 'Vencimientos y avisos', icon: CalendarHeart, capacidad: 'contratos.ver', grupo: 'Seguimiento' },
   { href: '/anuncios', label: 'Anuncios', icon: Megaphone, capacidad: 'comunicaciones.enviar', grupo: 'Seguimiento' },
   { href: '/consorcios', label: 'Consorcios', icon: Building, capacidad: 'propiedades.ver', grupo: 'Seguimiento' },
 
