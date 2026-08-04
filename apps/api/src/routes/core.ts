@@ -24,6 +24,15 @@ import { enviarInvitacionInquilino, enviarInvitacionEquipo } from '../mailer.js'
 import { contratoQuedaPendiente, diaCivilAR, venceDespuesDeHoy, yaVencio } from '@llave/shared';
 
 /**
+ * Mensaje único para el 400 de "falta cuenta de cobro directo": antes estaba
+ * duplicado (alta de contrato y cambio de modoCobranza), con riesgo de que uno
+ * de los dos lugares se desactualizara. Misma validación, mismo texto.
+ */
+const faltaCuentaCobranzaDirecta = (nombre: string) =>
+  `Falta la cuenta de cobro directo de ${nombre}`.trim() +
+  '. Entrá a la ficha del propietario → "Cuenta de cobranza directa" y cargá banco + CBU (22 dígitos) + alias. (El CBU/alias del alta del propietario NO alcanza para el cobro directo.)';
+
+/**
  * Una liquidación cuenta como VENCIDA (a efectos de cobranza) si su estado ya es
  * VENCIDO, o si todavía no está paga (PENDIENTE/PARCIAL) y su vencimiento pasó.
  * El estado persistido sólo vira a VENCIDO cuando corre el barrido del devengo
@@ -1019,7 +1028,12 @@ export async function coreRoutes(app: FastifyInstance) {
     if (d.modoCobranza === 'PROPIETARIO_DIRECTO') {
       const part = await prisma.participacionPropietario.findFirst({
         where: { propiedadId: prop.id },
-        orderBy: { porcentaje: 'desc' },
+        // Desempate ESTABLE por id: con dos dueños al 50/50 el `porcentaje desc`
+        // solo dejaba la elección librada al orden que devuelva Postgres, que puede
+        // cambiar entre consultas (editar la propiedad hace deleteMany+createMany de
+        // las participaciones). El panel ordena igual, así que las dos capas señalan
+        // siempre al mismo propietario.
+        orderBy: [{ porcentaje: 'desc' }, { propietarioId: 'asc' }],
         include: { propietario: { select: { cuentaCobranza: { select: { id: true } }, nombre: true, apellido: true } } },
       });
       if (!part) {
@@ -1033,8 +1047,7 @@ export async function coreRoutes(app: FastifyInstance) {
       // dónde transferir.
       if (!part.propietario.cuentaCobranza) {
         return reply.code(400).send({
-          message: `Falta la cuenta de cobro directo de ${part.propietario.nombre} ${part.propietario.apellido ?? ''}`.trim() +
-            '. Entrá a la ficha del propietario → "Cuenta de cobranza directa" y cargá banco + CBU (22 dígitos) + alias. (El CBU/alias del alta del propietario NO alcanza para el cobro directo.)',
+          message: faltaCuentaCobranzaDirecta(`${part.propietario.nombre} ${part.propietario.apellido ?? ''}`),
         });
       }
       cobraDirectoPropietarioId = part.propietarioId;
@@ -2978,7 +2991,8 @@ export async function coreRoutes(app: FastifyInstance) {
       // necesita su CUENTA de cobro cargada, si no el inquilino queda sin CBU destino.
       const part = await prisma.participacionPropietario.findFirst({
         where: { propiedadId: contrato.propiedadId },
-        orderBy: { porcentaje: 'desc' },
+        // Mismo desempate estable que en el alta (ver POST /contratos).
+        orderBy: [{ porcentaje: 'desc' }, { propietarioId: 'asc' }],
         include: { propietario: { select: { cuentaCobranza: { select: { id: true } }, nombre: true, apellido: true } } },
       });
       if (!part) {
@@ -2986,8 +3000,7 @@ export async function coreRoutes(app: FastifyInstance) {
       }
       if (!part.propietario.cuentaCobranza) {
         return reply.code(400).send({
-          message: `Falta la cuenta de cobro directo de ${part.propietario.nombre} ${part.propietario.apellido ?? ''}`.trim() +
-            '. Entrá a la ficha del propietario → "Cuenta de cobranza directa" y cargá banco + CBU (22 dígitos) + alias. (El CBU/alias del alta del propietario NO alcanza para el cobro directo.)',
+          message: faltaCuentaCobranzaDirecta(`${part.propietario.nombre} ${part.propietario.apellido ?? ''}`),
         });
       }
       cobraDirectoPropietarioId = part.propietarioId;

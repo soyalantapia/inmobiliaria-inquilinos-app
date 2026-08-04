@@ -247,9 +247,17 @@ function detalleMock(id: string): PropietarioDetalle | null {
   return { propietario, propiedades, contratos };
 }
 
+/**
+ * `error` va aparte de `detalle: null` a propósito. Colapsar las dos cosas dejaba a
+ * quien consume sin poder distinguir "todavía no llegó" de "no vamos a poder traerlo":
+ * el alta de contrato mostraba "Confirmando la cuenta del propietario…" PARA SIEMPRE
+ * cuando el fetch fallaba, sin error, sin reintento y sin dejar avanzar.
+ */
 export function usePropietario(id: string): {
   detalle: PropietarioDetalle | null;
   cargando: boolean;
+  error: boolean;
+  reintentar: () => void;
   deApi: boolean;
 } {
   const q = useQuery({
@@ -263,8 +271,10 @@ export function usePropietario(id: string): {
     staleTime: 15_000,
   });
 
-  if (!apiEnabled) return { detalle: detalleMock(id), cargando: false, deApi: false };
-  // API caído o 404 en prod: null sin mock (no inventamos data).
-  if (q.isError) return { detalle: null, cargando: false, deApi: true };
-  return { detalle: q.data ?? null, cargando: q.isPending, deApi: true };
+  const reintentar = () => void q.refetch();
+  if (!apiEnabled)
+    return { detalle: detalleMock(id), cargando: false, error: false, reintentar, deApi: false };
+  // API caído o 404 en prod: null sin mock (no inventamos data), pero DICIENDO que falló.
+  if (q.isError) return { detalle: null, cargando: false, error: true, reintentar, deApi: true };
+  return { detalle: q.data ?? null, cargando: q.isPending, error: false, reintentar, deApi: true };
 }

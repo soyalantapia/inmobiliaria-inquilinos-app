@@ -953,8 +953,28 @@ export function usePropiedades(): {
     // filter: el API puede devolver una participación con propietario null
     // (participación huérfana, estado de DB válido) → propietarioLite crashea al
     // desestructurar. Mismo guard que use-propiedad.ts.
+    // ORDEN por mayor porcentaje, con DESEMPATE ESTABLE por id. No es cosmético:
+    // `propietarios[0]` es el "dueño principal" que el alta de contrato usa para la
+    // cobranza directa, y el server elige ese mismo dueño por su cuenta. Sin ordenar,
+    // el array llegaba en el orden crudo de Postgres (GET /propiedades no ordena las
+    // participaciones) y la PANTALLA nombraba a uno mientras el SERVER validaba a otro:
+    // el alta moría con un 400 citando a alguien que nunca se mostró, o peor, se
+    // cargaba el CBU en la ficha del dueño equivocado.
+    //
+    // El desempate por id importa: apoyarse en que `Array.prototype.sort` es estable
+    // no alcanza cuando el orden de ENTRADA no lo es. Con dos dueños al 50/50, Postgres
+    // puede devolver las participaciones en otro orden entre consultas (editar la
+    // propiedad hace deleteMany+createMany), así que "conservar el orden original" no
+    // conserva nada. El server ordena igual (`[{ porcentaje: 'desc' }, { propietarioId:
+    // 'asc' }]`, core.ts), y las dos capas tienen que coincidir SIEMPRE, no casi siempre.
     const propietarios = (p.participaciones ?? [])
       .filter((pp) => pp.propietario != null)
+      .slice()
+      .sort(
+        (a, b) =>
+          Number(b.porcentaje ?? 0) - Number(a.porcentaje ?? 0) ||
+          String(a.propietario?.id ?? '').localeCompare(String(b.propietario?.id ?? '')),
+      )
       .map((pp) => propietarioLite(pp.propietario, p.id));
     const reclamosAbiertos = reclamos.filter(
       (r) => r.contratoId === p.contratoActualId && (r.estado === 'ABIERTO' || r.estado === 'EN_CURSO'),
