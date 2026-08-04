@@ -157,6 +157,8 @@ function NuevaPropiedadForm() {
     { rowId: rid(), propietarioId: '', porcentaje: 100 },
   ]);
   const [conDivision, setConDivision] = useState(false);
+  // Confirmación antes de apagar la división y perder a los otros dueños.
+  const [confirmarSinDivision, setConfirmarSinDivision] = useState(false);
   const [nuevoPropOpen, setNuevoPropOpen] = useState(false);
 
   // Metadata del tipo elegido: qué campos aplican. Sin tipo aún, asumimos que
@@ -262,6 +264,17 @@ function NuevaPropiedadForm() {
   const propietariosVisibles = conDivision
     ? asignados
     : [{ ...asignados[0]!, porcentaje: 100 }];
+
+  // Al apagar "Con división %" sólo sobrevive el PRIMER dueño: los demás se caen
+  // de la pantalla, del resumen y del payload. Antes pasaba en silencio y se
+  // guardaba creyendo que habían quedado los tres. Estos son los que se pierden.
+  const nombreDe = (propietarioId: string) => {
+    const p = todosLosPropietarios.find((x) => x.id === propietarioId);
+    return p ? `${p.nombre} ${p.apellido}`.trim() : 'un propietario sin elegir';
+  };
+  const seDescartanAlQuitarDivision = conDivision
+    ? asignados.slice(1).filter((p) => p.propietarioId)
+    : [];
   const totalPct = propietariosVisibles.reduce((s, p) => s + (p.porcentaje || 0), 0);
   const pctValido = !conDivision || totalPct === 100;
 
@@ -432,7 +445,10 @@ function NuevaPropiedadForm() {
         toast({
           variant: 'success',
           title: '¡Propiedad cargada!',
-          description: 'Desde su ficha podés cargarle el contrato y el inquilino.',
+          // No prometemos "y el inquilino": en prod ese botón de la ficha está
+          // deshabilitado (cargar-inquilino-trigger.tsx). El inquilino nace
+          // dentro del wizard de contrato, y eso es lo que decimos.
+          description: 'Ahora cargale el contrato desde su ficha: el inquilino va adentro de ese paso.',
         });
         // Aterrizamos EN la ficha de la propiedad, no en el alta de contrato: el
         // flujo es "primero la propiedad; el contrato y el inquilino se cargan
@@ -878,7 +894,14 @@ function NuevaPropiedadForm() {
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => setConDivision((v) => !v)}
+                      onClick={() => {
+                        // Apagar la división descarta dueños: preguntamos antes.
+                        if (seDescartanAlQuitarDivision.length > 0) {
+                          setConfirmarSinDivision(true);
+                          return;
+                        }
+                        setConDivision((v) => !v);
+                      }}
                       aria-pressed={conDivision}
                       className={`rounded-md border px-2.5 py-1 text-xs transition-colors ${
                         conDivision
@@ -1025,11 +1048,12 @@ function NuevaPropiedadForm() {
                   <FileText className="h-4 w-4" />
                 </div>
                 <div className="text-sm">
-                  <h3 className="font-semibold">El alquiler va en el próximo paso</h3>
+                  <h3 className="font-semibold">El alquiler y el inquilino van después</h3>
                   <p className="mt-0.5 text-xs text-muted-foreground">
-                    Primero cargás la propiedad y su dueño. Apenas la guardes, te
-                    llevamos a cargar el contrato (monto, vigencia, ajustes) con esta
-                    propiedad ya seleccionada.
+                    Acá cargás la propiedad y su dueño. Cuando la guardes vas a su
+                    ficha, y desde ahí el botón <strong>Cargar contrato</strong> te abre
+                    el monto, la vigencia y los ajustes con esta propiedad ya
+                    seleccionada. El inquilino se carga adentro de ese mismo paso.
                   </p>
                 </div>
               </CardContent>
@@ -1159,6 +1183,44 @@ function NuevaPropiedadForm() {
         open={nuevoPropOpen}
         onOpenChange={setNuevoPropOpen}
         onCreated={onPropietarioCreado}
+      />
+
+      {/* Apagar "Con división %" descarta a todos los dueños menos el primero.
+          Los nombramos: perder un dueño en silencio se paga después en la
+          rendición, cuando esa persona no aparece y hay que rehacer el alta. */}
+      <ConfirmDialog
+        open={confirmarSinDivision}
+        onOpenChange={setConfirmarSinDivision}
+        title={
+          seDescartanAlQuitarDivision.length === 1
+            ? '¿Sacar al otro propietario?'
+            : `¿Sacar a los otros ${seDescartanAlQuitarDivision.length} propietarios?`
+        }
+        description={
+          <div className="space-y-2 pt-2 text-sm">
+            <p>
+              Sin división queda un solo dueño con el 100%. Se van a quitar de esta
+              propiedad:
+            </p>
+            <ul className="list-disc space-y-0.5 pl-5">
+              {seDescartanAlQuitarDivision.map((p) => (
+                <li key={p.propietarioId}>
+                  <strong className="text-foreground">{nombreDe(p.propietarioId)}</strong>
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs text-muted-foreground">
+              Queda <strong className="text-foreground">{nombreDe(asignados[0]?.propietarioId ?? '')}</strong> con el 100%.
+              Podés volver a activar la división y cargarlos de nuevo.
+            </p>
+          </div>
+        }
+        confirmLabel="Sí, dejar un solo dueño"
+        cancelLabel="Volver"
+        onConfirm={() => {
+          setConDivision(false);
+          setConfirmarSinDivision(false);
+        }}
       />
 
       <ConfirmDialog

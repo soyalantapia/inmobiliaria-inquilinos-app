@@ -53,28 +53,36 @@ export function SumarPropietarioDialog({ open, onOpenChange }: Props) {
   };
 
   const guardar = async () => {
-    if (!nombre.trim() || !apellido.trim() || !cuit.trim() || !email.trim()) {
+    // MÍNIMO UNIFICADO: nombre + apellido, que es lo único que exige el server
+    // (core.ts: nombre min 2, apellido min 1). Antes esta puerta pedía además
+    // CUIT y email, y el wizard de propiedad pedía teléfono con el CUIT
+    // rotulado "opcional": la respuesta a "¿qué necesito para cargar un dueño?"
+    // dependía de por dónde entrabas, y las dos pantallas se contradecían.
+    // CUIT, email y teléfono quedan blandos: se validan SI los cargás.
+    if (nombre.trim().length < 2 || !apellido.trim()) {
       toast({
         title: 'Faltan datos obligatorios',
-        description: 'Nombre, apellido, CUIT y email son requeridos.',
+        description: 'Nombre y apellido son los únicos datos requeridos.',
         variant: 'destructive',
       });
       return;
     }
     // El diálogo no está dentro de un <form>, así que la validación nativa de
-    // type=email no dispara. El server exige .email() → validamos el formato acá.
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+    // type=email no dispara. El server exige .email() cuando viene con valor.
+    if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       toast({ title: 'Revisá el email', description: 'El email no tiene un formato válido (ej: nombre@correo.com).', variant: 'destructive' });
       return;
     }
-    const checkCuit = validarCuit(cuit);
-    if (!checkCuit.valido) {
-      toast({
-        title: 'CUIT inválido',
-        description: checkCuit.motivo,
-        variant: 'destructive',
-      });
-      return;
+    if (cuit.trim()) {
+      const checkCuit = validarCuit(cuit);
+      if (!checkCuit.valido) {
+        toast({
+          title: 'CUIT inválido',
+          description: checkCuit.motivo,
+          variant: 'destructive',
+        });
+        return;
+      }
     }
 
     // Prod: POST /propietarios (el hook invalida ['propietarios']).

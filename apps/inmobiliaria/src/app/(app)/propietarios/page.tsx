@@ -21,6 +21,7 @@ import { Button } from '@llave/ui/button';
 import { Card, CardContent } from '@llave/ui/card';
 import { Input } from '@llave/ui/input';
 import { apiEnabled } from '@/lib/api/client';
+import { formatearCuit, normalizarCuit } from '@/lib/cuit';
 import { AnularRendicionButton } from '@/components/anular-rendicion-button';
 import { HistorialPropietarioDialog } from '@/components/historial-propietario-dialog';
 import {
@@ -136,10 +137,15 @@ export default function PropietariosPage() {
       );
     }
     if (!term) return base;
+    // El CUIT se compara en DÍGITOS de los dos lados: en la base conviven
+    // "20301234567" (cargado desde el wizard, que strippea) y "20-30123456-7"
+    // (cargado desde acá). Buscando "20-30" el includes crudo no encontraba al
+    // primero y la inmobiliaria concluía "no se guardó".
+    const termDigitos = term.replace(/\D/g, '');
     return base.filter(
       (p) =>
         `${p.nombre} ${p.apellido}`.toLowerCase().includes(term) ||
-        p.cuit.includes(term) ||
+        (termDigitos.length > 0 && normalizarCuit(p.cuit).includes(termDigitos)) ||
         p.email.toLowerCase().includes(term),
     );
   }, [propietarios, q, filtroExtra, rendicionesMap]);
@@ -317,7 +323,7 @@ export default function PropietariosPage() {
                               el navegador break la línea en cualquier `-`
                               y el CUIT termina partido en 3 líneas. */}
                           <p className="whitespace-nowrap text-xs text-muted-foreground tabular-nums">
-                            CUIT {p.cuit}
+                            CUIT {formatearCuit(p.cuit)}
                           </p>
                         </div>
                         {/* I2-05: este badge comunica ESTADO de rendición.

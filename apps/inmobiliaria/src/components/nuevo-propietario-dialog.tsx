@@ -53,6 +53,8 @@ export function NuevoPropietarioDialog({
   const [email, setEmail] = useState('');
   const [telefono, setTelefono] = useState('');
   const [cbuAlias, setCbuAlias] = useState('');
+  // Default 8: es el mismo que aplicaba el server en silencio, pero ahora se ve.
+  const [comisionPct, setComisionPct] = useState('8');
   const [guardando, setGuardando] = useState(false);
   const { crear } = useCrearPropietario();
 
@@ -64,15 +66,23 @@ export function NuevoPropietarioDialog({
       setEmail('');
       setTelefono('');
       setCbuAlias('');
+      setComisionPct('8');
       setGuardando(false);
     }
   }, [open]);
 
   const telefonoOk = telefono.replace(/[^\d]/g, '').length >= 8;
+  const comisionNum = Number(comisionPct);
+  const comisionOk =
+    comisionPct.trim() === '' || (Number.isFinite(comisionNum) && comisionNum >= 0 && comisionNum <= 100);
+  // MÍNIMO UNIFICADO con la otra puerta (/propietarios) y con el server:
+  // nombre + apellido y nada más. El teléfono era obligatorio SÓLO acá, así que
+  // el mismo dueño se podía cargar de un lado y no del otro.
   const puedeGuardar =
     nombre.trim().length >= 2 &&
-    apellido.trim().length >= 2 &&
-    telefonoOk &&
+    apellido.trim().length >= 1 &&
+    (telefono.trim() === '' || telefonoOk) &&
+    comisionOk &&
     !guardando;
 
   const onSubmit = async (e: React.FormEvent) => {
@@ -92,6 +102,9 @@ export function NuevoPropietarioDialog({
           ...(telefono.trim() ? { telefono: telefono.trim() } : {}),
           ...(cuit.trim() ? { cuit: cuit.trim() } : {}),
           ...(cbuAlias.trim() ? { cbuAlias: cbuAlias.trim() } : {}),
+          // Explícito aunque sea 8: que el número que se ve en pantalla sea el
+          // que se guarda, en vez de depender del default del server.
+          ...(comisionPct.trim() !== '' ? { comisionPct: comisionNum } : {}),
         });
       } catch (err) {
         setGuardando(false);
@@ -190,7 +203,9 @@ export function NuevoPropietarioDialog({
                 <span className="inline-flex items-center gap-1">
                   💬 WhatsApp
                 </span>
-                <span className="text-[10px] font-medium text-primary">obligatorio</span>
+                <span className="text-[10px] font-normal text-muted-foreground">
+                  recomendado
+                </span>
               </Label>
               <Input
                 id="np-telefono"
@@ -215,6 +230,31 @@ export function NuevoPropietarioDialog({
                 Toda la comunicación con el propietario va por acá.
               </p>
             </div>
+          </div>
+
+          {/* La comisión NO se preguntaba acá y el server la fijaba en 8%
+              (core.ts: comisionPct ?? 8). Ese porcentaje es el que usa la
+              rendición para calcular cuánto se queda la inmobiliaria: se
+              decidía solo, sin avisar, y recién se descubría al rendir. */}
+          <div className="space-y-1.5">
+            <Label htmlFor="np-comision">Tu comisión sobre el alquiler</Label>
+            <div className="flex items-center gap-2">
+              <Input
+                id="np-comision"
+                inputMode="decimal"
+                aria-invalid={!comisionOk}
+                aria-describedby="np-comision-hint"
+                value={comisionPct}
+                onChange={(e) => setComisionPct(e.target.value)}
+                className={comisionOk ? 'w-24' : 'w-24 border-destructive focus-visible:ring-destructive'}
+              />
+              <span className="text-sm text-muted-foreground">%</span>
+            </div>
+            <p id="np-comision-hint" className="text-[11px] text-muted-foreground">
+              {comisionOk
+                ? 'Es lo que se te descuenta a vos en cada rendición a este dueño. Podés cambiarlo después.'
+                : 'Ingresá un número entre 0 y 100.'}
+            </p>
           </div>
 
           <div className="space-y-1.5">

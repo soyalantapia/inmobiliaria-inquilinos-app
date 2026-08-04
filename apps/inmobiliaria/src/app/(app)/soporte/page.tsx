@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
-  Bug,
   CheckCircle2,
   ChevronRight,
   Clock,
@@ -38,6 +37,7 @@ import {
   type SoporteStatus,
 } from '@/lib/soporte-api';
 import { ApiError } from '@/lib/api/client';
+import { Topbar } from '@/components/topbar';
 
 type StatusTab = SoporteStatus | 'all';
 
@@ -185,15 +185,16 @@ export default function SoportePage() {
   // `flex-1` para ser flex item de #main-content y encoger con él, y padding responsive.
   // Con `mx-auto max-w-6xl p-6` la página no encogía y desbordaba en pantallas angostas.
   return (
-    <div className="flex-1 space-y-6 p-4 md:p-6">
+    <>
+      {/* El Topbar es el que monta MobileSidebarTrigger: sin él, en el celular
+          esta pantalla no tenía NINGUNA forma de abrir el menú (el nav inferior
+          sólo lleva a Inicio, Propiedades, Pagos y Reclamos). */}
+      <Topbar titulo="Soporte — Bugs" />
+      <div className="flex-1 space-y-6 p-4 md:p-6">
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="flex items-center gap-2 text-2xl font-bold text-foreground">
-            <Bug className="h-6 w-6 text-violet-600" />
-            Soporte — Bugs
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <p className="text-sm text-muted-foreground">
             Tickets de error capturados por Sonar en My Alquiler
           </p>
         </div>
@@ -387,7 +388,8 @@ export default function SoportePage() {
           flash={flash}
         />
       )}
-    </div>
+      </div>
+    </>
   );
 }
 

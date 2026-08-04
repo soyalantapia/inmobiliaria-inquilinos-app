@@ -28,6 +28,7 @@ import {
   NegociadorRenovacionPanel,
   ResumenSugerenciasCartera,
 } from '@/components/negociador-renovacion';
+import { Topbar } from '@/components/topbar';
 
 // Dashboard de renovaciones: muestra los contratos que vencen pronto,
 // la decisión de cada inquilino (o falta de respuesta) y permite actuar.
@@ -96,16 +97,15 @@ export default function RenovacionesPage() {
   ).length;
 
   return (
-    <div className="space-y-6 p-6 md:p-8">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Cartera
-        </p>
-        <h1 className="text-2xl font-semibold md:text-3xl">Renovaciones</h1>
-        <p className="text-sm text-muted-foreground">
-          Quién vence pronto, qué decidió cada inquilino y a quién falta avisar.
-        </p>
-      </div>
+    <>
+      {/* El Topbar es el que monta MobileSidebarTrigger: sin él, en el celular
+          esta pantalla no tenía NINGUNA forma de abrir el menú (el nav inferior
+          sólo lleva a Inicio, Propiedades, Pagos y Reclamos). */}
+      <Topbar titulo="Renovaciones" />
+      <div className="space-y-6 p-6 md:p-8">
+      <p className="text-sm text-muted-foreground">
+        Quién vence pronto, qué decidió cada inquilino y a quién falta avisar.
+      </p>
 
       {/* KPIs */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -310,7 +310,8 @@ export default function RenovacionesPage() {
         onClose={() => setDecidiendo(null)}
         onSaved={() => void qc.invalidateQueries({ queryKey: ['renovaciones'] })}
       />
-    </div>
+      </div>
+    </>
   );
 }
 

@@ -70,6 +70,14 @@ function liqQueDefineEstado<
  * Nota: estadoPagoActual / proximoVencimiento son DERIVADOS de liquidaciones
  * (Fase 3). Hasta entonces el server no los inventa: van null y el front decide.
  */
+// El CUIT se guarda SIEMPRE en dígitos pelados. Por las tres puertas de alta
+// entraban formatos distintos ("20-30123456-7" desde /propietarios, "20301234567"
+// desde el wizard de propiedad) y quedaban conviviendo en la misma columna: el
+// buscador no encontraba lo recién cargado y el usuario concluía "no se guardó".
+function normalizarCuit(input: string | undefined | null): string {
+  return (input ?? '').replace(/\D/g, '');
+}
+
 export async function coreRoutes(app: FastifyInstance) {
   // ===== Contratos =====
   app.get('/contratos', async (request, reply) => {
@@ -616,7 +624,7 @@ export async function coreRoutes(app: FastifyInstance) {
         inmobiliariaId: u.inmobiliariaId,
         nombre: d.nombre,
         apellido: d.apellido,
-        cuit: d.cuit ?? '',
+        cuit: normalizarCuit(d.cuit),
         email: d.email ?? '',
         telefono: d.telefono ?? '',
         cbuAlias: d.cbuAlias || null,
@@ -655,7 +663,7 @@ export async function coreRoutes(app: FastifyInstance) {
       data: {
         nombre: d.nombre,
         apellido: d.apellido,
-        cuit: d.cuit ?? '',
+        cuit: normalizarCuit(d.cuit),
         email: d.email ?? '',
         telefono: d.telefono ?? '',
         cbuAlias: d.cbuAlias || null,

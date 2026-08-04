@@ -22,6 +22,7 @@ import {
 } from '@/lib/api/use-red-profesionales';
 import { profesionalCategoriaLabelAdmin, type CategoriaProfesional } from '@/lib/mock-data';
 import { formatMonto } from '@/lib/format';
+import { Topbar } from '@/components/topbar';
 
 const CATS = Object.keys(profesionalCategoriaLabelAdmin) as CategoriaProfesional[];
 
@@ -78,13 +79,17 @@ export default function RedProfesionalesPage() {
   };
 
   return (
-    <div className="space-y-6 p-6 md:p-8">
+    <>
+      {/* El Topbar es el que monta MobileSidebarTrigger: sin él, en el celular
+          esta pantalla no tenía NINGUNA forma de abrir el menú (el nav inferior
+          sólo lleva a Inicio, Propiedades, Pagos y Reclamos). */}
+      <Topbar titulo="Red compartida" />
+      <div className="space-y-6 p-6 md:p-8">
       <div>
         <Link href="/profesionales" className="mb-2 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
           <ArrowLeft className="h-3.5 w-3.5" /> Volver a mis profesionales
         </Link>
         <div className="flex items-center gap-2">
-          <h1 className="text-2xl font-semibold md:text-3xl">Red compartida</h1>
           <Badge variant="outline" className="gap-1"><ShieldCheck className="h-3.5 w-3.5" /> Ecosistema</Badge>
         </div>
         <p className="text-sm text-muted-foreground">
@@ -205,7 +210,8 @@ export default function RedProfesionalesPage() {
       )}
 
       <FichaRedDialog id={fichaId} onClose={() => setFichaId(null)} onContratar={contratar} contratando={contratando} />
-    </div>
+      </div>
+    </>
   );
 }
 
