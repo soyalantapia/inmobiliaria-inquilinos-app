@@ -258,6 +258,84 @@ async function enviarEmailsAnuncio(
   app.log.info({ anuncioId: anuncio.id, ok, fallidos, total: unicos.length }, 'emails del anuncio enviados');
 }
 
+/**
+ * Avisa al inquilino de UN contrato reutilizando el canal de anuncios (APP +
+ * EMAIL, con acuse de recibo). Existe porque subir el alquiler era MUDO: los dos
+ * caminos que cambian el canon (POST /contratos/:id/ajustar y
+ * PATCH /contratos/:id/monto, que es también el "ajuste masivo") escribían el
+ * monto nuevo y el inquilino se enteraba cuando le llegaba la cuota. Camila,
+ * reunión 03/08: subió el alquiler a 550 y del otro lado no llegó nada.
+ *
+ * Va por anuncios y no por un canal nuevo justamente por el ACUSE: un aumento
+ * de alquiler conviene poder probar que se avisó y cuándo.
+ *
+ * Best-effort a propósito: si esto falla, el ajuste NO se revierte. Que no se
+ * pueda mandar un mail no puede dejar el contrato a medio ajustar; queda
+ * logueado. Por eso se llama DESPUÉS de que el ajuste commiteó.
+ */
+export async function avisarAjusteAlInquilino(
+  app: FastifyInstance,
+  opts: {
+    inmobiliariaId: string;
+    contratoId: string;
+    autor: string;
+    montoAnterior: number;
+    montoNuevo: number;
+    moneda: string;
+    vigenciaDesde?: Date | null;
+  },
+): Promise<void> {
+  try {
+    const fmt = (n: number) =>
+      new Intl.NumberFormat('es-AR', {
+        style: 'currency',
+        currency: opts.moneda === 'USD' ? 'USD' : 'ARS',
+        maximumFractionDigits: 0,
+      }).format(n);
+    const desde = opts.vigenciaDesde
+      ? ` Rige desde el ${opts.vigenciaDesde.toLocaleDateString('es-AR')}.`
+      : '';
+    // Sin variación no molestamos a nadie (un "ajuste" que deja el mismo monto
+    // pasa, por ejemplo, al corregir otro campo del contrato).
+    if (opts.montoNuevo === opts.montoAnterior) return;
+    const subio = opts.montoNuevo > opts.montoAnterior;
+
+    const destino = await resolverAudiencia(opts.inmobiliariaId, 'CONTRATOS_ESPECIFICOS', [
+      opts.contratoId,
+    ]);
+    if (destino.destinatariosCount === 0) {
+      app.log.warn({ contratoId: opts.contratoId }, 'ajuste sin destinatario: no se avisó al inquilino');
+      return;
+    }
+
+    const anuncio = await prisma.anuncio.create({
+      data: {
+        inmobiliariaId: opts.inmobiliariaId,
+        titulo: subio ? 'Actualización del alquiler' : 'Cambio en el monto del alquiler',
+        cuerpo:
+          `El monto de tu alquiler pasa de ${fmt(opts.montoAnterior)} a ` +
+          `${fmt(opts.montoNuevo)}.${desde} Cualquier duda, escribinos.`,
+        prioridad: 'IMPORTANTE',
+        audiencia: 'CONTRATOS_ESPECIFICOS',
+        audienciaIds: [opts.contratoId],
+        canales: ['APP', 'EMAIL'],
+        enviadoPor: opts.autor,
+        enviadoAt: new Date(),
+        destinatariosCount: destino.destinatariosCount,
+      },
+    });
+    if (mailerConfigured) {
+      void enviarEmailsAnuncio(app, anuncio, destino.inquilinoIds).catch((e) =>
+        app.log.error({ anuncioId: anuncio.id, err: e }, 'no se pudo mandar el aviso de ajuste'),
+      );
+    } else {
+      app.log.warn({ anuncioId: anuncio.id }, 'SMTP sin configurar: aviso de ajuste sólo en la app');
+    }
+  } catch (e) {
+    app.log.error({ contratoId: opts.contratoId, err: e }, 'falló el aviso de ajuste al inquilino');
+  }
+}
+
 export async function anunciosRoutes(app: FastifyInstance) {
   // ===== Panel: listado con conteos REALES desde AnuncioAcuse =====
   app.get('/anuncios', async (request, reply) => {
