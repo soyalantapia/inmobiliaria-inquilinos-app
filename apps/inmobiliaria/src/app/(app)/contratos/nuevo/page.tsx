@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, ArrowLeft, ArrowRight, CheckCircle2, FileText, FileUp, Home, Loader2, Sparkles, X } from 'lucide-react';
+import { AlertCircle, AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, FileText, FileUp, Home, Loader2, Sparkles, X } from 'lucide-react';
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@llave/ui/card';
@@ -949,6 +949,16 @@ function CargarContratoApiWizard() {
   // es otro pedido, hoy bloqueado por decisión de negocio.)
   const [fichaPersona, setFichaPersona] = useState<FichaPersonaResumen | null>(null);
   const [cargandoFicha, setCargandoFicha] = useState(false);
+  // El semáforo de arriba sólo se dispara si el operador USA el buscador "¿Ya está
+  // en tu cartera?" y elige a alguien. Tipear el DNI a mano —el camino natural
+  // cuando creés que es gente nueva— no disparaba nada, y el back hace un MERGE
+  // SILENCIOSO: buscarOCrearPersona encuentra la Persona por (inmobiliaria, dni) y
+  // le cuelga el contrato nuevo sin avisar y sin actualizarle el nombre. Dos
+  // consecuencias: le firmás a ciegas a un moroso propio, o —si el DNI es un error
+  // de tipeo que coincide con otro— el contrato queda colgado de la persona
+  // equivocada y la lista de inquilinos lo muestra con el nombre VIEJO. Todo con
+  // un 201 normal. Esto lo hace visible.
+  const [personaMismoDni, setPersonaMismoDni] = useState<PersonaListado | null>(null);
 
   // Buscar personas por texto (debounce) para el autocomplete del reuso.
   useEffect(() => {
@@ -972,6 +982,36 @@ function CargarContratoApiWizard() {
       clearTimeout(timer);
     };
   }, [busquedaPersona]);
+
+  // Aviso por DNI tipeado. NO bloquea a propósito: el merge por DNI es deliberado y
+  // sostiene el multi-alquiler (el mismo inquilino con tres locales). Convertirlo en
+  // un 409 rompería justo el caso que la migración de multi-alquiler vino a arreglar.
+  useEffect(() => {
+    // Si ya eligió a alguien del buscador, el semáforo grande ya está en pantalla.
+    if (personaId || !apiEnabled || dni.length < 7) {
+      setPersonaMismoDni(null);
+      return;
+    }
+    let vivo = true;
+    const timer = setTimeout(async () => {
+      try {
+        await ensureApiSession();
+        const r = await apiFetch<PersonaListado[]>(`/personas?q=${encodeURIComponent(dni)}`);
+        // El endpoint filtra con `contains`, así que "3011122" trae también al
+        // 30111223. Comparamos EXACTO: avisar por un match parcial sería avisar
+        // de alguien que no es.
+        if (vivo) setPersonaMismoDni(r.find((p) => p.dni === dni) ?? null);
+      } catch {
+        // Sin conexión no inventamos un aviso ni lo damos por limpio: simplemente
+        // no decimos nada, igual que antes de este cambio.
+        if (vivo) setPersonaMismoDni(null);
+      }
+    }, 350);
+    return () => {
+      vivo = false;
+      clearTimeout(timer);
+    };
+  }, [dni, personaId]);
 
   const elegirPersona = (p: PersonaListado) => {
     setPersonaId(p.id);
@@ -2329,7 +2369,38 @@ function CargarContratoApiWizard() {
                     onChange={(e) => setDni(e.target.value.replace(/\D/g, '').slice(0, 9))}
                     inputMode="numeric"
                     placeholder="30111222"
+                    aria-describedby={personaMismoDni ? 'dni-ya-existe' : undefined}
                   />
+                  {/* Aviso, no bloqueo: puede ser el mismo inquilino alquilando otra
+                      unidad (caso válido y frecuente) o un DNI mal tipeado. Las dos
+                      salidas están a la vista. */}
+                  {personaMismoDni && (
+                    <div
+                      id="dni-ya-existe"
+                      className="space-y-1.5 rounded-md border border-amber-300 bg-amber-50 p-2 dark:border-amber-900/40 dark:bg-amber-950/30"
+                    >
+                      <p className="flex items-start gap-1.5 text-xs text-amber-900 dark:text-amber-200">
+                        <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+                        <span>
+                          Ya tenés a{' '}
+                          <strong>
+                            {personaMismoDni.nombre} {personaMismoDni.apellido ?? ''}
+                          </strong>{' '}
+                          con este DNI. Si es la misma persona, traé su ficha para ver si
+                          te debe algo; si no, revisá el número.
+                        </span>
+                      </p>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs"
+                        onClick={() => elegirPersona(personaMismoDni)}
+                      >
+                        Es la misma persona
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </div>
 
