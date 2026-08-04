@@ -21,6 +21,14 @@ export interface ConfirmDialogProps {
   variant?: 'destructive' | 'default';
   loading?: boolean;
   /**
+   * Qué dice el botón mientras `loading`. Default: "Procesando…".
+   *
+   * Existe para las operaciones largas de varios pasos (ej. el alta que después
+   * sube N documentos, uno por request): un "Procesando…" fijo durante 16
+   * requests seguidos se lee como pantalla colgada.
+   */
+  loadingLabel?: string;
+  /**
    * Cuando `true`, el botón de confirmar queda deshabilitado. Usalo
    * para que el dialog quede abierto mientras la validación inline no
    * pase — evita que el usuario pierda lo que escribió por un click
@@ -39,6 +47,7 @@ export function ConfirmDialog({
   cancelLabel = 'Cancelar',
   variant = 'default',
   loading = false,
+  loadingLabel,
   confirmDisabled = false,
   onConfirm,
 }: ConfirmDialogProps) {
@@ -85,7 +94,7 @@ export function ConfirmDialog({
             onClick={handleConfirm}
             disabled={loading || confirmDisabled}
           >
-            {loading ? 'Procesando…' : confirmLabel}
+            {loading ? (loadingLabel ?? 'Procesando…') : confirmLabel}
           </Button>
         </div>
       </DialogContent>

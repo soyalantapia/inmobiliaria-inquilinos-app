@@ -58,7 +58,7 @@ export async function propiedadTimelineRoutes(app: FastifyInstance) {
       ? await Promise.all([
           prisma.ajusteAlquiler.findMany({
             where: { contratoId: { in: contratoIds }, inmobiliariaId: tenant },
-            select: { contratoId: true, montoAnterior: true, montoNuevo: true, periodoDesde: true, motivo: true, createdAt: true },
+            select: { contratoId: true, montoAnterior: true, montoNuevo: true, periodoDesde: true, motivo: true, origenAlta: true, createdAt: true },
           }),
           prisma.renovacionContrato.findMany({
             where: { contratoId: { in: contratoIds }, inmobiliariaId: tenant },
@@ -90,7 +90,12 @@ export async function propiedadTimelineRoutes(app: FastifyInstance) {
       }
     }
     for (const a of ajustes) {
-      push(a.createdAt, 'AJUSTE', 'Ajuste de alquiler', `De $${money(a.montoAnterior)} a $${money(a.montoNuevo)} desde ${a.periodoDesde}${a.motivo ? ` · ${a.motivo}` : ''}`, a.contratoId);
+      // Las vigencias que materializa el alta (origenAlta) tienen createdAt = HOY pero
+      // cuentan historia VIEJA: mostrarlas como "Ajuste de alquiler" haría creer que la
+      // inmobiliaria acaba de subir el alquiler N veces en un día. Van con su propio
+      // título para que se lean por lo que son — el canon que el contrato ya traía.
+      const titulo = a.origenAlta ? 'Canon histórico declarado' : 'Ajuste de alquiler';
+      push(a.createdAt, a.origenAlta ? 'CANON_HISTORICO' : 'AJUSTE', titulo, `De $${money(a.montoAnterior)} a $${money(a.montoNuevo)} desde ${a.periodoDesde}${a.motivo ? ` · ${a.motivo}` : ''}`, a.contratoId);
     }
     for (const r of renovaciones) {
       push(r.createdAt, 'RENOVACION', 'Renovación de contrato', `Nuevo canon $${money(r.montoNuevo)} · vence ${new Date(r.fechaFinNueva).toISOString().slice(0, 10)}`, r.contratoId);

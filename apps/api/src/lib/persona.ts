@@ -10,6 +10,13 @@ export interface DatosPersonaFila {
 }
 
 /**
+ * El email que se está cargando ya es de OTRA Persona del tenant (con un DNI distinto).
+ * Solo la tira el alta manual (`alColisionarEmailConOtroDni: 'rechazar'`): ahí el operador
+ * está mirando la pantalla y puede corregir el email o buscar a la persona en su cartera.
+ */
+export class EmailDeOtraPersona extends Error {}
+
+/**
  * Find-or-create de Persona: agrupa varios contratos/inquilinos del MISMO inquilino bajo una
  * sola identidad del tenant (multi-alquiler — el mismo inquilino con 3 locales en La Rioja,
  * un propietario con diez departamentos de un consorcio). Prioridad: DNI primero (más
@@ -23,8 +30,20 @@ export interface DatosPersonaFila {
  * NUEVA por cada fila del mismo inquilino en vez de reusar la existente, y la 2da fila
  * reventaría con P2002 contra el unique de Persona a mitad de una cartera de 2000 filas,
  * dejándola cargada a medias en la cuenta REAL del cliente.
+ *
+ * `alColisionarEmailConOtroDni` es lo ÚNICO que separa a los dos call sites, y separa porque
+ * el costo del error es distinto: en la importación, cortar la fila la marca como procesada y
+ * la deja sin reintento en el medio de una cartera de 2000, así que se reusa la Persona y el
+ * operador reconcilia después (el preview ya lo avisa). En el alta manual no hay cartera que
+ * salvar y reusar es peor que fallar: el contrato de "Otra Persona" quedaría colgando de la
+ * Persona ajena, y como el email ES la identidad de login, el dueño de ese email entraría a
+ * ver un contrato que no es suyo.
  */
-export async function buscarOCrearPersona(tx: Prisma.TransactionClient, d: DatosPersonaFila): Promise<Persona> {
+export async function buscarOCrearPersona(
+  tx: Prisma.TransactionClient,
+  d: DatosPersonaFila,
+  opciones: { alColisionarEmailConOtroDni?: 'reusar' | 'rechazar' } = {},
+): Promise<Persona> {
   const dni = (d.dni ?? '').trim() || null;
   const email = d.email ? d.email.trim().toLowerCase() || null : null;
 
@@ -63,6 +82,10 @@ export async function buscarOCrearPersona(tx: Prisma.TransactionClient, d: Datos
         if (!porEmail.dni) {
           return tx.persona.update({ where: { id: porEmail.id }, data: { dni } });
         }
+        // Acá el DNI de esa Persona es SÍ o SÍ distinto al de esta fila (si fuera igual, el
+        // findUnique de arriba ya la habría encontrado): son dos personas distintas peleando
+        // por el mismo email de login. La importación sigue de largo; el alta manual corta.
+        if (opciones.alColisionarEmailConOtroDni === 'rechazar') throw new EmailDeOtraPersona();
         return porEmail;
       }
     }

@@ -66,6 +66,7 @@ import { apiEnabled, apiFetch, ApiError, varianteError } from '@/lib/api/client'
 import { ensureApiSession } from '@/lib/api/session';
 import { useCobranza } from '@/lib/api/hooks';
 import { useContrato } from '@/lib/api/use-contrato';
+import { useExpedienteContrato } from '@/lib/api/use-expediente-contrato';
 import {
   type CanalComunicacion,
   type LiquidacionAdmin,
@@ -307,7 +308,10 @@ export default function DetalleContratoPage() {
                 {comunicaciones.length}
               </Badge>
             </TabsTrigger>
-            <TabsTrigger value="documentos">Documentos</TabsTrigger>
+            <TabsTrigger value="documentos">
+              Documentos
+              <ExpedientePendientesBadge contratoId={c.id} />
+            </TabsTrigger>
             <TabsTrigger value="garantes">Garantes</TabsTrigger>
           </TabsList>
 
@@ -592,6 +596,32 @@ export default function DetalleContratoPage() {
         />
       )}
     </>
+  );
+}
+
+/**
+ * Cuántos papeles requeridos le faltan al expediente, arriba del tab.
+ *
+ * Va acá y no adentro del panel porque el tab de Documentos está cerrado casi
+ * siempre: quien entra al contrato tiene que enterarse de que falta el DNI del
+ * garante sin abrir nada. Es el mismo lugar y el mismo formato que los badges
+ * de Pagos y Comunicaciones, con una diferencia que no es cosmética: esos
+ * cuentan lo que HAY y este cuenta lo que FALTA, así que el número va con la
+ * palabra al lado. Un "3" pelado se leería como "hay 3 documentos".
+ *
+ * Sale del mismo `useExpedienteContrato` que el checklist de adentro —misma
+ * fórmula, mismos garantes reales, misma caché— para que los dos no puedan
+ * decir números distintos. Sin faltantes no muestra nada: un "0 pendientes"
+ * es ruido.
+ */
+function ExpedientePendientesBadge({ contratoId }: { contratoId: string }) {
+  const { resumen, listo } = useExpedienteContrato(contratoId);
+  if (!listo || resumen.faltantes.length === 0) return null;
+  return (
+    <Badge variant="secondary" className="ml-1.5 h-4 px-1 text-[10px]">
+      {resumen.faltantes.length}{' '}
+      {resumen.faltantes.length === 1 ? 'pendiente' : 'pendientes'}
+    </Badge>
   );
 }
 

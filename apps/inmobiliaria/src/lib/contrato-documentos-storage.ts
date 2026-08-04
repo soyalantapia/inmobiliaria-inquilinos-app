@@ -11,9 +11,10 @@
  *      comprobante / prueba (transferencias, ticket, etc.).
  *   5. Guardar el contrato firmado generado en Word/PDF.
  *
- * En backend real esto vive en S3 + tabla `DocumentoContrato`. Acá
- * usamos localStorage por contratoId con dataUrl base64. Tamaño máximo
- * recomendado: 2MB por archivo (quota localStorage ~5MB).
+ * En prod esto vive en el Volume + tabla `DocumentoContrato` (`useDocsContrato`);
+ * el localStorage por contratoId con dataUrl base64 que hay acá abajo es el
+ * camino de la demo. Este archivo NO es maqueta: los tipos, las etiquetas y el
+ * tope de tamaño los importa el panel de producción.
  */
 
 const STORAGE_KEY = 'llave-inmo:contrato-documentos:v1';
@@ -134,4 +135,14 @@ export const TIPO_DOC_LABEL: Record<TipoDocContrato, string> = {
   OTRO: 'Otro documento',
 };
 
-export const TAMANIO_MAX = 2 * 1024 * 1024;
+/**
+ * Tope de tamaño por archivo. Es el MISMO que acepta el backend en
+ * `POST /uploads` (`apps/api/src/routes/uploads.ts`, `MAX_BYTES`).
+ *
+ * Estuvo en 2 MB, que era la cuota de localStorage de la época de la demo. En
+ * prod los archivos ya no viven en localStorage, así que ese límite solo servía
+ * para rechazar en el navegador cosas que el servidor aceptaba sin problema — y
+ * la documentación escaneada de la cartera vieja pasa 2 MB con una hoja.
+ * Si cambia el del backend, este tiene que cambiar con él.
+ */
+export const TAMANIO_MAX = 10 * 1024 * 1024;

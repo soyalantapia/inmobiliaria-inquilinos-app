@@ -20,7 +20,10 @@ export type PeriodoContrato = {
   periodo: string;
   /** Fecha de vencimiento del período (UTC, medianoche). */
   vencimiento: Date;
-  /** true si el vencimiento ya pasó respecto de `now` (venc < now). */
+  /**
+   * true si el vencimiento ya pasó respecto de `now`, con el MISMO corte que usa
+   * el back para validar el estado inicial (`yaVencio`: día civil argentino).
+   */
   vencido: boolean;
 };
 
@@ -91,7 +94,14 @@ export function enumerarPeriodosContrato(params: ParamsEnumerarPeriodos, now: Da
     const diasMes = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
     const dia = Math.min(params.diaPago, diasMes);
     const venc = new Date(Date.UTC(y, m, dia));
-    out.push({ periodo, vencimiento: venc, vencido: venc < now });
+    // UN SOLO CORTE DE VENCIMIENTO. Antes acá decía `venc < now` (instante UTC) y
+    // el back validaba el estado inicial con `yaVencio` (día civil argentino). En
+    // el medio quedaba una ventana de ~27 h —desde la medianoche UTC del día de
+    // pago hasta las 00:00 AR del día siguiente— donde el wizard OFRECÍA un período
+    // que el back RECHAZABA con EstadoInicialInvalido → 400 → rollback del alta
+    // entera (el operador tenía que tipear todo de vuelta). Con `yaVencio` los dos
+    // lados cortan igual y esa ventana no existe.
+    out.push({ periodo, vencimiento: venc, vencido: yaVencio(venc, now) });
     // Generamos hasta el tope inclusive; si el inicio ya superó el tope
     // (contrato futuro), queda solo el primer mes.
     if (y > topeY || (y === topeY && m >= topeM)) break;
