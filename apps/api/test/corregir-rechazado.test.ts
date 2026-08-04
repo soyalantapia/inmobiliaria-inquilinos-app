@@ -355,4 +355,217 @@ describe('corregir contrato rechazado — el rechazo ya no vacía el contrato', 
     expect(ct.periodosAnterioresPendientes).toBeTruthy();
     expect(Array.isArray(ct.periodosAnterioresPendientes) ? ct.periodosAnterioresPendientes.length : 0).toBe(1);
   });
+
+  it('PUT /contratos/:id/borrador SIN mandar periodosAnteriores preserva la deuda declarada en el alta', async () => {
+    // El bug: el endpoint recibe el body COMPLETO, y si el caller no manda
+    // periodosAnteriores el server no puede tratar esa AUSENCIA como si fuera un
+    // array vacío ("no hay deuda"). Acá el caller solo quiere corregir el monto —
+    // no dice nada sobre la deuda — y aun así antes se borraba en silencio.
+    const { contratoId, aprobacionId } = await cargarContratoPendiente({
+      inquilino: { nombre: 'Pedro', apellido: 'SinCampo', email: 'pedro.sincampo@mail.com', dni: '39900066' },
+      monto: 90000,
+    });
+    await app.inject({
+      method: 'POST',
+      url: `/aprobaciones/${aprobacionId}/rechazar`,
+      headers: authAdmin(),
+      payload: { comentario: 'Revisar el monto' },
+    });
+
+    const antes = await app.inject({ method: 'GET', url: `/contratos/${contratoId}`, headers: authCarga() });
+    const c = antes.json();
+    expect(c.periodosAnterioresPendientes).toBeTruthy();
+
+    const put = await app.inject({
+      method: 'PUT',
+      url: `/contratos/${contratoId}/borrador`,
+      headers: authCarga(),
+      payload: {
+        propiedadId: c.propiedadId,
+        inquilino: { nombre: 'Pedro', apellido: 'SinCampo' },
+        monto: 95000, // <-- solo corrige el monto
+        fechaInicio: c.fechaInicio,
+        fechaFin: c.fechaFin,
+        diaPago: c.diaPago,
+        indiceAjuste: c.indiceAjuste,
+        frecuenciaAjusteMeses: c.frecuenciaAjusteMeses,
+        // periodosAnteriores NO viaja — este es el caso peligroso.
+      },
+    });
+    expect(put.statusCode, `PUT borrador: ${put.body}`).toBe(200);
+
+    const prisma = new PrismaClient();
+    const ct = await prisma.contrato.findUniqueOrThrow({ where: { id: contratoId } });
+    await prisma.$disconnect();
+    expect(Number(ct.monto)).toBe(95000);
+    // La deuda declarada en el alta sigue ahí: ausencia del campo no es una
+    // instrucción de borrar.
+    expect(ct.periodosAnterioresPendientes).toBeTruthy();
+    expect(Array.isArray(ct.periodosAnterioresPendientes) ? ct.periodosAnterioresPendientes.length : 0).toBe(1);
+  });
+
+  it('PUT /contratos/:id/borrador con periodosAnteriores: [] explícito SÍ limpia la deuda declarada', async () => {
+    const { contratoId, aprobacionId } = await cargarContratoPendiente({
+      inquilino: { nombre: 'Rosa', apellido: 'ArrayVacio', email: 'rosa.arrayvacio@mail.com', dni: '39900077' },
+      monto: 70000,
+    });
+    await app.inject({
+      method: 'POST',
+      url: `/aprobaciones/${aprobacionId}/rechazar`,
+      headers: authAdmin(),
+      payload: { comentario: 'Ya no hay deuda histórica que declarar' },
+    });
+
+    const antes = await app.inject({ method: 'GET', url: `/contratos/${contratoId}`, headers: authCarga() });
+    const c = antes.json();
+    expect(c.periodosAnterioresPendientes).toBeTruthy();
+
+    const put = await app.inject({
+      method: 'PUT',
+      url: `/contratos/${contratoId}/borrador`,
+      headers: authCarga(),
+      payload: {
+        propiedadId: c.propiedadId,
+        inquilino: { nombre: 'Rosa', apellido: 'ArrayVacio' },
+        monto: 70000,
+        fechaInicio: c.fechaInicio,
+        fechaFin: c.fechaFin,
+        diaPago: c.diaPago,
+        indiceAjuste: c.indiceAjuste,
+        frecuenciaAjusteMeses: c.frecuenciaAjusteMeses,
+        periodosAnteriores: [], // <-- explícito: "no hay períodos"
+      },
+    });
+    expect(put.statusCode, `PUT borrador: ${put.body}`).toBe(200);
+
+    const prisma = new PrismaClient();
+    const ct = await prisma.contrato.findUniqueOrThrow({ where: { id: contratoId } });
+    await prisma.$disconnect();
+    expect(ct.periodosAnterioresPendientes).toBeNull();
+  });
+
+  it('PUT /contratos/:id/borrador sobre un contrato de OTRA inmobiliaria da 404 y no lo toca', async () => {
+    const { contratoId } = await cargarContratoPendiente({
+      inquilino: { nombre: 'Carla', apellido: 'OtroTenant', email: 'carla.otrotenant@mail.com', dni: '39900088' },
+      monto: 60000,
+    });
+
+    // Inmobiliaria + usuario AJENOS, filas reales (requireUsuario revalida contra
+    // la DB) — mismo patrón que soporte.test.ts para probar la frontera de tenant.
+    const idAjena = 'ZZcorregir-ajena';
+    const uidAjeno = 'ZZcorregir-u-ajena';
+    const prisma = new PrismaClient();
+    await prisma.usuario.deleteMany({ where: { id: uidAjeno } });
+    await prisma.inmobiliaria.deleteMany({ where: { id: idAjena } });
+    await prisma.inmobiliaria.create({
+      data: {
+        id: idAjena,
+        nombre: 'Inmobiliaria Ajena (test)',
+        cuit: '30-99999999-9',
+        email: 'contacto@ajena.test.local',
+        telefono: '1100000000',
+        matricula: 'M-9999',
+        direccionCalle: 'Calle Ajena',
+        direccionAltura: '1',
+        direccionCiudad: 'CABA',
+        direccionProvincia: 'Buenos Aires',
+        direccionCp: '1000',
+        codigoReferido: `REF-${idAjena}`,
+      },
+    });
+    await prisma.usuario.create({
+      data: {
+        id: uidAjeno,
+        inmobiliariaId: idAjena,
+        nombre: 'Intruso',
+        apellido: 'Ajeno',
+        email: 'intruso@ajena.test.local',
+        rol: 'ADMIN',
+        activo: true,
+      },
+    });
+    const tokenAjeno = app.jwt.sign({ kind: 'usuario', userId: uidAjeno, inmobiliariaId: idAjena, rol: 'ADMIN' });
+
+    const put = await app.inject({
+      method: 'PUT',
+      url: `/contratos/${contratoId}/borrador`,
+      headers: { authorization: `Bearer ${tokenAjeno}` },
+      payload: {
+        propiedadId: 'no-existe',
+        inquilino: { nombre: 'Hackeado', apellido: 'Ajeno' },
+        monto: 1,
+        fechaInicio: new Date().toISOString(),
+        fechaFin: new Date(Date.now() + 1000 * 60 * 60 * 24 * 365).toISOString(),
+        diaPago: 10,
+        indiceAjuste: 'ICL',
+        frecuenciaAjusteMeses: 12,
+      },
+    });
+    expect(put.statusCode).toBe(404);
+
+    const ct = await prisma.contrato.findUniqueOrThrow({ where: { id: contratoId } });
+    await prisma.usuario.deleteMany({ where: { id: uidAjeno } });
+    await prisma.inmobiliaria.deleteMany({ where: { id: idAjena } });
+    await prisma.$disconnect();
+    expect(Number(ct.monto)).toBe(60000); // no se tocó
+  });
+
+  it('PUT /contratos/:id/borrador con una propiedadId que ya tiene contrato activo da 409 y no mueve el contrato', async () => {
+    const { contratoId, aprobacionId } = await cargarContratoPendiente({
+      inquilino: { nombre: 'Diego', apellido: 'Colisiona', email: 'diego.colisiona@mail.com', dni: '39900099' },
+      monto: 50000,
+    });
+    await app.inject({
+      method: 'POST',
+      url: `/aprobaciones/${aprobacionId}/rechazar`,
+      headers: authAdmin(),
+      payload: { comentario: 'Revisar la propiedad' },
+    });
+
+    const antes = await app.inject({ method: 'GET', url: `/contratos/${contratoId}`, headers: authCarga() });
+    const c = antes.json();
+
+    // Otra propiedad, con un contrato ACTIVO de verdad (alta directa como ADMIN).
+    const hoy = new Date();
+    const altaActivo = await app.inject({
+      method: 'POST',
+      url: '/contratos',
+      headers: authAdmin(),
+      payload: {
+        propiedadId: await propiedadNueva(),
+        inquilino: { nombre: 'Otro', apellido: 'Activo' },
+        monto: 200000,
+        fechaInicio: new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), 1)).toISOString(),
+        fechaFin: new Date(Date.UTC(hoy.getUTCFullYear() + 1, hoy.getUTCMonth(), 1)).toISOString(),
+        diaPago: 10,
+        indiceAjuste: 'ICL',
+        frecuenciaAjusteMeses: 12,
+      },
+    });
+    expect(altaActivo.statusCode, `alta activo: ${altaActivo.body}`).toBeLessThan(300);
+    const propiedadOcupada = altaActivo.json().propiedadId as string;
+
+    const put = await app.inject({
+      method: 'PUT',
+      url: `/contratos/${contratoId}/borrador`,
+      headers: authCarga(),
+      payload: {
+        propiedadId: propiedadOcupada, // <-- ya tiene un contrato activo
+        inquilino: { nombre: 'Diego', apellido: 'Colisiona' },
+        monto: 55000,
+        fechaInicio: c.fechaInicio,
+        fechaFin: c.fechaFin,
+        diaPago: c.diaPago,
+        indiceAjuste: c.indiceAjuste,
+        frecuenciaAjusteMeses: c.frecuenciaAjusteMeses,
+      },
+    });
+    expect(put.statusCode).toBe(409);
+
+    const prisma = new PrismaClient();
+    const ct = await prisma.contrato.findUniqueOrThrow({ where: { id: contratoId } });
+    await prisma.$disconnect();
+    expect(ct.propiedadId).toBe(c.propiedadId); // sigue en su propiedad original
+    expect(Number(ct.monto)).toBe(50000); // no se tocó nada
+  });
 });

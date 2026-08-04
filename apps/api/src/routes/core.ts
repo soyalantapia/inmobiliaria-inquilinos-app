@@ -1365,10 +1365,20 @@ export async function coreRoutes(app: FastifyInstance) {
           moraValor: d.moraTipo && d.moraTipo !== 'SIN_MORA' ? (d.moraValor ?? null) : null,
           modoCobranza: d.modoCobranza,
           cobraDirectoPropietarioId,
-          // Estado inicial declarado (períodos ya vencidos): se pisa con lo que venga
-          // en este guardado. Prisma.DbNull explícito si no viene nada — un `null` a
-          // secas en un campo Json no alcanza (Prisma lo interpreta ambiguo).
-          periodosAnterioresPendientes: d.periodosAnteriores?.length ? d.periodosAnteriores : Prisma.DbNull,
+          // Ausencia (`undefined`, el campo no vino en el body) ≠ vacío (`[]`, el
+          // caller dice explícitamente "no hay períodos"). Este endpoint recibe el
+          // body COMPLETO y no puede asumir que el único cliente de hoy (la pantalla
+          // de editar) siempre reenvía el campo — cualquier otro caller que omita
+          // periodosAnteriores estaría "borrando" la deuda histórica sin querer.
+          // `undefined` acá hace que Prisma OMITA el campo del UPDATE (no lo toca);
+          // `[]` sí limpia con Prisma.DbNull (un `null` a secas en un campo Json no
+          // alcanza, Prisma lo interpreta ambiguo); con contenido, reemplaza.
+          periodosAnterioresPendientes:
+            d.periodosAnteriores === undefined
+              ? undefined
+              : d.periodosAnteriores.length
+                ? d.periodosAnteriores
+                : Prisma.DbNull,
         },
       });
       // El inquilino titular ya existe (el rechazo dejó de borrarlo — ver Tarea 1):
