@@ -17,10 +17,20 @@ import { conSaldo, montoPagadoPorLiquidacion } from '../lib/saldos.js';
 import { aplicarDepositoADeuda } from '../lib/aplicar-deposito.js';
 import { calcularMora, resolverEsquemaMora } from '../lib/punitorios.js';
 import { aplicarEstadoInicial, EstadoInicialInvalido } from '../lib/estado-inicial-contrato.js';
-import { buscarOCrearPersona } from '../lib/persona.js';
+import { ajustesDeVigenciasCanon, validarVigenciasCanon } from '@llave/shared/vigencias-canon';
+import { buscarOCrearPersona, EmailDeOtraPersona } from '../lib/persona.js';
 import { borrarArchivoSiHuerfano, urlEsDelTenant } from './uploads.js';
 import { enviarInvitacionInquilino, enviarInvitacionEquipo } from '../mailer.js';
 import { contratoQuedaPendiente, diaCivilAR, venceDespuesDeHoy, yaVencio } from '@llave/shared';
+
+/**
+ * Mensaje único para el 400 de "falta cuenta de cobro directo": antes estaba
+ * duplicado (alta de contrato y cambio de modoCobranza), con riesgo de que uno
+ * de los dos lugares se desactualizara. Misma validación, mismo texto.
+ */
+const faltaCuentaCobranzaDirecta = (nombre: string) =>
+  `Falta la cuenta de cobro directo de ${nombre}`.trim() +
+  '. Entrá a la ficha del propietario → "Cuenta de cobranza directa" y cargá banco + CBU (22 dígitos) + alias. (El CBU/alias del alta del propietario NO alcanza para el cobro directo.)';
 
 /**
  * Una liquidación cuenta como VENCIDA (a efectos de cobranza) si su estado ya es
@@ -571,8 +581,15 @@ export async function coreRoutes(app: FastifyInstance) {
     return prisma.propietario.findMany({
       where: { inmobiliariaId: u.inmobiliariaId },
       include: {
+        // ORDEN EXPLÍCITO (y no el físico de Postgres). Sin orderBy, el orden de las
+        // participaciones es el que devuelva el heap: hoy coincide con el de inserción
+        // y mañana, después de un UPDATE de porcentaje o de un VACUUM, no. Eso reordena
+        // sin aviso la lista de propiedades que el operador ve en cada propietario, y
+        // deja verde/rojo al azar cualquier aserto por índice. Por dirección porque es
+        // como se lee la lista; `propiedadId` desempata dos direcciones iguales.
         participaciones: {
           include: { propiedad: { select: { id: true, direccion: true, estado: true } } },
+          orderBy: [{ propiedad: { direccion: 'asc' } }, { propiedadId: 'asc' }],
         },
       },
       orderBy: { apellido: 'asc' },
@@ -586,10 +603,13 @@ export async function coreRoutes(app: FastifyInstance) {
     const propietario = await prisma.propietario.findFirst({
       where: { id, inmobiliariaId: u.inmobiliariaId },
       include: {
+        // Mismo orden estable que la lista de arriba: es la MISMA lista de propiedades,
+        // vista desde la ficha del propietario.
         participaciones: {
           include: {
             propiedad: { include: { contratoActual: { include: { inquilinoTitular: true } } } },
           },
+          orderBy: [{ propiedad: { direccion: 'asc' } }, { propiedadId: 'asc' }],
         },
         arca: true,
         cuentaCobranza: true,
@@ -914,6 +934,27 @@ export async function coreRoutes(app: FastifyInstance) {
           )
           .max(120)
           .optional(),
+        // Historial de canon del contrato EN CURSO ("desde 2025-10 valía X, desde
+        // 2026-04 vale Y"): los montos existen en el contrato en papel y son la
+        // única forma de que cada mes viejo se devengue a SU precio. Se materializa
+        // como AjusteAlquiler retroactivos (shared/vigencias-canon.ts, el MISMO
+        // módulo con el que el wizard valida mientras se tipea). Sin esto todos
+        // los meses históricos toman el monto de hoy = deuda inflada.
+        vigenciasCanon: z
+          .array(
+            z.object({
+              // Mes 01-12 estricto, igual que POST /contratos/:id/ajustar: '2026-13'
+              // pasaría el \d{2} y después ordenaría mal contra el resto.
+              desde: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Período inválido (YYYY-MM)'),
+              monto: z.number().nonnegative(),
+            }),
+          )
+          .max(120)
+          .optional(),
+        // Interruptor de mora de los meses viejos. false (default) = la mora SIGUE
+        // CORRIENDO con el esquema; true = queda congelada en lo que se declaró.
+        // Antes no se elegía: el input del wizard se prefilaba solo y congelaba.
+        moraHistoricaCongelada: z.boolean().default(false),
       })
       .safeParse(request.body ?? {});
     if (!body.success) return reply.code(400).send({ message: 'Datos del contrato incompletos' });
@@ -931,6 +972,19 @@ export async function coreRoutes(app: FastifyInstance) {
     }
     if ((d.tipoContrato === 'ALQUILER_Y_EXPENSAS' || d.tipoContrato === 'SOLO_EXPENSAS') && !d.montoExpensas) {
       return reply.code(400).send({ message: 'Este tipo de contrato requiere el monto de expensas' });
+    }
+    // Historial de canon: se valida ANTES de abrir la transacción, así un historial
+    // incoherente devuelve 400 sin haber escrito una sola fila (y sin gastar el
+    // rollback de un alta entera, que es exactamente lo que se está tratando de
+    // evitar en esta rama). El mes en curso va en día civil argentino, el mismo
+    // corte con el que el resto del sistema decide "qué mes es hoy".
+    if (d.vigenciasCanon) {
+      const errorVigencias = validarVigenciasCanon(d.vigenciasCanon, {
+        periodoInicio: periodoDe(d.fechaInicio),
+        periodoActual: periodoDe(diaCivilAR(new Date())),
+        montoContrato: d.monto,
+      });
+      if (errorVigencias) return reply.code(400).send({ message: errorVigencias });
     }
     // ¿Este contrato queda pendiente de aprobación? La regla vive en shared y se
     // deriva del PERMISO (contratoQuedaPendiente): el baseline del catálogo (CARGA)
@@ -955,7 +1009,7 @@ export async function coreRoutes(app: FastifyInstance) {
     const emailInq = d.inquilino.email ? d.inquilino.email.toLowerCase() : null;
     // El email PUEDE repetirse entre contratos del MISMO inquilino (multi-alquiler): ya
     // no hay pre-check que lo bloquee. La única colisión posible es que ese email lo use
-    // OTRA persona (distinto DNI) → la atrapa el unique de Persona (P2002, abajo).
+    // OTRA persona (distinto DNI) → la corta `buscarOCrearPersona` con 409 (más abajo).
     // Reuso (req 3): si el alta trae personaId, la Persona debe existir en ESTE tenant.
     // (El guard de email de arriba sigue aplicando: un 2º contrato reusado no puede
     // repetir el email de otra fila — se deja vacío o distinto; la identidad vive en Persona.)
@@ -974,7 +1028,12 @@ export async function coreRoutes(app: FastifyInstance) {
     if (d.modoCobranza === 'PROPIETARIO_DIRECTO') {
       const part = await prisma.participacionPropietario.findFirst({
         where: { propiedadId: prop.id },
-        orderBy: { porcentaje: 'desc' },
+        // Desempate ESTABLE por id: con dos dueños al 50/50 el `porcentaje desc`
+        // solo dejaba la elección librada al orden que devuelva Postgres, que puede
+        // cambiar entre consultas (editar la propiedad hace deleteMany+createMany de
+        // las participaciones). El panel ordena igual, así que las dos capas señalan
+        // siempre al mismo propietario.
+        orderBy: [{ porcentaje: 'desc' }, { propietarioId: 'asc' }],
         include: { propietario: { select: { cuentaCobranza: { select: { id: true } }, nombre: true, apellido: true } } },
       });
       if (!part) {
@@ -988,8 +1047,7 @@ export async function coreRoutes(app: FastifyInstance) {
       // dónde transferir.
       if (!part.propietario.cuentaCobranza) {
         return reply.code(400).send({
-          message: `Falta la cuenta de cobro directo de ${part.propietario.nombre} ${part.propietario.apellido ?? ''}`.trim() +
-            '. Entrá a la ficha del propietario → "Cuenta de cobranza directa" y cargá banco + CBU (22 dígitos) + alias. (El CBU/alias del alta del propietario NO alcanza para el cobro directo.)',
+          message: faltaCuentaCobranzaDirecta(`${part.propietario.nombre} ${part.propietario.apellido ?? ''}`),
         });
       }
       cobraDirectoPropietarioId = part.propietarioId;
@@ -1042,6 +1100,7 @@ export async function coreRoutes(app: FastifyInstance) {
           // (hereda el default de la inmobiliaria en la lectura).
           moraTipo: d.moraTipo ?? null,
           moraValor: d.moraTipo && d.moraTipo !== 'SIN_MORA' ? (d.moraValor ?? null) : null,
+          moraHistoricaCongelada: d.moraHistoricaCongelada,
           modoCobranza: d.modoCobranza,
           cobraDirectoPropietarioId,
           cargadoPor: u.userId,
@@ -1049,6 +1108,32 @@ export async function coreRoutes(app: FastifyInstance) {
           cargadoAt: new Date(),
         },
       });
+      // Historial de canon → vigencias RETROACTIVAS, antes de devengar. Tienen que
+      // existir ya en la DB cuando corre generarLiquidacionesContrato: de ahí las
+      // lee `canonDelPeriodo` para retroceder cada mes viejo a SU precio (si no,
+      // como el contrato se crea en esta misma transacción, no hay ninguna vigencia
+      // y todos los meses toman el monto de hoy).
+      //
+      // Van ANTES del branch de BORRADOR a propósito: un contrato que espera
+      // aprobación devenga recién al aprobarse (plata.ts), y para entonces estas
+      // filas ya tienen que estar — si no, la aprobación repite el mismo bug.
+      if (d.vigenciasCanon) {
+        const ajustes = ajustesDeVigenciasCanon(d.vigenciasCanon);
+        if (ajustes.length > 0) {
+          await tx.ajusteAlquiler.createMany({
+            data: ajustes.map((a) => ({
+              inmobiliariaId: u.inmobiliariaId,
+              contratoId: contrato.id,
+              ...a,
+              motivo: 'Canon histórico declarado al cargar el contrato en curso',
+              // Marca de origen: estas filas NO son un ajuste que la inmobiliaria
+              // aplicó hoy, son la historia que el contrato ya traía en papel.
+              origenAlta: true,
+              creadoPorId: u.userId,
+            })),
+          });
+        }
+      }
       // Persona: identidad reutilizable del tenant para la ficha histórica del inquilino
       // (agrupa contratos/inquilinos del mismo titular — multi-alquiler). Find-or-create por
       // DNI/email COMPARTIDO con la importación de cartera (lib/persona.ts): una sola
@@ -1056,14 +1141,21 @@ export async function coreRoutes(app: FastifyInstance) {
       const persona = d.personaId
         ? // Reuso explícito: agrupa bajo la Persona elegida (ya validada como del tenant).
           await tx.persona.findFirstOrThrow({ where: { id: d.personaId, inmobiliariaId: u.inmobiliariaId } })
-        : await buscarOCrearPersona(tx, {
-            inmobiliariaId: u.inmobiliariaId,
-            dni: d.inquilino.dni || null,
-            email: emailInq,
-            nombre: d.inquilino.nombre,
-            apellido: d.inquilino.apellido || null,
-            telefono: d.inquilino.telefono || null,
-          });
+        : await buscarOCrearPersona(
+            tx,
+            {
+              inmobiliariaId: u.inmobiliariaId,
+              dni: d.inquilino.dni || null,
+              email: emailInq,
+              nombre: d.inquilino.nombre,
+              apellido: d.inquilino.apellido || null,
+              telefono: d.inquilino.telefono || null,
+            },
+            // El alta manual corta cuando el email es de otra persona (ver abajo, el 409):
+            // sin esto el contrato queda colgando de la Persona ajena y el 409 no dispara
+            // nunca, porque `buscarOCrearPersona` reusa la Persona y el unique jamás se viola.
+            { alColisionarEmailConOtroDni: 'rechazar' },
+          );
       await tx.inquilino.update({ where: { id: inq.id }, data: { contratoId: contrato.id, personaId: persona.id } });
       if (contratoPendiente) {
         // BORRADOR: NO se reclama la propiedad ni se devengan liquidaciones hasta
@@ -1187,10 +1279,19 @@ export async function coreRoutes(app: FastifyInstance) {
       if (e instanceof EstadoInicialInvalido) {
         return reply.code(400).send({ message: e.message });
       }
-      // Email de OTRA persona: el unique de Persona (inmobiliariaId,email) impide que
-      // dos personas DISTINTAS (distinto DNI) compartan el mismo email de login. Si es
-      // el mismo inquilino, hay que reusarlo ("¿Ya está en tu cartera?"), no cargarlo
-      // de nuevo. Lo convertimos en un 409 claro en vez de un 500.
+      // Email de OTRA persona: dos personas DISTINTAS (distinto DNI) no pueden compartir el
+      // mismo email, que es la identidad de LOGIN (@@unique([inmobiliariaId, email]) en
+      // Persona). Si es el mismo inquilino, hay que reusarlo ("¿Ya está en tu cartera?"), no
+      // cargarlo de nuevo. Lo convertimos en un 409 claro en vez de un 500.
+      // Vienen por dos caminos: `EmailDeOtraPersona` lo tira `buscarOCrearPersona` cuando la
+      // detecta antes del create (el caso normal), y el P2002 queda como red por si alguna
+      // vez el unique se viola igual — sin el primero el 409 no salía nunca, porque el
+      // find-or-create compartido con la importación reusaba la Persona ajena y devolvía 200.
+      if (e instanceof EmailDeOtraPersona) {
+        return reply.code(409).send({
+          message: 'Ese email ya lo usa otra persona en tu cartera. Si es el mismo inquilino, buscalo en "¿Ya está en tu cartera?"; si no, poné otro email.',
+        });
+      }
       if (e && typeof e === 'object' && (e as { code?: string }).code === 'P2002') {
         return reply.code(409).send({
           message: 'Ese email ya lo usa otra persona en tu cartera. Si es el mismo inquilino, buscalo en "¿Ya está en tu cartera?"; si no, poné otro email.',
@@ -2890,7 +2991,8 @@ export async function coreRoutes(app: FastifyInstance) {
       // necesita su CUENTA de cobro cargada, si no el inquilino queda sin CBU destino.
       const part = await prisma.participacionPropietario.findFirst({
         where: { propiedadId: contrato.propiedadId },
-        orderBy: { porcentaje: 'desc' },
+        // Mismo desempate estable que en el alta (ver POST /contratos).
+        orderBy: [{ porcentaje: 'desc' }, { propietarioId: 'asc' }],
         include: { propietario: { select: { cuentaCobranza: { select: { id: true } }, nombre: true, apellido: true } } },
       });
       if (!part) {
@@ -2898,8 +3000,7 @@ export async function coreRoutes(app: FastifyInstance) {
       }
       if (!part.propietario.cuentaCobranza) {
         return reply.code(400).send({
-          message: `Falta la cuenta de cobro directo de ${part.propietario.nombre} ${part.propietario.apellido ?? ''}`.trim() +
-            '. Entrá a la ficha del propietario → "Cuenta de cobranza directa" y cargá banco + CBU (22 dígitos) + alias. (El CBU/alias del alta del propietario NO alcanza para el cobro directo.)',
+          message: faltaCuentaCobranzaDirecta(`${part.propietario.nombre} ${part.propietario.apellido ?? ''}`),
         });
       }
       cobraDirectoPropietarioId = part.propietarioId;

@@ -17,6 +17,13 @@ import { yaVencio } from '@llave/shared';
  *  - ADEUDA  → sin pago; queda VENCIDO (+ mora manual si vino, que PISA el
  *              cálculo del esquema — ver calcularMora).
  *
+ * La MORA de esos meses viejos la decide la inmobiliaria por contrato
+ * (`moraHistoricaCongelada`): con el interruptor en false —el default— el
+ * `moraManual` declarado NO se persiste, así la mora sigue corriendo con el
+ * esquema. Antes se congelaba siempre: el input del wizard se prefila solo, así
+ * que mandaba un valor sin que nadie hubiera elegido congelar, y ese número
+ * quedaba clavado para siempre (no existe endpoint para editarlo).
+ *
  * Corre DENTRO de la transacción de POST /contratos, después del devengo.
  * Lanza EstadoInicialInvalido (→ 400) ante datos inconsistentes.
  */
@@ -34,7 +41,10 @@ const NOTA_MIGRACION = 'Migración: registrado al cargar el contrato en curso';
 
 export async function aplicarEstadoInicial(
   tx: Prisma.TransactionClient,
-  contrato: { id: string; inmobiliariaId: string },
+  // `moraHistoricaCongelada` viaja EN el contrato (y no como opción suelta) para que
+  // los dos call sites —el alta directa y la aprobación del borrador— no puedan
+  // olvidárselo: el compilador exige el campo, y los dos ya pasan la fila entera.
+  contrato: { id: string; inmobiliariaId: string; moraHistoricaCongelada: boolean },
   periodos: PeriodoAnterior[],
   decididoPorId: string,
 ): Promise<{ cerrados: number; parciales: number; adeudados: number }> {
@@ -81,7 +91,10 @@ export async function aplicarEstadoInicial(
       throw new EstadoInicialInvalido(`El período ${p.periodo} todavía no venció — no lleva estado inicial`);
     }
     const total = Number(liq.montoTotal);
-    const moraManual = p.moraManual != null ? Math.max(0, p.moraManual) : null;
+    // null cuando la mora tiene que SEGUIR CORRIENDO: es exactamente lo que espera
+    // calcularMora (`if (manual != null) return`), que con null vuelve al esquema.
+    const moraManual =
+      contrato.moraHistoricaCongelada && p.moraManual != null ? Math.max(0, p.moraManual) : null;
 
     if (p.estado === 'PAGADO') {
       pagosData.push(pagoSintetico(contrato, liq, total, 'TOTAL', decididoPorId));

@@ -16,25 +16,40 @@ import { toast } from '@llave/ui/use-toast';
 import { ConfirmDialog } from '@llave/ui/confirm-dialog';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@llave/ui/dialog';
 import { cn } from '@llave/ui/cn';
-import { enumerarPeriodosContrato } from '@llave/shared/periodos';
+import { diaCivilAR, enumerarPeriodosContrato } from '@llave/shared/periodos';
+import { validarVigenciasCanon, type VigenciaCanonInput } from '@llave/shared/vigencias-canon';
 import { Topbar } from '@/components/topbar';
-import { apiEnabled, apiFetch, ApiError, subirArchivo, varianteError } from '@/lib/api/client';
+import { apiEnabled, apiFetch, ApiError, getToken, subirArchivo, varianteError } from '@/lib/api/client';
 import { ensureApiSession } from '@/lib/api/session';
 import {
   borrarBorradorContrato,
   guardarBorradorContrato,
   leerBorradorContrato,
   obtenerNamespaceBorrador,
+  VERSION_BORRADOR,
   type BorradorContrato,
 } from '@/lib/contrato-borrador-storage';
+import type { TipoDocContrato } from '@/lib/contrato-documentos-storage';
+import {
+  claveDocumento,
+  etiquetaDocumento,
+  faltantesDeExpediente,
+} from '@/lib/documentos-requeridos';
+import {
+  PasoDocumentacionAlta,
+  type DocsElegidos,
+} from '@/components/paso-documentacion-alta';
+import { ServiciosPublicosPanel } from '@/components/servicios-publicos-panel';
 import type { PersonaListado } from '@/lib/api/use-inquilinos';
 import { usePropiedades, useMercado, useCobranza } from '@/lib/api/hooks';
+import { usePropietario } from '@/lib/api/use-propietario';
 import {
   calcularMora,
   descripcionMora,
   MoraSelector,
   type MoraSeleccion,
 } from '@/components/mora-selector';
+import { CuentaCobranzaDialog } from '@/components/cuenta-cobranza-dialog';
 import { contratoExtraidoMock } from '@/lib/mock-data';
 import { formatFechaCorta, formatMonto, formatTotalPorMoneda } from '@/lib/format';
 import type {
@@ -48,7 +63,7 @@ import type {
 const MAX_PDF_MB = 10;
 
 // Resumen de la ficha de una persona (subconjunto de GET /personas/:id → `resumen`)
-// que alimenta el semáforo del inquilino en el paso 1 del alta.
+// que alimenta el semáforo del inquilino en el paso 2 del alta.
 type FichaPersonaResumen = {
   totalContratos: number;
   activos: number;
@@ -663,17 +678,24 @@ function formatFechaDeInput(valor: string | number | null | undefined): string {
 // por PDF (eso vive en el wizard mock de arriba, sólo demo).
 // ============================================================================
 
-// El paso 4 (Períodos anteriores) es CONDICIONAL: sólo existe cuando la fecha
+// El paso 5 (Períodos anteriores) es CONDICIONAL: sólo existe cuando la fecha
 // de inicio es pasada y ya venció al menos un período. Si no aplica, el wizard
-// salta 3 → 5 y el header de pasos no lo muestra.
-type PasoApi = 1 | 2 | 3 | 4 | 5;
+// salta 4 → 6 y el header de pasos no lo muestra.
+//
+// Documentación y Servicios van DESPUÉS del 5 a propósito: metidos antes,
+// correrían el paso condicional un lugar y el salto `sig === 5 && !hayPeriodos`
+// saltearía el paso equivocado, en silencio.
+type PasoApi = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 
 const pasosApi: ReadonlyArray<{ id: PasoApi; label: string }> = [
   { id: 1, label: 'Propiedad' },
   { id: 2, label: 'Inquilino' },
-  { id: 3, label: 'Términos' },
-  { id: 4, label: 'Períodos anteriores' },
-  { id: 5, label: 'Confirmar' },
+  { id: 3, label: 'Plazo y salida' },
+  { id: 4, label: 'Dinero' },
+  { id: 5, label: 'Períodos anteriores' },
+  { id: 6, label: 'Documentación' },
+  { id: 7, label: 'Servicios' },
+  { id: 8, label: 'Confirmar' },
 ];
 
 const indicesAjuste: Array<{ value: IndiceAjuste; label: string }> = [
@@ -714,59 +736,21 @@ interface ContratoNuevoApi {
   estado?: string;
 }
 
-/** Un file input compacto para una foto de DNI (frente o dorso) del wizard. */
-function DniFileInput({
-  id,
-  label,
-  file,
-  onPick,
-}: {
-  id: string;
-  label: string;
-  file: File | null;
-  onPick: (f: File | null) => void;
-}) {
-  return (
-    <div className="space-y-1">
-      <Label htmlFor={id} className="text-xs text-muted-foreground">{label}</Label>
-      {file ? (
-        <div className="flex items-center justify-between gap-2 rounded-md border border-border bg-background px-2.5 py-2 text-xs">
-          <span className="truncate">{file.name}</span>
-          <button
-            type="button"
-            onClick={() => onPick(null)}
-            className="shrink-0 text-muted-foreground hover:text-destructive"
-            aria-label={`Quitar ${label}`}
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      ) : (
-        <label
-          htmlFor={id}
-          className="flex cursor-pointer items-center gap-2 rounded-md border border-dashed border-border bg-background px-2.5 py-2 text-xs text-muted-foreground transition-colors hover:border-primary/60"
-        >
-          <FileUp className="h-3.5 w-3.5" /> Elegir foto o PDF
-        </label>
-      )}
-      <input
-        id={id}
-        type="file"
-        accept="image/*,application/pdf"
-        className="hidden"
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) onPick(f);
-          e.target.value = '';
-        }}
-      />
-    </div>
-  );
-}
-
 // ---- Períodos anteriores (contratos con fecha de inicio pasada) ----
 
+/** Los tres estados que el backend entiende. `SIN_DECLARAR` no está acá a propósito. */
 type EstadoPeriodoAnterior = 'PAGADO' | 'PARCIAL' | 'ADEUDA';
+
+/**
+ * Estado en el FORMULARIO, que tiene un cuarto valor: `SIN_DECLARAR`.
+ *
+ * No es un estado del negocio, es la ausencia de una decisión. Existe porque el
+ * default era `PAGADO`: apretar Continuar sin tocar nada cerraba todos los meses
+ * viejos como cobrados y le regalaba al inquilino la deuda que la inmobiliaria
+ * está tratando de trackear. `SIN_DECLARAR` nunca sale de este archivo — el tipo
+ * del payload (`PeriodoAnteriorPayload`) no lo admite.
+ */
+type EstadoPeriodoForm = EstadoPeriodoAnterior | 'SIN_DECLARAR';
 
 interface PeriodoVencido {
   periodo: string; // 'YYYY-MM'
@@ -775,19 +759,79 @@ interface PeriodoVencido {
 }
 
 interface PeriodoAnteriorForm {
-  estado: EstadoPeriodoAnterior;
+  estado: EstadoPeriodoForm;
   montoPagado: string;
   moraManual: string;
   /** Si el usuario editó la mora a mano, no la pisamos con el prefill. */
   moraEditada: boolean;
 }
 
+/** Un período tal como viaja en el body de POST /contratos. */
+interface PeriodoAnteriorPayload {
+  periodo: string;
+  estado: EstadoPeriodoAnterior;
+  montoPagado?: number;
+  moraManual?: number;
+}
+
 const PERIODO_FORM_DEFAULT: PeriodoAnteriorForm = {
-  estado: 'PAGADO',
+  estado: 'SIN_DECLARAR',
   montoPagado: '',
   moraManual: '',
   moraEditada: false,
 };
+
+// ---- Historial de canon (contratos que ya venían andando) ----
+
+/**
+ * Una vigencia ANTERIOR tal como se edita en el wizard: "desde este mes el
+ * alquiler valía tanto". El monto es string porque el input es de texto
+ * formateado, igual que el `monto` del contrato.
+ *
+ * La vigencia MÁS NUEVA no está en esta lista: es el monto actual del contrato y
+ * se deriva (`vigenciasCanonPayload`). Si se editara suelta podría contradecir al
+ * propio contrato, que es justo lo que el back rechaza con un 400.
+ */
+interface VigenciaCanonForm {
+  /** Identidad estable de la fila: `desde` puede estar vacío o repetido mientras se tipea. */
+  id: number;
+  desde: string; // 'YYYY-MM'
+  monto: string;
+}
+
+const RE_PERIODO = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+/**
+ * Formatea un monto guardado como string ('1234.56') para mostrarlo en es-AR
+ * ('1.234,56'), preservando los decimales a medio tipear ('1234.' → '1.234,').
+ *
+ * Va de la mano con `parsearMontoEsAR`: juntos hacen ida y vuelta sin perder ni
+ * inventar dígitos. Ver el comentario de esa función para el bug que arreglan.
+ */
+function formatMontoEsAR(valor: string): string {
+  if (!valor) return '';
+  const [entero = '', decimales] = valor.split('.');
+  const enteroFmt = entero ? Number(entero).toLocaleString('es-AR') : '';
+  return decimales === undefined ? enteroFmt : `${enteroFmt},${decimales}`;
+}
+
+/**
+ * Vuelve de lo que se ve en pantalla ('1.234,56') al string numérico del form
+ * ('1234.56').
+ *
+ * 🔴 Por qué existe: el input de mora MUESTRA la sugerida formateada en es-AR y
+ * su `onChange` strippeaba todo lo que no fuera dígito. Con una mora sugerida de
+ * $1.234,56, tocar una sola tecla la reescribía como 123456: editar la mora la
+ * multiplicaba por ~100 y esa cifra se asentaba como deuda del inquilino.
+ */
+function parsearMontoEsAR(valor: string): string {
+  // El punto es separador de miles (lo pone el formateo, no la persona) y la
+  // coma es el decimal: por eso uno se tira y la otra se traduce.
+  const limpio = valor.replace(/\./g, '').replace(/,/g, '.').replace(/[^\d.]/g, '');
+  const [entero = '', ...resto] = limpio.split('.');
+  if (resto.length === 0) return entero.slice(0, 12);
+  return `${entero.slice(0, 12)}.${resto.join('').slice(0, 2)}`;
+}
 
 /**
  * Períodos YA VENCIDOS del contrato (para el paso "Períodos anteriores"). Toma la
@@ -848,7 +892,12 @@ function borradorTieneContenido(b: BorradorContrato): boolean {
       (b.depositoGarantia && b.depositoGarantia.trim().length > 0) ||
       (b.comisionInmobiliaria && b.comisionInmobiliaria.trim().length > 0) ||
       (b.moraValor && b.moraValor.trim().length > 0) ||
-      (b.periodosForm && Object.keys(b.periodosForm).length > 0),
+      (b.periodosForm && Object.keys(b.periodosForm).length > 0) ||
+      // Los archivos del paso Documentación NO se guardan (un File no
+      // serializa), pero la cantidad de garantes sí. Sin este chequeo, alguien
+      // que solo pasó por ese paso no vería el diálogo de "retomar" y su
+      // borrador se pisaría en silencio con el form vacío.
+      (typeof b.garantesCount === 'number' && b.garantesCount > 0),
   );
 }
 
@@ -871,6 +920,13 @@ function CargarContratoApiWizard() {
 
   const [paso, setPaso] = useState<PasoApi>(1);
 
+  /**
+   * Si el operador llegó al paso 7, el panel de servicios pudo haber escrito ya
+   * sobre la PROPIEDAD (su PUT es inmediato, no espera al alta). Lo usamos solo
+   * para que el diálogo de cancelar no le mienta diciendo que pierde todo.
+   */
+  const serviciosVisitados = paso >= 7;
+
   // Propiedad
   const [propiedadId, setPropiedadId] = useState('');
 
@@ -880,12 +936,6 @@ function CargarContratoApiWizard() {
   const [email, setEmail] = useState('');
   const [telefono, setTelefono] = useState('');
   const [dni, setDni] = useState('');
-  // Fotos del DNI del titular (frente/dorso), opcionales. Se guardan como File
-  // y se suben al expediente del contrato DESPUÉS del alta (necesitan el
-  // contratoId). No duplican nada: van al mismo DocumentoContrato que ya se ve
-  // en el detalle (grupo "Inquilino titular").
-  const [dniFrente, setDniFrente] = useState<File | null>(null);
-  const [dniDorso, setDniDorso] = useState<File | null>(null);
 
   // Reuso (req 3): traer un inquilino que ya está en la cartera. `personaId` no-null =
   // el alta se agrupa bajo esa Persona existente (historial) en vez de crear una nueva.
@@ -963,7 +1013,7 @@ function CargarContratoApiWizard() {
     setCargandoFicha(false);
   };
 
-  // Términos
+  // Términos: campos de los pasos 3 (Plazo y salida) y 4 (Dinero).
   const [monto, setMonto] = useState('');
   const [moneda, setMoneda] = useState<Moneda>('ARS');
   const [fechaInicio, setFechaInicio] = useState('');
@@ -983,8 +1033,26 @@ function CargarContratoApiWizard() {
   const [moraValor, setMoraValor] = useState('');
 
   // Períodos anteriores (sólo si fechaInicio es pasada): estado por período,
-  // keyed por 'YYYY-MM'. Los que no aparecen quedan en el default (PAGADO).
+  // keyed por 'YYYY-MM'. Los que no aparecen quedan SIN DECLARAR y el wizard no
+  // deja avanzar hasta que se declaren.
   const [periodosForm, setPeriodosForm] = useState<Record<string, PeriodoAnteriorForm>>({});
+  // Si el operador ya intentó avanzar con meses sin declarar, marcamos cuáles
+  // faltan. Antes de intentarlo no pintamos nada de rojo: todavía no se equivocó.
+  const [faltantesMarcados, setFaltantesMarcados] = useState(false);
+
+  // Historial de canon: los montos anteriores del contrato que ya venía andando.
+  // Vacío = el alquiler siempre valió lo de hoy (comportamiento previo).
+  const [declaraHistorialCanon, setDeclaraHistorialCanon] = useState(false);
+  const [vigenciasPrevias, setVigenciasPrevias] = useState<VigenciaCanonForm[]>([]);
+  /** Mes desde el que rige el monto ACTUAL del contrato (la última vigencia). */
+  const [desdeCanonActual, setDesdeCanonActual] = useState('');
+  const proximoIdVigencia = useRef(1);
+
+  // Interruptor de mora de los meses viejos: false (default) = sigue corriendo
+  // con el esquema del contrato; true = queda congelada en lo que se declara.
+  // Antes no se elegía — el input se prefilaba solo y se mandaba siempre, o sea
+  // que TODO contrato en curso nacía con la mora congelada sin que nadie lo pidiera.
+  const [moraHistoricaCongelada, setMoraHistoricaCongelada] = useState(false);
 
   // Defaults desde la config de Mercado (índice + moneda), una sola vez al
   // llegar la config y antes de que el usuario edite los términos.
@@ -1000,9 +1068,72 @@ function CargarContratoApiWizard() {
     }
   }, [mercado]);
 
+  // Documentación (paso 6). Los papeles elegidos van en UN objeto indexado por
+  // `claveDocumento` en vez de un useState por papel: son 4 del titular + hasta
+  // 3×3 de garantes + 11 tipos sueltos, y este componente ya arrastra 42 estados
+  // planos. Se suben DESPUÉS del alta (necesitan el contratoId).
+  const [docsExpediente, setDocsExpediente] = useState<DocsElegidos>({});
+  // Cuántos garantes tiene el contrato. Acá NO se crea ningún Garante (el alta
+  // no los recibe): define cuántos pares de inputs se muestran y qué
+  // `garanteIndex` viaja en cada documento.
+  const [garantesCount, setGarantesCount] = useState(0);
+
+  const cambiarDoc = (
+    tipo: TipoDocContrato,
+    garanteIndex: number | undefined,
+    file: File | null,
+  ) => {
+    const clave = claveDocumento(tipo, garanteIndex);
+    setDocsExpediente((prev) => {
+      const sig = { ...prev };
+      if (file) {
+        sig[clave] = {
+          file,
+          tipo,
+          ...(garanteIndex != null ? { garanteIndex } : {}),
+          etiqueta: etiquetaDocumento(tipo, garanteIndex),
+        };
+      } else {
+        delete sig[clave];
+      }
+      return sig;
+    });
+  };
+
+  /**
+   * Bajar la cantidad de garantes tiene que TIRAR sus papeles. Si no, el DNI del
+   * garante 3 seguiría en memoria después de decir "tengo 1 garante" y se
+   * subiría igual al expediente, con un `garanteIndex` que el contrato no tiene.
+   */
+  const cambiarGarantesCount = (n: number) => {
+    setGarantesCount(n);
+    setDocsExpediente((prev) =>
+      Object.fromEntries(
+        Object.entries(prev).filter(([, d]) => d.garanteIndex == null || d.garanteIndex <= n),
+      ),
+    );
+  };
+
+  // Lo mismo que muestra el paso 6, para el resumen del paso 8: la misma
+  // fórmula que el checklist del detalle, calculada sobre los File en memoria.
+  const docsElegidos = useMemo(() => Object.values(docsExpediente), [docsExpediente]);
+  const expedienteAlta = useMemo(
+    () =>
+      faltantesDeExpediente(
+        docsElegidos.map((d) => ({ tipo: d.tipo, garanteIndex: d.garanteIndex })),
+        garantesCount,
+      ),
+    [docsElegidos, garantesCount],
+  );
+  /** Papeles cargados que no tapan ningún requerido (pagaré, inventario, etc.). */
+  const docsSueltos = docsElegidos.length - expedienteAlta.presentes;
+
   // Flow
   const [confirmando, setConfirmando] = useState(false);
   const [enviando, setEnviando] = useState(false);
+  // Progreso de la subida post-alta: con 8 papeles son 16 requests seguidos y
+  // sin esto la pantalla parece colgada.
+  const [subiendoDocs, setSubiendoDocs] = useState<{ hechos: number; total: number } | null>(null);
   const [errorServidor, setErrorServidor] = useState<string | null>(null);
   const [cancelarAbierto, setCancelarAbierto] = useState(false);
 
@@ -1016,6 +1147,34 @@ function CargarContratoApiWizard() {
     () => propiedades.find((p) => p.propiedad.id === propiedadId) ?? null,
     [propiedades, propiedadId],
   );
+  // Id del dueño PRINCIPAL de la propiedad elegida (embebido en /propiedades,
+  // "lite": sólo id/nombre/apellido, nunca trae cuentaCobranza).
+  //
+  // `[0]` es el de MAYOR participación: `usePropiedades` ordena por porcentaje desc
+  // con desempate por id (hooks.ts), el mismo criterio con el que el backend elige a
+  // quién le cobra directo el inquilino (core.ts, `orderBy: [{ porcentaje: 'desc' },
+  // { propietarioId: 'asc' }]`). Las dos capas TIENEN que coincidir: si acá sale otro
+  // dueño, la pantalla le pide/carga el CBU a una persona y el server valida —y le
+  // rutea la plata— a otra. Con un solo dueño no cambia nada.
+  const propietarioIdElegido = propiedadElegida?.propietarios[0]?.id ?? null;
+  // Detalle real de ESE ÚNICO propietario (con cuentaCobranza) vía GET
+  // /propietarios/:id — el mismo endpoint acotado que usa la ficha del
+  // propietario. Deliberadamente NO usamos usePropietarios() (el listado
+  // completo): traer el listado entero para leer un solo campo de un solo
+  // propietario expondría el CBU/alias/titular de TODOS los propietarios de
+  // la inmobiliaria a cualquiera con permiso de sólo-lectura (bug real:
+  // GET /propietarios lo gatea `propietarios.ver`, que incluye el rol
+  // LECTURA). Ver commit 32f6bf8 / fix posterior.
+  const {
+    detalle: detallePropietarioElegido,
+    cargando: cargandoPropietarioElegido,
+    error: errorPropietarioElegido,
+    reintentar: reintentarPropietarioElegido,
+  } = usePropietario(propietarioIdElegido ?? '');
+  const propietarioDeLaPropiedad = propietarioIdElegido
+    ? (detallePropietarioElegido?.propietario ?? null)
+    : null;
+  const [cuentaDialogAbierto, setCuentaDialogAbierto] = useState(false);
 
   // Encadenado desde "cargar propiedad": /contratos/nuevo?propiedad=<id> llega
   // con la propiedad recién creada. La preseleccionamos y saltamos al paso del
@@ -1093,11 +1252,23 @@ function CargarContratoApiWizard() {
     setMoraSel(b.moraSel as MoraSeleccion);
     setMoraValor(b.moraValor);
     setPeriodosForm(b.periodosForm as Record<string, PeriodoAnteriorForm>);
+    // Campos nuevos: un borrador viejo no los tiene y cae al default, que es el
+    // comportamiento conservador (sin historial, mora corriendo).
+    const previas = b.vigenciasPrevias ?? [];
+    setVigenciasPrevias(
+      previas.map((v) => ({ id: proximoIdVigencia.current++, desde: v.desde, monto: v.monto })),
+    );
+    setDesdeCanonActual(b.desdeCanonActual ?? '');
+    setDeclaraHistorialCanon(previas.length > 0);
+    setMoraHistoricaCongelada(b.moraHistoricaCongelada ?? false);
+    // Default conservador: sin garantes. Los archivos no vuelven (no se guardan),
+    // así que el paso Documentación arranca vacío y el aviso de faltantes lo dice.
+    setGarantesCount(b.garantesCount ?? 0);
 
     const propiedadSigueDisponible = disponibles.some((p) => p.propiedad.id === b.propiedadId);
     if (b.propiedadId && propiedadSigueDisponible) {
       setPropiedadId(b.propiedadId);
-      // Mismo criterio que avanzar()/retroceder(): el paso 4 (períodos
+      // Mismo criterio que avanzar()/retroceder(): el paso 5 (períodos
       // anteriores) sólo existe si con los datos restaurados hay períodos
       // vencidos que declarar — si no, no lo salteamos, directamente no
       // dejamos al usuario en un paso que ya no aplica.
@@ -1108,8 +1279,8 @@ function CargarContratoApiWizard() {
         new Date(),
       );
       let pasoRestaurado = b.paso as PasoApi;
-      if (pasoRestaurado === 4 && periodosBorrador.length === 0) pasoRestaurado = 3;
-      if (!(pasoRestaurado >= 1 && pasoRestaurado <= 5)) pasoRestaurado = 1;
+      if (pasoRestaurado === 5 && periodosBorrador.length === 0) pasoRestaurado = 4;
+      if (!(pasoRestaurado >= 1 && pasoRestaurado <= 8)) pasoRestaurado = 1;
       setPaso(pasoRestaurado);
     } else {
       setPaso(1);
@@ -1146,6 +1317,7 @@ function CargarContratoApiWizard() {
     const timer = setTimeout(() => {
       if (!vivo) return;
       const datos: BorradorContrato = {
+        version: VERSION_BORRADOR,
         paso,
         propiedadId,
         nombre,
@@ -1170,7 +1342,20 @@ function CargarContratoApiWizard() {
         moraSel,
         moraValor,
         periodosForm,
+        vigenciasPrevias: vigenciasPrevias.map((v) => ({ desde: v.desde, monto: v.monto })),
+        desdeCanonActual,
+        moraHistoricaCongelada,
+        // Del paso Documentación entra SOLO esto: los File no se pueden
+        // serializar (quedan como `{}`) y restaurarlos mostraría archivos que ya
+        // no existen, que es peor que perderlos.
+        garantesCount,
       };
+      // Nunca escribir un formulario VACÍO encima de lo guardado. Sin esta guarda,
+      // abrir /contratos/nuevo y no tocar nada pisaba el borrador anterior a los
+      // 500 ms. Se vuelve crítico cuando la lectura no devuelve borrador (versión
+      // desconocida, JSON corrupto): ahí `borradorPendiente` queda en false, este
+      // efecto corre igual, y una visita accidental borraba un alta a medias.
+      if (!borradorTieneContenido(datos)) return;
       guardarBorradorContrato(namespaceBorrador, datos);
       setMostrarGuardado(true);
       if (guardadoTimeoutRef.current) clearTimeout(guardadoTimeoutRef.current);
@@ -1207,6 +1392,12 @@ function CargarContratoApiWizard() {
     moraSel,
     moraValor,
     periodosForm,
+    vigenciasPrevias,
+    desdeCanonActual,
+    moraHistoricaCongelada,
+    // Sin esta dep el campo se guardaría solo cuando cambia OTRO campo: la
+    // prueba manual da verde y en uso real se pierde.
+    garantesCount,
   ]);
 
   // Limpieza del timer del indicador "Guardado hace un momento" al desmontar.
@@ -1215,6 +1406,31 @@ function CargarContratoApiWizard() {
       if (guardadoTimeoutRef.current) clearTimeout(guardadoTimeoutRef.current);
     };
   }, []);
+
+  // Aviso al cerrar la pestaña con un alta a medias: el borrador se guarda en
+  // cada tecleo, pero entre el último guardado y el cierre puede haber tipeo
+  // sin persistir, y el que cierra sin querer no tiene forma de saber que
+  // queda un borrador esperándolo. No molesta con el wizard recién abierto y
+  // vacío (paso 1 sin propiedad elegida), ni mientras `dar_de_alta` está en
+  // curso: ahí el propio "¿estás seguro?" del navegador estorba, y al éxito
+  // `enviando` sigue en true hasta el redirect (nunca vuelve a false), así
+  // que el listener no vuelve a engancharse después de un alta exitosa.
+  useEffect(() => {
+    if (paso === 1 && !propiedadId) return;
+    if (enviando) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      // Si ya no hay token, el que está navegando NO es el usuario: es el redirect
+      // a /login que dispara el cliente cuando la sesión vence (client.ts hace
+      // `removeItem` y después `location.assign`). Bloquearlo con el "¿seguro que
+      // querés salir?" es una trampa: si elige quedarse, la pestaña sobrevive sin
+      // sesión, cada request siguiente da 401 y el alta ya no se puede enviar nunca.
+      if (!getToken()) return;
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [paso, propiedadId, enviando]);
 
   const incluyeExpensas =
     tipoContrato === 'ALQUILER_Y_EXPENSAS' || tipoContrato === 'SOLO_EXPENSAS';
@@ -1226,6 +1442,86 @@ function CargarContratoApiWizard() {
     (requiereAlquiler ? Number(monto) || 0 : 0) +
     (incluyeExpensas ? Number(montoExpensas) || 0 : 0);
 
+  // ---- Historial de canon (F1) ----
+
+  // Mes en curso con el MISMO corte de día civil argentino que usa el back para
+  // validar (`periodoDe(diaCivilAR(now))`). Con el corte del instante UTC, entre
+  // las 21:00 y las 00:00 el front y el back no coinciden en qué mes es hoy.
+  const periodoActual = useMemo(() => {
+    const hoy = diaCivilAR(new Date());
+    return `${hoy.getUTCFullYear()}-${String(hoy.getUTCMonth() + 1).padStart(2, '0')}`;
+  }, []);
+  const periodoInicioContrato = fechaInicio.length === 10 ? fechaInicio.slice(0, 7) : '';
+  // "Ya venía andando": arrancó en un mes anterior al actual, así que tiene meses
+  // viejos que se van a devengar y pudieron haber valido otra cosa. Sin alquiler
+  // (SOLO_EXPENSAS) no hay canon que historiar.
+  const contratoEnCurso =
+    requiereAlquiler && periodoInicioContrato !== '' && periodoInicioContrato < periodoActual;
+
+  // El historial COMPLETO tal como viaja al back: las vigencias anteriores más la
+  // actual, cuyo monto NO se edita suelto sino que se deriva del contrato (si se
+  // editara podría contradecirlo, y eso es un 400).
+  const vigenciasCanonPayload = useMemo<VigenciaCanonInput[] | null>(() => {
+    if (!declaraHistorialCanon || !contratoEnCurso) return null;
+    return [
+      ...vigenciasPrevias.map((v) => ({ desde: v.desde, monto: Number(v.monto) || 0 })),
+      { desde: desdeCanonActual, monto: Number(monto) || 0 },
+    ];
+  }, [declaraHistorialCanon, contratoEnCurso, vigenciasPrevias, desdeCanonActual, monto]);
+
+  // Mismo validador que corre el back (@llave/shared): el error se ve mientras se
+  // tipea y no como un 400 que tira el alta entera después de cargar todo.
+  const errorHistorialCanon = useMemo<string | null>(() => {
+    if (!vigenciasCanonPayload) return null;
+    if (vigenciasPrevias.length === 0) {
+      // Sin ninguna vigencia anterior el "historial" es sólo el monto de hoy: no
+      // cambia nada y el back lo aceptaría como un no-op silencioso.
+      return 'Agregá al menos un monto anterior, o marcá que siempre valió lo mismo';
+    }
+    // Los campos incompletos van primero: el validador compartido da por hecho
+    // que los 'YYYY-MM' están bien formados y compara lexicográficamente.
+    for (const v of vigenciasPrevias) {
+      if (!RE_PERIODO.test(v.desde)) return 'Indicá desde qué mes rige cada monto anterior';
+      if (!(Number(v.monto) > 0)) return 'Cada monto anterior tiene que ser mayor a cero';
+    }
+    if (!RE_PERIODO.test(desdeCanonActual)) {
+      return 'Indicá desde qué mes rige el monto actual del contrato';
+    }
+    return validarVigenciasCanon(vigenciasCanonPayload, {
+      periodoInicio: periodoInicioContrato,
+      periodoActual,
+      montoContrato: Number(monto) || 0,
+    });
+  }, [
+    vigenciasCanonPayload,
+    vigenciasPrevias,
+    desdeCanonActual,
+    periodoInicioContrato,
+    periodoActual,
+    monto,
+  ]);
+
+  /**
+   * Canon que le toca a un período según el historial declarado. Espeja
+   * `canonDelPeriodo` del back: manda la vigencia MÁS NUEVA que arranque en o
+   * antes del período, y un período anterior a todas toma la más vieja (que es el
+   * punto de partida declarado, no un cambio).
+   *
+   * Sin historial devuelve el canon de hoy, que es lo que el back va a devengar.
+   */
+  const canonDelPeriodoDeclarado = (periodo: string): number => {
+    const canonHoy = requiereAlquiler ? Number(monto) || 0 : 0;
+    const vigencias = vigenciasCanonPayload;
+    if (!vigencias || vigencias.length === 0 || errorHistorialCanon) return canonHoy;
+    let canon = vigencias[0]!.monto;
+    for (const v of vigencias) if (v.desde <= periodo) canon = v.monto;
+    return canon;
+  };
+
+  /** Lo que se debe por ESE mes: su canon (histórico) + las expensas del contrato. */
+  const montoBaseDePeriodo = (periodo: string): number =>
+    canonDelPeriodoDeclarado(periodo) + (incluyeExpensas ? Number(montoExpensas) || 0 : 0);
+
   // Esquema de mora EFECTIVO del wizard (elegido o heredado) — se usa para el
   // prefill de la mora de los períodos anteriores.
   const moraEfectivaWizard: { tipo: TipoMora; valor: number } =
@@ -1234,26 +1530,81 @@ function CargarContratoApiWizard() {
       : { tipo: moraSel, valor: Number(moraValor) || 0 };
 
   // Períodos ya vencidos entre el inicio del contrato y hoy. Si hay al menos
-  // uno, aparece el paso 4 "Períodos anteriores".
+  // uno, aparece el paso 5 "Períodos anteriores".
   const periodosVencidos = useMemo(
     () => calcularPeriodosVencidos(fechaInicio, fechaFin, Number(diaPago), new Date()),
     [fechaInicio, fechaFin, diaPago],
   );
   const hayPeriodos = periodosVencidos.length > 0;
   const pasosVisibles = useMemo(
-    () => pasosApi.filter((p) => p.id !== 4 || hayPeriodos),
+    () => pasosApi.filter((p) => p.id !== 5 || hayPeriodos),
     [hayPeriodos],
   );
+
+  // Preview en vivo del paso 3 (Plazo y salida): cuántos meses dura, si ya
+  // arrancó (y por lo tanto va a haber períodos para declarar más adelante) y
+  // cuándo cae el primer ajuste. No reemplaza la validación de fechaFin >
+  // fechaInicio que sigue gateando el botón Continuar (pasoPlazoValido).
+  const resumenPlazo = useMemo(() => {
+    if (!fechaInicio || !fechaFin) return null;
+    const inicio = new Date(`${fechaInicio}T12:00:00`);
+    const fin = new Date(`${fechaFin}T12:00:00`);
+    if (Number.isNaN(inicio.getTime()) || Number.isNaN(fin.getTime())) return null;
+    if (fin <= inicio) {
+      // Rama con `error` literal (string) vs. `error: null` de la rama de abajo:
+      // eso arma una unión discriminada real, así el JSX puede angostar con
+      // `resumenPlazo.error` sin que TS marque `meses`/`primerAjuste` como
+      // posiblemente `undefined`.
+      return { error: 'La fecha de fin tiene que ser posterior a la de inicio.' };
+    }
+
+    const MES_MS = 1000 * 60 * 60 * 24 * 30.44;
+    const meses = Math.round((fin.getTime() - inicio.getTime()) / MES_MS);
+    // Mismo clamp que `enumerarPeriodosContrato` (packages/shared/src/periodos.ts):
+    // Math.min(dia, diasDelMesDestino). Sin esto, `setMonth` no clampea sino que
+    // desborda al mes siguiente cuando el día de inicio (29/30/31) no existe en
+    // el mes destino: sumarle 1 mes al 31 de enero da 3 de marzo en vez del 28 de
+    // febrero. Seteamos el día en 1 antes de `setMonth` para que ese mismo
+    // desborde no contamine el cálculo del mes/año destino.
+    const diaInicio = inicio.getDate();
+    const primerAjuste = new Date(inicio);
+    primerAjuste.setDate(1);
+    primerAjuste.setMonth(primerAjuste.getMonth() + (Number(frecuenciaAjusteMeses) || 12));
+    const diasMesDestino = new Date(
+      primerAjuste.getFullYear(),
+      primerAjuste.getMonth() + 1,
+      0,
+    ).getDate();
+    primerAjuste.setDate(Math.min(diaInicio, diasMesDestino));
+
+    // ¿El ajuste llega a ocurrir? Con la frecuencia por defecto (12 meses) y un
+    // contrato de 12, el "primer ajuste" cae EL DÍA que el contrato termina; con
+    // uno de 6 meses cae medio año después de terminado. La cuenta es fiel a lo
+    // que guarda el back (`proximoAjuste = inicio + frecuencia`, que tampoco topea
+    // a fechaFin), pero anunciarlo a secas le promete al operador —que está usando
+    // este preview justamente para entender las consecuencias de las fechas— un
+    // evento que no va a pasar nunca.
+    const ajusteLlega = primerAjuste < fin;
+
+    return { meses, primerAjuste, ajusteLlega, error: null };
+  }, [fechaInicio, fechaFin, frecuenciaAjusteMeses]);
 
   const formDePeriodo = (periodo: string): PeriodoAnteriorForm =>
     periodosForm[periodo] ?? PERIODO_FORM_DEFAULT;
 
-  // Mora sugerida para un período, calculada a HOY con el esquema elegido.
+  // Mora sugerida para un período, calculada a HOY con el esquema elegido y sobre
+  // el canon de ESE mes (no el de hoy): si el alquiler subió, la mora vieja se
+  // calcula sobre lo que se debía entonces.
   // Redondeo a CENTAVOS (no a pesos): mismo r2 que el backend (punitorios.ts),
   // para que el prefill coincida con lo que el esquema calcularía server-side.
-  const moraSugerida = (diasAtraso: number): number =>
+  const moraSugerida = (p: PeriodoVencido): number =>
     Math.round(
-      calcularMora(moraEfectivaWizard.tipo, moraEfectivaWizard.valor, montoBaseMora, diasAtraso) * 100,
+      calcularMora(
+        moraEfectivaWizard.tipo,
+        moraEfectivaWizard.valor,
+        montoBaseDePeriodo(p.periodo),
+        p.diasAtraso,
+      ) * 100,
     ) / 100;
 
   const pasoPropiedadValido = !!propiedadId;
@@ -1261,35 +1612,127 @@ function CargarContratoApiWizard() {
   // frenar el alta con un 400 genérico al final. Vacío se permite (opcional).
   const emailInquilinoOk = !email.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   const pasoInquilinoValido = nombre.trim().length >= 2 && emailInquilinoOk;
-  const pasoTerminosValido =
-    (!requiereAlquiler || Number(monto) > 0) &&
-    // Si el contrato incluye expensas, el monto de expensas es obligatorio (antes
-    // el botón avanzaba y el server rechazaba con un 400 al final).
-    (!incluyeExpensas || Number(montoExpensas) > 0) &&
+  // Mensaje derivado de las MISMAS subcondiciones de pasoInquilinoValido, en el
+  // mismo orden: se muestra la primera que falla. Si en vez de esto se escribe
+  // una validación paralela, en cuanto una de las dos cambie el mensaje le
+  // dice al usuario que arregle un campo que ya está bien (ver commit 7e1c185).
+  const mensajeInquilino =
+    nombre.trim().length < 2
+      ? 'Completá el nombre del inquilino.'
+      : 'El email del inquilino no tiene un formato válido.';
+  // Paso 3 (Plazo y salida): sólo fechas y periodicidad de ajuste.
+  const pasoPlazoValido =
     fechaInicio.length === 10 &&
     fechaFin.length === 10 &&
     fechaFin > fechaInicio &&
     Number(diaPago) >= 1 &&
     Number(diaPago) <= 31 &&
-    Number(frecuenciaAjusteMeses) > 0 &&
+    Number(frecuenciaAjusteMeses) > 0;
+  // Mensaje derivado de las MISMAS subcondiciones de pasoPlazoValido, en el
+  // mismo orden.
+  const mensajePlazo =
+    fechaInicio.length !== 10
+      ? 'Cargá la fecha de inicio.'
+      : fechaFin.length !== 10
+        ? 'Cargá la fecha de fin.'
+        : fechaFin <= fechaInicio
+          ? 'Revisá las fechas: la de fin tiene que ser posterior a la de inicio.'
+          : !(Number(diaPago) >= 1 && Number(diaPago) <= 31)
+            ? 'Cargá el día de pago (entre 1 y 31).'
+            : 'Elegí la frecuencia de ajuste.';
+  // Paso 4 (Dinero): montos y esquema de mora.
+  // Cobranza directa SIN cuenta del propietario: el 400 del server ya es seguro
+  // (core.ts lo rechaza si el dueño principal no tiene `cuentaCobranza`). Es el
+  // mismo criterio que ya se aplicaba a las expensas dos líneas más abajo, y acá
+  // faltaba: el wizard dejaba avanzar hasta "Confirmar y dar de alta", disparaba
+  // el POST y recién ahí aparecía el error — con el agravante de que esta feature
+  // existe justamente para resolver la cuenta sin salir de la pantalla.
+  //
+  // Sólo frena cuando SABEMOS que falta: mientras el detalle está en vuelo o el
+  // fetch falló, `propietarioDeLaPropiedad` es null y no bloqueamos, porque no
+  // tenemos el dato (bloquear por no saber deja a la persona sin salida).
+  const faltaCuentaCobranzaDirecta =
+    modoCobranza === 'PROPIETARIO_DIRECTO' &&
+    (!propietarioIdElegido ||
+      (propietarioDeLaPropiedad !== null && !propietarioDeLaPropiedad.cuentaCobranza));
+  const pasoDineroValido =
+    (!requiereAlquiler || Number(monto) > 0) &&
+    // Si el contrato incluye expensas, el monto de expensas es obligatorio (antes
+    // el botón avanzaba y el server rechazaba con un 400 al final).
+    (!incluyeExpensas || Number(montoExpensas) > 0) &&
     // Si eligió un esquema con valor, el valor tiene que ser > 0.
-    (moraSel === 'HEREDAR' || moraSel === 'SIN_MORA' || Number(moraValor) > 0);
-  // Períodos: todo PARCIAL necesita monto pagado > 0 (la mora es opcional).
-  const pasoPeriodosValido = periodosVencidos.every((p) => {
-    const f = formDePeriodo(p.periodo);
-    return f.estado !== 'PARCIAL' || Number(f.montoPagado) > 0;
-  });
+    (moraSel === 'HEREDAR' || moraSel === 'SIN_MORA' || Number(moraValor) > 0) &&
+    !faltaCuentaCobranzaDirecta &&
+    // El historial de canon se valida con el MISMO código que el back: si está
+    // mal declarado, el alta entera volvería con un 400 recién al confirmar.
+    // Vive en ESTE paso (el historial es plata, no plazo), así que gatea acá.
+    !errorHistorialCanon;
+  // Mensaje derivado de las MISMAS subcondiciones de pasoDineroValido, en el
+  // mismo orden. Importante: el monto de alquiler puede estar bien cargado y
+  // ser otro campo (expensas, mora, cuenta o historial) el que falta, así que no
+  // se puede asumir que si el paso está inválido siempre es culpa del alquiler.
+  const mensajeDinero =
+    requiereAlquiler && !(Number(monto) > 0)
+      ? 'Cargá el monto del alquiler.'
+      : incluyeExpensas && !(Number(montoExpensas) > 0)
+        ? 'Cargá el monto de las expensas.'
+        : !(moraSel === 'HEREDAR' || moraSel === 'SIN_MORA' || Number(moraValor) > 0)
+          ? 'Cargá el valor de la mora.'
+          : faltaCuentaCobranzaDirecta
+            ? !propietarioIdElegido
+              ? 'La propiedad no tiene dueños cargados: sin eso no se puede cobrar directo.'
+              : 'Cargá la cuenta de cobro directo del propietario (el botón está acá arriba).'
+            : (errorHistorialCanon ?? 'Revisá los datos de este paso.');
 
-  // Saltamos el paso 4 cuando no hay períodos vencidos que declarar.
+  // Períodos que todavía no tienen una decisión tomada. Antes no existían: el
+  // default los daba por PAGADOS y el paso validaba trivialmente.
+  const periodosSinDeclarar = periodosVencidos.filter(
+    (p) => formDePeriodo(p.periodo).estado === 'SIN_DECLARAR',
+  );
+  // Todo PARCIAL necesita monto pagado > 0 (la mora es opcional).
+  const parcialesSinMonto = periodosVencidos.filter((p) => {
+    const f = formDePeriodo(p.periodo);
+    return f.estado === 'PARCIAL' && !(Number(f.montoPagado) > 0);
+  });
+  /**
+   * PARCIAL que cubre el mes entero: el back lo rechaza con 400 y eso tira el alta
+   * COMPLETA (`estado-inicial-contrato.ts`, `pagado >= total`). Replicamos la regla acá
+   * porque el 400 después de tipear todo es exactamente el síntoma que esta rama vino a
+   * eliminar. El total del período es el MISMO que compara el back (canon del período +
+   * expensas), no el canon de hoy: con historial de canon la franja que dispara el `>=`
+   * es más ancha en los meses viejos.
+   */
+  const parcialesQueCubrenTodo = periodosVencidos.filter((p) => {
+    const f = formDePeriodo(p.periodo);
+    const total = montoBaseDePeriodo(p.periodo);
+    return f.estado === 'PARCIAL' && Number(f.montoPagado) > 0 && total > 0 && Number(f.montoPagado) >= total;
+  });
+  /**
+   * Por qué NO se puede avanzar, escrito para que se lea. Un botón deshabilitado
+   * sin explicación deja al operador buscando qué le falta entre 9 tarjetas.
+   */
+  const motivoPeriodosIncompleto: string | null =
+    periodosSinDeclarar.length > 0
+      ? periodosSinDeclarar.length === 1
+        ? `Te falta declarar ${labelPeriodo(periodosSinDeclarar[0]!.periodo)}`
+        : `Te faltan ${periodosSinDeclarar.length} meses por declarar`
+      : parcialesSinMonto.length > 0
+        ? `Indicá cuánto pagó en ${parcialesSinMonto.length === 1 ? 'el mes marcado como parcial' : `los ${parcialesSinMonto.length} meses marcados como parciales`}`
+        : parcialesQueCubrenTodo.length > 0
+          ? `El pago de ${parcialesQueCubrenTodo.length === 1 ? labelPeriodo(parcialesQueCubrenTodo[0]!.periodo) : `${parcialesQueCubrenTodo.length} meses`} cubre el total — marcalo como Pagado`
+          : null;
+  const pasoPeriodosValido = motivoPeriodosIncompleto === null;
+
+  // Saltamos el paso 5 cuando no hay períodos vencidos que declarar.
   const avanzar = () =>
     setPaso((p) => {
-      const sig = Math.min(5, p + 1) as PasoApi;
-      return sig === 4 && !hayPeriodos ? 5 : sig;
+      const sig = Math.min(8, p + 1) as PasoApi;
+      return sig === 5 && !hayPeriodos ? 6 : sig;
     });
   const retroceder = () =>
     setPaso((p) => {
       const ant = Math.max(1, p - 1) as PasoApi;
-      return ant === 4 && !hayPeriodos ? 3 : ant;
+      return ant === 5 && !hayPeriodos ? 4 : ant;
     });
 
   const setEstadoPeriodo = (p: PeriodoVencido, estado: EstadoPeriodoAnterior) => {
@@ -1300,11 +1743,61 @@ function CargarContratoApiWizard() {
       // editable (override manual para migraciones); si el usuario ya la
       // tocó, no se la pisamos.
       if (estado !== 'PAGADO' && !actual.moraEditada) {
-        sig.moraManual = String(moraSugerida(p.diasAtraso));
+        sig.moraManual = String(moraSugerida(p));
       }
       return { ...forms, [p.periodo]: sig };
     });
   };
+  /**
+   * Declarar los N meses de un saque. Es una acción EXPLÍCITA y etiquetada: nada
+   * que ver con el default que se está sacando, que decidía por el operador sin
+   * que se enterara. Con 9 meses de historia, obligarlo a 9 clics idénticos lo
+   * empuja a apurarse, que es de dónde salen los datos mal cargados.
+   */
+  const declararTodos = (estado: EstadoPeriodoAnterior) => {
+    setPeriodosForm((forms) => {
+      const sig = { ...forms };
+      for (const p of periodosVencidos) {
+        const actual = forms[p.periodo] ?? PERIODO_FORM_DEFAULT;
+        sig[p.periodo] = {
+          ...actual,
+          estado,
+          ...(estado !== 'PAGADO' && !actual.moraEditada
+            ? { moraManual: String(moraSugerida(p)) }
+            : {}),
+        };
+      }
+      return sig;
+    });
+  };
+  // ---- Handlers del historial de canon ----
+
+  const activarHistorialCanon = () => {
+    setDeclaraHistorialCanon(true);
+    // Arranca con una vigencia: la del canon con el que el contrato empezó. Se
+    // prefila el mes de inicio porque es el caso abrumadoramente normal (el
+    // primer monto rige desde que arrancó), pero es editable.
+    if (vigenciasPrevias.length === 0) {
+      setVigenciasPrevias([
+        { id: proximoIdVigencia.current++, desde: periodoInicioContrato, monto: '' },
+      ]);
+    }
+  };
+  const desactivarHistorialCanon = () => {
+    setDeclaraHistorialCanon(false);
+    setVigenciasPrevias([]);
+    setDesdeCanonActual('');
+  };
+  const agregarVigencia = () => {
+    setVigenciasPrevias((vs) => [...vs, { id: proximoIdVigencia.current++, desde: '', monto: '' }]);
+  };
+  const quitarVigencia = (id: number) => {
+    setVigenciasPrevias((vs) => vs.filter((v) => v.id !== id));
+  };
+  const editarVigencia = (id: number, campo: 'desde' | 'monto', valor: string) => {
+    setVigenciasPrevias((vs) => vs.map((v) => (v.id === id ? { ...v, [campo]: valor } : v)));
+  };
+
   const setMontoPagadoPeriodo = (periodo: string, v: string) => {
     setPeriodosForm((forms) => ({
       ...forms,
@@ -1318,28 +1811,81 @@ function CargarContratoApiWizard() {
     }));
   };
 
-  // Resumen de deuda inicial (footer del paso 4 + resumen del confirmar).
+  // Resumen de deuda inicial (footer del paso 5 + resumen del confirmar). Cada
+  // mes va a SU canon declarado, igual que lo va a devengar el back.
   const deudaCapital = periodosVencidos.reduce((acc, p) => {
     const f = formDePeriodo(p.periodo);
-    if (f.estado === 'ADEUDA') return acc + montoBaseMora;
-    if (f.estado === 'PARCIAL') return acc + Math.max(0, montoBaseMora - (Number(f.montoPagado) || 0));
+    const base = montoBaseDePeriodo(p.periodo);
+    if (f.estado === 'ADEUDA') return acc + base;
+    if (f.estado === 'PARCIAL') return acc + Math.max(0, base - (Number(f.montoPagado) || 0));
     return acc;
   }, 0);
   const deudaMora = periodosVencidos.reduce((acc, p) => {
     const f = formDePeriodo(p.periodo);
-    return f.estado === 'PAGADO' ? acc : acc + (Number(f.moraManual) || 0);
+    return f.estado === 'PAGADO' || f.estado === 'SIN_DECLARAR'
+      ? acc
+      : acc + (Number(f.moraManual) || 0);
   }, 0);
 
-  // Si el usuario vuelve al paso 3 y cambia el esquema de mora o el monto,
-  // refrescamos las moras SUGERIDAS de los períodos que no editó a mano.
+  // 🔴 Lo que se está por dar por COBRADO. `deudaCapital` ignora los PAGADO, así
+  // que el cartel verde de "Deuda inicial: $0" es exactamente lo que convence al
+  // operador de que está todo bien mientras cierra 9 meses que nadie pagó. Estos
+  // dos números existen para que el resumen diga en voz alta lo que se asienta.
+  const periodosPagados = periodosVencidos.filter(
+    (p) => formDePeriodo(p.periodo).estado === 'PAGADO',
+  );
+  const montoCerradoComoPagado = periodosPagados.reduce(
+    (acc, p) => acc + montoBaseDePeriodo(p.periodo),
+    0,
+  );
+  const montoCobradoEnParciales = periodosVencidos.reduce((acc, p) => {
+    const f = formDePeriodo(p.periodo);
+    return f.estado === 'PARCIAL' ? acc + (Number(f.montoPagado) || 0) : acc;
+  }, 0);
+
+  /**
+   * Los períodos tal como viajan al back. El tipo de `estado` es
+   * `EstadoPeriodoAnterior`, sin `SIN_DECLARAR`: el filtro de abajo es lo único
+   * que puede producir este array y el compilador no deja saltearlo.
+   *
+   * La mora manual sólo viaja con el interruptor en CONGELADA. Antes se mandaba
+   * siempre que el string no estuviera vacío y el string venía prefilado solo, así
+   * que todo contrato en curso nacía con la mora clavada: el punitorio no volvía a
+   * crecer un peso y el inquilino que no paga nunca dejaba de deber lo mismo.
+   */
+  const periodosAnterioresPayload: PeriodoAnteriorPayload[] = periodosVencidos.flatMap((p) => {
+    const f = formDePeriodo(p.periodo);
+    if (f.estado === 'SIN_DECLARAR') return [];
+    const estado: EstadoPeriodoAnterior = f.estado;
+    return [
+      {
+        periodo: p.periodo,
+        estado,
+        ...(estado === 'PARCIAL' && Number(f.montoPagado) > 0
+          ? { montoPagado: Number(f.montoPagado) }
+          : {}),
+        // Con el interruptor en CONGELADA, la mora se manda SIEMPRE — el campo vacío
+        // vale 0, no "no dije nada". Omitirlo dejaba `montoPunitorioManual` en null y
+        // el esquema seguía corriendo desde el vencimiento original: el operador que
+        // borró el número para decir "este mes no debe mora" terminaba cobrándola.
+        ...(moraHistoricaCongelada && estado !== 'PAGADO'
+          ? { moraManual: f.moraManual.trim() === '' ? 0 : Number(f.moraManual) }
+          : {}),
+      },
+    ];
+  });
+
+  // Si el usuario vuelve al paso 4 (Dinero) y cambia el esquema de mora, el monto
+  // o el historial de canon, refrescamos las moras SUGERIDAS de los períodos que
+  // no editó a mano.
   useEffect(() => {
     setPeriodosForm((forms) => {
       let cambio = false;
       const sig = { ...forms };
       for (const p of periodosVencidos) {
         const f = forms[p.periodo];
-        if (!f || f.estado === 'PAGADO' || f.moraEditada) continue;
-        const sugerida = String(moraSugerida(p.diasAtraso));
+        if (!f || f.estado === 'PAGADO' || f.estado === 'SIN_DECLARAR' || f.moraEditada) continue;
+        const sugerida = String(moraSugerida(p));
         if (f.moraManual !== sugerida) {
           sig[p.periodo] = { ...f, moraManual: sugerida };
           cambio = true;
@@ -1349,7 +1895,13 @@ function CargarContratoApiWizard() {
     });
     // moraSugerida se recrea por render pero sólo depende de estas deps.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [moraEfectivaWizard.tipo, moraEfectivaWizard.valor, montoBaseMora, periodosVencidos]);
+  }, [
+    moraEfectivaWizard.tipo,
+    moraEfectivaWizard.valor,
+    montoBaseMora,
+    periodosVencidos,
+    vigenciasCanonPayload,
+  ]);
 
   const dar_de_alta = async () => {
     setEnviando(true);
@@ -1395,25 +1947,18 @@ function CargarContratoApiWizard() {
               ...(moraSel !== 'SIN_MORA' ? { moraValor: Number(moraValor) } : {}),
             }
           : {}),
-        // Períodos anteriores: se mandan TODOS (también los pagados — el
-        // backend los cierra con pagos sintéticos).
-        ...(hayPeriodos
-          ? {
-              periodosAnteriores: periodosVencidos.map((p) => {
-                const f = formDePeriodo(p.periodo);
-                return {
-                  periodo: p.periodo,
-                  estado: f.estado,
-                  ...(f.estado === 'PARCIAL' && Number(f.montoPagado) > 0
-                    ? { montoPagado: Number(f.montoPagado) }
-                    : {}),
-                  ...(f.estado !== 'PAGADO' && f.moraManual.trim() !== ''
-                    ? { moraManual: Number(f.moraManual) }
-                    : {}),
-                };
-              }),
-            }
-          : {}),
+        // Períodos anteriores: se mandan los DECLARADOS (también los pagados — el
+        // backend los cierra con pagos sintéticos). No se puede llegar hasta acá
+        // con alguno sin declarar (`pasoPeriodosValido`), pero el filtro es lo que
+        // garantiza que 'SIN_DECLARAR' —un valor que el back no conoce— jamás
+        // salga de este archivo.
+        ...(hayPeriodos ? { periodosAnteriores: periodosAnterioresPayload } : {}),
+        // Historial de canon: sólo si se declaró. Sin esto el back devenga cada
+        // mes viejo al monto de HOY, que es deuda que el inquilino no contrajo.
+        ...(vigenciasCanonPayload ? { vigenciasCanon: vigenciasCanonPayload } : {}),
+        // Mora de los meses viejos: se manda la decisión SIEMPRE, para que quede
+        // asentada en el contrato aunque sea la de default.
+        moraHistoricaCongelada,
       };
       const creado = await apiFetch<ContratoNuevoApi>('/contratos', {
         method: 'POST',
@@ -1428,15 +1973,15 @@ function CargarContratoApiWizard() {
       // neutro que no miente en ninguna dirección.
       const estadoContrato: 'activo' | 'pendiente' | 'desconocido' =
         creado.estado === 'ACTIVO' ? 'activo' : creado.estado === 'BORRADOR' ? 'pendiente' : 'desconocido';
-      // Fotos del DNI (si las cargaron): al expediente del contrato recién
+      // Documentación (si cargaron algo): al expediente del contrato recién
       // creado. Best-effort — si una subida falla, el contrato YA quedó dado de
-      // alta; no lo revertimos, solo avisamos que suban el DNI desde el detalle.
-      const dnis: { file: File; tipo: string; etiqueta: string }[] = [
-        ...(dniFrente ? [{ file: dniFrente, tipo: 'DNI_TITULAR_FRENTE', etiqueta: 'DNI titular · frente' }] : []),
-        ...(dniDorso ? [{ file: dniDorso, tipo: 'DNI_TITULAR_DORSO', etiqueta: 'DNI titular · dorso' }] : []),
-      ];
-      let dniFallo = false;
-      for (const d of dnis) {
+      // alta; no lo revertimos, solo avisamos cuántos papeles quedaron afuera.
+      // Son 2 requests por papel (upload + alta del documento), secuenciales:
+      // por eso el contador de progreso.
+      const documentos = Object.values(docsExpediente);
+      let docsFallados = 0;
+      if (documentos.length > 0) setSubiendoDocs({ hechos: 0, total: documentos.length });
+      for (const [i, d] of documentos.entries()) {
         try {
           const up = await subirArchivo(d.file);
           await apiFetch(`/contratos/${creado.id}/documentos`, {
@@ -1444,6 +1989,7 @@ function CargarContratoApiWizard() {
             body: JSON.stringify({
               tipo: d.tipo,
               etiqueta: d.etiqueta,
+              ...(d.garanteIndex != null ? { garanteIndex: d.garanteIndex } : {}),
               nombreArchivo: up.nombreArchivo,
               tipoMime: up.tipoMime,
               tamanioBytes: up.tamanioBytes,
@@ -1451,23 +1997,27 @@ function CargarContratoApiWizard() {
             }),
           });
         } catch {
-          dniFallo = true;
+          docsFallados += 1;
         }
+        setSubiendoDocs({ hechos: i + 1, total: documentos.length });
       }
+      setSubiendoDocs(null);
       // La propiedad pasa a ALQUILADA y el contrato aparece en la lista.
       void qc.invalidateQueries({ queryKey: ['contratos'] });
       void qc.invalidateQueries({ queryKey: ['propiedades'] });
       setConfirmando(false);
       toast({
-        variant: dniFallo ? 'default' : 'success',
+        variant: docsFallados > 0 ? 'default' : 'success',
         title:
           estadoContrato === 'pendiente'
             ? 'Contrato cargado — queda pendiente de aprobación'
             : estadoContrato === 'activo'
               ? 'Contrato dado de alta'
               : 'Contrato cargado',
-        description: dniFallo
-          ? 'Se creó el contrato, pero no pudimos subir alguna foto del DNI. Cargalas desde el detalle.'
+        // El copy dice CUÁNTOS quedaron sin subir: antes hablaba de "alguna foto
+        // del DNI" y con un expediente de 8 papeles eso mentía.
+        description: docsFallados > 0
+          ? `Se creó el contrato, pero ${docsFallados === 1 ? 'quedó 1 documento sin subir' : `quedaron ${docsFallados} documentos sin subir`}. Cargalo${docsFallados === 1 ? '' : 's'} desde el detalle del contrato.`
           : estadoContrato === 'pendiente'
             ? 'Un Admin tiene que aprobarlo. Hasta entonces no genera cuotas ni ocupa la propiedad.'
             : estadoContrato === 'activo'
@@ -1512,7 +2062,7 @@ function CargarContratoApiWizard() {
               <ArrowLeft className="h-3 w-3" />
               Volver
             </Link>
-            <StepsApi actual={paso} pasos={pasosVisibles} />
+            <StepsApi actual={paso} pasos={pasosVisibles} onIr={(p) => setPaso(p)} />
             {mostrarGuardado && (
               <p className="mt-1.5 text-xs text-muted-foreground">Guardado hace un momento</p>
             )}
@@ -1581,11 +2131,18 @@ function CargarContratoApiWizard() {
                 </div>
               )}
 
-              <div className="flex justify-end border-t pt-4">
-                <Button onClick={avanzar} disabled={!pasoPropiedadValido}>
-                  Continuar
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
+              <div className="space-y-2 border-t pt-4">
+                <div className="flex justify-end">
+                  <Button onClick={avanzar} disabled={!pasoPropiedadValido}>
+                    Continuar
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </div>
+                {!pasoPropiedadValido && (
+                  <p className="text-right text-xs text-muted-foreground">
+                    Elegí una propiedad para seguir.
+                  </p>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -1776,28 +2333,25 @@ function CargarContratoApiWizard() {
                 </div>
               </div>
 
-              {/* Fotos del DNI del titular (opcional): quedan en el expediente del
-                  contrato. Se suben tras el alta (necesitan el contratoId). */}
-              <div className="space-y-2 rounded-lg border border-dashed border-border bg-muted/20 p-3">
-                <p className="text-sm font-medium">Fotos del DNI del inquilino <span className="font-normal text-muted-foreground">(opcional)</span></p>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <DniFileInput id="dni-frente" label="Frente" file={dniFrente} onPick={setDniFrente} />
-                  <DniFileInput id="dni-dorso" label="Dorso" file={dniDorso} onPick={setDniDorso} />
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Las guardamos en el expediente del contrato. También podés cargarlas después desde el detalle.
-                </p>
-              </div>
+              {/* Las fotos del DNI vivían acá. Se mudaron al paso Documentación
+                  para que el expediente entero se cargue en UN solo lugar. */}
 
-              <div className="flex justify-between border-t pt-4">
-                <Button variant="ghost" onClick={retroceder}>
-                  <ArrowLeft className="h-4 w-4" />
-                  Volver
-                </Button>
-                <Button onClick={avanzar} disabled={!pasoInquilinoValido}>
-                  Continuar
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
+              <div className="space-y-2 border-t pt-4">
+                <div className="flex justify-between">
+                  <Button variant="ghost" onClick={retroceder}>
+                    <ArrowLeft className="h-4 w-4" />
+                    Volver
+                  </Button>
+                  <Button onClick={avanzar} disabled={!pasoInquilinoValido}>
+                    Continuar
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </div>
+                {!pasoInquilinoValido && (
+                  <p className="text-right text-xs text-muted-foreground">
+                    {mensajeInquilino}
+                  </p>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -1806,9 +2360,164 @@ function CargarContratoApiWizard() {
         {paso === 3 && (
           <Card>
             <CardHeader>
-              <CardTitle>Términos del contrato</CardTitle>
+              <CardTitle>Plazo y salida</CardTitle>
               <CardDescription>
-                Monto, vigencia, ajuste y forma de cobranza.
+                Cuándo arranca, cuándo termina y cada cuánto se ajusta.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="fechaInicio">
+                    Inicio <span aria-hidden="true" className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id="fechaInicio"
+                    type="date"
+                    value={fechaInicio}
+                    onChange={(e) => setFechaInicio(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="fechaFin">
+                    Fin <span aria-hidden="true" className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id="fechaFin"
+                    type="date"
+                    value={fechaFin}
+                    min={fechaInicio || undefined}
+                    onChange={(e) => setFechaFin(e.target.value)}
+                    aria-invalid={fechaFin.length === 10 && fechaInicio.length === 10 && fechaFin <= fechaInicio}
+                  />
+                  {fechaFin.length === 10 && fechaInicio.length === 10 && fechaFin <= fechaInicio && (
+                    <p className="text-[11px] text-destructive">
+                      La fecha de fin tiene que ser posterior a la de inicio.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Si hay error de fechas, el cartel puntual bajo "Fin" (arriba) ya lo
+                  avisa — no lo repetimos acá para no mostrar el mismo texto dos
+                  veces con distinto tamaño de letra. */}
+              {resumenPlazo && resumenPlazo.error === null && (
+                <div className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">
+                  <p>
+                    {resumenPlazo.meses > 0
+                      ? `Dura ${resumenPlazo.meses} ${resumenPlazo.meses === 1 ? 'mes' : 'meses'}.`
+                      : 'Dura menos de un mes.'}
+                  </p>
+                  {/* Gateado con `hayPeriodos` (la MISMA fuente canónica —
+                      enumerarPeriodosContrato — que decide si el paso 5 existe) y
+                      no con `mesesDesdeInicio` (una fórmula propia de este
+                      preview): con esa fórmula había fechas donde el cartel
+                      prometía el paso 5 y no aparecía, y otras donde aparecía sin
+                      aviso previo. El número también es el real: la cantidad de
+                      períodos vencidos, no una cuenta de meses aproximada. */}
+                  {hayPeriodos && (
+                    <p className="text-foreground">
+                      Este contrato ya tiene {periodosVencidos.length}{' '}
+                      {periodosVencidos.length === 1 ? 'período vencido' : 'períodos vencidos'}: más
+                      adelante vas a tener que declarar qué pasó con cada uno.
+                    </p>
+                  )}
+                  {indiceAjuste !== 'FIJO' &&
+                    (resumenPlazo.ajusteLlega ? (
+                      <p>
+                        Primer ajuste:{' '}
+                        {formatFechaDeInput(resumenPlazo.primerAjuste.toISOString().slice(0, 10))}.
+                      </p>
+                    ) : (
+                      <p>
+                        Con esta frecuencia el contrato <strong>no llega a ajustarse</strong>: el
+                        primer ajuste caería el{' '}
+                        {formatFechaDeInput(resumenPlazo.primerAjuste.toISOString().slice(0, 10))},
+                        cuando ya terminó.
+                      </p>
+                    ))}
+                </div>
+              )}
+
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="diaPago">Día de pago</Label>
+                  <Input
+                    id="diaPago"
+                    inputMode="numeric"
+                    value={diaPago}
+                    onChange={(e) => {
+                      const n = e.target.value.replace(/\D/g, '').slice(0, 2);
+                      setDiaPago(n);
+                    }}
+                    placeholder="10"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="indiceAjuste">Índice de ajuste</Label>
+                  <Select
+                    value={indiceAjuste}
+                    onValueChange={(v) => setIndiceAjuste(v as IndiceAjuste)}
+                  >
+                    <SelectTrigger id="indiceAjuste">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {indicesAjuste.map((i) => (
+                        <SelectItem key={i.value} value={i.value}>
+                          {i.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="frecuenciaAjuste">Frecuencia ajuste</Label>
+                  <Select
+                    value={frecuenciaAjusteMeses}
+                    onValueChange={setFrecuenciaAjusteMeses}
+                  >
+                    <SelectTrigger id="frecuenciaAjuste">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {frecuenciasAjuste.map((f) => (
+                        <SelectItem key={f.value} value={f.value}>
+                          {f.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-2 border-t pt-4">
+                <div className="flex justify-between">
+                  <Button variant="ghost" onClick={retroceder}>
+                    <ArrowLeft className="h-4 w-4" />
+                    Volver
+                  </Button>
+                  <Button onClick={avanzar} disabled={!pasoPlazoValido}>
+                    Continuar
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </div>
+                {!pasoPlazoValido && (
+                  <p className="text-right text-xs text-muted-foreground">
+                    {mensajePlazo}
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {paso === 4 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Dinero</CardTitle>
+              <CardDescription>
+                Cuánto paga el inquilino y cómo se cobra.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
@@ -1888,89 +2597,152 @@ function CargarContratoApiWizard() {
                 </div>
               )}
 
-              <div className="grid gap-3 md:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label htmlFor="fechaInicio">
-                    Inicio <span aria-hidden="true" className="text-destructive">*</span>
-                  </Label>
-                  <Input
-                    id="fechaInicio"
-                    type="date"
-                    value={fechaInicio}
-                    onChange={(e) => setFechaInicio(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="fechaFin">
-                    Fin <span aria-hidden="true" className="text-destructive">*</span>
-                  </Label>
-                  <Input
-                    id="fechaFin"
-                    type="date"
-                    value={fechaFin}
-                    min={fechaInicio || undefined}
-                    onChange={(e) => setFechaFin(e.target.value)}
-                    aria-invalid={fechaFin.length === 10 && fechaInicio.length === 10 && fechaFin <= fechaInicio}
-                  />
-                  {fechaFin.length === 10 && fechaInicio.length === 10 && fechaFin <= fechaInicio && (
-                    <p className="text-[11px] text-destructive">
-                      La fecha de fin tiene que ser posterior a la de inicio.
+              {/* Historial de canon: sólo para contratos que YA venían andando.
+                  Sin esto los meses viejos se devengan al monto de hoy — el
+                  inquilino queda debiendo un aumento que en su momento no existió. */}
+              {contratoEnCurso && (
+                <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
+                  <div>
+                    <p className="text-sm font-medium">¿El alquiler siempre valió lo mismo?</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Este contrato arrancó el {formatFechaDeInput(fechaInicio)}. Si el monto
+                      cambió en el medio, cargá el historial: cada mes viejo se va a cobrar al
+                      precio que tenía, no al de hoy.
                     </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {([
+                      { activo: false, label: 'Siempre valió lo mismo' },
+                      { activo: true, label: 'Cambió de monto' },
+                    ] as { activo: boolean; label: string }[]).map((o) => (
+                      <button
+                        key={String(o.activo)}
+                        type="button"
+                        aria-pressed={declaraHistorialCanon === o.activo}
+                        onClick={() =>
+                          o.activo ? activarHistorialCanon() : desactivarHistorialCanon()
+                        }
+                        className={cn(
+                          'rounded-md border px-3 py-1.5 text-sm transition-colors',
+                          declaraHistorialCanon === o.activo
+                            ? 'border-primary bg-primary text-primary-foreground'
+                            : 'border-border bg-background hover:bg-muted/40',
+                        )}
+                      >
+                        {o.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {declaraHistorialCanon && (
+                    <div className="space-y-2">
+                      {vigenciasPrevias.map((v, i) => (
+                        <div key={v.id} className="grid gap-2 sm:grid-cols-[170px_1fr_auto]">
+                          <div className="space-y-1">
+                            {i === 0 && (
+                              <Label
+                                htmlFor={`vigencia-desde-${v.id}`}
+                                className="text-[11px] text-muted-foreground"
+                              >
+                                Desde el mes
+                              </Label>
+                            )}
+                            <Input
+                              id={`vigencia-desde-${v.id}`}
+                              type="month"
+                              value={v.desde}
+                              min={periodoInicioContrato || undefined}
+                              max={periodoActual}
+                              onChange={(e) => editarVigencia(v.id, 'desde', e.target.value)}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            {i === 0 && (
+                              <Label
+                                htmlFor={`vigencia-monto-${v.id}`}
+                                className="text-[11px] text-muted-foreground"
+                              >
+                                El alquiler valía
+                              </Label>
+                            )}
+                            <div className="relative">
+                              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                                {monedaSimbolo}
+                              </span>
+                              <Input
+                                id={`vigencia-monto-${v.id}`}
+                                inputMode="numeric"
+                                value={v.monto ? Number(v.monto).toLocaleString('es-AR') : ''}
+                                onChange={(e) =>
+                                  editarVigencia(
+                                    v.id,
+                                    'monto',
+                                    e.target.value.replace(/\D/g, '').slice(0, 12),
+                                  )
+                                }
+                                placeholder="200.000"
+                                className="pl-9"
+                              />
+                            </div>
+                          </div>
+                          <div className={cn('flex items-end', i === 0 && 'sm:pt-[22px]')}>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-muted-foreground hover:text-destructive"
+                              onClick={() => quitarVigencia(v.id)}
+                              aria-label={`Quitar el monto anterior ${i + 1}`}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+
+                      <Button variant="outline" size="sm" onClick={agregarVigencia}>
+                        Agregar otro monto anterior
+                      </Button>
+
+                      {/* Última vigencia: el monto NO se edita acá, se deriva del
+                          contrato. Si se pudiera editar suelto, el contrato diría
+                          una cosa y su propio historial otra (y el back lo rechaza). */}
+                      <div className="grid gap-2 border-t pt-2 sm:grid-cols-[170px_1fr]">
+                        <div className="space-y-1">
+                          <Label
+                            htmlFor="vigencia-desde-actual"
+                            className="text-[11px] text-muted-foreground"
+                          >
+                            Desde el mes
+                          </Label>
+                          <Input
+                            id="vigencia-desde-actual"
+                            type="month"
+                            value={desdeCanonActual}
+                            min={periodoInicioContrato || undefined}
+                            max={periodoActual}
+                            onChange={(e) => setDesdeCanonActual(e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <span className="block text-[11px] text-muted-foreground">
+                            vale el monto actual del contrato
+                          </span>
+                          <div className="flex h-10 items-center rounded-md border border-dashed bg-muted/40 px-3 text-sm tabular-nums">
+                            {monedaSimbolo} {Number(monto || 0).toLocaleString('es-AR')}
+                          </div>
+                        </div>
+                      </div>
+
+                      {errorHistorialCanon && (
+                        <p className="flex items-start gap-1.5 text-[11px] text-destructive">
+                          <AlertCircle className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                          <span>{errorHistorialCanon}</span>
+                        </p>
+                      )}
+                    </div>
                   )}
                 </div>
-              </div>
-
-              <div className="grid gap-3 md:grid-cols-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="diaPago">Día de pago</Label>
-                  <Input
-                    id="diaPago"
-                    inputMode="numeric"
-                    value={diaPago}
-                    onChange={(e) => {
-                      const n = e.target.value.replace(/\D/g, '').slice(0, 2);
-                      setDiaPago(n);
-                    }}
-                    placeholder="10"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="indiceAjuste">Índice de ajuste</Label>
-                  <Select
-                    value={indiceAjuste}
-                    onValueChange={(v) => setIndiceAjuste(v as IndiceAjuste)}
-                  >
-                    <SelectTrigger id="indiceAjuste">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {indicesAjuste.map((i) => (
-                        <SelectItem key={i.value} value={i.value}>
-                          {i.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="frecuenciaAjuste">Frecuencia ajuste</Label>
-                  <Select
-                    value={frecuenciaAjusteMeses}
-                    onValueChange={setFrecuenciaAjusteMeses}
-                  >
-                    <SelectTrigger id="frecuenciaAjuste">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {frecuenciasAjuste.map((f) => (
-                        <SelectItem key={f.value} value={f.value}>
-                          {f.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
+              )}
 
               <div className="space-y-1.5 md:max-w-xs">
                 <Label htmlFor="comision">Comisión de la inmobiliaria (%)</Label>
@@ -1979,7 +2751,18 @@ function CargarContratoApiWizard() {
                     id="comision"
                     inputMode="decimal"
                     value={comisionInmobiliaria}
-                    onChange={(e) => setComisionInmobiliaria(e.target.value.replace(/[^\d.]/g, '').slice(0, 5))}
+                    // La coma se TRADUCE a punto, no se descarta. Antes el filtro
+                    // `[^\d.]` la borraba: quien tipeaba la comisión como se escribe
+                    // acá, "8,5", terminaba con "85" → un contrato al 85% de
+                    // comisión, que ningún resumen posterior muestra. Y "4,17" daba
+                    // "417", rebotado por el server con un mensaje que no nombra el
+                    // campo. Se normaliza a un solo punto decimal.
+                    onChange={(e) => {
+                      const crudo = e.target.value.replace(',', '.').replace(/[^\d.]/g, '');
+                      const [entera = '', ...resto] = crudo.split('.');
+                      const normalizado = resto.length ? `${entera}.${resto.join('')}` : entera;
+                      setComisionInmobiliaria(normalizado.slice(0, 5));
+                    }}
                     placeholder="8"
                     className="pr-8"
                   />
@@ -2075,51 +2858,210 @@ function CargarContratoApiWizard() {
                   ))}
                 </div>
                 {modoCobranza === 'PROPIETARIO_DIRECTO' && (
-                  <p className="mt-2 rounded-md bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
-                    Para cobranza directa, el dueño principal de la propiedad tiene que tener
-                    cargada su <strong>&quot;Cuenta de cobranza directa&quot;</strong> (banco + CBU + alias) en
-                    su ficha. Si no la tiene, el alta te la va a pedir al confirmar.
-                  </p>
+                  !propietarioIdElegido ? (
+                    <p className="mt-2 rounded-md bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
+                      La propiedad necesita dueños cargados para usar cobranza directa al
+                      propietario.
+                    </p>
+                  ) : errorPropietarioElegido ? (
+                    // Falló el fetch. Antes esto caía en el "Confirmando la cuenta…"
+                    // de abajo y se quedaba ahí PARA SIEMPRE: sin error, sin
+                    // reintento, y sin poder saber si el dueño tenía cuenta o no.
+                    <p className="mt-2 text-xs text-destructive">
+                      No pudimos confirmar si {propiedadElegida?.propietarios[0]?.nombre ?? 'el propietario'} tiene
+                      cuenta de cobro directo.{' '}
+                      <button
+                        type="button"
+                        onClick={() => reintentarPropietarioElegido()}
+                        className="font-medium underline underline-offset-2"
+                      >
+                        Reintentar
+                      </button>
+                    </p>
+                  ) : cargandoPropietarioElegido || !propietarioDeLaPropiedad ? (
+                    // Todavía no tenemos el detalle real de la cuenta (fetch en
+                    // vuelo, o sin resolver por algún error puntual): NO afirmamos
+                    // "tiene cuenta" ni "le falta" — ambos carteles de abajo dan
+                    // por hecho un dato que en este instante no tenemos, y antes
+                    // el aviso ámbar parpadeaba en falso para dueños que sí la
+                    // tenían cargada mientras el fetch estaba en curso.
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Confirmando la cuenta del propietario…
+                    </p>
+                  ) : propietarioDeLaPropiedad.cuentaCobranza ? (
+                    <div className="mt-2 rounded-md border bg-muted/40 p-3 text-sm">
+                      <p className="font-medium">Cuenta de {propietarioDeLaPropiedad.nombre}</p>
+                      {/* Titular: a nombre de quién está la cuenta bancaria — puede no
+                          coincidir con el propietario (cónyuge, sociedad). Spec §6. */}
+                      <p className="text-muted-foreground">
+                        Titular: {propietarioDeLaPropiedad.cuentaCobranza.titular}
+                      </p>
+                      <p className="text-muted-foreground">
+                        {propietarioDeLaPropiedad.cuentaCobranza.banco} · CBU ····
+                        {propietarioDeLaPropiedad.cuentaCobranza.cbu.slice(-4)} ·{' '}
+                        {propietarioDeLaPropiedad.cuentaCobranza.alias}
+                      </p>
+                      <Button
+                        variant="link"
+                        className="h-auto p-0"
+                        onClick={() => setCuentaDialogAbierto(true)}
+                      >
+                        Editar
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="mt-2 rounded-md border border-amber-500/50 bg-amber-500/5 p-3 text-sm">
+                      <p className="font-medium">
+                        {propietarioDeLaPropiedad.nombre} todavía no tiene cuenta de cobro directo
+                      </p>
+                      <p className="text-muted-foreground">
+                        Sin la cuenta, el inquilino no tiene a dónde transferir. Cargala acá y
+                        seguí con el alta.
+                      </p>
+                      <Button
+                        size="sm"
+                        className="mt-2"
+                        onClick={() => setCuentaDialogAbierto(true)}
+                      >
+                        Cargar la cuenta del propietario
+                      </Button>
+                    </div>
+                  )
+                )}
+                {propietarioDeLaPropiedad && (
+                  <CuentaCobranzaDialog
+                    open={cuentaDialogAbierto}
+                    onOpenChange={setCuentaDialogAbierto}
+                    propietario={propietarioDeLaPropiedad}
+                    onSaved={() => {
+                      // Invalidamos el detalle puntual (lo que este wizard lee)
+                      // y el listado (lo que leen propietarios/page.tsx y otras
+                      // pantallas), igual que CuentaCobranzaTrigger en la ficha.
+                      void qc.invalidateQueries({
+                        queryKey: ['propietario', propietarioIdElegido],
+                      });
+                      void qc.invalidateQueries({ queryKey: ['propietarios'] });
+                    }}
+                  />
                 )}
               </div>
 
-              <div className="flex justify-between border-t pt-4">
-                <Button variant="ghost" onClick={retroceder}>
-                  <ArrowLeft className="h-4 w-4" />
-                  Volver
-                </Button>
-                <Button onClick={avanzar} disabled={!pasoTerminosValido}>
-                  Continuar
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
+              {/* Mascotas ya NO se carga acá: vive en la propiedad (main, 898e451). */}
+              <div className="space-y-2 border-t pt-4">
+                <div className="flex justify-between">
+                  <Button variant="ghost" onClick={retroceder}>
+                    <ArrowLeft className="h-4 w-4" />
+                    Volver
+                  </Button>
+                  <Button onClick={avanzar} disabled={!pasoDineroValido}>
+                    Continuar
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </div>
+                {!pasoDineroValido && (
+                  <p className="text-right text-xs text-muted-foreground">{mensajeDinero}</p>
+                )}
               </div>
             </CardContent>
           </Card>
         )}
 
-        {paso === 4 && hayPeriodos && (
+        {paso === 5 && hayPeriodos && (
           <Card>
             <CardHeader>
               <CardTitle>Períodos anteriores</CardTitle>
               <CardDescription>
-                El contrato arranca en el pasado: contanos cómo quedó cada mes ya
-                vencido. Lo pagado se cierra solo; lo parcial o adeudado queda como
-                deuda inicial del inquilino.
+                El contrato arranca en el pasado: contanos cómo quedó cada uno de los{' '}
+                {periodosVencidos.length} mes{periodosVencidos.length === 1 ? '' : 'es'} ya
+                vencido{periodosVencidos.length === 1 ? '' : 's'}. Lo pagado se cierra y deja
+                de ser cobrable; lo parcial o adeudado queda como deuda inicial del inquilino.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* Interruptor de mora (F3). Va ARRIBA de la lista porque cambia lo
+                  que cada tarjeta pide: con la mora corriendo no hay nada que
+                  declarar, la calcula el sistema todos los días. */}
+              <div className="space-y-1.5">
+                <Label>La mora de estos meses viejos…</Label>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {([
+                    {
+                      val: false,
+                      title: 'Sigue corriendo',
+                      sub: 'El punitorio se calcula con el esquema del contrato y crece cada día hasta que pague.',
+                    },
+                    {
+                      val: true,
+                      title: 'Queda congelada',
+                      sub: 'Se clava en el monto que declares acá y no crece más. Para migraciones o moras ya acordadas.',
+                    },
+                  ] as { val: boolean; title: string; sub: string }[]).map((o) => (
+                    <button
+                      key={String(o.val)}
+                      type="button"
+                      aria-pressed={moraHistoricaCongelada === o.val}
+                      onClick={() => setMoraHistoricaCongelada(o.val)}
+                      className={cn(
+                        'rounded-lg border p-3 text-left text-sm transition-colors',
+                        moraHistoricaCongelada === o.val
+                          ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                          : 'border-border hover:bg-muted/40',
+                      )}
+                    >
+                      <span className="font-medium">{o.title}</span>
+                      <span className="mt-0.5 block text-xs text-muted-foreground">{o.sub}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Declarar de a uno 9 meses empuja a apurarse. Estas acciones son
+                  EXPLÍCITAS: nada que ver con el default que decidía solo. */}
+              {periodosVencidos.length > 2 && (
+                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                  <span>Marcar todos como:</span>
+                  <Button variant="outline" size="sm" onClick={() => declararTodos('PAGADO')}>
+                    Pagados
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => declararTodos('ADEUDA')}>
+                    Adeudados
+                  </Button>
+                  <span>y después corregí los que difieran.</span>
+                </div>
+              )}
+
               <div className="divide-y rounded-lg border">
                 {periodosVencidos.map((p) => {
                   const f = formDePeriodo(p.periodo);
+                  const sinDeclarar = f.estado === 'SIN_DECLARAR';
                   return (
-                    <div key={p.periodo} className="space-y-3 p-3">
+                    <div
+                      key={p.periodo}
+                      className={cn(
+                        'space-y-3 p-3',
+                        // Rojo sólo después de intentar avanzar: antes de eso no se
+                        // equivocó de nada, todavía no llegó.
+                        sinDeclarar && faltantesMarcados && 'bg-destructive/5',
+                      )}
+                    >
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div>
                           <p className="text-sm font-medium">{labelPeriodo(p.periodo)}</p>
                           <p className="text-[11px] text-muted-foreground">
                             Venció el {formatFechaDeInput(p.vencimiento)} · hace{' '}
-                            {p.diasAtraso} día{p.diasAtraso === 1 ? '' : 's'}
+                            {p.diasAtraso} día{p.diasAtraso === 1 ? '' : 's'} ·{' '}
+                            {monedaSimbolo} {montoBaseDePeriodo(p.periodo).toLocaleString('es-AR')}
                           </p>
+                          {sinDeclarar && (
+                            <p
+                              className={cn(
+                                'text-[11px]',
+                                faltantesMarcados ? 'text-destructive' : 'text-muted-foreground',
+                              )}
+                            >
+                              Sin declarar
+                            </p>
+                          )}
                         </div>
                         <div
                           role="radiogroup"
@@ -2155,7 +3097,7 @@ function CargarContratoApiWizard() {
                         </div>
                       </div>
 
-                      {f.estado !== 'PAGADO' && (
+                      {(f.estado === 'PARCIAL' || f.estado === 'ADEUDA') && (
                         <div className="grid gap-3 md:grid-cols-2">
                           {f.estado === 'PARCIAL' && (
                             <div className="space-y-1.5">
@@ -2177,28 +3119,40 @@ function CargarContratoApiWizard() {
                               </div>
                             </div>
                           )}
-                          <div className="space-y-1.5">
-                            <Label htmlFor={`mora-${p.periodo}`}>Mora acumulada</Label>
-                            <div className="relative">
-                              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                                {monedaSimbolo}
-                              </span>
-                              <Input
-                                id={`mora-${p.periodo}`}
-                                inputMode="numeric"
-                                value={f.moraManual ? Number(f.moraManual).toLocaleString('es-AR') : ''}
-                                onChange={(e) =>
-                                  setMoraPeriodo(p.periodo, e.target.value.replace(/\D/g, '').slice(0, 12))
-                                }
-                                placeholder="0"
-                                className="pl-9"
-                              />
+                          {/* La mora sólo se declara si se eligió congelarla. Con el
+                              interruptor en "sigue corriendo" no hay nada que
+                              tipear: el punitorio lo calcula el sistema y no manda
+                              moraManual, que es lo que punitorios.ts espera para
+                              seguir devengándola. */}
+                          {moraHistoricaCongelada ? (
+                            <div className="space-y-1.5">
+                              <Label htmlFor={`mora-${p.periodo}`}>Mora congelada</Label>
+                              <div className="relative">
+                                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                                  {monedaSimbolo}
+                                </span>
+                                <Input
+                                  id={`mora-${p.periodo}`}
+                                  inputMode="decimal"
+                                  value={formatMontoEsAR(f.moraManual)}
+                                  onChange={(e) =>
+                                    setMoraPeriodo(p.periodo, parsearMontoEsAR(e.target.value))
+                                  }
+                                  placeholder="0"
+                                  className="pl-9"
+                                />
+                              </div>
+                              <p className="text-[11px] text-muted-foreground">
+                                Sugerida con el esquema elegido, calculada a hoy. Editala si
+                                venís con otra mora acordada.
+                              </p>
                             </div>
-                            <p className="text-[11px] text-muted-foreground">
-                              Sugerida con el esquema elegido, calculada a hoy. Editala si
-                              venís con otra mora acordada.
+                          ) : (
+                            <p className="self-end text-[11px] text-muted-foreground">
+                              La mora la calcula el sistema y sigue creciendo. Hoy sería{' '}
+                              {monedaSimbolo} {moraSugerida(p).toLocaleString('es-AR')}.
                             </p>
-                          </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -2206,21 +3160,101 @@ function CargarContratoApiWizard() {
                 })}
               </div>
 
-              {/* Resumen de la deuda que arrastra el contrato al darse de alta. */}
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2 text-sm">
-                <span className="text-muted-foreground">Deuda inicial</span>
-                <span className="font-medium tabular-nums">
-                  {monedaSimbolo} {deudaCapital.toLocaleString('es-AR')} (capital) +{' '}
-                  {monedaSimbolo} {deudaMora.toLocaleString('es-AR')} (mora)
-                </span>
+              {/* Las DOS caras de lo que se está por asentar. La de arriba es la
+                  que faltaba: `deudaCapital` ignora los PAGADO, así que un cartel
+                  de "Deuda inicial: $0" era compatible con cerrar 9 meses que nadie
+                  pagó — el operador confirmaba a ciegas justo lo irreversible. */}
+              <div className="space-y-2 rounded-md border bg-muted/30 px-3 py-2 text-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-muted-foreground">Se cierran como pagados</span>
+                  <span className="font-medium tabular-nums">
+                    {periodosPagados.length} mes{periodosPagados.length === 1 ? '' : 'es'} ·{' '}
+                    {monedaSimbolo} {montoCerradoComoPagado.toLocaleString('es-AR')}
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-muted-foreground">Deuda inicial</span>
+                  <span className="font-medium tabular-nums">
+                    {monedaSimbolo} {deudaCapital.toLocaleString('es-AR')} (capital) +{' '}
+                    {monedaSimbolo} {deudaMora.toLocaleString('es-AR')} (mora
+                    {moraHistoricaCongelada ? ' congelada' : ' a hoy'})
+                  </span>
+                </div>
               </div>
 
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+                <Button variant="ghost" onClick={retroceder}>
+                  <ArrowLeft className="h-4 w-4" />
+                  Volver
+                </Button>
+                <div className="flex flex-wrap items-center gap-3">
+                  {/* El motivo se lee. Un botón gris sin explicación deja al
+                      operador buscando cuál de las 9 tarjetas le falta. Por eso
+                      el botón NO lleva `disabled`: es clickeable y lo que hace es
+                      marcar en rojo lo que falta (`faltantesMarcados`). */}
+                  {motivoPeriodosIncompleto && (
+                    <span
+                      className={cn(
+                        'text-xs',
+                        faltantesMarcados ? 'text-destructive' : 'text-muted-foreground',
+                      )}
+                    >
+                      {motivoPeriodosIncompleto}
+                    </span>
+                  )}
+                  <Button
+                    onClick={() => {
+                      if (!pasoPeriodosValido) {
+                        setFaltantesMarcados(true);
+                        return;
+                      }
+                      avanzar();
+                    }}
+                  >
+                    Continuar
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {paso === 6 && (
+          <PasoDocumentacionAlta
+            docs={docsExpediente}
+            onCambiarDoc={cambiarDoc}
+            garantesCount={garantesCount}
+            onGarantesCount={cambiarGarantesCount}
+            onVolver={retroceder}
+            onContinuar={avanzar}
+          />
+        )}
+
+        {paso === 7 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Servicios de la propiedad</CardTitle>
+              <CardDescription>
+                Distribuidora, número de cuenta y medidor de cada servicio. Todo opcional.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              {/* No es cosmético: el panel escribe contra la PROPIEDAD apenas se
+                  aprieta Guardar en su dialog, así que el dato queda aunque
+                  después se cancele el alta. Que nadie se entere por sorpresa. */}
+              <p className="text-sm text-muted-foreground">
+                Estos datos quedan guardados en la propiedad y los va a ver el inquilino en su
+                app. Si mañana entra otro inquilino, se mantienen.
+              </p>
+              <ServiciosPublicosPanel propiedadId={propiedadId} />
               <div className="flex justify-between border-t pt-4">
                 <Button variant="ghost" onClick={retroceder}>
                   <ArrowLeft className="h-4 w-4" />
                   Volver
                 </Button>
-                <Button onClick={avanzar} disabled={!pasoPeriodosValido}>
+                {/* Sin disabled: los servicios nunca frenan el alta. */}
+                <Button onClick={avanzar}>
                   Continuar
                   <ArrowRight className="h-4 w-4" />
                 </Button>
@@ -2229,7 +3263,7 @@ function CargarContratoApiWizard() {
           </Card>
         )}
 
-        {paso === 5 && (
+        {paso === 8 && (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -2296,20 +3330,93 @@ function CargarContratoApiWizard() {
                         }`
                   }
                 />
-                {hayPeriodos && (
+                {/* Lo que se va a subir después del alta. Que el operador no se
+                    entere recién en el detalle de que subió 2 de 6 papeles. */}
+                <ResumenItem
+                  label="Documentación"
+                  value={
+                    docsElegidos.length === 0
+                      ? 'Sin papeles — se cargan después desde el detalle'
+                      : `${expedienteAlta.presentes} de ${expedienteAlta.total} papeles${
+                          docsSueltos > 0
+                            ? ` (+ ${docsSueltos} suelto${docsSueltos === 1 ? '' : 's'})`
+                            : ''
+                        }`
+                  }
+                />
+                {vigenciasCanonPayload && (
                   <ResumenItem
-                    label="Períodos anteriores"
-                    value={`${periodosVencidos.length} período${periodosVencidos.length === 1 ? '' : 's'} · Deuda inicial: ${monedaSimbolo} ${deudaCapital.toLocaleString('es-AR')} (capital) + ${monedaSimbolo} ${deudaMora.toLocaleString('es-AR')} (mora)`}
+                    label="Historial de alquiler"
+                    value={vigenciasCanonPayload
+                      .map((v) => `desde ${v.desde}: ${monedaSimbolo} ${v.monto.toLocaleString('es-AR')}`)
+                      .join(' · ')}
+                    className="md:col-span-2"
                   />
                 )}
+                {hayPeriodos && (
+                  <>
+                    {/* Lo primero que tiene que leer: cuántos meses se dan por
+                        cobrados y por cuánta plata. Es lo irreversible del alta. */}
+                    <ResumenItem
+                      label="Se cierran como pagados"
+                      value={
+                        periodosPagados.length === 0
+                          ? `Ningún mes de los ${periodosVencidos.length} declarados`
+                          : `${periodosPagados.length} de ${periodosVencidos.length} mes${periodosVencidos.length === 1 ? '' : 'es'} · ${monedaSimbolo} ${montoCerradoComoPagado.toLocaleString('es-AR')}${
+                              montoCobradoEnParciales > 0
+                                ? ` (+ ${monedaSimbolo} ${montoCobradoEnParciales.toLocaleString('es-AR')} cobrados en meses parciales)`
+                                : ''
+                            }`
+                      }
+                      className="md:col-span-2"
+                    />
+                    <ResumenItem
+                      label="Deuda inicial"
+                      value={`${monedaSimbolo} ${deudaCapital.toLocaleString('es-AR')} (capital) + ${monedaSimbolo} ${deudaMora.toLocaleString('es-AR')} (mora)`}
+                    />
+                    <ResumenItem
+                      label="Mora de los meses viejos"
+                      value={
+                        moraHistoricaCongelada
+                          ? 'Congelada en lo declarado'
+                          : 'Sigue corriendo con el esquema del contrato'
+                      }
+                    />
+                  </>
+                )}
               </div>
+
+              {/* Última compuerta: a este paso se puede llegar por un borrador
+                  restaurado, que puede tener guardado `paso: 8` con meses todavía
+                  sin declarar. Sin esto el alta saldría con menos períodos
+                  declarados que devengados. */}
+              {hayPeriodos && motivoPeriodosIncompleto && (
+                <div className="flex items-start gap-2 rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm text-amber-900 dark:text-amber-200">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                  <span>
+                    {motivoPeriodosIncompleto}.{' '}
+                    <button
+                      type="button"
+                      onClick={() => setPaso(5)}
+                      className="underline underline-offset-2"
+                    >
+                      Volvé a los períodos anteriores
+                    </button>{' '}
+                    para terminar de declararlos.
+                  </span>
+                </div>
+              )}
 
               <div className="flex flex-col-reverse justify-end gap-2 border-t pt-4 sm:flex-row">
                 <Button variant="ghost" onClick={retroceder}>
                   <ArrowLeft className="h-4 w-4" />
                   Volver a editar
                 </Button>
-                <Button size="lg" onClick={() => setConfirmando(true)}>
+                <Button
+                  size="lg"
+                  disabled={hayPeriodos && !pasoPeriodosValido}
+                  onClick={() => setConfirmando(true)}
+                >
                   Confirmar y dar de alta
                 </Button>
               </div>
@@ -2318,12 +3425,23 @@ function CargarContratoApiWizard() {
         )}
       </main>
 
+      {/* Dos verdades, las dos ciertas, y ninguna se puede tirar:
+          1) El texto viejo decía "vas a perder el progreso… no se puede deshacer",
+             pero el onConfirm SÓLO navega: el borrador sigue guardado y al reabrir
+             el alta vuelve todo. Mentía en la dirección más cara —asustaba con una
+             pérdida que no ocurre— y escondía que el trabajo quedaba a salvo.
+          2) Los servicios tampoco se pierden, pero por otro motivo: el paso 7
+             escribe directo sobre la PROPIEDAD y ese PUT ya se ejecutó. */}
       <ConfirmDialog
         open={cancelarAbierto}
         onOpenChange={setCancelarAbierto}
-        title="¿Cancelar la carga?"
-        description="Vas a perder el progreso de este contrato. Esta acción no se puede deshacer."
-        confirmLabel="Sí, cancelar"
+        title="¿Salir de la carga?"
+        description={
+          serviciosVisitados
+            ? 'Lo cargado queda guardado como borrador: cuando vuelvas a entrar te lo ofrecemos para retomar. Los servicios que hayas guardado quedan en la propiedad: eso no se borra.'
+            : 'Lo cargado queda guardado como borrador: cuando vuelvas a entrar te lo ofrecemos para retomar.'
+        }
+        confirmLabel="Sí, salir"
         onConfirm={() => router.push('/contratos')}
       />
 
@@ -2331,9 +3449,22 @@ function CargarContratoApiWizard() {
         open={confirmando}
         onOpenChange={setConfirmando}
         title="¿Dar de alta el contrato?"
-        description="Vamos a crear el contrato, generar la primera liquidación y marcar la propiedad como alquilada."
+        description={
+          hayPeriodos
+            ? `Vamos a crear el contrato y devengar los ${periodosVencidos.length} mes${periodosVencidos.length === 1 ? '' : 'es'} ya vencido${periodosVencidos.length === 1 ? '' : 's'}. ${
+                periodosPagados.length > 0
+                  ? `${periodosPagados.length} de ellos se cierran como PAGADOS por ${monedaSimbolo} ${montoCerradoComoPagado.toLocaleString('es-AR')} y dejan de ser cobrables.`
+                  : 'Ninguno se cierra como pagado.'
+              } Deuda inicial: ${monedaSimbolo} ${deudaCapital.toLocaleString('es-AR')} de capital.`
+            : 'Vamos a crear el contrato, generar la primera liquidación y marcar la propiedad como alquilada.'
+        }
         confirmLabel="Sí, dar de alta"
         loading={enviando}
+        // El contrato ya se creó y ahora está subiendo papeles de a uno: sin el
+        // contador, 16 requests seguidos se ven como una pantalla trabada.
+        {...(subiendoDocs
+          ? { loadingLabel: `Subiendo documentación… ${subiendoDocs.hechos} de ${subiendoDocs.total}` }
+          : {})}
         onConfirm={dar_de_alta}
       />
 
@@ -2352,6 +3483,16 @@ function CargarContratoApiWizard() {
             <DialogDescription>
               Encontramos datos de un contrato que habías empezado a cargar. ¿Querés retomarlo o
               preferís empezar de cero?
+              {/* Se muestra SIEMPRE, sin condicionar: los `File` nunca se
+                  serializan a localStorage, así que el borrador ni siquiera sabe
+                  si había archivos cargados — condicionarlo sería mentir.
+                  Nombra al expediente entero (no sólo el DNI) porque el paso
+                  Documentación adjunta también el contrato y los papeles de los
+                  garantes, y todos se pierden igual. */}
+              <span className="mt-2 block">
+                Ojo: los archivos que hayas adjuntado (DNI, contrato, papeles de los garantes) no
+                se guardan en el borrador, hay que volver a elegirlos.
+              </span>
             </DialogDescription>
           </DialogHeader>
           {cargando && (
@@ -2373,38 +3514,68 @@ function CargarContratoApiWizard() {
   );
 }
 
-// Recibe los pasos VISIBLES (el 4 "Períodos anteriores" sólo cuando aplica) y
+// Recibe los pasos VISIBLES (el 5 "Períodos anteriores" sólo cuando aplica) y
 // numera por posición, así el flujo corto se ve 1-2-3-4 sin hueco.
 function StepsApi({
   actual,
   pasos,
+  onIr,
 }: {
   actual: PasoApi;
   pasos: ReadonlyArray<{ id: PasoApi; label: string }>;
+  onIr: (p: PasoApi) => void;
 }) {
   return (
     <ol role="list" className="flex flex-wrap items-center gap-x-3 gap-y-2">
       {pasos.map((p, i) => {
+        // `completado` (id < actual) es también nuestra definición de "paso ya
+        // visitado": como sólo se llega a `actual` avanzando de a un paso por
+        // vez (avanzar/retroceder saltean el 5 condicional pero nunca saltan
+        // hacia adelante), cualquier id menor que actual fue recorrido antes.
+        // Reusamos la MISMA condición para habilitar el click — no hay una
+        // lógica de "visitado" separada que se pueda desincronizar.
         const completado = p.id < actual;
         const activo = p.id === actual;
         return (
-          <li key={p.id} aria-current={activo ? 'step' : undefined} className="flex items-center gap-2 sm:gap-3">
-            <div
-              className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-semibold ${
-                completado
-                  ? 'bg-primary text-primary-foreground'
-                  : activo
-                    ? 'bg-primary/20 text-primary'
-                    : 'bg-muted text-muted-foreground'
-              }`}
+          <li key={p.id} className="flex items-center gap-2 sm:gap-3">
+            {/* El paso ACTUAL no se deshabilita, aunque tampoco navegue a ningún
+                lado. Con `disabled={!completado}` el botón que acabás de activar
+                pasaba a ser el actual y se deshabilitaba EN EL MISMO click: el
+                navegador saca el foco de un control que se deshabilita mientras
+                está enfocado, así que caía al body y el próximo Tab arrancaba
+                desde el principio del documento. Dejándolo habilitado el foco se
+                queda donde estaba y `aria-current` anuncia dónde quedó parado.
+                `aria-current` va en el BOTÓN y no en el <li>: recorriendo con
+                Tab, el lector sólo pisa los controles. */}
+            <button
+              type="button"
+              disabled={!completado && !activo}
+              aria-current={activo ? 'step' : undefined}
+              onClick={() => completado && onIr(p.id)}
+              className={cn(
+                'flex items-center gap-2 rounded-md sm:gap-3',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                completado ? 'cursor-pointer hover:opacity-80' : 'cursor-default',
+              )}
+              aria-label={completado ? `Volver a ${p.label}` : undefined}
             >
-              {completado ? <CheckCircle2 className="h-4 w-4" /> : i + 1}
-            </div>
-            <span
-              className={`text-xs sm:text-sm ${activo ? 'font-medium' : completado ? 'text-foreground' : 'text-muted-foreground'}`}
-            >
-              {p.label}
-            </span>
+              <div
+                className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-semibold ${
+                  completado
+                    ? 'bg-primary text-primary-foreground'
+                    : activo
+                      ? 'bg-primary/20 text-primary'
+                      : 'bg-muted text-muted-foreground'
+                }`}
+              >
+                {completado ? <CheckCircle2 className="h-4 w-4" /> : i + 1}
+              </div>
+              <span
+                className={`text-xs sm:text-sm ${activo ? 'font-medium' : completado ? 'text-foreground' : 'text-muted-foreground'}`}
+              >
+                {p.label}
+              </span>
+            </button>
             {i < pasos.length - 1 && <span className="hidden h-px w-8 bg-border sm:block" />}
           </li>
         );

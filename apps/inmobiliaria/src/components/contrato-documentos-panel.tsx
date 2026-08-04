@@ -39,7 +39,12 @@ import {
   TIPO_DOC_LABEL,
   formatTamanio,
 } from '@/lib/contrato-documentos-storage';
-import { useDocsContrato } from '@/lib/api/use-documentos';
+import {
+  MAX_GARANTES,
+  claveDocumento,
+  enumerarFaltantes,
+} from '@/lib/documentos-requeridos';
+import { useExpedienteContrato } from '@/lib/api/use-expediente-contrato';
 import {
   descargarContratoWord,
   imprimirContratoPdf,
@@ -90,6 +95,10 @@ type GrupoUI = {
 
 function gruposParaContrato(garantesCount: number): GrupoUI[] {
   const garantes: GrupoUI[] = [];
+  // Siempre hay al menos un grupo de garante aunque el contrato tenga cero: es
+  // la única superficie para adjuntar el DNI de alguien que garantiza sin estar
+  // dado de alta como `Garante`. No es lo mismo que "se requiere" — lo que se
+  // requiere lo dice `faltantesDeExpediente`, que con cero garantes no pide nada.
   for (let i = 1; i <= Math.max(1, garantesCount); i++) {
     garantes.push({
       key: `garante-${i}`,
@@ -135,24 +144,44 @@ function gruposParaContrato(garantesCount: number): GrupoUI[] {
 }
 
 export function ContratoDocumentosPanel({ contrato, propietarios }: Props) {
-  // Documentos REALES vía API en prod (CRUD + Volume); localStorage en demo.
-  const { docs, hidratado, subir, eliminar: eliminarDoc } = useDocsContrato(contrato.id);
   const [grupoActivo, setGrupoActivo] = useState<GrupoUI | null>(null);
   const [tipoElegido, setTipoElegido] = useState<TipoDocContrato>('DNI_TITULAR_FRENTE');
-  const [garantesCount, setGarantesCount] = useState(1);
+  const [garantesOverride, setGarantesOverride] = useState<number | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Documentos REALES vía API en prod (CRUD + Volume); localStorage en demo.
+  //
+  // Cuántos garantes tiene ESTE contrato sale de los garantes reales
+  // (GET /contratos/:id/garantes), no de lo que haya tocado alguien en la
+  // pantalla. Antes era un `useState(1)`: el mismo contrato mostraba "4 de 6" o
+  // "4 de 8" según lo último que se hubiera elegido, y volvía a 1 en cada
+  // recarga. Cualquier aviso de faltantes alimentado por eso miente.
+  //
+  // El <Select> de abajo sobrevive como override VISUAL —sirve para ver qué
+  // pasaría con un garante más antes de darlo de alta— y por eso se guarda
+  // aparte, en `garantesOverride` y se le pasa al hook. El badge del tab, que
+  // no tiene override, siempre muestra la cantidad real.
+  const {
+    docs,
+    resumen: expediente,
+    garantesReales,
+    garantesCount,
+    garantesDisponibles,
+    listo,
+    subir,
+    eliminar: eliminarDoc,
+  } = useExpedienteContrato(contrato.id, garantesOverride);
 
   const grupos = useMemo(() => gruposParaContrato(garantesCount), [garantesCount]);
 
   const docsPorTipo = useMemo(() => {
     const map = new Map<string, DocContrato[]>();
     for (const d of docs) {
-      const key =
-        d.garanteIndex != null && d.tipo.startsWith('DNI_GARANTE')
-          ? `${d.tipo}::g${d.garanteIndex}`
-          : d.garanteIndex != null && d.tipo === 'RECIBO_SUELDO'
-            ? `${d.tipo}::g${d.garanteIndex}`
-            : d.tipo;
+      // El garante entra en la clave para CUALQUIER tipo, no solo para los DNI:
+      // el recibo del garante 2 no tapa el del titular. Con la lista de tipos
+      // hardcodeada, el recibo y la garantía propietaria de un garante quedaban
+      // bajo la clave pelada y el botón del grupo nunca se marcaba cargado.
+      const key = claveDocumento(d.tipo, d.garanteIndex);
       const arr = map.get(key) ?? [];
       arr.push(d);
       map.set(key, arr);
@@ -160,26 +189,8 @@ export function ContratoDocumentosPanel({ contrato, propietarios }: Props) {
     return map;
   }, [docs]);
 
-  const totalReq = useMemo(() => {
-    // Requeridos: contrato + DNI titular x2 + DNI garante x2 + recibo titular.
-    return 4 + garantesCount * 2;
-  }, [garantesCount]);
-
-  const completados = useMemo(() => {
-    const tienen = (key: string) => (docsPorTipo.get(key)?.length ?? 0) > 0;
-    let c = 0;
-    if (tienen('CONTRATO_FIRMADO')) c++;
-    if (tienen('DNI_TITULAR_FRENTE')) c++;
-    if (tienen('DNI_TITULAR_DORSO')) c++;
-    if (tienen('RECIBO_SUELDO')) c++;
-    for (let i = 1; i <= garantesCount; i++) {
-      if (tienen(`DNI_GARANTE_FRENTE::g${i}`)) c++;
-      if (tienen(`DNI_GARANTE_DORSO::g${i}`)) c++;
-    }
-    return c;
-  }, [docsPorTipo, garantesCount]);
-
-  const pct = totalReq === 0 ? 0 : Math.round((completados / totalReq) * 100);
+  const pct =
+    expediente.total === 0 ? 0 : Math.round((expediente.presentes / expediente.total) * 100);
 
   const abrirUpload = (grupo: GrupoUI, tipo: TipoDocContrato) => {
     setGrupoActivo(grupo);
@@ -220,7 +231,7 @@ export function ContratoDocumentosPanel({ contrato, propietarios }: Props) {
       toast({
         variant: 'destructive',
         title: 'No se pudo guardar',
-        description: 'Revisá el archivo (hasta 2 MB, imagen o PDF) e intentá de nuevo.',
+        description: `Revisá el archivo (hasta ${formatTamanio(TAMANIO_MAX)}, imagen o PDF) e intentá de nuevo.`,
       });
     } finally {
       e.target.value = '';
@@ -282,7 +293,10 @@ export function ContratoDocumentosPanel({ contrato, propietarios }: Props) {
     };
   }, [contrato, propietarios]);
 
-  if (!hidratado) return null;
+  // Esperar también a los garantes: si no, el checklist se pinta con 0 garantes
+  // y salta a la cantidad real un instante después. Ese parpadeo del "X de Y"
+  // se lee como un bug.
+  if (!listo) return null;
 
   return (
     <div className="space-y-5">
@@ -323,7 +337,7 @@ export function ContratoDocumentosPanel({ contrato, propietarios }: Props) {
             <div>
               <p className="text-sm font-semibold">Checklist del expediente</p>
               <p className="text-xs text-muted-foreground">
-                Documentos cargados: {completados} de {totalReq} requeridos.
+                Documentos cargados: {expediente.presentes} de {expediente.total} requeridos.
               </p>
             </div>
             <Badge variant={pct === 100 ? 'success' : 'outline'} className="text-xs">
@@ -336,25 +350,41 @@ export function ContratoDocumentosPanel({ contrato, propietarios }: Props) {
               style={{ width: `${pct}%` }}
             />
           </div>
+          {/* Qué falta, nombrado. "3 de 6" no le dice a nadie qué tiene que ir a buscar. */}
+          {expediente.faltantes.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {expediente.faltantes.length === 1 ? 'Falta' : 'Faltan'}{' '}
+              {enumerarFaltantes(expediente.faltantes)}.
+            </p>
+          )}
           <div className="flex flex-wrap items-center gap-2 pt-1">
             <Label htmlFor="garantes-count" className="text-xs">
               Cantidad de garantes
             </Label>
             <Select
               value={String(garantesCount)}
-              onValueChange={(v) => setGarantesCount(parseInt(v, 10))}
+              onValueChange={(v) => setGarantesOverride(parseInt(v, 10))}
             >
-              <SelectTrigger id="garantes-count" className="h-8 w-24 text-xs">
+              <SelectTrigger id="garantes-count" className="h-8 w-32 text-xs">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {[1, 2, 3].map((n) => (
+                {Array.from({ length: MAX_GARANTES + 1 }, (_, n) => (
                   <SelectItem key={n} value={String(n)}>
-                    {n} {n === 1 ? 'garante' : 'garantes'}
+                    {n === 0 ? 'Sin garantes' : `${n} ${n === 1 ? 'garante' : 'garantes'}`}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            {garantesDisponibles && garantesOverride != null && garantesOverride !== garantesReales && (
+              <button
+                type="button"
+                onClick={() => setGarantesOverride(null)}
+                className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+              >
+                El contrato tiene {garantesReales} — volver
+              </button>
+            )}
           </div>
         </CardContent>
       </Card>
