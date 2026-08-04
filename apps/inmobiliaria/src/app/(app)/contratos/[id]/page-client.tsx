@@ -1301,7 +1301,7 @@ function AprobacionContratoCard({
     setDemoResuelto('APROBADO');
     toast({
       title: 'Contrato aprobado',
-      description: `${inquilino} pasa a Activo. Se notifica al inquilino y a ${cargadoPor}.`,
+      description: `${inquilino} pasa a Activo y se le manda la invitación por mail.`,
     });
   };
 
@@ -1335,7 +1335,7 @@ function AprobacionContratoCard({
       toast({
         variant: 'success',
         title: 'Contrato aprobado',
-        description: `${inquilino} pasa a Activo. Se notifica al inquilino y a ${cargadoPor}.`,
+        description: `${inquilino} pasa a Activo y se le manda la invitación por mail.`,
       });
       setDialogAprobar(false);
     } catch (e) {
