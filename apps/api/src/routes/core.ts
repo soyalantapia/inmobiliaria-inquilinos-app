@@ -21,6 +21,7 @@ import { buscarOCrearPersona } from '../lib/persona.js';
 import { borrarArchivoSiHuerfano, urlEsDelTenant } from './uploads.js';
 import { enviarInvitacionInquilino, enviarInvitacionEquipo } from '../mailer.js';
 import { contratoQuedaPendiente, diaCivilAR, venceDespuesDeHoy, yaVencio } from '@llave/shared';
+import { avisarAjusteAlInquilino } from './anuncios.js';
 
 /**
  * Una liquidación cuenta como VENCIDA (a efectos de cobranza) si su estado ya es
@@ -1684,6 +1685,18 @@ export async function coreRoutes(app: FastifyInstance) {
       });
       return { ajusteId: ajuste.id, liquidacionesActualizadas: upd.count };
     });
+    // El aviso va DESPUÉS del commit y es best-effort: si el mail falla, el
+    // ajuste ya está hecho y no se revierte. Antes esto no existía y subir el
+    // alquiler era mudo para el inquilino.
+    await avisarAjusteAlInquilino(app, {
+      inmobiliariaId: u.inmobiliariaId,
+      contratoId: id,
+      autor: `${u.rol === 'ADMIN' ? 'Administración' : 'La inmobiliaria'}`,
+      montoAnterior,
+      montoNuevo: b.montoNuevo,
+      moneda: contrato.moneda,
+      vigenciaDesde: new Date(`${b.periodoDesde}-01T00:00:00`),
+    });
     return { ok: true, montoAnterior, montoNuevo: b.montoNuevo, ...res };
   });
 
@@ -2835,6 +2848,22 @@ export async function coreRoutes(app: FastifyInstance) {
     // EventoContrato AJUSTE_APLICADO (creado dentro de la tx, arriba) — el tipo
     // semánticamente correcto. No duplicamos en EventoAuditoria porque su enum no
     // tiene un valor de "ajuste de monto" y no vamos a migrar el schema.
+    //
+    // Este es el OTRO camino del ajuste (incluido el masivo "+X%"), y también
+    // avisa: si sólo avisara /ajustar, subir el alquiler desde acá seguiría
+    // siendo mudo y el inquilino se enteraría con la cuota.
+    await avisarAjusteAlInquilino(app, {
+      inmobiliariaId: u.inmobiliariaId,
+      contratoId: id,
+      autor: u.rol === 'ADMIN' ? 'Administración' : 'La inmobiliaria',
+      montoAnterior: Number(contrato.monto),
+      montoNuevo: body.data.monto,
+      moneda: contrato.moneda,
+      // Sin período explícito: este endpoint pisa el canon y re-devenga las
+      // cuotas futuras impagas, así que no hay una fecha de vigencia que
+      // prometerle al inquilino. Mejor no decir nada que decir una fecha falsa.
+      vigenciaDesde: null,
+    });
     return { contrato: resultado.actualizado, liquidacionesReajustadas: resultado.reajustadas };
   });
 
