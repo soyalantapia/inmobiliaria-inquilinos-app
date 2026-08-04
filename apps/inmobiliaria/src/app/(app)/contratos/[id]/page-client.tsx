@@ -257,10 +257,26 @@ export default function DetalleContratoPage() {
               <span className="sm:hidden">Mensaje</span>
             </Button>
             {apiEnabled ? (
-              <Button className="flex-1 sm:flex-none" disabled title="Próximamente">
-                <Pencil className="h-4 w-4" />
-                Editar
-              </Button>
+              // Editar solo tiene sentido en BORRADOR (típicamente uno rechazado a
+              // corregir): un contrato ACTIVO ya tiene cuotas emitidas y, quizás,
+              // pagos — se edita con las acciones puntuales (ajustar monto, mora,
+              // modo de cobranza), no reescribiendo el contrato entero. El servidor
+              // también lo gatea (PUT /contratos/:id/borrador da 409 fuera de
+              // BORRADOR): esto es solo para no prometer un botón que el back va a
+              // rechazar.
+              c.estado === 'BORRADOR' ? (
+                <Button asChild className="flex-1 sm:flex-none">
+                  <Link href={`/contratos/${c.id}/editar`}>
+                    <Pencil className="h-4 w-4" />
+                    Editar
+                  </Link>
+                </Button>
+              ) : (
+                <Button className="flex-1 sm:flex-none" disabled title="Próximamente">
+                  <Pencil className="h-4 w-4" />
+                  Editar
+                </Button>
+              )
             ) : (
               <Button
                 className="flex-1 sm:flex-none"
