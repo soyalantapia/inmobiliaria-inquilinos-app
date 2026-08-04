@@ -244,7 +244,13 @@ export async function coreRoutes(app: FastifyInstance) {
       | (RevisionAprobacion & { aprobacionId: string; cargadoPorNombre: string; cargadoPorRol: string })
       | undefined;
     let decisionAprobacion:
-      | { estado: 'APROBADA' | 'RECHAZADA'; comentario: string | null; decididoPor: string; decididoAt: string | null }
+      | {
+          estado: 'APROBADA' | 'RECHAZADA';
+          comentario: string | null;
+          decididoPor: string;
+          decididoAt: string | null;
+          cargadoPorNombre: string;
+        }
       | undefined;
     // La ÚLTIMA aprobación de este contrato: si está PENDIENTE alimenta la revisión
     // previa; si ya se decidió, alimenta el cartel con el motivo. Antes se filtraba
@@ -284,6 +290,10 @@ export async function coreRoutes(app: FastifyInstance) {
           ? `${aprobacion.aprobadoPor.nombre} ${aprobacion.aprobadoPor.apellido ?? ''}`.trim()
           : 'Alguien de la inmobiliaria',
         decididoAt: aprobacion.aprobadoAt?.toISOString() ?? null,
+        // Quien lo cargó, por NOMBRE. Contrato.cargadoPor guarda el user id pelado y
+        // la tarjeta de rechazo lo mostraba crudo ("Fulano cmsdwdi89... lo va a ver").
+        // La Aprobación ya tiene la relación, así que no cuesta una query extra.
+        cargadoPorNombre: `${aprobacion.cargadoPor.nombre} ${aprobacion.cargadoPor.apellido ?? ''}`.trim(),
       };
     }
     return {

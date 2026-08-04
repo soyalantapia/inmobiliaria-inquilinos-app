@@ -315,6 +315,8 @@ export interface ContratoListado {
     comentario: string | null;
     decididoPor: string;
     decididoAt: string | null;
+    /** Quien lo cargó, por nombre: Contrato.cargadoPor guarda el user id pelado. */
+    cargadoPorNombre: string;
   };
   /**
    * Modo de cobranza:

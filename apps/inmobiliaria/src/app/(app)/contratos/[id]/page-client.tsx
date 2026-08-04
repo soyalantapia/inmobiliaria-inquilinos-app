@@ -222,7 +222,10 @@ export default function DetalleContratoPage() {
                     ROL_LABEL[c.revisionAprobacion.cargadoPorRol as Rol] ??
                     c.revisionAprobacion.cargadoPorRol
                   }`
-                : (c.cargadoPor ?? 'Usuario desconocido')
+                : // Ya decidido (rechazado): la revisión no viaja más, pero la decisión
+                  // sí trae el nombre. Sin esto la tarjeta de rechazo decía
+                  // "cmsdwdi89... lo va a ver en su panel".
+                  (c.decisionAprobacion?.cargadoPorNombre ?? c.cargadoPor ?? 'Usuario desconocido')
             }
             cargadoAt={c.cargadoAt ?? ''}
             inquilino={c.inquilino}
