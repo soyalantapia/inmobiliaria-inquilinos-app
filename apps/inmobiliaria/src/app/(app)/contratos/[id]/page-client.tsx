@@ -65,8 +65,9 @@ import { calcularScoringInquilino, type ResumenScoring } from '@/lib/scoring-inq
 import { registrarEvento } from '@/lib/auditoria-storage';
 import { apiEnabled, apiFetch, ApiError, varianteError } from '@/lib/api/client';
 import { ensureApiSession } from '@/lib/api/session';
-import { useAprobaciones, useCobranza } from '@/lib/api/hooks';
+import { useAprobaciones, useCobranza, useMe } from '@/lib/api/hooks';
 import { useContrato } from '@/lib/api/use-contrato';
+import { rolTienePermiso, ROL_LABEL, type Rol } from '@/lib/permisos';
 import {
   type CanalComunicacion,
   type LiquidacionAdmin,
@@ -210,8 +211,14 @@ export default function DetalleContratoPage() {
             cargadoPor={
               // El nombre sale de la Aprobación: c.cargadoPor guarda el user id pelado
               // y la tarjeta lo mostraba crudo ("Cargado por cmsdwdi89...").
+              // cargadoPorRol también viaja crudo desde el enum de Prisma
+              // ("CARGA") — se lo pasamos por la misma etiqueta legible que usa
+              // el resto del panel (ROL_LABEL), no el identificador.
               c.revisionAprobacion
-                ? `${c.revisionAprobacion.cargadoPorNombre} · ${c.revisionAprobacion.cargadoPorRol}`
+                ? `${c.revisionAprobacion.cargadoPorNombre} · ${
+                    ROL_LABEL[c.revisionAprobacion.cargadoPorRol as Rol] ??
+                    c.revisionAprobacion.cargadoPorRol
+                  }`
                 : (c.cargadoPor ?? 'Usuario desconocido')
             }
             cargadoAt={c.cargadoAt ?? ''}
@@ -1207,6 +1214,14 @@ function AprobacionContratoCard({
 }) {
   const [resuelto, setResuelto] = useState<'APROBADO' | 'RECHAZADO' | null>(null);
   const { aprobarApi, rechazarApi } = useAprobaciones();
+  // El servidor exige `contrato.aprobar` (solo ADMIN — plata.ts + permisos.ts)
+  // y devuelve 403 si no lo tenés. `revision` viaja para cualquiera con
+  // `contratos.ver` (incluido CARGA, que suele ser quien cargó este mismo
+  // contrato), así que sin este chequeo el botón quedaba habilitado para
+  // gente que el servidor iba a rechazar igual. Mismo mecanismo que el resto
+  // del panel (pagos/page.tsx: `puedeAprobar`), no uno inventado acá.
+  const { me } = useMe();
+  const puedeAprobar = !!me && rolTienePermiso(me.rol as Rol, 'contrato.aprobar');
   const [dialogAprobar, setDialogAprobar] = useState(false);
   const [dialogRechazar, setDialogRechazar] = useState(false);
   const [comentarioAprobar, setComentarioAprobar] = useState('');
@@ -1336,6 +1351,16 @@ function AprobacionContratoCard({
   // o modo demo) los botones se comportan EXACTO como hoy: deshabilitados con
   // "Próximamente" en prod, habilitados hacia el camino local en demo.
   const sinCaminoReal = apiEnabled && !revision;
+  // Deshabilitado si no hay camino real O si el usuario logueado no tiene el
+  // permiso que el servidor va a exigir igual (contrato.aprobar → solo ADMIN).
+  // El título explica el motivo REAL: antes decía siempre "Próximamente",
+  // incluso cuando el verdadero motivo era el rol del usuario.
+  const deshabilitado = sinCaminoReal || !puedeAprobar;
+  const tituloDeshabilitado = sinCaminoReal
+    ? 'Próximamente'
+    : !puedeAprobar
+      ? 'Solo un Admin puede aprobar o rechazar un contrato'
+      : undefined;
 
   return (
     <>
@@ -1407,7 +1432,10 @@ function AprobacionContratoCard({
                     El inquilino arranca debiendo{' '}
                     {formatMonto(revision.alAprobar.deudaInicial.capital, moneda)}
                     {revision.alAprobar.deudaInicial.mora > 0 &&
-                      ` + ${formatMonto(revision.alAprobar.deudaInicial.mora, moneda)} de mora`}
+                      // La mora que no vino declarada a mano sigue el esquema del
+                      // contrato y crece por día (calcularMora, on-read): este número
+                      // es "a hoy", no una cifra que se congela al aprobar.
+                      ` + ${formatMonto(revision.alAprobar.deudaInicial.mora, moneda)} de mora al día de hoy`}
                     .
                   </li>
                 )}
@@ -1419,16 +1447,16 @@ function AprobacionContratoCard({
             <Button
               variant="outline"
               onClick={() => (revision ? setDialogRechazar(true) : handleRechazar())}
-              disabled={sinCaminoReal}
-              title={sinCaminoReal ? 'Próximamente' : undefined}
+              disabled={deshabilitado}
+              title={tituloDeshabilitado}
             >
               <XCircle className="h-4 w-4" />
               Rechazar
             </Button>
             <Button
               onClick={() => (revision ? setDialogAprobar(true) : handleAprobar())}
-              disabled={sinCaminoReal}
-              title={sinCaminoReal ? 'Próximamente' : undefined}
+              disabled={deshabilitado}
+              title={tituloDeshabilitado}
             >
               <ShieldCheck className="h-4 w-4" />
               Aprobar contrato

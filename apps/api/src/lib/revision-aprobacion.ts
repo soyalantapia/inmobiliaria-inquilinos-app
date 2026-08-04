@@ -1,5 +1,6 @@
 import { computarLiquidacionesContrato, type ContratoParaLiquidar } from './liquidaciones.js';
 import type { PeriodoAnterior } from './estado-inicial-contrato.js';
+import { calcularMora, type EsquemaMora } from './punitorios.js';
 
 export type RevisionAprobacion = {
   periodosDeclarados: PeriodoAnterior[];
@@ -21,14 +22,26 @@ export type RevisionAprobacion = {
  *
  * Un período PARCIAL cuenta en los DOS lados: lo pagado va a `conciliado` y el
  * remanente a `deudaInicial`. `periodos` de cada lado NO son conjuntos disjuntos.
+ *
+ * Mora de `deudaInicial`: un período ADEUDA o PARCIAL sin `moraManual` declarado
+ * NO significa "sin mora" — `aplicarEstadoInicial` (estado-inicial-contrato.ts)
+ * sólo escribe `montoPunitorioManual` cuando `moraManual != null`; si no vino,
+ * la liquidación queda sin pisar y `calcularMora` (punitorios.ts) le aplica el
+ * esquema del contrato ON-READ, creciendo por día. Para no anunciar $0 donde el
+ * sistema va a cobrar punitorios, usamos la MISMA `calcularMora` — no
+ * reimplementamos la aritmética — con el esquema efectivo (`resolverEsquemaMora`,
+ * resuelto por el caller igual que GET /contratos/:id). Esa mora es "al día de
+ * `now`": si el esquema es dinámico, mañana va a ser otro número — el caller
+ * (front) tiene que avisarlo en el copy.
  */
 export function resumenRevisionAprobacion(
   contrato: ContratoParaLiquidar,
   periodos: PeriodoAnterior[],
   now: Date,
+  esquemaMora: EsquemaMora,
 ): RevisionAprobacion {
   const futuras = computarLiquidacionesContrato(contrato, now);
-  const totalPorPeriodo = new Map(futuras.map((l) => [l.periodo, Number(l.montoTotal)]));
+  const porPeriodo = new Map(futuras.map((l) => [l.periodo, l]));
 
   let conciliadoMonto = 0;
   let conciliadoPeriodos = 0;
@@ -36,11 +49,17 @@ export function resumenRevisionAprobacion(
   let deudaPeriodos = 0;
   let deudaMora = 0;
 
+  const moraDelPeriodo = (p: PeriodoAnterior, total: number, fechaVencimiento: Date | string): number =>
+    p.moraManual != null
+      ? Math.max(0, p.moraManual)
+      : calcularMora(total, esquemaMora, fechaVencimiento, now);
+
   for (const p of periodos) {
-    const total = totalPorPeriodo.get(p.periodo);
+    const liq = porPeriodo.get(p.periodo);
     // Un período declarado que el devengo no genera es el bug i36: no lo inventamos,
     // lo salteamos — aplicarEstadoInicial lo va a rechazar con 400 al aprobar.
-    if (total == null) continue;
+    if (liq == null) continue;
+    const total = Number(liq.montoTotal);
 
     if (p.estado === 'PAGADO') {
       // Espeja aplicarEstadoInicial: PAGADO no toca montoPunitorioManual, la mora
@@ -54,11 +73,11 @@ export function resumenRevisionAprobacion(
       conciliadoPeriodos += 1;
       deudaCapital += Math.max(0, total - pagado);
       deudaPeriodos += 1;
-      if (p.moraManual != null) deudaMora += Math.max(0, p.moraManual);
+      deudaMora += moraDelPeriodo(p, total, liq.fechaVencimiento);
     } else {
       deudaCapital += total;
       deudaPeriodos += 1;
-      if (p.moraManual != null) deudaMora += Math.max(0, p.moraManual);
+      deudaMora += moraDelPeriodo(p, total, liq.fechaVencimiento);
     }
   }
 

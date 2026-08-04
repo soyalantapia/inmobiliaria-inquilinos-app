@@ -256,7 +256,7 @@ export async function coreRoutes(app: FastifyInstance) {
           aprobacionId: aprobacion.id,
           cargadoPorNombre: `${aprobacion.cargadoPor.nombre} ${aprobacion.cargadoPor.apellido ?? ''}`.trim(),
           cargadoPorRol: aprobacion.cargadoPor.rol,
-          ...resumenRevisionAprobacion(rest, declarados.success ? declarados.data : [], now),
+          ...resumenRevisionAprobacion(rest, declarados.success ? declarados.data : [], now, esquema),
         };
       }
     }

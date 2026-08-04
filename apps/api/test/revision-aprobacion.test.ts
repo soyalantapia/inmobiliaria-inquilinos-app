@@ -246,4 +246,87 @@ describe('revisionAprobacion — preview de qué pasa al aprobar', () => {
     expect(rev.alAprobar.deudaInicial).toEqual({ periodos: 0, capital: 0, mora: 0 });
     expect(rev.alAprobar.cuotasAGenerar).toBeGreaterThan(0);
   });
+
+  it('un período ADEUDA sin moraManual anuncia la mora real del esquema, no $0', async () => {
+    // Reproduce el bug i-mora-preview: no declarar moraManual NO significa "sin
+    // mora" — significa "mora automática del esquema del contrato", que
+    // aplicarEstadoInicial deja devengando on-read (calcularMora). El preview
+    // tiene que anunciar esa misma mora, no $0.
+    const hoy = new Date();
+    const inicio = new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth() - 4, 1));
+    const fin = new Date(Date.UTC(hoy.getUTCFullYear() + 1, hoy.getUTCMonth(), 1));
+    const per = (n: number) => {
+      const d = new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth() - n, 1));
+      return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+    };
+
+    const alta = await app.inject({
+      method: 'POST',
+      url: '/contratos',
+      headers: { authorization: `Bearer ${tokenCarga}` },
+      payload: {
+        propiedadId: await propiedadDisponible(),
+        inquilino: { nombre: 'SinMoraManual', apellido: 'Preview' },
+        monto: 100000,
+        tipoContrato: 'ALQUILER',
+        fechaInicio: inicio.toISOString(),
+        fechaFin: fin.toISOString(),
+        diaPago: 10,
+        indiceAjuste: 'ICL',
+        frecuenciaAjusteMeses: 12,
+        moraTipo: 'PORCENTAJE_DIARIO',
+        moraValor: 0.5,
+        periodosAnteriores: [
+          // SIN moraManual — el caso que la UI produce cuando la operadora vacía
+          // el campo "Mora acumulada" (contratos/nuevo/page.tsx: moraManual se
+          // omite del payload si el input queda vacío).
+          { periodo: per(3), estado: 'ADEUDA' },
+          { periodo: per(2), estado: 'ADEUDA' },
+        ],
+      },
+    });
+    expect(alta.statusCode, alta.body).toBeLessThan(300);
+    const contratoId = alta.json().id as string;
+
+    const detAntes = await app.inject({
+      method: 'GET',
+      url: `/contratos/${contratoId}`,
+      headers: { authorization: `Bearer ${tokenAdmin}` },
+    });
+    expect(detAntes.statusCode).toBe(200);
+    const rev = detAntes.json().revisionAprobacion;
+    expect(rev).toBeTruthy();
+    const moraAnunciada = rev.alAprobar.deudaInicial.mora;
+
+    const ap = await app.inject({
+      method: 'POST',
+      url: `/aprobaciones/${rev.aprobacionId}/aprobar`,
+      headers: { authorization: `Bearer ${tokenAdmin}` },
+      payload: { comentario: 'Revisado, va' },
+    });
+    expect(ap.statusCode, ap.body).toBe(200);
+
+    // Mora REAL: la que GET /contratos/:id calcula on-read (calcularMora) para
+    // esas mismas liquidaciones, ya aprobadas — la fuente de verdad de lo que el
+    // sistema va a cobrar, no un número tipeado a mano.
+    const detDespues = await app.inject({
+      method: 'GET',
+      url: `/contratos/${contratoId}`,
+      headers: { authorization: `Bearer ${tokenAdmin}` },
+    });
+    expect(detDespues.statusCode).toBe(200);
+    const liquidaciones = detDespues.json().liquidaciones as Array<{
+      periodo: string;
+      montoPunitorio: number;
+    }>;
+    const moraReal = liquidaciones
+      .filter((l) => l.periodo === per(3) || l.periodo === per(2))
+      .reduce((s, l) => s + l.montoPunitorio, 0);
+
+    // Sanity: si esto da 0, el test no prueba nada (los períodos no estarían
+    // devengando mora real y el assert de abajo pasaría por las razones
+    // equivocadas).
+    expect(moraReal).toBeGreaterThan(0);
+    expect(moraAnunciada).toBeCloseTo(moraReal, 2);
+  });
 });
