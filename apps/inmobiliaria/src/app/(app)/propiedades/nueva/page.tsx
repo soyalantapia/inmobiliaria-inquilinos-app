@@ -18,6 +18,7 @@ import {
   UserPlus,
   Warehouse,
   X,
+  Loader2,
 } from 'lucide-react';
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
@@ -221,6 +222,12 @@ function NuevaPropiedadForm() {
   // Flow
   const [confirmando, setConfirmando] = useState(false);
   const [enviando, setEnviando] = useState(false);
+  // Guard SINCRÓNICO contra el doble click. `enviando` (estado) NO alcanza:
+  // React batchea, así que dos clicks en el mismo tick leen el valor viejo y el
+  // `disabled` todavía no se re-renderizó. Verificado en navegador: con sólo el
+  // estado salían DOS POST /propiedades y la propiedad quedaba cargada dos
+  // veces (y facturando dos veces). El ref se lee y se escribe en el acto.
+  const enviandoRef = useRef(false);
 
   // Plan: comparamos actual vs después de sumar esta propiedad
   const planActual = useMemo(() => calcularResumenPlan(), []);
@@ -380,6 +387,13 @@ function NuevaPropiedadForm() {
   };
 
   const guardar = async () => {
+    // Guard de reentrada. `enviando` existía desde siempre pero se consumía
+    // ÚNICAMENTE en el `loading` de un ConfirmDialog que casi nunca se abre
+    // (sólo si hay salto de plan), así que en la práctica el alta corría sin
+    // ninguna protección: dos clicks seguidos = dos POST /propiedades = la
+    // propiedad cargada dos veces, que además factura todos los meses.
+    if (enviandoRef.current) return;
+    enviandoRef.current = true;
     setEnviando(true);
 
     // Prod: POST /propiedades con el payload del contrato del API. El contrato
@@ -396,6 +410,7 @@ function NuevaPropiedadForm() {
       // Validación dura: porcentajes deben sumar 100 antes de enviar.
       const sumaPct = participaciones.reduce((s, p) => s + p.porcentaje, 0);
       if (sumaPct !== 100) {
+        enviandoRef.current = false;
         setEnviando(false);
         setConfirmando(false);
         toast({
@@ -415,7 +430,8 @@ function NuevaPropiedadForm() {
         try {
           fotoUrl = (await subirArchivo(fotoFile)).url;
         } catch (err) {
-          setEnviando(false);
+          enviandoRef.current = false;
+        setEnviando(false);
           setConfirmando(false);
           toast({
             variant: 'destructive',
@@ -440,6 +456,7 @@ function NuevaPropiedadForm() {
           ...(mascotasPermitidas !== null ? { mascotasPermitidas } : {}),
           propietarios: participaciones,
         });
+        enviandoRef.current = false;
         setEnviando(false);
         setConfirmando(false);
         toast({
@@ -456,6 +473,7 @@ function NuevaPropiedadForm() {
         // lleva ?propiedad= y salta directo al paso del inquilino).
         router.push(`/propiedades/${creada.id}`);
       } catch (err) {
+        enviandoRef.current = false;
         setEnviando(false);
         setConfirmando(false);
         toast({
@@ -468,6 +486,7 @@ function NuevaPropiedadForm() {
     }
 
     await new Promise((r) => setTimeout(r, 600));
+    enviandoRef.current = false;
     setEnviando(false);
     setConfirmando(false);
     toast({
@@ -1151,15 +1170,24 @@ function NuevaPropiedadForm() {
                 <Button
                   size="lg"
                   className="w-full"
-                  disabled={!formValido}
+                  disabled={!formValido || enviando}
                   title={formValido ? undefined : `Falta: ${motivosFaltantes.join(' · ')}`}
                   // Sin salto de plan (caso típico de la 1ª propiedad) guardamos
                   // directo: no metemos un diálogo de confirmación de costo cuando
                   // no cambia la factura. El ConfirmDialog queda sólo para el salto.
                   onClick={() => (haySaltoDePlan ? setConfirmando(true) : guardar())}
                 >
-                  <CheckCircle2 className="h-4 w-4" />
-                  Cargar propiedad
+                  {enviando ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Cargando…
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="h-4 w-4" />
+                      Cargar propiedad
+                    </>
+                  )}
                 </Button>
                 <Button variant="ghost" className="w-full" asChild>
                   <Link href="/propiedades">

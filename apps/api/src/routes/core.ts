@@ -1437,67 +1437,82 @@ export async function coreRoutes(app: FastifyInstance) {
           pagos: { none: {} },
         },
       });
-      // RESCISIÓN: penalidad como cargo one-off (no cabe en Liquidacion, @@unique período) +
-      // decisión sobre el depósito (devolver/netear/ejecutar) + fecha efectiva y motivo.
+      // Sólo de la RESCISIÓN: la penalidad como cargo one-off (no cabe en
+      // Liquidacion por el @@unique de período).
       let cargoPenalidad = 0;
-      if (nuevoEstado === 'RESCINDIDO') {
-        if (b.montoPenalidad && b.montoPenalidad > 0) {
-          await tx.cargoContrato.create({
-            data: {
-              inmobiliariaId: u.inmobiliariaId,
-              contratoId: id,
-              tipo: 'PENALIDAD_RESCISION',
-              concepto: 'Penalidad por rescisión anticipada',
-              monto: b.montoPenalidad,
-              moneda: contrato.moneda,
-              creadoPorId: u.userId,
-            },
-          });
-          cargoPenalidad = b.montoPenalidad;
-        }
-        const estadoDep =
-          b.decisionDeposito === 'DEVOLVER'
-            ? 'DEVUELTO'
-            : b.decisionDeposito === 'NETEAR'
-              ? 'NETEADO'
-              : b.decisionDeposito === 'EJECUTAR'
-                ? 'EJECUTADO'
-                : null;
-        // NETEAR/EJECUTAR = la inmobiliaria RETIENE parte (o todo) del depósito contra la
-        // deuda. Hasta acá sólo se marcaba el estado: la garantía se consumía y la deuda
-        // quedaba intacta, sumando punitorios, más la penalidad recién creada. Y el diálogo
-        // de baja ya le mostraba al operador un "saldo a cobrar" con el depósito restado —
-        // un neto que este endpoint nunca ejecutaba.
-        if (estadoDep === 'NETEADO' || estadoDep === 'EJECUTADO') {
-          const dep = await estadoDepositoContrato(tx, {
-            contratoId: id,
-            inmobiliariaId: u.inmobiliariaId,
-            depositoGarantia: contrato.depositoGarantia,
-          });
-          const aRetener = Math.max(0, Math.round((dep.disponible - (b.montoDepositoDevuelto ?? 0)) * 100) / 100);
-          if (aRetener > 0) {
-            aplicacionDeposito = await aplicarDepositoADeuda(tx, {
-              contratoId: id,
-              inmobiliariaId: u.inmobiliariaId,
-              disponible: aRetener,
-              usuarioId: u.userId,
-            });
-          }
-        }
-        await tx.contrato.update({
-          where: { id },
+      if (nuevoEstado === 'RESCINDIDO' && b.montoPenalidad && b.montoPenalidad > 0) {
+        await tx.cargoContrato.create({
           data: {
-            motivoRescision: b.motivoRescision || null,
-            fechaEfectivaRescision: b.fechaEfectiva ?? new Date(),
-            ...(estadoDep
-              ? {
-                  estadoDeposito: estadoDep,
-                  depositoDevueltoMonto: b.montoDepositoDevuelto ?? null,
-                  depositoDevueltoAt: new Date(),
-                }
-              : {}),
+            inmobiliariaId: u.inmobiliariaId,
+            contratoId: id,
+            tipo: 'PENALIDAD_RESCISION',
+            concepto: 'Penalidad por rescisión anticipada',
+            monto: b.montoPenalidad,
+            moneda: contrato.moneda,
+            creadoPorId: u.userId,
           },
         });
+        cargoPenalidad = b.montoPenalidad;
+      }
+
+      // El DEPÓSITO se resuelve en CUALQUIER baja, no sólo en la rescisión.
+      // Antes todo este bloque vivía adentro del `if (nuevoEstado === 'RESCINDIDO')`,
+      // y el default del diálogo de baja es FINALIZADO (fin de plazo, el caso
+      // normal). O sea: el operador elegía "Devolver $X", la pantalla le mostraba
+      // la cuenta hecha, el front mandaba `decisionDeposito`… y el server lo
+      // descartaba en silencio. La garantía quedaba RETENIDA para siempre y la
+      // única forma de notarlo era abrir los contratos archivados de a uno.
+      // El tipo va explícito: al extraer el objeto del update a una variable,
+      // TS ensancha estos literales a `string` y Prisma rechaza el enum.
+      const estadoDep: 'DEVUELTO' | 'NETEADO' | 'EJECUTADO' | null =
+        b.decisionDeposito === 'DEVOLVER'
+          ? 'DEVUELTO'
+          : b.decisionDeposito === 'NETEAR'
+            ? 'NETEADO'
+            : b.decisionDeposito === 'EJECUTAR'
+              ? 'EJECUTADO'
+              : null;
+      // NETEAR/EJECUTAR = la inmobiliaria RETIENE parte (o todo) del depósito contra la
+      // deuda. Hasta acá sólo se marcaba el estado: la garantía se consumía y la deuda
+      // quedaba intacta, sumando punitorios, más la penalidad recién creada. Y el diálogo
+      // de baja ya le mostraba al operador un "saldo a cobrar" con el depósito restado —
+      // un neto que este endpoint nunca ejecutaba.
+      if (estadoDep === 'NETEADO' || estadoDep === 'EJECUTADO') {
+        const dep = await estadoDepositoContrato(tx, {
+          contratoId: id,
+          inmobiliariaId: u.inmobiliariaId,
+          depositoGarantia: contrato.depositoGarantia,
+        });
+        const aRetener = Math.max(0, Math.round((dep.disponible - (b.montoDepositoDevuelto ?? 0)) * 100) / 100);
+        if (aRetener > 0) {
+          aplicacionDeposito = await aplicarDepositoADeuda(tx, {
+            contratoId: id,
+            inmobiliariaId: u.inmobiliariaId,
+            disponible: aRetener,
+            usuarioId: u.userId,
+          });
+        }
+      }
+
+      // Los campos de rescisión (motivo, fecha efectiva) sólo se escriben si la
+      // baja ES una rescisión; el depósito se escribe en las dos.
+      const datosBaja = {
+        ...(nuevoEstado === 'RESCINDIDO'
+          ? {
+              motivoRescision: b.motivoRescision || null,
+              fechaEfectivaRescision: b.fechaEfectiva ?? new Date(),
+            }
+          : {}),
+        ...(estadoDep
+          ? {
+              estadoDeposito: estadoDep,
+              depositoDevueltoMonto: b.montoDepositoDevuelto ?? null,
+              depositoDevueltoAt: new Date(),
+            }
+          : {}),
+      };
+      if (Object.keys(datosBaja).length > 0) {
+        await tx.contrato.update({ where: { id }, data: datosBaja });
       }
       return { cuotasAnuladas: anuladas.count, cargoPenalidad };
       // timeout holgado: si hay que aplicar el depósito, la tx recorre las cuotas exigibles
