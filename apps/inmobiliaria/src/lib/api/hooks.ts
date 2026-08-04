@@ -29,6 +29,7 @@ import type {
 import { enriquecerPropiedad, type PropiedadEnriquecida } from '@/lib/propiedades-helpers';
 import type { DashboardStats } from '@/lib/dashboard-helpers';
 import { parseLocal } from '@/lib/format';
+import { usuarioIdDelToken } from '@/lib/contrato-borrador-storage';
 import {
   cargarMovimiento as cargarMovimientoLocal,
   eliminarMovimiento as eliminarMovimientoLocal,
@@ -863,15 +864,19 @@ export function useContratosRechazadosPropios(): {
 } {
   const { aprobaciones, cargando: cargandoAprob } = useAprobaciones();
   const { contratos, cargando: cargandoContratos } = useContratos();
-  const { me, cargando: cargandoMe } = useMe();
 
-  const cargando = cargandoAprob || cargandoContratos || cargandoMe;
-  if (cargando || !me) return { items: [], cargando: true };
+  // El id sale del JWT, no de /auth/me (que no lo expone). Comparar por NOMBRE para
+  // decidir "esto lo cargué yo" falla con dos empleadas homónimas: una vería los
+  // contratos rechazados de la otra.
+  const miId = usuarioIdDelToken();
+
+  const cargando = cargandoAprob || cargandoContratos;
+  if (cargando || !miId) return { items: [], cargando: true };
 
   const contratosPorId = new Map(contratos.map((c) => [c.id, c]));
   const items: ContratoRechazadoPropio[] = [];
   for (const a of aprobaciones) {
-    if (a.estado !== 'RECHAZADA' || a.cargadoPor !== me.nombre) continue;
+    if (a.estado !== 'RECHAZADA' || a.cargadoPorId !== miId) continue;
     const c = contratosPorId.get(a.entidadId);
     if (!c || c.estado !== 'BORRADOR' || c.pendienteAprobacion) continue;
     items.push({

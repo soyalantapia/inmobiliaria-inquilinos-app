@@ -93,3 +93,17 @@ export function borrarBorradorContrato(namespace: string): void {
     // storage error — silencioso
   }
 }
+
+/**
+ * Id del usuario logueado, sacado del JWT. Mismo decodificado que
+ * `obtenerNamespaceBorrador`: el payload de /auth/me no expone el id, y comparar
+ * por nombre para decidir "esto lo cargué yo" falla con dos empleados homónimos.
+ */
+export function usuarioIdDelToken(): string | null {
+  try {
+    const ns = obtenerNamespaceBorrador();
+    return ns ? (ns.split(':')[0] ?? null) : null;
+  } catch {
+    return null;
+  }
+}
