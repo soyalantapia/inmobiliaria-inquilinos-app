@@ -2242,6 +2242,19 @@ export async function plataRoutes(app: FastifyInstance) {
       const result = await prisma.$transaction(async (tx) => {
         const apr = await tx.aprobacion.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
         if (!apr) return { http: 404 as const };
+        // APROBAR sólo sabe ejecutar CONTRATO_CARGADO. Los otros tres tipos
+        // (DEVOLUCION_DEPOSITO, GASTO_CAJA_ELIMINACION, AJUSTE_FUERA_DE_INDICE)
+        // caían igual en el updateMany de abajo: la fila quedaba APROBADA, el
+        // panel mostraba el toast verde, y NO pasaba nada. En el seed hay una
+        // devolución de depósito de $510.000 que se "aprobaba" y dejaba la
+        // garantía RETENIDA. Preferimos fallar fuerte antes que mentir: mientras
+        // no exista la ejecución, la aprobación queda PENDIENTE y visible.
+        //
+        // RECHAZAR sí funciona para todos los tipos: rechazar ES la acción
+        // completa (no hay nada que ejecutar cuando la respuesta es "no").
+        if (accion === 'aprobar' && apr.tipo !== 'CONTRATO_CARGADO') {
+          return { http: 501 as const, tipo: apr.tipo };
+        }
         const lock = await tx.aprobacion.updateMany({
           where: { id, inmobiliariaId: u.inmobiliariaId, estado: 'PENDIENTE' },
           data: {
@@ -2370,6 +2383,20 @@ export async function plataRoutes(app: FastifyInstance) {
       });
       if (result.http === 400) return reply.code(400).send({ message: result.mensaje });
       if (result.http === 404) return reply.code(404).send({ message: 'Aprobación inexistente' });
+      if (result.http === 501) {
+        // Ver el comentario en la transacción: aprobar estos tipos todavía no
+        // ejecuta nada, así que no los damos por aprobados. El mensaje le dice
+        // al operador qué hacer mientras tanto, en vez de dejarlo esperando.
+        const comoResolver: Record<string, string> = {
+          DEVOLUCION_DEPOSITO: 'Resolvé la devolución desde Depósitos de garantía o al cerrar el contrato.',
+          GASTO_CAJA_ELIMINACION: 'Eliminá el gasto desde Caja de gastos.',
+          AJUSTE_FUERA_DE_INDICE: 'Aplicá el ajuste desde la ficha del contrato.',
+        };
+        const tipo = 'tipo' in result ? String(result.tipo) : '';
+        return reply.code(501).send({
+          message: `Aprobar desde acá todavía no ejecuta esta acción, así que la dejamos pendiente. ${comoResolver[tipo] ?? ''}`.trim(),
+        });
+      }
       if (result.http === 409) {
         return reply
           .code(409)
