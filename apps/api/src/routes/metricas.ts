@@ -189,15 +189,31 @@ export async function metricasRoutes(app: FastifyInstance) {
           },
         }),
         // Caja del mes por MovimientoCaja.fecha (el flujo real que carga la inmo).
+        // `moneda: 'ARS'` explícito: este tablero se declara en pesos abajo
+        // (`moneda: 'ARS'`), así que sumar acá los movimientos en dólares como si fueran
+        // pesos hacía que el número dijera una cosa y valiera otra. Los USD se dejan
+        // afuera y se avisa con `hayOtrasMonedas`.
         prisma.movimientoCaja.groupBy({
           by: ['tipo'],
-          where: { inmobiliariaId: u.inmobiliariaId, fecha: { gte: desde, lt: hasta } },
+          where: { inmobiliariaId: u.inmobiliariaId, fecha: { gte: desde, lt: hasta }, moneda: 'ARS' },
           _sum: { monto: true },
         }),
-        // ¿Hay contratos activos en otra moneda? (para avisar que el tablero es en ARS)
-        prisma.contrato.count({
-          where: { inmobiliariaId: u.inmobiliariaId, estado: 'ACTIVO', moneda: { not: 'ARS' } },
-        }),
+        // ¿Hay algo en otra moneda? (para avisar que el tablero es en ARS). Antes miraba
+        // SÓLO contratos: una inmobiliaria con contratos en pesos y gastos de caja en
+        // dólares no disparaba ningún aviso y el bloque de Caja quedaba incompleto sin
+        // decirlo. Ahora también cuenta los movimientos del mes.
+        Promise.all([
+          prisma.contrato.count({
+            where: { inmobiliariaId: u.inmobiliariaId, estado: 'ACTIVO', moneda: { not: 'ARS' } },
+          }),
+          prisma.movimientoCaja.count({
+            where: {
+              inmobiliariaId: u.inmobiliariaId,
+              fecha: { gte: desde, lt: hasta },
+              moneda: { not: 'ARS' },
+            },
+          }),
+        ]).then(([contratos, movimientos]) => contratos + movimientos),
       ]);
 
     const ingresosCaja = r2(

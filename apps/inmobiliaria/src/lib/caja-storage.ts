@@ -24,7 +24,12 @@ export type TipoMovimiento = 'GASTO' | 'INGRESO_EXTRA';
 
 export interface MovimientoCaja {
   id: string;
-  propiedadId: string;
+  /**
+   * Propiedad del movimiento, OPCIONAL: por la caja pasa plata que no es de ninguna
+   * unidad (gastos de la oficina, movimientos entre socios). Sin propiedad el
+   * movimiento no entra en la rendición de ningún propietario.
+   */
+  propiedadId: string | null;
   contratoId: string | null;
   tipo: TipoMovimiento;
   categoria: CategoriaGasto;

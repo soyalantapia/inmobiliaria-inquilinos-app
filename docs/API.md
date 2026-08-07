@@ -306,10 +306,11 @@ Todas las rutas montadas bajo el prefijo del plugin `plataRoutes`. Multi-tenant:
 
 **POST /caja/movimientos**
 - Guard: `requireUsuario('gasto.caja.cargar')`.
-- Body: `propiedadId` (string, **req.**), `tipo` (enum `GASTO|INGRESO_EXTRA`, def `GASTO`), `categoria` (enum `PLOMERIA|ELECTRICIDAD|GAS|CERRAJERIA|PINTURA|EXPENSAS|MATERIALES|OTRO`, opc.), `descripcion` (string, **req.**, min 3), `monto` (number positivo, **req.**), `fecha` (date coercible, **req.**), `proveedor` (string nullable, opc.), `comprobanteUrl` (string, opc.).
-- Reglas: la propiedad debe ser del tenant; setea `contratoId` = `contratoActualId` de la propiedad y `cargadoPor` = nombre del usuario. `comprobanteUrl` (si viene) debe ser `/uploads` del propio tenant (`urlEsDelTenant`) → si no, **400**.
+- Body: `propiedadId` (string nullable, **opc.**), `tipo` (enum `GASTO|INGRESO_EXTRA`, def `GASTO`), `categoria` (enum `PLOMERIA|ELECTRICIDAD|GAS|CERRAJERIA|PINTURA|EXPENSAS|MATERIALES|OTRO`, opc.), `descripcion` (string, **req.**, min 3), `monto` (number positivo, **req.**), `moneda` (enum `ARS|USD`, def `ARS`), `fecha` (date coercible, **req.**), `proveedor` (string nullable, opc.), `comprobanteUrl` (string, opc.), `cuentaId` (string nullable, **req. condicional** — ver reglas).
+- Reglas: si viene `propiedadId` debe ser del tenant, y setea `contratoId` = `contratoActualId` de esa propiedad; **sin propiedad ambos quedan en `null`** y el movimiento no entra en ninguna rendición. `cargadoPor` = nombre del usuario. `comprobanteUrl` (si viene) debe ser `/uploads` del propio tenant (`urlEsDelTenant`) → si no, **400**. La `cuentaId` debe ser del tenant, estar **activa** y su `direccion` tiene que aceptar el `tipo` del movimiento.
 - Respuesta: el `MovimientoCaja` creado.
-- Errores: 400 (datos incompletos; comprobante inválido), 404 (propiedad inexistente).
+- Errores: 400 (datos incompletos; comprobante inválido; **falta la cuenta habiendo alguna compatible**), 404 (propiedad o cuenta inexistente), 409 (la cuenta está archivada o su dirección no admite el `tipo`).
+- ⭑ **Cambio de reglas (03/08):** la **propiedad pasó a ser opcional** — por la caja pasa plata que no es de ninguna unidad (gastos de oficina, movimientos entre socios) y antes había que elegir una propiedad cualquiera, ensuciando la rendición de ese propietario. En contrapartida, la **cuenta pasó a ser obligatoria**, pero sólo **cuando existe al menos una cuenta activa cuya dirección pueda recibir ese movimiento**. Si no hay ninguna compatible se permite sin cuenta a propósito: bloquear la carga dejaría la plata sin registrar en ningún lado, que es peor que un movimiento sin imputar (el panel avisa y lleva a crear la cuenta que falta).
 - ✅ **Arreglado (04/07):** antes el `movimientoCaja.create` (`plata.ts`) validaba `comprobanteUrl` por tenant pero **no lo escribía en la fila** — se validaba y se perdía. Ahora el `create` lo persiste. El `DELETE` lo lee para liberar el archivo del Volume. El front del panel todavía no lo sube (la interfaz `NuevoGasto` no tiene el campo) → backend-ready, falta UI.
 
 **DELETE /caja/movimientos/:id**
@@ -318,6 +319,38 @@ Todas las rutas montadas bajo el prefijo del plugin `plataRoutes`. Multi-tenant:
 - Reglas: borrado atómico `deleteMany WHERE descontadoEnRendicion=false`; lectura previa solo para distinguir 404 de 409.
 - Respuesta: `{ ok: true }`.
 - Errores: 404 (inexistente), 409 (ya descontado en una rendición — no se puede eliminar; incluye carrera).
+
+### Cuentas de caja
+
+De dónde sale y a dónde entra la plata ("Gaspar Mercado Pago", "efectivo", "banco"). Cada
+cuenta tiene una `direccion` (`ENTRADA` | `SALIDA` | `AMBAS`) que limita qué movimientos
+puede recibir. Sólo el admin las define (`cuentas.gestionar`); la cajera las ve (`cuentas.ver`).
+
+**GET /cuentas**
+- Guard: `requireUsuario('cuentas.ver')`.
+- Respuesta: array con `id`, `nombre`, `direccion`, `activa`, `esPredeterminada` y `totales`: `[{ moneda, entradas, salidas, saldo }]`, **ARS primero**. Los totales van desglosados por moneda a propósito — un saldo plano sumaba dólares y pesos uno a uno y el símbolo de la primera moneda lo disfrazaba de total válido. Siempre trae al menos un renglón (ARS en cero si la cuenta no tiene movimientos).
+
+**GET /cuentas/:id/movimientos**
+- Guard: `requireUsuario('cuentas.ver')`. Últimos 200 movimientos de esa cuenta, cada uno con su `moneda`. `propiedad` puede venir `null` (movimientos que no son de ninguna unidad).
+
+**POST /cuentas**
+- Guard: `requireUsuario('cuentas.gestionar')`. Body: `nombre` (min 2, max 80), `direccion` (def `AMBAS`).
+- Regla: si es la **primera** cuenta del tenant que acepta entradas y todavía no hay ninguna predeterminada, queda marcada como tal automáticamente — sino la feature no hace nada hasta que alguien descubra el botón, y los cobros automáticos siguen entrando sin cuenta.
+- Errores: 400 (nombre corto).
+
+**PATCH /cuentas/:id**
+- Guard: `requireUsuario('cuentas.gestionar')`. Body: `nombre`, `direccion`, `activa`, `esPredeterminada` (todos opc.).
+- Reglas: marcar una predeterminada **desmarca la anterior en la misma transacción** (hay un índice UNIQUE PARCIAL por inmobiliaria). Archivar (`activa: false`) le saca la marca. Si el PATCH vuelve **incidentalmente** incompatible a la que ya era predeterminada (le cambia la dirección a `SALIDA`) se le **quita la marca y se guarda igual** — rechazar era un callejón sin salida: el diálogo de edición manda siempre la dirección y la primera cuenta que acepta entradas se marca sola, así que alguien que nunca marcó nada no podía editar su única cuenta.
+- Errores: 404, 409 (sólo ante un pedido **explícito** e incoherente: `esPredeterminada: true` sobre una cuenta de solo salida o archivada; o dos admins la cambian a la vez).
+
+**DELETE /cuentas/:id**
+- Guard: `requireUsuario('cuentas.gestionar')`. Con movimientos → se **archiva** (`{ archivada: true, movimientos: n }`); sin movimientos → se elimina (`{ eliminada: true }`). Archivar acá **también** limpia `esPredeterminada`: éste, y no el PATCH, es el camino del botón Archivar de la pantalla.
+
+> **La cuenta predeterminada** es a dónde van los movimientos que crea el sistema solo: hoy,
+> el `INGRESO_EXTRA` que se registra al saldar un cargo del inquilino (`POST /cargos/:id/saldar`).
+> Como ese movimiento es un **ingreso**, la predeterminada tiene que aceptar entradas. Si no hay
+> ninguna marcada el cobro se registra **igual, sin cuenta**: ese cobro nunca puede fallar por
+> una cuenta sin configurar.
 
 ### Rendiciones
 

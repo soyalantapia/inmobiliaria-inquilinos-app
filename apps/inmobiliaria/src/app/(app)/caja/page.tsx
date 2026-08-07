@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import {
   ArrowDown,
@@ -41,7 +42,9 @@ import {
   categoriaGastoLabel,
   totalesPorMoneda,
 } from '@/lib/caja-storage';
-import { useCaja, usePropiedades } from '@/lib/api/hooks';
+import { useCaja, usePropiedades, useMe } from '@/lib/api/hooks';
+import { rolTienePermiso } from '@/lib/permisos';
+import type { Rol } from '@/lib/permisos';
 import { useCuentas } from '@/lib/api/use-cuentas';
 import { useCierreCaja } from '@/lib/api/use-pagos';
 import { apiEnabled, subirArchivo } from '@/lib/api/client';
@@ -105,6 +108,10 @@ export default function CajaPage() {
 
   const filtrados = useMemo(() => {
     if (filtroProp === 'TODAS') return movimientos;
+    // Los movimientos que no son de ninguna unidad (gastos de oficina, movimientos
+    // entre socios) necesitan su propio filtro: con los chips por propiedad quedaban
+    // visibles sólo en "Todas", sin manera de aislarlos.
+    if (filtroProp === 'SIN_PROPIEDAD') return movimientos.filter((m) => !m.propiedadId);
     return movimientos.filter((m) => m.propiedadId === filtroProp);
   }, [movimientos, filtroProp]);
 
@@ -115,13 +122,16 @@ export default function CajaPage() {
   // da un número sin significado, y el símbolo de la primera moneda lo disfraza de
   // total válido. Con una sola moneda (el caso normal) se ve una sola línea.
   const totalGastado = totalesPorMoneda(filtrados.filter((m) => m.tipo === 'GASTO'));
+  // "Pendiente de descontar" son los que EFECTIVAMENTE se van a descontar. Un movimiento
+  // sin propiedad no entra en ninguna rendición, así que su `descontadoEnRendicion` nunca
+  // pasa a true: contarlo acá dejaba un pendiente que no bajaba jamás.
   const pendienteDescuento = totalesPorMoneda(
-    filtrados.filter((m) => m.tipo === 'GASTO' && !m.descontadoEnRendicion),
+    filtrados.filter((m) => m.tipo === 'GASTO' && !m.descontadoEnRendicion && !!m.propiedadId),
   );
   // Ingresos extra de caja: antes no aparecían en ningún KPI (parecían perderse).
   // Ahora suman al neto de la rendición → mostramos lo pendiente a sumar.
   const pendienteSumar = totalesPorMoneda(
-    filtrados.filter((m) => m.tipo === 'INGRESO_EXTRA' && !m.descontadoEnRendicion),
+    filtrados.filter((m) => m.tipo === 'INGRESO_EXTRA' && !m.descontadoEnRendicion && !!m.propiedadId),
   );
   const cantidadMov = filtrados.length;
 
@@ -150,8 +160,9 @@ export default function CajaPage() {
             </p>
             <h1 className="text-2xl font-semibold md:text-3xl">Caja de gastos</h1>
             <p className="text-sm text-muted-foreground">
-              Gastos que pagaste por una propiedad y se descuentan de la rendición al
-              propietario.
+              Todo lo que entra y sale de la caja. Lo que cargues con una propiedad se
+              descuenta de la rendición a ese propietario; lo que cargues sin propiedad
+              queda sólo en la caja.
             </p>
           </div>
           <Button onClick={() => setAbrirForm(true)}>
@@ -220,6 +231,26 @@ export default function CajaPage() {
           >
             Todas las propiedades
           </button>
+          {/* Sólo aparece si hay alguno: un chip que siempre filtra a vacío es ruido.
+              El `|| filtroProp === 'SIN_PROPIEDAD'` no es redundante: si borrás el último
+              movimiento sin propiedad TENIENDO el filtro puesto, el chip desaparecía y
+              quedaba una lista vacía sin ningún filtro marcado — parecía que la caja
+              entera se había vaciado, sin forma de ver qué estaba pasando. */}
+          {(movimientos.some((m) => !m.propiedadId) || filtroProp === 'SIN_PROPIEDAD') && (
+            <button
+              type="button"
+              aria-pressed={filtroProp === 'SIN_PROPIEDAD'}
+              onClick={() => setFiltroProp('SIN_PROPIEDAD')}
+              className={cn(
+                'shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
+                filtroProp === 'SIN_PROPIEDAD'
+                  ? 'border-primary bg-primary text-primary-foreground'
+                  : 'border-border bg-background hover:bg-muted/40',
+              )}
+            >
+              Sin propiedad
+            </button>
+          )}
           {opcionesProp.map((p) => (
             <button
               key={p.id}
@@ -244,7 +275,7 @@ export default function CajaPage() {
             <Wallet className="mx-auto h-10 w-10 text-muted-foreground/40" />
             <p className="mt-2 text-sm font-medium">Sin movimientos</p>
             <p className="text-xs text-muted-foreground">
-              Cargá un gasto cuando le pagues a un proveedor por una propiedad.
+              Cargá un movimiento cada vez que entre o salga plata de la caja.
             </p>
           </Card>
         ) : (
@@ -254,7 +285,11 @@ export default function CajaPage() {
                 key={m.id}
                 mov={m}
                 propDireccion={
-                  opcionesProp.find((p) => p.id === m.propiedadId)?.direccion ?? '—'
+                  // Sin propiedad es un estado válido y hay que nombrarlo: un guión
+                  // se lee como "falta el dato", no como "no corresponde a ninguna".
+                  m.propiedadId
+                    ? (opcionesProp.find((p) => p.id === m.propiedadId)?.direccion ?? '—')
+                    : 'Sin propiedad'
                 }
                 onDelete={() => setEliminando(m)}
               />
@@ -272,23 +307,54 @@ export default function CajaPage() {
           // éxito (antes el `void` se tragaba el error y el toast mentía).
           try {
             await crearGasto({
-              propiedadId: data.propiedadId,
+              propiedadId: data.propiedadId || null,
               // Antes NO se reenviaba el tipo → una "Entrada (ingreso)" se
               // guardaba como GASTO/salida. Ahora respeta lo elegido.
               tipo: data.tipo,
               categoria: data.categoria,
               descripcion: data.descripcion,
               monto: data.monto,
+              // La moneda NO se estaba reenviando: el diálogo tiene su selector y
+              // arrastra la del contrato, pero acá se caía y el server la defaulteaba
+              // a ARS. Un gasto en dólares se guardaba como pesos y —por el filtro por
+              // moneda de la rendición— no se le descontaba nunca al propietario. El
+              // aviso de "moneda distinta" del formulario advertía de un problema que
+              // el propio formulario provocaba.
+              moneda: data.moneda,
               fecha: data.fecha,
               proveedor: data.proveedor,
               comprobanteUrl: data.comprobante,
               cuentaId: data.cuentaId ?? null,
             });
             setAbrirForm(false);
+            // El texto tiene que decir la verdad de ESTE movimiento. Hay DOS motivos por
+            // los que puede no entrar en ninguna rendición, y los dos hay que decirlos:
+            // no tener propiedad, y estar en una moneda distinta a la del contrato (la
+            // rendición filtra por moneda, así que un gasto en dólares sobre un contrato
+            // en pesos no se descuenta nunca). El formulario ya avisa lo segundo antes de
+            // guardar; el toast no puede después prometer lo contrario.
+            const propDeMov = data.propiedadId
+              ? opcionesProp.find((p) => p.id === data.propiedadId)
+              : undefined;
+            const monedaNoCoincide = !!propDeMov?.contratoActualId && data.moneda !== propDeMov.moneda;
+            const entraEnRendicion = !!data.propiedadId && !monedaNoCoincide;
+            const porQueNo = monedaNoCoincide
+              ? `Está en ${data.moneda === 'USD' ? 'dólares' : 'pesos'} y el contrato es en ${propDeMov?.moneda === 'USD' ? 'dólares' : 'pesos'}: queda en la caja y no entra en la rendición.`
+              : 'Queda en la caja. No entra en la rendición de ningún propietario.';
             toast(
               data.tipo === 'INGRESO_EXTRA'
-                ? { title: 'Entrada registrada', description: 'Queda como ingreso en la caja de la propiedad.' }
-                : { title: 'Gasto cargado', description: 'Se descontará en la próxima rendición.' },
+                ? {
+                    title: 'Entrada registrada',
+                    description: entraEnRendicion
+                      ? 'Se le va a sumar al propietario en la próxima rendición.'
+                      : porQueNo,
+                  }
+                : {
+                    title: 'Gasto cargado',
+                    description: entraEnRendicion
+                      ? 'Se le va a descontar al propietario en la próxima rendición.'
+                      : porQueNo,
+                  },
             );
           } catch (e) {
             toast({
@@ -501,8 +567,17 @@ function MovimientoRow({
               {categoriaGastoLabel[mov.categoria]}
             </Badge>
           )}
-          {!esIngreso &&
-            (mov.descontadoEnRendicion ? (
+          {/* "Pendiente" significa "todavía no se descontó/sumó en una rendición". En un
+              movimiento SIN propiedad eso no va a pasar nunca —no le corresponde a ningún
+              propietario— así que ese badge estaría prometiendo una rendición que no
+              existe, y encima en amarillo, como si faltara hacer algo. Estos movimientos
+              no están pendientes de nada: están cerrados. */}
+          {!mov.propiedadId ? (
+            <Badge variant="outline" className="text-[10px]">
+              Solo caja
+            </Badge>
+          ) : !esIngreso ? (
+            mov.descontadoEnRendicion ? (
               <Badge variant="success" className="text-[10px]">
                 Descontado
               </Badge>
@@ -510,17 +585,16 @@ function MovimientoRow({
               <Badge variant="warning" className="text-[10px]">
                 Pendiente
               </Badge>
-            ))}
-          {esIngreso &&
-            (mov.descontadoEnRendicion ? (
-              <Badge variant="success" className="text-[10px]">
-                Sumado en rendición
-              </Badge>
-            ) : (
-              <Badge variant="warning" className="text-[10px]">
-                Pendiente
-              </Badge>
-            ))}
+            )
+          ) : mov.descontadoEnRendicion ? (
+            <Badge variant="success" className="text-[10px]">
+              Sumado en rendición
+            </Badge>
+          ) : (
+            <Badge variant="warning" className="text-[10px]">
+              Pendiente
+            </Badge>
+          )}
         </div>
         <p className="truncate text-xs text-muted-foreground">{propDireccion}</p>
         <p className="text-[10px] text-muted-foreground">
@@ -582,7 +656,11 @@ function DialogCargarGasto({
   // Cuenta de caja de dónde sale / a dónde entra la plata (Camila: "Gaspar retira
   // Mercado Pago, la otra bebé retiro"). Solo prod: las cuentas gatean cuentas.*.
   const [cuentaId, setCuentaId] = useState('');
-  const { cuentas } = useCuentas();
+  // `cargando` y `error` NO son detalles: mientras no sepamos qué cuentas hay, la
+  // pantalla no puede afirmar que no hay ninguna. Si /cuentas falla y el server SÍ ve
+  // una cuenta compatible, decir "se puede guardar igual" es mentir — el server
+  // devuelve 400 pidiendo una cuenta que el selector no deja elegir.
+  const { cuentas, cargando: cargandoCuentas, error: errorCuentas, refrescar: refrescarCuentas } = useCuentas();
   const esIngreso = tipo === 'INGRESO_EXTRA';
 
   // Solo ofrecemos cuentas activas y compatibles con la dirección del movimiento:
@@ -597,6 +675,15 @@ function DialogCargarGasto({
       ),
     [cuentas, esIngreso],
   );
+  // ¿Tiene cuentas cargadas, aunque ninguna sirva para ESTE movimiento? Distingue
+  // "todavía no configuraste cuentas" de "ninguna de las tuyas acepta esta dirección":
+  // son dos problemas distintos y se arreglan distinto.
+  const hayCuentas = useMemo(() => cuentas.some((c) => c.activa), [cuentas]);
+  // Definir cuentas es SOLO del admin (`cuentas.gestionar`). A la cajera —que sí puede
+  // cargar caja— mandarla a "Creá una" era un callejón: llega a /cuentas y el botón no
+  // está. Tiene que saber que el arreglo no depende de ella.
+  const { me } = useMe();
+  const puedeGestionarCuentas = !!me && rolTienePermiso(me.rol as Rol, 'cuentas.gestionar');
 
   useEffect(() => {
     if (open) {
@@ -613,28 +700,53 @@ function DialogCargarGasto({
     }
   }, [open]);
 
-  const propSel = opciones.find((p) => p.id === propiedadId) ?? null;
-  // Al cambiar de propiedad seguimos la moneda de SU contrato. Si el usuario ya la
-  // tocó a mano no la pisamos: el efecto depende sólo de propiedadId.
+  // UN SOLO efecto decide la cuenta, y va DESPUÉS del reset de arriba a propósito: los
+  // efectos corren en orden de declaración, así que puesto antes el reset le pisaba la
+  // preselección cada vez que se abría el diálogo. Por lo mismo reemplaza al viejo
+  // efecto que limpiaba la cuenta al cambiar de dirección.
+  //  - si la elegida sigue sirviendo, se respeta;
+  //  - si hay una sola posible, se preselecciona (no tiene sentido hacerla elegir);
+  //  - si hay varias, se limpia: elegir mal la cuenta es peor que el clic de más, y un
+  //    default silencioso se acepta sin leerlo.
   useEffect(() => {
-    if (propSel) setMoneda(propSel.moneda);
+    setCuentaId((actual) => {
+      if (actual && cuentasCompatibles.some((c) => c.id === actual)) return actual;
+      const unica = cuentasCompatibles.length === 1 ? cuentasCompatibles[0] : undefined;
+      return unica ? unica.id : '';
+    });
+  }, [cuentasCompatibles, open]);
+
+  const propSel = opciones.find((p) => p.id === propiedadId) ?? null;
+  // Al cambiar de propiedad seguimos la moneda de SU contrato. Volver a "Sin propiedad"
+  // ahora vuelve a ARS: antes el efecto sólo pisaba la moneda `if (propSel)`, así que
+  // elegir una propiedad en dólares y después sacarla dejaba el movimiento en USD sin
+  // que nada lo dijera. Con la propiedad obligatoria ese camino no se podía recorrer;
+  // ahora es normal.
+  useEffect(() => {
+    setMoneda(propSel ? propSel.moneda : 'ARS');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [propiedadId]);
   // Un gasto en una moneda distinta a la del contrato NUNCA se va a descontar de la
   // rendición de ese propietario: mejor decirlo antes que dejarlo colgado en silencio.
   const monedaDistinta = !!propSel?.contratoActualId && moneda !== propSel.moneda;
-  // Si cambia la dirección (entrada/salida), la cuenta elegida puede dejar de ser
-  // válida: la limpiamos para no mandar una cuenta incompatible (el server la rechaza).
-  useEffect(() => {
-    setCuentaId('');
-  }, [tipo]);
 
   const guardar = async () => {
     if (guardando) return;
-    if (!propiedadId || !descripcion.trim() || !monto) {
+    // La propiedad ya NO es obligatoria: por la caja pasa plata que no es de ninguna
+    // unidad. La cuenta sí lo es, siempre que exista alguna que pueda recibir el
+    // movimiento (mismo criterio que aplica el server).
+    if (!descripcion.trim() || !monto) {
       toast({
         title: 'Faltan datos',
-        description: 'Propiedad, descripción y monto son obligatorios.',
+        description: 'La descripción y el monto son obligatorios.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    if (cuentasCompatibles.length > 0 && !cuentaId) {
+      toast({
+        title: esIngreso ? 'Elegí a qué cuenta entra' : 'Elegí de qué cuenta sale',
+        description: 'Sin la cuenta, los totales por cuenta no cierran contra el total de la caja.',
         variant: 'destructive',
       });
       return;
@@ -683,8 +795,8 @@ function DialogCargarGasto({
           <DialogTitle>Cargar movimiento a caja</DialogTitle>
           <DialogDescription>
             {esIngreso
-              ? 'Entrada: plata que ingresó por una propiedad (ej. un reintegro del propietario).'
-              : 'Salida: plata que adelantaste por una propiedad. Se descuenta de la próxima rendición al propietario.'}
+              ? 'Entrada: plata que entró a la caja (ej. un reintegro del propietario).'
+              : 'Salida: plata que salió de la caja (ej. un adelanto a un proveedor).'}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
@@ -714,44 +826,115 @@ function DialogCargarGasto({
               ↑ Entrada (ingreso)
             </button>
           </div>
-          {apiEnabled && cuentasCompatibles.length > 0 && (
+          {/* La cuenta NUNCA se esconde. Antes este bloque entero estaba detrás de
+              `cuentasCompatibles.length > 0`: si no había ninguna cuenta que aceptara la
+              dirección del movimiento, el campo desaparecía sin decir una palabra. A
+              "AyV alquileres y ventas" le pasaba SIEMPRE al cargar un gasto —su única
+              cuenta es de solo entrada— así que el campo no existía y no había forma de
+              enterarse por qué. Ahora se ve igual, deshabilitado, y dice qué falta. */}
+          {apiEnabled && (
             <div className="space-y-1">
-              <Label htmlFor="caj-cuenta" className="text-xs">
+              {/* El asterisco sigue a `cuentasCompatibles`, NO a `hayCuentas`: esa es la
+                  regla real que aplica el server. Atado a `hayCuentas`, a una inmobiliaria
+                  con una sola cuenta de entrada le marcaba el campo como obligatorio
+                  mientras se lo mostraba deshabilitado y le aceptaba el gasto sin cuenta. */}
+              <Label htmlFor="caj-cuenta" className="text-xs" aria-required={cuentasCompatibles.length > 0}>
                 Cuenta {esIngreso ? '(a dónde entra)' : '(de dónde sale)'}
+                {cuentasCompatibles.length > 0 && <span className="text-destructive"> *</span>}
               </Label>
               <select
                 id="caj-cuenta"
                 value={cuentaId}
                 onChange={(e) => setCuentaId(e.target.value)}
-                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                // `aria-required` en el control, no sólo en la etiqueta: un lector de
+                // pantalla lo anuncia al enfocar el campo, que es cuando importa.
+                aria-required={cuentasCompatibles.length > 0}
+                disabled={cuentasCompatibles.length === 0}
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
               >
-                <option value="">Sin cuenta asignada</option>
+                <option value="">
+                  {cargandoCuentas
+                    ? 'Buscando tus cuentas…'
+                    : errorCuentas
+                      ? 'No pudimos traer tus cuentas'
+                      : cuentasCompatibles.length === 0
+                        ? esIngreso
+                          ? 'No tenés cuentas que acepten entradas'
+                          : 'No tenés cuentas que acepten salidas'
+                        : 'Elegí una cuenta…'}
+                </option>
                 {cuentasCompatibles.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.nombre}
                   </option>
                 ))}
               </select>
+              {/* Tres mensajes distintos para tres estados distintos. El que faltaba es
+                  el del medio: si el pedido falló NO sabemos si hay cuentas, así que no
+                  podemos prometer que se puede guardar igual — el server sí las ve y
+                  responde 400 pidiendo una cuenta que este selector no deja elegir. */}
+              {errorCuentas ? (
+                <p className="text-xs text-destructive">
+                  No pudimos traer tus cuentas. Si tenés alguna cargada, el movimiento va a
+                  ser rechazado hasta que se pueda elegir.{' '}
+                  <button
+                    type="button"
+                    onClick={() => refrescarCuentas()}
+                    className="font-medium underline underline-offset-2"
+                  >
+                    Reintentar
+                  </button>
+                </p>
+              ) : (
+                !cargandoCuentas &&
+                cuentasCompatibles.length === 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    {hayCuentas
+                      ? `Ninguna de tus cuentas acepta ${esIngreso ? 'entradas' : 'salidas'}. `
+                      : 'Todavía no hay ninguna cuenta cargada. '}
+                    {puedeGestionarCuentas ? (
+                      <>
+                        <Link href="/cuentas" className="font-medium underline underline-offset-2">
+                          {hayCuentas ? 'Revisá tus cuentas' : 'Creá una'}
+                        </Link>{' '}
+                        para saber siempre dónde está la plata.
+                      </>
+                    ) : (
+                      // Sin `cuentas.gestionar` el link llevaba a una pantalla donde el
+                      // botón no existe. Mejor decir de quién depende.
+                      <>Las define un administrador de la inmobiliaria.</>
+                    )}{' '}
+                    El movimiento se puede guardar igual, pero va a quedar sin cuenta.
+                  </p>
+                )
+              )}
             </div>
           )}
           <div className="space-y-1">
-            <Label htmlFor="caj-propiedad" className="text-xs" aria-required>
-              Propiedad <span className="text-destructive">*</span>
+            <Label htmlFor="caj-propiedad" className="text-xs">
+              Propiedad <span className="text-muted-foreground">(opcional)</span>
             </Label>
             <select
               id="caj-propiedad"
               value={propiedadId}
               onChange={(e) => setPropiedadId(e.target.value)}
-              required
               className="w-full rounded-md border bg-background px-3 py-2 text-sm"
             >
-              <option value="">Elegí una propiedad…</option>
+              {/* Opción válida, no un placeholder: elegirla es una decisión, no un olvido. */}
+              <option value="">Sin propiedad (no se rinde a nadie)</option>
               {opciones.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.direccion}
                 </option>
               ))}
             </select>
+            <p className="text-xs text-muted-foreground">
+              {propiedadId
+                ? esIngreso
+                  ? 'Se le va a sumar al propietario en la próxima rendición.'
+                  : 'Se le va a descontar al propietario en la próxima rendición.'
+                : 'Queda sólo en la caja: no entra en la rendición de ningún propietario.'}
+            </p>
           </div>
 
           <div className="grid grid-cols-2 gap-2">

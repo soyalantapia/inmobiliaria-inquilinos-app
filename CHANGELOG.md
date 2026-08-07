@@ -10,6 +10,50 @@
 
 Plataforma SaaS multi-tenant para inmobiliarias (panel) e inquilinos (PWA). Estado de cambios desde el handoff inicial hasta hoy.
 
+### Caja: la propiedad pasa a opcional y la cuenta a obligatoria (03/08)
+Pedido de Camila. Por la caja pasa plata que **no es de ninguna unidad** (gastos de la oficina,
+movimientos entre socios) y había que elegir una propiedad cualquiera, lo que le ensuciaba la
+rendición a ese propietario. Del otro lado, si un movimiento no dice de qué cuenta salió o a cuál
+entró, los totales por cuenta nunca cierran contra el total de la caja.
+- **Propiedad opcional** (`MovimientoCaja.propiedadId` nullable, migración
+  `20260803120000_caja_propiedad_opcional_cuenta_predeterminada`). Un movimiento sin propiedad no
+  entra en ninguna rendición — las consultas filtran `propiedadId: { in: [...] }` y en SQL un NULL
+  nunca cae dentro de un IN, pero ahora además se filtra explícito para que la garantía no dependa
+  de ese detalle. `onDelete: Restrict` quedó **declarado**: al volver la relación opcional, el
+  default de Prisma la habría dado vuelta a `SetNull` en silencio (de "no podés borrar una propiedad
+  con movimientos" a "se borran y los movimientos quedan huérfanos").
+- **Cuenta obligatoria**, pero sólo cuando existe una cuenta activa que pueda **recibir** ese
+  movimiento. `AyV alquileres y ventas` tiene una sola cuenta y es de solo entrada: con la regla
+  atada a "tiene alguna cuenta", sus gastos quedaban imposibles de cargar. Bloquear a la cajera es
+  peor que un movimiento sin imputar — el gasto no se registraría en ningún lado.
+- 🔴 **El selector de cuenta se escondía.** Estaba detrás de `cuentasCompatibles.length > 0`: sin
+  cuentas compatibles el campo **desaparecía sin decir una palabra**. A AyV le pasaba siempre al
+  cargar un gasto. Ahora se ve deshabilitado y explica qué falta, con link a Cuentas.
+- **Cuenta predeterminada** (`CuentaCaja.esPredeterminada`, índice UNIQUE PARCIAL por inmobiliaria):
+  a dónde va el ingreso que el sistema crea solo al saldar un cargo del inquilino. Sin ninguna
+  marcada ese cobro entra **igual, sin cuenta** — nunca puede fallar por una cuenta sin configurar.
+  La primera cuenta que acepta entradas queda marcada sola.
+- 🔴 **Bug preexistente arreglado: el selector de moneda de Caja no hacía nada.** El panel no
+  reenviaba `moneda` al crear el movimiento y el server la defaulteaba a ARS, así que un gasto en
+  dólares se guardaba en pesos y —por el filtro por moneda de la rendición— **no se le descontaba
+  nunca al propietario**. El propio formulario advertía de un problema que él mismo causaba.
+- Otros: una cuenta **archivada** ya no acepta movimientos (antes se podía imputar por API); los
+  KPIs y el tablero dejan de contar como "pendiente de descontar" lo que nunca se va a descontar;
+  filtro **"Sin propiedad"**; badge **"Solo caja"** en vez de un "Pendiente" que no baja nunca.
+- 🔴 **El cobro automático no copiaba la moneda del cargo**: `CargoContrato` tiene la suya y
+  el movimiento se guardaba con el default ARS y el mismo número, así que un cargo cobrado en
+  dólares no se le sumaba al propietario en una rendición en USD.
+- Hallazgos de la revisión adversarial (todos verificados a mano antes de tocar nada): el botón
+  **Archivar** de la pantalla usa el DELETE, no el PATCH, y ese camino **no limpiaba la marca de
+  predeterminada** — quedaba en una cuenta inactiva y cada cobro automático pasaba a registrarse
+  sin cuenta mientras la card seguía diciendo lo contrario (mi test lo tapaba: probaba el PATCH);
+  no había forma de **desmarcar** la predeterminada y editar su dirección a "solo salidas" daba un
+  409 sin salida; si `GET /cuentas` fallaba la pantalla afirmaba "no tenés cuentas" y el server
+  respondía 400; y a un OPERADOR el aviso lo mandaba a crear una cuenta en una pantalla donde no
+  tiene el botón.
+- 22 tests nuevos. Suite: 490/495 (las 5 que fallan **ya fallan en `origin/main`**, verificado con
+  el mismo commit base y base limpia: son restos de la DB de test compartida, ver `limpiar-test-db.ts`).
+
 ### Cargos del inquilino: del panel a la app + saldables (08/07)
 El cargo de una reparación imputada al inquilino (reclamo con pagador `INQUILINO`) y la **penalidad
 de rescisión** eran `CargoContrato` **write-only**: se creaban en el panel pero el inquilino no los
