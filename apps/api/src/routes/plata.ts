@@ -13,7 +13,7 @@ import { aplicarDepositoADeuda } from '../lib/aplicar-deposito.js';
 import { estadoDepositoContrato } from '../lib/deposito.js';
 import { enviarInvitacionInquilino } from '../mailer.js';
 import { borrarArchivoSiHuerfano, urlEsDelTenant } from './uploads.js';
-import { aplicarEstadoInicial, EstadoInicialInvalido } from '../lib/estado-inicial-contrato.js';
+import { aplicarEstadoInicial, EstadoInicialInvalido, PeriodosAnterioresSchema } from '../lib/estado-inicial-contrato.js';
 
 /**
  * Fase 3 — La plata: liquidaciones, validación de pagos informados, caja de
@@ -2203,22 +2203,6 @@ export async function plataRoutes(app: FastifyInstance) {
     });
   });
 
-  /**
-   * Re-validación del estado inicial guardado en el borrador. Ya fue validado por el
-   * Zod de POST /contratos al cargarlo, pero es una columna Json: la volvemos a
-   * validar antes de tocar plata, en vez de castearla a ciegas.
-   */
-  const PeriodosAnterioresSchema = z
-    .array(
-      z.object({
-        periodo: z.string().regex(/^\d{4}-\d{2}$/),
-        estado: z.enum(['PAGADO', 'PARCIAL', 'ADEUDA']),
-        montoPagado: z.number().positive().optional(),
-        moraManual: z.number().nonnegative().optional(),
-      }),
-    )
-    .max(120);
-
   for (const accion of ['aprobar', 'rechazar'] as const) {
     app.post(`/aprobaciones/:id/${accion}`, async (request, reply) => {
       const u = await requireUsuario(request, reply, 'contrato.aprobar');
@@ -2274,12 +2258,11 @@ export async function plataRoutes(app: FastifyInstance) {
             data:
               accion === 'aprobar'
                 ? { estado: 'ACTIVO', pendienteAprobacion: false, aprobadoAt: new Date() }
-                // Al rechazar también se limpia el estado inicial declarado en el
-                // alta: el contrato rechazado nunca se va a aprobar, así que esa
-                // deuda histórica queda colgada para siempre si no la borramos acá.
-                // Prisma.DbNull (no `null` pelado): en un campo Json, `null` es
-                // ambiguo entre "borrar la columna" y "no tocarla".
-                : { pendienteAprobacion: false, periodosAnterioresPendientes: Prisma.DbNull },
+                // El estado inicial declarado NO se borra: queda para que quien lo
+                // cargó pueda corregir y reenviar (fase 2). No queda aplicable —
+                // la aplicación está gateada por el updateMany con estado PENDIENTE
+                // de la Aprobación, con test en rechazo-conserva-periodos.test.ts.
+                : { pendienteAprobacion: false },
           });
           // Al aprobar, el contrato se activa → reclamar la propiedad + devengar
           // sus liquidaciones, IGUAL que POST /contratos (core.ts). Antes este path
@@ -2331,28 +2314,15 @@ export async function plataRoutes(app: FastifyInstance) {
             }
           }
           if (accion === 'rechazar') {
-            // El borrador rechazado se descarta: borramos el inquilino que se creó
-            // para él. Si no, su email queda tomado (@@unique [inmobiliariaId,email])
-            // y bloquea para siempre volver a cargar un contrato con ese inquilino.
-            // El contrato queda BORRADOR-rechazado (inquilinoTitular pasa a null, ya
-            // manejado por los mappers); no genera liquidaciones ni reclamó propiedad.
-            // Antes de borrar el inquilino hay que borrar sus hijos con FK requerida
-            // (sin onDelete → Restrict por default): CodigoOtp / AnuncioAcuse /
-            // Documento / CertificadoInquilino. Si el inquilino abrió la PWA y pidió
-            // un OTP (crea un CodigoOtp), el deleteMany tiraría P2003 → rollback → la
-            // aprobación volvía a PENDIENTE y no se podía rechazar nunca más.
-            const inqs = await tx.inquilino.findMany({
-              where: { contratoId: apr.entidadId, inmobiliariaId: u.inmobiliariaId },
-              select: { id: true },
-            });
-            const inqIds = inqs.map((i) => i.id);
-            if (inqIds.length > 0) {
-              await tx.codigoOtp.deleteMany({ where: { inquilinoId: { in: inqIds } } });
-              await tx.anuncioAcuse.deleteMany({ where: { inquilinoId: { in: inqIds } } });
-              await tx.documento.deleteMany({ where: { inquilinoId: { in: inqIds } } });
-              await tx.certificadoInquilino.deleteMany({ where: { inquilinoId: { in: inqIds } } });
-              await tx.inquilino.deleteMany({ where: { id: { in: inqIds } } });
-            }
+            // Antes acá se borraba el Inquilino del borrador (y sus hijos: CodigoOtp,
+            // AnuncioAcuse, Documento, CertificadoInquilino) porque "su email queda
+            // tomado (@@unique [inmobiliariaId,email]) y bloquea volver a cargarlo".
+            // Esa razón MURIÓ con multi-alquiler: Inquilino ya NO tiene unique de email
+            // (el schema lo documenta), el unique vive en Persona — que este handler no
+            // toca — y buscarOCrearPersona (lib/persona.ts) es find-or-create, así que
+            // un email repetido se reusa en vez de chocar.
+            // Conservarlo es lo que permite CORREGIR el contrato rechazado y reenviarlo
+            // en vez de cargarlo de cero. No volver a agregar el borrado.
           }
         }
         // Mismo shape que GET /aprobaciones: el front mapea cargadoPor.nombre.

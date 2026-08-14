@@ -96,13 +96,19 @@ const estadoContratoVariant: Record<string, React.ComponentProps<typeof Badge>['
 export default function ContratosPage() {
   const { contratos, cargando } = useContratos();
   const [q, setQ] = useState('');
-  const [filtro, setFiltro] = useState<Filtro>('TODOS');
-  const [ajusteMasivoOpen, setAjusteMasivoOpen] = useState(false);
-
-  // Filtro por propietario via query string ?propietario=own_xxx
-  // Linkeado desde /propietarios/[id] y /propietarios list.
+  // Filtro por propietario (?propietario=own_xxx, desde /propietarios) y por
+  // estado (?filtro=BORRADOR, desde el aviso de "Inicio" de un rechazado):
+  // ambos son de un solo uso al entrar — de ahí adentro el usuario puede
+  // seguir tocando los chips, que no vuelven a leer la URL.
   const searchParams = useSearchParams();
   const propietarioId = searchParams?.get('propietario') ?? null;
+  const filtroParam = searchParams?.get('filtro');
+  const [filtro, setFiltro] = useState<Filtro>(
+    filtroParam === 'ACTIVO' || filtroParam === 'BORRADOR' || filtroParam === 'ARCHIVADO'
+      ? filtroParam
+      : 'TODOS',
+  );
+  const [ajusteMasivoOpen, setAjusteMasivoOpen] = useState(false);
   // Datos REALES (en demo el hook cae a los mocks): antes el filtro ?propietario=
   // se armaba con propiedadesMock/propietariosMock → en prod el Set quedaba vacío y
   // la pantalla mostraba CERO contratos para ese propietario.

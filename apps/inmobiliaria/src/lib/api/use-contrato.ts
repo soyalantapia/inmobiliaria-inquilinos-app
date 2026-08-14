@@ -88,6 +88,10 @@ interface ContratoApi {
   pendienteAprobacion: boolean | null;
   aprobadoPor: string | null;
   aprobadoAt: string | null;
+  /** Solo viaja cuando el contrato está PENDIENTE_APROBACION (ver core.ts). */
+  revisionAprobacion?: ContratoListado['revisionAprobacion'];
+  /** Solo viaja cuando ya se decidió (aprobado o rechazado); ver core.ts. */
+  decisionAprobacion?: ContratoListado['decisionAprobacion'];
   propiedad: {
     id: string;
     direccion: string;
@@ -184,6 +188,8 @@ function mapContrato(r: ContratoApi): ContratoListado {
     pendienteAprobacion: r.pendienteAprobacion ?? false,
     aprobadoPor: r.aprobadoPor,
     aprobadoAt: r.aprobadoAt,
+    revisionAprobacion: r.revisionAprobacion,
+    decisionAprobacion: r.decisionAprobacion,
     modoCobranza: r.modoCobranza ?? 'INMOBILIARIA',
     cobraDirectoPropietarioId: r.cobraDirectoPropietarioId,
     depositoGarantia: r.depositoGarantia != null && r.depositoGarantia !== '' ? Number(r.depositoGarantia) : null,
