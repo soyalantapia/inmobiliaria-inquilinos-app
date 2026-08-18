@@ -355,7 +355,8 @@ function mapMovimiento(m: MovimientoCajaApi): MovimientoCaja {
 }
 
 export interface NuevoGasto {
-  propiedadId: string;
+  /** null = movimiento propio de la inmobiliaria, no imputable a una propiedad. */
+  propiedadId: string | null;
   /** GASTO = salida, INGRESO_EXTRA = entrada. Default GASTO. */
   tipo?: MovimientoCaja['tipo'];
   categoria: MovimientoCaja['categoria'];

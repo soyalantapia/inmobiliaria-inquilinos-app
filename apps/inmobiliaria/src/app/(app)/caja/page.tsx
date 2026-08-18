@@ -254,7 +254,11 @@ export default function CajaPage() {
                 key={m.id}
                 mov={m}
                 propDireccion={
-                  opcionesProp.find((p) => p.id === m.propiedadId)?.direccion ?? '—'
+                  // Distinguimos "sin propiedad a propósito" (gasto de la inmobiliaria)
+                  // de "no la encontramos", que antes se veían igual con un guión.
+                  !m.propiedadId
+                    ? 'De la inmobiliaria'
+                    : (opcionesProp.find((p) => p.id === m.propiedadId)?.direccion ?? '—')
                 }
                 onDelete={() => setEliminando(m)}
               />
@@ -631,10 +635,14 @@ function DialogCargarGasto({
 
   const guardar = async () => {
     if (guardando) return;
-    if (!propiedadId || !descripcion.trim() || !monto) {
+    // La propiedad NO es obligatoria: sin propiedad el movimiento es de la propia
+    // inmobiliaria (oficina, sueldos, entre cajas) y no se le rinde a ningún dueño.
+    // Antes era obligatoria y no había forma de cargar esos gastos ("sí o sí tengo que
+    // elegir una propiedad", 03/08).
+    if (!descripcion.trim() || !monto) {
       toast({
         title: 'Faltan datos',
-        description: 'Propiedad, descripción y monto son obligatorios.',
+        description: 'La descripción y el monto son obligatorios.',
         variant: 'destructive',
       });
       return;
@@ -658,7 +666,7 @@ function DialogCargarGasto({
     setGuardando(true);
     try {
       await onSubmit({
-        propiedadId,
+        propiedadId: propiedadId || null,
         contratoId: prop?.contratoActualId ?? null,
         tipo,
         categoria,
@@ -735,17 +743,18 @@ function DialogCargarGasto({
             </div>
           )}
           <div className="space-y-1">
-            <Label htmlFor="caj-propiedad" className="text-xs" aria-required>
-              Propiedad <span className="text-destructive">*</span>
+            <Label htmlFor="caj-propiedad" className="text-xs">
+              Propiedad <span className="font-normal text-muted-foreground">(opcional)</span>
             </Label>
             <select
               id="caj-propiedad"
               value={propiedadId}
               onChange={(e) => setPropiedadId(e.target.value)}
-              required
               className="w-full rounded-md border bg-background px-3 py-2 text-sm"
             >
-              <option value="">Elegí una propiedad…</option>
+              {/* Sin propiedad = gasto de la inmobiliaria. Se dice explícito para que no
+                  parezca un campo que quedó sin completar. */}
+              <option value="">Sin propiedad — gasto de la inmobiliaria</option>
               {opciones.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.direccion}

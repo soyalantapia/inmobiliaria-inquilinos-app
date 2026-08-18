@@ -1790,8 +1790,17 @@ model MovimientoCaja {
   id                    String             @id @default(cuid())
   inmobiliariaId        String
   inmobiliaria          Inmobiliaria       @relation(fields: [inmobiliariaId], references: [id])
-  propiedadId           String
-  propiedad             Propiedad          @relation(fields: [propiedadId], references: [id])
+  // NULL = gasto/ingreso PROPIO de la inmobiliaria, no imputable a ninguna propiedad
+  // (alquiler de la oficina, sueldos, un adelanto entre cajas). Pedido en la prueba del
+  // 03/08: "sí o sí tengo que elegir una propiedad" / "poder mover una caja igual sin
+  // que tenga que depender de una propiedad".
+  //
+  // CONSECUENCIA DE PLATA, deliberada: la rendición filtra los gastos por
+  // `propiedadId IN propIdsConIngreso` (plata.ts), así que un movimiento sin propiedad
+  // NUNCA se le descuenta a un propietario. Es correcto: es un gasto de la
+  // inmobiliaria, no de la propiedad de nadie. Sí entra al cierre de caja del día.
+  propiedadId           String?
+  propiedad             Propiedad?         @relation(fields: [propiedadId], references: [id])
   contratoId            String?
   contrato              Contrato?          @relation(fields: [contratoId], references: [id])
   tipo                  TipoMovimientoCaja

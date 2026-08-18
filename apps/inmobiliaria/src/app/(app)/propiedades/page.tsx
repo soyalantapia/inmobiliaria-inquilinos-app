@@ -40,6 +40,7 @@ import {
   type PropiedadEnriquecida,
 } from '@/lib/propiedades-helpers';
 import { formatMonto } from '@/lib/format';
+import { rotuloPrincipal, rotuloSecundario } from '@/lib/rotulo-propiedad';
 import type { TipoPropiedad } from '@/lib/types';
 
 const tipoIcono: Record<TipoPropiedad, React.ComponentType<{ className?: string }>> = {
@@ -381,23 +382,27 @@ export default function PropiedadesPage() {
                           </div>
                         )}
                         <div className="flex-1 min-w-0 space-y-1">
-                          {/* line-clamp-2 — la direccion es el dato
-                              identificatorio de la card. Truncar a 1 linea
-                              dejaba "Gorriti 4521, 3..." que no permitia
-                              distinguir entre unidades del mismo edificio. */}
+                          {/* EN GRANDE va el nombre por el que la inmobiliaria la
+                              reconoce (consorcio o complejo); la dirección baja al
+                              renglón secundario. Antes era al revés y el complejo era
+                              un badge chico: "yo me guío directamente por el complejo,
+                              nosotros cuando decimos Lourdes no le decimos nunca
+                              Artigas la dirección" (03/08).
+                              line-clamp-2 porque el rótulo sigue siendo el dato
+                              identificatorio: truncar a 1 línea no permitía distinguir
+                              unidades del mismo edificio. */}
                           <p className="line-clamp-2 font-semibold leading-tight">
-                            {propiedad.direccion}
+                            {rotuloPrincipal(propiedad)}
                           </p>
+                          {rotuloSecundario(propiedad) && (
+                            <p className="line-clamp-1 text-xs font-medium text-foreground/80">
+                              {rotuloSecundario(propiedad)}
+                            </p>
+                          )}
                           <p className="text-xs text-muted-foreground">
                             {propiedad.ciudad}, {propiedad.provincia} ·{' '}
                             {tipoPropiedadLabel[propiedad.tipo]}
                           </p>
-                          {propiedad.complejo && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
-                              <Building2 className="h-3 w-3" />
-                              {propiedad.complejo}
-                            </span>
-                          )}
                         </div>
                         <Badge variant={estadoCfg.variant} className="shrink-0">
                           {estadoCfg.label}

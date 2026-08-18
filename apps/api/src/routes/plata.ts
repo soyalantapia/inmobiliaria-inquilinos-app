@@ -1455,7 +1455,12 @@ export async function plataRoutes(app: FastifyInstance) {
     if (!u) return;
     const body = z
       .object({
-        propiedadId: z.string(),
+        // Opcional: sin propiedad = gasto/ingreso PROPIO de la inmobiliaria (oficina,
+        // sueldos, movimiento entre cajas). Ver el comentario del campo en el schema:
+        // esos movimientos NO entran a la rendición de ningún propietario, a propósito.
+        // Se acepta null además de undefined porque el form manda null cuando no se
+        // eligió propiedad (mismo caso que `proveedor` y `comprobante` acá abajo).
+        propiedadId: z.string().nullable().optional(),
         // tipo: SALIDA (GASTO) o ENTRADA (INGRESO_EXTRA). Default GASTO (compat).
         tipo: z.enum(['GASTO', 'INGRESO_EXTRA']).default('GASTO'),
         // Categoría obligatoria para gastos; opcional para ingresos (cae a OTRO).
@@ -1506,16 +1511,24 @@ export async function plataRoutes(app: FastifyInstance) {
       }
     }
 
-    const prop = await prisma.propiedad.findFirst({ where: { id: body.data.propiedadId, inmobiliariaId: u.inmobiliariaId } });
-    if (!prop) return reply.code(404).send({ message: 'Propiedad inexistente' });
+    // Sin propiedad = movimiento propio de la inmobiliaria (oficina, sueldos, entre
+    // cajas). Si viene una, se valida contra el tenant como siempre.
+    let prop: { id: string; contratoActualId: string | null } | null = null;
+    if (body.data.propiedadId) {
+      prop = await prisma.propiedad.findFirst({
+        where: { id: body.data.propiedadId, inmobiliariaId: u.inmobiliariaId },
+        select: { id: true, contratoActualId: true },
+      });
+      if (!prop) return reply.code(404).send({ message: 'Propiedad inexistente' });
+    }
     const usuario = await prisma.usuario.findUnique({ where: { id: u.userId } });
     const esIngreso = body.data.tipo === 'INGRESO_EXTRA';
 
     const mov = await prisma.movimientoCaja.create({
       data: {
         inmobiliariaId: u.inmobiliariaId,
-        propiedadId: prop.id,
-        contratoId: prop.contratoActualId,
+        propiedadId: prop?.id ?? null,
+        contratoId: prop?.contratoActualId ?? null,
         tipo: body.data.tipo,
         categoria: body.data.categoria ?? 'OTRO',
         descripcion: body.data.descripcion,
@@ -1801,6 +1814,11 @@ export async function plataRoutes(app: FastifyInstance) {
 
         let totalGastos = 0;
         const gastosData = gastosPend.flatMap((g) => {
+          // `propiedadId` es nullable desde que existen los gastos propios de la
+          // inmobiliaria (oficina, sueldos). Acá nunca debería entrar uno —la query
+          // filtra por `propiedadId IN propIdsConIngreso`— pero se saltea explícitamente
+          // en vez de asumirlo: un gasto sin propiedad NO se le rinde a ningún dueño.
+          if (!g.propiedadId || !g.propiedad) return [];
           const part = owner.participaciones.find((p) => p.propiedadId === g.propiedadId);
           const porcentaje = part?.porcentaje ?? 100;
           const leToca = Number(g.monto) * (porcentaje / 100);
@@ -1944,6 +1962,9 @@ export async function plataRoutes(app: FastifyInstance) {
 
         let totalIngresos = 0;
         const ingresosData = ingresosPend.flatMap((mov) => {
+          // Mismo criterio que los gastos: un ingreso extra sin propiedad es de la
+          // inmobiliaria y no se reparte a ningún propietario.
+          if (!mov.propiedadId || !mov.propiedad) return [];
           const part = owner.participaciones.find((p) => p.propiedadId === mov.propiedadId);
           const porcentaje = part?.porcentaje ?? 100;
           const leToca = Number(mov.monto) * (porcentaje / 100);
