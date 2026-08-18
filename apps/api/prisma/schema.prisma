@@ -32,6 +32,11 @@ datasource db {
 
 enum Rol {
   ADMIN
+  // Puesto de mostrador: confirma/rechaza los pagos que informan los inquilinos, carga
+  // cobros en efectivo y mueve la caja. Pedido explícito de la administradora
+  // (prueba del 03/08): antes conciliar era de OPERADOR, o sea que cualquiera del día
+  // a día daba plata por cobrada. Ver packages/shared/src/permisos.ts.
+  CAJA
   OPERADOR
   CARGA
   LECTURA

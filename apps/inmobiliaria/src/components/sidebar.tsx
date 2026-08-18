@@ -161,7 +161,7 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
   const pendientes = apiEnabled
     ? aprobaciones.filter((a) => a.estado === 'PENDIENTE').length
     : pendientesLocal;
-  const { me } = useMe();
+  const { me, isError: meError } = useMe();
 
   useEffect(() => {
     if (apiEnabled) return;
@@ -190,9 +190,14 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
   // secundarios). Mientras `me` carga, piso a LECTURA: nunca de más.
   const rol: Rol = apiEnabled ? normalizarRol(me?.rol, 'LECTURA') : rolDemo;
 
+  // Con /auth/me caído NO recortamos el menú en silencio: dos personas con el mismo rol
+  // veían paneles distintos según si su sesión había resuelto o no, y la que fallaba
+  // quedaba con el menú de LECTURA sin ninguna pista de por qué (reportado el 03/08:
+  // "las dos tienen diferentes cosas en el panel"). Mostramos todos los links y avisamos,
+  // que es honesto: el 403 del server sigue siendo la frontera real de permisos.
   const linksVisibles = links.filter(
     (l) =>
-      (!l.capacidad || rolTienePermiso(rol, l.capacidad)) &&
+      (!l.capacidad || meError || rolTienePermiso(rol, l.capacidad)) &&
       // "Verificar inquilino" OCULTO en prod (pedido del dueño 07/07): el
       // screening actual no funciona bien y se rehace la semana próxima. En el
       // build demo queda visible (ahí el mock anda y se usa para demos).
@@ -220,6 +225,12 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
           nav scrollea sola si no entra, y el footer (cuenta + Cerrar sesión)
           queda SIEMPRE visible abajo. */}
       <nav aria-label="Navegación principal" className="flex-1 space-y-1 overflow-y-auto p-3">
+        {meError && (
+          <div className="mb-2 rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-900 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
+            No pudimos cargar tu perfil, así que el menú puede mostrarte cosas que tu rol no
+            permite. Recargá la página.
+          </div>
+        )}
         {(() => {
           // El padre NO se prende si otro ítem visible matchea la ruta exacta.
           // Sin esto, en /profesionales/red se prendían las dos filas a la vez

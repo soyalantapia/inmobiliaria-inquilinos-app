@@ -726,7 +726,7 @@ export function useActualizarAvatar(): {
   };
 }
 
-export function useMe(): { me: Me | null; cargando: boolean } {
+export function useMe(): { me: Me | null; cargando: boolean; isError: boolean } {
   const q = useQuery({
     queryKey: ['me'],
     queryFn: async () => {
@@ -759,10 +759,16 @@ export function useMe(): { me: Me | null; cargando: boolean } {
         trial: null,
       },
       cargando: false,
+      isError: false,
     };
   }
   const d = q.data;
-  if (!d) return { me: null, cargando: q.isPending };
+  // isError viaja porque el CALLER no puede distinguir "todavía no cargó" de "falló":
+  // en los dos casos `me` es null. El sidebar filtra el menú por `me.rol` y, sin esta
+  // señal, un /auth/me caído lo dejaba pisado en LECTURA para siempre y en silencio —
+  // el usuario veía un panel recortado sin ninguna explicación. Mismo criterio que
+  // useAResolverCount, donde un 0 sin isError es un 0 FALSO.
+  if (!d) return { me: null, cargando: q.isPending, isError: q.isError };
   const firstName = d.nombre.trim().split(/\s+/)[0] ?? d.nombre;
   return {
     me: {
@@ -786,6 +792,7 @@ export function useMe(): { me: Me | null; cargando: boolean } {
         : null,
     },
     cargando: false,
+    isError: false,
   };
 }
 

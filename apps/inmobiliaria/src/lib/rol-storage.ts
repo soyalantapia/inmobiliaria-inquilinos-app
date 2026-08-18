@@ -1,4 +1,4 @@
-import type { Rol } from './permisos';
+import { ROLES_ORDEN, type Rol } from './permisos';
 
 export const ROL_STORAGE_KEY = 'llave-inmo:rol-sesion:v1';
 
@@ -14,8 +14,10 @@ export const ROL_CHANGE_EVENT = 'inmo:rol-change';
  * ni por un instante. En el path demo el fallback es ADMIN (ver getRolActual).
  */
 export function normalizarRol(v: string | null | undefined, fallback: Rol = 'LECTURA'): Rol {
-  if (v === 'ADMIN' || v === 'OPERADOR' || v === 'CARGA' || v === 'LECTURA') return v;
-  return fallback;
+  // Se valida contra ROLES_ORDEN y no contra una lista literal: cuando se agregó el rol
+  // CAJA, una lista escrita a mano acá lo habría normalizado silenciosamente a LECTURA
+  // y la cajera habría entrado con el menú de solo-lectura sin ningún error visible.
+  return (ROLES_ORDEN as readonly string[]).includes(v ?? '') ? (v as Rol) : fallback;
 }
 
 // SOLO para el build demo (sin API): el rol se elige localmente. En prod el rol
