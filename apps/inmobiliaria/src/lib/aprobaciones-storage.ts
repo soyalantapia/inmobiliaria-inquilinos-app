@@ -70,6 +70,42 @@ export interface Aprobacion {
   comentarioAprobador?: string;
   /** Notas adicionales del autor para el aprobador. */
   notas?: string;
+  /**
+   * Qué se está aprobando. Sólo viene del API y sólo para CONTRATO_CARGADO: sin esto
+   * la bandeja mostraba "Aprobar / Rechazar" y no había forma de ver el contrato
+   * antes de decidir.
+   */
+  contrato?: ContratoEnAprobacion | null;
+}
+
+/** Datos del contrato cargado que se muestran antes de aprobarlo (read-only). */
+export interface ContratoEnAprobacion {
+  id: string;
+  monto: string | number;
+  montoExpensas?: string | number | null;
+  moneda: string;
+  fechaInicio: string;
+  fechaFin: string;
+  diaPago: number;
+  depositoGarantia?: string | number | null;
+  modoCobranza: string;
+  estado: string;
+  periodosAnterioresPendientes?: unknown;
+  propiedad: {
+    direccion: string;
+    ciudad: string;
+    complejo?: string | null;
+    consorcio?: { nombre: string } | null;
+  } | null;
+  inquilinoTitular: {
+    nombre: string;
+    apellido: string;
+    email?: string | null;
+    telefono?: string | null;
+    dni?: string | null;
+  } | null;
+  garantes: { id: string; nombreProveedor?: string | null; tipo: string }[];
+  documentos: { id: string }[];
 }
 
 function leer(): Aprobacion[] {

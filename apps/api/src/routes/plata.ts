@@ -2196,11 +2196,61 @@ export async function plataRoutes(app: FastifyInstance) {
   app.get('/aprobaciones', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'contratos.ver');
     if (!u) return;
-    return prisma.aprobacion.findMany({
+    const aprobaciones = await prisma.aprobacion.findMany({
       where: { inmobiliariaId: u.inmobiliariaId },
       include: { cargadoPor: { select: { nombre: true, apellido: true, rol: true } } },
       orderBy: { cargadoAt: 'desc' },
     });
+
+    // QUÉ SE ESTÁ APROBANDO. `Aprobacion` sólo guarda titulo/descripcion/monto y un
+    // `entidadId` polimórfico, así que la bandeja mostraba "Aprobar / Rechazar" sin
+    // ninguna forma de ver el contrato cargado. En la prueba del 03/08 la
+    // administradora lo dijo con todas las letras: "me sale aprobar o rechazar pero no
+    // puedo [verlo]" y "no pude visualizar lo que ella estaba cargando". Estaba
+    // aprobando a ciegas altas que crean liquidaciones y ocupan una propiedad.
+    //
+    // Adjuntamos el contrato de las CONTRATO_CARGADO en una sola query (sin N+1),
+    // scopeada por tenant. Los otros tipos no lo necesitan: hoy devuelven 501 al
+    // aprobar y se resuelven en su propia pantalla.
+    const idsContrato = aprobaciones
+      .filter((a) => a.tipo === 'CONTRATO_CARGADO')
+      .map((a) => a.entidadId);
+    if (idsContrato.length === 0) return aprobaciones;
+
+    const contratos = await prisma.contrato.findMany({
+      where: { id: { in: idsContrato }, inmobiliariaId: u.inmobiliariaId },
+      select: {
+        id: true,
+        monto: true,
+        montoExpensas: true,
+        moneda: true,
+        fechaInicio: true,
+        fechaFin: true,
+        diaPago: true,
+        depositoGarantia: true,
+        modoCobranza: true,
+        estado: true,
+        periodosAnterioresPendientes: true,
+        // `complejo` es el rótulo por el que la inmobiliaria realmente identifica la
+        // unidad ("Lourdes 11 1ºA"), no la calle. Si además cuelga de un Consorcio
+        // real, ese nombre manda.
+        propiedad: {
+          select: {
+            direccion: true,
+            ciudad: true,
+            complejo: true,
+            consorcio: { select: { nombre: true } },
+          },
+        },
+        inquilinoTitular: { select: { nombre: true, apellido: true, email: true, telefono: true, dni: true } },
+        garantes: { select: { id: true, nombreProveedor: true, tipo: true } },
+        documentos: { select: { id: true } },
+      },
+    });
+    const porId = new Map(contratos.map((c) => [c.id, c]));
+    return aprobaciones.map((a) =>
+      a.tipo === 'CONTRATO_CARGADO' ? { ...a, contrato: porId.get(a.entidadId) ?? null } : a,
+    );
   });
 
   /**

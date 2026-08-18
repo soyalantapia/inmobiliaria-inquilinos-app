@@ -22,8 +22,10 @@ import { Label } from '@llave/ui/label';
 import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
 import { PinPromptDialog } from '@/components/pin-prompt-dialog';
+import Link from 'next/link';
 import {
   type Aprobacion,
+  type ContratoEnAprobacion,
   type TipoAprobacion,
   TIPO_APROBACION_LABEL,
 } from '@/lib/aprobaciones-storage';
@@ -264,6 +266,79 @@ export function BandejaAprobaciones() {
   );
 }
 
+/** Nombre por el que la inmobiliaria identifica la unidad: consorcio > complejo > calle. */
+function rotuloPropiedad(p: NonNullable<ContratoEnAprobacion['propiedad']>): string {
+  const ref = p.consorcio?.nombre ?? p.complejo ?? null;
+  return ref ? `${ref} · ${p.direccion}` : p.direccion;
+}
+
+function fechaCorta(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('es-AR', { timeZone: 'UTC' });
+}
+
+/**
+ * Ficha read-only del contrato que se está por aprobar. No reemplaza al detalle
+ * completo: muestra lo que hace falta para decidir (quién, dónde, cuánto, desde
+ * cuándo, a qué cuenta cobra) y avisa de lo que NO se cargó, que es justo lo que la
+ * administradora reclamó no poder ver ("no cargó nada de los garantes, no tengo
+ * documentos").
+ */
+function DetalleContratoAprobacion({ contrato }: { contrato: ContratoEnAprobacion }) {
+  const sim = contrato.moneda === 'USD' ? 'US$' : '$';
+  const inq = contrato.inquilinoTitular;
+  const filas: { k: string; v: string }[] = [
+    { k: 'Propiedad', v: contrato.propiedad ? rotuloPropiedad(contrato.propiedad) : '—' },
+    { k: 'Inquilino', v: inq ? `${inq.nombre} ${inq.apellido}`.trim() : '—' },
+    { k: 'Contacto', v: [inq?.telefono, inq?.email].filter(Boolean).join(' · ') || '— sin contacto cargado' },
+    { k: 'DNI', v: inq?.dni || '— sin DNI' },
+    { k: 'Alquiler', v: `${sim}${Number(contrato.monto).toLocaleString('es-AR')}` },
+    {
+      k: 'Expensas',
+      v: contrato.montoExpensas != null ? `${sim}${Number(contrato.montoExpensas).toLocaleString('es-AR')}` : 'no incluye',
+    },
+    { k: 'Vigencia', v: `${fechaCorta(contrato.fechaInicio)} → ${fechaCorta(contrato.fechaFin)}` },
+    { k: 'Día de pago', v: String(contrato.diaPago) },
+    {
+      k: 'Depósito',
+      v: contrato.depositoGarantia != null ? `${sim}${Number(contrato.depositoGarantia).toLocaleString('es-AR')}` : '—',
+    },
+    {
+      k: 'Cobra',
+      v: contrato.modoCobranza === 'PROPIETARIO_DIRECTO' ? 'directo el propietario' : 'la inmobiliaria',
+    },
+    {
+      k: 'Garantes',
+      v: contrato.garantes.length
+        ? contrato.garantes.map((g) => g.nombreProveedor || g.tipo).join(', ')
+        : '— ninguno cargado',
+    },
+    { k: 'Documentos', v: contrato.documentos.length ? `${contrato.documentos.length}` : '— ninguno cargado' },
+  ];
+
+  return (
+    <div className="rounded-md border bg-muted/30 p-3">
+      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+        Lo que se está por aprobar
+      </p>
+      <dl className="grid gap-x-4 gap-y-1 sm:grid-cols-2">
+        {filas.map((f) => (
+          <div key={f.k} className="flex justify-between gap-2 text-xs">
+            <dt className="shrink-0 text-muted-foreground">{f.k}</dt>
+            <dd className="min-w-0 truncate text-right font-medium">{f.v}</dd>
+          </div>
+        ))}
+      </dl>
+      <Link
+        href={`/contratos/${contrato.id}`}
+        className="mt-2 inline-block text-xs font-medium text-primary hover:underline"
+      >
+        Ver el contrato completo →
+      </Link>
+    </div>
+  );
+}
+
 interface CardProps {
   aprobacion: Aprobacion;
   disabled?: boolean;
@@ -316,6 +391,11 @@ function AprobacionCard({ aprobacion, disabled = false, onAprobar, onRechazar }:
             )}
           </div>
         </div>
+
+        {/* QUÉ SE ESTÁ APROBANDO. Antes la card sólo tenía titulo/descripcion y el
+            aprobador decidía a ciegas sobre un alta que genera liquidaciones y ocupa
+            una propiedad ("me sale aprobar o rechazar pero no puedo verlo", 03/08). */}
+        {aprobacion.contrato && <DetalleContratoAprobacion contrato={aprobacion.contrato} />}
 
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <Avatar className="h-5 w-5">
