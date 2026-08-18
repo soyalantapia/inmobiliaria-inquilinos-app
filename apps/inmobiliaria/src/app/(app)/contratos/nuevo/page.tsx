@@ -18,7 +18,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { cn } from '@llave/ui/cn';
 import { enumerarPeriodosContrato } from '@llave/shared/periodos';
 import { Topbar } from '@/components/topbar';
-import { apiEnabled, apiFetch, ApiError, subirArchivo, varianteError } from '@/lib/api/client';
+import { apiEnabled, apiFetch, ApiError, datoDeError, subirArchivo, varianteError } from '@/lib/api/client';
 import { ensureApiSession } from '@/lib/api/session';
 import {
   borrarBorradorContrato,
@@ -28,7 +28,8 @@ import {
   type BorradorContrato,
 } from '@/lib/contrato-borrador-storage';
 import type { PersonaListado } from '@/lib/api/use-inquilinos';
-import { usePropiedades, useMercado, useCobranza } from '@/lib/api/hooks';
+import { usePropiedades, useMercado, useCobranza, usePropietarios } from '@/lib/api/hooks';
+import { CuentaCobranzaDialog } from '@/components/cuenta-cobranza-dialog';
 import {
   calcularMora,
   descripcionMora,
@@ -1004,6 +1005,14 @@ function CargarContratoApiWizard() {
   const [confirmando, setConfirmando] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [errorServidor, setErrorServidor] = useState<string | null>(null);
+  // Id del propietario al que le falta la cuenta de cobranza directa, cuando el alta
+  // rebota por eso. Habilita resolverlo SIN salir del wizard (ver el banner de error).
+  const [faltaCuentaPropId, setFaltaCuentaPropId] = useState<string | null>(null);
+  const [cuentaDialogOpen, setCuentaDialogOpen] = useState(false);
+  const { propietarios } = usePropietarios();
+  const propietarioSinCuenta = faltaCuentaPropId
+    ? (propietarios.find((p) => p.id === faltaCuentaPropId) ?? null)
+    : null;
   const [cancelarAbierto, setCancelarAbierto] = useState(false);
 
   // Sólo se puede dar de alta sobre propiedades DISPONIBLES: una ALQUILADA ya
@@ -1487,6 +1496,14 @@ function CargarContratoApiWizard() {
           ? e.message
           : 'No pudimos dar de alta el contrato. Reintentá en un momento.';
       setErrorServidor(msg);
+      // Cobranza directa sin cuenta del dueño: en vez de dejar al operador con un
+      // "andá a la ficha del propietario" (que lo saca del alta), guardamos a quién le
+      // falta para ofrecerle cargarla acá mismo y reintentar.
+      setFaltaCuentaPropId(
+        datoDeError<string>(e, 'codigo') === 'FALTA_CUENTA_COBRANZA'
+          ? (datoDeError<string>(e, 'propietarioId') ?? null)
+          : null,
+      );
       setEnviando(false);
       setConfirmando(false);
       toast({
@@ -1537,8 +1554,42 @@ function CargarContratoApiWizard() {
         {errorServidor && (
           <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-            <span>{errorServidor}</span>
+            <div className="space-y-2">
+              <span>{errorServidor}</span>
+              {propietarioSinCuenta && (
+                <div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setCuentaDialogOpen(true)}
+                  >
+                    Cargar la cuenta de {propietarioSinCuenta.nombre} ahora
+                  </Button>
+                </div>
+              )}
+            </div>
           </div>
+        )}
+
+        {/* Resolver la cuenta del dueño sin abandonar el alta: al guardar, el operador
+            vuelve al mismo punto del wizard y sólo tiene que volver a confirmar. */}
+        {propietarioSinCuenta && (
+          <CuentaCobranzaDialog
+            open={cuentaDialogOpen}
+            onOpenChange={setCuentaDialogOpen}
+            propietario={propietarioSinCuenta}
+            onSaved={() => {
+              qc.invalidateQueries({ queryKey: ['propietarios'] });
+              setFaltaCuentaPropId(null);
+              setErrorServidor(null);
+              toast({
+                variant: 'success',
+                title: 'Cuenta cargada',
+                description: 'Ya podés confirmar el alta del contrato.',
+              });
+            }}
+          />
         )}
 
         {paso === 1 && (

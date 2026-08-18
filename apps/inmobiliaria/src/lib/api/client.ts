@@ -34,10 +34,26 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    /**
+     * Cuerpo JSON completo de la respuesta de error, cuando vino.
+     *
+     * Existe porque varios errores del backend traen datos que el panel necesita para
+     * OFRECER LA SALIDA, no sólo para mostrar el texto: el 400 de cobranza directa
+     * manda `propietarioId` (para abrir el diálogo de la cuenta sin salir del alta) y
+     * el 409 de modo-cobranza manda `detalle` con los períodos sin rendir. Antes se
+     * descartaba todo menos `message` y el operador quedaba en un callejón sin salida.
+     */
+    public body?: unknown,
   ) {
     super(message);
     this.name = 'ApiError';
   }
+}
+
+/** Lee un campo del cuerpo de un ApiError sin romper si no vino o no es un objeto. */
+export function datoDeError<T = unknown>(e: unknown, campo: string): T | undefined {
+  if (!(e instanceof ApiError) || typeof e.body !== 'object' || e.body === null) return undefined;
+  return (e.body as Record<string, unknown>)[campo] as T | undefined;
 }
 
 /**
@@ -84,13 +100,15 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   if (!res.ok) {
     manejarSesionVencida(res.status, token);
     let message = `HTTP ${res.status}`;
+    let cuerpo: unknown;
     try {
-      const body = (await res.json()) as { message?: string };
-      if (body.message) message = body.message;
+      cuerpo = (await res.json()) as { message?: string };
+      const m = (cuerpo as { message?: string }).message;
+      if (m) message = m;
     } catch {
       // sin body JSON
     }
-    throw new ApiError(res.status, message);
+    throw new ApiError(res.status, message, cuerpo);
   }
   return (await res.json()) as T;
 }
@@ -138,13 +156,15 @@ export async function subirArchivo(file: File): Promise<ArchivoSubido> {
   if (!res.ok) {
     manejarSesionVencida(res.status, token);
     let message = `HTTP ${res.status}`;
+    let cuerpo: unknown;
     try {
-      const body = (await res.json()) as { message?: string };
-      if (body.message) message = body.message;
+      cuerpo = (await res.json()) as { message?: string };
+      const m = (cuerpo as { message?: string }).message;
+      if (m) message = m;
     } catch {
       // sin body JSON
     }
-    throw new ApiError(res.status, message);
+    throw new ApiError(res.status, message, cuerpo);
   }
   return (await res.json()) as ArchivoSubido;
 }

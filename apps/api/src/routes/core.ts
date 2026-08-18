@@ -14,6 +14,7 @@ import {
   recomputarLiquidacionesFuturas,
 } from '../lib/liquidaciones.js';
 import { conSaldo, montoPagadoPorLiquidacion } from '../lib/saldos.js';
+import { alquilerCobradoSinRendir } from '../lib/rendicion-pendiente.js';
 import { aplicarDepositoADeuda } from '../lib/aplicar-deposito.js';
 import { calcularMora, resolverEsquemaMora } from '../lib/punitorios.js';
 import { aplicarEstadoInicial, EstadoInicialInvalido } from '../lib/estado-inicial-contrato.js';
@@ -987,9 +988,16 @@ export async function coreRoutes(app: FastifyInstance) {
       // sin cuenta, el contrato nacía "directo" pero el inquilino no tenía a
       // dónde transferir.
       if (!part.propietario.cuentaCobranza) {
+        // `codigo` + `propietarioId` viajan para que el panel pueda ofrecer cargar la
+        // cuenta AHÍ MISMO, sin abandonar lo que se estaba haciendo. Antes el operador
+        // leía "entrá a la ficha del propietario", se iba, y perdía el hilo del alta
+        // (reportado en la prueba del 03/08: "ya me quedé ahí").
         return reply.code(400).send({
+          codigo: 'FALTA_CUENTA_COBRANZA',
+          propietarioId: part.propietarioId,
+          propietarioNombre: `${part.propietario.nombre} ${part.propietario.apellido ?? ''}`.trim(),
           message: `Falta la cuenta de cobro directo de ${part.propietario.nombre} ${part.propietario.apellido ?? ''}`.trim() +
-            '. Entrá a la ficha del propietario → "Cuenta de cobranza directa" y cargá banco + CBU (22 dígitos) + alias. (El CBU/alias del alta del propietario NO alcanza para el cobro directo.)',
+            '. Cargale banco + CBU (22 dígitos) + alias. (El CBU/alias del alta del propietario NO alcanza para el cobro directo: son datos distintos.)',
         });
       }
       cobraDirectoPropietarioId = part.propietarioId;
@@ -2878,24 +2886,37 @@ export async function coreRoutes(app: FastifyInstance) {
     // Scopeado por inmobiliariaId (multi-tenant): un id ajeno => 404.
     const contrato = await prisma.contrato.findFirst({
       where: { id, inmobiliariaId: u.inmobiliariaId },
-      select: { id: true, modoCobranza: true, propiedadId: true },
+      select: { id: true, modoCobranza: true, propiedadId: true, moneda: true },
     });
     if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
     if (contrato.modoCobranza === body.data.modoCobranza) {
       return { ok: true, modoCobranza: contrato.modoCobranza, sinCambios: true };
     }
 
-    // GUARD rendición: si ya hay cobros CONCILIADO del período en curso, cambiar
-    // el modo dejaría esa plata ya cobrada fuera del circuito de rendición
-    // (POST /rendiciones y /caja/cierre filtran modoCobranza='INMOBILIARIA'). No
-    // se puede cambiar hasta cerrar/revertir esos cobros.
-    const periodoActual = periodoDe(new Date());
-    const cobrosPeriodo = await prisma.pago.count({
-      where: { contratoId: contrato.id, estado: 'CONCILIADO', liquidacion: { periodo: periodoActual } },
-    });
-    if (cobrosPeriodo > 0) {
+    // GUARD rendición: cambiar el modo mueve plata vieja de circuito, porque
+    // POST /rendiciones y /caja/cierre filtran por el modoCobranza ACTUAL en
+    // CUALQUIER período (no por el que regía cuando se cobró). Ver el docblock de
+    // alquilerCobradoSinRendir para los dos sentidos del agujero.
+    //
+    // Antes esto contaba "pagos conciliados del mes en curso", y estaba mal en las dos
+    // puntas: (a) bloqueaba un cambio perfectamente seguro sólo porque se había
+    // validado un pago que YA se había rendido —el caso que trabó a la operadora en la
+    // prueba del 03/08—, y (b) dejaba pasar el caso peligroso de verdad, que es plata
+    // de un mes ANTERIOR cobrada y sin rendir. El consejo que daba ("cambialo el mes
+    // que viene") además era falso: el mes que viene esa plata sigue sin rendirse.
+    const sinRendir = await alquilerCobradoSinRendir(contrato.id);
+    if (sinRendir.total > 0) {
+      // Mismo criterio de símbolo que el 409 de la rendición (plata.ts): la moneda
+      // sale del contrato, no se asume ARS.
+      const sim = contrato.moneda === 'USD' ? 'US$' : '$';
+      const detalle = sinRendir.periodos.map((p) => `${p.periodo} (${sim}${p.monto})`).join(', ');
       return reply.code(409).send({
-        message: 'No se puede cambiar el modo de cobranza: ya hay cobros conciliados este mes. Cambialo el mes que viene o revertí los cobros primero.',
+        message:
+          `No se puede cambiar el modo de cobranza todavía: hay ${sim}${sinRendir.total} de alquiler ` +
+          `ya cobrado que no se le rindió al propietario (${detalle}). ` +
+          'Rendile esos períodos desde Propietarios → Rendir y volvé a intentar. ' +
+          'Si cambiás el modo antes, esa plata queda fuera del circuito de rendición.',
+        detalle: { ...sinRendir, moneda: contrato.moneda },
       });
     }
 
@@ -2912,9 +2933,16 @@ export async function coreRoutes(app: FastifyInstance) {
         return reply.code(400).send({ message: 'La propiedad necesita dueños cargados para usar cobranza directa al propietario' });
       }
       if (!part.propietario.cuentaCobranza) {
+        // `codigo` + `propietarioId` viajan para que el panel pueda ofrecer cargar la
+        // cuenta AHÍ MISMO, sin abandonar lo que se estaba haciendo. Antes el operador
+        // leía "entrá a la ficha del propietario", se iba, y perdía el hilo del alta
+        // (reportado en la prueba del 03/08: "ya me quedé ahí").
         return reply.code(400).send({
+          codigo: 'FALTA_CUENTA_COBRANZA',
+          propietarioId: part.propietarioId,
+          propietarioNombre: `${part.propietario.nombre} ${part.propietario.apellido ?? ''}`.trim(),
           message: `Falta la cuenta de cobro directo de ${part.propietario.nombre} ${part.propietario.apellido ?? ''}`.trim() +
-            '. Entrá a la ficha del propietario → "Cuenta de cobranza directa" y cargá banco + CBU (22 dígitos) + alias. (El CBU/alias del alta del propietario NO alcanza para el cobro directo.)',
+            '. Cargale banco + CBU (22 dígitos) + alias. (El CBU/alias del alta del propietario NO alcanza para el cobro directo: son datos distintos.)',
         });
       }
       cobraDirectoPropietarioId = part.propietarioId;

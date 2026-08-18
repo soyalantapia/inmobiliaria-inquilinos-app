@@ -62,9 +62,10 @@ import {
 } from '@/components/mora-selector';
 import { calcularScoringInquilino, type ResumenScoring } from '@/lib/scoring-inquilino';
 import { registrarEvento } from '@/lib/auditoria-storage';
-import { apiEnabled, apiFetch, ApiError, varianteError } from '@/lib/api/client';
+import { apiEnabled, apiFetch, ApiError, datoDeError, varianteError } from '@/lib/api/client';
 import { ensureApiSession } from '@/lib/api/session';
-import { useCobranza } from '@/lib/api/hooks';
+import { useCobranza, usePropietarios } from '@/lib/api/hooks';
+import { CuentaCobranzaDialog } from '@/components/cuenta-cobranza-dialog';
 import { useContrato } from '@/lib/api/use-contrato';
 import {
   type CanalComunicacion,
@@ -1319,6 +1320,14 @@ function ModoCobranzaCard({
     contrato.modoCobranza ?? 'INMOBILIARIA';
   const [modo, setModo] = useState<'INMOBILIARIA' | 'PROPIETARIO_DIRECTO'>(inicial);
   const [guardando, setGuardando] = useState(false);
+  // Dueño al que le falta la cuenta de cobro directo, para poder cargarla sin salir
+  // de la ficha del contrato.
+  const [faltaCuentaPropId, setFaltaCuentaPropId] = useState<string | null>(null);
+  const [cuentaDialogOpen, setCuentaDialogOpen] = useState(false);
+  const { propietarios } = usePropietarios();
+  const propietarioSinCuenta = faltaCuentaPropId
+    ? (propietarios.find((p) => p.id === faltaCuentaPropId) ?? null)
+    : null;
   // El estado local sigue al contrato si cambia (re-fetch tras el PATCH).
   useEffect(() => {
     setModo(contrato.modoCobranza ?? 'INMOBILIARIA');
@@ -1358,6 +1367,11 @@ function ModoCobranzaCard({
               : `El inquilino transfiere directo al CBU del propietario.`,
         });
       } catch (e) {
+        // Si el rebote es "al dueño le falta la cuenta de cobro directo", ofrecemos
+        // cargarla acá mismo en vez de mandar al operador a la ficha del propietario
+        // (que es lo que lo dejaba clavado en la prueba del 03/08).
+        const faltaCuenta = datoDeError<string>(e, 'codigo') === 'FALTA_CUENTA_COBRANZA';
+        setFaltaCuentaPropId(faltaCuenta ? (datoDeError<string>(e, 'propietarioId') ?? null) : null);
         toast({
           variant: varianteError(e),
           title: 'No se pudo cambiar el modo de cobranza',
@@ -1448,6 +1462,36 @@ function ModoCobranzaCard({
             </p>
           </button>
         </div>
+
+        {propietarioSinCuenta && (
+          <div className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs dark:border-amber-800 dark:bg-amber-900/20">
+            <p className="text-amber-900 dark:text-amber-200">
+              Para cobrar directo, <strong>{propietarioSinCuenta.nombre}</strong> necesita su cuenta
+              de cobro cargada (banco + CBU + alias). No es el CBU del alta del propietario: es un
+              dato aparte.
+            </p>
+            <Button type="button" size="sm" variant="outline" onClick={() => setCuentaDialogOpen(true)}>
+              Cargar la cuenta ahora
+            </Button>
+          </div>
+        )}
+
+        {propietarioSinCuenta && (
+          <CuentaCobranzaDialog
+            open={cuentaDialogOpen}
+            onOpenChange={setCuentaDialogOpen}
+            propietario={propietarioSinCuenta}
+            onSaved={() => {
+              qc.invalidateQueries({ queryKey: ['propietarios'] });
+              setFaltaCuentaPropId(null);
+              toast({
+                variant: 'success',
+                title: 'Cuenta cargada',
+                description: 'Ya podés pasar el contrato a cobranza directa.',
+              });
+            }}
+          />
+        )}
 
         {modo === 'PROPIETARIO_DIRECTO' && propietarioDirecto?.cuentaCobranza && (
           <div className="space-y-2 rounded-md border bg-muted/30 p-3 text-xs">
