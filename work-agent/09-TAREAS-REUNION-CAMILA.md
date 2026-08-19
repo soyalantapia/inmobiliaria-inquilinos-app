@@ -3736,7 +3736,14 @@ escrito por qué en esos tres el `?? 100` sí es correcto.
 
 ---
 
-## T-44-N3 · Nada avisa cuando una rama terminada se queda afuera
+## T-44-N3 · Nada avisa cuando una rama terminada se queda afuera — ✅ HECHA
+
+**Estado: ✅ HECHA** — commit `121ce0c`. `pnpm ramas` en local + un job aparte en `revision.yml`.
+Detalle en `work-agent/tareas/T-44-N3/estado.md`.
+
+⚠️ **Al hacerla apareció algo más grande que la tarea:** ninguna rama de tarea está pusheada, y la
+rama de integración **no existe en origin** — 263 commits en un solo disco, sin backup y sin que
+el CI los haya visto nunca. El script avisa las dos cosas por eso. **Pushear es tuyo.**
 
 **Experto:** OPS · **Prioridad:** 🟡 · **Depende de:** nada
 **Origen:** T-44-N1.
