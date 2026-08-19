@@ -9,8 +9,20 @@ import { seedOperacion } from './seeds/operacion.js';
 import { seedAnuncios } from './seeds/anuncios.js';
 import { seedInquilinoMundo } from './seeds/inquilinoMundo.js';
 
+/**
+ * Contraseña COMPARTIDA por los tres usuarios del seed, a propósito.
+ *
+ * Es una decisión de fixture, no el patrón a copiar: ~64 tests loguean con esta
+ * contraseña como roberto (ADMIN), luciana (OPERADOR) y camila (CARGA) para
+ * ejercitar los permisos por rol. Darle una distinta a cada uno obligaría a
+ * tocarlos todos sin ganar nada — este tenant es la demo ("Inmobiliaria del
+ * Sol"), vive en el schema de test y su contraseña está acá escrita.
+ *
+ * En el alta REAL de una inmobiliaria esto sería un agujero, y por eso el alta
+ * real ya no lo hace: `scripts/lib/credenciales-alta.mjs` impide que un usuario
+ * herede la credencial de otro.
+ */
 const PASSWORD_DEV = 'delsol123';
-const PIN_DEV = '1234';
 
 export async function seedBase(prisma: PrismaClient) {
   // ===== Tenant =====
@@ -38,7 +50,12 @@ export async function seedBase(prisma: PrismaClient) {
 
   // ===== Usuarios del panel =====
   const passwordHash = bcrypt.hashSync(PASSWORD_DEV, 10);
-  const pinHash = bcrypt.hashSync(PIN_DEV, 10);
+  // SIN pinHash. Antes los tres usuarios nacían con el mismo PIN ('1234'), que
+  // es exactamente lo que T-25 (cambio rápido de usuario) convierte en la
+  // credencial para hacerse pasar por otro: tres personas con el mismo PIN es
+  // ninguna separación. Hoy no autentica nada (`verificarPinUsuario` siempre
+  // aprueba) y ningún test lo usa, así que sacarlo no rompe nada y deja el
+  // fixture alineado con la regla del alta real.
   const usuarios = [
     { email: 'roberto@delsol.com', nombre: 'Roberto', apellido: 'Tapia', rol: 'ADMIN' as const },
     { email: 'luciana@delsol.com', nombre: 'Luciana', apellido: 'Vidal', rol: 'OPERADOR' as const },
@@ -48,7 +65,7 @@ export async function seedBase(prisma: PrismaClient) {
     prisma.usuario.upsert({
       where: { inmobiliariaId_email: { inmobiliariaId: tid, email: u.email } },
       update: { nombre: u.nombre, apellido: u.apellido, rol: u.rol },
-      create: { ...u, inmobiliariaId: tid, passwordHash, pinHash },
+      create: { ...u, inmobiliariaId: tid, passwordHash },
     }),
   ));
 

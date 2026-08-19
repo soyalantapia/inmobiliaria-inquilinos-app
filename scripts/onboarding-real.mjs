@@ -42,8 +42,15 @@ const { inmobiliaria: I, admin: A, sociedad: S, propietarios: OWN, propiedad: P,
 
 // ── Validaciones de forma ───────────────────────────────────────────────────
 req('inmobiliaria.nombre', I?.nombre); req('inmobiliaria.cuit', I?.cuit); req('inmobiliaria.email', I?.email);
-req('admin.email', A?.email); req('admin.password', A?.password); req('admin.pin', A?.pin);
-if (!/^\d{4,6}$/.test(A.pin)) throw new Error('admin.pin debe ser 4-6 dígitos');
+req('admin.email', A?.email); req('admin.password', A?.password);
+// `admin.pin` YA NO se usa: el alta no escribe ningún `pinHash`, para nadie. El
+// PIN identifica a una persona frente a las otras que comparten la máquina, y
+// uno que tipeó un tercero en un JSON no cumple esa función. Cada uno crea el
+// suyo desde su sesión (POST /auth/pin). Se avisa en vez de ignorarlo callado:
+// quien armó el input tiene que saber que ese PIN no quedó puesto.
+if (A?.pin) {
+  console.warn('⚠ admin.pin se ignora: los PIN los crea cada persona desde su sesión (Configuración → PIN). Sacalo del input.');
+}
 if (!Array.isArray(OWN) || OWN.length === 0) throw new Error('propietarios: al menos uno');
 OWN.forEach((o, i) => { req(`propietarios[${i}].nombre`, o.nombre); req(`propietarios[${i}].apellido`, o.apellido); });
 req('propiedad.direccion', P?.direccion); req('propiedad.ciudad', P?.ciudad); req('propiedad.provincia', P?.provincia); req('propiedad.tipo', P?.tipo);
@@ -87,15 +94,28 @@ const resumen = await prisma.$transaction(async (tx) => {
     data: {
       inmobiliariaId: tid, email: A.email.toLowerCase(), nombre: A.nombre ?? 'Admin', apellido: A.apellido ?? '',
       rol: 'ADMIN', activo: true,
-      passwordHash: bcrypt.hashSync(A.password, 10), pinHash: bcrypt.hashSync(A.pin, 10),
+      passwordHash: bcrypt.hashSync(A.password, 10),
+      // El PIN lo crea su dueño desde su sesión (POST /auth/pin). Ver scripts/lib/credenciales-alta.mjs.
+      pinHash: PIN_SE_CREA_EN_LA_SESION,
     },
   });
   for (const u of (input.usuariosExtra ?? [])) {
+    // NUNCA hereda del admin. Antes esta línea era
+    //   passwordHash: bcrypt.hashSync(u.password ?? A.password, 10)
+    // y ese `?? A.password` alcanzaba para que la cajera quedara con la
+    // contraseña de la administradora — o sea, con acceso ADMIN vía /auth/login.
+    // Sin contraseña propia, la cuenta entra por OTP.
+    //
+    // La decisión vive en scripts/lib/credenciales-alta.mjs, que NO recibe al
+    // admin: heredarle es imposible por la forma de la función, no por acordarse.
+    const cred = passwordDeUsuarioExtra(u);
+    if (cred.error) throw new Error(cred.error);
     await tx.usuario.create({
       data: {
         inmobiliariaId: tid, email: u.email.toLowerCase(), nombre: u.nombre, apellido: u.apellido ?? '',
         rol: u.rol ?? 'CARGA', activo: true,
-        passwordHash: bcrypt.hashSync(u.password ?? A.password, 10), pinHash: bcrypt.hashSync(u.pin ?? A.pin, 10),
+        passwordHash: cred.password ? bcrypt.hashSync(cred.password, 10) : null,
+        pinHash: PIN_SE_CREA_EN_LA_SESION,
       },
     });
   }
