@@ -390,3 +390,55 @@ export function recomputarLiquidacionesFuturas(
   }
   return out;
 }
+
+/** Igual que `LiquidacionParaReajustar`, pero del lado de las EXPENSAS: acá el
+ *  alquiler es lo que se conserva y las expensas lo que cambia. */
+export type LiquidacionParaReexpensar = {
+  id: string;
+  periodo: string;
+  estado: 'PENDIENTE' | 'PAGADO' | 'PARCIAL' | 'VENCIDO';
+  montoAlquiler: Prisma.Decimal | number;
+  montoExpensas: Prisma.Decimal | number | null;
+  /** Cantidad de pagos (de cualquier estado) asociados a la liquidación. */
+  cantidadPagos: number;
+};
+
+/**
+ * Espejo de `recomputarLiquidacionesFuturas` para un cambio de EXPENSAS.
+ *
+ * Las expensas suben todos los meses, así que esto se usa seguido — y por eso
+ * comparte el criterio conservador del ajuste de canon, línea por línea:
+ *
+ *  - período >= mes actual: no se tocan meses pasados (el inquilino ya vio ese
+ *    valor y probablemente lo pagó);
+ *  - estado PENDIENTE o VENCIDO: no se tocan PAGADO ni PARCIAL;
+ *  - sin ningún pago asociado: aunque siga PENDIENTE, si hay un pago INFORMADO
+ *    en revisión el inquilino ya informó contra el total que vio.
+ *
+ * La diferencia con el ajuste de canon es cuál de los dos montos se conserva:
+ * acá el `montoAlquiler` de CADA liquidación queda como está (puede diferir del
+ * canon del contrato si hubo un ajuste con vigencia futura) y sólo se pisa la
+ * parte de expensas. Devuelve sólo las que cambian.
+ */
+export function recomputarExpensasFuturas(
+  liquidaciones: LiquidacionParaReexpensar[],
+  params: { expensasNuevas: number; periodoActual: string },
+): Array<{ id: string; montoExpensas: number; montoTotal: number }> {
+  const out: Array<{ id: string; montoExpensas: number; montoTotal: number }> = [];
+  for (const l of liquidaciones) {
+    // Comparación lexicográfica de 'YYYY-MM': correcta porque ambos tienen el
+    // mismo formato ancho-fijo.
+    if (l.periodo < params.periodoActual) continue;
+    if (l.estado !== 'PENDIENTE' && l.estado !== 'VENCIDO') continue;
+    if (l.cantidadPagos > 0) continue;
+    const expensasViejas = l.montoExpensas != null ? Number(l.montoExpensas) : 0;
+    if (expensasViejas === params.expensasNuevas) continue;
+    const alquiler = Number(l.montoAlquiler);
+    out.push({
+      id: l.id,
+      montoExpensas: params.expensasNuevas,
+      montoTotal: alquiler + params.expensasNuevas,
+    });
+  }
+  return out;
+}

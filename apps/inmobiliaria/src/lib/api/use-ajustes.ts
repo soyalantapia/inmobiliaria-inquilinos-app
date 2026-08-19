@@ -71,3 +71,40 @@ export function useAjustarAlquiler(contratoId: string) {
     },
   });
 }
+
+export interface ExpensasCambiadas {
+  contrato: { id: string; montoExpensas: string | number | null; tipoContrato: string };
+  liquidacionesReajustadas: number;
+  tipoContrato: string;
+  sinCambios?: boolean;
+}
+
+/**
+ * Cambia el monto de expensas de un contrato (PATCH /contratos/:id/expensas).
+ *
+ * Hasta T-21-N1-N1 esto no existía: `montoExpensas` se escribía una sola vez, en
+ * el alta, y las expensas suben todos los meses. Para corregirlas había que
+ * rehacer el contrato entero.
+ *
+ * Invalida también ['contrato', id] y las liquidaciones: el cambio re-devenga
+ * las cuotas futuras impagas, así que lo que la pantalla está mostrando queda
+ * viejo en el mismo instante.
+ */
+export function useCambiarExpensas(contratoId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { montoExpensas: number; motivo?: string }) => {
+      await ensureApiSession();
+      return apiFetch<ExpensasCambiadas>(`/contratos/${contratoId}/expensas`, {
+        method: 'PATCH',
+        body: JSON.stringify(input),
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['contrato', contratoId] });
+      qc.invalidateQueries({ queryKey: ['contratos'] });
+      qc.invalidateQueries({ queryKey: ['liquidaciones'] });
+      qc.invalidateQueries({ queryKey: ['pagos'] });
+    },
+  });
+}
