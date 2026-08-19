@@ -1,7 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { Loader2, UserMinus } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { AlertTriangle, Loader2, UserMinus } from 'lucide-react';
 import { Button } from '@llave/ui/button';
 import {
   Dialog,
@@ -21,8 +21,10 @@ import {
   SelectValue,
 } from '@llave/ui/select';
 import { toast } from '@llave/ui/use-toast';
-import { ApiError, varianteError } from '@/lib/api/client';
+import { ApiError, apiEnabled, apiFetch, varianteError } from '@/lib/api/client';
+import { ensureApiSession } from '@/lib/api/session';
 import { useCargarDeudaHistorica } from '@/lib/api/use-ajustes';
+import type { PersonaListado } from '@/lib/api/use-inquilinos';
 
 /**
  * Cargar la deuda de un inquilino ANTERIOR que se fue debiendo.
@@ -84,7 +86,69 @@ export function CargarDeudaHistoricaDialog({ open, onOpenChange, propiedadId, di
   const [moneda, setMoneda] = useState<'ARS' | 'USD'>('ARS');
   const [expensas, setExpensas] = useState('');
 
+  /**
+   * La coincidencia encontrada, GUARDADA JUNTO AL DNI QUE SE CONSULTÓ.
+   *
+   * El texto de ayuda prometía desde el día uno que "si esta persona ya está en tu cartera se
+   * une a su ficha", pero nada lo verificaba: el merge pasaba adentro de la transacción y el
+   * operador se enteraba nunca. Camila lo pidió textual: su sistema le avisa "ya estás
+   * registrado" al tipear el DNI de alguien de hace seis años.
+   *
+   * POR QUÉ EL PAR Y NO LA PERSONA SOLA: guardando sólo la persona, entre que el operador
+   * corrige un dígito y vuelve la consulta nueva quedan 350 ms + red en los que el cartel
+   * seguía nombrando a la persona del DNI ANTERIOR. En esa ventana un click en "Usar sus
+   * datos" armaba `personaId` de A con el DNI de B —y el backend, cuando recibe `personaId`,
+   * ni mira el DNI— así que la deuda terminaba colgada de un inocente. Con el par, la
+   * coincidencia es estado DERIVADO: si el DNI de la pantalla no es el que se consultó, no hay
+   * cartel. Es imposible que quede viejo.
+   */
+  const [match, setMatch] = useState<{ dni: string; persona: PersonaListado } | null>(null);
+  const yaEnCartera = match && match.dni === dni ? match.persona : null;
+  /** Se manda sólo si el operador confirmó la coincidencia. Ver el aviso, más abajo. */
+  const [personaId, setPersonaId] = useState<string | null>(null);
+
+  // `mesEnCurso`, NO `mesPasado`: el tope se corrigió en T-24-N2-N4 porque el mes
+  // pasado dejaba afuera al moroso que se fue ESTE mes, que es el caso más
+  // frecuente de una migración. Esta rama traía todavía la versión vieja.
   const tope = mesEnCurso();
+
+  /**
+   * Aviso por DNI tipeado. AVISA, NO BLOQUEA, y no es una omisión: el merge por DNI es
+   * deliberado —lo sostiene el `@@unique([inmobiliariaId, dni])` de Persona— y es lo que
+   * permite que el mismo inquilino tenga varios alquileres. Bloquearlo rompería justo eso.
+   *
+   * El `!apiEnabled` NO es defensivo de más: este diálogo se monta SIN gate de apiEnabled en
+   * la ficha de la propiedad (sólo el botón que lo abre está gateado), así que su cuerpo corre
+   * en el build demo igual. Sin esta línea, en demo le pegaríamos a `/personas?q=` con
+   * `API_URL === ''`, o sea una URL relativa contra el host del panel.
+   */
+  useEffect(() => {
+    if (!apiEnabled || dni.length < 7) {
+      setMatch(null);
+      return;
+    }
+    let vivo = true;
+    const consultado = dni;
+    const timer = setTimeout(async () => {
+      try {
+        await ensureApiSession();
+        const r = await apiFetch<PersonaListado[]>(`/personas?q=${encodeURIComponent(consultado)}`);
+        // Comparación EXACTA, no la del endpoint: `/personas?q=` filtra con `contains`, así que
+        // un DNI a medio tipear (2845678) trae al 28456789. Avisar por un match parcial sería
+        // avisar de alguien que no es, justo en una pantalla que crea deuda.
+        const encontrada = r.find((p) => p.dni === consultado);
+        if (vivo) setMatch(encontrada ? { dni: consultado, persona: encontrada } : null);
+      } catch {
+        // Sin conexión no inventamos un aviso ni damos el DNI por limpio: no decimos nada,
+        // igual que antes de este cambio.
+        if (vivo) setMatch(null);
+      }
+    }, 350);
+    return () => {
+      vivo = false;
+      clearTimeout(timer);
+    };
+  }, [dni]);
 
   // Cuántos meses se van a generar, para que el operador lo vea ANTES de
   // confirmar: está creando deuda y el número tiene que ser el que espera.
@@ -129,6 +193,23 @@ export function CargarDeudaHistoricaDialog({ open, onOpenChange, propiedadId, di
     setMonto('');
     setMoneda('ARS');
     setExpensas('');
+    setMatch(null);
+    setPersonaId(null);
+  }
+
+  /**
+   * Trae los datos de la ficha que ya existe, para no guardar el nombre mal tipeado.
+   *
+   * Sólo pisa lo que la ficha TIENE. Con `p.apellido ?? ''` le borraba al operador el apellido
+   * que acababa de tipear de su planilla cada vez que la ficha vieja no lo tenía cargado —
+   * quedándose con menos datos que antes de apretar el botón, que es lo contrario de lo que
+   * promete.
+   */
+  function usarFichaExistente(p: PersonaListado) {
+    setPersonaId(p.id);
+    setNombre(p.nombre);
+    if (p.apellido) setApellido(p.apellido);
+    if (p.telefono) setTelefono(p.telefono);
   }
 
   async function guardar() {
@@ -136,6 +217,7 @@ export function CargarDeudaHistoricaDialog({ open, onOpenChange, propiedadId, di
     try {
       const r = await cargar.mutateAsync({
         propiedadId,
+        ...(personaId ? { personaId } : {}),
         inquilino: {
           nombre: nombre.trim(),
           ...(apellido.trim() ? { apellido: apellido.trim() } : {}),
@@ -152,9 +234,23 @@ export function CargarDeudaHistoricaDialog({ open, onOpenChange, propiedadId, di
         // una pregunta más en una carga de 50 filas, sin consecuencia real.
         diaPago: 10,
       });
+      // Si había coincidencia, la deuda cayó en esa ficha, la haya confirmado el operador o
+      // no. Son dos caminos distintos del backend que van al mismo lado: con `personaId` usa
+      // esa Persona directo; sin él, `buscarOCrearPersona` la encuentra por DNI exacto. Y son
+      // la misma porque `yaEnCartera` es estado derivado: sólo existe cuando el DNI de la
+      // pantalla es el que se consultó.
+      //
+      // El toast nombra la ficha en los dos casos, y ESO ES LO QUE HAY QUE DECIR: si tipeó
+      // "Juan Peres" y la ficha dice "Juan Pérez", ver el nombre de la ficha es lo que le
+      // muestra que se unieron. Mostrarle su propio tipeo le esconde justamente el hecho.
+      const ficha = yaEnCartera
+        ? `${yaEnCartera.nombre} ${yaEnCartera.apellido ?? ''}`.trim()
+        : null;
       toast({
         title: 'Deuda cargada',
-        description: `${r.periodosAdeudados} período(s) adeudado(s) de ${nombre.trim()}. La propiedad no cambió de estado.`,
+        description: ficha
+          ? `${r.periodosAdeudados} período(s) adeudado(s). Se sumaron a la ficha de ${ficha}, que ya estaba en tu cartera. La propiedad no cambió de estado.`
+          : `${r.periodosAdeudados} período(s) adeudado(s) de ${nombre.trim()}. La propiedad no cambió de estado.`,
       });
       limpiar();
       onOpenChange(false);
@@ -194,11 +290,79 @@ export function CargarDeudaHistoricaDialog({ open, onOpenChange, propiedadId, di
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="dh-dni">DNI</Label>
-              <Input id="dh-dni" value={dni} onChange={(e) => setDni(e.target.value)} />
-              <p className="text-xs text-muted-foreground">
-                Con el DNI, si esta persona ya está en tu cartera se une a su ficha en vez de
-                duplicarse.
-              </p>
+              <Input
+                id="dh-dni"
+                value={dni}
+                // Sólo dígitos, igual que el alta normal. No es cosmética: el backend guarda el
+                // DNI con un `.trim()` y nada más, así que un "20.123.456" tipeado con puntos
+                // queda como una Persona distinta de "20123456" y no se une nunca a su ficha.
+                onChange={(e) => {
+                  setDni(e.target.value.replace(/\D/g, '').slice(0, 9));
+                  setPersonaId(null);
+                }}
+                inputMode="numeric"
+                placeholder="20123456"
+                aria-describedby={yaEnCartera ? 'dh-dni-ya-existe' : 'dh-dni-ayuda'}
+              />
+              {yaEnCartera ? (
+                <div
+                  id="dh-dni-ya-existe"
+                  // role="status": el cartel aparece 350 ms después de dejar de tipear, cuando el
+                  // foco ya está en el campo. Cambiar el aria-describedby de un input que ya
+                  // tiene el foco no se vuelve a anunciar, así que sin esto un lector de
+                  // pantalla no se entera de nada.
+                  role="status"
+                  className="space-y-1.5 rounded-md border border-amber-300 bg-amber-50 p-2 dark:border-amber-900/40 dark:bg-amber-950/30"
+                >
+                  <p className="flex items-start gap-1.5 text-xs text-amber-900 dark:text-amber-200">
+                    <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+                    {/* Dice lo que VA A PASAR, no lo que podría pasar: con este DNI la deuda
+                        cae en esa ficha sí o sí. Un "ojo, puede que ya exista" haría dudar al
+                        operador sobre algo que ya está decidido.
+                        Y la salida que se nombra es la ÚNICA que existe de verdad: el DNI es
+                        opcional y sin DNI el backend crea una ficha aparte. Decirle "revisá el
+                        número" y nada más lo dejaba en un callejón cuando el número está bien
+                        y la persona es otra. */}
+                    <span>
+                      Ya tenés a{' '}
+                      <strong>
+                        {yaEnCartera.nombre} {yaEnCartera.apellido ?? ''}
+                      </strong>{' '}
+                      con este DNI
+                      {yaEnCartera.propiedad ? ` (${yaEnCartera.propiedad})` : ''}. Esta deuda se
+                      suma a su ficha, no se duplica el inquilino. Si no es la misma persona,
+                      revisá el número; si el número está bien, dejá el DNI vacío y cargala
+                      aparte.
+                    </span>
+                  </p>
+                  {personaId ? (
+                    <p className="text-xs text-amber-900/80 dark:text-amber-200/80">
+                      {/* Lo que realmente pasa: la Persona NO se actualiza (el backend con
+                          `personaId` sólo la busca). Lo que se guarda con el contrato es lo que
+                          quede en el formulario, así que la frase habla del formulario. */}
+                      Traído de su ficha. Podés corregirlo antes de guardar.
+                    </p>
+                  ) : (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs"
+                      onClick={() => usarFichaExistente(yaEnCartera)}
+                    >
+                      Usar sus datos
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <p id="dh-dni-ayuda" className="text-xs text-muted-foreground">
+                  {/* Antes decía "se une a su ficha en vez de duplicarse", una garantía que el
+                      sistema NO puede dar: las fichas importadas con el DNI en otro formato
+                      ("20.123.456", o un CUIT) no matchean ni acá ni en el backend. Ahora
+                      describe lo que hace, no lo que garantiza. Ver T-24-N2-N1. */}
+                  Poné el DNI y te decimos si esa persona ya está en tu cartera.
+                </p>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="dh-telefono">Teléfono</Label>
