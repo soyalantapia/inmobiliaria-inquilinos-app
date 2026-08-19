@@ -1317,6 +1317,75 @@ fila.
 
 ---
 
+### ✅ RESUELTO (lo mínimo) — commit `47c8717`
+
+`Propietario.activo`, misma convención que `Sociedad.activa` ("baja lógica") y `Usuario.activo`.
+Se filtra en el guard —que es el único punto de revocación real de un token de 7 días—, en las
+tres puertas del portal, en los anuncios y en el importador de cartera.
+
+**Cuatro decisiones que importan más que el flag:**
+
+1. **La baja es POR FILA, no por persona.** El mismo email puede ser propietario en varias
+   inmobiliarias; que una lo dé de baja no puede cerrarle el acceso a las otras.
+2. **NO se filtra en `tasaComisionDeParticipaciones`.** Sería un bug de plata: la tasa es la suma
+   ponderada sobre el 100% de la propiedad, y excluir a un dueño dado de baja la baja falsamente
+   → la inmobiliaria comisiona de menos, en silencio y en cada pago. Documentado en los **dos**
+   lugares donde vive la fórmula (la lib y la copia inline del cierre de caja), con un test puro
+   que fija la excepción.
+3. **NO se filtra el histórico de rendiciones.** Es plata que ya se movió: ocultarla descuadra
+   los totales y el que audita ve menos de lo que salió.
+4. **El importador de cartera reactivaba de hecho** a un propietario dado de baja: matcheaba por
+   nombre+apellido y reusaba la fila, sin pasar por ningún alta.
+
+`PATCH /propietarios/:id/activo` con el mismo 409 de cobranza directa que ya usa el cambio de
+dueños. Migración **escrita, no aplicada** — va ANTES del deploy: el guard lee la columna y contra
+una base sin ella el portal responde 500. Se eligió que falle ruidosamente en vez de degradar en
+silencio.
+
+**204 tests puros.**
+
+### 🔴 Pero el hueco real es otro → T-23-N4-N1
+
+El relevamiento de los 6 kinds encontró algo peor que lo que decía esta tarea, y conviene leerlo
+antes de dar el tema por cerrado.
+
+---
+
+## T-23-N4-N1 · El inquilino titular y la persona no son revocables de ninguna forma
+
+**Experto:** BE + SEC · **Prioridad:** 🔴 · **Depende de:** nada
+**Origen:** relevamiento de T-23-N4. No salió de la reunión.
+
+De los 6 kinds de token, sólo **tres** revalidan contra la base: `usuario` (mira `activo`),
+`co-inquilino` (mira `estado`) y `profesional` (mira la asignación). El propietario ya quedó
+cubierto por T-23-N4. Quedan dos que **no consultan la base en absoluto**:
+
+- **`inquilino`** — `requireInquilino` (`guards.ts:83`) y la rama `inquilino` de
+  `requireContratoAcceso` (`guards.ts:236-245`) devuelven el payload crudo del JWT, sin una sola
+  query. El titular **se autoasigna permiso COMPLETO desde el token**. Borrar la fila `Inquilino`
+  no le saca el acceso, porque nadie la consulta. TTL: **15 días**.
+- **`persona`** — `requirePersona` (`guards.ts:147`) no consulta nada; la identidad es un email
+  adentro del token. Si se emitió por error (un OTP a un email que después se corrige), no hay
+  forma de invalidarlo hasta que expire.
+
+Es **más grave que el caso del propietario**: a ése al menos se lo podía revocar borrando la fila.
+Acá no hay ninguna palanca.
+
+El único freno parcial del inquilino es `exigirContratoActivo` (409), y **sólo en escrituras** —
+y ni siquiera en todas: `operacion.ts` (reclamos, ratings, confirmaciones) no lo llama nunca,
+pese a que el docstring de `guards.ts:279-280` se atribuye gatear "abrir reclamo". Ese desfasaje
+entre el comentario y el código conviene arreglarlo aunque no se haga nada más.
+
+**Lo que hay que decidir.** Revalidar contra la fila en cada request es lo mismo que ya hacen los
+otros tres guards, así que no es un diseño nuevo: es aplicar el patrón que falta. La pregunta es
+si además hace falta `jti` + denylist para poder cerrar sesiones sin tocar el modelo — eso sí es
+rediseño de auth y no entra acá.
+
+**Criterio de aceptación.** Ningún kind de token concede acceso sin haber confirmado contra la
+base, en ese request, que el sujeto sigue habilitado.
+
+---
+
 **Qué pidió Camila.** Es el pedido más grande de la reunión **y tiene modelo de negocio
 atrás**:
 
