@@ -9,6 +9,7 @@ import {
   parsearPeriodo,
   sugerirMapeoMorosos,
   claveDeduda,
+  sugerirDireccionParecida,
   validarFilaMoroso,
 } from '../src/lib/importacion-morosos.js';
 
@@ -436,5 +437,70 @@ describe('expensas y moneda · lo que un subagente encontró probando la aritmé
     for (const m of ['', 'ARS', 'pesos', '$', 'peso argentino']) {
       expect(filaCon('', m).moneda, `"${m}" debería ser ARS`).toBe('ARS');
     }
+  });
+});
+
+describe('sugerir la dirección parecida · el cuello de botella real de la feature', () => {
+  /**
+   * Camila escribió sus direcciones en el Excel hace años y en el sistema están
+   * de otra forma. El match exacto normalizado falla en buena parte de las 50
+   * filas, y "no encontramos esa propiedad" la manda a Propiedades a buscar cómo
+   * está escrita, una por una. Nombrarle la candidata es lo que hace que la
+   * importación sirva de verdad.
+   */
+  const CARTERA = ['Av. Colón 1234 3B', 'Rivadavia 500', 'San Martín 890 Piso 2 Dto A', 'Mitre 1234'];
+
+  it('encuentra la misma calle escrita distinto', () => {
+    expect(sugerirDireccionParecida('Colon 1234 3ro B', CARTERA)).toBe('Av. Colón 1234 3B');
+    expect(sugerirDireccionParecida('San Martin 890 2A', CARTERA)).toBe('San Martín 890 Piso 2 Dto A');
+  });
+
+  it('NO sugiere cuando la altura no coincide: son dos propiedades de la misma cuadra', () => {
+    expect(sugerirDireccionParecida('Colón 1500', CARTERA)).toBeNull();
+  });
+
+  it('NO sugiere con la altura igual pero otra calle: mandaría la deuda a la propiedad equivocada', () => {
+    // "Belgrano 1234" comparte altura con Colón 1234 y con Mitre 1234, y no
+    // comparte una sola palabra de calle con ninguna. Callar es lo correcto.
+    expect(sugerirDireccionParecida('Belgrano 1234', CARTERA)).toBeNull();
+  });
+
+  it('elige la MEJOR entre dos que comparten altura', () => {
+    // 1234 lo tienen Colón y Mitre; la palabra "mitre" desempata.
+    expect(sugerirDireccionParecida('Mitre 1234 PB', CARTERA)).toBe('Mitre 1234');
+  });
+
+  it('sin altura en la dirección buscada no se arriesga una sugerencia', () => {
+    expect(sugerirDireccionParecida('Avenida Colón', CARTERA)).toBeNull();
+    expect(sugerirDireccionParecida('', CARTERA)).toBeNull();
+  });
+
+  it('con la cartera vacía no explota', () => {
+    expect(sugerirDireccionParecida('Colón 1234', [])).toBeNull();
+  });
+
+  it('el motivo de la fila nombra la candidata, en vez de mandarla a buscar', () => {
+    const v = validarFilaMoroso(
+      fila({ direccion: 'Colon 1234 3ro B' }),
+      PROPS,
+      HOY,
+      new Set(),
+      CARTERA,
+    );
+
+    expect(v.estado).toBe('ERROR');
+    expect(v.motivo).toContain('Av. Colón 1234 3B');
+  });
+
+  it('sin candidata parecida, el motivo sigue siendo el genérico', () => {
+    const v = validarFilaMoroso(
+      fila({ direccion: 'Belgrano 9999' }),
+      PROPS,
+      HOY,
+      new Set(),
+      CARTERA,
+    );
+
+    expect(v.motivo).toContain('No encontramos esa propiedad');
   });
 });

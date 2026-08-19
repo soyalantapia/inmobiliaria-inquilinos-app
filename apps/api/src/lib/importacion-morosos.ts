@@ -256,6 +256,63 @@ export function parsearFilaMoroso(fila: unknown[], mapeo: Record<string, number>
 }
 
 /**
+ * La dirección de la cartera más parecida a la que trae la planilla, o null.
+ *
+ * Existe porque sin esto la feature no sirve. Las direcciones de Camila están
+ * escritas como las tipeó ella hace años ("Colón 1234 3ro B") y en el sistema
+ * están de otra forma ("Av. Colón 1234 3B"): el match exacto normalizado falla
+ * en buena parte de las 50 filas, y el mensaje "no encontramos esa propiedad" la
+ * deja yendo a Propiedades a buscar cómo está escrita, una por una. Nombrarle la
+ * candidata convierte 30 idas y vueltas en 30 correcciones obvias.
+ *
+ * La heurística se apoya en cómo son las direcciones argentinas: **la altura es
+ * la señal fuerte**. Sin número coincidente no se sugiere nada — preferimos no
+ * sugerir a mandarla a cargar deuda en la propiedad equivocada. Con el número
+ * igual, se rankea por cuántas palabras de la calle comparten.
+ *
+ * Sólo SUGIERE: la fila sigue siendo un error y no se importa. La corrección la
+ * hace una persona.
+ */
+export function sugerirDireccionParecida(
+  direccion: string,
+  candidatas: Iterable<string>,
+): string | null {
+  const palabras = (s: string) => normalizarDireccion(s).split(' ').filter(Boolean);
+  const numeros = (ps: string[]) => ps.filter((p) => /^\d+$/.test(p));
+
+  const buscada = palabras(direccion);
+  const numBuscada = numeros(buscada);
+  if (numBuscada.length === 0) return null;
+
+  let mejor: string | null = null;
+  let mejorPuntaje = 0;
+
+  for (const cand of candidatas) {
+    const ps = palabras(cand);
+    // La altura tiene que coincidir. "Colón 1234" y "Colón 1500" son dos
+    // propiedades distintas de la misma cuadra, no una escrita de dos formas.
+    if (!numeros(ps).some((n) => numBuscada.includes(n))) continue;
+
+    const texto = new Set(ps.filter((p) => !/^\d+$/.test(p)));
+    const comunes = buscada.filter((p) => !/^\d+$/.test(p) && texto.has(p)).length;
+    const totalTexto = buscada.filter((p) => !/^\d+$/.test(p)).length;
+    // Con la altura igual ya hay señal; el texto desempata. Si la buscada es sólo
+    // un número ("1234"), el puntaje base alcanza para sugerir la única con esa
+    // altura, que es lo razonable.
+    const puntaje = totalTexto === 0 ? 0.5 : 0.5 + 0.5 * (comunes / totalTexto);
+
+    if (puntaje > mejorPuntaje) {
+      mejorPuntaje = puntaje;
+      mejor = cand;
+    }
+  }
+
+  // Con la altura igual pero CERO palabras en común ("Colón 1234" vs "Mitre
+  // 1234") no se sugiere: sería mandarla a la propiedad equivocada.
+  return mejorPuntaje > 0.5 ? mejor : null;
+}
+
+/**
  * Clave para no cargar dos veces la misma deuda.
  *
  * Hace falta porque re-subir la planilla es el camino NORMAL de recuperación:
@@ -323,6 +380,11 @@ export function validarFilaMoroso(
    * `validarFila`).
    */
   deudaYaCargada: Set<string>,
+  /**
+   * Direcciones de la cartera tal como están escritas, para poder sugerir la más
+   * parecida cuando el match exacto falla. Vacío = no se sugiere nada.
+   */
+  direccionesConocidas: Iterable<string> = [],
 ): ValidacionFilaMoroso {
   const nada = { propiedadId: null, meses: 0 };
 
@@ -331,9 +393,14 @@ export function validarFilaMoroso(
 
   const propiedadId = propiedadesPorDireccion.get(normalizarDireccion(d.direccion)) ?? null;
   if (!propiedadId) {
+    // Sin match exacto, nombramos la candidata más parecida. Es la diferencia
+    // entre "andá a buscar cómo la escribiste" y "copiá esto".
+    const parecida = sugerirDireccionParecida(d.direccion, direccionesConocidas);
     return {
       estado: 'ERROR',
-      motivo: 'No encontramos esa propiedad en tu cartera. Cargala primero, o revisá cómo está escrita la dirección',
+      motivo: parecida
+        ? `No encontramos "${d.direccion}" en tu cartera. ¿Será "${parecida}"? Corregila en la planilla y volvé a subirla`
+        : 'No encontramos esa propiedad en tu cartera. Cargala primero, o revisá cómo está escrita la dirección',
       ...nada,
     };
   }

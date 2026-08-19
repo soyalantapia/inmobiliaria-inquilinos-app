@@ -90,7 +90,7 @@ function periodoHoyAR(): string {
  */
 async function propiedadesPorDireccion(
   inmobiliariaId: string,
-): Promise<{ mapa: Map<string, string>; ambiguas: Set<string> }> {
+): Promise<{ mapa: Map<string, string>; ambiguas: Set<string>; textos: string[] }> {
   const props = await prisma.propiedad.findMany({
     where: { inmobiliariaId },
     select: { id: true, direccion: true },
@@ -103,7 +103,9 @@ async function propiedadesPorDireccion(
     if (mapa.has(clave)) ambiguas.add(clave);
     else mapa.set(clave, p.id);
   }
-  return { mapa, ambiguas };
+  // Las direcciones TAL COMO estan escritas: es lo que se le muestra a quien
+  // importa cuando su planilla no matchea ("no encontramos X, sera Y?").
+  return { mapa, ambiguas, textos: props.map((p) => p.direccion) };
 }
 
 /**
@@ -251,7 +253,7 @@ export async function importacionMorososRoutes(app: FastifyInstance): Promise<vo
       return reply.code(400).send({ message: `Faltan columnas: ${faltantes.map((c) => c.label).join(', ')}` });
     }
 
-    const { mapa, ambiguas } = await propiedadesPorDireccion(u.inmobiliariaId);
+    const { mapa, ambiguas, textos } = await propiedadesPorDireccion(u.inmobiliariaId);
     const hoy = periodoHoyAR();
     // El set arranca con lo que ya está en la DB y CRECE fila a fila: así una
     // planilla que trae dos veces la misma deuda marca la segunda como duplicada,
@@ -261,7 +263,7 @@ export async function importacionMorososRoutes(app: FastifyInstance): Promise<vo
     const resumen: Record<EstadoFilaMoroso, number> = { OK: 0, ADVERTENCIA: 0, ERROR: 0, DUPLICADO: 0 };
     const filas = parsed.data.filas.map((f, i) => {
       const datos = parsearFilaMoroso(f, parsed.data.mapeo);
-      const v = validarFilaMoroso(datos, mapa, hoy, yaCargada);
+      const v = validarFilaMoroso(datos, mapa, hoy, yaCargada, textos);
       if (v.estado !== 'ERROR' && v.estado !== 'DUPLICADO' && v.propiedadId && datos.debeDesde && datos.debeHasta) {
         yaCargada.add(
           claveDeduda(v.propiedadId, datos.inquilinoDni, datos.inquilinoNombre, datos.inquilinoApellido, datos.debeDesde, datos.debeHasta),
@@ -311,7 +313,7 @@ export async function importacionMorososRoutes(app: FastifyInstance): Promise<vo
     // un problema de privilegio (un cliente malicioso sólo podría crear la misma
     // deuda que ya puede crear de a una por POST /contratos/historico), pero sí de
     // integridad: la validación del paso 2 es un preview, no una autorización.
-    const { mapa } = await propiedadesPorDireccion(u.inmobiliariaId);
+    const { mapa, textos } = await propiedadesPorDireccion(u.inmobiliariaId);
     const hoy = periodoHoyAR();
     // El dedup se re-arma ACÁ contra la DB, no se confía en el del preview: entre
     // que Camila revisó y apretó Importar pudo pasar cualquier cosa (otra pestaña,
@@ -327,7 +329,7 @@ export async function importacionMorososRoutes(app: FastifyInstance): Promise<vo
     for (let i = 0; i < parsed.data.filas.length; i++) {
       if (seleccion && !seleccion.has(i)) continue;
       const datos = parsearFilaMoroso(parsed.data.filas[i]!, parsed.data.mapeo);
-      const v = validarFilaMoroso(datos, mapa, hoy, yaCargada);
+      const v = validarFilaMoroso(datos, mapa, hoy, yaCargada, textos);
       if (v.estado === 'ERROR' || v.estado === 'DUPLICADO' || !v.propiedadId || !datos.debeDesde || !datos.debeHasta) {
         errores.push({ fila: i, motivo: v.motivo ?? 'Fila inválida' });
         continue;
