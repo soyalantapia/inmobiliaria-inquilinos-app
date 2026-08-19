@@ -181,6 +181,15 @@ export interface RendicionDetalle extends RendicionPortal {
   detalleIngresos: { fecha: string; descripcion: string; participacionPct: number; monto: number }[];
 }
 
+/** Un aviso que la inmobiliaria le mandó a sus propietarios. */
+export interface AnuncioPortal {
+  id: string;
+  titulo: string;
+  cuerpo: string;
+  prioridad: 'NORMAL' | 'IMPORTANTE' | 'URGENTE';
+  enviadoAt: string;
+}
+
 export interface ReclamoPortal {
   id: string;
   descripcion: string;
