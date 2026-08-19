@@ -21,6 +21,7 @@ import { miPerfilRoutes } from './routes/mi-perfil.js';
 import { visitasPublicasRoutes } from './routes/visitas-publicas.js';
 import { resumenesBancariosRoutes } from './routes/resumenes-bancarios.js';
 import { importacionesCarteraRoutes } from './routes/importaciones-cartera.js';
+import { importacionMorososRoutes } from './routes/importacion-morosos.js';
 import { propiedadReclamosRoutes } from './routes/propiedad-reclamos.js';
 import { contratoGananciaRoutes } from './routes/contrato-ganancia.js';
 import { propiedadGananciasRoutes } from './routes/propiedad-ganancias.js';
@@ -244,6 +245,7 @@ export async function buildApp(envOverrides: Partial<Record<string, string>> = {
   await app.register(visitasPublicasRoutes);
   await app.register(resumenesBancariosRoutes);
   await app.register(importacionesCarteraRoutes);
+  await app.register(importacionMorososRoutes);
   await app.register(propiedadReclamosRoutes);
   await app.register(contratoGananciaRoutes);
   await app.register(propiedadGananciasRoutes);

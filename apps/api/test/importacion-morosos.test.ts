@@ -1,0 +1,298 @@
+import { describe, it, expect } from 'vitest';
+import {
+  CAMPOS_MOROSOS,
+  MAX_MESES_DEUDA,
+  finDelPeriodo,
+  inicioDelPeriodo,
+  mesesEntre,
+  parsearFilaMoroso,
+  parsearPeriodo,
+  sugerirMapeoMorosos,
+  validarFilaMoroso,
+} from '../src/lib/importacion-morosos.js';
+
+/**
+ * IMPORTACIÓN DE MOROSOS HISTÓRICOS — la capa pura.
+ *
+ * Todo lo que decide CUÁNTA DEUDA se crea y A QUIÉN pasa por acá. Los dos
+ * errores caros que estos tests existen para atrapar:
+ *
+ *  1. Interpretar mal un mes. "01/06/2024" leído como mm/dd son cinco meses de
+ *     diferencia: le cobrás a alguien meses que no debe. Por eso `parsearPeriodo`
+ *     NO adivina (nada de nombres de mes en texto) y ante la duda devuelve null,
+ *     que la ruta reporta como fila con error para que la corrijan a mano.
+ *
+ *  2. Colgar la deuda de la propiedad equivocada. El match es por dirección
+ *     normalizada y —al revés que la importación de cartera— NO encontrarla es
+ *     un error, no una invitación a crear la propiedad. Una planilla de morosos
+ *     no puede dar de alta inmuebles.
+ *
+ * Tests PUROS: no tocan la DB.
+ */
+
+const PROPS = new Map([
+  ['av colon 1234 3b', 'prop_1'],
+  ['rivadavia 500', 'prop_2'],
+]);
+
+const HOY = '2026-08';
+
+/** Fila mapeada válida, para pisar sólo el campo que cada test ejercita. */
+function fila(over: Partial<Parameters<typeof validarFilaMoroso>[0]> = {}) {
+  return {
+    direccion: 'Av. Colón 1234 3B',
+    inquilinoNombre: 'Marta',
+    inquilinoApellido: 'Gómez',
+    inquilinoDni: '20111222',
+    inquilinoTelefono: null,
+    debeDesde: '2024-03',
+    debeHasta: '2024-05',
+    monto: 95_000,
+    montoExpensas: null,
+    moneda: 'ARS' as const,
+    ...over,
+  };
+}
+
+describe('parsearPeriodo · los formatos que aparecen en un Excel real', () => {
+  it('lee "2024-03" y "2024/03"', () => {
+    expect(parsearPeriodo('2024-03')).toBe('2024-03');
+    expect(parsearPeriodo('2024/03')).toBe('2024-03');
+  });
+
+  it('lee "03/2024" y "3-2024"', () => {
+    expect(parsearPeriodo('03/2024')).toBe('2024-03');
+    expect(parsearPeriodo('3-2024')).toBe('2024-03');
+  });
+
+  it('lee una fecha AR completa con el DÍA primero', () => {
+    // El caso caro: si esto se leyera como mm/dd, "01/06/2024" daría enero.
+    expect(parsearPeriodo('01/06/2024')).toBe('2024-06');
+    expect(parsearPeriodo('31/12/2023')).toBe('2023-12');
+  });
+
+  it('lee un ISO completo, que es como llegan las fechas de Excel tras el viaje por JSON', () => {
+    // La ruta serializa las celdas Date con toISOString() para que sobrevivan al
+    // JSON: el período tiene que salir del año-mes de ese string.
+    expect(parsearPeriodo('2024-03-01T03:00:00.000Z')).toBe('2024-03');
+    expect(parsearPeriodo('2024-03-31T03:00:00.000Z')).toBe('2024-03');
+  });
+
+  it('lee un Date nativo y un serial de Excel', () => {
+    expect(parsearPeriodo(new Date(2024, 2, 15))).toBe('2024-03');
+    // 45352 = 2024-03-01 en el calendario serial de Excel.
+    expect(parsearPeriodo(45352)).toBe('2024-03');
+  });
+
+  it('NO adivina: texto libre, vacío y basura dan null', () => {
+    expect(parsearPeriodo('marzo 2024')).toBeNull();
+    expect(parsearPeriodo('')).toBeNull();
+    expect(parsearPeriodo(null)).toBeNull();
+    expect(parsearPeriodo('no sé')).toBeNull();
+  });
+
+  it('rechaza meses y años imposibles en vez de arrastrarlos', () => {
+    expect(parsearPeriodo('2024-13')).toBeNull();
+    expect(parsearPeriodo('2024-00')).toBeNull();
+    expect(parsearPeriodo('1899-05')).toBeNull();
+  });
+});
+
+describe('la ventana de deuda', () => {
+  it('cuenta ambos extremos: marzo a mayo son 3 meses, no 2', () => {
+    expect(mesesEntre('2024-03', '2024-05')).toBe(3);
+  });
+
+  it('un solo mes adeudado es 1', () => {
+    expect(mesesEntre('2024-03', '2024-03')).toBe(1);
+  });
+
+  it('cruza el año correctamente', () => {
+    expect(mesesEntre('2023-11', '2024-02')).toBe(4);
+  });
+
+  it('una ventana invertida da 0, no un negativo que después se use como cantidad', () => {
+    expect(mesesEntre('2024-05', '2024-03')).toBe(0);
+  });
+
+  it('los bordes del período son el primer y el último día del mes', () => {
+    expect(inicioDelPeriodo('2024-03').toISOString()).toBe('2024-03-01T00:00:00.000Z');
+    expect(finDelPeriodo('2024-05').toISOString()).toBe('2024-05-31T00:00:00.000Z');
+    // Febrero bisiesto, que es donde un cálculo casero se rompe.
+    expect(finDelPeriodo('2024-02').toISOString()).toBe('2024-02-29T00:00:00.000Z');
+    expect(finDelPeriodo('2023-02').toISOString()).toBe('2023-02-28T00:00:00.000Z');
+  });
+});
+
+describe('validarFilaMoroso · la propiedad tiene que existir', () => {
+  it('matchea por dirección normalizada aunque esté escrita distinto', () => {
+    const v = validarFilaMoroso(fila({ direccion: 'AV. COLON  1234   3b' }), PROPS, HOY);
+
+    expect(v.propiedadId).toBe('prop_1');
+    expect(v.estado).toBe('OK');
+    expect(v.meses).toBe(3);
+  });
+
+  it('si la dirección no está en la cartera, es ERROR y NO se inventa la propiedad', () => {
+    const v = validarFilaMoroso(fila({ direccion: 'Calle Que No Existe 1' }), PROPS, HOY);
+
+    expect(v.estado).toBe('ERROR');
+    expect(v.propiedadId).toBeNull();
+    expect(v.meses).toBe(0);
+    expect(v.motivo).toContain('No encontramos esa propiedad');
+  });
+
+  it('sin dirección no llega ni a mirar la cartera', () => {
+    expect(validarFilaMoroso(fila({ direccion: '' }), PROPS, HOY).estado).toBe('ERROR');
+  });
+});
+
+describe('validarFilaMoroso · lo que impide crear deuda equivocada', () => {
+  it('la ventana tiene que estar cerrada: un "debe hasta" del mes actual es ERROR', () => {
+    // Si el último mes adeudado es el actual, no es un ex-inquilino: es el que
+    // vive ahí, y va por el alta normal (que sí ocupa la propiedad).
+    const v = validarFilaMoroso(fila({ debeDesde: '2026-06', debeHasta: HOY }), PROPS, HOY);
+
+    expect(v.estado).toBe('ERROR');
+    expect(v.motivo).toContain('meses ya terminados');
+  });
+
+  it('un "debe hasta" futuro también es ERROR', () => {
+    expect(validarFilaMoroso(fila({ debeDesde: '2026-06', debeHasta: '2027-01' }), PROPS, HOY).estado).toBe('ERROR');
+  });
+
+  it('el mes anterior al actual SÍ es válido: es el moroso más reciente posible', () => {
+    const v = validarFilaMoroso(fila({ debeDesde: '2026-07', debeHasta: '2026-07' }), PROPS, HOY);
+
+    expect(v.estado).toBe('OK');
+    expect(v.meses).toBe(1);
+  });
+
+  it('la ventana invertida es ERROR', () => {
+    const v = validarFilaMoroso(fila({ debeDesde: '2024-05', debeHasta: '2024-03' }), PROPS, HOY);
+
+    expect(v.estado).toBe('ERROR');
+    expect(v.motivo).toContain('anterior');
+  });
+
+  it('un año mal tipeado se corta en el tope en vez de crear cientos de cuotas', () => {
+    // "2014" en vez de "2024" da ~140 meses de deuda. Es el typo clásico.
+    const v = validarFilaMoroso(fila({ debeDesde: '2014-03', debeHasta: '2025-12' }), PROPS, HOY);
+
+    expect(v.estado).toBe('ERROR');
+    expect(v.meses).toBe(0);
+    expect(v.motivo).toContain(String(MAX_MESES_DEUDA));
+  });
+
+  it('un mes ilegible es ERROR con instrucción de formato, no un default silencioso', () => {
+    const v = validarFilaMoroso(fila({ debeDesde: null }), PROPS, HOY);
+
+    expect(v.estado).toBe('ERROR');
+    expect(v.motivo).toContain('2024-03');
+  });
+
+  it('monto cero o negativo es ERROR', () => {
+    expect(validarFilaMoroso(fila({ monto: 0 }), PROPS, HOY).estado).toBe('ERROR');
+    expect(validarFilaMoroso(fila({ monto: -1 }), PROPS, HOY).estado).toBe('ERROR');
+    expect(validarFilaMoroso(fila({ monto: NaN }), PROPS, HOY).estado).toBe('ERROR');
+  });
+
+  it('sin DNI se importa igual, pero avisando que no se va a unir a su ficha', () => {
+    const v = validarFilaMoroso(fila({ inquilinoDni: null }), PROPS, HOY);
+
+    expect(v.estado).toBe('ADVERTENCIA');
+    expect(v.meses).toBe(3);
+    expect(v.propiedadId).toBe('prop_1');
+  });
+});
+
+describe('parsearFilaMoroso · de la celda al dato', () => {
+  const MAPEO = {
+    direccion: 0,
+    inquilinoNombre: 1,
+    inquilinoDni: 2,
+    debeDesde: 3,
+    debeHasta: 4,
+    monto: 5,
+    montoExpensas: 6,
+    moneda: 7,
+  };
+
+  it('parsea una fila típica en formato argentino', () => {
+    const d = parsearFilaMoroso(
+      ['Av. Colón 1234 3B', 'Marta Gómez', '20111222', '2024-03', '2024-05', '95.000,50', '25.000', ''],
+      MAPEO,
+    );
+
+    expect(d.direccion).toBe('Av. Colón 1234 3B');
+    expect(d.monto).toBe(95_000.5);
+    expect(d.montoExpensas).toBe(25_000);
+    expect(d.moneda).toBe('ARS');
+    expect(d.debeDesde).toBe('2024-03');
+    expect(d.debeHasta).toBe('2024-05');
+  });
+
+  it('parte "Nombre Apellido" cuando no hay columna de apellido', () => {
+    const d = parsearFilaMoroso(['x', 'Marta Gómez Pérez', '', '2024-03', '2024-03', '1', '', ''], MAPEO);
+
+    expect(d.inquilinoNombre).toBe('Marta');
+    expect(d.inquilinoApellido).toBe('Gómez Pérez');
+  });
+
+  it('detecta dólares por la columna moneda', () => {
+    expect(parsearFilaMoroso(['x', 'y', '', '2024-03', '2024-03', '500', '', 'USD'], MAPEO).moneda).toBe('USD');
+    expect(parsearFilaMoroso(['x', 'y', '', '2024-03', '2024-03', '500', '', 'dólares'], MAPEO).moneda).toBe('USD');
+    expect(parsearFilaMoroso(['x', 'y', '', '2024-03', '2024-03', '500', '', 'pesos'], MAPEO).moneda).toBe('ARS');
+  });
+
+  it('expensas vacías quedan en null, no en cero', () => {
+    // Importa la diferencia: null no toca `tipoContrato`; 0 lo volvería
+    // ALQUILER_Y_EXPENSAS con expensas de $0.
+    expect(parsearFilaMoroso(['x', 'y', '', '2024-03', '2024-03', '1', '', ''], MAPEO).montoExpensas).toBeNull();
+  });
+
+  it('una columna no mapeada no rompe la fila', () => {
+    const d = parsearFilaMoroso(['Colón 1', 'Marta'], { direccion: 0, inquilinoNombre: 1 });
+
+    expect(d.direccion).toBe('Colón 1');
+    expect(d.debeDesde).toBeNull();
+    expect(Number.isNaN(d.monto)).toBe(true);
+  });
+});
+
+describe('sugerirMapeoMorosos · el auto-mapeo de headers', () => {
+  it('reconoce los headers que pondría una inmobiliaria', () => {
+    const m = sugerirMapeoMorosos(['Dirección', 'Inquilino', 'DNI', 'Debe desde', 'Debe hasta', 'Monto']);
+
+    expect(m).toEqual({
+      direccion: 0,
+      inquilinoNombre: 1,
+      inquilinoDni: 2,
+      debeDesde: 3,
+      debeHasta: 4,
+      monto: 5,
+    });
+  });
+
+  it('ignora acentos, mayúsculas y separadores en el header', () => {
+    const m = sugerirMapeoMorosos(['DOMICILIO', 'Nombre_Inquilino', 'Adeuda-Desde']);
+
+    expect(m.direccion).toBe(0);
+    expect(m.inquilinoNombre).toBe(1);
+    expect(m.debeDesde).toBe(2);
+  });
+
+  it('un header desconocido simplemente no mapea, sin romper', () => {
+    expect(sugerirMapeoMorosos(['columna rara']).direccion).toBeUndefined();
+  });
+
+  it('los cuatro campos obligatorios son los que definen la deuda', () => {
+    expect(CAMPOS_MOROSOS.filter((c) => c.requerido).map((c) => c.key).sort()).toEqual([
+      'debeDesde',
+      'debeHasta',
+      'direccion',
+      'inquilinoNombre',
+      'monto',
+    ].sort());
+  });
+});

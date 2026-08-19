@@ -19,6 +19,7 @@ import { aplicarDepositoADeuda } from '../lib/aplicar-deposito.js';
 import { calcularMora, resolverEsquemaMora } from '../lib/punitorios.js';
 import { aplicarEstadoInicial, EstadoInicialInvalido } from '../lib/estado-inicial-contrato.js';
 import { buscarOCrearPersona } from '../lib/persona.js';
+import { crearContratoHistorico } from '../lib/contrato-historico.js';
 import { borrarArchivoSiHuerfano, urlEsDelTenant } from './uploads.js';
 import { enviarInvitacionInquilino, enviarInvitacionEquipo, enviarAvisoAjusteAlquiler } from '../mailer.js';
 import { contratoQuedaPendiente, diaCivilAR, venceDespuesDeHoy, yaVencio } from '@llave/shared';
@@ -1318,6 +1319,11 @@ export async function coreRoutes(app: FastifyInstance) {
     if (u.rol !== 'ADMIN' && u.rol !== 'OPERADOR') {
       return reply.code(403).send({ message: 'Solo un administrador u operador puede cargar deuda histórica' });
     }
+    // El rol angostado se captura ACÁ: TypeScript pierde el narrowing de una
+    // propiedad al cruzar el closure de la transacción, y `crearContratoHistorico`
+    // exige ADMIN|OPERADOR en el tipo justamente para que ese guard no se pueda
+    // saltear desde un caller nuevo.
+    const rolAutor = u.rol;
     const parsed = contratoHistoricoSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ message: 'Datos inválidos', issues: parsed.error.issues });
     const d = parsed.data;
@@ -1353,94 +1359,33 @@ export async function coreRoutes(app: FastifyInstance) {
 
     try {
       const creado = await prisma.$transaction(
-      async (tx) => {
-        const inq = await tx.inquilino.create({
-          data: {
-            inmobiliariaId: u.inmobiliariaId,
-            nombre: d.inquilino.nombre,
-            apellido: d.inquilino.apellido || null,
-            // A PROPÓSITO sin email, aunque haya venido uno.
-            //
-            // `Inquilino.email` es la LLAVE DE LOGIN de la PWA: `alquileresDeEmail`
-            // (auth.ts) busca por email sin filtrar estado, y un contrato
-            // FINALIZADO le da al ex-inquilino acceso de sólo lectura. Eso está
-            // bien para un alquiler que existió de verdad y terminó — pero acá la
-            // fila la tipea el operador de memoria, cargando 50 seguidas. Un email
-            // mal tipeado le abriría a un TERCERO la deuda de otra persona.
-            //
-            // El email igual se aprovecha: va a la Persona (abajo), que es donde
-            // sirve —dedup e identidad de la ficha— y NO habilita login por sí
-            // sola. Si esa persona vuelve a alquilar, el alta normal crea su
-            // Inquilino CON email y ahí sí entra a la PWA.
-            email: null,
-            telefono: d.inquilino.telefono || null,
-            dni: d.inquilino.dni || null,
-            esInvitado: false,
-          },
-        });
-        const contrato = await tx.contrato.create({
-          data: {
-            inmobiliariaId: u.inmobiliariaId,
-            propiedadId: prop.id,
-            estado: 'FINALIZADO',
-            pendienteAprobacion: false,
-            monto: d.monto,
-            moneda: d.moneda,
-            fechaInicio: d.fechaInicio,
-            fechaFin: d.fechaFin,
-            diaPago: d.diaPago,
-            // FIJO + proximoAjuste null: un contrato terminado no se ajusta. La
-            // frecuencia es obligatoria en el schema y acá es inerte (nada la lee
-            // para un FINALIZADO), pero se deja explícita en vez de un 0 raro.
-            indiceAjuste: 'FIJO',
-            frecuenciaAjusteMeses: 12,
-            proximoAjuste: null,
-            montoExpensas: d.montoExpensas ?? null,
-            tipoContrato: d.montoExpensas ? 'ALQUILER_Y_EXPENSAS' : 'ALQUILER',
-            modoCobranza: 'INMOBILIARIA',
-            cargadoPor: u.userId,
-            cargadoRol: u.rol,
-            cargadoAt: new Date(),
-          },
-        });
-        // Misma identidad reutilizable que el alta normal: si el DNI ya existe en
-        // el tenant se REUSA la Persona, y la deuda vieja aparece en la misma
-        // ficha que su alquiler actual. Es literalmente lo que Camila pidió: que
-        // al cargar un DNI el sistema le avise que ya lo tiene.
-        const persona = d.personaId
-          ? await tx.persona.findFirstOrThrow({ where: { id: d.personaId, inmobiliariaId: u.inmobiliariaId } })
-          : await buscarOCrearPersona(tx, {
+        async (tx) =>
+          crearContratoHistorico(
+            tx,
+            {
               inmobiliariaId: u.inmobiliariaId,
-              dni: d.inquilino.dni || null,
-              email: emailInq,
-              nombre: d.inquilino.nombre,
-              apellido: d.inquilino.apellido || null,
-              telefono: d.inquilino.telefono || null,
-            });
-        await tx.inquilino.update({ where: { id: inq.id }, data: { contratoId: contrato.id, personaId: persona.id } });
-
-        // Las cuotas de la ventana. Ambas fechas son pasadas ⇒ todas nacen
-        // VENCIDO. NO se toca la propiedad: ese es el punto del endpoint.
-        const cuotas = await generarLiquidacionesContrato(tx, contrato);
-
-        // Queda asentado quién cargó la deuda y cuánta: es plata que aparece de
-        // la nada en la cartera, tiene que ser rastreable.
-        await tx.eventoContrato.create({
-          data: {
-            inmobiliariaId: u.inmobiliariaId,
-            contratoId: contrato.id,
-            tipo: 'CREADO',
-            titulo: `Deuda histórica: ${cuotas} período(s) de ${d.inquilino.nombre} en ${prop.direccion}`,
-            detalle: `Contrato terminado cargado para registrar deuda de un inquilino anterior. No ocupa la propiedad.`,
-            fecha: new Date(),
-            autor: u.userId,
-          },
-        });
-
-        return { contrato, personaId: persona.id, cuotas };
-      },
-      { timeout: 30_000, maxWait: 10_000 },
-    );
+              propiedadId: prop.id,
+              personaId: d.personaId ?? null,
+              inquilino: {
+                nombre: d.inquilino.nombre,
+                apellido: d.inquilino.apellido ?? null,
+                email: emailInq,
+                telefono: d.inquilino.telefono ?? null,
+                dni: d.inquilino.dni ?? null,
+              },
+              monto: d.monto,
+              moneda: d.moneda,
+              montoExpensas: d.montoExpensas ?? null,
+              fechaInicio: d.fechaInicio,
+              fechaFin: d.fechaFin,
+              diaPago: d.diaPago,
+            },
+            // El guard de rol de arriba ya angostó el tipo a ADMIN|OPERADOR.
+            { userId: u.userId, rol: rolAutor },
+            prop.direccion,
+          ),
+        { timeout: 30_000, maxWait: 10_000 },
+      );
 
       // Auditoría del tenant, además del timeline del contrato: esto CREA DEUDA
       // sin que ningún inquilino haya firmado nada, y sin pasar por la bandeja de
@@ -1450,12 +1395,12 @@ export async function coreRoutes(app: FastifyInstance) {
         tipo: 'CONTRATO_CARGADO',
         autorId: u.userId,
         rolAutor: u.rol,
-        entidadId: creado.contrato.id,
+        entidadId: creado.contratoId,
         entidadDescripcion: `Deuda histórica · ${d.inquilino.nombre} · ${prop.direccion} · ${creado.cuotas} período(s)`,
       });
 
       return reply.code(201).send({
-        id: creado.contrato.id,
+        id: creado.contratoId,
         personaId: creado.personaId,
         periodosAdeudados: creado.cuotas,
       });
