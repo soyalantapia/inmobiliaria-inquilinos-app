@@ -3365,3 +3365,46 @@ revertir cada fix **por separado**.
 (solo lectura) para ver si hay filas ya escritas mal. No se pueden corregir a ciegas: cambiar
 la moneda de un movimiento mueve el cierre de caja de ese día y puede mover rendiciones ya
 emitidas.
+
+---
+
+## T-46 · El portal del propietario existe, compila… y no se despliega en ningún lado
+
+**Experto:** OPS + PROD · **Prioridad:** 🔴 · **Depende de:** una decisión tuya (ver abajo)
+**Origen:** revisión post-merge. No salió de la reunión.
+
+**Estado verificado.** `apps/propietario` son **1.210 líneas** en 9 archivos —login, home, selector
+de cartera, detalle de rendición e impresión— y **ningún pipeline la construye**:
+
+- `scripts/build-static.sh` compila **sólo** `inmobiliaria` e `inquilino`, y copia sólo esos dos
+  a `out/`. No hay una línea que nombre a `propietario`.
+- No aparece en `.github/workflows/`, ni en el `picker.html` que es el índice del sitio.
+  (Los dos hits de "propietario" en el picker son la palabra suelta en copy descriptivo.)
+
+Verificado con `grep -rn "propietario" scripts/build-static.sh scripts/picker.html
+.github/workflows/*.yml`: **cero coincidencias reales**.
+
+**O sea: T-23 entregó una app entera y no la ve nadie.** No es que esté rota — compila (`tsc` en
+0) y maneja bien el modo sin API (`lib/api.ts:12`, y el login corta con un mensaje honesto en vez
+de fingir). Simplemente no sale.
+
+**Lo que hay que decidir antes de tocar el pipeline** — por eso no se agregó de una:
+
+El portal **necesita un API vivo** (`apiEnabled = NEXT_PUBLIC_API_URL.length > 0`). El sitio
+estático que arma `build-static.sh` es la **demo** y no tiene API detrás. Si se lo agrega ahí sin
+más, el propietario que entre se come el "El portal no está conectado al servidor" — honesto,
+pero inútil como demo.
+
+Hay dos caminos y no son intercambiables:
+
+1. **Va al sitio estático, como demo**, y entonces hace falta darle un modo demo con datos mock
+   —que hoy **no tiene**, a diferencia del panel y de la PWA—.
+2. **Va a un host propio con el API real** (Vercel/Railway, como el resto de producción), y
+   entonces esto es una tarea de infraestructura y no de build estático.
+
+**Criterio de aceptación.** Un propietario puede entrar al portal desde una URL, o está escrito
+en este documento por qué todavía no y qué falta.
+
+**Riesgo de no hacerlo.** Que el trabajo se dé por entregado. Es el modo de fallo más caro del
+trabajo en paralelo: la tarea figura ✅, el código está mergeado y verificado, y el usuario final
+no tiene forma de llegar.
