@@ -277,6 +277,41 @@ const Linea = ({ label, valor }: { label: string; valor: string }) => (
  * auditar `[1:05:30]`: *"vos también me estás auditando a mí… que ves el día que pagó esa
  * persona"*.
  */
+/**
+ * Cuánto le queda al contrato.
+ *
+ * Se calcula con la fecha civil, no con `new Date()` a secas: comparar timestamps con hora
+ * hacía que el último día del contrato ya contara como vencido a la mañana.
+ */
+export function diasHasta(hasta: string, hoy = new Date()): number {
+  const [y, m, d] = hasta.split('-').map(Number);
+  if (!y || !m || !d) return Number.NaN;
+  const fin = Date.UTC(y, m - 1, d);
+  const inicio = Date.UTC(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
+  return Math.round((fin - inicio) / 86_400_000);
+}
+
+function VenceContrato({ hasta }: { hasta: string }) {
+  const dias = diasHasta(hasta);
+  if (Number.isNaN(dias)) return null;
+  if (dias < 0) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        El contrato venció el {fecha(hasta)}. Si sigue viviendo ahí, preguntale a tu inmobiliaria
+        cómo quedó.
+      </p>
+    );
+  }
+  // 90 días: es lo que necesita el dueño para decidir si renueva o sale a buscar inquilino.
+  const cerca = dias <= 90;
+  return (
+    <p className={cerca ? 'text-xs font-medium text-amber-700 dark:text-amber-500' : 'text-xs text-muted-foreground'}>
+      Contrato hasta el {fecha(hasta)}
+      {cerca && ` · ${dias === 0 ? 'vence hoy' : dias === 1 ? 'queda 1 día' : `quedan ${dias} días`}`}
+    </p>
+  );
+}
+
 export function FilaPropiedad({ p }: { p: PropiedadPortal }) {
   const c = p.contrato;
   return (
@@ -311,6 +346,11 @@ export function FilaPropiedad({ p }: { p: PropiedadPortal }) {
               </span>
             )}
           </p>
+          {/* Hasta cuándo va el contrato. La API mandaba `desde` y `hasta` desde el día uno y la
+              pantalla los tiraba — y es lo primero que un dueño quiere saber para decidir si
+              renueva o si sale a buscar inquilino. El aviso aparece a 90 días, que es el tiempo
+              que necesita para cualquiera de las dos cosas. */}
+          <VenceContrato hasta={c.hasta} />
           {/* El backend manda los últimos 6 períodos (`take: 6`) y la pantalla los listaba sin
               decir que había más: el dueño que quiere revisar el año leía seis meses y creía
               que eso era todo. Se deriva del largo real para que no mienta si el tope cambia. */}
