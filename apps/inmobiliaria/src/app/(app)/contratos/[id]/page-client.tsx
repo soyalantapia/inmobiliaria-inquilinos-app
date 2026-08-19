@@ -118,14 +118,18 @@ const eventoIcono: Record<TipoEventoContrato, LucideIcon> = {
 const eventoColor: Record<TipoEventoContrato, string> = {
   CREADO: 'bg-emerald-500',
   AJUSTE_APLICADO: 'bg-primary',
-  RENOVACION: 'bg-primary',
+  // Verde y NO `bg-primary`: el tipo RENOVACION existe justamente para que una renovación
+  // —que extiende el plazo— deje de verse igual que un ajuste de monto, que antes reusaba
+  // AJUSTE_APLICADO. Pintarla del mismo color que el ajuste anularía el cambio.
+  // (Las dos ramas paralelas agregaron esta clave con colores distintos; git las dejó
+  // duplicadas y `tsc` lo atajó con TS1117.)
+  RENOVACION: 'bg-emerald-500',
   PAGO_RECIBIDO: 'bg-emerald-500',
   PAGO_VENCIDO: 'bg-red-500',
   RECLAMO_CREADO: 'bg-primary',
   COMUNICACION_ENVIADA: 'bg-muted',
   GARANTE_RENOVADO: 'bg-amber-500',
   INTENCION_RENOVACION: 'bg-primary',
-  RENOVACION: 'bg-emerald-500',
 };
 
 const canalIcono: Record<CanalComunicacion, LucideIcon> = {
