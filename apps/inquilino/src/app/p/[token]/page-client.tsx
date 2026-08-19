@@ -654,7 +654,7 @@ function PaginaProfesionalDemo({ token }: { token: string }) {
                 <li>• Foto del reclamo si la cargó el inquilino</li>
                 <li>• Botones para marcar &quot;En camino&quot; y &quot;Listo&quot;</li>
               </ul>
-              <p className="mt-2">Te avisamos por WhatsApp cuando llegue un trabajo nuevo.</p>
+              <p className="mt-2">La inmobiliaria te va a pasar un link nuevo por cada trabajo.</p>
             </div>
           </Card>
         ) : (
