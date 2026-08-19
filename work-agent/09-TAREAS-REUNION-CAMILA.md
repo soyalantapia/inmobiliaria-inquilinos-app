@@ -1806,6 +1806,23 @@ Camila deja 50+ DNIs en el log, más los reintentos por cada corrección de tipe
 
 **Criterio de aceptación.** Un `GET /personas?q=20123456` aparece en el log con el valor redactado.
 
+### ✅ RESUELTO — commit `918598b`
+
+Relevado antes de tocar: **`q` es el único parámetro de query con datos personales hoy** (lo que
+parecía `email`/`telefono` en query era un schema de body).
+
+Pero esto es una **denylist**: sólo redacta lo que alguien se acordó de agregar, y ya falló una
+vez —el DNI estuvo logueándose desde que existe la búsqueda de personas—. Por eso van también
+`dni`, `cuit`, `email` y `telefono`, que hoy **no** viajan por query en ningún endpoint: que el
+próximo nazca redactado en vez de nacer filtrando.
+
+**La redacción se extrajo a `lib/redactar-url.ts`.** Viviendo inline en `buildApp` no era
+testeable, y una regla de seguridad sin test es una regla que se rompe en el próximo refactor.
+
+**12 tests puros**, y la mitad cubren lo que **NO** hay que redactar: un regex flojo se comería
+`busqueda=` y `emailVerificado=`, y un log redactado de más es inservible para debuggear — que es
+el otro modo de fallo de esto. Verificados en rojo volviendo a la lista vieja: 7 de 12 fallan.
+
 ---
 
 ## T-24-N2-N3 · El monto pegado del Excel se interpreta mal, en silencio
