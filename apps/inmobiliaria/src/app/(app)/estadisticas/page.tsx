@@ -13,7 +13,20 @@ const mesActualLocal = () => new Date().toISOString().slice(0, 7);
 // 'YYYY-MM' → 'jul 2026'
 function etiquetaMes(mes: string): string {
   const [y, m] = mes.split('-').map(Number) as [number, number];
-  const meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  const meses = [
+    'ene',
+    'feb',
+    'mar',
+    'abr',
+    'may',
+    'jun',
+    'jul',
+    'ago',
+    'sep',
+    'oct',
+    'nov',
+    'dic',
+  ];
   return `${meses[m - 1]} ${y}`;
 }
 
@@ -26,7 +39,7 @@ export default function EstadisticasPage() {
       <Topbar titulo="Estadísticas" />
       <main className="flex-1 space-y-5 p-4 md:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-muted-foreground">
+          <p className="text-muted-foreground text-sm">
             El resumen del mes: qué facturaste, qué cobraste y qué te queda por cobrar.
           </p>
           <label className="flex items-center gap-2 text-sm">
@@ -36,7 +49,7 @@ export default function EstadisticasPage() {
               value={mes}
               max={mesActualLocal()}
               onChange={(e) => setMes(e.target.value || mesActualLocal())}
-              className="rounded-md border bg-background px-2.5 py-1.5 text-sm"
+              className="bg-background rounded-md border px-2.5 py-1.5 text-sm"
             />
           </label>
         </div>
@@ -45,7 +58,7 @@ export default function EstadisticasPage() {
 
         {!cargando && !resumen && (
           <Card>
-            <CardContent className="py-10 text-center text-sm text-muted-foreground">
+            <CardContent className="text-muted-foreground py-10 text-center text-sm">
               No pudimos cargar las estadísticas de este mes. Probá recargar.
             </CardContent>
           </Card>
@@ -64,16 +77,36 @@ function Contenido({ r }: { r: MetricasResumen }) {
       {r.hayOtrasMonedas && (
         <div className="flex items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-100">
           <AlertTriangle className="h-4 w-4 shrink-0" />
-          Estos números son en pesos (ARS). Tenés contratos activos en otra moneda que no se incluyen acá.
+          Estos números son en pesos (ARS). Tenés contratos o movimientos de caja en otra moneda que
+          no se incluyen acá.
         </div>
       )}
 
       {/* Financiero: los 4 grandes */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Kpi titulo="Facturado" valor={formatMonto(f.devengado)} sub="lo que devengaron las cuotas del mes" />
-        <Kpi titulo="Cobrado" valor={formatMonto(f.cobrado)} sub={`${f.cobrabilidadPct}% de lo facturado`} tono="ok" />
-        <Kpi titulo="Por cobrar" valor={formatMonto(f.porCobrar)} sub="lo que todavía deben los inquilinos" tono={f.porCobrar > 0 ? 'warn' : 'muted'} />
-        <Kpi titulo="En mora" valor={formatMonto(f.enMora)} sub="intereses por atraso acumulados" tono={f.enMora > 0 ? 'bad' : 'muted'} />
+        <Kpi
+          titulo="Facturado"
+          valor={formatMonto(f.devengado)}
+          sub="lo que devengaron las cuotas del mes"
+        />
+        <Kpi
+          titulo="Cobrado"
+          valor={formatMonto(f.cobrado)}
+          sub={`${f.cobrabilidadPct}% de lo facturado`}
+          tono="ok"
+        />
+        <Kpi
+          titulo="Por cobrar"
+          valor={formatMonto(f.porCobrar)}
+          sub="lo que todavía deben los inquilinos"
+          tono={f.porCobrar > 0 ? 'warn' : 'muted'}
+        />
+        <Kpi
+          titulo="En mora"
+          valor={formatMonto(f.enMora)}
+          sub="intereses por atraso acumulados"
+          tono={f.enMora > 0 ? 'bad' : 'muted'}
+        />
       </div>
 
       {/* Barra de cobrabilidad */}
@@ -81,9 +114,9 @@ function Contenido({ r }: { r: MetricasResumen }) {
         <CardContent className="space-y-2 py-4">
           <div className="flex items-center justify-between text-sm">
             <span className="font-medium">Cobrabilidad del mes</span>
-            <span className="tabular-nums text-muted-foreground">{f.cobrabilidadPct}%</span>
+            <span className="text-muted-foreground tabular-nums">{f.cobrabilidadPct}%</span>
           </div>
-          <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted">
+          <div className="bg-muted h-2.5 w-full overflow-hidden rounded-full">
             <div
               className="h-full rounded-full bg-emerald-500 transition-[width]"
               style={{ width: `${Math.min(100, f.cobrabilidadPct)}%` }}
@@ -93,7 +126,7 @@ function Contenido({ r }: { r: MetricasResumen }) {
       </Card>
 
       {/* Operativo */}
-      <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Mini titulo="Contratos activos" valor={r.operativo.contratosActivos} />
         <Mini titulo="Altas del mes" valor={r.operativo.altasMes} />
         <Mini titulo="Reclamos abiertos" valor={r.operativo.reclamosAbiertos} />
@@ -104,16 +137,19 @@ function Contenido({ r }: { r: MetricasResumen }) {
       <Card>
         <CardContent className="flex flex-wrap items-center gap-x-8 gap-y-2 py-4 text-sm">
           <span className="flex items-center gap-1.5 font-medium">
-            <Wallet className="h-4 w-4 text-muted-foreground" /> Caja del mes
+            <Wallet className="text-muted-foreground h-4 w-4" /> Caja del mes
           </span>
           <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
             <ArrowUpRight className="h-4 w-4" /> Ingresos {formatMonto(r.caja.ingresos)}
           </span>
-          <span className="flex items-center gap-1.5 text-destructive">
+          <span className="text-destructive flex items-center gap-1.5">
             <ArrowDownRight className="h-4 w-4" /> Egresos {formatMonto(r.caja.egresos)}
           </span>
-          <span className="ml-auto tabular-nums text-muted-foreground">
-            Neto <strong className={r.caja.neto >= 0 ? 'text-foreground' : 'text-destructive'}>{formatMonto(r.caja.neto)}</strong>
+          <span className="text-muted-foreground ml-auto tabular-nums">
+            Neto{' '}
+            <strong className={r.caja.neto >= 0 ? 'text-foreground' : 'text-destructive'}>
+              {formatMonto(r.caja.neto)}
+            </strong>
           </span>
         </CardContent>
       </Card>
@@ -123,9 +159,15 @@ function Contenido({ r }: { r: MetricasResumen }) {
         <CardContent className="space-y-4 py-5">
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium">Facturado vs cobrado — últimos 6 meses</span>
-            <span className="flex items-center gap-3 text-[11px] text-muted-foreground">
-              <span className="flex items-center gap-1"><i className="h-2.5 w-2.5 rounded-sm bg-muted" />Facturado</span>
-              <span className="flex items-center gap-1"><i className="h-2.5 w-2.5 rounded-sm bg-emerald-500" />Cobrado</span>
+            <span className="text-muted-foreground flex items-center gap-3 text-[11px]">
+              <span className="flex items-center gap-1">
+                <i className="bg-muted h-2.5 w-2.5 rounded-sm" />
+                Facturado
+              </span>
+              <span className="flex items-center gap-1">
+                <i className="h-2.5 w-2.5 rounded-sm bg-emerald-500" />
+                Cobrado
+              </span>
             </span>
           </div>
           <GraficoSerie serie={r.serie} />
@@ -144,13 +186,24 @@ function GraficoSerie({ serie }: { serie: MetricasResumen['serie'] }) {
         const hCob = s.devengado > 0 ? Math.round((s.cobrado / max) * 130) : 0;
         return (
           <div key={s.mes} className="flex min-w-0 flex-1 flex-col items-center gap-1.5">
-            <div className="relative flex w-full max-w-[52px] items-end justify-center" style={{ height: 130 }}>
+            <div
+              className="relative flex w-full max-w-[52px] items-end justify-center"
+              style={{ height: 130 }}
+            >
               {/* facturado (fondo) */}
-              <div className="absolute bottom-0 w-full rounded-t bg-muted" style={{ height: `${hDev}px` }} />
+              <div
+                className="bg-muted absolute bottom-0 w-full rounded-t"
+                style={{ height: `${hDev}px` }}
+              />
               {/* cobrado (relleno) */}
-              <div className="absolute bottom-0 w-full rounded-t bg-emerald-500" style={{ height: `${hCob}px` }} />
+              <div
+                className="absolute bottom-0 w-full rounded-t bg-emerald-500"
+                style={{ height: `${hCob}px` }}
+              />
             </div>
-            <span className="whitespace-nowrap text-[10px] text-muted-foreground">{etiquetaMes(s.mes)}</span>
+            <span className="text-muted-foreground whitespace-nowrap text-[10px]">
+              {etiquetaMes(s.mes)}
+            </span>
           </div>
         );
       })}
@@ -165,13 +218,25 @@ const TONO: Record<string, string> = {
   muted: 'text-foreground',
 };
 
-function Kpi({ titulo, valor, sub, tono = 'muted' }: { titulo: string; valor: string; sub: string; tono?: string }) {
+function Kpi({
+  titulo,
+  valor,
+  sub,
+  tono = 'muted',
+}: {
+  titulo: string;
+  valor: string;
+  sub: string;
+  tono?: string;
+}) {
   return (
     <Card>
       <CardContent className="space-y-1 py-4">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{titulo}</p>
+        <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
+          {titulo}
+        </p>
         <p className={`text-2xl font-bold tabular-nums leading-tight ${TONO[tono]}`}>{valor}</p>
-        <p className="text-xs text-muted-foreground">{sub}</p>
+        <p className="text-muted-foreground text-xs">{sub}</p>
       </CardContent>
     </Card>
   );
@@ -182,7 +247,7 @@ function Mini({ titulo, valor }: { titulo: string; valor: number }) {
     <Card>
       <CardContent className="py-3.5">
         <p className="text-2xl font-bold tabular-nums leading-tight">{valor}</p>
-        <p className="text-xs text-muted-foreground">{titulo}</p>
+        <p className="text-muted-foreground text-xs">{titulo}</p>
       </CardContent>
     </Card>
   );

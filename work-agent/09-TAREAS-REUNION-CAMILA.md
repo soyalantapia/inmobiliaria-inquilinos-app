@@ -3017,3 +3017,34 @@ categoría sola. El dueño sigue viendo qué se arregló y cuánto; lo que descr
 
 **Pendiente del dueño:** aplicar `20260819220000_sacar_texto_del_inquilino_de_gastos` — las
 filas ya escritas siguen con el texto adentro. Son **once** migraciones ahora, no diez.
+
+---
+
+### T-01-N1-N3 · La caja mezcla monedas en tres lugares ✅ HECHA
+**Experto:** BE-P · **Prioridad:** 🔴 · **Detectada en:** barrido de regresiones (T-01-N1)
+
+> **Estado: ✅ hecha.** Ver `work-agent/tareas/T-01-N1-N3/REQUISITOS.md`.
+
+`MovimientoCaja.moneda` es `@default(ARS)` y el schema dice que ARS *"es la única moneda que la
+UI de caja permite cargar hoy"*. **Ya no es cierto:** `POST /caja/movimientos` escribe la
+moneda del body. Los consumidores que asumían "todo es ARS" pasaron de correctos a incorrectos
+sin que nadie los tocara. `cuentas.ts` ya se adaptó; quedaron estos tres.
+
+1. 🔴 **`plata.ts:846`** — cobrar un cargo del inquilino creaba el movimiento **sin** moneda.
+   `CargoContrato` sí la tiene y el dato estaba a mano, sin usar. Como la columna tiene default,
+   no fallaba: escribía ARS igual. Un cargo de US$800 quedaba en caja como $800. **Es el peor
+   de los tres: escribe mal, permanentemente**, y una vez escrita la fila ya no dice de dónde
+   vino. Este el barrido no lo había encontrado.
+2. 🟠 **`metricas.ts`** — el `groupBy` de caja sin filtro de moneda, dentro de una respuesta
+   rotulada `moneda: 'ARS'`.
+3. 🟡 **`metricas.ts`** — el aviso de "hay otras monedas" contaba **contratos**, no movimientos.
+   Con el filtro del punto 2 puesto, un gasto en USD queda fuera del neto sin avisar: excluir en
+   silencio es tan engañoso como sumar mal. Por eso 2 y 3 van juntos.
+
+**Verificado:** `tsc` 0 en API y panel, 350 tests verdes, y los tres tests se ponen rojos al
+revertir cada fix **por separado**.
+
+**Pendiente del dueño:** correr `work-agent/tareas/T-01-N1-N3/diagnostico-caja-moneda.sql`
+(solo lectura) para ver si hay filas ya escritas mal. No se pueden corregir a ciegas: cambiar
+la moneda de un movimiento mueve el cierre de caja de ese día y puede mover rendiciones ya
+emitidas.
