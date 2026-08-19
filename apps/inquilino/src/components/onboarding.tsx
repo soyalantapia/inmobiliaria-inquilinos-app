@@ -75,18 +75,19 @@ const STEPS: Step[] = [
     ],
     cta: { label: 'Abrir mi contrato', href: '/contrato' },
   },
-  {
-    icon: Sparkles,
-    iconBg: 'from-primary to-primary/70',
-    titulo: 'Chateá con el Asistente',
-    descripcion: 'Una IA que leyó tus cláusulas y te responde al instante.',
-    bullets: [
-      'Aumentos, depósito, mascotas, vencimiento',
-      'Te cita la cláusula exacta del contrato',
-      'Te deriva a la inmobiliaria si hace falta',
-    ],
-    cta: { label: 'Probar el Asistente', href: '/broker' },
-  },
+  // ⛔ ACÁ HABÍA UN SLIDE que decía "Chateá con el Asistente — Una IA que leyó tus cláusulas y
+  // te responde al instante" y "Te cita la cláusula exacta del contrato", con un CTA "Probar el
+  // Asistente" hacia /broker.
+  //
+  // No existe: no hay ningún LLM en el monorepo, el "chat" es keyword-matching que sólo vive en
+  // el build demo, y /broker en producción devuelve un cartel de "Próximamente". O sea que el
+  // onboarding le prometía una capacidad entera a CADA inquilino nuevo, y el primer botón que
+  // tocaba lo llevaba a una pantalla vacía.
+  //
+  // Se saca en vez de reescribirse: los otros slides ya cubren lo que la app hace de verdad
+  // (pagar, ver el contrato, reportar un problema), y agregar un cuarto para rellenar sería
+  // decorar. Cuando exista el asistente, el slide vuelve — con lo que haga, no con lo que
+  // querríamos que hiciera.
   {
     icon: Wrench,
     iconBg: 'from-primary to-primary/70',

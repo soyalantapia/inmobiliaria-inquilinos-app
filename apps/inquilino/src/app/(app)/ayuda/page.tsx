@@ -10,7 +10,6 @@ import {
   MessageCircle,
   PawPrint,
   Search,
-  Sparkles,
   TrendingUp,
   Wrench,
   type LucideIcon,
@@ -82,9 +81,9 @@ const FAQS: FaqItem[] = [
   },
   {
     id: 'contrato-2',
-    pregunta: '¿Qué es el Asistente?',
+    pregunta: '¿Dónde veo las condiciones de mi contrato?',
     respuesta:
-      'Es una IA que leyó tu contrato y te responde preguntas al instante. Cita las cláusulas exactas. Si la pregunta es legal compleja te deriva a la inmobiliaria.',
+      'En Contrato tenés el monto, el día de pago, el índice y la fecha del próximo ajuste, el depósito y las reglas de la unidad. Y podés descargar el PDF completo. Si necesitás interpretar una cláusula, escribile a tu inmobiliaria: es quien puede responderte con validez.',
     categoria: 'contrato',
   },
   {
@@ -119,7 +118,7 @@ const FAQS: FaqItem[] = [
     id: 'mascotas-1',
     pregunta: '¿Puedo tener mascotas?',
     respuesta:
-      'Depende de tu contrato. En general se permiten perros y gatos hasta cierto peso. Preguntale al Asistente que te cita la cláusula 9 si está habilitado.',
+      'Depende de tu contrato. Si tu inmobiliaria lo cargó, lo ves en Contrato → Reglas de la unidad. Si no figura, consultale a ella antes de traer una mascota: es el dato que vale.',
     categoria: 'mascotas',
   },
   {
@@ -314,13 +313,10 @@ export default function AyudaPage() {
               <CardContent className="space-y-2 p-8 text-center text-muted-foreground">
                 <BookOpen className="mx-auto h-8 w-8" />
                 <p className="font-medium text-foreground">Sin resultados</p>
-                <p className="text-sm">Probá con otras palabras o preguntale al Asistente.</p>
-                <Button asChild size="sm" className="mt-2">
-                  <a href="/broker">
-                    <Sparkles className="h-3.5 w-3.5" />
-                    Abrir Asistente
-                  </a>
-                </Button>
+                {/* Mandaba al Asistente, que en producción es un cartel de "Próximamente".
+                    El camino que SÍ existe es escribirle a la inmobiliaria — y está abajo,
+                    en la card de "¿No encontrás lo que buscás?". */}
+                <p className="text-sm">Probá con otras palabras, o escribile a tu inmobiliaria.</p>
               </CardContent>
             </Card>
           ) : (
@@ -377,29 +373,34 @@ export default function AyudaPage() {
           </section>
         )}
 
-        {/* CTA al Broker / inmo */}
+        {/* CTA a la inmobiliaria. Antes el botón principal era "Preguntale al Asistente" con
+            el copy "entiende preguntas en lenguaje natural y cita tu contrato" — una capacidad
+            que no existe (no hay LLM en el monorepo y /broker devuelve "Próximamente"). El
+            canal real es el que ya estaba de segundo: la inmobiliaria. */}
         <Card className="space-y-3 border-primary/20 bg-primary/5 p-5 text-center">
-          <Sparkles className="mx-auto h-8 w-8 text-primary" />
+          <MessageCircle className="mx-auto h-8 w-8 text-primary" />
           <p className="font-medium">¿No encontrás lo que buscás?</p>
           <p className="text-sm text-muted-foreground">
-            El Asistente entiende preguntas en lenguaje natural y cita tu contrato.
+            Escribile a tu inmobiliaria: es quien puede responderte sobre tu contrato.
           </p>
-          <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
-            <Button asChild>
-              <a href="/broker">
-                <Sparkles className="h-4 w-4" />
-                Preguntale al Asistente
-              </a>
-            </Button>
-            {telWa && (
-              <Button variant="outline" asChild>
+          {/* Pasa a ser el botón PRIMARIO: ya no compite con un asistente que no existe.
+              Y sin teléfono cargado la card no queda muda: decir "pedíselo" es más útil que
+              un encabezado sin ninguna acción debajo. */}
+          {telWa ? (
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
+              <Button asChild>
                 <a href={`https://wa.me/${telWa}`} target="_blank" rel="noreferrer">
                   <MessageCircle className="h-4 w-4" />
-                  Hablar con humano
+                  Escribir por WhatsApp
                 </a>
               </Button>
-            )}
-          </div>
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Tu inmobiliaria todavía no cargó un teléfono de contacto acá. Pedíselo y lo vas a
+              ver en esta pantalla.
+            </p>
+          )}
         </Card>
       </main>
 
