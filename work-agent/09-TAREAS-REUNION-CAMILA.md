@@ -1036,7 +1036,7 @@ merecen su propia planificación.
 
 ## Tareas nuevas detectadas al ejecutar
 
-### T-29 · Destinatario configurable por tipo de aviso
+### T-17-N1 · Destinatario configurable por tipo de aviso
 **Experto:** BE + PROD · **Prioridad:** 🟠 · **Detectada en:** T-17 (Fase 7)
 
 Hoy **todos** los avisos a la inmobiliaria van a `Inmobiliaria.email`, una sola casilla. Camila
@@ -1046,7 +1046,7 @@ casilla, no a la de la chica que los maneja. Habría que poder decir a quién le
 Hace falta un modelo de preferencias (por tipo de evento → destinatario), y probablemente un
 digest para los eventos de alto volumen. **Definir con PROD antes de modelar.**
 
-### T-30 · El estado EN_CURSO sigue siendo inalcanzable
+### T-17-N2 · El estado EN_CURSO sigue siendo inalcanzable
 **Experto:** BE + FE-P · **Prioridad:** 🟠 · **Detectada en:** T-17 (Fase 7)
 
 Ya estaba documentado en `07-ECOSISTEMA.md §3.4`: *"tomar / poner en curso"* no tiene endpoint,
