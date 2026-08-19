@@ -1983,6 +1983,40 @@ con ningún server y su rol sale de localStorage. Gatearla sólo rompería la de
 
 ---
 
+## T-44 · Dos cabos sueltos de mis propios arreglos — ✅ RESUELTO
+
+**Experto:** BE + FE-I · **Prioridad:** 🟠
+**Origen:** los hallazgos que quedaron fuera del cap en la revisión del 19/08.
+
+### 1 · El 409 de T-38 mandaba a una pantalla que no existe
+
+El mensaje decía *"si lo que cambió es el valor de las expensas, se edita desde los datos del
+contrato"*. **Es falso:** ningún endpoint escribe `montoExpensas` fuera del alta — los únicos
+PATCH de contrato son mora, monto, modo-cobranza, contacto y garantes (es el mismo hueco que
+había detectado T-11). Mandar al operador a buscar una pantalla inexistente es peor que
+decirle que no se puede.
+
+Ahora el 409 dice la verdad y trae `codigo: 'CONTRATO_SIN_CANON'`. **El hueco de fondo sigue
+abierto** y es de T-11: `montoExpensas` y `depositoGarantia` no tienen ningún camino de
+edición.
+
+### 2 · El arreglo del "Pagado" no llegaba a la demo
+
+`cubiertoSinValidar` llevaba `apiEnabled &&`, así que el **build demo** —el de GitHub Pages, el
+que ve un prospecto y el que se usa para mostrar el producto— seguía con el badge verde
+"Pagado" y el botón de recibo sobre un pago recién informado. Justo la confusión que el arreglo
+vino a sacar, viva en la vidriera.
+
+Ahora vale en los dos modos: en demo la señal es `pendienteValidacion` (store local); en prod,
+`det.hayEnRevision`.
+
+**Verificado en navegador, en modo demo y en las dos direcciones.** Sin el arreglo: badge
+"Pagado" + "Descargar comprobante" pegados al cartel "Pendiente de validación", y encima
+mostrando `$572.000` (el total del mock) cuando lo informado eran `$662.948`. Con el arreglo:
+"En revisión", sin recibo, con "Ver comprobante enviado" y el monto correcto.
+
+---
+
 ## T-37-N1 · Circuito de aprobación para el pago manual del operador
 
 **Experto:** BE + PROD · **Prioridad:** 🟢 · **Depende de:** decisión de producto

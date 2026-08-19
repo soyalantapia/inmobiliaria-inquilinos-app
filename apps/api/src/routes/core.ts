@@ -2163,14 +2163,18 @@ export async function coreRoutes(app: FastifyInstance) {
     // `montoAlquilerSegunTipo`; éste armaba su propio updateMany y no miraba el tipo. Es el
     // residuo que dejó T-20, que cerró el cron y no esto.
     if (contrato.tipoContrato === 'SOLO_EXPENSAS') {
+      // OJO con el texto: la primera versión decía "las expensas se editan desde los datos del
+      // contrato". Es MENTIRA — ningún endpoint escribe `montoExpensas` fuera del alta (los
+      // únicos PATCH de contrato son mora, monto, modo-cobranza, contacto y garantes). Mandar
+      // al operador a buscar una pantalla que no existe es peor que decirle que no se puede.
       return reply.code(409).send({
+        codigo: 'CONTRATO_SIN_CANON',
         message:
           // El mensaje decía "las expensas hoy sólo se define al cargar el contrato"
           // porque era verdad: no había forma de cambiarlas después. Ahora la hay
           // (PATCH /contratos/:id/expensas, botón "Cambiar expensas" en el
           // contrato), así que en vez de cerrar la puerta se indica cuál abrir.
           'Este contrato es de solo expensas: no tiene alquiler que ajustar. Para cambiar el monto usá "Cambiar expensas".',
-        codigo: 'SOLO_EXPENSAS_SIN_CANON',
       });
     }
     const montoAnterior = Number(contrato.monto);

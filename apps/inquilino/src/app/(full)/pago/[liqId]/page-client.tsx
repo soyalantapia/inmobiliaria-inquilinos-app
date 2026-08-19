@@ -212,29 +212,33 @@ function DetallePagoView({
     ? det.hayConciliado || det.hayEnRevision
     : parciales.length > 0;
   const hayParciales = tieneParciales && saldo > 0;
-
   /**
    * Cubierto pero SIN VALIDAR: el inquilino informó lo suficiente para llegar a saldo 0,
    * pero la inmobiliaria todavía no lo aprobó y puede rechazarlo.
    *
    * Sin esto, `pagadoEnParciales` daba true y la pantalla mostraba el badge verde "Pagado"
-   * y ofrecía **descargar el recibo** — un PDF que dice textual *"Tiene validez legal como
-   * prueba de pago"* (`lib/recibo-pdf.ts:114`) — sobre plata que nadie validó. `faltaPagar`
-   * resta lo que está en revisión (`saldo-liquidacion.ts:55`), así que un solo informe por
-   * el total alcanzaba para disparar todo.
+   * y ofrecía **descargar el recibo** —un PDF que dice textual *"Tiene validez legal como
+   * prueba de pago"* (`lib/recibo-pdf.ts`)— sobre plata que nadie validó, y que
+   * `POST /pagos/:id/rechazar` todavía puede tirar atrás. Con esto cae en
+   * `pendienteValidacion`, que ya tiene el copy y el CTA correctos.
    *
    * Va en los DOS modos a propósito. En demo el circuito es idéntico: el pago nace
    * `INFORMADO` y nada lo concilia, así que ahí el recibo prematuro es *siempre* el caso.
+   * La primera versión llevaba `apiEnabled &&`, y el build de GitHub Pages —el que ve un
+   * prospecto— seguía mostrando el badge verde sobre un pago recién informado.
+   *
+   * En prod alcanza con que HAYA algo en revisión aunque otra parte ya esté conciliada: con
+   * $50 validados y $50 esperando, el recibo por el total seguiría siendo prematuro
+   * (`faltaPagar` resta lo que está en revisión). Cuando la inmobiliaria valide el resto,
+   * `hayEnRevision` cae solo.
+   *
+   * En demo la señal es `pendienteValidacion` y no "hay algún pago INFORMADO": el estado
+   * local puede quedar con un INFORMADO zombie que la inmobiliaria ya confirmó o rechazó, y
+   * ese no espera validación de nadie. `pendienteValidacion` ya lo filtra.
    */
-  const cubiertoSinValidar =
-    saldo === 0 &&
-    (apiEnabled
-      ? // Alcanza con que HAYA algo en revisión, aunque otra parte ya esté conciliada:
-        // con $50 validados y $50 esperando, el recibo por el total seguiría siendo
-        // prematuro. Cuando la inmobiliaria valide el resto, `hayEnRevision` cae solo.
-        det.hayEnRevision
-      : listarPagosDeLiq(liqId).some((p) => p.estado === 'INFORMADO'));
-
+  const cubiertoSinValidar = apiEnabled
+    ? det.hayEnRevision && det.faltaPagar === 0
+    : pendienteValidacion && saldo === 0;
   const pagadoEnParciales = !pagado && tieneParciales && saldo === 0 && !cubiertoSinValidar;
 
   return (
