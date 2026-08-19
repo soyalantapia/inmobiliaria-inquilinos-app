@@ -1396,3 +1396,22 @@ sirve para discutir después."* Sin el cuerpo, el registro no cubre el caso de u
 `apps/inmobiliaria/src/components/configuracion-pais.tsx:183` dice *"avisamos por mail cuando
 esté listo"* para un país todavía no disponible. No hay lista de espera detrás. O se construye,
 o se cambia el texto.
+## Tareas nuevas detectadas al ejecutar
+
+### T-17-N1 · Destinatario configurable por tipo de aviso
+**Experto:** BE + PROD · **Prioridad:** 🟠 · **Detectada en:** T-17 (Fase 7)
+
+Hoy **todos** los avisos a la inmobiliaria van a `Inmobiliaria.email`, una sola casilla. Camila
+administra 220 propiedades: *"me va a llegar un mail por cada reclamo… y todos van a mi misma
+casilla, no a la de la chica que los maneja. Habría que poder decir a quién le llega cada cosa."*
+
+Hace falta un modelo de preferencias (por tipo de evento → destinatario), y probablemente un
+digest para los eventos de alto volumen. **Definir con PROD antes de modelar.**
+
+### T-17-N2 · El estado EN_CURSO sigue siendo inalcanzable
+**Experto:** BE + FE-P · **Prioridad:** 🟠 · **Detectada en:** T-17 (Fase 7)
+
+Ya estaba documentado en `07-ECOSISTEMA.md §3.4`: *"tomar / poner en curso"* no tiene endpoint,
+así que a `EN_CURSO` sólo se llega si el inquilino **reabre** un reclamo resuelto. Con el mail
+de T-17, Camila se entera antes de un reclamo que después **no puede mover**: *"me entero más
+rápido de algo que después no puedo mover. Me sirve igual, pero es media solución."*
