@@ -42,6 +42,7 @@ Estas mandan sobre cualquier otra cosa que decidas.
    lo hace el dueño.
 2. **NO aplicás migraciones.** Podés *escribir* el `.sql`, nunca correrlo. Si tu tarea necesita
    una, la dejás escrita, documentada y avisás.
+
 3. **NO corrés los tests de integración de `apps/api`.** Los que importan `seedBase` siembran de
    forma **destructiva** una Postgres **remota y compartida**: te llevás puesto lo que estén
    usando los otros chats en paralelo, y el seed no distingue. Corré sólo los **puros** (los que
@@ -59,6 +60,10 @@ Estas mandan sobre cualquier otra cosa que decidas.
    > máquina **no existe `apps/api/.env`**, así que `DATABASE_URL` no está seteada y esos tests
    > ni siquiera arrancan (fallan con un ZodError de env, no con un error de conexión — si te lo
    > cruzás, es eso).
+
+   > Y desde el 19/08 hay un **guard que falla cerrado** (`apps/api/prisma/guard-db.ts`):
+   > ante una URL de producción, vacía o desconocida, el seed **no corre**. Verificá igual
+   > contra qué apunta tu `DATABASE_URL` antes de lanzar nada.
 4. **NO tocás el tenant real** (Tapia Propiedades): no creás cuentas ni datos de prueba ahí.
 5. **NO commiteás a `main`.** Trabajás en tu propia rama, en tu propio worktree (Fase 0).
 6. **NO agregás dependencias** sin justificarlo explícitamente en el reporte final.
