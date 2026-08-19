@@ -679,6 +679,7 @@ model Inmobiliaria {
   cuentasCobranzaDirecta     CuentaCobranzaDirecta[]
   propiedades                Propiedad[]
   participaciones            ParticipacionPropietario[]
+  cambiosParticipacion       CambioParticipacion[]
   contratos                  Contrato[]
   contratoDrafts             ContratoDraft[]
   inquilinos                 Inquilino[]
@@ -1297,6 +1298,47 @@ model Propiedad {
 
 // Cotitularidad: Σ porcentaje por propiedad = 100 ± 0.5 (valida el API).
 // Sin filas explícitas => reparto igualitario.
+/// Cada vez que cambia el reparto de una propiedad, una fila. APPEND-ONLY: nunca se edita ni
+/// se borra.
+///
+/// POR QUÉ: hoy no existe ningún rastro de cuándo alguien pasó a ser dueño de una unidad —
+/// `ParticipacionPropietario` sólo guarda la foto de HOY, sin `desde`/`hasta`. Sin ese dato, el
+/// portal del propietario no puede recortar lo que muestra a "desde que sos dueño", y un
+/// comprador ve el historial completo del inquilino anterior (T-23-N3).
+///
+/// POR QUÉ NO `EventoAuditoria`: ese log es **best-effort declarado** (`lib/auditoria.ts`:
+/// try/catch que se traga su propio error, y corre DESPUÉS del commit). Un recorte que protege
+/// datos de un tercero no puede colgar de algo que puede no escribirse. Esta tabla se escribe
+/// DENTRO de la misma transacción que el reparto: si no se registra, el reparto tampoco cambia.
+///
+/// SEMÁNTICA DE LOS NULOS:
+///   `porcentajeAnterior` null = **entró** (no tenía participación antes)
+///   `porcentajeNuevo`    null = **salió** (dejó de tener participación)
+///
+/// TABLA VACÍA = "toda participación existente se considera vigente desde siempre". El pasado
+/// no tiene dato y no se inventa: sólo se registra de acá en adelante.
+model CambioParticipacion {
+  id                  String       @id @default(cuid())
+  inmobiliariaId      String
+  inmobiliaria        Inmobiliaria @relation(fields: [inmobiliariaId], references: [id])
+  /// Sin FK, igual que `autorId` y que `AlquilerRendido.propiedadId`: el rastro tiene que
+  /// SOBREVIVIR al borrado de la propiedad o del propietario, no bloquearlo. Con una FK
+  /// RESTRICT, borrar una propiedad que alguna vez cambió de reparto tiraba 500 (el
+  /// `$transaction` del DELETE no limpia esta tabla, ni debería); con CASCADE, el historial
+  /// moría con ella — que es justo lo que no puede perderse.
+  propiedadId         String
+  propietarioId       String
+  porcentajeAnterior  Float?
+  porcentajeNuevo     Float?
+  aplicadoAt          DateTime     @default(now())
+  /// Quién lo hizo. Sin FK a propósito: si el usuario se borra, el rastro no se puede perder.
+  autorId             String?
+
+  @@index([inmobiliariaId])
+  @@index([propiedadId, propietarioId, aplicadoAt])
+  @@map("cambios_participacion")
+}
+
 model ParticipacionPropietario {
   inmobiliariaId String
   inmobiliaria   Inmobiliaria @relation(fields: [inmobiliariaId], references: [id])

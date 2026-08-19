@@ -18,6 +18,7 @@ import {
 import { conSaldo, montoPagadoPorLiquidacion } from '../lib/saldos.js';
 import { normalizarEmail } from '../lib/normalizar-email.js';
 import { normalizarDni } from '../lib/normalizar-dni.js';
+import { diffParticipaciones } from '../lib/diff-participaciones.js';
 import { alquilerCobradoSinRendir } from '../lib/rendicion-pendiente.js';
 import { registrarEventoContrato } from '../lib/evento-contrato.js';
 import { aplicarDepositoADeuda } from '../lib/aplicar-deposito.js';
@@ -657,6 +658,14 @@ export async function coreRoutes(app: FastifyInstance) {
     // re-atribución fina requeriría snapshotear participaciones por período.
 
     await prisma.$transaction(async (tx) => {
+      // El estado anterior se lee DENTRO de la transacción y ANTES del deleteMany: es la única
+      // ventana en la que existe. Un `findMany` afuera podría leer una foto que otra request
+      // ya cambió, y el historial quedaría diciendo algo que no pasó.
+      const antes = await tx.participacionPropietario.findMany({
+        where: { propiedadId: id },
+        select: { propietarioId: true, porcentaje: true },
+      });
+
       await tx.participacionPropietario.deleteMany({ where: { propiedadId: id } });
       await tx.participacionPropietario.createMany({
         data: parts.map((p) => ({
@@ -666,6 +675,26 @@ export async function coreRoutes(app: FastifyInstance) {
           porcentaje: p.porcentaje,
         })),
       });
+
+      // HISTORIAL DE REPARTO (T-23-N3-N1). Va acá adentro y no por `registrarEvento`: de esto
+      // va a colgar un recorte de PRIVACIDAD —qué le mostramos al comprador de una unidad sobre
+      // el inquilino que ya vivía ahí— y la auditoría es best-effort declarada (se traga su
+      // propio error y corre después del commit). Si el cambio de reparto commitea, su registro
+      // commiteó con él; si el registro falla, el reparto no cambia. Es lo que hace que el dato
+      // sea confiable como fuente de un recorte.
+      const cambios = diffParticipaciones(antes, parts);
+      if (cambios.length > 0) {
+        await tx.cambioParticipacion.createMany({
+          data: cambios.map((c) => ({
+            inmobiliariaId: u.inmobiliariaId,
+            propiedadId: id,
+            propietarioId: c.propietarioId,
+            porcentajeAnterior: c.porcentajeAnterior,
+            porcentajeNuevo: c.porcentajeNuevo,
+            autorId: u.userId,
+          })),
+        });
+      }
     });
 
     return prisma.propiedad.findFirst({
