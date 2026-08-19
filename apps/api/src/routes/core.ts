@@ -2236,26 +2236,19 @@ export async function coreRoutes(app: FastifyInstance) {
       // reusaba AJUSTE_APLICADO por falta de un valor en el enum, y en el timeline una
       // renovación —que extiende el plazo— se veía igual que un cambio de monto.
       const finNuevaTxt = b.fechaFinNueva.toISOString().slice(0, 10);
-<<<<<<< HEAD
-      await tx.eventoContrato.create({
-        data: {
-          inmobiliariaId: u.inmobiliariaId,
-          contratoId: id,
-          tipo: 'AJUSTE_APLICADO',
-          titulo: `Renovación: plazo hasta ${finNuevaTxt} · canon ${montoAnterior} → ${canonNuevo} ${contrato.moneda}`,
-          detalle: b.motivo ?? null,
-          fecha: new Date(),
-          autor: u.userId,
-        },
-=======
+      // Resolución del merge T-29 ↔ integración: se toma el helper y el tipo propio
+      // `RENOVACION` que trae T-29, pero el monto sigue siendo `canonNuevo` y NO
+      // `b.montoNuevo`, que es un fix que la rama de integración ya tenía y T-29 no.
+      // La diferencia importa: `b.montoNuevo` es lo que pidió el body, `canonNuevo` es
+      // lo que la base realmente guardó. En un SOLO_EXPENSAS no coinciden, y el
+      // historial mostraría un canon que nunca existió.
       await registrarEventoContrato(tx, {
         inmobiliariaId: u.inmobiliariaId,
         contratoId: id,
         tipo: 'RENOVACION',
-        titulo: `Renovación: plazo hasta ${finNuevaTxt} · canon ${montoAnterior} → ${b.montoNuevo} ${contrato.moneda}`,
+        titulo: `Renovación: plazo hasta ${finNuevaTxt} · canon ${montoAnterior} → ${canonNuevo} ${contrato.moneda}`,
         detalle: b.motivo ?? null,
         autor: u.userId,
->>>>>>> feat/T-29-eventos-contrato
       });
       return { renovacionId: renov.id, liquidacionesNuevas: nuevas };
     });
