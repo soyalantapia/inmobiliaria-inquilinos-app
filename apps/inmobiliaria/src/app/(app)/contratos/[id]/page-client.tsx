@@ -103,6 +103,7 @@ const estadoContratoVariant: Record<EstadoContrato, React.ComponentProps<typeof 
 const eventoIcono: Record<TipoEventoContrato, LucideIcon> = {
   CREADO: Flag,
   AJUSTE_APLICADO: TrendingUp,
+  RENOVACION: FileText,
   PAGO_RECIBIDO: CheckCircle2,
   PAGO_VENCIDO: Clock,
   RECLAMO_CREADO: Wrench,
@@ -122,6 +123,7 @@ const eventoColor: Record<TipoEventoContrato, string> = {
   COMUNICACION_ENVIADA: 'bg-muted',
   GARANTE_RENOVADO: 'bg-amber-500',
   INTENCION_RENOVACION: 'bg-primary',
+  RENOVACION: 'bg-emerald-500',
 };
 
 const canalIcono: Record<CanalComunicacion, LucideIcon> = {
@@ -1064,7 +1066,12 @@ function EventoTimelineRow({
   evento: { tipo: TipoEventoContrato; titulo: string; detalle: string | null; fecha: string; autor: string };
   esUltimo: boolean;
 }) {
-  const Icon = eventoIcono[evento.tipo];
+  // Fallback obligatorio: `apiFetch` castea la respuesta sin validar, así que un tipo de
+  // evento que el backend agregue al enum llega igual a esta pantalla. Sin el `??`, el
+  // `<Icon>` era `undefined` y React tiraba "Element type is invalid" — y como la única
+  // error boundary del panel es la raíz, se caía la ficha entera del contrato, no la
+  // pestaña. Pasó con RENOVACION; el `??` es para el próximo.
+  const Icon = eventoIcono[evento.tipo] ?? Flag;
   return (
     <li className="relative flex gap-4">
       {!esUltimo && (
@@ -1076,7 +1083,7 @@ function EventoTimelineRow({
       <div
         className={cn(
           'relative z-10 grid h-10 w-10 shrink-0 place-items-center rounded-full text-white',
-          eventoColor[evento.tipo],
+          eventoColor[evento.tipo] ?? 'bg-primary',
         )}
       >
         <Icon className="h-5 w-5" />

@@ -211,7 +211,14 @@ function DetallePagoView({
     ? det.hayConciliado || det.hayEnRevision
     : parciales.length > 0;
   const hayParciales = tieneParciales && saldo > 0;
-  const pagadoEnParciales = !pagado && tieneParciales && saldo === 0;
+  // `saldo === 0` puede venir de dos lados MUY distintos, y confundirlos es caro: de plata
+  // que la inmobiliaria ya validó, o de un comprobante que todavía puede rechazar. Sólo el
+  // primero es "Pagado". Tratar al segundo como pagado le mostraba el badge verde Y le
+  // habilitaba el botón de descargar el recibo —un PDF que dice "tiene validez legal como
+  // prueba de pago"— sobre plata que `POST /pagos/:id/rechazar` todavía puede tirar atrás.
+  // Con esto cae en `pendienteValidacion`, que ya tiene el copy y el CTA correctos.
+  const cubiertoSinValidar = apiEnabled && det.hayEnRevision && det.faltaPagar === 0;
+  const pagadoEnParciales = !pagado && tieneParciales && saldo === 0 && !cubiertoSinValidar;
 
   return (
     <>
@@ -308,6 +315,11 @@ function DetallePagoView({
             </span>
             {pagado || pagadoEnParciales ? (
               <Badge variant="success">Pagado</Badge>
+            ) : cubiertoSinValidar ? (
+              // Informó por el total: no le queda nada por transferir, pero todavía no es
+              // suyo. Sin este estado el badge caía en "Pendiente"/"Atrasado" junto al total
+              // completo, que es el bug opuesto: parece que no pagó nada.
+              <Badge variant="warning">En revisión</Badge>
             ) : hayParciales ? (
               <Badge variant="warning">Parcial</Badge>
             ) : vencido ? (
