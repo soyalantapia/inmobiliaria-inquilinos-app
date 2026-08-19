@@ -947,7 +947,17 @@ un token así.**
 
 ---
 
-## T-36 · TOCTOU al cambiar el modo de cobranza
+## T-36 · TOCTOU al cambiar el modo de cobranza — ✅ RESUELTO
+
+> **Hecho.** La re-verificación de `alquilerCobradoSinRendir` ahora corre **dentro** de la
+> transacción (el helper acepta un `TxOrClient`, como `deposito.ts` y `evento-contrato.ts`), y
+> el `UPDATE` pasó a `updateMany` condicionado al modo que se leyó → 409 si otro cambió el
+> modo en el medio.
+> **Lo que cierra y lo que no, explícito:** cierra el doble cambio de modo y achica la ventana
+> del otro caso de toda la latencia del handler (que incluye las consultas de propietario y
+> cuenta) a lo que dura la transacción. **No la cierra del todo**: en READ COMMITTED una
+> conciliación que commitea justo después de la re-lectura sigue entrando. Para eso haría
+> falta que conciliar un pago tome un lock sobre el contrato — otro cambio, otra tarea.
 
 **Experto:** BE · **Prioridad:** 🟡 · **Depende de:** nada
 **Origen:** revisión adversarial del 19/08 (dimensión concurrencia). **Es sobre código propio
@@ -990,7 +1000,10 @@ personal de mostrador.
 
 ---
 
-## T-38 · `POST /contratos/:id/ajustar` no valida el tipo de contrato
+## T-38 · `POST /contratos/:id/ajustar` no valida el tipo de contrato — ✅ RESUELTO
+
+> **Hecho.** 409 cuando el contrato es `SOLO_EXPENSAS`, con el texto que dice dónde se corrige
+> lo que el operador probablemente quería cambiar (el importe de las expensas).
 
 **Experto:** BE · **Prioridad:** 🟢 · **Depende de:** nada
 **Origen:** revisión adversarial del 19/08. Es el **residuo** de T-20, que cerró el agujero del

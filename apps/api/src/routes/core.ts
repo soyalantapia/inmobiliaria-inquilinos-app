@@ -1998,6 +1998,18 @@ export async function coreRoutes(app: FastifyInstance) {
     const contrato = await prisma.contrato.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
     if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
     if (contrato.estado !== 'ACTIVO') return reply.code(409).send({ message: 'Solo se ajusta un contrato activo' });
+    // T-38 — Los otros tres caminos que escriben el canon (computarLiquidacionesContrato,
+    // recomputarLiquidacionesFuturas y PATCH /contratos/:id/monto) pasan por
+    // `montoAlquilerSegunTipo`; éste armaba su propio updateMany y no miraba el tipo. En un
+    // contrato SOLO_EXPENSAS eso le factura alquiler a quien sólo debe expensas —y la
+    // comisión sale de esa base—. Es el residuo que dejó T-20, que cerró el cron y no esto.
+    if (contrato.tipoContrato === 'SOLO_EXPENSAS') {
+      return reply.code(409).send({
+        message:
+          'Este contrato no cobra alquiler, sólo expensas: no hay canon para ajustar. ' +
+          'Si lo que cambió es el valor de las expensas, se edita desde los datos del contrato.',
+      });
+    }
     const montoAnterior = Number(contrato.monto);
     if (b.montoNuevo === montoAnterior) {
       return reply.code(400).send({ message: 'El monto nuevo es igual al actual' });
@@ -3457,10 +3469,44 @@ export async function coreRoutes(app: FastifyInstance) {
       cobraDirectoPropietarioId = part.propietarioId;
     }
 
-    const actualizado = await prisma.contrato.update({
-      where: { id: contrato.id },
-      data: { modoCobranza: body.data.modoCobranza, cobraDirectoPropietarioId },
+    // T-36 — El guard de arriba decidió con una foto tomada FUERA de transacción. Entre esa
+    // lectura y este UPDATE, otro operador puede conciliar un pago: el guard ya pasó, el modo
+    // cambia igual, y esa plata queda del lado equivocado del circuito de rendición.
+    //
+    // Se re-verifica ADENTRO y el UPDATE va condicionado al modo que se leyó (patrón
+    // updateMany + count===0 ⇒ 409, el mismo que usan validar/anular/finalizar). Esto cierra
+    // el doble cambio de modo y achica la ventana del otro caso de toda la latencia del
+    // handler —incluidas las consultas de propietario y cuenta— a lo que tarda la propia
+    // transacción. NO la cierra del todo: en READ COMMITTED, una conciliación que commitea
+    // justo después de esta re-lectura sigue entrando. Cerrarla del todo exige que conciliar
+    // un pago tome un lock sobre el contrato, que es un cambio más grande y de otra tarea.
+    const resultado = await prisma.$transaction(async (tx) => {
+      const revalidacion = await alquilerCobradoSinRendir(contrato.id, tx);
+      if (revalidacion.total > 0) return { conflicto: 'SIN_RENDIR' as const };
+      const upd = await tx.contrato.updateMany({
+        where: {
+          id: contrato.id,
+          inmobiliariaId: u.inmobiliariaId,
+          modoCobranza: contrato.modoCobranza,
+        },
+        data: { modoCobranza: body.data.modoCobranza, cobraDirectoPropietarioId },
+      });
+      if (upd.count === 0) return { conflicto: 'CAMBIO_CONCURRENTE' as const };
+      return { conflicto: null };
     });
+    if (resultado.conflicto === 'SIN_RENDIR') {
+      return reply.code(409).send({
+        message:
+          'Mientras se procesaba el cambio se validó un cobro de este contrato, así que quedó ' +
+          'alquiler cobrado sin rendir. Volvé a entrar para ver el detalle actualizado.',
+      });
+    }
+    if (resultado.conflicto === 'CAMBIO_CONCURRENTE') {
+      return reply.code(409).send({
+        message: 'Otra persona cambió el modo de cobranza de este contrato recién. Recargá para ver cómo quedó.',
+      });
+    }
+    const actualizado = { modoCobranza: body.data.modoCobranza };
     // Auditoría real del backend (el enum ya existe): antes el cambio solo se
     // registraba en localStorage (demo) → sin traza en prod.
     await registrarEvento({
