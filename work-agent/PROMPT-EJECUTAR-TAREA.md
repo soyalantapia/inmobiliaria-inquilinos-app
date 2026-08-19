@@ -105,14 +105,21 @@ worktree la ruta relativa apunta a otro lado.
 
 ```bash
 REPO=$(git rev-parse --show-toplevel)   # corré esto ANTES de crear el worktree
-LOCKS="$REPO/work-agent/.tareas"
-mkdir -p "$LOCKS"
-echo "locks en: $LOCKS"
+LOCKS="$REPO/work-agent/.tareas"        # marcador de lock — NO se versiona
+DOCS="$REPO/work-agent/tareas"          # documentos de la tarea — SÍ se versionan
+mkdir -p "$LOCKS" "$DOCS"
+echo "locks en: $LOCKS · documentos en: $DOCS"
 ```
 
-Guardate ese `$LOCKS`: lo vas a usar hasta el final. Está en `.gitignore` a propósito — es
-coordinación local entre procesos, no algo que se commitea. Si se trackeara, cada worktree
-tendría su propia copia y el lock dejaría de servir.
+**Son dos carpetas y la diferencia importa.**
+
+`$LOCKS` está en `.gitignore` a propósito: es coordinación local entre procesos. Si se
+trackeara, cada worktree tendría su propia copia, el `mkdir` nunca fallaría y el lock dejaría de
+servir. Ahí adentro va **sólo** el marcador.
+
+`$DOCS` **se commitea**. Ahí van tu hoja de requerimientos y tu `estado.md`: son el entregable
+del trabajo, no coordinación. Al principio vivían adentro de `$LOCKS` y quedaban a merced de un
+`git clean -xfd` — 35 documentos de análisis colgando de que nadie limpiara el árbol.
 
 ## 0.1 · Ver qué hay disponible
 
@@ -156,7 +163,8 @@ inventes trabajo ni te metas en una que ya tiene dueño.
 Apenas la tomes, dejá tu ficha:
 
 ```bash
-cat > "$LOCKS/$TAREA/estado.md" <<EOF
+mkdir -p "$DOCS/$TAREA"
+cat > "$DOCS/$TAREA/estado.md" <<EOF
 # $TAREA
 - tomada: $(date -u +%Y-%m-%dT%H:%M:%SZ)
 - worktree: ../myalquiler-$TAREA
@@ -244,7 +252,7 @@ Y mientras esperás, avanzá con todo lo que no dependa de la respuesta.
 
 # FASE 2 — La hoja de requerimientos
 
-Escribila en `$LOCKS/$TAREA/requerimientos.md`. Es el contrato
+Escribila en `$DOCS/$TAREA/requerimientos.md`. Es el contrato
 con el que van a trabajar tus desarrolladores: **si está flojo, lo que te devuelven va a estar
 flojo.**
 
@@ -419,7 +427,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 
 ## 8.2 · Dejá el registro
 
-En `$LOCKS/$TAREA/estado.md`:
+En `$DOCS/$TAREA/estado.md`:
 - fase final, rama y worktree,
 - qué quedó hecho y qué **no**,
 - **si escribiste una migración: decilo bien fuerte, con la ruta del `.sql`**, y aclarando que
@@ -449,8 +457,8 @@ Si abandonaste —bloqueo externo, la tarea resultó inviable, te falta una deci
 para que otro chat pueda tomarla, y dejá escrito por qué:
 
 ```bash
-echo "LIBERADA: <motivo>" >> "$LOCKS/$TAREA/estado.md"
-cp "$LOCKS/$TAREA/estado.md" "$LOCKS/$TAREA-liberada.md"   # dejá el rastro
+echo "LIBERADA: <motivo>" >> "$DOCS/$TAREA/estado.md"
+cp "$DOCS/$TAREA/estado.md" "$DOCS/$TAREA-liberada.md"   # dejá el rastro
 rm -rf "$LOCKS/$TAREA"
 ```
 
