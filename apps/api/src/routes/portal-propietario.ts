@@ -72,8 +72,12 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
       // Una misma persona puede ser propietaria en VARIAS inmobiliarias: cada cartera es una
       // fila distinta. Emitimos un código para todas y la identidad sale después de la fila
       // de OTP que matchee.
+      // `activo: true` en las TRES puertas del portal (pedir código, verificarlo y
+      // cambiar de cartera). La baja es POR FILA, no por persona: el mismo email
+      // puede ser propietario en varias inmobiliarias, y que una lo dé de baja no
+      // puede cerrarle el acceso a las otras.
       const propietarios = await prisma.propietario.findMany({
-        where: { email: emailLc },
+        where: { email: emailLc, activo: true },
         select: { id: true },
       });
 
@@ -120,7 +124,7 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
       const emailLc = body.data.email.toLowerCase();
 
       const propietarios = await prisma.propietario.findMany({
-        where: { email: emailLc },
+        where: { email: emailLc, activo: true },
         select: { id: true, inmobiliariaId: true, nombre: true, apellido: true, inmobiliaria: { select: { nombre: true } } },
       });
       if (propietarios.length === 0) return reply.code(401).send({ message: 'Código inválido o vencido' });
@@ -206,7 +210,7 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
     if (!body.success) return reply.code(400).send({ message: 'propietarioId requerido' });
 
     const destino = await prisma.propietario.findFirst({
-      where: { id: body.data.propietarioId, email: actual.email },
+      where: { id: body.data.propietarioId, email: actual.email, activo: true },
       select: { id: true, inmobiliariaId: true, nombre: true, apellido: true, inmobiliaria: { select: { nombre: true } } },
     });
     // 404 y no 403: no confirmamos que el id exista pero sea de otro. Es el mismo criterio

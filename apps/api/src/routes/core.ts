@@ -847,6 +847,84 @@ export async function coreRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
+  /**
+   * Baja / alta lógica de un propietario (PATCH /propietarios/:id/activo).
+   *
+   * Es lo que faltaba para poder cortarle el acceso al portal a alguien sin
+   * borrarle la fila. `DELETE /propietarios/:id` (arriba) sólo procede cuando el
+   * propietario NO tiene historial — o sea, nunca en el caso que importa: al que
+   * hay que sacarle el acceso es justamente al que tiene rendiciones.
+   *
+   * Los dos endpoints conviven a propósito y no se pisan: DELETE es para limpiar
+   * una fila cargada por error; esto es para dar de baja a alguien real,
+   * conservando su historial contable.
+   *
+   * La revocación de la sesión abierta la hace `requirePropietario`, que revalida
+   * `activo` en cada request. Sin eso, un token de 7 días seguiría sirviendo.
+   */
+  app.patch('/propietarios/:id/activo', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'propietarios.crear');
+    if (!u) return;
+    // Mismo criterio que el DELETE: la capacidad incluye CARGA, pero dar de baja
+    // le corta el acceso a una persona real y deja de mandarle avisos.
+    if (u.rol === 'CARGA') {
+      return reply.code(403).send({ message: 'Solo un Admin u Operador puede dar de baja a un propietario' });
+    }
+    const { id } = request.params as { id: string };
+    const body = z.object({ activo: z.boolean(), motivo: z.string().max(300).optional() }).safeParse(request.body);
+    if (!body.success) return reply.code(400).send({ message: 'Indicá si el propietario queda activo o no' });
+
+    const prop = await prisma.propietario.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      select: { id: true, nombre: true, apellido: true, activo: true },
+    });
+    if (!prop) return reply.code(404).send({ message: 'Propietario inexistente' });
+    if (prop.activo === body.data.activo) return { ok: true, activo: prop.activo, sinCambios: true };
+
+    if (!body.data.activo) {
+      // Mismo guard que ya usa el cambio de dueños de una propiedad: si este
+      // propietario es quien cobra DIRECTO del inquilino en un contrato activo,
+      // darlo de baja dejaría al inquilino transfiriendo a la cuenta de alguien
+      // que ya no administra la propiedad. Es plata yendo al lugar equivocado, no
+      // un problema de prolijidad.
+      const cobranzaDirecta = await prisma.contrato.findFirst({
+        where: {
+          inmobiliariaId: u.inmobiliariaId,
+          estado: 'ACTIVO',
+          modoCobranza: 'PROPIETARIO_DIRECTO',
+          cobraDirectoPropietarioId: id,
+        },
+        select: { id: true },
+      });
+      if (cobranzaDirecta) {
+        return reply.code(409).send({
+          codigo: 'COBRA_DIRECTO',
+          contratoId: cobranzaDirecta.id,
+          message:
+            'No podés dar de baja a este propietario: es quien cobra directo del inquilino en un contrato activo. Cambiá el modo de cobranza de ese contrato antes.',
+        });
+      }
+    }
+
+    await prisma.propietario.update({ where: { id }, data: { activo: body.data.activo } });
+
+    // Auditoría: le corta (o le devuelve) el acceso a los datos financieros de
+    // terceros que muestra el portal. Best-effort, después del commit.
+    await registrarEvento({
+      inmobiliariaId: u.inmobiliariaId,
+      tipo: 'EQUIPO_REMOVIDO',
+      autorId: u.userId,
+      rolAutor: u.rol,
+      entidadId: id,
+      entidadDescripcion:
+        `Propietario ${body.data.activo ? 'reactivado' : 'dado de baja'}: ` +
+        `${prop.nombre} ${prop.apellido}`.trim() +
+        (body.data.motivo ? ` · ${body.data.motivo}` : ''),
+    });
+
+    return { ok: true, activo: body.data.activo };
+  });
+
   app.post('/propiedades', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'propiedades.crear');
     if (!u) return;

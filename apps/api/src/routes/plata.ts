@@ -229,6 +229,12 @@ export async function plataRoutes(app: FastifyInstance) {
       // de alquiler ni la comisión (misma regla que la rendición).
       const alquilerPortion = liqTotal > 0 ? Math.min(monto, liqTotal) * (liqAlq / liqTotal) : 0;
       // Tasa de comisión ponderada por la participación de cada dueño de la propiedad.
+      //
+      // ⚠️ NO se filtra por `Propietario.activo`, igual que en
+      // `tasaComisionDeParticipaciones` (lib/ganancia-contrato.ts), que es la misma
+      // fórmula duplicada acá inline: la tasa cubre el 100% de la propiedad, y
+      // excluir a un dueño dado de baja la bajaría falsamente. La baja lógica corta
+      // el acceso al portal, no la titularidad.
       const parts = p.contrato?.propiedad?.participaciones ?? [];
       const tasa = parts.reduce(
         (s, x) => s + (x.porcentaje / 100) * ((x.propietario?.comisionPct ?? 0) / 100),
@@ -1596,6 +1602,12 @@ export async function plataRoutes(app: FastifyInstance) {
   });
 
   // ===== Rendiciones (cierra el loop caja→rendición) =====
+  //
+  // ⚠️ El listado NO filtra por `Propietario.activo`, y es a propósito: una
+  // rendición es plata que YA se movió. Ocultar las de un propietario dado de baja
+  // haría que los totales históricos dejaran de cuadrar, y el que audita vería
+  // menos plata de la que salió. La baja lógica corta el acceso al portal; el
+  // historial contable no se toca.
   app.get('/rendiciones', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'pagos.ver');
     if (!u) return;

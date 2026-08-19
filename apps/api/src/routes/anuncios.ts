@@ -213,8 +213,11 @@ async function enviarEmailsAnuncio(
   // Destinatarios con email real, deduplicados (co-titulares pueden compartir casilla).
   const destinos: Array<{ email: string; paraInquilino: boolean }> = [];
   if (anuncio.audiencia === 'TODOS_PROPIETARIOS') {
+    // Sin `activo: true` esto le seguía mandando los anuncios de la inmobiliaria
+    // a ex-propietarios: es la fuga hacia afuera más visible de la baja lógica,
+    // porque llega a la casilla de alguien que ya no tiene nada que ver.
     const owners = await prisma.propietario.findMany({
-      where: { inmobiliariaId: anuncio.inmobiliariaId },
+      where: { inmobiliariaId: anuncio.inmobiliariaId, activo: true },
       select: { email: true },
     });
     for (const o of owners) destinos.push({ email: o.email, paraInquilino: false });

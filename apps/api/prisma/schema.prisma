@@ -1148,6 +1148,12 @@ model Propietario {
   cbuAlias       String? // null => alerta 'sin CBU no podemos rendir'
   comisionPct    Float        @default(8)
   notas          String?
+  // Baja lógica, misma convención que Sociedad.activa y Usuario.activo. NO se
+  // borra la fila: un propietario dado de baja conserva su historial de
+  // rendiciones, que es plata que ya se movió. Lo que corta es el acceso al
+  // portal — requirePropietario lo revalida en cada request, que es la única
+  // revocación real que tiene un token de 7 días sin denylist.
+  activo         Boolean      @default(true)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
