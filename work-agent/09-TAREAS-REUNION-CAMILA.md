@@ -1700,3 +1700,36 @@ usuario nace con una credencial que no eligió.
 **Riesgo de no hacerlo.** Escalamiento de privilegios silencioso. Es exactamente el escenario que
 Camila describe en la reunión —una máquina, varias personas, roles distintos— pero al revés: en
 vez de separar quién hace qué, hoy podría estar todo el mostrador operando con la misma llave.
+
+---
+
+### ✅ RESUELTO (código) — commit `310645c` · **quedan 3 acciones del owner**
+
+Todo lo que afirmaba el relevamiento se verificó a mano y era cierto. **Dos cosas que no decía:**
+
+- **Las invitaciones de equipo ya estaban bien** (`core.ts:2810`, `:2832`): sólo escriben
+  `passwordHash` si viene contraseña. El agujero era exclusivo del script de alta.
+- **La SQL de limpieza que proponía esta tarea estaba mal.** Usaba `pin_hash` y la columna real
+  es `"pinHash"` (camelCase citado; el modelo no tiene `@map`). Habría fallado al correrla.
+
+**El arreglo no es acordarse de pasar contraseñas.** La decisión se mudó a
+`scripts/lib/credenciales-alta.mjs`, y esa función **no recibe al admin**: heredarle es imposible
+por la forma, no por disciplina. Sin contraseña propia la cuenta queda con `passwordHash: null` y
+entra por OTP —el camino que el producto ya eligió, porque `/auth/registro` hace lo mismo. Vive
+separada del script para poder testearla: `onboarding-real.mjs` lee disco y abre una conexión a
+la base al importarse.
+
+El PIN no se escribe más desde el alta, para nadie. `admin.pin` se ignora **con aviso** en vez de
+callado. Mismo criterio en el seed, donde los tres usuarios nacían con `1234`.
+
+La contraseña compartida del seed **se dejó**, documentada como decisión de fixture: ~64 tests
+loguean con ella como los tres roles, y esos tests no se pueden correr desde acá (pegan a la
+Postgres de producción). Cambiarla a ciegas era el riesgo mayor.
+
+**112 tests puros** (8 nuevos). El de la firma verificado en rojo reintroduciendo el `?? admin`.
+
+**Lo que el código NO puede cerrar:** (1) averiguar si hay alguien afectado en el tenant real
+—consulta de sólo lectura en `work-agent/.tareas/T-35/estado.md`—; (2) **rotar** lo que haya
+quedado compartido, porque si el tenant se dio de alta así, esas cuentas tienen acceso ADMIN
+**hoy**; (3) aplicar `20260819140000_limpiar_pines_heredados` **antes o junto con** la migración
+de T-25 — si T-25 entra primero, hay una ventana en la que los PIN heredados autentican de verdad.
