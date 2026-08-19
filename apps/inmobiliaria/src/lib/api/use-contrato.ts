@@ -161,6 +161,17 @@ function mapContrato(r: ContratoApi): ContratoListado {
       ? nombreCompleto(r.inquilinoTitular.nombre, r.inquilinoTitular.apellido)
       : '—',
     direccion: r.propiedad?.direccion ?? '—',
+    // El id de la propiedad SÍ viene en la respuesta (`propiedad.id`) y no se mapeaba.
+    // Sin él, en producción `c.propiedadId` quedaba undefined y dos cosas del detalle
+    // del contrato no se renderizaban NUNCA: el link del header a la ficha de la
+    // propiedad y la card "Servicios de la propiedad" —las dos gateadas por
+    // `apiEnabled && c.propiedadId`, que en prod es siempre false—.
+    //
+    // El arreglo existía a medias: el mapper de DEMO lo inyecta desde el mock
+    // (`{ ...c, propiedadId: prpMock.id }`) con un comentario que dice justamente que
+    // "el contrato salía sin propiedadId y no aparecía el link". Se arregló el lado
+    // que se veía probando en demo y quedó abierto el que corre en producción.
+    propiedadId: r.propiedad?.id ?? undefined,
     // El API ya devolvía diaPago/comisionInmobiliaria/ciudad, pero no se mapeaban: el
     // generador del contrato de locación los inventaba (5, 4.17%, CABA) en un documento
     // que se FIRMA.

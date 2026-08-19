@@ -3222,3 +3222,32 @@ sirve para discutir después."* Sin el cuerpo, el registro no cubre el caso de u
 esté listo"* para un país todavía no disponible. No hay lista de espera detrás. O se construye,
 o se cambia el texto.
 
+
+---
+
+### T-01-N1 · Nadie corre los tests. Ni el compilador. ✅ HECHA
+**Experto:** INFRA · **Prioridad:** 🔴 · **Detectada en:** T-01 (al contar las migraciones)
+
+> **Estado: ✅ hecha.** Ver `work-agent/tareas/T-01-N1/REQUISITOS.md`.
+
+El único workflow del repo era `deploy.yml`: publicaba la demo a Pages sin correr `tsc`, ni
+lint, ni un solo test. Había **725 tests escritos que no ejecutaba nadie**, nunca.
+
+Y `pnpm typecheck` en la raíz **salteaba `apps/api` en silencio**: el paquete tenía el chequeo
+con el nombre `lint`, así que `turbo run typecheck` lo listaba como `<NONEXISTENT>`. Quien lo
+corría veía verde sin haber mirado el paquete donde vive la plata.
+
+Eso explica el patrón del día: ocho regresiones cruzadas encontradas en tres pases **manuales**
+(`00fc8a3`, `7346ca8`, `4f59794`). Las ocho las encontró alguien mirando, porque no había
+ninguna máquina mirando.
+
+**Lo que se hizo:** `.github/workflows/revision.yml` (typecheck de los cinco paquetes + 341
+tests, en cada push y PR), `apps/api/vitest.sin-db.config.ts` (parte el suite por si necesita
+base viva, calculado leyendo los imports, no a mano), y los scripts `typecheck` y `test:sin-db`.
+
+**Verificado:** 341 tests verdes en 7 s sin ninguna base; `tsc` 0 en los cinco paquetes; y
+—lo que importa— se revirtió una de las ocho regresiones cruzadas de hoy y la compuerta la
+atajó con exit 1 en 7 segundos.
+
+**Sigue abierto:** `T-01-N1-N1` — los 52 archivos que sí necesitan base (los de plata, auth y
+conciliación) siguen sin correr nunca. Depende de la decisión de infraestructura de T-28.

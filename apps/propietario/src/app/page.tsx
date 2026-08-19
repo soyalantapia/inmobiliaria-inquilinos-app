@@ -148,25 +148,7 @@ export default function PortalHome() {
         {reclamos.isPending ? (
           <Cargando />
         ) : reclamos.data && reclamos.data.length > 0 ? (
-          <div className="space-y-2">
-            {reclamos.data.slice(0, 10).map((r) => (
-              <Card key={r.id} className="space-y-1 p-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant={r.estado === 'RESUELTO' || r.estado === 'CERRADO' ? 'success' : 'warning'}>
-                    {r.estado.toLowerCase()}
-                  </Badge>
-                  <span className="text-xs text-muted-foreground">{r.categoria.toLowerCase()}</span>
-                  <span className="text-xs text-muted-foreground">· {r.complejo ?? r.direccion}</span>
-                </div>
-                <p className="text-sm">{r.descripcion}</p>
-                <p className="text-xs text-muted-foreground">
-                  {fecha(r.creadoAt)}
-                  {r.costo != null && ` · costó ${money(r.costo)}`}
-                  {r.pagador && ` · lo paga: ${r.pagador.toLowerCase()}`}
-                </p>
-              </Card>
-            ))}
-          </div>
+          <ListaReclamos reclamos={reclamos.data} />
         ) : (
           // "No hay reclamos" era una afirmación que el backend no puede sostener: la consulta
           // se recorta al CONTRATO VIGENTE de cada unidad (portal-propietario.ts), así que una
@@ -176,6 +158,45 @@ export default function PortalHome() {
         )}
       </Seccion>
     </main>
+  );
+}
+
+/**
+ * Los reclamos de sus unidades, de a diez.
+ *
+ * Antes era un `slice(0, 10)` pelado: la API manda hasta 50 y la pantalla mostraba diez sin
+ * decir nada de los otros cuarenta. El dueño con varias unidades leía diez reclamos y se iba
+ * creyendo que ésos eran todos. Mismo tope silencioso que tenían los períodos de la propiedad.
+ */
+function ListaReclamos({ reclamos }: { reclamos: ReclamoPortal[] }) {
+  const [todos, setTodos] = useState(false);
+  const visibles = todos ? reclamos : reclamos.slice(0, 10);
+  const restantes = reclamos.length - visibles.length;
+  return (
+    <div className="space-y-2">
+      {visibles.map((r) => (
+        <Card key={r.id} className="space-y-1 p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant={r.estado === 'RESUELTO' || r.estado === 'CERRADO' ? 'success' : 'warning'}>
+              {r.estado.toLowerCase()}
+            </Badge>
+            <span className="text-xs text-muted-foreground">{r.categoria.toLowerCase()}</span>
+            <span className="text-xs text-muted-foreground">· {r.complejo ?? r.direccion}</span>
+          </div>
+          <p className="text-sm">{r.descripcion}</p>
+          <p className="text-xs text-muted-foreground">
+            {fecha(r.creadoAt)}
+            {r.costo != null && ` · costó ${money(r.costo)}`}
+            {r.pagador && ` · lo paga: ${r.pagador.toLowerCase()}`}
+          </p>
+        </Card>
+      ))}
+      {restantes > 0 && (
+        <Button variant="outline" size="sm" className="w-full" onClick={() => setTodos(true)}>
+          Ver los {restantes} reclamos restantes
+        </Button>
+      )}
+    </div>
   );
 }
 

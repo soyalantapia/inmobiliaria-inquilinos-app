@@ -62,11 +62,28 @@ describe('mailer · todos los envíos pasan por un carril (T-31)', () => {
     ).toEqual([]);
   });
 
-  it('el OTP es el ÚNICO que usa el carril directo', () => {
+  it('el carril directo es exactamente el de los mails que un request AWAITEA', () => {
     const fuente = readFileSync(MAILER, 'utf8');
     const directos = (fuente.match(/await enviarYa\(/g) ?? []).length;
-    // Si esto sube, alguien decidió que su mail también es urgente. Puede tener razón —
-    // pero es una decisión de producto (fricción vs deliverability), no un detalle.
-    expect(directos).toBe(1);
+
+    // Este test decía "el OTP es el ÚNICO", y esa regla era demasiado angosta: el
+    // razonamiento que la justificaba —"si comparte la cola, un anuncio a 200
+    // inquilinos lo deja esperando 80 segundos"— aplica igual a TODO mail que un
+    // request awaitea antes de responder. La bienvenida del registro y las dos
+    // invitaciones también, y estaban en la cola: durante un ajuste masivo de 220
+    // contratos, un alta de contrato se colgaba detrás de 220 mails ≈ 88 s y moría
+    // por timeout con el alta ya hecha.
+    //
+    // La regla ahora es la de verdad: **si tu caller hace `await`, va derecho; si
+    // dispara con `void` y sigue, va por la cola.** Son cuatro, y el número está
+    // fijo a propósito: sumar un quinto rompe este test, y ahí hay que decidir si
+    // ese mail realmente lo espera alguien en pantalla o si sale de a muchos. Es
+    // una decisión de producto (fricción vs deliverability), no un detalle.
+    expect(
+      directos,
+      'El carril directo cambió. Los que van derecho son los que un request awaitea: ' +
+        'OTP, bienvenida del registro, invitación al inquilino e invitación al equipo. ' +
+        'Si agregaste otro, confirmá que alguien lo está esperando en pantalla.',
+    ).toBe(4);
   });
 });
