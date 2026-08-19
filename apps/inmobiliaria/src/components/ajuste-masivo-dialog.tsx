@@ -58,8 +58,13 @@ export function AjusteMasivoDialog({
   const { contratos } = useContratos();
   const mes = mesActual();
 
+  // Los de SOLO EXPENSAS quedan afuera: no tienen alquiler que aumentar. El server ahora los
+  // rechaza con 409, y el loop de abajo lo tolera contrato por contrato — pero ofrecerlos y
+  // pre-tildarlos para después mostrar un error es hacerle perder el tiempo a la operadora.
+  // Además era el vector principal del bug: el ajuste masivo les escribía un canon positivo y
+  // el devengo del mes siguiente les facturaba alquiler.
   const activos = useMemo(
-    () => contratos.filter((c) => c.estado === 'ACTIVO'),
+    () => contratos.filter((c) => c.estado === 'ACTIVO' && c.tipoContrato !== 'SOLO_EXPENSAS'),
     [contratos],
   );
 

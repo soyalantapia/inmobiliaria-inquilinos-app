@@ -20,11 +20,74 @@ const base: Omit<ContratoParaLiquidar, 'fechaInicio' | 'fechaFin'> = {
   montoExpensas: 80_000,
   moneda: 'ARS',
   diaPago: 10,
+  devengarDesde: null,
+  tipoContrato: 'ALQUILER',
 };
 
 function contrato(inicio: string, fin: string, over: Partial<ContratoParaLiquidar> = {}): ContratoParaLiquidar {
   return { ...base, fechaInicio: new Date(inicio), fechaFin: new Date(fin), ...over };
 }
+
+describe('computarLiquidacionesContrato · SOLO_EXPENSAS', () => {
+  // El devengo NO recibía `tipoContrato`: un contrato de solo expensas daba alquiler 0
+  // sólo porque `contrato.monto` había quedado en 0. Estos casos cubren justamente el
+  // escenario en que NO quedó en 0 — que es lo que pasaba tras ajustar o renovar.
+  const now = new Date('2026-06-15T12:00:00Z');
+
+  it('no devenga alquiler aunque el contrato tenga un canon positivo', () => {
+    const data = computarLiquidacionesContrato(
+      contrato('2026-06-01T00:00:00Z', '2028-06-01T00:00:00Z', {
+        tipoContrato: 'SOLO_EXPENSAS',
+        monto: 500_000, // canon "sucio", dejado por un ajuste/renovación vieja
+        montoExpensas: 80_000,
+      }),
+      now,
+    );
+    expect(data.every((l) => Number(l.montoAlquiler) === 0)).toBe(true);
+    expect(data.every((l) => Number(l.montoTotal) === 80_000)).toBe(true);
+  });
+
+  it('el canon 0 del contrato limpio da el mismo resultado', () => {
+    const data = computarLiquidacionesContrato(
+      contrato('2026-06-01T00:00:00Z', '2028-06-01T00:00:00Z', {
+        tipoContrato: 'SOLO_EXPENSAS',
+        monto: 0,
+        montoExpensas: 80_000,
+      }),
+      now,
+    );
+    expect(data.every((l) => Number(l.montoTotal) === 80_000)).toBe(true);
+  });
+
+  it('una vigencia futura de canon tampoco se le cobra', () => {
+    // Un ajuste con vigencia futura entra por `vigencias`, no por `contrato.monto`:
+    // si el corte estuviera antes de resolver el canon del período, este caso se colaba.
+    const data = computarLiquidacionesContrato(
+      contrato('2026-06-01T00:00:00Z', '2028-06-01T00:00:00Z', {
+        tipoContrato: 'SOLO_EXPENSAS',
+        monto: 0,
+        montoExpensas: 80_000,
+      }),
+      now,
+      [{ periodoDesde: '2026-07', monto: 900_000, montoAnterior: 0 }],
+    );
+    expect(data.every((l) => Number(l.montoAlquiler) === 0)).toBe(true);
+    expect(data.every((l) => Number(l.montoTotal) === 80_000)).toBe(true);
+  });
+
+  it('ALQUILER_Y_EXPENSAS sí cobra las dos cosas', () => {
+    const data = computarLiquidacionesContrato(
+      contrato('2026-06-01T00:00:00Z', '2028-06-01T00:00:00Z', {
+        tipoContrato: 'ALQUILER_Y_EXPENSAS',
+        monto: 500_000,
+        montoExpensas: 80_000,
+      }),
+      now,
+    );
+    expect(data.every((l) => Number(l.montoAlquiler) === 500_000)).toBe(true);
+    expect(data.every((l) => Number(l.montoTotal) === 580_000)).toBe(true);
+  });
+});
 
 describe('computarLiquidacionesContrato', () => {
   it('contrato nuevo (inicio este mes): genera período actual + siguiente', () => {

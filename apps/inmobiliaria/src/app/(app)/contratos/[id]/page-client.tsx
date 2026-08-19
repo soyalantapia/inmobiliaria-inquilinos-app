@@ -315,7 +315,7 @@ export default function DetalleContratoPage() {
               <AvisarRenovacionButton contratoId={c.id} inquilino={c.inquilino} direccion={c.direccion} />
             )}
             {apiEnabled && c.estado === 'ACTIVO' && (
-              <RenovarContratoButton contratoId={c.id} montoActual={c.monto} fechaFinActual={c.fechaFin} moneda={c.moneda} />
+              <RenovarContratoButton contratoId={c.id} montoActual={c.monto} fechaFinActual={c.fechaFin} moneda={c.moneda} tipoContrato={c.tipoContrato} />
             )}
             {apiEnabled && c.estado === 'ACTIVO' && (
               <AjustarAlquilerButton contratoId={c.id} montoActual={c.monto} moneda={c.moneda} />

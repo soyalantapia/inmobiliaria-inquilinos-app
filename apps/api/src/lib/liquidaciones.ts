@@ -23,6 +23,17 @@ export type ContratoParaLiquidar = {
    * cobrar. Requerido, el compilador no deja que un caller nuevo se lo saltee.
    */
   devengarDesde: Date | null;
+  /**
+   * Qué se le factura a este contrato. `SOLO_EXPENSAS` = no devenga alquiler nunca.
+   *
+   * OBLIGATORIO por la misma razón que `devengarDesde`: hasta ahora el devengo no lo
+   * recibía, y un contrato de solo expensas daba alquiler 0 **por casualidad**, sólo porque
+   * `contrato.monto` había quedado en 0. No había ninguna defensa: cualquier camino que
+   * escribiera un canon positivo (ajustar, renovar, un alta con monto) hacía que el cron le
+   * facturara alquiler a alguien que no paga alquiler. Requerido, así el compilador no deja
+   * que un caller nuevo se lo saltee.
+   */
+  tipoContrato: 'ALQUILER' | 'SOLO_EXPENSAS' | 'ALQUILER_Y_EXPENSAS';
 };
 
 /**
@@ -86,7 +97,14 @@ export function computarLiquidacionesContrato(
   return enumerarPeriodosContrato(contrato, now).map((p) => {
     // Canon POR PERÍODO: un ajuste/renovación con vigencia futura no puede cobrarle el
     // canon nuevo a los meses intermedios, que todavía son del viejo.
-    const alquiler = canonDelPeriodo(p.periodo, montoActual, vigencias);
+    // `montoAlquilerSegunTipo` va DESPUÉS de resolver el canon del período, no antes: un
+    // SOLO_EXPENSAS tiene que dar 0 aunque el contrato haya quedado con un canon positivo
+    // (por un ajuste viejo, una renovación, o un alta mal cargada). Es la única defensa del
+    // devengo: antes dependía de que `contrato.monto` valiera 0.
+    const alquiler = montoAlquilerSegunTipo(
+      contrato.tipoContrato,
+      canonDelPeriodo(p.periodo, montoActual, vigencias),
+    );
     return {
       inmobiliariaId: contrato.inmobiliariaId,
       contratoId: contrato.id,
@@ -239,6 +257,9 @@ export async function devengarTodosLosTenants(
       // Sin esto el cron devengaba desde fechaInicio e ignoraba la decisión de la
       // importación de cartera → resucitaba los meses históricos como deuda falsa.
       devengarDesde: true,
+      // Sin esto el barrido no sabe que un SOLO_EXPENSAS no factura alquiler y le devenga
+      // el canon que haya quedado en el contrato. Ver ContratoParaLiquidar.
+      tipoContrato: true,
       fechaFin: true,
       diaPago: true,
     },
