@@ -19,6 +19,13 @@
  * La bandera es una SEGUNDA condición, no un reemplazo, y sólo la escribe
  * `scripts/build-static.sh`. Olvidarse `NEXT_PUBLIC_API_URL` en producción no prende la demo
  * por accidente: sin la bandera, el camino es el honesto de siempre.
+ *
+ * LO QUE SÍ PASA, y conviene saberlo: `demo-data.ts` se importa estático, así que sus ~7 kB
+ * viajan en el bundle aunque la bandera esté apagada. Verificado buildeando las dos veces: sin
+ * bandera el login vuelve a decir "no está conectado" y nada llama a `resolverDemo`, pero los
+ * datos están ahí, muertos. Es peso al pedo, no una filtración —es una persona inventada—, y
+ * sacarlo pide un `await import()` acá y en el login que no paga lo que cuesta hoy. Si alguna
+ * vez el portal se despliega de verdad y el bundle importa, ese es el movimiento.
  */
 import { resolverDemo } from './demo-data';
 

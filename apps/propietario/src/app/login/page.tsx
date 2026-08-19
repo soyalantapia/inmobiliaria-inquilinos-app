@@ -151,7 +151,7 @@ export default function LoginPropietario() {
           <form onSubmit={entrar} className="space-y-4">
             <div className="space-y-1.5">
               <label htmlFor="codigo" className="text-sm font-medium">
-                El código que te mandamos
+                {demoEnabled ? 'Poné cualquier código' : 'El código que te mandamos'}
               </label>
               <Input
                 id="codigo"
@@ -203,7 +203,9 @@ export default function LoginPropietario() {
       </Card>
 
       <p className="text-center text-xs text-muted-foreground">
-        ¿No te llega el código? Tu inmobiliaria tiene que tener cargado este email.
+        {demoEnabled
+          ? 'Demo con datos de ejemplo. Ningún dato de esta pantalla es real.'
+          : '¿No te llega el código? Tu inmobiliaria tiene que tener cargado este email.'}
       </p>
     </main>
   );

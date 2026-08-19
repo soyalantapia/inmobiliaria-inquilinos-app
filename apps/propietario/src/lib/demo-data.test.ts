@@ -120,6 +120,10 @@ describe('T-46 · resolverDemo enruta como el server', () => {
       expect(resumen.cobrado).toBe(r.cobrado);
       expect(resumen.teDepositamos).toBe(r.teDepositamos);
       expect(resumen.periodo).toBe(r.periodo);
+      // La moneda también: perderla acá es el mismo defecto que se arregló del lado real
+      // ("el front mostraba los dólares con signo de pesos"), y el resumen es justo lo que
+      // consume ResumenPagos para agrupar por moneda.
+      expect(resumen.moneda).toBe(r.moneda);
     }
   });
 

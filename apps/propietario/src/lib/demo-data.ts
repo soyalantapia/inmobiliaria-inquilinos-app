@@ -146,6 +146,7 @@ export const RENDICIONES_DEMO: RendicionDetalle[] = [
     gastos: 109000,
     otrosIngresos: 45000,
     teDepositamos: 1360760,
+    moneda: 'ARS',
     rendidoAt: '2026-08-10T13:20:00.000Z',
     metodo: 'TRANSFERENCIA',
     detalleAlquileres: [
@@ -190,6 +191,7 @@ export const RENDICIONES_DEMO: RendicionDetalle[] = [
     gastos: 0,
     otrosIngresos: 0,
     teDepositamos: 1424760,
+    moneda: 'ARS',
     rendidoAt: '2026-07-10T12:05:00.000Z',
     metodo: 'TRANSFERENCIA',
     detalleAlquileres: [
@@ -209,6 +211,7 @@ export const RENDICIONES_DEMO: RendicionDetalle[] = [
     gastos: 0,
     otrosIngresos: 0,
     teDepositamos: 1398720,
+    moneda: 'ARS',
     rendidoAt: '2026-06-10T11:40:00.000Z',
     metodo: 'TRANSFERENCIA',
     detalleAlquileres: [
@@ -232,6 +235,7 @@ export function resumenDeRendicion(r: RendicionDetalle): RendicionPortal {
     gastos: r.gastos,
     otrosIngresos: r.otrosIngresos,
     teDepositamos: r.teDepositamos,
+    moneda: r.moneda,
     rendidoAt: r.rendidoAt,
     metodo: r.metodo,
   };
