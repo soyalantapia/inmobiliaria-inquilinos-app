@@ -1289,6 +1289,34 @@ Decidir entre: verificar el email (doble opt-in), hacerlo único por tenant, o l
 
 ---
 
+### ⚠️ ESTADO CORREGIDO + una mina desactivada — commit `c9c9373`
+
+**Dos de los defectos que enumera esta tarea ya no son ciertos.** Al ir a arreglarlos:
+
+- *"no se normaliza a minúsculas al escribirlo"* → **ya se normaliza**, en el POST y en el PUT
+  (`lib/normalizar-email.ts`, `normalizarEmail`). Lo resolvió otra tanda. Se corrige acá para que
+  nadie lo rehaga.
+- *"el PUT lo pisa en cada edición, incluso a ``"* → **era cierto y se arregló**. El email sólo
+  se escribe si vino en el body. Como `normalizarEmail(undefined)` devuelve ``, cualquier caller
+  que omitiera el campo le borraba el email al propietario — y desde T-23 eso no es perder un dato
+  de contacto, es **dejarlo afuera del portal**, sin ningún error porque el PUT devuelve 200. Hoy
+  el diálogo del panel manda el campo siempre, así que era una mina y no un incendio; se desactiva
+  igual, porque el próximo caller (un PATCH parcial, un script, la app móvil) no tiene por qué
+  saberlo. Un `` explícito sigue borrándolo, que es legítimo.
+
+**Lo que queda de esta tarea es la decisión, no el código.** Y tiene un costo real de los dos
+lados, por eso no se resuelve solo:
+
+| Opción | Cierra el riesgo | Lo que cuesta |
+|---|---|---|
+| Doble opt-in | Sí, del todo | Hay que decidir qué pasa con la cartera YA cargada: bloquearla hasta que confirmen es lo seguro, pero deja a todos los propietarios afuera el día 1 |
+| `@@unique([inmobiliariaId, email])` | Sólo el cruce entre carteras del mismo tenant | Migración + resolver a mano los duplicados que ya existan; no impide el typo hacia OTRO tenant, que es el caso que preocupa |
+| Las dos | Sí | La suma de ambos |
+
+El `log.warn` que existe hoy es **detección, no prevención**: avisa después de que alguien entró.
+
+---
+
 ## T-23-N3 · `ParticipacionPropietario` no tiene vigencia — ✅ HECHA (la mitad de plata)
 
 **Experto:** BE · ~~🟢~~ **Prioridad real: 🟠** · **Depende de:** nada
