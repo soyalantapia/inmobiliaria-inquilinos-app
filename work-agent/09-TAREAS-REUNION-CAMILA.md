@@ -2216,3 +2216,74 @@ fija que `enviarYa` lo use **sólo** el OTP.
 líneas. El test dice cuáles.
 
 **Criterio de aceptación.** `mailer-todos-por-la-cola` en verde sobre la rama integrada.
+
+---
+
+## T-37 · Dos líneas de integración divergentes, y ninguna tiene todo
+
+**Experto:** OPS + el dueño · **Prioridad:** 🔴 · **Depende de:** nada · **BLOQUEA EL DEPLOY**
+**Origen:** revisión de integración. No salió de la reunión.
+
+**Esto no es un bug: es una decisión que nadie tomó.** Hay **dos ramas de consolidación** y cada
+una tiene trabajo que la otra no:
+
+| Rama | Tiene en exclusiva |
+|---|---|
+| `feat/reunion-camila-0308` (la de trabajo) | **T-23 con la app `apps/propietario` ENTERA**, T-14, T-21-N1 (+N1/N2/N3), T-24-N1, T-24-N2, T-25, T-33, T-35 |
+| `tmp/integracion` | T-08, T-11, T-17 (+N1), T-18 (+N1/N2), T-19, T-20, T-22, T-28, T-29, T-30 (+N1/N2) |
+
+**Verificado:** `apps/propietario` **no existe** en `tmp/integracion`
+(`git ls-tree -d --name-only tmp/integracion apps/`). Son **6.625 líneas** de producto ya escrito
+y verificado en su rama que se caerían del deploy si se sale desde ahí
+(`git diff --stat tmp/integracion...feat/reunion-camila-0308 -- apps packages`).
+
+**Qué cuesta unirlas.** Ensayado con `git merge-tree`: **13 regiones en conflicto** en ~11
+archivos. Tres son los archivos de plata, que es donde una resolución apurada hace más daño:
+
+```
+apps/api/src/routes/core.ts      apps/api/src/routes/plata.ts
+apps/api/src/lib/liquidaciones.ts    apps/api/prisma/seed.ts
+apps/api/src/routes/anuncios.ts      apps/inmobiliaria/src/lib/api/use-ajustes.ts
+apps/inmobiliaria/src/app/(app)/caja/page.tsx
+apps/inquilino/src/app/(full)/pago/[liqId]/{page-client,checkout/page-client}.tsx
+work-agent/09-TAREAS-REUNION-CAMILA.md    work-agent/PROMPT-EJECUTAR-TAREA.md
+```
+
+**Qué hay que hacer.** Decidir **cuál es la línea de integración** y llevar todo ahí. No dejarlo
+implícito: si nadie lo escribe, en dos semanas alguien va a asumir que el portal del propietario
+se perdió en un merge. Después de unir hay que **re-revisar el conjunto**: la app del propietario
+nunca se miró contra el resto.
+
+**Criterio de aceptación.** Una sola rama contiene todas las tareas cerradas, con `tsc` en 0 y los
+tests sin DB en verde, y está escrito en este documento cuál es.
+
+---
+
+## T-38 · El home de la PWA ignora el pago informado en modo demo
+
+**Experto:** FE-I · **Prioridad:** 🟡 · **Depende de:** nada
+**Origen:** revisión de integración.
+
+**Estado verificado.** `BannerPagoPendiente` (`apps/inquilino/src/app/(app)/page.tsx:568-570`)
+calcula el pago vivo así:
+
+```ts
+const pagoVivo = apiEnabled ? ((liq.pagos ?? []).find((p) => p.estado === 'INFORMADO') ?? null) : null;
+```
+
+En demo es **siempre `null`**, así que la rama ámbar *"Comprobante en revisión"* (`:599`) nunca se
+alcanza y el home cae en *"Tenés un pago atrasado"* (`:671`) — a un inquilino que en el demo
+acaba de informar el pago completo. El comentario dice *"en demo `liq.pagos` no existe (mocks) →
+comportamiento igual"*, y no es igual: el pago demo existe, sólo que en `localStorage`.
+
+**Ahora se nota más**, porque el detalle del pago **sí** quedó honesto en los dos modos (ver el
+arreglo del recibo prematuro): el home dice "atrasado" y la pantalla a la que linkea dice "En
+revisión". Dos verdades sobre la misma cuota.
+
+**Qué hay que hacer.** Que en demo `pagoVivo` salga de `listarPagosDeLiq(liq.id)`, con lectura
+hidratación-segura (el resto de la PWA ya usa ese patrón). **No se hizo en la misma pasada** para
+no meter una lectura de `localStorage` en render dentro de un archivo que están tocando otros
+chats.
+
+**Criterio de aceptación.** En demo, después de informar el pago completo, el home dice
+"Comprobante en revisión" y no "atrasado".

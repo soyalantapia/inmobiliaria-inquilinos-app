@@ -212,7 +212,30 @@ function DetallePagoView({
     ? det.hayConciliado || det.hayEnRevision
     : parciales.length > 0;
   const hayParciales = tieneParciales && saldo > 0;
-  const pagadoEnParciales = !pagado && tieneParciales && saldo === 0;
+
+  /**
+   * Cubierto pero SIN VALIDAR: el inquilino informó lo suficiente para llegar a saldo 0,
+   * pero la inmobiliaria todavía no lo aprobó y puede rechazarlo.
+   *
+   * Sin esto, `pagadoEnParciales` daba true y la pantalla mostraba el badge verde "Pagado"
+   * y ofrecía **descargar el recibo** — un PDF que dice textual *"Tiene validez legal como
+   * prueba de pago"* (`lib/recibo-pdf.ts:114`) — sobre plata que nadie validó. `faltaPagar`
+   * resta lo que está en revisión (`saldo-liquidacion.ts:55`), así que un solo informe por
+   * el total alcanzaba para disparar todo.
+   *
+   * Va en los DOS modos a propósito. En demo el circuito es idéntico: el pago nace
+   * `INFORMADO` y nada lo concilia, así que ahí el recibo prematuro es *siempre* el caso.
+   */
+  const cubiertoSinValidar =
+    saldo === 0 &&
+    (apiEnabled
+      ? // Alcanza con que HAYA algo en revisión, aunque otra parte ya esté conciliada:
+        // con $50 validados y $50 esperando, el recibo por el total seguiría siendo
+        // prematuro. Cuando la inmobiliaria valide el resto, `hayEnRevision` cae solo.
+        det.hayEnRevision
+      : listarPagosDeLiq(liqId).some((p) => p.estado === 'INFORMADO'));
+
+  const pagadoEnParciales = !pagado && tieneParciales && saldo === 0 && !cubiertoSinValidar;
 
   return (
     <>
@@ -305,10 +328,15 @@ function DetallePagoView({
         <Card className="space-y-3 p-5">
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">
-              {hayParciales ? 'Saldo pendiente' : 'Total a pagar'}
+              {cubiertoSinValidar ? 'Informado' : hayParciales ? 'Saldo pendiente' : 'Total a pagar'}
             </span>
             {pagado || pagadoEnParciales ? (
               <Badge variant="success">Pagado</Badge>
+            ) : cubiertoSinValidar ? (
+              // Cubrió todo pero falta que la inmobiliaria lo apruebe. Sin esta rama caía
+              // en "Atrasado", que es peor que el bug que vino a arreglar: le diría que
+              // debe plata a alguien que ya la transfirió.
+              <Badge variant="warning">En revisión</Badge>
             ) : hayParciales ? (
               <Badge variant="warning">Parcial</Badge>
             ) : vencido ? (
@@ -493,6 +521,17 @@ function DetallePagoView({
             <Receipt className="h-5 w-5" />
             Descargar comprobante
           </Button>
+        ) : cubiertoSinValidar ? (
+          // NI recibo NI botón de pagar. El recibo sería prematuro (la inmobiliaria todavía
+          // puede rechazar), y un CTA de pago acá lo invitaría a transferir DOS VECES lo
+          // mismo. Lo único honesto es decirle en qué estado está.
+          <div className="rounded-lg border border-dashed bg-muted/30 p-4 text-center">
+            <p className="text-sm font-medium">Ya informaste el total de este período</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {contrato?.inmobiliaria ?? 'La inmobiliaria'} lo está revisando. Cuando lo valide
+              vas a poder descargar el comprobante.
+            </p>
+          </div>
         ) : hayParciales ? (
           <div className="space-y-3">
             <Button asChild size="xl" className="w-full">
