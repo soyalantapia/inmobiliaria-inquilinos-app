@@ -1828,6 +1828,23 @@ número cruzable contra el papel.
 
 **Criterio de aceptación.** Pegar `150.000` carga 150000, y un monto ilegible dice qué está mal.
 
+### ✅ RESUELTO — commit `e9d8bbd`
+
+El diálogo pasa a usar `MoneyInput`, que es lo que ya usa el resto del panel.
+
+**Pero `MoneyInput` tenía su propio bug, y afectaba a 13 archivos:** hacía `replace(/D/g, )` a
+secas, así que `150.000,00` daba **15000000** y `150,50` daba **15050** — 100× de más, en
+cualquier campo de plata del panel. Ahora aplica la misma regla que `parsearMonto` en el backend,
+que es la fuente de verdad de montos del sistema: **el último separador decide** (1-2 dígitos =
+decimal, 3 = miles).
+
+El resumen muestra además el **total de la deuda**, que es lo único cruzable contra el papel (la
+planilla dice "me debía $450.000" y la pantalla pide el mensual), y el botón gris ahora dice por
+qué: los meses ya tenían mensaje en rojo, la plata no.
+
+Verificado contra 9 formatos argentinos ejecutando la función real del archivo. El test
+automatizado va con **T-32** (montar el runner en los fronts), que hoy no existe.
+
 ---
 
 ## T-24-N2-N4 · El moroso que se fue este mes no entra por ningún lado
@@ -1850,6 +1867,20 @@ para que no se pueda crear un contrato paralelo sobre una propiedad ocupada y es
 
 **Criterio de aceptación.** Camila carga la deuda de alguien que se fue este mes sin inventar
 fechas.
+
+### ✅ RESUELTO — commit `e9d8bbd`
+
+El tope pasa del mes PASADO al mes EN CURSO, en los tres lugares (el endpoint, la validación de
+la importación y el formulario).
+
+**El guard original era mío y era demasiado estricto.** El miedo era que alguien usara la deuda
+histórica para crear un contrato paralelo sobre una propiedad ocupada y esquivar el 409 del alta.
+Revisado, no se sostiene: un contrato histórico nace FINALIZADO, no reclama la propiedad y el cron
+no lo devenga, así que no puede funcionar como contrato en curso.
+
+Lo que sí hay que impedir es cobrar meses que todavía no pasaron —eso sería inventar plata— y eso
+se sigue rechazando. **El corte ahora es el mes, no el día.** Si el vencimiento del mes en curso
+todavía no llegó, la cuota nace PENDIENTE en vez de VENCIDO y se comporta como corresponde.
 
 ---
 
