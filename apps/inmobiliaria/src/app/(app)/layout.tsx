@@ -3,11 +3,15 @@ import { OnboardingInmo } from '@/components/onboarding';
 import { PilotoFab } from '@/components/piloto-fab';
 import { Sidebar } from '@/components/sidebar';
 import { AuthGuard } from '@/components/auth-guard';
+import { BloqueoInactividad } from '@/components/bloqueo-inactividad';
 import { TrialBanner } from '@/components/trial-banner';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <AuthGuard>
+    {/* Cubre la app tras 5 minutos sin actividad y pide el PIN. Va DENTRO del AuthGuard y
+        fuera del layout visual: es un overlay sobre todo, incluido el sidebar. */}
+    <BloqueoInactividad />
     {/* Barra superior full-width pre-lanzamiento — sólo cuentas piloto en prod
         (cableada a /auth/me real). Va arriba de todo para verse en cada pantalla. */}
     <TrialBanner />

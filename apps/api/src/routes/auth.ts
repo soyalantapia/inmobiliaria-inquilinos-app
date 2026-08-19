@@ -827,6 +827,38 @@ export async function authRoutes(app: FastifyInstance) {
   );
 
   /**
+   * Desbloquear la PANTALLA con el PIN propio (T-25, bloqueo por inactividad).
+   *
+   * ⚠️ ESTO ES UNA CERRADURA DE PANTALLA, NO UN LÍMITE DE AUTORIZACIÓN. La sesión sigue siendo
+   * válida todo el tiempo: el overlay vive en el cliente y alguien con las devtools abiertas lo
+   * saca. Y está bien que así sea — el límite real es el rol, que `requireUsuario` resuelve
+   * contra la DB en CADA request, no este endpoint.
+   *
+   * Lo que sí resuelve es el escenario que el modelo de amenazas puso primero: la máquina que
+   * queda sola con la sesión abierta y alguien —un empleado, o el inquilino que se asomó al
+   * mostrador— se sienta y opera como Camila. Contra ESE, que es un oportunista con acceso
+   * físico y no un atacante, subir la barrera a "tenés que saber cinco dígitos" alcanza.
+   *
+   * Comparte el lockout del conmutador a propósito: si alguien está probando PINes contra la
+   * pantalla bloqueada, es exactamente el mismo ataque.
+   */
+  app.post(
+    '/auth/pantalla/desbloquear',
+    { config: { rateLimit: { max: 60, timeWindow: '15 minutes' } } },
+    async (request, reply) => {
+      const u = await requireUsuario(request, reply);
+      if (!u) return;
+      const body = z.object({ pin: z.string().regex(/^\d{5}$/) }).safeParse(request.body ?? {});
+      if (!body.success) return reply.code(400).send({ message: 'Datos inválidos' });
+      const r = await verificarPinConmutador(u.userId, body.data.pin);
+      // Mismo criterio que el conmutador: NUNCA 401 por un PIN mal, porque el 401 dispara
+      // `manejarSesionVencida` en el panel y lo desloguearía por equivocarse.
+      if (!r.ok) return reply.code(r.code).send(r);
+      return { ok: true };
+    },
+  );
+
+  /**
    * Destrabar a alguien que se bloqueó. CONSERVA el hash: sólo limpia los contadores.
    *
    * Es la salida del medio de las tres. La de menos fricción es esperar 30 minutos; la que

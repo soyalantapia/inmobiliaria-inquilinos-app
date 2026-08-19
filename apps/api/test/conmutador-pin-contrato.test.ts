@@ -97,3 +97,26 @@ describe('T-25 · el PIN no es un login desde cero', () => {
     expect(AUTH.slice(i, i + 160)).toMatch(/rateLimit/);
   });
 });
+
+describe('T-25 · el bloqueo de pantalla', () => {
+  it('comparte el lockout del conmutador, no trae uno propio', () => {
+    // Si tuviera su propio contador, probar PINes contra la pantalla bloqueada sería un canal
+    // sin límite paralelo al del conmutador. Es el mismo ataque: mismo contador.
+    const i = AUTH.indexOf("'/auth/pantalla/desbloquear'");
+    expect(i).toBeGreaterThan(-1);
+    expect(AUTH.slice(i, i + 900)).toMatch(/verificarPinConmutador/);
+  });
+
+  it('tampoco devuelve 401 por un PIN mal', () => {
+    const i = AUTH.indexOf("'/auth/pantalla/desbloquear'");
+    const handler = AUTH.slice(i, i + 900);
+    // Reenvía el `r` del verificador, que sólo produce 403/423/409.
+    expect(handler).toMatch(/reply\.code\(r\.code\)/);
+    expect(handler).not.toMatch(/code\(401\)/);
+  });
+
+  it('tiene rate limit propio', () => {
+    const i = AUTH.indexOf("'/auth/pantalla/desbloquear'");
+    expect(AUTH.slice(i, i + 200)).toMatch(/rateLimit/);
+  });
+});
