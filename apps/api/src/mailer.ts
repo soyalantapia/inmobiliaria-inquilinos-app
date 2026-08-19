@@ -476,3 +476,96 @@ export async function enviarAnuncioEmail(opts: {
   });
   return true;
 }
+
+// ─── Aviso de ajuste de alquiler ─────────────────────────────────────────────
+
+/** 'YYYY-MM' → 'septiembre 2026'. Para que el inquilino lea un mes, no un código. */
+function periodoLegible(periodo: string): string {
+  const [a, m] = periodo.split('-');
+  const meses = [
+    'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+    'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
+  ];
+  const i = Number(m) - 1;
+  return meses[i] ? `${meses[i]} ${a}` : periodo;
+}
+
+const montoFmt = (n: number, moneda: string): string =>
+  `${moneda === 'USD' ? 'US$' : '$'} ${n.toLocaleString('es-AR')}`;
+
+function ajusteHtml(opts: {
+  inquilinoNombre?: string | null;
+  inmobiliariaNombre: string;
+  direccion?: string | null;
+  montoAnterior: number;
+  montoNuevo: number;
+  moneda: string;
+  periodoDesde: string;
+  motivo?: string | null;
+}): string {
+  const desde = periodoLegible(opts.periodoDesde);
+  const inner = `
+    <h1 style="margin:0 0 6px;color:#1c1726;font-size:21px;line-height:1.25;font-weight:800;letter-spacing:-0.02em;">Se actualizó el monto de tu alquiler</h1>
+    <p style="margin:0 0 18px;color:#8a85a0;font-size:12px;">De <strong style="color:#5b556e;">${esc(opts.inmobiliariaNombre)}</strong>${opts.direccion ? ` &middot; ${esc(opts.direccion)}` : ''}</p>
+    <p style="margin:0 0 18px;color:#3f3a4d;font-size:15px;line-height:1.7;">${opts.inquilinoNombre ? `Hola ${esc(opts.inquilinoNombre)}: ` : ''}a partir de <strong>${esc(desde)}</strong> tu alquiler pasa a ser:</p>
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 18px;width:100%;border-collapse:collapse;">
+      <tr>
+        <td style="padding:10px 0;color:#8a85a0;font-size:13px;">Antes</td>
+        <td align="right" style="padding:10px 0;color:#8a85a0;font-size:15px;text-decoration:line-through;">${esc(montoFmt(opts.montoAnterior, opts.moneda))}</td>
+      </tr>
+      <tr>
+        <td style="padding:10px 0;border-top:1px solid #ece9f3;color:#1c1726;font-size:14px;font-weight:700;">Desde ${esc(desde)}</td>
+        <td align="right" style="padding:10px 0;border-top:1px solid #ece9f3;color:#1c1726;font-size:20px;font-weight:800;">${esc(montoFmt(opts.montoNuevo, opts.moneda))}</td>
+      </tr>
+    </table>
+    ${opts.motivo ? `<p style="margin:0 0 18px;color:#3f3a4d;font-size:14px;line-height:1.6;"><strong>Motivo:</strong> ${esc(opts.motivo)}</p>` : ''}
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 6px;"><tr>
+      <td align="center" bgcolor="#7c3aed" style="background-color:#7c3aed;border-radius:12px;">
+        <a href="${APP_INQUILINO_URL}" target="_blank" style="display:inline-block;padding:12px 26px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:14px;font-weight:800;color:#ffffff;text-decoration:none;">Ver mi contrato &rarr;</a>
+      </td>
+    </tr></table>
+    <p style="margin:16px 0 0;color:#8a85a0;font-size:11px;line-height:1.6;">Si algo no te cierra, respondele a ${esc(opts.inmobiliariaNombre)} antes del próximo vencimiento.</p>`;
+  return shell({ preview: `Tu alquiler pasa a ${montoFmt(opts.montoNuevo, opts.moneda)} desde ${desde}`, inner });
+}
+
+/**
+ * Avisa al inquilino que le ajustaron el alquiler.
+ *
+ * POR QUÉ EXISTE: no había NINGÚN aviso de ajuste, por ningún canal. El inquilino se
+ * enteraba cuando le llegaba la liquidación siguiente más cara. Reportado en la prueba
+ * del 03/08: se ajustó un alquiler y del otro lado "no me avisó que me subiste, que hubo
+ * un aumento". Subirle el alquiler a alguien sin avisarle es un problema legal y de
+ * confianza, no de UX.
+ *
+ * Best-effort igual que el resto del mailer: devuelve false si el SMTP no está
+ * configurado. El caller NUNCA debe dejar que esto haga fallar el ajuste.
+ */
+export async function enviarAvisoAjusteAlquiler(opts: {
+  email: string;
+  inquilinoNombre?: string | null;
+  inmobiliariaNombre: string;
+  direccion?: string | null;
+  montoAnterior: number;
+  montoNuevo: number;
+  moneda: string;
+  periodoDesde: string;
+  motivo?: string | null;
+}): Promise<boolean> {
+  const t = getTransporter();
+  if (!t) return false;
+  const desde = periodoLegible(opts.periodoDesde);
+  await t.sendMail({
+    from,
+    to: opts.email,
+    subject: `Tu alquiler se actualiza desde ${desde} · ${opts.inmobiliariaNombre}`,
+    text:
+      `${opts.inquilinoNombre ? `Hola ${opts.inquilinoNombre}: ` : ''}a partir de ${desde} tu alquiler pasa de ` +
+      `${montoFmt(opts.montoAnterior, opts.moneda)} a ${montoFmt(opts.montoNuevo, opts.moneda)}.` +
+      `${opts.motivo ? `\nMotivo: ${opts.motivo}` : ''}` +
+      `${opts.direccion ? `\nPropiedad: ${opts.direccion}` : ''}` +
+      `\n\nVelo en la app: ${APP_INQUILINO_URL}` +
+      `\n\nSi algo no te cierra, respondele a ${opts.inmobiliariaNombre} antes del próximo vencimiento.`,
+    html: ajusteHtml(opts),
+  });
+  return true;
+}

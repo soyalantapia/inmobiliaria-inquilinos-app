@@ -20,7 +20,7 @@ import { calcularMora, resolverEsquemaMora } from '../lib/punitorios.js';
 import { aplicarEstadoInicial, EstadoInicialInvalido } from '../lib/estado-inicial-contrato.js';
 import { buscarOCrearPersona } from '../lib/persona.js';
 import { borrarArchivoSiHuerfano, urlEsDelTenant } from './uploads.js';
-import { enviarInvitacionInquilino, enviarInvitacionEquipo } from '../mailer.js';
+import { enviarInvitacionInquilino, enviarInvitacionEquipo, enviarAvisoAjusteAlquiler } from '../mailer.js';
 import { contratoQuedaPendiente, diaCivilAR, venceDespuesDeHoy, yaVencio } from '@llave/shared';
 import { ROLES_ORDEN, type Rol } from '@llave/shared/permisos';
 
@@ -78,6 +78,58 @@ function liqQueDefineEstado<
 // buscador no encontraba lo recién cargado y el usuario concluía "no se guardó".
 function normalizarCuit(input: string | undefined | null): string {
   return (input ?? '').replace(/\D/g, '');
+}
+
+/**
+ * Le avisa por email al inquilino que le ajustaron el alquiler.
+ *
+ * Existe como helper porque hay DOS caminos de ajuste —`POST /contratos/:id/ajustar` y
+ * `PATCH /contratos/:id/monto`— y el bug clásico de este código es arreglar uno y olvidar
+ * el otro (pasó con `proximoAjuste`, ver el comentario del ajustar). Un solo lugar, los
+ * dos callers.
+ *
+ * BEST-EFFORT, SIEMPRE. Se llama DESPUÉS de que la transacción commiteó y se traga
+ * cualquier error: un SMTP caído no puede hacer fallar un ajuste ya aplicado. El mail se
+ * puede reenviar; un ajuste revertido a mitad, no. Si el inquilino no tiene email, no hay
+ * a dónde escribir y se sale en silencio (queda el aviso en la campana igual).
+ */
+async function avisarAjusteAlInquilino(opts: {
+  contratoId: string;
+  inmobiliariaId: string;
+  montoAnterior: number;
+  montoNuevo: number;
+  periodoDesde: string;
+  motivo: string | null;
+  log?: { warn: (o: unknown, m: string) => void };
+}): Promise<void> {
+  try {
+    const c = await prisma.contrato.findFirst({
+      where: { id: opts.contratoId, inmobiliariaId: opts.inmobiliariaId },
+      select: {
+        moneda: true,
+        inquilinoTitular: { select: { nombre: true, apellido: true, email: true } },
+        propiedad: { select: { direccion: true } },
+        inmobiliaria: { select: { nombre: true } },
+      },
+    });
+    const email = c?.inquilinoTitular?.email;
+    if (!c || !email) return;
+    await enviarAvisoAjusteAlquiler({
+      email,
+      inquilinoNombre: `${c.inquilinoTitular?.nombre ?? ''} ${c.inquilinoTitular?.apellido ?? ''}`.trim() || null,
+      inmobiliariaNombre: c.inmobiliaria?.nombre ?? 'Tu inmobiliaria',
+      direccion: c.propiedad?.direccion ?? null,
+      montoAnterior: opts.montoAnterior,
+      montoNuevo: opts.montoNuevo,
+      moneda: c.moneda,
+      periodoDesde: opts.periodoDesde,
+      motivo: opts.motivo,
+    });
+  } catch (e) {
+    // Un aviso que no sale NO puede romper el ajuste. Se loguea para que no sea un
+    // silencio total: un mail que nunca llega y nadie sabe es peor que no tenerlo.
+    opts.log?.warn({ err: e, contratoId: opts.contratoId }, '[ajuste] no se pudo avisar al inquilino');
+  }
 }
 
 export async function coreRoutes(app: FastifyInstance) {
@@ -1708,6 +1760,18 @@ export async function coreRoutes(app: FastifyInstance) {
       });
       return { ajusteId: ajuste.id, liquidacionesActualizadas: upd.count };
     });
+    // Avisarle al inquilino. FUERA de la transacción y best-effort: un SMTP caído no
+    // puede tirar abajo un ajuste ya aplicado (el mail se puede reenviar; el ajuste
+    // revertido a mitad, no).
+    await avisarAjusteAlInquilino({
+      contratoId: id,
+      inmobiliariaId: u.inmobiliariaId,
+      montoAnterior,
+      montoNuevo: b.montoNuevo,
+      periodoDesde: b.periodoDesde,
+      motivo: b.motivo || null,
+      log: request.log,
+    });
     return { ok: true, montoAnterior, montoNuevo: b.montoNuevo, ...res };
   });
 
@@ -2849,6 +2913,27 @@ export async function coreRoutes(app: FastifyInstance) {
         data: { monto: d.monto, proximoAjuste },
       });
 
+      // (a2) FILA DE AJUSTE. Este camino no la dejaba y `POST /contratos/:id/ajustar` sí,
+      // así que el historial de ajustes salía incompleto según por dónde hubiera entrado
+      // el operador — y el aviso al inquilino, que se deriva de esta tabla, no salía nunca
+      // por acá.
+      //
+      // `periodoDesde` = período ACTUAL, que es desde donde este endpoint re-devenga.
+      // Es INERTE para el devengo: `vigenciasFuturas` (lib/liquidaciones.ts) filtra
+      // `periodoDesde: { gt: periodo }`, o sea estrictamente futuras, así que una fila del
+      // período en curso no entra a `canonDelPeriodo` y no cambia ninguna liquidación.
+      await tx.ajusteAlquiler.create({
+        data: {
+          inmobiliariaId: u.inmobiliariaId,
+          contratoId: contrato.id,
+          montoAnterior: montoViejo,
+          montoNuevo: d.monto,
+          periodoDesde: periodoActual,
+          motivo: d.motivo || null,
+          creadoPorId: u.userId,
+        },
+      });
+
       // (c) RE-DEVENGO de futuras. Traemos las liqs candidatas (>= mes actual,
       // PENDIENTE/VENCIDO) con su conteo de pagos, y el filtro PURO decide cuáles
       // reajustar (excluye las que tengan CUALQUIER pago, informado o conciliado).
@@ -2908,6 +2993,17 @@ export async function coreRoutes(app: FastifyInstance) {
     // EventoContrato AJUSTE_APLICADO (creado dentro de la tx, arriba) — el tipo
     // semánticamente correcto. No duplicamos en EventoAuditoria porque su enum no
     // tiene un valor de "ajuste de monto" y no vamos a migrar el schema.
+    // Mismo aviso que el otro camino de ajuste (ver avisarAjusteAlInquilino): fuera de la
+    // transacción y best-effort.
+    await avisarAjusteAlInquilino({
+      contratoId: contrato.id,
+      inmobiliariaId: u.inmobiliariaId,
+      montoAnterior: montoViejo,
+      montoNuevo: d.monto,
+      periodoDesde: periodoActual,
+      motivo: d.motivo || null,
+      log: request.log,
+    });
     return { contrato: resultado.actualizado, liquidacionesReajustadas: resultado.reajustadas };
   });
 

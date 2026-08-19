@@ -1100,9 +1100,13 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
     // tiene obligación de pago viva y la PWA ni siquiera ofrece la cuenta para pagar.
     const ctoNotif = await prisma.contrato.findFirst({
       where: { id: contratoId, inmobiliariaId: inq.inmobiliariaId },
-      select: { estado: true },
+      // `moneda` para el aviso de ajuste: el sistema es riguroso con esto y un monto en
+      // dólares mostrado con signo de pesos ya fue bug varias veces.
+      select: { estado: true, moneda: true },
     });
     const contratoActivo = ctoNotif?.estado === 'ACTIVO';
+    const simMoneda = ctoNotif?.moneda === 'USD' ? 'US$' : '$';
+    const fmtMonedaContrato = (n: number): string => `${simMoneda} ${n.toLocaleString('es-AR')}`;
     const ahora = Date.now();
     const relativo = (d: Date | string): string => {
       const min = Math.floor((ahora - new Date(d).getTime()) / 60000);
@@ -1174,6 +1178,43 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
           severidad: 'alta',
         });
       }
+    }
+
+    // 1.b) AJUSTES DE ALQUILER recientes.
+    //
+    // No existía ningún aviso de ajuste, por ningún canal: al inquilino le subían el
+    // alquiler y se enteraba cuando le llegaba la liquidación siguiente más cara
+    // (reportado el 03/08: "no me avisó que me subiste, que hubo un aumento"). Además del
+    // email que sale al aplicarlo, queda acá para el que no lee el mail.
+    //
+    // Se deriva de `AjusteAlquiler` —igual que el resto del feed, que es on-read y no
+    // guarda notificaciones—. Los DOS caminos de ajuste dejan fila en esa tabla
+    // (`POST /contratos/:id/ajustar` y `PATCH /contratos/:id/monto`), así que no importa
+    // por dónde entró el operador.
+    const hace60 = new Date(ahora - 60 * 86400000);
+    const ajustes = await prisma.ajusteAlquiler.findMany({
+      where: { contratoId, inmobiliariaId: inq.inmobiliariaId, createdAt: { gte: hace60 } },
+      orderBy: { createdAt: 'desc' },
+      take: 3,
+    });
+    for (const a of ajustes) {
+      const anterior = Number(a.montoAnterior);
+      const nuevo = Number(a.montoNuevo);
+      // Un "ajuste" que no cambió el monto no es noticia para el inquilino.
+      if (Math.abs(nuevo - anterior) < 0.01) continue;
+      const subio = nuevo > anterior;
+      out.push({
+        id: `ajuste-${a.id}`,
+        titulo: subio ? 'Se actualizó tu alquiler' : 'Se corrigió tu alquiler',
+        detalle:
+          `${fmtMonedaContrato(anterior)} → ${fmtMonedaContrato(nuevo)} desde ${a.periodoDesde}` +
+          (a.motivo ? ` · ${a.motivo}` : ''),
+        href: '/contrato',
+        cuando: relativo(a.createdAt),
+        icono: 'ajuste',
+        // Alta y no crítica: es importante que lo vea, pero no es una deuda vencida.
+        severidad: 'alta',
+      });
     }
 
     // 2) Pagos decididos en los últimos 30 días: rechazado / confirmado.
