@@ -412,6 +412,66 @@ export async function operacionRoutes(app: FastifyInstance) {
     }
   });
 
+  /**
+   * Tomar un reclamo: ABIERTO → EN_CURSO.
+   *
+   * POR QUÉ EXISTE: `EN_CURSO` era **inalcanzable desde la inmobiliaria**. El enum lo tiene, el
+   * panel lo filtra, el SLA lo contempla y hasta existe el evento `EN_CURSO` — pero el único
+   * lugar que lo escribía era el flujo en que el INQUILINO marca "PERSISTE" y reabre un reclamo
+   * ya resuelto (`:902`). O sea que la única forma de que un reclamo estuviera "en curso" era
+   * que antes se hubiera cerrado mal.
+   *
+   * Camila, después de que T-17 le puso el aviso por mail: *"me entero más rápido de algo que
+   * después no puedo mover. Me sirve igual, pero es media solución."* Se enteraba antes de un
+   * reclamo que seguía figurando ABIERTO aunque alguien ya lo estuviera atendiendo — y con 220
+   * propiedades, la bandeja de abiertos es lo que usa para saber qué falta.
+   *
+   * Es deliberadamente lo más chico que cierra eso: un cambio de estado con su evento. NO asigna
+   * profesional (eso ya es `/asignar`, y son cosas distintas: se puede estar atendiendo un
+   * reclamo sin mandar a nadie todavía).
+   */
+  app.post('/reclamos/:id/tomar', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'reclamos.gestionar');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+
+    const reclamo = await prisma.reclamo.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
+    if (!reclamo) return reply.code(404).send({ message: 'Reclamo inexistente' });
+    if ((ESTADOS_CERRADOS as readonly string[]).includes(reclamo.estado)) {
+      return reply.code(409).send({ message: 'El reclamo ya está cerrado — no se puede tomar' });
+    }
+    // Idempotente: tomar algo que ya está en curso no es un error, es lo que pasa cuando dos
+    // personas de la oficina abren el mismo reclamo. Devolvemos 200 sin duplicar el evento,
+    // que si no el historial se llena de "tomó el reclamo" del mismo día.
+    if (reclamo.estado === 'EN_CURSO') return reclamo;
+
+    const autor = await nombreUsuario(u.userId);
+    try {
+      return await prisma.$transaction(async (tx) => {
+        // Lock atómico, igual que asignar/resolver/rechazar: si entre el pre-check y esto
+        // alguien resolvió o rechazó el reclamo, `count === 0` → 409 en vez de pisar el cierre.
+        const res = await tx.reclamo.updateMany({
+          where: { id, estado: { notIn: [...ESTADOS_CERRADOS] } },
+          data: { estado: 'EN_CURSO' },
+        });
+        if (res.count === 0) throw new ConflictoEstadoReclamo('El reclamo ya está cerrado — no se puede tomar');
+        await tx.reclamoEvento.create({
+          data: {
+            inmobiliariaId: u.inmobiliariaId,
+            reclamoId: id,
+            tipo: 'EN_CURSO',
+            autor,
+            contenido: null,
+          },
+        });
+        return tx.reclamo.findUniqueOrThrow({ where: { id } });
+      });
+    } catch (e) {
+      if (e instanceof ConflictoEstadoReclamo) return reply.code(409).send({ message: e.message });
+      throw e;
+    }
+  });
+
   // Regenerar el link mágico de la visita SIN reasignar (mismo profesional):
   // útil si el admin sospecha que el link se filtró, o simplemente para
   // reenviarlo. Invalida el token anterior (cualquier sesión JWT ya emitida
