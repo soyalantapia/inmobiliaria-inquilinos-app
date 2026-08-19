@@ -173,10 +173,21 @@ que poder saber en qué andás.
 **Varios chats sobre el mismo working tree se pisan**: no pueden tener dos ramas activas a la
 vez y se sobrescriben los archivos. Trabajá en un worktree propio:
 
+⚠️ **NO branchees de `main`.** El trabajo de las tandas anteriores puede estar en una rama de
+integración sin mergear, y salir de `main` te hace construir sobre una base vieja: vas a
+reimplementar algo que ya existe, o tu cambio va a chocar al mergear. Averiguá la base correcta:
+
 ```bash
-git worktree add "../myalquiler-$TAREA" -b "feat/$TAREA-<slug-corto>" main
+BASE=$(git branch --sort=-committerdate --format='%(refname:short)' \
+       | grep -E '^feat/reunion-' | head -1)
+BASE=${BASE:-main}          # si no hay rama de integración, main
+echo "base: $BASE"
+git worktree add "../myalquiler-$TAREA" -b "feat/$TAREA-<slug-corto>" "$BASE"
 cd "../myalquiler-$TAREA"
 ```
+
+Si tu tarea depende de algo que otra hizo, verificá que esté en tu base antes de arrancar:
+`git merge-base --is-ancestor <commit> HEAD && echo "está"`.
 
 A partir de acá **todo tu trabajo pasa ahí**. Para el lock seguís usando `$LOCKS`, que apunta al
 repo original — el único que todos los chats comparten.
@@ -379,7 +390,12 @@ Escribí el veredicto como lo diría ella, en primera persona. Sé duro: **es m�
 digas vos ahora a que te lo diga ella en la próxima reunión.**
 
 Si de acá sale algo que no es de tu tarea, **no lo arregles**: anotalo como tarea nueva al final
-del documento de tareas, con su número, su experto y su cita.
+del documento de tareas, con su experto y su cita.
+
+⚠️ **Numerala `T-<tuTarea>-N1`, `T-<tuTarea>-N2`…** (ej. `T-17-N1`), nunca con el siguiente
+número global. Los chats no se ven entre sí: si dos numeran a mano, los dos van a elegir el
+mismo — ya pasó, dos chats crearon una "T-29" distinta cada uno. Derivar el id de tu tarea es
+libre de colisiones por construcción, porque esa tarea la tenés vos y nadie más.
 
 ---
 
