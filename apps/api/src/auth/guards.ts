@@ -7,6 +7,7 @@ import {
   rolTienePermiso,
   type Capacidad,
   type JwtPayload,
+  type JwtInquilino,
   type JwtPersona,
   type JwtUsuario,
 } from '@llave/shared';
@@ -79,7 +80,32 @@ export async function requireUsuario(
   return actual;
 }
 
-/** Exige un inquilino TITULAR autenticado (no co-inquilino). */
+/**
+ * Exige un inquilino TITULAR y **revalida contra la DB**.
+ *
+ * Antes devolvía el payload crudo del JWT sin una sola query, y eso hacía al
+ * titular literalmente irrevocable: borrarle la fila `Inquilino` no le sacaba el
+ * acceso, porque nadie la consultaba. Con un TTL de 15 días, esa es la ventana
+ * más grande del sistema.
+ *
+ * El razonamiento no es nuevo: es el mismo que ya está escrito tres funciones más
+ * abajo, en la rama de co-inquilino de `requireContratoAcceso` —"el token dura 15
+ * días, así que NO confiamos en el permiso/estado del JWT… antes seguía entrando
+ * con su permiso viejo = agujero real"—. Se aplicó al invitado y no al titular,
+ * que es el que más ve.
+ *
+ * Se revalidan DOS cosas, y ninguna necesitó una columna nueva:
+ *
+ *  1. **Que la fila siga existiendo** en ese tenant. Borrarla ahora sí revoca.
+ *  2. **Que el contrato del token siga siendo el suyo.** Si el token dice
+ *     "contrato X" y la fila ya no lo tiene (se reasignó, se desvinculó), el
+ *     token quedó apuntando a un alquiler que no le corresponde.
+ *
+ * Un token SIN contrato (`contratoId: null`, emitido antes de asignarle uno) no
+ * se corta: no está reclamando nada. Cortarlo obligaría a re-loguearse a alguien
+ * a quien recién le dieron de alta el contrato, que es una regresión de UX sin
+ * ninguna ganancia de seguridad.
+ */
 export async function requireInquilino(request: FastifyRequest, reply: FastifyReply) {
   const payload = await requireAuth(request, reply);
   if (!payload) return null;
@@ -87,7 +113,49 @@ export async function requireInquilino(request: FastifyRequest, reply: FastifyRe
     await reply.code(403).send({ message: 'Solo para inquilinos' });
     return null;
   }
+  const revocado = await inquilinoRevocado(payload);
+  if (revocado) {
+    await reply.code(401).send({ message: revocado });
+    return null;
+  }
   return payload;
+}
+
+/**
+ * ¿El token de este titular dejó de valer? Devuelve el mensaje del 401, o null si
+ * sigue vigente. Compartido por `requireInquilino` y por la rama `inquilino` de
+ * `requireContratoAcceso`, que son las DOS puertas del titular: cuando la
+ * revalidación vivía en una sola, la otra quedaba abierta.
+ */
+async function inquilinoRevocado(payload: JwtInquilino): Promise<string | null> {
+  const fila = await prisma.inquilino.findFirst({
+    where: { id: payload.inquilinoId, inmobiliariaId: payload.inmobiliariaId },
+    select: { contratoId: true },
+  });
+  return motivoRevocacionInquilino(payload.contratoId, fila);
+}
+
+/**
+ * La DECISIÓN, separada de la consulta para poder fijarla con un test puro.
+ *
+ * `fila: null` = la fila no existe en ese tenant (borrada, o el token apunta a
+ * otra inmobiliaria).
+ *
+ * El caso que hay que proteger es el tercero: un token con `contratoId: null`
+ * **no** se revoca aunque la fila ya tenga contrato. Es alguien a quien le dieron
+ * de alta el alquiler después de loguearse; cortarlo lo mandaría de vuelta al
+ * login sin ganar nada, porque ese token nunca reclamó ningún contrato. La
+ * tentación de "simplificar" esto a una igualdad estricta rompe ese caso.
+ */
+export function motivoRevocacionInquilino(
+  contratoIdDelToken: string | null,
+  fila: { contratoId: string | null } | null,
+): string | null {
+  if (!fila) return 'Tu acceso fue dado de baja';
+  if (contratoIdDelToken !== null && fila.contratoId !== contratoIdDelToken) {
+    return 'Tu acceso a este alquiler cambió. Volvé a entrar.';
+  }
+  return null;
 }
 
 /** Datos ya re-validados contra DB del profesional con visita asignada. */
@@ -160,6 +228,27 @@ export async function requirePersona(
   const parsed = JwtPersonaSchema.safeParse(request.user);
   if (!parsed.success) {
     await reply.code(403).send({ message: 'Sesión inválida para esta acción' });
+    return null;
+  }
+  // La identidad de este kind es SÓLO un email adentro del token —no hay id— así
+  // que lo único revalidable es que ese email siga siendo el de alguien.
+  //
+  // Es una revocación más débil que la de los otros guards, y hay que ser claro
+  // sobre qué cubre y qué no: cubre el caso real que la motivó, que es un OTP
+  // emitido a un email equivocado (un typo, un mail que se corrige después) — al
+  // corregirlo, el token viejo deja de abrir. NO cubre revocarle el acceso a
+  // alguien cuyo email sigue vigente: para eso hace falta un id en el payload, y
+  // eso es cambiar el contrato del token.
+  //
+  // A propósito SIN scope de inmobiliaria: este kind es cross-tenant por diseño
+  // (una persona puede alquilar en varias), así que alcanza con que exista en
+  // alguna. El scope por tenant lo hace cada endpoint con el id que elige.
+  const existe = await prisma.persona.findFirst({
+    where: { email: parsed.data.email },
+    select: { id: true },
+  });
+  if (!existe) {
+    await reply.code(401).send({ message: 'Tu acceso fue dado de baja' });
     return null;
   }
   return parsed.data;
@@ -245,6 +334,13 @@ export async function requireContratoAcceso(
   const payload = await requireAuth(request, reply);
   if (!payload) return null;
   if (payload.kind === 'inquilino') {
+    // La OTRA puerta del titular. El co-inquilino se revalidaba acá abajo desde
+    // siempre; el titular pasaba derecho con permiso COMPLETO sacado del JWT.
+    const revocado = await inquilinoRevocado(payload);
+    if (revocado) {
+      await reply.code(401).send({ message: revocado });
+      return null;
+    }
     return {
       inmobiliariaId: payload.inmobiliariaId,
       contratoId: payload.contratoId,
