@@ -14,6 +14,7 @@ import {
   Trash2,
   TrendingDown,
   TrendingUp,
+  Undo2,
   Wallet,
   X,
 } from 'lucide-react';
@@ -44,9 +45,11 @@ import {
   categoriaGastoLabel,
   totalesPorMoneda,
 } from '@/lib/caja-storage';
-import { useCaja, usePropiedades } from '@/lib/api/hooks';
+import { useCaja, useMe, usePropiedades } from '@/lib/api/hooks';
 import { useCuentas } from '@/lib/api/use-cuentas';
-import { useCierreCaja } from '@/lib/api/use-pagos';
+import { type CierreCajaItem, useAnularPago, useCierreCaja } from '@/lib/api/use-pagos';
+import { rolTienePermiso } from '@/lib/permisos';
+import { normalizarRol } from '@/lib/rol-storage';
 import { apiEnabled, subirArchivo } from '@/lib/api/client';
 import { formatFechaCorta, formatMonto, formatTotalPorMoneda, fechaHoyLocal } from '@/lib/format';
 import type { Moneda } from '@/lib/types';
@@ -357,6 +360,48 @@ function CierreCajaDelDia() {
   const [abierto, setAbierto] = useState(false);
   const { cierre, cargando } = useCierreCaja(fecha);
   const esHoy = fecha === hoy;
+  // Con UNA sola moneda el total plano es correcto, pero se formateaba siempre como
+  // pesos: un día cuyo único cobro fue en dólares mostraba "$ 1.200" arriba y "US$ 1.200"
+  // en la fila. El desglose `porMoneda` ya sabe cuál es.
+  const monedaUnica = (cierre?.porMoneda[0]?.moneda ?? 'ARS') as Moneda;
+
+  // T-12 — Camila buscó acá cómo deshacer un cobro mal cargado: llegó al detalle y la fila
+  // no tenía acción. `POST /pagos/:id/anular` ya existía, pero sólo se alcanzaba desde la
+  // bandeja de conciliados, que no es donde ella estaba mirando.
+  const { me } = useMe();
+  const { anular, disponible: anularDisponible } = useAnularPago();
+  // `pago.revertir` es ADMIN. Si no puede, no mostramos el botón: prometerlo para que el
+  // server conteste 403 es peor que no ofrecerlo.
+  const puedeAnular =
+    anularDisponible && rolTienePermiso(normalizarRol(me?.rol, 'LECTURA'), 'pago.revertir');
+  const [anulando, setAnulando] = useState<CierreCajaItem | null>(null);
+  const [motivo, setMotivo] = useState('');
+  const [enviando, setEnviando] = useState(false);
+
+  const confirmarAnular = async () => {
+    if (!anulando || motivo.trim().length < 5) return;
+    setEnviando(true);
+    try {
+      await anular(anulando.id, motivo.trim());
+      toast({
+        title: 'Cobro deshecho',
+        description: `El pago de ${anulando.inquilino} volvió a quedar pendiente.`,
+      });
+      setAnulando(null);
+      setMotivo('');
+    } catch (e) {
+      // El server tiene motivos concretos para negarse (el período ya se le rindió al
+      // propietario, el pago ya no está conciliado). Mostramos SU mensaje: es la respuesta
+      // a "¿por qué no puedo?", y un texto genérico la borraría.
+      toast({
+        variant: 'destructive',
+        title: 'No se pudo deshacer',
+        description: e instanceof Error ? e.message : 'Probá de nuevo en un momento.',
+      });
+    } finally {
+      setEnviando(false);
+    }
+  };
 
   const compartir = () => {
     if (!cierre || cierre.cantidad === 0) return;
@@ -366,7 +411,8 @@ function CierreCajaDelDia() {
       ? cierre.porMoneda
           .map((m) => `${m.moneda} — Cobrado: ${formatMonto(m.cobrado, m.moneda as 'ARS' | 'USD')} · Comisión: ${formatMonto(m.comision, m.moneda as 'ARS' | 'USD')}`)
           .join('\n')
-      : `Cobrado: ${formatMonto(cierre.cobrado)}\n` + `Comisión (honorarios): ${formatMonto(cierre.comision)}`;
+      : `Cobrado: ${formatMonto(cierre.cobrado, monedaUnica)}\n` +
+        `Comisión (honorarios): ${formatMonto(cierre.comision, monedaUnica)}`;
     const msg =
       `*Cierre de caja ${cuando}*\n` +
       `${lineasMonto}\n` +
@@ -431,7 +477,7 @@ function CierreCajaDelDia() {
                   Cobrado
                 </p>
                 <p className="mt-1 text-2xl font-bold tabular-nums text-emerald-700 dark:text-emerald-300">
-                  {cierre.multiMoneda ? 'ver desglose' : formatMonto(cierre.cobrado)}
+                  {cierre.multiMoneda ? 'ver desglose' : formatMonto(cierre.cobrado, monedaUnica)}
                 </p>
               </div>
               <div className="rounded-lg border bg-muted/20 p-3">
@@ -439,7 +485,7 @@ function CierreCajaDelDia() {
                   <Percent className="h-3 w-3" /> Comisión
                 </p>
                 <p className="mt-1 text-2xl font-bold tabular-nums">
-                  {cierre.multiMoneda ? 'ver desglose' : formatMonto(cierre.comision)}
+                  {cierre.multiMoneda ? 'ver desglose' : formatMonto(cierre.comision, monedaUnica)}
                 </p>
                 <p className="text-[10px] text-muted-foreground">tus honorarios sobre el alquiler</p>
               </div>
@@ -475,13 +521,31 @@ function CierreCajaDelDia() {
                         {p.direccion} · {p.periodo} · {p.metodo.toLowerCase()}
                       </p>
                     </div>
-                    <div className="text-right">
-                      <p className="font-semibold tabular-nums text-emerald-700 dark:text-emerald-300">
-                        {formatMonto(p.monto)}
-                      </p>
-                      <p className="text-[10px] tabular-nums text-muted-foreground">
-                        comisión {formatMonto(p.comision)}
-                      </p>
+                    <div className="flex items-center gap-2">
+                      <div className="text-right">
+                        {/* Con la moneda del ítem: el cierre ya separa ARS de USD más
+                            arriba, y esta fila los mostraba todos como pesos. */}
+                        <p className="font-semibold tabular-nums text-emerald-700 dark:text-emerald-300">
+                          {formatMonto(p.monto, p.moneda as Moneda)}
+                        </p>
+                        <p className="text-[10px] tabular-nums text-muted-foreground">
+                          comisión {formatMonto(p.comision, p.moneda as Moneda)}
+                        </p>
+                      </div>
+                      {puedeAnular && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="gap-1.5 text-muted-foreground hover:text-destructive"
+                          onClick={() => {
+                            setAnulando(p);
+                            setMotivo('');
+                          }}
+                        >
+                          <Undo2 className="h-3.5 w-3.5" />
+                          Deshacer
+                        </Button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -490,6 +554,61 @@ function CierreCajaDelDia() {
           </>
         )}
       </CardContent>
+
+      {/* Deshacer un cobro: el server exige un motivo de 5+ caracteres y lo deja en la
+          auditoría del pago, así que lo pedimos acá en vez de comerse un 400. */}
+      <Dialog
+        open={anulando !== null}
+        onOpenChange={(v) => {
+          if (!v && !enviando) {
+            setAnulando(null);
+            setMotivo('');
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Deshacer el cobro de {anulando?.inquilino}</DialogTitle>
+            <DialogDescription>
+              {anulando
+                ? `${formatMonto(anulando.monto, anulando.moneda as Moneda)} · ${anulando.periodo}. La cuota vuelve a quedar pendiente y el cobro sale del cierre del día.`
+                : ''}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="motivo-anular">¿Por qué se deshace?</Label>
+            <Textarea
+              id="motivo-anular"
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+              placeholder="Ej: se cargó en el contrato equivocado"
+              rows={3}
+            />
+            <p className="text-xs text-muted-foreground">
+              Queda registrado en el historial del pago. Mínimo 5 caracteres.
+            </p>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              disabled={enviando}
+              onClick={() => {
+                setAnulando(null);
+                setMotivo('');
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={enviando || motivo.trim().length < 5}
+              onClick={confirmarAnular}
+            >
+              {enviando ? 'Deshaciendo…' : 'Deshacer cobro'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

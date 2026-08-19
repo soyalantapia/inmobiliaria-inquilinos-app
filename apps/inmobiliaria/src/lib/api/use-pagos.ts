@@ -12,7 +12,7 @@
  * (!apiEnabled). Las dos mutaciones exigen PIN: lo valida el server.
  */
 import { useMemo } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { type QueryClient, useQuery, useQueryClient } from '@tanstack/react-query';
 import { API_URL, apiEnabled, apiFetch, getToken } from './client';
 import { ensureApiSession } from './session';
 import { pagosInformadosMock, type PagoInformado } from '@/lib/mock-data';
@@ -298,14 +298,44 @@ export function usePagosConciliados(): UsePagosConciliados {
     reintentar: () => void qc.invalidateQueries({ queryKey: ['pagos', 'conciliados'] }),
     deApi: true,
     anular: async (id, motivo, pin) => {
-      await apiFetch(`/pagos/${id}/anular`, {
-        method: 'POST',
-        body: JSON.stringify({ pin, observacion: motivo }),
-      });
-      void qc.invalidateQueries({ queryKey: ['pagos'] });
-      void qc.invalidateQueries({ queryKey: ['liquidaciones'] });
-      void qc.invalidateQueries({ queryKey: ['contratos'] });
-      void qc.invalidateQueries({ queryKey: ['contrato'] });
+      await anularPagoEnApi(qc, id, motivo, pin);
+    },
+  };
+}
+
+/**
+ * Anular un pago conciliado. Vive suelto porque la acción se dispara desde DOS lugares:
+ * la bandeja de conciliados y el detalle del cierre de caja (T-12: es ahí donde el
+ * operador ve el cobro equivocado). La invalidación tiene que ser la misma en los dos.
+ */
+async function anularPagoEnApi(qc: QueryClient, id: string, motivo: string, pin?: string) {
+  await apiFetch(`/pagos/${id}/anular`, {
+    method: 'POST',
+    body: JSON.stringify({ pin, observacion: motivo }),
+  });
+  void qc.invalidateQueries({ queryKey: ['pagos'] });
+  void qc.invalidateQueries({ queryKey: ['liquidaciones'] });
+  void qc.invalidateQueries({ queryKey: ['contratos'] });
+  void qc.invalidateQueries({ queryKey: ['contrato'] });
+  // El cierre de caja muestra este cobro y su comisión en los totales del día. Sin esta
+  // línea, anular desde el propio cierre deja el total mostrando plata que ya no está.
+  void qc.invalidateQueries({ queryKey: ['caja'] });
+}
+
+/**
+ * Sólo la mutación de anular, sin traer la lista de conciliados: el cierre de caja ya
+ * tiene sus filas y no necesita un segundo GET para poder deshacer una.
+ */
+export function useAnularPago(): {
+  anular: (id: string, motivo: string) => Promise<void>;
+  disponible: boolean;
+} {
+  const qc = useQueryClient();
+  return {
+    disponible: apiEnabled,
+    anular: async (id, motivo) => {
+      if (!apiEnabled) return;
+      await anularPagoEnApi(qc, id, motivo);
     },
   };
 }

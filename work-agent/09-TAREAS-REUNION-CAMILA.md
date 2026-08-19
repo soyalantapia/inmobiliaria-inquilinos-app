@@ -507,9 +507,19 @@ alcance lo define PROD antes de escribir código, y por eso la fecha de vigencia
 
 ---
 
-## T-12 · Hacer descubrible "anular un pago"
+## T-12 · Hacer descubrible "anular un pago" — ✅ RESUELTO
 
-**Experto:** FE-P · **Prioridad:** 🟠 · **Depende de:** T-04
+> **Hecho.** Detalle y evidencia: [`T-12-DESHACER-COBRO-EN-CAJA.md`](T-12-DESHACER-COBRO-EN-CAJA.md).
+> El diagnóstico cambió al relevar: Camila **sí encontró "Ver detalle"** y llegó a la lista de
+> cobros del día — la fila del cobro equivocado no tenía acción. El botón "Deshacer" ahora vive
+> **en esa fila**, pide motivo, sólo lo ve ADMIN, muestra el 409 real del server y el cierre se
+> recalcula solo. Backend sin cambios: ninguna guarda se aflojó.
+> De paso se corrigió un bug preexistente de moneda en los totales del cierre (un día en USD se
+> mostraba con signo de pesos).
+> **Falta:** prueba de humo contra el backend real después del deploy (T-02).
+
+**Experto:** FE-P · **Prioridad:** 🟠 · **Depende de:** ~~T-04~~ (dependencia levantada: no se
+modifica lógica de pagos, sólo se expone un endpoint ya existente y ya guardado)
 
 **Qué pidió Camila.** `[57:12]` *"Si el inquilino se equivocó de un pago, ¿cómo lo elimino?
 ¿Cómo elimino un pago ya cargado que me lo contabilizó en caja?"* — Alan pidió un segundo y no
@@ -2592,6 +2602,7 @@ chats.
 **Criterio de aceptación.** En demo, después de informar el pago completo, el home dice
 "Comprobante en revisión" y no "atrasado".
 
+
 ---
 
 ## T-30-N1 · El remitente sigue diciendo "My Alquiler", no la inmobiliaria
@@ -2639,6 +2650,21 @@ diseño de marca y el pie de T-30 de arrastre— o, como mínimo, envolver las i
 
 **Criterio de aceptación.** Una inmobiliaria llamada `Suárez & Cía <Córdoba>` recibe su mail de
 invitación bien renderizado.
+
+### T-18-N1 · Que el historial muestre el cuerpo del mensaje, no sólo el asunto
+**Experto:** FE-P · **Prioridad:** 🟠 · **Detectada en:** T-18 (Fase 7)
+
+`POST /contratos/:id/comunicaciones` guarda el texto completo en `EventoContrato.detalle`, pero
+falta verificar si la pestaña Historial lo renderiza o sólo muestra `titulo`. Camila:
+*"queda anotado que mandé un mensaje, pero no queda el mensaje… si guarda sólo el asunto no me
+sirve para discutir después."* Sin el cuerpo, el registro no cubre el caso de uso real.
+
+### T-18-N2 · El copy de espera de país promete un mail que nadie manda
+**Experto:** PROD · **Prioridad:** 🟢 · **Detectada en:** T-18
+
+`apps/inmobiliaria/src/components/configuracion-pais.tsx:183` dice *"avisamos por mail cuando
+esté listo"* para un país todavía no disponible. No hay lista de espera detrás. O se construye,
+o se cambia el texto.
 ## Tareas nuevas detectadas al ejecutar
 
 ### T-17-N1 · Destinatario configurable por tipo de aviso
@@ -2764,3 +2790,4 @@ sirve para discutir después."* Sin el cuerpo, el registro no cubre el caso de u
 `apps/inmobiliaria/src/components/configuracion-pais.tsx:183` dice *"avisamos por mail cuando
 esté listo"* para un país todavía no disponible. No hay lista de espera detrás. O se construye,
 o se cambia el texto.
+
