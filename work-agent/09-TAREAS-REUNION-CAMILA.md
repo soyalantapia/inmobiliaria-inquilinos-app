@@ -534,6 +534,24 @@ expone `porMoneda`). Vale arreglarlo en la misma pasada.
 
 ## T-14 · Pago parcial desde la PWA del inquilino
 
+**Estado: ✅ VERIFICADA — ya funcionaba, cero líneas de código.** El checkout tiene el selector
+*"¿Cuánto vas a pagar ahora?"* con "El saldo completo" y **"Pagar un parcial"** de monto libre,
+clampeado a `[0, saldo]` (`checkout/page-client.tsx:756`, `:775`, `:733`), y hasta distingue
+prod de demo en el copy. Los tres criterios de aceptación se cumplen hoy. Detalle completo en
+`work-agent/.tareas/T-14/estado.md`.
+
+**La pregunta 2 queda respondida: NO se permite pagar sólo el alquiler dejando expensas.** El
+parcial es **monto libre**, nunca elección de concepto. (a) Es lo que Camila pidió que no se
+haga (`[27:16]`); (b) `Pago` no tiene campo de concepto (`schema.prisma:1664-1719`), no hay
+dónde guardarlo; (c) y lo decisivo: la imputación aguas abajo es **prorrateo**, no prelación
+(`rendicion-pendiente.ts:66`, `plata.ts:1733`, `plata.ts:227`) — así que el botón le mentiría al
+inquilino y a la inmobiliaria. El desglose se queda **informativo**, que es para lo que se
+agregó.
+
+**Lo más barato que quedó abierto:** averiguar qué valor tenía `NEXT_PUBLIC_API_URL` en el
+entorno donde Camila probó el 03/08. Demo y prod se comportan **distinto** en el parcial, así que
+sin ese dato cualquier lectura de lo que ella vio es especulación — y puede acotar T-04.
+
 **Experto:** FE-I + PROD · **Prioridad:** 🟡 · **Depende de:** T-04
 
 **Qué pidió Camila.** `[1:00:24]` *"Ahí lo más frecuente es que no paguen todo, sino que quede
@@ -1415,3 +1433,70 @@ para mandarse en loop secuencial con throttle (deliverability: parecer humano, n
 falla la inmobiliaria puede saber cuál.
 
 **Riesgo.** Ninguno de plata. Es deliverability y visibilidad.
+
+---
+
+## T-33 · Un pago informado contra una cuota futura le congela el aumento para siempre
+
+**Experto:** BE · **Prioridad:** 🔴 · **Depende de:** T-04 (bloqueante: toca el flujo de pagos)
+**Origen:** relevamiento de T-14. No salió de la reunión.
+
+**Estado verificado — a mano, los tres eslabones.** Informar un pago contra una liquidación de
+un período **futuro** excluye a esa cuota del reajuste por aumento de forma **permanente**,
+incluso si la inmobiliaria después lo rechaza.
+
+1. `recomputarLiquidacionesFuturas` saltea toda cuota con `cantidadPagos > 0`
+   (`apps/api/src/lib/liquidaciones.ts:366`).
+2. Ese contador es `_count: { select: { pagos: true } }`, **sin filtro de estado**
+   (`apps/api/src/routes/core.ts:3011`). Un `INFORMADO` o un `RECHAZADO` pesan igual que un
+   `CONCILIADO`.
+3. Rechazar **no borra** el `Pago`: lo pasa a `RECHAZADO`
+   (`apps/api/src/routes/plata.ts:495-497`). El contador queda `> 0` para siempre.
+
+Y `POST /pagos/informar` valida que la **fecha de transferencia** no sea futura
+(`plata.ts:1186`), pero **no valida el período de la liquidación**: la busca por
+`id + contratoId` y nada más (`plata.ts:1191`). `GET /mis-liquidaciones` devuelve las futuras con
+su `id` (`plata.ts:1323-1326`).
+
+**El escenario.** Un inquilino informa $1 contra la cuota del mes que viene. La inmobiliaria la
+rechaza. Meses después se aplica el aumento por IPC: esa cuota **queda al alquiler viejo**, y
+nadie se entera hasta que la cobra de menos.
+
+**Por qué es 🔴.** Es plata que no se cobra, es silencioso, y sobrevive al rechazo — o sea que la
+acción correctiva obvia de la inmobiliaria **no lo arregla**. Toca el mismo endpoint que T-16
+(`PATCH /contratos/:id/monto`), así que cualquiera que trabaje ajustes lo va a rozar.
+
+**Qué hay que hacer.**
+1. Que el contador filtre por estado: sólo `CONCILIADO` (y quizá `INFORMADO`) debería frenar un
+   reajuste. Un `RECHAZADO` **nunca**.
+2. Validar el período en `POST /pagos/informar`: no se debería poder informar contra una cuota
+   que todavía no venció (o al menos no contra una futura).
+3. Decidir qué pasa con las cuotas ya congeladas en prod — hace falta una consulta.
+
+**Criterio de aceptación.** Informar y que te rechacen un pago sobre una cuota futura **no**
+impide que esa cuota se reajuste después.
+
+**Riesgo.** ⚠️ Toca el flujo de pagos **y** el de ajustes. Va después de T-04, y con test que
+falle primero.
+
+**No verificado.** Si la UI de la PWA expone alguna liquidación futura con link al checkout. Por
+API es alcanzable con seguridad; por interfaz, sin confirmar. Eso cambia si es explotable por un
+inquilino común o sólo pegándole al endpoint.
+
+---
+
+## T-34 · `payment-hero.tsx` es código muerto
+
+**Experto:** FE-I · **Prioridad:** 🟢 · **Depende de:** T-04 (por prudencia: vive en la carpeta de pagos)
+**Origen:** relevamiento de T-14.
+
+`apps/inquilino/src/app/(app)/payment-hero.tsx` se exporta en `:29` y **no lo importa nadie**: la
+única otra mención en todo el árbol es un comentario (`app/(app)/page.tsx:888`).
+
+Dato de color que vale para T-14/T-19: ese componente abandonado ya colapsaba alquiler y expensas
+en **una sola fila** ("Alquiler + expensas", `:147-150`) — o sea que la versión que se descartó ya
+iba en la dirección que Camila terminó pidiendo.
+
+**Qué hacer.** Borrarlo. Borrar un archivo que ningún módulo importa no puede cambiar
+comportamiento, pero como vive bajo pagos conviene no meterlo en la misma pasada que otra cosa,
+para que nadie tenga que discutir si cuenta como "tocar el flujo".
