@@ -2668,6 +2668,7 @@ y ningún botón principal lleva a una pantalla vacía.
 ## T-21-N3-N2 · `POST /screening` fabrica informes crediticios sobre personas reales — 🔴
 
 **Experto:** SEC + BE + PROD · **Prioridad:** 🔴 · **Depende de:** nada
+**Estado: ✅ HECHA** — commit `791a232`. `POST /screening` devuelve 501 (`SCREENING_SIN_FUENTE`), y se borró el generador entero (~270 líneas): dejarlo dormido con el endpoint apagado era un arma cargada. 501 y no 404 a propósito — el endpoint existe, lo que falta es la integración. Las lecturas NO se tocaron: si hay filas fabricadas el dueño tiene que poder verlas. **Necesita tu mano:** correr `work-agent/tareas/T-21-N3-N2/diagnostico-screenings-fabricados.sql`, que dice sobre QUÉ PERSONAS se emitieron y cuáles terminaron ligadas a un contrato. tsc 0, 285 tests puros en verde.
 **Origen:** auditoría de T-21-N3-N1. `work-agent/07-ECOSISTEMA.md` ya lo tenía como riesgo.
 
 **Estado verificado.** El endpoint está registrado, autenticado y con guard multi-tenant. El
