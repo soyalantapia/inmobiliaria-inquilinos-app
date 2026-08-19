@@ -319,7 +319,10 @@ export default function DetalleContratoPage() {
             {apiEnabled && c.estado === 'ACTIVO' && (
               <RenovarContratoButton contratoId={c.id} montoActual={c.monto} fechaFinActual={c.fechaFin} moneda={c.moneda} />
             )}
-            {apiEnabled && c.estado === 'ACTIVO' && (
+            {/* En SOLO_EXPENSAS no hay canon que ajustar y el server responde 409. Mostrar el
+                botón igual es prometer algo que va a fallar — el mismo patrón que se corrigió
+                en la bandeja de pagos (T-40/T-43). Mejor no ofrecerlo que explicar el error. */}
+            {apiEnabled && c.estado === 'ACTIVO' && c.tipoContrato !== 'SOLO_EXPENSAS' && (
               <AjustarAlquilerButton contratoId={c.id} montoActual={c.monto} moneda={c.moneda} />
             )}
             {apiEnabled && c.estado === 'ACTIVO' && (
