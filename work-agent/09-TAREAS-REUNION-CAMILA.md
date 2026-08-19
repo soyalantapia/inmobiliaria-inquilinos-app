@@ -2743,6 +2743,7 @@ digest para los eventos de alto volumen. **Definir con PROD antes de modelar.**
 
 ### T-17-N2 · El estado EN_CURSO sigue siendo inalcanzable
 **Experto:** BE + FE-P · **Prioridad:** 🟠 · **Detectada en:** T-17 (Fase 7)
+**Estado: ✅ HECHA** — commit `bccd4f1`. `POST /reclamos/:id/tomar` (ABIERTO → EN_CURSO) con el mismo patrón que asignar/resolver/rechazar: lock atómico (`count===0` → 409 si alguien lo cerró mientras tanto), evento en el historial, scoping por tenant. **Idempotente**: tomar algo ya en curso devuelve 200 sin duplicar el evento — el caso real es que dos personas de la oficina abran el mismo reclamo. NO asigna profesional (eso es `/asignar`, son cosas distintas), y por eso en prod el botón no exige operador asignado, a diferencia de la demo, donde esa exigencia era lo que trababa el flujo. El botón del panel ya existía gateado a `!apiEnabled` con el comentario "no tiene endpoint"; ahora lo tiene. tsc 0, 297 tests puros en verde.
 
 Ya estaba documentado en `07-ECOSISTEMA.md §3.4`: *"tomar / poner en curso"* no tiene endpoint,
 así que a `EN_CURSO` sólo se llega si el inquilino **reabre** un reclamo resuelto. Con el mail
