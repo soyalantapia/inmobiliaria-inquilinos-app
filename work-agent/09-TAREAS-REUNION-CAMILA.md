@@ -1371,6 +1371,37 @@ enero; y el dueño de siempre ve el historial completo aunque la unidad esté va
 **Experto:** BE · **Prioridad:** 🟠 · **Depende de:** nada
 **Origen:** relevamiento de T-23-N3.
 
+> ⛔ **Estado: MAL DIAGNOSTICADA. No se cambió nada — el cambio que pedía era una regresión.**
+>
+> **La ausencia del `gte` es deliberada, está documentada en los tres bloques, y el anti-doble
+> no es la fecha: es un flag.**
+>
+> - **Gastos de caja** (`plata.ts:1786`): el `where` incluye `descontadoEnRendicion: false`, y
+>   justo arriba del filtro de fecha está escrito que la ventana estricta se sacó porque *"un
+>   gasto cargado tarde —o de un mes ya rendido— quedaba huérfano para siempre"*, y que **"el
+>   anti-doble no es la fecha sino `descontadoEnRendicion`"**. O sea: el piso que esta tarea
+>   propone ya existió y se quitó a propósito.
+> - **Reclamos** (`plata.ts:1877`): no tiene flag —un reclamo no tiene estado terminal— así que
+>   usa dos topes sobre el ledger `GastoRendido`: lo que este dueño ya rindió, y
+>   **`restanteGlobal = total − lo rendido por TODOS`** (`:1918`). Un reclamo no puede cobrarse
+>   más que su costo total sumando todos los dueños y todas las rendiciones. El comentario de
+>   `:1897-1904` que esta tarea cita como "mitigación que no cubre el arrastre" **es** ese tope
+>   global, y sí lo cubre.
+> - **Ingresos extra** (`plata.ts:1952`): mismo esquema, y el comentario lo dice explícito. Acá
+>   el carry-over protege al **propietario**: es plata suya que sin arrastre nunca se le rendiría.
+>
+> **Por qué es fácil equivocarse:** leyendo sólo el filtro de fecha, la conclusión es correcta.
+> El anti-doble está en otras líneas del mismo `where` y en la aritmética de los topes, treinta
+> líneas más abajo.
+>
+> **Lo que sí queda** es un caso distinto: un gasto anterior a que la persona fuera dueña, nunca
+> rendido, se le cobra a ella. Eso no es el arrastre — es que **no existe el dato de desde
+> cuándo alguien es dueño**. Es T-23-N3, cuya continuación T-23-N3-N1 está bloqueada por
+> decisión de producto. Ponerle un piso por fecha sería tapar ese agujero con el mecanismo
+> equivocado y romper el carry-over de paso.
+>
+> Detalle completo en `work-agent/tareas/T-23-N3-N2/estado.md`.
+
 **Estado verificado.** En la rendición, los tres descuentos filtran con
 `fecha: { lt: finPeriodo }` y **sin `gte`**: `plata.ts:1786` (gastos de caja), `:1877` (reclamos a
 cargo del propietario) y `:1952` (ingresos extra). O sea, carry-over ilimitado hacia atrás: un
