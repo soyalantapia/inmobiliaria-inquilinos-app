@@ -1227,6 +1227,52 @@ devuelva 404/vacío al pedir lo del otro.
 ## T-23-N2 · `Propietario.email` es una credencial que nadie verifica
 
 **Experto:** BE + PROD · **Prioridad:** 🟠 · **Depende de:** nada
+**Estado: ✅ HECHA en su parte accionable** — commit `1cdaf38`. Queda abierta la verificación
+del email (ver abajo).
+
+**Adentro había un bug que rompía el portal entero.** El email se guardaba tal cual lo tipea el
+operador mientras el login busca en minúsculas, y Postgres compara distinguiendo mayúsculas: un
+propietario cargado como `Juan.Perez@Gmail.com` **no podía entrar nunca**. Y el fallo es mudo —
+pide el código, el endpoint responde `ok` (no revela si el email existe, a propósito) y el
+código no llega jamás. O sea que el portal de T-23 no funcionaba para buena parte de la cartera
+ya cargada. Los otros dos logins por OTP ya lo habían aprendido cada uno por su cuenta;
+`Propietario` era el único que faltaba porque hasta T-23 no era una puerta.
+
+La regla vive ahora en `apps/api/src/lib/normalizar-email.ts`, con 5 tests puros verificados en
+rojo, aplicada en las dos escrituras. **Migración de backfill escrita y sin aplicar**
+(`20260819140000_email_propietario_minusculas`) para lo que ya está cargado; trae dos consultas
+de solo lectura para mirar antes a cuántos afecta.
+
+**El "único por tenant" se descartó, con motivo:** dos propietarios de la misma inmobiliaria
+pueden compartir email legítimamente (un matrimonio, el contador de varios dueños), así que
+rompería datos reales — y no cierra el problema de fondo, que es **entre** tenants: un
+`@@unique([inmobiliariaId, email])` no impide que el mismo string aparezca en dos carteras de
+inmobiliarias distintas. En cambio se hizo **distinguible** (el selector muestra nombre +
+inmobiliaria) y sigue siendo **detectable** (el `log.warn` de T-23).
+
+**De paso se cerró un hueco de T-23:** faltaba el selector de cartera. Sin él, quien administra
+con dos inmobiliarias entraba a una y no tenía forma de llegar a la otra ni de saber que
+existía.
+
+**Lo que queda abierto → T-23-N2-N1.**
+
+---
+
+## T-23-N2-N1 · Verificar el email del propietario (doble opt-in)
+
+**Experto:** BE + PROD · **Prioridad:** 🟡 · **Depende de:** nada
+
+Es la única salida que cierra de verdad el riesgo que abrió T-23: mientras el email lo tipee el
+staff y nadie lo confirme, quien controle esa casilla entra — y si hay un typo, entra a una
+cartera ajena.
+
+Pide su propia tanda: mail de confirmación, un estado `emailVerificado` en el modelo (migración),
+y sobre todo **decidir qué se hace con los que ya están cargados sin verificar**: bloquearles el
+portal hasta que confirmen es lo seguro, pero deja afuera a toda la cartera existente el día 1.
+
+No bloquea el portal, que ya sale con el riesgo documentado, distinguible y detectable.
+
+---
 
 Con el portal, ese campo dejó de ser un dato de contacto y pasó a ser **la llave de entrada** —
 pero sigue igual que antes: lo tipea el staff a mano (`POST`/`PUT /propietarios`), no se
