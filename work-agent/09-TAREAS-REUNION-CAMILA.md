@@ -2726,6 +2726,7 @@ sirve para discutir después."* Sin el cuerpo, el registro no cubre el caso de u
 
 ### T-18-N2 · El copy de espera de país promete un mail que nadie manda
 **Experto:** PROD · **Prioridad:** 🟢 · **Detectada en:** T-18
+**Estado: ✅ HECHA** — commit `5525b1e`. Verificado que **no hay ninguna lista de espera** en el repo (grep de waitlist / lista de espera / notificar lanzamiento → cero). Eran **TRES** promesas del mismo tipo, no una: el banner comercial de `configuracion-pais.tsx` (*"elegilo igual y te avisamos cuando abramos, **con descuento de lanzamiento**"* — la peor, porque compromete un beneficio comercial sobre una acción que no registra nada), la que nombraba la tarea, y el popup de beta de `screening/page.tsx". Arreglar una y dejar dos idénticas a dos pantallas no servía. **No** se reemplazó por "escribinos a Soporte": `/soporte` es el proxy al bug tracker con allowlist por tenant, sería cambiar una media promesa por otra. Si se quiere capturar ese interés de verdad —para el país tiene valor comercial claro— hay que construirlo: modelo, endpoint y disparo de mail al abrir el mercado. tsc 0, lint sin warnings nuevos.
 
 `apps/inmobiliaria/src/components/configuracion-pais.tsx:183` dice *"avisamos por mail cuando
 esté listo"* para un país todavía no disponible. No hay lista de espera detrás. O se construye,
