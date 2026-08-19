@@ -33,6 +33,21 @@
         "dev"
       ],
       "port": 3003
+    },
+    {
+      "name": "propietario-3001",
+      "runtimeExecutable": "corepack",
+      "runtimeArgs": [
+        "pnpm",
+        "--filter",
+        "@llave/propietario",
+        "exec",
+        "next",
+        "dev",
+        "-p",
+        "3001"
+      ],
+      "port": 3001
     }
   ]
 }
