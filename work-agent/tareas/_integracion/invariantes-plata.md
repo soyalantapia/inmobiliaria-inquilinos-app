@@ -33,12 +33,18 @@ Se contaron **todas** las escrituras de `montoAlquiler` y cada una está cubiert
 | `POST /contratos/:id/renovar` | `const canonNuevo = esSoloExpensas ? 0 : b.montoNuevo` (`core.ts:2256`) |
 | `PATCH /contratos/:id/expensas` | no toca el alquiler: lo pasa de largo (`core.ts:3703`) |
 
-### 4. Sin rutas de Fastify duplicadas
+### 4. `PROPIETARIO_DIRECTO` queda afuera de rendición y de caja
+
+Los dos flujos de plata filtran a `contrato: { modoCobranza: 'INMOBILIARIA' }`: el cierre de caja
+(`plata.ts:220`) y la rendición (`plata.ts:1899`). Un contrato que cobra el dueño directo no
+entra en ninguno de los dos, que es la regla.
+
+### 5. Sin rutas de Fastify duplicadas
 
 `grep` de todos los `app.get/post/patch/put/delete` de `routes/`: **cero paths repetidos**. Una
 ruta duplicada hace que el server no arranque.
 
-### 5. El enum del historial coincide de punta a punta
+### 6. El enum del historial coincide de punta a punta
 
 Los 9 valores de `TipoEventoContrato` del schema están declarados en el panel. Ninguno cae en
 `undefined` en los mapas de color/label.
@@ -62,3 +68,21 @@ Se anotan para que nadie las vuelva a perseguir:
   `build-landing.js`.
 - **`moneda` no existe en `RendicionCreateInput`.** El schema **sí** lo tiene; era el cliente de
   Prisma generado antes del cambio. Un `prisma generate` y a 0.
+
+---
+
+## Contratos API ↔ front: `apps/propietario` está alineado
+
+Se revisó con foco en esa app porque **nació en una sola de las dos líneas y nunca convivió con
+la otra** — era la candidata más probable a drift, y `tsc` no lo detecta: los tipos del front
+están escritos a mano, no generados.
+
+- Los **cinco** endpoints que llama (`/portal/mi-cartera`, `/portal/propiedades`,
+  `/portal/reclamos`, `/portal/rendiciones`, `/portal/rendiciones/:id`) existen en el API.
+- El login (`/auth/propietario/otp/{request,verify}`) también: vive en
+  `routes/portal-propietario.ts:65` y `:119`.
+- La forma de `MiCartera` coincide campo por campo con lo que el endpoint devuelve.
+
+> Una cuarta falsa alarma, anotada igual que las otras: un `grep` de una línea sobre
+> `app.post('/auth/...')` **no encuentra** los endpoints del portal, porque están registrados con
+> el path como argumento separado en varias líneas. Parecen no existir y existen.
