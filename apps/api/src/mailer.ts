@@ -117,10 +117,23 @@ function getTransporter(): Transporter | null {
  * throttle (deliverability: parecer humano, no ráfaga)" — pero era responsabilidad del
  * caller y ningún caller lo hacía. Acá deja de ser opcional.
  *
- * DOS CARRILES, y la distinción importa: por la cola va lo que sale de a muchos (avisos de
- * ajuste, anuncios, invitaciones). El OTP va por `enviarYa`, derecho — si compartiera la
- * cola, un anuncio a 200 inquilinos dejaría el próximo login esperando el código 80
- * segundos.
+ * DOS CARRILES, y el criterio NO es "OTP contra el resto" sino **si alguien está esperando
+ * ese mail en pantalla**:
+ *
+ *   · `enviarEnCola` — lo que sale de a muchos y nadie mira: avisos de ajuste (uno por
+ *     contrato en un ajuste masivo), anuncios (uno por inquilino), avisos de reclamos.
+ *     Espaciarlos no le cuesta nada a nadie.
+ *
+ *   · `enviarYa` — lo que un request AWAITEA antes de responder: el OTP, la bienvenida del
+ *     registro y las invitaciones (al inquilino y al equipo). Son uno por persona, disparados
+ *     por esa persona, con alguien mirando la pantalla.
+ *
+ * La primera versión de esto puso sólo el OTP en el carril directo, y el razonamiento que lo
+ * justificaba aplicaba igual a los otros tres: durante un ajuste masivo de 220 contratos la
+ * cola queda con 220 mails ≈ 88 segundos de trabajo, y en esa ventana un alta de contrato o un
+ * registro se quedaba colgado esperando su invitación detrás de todos. El mail es best-effort,
+ * pero el request lo awaitea: el operador veía el alta fallar por timeout aunque hubiera
+ * funcionado.
  *
  * Serializa (un mail a la vez) y espacia. No reintenta: un fallo se propaga al caller, que
  * decide. Es una cola en memoria — si el proceso se cae con mails pendientes, se pierden;
@@ -173,15 +186,21 @@ function enviarEnCola(mail: Parameters<Transporter['sendMail']>[0]): Promise<unk
 }
 
 /**
- * Envío DIRECTO, sin cola. Sólo para el OTP.
+ * Envío DIRECTO, sin cola. Para todo mail que un request AWAITEA antes de responder.
  *
- * POR QUÉ NO VA EN LA COLA: la cola es FIFO y compartida. Si la inmobiliaria manda un
- * anuncio a 200 inquilinos, el OTP del próximo que quiera entrar sale detrás de esos 200
- * → 200 × GAP_MS ≈ 80 segundos esperando el código. Eso no es un mail demorado, es un
- * login roto.
+ * Hoy: el OTP, la bienvenida del registro y las invitaciones (al inquilino y al equipo).
  *
- * El throttle existe por deliverability de envíos masivos. El OTP no es masivo: es un mail
- * por persona, disparado por esa persona, con alguien mirando la pantalla. Va derecho.
+ * POR QUÉ NO VAN EN LA COLA: la cola es FIFO y compartida. Si la inmobiliaria manda un
+ * anuncio a 200 inquilinos —o aplica un ajuste masivo sobre 220 contratos—, lo que venga
+ * después sale detrás de esos 200 → 200 × GAP_MS ≈ 80 segundos. Para el OTP eso no es un
+ * mail demorado, es un login roto; para el alta de contrato es un timeout con el alta ya
+ * hecha, que es peor todavía porque el operador no sabe si tiene que repetirla.
+ *
+ * El throttle existe por deliverability de envíos MASIVOS. Estos no son masivos: son un mail
+ * por persona, disparados por esa persona, con alguien mirando la pantalla. Van derecho.
+ *
+ * REGLA para el que agregue uno nuevo: si tu caller hace `await`, va por acá. Si dispara con
+ * `void` y sigue, va por la cola.
  */
 function enviarYa(mail: Parameters<Transporter['sendMail']>[0]): Promise<unknown> {
   const t = getTransporter();
@@ -444,7 +463,7 @@ export async function enviarInvitacionInquilino(opts: {
     .filter(Boolean)
     .join(' · ');
   const respondeA = emailDeRespuesta(opts.inmobiliaria.email);
-  await enviarEnCola({
+  await enviarYa({
     from: remitente(inmoNombre),
     ...(respondeA ? { replyTo: respondeA } : {}),
     to: opts.email,
@@ -529,7 +548,7 @@ export async function enviarBienvenidaInmobiliaria(
 ): Promise<boolean> {
   const t = getTransporter();
   if (!t) return false;
-  await enviarEnCola({
+  await enviarYa({
     from,
     to: email,
     subject: `Tu cuenta de ${inmobiliariaNombre} en My Alquiler está lista`,
@@ -589,7 +608,7 @@ export async function enviarInvitacionEquipo(opts: {
         </td>
       </tr>
     </table>`;
-  await enviarEnCola({
+  await enviarYa({
     from: remitente(opts.inmobiliariaNombre),
     ...(respondeA ? { replyTo: respondeA } : {}),
     to: opts.email,
@@ -921,13 +940,21 @@ export async function enviarReclamoAsignadoInquilino(opts: {
   profesional: string;
   oficio: string | null;
   inmobiliariaNombre: string;
+  /** Email de la inmobiliaria: a dónde cae el "Responder" del inquilino. */
+  inmobiliariaEmail?: string | null;
   reclamoId: string;
 }): Promise<boolean> {
   const t = getTransporter();
   if (!t) return false;
   const url = `${APP_INQUILINO_URL}/reclamos/${opts.reclamoId}`;
+  // Este mail FIRMA como la inmobiliaria (`remitente`), así que el Responder tiene
+  // que llegarle a ELLA. Sin esto el inquilino contestaba "Tapia Propiedades" y la
+  // respuesta caía en el no-reply de la plataforma — el mismo agujero que T-30
+  // cerró para los otros mails; los de reclamos son de T-17 y quedaron afuera.
+  const respondeA = emailDeRespuesta(opts.inmobiliariaEmail);
   await enviarEnCola({
     from: remitente(opts.inmobiliariaNombre),
+    ...(respondeA ? { replyTo: respondeA } : {}),
     to: opts.email,
     subject: `${opts.inmobiliariaNombre} asignó a ${opts.profesional} a tu reclamo`,
     text:
@@ -950,14 +977,22 @@ export async function enviarReclamoAsignadoInquilino(opts: {
 export async function enviarReclamoResueltoInquilino(opts: {
   email: string;
   inmobiliariaNombre: string;
+  /** Email de la inmobiliaria: a dónde cae el "Responder" del inquilino. */
+  inmobiliariaEmail?: string | null;
   notas: string | null;
   reclamoId: string;
 }): Promise<boolean> {
   const t = getTransporter();
   if (!t) return false;
   const url = `${APP_INQUILINO_URL}/reclamos/${opts.reclamoId}`;
+  // Mismo caso que el aviso de asignación: firma como la inmobiliaria, así que el
+  // Responder tiene que llegarle a ella y no al no-reply. Y acá pesa más: "tu
+  // reclamo se resolvió" es el mail que el inquilino MÁS va a querer contestar
+  // cuando el problema en realidad no se resolvió.
+  const respondeA = emailDeRespuesta(opts.inmobiliariaEmail);
   await enviarEnCola({
     from: remitente(opts.inmobiliariaNombre),
+    ...(respondeA ? { replyTo: respondeA } : {}),
     to: opts.email,
     subject: `Tu reclamo se resolvió · ${opts.inmobiliariaNombre}`,
     text:

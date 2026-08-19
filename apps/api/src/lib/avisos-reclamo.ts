@@ -82,13 +82,16 @@ export async function avisarAlInquilinoDelReclamo(opts: {
   const reclamo = await prisma.reclamo.findFirst({
     where: { id: opts.reclamoId, inmobiliariaId: opts.inmobiliariaId },
     select: {
-      inmobiliaria: { select: { nombre: true } },
+      // El email va junto con el nombre: estos dos mails FIRMAN como la inmobiliaria,
+      // así que el "Responder" del inquilino tiene que llegarle a ella y no al no-reply.
+      inmobiliaria: { select: { nombre: true, email: true } },
       contrato: { select: { inquilinoTitular: { select: { email: true } } } },
     },
   });
   const email = reclamo?.contrato?.inquilinoTitular?.email?.trim();
   if (!reclamo || !email) return;
   const inmobiliariaNombre = reclamo.inmobiliaria?.nombre ?? 'Tu inmobiliaria';
+  const inmobiliariaEmail = reclamo.inmobiliaria?.email ?? null;
 
   if (opts.evento.tipo === 'ASIGNADO') {
     await enviarReclamoAsignadoInquilino({
@@ -96,6 +99,7 @@ export async function avisarAlInquilinoDelReclamo(opts: {
       profesional: opts.evento.profesional,
       oficio: opts.evento.oficio,
       inmobiliariaNombre,
+      inmobiliariaEmail,
       reclamoId: opts.reclamoId,
     });
     return;
@@ -104,6 +108,7 @@ export async function avisarAlInquilinoDelReclamo(opts: {
   await enviarReclamoResueltoInquilino({
     email,
     inmobiliariaNombre,
+    inmobiliariaEmail,
     notas: opts.evento.notas,
     reclamoId: opts.reclamoId,
   });
