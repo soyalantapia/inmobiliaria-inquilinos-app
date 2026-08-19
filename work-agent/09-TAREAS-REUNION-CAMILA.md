@@ -43,10 +43,26 @@ Cada una trae:
 | **QA** | Verificación | E2E, consultas de lectura contra prod, tests |
 | **OPS** | DevOps | Railway, deploys, CI, migraciones en producción |
 
-> ⚠️ **Regla que atraviesa todo el documento**: los tests de `apps/api` pegan a la Postgres de
-> producción y hacen reset/seed (`docs/TESTING.md:25`). **Nadie los corre** salvo con certeza
-> de que la base no es prod. De los 64 archivos de test, **14 son puros** y son los únicos
-> seguros de correr en cualquier lado.
+> ⚠️ **Regla que atraviesa todo el documento — CORREGIDA el 19/08.** La versión anterior de
+> esta nota decía que los tests de `apps/api` "pegan a la Postgres de producción". **Es falso**,
+> y la corrección importa porque esa creencia bloqueó tareas de cobertura que sí se podían hacer.
+>
+> Lo que dice `docs/TESTING.md` § "Contra qué DB": **hay dos instancias**. Producción corre
+> dentro de Railway y se alcanza sólo por el host **interno** `*.railway.internal`, inalcanzable
+> desde una máquina de desarrollo. La que usan los tests es el **proxy público**
+> `*.proxy.rlwy.net`, que es la instancia de **test/dev**.
+>
+> Lo que sí es cierto: `seedBase` es **destructivo-idempotente** y las suites comparten la base
+> (`fileParallelism: false`). Entonces la regla real es **verificar contra qué apunta tu
+> `DATABASE_URL` antes de correr**, no "no correr nunca".
+>
+> Desde el 19/08 eso ya no depende de la memoria de nadie: `seedBase` tiene un **guard
+> anti-producción** que falla cerrado (`apps/api/prisma/guard-db.ts`). Ante una URL de prod, una
+> URL vacía o un host desconocido, **no corre**. Antes no tenía ninguno: el único guard del repo
+> estaba en `limpiar-test-db.ts`.
+>
+> De los 64 archivos de test, **12 son puros** (sin DB) y corren en cualquier lado sin
+> configurar nada.
 
 ---
 

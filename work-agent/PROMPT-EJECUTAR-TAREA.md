@@ -42,9 +42,16 @@ Estas mandan sobre cualquier otra cosa que decidas.
    lo hace el dueño.
 2. **NO aplicás migraciones.** Podés *escribir* el `.sql`, nunca correrlo. Si tu tarea necesita
    una, la dejás escrita, documentada y avisás.
-3. **NO corrés los tests de `apps/api`.** Pegan a la Postgres de **producción** y hacen
-   reset/seed (`docs/TESTING.md:25`). De los 64 archivos, **14 son puros** (sin DB) y son los
-   únicos que podés correr. Para saber cuáles, mirá los que no importan `seedBase`.
+3. **Los tests de `apps/api` NO pegan a producción** — esta regla decía lo contrario hasta el
+   19/08 y era falsa. Hay dos instancias: prod vive en el host **interno**
+   `*.railway.internal` (inalcanzable desde tu máquina) y los tests usan el **proxy público**
+   `*.proxy.rlwy.net`, que es test/dev (`docs/TESTING.md` § "Contra qué DB").
+   Lo que sí es cierto: `seedBase` es **destructivo** y las suites comparten la base. Así que:
+   **verificá contra qué apunta tu `DATABASE_URL` antes de correr.** Desde el 19/08 hay un
+   guard que falla cerrado (`apps/api/prisma/guard-db.ts`): ante una URL de prod, vacía o
+   desconocida, el seed **no corre**.
+   De los 64 archivos, **12 son puros** (sin DB) y corren sin configurar nada: son los que no
+   importan `seedBase`.
 4. **NO tocás el tenant real** (Tapia Propiedades): no creás cuentas ni datos de prueba ahí.
 5. **NO commiteás a `main`.** Trabajás en tu propia rama, en tu propio worktree (Fase 0).
 6. **NO agregás dependencias** sin justificarlo explícitamente en el reporte final.
