@@ -156,7 +156,11 @@ export default function PortalHome() {
             ))}
           </div>
         ) : (
-          <Vacio texto="No hay reclamos en tus unidades." />
+          // "No hay reclamos" era una afirmación que el backend no puede sostener: la consulta
+          // se recorta al CONTRATO VIGENTE de cada unidad (portal-propietario.ts), así que una
+          // unidad vacía hoy devuelve cero aunque el mes pasado se haya roto el termotanque. El
+          // texto dice lo que realmente cubre.
+          <Vacio texto="No hay reclamos abiertos ni resueltos del inquilino que vive hoy en tus unidades. Los de inquilinos anteriores no se muestran acá." />
         )}
       </Seccion>
     </main>
@@ -372,6 +376,20 @@ function FilaPropiedad({ p }: { p: PropiedadPortal }) {
           <p className="text-sm">
             {c.inquilino ? <strong>{c.inquilino}</strong> : 'Sin inquilino cargado'}
             {c.tipoContrato === 'SOLO_EXPENSAS' ? ' · sólo expensas' : ` · ${money(c.monto, c.moneda)} por mes`}
+            {/* Con más de un dueño, la pantalla mezclaba dos bases sin decirlo: acá el alquiler
+                ENTERO que paga el inquilino, y en la rendición la parte de este propietario.
+                Los dos números son correctos y son distintos; el que falta es el puente. */}
+            {c.tipoContrato !== 'SOLO_EXPENSAS' && p.participacionPct < 100 && (
+              <span className="text-muted-foreground">
+                {' · '}tu parte: {money((c.monto * p.participacionPct) / 100, c.moneda)}
+              </span>
+            )}
+          </p>
+          {/* El backend manda los últimos 6 períodos (`take: 6`) y la pantalla los listaba sin
+              decir que había más: el dueño que quiere revisar el año leía seis meses y creía
+              que eso era todo. Se deriva del largo real para que no mienta si el tope cambia. */}
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+            Últimos {c.periodos.length} {c.periodos.length === 1 ? 'mes' : 'meses'}
           </p>
           <div className="space-y-1">
             {c.periodos.map((per) => (
