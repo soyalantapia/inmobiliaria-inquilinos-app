@@ -916,6 +916,73 @@ deuda suma a los KPIs de mora (probablemente **no** debería mezclarse con la ca
 
 ---
 
+### ✅ RESUELTO (parcial) — commits `67850f3` + `7a78c8b`
+
+**La decisión de modelo (punto 1), tomada y justificada.** Se descartó la tabla
+`DeudaHistorica` suelta que proponía Alan: habría quedado desconectada de toda la maquinaria de
+plata —saldos, mora, `saldar-deuda`, la ficha de la Persona, los KPIs— y habría sido una segunda
+verdad sobre cuánto debe cada uno. La deuda cuelga de **un contrato FINALIZADO que NO reclama la
+propiedad**, así que convive con el contrato vigente de otro inquilino. La objeción de Camila no
+era al modelo sino al trabajo (*"no voy a cargar cinco veces"*): eso se ataca con carga masiva,
+no eliminando la estructura.
+
+`POST /contratos/historico` + botón **"Deuda de inquilino anterior"** en la ficha de la propiedad.
+`fechaInicio`/`fechaFin` delimitan la **ventana de meses adeudados**, no el alquiler real.
+
+**Verificado que reusa lo que ya existe, sin tocarlo:**
+- el devengo barre `estado: 'ACTIVO'` y re-verifica bajo lock → nunca resucita un histórico;
+- `GET /personas/:id` no filtra por estado → la deuda entra en la ficha y enciende `tuvoMora`;
+- `saldar-deuda` busca por `{id, inmobiliariaId}` → se salda sin caso especial;
+- `GET /propiedades/:id` ya devolvía el historial completo → aparece bajo "Contratos anteriores".
+
+**Decisión de seguridad no pedida pero necesaria:** el `Inquilino` histórico se crea **sin email**.
+`Inquilino.email` es la llave de login de la PWA y un ex-inquilino con contrato FINALIZADO
+conserva acceso de sólo lectura; en una carga de 50 filas a mano, un email mal tipeado le abriría
+a un tercero la deuda de otra persona. El email va a la `Persona`, que es donde sirve (dedup) y
+no habilita acceso.
+
+**Sobre los KPIs:** `metricas.ts` filtra por ventana de períodos recientes, sin filtro de estado
+de contrato. O sea: la deuda histórica **sí** cuenta si sus meses caen en la ventana. Se deja
+así a propósito —un alquiler que no se cobró realmente no se cobró, y cargarlo hace las métricas
+pasadas más ciertas, no menos— pero queda anotado por si Camila lo lee distinto.
+
+**8 tests puros** (`apps/api/test/deuda-historica.test.ts`), verificados en rojo: con el tope de
+períodos roto, un contrato de 2024 devengaba 32 cuotas hasta hoy en vez de 3.
+
+**Lo que NO quedó hecho, y es lo que ella pidió textualmente:**
+
+---
+
+## T-24-N1 · Importar morosos históricos desde Excel
+
+**Experto:** BE + FE-P · **Prioridad:** 🟠 · **Depende de:** T-24 (hecho)
+
+Camila dijo *"tengo 50 morosos"* y Alan acordó *"en inquilinos poner para importar"* `[53:43]`.
+Hoy se cargan **de a uno**: son ~50 formularios. Funciona, pero no es lo que pidió.
+
+`importaciones-cartera.ts` ya tiene todo el andamiaje —subida de Excel/CSV, mapeo flexible de
+columnas, dedup por dirección, `buscarOCrearPersona` compartido— y crea contratos ACTIVO. Falta
+un modo que apunte a `POST /contratos/historico` con columnas *persona · propiedad · desde ·
+hasta · monto*.
+
+**Criterio de aceptación.** Camila sube una planilla con sus 50 morosos y quedan cargados, con
+un resumen de cuántos se unieron a una ficha existente por DNI y cuántos se crearon nuevos.
+
+---
+
+## T-24-N2 · Avisar "este DNI ya está en tu cartera" al cargar deuda histórica
+
+**Experto:** FE-P · **Prioridad:** 🟢 · **Depende de:** T-24 (hecho)
+
+Punto 4 del T-24 original, que quedó a medias. El backend **ya unifica** por DNI
+(`buscarOCrearPersona`), así que no se duplica nada; pero el diálogo sólo lo dice en texto de
+ayuda, no lo confirma después. Camila `[52:00]`: su sistema le avisa *"ya estás registrado"*.
+
+Falta el buscador "¿Ya está en tu cartera?" que el alta normal sí tiene, y que el toast diga a
+qué ficha se unió (la respuesta ya devuelve `personaId`).
+
+---
+
 ## T-25 · Cambio rápido de usuario en la misma máquina
 
 **Experto:** SEC + FS · **Prioridad:** 🟠 · **Depende de:** decisión ya tomada (ver abajo)
