@@ -393,7 +393,12 @@ async function propietarioParaFila(
   const partes = raw.split(/\s+/);
   const nombre = partes[0]!;
   const apellido = partes.slice(1).join(' ') || '—';
-  const existente = await tx.propietario.findFirst({ where: { inmobiliariaId, nombre, apellido } });
+  // `activo: true`: sin esto, importar una cartera que trae el nombre de un
+  // propietario dado de baja lo REACTIVABA de hecho —le colgaba propiedades
+  // nuevas y le devolvía el portal— sin pasar por ningún flujo de alta. Con el
+  // filtro se crea una fila nueva, que es lo correcto: si hay que reactivar al de
+  // antes, se hace explícito desde su ficha.
+  const existente = await tx.propietario.findFirst({ where: { inmobiliariaId, nombre, apellido, activo: true } });
   const prop = existente ?? (await tx.propietario.create({ data: { inmobiliariaId, nombre, apellido, cuit: '', email: '', telefono: '' } }));
   cache.set(key, prop.id);
   return prop.id;

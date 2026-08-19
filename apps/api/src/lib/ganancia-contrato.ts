@@ -14,7 +14,21 @@
  */
 export const r2c = (n: number) => Math.round(n * 100) / 100;
 
-/** Tasa de comisión ponderada por los dueños de una propiedad (0.08 = 8%). */
+/**
+ * Tasa de comisión ponderada por los dueños de una propiedad (0.08 = 8%).
+ *
+ * ⚠️ Las participaciones que entran acá NO se filtran por `Propietario.activo`, y
+ * es a propósito. La tasa es Σ(participación × comisionPct) sobre el 100% de la
+ * propiedad: sacar del cálculo a un dueño dado de baja no lo saca de la escritura,
+ * sólo hace que la suma dé de menos y la inmobiliaria comisione menos de lo que
+ * le corresponde. La baja lógica corta el ACCESO al portal, no la titularidad.
+ *
+ * Si un dueño realmente dejó de serlo, lo que hay que cambiar es el reparto de
+ * participaciones (`PUT /propiedades/:id/participaciones`), no este cálculo.
+ *
+ * La misma fórmula está duplicada inline en `plata.ts` (cierre de caja): si esta
+ * regla cambia, hay que tocar los dos lados.
+ */
 export function tasaComisionDeParticipaciones(
   participaciones: { porcentaje: number; propietario: { comisionPct: number } | null }[],
 ): number {

@@ -196,10 +196,21 @@ export async function requirePropietario(
   // pero el inmobiliariaId de otro tenant no matchea y se cae acá.
   const fila = await prisma.propietario.findFirst({
     where: { id: parsed.data.propietarioId, inmobiliariaId: parsed.data.inmobiliariaId },
-    select: { id: true, inmobiliariaId: true },
+    select: { id: true, inmobiliariaId: true, activo: true },
   });
   if (!fila) {
     await reply.code(401).send({ message: 'Sesión vencida' });
+    return null;
+  }
+  // ESTE es el único punto de revocación que tiene el portal. El token dura 7
+  // días y no hay logout server-side ni denylist: si acá no se corta, dar de baja
+  // a un propietario no cierra las sesiones que ya tiene abiertas, y sigue viendo
+  // la morosidad del inquilino y el desglose de las rendiciones hasta que expire.
+  //
+  // 401 y no 403, igual que `requireUsuario`: la sesión ya no existe, el portal
+  // tiene que mandarlo al login en vez de mostrarle un shell roto.
+  if (!fila.activo) {
+    await reply.code(401).send({ message: 'Tu acceso fue dado de baja' });
     return null;
   }
   // El email va del TOKEN, no de la fila: es el que probó el OTP y no lo puede mover nadie
