@@ -3458,3 +3458,35 @@ se despliega cada front. A `CLASIFICADO` en la PWA se le saca el `contenido` —
 tests verdes.
 
 **No verificado:** no se probó en el navegador.
+
+---
+
+### T-45 · El home de la PWA ignora el pago informado en modo demo — ✅ HECHA
+
+> **Estado: ✅ hecha.** Ver `work-agent/tareas/T-45/REQUISITOS.md`.
+
+Confirmado lo que decía la tarea: `pagoVivo` era `null` fijo en demo, así que el home decía
+"atrasado" a alguien que acababa de informar el pago completo, mientras la pantalla a la que
+linkea decía "en revisión".
+
+**Lo que la tarea no decía, y aparece al arreglarlo:** poner `pagoVivo` no alcanzaba. Tres
+líneas más abajo, `saldoDeLiquidacion` decide entre *"Te faltan $X"* y *"Comprobante en
+revisión"* y **también** lee sólo `liq.pagos`. En demo eso daba `faltaPagar = total`, o sea el
+banner habría dicho "Te faltan $TOTAL" justo abajo del cartel que reconoce el comprobante. La
+letra del criterio de aceptación se cumplía; el espíritu no.
+
+**Cómo se arregló de raíz:** `saldoDeLiquidacion` pedía una `Liquidacion` entera y sólo usa tres
+cosas de ella. Se declaró ese tipo estructural (`LiquidacionParaSaldo`), y con eso el
+`PagoInformado` del store local **encaja tal cual** — antes había que fabricar un
+`PagoDeLiquidacion` completo, doce campos inventados, para colar dos números. Ese era el motivo
+real de que nadie lo hubiera hecho.
+
+Es, además, el mismo problema que el propio encabezado de `saldo-liquidacion.ts` dice que vino a
+resolver ("dos pantallas, dos verdades sobre la misma deuda"): unificaron el cálculo pero la
+fuente de datos seguía partida según el modo.
+
+**Verificado:** 8 tests puros, 5 se ponen rojos al revertir; `tsc` 0 en los cinco paquetes; 360
+tests verdes en la compuerta.
+**Pendiente:** esos 8 tests **no corren en CI todavía** — `apps/inquilino` no tiene runner, que
+es lo que está haciendo T-32. Se corrieron a mano.
+**No verificado:** no se probó en el navegador.
