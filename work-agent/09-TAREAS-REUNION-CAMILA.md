@@ -505,6 +505,35 @@ le queda, y la inmobiliaria lo ve en la bandeja como parcial.
 ## T-15 · Que el inquilino vea siempre lo que le falta pagar
 
 **Experto:** FE-I · **Prioridad:** 🟠 · **Depende de:** nada
+**Estado: ✅ HECHA** — commit `1ffb4bc`. Fuente única en `lib/saldo-liquidacion.ts`, usada por
+el home y por el detalle del pago (que era el roto). **Queda un fleco**: `/comprobantes` no se
+migró al helper — hay que verificar si su cuenta coincide o es una tercera verdad.
+Abrió **T-32** (no hay runner de tests en ninguno de los dos fronts).
+
+---
+
+## T-32 · Montar un runner de tests en los dos fronts
+
+**Experto:** QA + OPS · **Prioridad:** 🟠 · **Depende de:** nada
+**Origen:** detectada al ejecutar T-15.
+
+**Estado verificado.** `apps/inquilino` y `apps/inmobiliaria` **no tienen script de test ni
+configuración de vitest** (`grep '"test"' apps/*/package.json` → sólo `apps/api`). Vitest ya
+existe en el workspace, pero ningún front lo usa. Por eso los 64 archivos de test del repo son
+**todos** de API.
+
+**Por qué duele ahora.** Al cerrar T-15 quedó `saldoDeLiquidacion`, una función **pura** que
+decide cuánta plata le falta pagar a un inquilino — exactamente el tipo de lógica que se testea
+sola y que no se puede permitir que driftee. **No hay dónde correrle un test.** Lo mismo pasó en
+`26fdfa6`, donde el bug del doble click se verificó a mano *"porque apps/inmobiliaria no tiene
+suite"*.
+
+**Qué hay que hacer.** Agregar vitest + script `test` a los dos fronts, sin jsdom al principio
+(alcanza para lógica pura, que es lo que más falta). Y sumar esos tests al job de CI que propone
+T-27 — ojo que ese job **no puede incluir los tests de API**, que pegan a la base de producción.
+
+**Criterio de aceptación.** `pnpm --filter @llave/inquilino test` corre, y hay al menos un test
+puro de `saldoDeLiquidacion` que se pone en rojo si se revierte el fix de T-15.
 
 **Estado verificado — hecho a medias, con tres pantallas y dos verdades.** El commit `e0dd7a8`
 (03/08) arregló que el home muestre **lo que falta** cuando ya se informó un pago. Pero el
