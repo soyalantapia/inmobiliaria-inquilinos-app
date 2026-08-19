@@ -627,6 +627,7 @@ export default function DetalleContratoPage() {
       <MensajeInquilinoDialog
         open={abrirMensaje}
         onOpenChange={setAbrirMensaje}
+        contratoId={c.id}
         inquilino={{
           nombre: c.inquilino,
           telefono: contacto?.titular.telefono ?? '',

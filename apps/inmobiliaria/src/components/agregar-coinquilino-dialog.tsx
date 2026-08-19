@@ -181,7 +181,7 @@ export function AgregarCoInquilinoDialog({
               </p>
             )}
             <p className="text-[11px] text-muted-foreground">
-              En producción le llega el link para activar su cuenta por WhatsApp.
+              Lo usamos para contactarlo. El acceso lo activa con su email.
             </p>
           </div>
 

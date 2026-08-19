@@ -92,7 +92,11 @@ const STYLES = `
 const FAQS = [
   {
     q: '¿Y si mi inquilino no se baja la app?',
-    a: 'Igual le llega el link de pago por WhatsApp y sube el comprobante desde el navegador. La app es un plus, no un requisito.',
+    // Decía que "le llega el link de pago por WhatsApp". No existe ningún envío
+    // automático de links: es la respuesta a la objeción de compra, así que el
+    // comprador firmaba creyendo que tenía un plan B que no está. Y esta FAQ alimenta
+    // también el JSON-LD de FAQPage, o sea que lo indexan los buscadores.
+    a: 'No hace falta que instale nada: entra desde el navegador con su mail y un código. Y vos le pasás el link de pago por WhatsApp con un toque desde el panel.',
   },
   {
     q: '¿Tengo que migrar toda mi cartera de una?',

@@ -499,7 +499,10 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
               setStep('ok');
               toast({
                 title: p.tipo === 'PARCIAL' ? 'Pago parcial recibido' : 'Comprobante recibido',
-                description: 'Lo validamos en 24-48 hs y te avisamos por WhatsApp.',
+                // NO hay integración de WhatsApp (env.ts no declara ninguna WHATSAPP_*). Lo que sí
+                  // existe es el aviso in-app: GET /mis-notificaciones emite 'Tu comprobante fue
+                  // confirmado/rechazado'. El copy dice eso, que es lo que de verdad pasa.
+                  description: 'Lo validamos en 24-48 hs y te avisamos acá en la app.',
               });
             }}
           />
@@ -1605,7 +1608,7 @@ function StepConfirmado({
             )
           ) : (
             <p className="text-sm text-muted-foreground">
-              Validamos en 24-48 hs hábiles y te avisamos por WhatsApp.
+              Validamos en 24-48 hs hábiles y te avisamos acá en la app.
             </p>
           )}
         </div>

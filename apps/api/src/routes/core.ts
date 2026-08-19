@@ -2212,6 +2212,64 @@ export async function coreRoutes(app: FastifyInstance) {
     return eventos.map((e) => ({ ...e, autor: nombrePorId.get(e.autor) ?? e.autor }));
   });
 
+  /**
+   * Registrar una comunicación que el operador le mandó al inquilino.
+   *
+   * POR QUÉ EXISTE: el diálogo "Nuevo mensaje" del detalle del contrato le decía al operador
+   * *"Queda registrado en el historial del contrato"* y NO registraba nada — abría `wa.me` /
+   * `mailto:` y ahí terminaba. El propio comentario del componente lo admitía. En una discusión
+   * con un inquilino ("yo te avisé del aumento el 12") no había ninguna evidencia: es pérdida
+   * de trazabilidad, no un detalle de copy.
+   *
+   * Se podía arreglar suavizando el texto (una línea) o haciendo que la promesa fuera cierta.
+   * Esto último, porque el registro es justamente lo que la administradora necesita, y porque
+   * la infraestructura ya estaba: `EventoContrato` existe, el enum ya tenía
+   * `COMUNICACION_ENVIADA`, y el read-path (`GET /contratos/:id/eventos`) se acaba de construir.
+   *
+   * El mensaje NO se envía desde acá: lo manda la persona por su WhatsApp o su mail. Esto sólo
+   * deja constancia de que se mandó, quién y cuándo — que es exactamente lo que se prometía.
+   */
+  app.post('/contratos/:id/comunicaciones', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'comunicaciones.enviar');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const body = z
+      .object({
+        canal: z.enum(['WHATSAPP', 'EMAIL', 'LLAMADA']),
+        asunto: z.string().trim().min(1).max(140),
+        // El cuerpo es opcional: en una LLAMADA puede no haber texto que guardar.
+        cuerpo: z.string().trim().max(4000).optional(),
+      })
+      .safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ message: 'Datos de la comunicación incompletos' });
+
+    // Tenant validado sobre el CONTRATO antes de escribir (mismo criterio que el GET de arriba).
+    const contrato = await prisma.contrato.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      select: { id: true },
+    });
+    if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
+
+    const CANAL_LABEL: Record<string, string> = {
+      WHATSAPP: 'WhatsApp',
+      EMAIL: 'Email',
+      LLAMADA: 'Llamada',
+    };
+    const evento = await prisma.eventoContrato.create({
+      data: {
+        inmobiliariaId: u.inmobiliariaId,
+        contratoId: contrato.id,
+        tipo: 'COMUNICACION_ENVIADA',
+        titulo: `${CANAL_LABEL[body.data.canal]} · ${body.data.asunto}`,
+        detalle: body.data.cuerpo || null,
+        fecha: new Date(),
+        // `autor` guarda el userId: el GET lo resuelve a nombre y apellido.
+        autor: u.userId,
+      },
+    });
+    return reply.code(201).send(evento);
+  });
+
   // ===== Depósitos en custodia (plata de terceros que la inmo guarda) =====
   // Suma los depósitos de garantía RETENIDOS (de contratos activos Y de finalizados que
   // todavía no se devolvieron): es el pasivo real de plata de terceros a cuidar.

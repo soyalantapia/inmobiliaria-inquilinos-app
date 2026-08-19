@@ -105,7 +105,7 @@ function MisReclamosInner() {
                 Reclamo enviado
               </p>
               <p className="text-xs text-emerald-700/80">
-                La inmobiliaria ya lo tiene. Te avisamos por WhatsApp cuando lo tomen.
+                La inmobiliaria ya lo tiene. Te avisamos acá en la app cuando lo tomen.
               </p>
             </div>
             <button

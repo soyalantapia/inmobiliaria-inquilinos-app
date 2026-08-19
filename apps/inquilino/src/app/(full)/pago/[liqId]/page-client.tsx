@@ -294,8 +294,8 @@ function DetallePagoView({
                 Pendiente de validación
               </p>
               <p className="text-xs text-amber-900/80 dark:text-amber-200/80">
-                Recibimos tu comprobante el {formatFecha(informado.enviadoAt)}. Te avisamos por
-                WhatsApp en 24-48 hs cuando lo confirmemos.
+                Recibimos tu comprobante el {formatFecha(informado.enviadoAt)}. Te avisamos acá
+                en la app en 24-48 hs cuando lo confirmemos.
               </p>
             </div>
           </Card>
