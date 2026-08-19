@@ -80,7 +80,16 @@ una sola pata y descuadrar. **No entra en T-13** — es una tarea nueva.
 en esta sesión (mismo problema documentado antes). O sea: las pestañas, el empty state y el saldo
 bajo el selector están verificados por compilación y lectura, **no vistos funcionando**.
 
-**Los tests de `apps/api` no se corrieron**: pegan a la Postgres de producción (`docs/TESTING.md`).
+**Los tests de `apps/api` no se corrieron.**
+
+> ⚠️ **Corrección.** Acá decía *"pegan a la Postgres de producción"* citando `docs/TESTING.md`, y
+> esa fuente dice **lo contrario**: *"Esta NO es la DB de prod. Prod corre dentro de Railway con
+> el host interno, inalcanzable desde tu máquina. El proxy público es la instancia de test/dev."*
+> Fue una lectura al revés de la fuente que citaba.
+>
+> **La conclusión no cambia** —siguen sin correrse— pero por el motivo verdadero: es una
+> instancia **compartida** que el seed borra de forma destructiva, y en esta máquina no existe
+> `apps/api/.env`, así que `DATABASE_URL` ni siquiera está seteada.
 `cuentas.test.ts` quedó **actualizado** al contrato nuevo —incluye un caso multi-moneda que antes
 no existía, que es la razón por la que nadie había visto el bug— pero **sin ejecutar**.
 
