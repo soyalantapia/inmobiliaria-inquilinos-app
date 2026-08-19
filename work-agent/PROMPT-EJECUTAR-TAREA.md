@@ -50,8 +50,18 @@ Estas mandan sobre cualquier otra cosa que decidas.
    **verificá contra qué apunta tu `DATABASE_URL` antes de correr.** Desde el 19/08 hay un
    guard que falla cerrado (`apps/api/prisma/guard-db.ts`): ante una URL de prod, vacía o
    desconocida, el seed **no corre**.
-   De los 64 archivos, **12 son puros** (sin DB) y corren sin configurar nada: son los que no
-   importan `seedBase`.
+   Al 19/08 hay **73 archivos de test y 20 son puros** (160 tests, todos verdes sobre
+   `tmp/integracion`). El filtro para correr sólo esos —**usá este, no uno propio**— es:
+
+   ```bash
+   cd apps/api && ./node_modules/.bin/vitest run $(grep -LE "\.\./src/db|prisma/seed|seedBase|app\.inject|psql|execFileSync|PG_HOST|pg_dump" test/*.test.ts)
+   ```
+
+   ⚠️ **Filtrar sólo por `seedBase` no alcanza**, y esto ya falló una vez:
+   `backfill-mascotas-propiedad.test.ts` no importa `seedBase` ni `../src/db` — levanta una
+   base **llamando a `psql` por `execFileSync`**. Por eso el filtro incluye también `psql`,
+   `execFileSync`, `PG_HOST` y `pg_dump`. Si escribís un test nuevo que toque una base por una
+   vía distinta a estas, **agregá el patrón acá**.
 4. **NO tocás el tenant real** (Tapia Propiedades): no creás cuentas ni datos de prueba ahí.
 5. **NO commiteás a `main`.** Trabajás en tu propia rama, en tu propio worktree (Fase 0).
 6. **NO agregás dependencias** sin justificarlo explícitamente en el reporte final.
