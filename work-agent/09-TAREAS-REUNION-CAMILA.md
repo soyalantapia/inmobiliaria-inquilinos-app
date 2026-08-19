@@ -1642,6 +1642,7 @@ Abre **T-24-N2-N1** a **T-24-N2-N4**.
 ## T-24-N2-N1 · El DNI se guarda sin normalizar, y el aviso no salta justo para la cartera vieja
 
 **Experto:** BE + DATA · **Prioridad:** 🟠 · **Depende de:** nada
+**Estado: ✅ HECHA** — commit `ffaf8ab`. Normalizador único en `lib/normalizar-dni.ts` (gemelo del de email de T-23-N2), aplicado en la dedup, la importación y el buscador —que consulta las dos formas hasta que corra el backfill—. **Migración sin aplicar:** `20260819160000_dni_persona_solo_digitos`; se saltea a propósito las fichas que al normalizar colisionarían contra el unique, porque son duplicados que hay que **fusionar a mano** (tienen contratos y pagos colgando) y trae la consulta para listarlos. **No recorta CUIT a DNI**: sería adivinar y podría fusionar dos personas distintas. 6 tests puros verificados en rojo; 215 puros en verde.
 **Origen:** revisión adversarial de T-24-N2. Lo encontraron dos lentes por separado.
 
 **Estado verificado.** Nadie normaliza el DNI del lado que **escribe**:
