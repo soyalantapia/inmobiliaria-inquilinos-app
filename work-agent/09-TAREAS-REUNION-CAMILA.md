@@ -3386,6 +3386,25 @@ emitidas.
 
 ## T-46 · El portal del propietario existe, compila… y no se despliega en ningún lado
 
+**Estado: ✅ HECHA (el camino 1) — commits `da2a708`, `75ad907`, `010d2fc`.** El portal ya sale
+en el sitio: `build-static.sh` lo buildea a `out/propietario/` y el picker tiene su puerta.
+Detalle en `work-agent/tareas/T-46/estado.md`.
+
+**Se hizo el camino 1 (demo), y no cierra la puerta del 2.** El 2 es deploy, y queda como
+**T-46-N1**, que es del dueño. La demo NO se prende con `!apiEnabled` —que es justo el caso que
+protegía el comentario de `api.ts`— sino con `NEXT_PUBLIC_DEMO=1`, que escribe sólo
+`build-static.sh`: una app de producción sin `NEXT_PUBLIC_API_URL` sigue diciendo "no estoy
+conectada" en vez de inventarle rendiciones a un propietario real.
+
+Dato que inclinó la decisión: `next.config.mjs` de propietario **ya tenía** el bloque de static
+export con su `basePath` de GitHub Pages. No era un camino nuevo, era uno empezado y sin
+terminar.
+
+Verificado recorriendo el sitio buildeado (login → pagos con detalle → unidades → reclamos →
+perfil), no sólo compilando. De ahí salieron dos bugs que se arreglaron: las fechas del portal
+se mostraban **un día antes** para todo el país (T-46, `75ad907`) y el guard de build miraba el
+puerto del API en vez del propio.
+
 **Experto:** OPS + PROD · **Prioridad:** 🔴 · **Depende de:** una decisión tuya (ver abajo)
 **Origen:** revisión post-merge. No salió de la reunión.
 
@@ -3490,3 +3509,72 @@ tests verdes en la compuerta.
 **Pendiente:** esos 8 tests **no corren en CI todavía** — `apps/inquilino` no tiene runner, que
 es lo que está haciendo T-32. Se corrieron a mano.
 **No verificado:** no se probó en el navegador.
+
+---
+
+## T-46-N1 · El portal del propietario está en la demo, pero no en producción
+
+**Experto:** OPS + el dueño · **Prioridad:** 🔴 · **Depende de:** nada · **ES DEL DUEÑO**
+**Origen:** T-46. Es el camino 2 que T-46 dejó explícitamente abierto.
+
+T-46 resolvió que el portal **se vea** (sitio estático, datos de ejemplo). Falta que un
+propietario **de verdad** pueda entrar: un host propio —Vercel o Railway, como el resto— con
+`NEXT_PUBLIC_API_URL` apuntando al API y **sin** `NEXT_PUBLIC_DEMO`.
+
+Con esas dos variables así, el modo demo queda apagado por construcción: `demoEnabled` exige la
+bandera **y** la ausencia de API, así que aunque alguien dejara la bandera puesta, gana el API
+real. Hay un test que lo fija.
+
+Lo que falta es infraestructura, no código: el `basePath` de GitHub Pages vive en el bloque
+`STATIC_EXPORT` del `next.config.mjs`, así que un deploy normal (sin esa variable) sale con
+basePath vacío, que es lo correcto para un dominio propio.
+
+**Criterio de aceptación.** Un propietario de la inmobiliaria entra desde una URL, con su email,
+y ve SUS rendiciones.
+
+**Riesgo de no hacerlo.** Que se dé por entregado dos veces: primero porque el código existía,
+ahora porque la demo se ve. Ninguna de las dos le sirve al dueño de un departamento.
+
+---
+
+## T-46-N2 · Los tests de los fronts siguen sin correr (y ya son cuatro archivos)
+
+**Experto:** BE/OPS · **Prioridad:** 🟡 · **Depende de:** T-32 (ya tomada)
+**Origen:** T-46.
+
+No hay runner de tests para las apps de front: ni `vitest` ni config en ninguna, ni tarea `test`
+en `turbo.json`. Montarlo es **T-32**, que ya está tomada — esto no es una tarea paralela, es el
+recordatorio de lo que hay que limpiar **al cerrarla**.
+
+Archivos que hoy no corre nadie:
+
+| Archivo | De |
+|---|---|
+| `apps/inquilino/src/lib/tipo-contrato.test.ts` | previo |
+| `apps/inquilino/src/lib/saldo-liquidacion.test.ts` | T-45 |
+| `apps/propietario/src/lib/demo-data.test.ts` | T-46 |
+| `apps/propietario/src/lib/format.test.ts` | T-46 |
+
+**Al cerrar T-32 hay que borrar la línea `exclude` de los `*.test.ts` en los tsconfig de
+`apps/inquilino` Y `apps/propietario`** — las dos la tienen, con el aviso puesto. Si se cierra
+T-32 sin sacarlas, el runner existe y estos cuatro archivos siguen sin tipar ni correr, que es
+el peor de los dos mundos.
+
+---
+
+## T-46-N3 · La demo del portal copia los montos del panel a mano
+
+**Experto:** FE · **Prioridad:** 🟢 · **Depende de:** nada
+**Origen:** T-46.
+
+`apps/propietario/src/lib/demo-data.ts` cuenta la misma historia que
+`apps/inmobiliaria/src/lib/mock-data.ts` —Silvana Morales es `own_002`, con sus tres unidades y
+los montos de sus contratos— pero los números están **copiados a mano**, porque son dos apps que
+no comparten paquete.
+
+Si alguien cambia el alquiler de Gorriti en el panel, la demo del portal queda contando otra
+historia y nadie se entera. Lo que sí está atado es la aritmética interna de cada rendición, que
+tiene test.
+
+No es urgente: es barato de sostener a mano y un paquete compartido de mocks es más costo que
+beneficio hoy. Queda escrito para que el día que se desincronice, se sepa por qué.
