@@ -7,6 +7,7 @@ import { Building2, ChevronDown, Loader2, LogOut, Mail, Phone, Receipt, Wrench }
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card } from '@llave/ui/card';
+import { ImprimirRendicion } from '@/components/imprimir-rendicion';
 import { SelectorCartera } from '@/components/selector-cartera';
 import {
   apiFetch,
@@ -116,7 +117,12 @@ export default function PortalHome() {
         ) : rendiciones.data && rendiciones.data.length > 0 ? (
           <div className="space-y-2">
             {rendiciones.data.map((r) => (
-              <FilaRendicion key={r.id} r={r} />
+              <FilaRendicion
+                key={r.id}
+                r={r}
+                propietario={cartera.data?.nombre ?? sesion?.nombre ?? ''}
+                inmobiliaria={cartera.data?.inmobiliaria.nombre ?? sesion?.inmobiliaria ?? ''}
+              />
             ))}
           </div>
         ) : (
@@ -228,7 +234,15 @@ const Vacio = ({ texto }: { texto: string }) => (
  * Una rendición. Los cinco números son exactamente los que Camila enumeró `[1:05:10]`:
  * lo que se cobró, la comisión, lo que se gastó, otros ingresos y lo que se depositó.
  */
-function FilaRendicion({ r }: { r: RendicionPortal }) {
+function FilaRendicion({
+  r,
+  propietario,
+  inmobiliaria,
+}: {
+  r: RendicionPortal;
+  propietario: string;
+  inmobiliaria: string;
+}) {
   const [abierto, setAbierto] = useState(false);
   // El detalle se pide RECIÉN al abrir, no con la lista: son todos los gastos y todos los
   // alquileres de ese período, y traerlos para las 12 rendiciones que nadie va a abrir es
@@ -328,6 +342,19 @@ function FilaRendicion({ r }: { r: RendicionPortal }) {
                   vacio=""
                 />
               )}
+
+              {/* Recién acá, con el detalle ya en mano: imprimir un resumen sin el desglose
+                  sería darle al contador el mismo número que ya tenía y ninguna explicación. */}
+              <div className="pt-1">
+                <ImprimirRendicion
+                  rendicion={detalle.data}
+                  propietario={propietario}
+                  inmobiliaria={inmobiliaria}
+                  periodoLargo={periodoLargo(r.periodo)}
+                  money={(n) => money(n)}
+                  fecha={fecha}
+                />
+              </div>
             </div>
           ) : null}
         </div>
