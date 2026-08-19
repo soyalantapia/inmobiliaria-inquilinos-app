@@ -72,7 +72,56 @@ Sin este bloque, el trabajo hecho no le llega a Camila. **Es lo primero.**
 
 ---
 
-## T-01 · Aplicar las migraciones pendientes (ahora son CUATRO)
+## T-01 · Aplicar las migraciones pendientes (son OCHO, no cuatro)
+
+> ### ✅ Verificación previa hecha — 19/08
+>
+> **El título de esta tarea decía CUATRO y son OCHO.** Se fue quedando corto mientras varios
+> chats escribían migraciones en paralelo. Aplicar sólo las cuatro que la tarea nombraba deja
+> el portal del propietario respondiendo 500.
+>
+> Las ocho, en el orden exacto en que Prisma las va a correr:
+>
+> | # | Migración | Qué hace | Riesgo |
+> |---|---|---|---|
+> | 1 | `20260818120000_rol_caja` | `ALTER TYPE "Rol" ADD VALUE CAJA` | — |
+> | 2 | `20260818130000_movimiento_caja_sin_propiedad` | `propiedadId` pasa a nullable | — |
+> | 3 | `20260819120000_evento_contrato_renovacion` | `ADD VALUE RENOVACION` | — |
+> | 4 | `20260819120000_otp_propietario` | `CREATE TABLE codigos_otp_propietario` | — |
+> | 5 | `20260819140000_email_propietario_minusculas` | UPDATE: baja los emails a minúsculas | ⚠️ ver abajo |
+> | 6 | `20260819140000_limpiar_pines_heredados` | UPDATE: borra los PIN que nadie eligió | — |
+> | 7 | `20260819160000_dni_persona_solo_digitos` | UPDATE: normaliza DNI | — |
+> | 8 | `20260819160000_propietario_baja_logica` | `ADD COLUMN activo` | 🔴 **orden** |
+>
+> **Lo que se verificó, leyendo las ocho:**
+>
+> - **Las ocho son idempotentes.** Las de schema usan `IF NOT EXISTS`; las tres de datos tienen
+>   un `WHERE` que excluye las filas ya normalizadas. Re-correrlas no hace nada.
+> - **Ninguna depende de otra**, así que los tres pares que comparten timestamp no son un
+>   problema: Prisma ordena por nombre de directorio y el desempate alfabético es inocuo acá.
+> - **Los `ALTER TYPE ... ADD VALUE` van solos en su archivo**, que es lo que hay que hacer:
+>   Postgres no permite *usar* un valor de enum en la misma transacción que lo crea.
+> - **El schema y las migraciones coinciden.** Los tres cambios de `schema.prisma` de hoy
+>   (`RENOVACION`, `CodigoOtpPropietario`, `Propietario.activo`) tienen su migración, y las dos
+>   de ayer siguen reflejadas. **No hay ningún campo en el schema sin su columna** — que es el
+>   modo de fallo peor, porque el deploy pasa y la app rompe en runtime.
+> - **El orden de los enums no importa.** `ADD VALUE` los agrega al FINAL en Postgres, no donde
+>   dice el schema, pero ningún `orderBy` del código toca `Rol` ni `TipoEventoContrato`.
+>
+> **🔴 La #8 va ANTES del deploy, no después.** `requirePropietario` lee `activo` en cada
+> request: contra una base sin esa columna, el portal del propietario responde 500. Es la única
+> con orden obligatorio respecto del deploy.
+>
+> **⚠️ La #5, un aviso.** Bajar los emails a minúsculas puede dejar dos propietarios del mismo
+> tenant con el mismo email. Hoy no falla —`Propietario` no tiene `@@unique`— pero si más
+> adelante se decide agregarlo (ver T-23-N2-N1), los duplicados ya van a estar ahí. Conviene
+> correr antes: `SELECT "inmobiliariaId", lower(trim(email)), count(*) FROM propietarios
+> WHERE email <>  GROUP BY 1,2 HAVING count(*) > 1;`
+>
+> **Lo que NO se pudo verificar desde acá:** que corran de verdad. No hay Postgres en esta
+> máquina ni acceso a la base. Todo lo anterior sale de leer el SQL y cruzarlo contra el schema.
+> Antes de producción conviene aplicarlas contra la instancia de test y mirar que `prisma
+> migrate status` quede limpio.
 
 **Experto:** DATA + OPS · **Prioridad:** 🔴 · **Depende de:** nada
 
