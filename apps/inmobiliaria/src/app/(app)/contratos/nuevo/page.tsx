@@ -1647,7 +1647,13 @@ function CargarContratoApiWizard() {
             <CardHeader>
               <CardTitle>Datos del inquilino</CardTitle>
               <CardDescription>
-                Sólo el nombre es obligatorio; el resto ayuda a contactarlo e invitarlo.
+                Sólo el nombre es obligatorio: podés dar de alta el contrato con lo que
+                tengas hoy y completar el resto después, desde el expediente.
+                {' '}
+                <strong className="font-medium text-foreground">
+                  La excepción es el email
+                </strong>{' '}
+                — sin él, el inquilino no puede entrar a la app.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -1791,6 +1797,19 @@ function CargarContratoApiWizard() {
                   {!!email.trim() && !emailInquilinoOk && (
                     <p className="text-[11px] text-destructive">
                       El email no tiene un formato válido (ej: nombre@correo.com).
+                    </p>
+                  )}
+                  {/* AVISA, NO BLOQUEA. El login del inquilino es OTP por email
+                      (/auth/otp/request busca por Inquilino.email): sin email no hay
+                      ninguna forma de que entre a la app — no es que "se complica",
+                      es que no puede. Pero cargar la cartera con los datos que la
+                      inmobiliaria tiene HOY es un caso legítimo, así que el alta sigue
+                      adelante y el hueco queda visible. */}
+                  {!email.trim() && (
+                    <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                      Sin email podés cargar el contrato igual, pero el inquilino no va a
+                      poder entrar a la app: el acceso es con un código que le llega por
+                      mail. Se lo podés agregar después.
                     </p>
                   )}
                   {personaId && email.trim() && (
