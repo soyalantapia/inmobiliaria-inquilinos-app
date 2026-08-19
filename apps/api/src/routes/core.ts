@@ -81,6 +81,13 @@ function normalizarCuit(input: string | undefined | null): string {
 }
 
 /**
+ * Qué pasó con el aviso de ajuste. Viaja en la respuesta del endpoint para que el panel
+ * pueda decir la verdad: `sin-email` es un dato accionable (falta cargarle el mail al
+ * inquilino), no un error del sistema.
+ */
+type AvisoAjuste = 'encolado' | 'sin-email' | 'error';
+
+/**
  * Le avisa por email al inquilino que le ajustaron el alquiler.
  *
  * Existe como helper porque hay DOS caminos de ajuste —`POST /contratos/:id/ajustar` y
@@ -101,7 +108,7 @@ async function avisarAjusteAlInquilino(opts: {
   periodoDesde: string;
   motivo: string | null;
   log?: { warn: (o: unknown, m: string) => void };
-}): Promise<void> {
+}): Promise<AvisoAjuste> {
   try {
     const c = await prisma.contrato.findFirst({
       where: { id: opts.contratoId, inmobiliariaId: opts.inmobiliariaId },
@@ -113,8 +120,17 @@ async function avisarAjusteAlInquilino(opts: {
       },
     });
     const email = c?.inquilinoTitular?.email;
-    if (!c || !email) return;
-    await enviarAvisoAjusteAlquiler({
+    // El caso más frecuente en la vida real no es que el SMTP falle: es que el inquilino
+    // no tenga email cargado. Eso se sabe ACÁ, en el acto, y por eso se devuelve — para
+    // que el ajuste masivo pueda decir "a 3 de 20 no les vamos a poder avisar" en vez de
+    // dejarlo en un log que nadie mira.
+    if (!c || !email) return 'sin-email';
+
+    // NO se espera el envío. El mailer serializa y espacia los mails (ver enviarEnCola),
+    // así que esperar acá haría que un ajuste masivo de 20 contratos tarde 20 turnos de
+    // cola: el operador miraría una barra de progreso durante segundos por un mail que no
+    // cambia el resultado de la operación. Se encola y el request sigue.
+    void enviarAvisoAjusteAlquiler({
       email,
       inquilinoNombre: `${c.inquilinoTitular?.nombre ?? ''} ${c.inquilinoTitular?.apellido ?? ''}`.trim() || null,
       inmobiliariaNombre: c.inmobiliaria?.nombre ?? 'Tu inmobiliaria',
@@ -124,11 +140,39 @@ async function avisarAjusteAlInquilino(opts: {
       moneda: c.moneda,
       periodoDesde: opts.periodoDesde,
       motivo: opts.motivo,
+    }).catch((e: unknown) => {
+      // Falla del SMTP: no puede romper un ajuste ya aplicado (el mail se reenvía; un
+      // ajuste revertido a mitad, no). Queda en el log del server.
+      opts.log?.warn({ err: e, contratoId: opts.contratoId }, '[ajuste] no se pudo avisar al inquilino');
+      // ...pero el log del server no lo mira nadie en la inmobiliaria. Como el envío es
+      // asincrónico, el rebote llega DESPUÉS de que el endpoint respondió: no hay respuesta
+      // donde contarlo. Se deja asentado en el historial del contrato, que es donde la inmo
+      // ya va a mirar qué pasó con ese alquiler.
+      //
+      // Se usa COMUNICACION_ENVIADA —el título dice que falló— en vez de agregar
+      // COMUNICACION_FALLIDA al enum a propósito: un valor nuevo exige una migración, y hasta
+      // que esa migración esté aplicada en prod el insert tiraría error, lo comería este mismo
+      // catch, y el fallo volvería a ser invisible. Justo lo que esta línea viene a arreglar.
+      void prisma.eventoContrato
+        .create({
+          data: {
+            inmobiliariaId: opts.inmobiliariaId,
+            contratoId: opts.contratoId,
+            tipo: 'COMUNICACION_ENVIADA',
+            titulo: `No se pudo enviar el aviso de aumento a ${email}`,
+            detalle: 'El correo rebotó o el servidor de mail no respondió. El ajuste SÍ se aplicó. Avisale al inquilino por otro medio.',
+            fecha: new Date(),
+            autor: 'Sistema',
+          },
+        })
+        .catch((e2: unknown) => {
+          opts.log?.warn({ err: e2, contratoId: opts.contratoId }, '[ajuste] no se pudo registrar el fallo del aviso');
+        });
     });
+    return 'encolado';
   } catch (e) {
-    // Un aviso que no sale NO puede romper el ajuste. Se loguea para que no sea un
-    // silencio total: un mail que nunca llega y nadie sabe es peor que no tenerlo.
-    opts.log?.warn({ err: e, contratoId: opts.contratoId }, '[ajuste] no se pudo avisar al inquilino');
+    opts.log?.warn({ err: e, contratoId: opts.contratoId }, '[ajuste] no se pudo preparar el aviso');
+    return 'error';
   }
 }
 
@@ -1763,7 +1807,7 @@ export async function coreRoutes(app: FastifyInstance) {
     // Avisarle al inquilino. FUERA de la transacción y best-effort: un SMTP caído no
     // puede tirar abajo un ajuste ya aplicado (el mail se puede reenviar; el ajuste
     // revertido a mitad, no).
-    await avisarAjusteAlInquilino({
+    const aviso = await avisarAjusteAlInquilino({
       contratoId: id,
       inmobiliariaId: u.inmobiliariaId,
       montoAnterior,
@@ -1772,7 +1816,7 @@ export async function coreRoutes(app: FastifyInstance) {
       motivo: b.motivo || null,
       log: request.log,
     });
-    return { ok: true, montoAnterior, montoNuevo: b.montoNuevo, ...res };
+    return { ok: true, montoAnterior, montoNuevo: b.montoNuevo, ...res, avisoInquilino: aviso };
   });
 
   app.get('/contratos/:id/ajustes', async (request, reply) => {
@@ -1867,7 +1911,20 @@ export async function coreRoutes(app: FastifyInstance) {
       });
       return { renovacionId: renov.id, liquidacionesNuevas: nuevas };
     });
-    return { ok: true, montoAnterior, montoNuevo: b.montoNuevo, ...res };
+    // TERCER camino que cambia el canon. T-16 arregló el aviso en /ajustar y en
+    // PATCH /monto, y la renovación se pasó por alto: renovar con un canon nuevo ES un
+    // aumento de alquiler, y el inquilino tampoco se enteraba. Mismo helper, mismo
+    // criterio (best-effort, fuera de la tx).
+    const aviso = await avisarAjusteAlInquilino({
+      contratoId: id,
+      inmobiliariaId: u.inmobiliariaId,
+      montoAnterior,
+      montoNuevo: b.montoNuevo,
+      periodoDesde: b.montoDesde,
+      motivo: b.motivo || 'Renovación del contrato',
+      log: request.log,
+    });
+    return { ok: true, montoAnterior, montoNuevo: b.montoNuevo, ...res, avisoInquilino: aviso };
   });
 
   app.get('/contratos/:id/renovaciones', async (request, reply) => {
@@ -2995,7 +3052,7 @@ export async function coreRoutes(app: FastifyInstance) {
     // tiene un valor de "ajuste de monto" y no vamos a migrar el schema.
     // Mismo aviso que el otro camino de ajuste (ver avisarAjusteAlInquilino): fuera de la
     // transacción y best-effort.
-    await avisarAjusteAlInquilino({
+    const aviso = await avisarAjusteAlInquilino({
       contratoId: contrato.id,
       inmobiliariaId: u.inmobiliariaId,
       montoAnterior: montoViejo,
@@ -3004,7 +3061,7 @@ export async function coreRoutes(app: FastifyInstance) {
       motivo: d.motivo || null,
       log: request.log,
     });
-    return { contrato: resultado.actualizado, liquidacionesReajustadas: resultado.reajustadas };
+    return { contrato: resultado.actualizado, liquidacionesReajustadas: resultado.reajustadas, avisoInquilino: aviso };
   });
 
   // PATCH modo de cobranza de un contrato YA creado (feedback 14/07: quedaba en

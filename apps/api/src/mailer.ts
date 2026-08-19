@@ -29,6 +29,91 @@ function getTransporter(): Transporter | null {
   return transporter;
 }
 
+/**
+ * COLA DE ENVÍO con espaciado mínimo entre mails.
+ *
+ * POR QUÉ EXISTE: todos los mails salen de la MISMA cuenta SMTP, y hay operaciones que
+ * disparan muchos de golpe — el ajuste masivo son N llamadas seguidas a
+ * `PATCH /contratos/:id/monto`, una por contrato, y una inmobiliaria ajusta veinte o más
+ * el mismo día. Veinte mails en ráfaga desde la misma cuenta es la receta para que el
+ * proveedor los marque como spam o corte la conexión, y ahí no le llega el aviso a NADIE.
+ *
+ * El proyecto ya sabía esto: el docblock de `enviarAnuncioEmail` pide "loop secuencial con
+ * throttle (deliverability: parecer humano, no ráfaga)" — pero era responsabilidad del
+ * caller y ningún caller lo hacía. Acá deja de ser opcional.
+ *
+ * DOS CARRILES, y la distinción importa: por la cola va lo que sale de a muchos (avisos de
+ * ajuste, anuncios, invitaciones). El OTP va por `enviarYa`, derecho — si compartiera la
+ * cola, un anuncio a 200 inquilinos dejaría el próximo login esperando el código 80
+ * segundos.
+ *
+ * Serializa (un mail a la vez) y espacia. No reintenta: un fallo se propaga al caller, que
+ * decide. Es una cola en memoria — si el proceso se cae con mails pendientes, se pierden;
+ * es aceptable para avisos (el dato vive igual en la app) y evita meter una tabla y un
+ * worker para esto.
+ */
+const GAP_MS = Number(process.env.SMTP_GAP_MS || 400);
+
+/**
+ * Construye la cola. El envío se inyecta para que el test pueda verificar la garantía real
+ * —nunca dos envíos solapados, siempre con `gapMs` entre uno y el siguiente— sin levantar
+ * un SMTP. Es la única razón por la que esto es una factory y no código suelto.
+ */
+export function crearColaDeEnvio<T>(
+  enviar: (mail: T) => Promise<unknown>,
+  gapMs: number,
+): (mail: T) => Promise<unknown> {
+  let ultima: Promise<unknown> = Promise.resolve();
+  return (mail: T) => {
+    // Encadena sobre la anterior pase lo que pase: si un envío falla, la cola tiene que
+    // seguir andando para los que vienen atrás. Ese handler de rechazo NO se traga el error
+    // del caller — `tarea` es la promesa que se devuelve y sí lo propaga.
+    const tarea = ultima.then(
+      () => enviar(mail),
+      () => enviar(mail),
+    );
+    ultima = tarea.then(
+      () => new Promise((r) => setTimeout(r, gapMs)),
+      () => new Promise((r) => setTimeout(r, gapMs)),
+    );
+    return tarea;
+  };
+}
+
+const colaSmtp = crearColaDeEnvio<Parameters<Transporter['sendMail']>[0]>(
+  // getTransporter() adentro y no capturado afuera: es lazy y `enviarEnCola` ya garantizó
+  // que existe antes de encolar.
+  (mail) => getTransporter()!.sendMail(mail),
+  GAP_MS,
+);
+
+/**
+ * Envío CON throttle. Para lo que sale de a muchos: avisos de ajuste (uno por contrato en
+ * un ajuste masivo) y anuncios (uno por inquilino). Nadie está mirando la pantalla
+ * esperando estos mails, así que espaciarlos no le cuesta nada a nadie.
+ */
+function enviarEnCola(mail: Parameters<Transporter['sendMail']>[0]): Promise<unknown> {
+  if (!getTransporter()) return Promise.resolve(null);
+  return colaSmtp(mail);
+}
+
+/**
+ * Envío DIRECTO, sin cola. Sólo para el OTP.
+ *
+ * POR QUÉ NO VA EN LA COLA: la cola es FIFO y compartida. Si la inmobiliaria manda un
+ * anuncio a 200 inquilinos, el OTP del próximo que quiera entrar sale detrás de esos 200
+ * → 200 × GAP_MS ≈ 80 segundos esperando el código. Eso no es un mail demorado, es un
+ * login roto.
+ *
+ * El throttle existe por deliverability de envíos masivos. El OTP no es masivo: es un mail
+ * por persona, disparado por esa persona, con alguien mirando la pantalla. Va derecho.
+ */
+function enviarYa(mail: Parameters<Transporter['sendMail']>[0]): Promise<unknown> {
+  const t = getTransporter();
+  if (!t) return Promise.resolve(null);
+  return t.sendMail(mail);
+}
+
 // ─── Helpers HTML email-safe (tablas + estilos inline) ───────────────────────
 
 const esc = (s: string): string =>
@@ -142,7 +227,9 @@ function otpHtml(opts: { code: string; ttlMin: number }): string {
 export async function enviarOtp(email: string, code: string): Promise<boolean> {
   const t = getTransporter();
   if (!t) return false;
-  await t.sendMail({
+  // enviarYa, NO enviarEnCola: nadie puede esperar 80 segundos su código de login
+  // porque justo salió un anuncio masivo. Ver el docblock de enviarYa.
+  await enviarYa({
     from,
     to: email,
     subject: `${code} es tu código de acceso a My Alquiler`,
@@ -273,7 +360,7 @@ export async function enviarInvitacionInquilino(opts: {
   ]
     .filter(Boolean)
     .join(' · ');
-  await t.sendMail({
+  await enviarEnCola({
     from,
     to: opts.email,
     subject: `${inmoNombre} te da la bienvenida a My Alquiler`,
@@ -354,7 +441,7 @@ export async function enviarBienvenidaInmobiliaria(
 ): Promise<boolean> {
   const t = getTransporter();
   if (!t) return false;
-  await t.sendMail({
+  await enviarEnCola({
     from,
     to: email,
     subject: `Tu cuenta de ${inmobiliariaNombre} en My Alquiler está lista`,
@@ -386,7 +473,7 @@ export async function enviarInvitacionEquipo(opts: {
   if (!t) return false;
   const panelUrl = opts.panelUrl ?? APP_ADMIN_URL;
   const rolTxt = ROL_LABEL_EQUIPO[opts.rol] ?? opts.rol;
-  await t.sendMail({
+  await enviarEnCola({
     from,
     to: opts.email,
     subject: `Te sumaron al equipo de ${opts.inmobiliariaNombre} en My Alquiler`,
@@ -460,7 +547,7 @@ export async function enviarAnuncioEmail(opts: {
   const t = getTransporter();
   if (!t) return false;
   const urgente = opts.prioridad === 'URGENTE';
-  await t.sendMail({
+  await enviarEnCola({
     from,
     to: opts.email,
     subject: `${urgente ? 'URGENTE — ' : ''}${opts.titulo} · ${opts.inmobiliariaNombre}`,
@@ -554,7 +641,7 @@ export async function enviarAvisoAjusteAlquiler(opts: {
   const t = getTransporter();
   if (!t) return false;
   const desde = periodoLegible(opts.periodoDesde);
-  await t.sendMail({
+  await enviarEnCola({
     from,
     to: opts.email,
     subject: `Tu alquiler se actualiza desde ${desde} · ${opts.inmobiliariaNombre}`,
