@@ -3408,3 +3408,37 @@ en este documento por qué todavía no y qué falta.
 **Riesgo de no hacerlo.** Que el trabajo se dé por entregado. Es el modo de fallo más caro del
 trabajo en paralelo: la tarea figura ✅, el código está mergeado y verificado, y el usuario final
 no tiene forma de llegar.
+### T-01-N1-N4 · Los dos fronts se caen abriendo un reclamo ✅ HECHA
+**Experto:** FE · **Prioridad:** 🔴 · **Detectada en:** barrido de regresiones (T-01-N1)
+
+> **Estado: ✅ hecha.** Ver `work-agent/tareas/T-01-N1-N4/REQUISITOS.md`.
+
+`TipoEventoReclamo` tiene **13** valores en Prisma. Cada front mantiene su copia a mano y las
+dos se quedaron cortas, **en mitades distintas**:
+
+| | conocía | se caía con | quién los escribe |
+|---|---|---|---|
+| Panel | 10 | los tres `VISITA_*` | el profesional, desde el link público |
+| PWA inquilino | 11 | `CLASIFICADO`, `PROFESIONAL_ASIGNADO` | la inmobiliaria |
+
+Los dos hacen `labelForTipo[ev.tipo](ev)`: un valor desconocido no es un renglón feo, es
+`undefined(ev)` y **la pantalla se cae entera**. Ningún endpoint filtra eventos por tipo.
+
+En concreto: el profesional confirma la visita → Camila abre ese reclamo → pantalla rota. Y al
+revés: la inmobiliaria clasifica un reclamo → el inquilino abre el suyo → pantalla rota. Se cae
+justo en los reclamos donde **algo está pasando**; los quietos se ven bien, y por eso duró.
+
+**TypeScript no lo agarró y no era culpa suya:** `Record<TipoEventoReclamo, X>` sí exige
+exhaustividad y estaba completo. Comparaba contra la lista local, que era la que estaba mal.
+
+**Lo que se hizo:** los valores faltantes en los dos, un test que ata las **tres** listas
+(Prisma + los dos fronts) y una guarda de runtime para el rato entre que se despliega la API y
+se despliega cada front. A `CLASIFICADO` en la PWA se le saca el `contenido` — es
+*"Paga: Propietario"*, una decisión interna sobre la plata de otros — y queda rotulado
+*"La inmobiliaria revisó el reclamo"*.
+
+**Verificado:** se recreó el bug sacando los tres `VISITA_*` y dispararon **las dos defensas**:
+3 tests en rojo y 3 errores de `tsc` señalando la línea. `tsc` 0 en los cinco paquetes, 359
+tests verdes.
+
+**No verificado:** no se probó en el navegador.

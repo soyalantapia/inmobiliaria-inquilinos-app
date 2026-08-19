@@ -12,6 +12,15 @@ export type EstadoReclamo = 'ABIERTO' | 'EN_CURSO' | 'RESUELTO' | 'CERRADO' | 'R
 // Cada cambio de estado, asignación o mensaje queda como evento en la timeline.
 // VISITA_* son hitos del profesional asignado (se computan al vuelo desde
 // `visitas-profesional` storage al renderizar — no se persisten en eventos).
+// Copia del enum `TipoEventoReclamo` de Prisma. Se quedó corta: le faltaban CLASIFICADO y
+// PROFESIONAL_ASIGNADO, que escribe la inmobiliaria. Como el timeline hace
+// `labelForTipo[ev.tipo](ev)`, eso era `undefined(ev)` y la pantalla se caía al abrir un
+// reclamo que la inmobiliaria ya había clasificado.
+//
+// Que siga sincronizada lo verifica `apps/api/test/tipos-evento-reclamo-sincronizados.test.ts`,
+// que lee el schema y esta lista y exige que coincidan.
+//
+// (Ojo: en `lib/calendario-eventos` hay OTRO `TipoEvento` que no tiene nada que ver con esto.)
 export type TipoEvento =
   | 'CREADO'
   | 'ASIGNADO'
@@ -21,6 +30,8 @@ export type TipoEvento =
   | 'RECHAZADO'
   | 'MENSAJE_INQUILINO'
   | 'MENSAJE_INMO'
+  | 'CLASIFICADO'
+  | 'PROFESIONAL_ASIGNADO'
   | 'VISITA_CONFIRMADA'
   | 'VISITA_EN_CAMINO'
   | 'VISITA_LISTO';
