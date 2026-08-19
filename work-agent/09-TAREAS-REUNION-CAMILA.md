@@ -944,6 +944,33 @@ futuras impagas se recomputan, sin tocar las ya pagadas o parciales.
 
 ---
 
+### ✅ RESUELTO — commits `cdb78d7` · `f21e573`
+
+`PATCH /contratos/:id/expensas`, hermano de `/monto` y con su misma forma a propósito (es el
+mismo gesto para el operador), + botón **"Cambiar expensas"** en el detalle del contrato.
+
+`recomputarExpensasFuturas` es espejo de `recomputarLiquidacionesFuturas` con **una diferencia
+que importa**: acá se conserva el `montoAlquiler` de CADA cuota, que puede diferir entre meses si
+hubo un ajuste con vigencia futura. Uniformarlos habría pisado ese ajuste. Mismo criterio
+conservador por lo demás: no toca meses pasados, ni PAGADO/PARCIAL, ni cuotas con un pago
+informado en revisión.
+
+**El `tipoContrato` acompaña al monto.** `computarLiquidacionesContrato` factura expensas mirando
+sólo `montoExpensas`, sin consultar el tipo: un ALQUILER con expensas > 0 las facturaría mientras
+la PWA le dice al inquilino que su contrato no las tiene. El diálogo avisa el cambio de tipo antes
+de confirmar.
+
+**El botón no se gatea por tipo**, al revés que el de ajustar alquiler: un SOLO_EXPENSAS es justo
+el que más lo necesita, porque es su único monto.
+
+De la auto-revisión salió que el 409 del ajuste de canon **todavía decía** que las expensas "sólo
+se definen al cargar el contrato" — el mensaje que dio origen a esta tarea. Ahora indica cuál
+puerta abrir.
+
+**116 tests puros** (10 nuevos), verificados en rojo sacando el guard de pago informado.
+
+---
+
 ## T-21-N2 · El alta deja crear un "solo expensas" con alquiler > 0
 
 **Experto:** BE · **Prioridad:** 🟠 · **Depende de:** nada
