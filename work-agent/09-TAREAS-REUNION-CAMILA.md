@@ -1201,6 +1201,44 @@ un resumen de cuántos se unieron a una ficha existente por DNI y cuántos se cr
 
 ---
 
+### ✅ RESUELTO — commits `8f74b0a` · `079d918` · `ff978ec` · `6909733`
+
+`POST /importaciones-morosos/{analizar,validar,confirmar}` + botón **"Importar morosos"** en
+`/inquilinos` (donde Alan pidió ponerlo, `[53:43]`).
+
+**No se enganchó en `importaciones-cartera.ts`, y la razón importa:** ese pipeline **siempre**
+crea la propiedad en cada fila y **rechaza** la fila si la dirección ya existe, y fuerza
+`devengarDesde` = mes actual *justamente para no fabricar deuda pasada*. Para morosos hace falta
+lo inverso en los dos puntos. Un `if (tipo)` en cada paso de una máquina de 500 líneas llena de
+comentarios sobre bugs de duplicación en carteras reales era arriesgar un flujo que hoy funciona
+para ahorrar un archivo. Sí se reusa todo lo puro: `parsearMonto`, `normalizarHeader`,
+`normalizarDireccion`, `buscarOCrearPersona` y la forma del wizard.
+
+La creación del contrato histórico se extrajo a `lib/contrato-historico.ts`: la carga de a uno y
+la importación comparten la misma aritmética. Duplicada, tarde o temprano una crearía cuotas
+distintas que la otra.
+
+**Flujo stateless** (no persiste una `ImportacionCartera`): ese modelo existe para reanudar
+cargas de cientos de filas caras, y agregarle una columna `tipo` habría pedido una migración
+sobre producción — que en este entorno no se puede aplicar, así que la feature nacía muerta. Tope
+de **500 filas**: la matriz vuelve al server y el body limit de Fastify es 1 MiB.
+
+**Lo que encontró la revisión adversarial, todo corregido:** re-subir la planilla duplicaba toda
+la deuda (el camino normal de recuperación); expensas negativas restaban del alquiler y un rango
+tipeado `"1.500 - 2.000"` se parseaba como **-15.002.000**; texto en la celda de expensas daba
+null en silencio; `"US$"` y `"U$D"` caían a PESOS; y las fechas de Excel serializadas con
+`toISOString()` retrocedían un mes en un server al este de UTC.
+
+**Del role play de Camila** salió lo que más movía la aguja: sus direcciones están escritas como
+las tipeó hace años y el match exacto fallaba en buena parte de las 50 filas. Ahora el error
+**nombra la candidata parecida** ("No encontramos X. ¿Será Y?"), apoyándose en la altura como
+señal fuerte y callando cuando no está seguro.
+
+**158 tests puros**, 55 nuevos. Quedan abiertas **T-24-N3** (deshacer una importación) y
+**T-24-N4** (plantilla descargable), ninguna bloqueante.
+
+---
+
 ## T-24-N2 · Avisar "este DNI ya está en tu cartera" al cargar deuda histórica
 
 **Experto:** FE-P · **Prioridad:** 🟢 · **Depende de:** T-24 (hecho)
