@@ -675,9 +675,9 @@ inmobiliaria en la unidad de sólo expensas.
 
 ---
 
-## T-21 · El caso "solo expensas": verificar el circuito completo
+## T-21 · El caso "solo expensas": cerrar el circuito en la PWA
 
-**Experto:** FS + PROD · **Prioridad:** 🟠 · **Depende de:** T-20
+**Experto:** FE-I + PROD · **Prioridad:** 🟠 · **Depende de:** T-20
 
 **Qué pasó en la reunión.** Camila `[30:04]` describió el caso: el alquiler lo arregla el
 propietario directo con el inquilino, y la inmobiliaria sólo administra el consorcio. Alan
@@ -685,8 +685,11 @@ propietario directo con el inquilino, y la inmobiliaria sólo administra el cons
 que tiene que pagar. Tengo que pensarlo bien esto"*, y `[30:31]` *"le hace falta masticar un
 poco más a la parte de consorcio"*.
 
-**Estado verificado — ⚠️ está construido, y en la reunión no se sabía.** `SOLO_EXPENSAS` existe
-de punta a punta:
+**Estado verificado — el BACKEND está construido; la PWA no se enteró.** En la reunión quedó
+como algo a diseñar, y esa parte estaba equivocada: del lado del servidor `SOLO_EXPENSAS` ya
+existe. Pero **no está "de punta a punta"** — ver el hueco al final.
+
+Lo que sí está:
 
 - enum en `schema.prisma:77-79` y campo `Contrato.tipoContrato` (`:1277`)
 - validación en el alta: `core.ts:930` (permite `monto === 0` sólo si es `SOLO_EXPENSAS`) y
@@ -696,16 +699,30 @@ de punta a punta:
 - **el wizard ya lo ofrece**: `contratos/nuevo/page.tsx:696` → opción *"Solo expensas"*
 - los anuncios ya lo excluyen donde corresponde (`anuncios/page.tsx:488`)
 
-**Qué hay que hacer.** Esto **no es una tarea de diseño**, es de verificación y de cierre de
-huecos:
+**⚠️ El hueco confirmado: la PWA del inquilino ignora `tipoContrato`.**
+`GET /mi-contrato` **sí lo expone** (`inquilino-mundo.ts:570`), pero
+`grep -r "tipoContrato\|SOLO_EXPENSAS" apps/inquilino/src` da **cero resultados**. O sea: a un
+ocupante que sólo paga expensas, la app le habla de "alquiler" en todas partes — el home, el
+detalle del pago, el checkout y el contrato. No es un detalle de copy: es decirle que debe algo
+que no debe.
+
+Y hay una consecuencia de plata que hay que decidir: con `SOLO_EXPENSAS`,
+`montoAlquilerSegunTipo` devuelve **0**, así que `montoBruto` de la rendición da 0 y
+`POST /rendiciones` corta con `RendicionSinCobros` (409). **Un contrato de sólo expensas no se
+rinde nunca, y la comisión sobre él es cero.** Puede estar bien (las expensas van al consorcio,
+no al dueño), pero entonces hay que responder: **¿cómo cobra la inmobiliaria por administrar
+esa unidad?** Es la misma pregunta abierta de T-20.
+
+**Qué hay que hacer.** No es una tarea de diseño de modelo —eso ya está—, es de cierre:
 1. E2E completo de un contrato `SOLO_EXPENSAS`: alta → devengo → el inquilino ve y paga → la
    inmobiliaria concilia → qué pasa en rendición y caja.
-2. Anotar y cerrar lo que aparezca. Sospechas concretas a chequear: la comisión (ver T-20), y
-   que el copy de la PWA no le hable de "alquiler" a alguien que sólo paga expensas.
-3. **Decirle a Alan y a Camila que ya existe.** En la reunión quedó como algo a diseñar.
+2. **Cablear `tipoContrato` en la PWA** y ajustar el copy: sin "alquiler" para quien no lo paga.
+3. Responder la pregunta de la comisión (con PROD).
+4. **Decirle a Alan y a Camila que el modelo ya existe.** En la reunión quedó como algo a
+   diseñar desde cero, y no lo es.
 
-**Criterio de aceptación.** Un contrato de sólo expensas funciona de punta a punta, o está
-escrito qué le falta.
+**Criterio de aceptación.** Un inquilino de sólo expensas usa la app sin que nada le hable de un
+alquiler que no paga, y está escrito cómo cobra la inmobiliaria esa administración.
 
 ---
 
