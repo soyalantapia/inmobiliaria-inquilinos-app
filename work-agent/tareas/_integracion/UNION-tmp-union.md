@@ -78,3 +78,27 @@ mergear ahí le cambia el piso a alguien a mitad de una edición.
 ⚠️ **Envejece rápido.** La línea principal se movió **cuatro veces** mientras se armaba esto —
 incluso cambió de rama a mitad de camino. Si pasa mucho tiempo, hay que volver a alcanzarla:
 `git merge <línea principal>` dentro de `tmp/union`, re-verificar, y recién ahí integrar.
+
+---
+
+## Por qué esto no lo mergeó el chat que lo armó
+
+Se intentó **tres veces**. Las tres el worktree principal tenía cambios sin commitear de otro
+chat trabajando en ese momento (`mailer.ts`, `portal-propietario.ts`, `propietario/page.tsx`,
+un componente nuevo sin trackear). Mergear ahí le cambia el piso a alguien a mitad de una edición.
+
+Y entre intento e intento la rama principal avanzó: **cuatro veces**, y una de ellas cambiando de
+`feat/reunion-camila-0308` a `feat/propietario-detalle-rendicion`.
+
+**La conclusión no es "falta hacerlo", es que lo tiene que hacer quien controla ese worktree.**
+Perseguir una rama que se mueve más rápido de lo que se tarda en verificar no converge: cada
+alcance queda viejo antes de poder integrarlo.
+
+El que la mergee sólo tiene que asegurarse de dos cosas:
+
+1. Que su árbol esté limpio (`git status`).
+2. Que la unión esté al día. Si `git log tmp/union..<su rama>` devuelve algo, primero:
+   `cd` al worktree de la unión → `git merge <su rama>` → re-verificar → y recién ahí integrar.
+
+Es superconjunto: **el merge no puede perder trabajo**. El riesgo no es lo que se pierde, es
+hacerlo encima de una edición ajena a medio terminar.
