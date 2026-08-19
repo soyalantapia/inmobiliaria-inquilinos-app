@@ -15,13 +15,20 @@
 -- DEFAULT true + NOT NULL: las filas existentes quedan activas, así que aplicar
 -- esto no le saca el acceso a nadie.
 --
--- ⚠ ORDEN: esta migración va ANTES del deploy del código, no después. El código
--- nuevo lee `activo` en el guard del portal; contra una base sin la columna,
--- Prisma falla y el portal responde 500. En este repo las migraciones se aplican
--- A MANO (no hay railway.json ni Procfile que corra `prisma migrate deploy`), así
--- que el orden es responsabilidad de quien deploya. Se eligió a propósito que
--- falle ruidosamente en vez de degradar en silencio: un guard que se saltea el
--- chequeo porque la columna no está es peor que uno que se cae.
+-- ORDEN: el código nuevo lee `activo` en el guard del portal, así que esta columna
+-- tiene que existir antes de que el proceso levante. Y así es: el arranque de la
+-- API es `pnpm db:deploy && exec node dist/index.js` (apps/api/Dockerfile:30), o
+-- sea que `prisma migrate deploy` corre PRIMERO y, si falla, el `&&` impide que el
+-- contenedor arranque. No hay ningún paso manual que hacer.
+--
+-- (Una versión anterior de este comentario decía que las migraciones se aplican a
+-- mano "porque no hay railway.json ni Procfile". Era falso: la búsqueda no incluyó
+-- el Dockerfile, que es donde estaba. Se corrige acá porque el consejo equivocado
+-- invitaba a tocar la base de producción sin ninguna necesidad.)
+--
+-- Lo que sí se eligió a propósito: que el guard falle ruidosamente si la columna no
+-- estuviera, en vez de degradar en silencio. Un guard que se saltea el chequeo
+-- porque le falta un campo es peor que uno que se cae.
 
 ALTER TABLE "propietarios"
   ADD COLUMN IF NOT EXISTS "activo" BOOLEAN NOT NULL DEFAULT true;
