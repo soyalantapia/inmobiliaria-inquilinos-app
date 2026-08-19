@@ -945,6 +945,16 @@ archivos trackeados.
 ## T-27 · Arreglar la CI y descongelar la demo
 
 **Experto:** OPS · **Prioridad:** 🟠 · **Depende de:** nada
+**Estado: 🟡 PARCIAL** — commit `3a9db72`.
+El bloqueante documentado está arreglado y **verificado corriendo el script real de la CI**:
+antes moría recolectando page data, ahora genera las 74 páginas.
+Dos cosas quedaron abiertas y están en `work-agent/.tareas/T-27/estado.md`:
+1. **Endurecer la CI (typecheck/lint) exige editar `.github/workflows/`, y eso lo prohíbe
+   05-DECISIONES §5** (el gh token no tiene workflow scope: el push fallaría). El YAML propuesto
+   quedó escrito para que lo aplique el dueño a mano.
+2. **Apareció un segundo bloqueante que estaba tapado** detrás del primero: la ruta
+   `opengraph-image` de la landing falla al prerenderizar (`Invalid URL` en `@vercel/og`).
+   Parece específico de Windows y la CI corre en ubuntu, pero no es verificable desde acá.
 
 **Estado verificado.** La CI está en rojo hace **44 días**. Último run verde: `46dc274`,
 05/07/2026; desde entonces ~40 corridas seguidas en `failure`. La causa es una sola línea:
