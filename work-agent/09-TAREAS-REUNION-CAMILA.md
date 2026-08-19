@@ -1347,7 +1347,16 @@ falla la inmobiliaria puede saber cuál.
 
 ---
 
-## T-30-N1 · El remitente sigue diciendo "My Alquiler", no la inmobiliaria
+## T-30-N1 · El remitente sigue diciendo "My Alquiler", no la inmobiliaria — ✅ RESUELTO
+
+> **Hecho, apagado por default.** El rótulo del remitente ahora puede ser
+> `"Tapia Propiedades vía My Alquiler" <no-reply@myalquiler.app>` en los mails que la
+> inmobiliaria le manda a SU gente (aumento, anuncios, invitación a inquilino y a equipo,
+> reclamos). **La dirección no cambia → SPF/DKIM intactos.** El OTP, la bienvenida a la
+> inmobiliaria y el aviso interno de reclamo siguen saliendo como My Alquiler a propósito.
+> Se prende con `EMAIL_FROM_CON_INMOBILIARIA=1` (documentado en `docs/CONFIG.md`) y se apaga
+> sin deploy. **Queda para el dueño la decisión de prenderlo**, que es lo que la tarea pedía
+> evaluar: el código está y la deliverability no se movió sola.
 
 **Experto:** BE + PROD · **Prioridad:** 🟡 · **Depende de:** T-30 (hecha)
 **Origen:** role play del inquilino al ejecutar T-30.
@@ -1370,7 +1379,11 @@ de entrega no empeora.
 
 ---
 
-## T-30-N2 · La invitación al equipo no escapa el HTML
+## T-30-N2 · La invitación al equipo no escapa el HTML — ✅ RESUELTO
+
+> **Hecho.** `enviarInvitacionEquipo` ahora pasa por `shell()` como todos los demás y escapa
+> `inmobiliariaNombre`, el rol, el email y la URL. Gana además la marca y el pie de T-30.
+> Test: una inmobiliaria `Suárez & Cía <Córdoba>` recibe el mail bien renderizado.
 
 **Experto:** SEC + BE · **Prioridad:** 🟡 · **Depende de:** nada
 **Origen:** lectura del mailer al ejecutar T-30.
