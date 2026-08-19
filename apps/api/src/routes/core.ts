@@ -1795,7 +1795,11 @@ export async function coreRoutes(app: FastifyInstance) {
     if (contrato.tipoContrato === 'SOLO_EXPENSAS') {
       return reply.code(409).send({
         message:
-          'Este contrato es de solo expensas: no tiene alquiler que ajustar. El monto de las expensas hoy sólo se define al cargar el contrato.',
+          // El mensaje decía "las expensas hoy sólo se define al cargar el contrato"
+          // porque era verdad: no había forma de cambiarlas después. Ahora la hay
+          // (PATCH /contratos/:id/expensas, botón "Cambiar expensas" en el
+          // contrato), así que en vez de cerrar la puerta se indica cuál abrir.
+          'Este contrato es de solo expensas: no tiene alquiler que ajustar. Para cambiar el monto usá "Cambiar expensas".',
         codigo: 'SOLO_EXPENSAS_SIN_CANON',
       });
     }
@@ -3205,7 +3209,16 @@ export async function coreRoutes(app: FastifyInstance) {
 
     const expensasViejas = contrato.montoExpensas != null ? Number(contrato.montoExpensas) : 0;
     if (expensasViejas === d.montoExpensas) {
-      return reply.code(200).send({ contrato, liquidacionesReajustadas: 0, sinCambios: true });
+      // Mismo monto: no se escribe nada, pero se devuelve el contrato COMPLETO —
+      // no el subset del `select` de arriba. El front usa la respuesta para
+      // refrescar, y dos formas distintas según el camino es cómo se rompe.
+      const completo = await prisma.contrato.findUniqueOrThrow({ where: { id: contrato.id } });
+      return reply.code(200).send({
+        contrato: completo,
+        liquidacionesReajustadas: 0,
+        tipoContrato: contrato.tipoContrato,
+        sinCambios: true,
+      });
     }
 
     // El tipo de contrato acompaña al monto, para que no quede un estado que el
