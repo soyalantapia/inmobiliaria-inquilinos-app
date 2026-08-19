@@ -1500,3 +1500,82 @@ iba en la dirección que Camila terminó pidiendo.
 **Qué hacer.** Borrarlo. Borrar un archivo que ningún módulo importa no puede cambiar
 comportamiento, pero como vive bajo pagos conviene no meterlo en la misma pasada que otra cosa,
 para que nadie tenga que discutir si cuenta como "tocar el flujo".
+
+---
+
+## T-35 · Los usuarios extra heredan la contraseña Y el PIN del admin
+
+**Experto:** SEC · **Prioridad:** 🔴 · **Depende de:** nada · **BLOQUEA T-25**
+**Origen:** modelo de amenazas de T-25. No salió de la reunión.
+
+**Estado verificado — leído a mano, no inferido.**
+
+`scripts/onboarding-real.mjs:98` crea cada usuario de `usuariosExtra` así:
+
+```js
+passwordHash: bcrypt.hashSync(u.password ?? A.password, 10),
+pinHash:      bcrypt.hashSync(u.pin      ?? A.pin,      10),
+```
+
+Los dos `??` caen en las credenciales del **admin**. Si al script no se le pasa una contraseña
+y un PIN propios para cada persona, **la cajera queda con la contraseña y el PIN de Camila**.
+Y la validación de formato del PIN (`/^\d{4,6}$/`, `:46`) corre **sólo sobre `A.pin`**: al de los
+extras no lo mira nadie.
+
+Lo mismo en el seed de desarrollo: `PIN_DEV` se hashea una vez y se le pone a los tres usuarios
+(`apps/api/prisma/seed.ts:13`, `:41`, `:51`).
+
+### Por qué es 🔴 y no 🟠: el login por contraseña está VIVO
+
+`POST /auth/login` (`apps/api/src/routes/auth.ts:109`) hace
+`bcrypt.compareSync(body.data.password, usuario.passwordHash)` (`:114`). O sea que **esto no es
+latente**: en cualquier tenant dado de alta con ese script sin contraseñas individuales, un
+usuario de rol bajo puede entrar **hoy** como ADMIN, con una credencial que ya conoce porque es
+la suya. Sin adivinar nada y sin dejar rastro de intrusión: para el sistema es el admin
+logueándose.
+
+El `pinHash` compartido hoy sí es inofensivo —nadie compara ese hash contra nada, porque
+`verificarPinUsuario` siempre aprueba (`apps/api/src/auth/pin.ts:11-13`)—. **Pero T-25 convierte
+`pinHash` en la credencial para convertirse en otra persona.** El día que eso entre, el PIN
+heredado se vuelve un segundo camino de escalamiento.
+
+### Lo que NO está verificado
+
+**No sé si el tenant real se dio de alta con este script, ni si tiene `usuariosExtra` sin
+contraseña propia.** No consulté producción: es owner-only y la instrucción es no tocar el
+tenant real. **Puede que no haya ningún usuario afectado.** La consulta que lo responde, de sólo
+lectura:
+
+```sql
+SELECT id, email, rol, activo,
+       (password_hash IS NOT NULL) AS tiene_pass,
+       (pin_hash IS NOT NULL)      AS tiene_pin
+FROM usuarios
+WHERE inmobiliaria_id = '<tenant>'
+ORDER BY rol;
+```
+
+Si dos usuarios de **roles distintos** comparten `password_hash`, está confirmado. (Los hashes
+bcrypt de la misma clave difieren por el salt, así que comparar los hashes entre sí **no** sirve:
+hay que probar la contraseña del admin contra el `password_hash` de un extra, o simplemente
+asumir lo peor y rotar.)
+
+### Qué hay que hacer
+
+1. **Arreglar el script**: que `usuariosExtra` **exija** contraseña propia, o que se cree sin
+   `passwordHash` (la cuenta entra por OTP, que es el camino que el propio código ya contempla en
+   `auth.ts:141-143`). Y **nunca** poner `pinHash` desde el alta: que cada uno lo cree desde su
+   sesión.
+2. **Rotar** lo que haya quedado compartido en producción, si la consulta lo confirma.
+3. **En la misma migración que habilite T-25**, limpiar los PIN heredados:
+   `UPDATE usuarios SET pin_hash = NULL, pin_intentos_fallidos = 0, pin_bloqueado_hasta = NULL;`
+   No se pierde nada —esos hashes nunca autenticaron nada— y es la única forma de garantizar que
+   todo `pinHash` vivo lo escribió su dueño desde su propia sesión.
+4. Sacar el `pinHash` del seed.
+
+**Criterio de aceptación.** Dos usuarios distintos no pueden compartir credencial, y ningún
+usuario nace con una credencial que no eligió.
+
+**Riesgo de no hacerlo.** Escalamiento de privilegios silencioso. Es exactamente el escenario que
+Camila describe en la reunión —una máquina, varias personas, roles distintos— pero al revés: en
+vez de separar quién hace qué, hoy podría estar todo el mostrador operando con la misma llave.
