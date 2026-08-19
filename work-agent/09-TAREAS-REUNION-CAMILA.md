@@ -1048,6 +1048,48 @@ volviendo a poner el `catch`.
 
 ---
 
+## T-40 · La pantalla de pagos ofrecía lo que el server ya no permite — ✅ RESUELTO
+
+**Experto:** FE-P · **Prioridad:** 🟠
+**Origen:** revisión adversarial del 19/08. Es consecuencia directa del cambio de roles de
+esta misma tanda.
+
+**El problema.** `pago.conciliar` dejó de incluir a OPERADOR, pero `pagos-por-validar.tsx`
+no gateaba nada: la pantalla seguía mostrando **Validar** y **Rechazar** a cualquier rol.
+El operador tocaba el botón y se comía un 403. (La página sí gateaba `contrato.aprobar`;
+`pago.conciliar` se había pasado por alto.)
+
+**Qué se hizo.** La bandeja sigue **visible en modo lectura** —ver qué hay pendiente no le
+hace mal a nadie y es la mitad útil de la pantalla—; lo que se saca es la promesa de poder
+decidir. "Ver comprobante" queda para todos. Donde estaban los botones ahora dice
+*"Confirmar o rechazar un pago lo hace Administrador o Caja"*.
+
+**Verificado en navegador** contra un stub: con **ADMIN** están los tres botones y no aparece
+el aviso; con **OPERADOR** quedan 0 botones de decisión, sigue "Ver comprobante", y aparece el
+aviso.
+
+---
+
+## T-41 · El Historial del contrato no se refrescaba nunca — ✅ RESUELTO
+
+**Experto:** FE-P · **Prioridad:** 🟠
+**Origen:** revisión adversarial del 19/08.
+
+**El problema.** El timeline usaba `queryKey: ['contrato-eventos', id]`, una isla: **ninguna**
+de las 8 mutaciones que invalidan `['contrato']` lo alcanzaba. El operador ajustaba el monto o
+renovaba, el backend escribía el `EventoContrato`, y el Historial seguía mostrando lo de antes
+hasta recargar la página a mano.
+
+**Qué se hizo.** La key pasó a `['contrato', id, 'eventos']`. Parchear los 8 call sites habría
+arreglado la instancia y dejado la trampa armada para el próximo hook; colgándolo del prefijo,
+cualquier invalidación de `['contrato']` lo alcanza — que es como React Query matchea.
+
+**Verificado en navegador** en las dos direcciones: con el arreglo, después del
+`POST /contratos/:id/ajustar` sale solo un `GET /contratos/:id/eventos`; con la key vieja, ese
+GET no aparece.
+
+---
+
 ## T-37-N1 · Circuito de aprobación para el pago manual del operador
 
 **Experto:** BE + PROD · **Prioridad:** 🟢 · **Depende de:** decisión de producto
