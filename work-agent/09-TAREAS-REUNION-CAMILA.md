@@ -1378,6 +1378,22 @@ Dos cosas quedaron abiertas y están en `work-agent/.tareas/T-27/estado.md`:
    `opengraph-image` de la landing falla al prerenderizar (`Invalid URL` en `@vercel/og`).
    Parece específico de Windows y la CI corre en ubuntu, pero no es verificable desde acá.
 
+   > **Confirmado el 19/08 desde otra sesión — es Windows, con causa raíz.** El paquete hace
+   > `fileURLToPath(join(import.meta.url, "../noto-sans-v27-latin-regular.ttf"))`
+   > (`@vercel/og/index.node.js:18988`): le pasa una **URL** a `path.join`. En Windows eso
+   > convierte las barras y devuelve `file:\C:\...`, que no es una URL válida → `Invalid URL`.
+   > En POSIX el mismo `join` deja `file:/...`, que Node **sí** acepta. Por eso rompe local y
+   > no en ubuntu.
+   >
+   > **Prueba empírica:** sacando temporalmente `opengraph-image.tsx` y corriendo
+   > `bash scripts/build-static.sh` sobre `tmp/integracion`, el build **termina con exit 0** y
+   > genera `out/` completo (las dos apps, 74 páginas). Con el archivo puesto, muere sólo en
+   > esa ruta. O sea: no hay ningún otro bloqueante escondido detrás.
+   >
+   > **Para quien buildee en Windows:** no es un bug del repo y no hay que "arreglarlo" tocando
+   > la landing. Si necesitás el build local completo, sacá ese archivo mientras dure la prueba
+   > y volvé a ponerlo.
+
 **Estado verificado.** La CI está en rojo hace **44 días**. Último run verde: `46dc274`,
 05/07/2026; desde entonces ~40 corridas seguidas en `failure`. La causa es una sola línea:
 
