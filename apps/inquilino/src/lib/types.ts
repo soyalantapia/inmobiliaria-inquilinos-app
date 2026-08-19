@@ -156,6 +156,23 @@ export interface Contrato {
   depositoGarantia?: number | null;
   estadoDeposito?: 'RETENIDO' | 'DEVUELTO' | 'NETEADO' | 'EJECUTADO';
   depositoDevueltoMonto?: number | null;
+  /**
+   * Qué paga realmente esta persona.
+   *
+   * `SOLO_EXPENSAS` = ocupa la unidad pero el alquiler lo arregla el propietario por
+   * fuera; la inmobiliaria sólo administra el consorcio (Camila, 03/08 `[30:04]`). En
+   * ese caso `montoActual` vale **0** —el backend lo permite sólo para este tipo
+   * (`core.ts`, alta de contrato)— y hablarle de "alquiler" es decirle que debe algo
+   * que no debe.
+   *
+   * Opcional a propósito: un contrato viejo que no lo mande se trata como `ALQUILER`,
+   * que es el comportamiento de siempre. Usar `esSoloExpensas()` de `lib/tipo-contrato.ts`
+   * en vez de comparar el string a mano.
+   */
+  tipoContrato?: 'ALQUILER' | 'SOLO_EXPENSAS';
+  /** Expensas del contrato. Para un `SOLO_EXPENSAS` es lo ÚNICO que se paga, así que
+   *  pasa a ser el monto principal de la pantalla de contrato. */
+  montoExpensas?: number | null;
 }
 
 export interface MensajeChat {

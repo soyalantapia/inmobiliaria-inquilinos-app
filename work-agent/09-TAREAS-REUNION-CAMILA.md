@@ -772,6 +772,109 @@ inmobiliaria en la unidad de sólo expensas.
 ## T-21 · El caso "solo expensas": cerrar el circuito en la PWA
 
 **Experto:** FE-I + PROD · **Prioridad:** 🟠 · **Depende de:** T-20
+**Estado: ✅ HECHA la parte de la PWA** — rama `feat/T-21-solo-expensas-pwa`.
+La pregunta de la comisión (punto 3) sigue abierta: es de negocio, no de código.
+
+**No dependía de T-20.** Lo que T-20 bloquea es la pregunta de cuánto se cobra por administrar
+la unidad; el cableado del front no necesitaba nada de eso. Se hizo.
+
+**El dato ya llegaba y se tiraba a la basura.** `GET /mi-contrato` manda `tipoContrato` **y**
+`montoExpensas` (`inquilino-mundo.ts:569-570`), pero `ContratoApi` del cliente
+(`apps/inquilino/src/lib/api/hooks.ts`) no declaraba el primero y el mapeo de `useMiContrato`
+descartaba **los dos**. El tipo `Contrato` de la PWA tampoco los tenía. Por eso el `grep` daba
+cero: no era que faltara el endpoint, era que el cliente los perdía al mapear.
+
+**Lo que veía el ocupante, y quedó arreglado:**
+1. `page.tsx` (home) — la fila **"Alquiler $0"** se renderizaba siempre, mientras la de Expensas
+   de al lado ya era condicional a `> 0`. Ahora las dos usan el mismo criterio.
+2. `pago/[liqId]/page-client.tsx` — la misma fila incondicional en el detalle.
+3. `contrato/page.tsx` (×2 variantes) — **"Alquiler actual $0"** en 3xl, el número más grande de
+   la pantalla. Ahora dice **"Expensas por mes"** con el monto real; si las expensas no están
+   cargadas dice "Todavía no está cargado" en vez de "$0".
+4. `pago/[liqId]/checkout/page-client.tsx` — **defecto de lógica, no de copy**:
+   `contrato?.montoActual ?? liq.montoAlquiler`. `??` no cae en `0`, sólo en null/undefined, y un
+   solo-expensas tiene `montoActual === 0` **por diseño**. La referencia quedaba en 0 y
+   `saldo > 0 * 1.2` se cumplía con **cualquier** saldo: al ocupante le saltaba *"tu deuda es
+   alta, podés pactar un plan"* por un único período al día. La rama demo repetía el agujero por
+   su cuenta (usaba `contratoMock.montoActual` pelado); ahora las dos pasan por el mismo helper.
+
+Todo el criterio vive en un solo lugar nuevo, `apps/inquilino/src/lib/tipo-contrato.ts`, para que
+no queden cinco reglas distintas repartidas por las pantallas.
+
+**Verificación.** `tsc` en 0 en `apps/inquilino` y `apps/api`; lint sin warnings; 16 aserciones
+de la lógica pura ejecutadas con el `tsx` que ya está en el repo, **verificadas en rojo**
+revirtiendo el arreglo; recorrido en el navegador de home, contrato, detalle y checkout con un
+mock de solo expensas, más el caso normal y el estado vacío, consola limpia.
+
+**Deuda.** El test durable (`src/lib/tipo-contrato.test.ts`) está escrito en estilo vitest pero
+**no corre**: la PWA no tiene runner (es T-32). Para que `tsc` no explote, `apps/inquilino/tsconfig.json`
+excluye los `*.test.ts`. **Al cerrar T-32 hay que borrar ese `exclude`.**
+
+---
+
+## T-21-N1 · El devengo no sabe qué es un "solo expensas" (💰)
+
+**Experto:** BE · **Prioridad:** 🔴 · **Depende de:** nada
+
+**Cómo apareció.** Verificando T-21. No es de la PWA, así que no se tocó.
+
+**El problema.** `montoAlquilerSegunTipo` (`apps/api/src/lib/liquidaciones.ts:311`) es la única
+regla que dice "un SOLO_EXPENSAS no devenga alquiler"… y tiene **un solo caller** en todo el
+repo: `liquidaciones.ts:359`, dentro de `recomputarLiquidacionesFuturas`, o sea el
+`PATCH /contratos/:id/monto`. El devengo de verdad —`computarLiquidacionesContrato`
+(`liquidaciones.ts:71-102`)— **no la usa y ni siquiera recibe el tipo**: `ContratoParaLiquidar`
+(`liquidaciones.ts:6-26`) no declara `tipoContrato`, y ninguno de los dos barridos que lo
+alimentan lo trae en su select (`liquidaciones.ts:232-244` el cron, `plata.ts:115-129` el botón
+Devengar del panel).
+
+O sea: **hoy funciona por casualidad.** Un solo-expensas devenga 0 de alquiler únicamente porque
+`contrato.monto` quedó en 0. No hay ninguna defensa.
+
+**Por qué eso rompe.** Hay tres caminos que escriben `contrato.monto` con un
+`z.number().positive()` y **sin mirar `tipoContrato`**:
+- `POST /contratos/:id/ajustar` — `core.ts:1805` escribe `montoAlquiler: b.montoNuevo`
+- `POST /contratos/:id/renovar` — `core.ts:1890`, idem
+- `PATCH /contratos/:id/monto` — éste sí respeta el tipo en las liquidaciones, pero igual deja
+  `contrato.monto > 0`, o sea **divergencia silenciosa** entre el contrato y sus cuotas
+
+Ajustar o renovar un contrato de solo expensas le empieza a facturar alquiler a alguien que no
+paga alquiler, y el ajuste masivo del panel entra por ahí.
+
+**Criterio de aceptación.** `computarLiquidacionesContrato` recibe y respeta `tipoContrato`;
+ajustar/renovar un SOLO_EXPENSAS o no se permite o no toca el canon; test puro que falle si se
+revierte.
+
+---
+
+## T-21-N2 · El alta deja crear un "solo expensas" con alquiler > 0
+
+**Experto:** BE · **Prioridad:** 🟠 · **Depende de:** nada
+
+**El problema.** La validación del alta es asimétrica. `core.ts:1029` rechaza `monto === 0`
+cuando el tipo **no** es SOLO_EXPENSAS, pero **no existe** el chequeo inverso: un
+`POST /contratos` con `{ tipoContrato: 'SOLO_EXPENSAS', monto: 500000, montoExpensas: 285000 }`
+pasa las dos validaciones y se persiste tal cual (`core.ts:1130,1143`).
+
+Combinado con T-21-N1 (el devengo sólo mira `contrato.monto`), ese contrato factura alquiler
+todos los meses aunque esté marcado como de solo expensas.
+
+**Criterio de aceptación.** El alta rechaza —o normaliza a 0— el monto de un SOLO_EXPENSAS, y
+hay un test que lo cubre.
+
+---
+
+## T-21-N3 · El doc apunta a `packages/db/prisma`, que no existe
+
+**Experto:** DOC · **Prioridad:** 🟢 · **Depende de:** nada
+
+El schema de Prisma vive en **`apps/api/prisma/schema.prisma`**. No hay ningún `packages/db/`
+(`packages/` tiene sólo `config`, `shared` y `ui`). `CLAUDE.md` §3 y §4 lo describen en
+`packages/db/prisma/schema.prisma`, que era la estructura planeada y nunca se construyó así.
+Quien lo busque ahí no lo encuentra y puede concluir que el modelo no existe — que es
+exactamente lo que pasó al escribir T-21. Corregir `CLAUDE.md` (requiere OK del dueño: es su
+archivo de convenciones).
+
+---
 
 **Qué pasó en la reunión.** Camila `[30:04]` describió el caso: el alquiler lo arregla el
 propietario directo con el inquilino, y la inmobiliaria sólo administra el consorcio. Alan

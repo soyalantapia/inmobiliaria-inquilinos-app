@@ -185,7 +185,7 @@ export function imprimirCertificado(c: CertificadoInquilino): void {
       <div class="row"><span class="label">Administrada por</span><span class="value">${escapar(c.contratoActual.inmobiliaria)}</span></div>
       <div class="row"><span class="label">Vive desde</span><span class="value">${escapar(formatFecha(c.contratoActual.fechaInicio))}</span></div>
       <div class="row"><span class="label">Meses cumplidos</span><span class="value">${c.contratoActual.mesesCumplidos}</span></div>
-      <div class="row"><span class="label">Alquiler mensual</span><span class="value">${escapar(formatMonto(c.contratoActual.montoMensual, c.contratoActual.moneda))}</span></div>
+      <div class="row"><span class="label">${c.contratoActual.tipoContrato === 'SOLO_EXPENSAS' ? 'Expensas mensuales' : 'Alquiler mensual'}</span><span class="value">${escapar(formatMonto(c.contratoActual.montoMensual, c.contratoActual.moneda))}</span></div>
     </div>
   </div>
 

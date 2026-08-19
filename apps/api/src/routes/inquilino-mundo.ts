@@ -711,7 +711,15 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
       inmobiliaria: contrato.inmobiliaria.nombre,
       fechaInicio: contrato.fechaInicio.toISOString().slice(0, 10),
       fechaFin: contrato.fechaFin.toISOString().slice(0, 10),
-      montoMensual: Number(contrato.monto),
+      // Lo que esta persona paga por mes. Para un SOLO_EXPENSAS `contrato.monto` es 0 por
+      // diseño (el alta lo permite sólo en ese caso), así que el certificado imprimía
+      // "Alquiler mensual $0". El importe que corresponde son las expensas, y el rótulo lo
+      // decide el front con `tipoContrato`.
+      montoMensual:
+        contrato.tipoContrato === 'SOLO_EXPENSAS'
+          ? Number(contrato.montoExpensas ?? 0)
+          : Number(contrato.monto),
+      tipoContrato: contrato.tipoContrato,
       moneda: contrato.moneda,
       mesesCumplidos,
       // El certificado sigue siendo válido como HISTORIAL, pero deja explícito si el

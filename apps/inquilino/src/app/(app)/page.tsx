@@ -34,6 +34,7 @@ import { movimientosMock, type Movimiento } from '@/lib/movimientos-mock';
 import { resolverMontos } from '@/lib/punitorios';
 import { saldoDeLiquidacion } from '@/lib/saldo-liquidacion';
 import { diasHastaVencimiento, formatFecha, formatFechaCorta, formatMonto, formatPeriodo } from '@/lib/format';
+import { mostrarFilaAlquiler } from '@/lib/tipo-contrato';
 import {
   aplicarEstadoDemo,
   useDemoEstado,
@@ -702,7 +703,12 @@ function BannerPagoPendiente({ liq }: { liq: Liquidacion }) {
         onClick={(e) => e.stopPropagation()}
         className={`space-y-1 rounded-lg bg-white/70 px-3 py-2 text-xs dark:bg-black/20 ${tono.text}`}
       >
-        <DesgloseFila label="Alquiler" value={formatMonto(liq.montoAlquiler, liq.moneda)} />
+        {/* Condicional igual que la fila de Expensas de abajo: a quien sólo paga expensas
+            (SOLO_EXPENSAS, el alquiler lo arregla el propietario por fuera) esta fila le
+            decía "Alquiler $0". Ver lib/tipo-contrato.ts. */}
+        {mostrarFilaAlquiler(liq) && (
+          <DesgloseFila label="Alquiler" value={formatMonto(liq.montoAlquiler, liq.moneda)} />
+        )}
         {liq.montoExpensas != null && liq.montoExpensas > 0 && (
           <DesgloseFila label="Expensas" value={formatMonto(liq.montoExpensas, liq.moneda)} />
         )}

@@ -55,6 +55,9 @@ interface ContratoApi {
   proximoAjuste: string | null;
   montoActual: number;
   montoExpensas: number | null;
+  /** `SOLO_EXPENSAS` = no paga alquiler. El server lo manda desde siempre
+   *  (inquilino-mundo.ts, GET /mi-contrato); acá no estaba declarado y se perdía. */
+  tipoContrato?: Contrato['tipoContrato'];
   moneda: Contrato['moneda'];
   depositoGarantia?: number | null;
   estadoDeposito?: Contrato['estadoDeposito'];
@@ -106,6 +109,10 @@ export function useMiContrato(): {
       indiceAjuste: d.indiceAjuste,
       proximoAjuste: d.proximoAjuste ?? '',
       montoActual: d.montoActual,
+      // Los dos campos venían en la respuesta y se descartaban acá: sin ellos la app le
+      // hablaba de "alquiler" a alguien que sólo paga expensas. Ver lib/tipo-contrato.ts.
+      montoExpensas: d.montoExpensas,
+      tipoContrato: d.tipoContrato ?? 'ALQUILER',
       moneda: d.moneda,
       depositoGarantia: d.depositoGarantia ?? null,
       estadoDeposito: d.estadoDeposito,

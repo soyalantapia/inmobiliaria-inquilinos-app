@@ -22,6 +22,7 @@ import { Separator } from '@llave/ui/separator';
 import { toast } from '@llave/ui/use-toast';
 import { contratoMock, liquidacionesMock } from '@/lib/mock-data';
 import { formatFecha, formatFechaCorta, formatMonto, formatPeriodo } from '@/lib/format';
+import { mostrarFilaAlquiler } from '@/lib/tipo-contrato';
 import { abrirReciboImprimible } from '@/lib/recibo-pdf';
 import { resolverMontos } from '@/lib/punitorios';
 import { saldoDeLiquidacion } from '@/lib/saldo-liquidacion';
@@ -411,7 +412,11 @@ function DetallePagoView({
             Cómo se compone
           </h2>
           <div className="space-y-3 text-sm">
-            <Row label="Alquiler" value={formatMonto(liq.montoAlquiler, liq.moneda)} />
+            {/* Ver el desglose del home: sin esto, a un contrato de solo expensas le
+                aparece "Alquiler $0". lib/tipo-contrato.ts */}
+            {mostrarFilaAlquiler(liq) && (
+              <Row label="Alquiler" value={formatMonto(liq.montoAlquiler, liq.moneda)} />
+            )}
             {liq.montoExpensas !== null && (
               <Row label="Expensas" value={formatMonto(liq.montoExpensas, liq.moneda)} />
             )}
