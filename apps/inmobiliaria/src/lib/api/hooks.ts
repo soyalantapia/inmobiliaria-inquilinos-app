@@ -239,13 +239,15 @@ function mapAprobacion(a: AprobacionApi): Aprobacion {
   } as Aprobacion;
 }
 
-export function useAprobaciones(): {
+/** `enabled` (default true): ver el docblock de useReclamos — evita 403 por navegación. */
+export function useAprobaciones(opts?: { enabled?: boolean }): {
   aprobaciones: Aprobacion[];
   cargando: boolean;
   aprobarApi: (id: string, pin: string, comentario?: string) => Promise<Aprobacion>;
   rechazarApi: (id: string, pin: string, motivo: string) => Promise<Aprobacion>;
 } {
   const qc = useQueryClient();
+  const habilitado = opts?.enabled ?? true;
   const q = useQuery({
     queryKey: ['aprobaciones'],
     queryFn: async () => {
@@ -253,7 +255,7 @@ export function useAprobaciones(): {
       const data = await apiFetch<AprobacionApi[]>('/aprobaciones');
       return data.map(mapAprobacion);
     },
-    enabled: apiEnabled,
+    enabled: apiEnabled && habilitado,
     staleTime: 10_000,
   });
   const invalidar = () => void qc.invalidateQueries({ queryKey: ['aprobaciones'] });

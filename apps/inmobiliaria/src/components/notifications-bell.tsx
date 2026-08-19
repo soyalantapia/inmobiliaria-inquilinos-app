@@ -15,8 +15,10 @@ import { cn } from '@llave/ui/cn';
 import { apiEnabled } from '@/lib/api/client';
 import { listarReclamos } from '@/lib/reclamos-store';
 import { useAResolverCount } from '@/lib/api/use-pagos';
-import { useAprobaciones } from '@/lib/api/hooks';
+import { useAprobaciones, useMe } from '@/lib/api/hooks';
 import { useReclamos } from '@/lib/api/use-reclamos';
+import { rolTienePermiso } from '@/lib/permisos';
+import { normalizarRol } from '@/lib/rol-storage';
 
 interface Notif {
   id: string;
@@ -104,10 +106,13 @@ function buildNotifs(): Notif[] {
  * cuando el trabajo se resolvió. Marcar leído algo que sigue pendiente sería
  * justamente la forma de que se pierda de vista.
  */
-function useNotifsProd(): Notif[] {
-  const { count: pagosPorValidar, isError: pagosError } = useAResolverCount();
-  const { aprobaciones } = useAprobaciones();
-  const { reclamos } = useReclamos();
+function useNotifsProd(puede: { pagos: boolean; aprobaciones: boolean; reclamos: boolean }): Notif[] {
+  // Cada query se dispara SÓLO si el rol puede resolver ese pendiente. Sin esto, la campana
+  // —que vive en el topbar, o sea en todas las páginas— le pegaba un 403 por navegación a
+  // /pagos y /reclamos con un rol CARGA, que no tiene esas capacidades.
+  const { count: pagosPorValidar, isError: pagosError } = useAResolverCount({ enabled: puede.pagos });
+  const { aprobaciones } = useAprobaciones({ enabled: puede.aprobaciones });
+  const { reclamos } = useReclamos({ enabled: puede.reclamos });
 
   return useMemo(() => {
     if (!apiEnabled) return [];
@@ -115,7 +120,7 @@ function useNotifsProd(): Notif[] {
 
     // isError ⇒ el count es un 0 FALSO. Preferimos no decir nada antes que decir
     // "no tenés nada pendiente" cuando en realidad no pudimos preguntar.
-    if (!pagosError && pagosPorValidar > 0) {
+    if (puede.pagos && !pagosError && pagosPorValidar > 0) {
       out.push({
         id: 'n-pagos-validar',
         titulo: `${pagosPorValidar} pago${pagosPorValidar === 1 ? '' : 's'} esperando que lo valides`,
@@ -127,7 +132,9 @@ function useNotifsProd(): Notif[] {
       });
     }
 
-    const aprobPend = aprobaciones.filter((a) => a.estado === 'PENDIENTE').length;
+    const aprobPend = puede.aprobaciones
+      ? aprobaciones.filter((a) => a.estado === 'PENDIENTE').length
+      : 0;
     if (aprobPend > 0) {
       out.push({
         id: 'n-aprobaciones',
@@ -140,9 +147,9 @@ function useNotifsProd(): Notif[] {
       });
     }
 
-    const abiertos = (reclamos ?? []).filter(
-      (r) => r.estado === 'ABIERTO' || r.estado === 'EN_CURSO',
-    ).length;
+    const abiertos = puede.reclamos
+      ? (reclamos ?? []).filter((r) => r.estado === 'ABIERTO' || r.estado === 'EN_CURSO').length
+      : 0;
     if (abiertos > 0) {
       out.push({
         id: 'n-reclamos',
@@ -156,14 +163,28 @@ function useNotifsProd(): Notif[] {
     }
 
     return out;
-  }, [pagosPorValidar, pagosError, aprobaciones, reclamos]);
+  }, [puede, pagosPorValidar, pagosError, aprobaciones, reclamos]);
 }
 
 export function NotificationsBell() {
   const [open, setOpen] = useState(false);
   const [notifs, setNotifs] = useState<Notif[]>([]);
   const popoverRef = useRef<HTMLDivElement>(null);
-  const notifsProd = useNotifsProd();
+  const { me } = useMe();
+
+  // La campana lista lo que este usuario PUEDE RESOLVER, no lo que puede mirar. Un rol
+  // CARGA no concilia pagos, no aprueba y no gestiona reclamos: para él la campana está
+  // vacía, y además no dispara ninguna de las tres queries.
+  const puede = useMemo(() => {
+    const rol = normalizarRol(me?.rol, 'LECTURA');
+    return {
+      pagos: rolTienePermiso(rol, 'pago.conciliar'),
+      aprobaciones: rolTienePermiso(rol, 'contrato.aprobar'),
+      reclamos: rolTienePermiso(rol, 'reclamos.gestionar'),
+    };
+  }, [me?.rol]);
+
+  const notifsProd = useNotifsProd(puede);
 
   useEffect(() => {
     setNotifs(buildNotifs());

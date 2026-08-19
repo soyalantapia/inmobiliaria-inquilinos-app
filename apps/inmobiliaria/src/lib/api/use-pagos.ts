@@ -157,14 +157,14 @@ export interface UsePagosInformados {
  * validación. La usa /pagos para el contador "A resolver" en prod.
  * En demo cae al mock + estado de localStorage.
  */
-export function useAResolverCount(): {
+export function useAResolverCount(opts?: { enabled?: boolean }): {
   count: number;
   deApi: boolean;
   cargando: boolean;
   /** Con la query caída el count es 0 FALSO: el caller muestra '—', no un cero. */
   isError: boolean;
 } {
-  const { pagos, cargando, deApi, isError } = usePagosInformados();
+  const { pagos, cargando, deApi, isError } = usePagosInformados(opts);
   if (!deApi) {
     const count = pagosInformadosMock.filter((p) => estadoDePago(p.id) === 'INFORMADO').length;
     return { count, deApi: false, cargando: false, isError: false };
@@ -172,8 +172,13 @@ export function useAResolverCount(): {
   return { count: pagos.length, deApi: true, cargando, isError };
 }
 
-export function usePagosInformados(): UsePagosInformados {
+/**
+ * `enabled` (default true): ver el docblock de useReclamos. La campana del topbar monta esto
+ * en todas las páginas y un rol sin `pagos.ver` generaba un 403 por navegación.
+ */
+export function usePagosInformados(opts?: { enabled?: boolean }): UsePagosInformados {
   const qc = useQueryClient();
+  const habilitado = opts?.enabled ?? true;
 
   const q = useQuery({
     queryKey: ['pagos', 'informados'],
@@ -183,7 +188,7 @@ export function usePagosInformados(): UsePagosInformados {
       const data = await apiFetch<PagoApi[]>('/pagos?estado=INFORMADO');
       return data.map(mapPago);
     },
-    enabled: apiEnabled,
+    enabled: apiEnabled && habilitado,
     staleTime: 15_000,
   });
 

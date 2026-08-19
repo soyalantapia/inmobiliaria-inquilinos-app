@@ -62,7 +62,18 @@ function mapReclamo(r: ReclamoApi): Reclamo {
   };
 }
 
-export function useReclamos(): { reclamos: Reclamo[] | null; cargando: boolean; deApi: boolean } {
+/**
+ * `enabled` (default true) permite que un caller NO dispare la query cuando ya sabe que el
+ * rol no tiene `reclamos.ver` — la campana del topbar la monta en TODAS las páginas y, sin
+ * esto, un rol CARGA generaba un 403 por navegación contra un endpoint que nunca va a poder
+ * leer.
+ */
+export function useReclamos(opts?: { enabled?: boolean }): {
+  reclamos: Reclamo[] | null;
+  cargando: boolean;
+  deApi: boolean;
+} {
+  const habilitado = opts?.enabled ?? true;
   const q = useQuery({
     queryKey: ['reclamos'],
     queryFn: async () => {
@@ -70,7 +81,7 @@ export function useReclamos(): { reclamos: Reclamo[] | null; cargando: boolean; 
       const data = await apiFetch<ReclamoApi[]>('/reclamos');
       return data.map(mapReclamo);
     },
-    enabled: apiEnabled,
+    enabled: apiEnabled && habilitado,
     staleTime: 15_000,
   });
   if (!apiEnabled) return { reclamos: listarReclamos(), cargando: false, deApi: false };

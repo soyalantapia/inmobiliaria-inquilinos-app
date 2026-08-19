@@ -22,6 +22,7 @@ import { buscarOCrearPersona } from '../lib/persona.js';
 import { borrarArchivoSiHuerfano, urlEsDelTenant } from './uploads.js';
 import { enviarInvitacionInquilino, enviarInvitacionEquipo } from '../mailer.js';
 import { contratoQuedaPendiente, diaCivilAR, venceDespuesDeHoy, yaVencio } from '@llave/shared';
+import { ROLES_ORDEN, type Rol } from '@llave/shared/permisos';
 
 /**
  * Una liquidación cuenta como VENCIDA (a efectos de cobranza) si su estado ya es
@@ -2545,7 +2546,11 @@ export async function coreRoutes(app: FastifyInstance) {
   // ===== Configuración: equipo y permisos (usuarios del panel) =====
   // Antes el tab Equipo era 100% mock (equipoInicial hardcoded). Ahora persiste
   // en la tabla Usuario. Guardas para no dejar la inmobiliaria sin ningún Admin.
-  const rolEnum = z.enum(['ADMIN', 'OPERADOR', 'CARGA', 'LECTURA']);
+  // Se deriva de ROLES_ORDEN (la matriz de permisos) en vez de escribirse a mano: cuando se
+  // agregó el rol CAJA, esta lista literal se quedó vieja y hacía IMPOSIBLE dar de alta a la
+  // cajera —el alta devolvía "Datos inválidos" sin decir por qué—, que es justo el usuario
+  // que el rol venía a habilitar. Derivarlo garantiza que no vuelva a desincronizarse.
+  const rolEnum = z.enum(ROLES_ORDEN as [Rol, ...Rol[]]);
 
   app.get('/usuarios', async (request, reply) => {
     const u = await requireUsuario(request, reply);
@@ -2904,19 +2909,35 @@ export async function coreRoutes(app: FastifyInstance) {
     // prueba del 03/08—, y (b) dejaba pasar el caso peligroso de verdad, que es plata
     // de un mes ANTERIOR cobrada y sin rendir. El consejo que daba ("cambialo el mes
     // que viene") además era falso: el mes que viene esa plata sigue sin rendirse.
+    // `contrato.id` ya fue validado contra el tenant en el findFirst de arriba, así que
+    // el helper puede consultar por contratoId sin volver a filtrar (mismo patrón que el
+    // resto de los handlers: el id padre se valida una vez por request).
     const sinRendir = await alquilerCobradoSinRendir(contrato.id);
     if (sinRendir.total > 0) {
       // Mismo criterio de símbolo que el 409 de la rendición (plata.ts): la moneda
       // sale del contrato, no se asume ARS.
       const sim = contrato.moneda === 'USD' ? 'US$' : '$';
       const detalle = sinRendir.periodos.map((p) => `${p.periodo} (${sim}${p.monto})`).join(', ');
+      // EL CONSEJO DEPENDE DEL SENTIDO DEL CAMBIO, y esto importa: en
+      // PROPIETARIO_DIRECTO no se rinde NADA (POST /rendiciones filtra
+      // modoCobranza='INMOBILIARIA'), así que todos los cobros conciliados figuran acá
+      // como "sin rendir" y decirle al operador "rendilos primero" sería mandarlo a
+      // hacer algo que el sistema no le va a permitir — el mismo pecado del guard viejo,
+      // que aconsejaba "cambialo el mes que viene" cuando el mes siguiente no cambiaba nada.
+      const volviendoARecaudadora = body.data.modoCobranza === 'INMOBILIARIA';
       return reply.code(409).send({
-        message:
-          `No se puede cambiar el modo de cobranza todavía: hay ${sim}${sinRendir.total} de alquiler ` +
-          `ya cobrado que no se le rindió al propietario (${detalle}). ` +
-          'Rendile esos períodos desde Propietarios → Rendir y volvé a intentar. ' +
-          'Si cambiás el modo antes, esa plata queda fuera del circuito de rendición.',
-        detalle: { ...sinRendir, moneda: contrato.moneda },
+        message: volviendoARecaudadora
+          ? `No se puede volver a cobranza por inmobiliaria: hay ${sim}${sinRendir.total} ya cobrado ` +
+            `mientras el contrato estaba en cobranza directa (${detalle}). Esa plata fue a la cuenta ` +
+            'del propietario, pero al volver a cuenta recaudadora el sistema la tomaría como rendible ' +
+            'y se la transferiría de nuevo. Antes de cambiar hay que anular esos cobros ' +
+            '(Pagos → Deshacer cobro) o dar de baja este contrato y cargar uno nuevo.'
+          : `No se puede pasar a cobranza directa todavía: hay ${sim}${sinRendir.total} de alquiler ` +
+            `ya cobrado que no se le rindió al propietario (${detalle}). ` +
+            'Rendile esos períodos desde Propietarios → Rendir y volvé a intentar. ' +
+            'Si cambiás el modo antes, esa plata queda fuera del circuito de rendición y no hay ' +
+            'forma de hacérsela llegar.',
+        detalle: { ...sinRendir, moneda: contrato.moneda, hacia: body.data.modoCobranza },
       });
     }
 
