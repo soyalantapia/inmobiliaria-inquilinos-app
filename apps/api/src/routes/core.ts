@@ -19,6 +19,7 @@ import { conSaldo, montoPagadoPorLiquidacion } from '../lib/saldos.js';
 import { normalizarEmail } from '../lib/normalizar-email.js';
 import { normalizarDni } from '../lib/normalizar-dni.js';
 import { alquilerCobradoSinRendir } from '../lib/rendicion-pendiente.js';
+import { registrarEventoContrato } from '../lib/evento-contrato.js';
 import { aplicarDepositoADeuda } from '../lib/aplicar-deposito.js';
 import { calcularMora, resolverEsquemaMora } from '../lib/punitorios.js';
 import { aplicarEstadoInicial, EstadoInicialInvalido } from '../lib/estado-inicial-contrato.js';
@@ -1269,6 +1270,21 @@ export async function coreRoutes(app: FastifyInstance) {
           cargadoAt: new Date(),
         },
       });
+      // Hito fundacional del expediente. Sin esto el Historial del contrato arrancaba en
+      // la nada: el primer renglón era un ajuste de canon meses después, y no había forma
+      // de ver de un vistazo cuándo se firmó ni quién lo cargó.
+      // Se registra también cuando nace BORRADOR: que quedó pendiente de aprobación es
+      // parte de su historia, y el evento de activación lo agrega después la aprobación.
+      await registrarEventoContrato(tx, {
+        inmobiliariaId: u.inmobiliariaId,
+        contratoId: contrato.id,
+        tipo: 'CREADO',
+        titulo: contratoPendiente
+          ? 'Contrato cargado — pendiente de aprobación'
+          : 'Contrato dado de alta',
+        detalle: `${d.moneda} ${d.monto} · del ${d.fechaInicio.toISOString().slice(0, 10)} al ${d.fechaFin.toISOString().slice(0, 10)}`,
+        autor: u.userId,
+      });
       // Persona: identidad reutilizable del tenant para la ficha histórica del inquilino
       // (agrupa contratos/inquilinos del mismo titular — multi-alquiler). Find-or-create por
       // DNI/email COMPARTIDO con la importación de cartera (lib/persona.ts): una sola
@@ -2216,10 +2232,11 @@ export async function coreRoutes(app: FastifyInstance) {
         fechaFin: b.fechaFinNueva,
         monto: canonNuevo,
       });
-      // Rastro en el Historial del contrato (antes la renovación no dejaba evento
-      // → la pestaña Historial seguía "Sin eventos"). Reusamos AJUSTE_APLICADO (el
-      // enum no tiene un valor propio de renovación) con un título explícito.
+      // Rastro en el Historial del contrato. Ahora con su tipo propio (RENOVACION): antes
+      // reusaba AJUSTE_APLICADO por falta de un valor en el enum, y en el timeline una
+      // renovación —que extiende el plazo— se veía igual que un cambio de monto.
       const finNuevaTxt = b.fechaFinNueva.toISOString().slice(0, 10);
+<<<<<<< HEAD
       await tx.eventoContrato.create({
         data: {
           inmobiliariaId: u.inmobiliariaId,
@@ -2230,6 +2247,15 @@ export async function coreRoutes(app: FastifyInstance) {
           fecha: new Date(),
           autor: u.userId,
         },
+=======
+      await registrarEventoContrato(tx, {
+        inmobiliariaId: u.inmobiliariaId,
+        contratoId: id,
+        tipo: 'RENOVACION',
+        titulo: `Renovación: plazo hasta ${finNuevaTxt} · canon ${montoAnterior} → ${b.montoNuevo} ${contrato.moneda}`,
+        detalle: b.motivo ?? null,
+        autor: u.userId,
+>>>>>>> feat/T-29-eventos-contrato
       });
       return { renovacionId: renov.id, liquidacionesNuevas: nuevas };
     });

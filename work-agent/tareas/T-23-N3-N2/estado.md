@@ -125,6 +125,6 @@ no por ejecución.
 
 ### Datos ya existentes
 
-No escribí diagnóstico SQL para esto. Si algún ingreso extra se acreditó de más en producción,
+Si algún ingreso extra se acreditó de más en producción,
 el rastro está en `IngresoRendido`. La consulta quedó escrita:
 **`work-agent/tareas/T-23-N3-N2/diagnostico-ingresos-acreditados-de-mas.sql`** (solo lectura, 3 consultas: los acreditados de más con su monto, el detalle de a quién se le acreditó cada parte, y el espejo de los acreditados de menos, donde el perjudicado es el propietario).
