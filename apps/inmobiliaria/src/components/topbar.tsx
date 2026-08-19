@@ -6,6 +6,7 @@ import { isClerkEnabled } from '@/lib/auth';
 import { ConvenioBadgeTopbar } from './convenio-badge-topbar';
 import { MobileSidebarTrigger } from './sidebar';
 import { NotificationsBell } from './notifications-bell';
+import { ConmutadorUsuario } from './conmutador-usuario';
 import { PilotoBadgeTopbar } from './piloto-badge-topbar';
 
 export function Topbar({ titulo }: { titulo: string }) {
@@ -25,6 +26,7 @@ export function Topbar({ titulo }: { titulo: string }) {
             cada sección (ej. Propietarios), confundiendo al usuario. Lo
             quitamos hasta tener búsqueda global de verdad: cada sección ya
             tiene su buscador funcional. Mejor sin search que con uno fake. */}
+        <ConmutadorUsuario />
         <ConvenioBadgeTopbar />
         <NotificationsBell />
 

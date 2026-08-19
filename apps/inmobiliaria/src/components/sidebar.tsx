@@ -31,7 +31,7 @@ import {
 import { listarPendientes } from '@/lib/aprobaciones-storage';
 import { apiEnabled, setToken } from '@/lib/api/client';
 import { cargarSociedades } from '@/lib/api/use-sociedades';
-import { limpiarSociedadesCache } from '@/lib/sociedades-storage';
+import { limpiarEstadoDeSesion } from '@/lib/sesion-limpieza';
 import { useAprobaciones, useMe } from '@/lib/api/hooks';
 import { cn } from '@llave/ui/cn';
 import { CountBadge } from '@/components/count-badge';
@@ -143,11 +143,17 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
   // dueño — sacar el avatar del header).
   const cerrarSesion = () => {
     setToken(null);
-    // Limpiar el cache de sociedades: es dato del TENANT, no de la app. En una PC
-    // compartida (el mostrador de la inmobiliaria) el siguiente que entraba heredaba la
-    // razón social y el CUIT del anterior y los imprimía en sus PDF de cobranza.
-    limpiarSociedadesCache();
-    router.replace('/login');
+    // Antes acá se limpiaba UNA sola clave (el cache de sociedades) con este comentario: "en una
+    // PC compartida el siguiente que entraba heredaba la razón social y el CUIT del anterior y
+    // los imprimía en sus PDF de cobranza". El diagnóstico era correcto y el arreglo cubría una
+    // de las 34 claves `llave-inmo:`; las otras 33 —caja, rendiciones, aprobaciones, el borrador
+    // de contrato— seguían pasando de una persona a la siguiente. `limpiarEstadoDeSesion` barre
+    // por prefijo, así que no se puede olvidar ninguna.
+    limpiarEstadoDeSesion();
+    // HARD nav y no `router.replace`: el QueryClient vive en el layout raíz y sobrevive a un soft
+    // nav, así que el que entraba después veía las pantallas pintadas con la caché en memoria del
+    // anterior. Mismo patrón que usa el conmutador y que la PWA en /mis-alquileres.
+    window.location.assign('/login');
   };
   const plan = calcularResumenPlan();
   const trial = leerTrial();

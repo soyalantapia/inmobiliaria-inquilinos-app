@@ -9,6 +9,8 @@
 export const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? '').replace(/\/$/, '');
 export const apiEnabled = API_URL.length > 0;
 
+import { limpiarEstadoDeSesion } from '@/lib/sesion-limpieza';
+
 const TOKEN_KEY = 'llave:auth:token';
 
 export function getToken(): string | null {
@@ -79,6 +81,11 @@ function manejarSesionVencida(status: number, token: string | null): void {
   if (status === 401 && token && typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
     try {
       window.localStorage.removeItem(TOKEN_KEY);
+      // Una sesión vencida tiene que dejar la máquina tan limpia como un logout: es el MISMO
+      // escenario del mostrador compartido, sólo que el que se va no apretó el botón. Sin esto,
+      // el token se iba pero la caja, las rendiciones y la razón social del anterior quedaban
+      // esperando al siguiente.
+      limpiarEstadoDeSesion();
     } catch {
       // ignore
     }
