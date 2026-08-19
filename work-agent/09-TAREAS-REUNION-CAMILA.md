@@ -2705,6 +2705,7 @@ rápido de algo que después no puedo mover. Me sirve igual, pero es media soluc
 ## T-21-N3-N1-N1 · El onboarding del inquilino promete una IA que no existe — 🔴
 
 **Experto:** FE-I + PROD · **Prioridad:** 🔴 · **Depende de:** nada
+**Estado: ✅ HECHA** — commit `48ff8e6`. Se sacó el slide del onboarding (no se reescribió: los otros ya cubren lo que la app hace). El botón CENTRAL del nav pasó de "Asistente" → /broker a **"Reportar" → /reclamos/nuevo**: acción real, frecuente, y la semántica clásica de un FAB. `/ayuda` repetía la promesa en TRES lugares (una FAQ entera, el empty state de la búsqueda y el CTA del pie) — ahora mandan a la inmobiliaria, que es el canal que existe, y ese botón pasó de secundario a primario. **En producción no queda ningún camino a /broker**; la card del home vive en `HomeDemo`, o sea sólo en el build demo → eso es T-21-N3-N3. tsc 0, lint limpio, build con 45 páginas.
 **Origen:** auditoría de T-21-N3-N1. Es la promesa que llega a **usuarios reales**, no a prospectos.
 
 **Estado verificado.** `<Onboarding/>` se monta en `apps/inquilino/src/app/(app)/layout.tsx:37`
