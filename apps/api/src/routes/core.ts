@@ -836,6 +836,10 @@ export async function coreRoutes(app: FastifyInstance) {
       // El propietario puede tener ArcaConfig (relación 1:1). Sin borrarla, el
       // delete tiraba 500 por violación de FK.
       prisma.arcaConfig.deleteMany({ where: { propietarioId: id } }),
+      // Idem con los códigos OTP del portal (T-23): la FK es RESTRICT, igual que las otras dos
+      // tablas de OTP, así que un propietario que alguna vez pidió un código no se podía
+      // borrar más — el mismo 500 por FK que ya había pasado con ArcaConfig.
+      prisma.codigoOtpPropietario.deleteMany({ where: { propietarioId: id } }),
       prisma.propietario.delete({ where: { id } }),
     ]);
     return { ok: true };
