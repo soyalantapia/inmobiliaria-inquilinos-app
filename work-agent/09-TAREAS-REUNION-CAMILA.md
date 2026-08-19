@@ -72,15 +72,15 @@ Sin este bloque, el trabajo hecho no le llega a Camila. **Es lo primero.**
 
 ---
 
-## T-01 · Aplicar las migraciones pendientes (son OCHO, no cuatro)
+## T-01 · Aplicar las migraciones pendientes (son DIEZ)
 
 > ### ✅ Verificación previa hecha — 19/08
 >
-> **El título de esta tarea decía CUATRO y son OCHO.** Se fue quedando corto mientras varios
+> **El título decía CUATRO, después OCHO, y hoy son DIEZ.** Se fue quedando corto mientras varios
 > chats escribían migraciones en paralelo. Aplicar sólo las cuatro que la tarea nombraba deja
 > el portal del propietario respondiendo 500.
 >
-> Las ocho, en el orden exacto en que Prisma las va a correr:
+> Las diez, en el orden exacto en que Prisma las va a correr:
 >
 > | # | Migración | Qué hace | Riesgo |
 > |---|---|---|---|
@@ -92,8 +92,19 @@ Sin este bloque, el trabajo hecho no le llega a Camila. **Es lo primero.**
 > | 6 | `20260819140000_limpiar_pines_heredados` | UPDATE: borra los PIN que nadie eligió | — |
 > | 7 | `20260819160000_dni_persona_solo_digitos` | UPDATE: normaliza DNI | — |
 > | 8 | `20260819160000_propietario_baja_logica` | `ADD COLUMN activo` | 🔴 **orden** |
+> | 9 | `20260819180000_destinatario_por_aviso` | `CREATE TYPE` + `CREATE TABLE destinatarios_aviso` | — |
+> | 10 | `20260819200000_historial_reparto` | `CREATE TABLE cambios_participacion` | — |
 >
-> **Lo que se verificó, leyendo las ocho:**
+> **Sobre las dos últimas (9 y 10), agregadas después de esa verificación:** las dos son
+> **aditivas puras** —`CREATE TYPE` / `CREATE TABLE`, cero filas escritas, cero columnas
+> alteradas— y las dos **van antes que su código**. La 10 (`historial_reparto`) conviene
+> aplicarla **cuanto antes**, no por riesgo sino porque hasta que exista no se registra ningún
+> cambio de dueño, y eso es historial que después no se puede reconstruir.
+>
+> ⚠️ **Este número se quedó corto dos veces.** Antes de correr, contá vos:
+> `ls apps/api/prisma/migrations/ | grep -E '^20260818|^20260819'`
+>
+> **Lo que se verificó, leyendo las ocho primeras:**
 >
 > - **Las ocho son idempotentes.** Las de schema usan `IF NOT EXISTS`; las tres de datos tienen
 >   un `WHERE` que excluye las filas ya normalizadas. Re-correrlas no hace nada.
