@@ -2703,8 +2703,24 @@ acción correctiva obvia de la inmobiliaria **no lo arregla**. Toca el mismo end
    que todavía no venció (o al menos no contra una futura).
 3. Decidir qué pasa con las cuotas ya congeladas en prod — hace falta una consulta.
 
+### ⚠️ SON DOS SUPERFICIES, NO UNA — verificado el 19/08
+
+El mismo defecto está **replicado en el camino de las expensas**. Quien arregle esto tiene que
+arreglar las dos, o va a quedar la mitad:
+
+| Camino | Función que saltea | Caller que no filtra |
+|---|---|---|
+| Ajuste del **alquiler** | `recomputarLiquidacionesFuturas` → `if (l.cantidadPagos > 0) continue` (`lib/liquidaciones.ts:366`) | `core.ts:3011` — `_count: { select: { pagos: true } }` |
+| Cambio de **expensas** | `recomputarExpensasFuturas` → misma línea (`lib/liquidaciones.ts`) | `core.ts:3695` — mismo `_count` sin filtro |
+
+Los dos callers piden `_count: { select: { pagos: true } }` **sin `where` de estado**, así que un
+`RECHAZADO` pesa igual que un `CONCILIADO`. Resultado en el camino nuevo: informar $1 contra una
+cuota futura y que se lo rechacen **le congela las expensas viejas a esa cuota, para siempre**.
+
+Es el mismo arreglo en los dos lugares: filtrar el conteo por estado.
+
 **Criterio de aceptación.** Informar y que te rechacen un pago sobre una cuota futura **no**
-impide que esa cuota se reajuste después.
+impide que esa cuota se reajuste después — **ni el alquiler ni las expensas**.
 
 **Riesgo.** ⚠️ Toca el flujo de pagos **y** el de ajustes. Va después de T-04, y con test que
 falle primero.
