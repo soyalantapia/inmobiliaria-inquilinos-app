@@ -1817,3 +1817,40 @@ Postgres de producción). Cambiarla a ciegas era el riesgo mayor.
 quedado compartido, porque si el tenant se dio de alta así, esas cuentas tienen acceso ADMIN
 **hoy**; (3) aplicar `20260819140000_limpiar_pines_heredados` **antes o junto con** la migración
 de T-25 — si T-25 entra primero, hay una ventana en la que los PIN heredados autentican de verdad.
+
+---
+
+## T-36 · Tres avisos de reclamo esquivan la cola de mails
+
+**Experto:** BE · **Prioridad:** 🟡 · **Depende de:** nada · **Vive en:** la integración, no en `feat/reunion-camila-0308`
+**Origen:** revisión de integración de las ramas paralelas. No salió de la reunión.
+
+**Estado verificado.** En `tmp/integracion`, las tres notificaciones de reclamos que trajo T-17
+llaman al transporter **directo**, salteándose los dos carriles que puso T-31:
+
+| Función | Línea en el mailer integrado |
+|---|---|
+| `enviarReclamoNuevoInmo` | `mailer.ts:894` |
+| aviso de profesional asignado | `mailer.ts:930` |
+| aviso de reclamo resuelto | `mailer.ts:960` |
+
+No es culpa de nadie: T-17 y T-31 se escribieron **en paralelo**, en worktrees distintos, y la
+rama de T-17 no podía saber que la cola existía. Es el costo previsible de trabajar en paralelo
+sobre el mismo archivo — y de hecho la integración ya tuvo que *"reconstruir mailer.ts, que la
+unión automática partió al medio"* (`2a86689`).
+
+**Por qué importa igual siendo 🟡.** Un reclamo suelto no hace ráfaga. Pero T-31 existe porque
+todos los mails salen de la **misma cuenta SMTP**, y tres envíos fuera de la serialización pueden
+solaparse entre sí y con un ajuste masivo. Lo más importante no es el daño de estos tres: es que
+el invariante *"todo envío pasa por un carril"* **se rompió tres veces en pocas horas y en
+silencio**, porque la regla vivía sólo en un docblock.
+
+**Ya está el guardarraíl.** `apps/api/test/mailer-todos-por-la-cola.test.ts` (en
+`feat/reunion-camila-0308`) falla si aparece un `sendMail` fuera de `enviarEnCola` / `enviarYa`, y
+nombra archivo y línea. Verificado contra el mailer integrado: **detecta los tres**. También
+fija que `enviarYa` lo use **sólo** el OTP.
+
+**Qué hay que hacer.** Al mergear, cambiar los tres `t.sendMail(` por `enviarEnCola(`. Son tres
+líneas. El test dice cuáles.
+
+**Criterio de aceptación.** `mailer-todos-por-la-cola` en verde sobre la rama integrada.
