@@ -328,7 +328,12 @@ function detalleMock(id: string): ContratoDetalle | null {
     ? propietariosMock.filter((o) => prpMock.propietariosIds.includes(o.id))
     : [];
   return {
-    contrato: c,
+    // El mock guarda la relación al revés (`Propiedad.contratoActualId`), así que el
+    // contrato salía sin `propiedadId` y en demo no aparecía el link del header a la ficha
+    // de la propiedad. Se deriva del cruce que ya se hizo arriba en vez de hardcodearlo en
+    // `contratosMock`: un solo lugar donde vive la relación, sin dos copias que se
+    // desincronicen.
+    contrato: prpMock ? { ...c, propiedadId: prpMock.id } : c,
     contacto,
     propietarios,
     propietarioDirecto,

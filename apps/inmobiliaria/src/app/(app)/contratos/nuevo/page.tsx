@@ -1488,7 +1488,14 @@ function CargarContratoApiWizard() {
       // alta falló (ej. 409 porque la propiedad se ocupó), la persona tiene
       // que poder reintentar sin perder lo que cargó.
       if (namespaceBorrador) borrarBorradorContrato(namespaceBorrador);
-      router.push('/contratos');
+      // AL CONTRATO RECIÉN CREADO, no a la lista. Camila (03/08): "de un lado tenés que
+      // entrar a propiedades, después el otro tenés que ir al contrato, después lo otro
+      // tenés que ir al inquilino, yo me pierdo". Terminar el alta y caer en una tabla
+      // donde hay que BUSCAR lo que acabás de cargar es ese mismo laberinto.
+      // `creado.id` ya se venía usando acá arriba para subir los documentos; sólo que
+      // después se descartaba. Vale también para el contrato que queda PENDIENTE de
+      // aprobación: su detalle es justamente donde se ve que está pendiente.
+      router.push(`/contratos/${creado.id}`);
     } catch (e) {
       // Mostramos el mensaje del server (ej. 409 propiedad ya tiene contrato).
       const msg =

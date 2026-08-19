@@ -7,6 +7,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   AlertCircle,
   ArrowLeft,
+  ArrowUpRight,
   Building2,
   CheckCircle2,
   Clock,
@@ -76,6 +77,7 @@ import {
 } from '@/lib/mock-data';
 import type { ContratoListado, EstadoContrato, Propietario } from '@/lib/types';
 import { formatFecha, formatMonto } from '@/lib/format';
+import { rotuloPrincipal, rotuloSecundario } from '@/lib/rotulo-propiedad';
 
 const estadoLiqVariant: Record<
   LiquidacionAdmin['estado'],
@@ -232,7 +234,32 @@ export default function DetalleContratoPage() {
               Volver a contratos
             </Link>
             <h2 className="line-clamp-2 text-xl font-semibold leading-tight">{c.inquilino}</h2>
-            <p className="line-clamp-2 text-sm text-muted-foreground">{c.direccion}</p>
+            {/* El complejo manda; la calle queda de dato secundario. Los botones de
+                abajo (rescindir, avisar renovación, mensaje al inquilino) siguen
+                recibiendo `c.direccion` a propósito: ahí la dirección real es lo que
+                hace falta, no el rótulo interno. */}
+            {/* El rótulo es el paso a la propiedad. Las acciones sobre el inquilino
+                —reenviar el email de bienvenida, sumar co-inquilinos— viven SÓLO en la
+                ficha de la propiedad (InquilinoActualAcciones), así que sin este link,
+                desde el contrato hay que volver al menú lateral para llegar al inquilino:
+                exactamente el laberinto que describió Camila el 03/08. El único link que
+                había estaba enterrado adentro de la card de servicios.
+                Sin `propiedadId` (el tipo lo declara opcional) queda como texto plano —
+                un link muerto sería peor que no tenerlo. */}
+            {c.propiedadId ? (
+              <Link
+                href={`/propiedades/${c.propiedadId}`}
+                className="line-clamp-2 inline-flex items-start gap-1 text-sm font-medium hover:text-primary hover:underline"
+              >
+                {rotuloPrincipal(c)}
+                <ArrowUpRight className="mt-0.5 h-3.5 w-3.5 shrink-0 opacity-60" />
+              </Link>
+            ) : (
+              <p className="line-clamp-2 text-sm font-medium">{rotuloPrincipal(c)}</p>
+            )}
+            {rotuloSecundario(c) && (
+              <p className="line-clamp-1 text-sm text-muted-foreground">{rotuloSecundario(c)}</p>
+            )}
           </div>
           <div className="flex w-full flex-wrap gap-2 sm:w-auto">
             <Button

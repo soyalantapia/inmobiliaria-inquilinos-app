@@ -339,6 +339,24 @@ eso va con PROD, no sólo con front.
 
 ## T-10 · Unificar el flujo propiedad → contrato → inquilino
 
+**Estado: ✅ HECHA** — los pasos 1→3 ya estaban encadenados (`0427afa`, `afbf08f`); lo que
+faltaba era **el final del recorrido**, y eran dos cortes concretos: (1) el wizard terminaba en
+`/contratos` —una lista donde había que **buscar** el contrato recién creado— aunque `creado.id`
+ya se usaba doce líneas antes para subir los documentos; (2) las acciones sobre el inquilino
+viven **sólo** en la ficha de la propiedad, y desde el detalle del contrato el único link a la
+propiedad estaba enterrado adentro de la card de servicios — o sea, había que volver al menú
+lateral. Ahora el alta aterriza en `/contratos/{id}` y el rótulo del header es link a la ficha.
+Recorrido verificado en el navegador: contrato → rótulo → ficha → pestaña Inquilino → "Reenviar
+email de bienvenida", sin tocar el menú lateral.
+
+**Pendiente de staging:** el aterrizaje en `/contratos/{id}` es camino `apiEnabled` y no se pudo
+ejecutar (no hay `DATABASE_URL` en la máquina). Verificado por lectura, falta correrlo.
+
+**Fuera de alcance, anotado:** en demo, crear una propiedad sigue cayendo en `/propiedades`
+porque en demo la propiedad no se crea (`propiedades/nueva/page.tsx:487` es un `setTimeout`);
+arreglarlo pide persistencia demo. Y `inquilino-actual-acciones.tsx:68` muestra "Cuenta activa"
+fijo, sin mirar si el inquilino activó.
+
 **Experto:** PROD (define) + FE-P (implementa) · **Prioridad:** 🟠 · **Depende de:** T-08, T-09
 
 **Qué pidió Camila.** `[37:56]` *"Es como que de un lado tenés que entrar a propiedades,
@@ -1148,6 +1166,19 @@ inmobiliaria; o el texto no lo invita a responder.
 ---
 
 ## T-31 · El ajuste masivo manda un mail por contrato, sin throttle
+
+**Estado: ✅ HECHA** — commit `b48ba58`. Cola con espaciado (`SMTP_GAP_MS`, default 400) para
+los 5 envíos masivos, y **el OTP fuera de la cola**: con una FIFO compartida, un anuncio a 200
+inquilinos dejaba el próximo login esperando el código ~80 s (regresión que introdujo la propia
+cola, encontrada en el role play). El ajuste devuelve `avisoInquilino`, y el ajuste masivo lista
+en un panel persistente a quiénes no les llega el aviso por falta de email. Un rebote de SMTP
+queda como `EventoContrato` en el historial. **Además:** la renovación —tercer camino que cambia
+el canon— tampoco avisaba; T-16 había cubierto solo los otros dos. Tests: `mailer-cola` (4) y
+`mailer-otp-no-espera` (1), verificados por mutación.
+
+**Deuda:** el rebote se registra con `tipo: COMUNICACION_ENVIADA` (el título aclara que falló).
+Agregar `COMUNICACION_FALLIDA` al enum exige migración; hasta aplicarla en prod el insert
+fallaría y el fallo volvería a ser invisible. Sumarlo junto a las migraciones de T-01.
 
 **Experto:** BE · **Prioridad:** 🟠 · **Depende de:** T-16 (hecha)
 **Origen:** role play de Camila al ejecutar T-16. No salió de la reunión.
