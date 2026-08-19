@@ -180,7 +180,7 @@ export async function requirePersona(
 export async function requirePropietario(
   request: FastifyRequest,
   reply: FastifyReply,
-): Promise<{ propietarioId: string; inmobiliariaId: string } | null> {
+): Promise<{ propietarioId: string; inmobiliariaId: string; email: string } | null> {
   try {
     await request.jwtVerify();
   } catch {
@@ -202,7 +202,9 @@ export async function requirePropietario(
     await reply.code(401).send({ message: 'Sesión vencida' });
     return null;
   }
-  return { propietarioId: fila.id, inmobiliariaId: fila.inmobiliariaId };
+  // El email va del TOKEN, no de la fila: es el que probó el OTP y no lo puede mover nadie
+  // editando el registro. Ver la nota de JwtPropietarioSchema.
+  return { propietarioId: fila.id, inmobiliariaId: fila.inmobiliariaId, email: parsed.data.email };
 }
 
 type Permiso = 'VER' | 'PAGAR' | 'COMPLETO';

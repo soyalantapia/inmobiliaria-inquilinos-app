@@ -26,7 +26,7 @@ const inquilino = { kind: 'inquilino', inquilinoId: 'q1', inmobiliariaId: 'i1', 
 const coInquilino = { kind: 'co-inquilino', coInquilinoId: 'k1', inmobiliariaId: 'i1', contratoId: 'c1', permiso: 'VER' };
 const persona = { kind: 'persona', email: 'a@b.com' };
 const profesional = { kind: 'profesional', visitaId: 'v1', inmobiliariaId: 'i1', profesionalId: 'p1' };
-const propietario = { kind: 'propietario', propietarioId: 'o1', inmobiliariaId: 'i1' };
+const propietario = { kind: 'propietario', propietarioId: 'o1', inmobiliariaId: 'i1', email: 'duenio@correo.com' };
 
 describe('JwtPayloadSchema — la puerta de requireAuth', () => {
   it('acepta los tres kinds normales', () => {
@@ -56,8 +56,18 @@ describe('JwtPropietarioSchema — la puerta del portal', () => {
   it('exige las dos mitades del scoping: sin inmobiliariaId no es un token válido', () => {
     // El aislamiento del portal es el par (propietarioId, inmobiliariaId) y las queries
     // filtran por los dos. Un token al que le falte una mitad no puede existir.
-    expect(JwtPropietarioSchema.safeParse({ kind: 'propietario', propietarioId: 'o1' }).success).toBe(false);
-    expect(JwtPropietarioSchema.safeParse({ kind: 'propietario', inmobiliariaId: 'i1' }).success).toBe(false);
+    expect(JwtPropietarioSchema.safeParse({ kind: 'propietario', propietarioId: 'o1', email: 'a@b.com' }).success).toBe(false);
+    expect(JwtPropietarioSchema.safeParse({ kind: 'propietario', inmobiliariaId: 'i1', email: 'a@b.com' }).success).toBe(false);
+  });
+
+  it('exige el email probado: es lo que autoriza cambiar de cartera', () => {
+    // Sin el email adentro, `/auth/propietario/elegir` tenía que releerlo de la base — y ese
+    // campo lo edita a mano cualquier ADMIN de cualquier inmobiliaria, así que el salto entre
+    // carteras se volvía un pivote CROSS-TENANT. Un token sin email, o con basura en vez de un
+    // email, no puede existir.
+    expect(JwtPropietarioSchema.safeParse({ kind: 'propietario', propietarioId: 'o1', inmobiliariaId: 'i1' }).success).toBe(false);
+    expect(JwtPropietarioSchema.safeParse({ ...propietario, email: '' }).success).toBe(false);
+    expect(JwtPropietarioSchema.safeParse({ ...propietario, email: 'no-es-un-email' }).success).toBe(false);
   });
 
   it('no acepta campos de más disfrazados de permisos', () => {

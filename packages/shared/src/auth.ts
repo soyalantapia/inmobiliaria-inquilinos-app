@@ -86,6 +86,19 @@ export const JwtPropietarioSchema = z.object({
   kind: z.literal('propietario'),
   propietarioId: z.string(),
   inmobiliariaId: z.string(),
+  /**
+   * El email que el OTP PROBÓ, congelado al firmar. Es la credencial con la que se autoriza
+   * cambiar de cartera, y por eso NO puede releerse de la base en cada request:
+   * `Propietario.email` es un campo de negocio que cualquier ADMIN, OPERADOR o CARGA de
+   * CUALQUIER inmobiliaria edita a mano por `PUT /propietarios/:id`.
+   *
+   * Sin congelarlo, el salto entre carteras era un pivote CROSS-TENANT: un admin de su propia
+   * inmobiliaria se daba de alta a sí mismo como propietario con su email, sacaba un token
+   * legítimo, después le EDITABA el email al de la víctima, y con el token viejo pedía la
+   * cartera del propietario de otra inmobiliaria — el chequeo releía el email nuevo y
+   * matcheaba. Es la misma razón por la que `JwtPersona` lleva el email adentro.
+   */
+  email: z.string().email(),
 });
 export type JwtPropietario = z.infer<typeof JwtPropietarioSchema>;
 

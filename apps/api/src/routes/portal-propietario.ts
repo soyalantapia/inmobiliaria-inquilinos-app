@@ -34,7 +34,15 @@ import { enviarOtp } from '../mailer.js';
  * 4. **El OTP no dice si el email existe.** A diferencia del login del panel —que devuelve
  *    `existe` a propósito, porque el alta es self-service y hay que poder mandar a /registro—
  *    acá no hay registro público: revelarlo sólo serviría para enumerar la cartera de una
- *    inmobiliaria. La respuesta es siempre la misma.
+ *    inmobiliaria. La respuesta es siempre la misma, y el bcrypt —la parte cara— se ejecuta
+ *    igual en las dos ramas para que el TIEMPO tampoco lo delate.
+ *    ⚠️ Queda una diferencia menor: cuando el email existe hay además dos escrituras a la DB.
+ *    Es un orden de magnitud menos que el bcrypt, pero no es cero. Cerrarlo del todo pide
+ *    encolar el envío y responder antes de tocar la base.
+ * 5. **Deuda conocida, compartida con los otros dos logins:** el rate limit del verify se
+ *    keyea por IP, así que un atacante distribuido lo diluye, y no hay contador de intentos
+ *    POR CÓDIGO. `auth.ts` ya documenta esa deuda y pide una migración para cerrarla; el
+ *    portal la hereda igual y no la empeora.
  */
 
 /** Vida del token del portal. Más corto que los 15 días del panel: es un portal de consulta
@@ -69,11 +77,13 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
         select: { id: true },
       });
 
-      // Respuesta idéntica exista o no el email (ver nota 4 del encabezado). El trabajo de
-      // generar el código sólo se hace si hay a quién mandárselo, pero eso no se nota afuera.
+      // El bcrypt va SIEMPRE, exista o no el email. Es la parte cara del request (bcryptjs es
+      // JS puro y bloquea el event loop), así que hacerlo sólo en la rama "existe" convertía
+      // el tiempo de respuesta en un oráculo de enumeración: cientos de milisegundos contra
+      // unos pocos. Calcularlo igual y tirarlo empareja el costo dominante.
+      const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
+      const codeHash = bcrypt.hashSync(code, 8);
       if (propietarios.length > 0) {
-        const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
-        const codeHash = bcrypt.hashSync(code, 8);
         const expiresAt = new Date(Date.now() + OTP_TTL_MS);
         // Invalidar los anteriores ANTES de emitir: pedir un código nuevo deja sin efecto al
         // viejo (que es lo que la persona espera) y, sobre todo, evita que pidiendo N veces
@@ -127,17 +137,41 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
       let elegido: (typeof propietarios)[number] | null = null;
       for (const otp of otps) {
         if (bcrypt.compareSync(body.data.code, otp.codeHash)) {
-          await prisma.codigoOtpPropietario.update({ where: { id: otp.id }, data: { usedAt: new Date() } });
+          // Se consumen TODAS las filas del mismo email, no sólo la que matcheó. Con varias
+          // carteras se emite una fila por cada una con el MISMO hash: marcar sólo una dejaba
+          // las otras vivas 10 minutos, o sea el código ya usado seguía sirviendo para entrar.
+          await prisma.codigoOtpPropietario.updateMany({
+            where: { propietarioId: { in: propietarios.map((p) => p.id) }, usedAt: null },
+            data: { usedAt: new Date() },
+          });
           elegido = propietarios.find((p) => p.id === otp.propietarioId) ?? null;
           break;
         }
       }
       if (!elegido) return reply.code(401).send({ message: 'Código inválido o vencido' });
 
+      // RIESGO RESIDUAL, deliberadamente visible: `Propietario.email` lo tipea a mano el staff
+      // de cada inmobiliaria y nadie lo verifica nunca. Si el mismo string aparece en dos
+      // tenants —un typo, un mail placeholder tipo info@…, el mail del contador usado para
+      // varios dueños— quien controle esa casilla ve las dos carteras. Es inherente a que el
+      // email sea la credencial, no un bug de scoping, pero tiene que ser DETECTABLE: sin este
+      // log no habría forma de enterarse. La persona además lo ve, porque el selector le
+      // muestra el nombre de cada inmobiliaria.
+      const tenants = new Set(propietarios.map((x) => x.inmobiliariaId));
+      if (tenants.size > 1) {
+        app.log.warn(
+          { email: emailLc, tenants: tenants.size, propietarios: propietarios.length },
+          'Portal propietario: un mismo email es propietario en varias inmobiliarias',
+        );
+      }
+
       const payload: JwtPropietario = {
         kind: 'propietario',
         propietarioId: elegido.id,
         inmobiliariaId: elegido.inmobiliariaId,
+        // El email que ACABA de probarse, no el de la fila: queda congelado en el token y es
+        // lo único que autoriza cambiar de cartera. Ver JwtPropietarioSchema.
+        email: emailLc,
       };
       return {
         token: app.jwt.sign(payload, { expiresIn: TOKEN_TTL }),
@@ -155,9 +189,15 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
   );
 
   /**
-   * Cambiar de cartera sin volver a pedir un código. Sólo entre carteras del MISMO email:
-   * se relee el email del propietario del token y se exige que el destino coincida. Un id de
-   * otra persona no matchea, aunque quien lo pida tenga un token válido.
+   * Cambiar de cartera sin volver a pedir un código. Sólo entre carteras del MISMO email.
+   *
+   * ⚠️ El email sale del TOKEN (lo probó el OTP y quedó firmado), NUNCA de la base. Releerlo
+   * de la fila era un pivote CROSS-TENANT: `Propietario.email` lo edita a mano cualquier
+   * ADMIN/OPERADOR/CARGA de cualquier inmobiliaria por `PUT /propietarios/:id`, así que
+   * alcanzaba con darse de alta a uno mismo como propietario, sacar un token legítimo,
+   * después cambiarle el email al de la víctima y pedir su cartera: el chequeo releía el
+   * email nuevo y matcheaba. Es el mismo motivo por el que `/auth/inquilino/elegir` usa
+   * `persona.email` del JWT y no un lookup.
    */
   app.post('/auth/propietario/elegir', async (request, reply) => {
     const actual = await requirePropietario(request, reply);
@@ -165,14 +205,8 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
     const body = z.object({ propietarioId: z.string().min(1) }).safeParse(request.body);
     if (!body.success) return reply.code(400).send({ message: 'propietarioId requerido' });
 
-    const yo = await prisma.propietario.findUnique({
-      where: { id: actual.propietarioId },
-      select: { email: true },
-    });
-    if (!yo) return reply.code(401).send({ message: 'Sesión vencida' });
-
     const destino = await prisma.propietario.findFirst({
-      where: { id: body.data.propietarioId, email: yo.email },
+      where: { id: body.data.propietarioId, email: actual.email },
       select: { id: true, inmobiliariaId: true, nombre: true, apellido: true, inmobiliaria: { select: { nombre: true } } },
     });
     // 404 y no 403: no confirmamos que el id exista pero sea de otro. Es el mismo criterio
@@ -183,6 +217,9 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
       kind: 'propietario',
       propietarioId: destino.id,
       inmobiliariaId: destino.inmobiliariaId,
+      // El MISMO email probado, no el de la fila destino: si alguien le cambió el email a esa
+      // fila después del login, el token nuevo no puede heredar esa identidad nueva.
+      email: actual.email,
     };
     return {
       token: app.jwt.sign(payload, { expiresIn: TOKEN_TTL }),
@@ -368,7 +405,12 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
         montoNeto: true,
         rendidoAt: true,
         metodo: true,
-        notas: true,
+        // `notas` NO se expone. En el panel el campo se rotula sólo "Notas (opcional)" y el
+        // equipo lo viene escribiendo hace meses dando por sentado que es interno (por qué se
+        // retuvo plata, comentarios sobre el dueño o el inquilino, arreglos de palabra).
+        // Publicarlo ahora sería filtrar retroactivamente todo eso por un cambio de audiencia,
+        // no por una query mal filtrada. Si se quiere una nota PARA el propietario, va un campo
+        // nuevo y rotulado como tal.
         alquileresRendidos: {
           select: { periodo: true, monto: true, participacion: true, direccion: true },
           orderBy: { periodo: 'asc' },
@@ -396,7 +438,6 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
       teDepositamos: dec(r.montoNeto),
       rendidoAt: r.rendidoAt.toISOString(),
       metodo: r.metodo,
-      notas: r.notas,
       detalleAlquileres: r.alquileresRendidos.map((a) => ({
         periodo: a.periodo,
         direccion: a.direccion,
@@ -424,16 +465,25 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
     const p = await requirePropietario(request, reply);
     if (!p) return;
     // Las propiedades salen de la participación, no de un id que venga de afuera.
-    const propIds = (
-      await prisma.participacionPropietario.findMany({
-        where: { propietarioId: p.propietarioId, inmobiliariaId: p.inmobiliariaId },
-        select: { propiedadId: true },
-      })
-    ).map((x) => x.propiedadId);
-    if (propIds.length === 0) return [];
+    // Traemos también el contrato ACTUAL de cada una: es el recorte temporal (ver abajo).
+    const participaciones = await prisma.participacionPropietario.findMany({
+      where: { propietarioId: p.propietarioId, inmobiliariaId: p.inmobiliariaId },
+      select: { propiedad: { select: { id: true, contratoActual: { select: { id: true } } } } },
+    });
+    // Sólo los contratos VIGENTES. `ParticipacionPropietario` no tiene `desde`/`hasta`, así
+    // que no hay forma de saber desde cuándo esta persona es dueña — y sin ese recorte, quien
+    // compra un departamento en marzo abre el portal y lee los reclamos de 2024 de un inquilino
+    // con el que no tuvo ninguna relación, con la `descripcion` en texto libre que esa persona
+    // escribió. El contrato vigente es el recorte más preciso que el dato de hoy permite.
+    // Cuando exista la vigencia de la participación, esto se puede ampliar a "desde que sos
+    // dueño" — queda anotado como tarea nueva.
+    const contratoIds = participaciones
+      .map((x) => x.propiedad.contratoActual?.id)
+      .filter((id): id is string => !!id);
+    if (contratoIds.length === 0) return [];
 
     const reclamos = await prisma.reclamo.findMany({
-      where: { inmobiliariaId: p.inmobiliariaId, propiedadId: { in: propIds } },
+      where: { inmobiliariaId: p.inmobiliariaId, contratoId: { in: contratoIds } },
       orderBy: { createdAt: 'desc' },
       take: 50,
       select: {

@@ -143,7 +143,6 @@ export interface RendicionPortal {
 }
 
 export interface RendicionDetalle extends RendicionPortal {
-  notas: string | null;
   detalleAlquileres: { periodo: string; direccion: string; participacionPct: number; monto: number }[];
   detalleGastos: { fecha: string; tipo: string; descripcion: string; proveedor: string | null; monto: number }[];
   detalleIngresos: { fecha: string; descripcion: string; participacionPct: number; monto: number }[];
