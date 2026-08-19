@@ -132,10 +132,9 @@ llave/
 │   └── api/                # Backend Fastify
 ├── packages/
 │   ├── ui/                 # Componentes compartidos (shadcn-based)
-│   ├── db/                 # Prisma schema + cliente
-│   ├── ai/                 # Wrappers de Claude (parsing + chat)
-│   ├── integrations/       # MP, Nosis, WhatsApp, Resend
+│   ├── shared/             # Lógica compartida front/back (permisos, períodos, auth)
 │   └── config/             # ESLint, TS, Tailwind shared configs
+├── scripts/                # Onboarding real, utilidades de operación
 ├── .github/workflows/
 ├── turbo.json
 ├── pnpm-workspace.yaml
@@ -143,6 +142,13 @@ llave/
 ├── README.md
 └── CLAUDE.md               # Este archivo
 ```
+
+> **Lo que se planeó y no se construyó así.** El plan original tenía `packages/db`,
+> `packages/ai` y `packages/integrations`. No existen: el schema de Prisma y su cliente viven en
+> **`apps/api/prisma/`**, y los wrappers de Claude y las integraciones están dentro de
+> `apps/api/src/`. Se aclara porque no es un detalle de prolijidad: quien busca el modelo de
+> datos en `packages/db` no lo encuentra y puede concluir que no existe — que es exactamente lo
+> que pasó al relevar T-21.
 
 ### Convenciones de naming
 
@@ -158,7 +164,7 @@ llave/
 ## 4. MODELO DE DATOS (Prisma schema)
 
 ```prisma
-// packages/db/prisma/schema.prisma
+// apps/api/prisma/schema.prisma
 
 generator client {
   provider = "prisma-client-js"
@@ -493,6 +499,13 @@ enum Recomendacion {
 
 ### 5.1. Carga de contrato con IA
 
+> ⚠️ **NO ESTÁ CONSTRUIDA** (verificado el 19/08/2026). No existe el endpoint `/contratos/parse`,
+> no está el SDK de Anthropic en ninguna dependencia, y `ANTHROPIC_*` no se lee en ningún lado de
+> `apps/api/src`. Los `packages/ai/prompts/parse-contract.ts` que se citan abajo tampoco existen.
+> Lo que hay hoy para cargar contratos es el **wizard manual** (`/contratos/nuevo`) y la
+> **importación de cartera** desde Excel/CSV, que es determinística y sin IA. Lo de abajo es el
+> diseño previsto, no lo implementado.
+
 **Endpoint:** `POST /api/contratos/parse`
 **Input:** archivo PDF (multipart)
 **Output:** JSON estructurado con campos del contrato
@@ -823,7 +836,7 @@ NEXT_PUBLIC_POSTHOG_HOST=...
 - `strict: true`. Sin `any` salvo justificado en comentario `// any-justified: <razón>`.
 - Preferir `unknown` y type guards sobre `any`.
 - Usar zod para validación de inputs externos (HTTP, archivos, env).
-- Tipos compartidos en `packages/db/types` o `packages/types`.
+- Tipos compartidos en `packages/shared/src` (lógica que usan los dos fronts y la API).
 
 ### React / Next
 - Server Components por default. `"use client"` solo cuando es necesario (interactividad real, hooks de browser).
