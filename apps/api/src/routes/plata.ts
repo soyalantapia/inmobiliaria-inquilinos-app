@@ -444,6 +444,11 @@ export async function plataRoutes(app: FastifyInstance) {
     //  3) La liquidación pasa a PAGADO SÓLO si la suma de conciliados llega al
     //     total; si es parcial, queda PARCIAL.
     let pagoOk;
+    // Se calcula adentro de la transacción y se usa DESPUÉS del commit, para el renglón
+    // del historial (T-29-N1). Se captura en una variable de afuera en vez de devolverlo
+    // junto al pago porque `pagoOk` ES el cuerpo de la respuesta del endpoint: agregarle
+    // un campo cambiaría el contrato de la API por un dato interno.
+    let cerroElPeriodo = false;
     try {
       pagoOk = await prisma.$transaction(async (tx) => {
         await tx.$queryRaw`SELECT id FROM liquidaciones WHERE id = ${pago.liquidacionId} FOR UPDATE`;
@@ -499,6 +504,7 @@ export async function plataRoutes(app: FastifyInstance) {
         if (upd.count === 0) return null;
         const cobrado = r2c(conciliadosPrev + Number(pago.monto));
         const cierra = total > 0 && cobrado >= total - 0.01;
+        cerroElPeriodo = cierra;
         await tx.liquidacion.updateMany({
           where: { id: pago.liquidacionId, inmobiliariaId: u.inmobiliariaId },
           data: cierra
@@ -521,20 +527,6 @@ export async function plataRoutes(app: FastifyInstance) {
         if (cierra) {
           await tx.pago.updateMany({ where: { id, tipo: 'PARCIAL' }, data: { tipo: 'TOTAL' } });
         }
-        // Rastro en el expediente del contrato: es LA cosa que pasa en la vida de un
-        // alquiler y el Historial no la mostraba. Distingue el pago que cierra el
-        // período del parcial, porque para leer el caso después no es lo mismo.
-        await registrarEventoContrato(tx, {
-          inmobiliariaId: u.inmobiliariaId,
-          contratoId: pago.contratoId,
-          tipo: 'PAGO_RECIBIDO',
-          titulo: cierra
-            ? `Pago recibido — período ${pago.periodo} saldado`
-            : `Pago parcial recibido — período ${pago.periodo}`,
-          detalle: `${Number(pago.monto)} · ${pago.metodo}`,
-          fecha: pago.fechaTransferencia,
-          autor: u.userId,
-        });
         return tx.pago.findUnique({ where: { id } });
       });
     } catch (e) {
@@ -557,6 +549,25 @@ export async function plataRoutes(app: FastifyInstance) {
       throw e;
     }
     if (!pagoOk) return reply.code(409).send({ message: 'El pago ya fue decidido' });
+    // Rastro en el expediente del contrato: es LA cosa que pasa en la vida de un
+    // alquiler y el Historial no la mostraba. Distingue el pago que cierra el
+    // período del parcial, porque para leer el caso después no es lo mismo.
+    //
+    // POST-COMMIT (T-29-N1). De los cinco call sites éste era el más caro: adentro de la
+    // transacción, un fallo al escribir el renglón del historial abortaba la conciliación
+    // ENTERA. El pago quedaba sin conciliar, la liquidación sin saldar, y el endpoint
+    // devolvía 200 igual.
+    await registrarEventoContrato(prisma, {
+      inmobiliariaId: u.inmobiliariaId,
+      contratoId: pagoOk.contratoId,
+      tipo: 'PAGO_RECIBIDO',
+      titulo: cerroElPeriodo
+        ? `Pago recibido — período ${pagoOk.periodo} saldado`
+        : `Pago parcial recibido — período ${pagoOk.periodo}`,
+      detalle: `${Number(pagoOk.monto)} · ${pagoOk.metodo}`,
+      fecha: pagoOk.fechaTransferencia,
+      autor: u.userId,
+    });
     await registrarEvento({
       inmobiliariaId: u.inmobiliariaId,
       tipo: 'PAGO_CONCILIADO',

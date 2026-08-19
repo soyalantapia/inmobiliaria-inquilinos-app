@@ -1,18 +1,30 @@
 /**
- * T-39 · El historial no puede fallar en silencio dentro de una transacción.
+ * T-39 → T-29-N1 · El historial se escribe DESPUÉS del commit, y recién por eso puede
+ * tragarse su propio error sin esconder nada.
  *
- * `registrarEventoContrato` se tragaba el error del `create` con este argumento: "un evento
- * del historial es informativo, no puede voltear la operación que lo generó". La premisa es
- * falsa acá, porque los 5 call sites lo llaman DENTRO de una `$transaction` pasándole el `tx`.
+ * LA HISTORIA, en dos pasos, porque el test cambió con ella:
  *
- * En PostgreSQL un statement que falla deja la transacción abortada: lo que venga después
- * revienta con 25P02 y el COMMIT se comporta como ROLLBACK. Así que el `catch` no salvaba la
- * conciliación del pago ni la renovación del contrato — se perdían igual. Lo único que
- * conseguía era que el handler devolviera 200 y el operador creyera que había quedado hecho.
+ * 1. `registrarEventoContrato` se tragaba el error del `create` con este argumento: "un
+ *    evento del historial es informativo, no puede voltear la operación que lo generó". La
+ *    premisa era falsa, porque los 5 call sites lo llamaban DENTRO de una `$transaction`
+ *    pasándole el `tx`. En PostgreSQL un statement que falla deja la transacción abortada:
+ *    lo que venga después revienta con 25P02 y el COMMIT se comporta como ROLLBACK. El
+ *    `catch` no salvaba la conciliación del pago ni la renovación — se perdían igual. Lo
+ *    único que conseguía era que el handler devolviera 200 y el operador creyera que había
+ *    quedado hecho. T-39 sacó el catch: la falla dejó de ser silenciosa.
  *
- * Test puro: el `tx` es un doble, no hay base de por medio.
+ * 2. T-29-N1 movió los cinco call sites a post-commit y angostó la firma a `PrismaClient`.
+ *    Ahí la promesa original pasó a ser cumplible, y el catch volvió — pero ahora sí es una
+ *    red y no una tapa.
+ *
+ * Por eso el test ya no exige que propague: exige que **no pueda volver a llamarse dentro de
+ * una transacción**, que es lo que hacía imposible la promesa. Esa garantía la sostiene el
+ * compilador; acá sólo se la fija para que nadie la afloje sin darse cuenta.
+ *
+ * Test puro: el cliente es un doble, no hay base de por medio.
  */
 import { describe, it, expect, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { registrarEventoContrato } from '../src/lib/evento-contrato.js';
 
 const DATOS = {
@@ -22,19 +34,41 @@ const DATOS = {
   titulo: 'Contrato renovado',
 };
 
-/** Un `tx` de mentira: sólo tiene lo que el helper toca. */
+/** Un cliente de mentira: sólo tiene lo que el helper toca. */
 function txFalso(create: (args: unknown) => Promise<unknown>) {
   return { eventoContrato: { create } } as never;
 }
 
-describe('T-39 — registrarEventoContrato dentro de una transacción', () => {
-  it('propaga el error en vez de tragárselo', async () => {
+describe('T-39 → T-29-N1 · registrarEventoContrato, ahora post-commit', () => {
+  it('un fallo del historial NO voltea la operación que lo generó', async () => {
     const boom = new Error('null value in column "titulo" violates not-null constraint');
-    const tx = txFalso(() => Promise.reject(boom));
 
-    // Lo que importa: que el caller SE ENTERE. Con el catch viejo esto resolvía sin ruido y
-    // el handler seguía como si nada, con la transacción ya condenada al rollback.
-    await expect(registrarEventoContrato(tx, DATOS)).rejects.toThrow(boom);
+    // Esta promesa ahora SÍ se puede cumplir, porque el helper corre post-commit (T-29-N1):
+    // la operación ya está guardada y lo único que se pierde es el renglón del timeline.
+    await expect(registrarEventoContrato(txFalso(() => Promise.reject(boom)), DATOS)).resolves.toBeUndefined();
+  });
+
+  it('la firma NO acepta un TransactionClient — ahí está la garantía', () => {
+    // ESTE es el invariante de verdad, y lo sostiene el compilador, no un chequeo en runtime.
+    //
+    // Mientras la firma aceptaba un `tx`, tragarse el error era mentira: en PostgreSQL una
+    // sentencia fallida deja la transacción abortada y el COMMIT se comporta como ROLLBACK,
+    // así que la conciliación del pago se perdía igual —en silencio y con un 200—. El
+    // `catch` no protegía la operación: escondía que se había perdido.
+    //
+    // Con el primer parámetro tipado `PrismaClient`, ningún call site puede volver a pasarle
+    // su `tx` sin que `tsc` lo rechace. Si alguien ensancha ese tipo, tiene que sacar el
+    // catch en el mismo movimiento — y este test se lo recuerda.
+    // Se mira la DECLARACIÓN del parámetro y el alias de tipo, no la palabra suelta: el
+    // docblock del helper explica todo esto en prosa y menciona `Prisma.TransactionClient`
+    // a propósito. Un `not.toMatch(/TransactionClient/)` a secas fallaba por el comentario
+    // que documenta el arreglo, que es justo lo que hay que conservar.
+    const fuente = readFileSync(new URL('../src/lib/evento-contrato.ts', import.meta.url), 'utf8');
+    const codigo = fuente.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+    expect(codigo).toMatch(/^\s*db: PrismaClient,\s*$/m);
+    expect(codigo).not.toMatch(/TransactionClient/);
+    expect(codigo).not.toMatch(/TxOrClient/);
   });
 
   it('en el camino feliz escribe una sola vez y con los datos que le pasaron', async () => {

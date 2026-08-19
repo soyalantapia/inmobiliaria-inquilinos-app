@@ -1302,21 +1302,6 @@ export async function coreRoutes(app: FastifyInstance) {
           cargadoAt: new Date(),
         },
       });
-      // Hito fundacional del expediente. Sin esto el Historial del contrato arrancaba en
-      // la nada: el primer renglón era un ajuste de canon meses después, y no había forma
-      // de ver de un vistazo cuándo se firmó ni quién lo cargó.
-      // Se registra también cuando nace BORRADOR: que quedó pendiente de aprobación es
-      // parte de su historia, y el evento de activación lo agrega después la aprobación.
-      await registrarEventoContrato(tx, {
-        inmobiliariaId: u.inmobiliariaId,
-        contratoId: contrato.id,
-        tipo: 'CREADO',
-        titulo: contratoPendiente
-          ? 'Contrato cargado — pendiente de aprobación'
-          : 'Contrato dado de alta',
-        detalle: `${d.moneda} ${d.monto} · del ${d.fechaInicio.toISOString().slice(0, 10)} al ${d.fechaFin.toISOString().slice(0, 10)}`,
-        autor: u.userId,
-      });
       // Persona: identidad reutilizable del tenant para la ficha histórica del inquilino
       // (agrupa contratos/inquilinos del mismo titular — multi-alquiler). Find-or-create por
       // DNI/email COMPARTIDO con la importación de cartera (lib/persona.ts): una sola
@@ -1434,6 +1419,24 @@ export async function coreRoutes(app: FastifyInstance) {
           );
         }
       }
+      // Hito fundacional del expediente. Sin esto el Historial del contrato arrancaba en
+      // la nada: el primer renglón era un ajuste de canon meses después, y no había forma
+      // de ver de un vistazo cuándo se firmó ni quién lo cargó.
+      // Se registra también cuando nace BORRADOR: que quedó pendiente de aprobación es
+      // parte de su historia, y el evento de activación lo agrega después la aprobación.
+      //
+      // POST-COMMIT (T-29-N1), junto con la auditoría y por el mismo motivo: adentro de la
+      // transacción un fallo al escribirlo la abortaba y se perdía el alta entera.
+      await registrarEventoContrato(prisma, {
+        inmobiliariaId: u.inmobiliariaId,
+        contratoId: contratoCreado.id,
+        tipo: 'CREADO',
+        titulo: contratoPendiente
+          ? 'Contrato cargado — pendiente de aprobación'
+          : 'Contrato dado de alta',
+        detalle: `${d.moneda} ${d.monto} · del ${d.fechaInicio.toISOString().slice(0, 10)} al ${d.fechaFin.toISOString().slice(0, 10)}`,
+        autor: u.userId,
+      });
       // Auditoría: crear un contrato ahora deja rastro en el timeline (antes solo
       // aparecían pagos). Best-effort. CARGA lo deja BORRADOR para aprobar; ADMIN/
       // OPERADOR lo activan directo — en ambos casos queda registrado el alta.
@@ -2303,22 +2306,28 @@ export async function coreRoutes(app: FastifyInstance) {
       // Rastro en el Historial del contrato. Ahora con su tipo propio (RENOVACION): antes
       // reusaba AJUSTE_APLICADO por falta de un valor en el enum, y en el timeline una
       // renovación —que extiende el plazo— se veía igual que un cambio de monto.
-      const finNuevaTxt = b.fechaFinNueva.toISOString().slice(0, 10);
       // Resolución del merge T-29 ↔ integración: se toma el helper y el tipo propio
       // `RENOVACION` que trae T-29, pero el monto sigue siendo `canonNuevo` y NO
       // `b.montoNuevo`, que es un fix que la rama de integración ya tenía y T-29 no.
       // La diferencia importa: `b.montoNuevo` es lo que pidió el body, `canonNuevo` es
       // lo que la base realmente guardó. En un SOLO_EXPENSAS no coinciden, y el
       // historial mostraría un canon que nunca existió.
-      await registrarEventoContrato(tx, {
-        inmobiliariaId: u.inmobiliariaId,
-        contratoId: id,
-        tipo: 'RENOVACION',
-        titulo: `Renovación: plazo hasta ${finNuevaTxt} · canon ${montoAnterior} → ${canonNuevo} ${contrato.moneda}`,
-        detalle: b.motivo ?? null,
-        autor: u.userId,
-      });
       return { renovacionId: renov.id, liquidacionesNuevas: nuevas };
+    });
+    // POST-COMMIT (T-29-N1). Esta llamada es el ejemplo que motivó mover las cinco: con la
+    // migración de `RENOVACION` sin aplicar, el insert fallaba por un valor de enum que la
+    // base no conocía, la transacción quedaba abortada y la renovación entera se perdía —
+    // con el endpoint respondiendo 200. Acá afuera, lo peor que pasa es un hueco en el
+    // timeline.
+    await registrarEventoContrato(prisma, {
+      inmobiliariaId: u.inmobiliariaId,
+      contratoId: id,
+      tipo: 'RENOVACION',
+      // `b.fechaFinNueva` es el mismo dato que usaba `finNuevaTxt` adentro de la
+      // transacción; se recomputa acá porque aquella era local al closure.
+      titulo: `Renovación: plazo hasta ${b.fechaFinNueva.toISOString().slice(0, 10)} · canon ${montoAnterior} → ${canonNuevo} ${contrato.moneda}`,
+      detalle: b.motivo ?? null,
+      autor: u.userId,
     });
     // TERCER camino que cambia el canon. T-16 arregló el aviso en /ajustar y en
     // PATCH /monto, y la renovación se pasó por alto: renovar con un canon nuevo ES un
