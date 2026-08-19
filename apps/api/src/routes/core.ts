@@ -1786,7 +1786,7 @@ export async function coreRoutes(app: FastifyInstance) {
     if (contrato.tipoContrato === 'SOLO_EXPENSAS') {
       return reply.code(409).send({
         message:
-          'Este contrato es de solo expensas: no tiene alquiler que ajustar. Si querés cambiar el monto de las expensas, editá el contrato.',
+          'Este contrato es de solo expensas: no tiene alquiler que ajustar. El monto de las expensas hoy sólo se define al cargar el contrato.',
         codigo: 'SOLO_EXPENSAS_SIN_CANON',
       });
     }
@@ -2998,7 +2998,7 @@ export async function coreRoutes(app: FastifyInstance) {
     if (contrato.tipoContrato === 'SOLO_EXPENSAS') {
       return reply.code(409).send({
         message:
-          'Este contrato es de solo expensas: no tiene alquiler que corregir. Si querés cambiar el monto de las expensas, editá el contrato.',
+          'Este contrato es de solo expensas: no tiene alquiler que corregir. El monto de las expensas hoy sólo se define al cargar el contrato.',
         codigo: 'SOLO_EXPENSAS_SIN_CANON',
       });
     }

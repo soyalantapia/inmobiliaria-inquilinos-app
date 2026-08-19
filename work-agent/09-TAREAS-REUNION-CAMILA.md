@@ -815,6 +815,51 @@ excluye los `*.test.ts`. **Al cerrar T-32 hay que borrar ese `exclude`.**
 ## T-21-N1 · El devengo no sabe qué es un "solo expensas" (💰)
 
 **Experto:** BE · **Prioridad:** 🔴 · **Depende de:** nada
+**Estado: ✅ HECHA** — commit `77babfe`, rama `feat/T-21-N1-devengo-solo-expensas`.
+**Incluye T-21-N2**, que era la misma puerta por el otro lado.
+
+Se cerró por los dos extremos. **El devengo:** `ContratoParaLiquidar` ahora exige
+`tipoContrato` —requerido a propósito, mismo criterio que `devengarDesde`, para que el
+compilador encuentre a cualquier caller que se lo saltee— y `computarLiquidacionesContrato`
+pasa el canon del período por `montoAlquilerSegunTipo`, **después** de resolver la vigencia
+(si el corte fuera antes, un ajuste con vigencia futura se colaba igual). Los dos barridos que
+lo alimentan —el cron y el botón "Devengar" del panel— ahora traen el campo en su select.
+
+**Las puertas que ensuciaban el canon:** `/ajustar` y `PATCH /monto` rechazan con 409;
+`/renovar` **no** rechaza —renovar el plazo es legítimo— pero fuerza el canon a 0 (el zod pasó
+de `positive()` a `nonnegative()`); y el alta cierra el caso inverso que faltaba (T-21-N2:
+`SOLO_EXPENSAS` con `monto > 0`, que antes pasaba las dos validaciones y se persistía tal cual).
+El panel además saca esos contratos de la lista del **ajuste masivo**, que era el vector
+principal: barría todos los activos y les escribía canon a todos.
+
+**Verificación.** `tsc` 0 en `apps/api` y `apps/inmobiliaria`; 22 tests puros de liquidaciones
+en verde con 4 casos nuevos, **verificados en rojo** revirtiendo el fix; 104/105 del resto de
+los tests puros (el que falla hace `spawnSync` a un `psql` con ruta de macOS — ver
+T-21-N1-N2); y comprobado en el navegador que el consorcio de solo expensas desapareció de la
+lista del ajuste masivo (5 contratos en vez de 6).
+
+**⚠️ ESTO ARREGLA DE ACÁ EN ADELANTE.** Si en producción ya hay un `SOLO_EXPENSAS` con canon
+sucio, sus liquidaciones viejas siguen mal y el fix no las toca. Antes de deployar hay que
+correr la consulta de diagnóstico (solo lectura):
+`work-agent/.tareas/T-21-N1/diagnostico-datos.sql`. Si devuelve filas, hace falta decidir qué
+se hace con lo ya facturado — y si además se cobró, no alcanza con corregir la liquidación.
+
+---
+
+## T-21-N1-N2 · Un test "puro" que sólo corre en la Mac de una persona
+
+**Experto:** BE · **Prioridad:** 🟢 · **Depende de:** nada
+
+`apps/api/test/backfill-mascotas-propiedad.test.ts` no importa `seedBase`, así que parece de los
+puros que sí se pueden correr — pero hace `spawnSync` a
+`/opt/homebrew/opt/postgresql@18/bin/psql`, una ruta hardcodeada de Homebrew en macOS. En
+Windows (y en cualquier Linux, incluida la CI) revienta con `ENOENT`.
+
+O se resuelve el binario del entorno (`psql` del PATH, o una env var), o se lo marca como test
+de integración para que no ensucie el resultado de la tanda pura. Hoy contamina: obliga a saber
+de memoria que "ése falla siempre" para poder leer el output.
+
+---
 
 **Cómo apareció.** Verificando T-21. No es de la PWA, así que no se tocó.
 
@@ -846,9 +891,38 @@ revierte.
 
 ---
 
+## T-21-N1-N1 · No hay forma de cambiar las expensas de un contrato ya cargado
+
+**Experto:** FS · **Prioridad:** 🟠 · **Depende de:** nada
+
+**Cómo apareció.** Haciendo T-21-N1 escribí un mensaje de error que decía *"si querés cambiar el
+monto de las expensas, editá el contrato"* — y al ir a verificar que esa puerta existiera,
+resultó que no existe.
+
+**El problema.** `montoExpensas` se puede setear **una sola vez**: en el alta
+(`core.ts:988`, dentro del zod de `POST /contratos`). No hay ningún endpoint que lo modifique
+después. Grep de `montoExpensas` sobre `apps/api/src/routes/` devuelve exactamente esa línea como
+única escritura.
+
+Las expensas **suben todos los meses**. O sea: hoy, para corregir la expensa de un contrato, la
+única salida es rehacer el contrato. Para un contrato de solo expensas es peor todavía, porque
+es el **único** monto que tiene: si está mal, no hay nada que ajustar.
+
+Mientras tanto, los mensajes de los 409 nuevos de T-21-N1 dicen la verdad ("hoy sólo se define
+al cargar el contrato") en vez de mandar a una pantalla que no abre.
+
+**Criterio de aceptación.** Se puede cambiar `montoExpensas` de un contrato activo desde el
+panel; queda registrado quién y cuándo (igual que un ajuste de canon); y las liquidaciones
+futuras impagas se recomputan, sin tocar las ya pagadas o parciales.
+
+---
+
 ## T-21-N2 · El alta deja crear un "solo expensas" con alquiler > 0
 
 **Experto:** BE · **Prioridad:** 🟠 · **Depende de:** nada
+**Estado: ✅ HECHA** — junto con T-21-N1, commit `77babfe`. `core.ts` ahora rechaza con 400 el
+caso inverso. Se rechaza en vez de normalizar a 0 a propósito: si el que carga puso un monto, o
+se equivocó de tipo o se equivocó de monto, y adivinar cuál es peor que preguntar.
 
 **El problema.** La validación del alta es asimétrica. `core.ts:1029` rechaza `monto === 0`
 cuando el tipo **no** es SOLO_EXPENSAS, pero **no existe** el chequeo inverso: un
