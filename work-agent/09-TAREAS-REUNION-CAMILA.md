@@ -2785,6 +2785,7 @@ hace nadie, hay que sacarla — o construir el cálculo de tramo, que ya tiene e
 
 ### T-17-N1 · Destinatario configurable por tipo de aviso
 **Experto:** BE + PROD · **Prioridad:** 🟠 · **Detectada en:** T-17 (Fase 7)
+**Estado: ✅ HECHA** — commit `de64f5b`. El dueño eligió **casilla por tipo de aviso**. Modelo `DestinatarioAviso` + enum `TipoAvisoInmo`, endpoints sólo-ADMIN y card en Mi Inmobiliaria. **La ausencia de fila = usá `Inmobiliaria.email`**: la tabla nace vacía, así que hasta que alguien configure algo no cambia nada, y vaciar el campo BORRA la fila en vez de guardar `''`. El enum arranca con **un solo valor** a propósito: `RECLAMO_NUEVO` es hoy el único aviso por mail a la inmobiliaria, y listar tipos que no mandan nada sería ofrecer una configuración vacía — el mismo patrón que venimos sacando. **Migración sin aplicar:** `20260819180000_destinatario_por_aviso`, va ANTES del código. 6 tests puros verificados en rojo; 303 puros en verde.
 
 Hoy **todos** los avisos a la inmobiliaria van a `Inmobiliaria.email`, una sola casilla. Camila
 administra 220 propiedades: *"me va a llegar un mail por cada reclamo… y todos van a mi misma
