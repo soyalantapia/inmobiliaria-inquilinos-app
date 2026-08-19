@@ -247,6 +247,11 @@ seguir mostrando la calle**.
 ## T-07 · Completar el expediente del contrato
 
 **Experto:** FS · **Prioridad:** 🟠 · **Depende de:** nada
+**Estado: ✅ HECHA** — commit `04ea61e`, rama `feat/reunion-camila-0308`.
+Al ejecutarla se confirmó que **garantes y documentos ya andaban** (su queja era del 03/08 y eso
+se resolvió después) y apareció el hueco real: **el Historial mentía por omisión**. Se cerró eso
++ servicios + link a la persona. Quedó afuera a propósito la pestaña Comunicaciones (ver T-17 /
+T-18) y se abrió **T-29**.
 
 **Qué pidió Camila.** `[49:52]` *"No cargó nada de los garantes, no tengo documentos, no tengo
 servicios, no tengo persona… debería dejar en la parte de expediente."*
@@ -995,6 +1000,37 @@ como ya se hizo con `computarLiquidacionesContrato`.
 
 **Criterio de aceptación.** Los cinco endpoints tienen test, y la aritmética nueva tiene test
 puro corrible sin base.
+
+---
+
+---
+
+## T-29 · Los eventos de contrato que nunca se escriben
+
+**Experto:** BE + PROD · **Prioridad:** 🟡 · **Depende de:** T-07 (hecha)
+**Origen:** detectada al ejecutar T-07, no salió de la reunión.
+
+**Estado verificado.** `TipoEventoContrato` tiene 8 valores: `CREADO`, `AJUSTE_APLICADO`,
+`PAGO_RECIBIDO`, `PAGO_VENCIDO`, `RECLAMO_CREADO`, `COMUNICACION_ENVIADA`, `GARANTE_RENOVADO`,
+`INTENCION_RENOVACION`. **Sólo se escribe uno**: `AJUSTE_APLICADO`, desde `core.ts:1793`
+(renovación, reusando el valor por no haber uno propio) y `core.ts:2846` (ajuste de monto).
+
+Ahora que el Historial se ve (T-07), el hueco quedó a la vista: el timeline de un contrato
+muestra los ajustes y **nada más**. No aparece cuándo se firmó, cuándo se cobró, cuándo venció,
+ni cuándo se abrió un reclamo — que es justamente lo que hace útil un expediente.
+
+**Qué hay que hacer.**
+1. Decidir con PROD **qué eventos merecen estar en el timeline del contrato**. Ojo: no es lo
+   mismo que la auditoría (`EventoAuditoria`, que registra quién hizo qué en el sistema). Éste
+   es el expediente del contrato, para mirar de un vistazo la vida de ese alquiler.
+2. Escribirlos donde ya ocurren los hechos: alta del contrato, conciliación de un pago,
+   vencimiento (en el barrido del cron), alta de reclamo, renovación (y agregarle su propio
+   valor al enum en vez de reusar `AJUSTE_APLICADO`).
+3. Cuidar el volumen: un evento por pago en un contrato de 36 meses son 36 filas. Está bien,
+   pero hay que confirmar que el timeline pagine o acote.
+
+**Criterio de aceptación.** El Historial de un contrato con vida real (firma, pagos, un ajuste,
+un reclamo) cuenta esa historia sin huecos.
 
 ---
 
