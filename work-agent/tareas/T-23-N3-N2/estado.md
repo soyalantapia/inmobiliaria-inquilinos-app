@@ -77,3 +77,54 @@ de paso romper el carry-over.
 Lectura línea por línea de los tres bloques (`plata.ts:1776-1975`) más un relevamiento
 adversarial en paralelo con tres lentes (los filtros, la semántica del período, y el riesgo de
 poner un piso). Ningún cambio de código, así que no hay `tsc` ni tests que reportar.
+
+---
+
+## ⚠️ ADDENDUM — el relevamiento adversarial encontró DOS bugs de plata reales
+
+La tarea estaba mal diagnosticada, pero al trazar los tres descuentos aparecieron dos agujeros
+que **sí existen**, verificados por mí leyendo el código. Arreglados en `704f37f`.
+
+### 1. 🔴 Ingresos extra sin tope GLOBAL (`plata.ts`)
+
+Sólo tenía el cap por dueño. Los otros dos descuentos sí tenían `restanteGlobal`; el espejo
+nunca se aplicó acá.
+
+**El caso:** ingreso de $100 en una propiedad de A(50%) y B(50%). A rinde → $50. Se re-arma la
+participación, B pasa a 100%, rinde → $100. **$150 acreditados sobre $100 que entraron.** Es
+plata que sale de la caja de la inmobiliaria. Y el movimiento queda marcado como cubierto
+(50+100 ≥ 100), así que el caso **se cierra solo** y no vuelve a aparecer para auditarlo.
+
+### 2. 🔴 Reclamos sin filtro de moneda (`plata.ts`)
+
+Los otros dos filtran `moneda: monedaRendicion`, con el comentario *"un gasto en pesos no puede
+restarse del neto de una rendición en dólares"*. `Reclamo` no tiene columna de moneda
+—`costoTrabajo` es un Decimal pelado— y la query los trae **por propiedad y sin piso de fecha**,
+así que un reclamo de un contrato anterior en otra moneda entraba igual.
+
+En un sentido: restaba US$350.000 de un neto en dólares → el dueño no podía cobrar su rendición,
+con un 409 de neto negativo que **encima lo manda a revisar gastos de caja que no son el
+problema**. En el otro: un arreglo de US$800 se restaba como $800 y la inmobiliaria se lo comía.
+
+Ahora la moneda sale del contrato, que es de donde la toma la imputación al inquilino.
+
+### La raíz, y lo que se hizo con ella
+
+Los dos bugs existen **porque los tres bloques hacían la misma cuenta copiada y se fueron
+separando**: a uno le faltó un tope, a otro un filtro. La aritmética de los dos topes vive ahora
+en `lib/parte-rendible.ts`, con **10 tests puros** verificados en rojo sacándole el tope global,
+y los tres call sites la usan. Los tests que cubrían este invariante eran de integración y pegan
+a la Postgres de producción; éstos corren siempre.
+
+**Verificado:** `tsc` 0, **245 tests puros en verde** (25 archivos) después del merge.
+
+**Sin verificar:** el comportamiento end-to-end de la rendición. Los tests que lo cubren
+(`rendicion-multiowner`, `rendicion-reclamo-multiduenio`) necesitan la DB. El refactor no cambia
+la fórmula —es la misma cuenta, en un solo lugar— pero eso está afirmado por lectura y typecheck,
+no por ejecución.
+
+### Datos ya existentes
+
+No escribí diagnóstico SQL para esto. Si algún ingreso extra se acreditó de más en producción,
+el rastro está en `IngresoRendido`: una consulta que agrupe por `refId` y compare la suma contra
+`MovimientoCaja.monto` los encontraría. Queda para cuando se corran las migraciones pendientes.
