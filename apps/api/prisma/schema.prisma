@@ -871,6 +871,23 @@ model CodigoOtpUsuario {
   @@map("codigos_otp_usuario")
 }
 
+/// OTP de login del PORTAL DEL PROPIETARIO. Tercer gemelo de CodigoOtp, keyed a
+/// `propietarioId`: el propietario no tiene contraseña, entra con email + código.
+/// Se separa por modelo (y no una tabla genérica con un `tipo`) para conservar la FK
+/// real: un código huérfano que apunte a un id de otra tabla no es representable.
+model CodigoOtpPropietario {
+  id            String      @id @default(cuid())
+  propietarioId String
+  propietario   Propietario @relation(fields: [propietarioId], references: [id])
+  codeHash      String
+  expiresAt     DateTime
+  usedAt        DateTime?
+  createdAt     DateTime    @default(now())
+
+  @@index([propietarioId])
+  @@map("codigos_otp_propietario")
+}
+
 model ReportePiloto {
   id             String            @id @default(cuid())
   inmobiliariaId String
@@ -1140,6 +1157,7 @@ model Propietario {
   participaciones          ParticipacionPropietario[]
   rendiciones              Rendicion[]
   contratosCobranzaDirecta Contrato[]                 @relation("CobranzaDirecta")
+  codigosOtp               CodigoOtpPropietario[]
 
   @@index([inmobiliariaId])
   @@map("propietarios")

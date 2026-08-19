@@ -10,6 +10,7 @@ import { loadEnv, type Env } from './env.js';
 import { healthRoutes } from './routes/health.js';
 import { authRoutes } from './routes/auth.js';
 import { coreRoutes } from './routes/core.js';
+import { portalPropietarioRoutes } from './routes/portal-propietario.js';
 import { plataRoutes } from './routes/plata.js';
 import { operacionRoutes } from './routes/operacion.js';
 import { anunciosRoutes } from './routes/anuncios.js';
@@ -246,6 +247,7 @@ export async function buildApp(envOverrides: Partial<Record<string, string>> = {
   await app.register(importacionesCarteraRoutes);
   await app.register(propiedadReclamosRoutes);
   await app.register(contratoGananciaRoutes);
+  await app.register(portalPropietarioRoutes);
   await app.register(propiedadGananciasRoutes);
   await app.register(propiedadSaludPagoRoutes);
   await app.register(propiedadSegurosRoutes);

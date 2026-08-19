@@ -3,6 +3,7 @@ import {
   JwtPayloadSchema,
   JwtPersonaSchema,
   JwtProfesionalSchema,
+  JwtPropietarioSchema,
   rolTienePermiso,
   type Capacidad,
   type JwtPayload,
@@ -162,6 +163,46 @@ export async function requirePersona(
     return null;
   }
   return parsed.data;
+}
+
+/**
+ * Exige un token de PROPIETARIO (portal del propietario, T-23) y revalida contra la DB que
+ * la fila siga existiendo.
+ *
+ * La revalidación no es paranoia: el JWT dura lo que dura, y si al propietario lo borran de
+ * la cartera su token seguiría abriendo la puerta hasta que expire. Devolvemos el registro
+ * para que el endpoint no lo vuelva a buscar.
+ *
+ * Valida contra `JwtPropietarioSchema` y NO contra `JwtPayloadSchema` —que excluye este
+ * kind— así un token de panel o de inquilino acá da 403, y este token en los endpoints
+ * normales da 401 en `requireAuth`. Separación estricta, igual que `persona`.
+ */
+export async function requirePropietario(
+  request: FastifyRequest,
+  reply: FastifyReply,
+): Promise<{ propietarioId: string; inmobiliariaId: string } | null> {
+  try {
+    await request.jwtVerify();
+  } catch {
+    await reply.code(401).send({ message: 'No autenticado' });
+    return null;
+  }
+  const parsed = JwtPropietarioSchema.safeParse(request.user);
+  if (!parsed.success) {
+    await reply.code(403).send({ message: 'Sesión inválida para esta acción' });
+    return null;
+  }
+  // El par (id, inmobiliariaId) se verifica JUNTO: un token con un propietarioId válido
+  // pero el inmobiliariaId de otro tenant no matchea y se cae acá.
+  const fila = await prisma.propietario.findFirst({
+    where: { id: parsed.data.propietarioId, inmobiliariaId: parsed.data.inmobiliariaId },
+    select: { id: true, inmobiliariaId: true },
+  });
+  if (!fila) {
+    await reply.code(401).send({ message: 'Sesión vencida' });
+    return null;
+  }
+  return { propietarioId: fila.id, inmobiliariaId: fila.inmobiliariaId };
 }
 
 type Permiso = 'VER' | 'PAGAR' | 'COMPLETO';
