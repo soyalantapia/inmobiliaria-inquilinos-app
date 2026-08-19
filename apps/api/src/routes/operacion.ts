@@ -3,6 +3,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../db.js';
+import { registrarEventoContrato } from '../lib/evento-contrato.js';
 import { requireInquilino, requireUsuario } from '../auth/guards.js';
 import { verificarPinUsuario } from '../auth/pin.js';
 import { registrarEvento } from '../lib/auditoria.js';
@@ -317,6 +318,16 @@ export async function operacionRoutes(app: FastifyInstance) {
           autor,
           contenido: `Cargado por la inmobiliaria · recibido por ${canalTxt[body.data.canal]}`,
         },
+      });
+      // El reclamo también es parte de la vida del CONTRATO, no sólo del ticket: el
+      // expediente tiene que dejar ver que en tal mes hubo un problema en esa unidad.
+      await registrarEventoContrato(tx, {
+        inmobiliariaId: u.inmobiliariaId,
+        contratoId: contrato.id,
+        tipo: 'RECLAMO_CREADO',
+        titulo: `Reclamo: ${body.data.titulo}`,
+        detalle: `${body.data.categoria} · urgencia ${body.data.urgencia}`,
+        autor: u.userId,
       });
       return r;
     });
@@ -765,6 +776,16 @@ export async function operacionRoutes(app: FastifyInstance) {
       });
       await tx.reclamoEvento.create({
         data: { inmobiliariaId: inq.inmobiliariaId, reclamoId: r.id, tipo: 'CREADO', autor, contenido: null },
+      });
+      // Mismo criterio que el alta desde el panel: al expediente del contrato le importa
+      // que hubo un reclamo, lo haya abierto la inmobiliaria o el inquilino.
+      await registrarEventoContrato(tx, {
+        inmobiliariaId: inq.inmobiliariaId,
+        contratoId: contrato.id,
+        tipo: 'RECLAMO_CREADO',
+        titulo: `Reclamo del inquilino: ${body.data.titulo}`,
+        detalle: `${body.data.categoria} · urgencia ${body.data.urgencia}`,
+        autor,
       });
       return r;
     });

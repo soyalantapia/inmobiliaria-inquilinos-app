@@ -7,6 +7,7 @@ import { exigirContratoActivo, requireContratoAcceso, requireInquilino, requireU
 import { verificarPinUsuario } from '../auth/pin.js';
 import { devengarSiSigueActivo, devengarTodosLosTenants, generarLiquidacionesContrato, marcarLiquidacionesVencidas } from '../lib/liquidaciones.js';
 import { conSaldo, montoPagadoPorLiquidacion } from '../lib/saldos.js';
+import { registrarEventoContrato } from '../lib/evento-contrato.js';
 import { calcularMora, resolverEsquemaMora } from '../lib/punitorios.js';
 import { registrarEvento } from '../lib/auditoria.js';
 import { aplicarDepositoADeuda } from '../lib/aplicar-deposito.js';
@@ -455,6 +456,20 @@ export async function plataRoutes(app: FastifyInstance) {
         if (cierra) {
           await tx.pago.updateMany({ where: { id, tipo: 'PARCIAL' }, data: { tipo: 'TOTAL' } });
         }
+        // Rastro en el expediente del contrato: es LA cosa que pasa en la vida de un
+        // alquiler y el Historial no la mostraba. Distingue el pago que cierra el
+        // período del parcial, porque para leer el caso después no es lo mismo.
+        await registrarEventoContrato(tx, {
+          inmobiliariaId: u.inmobiliariaId,
+          contratoId: pago.contratoId,
+          tipo: 'PAGO_RECIBIDO',
+          titulo: cierra
+            ? `Pago recibido — período ${pago.periodo} saldado`
+            : `Pago parcial recibido — período ${pago.periodo}`,
+          detalle: `${Number(pago.monto)} · ${pago.metodo}`,
+          fecha: pago.fechaTransferencia,
+          autor: u.userId,
+        });
         return tx.pago.findUnique({ where: { id } });
       });
     } catch (e) {
