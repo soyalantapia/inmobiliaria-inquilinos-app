@@ -445,13 +445,19 @@ export function validarFilaMoroso(
       meses: 0,
     };
   }
-  // La ventana tiene que estar CERRADA. Si el último mes adeudado es el actual o
-  // uno futuro, esto no es un moroso histórico: es el inquilino que vive ahí, y
-  // va por el alta normal (que sí ocupa la propiedad y devenga mes a mes).
-  if (d.debeHasta >= periodoHoy) {
+  // El mes en curso ENTRA; lo que no entra es un mes futuro.
+  //
+  // Antes esto exigía la ventana cerrada (`>= periodoHoy`) y dejaba afuera el caso
+  // más frecuente de una migración: el que dejó de pagar en julio, se fue en
+  // agosto y la propiedad ya está realquilada. Por el alta normal tampoco entraba
+  // —rechaza propiedad ocupada— así que la deuda más fresca, que es justo la que
+  // se está cobrando, no tenía ninguna puerta.
+  //
+  // Cobrar un mes futuro sí sería inventar plata, y eso se sigue rechazando.
+  if (d.debeHasta > periodoHoy) {
     return {
       estado: 'ERROR',
-      motivo: 'La deuda histórica es de meses ya terminados. Si el inquilino sigue viviendo ahí, cargalo como contrato normal',
+      motivo: 'La deuda no puede llegar a un mes que todavía no pasó. Si el inquilino sigue viviendo ahí, cargalo como contrato normal',
       propiedadId,
       meses: 0,
     };
