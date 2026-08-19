@@ -398,6 +398,7 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
         totalGastos: true,
         totalIngresos: true,
         montoNeto: true,
+        moneda: true,
         rendidoAt: true,
         metodo: true,
       },
@@ -412,6 +413,9 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
       gastos: dec(r.totalGastos),
       otrosIngresos: dec(r.totalIngresos),
       teDepositamos: dec(r.montoNeto),
+      // Sin esto el front formatea todo como pesos: una rendición en dólares se le mostraba
+      // al dueño como "$ 237.960" en vez de "US$ 237.960".
+      moneda: r.moneda,
       rendidoAt: r.rendidoAt.toISOString(),
       metodo: r.metodo,
     }));
@@ -435,6 +439,7 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
         totalGastos: true,
         totalIngresos: true,
         montoNeto: true,
+        moneda: true,
         rendidoAt: true,
         metodo: true,
         // `notas` NO se expone. En el panel el campo se rotula sólo "Notas (opcional)" y el
@@ -468,6 +473,7 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
       gastos: dec(r.totalGastos),
       otrosIngresos: dec(r.totalIngresos),
       teDepositamos: dec(r.montoNeto),
+      moneda: r.moneda,
       rendidoAt: r.rendidoAt.toISOString(),
       metodo: r.metodo,
       detalleAlquileres: r.alquileresRendidos.map((a) => ({

@@ -108,6 +108,10 @@ export function FilaRendicion({
   // alquileres de ese período, y traerlos para las 12 rendiciones que nadie va a abrir es
   // pagar una respuesta enorme para mostrar cinco números. Es la razón por la que el endpoint
   // está separado (ver el comentario de /portal/rendiciones en el backend).
+  // Toda la plata de esta tarjeta se formatea con la moneda de ESTA rendición. Antes se usaba
+  // el default (ARS) en los nueve montos: una rendición en dólares se le mostraba al dueño con
+  // signo de pesos, que es la misma enfermedad que ya se corrigió en el cierre de caja.
+  const plata = (x: number) => money(x, r.moneda);
   const detalle = useQuery({
     queryKey: ['portal-rendicion', r.id],
     queryFn: () => apiFetch<RendicionDetalle>(`/portal/rendiciones/${r.id}`),
@@ -129,19 +133,19 @@ export function FilaRendicion({
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <span className="text-lg font-semibold tabular-nums">{money(r.teDepositamos)}</span>
+          <span className="text-lg font-semibold tabular-nums">{plata(r.teDepositamos)}</span>
           <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${abierto ? 'rotate-180' : ''}`} />
         </div>
       </button>
       {abierto && (
         <div className="space-y-1 border-t bg-muted/20 p-4 text-sm">
-          <Linea label="Se cobró de alquiler" valor={money(r.cobrado)} />
-          <Linea label={`Comisión de la inmobiliaria (${r.comisionPct}%)`} valor={`− ${money(r.comision)}`} />
-          {r.gastos > 0 && <Linea label="Gastos de tus unidades" valor={`− ${money(r.gastos)}`} />}
-          {r.otrosIngresos > 0 && <Linea label="Otros ingresos" valor={`+ ${money(r.otrosIngresos)}`} />}
+          <Linea label="Se cobró de alquiler" valor={plata(r.cobrado)} />
+          <Linea label={`Comisión de la inmobiliaria (${r.comisionPct}%)`} valor={`− ${plata(r.comision)}`} />
+          {r.gastos > 0 && <Linea label="Gastos de tus unidades" valor={`− ${plata(r.gastos)}`} />}
+          {r.otrosIngresos > 0 && <Linea label="Otros ingresos" valor={`+ ${plata(r.otrosIngresos)}`} />}
           <div className="mt-2 flex items-center justify-between border-t pt-2 font-semibold">
             <span>Te depositamos</span>
-            <span className="tabular-nums">{money(r.teDepositamos)}</span>
+            <span className="tabular-nums">{plata(r.teDepositamos)}</span>
           </div>
 
           {/* El desglose. Los cinco números de arriba contestan "cuánto", esto contesta "por
@@ -169,7 +173,7 @@ export function FilaRendicion({
                     a.participacionPct < 100
                       ? `${periodoLargo(a.periodo)} · te toca el ${a.participacionPct}%`
                       : periodoLargo(a.periodo),
-                  monto: money(a.monto),
+                  monto: plata(a.monto),
                 }))}
                 vacio="Esta rendición no tiene alquileres imputados."
               />
@@ -181,7 +185,7 @@ export function FilaRendicion({
                     clave: `${g.fecha}-${i}`,
                     principal: g.descripcion,
                     secundario: [fecha(g.fecha), g.tipo.toLowerCase(), g.proveedor].filter(Boolean).join(' · '),
-                    monto: `− ${money(g.monto)}`,
+                    monto: `− ${plata(g.monto)}`,
                   }))}
                   vacio=""
                 />
@@ -197,7 +201,7 @@ export function FilaRendicion({
                       x.participacionPct < 100
                         ? `${fecha(x.fecha)} · te toca el ${x.participacionPct}%`
                         : fecha(x.fecha),
-                    monto: `+ ${money(x.monto)}`,
+                    monto: `+ ${plata(x.monto)}`,
                   }))}
                   vacio=""
                 />
@@ -211,7 +215,7 @@ export function FilaRendicion({
                   propietario={propietario}
                   inmobiliaria={inmobiliaria}
                   periodoLargo={periodoLargo(r.periodo)}
-                  money={(n) => money(n)}
+                  money={plata}
                   fecha={fecha}
                 />
               </div>

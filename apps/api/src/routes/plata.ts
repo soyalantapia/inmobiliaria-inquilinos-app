@@ -2330,6 +2330,10 @@ export async function plataRoutes(app: FastifyInstance) {
               totalGastos,
               totalIngresos,
               montoNeto,
+              // La moneda que este mismo handler ya calculó y usó para los gastos, los ingresos
+              // y los movimientos de caja. Sin guardarla, aguas abajo hay que adivinarla — y el
+              // portal del propietario adivinaba pesos siempre.
+              moneda: monedaRendicion,
               metodo: body.data.metodo,
               notas: body.data.notas,
             },
