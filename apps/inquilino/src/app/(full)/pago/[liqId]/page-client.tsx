@@ -217,7 +217,14 @@ function DetallePagoView({
   // habilitaba el botón de descargar el recibo —un PDF que dice "tiene validez legal como
   // prueba de pago"— sobre plata que `POST /pagos/:id/rechazar` todavía puede tirar atrás.
   // Con esto cae en `pendienteValidacion`, que ya tiene el copy y el CTA correctos.
-  const cubiertoSinValidar = apiEnabled && det.hayEnRevision && det.faltaPagar === 0;
+  // Vale para los DOS modos. La primera versión llevaba `apiEnabled &&`, así que el build demo
+  // —el de GitHub Pages, el que ve un prospecto y el que usamos para mostrar el producto—
+  // seguía con el badge verde "Pagado" y el botón de recibo sobre un pago recién informado,
+  // que es exactamente la confusión que este arreglo vino a sacar. En demo la señal es
+  // `pendienteValidacion` (store local); en prod, `det.hayEnRevision`.
+  const cubiertoSinValidar = apiEnabled
+    ? det.hayEnRevision && det.faltaPagar === 0
+    : pendienteValidacion && saldo === 0;
   const pagadoEnParciales = !pagado && tieneParciales && saldo === 0 && !cubiertoSinValidar;
 
   return (

@@ -2004,10 +2004,16 @@ export async function coreRoutes(app: FastifyInstance) {
     // contrato SOLO_EXPENSAS eso le factura alquiler a quien sólo debe expensas —y la
     // comisión sale de esa base—. Es el residuo que dejó T-20, que cerró el cron y no esto.
     if (contrato.tipoContrato === 'SOLO_EXPENSAS') {
+      // OJO con el texto: la primera versión decía "las expensas se editan desde los datos del
+      // contrato". Es MENTIRA — ningún endpoint escribe `montoExpensas` fuera del alta (los
+      // únicos PATCH de contrato son mora, monto, modo-cobranza, contacto y garantes). Mandar
+      // al operador a buscar una pantalla que no existe es peor que decirle que no se puede.
       return reply.code(409).send({
+        codigo: 'CONTRATO_SIN_CANON',
         message:
           'Este contrato no cobra alquiler, sólo expensas: no hay canon para ajustar. ' +
-          'Si lo que cambió es el valor de las expensas, se edita desde los datos del contrato.',
+          'Cambiar el importe de las expensas todavía no se puede desde el panel — avisale al ' +
+          'equipo de My Alquiler y lo corregimos.',
       });
     }
     const montoAnterior = Number(contrato.monto);
