@@ -2,13 +2,19 @@
 
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertCircle, ChevronRight, Search, Users, X } from 'lucide-react';
+import { AlertCircle, ChevronRight, Search, UserMinus, Users, X } from 'lucide-react';
 import { Badge } from '@llave/ui/badge';
+import { Button } from '@llave/ui/button';
 import { Card } from '@llave/ui/card';
 import { cn } from '@llave/ui/cn';
 import { Input } from '@llave/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@llave/ui/table';
 import { Topbar } from '@/components/topbar';
+import { ImportarMorososDialog } from '@/components/importar-morosos-dialog';
+import { apiEnabled } from '@/lib/api/client';
+import { useMe } from '@/lib/api/hooks';
+import { normalizarRol } from '@/lib/rol-storage';
+import type { Rol } from '@llave/shared/permisos';
 import { usePersonas, type EstadoInquilino, type PersonaListado } from '@/lib/api/use-inquilinos';
 
 type Filtro = 'TODOS' | 'ACTIVO' | 'INACTIVO';
@@ -38,6 +44,15 @@ export default function InquilinosPage() {
   const { personas, cargando, error } = usePersonas();
   const [q, setQ] = useState('');
   const [filtro, setFiltro] = useState<Filtro>('TODOS');
+  const [importarMorososOpen, setImportarMorososOpen] = useState(false);
+  // Importar morosos CREA DEUDA a escala y no pasa por ninguna bandeja de
+  // aprobación: mismo gate que el server, que devuelve 403 a CARGA y LECTURA
+  // desde el PRIMER paso. El botón de importar cartera no gatea por rol y por eso
+  // deja recorrer el wizard entero para comerse el 403 recién al confirmar; acá
+  // no. Con /auth/me caído no se recorta en silencio: el 403 es la frontera real.
+  const { me, isError: meError } = useMe();
+  const rolActual: Rol = apiEnabled ? normalizarRol(me?.rol, 'LECTURA') : 'ADMIN';
+  const puedeImportarMorosos = meError || rolActual === 'ADMIN' || rolActual === 'OPERADOR';
 
   const counts = useMemo(
     () => ({
@@ -67,10 +82,27 @@ export default function InquilinosPage() {
     <>
       <Topbar titulo="Inquilinos" />
       <main className="flex-1 space-y-6 p-4 md:p-6">
-        <p className="text-sm text-muted-foreground">
-          Todos los inquilinos que pasaron por tu cartera, activos e inactivos. Entrá a la ficha
-          para ver su historial: contratos, propiedades, reclamos y si tuvo morosidad.
-        </p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <p className="max-w-2xl text-sm text-muted-foreground">
+            Todos los inquilinos que pasaron por tu cartera, activos e inactivos. Entrá a la ficha
+            para ver su historial: contratos, propiedades, reclamos y si tuvo morosidad.
+          </p>
+          {/* Importar morosos vive ACÁ y no en Propiedades por dos razones: es
+              donde Alan pidió ponerlo en la reunión del 03/08, y porque en
+              Propiedades habría quedado un segundo botón "Importar…" al lado del
+              de cartera, que hace algo completamente distinto (ese CREA
+              propiedades, éste exige que ya existan). */}
+          {apiEnabled && puedeImportarMorosos && (
+            <Button variant="outline" onClick={() => setImportarMorososOpen(true)}>
+              <UserMinus className="h-4 w-4" />
+              Importar morosos
+            </Button>
+          )}
+        </div>
+
+        {apiEnabled && (
+          <ImportarMorososDialog open={importarMorososOpen} onOpenChange={setImportarMorososOpen} />
+        )}
 
         <div className="flex flex-wrap gap-2">
           {FILTROS.map((f) => (
