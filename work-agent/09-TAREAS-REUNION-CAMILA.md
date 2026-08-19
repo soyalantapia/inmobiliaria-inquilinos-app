@@ -1696,12 +1696,17 @@ lectura:
 
 ```sql
 SELECT id, email, rol, activo,
-       (password_hash IS NOT NULL) AS tiene_pass,
-       (pin_hash IS NOT NULL)      AS tiene_pin
+       ("passwordHash" IS NOT NULL) AS tiene_pass,
+       ("pinHash"      IS NOT NULL) AS tiene_pin
 FROM usuarios
-WHERE inmobiliaria_id = '<tenant>'
+WHERE "inmobiliariaId" = '<tenant>'
 ORDER BY rol;
 ```
+
+> **Corrección.** La primera versión de esta consulta usaba `pin_hash` / `password_hash` /
+> `inmobiliaria_id` y **habría fallado**: el modelo tiene `@@map("usuarios")` para la tabla pero
+> las columnas **no** tienen `@map`, así que quedan en camelCase y hay que citarlas. Lo detectó
+> el chat que ejecutó T-35.
 
 Si dos usuarios de **roles distintos** comparten `password_hash`, está confirmado. (Los hashes
 bcrypt de la misma clave difieren por el salt, así que comparar los hashes entre sí **no** sirve:
