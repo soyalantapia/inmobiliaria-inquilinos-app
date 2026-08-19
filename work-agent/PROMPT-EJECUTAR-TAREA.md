@@ -203,12 +203,19 @@ integración sin mergear, y salir de `main` te hace construir sobre una base vie
 reimplementar algo que ya existe, o tu cambio va a chocar al mergear. Averiguá la base correcta:
 
 ```bash
-BASE=$(git branch --sort=-committerdate --format='%(refname:short)' \
-       | grep -E '^feat/reunion-' | head -1)
-BASE=${BASE:-main}          # si no hay rama de integración, main
+# La detección vive en un script, no acá, porque acá ya quedó vieja una vez: decía
+# `grep -E '^feat/reunion-'` y la integración pasó a llamarse `feat/propietario-detalle-rendicion`,
+# así que el patrón devolvía una rama 58 commits atrasada y había que darse cuenta a mano.
+BASE=$(node scripts/ramas-sin-integrar.mjs --solo-base)
 echo "base: $BASE"
 git worktree add "../myalquiler-$TAREA" -b "feat/$TAREA-<slug-corto>" "$BASE"
 cd "../myalquiler-$TAREA"
+```
+
+Y antes de arrancar, mirá si quedó trabajo de otro afuera — es gratis y ya pasó dos veces:
+
+```bash
+pnpm ramas
 ```
 
 Si tu tarea depende de algo que otra hizo, verificá que esté en tu base antes de arrancar:

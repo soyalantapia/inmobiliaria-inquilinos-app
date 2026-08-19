@@ -64,3 +64,25 @@ jobs:
           JWT_SECRET: esto-no-firma-nada-real-en-ci
           NODE_ENV: test
         run: pnpm test:sin-db
+
+  # Aviso, no portón. Corre aparte del job de calidad a propósito: que una rama olvidada
+  # ponga en rojo el CI de alguien que está laburando en otra cosa es la forma más rápida de
+  # que el aviso se ignore. Informa y sigue.
+  #
+  # POR QUÉ EXISTE: dos veces (T-44 y T-44-N1) hubo que consolidar a mano, y las dos veces
+  # aparecieron tareas marcadas ✅ cuyo código no estaba en la rama de deploy. El resto del CI
+  # no lo puede ver: corre sobre la rama que le toca, así que una rama sana y olvidada da
+  # verde para siempre sin que su código llegue a ningún lado.
+  ramas-sin-integrar:
+    runs-on: ubuntu-latest
+    steps:
+      # fetch-depth: 0 no es opcional acá — con el checkout shallow de siempre no existe
+      # ninguna rama más que la actual y el script no tendría nada que comparar.
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Ramas con trabajo fuera de la integración
+        run: node scripts/ramas-sin-integrar.mjs --remotas
