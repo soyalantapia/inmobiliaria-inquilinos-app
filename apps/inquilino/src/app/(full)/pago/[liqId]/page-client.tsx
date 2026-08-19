@@ -333,9 +333,10 @@ function DetallePagoView({
             {pagado || pagadoEnParciales ? (
               <Badge variant="success">Pagado</Badge>
             ) : cubiertoSinValidar ? (
-              // Cubrió todo pero falta que la inmobiliaria lo apruebe. Sin esta rama caía
-              // en "Atrasado", que es peor que el bug que vino a arreglar: le diría que
-              // debe plata a alguien que ya la transfirió.
+              // Informó por el total: no le queda nada por transferir, pero todavía no es
+              // suyo. Sin esta rama el badge caía en "Pendiente"/"Atrasado" junto al total
+              // completo — el bug opuesto, y peor: le diría que debe plata a alguien que ya
+              // la transfirió.
               <Badge variant="warning">En revisión</Badge>
             ) : hayParciales ? (
               <Badge variant="warning">Parcial</Badge>

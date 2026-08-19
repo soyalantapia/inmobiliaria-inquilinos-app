@@ -371,7 +371,15 @@ export function useEventosContrato(id: string): {
   isError: boolean;
 } {
   const q = useQuery({
-    queryKey: ['contrato-eventos', id],
+    // T-41 — Cuelga del contrato a propósito. Con la key vieja (`['contrato-eventos', id]`)
+    // el timeline era una isla: NINGUNA mutación lo invalidaba, así que el operador ajustaba
+    // el monto o renovaba, el backend escribía el evento, y el Historial seguía mostrando lo
+    // de antes hasta recargar la página a mano.
+    // Parchear los 8 lugares que hoy invalidan `['contrato']` habría arreglado la instancia y
+    // dejado la trampa armada para el próximo hook. Colgándolo del prefijo, cualquier
+    // invalidación de `['contrato']` o `['contrato', id]` lo alcanza — que es como React Query
+    // matchea las keys.
+    queryKey: ['contrato', id, 'eventos'],
     queryFn: async () => {
       await ensureApiSession();
       return apiFetch<EventoContrato[]>(`/contratos/${id}/eventos`);

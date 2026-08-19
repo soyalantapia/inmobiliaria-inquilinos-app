@@ -16,27 +16,29 @@ type TxOrClient = Prisma.TransactionClient | PrismaClient;
  * visible, un timeline que sólo muestra ajustes es peor que no tenerlo: parece que en ese
  * contrato no pasó nada más.
  *
- * ⚠️ SOBRE TRAGARSE EL ERROR: no se puede, y por eso ya no se hace.
+ * SÍ TIRA, Y ES DELIBERADO. Antes se tragaba el error con este razonamiento: "un evento del
+ * historial es informativo, no puede voltear la operación que lo generó; el precio es un hueco
+ * en el timeline". La intención era correcta; **la premisa es falsa cuando se llama dentro de
+ * una transacción, que es como se lo llama en los 5 call sites (todos pasan `tx`).**
  *
- * La versión anterior envolvía el insert en un `try/catch {}` vacío, con el comentario
- * "el historial no puede voltear la operación que lo generó". La intención era correcta;
- * la implementación **no cumplía esa promesa en ningún caller**, porque los cinco pasan un
- * `tx`: en PostgreSQL, cuando una sentencia falla dentro de una transacción, la transacción
- * queda ABORTADA y el COMMIT se cae igual. Tragarse el error no rescataba nada — sólo
- * convertía "la operación falla y se ve" en "la operación se pierde y devuelve 200".
+ * En PostgreSQL, un statement que falla dentro de una transacción la deja ABORTADA: todo lo que
+ * venga después falla con 25P02 y el COMMIT se comporta como ROLLBACK. Así que atrapar el error
+ * no salvaba nada — la conciliación del pago, o la renovación del contrato, se perdía igual.
+ * Lo único que lograba el `catch` era que el handler devolviera 200 y el operador creyera que
+ * había quedado hecho.
  *
  * El caso concreto que lo destapó: con la migración de `RENOVACION` sin aplicar, renovar un
  * contrato corría toda su transacción, fallaba al escribir el evento por un valor de enum
- * inexistente, el catch lo tragaba, la transacción se revertía entera y el endpoint
- * respondía OK. La renovación desaparecía sin que nadie se enterara.
+ * inexistente, el catch lo tragaba, la transacción se revertía entera y el endpoint respondía
+ * OK. La renovación desaparecía sin que nadie se enterara.
  *
- * Ahora se propaga y se loguea. Un 500 sobre una renovación perdida es infinitamente mejor
- * que un 200 sobre una renovación perdida: el operador la repite en vez de creerle.
+ * O sea: el precio real no era "un hueco en el timeline", era **perder la operación en
+ * silencio**. Entre perderla avisando y perderla callando, avisar gana: el operador reintenta.
  *
- * PARA CUMPLIR LA PROMESA DE VERDAD hay que escribir el evento DESPUÉS del commit, con el
- * cliente base en vez del `tx` — que es exactamente lo que ya hace `registrarEvento` de
- * auditoría ("se llama DESPUÉS de que la acción ya commiteó"). Eso es un refactor de los
- * cinco call sites y queda anotado como tarea aparte.
+ * PARA CUMPLIR LA PROMESA DE VERDAD hay que escribir el evento FUERA de la transacción, con el
+ * cliente global y después del commit — que es exactamente lo que ya hace `registrarEvento` de
+ * auditoría ("se llama DESPUÉS de que la acción ya commiteó"). Es un refactor de los cinco call
+ * sites y queda anotado como tarea aparte. Lo que NO hay que hacer es volver a poner el catch.
  */
 export async function registrarEventoContrato(
   tx: TxOrClient,

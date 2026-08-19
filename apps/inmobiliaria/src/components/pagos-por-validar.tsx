@@ -1,6 +1,9 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMe } from '@/lib/api/hooks';
+import { rolTienePermiso } from '@/lib/permisos';
+import { normalizarRol } from '@/lib/rol-storage';
 import {
   Banknote,
   CheckCircle2,
@@ -108,6 +111,13 @@ function PagosPorValidarApi({ onChange }: PagosPorValidarProps = {}) {
   // Acción pendiente que ejecuta el PIN: devuelve null si salió bien o el
   // mensaje de error del server (PIN inválido, ya decidido) para reintentar.
   const pendingAction = useRef<((pin: string) => Promise<string | null>) | null>(null);
+
+  // T-40 — `pago.conciliar` dejó de incluir a OPERADOR en esta misma tanda, pero la pantalla
+  // seguía ofreciendo Validar y Rechazar a cualquiera: se tocaba el botón y el server contestaba
+  // 403. La bandeja sigue VISIBLE en modo lectura —ver qué hay pendiente no le hace mal a nadie
+  // y es la mitad útil de la pantalla—; lo que se saca es la promesa de poder decidir.
+  const { me } = useMe();
+  const puedeDecidir = rolTienePermiso(normalizarRol(me?.rol, 'LECTURA'), 'pago.conciliar');
 
   // Avisamos al padre el conteo real de pendientes cada vez que cambia.
   useEffect(() => {
@@ -245,6 +255,7 @@ function PagosPorValidarApi({ onChange }: PagosPorValidarProps = {}) {
                   pago={p}
                   conIA={false}
                   disabled={showPin}
+                  puedeDecidir={puedeDecidir}
                   onConciliar={() => triggerConciliar(p)}
                   onRechazar={() => setRechazando(p)}
                   onVerComprobante={() => setVerComprobante(p)}
@@ -879,6 +890,7 @@ function PagoRow({
   pago,
   conIA = true,
   disabled = false,
+  puedeDecidir = true,
   onConciliar,
   onRechazar,
   onVerComprobante,
@@ -890,6 +902,8 @@ function PagoRow({
   /** Deshabilita las acciones (ej: mientras hay un PIN abierto para otro pago,
    *  para no pisar pendingAction y conciliar el pago equivocado). */
   disabled?: boolean;
+  /** ¿El rol puede validar/rechazar? Si no, la fila queda en lectura (T-40). */
+  puedeDecidir?: boolean;
   onConciliar: () => void;
   onRechazar: () => void;
   onVerComprobante: () => void;
@@ -1060,10 +1074,14 @@ function PagoRow({
           <ExternalLink className="h-3.5 w-3.5" />
           Ver comprobante
         </Button>
+        {/* Ver el comprobante lo puede hacer cualquiera; decidir sobre la plata, no. */}
+        {puedeDecidir && (
         <Button size="sm" variant="outline" onClick={onRechazar} disabled={disabled}>
           <XCircle className="h-3.5 w-3.5" />
           Rechazar
         </Button>
+        )}
+        {puedeDecidir && (
         <Button
           size="sm"
           onClick={onConciliar}
@@ -1084,6 +1102,12 @@ function PagoRow({
               ? 'Confirmar + facturar ARCA'
               : 'Confirmar pago'}
         </Button>
+        )}
+        {!puedeDecidir && (
+          <p className="ml-auto self-center text-xs text-muted-foreground">
+            Confirmar o rechazar un pago lo hace Administrador o Caja.
+          </p>
+        )}
       </div>
     </Card>
   );
