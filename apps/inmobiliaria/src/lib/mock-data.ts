@@ -1092,6 +1092,9 @@ export function generarLiquidaciones(
 export type TipoEventoContrato =
   | 'CREADO'
   | 'AJUSTE_APLICADO'
+  // Valor propio del enum de la base (migración 20260819120000). Faltaba acá, y como
+  // `apiFetch` castea sin validar, el evento llegaba igual y reventaba el timeline.
+  | 'RENOVACION'
   | 'PAGO_RECIBIDO'
   | 'PAGO_VENCIDO'
   | 'RECLAMO_CREADO'

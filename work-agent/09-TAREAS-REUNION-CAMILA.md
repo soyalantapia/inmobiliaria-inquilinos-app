@@ -74,6 +74,18 @@ Sin este bloque, el trabajo hecho no le llega a Camila. **Es lo primero.**
 
 ## T-01 · Aplicar las migraciones pendientes (son OCHO, no cuatro)
 
+> ### ⚠️ Antes que nada: NO hay paso manual. Se aplican solas.
+>
+> `apps/api/Dockerfile:30` arranca con `CMD ["sh","-c","pnpm db:deploy && exec node
+> dist/index.js"]`, y `db:deploy` es `prisma migrate deploy`. **Las migraciones corren en el
+> deploy, antes de que el proceso levante**, y si fallan el contenedor no arranca (`&&`) — o sea
+> que nunca puede quedar código nuevo contra un esquema viejo, que era el riesgo que esta tarea
+> quería evitar. Una versión anterior decía "aplicalas a mano antes de desplegar": era falsa, y
+> peligrosa al revés, porque invitaba a tocar la base sin necesidad.
+>
+> Lo de abajo **sigue valiendo igual**: es la verificación de QUÉ va a correr y en qué orden, y
+> los dos avisos (#5 y #8) son cosas que hay que mirar antes de apretar deploy.
+
 > ### ✅ Verificación previa hecha — 19/08
 >
 > **El título de esta tarea decía CUATRO y son OCHO.** Se fue quedando corto mientras varios
@@ -1748,6 +1760,219 @@ código que **no** hay que repetir: el token de garante es `base64url` de un JSO
 ofuscación visual"*), y el hash del certificado es FNV-1a + djb2 truncado, sin sal y
 determinístico (`inquilino-mundo.ts:148-164`). **El portal del propietario no puede nacer con
 un token así.**
+
+---
+
+## T-36 · TOCTOU al cambiar el modo de cobranza — ✅ RESUELTO
+
+> **Hecho.** La re-verificación de `alquilerCobradoSinRendir` ahora corre **dentro** de la
+> transacción (el helper acepta un `TxOrClient`, como `deposito.ts` y `evento-contrato.ts`), y
+> el `UPDATE` pasó a `updateMany` condicionado al modo que se leyó → 409 si otro cambió el
+> modo en el medio.
+> **Lo que cierra y lo que no, explícito:** cierra el doble cambio de modo y achica la ventana
+> del otro caso de toda la latencia del handler (que incluye las consultas de propietario y
+> cuenta) a lo que dura la transacción. **No la cierra del todo**: en READ COMMITTED una
+> conciliación que commitea justo después de la re-lectura sigue entrando. Para eso haría
+> falta que conciliar un pago tome un lock sobre el contrato — otro cambio, otra tarea.
+
+**Experto:** BE · **Prioridad:** 🟡 · **Depende de:** nada
+**Origen:** revisión adversarial del 19/08 (dimensión concurrencia). **Es sobre código propio
+de esta tanda**, no heredado.
+
+**Estado verificado.** `PATCH /contratos/:id/modo-cobranza` calcula `alquilerCobradoSinRendir`
+(`lib/rendicion-pendiente.ts`) **fuera de transacción**, y el `UPDATE` que cambia el modo **no
+está condicionado** a que ese cálculo siga siendo válido. Entre la lectura y la escritura, otro
+operador puede conciliar un pago: el guard ya pasó y el modo cambia igual, con plata cobrada
+sin rendir del lado equivocado.
+
+**Por qué no bloquea.** Requiere dos operadores actuando sobre el mismo contrato en la misma
+ventana de milisegundos. Pero el patrón correcto ya existe en el repo y está a una línea:
+`updateMany({ where: { id, modoCobranza: <el que se leyó> } })` y 409 si `count === 0`.
+
+**Criterio de aceptación.** Dos requests concurrentes sobre el mismo contrato: una cambia el
+modo, la otra recibe 409 y no pisa nada.
+
+---
+
+## T-37 · La matriz de permisos le promete a OPERADOR algo que el endpoint le niega — ✅ RESUELTO
+
+> **Hecho: se alineó la matriz, no el endpoint.** Y el motivo importa, porque el diagnóstico
+> inicial estaba al revés.
+>
+> La matriz no estaba "de más": declaraba `roles: ['ADMIN','CAJA','OPERADOR']` con
+> `rolesAprobacion: ['OPERADOR']`, o sea un circuito pensado — *el operador carga el efectivo y
+> queda pendiente de aprobación*. **Ese circuito nunca se construyó:** `requiereAprobacion` no
+> se llama en ningún lado de `apps/api` (para contratos sí existe el equivalente,
+> `contratoQuedaPendiente`; para pagos no). Mientras tanto `POST /pagos/manual` exige
+> `pago.conciliar`, así que el OPERADOR se comía un 403 y la pantalla de Equipo le decía a la
+> administradora que sí podía.
+>
+> Se sacó OPERADOR de la capacidad. **No le quita nada a nadie**: hoy ya no podía. Y la
+> capacidad **no gatea nada** —sólo se dibuja en la tabla de permisos—, así que el cambio no
+> altera ningún comportamiento, sólo deja de mentir. Quien cobra en el mostrador va con rol
+> **CAJA**, que existe exactamente para eso.
+>
+> **No se tocó el endpoint** a propósito: darle a OPERADOR una capacidad sobre plata que hoy no
+> tiene es una decisión de producto, no la corrección de una inconsistencia.
+
+**Experto:** BE + PROD · **Prioridad:** 🟡 · **Depende de:** nada
+**Origen:** revisión adversarial del 19/08 (dimensión multi-tenant).
+
+**Estado verificado.** `packages/shared/src/permisos.ts:140` declara
+`pago.manual.cargar` para `['ADMIN','CAJA','OPERADOR']`, pero
+`POST /pagos/manual` (`plata.ts:1005`) exige **`pago.conciliar`**, que es sólo
+`['ADMIN','CAJA']`. La pantalla Configuración → Equipo le muestra a la administradora que
+Operador **sí** puede "Cargar pago manual (efectivo)"; el endpoint le contesta 403
+*"Tu rol no permite: pago.conciliar"*.
+
+**No es una regresión**: el guard es idéntico en `main`. Lo que cambió es la matriz, que ahora
+declara una capacidad que nunca se cableó.
+
+**Qué hay que hacer.** Decidir cuál de las dos manda —si el mostrador tiene que poder cargar
+efectivo, el endpoint debe pedir `pago.manual.cargar`; si no, la capacidad sale de la matriz—
+y dejar las dos de acuerdo. **Es decisión de producto**, porque define qué puede hacer el
+personal de mostrador.
+
+---
+
+## T-39 · El historial fallaba en silencio y se llevaba la operación puesta — ✅ RESUELTO
+
+**Experto:** BE · **Prioridad:** 🟠
+**Origen:** revisión adversarial del 19/08 (dimensión concurrencia).
+
+**El problema.** `registrarEventoContrato` (`lib/evento-contrato.ts`) atrapaba y descartaba
+cualquier error del `create`, con este argumento escrito en el propio docblock: *"un evento del
+historial es informativo, no puede voltear la operación que lo generó; el precio es un hueco en
+el timeline"*.
+
+**La premisa era falsa.** Los **5** call sites lo llaman **dentro de una `$transaction`**,
+pasándole el `tx` (`core.ts:1168` y `:2146`, `operacion.ts:325` y `:801`, `plata.ts:462` —
+o sea conciliar un pago y renovar un contrato, entre otros). En PostgreSQL un statement que
+falla deja la transacción **abortada**: lo que venga después revienta con `25P02` y el `COMMIT`
+se comporta como `ROLLBACK`.
+
+Entonces el `catch` no salvaba nada — la operación se perdía igual. Lo único que lograba era que
+el handler devolviera **200** y el operador creyera que había quedado hecho. El precio real no
+era un hueco en el timeline: era **perder la operación en silencio**.
+
+**Qué se hizo.** Se sacó el `catch`. Entre perder la operación avisando y perderla callando,
+avisar gana: el operador reintenta. Si algún día hace falta el best-effort de verdad, va
+**fuera** de la transacción (cliente global, después del commit), no de vuelta acá.
+
+**Test.** `test/evento-contrato-propaga.test.ts`, puro (el `tx` es un doble). Verificado en rojo
+volviendo a poner el `catch`.
+
+---
+
+## T-40 · La pantalla de pagos ofrecía lo que el server ya no permite — ✅ RESUELTO
+
+**Experto:** FE-P · **Prioridad:** 🟠
+**Origen:** revisión adversarial del 19/08. Es consecuencia directa del cambio de roles de
+esta misma tanda.
+
+**El problema.** `pago.conciliar` dejó de incluir a OPERADOR, pero `pagos-por-validar.tsx`
+no gateaba nada: la pantalla seguía mostrando **Validar** y **Rechazar** a cualquier rol.
+El operador tocaba el botón y se comía un 403. (La página sí gateaba `contrato.aprobar`;
+`pago.conciliar` se había pasado por alto.)
+
+**Qué se hizo.** La bandeja sigue **visible en modo lectura** —ver qué hay pendiente no le
+hace mal a nadie y es la mitad útil de la pantalla—; lo que se saca es la promesa de poder
+decidir. "Ver comprobante" queda para todos. Donde estaban los botones ahora dice
+*"Confirmar o rechazar un pago lo hace Administrador o Caja"*.
+
+**Verificado en navegador** contra un stub: con **ADMIN** están los tres botones y no aparece
+el aviso; con **OPERADOR** quedan 0 botones de decisión, sigue "Ver comprobante", y aparece el
+aviso.
+
+---
+
+## T-41 · El Historial del contrato no se refrescaba nunca — ✅ RESUELTO
+
+**Experto:** FE-P · **Prioridad:** 🟠
+**Origen:** revisión adversarial del 19/08.
+
+**El problema.** El timeline usaba `queryKey: ['contrato-eventos', id]`, una isla: **ninguna**
+de las 8 mutaciones que invalidan `['contrato']` lo alcanzaba. El operador ajustaba el monto o
+renovaba, el backend escribía el `EventoContrato`, y el Historial seguía mostrando lo de antes
+hasta recargar la página a mano.
+
+**Qué se hizo.** La key pasó a `['contrato', id, 'eventos']`. Parchear los 8 call sites habría
+arreglado la instancia y dejado la trampa armada para el próximo hook; colgándolo del prefijo,
+cualquier invalidación de `['contrato']` lo alcanza — que es como React Query matchea.
+
+**Verificado en navegador** en las dos direcciones: con el arreglo, después del
+`POST /contratos/:id/ajustar` sale solo un `GET /contratos/:id/eventos`; con la key vieja, ese
+GET no aparece.
+
+---
+
+## T-42 · Doble click en "Enviar" dejaba dos renglones en el historial — ✅ RESUELTO
+
+**Experto:** FE-P · **Prioridad:** 🟢
+**Origen:** revisión adversarial del 19/08.
+
+El botón de `mensaje-inquilino-dialog.tsx` no se bloqueaba mientras corría el
+`POST /contratos/:id/comunicaciones`, así que dos clicks anotaban **dos comunicaciones** por
+un solo mensaje. Ahora hay estado `enviando` (con guard de reentrada además del `disabled`,
+que tarda un tick en aplicarse), los dos botones se deshabilitan y el texto pasa a "Anotando…".
+
+**De arrastre, el otro hallazgo del mismo archivo se cerró solo:** el toast decía "quedó
+anotado en el historial" pero el timeline no se refrescaba. El diálogo ya invalidaba
+`['contrato']`; lo que faltaba era que el timeline colgara de ese prefijo, que es lo que
+hizo **T-41**. Ahora el toast dice la verdad.
+
+---
+
+## T-37-N1 · Circuito de aprobación para el pago manual del operador
+
+**Experto:** BE + PROD · **Prioridad:** 🟢 · **Depende de:** decisión de producto
+**Origen:** T-37. Es la mitad que se decidió NO construir sin que la pidieras.
+
+**El caso.** Si Camila quiere que sus operadoras puedan registrar un cobro en efectivo sin
+darles rol CAJA, hace falta lo que la matriz ya describía: el pago lo carga el OPERADOR y queda
+**pendiente de aprobación** hasta que un ADMIN lo confirma.
+
+**Qué existe y qué no.** El patrón ya está resuelto para contratos: `contratoQuedaPendiente`
+(`packages/shared/src/permisos.ts`) + el circuito de aprobaciones del panel. Para pagos hay
+`requiereAprobacion`, pero **no se llama desde ningún lado de `apps/api`**.
+
+**Qué habría que hacer.** Que `POST /pagos/manual` exija `pago.manual.cargar` en vez de
+`pago.conciliar`, y que cuando `requiereAprobacion(rol, 'pago.manual.cargar')` sea `true` el
+pago nazca pendiente en vez de conciliado, enganchado a la cola de aprobaciones que ya usa el
+panel.
+
+**Por qué no se hizo.** Mete un estado nuevo en el flujo de plata y nadie lo pidió en la
+reunión. Es una feature, no el arreglo de una inconsistencia.
+
+**Criterio de aceptación.** Una operadora carga un cobro en efectivo, queda pendiente, y la
+administradora lo ve en su cola y lo aprueba. Sin aprobación, ese pago no cuenta como cobrado.
+
+---
+
+## T-38 · `POST /contratos/:id/ajustar` no valida el tipo de contrato — ✅ RESUELTO
+
+> **Hecho.** 409 cuando el contrato es `SOLO_EXPENSAS`, con el texto que dice dónde se corrige
+> lo que el operador probablemente quería cambiar (el importe de las expensas).
+
+**Experto:** BE · **Prioridad:** 🟢 · **Depende de:** nada
+**Origen:** revisión adversarial del 19/08. Es el **residuo** de T-20, que cerró el agujero del
+cron pero no éste.
+
+**Estado verificado.** Los otros tres caminos que escriben el canon
+(`computarLiquidacionesContrato`, `recomputarLiquidacionesFuturas`, `PATCH /contratos/:id/monto`)
+aplican `montoAlquilerSegunTipo`. `POST /contratos/:id/ajustar` no: exige un monto positivo y lo
+escribe en las cuotas futuras. En un contrato `SOLO_EXPENSAS` eso le factura alquiler a quien
+sólo debe expensas, y la comisión se calcula sobre esa base.
+
+**Por qué es 🟢 y no 🔴.** No hay camino automático: no existe ajuste masivo que itere
+contratos, y el operador tendría que tipear un alquiler positivo en una ficha donde el panel
+dice "Tipo: Sólo expensas", oculta la fila Alquiler y el diálogo muestra "Alquiler actual: $0".
+Es lo contrario de T-20, que era un cron silencioso que además deshacía la corrección manual.
+
+**Qué hay que hacer.** 409 *"este contrato no cobra alquiler"* cuando el tipo es
+`SOLO_EXPENSAS`. (Se revisó `/renovar` y **no** tiene el problema: su `updateMany` filtra por
+`periodo >= montoDesde` y el devengo nunca genera períodos más allá del mes de `fechaFin`, así
+que no matchea ninguna fila.)
 
 ---
 

@@ -134,10 +134,20 @@ export const CAPACIDADES: DefinicionCapacidad[] = [
   { key: 'contratos.crear', label: 'Cargar contrato', roles: ['ADMIN', 'OPERADOR', 'CARGA'], rolesAprobacion: ['CARGA'], grupo: 'carga' },
   { key: 'propiedades.crear', label: 'Cargar propiedad', roles: ['ADMIN', 'OPERADOR', 'CARGA'], grupo: 'carga' },
   { key: 'propietarios.crear', label: 'Cargar propietario', roles: ['ADMIN', 'OPERADOR', 'CARGA'], grupo: 'carga' },
-  // El cobro en efectivo en el mostrador es tarea de CAJA (es la que lo recibe). Sigue
-  // quedando pendiente de aprobación cuando lo carga un OPERADOR; CAJA no, porque para
-  // ella es la operación normal del puesto.
-  { key: 'pago.manual.cargar', label: 'Cargar pago manual (efectivo)', roles: ['ADMIN', 'CAJA', 'OPERADOR'], rolesAprobacion: ['OPERADOR'], grupo: 'carga' },
+  // T-37 — El cobro en efectivo en el mostrador es tarea de CAJA (es la que lo recibe).
+  //
+  // Acá decía además ['ADMIN','CAJA','OPERADOR'] con rolesAprobacion:['OPERADOR'], describiendo
+  // un circuito —el OPERADOR carga y queda pendiente de aprobación— que NUNCA se construyó:
+  // `requiereAprobacion` no se llama en ningún lado de apps/api (para contratos sí existe el
+  // equivalente, `contratoQuedaPendiente`; para pagos no). Mientras tanto POST /pagos/manual
+  // exige `pago.conciliar`, así que un OPERADOR que lo intentaba se comía un 403 — pero la
+  // pantalla Configuración → Equipo le mostraba a la administradora que sí podía, y ella
+  // asignaba ese rol al que cobra en el mostrador.
+  //
+  // Se alinea la matriz con lo que el sistema hace de verdad. NO le quita nada a nadie: hoy
+  // OPERADOR ya no puede. Quien cobra en mostrador va con rol CAJA, que existe exactamente
+  // para eso. Construir el circuito de aprobación de pagos es otra cosa y está en T-37-N1.
+  { key: 'pago.manual.cargar', label: 'Cargar pago manual (efectivo)', roles: ['ADMIN', 'CAJA'], grupo: 'carga' },
   { key: 'gasto.caja.cargar', label: 'Cargar gasto de caja', roles: ['ADMIN', 'CAJA', 'OPERADOR'], grupo: 'carga' },
   { key: 'cuentas.gestionar', label: 'Definir cuentas de caja', roles: ['ADMIN'], grupo: 'sensible' },
 

@@ -16,10 +16,22 @@ type TxOrClient = Prisma.TransactionClient | PrismaClient;
  * visible, un timeline que sólo muestra ajustes es peor que no tenerlo: parece que en ese
  * contrato no pasó nada más.
  *
- * NUNCA TIRA. Un evento del historial es informativo: si falla su escritura, no puede
- * voltear la operación que lo generó —conciliar un pago, activar un contrato—. Se traga
- * el error a propósito. El precio es un hueco en el timeline; la alternativa es perder
- * plata por un renglón de historial.
+ * SÍ TIRA, Y ES DELIBERADO. Antes se tragaba el error con este razonamiento: "un evento del
+ * historial es informativo, no puede voltear la operación que lo generó; el precio es un hueco
+ * en el timeline". **Esa premisa es falsa cuando se llama dentro de una transacción, que es
+ * como se lo llama en los 5 call sites (todos pasan `tx`).**
+ *
+ * En PostgreSQL, un statement que falla dentro de una transacción la deja ABORTADA: todo lo que
+ * venga después falla con 25P02 y el COMMIT se comporta como ROLLBACK. Así que atrapar el error
+ * no salvaba nada — la conciliación del pago, o la renovación del contrato, se perdía igual.
+ * Lo único que lograba el `catch` era que el handler devolviera 200 y el operador creyera que
+ * había quedado hecho.
+ *
+ * O sea: el precio real no era "un hueco en el timeline", era **perder la operación en
+ * silencio**. Entre perderla avisando y perderla callando, avisar gana: el operador reintenta.
+ *
+ * Si algún día hace falta el best-effort de verdad, hay que llamarlo FUERA de la transacción
+ * (con el cliente global, después del commit), no volver a poner el catch acá.
  */
 export async function registrarEventoContrato(
   tx: TxOrClient,
@@ -34,19 +46,15 @@ export async function registrarEventoContrato(
     fecha?: Date;
   },
 ): Promise<void> {
-  try {
-    await tx.eventoContrato.create({
-      data: {
-        inmobiliariaId: datos.inmobiliariaId,
-        contratoId: datos.contratoId,
-        tipo: datos.tipo,
-        titulo: datos.titulo,
-        detalle: datos.detalle ?? null,
-        fecha: datos.fecha ?? new Date(),
-        autor: datos.autor ?? 'Sistema',
-      },
-    });
-  } catch {
-    /* el historial no puede voltear la operación que lo generó */
-  }
+  await tx.eventoContrato.create({
+    data: {
+      inmobiliariaId: datos.inmobiliariaId,
+      contratoId: datos.contratoId,
+      tipo: datos.tipo,
+      titulo: datos.titulo,
+      detalle: datos.detalle ?? null,
+      fecha: datos.fecha ?? new Date(),
+      autor: datos.autor ?? 'Sistema',
+    },
+  });
 }

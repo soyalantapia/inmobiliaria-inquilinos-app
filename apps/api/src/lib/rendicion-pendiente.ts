@@ -1,4 +1,10 @@
+import type { Prisma, PrismaClient } from '@prisma/client';
 import { prisma } from '../db.js';
+
+/** Mismo patrón que `deposito.ts` / `evento-contrato.ts`: sirve dentro y fuera de una
+ *  transacción. El guard de modo-cobranza lo necesita ADENTRO para no decidir con una
+ *  foto vieja. */
+type TxOrClient = Prisma.TransactionClient | PrismaClient;
 
 /** Un período con alquiler cobrado que todavía no se le rindió al propietario. */
 export interface PeriodoSinRendir {
@@ -81,8 +87,9 @@ export function calcularPendienteSinRendir(
 
 export async function alquilerCobradoSinRendir(
   contratoId: string,
+  db: TxOrClient = prisma,
 ): Promise<{ total: number; periodos: PeriodoSinRendir[] }> {
-  const liqs = await prisma.liquidacion.findMany({
+  const liqs = await db.liquidacion.findMany({
     where: { contratoId },
     select: { id: true, periodo: true, montoAlquiler: true, montoTotal: true },
   });
@@ -90,12 +97,12 @@ export async function alquilerCobradoSinRendir(
   const ids = liqs.map((l) => l.id);
 
   const [cobros, rendidos] = await Promise.all([
-    prisma.pago.groupBy({
+    db.pago.groupBy({
       by: ['liquidacionId'],
       where: { liquidacionId: { in: ids }, estado: 'CONCILIADO', condonado: false },
       _sum: { monto: true },
     }),
-    prisma.alquilerRendido.groupBy({
+    db.alquilerRendido.groupBy({
       by: ['liquidacionId'],
       where: { liquidacionId: { in: ids } },
       _sum: { monto: true },

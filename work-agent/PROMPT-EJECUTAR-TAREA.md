@@ -42,28 +42,26 @@ Estas mandan sobre cualquier otra cosa que decidas.
    lo hace el dueño.
 2. **NO aplicás migraciones.** Podés *escribir* el `.sql`, nunca correrlo. Si tu tarea necesita
    una, la dejás escrita, documentada y avisás.
+3. **Los tests de `apps/api` NO pegan a producción** — esta regla decía lo contrario hasta el
+   19/08 y era falsa. Hay dos instancias: prod vive en el host **interno**
+   `*.railway.internal` (inalcanzable desde tu máquina) y los tests usan el **proxy público**
+   `*.proxy.rlwy.net`, que es test/dev (`docs/TESTING.md` § "Contra qué DB").
+   Lo que sí es cierto: `seedBase` es **destructivo** y las suites comparten la base. Así que:
+   **verificá contra qué apunta tu `DATABASE_URL` antes de correr.** Desde el 19/08 hay un
+   guard que falla cerrado (`apps/api/prisma/guard-db.ts`): ante una URL de prod, vacía o
+   desconocida, el seed **no corre**.
+   Al 19/08 hay **73 archivos de test y 20 son puros** (160 tests, todos verdes sobre
+   `tmp/integracion`). El filtro para correr sólo esos —**usá este, no uno propio**— es:
 
-3. **NO corrés los tests de integración de `apps/api`.** Los que importan `seedBase` siembran de
-   forma **destructiva** una Postgres **remota y compartida**: te llevás puesto lo que estén
-   usando los otros chats en paralelo, y el seed no distingue. Corré sólo los **puros** (los que
-   no importan `seedBase`); son los que no tocan la base.
+   ```bash
+   cd apps/api && ./node_modules/.bin/vitest run $(grep -LE "\.\./src/db|prisma/seed|seedBase|app\.inject|psql|execFileSync|PG_HOST|pg_dump" test/*.test.ts)
+   ```
 
-   > ⚠️ **Corrección (19/08).** Este punto decía *"pegan a la Postgres de producción"* citando
-   > `docs/TESTING.md:25` — y esa línea dice **exactamente lo contrario**: *"Esta NO es la DB de
-   > prod. Prod corre dentro de Railway con el host interno (`*.railway.internal`), inalcanzable
-   > desde tu máquina. El proxy público es la instancia de test/dev."* Era una lectura al revés
-   > de la fuente que citaba, y se propagó a media docena de `estado.md` porque cada chat la
-   > repitió de acá.
-   >
-   > La regla **se mantiene**, pero por el motivo verdadero: no es prod, es una instancia
-   > compartida que el seed borra. Y en la práctica hay un segundo bloqueo, más duro: en esta
-   > máquina **no existe `apps/api/.env`**, así que `DATABASE_URL` no está seteada y esos tests
-   > ni siquiera arrancan (fallan con un ZodError de env, no con un error de conexión — si te lo
-   > cruzás, es eso).
-
-   > Y desde el 19/08 hay un **guard que falla cerrado** (`apps/api/prisma/guard-db.ts`):
-   > ante una URL de producción, vacía o desconocida, el seed **no corre**. Verificá igual
-   > contra qué apunta tu `DATABASE_URL` antes de lanzar nada.
+   ⚠️ **Filtrar sólo por `seedBase` no alcanza**, y esto ya falló una vez:
+   `backfill-mascotas-propiedad.test.ts` no importa `seedBase` ni `../src/db` — levanta una
+   base **llamando a `psql` por `execFileSync`**. Por eso el filtro incluye también `psql`,
+   `execFileSync`, `PG_HOST` y `pg_dump`. Si escribís un test nuevo que toque una base por una
+   vía distinta a estas, **agregá el patrón acá**.
 4. **NO tocás el tenant real** (Tapia Propiedades): no creás cuentas ni datos de prueba ahí.
 5. **NO commiteás a `main`.** Trabajás en tu propia rama, en tu propio worktree (Fase 0).
 6. **NO agregás dependencias** sin justificarlo explícitamente en el reporte final.
