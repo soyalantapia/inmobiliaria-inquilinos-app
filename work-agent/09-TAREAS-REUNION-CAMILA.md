@@ -1019,6 +1019,35 @@ personal de mostrador.
 
 ---
 
+## T-39 · El historial fallaba en silencio y se llevaba la operación puesta — ✅ RESUELTO
+
+**Experto:** BE · **Prioridad:** 🟠
+**Origen:** revisión adversarial del 19/08 (dimensión concurrencia).
+
+**El problema.** `registrarEventoContrato` (`lib/evento-contrato.ts`) atrapaba y descartaba
+cualquier error del `create`, con este argumento escrito en el propio docblock: *"un evento del
+historial es informativo, no puede voltear la operación que lo generó; el precio es un hueco en
+el timeline"*.
+
+**La premisa era falsa.** Los **5** call sites lo llaman **dentro de una `$transaction`**,
+pasándole el `tx` (`core.ts:1168` y `:2146`, `operacion.ts:325` y `:801`, `plata.ts:462` —
+o sea conciliar un pago y renovar un contrato, entre otros). En PostgreSQL un statement que
+falla deja la transacción **abortada**: lo que venga después revienta con `25P02` y el `COMMIT`
+se comporta como `ROLLBACK`.
+
+Entonces el `catch` no salvaba nada — la operación se perdía igual. Lo único que lograba era que
+el handler devolviera **200** y el operador creyera que había quedado hecho. El precio real no
+era un hueco en el timeline: era **perder la operación en silencio**.
+
+**Qué se hizo.** Se sacó el `catch`. Entre perder la operación avisando y perderla callando,
+avisar gana: el operador reintenta. Si algún día hace falta el best-effort de verdad, va
+**fuera** de la transacción (cliente global, después del commit), no de vuelta acá.
+
+**Test.** `test/evento-contrato-propaga.test.ts`, puro (el `tx` es un doble). Verificado en rojo
+volviendo a poner el `catch`.
+
+---
+
 ## T-37-N1 · Circuito de aprobación para el pago manual del operador
 
 **Experto:** BE + PROD · **Prioridad:** 🟢 · **Depende de:** decisión de producto
