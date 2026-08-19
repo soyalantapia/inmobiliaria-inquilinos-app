@@ -34,8 +34,39 @@ export interface PeriodoSinRendir {
 export async function alquilerCobradoSinRendir(
   contratoId: string,
 ): Promise<{ total: number; periodos: PeriodoSinRendir[] }> {
+  return pendienteDeLiquidaciones({ contratoId });
+}
+
+/**
+ * Lo mismo, pero de TODOS los contratos de una propiedad.
+ *
+ * POR QUÉ EXISTE: `PUT /propiedades/:id/participaciones` borra y recrea el reparto de dueños
+ * (`core.ts`, `deleteMany` + `createMany`), y la rendición decide a quién le transfiere leyendo
+ * la participación **de hoy** (`plata.ts:1653` arma el universo de propiedades del dueño desde
+ * sus participaciones actuales; `:1741` aplica el porcentaje actual). El `periodo` que se rinde
+ * lo elige el operador y puede ser de hace dos años.
+ *
+ * Entonces, si se cambia el reparto con plata cobrada y sin rendir en el medio: el dueño
+ * ENTRANTE cobra lo del período del saliente, y el SALIENTE desaparece de `propIds` y no hay
+ * ningún camino en el código para rendirle lo suyo. El cap cruzado de la rendición evita pagar
+ * de MÁS; no dice nada sobre A QUIÉN. Es mis-atribución, no doble pago, y no deja rastro.
+ *
+ * La cuenta es por propiedad y no por contrato porque el reparto de dueños cuelga de la
+ * PROPIEDAD: al cambiarlo quedan afectados todos sus contratos, incluidos los terminados que
+ * todavía tienen alquiler cobrado sin rendir.
+ */
+export async function alquilerCobradoSinRendirDePropiedad(
+  propiedadId: string,
+): Promise<{ total: number; periodos: PeriodoSinRendir[] }> {
+  return pendienteDeLiquidaciones({ contrato: { propiedadId } });
+}
+
+/** El lector: una sola forma de traer los datos, dos formas de acotarlos. */
+async function pendienteDeLiquidaciones(
+  where: { contratoId: string } | { contrato: { propiedadId: string } },
+): Promise<{ total: number; periodos: PeriodoSinRendir[] }> {
   const liqs = await prisma.liquidacion.findMany({
-    where: { contratoId },
+    where,
     select: { id: true, periodo: true, montoAlquiler: true, montoTotal: true },
   });
   if (liqs.length === 0) return { total: 0, periodos: [] };
@@ -53,18 +84,48 @@ export async function alquilerCobradoSinRendir(
       _sum: { monto: true },
     }),
   ]);
-  const cobradoMap = new Map(cobros.map((c) => [c.liquidacionId, Number(c._sum.monto ?? 0)]));
-  const rendidoMap = new Map(rendidos.map((r) => [r.liquidacionId, Number(r._sum.monto ?? 0)]));
 
+  return calcularPendienteSinRendir(
+    liqs.map((l) => ({
+      id: l.id,
+      periodo: l.periodo,
+      montoAlquiler: Number(l.montoAlquiler),
+      montoTotal: Number(l.montoTotal),
+    })),
+    new Map(cobros.map((c) => [c.liquidacionId, Number(c._sum.monto ?? 0)])),
+    new Map(rendidos.map((r) => [r.liquidacionId, Number(r._sum.monto ?? 0)])),
+  );
+}
+
+/** Una liquidación, con la plata ya convertida a number (los Decimal quedan en el lector). */
+export interface LiquidacionParaPendiente {
+  id: string;
+  periodo: string;
+  montoAlquiler: number;
+  montoTotal: number;
+}
+
+/**
+ * La aritmética, separada del acceso a la base para poder testearla sin DB.
+ *
+ * Replica EXACTAMENTE el paso BRUTO de `POST /rendiciones`: cap del cobrado a `montoTotal`
+ * (deja la MORA afuera) y prorrateo por `montoAlquiler / montoTotal` (deja las EXPENSAS afuera,
+ * que van al consorcio). Si divergiera, el guard bloquearía por plata que la rendición no rinde
+ * —o al revés, que es peor.
+ */
+export function calcularPendienteSinRendir(
+  liqs: LiquidacionParaPendiente[],
+  cobradoPorLiq: Map<string, number>,
+  rendidoPorLiq: Map<string, number>,
+): { total: number; periodos: PeriodoSinRendir[] } {
   const periodos: PeriodoSinRendir[] = [];
   let total = 0;
   for (const l of liqs) {
-    const cobrado = cobradoMap.get(l.id) ?? 0;
+    const cobrado = cobradoPorLiq.get(l.id) ?? 0;
     if (cobrado <= 0) continue;
-    const liqTotal = Number(l.montoTotal);
-    const liqAlq = Number(l.montoAlquiler);
-    const alquilerCobrado = liqTotal > 0 ? Math.min(cobrado, liqTotal) * (liqAlq / liqTotal) : 0;
-    const pendiente = Math.round((alquilerCobrado - (rendidoMap.get(l.id) ?? 0)) * 100) / 100;
+    const alquilerCobrado =
+      l.montoTotal > 0 ? Math.min(cobrado, l.montoTotal) * (l.montoAlquiler / l.montoTotal) : 0;
+    const pendiente = Math.round((alquilerCobrado - (rendidoPorLiq.get(l.id) ?? 0)) * 100) / 100;
     // Tolerancia de 1 centavo: el mismo umbral que usa la rendición para decidir si
     // algo es rendible (`rendible <= 0` ⇒ se saltea). Sin esto, un resto de redondeo
     // del prorrateo bloquearía el cambio de modo para siempre.

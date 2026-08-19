@@ -1738,7 +1738,14 @@ export async function plataRoutes(app: FastifyInstance) {
         }[] = [];
         for (const liq of liqsCobradas) {
           const part = owner.participaciones.find((p) => p.propiedadId === liq.contrato.propiedadId);
-          const porcentaje = part?.porcentaje ?? 100;
+          // Acá había un `?? 100`. Hoy es inalcanzable —`propIds` sale de
+          // `owner.participaciones`, así que el find siempre matchea— pero es una mina: el
+          // día que alguien filtre las participaciones por una ventana de vigencia (que es
+          // justo lo que pide T-23-N3), un find que no matchea le rendía el alquiler ENTERO
+          // a este dueño, en silencio y sin rastro. Que falle ruidoso mientras el cambio es
+          // un no-op verificable es mucho más barato que descubrirlo con una transferencia.
+          if (!part) throw new ParticipacionAusente(liq.contrato.propiedadId);
+          const porcentaje = part.porcentaje;
           const total = Number(liq.montoTotal);
           // Porción de ALQUILER de lo cobrado, capeada a la base (montoTotal sin
           // mora): un pago con mora hace cobrado > total y sin cap la porción de
@@ -2111,6 +2118,18 @@ export async function plataRoutes(app: FastifyInstance) {
       }
       if (e instanceof GastoYaDescontado) {
         return reply.code(409).send({ message: 'Un gasto fue tomado por otra rendición al mismo tiempo. Reintentá.' });
+      }
+      if (e instanceof ParticipacionAusente) {
+        // No debería pasar nunca con el código de hoy. Si pasa, la alternativa era rendirle
+        // el 100% del alquiler a este dueño sin que nadie se entere: mejor frenar y que
+        // alguien mire el reparto.
+        return reply.code(409).send({
+          message:
+            'No se puede rendir: quedó una liquidación de una propiedad en la que este propietario no ' +
+            'figura en el reparto. Revisá los dueños de esa propiedad antes de rendir.',
+          codigo: 'PARTICIPACION_AUSENTE',
+          propiedadId: e.propiedadId,
+        });
       }
       throw e;
     }
@@ -2567,6 +2586,12 @@ class ValidarExcedeSaldo extends Error {}
 // Señales de la tx de POST /rendiciones (todo el cálculo va dentro del advisory
 // lock por dueño+período): el handler las traduce a 409 claros.
 class RendicionSinCobros extends Error {}
+/** Lleva la propiedad: sin ella el 409 manda a "revisar el reparto" sin decir de cuál. */
+class ParticipacionAusente extends Error {
+  constructor(readonly propiedadId: string) {
+    super('participacion ausente');
+  }
+}
 /** Lleva los números: sin ellos el 409 mandaba al operador a "revisar los gastos" sin
  *  decirle cuánto falta ni cuál gasto lo traba, y el que traba puede ser el arreglo de un
  *  reclamo —que no figura en la lista de gastos de caja que el mensaje lo manda a mirar. */
