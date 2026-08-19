@@ -1077,3 +1077,69 @@ Los riesgos del sistema que no salieron de la reunión —agujeros de plata, deu
 asimetrías entre los dos lados del mostrador— están en
 [`07-ECOSISTEMA.md`](./07-ECOSISTEMA.md) §9. Varios son más graves que algunas tareas de acá y
 merecen su propia planificación.
+
+---
+
+## T-30 · El mail sale de un `no-reply` y el copy invita a responderlo
+
+**Experto:** BE + PROD · **Prioridad:** 🟠 · **Depende de:** nada
+**Origen:** role play de Camila al ejecutar T-16. No salió de la reunión.
+
+**Estado verificado.** `apps/api/src/mailer.ts` usa
+`from = process.env.SMTP_FROM ?? 'My Alquiler <no-reply@myalquiler.app>'`. Todos los mails
+salen de ahí: OTP, invitaciones, anuncios y ahora el aviso de ajuste.
+
+El problema es el copy. El aviso de ajuste cierra con *"si algo no te cierra, respondele a
+&lt;inmobiliaria&gt; antes del próximo vencimiento"*, y `enviarAnuncioEmail` manda comunicaciones
+de la inmobiliaria al inquilino. **El inquilino va a apretar Responder**, y esa respuesta se
+pierde: no llega ni a la inmobiliaria ni a nadie.
+
+En palabras de Camila: *"¿Responderle a dónde? Si el mail sale de no-reply, me van a contestar
+ahí y no me va a llegar nunca."*
+
+Es el mismo patrón que T-18: texto que promete un canal que no existe.
+
+**Qué hay que hacer.** Elegir una de las dos:
+1. **`replyTo` con el email de la inmobiliaria.** `InmobiliariaContacto` ya lo trae y varios
+   mails lo muestran en el pie. Es una línea por envío y resuelve el caso real.
+2. Si no se quiere exponer ese email, **cambiar el copy** para decir por dónde sí se contesta
+   (teléfono, la app), y no invitar a responder el mail.
+
+La 1 es mejor: la inmobiliaria QUIERE que le escriban, es su cliente.
+
+**Criterio de aceptación.** Un inquilino que responde el aviso de ajuste le llega a su
+inmobiliaria; o el texto no lo invita a responder.
+
+---
+
+## T-31 · El ajuste masivo manda un mail por contrato, sin throttle
+
+**Experto:** BE · **Prioridad:** 🟠 · **Depende de:** T-16 (hecha)
+**Origen:** role play de Camila al ejecutar T-16. No salió de la reunión.
+
+**Estado verificado.** Desde T-16 (`f2d3298`), cada ajuste dispara
+`avisarAjusteAlInquilino` → un `sendMail` por contrato, secuencial pero **sin pausa**.
+
+El caso real de Camila es ajustar veinte o más contratos el mismo día —los ajustes se agrupan
+por índice y fecha—, así que salen veinte mails casi simultáneos desde la misma cuenta SMTP.
+Sus palabras: *"si el servidor de correo me los rebota por spam, me quedo sin avisarle a nadie
+y encima no me entero."*
+
+**El proyecto ya resolvió esto una vez y no se replicó.** `enviarAnuncioEmail`
+(`mailer.ts`) tiene la nota explícita: *"Un destinatario por email (nunca listas/BCC), pensado
+para mandarse en loop secuencial con throttle (deliverability: parecer humano, no ráfaga)"*.
+
+**Qué hay que hacer.**
+1. Ver cómo dispara el ajuste masivo el panel: si son N llamadas al endpoint individual, el
+   throttle va del lado del front; si hay un endpoint masivo, del lado del server.
+2. Aplicar el mismo criterio que los anuncios.
+3. **Y lo más importante: que un rebote no sea silencioso.** Hoy
+   `avisarAjusteAlInquilino` se traga el error con un `log.warn` — correcto para no romper el
+   ajuste, pero la inmobiliaria no se entera de que a diez inquilinos no les llegó el aviso.
+   Debería quedar visible en algún lado (contador en la respuesta del ajuste masivo, o una
+   marca en el contrato).
+
+**Criterio de aceptación.** Ajustar 20 contratos manda los 20 avisos sin ráfaga, y si alguno
+falla la inmobiliaria puede saber cuál.
+
+**Riesgo.** Ninguno de plata. Es deliverability y visibilidad.
