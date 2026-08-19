@@ -217,6 +217,9 @@ enum EstadoScreening {
 enum TipoEventoContrato {
   CREADO
   AJUSTE_APLICADO
+  // Valor propio: antes la renovación reusaba AJUSTE_APLICADO porque no había otro,
+  // y en el timeline una renovación y un ajuste de canon se veían iguales.
+  RENOVACION
   PAGO_RECIBIDO
   PAGO_VENCIDO
   RECLAMO_CREADO
