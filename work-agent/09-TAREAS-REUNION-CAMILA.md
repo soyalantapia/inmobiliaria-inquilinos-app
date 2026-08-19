@@ -3710,7 +3710,14 @@ auditar**, igual que pasó con `RENOVACION`. Van juntos.
 
 ---
 
-## T-44-N2 · Los otros tres `?? 100` de la rendición
+## T-44-N2 · Los otros tres `?? 100` de la rendición — ✅ HECHA
+
+**Estado: ✅ HECHA** — commit `647d892`. Los cuatro repartos de `POST /rendiciones` tiran ahora
+`ParticipacionAusente`; no queda ningún `?? 100`. Se verificó la cadena `propIds` →
+`propIdsConIngreso` y **ninguno era bug vivo**: son minas que se activan el día que las
+participaciones se filtren por vigencia. El 409 dejó de nombrar sólo a las liquidaciones, porque
+ahora lo tiran cuatro caminos. Test de fuente que se comprobó en rojo inyectando la regresión.
+Detalle en `work-agent/tareas/T-44-N2/estado.md`.
 
 **Experto:** BE · **Prioridad:** 🟡 · **Depende de:** nada
 **Origen:** T-44-N1.
