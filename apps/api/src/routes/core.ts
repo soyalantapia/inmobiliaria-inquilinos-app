@@ -19,7 +19,10 @@ import { conSaldo, montoPagadoPorLiquidacion } from '../lib/saldos.js';
 import { normalizarEmail } from '../lib/normalizar-email.js';
 import { normalizarDni } from '../lib/normalizar-dni.js';
 import { diffParticipaciones } from '../lib/diff-participaciones.js';
-import { alquilerCobradoSinRendir } from '../lib/rendicion-pendiente.js';
+import {
+  alquilerCobradoSinRendir,
+  alquilerCobradoSinRendirDePropiedad,
+} from '../lib/rendicion-pendiente.js';
 import { registrarEventoContrato } from '../lib/evento-contrato.js';
 import { aplicarDepositoADeuda } from '../lib/aplicar-deposito.js';
 import { calcularMora, resolverEsquemaMora } from '../lib/punitorios.js';
@@ -652,10 +655,48 @@ export async function coreRoutes(app: FastifyInstance) {
           'No podés quitar a ese propietario: es quien cobra directo del inquilino en un contrato activo. Reasigná la cobranza directa antes de cambiar los dueños.',
       });
     }
-    // NOTA (limitación conocida): cambiar el reparto de un período ya cobrado no
-    // re-atribuye lo cobrado-no-rendido del dueño saliente. El cap cruzado en la
-    // rendición (plata.ts) evita que la inmobiliaria pague MÁS que lo cobrado; la
-    // re-atribución fina requeriría snapshotear participaciones por período.
+    // Guard de plata cobrada y sin rendir. ESTE es el agujero que dejaba la falta de
+    // vigencia en ParticipacionPropietario, y no es teórico: la rendición decide a quién
+    // le transfiere leyendo la participación de HOY (`plata.ts` arma el universo de
+    // propiedades del dueño desde sus participaciones actuales y aplica el porcentaje
+    // actual), pero el `periodo` que se rinde lo elige el operador y puede ser de hace
+    // dos años. Cambiar el reparto con plata cobrada en el medio le transfiere al dueño
+    // ENTRANTE lo que era del SALIENTE — y el saliente, al borrarse su fila, desaparece
+    // del universo y no hay ningún camino en el código para rendirle lo suyo.
+    //
+    // El cap cruzado de la rendición evita pagar de MÁS; no dice nada sobre A QUIÉN. Es
+    // mis-atribución silenciosa, sin rastro y sin vuelta atrás.
+    //
+    // POR QUÉ ESTO ARREGLA EL PROBLEMA DE FONDO SIN AGREGAR `desde`/`hasta`: la vigencia
+    // que le falta a la tabla YA EXISTE en el ledger de rendiciones —`AlquilerRendido`
+    // congela `participacion` y `periodo` en el momento de rendir—. Sólo hace falta
+    // forzar el orden correcto: primero se rinde con el reparto viejo (y queda
+    // congelado), después se cambia el reparto. Versionar las filas, en cambio, haría
+    // que la Σ de comisión de `tasaComisionDeParticipaciones` pase de 100% y la
+    // inmobiliaria comisione de más, en silencio, en dos lugares distintos.
+    //
+    // Sólo traba cuando la propiedad YA TIENE dueños. Los dos caminos de alta —`POST
+    // /propiedades` con `propietarios` `.min(1)` y la importación de cartera— siempre crean al
+    // menos una participación, así que ese caso hoy no existe; pero si alguna vez existiera
+    // (dato viejo, carga a medias), trabar la PRIMERA asignación dejaría la plata sin poder
+    // rendirse nunca: sin dueños no hay a quién rendir y sin rendir no se podrían cargar los
+    // dueños. Un deadlock es peor que el riesgo que este guard evita.
+    const yaTieneDuenios = await prisma.participacionPropietario.count({ where: { propiedadId: id } });
+    const sinRendirPropiedad = yaTieneDuenios > 0
+      ? await alquilerCobradoSinRendirDePropiedad(id)
+      : { total: 0, periodos: [] };
+    if (sinRendirPropiedad.total > 0) {
+      const detalle = sinRendirPropiedad.periodos.map((p) => `${p.periodo} ($${p.monto.toLocaleString('es-AR')})`).join(', ');
+      return reply.code(409).send({
+        message:
+          `Esta propiedad tiene alquiler cobrado y sin rendir: ${detalle}. Rendíselo a los dueños de hoy ` +
+          `antes de cambiar el reparto — si lo cambiás ahora, esa plata se le transfiere a quien no ` +
+          `corresponde y al dueño que sale no hay forma de rendirle lo suyo.`,
+        codigo: 'COBRADO_SIN_RENDIR',
+        periodos: sinRendirPropiedad.periodos,
+        total: sinRendirPropiedad.total,
+      });
+    }
 
     await prisma.$transaction(async (tx) => {
       // El estado anterior se lee DENTRO de la transacción y ANTES del deleteMany: es la única

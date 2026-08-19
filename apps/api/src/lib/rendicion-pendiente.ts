@@ -13,7 +13,7 @@ export interface PeriodoSinRendir {
 }
 
 /**
- * Alquiler COBRADO de un contrato que todavía NO se le rindió al propietario.
+ * Alquiler COBRADO que todavía NO se le rindió al propietario.
  *
  * POR QUÉ EXISTE: `POST /rendiciones` y `GET /caja/cierre` filtran por
  * `contrato.modoCobranza` **actual**, en CUALQUIER período. Entonces cambiar el modo
@@ -41,7 +41,14 @@ export interface PeriodoSinRendir {
  * testeado en `test/rendicion-pendiente.test.ts`.
  */
 
-/** Una liquidación, con lo mínimo que hace falta para la cuenta. */
+/**
+ * Una liquidación, con lo mínimo que hace falta para la cuenta.
+ *
+ * `unknown` en la plata y no `number`: los montos llegan como `Decimal` de Prisma y la
+ * conversión se hace acá adentro (`Number(...)`). Tipar `number` obligaría a cada lector a
+ * convertir antes, y alcanzaría con que uno se olvidara para que la cuenta se hiciera sobre
+ * un objeto Decimal y diera cualquier cosa sin avisar.
+ */
 export interface LiquidacionParaPendiente {
   id: string;
   periodo: string;
@@ -76,6 +83,9 @@ export function calcularPendienteSinRendir(
     // así que el guard dejaría pasar el cambio en silencio.
     const alquilerCobrado = liqTotal > 0 ? Math.min(cobrado, liqTotal) * (liqAlq / liqTotal) : 0;
     const pendiente = Math.round((alquilerCobrado - (rendidoPorLiq.get(l.id) ?? 0)) * 100) / 100;
+    // Tolerancia de 1 centavo: el mismo umbral que usa la rendición para decidir si
+    // algo es rendible (`rendible <= 0` ⇒ se saltea). Sin esto, un resto de redondeo
+    // del prorrateo bloquearía el cambio de modo para siempre.
     if (pendiente > 0.01) {
       periodos.push({ periodo: l.periodo, monto: pendiente });
       total += pendiente;
@@ -85,12 +95,46 @@ export function calcularPendienteSinRendir(
   return { total: Math.round(total * 100) / 100, periodos };
 }
 
+/** Lo pendiente de UN contrato. `db` permite llamarlo dentro de una transacción. */
 export async function alquilerCobradoSinRendir(
   contratoId: string,
   db: TxOrClient = prisma,
 ): Promise<{ total: number; periodos: PeriodoSinRendir[] }> {
+  return pendienteDeLiquidaciones({ contratoId }, db);
+}
+
+/**
+ * Lo mismo, pero de TODOS los contratos de una propiedad.
+ *
+ * POR QUÉ EXISTE: `PUT /propiedades/:id/participaciones` borra y recrea el reparto de dueños
+ * (`core.ts`, `deleteMany` + `createMany`), y la rendición decide a quién le transfiere leyendo
+ * la participación **de hoy** (`plata.ts` arma el universo de propiedades del dueño desde sus
+ * participaciones actuales, y aplica el porcentaje actual). El `periodo` que se rinde lo elige
+ * el operador y puede ser de hace dos años.
+ *
+ * Entonces, si se cambia el reparto con plata cobrada y sin rendir en el medio: el dueño
+ * ENTRANTE cobra lo del período del saliente, y el SALIENTE desaparece de `propIds` y no hay
+ * ningún camino en el código para rendirle lo suyo. El cap cruzado de la rendición evita pagar
+ * de MÁS; no dice nada sobre A QUIÉN. Es mis-atribución, no doble pago, y no deja rastro.
+ *
+ * La cuenta es por propiedad y no por contrato porque el reparto de dueños cuelga de la
+ * PROPIEDAD: al cambiarlo quedan afectados todos sus contratos, incluidos los terminados que
+ * todavía tienen alquiler cobrado sin rendir.
+ */
+export async function alquilerCobradoSinRendirDePropiedad(
+  propiedadId: string,
+  db: TxOrClient = prisma,
+): Promise<{ total: number; periodos: PeriodoSinRendir[] }> {
+  return pendienteDeLiquidaciones({ contrato: { propiedadId } }, db);
+}
+
+/** El lector: una sola forma de traer los datos, dos formas de acotarlos. */
+async function pendienteDeLiquidaciones(
+  where: { contratoId: string } | { contrato: { propiedadId: string } },
+  db: TxOrClient,
+): Promise<{ total: number; periodos: PeriodoSinRendir[] }> {
   const liqs = await db.liquidacion.findMany({
-    where: { contratoId },
+    where,
     select: { id: true, periodo: true, montoAlquiler: true, montoTotal: true },
   });
   if (liqs.length === 0) return { total: 0, periodos: [] };
