@@ -216,6 +216,12 @@ export interface ContratoListado {
   /** Teléfono del inquilino titular (para WhatsApp/PDF de cobranza). */
   inquilinoTelefono?: string | null;
   direccion: string;
+  /**
+   * Nombre EFECTIVO del complejo/edificio (hoy: el del consorcio ligado, si hay).
+   * Es el rótulo por el que la inmobiliaria reconoce la unidad; la dirección pasa a dato
+   * secundario. Se consume con los helpers de `lib/rotulo-propiedad.ts`.
+   */
+  complejo?: string | null;
   /** FK a Propiedad.id — para cruzar la deuda de ex-inquilinos contra el listado de propiedades. */
   propiedadId?: string;
   monto: number;

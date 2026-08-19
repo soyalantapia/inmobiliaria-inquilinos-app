@@ -53,7 +53,13 @@ interface ContratoApi {
   cargadoRol: string | null;
   cargadoAt: string | null;
   aprobadoPor: string | null;
-  propiedad: { id: string; direccion: string; ciudad: string; consorcio?: { nombre: string } | null };
+  propiedad: {
+    id: string;
+    direccion: string;
+    ciudad: string;
+    complejo?: string | null;
+    consorcio?: { nombre: string } | null;
+  };
   inquilinoTitular: { id: string; nombre: string; apellido: string | null; telefono?: string | null } | null;
   /** Derivados por el server desde liquidaciones reales (Fase 3). */
   estadoPagoActual: ContratoListado['estadoPagoActual'];
@@ -86,6 +92,13 @@ function mapContrato(c: ContratoApi): ContratoListado {
     // Defensa: una respuesta sin la relación `propiedad` (p.ej. un POST que
     // devuelve la fila pelada) no debe crashear con "reading 'direccion'".
     direccion: c.propiedad?.direccion ?? '—',
+    // Nombre por el que la inmobiliaria identifica la unidad. Se descartaba al mapear,
+    // así que el listado y el detalle de contratos mostraban la calle aunque la
+    // propiedad colgara de un consorcio ("nosotros cuando decimos Lourdes no le decimos
+    // nunca Artigas la dirección", 03/08). Ver lib/rotulo-propiedad.ts.
+    // Misma prioridad que en `mapPropiedad` más abajo: el consorcio real gana sobre el
+    // texto libre. Si difieren, el consorcio es el dato administrado.
+    complejo: c.propiedad?.consorcio?.nombre ?? c.propiedad?.complejo ?? null,
     propiedadId: c.propiedad?.id,
     monto: Number(c.monto),
     moneda: c.moneda,

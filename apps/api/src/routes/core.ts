@@ -184,7 +184,9 @@ export async function coreRoutes(app: FastifyInstance) {
     const contratos = await prisma.contrato.findMany({
       where: { inmobiliariaId: u.inmobiliariaId },
       include: {
-        propiedad: { select: { id: true, direccion: true, ciudad: true, consorcio: { select: { nombre: true } } } },
+        // `complejo` es el texto libre de la propiedad; `consorcio.nombre` el consorcio real.
+        // El panel rotula con consorcio, si no complejo, si no dirección (lib/rotulo-propiedad.ts).
+        propiedad: { select: { id: true, direccion: true, ciudad: true, complejo: true, consorcio: { select: { nombre: true } } } },
         inquilinoTitular: { select: { id: true, nombre: true, apellido: true, email: true, telefono: true } },
         liquidaciones: { orderBy: { periodo: 'desc' }, take: 6 },
       },

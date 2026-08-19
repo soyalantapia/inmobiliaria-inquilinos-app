@@ -66,6 +66,7 @@ import {
   urgenciaConfig,
 } from '@/lib/reclamos-config';
 import { diasHastaVencimiento, formatFechaCorta, formatMonto, formatRangoVigencia } from '@/lib/format';
+import { rotuloPrincipal, rotuloSecundario } from '@/lib/rotulo-propiedad';
 import { apiEnabled, urlDeArchivo } from '@/lib/api/client';
 import { usePropiedad } from '@/lib/api/use-propiedad';
 import { usePropietarios } from '@/lib/api/hooks';
@@ -165,11 +166,17 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
               )}
               <div className="flex-1 min-w-0 space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="text-2xl font-semibold leading-tight">{propiedad.direccion}</h1>
+                  <h1 className="text-2xl font-semibold leading-tight">
+                    {rotuloPrincipal(propiedad)}
+                  </h1>
                   <Badge variant={estadoCfg.variant}>{estadoCfg.label}</Badge>
                 </div>
+                {/* La calle NO se pierde: si el título pasó a ser el complejo, la
+                    dirección baja acá junto a la ciudad. Es la pantalla desde donde se
+                    manda al profesional a la propiedad. */}
                 <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
                   <MapPin className="h-3.5 w-3.5" />
+                  {rotuloSecundario(propiedad) && `${rotuloSecundario(propiedad)} · `}
                   {propiedad.ciudad}, {propiedad.provincia}
                 </p>
                 <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">

@@ -25,6 +25,7 @@ import { Topbar } from '@/components/topbar';
 import { AjusteMasivoDialog } from '@/components/ajuste-masivo-dialog';
 import { useContratos, usePropiedades } from '@/lib/api/hooks';
 import { formatMonto, formatRangoVigencia } from '@/lib/format';
+import { rotuloEnLinea } from '@/lib/rotulo-propiedad';
 import type { EstadoLiquidacion } from '@/lib/types';
 
 type Filtro = 'TODOS' | 'ACTIVO' | 'BORRADOR' | 'ARCHIVADO';
@@ -159,7 +160,10 @@ export default function ContratosPage() {
 
       const matchQ = q
         ? c.inquilino.toLowerCase().includes(q.toLowerCase()) ||
-          c.direccion.toLowerCase().includes(q.toLowerCase())
+          c.direccion.toLowerCase().includes(q.toLowerCase()) ||
+          // Buscar por el nombre del complejo lista todas sus unidades: es como la
+          // inmobiliaria las agrupa mentalmente.
+          (c.complejo?.toLowerCase().includes(q.toLowerCase()) ?? false)
         : true;
       return matchQ;
     });
@@ -274,7 +278,7 @@ export default function ContratosPage() {
               value={q}
               onChange={(e) => setQ(e.target.value)}
               className="pl-9"
-              placeholder="Buscar por inquilino o dirección"
+              placeholder="Buscar por inquilino, complejo o dirección"
               aria-label="Buscar contratos"
             />
           </div>
@@ -358,7 +362,7 @@ export default function ContratosPage() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="line-clamp-2 font-medium leading-tight">{c.inquilino}</p>
-                      <p className="line-clamp-2 text-xs text-muted-foreground">{c.direccion}</p>
+                      <p className="line-clamp-2 text-xs text-muted-foreground">{rotuloEnLinea(c)}</p>
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-1">
                       <Badge variant={estadoContratoVariant[c.estado] ?? 'secondary'}>
@@ -412,7 +416,7 @@ export default function ContratosPage() {
                 {filtrados.map((c) => (
                   <TableRow key={c.id}>
                     <TableCell className="font-medium">{c.inquilino}</TableCell>
-                    <TableCell className="text-muted-foreground">{c.direccion}</TableCell>
+                    <TableCell className="text-muted-foreground">{rotuloEnLinea(c)}</TableCell>
                     <TableCell className="text-muted-foreground text-sm tabular-nums">
                       {formatRangoVigencia(c.fechaInicio, c.fechaFin)}
                     </TableCell>

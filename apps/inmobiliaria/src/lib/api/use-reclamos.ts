@@ -9,6 +9,7 @@ import { apiEnabled, apiFetch } from './client';
 import { ensureApiSession } from './session';
 import { listarReclamos } from '@/lib/reclamos-store';
 import type { Reclamo } from '@/lib/types';
+import { rotuloEnLinea } from '@/lib/rotulo-propiedad';
 
 interface ReclamoApi {
   id: string;
@@ -24,7 +25,13 @@ interface ReclamoApi {
   fotoUrl: string | null;
   clasificacion: Reclamo['clasificacion'] | null;
   costoTrabajo: number | string | null;
-  propiedad: { id: string; direccion: string; ciudad: string } | null;
+  propiedad: {
+    id: string;
+    direccion: string;
+    ciudad: string;
+    complejo?: string | null;
+    consorcio?: { nombre: string } | null;
+  } | null;
   contrato: {
     id: string;
     fechaInicio: string | null;
@@ -40,7 +47,10 @@ function mapReclamo(r: ReclamoApi): Reclamo {
     inquilino: r.contrato?.inquilinoTitular
       ? `${r.contrato.inquilinoTitular.nombre} ${r.contrato.inquilinoTitular.apellido ?? ''}`.trim()
       : '—',
-    direccion: r.propiedad?.direccion ?? '—',
+    // rotuloEnLinea, NO rotuloPrincipal: el reclamo termina en una orden a un
+    // plomero/electricista que tiene que llegar a la puerta. El complejo ayuda a
+    // ubicarla, la calle es la que no se puede perder.
+    direccion: r.propiedad ? rotuloEnLinea(r.propiedad) : '—',
     categoria: r.categoria,
     descripcion: r.descripcion,
     urgencia: r.urgencia,

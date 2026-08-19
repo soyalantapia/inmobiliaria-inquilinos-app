@@ -54,6 +54,7 @@ import { useAnuncios, useContratos, type AnuncioConConteos } from '@/lib/api/hoo
 import { apiEnabled } from '@/lib/api/client';
 import { type ContratoListado } from '@/lib/types';
 import { formatFechaCorta } from '@/lib/format';
+import { rotuloEnLinea } from '@/lib/rotulo-propiedad';
 
 const USUARIO_ACTUAL = 'Roberto Tapia';
 
@@ -489,7 +490,10 @@ function CrearAnuncioDialog({ abierto, onClose, onGuardar, contratosApi }: Dialo
         .map((c) => ({
           id: c.id,
           inquilino: c.inquilino,
-          direccion: c.direccion,
+          // `rotuloEnLinea` acá y no abajo: el mock (`inquilinosAlcanzables`) no tiene
+          // `complejo`, así que resolviendo el rótulo en el map las dos fuentes entregan
+          // el mismo shape y el render de abajo queda con una sola rama.
+          direccion: rotuloEnLinea(c),
           estadoPago: c.estadoPagoActual,
         }))
     : inquilinosAlcanzables();
@@ -700,7 +704,7 @@ function CrearAnuncioDialog({ abierto, onClose, onGuardar, contratosApi }: Dialo
                   id="ca-buscar-contrato"
                   value={buscarContrato}
                   onChange={(e) => setBuscarContrato(e.target.value)}
-                  placeholder="Buscar por inquilino o dirección…"
+                  placeholder="Buscar por inquilino, complejo o dirección…"
                   className="h-9 pl-8 text-sm"
                 />
               </div>

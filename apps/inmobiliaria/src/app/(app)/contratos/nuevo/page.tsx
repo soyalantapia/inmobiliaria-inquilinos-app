@@ -38,6 +38,7 @@ import {
 } from '@/components/mora-selector';
 import { contratoExtraidoMock } from '@/lib/mock-data';
 import { formatFechaCorta, formatMonto, formatTotalPorMoneda } from '@/lib/format';
+import { rotuloEnLinea } from '@/lib/rotulo-propiedad';
 import type {
   ContratoExtraido,
   IndiceAjuste,
@@ -1631,7 +1632,7 @@ function CargarContratoApiWizard() {
                     <SelectContent>
                       {disponibles.map((p) => (
                         <SelectItem key={p.propiedad.id} value={p.propiedad.id}>
-                          {p.propiedad.direccion} · {p.propiedad.ciudad}
+                          {rotuloEnLinea(p.propiedad)} · {p.propiedad.ciudad}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -2324,7 +2325,7 @@ function CargarContratoApiWizard() {
                   label="Propiedad"
                   value={
                     propiedadElegida
-                      ? `${propiedadElegida.propiedad.direccion} · ${propiedadElegida.propiedad.ciudad}`
+                      ? `${rotuloEnLinea(propiedadElegida.propiedad)} · ${propiedadElegida.propiedad.ciudad}`
                       : '—'
                   }
                   className="md:col-span-2"

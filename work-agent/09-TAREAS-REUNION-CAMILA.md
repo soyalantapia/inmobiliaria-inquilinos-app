@@ -213,6 +213,42 @@ el SHA de `/health` al empezar.
 ## T-06 · Extender el rótulo de propiedad al resto del panel
 
 **Experto:** FE-P · **Prioridad:** 🟠 · **Depende de:** nada
+**Estado: ✅ HECHA** — rama `feat/reunion-camila-0308`.
+
+Aplicado en listado y detalle de contratos, detalle de propiedad, alta de contrato (select
+y resumen), reclamos (listado, detalle y los de la ficha de propiedad), renovaciones,
+anuncios, pagos del mes (tabla, cards, panel de morosos y las **3 exportaciones**),
+ficha de propietario e historial de rendiciones.
+
+**Faltaba el dato, no sólo el render.** El backend mandaba `consorcio.nombre` pero **no**
+`complejo`: `GET /contratos`, `GET /reclamos`, `GET /reclamos/:id` y `GET /renovaciones`
+seleccionaban la propiedad campo por campo y lo dejaban afuera. Con el rótulo aplicado y sin
+ese campo, una propiedad con complejo cargado pero sin consorcio ligado habría seguido
+mostrando la calle — el bug original, disfrazado de arreglado. `GET /propietarios/:id` sí lo
+mandaba (hace `include` completo), pero el tipo del cliente no lo declaraba y se perdía al
+mapear.
+
+**El riesgo se cumplió y se manejó.** Donde el destinatario está afuera de la oficina, la
+calle manda: el WhatsApp de cobranza al inquilino/garante (`morosos-panel.tsx:212`) sigue
+interpolando `contrato.direccion` cruda. En reclamos se usó `rotuloEnLinea` y no
+`rotuloPrincipal` a propósito — la orden termina en un plomero que tiene que llegar a la
+puerta, así que el rótulo suma el complejo **sin sacar** la calle. Ídem el hero de la
+propiedad: el título pasó a ser el complejo y la dirección bajó junto a la ciudad.
+
+**De yapa:** buscar por complejo en contratos y anuncios (escribir "Lourdes" lista sus dos
+unidades) y los placeholders actualizados, que antes decían "inquilino o dirección".
+`detectarConsorcio` de morosos-panel quedó intacto: hace un heurístico con
+`direccion.split(',')` y sigue recibiendo la calle cruda porque `complejo` se sumó como campo
+aparte, sin pisar `ContratoListado.direccion`.
+
+**Verificación.** Typecheck limpio en `apps/api` y `apps/inmobiliaria`; lint sin warnings
+nuevos; recorrido en el navegador de contratos, propiedad, reclamos, pagos y propietario, con
+la consola sin errores. Se cargó `complejo` en los mocks (Complejo Lourdes ×2, Torres del
+Parque) para que el build demo muestre la mejora y no sólo el fallback.
+
+**Deuda:** sin test unitario de `rotulo-propiedad.ts` — `apps/inmobiliaria` no tiene runner
+(es T-32). `next build` no se pudo correr: el guard de puerto aborta si hay un dev server vivo
+en 3001.
 
 **Qué pidió Camila.** `[24:04]` *"Todos tenemos un nombre de referencia."* `[22:57]` *"Yo me
 guío directamente por el complejo. Nosotros cuando decimos Lourdes no le decimos nunca Artigas

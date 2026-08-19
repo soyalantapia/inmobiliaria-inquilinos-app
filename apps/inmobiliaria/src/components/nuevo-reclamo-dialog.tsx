@@ -25,6 +25,7 @@ import { toast } from '@llave/ui/use-toast';
 import { apiEnabled, apiFetch, ApiError, subirArchivo, urlDeArchivo } from '@/lib/api/client';
 import { ensureApiSession } from '@/lib/api/session';
 import { useContratos } from '@/lib/api/hooks';
+import { rotuloEnLinea } from '@/lib/rotulo-propiedad';
 
 const CATEGORIAS = [
   { v: 'PLOMERIA', l: 'Plomería' },
@@ -148,7 +149,7 @@ export function NuevoReclamoDialog({
               <SelectContent>
                 {activos.map((c) => (
                   <SelectItem key={c.id} value={c.id}>
-                    {c.inquilino} · {c.direccion}
+                    {c.inquilino} · {rotuloEnLinea(c)}
                   </SelectItem>
                 ))}
               </SelectContent>

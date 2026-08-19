@@ -199,7 +199,7 @@ export async function operacionRoutes(app: FastifyInstance) {
         ...(q.urgencia ? { urgencia: q.urgencia } : {}),
       },
       include: {
-        propiedad: { select: { id: true, direccion: true, ciudad: true } },
+        propiedad: { select: { id: true, direccion: true, ciudad: true, complejo: true, consorcio: { select: { nombre: true } } } },
         contrato: {
           select: {
             id: true,
@@ -222,7 +222,7 @@ export async function operacionRoutes(app: FastifyInstance) {
     const reclamo = await prisma.reclamo.findFirst({
       where: { id, inmobiliariaId: u.inmobiliariaId },
       include: {
-        propiedad: { select: { id: true, direccion: true, ciudad: true } },
+        propiedad: { select: { id: true, direccion: true, ciudad: true, complejo: true, consorcio: { select: { nombre: true } } } },
         contrato: {
           select: {
             id: true,
@@ -1840,7 +1840,7 @@ export async function operacionRoutes(app: FastifyInstance) {
         monto: true,
         moneda: true,
         tipoContrato: true,
-        propiedad: { select: { id: true, direccion: true, ciudad: true } },
+        propiedad: { select: { id: true, direccion: true, ciudad: true, complejo: true, consorcio: { select: { nombre: true } } } },
         inquilinoTitular: { select: { id: true, nombre: true, apellido: true, email: true, telefono: true } },
         intencionRenovacion: true,
       },
