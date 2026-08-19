@@ -483,9 +483,19 @@ alcance lo define PROD antes de escribir código, y por eso la fecha de vigencia
 
 ---
 
-## T-12 · Hacer descubrible "anular un pago"
+## T-12 · Hacer descubrible "anular un pago" — ✅ RESUELTO
 
-**Experto:** FE-P · **Prioridad:** 🟠 · **Depende de:** T-04
+> **Hecho.** Detalle y evidencia: [`T-12-DESHACER-COBRO-EN-CAJA.md`](T-12-DESHACER-COBRO-EN-CAJA.md).
+> El diagnóstico cambió al relevar: Camila **sí encontró "Ver detalle"** y llegó a la lista de
+> cobros del día — la fila del cobro equivocado no tenía acción. El botón "Deshacer" ahora vive
+> **en esa fila**, pide motivo, sólo lo ve ADMIN, muestra el 409 real del server y el cierre se
+> recalcula solo. Backend sin cambios: ninguna guarda se aflojó.
+> De paso se corrigió un bug preexistente de moneda en los totales del cierre (un día en USD se
+> mostraba con signo de pesos).
+> **Falta:** prueba de humo contra el backend real después del deploy (T-02).
+
+**Experto:** FE-P · **Prioridad:** 🟠 · **Depende de:** ~~T-04~~ (dependencia levantada: no se
+modifica lógica de pagos, sólo se expone un endpoint ya existente y ya guardado)
 
 **Qué pidió Camila.** `[57:12]` *"Si el inquilino se equivocó de un pago, ¿cómo lo elimino?
 ¿Cómo elimino un pago ya cargado que me lo contabilizó en caja?"* — Alan pidió un segundo y no
