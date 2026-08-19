@@ -1386,6 +1386,37 @@ base, en ese request, que el sujeto sigue habilitado.
 
 ---
 
+### ✅ RESUELTO — commit `88f4e02` · **sin migración**
+
+Los seis kinds revalidan ahora contra la base. Y no hizo falta ninguna columna nueva: el
+`Inquilino` ya tenía de dónde agarrarse.
+
+**Titular.** Se revalidan dos cosas: que la fila siga existiendo en ese tenant (borrarla ahora sí
+revoca) y que el contrato del token siga siendo el suyo (si se reasignó, el token quedó apuntando
+a un alquiler que no le corresponde). La revalidación vive en **una** función compartida por las
+**dos** puertas del titular —`requireInquilino` y la rama `inquilino` de `requireContratoAcceso`—
+porque cuando estaba en una sola, la otra quedaba abierta.
+
+**La regla sutil, con test que la fija:** un token con `contratoId: null` **no** se revoca aunque
+la fila ya tenga contrato. Es alguien que se logueó antes del alta; su token nunca reclamó nada, y
+cortarlo lo mandaría al login sin ganar seguridad. La igualdad estricta —la "simplificación"
+obvia— rompe justo ese caso, y el test lo atrapa.
+
+**Persona: revocación más débil, y el comentario lo dice.** La identidad es sólo un email dentro
+del token, así que lo único revalidable es que ese email siga siendo de alguien. **Cubre** el caso
+que motivó esto (un OTP emitido a un email equivocado que después se corrige). **No cubre**
+revocarle el acceso a alguien cuyo email sigue vigente: para eso hace falta un id en el payload, y
+eso es cambiar el contrato del token. Queda dicho en vez de aparentar una garantía que no da.
+
+**216 tests puros**, 7 nuevos verificados en rojo.
+
+**Queda pendiente, y no es de este alcance:** `exigirContratoActivo` no cubre todas las escrituras
+—`operacion.ts` (reclamos, ratings, confirmaciones) no lo llama nunca, pese a que el docstring de
+`guards.ts` se atribuye gatear "abrir reclamo"—. Es un desfasaje entre el comentario y el código
+que conviene arreglar.
+
+---
+
 **Qué pidió Camila.** Es el pedido más grande de la reunión **y tiene modelo de negocio
 atrás**:
 
