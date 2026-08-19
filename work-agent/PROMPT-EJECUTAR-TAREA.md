@@ -134,27 +134,24 @@ Elegí **una al azar** entre las elegibles (o la que te pidió el dueño) y recl
 ⚠️ **Al azar de verdad.** Si todos los chats eligen "la primera disponible", todos van a pelear
 por la misma y van a serializarse en vez de repartirse. Barajá:
 
-```bash
-# ELEGIBLES: las que armaste en 0.1, ej. ELEGIBLES="T-06 T-08 T-11 T-16 T-24"
-for TAREA in $(printf '%s\n' $ELEGIBLES | shuf); do
-  if mkdir "$LOCKS/$TAREA" 2>/dev/null; then echo "TOMADA: $TAREA"; break; fi
-done
-```
-
 **`mkdir` es la operación atómica**: si el directorio ya existe, falla, y eso significa que otro
-chat la tomó primero. **No uses `test -d` + `mkdir`**: entre las dos operaciones entra otro chat.
+chat la tomó primero. **No uses `test -d` + `mkdir`**: entre esas dos operaciones entra otro chat
+y los dos creen que ganaron.
+
+Un solo bloque hace las dos cosas —barajar y reclamar el primero que enganche—:
 
 ```bash
-TAREA=T-16   # la que elegiste
-if mkdir "$LOCKS/$TAREA" 2>/dev/null; then
-  echo "TOMADA: $TAREA"
-else
-  echo "YA LA TIENE OTRO CHAT — elegí otra"
-fi
+# ELEGIBLES: las que armaste en 0.1, ej: ELEGIBLES="T-06 T-08 T-11 T-16 T-24"
+# Si el dueño te pidió una en particular, poné sólo esa.
+TAREA=""
+for T in $(printf '%s\n' $ELEGIBLES | shuf); do
+  if mkdir "$LOCKS/$T" 2>/dev/null; then TAREA=$T; break; fi
+done
+[ -n "$TAREA" ] && echo "TOMADA: $TAREA" || echo "No quedó ninguna libre"
 ```
 
-**Si falla, elegí otra y volvé a intentar.** Repetí hasta conseguir una. Si no queda ninguna
-elegible, decíselo al dueño y terminá — no te inventes trabajo.
+Si el loop termina sin tomar nada, están todas ocupadas: **decíselo al dueño y terminá.** No te
+inventes trabajo ni te metas en una que ya tiene dueño.
 
 Apenas la tomes, dejá tu ficha:
 
