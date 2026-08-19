@@ -206,9 +206,11 @@ async function enviarEmailsAnuncio(
 ): Promise<void> {
   const inmo = await prisma.inmobiliaria.findUnique({
     where: { id: anuncio.inmobiliariaId },
-    select: { nombre: true },
+    select: { nombre: true, email: true },
   });
   const inmoNombre = inmo?.nombre ?? 'Tu inmobiliaria';
+  // A dónde contesta el que recibe el anuncio. Sale de la inmobiliaria dueña del anuncio.
+  const inmoEmail = inmo?.email ?? null;
 
   // Destinatarios con email real, deduplicados (co-titulares pueden compartir casilla).
   const destinos: Array<{ email: string; paraInquilino: boolean }> = [];
@@ -248,6 +250,7 @@ async function enviarEmailsAnuncio(
         cuerpo: anuncio.cuerpo,
         prioridad: anuncio.prioridad,
         inmobiliariaNombre: inmoNombre,
+        inmobiliariaEmail: inmoEmail,
         paraInquilino: d.paraInquilino,
       });
       if (enviado) ok += 1;

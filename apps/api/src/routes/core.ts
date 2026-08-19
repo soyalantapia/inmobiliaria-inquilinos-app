@@ -123,7 +123,9 @@ async function avisarAjusteAlInquilino(opts: {
         moneda: true,
         inquilinoTitular: { select: { nombre: true, apellido: true, email: true } },
         propiedad: { select: { direccion: true } },
-        inmobiliaria: { select: { nombre: true } },
+        // `email` sale de la MISMA fila que ya está filtrada por inmobiliariaId: el
+        // "Responder" del inquilino no puede terminar en la casilla de otro tenant.
+        inmobiliaria: { select: { nombre: true, email: true } },
       },
     });
     const email = c?.inquilinoTitular?.email;
@@ -141,6 +143,7 @@ async function avisarAjusteAlInquilino(opts: {
       email,
       inquilinoNombre: `${c.inquilinoTitular?.nombre ?? ''} ${c.inquilinoTitular?.apellido ?? ''}`.trim() || null,
       inmobiliariaNombre: c.inmobiliaria?.nombre ?? 'Tu inmobiliaria',
+      inmobiliariaEmail: c.inmobiliaria?.email ?? null,
       direccion: c.propiedad?.direccion ?? null,
       montoAnterior: opts.montoAnterior,
       montoNuevo: opts.montoNuevo,
@@ -3161,13 +3164,15 @@ export async function coreRoutes(app: FastifyInstance) {
     try {
       const inmo = await prisma.inmobiliaria.findUnique({
         where: { id: u.inmobiliariaId },
-        select: { nombre: true },
+        select: { nombre: true, email: true },
       });
       await enviarInvitacionEquipo({
         email: creado.email,
         nombre: creado.nombre,
         rol: creado.rol,
         inmobiliariaNombre: inmo?.nombre ?? 'la inmobiliaria',
+        // El recién invitado contesta a su propia inmobiliaria, no a un no-reply.
+        inmobiliariaEmail: inmo?.email ?? null,
       });
     } catch (e) {
       request.log.error({ err: (e as Error).message }, 'Invitación de equipo: fallo el email');

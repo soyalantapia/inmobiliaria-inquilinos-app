@@ -2146,10 +2146,16 @@ merecen su propia planificación.
 
 ---
 
-## T-30 · El mail sale de un `no-reply` y el copy invita a responderlo
+## T-30 · El mail sale de un `no-reply` y el copy invita a responderlo — ✅ HECHA
 
 **Experto:** BE + PROD · **Prioridad:** 🟠 · **Depende de:** nada
 **Origen:** role play de Camila al ejecutar T-16. No salió de la reunión.
+**Resuelta** en `feat/T-30-mail-responde`. Se tomó la opción 1 (`replyTo`) en los cuatro mails
+que son comunicación de la inmobiliaria —aviso de ajuste, anuncios, bienvenida al inquilino,
+invitación al equipo— y el copy pasó a depender de que exista dirección: si no la hay, no
+invita a responder. Los mails de la plataforma (los dos OTP y la bienvenida a la inmobiliaria)
+siguen sin `replyTo` a propósito. De yapa: el pie compartido decía *"si no pediste este
+código"* en TODOS los mails, incluido el aviso de aumento. Abre **T-30-N1** y **T-30-N2**.
 
 **Estado verificado.** `apps/api/src/mailer.ts` usa
 `from = process.env.SMTP_FROM ?? 'My Alquiler <no-reply@myalquiler.app>'`. Todos los mails
@@ -2514,3 +2520,51 @@ chats.
 
 **Criterio de aceptación.** En demo, después de informar el pago completo, el home dice
 "Comprobante en revisión" y no "atrasado".
+
+---
+
+## T-30-N1 · El remitente sigue diciendo "My Alquiler", no la inmobiliaria
+
+**Experto:** BE + PROD · **Prioridad:** 🟡 · **Depende de:** T-30 (hecha)
+**Origen:** role play del inquilino al ejecutar T-30.
+
+**Estado verificado.** Con T-30 el "Responder" ya cae en la inmobiliaria, pero el `From` de
+todos los mails sigue siendo `My Alquiler <no-reply@myalquiler.app>` (`mailer.ts:16`). En la
+bandeja del celular el inquilino ve **"My Alquiler"**, una marca que no conoce, avisándole que
+le suben el alquiler. El asunto sí lleva `· {inmobiliaria}` al final, que es donde se salva.
+
+**Qué hay que hacer.** Evaluar poner el nombre de la inmobiliaria como *display name* del mismo
+buzón: `Tapia Propiedades vía My Alquiler <no-reply@myalquiler.app>`. La dirección no cambia,
+así que **SPF/DKIM siguen intactos** — es sólo el rótulo.
+
+**Por qué NO se hizo en T-30.** Cambia el remitente de TODOS los mails, incluido el OTP, y el
+remitente es lo que más pesa en si un proveedor te manda a spam. Es una decisión de
+deliverability del dueño, no un efecto colateral de arreglar el "Responder".
+
+**Criterio de aceptación.** El inquilino reconoce quién le escribe sin abrir el mail, y la tasa
+de entrega no empeora.
+
+---
+
+## T-30-N2 · La invitación al equipo no escapa el HTML
+
+**Experto:** SEC + BE · **Prioridad:** 🟡 · **Depende de:** nada
+**Origen:** lectura del mailer al ejecutar T-30.
+
+**Estado verificado.** `enviarInvitacionEquipo` (`mailer.ts`) es el ÚNICO template que no pasa
+por `shell()` y arma su HTML a mano: interpola `inmobiliariaNombre`, `rolTxt` y `email`
+**sin `esc()`**. Todos los demás templates escapan.
+
+**Riesgo real: bajo.** Los valores los carga el ADMIN de la propia inmobiliaria (su razón
+social, el mail del compañero que invita), no un tercero. No hay escalada de privilegios: el
+HTML se renderiza en la casilla del invitado, que es de la misma oficina.
+
+**Por qué igual hay que arreglarlo.** Una razón social con un `&` o un `<` ya rompe el mail hoy,
+sin malicia de por medio. Y es la única excepción a una regla que el resto del archivo cumple.
+
+**Qué hay que hacer.** Pasar `enviarInvitacionEquipo` por `shell()` como los demás —gana el
+diseño de marca y el pie de T-30 de arrastre— o, como mínimo, envolver las interpolaciones en
+`esc()`.
+
+**Criterio de aceptación.** Una inmobiliaria llamada `Suárez & Cía <Córdoba>` recibe su mail de
+invitación bien renderizado.
