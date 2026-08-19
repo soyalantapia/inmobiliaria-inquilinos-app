@@ -1,28 +1,46 @@
 {
   "meta": {
     "titulo": "My Alquiler — Plataforma para administrar alquileres",
-    "descripcion": "Sistema integral para inmobiliarias y administradores de alquileres en Argentina. Cobranza, facturación electrónica ARCA, contratos, reclamos y registro permanente de cada acción.",
+    "descripcion": "Sistema integral para inmobiliarias y administradores de alquileres en Argentina. Cobranza, contratos, rendición a propietarios, reclamos y registro permanente de cada acción.",
     "version": "v4 · ronda 4 de mejoras"
   },
   "hero": {
     "tagline": "Software para administrar alquileres",
     "titulo": "Tu cartera, tu equipo y tu inquilino en {{una sola plataforma}}",
     "highlight": "una sola plataforma",
-    "subtitulo": "Gestioná contratos, cobranzas y rendiciones desde un único sistema. Tu equipo opera con permisos definidos, los inquilinos pagan desde el celular y los propietarios reciben su rendición mensual automáticamente.",
-    "ctaPropietario": { "texto": "Recorrer panel demo", "href": "../inmobiliaria/" },
-    "ctaInquilino": { "texto": "Si sos inquilino, entrá acá", "href": "../inquilino/" },
+    "subtitulo": "Gestioná contratos, cobranzas y rendiciones desde un único sistema. Tu equipo opera con permisos definidos, los inquilinos pagan desde el celular y la rendición al propietario sale calculada mes a mes.",
+    "ctaPropietario": {
+      "texto": "Recorrer panel demo",
+      "href": "../inmobiliaria/"
+    },
+    "ctaInquilino": {
+      "texto": "Si sos inquilino, entrá acá",
+      "href": "../inquilino/"
+    },
     "badges": [
       "🇦🇷 Operación local",
       "🔐 Registro de cada acción",
-      "🧾 Integración con ARCA",
+      "🧾 Caja y auditoría",
       "📱 App para inquilinos"
     ]
   },
   "stats": [
-    { "valor": "10 min", "label": "Para poner tu cartera en operación" },
-    { "valor": "1 toque", "label": "Para conciliar pagos del mes" },
-    { "valor": "24/7", "label": "Disponibilidad de cobranza online" },
-    { "valor": "∞", "label": "Sin límite de propiedades en cualquier plan" }
+    {
+      "valor": "10 min",
+      "label": "Para poner tu cartera en operación"
+    },
+    {
+      "valor": "1 toque",
+      "label": "Para conciliar pagos del mes"
+    },
+    {
+      "valor": "24/7",
+      "label": "Disponibilidad de cobranza online"
+    },
+    {
+      "valor": "∞",
+      "label": "Sin límite de propiedades en cualquier plan"
+    }
   ],
   "problema": {
     "tag": "El problema",
@@ -68,10 +86,9 @@
       {
         "numero": "01",
         "titulo": "Configurás tu operación",
-        "descripcion": "Cargás propietarios, datos bancarios, conectás con ARCA (opcional) y definís los permisos de tu equipo. Una sola vez.",
+        "descripcion": "Cargás propietarios, datos bancarios y definís los permisos de tu equipo. Una sola vez.",
         "detalles": [
           "Cobranza por cuenta recaudadora o transferencia directa al propietario",
-          "Conexión con ARCA por propietario (Monotributo o Responsable Inscripto)",
           "Cuatro niveles de permisos para tu equipo"
         ]
       },
@@ -80,7 +97,7 @@
         "titulo": "Operás el día a día",
         "descripcion": "Tu equipo carga contratos y comprobantes. Vos aprobás antes de que cualquier movimiento se active. El inquilino opera desde su app.",
         "detalles": [
-          "Lectura automática del contrato a partir del PDF",
+          "Alta de contrato guiada, con el PDF adjunto",
           "Aprobación administrativa previa a la activación",
           "El inquilino paga e informa desde su celular"
         ]
@@ -88,10 +105,9 @@
       {
         "numero": "03",
         "titulo": "Cobrás y rendís al propietario",
-        "descripcion": "Aprobás el pago. Se emite la factura electrónica, se envía al inquilino y el propietario recibe su rendición mensual.",
+        "descripcion": "Aprobás el pago, el inquilino recibe su comprobante y el propietario ve su rendición del mes con el detalle.",
         "detalles": [
           "Conciliación con un solo movimiento",
-          "Emisión y envío automático de factura electrónica",
           "Rendición mensual al propietario en PDF"
         ]
       }
@@ -101,7 +117,7 @@
     "_nota": "Hook de video demo (L-DEMO-01). Mientras 'url' esté vacío, la sección NO se renderiza. Cuando tengas un screencast del producto, pegá la URL de embed: YouTube (https://www.youtube.com/embed/XXXX), Vimeo (https://player.vimeo.com/video/XXXX) o un .mp4 directo. La sección aparece automáticamente después de 'Cómo funciona'. Opcional: 'poster' (URL de imagen) para el frame de carga de un mp4.",
     "tag": "En acción",
     "titulo": "Mirá la plataforma funcionando",
-    "subtitulo": "Un recorrido de pocos minutos por la operación completa: cobranza, aprobación, ARCA y rendición.",
+    "subtitulo": "Un recorrido de pocos minutos por la operación completa: cobranza, aprobación y rendición.",
     "url": "",
     "poster": ""
   },
@@ -134,43 +150,9 @@
         },
         {
           "titulo": "Caja de gastos asociados",
-          "descripcion": "Mantenimiento, plomería, expensas extraordinarias. Se imputan a la propiedad y se descuentan automáticamente de la rendición al propietario.",
+          "descripcion": "Mantenimiento, plomería, expensas extraordinarias. Se imputan a la propiedad y se descuentan de la rendición al propietario.",
           "ruta": "../inmobiliaria/caja",
           "rutaLabel": "Ver caja"
-        }
-      ]
-    },
-    {
-      "id": "facturacion",
-      "titulo": "Facturación electrónica integrada",
-      "navTitulo": "ARCA",
-      "subtitulo": "Conexión con ARCA por propietario. Emisión y envío al aprobar el pago.",
-      "icono": "🧾",
-      "color": "violet",
-      "features": [
-        {
-          "titulo": "Emisión automática al aprobar",
-          "descripcion": "Cuando la inmobiliaria aprueba un pago, si el propietario tiene ARCA conectada, se emite el comprobante con CAE y se envía al inquilino por WhatsApp y mail.",
-          "ruta": "../inmobiliaria/propietarios/own_001",
-          "rutaLabel": "Ver propietario con ARCA"
-        },
-        {
-          "titulo": "Compatible con todas las condiciones fiscales",
-          "descripcion": "Monotributo o Responsable Inscripto. Configurás condición fiscal, punto de venta y tipo de comprobante (Factura A, B, C o Recibo C) para cada propietario.",
-          "ruta": "../inmobiliaria/propietarios/own_002",
-          "rutaLabel": "Ver Responsable Inscripto"
-        },
-        {
-          "titulo": "Distribución multicanal",
-          "descripcion": "El comprobante llega al inquilino por WhatsApp y por correo electrónico, sin intervención manual del equipo de la inmobiliaria.",
-          "ruta": "../inmobiliaria/pagos",
-          "rutaLabel": "Probar el flujo"
-        },
-        {
-          "titulo": "Registro de cada comprobante emitido",
-          "descripcion": "Cada factura electrónica queda registrada en el historial de acciones con número de comprobante, propietario, inquilino e importe. Disponible para auditorías y consultas.",
-          "ruta": "../inmobiliaria/configuracion",
-          "rutaLabel": "Ver historial de comprobantes"
         }
       ]
     },
@@ -178,21 +160,21 @@
       "id": "contratos",
       "titulo": "Contratos digitalizados",
       "navTitulo": "Contratos",
-      "subtitulo": "Lectura automática del PDF, doble nivel de aprobación y ajustes por índice oficial.",
+      "subtitulo": "Alta guiada con el PDF adjunto, doble nivel de aprobación y ajustes de canon con aviso.",
       "icono": "📄",
       "color": "blue",
       "features": [
         {
-          "titulo": "Lectura automática del contrato",
-          "descripcion": "Subís el PDF del contrato y el sistema extrae inquilino, dirección, monto, fechas y modalidad de ajuste. La inmobiliaria revisa y confirma los datos.",
+          "titulo": "Alta de contrato guiada",
+          "descripcion": "Cargás propiedad, inquilino, canon, fechas y modalidad de ajuste en pasos, con el PDF del contrato adjunto. Al confirmar, el contrato queda activo y las cuotas del período ya generadas.",
           "ruta": "../inmobiliaria/contratos/nuevo",
           "rutaLabel": "Probar la carga"
         },
         {
-          "titulo": "Conversá con la IA sobre el contrato",
-          "descripcion": "Preguntale a la IA sobre cualquier cláusula del contrato: cuándo vence, cuánto sube el alquiler, qué dice sobre rescisión, expensas o mascotas. Te responde en lenguaje simple, sin tener que releer treinta páginas.",
+          "titulo": "El contrato, a mano y en criollo",
+          "descripcion": "El inquilino ve en su app cuándo vence, cuánto paga, cuándo es el próximo ajuste y quiénes firman, con el PDF descargable. Deja de llamar a la inmobiliaria por cada duda.",
           "ruta": "../inmobiliaria/contratos/cnt_008",
-          "rutaLabel": "Probar la conversación con IA"
+          "rutaLabel": "Ver el contrato del inquilino"
         },
         {
           "titulo": "Modalidades de cobro flexibles",
@@ -202,7 +184,7 @@
         },
         {
           "titulo": "Actualización por índice oficial",
-          "descripcion": "El índice oficial se actualiza automáticamente. El sistema calcula el nuevo alquiler según la frecuencia pactada y notifica antes de aplicar el ajuste.",
+          "descripcion": "Te avisamos cuándo toca el ajuste de cada contrato según la frecuencia pactada. Cargás el canon nuevo una vez y el sistema recalcula las cuotas que vienen y le avisa al inquilino.",
           "ruta": "../inmobiliaria/contratos/cnt_001",
           "rutaLabel": "Ver historial de ajustes"
         }
@@ -212,7 +194,7 @@
       "id": "propietarios",
       "titulo": "Gestión de propietarios y propiedades",
       "navTitulo": "Propietarios",
-      "subtitulo": "Cotitularidad, datos bancarios por unidad y ARCA individual por propietario.",
+      "subtitulo": "Cotitularidad, datos bancarios por unidad y porcentaje de participación por propietario.",
       "icono": "🏠",
       "color": "amber",
       "features": [
@@ -236,7 +218,7 @@
         },
         {
           "titulo": "Ficha integral del propietario",
-          "descripcion": "Propiedades, contratos asociados, últimas seis rendiciones, datos bancarios, ARCA y notas internas. Toda la información operativa centralizada.",
+          "descripcion": "Propiedades, contratos asociados, últimas seis rendiciones, datos bancarios y notas internas. Toda la información operativa centralizada.",
           "ruta": "../inmobiliaria/propietarios/own_001",
           "rutaLabel": "Ver perfil completo"
         }
@@ -314,7 +296,7 @@
       "id": "inquilino",
       "titulo": "App para el inquilino",
       "navTitulo": "Inquilino",
-      "subtitulo": "Una app con Broker IA que simplifica todo lo que el inquilino necesita hacer.",
+      "subtitulo": "Una app donde el inquilino paga, sube el comprobante, reclama y ve su contrato.",
       "icono": "📱",
       "color": "teal",
       "features": [
@@ -325,10 +307,10 @@
           "rutaLabel": "Probar el flujo de pago"
         },
         {
-          "titulo": "Broker IA",
-          "descripcion": "Un asistente con IA dentro de la app del inquilino que responde sobre el contrato, los pagos, los reclamos y cualquier duda. Disponible las 24 horas, sin esperas ni llamadas al equipo.",
-          "ruta": "../inquilino/broker",
-          "rutaLabel": "Hablar con el Broker IA"
+          "titulo": "Certificado de inquilino verificable",
+          "descripcion": "El inquilino que paga en fecha se lleva un certificado con su historial y un link público para que cualquiera lo verifique. A él le sirve para la próxima mudanza; a vos, para retenerlo.",
+          "ruta": "../inquilino/certificado",
+          "rutaLabel": "Ver el certificado"
         },
         {
           "titulo": "Reclamos con evidencia fotográfica",
@@ -383,12 +365,30 @@
     "titulo": "Conexiones con tus herramientas habituales",
     "subtitulo": "Sin pedirle al inquilino que se instale una app desconocida ni al propietario que aprenda un nuevo sistema.",
     "items": [
-      { "nombre": "ARCA", "icono": "🧾", "descripcion": "Facturación electrónica oficial", "color": "violet" },
-      { "nombre": "WhatsApp", "icono": "💬", "descripcion": "Comunicaciones y comprobantes", "color": "emerald" },
-      { "nombre": "Mercado Pago", "icono": "💳", "descripcion": "Reconocimiento de pagos", "color": "blue" },
-      { "nombre": "Bancos", "icono": "🏦", "descripcion": "Galicia, Santander, Macro, BBVA y más", "color": "indigo" },
-      { "nombre": "Índice oficial", "icono": "📊", "descripcion": "Actualización automática", "color": "amber" },
-      { "nombre": "Correo electrónico", "icono": "✉️", "descripcion": "Notificaciones al inquilino", "color": "rose" }
+      {
+        "nombre": "WhatsApp",
+        "icono": "💬",
+        "descripcion": "Comunicaciones y comprobantes",
+        "color": "emerald"
+      },
+      {
+        "nombre": "Bancos",
+        "icono": "🏦",
+        "descripcion": "Subís el resumen (Excel/CSV) y conciliamos",
+        "color": "indigo"
+      },
+      {
+        "nombre": "Correo electrónico",
+        "icono": "✉️",
+        "descripcion": "Notificaciones al inquilino",
+        "color": "rose"
+      },
+      {
+        "nombre": "Excel / CSV",
+        "icono": "📊",
+        "descripcion": "Migrás tu cartera y exportás cuando quieras",
+        "color": "amber"
+      }
     ]
   },
   "garantias": {
@@ -418,8 +418,8 @@
       },
       {
         "icono": "🧾",
-        "titulo": "Facturación oficial con ARCA",
-        "descripcion": "Integración directa con los servicios oficiales de ARCA. Emisión con CAE real, no comprobantes truchos ni workarounds."
+        "titulo": "Registro de cada acción",
+        "descripcion": "Cada aprobación, cada pago y cada rendición quedan asentados con autor, rol y fecha. Si alguien pregunta quién hizo qué, está escrito."
       },
       {
         "icono": "🇦🇷",
@@ -474,8 +474,8 @@
     ],
     "incluye": [
       "Toda la gestión de alquileres del plan incluida",
-      "Cobranza, ARCA, contratos, reclamos, reportes",
-      "App del inquilino con Broker IA incluido",
+      "Cobranza, contratos, rendiciones, reclamos, reportes",
+      "App del inquilino incluida (paga, sube comprobante y reclama)",
       "Usuarios ilimitados de tu equipo",
       "Link mágico para profesionales",
       "Onboarding (video guiado en Starter; sesión 1:1 con nuestro equipo en Growth, Pro y Enterprise)",
@@ -500,7 +500,7 @@
       },
       {
         "pregunta": "¿Quién carga mis contratos al sistema cuando arranco?",
-        "respuesta": "Depende del plan. En Starter (hasta 10 propiedades) seguís un video guiado y cargás los contratos vos mismo usando la lectura automática de PDF — operás el mismo día. En Growth, Pro y Enterprise hacemos una sesión 1:1 en la que cargamos tus contratos vigentes y configuramos propietarios, equipo y modalidad de cobranza; con más de 50 propiedades la migración demora entre 2 y 5 días hábiles."
+        "respuesta": "Depende del plan. En Starter (hasta 10 propiedades) seguís un video guiado y cargás los contratos vos mismo usando el alta de contrato guiada — operás el mismo día. En Growth, Pro y Enterprise hacemos una sesión 1:1 en la que cargamos tus contratos vigentes y configuramos propietarios, equipo y modalidad de cobranza; con más de 50 propiedades la migración demora entre 2 y 5 días hábiles."
       },
       {
         "pregunta": "¿Qué pasa con mis datos si me doy de baja?",
@@ -508,7 +508,7 @@
       },
       {
         "pregunta": "¿Cuál es el tiempo de respuesta del soporte?",
-        "respuesta": "Soporte prioritario por WhatsApp en horario hábil (9 a 19, lunes a viernes), con respuesta promedio menor a 30 minutos. Para casos urgentes operativos (problemas con cobranza o ARCA), atendemos también sábados a la mañana."
+        "respuesta": "Soporte prioritario por WhatsApp en horario hábil (9 a 19, lunes a viernes), con respuesta promedio menor a 30 minutos. Para casos urgentes operativos (problemas con cobranza o rendición), atendemos también sábados a la mañana."
       },
       {
         "pregunta": "¿Cómo guardan la clave fiscal y los datos sensibles?",
@@ -517,10 +517,6 @@
       {
         "pregunta": "¿Qué modalidades de cobranza soporta el sistema?",
         "respuesta": "Dos modalidades, configurables por contrato. La primera centraliza el cobro en la cuenta recaudadora de la inmobiliaria. La segunda transfiere directamente al propietario con confirmación posterior de recepción. La inmobiliaria mantiene el registro completo de movimientos en ambos casos."
-      },
-      {
-        "pregunta": "¿Es obligatoria la integración con ARCA?",
-        "respuesta": "No. La integración con ARCA se configura individualmente por propietario. Cuando está activa, la emisión y envío de comprobantes ocurre automáticamente al aprobar el pago. Sin la integración, la conciliación funciona normalmente pero sin facturación automatizada."
       },
       {
         "pregunta": "¿Soporta contratos de sólo expensas o sólo alquiler?",
@@ -539,10 +535,6 @@
         "respuesta": "El índice oficial se actualiza automáticamente. El sistema calcula el nuevo alquiler según la frecuencia pactada en el contrato y te avisa antes de aplicar el ajuste, permitiendo confirmar o postergar la actualización."
       },
       {
-        "pregunta": "¿Cómo se conecta el sistema con ARCA?",
-        "respuesta": "La conexión se realiza una vez por propietario. Se cargan CUIT, clave fiscal, punto de venta y tipo de comprobante (Factura A, B, C o Recibo C según condición fiscal). El sistema opera sobre los servicios oficiales de ARCA."
-      },
-      {
         "pregunta": "¿Qué garantiza la seguridad y el registro de los datos?",
         "respuesta": "Todas las acciones críticas quedan registradas en un historial permanente que no admite eliminación. Cada movimiento (pago, contrato, gasto, reclamo) incluye usuario responsable, fecha, hora y motivo asociado, disponible para auditorías o consultas."
       }
@@ -552,10 +544,9 @@
     {
       "version": "v4",
       "fecha": "2026-05-13",
-      "titulo": "Doble modalidad de cobranza e integración con ARCA",
+      "titulo": "Doble modalidad de cobranza: por la inmobiliaria o directo al propietario",
       "cambios": [
         "Modalidad de cobranza configurable por contrato (centralizada o directa al propietario)",
-        "Conexión con ARCA por propietario y emisión automática de comprobantes",
         "Distribución del comprobante al inquilino por WhatsApp y mail",
         "Tres tipos de movimiento adicionales en el historial de acciones"
       ]
@@ -587,33 +578,69 @@
       {
         "titulo": "Producto",
         "links": [
-          { "label": "Funcionalidades", "href": "#funcionalidades" },
-          { "label": "Cómo funciona", "href": "#como-funciona" },
-          { "label": "Precios", "href": "#precios" },
-          { "label": "Preguntas frecuentes", "href": "#faq" },
-          { "label": "Novedades", "href": "#changelog" }
+          {
+            "label": "Funcionalidades",
+            "href": "#funcionalidades"
+          },
+          {
+            "label": "Cómo funciona",
+            "href": "#como-funciona"
+          },
+          {
+            "label": "Precios",
+            "href": "#precios"
+          },
+          {
+            "label": "Preguntas frecuentes",
+            "href": "#faq"
+          },
+          {
+            "label": "Novedades",
+            "href": "#changelog"
+          }
         ]
       },
       {
         "titulo": "Apps",
         "links": [
-          { "label": "🏢 Panel inmobiliario", "href": "../inmobiliaria/" },
-          { "label": "📱 App del inquilino", "href": "../inquilino/" }
+          {
+            "label": "🏢 Panel inmobiliario",
+            "href": "../inmobiliaria/"
+          },
+          {
+            "label": "📱 App del inquilino",
+            "href": "../inquilino/"
+          }
         ]
       },
       {
         "titulo": "Contacto",
         "links": [
-          { "label": "WhatsApp ventas", "href": "https://wa.me/541145321100?text=Hola%2C%20quiero%20conocer%20My%20Alquiler" },
-          { "label": "hola@myalquiler.com.ar", "href": "mailto:hola@myalquiler.com.ar" }
+          {
+            "label": "WhatsApp ventas",
+            "href": "https://wa.me/541145321100?text=Hola%2C%20quiero%20conocer%20My%20Alquiler"
+          },
+          {
+            "label": "hola@myalquiler.com.ar",
+            "href": "mailto:hola@myalquiler.com.ar"
+          }
         ]
       },
       {
         "titulo": "Legales",
         "links": [
-          { "label": "Términos y condiciones", "href": "../legales/#terminos" },
-          { "label": "Política de privacidad", "href": "../legales/#privacidad" },
-          { "label": "Política de datos", "href": "../legales/#datos" }
+          {
+            "label": "Términos y condiciones",
+            "href": "../legales/#terminos"
+          },
+          {
+            "label": "Política de privacidad",
+            "href": "../legales/#privacidad"
+          },
+          {
+            "label": "Política de datos",
+            "href": "../legales/#datos"
+          }
         ]
       }
     ],

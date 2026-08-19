@@ -68,7 +68,7 @@ export const metadata = {
   openGraph: {
     title: 'My Alquiler · Cobrá tus alquileres sin perseguir a nadie',
     description:
-      'Tus inquilinos pagan desde la app. Vos ves la plata en vivo. La rendición sale sola. Para inmobiliarias argentinas.',
+      'Tus inquilinos pagan desde la app. Vos ves la plata en vivo. La rendición a propietarios sale calculada. Para inmobiliarias argentinas.',
     type: 'website',
     url: '/inicio',
     siteName: 'My Alquiler',
@@ -242,7 +242,8 @@ function Hero() {
           <HeroHeadline />
           <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground">
             Tus inquilinos pagan desde la app. Vos ves la plata en vivo. La rendición a
-            propietarios sale sola. Sin Excel y sin WhatsApp a las once de la noche.
+            propietarios sale calculada: la revisás y la confirmás. Sin Excel y sin WhatsApp
+            a las once de la noche.
           </p>
           <div className="mt-9">
             <HeroSignup />
@@ -284,7 +285,7 @@ function Semana() {
   const despues = [
     'El inquilino paga desde la app y sube el comprobante.',
     'La rendición sale calculada: alquiler, comisión y gastos.',
-    'El ajuste por índice se aplica solo, sin tocar Excel.',
+    'Te avisa cuándo toca el ajuste, cargás el monto nuevo y recalcula las cuotas.',
     'El propietario ve su liquidación el mismo día que cobrás.',
   ];
   return (
@@ -384,7 +385,7 @@ function Features() {
       <Reveal>
         <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-primary">Todo en un panel</p>
         <h2 className="mt-3 max-w-2xl text-[clamp(1.9rem,4vw,3rem)] font-bold leading-[1.08] tracking-[-0.015em]">
-          Lo que hoy hacés con cuatro herramientas, acá pasa solo.
+          Lo que hoy hacés con cuatro herramientas y una planilla, acá pasa en una pantalla.
         </h2>
       </Reveal>
 
@@ -414,8 +415,9 @@ function Features() {
           El inquilino reclama, vos derivás al plomero o electricista y se confirma por WhatsApp. Nadie más lo tiene.
         </FeatureCard>
 
-        <FeatureCard icon={Calculator} title="Ajustes ICL e IPC automáticos">
-          El índice se aplica solo en la fecha que toca. Sin planillas heredadas que nadie audita.
+        <FeatureCard icon={Calculator} title="Ajustes de canon sin planilla">
+          Te avisamos qué contrato ajusta y cuándo. Cargás el monto nuevo una vez y el sistema
+          recalcula las cuotas que vienen, deja el ajuste registrado y le avisa al inquilino.
         </FeatureCard>
 
         <FeatureCard icon={Building2} title="Multi-sociedad y consorcios">
