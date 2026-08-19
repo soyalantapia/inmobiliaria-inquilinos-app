@@ -26,3 +26,9 @@ backup-*.dump
 !.vscode/extensions.json
 .idea
 .gstack/
+
+# Locks de reparto de tareas entre chats paralelos (PROMPT-EJECUTAR-TAREA.md).
+# NO se commitea a propósito: es coordinación LOCAL entre procesos que comparten el
+# filesystem. Si se trackeara, cada git worktree tendría su propia copia y el lock
+# dejaría de servir — que es exactamente lo que viene a evitar.
+work-agent/.tareas/
