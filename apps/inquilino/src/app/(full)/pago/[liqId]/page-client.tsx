@@ -24,6 +24,7 @@ import { contratoMock, liquidacionesMock } from '@/lib/mock-data';
 import { formatFecha, formatFechaCorta, formatMonto, formatPeriodo } from '@/lib/format';
 import { abrirReciboImprimible } from '@/lib/recibo-pdf';
 import { resolverMontos } from '@/lib/punitorios';
+import { saldoDeLiquidacion } from '@/lib/saldo-liquidacion';
 import {
   leerPagoInformado,
   listarPagosDeLiq,
@@ -198,13 +199,17 @@ function DetallePagoView({
   // Saldo pendiente. En prod sale del API (montoTotal − conciliados = liq.saldo);
   // en demo, de los parciales del store local. Antes en prod siempre daba el total
   // completo, así que un parcial ya conciliado no bajaba la deuda mostrada (bug 1/3).
-  const saldo = apiEnabled
-    ? Math.max(0, liq.saldo ?? calc.totalAPagar)
-    : saldoPendiente(liqId, calc.totalAPagar);
+  // Fuente ÚNICA compartida con el home y con Recibos. Antes esta pantalla medía la
+  // parcialidad con `liq.montoPagado`, que suma sólo los CONCILIADOS: un pago informado y
+  // todavía sin validar dejaba `tieneParciales` en false y acá se mostraba el total
+  // COMPLETO, como si el inquilino no hubiera pagado nada — mientras el home ya le decía
+  // "te faltan $X". Dos pantallas, dos verdades sobre la misma deuda.
+  const det = saldoDeLiquidacion(liq, calc.totalAPagar);
+  const saldo = apiEnabled ? det.faltaPagar : saldoPendiente(liqId, calc.totalAPagar);
   const totalInformado = calc.totalAPagar - saldo;
-  // "Hay parciales / quedó al día por parciales": en prod lo derivamos de
-  // montoPagado (conciliado) en vez del historial local (vacío en prod).
-  const tieneParciales = apiEnabled ? (liq.montoPagado ?? 0) > 0 : parciales.length > 0;
+  const tieneParciales = apiEnabled
+    ? det.hayConciliado || det.hayEnRevision
+    : parciales.length > 0;
   const hayParciales = tieneParciales && saldo > 0;
   const pagadoEnParciales = !pagado && tieneParciales && saldo === 0;
 

@@ -32,6 +32,7 @@ import { MobileGreetingHeader } from '@/components/mobile-greeting-header';
 import { contratoMock, liquidacionesMock } from '@/lib/mock-data';
 import { movimientosMock, type Movimiento } from '@/lib/movimientos-mock';
 import { resolverMontos } from '@/lib/punitorios';
+import { saldoDeLiquidacion } from '@/lib/saldo-liquidacion';
 import { diasHastaVencimiento, formatFecha, formatFechaCorta, formatMonto, formatPeriodo } from '@/lib/format';
 import {
   aplicarEstadoDemo,
@@ -572,9 +573,11 @@ function BannerPagoPendiente({ liq }: { liq: Liquidacion }) {
     // cuando la inmobiliaria le reclama. Mostramos el faltante. Igual seguimos
     // linkeando al DETALLE y no al checkout: la razón original de esta rama
     // (que no transfiera dos veces y coma un 409) sigue valiendo.
-    const cTot = resolverMontos(liq, apiEnabled).totalAPagar;
-    const totalDeuda = Math.max(0, liq.saldo ?? cTot);
-    const faltan = Math.max(0, totalDeuda - pagoVivo.monto);
+    // Mismo helper que usa el DETALLE del pago: antes cada pantalla hacía su propia
+    // cuenta y no coincidían (acá se descontaba lo informado, allá no).
+    const det = saldoDeLiquidacion(liq, resolverMontos(liq, apiEnabled).totalAPagar);
+    const totalDeuda = det.exigible;
+    const faltan = det.faltaPagar;
     return (
       <Link
         href={`/pago/${liq.id}`}
