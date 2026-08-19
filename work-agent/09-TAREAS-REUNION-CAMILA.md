@@ -1289,15 +1289,103 @@ Decidir entre: verificar el email (doble opt-in), hacerlo único por tenant, o l
 
 ---
 
-## T-23-N3 · `ParticipacionPropietario` no tiene vigencia
+## T-23-N3 · `ParticipacionPropietario` no tiene vigencia — ✅ HECHA (la mitad de plata)
 
-**Experto:** BE · **Prioridad:** 🟢 · **Depende de:** nada
+**Experto:** BE · ~~🟢~~ **Prioridad real: 🟠** · **Depende de:** nada
 
 El modelo sólo tiene `propiedadId`, `propietarioId` y `porcentaje`: no hay `desde`/`hasta`, así
 que **no se sabe desde cuándo alguien es dueño de una unidad**. Por eso `/portal/reclamos` se
 recorta al contrato vigente en vez de a "desde que sos dueño", que sería lo correcto: hoy un
 propietario ve los reclamos del inquilino actual aunque haya comprado ayer, y no ve los suyos si
 el contrato cambió.
+
+**La prioridad estaba mal calibrada, y por una razón que la ficha no mencionaba.** El problema de
+reclamos es el síntoma chico, y encima ya está mitigado a propósito
+(`portal-propietario.ts:487-494`). El grande es que **la misma falta de vigencia mueve plata que
+se transfiere**: `POST /rendiciones` arma el universo de propiedades del dueño desde su
+participación de **hoy** (`plata.ts:1653`) y aplica el porcentaje de **hoy** (`:1741`), pero el
+`periodo` lo elige el operador y puede ser de hace dos años. Cambiar el reparto con alquiler
+cobrado y sin rendir le transfiere al entrante lo del saliente, y el saliente desaparece del
+universo sin forma de cobrarlo. El cap cruzado evita pagar de **más**; no dice nada sobre **a
+quién**.
+
+**Resuelta la mitad de plata** en `feat/T-23-N3-vigencia-participacion`, commit `c4981dc`:
+`PUT /propiedades/:id/participaciones` devuelve **409** si la propiedad tiene alquiler cobrado
+sin rendir, nombrando períodos y monto. **NO se agregó `desde`/`hasta`, y no hay migración.**
+
+**Por qué el guard es el arreglo de fondo y no un parche:** la vigencia que le falta a la tabla
+**ya existe en el ledger** — `AlquilerRendido` congela `participacion` y `periodo` al rendir
+(`schema.prisma:1948-1949`). Sólo hacía falta forzar el orden: primero se rinde con el reparto
+viejo (y queda congelado), después se cambia. Versionar las filas, en cambio, exige cambiar la
+**primary key compuesta** (`@@id([propiedadId, propietarioId])`) **y** hace que la Σ de
+`tasaComisionDeParticipaciones` pase de 100% — la inmobiliaria comisionaría de más, en silencio,
+en dos lugares (el helper y su fórmula duplicada inline en `/caja/cierre`).
+
+De arrastre se desactivó una mina: el `part?.porcentaje ?? 100` de `plata.ts:1741`, hoy
+inalcanzable, que el día que alguien filtre participaciones por ventana temporal le rendiría el
+**alquiler entero** a ese dueño en silencio. Ahora falla ruidoso.
+
+Abre **T-23-N3-N1** (la mitad del portal) y **T-23-N3-N2**.
+
+---
+
+## T-23-N3-N1 · Que el propietario vea "desde que sos dueño" — BLOQUEADA por decisión
+
+**Experto:** BE + PROD · **Prioridad:** 🟠 · **Depende de:** una respuesta de Camila
+**Origen:** T-23-N3. Es la otra mitad, la de privacidad.
+
+**Estado verificado.** Hoy no existe **ningún** rastro de cuándo cambió un reparto: el handler
+del PUT no llama a `registrarEvento` y `TipoEventoAuditoria` no tiene valor para participaciones.
+Y `EventoAuditoria` **no puede** ser la fuente de verdad de un recorte de privacidad: es
+best-effort declarado (`lib/auditoria.ts:22-32`, `try/catch` que se traga su propio error y corre
+**después** del commit). Un recorte que protege datos de un tercero no puede colgar de un log que
+puede no escribirse.
+
+Además del caso de reclamos que nombra la ficha original, tiene el mismo problema
+`portal-propietario.ts:303-315`: las últimas 6 liquidaciones con fecha real de transferencia y el
+nombre del inquilino. Ningún comentario lo reconoce.
+
+**Qué hay que hacer.** Tabla append-only de cambios de reparto (`propiedadId`, `propietarioId`,
+`porcentajeAnterior` nullable = entró, `porcentajeNuevo` nullable = salió, `aplicadoAt`,
+`autorId`), escrita **dentro** de la misma transacción del `deleteMany`/`createMany`. Migración
+**aditiva pura**: cero filas escritas, cero columnas alteradas. Tabla vacía significa "toda
+participación existente se considera vigente desde siempre" — el pasado no tiene dato y no se
+inventa.
+
+**⚠️ LO QUE BLOQUEA.** Con la regla "sin cambio registrado = dueño de siempre = ve todo",
+cualquier unidad de la cartera que **ya cambió de dueño antes de hoy** le muestra al comprador el
+historial completo del inquilino. Hoy eso está tapado por el recorte al contrato vigente; con el
+cambio se destapa. **Preguntarle a Camila, textual: "¿hay hoy en la cartera departamentos que
+cambiaron de dueño mientras el inquilino seguía siendo el mismo?"** Si dice que no, sale tal cual.
+Si dice que sí, hay que cargar a mano la fecha de compra de esas unidades antes de soltar el
+recorte ampliado. Equivocarse acá es filtrar datos de un inquilino a alguien que no tiene derecho
+a verlos.
+
+**Criterio de aceptación.** Un propietario que compró en marzo no ve los reclamos ni los pagos de
+enero; y el dueño de siempre ve el historial completo aunque la unidad esté vacía hoy.
+
+---
+
+## T-23-N3-N2 · Gastos, reclamos e ingresos se arrastran hacia atrás sin piso
+
+**Experto:** BE · **Prioridad:** 🟠 · **Depende de:** nada
+**Origen:** relevamiento de T-23-N3.
+
+**Estado verificado.** En la rendición, los tres descuentos filtran con
+`fecha: { lt: finPeriodo }` y **sin `gte`**: `plata.ts:1786` (gastos de caja), `:1877` (reclamos a
+cargo del propietario) y `:1952` (ingresos extra). O sea, carry-over ilimitado hacia atrás: un
+gasto de 2024 se le descuenta al dueño que rinde en 2026.
+
+El comentario de `plata.ts:1897-1904` ya describe el caso — *"al vender la propiedad, el dueño
+entrante se comía entero un arreglo que el saliente ya había pagado"*— pero la mitigación que
+describe no cubre el arrastre sin piso.
+
+**Qué hay que hacer.** Definir el piso: ¿desde la última rendición de ese dueño? ¿desde el inicio
+del contrato? Y aplicarlo a los tres. Monto en juego: el del gasto, normalmente menor que un
+alquiler, pero es plata que se le descuenta a quien no corresponde.
+
+**Criterio de aceptación.** Un gasto anterior a la última rendición ya cerrada no vuelve a
+descontarse.
 
 ---
 
