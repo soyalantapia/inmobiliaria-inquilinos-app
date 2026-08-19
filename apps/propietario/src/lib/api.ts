@@ -140,6 +140,11 @@ export interface PeriodoInquilino {
   vence: string;
   /** Fecha REAL en que entró la plata. null = todavía no se cobró. */
   pagoAt: string | null;
+  /**
+   * La inmobiliaria le perdonó (parte de) esta cuota. El backend lo manda a propósito y el
+   * front lo tiraba: la cuota figuraba "pagada" en verde y esa plata NUNCA le va a llegar.
+   */
+  condonada: boolean;
 }
 
 export interface PropiedadPortal {
@@ -199,6 +204,8 @@ export interface ReclamoPortal {
   creadoAt: string;
   resueltoAt: string | null;
   costo: number | null;
+  /** La moneda del contrato de esa unidad: el costo del arreglo se denomina en ella. */
+  monedaCosto: 'ARS' | 'USD';
   pagador: string | null;
   direccion: string | null;
   complejo: string | null;

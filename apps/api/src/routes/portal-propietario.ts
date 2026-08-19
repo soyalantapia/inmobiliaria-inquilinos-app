@@ -534,6 +534,10 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
         resueltoAt: true,
         costoTrabajo: true,
         pagador: true,
+        // El costo del reclamo se denomina en la moneda DEL CONTRATO (operacion.ts, al
+        // imputarlo) y la rendición sólo levanta los de su misma moneda. Sin mandarla, el
+        // portal mostraba "costó $1.200" por un arreglo de US$1.200.
+        contrato: { select: { moneda: true } },
         propiedad: { select: { direccion: true, complejo: true, consorcio: { select: { nombre: true } } } },
       },
     });
@@ -549,6 +553,7 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
       // rompió— pero NO las fotos ni los `eventos`, que son la conversación con el inquilino.
       // Eso es de él y el propietario no lo necesita para saber qué se arregló y cuánto salió.
       costo: r.costoTrabajo != null ? dec(r.costoTrabajo) : null,
+      monedaCosto: r.contrato?.moneda ?? 'ARS',
       pagador: r.pagador,
       direccion: r.propiedad?.direccion ?? null,
       complejo: r.propiedad?.consorcio?.nombre ?? r.propiedad?.complejo ?? null,

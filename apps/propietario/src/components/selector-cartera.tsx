@@ -52,8 +52,11 @@ export function SelectorCartera() {
       guardarSesion(res.token, nueva);
       setSesion(nueva);
       setAbierto(false);
-      // Todo lo cargado es de la cartera anterior: se tira entero, no se refresca.
-      await qc.invalidateQueries();
+      // Todo lo cargado es de la cartera anterior: se TIRA, no se marca como viejo.
+      // `invalidateQueries` deja el dato en el cache y react-query lo sirve mientras
+      // refetchea, así que por un instante el dueño veía la plata de la otra inmobiliaria en
+      // cuanto tocaba otra pestaña. `removeQueries` lo borra y cada pestaña arranca vacía.
+      qc.removeQueries();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No pudimos cambiar de cartera.');
     } finally {

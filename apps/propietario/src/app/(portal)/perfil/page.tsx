@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { LogOut, User } from 'lucide-react';
 import { Button } from '@llave/ui/button';
 import { Card } from '@llave/ui/card';
@@ -23,10 +23,16 @@ import { apiFetch, ApiError, cerrarSesion, type MiCartera } from '@/lib/api';
  */
 export default function PerfilPage() {
   const router = useRouter();
+  const qc = useQueryClient();
   const cartera = useQuery({ queryKey: ['mi-cartera'], queryFn: () => apiFetch<MiCartera>('/portal/mi-cartera') });
 
   const salir = () => {
     cerrarSesion();
+    // Borrar el token no alcanza: el cache de react-query vive en memoria y sobrevive al
+    // logout. En la computadora de la inmobiliaria, donde dos propietarios entran uno
+    // después del otro, el segundo veía las rendiciones del primero hasta que llegara el
+    // refetch. Es plata de otra persona en pantalla.
+    qc.clear();
     router.replace('/login');
   };
 

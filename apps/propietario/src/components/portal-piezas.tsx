@@ -51,7 +51,7 @@ export function ListaReclamos({ reclamos }: { reclamos: ReclamoPortal[] }) {
           <p className="text-sm">{r.descripcion}</p>
           <p className="text-xs text-muted-foreground">
             {fecha(r.creadoAt)}
-            {r.costo != null && ` · costó ${money(r.costo)}`}
+            {r.costo != null && ` · costó ${money(r.costo, r.monedaCosto)}`}
             {r.pagador && ` · lo paga: ${r.pagador.toLowerCase()}`}
           </p>
         </Card>
@@ -362,16 +362,31 @@ export function FilaPropiedad({ p }: { p: PropiedadPortal }) {
               <div key={per.periodo} className="flex items-center justify-between gap-2 text-xs">
                 <span className="text-muted-foreground">{periodoLargo(per.periodo)}</span>
                 <span className="flex items-center gap-2">
-                  {per.pagoAt ? (
+                  {/* La condonación manda sobre el resto del renglón: una cuota perdonada
+                      figura PAGADO en la liquidación, así que sin esto el dueño veía un badge
+                      verde "pagado" por plata que NUNCA le va a llegar —la rendición filtra los
+                      pagos condonados y no se la deposita—. El backend ya mandaba el dato; era
+                      el front el que lo tiraba. */}
+                  {per.condonada ? (
+                    <span className="text-muted-foreground">la inmobiliaria la condonó</span>
+                  ) : per.pagoAt ? (
                     <span className="text-muted-foreground">pagó el {fecha(per.pagoAt)}</span>
                   ) : (
                     <span className="text-muted-foreground">vence el {fecha(per.vence)}</span>
                   )}
                   <Badge
-                    variant={per.estado === 'PAGADO' ? 'success' : per.estado === 'VENCIDO' ? 'destructive' : 'warning'}
+                    variant={
+                      per.condonada
+                        ? 'outline'
+                        : per.estado === 'PAGADO'
+                          ? 'success'
+                          : per.estado === 'VENCIDO'
+                            ? 'destructive'
+                            : 'warning'
+                    }
                     className="text-[10px]"
                   >
-                    {per.estado.toLowerCase()}
+                    {per.condonada ? 'condonada' : per.estado.toLowerCase()}
                   </Badge>
                 </span>
               </div>
