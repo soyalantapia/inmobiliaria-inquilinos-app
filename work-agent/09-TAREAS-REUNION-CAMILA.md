@@ -2717,6 +2717,7 @@ invitación bien renderizado.
 
 ### T-18-N1 · Que el historial muestre el cuerpo del mensaje, no sólo el asunto
 **Experto:** FE-P · **Prioridad:** 🟠 · **Detectada en:** T-18 (Fase 7)
+**Estado: ✅ HECHA** — commit `c454098`. **La verificación que pedía dio que SÍ se renderiza**: el texto completo siempre estuvo guardado (`EventoContrato.detalle`, hasta 4000 caracteres) y el GET lo devuelve entero. Pero se mostraba con el mismo `<p>` gris de metadato que los demás eventos —donde el detalle es una línea tipo "$405.000 · transferencia"— y con `white-space` normal, así que un mensaje de varios párrafos llegaba **colapsado en un bloque corrido**. Para releerlo y discutir, casi tan inservible como no guardarlo. Ahora una `COMUNICACION_ENVIADA` se renderiza como cita, con `whitespace-pre-line`. El tab Comunicaciones NO era el lugar: en prod viene vacío (`comunicaciones: []`) y su `preview` usa `line-clamp-2` a propósito. tsc 0, lint sin warnings nuevos.
 
 `POST /contratos/:id/comunicaciones` guarda el texto completo en `EventoContrato.detalle`, pero
 falta verificar si la pestaña Historial lo renderiza o sólo muestra `titulo`. Camila:
