@@ -472,7 +472,7 @@ function FilaPropiedad({ p }: { p: PropiedadPortal }) {
               decir que había más: el dueño que quiere revisar el año leía seis meses y creía
               que eso era todo. Se deriva del largo real para que no mienta si el tope cambia. */}
           <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
-            Últimos {c.periodos.length} {c.periodos.length === 1 ? 'mes' : 'meses'}
+            {c.periodos.length === 1 ? 'Último mes' : `Últimos ${c.periodos.length} meses`}
           </p>
           <div className="space-y-1">
             {c.periodos.map((per) => (
