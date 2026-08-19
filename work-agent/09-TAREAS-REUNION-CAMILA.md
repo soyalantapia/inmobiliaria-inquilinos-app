@@ -2983,3 +2983,33 @@ atajó con exit 1 en 7 segundos.
 
 **Sigue abierto:** `T-01-N1-N1` — los 52 archivos que sí necesitan base (los de plata, auth y
 conciliación) siguen sin correr nunca. Depende de la decisión de infraestructura de T-28.
+
+---
+
+## T-29-N1 · El historial se escribe dentro de la transacción, y ahí no puede ser best-effort
+
+**Experto:** BE · **Prioridad:** 🟠 · **Depende de:** nada
+**Origen:** revisión adversarial de la consolidación (19/08). No salió de la reunión.
+
+`registrarEventoContrato` (`lib/evento-contrato.ts`) promete no voltear la operación que lo
+generó. **Con los cinco callers actuales no puede cumplirlo**, porque los cinco le pasan un `tx`
+y en PostgreSQL una sentencia fallida deja la transacción abortada: el COMMIT se cae igual.
+
+El `catch {}` que tenía no rescataba nada — sólo convertía una falla ruidosa en pérdida
+silenciosa de datos con un 200. Ya se sacó (commit `ddd2b34`), así que hoy **falla fuerte**, que
+es el comportamiento correcto mientras siga adentro de la transacción.
+
+**Qué falta.** Moverlo a post-commit, con el cliente base en vez del `tx`, que es exactamente lo
+que ya hace `registrarEvento` de auditoría: *"se llama DESPUÉS de que la acción ya commiteó, no
+dentro de su transacción"*. Recién ahí el best-effort es real y el docblock dice la verdad.
+
+Los cinco call sites: `core.ts:1310`, `core.ts:2307`, `operacion.ts:327`, `operacion.ts:863`,
+`plata.ts:470`. Cada uno necesita que los datos del evento sigan en scope después del
+`$transaction`.
+
+**Criterio de aceptación.** Un fallo al escribir el historial deja un hueco en el timeline y
+nada más: la operación que lo generó queda commiteada y el endpoint responde OK.
+
+**Por qué no se hizo junto.** Son cinco handlers de plata y no hay forma de correr los tests de
+integración desde esta máquina. Un refactor a ciegas sobre conciliar pagos y renovar contratos no
+vale el riesgo comparado con lo que ya se ganó (que la falla deje de ser silenciosa).
