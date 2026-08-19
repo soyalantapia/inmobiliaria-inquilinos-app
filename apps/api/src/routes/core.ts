@@ -1952,16 +1952,27 @@ export async function coreRoutes(app: FastifyInstance) {
     // PATCH /monto, y la renovación se pasó por alto: renovar con un canon nuevo ES un
     // aumento de alquiler, y el inquilino tampoco se enteraba. Mismo helper, mismo
     // criterio (best-effort, fuera de la tx).
-    const aviso = await avisarAjusteAlInquilino({
-      contratoId: id,
-      inmobiliariaId: u.inmobiliariaId,
-      montoAnterior,
-      montoNuevo: b.montoNuevo,
-      periodoDesde: b.montoDesde,
-      motivo: b.motivo || 'Renovación del contrato',
-      log: request.log,
-    });
-    return { ok: true, montoAnterior, montoNuevo: b.montoNuevo, ...res, avisoInquilino: aviso };
+    // `canonNuevo`, NO `b.montoNuevo`: las cinco escrituras de la transacción ya usan el canon
+    // efectivo, y si el aviso usara el del body le mandaríamos al inquilino un mail diciendo
+    // que su alquiler subió a un monto que la base nunca guardó. En un SOLO_EXPENSAS eso es
+    // anunciarle un aumento de un alquiler que no paga.
+    //
+    // Y si el canon no se movió no hay nada que avisar: una renovación puede ser sólo de
+    // plazo. Antes se mandaba igual —"tu alquiler pasó de X a X"—, que es ruido en el mejor
+    // caso y alarma en el peor.
+    const aviso =
+      canonNuevo !== montoAnterior
+        ? await avisarAjusteAlInquilino({
+            contratoId: id,
+            inmobiliariaId: u.inmobiliariaId,
+            montoAnterior,
+            montoNuevo: canonNuevo,
+            periodoDesde: b.montoDesde,
+            motivo: b.motivo || 'Renovación del contrato',
+            log: request.log,
+          })
+        : undefined;
+    return { ok: true, montoAnterior, montoNuevo: canonNuevo, ...res, avisoInquilino: aviso };
   });
 
   app.get('/contratos/:id/renovaciones', async (request, reply) => {
