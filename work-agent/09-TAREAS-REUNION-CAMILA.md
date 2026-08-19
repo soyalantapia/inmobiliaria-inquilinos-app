@@ -2850,7 +2850,12 @@ de T-25 — si T-25 entra primero, hay una ventana en la que los PIN heredados a
 
 ---
 
-## T-36 · Tres avisos de reclamo esquivan la cola de mails
+## T-43 · Tres avisos de reclamo esquivan la cola de mails
+
+**Estado: ✅ HECHA** — los tres avisos de reclamo (`enviarReclamoNuevoInmo`,
+`enviarReclamoAsignadoInquilino`, `enviarReclamoResueltoInquilino`) van por `enviarEnCola`.
+Verificado: `grep -c "await t.sendMail({" apps/api/src/mailer.ts` devuelve **0** — ningún envío
+esquiva los carriles. El guardarraíl `test/mailer-todos-por-la-cola.test.ts` lo mantiene así.
 
 **Experto:** BE · **Prioridad:** 🟡 · **Depende de:** nada · **Vive en:** la integración, no en `feat/reunion-camila-0308`
 **Origen:** revisión de integración de las ramas paralelas. No salió de la reunión.
@@ -2887,7 +2892,24 @@ líneas. El test dice cuáles.
 
 ---
 
-## T-37 · Dos líneas de integración divergentes, y ninguna tiene todo
+## T-44 · Dos líneas de integración divergentes, y ninguna tiene todo
+**Estado: ✅ RESUELTA** — merge `ba2247a`.
+
+Las dos líneas dejaron de existir: `git log HEAD..tmp/union` y `git log HEAD..tmp/integracion`
+devuelven **0** las dos. Rescató los 8 arreglos que vivían sólo en `tmp/integracion` —la matriz
+de permisos que prometía un circuito de aprobación inexistente, el historial que fallaba en
+silencio, T-36/T-38/T-39–T-42— y `apps/propietario` entera quedó del lado bueno.
+
+Verificado sobre el árbol ya mergeado: `tsc` en **0** en los cuatro paquetes y **317 tests** sin
+DB en verde.
+
+Un solo conflicto real (`evento-contrato.ts`), y resultó ser **el mismo hallazgo hecho dos
+veces**: dos chats descubrieron por separado que el `try/catch` del historial mentía, porque en
+Postgres un statement fallido aborta la transacción igual. Se combinaron las dos explicaciones.
+
+Costó **cinco intentos**: el worktree principal casi nunca estaba limpio y la rama se movió
+cuatro veces, una de ellas cambiando de nombre. El detalle está en
+`work-agent/tareas/_integracion/`.
 
 **Experto:** OPS + el dueño · **Prioridad:** 🔴 · **Depende de:** nada · **BLOQUEA EL DEPLOY**
 **Origen:** revisión de integración. No salió de la reunión.
@@ -2927,7 +2949,7 @@ tests sin DB en verde, y está escrito en este documento cuál es.
 
 ---
 
-## T-38 · El home de la PWA ignora el pago informado en modo demo
+## T-45 · El home de la PWA ignora el pago informado en modo demo
 
 **Experto:** FE-I · **Prioridad:** 🟡 · **Depende de:** nada
 **Origen:** revisión de integración.
