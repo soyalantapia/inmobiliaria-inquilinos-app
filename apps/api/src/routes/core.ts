@@ -2098,7 +2098,6 @@ export async function coreRoutes(app: FastifyInstance) {
     if (b.montoNuevo === montoAnterior) {
       return reply.code(400).send({ message: 'El monto nuevo es igual al actual' });
     }
-    const expensas = contrato.montoExpensas != null ? Number(contrato.montoExpensas) : 0;
     // Reprogramar el próximo ajuste = mes de este ajuste (periodoDesde) + frecuencia.
     // Antes este endpoint (botón "Ajustar" de la ficha) NO tocaba proximoAjuste →
     // el contrato seguía figurando "a ajustar" y el ajuste masivo lo re-aumentaba.
@@ -2121,7 +2120,22 @@ export async function coreRoutes(app: FastifyInstance) {
       await tx.contrato.update({ where: { id }, data: { monto: b.montoNuevo, proximoAjuste: nuevoProximoAjuste } });
       // Cuotas FUTURAS impagas (periodo >= periodoDesde, PENDIENTE, sin pagos) → nuevo canon.
       // NO se tocan las pagadas/parciales/vencidas: ya se devengaron con su monto histórico.
-      const upd = await tx.liquidacion.updateMany({
+      //
+      // El total se arma con las expensas de CADA CUOTA, no con las del contrato.
+      //
+      // Antes era un `updateMany` con `montoTotal: b.montoNuevo + expensasDelContrato`, y
+      // funcionaba sólo porque `montoExpensas` se escribía una vez en el alta y no cambiaba
+      // nunca: la del contrato y la de la cuota eran siempre la misma. Desde que existe
+      // `PATCH /contratos/:id/expensas` dejó de ser cierto — ese endpoint deja a propósito
+      // con las expensas VIEJAS a las cuotas que tienen plata en juego (un pago informado,
+      // aunque después se rechace). Sobre una de esas, el updateMany dejaba `montoExpensas`
+      // en el valor viejo y `montoTotal` calculado con el nuevo: la fila no cuadraba consigo
+      // misma, y el inquilino veía un total que no es la suma de lo que tiene arriba.
+      //
+      // Es la misma regla que ya aplica `recomputarLiquidacionesFuturas` ("el total =
+      // alquiler + expensas de LA liquidación, no del contrato"). Se hace en dos pasos
+      // porque `updateMany` no puede calcular por fila.
+      const aReajustar = await tx.liquidacion.findMany({
         where: {
           contratoId: id,
           inmobiliariaId: u.inmobiliariaId,
@@ -2129,9 +2143,16 @@ export async function coreRoutes(app: FastifyInstance) {
           estado: 'PENDIENTE',
           pagos: { none: { estado: { in: ['INFORMADO', 'CONCILIADO'] } } },
         },
-        data: { montoAlquiler: b.montoNuevo, montoTotal: b.montoNuevo + expensas },
+        select: { id: true, montoExpensas: true },
       });
-      return { ajusteId: ajuste.id, liquidacionesActualizadas: upd.count };
+      for (const l of aReajustar) {
+        const expensasDeLaCuota = l.montoExpensas != null ? Number(l.montoExpensas) : 0;
+        await tx.liquidacion.updateMany({
+          where: { id: l.id, inmobiliariaId: u.inmobiliariaId },
+          data: { montoAlquiler: b.montoNuevo, montoTotal: b.montoNuevo + expensasDeLaCuota },
+        });
+      }
+      return { ajusteId: ajuste.id, liquidacionesActualizadas: aReajustar.length };
     });
     // Avisarle al inquilino. FUERA de la transacción y best-effort: un SMTP caído no
     // puede tirar abajo un ajuste ya aplicado (el mail se puede reenviar; el ajuste
@@ -2198,7 +2219,6 @@ export async function coreRoutes(app: FastifyInstance) {
     if (!esSoloExpensas && canonNuevo === 0) {
       return reply.code(400).send({ message: 'El monto del alquiler tiene que ser mayor a cero' });
     }
-    const expensas = contrato.montoExpensas != null ? Number(contrato.montoExpensas) : 0;
     const res = await prisma.$transaction(async (tx) => {
       const renov = await tx.renovacionContrato.create({
         data: {
@@ -2217,8 +2237,11 @@ export async function coreRoutes(app: FastifyInstance) {
         where: { id },
         data: { fechaFin: b.fechaFinNueva, monto: canonNuevo, ...(b.diaPago ? { diaPago: b.diaPago } : {}) },
       });
-      // Cuotas futuras impagas (>= montoDesde) al nuevo canon (igual que el ajuste).
-      await tx.liquidacion.updateMany({
+      // Cuotas futuras impagas (>= montoDesde) al nuevo canon (igual que el ajuste),
+      // con las expensas de CADA CUOTA y no las del contrato — mismo motivo que allá:
+      // desde que existe `PATCH /contratos/:id/expensas`, una cuota puede tener las
+      // suyas propias, y usar las del contrato dejaba la fila sin cuadrar consigo misma.
+      const cuotasARenovar = await tx.liquidacion.findMany({
         where: {
           contratoId: id,
           inmobiliariaId: u.inmobiliariaId,
@@ -2226,8 +2249,15 @@ export async function coreRoutes(app: FastifyInstance) {
           estado: 'PENDIENTE',
           pagos: { none: { estado: { in: ['INFORMADO', 'CONCILIADO'] } } },
         },
-        data: { montoAlquiler: canonNuevo, montoTotal: canonNuevo + expensas },
+        select: { id: true, montoExpensas: true },
       });
+      for (const l of cuotasARenovar) {
+        const expensasDeLaCuota = l.montoExpensas != null ? Number(l.montoExpensas) : 0;
+        await tx.liquidacion.updateMany({
+          where: { id: l.id, inmobiliariaId: u.inmobiliariaId },
+          data: { montoAlquiler: canonNuevo, montoTotal: canonNuevo + expensasDeLaCuota },
+        });
+      }
       // Devengar los nuevos períodos (hasta el tope del devengo) con la nueva fechaFin + monto.
       // Idempotente (skipDuplicates); el cron completa el resto mes a mes.
       const nuevas = await generarLiquidacionesContrato(tx, {
