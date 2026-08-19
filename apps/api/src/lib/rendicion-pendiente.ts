@@ -30,7 +30,55 @@ export interface PeriodoSinRendir {
  *
  * Excluye `condonado: true`: una condonación cancela deuda sin ingresar plata, así que
  * no hay nada para rendir (mismo criterio que la rendición y el cierre de caja).
+ *
+ * El CÁLCULO en sí vive en `calcularPendienteSinRendir`, acá abajo: es puro y está
+ * testeado en `test/rendicion-pendiente.test.ts`.
  */
+
+/** Una liquidación, con lo mínimo que hace falta para la cuenta. */
+export interface LiquidacionParaPendiente {
+  id: string;
+  periodo: string;
+  montoAlquiler: unknown;
+  montoTotal: unknown;
+}
+
+/**
+ * El CÁLCULO, sin base de datos.
+ *
+ * Está separado del lector a propósito, igual que `computarLiquidacionesContrato` vs
+ * `generarLiquidacionesContrato`: es aritmética de plata que decide si se puede cambiar
+ * el modo de cobranza de un contrato, y tiene que poder testearse sin una Postgres
+ * remota. Si esta cuenta se desincroniza de la de `POST /rendiciones`, el guard bloquea
+ * por plata que la rendición no rinde —o peor, deja pasar plata que sí— y eso no se ve
+ * hasta que a un propietario le falta un mes.
+ */
+export function calcularPendienteSinRendir(
+  liqs: LiquidacionParaPendiente[],
+  cobradoPorLiq: Map<string, number>,
+  rendidoPorLiq: Map<string, number>,
+): { total: number; periodos: PeriodoSinRendir[] } {
+  const periodos: PeriodoSinRendir[] = [];
+  let total = 0;
+  for (const l of liqs) {
+    const cobrado = cobradoPorLiq.get(l.id) ?? 0;
+    if (cobrado <= 0) continue;
+    const liqTotal = Number(l.montoTotal);
+    const liqAlq = Number(l.montoAlquiler);
+    // `liqTotal > 0` no es defensa de más: una liquidación en 0 (contrato SOLO_EXPENSAS
+    // sin expensas cargadas, o un dato viejo) haría 0/0 = NaN, y NaN > 0.01 es false,
+    // así que el guard dejaría pasar el cambio en silencio.
+    const alquilerCobrado = liqTotal > 0 ? Math.min(cobrado, liqTotal) * (liqAlq / liqTotal) : 0;
+    const pendiente = Math.round((alquilerCobrado - (rendidoPorLiq.get(l.id) ?? 0)) * 100) / 100;
+    if (pendiente > 0.01) {
+      periodos.push({ periodo: l.periodo, monto: pendiente });
+      total += pendiente;
+    }
+  }
+  periodos.sort((a, b) => a.periodo.localeCompare(b.periodo));
+  return { total: Math.round(total * 100) / 100, periodos };
+}
+
 export async function alquilerCobradoSinRendir(
   contratoId: string,
 ): Promise<{ total: number; periodos: PeriodoSinRendir[] }> {
@@ -56,23 +104,5 @@ export async function alquilerCobradoSinRendir(
   const cobradoMap = new Map(cobros.map((c) => [c.liquidacionId, Number(c._sum.monto ?? 0)]));
   const rendidoMap = new Map(rendidos.map((r) => [r.liquidacionId, Number(r._sum.monto ?? 0)]));
 
-  const periodos: PeriodoSinRendir[] = [];
-  let total = 0;
-  for (const l of liqs) {
-    const cobrado = cobradoMap.get(l.id) ?? 0;
-    if (cobrado <= 0) continue;
-    const liqTotal = Number(l.montoTotal);
-    const liqAlq = Number(l.montoAlquiler);
-    const alquilerCobrado = liqTotal > 0 ? Math.min(cobrado, liqTotal) * (liqAlq / liqTotal) : 0;
-    const pendiente = Math.round((alquilerCobrado - (rendidoMap.get(l.id) ?? 0)) * 100) / 100;
-    // Tolerancia de 1 centavo: el mismo umbral que usa la rendición para decidir si
-    // algo es rendible (`rendible <= 0` ⇒ se saltea). Sin esto, un resto de redondeo
-    // del prorrateo bloquearía el cambio de modo para siempre.
-    if (pendiente > 0.01) {
-      periodos.push({ periodo: l.periodo, monto: pendiente });
-      total += pendiente;
-    }
-  }
-  periodos.sort((a, b) => a.periodo.localeCompare(b.periodo));
-  return { total: Math.round(total * 100) / 100, periodos };
+  return calcularPendienteSinRendir(liqs, cobradoMap, rendidoMap);
 }
