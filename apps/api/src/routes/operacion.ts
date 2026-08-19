@@ -320,17 +320,20 @@ export async function operacionRoutes(app: FastifyInstance) {
           contenido: `Cargado por la inmobiliaria · recibido por ${canalTxt[body.data.canal]}`,
         },
       });
-      // El reclamo también es parte de la vida del CONTRATO, no sólo del ticket: el
-      // expediente tiene que dejar ver que en tal mes hubo un problema en esa unidad.
-      await registrarEventoContrato(tx, {
-        inmobiliariaId: u.inmobiliariaId,
-        contratoId: contrato.id,
-        tipo: 'RECLAMO_CREADO',
-        titulo: `Reclamo: ${body.data.titulo}`,
-        detalle: `${body.data.categoria} · urgencia ${body.data.urgencia}`,
-        autor: u.userId,
-      });
       return r;
+    });
+    // El reclamo también es parte de la vida del CONTRATO, no sólo del ticket: el
+    // expediente tiene que dejar ver que en tal mes hubo un problema en esa unidad.
+    //
+    // POST-COMMIT (T-29-N1): adentro de la transacción, un fallo escribiendo el historial
+    // se llevaba puesto el reclamo recién abierto — y el inquilino veía un 200.
+    await registrarEventoContrato(prisma, {
+      inmobiliariaId: u.inmobiliariaId,
+      contratoId: contrato.id,
+      tipo: 'RECLAMO_CREADO',
+      titulo: `Reclamo: ${body.data.titulo}`,
+      detalle: `${body.data.categoria} · urgencia ${body.data.urgencia}`,
+      autor: u.userId,
     });
     return reply.code(201).send(conSla(reclamo));
   });
@@ -856,17 +859,21 @@ export async function operacionRoutes(app: FastifyInstance) {
       await tx.reclamoEvento.create({
         data: { inmobiliariaId: inq.inmobiliariaId, reclamoId: r.id, tipo: 'CREADO', autor, contenido: null },
       });
-      // Mismo criterio que el alta desde el panel: al expediente del contrato le importa
-      // que hubo un reclamo, lo haya abierto la inmobiliaria o el inquilino.
-      await registrarEventoContrato(tx, {
-        inmobiliariaId: inq.inmobiliariaId,
-        contratoId: contrato.id,
-        tipo: 'RECLAMO_CREADO',
-        titulo: `Reclamo del inquilino: ${body.data.titulo}`,
-        detalle: `${body.data.categoria} · urgencia ${body.data.urgencia}`,
-        autor,
-      });
       return r;
+    });
+
+    // Mismo criterio que el alta desde el panel: al expediente del contrato le importa
+    // que hubo un reclamo, lo haya abierto la inmobiliaria o el inquilino.
+    //
+    // POST-COMMIT (T-29-N1), igual que el aviso de acá abajo y por el mismo motivo: el
+    // reclamo YA está creado y nada informativo puede tirarlo abajo.
+    await registrarEventoContrato(prisma, {
+      inmobiliariaId: inq.inmobiliariaId,
+      contratoId: contrato.id,
+      tipo: 'RECLAMO_CREADO',
+      titulo: `Reclamo del inquilino: ${body.data.titulo}`,
+      detalle: `${body.data.categoria} · urgencia ${body.data.urgencia}`,
+      autor,
     });
 
     // Avisarle a la inmobiliaria que entró un reclamo. Sin esto se entera sólo si

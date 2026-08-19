@@ -482,23 +482,23 @@ export async function plataRoutes(app: FastifyInstance) {
       throw e;
     }
     if (!pagoOk) return reply.code(409).send({ message: 'El pago ya fue decidido' });
-    // Rastro en el expediente del contrato: es LA cosa que pasa en la vida de un
-    // alquiler y el Historial no la mostraba. Distingue el pago que cierra el
-    // período del parcial, porque para leer el caso después no es lo mismo.
+    // Rastro en el expediente del contrato: es LA cosa que pasa en la vida de un alquiler
+    // y el Historial no la mostraba. Distingue el pago que cierra el período del parcial,
+    // porque para leer el caso después no es lo mismo.
     //
-    // POST-COMMIT (T-29-N1). De los cinco call sites éste era el más caro: adentro de la
-    // transacción, un fallo al escribir el renglón del historial abortaba la conciliación
-    // ENTERA. El pago quedaba sin conciliar, la liquidación sin saldar, y el endpoint
-    // devolvía 200 igual.
+    // POST-COMMIT (T-29-N1). Acá se ve con más claridad que en ningún otro lado por qué:
+    // adentro de la transacción, un fallo escribiendo este renglón revertía LA
+    // CONCILIACIÓN DEL PAGO — plata dada por cobrada que dejaba de estarlo — y el panel
+    // recibía 200. Un hueco en el timeline es un problema mucho más chico.
     await registrarEventoContrato(prisma, {
       inmobiliariaId: u.inmobiliariaId,
-      contratoId: pagoOk.contratoId,
+      contratoId: pago.contratoId,
       tipo: 'PAGO_RECIBIDO',
       titulo: cerroElPeriodo
-        ? `Pago recibido — período ${pagoOk.periodo} saldado`
-        : `Pago parcial recibido — período ${pagoOk.periodo}`,
-      detalle: `${Number(pagoOk.monto)} · ${pagoOk.metodo}`,
-      fecha: pagoOk.fechaTransferencia,
+        ? `Pago recibido — período ${pago.periodo} saldado`
+        : `Pago parcial recibido — período ${pago.periodo}`,
+      detalle: `${Number(pago.monto)} · ${pago.metodo}`,
+      fecha: pago.fechaTransferencia,
       autor: u.userId,
     });
     await registrarEvento({
