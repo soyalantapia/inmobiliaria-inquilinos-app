@@ -2731,6 +2731,30 @@ sirve para discutir después."* Sin el cuerpo, el registro no cubre el caso de u
 `apps/inmobiliaria/src/components/configuracion-pais.tsx:183` dice *"avisamos por mail cuando
 esté listo"* para un país todavía no disponible. No hay lista de espera detrás. O se construye,
 o se cambia el texto.
+### T-18-N2-N1 · El onboarding promete avisar de un costo que el sistema no calcula
+**Experto:** PROD · **Prioridad:** 🟡 · **Detectada en:** T-18-N2
+
+`apps/inmobiliaria/src/components/onboarding.tsx:77` dice, como bullet del slide de
+Propiedades: *"Cargá nuevas propiedades (te avisamos del costo extra)"*.
+
+**Estado verificado.** El modelo de facturación **existe en el schema y no está implementado**:
+`Factura` (con `propiedadesEnPlan`, `plan`, `importeBase`…), `KeyTramoPlan`
+(STARTER/GROWTH/PRO/ENTERPRISE), `EstadoFactura` y `Suscripcion`. Pero en todo `apps/api/src` la
+**única** referencia a `Factura` es un `prisma.factura.count()` en `uploads.ts:223`, usado para
+detectar PDFs huérfanos. Nadie emite una factura, nadie calcula un tramo, nadie compara la
+cantidad de propiedades contra el plan, y `POST /propiedades` no chequea límite ni devuelve
+ningún aviso de costo. El panel tampoco muestra nada.
+
+**Por qué NO se cambió el copy de una.** A diferencia de las otras tres promesas de T-18-N2
+—donde el canal directamente no existe— acá el aviso puede ser **verdadero fuera del sistema**:
+si alguien del equipo le avisa al cliente cuando se pasa de tramo, la frase es cierta aunque el
+software no participe. Eso sólo lo sabe el dueño.
+
+**Qué hay que decidir.** Si el aviso lo hace una persona, la frase queda como está. Si no lo
+hace nadie, hay que sacarla — o construir el cálculo de tramo, que ya tiene el modelo hecho.
+
+---
+
 ## Tareas nuevas detectadas al ejecutar
 
 ### T-17-N1 · Destinatario configurable por tipo de aviso
