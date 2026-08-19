@@ -23,6 +23,18 @@ export type ContratoParaLiquidar = {
    * cobrar. Requerido, el compilador no deja que un caller nuevo se lo saltee.
    */
   devengarDesde: Date | null;
+  /**
+   * Tipo del contrato. OBLIGATORIO a propósito, igual que `devengarDesde` y por la misma
+   * razón: sin él, el devengo cobraba ALQUILER en un contrato SOLO_EXPENSAS.
+   *
+   * El agujero era alcanzable desde el panel: `PATCH /contratos/:id/monto` exige un monto
+   * POSITIVO (core.ts) y lo guarda en `contrato.monto`, y recién después llama a
+   * `recomputarLiquidacionesFuturas`, que sí aplica `montoAlquilerSegunTipo` y deja las
+   * cuotas futuras en 0. Pero `contrato.monto` quedaba positivo, así que la SIGUIENTE
+   * corrida del cron volvía a generar cuotas con alquiler > 0 sobre un contrato que sólo
+   * cobra expensas. O sea: el ajuste se "deshacía solo" seis horas después.
+   */
+  tipoContrato: 'ALQUILER' | 'SOLO_EXPENSAS' | 'ALQUILER_Y_EXPENSAS';
 };
 
 /**
@@ -86,7 +98,14 @@ export function computarLiquidacionesContrato(
   return enumerarPeriodosContrato(contrato, now).map((p) => {
     // Canon POR PERÍODO: un ajuste/renovación con vigencia futura no puede cobrarle el
     // canon nuevo a los meses intermedios, que todavía son del viejo.
-    const alquiler = canonDelPeriodo(p.periodo, montoActual, vigencias);
+    // El canon por período resuelve CUÁNTO; el tipo de contrato resuelve SI se cobra
+    // alquiler. En SOLO_EXPENSAS el alquiler es 0 aunque `contrato.monto` sea positivo
+    // (ver el comentario de `tipoContrato` arriba). Es la misma regla que ya aplicaba
+    // `recomputarLiquidacionesFuturas`; acá faltaba, y por eso las dos divergían.
+    const alquiler = montoAlquilerSegunTipo(
+      contrato.tipoContrato,
+      canonDelPeriodo(p.periodo, montoActual, vigencias),
+    );
     return {
       inmobiliariaId: contrato.inmobiliariaId,
       contratoId: contrato.id,
@@ -239,6 +258,9 @@ export async function devengarTodosLosTenants(
       // Sin esto el cron devengaba desde fechaInicio e ignoraba la decisión de la
       // importación de cartera → resucitaba los meses históricos como deuda falsa.
       devengarDesde: true,
+      // Sin esto el barrido cobraba ALQUILER en contratos SOLO_EXPENSAS cuando
+      // `contrato.monto` había quedado positivo (ver el docblock de tipoContrato).
+      tipoContrato: true,
       fechaFin: true,
       diaPago: true,
     },
