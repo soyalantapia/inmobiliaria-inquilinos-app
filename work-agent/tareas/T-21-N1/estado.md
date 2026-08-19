@@ -64,7 +64,7 @@ Pero encontraron **dos agujeros míos**, los dos en la renovación, y los dos ya
 
 Llegó después y fue el más duro. Su hallazgo de fondo: **el fix era una defensa de cálculo, no de
 dato** — dejaba `contrato.monto` sucio y, peor, **cerró la única puerta que limpiaba las cuotas
-ya devengadas**. Verificado y corregido en `88bd6d7`:
+ya devengadas**. Verificado y corregido en `87cf0b5`:
 
 1. **🔴 Cerré la salida junto con la entrada.** `recomputarLiquidacionesFuturas` ya respetaba el
    tipo y alcanza las cuotas **PENDIENTE y VENCIDO** desde el período actual, así que

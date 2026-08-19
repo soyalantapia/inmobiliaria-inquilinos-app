@@ -833,7 +833,7 @@ excluye los `*.test.ts`. **Al cerrar T-32 hay que borrar ese `exclude`.**
 ## T-21-N1 · El devengo no sabe qué es un "solo expensas" (💰)
 
 **Experto:** BE · **Prioridad:** 🔴 · **Depende de:** nada
-**Estado: ✅ HECHA** — commit `77babfe`, rama `feat/T-21-N1-devengo-solo-expensas`.
+**Estado: ✅ HECHA** — commits `77babfe` · `c26db5f` · `753674c` · `87cf0b5`, rama `feat/T-21-N1-devengo-solo-expensas`.
 **Incluye T-21-N2**, que era la misma puerta por el otro lado.
 
 Se cerró por los dos extremos. **El devengo:** `ContratoParaLiquidar` ahora exige
@@ -856,9 +856,18 @@ los tests puros (el que falla hace `spawnSync` a un `psql` con ruta de macOS —
 T-21-N1-N2); y comprobado en el navegador que el consorcio de solo expensas desapareció de la
 lista del ajuste masivo (5 contratos en vez de 6).
 
-**⚠️ ESTO ARREGLA DE ACÁ EN ADELANTE.** Si en producción ya hay un `SOLO_EXPENSAS` con canon
-sucio, sus liquidaciones viejas siguen mal y el fix no las toca. Antes de deployar hay que
-correr la consulta de diagnóstico (solo lectura):
+**Cómo se limpia lo que ya está sucio.** El devengo usa `createMany({ skipDuplicates: true })`,
+así que **nunca pisa una fila existente**: lo ya devengado con alquiler no se arregla solo. La
+herramienta es `PATCH /contratos/:id/monto` con **`monto: 0`**, que pasa por
+`recomputarLiquidacionesFuturas` y deja en 0 el contrato y todas sus cuotas impagas —
+**PENDIENTE y VENCIDO** — desde el período actual. No toca las que ya tienen pagos, a propósito:
+si esa plata entró, se resuelve con la persona, no borrando el número.
+
+(La primera versión de este fix rechazaba ese endpoint entero para un solo-expensas, y con eso
+cerraba la única salida junto con la entrada. Lo encontró el paso adversarial.)
+
+**⚠️ IGUAL HAY QUE MIRAR PRIMERO.** Antes de deployar, correr la consulta de diagnóstico
+(solo lectura):
 `work-agent/tareas/T-21-N1/diagnostico-datos.sql`. Si devuelve filas, hace falta decidir qué
 se hace con lo ya facturado — y si además se cobró, no alcanza con corregir la liquidación.
 
