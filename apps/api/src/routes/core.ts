@@ -1324,6 +1324,218 @@ export async function coreRoutes(app: FastifyInstance) {
     }
   });
 
+  /**
+   * DEUDA HISTÓRICA: un inquilino que YA SE FUE y quedó debiendo.
+   *
+   * El alta normal (POST /contratos) NO sirve para esto y no es un bug: rechaza
+   * con 409 si la propiedad ya tiene contrato activo, y siempre crea ACTIVO. La
+   * propiedad de un moroso de hace tres años hoy está alquilada a otro, así que
+   * por ahí no entra. Camila arranca con ~50 casos así; sin esto no puede migrar
+   * su cartera.
+   *
+   * POR QUÉ UN CONTRATO Y NO UNA TABLA `DeudaHistorica`: toda la maquinaria de
+   * plata del sistema cuelga de `Liquidacion` — saldos, mora, saldar-deuda, la
+   * ficha de la Persona, la cuenta corriente. Un modelo aparte sería una segunda
+   * verdad sobre cuánto debe cada uno, que es justo lo que este código evita en
+   * todos lados. Acá la deuda vive donde ya vive el resto.
+   *
+   * LAS DOS DIFERENCIAS con el alta normal, y son las que importan:
+   *   1. Nace FINALIZADO. El devengo (lib/liquidaciones.ts) barre
+   *      `estado: 'ACTIVO'` y `devengarSiSigueActivo` re-verifica bajo lock, así
+   *      que este contrato no devenga nunca más: las cuotas que se crean acá son
+   *      las únicas que va a tener.
+   *   2. NO reclama la propiedad. No toca `contratoActualId` ni `estado`, así
+   *      que puede convivir con el contrato vigente de otro inquilino.
+   *
+   * fechaInicio/fechaFin delimitan LA VENTANA DE DEUDA, no el alquiler real: si
+   * alquiló dos años y se fue debiendo los últimos tres meses, se cargan esos
+   * tres. Todas las cuotas nacen VENCIDAS (ambas fechas están en el pasado). Si
+   * alguna estaba paga en parte, se registra el pago después por el flujo normal.
+   */
+  const contratoHistoricoSchema = z.object({
+    propiedadId: z.string(),
+    // Reuso explícito de identidad, igual que el alta normal.
+    personaId: z.string().optional(),
+    inquilino: z.object({
+      nombre: z.string().trim().min(1),
+      apellido: z.string().trim().optional(),
+      email: z.string().trim().email().optional().or(z.literal('')),
+      telefono: z.string().trim().optional(),
+      dni: z.string().trim().optional(),
+    }),
+    monto: z.number().positive(),
+    moneda: z.enum(['ARS', 'USD']).default('ARS'),
+    montoExpensas: z.number().nonnegative().optional(),
+    fechaInicio: z.coerce.date(),
+    fechaFin: z.coerce.date(),
+    diaPago: z.number().int().min(1).max(31),
+  });
+
+  app.post('/contratos/historico', async (request, reply) => {
+    // Está CREANDO DEUDA de la nada: mismo permiso que el alta, pero sin CARGA.
+    // Un contrato histórico no pasa por la bandeja de aprobación (nace
+    // FINALIZADO, no hay nada que activar), así que no hay red de contención
+    // detrás: que lo cargue alguien que ya puede aprobar plata.
+    const u = await requireUsuario(request, reply, 'contratos.crear');
+    if (!u) return;
+    if (u.rol !== 'ADMIN' && u.rol !== 'OPERADOR') {
+      return reply.code(403).send({ message: 'Solo un administrador u operador puede cargar deuda histórica' });
+    }
+    const parsed = contratoHistoricoSchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ message: 'Datos inválidos', issues: parsed.error.issues });
+    const d = parsed.data;
+
+    if (d.fechaFin <= d.fechaInicio) {
+      return reply.code(400).send({ message: 'La fecha de fin tiene que ser posterior a la fecha de inicio' });
+    }
+    // La ventana tiene que estar CERRADA. Si el fin todavía no llegó, esto no es
+    // deuda histórica: es un contrato en curso y va por el alta normal, que
+    // reclama la propiedad y devenga mes a mes. Sin este guard se podía crear un
+    // contrato paralelo sobre una propiedad ocupada y esquivar el 409 del alta.
+    if (d.fechaFin >= diaCivilAR(new Date())) {
+      return reply.code(400).send({
+        message: 'La deuda histórica es de un contrato que ya terminó. Si el inquilino sigue viviendo ahí, cargalo como contrato normal.',
+      });
+    }
+
+    const prop = await prisma.propiedad.findFirst({
+      where: { id: d.propiedadId, inmobiliariaId: u.inmobiliariaId },
+      select: { id: true, direccion: true },
+    });
+    if (!prop) return reply.code(404).send({ message: 'Propiedad inexistente' });
+
+    if (d.personaId) {
+      const per = await prisma.persona.findFirst({
+        where: { id: d.personaId, inmobiliariaId: u.inmobiliariaId },
+        select: { id: true },
+      });
+      if (!per) return reply.code(404).send({ message: 'La persona seleccionada no existe en tu cartera' });
+    }
+
+    const emailInq = d.inquilino.email ? d.inquilino.email.toLowerCase() : null;
+
+    try {
+      const creado = await prisma.$transaction(
+      async (tx) => {
+        const inq = await tx.inquilino.create({
+          data: {
+            inmobiliariaId: u.inmobiliariaId,
+            nombre: d.inquilino.nombre,
+            apellido: d.inquilino.apellido || null,
+            // A PROPÓSITO sin email, aunque haya venido uno.
+            //
+            // `Inquilino.email` es la LLAVE DE LOGIN de la PWA: `alquileresDeEmail`
+            // (auth.ts) busca por email sin filtrar estado, y un contrato
+            // FINALIZADO le da al ex-inquilino acceso de sólo lectura. Eso está
+            // bien para un alquiler que existió de verdad y terminó — pero acá la
+            // fila la tipea el operador de memoria, cargando 50 seguidas. Un email
+            // mal tipeado le abriría a un TERCERO la deuda de otra persona.
+            //
+            // El email igual se aprovecha: va a la Persona (abajo), que es donde
+            // sirve —dedup e identidad de la ficha— y NO habilita login por sí
+            // sola. Si esa persona vuelve a alquilar, el alta normal crea su
+            // Inquilino CON email y ahí sí entra a la PWA.
+            email: null,
+            telefono: d.inquilino.telefono || null,
+            dni: d.inquilino.dni || null,
+            esInvitado: false,
+          },
+        });
+        const contrato = await tx.contrato.create({
+          data: {
+            inmobiliariaId: u.inmobiliariaId,
+            propiedadId: prop.id,
+            estado: 'FINALIZADO',
+            pendienteAprobacion: false,
+            monto: d.monto,
+            moneda: d.moneda,
+            fechaInicio: d.fechaInicio,
+            fechaFin: d.fechaFin,
+            diaPago: d.diaPago,
+            // FIJO + proximoAjuste null: un contrato terminado no se ajusta. La
+            // frecuencia es obligatoria en el schema y acá es inerte (nada la lee
+            // para un FINALIZADO), pero se deja explícita en vez de un 0 raro.
+            indiceAjuste: 'FIJO',
+            frecuenciaAjusteMeses: 12,
+            proximoAjuste: null,
+            montoExpensas: d.montoExpensas ?? null,
+            tipoContrato: d.montoExpensas ? 'ALQUILER_Y_EXPENSAS' : 'ALQUILER',
+            modoCobranza: 'INMOBILIARIA',
+            cargadoPor: u.userId,
+            cargadoRol: u.rol,
+            cargadoAt: new Date(),
+          },
+        });
+        // Misma identidad reutilizable que el alta normal: si el DNI ya existe en
+        // el tenant se REUSA la Persona, y la deuda vieja aparece en la misma
+        // ficha que su alquiler actual. Es literalmente lo que Camila pidió: que
+        // al cargar un DNI el sistema le avise que ya lo tiene.
+        const persona = d.personaId
+          ? await tx.persona.findFirstOrThrow({ where: { id: d.personaId, inmobiliariaId: u.inmobiliariaId } })
+          : await buscarOCrearPersona(tx, {
+              inmobiliariaId: u.inmobiliariaId,
+              dni: d.inquilino.dni || null,
+              email: emailInq,
+              nombre: d.inquilino.nombre,
+              apellido: d.inquilino.apellido || null,
+              telefono: d.inquilino.telefono || null,
+            });
+        await tx.inquilino.update({ where: { id: inq.id }, data: { contratoId: contrato.id, personaId: persona.id } });
+
+        // Las cuotas de la ventana. Ambas fechas son pasadas ⇒ todas nacen
+        // VENCIDO. NO se toca la propiedad: ese es el punto del endpoint.
+        const cuotas = await generarLiquidacionesContrato(tx, contrato);
+
+        // Queda asentado quién cargó la deuda y cuánta: es plata que aparece de
+        // la nada en la cartera, tiene que ser rastreable.
+        await tx.eventoContrato.create({
+          data: {
+            inmobiliariaId: u.inmobiliariaId,
+            contratoId: contrato.id,
+            tipo: 'CREADO',
+            titulo: `Deuda histórica: ${cuotas} período(s) de ${d.inquilino.nombre} en ${prop.direccion}`,
+            detalle: `Contrato terminado cargado para registrar deuda de un inquilino anterior. No ocupa la propiedad.`,
+            fecha: new Date(),
+            autor: u.userId,
+          },
+        });
+
+        return { contrato, personaId: persona.id, cuotas };
+      },
+      { timeout: 30_000, maxWait: 10_000 },
+    );
+
+      // Auditoría del tenant, además del timeline del contrato: esto CREA DEUDA
+      // sin que ningún inquilino haya firmado nada, y sin pasar por la bandeja de
+      // aprobación. Tiene que quedar en el mismo log que las conciliaciones.
+      await registrarEvento({
+        inmobiliariaId: u.inmobiliariaId,
+        tipo: 'CONTRATO_CARGADO',
+        autorId: u.userId,
+        rolAutor: u.rol,
+        entidadId: creado.contrato.id,
+        entidadDescripcion: `Deuda histórica · ${d.inquilino.nombre} · ${prop.direccion} · ${creado.cuotas} período(s)`,
+      });
+
+      return reply.code(201).send({
+        id: creado.contrato.id,
+        personaId: creado.personaId,
+        periodosAdeudados: creado.cuotas,
+      });
+    } catch (e) {
+      // Mismo caso que el alta normal: el email pertenece a OTRA persona del
+      // tenant (unique de Persona). Acá es MÁS probable que allá — cargar 50
+      // morosos viejos a mano es justo donde se repite un email. 409 claro en vez
+      // de un 500 crudo que dejaría a Camila sin saber qué fila falló.
+      if (e && typeof e === 'object' && (e as { code?: string }).code === 'P2002') {
+        return reply.code(409).send({
+          message: 'Ese email ya lo usa otra persona en tu cartera. Si es el mismo inquilino, buscalo en "¿Ya está en tu cartera?"; si no, dejá el email vacío.',
+        });
+      }
+      throw e;
+    }
+  });
+
   // Avatar del usuario logueado (foto de perfil en /uploads del tenant).
   // imageUrl null/'' = sacar la foto. Al reemplazar/quitar, se libera el archivo
   // anterior del Volume (best effort). Cualquier rol edita SU propia foto.
