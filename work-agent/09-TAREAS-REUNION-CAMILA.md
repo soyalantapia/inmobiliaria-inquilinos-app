@@ -1225,9 +1225,36 @@ ve las dos carteras. Queda un `log.warn` para poder enterarse. Ver T-23-N2.
 
 ---
 
-## T-23-N1 · El aislamiento del portal no tiene test de integración
+## T-23-N1 · El aislamiento del portal no tiene test de integración — ✅ CUBIERTA (por otro instrumento)
 
 **Experto:** BE · **Prioridad:** 🟠 · **Depende de:** base de prueba
+**Estado: el test de integración SIGUE sin poder correrse; el modo de falla quedó cubierto igual.**
+
+**Resuelta en lo que se podía**, rama `test/T-23-N1-aislamiento-portal`, commit `7a724ae`.
+En vez del test de integración —que necesita una base y no hay— se agregó un guard
+**estructural** (`apps/api/test/portal-aislamiento.test.ts`, puro, corre sin DB) que lee
+`portal-propietario.ts` y verifica cuatro invariantes de los 5 endpoints de `/portal/*`: que
+toda query nombre `p.inmobiliariaId`, que ninguna use `findUnique` (no admite filtro extra de
+tenant en el `where`), que el portal no escriba, y que el detalle de rendición filtre por id +
+propietario + tenant. Un quinto test verifica que el guard **siga encontrando queries**: sin ese
+piso, mover las llamadas a un helper haría que los otros cuatro pasaran por vacuidad.
+
+Probado en rojo con tres mutaciones. Es un instrumento más débil que un test de integración —
+prueba la forma, no el comportamiento— y el archivo lo dice con todas las letras.
+
+**Y va el destrabe de fondo:** `docker-compose.test.yml` con una Postgres efímera en `tmpfs`
+(puerto 55432 para no pisar un Postgres propio), scripts `test:db:up` / `test:db:down` y la
+sección nueva en `docs/TESTING.md`. **⚠️ SIN VERIFICAR: el daemon de Docker no estaba corriendo
+en esta máquina.** Cuando alguien lo levante y confirme, se pueden correr los ~60 archivos de
+test de integración que hoy nadie corre — los de plata (T-28) incluidos.
+
+**Lo que sigue faltando:** el test de integración de verdad. Dos tenants, dos propietarios, y
+cada endpoint devolviendo 404/vacío al pedir lo del otro.
+
+---
+
+### Contexto original
+
 **Estado: ⛔ BLOQUEADA — y el bloqueo NO era el que decíamos.**
 
 Al abrirla se destapó que **la regla 3 del prompt estaba mal**. Decía que los tests de
