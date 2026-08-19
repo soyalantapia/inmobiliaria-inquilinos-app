@@ -1,5 +1,3 @@
-import type { Liquidacion } from './types';
-
 /**
  * Cuánto le falta pagar al inquilino por una liquidación — la ÚNICA fuente para las tres
  * pantallas que lo muestran (home, detalle del pago y comprobantes).
@@ -37,10 +35,30 @@ export interface SaldoLiquidacion {
 }
 
 /**
+ * Lo único que esta función mira de una liquidación. Antes pedía una `Liquidacion` entera, y
+ * eso escondía un problema: en el build demo los pagos NO están en `liq.pagos` —ese campo es el
+ * espejo del API— sino en el store local (`pago-storage`), con otro tipo. Para pasárselos había
+ * que fabricar un `PagoDeLiquidacion` completo, doce campos con `metodo`, `fechaTransferencia` y
+ * `decididoAt` inventados, sólo para que el compilador dejara pasar dos números.
+ *
+ * Declarando lo que de verdad necesita, `PagoInformado` del store local encaja tal cual: los dos
+ * tienen `estado` con los mismos tres valores y `monto: number`. `Liquidacion` sigue
+ * satisfaciéndolo, así que los callers no cambian.
+ */
+export interface LiquidacionParaSaldo {
+  saldo?: number;
+  montoPagado?: number;
+  pagos?: ReadonlyArray<{ estado: 'INFORMADO' | 'CONCILIADO' | 'RECHAZADO'; monto: number }>;
+}
+
+/**
  * `totalFallback` es el total a pagar que calcula la pantalla (base + mora al día) y se usa
  * cuando el backend no mandó `saldo` — en el build demo, donde no hay API.
  */
-export function saldoDeLiquidacion(liq: Liquidacion, totalFallback: number): SaldoLiquidacion {
+export function saldoDeLiquidacion(
+  liq: LiquidacionParaSaldo,
+  totalFallback: number,
+): SaldoLiquidacion {
   const exigible = Math.max(0, liq.saldo ?? totalFallback);
 
   // Sólo el pago INFORMADO vivo. Los RECHAZADO no cuentan (volvieron a ser deuda) y los

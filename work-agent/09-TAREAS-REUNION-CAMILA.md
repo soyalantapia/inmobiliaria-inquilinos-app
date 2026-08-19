@@ -2703,8 +2703,24 @@ acción correctiva obvia de la inmobiliaria **no lo arregla**. Toca el mismo end
    que todavía no venció (o al menos no contra una futura).
 3. Decidir qué pasa con las cuotas ya congeladas en prod — hace falta una consulta.
 
+### ⚠️ SON DOS SUPERFICIES, NO UNA — verificado el 19/08
+
+El mismo defecto está **replicado en el camino de las expensas**. Quien arregle esto tiene que
+arreglar las dos, o va a quedar la mitad:
+
+| Camino | Función que saltea | Caller que no filtra |
+|---|---|---|
+| Ajuste del **alquiler** | `recomputarLiquidacionesFuturas` → `if (l.cantidadPagos > 0) continue` (`lib/liquidaciones.ts:366`) | `core.ts:3011` — `_count: { select: { pagos: true } }` |
+| Cambio de **expensas** | `recomputarExpensasFuturas` → misma línea (`lib/liquidaciones.ts`) | `core.ts:3695` — mismo `_count` sin filtro |
+
+Los dos callers piden `_count: { select: { pagos: true } }` **sin `where` de estado**, así que un
+`RECHAZADO` pesa igual que un `CONCILIADO`. Resultado en el camino nuevo: informar $1 contra una
+cuota futura y que se lo rechacen **le congela las expensas viejas a esa cuota, para siempre**.
+
+Es el mismo arreglo en los dos lugares: filtrar el conteo por estado.
+
 **Criterio de aceptación.** Informar y que te rechacen un pago sobre una cuota futura **no**
-impide que esa cuota se reajuste después.
+impide que esa cuota se reajuste después — **ni el alquiler ni las expensas**.
 
 **Riesgo.** ⚠️ Toca el flujo de pagos **y** el de ajustes. Va después de T-04, y con test que
 falle primero.
@@ -3441,4 +3457,36 @@ se despliega cada front. A `CLASIFICADO` en la PWA se le saca el `contenido` —
 3 tests en rojo y 3 errores de `tsc` señalando la línea. `tsc` 0 en los cinco paquetes, 359
 tests verdes.
 
+**No verificado:** no se probó en el navegador.
+
+---
+
+### T-45 · El home de la PWA ignora el pago informado en modo demo — ✅ HECHA
+
+> **Estado: ✅ hecha.** Ver `work-agent/tareas/T-45/REQUISITOS.md`.
+
+Confirmado lo que decía la tarea: `pagoVivo` era `null` fijo en demo, así que el home decía
+"atrasado" a alguien que acababa de informar el pago completo, mientras la pantalla a la que
+linkea decía "en revisión".
+
+**Lo que la tarea no decía, y aparece al arreglarlo:** poner `pagoVivo` no alcanzaba. Tres
+líneas más abajo, `saldoDeLiquidacion` decide entre *"Te faltan $X"* y *"Comprobante en
+revisión"* y **también** lee sólo `liq.pagos`. En demo eso daba `faltaPagar = total`, o sea el
+banner habría dicho "Te faltan $TOTAL" justo abajo del cartel que reconoce el comprobante. La
+letra del criterio de aceptación se cumplía; el espíritu no.
+
+**Cómo se arregló de raíz:** `saldoDeLiquidacion` pedía una `Liquidacion` entera y sólo usa tres
+cosas de ella. Se declaró ese tipo estructural (`LiquidacionParaSaldo`), y con eso el
+`PagoInformado` del store local **encaja tal cual** — antes había que fabricar un
+`PagoDeLiquidacion` completo, doce campos inventados, para colar dos números. Ese era el motivo
+real de que nadie lo hubiera hecho.
+
+Es, además, el mismo problema que el propio encabezado de `saldo-liquidacion.ts` dice que vino a
+resolver ("dos pantallas, dos verdades sobre la misma deuda"): unificaron el cálculo pero la
+fuente de datos seguía partida según el modo.
+
+**Verificado:** 8 tests puros, 5 se ponen rojos al revertir; `tsc` 0 en los cinco paquetes; 360
+tests verdes en la compuerta.
+**Pendiente:** esos 8 tests **no corren en CI todavía** — `apps/inquilino` no tiene runner, que
+es lo que está haciendo T-32. Se corrieron a mano.
 **No verificado:** no se probó en el navegador.

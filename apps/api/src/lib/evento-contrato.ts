@@ -1,6 +1,4 @@
-import type { Prisma, PrismaClient, TipoEventoContrato } from '@prisma/client';
-
-type TxOrClient = Prisma.TransactionClient | PrismaClient;
+import type { PrismaClient, TipoEventoContrato } from '@prisma/client';
 
 /**
  * Escribe una entrada en el HISTORIAL del contrato (el expediente que ve el operador en

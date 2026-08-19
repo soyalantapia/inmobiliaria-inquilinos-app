@@ -162,6 +162,8 @@ export interface RendicionPortal {
   gastos: number;
   otrosIngresos: number;
   teDepositamos: number;
+  /** En qué moneda se rindió. Sin esto el front mostraba los dólares con signo de pesos. */
+  moneda: 'ARS' | 'USD';
   rendidoAt: string;
   metodo: string;
 }

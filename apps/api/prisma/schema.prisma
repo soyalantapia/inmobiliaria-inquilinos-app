@@ -1998,6 +1998,10 @@ model Rendicion {
   // Ingresos extra de caja (INGRESO_EXTRA) del período que SUMAN al dueño.
   totalIngresos  Decimal         @default(0) @db.Decimal(14, 2)
   montoNeto      Decimal         @db.Decimal(14, 2)
+  // La moneda en la que se rindió. El handler ya la calcula (`monedaRendicion`) y rechaza con
+  // 409 si el propietario tiene cobros en varias, pero no la guardaba: aguas abajo nadie podía
+  // saberla, y el portal del propietario mostraba los dólares con signo de pesos.
+  moneda         Moneda          @default(ARS)
   rendidoAt      DateTime        @default(now())
   metodo         MetodoRendicion
   notas          String?
