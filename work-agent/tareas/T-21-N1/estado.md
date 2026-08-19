@@ -1,7 +1,8 @@
 # T-21-N1 · El devengo no sabe qué es un "solo expensas" (💰)
 
-- **fase:** 8 (cerrada, pendiente de merge a `feat/reunion-camila-0308`)
-- **commits:** `77babfe` (el fix) + `c26db5f` (mensaje honesto + doc)
+- **fase:** 8 (cerrada)
+- **commits:** `77babfe` (el fix) + `c26db5f` (mensaje honesto + doc) + `753674c` (los dos
+  agujeros que encontró el paso adversarial)
 - **rama:** `feat/T-21-N1-devengo-solo-expensas` · **worktree:** `../myalquiler-T-21-N1`
 - **cubre también T-21-N2** (era la misma puerta por el otro lado)
 
@@ -33,13 +34,44 @@ esos contratos del **ajuste masivo**, que era el vector principal.
   de 6, todos alquileres). Consola sin errores propios — los 403 que aparecen son de un
   telemetry externo (`sonar-api`, clave pública `son_pub_`), preexistente.
 
+## Lo que encontró el paso adversarial (y que yo no había visto)
+
+Dos refutadores independientes atacaron el fix. **El núcleo se sostiene**, y lo confirmaron
+archivo por archivo: sólo hay **tres** escritores de `contrato.monto` en toda la API y los tres
+quedan cubiertos; la importación de cartera hardcodea `ALQUILER` (`importaciones-cartera.ts:471`)
+así que no puede parir un solo-expensas sucio; los guards 409 están **después** del `findFirst`
+scopeado por `inmobiliariaId`, así que no filtran la existencia de contratos de otro tenant; el
+filtro del panel tolera `tipoContrato` undefined, así que un contrato viejo sigue apareciendo; y
+`GET /contratos` usa `include` (no `select`), o sea que el campo realmente llega en producción y
+el filtro no es un no-op.
+
+Pero encontraron **dos agujeros míos**, los dos en la renovación, y los dos ya corregidos en
+`753674c`:
+
+1. **El mail le anunciaba al inquilino un aumento que la base nunca guardó.** Las cinco
+   escrituras de la transacción usaban `canonNuevo` (forzado a 0), pero `avisarAjusteAlInquilino`
+   y el `return` seguían con `b.montoNuevo` crudo. El Historial decía "canon 0 → 0" mientras al
+   inquilino le llegaba un mail real diciendo que su alquiler pasó a $500.000. Era peor que el
+   bug original: el bug original facturaba de más, éste **le avisa** de más. Ahora usa el canon
+   efectivo, y si el canon no se movió no se manda nada.
+2. **El `nonnegative()` era inalcanzable desde el panel.** El diálogo exigía `nuevoNum > 0` y
+   prefilleaba con el canon actual —que en un solo-expensas es 0—, así que el botón quedaba
+   deshabilitado para siempre y la única salida era inventar un alquiler. Habilité el caso en el
+   server y me olvidé del cliente. Ahora el campo no se muestra para ese tipo y el texto explica
+   que se renueva sólo el plazo.
+
+**Lo que NO pude verificar en el navegador:** el diálogo de renovar sólo se renderiza con
+`apiEnabled === true` (`contratos/[id]/page-client.tsx:317`), y en build demo no aparece. Ese
+cambio está verificado por `tsc` y por lectura, **no** probado a mano. El filtro del ajuste
+masivo sí lo probé en el navegador.
+
 ## ⚠️ NECESITA TU MANO ANTES DEL DEPLOY
 
 **Esto arregla de acá en adelante.** Si hoy en producción ya existe un `SOLO_EXPENSAS` con canon
 sucio, sus liquidaciones ya devengadas siguen mal y el fix no las toca.
 
 Correr, en modo lectura, **antes de deployar**:
-`work-agent/.tareas/T-21-N1/diagnostico-datos.sql` (3 consultas: contratos sucios,
+`work-agent/tareas/T-21-N1/diagnostico-datos.sql` (3 consultas: contratos sucios,
 liquidaciones ya facturadas de más, y el rastro de cómo se ensuciaron).
 
 - 0 filas en las tres → el fix alcanza, no hay nada que limpiar.

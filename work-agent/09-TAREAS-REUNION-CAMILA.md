@@ -859,7 +859,7 @@ lista del ajuste masivo (5 contratos en vez de 6).
 **⚠️ ESTO ARREGLA DE ACÁ EN ADELANTE.** Si en producción ya hay un `SOLO_EXPENSAS` con canon
 sucio, sus liquidaciones viejas siguen mal y el fix no las toca. Antes de deployar hay que
 correr la consulta de diagnóstico (solo lectura):
-`work-agent/.tareas/T-21-N1/diagnostico-datos.sql`. Si devuelve filas, hace falta decidir qué
+`work-agent/tareas/T-21-N1/diagnostico-datos.sql`. Si devuelve filas, hace falta decidir qué
 se hace con lo ya facturado — y si además se cobró, no alcanza con corregir la liquidación.
 
 ---
