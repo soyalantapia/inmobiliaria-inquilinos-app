@@ -554,4 +554,38 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
       complejo: r.propiedad?.consorcio?.nombre ?? r.propiedad?.complejo ?? null,
     }));
   });
+
+  /**
+   * Los avisos que la inmobiliaria le mandó a sus propietarios.
+   *
+   * POR QUÉ FALTABA Y POR QUÉ IMPORTA: cada anuncio se crea con `canales: ['APP', 'EMAIL']` —
+   * el comentario del panel dice "decisión de producto: siempre ambos canales"— pero para el
+   * propietario el canal APP no existía en ningún lado. Le llegaba el mail y, si lo borraba o
+   * se le perdía entre 200 mensajes, no tenía dónde volver a leerlo. El sistema declaraba un
+   * canal que no cumplía.
+   *
+   * Sólo los de audiencia TODOS_PROPIETARIOS: las otras audiencias son de inquilinos o de
+   * consorcios y no le corresponden. Y sólo los YA enviados — una fila de `Anuncio` sólo se
+   * crea al enviar (`anuncios.ts`), así que no hay borradores que filtrar.
+   *
+   * Sin acuse de lectura: `AnuncioAcuse` está atado a `inquilinoId`, no al propietario. Marcar
+   * como leído pediría una migración y no es lo que falta: lo que falta es poder leerlo.
+   */
+  app.get('/portal/anuncios', async (request, reply) => {
+    const p = await requirePropietario(request, reply);
+    if (!p) return;
+    const anuncios = await prisma.anuncio.findMany({
+      where: { inmobiliariaId: p.inmobiliariaId, audiencia: 'TODOS_PROPIETARIOS' },
+      orderBy: { enviadoAt: 'desc' },
+      take: 20,
+      select: { id: true, titulo: true, cuerpo: true, prioridad: true, enviadoAt: true },
+    });
+    return anuncios.map((a) => ({
+      id: a.id,
+      titulo: a.titulo,
+      cuerpo: a.cuerpo,
+      prioridad: a.prioridad,
+      enviadoAt: a.enviadoAt.toISOString(),
+    }));
+  });
 }

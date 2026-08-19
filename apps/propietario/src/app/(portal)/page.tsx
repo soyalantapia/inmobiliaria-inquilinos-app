@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Receipt } from 'lucide-react';
 import { Cargando, ErrorCarga, Seccion, Vacio } from '@/components/bloques';
 import { FilaRendicion } from '@/components/portal-piezas';
+import { AvisosInmobiliaria } from '@/components/avisos-inmobiliaria';
 import { ResumenPagos } from '@/components/resumen-pagos';
 import { apiFetch, ApiError, leerSesion, type MiCartera, type RendicionPortal } from '@/lib/api';
 
@@ -17,7 +18,9 @@ export default function PagosPage() {
   });
 
   return (
-    <Seccion titulo="Lo que te rindieron" icono={<Receipt className="h-4 w-4" />}>
+    <div className="space-y-6">
+      <AvisosInmobiliaria />
+      <Seccion titulo="Lo que te rindieron" icono={<Receipt className="h-4 w-4" />}>
       {rendiciones.isPending ? (
         <Cargando />
       ) : rendiciones.isError ? (
@@ -39,6 +42,7 @@ export default function PagosPage() {
       ) : (
         <Vacio texto="Todavía no hay rendiciones cargadas. Cuando tu inmobiliaria te rinda un período, lo vas a ver acá con el detalle." />
       )}
-    </Seccion>
+      </Seccion>
+    </div>
   );
 }
