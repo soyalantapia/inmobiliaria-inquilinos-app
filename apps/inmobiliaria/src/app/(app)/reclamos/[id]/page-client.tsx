@@ -74,6 +74,7 @@ export default function DetalleReclamoPage() {
     reclamo: reclamoFuente,
     contacto: contactoApi,
     asignar: asignarApi,
+    tomar: tomarApi,
     resolver: resolverApi,
     clasificar: clasificarApi,
     rechazar: rechazarApi,
@@ -133,8 +134,8 @@ export default function DetalleReclamoPage() {
     reclamo.estado === 'CERRADO' ||
     reclamo.estado === 'RECHAZADO';
 
-  // Asignar operador interno y "tomar/poner en curso" no tienen endpoint en el
-  // API → solo operan en build demo (store). En prod quedan deshabilitados.
+  // Asignar OPERADOR INTERNO sigue sin endpoint → sólo build demo. "Tomar" ahora sí tiene
+  // (POST /reclamos/:id/tomar, T-17-N2) y funciona en los dos modos.
   const handleAsignar = (operador: string) => {
     if (apiEnabled) return;
     const updated = asignarOperador(reclamo.id, operador, OPERADOR_ACTUAL);
@@ -144,8 +145,22 @@ export default function DetalleReclamoPage() {
     }
   };
 
-  const handleTomar = () => {
-    if (apiEnabled) return;
+  const handleTomar = async () => {
+    if (apiEnabled) {
+      try {
+        await tomarApi();
+        toast({ title: 'Marcado en curso', description: 'El inquilino lo ve al instante.' });
+      } catch {
+        // El server devuelve 409 si alguien lo resolvió o rechazó mientras tanto: no es un
+        // fallo del sistema, es que el reclamo ya no está donde lo dejaste.
+        toast({
+          title: 'No se pudo tomar el reclamo',
+          description: 'Puede que ya lo hayan cerrado. Recargá para ver cómo quedó.',
+          variant: 'destructive',
+        });
+      }
+      return;
+    }
     const updated = cambiarEstado(reclamo.id, 'EN_CURSO', OPERADOR_ACTUAL);
     if (updated) {
       setReclamo(updated);
@@ -537,8 +552,18 @@ export default function DetalleReclamoPage() {
                   )}
 
                   <div className="space-y-2">
-                    {!apiEnabled && reclamo.estado === 'ABIERTO' && (
-                      <Button className="w-full" onClick={handleTomar} disabled={!reclamo.asignadoA}>
+                    {/* Ya no es sólo demo: EN_CURSO era inalcanzable desde la inmobiliaria —el
+                        único que lo escribía era el inquilino al reabrir un reclamo ya resuelto—
+                        así que Camila se enteraba por mail y después lo veía seguir figurando
+                        ABIERTO aunque alguien lo estuviera atendiendo.
+                        En prod NO exige operador asignado: asignar a alguien y ponerse a
+                        trabajarlo son dos cosas distintas. */}
+                    {reclamo.estado === 'ABIERTO' && (
+                      <Button
+                        className="w-full"
+                        onClick={handleTomar}
+                        disabled={!apiEnabled && !reclamo.asignadoA}
+                      >
                         <Clock className="h-4 w-4" />
                         Tomar y poner en curso
                       </Button>

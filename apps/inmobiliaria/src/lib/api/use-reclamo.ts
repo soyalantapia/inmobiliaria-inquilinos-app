@@ -160,6 +160,7 @@ export interface UseReclamoResult {
   /** Contacto real del inquilino del API en prod; null en demo (lo resuelve el mock). */
   contacto: ContactoInquilino | null;
   asignar: (profesionalId: string) => Promise<void>;
+  tomar: () => Promise<void>;
   resolver: (input: ResolverReclamoInput) => Promise<void>;
   clasificar: (pagador: PagadorReclamo) => Promise<void>;
   rechazar: (motivo: string) => Promise<void>;
@@ -196,6 +197,16 @@ export function useReclamo(id: string | undefined): UseReclamoResult {
         method: 'POST',
         body: JSON.stringify({ profesionalId }),
       });
+    },
+    onSuccess: invalidar,
+  });
+
+  // Tomar el reclamo: ABIERTO → EN_CURSO. Es idempotente del lado del server, así que
+  // tocarlo dos veces no duplica el evento del historial.
+  const tomarM = useMutation({
+    mutationFn: async () => {
+      await ensureApiSession();
+      await apiFetch(`/reclamos/${id}/tomar`, { method: 'POST' });
     },
     onSuccess: invalidar,
   });
@@ -261,6 +272,7 @@ export function useReclamo(id: string | undefined): UseReclamoResult {
       deApi: false,
       contacto: null,
       asignar: async () => {},
+      tomar: async () => {},
       resolver: async () => {},
       clasificar: async () => {},
       rechazar: async () => {},
@@ -276,6 +288,7 @@ export function useReclamo(id: string | undefined): UseReclamoResult {
     deApi: true,
     contacto: q.data?.contacto ?? null,
     asignar: (profesionalId) => asignarM.mutateAsync(profesionalId),
+    tomar: () => tomarM.mutateAsync(),
     resolver: (input) => resolverM.mutateAsync(input),
     clasificar: (pagador) => clasificarM.mutateAsync(pagador),
     rechazar: (motivo) => rechazarM.mutateAsync(motivo),
