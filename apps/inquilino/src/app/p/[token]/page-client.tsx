@@ -286,7 +286,10 @@ function TrabajoCardReal({
         method: 'POST',
         body: JSON.stringify({ fechaVisita: new Date(fechaInput).toISOString() }),
       });
-      toast({ variant: 'success', title: 'Visita confirmada', description: `Le avisamos a ${reclamo.inquilino?.split(' ')[0] ?? 'el inquilino'}.` });
+      // /confirmar sólo escribe un ReclamoEvento en el timeline: no sale ningún aviso.
+      // El inquilino se entera si entra al reclamo, así que la coordinación la hace el
+      // profesional. Decir "le avisamos" lo mandaba a la casa confiado en un aviso inexistente.
+      toast({ variant: 'success', title: 'Visita confirmada', description: `Quedó anotada en el reclamo. Coordiná con ${reclamo.inquilino?.split(' ')[0] ?? 'el inquilino'}.` });
       await onChange();
     } catch (e) {
       toast({ variant: 'destructive', title: 'No se pudo confirmar', description: e instanceof Error ? e.message : undefined });
@@ -437,7 +440,7 @@ function TrabajoCardReal({
           <div className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-900/40 dark:bg-amber-900/10">
             <p className="flex items-center gap-1.5 text-xs font-medium text-amber-900 dark:text-amber-200">
               <Truck className="h-3.5 w-3.5" />
-              En camino — avisamos al inquilino que llegás en breve.
+              En camino — queda anotado en el reclamo. Si podés, avisale vos.
             </p>
             <Button size="sm" onClick={() => setOpenCerrar(true)} className="gap-1.5">
               <CheckCircle2 className="h-3.5 w-3.5" />
@@ -759,7 +762,7 @@ function TrabajoCardDemo({
       return;
     }
     confirmarVisita(reclamo.id, profId, new Date(fechaInput).toISOString());
-    toast({ variant: 'success', title: 'Visita confirmada', description: `Le avisamos a ${reclamo.inquilino.split(' ')[0]}.` });
+    toast({ variant: 'success', title: 'Visita confirmada', description: `Quedó anotada en el reclamo. Coordiná con ${reclamo.inquilino.split(' ')[0]}.` });
     onChange();
   };
 
@@ -870,7 +873,7 @@ function TrabajoCardDemo({
               <div className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-900/40 dark:bg-amber-900/10">
                 <p className="flex items-center gap-1.5 text-xs font-medium text-amber-900 dark:text-amber-200">
                   <Truck className="h-3.5 w-3.5" />
-                  En camino — avisamos al inquilino que llegás en breve.
+                  En camino — queda anotado en el reclamo. Si podés, avisale vos.
                 </p>
                 <Button size="sm" onClick={() => setOpenCerrar(true)} className="gap-1.5">
                   <CheckCircle2 className="h-3.5 w-3.5" />

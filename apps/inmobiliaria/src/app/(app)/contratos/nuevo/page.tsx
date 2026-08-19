@@ -571,8 +571,10 @@ function PasoConfirmar({
           Listo para dar de alta
         </CardTitle>
         <CardDescription>
+          {/* La invitación existe y se manda de verdad, pero por MAIL
+              (enviarInvitacionInquilino, core.ts). Decía WhatsApp. */}
           Revisá un último resumen antes de confirmar. Generamos la primera
-          liquidación y mandamos invitación al inquilino por WhatsApp.
+          liquidación y le mandamos la invitación al inquilino por mail.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">

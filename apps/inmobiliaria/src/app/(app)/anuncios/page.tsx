@@ -773,8 +773,12 @@ function CrearAnuncioDialog({ abierto, onClose, onGuardar, contratosApi }: Dialo
               <div className="flex items-start gap-2">
                 <Smartphone className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                 <span className="text-muted-foreground">
-                  <strong className="text-foreground">En la app</strong>: les aparece en el inicio y
-                  reciben una notificación. Pueden tocar <strong className="text-foreground">“Estoy
+                  {/* Decía "reciben una notificación": no hay push (cero pushManager en la
+                      PWA) y GET /mis-notificaciones no incluye anuncios, así que la campana
+                      no se entera. Lo que sí es cierto —aparece en el inicio y el mail se
+                      manda de verdad vía enviarAnuncioEmail— se conserva. */}
+                  <strong className="text-foreground">En la app</strong>: les aparece arriba de
+                  todo en el inicio. Pueden tocar <strong className="text-foreground">“Estoy
                   enterado”</strong> y vos ves quiénes ya lo leyeron.
                 </span>
               </div>
