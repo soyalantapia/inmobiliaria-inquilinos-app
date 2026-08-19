@@ -743,6 +743,10 @@ export async function enviarAvisoAjusteAlquiler(opts: {
       `\n\nVelo en la app: ${APP_INQUILINO_URL}` +
       `\n\n${lineaDudasAjuste(opts.inmobiliariaNombre, respondeA)}`,
     html: ajusteHtml({ ...opts, respondeA }),
+  });
+  return true;
+}
+
 // ─── Reclamos ────────────────────────────────────────────────────────────────
 //
 // Pedido de la reunión del 03/08: "tiene que notificarle también los reclamos,
@@ -825,7 +829,7 @@ export async function enviarReclamoNuevoInmo(opts: {
   const esEmergencia = opts.urgencia === 'EMERGENCIA';
   const cat = CATEGORIA_LABEL[opts.categoria] ?? opts.categoria;
   const url = `${APP_ADMIN_URL}/reclamos/${opts.reclamoId}`;
-  await t.sendMail({
+  await enviarEnCola({
     from,
     to: opts.email,
     subject: `${esEmergencia ? 'EMERGENCIA — ' : ''}Nuevo reclamo de ${opts.autor} · ${opts.propiedad}`,
@@ -861,7 +865,7 @@ export async function enviarReclamoAsignadoInquilino(opts: {
   const t = getTransporter();
   if (!t) return false;
   const url = `${APP_INQUILINO_URL}/reclamos/${opts.reclamoId}`;
-  await t.sendMail({
+  await enviarEnCola({
     from,
     to: opts.email,
     subject: `${opts.inmobiliariaNombre} asignó a ${opts.profesional} a tu reclamo`,
@@ -891,7 +895,7 @@ export async function enviarReclamoResueltoInquilino(opts: {
   const t = getTransporter();
   if (!t) return false;
   const url = `${APP_INQUILINO_URL}/reclamos/${opts.reclamoId}`;
-  await t.sendMail({
+  await enviarEnCola({
     from,
     to: opts.email,
     subject: `Tu reclamo se resolvió · ${opts.inmobiliariaNombre}`,
