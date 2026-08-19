@@ -3,9 +3,9 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3002",
+    "dev": "next dev -p 3003",
     "build": "node ../../scripts/check-dev-port.js 3002 && next build",
-    "start": "next start -p 3002",
+    "start": "next start -p 3003",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf .next .turbo"

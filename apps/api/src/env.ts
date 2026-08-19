@@ -24,7 +24,7 @@ const EnvSchema = z.object({
     .transform((v) => v === 'true'),
   CORS_ORIGINS: z
     .string()
-    .default('http://localhost:3000,http://localhost:3001,https://soyalantapia.github.io')
+    .default('http://localhost:3000,http://localhost:3001,http://localhost:3003,https://soyalantapia.github.io')
     .transform((v) => v.split(',').map((s) => s.trim()).filter(Boolean)),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   // Fin del acceso gratis pre-lanzamiento (la usa /auth/registro). Si está seteada,
