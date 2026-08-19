@@ -308,6 +308,12 @@ chicas.
 ## T-09 · Revisar qué campos bloquean el alta del inquilino
 
 **Experto:** FE-P + PROD · **Prioridad:** 🟠 · **Depende de:** nada
+**Estado: ✅ HECHA** — commit `b3e9efa`.
+**La respuesta a su pregunta es SÍ, y ya era sí el 03/08.** El backend sólo exige `nombre`;
+front y zod tienen todo lo demás opcional, y esa línea no cambia desde el 15/06. No había nada
+que mover a opcional. Lo que sí faltaba —y entró— es avisar que **sin email el inquilino no
+puede entrar a la app** (el login es OTP por mail): el copy lo vendía como que "ayuda a
+invitarlo". El aviso no bloquea, porque cargar la cartera con lo que hay es legítimo.
 
 **Qué pidió Camila.** `[15:01]` *"Te pide whatsapp, foto del DNI del inquilino, ¿pueden
 continuar?"* — la pregunta quedó **sin responder** en la reunión.
