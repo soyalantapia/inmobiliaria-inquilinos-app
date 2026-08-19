@@ -743,6 +743,11 @@ export async function enviarAvisoAjusteAlquiler(opts: {
       `\n\nVelo en la app: ${APP_INQUILINO_URL}` +
       `\n\n${lineaDudasAjuste(opts.inmobiliariaNombre, respondeA)}`,
     html: ajusteHtml({ ...opts, respondeA }),
+  });
+  return true;
+}
+
+
 // ─── Reclamos ────────────────────────────────────────────────────────────────
 //
 // Pedido de la reunión del 03/08: "tiene que notificarle también los reclamos,
