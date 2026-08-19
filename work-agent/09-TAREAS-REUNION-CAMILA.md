@@ -72,7 +72,21 @@ Sin este bloque, el trabajo hecho no le llega a Camila. **Es lo primero.**
 
 ---
 
-## T-01 · Aplicar las dos migraciones pendientes
+## T-01 · Aplicar las migraciones pendientes — ⚠️ CORREGIDA: es automático
+
+> **La tarea estaba mal planteada y esto se verificó el 19/08.** No hay ningún paso manual:
+> `apps/api/Dockerfile:30` arranca con
+> `CMD ["sh","-c","pnpm db:deploy && exec node dist/index.js"]`, y `db:deploy` es
+> `prisma migrate deploy`. **Las migraciones se aplican solas al deployar, antes de que el
+> proceso levante**, y si fallan el contenedor no arranca (`&&`) — o sea que nunca puede
+> quedar código nuevo contra un esquema viejo, que era el riesgo que esta tarea quería evitar.
+>
+> Son **tres**, no dos (se sumó una): `20260818120000_rol_caja`,
+> `20260818130000_movimiento_caja_sin_propiedad`, `20260819120000_evento_contrato_renovacion`.
+>
+> **Lo que sí queda para vos** es verificar DESPUÉS del deploy que las tres quedaron aplicadas
+> (los criterios de aceptación de abajo siguen valiendo) y **T-03**, que no es automática:
+> la migración crea el rol `CAJA` pero no le asigna ese rol a nadie.
 
 **Experto:** DATA + OPS · **Prioridad:** 🔴 · **Depende de:** nada
 
@@ -930,6 +944,73 @@ código que **no** hay que repetir: el token de garante es `base64url` de un JSO
 ofuscación visual"*), y el hash del certificado es FNV-1a + djb2 truncado, sin sal y
 determinístico (`inquilino-mundo.ts:148-164`). **El portal del propietario no puede nacer con
 un token así.**
+
+---
+
+## T-36 · TOCTOU al cambiar el modo de cobranza
+
+**Experto:** BE · **Prioridad:** 🟡 · **Depende de:** nada
+**Origen:** revisión adversarial del 19/08 (dimensión concurrencia). **Es sobre código propio
+de esta tanda**, no heredado.
+
+**Estado verificado.** `PATCH /contratos/:id/modo-cobranza` calcula `alquilerCobradoSinRendir`
+(`lib/rendicion-pendiente.ts`) **fuera de transacción**, y el `UPDATE` que cambia el modo **no
+está condicionado** a que ese cálculo siga siendo válido. Entre la lectura y la escritura, otro
+operador puede conciliar un pago: el guard ya pasó y el modo cambia igual, con plata cobrada
+sin rendir del lado equivocado.
+
+**Por qué no bloquea.** Requiere dos operadores actuando sobre el mismo contrato en la misma
+ventana de milisegundos. Pero el patrón correcto ya existe en el repo y está a una línea:
+`updateMany({ where: { id, modoCobranza: <el que se leyó> } })` y 409 si `count === 0`.
+
+**Criterio de aceptación.** Dos requests concurrentes sobre el mismo contrato: una cambia el
+modo, la otra recibe 409 y no pisa nada.
+
+---
+
+## T-37 · La matriz de permisos le promete a OPERADOR algo que el endpoint le niega
+
+**Experto:** BE + PROD · **Prioridad:** 🟡 · **Depende de:** nada
+**Origen:** revisión adversarial del 19/08 (dimensión multi-tenant).
+
+**Estado verificado.** `packages/shared/src/permisos.ts:140` declara
+`pago.manual.cargar` para `['ADMIN','CAJA','OPERADOR']`, pero
+`POST /pagos/manual` (`plata.ts:1005`) exige **`pago.conciliar`**, que es sólo
+`['ADMIN','CAJA']`. La pantalla Configuración → Equipo le muestra a la administradora que
+Operador **sí** puede "Cargar pago manual (efectivo)"; el endpoint le contesta 403
+*"Tu rol no permite: pago.conciliar"*.
+
+**No es una regresión**: el guard es idéntico en `main`. Lo que cambió es la matriz, que ahora
+declara una capacidad que nunca se cableó.
+
+**Qué hay que hacer.** Decidir cuál de las dos manda —si el mostrador tiene que poder cargar
+efectivo, el endpoint debe pedir `pago.manual.cargar`; si no, la capacidad sale de la matriz—
+y dejar las dos de acuerdo. **Es decisión de producto**, porque define qué puede hacer el
+personal de mostrador.
+
+---
+
+## T-38 · `POST /contratos/:id/ajustar` no valida el tipo de contrato
+
+**Experto:** BE · **Prioridad:** 🟢 · **Depende de:** nada
+**Origen:** revisión adversarial del 19/08. Es el **residuo** de T-20, que cerró el agujero del
+cron pero no éste.
+
+**Estado verificado.** Los otros tres caminos que escriben el canon
+(`computarLiquidacionesContrato`, `recomputarLiquidacionesFuturas`, `PATCH /contratos/:id/monto`)
+aplican `montoAlquilerSegunTipo`. `POST /contratos/:id/ajustar` no: exige un monto positivo y lo
+escribe en las cuotas futuras. En un contrato `SOLO_EXPENSAS` eso le factura alquiler a quien
+sólo debe expensas, y la comisión se calcula sobre esa base.
+
+**Por qué es 🟢 y no 🔴.** No hay camino automático: no existe ajuste masivo que itere
+contratos, y el operador tendría que tipear un alquiler positivo en una ficha donde el panel
+dice "Tipo: Sólo expensas", oculta la fila Alquiler y el diálogo muestra "Alquiler actual: $0".
+Es lo contrario de T-20, que era un cron silencioso que además deshacía la corrección manual.
+
+**Qué hay que hacer.** 409 *"este contrato no cobra alquiler"* cuando el tipo es
+`SOLO_EXPENSAS`. (Se revisó `/renovar` y **no** tiene el problema: su `updateMany` filtra por
+`periodo >= montoDesde` y el devengo nunca genera períodos más allá del mes de `fechaFin`, así
+que no matchea ninguna fila.)
 
 ---
 
