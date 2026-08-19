@@ -2733,6 +2733,7 @@ esté listo"* para un país todavía no disponible. No hay lista de espera detr�
 o se cambia el texto.
 ### T-18-N2-N1 · El onboarding promete avisar de un costo que el sistema no calcula
 **Experto:** PROD · **Prioridad:** 🟡 · **Detectada en:** T-18-N2
+**Estado: ✅ CERRADA SIN CAMBIO** — el dueño confirmó que **el aviso lo hace una persona del equipo** cuando el cliente se pasa de tramo. La frase es cierta, entonces, aunque el software no participe: se deja como está. Queda anotado que si en algún momento ese aviso manual se deja de hacer, la frase pasa a ser falsa — y que el modelo de facturación (`Factura`, `KeyTramoPlan`, `propiedadesEnPlan`) sigue existiendo en el schema sin una sola línea de código que lo use.
 
 `apps/inmobiliaria/src/components/onboarding.tsx:77` dice, como bullet del slide de
 Propiedades: *"Cargá nuevas propiedades (te avisamos del costo extra)"*.
