@@ -8,6 +8,7 @@ import {
   parsearFilaMoroso,
   parsearPeriodo,
   sugerirMapeoMorosos,
+  claveDeduda,
   validarFilaMoroso,
 } from '../src/lib/importacion-morosos.js';
 
@@ -71,11 +72,14 @@ describe('parsearPeriodo · los formatos que aparecen en un Excel real', () => {
     expect(parsearPeriodo('31/12/2023')).toBe('2023-12');
   });
 
-  it('lee un ISO completo, que es como llegan las fechas de Excel tras el viaje por JSON', () => {
-    // La ruta serializa las celdas Date con toISOString() para que sobrevivan al
-    // JSON: el período tiene que salir del año-mes de ese string.
+  it('lee la fecha serializada por la ruta ("YYYY-MM-DD"), y también un ISO con hora', () => {
+    // La ruta serializa las celdas Date como día de calendario local
+    // (`fechaDePlanilla`), NO con toISOString(): en un server al este de UTC el
+    // día 1 se iría al mes anterior. Igual se acepta el ISO con hora, porque un
+    // CSV puede traerlo escrito así.
+    expect(parsearPeriodo('2024-03-01')).toBe('2024-03');
+    expect(parsearPeriodo('2024-03-31')).toBe('2024-03');
     expect(parsearPeriodo('2024-03-01T03:00:00.000Z')).toBe('2024-03');
-    expect(parsearPeriodo('2024-03-31T03:00:00.000Z')).toBe('2024-03');
   });
 
   it('lee un Date nativo y un serial de Excel', () => {
@@ -126,7 +130,7 @@ describe('la ventana de deuda', () => {
 
 describe('validarFilaMoroso · la propiedad tiene que existir', () => {
   it('matchea por dirección normalizada aunque esté escrita distinto', () => {
-    const v = validarFilaMoroso(fila({ direccion: 'AV. COLON  1234   3b' }), PROPS, HOY);
+    const v = validarFilaMoroso(fila({ direccion: 'AV. COLON  1234   3b' }), PROPS, HOY, new Set());
 
     expect(v.propiedadId).toBe('prop_1');
     expect(v.estado).toBe('OK');
@@ -134,7 +138,7 @@ describe('validarFilaMoroso · la propiedad tiene que existir', () => {
   });
 
   it('si la dirección no está en la cartera, es ERROR y NO se inventa la propiedad', () => {
-    const v = validarFilaMoroso(fila({ direccion: 'Calle Que No Existe 1' }), PROPS, HOY);
+    const v = validarFilaMoroso(fila({ direccion: 'Calle Que No Existe 1' }), PROPS, HOY, new Set());
 
     expect(v.estado).toBe('ERROR');
     expect(v.propiedadId).toBeNull();
@@ -143,7 +147,7 @@ describe('validarFilaMoroso · la propiedad tiene que existir', () => {
   });
 
   it('sin dirección no llega ni a mirar la cartera', () => {
-    expect(validarFilaMoroso(fila({ direccion: '' }), PROPS, HOY).estado).toBe('ERROR');
+    expect(validarFilaMoroso(fila({ direccion: '' }), PROPS, HOY, new Set()).estado).toBe('ERROR');
   });
 });
 
@@ -151,25 +155,25 @@ describe('validarFilaMoroso · lo que impide crear deuda equivocada', () => {
   it('la ventana tiene que estar cerrada: un "debe hasta" del mes actual es ERROR', () => {
     // Si el último mes adeudado es el actual, no es un ex-inquilino: es el que
     // vive ahí, y va por el alta normal (que sí ocupa la propiedad).
-    const v = validarFilaMoroso(fila({ debeDesde: '2026-06', debeHasta: HOY }), PROPS, HOY);
+    const v = validarFilaMoroso(fila({ debeDesde: '2026-06', debeHasta: HOY }), PROPS, HOY, new Set());
 
     expect(v.estado).toBe('ERROR');
     expect(v.motivo).toContain('meses ya terminados');
   });
 
   it('un "debe hasta" futuro también es ERROR', () => {
-    expect(validarFilaMoroso(fila({ debeDesde: '2026-06', debeHasta: '2027-01' }), PROPS, HOY).estado).toBe('ERROR');
+    expect(validarFilaMoroso(fila({ debeDesde: '2026-06', debeHasta: '2027-01' }), PROPS, HOY, new Set()).estado).toBe('ERROR');
   });
 
   it('el mes anterior al actual SÍ es válido: es el moroso más reciente posible', () => {
-    const v = validarFilaMoroso(fila({ debeDesde: '2026-07', debeHasta: '2026-07' }), PROPS, HOY);
+    const v = validarFilaMoroso(fila({ debeDesde: '2026-07', debeHasta: '2026-07' }), PROPS, HOY, new Set());
 
     expect(v.estado).toBe('OK');
     expect(v.meses).toBe(1);
   });
 
   it('la ventana invertida es ERROR', () => {
-    const v = validarFilaMoroso(fila({ debeDesde: '2024-05', debeHasta: '2024-03' }), PROPS, HOY);
+    const v = validarFilaMoroso(fila({ debeDesde: '2024-05', debeHasta: '2024-03' }), PROPS, HOY, new Set());
 
     expect(v.estado).toBe('ERROR');
     expect(v.motivo).toContain('anterior');
@@ -177,7 +181,7 @@ describe('validarFilaMoroso · lo que impide crear deuda equivocada', () => {
 
   it('un año mal tipeado se corta en el tope en vez de crear cientos de cuotas', () => {
     // "2014" en vez de "2024" da ~140 meses de deuda. Es el typo clásico.
-    const v = validarFilaMoroso(fila({ debeDesde: '2014-03', debeHasta: '2025-12' }), PROPS, HOY);
+    const v = validarFilaMoroso(fila({ debeDesde: '2014-03', debeHasta: '2025-12' }), PROPS, HOY, new Set());
 
     expect(v.estado).toBe('ERROR');
     expect(v.meses).toBe(0);
@@ -185,20 +189,20 @@ describe('validarFilaMoroso · lo que impide crear deuda equivocada', () => {
   });
 
   it('un mes ilegible es ERROR con instrucción de formato, no un default silencioso', () => {
-    const v = validarFilaMoroso(fila({ debeDesde: null }), PROPS, HOY);
+    const v = validarFilaMoroso(fila({ debeDesde: null }), PROPS, HOY, new Set());
 
     expect(v.estado).toBe('ERROR');
     expect(v.motivo).toContain('2024-03');
   });
 
   it('monto cero o negativo es ERROR', () => {
-    expect(validarFilaMoroso(fila({ monto: 0 }), PROPS, HOY).estado).toBe('ERROR');
-    expect(validarFilaMoroso(fila({ monto: -1 }), PROPS, HOY).estado).toBe('ERROR');
-    expect(validarFilaMoroso(fila({ monto: NaN }), PROPS, HOY).estado).toBe('ERROR');
+    expect(validarFilaMoroso(fila({ monto: 0 }), PROPS, HOY, new Set()).estado).toBe('ERROR');
+    expect(validarFilaMoroso(fila({ monto: -1 }), PROPS, HOY, new Set()).estado).toBe('ERROR');
+    expect(validarFilaMoroso(fila({ monto: NaN }), PROPS, HOY, new Set()).estado).toBe('ERROR');
   });
 
   it('sin DNI se importa igual, pero avisando que no se va a unir a su ficha', () => {
-    const v = validarFilaMoroso(fila({ inquilinoDni: null }), PROPS, HOY);
+    const v = validarFilaMoroso(fila({ inquilinoDni: null }), PROPS, HOY, new Set());
 
     expect(v.estado).toBe('ADVERTENCIA');
     expect(v.meses).toBe(3);
@@ -294,5 +298,143 @@ describe('sugerirMapeoMorosos · el auto-mapeo de headers', () => {
       'inquilinoNombre',
       'monto',
     ].sort());
+  });
+});
+
+describe('dedup · volver a subir la planilla no puede duplicar la deuda', () => {
+  /**
+   * Es el caso REAL de recuperación: de 50 filas entraron 40, Camila corrige las
+   * 10 que fallaron y vuelve a subir la planilla entera. Sin dedup, esas 40 se
+   * cargan de nuevo y cada moroso pasa a deber el doble.
+   *
+   * `@@unique([contratoId, periodo])` no salva de esto: cada importación crea un
+   * contrato histórico NUEVO, con su propio juego de liquidaciones.
+   */
+  const claveDeMarta = claveDeduda('prop_1', '20111222', 'Marta', 'Gómez', '2024-03', '2024-05');
+
+  it('una deuda ya cargada se marca DUPLICADO y no aporta meses', () => {
+    const v = validarFilaMoroso(fila(), PROPS, HOY, new Set([claveDeMarta]));
+
+    expect(v.estado).toBe('DUPLICADO');
+    expect(v.meses).toBe(0);
+    expect(v.motivo).toContain('ya está cargada');
+  });
+
+  it('la MISMA persona con OTRA ventana de meses sí entra: son dos deudas distintas', () => {
+    const v = validarFilaMoroso(
+      fila({ debeDesde: '2023-01', debeHasta: '2023-02' }),
+      PROPS,
+      HOY,
+      new Set([claveDeMarta]),
+    );
+
+    expect(v.estado).toBe('OK');
+    expect(v.meses).toBe(2);
+  });
+
+  it('la misma ventana en OTRA propiedad sí entra: alquiló en dos lados', () => {
+    const v = validarFilaMoroso(fila({ direccion: 'Rivadavia 500' }), PROPS, HOY, new Set([claveDeMarta]));
+
+    expect(v.estado).toBe('OK');
+    expect(v.propiedadId).toBe('prop_2');
+  });
+
+  it('OTRA persona con la misma propiedad y ventana entra: se fueron distintos inquilinos', () => {
+    const v = validarFilaMoroso(fila({ inquilinoDni: '30999888' }), PROPS, HOY, new Set([claveDeMarta]));
+
+    expect(v.estado).toBe('OK');
+  });
+
+  it('el DNI manda sobre el nombre: la misma persona escrita distinto sigue siendo duplicado', () => {
+    // "MARTA gomez" vs "Marta Gómez" es la misma señora; el DNI lo zanja.
+    const v = validarFilaMoroso(
+      fila({ inquilinoNombre: 'MARTA', inquilinoApellido: 'gomez' }),
+      PROPS,
+      HOY,
+      new Set([claveDeMarta]),
+    );
+
+    expect(v.estado).toBe('DUPLICADO');
+  });
+
+  it('sin DNI cae al nombre normalizado, que igual atrapa el duplicado', () => {
+    const porNombre = claveDeduda('prop_1', null, 'Marta', 'Gómez', '2024-03', '2024-05');
+    const v = validarFilaMoroso(fila({ inquilinoDni: null }), PROPS, HOY, new Set([porNombre]));
+
+    expect(v.estado).toBe('DUPLICADO');
+  });
+
+  it('el dedup NO pisa un error de forma: una fila rota se reporta por lo que está rota', () => {
+    // Si la fecha no se pudo leer, no hay clave con la cual comparar. El motivo
+    // útil es el de la fecha, no "ya está cargada".
+    const v = validarFilaMoroso(fila({ debeDesde: null }), PROPS, HOY, new Set([claveDeMarta]));
+
+    expect(v.estado).toBe('ERROR');
+    expect(v.motivo).toContain('debe desde');
+  });
+});
+
+describe('expensas y moneda · lo que un subagente encontró probando la aritmética', () => {
+  const MAPEO = {
+    direccion: 0,
+    inquilinoNombre: 1,
+    debeDesde: 2,
+    debeHasta: 3,
+    monto: 4,
+    montoExpensas: 5,
+    moneda: 6,
+  };
+  const filaCon = (expensas: string, moneda = '') =>
+    parsearFilaMoroso(['Av. Colón 1234 3B', 'Marta', '2024-03', '2024-04', '100000', expensas, moneda], MAPEO);
+
+  it('expensas NEGATIVAS son ERROR: restaban del alquiler y subestimaban la deuda', () => {
+    const v = validarFilaMoroso(filaCon('-30000'), PROPS, HOY, new Set());
+
+    expect(v.estado).toBe('ERROR');
+    expect(v.motivo).toContain('Expensas inválidas');
+  });
+
+  it('un negativo CONTABLE entre paréntesis también se corta', () => {
+    // parsearMonto lee "(30.000)" como -30000 (convención contable).
+    expect(validarFilaMoroso(filaCon('(30.000)'), PROPS, HOY, new Set()).estado).toBe('ERROR');
+  });
+
+  it('un RANGO tipeado en la celda es ERROR, no un número absurdo', () => {
+    // "1.500 - 2.000" se parsea como -15002000 y hundía el total de cada cuota.
+    const d = filaCon('1.500 - 2.000');
+
+    expect(validarFilaMoroso(d, PROPS, HOY, new Set()).estado).toBe('ERROR');
+  });
+
+  it('texto en la celda de expensas es ERROR, no un null silencioso', () => {
+    // Antes "ver planilla" daba null y las expensas desaparecían sin aviso.
+    expect(validarFilaMoroso(filaCon('ver planilla'), PROPS, HOY, new Set()).estado).toBe('ERROR');
+  });
+
+  it('la celda VACÍA sí es válida: quiere decir que no hay expensas', () => {
+    const d = filaCon('');
+
+    expect(d.montoExpensas).toBeNull();
+    // No es OK sino ADVERTENCIA porque esta fila de prueba no trae DNI; lo que
+    // se afirma acá es que las expensas vacías NO la invalidan.
+    expect(validarFilaMoroso(d, PROPS, HOY, new Set()).estado).not.toBe('ERROR');
+  });
+
+  it('un cero explícito también es válido', () => {
+    expect(validarFilaMoroso(filaCon('0'), PROPS, HOY, new Set()).estado).not.toBe('ERROR');
+  });
+
+  it('todas las formas de escribir dólares se leen como dólares', () => {
+    // "US$" y "U$D" caían a PESOS: un error de dos órdenes de magnitud sobre la
+    // deuda de alguien.
+    for (const m of ['USD', 'usd', 'U$S', 'US$', 'U$D', 'dolares', 'Dólares', 'DOLAR']) {
+      expect(filaCon('', m).moneda, `"${m}" debería ser USD`).toBe('USD');
+    }
+  });
+
+  it('lo que NO es dólar sigue siendo pesos', () => {
+    for (const m of ['', 'ARS', 'pesos', '$', 'peso argentino']) {
+      expect(filaCon('', m).moneda, `"${m}" debería ser ARS`).toBe('ARS');
+    }
   });
 });

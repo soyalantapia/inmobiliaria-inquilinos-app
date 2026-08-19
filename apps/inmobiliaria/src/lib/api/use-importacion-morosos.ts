@@ -33,7 +33,7 @@ export interface AnalisisMorosos {
   maxFilas: number;
 }
 
-export type EstadoFilaMoroso = 'OK' | 'ADVERTENCIA' | 'ERROR';
+export type EstadoFilaMoroso = 'OK' | 'ADVERTENCIA' | 'ERROR' | 'DUPLICADO';
 
 export interface DatosFilaMoroso {
   direccion: string;

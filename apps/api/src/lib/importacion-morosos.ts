@@ -224,11 +224,21 @@ export function parsearFilaMoroso(fila: unknown[], mapeo: Record<string, number>
   }
 
   const monto = parsearMonto(celda(fila, mapeo, 'monto'));
+
+  // Expensas: se distingue VACÍO de ILEGIBLE, y la diferencia importa.
+  // Vacío → null (el contrato queda como ALQUILER a secas). Ilegible → NaN, que
+  // la validación convierte en error de fila. Antes las dos daban null, así que
+  // una celda con "ver planilla" hacía desaparecer las expensas en silencio y la
+  // deuda quedaba subestimada sin que nadie se enterara.
   const expensasRaw = celda(fila, mapeo, 'montoExpensas');
   const expensas = expensasRaw == null || texto(expensasRaw) === '' ? null : parsearMonto(expensasRaw);
+
+  // "US$" y "U$D" también son dólares. Con el chequeo anterior (usd/dolar/u$s)
+  // caían a PESOS: una deuda en dólares cargada como pesos es un error de dos
+  // órdenes de magnitud. `normalizarHeader` ya bajó a minúsculas y sacó tildes,
+  // pero deja el "$" en pie, que es de lo que se agarra este patrón.
   const monedaRaw = normalizarHeader(texto(celda(fila, mapeo, 'moneda')));
-  const moneda: 'ARS' | 'USD' =
-    monedaRaw.includes('usd') || monedaRaw.includes('dolar') || monedaRaw.includes('u$s') ? 'USD' : 'ARS';
+  const moneda: 'ARS' | 'USD' = /u\$|us\$|usd|dolar/.test(monedaRaw) ? 'USD' : 'ARS';
 
   return {
     direccion: texto(celda(fila, mapeo, 'direccion')),
@@ -239,12 +249,42 @@ export function parsearFilaMoroso(fila: unknown[], mapeo: Record<string, number>
     debeDesde: parsearPeriodo(celda(fila, mapeo, 'debeDesde')),
     debeHasta: parsearPeriodo(celda(fila, mapeo, 'debeHasta')),
     monto: Number.isFinite(monto) ? monto : NaN,
-    montoExpensas: expensas != null && Number.isFinite(expensas) ? expensas : null,
+    // NaN pasa a propósito (celda ilegible): lo atrapa `validarFilaMoroso`.
+    montoExpensas: expensas,
     moneda,
   };
 }
 
-export type EstadoFilaMoroso = 'OK' | 'ADVERTENCIA' | 'ERROR';
+/**
+ * Clave para no cargar dos veces la misma deuda.
+ *
+ * Hace falta porque re-subir la planilla es el camino NORMAL de recuperación:
+ * Camila corrige las filas que fallaron y la vuelve a subir. Sin esto, las 40
+ * que sí habían entrado se cargarían de nuevo y el moroso pasaría a deber el
+ * doble. `@@unique([contratoId, periodo])` no la salva: cada importación crea un
+ * contrato histórico NUEVO, con su propio juego de liquidaciones.
+ *
+ * Identidad = DNI si lo hay; si no, nombre + apellido normalizados. No es
+ * perfecto (dos "Juan Pérez" sin DNI en la misma propiedad y la misma ventana
+ * colisionan) pero ese caso es indistinguible de un duplicado real, y el costo
+ * de equivocarse es que se lo marque para revisar a mano — no que se le invente
+ * deuda.
+ */
+export function claveDeduda(
+  propiedadId: string,
+  dni: string | null,
+  nombre: string,
+  apellido: string | null,
+  desde: string,
+  hasta: string,
+): string {
+  const identidad = dni?.trim()
+    ? `dni:${dni.trim()}`
+    : `nom:${normalizarHeader(`${nombre} ${apellido ?? ''}`)}`;
+  return `${propiedadId}|${identidad}|${desde}|${hasta}`;
+}
+
+export type EstadoFilaMoroso = 'OK' | 'ADVERTENCIA' | 'ERROR' | 'DUPLICADO';
 
 export interface ValidacionFilaMoroso {
   estado: EstadoFilaMoroso;
@@ -274,6 +314,15 @@ export function validarFilaMoroso(
   d: FilaMoroso,
   propiedadesPorDireccion: Map<string, string>,
   periodoHoy: string,
+  /**
+   * Claves (`claveDeduda`) de la deuda histórica que YA está cargada, más las de
+   * las filas anteriores de esta misma planilla. OBLIGATORIO aunque se pueda
+   * pasar vacío: cuando un parámetro así es opcional, un caller nuevo se lo
+   * saltea en silencio y el dedup queda apagado sin que nada falle — le pasó a
+   * la importación de cartera con `direccionesExistentes` (ver el comentario en
+   * `validarFila`).
+   */
+  deudaYaCargada: Set<string>,
 ): ValidacionFilaMoroso {
   const nada = { propiedadId: null, meses: 0 };
 
@@ -291,6 +340,21 @@ export function validarFilaMoroso(
 
   if (!Number.isFinite(d.monto) || d.monto <= 0) {
     return { estado: 'ERROR', motivo: 'Monto del alquiler inválido', propiedadId, meses: 0 };
+  }
+  // Las expensas NO se validaban y son parte del total de cada cuota. Dos casos
+  // reales que entraban sin chistar y subestimaban la deuda:
+  //  · un negativo ("-30.000", o "(30.000)" que `parsearMonto` lee como negativo
+  //    contable) restaba del alquiler;
+  //  · un rango tipeado en la celda ("1.500 - 2.000") se parsea como -15002000 y
+  //    hundía el total a un número absurdo.
+  // Un cero explícito sí se acepta: quiere decir "no tiene expensas".
+  if (d.montoExpensas != null && (!Number.isFinite(d.montoExpensas) || d.montoExpensas < 0)) {
+    return {
+      estado: 'ERROR',
+      motivo: 'Expensas inválidas: tiene que ser un número mayor o igual a cero, o la celda vacía',
+      propiedadId,
+      meses: 0,
+    };
   }
   if (!d.debeDesde) {
     return { estado: 'ERROR', motivo: 'No pudimos leer el mes "debe desde" (usá 2024-03 o 03/2024)', propiedadId, meses: 0 };
@@ -321,6 +385,19 @@ export function validarFilaMoroso(
     return {
       estado: 'ERROR',
       motivo: 'La deuda histórica es de meses ya terminados. Si el inquilino sigue viviendo ahí, cargalo como contrato normal',
+      propiedadId,
+      meses: 0,
+    };
+  }
+
+  // Va DESPUÉS de todas las validaciones de forma (una fila con la fecha rota no
+  // tiene clave con la cual compararse) y ANTES del aviso por DNI faltante: si
+  // esta deuda ya está cargada, que falte el DNI es lo de menos.
+  const clave = claveDeduda(propiedadId, d.inquilinoDni, d.inquilinoNombre, d.inquilinoApellido, d.debeDesde, d.debeHasta);
+  if (deudaYaCargada.has(clave)) {
+    return {
+      estado: 'DUPLICADO',
+      motivo: 'Esta deuda ya está cargada (mismo inquilino, misma propiedad, mismos meses)',
       propiedadId,
       meses: 0,
     };

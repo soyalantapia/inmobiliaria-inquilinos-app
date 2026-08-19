@@ -8,6 +8,7 @@ import { crearContratoHistorico } from '../lib/contrato-historico.js';
 import { diaCivilAR } from '@llave/shared';
 import {
   CAMPOS_MOROSOS,
+  claveDeduda,
   finDelPeriodo,
   inicioDelPeriodo,
   normalizarDireccion,
@@ -50,6 +51,29 @@ import {
  */
 const MAX_FILAS = 500;
 
+/**
+ * Una celda-fecha de Excel → `"YYYY-MM-DD"`, leída con los getters LOCALES.
+ *
+ * NO se usa `toISOString()`, y no es un detalle. `xlsx` con `cellDates` construye
+ * los Date en la hora local del proceso: el 1/3/2024 de una planilla es
+ * `new Date(2024, 2, 1)`. En un server al ESTE de UTC eso pasado a UTC da
+ * `2024-02-29T21:00Z` — y el importador leería FEBRERO. Cada moroso cuya deuda
+ * arranca el 1ro entraría con un mes de más, en silencio.
+ *
+ * Hoy Railway corre en UTC y no muerde, pero es una mina esperando un cambio de
+ * región. Una fecha de planilla es un día del calendario, no un instante: se
+ * serializa como tal.
+ *
+ * (La importación de cartera tiene el mismo patrón con `toISOString()`. No se
+ * toca desde acá: es un flujo distinto, en producción, y merece su propia tarea.)
+ */
+function fechaDePlanilla(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dia = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dia}`;
+}
+
 /** Período `"YYYY-MM"` del mes en curso, en día civil argentino. */
 function periodoHoyAR(): string {
   const hoy = diaCivilAR(new Date());
@@ -80,6 +104,47 @@ async function propiedadesPorDireccion(
     else mapa.set(clave, p.id);
   }
   return { mapa, ambiguas };
+}
+
+/**
+ * Claves de la deuda histórica que este tenant YA tiene cargada.
+ *
+ * Se arma sobre los contratos FINALIZADOS: son los que produce esta importación
+ * y también `POST /contratos/historico`, así que la carga de a uno y la masiva se
+ * ven entre sí. Un contrato que terminó de verdad también entra al set, y está
+ * bien: si alguien intenta importar deuda con la misma propiedad, la misma
+ * persona y exactamente la misma ventana, hay que mirarlo a mano.
+ */
+async function deudaHistoricaYaCargada(inmobiliariaId: string): Promise<Set<string>> {
+  const previos = await prisma.contrato.findMany({
+    where: { inmobiliariaId, estado: 'FINALIZADO' },
+    select: {
+      propiedadId: true,
+      fechaInicio: true,
+      fechaFin: true,
+      inquilinoTitular: { select: { dni: true, nombre: true, apellido: true } },
+    },
+  });
+  const set = new Set<string>();
+  for (const c of previos) {
+    if (!c.inquilinoTitular) continue;
+    set.add(
+      claveDeduda(
+        c.propiedadId,
+        c.inquilinoTitular.dni,
+        c.inquilinoTitular.nombre,
+        c.inquilinoTitular.apellido,
+        periodoDeFecha(c.fechaInicio),
+        periodoDeFecha(c.fechaFin),
+      ),
+    );
+  }
+  return set;
+}
+
+/** `Date` de la DB → `"YYYY-MM"`. Las fechas del contrato se guardan en UTC. */
+function periodoDeFecha(d: Date): string {
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
 const filasSchema = z.object({
@@ -151,13 +216,13 @@ export async function importacionMorososRoutes(app: FastifyInstance): Promise<vo
 
     const headers = (filas[0] ?? []).map((h) => String(h ?? ''));
     // sheet_to_json devuelve arrays ESPARCIDOS; Array.from los rellena (map los
-    // saltea). Date → ISO para que sobreviva el viaje por JSON.
+    // saltea, y un hueco rompería el índice del mapeo).
     const cuerpo = filas.slice(1, 1 + MAX_FILAS).map((f) => {
       const fila = f ?? [];
       return Array.from({ length: fila.length }, (_, i) => {
         const c = fila[i];
         if (c === undefined || c === null) return null;
-        if (c instanceof Date) return c.toISOString();
+        if (c instanceof Date) return fechaDePlanilla(c);
         return c as string | number;
       });
     });
@@ -188,17 +253,30 @@ export async function importacionMorososRoutes(app: FastifyInstance): Promise<vo
 
     const { mapa, ambiguas } = await propiedadesPorDireccion(u.inmobiliariaId);
     const hoy = periodoHoyAR();
+    // El set arranca con lo que ya está en la DB y CRECE fila a fila: así una
+    // planilla que trae dos veces la misma deuda marca la segunda como duplicada,
+    // igual que si ya estuviera cargada.
+    const yaCargada = await deudaHistoricaYaCargada(u.inmobiliariaId);
 
-    const resumen: Record<EstadoFilaMoroso, number> = { OK: 0, ADVERTENCIA: 0, ERROR: 0 };
+    const resumen: Record<EstadoFilaMoroso, number> = { OK: 0, ADVERTENCIA: 0, ERROR: 0, DUPLICADO: 0 };
     const filas = parsed.data.filas.map((f, i) => {
       const datos = parsearFilaMoroso(f, parsed.data.mapeo);
-      const v = validarFilaMoroso(datos, mapa, hoy);
+      const v = validarFilaMoroso(datos, mapa, hoy, yaCargada);
+      if (v.estado !== 'ERROR' && v.estado !== 'DUPLICADO' && v.propiedadId && datos.debeDesde && datos.debeHasta) {
+        yaCargada.add(
+          claveDeduda(v.propiedadId, datos.inquilinoDni, datos.inquilinoNombre, datos.inquilinoApellido, datos.debeDesde, datos.debeHasta),
+        );
+      }
       // Dirección ambigua: matcheó, pero hay más de una propiedad que normaliza
       // igual. Se deja importable (elegimos la primera) pero avisando, para que
       // el operador chequee que la deuda no quede colgada de la que no es.
-      const ambigua = v.propiedadId != null && ambiguas.has(normalizarDireccion(datos.direccion));
-      const estado: EstadoFilaMoroso = ambigua && v.estado === 'OK' ? 'ADVERTENCIA' : v.estado;
-      const motivo = ambigua && v.estado !== 'ERROR'
+      // Dirección ambigua: matcheó, pero hay más de una propiedad que normaliza
+      // igual. Sólo pisa el estado OK — un DUPLICADO o un ERROR tienen un motivo
+      // más importante que mostrar, y perderlo dejaría a la fila con un cartel
+      // que no explica por qué no se puede importar.
+      const ambigua = v.propiedadId != null && v.estado === 'OK' && ambiguas.has(normalizarDireccion(datos.direccion));
+      const estado: EstadoFilaMoroso = ambigua ? 'ADVERTENCIA' : v.estado;
+      const motivo = ambigua
         ? 'Tenés más de una propiedad con esa dirección: la deuda va a la primera. Verificá que sea la correcta'
         : v.motivo;
       resumen[estado] += 1;
@@ -209,7 +287,8 @@ export async function importacionMorososRoutes(app: FastifyInstance): Promise<vo
         motivo,
         propiedadId: v.propiedadId,
         meses: v.meses,
-        importable: estado !== 'ERROR',
+        // DUPLICADO tampoco es importable: ese es todo el punto del dedup.
+        importable: estado !== 'ERROR' && estado !== 'DUPLICADO',
       };
     });
 
@@ -232,8 +311,13 @@ export async function importacionMorososRoutes(app: FastifyInstance): Promise<vo
     // un problema de privilegio (un cliente malicioso sólo podría crear la misma
     // deuda que ya puede crear de a una por POST /contratos/historico), pero sí de
     // integridad: la validación del paso 2 es un preview, no una autorización.
-    const { mapa, ambiguas } = await propiedadesPorDireccion(u.inmobiliariaId);
+    const { mapa } = await propiedadesPorDireccion(u.inmobiliariaId);
     const hoy = periodoHoyAR();
+    // El dedup se re-arma ACÁ contra la DB, no se confía en el del preview: entre
+    // que Camila revisó y apretó Importar pudo pasar cualquier cosa (otra pestaña,
+    // un compañero cargando el mismo moroso a mano, un doble click). Es la
+    // diferencia entre un aviso y una garantía.
+    const yaCargada = await deudaHistoricaYaCargada(u.inmobiliariaId);
     const seleccion = parsed.data.seleccion ? new Set(parsed.data.seleccion) : null;
 
     const errores: { fila: number; motivo: string }[] = [];
@@ -243,13 +327,19 @@ export async function importacionMorososRoutes(app: FastifyInstance): Promise<vo
     for (let i = 0; i < parsed.data.filas.length; i++) {
       if (seleccion && !seleccion.has(i)) continue;
       const datos = parsearFilaMoroso(parsed.data.filas[i]!, parsed.data.mapeo);
-      const v = validarFilaMoroso(datos, mapa, hoy);
-      if (v.estado === 'ERROR' || !v.propiedadId || !datos.debeDesde || !datos.debeHasta) {
+      const v = validarFilaMoroso(datos, mapa, hoy, yaCargada);
+      if (v.estado === 'ERROR' || v.estado === 'DUPLICADO' || !v.propiedadId || !datos.debeDesde || !datos.debeHasta) {
         errores.push({ fila: i, motivo: v.motivo ?? 'Fila inválida' });
         continue;
       }
       const propiedadId = v.propiedadId;
       const direccion = datos.direccion;
+      // Se agrega ANTES de crear: si dos filas de esta misma planilla son la misma
+      // deuda, la segunda ya la ve. Y si la creación falla, la fila se reporta
+      // igual como error, así que no se pierde nada por haberla marcado.
+      yaCargada.add(
+        claveDeduda(propiedadId, datos.inquilinoDni, datos.inquilinoNombre, datos.inquilinoApellido, datos.debeDesde, datos.debeHasta),
+      );
       try {
         // UNA TRANSACCIÓN POR FILA, igual que la importación de cartera: una fila
         // mala no puede tirar abajo las 49 buenas. Y como cada fila COMMITEA antes
