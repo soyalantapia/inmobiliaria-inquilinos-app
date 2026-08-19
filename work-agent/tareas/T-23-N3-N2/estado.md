@@ -68,7 +68,7 @@ de paso romper el carry-over.
 - **No toqué el código de plata.** El cambio que pedía la tarea es una regresión.
 - **No agregué un test puro del invariante.** Está cubierto por tres tests de integración
   (`rendicion-multiowner`, `rendicion-reclamo-multiduenio`, `imputar-reclamo-ya-rendido`) que
-  **no pude correr**: usan `seedBase` y pegan a la Postgres de producción (regla 3). Hacerlo
+  **no pude correr**: usan `seedBase` (regla 3: siembran de forma destructiva una Postgres remota COMPARTIDA — y en esta máquina no hay `apps/api/.env`, así que ni arrancan). Hacerlo
   puro exigiría extraer la aritmética de los topes, que hoy vive inline en el handler — es un
   refactor de código de plata sin cambio funcional, y le corresponde a **T-28**.
 
@@ -113,13 +113,12 @@ Ahora la moneda sale del contrato, que es de donde la toma la imputación al inq
 Los dos bugs existen **porque los tres bloques hacían la misma cuenta copiada y se fueron
 separando**: a uno le faltó un tope, a otro un filtro. La aritmética de los dos topes vive ahora
 en `lib/parte-rendible.ts`, con **10 tests puros** verificados en rojo sacándole el tope global,
-y los tres call sites la usan. Los tests que cubrían este invariante eran de integración y pegan
-a la Postgres de producción; éstos corren siempre.
+y los tres call sites la usan. Los tests que cubrían este invariante eran de integración y necesitan esa base compartida; éstos corren siempre.
 
 **Verificado:** `tsc` 0, **245 tests puros en verde** (25 archivos) después del merge.
 
 **Sin verificar:** el comportamiento end-to-end de la rendición. Los tests que lo cubren
-(`rendicion-multiowner`, `rendicion-reclamo-multiduenio`) necesitan la DB. El refactor no cambia
+(`rendicion-multiowner`, `rendicion-reclamo-multiduenio`) necesitan esa DB. El refactor no cambia
 la fórmula —es la misma cuenta, en un solo lugar— pero eso está afirmado por lectura y typecheck,
 no por ejecución.
 

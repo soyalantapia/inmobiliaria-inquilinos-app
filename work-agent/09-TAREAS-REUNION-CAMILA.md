@@ -1212,6 +1212,34 @@ ve las dos carteras. Queda un `log.warn` para poder enterarse. Ver T-23-N2.
 ## T-23-N1 · El aislamiento del portal no tiene test de integración
 
 **Experto:** BE · **Prioridad:** 🟠 · **Depende de:** base de prueba
+**Estado: ⛔ BLOQUEADA — y el bloqueo NO era el que decíamos.**
+
+Al abrirla se destapó que **la regla 3 del prompt estaba mal**. Decía que los tests de
+`apps/api` *"pegan a la Postgres de producción"* citando `docs/TESTING.md:25`, y esa línea dice
+**lo contrario**: *"Esta NO es la DB de prod. Prod corre dentro de Railway con el host interno
+(`*.railway.internal`), inalcanzable desde tu máquina. El proxy público es la instancia de
+test/dev."* Era una lectura al revés de la propia fuente que citaba, y se propagó a media docena
+de `estado.md` porque cada chat la repitió de ahí. Ya está corregida en el prompt.
+
+**El bloqueo real es doble:**
+
+1. `seedBase` siembra de forma **destructiva** una Postgres **remota y compartida**. No es prod,
+   pero sí es la base que están usando los otros chats en paralelo: correrla se los lleva puestos.
+2. Y más duro: **en esta máquina no existe `apps/api/.env`**, así que `DATABASE_URL` no está
+   seteada y esos tests ni siquiera arrancan — fallan con un ZodError de env, no con un error de
+   conexión.
+
+**Qué destraba esto (decisión del dueño), en orden de preferencia:**
+
+- **Una Postgres efímera local** (Docker) con su propio `DATABASE_URL`, que es lo que hace falta
+  de verdad: hoy *ningún* test de integración se puede correr en el día a día, ni el de este
+  portal ni los de plata. Es lo que también pide T-28.
+- O, más rápido y peor: pasar el `.env` con el proxy y coordinar cuándo se puede sembrar sin
+  pisar a otro chat.
+
+**Mientras tanto**, el aislamiento del portal está verificado por lectura y por una revisión
+adversarial de tres lentes (T-23), no por una prueba que falle sola si alguien saca un
+`inmobiliariaId` de un `where`. Que es justo lo que esta tarea existe para arreglar.
 
 Los 5 endpoints del portal están scopeados por `propietarioId` **e** `inmobiliariaId`, y eso se
 verificó leyendo y con una revisión adversarial. Pero **no hay una prueba que falle** si mañana
@@ -2568,3 +2596,22 @@ diseño de marca y el pie de T-30 de arrastre— o, como mínimo, envolver las i
 
 **Criterio de aceptación.** Una inmobiliaria llamada `Suárez & Cía <Córdoba>` recibe su mail de
 invitación bien renderizado.
+## Tareas nuevas detectadas al ejecutar
+
+### T-17-N1 · Destinatario configurable por tipo de aviso
+**Experto:** BE + PROD · **Prioridad:** 🟠 · **Detectada en:** T-17 (Fase 7)
+
+Hoy **todos** los avisos a la inmobiliaria van a `Inmobiliaria.email`, una sola casilla. Camila
+administra 220 propiedades: *"me va a llegar un mail por cada reclamo… y todos van a mi misma
+casilla, no a la de la chica que los maneja. Habría que poder decir a quién le llega cada cosa."*
+
+Hace falta un modelo de preferencias (por tipo de evento → destinatario), y probablemente un
+digest para los eventos de alto volumen. **Definir con PROD antes de modelar.**
+
+### T-17-N2 · El estado EN_CURSO sigue siendo inalcanzable
+**Experto:** BE + FE-P · **Prioridad:** 🟠 · **Detectada en:** T-17 (Fase 7)
+
+Ya estaba documentado en `07-ECOSISTEMA.md §3.4`: *"tomar / poner en curso"* no tiene endpoint,
+así que a `EN_CURSO` sólo se llega si el inquilino **reabre** un reclamo resuelto. Con el mail
+de T-17, Camila se entera antes de un reclamo que después **no puede mover**: *"me entero más
+rápido de algo que después no puedo mover. Me sirve igual, pero es media solución."*

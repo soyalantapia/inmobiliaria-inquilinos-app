@@ -42,9 +42,23 @@ Estas mandan sobre cualquier otra cosa que decidas.
    lo hace el dueño.
 2. **NO aplicás migraciones.** Podés *escribir* el `.sql`, nunca correrlo. Si tu tarea necesita
    una, la dejás escrita, documentada y avisás.
-3. **NO corrés los tests de `apps/api`.** Pegan a la Postgres de **producción** y hacen
-   reset/seed (`docs/TESTING.md:25`). De los 64 archivos, **14 son puros** (sin DB) y son los
-   únicos que podés correr. Para saber cuáles, mirá los que no importan `seedBase`.
+3. **NO corrés los tests de integración de `apps/api`.** Los que importan `seedBase` siembran de
+   forma **destructiva** una Postgres **remota y compartida**: te llevás puesto lo que estén
+   usando los otros chats en paralelo, y el seed no distingue. Corré sólo los **puros** (los que
+   no importan `seedBase`); son los que no tocan la base.
+
+   > ⚠️ **Corrección (19/08).** Este punto decía *"pegan a la Postgres de producción"* citando
+   > `docs/TESTING.md:25` — y esa línea dice **exactamente lo contrario**: *"Esta NO es la DB de
+   > prod. Prod corre dentro de Railway con el host interno (`*.railway.internal`), inalcanzable
+   > desde tu máquina. El proxy público es la instancia de test/dev."* Era una lectura al revés
+   > de la fuente que citaba, y se propagó a media docena de `estado.md` porque cada chat la
+   > repitió de acá.
+   >
+   > La regla **se mantiene**, pero por el motivo verdadero: no es prod, es una instancia
+   > compartida que el seed borra. Y en la práctica hay un segundo bloqueo, más duro: en esta
+   > máquina **no existe `apps/api/.env`**, así que `DATABASE_URL` no está seteada y esos tests
+   > ni siquiera arrancan (fallan con un ZodError de env, no con un error de conexión — si te lo
+   > cruzás, es eso).
 4. **NO tocás el tenant real** (Tapia Propiedades): no creás cuentas ni datos de prueba ahí.
 5. **NO commiteás a `main`.** Trabajás en tu propia rama, en tu propio worktree (Fase 0).
 6. **NO agregás dependencias** sin justificarlo explícitamente en el reporte final.
