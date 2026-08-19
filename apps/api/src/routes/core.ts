@@ -1816,6 +1816,51 @@ export async function coreRoutes(app: FastifyInstance) {
     });
   });
 
+  /**
+   * Timeline del contrato (pestaña "Historial" del panel).
+   *
+   * POR QUÉ EXISTE: `EventoContrato` era WRITE-ONLY. Se escribe al renovar
+   * (core.ts, POST /contratos/:id/renovar) y al ajustar el alquiler (PATCH
+   * /contratos/:id/monto), y NINGÚN endpoint lo devolvía — así que el panel
+   * hardcodeaba `eventos: []` y la pestaña decía "Sin eventos registrados todavía"
+   * aunque la base tuviera el rastro. Es peor que no tener trazabilidad: hacer creer
+   * que no quedó registro de un ajuste de alquiler que sí quedó.
+   *
+   * `autor` guarda el userId (un cuid), no un nombre. Lo resolvemos ACÁ, al leer, en
+   * vez de arreglar las escrituras: así los eventos ya guardados también se ven bien
+   * —no hace falta backfill— y el nombre sigue al usuario si se lo cambian. Lo que no
+   * matchea ningún usuario se devuelve tal cual, que cubre el 'Sistema' de los eventos
+   * automáticos y cualquier valor viejo.
+   */
+  app.get('/contratos/:id/eventos', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'contratos.ver');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    // El tenant se valida sobre el CONTRATO antes de leer los eventos: un findMany por
+    // contratoId a secas expondría el historial de otra inmobiliaria.
+    const contrato = await prisma.contrato.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      select: { id: true },
+    });
+    if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
+
+    const eventos = await prisma.eventoContrato.findMany({
+      where: { contratoId: id, inmobiliariaId: u.inmobiliariaId },
+      orderBy: { fecha: 'desc' },
+    });
+    if (eventos.length === 0) return [];
+
+    const autores = [...new Set(eventos.map((e) => e.autor).filter(Boolean))];
+    const usuarios = await prisma.usuario.findMany({
+      where: { id: { in: autores }, inmobiliariaId: u.inmobiliariaId },
+      select: { id: true, nombre: true, apellido: true },
+    });
+    const nombrePorId = new Map(
+      usuarios.map((x) => [x.id, `${x.nombre} ${x.apellido ?? ''}`.trim()]),
+    );
+    return eventos.map((e) => ({ ...e, autor: nombrePorId.get(e.autor) ?? e.autor }));
+  });
+
   // ===== Depósitos en custodia (plata de terceros que la inmo guarda) =====
   // Suma los depósitos de garantía RETENIDOS (de contratos activos Y de finalizados que
   // todavía no se devolvieron): es el pasivo real de plata de terceros a cuidar.

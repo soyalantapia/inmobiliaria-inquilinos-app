@@ -3,14 +3,14 @@
   "configurations": [
     {
       "name": "inquilino",
-      "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "inquilino", "dev"],
+      "runtimeExecutable": "corepack",
+      "runtimeArgs": ["pnpm", "--filter", "@llave/inquilino", "dev"],
       "port": 3000
     },
     {
       "name": "inmobiliaria",
-      "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "inmobiliaria", "dev"],
+      "runtimeExecutable": "corepack",
+      "runtimeArgs": ["pnpm", "--filter", "@llave/inmobiliaria", "dev"],
       "port": 3001
     }
   ]

@@ -66,7 +66,9 @@ import { apiEnabled, apiFetch, ApiError, datoDeError, varianteError } from '@/li
 import { ensureApiSession } from '@/lib/api/session';
 import { useCobranza, usePropietarios } from '@/lib/api/hooks';
 import { CuentaCobranzaDialog } from '@/components/cuenta-cobranza-dialog';
-import { useContrato } from '@/lib/api/use-contrato';
+import { useContrato, useEventosContrato } from '@/lib/api/use-contrato';
+import { useServiciosPublicos } from '@/lib/api/use-servicios-publicos';
+import { TIPO_SERVICIO_LABEL } from '@/lib/servicios-publicos-storage';
 import {
   type CanalComunicacion,
   type LiquidacionAdmin,
@@ -129,6 +131,7 @@ const canalIcono: Record<CanalComunicacion, LucideIcon> = {
 export default function DetalleContratoPage() {
   const params = useParams<{ id: string }>();
   const { detalle, cargando, noEncontrado } = useContrato(params.id);
+  const { eventos, isError: eventosError } = useEventosContrato(params.id);
 
   // En build demo (!apiEnabled) el id inexistente da 404 sin tirar request:
   // mantenemos el comportamiento original de notFound().
@@ -195,7 +198,11 @@ export default function DetalleContratoPage() {
   }
 
   const liquidaciones = detalle.liquidaciones;
-  const eventosDelContrato = detalle.eventos;
+  // El timeline sale de su propio endpoint. Antes `detalle.eventos` venía hardcodeado en []
+  // porque EventoContrato era write-only, y la pestaña decía "Sin eventos" aunque la base
+  // tuviera el rastro. El hook ya cubre el modo demo (devuelve el mock), así que es la única
+  // fuente.
+  const eventosDelContrato = eventos;
   const comunicaciones = detalle.comunicaciones;
 
   return (
@@ -314,6 +321,10 @@ export default function DetalleContratoPage() {
 
           <TabsContent value="resumen" className="space-y-4">
             <GananciaInmoCard contratoId={c.id} moneda={c.moneda} />
+            {/* Servicios de la propiedad: son parte del expediente del contrato —
+                "no tengo servicios" (03/08)— pero se editan en la propiedad, que es
+                donde viven. Acá van sólo de lectura. */}
+            {apiEnabled && c.propiedadId && <ServiciosDelContrato propiedadId={c.propiedadId} />}
             <div className="grid gap-4 md:grid-cols-2">
               <Card>
                 <CardHeader>
@@ -443,7 +454,25 @@ export default function DetalleContratoPage() {
                   {/* WhatsApp/Email/Garante salen del contacto real resuelto por
                       contratoId (API en prod, mock en demo). Antes eran strings
                       hardcoded idénticos para todos los contratos. */}
-                  <Row label="Nombre" value={c.inquilino} />
+                  {/* El nombre linkea a la FICHA de la persona (su historial de contratos,
+                      reclamos y morosidad en la inmobiliaria). Era la cuarta cosa que Camila
+                      no encontraba en el expediente: "no tengo persona" (03/08). El link
+                      aparece sólo si el inquilino tiene una Persona asociada. */}
+                  <Row
+                    label="Nombre"
+                    value={
+                      detalle.personaId ? (
+                        <Link
+                          href={`/inquilinos/${detalle.personaId}`}
+                          className="font-medium text-primary hover:underline"
+                        >
+                          {c.inquilino}
+                        </Link>
+                      ) : (
+                        c.inquilino
+                      )
+                    }
+                  />
                   <Row
                     label="WhatsApp"
                     value={
@@ -495,7 +524,13 @@ export default function DetalleContratoPage() {
           <TabsContent value="historial" className="space-y-4">
             <Card>
               <CardContent className="space-y-0 p-6">
-                {eventosDelContrato.length === 0 ? (
+                {eventosError ? (
+                  // No decimos "sin eventos" cuando en realidad no pudimos preguntar: sería
+                  // afirmar que no quedó registro de un ajuste que sí puede haber quedado.
+                  <p className="py-8 text-center text-sm text-destructive">
+                    No pudimos cargar el historial. Recargá la página.
+                  </p>
+                ) : eventosDelContrato.length === 0 ? (
                   <p className="py-8 text-center text-sm text-muted-foreground">
                     Sin eventos registrados todavía.
                   </p>
@@ -1308,6 +1343,70 @@ function AprobacionContratoCard({
 // inmobiliaria (default) o si el inquilino deposita directo al propietario
 // y la inmo sólo audita. Se puede cambiar en cualquier momento — queda
 // registrado en auditoría.
+/**
+ * Servicios públicos de la propiedad, dentro del expediente del contrato.
+ *
+ * Camila los nombró entre lo que no encontraba: "no tengo servicios" (03/08). El dato ya
+ * existía (`GET /propiedades/:propiedadId/servicios`) pero sólo se veía desde la propiedad,
+ * y ella estaba parada en el contrato.
+ *
+ * Sólo lectura: se editan donde viven, en la ficha de la propiedad. Duplicar el editor acá
+ * sería dos caminos para el mismo dato.
+ */
+function ServiciosDelContrato({ propiedadId }: { propiedadId: string }) {
+  const { servicios, hidratado, error } = useServiciosPublicos(propiedadId);
+
+  if (!hidratado) return null;
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0">
+        <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+          Servicios de la propiedad
+        </CardTitle>
+        <Link
+          href={`/propiedades/${propiedadId}`}
+          className="text-xs font-medium text-primary hover:underline"
+        >
+          Editar en la propiedad →
+        </Link>
+      </CardHeader>
+      <CardContent className="text-sm">
+        {error ? (
+          // Un GET que falla NO es "no hay servicios": decirlo sería que el operador crea
+          // que la propiedad no tiene ninguno cargado.
+          <p className="py-2 text-destructive">
+            No pudimos cargar los servicios. Recargá la página.
+          </p>
+        ) : servicios.length === 0 ? (
+          <p className="py-2 text-muted-foreground">
+            Esta propiedad todavía no tiene servicios cargados.
+          </p>
+        ) : (
+          <ul role="list" className="divide-y">
+            {servicios.map((s) => (
+              <li key={s.tipo} className="flex items-start justify-between gap-3 py-2">
+                <div className="min-w-0">
+                  <p className="font-medium">{TIPO_SERVICIO_LABEL[s.tipo]}</p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {s.distribuidora || 'Sin distribuidora'}
+                    {s.nis ? ` · N° ${s.nis}` : ''}
+                  </p>
+                </div>
+                {s.titular && (
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    a nombre de {s.titular}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function ModoCobranzaCard({
   contrato,
   propietarioDirecto,
