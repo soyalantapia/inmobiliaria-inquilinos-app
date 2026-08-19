@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { Building2, ChevronDown, Loader2, LogOut, Receipt, Wrench } from 'lucide-react';
+import { Building2, ChevronDown, Loader2, LogOut, Mail, Phone, Receipt, Wrench } from 'lucide-react';
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card } from '@llave/ui/card';
@@ -93,6 +93,12 @@ export default function PortalHome() {
             Administra {cartera.data?.inmobiliaria.nombre ?? sesion?.inmobiliaria}
             {cartera.data ? ` · comisión ${cartera.data.comisionPct}%` : ''}
           </p>
+          {/* El teléfono y el mail de la inmobiliaria YA venían en /portal/mi-cartera y la
+              pantalla los tiraba. El portal existe para que el dueño no tenga que llamar, pero
+              para lo que el portal NO cubre —un gasto que no reconoce, avisar que vende— seguía
+              sin tener a dónde escribir: tenía que salir a buscar el número afuera de la app.
+              En el celular, `tel:` es un toque. */}
+          <ContactoInmo inmo={cartera.data?.inmobiliaria} />
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {/* Sólo aparece si esta persona administra con más de una inmobiliaria. */}
@@ -164,6 +170,35 @@ export default function PortalHome() {
         )}
       </Seccion>
     </main>
+  );
+}
+
+/**
+ * Cómo llegar a la inmobiliaria cuando el portal no alcanza.
+ *
+ * Sólo se muestra lo que existe: si no hay teléfono cargado no aparece un link muerto, y si no
+ * hay ninguno de los dos no aparece nada. Un "Contactanos" que no lleve a ningún lado sería
+ * exactamente lo contrario de lo que este portal viene a hacer.
+ */
+function ContactoInmo({ inmo }: { inmo?: MiCartera['inmobiliaria'] }) {
+  const tel = inmo?.telefono?.trim();
+  const mail = inmo?.email?.trim();
+  if (!tel && !mail) return null;
+  return (
+    <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+      {tel && (
+        <a href={`tel:${tel.replace(/[^\d+]/g, '')}`} className="inline-flex items-center gap-1 text-primary hover:underline">
+          <Phone className="h-3 w-3" />
+          {tel}
+        </a>
+      )}
+      {mail && (
+        <a href={`mailto:${mail}`} className="inline-flex items-center gap-1 text-primary hover:underline">
+          <Mail className="h-3 w-3" />
+          {mail}
+        </a>
+      )}
+    </p>
   );
 }
 

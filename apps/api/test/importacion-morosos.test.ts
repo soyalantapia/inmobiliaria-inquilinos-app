@@ -514,3 +514,39 @@ describe('sugerir la dirección parecida · el cuello de botella real de la feat
     expect(v.motivo).toContain('No encontramos esa propiedad');
   });
 });
+
+describe('el DNI se normaliza al parsear · sin esto el dedup no une', () => {
+  /**
+   * REGRESIÓN CRUZADA. `normalizarDni` lo agregó otra tanda y lo usan la
+   * importación de cartera y `buscarOCrearPersona`; el importador de morosos se
+   * quedó afuera y guardaba el string crudo.
+   *
+   * Consecuencia: la carga de a uno guardaba '20123456' y la planilla '20.123.456'.
+   * `claveDeduda` compara strings, no matcheaban, y el mismo moroso entraba DOS
+   * VECES — debiendo el doble, que es justo lo que el dedup existe para impedir.
+   */
+  const MAPEO = { direccion: 0, inquilinoNombre: 1, inquilinoDni: 2, debeDesde: 3, debeHasta: 4, monto: 5 };
+  const dniDe = (crudo: string) =>
+    parsearFilaMoroso(['Av. Colón 1234 3B', 'Marta', crudo, '2024-03', '2024-03', '1000'], MAPEO).inquilinoDni;
+
+  it('saca puntos y espacios: la planilla y la carga a mano quedan iguales', () => {
+    expect(dniDe('20.123.456')).toBe('20123456');
+    expect(dniDe(' 20 123 456 ')).toBe('20123456');
+    expect(dniDe('20123456')).toBe('20123456');
+  });
+
+  it('sin DNI queda null, no cadena vacía', () => {
+    // El `@@unique([inmobiliariaId, dni])` trata los NULL como distintos entre sí,
+    // que es lo que permite que convivan muchas fichas sin documento. Un '' sería
+    // un valor real y chocaría contra la primera.
+    expect(dniDe('')).toBeNull();
+    expect(dniDe('sin datos')).toBeNull();
+  });
+
+  it('dos escrituras del MISMO documento dan la misma clave de dedup', () => {
+    const a = claveDeduda('prop_1', dniDe('20.123.456'), 'Marta', 'Gómez', '2024-03', '2024-05');
+    const b = claveDeduda('prop_1', dniDe('20123456'), 'MARTA', 'gomez', '2024-03', '2024-05');
+
+    expect(a).toBe(b);
+  });
+});

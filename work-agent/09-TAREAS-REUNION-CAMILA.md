@@ -1504,6 +1504,7 @@ Abre **T-23-N3-N1** (la mitad del portal) y **T-23-N3-N2**.
 ## T-23-N3-N1 · Que el propietario vea "desde que sos dueño" — BLOQUEADA por decisión
 
 **Experto:** BE + PROD · **Prioridad:** 🟠 · **Depende de:** una respuesta de Camila
+**Estado: ◑ MITAD HECHA** — commit `a5e2019`. Se hizo la mitad que **no** dependía de la decisión: **empezar a registrar** los cambios de reparto (tabla append-only `CambioParticipacion`, escrita DENTRO de la transacción del PUT, no por `registrarEvento` — que es best-effort y no puede sostener un recorte de privacidad). Por ahora **sólo se escribe: nadie la lee**, cero cambio de comportamiento. Se hizo ya porque cada día sin esto es **historial que se pierde y no se puede reconstruir**. De paso apareció que la FK con RESTRICT habría roto el borrado de propiedades (mismo bug que la FK del OTP en T-23): va sin FK, como `AlquilerRendido.propiedadId`. **La otra mitad —usar el dato para recortar el portal— SIGUE BLOQUEADA** por la pregunta a Camila. 7 tests puros en rojo verificado; 310 puros en verde. **Migración sin aplicar:** `20260819200000_historial_reparto`, cuanto antes.
 **Origen:** T-23-N3. Es la otra mitad, la de privacidad.
 
 **Estado verificado.** Hoy no existe **ningún** rastro de cuándo cambió un reparto: el handler
