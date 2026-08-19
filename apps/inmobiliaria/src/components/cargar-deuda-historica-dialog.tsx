@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from '@llave/ui/dialog';
 import { Input } from '@llave/ui/input';
+import { MoneyInput } from '@/components/money-input';
 import { Label } from '@llave/ui/label';
 import {
   Select,
@@ -56,11 +57,18 @@ function finDeMes(periodo: string): string {
   return `${periodo}-${String(ultimo).padStart(2, '0')}`;
 }
 
-/** El mes anterior al actual, en formato "YYYY-MM". */
-function mesPasado(): string {
+/**
+ * El mes EN CURSO, en formato "YYYY-MM". Es el tope de la ventana de deuda.
+ *
+ * Antes el tope era el mes PASADO, y eso dejaba afuera el caso más frecuente de
+ * una migración: el que dejó de pagar en julio, se fue en agosto y la propiedad
+ * ya está realquilada. Por el alta normal tampoco entraba —rechaza propiedad
+ * ocupada— así que la deuda más fresca, que es justo la que se está cobrando, no
+ * tenía ninguna puerta. Un mes futuro sigue sin entrar: sería inventar plata.
+ */
+function mesEnCurso(): string {
   const hoy = new Date();
-  const d = new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth() - 1, 1));
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+  return `${hoy.getUTCFullYear()}-${String(hoy.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
 export function CargarDeudaHistoricaDialog({ open, onOpenChange, propiedadId, direccion }: Props) {
@@ -76,7 +84,7 @@ export function CargarDeudaHistoricaDialog({ open, onOpenChange, propiedadId, di
   const [moneda, setMoneda] = useState<'ARS' | 'USD'>('ARS');
   const [expensas, setExpensas] = useState('');
 
-  const tope = mesPasado();
+  const tope = mesEnCurso();
 
   // Cuántos meses se van a generar, para que el operador lo vea ANTES de
   // confirmar: está creando deuda y el número tiene que ser el que espera.
@@ -89,9 +97,19 @@ export function CargarDeudaHistoricaDialog({ open, onOpenChange, propiedadId, di
     return n > 0 ? n : null;
   }, [desde, hasta]);
 
-  const montoNum = Number(monto.replace(',', '.'));
-  const expensasNum = expensas.trim() === '' ? null : Number(expensas.replace(',', '.'));
+  // `MoneyInput` deja el state en dígitos crudos ('150000'), así que acá `Number`
+  // ya es seguro. Antes esta pantalla usaba un `<Input>` pelado con
+  // `Number(monto.replace(',', '.'))`: pegar `150.000` desde el Excel daba **150**
+  // y el resumen decía "3 meses de $150 cada uno" sin que nada avisara — en la
+  // pantalla que CREA deuda.
+  const montoNum = monto === '' ? 0 : Number(monto);
+  const expensasNum = expensas === '' ? null : Number(expensas);
   const totalMes = montoNum > 0 ? montoNum + (expensasNum ?? 0) : null;
+  // El total es lo que se cruza contra el papel: la planilla dice "me debía
+  // $450.000" y esta pantalla pide el alquiler MENSUAL. Sin el total no hay
+  // ningún número comparable.
+  const totalDeuda = totalMes !== null && meses !== null ? totalMes * meses : null;
+  const signo = moneda === 'USD' ? 'US$' : '$';
 
   const puedeGuardar =
     nombre.trim().length > 0 &&
@@ -214,21 +232,11 @@ export function CargarDeudaHistoricaDialog({ open, onOpenChange, propiedadId, di
           <div className="grid grid-cols-3 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="dh-monto">Alquiler por mes *</Label>
-              <Input
-                id="dh-monto"
-                inputMode="decimal"
-                value={monto}
-                onChange={(e) => setMonto(e.target.value)}
-              />
+              <MoneyInput id="dh-monto" value={monto} onChange={setMonto} moneda={moneda} />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="dh-expensas">Expensas por mes</Label>
-              <Input
-                id="dh-expensas"
-                inputMode="decimal"
-                value={expensas}
-                onChange={(e) => setExpensas(e.target.value)}
-              />
+              <MoneyInput id="dh-expensas" value={expensas} onChange={setExpensas} moneda={moneda} />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="dh-moneda">Moneda</Label>
@@ -245,26 +253,42 @@ export function CargarDeudaHistoricaDialog({ open, onOpenChange, propiedadId, di
           </div>
 
           {/* Lo que se va a crear, en criollo y antes de confirmar. */}
-          {meses !== null && totalMes !== null && (
+          {meses !== null && totalMes !== null && totalDeuda !== null && (
             <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
               Se van a cargar <strong>{meses}</strong> mes(es) adeudado(s) de{' '}
               <strong>
-                {moneda === 'USD' ? 'US$' : '$'}
+                {signo}
                 {totalMes.toLocaleString('es-AR')}
               </strong>{' '}
               cada uno.
+              <div className="mt-1">
+                Total de la deuda:{' '}
+                <strong>
+                  {signo}
+                  {totalDeuda.toLocaleString('es-AR')}
+                </strong>
+              </div>
             </div>
           )}
           {(desde > tope || hasta > tope) && (
             <p className="text-sm text-destructive">
-              La deuda histórica es de meses ya terminados. Si el inquilino sigue viviendo ahí,
-              cargalo como contrato normal.
+              La deuda no puede llegar a un mes que todavía no pasó. Si el inquilino sigue viviendo
+              ahí, cargalo como contrato normal.
             </p>
           )}
           {desde && hasta && meses === null && (
             <p className="text-sm text-destructive">
               El mes &quot;hasta&quot; tiene que ser igual o posterior al mes &quot;desde&quot;.
             </p>
+          )}
+          {/* El botón gris tenía que decir POR QUÉ. Los meses ya tenían su mensaje
+              en rojo; la plata no, así que un monto vacío o mal pegado dejaba el
+              botón apagado sin ninguna explicación. */}
+          {monto !== '' && montoNum <= 0 && (
+            <p className="text-sm text-destructive">El alquiler por mes tiene que ser mayor a cero.</p>
+          )}
+          {nombre.trim() === '' && (desde !== '' || monto !== '') && (
+            <p className="text-sm text-destructive">Falta el nombre del inquilino.</p>
           )}
         </div>
 

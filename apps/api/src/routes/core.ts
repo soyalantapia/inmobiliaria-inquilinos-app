@@ -1476,13 +1476,30 @@ export async function coreRoutes(app: FastifyInstance) {
     if (d.fechaFin <= d.fechaInicio) {
       return reply.code(400).send({ message: 'La fecha de fin tiene que ser posterior a la fecha de inicio' });
     }
-    // La ventana tiene que estar CERRADA. Si el fin todavía no llegó, esto no es
-    // deuda histórica: es un contrato en curso y va por el alta normal, que
-    // reclama la propiedad y devenga mes a mes. Sin este guard se podía crear un
-    // contrato paralelo sobre una propiedad ocupada y esquivar el 409 del alta.
-    if (d.fechaFin >= diaCivilAR(new Date())) {
+    // La ventana no puede llegar a un mes FUTURO.
+    //
+    // Este guard antes exigía que la ventana estuviera cerrada (`fechaFin` en el
+    // pasado) y dejaba afuera el caso más frecuente de una migración: el que dejó
+    // de pagar en julio, se fue en agosto y la propiedad ya está realquilada. Por
+    // el alta normal tampoco entraba (rechaza propiedad ocupada), así que no había
+    // ninguna puerta — justo para la deuda más fresca, que es la que se está
+    // cobrando.
+    //
+    // El miedo original era que alguien usara esto para crear un contrato paralelo
+    // sobre una propiedad ocupada y esquivar el 409 del alta. Revisado, no se
+    // sostiene: un contrato histórico nace FINALIZADO, no reclama la propiedad y
+    // el cron no lo devenga, así que no puede funcionar como contrato en curso.
+    //
+    // Lo que SÍ hay que impedir es cobrar meses que todavía no pasaron: eso sería
+    // inventar plata. Por eso el corte ahora es el mes, no el día. El mes en curso
+    // entra; si su vencimiento todavía no llegó, la cuota nace PENDIENTE en vez de
+    // VENCIDO y se comporta como corresponde.
+    const mesFin = `${d.fechaFin.getUTCFullYear()}-${String(d.fechaFin.getUTCMonth() + 1).padStart(2, '0')}`;
+    const hoyAR = diaCivilAR(new Date());
+    const mesHoy = `${hoyAR.getUTCFullYear()}-${String(hoyAR.getUTCMonth() + 1).padStart(2, '0')}`;
+    if (mesFin > mesHoy) {
       return reply.code(400).send({
-        message: 'La deuda histórica es de un contrato que ya terminó. Si el inquilino sigue viviendo ahí, cargalo como contrato normal.',
+        message: 'La deuda no puede llegar a un mes que todavía no pasó. Si el inquilino sigue viviendo ahí, cargalo como contrato normal.',
       });
     }
 

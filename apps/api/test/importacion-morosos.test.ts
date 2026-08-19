@@ -153,17 +153,27 @@ describe('validarFilaMoroso · la propiedad tiene que existir', () => {
 });
 
 describe('validarFilaMoroso · lo que impide crear deuda equivocada', () => {
-  it('la ventana tiene que estar cerrada: un "debe hasta" del mes actual es ERROR', () => {
-    // Si el último mes adeudado es el actual, no es un ex-inquilino: es el que
-    // vive ahí, y va por el alta normal (que sí ocupa la propiedad).
+  it('el MES EN CURSO sí entra: es el moroso que se fue este mes', () => {
+    // Es el caso más frecuente de una migración —dejó de pagar en julio, se fue en
+    // agosto, la propiedad ya está realquilada— y antes no entraba por ningún
+    // lado: acá se rechazaba por "ventana abierta" y el alta normal lo rechazaba
+    // por propiedad ocupada. Justo la deuda más fresca, que es la que se cobra.
     const v = validarFilaMoroso(fila({ debeDesde: '2026-06', debeHasta: HOY }), PROPS, HOY, new Set());
 
-    expect(v.estado).toBe('ERROR');
-    expect(v.motivo).toContain('meses ya terminados');
+    expect(v.estado).toBe('OK');
+    expect(v.meses).toBe(3);
   });
 
-  it('un "debe hasta" futuro también es ERROR', () => {
-    expect(validarFilaMoroso(fila({ debeDesde: '2026-06', debeHasta: '2027-01' }), PROPS, HOY, new Set()).estado).toBe('ERROR');
+  it('un mes FUTURO sigue siendo ERROR: cobrarlo sería inventar plata', () => {
+    const v = validarFilaMoroso(fila({ debeDesde: '2026-06', debeHasta: '2027-01' }), PROPS, HOY, new Set());
+
+    expect(v.estado).toBe('ERROR');
+    expect(v.motivo).toContain('todavía no pasó');
+  });
+
+  it('el mes siguiente al actual ya es futuro, aunque sea por uno', () => {
+    // El borde: HOY es 2026-08, así que 2026-09 no entra.
+    expect(validarFilaMoroso(fila({ debeDesde: '2026-06', debeHasta: '2026-09' }), PROPS, HOY, new Set()).estado).toBe('ERROR');
   });
 
   it('el mes anterior al actual SÍ es válido: es el moroso más reciente posible', () => {
