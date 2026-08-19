@@ -18,6 +18,41 @@ const from = process.env.SMTP_FROM ?? 'My Alquiler <no-reply@myalquiler.app>';
 export const mailerConfigured = Boolean(host && user && pass);
 
 /**
+ * T-30-N1 — Quién figura como remitente en la bandeja del que recibe.
+ *
+ * EL PROBLEMA: todos los mails salen como "My Alquiler", una marca que el inquilino no
+ * conoce, avisándole que le suben el alquiler. El asunto lleva el nombre de la inmobiliaria
+ * al final, pero el remitente es lo primero que se lee.
+ *
+ * QUÉ CAMBIA Y QUÉ NO: sólo el *display name*. La dirección sigue siendo la misma casilla del
+ * dominio de la plataforma, así que **SPF/DKIM quedan intactos** — no estamos mandando en
+ * nombre del dominio de la inmobiliaria, que es lo que sí parecería phishing.
+ *
+ * POR QUÉ APAGADO POR DEFAULT: el remitente es lo que más pesa en si un proveedor te manda a
+ * spam, y esto tocaría TODOS los mails de TODAS las inmobiliarias de una. Es una decisión de
+ * deliverability del dueño del producto, no un efecto colateral. Se prende con
+ * `EMAIL_FROM_CON_INMOBILIARIA=1` y se puede apagar de nuevo sin deploy.
+ *
+ * Sólo aplica a los mails que la inmobiliaria le manda a SU gente. El OTP y los mails de la
+ * plataforma siguen saliendo como My Alquiler a propósito.
+ */
+const FROM_CON_INMOBILIARIA = process.env.EMAIL_FROM_CON_INMOBILIARIA === '1';
+
+/** Dirección de `from`, sin display name, extraída de SMTP_FROM ("Nombre <a@b>" → "a@b"). */
+const fromAddress = (from.match(/<([^>]+)>/)?.[1] ?? from).trim();
+
+export function remitente(inmobiliaria?: string | null): string {
+  const nombre = (inmobiliaria ?? '').trim();
+  if (!FROM_CON_INMOBILIARIA || !nombre) return from;
+  // Las comillas y los ángulos rompen la cabecera; una coma la partiría en dos destinatarios;
+  // un salto de línea permitiría inyectar cabeceras. `\s+` barre también los CR/LF, así que
+  // alcanza con sacar los separadores y colapsar el resto.
+  const limpio = nombre.replace(/["<>,;]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!limpio) return from;
+  return `"${limpio} vía My Alquiler" <${fromAddress}>`;
+}
+
+/**
  * A dónde cae un "Responder", o null si no cae en ningún lado.
  *
  * POR QUÉ EXISTE: todos los mails salen del mismo `from` —un `no-reply@` del dominio de la
@@ -410,7 +445,7 @@ export async function enviarInvitacionInquilino(opts: {
     .join(' · ');
   const respondeA = emailDeRespuesta(opts.inmobiliaria.email);
   await enviarEnCola({
-    from,
+    from: remitente(inmoNombre),
     ...(respondeA ? { replyTo: respondeA } : {}),
     to: opts.email,
     subject: `${inmoNombre} te da la bienvenida a My Alquiler`,
@@ -529,20 +564,46 @@ export async function enviarInvitacionEquipo(opts: {
   const panelUrl = opts.panelUrl ?? APP_ADMIN_URL;
   const rolTxt = ROL_LABEL_EQUIPO[opts.rol] ?? opts.rol;
   const respondeA = emailDeRespuesta(opts.inmobiliariaEmail);
+  // T-30-N2 — Este era el ÚNICO template que armaba su HTML a mano e interpolaba sin `esc()`.
+  // Una razón social con `&` o `<` (un "Suárez & Cía") rompía el mail sin que hiciera falta
+  // ninguna malicia. Pasarlo por `shell()` corrige eso y de arrastre gana la marca y el pie
+  // de T-30, que dice a dónde cae un "Responder".
+  const inner = `
+    <h1 style="margin:0 0 10px;color:#1c1726;font-size:22px;line-height:1.2;font-weight:800;letter-spacing:-0.02em;">Te sumaron al equipo 🎉</h1>
+    <p style="margin:0 0 18px;color:#6b6577;font-size:15px;line-height:1.65;"><strong style="color:#1c1726;">${esc(opts.inmobiliariaNombre)}</strong> te dio acceso a su panel de My Alquiler con el rol de <strong style="color:#1c1726;">${esc(rolTxt)}</strong>.</p>
+
+    <!-- Botón -->
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:4px 0 20px;"><tr>
+      <td align="center" bgcolor="#7c3aed" style="background-color:#7c3aed;border-radius:12px;">
+        <a href="${esc(panelUrl)}" target="_blank" style="display:inline-block;padding:14px 30px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:15px;font-weight:800;color:#ffffff;text-decoration:none;letter-spacing:0.2px;">Entrar al panel &rarr;</a>
+      </td>
+    </tr></table>
+
+    <!-- Cómo entra -->
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 6px;">
+      <tr>
+        <td bgcolor="#f6f4fe" style="background-color:#f6f4fe;border:1px solid #e4dcfb;border-radius:10px;padding:12px 16px;">
+          <p style="margin:0;color:#6b6577;font-size:13px;line-height:1.5;">
+            Entrás con tu email (<strong style="color:#1c1726;">${esc(opts.email)}</strong>) y un código de 6 dígitos que te mandamos. <strong style="color:#1c1726;">Sin contraseñas.</strong>
+          </p>
+        </td>
+      </tr>
+    </table>`;
   await enviarEnCola({
-    from,
+    from: remitente(opts.inmobiliariaNombre),
     ...(respondeA ? { replyTo: respondeA } : {}),
     to: opts.email,
     subject: `Te sumaron al equipo de ${opts.inmobiliariaNombre} en My Alquiler`,
-    text: `¡Hola ${opts.nombre}! ${opts.inmobiliariaNombre} te sumó a su equipo en My Alquiler con el rol de ${rolTxt}.\nEntrá al panel: ${panelUrl}\nIngresás con tu email (${opts.email}) — te mandamos un código por mail para entrar. No hace falta contraseña.`,
-    html: `<div style="font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;max-width:520px;margin:0 auto;color:#0f172a">
-      <h2 style="font-size:18px">Te sumaron al equipo 🎉</h2>
-      <p><strong>${opts.inmobiliariaNombre}</strong> te dio acceso a su panel de My Alquiler con el rol de <strong>${rolTxt}</strong>.</p>
-      <p style="margin:20px 0">
-        <a href="${panelUrl}" style="background:#7c3aed;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600">Entrar al panel</a>
-      </p>
-      <p style="font-size:13px;color:#475569">Ingresás con tu email (<strong>${opts.email}</strong>). Te mandamos un código de 6 dígitos por mail para entrar — sin contraseñas.</p>
-    </div>`,
+    text: `¡Hola ${opts.nombre}! ${opts.inmobiliariaNombre} te sumó a su equipo en My Alquiler con el rol de ${rolTxt}.
+Entrá al panel: ${panelUrl}
+Ingresás con tu email (${opts.email}) — te mandamos un código por mail para entrar. No hace falta contraseña.`,
+    html: shell({
+      preview: `${opts.inmobiliariaNombre} te dio acceso a su panel como ${rolTxt}`,
+      inner,
+      // Va DE la inmobiliaria a su nuevo compañero de oficina: si hay a dónde contestar, que
+      // el pie lo diga.
+      pie: pieDeRespuesta(respondeA ? opts.inmobiliariaNombre : null),
+    }),
   });
   return true;
 }
@@ -613,7 +674,7 @@ export async function enviarAnuncioEmail(opts: {
   const urgente = opts.prioridad === 'URGENTE';
   const respondeA = emailDeRespuesta(opts.inmobiliariaEmail);
   await enviarEnCola({
-    from,
+    from: remitente(opts.inmobiliariaNombre),
     ...(respondeA ? { replyTo: respondeA } : {}),
     to: opts.email,
     subject: `${urgente ? 'URGENTE — ' : ''}${opts.titulo} · ${opts.inmobiliariaNombre}`,
@@ -731,7 +792,7 @@ export async function enviarAvisoAjusteAlquiler(opts: {
   const desde = periodoLegible(opts.periodoDesde);
   const respondeA = emailDeRespuesta(opts.inmobiliariaEmail);
   await enviarEnCola({
-    from,
+    from: remitente(opts.inmobiliariaNombre),
     ...(respondeA ? { replyTo: respondeA } : {}),
     to: opts.email,
     subject: `Tu alquiler se actualiza desde ${desde} · ${opts.inmobiliariaNombre}`,
@@ -866,7 +927,7 @@ export async function enviarReclamoAsignadoInquilino(opts: {
   if (!t) return false;
   const url = `${APP_INQUILINO_URL}/reclamos/${opts.reclamoId}`;
   await enviarEnCola({
-    from,
+    from: remitente(opts.inmobiliariaNombre),
     to: opts.email,
     subject: `${opts.inmobiliariaNombre} asignó a ${opts.profesional} a tu reclamo`,
     text:
@@ -896,7 +957,7 @@ export async function enviarReclamoResueltoInquilino(opts: {
   if (!t) return false;
   const url = `${APP_INQUILINO_URL}/reclamos/${opts.reclamoId}`;
   await enviarEnCola({
-    from,
+    from: remitente(opts.inmobiliariaNombre),
     to: opts.email,
     subject: `Tu reclamo se resolvió · ${opts.inmobiliariaNombre}`,
     text:
