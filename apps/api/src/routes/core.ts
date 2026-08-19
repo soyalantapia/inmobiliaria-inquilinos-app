@@ -3956,10 +3956,19 @@ export async function coreRoutes(app: FastifyInstance) {
     const u = await requireUsuario(request, reply, 'contratos.crear');
     if (!u) return;
     const { id } = request.params as { id: string };
+    // T-45 — El EMAIL también se puede corregir después del alta. El wizard le dice a la
+    // operadora "sin email podés cargar el contrato igual… se lo podés agregar después", y hasta
+    // acá eso era mentira: este endpoint sólo aceptaba `telefono` y ningún otro escribía
+    // `Inquilino.email`. Un contrato cargado sin email dejaba al inquilino fuera de la app para
+    // siempre —el acceso es por OTP al mail— salvo rehacer el contrato, que es la rescisión
+    // falsa de la que se queja Camila.
     const body = z
-      .object({ telefono: z.string().trim().max(40).optional() })
+      .object({
+        telefono: z.string().trim().max(40).optional(),
+        email: z.string().trim().toLowerCase().email('Email inválido').max(120).optional(),
+      })
       .safeParse(request.body ?? {});
-    if (!body.success) return reply.code(400).send({ message: 'Teléfono inválido' });
+    if (!body.success) return reply.code(400).send({ message: 'Datos de contacto inválidos', detalle: body.error.flatten() });
 
     // Scopeado por inmobiliariaId (multi-tenant): un id ajeno => 404.
     const contrato = await prisma.contrato.findFirst({
@@ -3972,10 +3981,30 @@ export async function coreRoutes(app: FastifyInstance) {
     }
 
     const telefono = body.data.telefono?.trim() || null;
-    await prisma.inquilino.update({
-      where: { id: contrato.inquilinoTitular.id },
-      data: { telefono },
-    });
-    return { ok: true, telefono };
+    // El email va SÓLO si vino. Al teléfono un body vacío lo borra (comportamiento previo, se
+    // respeta), pero el email es la llave de acceso del inquilino: borrarlo por omisión lo
+    // dejaría afuera de la app sin que nadie lo haya pedido.
+    const email = body.data.email;
+    try {
+      const actualizado = await prisma.inquilino.update({
+        where: { id: contrato.inquilinoTitular.id },
+        data: { telefono, ...(email !== undefined ? { email } : {}) },
+        select: { telefono: true, email: true },
+      });
+      return { ok: true, telefono: actualizado.telefono, email: actualizado.email };
+    } catch (e) {
+      // `@@unique([inmobiliariaId, email])`: dos inquilinos del mismo tenant no pueden compartir
+      // email, porque el OTP entrega el acceso por esa dirección. Sin este catch, el operador
+      // veía un 500 y no sabía qué había pasado.
+      // Mismo chequeo que usa auth.ts:202 — `Prisma` acá está importado como `import type`,
+      // así que no hay valor en runtime contra el que hacer `instanceof`.
+      if ((e as { code?: string })?.code === 'P2002') {
+        return reply.code(409).send({
+          codigo: 'EMAIL_DUPLICADO',
+          message: 'Ya hay otro inquilino con ese email en tu cartera. Revisá si no es la misma persona.',
+        });
+      }
+      throw e;
+    }
   });
 }

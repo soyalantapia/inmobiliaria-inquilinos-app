@@ -2017,6 +2017,64 @@ mostrando `$572.000` (el total del mock) cuando lo informado eran `$662.948`. Co
 
 ---
 
+## T-45 · El wizard prometía "el email se lo agregás después" y no se podía — ✅ RESUELTO
+
+**Experto:** BE + FE-P · **Prioridad:** 🔴
+**Origen:** evaluación de Camila (19/08). El documento marcaba T-09 como ✅ y **el código no lo
+sostenía**.
+
+**El problema, y por qué era caro.** El aviso del alta dice, textual: *"Sin email podés cargar el
+contrato igual, pero el inquilino no va a poder entrar a la app… **Se lo podés agregar
+después**"*. No se podía: `PATCH /contratos/:id/inquilino-contacto` aceptaba **sólo `telefono`**
+y ningún otro endpoint escribía `Inquilino.email` fuera del alta.
+
+Consecuencia real: la operadora carga el contrato sin email confiando en el aviso, y el
+inquilino queda **sin poder entrar a la app para siempre** —el acceso es por OTP al mail— salvo
+**rehacer el contrato**. O sea, exactamente la rescisión falsa de la que Camila se queja.
+
+**Qué se hizo.** Se hizo verdadera la promesa en vez de bajarla:
+- El endpoint acepta `email` (validado, en minúsculas). El teléfono conserva su comportamiento
+  previo —un body vacío lo borra—, pero **el email sólo se toca si viene**: es la llave de
+  acceso, borrarlo por omisión dejaría al inquilino afuera sin que nadie lo pidiera.
+- 409 `EMAIL_DUPLICADO` si ese mail ya es de otro inquilino de la misma cartera
+  (`@@unique([inmobiliariaId, email])`), con mensaje que sugiere lo más probable: que sea la
+  misma persona.
+- Lápiz de edición en la fila "Email" de la ficha, con el copy que corresponde a una llave de
+  acceso y no a un dato de contacto más.
+
+**Verificado en navegador:** el lápiz aparece, el 409 de duplicado se muestra con su mensaje
+real y deja el diálogo abierto para corregir, y el camino feliz guarda y refresca la ficha.
+
+---
+
+## T-46 · El inquilino ve tres números distintos para la misma deuda
+
+**Experto:** FE-I · **Prioridad:** 🟠 · **Depende de:** nada
+**Origen:** evaluación de Camila (19/08). **T-15 figura como ✅ HECHA y no lo está.**
+
+El criterio de aceptación de T-15 era "las tres pantallas muestran el mismo número". El helper
+único `saldoDeLiquidacion` lo usan **dos**: el home y el detalle del pago. **`/comprobantes` no
+lo importa** y tiene dos cuentas propias que ni siquiera coinciden entre sí: la fila compacta
+muestra el total completo (no descuenta lo informado) y la card grande sí lo descuenta. Con un
+pago informado y sin validar, esa pantalla se contradice sola.
+
+**Qué hay que hacer.** Que `/comprobantes` use `saldoDeLiquidacion` como las otras dos.
+
+---
+
+## T-47 · La expensa del mes del consorcio no se puede cambiar
+
+**Experto:** FE-P · **Prioridad:** 🟠 · **Depende de:** nada
+**Origen:** evaluación de Camila (19/08).
+
+`PUT /consorcios/:id` acepta `periodoActual` y `expensasPeriodoActual`, y el panel tiene el hook
+`editarConsorcio`… que **no lo llama nadie**. La pantalla del consorcio lo muestra como dato de
+sólo lectura y sólo se puede setear **al crear** el consorcio. Es una acción **mensual**.
+
+**Qué hay que hacer.** Cablear el hook a un botón en la ficha del consorcio.
+
+---
+
 ## T-37-N1 · Circuito de aprobación para el pago manual del operador
 
 **Experto:** BE + PROD · **Prioridad:** 🟢 · **Depende de:** decisión de producto
