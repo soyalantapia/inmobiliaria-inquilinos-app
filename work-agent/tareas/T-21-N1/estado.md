@@ -60,6 +60,36 @@ Pero encontraron **dos agujeros míos**, los dos en la renovación, y los dos ya
    server y me olvidé del cliente. Ahora el campo no se muestra para ese tipo y el texto explica
    que se renueva sólo el plazo.
 
+### Segunda tanda: el refutador de "evasión" encontró una regresión MÍA
+
+Llegó después y fue el más duro. Su hallazgo de fondo: **el fix era una defensa de cálculo, no de
+dato** — dejaba `contrato.monto` sucio y, peor, **cerró la única puerta que limpiaba las cuotas
+ya devengadas**. Verificado y corregido en `88bd6d7`:
+
+1. **🔴 Cerré la salida junto con la entrada.** `recomputarLiquidacionesFuturas` ya respetaba el
+   tipo y alcanza las cuotas **PENDIENTE y VENCIDO** desde el período actual, así que
+   `PATCH /monto` era la herramienta de limpieza: dejaba el contrato y todas sus cuotas impagas
+   en 0. Mi 409 lo bloqueó entero. Y el devengo usa `createMany({ skipDuplicates: true })`, o sea
+   que nunca pisa una fila existente: lo ya devengado se quedaba sucio **para siempre**, mientras
+   esas cuotas siguen devengando mora, se le cobran al inquilino y se le rinden al propietario
+   con su comisión. Ahora el 409 salta sólo si `monto > 0`: **un `monto: 0` normaliza**.
+2. **🔴 La penalidad de rescisión salía de `contrato.monto` pelado** (`core.ts:1723`). Con un
+   contrato ensuciado, el preview de baja le sugería a la operadora una penalidad de cientos de
+   miles a alguien que nunca pagó alquiler — y `POST /finalizar` la persiste como `CargoContrato`
+   real. Era plata **nueva** saliendo del mismo campo sucio, o sea el agujero sobrevivía al fix
+   por otra puerta. Ahora pasa por `montoAlquilerSegunTipo`. Sigue siendo editable a mano: es
+   una sugerencia, no una imposición.
+3. **🟡 La ficha del contrato seguía ofreciendo los dos botones de ajuste individual.** Filtré el
+   ajuste masivo con el argumento de "no ofrecer lo que el server va a rechazar" y no apliqué el
+   mismo criterio acá: la operadora escribía el monto, **tipeaba el PIN**, y recién ahí se comía
+   el 409. Ahora no se renderizan para ese tipo.
+
+Lo que confirmó limpio, para no volver a auditarlo: no hay `PUT`/`PATCH` genérico de contrato
+(el único `/contratos/:id` es un `GET`); `tipoContrato` se escribe en exactamente dos lugares
+(el alta y la importación, que lo hardcodea `ALQUILER`), así que **no se puede mutar el tipo de
+un contrato existente**; ningún otro `liquidacion.update*` toca montos; y no hay cron de ajuste
+automático por índice.
+
 **Lo que NO pude verificar en el navegador:** el diálogo de renovar sólo se renderiza con
 `apiEnabled === true` (`contratos/[id]/page-client.tsx:317`), y en build demo no aparece. Ese
 cambio está verificado por `tsc` y por lectura, **no** probado a mano. El filtro del ajuste

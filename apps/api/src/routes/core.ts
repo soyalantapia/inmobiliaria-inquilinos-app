@@ -12,6 +12,7 @@ import {
   sumarMesesUTC,
   periodoDe,
   recomputarLiquidacionesFuturas,
+  montoAlquilerSegunTipo,
 } from '../lib/liquidaciones.js';
 import { conSaldo, montoPagadoPorLiquidacion } from '../lib/saldos.js';
 import { alquilerCobradoSinRendir } from '../lib/rendicion-pendiente.js';
@@ -1713,7 +1714,14 @@ export async function coreRoutes(app: FastifyInstance) {
     // Rescisión: penalidad sugerida (cánones × alquiler, override contrato > default inmo),
     // depósito en custodia disponible a netear, y el saldo neto = deuda + penalidad − depósito
     // (>0 el ex-inquilino debe; <0 hay que devolverle). El operador puede editar la penalidad.
-    const alquiler = Number(contrato.monto);
+    // Por `montoAlquilerSegunTipo` y no `contrato.monto` pelado: la penalidad se mide en
+    // MESES DE ALQUILER, y un contrato de solo expensas no tiene alquiler → sugerir 0. Con el
+    // monto crudo, un contrato ya ensuciado (canon que le dejó un ajuste viejo) le sugería a
+    // la operadora una penalidad de cientos de miles a alguien que nunca pagó un alquiler, y
+    // el finalizar la persiste como CargoContrato real. Es plata NUEVA saliendo del mismo
+    // campo sucio, así que la defensa tiene que estar acá también, no sólo en el devengo.
+    // La operadora igual puede escribir una penalidad a mano: esto es la SUGERENCIA.
+    const alquiler = montoAlquilerSegunTipo(contrato.tipoContrato, Number(contrato.monto));
     const mesesPenalidad = contrato.penalidadRescisionMeses ?? contrato.inmobiliaria.penalidadRescisionMesesDefault;
     const penalidadSugerida = Math.round(alquiler * mesesPenalidad * 100) / 100;
     // El depósito que se puede netear es el DISPONIBLE (bruto − reparaciones ya imputadas
@@ -2972,7 +2980,10 @@ export async function coreRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     const body = z
       .object({
-        monto: z.number().positive(),
+        // `nonnegative` y no `positive`: el 0 es el camino de normalización de un
+        // SOLO_EXPENSAS. Que el 0 sólo valga para ese tipo se chequea abajo, con el contrato
+        // ya leído — igual que en el alta.
+        monto: z.number().nonnegative(),
         // Opcional: si el operador quiere fijar a mano la próxima fecha de ajuste;
         // omitido => se calcula sobre la actual (o hoy) + frecuencia.
         proximoAjuste: z.coerce.date().optional(),
@@ -3002,16 +3013,27 @@ export async function coreRoutes(app: FastifyInstance) {
       },
     });
     if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
-    // Igual que en `/ajustar`: un solo expensas no tiene canon que corregir. Este camino era
-    // el más traicionero de los tres, porque SÍ respetaba el tipo al recomputar las cuotas
-    // (las dejaba en 0) pero igual escribía `contrato.monto = d.monto` — o sea, dejaba el
-    // contrato y sus liquidaciones diciendo cosas distintas, en silencio.
-    if (contrato.tipoContrato === 'SOLO_EXPENSAS') {
+    // Un solo expensas no tiene canon que SUBIR — pero sí puede necesitar que lo BAJEN a 0.
+    //
+    // Ojo con esta asimetría, que no es capricho: este endpoint es, además, la única
+    // herramienta de limpieza que hay. `recomputarLiquidacionesFuturas` ya respeta el tipo y
+    // alcanza las cuotas PENDIENTE **y VENCIDO** desde el período actual (liquidaciones.ts),
+    // así que un `monto: 0` acá arregla de una vez el contrato y todas sus cuotas impagas.
+    // Rechazar el endpoint entero —como hacía la primera versión de este guard— dejaba a un
+    // contrato ya ensuciado sin ninguna forma de volver a 0 desde el producto: el ajuste
+    // también rechaza, y la renovación sólo toca las PENDIENTE y encima obliga a estirar el
+    // plazo. Se cerraba la puerta de entrada de la suciedad y la de salida junto con ella.
+    if (contrato.tipoContrato === 'SOLO_EXPENSAS' && d.monto > 0) {
       return reply.code(409).send({
         message:
-          'Este contrato es de solo expensas: no tiene alquiler que corregir. El monto de las expensas hoy sólo se define al cargar el contrato.',
+          'Este contrato es de solo expensas: su alquiler tiene que quedar en cero. Podés mandar 0 para normalizarlo (deja en cero las cuotas impagas), pero no un monto mayor.',
         codigo: 'SOLO_EXPENSAS_SIN_CANON',
       });
+    }
+    // El otro lado del `nonnegative`: un contrato con alquiler no puede quedar en 0, o sus
+    // liquidaciones nunca llegarían a PAGADO y el inquilino quedaría "debiendo $0".
+    if (contrato.tipoContrato !== 'SOLO_EXPENSAS' && d.monto === 0) {
+      return reply.code(400).send({ message: 'El monto del alquiler tiene que ser mayor a cero' });
     }
 
     const montoViejo = Number(contrato.monto);

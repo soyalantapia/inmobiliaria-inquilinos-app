@@ -248,6 +248,34 @@ describe('recomputarLiquidacionesFuturas (ajuste manual de monto)', () => {
     expect(out).toEqual([{ id: 'ago', montoAlquiler: 0, montoTotal: 50_000 }]);
   });
 
+  it('SOLO_EXPENSAS con monto 0: limpia también las cuotas VENCIDAS', () => {
+    // Éste es el camino de NORMALIZACIÓN de un contrato ya ensuciado: `PATCH /monto` con 0.
+    // Tiene que alcanzar las VENCIDAS, no sólo las PENDIENTE — si sólo tocara las pendientes,
+    // los meses que ya vencieron con alquiler cobrado de más quedarían sucios para siempre
+    // (el devengo usa createMany skipDuplicates y nunca pisa una fila existente).
+    const out = recomputarLiquidacionesFuturas(
+      [
+        liq({ id: 'jul', periodo: '2026-07', estado: 'VENCIDO', montoExpensas: 50_000 }),
+        liq({ id: 'ago', periodo: '2026-08', estado: 'PENDIENTE', montoExpensas: 50_000 }),
+      ],
+      { montoNuevo: 0, tipoContrato: 'SOLO_EXPENSAS', periodoActual },
+    );
+    expect(out).toEqual([
+      { id: 'jul', montoAlquiler: 0, montoTotal: 50_000 },
+      { id: 'ago', montoAlquiler: 0, montoTotal: 50_000 },
+    ]);
+  });
+
+  it('normalizar NO toca una cuota que ya tiene pagos', () => {
+    // Si ya se cobró, corregir la liquidación en silencio escondería el problema: esa plata
+    // entró y hay que resolverla con la persona, no borrando el número.
+    const out = recomputarLiquidacionesFuturas(
+      [liq({ id: 'jul', periodo: '2026-07', estado: 'VENCIDO', montoExpensas: 50_000, cantidadPagos: 1 })],
+      { montoNuevo: 0, tipoContrato: 'SOLO_EXPENSAS', periodoActual },
+    );
+    expect(out).toEqual([]);
+  });
+
   it('sin expensas (null): total = solo el alquiler nuevo', () => {
     const out = recomputarLiquidacionesFuturas(
       [liq({ id: 'ago', periodo: '2026-08', estado: 'PENDIENTE', montoExpensas: null })],

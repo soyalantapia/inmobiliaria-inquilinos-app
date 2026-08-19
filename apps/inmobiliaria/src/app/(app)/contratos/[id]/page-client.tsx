@@ -289,8 +289,12 @@ export default function DetalleContratoPage() {
                 las liquidaciones futuras sin pagos. Solo prod (necesita endpoint +
                 PIN); en demo queda deshabilitado con el mismo patrón que otras
                 acciones solo-conectadas del panel. */}
+            {/* Un contrato de solo expensas no tiene canon que ajustar: el server rechaza con
+                409. Sin este filtro la operadora abre el diálogo, escribe el monto, tipea el
+                PIN y RECIÉN AHÍ se come el error — el mismo criterio con el que ya se filtró
+                el ajuste masivo. */}
             {apiEnabled ? (
-              c.estado === 'ACTIVO' && (
+              c.estado === 'ACTIVO' && c.tipoContrato !== 'SOLO_EXPENSAS' && (
                 <Button
                   variant="outline"
                   className="flex-1 sm:flex-none"
@@ -317,7 +321,7 @@ export default function DetalleContratoPage() {
             {apiEnabled && c.estado === 'ACTIVO' && (
               <RenovarContratoButton contratoId={c.id} montoActual={c.monto} fechaFinActual={c.fechaFin} moneda={c.moneda} tipoContrato={c.tipoContrato} />
             )}
-            {apiEnabled && c.estado === 'ACTIVO' && (
+            {apiEnabled && c.estado === 'ACTIVO' && c.tipoContrato !== 'SOLO_EXPENSAS' && (
               <AjustarAlquilerButton contratoId={c.id} montoActual={c.monto} moneda={c.moneda} />
             )}
             {apiEnabled && c.estado === 'ACTIVO' && (
