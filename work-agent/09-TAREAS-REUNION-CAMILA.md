@@ -1439,7 +1439,7 @@ señal fuerte y callando cuando no está seguro.
 
 ---
 
-## T-24-N2 · Avisar "este DNI ya está en tu cartera" al cargar deuda histórica
+## T-24-N2 · Avisar "este DNI ya está en tu cartera" al cargar deuda histórica — ✅ HECHA
 
 **Experto:** FE-P · **Prioridad:** 🟢 · **Depende de:** T-24 (hecho)
 
@@ -1449,6 +1449,117 @@ ayuda, no lo confirma después. Camila `[52:00]`: su sistema le avisa *"ya está
 
 Falta el buscador "¿Ya está en tu cartera?" que el alta normal sí tiene, y que el toast diga a
 qué ficha se unió (la respuesta ya devuelve `personaId`).
+
+**Resuelta** en `feat/T-24-N2-dni-conocido`, commit `ece26c0`. **Ojo con la base:** sale de
+`feat/T-24-morosos-historicos`, **no** de la rama de integración — el diálogo que extiende vive
+ahí y T-24 sigue sin mergear. Van juntas.
+
+Al llegar a 7 dígitos consulta el `GET /personas?q=` que ya existía, compara **exacto** en el
+cliente (el endpoint filtra con `contains`, así que `2845678` trae también al `28456789`) y
+muestra el aviso con nombre, apellido y propiedad de referencia. **Cero backend**: el endpoint
+ya aceptaba `personaId` con validación de tenant, y tocar `core.ts` habría chocado con T-24-N1,
+que está construida sobre la misma base y saca el handler a `lib/contrato-historico.ts`.
+
+La trampa que destapó la revisión adversarial: guardando sólo la persona encontrada, entre que
+se corrige un dígito y vuelve la consulta quedan 350 ms en los que el cartel nombra a la persona
+del DNI **anterior** — y un click ahí mandaba `personaId` de A con DNI de B, colgándole la deuda
+a un inocente. Se guarda el par (DNI consultado + persona) y el cartel es estado **derivado**.
+
+Abre **T-24-N2-N1** a **T-24-N2-N4**.
+
+---
+
+## T-24-N2-N1 · El DNI se guarda sin normalizar, y el aviso no salta justo para la cartera vieja
+
+**Experto:** BE + DATA · **Prioridad:** 🟠 · **Depende de:** nada
+**Origen:** revisión adversarial de T-24-N2. Lo encontraron dos lentes por separado.
+
+**Estado verificado.** Nadie normaliza el DNI del lado que **escribe**:
+- `persona.ts:28` — `buscarOCrearPersona` hace `(d.dni ?? '').trim()` y nada más, y después
+  `findUnique` exacto (`:31-35`).
+- `importacion-cartera.ts:84-86` — `texto()` es `String(v).trim()`; se usa para el DNI en `:144`.
+- Y `:30` declara **`cuit` y `cuil` como sinónimos** de la columna DNI.
+
+O sea: una planilla con `20.123.456` deja `Persona.dni = "20.123.456"`, y una con CUIT deja
+`20123456789`. El campo del diálogo ahora normaliza a dígitos, así que **esas fichas no matchean
+nunca**: ni el `contains` del endpoint las trae, ni `buscarOCrearPersona` las une. Se crea una
+Persona duplicada.
+
+**Por qué importa más de lo que parece.** Son justo las fichas viejas —las que Camila quería que
+el sistema reconociera— y ahora la **ausencia** del cartel se lee como "esta persona no está en
+tu cartera", que es una afirmación nueva y falsa.
+
+**Qué hay que hacer.** Normalizar el DNI a dígitos en la escritura (`persona.ts` y la
+importación), y un backfill de los ya cargados. **Cuidado:** toca la dedup de los tres caminos de
+alta y no hay un solo test puro sobre `buscarOCrearPersona`. Escribir los tests primero.
+
+**Criterio de aceptación.** Una ficha importada como `20.123.456` matchea al tipear `20123456`, y
+no se duplica.
+
+---
+
+## T-24-N2-N2 · El DNI viaja en la query string y queda en el log de producción
+
+**Experto:** SEC · **Prioridad:** 🟡 · **Depende de:** nada
+**Origen:** revisión adversarial de T-24-N2.
+
+**Estado verificado.** El serializer de Fastify loguea `req.url` entera y redacta **sólo**
+`token`/`access_token` (`apps/api/src/app.ts:88-90`). Cada búsqueda escribe
+`GET /personas?q=20123456` en texto plano en el log de Railway.
+
+El patrón ya existía con el autocomplete del alta (`contratos/nuevo/page.tsx:915`), pero ahí `q`
+suele ser un nombre; acá es **sistemático y siempre un documento**. Cargar los ~50 morosos de
+Camila deja 50+ DNIs en el log, más los reintentos por cada corrección de tipeo.
+
+**Qué hay que hacer.** Sumar `q` al regex de redacción de `app.ts:90`. Es una línea.
+**No se hizo en T-24-N2** porque `app.ts` es de los archivos que toca T-24-N1.
+
+**Criterio de aceptación.** Un `GET /personas?q=20123456` aparece en el log con el valor redactado.
+
+---
+
+## T-24-N2-N3 · El monto pegado del Excel se interpreta mal, en silencio
+
+**Experto:** FE-P · **Prioridad:** 🟠 · **Depende de:** nada
+**Origen:** role play de la operadora al ejecutar T-24-N2.
+
+**Estado verificado.** `cargar-deuda-historica-dialog.tsx` hace
+`Number(monto.replace(',', '.'))`. Pegar `150.000` desde el Excel da **150**, y el resumen dice
+"3 mes(es) de $150 cada uno" sin que nada avise. Con `150.000,00` el `Number()` da `NaN`, el
+botón **Cargar deuda** se queda gris y **no dice por qué** — los meses sí tienen mensajes en
+rojo, la plata no.
+
+Es el formato en el que viene cualquier planilla argentina, en la pantalla que **crea deuda**.
+
+**Qué hay que hacer.** Parsear el monto con el formato local (separador de miles `.`, decimal
+`,`) y mostrar un error explícito cuando no se puede leer. Sumar el **total** al resumen: la
+planilla dice "debía $450.000" y la pantalla pide el alquiler mensual, así que hoy no hay ningún
+número cruzable contra el papel.
+
+**Criterio de aceptación.** Pegar `150.000` carga 150000, y un monto ilegible dice qué está mal.
+
+---
+
+## T-24-N2-N4 · El moroso que se fue este mes no entra por ningún lado
+
+**Experto:** PROD (define) + BE · **Prioridad:** 🟠 · **Depende de:** nada
+**Origen:** role play de la operadora al ejecutar T-24-N2.
+
+**Estado verificado.** Deuda histórica exige que la ventana esté **cerrada**: el tope del
+formulario es el mes pasado y el endpoint rechaza con 400 si `fechaFin >= hoy`
+(`core.ts:1333-1338`), derivando al alta normal. Pero el alta normal **rechaza una propiedad ya
+alquilada**.
+
+El inquilino que dejó de pagar en julio y se fue en agosto, con la propiedad ya realquilada, no
+entra por ninguna de las dos puertas. Y es el caso **más frecuente** en una migración: la deuda
+fresca es la que se está cobrando.
+
+**Qué hay que hacer.** Decidir si el tope del histórico baja al mes en curso, o si el alta normal
+admite un contrato terminado sobre propiedad ocupada. Es decisión de producto: el guard existe
+para que no se pueda crear un contrato paralelo sobre una propiedad ocupada y esquivar el 409.
+
+**Criterio de aceptación.** Camila carga la deuda de alguien que se fue este mes sin inventar
+fechas.
 
 ---
 
