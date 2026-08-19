@@ -2404,6 +2404,49 @@ archivos trackeados.
 
 **Experto:** OPS · **Prioridad:** 🟠 · **Depende de:** nada
 **Estado: 🟡 PARCIAL** — commit `3a9db72`.
+
+> ### ✅ La CI está roja por una razón que ya no existe — verificado el 19/08
+>
+> Se fue a buscar el error real en vez de suponerlo. `gh run view` sobre la última corrida
+> (`30922987572`, **4 de agosto**) da esto:
+>
+> ```
+> Error: Page "/inquilinos/[id]" is missing "generateStaticParams()"
+>        so it cannot be used with "output: export" config.
+> ```
+>
+> **Ese error ya está arreglado**: `apps/inmobiliaria/src/app/(app)/inquilinos/[id]/page.tsx:16`
+> exporta `generateStaticParams` desde el commit `3a9db72` de esta misma tarea.
+>
+> **Entonces la CI no está rota: está VIEJA.** Las cinco corridas que figuran en rojo son todas
+> anteriores al fix, y **nadie pusheó desde el 4 de agosto** — todo el trabajo de estas semanas
+> vive en ramas locales. El próximo push debería ponerla en verde sin tocar nada.
+>
+> **Lo que hay que hacer no es debuggear: es pushear y mirar.** Si vuelve a fallar, ahí sí hay
+> algo nuevo, y el comando para verlo es
+> `gh run view $(gh run list --limit 1 --json databaseId -q '.[0].databaseId') --log-failed`.
+>
+> ### El `opengraph-image` es (casi seguro) sólo de Windows
+>
+> El build local del panel falla en `/(landing)/inicio/opengraph-image` con `TypeError: Invalid
+> URL` adentro de `@vercel/og`, sobre una ruta `file:///C:/Users/...`. Varios `estado.md` lo
+> anotaron como "el build está roto".
+>
+> **No lo está.** El build local **compila, typechequea y genera las 74 páginas**; falla sólo al
+> exportar esa ruta, y el error es una ruta de Windows en `fileURLToPath`. La CI corre en
+> `ubuntu-latest` (`.github/workflows/deploy.yml:19`).
+>
+> ⚠️ **No está probado en Linux**: la corrida de CI murió antes, en el error de
+> `generateStaticParams`, así que nunca llegó a esa ruta. Es una hipótesis fuerte, no un hecho.
+> El push que destrabe la CI lo va a responder solo.
+>
+> ### Estado de los tres builds sobre la rama unida
+>
+> | App | Resultado |
+> |---|---|
+> | `inquilino` | ✅ build limpio |
+> | `inmobiliaria` | ✅ compila y genera 74/74 páginas · sólo falla el `opengraph-image` de arriba |
+> | `propietario` | ⚠️ no se pudo: `check-dev-port` lo frena porque hay un dev server vivo en el 3002 (de otro chat). **No es un problema de código** |
 El bloqueante documentado está arreglado y **verificado corriendo el script real de la CI**:
 antes moría recolectando page data, ahora genera las 74 páginas.
 Dos cosas quedaron abiertas y están en `work-agent/.tareas/T-27/estado.md`:
