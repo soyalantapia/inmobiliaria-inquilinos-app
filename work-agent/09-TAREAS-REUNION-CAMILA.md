@@ -56,19 +56,39 @@ Sin este bloque, el trabajo hecho no le llega a Camila. **Es lo primero.**
 
 ---
 
-## T-01 · Aplicar las dos migraciones pendientes
+## T-01 · Aplicar las migraciones pendientes (ahora son CUATRO)
 
 **Experto:** DATA + OPS · **Prioridad:** 🔴 · **Depende de:** nada
 
-**Estado verificado.** Hay dos migraciones **escritas y sin aplicar** en la rama:
+> ⚠️ **Esta tarea decía "las dos migraciones pendientes" y quedó desactualizada.** Los chats
+> paralelos sumaron dos más. Aplicar sólo dos y desplegar el backend nuevo **rompe producción**:
+> el código nuevo pegaría contra un schema viejo. Recontado el 19/08 sobre la rama de trabajo.
 
-- `apps/api/prisma/migrations/20260818120000_rol_caja/migration.sql`
-  → `ALTER TYPE "Rol" ADD VALUE IF NOT EXISTS 'CAJA'`
-- `apps/api/prisma/migrations/20260818130000_movimiento_caja_sin_propiedad/migration.sql`
-  → `ALTER TABLE "movimientos_caja" ALTER COLUMN "propiedadId" DROP NOT NULL`
+**Estado verificado.** Cuatro migraciones **escritas y sin aplicar**, en este orden:
 
-**Qué hay que hacer.** Aplicarlas contra producción, en ese orden, **antes** de subir el
-backend nuevo.
+| # | Migración | Qué hace | Riesgo |
+|---|---|---|---|
+| 1 | `20260818120000_rol_caja` | `ALTER TYPE "Rol" ADD VALUE 'CAJA'` | Aditiva |
+| 2 | `20260818130000_movimiento_caja_sin_propiedad` | `propiedadId` pasa a nullable | Aditiva |
+| 3 | `20260819120000_otp_propietario` | `CREATE TABLE codigos_otp_propietario` + FK (T-23) | Aditiva, no toca ninguna fila |
+| 4 | `20260819140000_limpiar_pines_heredados` | `UPDATE usuarios SET "pinHash" = NULL …` (T-35) | **Escribe datos** |
+
+**Las cuatro van ANTES del deploy del backend.** Las tres primeras son aditivas y compatibles con
+el código viejo, así que aplicarlas temprano no rompe nada; al revés sí (código nuevo contra
+schema viejo revienta).
+
+**La cuarta es distinta y conviene entenderla antes de correrla.** Es la única que **modifica
+filas**: borra todos los `pinHash`. Hoy es inocua —`verificarPinUsuario` siempre aprueba, así que
+ningún `pinHash` autentica nada— y es lo que garantiza que, cuando entre T-25, ningún PIN
+heredado del admin sirva para hacerse pasar por él. **No es reversible** (los hashes no se
+recuperan), pero tampoco se pierde nada: ninguno autenticó nunca.
+
+> **Ojo con el orden si T-25 avanza:** la #4 tiene que correr **antes o junto** con lo que
+> habilite el conmutador de usuarios. Si T-25 entra primero, hay una ventana en la que los PIN
+> heredados autentican de verdad.
+
+**Antes de la #4, corré la consulta de T-35** para saber a cuántos afecta. Es de sólo lectura y
+te dice si hubo un escalamiento posible o si no había nadie.
 
 **Por qué ese orden importa.** Las dos son *aditivas*: agregar un valor a un enum y relajar un
 `NOT NULL` son compatibles con el código viejo, así que aplicarlas primero no rompe nada. Al
@@ -78,12 +98,16 @@ error de enum inválido, y un movimiento sin propiedad reviente el `NOT NULL`.
 **Criterio de aceptación.**
 - `SELECT unnest(enum_range(NULL::"Rol"));` incluye `CAJA`.
 - `movimientos_caja.propiedadId` es nullable.
-- Ninguna fila existente cambió: los usuarios conservan su rol y todos los movimientos
-  conservan su propiedad.
+- La tabla `codigos_otp_propietario` existe, vacía, con su FK a `propietarios`.
+- `SELECT count(*) FROM usuarios WHERE "pinHash" IS NOT NULL;` devuelve **0**.
+- Fuera del `pinHash`, ninguna fila cambió: los usuarios conservan su rol y todos los
+  movimientos conservan su propiedad.
 
-**Riesgo.** Bajo, pero es producción. Las dos son reversibles *mientras no se use la
-capacidad nueva*: para volver atrás del `DROP NOT NULL` habría que imputarle una propiedad a
-los movimientos que se hayan cargado sin ella.
+**Riesgo.** Bajo para las tres primeras, y son reversibles *mientras no se use la capacidad
+nueva* (para volver atrás del `DROP NOT NULL` habría que imputarle una propiedad a los
+movimientos cargados sin ella). **La cuarta no es reversible**: los `pinHash` borrados no se
+recuperan. Es aceptable porque ninguno autenticó nunca, pero es una decisión consciente, no un
+trámite.
 
 ---
 
