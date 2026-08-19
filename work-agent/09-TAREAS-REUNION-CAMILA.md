@@ -2123,8 +2123,31 @@ sin cerrar sesión ni pedir OTP, y cada sesión ve lo que le corresponde a su ro
 
 **Experto:** SEC + OPS · **Prioridad:** 🔴 · **Depende de:** nada
 
-**Estado verificado.** El usuario y la contraseña del admin del tenant real están **en texto
-plano** en cuatro archivos versionados: `README.md:24`, `PROJECT.MD:42`,
+> **Reverificado el 19/08/2026.** El árbol de trabajo **ya está limpio**: las cuatro líneas
+> citadas abajo conservan el email del admin pero **ya no tienen la contraseña** — alguien la
+> sacó y el documento quedó viejo. Se revisaron además los 867 archivos trackeados: los otros
+> hallazgos son la contraseña del **tenant demo** (`@delsol.com`, fixture deliberado y
+> documentado en `apps/api/prisma/seed.ts`, usado por ~64 tests) y dos líneas que dicen
+> explícitamente *"la contraseña la tiene Alan"* / *"password en Railway — NO está en el repo"*.
+>
+> **Lo que sigue abierto es lo que de verdad importa, y son dos cosas distintas:**
+>
+> 1. **ROTAR. Sigue siendo obligatorio y es lo primero.** Sacarla del árbol no la invalida. El
+>    repo **estuvo público** con la contraseña adentro: hay que darla por comprometida, punto.
+>    Esto lo hace el dueño; ningún agente toca credenciales de producción.
+> 2. **El historial de git la sigue teniendo.** Verificado: **22 líneas con credencial aparente
+>    en 20 combinaciones commit × archivo** de `README.md`, `PROJECT.MD`, `00-ESTADO.md` y
+>    `05-DECISIONES.md`. `git show <sha>:<archivo>` la devuelve hoy.
+>
+> **Sobre purgar el historial: es secundario, y conviene decir por qué.** Reescribir la historia
+> (filter-repo / BFG) no des-filtra algo que ya fue público: si alguien clonó, ya la tiene. Y el
+> costo acá es alto — hay una decena de worktrees y ramas sin mergear en vuelo, y un rewrite las
+> invalida a todas. **Recomendación: rotar primero (eso cierra el riesgo real), y recién con las
+> ramas mergeadas evaluar si el rewrite vale la pena.** No lo hago por mi cuenta: reescribir
+> historia es destructivo y necesita tu OK explícito.
+
+**Estado original (quedó desactualizado).** El usuario y la contraseña del admin del tenant real
+estaban **en texto plano** en cuatro archivos versionados: `README.md:24`, `PROJECT.MD:42`,
 `work-agent/00-ESTADO.md:39` y `work-agent/05-DECISIONES.md:95`. **El repo estuvo público.**
 
 **Qué hay que hacer.**
