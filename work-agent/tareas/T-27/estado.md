@@ -45,3 +45,12 @@ Otro chat corriendo en paralelo commiteó sobre ESTE mismo working tree (db30d53
 `git add` amplio se llevó mi rename. Además hay cambios en vuelo suyos en
 apps/api/src/mailer.ts y core.ts (T-17) que NO toqué. Los chats no están creando el git
 worktree que el prompt indica en la Fase 0.3.
+
+
+> ⚠️ **Corrección (19/08).** Donde este documento dice que los tests "pegan a la Postgres de
+> producción", es **falso**: `docs/TESTING.md` dice lo contrario — *"Esta NO es la DB de prod.
+> Prod corre dentro de Railway con el host interno, inalcanzable desde tu máquina. El proxy
+> público es la instancia de test/dev."* Fue una lectura al revés de la fuente citada, repetida
+> de chat en chat. **La conclusión no cambia** (no se corren igual), pero por el motivo real: es
+> una instancia **compartida** que el seed borra de forma destructiva, y en esta máquina no
+> existe `apps/api/.env`, así que `DATABASE_URL` ni siquiera está seteada.

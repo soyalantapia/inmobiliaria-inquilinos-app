@@ -63,3 +63,12 @@ En ese orden: N1 sale de la rama de T-24 y la contiene.
 llena **dentro** de la transacción de la fila. Si esa transacción hace rollback, el propietario
 desaparece pero el id queda cacheado → las filas siguientes fallan por FK. Es de la importación
 de cartera. Merece tarea propia.
+
+
+> ⚠️ **Corrección (19/08).** Donde este documento dice que los tests "pegan a la Postgres de
+> producción", es **falso**: `docs/TESTING.md` dice lo contrario — *"Esta NO es la DB de prod.
+> Prod corre dentro de Railway con el host interno, inalcanzable desde tu máquina. El proxy
+> público es la instancia de test/dev."* Fue una lectura al revés de la fuente citada, repetida
+> de chat en chat. **La conclusión no cambia** (no se corren igual), pero por el motivo real: es
+> una instancia **compartida** que el seed borra de forma destructiva, y en esta máquina no
+> existe `apps/api/.env`, así que `DATABASE_URL` ni siquiera está seteada.

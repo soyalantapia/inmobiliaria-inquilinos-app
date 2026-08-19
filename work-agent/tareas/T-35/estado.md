@@ -81,3 +81,12 @@ independientemente.
 
 **T-25** (cambio rápido de usuario), que está tomada por otro chat. Conviene avisarle: la
 migración de limpieza tiene que entrar antes o junto con la suya.
+
+
+> ⚠️ **Corrección (19/08).** Donde este documento dice que los tests "pegan a la Postgres de
+> producción", es **falso**: `docs/TESTING.md` dice lo contrario — *"Esta NO es la DB de prod.
+> Prod corre dentro de Railway con el host interno, inalcanzable desde tu máquina. El proxy
+> público es la instancia de test/dev."* Fue una lectura al revés de la fuente citada, repetida
+> de chat en chat. **La conclusión no cambia** (no se corren igual), pero por el motivo real: es
+> una instancia **compartida** que el seed borra de forma destructiva, y en esta máquina no
+> existe `apps/api/.env`, así que `DATABASE_URL` ni siquiera está seteada.

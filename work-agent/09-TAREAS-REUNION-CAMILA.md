@@ -1348,9 +1348,11 @@ verificó leyendo y con una revisión adversarial. Pero **no hay una prueba que 
 alguien saca un `inmobiliariaId` de un `where`. Para una superficie de lectura sobre datos
 financieros de terceros, eso es poco.
 
-Pide una base de prueba (los tests de `apps/api` hoy pegan a la Postgres de producción, así que
-esto se cruza con T-28). El caso mínimo: dos tenants, dos propietarios, y que cada endpoint
-devuelva 404/vacío al pedir lo del otro.
+Pide una base de prueba y se cruza con T-28. (Acá decía *"los tests de `apps/api` hoy pegan a la
+Postgres de producción"* — **es falso**, ver la corrección en T-01: el proxy público es la
+instancia de test/dev, no prod. Lo que sí es cierto es que es **compartida** y que el seed la
+borra, así que hace falta una base propia igual.) El caso mínimo: dos tenants, dos propietarios,
+y que cada endpoint devuelva 404/vacío al pedir lo del otro.
 
 ---
 
