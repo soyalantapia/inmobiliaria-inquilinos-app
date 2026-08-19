@@ -21,6 +21,7 @@ import {
   Plus,
   ShieldCheck,
   Store,
+  UserMinus,
   UserRound,
   Users,
   Warehouse,
@@ -32,6 +33,7 @@ import { Button } from '@llave/ui/button';
 import { EditarPropiedadTrigger } from '@/components/editar-propiedad-trigger';
 import { EditarPropietarioTrigger } from '@/components/editar-propietario-trigger';
 import { EditarParticipacionesDialog } from '@/components/editar-participaciones-dialog';
+import { CargarDeudaHistoricaDialog } from '@/components/cargar-deuda-historica-dialog';
 import { EliminarPropiedadButton } from '@/components/eliminar-propiedad-button';
 import {
   CargarInquilinoTrigger,
@@ -68,7 +70,9 @@ import {
 import { diasHastaVencimiento, formatFechaCorta, formatMonto, formatRangoVigencia } from '@/lib/format';
 import { apiEnabled, urlDeArchivo } from '@/lib/api/client';
 import { usePropiedad } from '@/lib/api/use-propiedad';
-import { usePropietarios } from '@/lib/api/hooks';
+import { useMe, usePropietarios } from '@/lib/api/hooks';
+import { normalizarRol } from '@/lib/rol-storage';
+import type { Rol } from '@llave/shared/permisos';
 import type { TipoPropiedad } from '@/lib/types';
 
 const tipoIcono: Record<TipoPropiedad, React.ComponentType<{ className?: string }>> = {
@@ -88,6 +92,14 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
   // declaran ANTES de los early-returns para respetar las reglas de hooks.
   const { propietarios: catalogoPropietarios } = usePropietarios();
   const [editarRepartoOpen, setEditarRepartoOpen] = useState(false);
+  const [deudaHistoricaOpen, setDeudaHistoricaOpen] = useState(false);
+  // Cargar deuda histórica CREA plata adeudada sin que nadie firme nada y sin
+  // pasar por la bandeja de aprobación. Mismo criterio que el server (403 al
+  // resto): un botón que siempre falla es peor que no tenerlo. Con /auth/me
+  // caído NO recortamos en silencio — el 403 sigue siendo la frontera real.
+  const { me, isError: meError } = useMe();
+  const rolActual: Rol = apiEnabled ? normalizarRol(me?.rol, 'LECTURA') : 'ADMIN';
+  const puedeCargarDeuda = meError || rolActual === 'ADMIN' || rolActual === 'OPERADOR';
 
   // En build demo el mock es síncrono: si no existe el id → 404 real de Next.
   if (!deApi && noEncontrada) notFound();
@@ -204,11 +216,29 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                     cuando la feature ya funcionaba → no se podía corregir ni un
                     typo de dirección/tipo/m²/complejo. */}
                 <EditarPropiedadTrigger propiedad={propiedad} />
+                {/* Deuda de un inquilino ANTERIOR. Vive acá y no en "nuevo
+                    contrato" porque el alta normal no la admite: rechaza si la
+                    propiedad ya está alquilada, que es el caso típico del moroso
+                    de hace años. Sólo ADMIN/OPERADOR — el server devuelve 403 al
+                    resto, y un botón que siempre falla es peor que no tenerlo. */}
+                {apiEnabled && puedeCargarDeuda && (
+                  <Button variant="outline" size="sm" onClick={() => setDeudaHistoricaOpen(true)}>
+                    <UserMinus className="mr-2 h-4 w-4" />
+                    Deuda de inquilino anterior
+                  </Button>
+                )}
                 {apiEnabled && propiedad.estado === 'DISPONIBLE' && (
                   <EliminarPropiedadButton propiedadId={propiedad.id} direccion={propiedad.direccion} />
                 )}
               </div>
             </div>
+
+            <CargarDeudaHistoricaDialog
+              open={deudaHistoricaOpen}
+              onOpenChange={setDeudaHistoricaOpen}
+              propiedadId={propiedad.id}
+              direccion={propiedad.direccion}
+            />
 
             {/* Stats inline */}
             <div className="grid grid-cols-2 gap-4 border-t pt-4 sm:grid-cols-4">

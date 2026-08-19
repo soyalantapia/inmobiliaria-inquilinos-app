@@ -71,3 +71,53 @@ export function useAjustarAlquiler(contratoId: string) {
     },
   });
 }
+
+export interface DeudaHistoricaInput {
+  propiedadId: string;
+  personaId?: string;
+  inquilino: {
+    nombre: string;
+    apellido?: string;
+    email?: string;
+    telefono?: string;
+    dni?: string;
+  };
+  monto: number;
+  moneda: 'ARS' | 'USD';
+  montoExpensas?: number;
+  fechaInicio: string;
+  fechaFin: string;
+  diaPago: number;
+}
+
+export interface DeudaHistoricaCreada {
+  id: string;
+  personaId: string;
+  periodosAdeudados: number;
+}
+
+/**
+ * Carga la deuda de un inquilino que YA SE FUE (POST /contratos/historico).
+ *
+ * Crea un contrato FINALIZADO que NO ocupa la propiedad, así que se puede usar
+ * sobre una propiedad que hoy está alquilada a otro. Invalida la propiedad (su
+ * historial cambia) y las personas (la deuda entra en la ficha del moroso, que
+ * es lo que enciende el semáforo si mañana lo quieren volver a alquilar).
+ */
+export function useCargarDeudaHistorica(propiedadId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: DeudaHistoricaInput) => {
+      await ensureApiSession();
+      return apiFetch<DeudaHistoricaCreada>('/contratos/historico', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['propiedad', propiedadId] });
+      qc.invalidateQueries({ queryKey: ['contratos'] });
+      qc.invalidateQueries({ queryKey: ['personas'] });
+    },
+  });
+}
