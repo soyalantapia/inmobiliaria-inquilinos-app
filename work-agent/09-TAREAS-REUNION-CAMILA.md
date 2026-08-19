@@ -1120,6 +1120,41 @@ hizo **T-41**. Ahora el toast dice la verdad.
 
 ---
 
+## T-43 · T-40 había quedado a medias: el mismo 403, dos clicks más allá — ✅ RESUELTO
+
+**Experto:** FE-P · **Prioridad:** 🟢
+**Origen:** revisión adversarial de mis propios commits (19/08). **Tres dimensiones
+independientes encontraron lo mismo**, lo que es la señal de que era real.
+
+**Qué faltaba.** T-40 gateó los botones de la **fila**, pero "Ver comprobante" queda visible
+para todos a propósito — y **adentro de ese modal estaban Confirmar y Rechazar sin
+condicionar**. Exactamente el defecto que T-40 decía cerrar, sobreviviendo en el mismo archivo.
+El escéptico verificó que el camino es alcanzable de punta a punta: el `PinPromptDialog` es un
+no-op, así que dispara el `POST /pagos/:id/validar` directo y el server contesta 403.
+
+**Y un segundo caso que nadie había mirado:** el botón **"Anular"** de "Conciliados recientes"
+usa `pago.revertir`, que es **sólo ADMIN** — no ADMIN+CAJA. O sea que `puedeDecidir` no
+alcanzaba: hacía falta un flag propio, si no **CAJA veía un "Anular" que le devolvía 403**.
+
+**Un error mío que el escéptico pescó de paso.** El comentario que dejé en T-40 decía que
+`pago.conciliar` *"dejó de incluir a OPERADOR en esta misma tanda"*. Es falso: ya era
+`['ADMIN','CAJA']` antes de estos commits — lo que T-37 tocó fue `pago.manual.cargar`. El
+código estaba bien; el comentario mentía sobre la historia, que es la clase de cosa que
+después manda a alguien a buscar un cambio que no existió. Corregido.
+
+**Verificado en navegador, los tres roles:**
+
+| rol | Confirmar/Rechazar (fila) | dentro del modal | Anular | Ver comprobante |
+|---|---|---|---|---|
+| ADMIN | sí | sí | sí | sí |
+| CAJA | sí | sí | **no** | sí |
+| OPERADOR | no (aviso) | no (aviso) | no | sí |
+
+**No se tocó `PagosPorValidarDemo`**: esa variante corre sólo con `apiEnabled=false`, no habla
+con ningún server y su rol sale de localStorage. Gatearla sólo rompería la demo.
+
+---
+
 ## T-37-N1 · Circuito de aprobación para el pago manual del operador
 
 **Experto:** BE + PROD · **Prioridad:** 🟢 · **Depende de:** decisión de producto
