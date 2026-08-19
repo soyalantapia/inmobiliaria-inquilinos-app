@@ -8,11 +8,20 @@ import bcrypt from 'bcryptjs';
 import { seedOperacion } from './seeds/operacion.js';
 import { seedAnuncios } from './seeds/anuncios.js';
 import { seedInquilinoMundo } from './seeds/inquilinoMundo.js';
+import { exigirDbDeTest } from './guard-db.js';
 
 const PASSWORD_DEV = 'delsol123';
 const PIN_DEV = '1234';
 
 export async function seedBase(prisma: PrismaClient) {
+  // GUARD ANTI-PRODUCCIÓN. Esto es destructivo (borra pagos, pisa filas con ids fijos) y
+  // corre en el beforeAll de ~50 suites de integración. Hasta ahora no tenía ninguna
+  // protección: bastaba tener exportada la DATABASE_URL de prod y correr `vitest run`
+  // para escribirle a la base del cliente. El único guard del repo estaba en
+  // `limpiar-test-db.ts` — el script que se corre a mano estaba cuidado, y el que se
+  // dispara solo en cada test, no. Falla cerrado: ante una URL desconocida, no corre.
+  exigirDbDeTest('seedBase');
+
   // ===== Tenant =====
   const existente = await prisma.inmobiliaria.findFirst({ where: { nombre: 'Inmobiliaria del Sol' } });
   const inmobiliaria =
