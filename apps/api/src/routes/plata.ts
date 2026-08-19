@@ -6,6 +6,7 @@ import { prisma } from '../db.js';
 import { exigirContratoActivo, requireContratoAcceso, requireInquilino, requireUsuario } from '../auth/guards.js';
 import { verificarPinUsuario } from '../auth/pin.js';
 import { devengarSiSigueActivo, devengarTodosLosTenants, generarLiquidacionesContrato, marcarLiquidacionesVencidas } from '../lib/liquidaciones.js';
+import { parteRendible } from '../lib/parte-rendible.js';
 import { conSaldo, montoPagadoPorLiquidacion } from '../lib/saldos.js';
 import { calcularMora, resolverEsquemaMora } from '../lib/punitorios.js';
 import { registrarEvento } from '../lib/auditoria.js';
@@ -1836,10 +1837,13 @@ export async function plataRoutes(app: FastifyInstance) {
           if (!g.propiedadId || !g.propiedad) return [];
           const part = owner.participaciones.find((p) => p.propiedadId === g.propiedadId);
           const porcentaje = part?.porcentaje ?? 100;
-          const leToca = Number(g.monto) * (porcentaje / 100);
-          const restanteGlobal = Number(g.monto) - (rendidoGastoMap.get(g.id) ?? 0);
           const parteOwner = r2c(
-            Math.max(0, Math.min(leToca - (míoGastoMap.get(g.id) ?? 0), restanteGlobal)),
+            parteRendible({
+              montoTotal: Number(g.monto),
+              porcentaje,
+              yaRendidoPorMi: míoGastoMap.get(g.id) ?? 0,
+              yaRendidoGlobal: rendidoGastoMap.get(g.id) ?? 0,
+            }),
           );
           // Ya rindió todo lo suyo de este gasto: no vuelve a entrar.
           if (parteOwner <= 0.009) return [];
@@ -1875,6 +1879,18 @@ export async function plataRoutes(app: FastifyInstance) {
             costoTrabajo: { gt: 0 },
             propiedadId: { in: propIdsConIngreso },
             resueltoAt: { lt: finPeriodo },
+            // Moneda, como ya filtraban los otros dos descuentos. `Reclamo` no tiene columna
+            // de moneda —`costoTrabajo` es un Decimal pelado— así que sale del contrato, que
+            // es de donde la toma la imputación al inquilino (`operacion.ts`).
+            //
+            // Sin esto, el número correcto se restaba en la moneda equivocada, y en los dos
+            // sentidos: como la query trae los reclamos por PROPIEDAD y sin piso de fecha, un
+            // reclamo de un contrato ANTERIOR en pesos entraba a una rendición en dólares y
+            // restaba US$350.000 del neto —el dueño no podía cobrar, con un 409 de neto
+            // negativo que encima lo manda a revisar gastos de caja que no son el problema— y
+            // al revés, un reclamo de US$800 se restaba como $800 y la inmobiliaria se comía
+            // el arreglo entero.
+            contrato: { moneda: monedaRendicion },
           },
           include: { propiedad: { select: { direccion: true } } },
         });
@@ -1914,10 +1930,13 @@ export async function plataRoutes(app: FastifyInstance) {
             const part = owner.participaciones.find((p) => p.propiedadId === rec.propiedadId);
             const porcentaje = part?.porcentaje ?? 100;
             const total = Number(rec.costoTrabajo);
-            const leToca = total * (porcentaje / 100);
-            const restanteGlobal = total - (rendidoReclamoMap.get(`reclamo:${rec.id}`) ?? 0);
             const parteOwner = r2c(
-              Math.max(0, Math.min(leToca - (míoReclamoMap.get(`reclamo:${rec.id}`) ?? 0), restanteGlobal)),
+              parteRendible({
+                montoTotal: total,
+                porcentaje,
+                yaRendidoPorMi: míoReclamoMap.get(`reclamo:${rec.id}`) ?? 0,
+                yaRendidoGlobal: rendidoReclamoMap.get(`reclamo:${rec.id}`) ?? 0,
+              }),
             );
             if (parteOwner <= 0.009) return [];
             totalGastos += parteOwner;
@@ -1974,6 +1993,21 @@ export async function plataRoutes(app: FastifyInstance) {
             })
           : [];
         const míoIngresoMap = new Map(míoIngresos.map((r) => [r.refId, Number(r._sum.monto ?? 0)]));
+        // Tope GLOBAL, el que faltaba. Los gastos de caja y los reclamos ya lo tenían
+        // (el tope global que ya tenían, más arriba); el espejo nunca se aplicó a los ingresos, y acá el
+        // error se paga con plata que SALE de la caja de la inmobiliaria: con sólo el cap por
+        // dueño, un ingreso de $100 en una propiedad de A(50%) y B(50%) se acreditaba $50 a A y
+        // —si después se re-arma la participación y B pasa a 100%— $100 más a B. $150
+        // acreditados sobre $100 que entraron. Y peor: el movimiento queda marcado como cubierto
+        // (50+100 >= 100), así que el caso se cierra solo y no vuelve a aparecer para auditarlo.
+        const rendidoIngresos = ingresoIds.length
+          ? await tx.ingresoRendido.groupBy({
+              by: ['refId'],
+              where: { refId: { in: ingresoIds } },
+              _sum: { monto: true },
+            })
+          : [];
+        const rendidoIngresoMap = new Map(rendidoIngresos.map((r) => [r.refId, Number(r._sum.monto ?? 0)]));
 
         let totalIngresos = 0;
         const ingresosData = ingresosPend.flatMap((mov) => {
@@ -1982,8 +2016,14 @@ export async function plataRoutes(app: FastifyInstance) {
           if (!mov.propiedadId || !mov.propiedad) return [];
           const part = owner.participaciones.find((p) => p.propiedadId === mov.propiedadId);
           const porcentaje = part?.porcentaje ?? 100;
-          const leToca = Number(mov.monto) * (porcentaje / 100);
-          const parteOwner = r2c(Math.max(0, leToca - (míoIngresoMap.get(mov.id) ?? 0)));
+          const parteOwner = r2c(
+            parteRendible({
+              montoTotal: Number(mov.monto),
+              porcentaje,
+              yaRendidoPorMi: míoIngresoMap.get(mov.id) ?? 0,
+              yaRendidoGlobal: rendidoIngresoMap.get(mov.id) ?? 0,
+            }),
+          );
           if (parteOwner <= 0.009) return [];
           totalIngresos += parteOwner;
           return [{
