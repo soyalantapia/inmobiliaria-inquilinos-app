@@ -11,6 +11,7 @@ import {
   generarLiquidacionesContrato,
   sumarMesesUTC,
   periodoDe,
+  recomputarExpensasFuturas,
   recomputarLiquidacionesFuturas,
   montoAlquilerSegunTipo,
 } from '../lib/liquidaciones.js';
@@ -1955,7 +1956,11 @@ export async function coreRoutes(app: FastifyInstance) {
     if (contrato.tipoContrato === 'SOLO_EXPENSAS') {
       return reply.code(409).send({
         message:
-          'Este contrato es de solo expensas: no tiene alquiler que ajustar. El monto de las expensas hoy sólo se define al cargar el contrato.',
+          // El mensaje decía "las expensas hoy sólo se define al cargar el contrato"
+          // porque era verdad: no había forma de cambiarlas después. Ahora la hay
+          // (PATCH /contratos/:id/expensas, botón "Cambiar expensas" en el
+          // contrato), así que en vez de cerrar la puerta se indica cuál abrir.
+          'Este contrato es de solo expensas: no tiene alquiler que ajustar. Para cambiar el monto usá "Cambiar expensas".',
         codigo: 'SOLO_EXPENSAS_SIN_CANON',
       });
     }
@@ -3304,6 +3309,165 @@ export async function coreRoutes(app: FastifyInstance) {
       log: request.log,
     });
     return { contrato: resultado.actualizado, liquidacionesReajustadas: resultado.reajustadas, avisoInquilino: aviso };
+  });
+
+  // ===== Cambiar las EXPENSAS de un contrato (PATCH /contratos/:id/expensas) =====
+  //
+  // Hasta acá `montoExpensas` se podía escribir UNA SOLA VEZ, en el alta: ningún
+  // endpoint lo tocaba después. Y las expensas suben todos los meses. O sea que
+  // para corregir la expensa de un contrato la única salida era rehacer el
+  // contrato entero — y en un SOLO_EXPENSAS es peor, porque es el ÚNICO monto que
+  // tiene: si está mal, no hay nada que ajustar.
+  //
+  // Es el hermano de PATCH /contratos/:id/monto y sigue su misma forma a
+  // propósito: actualiza el contrato, RE-DEVENGA las cuotas futuras sin plata en
+  // juego, y deja rastro en el timeline. Money code: no toca liquidaciones
+  // pagadas, parciales, con un pago informado, ni meses pasados.
+  app.patch('/contratos/:id/expensas', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'contratos.crear');
+    if (!u) return;
+    // Mismo criterio que el ajuste de canon: cambia lo que el inquilino tiene que
+    // pagar. No es una acción de carga para aprobación.
+    if (u.rol === 'CARGA') {
+      return reply.code(403).send({ message: 'Solo un Admin u Operador puede cambiar las expensas' });
+    }
+    const { id } = request.params as { id: string };
+    const body = z
+      .object({
+        // `nonnegative`: el 0 es cómo se le sacan las expensas a un contrato que
+        // dejó de tenerlas. Que el 0 no valga para un SOLO_EXPENSAS se chequea
+        // abajo, con el contrato ya leído.
+        montoExpensas: z.number().nonnegative(),
+        motivo: z.string().optional(),
+      })
+      .safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ message: 'Monto de expensas inválido' });
+    const d = body.data;
+
+    // Scopeado por inmobiliariaId (multi-tenant): un id de otro tenant => 404.
+    const contrato = await prisma.contrato.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      select: { id: true, montoExpensas: true, tipoContrato: true, moneda: true, estado: true },
+    });
+    if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
+
+    // Un contrato terminado no se re-tarifa: sus cuotas son historia (y las de
+    // deuda histórica, todas vencidas, no deberían moverse nunca).
+    if (contrato.estado !== 'ACTIVO') {
+      return reply.code(409).send({
+        message: 'Solo se pueden cambiar las expensas de un contrato activo',
+      });
+    }
+
+    // Un SOLO_EXPENSAS sin expensas no factura NADA: sus liquidaciones nacerían
+    // en $0 y el inquilino quedaría "debiendo cero" para siempre. Es el espejo
+    // exacto del guard de `monto: 0` en el ajuste de canon.
+    if (contrato.tipoContrato === 'SOLO_EXPENSAS' && d.montoExpensas === 0) {
+      return reply.code(400).send({
+        message: 'Este contrato es de solo expensas: el monto tiene que ser mayor a cero',
+      });
+    }
+
+    const expensasViejas = contrato.montoExpensas != null ? Number(contrato.montoExpensas) : 0;
+    if (expensasViejas === d.montoExpensas) {
+      // Mismo monto: no se escribe nada, pero se devuelve el contrato COMPLETO —
+      // no el subset del `select` de arriba. El front usa la respuesta para
+      // refrescar, y dos formas distintas según el camino es cómo se rompe.
+      const completo = await prisma.contrato.findUniqueOrThrow({ where: { id: contrato.id } });
+      return reply.code(200).send({
+        contrato: completo,
+        liquidacionesReajustadas: 0,
+        tipoContrato: contrato.tipoContrato,
+        sinCambios: true,
+      });
+    }
+
+    // El tipo de contrato acompaña al monto, para que no quede un estado que el
+    // resto del sistema lee mal: `computarLiquidacionesContrato` factura expensas
+    // con sólo mirar `montoExpensas`, sin consultar el tipo, así que un ALQUILER
+    // con expensas > 0 facturaría expensas mientras la PWA le sigue diciendo al
+    // inquilino que su contrato no las tiene.
+    const tipoNuevo =
+      contrato.tipoContrato === 'SOLO_EXPENSAS'
+        ? 'SOLO_EXPENSAS'
+        : d.montoExpensas > 0
+          ? 'ALQUILER_Y_EXPENSAS'
+          : 'ALQUILER';
+
+    const periodoActual = periodoDe(new Date());
+
+    const resultado = await prisma.$transaction(async (tx) => {
+      await tx.contrato.update({
+        where: { id: contrato.id },
+        data: {
+          // 0 se guarda como null: es como el alta representa "sin expensas", y
+          // dejar un 0 explícito haría que `montoExpensas != null` diera true en
+          // los ~10 lugares que preguntan eso para decidir si mostrar la línea.
+          montoExpensas: d.montoExpensas === 0 ? null : d.montoExpensas,
+          tipoContrato: tipoNuevo,
+        },
+      });
+
+      const liqs = await tx.liquidacion.findMany({
+        where: {
+          contratoId: contrato.id,
+          inmobiliariaId: u.inmobiliariaId,
+          periodo: { gte: periodoActual },
+          estado: { in: ['PENDIENTE', 'VENCIDO'] },
+        },
+        select: {
+          id: true,
+          periodo: true,
+          estado: true,
+          montoAlquiler: true,
+          montoExpensas: true,
+          _count: { select: { pagos: true } },
+        },
+      });
+      const aReajustar = recomputarExpensasFuturas(
+        liqs.map((l) => ({
+          id: l.id,
+          periodo: l.periodo,
+          estado: l.estado,
+          montoAlquiler: l.montoAlquiler,
+          montoExpensas: l.montoExpensas,
+          cantidadPagos: l._count.pagos,
+        })),
+        { expensasNuevas: d.montoExpensas, periodoActual },
+      );
+      for (const r of aReajustar) {
+        // updateMany scopeado por inmobiliariaId (defensa cross-tenant redundante).
+        await tx.liquidacion.updateMany({
+          where: { id: r.id, inmobiliariaId: u.inmobiliariaId },
+          data: { montoExpensas: r.montoExpensas === 0 ? null : r.montoExpensas, montoTotal: r.montoTotal },
+        });
+      }
+
+      // Rastro en el timeline del contrato, dentro de la tx: el cambio y su
+      // registro caen juntos. Se reusa AJUSTE_APLICADO porque es el tipo que ya
+      // significa "cambió lo que hay que pagar" y el enum no tiene uno propio
+      // para expensas; el título lo desambigua.
+      await tx.eventoContrato.create({
+        data: {
+          inmobiliariaId: u.inmobiliariaId,
+          contratoId: contrato.id,
+          tipo: 'AJUSTE_APLICADO',
+          titulo: `Expensas: ${expensasViejas} → ${d.montoExpensas} ${contrato.moneda}`,
+          detalle: d.motivo ?? null,
+          fecha: new Date(),
+          autor: u.userId,
+        },
+      });
+
+      const actualizado = await tx.contrato.findUniqueOrThrow({ where: { id: contrato.id } });
+      return { actualizado, reajustadas: aReajustar.length };
+    });
+
+    return {
+      contrato: resultado.actualizado,
+      liquidacionesReajustadas: resultado.reajustadas,
+      tipoContrato: tipoNuevo,
+    };
   });
 
   // PATCH modo de cobranza de un contrato YA creado (feedback 14/07: quedaba en

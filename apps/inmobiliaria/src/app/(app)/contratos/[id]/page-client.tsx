@@ -53,6 +53,7 @@ import { CargosContratoCard } from '@/components/cargos-contrato-card';
 import { Topbar } from '@/components/topbar';
 import { FinalizarContratoButton } from '@/components/finalizar-contrato-button';
 import { AjustarAlquilerButton } from '@/components/ajustar-alquiler-button';
+import { CambiarExpensasButton } from '@/components/cambiar-expensas-button';
 import { GananciaInmoCard } from '@/components/ganancia-inmo-card';
 import { RenovarContratoButton } from '@/components/renovar-contrato-button';
 import { AvisarRenovacionButton } from '@/components/avisar-renovacion-button';
@@ -323,6 +324,19 @@ export default function DetalleContratoPage() {
             )}
             {apiEnabled && c.estado === 'ACTIVO' && c.tipoContrato !== 'SOLO_EXPENSAS' && (
               <AjustarAlquilerButton contratoId={c.id} montoActual={c.monto} moneda={c.moneda} />
+            )}
+            {/* Sin gate por tipo, al revés que el ajuste de alquiler: un
+                SOLO_EXPENSAS es JUSTO el que más lo necesita (es su único monto),
+                y un ALQUILER puede empezar a tener expensas. */}
+            {apiEnabled && c.estado === 'ACTIVO' && (
+              <CambiarExpensasButton
+                contratoId={c.id}
+                expensasActuales={c.montoExpensas ?? null}
+                // Un contrato sin tipo explícito es de alquiler: es el default
+                // del schema y lo que asume el resto del panel.
+                tipoContrato={c.tipoContrato ?? 'ALQUILER'}
+                moneda={c.moneda}
+              />
             )}
             {apiEnabled && c.estado === 'ACTIVO' && (
               <FinalizarContratoButton contratoId={c.id} direccion={c.direccion} />
