@@ -3493,7 +3493,13 @@ export async function coreRoutes(app: FastifyInstance) {
       });
       if (upd.count === 0) return { conflicto: 'CAMBIO_CONCURRENTE' as const };
       return { conflicto: null };
-    });
+      // Timeouts explícitos, como el resto de las transacciones que hacen trabajo real acá
+      // (core.ts:1249, :1507, importaciones-cartera.ts:497). Con los defaults de Prisma
+      // (timeout 5s / maxWait 2s) esta transacción quedaba al filo: adentro hay 4 queries y,
+      // sobre todo, `maxWait` cuenta la espera por un cliente del POOL. Bajo carga eso puede
+      // superar 2s y convertir un cambio de modo que antes andaba en un 500 esporádico —
+      // introducido por el propio arreglo del TOCTOU.
+    }, { timeout: 15_000, maxWait: 10_000 });
     if (resultado.conflicto === 'SIN_RENDIR') {
       return reply.code(409).send({
         message:
