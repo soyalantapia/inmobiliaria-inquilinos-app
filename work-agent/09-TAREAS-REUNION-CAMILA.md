@@ -72,7 +72,7 @@ Sin este bloque, el trabajo hecho no le llega a Camila. **Es lo primero.**
 
 ---
 
-## T-01 · Aplicar las migraciones pendientes (son DIEZ)
+## T-01 · Aplicar las migraciones pendientes (son ONCE)
 
 > ### ⚠️ Antes que nada: NO hay paso manual. Se aplican solas.
 >
@@ -88,7 +88,7 @@ Sin este bloque, el trabajo hecho no le llega a Camila. **Es lo primero.**
 
 > ### ✅ Verificación previa hecha — 19/08
 >
-> **El título decía CUATRO, después OCHO, y hoy son DIEZ.** Se fue quedando corto mientras varios
+> **El título decía CUATRO, después OCHO, después DIEZ, y hoy son ONCE.** Se fue quedando corto mientras varios
 > chats escribían migraciones en paralelo. Aplicar sólo las cuatro que la tarea nombraba deja
 > el portal del propietario respondiendo 500.
 >
@@ -3303,3 +3303,65 @@ nada más: la operación que lo generó queda commiteada y el endpoint responde 
 **Por qué no se hizo junto.** Son cinco handlers de plata y no hay forma de correr los tests de
 integración desde esta máquina. Un refactor a ciegas sobre conciliar pagos y renovar contratos no
 vale el riesgo comparado con lo que ya se ganó (que la falla deje de ser silenciosa).
+### T-01-N1-N2 · La rendición le manda al dueño las palabras del inquilino ✅ HECHA
+**Experto:** SEC · **Prioridad:** 🔴 · **Detectada en:** barrido de regresiones (T-01-N1)
+
+> **Estado: ✅ hecha** en el código. **Falta aplicar la migración** de limpieza (va con T-01).
+> Ver `work-agent/tareas/T-01-N1-N2/REQUISITOS.md`.
+
+`plata.ts`, al armar los gastos de una rendición, rotulaba el arreglo así:
+
+```ts
+rec.costoTrabajoNotas || `Reparación (${categoria}): ${rec.descripcion.slice(0, 60)}`
+```
+
+`rec.descripcion` es **el texto libre que escribió el inquilino** al reportar el problema. Como
+`costoTrabajoNotas` es opcional y casi nunca se carga, el caso por defecto era guardar en
+`GastoRendido.descripcion` 60 caracteres del relato del inquilino sobre su propia casa — y de
+ahí salían al portal del propietario (`portal-propietario.ts:451`) y al PDF imprimible.
+
+**Lo que lo vuelve un descuido y no una decisión:** el mismo archivo ya cerró esta misma puerta
+50 líneas más abajo. `portal-propietario.ts:505-511` recorta los reclamos a contratos vigentes
+diciendo textualmente que si no, *"quien compra un departamento en marzo abre el portal y lee
+los reclamos de 2024 de un inquilino con el que no tuvo ninguna relación, con la `descripcion`
+en texto libre que esa persona escribió"*. Mismo dato, misma persona, mismos ojos, otra puerta.
+
+**Lo que se hizo:** el rótulo pasa por `lib/descripcion-gasto-rendido.ts` y el fallback es la
+categoría sola. El dueño sigue viendo qué se arregló y cuánto; lo que describe el trabajo es
+`costoTrabajoNotas`, que lo escribe el operador sabiendo que se muestra.
+
+**Verificado:** 5 tests puros, y se confirmó que **4 se ponen rojos** al revertir el fix.
+
+**Pendiente del dueño:** aplicar `20260819220000_sacar_texto_del_inquilino_de_gastos` — las
+filas ya escritas siguen con el texto adentro. Son **once** migraciones ahora, no diez.
+
+---
+
+### T-01-N1-N3 · La caja mezcla monedas en tres lugares ✅ HECHA
+**Experto:** BE-P · **Prioridad:** 🔴 · **Detectada en:** barrido de regresiones (T-01-N1)
+
+> **Estado: ✅ hecha.** Ver `work-agent/tareas/T-01-N1-N3/REQUISITOS.md`.
+
+`MovimientoCaja.moneda` es `@default(ARS)` y el schema dice que ARS *"es la única moneda que la
+UI de caja permite cargar hoy"*. **Ya no es cierto:** `POST /caja/movimientos` escribe la
+moneda del body. Los consumidores que asumían "todo es ARS" pasaron de correctos a incorrectos
+sin que nadie los tocara. `cuentas.ts` ya se adaptó; quedaron estos tres.
+
+1. 🔴 **`plata.ts:846`** — cobrar un cargo del inquilino creaba el movimiento **sin** moneda.
+   `CargoContrato` sí la tiene y el dato estaba a mano, sin usar. Como la columna tiene default,
+   no fallaba: escribía ARS igual. Un cargo de US$800 quedaba en caja como $800. **Es el peor
+   de los tres: escribe mal, permanentemente**, y una vez escrita la fila ya no dice de dónde
+   vino. Este el barrido no lo había encontrado.
+2. 🟠 **`metricas.ts`** — el `groupBy` de caja sin filtro de moneda, dentro de una respuesta
+   rotulada `moneda: 'ARS'`.
+3. 🟡 **`metricas.ts`** — el aviso de "hay otras monedas" contaba **contratos**, no movimientos.
+   Con el filtro del punto 2 puesto, un gasto en USD queda fuera del neto sin avisar: excluir en
+   silencio es tan engañoso como sumar mal. Por eso 2 y 3 van juntos.
+
+**Verificado:** `tsc` 0 en API y panel, 350 tests verdes, y los tres tests se ponen rojos al
+revertir cada fix **por separado**.
+
+**Pendiente del dueño:** correr `work-agent/tareas/T-01-N1-N3/diagnostico-caja-moneda.sql`
+(solo lectura) para ver si hay filas ya escritas mal. No se pueden corregir a ciegas: cambiar
+la moneda de un movimiento mueve el cierre de caja de ese día y puede mover rendiciones ya
+emitidas.
