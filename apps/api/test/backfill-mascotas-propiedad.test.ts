@@ -36,10 +36,26 @@ const MIGRATION_SQL = path.join(
   'migration.sql',
 );
 
-const PSQL = process.env.PSQL_BIN ?? '/opt/homebrew/opt/postgresql@18/bin/psql';
+/**
+ * ESTE TEST NECESITA INFRA: un cluster de Postgres local propio (no el de la
+ * suite) donde poder crear y dropear una base efímera.
+ *
+ * Antes apuntaba a `/opt/homebrew/opt/postgresql@18/bin/psql` y al usuario
+ * `alannaimtapia`, o sea: sólo corría en una máquina del mundo. En Windows y en
+ * Linux —CI incluida— reventaba con ENOENT, y como no dice por qué, había que
+ * saber de memoria que "ése falla siempre" para poder leer el resultado de la
+ * tanda. Un test que falla por el entorno y no por el código no informa nada:
+ * entrena a ignorar el rojo.
+ *
+ * Ahora: el binario sale del PATH (o de `PSQL_BIN`), el usuario del entorno, y
+ * si la infra no está el test se SALTEA con el motivo escrito. Saltearse es
+ * honesto —queda visible en el output—; fallar siempre, no.
+ */
+const PSQL = process.env.PSQL_BIN ?? 'psql';
 const PG_HOST = process.env.PGHOST_TEST ?? '127.0.0.1';
 const PG_PORT = process.env.PGPORT_TEST ?? '55433';
-const PG_USER = process.env.PGUSER_TEST ?? 'alannaimtapia';
+const PG_USER =
+  process.env.PGUSER_TEST ?? process.env.PGUSER ?? process.env.USER ?? process.env.USERNAME ?? 'postgres';
 const DB_NAME = `myalq_backfill_${Date.now()}`;
 const DB_URL = `postgresql://${PG_USER}@${PG_HOST}:${PG_PORT}/${DB_NAME}`;
 
@@ -50,6 +66,30 @@ function psql(args: string[], db = 'postgres') {
     { stdio: 'pipe' },
   );
 }
+
+/**
+ * ¿Está la infra? Se prueba de verdad —una consulta trivial al cluster— y no
+ * sólo que el binario exista: `psql` instalado sin cluster corriendo es el caso
+ * más común y daría el mismo rojo inútil.
+ */
+function infraDisponible(): { ok: true } | { ok: false; motivo: string } {
+  try {
+    psql(['-c', 'SELECT 1']);
+    return { ok: true };
+  } catch (e) {
+    const detalle = e instanceof Error && 'code' in e && e.code === 'ENOENT'
+      ? `no se encontró el binario "${PSQL}" en el PATH`
+      : `no respondió el cluster en ${PG_HOST}:${PG_PORT} como "${PG_USER}"`;
+    return {
+      ok: false,
+      motivo:
+        `${detalle}. Este test necesita un Postgres local donde crear una base efímera. ` +
+        'Configurable con PSQL_BIN / PGHOST_TEST / PGPORT_TEST / PGUSER_TEST.',
+    };
+  }
+}
+
+const infra = infraDisponible();
 
 let creada = false;
 
@@ -63,7 +103,14 @@ afterAll(() => {
 });
 
 describe('Backfill: Contrato.mascotasPermitidas → Propiedad.mascotasPermitidas', () => {
-  it(
+  // El motivo se imprime UNA vez, para que el salteo no sea mudo: el que lee el
+  // output tiene que poder decidir si le importa o no, sin ir al código.
+  if (!infra.ok) {
+    // eslint-disable-next-line no-console
+    console.warn(`⏭ backfill-mascotas-propiedad: se saltea — ${infra.motivo}`);
+  }
+
+  it.skipIf(!infra.ok)(
     'copia el valor del contrato actual, y si no tiene, el del contrato histórico más reciente',
     async () => {
       psql(['-c', `CREATE DATABASE "${DB_NAME}"`]);
