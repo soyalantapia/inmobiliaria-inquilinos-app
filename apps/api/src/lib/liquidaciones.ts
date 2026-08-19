@@ -32,6 +32,12 @@ export type ContratoParaLiquidar = {
    * escribiera un canon positivo (ajustar, renovar, un alta con monto) hacía que el cron le
    * facturara alquiler a alguien que no paga alquiler. Requerido, así el compilador no deja
    * que un caller nuevo se lo saltee.
+   *
+   * El síntoma observable, que es lo que lo hacía difícil de ver: `PATCH /contratos/:id/monto`
+   * exige un monto POSITIVO, lo guarda en `contrato.monto` y recién después llama a
+   * `recomputarLiquidacionesFuturas`, que sí respetaba el tipo y dejaba las cuotas futuras en
+   * 0. Pero `contrato.monto` quedaba positivo, así que la SIGUIENTE corrida del cron volvía a
+   * generar cuotas con alquiler > 0. O sea: **el ajuste se "deshacía solo" seis horas después.**
    */
   tipoContrato: 'ALQUILER' | 'SOLO_EXPENSAS' | 'ALQUILER_Y_EXPENSAS';
 };
@@ -100,7 +106,8 @@ export function computarLiquidacionesContrato(
     // `montoAlquilerSegunTipo` va DESPUÉS de resolver el canon del período, no antes: un
     // SOLO_EXPENSAS tiene que dar 0 aunque el contrato haya quedado con un canon positivo
     // (por un ajuste viejo, una renovación, o un alta mal cargada). Es la única defensa del
-    // devengo: antes dependía de que `contrato.monto` valiera 0.
+    // devengo: antes dependía de que `contrato.monto` valiera 0. Es la misma regla que ya
+    // aplicaba `recomputarLiquidacionesFuturas`; acá faltaba, y por eso las dos divergían.
     const alquiler = montoAlquilerSegunTipo(
       contrato.tipoContrato,
       canonDelPeriodo(p.periodo, montoActual, vigencias),

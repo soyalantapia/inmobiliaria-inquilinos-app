@@ -125,8 +125,9 @@ export async function plataRoutes(app: FastifyInstance) {
         // históricos como deuda. El cron ya lo respetaba (devengarTodosLosTenants); este
         // camino gemelo se había quedado afuera del fix.
         devengarDesde: true,
-        // Mismo caso que arriba, con otro campo: sin `tipoContrato` este botón le devenga
-        // alquiler a un contrato de solo expensas. Ver ContratoParaLiquidar.
+        // Mismo caso que arriba, con otro campo: sin `tipoContrato` este botón —el camino
+        // gemelo del cron— le devenga alquiler a un contrato de solo expensas.
+        // Ver ContratoParaLiquidar.
         tipoContrato: true,
         fechaFin: true,
         diaPago: true,
