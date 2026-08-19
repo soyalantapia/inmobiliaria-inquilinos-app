@@ -1021,14 +1021,20 @@ así, en vez de borrarlo en silencio: el plan sigue siendo información.
 **Se corrigieron SÓLO hechos verificables (rutas y existencia), ninguna decisión ni convención.**
 Aun así es tu archivo: si preferís otra forma, se revierte.
 
-**Verificando esas rutas apareció algo bastante más grande → T-36.**
+**Verificando esas rutas apareció algo bastante más grande → T-21-N3-N1.**
 
 ---
 
-## T-36 · La capacidad #1 del MVP no está construida
+## T-21-N3-N1 · La capacidad #1 del MVP no está construida
 
 **Experto:** PROD (decisión) + BE · **Prioridad:** 🔴 · **Depende de:** nada
 **Origen:** verificación de rutas de T-21-N3. No salió de la reunión.
+
+> ⚠️ **Renumerada.** Nació como "T-36" y chocó con otra T-36 creada en paralelo por el chat de
+> integración (la de la cola de mails, más abajo). Es exactamente la colisión que el protocolo
+> advierte: los chats no se ven entre sí, así que numerar a mano con el siguiente número global
+> garantiza el choque. Se derivó de su tarea madre —T-21-N3— porque esa numeración es libre de
+> colisiones por construcción. La otra conserva el número.
 
 `CLAUDE.md` §1 lista **"Carga de contrato con IA"** como la primera de las 4 capacidades
 no-negociables del MVP, y §5.1 la describe con endpoint, flujo, prompt y tests requeridos.
@@ -1134,6 +1140,112 @@ Estos tres no entran en una sesión. Cada uno necesita su propio diseño y su pr
 
 **Experto:** Arquitectura + BE + FE (nuevo front o sección) + SEC · **Prioridad:** 🔴
 **Depende de:** decisión de producto sobre alcance y monetización
+**Estado: ✅ HECHA** — commits `f6bb43c` (backend) · `c6d61cb` (front) · `7d489da` (arreglos SEC),
+rama `feat/T-23-portal-propietario`, merge `41744e5`.
+
+**Las dos decisiones de producto las tomó el dueño:** front **nuevo** (`apps/propietario`,
+puerto 3002) y no una sección de la PWA —Camila `[1:02:00]` lo planteó como algo vendible
+aparte, y mezclarlo con una app que se presenta como *"la app de tu alquiler"* chocaba con eso—;
+y **monetización incluida en el plan de la inmobiliaria**, así que no se construyó nada de
+facturación al propietario.
+
+**Lo que se hizo.** Kind de JWT `propietario` con login por OTP al email (mismo motor que el
+panel), guard `requirePropietario` que revalida contra la DB, y 5 endpoints de lectura
+scopeados. El front tiene dos pantallas: login por código y home con las rendiciones
+desglosadas, las unidades con el estado de los últimos 6 períodos de cada inquilino **y la fecha
+real en que pagó**, y los reclamos con su costo.
+
+**La revisión SEC que exigía la tarea encontró tres cosas, todas mías.** El aislamiento de los
+5 endpoints resultó correcto y ningún endpoint existente acepta el token nuevo por accidente
+—incluido `/uploads`, que prueba dos schemas y cae al 401—. Pero:
+
+1. **Pivote CROSS-TENANT** en `/auth/propietario/elegir`: releía el email *desde la base* para
+   autorizar el salto de cartera, y ese campo lo edita a mano cualquier ADMIN de cualquier
+   inmobiliaria. Darse de alta a uno mismo como propietario, sacar un token, editarle el email
+   al de la víctima y pedir su cartera. Arreglado congelando el email en el token, que es lo que
+   ya hacía `/auth/inquilino/elegir`.
+2. Un propietario nuevo leía **los reclamos de inquilinos anteriores**, con el texto libre que
+   esa persona escribió. Recortado al contrato vigente.
+3. **`Rendicion.notas` se publicaba**, y el equipo lo escribe hace meses creyendo que es interno.
+
+Más tres de higiene: el OTP se consume en todas las carteras del mismo email, el bcrypt corre
+exista o no el email (si no, el tiempo era un oráculo de enumeración) y `DELETE /propietarios`
+limpia los códigos.
+
+**⚠️ MIGRACIÓN SIN APLICAR:** `20260819120000_otp_propietario`. **Va ANTES del código** — al
+revés el login del propietario tira 500. Es un `CREATE TABLE` puro y reversible.
+
+**No se probó en el navegador:** el clasificador de seguridad de la sesión bloqueó el preview.
+Sí: `tsc` 0, lint, `next build` con las rutas prerenderizadas, y 9 tests puros de separación de
+kinds verificados en rojo.
+
+**Riesgo residual asumido:** `Propietario.email` es ahora una credencial pero lo tipea el staff
+y nadie lo verifica. Si el mismo string aparece en dos inmobiliarias, quien controle esa casilla
+ve las dos carteras. Queda un `log.warn` para poder enterarse. Ver T-23-N2.
+
+---
+
+## T-23-N1 · El aislamiento del portal no tiene test de integración
+
+**Experto:** BE · **Prioridad:** 🟠 · **Depende de:** base de prueba
+
+Los 5 endpoints del portal están scopeados por `propietarioId` **e** `inmobiliariaId`, y eso se
+verificó leyendo y con una revisión adversarial. Pero **no hay una prueba que falle** si mañana
+alguien saca un `inmobiliariaId` de un `where`. Para una superficie de lectura sobre datos
+financieros de terceros, eso es poco.
+
+Pide una base de prueba (los tests de `apps/api` hoy pegan a la Postgres de producción, así que
+esto se cruza con T-28). El caso mínimo: dos tenants, dos propietarios, y que cada endpoint
+devuelva 404/vacío al pedir lo del otro.
+
+---
+
+## T-23-N2 · `Propietario.email` es una credencial que nadie verifica
+
+**Experto:** BE + PROD · **Prioridad:** 🟠 · **Depende de:** nada
+
+Con el portal, ese campo dejó de ser un dato de contacto y pasó a ser **la llave de entrada** —
+pero sigue igual que antes: lo tipea el staff a mano (`POST`/`PUT /propietarios`), no se
+verifica nunca, no se normaliza a minúsculas al escribirlo (sí al buscarlo), no tiene
+`@@unique([inmobiliariaId, email])` —a diferencia de `Usuario`, que sí lo tiene— y el `PUT` lo
+pisa en cada edición, incluso a `''`.
+
+Consecuencia concreta: si el mismo string aparece en dos inmobiliarias (un typo, un
+`info@…` placeholder, el mail del contador usado para varios dueños), quien controle esa
+casilla ve las dos carteras. Hoy queda un `log.warn` cuando pasa, que es detección, no
+prevención.
+
+Decidir entre: verificar el email (doble opt-in), hacerlo único por tenant, o las dos.
+
+---
+
+## T-23-N3 · `ParticipacionPropietario` no tiene vigencia
+
+**Experto:** BE · **Prioridad:** 🟢 · **Depende de:** nada
+
+El modelo sólo tiene `propiedadId`, `propietarioId` y `porcentaje`: no hay `desde`/`hasta`, así
+que **no se sabe desde cuándo alguien es dueño de una unidad**. Por eso `/portal/reclamos` se
+recorta al contrato vigente en vez de a "desde que sos dueño", que sería lo correcto: hoy un
+propietario ve los reclamos del inquilino actual aunque haya comprado ayer, y no ve los suyos si
+el contrato cambió.
+
+---
+
+## T-23-N4 · No hay revocación de sesión en ningún tipo de token
+
+**Experto:** BE + SEC · **Prioridad:** 🟠 · **Depende de:** nada
+
+No existe logout server-side, ni `jti`, ni denylist, en **ninguno** de los 6 kinds. Los guards
+revalidan contra la DB —que es lo que da la revocación real hoy: `requireUsuario` mira `activo`,
+el de co-inquilino mira `estado`, el de profesional mira la reasignación— pero el del
+propietario sólo puede mirar que la fila exista, porque `Propietario` no tiene ningún flag de
+estado. Y su token dura 7 días.
+
+Es deuda de todo el sistema, no sólo del portal, pero el portal la hereda sobre datos
+financieros de terceros. Lo mínimo: un flag en `Propietario` que corte el acceso sin borrar la
+fila.
+
+---
 
 **Qué pidió Camila.** Es el pedido más grande de la reunión **y tiene modelo de negocio
 atrás**:
