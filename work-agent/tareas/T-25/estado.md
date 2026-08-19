@@ -86,7 +86,13 @@ sirve es contra el oportunista con acceso físico — que es exactamente el esce
 
 ## Pendiente
 
-Falta el estado del PIN por persona en la card de Equipo (quién tiene, quién está bloqueado) con
-las acciones de ADMIN de desbloquear y borrar. Los **endpoints ya existen** y están testeados;
-falta la UI. No bloquea el uso: la salida self-service (entrar por mail, que destraba el PIN) ya
-funciona y no depende de que el ADMIN esté en la oficina.
+✅ **Nada pendiente del alcance.** El estado del PIN por persona (quién tiene, quién está bloqueado y hasta cuándo) y las acciones de ADMIN —desbloquear y borrar— están en la card de Equipo, reusando el mismo endpoint del conmutador para que las dos pantallas no puedan decir cosas distintas.
+
+Lo único que queda antes de mergear, y no es código:
+
+1. **Correr la consulta de sólo lectura de T-35** en producción. La migración
+   `limpiar_pines_heredados` borra todos los `pinHash` y **no es reversible** — y ahora sí
+   importa, porque hasta hoy ese hash no autenticaba nada y con T-25 pasa a ser una credencial.
+2. **Aplicar la migración** de los 4 valores de enum ANTES del código (el Dockerfile ya lo hace
+   solo: `pnpm db:deploy && exec node dist/index.js`).
+3. **Probarlo en un navegador.** Es lo que falta de verdad.
