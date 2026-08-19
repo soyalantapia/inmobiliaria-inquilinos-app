@@ -23,6 +23,7 @@
  */
 import { parsearMonto } from './monto.js';
 import { normalizarHeader, normalizarDireccion, type CampoImportacion } from './importacion-cartera.js';
+import { normalizarDni } from './normalizar-dni.js';
 
 export { normalizarDireccion };
 
@@ -244,7 +245,10 @@ export function parsearFilaMoroso(fila: unknown[], mapeo: Record<string, number>
     direccion: texto(celda(fila, mapeo, 'direccion')),
     inquilinoNombre: nombre,
     inquilinoApellido: apellido,
-    inquilinoDni: texto(celda(fila, mapeo, 'inquilinoDni')) || null,
+    // `normalizarDni`, igual que la importación de cartera y `buscarOCrearPersona`. Sin
+    // esto la planilla guardaba '20.123.456' y la carga de a uno '20123456': `claveDeduda`
+    // compara strings, no matcheaba, y el mismo moroso entraba DOS VECES debiendo el doble.
+    inquilinoDni: normalizarDni(texto(celda(fila, mapeo, 'inquilinoDni'))),
     inquilinoTelefono: texto(celda(fila, mapeo, 'inquilinoTelefono')) || null,
     debeDesde: parsearPeriodo(celda(fila, mapeo, 'debeDesde')),
     debeHasta: parsearPeriodo(celda(fila, mapeo, 'debeHasta')),

@@ -1,5 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import { buscarOCrearPersona } from './persona.js';
+import { normalizarDni } from './normalizar-dni.js';
 import { generarLiquidacionesContrato } from './liquidaciones.js';
 
 /**
@@ -86,7 +87,9 @@ export async function crearContratoHistorico(
       // —dedup e identidad de la ficha— y NO habilita login por sí sola.
       email: null,
       telefono: d.inquilino.telefono || null,
-      dni: d.inquilino.dni || null,
+      // Normalizado también acá: `Inquilino.dni` es de donde sale la clave de dedup
+      // de deuda histórica, y tiene que quedar igual entre la carga de a uno y la masiva.
+      dni: normalizarDni(d.inquilino.dni),
       esInvitado: false,
     },
   });
@@ -126,7 +129,9 @@ export async function crearContratoHistorico(
     ? await tx.persona.findFirstOrThrow({ where: { id: d.personaId, inmobiliariaId: d.inmobiliariaId } })
     : await buscarOCrearPersona(tx, {
         inmobiliariaId: d.inmobiliariaId,
-        dni: d.inquilino.dni || null,
+        // Normalizado también acá: `Inquilino.dni` es de donde sale la clave de dedup
+      // de deuda histórica, y tiene que quedar igual entre la carga de a uno y la masiva.
+      dni: normalizarDni(d.inquilino.dni),
         email: emailPersona,
         nombre: d.inquilino.nombre,
         apellido: d.inquilino.apellido || null,

@@ -126,7 +126,15 @@ async function resolverAudiencia(
 ): Promise<{ inquilinoIds: string[]; destinatariosCount: number }> {
   switch (audiencia) {
     case 'TODOS_PROPIETARIOS':
-      return { inquilinoIds: [], destinatariosCount: await prisma.propietario.count({ where: { inmobiliariaId: tid } }) };
+      // `activo: true` tiene que estar acá TAMBIÉN, no sólo en el envío. El envío ya
+      // excluye a los dados de baja (más abajo, en `destinos`), pero este contador es
+      // el que se persiste en `Anuncio.destinatariosCount` y el que muestra el panel:
+      // sin el filtro decía "12 destinatarios" mientras salían 7 mails. Un número de
+      // alcance inflado es peor que no tenerlo, porque nadie lo va a dudar.
+      return {
+        inquilinoIds: [],
+        destinatariosCount: await prisma.propietario.count({ where: { inmobiliariaId: tid, activo: true } }),
+      };
     case 'TODOS_CONSORCIOS':
       return { inquilinoIds: [], destinatariosCount: await prisma.consorcio.count({ where: { inmobiliariaId: tid } }) };
     case 'CONTRATOS_ESPECIFICOS': {

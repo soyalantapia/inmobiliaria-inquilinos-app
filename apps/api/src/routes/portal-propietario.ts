@@ -302,18 +302,34 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
                 inquilinoTitular: { select: { nombre: true, apellido: true } },
                 liquidaciones: {
                   orderBy: { periodo: 'desc' },
-                  take: 6,
+                  // Doce y no seis: el dueño mira su propiedad por AÑO —para el contador, para
+                  // decidir si renueva, para ver si el inquilino se atrasa siempre en el mismo
+                  // mes—, y con seis se quedaba sin la mitad del período fiscal sin saberlo.
+                  // Son 12 filas livianas por propiedad (período, estado, monto, vencimiento y
+                  // el último pago conciliado), no un join caro.
+                  take: 12,
                   select: {
                     periodo: true,
                     estado: true,
                     montoTotal: true,
                     fechaVencimiento: true,
                     // La fecha REAL en que entró la plata, que es lo que ella quiere auditar.
+                    //
+                    // Se trae `condonado` y se decide en el mapeo, NO acá: condonar una deuda
+                    // crea un Pago CONCILIADO con `condonado: true` y fecha de hoy
+                    // (plata.ts:738) — plata que NUNCA entró. Sin distinguirlo, el portal le
+                    // decía al propietario "pagó el 19/08" por algo que la inmobiliaria le
+                    // perdonó al inquilino, y la rendición —que sí filtra condonado
+                    // (rendicion-pendiente.ts:95)— nunca se lo iba a depositar. Es
+                    // exactamente el número que este portal existe para que él audite.
+                    //
+                    // Sin `take: 1`: una cuota puede tener un pago real Y una condonación del
+                    // resto. Filtrando en la query con take 1 nos quedábamos con la más nueva
+                    // —la condonación— y se perdía la fecha del pago que sí entró.
                     pagos: {
                       where: { estado: 'CONCILIADO' },
                       orderBy: { fechaTransferencia: 'desc' },
-                      take: 1,
-                      select: { fechaTransferencia: true, monto: true },
+                      select: { fechaTransferencia: true, monto: true, condonado: true },
                     },
                   },
                 },
@@ -351,7 +367,13 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
                 estado: l.estado,
                 monto: dec(l.montoTotal),
                 vence: l.fechaVencimiento.toISOString().slice(0, 10),
-                pagoAt: l.pagos[0]?.fechaTransferencia?.toISOString().slice(0, 10) ?? null,
+                // Sólo los pagos REALES dan fecha de cobro. Ver el comentario del select.
+                pagoAt:
+                  l.pagos.find((pg) => !pg.condonado)?.fechaTransferencia?.toISOString().slice(0, 10) ?? null,
+                // Y la condonación se dice, en vez de desaparecer: una cuota saldada sin
+                // fecha de pago, al lado de otras con fecha, deja al propietario suponiendo
+                // lo que quiera —incluido que se la quedaron—. Que figure por qué.
+                condonada: l.pagos.some((pg) => pg.condonado),
               })),
             }
           : null,
