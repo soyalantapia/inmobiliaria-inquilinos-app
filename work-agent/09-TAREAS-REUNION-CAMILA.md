@@ -3676,3 +3676,80 @@ tiene test.
 
 No es urgente: es barato de sostener a mano y un paquete compartido de mocks es más costo que
 beneficio hoy. Queda escrito para que el día que se desincronice, se sepa por qué.
+
+---
+
+## T-44-N1 · Volvió a haber trabajo terminado fuera de la rama que se deploya — ✅ HECHA
+
+**Estado: ✅ CONSOLIDADA** — commits `eec9270`, `1a4dbb1`, `012b374`. Detalle en
+`work-agent/tareas/T-44-N1/estado.md`.
+
+**Experto:** OPS · **Prioridad:** 🔴 · **Origen:** revisión post-T-46.
+
+T-44 consolidó bien lo que había, pero el problema **no es un evento, es un goteo**: mientras se
+mergeaba, otros chats seguían terminando tareas en sus worktrees. En horas volvió a haber **diez
+ramas** con nueve commits afuera.
+
+Lo grave: **cinco tareas figuraban ✅ en este mismo documento y su código no estaba en la rama
+que se deployaría** — T-36, T-40, T-23-N3, T-23-N1 y T-21-N3-N3 — más **T-25 entera**
+(conmutador + bloqueo por inactividad, 17 archivos y una migración). Un ✅ que no está en la rama
+de deploy es peor que un pendiente: nadie lo vuelve a mirar.
+
+Cuatro conflictos, **ninguno cosmético**. El más caro: un mensaje que decía "cambiar expensas
+todavía no se puede desde el panel, avisale al equipo" cuando el endpoint y el botón ya existen
+—verificado, no asumido—. Entraba una regresión que mandaba al operador a pedir por mail algo
+que ya podía hacer solo.
+
+Verificado: `tsc` 0 en los seis paquetes y **385/385** tests sin base (39 archivos), contra
+360/37 antes de consolidar: **+25 tests que estaban escritos y no corría nadie**.
+
+⚠️ **Sube la cuenta de T-01.** Entraron migraciones que no estaban en la rama, entre ellas
+`20260819180000_conmutador_usuarios`, que agrega cuatro valores a `TipoEventoAuditoria`. El
+código de T-25 los escribe: **deployar el código sin la migración rompe el conmutador al
+auditar**, igual que pasó con `RENOVACION`. Van juntos.
+
+---
+
+## T-44-N2 · Los otros tres `?? 100` de la rendición
+
+**Experto:** BE · **Prioridad:** 🟡 · **Depende de:** nada
+**Origen:** T-44-N1.
+
+T-23-N3 sacó el `part?.porcentaje ?? 100` del bucle de **alquileres** de `POST /rendiciones`,
+porque un `find` que no matchea le atribuye el alquiler ENTERO a ese dueño, en silencio.
+
+En el mismo endpoint quedan **otros tres** con el patrón idéntico: gastos, gastos de reclamos y
+otros ingresos. El razonamiento aplica igual —un gasto mal atribuido le carga al dueño el 100% de
+algo que era parcial—, pero se dejaron como están: extenderlo cambia el comportamiento de rutas
+que el autor de T-23-N3 no testeó, y meterlo adentro de un merge de consolidación era la forma
+más fácil de romper algo sin que se note.
+
+**Criterio de aceptación.** O los tres tiran `ParticipacionAusente` como el de alquileres, o está
+escrito por qué en esos tres el `?? 100` sí es correcto.
+
+---
+
+## T-44-N3 · Nada avisa cuando una rama terminada se queda afuera
+
+**Experto:** OPS · **Prioridad:** 🟡 · **Depende de:** nada
+**Origen:** T-44-N1.
+
+Van dos rondas de consolidación (T-44 y T-44-N1) y las dos empezaron igual: alguien se sentó a
+mirar y encontró trabajo terminado que no estaba en la rama de deploy. Entre una y otra pasaron
+horas.
+
+No hay nada que lo detecte. El CI corre typecheck y tests **de la rama que le toca**, así que una
+rama sana y olvidada da verde para siempre sin que su código llegue a ningún lado.
+
+Lo que alcanzaría: un job que liste las ramas con commits fuera de la de integración y falle —o
+avise— si alguna tiene más de N días o más de N commits. Es la misma consulta que se corrió a
+mano acá:
+
+```bash
+for b in $(git branch --format='%(refname:short)'); do
+  n=$(git log --oneline "$INTEGRACION..$b" | wc -l)
+  [ "$n" -gt 0 ] && echo "$b: $n commits afuera"
+done
+```
+
+**Criterio de aceptación.** Que enterarse deje de depender de que a alguien se le ocurra mirar.
