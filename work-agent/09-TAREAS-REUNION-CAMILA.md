@@ -1090,6 +1090,23 @@ GET no aparece.
 
 ---
 
+## T-42 · Doble click en "Enviar" dejaba dos renglones en el historial — ✅ RESUELTO
+
+**Experto:** FE-P · **Prioridad:** 🟢
+**Origen:** revisión adversarial del 19/08.
+
+El botón de `mensaje-inquilino-dialog.tsx` no se bloqueaba mientras corría el
+`POST /contratos/:id/comunicaciones`, así que dos clicks anotaban **dos comunicaciones** por
+un solo mensaje. Ahora hay estado `enviando` (con guard de reentrada además del `disabled`,
+que tarda un tick en aplicarse), los dos botones se deshabilitan y el texto pasa a "Anotando…".
+
+**De arrastre, el otro hallazgo del mismo archivo se cerró solo:** el toast decía "quedó
+anotado en el historial" pero el timeline no se refrescaba. El diálogo ya invalidaba
+`['contrato']`; lo que faltaba era que el timeline colgara de ese prefijo, que es lo que
+hizo **T-41**. Ahora el toast dice la verdad.
+
+---
+
 ## T-37-N1 · Circuito de aprobación para el pago manual del operador
 
 **Experto:** BE + PROD · **Prioridad:** 🟢 · **Depende de:** decisión de producto

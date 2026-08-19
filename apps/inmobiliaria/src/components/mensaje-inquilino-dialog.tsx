@@ -50,6 +50,9 @@ export function MensajeInquilinoDialog({
   const [asunto, setAsunto] = useState('');
   const [cuerpo, setCuerpo] = useState('');
   const [plantillaActiva, setPlantillaActiva] = useState<string | null>(null);
+  // T-42 — El botón no se bloqueaba mientras corría el POST de la comunicación: dos clicks
+  // dejaban DOS renglones en el historial del contrato por un solo mensaje.
+  const [enviando, setEnviando] = useState(false);
 
   // Reset al abrir/cerrar
   useEffect(() => {
@@ -69,6 +72,7 @@ export function MensajeInquilinoDialog({
   };
 
   const enviar = async () => {
+    if (enviando) return; // guard: el disabled tarda un tick en aplicarse
     if (!cuerpo.trim()) {
       toast({ title: 'Falta el mensaje', variant: 'destructive' });
       return;
@@ -115,6 +119,7 @@ export function MensajeInquilinoDialog({
     // dice la verdad en cada caso, en vez de afirmar un registro que no ocurrió.
     let registrado = false;
     if (apiEnabled) {
+      setEnviando(true);
       try {
         await ensureApiSession();
         await apiFetch(`/contratos/${contratoId}/comunicaciones`, {
@@ -122,9 +127,12 @@ export function MensajeInquilinoDialog({
           body: JSON.stringify({ canal, asunto: asunto || 'Sobre tu contrato', cuerpo }),
         });
         registrado = true;
+        // Alcanza al timeline porque cuelga de ['contrato', id, 'eventos'] (T-41).
         qc.invalidateQueries({ queryKey: ['contrato'] });
       } catch {
         registrado = false;
+      } finally {
+        setEnviando(false);
       }
     }
 
@@ -240,12 +248,17 @@ export function MensajeInquilinoDialog({
         )}
 
         <div className="flex gap-2">
-          <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
+          <Button
+            variant="outline"
+            className="flex-1"
+            disabled={enviando}
+            onClick={() => onOpenChange(false)}
+          >
             Cancelar
           </Button>
-          <Button className="flex-1" onClick={enviar}>
+          <Button className="flex-1" onClick={enviar} disabled={enviando}>
             <Send className="h-4 w-4" />
-            {canal === 'LLAMADA' ? 'Llamar' : 'Enviar'}
+            {enviando ? 'Anotando…' : canal === 'LLAMADA' ? 'Llamar' : 'Enviar'}
           </Button>
         </div>
       </DialogContent>
