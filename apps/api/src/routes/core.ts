@@ -1029,6 +1029,18 @@ export async function coreRoutes(app: FastifyInstance) {
     if (d.monto === 0 && d.tipoContrato !== 'SOLO_EXPENSAS') {
       return reply.code(400).send({ message: 'El monto del alquiler tiene que ser mayor a cero' });
     }
+    // …y el inverso, que faltaba: la validación era asimétrica. Un POST con
+    // { tipoContrato: 'SOLO_EXPENSAS', monto: 500000 } pasaba y se persistía tal cual, y a
+    // partir de ahí el contrato devengaba alquiler todos los meses pese a estar marcado como
+    // de solo expensas. Rechazamos en vez de normalizar a 0: si el que carga puso un monto,
+    // o se equivocó de tipo o se equivocó de monto — y adivinar cuál de las dos es peor que
+    // preguntar.
+    if (d.monto > 0 && d.tipoContrato === 'SOLO_EXPENSAS') {
+      return reply.code(400).send({
+        message:
+          'Un contrato de solo expensas no lleva monto de alquiler. Dejalo en 0, o cambiá el tipo de contrato si además se cobra alquiler.',
+      });
+    }
     if ((d.tipoContrato === 'ALQUILER_Y_EXPENSAS' || d.tipoContrato === 'SOLO_EXPENSAS') && !d.montoExpensas) {
       return reply.code(400).send({ message: 'Este tipo de contrato requiere el monto de expensas' });
     }
@@ -1767,6 +1779,17 @@ export async function coreRoutes(app: FastifyInstance) {
     const contrato = await prisma.contrato.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
     if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
     if (contrato.estado !== 'ACTIVO') return reply.code(409).send({ message: 'Solo se ajusta un contrato activo' });
+    // Un contrato de SOLO EXPENSAS no tiene canon que ajustar: el alquiler lo arregla el
+    // propietario por fuera. Sin este corte, el ajuste —y sobre todo el ajuste MASIVO del
+    // panel, que barre todos los contratos activos— le escribía un canon positivo y el
+    // devengo empezaba a facturarle alquiler a alguien que no paga alquiler.
+    if (contrato.tipoContrato === 'SOLO_EXPENSAS') {
+      return reply.code(409).send({
+        message:
+          'Este contrato es de solo expensas: no tiene alquiler que ajustar. Si querés cambiar el monto de las expensas, editá el contrato.',
+        codigo: 'SOLO_EXPENSAS_SIN_CANON',
+      });
+    }
     const montoAnterior = Number(contrato.monto);
     if (b.montoNuevo === montoAnterior) {
       return reply.code(400).send({ message: 'El monto nuevo es igual al actual' });
@@ -1842,7 +1865,10 @@ export async function coreRoutes(app: FastifyInstance) {
     const parsed = z
       .object({
         fechaFinNueva: z.coerce.date(),
-        montoNuevo: z.number().positive(),
+        // `nonnegative` y no `positive`: un SOLO_EXPENSAS se renueva (se extiende el plazo)
+        // pero su canon es 0. El chequeo de "0 sólo vale para solo expensas" está abajo,
+        // igual que en el alta.
+        montoNuevo: z.number().nonnegative(),
         montoDesde: z.string().regex(/^\d{4}-\d{2}$/, 'Período inválido (YYYY-MM)'),
         diaPago: z.number().int().min(1).max(31).optional(),
         motivo: z.string().trim().max(200).optional(),
@@ -1859,6 +1885,15 @@ export async function coreRoutes(app: FastifyInstance) {
       return reply.code(400).send({ message: 'La nueva fecha de fin debe ser posterior a la actual' });
     }
     const montoAnterior = Number(contrato.monto);
+    // Un contrato de solo expensas se renueva por el PLAZO, no por el canon: su alquiler es 0
+    // y lo tiene que seguir siendo. Sin esto, renovarlo le escribía un canon positivo y el
+    // devengo del mes siguiente le facturaba alquiler a alguien que no paga alquiler.
+    // Forzamos 0 en vez de rechazar: la renovación en sí es legítima.
+    const esSoloExpensas = contrato.tipoContrato === 'SOLO_EXPENSAS';
+    const canonNuevo = esSoloExpensas ? 0 : b.montoNuevo;
+    if (!esSoloExpensas && canonNuevo === 0) {
+      return reply.code(400).send({ message: 'El monto del alquiler tiene que ser mayor a cero' });
+    }
     const expensas = contrato.montoExpensas != null ? Number(contrato.montoExpensas) : 0;
     const res = await prisma.$transaction(async (tx) => {
       const renov = await tx.renovacionContrato.create({
@@ -1868,7 +1903,7 @@ export async function coreRoutes(app: FastifyInstance) {
           fechaFinAnterior: contrato.fechaFin,
           fechaFinNueva: b.fechaFinNueva,
           montoAnterior,
-          montoNuevo: b.montoNuevo,
+          montoNuevo: canonNuevo,
           montoDesde: b.montoDesde,
           motivo: b.motivo || null,
           creadoPorId: u.userId,
@@ -1876,7 +1911,7 @@ export async function coreRoutes(app: FastifyInstance) {
       });
       await tx.contrato.update({
         where: { id },
-        data: { fechaFin: b.fechaFinNueva, monto: b.montoNuevo, ...(b.diaPago ? { diaPago: b.diaPago } : {}) },
+        data: { fechaFin: b.fechaFinNueva, monto: canonNuevo, ...(b.diaPago ? { diaPago: b.diaPago } : {}) },
       });
       // Cuotas futuras impagas (>= montoDesde) al nuevo canon (igual que el ajuste).
       await tx.liquidacion.updateMany({
@@ -1887,14 +1922,14 @@ export async function coreRoutes(app: FastifyInstance) {
           estado: 'PENDIENTE',
           pagos: { none: { estado: { in: ['INFORMADO', 'CONCILIADO'] } } },
         },
-        data: { montoAlquiler: b.montoNuevo, montoTotal: b.montoNuevo + expensas },
+        data: { montoAlquiler: canonNuevo, montoTotal: canonNuevo + expensas },
       });
       // Devengar los nuevos períodos (hasta el tope del devengo) con la nueva fechaFin + monto.
       // Idempotente (skipDuplicates); el cron completa el resto mes a mes.
       const nuevas = await generarLiquidacionesContrato(tx, {
         ...contrato,
         fechaFin: b.fechaFinNueva,
-        monto: b.montoNuevo,
+        monto: canonNuevo,
       });
       // Rastro en el Historial del contrato (antes la renovación no dejaba evento
       // → la pestaña Historial seguía "Sin eventos"). Reusamos AJUSTE_APLICADO (el
@@ -1905,7 +1940,7 @@ export async function coreRoutes(app: FastifyInstance) {
           inmobiliariaId: u.inmobiliariaId,
           contratoId: id,
           tipo: 'AJUSTE_APLICADO',
-          titulo: `Renovación: plazo hasta ${finNuevaTxt} · canon ${montoAnterior} → ${b.montoNuevo} ${contrato.moneda}`,
+          titulo: `Renovación: plazo hasta ${finNuevaTxt} · canon ${montoAnterior} → ${canonNuevo} ${contrato.moneda}`,
           detalle: b.motivo ?? null,
           fecha: new Date(),
           autor: u.userId,
@@ -2956,6 +2991,17 @@ export async function coreRoutes(app: FastifyInstance) {
       },
     });
     if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
+    // Igual que en `/ajustar`: un solo expensas no tiene canon que corregir. Este camino era
+    // el más traicionero de los tres, porque SÍ respetaba el tipo al recomputar las cuotas
+    // (las dejaba en 0) pero igual escribía `contrato.monto = d.monto` — o sea, dejaba el
+    // contrato y sus liquidaciones diciendo cosas distintas, en silencio.
+    if (contrato.tipoContrato === 'SOLO_EXPENSAS') {
+      return reply.code(409).send({
+        message:
+          'Este contrato es de solo expensas: no tiene alquiler que corregir. Si querés cambiar el monto de las expensas, editá el contrato.',
+        codigo: 'SOLO_EXPENSAS_SIN_CANON',
+      });
+    }
 
     const montoViejo = Number(contrato.monto);
     // Base para reprogramar el próximo ajuste: lo que mande el body pisa; si no,
