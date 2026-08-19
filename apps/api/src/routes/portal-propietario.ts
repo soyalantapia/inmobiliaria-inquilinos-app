@@ -179,8 +179,14 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
         inmobiliaria: elegido.inmobiliaria.nombre,
         // Si administra con más de una inmobiliaria, el front tiene que poder ofrecer el
         // cambio: sin esto entraría a una cartera al azar y no sabría que las otras existen.
+        // Va también el NOMBRE de cada ficha, no sólo la inmobiliaria: dos propietarios de la
+        // MISMA inmobiliaria pueden compartir email legítimamente —un matrimonio, el contador
+        // de varios dueños— y sin el nombre el selector mostraba dos filas idénticas, imposible
+        // de elegir. (Por eso tampoco se hizo el email único por tenant: rompería esos casos
+        // reales sin cerrar el problema de fondo, que es entre tenants.)
         carteras: propietarios.map((p) => ({
           propietarioId: p.id,
+          nombre: `${p.nombre} ${p.apellido}`.trim(),
           inmobiliaria: p.inmobiliaria.nombre,
           actual: p.id === elegido!.id,
         })),

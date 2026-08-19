@@ -7,6 +7,7 @@ import { Building2, ChevronDown, Loader2, LogOut, Receipt, Wrench } from 'lucide
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card } from '@llave/ui/card';
+import { SelectorCartera } from '@/components/selector-cartera';
 import {
   apiFetch,
   cerrarSesion,
@@ -92,10 +93,14 @@ export default function PortalHome() {
             {cartera.data ? ` · comisión ${cartera.data.comisionPct}%` : ''}
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={salir}>
-          <LogOut className="h-4 w-4" />
-          Salir
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          {/* Sólo aparece si esta persona administra con más de una inmobiliaria. */}
+          <SelectorCartera />
+          <Button variant="outline" size="sm" onClick={salir}>
+            <LogOut className="h-4 w-4" />
+            Salir
+          </Button>
+        </div>
       </header>
 
       <Seccion titulo="Lo que te rindieron" icono={<Receipt className="h-4 w-4" />}>

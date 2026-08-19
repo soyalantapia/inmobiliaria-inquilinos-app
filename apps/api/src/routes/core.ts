@@ -16,6 +16,7 @@ import {
   montoAlquilerSegunTipo,
 } from '../lib/liquidaciones.js';
 import { conSaldo, montoPagadoPorLiquidacion } from '../lib/saldos.js';
+import { normalizarEmail } from '../lib/normalizar-email.js';
 import { alquilerCobradoSinRendir } from '../lib/rendicion-pendiente.js';
 import { aplicarDepositoADeuda } from '../lib/aplicar-deposito.js';
 import { calcularMora, resolverEsquemaMora } from '../lib/punitorios.js';
@@ -82,6 +83,7 @@ function liqQueDefineEstado<
 function normalizarCuit(input: string | undefined | null): string {
   return (input ?? '').replace(/\D/g, '');
 }
+
 
 /**
  * Qué pasó con el aviso de ajuste. Viaja en la respuesta del endpoint para que el panel
@@ -728,7 +730,7 @@ export async function coreRoutes(app: FastifyInstance) {
         nombre: d.nombre,
         apellido: d.apellido,
         cuit: normalizarCuit(d.cuit),
-        email: d.email ?? '',
+        email: normalizarEmail(d.email),
         telefono: d.telefono ?? '',
         cbuAlias: d.cbuAlias || null,
         comisionPct: d.comisionPct ?? 8,
@@ -767,7 +769,7 @@ export async function coreRoutes(app: FastifyInstance) {
         nombre: d.nombre,
         apellido: d.apellido,
         cuit: normalizarCuit(d.cuit),
-        email: d.email ?? '',
+        email: normalizarEmail(d.email),
         telefono: d.telefono ?? '',
         cbuAlias: d.cbuAlias || null,
         ...(d.comisionPct != null ? { comisionPct: d.comisionPct } : {}),
