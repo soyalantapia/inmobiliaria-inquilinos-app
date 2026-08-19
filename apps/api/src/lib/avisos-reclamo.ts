@@ -1,4 +1,5 @@
 import { prisma } from '../db.js';
+import { destinatarioDeAviso } from './destinatario-aviso.js';
 import {
   enviarReclamoAsignadoInquilino,
   enviarReclamoNuevoInmo,
@@ -47,11 +48,14 @@ export async function avisarReclamoNuevoAInmo(opts: {
     where: { id: opts.reclamoId, inmobiliariaId: opts.inmobiliariaId },
     select: {
       propiedad: { select: { direccion: true, complejo: true, consorcio: { select: { nombre: true } } } },
-      inmobiliaria: { select: { email: true } },
     },
   });
-  const email = reclamo?.inmobiliaria?.email?.trim();
-  if (!reclamo || !email) return;
+  if (!reclamo) return;
+  // El destinatario ya no es fijo: si la inmobiliaria configuró una casilla para los reclamos,
+  // va ahí; si no, a la de siempre. Camila (03/08): *"todos van a mi misma casilla, no a la de
+  // la chica que los maneja"*. Ver lib/destinatario-aviso.ts.
+  const email = await destinatarioDeAviso(opts.inmobiliariaId, 'RECLAMO_NUEVO');
+  if (!email) return;
 
   await enviarReclamoNuevoInmo({
     email,

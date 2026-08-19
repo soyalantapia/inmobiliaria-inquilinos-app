@@ -57,3 +57,52 @@ export async function setContratosRequierenAprobacion(
     body: JSON.stringify({ contratosRequierenAprobacion: valor }),
   });
 }
+
+// ===== Destinatario por tipo de aviso (T-17-N1) =====
+
+export interface AvisoConfigurable {
+  tipo: 'RECLAMO_NUEVO';
+  label: string;
+  descripcion: string;
+  /** null = no tiene casilla propia → va al `fallback`. */
+  email: string | null;
+}
+
+export interface AvisosMiInmobiliaria {
+  /** El email de la inmobiliaria: a donde va todo lo que no tenga casilla propia. */
+  fallback: string | null;
+  avisos: AvisoConfigurable[];
+}
+
+/**
+ * A qué casilla va cada tipo de aviso automático.
+ *
+ * El server devuelve la lista COMPLETA de tipos y el fallback por separado, así el panel no
+ * tiene que reimplementar la regla "si no hay configurada, usá la de la inmobiliaria" — si
+ * viviera en los dos lados, se despegarían.
+ */
+export function useAvisosMiInmobiliaria(): {
+  datos: AvisosMiInmobiliaria | null;
+  cargando: boolean;
+  isError: boolean;
+} {
+  const q = useQuery({
+    queryKey: ['mi-inmobiliaria-avisos'],
+    queryFn: async () => {
+      await ensureApiSession();
+      return apiFetch<AvisosMiInmobiliaria>('/mi-inmobiliaria/avisos');
+    },
+    enabled: apiEnabled,
+    staleTime: 60_000,
+  });
+  return { datos: q.data ?? null, cargando: q.isPending, isError: q.isError };
+}
+
+/** Guarda (o borra, con string vacío) la casilla de un tipo de aviso. Solo ADMIN. */
+export async function setDestinatarioAviso(input: {
+  tipo: 'RECLAMO_NUEVO';
+  email: string;
+}): Promise<{ tipo: string; email: string | null }> {
+  await ensureApiSession();
+  return apiFetch('/mi-inmobiliaria/avisos', { method: 'PUT', body: JSON.stringify(input) });
+}

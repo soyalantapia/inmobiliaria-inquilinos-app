@@ -16,6 +16,7 @@ import {
   type MiCartera,
   type PropiedadPortal,
   type ReclamoPortal,
+  type RendicionDetalle,
   type RendicionPortal,
 } from '@/lib/api';
 
@@ -190,6 +191,16 @@ const Vacio = ({ texto }: { texto: string }) => (
  */
 function FilaRendicion({ r }: { r: RendicionPortal }) {
   const [abierto, setAbierto] = useState(false);
+  // El detalle se pide RECIÉN al abrir, no con la lista: son todos los gastos y todos los
+  // alquileres de ese período, y traerlos para las 12 rendiciones que nadie va a abrir es
+  // pagar una respuesta enorme para mostrar cinco números. Es la razón por la que el endpoint
+  // está separado (ver el comentario de /portal/rendiciones en el backend).
+  const detalle = useQuery({
+    queryKey: ['portal-rendicion', r.id],
+    queryFn: () => apiFetch<RendicionDetalle>(`/portal/rendiciones/${r.id}`),
+    enabled: abierto,
+    staleTime: 5 * 60_000,
+  });
   return (
     <Card className="overflow-hidden">
       <button
@@ -219,9 +230,106 @@ function FilaRendicion({ r }: { r: RendicionPortal }) {
             <span>Te depositamos</span>
             <span className="tabular-nums">{money(r.teDepositamos)}</span>
           </div>
+
+          {/* El desglose. Los cinco números de arriba contestan "cuánto", esto contesta "por
+              qué" — que es la pregunta con la que el dueño levanta el teléfono. Sobre todo el
+              renglón de gastos: ver "− $85.000" sin saber de qué es garantiza la llamada. */}
+          {detalle.isPending ? (
+            <p className="pt-3 text-xs text-muted-foreground">Buscando el detalle…</p>
+          ) : detalle.isError ? (
+            // Los totales de arriba ya están y son correctos: el error es sólo del desglose.
+            // Decirlo evita que el dueño desconfíe del número que sí tiene delante.
+            <p className="pt-3 text-xs text-muted-foreground">
+              No pudimos traer el detalle en este momento. Los montos de arriba son los de tu
+              rendición: probá de nuevo en un rato.
+            </p>
+          ) : detalle.data ? (
+            <div className="space-y-4 pt-3">
+              <Desglose
+                titulo="De dónde salió el alquiler"
+                filas={detalle.data.detalleAlquileres.map((a) => ({
+                  clave: `${a.periodo}-${a.direccion}`,
+                  principal: a.direccion,
+                  // La participación sólo cuando NO es dueño único: con 100% es ruido, y con
+                  // menos es justo el dato que explica por qué el monto no es el alquiler entero.
+                  secundario:
+                    a.participacionPct < 100
+                      ? `${periodoLargo(a.periodo)} · te toca el ${a.participacionPct}%`
+                      : periodoLargo(a.periodo),
+                  monto: money(a.monto),
+                }))}
+                vacio="Esta rendición no tiene alquileres imputados."
+              />
+
+              {detalle.data.detalleGastos.length > 0 && (
+                <Desglose
+                  titulo="Qué se descontó"
+                  filas={detalle.data.detalleGastos.map((g, i) => ({
+                    clave: `${g.fecha}-${i}`,
+                    principal: g.descripcion,
+                    secundario: [fecha(g.fecha), g.tipo.toLowerCase(), g.proveedor].filter(Boolean).join(' · '),
+                    monto: `− ${money(g.monto)}`,
+                  }))}
+                  vacio=""
+                />
+              )}
+
+              {detalle.data.detalleIngresos.length > 0 && (
+                <Desglose
+                  titulo="Otros ingresos"
+                  filas={detalle.data.detalleIngresos.map((x, i) => ({
+                    clave: `${x.fecha}-${i}`,
+                    principal: x.descripcion,
+                    secundario:
+                      x.participacionPct < 100
+                        ? `${fecha(x.fecha)} · te toca el ${x.participacionPct}%`
+                        : fecha(x.fecha),
+                    monto: `+ ${money(x.monto)}`,
+                  }))}
+                  vacio=""
+                />
+              )}
+            </div>
+          ) : null}
         </div>
       )}
     </Card>
+  );
+}
+
+/** Una lista de renglones "concepto · cuándo · monto" dentro del desglose de una rendición. */
+function Desglose({
+  titulo,
+  filas,
+  vacio,
+}: {
+  titulo: string;
+  filas: { clave: string; principal: string; secundario: string; monto: string }[];
+  vacio: string;
+}) {
+  if (filas.length === 0) {
+    return vacio ? (
+      <div>
+        <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{titulo}</p>
+        <p className="text-xs text-muted-foreground">{vacio}</p>
+      </div>
+    ) : null;
+  }
+  return (
+    <div>
+      <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{titulo}</p>
+      <div className="space-y-1.5">
+        {filas.map((f) => (
+          <div key={f.clave} className="flex items-start justify-between gap-3 text-xs">
+            <span className="min-w-0">
+              <span className="block truncate text-foreground">{f.principal}</span>
+              <span className="block text-muted-foreground">{f.secundario}</span>
+            </span>
+            <span className="shrink-0 tabular-nums">{f.monto}</span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 

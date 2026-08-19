@@ -118,6 +118,7 @@ const eventoIcono: Record<TipoEventoContrato, LucideIcon> = {
 const eventoColor: Record<TipoEventoContrato, string> = {
   CREADO: 'bg-emerald-500',
   AJUSTE_APLICADO: 'bg-primary',
+  RENOVACION: 'bg-primary',
   PAGO_RECIBIDO: 'bg-emerald-500',
   PAGO_VENCIDO: 'bg-red-500',
   RECLAMO_CREADO: 'bg-primary',

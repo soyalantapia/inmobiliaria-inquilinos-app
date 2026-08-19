@@ -233,6 +233,15 @@ export async function requirePersona(
   // La identidad de este kind es SÓLO un email adentro del token —no hay id— así
   // que lo único revalidable es que ese email siga siendo el de alguien.
   //
+  // SE REVALIDA CONTRA `Inquilino`, NO CONTRA `Persona`, y la distinción no es
+  // cosmética: fue un bug. El token se emite en `/auth/otp/verify` desde el email
+  // que probó el OTP, que sale de `Inquilino.email`; y el único uso real del
+  // token —`/auth/inquilino/elegir`— busca `inquilino.findFirst({ email })`. La
+  // `Persona` es la capa que AGRUPA inquilinos, y puede perfectamente no tener
+  // email: `buscarOCrearPersona` la crea con `email: null` cuando el alta sólo
+  // trajo DNI. Mirando `Persona` acá, ese inquilino sacaba su token del OTP y
+  // después se comía un 401 al elegir alquiler — o sea, no podía entrar.
+  //
   // Es una revocación más débil que la de los otros guards, y hay que ser claro
   // sobre qué cubre y qué no: cubre el caso real que la motivó, que es un OTP
   // emitido a un email equivocado (un typo, un mail que se corrige después) — al
@@ -243,7 +252,7 @@ export async function requirePersona(
   // A propósito SIN scope de inmobiliaria: este kind es cross-tenant por diseño
   // (una persona puede alquilar en varias), así que alcanza con que exista en
   // alguna. El scope por tenant lo hace cada endpoint con el id que elige.
-  const existe = await prisma.persona.findFirst({
+  const existe = await prisma.inquilino.findFirst({
     where: { email: parsed.data.email },
     select: { id: true },
   });

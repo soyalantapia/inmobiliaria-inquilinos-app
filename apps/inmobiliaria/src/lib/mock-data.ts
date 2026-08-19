@@ -1089,6 +1089,17 @@ export function generarLiquidaciones(
 // importantes, reclamos creados, cambios de estado). Para el demo
 // generamos un set fijo para Mariela y otro para los demás.
 
+/**
+ * ⚠️ Es una COPIA A MANO del enum `TipoEventoContrato` de `schema.prisma`. El
+ * panel no importa tipos de Prisma, así que agregar un valor al enum del backend
+ * NO rompe la compilación acá — y los `Record<TipoEventoContrato, …>` de la
+ * pestaña Historial quedan sin la clave nueva, devuelven `undefined` y la
+ * pantalla crashea al renderizar el ícono.
+ *
+ * Ya pasó con `RENOVACION`: un chat lo agregó al backend, otro no se enteró, y
+ * renovar un contrato dejaba el Historial en blanco. Si sumás un valor al enum de
+ * Prisma, sumalo también acá y a los dos `Record` de `contratos/[id]`.
+ */
 export type TipoEventoContrato =
   | 'CREADO'
   | 'AJUSTE_APLICADO'

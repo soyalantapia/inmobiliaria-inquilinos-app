@@ -672,6 +672,7 @@ model Inmobiliaria {
   updatedAt             DateTime @updatedAt
 
   usuarios                   Usuario[]
+  destinatariosAviso         DestinatarioAviso[]
   sociedades                 Sociedad[]
   propietarios               Propietario[]
   arcaConfigs                ArcaConfig[]
@@ -878,6 +879,41 @@ model CodigoOtpUsuario {
 /// `propietarioId`: el propietario no tiene contraseña, entra con email + código.
 /// Se separa por modelo (y no una tabla genérica con un `tipo`) para conservar la FK
 /// real: un código huérfano que apunte a un id de otra tabla no es representable.
+/// A qué casilla va cada TIPO de aviso automático de la inmobiliaria.
+///
+/// POR QUÉ: hasta ahora todos los avisos iban a `Inmobiliaria.email`, una sola casilla. Camila
+/// administra 220 propiedades: *"me va a llegar un mail por cada reclamo… y todos van a mi misma
+/// casilla, no a la de la chica que los maneja. Habría que poder decir a quién le llega cada
+/// cosa."* Su bandeja se llena de avisos que no va a accionar, y quien tiene que accionarlos no
+/// se entera.
+///
+/// FALLBACK: la ausencia de fila significa "usá `Inmobiliaria.email`", que es el comportamiento
+/// de siempre. Por eso no hay `activo` ni default sembrado: no configurar nada deja todo como
+/// estaba, y borrar la fila vuelve atrás.
+model DestinatarioAviso {
+  id             String        @id @default(cuid())
+  inmobiliariaId String
+  inmobiliaria   Inmobiliaria  @relation(fields: [inmobiliariaId], references: [id])
+  tipo           TipoAvisoInmo
+  email          String
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@unique([inmobiliariaId, tipo])
+  @@map("destinatarios_aviso")
+}
+
+/// Tipos de aviso automático que recibe la INMOBILIARIA (no el inquilino ni el propietario).
+///
+/// Arranca con uno solo a propósito: `RECLAMO_NUEVO` es, hoy, el único aviso por mail que el
+/// sistema le manda a la inmobiliaria (`avisos-reclamo.ts`). Listar acá tipos que todavía no
+/// mandan nada sería ofrecer una configuración que no hace nada — el mismo patrón de promesa
+/// vacía que este proyecto viene sacando de todas las pantallas. Cuando se agregue un aviso
+/// nuevo, se agrega su valor acá.
+enum TipoAvisoInmo {
+  RECLAMO_NUEVO
+}
+
 model CodigoOtpPropietario {
   id            String      @id @default(cuid())
   propietarioId String
