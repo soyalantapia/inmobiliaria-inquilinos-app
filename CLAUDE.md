@@ -1,6 +1,27 @@
-# LLAVE — Plataforma inmobiliaria
+# My Alquiler — guía de trabajo del repo
 
-> **Este archivo es la fuente de verdad del proyecto.** Léelo completo antes de cada sesión de trabajo. Si algo en este archivo entra en conflicto con un pedido en chat, **avisar antes de proceder**.
+> ## ⚠️ QUÉ ES ESTE ARCHIVO Y QUÉ NO ES — leer antes que nada
+>
+> Es la guía de **cómo trabajar** en este repo. Las secciones **§0** (reglas de proceso) y
+> **§9** (convenciones de código) están vigentes y se cumplen.
+>
+> **NO es la descripción del sistema construido.** El grueso se escribió el **08/05/2026**,
+> antes de que existiera el producto, y describe un plan que en buena parte no ocurrió. Las
+> secciones marcadas con ⚠️ contienen afirmaciones **falsas**; se conservan como registro
+> histórico, no como referencia.
+>
+> **Para saber qué hay construido:**
+> - `README.md` y `PROJECT.MD` — stack real, arquitectura, URLs en vivo.
+> - `docs/` — `API.md`, `DATA-MODEL.md`, `CONFIG.md`, `RUNBOOK.md`, `TESTING.md`.
+> - `work-agent/` — el día a día. Empezar por `00-ESTADO.md` y `07-ECOSISTEMA.md`.
+> - `apps/api/prisma/schema.prisma` — el modelo de datos real.
+>
+> Si algo de acá contradice a esos, **mandan esos** y hay que corregir este.
+>
+> El producto se llama **My Alquiler** (`myalquiler.com`). "Llave" y `llave.ar` fueron el
+> nombre del brief de mayo y no existen; `@llave/*` quedó como codename de los paquetes.
+>
+> *Auditado contra el código el 19/08/2026 (T-21-N3-N1).*
 
 ---
 
@@ -54,32 +75,104 @@ Al final de cada tarea o feature:
 
 ## 1. CONTEXTO DEL PRODUCTO
 
-### Qué es Llave
+> **Verificado contra el código el 19/08/2026.** Lo que sigue describe lo que HAY, no lo que
+> se planeó. La decisión sobre las 4 capacidades del brief está **abierta** — ver §1.5.
 
-Llave es una plataforma que centraliza la experiencia de alquiler y consorcio en una sola app móvil para el inquilino, mientras le da a la inmobiliaria un dashboard simple para cargar contratos con IA, cobrar automático y verificar la solvencia del entrante.
+### Qué es My Alquiler
 
-**No somos** un software de back-office (eso ya lo hacen Octopus, AdminProp, Spot). **Somos** la capa de experiencia del usuario final, que se enchufa con APIs a sistemas existentes cuando hace falta.
+Un SaaS multi-tenant de gestión de alquileres, **en producción** para una inmobiliaria real.
+Es el **sistema operativo de la cobranza de una inmobiliaria administradora**, con el
+inquilino y el propietario adentro: la inmobiliaria devenga, cobra, concilia, rinde y audita;
+el inquilino ve una sola deuda y paga; el propietario ve su rendición.
+
+**No somos** una pasarela de pagos ni un custodio de fondos: la plata va directo al CBU de la
+inmobiliaria o del propietario, y el sistema registra y concilia. La propia landing lo dice:
+*"el dinero nunca pasa por nosotros"*.
+**No somos**, hoy, un producto de IA: **no hay ningún modelo de lenguaje integrado en ninguna
+parte del monorepo.**
 
 ### Para quién
 
-**Audiencia A — Inquilino (cara visible).** La persona que vive y paga. Hoy tiene 2-3 apps fragmentadas. Quiere una sola.
+**A — Inmobiliaria administradora (la que paga).** 30-250 contratos. Es la cara principal del
+producto y donde está el grueso del código.
 
-**Audiencia B — Inmobiliaria mediana (cliente B2B).** 30-150 contratos. Hoy en Excel + WhatsApp manual. Quiere ordenar y modernizar sin tirar lo que ya funciona.
+**B — Inquilino.** PWA mobile-first: ve alquiler + expensas en un número, transfiere, sube el
+comprobante, reclama, se lleva su certificado.
 
-**Audiencia C — Administración de consorcio (cliente B2B lateral).** Ya tiene su sistema (AdminProp, Octopus). Para esos integramos vía API o conector en v1.5. **No es target del MVP.**
+**C — Propietario.** Tiene app propia (`apps/propietario`) y portal: ve su cartera, sus
+propiedades y sus rendiciones. **El brief no lo previó.**
+
+**D — Consorcio.** Módulo construido y con tarifa propia. El brief decía que no era target.
 
 ### Las 3 personas (mantener presente al construir)
 
 - **Mariela**, 32, inquilina freelance en Palermo. Mobile, Android gama media, paciencia limitada.
 - **Roberto**, 56, dueño de inmobiliaria en Córdoba con 80 contratos. Desktop, Chrome, sin paciencia para flujos de 10 pasos.
-- **Camila**, 38, mano derecha de admin con 220 propiedades. Desktop, multitarea, necesita reportes claros.
+- **Camila**, 38, mano derecha de admin con 220 propiedades. Desktop, multitarea, necesita reportes claros. **Es la clienta cero real**: prueba el producto en vivo con su equipo.
 
-### Las 4 capacidades del MVP (no-negociables)
+### 1.1. Capacidades CONSTRUIDAS y en producción
 
-1. **Carga de contrato con IA** — PDF → Claude → JSON estructurado → revisión humana → DB.
-2. **Pago unificado** — alquiler y expensas en una sola pantalla, una sola pasarela.
-3. **Chat con el contrato** — RAG sobre cláusulas, citas exactas, deriva a humano cuando hace falta.
-4. **Screening crediticio** — CUIT del entrante → Nosis API → BCRA → recomendación IA en <30 seg.
+Cada una tiene endpoint registrado en `apps/api/src/app.ts`, handler con lógica real y front
+que la consume con `apiEnabled` — o sea, en producción, no sólo en el build demo.
+
+1. **Cobranza end-to-end sin pasarela** — devengo automático (cron in-process cada 6h,
+   idempotente), liquidación única alquiler+expensas, informe de pago con comprobante,
+   **validación humana** con capacidad `pago.conciliar`, rechazo, anulación y carga de efectivo.
+2. **Mora dinámica** — 4 esquemas calculados on-read, configurables por inmobiliaria y por
+   contrato.
+3. **Caja diaria, cuentas y cierre con comisión** — sobre el alquiler, no sobre expensas.
+4. **Rendición al propietario + su portal y su app.**
+5. **Permisos por rol con bandeja de aprobaciones** — 5 roles (ADMIN/CAJA/OPERADOR/CARGA/
+   LECTURA) y ~35 capacidades tipadas, aplicadas endpoint por endpoint.
+6. **Auditoría de acciones sensibles.**
+7. **Importación de cartera (Excel/CSV)** — mapeo flexible, validación por fila, dedup,
+   confirmación reanudable. **Determinística, sin IA.**
+8. **Importación de morosos históricos** — pedido textual de la clienta cero.
+9. **Conciliación asistida por extracto bancario** — matching determinístico **sin IA**: el
+   sistema sugiere, el humano confirma.
+10. **Ciclo de vida del contrato** — alta, ajuste, renovación, finalización, depósito en
+    custodia, garantes, co-inquilinos.
+11. **Reclamos con el profesional adentro por link mágico.**
+12. **Consorcio** — unidades funcionales, movimientos, asambleas, servicios comunes.
+13. **PWA del inquilino** — home, comprobantes, servicios, documentos, notificaciones, y el
+    **certificado de inquilino verificable públicamente**.
+14. **El SaaS de sí mismo** — planes, suscripción, facturas, cupones, referidos, trial.
+
+### 1.2. Las 4 capacidades del brief de mayo — estado verificado
+
+> Estas son las que este documento llamó "no-negociables". **Ninguna está construida como
+> está escrita.**
+
+| # | Capacidad del brief | Estado real (19/08/2026) |
+|---|---|---|
+| 1 | Carga de contrato con IA | **NO EXISTE.** Sin SDK de ningún LLM, sin `pdf-parse`, sin OCR, sin endpoint. En su lugar: wizard manual + importación de cartera, los dos en producción. Ver §5.1. |
+| 2 | Pago unificado con Mercado Pago | **EL RESULTADO SÍ, EL MEDIO NO.** Alquiler+expensas en una pantalla y un botón: construido. Mercado Pago: cero integración, cero webhook. Se cobra por transferencia + comprobante + validación humana. Ver §5.2. |
+| 3 | Chat con el contrato (RAG) | **NO EXISTE.** Sin endpoint, sin pgvector, sin embeddings. La tabla de mensajes existe y nadie la escribe. Ver §5.3. |
+| 4 | Screening crediticio | **CÁSCARA CON DATOS INVENTADOS.** Tabla, endpoint y guard reales; el informe entero sale de un PRNG sembrado con el CUIT. Cero Nosis, cero BCRA. Ver §5.4. |
+
+### 1.3. Lo que el brief NO previó y sí se construyó
+
+Portal y app del propietario · rendición · caja y cuentas · matriz de permisos y bandeja de
+aprobaciones · auditoría · importación de cartera y de morosos históricos · conciliación por
+extracto bancario · consorcio completo y tarifado · facturación del propio SaaS · certificado
+de inquilino verificable · red de profesionales con link mágico.
+
+Casi todo salió de pedidos de la clienta cero. **La reunión del 03/08 con Camila giró entera
+alrededor de cobranza, morosos, permisos, consorcio y rendición. No pidió IA de contratos, ni
+chat, ni screening.**
+
+### 1.5. DECISIÓN ABIERTA — que no la tome nadie por su cuenta
+
+Este documento **no decide** si las 4 capacidades del brief siguen siendo parte del producto.
+Están sin construir y el producto encontró otra forma que la clienta cero usa todos los días.
+Pueden seguir siendo el diferencial buscado, o pueden haber quedado atrás. **Lo define el
+dueño, no un dev ni un agente leyendo este archivo.**
+
+Hasta que esa decisión esté escrita acá con fecha:
+- **No** empezar a construirlas por iniciativa propia.
+- **No** borrar las tablas que quedaron muertas esperando esa decisión.
+- **Sí** avisar si algo del producto público —landing, demo, onboarding, copy in-app— promete
+  alguna de las cuatro. Hoy **varias lo hacen**: ver §14.
 
 ### Lo que NO es el MVP (no construir aunque lo pida un usuario)
 
@@ -97,6 +190,16 @@ Llave es una plataforma que centraliza la experiencia de alquiler y consorcio en
 ---
 
 ## 2. STACK TÉCNICO (DECIDIDO)
+
+> ⚠️ **9 de las 21 filas de esta tabla son falsas.** Verificado el 19/08/2026. Lo que NO está
+> en el código: **Clerk** (instalado en el panel pero apagado — el auth real es JWT propio +
+> OTP **por email**), **Mercado Pago** (`MERCADOPAGO` es sólo un valor del enum `MetodoPago`
+> para registrar a mano cómo pagó alguien), **Nosis**, **Anthropic / cualquier LLM**,
+> **Cloudflare R2** (los archivos van a un volumen de Railway), **WhatsApp Cloud API**,
+> **Resend**, **Redis** (el cron es in-process), **Sentry** (hay un servicio propio, Sonar),
+> **Vercel** (todo corre en Railway) y **Playwright** (cero E2E; los tests son Vitest).
+> PostHog existe pero sólo en la landing pública. El stack real está en `README.md` y
+> `docs/CONFIG.md`.
 
 | Capa | Decisión | Versión |
 |------|----------|---------|
@@ -162,6 +265,15 @@ llave/
 ---
 
 ## 4. MODELO DE DATOS (Prisma schema)
+
+> ⚠️ **El schema que se transcribe abajo NO es el schema real.** Se escribió el 08/05/2026 y
+> cubre ~13% de lo que hay: el real tiene **83 modelos y 79 enums**. Además inventa la
+> extensión pgvector y el campo `vectorEmbedding` (no existen), le pone otro nombre a dos
+> modelos, y modela a inquilinos y propietarios como un `enum Rol` de `Usuario` cuando en
+> realidad son modelos aparte. Los IDs tampoco son UUID: son `cuid()`.
+>
+> **La fuente de verdad del modelo de datos es `apps/api/prisma/schema.prisma`**, explicado
+> en prosa en `docs/DATA-MODEL.md`.
 
 ```prisma
 // apps/api/prisma/schema.prisma
@@ -540,6 +652,16 @@ Devolvé SOLO JSON, sin explicación adicional, con esta forma:
 
 ### 5.2. Pago unificado
 
+> ⚠️ **NO ESTÁ CONSTRUIDA COMO SE DESCRIBE ABAJO** (verificado el 19/08/2026). **Mercado Pago
+> no existe en el repo**: cero dependencia, cero variable `MP_*` leída, cero
+> `POST /pagos/iniciar`, cero webhook registrado, cero `marketplace_fee`. Y **no hay
+> conciliación automática**: todo pago que pasa a CONCILIADO viene de una acción humana con
+> capacidad `pago.conciliar`.
+>
+> Lo que SÍ existe es el **resultado** para el usuario: alquiler + expensas en un solo total,
+> una pantalla y un botón, transferencia al CBU real e informe de pago con comprobante. El
+> flujo real está en `docs/API.md`. Límite conocido: se paga **una liquidación por vez**.
+
 **Endpoint:** `POST /api/pagos/iniciar`
 **Input:** `{ liquidacionIds: string[] }` (puede ser una o varias)
 **Output:** `{ preferenceId, initPoint }` de Mercado Pago
@@ -559,6 +681,14 @@ Devolvé SOLO JSON, sin explicación adicional, con esta forma:
 - Disparar notificaciones (WhatsApp + email).
 
 ### 5.3. Chat con el contrato (RAG)
+
+> ⚠️ **NO ESTÁ CONSTRUIDA** (verificado el 19/08/2026). No existe el endpoint, no hay
+> pgvector, no hay columna de embedding, no hay SDK de ningún LLM. La tabla de mensajes existe
+> desde la migración inicial y **nadie la escribe ni la lee**.
+>
+> El "chat" que existe es un **simulacro del build demo**: matchea palabras clave contra diez
+> respuestas fijas y cita cláusulas **inventadas a mano** sobre un contrato ficticio. En
+> producción no se monta — pero el onboarding y el nav del inquilino SÍ lo prometen. Ver §14.
 
 **Setup inicial al cargar contrato:**
 1. Tomar el texto completo del contrato.
@@ -598,6 +728,18 @@ Historial:
 ```
 
 ### 5.4. Screening crediticio
+
+> ⚠️ **NO ESTÁ CONSTRUIDA, Y ADEMÁS FABRICA DATOS** (verificado el 19/08/2026). Existe la
+> cáscara completa —tabla, endpoint registrado, guard multi-tenant, tests— pero el informe
+> entero (score, deudas BCRA, cheques, familia, domicilio, empleador, patrimonio) sale de un
+> **PRNG FNV-1a sembrado con los dígitos del CUIT** (`routes/inquilino-mundo.ts:173-180`).
+> **Cero llamadas a Nosis, BCRA, RENAPER, ARCA o Veraz.**
+>
+> El endpoint persiste esos informes como `estado: COMPLETO` sobre **personas reales
+> identificadas por CUIT y nombre**. Hoy ningún front lo llama y la pantalla está bloqueada en
+> producción, pero **el endpoint sigue vivo, autenticado y sin gate**.
+> `work-agent/07-ECOSISTEMA.md` ya lo tiene como riesgo, con la recomendación de devolver 501
+> hasta que exista una fuente real.
 
 **Endpoint:** `POST /api/screening`
 **Input:** `{ cuit: string, nombre: string }`
@@ -655,6 +797,11 @@ Historial:
 ---
 
 ## 7. PLAN DE SPRINTS (20 días)
+
+> ⚠️ **ARTEFACTO HISTÓRICO — no ejecutar.** Plan de 20 días escrito el 08/05/2026, con demo
+> fechada el 28 de mayo. El producto está en producción desde entonces, y varias de sus
+> instrucciones hoy son imposibles porque describen un stack que no se usó. Se conserva como
+> registro de lo que se pensó. El estado real del trabajo vive en `work-agent/`.
 
 ### Sprint 0 — Setup (días 1-3)
 - Crear monorepo Turborepo + pnpm workspaces.
@@ -733,6 +880,14 @@ Historial:
 ---
 
 ## 8. INTEGRACIONES — SETUP
+
+> ⚠️ **NINGUNA DE ESTAS INTEGRACIONES ESTÁ CABLEADA** (verificado el 19/08/2026): Mercado
+> Pago, Nosis, WhatsApp Cloud API, Anthropic, Cloudflare R2 y Resend **no existen en el
+> código** — ni dependencia, ni variable leída, ni llamada. Clerk está instalado pero apagado;
+> PostHog corre sólo en la landing.
+>
+> Lo que sí está integrado: **SMTP vía nodemailer**, **volumen de Railway** para archivos y
+> **Sonar** para errores. Esta sección es el setup que se planeó, no el que existe.
 
 ### 8.1. Mercado Pago
 
@@ -873,6 +1028,15 @@ NEXT_PUBLIC_POSTHOG_HOST=...
 
 ## 10. VARIABLES DE ENTORNO — TEMPLATE
 
+> ⚠️ **Esta lista no es el contrato de entorno real.** De las ~35 variables que enumera, la API
+> lee 21 y **ninguna de las de integraciones** (`MP_*`, `NOSIS_*`, `WHATSAPP_*`,
+> `ANTHROPIC_*`, `R2_*`, `RESEND_*`, `CLERK_*`): están declaradas y no las agarra nadie.
+>
+> **El contrato real es `apps/api/src/env.ts`:** DATABASE_URL, JWT_SECRET, PORT, NODE_ENV,
+> DEMO_MODE, CORS_ORIGINS, FECHA_LANZAMIENTO, CRON_SECRET, CRON_DEVENGO, SONAR_* (6),
+> SOPORTE_TENANT_IDS, UPLOADS_DIR y SMTP_HOST/PORT/USER/PASS. En los fronts,
+> `NEXT_PUBLIC_API_URL` es la que define `apiEnabled`. Documentación viva: `docs/CONFIG.md`.
+
 ```bash
 # === apps/api/.env ===
 DATABASE_URL=postgresql://...
@@ -928,6 +1092,15 @@ NEXT_PUBLIC_POSTHOG_HOST=
 ---
 
 ## 11. CRITERIOS DE ACEPTACIÓN MVP (al cerrar Sprint 4)
+
+> ⚠️ **No describe este producto.** Es el checklist del MVP planeado en mayo: mide features que
+> no existen (parsing con IA, chat en streaming, screening con Nosis, pago con MP, Sentry,
+> eventos de PostHog) y apunta a un dominio que nunca existió. Dos ítems son ciertos pero no
+> como se describen: la liquidación no la genera "un cron del día 1" sino un devengo cada 6h
+> idempotente, y **los aumentos por ICL/IPC no son automáticos** — no hay ninguna consulta a
+> BCRA ni a INDEC; el ajuste lo carga una persona.
+>
+> Los criterios vigentes por feature están en `work-agent/`.
 
 ### Funcionales
 - [ ] Inmobiliaria puede registrarse y loguear.
@@ -987,14 +1160,47 @@ NEXT_PUBLIC_POSTHOG_HOST=
 
 ## 13. CONTACTO Y PROPIEDAD
 
-- **Owner técnico:** Alan Tapia (XNOD)
-- **PM:** [a designar]
-- **Equipo:** [a designar — 2 devs full-time + 1 diseñador 50% Sprint 0]
-- **Repo:** github.com/xnod/llave (privado)
-- **Producción:** llave.ar
-- **Staging:** staging.llave.ar
+- **Owner técnico:** Alan Tapia
+- **Repo:** github.com/soyalantapia/inmobiliaria-inquilinos-app (privado)
+- **Producción:** `admin.myalquiler.com` (panel) · `app.myalquiler.com` (PWA) · API en Railway
+- **Demo pública estática:** GitHub Pages (build sin `NEXT_PUBLIC_API_URL`)
+- **Cliente cero:** una inmobiliaria real, en producción
+
+> Antes decía repo `xnod/llave`, producción `llave.ar` y staging `staging.llave.ar`. Ninguno de
+> los tres existe ni existió.
 
 ---
 
-**Última actualización:** 8/05/2026 — V1
-**Próxima revisión:** después del cierre de Sprint 0 (día 4)
+## 14. PROMESAS PÚBLICAS QUE HOY NO TIENEN RESPALDO EN CÓDIGO
+
+> Esto **no es deuda de documentación**: lo ve un prospecto o un inquilino real. Ninguna de las
+> cuatro capacidades del brief está construida, pero cuatro superficies siguen anunciándolas.
+> Verificado el 19/08/2026.
+
+1. **El onboarding del inquilino, que corre EN PRODUCCIÓN.** Se monta sin gate de `apiEnabled`
+   (`apps/inquilino/src/app/(app)/layout.tsx`), así que lo ve todo inquilino real. Dice
+   textual: *"Una IA que leyó tus cláusulas y te responde al instante"* y *"Te cita la cláusula
+   exacta del contrato"*, con un CTA *"Probar el Asistente"* que lleva a `/broker` — que en
+   producción devuelve **"Próximamente"**. El botón central del nav, el más prominente del
+   mobile, se llama **"Asistente"** y va al mismo lugar.
+   *(`components/onboarding.tsx:81-88`, `components/nav-bar.tsx:36`, `broker/page.tsx:113`)*
+
+2. **El demo público de GitHub Pages.** Como se construye sin `NEXT_PUBLIC_API_URL`, corre en
+   modo demo: `/contratos/nuevo` muestra **"Extrayendo datos con IA · Claude está leyendo el
+   contrato"** con un checklist falso y datos hardcodeados, y la simulación de screening dice
+   *"Validando identidad contra RENAPER y ARCA"* y firma el PDF con *"Fuentes: Nosis, BCRA,
+   ARCA"*. Sobre datos inventados.
+
+3. **La landing `/precios`.** Vende *"Cobranzas con IA"*, *"Negociador IA al renovar"* (que este
+   mismo documento pone en el roadmap 2027) e *"IA carga 200+ contratos en minutos"* —
+   describiendo la importación de Excel, que es determinística y no usa IA.
+
+4. **`package.json`** describe el producto como *"(alquiler + expensas + chat IA + screening)"*.
+
+**Ninguna de estas cuatro se toca sin decisión del dueño** (ver §1.5), pero **ninguna debería
+quedar como está.** Están anotadas como tareas en `work-agent/09-TAREAS-REUNION-CAMILA.md`.
+
+---
+
+**Última actualización:** 19/08/2026 — auditoría contra el código (T-21-N3-N1).
+**Estado:** §0 y §9 vigentes. El resto, marcado sección por sección.
