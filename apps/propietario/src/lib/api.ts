@@ -17,7 +17,7 @@ const SESION_KEY = 'myalquiler-propietario:sesion';
 export interface SesionPropietario {
   nombre: string;
   inmobiliaria: string;
-  carteras: { propietarioId: string; inmobiliaria: string; actual: boolean }[];
+  carteras: { propietarioId: string; nombre: string; inmobiliaria: string; actual: boolean }[];
 }
 
 export class ApiError extends Error {
