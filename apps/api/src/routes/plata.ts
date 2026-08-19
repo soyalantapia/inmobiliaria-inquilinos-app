@@ -2094,7 +2094,11 @@ export async function plataRoutes(app: FastifyInstance) {
             // en vez de asumirlo: un gasto sin propiedad NO se le rinde a ningún dueño.
             if (!g.propiedadId || !g.propiedad) return [];
             const part = owner.participaciones.find((p) => p.propiedadId === g.propiedadId);
-            const porcentaje = part?.porcentaje ?? 100;
+            // Misma mina que en el bucle de alquileres, y por la misma razón: hoy no se
+            // alcanza —`propIdsConIngreso` es un subconjunto de las propiedades del dueño—
+            // pero un `?? 100` le cargaría el gasto ENTERO a alguien que tiene una parte.
+            if (!part) throw new ParticipacionAusente(g.propiedadId);
+            const porcentaje = part.porcentaje;
             const parteOwner = r2c(
               parteRendible({
                 montoTotal: Number(g.monto),
@@ -2195,8 +2199,14 @@ export async function plataRoutes(app: FastifyInstance) {
           const gastosReclamos = reclamosProp
             .filter((rec) => rec.propiedadId != null)
             .flatMap((rec) => {
+              // El `.filter` de arriba ya descartó los null, pero se vuelve a chequear acá
+              // porque es lo que le da a TS la certeza —y porque el guard de abajo necesita
+              // un id de verdad para decir CUÁL propiedad revisar.
+              if (!rec.propiedadId) return [];
               const part = owner.participaciones.find((p) => p.propiedadId === rec.propiedadId);
-              const porcentaje = part?.porcentaje ?? 100;
+              // Misma mina que en alquileres: el costo del arreglo se repartiría entero.
+              if (!part) throw new ParticipacionAusente(rec.propiedadId);
+              const porcentaje = part.porcentaje;
               const total = Number(rec.costoTrabajo);
               const parteOwner = r2c(
                 parteRendible({
@@ -2288,7 +2298,10 @@ export async function plataRoutes(app: FastifyInstance) {
             // inmobiliaria y no se reparte a ningún propietario.
             if (!mov.propiedadId || !mov.propiedad) return [];
             const part = owner.participaciones.find((p) => p.propiedadId === mov.propiedadId);
-            const porcentaje = part?.porcentaje ?? 100;
+            // Misma mina que en alquileres, y acá es plata que ENTRA: un `?? 100` le
+            // acreditaría el ingreso completo a un dueño que tiene una fracción.
+            if (!part) throw new ParticipacionAusente(mov.propiedadId);
+            const porcentaje = part.porcentaje;
             const parteOwner = r2c(
               parteRendible({
                 montoTotal: Number(mov.monto),
@@ -2430,8 +2443,11 @@ export async function plataRoutes(app: FastifyInstance) {
         // el 100% del alquiler a este dueño sin que nadie se entere: mejor frenar y que
         // alguien mire el reparto.
         return reply.code(409).send({
+          // Dice "movimientos" y no "una liquidación" porque el guard ya no es sólo el de
+          // alquileres: también lo tiran los gastos, los arreglos de reclamos y los otros
+          // ingresos (T-44-N2). Nombrar sólo uno mandaría a mirar el lugar equivocado.
           message:
-            'No se puede rendir: quedó una liquidación de una propiedad en la que este propietario no ' +
+            'No se puede rendir: hay movimientos de una propiedad en la que este propietario no ' +
             'figura en el reparto. Revisá los dueños de esa propiedad antes de rendir.',
           codigo: 'PARTICIPACION_AUSENTE',
           propiedadId: e.propiedadId,
