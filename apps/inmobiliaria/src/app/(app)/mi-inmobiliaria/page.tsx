@@ -36,6 +36,7 @@ import {
   MoraDefaultCard,
 } from '@/components/configuracion-prod';
 import { ConfiguracionPais } from '@/components/configuracion-pais';
+import { AvisosDestinatarios } from '@/components/avisos-destinatarios';
 import { apiEnabled, ApiError } from '@/lib/api/client';
 import {
   setContratosRequierenAprobacion,
@@ -82,6 +83,10 @@ function MiInmobiliariaReal() {
             <MoraDefaultCard />
             <RescisionCard reglas={reglas} />
             <AprobacionContratosCard reglas={reglas} />
+            {/* `puedeEditar` fijo en true: si llegaste hasta acá sos ADMIN — la página entera
+                cae a <SoloAdmin/> cuando GET /mi-inmobiliaria/reglas devuelve 403. El prop
+                existe igual para que el componente no asuma su contexto. */}
+            <AvisosDestinatarios puedeEditar />
             <section>
               <h2 className="mb-2 px-1 text-sm font-semibold text-muted-foreground">
                 Mercado y ajuste

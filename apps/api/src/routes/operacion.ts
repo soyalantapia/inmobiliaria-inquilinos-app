@@ -11,6 +11,8 @@ import { imputarCostoReclamo, conceptoReclamo, ReclamoYaRendido, ReclamoNoReimpu
 import { fichaReputacion, resumenReputacionMasivo, normalizarTelefono } from '../lib/reputacion-red.js';
 import { urlEsDelTenant } from './uploads.js';
 import { avisarReclamoNuevoAInmo, avisarAlInquilinoDelReclamo } from '../lib/avisos-reclamo.js';
+import { TIPOS_AVISO_INMO } from '../lib/destinatario-aviso.js';
+import { normalizarEmail } from '../lib/normalizar-email.js';
 
 /** Token opaco del link mágico de visita (/p/:token) — 24 bytes base64url, no adivinable. */
 function generarTokenVisita(): string {
@@ -2103,5 +2105,70 @@ export async function operacionRoutes(app: FastifyInstance) {
       data: { contratosRequierenAprobacion: body.data.contratosRequierenAprobacion },
     });
     return { contratosRequierenAprobacion: body.data.contratosRequierenAprobacion };
+  });
+
+  /**
+   * A qué casilla va cada tipo de aviso automático (T-17-N1).
+   *
+   * Devuelve SIEMPRE la lista completa de tipos, con `email: null` en los que no tienen casilla
+   * propia y el `fallback` aparte, para que el panel pueda mostrar "hoy va a X" sin tener que
+   * saber la regla. Si el front tuviera que resolver el fallback, esa regla viviría en dos
+   * lugares y se despegarían.
+   */
+  app.get('/mi-inmobiliaria/avisos', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'configuracion.ver');
+    if (!u) return;
+    const [configs, inmo] = await Promise.all([
+      prisma.destinatarioAviso.findMany({
+        where: { inmobiliariaId: u.inmobiliariaId },
+        select: { tipo: true, email: true },
+      }),
+      prisma.inmobiliaria.findUnique({ where: { id: u.inmobiliariaId }, select: { email: true } }),
+    ]);
+    const porTipo = new Map(configs.map((c) => [c.tipo, c.email]));
+    return {
+      fallback: inmo?.email ?? null,
+      avisos: TIPOS_AVISO_INMO.map((t) => ({
+        tipo: t.tipo,
+        label: t.label,
+        descripcion: t.descripcion,
+        email: porTipo.get(t.tipo) ?? null,
+      })),
+    };
+  });
+
+  app.put('/mi-inmobiliaria/avisos', async (request, reply) => {
+    const u = await requireUsuario(request, reply);
+    if (!u) return;
+    // Mismo criterio que las otras dos secciones de configuración: sólo ADMIN edita.
+    if (u.rol !== 'ADMIN') return reply.code(403).send({ message: 'Necesitás permiso de Admin para editar esta sección' });
+    const body = z
+      .object({
+        tipo: z.enum(['RECLAMO_NUEVO']),
+        // Vacío = "volvé al default". No es lo mismo que un email inválido, así que se acepta
+        // explícitamente en vez de hacerlo pasar por el `.email()`.
+        email: z.string().trim().email().or(z.literal('')),
+      })
+      .safeParse(request.body ?? {});
+    if (!body.success) {
+      return reply.code(400).send({ message: 'Poné un email válido, o dejalo vacío para usar el de la inmobiliaria' });
+    }
+    const { tipo } = body.data;
+    // Normalizado a minúsculas, igual que el resto de los emails del sistema: acá no es una
+    // credencial, pero mantener un solo criterio evita que la misma casilla figure de dos formas.
+    const email = normalizarEmail(body.data.email);
+
+    if (!email) {
+      // Borrar la fila y no guardar '' : la AUSENCIA es lo que significa "usá el default".
+      // Guardar un vacío dejaría una fila que no configura nada y confundiría al próximo.
+      await prisma.destinatarioAviso.deleteMany({ where: { inmobiliariaId: u.inmobiliariaId, tipo } });
+      return { tipo, email: null };
+    }
+    await prisma.destinatarioAviso.upsert({
+      where: { inmobiliariaId_tipo: { inmobiliariaId: u.inmobiliariaId, tipo } },
+      create: { inmobiliariaId: u.inmobiliariaId, tipo, email },
+      update: { email },
+    });
+    return { tipo, email };
   });
 }
