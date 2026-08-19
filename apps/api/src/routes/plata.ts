@@ -7,6 +7,7 @@ import { exigirContratoActivo, requireContratoAcceso, requireInquilino, requireU
 import { verificarPinUsuario } from '../auth/pin.js';
 import { devengarSiSigueActivo, devengarTodosLosTenants, generarLiquidacionesContrato, marcarLiquidacionesVencidas } from '../lib/liquidaciones.js';
 import { parteRendible } from '../lib/parte-rendible.js';
+import { descripcionDeReparacion } from '../lib/descripcion-gasto-rendido.js';
 import { conSaldo, montoPagadoPorLiquidacion } from '../lib/saldos.js';
 import { registrarEventoContrato } from '../lib/evento-contrato.js';
 import { calcularMora, resolverEsquemaMora } from '../lib/punitorios.js';
@@ -1961,8 +1962,7 @@ export async function plataRoutes(app: FastifyInstance) {
               refId: `reclamo:${rec.id}`,
               tipo: 'TRABAJO' as const,
               fecha: rec.resueltoAt ?? rec.updatedAt,
-              descripcion:
-                rec.costoTrabajoNotas || `Reparación (${rec.categoria.toLowerCase()}): ${rec.descripcion.slice(0, 60)}`,
+              descripcion: descripcionDeReparacion(rec.costoTrabajoNotas, rec.categoria),
               proveedor: null as string | null,
               monto: parteOwner,
               montoTotal: total,

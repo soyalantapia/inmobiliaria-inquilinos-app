@@ -72,11 +72,11 @@ Sin este bloque, el trabajo hecho no le llega a Camila. **Es lo primero.**
 
 ---
 
-## T-01 · Aplicar las migraciones pendientes (son DIEZ)
+## T-01 · Aplicar las migraciones pendientes (son ONCE)
 
 > ### ✅ Verificación previa hecha — 19/08
 >
-> **El título decía CUATRO, después OCHO, y hoy son DIEZ.** Se fue quedando corto mientras varios
+> **El título decía CUATRO, después OCHO, después DIEZ, y hoy son ONCE.** Se fue quedando corto mientras varios
 > chats escribían migraciones en paralelo. Aplicar sólo las cuatro que la tarea nombraba deja
 > el portal del propietario respondiendo 500.
 >
@@ -2983,3 +2983,37 @@ atajó con exit 1 en 7 segundos.
 
 **Sigue abierto:** `T-01-N1-N1` — los 52 archivos que sí necesitan base (los de plata, auth y
 conciliación) siguen sin correr nunca. Depende de la decisión de infraestructura de T-28.
+
+---
+
+### T-01-N1-N2 · La rendición le manda al dueño las palabras del inquilino ✅ HECHA
+**Experto:** SEC · **Prioridad:** 🔴 · **Detectada en:** barrido de regresiones (T-01-N1)
+
+> **Estado: ✅ hecha** en el código. **Falta aplicar la migración** de limpieza (va con T-01).
+> Ver `work-agent/tareas/T-01-N1-N2/REQUISITOS.md`.
+
+`plata.ts`, al armar los gastos de una rendición, rotulaba el arreglo así:
+
+```ts
+rec.costoTrabajoNotas || `Reparación (${categoria}): ${rec.descripcion.slice(0, 60)}`
+```
+
+`rec.descripcion` es **el texto libre que escribió el inquilino** al reportar el problema. Como
+`costoTrabajoNotas` es opcional y casi nunca se carga, el caso por defecto era guardar en
+`GastoRendido.descripcion` 60 caracteres del relato del inquilino sobre su propia casa — y de
+ahí salían al portal del propietario (`portal-propietario.ts:451`) y al PDF imprimible.
+
+**Lo que lo vuelve un descuido y no una decisión:** el mismo archivo ya cerró esta misma puerta
+50 líneas más abajo. `portal-propietario.ts:505-511` recorta los reclamos a contratos vigentes
+diciendo textualmente que si no, *"quien compra un departamento en marzo abre el portal y lee
+los reclamos de 2024 de un inquilino con el que no tuvo ninguna relación, con la `descripcion`
+en texto libre que esa persona escribió"*. Mismo dato, misma persona, mismos ojos, otra puerta.
+
+**Lo que se hizo:** el rótulo pasa por `lib/descripcion-gasto-rendido.ts` y el fallback es la
+categoría sola. El dueño sigue viendo qué se arregló y cuánto; lo que describe el trabajo es
+`costoTrabajoNotas`, que lo escribe el operador sabiendo que se muestra.
+
+**Verificado:** 5 tests puros, y se confirmó que **4 se ponen rojos** al revertir el fix.
+
+**Pendiente del dueño:** aplicar `20260819220000_sacar_texto_del_inquilino_de_gastos` — las
+filas ya escritas siguen con el texto adentro. Son **once** migraciones ahora, no diez.
