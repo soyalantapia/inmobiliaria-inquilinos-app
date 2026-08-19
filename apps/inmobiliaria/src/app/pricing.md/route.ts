@@ -15,9 +15,12 @@ permanencia). Las primeras 50 inmobiliarias: -20% para siempre. Sin comisión po
 - Más de 100 propiedades: $350.000 ARS / mes
 
 Incluye en todos los tramos: cobranza en vivo, app del inquilino (paga y sube comprobante),
-rendición a propietarios calculada, reclamos con red de profesionales, ajustes ICL/IPC
-automáticos, caja y auditoría, depósitos en custodia. La plata va directo al CBU de la
-inmobiliaria (no pasa por My Alquiler).
+rendición a propietarios calculada, reclamos con red de profesionales, avisos de ajuste de
+canon con recálculo de cuotas, caja y auditoría, registro de depósitos en custodia. La plata
+va directo al CBU de la inmobiliaria (no pasa por My Alquiler).
+
+No incluye: facturación electrónica / ARCA, informes de centrales de riesgo, ni funciones
+con modelos de lenguaje (lectura automática de contratos, asistentes, negociador de aumentos).
 
 ## Plan Consorcios
 - Administración de PH / consorcios. Hasta 40% más barato como add-on del Plan Alquileres.

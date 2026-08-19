@@ -37,23 +37,23 @@ import { formatMonto } from '@/lib/format';
 export const metadata = {
   title: 'My Alquiler · Precios y planes',
   description:
-    'La plataforma para inmobiliarias. Cobranzas con IA, ' +
-    'contratos digitales, multi-sociedad, consorcios. Convenios con ' +
-    'CUCICBA, CPI y Edifica.',
+    'La plataforma para inmobiliarias argentinas. Cobranza en vivo, ' +
+    'rendición a propietarios calculada, multi-sociedad y consorcios. ' +
+    'Convenios con CUCICBA, CPI y Edifica.',
 };
 
 const FEATURES_DESTACADAS = [
   {
     icon: Receipt,
-    titulo: 'Cobranzas con IA',
+    titulo: 'Cobranza en vivo',
     detalle:
-      'La lectura del comprobante se hace sola. Subís el resumen del banco y validamos en bloque.',
+      'Quién pagó y quién debe, al día, con la mora calculada sola. Subís el resumen que exporta tu banco y te decimos qué transferencia es de cada inquilino: confirmás en bloque.',
   },
   {
     icon: Handshake,
-    titulo: 'Negociador IA al renovar',
+    titulo: 'Renovaciones sin sorpresas',
     detalle:
-      'Propone el aumento óptimo según el perfil del inquilino. Negocia turn-by-turn dentro de tu rango.',
+      'Los contratos que vencen aparecen con meses de anticipación. Marcás quién sigue, cargás el canon nuevo y el sistema regenera las cuotas y le avisa al inquilino.',
   },
   {
     icon: BadgeCheck,
@@ -63,9 +63,9 @@ const FEATURES_DESTACADAS = [
   },
   {
     icon: Wand2,
-    titulo: 'Migración masiva',
+    titulo: 'Migración de cartera',
     detalle:
-      'Subís tu Excel/PDF y cargamos todos los contratos en bloque. Sin la fricción de migrar manual.',
+      'Subís tu Excel o CSV con TUS columnas: reconocemos los encabezados, te mostramos fila por fila qué entra, qué falta y qué está repetido, y das de alta hasta 2.000 contratos de una. Si te interrumpen, seguís después.',
   },
   {
     icon: Building2,
@@ -129,7 +129,7 @@ export default function PreciosPage() {
             La plataforma que tu inmobiliaria estaba esperando
           </h1>
           <p className="mx-auto max-w-2xl text-base text-muted-foreground md:text-lg">
-            Cobranzas con IA, contratos digitales, renovaciones automáticas,
+            Cobranza en vivo, rendición a propietarios calculada, renovaciones,
             multi-sociedad y consorcios. <strong className="text-foreground">
             Una sola plataforma</strong> para todo lo que hoy hacés con 4
             herramientas y planilla de Excel.
@@ -233,7 +233,7 @@ export default function PreciosPage() {
                       </li>
                       <li className="flex items-start gap-1.5">
                         <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-emerald-600" />
-                        <span>Cobranzas con IA + ARCA</span>
+                        <span>Cobranza en vivo + conciliación por resumen bancario</span>
                       </li>
                       <li className="flex items-start gap-1.5">
                         <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-emerald-600" />
@@ -241,7 +241,7 @@ export default function PreciosPage() {
                       </li>
                       <li className="flex items-start gap-1.5">
                         <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-emerald-600" />
-                        <span>Negociador IA en renovaciones</span>
+                        <span>Renovaciones y ajustes de canon asistidos</span>
                       </li>
                       <li className="flex items-start gap-1.5">
                         <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-emerald-600" />
@@ -395,8 +395,8 @@ export default function PreciosPage() {
                     2
                   </span>
                   <span>
-                    Subís tu cartera con migración masiva · IA carga 200+
-                    contratos en minutos
+                    Subís tu cartera en Excel o CSV · reconocemos tus columnas
+                    y das de alta 200 contratos en una sesión
                   </span>
                 </li>
                 <li className="flex items-start gap-2">
@@ -404,8 +404,8 @@ export default function PreciosPage() {
                     3
                   </span>
                   <span>
-                    Conectás ARCA + tu CBU · facturás automático el primer
-                    mes
+                    Cargás tu CBU y el de cada propietario · cobrás y rendís
+                    desde el primer mes
                   </span>
                 </li>
                 <li className="flex items-start gap-2">
