@@ -2815,9 +2815,41 @@ respaldar con una fuente real.
 
 ---
 
-## T-21-N3-N3 · La landing y el demo público venden IA que no existe
+## T-21-N3-N3 · La landing y el demo público venden IA que no existe — ✅ HECHA
 
 **Experto:** PROD + FE-P · **Prioridad:** 🟠 · **Depende de:** nada
+**Resuelta** en `fix/T-21-N3-N3-copy-sin-ia`, commit `9b93f54`.
+
+**Lo peor no era la IA.** Dos hallazgos pesan más que el marketing:
+1. *"Cobranzas con IA + ARCA"* estaba dentro del `<ul>` de features que se renderiza para **los
+   cuatro tramos pagos** ($50k a $350k). No es exageración de copy: es un ítem de "qué incluye tu
+   plan". El que firma Growth cree que lo compró.
+2. *"Conectás ARCA + tu CBU · facturás automático el primer mes"* es una **promesa fiscal con
+   fecha**. No hay una sola llamada a AFIP/ARCA; el diálogo "Conectar ARCA" del panel declara en
+   su propio comentario que **simula** el OAuth y escribe un flag en localStorage.
+
+Y la más cara comercialmente: *"Ajustes ICL e IPC automáticos"* / *"el índice se aplica solo"*.
+ICL e IPC son valores de un enum; cero consultas a INDEC o BCRA. El ajuste lo carga una persona.
+
+**Regla que se siguió:** no alcanza con borrar la palabra "IA" — lo que el producto hace de
+verdad tiene que quedar vendido igual de fuerte. *"IA carga 200+ contratos en minutos"* pasó a
+describir el importador real (reconoce tus encabezados, fila por fila, hasta 2.000 contratos,
+reanudable), que es mejor argumento y además es cierto.
+
+**Superficies tocadas:** `/precios`, `/inicio`, la metadata de `layout.tsx` que heredan las rutas
+del panel, `llms.txt` y `pricing.md` (lo que citan los motores de IA — `robots.ts` los habilita,
+así que `llms.txt` suma una sección **"Qué NO hace"** para *contradecir* lo ya cacheado), el
+demo público (banda de simulación en el picker + limpieza de `landing-data.json`: se eliminó la
+sección de facturación ARCA, 2 FAQ y 3 bullets) y `.claude/agents/landing.md`, que suma una
+**regla 4 de honestidad de capacidades** para que el próximo agente no reescriba la mentira
+leyendo su propio brief.
+
+**No se tocó la PWA** (onboarding y nav prometen "Asistente IA" en producción): es
+**T-21-N3-N1-N1**, de otro chat.
+
+---
+
+### Contexto original
 **Origen:** auditoría de T-21-N3-N1.
 
 **Estado verificado.**
