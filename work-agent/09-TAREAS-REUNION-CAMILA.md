@@ -2615,3 +2615,93 @@ Ya estaba documentado en `07-ECOSISTEMA.md §3.4`: *"tomar / poner en curso"* no
 así que a `EN_CURSO` sólo se llega si el inquilino **reabre** un reclamo resuelto. Con el mail
 de T-17, Camila se entera antes de un reclamo que después **no puede mover**: *"me entero más
 rápido de algo que después no puedo mover. Me sirve igual, pero es media solución."*
+
+---
+
+## T-21-N3-N1-N1 · El onboarding del inquilino promete una IA que no existe — 🔴
+
+**Experto:** FE-I + PROD · **Prioridad:** 🔴 · **Depende de:** nada
+**Origen:** auditoría de T-21-N3-N1. Es la promesa que llega a **usuarios reales**, no a prospectos.
+
+**Estado verificado.** `<Onboarding/>` se monta en `apps/inquilino/src/app/(app)/layout.tsx:37`
+**sin gate de `apiEnabled`**, así que lo ve todo inquilino en producción. El slide dice textual
+(`components/onboarding.tsx:81-88`):
+
+> *"Chateá con el Asistente — Una IA que leyó tus cláusulas y te responde al instante"*
+> *"Te cita la cláusula exacta del contrato"* · CTA: *"Probar el Asistente"* → `/broker`
+
+Y `/broker` en producción devuelve **`<Proximamente/>`** (`broker/page.tsx:113`). El botón
+**central** del nav —el más prominente del mobile— se llama **"Asistente"** y lleva al mismo
+lugar (`components/nav-bar.tsx:36`). `/ayuda` repite la promesa.
+
+No hay ningún LLM en el monorepo: el "chat" es un simulacro de keyword-matching que sólo existe
+en el build demo (`apps/inquilino/src/lib/contrato-chat.ts`).
+
+**Es el mismo patrón que T-18 y T-30**, pero peor: acá el producto no promete un canal, promete
+una capacidad entera, en el onboarding, a cada usuario nuevo.
+
+**Qué hay que hacer.** Sacar el slide (o reescribirlo con lo que la app SÍ hace) y decidir qué
+pasa con el botón central del nav: hoy el lugar más caro de la pantalla lleva a un cartel de
+"Próximamente".
+
+**Criterio de aceptación.** Un inquilino que entra por primera vez no lee ninguna promesa de IA,
+y ningún botón principal lleva a una pantalla vacía.
+
+---
+
+## T-21-N3-N2 · `POST /screening` fabrica informes crediticios sobre personas reales — 🔴
+
+**Experto:** SEC + BE + PROD · **Prioridad:** 🔴 · **Depende de:** nada
+**Origen:** auditoría de T-21-N3-N1. `work-agent/07-ECOSISTEMA.md` ya lo tenía como riesgo.
+
+**Estado verificado.** El endpoint está registrado, autenticado y con guard multi-tenant. El
+informe entero —score, deudas BCRA, cheques rechazados, juicios, familia, domicilio, empleador,
+patrimonio— sale de un **PRNG FNV-1a sembrado con los dígitos del CUIT**
+(`routes/inquilino-mundo.ts:173-180` y `:240-437`). El score es `480 + (semilla % 470)` y la
+recomendación son dos comparaciones sobre ese número inventado. **Cero llamadas a Nosis, BCRA,
+RENAPER, ARCA o Veraz** — el único `fetch()` saliente de toda la API va al bug tracker.
+
+Y lo persiste con `estado: 'COMPLETO'` sobre **personas reales identificadas por CUIT y nombre**.
+
+**Lo que hoy lo contiene, y no alcanza:** ningún front lo llama y la pantalla está bloqueada en
+producción. Pero **el endpoint sigue vivo y sin gate**: cualquiera con un token de usuario del
+panel puede pedirlo y recibir un informe crediticio fabricado que se ve oficial, sobre una
+persona identificada, y decidir a quién le alquila mirando eso.
+
+**Qué hay que hacer.** Devolver **501** hasta que exista una fuente real, como ya recomienda
+`07-ECOSISTEMA.md`. Costo: minutos. Y decidir qué se hace con las filas que puedan existir en
+`screenings` — hay que mirar la base, no el código.
+
+**Criterio de aceptación.** No se puede obtener un informe crediticio que el sistema no pueda
+respaldar con una fuente real.
+
+---
+
+## T-21-N3-N3 · La landing y el demo público venden IA que no existe
+
+**Experto:** PROD + FE-P · **Prioridad:** 🟠 · **Depende de:** nada
+**Origen:** auditoría de T-21-N3-N1.
+
+**Estado verificado.**
+- **`/precios`** vende *"Cobranzas con IA"*, *"Cobranzas con IA + ARCA"*, *"Negociador IA al
+  renovar"* —que el propio `CLAUDE.md` pone en el roadmap 2027— e *"IA carga 200+ contratos en
+  minutos"*, describiendo la importación de Excel, que es determinística y no usa IA.
+- **El demo público de GitHub Pages** se construye sin `NEXT_PUBLIC_API_URL`, o sea en modo
+  demo: `/contratos/nuevo` muestra *"Extrayendo datos con IA · Claude está leyendo el contrato"*
+  con checklist falso y datos hardcodeados, y la simulación de screening dice *"Validando
+  identidad contra RENAPER y ARCA"* y firma el PDF con *"Fuentes: Nosis, BCRA, ARCA"*.
+- **`package.json:5`** describe el producto como *"(alquiler + expensas + chat IA + screening)"*.
+
+**Qué hay que hacer.** Depende de la decisión abierta de `CLAUDE.md` §1.5. Mientras tanto: o se
+sacan esas pantallas del build demo, o llevan un cartel inequívoco de "simulación, datos de
+ejemplo". Un PDF que firma *"Fuentes: Nosis, BCRA, ARCA"* sobre datos inventados no es una
+exageración de marketing.
+
+Y "IA carga 200+ contratos en minutos" se puede reemplazar por lo que el importador **sí** hace
+—mapeo de columnas por sinónimos, validación fila por fila, reanudable— que es buen argumento de
+venta por sí solo y además es cierto.
+
+**Criterio de aceptación.** Nada de lo que ve alguien de afuera promete una capacidad que el
+sistema no tiene.
+
+---
