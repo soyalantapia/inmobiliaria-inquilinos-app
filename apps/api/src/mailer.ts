@@ -476,3 +476,176 @@ export async function enviarAnuncioEmail(opts: {
   });
   return true;
 }
+
+// ─── Reclamos ────────────────────────────────────────────────────────────────
+//
+// Pedido de la reunión del 03/08: "tiene que notificarle también los reclamos,
+// tiene todo por email y por la plataforma, POR SI NO NO ESTÁ ENTERADA".
+//
+// La parte "en la plataforma" ya existía en los dos lados (la campana del panel
+// cuenta los reclamos sin resolver; GET /mis-notificaciones ya le avisa al
+// inquilino cuando le responden, le asignan profesional o hay que calificar).
+// Lo que faltaba era el mail, y es lo que cubren estas tres funciones.
+//
+// Las tres son BEST-EFFORT: el caller no las awaitea de forma bloqueante ni deja
+// que un fallo de SMTP tumbe la operación. Abrir un reclamo, asignarlo o
+// resolverlo tiene que funcionar igual con el mailer caído.
+
+const URGENCIA_CHIP: Record<string, string> = {
+  EMERGENCIA:
+    '<span style="display:inline-block;padding:3px 10px;border-radius:999px;background:#fee2e2;color:#991b1b;font-size:11px;font-weight:800;letter-spacing:0.02em;">EMERGENCIA</span>',
+  ALTA: '<span style="display:inline-block;padding:3px 10px;border-radius:999px;background:#ffedd5;color:#9a3412;font-size:11px;font-weight:800;">Urgencia alta</span>',
+};
+
+const CATEGORIA_LABEL: Record<string, string> = {
+  PLOMERIA: 'Plomería',
+  ELECTRICIDAD: 'Electricidad',
+  CERRADURA: 'Cerradura',
+  CALEFACCION: 'Calefacción',
+  OTRO: 'Otro',
+};
+
+function reclamoHtml(opts: {
+  titulo: string;
+  subtitulo: string;
+  cuerpo: string;
+  chip?: string;
+  filas: { k: string; v: string }[];
+  ctaUrl: string;
+  ctaLabel: string;
+  pie: string;
+}): string {
+  const filas = opts.filas
+    .filter((f) => f.v)
+    .map(
+      (f) =>
+        `<tr><td style="padding:5px 12px 5px 0;color:#8a85a0;font-size:12px;white-space:nowrap;">${esc(f.k)}</td>
+         <td style="padding:5px 0;color:#3f3a4d;font-size:13px;font-weight:600;">${esc(f.v)}</td></tr>`,
+    )
+    .join('');
+  const inner = `
+    ${opts.chip ? `<div style="margin:0 0 10px;">${opts.chip}</div>` : ''}
+    <h1 style="margin:0 0 6px;color:#1c1726;font-size:21px;line-height:1.25;font-weight:800;letter-spacing:-0.02em;">${esc(opts.titulo)}</h1>
+    <p style="margin:0 0 18px;color:#8a85a0;font-size:12px;">${esc(opts.subtitulo)}</p>
+    ${opts.cuerpo ? `<p style="margin:0 0 18px;color:#3f3a4d;font-size:15px;line-height:1.7;">${esc(opts.cuerpo).replace(/\n/g, '<br>')}</p>` : ''}
+    ${filas ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 22px;">${filas}</table>` : ''}
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 6px;"><tr>
+      <td align="center" bgcolor="#7c3aed" style="background-color:#7c3aed;border-radius:12px;">
+        <a href="${opts.ctaUrl}" target="_blank" style="display:inline-block;padding:12px 26px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:14px;font-weight:800;color:#ffffff;text-decoration:none;">${esc(opts.ctaLabel)} &rarr;</a>
+      </td>
+    </tr></table>
+    <p style="margin:16px 0 0;color:#8a85a0;font-size:11px;line-height:1.6;">${esc(opts.pie)}</p>`;
+  return shell({ preview: `${opts.titulo} — ${opts.subtitulo}`, inner });
+}
+
+/**
+ * A la INMOBILIARIA: un inquilino abrió un reclamo.
+ *
+ * Es el que resuelve el "por si no no está enterada": sin esto, un reclamo de
+ * urgencia EMERGENCIA un viernes a la noche espera hasta que alguien entre al
+ * panel a mirar.
+ */
+export async function enviarReclamoNuevoInmo(opts: {
+  email: string;
+  autor: string;
+  propiedad: string;
+  categoria: string;
+  urgencia: string;
+  descripcion: string;
+  reclamoId: string;
+}): Promise<boolean> {
+  const t = getTransporter();
+  if (!t) return false;
+  const esEmergencia = opts.urgencia === 'EMERGENCIA';
+  const cat = CATEGORIA_LABEL[opts.categoria] ?? opts.categoria;
+  const url = `${APP_ADMIN_URL}/reclamos/${opts.reclamoId}`;
+  await t.sendMail({
+    from,
+    to: opts.email,
+    subject: `${esEmergencia ? 'EMERGENCIA — ' : ''}Nuevo reclamo de ${opts.autor} · ${opts.propiedad}`,
+    text:
+      `${opts.autor} abrió un reclamo en ${opts.propiedad}.\n\n` +
+      `Categoría: ${cat}\nUrgencia: ${opts.urgencia}\n\n${opts.descripcion}\n\n` +
+      `Verlo en el panel: ${url}`,
+    html: reclamoHtml({
+      titulo: `Nuevo reclamo de ${opts.autor}`,
+      subtitulo: opts.propiedad,
+      cuerpo: opts.descripcion,
+      chip: URGENCIA_CHIP[opts.urgencia],
+      filas: [
+        { k: 'Categoría', v: cat },
+        { k: 'Urgencia', v: opts.urgencia },
+      ],
+      ctaUrl: url,
+      ctaLabel: 'Ver el reclamo',
+      pie: 'Recibís este aviso porque administrás esta propiedad en My Alquiler.',
+    }),
+  });
+  return true;
+}
+
+/** Al INQUILINO: le asignaron un profesional a su reclamo. */
+export async function enviarReclamoAsignadoInquilino(opts: {
+  email: string;
+  profesional: string;
+  oficio: string | null;
+  inmobiliariaNombre: string;
+  reclamoId: string;
+}): Promise<boolean> {
+  const t = getTransporter();
+  if (!t) return false;
+  const url = `${APP_INQUILINO_URL}/reclamos/${opts.reclamoId}`;
+  await t.sendMail({
+    from,
+    to: opts.email,
+    subject: `${opts.inmobiliariaNombre} asignó a ${opts.profesional} a tu reclamo`,
+    text:
+      `${opts.inmobiliariaNombre} asignó a ${opts.profesional}${opts.oficio ? ` (${opts.oficio})` : ''} para resolver tu reclamo.\n\n` +
+      `Seguilo desde la app: ${url}`,
+    html: reclamoHtml({
+      titulo: `Te asignaron a ${opts.profesional}`,
+      subtitulo: opts.inmobiliariaNombre,
+      cuerpo: 'Se va a comunicar con vos para coordinar la visita.',
+      filas: [{ k: 'Profesional', v: `${opts.profesional}${opts.oficio ? ` · ${opts.oficio}` : ''}` }],
+      ctaUrl: url,
+      ctaLabel: 'Seguir el reclamo',
+      pie: `Recibís este aviso porque ${opts.inmobiliariaNombre} gestiona tu alquiler con My Alquiler.`,
+    }),
+  });
+  return true;
+}
+
+/** Al INQUILINO: su reclamo se resolvió. */
+export async function enviarReclamoResueltoInquilino(opts: {
+  email: string;
+  inmobiliariaNombre: string;
+  notas: string | null;
+  reclamoId: string;
+}): Promise<boolean> {
+  const t = getTransporter();
+  if (!t) return false;
+  const url = `${APP_INQUILINO_URL}/reclamos/${opts.reclamoId}`;
+  await t.sendMail({
+    from,
+    to: opts.email,
+    subject: `Tu reclamo se resolvió · ${opts.inmobiliariaNombre}`,
+    text:
+      `${opts.inmobiliariaNombre} marcó tu reclamo como resuelto.\n\n` +
+      `${opts.notas ? `${opts.notas}\n\n` : ''}` +
+      `Si el problema sigue, podés reabrirlo desde la app: ${url}`,
+    html: reclamoHtml({
+      titulo: 'Tu reclamo se resolvió',
+      subtitulo: opts.inmobiliariaNombre,
+      // Que sepa que puede reabrirlo es lo importante: el circuito de
+      // confirmación (CONFORME / PERSISTE) sólo funciona si el inquilino entra.
+      cuerpo: opts.notas
+        ? `${opts.notas}\n\nSi el problema sigue, entrá y avisanos: se reabre el reclamo.`
+        : 'Si el problema sigue, entrá y avisanos: se reabre el reclamo.',
+      filas: [],
+      ctaUrl: url,
+      ctaLabel: 'Ver y calificar',
+      pie: `Recibís este aviso porque ${opts.inmobiliariaNombre} gestiona tu alquiler con My Alquiler.`,
+    }),
+  });
+  return true;
+}

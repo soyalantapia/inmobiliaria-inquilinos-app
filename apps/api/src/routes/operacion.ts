@@ -9,6 +9,7 @@ import { registrarEvento } from '../lib/auditoria.js';
 import { imputarCostoReclamo, conceptoReclamo, ReclamoYaRendido, ReclamoNoReimputable } from '../lib/imputar-reclamo.js';
 import { fichaReputacion, resumenReputacionMasivo, normalizarTelefono } from '../lib/reputacion-red.js';
 import { urlEsDelTenant } from './uploads.js';
+import { avisarReclamoNuevoAInmo, avisarAlInquilinoDelReclamo } from '../lib/avisos-reclamo.js';
 
 /** Token opaco del link mágico de visita (/p/:token) — 24 bytes base64url, no adivinable. */
 function generarTokenVisita(): string {
@@ -384,6 +385,15 @@ export async function operacionRoutes(app: FastifyInstance) {
         });
         return { reclamo: await tx.reclamo.findUniqueOrThrow({ where: { id } }), visita: visitaUpsert };
       });
+
+      // El inquilino ya lo ve en su feed ("Te asignaron a X"), pero eso sólo llega si
+      // abre la app. El mail cierra el otro lado. Best-effort, fuera de la tx.
+      void avisarAlInquilinoDelReclamo({
+        inmobiliariaId: u.inmobiliariaId,
+        reclamoId: id,
+        evento: { tipo: 'ASIGNADO', profesional: prof.nombre, oficio: prof.categoria ?? null },
+      }).catch((e) => app.log.warn({ err: e, reclamoId: id }, '[reclamos] no se pudo avisar la asignación'));
+
       return { ...conSla(actualizado), visitaToken: visita.token };
     } catch (e) {
       if (e instanceof ConflictoEstadoReclamo) return reply.code(409).send({ message: e.message });
@@ -578,6 +588,15 @@ export async function operacionRoutes(app: FastifyInstance) {
 
         return tx.reclamo.findUniqueOrThrow({ where: { id } });
       });
+      // El feed del inquilino ya le pide calificar, pero eso sólo aparece si entra.
+      // El mail además le recuerda que puede REABRIRLO si el problema sigue, que es
+      // la mitad del circuito CONFORME/PERSISTE que hoy casi nadie usa.
+      void avisarAlInquilinoDelReclamo({
+        inmobiliariaId: u.inmobiliariaId,
+        reclamoId: id,
+        evento: { tipo: 'RESUELTO', notas: body.data.costoTrabajoNotas?.trim() || null },
+      }).catch((e) => app.log.warn({ err: e, reclamoId: id }, '[reclamos] no se pudo avisar la resolución'));
+
       return conSla(actualizado);
     } catch (e) {
       if (e instanceof ConflictoEstadoReclamo) return reply.code(409).send({ message: e.message });
@@ -768,6 +787,25 @@ export async function operacionRoutes(app: FastifyInstance) {
       });
       return r;
     });
+
+    // Avisarle a la inmobiliaria que entró un reclamo. Sin esto se entera sólo si
+    // abre el panel, y un EMERGENCIA de un viernes a la noche espera al lunes
+    // ("por si no no está enterada", reunión del 03/08).
+    //
+    // FUERA de la transacción y sin await bloqueante: el reclamo YA está creado y
+    // un SMTP caído no puede tirarlo abajo. El destinatario sale del tenant que ya
+    // resolvió el guard, nunca de un id del request.
+    void avisarReclamoNuevoAInmo({
+      inmobiliariaId: inq.inmobiliariaId,
+      reclamoId: reclamo.id,
+      autor,
+      categoria: body.data.categoria,
+      urgencia: body.data.urgencia,
+      descripcion: body.data.descripcion,
+    }).catch((e) =>
+      app.log.warn({ err: e, reclamoId: reclamo.id }, '[reclamos] no se pudo avisar del reclamo nuevo'),
+    );
+
     return reply.code(201).send(conSla(reclamo));
   });
 
