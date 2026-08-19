@@ -166,6 +166,19 @@ cambio, y una persona con rol CAJA puede confirmar un pago de punta a punta.
 
 **Riesgo.** Operativo, no técnico. Se mitiga con el aviso previo.
 
+> **Actualización 19/08 — el golpe es más blando de lo que decía esta tarea.** Cuando se
+> escribió, una operadora que intentara confirmar un pago se comía un **403 crudo**: el botón
+> estaba ahí, lo tocaba, y el sistema le tiraba un error. Eso es exactamente "el sistema se
+> rompió".
+>
+> Con **T-40**, la pantalla de pagos ahora se gatea por capacidad: la operadora **ve la bandeja
+> igual** (sigue sabiendo qué hay pendiente, que es la mitad útil de la pantalla) pero en lugar
+> de los botones lee *"Confirmar o rechazar un pago lo hace Administrador o Caja"*.
+>
+> **El aviso previo a Camila sigue haciendo falta** —que su equipo pierda una capacidad sin que
+> ella lo sepa no se arregla con un cartel— pero la ventana entre el deploy y la reasignación
+> ya no se vive como una falla.
+
 ---
 
 ## T-04 · Cerrar la duda de los $850 con una consulta a la base
