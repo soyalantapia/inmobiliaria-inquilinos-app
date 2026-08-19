@@ -1129,6 +1129,19 @@ export const eventosContratoMock: EventoContrato[] = [
     autor: 'Sistema',
   },
   {
+    // Una COMUNICACIÓN de varios párrafos: es el caso que Camila quiere poder releer
+    // ("si guarda sólo el asunto no me sirve para discutir después"). Sin un mock así, el
+    // historial de la demo no muestra ninguna y no se ve que el cuerpo queda guardado entero.
+    id: 'ev_c1_3',
+    contratoId: 'cnt_001',
+    tipo: 'COMUNICACION_ENVIADA',
+    titulo: 'WhatsApp · Aviso de vencimiento',
+    detalle:
+      'Hola Mariela, ¿cómo estás?\n\nTe recuerdo que el alquiler de mayo vence el 5. Cualquier cosa avisame y lo vemos.\n\nSi ya lo pagaste, mandame el comprobante por acá y lo cargo.',
+    fecha: '2026-05-02T11:20:00-03:00',
+    autor: 'Camila Acosta',
+  },
+  {
     id: 'ev_c1_3',
     contratoId: 'cnt_001',
     tipo: 'AJUSTE_APLICADO',

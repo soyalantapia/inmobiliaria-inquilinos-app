@@ -1106,9 +1106,24 @@ function EventoTimelineRow({
             {formatFecha(evento.fecha)} · {new Date(evento.fecha).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
           </p>
         </div>
-        {evento.detalle && (
-          <p className="mt-0.5 text-xs text-muted-foreground">{evento.detalle}</p>
-        )}
+        {evento.detalle &&
+          // El `detalle` de una COMUNICACIÓN es el CUERPO del mensaje que se le mandó al
+          // inquilino, no una nota al pie: se renderiza como una cita, con el texto legible y
+          // los saltos de línea RESPETADOS. Antes usaba el mismo `<p>` gris de metadato que el
+          // resto de los eventos, así que un mensaje de varios párrafos llegaba colapsado en un
+          // bloque corrido y gris — y Camila lo quiere justo para lo contrario: *"queda anotado
+          // que mandé un mensaje, pero no queda el mensaje… si guarda sólo el asunto no me
+          // sirve para discutir después."* El texto completo SIEMPRE estuvo guardado
+          // (`EventoContrato.detalle`) y el endpoint lo devolvía; lo que fallaba era leerlo.
+          (evento.tipo === 'COMUNICACION_ENVIADA' ? (
+            <blockquote className="mt-1.5 whitespace-pre-line border-l-2 border-border pl-3 text-sm text-foreground">
+              {evento.detalle}
+            </blockquote>
+          ) : (
+            <p className="mt-0.5 whitespace-pre-line text-xs text-muted-foreground">
+              {evento.detalle}
+            </p>
+          ))}
         <p className="mt-0.5 text-[10px] uppercase tracking-wide text-muted-foreground/70">
           {evento.autor}
         </p>
