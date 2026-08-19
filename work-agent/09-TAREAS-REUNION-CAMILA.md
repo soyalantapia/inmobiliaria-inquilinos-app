@@ -978,7 +978,26 @@ modo, la otra recibe 409 y no pisa nada.
 
 ---
 
-## T-37 · La matriz de permisos le promete a OPERADOR algo que el endpoint le niega
+## T-37 · La matriz de permisos le promete a OPERADOR algo que el endpoint le niega — ✅ RESUELTO
+
+> **Hecho: se alineó la matriz, no el endpoint.** Y el motivo importa, porque el diagnóstico
+> inicial estaba al revés.
+>
+> La matriz no estaba "de más": declaraba `roles: ['ADMIN','CAJA','OPERADOR']` con
+> `rolesAprobacion: ['OPERADOR']`, o sea un circuito pensado — *el operador carga el efectivo y
+> queda pendiente de aprobación*. **Ese circuito nunca se construyó:** `requiereAprobacion` no
+> se llama en ningún lado de `apps/api` (para contratos sí existe el equivalente,
+> `contratoQuedaPendiente`; para pagos no). Mientras tanto `POST /pagos/manual` exige
+> `pago.conciliar`, así que el OPERADOR se comía un 403 y la pantalla de Equipo le decía a la
+> administradora que sí podía.
+>
+> Se sacó OPERADOR de la capacidad. **No le quita nada a nadie**: hoy ya no podía. Y la
+> capacidad **no gatea nada** —sólo se dibuja en la tabla de permisos—, así que el cambio no
+> altera ningún comportamiento, sólo deja de mentir. Quien cobra en el mostrador va con rol
+> **CAJA**, que existe exactamente para eso.
+>
+> **No se tocó el endpoint** a propósito: darle a OPERADOR una capacidad sobre plata que hoy no
+> tiene es una decisión de producto, no la corrección de una inconsistencia.
 
 **Experto:** BE + PROD · **Prioridad:** 🟡 · **Depende de:** nada
 **Origen:** revisión adversarial del 19/08 (dimensión multi-tenant).
@@ -997,6 +1016,32 @@ declara una capacidad que nunca se cableó.
 efectivo, el endpoint debe pedir `pago.manual.cargar`; si no, la capacidad sale de la matriz—
 y dejar las dos de acuerdo. **Es decisión de producto**, porque define qué puede hacer el
 personal de mostrador.
+
+---
+
+## T-37-N1 · Circuito de aprobación para el pago manual del operador
+
+**Experto:** BE + PROD · **Prioridad:** 🟢 · **Depende de:** decisión de producto
+**Origen:** T-37. Es la mitad que se decidió NO construir sin que la pidieras.
+
+**El caso.** Si Camila quiere que sus operadoras puedan registrar un cobro en efectivo sin
+darles rol CAJA, hace falta lo que la matriz ya describía: el pago lo carga el OPERADOR y queda
+**pendiente de aprobación** hasta que un ADMIN lo confirma.
+
+**Qué existe y qué no.** El patrón ya está resuelto para contratos: `contratoQuedaPendiente`
+(`packages/shared/src/permisos.ts`) + el circuito de aprobaciones del panel. Para pagos hay
+`requiereAprobacion`, pero **no se llama desde ningún lado de `apps/api`**.
+
+**Qué habría que hacer.** Que `POST /pagos/manual` exija `pago.manual.cargar` en vez de
+`pago.conciliar`, y que cuando `requiereAprobacion(rol, 'pago.manual.cargar')` sea `true` el
+pago nazca pendiente en vez de conciliado, enganchado a la cola de aprobaciones que ya usa el
+panel.
+
+**Por qué no se hizo.** Mete un estado nuevo en el flujo de plata y nadie lo pidió en la
+reunión. Es una feature, no el arreglo de una inconsistencia.
+
+**Criterio de aceptación.** Una operadora carga un cobro en efectivo, queda pendiente, y la
+administradora lo ve en su cola y lo aprueba. Sin aprobación, ese pago no cuenta como cobrado.
 
 ---
 
