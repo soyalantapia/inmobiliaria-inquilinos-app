@@ -1,165 +1,30 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+/**
+ * Las piezas que comparten las pestañas del portal.
+ *
+ * Vivían todas en una sola pantalla. Al partir el portal en pestañas —Pagos, Unidades,
+ * Reclamos y Mi perfil— se movieron acá TAL CUAL estaban: el cambio es de navegación, no de
+ * comportamiento, y mezclar las dos cosas en el mismo diff hace imposible revisar cuál rompió
+ * qué.
+ */
+
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Building2, ChevronDown, Loader2, LogOut, Mail, Phone, Receipt, Wrench } from 'lucide-react';
+import { AlertTriangle, ChevronDown, Mail, Phone } from 'lucide-react';
 import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card } from '@llave/ui/card';
 import { ImprimirRendicion } from '@/components/imprimir-rendicion';
-import { SelectorCartera } from '@/components/selector-cartera';
+import { money, fecha, periodoLargo } from '@/lib/format';
 import {
   apiFetch,
-  cerrarSesion,
-  leerSesion,
-  leerToken,
   type MiCartera,
   type PropiedadPortal,
   type ReclamoPortal,
   type RendicionDetalle,
   type RendicionPortal,
 } from '@/lib/api';
-
-const money = (n: number, moneda: 'ARS' | 'USD' = 'ARS'): string =>
-  new Intl.NumberFormat('es-AR', { style: 'currency', currency: moneda, maximumFractionDigits: 0 }).format(n);
-
-const fecha = (iso: string): string =>
-  new Date(iso).toLocaleDateString('es-AR', { day: 'numeric', month: 'short', year: 'numeric' });
-
-const periodoLargo = (p: string): string => {
-  const [y, m] = p.split('-');
-  const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-  return `${meses[Number(m) - 1] ?? p} ${y}`;
-};
-
-export default function PortalHome() {
-  const router = useRouter();
-  const [listo, setListo] = useState(false);
-  const sesion = typeof window !== 'undefined' ? leerSesion() : null;
-
-  // El chequeo de sesión va en un effect: leer localStorage durante el render rompe la
-  // hidratación (el server no lo tiene) y hacía parpadear el portal antes de redirigir.
-  useEffect(() => {
-    if (!leerToken()) router.replace('/login');
-    else setListo(true);
-  }, [router]);
-
-  const cartera = useQuery({
-    queryKey: ['mi-cartera'],
-    queryFn: () => apiFetch<MiCartera>('/portal/mi-cartera'),
-    enabled: listo,
-  });
-  const propiedades = useQuery({
-    queryKey: ['portal-propiedades'],
-    queryFn: () => apiFetch<PropiedadPortal[]>('/portal/propiedades'),
-    enabled: listo,
-  });
-  const rendiciones = useQuery({
-    queryKey: ['portal-rendiciones'],
-    queryFn: () => apiFetch<RendicionPortal[]>('/portal/rendiciones'),
-    enabled: listo,
-  });
-  const reclamos = useQuery({
-    queryKey: ['portal-reclamos'],
-    queryFn: () => apiFetch<ReclamoPortal[]>('/portal/reclamos'),
-    enabled: listo,
-  });
-
-  // Cualquier 401 (sesión vencida o revocada) manda al login: apiFetch ya limpió el storage.
-  useEffect(() => {
-    if (cartera.isError) router.replace('/login');
-  }, [cartera.isError, router]);
-
-  if (!listo || cartera.isPending) {
-    return (
-      <main className="flex min-h-screen items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" aria-label="Cargando" />
-      </main>
-    );
-  }
-
-  const salir = () => {
-    cerrarSesion();
-    router.replace('/login');
-  };
-
-  return (
-    <main className="mx-auto max-w-3xl space-y-6 p-4 pb-16 md:p-6">
-      <header className="flex flex-wrap items-start justify-between gap-3 border-b pb-4">
-        <div className="min-w-0">
-          <p className="text-xs uppercase tracking-wide text-muted-foreground">Tus propiedades</p>
-          <h1 className="truncate text-2xl font-semibold">{cartera.data?.nombre ?? sesion?.nombre}</h1>
-          <p className="text-sm text-muted-foreground">
-            Administra {cartera.data?.inmobiliaria.nombre ?? sesion?.inmobiliaria}
-            {cartera.data ? ` · comisión ${cartera.data.comisionPct}%` : ''}
-          </p>
-          {/* El teléfono y el mail de la inmobiliaria YA venían en /portal/mi-cartera y la
-              pantalla los tiraba. El portal existe para que el dueño no tenga que llamar, pero
-              para lo que el portal NO cubre —un gasto que no reconoce, avisar que vende— seguía
-              sin tener a dónde escribir: tenía que salir a buscar el número afuera de la app.
-              En el celular, `tel:` es un toque. */}
-          <ContactoInmo inmo={cartera.data?.inmobiliaria} />
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {/* Sólo aparece si esta persona administra con más de una inmobiliaria. */}
-          <SelectorCartera />
-          <Button variant="outline" size="sm" onClick={salir}>
-            <LogOut className="h-4 w-4" />
-            Salir
-          </Button>
-        </div>
-      </header>
-
-      <Seccion titulo="Lo que te rindieron" icono={<Receipt className="h-4 w-4" />}>
-        {rendiciones.isPending ? (
-          <Cargando />
-        ) : rendiciones.data && rendiciones.data.length > 0 ? (
-          <div className="space-y-2">
-            {rendiciones.data.map((r) => (
-              <FilaRendicion
-                key={r.id}
-                r={r}
-                propietario={cartera.data?.nombre ?? sesion?.nombre ?? ''}
-                inmobiliaria={cartera.data?.inmobiliaria.nombre ?? sesion?.inmobiliaria ?? ''}
-              />
-            ))}
-          </div>
-        ) : (
-          <Vacio texto="Todavía no hay rendiciones cargadas. Cuando tu inmobiliaria te rinda un período, lo vas a ver acá con el detalle." />
-        )}
-      </Seccion>
-
-      <Seccion titulo="Tus unidades" icono={<Building2 className="h-4 w-4" />}>
-        {propiedades.isPending ? (
-          <Cargando />
-        ) : propiedades.data && propiedades.data.length > 0 ? (
-          <div className="space-y-3">
-            {propiedades.data.map((p) => (
-              <FilaPropiedad key={p.id} p={p} />
-            ))}
-          </div>
-        ) : (
-          <Vacio texto="No hay propiedades asociadas a tu cuenta." />
-        )}
-      </Seccion>
-
-      <Seccion titulo="Reclamos de tus unidades" icono={<Wrench className="h-4 w-4" />}>
-        {reclamos.isPending ? (
-          <Cargando />
-        ) : reclamos.data && reclamos.data.length > 0 ? (
-          <ListaReclamos reclamos={reclamos.data} />
-        ) : (
-          // "No hay reclamos" era una afirmación que el backend no puede sostener: la consulta
-          // se recorta al CONTRATO VIGENTE de cada unidad (portal-propietario.ts), así que una
-          // unidad vacía hoy devuelve cero aunque el mes pasado se haya roto el termotanque. El
-          // texto dice lo que realmente cubre.
-          <Vacio texto="No hay reclamos abiertos ni resueltos del inquilino que vive hoy en tus unidades. Los de inquilinos anteriores no se muestran acá." />
-        )}
-      </Seccion>
-    </main>
-  );
-}
 
 /**
  * Los reclamos de sus unidades, de a diez.
@@ -168,7 +33,7 @@ export default function PortalHome() {
  * decir nada de los otros cuarenta. El dueño con varias unidades leía diez reclamos y se iba
  * creyendo que ésos eran todos. Mismo tope silencioso que tenían los períodos de la propiedad.
  */
-function ListaReclamos({ reclamos }: { reclamos: ReclamoPortal[] }) {
+export function ListaReclamos({ reclamos }: { reclamos: ReclamoPortal[] }) {
   const [todos, setTodos] = useState(false);
   const visibles = todos ? reclamos : reclamos.slice(0, 10);
   const restantes = reclamos.length - visibles.length;
@@ -207,7 +72,7 @@ function ListaReclamos({ reclamos }: { reclamos: ReclamoPortal[] }) {
  * hay ninguno de los dos no aparece nada. Un "Contactanos" que no lleve a ningún lado sería
  * exactamente lo contrario de lo que este portal viene a hacer.
  */
-function ContactoInmo({ inmo }: { inmo?: MiCartera['inmobiliaria'] }) {
+export function ContactoInmo({ inmo }: { inmo?: MiCartera['inmobiliaria'] }) {
   const tel = inmo?.telefono?.trim();
   const mail = inmo?.email?.trim();
   if (!tel && !mail) return null;
@@ -229,33 +94,7 @@ function ContactoInmo({ inmo }: { inmo?: MiCartera['inmobiliaria'] }) {
   );
 }
 
-function Seccion({ titulo, icono, children }: { titulo: string; icono: React.ReactNode; children: React.ReactNode }) {
-  return (
-    <section className="space-y-2">
-      <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        {icono}
-        {titulo}
-      </h2>
-      {children}
-    </section>
-  );
-}
-
-const Cargando = () => (
-  <Card className="p-6 text-center">
-    <Loader2 className="mx-auto h-5 w-5 animate-spin text-muted-foreground" aria-label="Cargando" />
-  </Card>
-);
-
-const Vacio = ({ texto }: { texto: string }) => (
-  <Card className="p-6 text-center text-sm text-muted-foreground">{texto}</Card>
-);
-
-/**
- * Una rendición. Los cinco números son exactamente los que Camila enumeró `[1:05:10]`:
- * lo que se cobró, la comisión, lo que se gastó, otros ingresos y lo que se depositó.
- */
-function FilaRendicion({
+export function FilaRendicion({
   r,
   propietario,
   inmobiliaria,
@@ -434,7 +273,7 @@ const Linea = ({ label, valor }: { label: string; valor: string }) => (
  * auditar `[1:05:30]`: *"vos también me estás auditando a mí… que ves el día que pagó esa
  * persona"*.
  */
-function FilaPropiedad({ p }: { p: PropiedadPortal }) {
+export function FilaPropiedad({ p }: { p: PropiedadPortal }) {
   const c = p.contrato;
   return (
     <Card className="space-y-3 p-4">
@@ -501,3 +340,4 @@ function FilaPropiedad({ p }: { p: PropiedadPortal }) {
     </Card>
   );
 }
+
