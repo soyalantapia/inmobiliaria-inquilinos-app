@@ -338,6 +338,13 @@ enum TipoEventoAuditoria {
   MODO_COBRANZA_CAMBIADO
   MORA_EDITADA
   MOVIMIENTO_CONSORCIO_ELIMINADO
+  // Conmutador de usuarios (T-25). Son la defensa REAL del feature: un PIN de 5 dígitos
+  // tipeado en un mostrador no es un secreto fuerte, pero cada cambio y cada intento
+  // rechazado quedan acá y el ADMIN los ve en /auditoria.
+  SESION_CONMUTADA
+  CONMUTACION_RECHAZADA
+  PIN_DESBLOQUEADO
+  PIN_ELIMINADO
 }
 
 enum GrupoCapacidad {

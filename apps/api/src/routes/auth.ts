@@ -14,8 +14,9 @@ import {
 } from '@llave/shared';
 import { prisma } from '../db.js';
 import { requireAuth, requirePersona, requireUsuario } from '../auth/guards.js';
-import { verificarPinUsuario } from '../auth/pin.js';
+import { verificarPinConmutador, pinEsTrivial } from '../auth/pin-conmutador.js';
 import { enviarOtp, enviarBienvenidaInmobiliaria } from '../mailer.js';
+import { registrarEvento } from '../lib/auditoria.js';
 
 const TOKEN_TTL = '15d';
 const OTP_TTL_MS = 10 * 60 * 1000;
@@ -351,6 +352,15 @@ export async function authRoutes(app: FastifyInstance) {
     }
     if (!usuario) return reply.code(401).send({ message: 'Código inválido o vencido' });
 
+    // Entrar por OTP DESTRABA el PIN. Es la salida self-service del lockout del conmutador y la
+    // única que no depende de que el ADMIN esté en la oficina: probar que tenés el mail es una
+    // prueba de identidad más fuerte que el PIN, así que un bloqueo por errarle cinco veces no
+    // tiene por qué sobrevivir a un login legítimo.
+    await prisma.usuario.update({
+      where: { id: usuario.id },
+      data: { pinIntentosFallidos: 0, pinBloqueadoHasta: null },
+    });
+
     const payload: JwtUsuario = {
       kind: 'usuario',
       userId: usuario.id,
@@ -623,9 +633,11 @@ export async function authRoutes(app: FastifyInstance) {
         imageUrl: u.imageUrl ?? null,
         inmobiliaria: u.inmobiliaria.nombre,
         esPiloto: u.inmobiliaria.esPiloto,
-        // PIN ELIMINADO de la plataforma: ninguna acción lo requiere. Devolvemos false
-        // fijo para que el panel no muestre estado ni prompts de PIN en ningún lado.
-        tienePin: false,
+        // Ninguna ACCIÓN pide PIN —eso sigue igual, `verificarPinUsuario` aprueba siempre— pero
+        // desde T-25 el PIN sí existe para una cosa: cambiar de usuario en la máquina del
+        // mostrador. Por eso vuelve a ser un dato real y no un `false` fijo: la Configuración
+        // necesita saber si ya lo definiste, y el conmutador si podés ser destino.
+        tienePin: !!u.pinHash,
         // Perfil fiscal incompleto si el auto-onboarding dejó cuit/dirección vacíos.
         perfilFiscalCompleto: !!(u.inmobiliaria.cuit && u.inmobiliaria.direccionCalle),
         trial: trial
@@ -657,32 +669,221 @@ export async function authRoutes(app: FastifyInstance) {
   // backend nunca lo recibía, así que una cuenta nueva (registro self-service)
   // no podía validar pagos, rendir ni aprobar (verificarPin → 403). Cada
   // usuario configura su propio PIN; si ya tiene uno, exige el PIN actual.
-  app.post('/auth/pin', async (request, reply) => {
+  /**
+   * Definir o cambiar el PIN PROPIO. Nadie puede setear el de otro: un ADMIN que pudiera
+   * escribir el PIN ajeno podría convertirse en la cajera sin dejar un rastro distinguible.
+   * Lo único que un ADMIN puede hacer sobre el PIN de otro es BORRARLO o DESBLOQUEARLO.
+   *
+   * Rate limit propio: hasta T-25 éste era el ÚNICO endpoint de `/auth/*` registrado sin
+   * `config`, mientras los otros cinco sí lo tenían. Con el PIN convertido en credencial del
+   * conmutador, dejarlo sin tope era el agujero más barato de explotar.
+   */
+  app.post('/auth/pin', { config: { rateLimit: { max: 20, timeWindow: '15 minutes' } } }, async (request, reply) => {
     const usuario = await requireUsuario(request, reply);
     if (!usuario) return;
     const body = z
       .object({
-        pinNuevo: z.string().regex(/^\d{4,6}$/, 'El PIN debe tener 4 a 6 dígitos'),
+        // CINCO dígitos, no "4 a 6". Camila lo describió así ("un usuario y contraseña que son
+        // cinco dígitos") y un largo fijo permite que la UI sea cinco casillas. No rompe a
+        // nadie: la migración de T-35 dejó todos los `pinHash` en NULL, así que no hay ningún
+        // PIN viejo de otro largo que quede inutilizable.
+        pinNuevo: z.string().regex(/^\d{5}$/, 'El PIN son 5 dígitos'),
         pinActual: z.string().optional(),
       })
       .safeParse(request.body ?? {});
     if (!body.success) {
       return reply.code(400).send({ message: body.error.issues[0]?.message ?? 'PIN inválido' });
     }
+    if (pinEsTrivial(body.data.pinNuevo)) {
+      return reply.code(400).send({
+        message: 'Ese PIN es muy fácil de adivinar. Evitá los dígitos repetidos y las secuencias.',
+      });
+    }
     const u = await prisma.usuario.findUnique({ where: { id: usuario.userId } });
     if (!u) return reply.code(401).send({ message: 'Usuario inexistente' });
-    // Si ya hay PIN, hay que probar que sos vos (PIN actual correcto) antes de
-    // cambiarlo. Vía verificarPinUsuario para heredar el lockout anti-fuerza-bruta:
-    // antes era un bcrypt.compareSync pelado → cambiar de PIN era un oráculo sin
-    // límite de intentos para adivinar el PIN actual con una sesión abierta.
+    // Si ya hay PIN, hay que probar que sos vos antes de cambiarlo.
+    //
+    // Acá había un agujero silencioso: esto llamaba a `verificarPinUsuario`, con un comentario
+    // que decía que así "heredaba el lockout anti-fuerza-bruta". No heredaba nada —esa función
+    // devuelve `{ok:true}` siempre—, así que `pinActual` no se verificaba en absoluto. Ahora va
+    // por `verificarPinConmutador`, que sí compara y sí cuenta los fallos.
     if (u.pinHash) {
-      const r = await verificarPinUsuario(u.id, body.data.pinActual);
+      const r = await verificarPinConmutador(u.id, body.data.pinActual);
       if (!r.ok) return reply.code(r.code).send({ message: r.message });
     }
     await prisma.usuario.update({
       where: { id: u.id },
-      data: { pinHash: bcrypt.hashSync(body.data.pinNuevo, 10) },
+      // Definir un PIN nuevo limpia el estado de bloqueo: si te bloqueaste y entraste por OTP a
+      // redefinirlo, no tiene sentido que sigas trabado.
+      data: { pinHash: bcrypt.hashSync(body.data.pinNuevo, 10), pinIntentosFallidos: 0, pinBloqueadoHasta: null },
     });
     return { ok: true, tienePin: true };
+  });
+
+  /**
+   * A quién puedo cambiarme. Usuarios ACTIVOS del mismo tenant, menos yo.
+   *
+   * NO devuelve el email a propósito: el email es el input del login por OTP, y exponer la lista
+   * completa de emails del tenant a cualquier rol convierte esta pantalla en un enumerador.
+   * Con el nombre y el rol alcanza para elegir a quién pasarle la máquina.
+   */
+  app.get('/auth/usuario/conmutables', async (request, reply) => {
+    const u = await requireUsuario(request, reply);
+    if (!u) return;
+    const usuarios = await prisma.usuario.findMany({
+      where: { inmobiliariaId: u.inmobiliariaId, activo: true, id: { not: u.userId } },
+      select: { id: true, nombre: true, apellido: true, rol: true, pinHash: true, pinBloqueadoHasta: true, imageUrl: true },
+      orderBy: [{ nombre: 'asc' }],
+    });
+    const ahora = Date.now();
+    const esAdmin = u.rol === 'ADMIN';
+    return {
+      actual: { id: u.userId, rol: u.rol },
+      usuarios: usuarios.map((x) => ({
+        id: x.id,
+        nombre: `${x.nombre} ${x.apellido}`.trim(),
+        rol: x.rol,
+        imageUrl: x.imageUrl ?? null,
+        tienePin: !!x.pinHash,
+        // El estado "bloqueado" sí se muestra a todos (si no, el que intenta no entiende por qué
+        // le rebota), pero la HORA exacta sólo al ADMIN: a un tercero le diría cuándo volver a
+        // probar, que es justo lo que un atacante quiere saber.
+        bloqueado: !!(x.pinBloqueadoHasta && x.pinBloqueadoHasta.getTime() > ahora),
+        bloqueadoHasta: esAdmin ? x.pinBloqueadoHasta : null,
+      })),
+    };
+  });
+
+  /**
+   * EL CONMUTADOR. Cambia de persona en un dispositivo YA autenticado.
+   *
+   * `requireUsuario` PRIMERO, y eso es la mitad del diseño: el PIN **nunca** es un login desde
+   * cero. Sin una sesión válida del mismo tenant esto devuelve 401 y no hay nada que adivinar.
+   *
+   * ⚠️ NUNCA 401 POR PIN INCORRECTO. `manejarSesionVencida` del panel
+   * (`lib/api/client.ts`) dispara ante CUALQUIER 401 con token presente: borra la sesión y manda
+   * a `/login?expirada=1`. Un 401 acá desloguearía al operador por errarle al PIN — lo contrario
+   * de lo que esta función viene a resolver. Por eso 403 / 423 / 409 / 404, y el 401 queda
+   * reservado para "no hay sesión".
+   */
+  app.post(
+    '/auth/usuario/conmutar',
+    { config: { rateLimit: { max: 60, timeWindow: '15 minutes' } } },
+    async (request, reply) => {
+      const u = await requireUsuario(request, reply);
+      if (!u) return;
+      const body = z
+        .object({ usuarioId: z.string().min(1), pin: z.string().regex(/^\d{5}$/) })
+        .safeParse(request.body ?? {});
+      if (!body.success) return reply.code(400).send({ message: 'Datos inválidos' });
+      if (body.data.usuarioId === u.userId) {
+        return reply.code(400).send({ message: 'Ya estás usando ese usuario.' });
+      }
+      // Mismo tenant + activo. Un id de otra inmobiliaria da 404, indistinguible de inexistente:
+      // no confirmamos la existencia de usuarios ajenos.
+      const destino = await prisma.usuario.findFirst({
+        where: { id: body.data.usuarioId, inmobiliariaId: u.inmobiliariaId, activo: true },
+        select: { id: true, nombre: true, apellido: true, rol: true, inmobiliariaId: true },
+      });
+      if (!destino) return reply.code(404).send({ message: 'Usuario inexistente' });
+
+      const r = await verificarPinConmutador(destino.id, body.data.pin);
+      if (!r.ok) {
+        await registrarEvento({
+          inmobiliariaId: u.inmobiliariaId,
+          tipo: 'CONMUTACION_RECHAZADA',
+          autorId: u.userId,
+          rolAutor: u.rol,
+          entidadId: destino.id,
+          entidadDescripcion: `${destino.nombre} ${destino.apellido}`.trim(),
+        });
+        return reply.code(r.code).send(r);
+      }
+
+      const payload: JwtUsuario = {
+        kind: 'usuario',
+        userId: destino.id,
+        inmobiliariaId: destino.inmobiliariaId,
+        rol: destino.rol,
+      };
+      // MISMO TTL que un login normal. Bajarlo para el token conmutado suena prudente y en la
+      // práctica le compra a la cajera un correo con código cada mañana; el riesgo real —la
+      // máquina que queda sola con la sesión abierta— se ataja con el bloqueo por inactividad
+      // del panel, no acortando la sesión de todos.
+      const token = app.jwt.sign(payload, { expiresIn: TOKEN_TTL });
+      await registrarEvento({
+        inmobiliariaId: u.inmobiliariaId,
+        tipo: 'SESION_CONMUTADA',
+        autorId: u.userId,
+        rolAutor: u.rol,
+        entidadId: destino.id,
+        entidadDescripcion: `${destino.nombre} ${destino.apellido}`.trim(),
+      });
+      return {
+        token,
+        usuario: { id: destino.id, nombre: `${destino.nombre} ${destino.apellido}`.trim(), rol: destino.rol },
+      };
+    },
+  );
+
+  /**
+   * Destrabar a alguien que se bloqueó. CONSERVA el hash: sólo limpia los contadores.
+   *
+   * Es la salida del medio de las tres. La de menos fricción es esperar 30 minutos; la que
+   * SIEMPRE está disponible es que la persona entre por OTP a su propio mail (ver más abajo, en
+   * `/auth/usuario/otp/verify`), y no depende de que el ADMIN esté en la oficina.
+   */
+  app.post('/auth/usuario/:id/pin/desbloquear', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'equipo.gestionar');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const destino = await prisma.usuario.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      select: { id: true, nombre: true, apellido: true },
+    });
+    if (!destino) return reply.code(404).send({ message: 'Usuario inexistente' });
+    await prisma.usuario.update({
+      where: { id: destino.id },
+      data: { pinIntentosFallidos: 0, pinBloqueadoHasta: null },
+    });
+    await registrarEvento({
+      inmobiliariaId: u.inmobiliariaId,
+      tipo: 'PIN_DESBLOQUEADO',
+      autorId: u.userId,
+      rolAutor: u.rol,
+      entidadId: destino.id,
+      entidadDescripcion: `${destino.nombre} ${destino.apellido}`.trim(),
+    });
+    return { ok: true };
+  });
+
+  /**
+   * Borrar el PIN de alguien (se olvidó, o se fue de la empresa). Queda sin PIN y lo redefine
+   * desde su propia sesión.
+   *
+   * Un ADMIN puede BORRAR pero NO SETEAR — ver el docblock de `POST /auth/pin`.
+   */
+  app.delete('/auth/usuario/:id/pin', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'equipo.gestionar');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const destino = await prisma.usuario.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      select: { id: true, nombre: true, apellido: true },
+    });
+    if (!destino) return reply.code(404).send({ message: 'Usuario inexistente' });
+    await prisma.usuario.update({
+      where: { id: destino.id },
+      data: { pinHash: null, pinIntentosFallidos: 0, pinBloqueadoHasta: null },
+    });
+    await registrarEvento({
+      inmobiliariaId: u.inmobiliariaId,
+      tipo: 'PIN_ELIMINADO',
+      autorId: u.userId,
+      rolAutor: u.rol,
+      entidadId: destino.id,
+      entidadDescripcion: `${destino.nombre} ${destino.apellido}`.trim(),
+    });
+    return { ok: true };
   });
 }
