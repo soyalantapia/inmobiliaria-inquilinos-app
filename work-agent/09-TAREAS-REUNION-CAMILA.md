@@ -248,6 +248,19 @@ cambio, y una persona con rol CAJA puede confirmar un pago de punta a punta.
 
 **Riesgo.** Operativo, no técnico. Se mitiga con el aviso previo.
 
+> **Actualización 19/08 — el golpe es más blando de lo que decía esta tarea.** Cuando se
+> escribió, una operadora que intentara confirmar un pago se comía un **403 crudo**: el botón
+> estaba ahí, lo tocaba, y el sistema le tiraba un error. Eso es exactamente "el sistema se
+> rompió".
+>
+> Con **T-40**, la pantalla de pagos ahora se gatea por capacidad: la operadora **ve la bandeja
+> igual** (sigue sabiendo qué hay pendiente, que es la mitad útil de la pantalla) pero en lugar
+> de los botones lee *"Confirmar o rechazar un pago lo hace Administrador o Caja"*.
+>
+> **El aviso previo a Camila sigue haciendo falta** —que su equipo pierda una capacidad sin que
+> ella lo sepa no se arregla con un cartel— pero la ventana entre el deploy y la reasignación
+> ya no se vive como una falla.
+
 ---
 
 ## T-04 · Cerrar la duda de los $850 con una consulta a la base
@@ -1935,6 +1948,41 @@ hizo **T-41**. Ahora el toast dice la verdad.
 
 ---
 
+## T-43 · T-40 había quedado a medias: el mismo 403, dos clicks más allá — ✅ RESUELTO
+
+**Experto:** FE-P · **Prioridad:** 🟢
+**Origen:** revisión adversarial de mis propios commits (19/08). **Tres dimensiones
+independientes encontraron lo mismo**, lo que es la señal de que era real.
+
+**Qué faltaba.** T-40 gateó los botones de la **fila**, pero "Ver comprobante" queda visible
+para todos a propósito — y **adentro de ese modal estaban Confirmar y Rechazar sin
+condicionar**. Exactamente el defecto que T-40 decía cerrar, sobreviviendo en el mismo archivo.
+El escéptico verificó que el camino es alcanzable de punta a punta: el `PinPromptDialog` es un
+no-op, así que dispara el `POST /pagos/:id/validar` directo y el server contesta 403.
+
+**Y un segundo caso que nadie había mirado:** el botón **"Anular"** de "Conciliados recientes"
+usa `pago.revertir`, que es **sólo ADMIN** — no ADMIN+CAJA. O sea que `puedeDecidir` no
+alcanzaba: hacía falta un flag propio, si no **CAJA veía un "Anular" que le devolvía 403**.
+
+**Un error mío que el escéptico pescó de paso.** El comentario que dejé en T-40 decía que
+`pago.conciliar` *"dejó de incluir a OPERADOR en esta misma tanda"*. Es falso: ya era
+`['ADMIN','CAJA']` antes de estos commits — lo que T-37 tocó fue `pago.manual.cargar`. El
+código estaba bien; el comentario mentía sobre la historia, que es la clase de cosa que
+después manda a alguien a buscar un cambio que no existió. Corregido.
+
+**Verificado en navegador, los tres roles:**
+
+| rol | Confirmar/Rechazar (fila) | dentro del modal | Anular | Ver comprobante |
+|---|---|---|---|---|
+| ADMIN | sí | sí | sí | sí |
+| CAJA | sí | sí | **no** | sí |
+| OPERADOR | no (aviso) | no (aviso) | no | sí |
+
+**No se tocó `PagosPorValidarDemo`**: esa variante corre sólo con `apiEnabled=false`, no habla
+con ningún server y su rol sale de localStorage. Gatearla sólo rompería la demo.
+
+---
+
 ## T-37-N1 · Circuito de aprobación para el pago manual del operador
 
 **Experto:** BE + PROD · **Prioridad:** 🟢 · **Depende de:** decisión de producto
@@ -2456,6 +2504,22 @@ Dos cosas quedaron abiertas y están en `work-agent/.tareas/T-27/estado.md`:
 2. **Apareció un segundo bloqueante que estaba tapado** detrás del primero: la ruta
    `opengraph-image` de la landing falla al prerenderizar (`Invalid URL` en `@vercel/og`).
    Parece específico de Windows y la CI corre en ubuntu, pero no es verificable desde acá.
+
+   > **Confirmado el 19/08 desde otra sesión — es Windows, con causa raíz.** El paquete hace
+   > `fileURLToPath(join(import.meta.url, "../noto-sans-v27-latin-regular.ttf"))`
+   > (`@vercel/og/index.node.js:18988`): le pasa una **URL** a `path.join`. En Windows eso
+   > convierte las barras y devuelve `file:\C:\...`, que no es una URL válida → `Invalid URL`.
+   > En POSIX el mismo `join` deja `file:/...`, que Node **sí** acepta. Por eso rompe local y
+   > no en ubuntu.
+   >
+   > **Prueba empírica:** sacando temporalmente `opengraph-image.tsx` y corriendo
+   > `bash scripts/build-static.sh` sobre `tmp/integracion`, el build **termina con exit 0** y
+   > genera `out/` completo (las dos apps, 74 páginas). Con el archivo puesto, muere sólo en
+   > esa ruta. O sea: no hay ningún otro bloqueante escondido detrás.
+   >
+   > **Para quien buildee en Windows:** no es un bug del repo y no hay que "arreglarlo" tocando
+   > la landing. Si necesitás el build local completo, sacá ese archivo mientras dure la prueba
+   > y volvé a ponerlo.
 
 **Estado verificado.** La CI está en rojo hace **44 días**. Último run verde: `46dc274`,
 05/07/2026; desde entonces ~40 corridas seguidas en `failure`. La causa es una sola línea:

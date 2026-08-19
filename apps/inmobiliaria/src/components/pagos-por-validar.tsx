@@ -112,12 +112,17 @@ function PagosPorValidarApi({ onChange }: PagosPorValidarProps = {}) {
   // mensaje de error del server (PIN inválido, ya decidido) para reintentar.
   const pendingAction = useRef<((pin: string) => Promise<string | null>) | null>(null);
 
-  // T-40 — `pago.conciliar` dejó de incluir a OPERADOR en esta misma tanda, pero la pantalla
-  // seguía ofreciendo Validar y Rechazar a cualquiera: se tocaba el botón y el server contestaba
-  // 403. La bandeja sigue VISIBLE en modo lectura —ver qué hay pendiente no le hace mal a nadie
-  // y es la mitad útil de la pantalla—; lo que se saca es la promesa de poder decidir.
+  // T-40 — `pago.conciliar` es ['ADMIN','CAJA'] (dejó de incluir a OPERADOR en la tanda del rol
+  // CAJA, antes de estos commits), pero la pantalla seguía ofreciendo Validar y Rechazar a
+  // cualquiera: se tocaba el botón y el server contestaba 403. La bandeja sigue VISIBLE en modo
+  // lectura —ver qué hay pendiente no le hace mal a nadie y es la mitad útil de la pantalla—;
+  // lo que se saca es la promesa de poder decidir.
   const { me } = useMe();
   const puedeDecidir = rolTienePermiso(normalizarRol(me?.rol, 'LECTURA'), 'pago.conciliar');
+  // `pago.revertir` es SÓLO ADMIN, no ADMIN+CAJA: anular un cobro ya conciliado no es lo mismo
+  // que validarlo, así que necesita su propio flag (T-43). Sin esto, CAJA veía un "Anular" que
+  // le devolvía 403.
+  const puedeRevertir = rolTienePermiso(normalizarRol(me?.rol, 'LECTURA'), 'pago.revertir');
 
   // Avisamos al padre el conteo real de pendientes cada vez que cambia.
   useEffect(() => {
@@ -304,6 +309,7 @@ function PagosPorValidarApi({ onChange }: PagosPorValidarProps = {}) {
                   key={p.id}
                   pago={p}
                   disabled={showPin}
+                  puedeRevertir={puedeRevertir}
                   onAnular={() => setAnulando(p)}
                 />
               ))}
@@ -350,32 +356,42 @@ function PagosPorValidarApi({ onChange }: PagosPorValidarProps = {}) {
                 <p className="text-muted-foreground">{verComprobante.notaInquilino}</p>
               </div>
             )}
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={() => {
-                  if (!verComprobante) return;
-                  setRechazando(verComprobante);
-                  setVerComprobante(null);
-                }}
-              >
-                <XCircle className="h-4 w-4" />
-                Rechazar
-              </Button>
-              <Button
-                className="flex-1"
-                onClick={() => {
-                  if (!verComprobante) return;
-                  const pago = verComprobante;
-                  setVerComprobante(null);
-                  triggerConciliar(pago);
-                }}
-              >
-                <CheckCircle2 className="h-4 w-4" />
-                Confirmar
-              </Button>
-            </div>
+            {/* T-43 — El gate de la fila (T-40) dejaba este camino abierto: "Ver comprobante"
+                queda para todos a propósito, y adentro del modal estaban Confirmar y Rechazar
+                sin condicionar. O sea el mismo 403, a dos clicks de distancia y en el mismo
+                archivo. Mismo texto que la fila para que la pantalla no diga dos cosas. */}
+            {puedeDecidir ? (
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => {
+                    if (!verComprobante) return;
+                    setRechazando(verComprobante);
+                    setVerComprobante(null);
+                  }}
+                >
+                  <XCircle className="h-4 w-4" />
+                  Rechazar
+                </Button>
+                <Button
+                  className="flex-1"
+                  onClick={() => {
+                    if (!verComprobante) return;
+                    const pago = verComprobante;
+                    setVerComprobante(null);
+                    triggerConciliar(pago);
+                  }}
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                  Confirmar
+                </Button>
+              </div>
+            ) : (
+              <p className="text-center text-xs text-muted-foreground">
+                Confirmar o rechazar un pago lo hace Administrador o Caja.
+              </p>
+            )}
           </div>
         </DialogContent>
       </Dialog>
@@ -1274,10 +1290,13 @@ function ResueltoRow({
 function ConciliadoRow({
   pago,
   disabled,
+  puedeRevertir = true,
   onAnular,
 }: {
   pago: PagoInformado;
   disabled: boolean;
+  /** `pago.revertir` es sólo ADMIN. Sin esto, CAJA veía un "Anular" que le daba 403 (T-43). */
+  puedeRevertir?: boolean;
   onAnular: () => void;
 }) {
   return (
@@ -1292,10 +1311,12 @@ function ConciliadoRow({
           {pago.tipo === 'PARCIAL' ? ' · parcial' : ''} · Conciliado
         </p>
       </div>
-      <Button size="sm" variant="ghost" onClick={onAnular} disabled={disabled}>
-        <RotateCcw className="h-3.5 w-3.5" />
-        Anular
-      </Button>
+      {puedeRevertir && (
+        <Button size="sm" variant="ghost" onClick={onAnular} disabled={disabled}>
+          <RotateCcw className="h-3.5 w-3.5" />
+          Anular
+        </Button>
+      )}
     </div>
   );
 }
