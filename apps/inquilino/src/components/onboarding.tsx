@@ -119,7 +119,7 @@ const STEPS: Step[] = [
     bullets: [
       'Vista unificada de eventos',
       'No te olvides de nada importante',
-      'Te avisamos por WhatsApp antes',
+      'Con los vencimientos a la vista',
     ],
     cta: { label: 'Ver mi calendario', href: '/calendario' },
   },

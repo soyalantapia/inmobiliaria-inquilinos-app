@@ -140,7 +140,10 @@ function PagosPorValidarApi({ onChange }: PagosPorValidarProps = {}) {
         await rechazar(pago.id, motivo, pin);
         toast({
           title: 'Pago rechazado',
-          description: `Le avisamos a ${pago.inquilino} con tu nota.`,
+          // El sistema no le manda nada al inquilino al rechazar: lo ve en el feed de su app
+          // (GET /mis-notificaciones, 'Se rechazó un pago del contrato' + el motivo). Decir
+          // 'le avisamos' hacía creer que salía un mensaje que nunca salía.
+          description: `${pago.inquilino} lo va a ver en su app, con tu nota.`,
         });
         return null;
       } catch (e) {

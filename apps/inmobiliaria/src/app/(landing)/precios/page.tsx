@@ -75,9 +75,12 @@ const FEATURES_DESTACADAS = [
   },
   {
     icon: MessageCircle,
-    titulo: 'WhatsApp como canal',
+    // Decía "toda la comunicación va por WhatsApp", y es al revés: lo único automático
+    // del sistema es el mail (OTP, bienvenida, invitaciones, anuncios). WhatsApp existe
+    // como botones con el mensaje ya escrito que la persona aprieta y manda.
+    titulo: 'WhatsApp a un toque',
     detalle:
-      'Toda la comunicación va por WhatsApp. Mail bombardeado, WhatsApp lo ve al toque.',
+      'Cada inquilino, propietario y profesional tiene su botón de WhatsApp con el mensaje ya escrito. Apretás y mandás.',
   },
 ];
 

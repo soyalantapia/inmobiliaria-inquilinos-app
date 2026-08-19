@@ -70,7 +70,7 @@ const FAQS: FaqItem[] = [
     id: 'pagos-3',
     pregunta: '¿Tardan en validar mi comprobante?',
     respuesta:
-      'Entre 24 y 48 horas hábiles. Mientras tanto pausamos los punitorios. Te avisamos por WhatsApp cuando esté confirmado.',
+      'Entre 24 y 48 horas hábiles. Mientras tanto pausamos los punitorios. Te avisamos acá en la app cuando esté confirmado.',
     categoria: 'pagos',
   },
   {

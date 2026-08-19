@@ -2721,3 +2721,18 @@ venta por sí solo y además es cierto.
 sistema no tiene.
 
 ---
+
+### T-18-N1 · Que el historial muestre el cuerpo del mensaje, no sólo el asunto
+**Experto:** FE-P · **Prioridad:** 🟠 · **Detectada en:** T-18 (Fase 7)
+
+`POST /contratos/:id/comunicaciones` guarda el texto completo en `EventoContrato.detalle`, pero
+falta verificar si la pestaña Historial lo renderiza o sólo muestra `titulo`. Camila:
+*"queda anotado que mandé un mensaje, pero no queda el mensaje… si guarda sólo el asunto no me
+sirve para discutir después."* Sin el cuerpo, el registro no cubre el caso de uso real.
+
+### T-18-N2 · El copy de espera de país promete un mail que nadie manda
+**Experto:** PROD · **Prioridad:** 🟢 · **Detectada en:** T-18
+
+`apps/inmobiliaria/src/components/configuracion-pais.tsx:183` dice *"avisamos por mail cuando
+esté listo"* para un país todavía no disponible. No hay lista de espera detrás. O se construye,
+o se cambia el texto.
