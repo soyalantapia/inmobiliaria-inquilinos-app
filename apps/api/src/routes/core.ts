@@ -770,7 +770,20 @@ export async function coreRoutes(app: FastifyInstance) {
         nombre: d.nombre,
         apellido: d.apellido,
         cuit: normalizarCuit(d.cuit),
-        email: normalizarEmail(d.email),
+        // El email sólo se escribe si VINO en el body. Antes se escribía siempre,
+        // y como `normalizarEmail(undefined)` devuelve '', cualquier caller que
+        // omitiera el campo le BORRABA el email al propietario.
+        //
+        // Dejó de ser un detalle cuando el email pasó a ser la llave de entrada al
+        // portal (T-23): vaciarlo no es perder un dato de contacto, es dejar al
+        // propietario afuera —y sin ningún error, porque el PUT devuelve 200—.
+        //
+        // Hoy el diálogo del panel manda el campo siempre, así que esto es una
+        // mina y no un incendio. Se desactiva igual: el próximo caller (un PATCH
+        // parcial, un script, la app móvil) no tiene por qué saberlo.
+        //
+        // Un `''` EXPLÍCITO sí lo borra: querer sacarle el email es legítimo.
+        ...(d.email !== undefined ? { email: normalizarEmail(d.email) } : {}),
         telefono: d.telefono ?? '',
         cbuAlias: d.cbuAlias || null,
         ...(d.comisionPct != null ? { comisionPct: d.comisionPct } : {}),
