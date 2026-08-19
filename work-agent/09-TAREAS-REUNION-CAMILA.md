@@ -886,6 +886,16 @@ O se resuelve el binario del entorno (`psql` del PATH, o una env var), o se lo m
 de integración para que no ensucie el resultado de la tanda pura. Hoy contamina: obliga a saber
 de memoria que "ése falla siempre" para poder leer el output.
 
+### ✅ RESUELTO — commit `1e51f2e`
+
+Las dos cosas: el binario sale del PATH (o de `PSQL_BIN`), el usuario del entorno, y **si la
+infra no está el test se saltea con el motivo escrito** en vez de reventar con `ENOENT`. La
+detección prueba el cluster de verdad (`SELECT 1`), no sólo que el binario exista: psql instalado
+sin cluster corriendo es el caso más común y daría el mismo rojo inútil.
+
+Saltearse es honesto —queda visible en el output y dice qué falta y cómo habilitarlo—; fallar
+siempre entrena a ignorar el rojo, que es peor que no tener el test.
+
 ---
 
 **Cómo apareció.** Verificando T-21. No es de la PWA, así que no se tocó.
@@ -1001,6 +1011,48 @@ El schema de Prisma vive en **`apps/api/prisma/schema.prisma`**. No hay ningún 
 Quien lo busque ahí no lo encuentra y puede concluir que el modelo no existe — que es
 exactamente lo que pasó al escribir T-21. Corregir `CLAUDE.md` (requiere OK del dueño: es su
 archivo de convenciones).
+
+### ✅ RESUELTO — commit `1e51f2e` · **revisar: toca CLAUDE.md**
+
+Corregidas la estructura del monorepo (los reales son `config`, `shared`, `ui`), la ruta del
+schema y la de los tipos compartidos. Se dejó una nota explicando qué se planeó y no se construyó
+así, en vez de borrarlo en silencio: el plan sigue siendo información.
+
+**Se corrigieron SÓLO hechos verificables (rutas y existencia), ninguna decisión ni convención.**
+Aun así es tu archivo: si preferís otra forma, se revierte.
+
+**Verificando esas rutas apareció algo bastante más grande → T-36.**
+
+---
+
+## T-36 · La capacidad #1 del MVP no está construida
+
+**Experto:** PROD (decisión) + BE · **Prioridad:** 🔴 · **Depende de:** nada
+**Origen:** verificación de rutas de T-21-N3. No salió de la reunión.
+
+`CLAUDE.md` §1 lista **"Carga de contrato con IA"** como la primera de las 4 capacidades
+no-negociables del MVP, y §5.1 la describe con endpoint, flujo, prompt y tests requeridos.
+
+**No existe.** Verificado con tres búsquedas independientes:
+
+- no hay endpoint `/contratos/parse` en `apps/api/src`;
+- el SDK de Anthropic no está en ninguna dependencia (ni en `apps/api/package.json` ni en la raíz);
+- `ANTHROPIC_*` no se lee en ningún archivo de `apps/api/src`.
+
+Lo que sí hay para cargar contratos: el **wizard manual** (`/contratos/nuevo`) y la **importación
+de cartera** desde Excel/CSV — determinística, sin IA, y que funciona.
+
+**Lo que hay que decidir (PROD, antes de codear nada).** ¿Sigue siendo capacidad de MVP? La
+reunión del 03/08 con Camila giró entera alrededor de otras cosas —cobranza, morosos, permisos,
+consorcio— y en ningún momento pidió cargar contratos con IA. Puede que el producto haya
+encontrado su forma real y el doc haya quedado viejo. Las tres salidas honestas son: construirla,
+bajarla a post-MVP, o sacarla de la lista.
+
+Lo que **no** es una salida es dejar el doc afirmando que es no-negociable mientras nadie la
+construye: §5.1 ya quedó marcada como diseño previsto para que nadie más la lea como algo que anda.
+
+**Criterio de aceptación.** La lista de capacidades del MVP en `CLAUDE.md` describe lo que el
+producto es o va a ser, y no hay ninguna sección que se lea como implementada sin estarlo.
 
 ---
 
