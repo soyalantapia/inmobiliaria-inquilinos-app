@@ -114,7 +114,10 @@
         animation: fadeInUp 900ms ease-out 300ms both;
       }
       @media (min-width: 480px) { .grid { gap: 16px; } }
-      @media (min-width: 720px) { .grid { grid-template-columns: repeat(3, 1fr); gap: 20px; } }
+      /* Cuatro puertas desde T-46: 2×2 en tablet y 1×4 en desktop. Con las 3 columnas de
+         antes la cuarta tarjeta caía sola en una fila y quedaba coja. */
+      @media (min-width: 720px) { .grid { grid-template-columns: repeat(2, 1fr); gap: 20px; } }
+      @media (min-width: 1060px) { .grid { grid-template-columns: repeat(4, 1fr); } }
 
       a.card {
         display: flex;
@@ -219,7 +222,7 @@
       <header>
         <div class="logo">My</div>
         <h1>My Alquiler</h1>
-        <p class="lead">¿Qué querés ver? Elegí una de las tres puertas.</p>
+        <p class="lead">¿Qué querés ver? Elegí una de las cuatro puertas.</p>
       </header>
 
       <div class="grid">
@@ -230,10 +233,14 @@
           <p>Landing con todas las funciones del producto explicadas, ideal para mostrar a inmobiliarias y propietarios.</p>
           <div class="arrow">Empezar →</div>
         </a>
+        <!-- Se llamaba "App del Propietario", que era el nombre del OTRO. Esta es la app de la
+             inmobiliaria (apps/inmobiliaria), la que usan Roberto y Camila; "propietario" en el
+             producto es el dueño de la unidad, que ahora tiene su propia puerta acá al lado.
+             Con las dos tarjetas juntas el nombre viejo era directamente ambiguo. -->
         <a class="card" href="./inmobiliaria/">
           <span class="pill">Panel</span>
           <div class="icon">🏢</div>
-          <h2>App del Propietario</h2>
+          <h2>Panel de la Inmobiliaria</h2>
           <p>Propiedades, contratos, pagos, renovaciones, reclamos, propietarios, caja y auditoría.</p>
           <div class="arrow">Entrar →</div>
         </a>
@@ -242,6 +249,13 @@
           <div class="icon">📱</div>
           <h2>App del Inquilino</h2>
           <p>Pagar alquiler, gestionar reclamos, chatear con el broker IA y ver contratos y comprobantes.</p>
+          <div class="arrow">Entrar →</div>
+        </a>
+        <a class="card" href="./propietario/">
+          <span class="pill">Portal</span>
+          <div class="icon">🧾</div>
+          <h2>Portal del Propietario</h2>
+          <p>Lo que te rindieron mes a mes con el desglose de cada peso, tus unidades y los reclamos de tus inquilinos.</p>
           <div class="arrow">Entrar →</div>
         </a>
       </div>

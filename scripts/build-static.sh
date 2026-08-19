@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builda las dos apps en modo static export para deployar a GitHub Pages.
+# Builda las tres apps en modo static export para deployar a GitHub Pages.
 #
 # next.js no soporta middleware en static export, así que renombramos los
 # archivos middleware.ts temporalmente y los restauramos al final (incluso
@@ -20,7 +20,9 @@ restaurar() {
 trap restaurar EXIT
 
 # Apagar dev servers si los hay (el guard de build los detecta y aborta).
-for puerto in 3000 3001; do
+# 3003 es el del portal del propietario. NO va 3002: ese es el del API, que no tiene nada
+# que ver con estos builds y matarlo sería sabotear a quien esté laburando al lado.
+for puerto in 3000 3001 3003; do
   pids=$(lsof -ti:$puerto 2>/dev/null || true)
   if [[ -n "$pids" ]]; then
     echo "→ Apagando proceso en :$puerto"
@@ -33,7 +35,7 @@ done
 
 cd "$ROOT"
 
-rm -rf apps/inmobiliaria/.next apps/inquilino/.next out
+rm -rf apps/inmobiliaria/.next apps/inquilino/.next apps/propietario/.next out
 
 echo ""
 echo "▶ Build inmobiliaria"
@@ -46,12 +48,23 @@ echo "▶ Build inquilino"
 # app vive bajo este prefijo. En Railway NO se setea (basePath vacío = correcto).
 NEXT_PUBLIC_BASE_PATH=/inmobiliaria-inquilinos-app/inquilino STATIC_EXPORT=1 pnpm --filter inquilino build
 
-# Combinamos los dos outputs bajo /out con la estructura que espera GH Pages
+echo ""
+echo "▶ Build propietario"
+# NEXT_PUBLIC_DEMO=1 es lo ÚNICO que prende los datos de mentira del portal, y se escribe
+# acá y en ningún otro lado (T-46). El portal es el que muestra plata rendida, así que su
+# modo demo no puede colgarse de "no hay API": una app de producción a la que se le olvidó
+# NEXT_PUBLIC_API_URL tiene que seguir diciendo "no estoy conectada" en vez de inventar
+# números. Ver el docblock de apps/propietario/src/lib/api.ts.
+# El basePath no se pasa: su next.config.mjs ya lo hornea en el bloque de export.
+NEXT_PUBLIC_DEMO=1 STATIC_EXPORT=1 pnpm --filter propietario build
+
+# Combinamos los tres outputs bajo /out con la estructura que espera GH Pages
 echo ""
 echo "▶ Combinando outputs en ./out"
-mkdir -p out/inmobiliaria out/inquilino
+mkdir -p out/inmobiliaria out/inquilino out/propietario
 cp -R apps/inmobiliaria/out/. out/inmobiliaria/
 cp -R apps/inquilino/out/. out/inquilino/
+cp -R apps/propietario/out/. out/propietario/
 
 # Root del sitio: picker simple (3 opciones — presentación, panel inmo, app inquilino).
 # Para editarlo: scripts/picker.html

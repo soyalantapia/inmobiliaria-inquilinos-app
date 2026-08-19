@@ -3,13 +3,34 @@
 /**
  * Cliente del portal del propietario.
  *
- * A diferencia del panel y de la PWA, acá NO hay modo demo con localStorage: el portal muestra
- * plata rendida de personas reales y una versión "de mentira" sólo serviría para confundir. Sin
- * `NEXT_PUBLIC_API_URL` la app lo dice y no finge nada.
+ * SOBRE EL MODO DEMO, que antes acá no existía. La versión original de este archivo decía que
+ * el portal NO podía tener modo demo: muestra plata rendida de personas reales, y una versión
+ * "de mentira" sólo serviría para confundir. El argumento sigue siendo cierto y sigue vigente
+ * —lo que cambió es que se lo acotó al caso donde de verdad aplica—.
+ *
+ * Falta el servidor en una app desplegada (`!apiEnabled`) ⇒ NO se inventa nada. Se dice "el
+ * portal no está conectado", igual que antes. Ese es el caso peligroso: un propietario de
+ * verdad mirando números que no son los suyos.
+ *
+ * Sitio estático de la demo (`NEXT_PUBLIC_DEMO=1`) ⇒ datos de `demo-data.ts`. Ahí no hay
+ * propietario real ni base: es la misma demo donde el panel ya muestra caja falsa y la PWA
+ * alquiler falso, y el portal quedaba afuera del sitio por no tenerla (T-46).
+ *
+ * La bandera es una SEGUNDA condición, no un reemplazo, y sólo la escribe
+ * `scripts/build-static.sh`. Olvidarse `NEXT_PUBLIC_API_URL` en producción no prende la demo
+ * por accidente: sin la bandera, el camino es el honesto de siempre.
  */
+import { resolverDemo } from './demo-data';
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? '';
 export const apiEnabled = API_URL.length > 0;
+
+/**
+ * La demo pide las DOS cosas: bandera puesta y servidor ausente. El `!apiEnabled` no es
+ * decorativo — si alguien buildea el sitio estático apuntando a un API real, gana el API real
+ * y no los mocks.
+ */
+export const demoEnabled = process.env.NEXT_PUBLIC_DEMO === '1' && !apiEnabled;
 
 const TOKEN_KEY = 'myalquiler-propietario:token';
 const SESION_KEY = 'myalquiler-propietario:sesion';
@@ -65,6 +86,9 @@ export function cerrarSesion(): void {
 }
 
 export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+  // La demo se resuelve ANTES de mirar el token: en el sitio estático no hay sesión que
+  // revalidar contra nada. El orden importa — con la bandera puesta nunca se llega al fetch.
+  if (demoEnabled) return resolverDemo(path) as T;
   if (!apiEnabled) throw new ApiError('El portal no está conectado al servidor.', 0);
   const token = leerToken();
   const res = await fetch(`${API_URL}${path}`, {
