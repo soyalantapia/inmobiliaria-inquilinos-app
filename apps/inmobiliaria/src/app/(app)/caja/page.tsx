@@ -34,7 +34,10 @@ import { Label } from '@llave/ui/label';
 import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
 import { MoneyInput } from '@/components/money-input';
+import { useSearchParams } from 'next/navigation';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@llave/ui/tabs';
 import { Topbar } from '@/components/topbar';
+import { CuentasPanel } from '@/components/cuentas-panel';
 import {
   type CategoriaGasto,
   type MovimientoCaja,
@@ -45,7 +48,7 @@ import { useCaja, usePropiedades } from '@/lib/api/hooks';
 import { useCuentas } from '@/lib/api/use-cuentas';
 import { useCierreCaja } from '@/lib/api/use-pagos';
 import { apiEnabled, subirArchivo } from '@/lib/api/client';
-import { formatFechaCorta, formatMonto, fechaHoyLocal } from '@/lib/format';
+import { formatFechaCorta, formatMonto, formatTotalPorMoneda, fechaHoyLocal } from '@/lib/format';
 import type { Moneda } from '@/lib/types';
 import { propiedadesMock } from '@/lib/mock-data';
 
@@ -102,6 +105,10 @@ export default function CajaPage() {
   const [abrirForm, setAbrirForm] = useState(false);
   const [eliminando, setEliminando] = useState<MovimientoCaja | null>(null);
   const [filtroProp, setFiltroProp] = useState<string>('TODAS');
+  // El tab se lee de la URL para que `/caja?tab=cuentas` sea linkeable (el ítem del menú
+  // apunta ahí). Mismo patrón que /pagos.
+  const searchParams = useSearchParams();
+  const [tab, setTab] = useState(searchParams?.get('tab') === 'cuentas' ? 'cuentas' : 'movimientos');
 
   const filtrados = useMemo(() => {
     if (filtroProp === 'TODAS') return movimientos;
@@ -142,7 +149,21 @@ export default function CajaPage() {
   return (
     <>
       <Topbar titulo="Caja" />
-      <main className="flex-1 space-y-6 p-4 md:p-6">
+      <main className="flex-1 p-4 md:p-6">
+        {/* PESTAÑAS. Camila (03/08) fue a caja buscando las cuentas y no las encontró:
+            "abajo de caja no aparece ahí en caja, pero sí aparece cuentas". Eran dos
+            pantallas hermanas sin un solo link entre ellas. "Cuentas" es una subdivisión de
+            la caja, no un par: por eso se integra en vez de enlazarse. Mismo patrón que
+            /pagos (Tabs + tab leído de la URL), que ya resolvió este mismo problema. */}
+        <Tabs value={tab} onValueChange={setTab}>
+          <TabsList className="mb-4">
+            <TabsTrigger value="movimientos">Movimientos</TabsTrigger>
+            <TabsTrigger value="cuentas">Cuentas</TabsTrigger>
+          </TabsList>
+          <TabsContent value="cuentas" className="mt-0">
+            <CuentasPanel />
+          </TabsContent>
+          <TabsContent value="movimientos" className="mt-0 space-y-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -265,6 +286,8 @@ export default function CajaPage() {
             ))}
           </div>
         )}
+          </TabsContent>
+        </Tabs>
       </main>
 
       <DialogCargarGasto
@@ -283,6 +306,11 @@ export default function CajaPage() {
               categoria: data.categoria,
               descripcion: data.descripcion,
               monto: data.monto,
+              // MISMO bug que el `tipo` de acá arriba, con otro campo: el form tiene
+              // selector $ / US$ y lo emitía, pero este payload se arma campo por campo y
+              // se lo comía, así que el zod del back caía al default ARS y todo movimiento
+              // se guardaba en pesos. Es opcional en el tipo, por eso tsc no lo marcaba.
+              moneda: data.moneda,
               fecha: data.fecha,
               proveedor: data.proveedor,
               comprobanteUrl: data.comprobante,
@@ -740,6 +768,40 @@ function DialogCargarGasto({
                   </option>
                 ))}
               </select>
+              {/* El saldo de la cuenta elegida, acá mismo. Camila pidió "cargar un gasto en
+                  una cuenta y ver el saldo de esa cuenta": antes el saldo vivía SÓLO en
+                  /cuentas, así que había que cargar el gasto y después irse a otra pantalla
+                  a ver cómo quedó. */}
+              {(() => {
+                const sel = cuentasCompatibles.find((c) => c.id === cuentaId);
+                if (!sel) return null;
+                if (sel.porMoneda.length === 0) {
+                  return <p className="text-[11px] text-muted-foreground">Sin movimientos todavía.</p>;
+                }
+                return (
+                  <p className="text-[11px] text-muted-foreground">
+                    Saldo actual:{' '}
+                    <span className="font-medium tabular-nums text-foreground">
+                      {formatTotalPorMoneda(sel.porMoneda.map((p) => ({ monto: p.saldo, moneda: p.moneda })))}
+                    </span>
+                  </p>
+                );
+              })()}
+            </div>
+          )}
+          {/* SIN cuentas cargadas el select entero desaparecía, sin una palabra. Es el
+              estado inicial de CUALQUIER inmobiliaria, y es la explicación más probable del
+              "no aparece nada de cuentas" de Camila el 03/08: no es que estuviera escondido,
+              es que no había ninguna cuenta y la pantalla se quedó callada. */}
+          {apiEnabled && cuentasCompatibles.length === 0 && (
+            <div className="rounded-md border border-dashed bg-muted/20 p-3 text-xs">
+              <p className="font-medium">
+                Todavía no tenés cuentas {esIngreso ? 'de entrada' : 'de salida'} cargadas
+              </p>
+              <p className="mt-0.5 text-muted-foreground">
+                Podés cargar el movimiento igual: queda sin cuenta asignada. Si querés llevar el
+                saldo por cuenta (Mercado Pago, efectivo, banco), creá una en la pestaña Cuentas.
+              </p>
             </div>
           )}
           <div className="space-y-1">

@@ -23,7 +23,6 @@ import {
   Landmark,
   Users,
   Wallet,
-  WalletCards,
   Wrench,
   ScrollText,
   Bug,
@@ -97,8 +96,14 @@ const links: NavLink[] = [
   // "Caja" a secas se confundía con la caja del día y con Cuentas; el ícono de
   // "Depósitos" es un banco, y para una recepcionista un depósito es primero un
   // depósito bancario, no la garantía del inquilino.
-  { href: '/caja', label: 'Caja de gastos', icon: Wallet, capacidad: 'caja.ver', grupo: 'Plata' },
-  { href: '/cuentas', label: 'Cuentas', icon: WalletCards, capacidad: 'cuentas.ver', grupo: 'Plata' },
+  // "Cuentas" era un ítem HERMANO de éste y ahí nacía la queja de Camila (03/08): fue a caja
+  // buscando las cuentas y no estaban, porque vivían en una pantalla aparte. Ahora son una
+  // pestaña adentro de /caja, y el ítem duplicado se saca — dejarlo sería mantener la misma
+  // confusión con un click extra. `/cuentas` sigue existiendo como ruta por si alguien la
+  // tiene en favoritos, sólo que ya no se ofrece desde el menú.
+  // Sin riesgo de perder acceso: `caja.ver` y `cuentas.ver` tienen exactamente los mismos
+  // roles (permisos.ts:122-123), así que nadie ve una y no la otra.
+  { href: '/caja', label: 'Caja y cuentas', icon: Wallet, capacidad: 'caja.ver', grupo: 'Plata' },
   { href: '/depositos', label: 'Depósitos de garantía', icon: Landmark, capacidad: 'contratos.ver', grupo: 'Plata' },
 
   /* ---- Seguimiento ---- */

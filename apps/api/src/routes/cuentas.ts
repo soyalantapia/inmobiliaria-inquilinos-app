@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../db.js';
 import { requireUsuario } from '../auth/guards.js';
+import type { Moneda } from '@prisma/client';
 
 /**
  * Cuentas de caja (pedido de Camila): la inmobiliaria define sus cuentas a gusto
@@ -22,30 +23,48 @@ export async function cuentasRoutes(app: FastifyInstance) {
       where: { inmobiliariaId: u.inmobiliariaId },
       orderBy: [{ activa: 'desc' }, { nombre: 'asc' }],
     });
+    // POR MONEDA. Antes el groupBy era by:['cuentaId','tipo'] y el saldo salía de un solo
+    // par {entradas,salidas}: un gasto de US$800 y uno de $80.000 se restaban como si
+    // fueran la misma unidad, y el front lo rotulaba en pesos. El resto del sistema es
+    // riguroso con esto —el cierre de caja expone `porMoneda` (plata.ts) y la rendición
+    // directamente rechaza con 409 si hay varias monedas—; esto era el outlier.
     const agg = await prisma.movimientoCaja.groupBy({
-      by: ['cuentaId', 'tipo'],
+      by: ['cuentaId', 'tipo', 'moneda'],
       where: { inmobiliariaId: u.inmobiliariaId, cuentaId: { not: null } },
       _sum: { monto: true },
     });
-    const totales = new Map<string, { entradas: number; salidas: number }>();
+    type Acum = { entradas: number; salidas: number };
+    const totales = new Map<string, Map<Moneda, Acum>>();
     for (const a of agg) {
       if (!a.cuentaId) continue;
-      const t = totales.get(a.cuentaId) ?? { entradas: 0, salidas: 0 };
+      const porMoneda = totales.get(a.cuentaId) ?? new Map<Moneda, Acum>();
+      const t = porMoneda.get(a.moneda) ?? { entradas: 0, salidas: 0 };
       const monto = Number(a._sum.monto ?? 0);
       if (a.tipo === 'INGRESO_EXTRA') t.entradas += monto;
       else if (a.tipo === 'GASTO') t.salidas += monto;
-      totales.set(a.cuentaId, t);
+      porMoneda.set(a.moneda, t);
+      totales.set(a.cuentaId, porMoneda);
     }
     return cuentas.map((c) => {
-      const t = totales.get(c.id) ?? { entradas: 0, salidas: 0 };
+      const porMoneda = totales.get(c.id) ?? new Map<Moneda, Acum>();
+      const filas = [...porMoneda.entries()]
+        .map(([moneda, t]) => ({
+          moneda,
+          entradas: r2(t.entradas),
+          salidas: r2(t.salidas),
+          saldo: r2(t.entradas - t.salidas),
+        }))
+        // Orden estable: ARS primero (es el 99% del uso real), después el resto alfabético.
+        .sort((a, b) => (a.moneda === 'ARS' ? -1 : b.moneda === 'ARS' ? 1 : a.moneda.localeCompare(b.moneda)));
       return {
         id: c.id,
         nombre: c.nombre,
         direccion: c.direccion,
         activa: c.activa,
-        entradas: r2(t.entradas),
-        salidas: r2(t.salidas),
-        saldo: r2(t.entradas - t.salidas),
+        // Una cuenta SIN movimientos devuelve [] y no una fila de ceros a propósito: "sin
+        // movimientos" y "saldo cero en pesos" son cosas distintas, y el front las muestra
+        // distinto.
+        porMoneda: filas,
         cantidadMovimientos: 0, // (el detalle por movimiento va en /cuentas/:id/movimientos)
       };
     });
@@ -66,6 +85,9 @@ export async function cuentasRoutes(app: FastifyInstance) {
         categoria: true,
         descripcion: true,
         monto: true,
+        // Sin esto el detalle imprimía todos los importes en pesos (formatMonto default
+        // 'ARS'), incluido un movimiento en dólares.
+        moneda: true,
         fecha: true,
         proveedor: true,
         propiedad: { select: { direccion: true } },
