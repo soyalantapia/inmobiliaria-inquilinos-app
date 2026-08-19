@@ -17,6 +17,7 @@ import {
 } from '../lib/liquidaciones.js';
 import { conSaldo, montoPagadoPorLiquidacion } from '../lib/saldos.js';
 import { normalizarEmail } from '../lib/normalizar-email.js';
+import { normalizarDni } from '../lib/normalizar-dni.js';
 import { alquilerCobradoSinRendir } from '../lib/rendicion-pendiente.js';
 import { aplicarDepositoADeuda } from '../lib/aplicar-deposito.js';
 import { calcularMora, resolverEsquemaMora } from '../lib/punitorios.js';
@@ -2465,7 +2466,11 @@ export async function coreRoutes(app: FastifyInstance) {
           OR: [
             { nombre: { contains: q, mode: 'insensitive' as const } },
             { apellido: { contains: q, mode: 'insensitive' as const } },
+            // El DNI se guarda en dígitos, así que se busca en dígitos: tipear "20.123.456"
+            // no encontraba nada. Se mantienen las DOS formas —cruda y normalizada— porque
+            // hasta que corra el backfill siguen conviviendo fichas viejas con puntos.
             { dni: { contains: q } },
+            ...(normalizarDni(q) ? [{ dni: { contains: normalizarDni(q) as string } }] : []),
             { email: { contains: q, mode: 'insensitive' as const } },
           ],
         }

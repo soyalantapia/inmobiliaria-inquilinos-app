@@ -1,4 +1,5 @@
 import type { Prisma, Persona } from '@prisma/client';
+import { normalizarDni } from './normalizar-dni.js';
 
 export interface DatosPersonaFila {
   inmobiliariaId: string;
@@ -25,7 +26,10 @@ export interface DatosPersonaFila {
  * dejándola cargada a medias en la cuenta REAL del cliente.
  */
 export async function buscarOCrearPersona(tx: Prisma.TransactionClient, d: DatosPersonaFila): Promise<Persona> {
-  const dni = (d.dni ?? '').trim() || null;
+  // A DÍGITOS, no sólo trim: una ficha importada como '20.123.456' no matcheaba al buscar
+  // '20123456' y se creaba una Persona duplicada. El email de abajo ya se normalizaba; el DNI
+  // —que es la llave PRINCIPAL de la dedup— se había quedado afuera. Ver lib/normalizar-dni.ts.
+  const dni = normalizarDni(d.dni);
   const email = d.email ? d.email.trim().toLowerCase() || null : null;
 
   if (dni) {
