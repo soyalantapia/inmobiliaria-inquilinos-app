@@ -29,6 +29,7 @@ import {
 } from '@/lib/contrato-borrador-storage';
 import type { PersonaListado } from '@/lib/api/use-inquilinos';
 import { usePropiedades, useMercado, useCobranza, usePropietarios } from '@/lib/api/hooks';
+import { rotuloPrincipal, rotuloSecundario } from '@/lib/rotulo-propiedad';
 import { CuentaCobranzaDialog } from '@/components/cuenta-cobranza-dialog';
 import {
   calcularMora,
@@ -1550,6 +1551,42 @@ function CargarContratoApiWizard() {
             Cancelar carga
           </Button>
         </div>
+
+        {/* Desde el paso 2 la propiedad elegida en el paso 1 desaparecía de la
+            pantalla y la operadora perdía de vista en qué inmueble estaba
+            cargando el contrato (se daba cuenta recién al confirmar, o volvía
+            atrás para chequear). La dejamos fija arriba, en los mismos
+            términos en que la inmobiliaria la reconoce (rotuloPrincipal).
+
+            Los márgenes negativos la sangran hasta el borde del <main>, que tiene
+            p-4/p-6: sin eso el fondo sólido cubre sólo la caja y, al scrollear, el
+            contenido se ve pasar por los costados de una barra que se supone fija. */}
+        {paso > 1 && propiedadElegida && (
+          <div className="sticky top-0 z-10 -mx-4 flex items-center justify-between gap-3 border-b bg-background px-4 py-2 md:-mx-6 md:px-6">
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <Home className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">
+                  {rotuloPrincipal(propiedadElegida.propiedad)}
+                </p>
+                {rotuloSecundario(propiedadElegida.propiedad) && (
+                  <p className="truncate text-xs text-muted-foreground">
+                    {rotuloSecundario(propiedadElegida.propiedad)}
+                  </p>
+                )}
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="shrink-0"
+              onClick={() => setPaso(1)}
+            >
+              Cambiar
+            </Button>
+          </div>
+        )}
 
         {errorServidor && (
           <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
