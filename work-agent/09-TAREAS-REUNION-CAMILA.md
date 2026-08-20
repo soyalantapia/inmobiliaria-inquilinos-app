@@ -5540,3 +5540,30 @@ No es plata perdida: es trabajo perdido y una invitación a equivocarse la segun
 
 Lo que **no** hay que hacer es sacar el borrado sin construir el reenvío: quedaría el Json
 colgado que el comentario describe.
+
+---
+
+### T-01-N1-N14 · El invariante de plata más frágil estaba escrito cuatro veces — ✅ HECHA
+**Experto:** BE · **Prioridad:** 🟠
+
+> Ver `work-agent/tareas/T-01-N1-N14/REQUISITOS.md`.
+
+`work-agent/tareas/_integracion/invariantes-plata.md` verifica cinco invariantes **leyendo el
+código** — lo dice textual: *"Nada se ejecutó"*. El #1, que él mismo llama el más frágil, decía
+que el prorrateo estaba *"espejado en TRES lugares y los tres coinciden"*.
+
+**Eran cuatro, y el cuarto había derivado**: el KPI del panel prorrateaba contra un total que ya
+traía la mora sumada, y le mostraba a la inmobiliaria menos alquiler cobrado del que la rendición
+realmente pagaba. Se arregló en T-01-N1-N5, pero el episodio es el punto: **una lista a mano de
+"dónde vive esta regla" siempre puede quedarse corta**, y nadie se entera hasta que la plata no
+cierra.
+
+**Ahora la regla vive una sola vez** en `packages/shared/src/prorrateo.ts` y los cuatro lugares
+la consumen. Antes de unificar se verificó que fueran la MISMA función y no cuatro reglas
+parecidas; lo son, y la del panel tenía un guard extra —más seguro— que es el que quedó.
+
+**Y un guard contra la quinta copia:** un test barre los cuatro paquetes buscando el esqueleto de
+la fórmula y falla si aparece fuera de `shared`. Comprobado reintroduciendo una copia.
+
+**Los invariantes #3 a #6 siguen verificados sólo por lectura.** El #2 se desprende del #1 y
+queda cubierto de rebote.

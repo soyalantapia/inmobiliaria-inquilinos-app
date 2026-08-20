@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
+import { porcionAlquilerCobrada } from '@llave/shared/prorrateo';
 import { prisma } from '../db.js';
 
 /** Mismo patrón que `deposito.ts` / `evento-contrato.ts`: sirve dentro y fuera de una
@@ -108,10 +109,15 @@ export function calcularPendienteSinRendir(
     if (cobrado <= 0) continue;
     const liqTotal = Number(l.montoTotal);
     const liqAlq = Number(l.montoAlquiler);
-    // `liqTotal > 0` no es defensa de más: una liquidación en 0 (contrato SOLO_EXPENSAS
-    // sin expensas cargadas, o un dato viejo) haría 0/0 = NaN, y NaN > 0.01 es false,
-    // así que el guard dejaría pasar el cambio en silencio.
-    const alquilerCobrado = liqTotal > 0 ? Math.min(cobrado, liqTotal) * (liqAlq / liqTotal) : 0;
+    // Una sola implementación, en `@llave/shared/prorrateo` — incluido el guard de base 0, que
+    // no es defensa de más: una liquidación en 0 (un SOLO_EXPENSAS sin expensas cargadas, o un
+    // dato viejo) haría 0/0 = NaN, y `NaN > 0.01` es false, así que el guard de más abajo
+    // dejaría pasar el cambio en silencio.
+    const alquilerCobrado = porcionAlquilerCobrada({
+      alquiler: liqAlq,
+      base: liqTotal,
+      cobrado,
+    });
     const r2c = (x: number) => Math.round(x * 100) / 100;
     const yaRendTotal = rendidoPorLiq.get(l.id) ?? 0;
     const pendiente = porDuenio
