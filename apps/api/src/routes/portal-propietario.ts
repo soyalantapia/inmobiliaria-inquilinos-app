@@ -6,7 +6,7 @@ import { OtpRequestSchema, OtpVerifySchema, type JwtPropietario } from '@llave/s
 import { prisma } from '../db.js';
 import { requirePropietario } from '../auth/guards.js';
 import { enviarOtp } from '../mailer.js';
-import { pendienteDeRendirAPropietario } from '../lib/rendicion-pendiente.js';
+import { alquilerCobradoSinRendirDePropiedad } from '../lib/rendicion-pendiente.js';
 
 /**
  * PORTAL DEL PROPIETARIO (T-23).
@@ -100,17 +100,26 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
         await prisma.codigoOtpPropietario.createMany({
           data: propietarios.map((p) => ({ propietarioId: p.id, codeHash, expiresAt })),
         });
-        try {
-          const enviado = await enviarOtp(emailLc, code);
-          if (!enviado)
-            app.log.info({ email: emailLc, ...codeEnLog(code) }, 'OTP propietario generado (SMTP no configurado)');
-          else app.log.info({ email: emailLc }, 'OTP propietario enviado por email');
-        } catch (err) {
-          app.log.error(
-            { email: emailLc, ...codeEnLog(code), err: (err as Error).message },
-            'OTP propietario: fallo el envío SMTP',
-          );
-        }
+        // T-53-N1 — El envío NO se espera, y es por lo mismo que el bcrypt de arriba se
+        // calcula siempre: con SMTP configurado, el envío es el costo DOMINANTE del request
+        // (cientos de ms contra los pocos del bcrypt) y corre sólo en esta rama, la del email
+        // que existe. Awaitearlo devolvía el tiempo de respuesta como oráculo de enumeración y
+        // deshacía el emparejamiento de arriba.
+        //
+        // Nada de la respuesta depende del resultado: se contesta `{ ok: true }` igual salga o
+        // falle. El error se sigue logueando, sólo que fuera del camino del request.
+        void enviarOtp(emailLc, code)
+          .then((enviado) => {
+            if (!enviado)
+              app.log.info({ email: emailLc, ...codeEnLog(code) }, 'OTP propietario generado (SMTP no configurado)');
+            else app.log.info({ email: emailLc }, 'OTP propietario enviado por email');
+          })
+          .catch((err: unknown) => {
+            app.log.error(
+              { email: emailLc, ...codeEnLog(code), err: (err as Error).message },
+              'OTP propietario: fallo el envío SMTP',
+            );
+          });
       }
       return { ok: true };
     },
@@ -643,23 +652,18 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
     // número que no existe. Se corta por moneda y cada corte lleva la suya.
     const unidades = await Promise.all(
       participaciones.map(async (part) => {
-        // El número es lo que le falta a ESTE dueño, no lo que le falta a la unidad.
-        //
-        // Con un solo dueño al 100% da lo mismo, y por eso el bug tardó en verse. Con dos, el
-        // remanente de la unidad deja de ser proporcional apenas se le rinde a uno: rendido A
-        // (60%) de una liquidación de 100.000, los 40.000 que quedan son ÍNTEGRAMENTE de B.
-        // Mostrar esos 40.000 a los dos, con el rótulo "te corresponde el X%", le miente a
-        // ambos a la vez: de más al que ya cobró y de MENOS al que falta.
-        //
-        // `pendienteDeRendirAPropietario` replica la aritmética de POST /rendiciones al pie de
-        // la letra —doble cap incluido— y acota a `modoCobranza: 'INMOBILIARIA'`, que es el
-        // mismo universo que rinde. Lo segundo es lo que T-52 arregló acá con `soloRendible`;
-        // ahora vive adentro de la función, porque para el portal nunca es opcional.
-        const pend = await pendienteDeRendirAPropietario({
-          propiedadId: part.propiedad.id,
-          propietarioId: p.propietarioId,
-          porcentaje: part.porcentaje,
-          inmobiliariaId: p.inmobiliariaId,
+        // T-52 — `soloRendible`: lo que el dueño cobró DIRECTO en su cuenta (contratos
+        // PROPIETARIO_DIRECTO) no lo rinde nadie, así que mostrarlo como "todavía sin rendirte"
+        // le dice que la inmobiliaria le retiene plata que él ya tiene, y no hay ninguna acción
+        // que baje ese número a cero.
+        // T-53 — `duenio`: la cuenta pasa a ser LA PARTE DE ÉL, no la de la propiedad.
+        // `AlquilerRendido` cuelga de `Rendicion.propietarioId`, así que sin este filtro lo ya
+        // rendido a un copropietario descontaba del otro: con dos dueños 60/40, después de
+        // rendirle al primero, al segundo le seguía apareciendo la parte del primero como
+        // propia. Espeja el doble cap de POST /rendiciones (plata.ts:2042).
+        const pend = await alquilerCobradoSinRendirDePropiedad(part.propiedad.id, prisma, p.inmobiliariaId, {
+          soloRendible: true,
+          duenio: { propietarioId: p.propietarioId, porcentaje: Number(part.porcentaje) },
         });
         const porMoneda = new Map<string, { total: number; periodos: typeof pend.periodos }>();
         for (const per of pend.periodos) {

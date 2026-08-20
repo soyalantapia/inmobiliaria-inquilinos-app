@@ -2179,6 +2179,92 @@ real y deja el diálogo abierto para corregir, y el camino feliz guarda y refres
 
 ---
 
+## T-54 · Una condonación parcial le decía al dueño que le perdonaron el mes entero — ✅ RESUELTO
+
+**Experto:** FE · **Prioridad:** 🟢
+**Origen:** revisión de seguridad del portal (19/08). Último de los seis confirmados.
+
+**El caso.** El inquilino paga el alquiler tarde y queda debiendo la mora. La inmobiliaria usa
+**Saldar deuda → Condonar**, que crea un pago condonado por el **remanente** — o sea, sólo el
+punitorio. El dueño abría Unidades y ese mes figuraba **"la inmobiliaria la condonó"**, sin
+fecha de cobro, cuando el alquiler entró completo y se lo van a depositar. Lo mismo si el
+inquilino pagó $70 de $100.
+
+**Por qué estaba así.** El renglón ya trataba la condonación como excluyente, y con buen motivo:
+una cuota perdonada figura PAGADO en la liquidación, así que sin eso el dueño veía un badge
+**verde** por plata que nunca le iba a llegar. La intención era correcta; le faltaba el caso
+del medio.
+
+**Qué se hizo.** `pagoAt` distingue los dos: condonación **+ fecha de pago real** = fue parcial.
+Ahora dice las dos mitades —*"pagó el 11/08 · el resto se condonó"*— con el badge
+**"condonada en parte"** en neutro, no en verde: cobró algo, pero parte de esa cuota no se le
+rinde. Así no cae en ninguna de las dos mentiras.
+
+El criterio se extrajo a `estadoVisualPeriodo`, una función pura exportada, para que viva en un
+solo lugar y se pueda testear — el estilo que ya usa `diasHasta` en ese mismo archivo.
+
+**Tests:** 3 casos nuevos en `portal-piezas.test.ts` (total, parcial y sin condonación).
+
+---
+
+## T-53-N1 · El OTP delataba si el email existe, por el tiempo de respuesta
+
+**Experto:** SEC + BE · **Prioridad:** 🟢
+**Origen:** revisión de seguridad del portal (19/08).
+
+**El portal: ✅ RESUELTO.** `POST /auth/propietario/otp/request` ya calculaba el `bcrypt` exista
+o no el email —con un comentario que explica que es para no volver el tiempo de respuesta un
+oráculo de enumeración—, pero **el envío SMTP se awaiteaba sólo en la rama "existe"**. Con SMTP
+configurado ese envío es el costo **dominante** (cientos de ms contra los pocos del bcrypt), así
+que deshacía el emparejamiento. Ahora el envío se dispara sin esperarlo: la respuesta es
+`{ ok: true }` igual, y el error se sigue logueando fuera del camino del request.
+
+**Los otros dos OTP tienen el mismo patrón, y NO se tocaron:**
+`apps/api/src/routes/auth.ts:306` (inquilino) y `:406` (panel) también hacen
+`await enviarOtp(...)` sólo cuando el destinatario existe.
+
+**Por qué no se arreglaron acá:** sus tests (`auth.test.ts` y compañía) **tocan la base** y desde
+esta sesión no se pueden correr. Si alguno verifica que el mail salió antes de responder, sacar
+el `await` lo pondría en rojo y no habría forma de enterarse. El arreglo es el mismo de tres
+líneas; hay que hacerlo con la suite completa a mano.
+
+**Criterio de aceptación.** Los tres OTP tardan lo mismo exista o no el email, y la suite
+completa de `apps/api` sigue en verde.
+
+---
+
+## T-53 · En copropiedad, al dueño ya rendido le seguía apareciendo la parte del otro — ✅ RESUELTO
+
+**Experto:** BE + FE · **Prioridad:** 🟠
+**Origen:** revisión de seguridad del portal del propietario (19/08). Dos dimensiones lo
+reportaron por separado.
+
+**El caso.** Propiedad con dos dueños, A 60% y B 40%. Se cobra el alquiler ($100) y la
+inmobiliaria le rinde a A su parte ($60). **A entra al portal y sigue viendo $40 pendientes** —
+que son de B — con la leyenda *"te corresponde el 60%"*, o sea invitándolo a esperar $24 que no
+van a llegar nunca. Al revés fallaba igual.
+
+**La causa.** `AlquilerRendido` cuelga de `Rendicion.propietarioId` (el schema lo dice: *"parte
+del propietario rendida en esta tanda"*), pero el helper agrupaba sólo por `liquidacionId`, sin
+mirar de quién era la rendición: mezclaba lo rendido a todos los dueños. `POST /rendiciones` sí
+hace el **doble cap** por dueño (`plata.ts:1985` y `:2042`); el portal no lo replicaba, y este
+archivo declara justamente que *"la aritmética replica EXACTAMENTE la de POST /rendiciones"*.
+
+**Qué se hizo.** Un modo opt-in `duenio: { propietarioId, porcentaje }` que espeja el doble cap:
+(1) lo que le falta a ESTE dueño de su parte, y (2) el remanente de la liquidación entre TODOS
+—el (2) evita el sobre-pago cuando se cambió el reparto después de rendir—. **Los guards de
+`core.ts` no lo usan**: ellos necesitan el total global, ciego a la participación.
+
+**El copy también estaba mal.** Antes el número era el total de la unidad y el texto invitaba a
+multiplicar por el porcentaje. Ahora el número **ya es su parte**, y el texto lo dice:
+*"Es tu 60% del alquiler cobrado de la unidad"*.
+
+**Tests.** `test/rendicion-pendiente-por-duenio.test.ts`, puros, con el caso 60/40 del hallazgo,
+el del reparto cambiado y el de la tolerancia de un centavo con prorrateo. Verificados en rojo
+revirtiendo el arreglo (3 de 6 caen).
+
+---
+
 ## T-52 · "Cobrado y sin rendir" contaba plata que nadie va a rendir nunca — ✅ RESUELTO
 
 **Experto:** BE · **Prioridad:** 🟠
@@ -3006,7 +3092,29 @@ contrato: cobrar los dos, deshacer uno, y que quede vivo exactamente el movimien
 
 ---
 
-## T-28-N1-N2 · `multi-alquiler.test.ts` está en rojo, y no es contaminación de estado
+## T-28-N1-N2 · `multi-alquiler.test.ts` está en rojo, y no es contaminación de estado — ✅ RESUELTO
+
+> ### ✅ Arreglado el 20/08 en T-01-N1-N1. La pregunta abierta acá tiene respuesta.
+>
+> El diagnóstico de abajo es correcto hasta donde llega, y la pregunta que deja —*"a qué queda
+> enganchado el contrato de la segunda persona"*— se contestó: **queda enganchado a la PRIMERA**.
+> Era la peor de las dos salidas que el propio texto anticipaba.
+>
+> **La causa.** `buscarOCrearPersona` (`lib/persona.ts`) devuelve la Persona existente cuando el
+> email coincide y el DNI no. No es un descuido: lo necesita la importación de cartera, donde
+> reventar con P2002 a mitad de 2000 filas deja la carga hecha a medias en la cuenta real del
+> cliente, y donde el preview ya marca el caso como advertencia. Por eso nunca hubo P2002: el
+> insert que lo dispararía no llega a ocurrir. Al compartir ese helper con el alta manual, el
+> `catch` de P2002 quedó **inalcanzable**.
+>
+> **El arreglo** (commit `dd78755`): un chequeo explícito en el alta manual —`esOtraPersona`,
+> que sólo afirma cuando hay DNI de los dos lados y difieren— que tira `EmailDeOtraPersona` y
+> cae en el mismo 409. **No se tocó el camino de importación**, que sigue como estaba a
+> propósito. Ante la duda no bloquea: sin DNI de alguno de los dos lados, deja pasar.
+>
+> Verificado: el test pasa aislado contra una base creada desde cero, y hay 5 tests puros sobre
+> `esOtraPersona` que corren en el job que SÍ bloquea.
+
 
 **Experto:** BE · **Prioridad:** 🟠 · **Depende de:** nada
 **Origen:** T-28-N1, primera corrida del suite completo contra una base real.
@@ -3035,7 +3143,45 @@ que debe pasar. Lo que no puede quedar es el test en rojo sin dueño.
 
 ---
 
-## T-28-N1-N3 · Quedan 3 endpoints de plata sin cobertura, y ahora sí se pueden testear
+## T-28-N1-N3 · Quedan 3 endpoints de plata sin cobertura, y ahora sí se pueden testear — 🟡 2 de 3
+
+> ## ✅ Hechos 2 de los 3, y **sin Docker** — 20/08
+>
+> Se pidió expresamente no usar Docker, así que no hubo tests de integración. No importó tanto:
+> los dos riesgos más caros son **aritmética y orquestación**, no base de datos.
+>
+> **`/caja/cierre`:** la aritmética salió del handler a `lib/cierre-caja.ts` y quedó con **15
+> tests puros**, con las seis invariantes de plata fijadas (prorrateo, cap de la mora, guarda
+> del 0/0, redondeo a centavos, buckets por moneda, flag `multiMoneda`). **Mutación 6/6.** De
+> paso se borró la fórmula de comisión duplicada inline: ahora importa la compartida, lo que
+> mete al cierre bajo `propietario-baja-logica.test.ts` gratis. El contrato del endpoint no
+> cambia.
+>
+> **El cron de devengo:** el aislamiento de fallos —lo de mayor blast radius del repo, que ya
+> dejó sin facturar a todos los tenants una vez— quedó con **5 tests puros**, usando un cliente
+> Prisma falso. **Mutación 3/3.**
+>
+> **Falta `/mis-cargos`**, y lo que importa ahí es el aislamiento multi-tenant, que vive en el
+> `where` de Prisma: no hay aritmética que extraer y un test puro no lo ve. Va a **T-28-N1-N3-N1**.
+
+---
+
+## T-28-N1-N3-N1 · Lo que sólo se ve con una base: `/mis-cargos` y los filtros del cierre
+
+**Experto:** QA · **Prioridad:** 🟡 · **Depende de:** una base de test (Docker o equivalente)
+**Origen:** T-28-N1-N3, que cubrió todo lo cubrible sin base.
+
+Dos cosas quedaron afuera **por ser filtros de query, no aritmética**:
+
+1. **`GET /mis-cargos`** — el aislamiento multi-tenant: que un inquilino no vea cargos de otro
+   contrato ni de otra inmobiliaria.
+2. **Los filtros del `where` de `/caja/cierre`** — excluir `PROPIETARIO_DIRECTO`, excluir
+   condonados, el aislamiento por inmobiliaria y el rango del **día civil argentino** (un pago
+   conciliado a las 23:30 hora local tiene que caer en el arqueo de ESE día, no del siguiente).
+
+**Ojo con la falsa sensación de cobertura:** la aritmética del cierre ya está cubierta y en
+verde, pero **estos filtros no**, y dos de ellos —`PROPIETARIO_DIRECTO` y los condonados— ya
+rompieron una vez, inflando el arqueo con plata que nunca entró a la caja.
 
 **Experto:** QA + BE · **Prioridad:** 🟡 · **Depende de:** nada
 **Origen:** T-28-N1.
