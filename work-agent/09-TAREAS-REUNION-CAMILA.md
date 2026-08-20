@@ -2164,6 +2164,32 @@ real y deja el diálogo abierto para corregir, y el camino feliz guarda y refres
 
 ---
 
+## T-53-N1 · El OTP delataba si el email existe, por el tiempo de respuesta
+
+**Experto:** SEC + BE · **Prioridad:** 🟢
+**Origen:** revisión de seguridad del portal (19/08).
+
+**El portal: ✅ RESUELTO.** `POST /auth/propietario/otp/request` ya calculaba el `bcrypt` exista
+o no el email —con un comentario que explica que es para no volver el tiempo de respuesta un
+oráculo de enumeración—, pero **el envío SMTP se awaiteaba sólo en la rama "existe"**. Con SMTP
+configurado ese envío es el costo **dominante** (cientos de ms contra los pocos del bcrypt), así
+que deshacía el emparejamiento. Ahora el envío se dispara sin esperarlo: la respuesta es
+`{ ok: true }` igual, y el error se sigue logueando fuera del camino del request.
+
+**Los otros dos OTP tienen el mismo patrón, y NO se tocaron:**
+`apps/api/src/routes/auth.ts:306` (inquilino) y `:406` (panel) también hacen
+`await enviarOtp(...)` sólo cuando el destinatario existe.
+
+**Por qué no se arreglaron acá:** sus tests (`auth.test.ts` y compañía) **tocan la base** y desde
+esta sesión no se pueden correr. Si alguno verifica que el mail salió antes de responder, sacar
+el `await` lo pondría en rojo y no habría forma de enterarse. El arreglo es el mismo de tres
+líneas; hay que hacerlo con la suite completa a mano.
+
+**Criterio de aceptación.** Los tres OTP tardan lo mismo exista o no el email, y la suite
+completa de `apps/api` sigue en verde.
+
+---
+
 ## T-53 · En copropiedad, al dueño ya rendido le seguía apareciendo la parte del otro — ✅ RESUELTO
 
 **Experto:** BE + FE · **Prioridad:** 🟠

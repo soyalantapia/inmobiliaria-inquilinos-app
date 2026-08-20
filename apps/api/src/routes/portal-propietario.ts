@@ -100,17 +100,26 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
         await prisma.codigoOtpPropietario.createMany({
           data: propietarios.map((p) => ({ propietarioId: p.id, codeHash, expiresAt })),
         });
-        try {
-          const enviado = await enviarOtp(emailLc, code);
-          if (!enviado)
-            app.log.info({ email: emailLc, ...codeEnLog(code) }, 'OTP propietario generado (SMTP no configurado)');
-          else app.log.info({ email: emailLc }, 'OTP propietario enviado por email');
-        } catch (err) {
-          app.log.error(
-            { email: emailLc, ...codeEnLog(code), err: (err as Error).message },
-            'OTP propietario: fallo el envío SMTP',
-          );
-        }
+        // T-53-N1 — El envío NO se espera, y es por lo mismo que el bcrypt de arriba se
+        // calcula siempre: con SMTP configurado, el envío es el costo DOMINANTE del request
+        // (cientos de ms contra los pocos del bcrypt) y corre sólo en esta rama, la del email
+        // que existe. Awaitearlo devolvía el tiempo de respuesta como oráculo de enumeración y
+        // deshacía el emparejamiento de arriba.
+        //
+        // Nada de la respuesta depende del resultado: se contesta `{ ok: true }` igual salga o
+        // falle. El error se sigue logueando, sólo que fuera del camino del request.
+        void enviarOtp(emailLc, code)
+          .then((enviado) => {
+            if (!enviado)
+              app.log.info({ email: emailLc, ...codeEnLog(code) }, 'OTP propietario generado (SMTP no configurado)');
+            else app.log.info({ email: emailLc }, 'OTP propietario enviado por email');
+          })
+          .catch((err: unknown) => {
+            app.log.error(
+              { email: emailLc, ...codeEnLog(code), err: (err as Error).message },
+              'OTP propietario: fallo el envío SMTP',
+            );
+          });
       }
       return { ok: true };
     },
