@@ -1819,7 +1819,25 @@ antes de dar el tema por cerrado.
 
 ---
 
-## T-23-N4-N1-N1 · `POST /uploads` no tiene cuota: un token vivo puede llenar el Volume
+## T-23-N4-N1-N1 · `POST /uploads` no tiene cuota: un token vivo puede llenar el Volume — ✅ HECHA
+
+**Estado: ✅ HECHA** — commit `22f0790`. Cuota **por inmobiliaria** (`UPLOADS_CUOTA_MB`, default
+2 GB), medida antes de escribir, con cache por tenant. Al tope: **507** con
+`codigo: CUOTA_TENANT_LLENA`, distinto del disco lleno de verdad porque la acción de quien
+atiende es otra.
+
+**Por tenant y no por usuario**, que era la decisión del arreglo: el Volume es uno solo y
+compartido, así que un tope por usuario no evita que una inmobiliaria con muchos llene el de
+todas. Por tenant acota el daño a quien lo causa. Y **no** se gateó por contrato activo — la
+tarea ya avisaba que eso rompe `POST /mis-documentos`, que a propósito deja subir documentación
+después de terminado el contrato.
+
+**Un bug que cazó su propio test:** la primera versión hacía `Number(env.UPLOADS_CUOTA_MB)`
+directo, y `Number('')` es 0 — un `UPLOADS_CUOTA_MB=` vacío en un `.env` apagaba la cuota en
+silencio, que es justo el modo de falla que el módulo venía a cerrar.
+
+De paso: `MAX_BYTES` en `uploads.ts` era una constante muerta. El tope real de 10 MB lo aplica
+`@fastify/multipart` en `app.ts`.
 
 **Experto:** SEC + OPS · **Prioridad:** 🟡 · **Depende de:** nada
 **Origen:** T-23-N4-N1, barrido de escrituras del inquilino.
