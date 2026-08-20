@@ -74,3 +74,37 @@ export async function estadoDepositoContrato(
   const deducciones = await deduccionesDeposito(tx, args.contratoId, args.inmobiliariaId);
   return componerDeposito(Number(args.depositoGarantia ?? 0), deducciones);
 }
+
+/**
+ * Cierra los cargos que se cobraron CONTRA el depósito, cuando el depósito se resuelve.
+ *
+ * La plata ya se retuvo, así que dejan de estar pendientes. Sin esto quedan `saldadoAt: null`
+ * PARA SIEMPRE e **insaldables por los cuatro caminos**: invisibles en `/depositos/en-custodia`
+ * (filtra RETENIDO), rechazados por `/cargos/:id/saldar`, excluidos de saldar-deuda, y
+ * `deposito/resolver` ya no los alcanza porque devuelve 409 si el depósito no está RETENIDO.
+ * Deuda fantasma en los libros, sin forma de bajarla.
+ *
+ * ⚠️ SÓLO se llama cuando el monto devuelto ya fue topeado contra `disponible`. Cerrarlos
+ * después de haber devuelto plata comprometida en reparaciones taparía la pérdida en vez de
+ * exponerla: la inmobiliaria pagaría esos arreglos de su bolsillo y el libro diría que están
+ * saldados.
+ *
+ * Vivía inline en `deposito/resolver` y `POST /contratos/:id/finalizar` no lo tenía —el mismo
+ * patrón que ya había pasado con los guards de reclamos (T-65)—. Está acá para que los dos
+ * caminos que resuelven un depósito cierren igual.
+ */
+export async function cerrarCargosContraDeposito(
+  tx: Prisma.TransactionClient,
+  args: { contratoId: string; inmobiliariaId: string; usuarioId: string },
+): Promise<number> {
+  const r = await tx.cargoContrato.updateMany({
+    where: {
+      contratoId: args.contratoId,
+      inmobiliariaId: args.inmobiliariaId,
+      contraDeposito: true,
+      saldadoAt: null,
+    },
+    data: { saldadoAt: new Date(), saldadoPorId: args.usuarioId },
+  });
+  return r.count;
+}

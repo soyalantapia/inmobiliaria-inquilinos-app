@@ -2342,6 +2342,52 @@ la mora sale igual desde los 16 lugares que la calculan.
 
 ---
 
+## T-66 · Finalizar resolvía el depósito y dejaba sus cargos huérfanos — ✅ RESUELTO
+
+**Experto:** BE · **Prioridad:** 🔴 · **Toca plata**
+**Origen:** riesgo 🔴 Nivel 1 **#4** de `work-agent/07-ECOSISTEMA.md`. Con este quedan cerrados
+los cuatro de esa tabla que no dependían de una decisión del dueño.
+
+**Son dos defectos ligados, y los dos son lo mismo: `POST /contratos/:id/finalizar` resuelve el
+depósito igual que `POST /contratos/:id/deposito/resolver`, pero no replica sus guards.** Tercera
+vez en esta serie que aparece el patrón (T-64 y T-65 fueron el mismo).
+
+**1 · No topeaba el monto a devolver.** `resolver` rechaza con 400 si se quiere devolver más que
+el **disponible** —el bruto menos las reparaciones ya imputadas contra el depósito
+(`plata.ts:1141-1156`)—. `finalizar` escribía `montoDepositoDevuelto` **crudo**: se podía
+devolver el 100% del depósito teniendo arreglos imputados, y esos arreglos los terminaba pagando
+la inmobiliaria. Sin vuelta atrás, porque al resolverse el depósito el contrato sale de
+`/depositos/en-custodia`. Peor: `estadoDepositoContrato` sólo se consultaba en la rama
+NETEAR/EJECUTAR, así que **DEVOLVER —la que devuelve más plata— era la única que nunca miraba el
+disponible.**
+
+**2 · No cerraba los cargos `contraDeposito`.** Quedaban `saldadoAt: null` **para siempre** e
+insaldables por los cuatro caminos: invisibles en `/depositos/en-custodia` (filtra RETENIDO),
+rechazados por `/cargos/:id/saldar`, excluidos de saldar-deuda, y fuera del alcance de
+`deposito/resolver` (409 si el depósito ya no está RETENIDO). Deuda fantasma sin forma de bajarla.
+
+**Por qué había que arreglar los dos juntos.** Cerrar sin topear habría sido **peor que no
+cerrar**: taparía la pérdida en vez de exponerla — el libro diría "saldado" sobre plata que se
+devolvió y que nadie retuvo.
+
+**Qué se hizo.** El tope replicado antes de la transacción, con el mismo mensaje que `resolver`
+—y **rechazando**, no topeando en silencio: el diálogo de baja ya le mostró al operador una
+cuenta hecha, y devolver un número distinto del que aprobó es justo el pecado que este archivo
+viene corrigiendo—. Y el cierre extraído a `cerrarCargosContraDeposito` en `lib/deposito.ts`,
+que ya es la "FUENTE ÚNICA de cuánto depósito queda" y cuyo docblock describía esta misma clase
+de bug. Los **dos** caminos lo usan ahora.
+
+Con `MANTENER` no se cierra nada: el depósito sigue RETENIDO y esos cargos siguen siendo
+cobrables por el camino normal.
+
+**Tests.** 6 **puros** en `cerrar-cargos-contra-deposito.test.ts` —el filtro del `updateMany` es
+la parte delicada: cerrar de más saldaría deuda que el inquilino todavía tiene que pagar en
+efectivo— y 5 de integración en `finalizar-cierra-cargos-deposito.test.ts`, que crea su **propio
+contrato** en vez de usar uno del seed, porque finalizar es destructivo y esa base la comparten
+los 55 archivos de la suite.
+
+---
+
 ## T-65 · El arreglo que cerró el profesional no se le cobraba a nadie — ✅ RESUELTO
 
 **Experto:** BE · **Prioridad:** 🔴 · **Toca plata**
