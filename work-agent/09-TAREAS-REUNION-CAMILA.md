@@ -2179,6 +2179,34 @@ real y deja el diálogo abierto para corregir, y el camino feliz guarda y refres
 
 ---
 
+## T-54 · Una condonación parcial le decía al dueño que le perdonaron el mes entero — ✅ RESUELTO
+
+**Experto:** FE · **Prioridad:** 🟢
+**Origen:** revisión de seguridad del portal (19/08). Último de los seis confirmados.
+
+**El caso.** El inquilino paga el alquiler tarde y queda debiendo la mora. La inmobiliaria usa
+**Saldar deuda → Condonar**, que crea un pago condonado por el **remanente** — o sea, sólo el
+punitorio. El dueño abría Unidades y ese mes figuraba **"la inmobiliaria la condonó"**, sin
+fecha de cobro, cuando el alquiler entró completo y se lo van a depositar. Lo mismo si el
+inquilino pagó $70 de $100.
+
+**Por qué estaba así.** El renglón ya trataba la condonación como excluyente, y con buen motivo:
+una cuota perdonada figura PAGADO en la liquidación, así que sin eso el dueño veía un badge
+**verde** por plata que nunca le iba a llegar. La intención era correcta; le faltaba el caso
+del medio.
+
+**Qué se hizo.** `pagoAt` distingue los dos: condonación **+ fecha de pago real** = fue parcial.
+Ahora dice las dos mitades —*"pagó el 11/08 · el resto se condonó"*— con el badge
+**"condonada en parte"** en neutro, no en verde: cobró algo, pero parte de esa cuota no se le
+rinde. Así no cae en ninguna de las dos mentiras.
+
+El criterio se extrajo a `estadoVisualPeriodo`, una función pura exportada, para que viva en un
+solo lugar y se pueda testear — el estilo que ya usa `diasHasta` en ese mismo archivo.
+
+**Tests:** 3 casos nuevos en `portal-piezas.test.ts` (total, parcial y sin condonación).
+
+---
+
 ## T-53-N1 · El OTP delataba si el email existe, por el tiempo de respuesta
 
 **Experto:** SEC + BE · **Prioridad:** 🟢

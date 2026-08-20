@@ -27,6 +27,29 @@ import {
 } from '@/lib/api';
 
 /**
+ * Qué se le dice al dueño sobre un período, según lo que pasó de verdad.
+ *
+ * T-54 — "Condonada" no siempre quiere decir el mes entero. "Saldar deuda → Condonar" crea un
+ * pago condonado por el REMANENTE, así que si el inquilino pagó el alquiler tarde y sólo se le
+ * perdonó la mora —o pagó $70 de $100— queda una cuota con un pago REAL **y además** una
+ * condonación. Decirle "la inmobiliaria la condonó" a secas le hace leer que le perdonaron un
+ * mes que en realidad cobró.
+ *
+ * `pagoAt` es lo que los distingue: condonación + fecha de pago real = fue parcial.
+ *
+ * Y al revés tampoco se puede mostrar verde: parte de esa cuota no se le va a rendir (la
+ * rendición filtra los pagos condonados). Por eso el caso parcial dice las dos mitades y el
+ * badge queda neutro.
+ */
+export type EstadoVisualPeriodo = 'condonada' | 'condonada-en-parte' | 'pagado' | 'pendiente';
+
+export function estadoVisualPeriodo(per: { condonada: boolean; pagoAt: string | null }): EstadoVisualPeriodo {
+  if (per.condonada) return per.pagoAt ? 'condonada-en-parte' : 'condonada';
+  return per.pagoAt ? 'pagado' : 'pendiente';
+}
+
+
+/**
  * Los reclamos de sus unidades, de a diez.
  *
  * Antes era un `slice(0, 10)` pelado: la API manda hasta 50 y la pantalla mostraba diez sin
@@ -362,16 +385,35 @@ export function FilaPropiedad({ p }: { p: PropiedadPortal }) {
             {c.periodos.length === 1 ? 'Último mes' : `Últimos ${c.periodos.length} meses`}
           </p>
           <div className="space-y-1">
-            {c.periodos.map((per) => (
+            {c.periodos.map((per) => {
+              /* La condonación manda sobre el resto del renglón: una cuota perdonada figura
+                 PAGADO en la liquidación, así que sin esto el dueño veía un badge verde
+                 "pagado" por plata que NUNCA le va a llegar —la rendición filtra los pagos
+                 condonados y no se la deposita—. El backend ya mandaba el dato; era el front
+                 el que lo tiraba.
+
+                 T-54 — Pero "condonada" no siempre quiere decir el mes entero. "Saldar deuda →
+                 Condonar" crea un pago condonado por el REMANENTE, así que si el inquilino
+                 pagó el alquiler tarde y sólo se le perdonó la mora, o pagó $70 de $100, queda
+                 una cuota con un pago REAL y además una condonación. Decirle al dueño "la
+                 inmobiliaria la condonó" a secas le hace leer que le perdonaron un mes que en
+                 realidad cobró.
+
+                 `pagoAt` distingue los dos casos: si hay condonación Y fecha de pago real, fue
+                 parcial. Se dicen las dos mitades y el badge queda en `outline`, no en verde:
+                 cobró algo, pero parte de esa cuota no se le va a rendir. */
+              // Guarda la FECHA, no un booleano: así el narrowing de TS llega hasta el render.
+              const condonadaParcialAt =
+                estadoVisualPeriodo(per) === 'condonada-en-parte' ? per.pagoAt : null;
+              return (
               <div key={per.periodo} className="flex items-center justify-between gap-2 text-xs">
                 <span className="text-muted-foreground">{periodoLargo(per.periodo)}</span>
                 <span className="flex items-center gap-2">
-                  {/* La condonación manda sobre el resto del renglón: una cuota perdonada
-                      figura PAGADO en la liquidación, así que sin esto el dueño veía un badge
-                      verde "pagado" por plata que NUNCA le va a llegar —la rendición filtra los
-                      pagos condonados y no se la deposita—. El backend ya mandaba el dato; era
-                      el front el que lo tiraba. */}
-                  {per.condonada ? (
+                  {condonadaParcialAt ? (
+                    <span className="text-muted-foreground">
+                      pagó el {fecha(condonadaParcialAt)} · el resto se condonó
+                    </span>
+                  ) : per.condonada ? (
                     <span className="text-muted-foreground">la inmobiliaria la condonó</span>
                   ) : per.pagoAt ? (
                     <span className="text-muted-foreground">pagó el {fecha(per.pagoAt)}</span>
@@ -390,11 +432,12 @@ export function FilaPropiedad({ p }: { p: PropiedadPortal }) {
                     }
                     className="text-[10px]"
                   >
-                    {per.condonada ? 'condonada' : per.estado.toLowerCase()}
+                    {condonadaParcialAt ? 'condonada en parte' : per.condonada ? 'condonada' : per.estado.toLowerCase()}
                   </Badge>
                 </span>
               </div>
-            ))}
+              );
+            })}
           </div>
         </>
       ) : (
