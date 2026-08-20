@@ -798,6 +798,7 @@ model Usuario {
   @@unique([inmobiliariaId, email])
   @@index([inmobiliariaId])
   @@map("usuarios")
+  rendicionesAnuladas Rendicion[] @relation("rendicionesAnuladas")
 }
 
 // Catálogo GLOBAL de permisos (matriz CAPACIDADES de permisos.ts) — sin tenant.
@@ -2053,6 +2054,28 @@ model Rendicion {
   // SIN @@unique(propietarioId, periodo): rendición INCREMENTAL — un período se
   // puede rendir varias veces a medida que entran pagos parciales. El anti-doble se
   // hace por lo YA rendido de cada liquidación (AlquilerRendido), no por período.
+  /**
+   * ANULADA, no borrada.
+   *
+   * Anular es la única operación del sistema que destruía un registro de plata — y encima el
+   * único que un TERCERO ya vio: al propietario se le desaparecía del portal la tarjeta "te
+   * depositamos $X", el total del año le bajaba solo y la plata le volvía a figurar como sin
+   * rendir, sin una línea que lo explicara. Si llamaba, la inmobiliaria tampoco tenía con qué
+   * contestarle.
+   *
+   * SE BORRAN LAS LÍNEAS (AlquilerRendido/GastoRendido/IngresoRendido) Y SE CONSERVA LA
+   * CABECERA. Es a propósito: 20 lugares del código leen esos ledgers para saber qué se
+   * rindió, y filtrar "y que su rendición no esté anulada" en los 20 es garantizar que un día
+   * se olvide uno — y ese olvido corrompe plata en silencio. Borrándolas, ninguno cambia.
+   * La cabecera guarda montoBruto, comisionPct, montoNeto y moneda, que es lo que hace falta
+   * para mostrarle al dueño qué se anuló.
+   */
+  anuladaAt       DateTime?
+  anuladaPorId    String?
+  anuladaPor      Usuario?  @relation("rendicionesAnuladas", fields: [anuladaPorId], references: [id])
+  /** Obligatorio al anular: sin motivo, el rastro dice qué pasó pero no por qué. */
+  motivoAnulacion String?
+
   @@index([inmobiliariaId, periodo])
   @@index([propietarioId, periodo])
   @@map("rendiciones")

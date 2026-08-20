@@ -1349,10 +1349,20 @@ export function useEliminarPropiedad(): { eliminar: (id: string) => Promise<void
   };
 }
 
-/** Anular/deshacer una rendición (requiere PIN). Lanza ApiError si el server rechaza. */
-export async function anularRendicion(rendicionId: string, pin: string): Promise<void> {
+/**
+ * Anular/deshacer una rendición. Requiere PIN y MOTIVO.
+ *
+ * El motivo es obligatorio en el server (mínimo 5) y no es burocracia: anular le saca de la
+ * pantalla un depósito a alguien que ya lo vio. Desde este cambio la rendición no se borra
+ * —queda marcada como anulada— y el propietario la ve tachada CON este texto al lado, que es
+ * la respuesta a la llamada que va a hacer. Mismo criterio que anular un pago.
+ */
+export async function anularRendicion(rendicionId: string, motivo: string, pin: string): Promise<void> {
   await ensureApiSession();
-  await apiFetch(`/rendiciones/${rendicionId}/anular`, { method: 'POST', body: JSON.stringify({ pin }) });
+  await apiFetch(`/rendiciones/${rendicionId}/anular`, {
+    method: 'POST',
+    body: JSON.stringify({ pin, motivo }),
+  });
 }
 
 /** Colaterales de una baja de contrato, para avisar en el diálogo ANTES de confirmar. */

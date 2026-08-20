@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { esReversionInterna, observacionDeReversion } from '../lib/reversion-interna.js';
 import { instanteEnDiaCivilAR, yaVencio } from '@llave/shared';
+import { porcionAlquilerCobrada } from '@llave/shared/prorrateo';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../db.js';
@@ -1933,11 +1934,26 @@ export async function plataRoutes(app: FastifyInstance) {
   app.get('/rendiciones', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'pagos.ver');
     if (!u) return;
-    const q = z.object({ propietarioId: z.string().optional() }).parse(request.query ?? {});
+    const q = z
+      .object({ propietarioId: z.string().optional(), incluirAnuladas: z.string().optional() })
+      .parse(request.query ?? {});
     return prisma.rendicion.findMany({
       where: {
         inmobiliariaId: u.inmobiliariaId,
         ...(q.propietarioId ? { propietarioId: q.propietarioId } : {}),
+        // POR DEFAULT, SÓLO LAS VIGENTES.
+        //
+        // Desde la baja lógica la fila anulada sobrevive, y este endpoint lo consumen varias
+        // pantallas que preguntan "¿ya se le rindió?": el badge Rendido de la ficha, el KPI de
+        // "por rendir", el neto histórico, el botón de mandar el comprobante por WhatsApp.
+        // Ninguna sabía de la baja lógica, así que anular dejaba de tener efecto apenas se
+        // recargaba la página: el badge volvía a decir Rendido y el total seguía sumando plata
+        // que se deshizo.
+        //
+        // Excluirlas por default devuelve a todas esas pantallas la semántica que ya tenían
+        // —con el borrado duro, la anulada no estaba— sin tocar ninguna. Quien quiera verlas,
+        // que las pida: es UNA pantalla (el historial del propietario) contra cinco que no.
+        ...(q.incluirAnuladas === '1' ? {} : { anuladaAt: null }),
       },
       include: { gastos: true, propietario: { select: { nombre: true, apellido: true } } },
       orderBy: { periodo: 'desc' },
@@ -2093,13 +2109,18 @@ export async function plataRoutes(app: FastifyInstance) {
             if (!part) throw new ParticipacionAusente(liq.contrato.propiedadId);
             const porcentaje = part.porcentaje;
             const total = Number(liq.montoTotal);
-            // Porción de ALQUILER de lo cobrado, capeada a la base (montoTotal sin
-            // mora): un pago con mora hace cobrado > total y sin cap la porción de
-            // alquiler superaba montoAlquiler×participación → se rendía de más y se
-            // comisionaba sobre la mora (viola "comisión solo sobre alquiler").
-            const cobradoCapeado = Math.min(cobradoMap.get(liq.id) ?? 0, total);
-            const alquilerCobrado =
-              total > 0 ? cobradoCapeado * (Number(liq.montoAlquiler) / total) : 0;
+            // Porción de ALQUILER de lo cobrado, capeada a la base (`montoTotal` sin mora): un
+            // pago con mora hace cobrado > total y sin cap la porción de alquiler superaba
+            // montoAlquiler×participación → se rendía de más y se comisionaba sobre la mora
+            // (viola "comisión sólo sobre alquiler").
+            //
+            // La regla vive UNA sola vez, en `@llave/shared/prorrateo`. Este es el lugar donde
+            // esa cuenta mueve plata de verdad; los otros tres la mostraban.
+            const alquilerCobrado = porcionAlquilerCobrada({
+              alquiler: Number(liq.montoAlquiler),
+              base: total,
+              cobrado: cobradoMap.get(liq.id) ?? 0,
+            });
             const parteOwner = alquilerCobrado * (porcentaje / 100);
             const yaRend = yaRendMap.get(liq.id) ?? 0;
             const yaRendTotal = yaRendTotalMap.get(liq.id) ?? 0;
@@ -2594,17 +2615,39 @@ export async function plataRoutes(app: FastifyInstance) {
     return reply.code(201).send(rendicion);
   });
 
-  // Anular/deshacer una rendición: la borra y deja los gastos otra vez PENDIENTES
-  // para la próxima. No se movió plata real (la rendición es un registro), así que
-  // es reversible. Requiere PIN, igual que rendir.
+  // Anular/deshacer una rendición: la MARCA como anulada y deja los gastos otra vez
+  // PENDIENTES para la próxima. No se movió plata real (la rendición es un registro), así
+  // que es reversible. Requiere PIN y MOTIVO.
+  //
+  // La cabecera SOBREVIVE y las líneas de los tres ledgers se borran. El porqué está en el
+  // docblock de `anuladaAt` en schema.prisma; el resumen es que 20 lugares leen esos ledgers
+  // y filtrar "y que no esté anulada" en los 20 es garantizar que un día se olvide uno.
+  //
+  // ⚠️ Todo lector de la CABECERA sí tuvo que aprender de la baja lógica, y es donde estuvo
+  // el riesgo: `GET /rendiciones` excluye las anuladas por default (si no, el panel volvía a
+  // decir "Rendido" apenas se recargaba), y la regla pre-ledger de `rendicion-pendiente.ts`
+  // también (si no, anular hacía DESAPARECER la plata del pendiente). Si agregás un lector
+  // nuevo de esta tabla, decidí explícitamente de qué lado está.
   app.post('/rendiciones/:id/anular', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'rendicion.confirmar');
     if (!u) return;
     const { id } = request.params as { id: string };
-    const body = z.object({ pin: z.string().optional() }).parse(request.body ?? {});
+    // EL MOTIVO ES OBLIGATORIO. Anular le saca un depósito de la pantalla a una persona que
+    // ya lo vio; el rastro sin motivo dice qué pasó y no por qué, que es justo lo que va a
+    // preguntar cuando llame. Mismo criterio que anular un pago (`observacion`, min 5).
+    const parsed = z
+      .object({ pin: z.string().optional(), motivo: z.string().trim().min(5) })
+      .safeParse(request.body ?? {});
+    if (!parsed.success) {
+      return reply.code(400).send({ message: 'Contá por qué se anula la rendición (mínimo 5 caracteres)' });
+    }
+    const body = parsed.data;
     if (!(await verificarPin(u.userId, body.pin, reply))) return;
     const r = await prisma.rendicion.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
     if (!r) return reply.code(404).send({ message: 'Rendición inexistente' });
+    // Se corta acá y no recién en el lock: el 409 temprano evita revertir movimientos que ya
+    // se revirtieron en la primera anulación.
+    if (r.anuladaAt) return reply.code(409).send({ message: 'La rendición ya fue anulada' });
     try {
       await prisma.$transaction(
         async (tx) => {
@@ -2690,15 +2733,25 @@ export async function plataRoutes(app: FastifyInstance) {
             }
           }
           // Los AlquilerRendido cuelgan de la Rendicion con FK RESTRICT: sin borrarlos
-          // ANTES, el rendicion.deleteMany de abajo violaba la FK → P2003 → 500 SIEMPRE
+          // ANTES, cuando esto borraba la rendición, la FK explotaba con P2003 → 500 SIEMPRE
           // (toda rendición real crea ≥1 AlquilerRendido). La anulación era imposible.
           await tx.alquilerRendido.deleteMany({ where: { rendicionId: id } });
-          // Lock atómico: el deleteMany condicionado es el lock. Dos anulaciones
-          // concurrentes pasan el findFirst de arriba a la vez; sólo la primera
-          // borra la fila (count 1), la segunda ve count 0 → 409 (antes daba 404
-          // por el P2025 de rendicion.delete sobre una fila ya borrada).
-          const del = await tx.rendicion.deleteMany({
-            where: { id, inmobiliariaId: u.inmobiliariaId },
+          // BAJA LÓGICA: la cabecera se MARCA, no se borra. Las líneas de arriba sí se
+          // borran, y eso es deliberado — ver el comentario de `anuladaAt` en el schema: 20
+          // lugares leen esos ledgers y filtrar "y que no esté anulada" en los 20 es
+          // garantizar que un día se olvide uno.
+          //
+          // Lock atómico: el updateMany CONDICIONADO A `anuladaAt: null` es el lock. Dos
+          // anulaciones concurrentes pasan el findFirst de arriba a la vez; sólo la primera
+          // matchea (count 1), la segunda ve 0 → 409. Antes el lock era el deleteMany; la
+          // condición cambia pero la propiedad se mantiene.
+          const del = await tx.rendicion.updateMany({
+            where: { id, inmobiliariaId: u.inmobiliariaId, anuladaAt: null },
+            data: {
+              anuladaAt: new Date(),
+              anuladaPorId: u.userId,
+              motivoAnulacion: body.motivo,
+            },
           });
           if (del.count === 0) throw new Error('YA_ANULADA');
         },

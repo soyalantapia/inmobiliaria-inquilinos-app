@@ -550,3 +550,96 @@ describe('Portal — queda registrado que el dueño entró', () => {
     }
   });
 });
+
+/**
+ * Anular una rendición NO puede hacer desaparecer la plata.
+ *
+ * Es la interacción más peligrosa de la baja lógica y no es evidente. Al anular se borran las
+ * líneas del ledger y se conserva la cabecera — así ninguno de los 20 lectores de
+ * `alquileres_rendidos` tiene que cambiar. Pero eso deja una rendición anulada con la MISMA
+ * forma que una PRE-LEDGER: cabecera con monto y cero filas.
+ *
+ * Y la regla de las pre-ledger dice: "si hay una rendición de ese período sin líneas, el
+ * período ya se rindió". Sin excluir las anuladas, anular haría que su período se diera por
+ * saldado PARA SIEMPRE y la plata desapareciera del "cobrado y todavía sin rendirte" — lo
+ * contrario exacto de lo que anular tiene que hacer.
+ */
+describe('Portal — anular devuelve la plata a "sin rendirte"', () => {
+  const PROP2 = `${P}prop-anular`;
+  const CNT2 = `${P}cnt-anular`;
+  const LIQ2 = `${P}liq-anular`;
+  const PERIODO = '2024-07';
+
+  it('el período de una rendición anulada vuelve a figurar como pendiente', async () => {
+    const db = new PrismaClient();
+    try {
+      await db.propiedad.create({
+        data: {
+          id: PROP2, inmobiliariaId: tid, direccion: 'Anulada 1', ciudad: 'CABA',
+          provincia: 'Buenos Aires', tipo: 'DEPARTAMENTO',
+        },
+      });
+      await db.participacionPropietario.create({
+        data: { propiedadId: PROP2, propietarioId: 'own_001', porcentaje: 100, inmobiliariaId: tid },
+      });
+      await db.contrato.create({
+        data: {
+          id: CNT2, inmobiliariaId: tid, propiedadId: PROP2, monto: 200000,
+          fechaInicio: new Date('2024-01-01'), fechaFin: new Date('2030-01-01'), diaPago: 10,
+          indiceAjuste: 'ICL', frecuenciaAjusteMeses: 12, estado: 'ACTIVO',
+          modoCobranza: 'INMOBILIARIA',
+        },
+      });
+      await db.liquidacion.create({
+        data: {
+          id: LIQ2, inmobiliariaId: tid, contratoId: CNT2, periodo: PERIODO,
+          montoAlquiler: 200000, montoTotal: 200000,
+          fechaVencimiento: new Date('2024-07-10'), estado: 'PAGADO', moneda: 'ARS',
+        },
+      });
+      await db.pago.create({
+        data: {
+          inmobiliariaId: tid, contratoId: CNT2, liquidacionId: LIQ2, periodo: PERIODO,
+          monto: 200000, tipo: 'TOTAL', metodo: 'EFECTIVO', estado: 'CONCILIADO',
+          fechaTransferencia: new Date('2024-07-10'),
+        },
+      });
+
+      const pendientes = async () => {
+        const res = await app.inject({ method: 'GET', url: '/portal/pendiente', headers: auth(token) });
+        const u = (res.json() as { propiedadId: string; total: number }[]).find((x) => x.propiedadId === PROP2);
+        return u?.total ?? 0;
+      };
+
+      expect(await pendientes(), 'cobrado y sin rendir: tiene que figurar').toBe(200000);
+
+      // Una rendición ANULADA de ese período, con la forma exacta que deja la baja lógica:
+      // cabecera con monto y CERO líneas de alquiler.
+      await db.rendicion.create({
+        data: {
+          id: `${P}rend-anulada`, inmobiliariaId: tid, propietarioId: 'own_001', periodo: PERIODO,
+          montoBruto: 200000, comisionPct: 8, comisionMonto: 16000, totalGastos: 0,
+          totalIngresos: 0, montoNeto: 184000, moneda: 'ARS', metodo: 'TRANSFERENCIA',
+          anuladaAt: new Date(), motivoAnulacion: 'se rindió el período equivocado',
+        },
+      });
+
+      expect(
+        await pendientes(),
+        'la rendición está ANULADA: su plata tiene que seguir figurando como sin rendir. Si ' +
+          'esto da 0, la regla de las pre-ledger se está comiendo las anuladas y anular hace ' +
+          'desaparecer plata en silencio',
+      ).toBe(200000);
+    } finally {
+      await db.rendicion.deleteMany({ where: { id: { startsWith: P } } });
+      await db.pago.deleteMany({ where: { contratoId: CNT2 } });
+      await db.liquidacion.deleteMany({ where: { contratoId: CNT2 } });
+      await db.eventoContrato.deleteMany({ where: { contratoId: CNT2 } });
+      await db.propiedad.updateMany({ where: { id: PROP2 }, data: { contratoActualId: null } });
+      await db.contrato.deleteMany({ where: { id: CNT2 } });
+      await db.participacionPropietario.deleteMany({ where: { propiedadId: PROP2 } });
+      await db.propiedad.deleteMany({ where: { id: PROP2 } });
+      await db.$disconnect();
+    }
+  }, 180_000);
+});

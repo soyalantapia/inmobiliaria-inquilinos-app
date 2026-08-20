@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
+import { porcionAlquilerCobrada } from '@llave/shared/prorrateo';
 import { prisma } from '../db.js';
 
 /** Mismo patrón que `deposito.ts` / `evento-contrato.ts`: sirve dentro y fuera de una
@@ -108,10 +109,15 @@ export function calcularPendienteSinRendir(
     if (cobrado <= 0) continue;
     const liqTotal = Number(l.montoTotal);
     const liqAlq = Number(l.montoAlquiler);
-    // `liqTotal > 0` no es defensa de más: una liquidación en 0 (contrato SOLO_EXPENSAS
-    // sin expensas cargadas, o un dato viejo) haría 0/0 = NaN, y NaN > 0.01 es false,
-    // así que el guard dejaría pasar el cambio en silencio.
-    const alquilerCobrado = liqTotal > 0 ? Math.min(cobrado, liqTotal) * (liqAlq / liqTotal) : 0;
+    // Una sola implementación, en `@llave/shared/prorrateo` — incluido el guard de base 0, que
+    // no es defensa de más: una liquidación en 0 (un SOLO_EXPENSAS sin expensas cargadas, o un
+    // dato viejo) haría 0/0 = NaN, y `NaN > 0.01` es false, así que el guard de más abajo
+    // dejaría pasar el cambio en silencio.
+    const alquilerCobrado = porcionAlquilerCobrada({
+      alquiler: liqAlq,
+      base: liqTotal,
+      cobrado,
+    });
     const r2c = (x: number) => Math.round(x * 100) / 100;
     const yaRendTotal = rendidoPorLiq.get(l.id) ?? 0;
     const pendiente = porDuenio
@@ -206,6 +212,7 @@ export async function alquilerCobradoSinRendirDePropiedad(
     db,
     opts?.duenio,
     opts?.soloRendible ?? false,
+    inmobiliariaId,
   );
 }
 
@@ -222,6 +229,8 @@ async function pendienteDeLiquidaciones(
    * bajar a cero — ver los comentarios de cada una, abajo.
    */
   soloRendible = false,
+  /** El tenant, para poder acotar la regla pre-ledger. Sin él, la regla no corre. */
+  inmobiliariaId?: string,
 ): Promise<{ total: number; periodos: PeriodoSinRendir[] }> {
   const liqs = await db.liquidacion.findMany({
     where,
@@ -283,10 +292,29 @@ async function pendienteDeLiquidaciones(
   // Sólo aplica con `soloRendible`, o sea a las superficies que preguntan "¿qué se puede
   // rendir?". El guard de modo-cobranza sigue viendo todo, que es lo que necesita.
   const periodosPreLedger = new Set<string>();
-  if (soloRendible) {
+  // La regla SÓLO se aplica cuando se sabe de QUIÉN es la plata y de qué inmobiliaria.
+  //
+  // Sin las dos cosas la query era un desastre silencioso: buscaba "una rendición de este
+  // período sin líneas" en TODA la tabla, así que la de otro propietario —o peor, la de otra
+  // INMOBILIARIA— daba por saldado el período de éste. Y el error va para el lado que
+  // esconde plata, que es el que nadie descubre. Lo encontró una revisión adversarial de
+  // este mismo cambio; lo había escrito yo unas horas antes.
+  //
+  // Sin `duenio` la regla no corre: el guard de modo-cobranza (core.ts) pregunta "¿queda algo
+  // sin rendir acá, de cualquiera?" y para ESA pregunta no hay forma de saber a qué dueño
+  // atribuir una rendición sin líneas. Mejor que vea de más —y bloquee— a que deje pasar.
+  if (soloRendible && duenio && inmobiliariaId) {
     const rendicionesViejas = await db.rendicion.findMany({
       where: {
-        ...(duenio ? { propietarioId: duenio.propietarioId } : {}),
+        inmobiliariaId,
+        propietarioId: duenio.propietarioId,
+        // ⚠️ SIN LAS ANULADAS, y esto NO es un detalle: al anular se borran sus líneas y se
+        // conserva la cabecera, así que una rendición anulada se ve EXACTAMENTE igual que una
+        // pre-ledger —cabecera con monto y cero filas en `alquileres_rendidos`—. Sin este
+        // filtro, anular una rendición haría que su período se diera por saldado para siempre
+        // y la plata desapareciera del "cobrado y todavía sin rendirte" en silencio: lo
+        // contrario exacto de lo que anular tiene que hacer.
+        anuladaAt: null,
         periodo: { in: [...new Set(liqs.map((l) => l.periodo))] },
         alquileresRendidos: { none: {} },
       },

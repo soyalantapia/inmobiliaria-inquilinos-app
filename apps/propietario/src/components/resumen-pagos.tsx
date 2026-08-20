@@ -33,6 +33,10 @@ interface Corte {
 export function cortarPorMoneda(rendiciones: RendicionPortal[], anio: number): Corte[] {
   const por = new Map<string, Corte>();
   for (const r of rendiciones) {
+    // Una rendición ANULADA no es plata que entró: la inmobiliaria la deshizo. Sigue
+    // apareciendo en la lista de abajo —tachada, con su motivo— pero acá no suma, porque
+    // este número es el que el dueño cruza contra su cuenta bancaria.
+    if (r.anulada) continue;
     const m = r.moneda ?? 'ARS';
     let c = por.get(m);
     if (!c) {

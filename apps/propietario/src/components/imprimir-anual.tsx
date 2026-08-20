@@ -31,6 +31,10 @@ export function cortarAnual(rendiciones: RendicionPortal[], anio: number): Corte
   const por = new Map<'ARS' | 'USD', CorteAnual>();
   for (const r of rendiciones) {
     if (new Date(r.rendidoAt).getFullYear() !== anio) continue;
+    // Las ANULADAS quedan afuera del papel entero, no sólo del total: este resumen va a una
+    // liquidación de impuestos, y una fila tachada ahí adentro es una invitación a que
+    // alguien la sume igual.
+    if (r.anulada) continue;
     const m = (r.moneda ?? 'ARS') as 'ARS' | 'USD';
     let c = por.get(m);
     if (!c) {

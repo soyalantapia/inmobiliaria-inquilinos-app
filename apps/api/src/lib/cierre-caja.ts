@@ -17,6 +17,7 @@
  * vez de a centavos.
  */
 import { r2c, tasaComisionDeParticipaciones } from './ganancia-contrato.js';
+import { porcionAlquilerCobrada } from '@llave/shared/prorrateo';
 
 /** Argentina no tiene horario de verano desde 2009: el offset es fijo. */
 const OFFSET_AR_MS = 3 * 3600 * 1000;
@@ -128,8 +129,11 @@ export interface TotalesCierre {
  * comisión y la pantalla no fallaría, se vería vacía.
  */
 export function porcionAlquilerDelPago(p: Pick<PagoParaCierre, 'monto' | 'liqAlquiler' | 'liqTotal'>): number {
-  if (!(p.liqTotal > 0)) return 0;
-  return Math.min(p.monto, p.liqTotal) * (p.liqAlquiler / p.liqTotal);
+  // La regla vive UNA sola vez, en `@llave/shared/prorrateo`. Estaba copiada en cuatro lados
+  // —las tres del server y el KPI del panel— y el documento de invariantes las daba por
+  // coincidentes, verificado leyendo; la que había derivado era justo la que la lectura no
+  // miraba. Acá sólo se traducen los nombres de los campos.
+  return porcionAlquilerCobrada({ alquiler: p.liqAlquiler, base: p.liqTotal, cobrado: p.monto });
 }
 
 /**

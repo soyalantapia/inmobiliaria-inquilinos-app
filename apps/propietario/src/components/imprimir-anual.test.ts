@@ -123,3 +123,19 @@ describe('cortarAnual', () => {
     expect(cortarAnual([], 2026)).toEqual([]);
   });
 });
+
+describe('cortarAnual — las anuladas quedan afuera del papel', () => {
+  it('una rendición anulada no entra en el resumen del contador', () => {
+    // Afuera del papel ENTERO, no sólo del total: este resumen va a una liquidación de
+    // impuestos, y una fila tachada ahí adentro es una invitación a que alguien la sume igual.
+    const viva = R('ARS', '2026-03-10', '2026-02', { cobrado: 100000, comision: 8000 });
+    const muerta = {
+      ...R('ARS', '2026-04-10', '2026-03', { cobrado: 999999, comision: 0 }),
+      anulada: { fecha: '2026-05-01', motivo: 'error de carga' },
+    } as RendicionPortal;
+    const c = cortarAnual([viva, muerta], 2026);
+    expect(c).toHaveLength(1);
+    expect(c[0]!.filas).toHaveLength(1);
+    expect(c[0]!.cobrado).toBe(100000);
+  });
+})

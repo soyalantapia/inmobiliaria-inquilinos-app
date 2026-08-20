@@ -2,6 +2,21 @@
 
 Revisión de lectura sobre la rama ya unida. **Nada se ejecutó**: es código leído, no corrido.
 
+> ### ⚠️ Actualización 20/08 — el invariante #1 tenía una CUARTA copia, y había derivado
+>
+> Decía "espejado en TRES lugares y los tres coinciden", y listaba los tres de `apps/api`. El
+> cuarto era el KPI del panel (`apps/inmobiliaria/src/lib/api/hooks.ts`), que prorrateaba contra
+> un total que **ya traía la mora sumada**: le mostraba a la inmobiliaria menos alquiler cobrado
+> del que la rendición realmente pagaba. Se arregló en **T-01-N1-N5**.
+>
+> **Eso es lo que una verificación por lectura no puede dar**: no que la lectura esté mal, sino
+> que la lista de "dónde vive esta regla" siempre puede quedarse corta.
+>
+> El #1 ya no se verifica leyendo: la regla vive **una sola vez** en
+> `packages/shared/src/prorrateo.ts` y hay un test que falla si aparece otra copia
+> (**T-01-N1-N14**). Los invariantes #2 a #6 **siguen verificados sólo por lectura** — el #2 se
+> desprende del #1, así que queda cubierto de rebote; los otros no.
+
 ## Resultado: los cinco invariantes están intactos
 
 ### 1. El prorrateo de parciales está espejado en TRES lugares y los tres coinciden

@@ -195,6 +195,14 @@ export interface PropiedadPortal {
 }
 
 export interface RendicionPortal {
+  /**
+   * Si la inmobiliaria la anuló. `null` = vigente.
+   *
+   * Se muestra tachada en vez de desaparecer: al dueño ya le apareció ese depósito y
+   * probablemente lo imprimió. Y NO cuenta en ningún total — ver `cortarPorMoneda` y
+   * `cortarAnual`.
+   */
+  anulada?: { fecha: string; motivo: string | null } | null;
   id: string;
   periodo: string;
   cobrado: number;
@@ -210,6 +218,8 @@ export interface RendicionPortal {
 }
 
 export interface RendicionDetalle extends RendicionPortal {
+  /** Si está anulada. El imprimible NO se ofrece y el desglose se marca. */
+  anulada?: { fecha: string; motivo: string | null } | null;
   detalleAlquileres: { periodo: string; direccion: string; participacionPct: number; monto: number }[];
   detalleGastos: { fecha: string; tipo: string; descripcion: string; proveedor: string | null; monto: number }[];
   detalleIngresos: { fecha: string; descripcion: string; participacionPct: number; monto: number }[];

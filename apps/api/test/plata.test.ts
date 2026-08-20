@@ -308,13 +308,20 @@ describe('Anular rendición y pago rendido', () => {
     });
     const res = await app.inject({
       method: 'POST', url: `/rendiciones/${rend.id}/anular`, headers: auth(tokenAdmin),
-      payload: { pin: '1234' },
+      // El motivo es obligatorio desde la baja lógica: lo lee el PROPIETARIO en su portal,
+      // tachado al lado de la rendición.
+      payload: { pin: '1234', motivo: 'se rindió el período equivocado' },
     });
     expect(res.statusCode).toBe(200); // antes 500 (FK RESTRICT sobre alquileres_rendidos)
     const caja = await app.inject({ method: 'GET', url: '/caja/movimientos', headers: auth(tokenAdmin) });
     expect(caja.json().find((m: { id: string }) => m.id === 'mov_002').descontadoEnRendicion).toBe(false);
     // No quedaron AlquilerRendido huérfanos de esa rendición.
     expect(await prismaTest.alquilerRendido.count({ where: { rendicionId: rend.id } })).toBe(0);
+    // Y la CABECERA sobrevive, marcada. Antes se borraba: al propietario se le desaparecía
+    // el depósito del portal sin una palabra y no quedaba con qué contestarle.
+    const anulada = await prismaTest.rendicion.findUniqueOrThrow({ where: { id: rend.id } });
+    expect(anulada.anuladaAt).not.toBeNull();
+    expect(anulada.motivoAnulacion).toContain('período equivocado');
   });
 
   it('tras anular la rendición, el pago SÍ se puede anular → 200', async () => {
