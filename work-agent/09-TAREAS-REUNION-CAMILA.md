@@ -3248,7 +3248,26 @@ que debe pasar. Lo que no puede quedar es el test en rojo sin dueño.
 
 ---
 
-## T-28-N1-N3-N1 · Lo que sólo se ve con una base: `/mis-cargos` y los filtros del cierre
+## T-28-N1-N3-N1 · Lo que sólo se ve con una base: `/mis-cargos` y los filtros del cierre — 🟡 los filtros ya no
+
+> ## ✅ Los filtros del cierre SÍ se podían testear sin base — 20/08
+>
+> Esta ficha (la escribí yo) decía que los filtros *"viven en el `where` de Prisma: no hay
+> aritmética que extraer y un test puro no lo ve"*. **Es falso.** Lo que no se puede sin base es
+> verificar qué DEVUELVE Postgres; pero **construir el `where` es una función como cualquier
+> otra**, y ahí es exactamente donde ocurrieron las dos roturas históricas: alguien borró un
+> filtro.
+>
+> Se extrajo `whereCierreDelDia()` a `lib/cierre-caja.ts` y quedaron fijados los cuatro filtros
+> —condonados, `PROPIETARIO_DIRECTO`, scope de inmobiliaria y `CONCILIADO`— más el **día civil
+> argentino** y que el rango sea **semiabierto** (con `lte`, un pago exacto a las 03:00:00.000Z
+> se contaría en los cierres de dos días). **12 tests, mutación 7/7.**
+>
+> Honestidad sobre el alcance: prueba **la consulta que armamos**, no lo que Postgres devuelve.
+> No sustituye integración; agarra lo que pasó las dos veces, que es que alguien borre un filtro.
+>
+> **Sigue afuera `GET /mis-cargos`**, cuya garantía es el aislamiento multi-tenant: ahí no hay
+> forma ni aritmética que valga fijar por separado, necesita integración de verdad.
 
 **Experto:** QA · **Prioridad:** 🟡 · **Depende de:** una base de test (Docker o equivalente)
 **Origen:** T-28-N1-N3, que cubrió todo lo cubrible sin base.
@@ -4104,7 +4123,18 @@ conciliación) siguen sin correr nunca. Depende de la decisión de infraestructu
 
 ---
 
-## T-29-N1 · El historial se escribe dentro de la transacción, y ahí no puede ser best-effort
+## T-29-N1 · El historial se escribe dentro de la transacción, y ahí no puede ser best-effort — ✅ YA ESTABA HECHA
+
+> **Verificado el 20/08 mientras se buscaba tarea.** Ya está resuelto, y mejor de lo que pedía la
+> ficha: no sólo se movió a post-commit, sino que **la firma lo garantiza**. `registrarEventoContrato`
+> recibe `PrismaClient` y **no acepta un `tx`**, así que es el compilador el que impide volver a
+> meterlo adentro de una transacción. Los cinco call sites pasan `prisma`
+> (`core.ts:1496`, `core.ts:2397`, `operacion.ts:332`, `operacion.ts:872`, `plata.ts:525`);
+> **cero** pasan `tx`.
+>
+> El docblock además deja escrito el porqué: en PostgreSQL una sentencia fallida deja la
+> transacción abortada, así que el `catch` no protegía la operación — escondía que se había
+> perdido, devolviendo 200.
 
 **Experto:** BE · **Prioridad:** 🟠 · **Depende de:** nada
 **Origen:** revisión adversarial de la consolidación (19/08). No salió de la reunión.
@@ -4733,7 +4763,30 @@ manual, sin tocar la importación.
 cuenta filas del seed y encuentra las que dejaron las suites anteriores — corriéndolo solo da
 7/7. No son bugs del producto. Ver **T-01-N1-N1-N1**.
 
-### T-01-N1-N1-N1 · Las suites de integración se pisan entre sí
+### T-01-N1-N1-N1 · Las suites de integración se pisan entre sí — ✅ HECHA
+
+> ### ✅ Cerrada el 20/08. La suite da **52/52 · 387 tests** y el job **ya bloquea**.
+>
+> Eran dos causas distintas, no una:
+>
+> **1. Los conteos del seed** (4 rojas de `core.test.ts`). Ya lo había arreglado otro chat
+> cambiando `toBe(8)` por `toBeGreaterThanOrEqual(8)`: la aserción pasa a decir lo que de
+> verdad importa —que los 8 del seed están y vienen con sus joins— en vez de exigir que la base
+> no tenga nada más.
+>
+> **2. Una limpieza que se salía de su territorio** (el archivo entero de `multi-alquiler`).
+> Su `afterAll` borraba propiedades matcheando `direccion contains "Rivadavia"`, y
+> `importacion-morosos.test.ts` **también usa direcciones con Rivadavia**. En una corrida
+> completa intentaba borrar propiedades ajenas, con contratos y pagos que no limpia, y moría
+> con violación de FK. Por eso corriéndolo solo pasaba y en la suite era el único rojo.
+>
+> Se acotó a las propiedades que el propio archivo crea (por id, no por texto), y de paso le
+> faltaban dos pasos que el limpiador oficial documenta: cortar el lazo `propiedad.contratoActualId`
+> antes de borrar el contrato, y borrar el `EventoContrato` que el alta escribe desde T-29.
+>
+> **Se sacó el `continue-on-error` del job `integracion`.** Si vuelve a ponerse rojo, frena el
+> merge — que es el punto: con push a `main` deployando producción, ese job es lo único que hay
+> entre un merge y la plata de la inmobiliaria.
 **Experto:** QA · **Prioridad:** 🟡 · **Depende de:** nada
 
 Las ~50 suites comparten una base y las que cuentan filas del seed fallan por lo que dejó la

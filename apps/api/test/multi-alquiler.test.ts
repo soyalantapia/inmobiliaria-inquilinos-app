@@ -12,6 +12,14 @@ const auth = () => ({ authorization: `Bearer ${token}` });
 const EMAIL = 'multi.inquilino@test.com';
 const DNI = '30111222';
 
+// Las propiedades que crea ESTE archivo, por id. La limpieza de abajo las buscaba por
+// `direccion contains 'Rivadavia'`, y ese selector se salía del territorio propio:
+// `importacion-morosos.test.ts` también usa direcciones con "Rivadavia", así que en una corrida
+// completa este afterAll intentaba borrar propiedades AJENAS —con contratos, pagos y cargos que
+// no limpia— y moría con una violación de FK. El archivo entero quedaba en rojo por su limpieza,
+// no por sus tests: corriéndolo solo pasaba, y en la suite completa era el único que fallaba.
+const propiedadesCreadas: string[] = [];
+
 beforeAll(async () => {
   prismaTest = new PrismaClient();
   await seedBase(prismaTest);
@@ -35,13 +43,20 @@ afterAll(async () => {
     select: { contratoId: true },
   });
   const contratoIds = inquilinos.map((i) => i.contratoId).filter((c): c is string => !!c);
-  const props = await prismaTest.propiedad.findMany({
-    where: { direccion: { contains: 'Rivadavia' } },
-    select: { id: true },
-  });
-  const propIds = props.map((p) => p.id);
+  // Sólo las que creó este archivo. Ver el comentario de `propiedadesCreadas`.
+  const propIds = propiedadesCreadas;
   await prismaTest.liquidacion.deleteMany({ where: { contratoId: { in: contratoIds } } });
+  // El alta escribe historial (`EventoContrato`) desde T-29, y esta limpieza es anterior a eso:
+  // la FK es RESTRICT, así que sin borrarlos el delete del contrato no pasa.
+  await prismaTest.eventoContrato.deleteMany({ where: { contratoId: { in: contratoIds } } });
   await prismaTest.inquilino.deleteMany({ where: { personaId: { in: personaIds } } });
+  // La propiedad apunta al contrato y el contrato a la propiedad: hay que cortar ese lazo
+  // antes de borrar cualquiera de los dos, o el delete choca contra la FK. Es el mismo paso
+  // que hace `prisma/limpiar-test-db.ts`, y acá faltaba.
+  await prismaTest.propiedad.updateMany({
+    where: { id: { in: propIds } },
+    data: { contratoActualId: null },
+  });
   await prismaTest.contrato.deleteMany({ where: { id: { in: contratoIds } } });
   await prismaTest.participacionPropietario.deleteMany({ where: { propiedadId: { in: propIds } } });
   await prismaTest.propiedad.deleteMany({ where: { id: { in: propIds } } });
@@ -56,7 +71,9 @@ async function crearPropiedad(direccion: string): Promise<string> {
     payload: { direccion, ciudad: 'La Rioja', provincia: 'La Rioja', tipo: 'LOCAL', propietarios: [{ propietarioId: 'own_001', porcentaje: 100 }] },
   });
   expect([200, 201]).toContain(res.statusCode);
-  return res.json().id;
+  const id = res.json().id as string;
+  propiedadesCreadas.push(id);
+  return id;
 }
 
 function contratoPayload(propiedadId: string, inquilino: object) {

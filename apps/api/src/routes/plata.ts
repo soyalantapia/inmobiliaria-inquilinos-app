@@ -16,7 +16,7 @@ import {
   generarLiquidacionesContrato,
   marcarLiquidacionesVencidas,
 } from '../lib/liquidaciones.js';
-import { totalizarCierre } from '../lib/cierre-caja.js';
+import { diaDeCierreAR, totalizarCierre, whereCierreDelDia } from '../lib/cierre-caja.js';
 import { parteRendible } from '../lib/parte-rendible.js';
 import { descripcionDeReparacion } from '../lib/descripcion-gasto-rendido.js';
 import { sePuedeBorrarGastoDeCaja } from '../lib/borrar-gasto-caja.js';
@@ -202,25 +202,14 @@ export async function plataRoutes(app: FastifyInstance) {
           .optional(),
       })
       .parse(request.query ?? {});
-    // Día en hora de Argentina (UTC-3): el rango en UTC es [fecha 03:00Z, +24h).
-    const arNow = new Date(Date.now() - 3 * 3600 * 1000);
-    const fecha = q.fecha ?? arNow.toISOString().slice(0, 10);
-    const desde = new Date(`${fecha}T03:00:00.000Z`);
-    const hasta = new Date(desde.getTime() + 24 * 3600 * 1000);
+    // El día civil ARGENTINO y los filtros del cierre viven en `lib/cierre-caja.ts`, sin
+    // Prisma, para poder fijarlos con tests que corran en CI: dos de esos filtros
+    // —condonados y PROPIETARIO_DIRECTO— ya rompieron una vez, y los dos fallan inflando el
+    // arqueo en silencio, que es el modo de falla que nadie nota.
+    const fecha = q.fecha ?? diaDeCierreAR(new Date());
 
     const pagos = await prisma.pago.findMany({
-      where: {
-        inmobiliariaId: u.inmobiliariaId,
-        estado: 'CONCILIADO',
-        // Una condonación cancela deuda, no ingresa plata: no va al cierre del día
-        // (antes inflaba lo cobrado y la comisión con dinero que nunca entró).
-        condonado: false,
-        decididoAt: { gte: desde, lt: hasta },
-        // SOLO contratos de cobranza por inmobiliaria: en PROPIETARIO_DIRECTO la
-        // inmo no cobra ni gana comisión, así que esos pagos no van al cierre del
-        // día (mismo filtro que /rendiciones). Antes inflaban cobrado + comisión.
-        contrato: { modoCobranza: 'INMOBILIARIA' },
-      },
+      where: whereCierreDelDia(u.inmobiliariaId, fecha),
       include: {
         liquidacion: {
           select: { montoAlquiler: true, montoTotal: true, periodo: true, moneda: true },
