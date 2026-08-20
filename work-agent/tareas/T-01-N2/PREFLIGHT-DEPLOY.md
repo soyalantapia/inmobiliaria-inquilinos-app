@@ -43,7 +43,7 @@ Tres consecuencias:
 | 3 | `evento_contrato_renovacion` | `ADD VALUE 'RENOVACION'` | ninguno |
 | 4 | `otp_propietario` | tabla nueva | ninguno |
 | 5 | `email_propietario_minusculas` | UPDATE de datos | **mirar antes** (§3) |
-| 6 | `limpiar_pines_heredados` | UPDATE de datos | ninguno |
+| 6 | `limpiar_pines_heredados` | guarda evidencia + UPDATE | ninguno — **pero ver §3.3** |
 | 7 | `dni_persona_solo_digitos` | UPDATE de datos | **mirar antes** (§3) |
 | 8 | `propietario_baja_logica` | columna con default | ninguno |
 | 9 | `conmutador_usuarios` | 4 × `ADD VALUE` | ninguno |
@@ -65,10 +65,11 @@ Tres consecuencias:
 
 ---
 
-## 3. Las dos que conviene mirar antes (consultas de SOLO LECTURA)
+## 3. Las que conviene mirar antes (consultas de SOLO LECTURA)
 
-Las dos normalizan datos ya cargados. Ninguna de las dos puede fallar —se verificó—, pero las dos
-pueden dejar filas sin tocar que después hay que resolver a mano.
+Las dos primeras normalizan datos ya cargados: ninguna puede fallar —se verificó—, pero las dos
+pueden dejar filas sin tocar que después hay que resolver a mano. La tercera no necesita nada
+antes, pero deja una tabla que sí hay que mirar DESPUÉS.
 
 ### `email_propietario_minusculas`
 
@@ -105,6 +106,28 @@ WHERE dni IS NOT NULL AND dni <> regexp_replace(dni, '\D', '', 'g');
 `NOT EXISTS` que excluye toda fila cuyo DNI normalizado chocaría con otra del mismo tenant. Esas
 quedan **sin tocar a propósito**, para fusionarlas a mano después. Si dos filas normalizan al
 mismo valor, se saltean las dos.
+
+
+### `limpiar_pines_heredados` — deja una tabla de evidencia
+
+Borra los `pinHash` heredados (T-35), y **antes** copia a `_t35_usuarios_con_credencial` quiénes
+tenían PIN y password seteados. Sin ese paso previo el UPDATE destruye la única forma de
+responder la pregunta que abrió T-35: *¿hubo usuarios con la credencial del admin?*
+
+Es idempotente (`CREATE TABLE IF NOT EXISTS` + `ON CONFLICT DO NOTHING`) y el orden es el
+correcto: preserva y después borra, todo en la misma transacción.
+
+**Después del deploy, esa tabla responde la pregunta de T-35:**
+
+```sql
+SELECT * FROM "_t35_usuarios_con_credencial" WHERE "teniaPassword" = true;
+```
+
+Si devuelve filas, esos usuarios tenían acceso con credenciales que no eligieron ellos, y hay que
+rotarlas. Es la acción urgente que T-35 dejó anotada.
+
+⚠️ La tabla **no está en `schema.prisma`** a propósito: es evidencia, no modelo. Quien corra
+`prisma migrate dev` alguna vez va a ver drift por ella. Borrarla cuando ya no haga falta.
 
 ---
 
