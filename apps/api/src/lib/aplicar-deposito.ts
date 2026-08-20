@@ -22,6 +22,76 @@ export interface ResultadoAplicacion {
   cuotasSaldadas: number;
 }
 
+/** Una cuota candidata, con el saldo YA calculado (con mora) por el caller. */
+export interface CuotaParaImputar {
+  id: string;
+  saldo: number;
+  exigible: boolean;
+}
+
+export interface Imputacion {
+  id: string;
+  /** Cuánto del depósito se le imputa a esta cuota. */
+  imputa: number;
+  /** Si con eso queda saldada del todo (tolerancia de un centavo). */
+  cubierta: boolean;
+}
+
+export interface PlanImputacion extends ResultadoAplicacion {
+  imputaciones: Imputacion[];
+}
+
+/**
+ * A qué cuotas y por cuánto se imputa el depósito. **Pura**: entra la lista de cuotas con su
+ * saldo y lo que hay disponible, sale el plan. El caller hace las escrituras.
+ *
+ * VIVE SEPARADA PARA PODER TESTEARLA. Acá se decide cuánta deuda del ex-inquilino cancela su
+ * garantía y **cuánto se le devuelve**, y hasta ahora esa aritmética sólo se podía ejercitar
+ * levantando media base de datos. Un error no se ve como un error: se ve como un número en el
+ * cierre de la baja.
+ *
+ * Las reglas, y por qué cada una:
+ *  · **Se respeta el orden que llega** — el caller las trae de la más vieja a la más nueva,
+ *    que es la que más mora acumuló.
+ *  · **Nunca se imputa más que el saldo de la cuota**: pagar de más una cuota dejaría al
+ *    inquilino con crédito en una y deuda viva en la siguiente.
+ *  · **Nunca se imputa más que lo disponible**: no se gasta una garantía que no existe.
+ *  · **`aplicado + sobrante === disponible`, siempre.** Es la invariante que importa: la
+ *    plata del depósito no se puede evaporar ni multiplicar. Lo que no cancela deuda se le
+ *    devuelve.
+ *  · Las cuotas **no exigibles se saltean** (una futura no se cancela: el ex-inquilino no
+ *    ocupó ese mes), y las que ya tienen saldo 0 también.
+ */
+export function planDeImputacion(cuotas: CuotaParaImputar[], disponible: number): PlanImputacion {
+  const imputaciones: Imputacion[] = [];
+  let restante = r2c(Math.max(0, disponible));
+  let aplicado = 0;
+  let cuotasSaldadas = 0;
+
+  for (const c of cuotas) {
+    // OJO: este `break` es una OPTIMIZACIÓN, no una garantía. Sin él el resultado es
+    // idéntico —con `restante` en 0, `imputa` da 0 y el `continue` de abajo saltea la cuota
+    // igual—. Se verificó con mutation testing: sacarlo no pone ningún test en rojo, y eso
+    // es correcto, no un agujero de cobertura. Si alguna vez hay que cambiar la aritmética
+    // de arriba, no se puede confiar en esta línea para cortar.
+    if (restante <= 0) break;
+    if (!c.exigible || c.saldo <= 0) continue;
+
+    const imputa = r2c(Math.min(c.saldo, restante));
+    if (imputa <= 0) continue;
+
+    // Tolerancia de un centavo, la misma que usan validar y el pago manual: sobre la ÚLTIMA
+    // cuota que alcanza a tocar el depósito suele quedar corto, y ahí queda PARCIAL.
+    const cubierta = imputa >= c.saldo - 0.01;
+    imputaciones.push({ id: c.id, imputa, cubierta });
+    if (cubierta) cuotasSaldadas++;
+    restante = r2c(restante - imputa);
+    aplicado = r2c(aplicado + imputa);
+  }
+
+  return { imputaciones, aplicado, sobrante: r2c(restante), cuotasSaldadas };
+}
+
 /**
  * Aplica el depósito retenido CONTRA LA DEUDA del contrato, de verdad.
  *
@@ -88,13 +158,11 @@ export async function aplicarDepositoADeuda(
   const pagadoMap = new Map(filas.map((f) => [f.liquidacionId, Number(f._sum.monto ?? 0)]));
   const esquema = resolverEsquemaMora(contrato, contrato.inmobiliaria);
 
-  let restante = args.disponible;
-  let aplicado = 0;
-  let cuotasSaldadas = 0;
-
-  for (const l of liqs) {
-    if (restante <= 0) break;
-    if (!esExigible(l, now)) continue;
+  // El saldo CON punitorios de cada cuota, en el orden en que vienen (más vieja primero).
+  // Se calcula acá porque necesita el esquema de mora; la decisión de a cuáles y por cuánto
+  // imputar es aritmética y vive en `planDeImputacion`, que sí se puede testear.
+  const punitPorLiq = new Map<string, number>();
+  const candidatas: CuotaParaImputar[] = liqs.map((l) => {
     const punit = calcularMora(
       Number(l.montoTotal),
       esquema,
@@ -102,11 +170,17 @@ export async function aplicarDepositoADeuda(
       now,
       l.montoPunitorioManual != null ? Number(l.montoPunitorioManual) : null,
     );
-    const { saldo } = conSaldo(l, pagadoMap, punit);
-    if (saldo <= 0) continue;
+    punitPorLiq.set(l.id, punit);
+    return { id: l.id, saldo: conSaldo(l, pagadoMap, punit).saldo, exigible: esExigible(l, now) };
+  });
 
-    const imputa = r2c(Math.min(saldo, restante));
-    if (imputa <= 0) continue;
+  const plan = planDeImputacion(candidatas, args.disponible);
+  const porId = new Map(liqs.map((l) => [l.id, l]));
+
+  for (const { id, imputa, cubierta } of plan.imputaciones) {
+    const l = porId.get(id)!;
+    const punit = punitPorLiq.get(id) ?? 0;
+    const saldo = conSaldo(l, pagadoMap, punit).saldo;
 
     await tx.pago.create({
       data: {
@@ -132,17 +206,13 @@ export async function aplicarDepositoADeuda(
       },
     });
 
-    const cubierta = imputa >= r2c(saldo) - 0.01;
     await tx.liquidacion.updateMany({
       where: { id: l.id, inmobiliariaId: args.inmobiliariaId, estado: { not: 'PAGADO' } },
       data: cubierta
         ? { estado: 'PAGADO', fechaPago: now, metodoPago: 'TRANSFERENCIA' }
         : { estado: 'PARCIAL' },
     });
-    if (cubierta) cuotasSaldadas++;
-    restante = r2c(restante - imputa);
-    aplicado = r2c(aplicado + imputa);
   }
 
-  return { aplicado, sobrante: r2c(restante), cuotasSaldadas };
+  return { aplicado: plan.aplicado, sobrante: plan.sobrante, cuotasSaldadas: plan.cuotasSaldadas };
 }
