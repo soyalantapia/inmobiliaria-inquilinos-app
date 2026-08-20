@@ -69,6 +69,10 @@ beforeAll(async () => {
 
   // Limpieza idempotente de corridas previas (certificados antes por la FK).
   await prisma.certificadoInquilino.deleteMany({ where: { contratoId: { in: [CNT_BAJA, CNT_ACTIVO] } } });
+  // El historial va ANTES que el contrato: su FK es RESTRICT y desde que el alta escribe
+  // un evento CREADO (T-29), todo contrato creado por la API tiene al menos una fila acá.
+  // Se filtra por la relación para no repetir —ni desincronizar— el where de abajo.
+  await prisma.eventoContrato.deleteMany({ where: { contrato: { id: { in: [CNT_BAJA, CNT_ACTIVO] } } } });
   await prisma.contrato.deleteMany({ where: { id: { in: [CNT_BAJA, CNT_ACTIVO] } } });
 
   await crearContrato(CNT_BAJA, 'FINALIZADO');

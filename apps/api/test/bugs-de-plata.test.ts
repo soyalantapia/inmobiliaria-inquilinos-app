@@ -61,6 +61,13 @@ afterAll(async () => {
       data: { contratoActualId: null },
     });
     await prisma.inquilino.deleteMany({ where: { contratoId: { in: creados.contratos } } });
+    // El historial del contrato va ANTES que el contrato: su FK es RESTRICT y desde que el
+    // alta escribe un evento CREADO (T-29) todo contrato tiene al menos una fila acá. Sin
+    // esto el teardown explota con un 23001 y deja la DB compartida sucia para el resto.
+    // No hay riesgo de tapar un bug de producción: la app NUNCA borra un contrato —cero
+    // `contrato.delete` en apps/api/src—, los finaliza o los rescinde. El borrado duro
+    // existe sólo acá, para no dejar basura entre corridas.
+    await prisma.eventoContrato.deleteMany({ where: { contratoId: { in: creados.contratos } } });
     await prisma.contrato.deleteMany({ where: { id: { in: creados.contratos } } });
   }
   if (creados.propiedades.length) {
