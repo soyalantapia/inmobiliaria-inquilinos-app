@@ -647,7 +647,15 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
         // PROPIETARIO_DIRECTO) no lo rinde nadie, así que mostrarlo como "todavía sin rendirte"
         // le dice que la inmobiliaria le retiene plata que él ya tiene, y no hay ninguna acción
         // que baje ese número a cero.
-        const pend = await alquilerCobradoSinRendirDePropiedad(part.propiedad.id, prisma, p.inmobiliariaId, { soloRendible: true });
+        // T-53 — `duenio`: la cuenta pasa a ser LA PARTE DE ÉL, no la de la propiedad.
+        // `AlquilerRendido` cuelga de `Rendicion.propietarioId`, así que sin este filtro lo ya
+        // rendido a un copropietario descontaba del otro: con dos dueños 60/40, después de
+        // rendirle al primero, al segundo le seguía apareciendo la parte del primero como
+        // propia. Espeja el doble cap de POST /rendiciones (plata.ts:2042).
+        const pend = await alquilerCobradoSinRendirDePropiedad(part.propiedad.id, prisma, p.inmobiliariaId, {
+          soloRendible: true,
+          duenio: { propietarioId: p.propietarioId, porcentaje: Number(part.porcentaje) },
+        });
         const porMoneda = new Map<string, { total: number; periodos: typeof pend.periodos }>();
         for (const per of pend.periodos) {
           const corte = porMoneda.get(per.moneda) ?? { total: 0, periodos: [] };

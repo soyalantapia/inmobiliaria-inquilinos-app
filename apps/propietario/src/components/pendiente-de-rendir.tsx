@@ -50,9 +50,14 @@ export function PendienteDeRendir() {
             <p className="text-xs text-muted-foreground">
               {u.periodos.map((p) => periodoLargo(p.periodo).toLowerCase()).join(' · ')}
             </p>
+            {/* T-53 — El número YA es la parte de este dueño (el backend la prorratea y
+                descuenta lo que ya se le rindió A ÉL). Antes mostraba el total de la unidad y
+                el copy lo invitaba a multiplicar por su porcentaje: en copropiedad esa cuenta
+                daba mal, porque le seguía apareciendo la parte del otro. */}
             <p className="text-xs text-muted-foreground">
-              Es el alquiler cobrado de la unidad. De ahí se descuentan la comisión y los gastos
-              {u.participacionPct < 100 && `, y te corresponde el ${u.participacionPct}%`}.
+              {u.participacionPct < 100
+                ? `Es tu ${u.participacionPct}% del alquiler cobrado de la unidad. De ahí se descuentan la comisión y los gastos.`
+                : 'Es el alquiler cobrado de la unidad. De ahí se descuentan la comisión y los gastos.'}
             </p>
           </Card>
         ))}

@@ -81,6 +81,18 @@ export function calcularPendienteSinRendir(
   liqs: LiquidacionParaPendiente[],
   cobradoPorLiq: Map<string, number>,
   rendidoPorLiq: Map<string, number>,
+  /**
+   * T-53 — Modo "la parte de ESTE dueño". Sin esto la cuenta es de la PROPIEDAD entera, que es
+   * lo que necesitan los guards de core.ts ("¿hay algo cobrado y sin rendir acá, sí o no?"),
+   * pero NO lo que hay que mostrarle a un copropietario: con dos dueños 60/40, después de
+   * rendirle al primero le seguía apareciendo la parte del segundo como propia.
+   *
+   * La aritmética espeja el DOBLE CAP de `POST /rendiciones` (plata.ts:2042), que es la
+   * invariante que este archivo declara: (1) lo que le falta a este dueño de su parte, y
+   * (2) el remanente de la liquidación sumando a TODOS los dueños. El (2) evita el sobre-pago
+   * cuando se cambió el reparto después de rendir un período.
+   */
+  porDuenio?: { porcentaje: number; rendidoMioPorLiq: Map<string, number> },
 ): { total: number; periodos: PeriodoSinRendir[] } {
   // OJO con `total`: suma TODOS los períodos, sin mirar la moneda. Sirve para lo que lo usa
   // core.ts —"¿hay algo cobrado y sin rendir, sí o no?", un umbral— y NO sirve para mostrarlo.
@@ -97,7 +109,16 @@ export function calcularPendienteSinRendir(
     // sin expensas cargadas, o un dato viejo) haría 0/0 = NaN, y NaN > 0.01 es false,
     // así que el guard dejaría pasar el cambio en silencio.
     const alquilerCobrado = liqTotal > 0 ? Math.min(cobrado, liqTotal) * (liqAlq / liqTotal) : 0;
-    const pendiente = Math.round((alquilerCobrado - (rendidoPorLiq.get(l.id) ?? 0)) * 100) / 100;
+    const r2c = (x: number) => Math.round(x * 100) / 100;
+    const yaRendTotal = rendidoPorLiq.get(l.id) ?? 0;
+    const pendiente = porDuenio
+      ? Math.min(
+          // (1) lo que le falta a ESTE dueño de su parte
+          r2c(alquilerCobrado * (porDuenio.porcentaje / 100) - (porDuenio.rendidoMioPorLiq.get(l.id) ?? 0)),
+          // (2) lo que queda sin rendir de la liquidación entre TODOS los dueños
+          r2c(alquilerCobrado - yaRendTotal),
+        )
+      : r2c(alquilerCobrado - yaRendTotal);
     // Tolerancia de 1 centavo: el mismo umbral que usa la rendición para decidir si
     // algo es rendible (`rendible <= 0` ⇒ se saltea). Sin esto, un resto de redondeo
     // del prorrateo bloquearía el cambio de modo para siempre.
@@ -154,7 +175,15 @@ export async function alquilerCobradoSinRendirDePropiedad(
    * pasar de directo a inmobiliaria el sistema le transfiera al dueño algo que ya cobró. Si el
    * filtro fuera incondicional se abriría ese agujero. Por eso es opt-in y ese guard no lo pasa.
    */
-  opts?: { soloRendible?: boolean },
+  opts?: {
+    soloRendible?: boolean;
+    /**
+     * T-53 — Con esto la cuenta pasa a ser LA PARTE DE ESTE DUEÑO, no la de la propiedad.
+     * Sólo lo usa el portal: los guards de core.ts necesitan el total global, ciego a la
+     * participación ("¿hay algo cobrado y sin rendir acá, sí o no?").
+     */
+    duenio?: { propietarioId: string; porcentaje: number };
+  },
 ): Promise<{ total: number; periodos: PeriodoSinRendir[] }> {
   // `inmobiliariaId` es opcional pero NO decorativo. Los llamadores de core.ts ya vienen de un
   // handler que resolvió la propiedad dentro de su tenant; el portal del propietario, en cambio,
@@ -172,6 +201,7 @@ export async function alquilerCobradoSinRendirDePropiedad(
       },
     },
     db,
+    opts?.duenio,
   );
 }
 
@@ -181,6 +211,7 @@ async function pendienteDeLiquidaciones(
     | { contratoId: string }
     | { contrato: { propiedadId: string; inmobiliariaId?: string; modoCobranza?: 'INMOBILIARIA' } },
   db: TxOrClient,
+  duenio?: { propietarioId: string; porcentaje: number },
 ): Promise<{ total: number; periodos: PeriodoSinRendir[] }> {
   const liqs = await db.liquidacion.findMany({
     where,
@@ -189,7 +220,7 @@ async function pendienteDeLiquidaciones(
   if (liqs.length === 0) return { total: 0, periodos: [] };
   const ids = liqs.map((l) => l.id);
 
-  const [cobros, rendidos] = await Promise.all([
+  const [cobros, rendidos, rendidosMios] = await Promise.all([
     db.pago.groupBy({
       by: ['liquidacionId'],
       where: { liquidacionId: { in: ids }, estado: 'CONCILIADO', condonado: false },
@@ -200,9 +231,30 @@ async function pendienteDeLiquidaciones(
       where: { liquidacionId: { in: ids } },
       _sum: { monto: true },
     }),
+    // T-53 — Lo rendido A ESTE dueño. `AlquilerRendido` cuelga de `Rendicion.propietarioId`
+    // (schema.prisma:2040: "parte del propietario rendida en esta tanda"), así que el groupBy
+    // de arriba —sin filtro— mezcla lo de todos los dueños. Es el mismo filtro que usa
+    // `POST /rendiciones` en plata.ts:1985.
+    duenio
+      ? db.alquilerRendido.groupBy({
+          by: ['liquidacionId'],
+          where: { liquidacionId: { in: ids }, rendicion: { propietarioId: duenio.propietarioId } },
+          _sum: { monto: true },
+        })
+      : Promise.resolve([] as { liquidacionId: string; _sum: { monto: unknown } }[]),
   ]);
   const cobradoMap = new Map(cobros.map((c) => [c.liquidacionId, Number(c._sum.monto ?? 0)]));
   const rendidoMap = new Map(rendidos.map((r) => [r.liquidacionId, Number(r._sum.monto ?? 0)]));
 
-  return calcularPendienteSinRendir(liqs, cobradoMap, rendidoMap);
+  return calcularPendienteSinRendir(
+    liqs,
+    cobradoMap,
+    rendidoMap,
+    duenio
+      ? {
+          porcentaje: duenio.porcentaje,
+          rendidoMioPorLiq: new Map(rendidosMios.map((r) => [r.liquidacionId, Number(r._sum.monto ?? 0)])),
+        }
+      : undefined,
+  );
 }

@@ -2164,6 +2164,38 @@ real y deja el diálogo abierto para corregir, y el camino feliz guarda y refres
 
 ---
 
+## T-53 · En copropiedad, al dueño ya rendido le seguía apareciendo la parte del otro — ✅ RESUELTO
+
+**Experto:** BE + FE · **Prioridad:** 🟠
+**Origen:** revisión de seguridad del portal del propietario (19/08). Dos dimensiones lo
+reportaron por separado.
+
+**El caso.** Propiedad con dos dueños, A 60% y B 40%. Se cobra el alquiler ($100) y la
+inmobiliaria le rinde a A su parte ($60). **A entra al portal y sigue viendo $40 pendientes** —
+que son de B — con la leyenda *"te corresponde el 60%"*, o sea invitándolo a esperar $24 que no
+van a llegar nunca. Al revés fallaba igual.
+
+**La causa.** `AlquilerRendido` cuelga de `Rendicion.propietarioId` (el schema lo dice: *"parte
+del propietario rendida en esta tanda"*), pero el helper agrupaba sólo por `liquidacionId`, sin
+mirar de quién era la rendición: mezclaba lo rendido a todos los dueños. `POST /rendiciones` sí
+hace el **doble cap** por dueño (`plata.ts:1985` y `:2042`); el portal no lo replicaba, y este
+archivo declara justamente que *"la aritmética replica EXACTAMENTE la de POST /rendiciones"*.
+
+**Qué se hizo.** Un modo opt-in `duenio: { propietarioId, porcentaje }` que espeja el doble cap:
+(1) lo que le falta a ESTE dueño de su parte, y (2) el remanente de la liquidación entre TODOS
+—el (2) evita el sobre-pago cuando se cambió el reparto después de rendir—. **Los guards de
+`core.ts` no lo usan**: ellos necesitan el total global, ciego a la participación.
+
+**El copy también estaba mal.** Antes el número era el total de la unidad y el texto invitaba a
+multiplicar por el porcentaje. Ahora el número **ya es su parte**, y el texto lo dice:
+*"Es tu 60% del alquiler cobrado de la unidad"*.
+
+**Tests.** `test/rendicion-pendiente-por-duenio.test.ts`, puros, con el caso 60/40 del hallazgo,
+el del reparto cambiado y el de la tolerancia de un centavo con prorrateo. Verificados en rojo
+revirtiendo el arreglo (3 de 6 caen).
+
+---
+
 ## T-52 · "Cobrado y sin rendir" contaba plata que nadie va a rendir nunca — ✅ RESUELTO
 
 **Experto:** BE · **Prioridad:** 🟠
