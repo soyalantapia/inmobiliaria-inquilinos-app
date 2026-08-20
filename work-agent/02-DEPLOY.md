@@ -114,6 +114,20 @@ Las tres piezas, por si alguna se toca:
 —pide las dos cosas—, pero el día que alguien lo agregue "para probar" estaría publicando datos
 inventados en un dominio real.
 
+### ⚠️ Está vivo y NADIE LO LINKEA
+
+El portal se puede abrir, pero hoy no hay una sola superficie que le diga a un propietario
+que existe. Es la diferencia entre "deployado" y "entregado":
+
+- **Los mails a propietarios se mandan sin CTA a propósito.** `enviarAnuncioEmail` en
+  `apps/api/src/mailer.ts` tiene la bandera `paraInquilino` y el comentario dice textual:
+  *"true → CTA a la app del inquilino; false (propietarios) → sin CTA"*. Era correcto cuando
+  el portal no existía en ningún lado. Falta una `APP_PROPIETARIO_URL` y su copy.
+- **El panel no lo menciona en ninguna parte.** Cero resultados de "portal" o "/propietario"
+  en `apps/inmobiliaria/src`. O sea que la inmobiliaria tampoco se entera de que puede
+  mandárselo a sus dueños.
+
+Las dos cosas tocan copy que ve un usuario final, así que las decide el dueño del producto.
 Verificado el 20/08 sirviendo el export desde el panel: las cinco rutas (`/propietario`,
 `/login`, `/unidades`, `/reclamos`, `/perfil`) dan 200, los assets resuelven bajo
 `/propietario/_next/`, y el bundle tiene horneada la URL del API de producción, no la de la
