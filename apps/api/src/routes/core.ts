@@ -6,7 +6,7 @@ import { prisma } from '../db.js';
 import { requireUsuario } from '../auth/guards.js';
 import { verificarPinUsuario } from '../auth/pin.js';
 import { registrarEvento } from '../lib/auditoria.js';
-import { componerDeposito, deduccionesPorContrato, estadoDepositoContrato } from '../lib/deposito.js';
+import { componerDeposito, deduccionesPorContrato, estadoDepositoContrato, cerrarCargosContraDeposito } from '../lib/deposito.js';
 import {
   generarLiquidacionesContrato,
   sumarMesesUTC,
@@ -1917,6 +1917,34 @@ export async function coreRoutes(app: FastifyInstance) {
     if (contrato.estado === 'BORRADOR') {
       return reply.code(409).send({ message: 'Un contrato en borrador no se finaliza; rechazá la aprobación.' });
     }
+    // TOPE del monto a devolver, igual que `POST /contratos/:id/deposito/resolver`
+    // (plata.ts:1141-1156). Este handler NO lo tenía: escribía `montoDepositoDevuelto` crudo,
+    // así que se podía devolver el 100% del depósito teniendo reparaciones ya imputadas contra
+    // él (`CargoContrato` con `contraDeposito`). Esa plata está comprometida: devolverla la
+    // termina pagando la inmobiliaria, y sin vuelta atrás, porque al resolverse el depósito el
+    // contrato sale de `/depositos/en-custodia` y esos cargos quedan huérfanos.
+    //
+    // Se RECHAZA en vez de topear en silencio: el diálogo de baja ya le mostró al operador una
+    // cuenta hecha, y devolver un número distinto del que aprobó es justo lo que este archivo
+    // viene arreglando en otros lados.
+    const resuelveDeposito =
+      b.decisionDeposito === 'DEVOLVER' || b.decisionDeposito === 'NETEAR' || b.decisionDeposito === 'EJECUTAR';
+    if (resuelveDeposito && (b.montoDepositoDevuelto ?? 0) > 0) {
+      const dep = await estadoDepositoContrato(prisma, {
+        contratoId: id,
+        inmobiliariaId: u.inmobiliariaId,
+        depositoGarantia: contrato.depositoGarantia,
+      });
+      if ((b.montoDepositoDevuelto ?? 0) > dep.disponible) {
+        return reply.code(400).send({
+          message:
+            dep.deducciones > 0
+              ? `Sólo quedan $${dep.disponible} para devolver: hay $${dep.deducciones} en reparaciones imputadas a este depósito.`
+              : 'No podés devolver más que el depósito en custodia',
+        });
+      }
+    }
+
     // Lock atómico: el updateMany condicionado por estado evita la doble
     // finalización concurrente (sólo la primera gana; la segunda da count 0 → 409).
     let aplicacionDeposito = { aplicado: 0, sobrante: 0, cuotasSaldadas: 0 };
@@ -2042,6 +2070,14 @@ export async function coreRoutes(app: FastifyInstance) {
       };
       if (Object.keys(datosBaja).length > 0) {
         await tx.contrato.update({ where: { id }, data: datosBaja });
+      }
+      // El depósito se resolvió acá: los cargos que se cobraban contra él ya no están
+      // pendientes. Sin esto quedaban `saldadoAt: null` para siempre e insaldables por los
+      // cuatro caminos — el mismo agujero que `deposito/resolver` ya cerraba y este handler no.
+      // Con MANTENER (`estadoDep === null`) NO se cierran: el depósito sigue RETENIDO y esos
+      // cargos siguen siendo cobrables por el camino normal.
+      if (estadoDep) {
+        await cerrarCargosContraDeposito(tx, { contratoId: id, inmobiliariaId: u.inmobiliariaId, usuarioId: u.userId });
       }
       return { cuotasAnuladas: anuladas.count, cargoPenalidad };
       // timeout holgado: si hay que aplicar el depósito, la tx recorre las cuotas exigibles

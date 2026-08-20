@@ -27,7 +27,7 @@ import { registrarEventoContrato } from '../lib/evento-contrato.js';
 import { calcularMora, resolverEsquemaMora, asOfMora } from '../lib/punitorios.js';
 import { registrarEvento } from '../lib/auditoria.js';
 import { aplicarDepositoADeuda } from '../lib/aplicar-deposito.js';
-import { estadoDepositoContrato } from '../lib/deposito.js';
+import { estadoDepositoContrato, cerrarCargosContraDeposito } from '../lib/deposito.js';
 import { enviarInvitacionInquilino } from '../mailer.js';
 import { borrarArchivoSiHuerfano, urlEsDelTenant } from './uploads.js';
 import { aplicarEstadoInicial, EstadoInicialInvalido } from '../lib/estado-inicial-contrato.js';
@@ -1187,18 +1187,8 @@ export async function plataRoutes(app: FastifyInstance) {
             motivoDeposito: body.data.motivo?.trim() || null,
           },
         });
-        // Cerrar los cargos que se cobraron CONTRA este depósito: la plata ya se retuvo acá,
-        // así que dejan de estar pendientes. Sin esto quedaban abiertos para siempre —
-        // invisibles en custodia (el contrato ya no está RETENIDO) e imposibles de saldar.
-        await tx.cargoContrato.updateMany({
-          where: {
-            contratoId: id,
-            inmobiliariaId: u.inmobiliariaId,
-            contraDeposito: true,
-            saldadoAt: null,
-          },
-          data: { saldadoAt: new Date(), saldadoPorId: u.userId },
-        });
+        // El monto ya se topeó contra `disponible` arriba, así que cerrar es seguro.
+        await cerrarCargosContraDeposito(tx, { contratoId: id, inmobiliariaId: u.inmobiliariaId, usuarioId: u.userId });
       },
       { timeout: 20000 },
     );

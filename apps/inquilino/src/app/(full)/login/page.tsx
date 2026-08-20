@@ -299,10 +299,17 @@ export default function LoginPage() {
                 titulo="Tu contrato siempre a mano"
                 detalle="Cláusulas, ajustes, depósito y vencimientos en un lugar."
               />
+              {/* Acá decía "Asistente IA — muy pronto · Vas a poder preguntarle cualquier duda
+                  del contrato y te cita la cláusula exacta". Es palabra por palabra una de las
+                  promesas que CLAUDE.md §14 mandó a sacar, y sobrevivió porque la limpieza se
+                  hizo archivo por archivo. Corre en PRODUCCIÓN, antes del login, así que la ve
+                  todo inquilino que entre desde una pantalla grande.
+                  Se reemplaza por algo que existe de verdad y es propio de esta app: el
+                  certificado de antigüedad, con su verificación pública. */}
               <Beneficio
                 Icon={Sparkles}
-                titulo="Asistente IA — muy pronto"
-                detalle="Vas a poder preguntarle cualquier duda del contrato y te cita la cláusula exacta."
+                titulo="Tu certificado de inquilino"
+                detalle="Descargá tu historial de pagos con un link que cualquiera puede verificar."
               />
             </ul>
           </div>

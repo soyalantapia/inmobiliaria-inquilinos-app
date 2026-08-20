@@ -208,10 +208,19 @@ export function EmailBienvenidaDialog({
                       <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
                       Cargar reclamos con foto desde el celular
                     </li>
-                    <li className="flex items-start gap-2">
-                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
-                      Hablar con la IA de tu contrato cuando tengas dudas
-                    </li>
+                    {/* Acá había un bullet: "Hablar con la IA de tu contrato cuando tengas
+                        dudas". Doble problema, y el segundo es peor que el primero.
+                        (1) No existe: no hay ningún LLM en el monorepo y /broker en producción
+                            es un cartel de "Próximamente".
+                        (2) El mail REAL que manda el backend (`enviarInvitacionInquilino` en
+                            mailer.ts) NO dice esto — verificado, no menciona IA en ninguna
+                            línea. O sea que el preview le mostraba a la operadora algo distinto
+                            de lo que el inquilino iba a recibir.
+                        Eso es lo que lo hacía urgente: no es copy que alguien lee, es copy sobre
+                        el que alguien ACTÚA. La operadora abre el preview, lee que el inquilino
+                        va a poder hablar con una IA, y se lo repite por teléfono o WhatsApp. La
+                        promesa se rompe entre dos personas, fuera del producto, y la
+                        inmobiliaria queda como la que mintió. */}
                   </ul>
                 </>
               )}
