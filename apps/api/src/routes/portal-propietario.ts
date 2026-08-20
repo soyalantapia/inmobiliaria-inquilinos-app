@@ -90,36 +90,44 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
       const codeHash = bcrypt.hashSync(code, 8);
       if (propietarios.length > 0) {
         const expiresAt = new Date(Date.now() + OTP_TTL_MS);
-        // Invalidar los anteriores ANTES de emitir: pedir un código nuevo deja sin efecto al
-        // viejo (que es lo que la persona espera) y, sobre todo, evita que pidiendo N veces
-        // queden N códigos vivos multiplicando por N la chance de acertar al azar.
-        await prisma.codigoOtpPropietario.updateMany({
-          where: { propietarioId: { in: propietarios.map((p) => p.id) }, usedAt: null },
-          data: { usedAt: new Date() },
-        });
-        await prisma.codigoOtpPropietario.createMany({
-          data: propietarios.map((p) => ({ propietarioId: p.id, codeHash, expiresAt })),
-        });
-        // T-53-N1 — El envío NO se espera, y es por lo mismo que el bcrypt de arriba se
-        // calcula siempre: con SMTP configurado, el envío es el costo DOMINANTE del request
-        // (cientos de ms contra los pocos del bcrypt) y corre sólo en esta rama, la del email
-        // que existe. Awaitearlo devolvía el tiempo de respuesta como oráculo de enumeración y
-        // deshacía el emparejamiento de arriba.
+        // TODO EL TRABAJO DE ESTA RAMA VA FUERA DEL CAMINO DEL REQUEST.
         //
-        // Nada de la respuesta depende del resultado: se contesta `{ ok: true }` igual salga o
-        // falle. El error se sigue logueando, sólo que fuera del camino del request.
-        void enviarOtp(emailLc, code)
-          .then((enviado) => {
-            if (!enviado)
-              app.log.info({ email: emailLc, ...codeEnLog(code) }, 'OTP propietario generado (SMTP no configurado)');
-            else app.log.info({ email: emailLc }, 'OTP propietario enviado por email');
-          })
-          .catch((err: unknown) => {
-            app.log.error(
-              { email: emailLc, ...codeEnLog(code), err: (err as Error).message },
-              'OTP propietario: fallo el envío SMTP',
-            );
+        // Es el mismo razonamiento que llevó a sacar el envío del email, llevado hasta el
+        // final. El emparejamiento de costos que hace el bcrypt de arriba sólo sirve si el
+        // resto del request es igual en las dos ramas, y no lo era: la del email que EXISTE
+        // awaiteaba dos escrituras más. Contra la base remota cada query son ~450 ms, así que
+        // el email real tardaba cerca de un segundo más que el inexistente y `request` volvía
+        // a ser el oráculo de enumeración que contestar `{ ok: true }` siempre venía a tapar.
+        //
+        // Sacarlas afuera es mejor que taparlas con un piso fijo como hace `verify`: acá se
+        // ELIMINA la diferencia en vez de esconderla, y no le agrega un segundo de espera a
+        // toda persona que pide un código. Queda una sola query (el findMany) en las dos ramas.
+        //
+        // EL ORDEN SE CONSERVA: primero las escrituras, después el envío. El mail no puede
+        // salir antes de que el código exista, así que no hay carrera con el `verify`.
+        void (async () => {
+          // Invalidar los anteriores ANTES de emitir: pedir un código nuevo deja sin efecto al
+          // viejo (que es lo que la persona espera) y, sobre todo, evita que pidiendo N veces
+          // queden N códigos vivos multiplicando por N la chance de acertar al azar.
+          await prisma.codigoOtpPropietario.updateMany({
+            where: { propietarioId: { in: propietarios.map((p) => p.id) }, usedAt: null },
+            data: { usedAt: new Date() },
           });
+          await prisma.codigoOtpPropietario.createMany({
+            data: propietarios.map((p) => ({ propietarioId: p.id, codeHash, expiresAt })),
+          });
+          const enviado = await enviarOtp(emailLc, code);
+          if (!enviado)
+            app.log.info({ email: emailLc, ...codeEnLog(code) }, 'OTP propietario generado (SMTP no configurado)');
+          else app.log.info({ email: emailLc }, 'OTP propietario enviado por email');
+        })().catch((err: unknown) => {
+          // Nada de la respuesta depende de esto: se contestó `{ ok: true }` hace rato. Si
+          // falló la escritura, el mail no salió —van encadenados— y la persona reintenta.
+          app.log.error(
+            { email: emailLc, ...codeEnLog(code), err: (err as Error).message },
+            'OTP propietario: falló la emisión del código',
+          );
+        });
       }
       return { ok: true };
     },

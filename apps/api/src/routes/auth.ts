@@ -395,31 +395,39 @@ export async function authRoutes(app: FastifyInstance) {
 
     if (inquilinos.length > 0) {
       const expiresAt = new Date(Date.now() + OTP_TTL_MS);
-      // Igual que en el OTP del panel: pedir un código nuevo invalida el anterior. Sin esto
-      // se acumulaban códigos válidos y cada pedido aumentaba la chance de acertar por
-      // fuerza bruta (además de alargar el loop de bcrypt del verify).
-      await prisma.codigoOtp.updateMany({
-        where: { inquilinoId: { in: inquilinos.map((i) => i.id) }, usedAt: null },
-        data: { usedAt: new Date() },
-      });
-      await prisma.codigoOtp.createMany({
-        data: inquilinos.map((i) => ({ inquilinoId: i.id, codeHash, expiresAt })),
-      });
-      // El envío NO se espera, por lo mismo que el bcrypt se calcula siempre: con SMTP
-      // configurado es el costo DOMINANTE del request —cientos de ms contra los pocos del
-      // bcrypt— y corre sólo en esta rama. Awaitearlo devolvía el tiempo de respuesta como
-      // oráculo y deshacía el emparejamiento de arriba.
+      // TODO EL TRABAJO DE ESTA RAMA VA FUERA DEL CAMINO DEL REQUEST.
       //
-      // Nada de la respuesta depende del resultado: se contesta `{ ok: true }` igual salga o
-      // falle. El error se sigue logueando, sólo que fuera del camino del request.
-      void enviarOtp(emailLc, code)
-        .then((enviado) => {
-          if (!enviado) app.log.info({ email: emailLc, ...codeEnLog(code) }, 'OTP generado (SMTP no configurado)');
-          else app.log.info({ email: emailLc }, 'OTP enviado por email');
-        })
-        .catch((err: Error) => {
-          app.log.error({ email: emailLc, ...codeEnLog(code), err: err.message }, 'OTP: fallo el envío SMTP');
+      // Es el mismo razonamiento que sacó el envío del email, llevado hasta el final. El
+      // emparejamiento que hace el bcrypt de arriba sólo sirve si el RESTO del request es
+      // igual en las dos ramas, y no lo era: la del email que EXISTE awaiteaba dos escrituras
+      // más. Contra la base remota cada query son ~450 ms, así que el email real tardaba
+      // cerca de un segundo más que el inexistente y el `{ ok: true }` idéntico dejaba de
+      // tapar nada.
+      //
+      // EL ORDEN SE CONSERVA: primero las escrituras, después el envío. El mail no puede
+      // salir antes de que el código exista, así que no hay carrera con el `verify`.
+      //
+      // Mismo criterio, mismas palabras, que en `/auth/propietario/otp/request`.
+      void (async () => {
+        // Igual que en el OTP del panel: pedir un código nuevo invalida el anterior. Sin esto
+        // se acumulaban códigos válidos y cada pedido aumentaba la chance de acertar por
+        // fuerza bruta (además de alargar el loop de bcrypt del verify).
+        await prisma.codigoOtp.updateMany({
+          where: { inquilinoId: { in: inquilinos.map((i) => i.id) }, usedAt: null },
+          data: { usedAt: new Date() },
         });
+        await prisma.codigoOtp.createMany({
+          data: inquilinos.map((i) => ({ inquilinoId: i.id, codeHash, expiresAt })),
+        });
+        const enviado = await enviarOtp(emailLc, code);
+        if (!enviado) app.log.info({ email: emailLc, ...codeEnLog(code) }, 'OTP generado (SMTP no configurado)');
+        else app.log.info({ email: emailLc }, 'OTP enviado por email');
+      })().catch((err: unknown) => {
+        app.log.error(
+          { email: emailLc, ...codeEnLog(code), err: (err as Error).message },
+          'OTP: falló la emisión del código',
+        );
+      });
     }
 
     // Respuesta idéntica exista o no (no enumerar emails), y ahora también en tiempo.

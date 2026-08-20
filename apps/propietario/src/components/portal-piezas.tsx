@@ -259,11 +259,21 @@ export function FilaRendicion({
                       : periodoLargo(a.periodo),
                   monto: plata(a.monto),
                 }))}
-                // Decir "no tiene alquileres imputados" arriba de un total de $237.960 es una
-                // contradicción en la misma tarjeta. Las rendiciones anteriores a julio de 2026
-                // son de antes de que existiera `alquileres_rendidos`: el total es correcto, lo
-                // que no hay es el desglose. Eso es lo que dice el texto.
-                vacio="De esta rendición no quedó guardado el desglose por unidad. El total de arriba es el que se te depositó."
+                // DOS MOTIVOS DISTINTOS PARA NO TENER DESGLOSE, Y DICEN COSAS OPUESTAS.
+                //
+                // Una rendición vieja (anterior a julio de 2026, de antes de que existiera
+                // `alquileres_rendidos`) no tiene el detalle pero el total SÍ se depositó.
+                //
+                // Una ANULADA tampoco lo tiene —al anular se le borran las líneas— pero ahí el
+                // total NO se depositó, y el aviso de arriba se lo acaba de decir al dueño con
+                // todas las letras. Con el texto único, la tarjeta le decía las dos cosas: "esta
+                // rendición fue anulada, los montos de abajo son los que se habían calculado" y,
+                // tres líneas después, "el total de arriba es el que se te depositó".
+                vacio={
+                  detalle.data.anulada
+                    ? "El desglose por unidad se borró al anular esta rendición. Los montos de arriba son los que se habían calculado: no se te depositaron."
+                    : "De esta rendición no quedó guardado el desglose por unidad. El total de arriba es el que se te depositó."
+                }
               />
 
               {detalle.data.detalleGastos.length > 0 && (

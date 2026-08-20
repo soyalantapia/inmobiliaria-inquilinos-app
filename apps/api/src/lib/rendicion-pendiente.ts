@@ -249,10 +249,20 @@ async function pendienteDeLiquidaciones(
         // La plata de la MIGRACIÓN DE CARTERA no es un cobro de la inmobiliaria: el alta de
         // un contrato en curso registra hasta 120 períodos pasados como pagados para que el
         // saldo del inquilino arranque bien, pero eso se cobró y se liquidó antes de que el
-        // sistema existiera. Contarla acá le reclama al dueño plata que ya tiene, y —peor—
-        // `POST /rendiciones` se la podría transferir de nuevo si el operador elige uno de
-        // esos períodos. Mismo criterio que `condonado`, dos líneas más arriba.
-        ...(soloRendible ? { migradoDeCartera: false } : {}),
+        // sistema existiera. Contarla acá le reclama al dueño plata que ya tiene.
+        //
+        // VA SIEMPRE, sin mirar `soloRendible`. Estaba adentro del opt-in, acoplada a la
+        // exclusión por `modoCobranza`, y son dos cosas ortogonales:
+        //
+        //  · La de `modoCobranza` es opt-in a propósito: el guard de `PATCH /modo-cobranza`
+        //    TIENE que ver la plata que el dueño cobró directo, porque es lo único que impide
+        //    transferírsela de nuevo al pasar a INMOBILIARIA.
+        //  · La de `migradoDeCartera` no: `POST /rendiciones` la filtra en los DOS modos, así
+        //    que no hay ningún camino del código que pueda rendir esa plata. Que el guard la
+        //    viera no protegía de nada — y dejaba a todo contrato importado 'en curso'
+        //    trabado para siempre: el pendiente nunca bajaba a cero, así que no se le podía
+        //    cambiar el modo de cobranza nunca más.
+        migradoDeCartera: false,
       },
       _sum: { monto: true },
     }),
