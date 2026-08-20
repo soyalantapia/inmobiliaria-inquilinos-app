@@ -323,8 +323,12 @@ Todas las rutas montadas bajo el prefijo del plugin `plataRoutes`. Multi-tenant:
 
 **GET /rendiciones**
 - Guard: `requireUsuario('pagos.ver')`.
-- Query: `propietarioId` (string, opc.).
+- Query: `propietarioId` (string, opc.), `incluirAnuladas` (`'1'`, opc.).
 - Respuesta: array de `Rendicion` con `gastos` y `propietario` (`nombre`, `apellido`), orden `periodo` desc.
+- **Por default NO devuelve las anuladas.** Cinco pantallas del panel preguntan acá "¿ya se le
+  rindió?" —el badge Rendido, el KPI de "por rendir", el neto histórico, las últimas
+  rendiciones, el comprobante de WhatsApp— y ninguna sabe de la baja lógica. Excluirlas les
+  devuelve la semántica que ya tenían con el borrado duro, sin tocar ninguna.
 
 **POST /rendiciones**
 - Guard: `requireUsuario('rendicion.confirmar')`.
@@ -335,10 +339,30 @@ Todas las rutas montadas bajo el prefijo del plugin `plataRoutes`. Multi-tenant:
 
 **POST /rendiciones/:id/anular**
 - Guard: `requireUsuario('rendicion.confirmar')`.
-- Params: `id`. Body: `pin` (opc.).
-- Reglas: tx atómica — devuelve gastos a `descontadoEnRendicion=false`, borra `gastoRendido`, borra la rendición con `deleteMany` condicionado (lock anti-doble-anulación). Reversible (no movió plata real). Scoping `inmobiliariaId` (H-3).
+- Params: `id`. Body: `motivo` (**obligatorio**, mín. 5), `pin` (opc.).
+- Reglas: tx atómica — devuelve gastos a `descontadoEnRendicion=false`, borra las líneas de
+  los tres ledgers (`alquilerRendido`, `gastoRendido`, `ingresoRendido`) y **marca la
+  cabecera como anulada** (`anuladaAt`, `anuladaPorId`, `motivoAnulacion`). El lock
+  anti-doble-anulación es el `updateMany` condicionado a `anuladaAt: null`. Reversible (no
+  movió plata real). Scoping `inmobiliariaId` (H-3). Registra `PROPIETARIO_RENDICION_ANULADA`.
 - Respuesta: `{ ok: true }`.
-- Errores: 404 (inexistente), 409 (ya anulada — carrera, `count=0`).
+- Errores: 400 (sin motivo), 404 (inexistente), 409 (ya anulada — pre-check o carrera).
+
+> **La cabecera SOBREVIVE; las líneas no.** Es deliberado: ~20 lugares leen esos ledgers para
+> saber qué se rindió, y filtrar "y que no esté anulada" en los 20 es garantizar que un día se
+> olvide uno. Borrando las líneas, ninguno cambia.
+>
+> **Pero todo lector de la CABECERA sí tuvo que aprender.** Si agregás uno, decidí
+> explícitamente de qué lado está:
+> - `GET /rendiciones` las **excluye por default** (`?incluirAnuladas=1` para verlas). Sin eso
+>   el panel volvía a decir "Rendido" apenas se recargaba la página.
+> - La regla pre-ledger de `lib/rendicion-pendiente.ts` las excluye. Sin eso, anular hacía
+>   DESAPARECER la plata del "cobrado y todavía sin rendirte".
+> - El portal las manda con `anulada: { fecha, motivo }` y las muestra tachadas, fuera de los
+>   totales y sin ofrecer el imprimible.
+>
+> **El motivo lo lee el propietario**, tachado al lado de la rendición en su portal. No es un
+> campo interno.
 
 ### Aprobaciones (no monetarias)
 
