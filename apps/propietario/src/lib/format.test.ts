@@ -15,7 +15,7 @@
  * (T-32). Los casos se verificaron a mano con node en el huso de esta máquina.
  */
 import { describe, it, expect } from 'vitest';
-import { fecha } from './format';
+import { cuit, fecha } from './format';
 
 describe('T-46 · fecha() no corre los date-only al día anterior', () => {
   it('un vencimiento date-only se muestra en su propio día', () => {
@@ -49,3 +49,20 @@ describe('T-46 · fecha() no corre los date-only al día anterior', () => {
     expect(fecha('2026-08-10T13:20:00.000Z')).toContain('10');
   });
 });
+
+describe('cuit', () => {
+  it('le pone los guiones al CUIT que la API guarda sin separadores', () => {
+    // El mismo dato en el panel se ve así. Que el dueño vea otra cosa era la razón del cambio.
+    expect(cuit('20351234567')).toBe('20-35123456-7');
+  });
+
+  it('acepta uno que YA viene con guiones y no lo duplica', () => {
+    expect(cuit('20-35123456-7')).toBe('20-35123456-7');
+  });
+
+  it('un valor raro se devuelve intacto: mejor crudo que inventado', () => {
+    // Sin 11 dígitos no hay forma canónica. Partirlo igual mostraría un CUIT que no existe.
+    expect(cuit('123')).toBe('123');
+    expect(cuit('sin datos')).toBe('sin datos');
+  });
+})

@@ -149,6 +149,42 @@ pnpm --filter @llave/inquilino exec tsc --noEmit
 pnpm --filter @llave/inquilino build
 ```
 
+### ⚠️ En Windows el build del panel falla y NO es un problema del deploy
+
+`pnpm --filter @llave/inmobiliaria build` termina en rojo en esta máquina con:
+
+```
+Error occurred prerendering page "/inicio/opengraph-image-b368cs"
+TypeError: Invalid URL ... at fileURLToPath ... @vercel/og/index.node.js:18988
+```
+
+**Es un bug de Windows dentro del `@vercel/og` que Next 14 trae bundleado, no del repo.**
+Esa línea hace `fileURLToPath(join(import.meta.url, "../noto-sans-v27-latin-regular.ttf"))`,
+y `join` es `path.join`, que no sabe de URLs:
+
+| plataforma | resultado del join | `new URL(...)` |
+|---|---|---|
+| win32 | `.\file:\repo\...\noto-sans.ttf` | **Invalid URL** ← lo que ves |
+| posix | `file:/repo/.../noto-sans.ttf` | parsea, pathname `/repo/...` |
+
+El parseo de URL es de spec y no depende del sistema operativo, así que **en el contenedor
+de Railway (node:22-slim) no puede fallar**. Verificado el 20/08/2026 corriendo la
+expresión exacta con `path.win32.join` y `path.posix.join`.
+
+Qué NO es evidencia de lo contrario:
+
+- Que `admin.myalquiler.com/inicio/opengraph-image` dé 404 hoy. Lo da porque lo que está
+  arriba es anterior a `b50c511`, el commit que agregó la imagen — no porque el build la
+  haya rechazado.
+- Que el workflow de GitHub Pages esté verde. Ese build es `STATIC_EXPORT=1` y pasa por
+  `scripts/build-static.sh`, que **renombra el `middleware.ts`** antes de compilar. Correr
+  `STATIC_EXPORT=1 next build` a mano sin ese paso falla por otra cosa (`Can't resolve
+  '@clerk/nextjs/server'`) y no compara nada.
+
+**Si el deploy del panel a Railway alguna vez falla acá, eso sí es real** y hay que mirarlo:
+el Dockerfile corre `next build` sin `STATIC_EXPORT`, que es exactamente el camino que
+prerenderiza esta ruta.
+
 ## Tests (DB de test, NO prod)
 
 Las suites de `apps/api` (`pnpm --filter api test`, vitest) pegan a una **DB de test**
