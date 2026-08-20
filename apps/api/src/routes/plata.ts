@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { esReversionInterna, observacionDeReversion } from '../lib/reversion-interna.js';
 import { instanteEnDiaCivilAR, yaVencio } from '@llave/shared';
+import { porcionAlquilerCobrada } from '@llave/shared/prorrateo';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../db.js';
@@ -30,6 +31,7 @@ import { estadoDepositoContrato } from '../lib/deposito.js';
 import { enviarInvitacionInquilino } from '../mailer.js';
 import { borrarArchivoSiHuerfano, urlEsDelTenant } from './uploads.js';
 import { aplicarEstadoInicial, EstadoInicialInvalido } from '../lib/estado-inicial-contrato.js';
+import { dinero, dineroPositivo } from '../lib/monto.js';
 
 /**
  * Fase 3 — La plata: liquidaciones, validación de pagos informados, caja de
@@ -1108,7 +1110,7 @@ export async function plataRoutes(app: FastifyInstance) {
     const body = z
       .object({
         decision: z.enum(['DEVOLVER', 'NETEAR', 'EJECUTAR']),
-        montoDevuelto: z.number().min(0),
+        montoDevuelto: dinero(),
         motivo: z.string().optional(),
       })
       .safeParse(request.body ?? {});
@@ -2107,13 +2109,18 @@ export async function plataRoutes(app: FastifyInstance) {
             if (!part) throw new ParticipacionAusente(liq.contrato.propiedadId);
             const porcentaje = part.porcentaje;
             const total = Number(liq.montoTotal);
-            // Porción de ALQUILER de lo cobrado, capeada a la base (montoTotal sin
-            // mora): un pago con mora hace cobrado > total y sin cap la porción de
-            // alquiler superaba montoAlquiler×participación → se rendía de más y se
-            // comisionaba sobre la mora (viola "comisión solo sobre alquiler").
-            const cobradoCapeado = Math.min(cobradoMap.get(liq.id) ?? 0, total);
-            const alquilerCobrado =
-              total > 0 ? cobradoCapeado * (Number(liq.montoAlquiler) / total) : 0;
+            // Porción de ALQUILER de lo cobrado, capeada a la base (`montoTotal` sin mora): un
+            // pago con mora hace cobrado > total y sin cap la porción de alquiler superaba
+            // montoAlquiler×participación → se rendía de más y se comisionaba sobre la mora
+            // (viola "comisión sólo sobre alquiler").
+            //
+            // La regla vive UNA sola vez, en `@llave/shared/prorrateo`. Este es el lugar donde
+            // esa cuenta mueve plata de verdad; los otros tres la mostraban.
+            const alquilerCobrado = porcionAlquilerCobrada({
+              alquiler: Number(liq.montoAlquiler),
+              base: total,
+              cobrado: cobradoMap.get(liq.id) ?? 0,
+            });
             const parteOwner = alquilerCobrado * (porcentaje / 100);
             const yaRend = yaRendMap.get(liq.id) ?? 0;
             const yaRendTotal = yaRendTotalMap.get(liq.id) ?? 0;
@@ -2857,8 +2864,8 @@ export async function plataRoutes(app: FastifyInstance) {
       z.object({
         periodo: z.string().regex(/^\d{4}-\d{2}$/),
         estado: z.enum(['PAGADO', 'PARCIAL', 'ADEUDA']),
-        montoPagado: z.number().positive().optional(),
-        moraManual: z.number().nonnegative().optional(),
+        montoPagado: dineroPositivo().optional(),
+        moraManual: dinero().optional(),
       }),
     )
     .max(120);

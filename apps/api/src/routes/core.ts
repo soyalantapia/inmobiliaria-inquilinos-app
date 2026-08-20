@@ -33,6 +33,7 @@ import { borrarArchivoSiHuerfano, urlEsDelTenant } from './uploads.js';
 import { enviarInvitacionInquilino, enviarInvitacionEquipo, enviarAvisoAjusteAlquiler } from '../mailer.js';
 import { contratoQuedaPendiente, diaCivilAR, venceDespuesDeHoy, yaVencio } from '@llave/shared';
 import { ROLES_ORDEN, type Rol } from '@llave/shared/permisos';
+import { dinero, dineroPositivo } from '../lib/monto.js';
 
 /**
  * Una liquidación cuenta como VENCIDA (a efectos de cobranza) si su estado ya es
@@ -1164,7 +1165,7 @@ export async function coreRoutes(app: FastifyInstance) {
         // Reuso (req 3): si viene, el inquilino nuevo se agrupa bajo una Persona EXISTENTE
         // (traer historial) en vez de crear/upsertear una. Se valida tenant-scopeado.
         personaId: z.string().optional(),
-        monto: z.number().nonnegative(), // 0 válido para SOLO_EXPENSAS
+        monto: dinero(), // 0 válido para SOLO_EXPENSAS
         moneda: z.enum(['ARS', 'USD']).default('ARS'),
         // coerce.date rechaza strings que no son fecha — antes new Date('xxx')
         // producía Invalid Date, que Prisma aceptaba y guardaba como null/epoch.
@@ -1173,9 +1174,9 @@ export async function coreRoutes(app: FastifyInstance) {
         diaPago: z.number().int().min(1).max(31),
         indiceAjuste: z.enum(['ICL', 'IPC', 'CASA_PROPIA', 'UVA', 'CAC', 'RIPTE', 'FIJO']),
         frecuenciaAjusteMeses: z.number().int().positive(),
-        montoExpensas: z.number().positive().optional(),
+        montoExpensas: dineroPositivo().optional(),
         tipoContrato: z.enum(['ALQUILER', 'SOLO_EXPENSAS', 'ALQUILER_Y_EXPENSAS']).default('ALQUILER'),
-        depositoGarantia: z.number().positive().optional(),
+        depositoGarantia: dineroPositivo().optional(),
         // "mascotasPermitidas" YA NO se carga acá (pasó a ser un atributo de la
         // Propiedad — ver POST/PUT /propiedades). No está en el schema a propósito:
         // si un cliente viejo todavía lo manda en el body, zod lo descarta en
@@ -1187,7 +1188,7 @@ export async function coreRoutes(app: FastifyInstance) {
         // Esquema de mora del contrato ("ventanita Confirmá interés"). Omitido =>
         // hereda el default de la inmobiliaria (cascada en resolverEsquemaMora).
         moraTipo: z.enum(['SIN_MORA', 'PORCENTAJE_DIARIO', 'MONTO_FIJO', 'PORCENTAJE_MENSUAL']).optional(),
-        moraValor: z.number().positive().optional(),
+        moraValor: dineroPositivo().optional(),
         // Contrato EN CURSO ("está en la cuota 7 de 12"): confirmación por
         // período YA VENCIDO — pagado fuera del sistema / parcial / adeudado,
         // con mora histórica manual opcional. Ver lib/estado-inicial-contrato.ts.
@@ -1196,8 +1197,8 @@ export async function coreRoutes(app: FastifyInstance) {
             z.object({
               periodo: z.string().regex(/^\d{4}-\d{2}$/),
               estado: z.enum(['PAGADO', 'PARCIAL', 'ADEUDA']),
-              montoPagado: z.number().positive().optional(),
-              moraManual: z.number().nonnegative().optional(),
+              montoPagado: dineroPositivo().optional(),
+              moraManual: dinero().optional(),
             }),
           )
           .max(120)
@@ -1581,9 +1582,9 @@ export async function coreRoutes(app: FastifyInstance) {
       telefono: z.string().trim().optional(),
       dni: z.string().trim().optional(),
     }),
-    monto: z.number().positive(),
+    monto: dineroPositivo(),
     moneda: z.enum(['ARS', 'USD']).default('ARS'),
-    montoExpensas: z.number().nonnegative().optional(),
+    montoExpensas: dinero().optional(),
     fechaInicio: z.coerce.date(),
     fechaFin: z.coerce.date(),
     diaPago: z.number().int().min(1).max(31),
@@ -1755,7 +1756,7 @@ export async function coreRoutes(app: FastifyInstance) {
     const body = z
       .object({
         tipo: z.enum(['SIN_MORA', 'PORCENTAJE_DIARIO', 'MONTO_FIJO', 'PORCENTAJE_MENSUAL']).nullable(),
-        valor: z.number().positive().nullable().optional(),
+        valor: dineroPositivo().nullable().optional(),
       })
       .safeParse(request.body ?? {});
     if (!body.success) return reply.code(400).send({ message: 'Esquema de mora inválido' });
@@ -1884,10 +1885,10 @@ export async function coreRoutes(app: FastifyInstance) {
         // Sólo aplican cuando tipo === RESCINDIDO:
         motivoRescision: z.string().trim().max(500).optional(),
         fechaEfectiva: z.coerce.date().optional(),
-        montoPenalidad: z.number().nonnegative().optional(),
+        montoPenalidad: dinero().optional(),
         // Qué se hace con el depósito al cerrar. MANTENER = sigue RETENIDO (se resuelve después).
         decisionDeposito: z.enum(['MANTENER', 'DEVOLVER', 'NETEAR', 'EJECUTAR']).optional(),
-        montoDepositoDevuelto: z.number().nonnegative().optional(),
+        montoDepositoDevuelto: dinero().optional(),
       })
       .safeParse(request.body ?? {});
     const b = body.success ? body.data : {};
@@ -2168,7 +2169,7 @@ export async function coreRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     const parsed = z
       .object({
-        montoNuevo: z.number().positive(),
+        montoNuevo: dineroPositivo(),
         // Mes 01-12 estricto: sin esto '2026-00'/'2026-13' pasaba y el
         // new Date(`${periodoDesde}-01`) de reprogramar proximoAjuste daba Invalid Date.
         periodoDesde: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Período inválido (YYYY-MM)'),
@@ -2306,7 +2307,7 @@ export async function coreRoutes(app: FastifyInstance) {
         // `nonnegative` y no `positive`: un SOLO_EXPENSAS se renueva (se extiende el plazo)
         // pero su canon es 0. El chequeo de "0 sólo vale para solo expensas" está abajo,
         // igual que en el alta.
-        montoNuevo: z.number().nonnegative(),
+        montoNuevo: dinero(),
         montoDesde: z.string().regex(/^\d{4}-\d{2}$/, 'Período inválido (YYYY-MM)'),
         diaPago: z.number().int().min(1).max(31).optional(),
         motivo: z.string().trim().max(200).optional(),
@@ -2627,7 +2628,7 @@ export async function coreRoutes(app: FastifyInstance) {
     nombreProveedor: z.string().trim().min(2).max(200),
     dni: z.string().trim().max(20).optional(),
     numeroPoliza: z.string().trim().max(100).optional(),
-    montoCobertura: z.number().nonnegative().optional(),
+    montoCobertura: dinero().optional(),
     vigenciaHasta: z.coerce.date().optional(),
     contactoNombre: z.string().trim().max(200).optional(),
     contactoTelefono: z.string().trim().min(3).max(50),
@@ -2992,7 +2993,7 @@ export async function coreRoutes(app: FastifyInstance) {
     const body = z
       .object({
         tipo: z.enum(['SIN_MORA', 'PORCENTAJE_DIARIO', 'MONTO_FIJO', 'PORCENTAJE_MENSUAL']),
-        valor: z.number().positive().nullable().optional(),
+        valor: dineroPositivo().nullable().optional(),
       })
       .safeParse(request.body ?? {});
     if (!body.success) return reply.code(400).send({ message: 'Esquema de mora inválido' });
@@ -3495,7 +3496,7 @@ export async function coreRoutes(app: FastifyInstance) {
         // `nonnegative` y no `positive`: el 0 es el camino de normalización de un
         // SOLO_EXPENSAS. Que el 0 sólo valga para ese tipo se chequea abajo, con el contrato
         // ya leído — igual que en el alta.
-        monto: z.number().nonnegative(),
+        monto: dinero(),
         // Opcional: si el operador quiere fijar a mano la próxima fecha de ajuste;
         // omitido => se calcula sobre la actual (o hoy) + frecuencia.
         proximoAjuste: z.coerce.date().optional(),
@@ -3688,7 +3689,7 @@ export async function coreRoutes(app: FastifyInstance) {
         // `nonnegative`: el 0 es cómo se le sacan las expensas a un contrato que
         // dejó de tenerlas. Que el 0 no valga para un SOLO_EXPENSAS se chequea
         // abajo, con el contrato ya leído.
-        montoExpensas: z.number().nonnegative(),
+        montoExpensas: dinero(),
         motivo: z.string().optional(),
       })
       .safeParse(request.body ?? {});

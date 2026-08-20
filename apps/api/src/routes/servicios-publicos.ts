@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../db.js';
 import { requireUsuario } from '../auth/guards.js';
+import { dinero } from '../lib/monto.js';
 
 /**
  * Servicios públicos (LUZ/GAS/AGUA/...) por PROPIEDAD, lado inmobiliaria.
@@ -26,7 +27,7 @@ const upsertSchema = z.object({
   numeroMedidor: z.string().trim().max(120).optional(),
   titular: z.string().trim().max(200).optional(),
   observaciones: z.string().trim().max(500).optional(),
-  consumoPromedioMensual: z.number().nonnegative().optional(),
+  consumoPromedioMensual: dinero().optional(),
   // Quién paga el servicio (default INQUILINO). Si NO lo paga el inquilino, su app lo
   // muestra informativo (sin pedirle subir boleta).
   pagador: z.enum(['INQUILINO', 'INMOBILIARIA', 'PROPIETARIO', 'EXPENSAS']).optional(),

@@ -4,6 +4,7 @@ import { prisma } from '../db.js';
 import { requireProfesionalVisita } from '../auth/guards.js';
 import { urlEsDelTenant } from './uploads.js';
 import { imputarCostoReclamo, conceptoReclamo, ReclamoYaRendido, ReclamoNoReimputable } from '../lib/imputar-reclamo.js';
+import { dinero } from '../lib/monto.js';
 
 /**
  * Flujo del profesional asignado a un reclamo, vía link mágico (/p/:token en
@@ -239,7 +240,7 @@ export async function visitasPublicasRoutes(app: FastifyInstance): Promise<void>
 
   const listoSchema = z.object({
     notaFinal: z.string().trim().min(1).max(1000),
-    montoCobrado: z.number().nonnegative().optional(),
+    montoCobrado: dinero().optional(),
   });
 
   app.post('/visitas-publicas/listo', async (request, reply) => {

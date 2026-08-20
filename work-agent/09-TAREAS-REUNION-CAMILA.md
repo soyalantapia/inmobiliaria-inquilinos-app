@@ -2342,6 +2342,87 @@ la mora sale igual desde los 16 lugares que la calculan.
 
 ---
 
+## T-63 · Toda la plata del API aceptaba `Infinity` — 🟡 LA MITAD RESUELTA, la otra es tuya
+
+**Experto:** BE + **decisión del dueño** · **Prioridad:** 🔴 · **Toca plata**
+**Origen:** riesgo 🔴 Nivel 1 #3 de `work-agent/07-ECOSISTEMA.md:1408` ("el portador del link
+mágico declara `montoCobrado` sin tope ni aprobación"), que no tenía tarea. Al ir a arreglarlo
+apareció algo más grande abajo.
+
+---
+
+### PARTE A — el agujero de validación · ✅ RESUELTO
+
+**El caso.** `z.number().nonnegative()` **acepta `Infinity`**: zod 3 sólo rechaza `NaN`, y
+`Infinity > 0` da true. Verificado corriendo zod, no leyendo la doc. Los **31** campos de plata
+y mora del API estaban escritos así, y ninguno tenía `.int()` ni `.max()` que lo atajara de
+rebote. El conjunto vulnerable resultó ser, salvo un campo, **exactamente la superficie del
+dinero**.
+
+**Dos daños distintos, y el peor no es el que parece.**
+
+- En las 48 columnas `Decimal(14, 2)` —que son **todas** las Decimal del schema, sin una sola
+  excepción— Postgres rechaza el valor y el request muere con 500. Visible, y no ensucia nada.
+- En las columnas **`Float`** —`Contrato.moraValor`, `Inmobiliaria.moraValorDefault`— Postgres
+  **sí guarda `Infinity`**. El valor absurdo no falla: **queda persistido**. Y `calcularMora`
+  no tiene red contra eso (`!esquema.valor` es false para Infinity, y `esquema.valor <= 0`
+  también), así que devuelve `base * (Infinity / 100) * dias` = **Infinity**. Esa mora entra en
+  el `montoTotal` y el `saldo` de **todas** las cuotas de ese contrato: la PWA del inquilino,
+  los comprobantes, la deuda del panel y las métricas del dashboard. Un solo PATCH a
+  `/contratos/:id/mora` lo dejaba así para siempre.
+
+**Qué se hizo.** Tres validadores en `lib/monto.ts` —`dinero()`, `dineroPositivo()` y
+`dineroConSigno()` (este último para el movimiento de caja, que legítimamente puede ser
+negativo)— aplicados a los 31 sitios, en 6 archivos de rutas. Después del barrido, el grep de
+"number sin `.int()`, sin `.max()` y sin `.finite()`" **no devuelve nada**.
+
+**El techo no es una regla de negocio: es la columna.** `Decimal(14, 2)` son 12 dígitos enteros,
+o sea 999.999.999.999,99. Por encima de eso el sistema no puede *guardar* el número.
+
+**Tests.** 14 puros en `plata-no-acepta-infinito.test.ts`, incluida la prueba de que
+`calcularMora` devuelve `Infinity` con el `moraValor` envenenado — que es el daño que se
+persistía. Los 581 puros que ya existían siguen verdes.
+
+---
+
+### PARTE B — lo que NO se arregló, y es el 🔴 original · ⏸️ DECISIÓN DEL DUEÑO
+
+Acotar a 999.999.999.999,99 **no cierra el riesgo #3.** El problema real es de autoridad, no de
+rango: **quien tenga el link mágico mueve plata real, sin que lo apruebe nadie.**
+
+El profesional declara `montoCobrado` en `POST /visitas-publicas/listo`
+(`visitas-publicas.ts:242`), eso se escribe como `costoTrabajo` del reclamo y se imputa vía
+`imputarCostoReclamo` a **propietario, inquilino o depósito**. Tres cosas lo agravan:
+
+1. **No hay usuario detrás.** El endpoint autentica por link, no por sesión del panel — el
+   propio código lo dice: `creadoPorId: null`. Compará con el camino del panel
+   (`/reclamos/:id/resolver`, `operacion.ts:542`), que exige `requireUsuario` con capacidad
+   `reclamos.gestionar` y queda auditado.
+2. **Es irreversible.** Con el reclamo ya `RESUELTO`, `/clasificar` y `/resolver` responden 409.
+   El operador no puede corregir el monto que declaró el profesional.
+3. **El link no se puede revocar.** Ya está escrito en el código
+   (`operacion.ts:388-391`): regenerar el link *no* invalida las sesiones JWT ya emitidas
+   —valida por `profesionalId`, no por token— y **duran 14 días**. Para cortar una sesión viva
+   hay que reasignar la visita.
+
+**Las opciones, y ninguna la puede tomar un dev:**
+- **(a) Tope por contrato** — p. ej. el monto declarado no puede superar N veces el alquiler, o
+  el saldo del depósito si el pagador es DEPOSITO. Automático, sin fricción, pero elegir N es
+  de negocio.
+- **(b) Umbral con aprobación** — por debajo de $X entra solo; por encima queda pendiente y lo
+  confirma alguien con `reclamos.gestionar`. Es el patrón que ya existe para otras cosas
+  (bandeja de aprobaciones).
+- **(c) Que el profesional no declare monto** — informa el trabajo y el monto lo carga la
+  inmobiliaria al cerrar. El más seguro y el que más fricción agrega.
+- **(d) Dejarlo, y que el tope sea la revocación** — arreglar que regenerar el link corte las
+  sesiones vivas, y aceptar el riesgo del profesional legítimo que se equivoca tipeando.
+
+**Lo que sí conviene hacer aunque no se decida nada:** que el reclamo cerrado por link mágico
+**se pueda corregir** desde el panel. Hoy no se puede, y eso convierte un typo en un asiento
+permanente.
+
+---
+
 ## T-62 · La bandeja prometía un saldo que al validar valía cero — ✅ RESUELTO
 
 **Experto:** BE · **Prioridad:** 🟡 · **Presentación** (no cambia plata cobrada)
@@ -4724,7 +4805,7 @@ es lo que está haciendo T-32. Se corrieron a mano.
 
 ---
 
-## T-46-N1 · El portal del propietario está en la demo, pero no en producción
+## T-46-N1 · El portal del propietario está en la demo, pero no en producción — ✅ HECHA 20/08
 
 **Experto:** OPS + el dueño · **Prioridad:** 🔴 · **Depende de:** nada · **ES DEL DUEÑO**
 **Origen:** T-46. Es el camino 2 que T-46 dejó explícitamente abierto.
@@ -4746,6 +4827,22 @@ y ve SUS rendiciones.
 
 **Riesgo de no hacerlo.** Que se dé por entregado dos veces: primero porque el código existía,
 ahora porque la demo se ve. Ninguna de las dos le sirve al dueño de un departamento.
+
+**Cómo se resolvió — y no por el camino que esta hoja esperaba.** No se levantó un host propio:
+el portal se compila como export estático bajo `/propietario` y lo sirve el MISMO servicio del
+panel (`768e8de2`, "feat(deploy): el portal del propietario, servido en /propietario del panel").
+Por eso no aparece como servicio nuevo en Railway — son tres, no cuatro.
+
+**Verificado el 20/08 contra producción**, no contra el repo:
+`curl -o /dev/null -w '%{http_code}' https://admin.myalquiler.com/propietario/login` → **200**,
+con `<title>My Alquiler · Propietarios</title>` y el mismo `build-commit` que el panel. El job
+`build` de `revision.yml` cubre además esta tercera combinación con asserts de que el export
+tenga las rutas y el `basePath` horneado.
+
+**Lo que NO se verificó**, y hace falta que lo haga una persona con datos reales: que un
+propietario **de verdad** entre con su email y vea SUS rendiciones. Lo comprobado es que la URL
+existe y sirve la app; el login end-to-end contra un dueño real de la cartera de Camila queda
+pendiente y es de producción.
 
 ---
 
@@ -5289,6 +5386,43 @@ nadie estaba obligado a mirar.
 tres cosas que hay que saber antes de apretar — sobre todo que **se acabaría el push directo a
 `main`**, que es como trabajan hoy todos los chats.
 
+> ### 🟢 Hallazgo de otra sesión (20/08) — hay un camino que NO termina con el push directo
+>
+> **Railway tiene `Wait for CI` nativo**, y hace innecesario tanto desconectar el repo como
+> marcar los checks *required*. De su doc (`docs.railway.com/deployments/github-autodeploys`):
+> el deployment queda en **`WAITING`** mientras corren los workflows; si alguno falla queda
+> **`SKIPPED`**; si dan verde, procede.
+>
+> **Por qué importa más que la opción de esta hoja:** *required checks* gatea el **merge** —y
+> por eso se lleva puesto el push directo a `main`, que es como trabajan los ~40 chats—.
+> `Wait for CI` gatea el **deploy**. Misma protección sobre la plata de la inmobiliaria, sin
+> tocar el modelo de trabajo. Y no se pierde `RAILWAY_GIT_COMMIT_SHA` (o sea `/health` sigue
+> diciendo qué commit corre), ni el rollback de la UI, ni el historial de deployments.
+>
+> **Costo:** tres toggles en la UI, uno por servicio. **No se puede por API** — verificado:
+> `update_service` de la MCP de Railway no expone ni ese flag ni el de autodeploy.
+>
+> **Lo único a verificar al activarlo:** Railway documenta como requisito un workflow con
+> `on: push: branches: [main]`. `deploy.yml` tiene esa forma exacta; **`revision.yml` usa
+> `branches-ignore: [gh-pages]`**. Si Railway sólo reconoce la forma literal, esperaría a Pages
+> y **no** a esta compuerta — lo peor de los dos mundos. Se comprueba mirando que el próximo
+> deploy pase por `WAITING` y tarde lo que tarda `integracion`. Si no, es una línea.
+>
+> **Contexto que se relevó de paso, por si sirve:** se diseñó y se sometió a revisión
+> adversarial la alternativa de desconectar el repo y deployar desde Actions con `railway up`.
+> Tiene cuatro roturas reales y por eso NO se recomienda: (1) `railway up --ci` termina cuando
+> termina el *build*, no cuando el contenedor está sano, y un smoke test por commit da verde
+> leyendo el contenedor viejo; (2) el run pasaría a durar ~25-30 min contra una cadencia de un
+> push cada ~5 min (105 commits a `main` en 24 h), así que la cola no drena y **producción
+> retrocede sola**; (3) `needs:` espera a que los jobs concluyan aunque el `if:` ignore el
+> resultado, así que una palanca de emergencia sirve con la CI en rojo pero no con la CI
+> colgada —y no hay un solo `timeout-minutes` en `revision.yml`—; (4) al desconectar se pierde
+> `RAILWAY_GIT_COMMIT_SHA` y hay que inyectar el SHA a mano en los tres Dockerfiles.
+>
+> **Dato verificado que despeja una objeción:** `ramas-sin-integrar` **no puede** poner rojo el
+> workflow — `scripts/ramas-sin-integrar.mjs` sólo sale con 1 si recibe `--fallar`, y el
+> workflow lo invoca con `--remotas`. Así que el job-aviso no bloquearía ningún deploy.
+
 **Corrección al dato de las cancelaciones:** escribí que `Revisión` "se cancela sola seguido" y
 lo medí después: **3 de 40 (7,5%)** — y más tarde **7 de 40 (17,5%)**, porque el job `build` que
 agregué es largo y se lleva las cancelaciones. **Corregido en T-01-N1-N12:** ya no se cancela en
@@ -5315,10 +5449,13 @@ Se limpiaron además las seis ramas de tarea mías que ya estaban 100% en `main`
 reporte, que existe para que se vea lo que quedó afuera.
 
 **Lo que queda por decidir es tuyo:** las dos de aprobación de contratos son una feature entera
-(revisar antes de aprobar, y corregir + reenviar un contrato rechazado). Y hay un dato feo en el
-camino: hoy **rechazar un contrato BORRA la deuda declarada** (`plata.ts`, `periodosAnteriores
-Pendientes: Prisma.DbNull`) justificándose en un `@@unique` de `Inquilino` **que ya no existe**
-—se mudó a `Persona`—. Eso está sin verificar por mí y merece tarea propia.
+(revisar antes de aprobar, y corregir + reenviar un contrato rechazado). Ver **T-01-N1-N13**, que
+verifica qué pasa hoy al rechazar.
+
+> **Corrección a lo que escribí acá antes.** Había repetido, sin verificarlo, que al rechazar se
+> borraba también el `Inquilino` justificándose en un `@@unique` que ya no existe. **Eso no se
+> sostiene**: no hay ningún `delete` en el camino de rechazo. Lo verifiqué línea por línea antes
+> de dejarlo escrito como si fuera un hecho. Lo que sí es cierto está en T-01-N1-N13.
 
 ### T-01-N1-N11 · Al inquilino cuyo pago confirmó el banco se le decía que se lo rechazaron — ✅ HECHA
 **Experto:** BE · **Prioridad:** 🔴
@@ -5364,3 +5501,69 @@ en ramas, nunca en `main`.
 
 **Efecto colateral bueno:** cuando se marquen los checks como *required* (T-01-N1-N9), esto deja
 de ser un problema — que era la objeción #2 de esa tarea.
+
+---
+
+### T-01-N1-N13 · Rechazar un contrato tira la deuda que alguien tipeó, y no hay forma de reenviarlo
+**Experto:** BE + PROD · **Prioridad:** 🟠 · **Depende de:** una decisión de producto
+**Origen:** T-01-N1-N10, verificando el camino de rechazo de la bandeja de aprobaciones.
+
+**Verificado línea por línea el 20/08** (esto reemplaza lo que había escrito antes de mirar):
+
+1. **Rechazar SÍ borra la deuda declarada.** `plata.ts` pone
+   `periodosAnterioresPendientes: Prisma.DbNull` en el mismo `updateMany` que saca el
+   `pendienteAprobacion`. Es deliberado y está comentado.
+2. **NO borra el `Inquilino`.** No hay ningún `delete` en ese camino. La versión anterior de esta
+   nota decía que sí; era falso.
+3. **No existe forma de corregir y reenviar.** `PUT /contratos/:id/borrador` y
+   `POST /contratos/:id/reenviar-aprobacion` **no están en `main`** — viven sólo en la rama
+   varada `feat/corregir-contrato-rechazado`.
+
+**Lo que esto significa hoy, y por qué NO es un bug.** El comentario del código justifica el
+borrado diciendo que *"el contrato rechazado nunca se va a aprobar, así que esa deuda histórica
+queda colgada para siempre si no la borramos"*. Con el punto 3 confirmado, **esa premisa es
+cierta hoy**: sin camino de reenvío, guardar la deuda dejaría un Json colgando de un contrato
+muerto. El borrado es internamente consistente.
+
+**Lo que cuesta.** Quien cargó un contrato con deuda histórica —períodos, montos, todo tipeado a
+mano— y se lo rechazan por una coma, **pierde eso y lo tiene que volver a tipear desde cero**.
+No es plata perdida: es trabajo perdido y una invitación a equivocarse la segunda vez.
+
+**La decisión.** Son dos caminos y no es mía:
+
+- **Construir el reenvío** (rescatar `feat/corregir-contrato-rechazado`): editar el borrador
+  rechazado y volver a mandarlo, con candado de una sola aprobación pendiente por contrato. Ahí
+  el borrado de la deuda **hay que sacarlo**, porque su premisa deja de valer. Es lo que la rama
+  hacía, y es la razón por la que hacía las dos cosas juntas.
+- **Dejarlo como está** y asumir que rechazar significa cargar de nuevo. Entonces al menos
+  convendría **avisarlo en el diálogo de rechazo**, que hoy no dice que se pierde nada.
+
+Lo que **no** hay que hacer es sacar el borrado sin construir el reenvío: quedaría el Json
+colgado que el comentario describe.
+
+---
+
+### T-01-N1-N14 · El invariante de plata más frágil estaba escrito cuatro veces — ✅ HECHA
+**Experto:** BE · **Prioridad:** 🟠
+
+> Ver `work-agent/tareas/T-01-N1-N14/REQUISITOS.md`.
+
+`work-agent/tareas/_integracion/invariantes-plata.md` verifica cinco invariantes **leyendo el
+código** — lo dice textual: *"Nada se ejecutó"*. El #1, que él mismo llama el más frágil, decía
+que el prorrateo estaba *"espejado en TRES lugares y los tres coinciden"*.
+
+**Eran cuatro, y el cuarto había derivado**: el KPI del panel prorrateaba contra un total que ya
+traía la mora sumada, y le mostraba a la inmobiliaria menos alquiler cobrado del que la rendición
+realmente pagaba. Se arregló en T-01-N1-N5, pero el episodio es el punto: **una lista a mano de
+"dónde vive esta regla" siempre puede quedarse corta**, y nadie se entera hasta que la plata no
+cierra.
+
+**Ahora la regla vive una sola vez** en `packages/shared/src/prorrateo.ts` y los cuatro lugares
+la consumen. Antes de unificar se verificó que fueran la MISMA función y no cuatro reglas
+parecidas; lo son, y la del panel tenía un guard extra —más seguro— que es el que quedó.
+
+**Y un guard contra la quinta copia:** un test barre los cuatro paquetes buscando el esqueleto de
+la fórmula y falla si aparece fuera de `shared`. Comprobado reintroduciendo una copia.
+
+**Los invariantes #3 a #6 siguen verificados sólo por lectura.** El #2 se desprende del #1 y
+queda cubierto de rebote.
