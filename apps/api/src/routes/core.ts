@@ -3915,6 +3915,46 @@ export async function coreRoutes(app: FastifyInstance) {
       });
     }
 
+    // GUARD de PLATA EN VUELO. El de arriba sólo ve cobros CONCILIADOS
+    // (`rendicion-pendiente.ts:238` filtra `estado: 'CONCILIADO'`), y un comprobante queda
+    // INFORMADO en la bandeja hasta que una persona lo decide: días, no milisegundos como la
+    // ventana de T-36. En ese hueco el modo se cambia con el guard en cero, y el pago aterriza
+    // del lado equivocado cuando alguien lo valida — porque `POST /pagos/:id/validar` no mira
+    // el modo (plata.ts:388 y :465) y la rendición y la caja filtran por el modo ACTUAL
+    // (plata.ts:1988, cierre-caja.ts:70).
+    //
+    // Los dos sentidos duelen distinto:
+    //  → PROPIETARIO_DIRECTO: la plata está en la cuenta de la inmobiliaria y el contrato pasa
+    //    a directo ⇒ queda FUERA de `POST /rendiciones` y del arqueo. No hay endpoint que se la
+    //    haga llegar al dueño, y volver atrás rebota con el 409 de acá arriba.
+    //  → INMOBILIARIA: el inquilino transfirió al CBU del DUEÑO y el contrato pasa a
+    //    recaudadora ⇒ la rendición lo toma como rendible y le transfiere de nuevo lo que ya
+    //    cobró. Doble pago, sin ninguna alarma.
+    //
+    // El repo ya trata INFORMADO+CONCILIADO como "pago vivo" en core.ts:1937, :1941, :2258,
+    // :2364, :3608 y :3781 — este handler era el único que había quedado afuera.
+    const enVuelo = await prisma.pago.count({
+      where: { contratoId: contrato.id, inmobiliariaId: u.inmobiliariaId, estado: 'INFORMADO' },
+    });
+    if (enVuelo > 0) {
+      const volviendoARecaudadora = body.data.modoCobranza === 'INMOBILIARIA';
+      // `codigo` + `pendientes` viajan para que el panel pueda mandar a la bandeja, mismo
+      // patrón que FALTA_CUENTA_COBRANZA de acá abajo.
+      return reply.code(409).send({
+        codigo: 'PAGOS_EN_VUELO',
+        pendientes: enVuelo,
+        message: volviendoARecaudadora
+          ? `Hay ${enVuelo} comprobante${enVuelo > 1 ? 's' : ''} esperando validación de plata que el ` +
+            'inquilino transfirió al CBU del propietario. Si cambiás el modo ahora y después ' +
+            'los validás, el sistema los va a tomar como rendibles y le va a transferir al dueño ' +
+            'algo que ya cobró. Resolvelos en Pagos → Informados antes de cambiar el modo.'
+          : `Hay ${enVuelo} comprobante${enVuelo > 1 ? 's' : ''} esperando validación. Esa plata se ` +
+            'transfirió a la cuenta de la inmobiliaria, que es la que rige hoy. Decidilos en ' +
+            'Pagos → Informados y, si los validás, rendile ese período al propietario ANTES de ' +
+            'cambiar el modo: si no, esa plata queda fuera del circuito de rendición.',
+      });
+    }
+
     let cobraDirectoPropietarioId: string | null = null;
     if (body.data.modoCobranza === 'PROPIETARIO_DIRECTO') {
       // Misma validación que el alta (core.ts POST /contratos): el dueño principal
@@ -3957,6 +3997,13 @@ export async function coreRoutes(app: FastifyInstance) {
     const resultado = await prisma.$transaction(async (tx) => {
       const revalidacion = await alquilerCobradoSinRendir(contrato.id, tx);
       if (revalidacion.total > 0) return { conflicto: 'SIN_RENDIR' as const };
+      // Con `tx`, no con `prisma`: una segunda foto fuera de la transacción reabriría el
+      // mismo TOCTOU que cerró el guard de arriba. Informar un pago es una acción del
+      // inquilino y puede caer en cualquier momento.
+      const enVueloTx = await tx.pago.count({
+        where: { contratoId: contrato.id, inmobiliariaId: u.inmobiliariaId, estado: 'INFORMADO' },
+      });
+      if (enVueloTx > 0) return { conflicto: 'EN_VUELO' as const };
       const upd = await tx.contrato.updateMany({
         where: {
           id: contrato.id,
@@ -3979,6 +4026,14 @@ export async function coreRoutes(app: FastifyInstance) {
         message:
           'Mientras se procesaba el cambio se validó un cobro de este contrato, así que quedó ' +
           'alquiler cobrado sin rendir. Volvé a entrar para ver el detalle actualizado.',
+      });
+    }
+    if (resultado.conflicto === 'EN_VUELO') {
+      return reply.code(409).send({
+        codigo: 'PAGOS_EN_VUELO',
+        message:
+          'Mientras se procesaba el cambio, el inquilino informó un pago de este contrato. ' +
+          'Decidilo en Pagos → Informados antes de cambiar el modo de cobranza.',
       });
     }
     if (resultado.conflicto === 'CAMBIO_CONCURRENTE') {

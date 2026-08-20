@@ -64,6 +64,9 @@ describe('computarLiquidacionesContrato · SOLO_EXPENSAS', () => {
   it('una vigencia futura de canon tampoco se le cobra', () => {
     // Un ajuste con vigencia futura entra por `vigencias`, no por `contrato.monto`:
     // si el corte estuviera antes de resolver el canon del período, este caso se colaba.
+    // El `montoAnterior` tiene que ser DISTINTO DE CERO o el test no prueba nada: con 0, el
+    // 0 del assert sale igual por los dos caminos. Antes la vigencia venía con `periodoDesde`
+    // en vez de `desde`, así que `canonDelPeriodo` la ignoraba entera y esto pasaba vacío.
     const data = computarLiquidacionesContrato(
       contrato('2026-06-01T00:00:00Z', '2028-06-01T00:00:00Z', {
         tipoContrato: 'SOLO_EXPENSAS',
@@ -71,7 +74,7 @@ describe('computarLiquidacionesContrato · SOLO_EXPENSAS', () => {
         montoExpensas: 80_000,
       }),
       now,
-      [{ periodoDesde: '2026-07', monto: 900_000, montoAnterior: 0 }],
+      [{ desde: '2026-07', montoAnterior: 900_000 }],
     );
     expect(data.every((l) => Number(l.montoAlquiler) === 0)).toBe(true);
     expect(data.every((l) => Number(l.montoTotal) === 80_000)).toBe(true);
@@ -126,9 +129,9 @@ describe('computarLiquidacionesContrato', () => {
       now,
     );
     expect(data.map((l) => l.periodo)).toEqual(['2026-03', '2026-04', '2026-05', '2026-06', '2026-07']);
-    expect(data[0].estado).toBe('VENCIDO');
-    expect(data[data.length - 1].periodo).toBe('2026-07');
-    expect(data[data.length - 1].estado).toBe('PENDIENTE');
+    expect(data[0]!.estado).toBe('VENCIDO');
+    expect(data[data.length - 1]!.periodo).toBe('2026-07');
+    expect(data[data.length - 1]!.estado).toBe('PENDIENTE');
   });
 
   it('no pre-factura más allá de fechaFin (contrato que termina este mes)', () => {
@@ -147,7 +150,7 @@ describe('computarLiquidacionesContrato', () => {
       now,
     );
     expect(data.map((l) => l.periodo)).toEqual(['2027-01']);
-    expect(data[0].estado).toBe('PENDIENTE');
+    expect(data[0]!.estado).toBe('PENDIENTE');
   });
 
   it('sin expensas: montoTotal = alquiler y montoExpensas null', () => {
@@ -170,7 +173,7 @@ describe('computarLiquidacionesContrato', () => {
     );
     // El período 2026-07 (venc pre-inicio) NO existe; arranca en 2026-08.
     expect(data.map((l) => l.periodo)).toEqual(['2026-08']);
-    const primera = data[0];
+    const primera = data[0]!;
     // La 1ª cuota vence DESPUÉS del inicio del contrato (no antes).
     expect((primera.fechaVencimiento as Date) >= new Date('2026-07-15T00:00:00Z')).toBe(true);
     expect((primera.fechaVencimiento as Date).toISOString().slice(0, 10)).toBe('2026-08-05');
@@ -212,8 +215,8 @@ describe('computarLiquidacionesContrato', () => {
       contrato('2026-07-01T00:00:00Z', '2028-07-01T00:00:00Z', { diaPago: 5 }),
       now,
     );
-    expect(data[0].periodo).toBe('2026-07');
-    expect((data[0].fechaVencimiento as Date).toISOString().slice(0, 10)).toBe('2026-07-05');
+    expect(data[0]!.periodo).toBe('2026-07');
+    expect((data[0]!.fechaVencimiento as Date).toISOString().slice(0, 10)).toBe('2026-07-05');
   });
 });
 

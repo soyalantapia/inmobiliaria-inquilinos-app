@@ -354,7 +354,7 @@ describe('lo que NO puede escaparse a Sonar', () => {
     await app.inject({ method: 'GET', url: '/__test/prisma-boom' });
     await flushSonarServerEvents();
 
-    const enviado = JSON.stringify(fetchMock.mock.calls[0]?.[1]?.body ?? '');
+    const enviado = JSON.stringify((fetchMock.mock.calls[0] as unknown as [string, RequestInit])?.[1]?.body ?? '');
     expect(enviado).not.toContain('Marta Gonzalez');
     expect(enviado).toContain('prisma.documento.create()');
     await app.close();
@@ -430,7 +430,7 @@ describe('tope anti-tormenta', () => {
     );
     await flushSonarServerEvents();
 
-    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    const body = JSON.parse(String((fetchMock.mock.calls[0] as unknown as [string, RequestInit])?.[1]?.body));
     expect(body.service.length).toBeLessThanOrEqual(120);
     vi.unstubAllGlobals();
   });
@@ -467,7 +467,7 @@ describe('el tope no deja que un error ruidoso tape a los demás', () => {
     reportarErrorAlSonar(env, { serverError: { errorType: 'TypeError', route: '/api/recibos', message: 'otro bug' } });
     await flushSonarServerEvents();
 
-    const cuerpos = fetchMock.mock.calls.map((c) => String((c[1] as RequestInit).body));
+    const cuerpos = fetchMock.mock.calls.map((c) => String((c as unknown as [string, RequestInit])[1].body));
     const delRuidoso = cuerpos.filter((b) => b.includes('/api/pagos')).length;
     const delOtro = cuerpos.filter((b) => b.includes('/api/recibos')).length;
 
@@ -492,7 +492,7 @@ describe('el tope no deja que un error ruidoso tape a los demás', () => {
     await flushSonarServerEvents();
 
     expect(avisos).toHaveLength(1);
-    expect(avisos[0].descartados).toBe(14); // 20 intentos - 6 de cupo
+    expect(avisos[0]!.descartados).toBe(14); // 20 intentos - 6 de cupo
     setAvisadorDeVentanaSonar(null);
     vi.unstubAllGlobals();
   });
@@ -515,7 +515,7 @@ describe('si Sonar rechaza, no puede pasar en silencio', () => {
     await flushSonarServerEvents();
 
     expect(rechazos).toHaveLength(1);
-    expect(rechazos[0].status).toBe(401);
+    expect(rechazos[0]!.status).toBe(401);
     setAvisadorDeRechazoSonar(null);
     vi.unstubAllGlobals();
   });

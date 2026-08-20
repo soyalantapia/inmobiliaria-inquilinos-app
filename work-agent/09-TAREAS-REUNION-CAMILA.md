@@ -2342,6 +2342,131 @@ la mora sale igual desde los 16 lugares que la calculan.
 
 ---
 
+## T-65 · El arreglo que cerró el profesional no se le cobraba a nadie — ✅ RESUELTO
+
+**Experto:** BE · **Prioridad:** 🔴 · **Toca plata**
+**Origen:** riesgo 🔴 Nivel 1 **#2** de `work-agent/07-ECOSISTEMA.md`. Son dos agujeros distintos
+en el mismo endpoint, y los dos son la misma clase de error: **un guard que quedó inline en
+`/resolver` y nunca se mudó al helper compartido**, así que el camino del link mágico lo esquiva.
+
+---
+
+### A · Imputar al DEPÓSITO sin depósito vivo
+
+`POST /reclamos/:id/resolver` chequea que haya depósito `RETENIDO` antes de crear un
+`CargoContrato` con `contraDeposito` (`operacion.ts:578-590`). El helper compartido no lo
+replicaba, así que `POST /visitas-publicas/listo` podía crear ese cargo sobre un contrato **sin
+depósito** —o con el depósito ya devuelto, neteado o ejecutado—. Ese cargo **nace incobrable por
+los cuatro caminos**: no aparece en `/depositos/en-custodia` (filtra RETENIDO), está excluido de
+`/mis-cargos`, `/cargos/:id/saldar` lo rechaza y saldar-deuda lo ignora.
+
+**Es una regresión de patrón, no un descuido, y hay fecha.** El commit `242db1b9` (26/07) se
+llama literal *"guard anti-doble-cobro en el helper compartido, **no sólo en /resolver**"* y fijó
+la regla del choke point. **Ese mismo día**, `afb9efe9` agregó el guard de depósito **inline en
+`/resolver` únicamente**. El de `yaRendido` se mudó; el de depósito quedó atrás.
+
+**Qué se hizo.** `ReclamoDepositoNoDisponible extends ReclamoNoReimputable` y el guard dentro de
+`imputarCostoReclamo`. Como hereda de la base, **los dos `catch` existentes ya la mapean a 409
+sin tocar ninguna ruta**. La ubicación importa: va **después** de los dos early-returns (el de
+`saldadoAt` y el de `!pagador || costo <= 0`) — si fuera antes, resolver el depósito (que salda
+los cargos `contraDeposito`) pasaría de 200 a 409.
+
+### B · El costo cerrado sin pagador, irrecuperable
+
+`/visitas-publicas/listo` escribe `costoTrabajo` y pone el reclamo en RESUELTO, pero el `pagador`
+sólo lo escriben `/clasificar` y `/resolver`, **y los dos rebotaban con 409 una vez cerrado**.
+Con `pagador: null` el helper hace early-return: **no se le cobra a nadie**, y no había forma de
+arreglarlo.
+
+**Y es el default del camino más rápido.** El diálogo de asignar profesional del panel
+(`asignar-profesional-dialog.tsx`) pega directo a `/reclamos/:id/asignar` y abre el WhatsApp con
+el link mágico **sin pasar nunca por la clasificación** — la card de asignar ni siquiera está
+deshabilitada cuando falta el pagador. `pagador: null` no es un caso raro.
+
+**Qué se hizo.** El rescate va en `/clasificar`, acotado a `RESUELTO` + costo > 0 + `pagador ==
+null`. Ahí el motivo del guard de estado no aplica: no hay ningún `CargoContrato` previo que
+quede colgado, porque con `pagador: null` el helper nunca creó uno. Los dos casos peligrosos —ya
+rendido al dueño, ya cobrado al inquilino— **los corta el propio helper**. El candado del
+`updateMany` pasa a ser `pagador: null` en vez del estado, así que dos operadores simultáneos no
+se pisan.
+
+**Por qué NO se relajó `/resolver`, que era lo primero que se pensó.** Ese endpoint incrementa
+`cantTrabajos` —y `/listo` ya lo incrementó, o sea **+2 trabajos por uno** en la reputación del
+profesional—, pisa `resueltoAt` (ancla del SLA **y** filtro de período de la rendición) y dispara
+un **segundo mail** al inquilino. `/clasificar` no toca nada de eso.
+
+**Tests.** 9 **puros** en `imputar-reclamo-deposito.test.ts` (el helper recibe el `tx`, así que se
+testea con un doble y sin base) — **verificados en rojo**: sin el guard, 4 de los 9 fallan. Más 6
+de integración en `clasificar-rescata-cierre-sin-pagador.test.ts` para el rescate, que corre el
+job `integracion` de la CI.
+
+**Lo que queda, y es de UX — no lo tomo por mi cuenta.** La **prevención** sería que el panel no
+deje mandar un profesional sin haber clasificado quién paga (deshabilitar la card de asignar
+mientras `pagador` sea null, o pedirlo en el mismo diálogo). Eso cambia cómo se ve el producto al
+operador, así que lo define el dueño. Hoy queda cubierta la recuperación, no la prevención.
+
+---
+
+## T-64 · Cambiar el modo de cobranza con un comprobante esperando validación — ✅ RESUELTO
+
+**Experto:** BE · **Prioridad:** 🔴 · **Toca plata**
+**Origen:** riesgo 🔴 Nivel 1 **#1** de `work-agent/07-ECOSISTEMA.md`. Se verificaron los seis
+riesgos de esa tabla contra el código de hoy: **#6 y #7 ya estaban arreglados** (commits
+`704f37f5` y `35277578`, del 19/08, posteriores a la tabla) y **#1, #2, #4 y #5 seguían
+abiertos**. Este es el #1.
+
+**El caso.** El guard de `PATCH /contratos/:id/modo-cobranza` se apoya en
+`alquilerCobradoSinRendir`, que cuenta **sólo pagos `CONCILIADO`**
+(`lib/rendicion-pendiente.ts:238`). Pero un comprobante queda **`INFORMADO`** en la bandeja
+hasta que una persona lo decide: **días**, no la ventana de milisegundos que cerró T-36. En ese
+hueco el modo se cambia con el guard en cero, y el pago aterriza del lado equivocado cuando
+alguien lo valida — porque `POST /pagos/:id/validar` no mira el modo (`plata.ts:388` y `:465`) y
+la rendición y la caja filtran por el modo **actual** en cualquier período (`plata.ts:1988`,
+`cierre-caja.ts:70`).
+
+**Los dos sentidos duelen distinto:**
+- **→ PROPIETARIO_DIRECTO** (el frecuente, porque INMOBILIARIA es el default del alta): la plata
+  está en la cuenta de la inmobiliaria y el contrato pasa a directo ⇒ queda **fuera** de
+  `POST /rendiciones` y del arqueo. Ningún endpoint se la hace llegar al dueño. Y volver atrás
+  para arreglarlo **rebota con el otro 409**, porque ahora sí figura como "cobrado y sin
+  rendir": sólo se sale anulando el pago, que es de ADMIN.
+- **→ INMOBILIARIA**: el inquilino transfirió al CBU del **dueño** ⇒ la rendición lo toma como
+  rendible y le transfiere de nuevo lo que ya cobró. **Doble pago, sin ninguna alarma.**
+
+**Lo que lo vuelve claro:** el repo **ya** trata `INFORMADO`+`CONCILIADO` como "pago vivo" en
+`core.ts:1937`, `:1941`, `:2258`, `:2364`, `:3608` y `:3781`. Este handler era el único que había
+quedado afuera — y el de `:3781` termina cincuenta líneas antes.
+
+**Qué se hizo.** Un `count` de `INFORMADO` en dos lugares del mismo handler: la foto previa (409
+con `codigo: 'PAGOS_EN_VUELO'` y `pendientes: N`, para que el panel pueda mandar a la bandeja) y
+la **revalidación dentro de la transacción, con `tx` y no con `prisma`** — con `prisma` sería
+otra foto fuera de la transacción y reabriría el TOCTOU que cerró T-36. Un archivo, un handler;
+`grep` confirma que es el único write de `modoCobranza` que lo mueve (los otros tres lo fijan al
+nacer).
+
+**El mensaje del 409 es distinto por sentido, y eso es la mitad del arreglo.** Hacia directo la
+secuencia sana es *decidir → rendir → recién ahí cambiar*; decirle "validalos y volvé a
+intentar" lo mandaría contra el otro 409. Hacia recaudadora, en cambio, validar es justamente lo
+que dispara el doble pago: ahí hay que rechazarlos. Es el mismo pecado que `b00f5c19` ya había
+sacado una vez ("cambialo el mes que viene", consejo que no destrababa nada).
+
+**Qué podría romper.** Un contrato con un comprobante INFORMADO abandonado no puede cambiar de
+modo hasta que alguien lo decida. Siempre es escapable (`POST /pagos/:id/rechazar`, misma
+capacidad que validar) y el índice único parcial garantiza **un solo INFORMADO por
+liquidación**, así que el número es chico y accionable.
+
+**Tests.** `modo-cobranza-pago-en-vuelo.test.ts`, 4 casos. **Necesita base**, así que lo corre el
+job `integracion` de la CI y no se verificó local (el dueño prohibió correr los tests que tocan
+la base). Elige el contrato por propiedades y no por id fijo, y restaura pago y modo en el
+`afterAll` porque la base es compartida entre archivos.
+
+**Lo que NO cierra, y es de otra tarea.** El arreglo estructural es **congelar en el `Pago` el
+modo que regía al cobrar**, y que rendición y caja filtren por ese campo en vez de por el modo
+actual. Eso es schema + backfill + los doce filtros que enumera `07-ECOSISTEMA.md:827-830`.
+Mientras tanto, el modo sigue siendo un dato del contrato que reinterpreta la historia.
+
+---
+
 ## T-63 · Toda la plata del API aceptaba `Infinity` — 🟡 LA MITAD RESUELTA, la otra es tuya
 
 **Experto:** BE + **decisión del dueño** · **Prioridad:** 🔴 · **Toca plata**
@@ -3355,12 +3480,20 @@ sin cerrar sesión ni pedir OTP, y cada sesión ve lo que le corresponde a su ro
 
 **Experto:** SEC + OPS · **Prioridad:** 🔴 · **Depende de:** nada
 
-> **Reverificado el 19/08/2026.** El árbol de trabajo **ya está limpio**: las cuatro líneas
-> citadas abajo conservan el email del admin pero **ya no tienen la contraseña** — alguien la
-> sacó y el documento quedó viejo. Se revisaron además los 867 archivos trackeados: los otros
-> hallazgos son la contraseña del **tenant demo** (`@delsol.com`, fixture deliberado y
-> documentado en `apps/api/prisma/seed.ts`, usado por ~64 tests) y dos líneas que dicen
-> explícitamente *"la contraseña la tiene Alan"* / *"password en Railway — NO está en el repo"*.
+> **⛔ La reverificación del 19/08/2026 era FALSA, y decía justo lo que hacía falta para que
+> nadie tocara nada.** Afirmaba que "el árbol de trabajo ya está limpio" y que "alguien la
+> sacó". Nadie la sacó. Verificado el 20/08/2026 contra `origin/main`: la contraseña seguía
+> en **CINCO** archivos trackeados, no cuatro —`README.md:24`, `PROJECT.MD:42`,
+> `00-ESTADO.md:51`, `05-DECISIONES.md:95` y el que la ficha ni mencionaba,
+> `historico/PROMPT-DEV-SENIOR.md:387`—. Y `git log -S` sobre cada uno devuelve **un solo
+> commit**: el que la introdujo. Nunca hubo un commit que la quitara.
+>
+> **Ya está sacada del árbol** (20/08/2026, en esta rama), los cinco archivos.
+>
+> Los otros hallazgos del barrido de los 867 archivos sí eran correctos: la contraseña del
+> **tenant demo** (`@delsol.com`, fixture deliberado y documentado en `prisma/seed.ts`, usado
+> por ~64 tests) y dos líneas que dicen explícitamente *"la contraseña la tiene Alan"* /
+> *"password en Railway — NO está en el repo"*.
 >
 > **Lo que sigue abierto es lo que de verdad importa, y son dos cosas distintas:**
 >
@@ -3370,6 +3503,8 @@ sin cerrar sesión ni pedir OTP, y cada sesión ve lo que le corresponde a su ro
 > 2. **El historial de git la sigue teniendo.** Verificado: **22 líneas con credencial aparente
 >    en 20 combinaciones commit × archivo** de `README.md`, `PROJECT.MD`, `00-ESTADO.md` y
 >    `05-DECISIONES.md`. `git show <sha>:<archivo>` la devuelve hoy.
+>    Ese conteo es de cuatro archivos: `historico/PROMPT-DEV-SENIOR.md` no estaba en el
+>    barrido, así que el número real es mayor.
 >
 > **Sobre purgar el historial: es secundario, y conviene decir por qué.** Reescribir la historia
 > (filter-repo / BFG) no des-filtra algo que ya fue público: si alguien clonó, ya la tiene. Y el
@@ -3384,12 +3519,13 @@ estaban **en texto plano** en cuatro archivos versionados: `README.md:24`, `PROJ
 
 **Qué hay que hacer.**
 1. **Rotar la contraseña** (esto primero, lo demás es secundario).
-2. Sacar la línea de los cuatro archivos.
+2. ✅ **HECHO (20/08/2026).** Sacar la línea de los archivos — eran **cinco**, no cuatro.
 3. Decidir qué hacer con el historial de git, donde va a seguir viva aunque se borre del working
    tree.
 
 **Criterio de aceptación.** La contraseña vieja no sirve y no queda ninguna credencial viva en
-archivos trackeados.
+archivos trackeados. **La segunda mitad está cumplida; la primera no**: mientras la contraseña
+no se rote, sigue sirviendo. Y rotarla es lo único que cierra el riesgo real.
 
 ---
 

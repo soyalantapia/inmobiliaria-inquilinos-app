@@ -36,6 +36,13 @@ const base: Omit<ContratoParaLiquidar, 'fechaInicio' | 'fechaFin' | 'diaPago'> =
   monto: 500_000,
   montoExpensas: null,
   moneda: 'ARS',
+  // `devengarDesde` y `tipoContrato` son OBLIGATORIOS a propósito (ver el docblock de
+  // ContratoParaLiquidar): se hicieron requeridos para que el compilador no deje que un caller
+  // se los saltee. Este fixture se los salteaba igual, porque hasta hoy `test/` no entraba al
+  // typecheck. Los valores son los que el runtime venía usando de hecho: `undefined` no es
+  // 'SOLO_EXPENSAS', así que devengaba como ALQUILER.
+  devengarDesde: null,
+  tipoContrato: 'ALQUILER',
 };
 
 const casos = [

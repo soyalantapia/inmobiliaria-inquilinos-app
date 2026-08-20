@@ -36,6 +36,9 @@ function contratoHistorico(over: Partial<ContratoParaLiquidar> = {}): ContratoPa
     fechaFin: new Date(Date.UTC(2024, 4, 31)), // 2024-05-31
     diaPago: 10,
     devengarDesde: null,
+    // Obligatorio en ContratoParaLiquidar y este fixture lo omitía: hasta hoy `test/` no
+    // entraba al typecheck. ALQUILER es lo que el runtime hacía de hecho con `undefined`.
+    tipoContrato: 'ALQUILER' as const,
     ...over,
   };
 }

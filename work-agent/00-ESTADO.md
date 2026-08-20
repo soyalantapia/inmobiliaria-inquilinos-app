@@ -45,10 +45,20 @@ alquileres para **Tapia Propiedades** (y futuras inmobiliarias). **Tres** frente
 | Portal del propietario | **https://admin.myalquiler.com/propietario** — sin servicio propio: es un export estático servido por el panel. Ver `02-DEPLOY.md`. |
 | API | https://api-production-262e.up.railway.app (`GET /health`) |
 
-> ⚠️ La contraseña de producción está escrita acá abajo, en texto plano y en el repo.
-> Rotarla es T-26. Mientras tanto, tratá este archivo como si fuera un secreto.
+> ### 🔴 Credenciales — la de producción hay que ROTARLA
+>
+> **Ninguna credencial va en este repo.** La del admin del tenant real la tiene el dueño.
+>
+> **La que está en uso hoy hay que darla por comprometida.** Estuvo en texto plano en CINCO
+> archivos versionados —`README.md`, `PROJECT.MD`, este archivo, `05-DECISIONES.md` y
+> `historico/PROMPT-DEV-SENIOR.md`— desde el commit que creó cada uno, y el repo estuvo
+> público. Se sacó del árbol el 20/08/2026, y eso **no la invalida**: sigue viva en el
+> historial de git, donde `git show <sha>:<archivo>` la devuelve hoy.
+>
+> **Lo único que cierra el riesgo es rotarla, y eso lo hace el dueño** — ningún agente toca
+> credenciales de producción. Detalle y estado en T-26 (`09-TAREAS-REUNION-CAMILA.md`).
 
-Tenant real: **Tapia Propiedades** · admin `alannaimtapia@gmail.com / Tapia.2026!`
+Tenant real: **Tapia Propiedades** · admin `alannaimtapia@gmail.com` — la contraseña **no va en el repo**: la tiene el dueño (ver §Credenciales, arriba).
 (el **PIN de seguridad se eliminó** — ninguna acción lo pide).
 
 ## Dónde estamos

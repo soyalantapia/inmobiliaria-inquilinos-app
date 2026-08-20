@@ -507,8 +507,36 @@ export async function operacionRoutes(app: FastifyInstance) {
     const body = z.object({ pagador: z.enum(['PROPIETARIO', 'INQUILINO', 'DEPOSITO']) }).safeParse(request.body ?? {});
     if (!body.success) return reply.code(400).send({ message: 'Indicá quién paga: propietario, inquilino o depósito' });
 
-    const reclamo = await prisma.reclamo.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
+    const reclamo = await prisma.reclamo.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      include: { contrato: { select: { moneda: true } } },
+    });
     if (!reclamo) return reply.code(404).send({ message: 'Reclamo inexistente' });
+
+    // RESCATE del reclamo que cerró el profesional por link mágico SIN pagador.
+    //
+    // `/visitas-publicas/listo` escribe `costoTrabajo` y pone el reclamo en RESUELTO, pero el
+    // `pagador` sólo lo escriben este endpoint y `/resolver` — y los dos rebotan con 409 una vez
+    // cerrado. Con `pagador: null` el helper hace early-return y NO le cobra a nadie: el costo
+    // del arreglo se evapora, y queda irrecuperable por diseño.
+    //
+    // No es un caso raro: el diálogo de asignar profesional del panel pega directo a
+    // `/reclamos/:id/asignar` y abre el WhatsApp con el link mágico sin pasar nunca por la
+    // clasificación, así que `pagador: null` es el DEFAULT del camino más rápido.
+    //
+    // Por qué acá y no relajando `/resolver`: ese endpoint incrementa `cantTrabajos` (que /listo
+    // ya incrementó → +2 trabajos por uno), pisa `resueltoAt` —ancla del SLA y filtro de período
+    // de la rendición— y dispara un segundo mail al inquilino. `/clasificar` no toca nada de eso.
+    //
+    // La condición es angosta a propósito: sólo un RESUELTO con costo y SIN pagador. Ahí el
+    // motivo del guard de estado no aplica —no hay ningún CargoContrato previo que quede
+    // colgado, porque con `pagador: null` el helper nunca creó uno—. Los dos casos peligrosos
+    // (ya rendido al dueño, ya cobrado al inquilino) los corta el propio helper.
+    const rescatandoCierreSinPagador =
+      reclamo.estado === 'RESUELTO' &&
+      reclamo.pagador == null &&
+      reclamo.costoTrabajo != null &&
+      Number(reclamo.costoTrabajo) > 0;
 
     const autor = await nombreUsuario(u.userId);
     try {
@@ -520,13 +548,33 @@ export async function operacionRoutes(app: FastifyInstance) {
         // Reclasificar un reclamo REABIERTO (PERSISTE lo devuelve a EN_CURSO) sigue
         // permitido: ése es el flujo legítimo para corregir a quién se le imputa.
         const res = await tx.reclamo.updateMany({
-          where: { id, estado: { notIn: [...ESTADOS_CERRADOS] } },
+          // En el rescate el candado es `pagador: null`, no el estado: si alguien clasificó
+          // entremedio, count===0 y sale por el 409 de abajo en vez de pisarle la decisión.
+          where: rescatandoCierreSinPagador
+            ? { id, estado: 'RESUELTO', pagador: null }
+            : { id, estado: { notIn: [...ESTADOS_CERRADOS] } },
           data: { pagador: body.data.pagador },
         });
         if (res.count === 0) {
           throw new ConflictoEstadoReclamo(
-            'El reclamo ya está cerrado. Reabrilo antes de cambiar quién paga.',
+            rescatandoCierreSinPagador
+              ? 'Otra persona ya definió quién paga este reclamo. Recargá para ver cómo quedó.'
+              : 'El reclamo ya está cerrado. Reabrilo antes de cambiar quién paga.',
           );
+        }
+        // Sólo en el rescate: el reclamo YA está cerrado, así que nadie va a volver a pasar por
+        // `/resolver` a imputar. Es este llamado, o la plata se pierde.
+        if (rescatandoCierreSinPagador) {
+          await imputarCostoReclamo(tx, {
+            inmobiliariaId: u.inmobiliariaId,
+            reclamoId: id,
+            contratoId: reclamo.contratoId,
+            pagador: body.data.pagador,
+            costo: Number(reclamo.costoTrabajo),
+            moneda: reclamo.contrato.moneda,
+            concepto: conceptoReclamo(reclamo.categoria, reclamo.descripcion),
+            creadoPorId: u.userId,
+          });
         }
         await tx.reclamoEvento.create({
           data: { inmobiliariaId: u.inmobiliariaId, reclamoId: id, tipo: 'CLASIFICADO', autor, contenido: `Paga: ${labelPagador(body.data.pagador)}` },
@@ -536,6 +584,9 @@ export async function operacionRoutes(app: FastifyInstance) {
       return conSla(actualizado);
     } catch (e) {
       if (e instanceof ConflictoEstadoReclamo) return reply.code(409).send({ message: e.message });
+      // El rescate llama al helper, que corta si el trabajo ya se le rindió al dueño, si el
+      // inquilino ya pagó ese cargo, o si el depósito no está vivo.
+      if (e instanceof ReclamoNoReimputable) return reply.code(409).send({ message: e.message });
       throw e;
     }
   });

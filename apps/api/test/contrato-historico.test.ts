@@ -37,6 +37,10 @@ const BASE = {
   fechaInicio: new Date('2023-01-01T00:00:00.000Z'),
   fechaFin: new Date('2023-06-30T00:00:00.000Z'),
   diaPago: 10,
+  // Lo declara el fixture aunque el caso normal sea null: `correr()` tipa su override como
+  // `Partial<typeof BASE>`, así que una clave que BASE no declara no se puede pasar. El test
+  // de expensas la pasaba igual y funcionaba por el spread; sólo el tipo no lo sabía.
+  montoExpensas: null as number | null,
 };
 
 /**
