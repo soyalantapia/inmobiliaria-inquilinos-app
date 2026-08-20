@@ -29,6 +29,7 @@
  */
 import { PrismaClient } from '@prisma/client';
 import { exigirDbDeTest } from './guard-db.js';
+import { borrarContratosDeTest } from './borrar-contratos-de-test.js';
 
 const ID_SEED = /^[a-z]+_\d+$/; // cnt_001, prp_002, own_003…
 const esDelSeed = (id: string) => ID_SEED.test(id);
@@ -84,21 +85,23 @@ async function main() {
       .map((i) => i.id);
 
     if (cIds.length || pIds.length || oIds.length || iIds.length) {
+      // Lo que cuelga de la PROPIEDAD y no del contrato: el helper no lo alcanza ni debe.
       await prisma.gastoRendido.deleteMany({ where: { propiedadId: { in: pIds } } }).catch(() => {});
-      await prisma.cargoContrato.deleteMany({ where: { contratoId: { in: cIds } } }).catch(() => {});
-      await prisma.pago.deleteMany({ where: { contratoId: { in: cIds } } }).catch(() => {});
-      await prisma.liquidacion.deleteMany({ where: { contratoId: { in: cIds } } });
-      await prisma.inquilino.deleteMany({ where: { id: { in: iIds } } });
       await prisma.movimientoCaja.deleteMany({ where: { propiedadId: { in: pIds } } }).catch(() => {});
-      // La propiedad apunta al contrato y el contrato a la propiedad: hay que cortar
-      // ese lazo antes de borrar cualquiera de los dos.
-      await prisma.propiedad.updateMany({ where: { id: { in: pIds } }, data: { contratoActualId: null } });
-      // El alta de contrato escribe historial (`EventoContrato`) desde T-29 y la FK es
-      // RESTRICT: sin sacarlo antes, el delete de abajo muere con P2003 y el script no limpia
-      // nada. Acá pesa más que en los afterAll de los tests: esto se corre justo DESPUÉS de
-      // una corrida que murió a mitad del borrado, o sea cuando esos eventos existen seguro.
-      await prisma.eventoContrato.deleteMany({ where: { contratoId: { in: cIds } } });
-      await prisma.contrato.deleteMany({ where: { id: { in: cIds } } });
+
+      // Los contratos con TODO lo que les cuelga (33 modelos, ninguno cascadea), por el helper
+      // compartido de T-28-N3. Antes esto borraba a mano cuatro hijos, y cuando el alta empezó
+      // a escribir `EventoContrato` (T-29) el `contrato.deleteMany` moría con P2003 y el script
+      // no limpiaba NADA — ni propiedades ni propietarios—, porque ese delete es de los pocos
+      // sin `.catch`. Justamente acá duele más: este script se corre PARA salir de una corrida
+      // cortada a mitad, o sea cuando esos huérfanos existen seguro.
+      //
+      // T-28-N3 dejó escrito "el helper existe y el que rompa, se migra". Éste rompió.
+      await borrarContratosDeTest(prisma, cIds);
+
+      // Los inquilinos que quedan son los que NO colgaban de esos contratos: el filtro de
+      // arriba también toma las filas sin `contratoId`.
+      await prisma.inquilino.deleteMany({ where: { id: { in: iIds } } }).catch(() => {});
       await prisma.participacionPropietario.deleteMany({
         where: { OR: [{ propiedadId: { in: pIds } }, { propietarioId: { in: oIds } }] },
       });
