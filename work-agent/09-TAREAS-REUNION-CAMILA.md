@@ -5290,7 +5290,9 @@ tres cosas que hay que saber antes de apretar — sobre todo que **se acabaría 
 `main`**, que es como trabajan hoy todos los chats.
 
 **Corrección al dato de las cancelaciones:** escribí que `Revisión` "se cancela sola seguido" y
-lo medí después: **3 de las últimas 40 corridas en `main`, un 7,5%**. No es un obstáculo para
+lo medí después: **3 de 40 (7,5%)** — y más tarde **7 de 40 (17,5%)**, porque el job `build` que
+agregué es largo y se lleva las cancelaciones. **Corregido en T-01-N1-N12:** ya no se cancela en
+`main`. No es un obstáculo para
 volverlos required — alcanza con re-correr esa una.
 
 ---
@@ -5339,3 +5341,26 @@ señala con archivo y línea.
 
 **No se inventó un tercer estado:** decirle "la inmobiliaria revirtió este cobro" sigue siendo
 raro cuando lo que pasó es que su pago se confirmó. Eso es cambio de producto y queda anotado.
+
+---
+
+### T-01-N1-N12 · El job que agregué para tapar el punto ciego era el que más se cancelaba — ✅ HECHA
+**Experto:** OPS · **Prioridad:** 🟠
+
+`Revisión` tenía `cancel-in-progress: true` para todas las ramas. Tiene sentido en una rama de
+trabajo: si se pushean tres commits seguidos, sólo interesa el veredicto del último.
+
+**En `main` no, y la diferencia importa: cada commit de `main` se deploya a producción**, así que
+cada uno merece un veredicto propio. Cancelar ahí deja commits que salieron a producción sin que
+nadie los haya verificado nunca.
+
+**Y lo empeoré yo.** Al sumar el job `build` (3-4 min, T-01-N1-N8) la tasa de cancelación en
+`main` pasó de **3/40 a 7/40**, y el que se cancelaba era **siempre `build`**: con pushes cada
+pocos minutos, el job más largo es el más expuesto. O sea que el job agregado justamente para
+tapar el punto ciego de los builds era el que más veces no llegaba a correr.
+
+**Arreglado:** `cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}`. Se sigue cancelando
+en ramas, nunca en `main`.
+
+**Efecto colateral bueno:** cuando se marquen los checks como *required* (T-01-N1-N9), esto deja
+de ser un problema — que era la objeción #2 de esa tarea.

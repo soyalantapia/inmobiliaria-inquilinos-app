@@ -70,7 +70,9 @@ gh api -X PUT repos/soyalantapia/inmobiliaria-inquilinos-app/branches/main/prote
    dueño puede saltearlo.
 2. **`Revisión` a veces se cancela sola**, por el `cancel-in-progress` cuando llegan pushes
    encadenados, y un check cancelado no cuenta como aprobado. **Medido: 3 de las últimas 40
-   corridas en `main`, un 7,5%** — bastante menos de lo que yo mismo había escrito acá
+   corridas en `main`, un 7,5%** — y después **7 de 40, un 17,5%**, al sumarse el job `build`:
+   el más largo es el más expuesto. **Corregido en T-01-N1-N12** apagando el `cancel-in-progress`
+   en `main`, así que ya no es obstáculo. Era bastante menos de lo que yo mismo había escrito acá
    ("seguido"), así que **no es un obstáculo** para volverlos required: alcanza con re-correr
    esa una.
 3. **Railway sigue sin poder gatearse desde el repo.** La protección frena el *merge*, y con eso
@@ -80,5 +82,5 @@ gh api -X PUT repos/soyalantapia/inmobiliaria-inquilinos-app/branches/main/prote
 
 Hacer que `deploy.yml` dependa de `Revisión` con un trigger `workflow_run`. Eso al menos evita
 publicar una demo rota. **No se hizo**: `deploy.yml` es el workflow del dueño, y con lo seguido
-que se cancela `Revisión` —aunque sea un 7,5%— el riesgo concreto es que la demo deje de publicarse sin que nadie
+que se cancelaba `Revisión` el riesgo concreto es que la demo deje de publicarse sin que nadie
 entienda por qué. Queda dicho, no hecho.
