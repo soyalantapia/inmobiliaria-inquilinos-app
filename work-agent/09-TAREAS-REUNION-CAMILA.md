@@ -2250,6 +2250,68 @@ real y deja el diálogo abierto para corregir, y el camino feliz guarda y refres
 
 ---
 
+## T-56 · Todo cobro con fecha civil perdía un día de mora — ✅ RESUELTO
+
+**Experto:** BE · **Prioridad:** 🔴 · **Toca plata** · **Trababa la conciliación bancaria**
+**Origen:** revisión adversarial del motor de cobranza (20/08).
+
+**La causa raíz.** `diaCivilAR` está escrito para **instantes**. Si se le pasa una fecha civil
+pelada —las que manda el panel como `"YYYY-MM-DD"`, o las que arma el parser del extracto— queda
+en `D T00:00Z`, que en Argentina son **las 21:00 del día anterior**: devuelve `D − 1` **siempre**.
+No es un borde, es un corrimiento constante.
+
+**Lo que costaba, verificado con números** (cuota $600.000, vence 10/08, mora 0,15% = $900/día):
+
+| Camino | Qué pasaba |
+|---|---|
+| **Cobro manual** | El diálogo prefillea $609.000 (mora al instante, 10 días) y el guard recalcula con 9 → **400 "El monto supera el saldo"**, contra el mismo número que él propuso. La cajera baja a $608.100, la cuota cierra y **esos $900 no vuelven nunca**: `fechaPago` queda date-only y toda lectura posterior recalcula los mismos 9 días. |
+| **Extracto bancario** | Igual, pero **ahí el monto no se puede editar**: un crédito por exactamente lo que la app le mostró al inquilino quedaba **imposible de conciliar**. |
+| **Mora MONTO_FIJO** | `ceil(días/30)`: 30 días → 1 mes, 31 → 2. Un día de menos en cada múltiplo de 30 se llevaba **un mes entero** de mora. |
+
+**Lo que NO alcanzaba:** el pago que informa el inquilino manda `new Date().toISOString()`, un
+instante completo, así que `/pagos/:id/validar` nunca tuvo el corrimiento.
+
+**Qué se hizo.** `instanteEnDiaCivilAR` en `packages/shared/src/periodos.ts` —el inverso de
+`diaCivilAR`, que lleva la fecha civil al **mediodía** argentino, lejos de los dos bordes— y se
+aplicó en los tres call sites: el zod de `/pagos/manual` (así el `asOf`, el `fechaTransferencia`
+y el `fechaPago` quedan bien de una) y los dos `calcularMora` del extracto. **`diasAtraso` no se
+tocó**: es correcto para instantes, que es para lo que está escrito.
+
+**Tests.** `test/mora-fecha-civil.test.ts`. La suite ya tenía `vencimiento-huso-horario.test.ts`
+en verde, pero cubría la semántica **con instantes** y nunca ejercitaba un `asOf` sin hora —
+justo el agujero. Los dos archivos pasan juntos.
+
+---
+
+## T-55 · Un doble click al saldar un cargo lo cobraba dos veces — ✅ RESUELTO
+
+**Experto:** BE · **Prioridad:** 🟠 · **Toca plata**
+**Origen:** revisión adversarial del motor de cobranza (20/08).
+
+**El agujero.** `POST /cargos/:id/saldar` hacía **check-then-act**: leía el cargo con un
+`findFirst` **fuera** de la transacción, chequeaba `if (!cargo.saldadoAt)` y recién adentro
+hacía el `update` — **sin condicionarlo**. Dos requests concurrentes (alcanza un doble click, o
+dos operadoras) pasaban los dos el chequeo y **creaban dos `INGRESO_EXTRA` por una sola
+cobranza**.
+
+**Y no se queda en la caja.** El propio comentario del handler lo advierte: la rendición levanta
+esos `INGRESO_EXTRA` con `descontadoEnRendicion: false` y **se los acredita al propietario**. O
+sea que el dueño cobraba dos veces el mismo cargo. Ese comentario incluso dice, sobre el inverso:
+*"Que no lo hiciera costaba dos ingresos por una sola cobranza"* — el mismo riesgo seguía vivo
+por esta otra vía.
+
+**Qué se hizo.** `updateMany` condicionado a `saldadoAt: null` (más el tenant) dentro de la
+transacción: el segundo request no matchea ninguna fila, sale con `count === 0` y **no llega a
+crear el movimiento**. Es el mismo patrón que ya usan validar, rechazar y anular en ese archivo.
+El que pierde la carrera tampoco registra el evento de auditoría: dos eventos por una cobranza
+ensucian el historial igual que dos ingresos la caja.
+
+**Cómo se encontró.** Comparando qué endpoints del ciclo de plata tienen el patrón
+`updateMany + count === 0` y cuáles no. `validar`, `rechazar` y `anular` lo tienen; `saldar` era
+el que faltaba.
+
+---
+
 ## T-54 · Una condonación parcial le decía al dueño que le perdonaron el mes entero — ✅ RESUELTO
 
 **Experto:** FE · **Prioridad:** 🟢
