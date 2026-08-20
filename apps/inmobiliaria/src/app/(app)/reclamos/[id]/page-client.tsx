@@ -490,8 +490,14 @@ export default function DetalleReclamoPage() {
                       </label>
                     )
                   )}
+                  {/* T-49 — Decía "lo recibe en la app y por WhatsApp". Las dos mitades eran
+                      falsas: `POST /reclamos/:id/responder` sólo persiste el mensaje (no manda
+                      mail ni push), y WhatsApp no está integrado en ninguna parte del repo.
+                      Camila: "yo le contesto, me quedo tranquila, y a los cuatro días me
+                      reclama que no le respondí. Ese cartel me hace quedar mal a mí". */}
                   <p className="text-[11px] text-muted-foreground">
-                    El inquilino lo recibe en la app y por WhatsApp.
+                    Queda en el reclamo: el inquilino lo ve cuando entra a la app. No le llega
+                    aviso todavía — si es urgente, escribile.
                   </p>
                 </CardContent>
               </Card>

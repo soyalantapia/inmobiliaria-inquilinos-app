@@ -540,7 +540,18 @@ export default function DetalleContratoPage() {
                       </span>
                     }
                   />
-                  <Row label="Email" value={contacto?.titular.email ?? '—'} />
+                  <Row
+                    label="Email"
+                    value={
+                      <span className="inline-flex items-center gap-1.5">
+                        {contacto?.titular.email ?? '—'}
+                        <EditarEmailInquilinoButton
+                          contratoId={c.id}
+                          emailActual={contacto?.titular.email ?? null}
+                        />
+                      </span>
+                    }
+                  />
                   <Row
                     label="Garante"
                     value={
@@ -1205,6 +1216,100 @@ function Row({ label, value, bold }: { label: string; value: React.ReactNode; bo
       <span className="text-muted-foreground">{label}</span>
       <span className={bold ? 'font-semibold' : ''}>{value}</span>
     </div>
+  );
+}
+
+/**
+ * Lápiz para cargar o corregir el EMAIL del inquilino titular (T-45).
+ *
+ * POR QUÉ EXISTE: el wizard de alta le dice a la operadora "sin email podés cargar el contrato
+ * igual… se lo podés agregar después". Hasta acá eso era mentira — el único PATCH de contacto
+ * aceptaba `telefono` y ningún endpoint escribía `Inquilino.email` fuera del alta. Un contrato
+ * cargado sin email dejaba al inquilino fuera de la app PARA SIEMPRE (el acceso es por OTP al
+ * mail), salvo rehacer el contrato: la rescisión falsa de la que se queja Camila.
+ *
+ * No es un dato de contacto más: es la llave de entrada. Por eso el copy lo dice, y por eso el
+ * backend rechaza con 409 si ese email ya es de otro inquilino de la misma cartera.
+ */
+function EditarEmailInquilinoButton({
+  contratoId,
+  emailActual,
+}: {
+  contratoId: string;
+  emailActual: string | null;
+}) {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [valor, setValor] = useState('');
+  const [guardando, setGuardando] = useState(false);
+
+  useEffect(() => {
+    if (open) setValor(emailActual && emailActual !== '—' ? emailActual : '');
+  }, [open, emailActual]);
+
+  const guardar = async () => {
+    if (guardando) return;
+    setGuardando(true);
+    try {
+      await apiFetch(`/contratos/${contratoId}/inquilino-contacto`, {
+        method: 'PATCH',
+        body: JSON.stringify({ email: valor.trim() }),
+      });
+      await qc.invalidateQueries({ queryKey: ['contrato', contratoId] });
+      toast({
+        variant: 'success',
+        title: 'Email del inquilino actualizado',
+        description: 'Ya puede entrar a la app con ese mail.',
+      });
+      setOpen(false);
+    } catch (e) {
+      toast({
+        variant: varianteError(e),
+        title: 'No se pudo guardar',
+        description: e instanceof ApiError ? e.message : 'Probá de nuevo.',
+      });
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="text-muted-foreground transition-colors hover:text-foreground"
+        aria-label="Editar email del inquilino"
+      >
+        <Pencil className="h-3 w-3" />
+      </button>
+      <Dialog open={open} onOpenChange={(o) => !guardando && setOpen(o)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Email del inquilino</DialogTitle>
+            <DialogDescription>
+              Es con lo que entra a la app: le llega un código de 6 dígitos a ese mail. Sin
+              email no puede entrar.
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            type="email"
+            value={valor}
+            onChange={(e) => setValor(e.target.value)}
+            placeholder="inquilino@email.com"
+            disabled={guardando}
+          />
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" disabled={guardando} onClick={() => setOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={guardar} disabled={guardando || !valor.trim()}>
+              {guardando ? 'Guardando…' : 'Guardar'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
