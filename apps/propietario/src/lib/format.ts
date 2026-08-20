@@ -46,3 +46,21 @@ export const periodoLargo = (p: string): string => {
   ];
   return `${meses[Number(m) - 1] ?? p} ${y}`;
 };
+
+/**
+ * CUIT con guiones: `20351234567` → `20-35123456-7`.
+ *
+ * La API lo guarda sin separadores, y la pestaña Perfil lo mostraba así, crudo. El mismo dato,
+ * del mismo propietario, en el panel de la inmobiliaria se ve con guiones (`formatearCuit` de
+ * `apps/inmobiliaria/src/lib/cuit.ts`): el dueño que compara las dos pantallas ve dos cosas
+ * distintas donde hay una sola.
+ *
+ * Es sólo presentación: NO valida el dígito verificador ni normaliza nada. Eso vive del lado
+ * del panel, que es quien carga el dato; acá el portal es de sólo lectura y lo único que puede
+ * hacer mal es mostrarlo peor de lo que está. Si viene con una cantidad rara de dígitos se
+ * devuelve tal cual, sin inventarle una forma que no tiene.
+ */
+export const cuit = (valor: string): string => {
+  const d = valor.replace(/\D/g, '');
+  return d.length === 11 ? `${d.slice(0, 2)}-${d.slice(2, 10)}-${d.slice(10)}` : valor;
+};

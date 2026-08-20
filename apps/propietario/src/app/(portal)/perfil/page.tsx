@@ -9,6 +9,7 @@ import { Cargando, ErrorCarga, Seccion } from '@/components/bloques';
 import { ContactoInmo } from '@/components/portal-piezas';
 import { SelectorCartera } from '@/components/selector-cartera';
 import { apiFetch, ApiError, cerrarSesion, type MiCartera } from '@/lib/api';
+import { cuit as formatearCuit } from '@/lib/format';
 
 /**
  * Pestaña MI PERFIL: sus datos, quién le administra y la salida.
@@ -49,7 +50,7 @@ export default function PerfilPage() {
           <Dato label="Nombre" valor={c.nombre} />
           <Dato label="Email" valor={c.email || '—'} />
           <Dato label="Teléfono" valor={c.telefono || '—'} />
-          <Dato label="CUIT" valor={c.cuit || '—'} />
+          <Dato label="CUIT" valor={c.cuit ? formatearCuit(c.cuit) : '—'} />
           <Dato
             label="Comisión de la inmobiliaria"
             valor={`${c.comisionPct}%`}
