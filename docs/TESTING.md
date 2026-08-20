@@ -13,8 +13,8 @@
 Hasta ahora la única base disponible era la remota del proxy de Railway, que **la comparten
 todos los procesos** y que `seedBase` reescribe: correr los tests se llevaba puesto a
 cualquiera que estuviera trabajando contra ella. Y sin `apps/api/.env` ni siquiera arrancan —
-fallan con un ZodError de env antes de tocar la red. Resultado: ~60 archivos de test en el repo
-que nadie corre.
+fallan con un ZodError de env antes de tocar la red, que es el motivo por el que durante meses
+figuraron como "no se pueden correr". Se pueden: ver la sección de abajo.
 
 ```bash
 pnpm --filter api test:db:up
@@ -26,6 +26,69 @@ pnpm --filter api test:db:down     # borra el volumen: la próxima arranca limpi
 Detalles en `docker-compose.test.yml`. Puerto **55432** para no pisar un Postgres propio; la
 base vive en `tmpfs` (RAM) así que desaparece al bajar el contenedor, que es justo lo que se
 quiere de una base de test. `prisma/guard-db.ts` ya reconoce `localhost` como base de test.
+
+---
+
+## Con base remota: la suite de integración, y cuánto tarda de verdad
+
+> Verificado el 19/08/2026 corriendo los tests, no leyéndolos.
+
+Dos tareas anteriores anotaron que la suite de integración "no se puede correr acá". **Se
+puede.** Lo único que faltaba era `apps/api/.env` — que está gitignoreado, así que en un
+checkout nuevo no existe y todo falla con un ZodError de env *antes* de tocar la red, que es
+exactamente el síntoma que se leyó como "no se puede".
+
+```bash
+cd apps/api && ./node_modules/.bin/vitest run test/portal-aislamiento.test.ts
+```
+
+El `.env` mínimo necesita `DATABASE_URL`, `JWT_SECRET`, `PORT` y `NODE_ENV`. **La URL sale de
+Railway, no del chat ni de un archivo del repo:** `railway variables --service <base-de-test>`
+y se copia `DATABASE_PUBLIC_URL` (la privada sólo resuelve dentro de la red de Railway).
+
+> ⚠️ **Que apunte a la base de TEST.** `seedBase` reescribe el tenant de demo entero. Contra
+> producción, esto no es un test: es una pérdida de datos.
+
+### Lo que hay que saber antes de tirar `vitest run` a secas
+
+- **La suite completa son ~94 archivos y tarda horas, no minutos.** Cada test hace ida y
+  vuelta contra un Postgres remoto —~6s por test— y `fileParallelism` está en `false` a
+  propósito, porque todos comparten la misma base. Correrla entera de una sentada no es
+  viable en una sesión: **se corre por lotes**, por área.
+- **Los timeouts mienten.** Un `timeout 1500` que corta a la mitad devuelve exit 0 y parece
+  verde. Si el resumen no dice `Test Files N passed (N)` con el N que esperabas, no terminó.
+- **`certificado-antiguedad.test.ts` da rojo (401) y es preexistente** — confirmado
+  corriéndolo con y sin los cambios de la sesión. No lo rompió nadie de los que pasó por acá.
+- **El teardown de varios archivos borra contratos.** Desde T-29 el alta escribe un evento y
+  la FK de `eventos_contrato` es RESTRICT, así que hay que borrar el historial antes. Si
+  aparece un `23001` en la limpieza, es esto. La app **nunca** borra contratos: los finaliza.
+
+---
+
+## Sin base: `test:sin-db` (lo que se puede correr en cualquier lado)
+
+**Verificado el 20/08/2026 sobre `2f75958`, el commit que está en producción: 41 archivos,
+395 tests, todos en verde.** Sin Docker, sin Postgres y sin tocar nada compartido.
+
+```bash
+cd apps/api && corepack pnpm db:generate
+DATABASE_URL='postgresql://nadie:nada@127.0.0.1:1/no_existe' \
+JWT_SECRET='cualquier-cosa-larga-que-no-se-usa' \
+corepack pnpm test:sin-db
+```
+
+**Las dos variables no son opcionales, y ahí está la trampa.** `vitest.sin-db.config.ts` separa
+los tests por *"¿necesita una base viva?"*, y varios de los que quedan del lado corrible llaman a
+`buildApp()`, que valida el entorno con zod **antes** de tocar la red. Sin ellas, tres tests de
+`sonar-correlacion.test.ts` fallan con un `ZodError: DATABASE_URL Required` que **parece código
+roto y no lo es**. Los valores pueden apuntar a la nada: nadie se conecta.
+
+**Y `db:generate` también es obligatorio en un checkout nuevo.** Sin él, 7 suites ni cargan:
+`Cannot find module '.prisma/client/default'`. El cliente de Prisma es generado, no viene en el
+repo.
+
+> Si alguna vez da rojo sin haber tocado código, **antes de investigar el test, confirmá estas
+> dos cosas.** Las dos veces que dio rojo acá fue por entorno, ninguna por el código.
 
 ---
 
