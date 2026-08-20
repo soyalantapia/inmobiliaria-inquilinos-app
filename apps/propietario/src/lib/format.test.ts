@@ -15,7 +15,7 @@
  * (T-32). Los casos se verificaron a mano con node en el huso de esta máquina.
  */
 import { describe, it, expect } from 'vitest';
-import { cuit, fecha } from './format';
+import { cuit, etiqueta, fecha } from './format';
 
 describe('T-46 · fecha() no corre los date-only al día anterior', () => {
   it('un vencimiento date-only se muestra en su propio día', () => {
@@ -64,5 +64,27 @@ describe('cuit', () => {
     // Sin 11 dígitos no hay forma canónica. Partirlo igual mostraría un CUIT que no existe.
     expect(cuit('123')).toBe('123');
     expect(cuit('sin datos')).toBe('sin datos');
+  });
+})
+
+describe('etiqueta', () => {
+  it('EN_CURSO no puede salir con guión bajo: es un identificador de base', () => {
+    // Es lo que motivó el helper. Se vio en el demo público, pero le pasaba igual a un
+    // propietario real: la pantalla imprimía el enum con .toLowerCase() y nada más.
+    expect(etiqueta('EN_CURSO')).toBe('en curso');
+  });
+
+  it('las categorías llevan tilde', () => {
+    expect(etiqueta('PLOMERIA')).toBe('plomería');
+    expect(etiqueta('CALEFACCION')).toBe('calefacción');
+  });
+
+  it('el depósito de garantía también', () => {
+    expect(etiqueta('DEPOSITO')).toBe('depósito');
+  });
+
+  it('un valor que la API agregue mañana sale legible, no crudo ni vacío', () => {
+    // El fallback importa: el portal no se redeploya cada vez que el back suma un estado.
+    expect(etiqueta('ALGO_NUEVO_QUE_NO_EXISTE')).toBe('algo nuevo que no existe');
   });
 })
