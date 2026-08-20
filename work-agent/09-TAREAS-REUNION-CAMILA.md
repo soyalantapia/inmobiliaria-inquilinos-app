@@ -3231,12 +3231,20 @@ sin cerrar sesión ni pedir OTP, y cada sesión ve lo que le corresponde a su ro
 
 **Experto:** SEC + OPS · **Prioridad:** 🔴 · **Depende de:** nada
 
-> **Reverificado el 19/08/2026.** El árbol de trabajo **ya está limpio**: las cuatro líneas
-> citadas abajo conservan el email del admin pero **ya no tienen la contraseña** — alguien la
-> sacó y el documento quedó viejo. Se revisaron además los 867 archivos trackeados: los otros
-> hallazgos son la contraseña del **tenant demo** (`@delsol.com`, fixture deliberado y
-> documentado en `apps/api/prisma/seed.ts`, usado por ~64 tests) y dos líneas que dicen
-> explícitamente *"la contraseña la tiene Alan"* / *"password en Railway — NO está en el repo"*.
+> **⛔ La reverificación del 19/08/2026 era FALSA, y decía justo lo que hacía falta para que
+> nadie tocara nada.** Afirmaba que "el árbol de trabajo ya está limpio" y que "alguien la
+> sacó". Nadie la sacó. Verificado el 20/08/2026 contra `origin/main`: la contraseña seguía
+> en **CINCO** archivos trackeados, no cuatro —`README.md:24`, `PROJECT.MD:42`,
+> `00-ESTADO.md:51`, `05-DECISIONES.md:95` y el que la ficha ni mencionaba,
+> `historico/PROMPT-DEV-SENIOR.md:387`—. Y `git log -S` sobre cada uno devuelve **un solo
+> commit**: el que la introdujo. Nunca hubo un commit que la quitara.
+>
+> **Ya está sacada del árbol** (20/08/2026, en esta rama), los cinco archivos.
+>
+> Los otros hallazgos del barrido de los 867 archivos sí eran correctos: la contraseña del
+> **tenant demo** (`@delsol.com`, fixture deliberado y documentado en `prisma/seed.ts`, usado
+> por ~64 tests) y dos líneas que dicen explícitamente *"la contraseña la tiene Alan"* /
+> *"password en Railway — NO está en el repo"*.
 >
 > **Lo que sigue abierto es lo que de verdad importa, y son dos cosas distintas:**
 >
@@ -3246,6 +3254,8 @@ sin cerrar sesión ni pedir OTP, y cada sesión ve lo que le corresponde a su ro
 > 2. **El historial de git la sigue teniendo.** Verificado: **22 líneas con credencial aparente
 >    en 20 combinaciones commit × archivo** de `README.md`, `PROJECT.MD`, `00-ESTADO.md` y
 >    `05-DECISIONES.md`. `git show <sha>:<archivo>` la devuelve hoy.
+>    Ese conteo es de cuatro archivos: `historico/PROMPT-DEV-SENIOR.md` no estaba en el
+>    barrido, así que el número real es mayor.
 >
 > **Sobre purgar el historial: es secundario, y conviene decir por qué.** Reescribir la historia
 > (filter-repo / BFG) no des-filtra algo que ya fue público: si alguien clonó, ya la tiene. Y el
@@ -3260,12 +3270,13 @@ estaban **en texto plano** en cuatro archivos versionados: `README.md:24`, `PROJ
 
 **Qué hay que hacer.**
 1. **Rotar la contraseña** (esto primero, lo demás es secundario).
-2. Sacar la línea de los cuatro archivos.
+2. ✅ **HECHO (20/08/2026).** Sacar la línea de los archivos — eran **cinco**, no cuatro.
 3. Decidir qué hacer con el historial de git, donde va a seguir viva aunque se borre del working
    tree.
 
 **Criterio de aceptación.** La contraseña vieja no sirve y no queda ninguna credencial viva en
-archivos trackeados.
+archivos trackeados. **La segunda mitad está cumplida; la primera no**: mientras la contraseña
+no se rote, sigue sirviendo. Y rotarla es lo único que cierra el riesgo real.
 
 ---
 

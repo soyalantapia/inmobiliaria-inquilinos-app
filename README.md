@@ -21,7 +21,7 @@ Panel para la inmobiliaria + PWA para el inquilino. **En producción** para
 | **PWA inquilino** | https://app.myalquiler.com |
 | **API** | https://api-production-262e.up.railway.app — `GET /health` → `{ok, db, ts}` |
 
-Tenant real: **Tapia Propiedades** · admin `alannaimtapia@gmail.com` / `Tapia.2026!` (el **PIN se eliminó** — ninguna acción lo pide).
+Tenant real: **Tapia Propiedades** · admin `alannaimtapia@gmail.com` — la contraseña **no va en el repo**: la tiene el dueño. Ver §Credenciales en `work-agent/00-ESTADO.md`. (el **PIN se eliminó** — ninguna acción lo pide).
 
 ---
 
