@@ -1874,6 +1874,19 @@ personal de mostrador.
 
 ## T-39 · El historial fallaba en silencio y se llevaba la operación puesta — ✅ RESUELTO
 
+> **Nota al integrar (19/08): quedó resuelto por otra vía, y es mejor que la de acá.**
+> Este documento describe el arreglo que sacaba el `catch` para que el error propagara. Eso
+> hacía visible la pérdida, pero tenía un costo: un fallo al escribir el historial volteaba la
+> conciliación del pago que lo generó.
+>
+> La línea principal lo resolvió cambiando **la firma**: `registrarEventoContrato` ahora recibe
+> `PrismaClient` y **no acepta un `tx`**, y se llama **después** del commit. Así el `catch`
+> vuelve a ser una red legítima —el historial es best-effort de verdad— y es **el compilador**
+> el que garantiza que nunca corra dentro de una transacción.
+>
+> Mismo diagnóstico, mejor solución: la operación se completa igual y el historial ya no puede
+> llevársela puesta. Se conserva la de la línea principal.
+
 **Experto:** BE · **Prioridad:** 🟠
 **Origen:** revisión adversarial del 19/08 (dimensión concurrencia).
 
