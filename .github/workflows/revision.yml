@@ -91,15 +91,13 @@ jobs:
   # Son las que importan: bugs-de-plata, core, auth, depósitos, conciliación, rendición
   # multi-dueño. Los tres bugs de plata que aparecieron el 19/08 se encontraron LEYENDO código.
   #
-  # ⚠️ NO BLOQUEA TODAVÍA, a propósito. Contra una base limpia dan 378/383, y las 4 rojas que
-  # quedan NO son bugs del producto: son suites que se pisan entre sí (`core.test.ts` cuenta
-  # filas del seed y encuentra las que dejaron las 12 anteriores). Arreglar ese aislamiento es
-  # T-01-N1-N1-N1. Hasta entonces el job corre y se ve, que es infinitamente mejor que no
-  # correr; ponerlo en `required` sin eso sería bloquear todo por un problema conocido de los
-  # tests. Cuando esa tarea cierre, se saca el `continue-on-error` y listo.
+  # BLOQUEA. Arrancó con `continue-on-error` porque quedaban 4 rojas que no eran bugs del
+  # producto —suites que se pisaban entre sí—; eso se cerró en T-01-N1-N1-N1 y la suite da 52/52.
+  # Si vuelve a ponerse roja, es una regresión de verdad y tiene que frenar el merge: como el
+  # push a `main` deploya producción sin escala intermedia, este job es lo único que hay entre
+  # un merge y la plata de la inmobiliaria.
   integracion:
     runs-on: ubuntu-latest
-    continue-on-error: true
     services:
       # postgres:16 pelado alcanza. El schema NO declara `extensions` y ninguna migración crea
       # una: la nota de T-01-N1-N1 decía que hacía falta pgvector y estaba equivocada — venía de
