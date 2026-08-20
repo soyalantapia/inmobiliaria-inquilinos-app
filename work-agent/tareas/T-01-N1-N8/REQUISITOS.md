@@ -46,6 +46,17 @@ guard sólo agrega una forma de fallar.
 
 ## Cómo se verifica
 
+- **La prueba del hueco, hecha con el error real.** Se sacó el `generateStaticParams()` de
+  `/reclamos/[id]` —el mismo tipo de error que tuvo a `main` en rojo dos semanas y media— y se
+  corrieron las dos herramientas sobre el mismo árbol:
+
+  | | resultado |
+  |---|---|
+  | `tsc --noEmit` | **exit 0** — no lo ve |
+  | `next build` | **exit 1** — *Page "/reclamos/[id]" is missing "generateStaticParams()"* |
+
+  O sea: el hueco era real y este job lo cierra. (Un primer intento con `force-dynamic` NO
+  probó nada —Next lo tolera— y quedó descartado.)
 - Build de la API en local: **exit 0**.
 - Los tres fronts **no se pueden buildear en esta máquina** (ver T-02-N2), así que la
   verificación real es la corrida del job en Actions, sobre Linux, que es donde tiene que andar.
