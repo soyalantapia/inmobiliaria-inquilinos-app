@@ -2164,6 +2164,44 @@ real y deja el diálogo abierto para corregir, y el camino feliz guarda y refres
 
 ---
 
+## T-52 · "Cobrado y sin rendir" contaba plata que nadie va a rendir nunca — ✅ RESUELTO
+
+**Experto:** BE · **Prioridad:** 🟠
+**Origen:** revisión de seguridad del portal del propietario (19/08). Lo encontraron **dos
+dimensiones por separado**.
+
+**El desajuste.** `POST /rendiciones` sólo rinde contratos con `modoCobranza: 'INMOBILIARIA'`
+(`plata.ts:221` y `:1929`), pero `alquilerCobradoSinRendirDePropiedad` no filtraba por modo. En
+un contrato **PROPIETARIO_DIRECTO** el inquilino transfiere al CBU del dueño y conciliar el pago
+**no mira el modo**: esos cobros quedan CONCILIADOS y, como la rendición los excluye, **nunca va
+a existir un `AlquilerRendido` que los baje**. El número no llega a cero por ningún camino.
+
+**El impacto que ya estaba vivo — y no es el portal.** El mismo helper lo usa el guard de
+`PUT /propiedades/:id/participaciones` (`core.ts:686`), que corre **en el panel, en producción**.
+Una propiedad con un contrato directo y cobros conciliados quedaba con el **reparto de dueños
+trabado en 409 permanente**, con un mensaje que aconseja *"rendíselo a los dueños de hoy"* —
+justo lo que el sistema no puede hacer. Es el mismo pecado que T-36 se cuidó de no cometer: dar
+un consejo imposible.
+
+En el portal (todavía sin desplegar) el efecto habría sido peor de cara al dueño: ver como
+*"cobrado y todavía sin rendirte"* la plata que él mismo ya tiene en su cuenta.
+
+**Por qué el filtro es opt-in y no incondicional.** Dos llamadores necesitan lo **opuesto**:
+
+| Llamador | Qué necesita |
+|---|---|
+| `PATCH /contratos/:id/modo-cobranza` (`core.ts:3842`) | **VER** esa plata — es lo único que impide que al pasar de directo a inmobiliaria el sistema le transfiera al dueño algo que ya cobró. **No se tocó.** |
+| Guard de reparto (`core.ts:686`) y portal (`portal-propietario.ts:646`) | Ver **sólo lo rendible** |
+
+Meter el filtro adentro del helper habría abierto un agujero de plata real en el primero.
+
+**Tests.** `test/rendicion-pendiente-solo-rendible.test.ts`, puro (el cliente de base es un doble
+que captura el `where`). Incluye un test que **fija que el guard por contrato NO filtre**, para
+que nadie "unifique" los dos casos sin darse cuenta. Verificado en rojo revirtiendo el arreglo.
+El test estructural `portal-aislamiento.test.ts` sigue verde.
+
+---
+
 ## T-51 · Los datos de demo usan dominios de correo reales, y ahora están publicados
 
 **Experto:** SEC (higiene de datos) · **Prioridad:** 🟢 · **Depende de:** poder correr la suite

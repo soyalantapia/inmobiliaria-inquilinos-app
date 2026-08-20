@@ -643,7 +643,11 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
     // número que no existe. Se corta por moneda y cada corte lleva la suya.
     const unidades = await Promise.all(
       participaciones.map(async (part) => {
-        const pend = await alquilerCobradoSinRendirDePropiedad(part.propiedad.id, prisma, p.inmobiliariaId);
+        // T-52 — `soloRendible`: lo que el dueño cobró DIRECTO en su cuenta (contratos
+        // PROPIETARIO_DIRECTO) no lo rinde nadie, así que mostrarlo como "todavía sin rendirte"
+        // le dice que la inmobiliaria le retiene plata que él ya tiene, y no hay ninguna acción
+        // que baje ese número a cero.
+        const pend = await alquilerCobradoSinRendirDePropiedad(part.propiedad.id, prisma, p.inmobiliariaId, { soloRendible: true });
         const porMoneda = new Map<string, { total: number; periodos: typeof pend.periodos }>();
         for (const per of pend.periodos) {
           const corte = porMoneda.get(per.moneda) ?? { total: 0, periodos: [] };

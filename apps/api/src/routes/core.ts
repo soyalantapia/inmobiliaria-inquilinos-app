@@ -683,7 +683,14 @@ export async function coreRoutes(app: FastifyInstance) {
     // dueños. Un deadlock es peor que el riesgo que este guard evita.
     const yaTieneDuenios = await prisma.participacionPropietario.count({ where: { propiedadId: id } });
     const sinRendirPropiedad = yaTieneDuenios > 0
-      ? await alquilerCobradoSinRendirDePropiedad(id)
+      // T-52 — `soloRendible`: en un contrato PROPIETARIO_DIRECTO la plata la cobró el dueño en
+      // su propia cuenta y la rendición lo excluye, así que ese cobro NUNCA se va a poder
+      // rendir. Sin el filtro, esta propiedad quedaba con el reparto trabado en 409 para
+      // siempre, aconsejando "rendíselo a los dueños de hoy" — algo que el sistema no puede
+      // hacer. Y cambiar el reparto de plata que ya cobró el dueño no pone en riesgo ninguna
+      // rendición, que es lo que este guard protege.
+      // Se pasa además el tenant, que hasta acá salía implícito de la query de arriba.
+      ? await alquilerCobradoSinRendirDePropiedad(id, prisma, u.inmobiliariaId, { soloRendible: true })
       : { total: 0, periodos: [] };
     if (sinRendirPropiedad.total > 0) {
       const detalle = sinRendirPropiedad.periodos.map((p) => `${p.periodo} ($${p.monto.toLocaleString('es-AR')})`).join(', ');
