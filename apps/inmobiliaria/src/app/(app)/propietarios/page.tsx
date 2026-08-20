@@ -68,7 +68,7 @@ function apiRendicionALocal(r: RendicionApi): Rendicion {
     // no daba el "A transferirte", sin ninguna línea que explicara la diferencia.
     totalIngresos: r.totalIngresos != null ? Number(r.totalIngresos) : undefined,
     montoNeto: Number(r.montoNeto),
-    rendidoAt: r.createdAt ?? `${r.periodo}-01`,
+    rendidoAt: r.rendidoAt,
     metodo: r.metodo,
     notas: r.notas,
   };

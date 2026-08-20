@@ -78,7 +78,7 @@ export function HistorialPropietarioDialog({
           comisionPct: r.comisionPct,
           totalGastos: Number(r.totalGastos),
           montoNeto: Number(r.montoNeto),
-          rendidoAt: r.createdAt ?? `${r.periodo}-01`,
+          rendidoAt: r.rendidoAt,
           metodo: r.metodo,
           notas: r.notas,
         }));

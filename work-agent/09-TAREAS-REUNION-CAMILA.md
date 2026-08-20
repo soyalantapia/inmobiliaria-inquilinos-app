@@ -3652,11 +3652,15 @@ Archivos que hoy no corre nadie:
 | `apps/inquilino/src/lib/saldo-liquidacion.test.ts` | T-45 |
 | `apps/propietario/src/lib/demo-data.test.ts` | T-46 |
 | `apps/propietario/src/lib/format.test.ts` | T-46 |
+| `apps/inmobiliaria/src/lib/alquiler-cobrado.test.ts` | T-01-N1-N5 |
 
 **Al cerrar T-32 hay que borrar la línea `exclude` de los `*.test.ts` en los tsconfig de
-`apps/inquilino` Y `apps/propietario`** — las dos la tienen, con el aviso puesto. Si se cierra
-T-32 sin sacarlas, el runner existe y estos cuatro archivos siguen sin tipar ni correr, que es
-el peor de los dos mundos.
+`apps/inquilino`, `apps/propietario` Y `apps/inmobiliaria`** — las TRES la tienen, con el aviso
+puesto. Si se cierra T-32 sin sacarlas, el runner existe y estos archivos siguen sin tipar ni
+correr, que es el peor de los dos mundos.
+
+> La del panel se agregó en **T-01-N1-N5**, por el mismo motivo que las otras dos: sin ella, el
+> primer `*.test.ts` del paquete rompe `pnpm typecheck`, porque `vitest` no es dependencia suya.
 
 ---
 
@@ -3767,3 +3771,37 @@ done
 ```
 
 **Criterio de aceptación.** Que enterarse deje de depender de que a alguien se le ocurra mirar.
+
+---
+
+### T-01-N1-N5 · El panel muestra números de rendición que no son los de la rendición — ✅ HECHA
+**Experto:** FE-P · **Prioridad:** 🟠 · **Detectada en:** barrido adversarial (T-01-N1)
+
+> **Estado: ✅ hecha.** Ver `work-agent/tareas/T-01-N1-N5/REQUISITOS.md`.
+
+Dos hallazgos que el barrido marcó como deuda vieja —no eran regresiones del merge— y quedaron
+sin registrar. Revalidados hoy contra el código: seguían.
+
+**1. La plata.** El KPI del dashboard prorrateaba la porción de alquiler cobrado contra
+`l.montoTotal`, con el comentario *"el cap deja afuera la mora"*. No la deja: ese `montoTotal`
+viene decorado por `conSaldo` con el punitorio al día, y el tipo del propio panel lo dice tres
+líneas más arriba. El server prorratea contra la base de la fila, sin mora.
+
+| caso | server (lo que se rinde) | panel (lo que mostraba) |
+|---|---|---|
+| pago total sin mora | 100,00 | 100,00 |
+| pago **parcial** en mora | 50,00 | **45,45** |
+| con expensas y mora | 100,00 | **90,91** |
+
+Coincidían mientras no hubiera atrasos, que es por qué duró. Con mora, el panel le mostraba a
+la inmobiliaria **menos alquiler cobrado del que la rendición le iba a pagar al propietario**.
+
+**2. La fecha.** `RendicionApi` declaraba `createdAt?: string`, un campo que el modelo
+`Rendicion` **no tiene** — el API devuelve la fila cruda de Prisma, que trae `rendidoAt`. Como
+llegaba siempre `undefined`, las dos pantallas caían al fallback `${periodo}-01`: una rendición
+de julio hecha el 12 de agosto se mostraba como **1 de julio**. Es el dato con el que alguien
+contesta *"¿cuándo le pagaste a Silvana?"*.
+
+**Verificado:** 10 tests que comparan contra la fórmula del server (2 rojos al anular el cap);
+la fecha la agarra `tsc` con dos TS2339; `tsc` 0 en los cinco paquetes; 391 tests verdes.
+**No verificado:** no se probó en el navegador.
