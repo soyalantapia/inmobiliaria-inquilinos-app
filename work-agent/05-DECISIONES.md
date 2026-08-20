@@ -92,6 +92,6 @@ cargo), inquilino/depósito van por cargo (no entran a la rendición).
 ## Tenant real (datos canónicos)
 
 - Inmobiliaria: **Tapia Propiedades**.
-- Admin: `alannaimtapia@gmail.com` / `Tapia.2026!` (el **PIN se eliminó** — ver decisión 7).
+- Admin: `alannaimtapia@gmail.com` — la contraseña **no va en el repo**: la tiene el dueño. Ver §Credenciales en `work-agent/00-ESTADO.md`. (el **PIN se eliminó** — ver decisión 7).
 - (Datos de ejemplo cargados durante el desarrollo: propiedad Av. Santa Fe 4922 5°A;
   inquilino Martín Gómez. Verificar contra la DB de prod antes de asumir que siguen.)

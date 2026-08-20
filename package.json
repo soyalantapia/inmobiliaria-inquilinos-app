@@ -2,7 +2,7 @@
   "name": "my-alquiler",
   "version": "0.0.1",
   "private": true,
-  "description": "My Alquiler — plataforma inmobiliaria (alquiler + expensas + chat IA + screening)",
+  "description": "My Alquiler — gestión de alquileres para inmobiliarias: cobranza, expensas, mora, rendición al propietario y caja",
   "packageManager": "pnpm@10.28.2",
   "engines": {
     "node": ">=20"

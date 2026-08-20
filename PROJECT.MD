@@ -39,7 +39,7 @@ sistema está diseñado multi-tenant desde el día 0: cada fila está scopeada p
 | **PWA inquilino** | https://app.myalquiler.com |
 | **API** | https://api-production-262e.up.railway.app (`GET /health` → `{ok, db, ts}`) |
 
-Tenant real: **Tapia Propiedades**. Admin: `alannaimtapia@gmail.com` / `Tapia.2026!` (el **PIN de seguridad se eliminó** el 05/07 — ninguna acción lo pide; ver `CHANGELOG.md` y `work-agent/05-DECISIONES.md` §7).
+Tenant real: **Tapia Propiedades**. Admin: `alannaimtapia@gmail.com` — la contraseña **no va en el repo**: la tiene el dueño. Ver §Credenciales en `work-agent/00-ESTADO.md`. (el **PIN de seguridad se eliminó** el 05/07 — ninguna acción lo pide; ver `CHANGELOG.md` y `work-agent/05-DECISIONES.md` §7).
 
 ---
 

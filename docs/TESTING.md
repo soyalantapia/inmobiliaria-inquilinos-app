@@ -277,6 +277,7 @@ antes y después no protege nada.
 Cuando el dato que necesitás no está en el seed, sembralo vos en `beforeAll` con un **prefijo de id** propio y limpialo en `afterAll`. Modelo: `apps/api/test/rendicion-multiowner.test.ts`.
 
 ```ts
+import { borrarContratosDeTest } from '../prisma/borrar-contratos-de-test.js';
 const P = 'mo_';  // prefijo para identificar y limpiar tus fixtures
 const prisma = new PrismaClient();
 
@@ -285,7 +286,8 @@ async function limpiar() {
   await prisma.gastoRendido.deleteMany({ where: { refId: `${P}gasto` } });
   await prisma.rendicion.deleteMany({ where: { propietarioId: { in: [`${P}ownA`, `${P}ownB`] } } });
   await prisma.movimientoCaja.deleteMany({ where: { id: `${P}gasto` } });
-  await prisma.contrato.deleteMany({ where: { id: `${P}cnt` } });
+  // El contrato NO se borra a mano: le cuelgan 33 modelos y ninguno cascadea.
+  await borrarContratosDeTest(prisma, [`${P}cnt`]);
   await prisma.participacionPropietario.deleteMany({ where: { propiedadId: `${P}prop` } });
   await prisma.propietario.deleteMany({ where: { id: { in: [`${P}ownA`, `${P}ownB`] } } });
   await prisma.propiedad.deleteMany({ where: { id: `${P}prop` } });
@@ -303,6 +305,12 @@ Reglas:
 
 - **Siempre seteá `inmobiliariaId`** (= el que devuelve `seedBase`). Todo es multi-tenant; sin el tenant correcto los guards y los joins no ven el dato.
 - **`limpiar()` se llama dos veces**: al principio (por si una corrida anterior abortó) y al final.
+- **Nunca borres un `Contrato` a mano.** Usá `borrarContratosDeTest(prisma, ids)` de
+  `apps/api/prisma/borrar-contratos-de-test.ts`: al contrato le cuelgan 22 hijos y 10 nietos y
+  **ninguna FK cascadea**, así que un `contrato.deleteMany` pelado muere con `P2003` en cuanto
+  el alta escriba un hijo que tu teardown no conoce. Ya pasó dos veces —`multi-alquiler` y
+  `limpiar-test-db`— y las dos el rojo salió lejos de la causa (T-28-N3). El helper NO borra
+  propiedades, personas ni propietarios: eso sigue siendo tuyo.
 - **Ids con prefijo** (`mo_prop`, `mo_ownA`…) para no chocar con los ids del seed ni con otras suites (recordá: comparten DB).
 
 Campos requeridos de los modelos clave (mínimos para crear, según los fixtures reales):

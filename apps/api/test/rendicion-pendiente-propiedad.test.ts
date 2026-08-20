@@ -15,7 +15,7 @@
  * plata que sí rinde.
  */
 import { describe, it, expect } from 'vitest';
-import { calcularPendienteSinRendir, type LiquidacionParaPendiente } from '../src/lib/rendicion-pendiente';
+import { calcularPendienteSinRendir, type LiquidacionParaPendiente } from '../src/lib/rendicion-pendiente.js';
 
 const liq = (
   id: string,
