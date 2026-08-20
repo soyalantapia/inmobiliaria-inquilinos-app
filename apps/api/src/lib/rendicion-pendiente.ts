@@ -94,10 +94,13 @@ export function calcularPendienteSinRendir(
    */
   porDuenio?: { porcentaje: number; rendidoMioPorLiq: Map<string, number> },
 ): { total: number; periodos: PeriodoSinRendir[] } {
-  // OJO con `total`: suma TODOS los períodos, sin mirar la moneda. Sirve para lo que lo usa
-  // core.ts —"¿hay algo cobrado y sin rendir, sí o no?", un umbral— y NO sirve para mostrarlo.
-  // Sumar pesos con dólares no cambia un cero por un no-cero, así que el guard sigue siendo
-  // correcto; una pantalla que imprima ese número, no. Para mostrar, agrupá por `moneda`.
+  // OJO con `total`: suma TODOS los períodos, sin mirar la moneda. Como UMBRAL está bien
+  // —sumar pesos con dólares no convierte un cero en un no-cero, así que el "¿hay algo sin
+  // rendir?" de core.ts sigue siendo correcto—, pero NO se puede mostrar.
+  //
+  // Y ojo con creer que core.ts sólo lo usa de umbral: `PUT /propiedades/:id/participaciones`
+  // arma con `periodos[]` el detalle del 409 que ve el operador. Ahí lo que se muestra es cada
+  // período por separado, con SU moneda, no este total. Para mostrar, agrupá por `moneda`.
   const periodos: PeriodoSinRendir[] = [];
   let total = 0;
   for (const l of liqs) {

@@ -1786,7 +1786,60 @@ antes de dar el tema por cerrado.
 
 ---
 
-## T-23-N4-N1 · El inquilino titular y la persona no son revocables de ninguna forma
+## T-23-N4-N1 · El inquilino titular y la persona no son revocables de ninguna forma — ✅ CERRADA 20/08
+
+> ## ✅ Los tres agujeros YA estaban tapados. Esta ficha quedó vieja.
+>
+> Verificado contra el código el 20/08, punto por punto:
+>
+> - **`requireInquilino`** ya no devuelve el payload crudo: llama a `inquilinoRevocado`, que
+>   consulta la base, con la decisión separada en `motivoRevocacionInquilino` (pura y testeada).
+> - **La rama `inquilino` de `requireContratoAcceso`** llama al mismo helper. El comentario lo
+>   dice: *"cuando la revalidación vivía en una sola, la otra quedaba abierta"*.
+> - **`requirePersona`** revalida el email contra `Inquilino` (y el comentario explica por qué
+>   contra `Inquilino` y no contra `Persona`, que fue un bug real).
+>
+> **El cuarto punto también era falso positivo.** La ficha decía que `operacion.ts` no gatea
+> nunca pese a que el docstring se atribuye "abrir reclamo": `POST /mis-reclamos` **sí** controla
+> el estado, sólo que **inline** —mismo 409, mismo mensaje— y encima distingue el 404 cuando el
+> contrato no existe, cosa que el helper colapsa. Un grep de `exigirContratoActivo` lo daba por
+> faltante.
+>
+> **Lo que sí salió del barrido, y es lo que se entregó:** la superficie **no se puede auditar a
+> mano**. Se barrió tres veces —a mano (12 endpoints, se comió 3 archivos), con agentes en
+> paralelo (12, se comió 2), parseando de verdad (**17**)—. Los que se escapan son invisibles a
+> un grep: `anuncios.ts` registra en un **loop** con la ruta en template literal, `uploads.ts` usa
+> un **guard local propio**, y `POST /reportes` usa `requireAuth` pelado, que acepta tokens de
+> inquilino.
+>
+> Entregable: **`test/inquilino-escrituras-declaradas.test.ts`**, un registro de decisiones
+> ejecutable — toda escritura del inquilino tiene que estar declarada como GATEADA o EXENTA con
+> el motivo, y una nueva falla el test hasta que alguien decide. Hoy: 17 escrituras, 8 gateadas,
+> 9 exentas, ninguna es un hueco. Mutación 3/3. Detalle en `work-agent/tareas/T-23-N4-N1/`.
+
+---
+
+## T-23-N4-N1-N1 · `POST /uploads` no tiene cuota: un token vivo puede llenar el Volume
+
+**Experto:** SEC + OPS · **Prioridad:** 🟡 · **Depende de:** nada
+**Origen:** T-23-N4-N1, barrido de escrituras del inquilino.
+
+`POST /uploads` (`routes/uploads.ts:272`) acepta **cualquier token autenticado** —usuario del
+panel, inquilino, co-inquilino, y el profesional por link mágico— y escribe en el Volume de
+Railway, bajo el directorio del tenant. Límite de 10 MB por archivo y tipos restringidos, pero
+**sin cuota por usuario, sin límite de cantidad y sin rate limit**.
+
+El token de un inquilino dura **15 días**, así que alguien cuyo contrato ya terminó puede seguir
+subiendo archivos durante dos semanas. Y el propio handler ya contempla que el disco se llene:
+devuelve **507** con *"el servidor se quedó sin espacio"*.
+
+**Ojo con el arreglo fácil, que es el equivocado.** Gatearlo con `exigirContratoActivo` rompe el
+caso legítimo: `POST /mis-documentos` permite a propósito subir documentación propia después de
+finalizado el contrato, porque `Documento` cuelga de `inquilinoId`, no de `contratoId`. El
+problema no es el estado del contrato, es que **no hay cuota**.
+
+**Qué mirar:** cantidad de archivos por usuario en una ventana, o bytes acumulados por tenant, o
+rate limit por token — no el estado del contrato.
 
 **Experto:** BE + SEC · **Prioridad:** 🔴 · **Depende de:** nada
 **Origen:** relevamiento de T-23-N4. No salió de la reunión.
@@ -2176,6 +2229,34 @@ inquilino queda **sin poder entrar a la app para siempre** —el acceso es por O
 
 **Verificado en navegador:** el lápiz aparece, el 409 de duplicado se muestra con su mensaje
 real y deja el diálogo abierto para corregir, y el camino feliz guarda y refresca la ficha.
+
+---
+
+## T-54 · Una condonación parcial le decía al dueño que le perdonaron el mes entero — ✅ RESUELTO
+
+**Experto:** FE · **Prioridad:** 🟢
+**Origen:** revisión de seguridad del portal (19/08). Último de los seis confirmados.
+
+**El caso.** El inquilino paga el alquiler tarde y queda debiendo la mora. La inmobiliaria usa
+**Saldar deuda → Condonar**, que crea un pago condonado por el **remanente** — o sea, sólo el
+punitorio. El dueño abría Unidades y ese mes figuraba **"la inmobiliaria la condonó"**, sin
+fecha de cobro, cuando el alquiler entró completo y se lo van a depositar. Lo mismo si el
+inquilino pagó $70 de $100.
+
+**Por qué estaba así.** El renglón ya trataba la condonación como excluyente, y con buen motivo:
+una cuota perdonada figura PAGADO en la liquidación, así que sin eso el dueño veía un badge
+**verde** por plata que nunca le iba a llegar. La intención era correcta; le faltaba el caso
+del medio.
+
+**Qué se hizo.** `pagoAt` distingue los dos: condonación **+ fecha de pago real** = fue parcial.
+Ahora dice las dos mitades —*"pagó el 11/08 · el resto se condonó"*— con el badge
+**"condonada en parte"** en neutro, no en verde: cobró algo, pero parte de esa cuota no se le
+rinde. Así no cae en ninguna de las dos mentiras.
+
+El criterio se extrajo a `estadoVisualPeriodo`, una función pura exportada, para que viva en un
+solo lugar y se pueda testear — el estilo que ya usa `diasHasta` en ese mismo archivo.
+
+**Tests:** 3 casos nuevos en `portal-piezas.test.ts` (total, parcial y sin condonación).
 
 ---
 

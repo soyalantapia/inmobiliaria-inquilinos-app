@@ -25,18 +25,24 @@ async function limpiar() {
   await prisma.pago.deleteMany({ where: { liquidacionId: { in: ids } } });
   await prisma.liquidacion.deleteMany({ where: { id: { in: ids } } });
 
-  // Y TODA otra liquidación de cnt_004, que este test no creó.
+  // Y las liquidaciones que el DEVENGO le fue agregando a cnt_004, que este test no creó.
   //
-  // El test afirma una cuenta exacta: "la deuda exigible es 40.000 + 30.000 = 70.000".
-  // Eso sólo es cierto si el contrato no tiene NADA más, y en la base compartida sí tiene:
-  // el devengo corre solo, en proceso, cada 6 horas (`CRON_DEVENGO`), así que cualquier API
-  // apuntada a esta base le va agregando períodos a los contratos del seed. Con dos de más,
-  // `depositoAplicadoADeuda` dio 100.000 (el depósito entero) en vez de 70.000, y el rojo se
-  // lee como "el cálculo del depósito se rompió" cuando lo que cambió fue el escenario.
+  // El test afirma una cuenta exacta: "la deuda exigible es 40.000 + 30.000 = 70.000". Eso
+  // sólo es cierto si el contrato no tiene nada más exigible, y en la base compartida sí
+  // tiene: el devengo corre solo, en proceso, cada 6 horas (`CRON_DEVENGO`), así que
+  // cualquier API apuntada a esta base le va agregando períodos a los contratos del seed.
+  // Con dos de más, `depositoAplicadoADeuda` dio 100.000 (el depósito entero) en vez de
+  // 70.000, y el rojo se lee como "se rompió el cálculo del depósito".
   //
-  // Se borra por contrato y no por lista de ids porque lo que sobra no tiene ids conocidos.
+  // ⚠️ SE EXCLUYE EL SEED (`liq_*`) A PROPÓSITO. Una versión anterior de esta limpieza
+  // borraba TODA otra liquidación de cnt_004, y ahí adentro estaban `liq_004` y su pago
+  // `pag_liq004`, que son del seed y que usan otros cinco archivos de test
+  // (deposito-cap-disponible, operacion, pago-tipo-parcial, plata, rescindir-contrato).
+  // `seedBase` los reponía por upsert en la corrida siguiente, así que el daño era
+  // intermitente — que es la peor forma de romper algo. Y no hacía falta: `liq_004` está
+  // PAGADO, o sea que no suma deuda exigible y nunca fue el problema.
   const otras = await prisma.liquidacion.findMany({
-    where: { contratoId: CID, id: { notIn: ids } },
+    where: { contratoId: CID, id: { notIn: ids }, NOT: { id: { startsWith: 'liq_' } } },
     select: { id: true },
   });
   if (otras.length) {
