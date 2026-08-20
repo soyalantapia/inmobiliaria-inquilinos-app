@@ -2128,6 +2128,30 @@ real y deja el diálogo abierto para corregir, y el camino feliz guarda y refres
 
 ---
 
+## T-50 · La pestaña Comunicaciones decía que no había ninguna — ✅ RESUELTO
+
+**Experto:** FE-P · **Prioridad:** 🟠
+**Origen:** evaluación de Camila (19/08).
+
+Se registraba un mensaje, el toast decía *"quedó anotado en el historial del contrato"*, y la
+pestaña de al lado seguía diciendo **"No hay comunicaciones registradas con este inquilino"**.
+Camila: *"Dos verdades en la misma ficha. Si algún día tengo que discutir algo, ¿cuál muestro?"*
+
+**El dato ya estaba.** `POST /contratos/:id/comunicaciones` las guarda como `EventoContrato` con
+`tipo: 'COMUNICACION_ENVIADA'` (`core.ts:2502`) y `GET /contratos/:id/eventos` las devuelve — de
+hecho ya se veían en el **Historial**. Lo que fallaba era el mapper del detalle, que en prod
+dejaba `comunicaciones: []` hardcodeado. Ahora la pestaña las deriva de esos eventos.
+
+**Un error propio, y por qué importa.** La primera versión usaba `useMemo`, y esa línea vive
+**después** de los early-returns del componente: React tiró *"Rendered more hooks than during the
+previous render"* y **se cayó la ficha entera**. `tsc` pasó igual — sólo lo atrapó abrir la
+pantalla. Se resolvió derivando la lista sin hook (son pocos elementos y no necesita memo).
+
+**Verificado en navegador:** la pestaña pasa a "Comunicaciones **2**" y muestra asunto, cuerpo,
+fecha y autor de cada una.
+
+---
+
 ## T-49 · El cartel prometía WhatsApp y no llega nada — ✅ RESUELTO
 
 **Experto:** FE-P · **Prioridad:** 🟠
