@@ -2232,6 +2232,35 @@ real y deja el diálogo abierto para corregir, y el camino feliz guarda y refres
 
 ---
 
+## T-55 · Un doble click al saldar un cargo lo cobraba dos veces — ✅ RESUELTO
+
+**Experto:** BE · **Prioridad:** 🟠 · **Toca plata**
+**Origen:** revisión adversarial del motor de cobranza (20/08).
+
+**El agujero.** `POST /cargos/:id/saldar` hacía **check-then-act**: leía el cargo con un
+`findFirst` **fuera** de la transacción, chequeaba `if (!cargo.saldadoAt)` y recién adentro
+hacía el `update` — **sin condicionarlo**. Dos requests concurrentes (alcanza un doble click, o
+dos operadoras) pasaban los dos el chequeo y **creaban dos `INGRESO_EXTRA` por una sola
+cobranza**.
+
+**Y no se queda en la caja.** El propio comentario del handler lo advierte: la rendición levanta
+esos `INGRESO_EXTRA` con `descontadoEnRendicion: false` y **se los acredita al propietario**. O
+sea que el dueño cobraba dos veces el mismo cargo. Ese comentario incluso dice, sobre el inverso:
+*"Que no lo hiciera costaba dos ingresos por una sola cobranza"* — el mismo riesgo seguía vivo
+por esta otra vía.
+
+**Qué se hizo.** `updateMany` condicionado a `saldadoAt: null` (más el tenant) dentro de la
+transacción: el segundo request no matchea ninguna fila, sale con `count === 0` y **no llega a
+crear el movimiento**. Es el mismo patrón que ya usan validar, rechazar y anular en ese archivo.
+El que pierde la carrera tampoco registra el evento de auditoría: dos eventos por una cobranza
+ensucian el historial igual que dos ingresos la caja.
+
+**Cómo se encontró.** Comparando qué endpoints del ciclo de plata tienen el patrón
+`updateMany + count === 0` y cuáles no. `validar`, `rechazar` y `anular` lo tienen; `saldar` era
+el que faltaba.
+
+---
+
 ## T-54 · Una condonación parcial le decía al dueño que le perdonaron el mes entero — ✅ RESUELTO
 
 **Experto:** FE · **Prioridad:** 🟢
