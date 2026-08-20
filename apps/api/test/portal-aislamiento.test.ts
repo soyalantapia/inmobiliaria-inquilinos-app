@@ -155,26 +155,34 @@ describe('aislamiento del portal del propietario (T-23-N1)', () => {
   /**
    * El agujero que este guard NO puede ver solo.
    *
-   * `/portal/pendiente` no hace la cuenta acá: la delega en
-   * `alquilerCobradoSinRendirDePropiedad`, que vive en `src/lib/rendicion-pendiente.ts`. Este
-   * test lee UN archivo, así que las queries de ese helper le son invisibles: filtran por
-   * `propiedadId`, y el que la propiedad sea del tenant correcto salía de que los ids venían de
-   * una query ya scopeada. O sea, la garantía vivía en una cadena de razonamientos entre dos
+   * `/portal/pendiente` no hace la cuenta acá: la delega en `rendicion-pendiente.ts`. Este
+   * test lee UN archivo, así que las queries de ese helper le son invisibles. Sin el tenant
+   * explícito, la garantía de este endpoint vivía en una cadena de razonamientos entre dos
    * archivos en vez de estar escrita en la query — exactamente lo que el mensaje de error de
    * arriba dice que no hay que aceptar.
    *
-   * Se le pasa el `inmobiliariaId` explícito, y esto lo fija. Si alguien lo saca, rojo.
+   * Se exige también el `propietarioId`, que es el otro dato sin el cual el número está mal:
+   * sin él la cuenta devuelve el remanente de la UNIDAD y no la parte de ESTE dueño, que a
+   * dos dueños les miente a los dos (ver test/pendiente-por-duenio.test.ts).
+   *
+   * Se busca por CAMPOS y no con un regex sobre la llamada: la llamada es un objeto en
+   * varias líneas, y cualquier patrón del tipo `funcion\([^)]*\)` se rompe en falso apenas
+   * un argumento lleva un paréntesis o un salto de línea.
    */
-  it('/portal/pendiente le pasa el tenant al helper que hace la cuenta', () => {
-    const handler = fuente.slice(fuente.indexOf("app.get('/portal/pendiente'"));
-    const hasta = handler.indexOf("app.get('", 10);
-    const cuerpo = hasta > 0 ? handler.slice(0, hasta) : handler;
-    expect(cuerpo).toContain('alquilerCobradoSinRendirDePropiedad(');
-    expect(
-      /alquilerCobradoSinRendirDePropiedad\([^)]*p\.inmobiliariaId/.test(cuerpo),
-      'El helper de "cobrado y sin rendir" se llama sin el inmobiliariaId del token. Sus ' +
-        'queries filtran por propiedadId y este guard NO las ve: viven en otro archivo.',
-    ).toBe(true);
+  it('/portal/pendiente le pasa el tenant Y el propietario al helper que hace la cuenta', () => {
+    const desde = fuente.indexOf("app.get('/portal/pendiente'");
+    expect(desde, 'desapareció el handler /portal/pendiente').toBeGreaterThan(-1);
+    const resto = fuente.slice(desde + 10);
+    const hasta = resto.indexOf("app.get('");
+    const cuerpo = hasta > 0 ? resto.slice(0, hasta) : resto;
+
+    for (const campo of ['inmobiliariaId: p.inmobiliariaId', 'propietarioId: p.propietarioId']) {
+      expect(
+        cuerpo.includes(campo),
+        `/portal/pendiente dejó de pasar \`${campo}\` al helper de "cobrado y sin rendir". ` +
+          'Ese helper vive en otro archivo y este guard NO ve sus queries.',
+      ).toBe(true);
+    }
   });
 
   it('las rendiciones por id se buscan por id + propietario + tenant, los tres', () => {

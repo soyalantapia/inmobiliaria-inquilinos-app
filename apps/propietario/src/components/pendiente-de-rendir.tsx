@@ -14,11 +14,15 @@ import { apiFetch, type PendientePortal } from '@/lib/api';
  * del dueño: *"¿ya me mandaste lo de agosto?"*. La cuenta existía hace rato en el backend y el
  * portal no la mostraba.
  *
- * EL NÚMERO ES EL DE LA UNIDAD, NO UN NETO ESTIMADO, y el texto lo dice: de ahí todavía se
- * descuenta la comisión y los gastos. Anticipar el neto exigiría replicar la aritmética de la
- * rendición con sus dos caps, y un número que no coincida con el depósito real sería peor que
- * no mostrar ninguno — sobre todo en la pantalla que el dueño abre para controlar a su
- * inmobiliaria.
+ * EL NÚMERO ES LA PARTE DE ESTE DUEÑO, YA PRORRATEADA, y NO es el neto: de ahí todavía se
+ * descuentan la comisión y los gastos, y el texto lo dice.
+ *
+ * Antes era el remanente de la UNIDAD, con un "te corresponde el X%" al lado. Con un solo
+ * dueño daba igual; con dos les mentía a los dos, porque apenas se le rinde a uno el remanente
+ * deja de ser proporcional y pasa a ser íntegramente del otro. Ahora la cuenta la hace el
+ * server replicando la aritmética de POST /rendiciones —doble cap incluido—, que es la única
+ * forma de que el número no contradiga al depósito real en la pantalla que el dueño abre
+ * justamente para controlar a su inmobiliaria.
  */
 export function PendienteDeRendir() {
   const pend = useQuery({
@@ -50,9 +54,15 @@ export function PendienteDeRendir() {
             <p className="text-xs text-muted-foreground">
               {u.periodos.map((p) => periodoLargo(p.periodo).toLowerCase()).join(' · ')}
             </p>
+            {/* El monto ya es LA PARTE DE ESTE DUEÑO, no el total de la unidad: el server
+                aplica su porcentaje y le resta lo que ya se le rindió a él. Por eso acá no va
+                ningún "te corresponde el X%": ese texto invitaba a multiplicar de nuevo, sobre
+                una base que además dejaba de ser proporcional apenas se le rendía a otro dueño.
+                Lo que sí falta descontar es la comisión y los gastos, y eso se dice. */}
             <p className="text-xs text-muted-foreground">
-              Es el alquiler cobrado de la unidad. De ahí se descuentan la comisión y los gastos
-              {u.participacionPct < 100 && `, y te corresponde el ${u.participacionPct}%`}.
+              Es tu parte del alquiler ya cobrado
+              {u.participacionPct < 100 && ` (el ${u.participacionPct}% de esta unidad, ya aplicado)`}.
+              De ahí todavía se descuentan la comisión y los gastos.
             </p>
           </Card>
         ))}

@@ -15,7 +15,7 @@
  * (T-32). Los casos se verificaron a mano con node en el huso de esta máquina.
  */
 import { describe, it, expect } from 'vitest';
-import { cuit, etiqueta, fecha } from './format';
+import { cuit, etiqueta, fecha, money } from './format';
 
 describe('T-46 · fecha() no corre los date-only al día anterior', () => {
   it('un vencimiento date-only se muestra en su propio día', () => {
@@ -86,5 +86,20 @@ describe('etiqueta', () => {
   it('un valor que la API agregue mañana sale legible, no crudo ni vacío', () => {
     // El fallback importa: el portal no se redeploya cada vez que el back suma un estado.
     expect(etiqueta('ALGO_NUEVO_QUE_NO_EXISTE')).toBe('algo nuevo que no existe');
+  });
+})
+
+describe('money — centavos', () => {
+  it('con centavos van SIEMPRE los dos dígitos', () => {
+    // Antes salía "$ 4.500,5", que en una pantalla de plata se lee como cinco centavos.
+    expect(money(4500.5).replace(/\u00a0/g, ' ')).toBe('$ 4.500,50');
+  });
+
+  it('los enteros siguen sin decimales: es el 99% de los montos', () => {
+    expect(money(480000).replace(/\u00a0/g, ' ')).toBe('$ 480.000');
+  });
+
+  it('el símbolo distingue pesos de dólares', () => {
+    expect(money(900, 'USD')).toMatch(/US\$/);
   });
 })

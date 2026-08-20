@@ -6,7 +6,7 @@ import { OtpRequestSchema, OtpVerifySchema, type JwtPropietario } from '@llave/s
 import { prisma } from '../db.js';
 import { requirePropietario } from '../auth/guards.js';
 import { enviarOtp } from '../mailer.js';
-import { alquilerCobradoSinRendirDePropiedad } from '../lib/rendicion-pendiente.js';
+import { pendienteDeRendirAPropietario } from '../lib/rendicion-pendiente.js';
 
 /**
  * PORTAL DEL PROPIETARIO (T-23).
@@ -643,11 +643,24 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
     // número que no existe. Se corta por moneda y cada corte lleva la suya.
     const unidades = await Promise.all(
       participaciones.map(async (part) => {
-        // T-52 — `soloRendible`: lo que el dueño cobró DIRECTO en su cuenta (contratos
-        // PROPIETARIO_DIRECTO) no lo rinde nadie, así que mostrarlo como "todavía sin rendirte"
-        // le dice que la inmobiliaria le retiene plata que él ya tiene, y no hay ninguna acción
-        // que baje ese número a cero.
-        const pend = await alquilerCobradoSinRendirDePropiedad(part.propiedad.id, prisma, p.inmobiliariaId, { soloRendible: true });
+        // El número es lo que le falta a ESTE dueño, no lo que le falta a la unidad.
+        //
+        // Con un solo dueño al 100% da lo mismo, y por eso el bug tardó en verse. Con dos, el
+        // remanente de la unidad deja de ser proporcional apenas se le rinde a uno: rendido A
+        // (60%) de una liquidación de 100.000, los 40.000 que quedan son ÍNTEGRAMENTE de B.
+        // Mostrar esos 40.000 a los dos, con el rótulo "te corresponde el X%", le miente a
+        // ambos a la vez: de más al que ya cobró y de MENOS al que falta.
+        //
+        // `pendienteDeRendirAPropietario` replica la aritmética de POST /rendiciones al pie de
+        // la letra —doble cap incluido— y acota a `modoCobranza: 'INMOBILIARIA'`, que es el
+        // mismo universo que rinde. Lo segundo es lo que T-52 arregló acá con `soloRendible`;
+        // ahora vive adentro de la función, porque para el portal nunca es opcional.
+        const pend = await pendienteDeRendirAPropietario({
+          propiedadId: part.propiedad.id,
+          propietarioId: p.propietarioId,
+          porcentaje: part.porcentaje,
+          inmobiliariaId: p.inmobiliariaId,
+        });
         const porMoneda = new Map<string, { total: number; periodos: typeof pend.periodos }>();
         for (const per of pend.periodos) {
           const corte = porMoneda.get(per.moneda) ?? { total: 0, periodos: [] };

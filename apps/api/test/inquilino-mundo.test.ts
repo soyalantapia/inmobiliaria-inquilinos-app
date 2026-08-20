@@ -7,6 +7,7 @@ import { seedInquilinoMundo } from '../prisma/seeds/inquilinoMundo.js';
 
 let app: FastifyInstance;
 let tokenAdmin: string;
+let tid: string;
 let tokenCarga: string;
 let tokenMariela: string;
 
@@ -36,6 +37,7 @@ beforeAll(async () => {
   await seedBase(prisma);
   const inmo = await prisma.inmobiliaria.findFirst({ where: { nombre: 'Inmobiliaria del Sol' } });
   if (!inmo) throw new Error('seedBase no creó el tenant');
+  tid = inmo.id;
   await seedInquilinoMundo(prisma, inmo.id);
   await resetInquilinoMundo(prisma, inmo.id);
   await prisma.$disconnect();
@@ -136,9 +138,26 @@ describe('Screening — APAGADO hasta que haya una fuente real', () => {
   it('GET /screenings sigue listando lo YA guardado, scopeado al tenant', async () => {
     // La lectura no se apagó: las filas fabricadas que puedan existir hay que poder verlas
     // para decidir qué se hace con ellas. Lo que no se puede es crear más.
+    //
+    // Este test decía `expect(Array.isArray(res.json())).toBe(true)` y nada más, o sea que
+    // pasaba con `[]` —el endpoint apagado del todo— y también con la lista de OTRA
+    // inmobiliaria. Afirmaba en el título un scoping que no verificaba.
     const res = await app.inject({ method: 'GET', url: '/screenings', headers: auth(tokenAdmin) });
     expect(res.statusCode).toBe(200);
-    expect(Array.isArray(res.json())).toBe(true);
+    const lista = res.json() as { id: string; inmobiliariaId: string }[];
+
+    // 1. Lista de verdad: `scr_001` es del seed y tiene que estar.
+    expect(lista.map((s) => s.id)).toContain('scr_001');
+
+    // 2. Y sólo lo de este tenant. Las dos afirmaciones juntas: ninguna fila ajena, y
+    //    exactamente todas las propias (si devolviera de otra inmobiliaria, el count no da).
+    expect(lista.every((s) => s.inmobiliariaId === tid)).toBe(true);
+    const prisma = new PrismaClient();
+    try {
+      expect(lista.length).toBe(await prisma.screening.count({ where: { inmobiliariaId: tid } }));
+    } finally {
+      await prisma.$disconnect();
+    }
   });
 });
 
