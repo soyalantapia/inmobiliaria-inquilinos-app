@@ -28,31 +28,36 @@ deployados vía `railway up`, **exit 0** cada uno ("Deploy complete"). HEAD == `
 
 ## Cómo deployar
 
-> ### ✅ Corregido el 20/08: pushear a `main` SÍ deploya, solo, los tres servicios.
+> ## 🔴 CORRECCIÓN 20/08/2026 — esto estaba al revés, y es lo más importante de la página
 >
-> Lo de abajo decía lo contrario y hoy es falso. Verificado contra la API de Railway: el
-> servicio `myalquiler-back` tiene `Source repo: soyalantapia/inmobiliaria-inquilinos-app`, y el
-> push del merge `94d4000` (20/08 01:09 UTC) disparó **los tres** deploys a la misma hora, sin
-> que nadie corriera nada:
+> Decía que los servicios **no** estaban conectados a GitHub y que pushear a `main` **no**
+> deployaba. **Es falso.** Los tres servicios tienen
+> `Source repo: soyalantapia/inmobiliaria-inquilinos-app` (verificado contra la API de Railway,
+> `get_service_config`).
 >
-> | servicio | deployment | estado |
+> **Pushear a `main` deploya producción solo, sin pedir nada.** Se comprobó el 20/08: el push de
+> `94d4000` disparó los tres deploys a las 01:09:45 UTC —el mismo segundo, el mismo SHA— y con
+> ellos **trece migraciones**, una de las cuales borró datos de forma irreversible.
+>
+>
+> | servicio | deployment del 20/08 | estado |
 > |---|---|---|
 > | `myalquiler-back` | `1d6f9d4b` | SUCCESS |
 > | `myalquiler-front` | `7b75cfb7` | SUCCESS |
 > | `myalquiler-inquilino` | `8873507e` | SUCCESS |
 >
 > Y las migraciones tampoco se aplican a mano: el `CMD` del Dockerfile del back corre
-> `pnpm db:deploy && exec node dist/index.js`, así que corren antes de levantar y si fallan el
-> contenedor no arranca. En ese deploy se aplicaron las trece pendientes.
+> `pnpm db:deploy && exec node dist/index.js`, así que corren ANTES de levantar y si fallan el
+> contenedor no arranca. Por eso nunca puede quedar código nuevo contra un esquema viejo — y
+> por eso también el push se lleva las migraciones puestas sin preguntar.
 >
-> **Consecuencia práctica:** el riesgo ya no es olvidarse de deployar, es lo contrario —
-> **cualquier push a `main` sale a producción**. Eso es lo que hay que tener presente antes de
-> mergear, y es de lo que habla T-05 (congelar deploys durante las sesiones de prueba).
->
-> `railway up` sigue existiendo y sigue siendo válido para subir algo puntual sin pasar por
-> `main`; lo de abajo aplica a ese caso.
+> Consecuencia práctica: **`git push origin main` ES el deploy.** No es un paso previo seguro.
+> Todo lo que haya que revisar antes de tocar producción, hay que revisarlo antes del push, no
+> entre el push y un `railway up` que nunca va a hacer falta.
 
-### Subir algo sin pasar por `main` (`railway up`)
+El deploy normal es automático: **push a `main`**. Lo de abajo (`railway up`) sirve para forzar
+un deploy sin pasar por git — por ejemplo para probar el working tree — y hay que usarlo sabiendo
+lo que sube:
 
 ```bash
 railway up --service <svc> --detach        # back / front / inquilino — solo lo que tocaste

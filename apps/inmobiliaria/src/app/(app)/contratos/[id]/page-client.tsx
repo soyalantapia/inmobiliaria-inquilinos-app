@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { notFound, useParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
@@ -73,6 +73,7 @@ import { useServiciosPublicos } from '@/lib/api/use-servicios-publicos';
 import { TIPO_SERVICIO_LABEL } from '@/lib/servicios-publicos-storage';
 import {
   type CanalComunicacion,
+  type Comunicacion,
   type LiquidacionAdmin,
   type TipoEventoContrato,
 } from '@/lib/mock-data';
@@ -213,7 +214,41 @@ export default function DetalleContratoPage() {
   // tuviera el rastro. El hook ya cubre el modo demo (devuelve el mock), así que es la única
   // fuente.
   const eventosDelContrato = eventos;
-  const comunicaciones = detalle.comunicaciones;
+  // T-50 — En prod `detalle.comunicaciones` es `[]` hardcodeado (use-contrato.ts), así que la
+  // pestaña decía "No hay comunicaciones registradas" incluso justo después de registrar una,
+  // y el toast afirmaba lo contrario. Dos verdades en la misma ficha, que es lo que Camila
+  // marcó: *"si algún día tengo que discutir algo, ¿cuál muestro?"*.
+  //
+  // El dato ya estaba: `POST /contratos/:id/comunicaciones` las guarda como EventoContrato con
+  // `tipo: 'COMUNICACION_ENVIADA'` (core.ts:2502) y `GET /contratos/:id/eventos` las devuelve.
+  // Faltaba mirarlas. El título viene como "Canal · Asunto" desde el backend.
+  //
+  // Sin `useMemo` A PROPÓSITO: esta línea vive DESPUÉS de los early-returns de carga/404 del
+  // componente, así que un hook acá rompe el orden de hooks entre renders ("Rendered more hooks
+  // than during the previous render") y se cae la ficha entera. Es una lista de unos pocos
+  // elementos: derivarla en cada render no cuesta nada.
+  const comunicaciones = (() => {
+    if (!apiEnabled) return detalle.comunicaciones;
+    return eventos
+      .filter((e) => e.tipo === 'COMUNICACION_ENVIADA')
+      .map((e): Comunicacion => {
+        const [canalTxt, ...resto] = e.titulo.split(' · ');
+        const canal: CanalComunicacion =
+          canalTxt === 'WhatsApp' ? 'WHATSAPP' : canalTxt === 'Llamada' ? 'LLAMADA' : 'EMAIL';
+        return {
+          id: e.id,
+          contratoId: params.id,
+          canal,
+          // Siempre saliente: sólo se registra lo que manda la inmobiliaria.
+          direccion: 'SALIENTE',
+          asunto: resto.join(' · ') || e.titulo,
+          preview: e.detalle ?? '',
+          fecha: e.fecha,
+          autor: e.autor,
+          leida: true,
+        };
+      });
+  })();
 
   return (
     <>
