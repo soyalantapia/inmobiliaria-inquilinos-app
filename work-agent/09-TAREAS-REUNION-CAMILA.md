@@ -5288,3 +5288,7 @@ nadie estaba obligado a mirar.
 **required** en la branch protection de `main`. El comando exacto está en la hoja, junto con las
 tres cosas que hay que saber antes de apretar — sobre todo que **se acabaría el push directo a
 `main`**, que es como trabajan hoy todos los chats.
+
+**Corrección al dato de las cancelaciones:** escribí que `Revisión` "se cancela sola seguido" y
+lo medí después: **3 de las últimas 40 corridas en `main`, un 7,5%**. No es un obstáculo para
+volverlos required — alcanza con re-correr esa una.
