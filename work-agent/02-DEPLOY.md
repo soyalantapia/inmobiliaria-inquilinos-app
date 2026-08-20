@@ -28,8 +28,24 @@ deployados vía `railway up`, **exit 0** cada uno ("Deploy complete"). HEAD == `
 
 ## Cómo deployar
 
-⚠️ Los servicios **NO están conectados a GitHub** — pushear a `main` **NO** auto-deploya.
-Para desplegar:
+> ## 🔴 CORRECCIÓN 20/08/2026 — esto estaba al revés, y es lo más importante de la página
+>
+> Decía que los servicios **no** estaban conectados a GitHub y que pushear a `main` **no**
+> deployaba. **Es falso.** Los tres servicios tienen
+> `Source repo: soyalantapia/inmobiliaria-inquilinos-app` (verificado contra la API de Railway,
+> `get_service_config`).
+>
+> **Pushear a `main` deploya producción solo, sin pedir nada.** Se comprobó el 20/08: el push de
+> `94d4000` disparó los tres deploys a las 01:09:45 UTC —el mismo segundo, el mismo SHA— y con
+> ellos **trece migraciones**, una de las cuales borró datos de forma irreversible.
+>
+> Consecuencia práctica: **`git push origin main` ES el deploy.** No es un paso previo seguro.
+> Todo lo que haya que revisar antes de tocar producción, hay que revisarlo antes del push, no
+> entre el push y un `railway up` que nunca va a hacer falta.
+
+El deploy normal es automático: **push a `main`**. Lo de abajo (`railway up`) sirve para forzar
+un deploy sin pasar por git — por ejemplo para probar el working tree — y hay que usarlo sabiendo
+lo que sube:
 
 ```bash
 railway up --service <svc> --detach        # back / front / inquilino — solo lo que tocaste
