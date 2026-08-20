@@ -3645,7 +3645,23 @@ ahora porque la demo se ve. Ninguna de las dos le sirve al dueño de un departam
 
 ---
 
-## T-46-N2 · Los tests de los fronts siguen sin correr (y ya son cuatro archivos)
+## T-46-N2 · Los tests de los fronts siguen sin correr — ✅ HECHA
+
+**Estado: ✅ HECHA** — commit `1aecb47`. T-32 había montado el runner; faltaba la mitad de
+atrás, que era la peor.
+
+**Los tests corrían SIN tipar.** Los tres tsconfig seguían con `"exclude": [..., "*.test.ts"]` y
+su propio comentario "⚠️ Al cerrar T-32: borrar esta línea". Parecían cubiertos y no lo estaban.
+Al sacar las tres líneas aparecieron errores reales en dos archivos que nunca habían pasado por
+`tsc`: 12 accesos por índice sin chequear en `resumen-pagos.test.ts`, y un grupo de regex
+`string | undefined` en `demo-coherente-con-panel.test.ts`.
+
+**Y el CI no los corría**: `revision.yml` sólo tenía los de `api`. Los **95 tests de front**
+(24 inquilino + 27 inmobiliaria + 44 propietario) no los ejecutaba nadie salvo a mano.
+
+El runner nuevo es `scripts/test-fronts.mjs` y no un `pnpm --filter`: en Windows pnpm corre los
+scripts vía `cmd.exe` y un `pnpm` anidado no se resuelve con corepack, así que esa versión era
+config de CI imposible de probar en local antes de pushear.
 
 **Experto:** BE/OPS · **Prioridad:** 🟡 · **Depende de:** T-32 (ya tomada)
 **Origen:** T-46.
