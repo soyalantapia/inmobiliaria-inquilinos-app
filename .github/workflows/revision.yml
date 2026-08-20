@@ -149,6 +149,57 @@ jobs:
           NODE_ENV: test
         run: pnpm exec vitest run --config vitest.con-db.config.ts
 
+  # BUILDEA. `tsc --noEmit` no ve lo que ve `next build`: restricciones de static export,
+  # `generateStaticParams` faltante, cruces server/client, route handlers. Hasta acá la compuerta
+  # tipaba y testeaba, y no compilaba NADA — ni la API ni los tres fronts.
+  #
+  # No es teórico: el `Deploy to GitHub Pages` de `main` estuvo en rojo del 3 al 19 de agosto por
+  # un `/inquilinos/[id]` sin `generateStaticParams`, que ningún typecheck iba a agarrar. Y como
+  # el push a `main` deploya producción, un error de build recién aparece cuando el deploy ya
+  # salió: tarde.
+  #
+  # Va como job APARTE y no dentro de `revision` para que corra en paralelo y no le sume minutos
+  # al feedback rápido de typecheck + tests.
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.28.2
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # La API tipa contra el cliente generado; sin esto no compila.
+      - name: Generar el cliente de Prisma
+        run: pnpm --filter api exec prisma generate
+
+      - name: Build de la API
+        run: pnpm --filter api build
+
+      # EL CAMINO DE PRODUCCIÓN: así buildean los Dockerfiles de Railway — `next build` pelado,
+      # sin `STATIC_EXPORT`. Es el que sirve admin.myalquiler.com y app.myalquiler.com, y hasta
+      # ahora no se verificaba en ningún lado antes del deploy.
+      #
+      # `next build` a secas y no `pnpm build`: el script de cada front antepone
+      # `check-dev-port.js`, que existe para no pisar un dev server de alguien. En CI no hay
+      # ninguno y el guard sólo agrega una forma de fallar.
+      - name: Build de los fronts (como los buildea Railway)
+        run: |
+          pnpm --filter @llave/inmobiliaria exec next build
+          pnpm --filter @llave/inquilino exec next build
+          pnpm --filter @llave/propietario exec next build
+
+      # EL CAMINO DE LA DEMO: static export, que es un modo DISTINTO y rompe por sus propias
+      # razones — es el que estuvo roto dos semanas y media. `build-static.sh` hace además el
+      # baile de renombrar los middleware, que no existen en export.
+      #
+      # Corre después y no en paralelo porque comparte los directorios `.next`.
+      - name: Build estático (como lo buildea GitHub Pages)
+        run: bash scripts/build-static.sh
+
   ramas-sin-integrar:
     runs-on: ubuntu-latest
     steps:
