@@ -6,6 +6,7 @@ import { rolTienePermiso } from '@llave/shared';
 import { resolverEsquemaMora } from '../lib/punitorios.js';
 import { prisma } from '../db.js';
 import { urlEsDelTenant } from './uploads.js';
+import { dineroPositivo } from '../lib/monto.js';
 import {
   exigirContratoActivo,
   requireAuth,
@@ -713,7 +714,7 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
       .object({
         servicio: z.enum(['LUZ', 'GAS', 'AGUA', 'INTERNET', 'ABL', 'CABLE']),
         periodo: z.string().regex(/^\d{4}-\d{2}$/),
-        monto: z.number().positive().optional(),
+        monto: dineroPositivo().optional(),
         vencimiento: z.string().optional(),
         nombreArchivo: z.string().optional(),
         tipoMime: z.string().optional(),

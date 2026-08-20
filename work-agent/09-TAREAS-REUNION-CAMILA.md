@@ -2342,6 +2342,87 @@ la mora sale igual desde los 16 lugares que la calculan.
 
 ---
 
+## T-63 · Toda la plata del API aceptaba `Infinity` — 🟡 LA MITAD RESUELTA, la otra es tuya
+
+**Experto:** BE + **decisión del dueño** · **Prioridad:** 🔴 · **Toca plata**
+**Origen:** riesgo 🔴 Nivel 1 #3 de `work-agent/07-ECOSISTEMA.md:1408` ("el portador del link
+mágico declara `montoCobrado` sin tope ni aprobación"), que no tenía tarea. Al ir a arreglarlo
+apareció algo más grande abajo.
+
+---
+
+### PARTE A — el agujero de validación · ✅ RESUELTO
+
+**El caso.** `z.number().nonnegative()` **acepta `Infinity`**: zod 3 sólo rechaza `NaN`, y
+`Infinity > 0` da true. Verificado corriendo zod, no leyendo la doc. Los **31** campos de plata
+y mora del API estaban escritos así, y ninguno tenía `.int()` ni `.max()` que lo atajara de
+rebote. El conjunto vulnerable resultó ser, salvo un campo, **exactamente la superficie del
+dinero**.
+
+**Dos daños distintos, y el peor no es el que parece.**
+
+- En las 48 columnas `Decimal(14, 2)` —que son **todas** las Decimal del schema, sin una sola
+  excepción— Postgres rechaza el valor y el request muere con 500. Visible, y no ensucia nada.
+- En las columnas **`Float`** —`Contrato.moraValor`, `Inmobiliaria.moraValorDefault`— Postgres
+  **sí guarda `Infinity`**. El valor absurdo no falla: **queda persistido**. Y `calcularMora`
+  no tiene red contra eso (`!esquema.valor` es false para Infinity, y `esquema.valor <= 0`
+  también), así que devuelve `base * (Infinity / 100) * dias` = **Infinity**. Esa mora entra en
+  el `montoTotal` y el `saldo` de **todas** las cuotas de ese contrato: la PWA del inquilino,
+  los comprobantes, la deuda del panel y las métricas del dashboard. Un solo PATCH a
+  `/contratos/:id/mora` lo dejaba así para siempre.
+
+**Qué se hizo.** Tres validadores en `lib/monto.ts` —`dinero()`, `dineroPositivo()` y
+`dineroConSigno()` (este último para el movimiento de caja, que legítimamente puede ser
+negativo)— aplicados a los 31 sitios, en 6 archivos de rutas. Después del barrido, el grep de
+"number sin `.int()`, sin `.max()` y sin `.finite()`" **no devuelve nada**.
+
+**El techo no es una regla de negocio: es la columna.** `Decimal(14, 2)` son 12 dígitos enteros,
+o sea 999.999.999.999,99. Por encima de eso el sistema no puede *guardar* el número.
+
+**Tests.** 14 puros en `plata-no-acepta-infinito.test.ts`, incluida la prueba de que
+`calcularMora` devuelve `Infinity` con el `moraValor` envenenado — que es el daño que se
+persistía. Los 581 puros que ya existían siguen verdes.
+
+---
+
+### PARTE B — lo que NO se arregló, y es el 🔴 original · ⏸️ DECISIÓN DEL DUEÑO
+
+Acotar a 999.999.999.999,99 **no cierra el riesgo #3.** El problema real es de autoridad, no de
+rango: **quien tenga el link mágico mueve plata real, sin que lo apruebe nadie.**
+
+El profesional declara `montoCobrado` en `POST /visitas-publicas/listo`
+(`visitas-publicas.ts:242`), eso se escribe como `costoTrabajo` del reclamo y se imputa vía
+`imputarCostoReclamo` a **propietario, inquilino o depósito**. Tres cosas lo agravan:
+
+1. **No hay usuario detrás.** El endpoint autentica por link, no por sesión del panel — el
+   propio código lo dice: `creadoPorId: null`. Compará con el camino del panel
+   (`/reclamos/:id/resolver`, `operacion.ts:542`), que exige `requireUsuario` con capacidad
+   `reclamos.gestionar` y queda auditado.
+2. **Es irreversible.** Con el reclamo ya `RESUELTO`, `/clasificar` y `/resolver` responden 409.
+   El operador no puede corregir el monto que declaró el profesional.
+3. **El link no se puede revocar.** Ya está escrito en el código
+   (`operacion.ts:388-391`): regenerar el link *no* invalida las sesiones JWT ya emitidas
+   —valida por `profesionalId`, no por token— y **duran 14 días**. Para cortar una sesión viva
+   hay que reasignar la visita.
+
+**Las opciones, y ninguna la puede tomar un dev:**
+- **(a) Tope por contrato** — p. ej. el monto declarado no puede superar N veces el alquiler, o
+  el saldo del depósito si el pagador es DEPOSITO. Automático, sin fricción, pero elegir N es
+  de negocio.
+- **(b) Umbral con aprobación** — por debajo de $X entra solo; por encima queda pendiente y lo
+  confirma alguien con `reclamos.gestionar`. Es el patrón que ya existe para otras cosas
+  (bandeja de aprobaciones).
+- **(c) Que el profesional no declare monto** — informa el trabajo y el monto lo carga la
+  inmobiliaria al cerrar. El más seguro y el que más fricción agrega.
+- **(d) Dejarlo, y que el tope sea la revocación** — arreglar que regenerar el link corte las
+  sesiones vivas, y aceptar el riesgo del profesional legítimo que se equivoca tipeando.
+
+**Lo que sí conviene hacer aunque no se decida nada:** que el reclamo cerrado por link mágico
+**se pueda corregir** desde el panel. Hoy no se puede, y eso convierte un typo en un asiento
+permanente.
+
+---
+
 ## T-62 · La bandeja prometía un saldo que al validar valía cero — ✅ RESUELTO
 
 **Experto:** BE · **Prioridad:** 🟡 · **Presentación** (no cambia plata cobrada)

@@ -13,6 +13,7 @@ import { urlEsDelTenant } from './uploads.js';
 import { avisarReclamoNuevoAInmo, avisarAlInquilinoDelReclamo } from '../lib/avisos-reclamo.js';
 import { TIPOS_AVISO_INMO } from '../lib/destinatario-aviso.js';
 import { normalizarEmail } from '../lib/normalizar-email.js';
+import { dinero, dineroConSigno } from '../lib/monto.js';
 
 /** Token opaco del link mágico de visita (/p/:token) — 24 bytes base64url, no adivinable. */
 function generarTokenVisita(): string {
@@ -546,7 +547,7 @@ export async function operacionRoutes(app: FastifyInstance) {
     const body = z
       .object({
         resolucion: z.string().min(5),
-        costoTrabajo: z.number().nonnegative().optional(),
+        costoTrabajo: dinero().optional(),
         costoTrabajoNotas: z.string().trim().max(300).optional(),
         pagador: z.enum(['PROPIETARIO', 'INQUILINO', 'DEPOSITO']).optional(),
       })
@@ -1366,9 +1367,9 @@ export async function operacionRoutes(app: FastifyInstance) {
       .string()
       .regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'periodoActual debe ser YYYY-MM (mes 01-12)')
       .optional(),
-    expensasPeriodoActual: z.number().nonnegative().optional(),
+    expensasPeriodoActual: dinero().optional(),
     encargado: z
-      .object({ nombre: z.string().trim().min(2).max(120), sueldo: z.number().nonnegative() })
+      .object({ nombre: z.string().trim().min(2).max(120), sueldo: dinero() })
       .nullable()
       .optional(),
     // min(1): un '' es falsy y esquivaría el check de tenant de sociedadDelTenant
@@ -1450,11 +1451,11 @@ export async function operacionRoutes(app: FastifyInstance) {
     titular: z.string().trim().min(2).max(200),
     coeficiente: z.number().positive().max(100),
     telefono: z.string().trim().max(40).optional(),
-    cargoFijo: z.number().nonnegative().nullable().optional(),
+    cargoFijo: dinero().nullable().optional(),
     estado: z.enum(['AL_DIA', 'PENDIENTE', 'VENCIDO', 'CON_PLAN_PAGO']).optional(),
     // Manual hasta Fase 2 (expensas emitidas lo derivan). Permite cargar la deuda
     // histórica al migrar un edificio existente.
-    saldoDeudor: z.number().nonnegative().optional(),
+    saldoDeudor: dinero().optional(),
   });
 
   app.post('/consorcios/:id/unidades', async (request, reply) => {
@@ -1662,7 +1663,7 @@ export async function operacionRoutes(app: FastifyInstance) {
         // Chequeamos el valor REDONDEADO a 2 decimales (el campo es Decimal(14,2)):
         // antes un sub-centavo como 0.004 pasaba `!== 0` pero se persistía como 0.00,
         // dejando un asiento de valor nulo. Ahora 0.004 → redondea a 0 → rechazado.
-        monto: z.number().refine((n) => Math.round(n * 100) / 100 !== 0, 'El monto no puede ser 0'),
+        monto: dineroConSigno().refine((n) => Math.round(n * 100) / 100 !== 0, 'El monto no puede ser 0'),
         categoria: z.enum(['COBRANZA', 'SUELDO', 'MANTENIMIENTO', 'SERVICIO', 'IMPUESTO', 'OTRO']),
       })
       // Signo acoplado a la categoría: COBRANZA = ingreso (+), el resto = egreso (−).
@@ -1809,7 +1810,7 @@ export async function operacionRoutes(app: FastifyInstance) {
         proveedor: z.string().trim().min(1),
         nis: z.string().trim().min(1),
         numeroMedidor: z.string().trim().optional().nullable(),
-        costoPromedioMensual: z.number().nonnegative().optional().nullable(),
+        costoPromedioMensual: dinero().optional().nullable(),
         observaciones: z.string().trim().optional().nullable(),
       })
       .safeParse(request.body ?? {});
@@ -1862,7 +1863,7 @@ export async function operacionRoutes(app: FastifyInstance) {
         unidad: z.string().trim().min(1),
         cantidadActual: z.number().int().min(0),
         minimoStock: z.number().int().min(0),
-        costoUnitario: z.number().nonnegative().optional().nullable(),
+        costoUnitario: dinero().optional().nullable(),
         notas: z.string().trim().optional().nullable(),
       })
       .safeParse(request.body ?? {});

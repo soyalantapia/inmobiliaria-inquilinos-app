@@ -30,6 +30,7 @@ import { estadoDepositoContrato } from '../lib/deposito.js';
 import { enviarInvitacionInquilino } from '../mailer.js';
 import { borrarArchivoSiHuerfano, urlEsDelTenant } from './uploads.js';
 import { aplicarEstadoInicial, EstadoInicialInvalido } from '../lib/estado-inicial-contrato.js';
+import { dinero, dineroPositivo } from '../lib/monto.js';
 
 /**
  * Fase 3 — La plata: liquidaciones, validación de pagos informados, caja de
@@ -1108,7 +1109,7 @@ export async function plataRoutes(app: FastifyInstance) {
     const body = z
       .object({
         decision: z.enum(['DEVOLVER', 'NETEAR', 'EJECUTAR']),
-        montoDevuelto: z.number().min(0),
+        montoDevuelto: dinero(),
         motivo: z.string().optional(),
       })
       .safeParse(request.body ?? {});
@@ -2810,8 +2811,8 @@ export async function plataRoutes(app: FastifyInstance) {
       z.object({
         periodo: z.string().regex(/^\d{4}-\d{2}$/),
         estado: z.enum(['PAGADO', 'PARCIAL', 'ADEUDA']),
-        montoPagado: z.number().positive().optional(),
-        moraManual: z.number().nonnegative().optional(),
+        montoPagado: dineroPositivo().optional(),
+        moraManual: dinero().optional(),
       }),
     )
     .max(120);
