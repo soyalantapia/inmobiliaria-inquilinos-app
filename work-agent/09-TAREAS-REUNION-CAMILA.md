@@ -1786,7 +1786,78 @@ antes de dar el tema por cerrado.
 
 ---
 
-## T-23-N4-N1 · El inquilino titular y la persona no son revocables de ninguna forma
+## T-23-N4-N1 · El inquilino titular y la persona no son revocables de ninguna forma — ✅ CERRADA 20/08
+
+> ## ✅ Los tres agujeros YA estaban tapados. Esta ficha quedó vieja.
+>
+> Verificado contra el código el 20/08, punto por punto:
+>
+> - **`requireInquilino`** ya no devuelve el payload crudo: llama a `inquilinoRevocado`, que
+>   consulta la base, con la decisión separada en `motivoRevocacionInquilino` (pura y testeada).
+> - **La rama `inquilino` de `requireContratoAcceso`** llama al mismo helper. El comentario lo
+>   dice: *"cuando la revalidación vivía en una sola, la otra quedaba abierta"*.
+> - **`requirePersona`** revalida el email contra `Inquilino` (y el comentario explica por qué
+>   contra `Inquilino` y no contra `Persona`, que fue un bug real).
+>
+> **El cuarto punto también era falso positivo.** La ficha decía que `operacion.ts` no gatea
+> nunca pese a que el docstring se atribuye "abrir reclamo": `POST /mis-reclamos` **sí** controla
+> el estado, sólo que **inline** —mismo 409, mismo mensaje— y encima distingue el 404 cuando el
+> contrato no existe, cosa que el helper colapsa. Un grep de `exigirContratoActivo` lo daba por
+> faltante.
+>
+> **Lo que sí salió del barrido, y es lo que se entregó:** la superficie **no se puede auditar a
+> mano**. Se barrió tres veces —a mano (12 endpoints, se comió 3 archivos), con agentes en
+> paralelo (12, se comió 2), parseando de verdad (**17**)—. Los que se escapan son invisibles a
+> un grep: `anuncios.ts` registra en un **loop** con la ruta en template literal, `uploads.ts` usa
+> un **guard local propio**, y `POST /reportes` usa `requireAuth` pelado, que acepta tokens de
+> inquilino.
+>
+> Entregable: **`test/inquilino-escrituras-declaradas.test.ts`**, un registro de decisiones
+> ejecutable — toda escritura del inquilino tiene que estar declarada como GATEADA o EXENTA con
+> el motivo, y una nueva falla el test hasta que alguien decide. Hoy: 17 escrituras, 8 gateadas,
+> 9 exentas, ninguna es un hueco. Mutación 3/3. Detalle en `work-agent/tareas/T-23-N4-N1/`.
+
+---
+
+## T-23-N4-N1-N1 · `POST /uploads` no tiene cuota: un token vivo puede llenar el Volume — ✅ HECHA
+
+**Estado: ✅ HECHA** — commit `22f0790`. Cuota **por inmobiliaria** (`UPLOADS_CUOTA_MB`, default
+2 GB), medida antes de escribir, con cache por tenant. Al tope: **507** con
+`codigo: CUOTA_TENANT_LLENA`, distinto del disco lleno de verdad porque la acción de quien
+atiende es otra.
+
+**Por tenant y no por usuario**, que era la decisión del arreglo: el Volume es uno solo y
+compartido, así que un tope por usuario no evita que una inmobiliaria con muchos llene el de
+todas. Por tenant acota el daño a quien lo causa. Y **no** se gateó por contrato activo — la
+tarea ya avisaba que eso rompe `POST /mis-documentos`, que a propósito deja subir documentación
+después de terminado el contrato.
+
+**Un bug que cazó su propio test:** la primera versión hacía `Number(env.UPLOADS_CUOTA_MB)`
+directo, y `Number('')` es 0 — un `UPLOADS_CUOTA_MB=` vacío en un `.env` apagaba la cuota en
+silencio, que es justo el modo de falla que el módulo venía a cerrar.
+
+De paso: `MAX_BYTES` en `uploads.ts` era una constante muerta. El tope real de 10 MB lo aplica
+`@fastify/multipart` en `app.ts`.
+
+**Experto:** SEC + OPS · **Prioridad:** 🟡 · **Depende de:** nada
+**Origen:** T-23-N4-N1, barrido de escrituras del inquilino.
+
+`POST /uploads` (`routes/uploads.ts:272`) acepta **cualquier token autenticado** —usuario del
+panel, inquilino, co-inquilino, y el profesional por link mágico— y escribe en el Volume de
+Railway, bajo el directorio del tenant. Límite de 10 MB por archivo y tipos restringidos, pero
+**sin cuota por usuario, sin límite de cantidad y sin rate limit**.
+
+El token de un inquilino dura **15 días**, así que alguien cuyo contrato ya terminó puede seguir
+subiendo archivos durante dos semanas. Y el propio handler ya contempla que el disco se llene:
+devuelve **507** con *"el servidor se quedó sin espacio"*.
+
+**Ojo con el arreglo fácil, que es el equivocado.** Gatearlo con `exigirContratoActivo` rompe el
+caso legítimo: `POST /mis-documentos` permite a propósito subir documentación propia después de
+finalizado el contrato, porque `Documento` cuelga de `inquilinoId`, no de `contratoId`. El
+problema no es el estado del contrato, es que **no hay cuota**.
+
+**Qué mirar:** cantidad de archivos por usuario en una ventana, o bytes acumulados por tenant, o
+rate limit por token — no el estado del contrato.
 
 **Experto:** BE + SEC · **Prioridad:** 🔴 · **Depende de:** nada
 **Origen:** relevamiento de T-23-N4. No salió de la reunión.
@@ -2176,6 +2247,190 @@ inquilino queda **sin poder entrar a la app para siempre** —el acceso es por O
 
 **Verificado en navegador:** el lápiz aparece, el 409 de duplicado se muestra con su mensaje
 real y deja el diálogo abierto para corregir, y el camino feliz guarda y refresca la ficha.
+
+---
+
+## T-57 · Un pago parcial no frena la mora: sigue corriendo sobre el total original
+
+**Experto:** BE + **decisión del dueño** · **Prioridad:** 🔴 · **Toca plata — le cobra de más al inquilino**
+**Origen:** revisión adversarial del motor de cobranza (20/08). **NO se arregló: ver por qué.**
+
+**El caso, con números.** Cuota de $600.000 que vence el 10/08, mora 0,15% diario. El inquilino
+paga **$599.000 el mismo 10/08** —en fecha, sin mora— y queda debiendo $1.000 de capital. El
+09/09, a 30 días, la mora se calcula sobre los **$600.000 completos**:
+
+    600.000 × 0,15% × 30 = $27.000 de punitorios por deber $1.000.
+
+Sobre el saldo real serían **$450**. Y ese total inflado es exactamente lo que ve el inquilino en
+la PWA, lo que topea `POST /pagos/informar` y lo que muestra el panel.
+
+Caso menos extremo y mucho más frecuente: paga $500.000 de $600.000 y a 30 días la mora es
+$27.000 en vez de $4.500 — **$22.500 de más**.
+
+**Verificado:** en los ~16 call sites la base es siempre `Number(l.montoTotal)` bruto; lo
+conciliado se resta recién en `saldos.ts`, **después** del cálculo. El congelamiento de mora que
+existe (`plata.ts:1665-1675`) sólo cubre pagos **INFORMADO** pendientes: un parcial **CONCILIADO**
+deja la liquidación en PARCIAL y la mora sigue corriendo sobre el total original.
+
+### Por qué NO lo arreglé, y qué hace falta para hacerlo
+
+1. **La solución ingenua rompe el caso inverso.** `base = montoTotal − conciliados` haría que
+   pagar TARDE reduzca retroactivamente la mora ya devengada: al inquilino le convendría pagar
+   tarde y de a poco.
+2. **O se hace en los 16 call sites, o no se hace.** Arreglarlo sólo donde los pagos están a
+   mano daría **moras distintas según qué endpoint las calcule** — peor que el bug actual.
+3. **Cambia lo que se le cobra a inquilinos reales**, hoy, en producción. Bajar un cargo mal
+   calculado es correcto, pero la forma exacta es una decisión de negocio.
+4. **No se puede verificar desde acá:** los tests que cubren este camino tocan la base.
+
+### Las dos formas, para que elijas
+
+**(a) Descontar sólo lo pagado ANTES del vencimiento.** `capital = base − pagadoAlVencimiento`.
+Barata y sin regresión: lo que entró en fecha reduce el capital sobre el que corre toda la mora,
+y lo que entró tarde no borra punitorios ya devengados. Arregla el caso titular. **No** hace
+tramos: si paga la mitad al día 15 y el resto al 40, cobra los 40 días sobre el capital inicial
+menos lo de antes del vencimiento.
+
+**(b) Mora por tramos.** Lo riguroso: 5 días sobre $600.000 + 25 días sobre $100.000. Es lo que
+haría un contador, y es un cambio de fondo en el corazón del cobro.
+
+**Criterio de aceptación.** Un parcial pagado en fecha no genera mora sobre la parte ya pagada, y
+la mora sale igual desde los 16 lugares que la calculan.
+
+---
+
+## T-59 · Un pago rechazado congelaba el canon y las expensas de esa cuota para siempre — ✅ RESUELTO
+
+**Experto:** BE · **Prioridad:** 🔴 · **Toca plata**
+**Origen:** revisión adversarial del motor de cobranza (20/08).
+
+**El caso.** Cuota de septiembre: alquiler $500.000 + expensas $80.000. El inquilino informa el
+pago con el comprobante equivocado y la inmobiliaria **lo rechaza** — operación diaria de la
+bandeja "Pagos a validar". La cuota sigue PENDIENTE, pero ya tiene una fila `Pago` en estado
+RECHAZADO.
+
+Llegan las expensas nuevas del consorcio ($110.000) y se hace `PATCH /contratos/:id/expensas`.
+El recálculo **saltea esa cuota** porque `cantidadPagos > 0` — contando el rechazado, que **no es
+plata**. La cuota queda con las expensas viejas: se le cobra **$580.000 en vez de $610.000**, la
+inmobiliaria le paga igual al consorcio, y queda así **para siempre** (ningún endpoint borra un
+pago rechazado ni permite reintentar el reajuste). Lo mismo por `PATCH /contratos/:id/monto`,
+que además lo llama el **ajuste masivo** en loop sobre todos los contratos.
+
+**No era deliberado, y el propio código lo prueba:** el docstring de `recomputarLiquidacionesFuturas`
+dice que la defensa es para cuando *"tiene un pago INFORMADO en revisión"* — o sea, pagos vivos.
+El conteo venía sin filtrar por estado.
+
+**Qué se hizo.** Las dos queries pasan a contar sólo pagos vivos:
+`_count: { select: { pagos: { where: { estado: { in: ['INFORMADO','CONCILIADO'] } } } } }`.
+Es el mismo criterio de "pago vivo" que el repo ya usa en `core.ts:1940`, `:2257` y `:2363`.
+El docstring quedó explícito sobre el rechazado.
+
+**No se tocó** el tercer conteo sin filtrar (`core.ts:2071`, `finalizar-preview`): ahí es
+deliberado y su propio comentario explica por qué un INFORMADO/RECHAZADO no debe caer en
+`esFuturaSinPago`.
+
+**473 tests puros en verde.**
+
+---
+
+## T-58 · La mora fija del tenant se aplica sin mirar la moneda del contrato
+
+**Experto:** BE · **Prioridad:** 🟠 · **Toca plata** · **No se arregló: ver por qué**
+**Origen:** revisión adversarial del motor de cobranza (20/08).
+
+**El caso.** El admin configura la mora default como **MONTO_FIJO = 5000**, pensada en pesos —la
+pantalla que la carga no pide moneda y la previsualiza con el símbolo `$`—. Un contrato en
+**USD** sin `moraTipo` propio (el wizard arranca en `HEREDAR`, y la importación de cartera
+tampoco lo setea) hereda ese default y lo aplica **1:1**:
+
+    alquiler US$ 800 + mora US$ 5.000 = US$ 5.800 exigibles.
+
+Cinco mil dólares de punitorio sobre un alquiler de ochocientos. Es lo que la PWA le reclama al
+inquilino.
+
+**Por qué pasa.** `resolverEsquemaMora` devuelve `{tipo:'MONTO_FIJO', valor:5000}` sin mirar
+`Liquidacion.moneda`, y `calcularMora` lo usa tal cual.
+
+**El arreglo, que NO necesita migración.** `Inmobiliaria.monedaDefault` ya existe: la moneda del
+default **está determinada**, no hay que guardarla. La regla sería: si el esquema viene del tenant
+y es `MONTO_FIJO`, heredarlo **sólo si la moneda del contrato coincide** con `monedaDefault`; si
+no, `SIN_MORA` — mejor no cobrar mora que cobrarla en la unidad equivocada. No se inventa una
+conversión.
+
+**Por qué no lo hice.** `resolverEsquemaMora` tiene **21 call sites**, y la regla exige que cada
+uno conozca la moneda del contrato. Los tipos son opcionales, así que agregar el campo compila
+igual — pero los call sites cuyo `select` no traiga `moneda` seguirían con el comportamiento
+viejo, y quedarían **moras distintas según qué endpoint las calcule**. Es exactamente la
+objeción que hace inaceptable el arreglo parcial en T-57. O se hace en los 21 y se corre la
+suite completa, o no se hace.
+
+**Frecuencia:** raro (hace falta tenant con MONTO_FIJO default + contrato en otra moneda + sin
+mora propia), pero catastrófico cuando ocurre.
+
+**Criterio de aceptación.** Un contrato en USD no hereda una mora fija cargada en pesos, y la
+mora sale igual desde los 21 lugares que la resuelven.
+
+---
+
+## T-56 · Todo cobro con fecha civil perdía un día de mora — ✅ RESUELTO
+
+**Experto:** BE · **Prioridad:** 🔴 · **Toca plata** · **Trababa la conciliación bancaria**
+**Origen:** revisión adversarial del motor de cobranza (20/08).
+
+**La causa raíz.** `diaCivilAR` está escrito para **instantes**. Si se le pasa una fecha civil
+pelada —las que manda el panel como `"YYYY-MM-DD"`, o las que arma el parser del extracto— queda
+en `D T00:00Z`, que en Argentina son **las 21:00 del día anterior**: devuelve `D − 1` **siempre**.
+No es un borde, es un corrimiento constante.
+
+**Lo que costaba, verificado con números** (cuota $600.000, vence 10/08, mora 0,15% = $900/día):
+
+| Camino | Qué pasaba |
+|---|---|
+| **Cobro manual** | El diálogo prefillea $609.000 (mora al instante, 10 días) y el guard recalcula con 9 → **400 "El monto supera el saldo"**, contra el mismo número que él propuso. La cajera baja a $608.100, la cuota cierra y **esos $900 no vuelven nunca**: `fechaPago` queda date-only y toda lectura posterior recalcula los mismos 9 días. |
+| **Extracto bancario** | Igual, pero **ahí el monto no se puede editar**: un crédito por exactamente lo que la app le mostró al inquilino quedaba **imposible de conciliar**. |
+| **Mora MONTO_FIJO** | `ceil(días/30)`: 30 días → 1 mes, 31 → 2. Un día de menos en cada múltiplo de 30 se llevaba **un mes entero** de mora. |
+
+**Lo que NO alcanzaba:** el pago que informa el inquilino manda `new Date().toISOString()`, un
+instante completo, así que `/pagos/:id/validar` nunca tuvo el corrimiento.
+
+**Qué se hizo.** `instanteEnDiaCivilAR` en `packages/shared/src/periodos.ts` —el inverso de
+`diaCivilAR`, que lleva la fecha civil al **mediodía** argentino, lejos de los dos bordes— y se
+aplicó en los tres call sites: el zod de `/pagos/manual` (así el `asOf`, el `fechaTransferencia`
+y el `fechaPago` quedan bien de una) y los dos `calcularMora` del extracto. **`diasAtraso` no se
+tocó**: es correcto para instantes, que es para lo que está escrito.
+
+**Tests.** `test/mora-fecha-civil.test.ts`. La suite ya tenía `vencimiento-huso-horario.test.ts`
+en verde, pero cubría la semántica **con instantes** y nunca ejercitaba un `asOf` sin hora —
+justo el agujero. Los dos archivos pasan juntos.
+
+---
+
+## T-55 · Un doble click al saldar un cargo lo cobraba dos veces — ✅ RESUELTO
+
+**Experto:** BE · **Prioridad:** 🟠 · **Toca plata**
+**Origen:** revisión adversarial del motor de cobranza (20/08).
+
+**El agujero.** `POST /cargos/:id/saldar` hacía **check-then-act**: leía el cargo con un
+`findFirst` **fuera** de la transacción, chequeaba `if (!cargo.saldadoAt)` y recién adentro
+hacía el `update` — **sin condicionarlo**. Dos requests concurrentes (alcanza un doble click, o
+dos operadoras) pasaban los dos el chequeo y **creaban dos `INGRESO_EXTRA` por una sola
+cobranza**.
+
+**Y no se queda en la caja.** El propio comentario del handler lo advierte: la rendición levanta
+esos `INGRESO_EXTRA` con `descontadoEnRendicion: false` y **se los acredita al propietario**. O
+sea que el dueño cobraba dos veces el mismo cargo. Ese comentario incluso dice, sobre el inverso:
+*"Que no lo hiciera costaba dos ingresos por una sola cobranza"* — el mismo riesgo seguía vivo
+por esta otra vía.
+
+**Qué se hizo.** `updateMany` condicionado a `saldadoAt: null` (más el tenant) dentro de la
+transacción: el segundo request no matchea ninguna fila, sale con `count === 0` y **no llega a
+crear el movimiento**. Es el mismo patrón que ya usan validar, rechazar y anular en ese archivo.
+El que pierde la carrera tampoco registra el evento de auditoría: dos eventos por una cobranza
+ensucian el historial igual que dos ingresos la caja.
+
+**Cómo se encontró.** Comparando qué endpoints del ciclo de plata tienen el patrón
+`updateMany + count === 0` y cuáles no. `validar`, `rechazar` y `anular` lo tienen; `saldar` era
+el que faltaba.
 
 ---
 
@@ -3166,7 +3421,26 @@ que debe pasar. Lo que no puede quedar es el test en rojo sin dueño.
 
 ---
 
-## T-28-N1-N3-N1 · Lo que sólo se ve con una base: `/mis-cargos` y los filtros del cierre
+## T-28-N1-N3-N1 · Lo que sólo se ve con una base: `/mis-cargos` y los filtros del cierre — 🟡 los filtros ya no
+
+> ## ✅ Los filtros del cierre SÍ se podían testear sin base — 20/08
+>
+> Esta ficha (la escribí yo) decía que los filtros *"viven en el `where` de Prisma: no hay
+> aritmética que extraer y un test puro no lo ve"*. **Es falso.** Lo que no se puede sin base es
+> verificar qué DEVUELVE Postgres; pero **construir el `where` es una función como cualquier
+> otra**, y ahí es exactamente donde ocurrieron las dos roturas históricas: alguien borró un
+> filtro.
+>
+> Se extrajo `whereCierreDelDia()` a `lib/cierre-caja.ts` y quedaron fijados los cuatro filtros
+> —condonados, `PROPIETARIO_DIRECTO`, scope de inmobiliaria y `CONCILIADO`— más el **día civil
+> argentino** y que el rango sea **semiabierto** (con `lte`, un pago exacto a las 03:00:00.000Z
+> se contaría en los cierres de dos días). **12 tests, mutación 7/7.**
+>
+> Honestidad sobre el alcance: prueba **la consulta que armamos**, no lo que Postgres devuelve.
+> No sustituye integración; agarra lo que pasó las dos veces, que es que alguien borre un filtro.
+>
+> **Sigue afuera `GET /mis-cargos`**, cuya garantía es el aislamiento multi-tenant: ahí no hay
+> forma ni aritmética que valga fijar por separado, necesita integración de verdad.
 
 **Experto:** QA · **Prioridad:** 🟡 · **Depende de:** una base de test (Docker o equivalente)
 **Origen:** T-28-N1-N3, que cubrió todo lo cubrible sin base.
@@ -4022,7 +4296,18 @@ conciliación) siguen sin correr nunca. Depende de la decisión de infraestructu
 
 ---
 
-## T-29-N1 · El historial se escribe dentro de la transacción, y ahí no puede ser best-effort
+## T-29-N1 · El historial se escribe dentro de la transacción, y ahí no puede ser best-effort — ✅ YA ESTABA HECHA
+
+> **Verificado el 20/08 mientras se buscaba tarea.** Ya está resuelto, y mejor de lo que pedía la
+> ficha: no sólo se movió a post-commit, sino que **la firma lo garantiza**. `registrarEventoContrato`
+> recibe `PrismaClient` y **no acepta un `tx`**, así que es el compilador el que impide volver a
+> meterlo adentro de una transacción. Los cinco call sites pasan `prisma`
+> (`core.ts:1496`, `core.ts:2397`, `operacion.ts:332`, `operacion.ts:872`, `plata.ts:525`);
+> **cero** pasan `tx`.
+>
+> El docblock además deja escrito el porqué: en PostgreSQL una sentencia fallida deja la
+> transacción abortada, así que el `catch` no protegía la operación — escondía que se había
+> perdido, devolviendo 200.
 
 **Experto:** BE · **Prioridad:** 🟠 · **Depende de:** nada
 **Origen:** revisión adversarial de la consolidación (19/08). No salió de la reunión.
@@ -4651,7 +4936,30 @@ manual, sin tocar la importación.
 cuenta filas del seed y encuentra las que dejaron las suites anteriores — corriéndolo solo da
 7/7. No son bugs del producto. Ver **T-01-N1-N1-N1**.
 
-### T-01-N1-N1-N1 · Las suites de integración se pisan entre sí
+### T-01-N1-N1-N1 · Las suites de integración se pisan entre sí — ✅ HECHA
+
+> ### ✅ Cerrada el 20/08. La suite da **52/52 · 387 tests** y el job **ya bloquea**.
+>
+> Eran dos causas distintas, no una:
+>
+> **1. Los conteos del seed** (4 rojas de `core.test.ts`). Ya lo había arreglado otro chat
+> cambiando `toBe(8)` por `toBeGreaterThanOrEqual(8)`: la aserción pasa a decir lo que de
+> verdad importa —que los 8 del seed están y vienen con sus joins— en vez de exigir que la base
+> no tenga nada más.
+>
+> **2. Una limpieza que se salía de su territorio** (el archivo entero de `multi-alquiler`).
+> Su `afterAll` borraba propiedades matcheando `direccion contains "Rivadavia"`, y
+> `importacion-morosos.test.ts` **también usa direcciones con Rivadavia**. En una corrida
+> completa intentaba borrar propiedades ajenas, con contratos y pagos que no limpia, y moría
+> con violación de FK. Por eso corriéndolo solo pasaba y en la suite era el único rojo.
+>
+> Se acotó a las propiedades que el propio archivo crea (por id, no por texto), y de paso le
+> faltaban dos pasos que el limpiador oficial documenta: cortar el lazo `propiedad.contratoActualId`
+> antes de borrar el contrato, y borrar el `EventoContrato` que el alta escribe desde T-29.
+>
+> **Se sacó el `continue-on-error` del job `integracion`.** Si vuelve a ponerse rojo, frena el
+> merge — que es el punto: con push a `main` deployando producción, ese job es lo único que hay
+> entre un merge y la plata de la inmobiliaria.
 **Experto:** QA · **Prioridad:** 🟡 · **Depende de:** nada
 
 Las ~50 suites comparten una base y las que cuentan filas del seed fallan por lo que dejó la
@@ -4673,3 +4981,47 @@ que es lo que ya hacen varias y por eso no se pisan.
 
 **Cuando cierre:** sacar `continue-on-error: true` del job `integracion` en
 `.github/workflows/revision.yml`. Está anotado ahí también.
+
+---
+
+## T-28-N3 · Las limpiezas de los tests se rompen solas cuando el alta escribe un hijo nuevo
+
+**Experto:** BE · **Prioridad:** 🟡 · **Depende de:** nada
+**Origen:** T-28-N2, corriendo los 94 archivos del API por primera vez.
+
+**El síntoma.** `multi-alquiler.test.ts` se cayó entero — no por su lógica, sino por su
+`afterAll`. Borraba los contratos que crea, y desde **T-29** el alta escribe además una fila en
+`eventos_contrato`. Como ninguno de esos FK cascadea, el `deleteMany` se comió un
+`eventos_contrato_contratoId_fkey`. El test no cambió: cambió lo que el alta hace.
+
+**El problema de fondo.** De los **22 modelos que cuelgan de `Contrato`, ninguno declara
+`onDelete: Cascade`**:
+
+`AjusteAlquiler`, `BoletaServicio`, `CargoContrato`, `CargoPagado`, `CertificadoInquilino`,
+`ChatMensaje`, `CoInquilino`, `Comprobante`, `ContratoDraft`, `DocumentoContrato`,
+`EventoContrato`, `Garante`, `Inquilino`, `InquilinoInvitado`, `IntencionRenovacion`,
+`Liquidacion`, `MovimientoCaja`, `MovimientoFeed`, `Pago`, `Reclamo`, `RenovacionContrato`,
+`Screening`.
+
+Cada teardown borra a mano los pocos hijos que su propio flujo llega a crear, y **funciona por
+casualidad**: mientras el alta no escriba uno más. Es una bomba de tiempo repartida por toda la
+suite, y explota lejos de su causa — el fallo aparece en el `deleteMany` del teardown, no en la
+feature que agregó el hijo.
+
+**Por qué no se arregló en T-28-N2.** Ahí se tapó el agujero puntual (dos capas: los eventos, y
+que los contratos se deducían de un solo lado). El arreglo de fondo son dos caminos y ninguno
+entra en un fix de limpieza:
+
+1. **Cascadear** los FK que son de composición de verdad (evento, liquidación, cargo, documento…)
+   — es una migración y hay que pensar cuáles NO deben cascadear, porque borrar un contrato no
+   debería llevarse pagos en silencio.
+2. **Envolver cada test en una transacción que revierta** al terminar, y así no borrar nada a
+   mano. Es el patrón estándar y mata la clase entera de bug, pero toca todos los `afterAll` y
+   hay que ver cómo convive con `seedBase`.
+
+**Criterio de aceptación.** Que agregar un hijo nuevo de `Contrato` no rompa el teardown de
+ningún test — o que esté escrito cuál de los dos caminos se eligió y por qué.
+
+**Riesgo de no hacerlo.** Bajo hoy, molesto siempre: cada vez que alguien toque el alta, algún
+test lejano se pone rojo por una razón que no tiene nada que ver con lo que cambió, y se pierde
+media hora entendiendo que era la limpieza.

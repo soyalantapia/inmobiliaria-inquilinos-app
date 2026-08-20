@@ -368,9 +368,17 @@ export type LiquidacionParaReajustar = {
  *    cerrado; el inquilino ya vio/pagó ese valor).
  *  - estado PENDIENTE o VENCIDO: NO tocamos PAGADO ni PARCIAL (ya hay plata en
  *    juego contra el monto viejo).
- *  - SIN ningún pago (cantidadPagos === 0): defensa extra — aunque una liq siga
+ *  - SIN ningún pago VIVO (cantidadPagos === 0): defensa extra — aunque una liq siga
  *    PENDIENTE/VENCIDO, si tiene un pago INFORMADO en revisión no la reajustamos
  *    (el inquilino informó contra el total que vio).
+ *
+ *    "VIVO" = INFORMADO o CONCILIADO. **Un RECHAZADO no cuenta**, y esto costó caro: el
+ *    conteo venía sin filtrar, así que un comprobante mal mandado y rechazado —operación
+ *    diaria de la bandeja— dejaba esa cuota fuera del reajuste PARA SIEMPRE. Llegaban las
+ *    expensas nuevas del consorcio y esa cuota conservaba las viejas: se le cobraba de menos
+ *    al inquilino y la inmobiliaria le pagaba igual al consorcio. Ningún endpoint borra un
+ *    pago rechazado, así que no había forma de recuperarlo (T-59). El filtro va en la query
+ *    que arma `cantidadPagos` (core.ts).
  *
  * El montoAlquiler nuevo respeta el tipo de contrato (SOLO_EXPENSAS => 0) y el
  * total = alquiler + expensas de LA liquidación (no del contrato: una liq pudo

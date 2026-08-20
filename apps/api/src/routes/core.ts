@@ -693,7 +693,13 @@ export async function coreRoutes(app: FastifyInstance) {
       ? await alquilerCobradoSinRendirDePropiedad(id, prisma, u.inmobiliariaId, { soloRendible: true })
       : { total: 0, periodos: [] };
     if (sinRendirPropiedad.total > 0) {
-      const detalle = sinRendirPropiedad.periodos.map((p) => `${p.periodo} ($${p.monto.toLocaleString('es-AR')})`).join(', ');
+      // El signo sale de la MONEDA de cada período, no de un '$' fijo. Los períodos la
+      // traen desde que se persiste `Liquidacion.moneda`, y sin esto un contrato en dólares
+      // aparecía en este 409 como si fueran pesos — el mismo error que el portal tenía y que
+      // se arregló allá, escondido acá en un mensaje de error del panel.
+      const detalle = sinRendirPropiedad.periodos
+        .map((p) => `${p.periodo} (${p.moneda === 'USD' ? 'US$' : '$'}${p.monto.toLocaleString('es-AR')})`)
+        .join(', ');
       return reply.code(409).send({
         message:
           `Esta propiedad tiene alquiler cobrado y sin rendir: ${detalle}. Rendíselo a los dueños de hoy ` +
@@ -3593,7 +3599,12 @@ export async function coreRoutes(app: FastifyInstance) {
           periodo: true,
           estado: true,
           montoExpensas: true,
-          _count: { select: { pagos: true } },
+          // T-59 — Sólo los pagos VIVOS. Contaba también los RECHAZADOS, que no son plata:
+          // un comprobante mal mandado y rechazado dejaba la cuota fuera del recálculo PARA
+          // SIEMPRE. Llegaban las expensas nuevas del consorcio y esa cuota conservaba las
+          // viejas — la inmobiliaria le cobraba de menos al inquilino y le pagaba igual al
+          // consorcio. Mismo criterio de "pago vivo" que usan core.ts:1940, :2257 y :2363.
+          _count: { select: { pagos: { where: { estado: { in: ['INFORMADO', 'CONCILIADO'] } } } } },
         },
       });
       const aReajustar = recomputarLiquidacionesFuturas(
@@ -3761,7 +3772,12 @@ export async function coreRoutes(app: FastifyInstance) {
           estado: true,
           montoAlquiler: true,
           montoExpensas: true,
-          _count: { select: { pagos: true } },
+          // T-59 — Sólo los pagos VIVOS. Contaba también los RECHAZADOS, que no son plata:
+          // un comprobante mal mandado y rechazado dejaba la cuota fuera del recálculo PARA
+          // SIEMPRE. Llegaban las expensas nuevas del consorcio y esa cuota conservaba las
+          // viejas — la inmobiliaria le cobraba de menos al inquilino y le pagaba igual al
+          // consorcio. Mismo criterio de "pago vivo" que usan core.ts:1940, :2257 y :2363.
+          _count: { select: { pagos: { where: { estado: { in: ['INFORMADO', 'CONCILIADO'] } } } } },
         },
       });
       const aReajustar = recomputarExpensasFuturas(

@@ -38,9 +38,17 @@ const TAMBIEN_NECESITAN_BASE = ['health.test.ts'];
 function soloCodigo(src: string): string {
   return src
     .split(/\r?\n/)
-    .filter((l) => {
+    .map((l) => {
       const t = l.trim();
-      return !(t.startsWith('//') || t.startsWith('*') || t.startsWith('/*'));
+      if (t.startsWith('//')) return '';
+      // Si la línea abre o continúa un bloque, se queda con lo que venga DESPUÉS del cierre.
+      // Una línea como `*/ await seedBase(prisma);` es código, y descartarla entera mandaría
+      // un test que SÍ necesita base al suite que corre sin ella — el error peligroso.
+      if (t.startsWith('*') || t.startsWith('/*')) {
+        const cierre = t.lastIndexOf('*/');
+        return cierre >= 0 ? t.slice(cierre + 2) : '';
+      }
+      return l;
     })
     .join('\n');
 }
@@ -49,10 +57,17 @@ function necesitaBase(archivo: string): boolean {
   if (TAMBIEN_NECESITAN_BASE.includes(archivo)) return true;
   const src = soloCodigo(readFileSync(join(DIR_TESTS, archivo), 'utf8'));
   // Dos formas de depender de una base viva, y las dos cuentan:
-  //  - seedBase, el helper compartido;
+  //  - LLAMAR a seedBase, el helper compartido;
   //  - sembrarse solo (soporte.test.ts arma sus propias filas porque requireUsuario
   //    revalida contra la tabla, así que un JWT inventado no le sirve).
-  return src.includes('seedBase') || src.includes('new PrismaClient(');
+  //
+  // El paréntesis de `seedBase(` no es cosmética: sin él bastaba MENCIONAR el nombre.
+  // `guard-db.test.ts` lo nombra como string —`exigirDbDeTest('seedBase', url)`— y quedaba
+  // clasificado como "necesita base". Es un test PURO, y no cualquiera: es el que fija el
+  // predicado que decide si una DATABASE_URL es de producción, o sea **el único freno entre
+  // seedBase y la base de un cliente real**. Estaba fuera del suite rápido, y el completo
+  // tarda horas: el freno no se verificaba nunca.
+  return src.includes('seedBase(') || src.includes('new PrismaClient(');
 }
 
 const sinBase = readdirSync(DIR_TESTS)

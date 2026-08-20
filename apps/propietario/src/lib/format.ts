@@ -12,7 +12,10 @@ export const money = (n: number, moneda: 'ARS' | 'USD' = 'ARS'): string =>
   new Intl.NumberFormat('es-AR', {
     style: 'currency',
     currency: moneda,
-    minimumFractionDigits: 0,
+    // Enteros sin centavos ($ 480.000, que es el 99% de los casos) y con centavos SIEMPRE
+    // los dos dígitos. Con `minimumFractionDigits: 0` un 4500.5 salía "$ 4.500,5", que en una
+    // pantalla de plata se lee como cinco centavos y no como cincuenta.
+    minimumFractionDigits: Number.isInteger(n) ? 0 : 2,
     maximumFractionDigits: Number.isInteger(n) ? 0 : 2,
   }).format(n);
 
@@ -85,6 +88,10 @@ const ETIQUETAS: Record<string, string> = {
   CALEFACCION: 'calefacción', OTRO: 'otro',
   // PagadorReclamo
   PROPIETARIO: 'propietario', INQUILINO: 'inquilino', DEPOSITO: 'depósito',
+  // MetodoPago, para el "te depositamos el … por X" de la rendición y su imprimible.
+  // `MERCADOPAGO` salía como 'mercadopago', todo junto: el nombre del enum, no el de la marca.
+  TRANSFERENCIA: 'transferencia', MERCADOPAGO: 'Mercado Pago', EFECTIVO: 'efectivo',
+  CHEQUE: 'cheque', QR: 'QR', CRIPTO: 'cripto',
 };
 
 export const etiqueta = (valor: string): string =>

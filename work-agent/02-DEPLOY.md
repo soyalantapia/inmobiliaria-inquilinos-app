@@ -132,7 +132,9 @@ diferencia entre "deployado" y "entregado". Las dos puertas que faltaban ya est�
   pise** a propósito — el portal se sirve desde el mismo host que el panel, así que la única
   variante posible sería una mal configurada.
 
-Las dos cosas tocan copy que ve un usuario final, así que las decide el dueño del producto.
+El copy de las dos lo confirmó el dueño el 20/08 —toca a un usuario final, así que no lo decide
+un dev—: botón «Ver mis rendiciones» en el mail y el texto de la card.
+
 Verificado el 20/08 sirviendo el export desde el panel: las cinco rutas (`/propietario`,
 `/login`, `/unidades`, `/reclamos`, `/perfil`) dan 200, los assets resuelven bajo
 `/propietario/_next/`, y el bundle tiene horneada la URL del API de producción, no la de la

@@ -7,6 +7,7 @@ import { seedInquilinoMundo } from '../prisma/seeds/inquilinoMundo.js';
 
 let app: FastifyInstance;
 let tokenAdmin: string;
+let tid: string;
 let tokenCarga: string;
 let tokenMariela: string;
 
@@ -19,6 +20,23 @@ async function resetInquilinoMundo(prisma: PrismaClient, tid: string) {
   await prisma.reportePiloto.deleteMany({ where: { inmobiliariaId: tid } });
   await prisma.screening.deleteMany({ where: { inmobiliariaId: tid, id: { not: 'scr_001' } } });
   await prisma.certificadoInquilino.deleteMany({ where: { inmobiliariaId: tid } });
+  // El certificado de Mariela cuenta las CUOTAS de cnt_001, y el test afirma que son 1.
+  // Eso sólo vale si el contrato tiene únicamente la del seed — y en la base compartida no:
+  // el devengo corre solo, en proceso, cada 6 horas (`CRON_DEVENGO`), así que cualquier API
+  // apuntada acá le va agregando períodos. Llegó a tener 12, y el test moría con
+  // "expected 12 to be 1", que se lee como "se rompió el cálculo del certificado".
+  // Se borran las que NO son del seed (ids `liq_*`), con sus pagos, antes de nada.
+  const devengadas = await prisma.liquidacion.findMany({
+    where: { contratoId: 'cnt_001', NOT: { id: { startsWith: 'liq_' } } },
+    select: { id: true },
+  });
+  if (devengadas.length) {
+    const ids = devengadas.map((l) => l.id);
+    await prisma.pago.deleteMany({ where: { liquidacionId: { in: ids } } });
+    await prisma.alquilerRendido.deleteMany({ where: { liquidacionId: { in: ids } } });
+    await prisma.liquidacion.deleteMany({ where: { id: { in: ids } } });
+  }
+
   // El certificado de Mariela se calcula de liq_001: devolverla a VENCIDA
   // por si otra corrida la pagó, y limpiar rechazos espurios.
   await prisma.liquidacion.update({
@@ -36,6 +54,7 @@ beforeAll(async () => {
   await seedBase(prisma);
   const inmo = await prisma.inmobiliaria.findFirst({ where: { nombre: 'Inmobiliaria del Sol' } });
   if (!inmo) throw new Error('seedBase no creó el tenant');
+  tid = inmo.id;
   await seedInquilinoMundo(prisma, inmo.id);
   await resetInquilinoMundo(prisma, inmo.id);
   await prisma.$disconnect();
@@ -136,9 +155,26 @@ describe('Screening — APAGADO hasta que haya una fuente real', () => {
   it('GET /screenings sigue listando lo YA guardado, scopeado al tenant', async () => {
     // La lectura no se apagó: las filas fabricadas que puedan existir hay que poder verlas
     // para decidir qué se hace con ellas. Lo que no se puede es crear más.
+    //
+    // Este test decía `expect(Array.isArray(res.json())).toBe(true)` y nada más, o sea que
+    // pasaba con `[]` —el endpoint apagado del todo— y también con la lista de OTRA
+    // inmobiliaria. Afirmaba en el título un scoping que no verificaba.
     const res = await app.inject({ method: 'GET', url: '/screenings', headers: auth(tokenAdmin) });
     expect(res.statusCode).toBe(200);
-    expect(Array.isArray(res.json())).toBe(true);
+    const lista = res.json() as { id: string; inmobiliariaId: string }[];
+
+    // 1. Lista de verdad: `scr_001` es del seed y tiene que estar.
+    expect(lista.map((s) => s.id)).toContain('scr_001');
+
+    // 2. Y sólo lo de este tenant. Las dos afirmaciones juntas: ninguna fila ajena, y
+    //    exactamente todas las propias (si devolviera de otra inmobiliaria, el count no da).
+    expect(lista.every((s) => s.inmobiliariaId === tid)).toBe(true);
+    const prisma = new PrismaClient();
+    try {
+      expect(lista.length).toBe(await prisma.screening.count({ where: { inmobiliariaId: tid } }));
+    } finally {
+      await prisma.$disconnect();
+    }
   });
 });
 
