@@ -18,6 +18,7 @@ import {
 } from '../lib/liquidaciones.js';
 import { parteRendible } from '../lib/parte-rendible.js';
 import { descripcionDeReparacion } from '../lib/descripcion-gasto-rendido.js';
+import { sePuedeBorrarGastoDeCaja } from '../lib/borrar-gasto-caja.js';
 import { conSaldo, montoPagadoPorLiquidacion } from '../lib/saldos.js';
 import { registrarEventoContrato } from '../lib/evento-contrato.js';
 import { calcularMora, resolverEsquemaMora } from '../lib/punitorios.js';
@@ -1810,8 +1811,37 @@ export async function plataRoutes(app: FastifyInstance) {
       select: { descontadoEnRendicion: true, comprobanteUrl: true },
     });
     if (!mov) return reply.code(404).send({ message: 'Movimiento inexistente' });
-    const res = await prisma.movimientoCaja.deleteMany({
-      where: { id, inmobiliariaId: u.inmobiliariaId, descontadoEnRendicion: false },
+    // El candado real es "¿existe un GastoRendido que apunte a este movimiento?", NO el flag
+    // `descontadoEnRendicion`. El flag no dice "no se le descontó a nadie": dice "todavía no se
+    // cubrió el 100%". Lo explica el propio armado de la rendición, más abajo en este archivo:
+    // en multi-dueño el movimiento queda en `false` hasta que las partes suman el total.
+    //
+    // O sea, con un departamento 50/50: se rinde a la primera dueña, se le descuentan $50.000,
+    // el flag sigue en `false` porque falta el hermano, y el borrado pasaba. Ella quedaba con
+    // el descuento hecho sobre un gasto que ya no existe, él no lo pagaba nunca, y el
+    // movimiento no estaba ni para auditarlo. Con un solo dueño no pasa —la primera rendición
+    // cubre el 100%—, que es por qué duró.
+    //
+    // El `GastoRendido` existe desde la PRIMERA parte rendida, así que es el que hay que mirar.
+    // Todo va en una transacción para no reabrir la carrera que el `deleteMany` atómico cerró.
+    const res = await prisma.$transaction(async (tx) => {
+      const gastosRendidosQueLoApuntan = await tx.gastoRendido.count({
+        where: { refId: id, tipo: 'CAJA' },
+      });
+      if (
+        !sePuedeBorrarGastoDeCaja({
+          gastosRendidosQueLoApuntan,
+          descontadoEnRendicion: mov.descontadoEnRendicion,
+        })
+      ) {
+        return { count: 0 };
+      }
+      // Se conserva `descontadoEnRendicion: false` en el where del delete además del chequeo
+      // de arriba: es el candado ATÓMICO contra una rendición concurrente, que es lo que este
+      // deleteMany vino a resolver.
+      return tx.movimientoCaja.deleteMany({
+        where: { id, inmobiliariaId: u.inmobiliariaId, descontadoEnRendicion: false },
+      });
     });
     if (res.count === 0) {
       return reply
