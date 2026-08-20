@@ -20,6 +20,7 @@ import { NavBar } from '@/components/nav-bar';
 import { MobileGreetingHeader } from '@/components/mobile-greeting-header';
 import { comprobantesMock, contratoMock, liquidacionesMock } from '@/lib/mock-data';
 import { resolverMontos } from '@/lib/punitorios';
+import { saldoDeLiquidacion } from '@/lib/saldo-liquidacion';
 import {
   cargosExtraDelInquilino,
   totalCargosExtra,
@@ -625,11 +626,18 @@ function MovimientoRow({ mov }: { mov: Movimiento }) {
     const calc = resolverMontos(mov.liq, apiEnabled);
     const diasV = diasHastaVencimiento(mov.liq.fechaVencimiento);
     const vencido = mov.kind === 'atrasado';
-    // Parcial ya conciliado (prod): mostramos el saldo restante, no el total.
+    // T-46 — Misma fuente que el home y el detalle del pago (`saldoDeLiquidacion`). Antes esta
+    // fila tenía su propia cuenta y NO descontaba lo informado, mientras la card grande de esta
+    // MISMA pantalla sí lo descontaba: con un pago informado y sin validar, /comprobantes se
+    // contradecía sola. El criterio de aceptación de T-15 era "las tres pantallas muestran el
+    // mismo número", y ésta era la tercera.
+    // Lo YA VALIDADO (distinto de `faltaPagar`): alimenta el "ya pagaste $X".
     const montoPagado = mov.liq.montoPagado ?? 0;
-    const saldo = apiEnabled ? Math.max(0, mov.liq.saldo ?? calc.totalAPagar) : calc.totalAPagar;
-    const esParcial = apiEnabled && montoPagado > 0 && saldo > 0;
-    const montoMostrado = esParcial ? saldo : calc.totalAPagar;
+    const det = saldoDeLiquidacion(mov.liq, calc.totalAPagar);
+    const esParcial = apiEnabled && (det.hayConciliado || det.hayEnRevision) && det.faltaPagar > 0;
+    const montoMostrado = apiEnabled && (det.hayConciliado || det.hayEnRevision)
+      ? det.faltaPagar
+      : calc.totalAPagar;
 
     return (
       <div className="flex items-center gap-3 p-4">
@@ -788,18 +796,20 @@ function PagoUrgenteCard({ mov }: { mov: Movimiento }) {
   const vencido = mov.kind === 'atrasado';
   const hayPunitorios = calc.punitorioAcumulado > 0;
   // Parcial ya conciliado (prod): descontamos lo pagado y mostramos el saldo.
+  // T-46 — La card ya descontaba lo informado, pero con su propia cuenta. Ahora sale del
+  // mismo helper que la fila de arriba, el home y el detalle: una sola definición de "cuánto
+  // debe".
   const montoPagado = mov.liq.montoPagado ?? 0;
+  const det = saldoDeLiquidacion(mov.liq, calc.totalAPagar);
   const saldo = apiEnabled ? Math.max(0, mov.liq.saldo ?? calc.totalAPagar) : calc.totalAPagar;
-  const esParcial = apiEnabled && montoPagado > 0 && saldo > 0;
+  const esParcial = apiEnabled && det.hayConciliado && saldo > 0;
   // Lo que informó y todavía nadie miró. NO baja el saldo (el saldo sólo cuenta
   // lo CONCILIADO), pero desde el lado del inquilino esa plata ya salió: pedirle
   // el total otra vez lo empuja a pagar dos veces. `restante` es lo que le falta
   // poner de verdad; si da 0 y hay algo en revisión, la pelota es de la
   // inmobiliaria. Los RECHAZADO no cuentan: esa plata hay que volver a ponerla.
   const totalCard = esParcial ? saldo : calc.totalAPagar;
-  const enRevision = (mov.liq.pagos ?? [])
-    .filter((p) => p.estado === 'INFORMADO')
-    .reduce((acc, p) => acc + p.monto, 0);
+  const enRevision = det.enRevision;
   const restante = Math.max(0, totalCard - enRevision);
   const esperandoVisto = enRevision > 0 && restante === 0;
 

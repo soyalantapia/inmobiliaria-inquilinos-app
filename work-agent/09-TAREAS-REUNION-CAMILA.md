@@ -2047,7 +2047,32 @@ real y deja el diálogo abierto para corregir, y el camino feliz guarda y refres
 
 ---
 
-## T-46 · El inquilino ve tres números distintos para la misma deuda
+## T-49 · El cartel prometía WhatsApp y no llega nada — ✅ RESUELTO
+
+**Experto:** FE-P · **Prioridad:** 🟠
+**Origen:** evaluación de Camila (19/08). Ella lo pidió textual: *"Sacalo hoy, es una línea de
+texto"*.
+
+Abajo del campo para responderle al inquilino en un reclamo decía *"El inquilino lo recibe en la
+app y por WhatsApp"*. **Las dos mitades eran falsas:** `POST /reclamos/:id/responder` sólo
+persiste el mensaje —no manda mail ni push— y **WhatsApp no está integrado en ninguna parte del
+repo**.
+
+Camila: *"Yo le contesto a alguien, me quedo tranquila, y a los cuatro días me reclama que no le
+respondí. Ese cartel me hace quedar mal a mí, no al software."*
+
+Ahora dice lo que pasa de verdad: que queda en el reclamo, que el inquilino lo ve cuando entra, y
+que **si es urgente hay que escribirle**. Notificar de verdad es otra cosa y vive en T-17.
+
+---
+
+## T-46 · El inquilino ve tres números distintos para la misma deuda — ✅ RESUELTO
+
+> **Hecho.** `/comprobantes` ahora usa `saldoDeLiquidacion`, el mismo helper que el home y el
+> detalle. La fila compacta **no descontaba** lo informado y la card grande de esa misma
+> pantalla **sí**: con un pago informado y sin validar, la pantalla se contradecía sola. Las dos
+> salen ahora de una sola definición de "cuánto debe". `montoPagado` (lo ya validado) se
+> conserva aparte, porque alimenta el "ya pagaste $X" y es un dato distinto de "cuánto falta".
 
 **Experto:** FE-I · **Prioridad:** 🟠 · **Depende de:** nada
 **Origen:** evaluación de Camila (19/08). **T-15 figura como ✅ HECHA y no lo está.**
@@ -2062,7 +2087,14 @@ pago informado y sin validar, esa pantalla se contradice sola.
 
 ---
 
-## T-47 · La expensa del mes del consorcio no se puede cambiar
+## T-47 · La expensa del mes del consorcio no se puede cambiar — ✅ RESUELTO
+
+> **Hecho.** Lápiz en el stat "Expensa del mes" de la ficha del consorcio, con período e
+> importe. El endpoint (`PUT /consorcios/:id`) y el hook `editarConsorcio` **ya existían**: el
+> hook no lo llamaba ninguna pantalla, así que el valor sólo se podía fijar al crear el
+> consorcio — y es una acción mensual.
+> **Verificado en navegador:** el diálogo abre precargado con el período y el importe actuales,
+> y al guardar sale `PUT /consorcios/:id → 200` seguido del GET de refresco.
 
 **Experto:** FE-P · **Prioridad:** 🟠 · **Depende de:** nada
 **Origen:** evaluación de Camila (19/08).
