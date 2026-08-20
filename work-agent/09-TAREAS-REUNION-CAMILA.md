@@ -786,6 +786,49 @@ expone `porMoneda`). Vale arreglarlo en la misma pasada.
 
 ---
 
+## T-13-N1 · El cierre de caja nunca se congela, y hay una tabla muerta que existía para eso
+
+**Experto:** DATA + BE · **Prioridad:** 🟠 · **Depende de:** decisión del dueño
+**Origen:** caza de operaciones-inversas (20/08), buscando la misma forma del bug de `descobrar`.
+
+**Estado verificado el 20/08.** `GET /caja/cierre` **no lee ni escribe nada persistido**: recalcula
+el arqueo en vivo desde las filas de `Pago`, cada vez que se abre la pantalla.
+
+Y existe `model CierreCaja` (tabla `cierres_caja`), creada en la **migración inicial del
+12/06/2026**, con `ingresos`, `egresos`, `balanceDia`, `efectivoEnMano`, `pendienteRendir`,
+`movimientos`, `cerradoAt` y `cerradoPor`, más un `@@unique([inmobiliariaId, fecha])`. **Nadie la
+escribe ni la lee.** Se verificó sobre todo el repo: los únicos matches fuera del schema y de la
+migración son un componente React (`CierreCajaDelDia`) y una interfaz TS (`CierreCajaItem`), que
+no tienen nada que ver con el modelo.
+
+**La consecuencia concreta, que es lo que importa.** Anular un pago (`POST /pagos/:id/anular`) lo
+pasa a `RECHAZADO` **y le reescribe `decididoAt` a hoy**. El cierre filtra por esos dos campos
+(`estado: 'CONCILIADO'` y `decididoAt` dentro del día), así que el pago **desaparece del arqueo
+del día en que se cobró**.
+
+O sea: **el cierre de un día pasado cambia solo, en silencio, días después.** La cajera cerró el
+12 con un número; si vuelve a abrir el 12 después de una anulación, ve otro. Para alguien que
+concilia contra el banco eso es una trampa: no hay forma de saber si el número cambió ni por qué.
+
+Dos cosas más que muestran que el diseño previsto era más rico que lo construido:
+`efectivoEnMano` y `pendienteRendir` son campos de esa tabla que **el cierre en vivo ni siquiera
+calcula** (`grep` en `plata.ts` da 0).
+
+**Por qué NO lo tomo por mi cuenta.** Congelar el cierre es una feature con decisiones de
+producto, no un bug con un arreglo obvio: quién cierra el día, si se puede reabrir, y sobre todo
+qué pasa con una anulación posterior a un día ya cerrado — ¿se rechaza, se asienta como ajuste
+del día de hoy, o se permite y se deja constancia? Eso lo define el dueño.
+
+**Y NO borrar la tabla** mientras la decisión no esté tomada: es exactamente el caso que
+`CLAUDE.md` §1.5 pide no resolver por iniciativa propia.
+
+**Lo que sí conviene decidir primero.** Si hoy Camila concilia contra el banco mirando esta
+pantalla, la pregunta urgente no es congelar el cierre sino **si alguna vez le cambió un número
+sin que se enterara**. Eso se responde con una consulta de sólo lectura: pagos con
+`estado = 'RECHAZADO'` cuyo `decididoAt` sea posterior al día en que se conciliaron.
+
+---
+
 ## T-14 · Pago parcial desde la PWA del inquilino
 
 **Estado: ✅ VERIFICADA — ya funcionaba, cero líneas de código.** El checkout tiene el selector
