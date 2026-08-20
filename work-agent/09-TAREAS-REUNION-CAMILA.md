@@ -3767,3 +3767,36 @@ done
 ```
 
 **Criterio de aceptación.** Que enterarse deje de depender de que a alguien se le ocurra mirar.
+
+---
+
+## T-27-N1 · El sitio estático se verificó entero por primera vez — ✅ HECHA
+
+**Estado: ✅ HECHA** — commit `f94a5f9`.
+
+**Experto:** OPS · **Prioridad:** 🟡 · **Origen:** verificación posterior a T-46.
+
+Se corrió `scripts/build-static.sh` de verdad, con las tres apps, cosa que no se había hecho
+nunca —T-46 sumó `propietario` al pipeline pero sólo se había buildeado esa app suelta—.
+
+**El sitio se arma bien.** Las cuatro puertas del picker resuelven a páginas reales
+(`presentacion/`, `inmobiliaria/`, `inquilino/`, `propietario/`, más `legales/`), y el portal del
+propietario sale con sus datos de demo horneados y sin el mensaje de "no conectado".
+
+**Lo único que falla es conocido y es de Windows.** `/(landing)/inicio/opengraph-image` tira
+`TypeError: Invalid URL`: `@vercel/og` le pasa una URL a `path.join`, que en Windows devuelve
+`file:\C:\...` —inválida— y en POSIX `file:/...`, que Node acepta. Ya estaba diagnosticado en
+T-27 (`eb1e1c2`). **No afecta el deploy**, que corre en `ubuntu-latest`. Apartando esa ruta, el
+panel compila entero.
+
+**Dos defectos del propio script, arreglados:**
+
+1. El apagado de dev servers era un **no-op silencioso**: usaba `lsof`, que no existe en Git Bash
+   de Windows, y el `|| true` se comía el error. El script decía "Apagando proceso" sin apagar
+   nada.
+2. **Abortaba tarde.** El guard por app salta recién al llegar a la suya, así que con el 3003
+   tomado se buildeaban inmobiliaria e inquilino enteras —minutos— antes de morir. Ahora se
+   miran los tres puertos antes de compilar nada.
+
+Ninguno de los dos rompía el deploy real (en el runner hay `lsof` y no hay dev servers): rompían
+la prueba local, que es donde uno mira antes de pushear.
