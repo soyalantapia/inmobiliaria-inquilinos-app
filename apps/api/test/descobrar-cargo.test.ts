@@ -229,3 +229,71 @@ describe('Deshacer el cobro de un cargo', () => {
 
   });
 });
+
+/**
+ * T-28-N1-N1 · Dos cargos IGUALES en el mismo contrato.
+ *
+ * `MovimientoCaja` no tiene `cargoId`: el unico vinculo entre el cargo y el ingreso que dejo
+ * `saldar` es el TEXTO de la descripcion. `descobrar` reconstruye esa cadena, acota por
+ * contrato + tipo + monto + moneda, y de los que matchean borra EL MAS RECIENTE.
+ *
+ * Con dos cargos de igual concepto, monto y moneda los dos ingresos son indistinguibles por
+ * todos esos campos. Estos dos casos contestan hasta donde eso importa de verdad.
+ */
+describe('T-28-N1-N1 - dos cargos identicos, y hasta donde llega el dano', () => {
+  const CONCEPTO = 'QA descobrar gemelos';
+
+  it('en el caso normal no se rompe nada: las cuentas quedan derechas', async () => {
+    // Mientras ninguno se rindio los dos ingresos SON fungibles: da igual cual se borre.
+    // Queda un ingreso vivo, un cargo cobrado y uno adeudado — el estado correcto, sin
+    // importar cual de los dos movimientos sobrevivio.
+    const a = await crearCargo(CONCEPTO);
+    const b = await crearCargo(CONCEPTO);
+    await app.inject({ method: 'POST', url: `/cargos/${a.id}/saldar`, headers: auth(tokenAdmin) });
+    await app.inject({ method: 'POST', url: `/cargos/${b.id}/saldar`, headers: auth(tokenAdmin) });
+    expect(await ingresosDe(CONCEPTO)).toHaveLength(2);
+
+    const res = await app.inject({ method: 'POST', url: `/cargos/${a.id}/descobrar`, headers: auth(tokenAdmin) });
+    expect(res.statusCode).toBe(200);
+
+    expect(await ingresosDe(CONCEPTO)).toHaveLength(1);
+    const despuesA = await prismaTest.cargoContrato.findUnique({ where: { id: a.id } });
+    const despuesB = await prismaTest.cargoContrato.findUnique({ where: { id: b.id } });
+    expect(despuesA!.saldadoAt).toBeNull();
+    expect(despuesB!.saldadoAt).not.toBeNull();
+  });
+
+  /**
+   * ACA SI DUELE, Y ES PLATA.
+   *
+   * Los dos ingresos dejan de ser fungibles apenas UNO se rinde: a partir de ahi tienen
+   * historias distintas, y la descripcion no alcanza para saber cual es cual.
+   *
+   * Escenario: se cobran los dos, se le rinde al propietario el ingreso del PRIMERO, y
+   * despues se deshace ese primer cargo. `descobrar` busca por descripcion, encuentra el mas
+   * reciente —el del SEGUNDO, sin rendir— y lo borra.
+   *
+   * Queda el primer cargo como deuda del inquilino otra vez Y el ingreso rendido vivo,
+   * acreditado al propietario: exactamente la consecuencia que el encabezado de este archivo
+   * llama la cara — "el inquilino vuelve a deber la plata y al propietario se le acredita
+   * igual". De yapa el segundo cargo queda cobrado sin movimiento detras, asi que deshacerlo
+   * despues devuelve un 409 que miente.
+   *
+   * Lo correcto es 409 desde el principio: el ingreso de ESE cargo ya se rindio.
+   *
+   * it.fails porque hoy devuelve 200. Es el criterio de aceptacion de T-28-N1-N1, que
+   * necesita `cargoId` en MovimientoCaja y por eso espera decision del dueno. EL DIA QUE SE
+   * AGREGUE, ESTE TEST EMPIEZA A FALLAR: hay que sacarle el .fails.
+   */
+  it.fails('con uno ya rendido, deshacer el otro no deberia poder borrarle el movimiento', async () => {
+    const a = await crearCargo(CONCEPTO);
+    const b = await crearCargo(CONCEPTO);
+    await app.inject({ method: 'POST', url: `/cargos/${a.id}/saldar`, headers: auth(tokenAdmin) });
+    const [movA] = await ingresosDe(CONCEPTO);
+    await prismaTest.movimientoCaja.update({ where: { id: movA!.id }, data: { descontadoEnRendicion: true } });
+    await app.inject({ method: 'POST', url: `/cargos/${b.id}/saldar`, headers: auth(tokenAdmin) });
+
+    const res = await app.inject({ method: 'POST', url: `/cargos/${a.id}/descobrar`, headers: auth(tokenAdmin) });
+    expect(res.statusCode).toBe(409);
+  });
+});
