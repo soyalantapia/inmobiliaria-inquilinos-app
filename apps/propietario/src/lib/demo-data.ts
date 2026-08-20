@@ -26,6 +26,8 @@
  * la ARITMÉTICA de cada rendición, que la verifica un test.
  */
 import type {
+  AnuncioPortal,
+  PendientePortal,
   MiCartera,
   PropiedadPortal,
   ReclamoPortal,
@@ -288,6 +290,53 @@ export const RECLAMOS_DEMO: ReclamoPortal[] = [
  * Devuelve `unknown` porque el llamador ya declaró el tipo que espera (`apiFetch<T>`); acá no
  * hay forma honesta de probar que coinciden, y fingir que sí con un genérico sería peor.
  */
+/**
+ * Los avisos que la inmobiliaria le manda a sus propietarios.
+ *
+ * Van dos y no diez: la demo tiene que mostrar que la sección existe y cómo se ve un aviso
+ * IMPORTANTE al lado de uno normal, no llenar la pantalla antes de que se vea la plata.
+ */
+const ANUNCIOS_DEMO: AnuncioPortal[] = [
+  {
+    id: 'anu_001',
+    titulo: 'Rendiciones de septiembre',
+    cuerpo: 'Las rendiciones salen el día 10, como siempre. Si tenés algún cambio de CBU, avisanos antes del 5.',
+    prioridad: 'NORMAL',
+    enviadoAt: '2026-09-01T12:00:00.000Z',
+  },
+  {
+    id: 'anu_002',
+    titulo: 'Aumento de expensas en Gorriti 4521',
+    // Con salto de línea a propósito: el cuerpo lo escribe la inmobiliaria en un textarea y la
+    // pantalla lo respeta (`whitespace-pre-line`). La demo tiene que ejercitar ese caso.
+    cuerpo: [
+      'El consorcio aprobó un aumento del 12% a partir de septiembre.',
+      'Lo vas a ver reflejado en la próxima liquidación del inquilino.',
+    ].join('\n'),
+    prioridad: 'IMPORTANTE',
+    enviadoAt: '2026-08-22T15:30:00.000Z',
+  },
+];
+
+/**
+ * Lo cobrado y todavía sin rendir.
+ *
+ * Una sola unidad, con un período: es el caso que contesta la pregunta ("¿ya me mandaste lo de
+ * agosto?") sin tapar el resto de la pantalla. El monto es el de la UNIDAD —de ahí se descuentan
+ * comisión y gastos—, igual que en producción.
+ */
+const PENDIENTE_DEMO: PendientePortal[] = [
+  {
+    propiedadId: 'prp_001',
+    direccion: 'Gorriti 4521, 3°B',
+    complejo: 'Consorcio Gorriti 4521',
+    participacionPct: 60,
+    moneda: 'ARS',
+    total: 480000,
+    periodos: [{ periodo: '2026-08', monto: 480000 }],
+  },
+];
+
 export function resolverDemo(path: string): unknown {
   // Sin querystring: hoy ninguna ruta del portal la usa, pero si mañana llega no queremos que
   // "/portal/reclamos?x=1" caiga en el error de ruta desconocida por una diferencia boba.
@@ -297,6 +346,11 @@ export function resolverDemo(path: string): unknown {
   if (ruta === '/portal/propiedades') return PROPIEDADES_DEMO;
   if (ruta === '/portal/reclamos') return RECLAMOS_DEMO;
   if (ruta === '/portal/rendiciones') return RENDICIONES_DEMO.map(resumenDeRendicion);
+  // Los dos endpoints nuevos del portal. La demo tiene que contestarlos aunque sea vacío: sin
+  // esto `resolverDemo` tira "la demo no tiene datos para…", el componente lo trata como error
+  // y —como los dos se ocultan al fallar— la sección desaparecía sin que nadie se enterara.
+  if (ruta === '/portal/anuncios') return ANUNCIOS_DEMO;
+  if (ruta === '/portal/pendiente') return PENDIENTE_DEMO;
 
   const detalle = /^\/portal\/rendiciones\/([^/]+)$/.exec(ruta);
   if (detalle) {

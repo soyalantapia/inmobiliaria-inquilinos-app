@@ -175,7 +175,11 @@ export function FilaRendicion({
                       : periodoLargo(a.periodo),
                   monto: plata(a.monto),
                 }))}
-                vacio="Esta rendición no tiene alquileres imputados."
+                // Decir "no tiene alquileres imputados" arriba de un total de $237.960 es una
+                // contradicción en la misma tarjeta. Las rendiciones anteriores a julio de 2026
+                // son de antes de que existiera `alquileres_rendidos`: el total es correcto, lo
+                // que no hay es el desglose. Eso es lo que dice el texto.
+                vacio="De esta rendición no quedó guardado el desglose por unidad. El total de arriba es el que se te depositó."
               />
 
               {detalle.data.detalleGastos.length > 0 && (

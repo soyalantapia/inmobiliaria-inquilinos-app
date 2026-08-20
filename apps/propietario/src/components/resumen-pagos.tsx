@@ -37,11 +37,14 @@ export function cortarPorMoneda(rendiciones: RendicionPortal[], anio: number): C
       c = { moneda: m, esteAnio: { total: 0, cantidad: 0 }, anteriores: { total: 0, cantidad: 0 }, ultima: null };
       por.set(m, c);
     }
-    const balde = new Date(r.rendidoAt).getFullYear() === anio ? c.esteAnio : c.anteriores;
+    const esDelAnio = new Date(r.rendidoAt).getFullYear() === anio;
+    const balde = esDelAnio ? c.esteAnio : c.anteriores;
     balde.total = Math.round((balde.total + r.teDepositamos) * 100) / 100;
     balde.cantidad += 1;
     // La lista viene de la más nueva a la más vieja, así que la primera que se ve es la última.
-    if (!c.ultima) c.ultima = r.periodo;
+    // Sólo cuenta si cayó en el año que muestra la tarjeta: si no, el rótulo decía "la última,
+    // diciembre 2025" abajo de un total que dice "te depositamos en 2026".
+    if (esDelAnio && !c.ultima) c.ultima = r.periodo;
   }
   // Los pesos primero: es la moneda del 99% de los contratos y la que el dueño espera arriba.
   return [...por.values()].sort((a, b) => (a.moneda === 'ARS' ? -1 : b.moneda === 'ARS' ? 1 : 0));

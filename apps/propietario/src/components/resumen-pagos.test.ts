@@ -63,4 +63,12 @@ describe('cortarPorMoneda', () => {
     const c = cortarPorMoneda([R('ARS', 1, '2026-06-10', '2026-05'), R('ARS', 1, '2026-05-10', '2026-04')], 2026);
     expect(c[0].ultima).toBe('2026-05');
   });
+
+  it('«la última» nombra un período del año de la tarjeta, no de uno anterior', () => {
+    // El rótulo vive abajo de "Te depositamos en 2026". Si la única rendición es de 2025,
+    // decía "la última, diciembre 2025" pegado a un total de 2026 que es cero.
+    const c = cortarPorMoneda([R('ARS', 90000, '2025-12-10', '2025-11')], 2026);
+    expect(c[0].esteAnio.cantidad).toBe(0);
+    expect(c[0].ultima).toBeNull();
+  });
 });
