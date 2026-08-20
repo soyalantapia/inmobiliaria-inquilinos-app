@@ -68,6 +68,14 @@ function apiRendicionALocal(r: RendicionApi): Rendicion {
     // no daba el "A transferirte", sin ninguna línea que explicara la diferencia.
     totalIngresos: r.totalIngresos != null ? Number(r.totalIngresos) : undefined,
     montoNeto: Number(r.montoNeto),
+    // LA MONEDA. El mapper la tiraba —el campo existe en las dos puntas— y sin ella
+    // `mensajeRendicion` caía a su fallback `prop.monedaMensual ?? 'ARS'`: una rendición en
+    // dólares le llegaba al dueño por WhatsApp con signo de pesos, y en Argentina "$ 1.104" se
+    // lee mil ciento cuatro pesos. El dueño esperaba mil veces menos plata.
+    //
+    // El fallback de `mensajeRendicion` existe para las filas del modo demo, que no tienen
+    // moneda. En producción no tenía por qué llegar nunca a usarse.
+    moneda: r.moneda ?? 'ARS',
     rendidoAt: r.rendidoAt,
     metodo: r.metodo,
     notas: r.notas,
@@ -415,7 +423,13 @@ export default function PropietariosPage() {
                         )}
                         <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
                           Comisión {p.comisionPct}% · Bruto{' '}
-                          {formatMonto(rendido?.montoBruto ?? p.totalCobradoMes)}
+                          {/* La moneda de la rendición si ya se rindió; si no, la del mes en
+                              curso del dueño. Sin el segundo argumento un bruto en dólares se
+                              imprimía con signo de pesos, en la misma tarjeta que arriba avisa
+                              que hay cobros en las dos monedas. */}
+                          {rendido
+                            ? formatMonto(rendido.montoBruto, rendido.moneda)
+                            : formatMonto(p.totalCobradoMes, p.monedaMensual ?? undefined)}
                         </p>
                       </div>
                     </button>

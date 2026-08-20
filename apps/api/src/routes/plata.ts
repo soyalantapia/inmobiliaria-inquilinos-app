@@ -93,6 +93,15 @@ export async function plataRoutes(app: FastifyInstance) {
             tasaPunitorioDiaria: true,
             moraTipo: true,
             moraValor: true,
+            // La PROPIEDAD y el MODO DE COBRANZA de ESTE contrato, no del que la propiedad
+            // tenga como actual. El panel ataba cada liquidación a su dueño buscando
+            // `props.find(p => p.contratoActualId === l.contratoId)`, y ese join se corta
+            // solo: al finalizar un contrato la propiedad queda con `contratoActualId: null`,
+            // y al firmar uno nuevo apunta al nuevo. Desde ese instante la plata cobrada del
+            // contrato viejo —cobrada de verdad, en la cuenta de la inmobiliaria— dejaba de
+            // encontrar propietario y salía de todas las cuentas del panel.
+            propiedadId: true,
+            modoCobranza: true,
             propiedad: { select: { direccion: true } },
             inquilinoTitular: { select: { nombre: true, apellido: true } },
           },

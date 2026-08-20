@@ -195,6 +195,10 @@ export function RendirPropietarioDialog({
     totalGastos: Number(resp.totalGastos),
     totalIngresos: Number(resp.totalIngresos ?? 0),
     montoNeto: Number(resp.montoNeto),
+    // La moneda que el server acaba de decidir para ESTA rendición. Sin ella el WhatsApp que
+    // sale INMEDIATAMENTE después de rendir —el más importante, el que el dueño recibe en el
+    // momento— caía al fallback y mandaba una rendición en dólares con signo de pesos.
+    moneda: resp.moneda ?? 'ARS',
     rendidoAt: new Date().toISOString(),
     metodo,
     notas: notas.trim() || null,
