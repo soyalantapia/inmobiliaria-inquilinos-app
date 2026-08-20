@@ -8,8 +8,21 @@
 # Ese bug es invisible desde adentro de cualquiera de las dos ramas. Es justo el que una
 # compuerta ataja.
 #
-# Esta compuerta NO bloquea el deploy todavía: es un workflow aparte, para que se pueda
-# ver qué reporta antes de que le corte el paso a nadie. Volverlo required es del dueño.
+# ⚠️ LEER ESTO ANTES DE CONFIAR EN EL VERDE: hoy esto REPORTA, no FRENA.
+#
+# Verificado el 20/08: `main` no tiene branch protection y `deploy.yml` (Pages) se dispara por
+# su cuenta con el push, sin depender de este workflow. Railway lo mismo: el push a `main` ya
+# es el deploy. O sea que si estos jobs quedan en rojo, el código sale a producción igual y el
+# rojo aparece al costado, después.
+#
+# Que un job falle acá NO es lo mismo que frenar un merge. Lo único que convierte esto en una
+# compuerta de verdad es marcarlo como REQUIRED en la branch protection de `main`, con los
+# cuatro checks (`revision`, `integracion`, `build`, `ramas-sin-integrar`) — y eso se hace en
+# la configuración del repo, no acá. Es del dueño. Ver T-01-N1-N9.
+#
+# Se dice tan fuerte porque el riesgo es la confianza falsa: un verde que no frena nada se lee
+# igual que uno que sí, y este proyecto ya tuvo dos semanas y media de deploy roto justamente
+# porque nadie miraba lo que nadie estaba obligado a mirar.
 
 name: Revisión
 
@@ -91,11 +104,12 @@ jobs:
   # Son las que importan: bugs-de-plata, core, auth, depósitos, conciliación, rendición
   # multi-dueño. Los tres bugs de plata que aparecieron el 19/08 se encontraron LEYENDO código.
   #
-  # BLOQUEA. Arrancó con `continue-on-error` porque quedaban 4 rojas que no eran bugs del
+  # FALLA EL WORKFLOW (que no es lo mismo que frenar el merge — ver el encabezado del archivo).
+  # Arrancó con `continue-on-error` porque quedaban 4 rojas que no eran bugs del
   # producto —suites que se pisaban entre sí—; eso se cerró en T-01-N1-N1-N1 y la suite da 52/52.
-  # Si vuelve a ponerse roja, es una regresión de verdad y tiene que frenar el merge: como el
-  # push a `main` deploya producción sin escala intermedia, este job es lo único que hay entre
-  # un merge y la plata de la inmobiliaria.
+  # Si vuelve a ponerse roja, es una regresión de verdad. Y como el push a `main` deploya
+  # producción sin escala intermedia, este job debería ser lo que hay entre un merge y la plata
+  # de la inmobiliaria — hoy NO lo es, porque nada lo hace obligatorio: ver el encabezado.
   integracion:
     runs-on: ubuntu-latest
     services:

@@ -5213,3 +5213,35 @@ ningún test — o que esté escrito cuál de los dos caminos se eligió y por q
 **Riesgo de no hacerlo.** Bajo hoy, molesto siempre: cada vez que alguien toque el alta, algún
 test lejano se pone rojo por una razón que no tiene nada que ver con lo que cambió, y se pierde
 media hora entendiendo que era la limpieza.
+
+---
+
+### T-01-N1-N9 · La compuerta reporta, no frena — y yo dije que frenaba
+**Experto:** OPS + **el dueño** · **Prioridad:** 🟠 · **Depende de:** una acción tuya
+
+> Ver `work-agent/tareas/T-01-N1-N9/REQUISITOS.md`. **La corrección de las afirmaciones está
+> hecha; lo que cierra la tarea es de configuración y no lo corrí yo.**
+
+Durante los últimos días construí `revision.yml`, le puse base de datos, le saqué el
+`continue-on-error` y le sumé los builds — y en cada paso dije que **bloqueaba**. **No frena
+nada.** Verificado el 20/08:
+
+- **`main` no tiene branch protection**: `GET /branches/main/protection` → 404.
+- **`deploy.yml` (Pages) no depende de `Revisión`**: se dispara solo con el push.
+- **Railway deploya con el push**, y eso no se puede condicionar desde el repo.
+
+Con los cuatro jobs en rojo, el código sale a producción igual. Que un job falle no es lo mismo
+que frenar un merge, y la diferencia es justo la que importa.
+
+**Lo notable:** el encabezado original del workflow lo decía bien —*"NO bloquea el deploy
+todavía… volverlo required es del dueño"*—. La afirmación se deslizó **después**, al sacar el
+`continue-on-error`. Confundí "el job hace fallar el workflow" con "el workflow frena algo".
+
+**Por qué es serio:** el riesgo es la confianza falsa. Un verde que no frena se lee igual que uno
+que sí, y este proyecto ya tuvo el deploy roto dos semanas y media porque nadie miraba lo que
+nadie estaba obligado a mirar.
+
+**Lo que falta y es tuyo:** marcar `revision`, `integracion`, `build` y `ramas-sin-integrar` como
+**required** en la branch protection de `main`. El comando exacto está en la hoja, junto con las
+tres cosas que hay que saber antes de apretar — sobre todo que **se acabaría el push directo a
+`main`**, que es como trabajan hoy todos los chats.
