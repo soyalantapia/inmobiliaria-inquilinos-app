@@ -93,6 +93,11 @@ async function main() {
       // La propiedad apunta al contrato y el contrato a la propiedad: hay que cortar
       // ese lazo antes de borrar cualquiera de los dos.
       await prisma.propiedad.updateMany({ where: { id: { in: pIds } }, data: { contratoActualId: null } });
+      // El alta de contrato escribe historial (`EventoContrato`) desde T-29 y la FK es
+      // RESTRICT: sin sacarlo antes, el delete de abajo muere con P2003 y el script no limpia
+      // nada. Acá pesa más que en los afterAll de los tests: esto se corre justo DESPUÉS de
+      // una corrida que murió a mitad del borrado, o sea cuando esos eventos existen seguro.
+      await prisma.eventoContrato.deleteMany({ where: { contratoId: { in: cIds } } });
       await prisma.contrato.deleteMany({ where: { id: { in: cIds } } });
       await prisma.participacionPropietario.deleteMany({
         where: { OR: [{ propiedadId: { in: pIds } }, { propietarioId: { in: oIds } }] },
