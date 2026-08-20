@@ -74,6 +74,23 @@ Sin este bloque, el trabajo hecho no le llega a Camila. **Es lo primero.**
 
 ## T-01 · Aplicar las migraciones pendientes (contalas: hoy son TRECE)
 
+> ### ⚠️ LEER ANTES: `work-agent/tareas/T-01-N2/PREFLIGHT-DEPLOY.md`
+>
+> Las trece se auditaron una por una (19/08). **T-01 y T-02 son la misma cosa**: el contenedor
+> corre `prisma migrate deploy` antes de arrancar la app (`apps/api/Dockerfile:30`), así que
+> deployar la API ES aplicar las migraciones, y el "primero la migración, después el código"
+> que piden cinco de ellas queda garantizado por construcción.
+>
+> **Ninguna de las trece puede fallar sobre datos reales** — verificado, no supuesto: los cuatro
+> `ADD VALUE` usan `IF NOT EXISTS` y no usan el valor nuevo en su propia transacción; el único
+> índice único va sobre una tabla vacía; y el UPDATE de DNI lleva un `NOT EXISTS` que esquiva el
+> `@@unique([inmobiliariaId, dni])` que lo habría volteado.
+>
+> **Sí conviene correr dos consultas de solo lectura antes** (están en el documento): dicen
+> cuántas fichas quedan para fusionar a mano después de normalizar emails y DNIs.
+>
+> **Y el orden con T-03:** `rol_caja` se aplica en el deploy, así que **T-02 va antes que T-03**.
+
 > ### ⚠️ Antes que nada: NO hay paso manual. Se aplican solas.
 >
 > `apps/api/Dockerfile:30` arranca con `CMD ["sh","-c","pnpm db:deploy && exec node
