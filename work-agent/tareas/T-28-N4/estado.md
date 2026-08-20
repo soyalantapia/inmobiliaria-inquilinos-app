@@ -123,3 +123,88 @@ es lo que sirve: para que nadie lo trate como si sostuviera una invariante al to
 aritmética de arriba.
 
 Suite puro tras las dos partes: **53 archivos / 505 tests**. `tsc` en 0.
+
+---
+
+## Tercera parte: `contrato-historico` — la deuda que se carga a mano
+
+El módulo que crea la deuda de un inquilino **que ya se fue**: el pedido textual de la clienta
+cero (cargar los morosos viejos sin inventarles un alquiler vigente). Tiene **dos callers que no
+pueden divergir** —la carga de a uno desde la ficha de la propiedad y la importación masiva
+desde Excel—; si crearan cuotas distintas, son plata que alguien va a reclamar.
+
+**No tiene aritmética que extraer: es todo escritura.** Pero sus invariantes son de *forma de las
+filas que escribe*, y eso se verifica con un cliente de transacción falso que anota lo que se le
+manda — el mismo instrumento del test del cron. 15 tests, sin base.
+
+Las tres que más duelen, y ninguna es teórica:
+
+1. **El contrato nace `FINALIZADO`.** El devengo barre `estado: 'ACTIVO'`, así que las cuotas
+   creadas acá son las únicas que va a tener. Si naciera ACTIVO, a un moroso de hace tres años
+   **le seguiría creciendo la deuda sola, todos los meses, para siempre**.
+2. **`Inquilino.email` queda en `null`, aunque venga uno.** Ese campo es la llave de login de la
+   PWA y no filtra por estado del contrato. Acá la fila la tipea un operador de memoria o sale
+   de una celda de Excel: un email mal tipeado **le abre a un tercero la deuda de otra persona**.
+   El email sí va a la `Persona`, que sirve para dedup y no habilita login por sí sola.
+3. **No reclama la propiedad.** El moroso de hace tres años vivió donde hoy vive otro: tocar
+   `contratoActualId` le rompería el contrato vigente al inquilino de hoy. Y ése es el caso
+   NORMAL, no el borde.
+
+Más el DNI normalizado **en los dos lugares** (de `Inquilino.dni` sale la clave de dedup: si la
+carga de a uno guardara `30.111.222` y la masiva `30111222`, el aviso de "este DNI ya está en tu
+cartera" no saltaría y la misma deuda entraría dos veces), que un DNI vacío quede en `null` y no
+en cadena vacía, y que el tipo de contrato se derive de las expensas.
+
+**Mutación 7/7**, incluida la de reclamar la propiedad —que se verifica por *ausencia*, así que
+se inyectó un `propiedad.update` para comprobar que el test lo agarra—.
+
+Suite puro tras las tres partes: **56 archivos / 540 tests**. `tsc` en 0.
+
+## Estado del relevamiento
+
+De los siete módulos de `lib/` sin cobertura que abrieron esta tarea quedan cuatro, y **ninguno
+es de plata**: `auditoria` (32), `avisos-reclamo` (115), `reputacion-red` (179) y
+`estado-inicial-contrato` (164) — este último es el único que vale mirar, porque valida el
+estado inicial de un alta y de ahí salen 400 que el operador ve.
+
+---
+
+## Cuarta parte: `estado-inicial-contrato` — el alta de un contrato EN CURSO
+
+El último del relevamiento que valía. Al dar de alta un contrato con fecha de inicio pasada, el
+devengo genera todos los períodos vencidos **como si nadie hubiera pagado nunca**; este helper
+aplica lo que la inmobiliaria confirma en el wizard (cuáles se pagaron, cuáles a medias, cuáles
+se deben). Si se equivoca, el contrato entra a producción con la deuda mal **desde el minuto
+cero** — y esa deuda es lo que se le reclama a una persona real.
+
+**15 tests** con `tx` falso, sin base.
+
+### El caso que más valía está en las FECHAS
+
+Los pagos sintéticos se fechan en el **vencimiento de su cuota**, no en `new Date()`. El
+comentario del código cuenta qué pasó cuando no era así (bug de caja del 07/07): esa plata vieja
+caía en el **cierre de caja de HOY** como "cobrado hoy" —el dueño veía ingresos que nunca
+aprobó— y al inquilino le llegaba *"te validamos el pago de &lt;mes viejo&gt;"* como actividad
+reciente. Quedan fijados los tres campos (`fechaTransferencia`, `informadoAt`, `decididoAt`) y
+que **cada cuota use su propio vencimiento**, no todas el mismo.
+
+### Las validaciones que frenan un alta inconsistente
+
+- **Período repetido** → sin esto se crearían DOS pagos sintéticos para la misma cuota, y la
+  cuenta corriente arrancaría con el doble de lo pagado.
+- **Período que todavía no venció** → el estado inicial es historia, no futuro; marcarlo pagado
+  adelantaría plata que nadie cobró.
+- **PARCIAL sin monto** → un pago sintético de 0 dejaría la cuota PARCIAL sin nada pagado.
+- **PARCIAL que cubre el total** → obliga a marcarlo Pagado, para que estado y saldo no se
+  contradigan.
+- **Mora negativa recortada a 0** → si no, un dato mal tipeado *baja* la deuda.
+
+**Mutación 8/8.**
+
+Suite puro tras las cuatro partes: **57 archivos / 555 tests**. `tsc` en 0.
+
+## Relevamiento cerrado
+
+De los siete módulos de `lib/` sin cobertura, quedan tres y **ninguno toca plata**: `auditoria`
+(32 líneas), `avisos-reclamo` (115) y `reputacion-red` (179). La veta de plata sin tests que
+abrió este relevamiento **está agotada**.
