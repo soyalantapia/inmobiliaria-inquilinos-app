@@ -2232,6 +2232,94 @@ real y deja el diálogo abierto para corregir, y el camino feliz guarda y refres
 
 ---
 
+## T-57 · Un pago parcial no frena la mora: sigue corriendo sobre el total original
+
+**Experto:** BE + **decisión del dueño** · **Prioridad:** 🔴 · **Toca plata — le cobra de más al inquilino**
+**Origen:** revisión adversarial del motor de cobranza (20/08). **NO se arregló: ver por qué.**
+
+**El caso, con números.** Cuota de $600.000 que vence el 10/08, mora 0,15% diario. El inquilino
+paga **$599.000 el mismo 10/08** —en fecha, sin mora— y queda debiendo $1.000 de capital. El
+09/09, a 30 días, la mora se calcula sobre los **$600.000 completos**:
+
+    600.000 × 0,15% × 30 = $27.000 de punitorios por deber $1.000.
+
+Sobre el saldo real serían **$450**. Y ese total inflado es exactamente lo que ve el inquilino en
+la PWA, lo que topea `POST /pagos/informar` y lo que muestra el panel.
+
+Caso menos extremo y mucho más frecuente: paga $500.000 de $600.000 y a 30 días la mora es
+$27.000 en vez de $4.500 — **$22.500 de más**.
+
+**Verificado:** en los ~16 call sites la base es siempre `Number(l.montoTotal)` bruto; lo
+conciliado se resta recién en `saldos.ts`, **después** del cálculo. El congelamiento de mora que
+existe (`plata.ts:1665-1675`) sólo cubre pagos **INFORMADO** pendientes: un parcial **CONCILIADO**
+deja la liquidación en PARCIAL y la mora sigue corriendo sobre el total original.
+
+### Por qué NO lo arreglé, y qué hace falta para hacerlo
+
+1. **La solución ingenua rompe el caso inverso.** `base = montoTotal − conciliados` haría que
+   pagar TARDE reduzca retroactivamente la mora ya devengada: al inquilino le convendría pagar
+   tarde y de a poco.
+2. **O se hace en los 16 call sites, o no se hace.** Arreglarlo sólo donde los pagos están a
+   mano daría **moras distintas según qué endpoint las calcule** — peor que el bug actual.
+3. **Cambia lo que se le cobra a inquilinos reales**, hoy, en producción. Bajar un cargo mal
+   calculado es correcto, pero la forma exacta es una decisión de negocio.
+4. **No se puede verificar desde acá:** los tests que cubren este camino tocan la base.
+
+### Las dos formas, para que elijas
+
+**(a) Descontar sólo lo pagado ANTES del vencimiento.** `capital = base − pagadoAlVencimiento`.
+Barata y sin regresión: lo que entró en fecha reduce el capital sobre el que corre toda la mora,
+y lo que entró tarde no borra punitorios ya devengados. Arregla el caso titular. **No** hace
+tramos: si paga la mitad al día 15 y el resto al 40, cobra los 40 días sobre el capital inicial
+menos lo de antes del vencimiento.
+
+**(b) Mora por tramos.** Lo riguroso: 5 días sobre $600.000 + 25 días sobre $100.000. Es lo que
+haría un contador, y es un cambio de fondo en el corazón del cobro.
+
+**Criterio de aceptación.** Un parcial pagado en fecha no genera mora sobre la parte ya pagada, y
+la mora sale igual desde los 16 lugares que la calculan.
+
+---
+
+## T-58 · La mora fija del tenant se aplica sin mirar la moneda del contrato
+
+**Experto:** BE · **Prioridad:** 🟠 · **Toca plata** · **No se arregló: ver por qué**
+**Origen:** revisión adversarial del motor de cobranza (20/08).
+
+**El caso.** El admin configura la mora default como **MONTO_FIJO = 5000**, pensada en pesos —la
+pantalla que la carga no pide moneda y la previsualiza con el símbolo `$`—. Un contrato en
+**USD** sin `moraTipo` propio (el wizard arranca en `HEREDAR`, y la importación de cartera
+tampoco lo setea) hereda ese default y lo aplica **1:1**:
+
+    alquiler US$ 800 + mora US$ 5.000 = US$ 5.800 exigibles.
+
+Cinco mil dólares de punitorio sobre un alquiler de ochocientos. Es lo que la PWA le reclama al
+inquilino.
+
+**Por qué pasa.** `resolverEsquemaMora` devuelve `{tipo:'MONTO_FIJO', valor:5000}` sin mirar
+`Liquidacion.moneda`, y `calcularMora` lo usa tal cual.
+
+**El arreglo, que NO necesita migración.** `Inmobiliaria.monedaDefault` ya existe: la moneda del
+default **está determinada**, no hay que guardarla. La regla sería: si el esquema viene del tenant
+y es `MONTO_FIJO`, heredarlo **sólo si la moneda del contrato coincide** con `monedaDefault`; si
+no, `SIN_MORA` — mejor no cobrar mora que cobrarla en la unidad equivocada. No se inventa una
+conversión.
+
+**Por qué no lo hice.** `resolverEsquemaMora` tiene **21 call sites**, y la regla exige que cada
+uno conozca la moneda del contrato. Los tipos son opcionales, así que agregar el campo compila
+igual — pero los call sites cuyo `select` no traiga `moneda` seguirían con el comportamiento
+viejo, y quedarían **moras distintas según qué endpoint las calcule**. Es exactamente la
+objeción que hace inaceptable el arreglo parcial en T-57. O se hace en los 21 y se corre la
+suite completa, o no se hace.
+
+**Frecuencia:** raro (hace falta tenant con MONTO_FIJO default + contrato en otra moneda + sin
+mora propia), pero catastrófico cuando ocurre.
+
+**Criterio de aceptación.** Un contrato en USD no hereda una mora fija cargada en pesos, y la
+mora sale igual desde los 21 lugares que la resuelven.
+
+---
+
 ## T-56 · Todo cobro con fecha civil perdía un día de mora — ✅ RESUELTO
 
 **Experto:** BE · **Prioridad:** 🔴 · **Toca plata** · **Trababa la conciliación bancaria**
