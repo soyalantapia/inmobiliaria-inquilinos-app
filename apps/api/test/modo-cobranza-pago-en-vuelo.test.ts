@@ -63,7 +63,10 @@ beforeAll(async () => {
   if (!cand) return;
   contratoId = cand.id;
   modoOriginal = cand.modoCobranza as typeof modoOriginal;
+  // `noUncheckedIndexedAccess` está activo: el índice puede ser undefined aunque el `where`
+  // exija `liquidaciones: { some: {} }`.
   const liq = cand.liquidaciones[0];
+  if (!liq) return;
   const pago = await prisma.pago.create({
     data: {
       inmobiliariaId: cand.inmobiliariaId,
