@@ -322,6 +322,23 @@ describe('Anular rendición y pago rendido', () => {
     const anulada = await prismaTest.rendicion.findUniqueOrThrow({ where: { id: rend.id } });
     expect(anulada.anuladaAt).not.toBeNull();
     expect(anulada.motivoAnulacion).toContain('período equivocado');
+
+    // Y el LISTADO la esconde por default. No es cosmético: `GET /rendiciones` lo consumen
+    // cinco pantallas que preguntan "¿ya se le rindió?" —el badge Rendido de la ficha, el KPI
+    // de por rendir, el neto histórico, las últimas rendiciones, el comprobante de WhatsApp—.
+    // Si la anulada volviera al listado, anular dejaría de tener efecto apenas se recarga la
+    // página y la plata seguiría contando como rendida.
+    const listado = await app.inject({ method: 'GET', url: '/rendiciones', headers: auth(tokenAdmin) });
+    expect(listado.json().map((r: { id: string }) => r.id)).not.toContain(rend.id);
+
+    // Quien las quiera, que las pida: es el historial del propietario, la única pantalla que
+    // las muestra —tachadas y con el motivo— para poder contestarle al dueño que llama.
+    const conAnuladas = await app.inject({
+      method: 'GET', url: '/rendiciones?incluirAnuladas=1', headers: auth(tokenAdmin),
+    });
+    const fila = conAnuladas.json().find((r: { id: string }) => r.id === rend.id);
+    expect(fila, 'la anulada tiene que venir cuando se la pide').toBeTruthy();
+    expect(fila.motivoAnulacion).toContain('período equivocado');
   });
 
   it('tras anular la rendición, el pago SÍ se puede anular → 200', async () => {
