@@ -75,10 +75,32 @@ const sinBase = readdirSync(DIR_TESTS)
   .filter((f) => !necesitaBase(f))
   .map((f) => `test/${f}`);
 
+/**
+ * "No necesita base" NO quiere decir "no necesita entorno" (T-01-N1-N15).
+ *
+ * Varios de estos tests hacen `buildApp()`, y `src/env.ts` valida el entorno con zod al
+ * importarse: sin `DATABASE_URL` ni `JWT_SECRET` tira ZodError antes de que corra un solo
+ * assert. Nunca se notó porque los dos lugares donde se corría lo tapaban: el job `revision`
+ * inyecta las dos variables a mano, y el worktree de trabajo tiene un `apps/api/.env`.
+ *
+ * En un worktree limpio —o sea, el de cualquiera que clone hoy— daban 3 rojos que no tenían
+ * NADA que ver con el cambio de esa persona. Ese es el rojo que enseña a ignorar los rojos.
+ *
+ * Los valores son deliberadamente inservibles: la URL apunta al puerto 1 de loopback, así que
+ * si algún día un test de esta partición intenta conectarse de verdad, falla rápido y ruidoso
+ * en vez de encontrar una base y ensuciarla. No pisan lo que ya venga del entorno: si alguien
+ * tiene un `.env`, manda el suyo.
+ */
+const ENTORNO_MINIMO = {
+  DATABASE_URL: process.env.DATABASE_URL ?? 'postgresql://nadie:nadie@127.0.0.1:1/nada',
+  JWT_SECRET: process.env.JWT_SECRET ?? 'esto-no-firma-nada-real-en-tests',
+};
+
 export default defineConfig({
   test: {
     environment: 'node',
     include: sinBase,
+    env: ENTORNO_MINIMO,
     // Sin DB compartida no hay razón para serializar: acá el paralelismo es gratis.
     fileParallelism: true,
     testTimeout: 20_000,

@@ -31,6 +31,14 @@ después prorratean:
 | `routes/plata.ts:1996` (rendición) | `Math.min(cobrado, total) * (montoAlquiler / total)` |
 | `routes/plata.ts:270` (cierre de caja) | `Math.min(monto, liqTotal) * (liqAlq / liqTotal)` |
 
+> **Esa tabla ya no describe el código (T-01-N1-N14).** Ni las fórmulas ni las líneas: las tres
+> copias inline se unificaron en `packages/shared/src/prorrateo.ts` y el cierre de caja se mudó
+> a `lib/cierre-caja.ts`. Hoy hay **una implementación y cuatro consumidores**.
+>
+> Se deja la tabla vieja tachada en vez de reescribirla porque **el punto es ese**: tres números
+> de línea escritos a mano, los tres podridos en semanas. Un documento que apunta a líneas
+> envejece más rápido que el código que describe.
+
 ### 2. La comisión sale del ALQUILER, no del total
 
 Se desprende de lo anterior: la comisión se calcula sobre `alquilerPortion`, que ya excluye

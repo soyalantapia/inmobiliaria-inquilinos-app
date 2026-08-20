@@ -46,6 +46,24 @@ describe('porcionAlquilerCobrada — la regla, una sola vez', () => {
 });
 
 describe('nadie vuelve a copiar la regla', () => {
+  // LO QUE ESTE GUARD **NO** VE, dicho acá para que nadie le tenga más fe de la que merece.
+  //
+  // Busca el ESQUELETO de la fórmula. Una copia que calcule la misma magnitud SIN parecerse
+  // —sin `Math.min`, sin división, aplicando la regla por omisión— se le escapa entera.
+  //
+  // Los dos candidatos más obvios se revisaron (T-01-N1-N15) y NINGUNO es un defecto vivo.
+  // Se anotan con la evidencia para que el próximo no los persiga de nuevo:
+  //
+  //   · `inmobiliaria/src/lib/dashboard-helpers.ts` comisiona sobre `cobrado` derecho, con un
+  //     0.08 fijo. Es DELIBERADO y está documentado en `lib/api/hooks.ts:1557`: el demo
+  //     mantiene la tasa fija por paridad byte-for-byte, y el camino con API espeja al demo.
+  //   · `inmobiliaria/src/lib/cierre-caja.ts` suma `montoAlquiler` entero y sólo para las
+  //     PAGADO, sin rama PARCIAL. Esa rama es INALCANZABLE: esas liquidaciones salen sólo de
+  //     `generarLiquidaciones`, que emite PAGADO | PENDIENTE | VENCIDO y nunca PARCIAL, y sus
+  //     cinco callers la usan cruda, sin overlay que le cambie el estado.
+  //
+  // O sea: el punto ciego del guard es real, pero hoy no esconde nada. Si alguna vez
+  // `generarLiquidaciones` aprende a emitir PARCIAL, el segundo se vuelve un bug de verdad.
   it('no hay otra implementación fuera de @llave/shared', () => {
     // El patrón: un `Math.min(...)` multiplicado por una división en la misma expresión, en un
     // archivo que habla de alquiler. Es el esqueleto de la fórmula, y matchea aunque cambien
