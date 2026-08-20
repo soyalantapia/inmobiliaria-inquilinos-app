@@ -164,8 +164,7 @@ y `join` es `path.join`, que no sabe de URLs:
 
 | plataforma | resultado del join | `new URL(...)` |
 |---|---|---|
-| win32 | `.ile:epo\...
-oto-sans.ttf` | **Invalid URL** ← lo que ves |
+| win32 | `.\file:\repo\...\noto-sans.ttf` | **Invalid URL** ← lo que ves |
 | posix | `file:/repo/.../noto-sans.ttf` | parsea, pathname `/repo/...` |
 
 El parseo de URL es de spec y no depende del sistema operativo, así que **en el contenedor
