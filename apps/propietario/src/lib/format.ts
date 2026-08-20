@@ -1,7 +1,20 @@
 /** Formatos compartidos por las cuatro pestañas del portal. */
 
+/**
+ * Plata.
+ *
+ * Los centavos se muestran SÓLO si existen. Con `maximumFractionDigits: 0` fijo, cada renglón
+ * del desglose se redondeaba por separado y la suma en pantalla no daba el total de abajo: el
+ * dueño veía tres números que no cierran con el cuarto y no tenía cómo saber cuál estaba mal.
+ * Un entero limpio se sigue viendo limpio.
+ */
 export const money = (n: number, moneda: 'ARS' | 'USD' = 'ARS'): string =>
-  new Intl.NumberFormat('es-AR', { style: 'currency', currency: moneda, maximumFractionDigits: 0 }).format(n);
+  new Intl.NumberFormat('es-AR', {
+    style: 'currency',
+    currency: moneda,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: Number.isInteger(n) ? 0 : 2,
+  }).format(n);
 
 /**
  * Fecha legible. Distingue dos formas de dato porque JS las parsea distinto:

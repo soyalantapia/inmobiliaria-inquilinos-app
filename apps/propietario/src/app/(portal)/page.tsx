@@ -5,6 +5,7 @@ import { Receipt } from 'lucide-react';
 import { Cargando, ErrorCarga, Seccion, Vacio } from '@/components/bloques';
 import { FilaRendicion } from '@/components/portal-piezas';
 import { AvisosInmobiliaria } from '@/components/avisos-inmobiliaria';
+import { PendienteDeRendir } from '@/components/pendiente-de-rendir';
 import { ResumenPagos } from '@/components/resumen-pagos';
 import { apiFetch, ApiError, leerSesion, type MiCartera, type RendicionPortal } from '@/lib/api';
 
@@ -20,6 +21,9 @@ export default function PagosPage() {
   return (
     <div className="space-y-6">
       <AvisosInmobiliaria />
+      {/* Antes de lo que YA se rindió: contesta "¿ya me mandaste lo de agosto?", que es la
+          pregunta con la que el dueño levanta el teléfono. */}
+      <PendienteDeRendir />
       <Seccion titulo="Lo que te rindieron" icono={<Receipt className="h-4 w-4" />}>
       {rendiciones.isPending ? (
         <Cargando />

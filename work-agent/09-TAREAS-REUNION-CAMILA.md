@@ -3754,11 +3754,15 @@ Archivos que hoy no corre nadie:
 | `apps/inquilino/src/lib/saldo-liquidacion.test.ts` | T-45 |
 | `apps/propietario/src/lib/demo-data.test.ts` | T-46 |
 | `apps/propietario/src/lib/format.test.ts` | T-46 |
+| `apps/inmobiliaria/src/lib/alquiler-cobrado.test.ts` | T-01-N1-N5 |
 
 **Al cerrar T-32 hay que borrar la línea `exclude` de los `*.test.ts` en los tsconfig de
-`apps/inquilino` Y `apps/propietario`** — las dos la tienen, con el aviso puesto. Si se cierra
-T-32 sin sacarlas, el runner existe y estos cuatro archivos siguen sin tipar ni correr, que es
-el peor de los dos mundos.
+`apps/inquilino`, `apps/propietario` Y `apps/inmobiliaria`** — las TRES la tienen, con el aviso
+puesto. Si se cierra T-32 sin sacarlas, el runner existe y estos archivos siguen sin tipar ni
+correr, que es el peor de los dos mundos.
+
+> La del panel se agregó en **T-01-N1-N5**, por el mismo motivo que las otras dos: sin ella, el
+> primer `*.test.ts` del paquete rompe `pnpm typecheck`, porque `vitest` no es dependencia suya.
 
 ---
 
@@ -3869,3 +3873,122 @@ done
 ```
 
 **Criterio de aceptación.** Que enterarse deje de depender de que a alguien se le ocurra mirar.
+
+---
+
+### T-01-N1-N5 · El panel muestra números de rendición que no son los de la rendición — ✅ HECHA
+**Experto:** FE-P · **Prioridad:** 🟠 · **Detectada en:** barrido adversarial (T-01-N1)
+
+> **Estado: ✅ hecha.** Ver `work-agent/tareas/T-01-N1-N5/REQUISITOS.md`.
+
+Dos hallazgos que el barrido marcó como deuda vieja —no eran regresiones del merge— y quedaron
+sin registrar. Revalidados hoy contra el código: seguían.
+
+**1. La plata.** El KPI del dashboard prorrateaba la porción de alquiler cobrado contra
+`l.montoTotal`, con el comentario *"el cap deja afuera la mora"*. No la deja: ese `montoTotal`
+viene decorado por `conSaldo` con el punitorio al día, y el tipo del propio panel lo dice tres
+líneas más arriba. El server prorratea contra la base de la fila, sin mora.
+
+| caso | server (lo que se rinde) | panel (lo que mostraba) |
+|---|---|---|
+| pago total sin mora | 100,00 | 100,00 |
+| pago **parcial** en mora | 50,00 | **45,45** |
+| con expensas y mora | 100,00 | **90,91** |
+
+Coincidían mientras no hubiera atrasos, que es por qué duró. Con mora, el panel le mostraba a
+la inmobiliaria **menos alquiler cobrado del que la rendición le iba a pagar al propietario**.
+
+**2. La fecha.** `RendicionApi` declaraba `createdAt?: string`, un campo que el modelo
+`Rendicion` **no tiene** — el API devuelve la fila cruda de Prisma, que trae `rendidoAt`. Como
+llegaba siempre `undefined`, las dos pantallas caían al fallback `${periodo}-01`: una rendición
+de julio hecha el 12 de agosto se mostraba como **1 de julio**. Es el dato con el que alguien
+contesta *"¿cuándo le pagaste a Silvana?"*.
+
+**Verificado:** 10 tests que comparan contra la fórmula del server (2 rojos al anular el cap);
+la fecha la agarra `tsc` con dos TS2339; `tsc` 0 en los cinco paquetes; 391 tests verdes.
+**No verificado:** no se probó en el navegador.
+
+---
+
+## T-27-N1 · El sitio estático se verificó entero por primera vez — ✅ HECHA
+
+**Estado: ✅ HECHA** — commit `f94a5f9`.
+
+**Experto:** OPS · **Prioridad:** 🟡 · **Origen:** verificación posterior a T-46.
+
+Se corrió `scripts/build-static.sh` de verdad, con las tres apps, cosa que no se había hecho
+nunca —T-46 sumó `propietario` al pipeline pero sólo se había buildeado esa app suelta—.
+
+**El sitio se arma bien.** Las cuatro puertas del picker resuelven a páginas reales
+(`presentacion/`, `inmobiliaria/`, `inquilino/`, `propietario/`, más `legales/`), y el portal del
+propietario sale con sus datos de demo horneados y sin el mensaje de "no conectado".
+
+**Lo único que falla es conocido y es de Windows.** `/(landing)/inicio/opengraph-image` tira
+`TypeError: Invalid URL`: `@vercel/og` le pasa una URL a `path.join`, que en Windows devuelve
+`file:\C:\...` —inválida— y en POSIX `file:/...`, que Node acepta. Ya estaba diagnosticado en
+T-27 (`eb1e1c2`). **No afecta el deploy**, que corre en `ubuntu-latest`. Apartando esa ruta, el
+panel compila entero.
+
+**Dos defectos del propio script, arreglados:**
+
+1. El apagado de dev servers era un **no-op silencioso**: usaba `lsof`, que no existe en Git Bash
+   de Windows, y el `|| true` se comía el error. El script decía "Apagando proceso" sin apagar
+   nada.
+2. **Abortaba tarde.** El guard por app salta recién al llegar a la suya, así que con el 3003
+   tomado se buildeaban inmobiliaria e inquilino enteras —minutos— antes de morir. Ahora se
+   miran los tres puertos antes de compilar nada.
+
+Ninguno de los dos rompía el deploy real (en el runner hay `lsof` y no hay dev servers): rompían
+la prueba local, que es donde uno mira antes de pushear.
+### T-01-N1-N6 · Se podía borrar un gasto que a un co-dueño ya se le descontó — ✅ HECHA
+**Experto:** BE-P · **Prioridad:** 🟠 · **Detectada en:** barrido adversarial (T-01-N1)
+
+> **Estado: ✅ hecha.** Ver `work-agent/tareas/T-01-N1-N6/REQUISITOS.md`.
+
+`DELETE /caja/movimientos/:id` protegía el borrado con `descontadoEnRendicion: false`. Ese flag
+**no significa "no se le descontó a nadie"**: significa "todavía no se cubrió el 100%". Lo dice
+el propio armado de la rendición, más abajo en el mismo archivo.
+
+Departamento 50/50: se rinde a Silvana, se le descuentan $50.000, el flag sigue en `false`
+porque falta el hermano, y el borrado **pasaba**. Ella quedaba con el descuento hecho sobre un
+gasto que ya no existe, él no lo pagaba nunca, y el movimiento no estaba ni para auditarlo. Con
+un solo dueño no pasa —la primera rendición cubre el 100%—, que es por qué duró: el caso roto es
+el minoritario.
+
+**El candado pasa a mirar `GastoRendido`**, que es el registro que dice que a alguien ya se le
+cobró y que existe desde la **primera** parte rendida. Va dentro de una transacción para no
+reabrir la carrera que el `deleteMany` atómico había cerrado; el flag se conserva en el `where`
+del delete, que es el candado contra una rendición concurrente.
+
+**Verificado:** 5 tests puros, 2 se ponen rojos al volver al candado viejo; `tsc` 0 en los cinco
+paquetes; 395 tests verdes.
+
+---
+
+### T-01-N1-N7 · La baja de un propietario existe en la API y no hay cómo usarla
+**Experto:** FE-P + PROD · **Prioridad:** 🟠 · **Depende de:** una decisión de UX
+**Origen:** barrido adversarial de T-01-N1.
+
+**Estado verificado.** `PATCH /propietarios/:id/activo` está construido, autenticado, con su
+409 de cobranza directa y su migración escrita (T-23-N4). **Ningún front lo llama:**
+
+```
+grep -rn "/activo" apps/inmobiliaria/src/   →  sin resultados
+```
+
+O sea: se puede dar de baja a un propietario por HTTP y **no desde el producto**. Camila no
+tiene botón. La feature está entregada del lado del server y es inalcanzable del lado de quien
+la iba a usar.
+
+**Por qué importa más de lo que parece.** T-23-N4 explica que la baja lógica es lo que corta el
+acceso de un ex-propietario al portal. Hoy, para que un dueño que vendió su departamento deje de
+ver la cartera, hay que **borrarle el email a mano** desde la ficha — que funciona, pero es un
+efecto lateral de otra cosa, no está documentado como el procedimiento, y nadie lo sabe.
+
+**Por qué no se hizo acá.** Agregar el control es una decisión de UX sobre el producto
+terminado: dónde va (¿ficha del propietario? ¿listado?), qué dice, si pide PIN como las otras
+acciones sensibles, y qué pasa con los que ya están dados de baja (¿se listan? ¿se filtran?).
+Eso lo define el dueño, no un agente. **Queda escrito, no construido.**
+
+**Riesgo de no hacerlo.** Que se dé por entregada una capacidad que nadie puede ejercer — el
+mismo patrón que T-46 con el portal del propietario.
