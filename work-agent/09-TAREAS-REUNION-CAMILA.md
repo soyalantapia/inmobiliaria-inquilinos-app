@@ -2299,6 +2299,55 @@ la mora sale igual desde los 16 lugares que la calculan.
 
 ---
 
+## T-61 · Un ajuste posterior a una renovación ya cargada queda anulado en el devengo
+
+**Experto:** BE · **Prioridad:** 🟠 · **Toca plata** · **No se arregló: ver por qué**
+**Origen:** revisión adversarial del motor de cobranza (20/08).
+
+**El caso.** Contrato a $300.000 que termina el 30/11.
+
+1. **10/08** — se renueva por adelantado (el flujo normal): `montoDesde '2026-12'`,
+   `montoNuevo 500.000`. Queda `RenovacionContrato{montoDesde:'2026-12', montoAnterior:300.000}`
+   y `contrato.monto = 500.000`.
+2. **05/09** — llega el ajuste anual: `periodoDesde '2026-09'`, `montoNuevo 380.000`. Las cuotas
+   de 09 y 10 pasan a $380.000. Hasta acá bien.
+3. El cron crea la cuota de **2026-11**. `canonDelPeriodo` busca la próxima vigencia futura —la
+   renovación de diciembre— y devuelve su `montoAnterior`: **$300.000**.
+
+O sea: **el ajuste de septiembre queda anulado para noviembre.** Se cobran $300.000 en vez de
+$380.000, con la comisión calculada sobre esa base.
+
+**La causa.** `montoAnterior` es un **snapshot congelado** al momento de crear la vigencia. El
+diseño asume que nadie toca el canon después de grabar una vigencia futura.
+
+### El arreglo propuesto por el revisor NO sirve, y esto es lo importante
+
+Proponía **leer hacia adelante** (usar `montoNuevo` de la última vigencia con `desde <= periodo`)
+en vez de hacia atrás. **Rompería el ajuste masivo.** El docstring de `canonDelPeriodo` lo dice:
+
+> *"`contrato.monto` es la AUTORIDAD (lo pisa el ajuste masivo `PATCH /contratos/:id/monto`,
+> **que no deja fila de ajuste**)"*
+
+Si el canon se cambió por ahí no hay vigencia que leer, así que "hacia adelante" devolvería el
+`montoNuevo` de un ajuste **viejo** en lugar del monto actual — un sobrecobro o subcobro nuevo,
+en un camino que hoy funciona bien. Además el query trae **sólo vigencias futuras**
+(`periodoDesde: { gt: periodoActual }`), así que las pasadas ni siquiera están en el array.
+
+### Qué haría falta de verdad
+
+Distinguir "el snapshot sigue siendo válido" de "alguien tocó el canon después". Eso pide saber
+**cuándo se escribió cada cosa** (un `createdAt` comparado contra la última escritura de canon),
+o dejar de depender de snapshots y llevar un historial de canon completo — incluyendo los
+cambios que hoy no dejan fila.
+
+Es un cambio de diseño en el corazón del devengo, con un camino (ajuste masivo) que la solución
+obvia rompe. **No se toca sin decidir el modelo primero.**
+
+**Cobertura que ya existe:** `test/canon-por-periodo.test.ts` (18 casos, puros). Cualquier
+cambio acá tiene que pasar por ahí y sumar el caso de esta tarea.
+
+---
+
 ## T-60 · Se facturaba un mes entero que vencía después de terminado el contrato — ✅ RESUELTO
 
 **Experto:** BE · **Prioridad:** 🟠 · **Toca plata**
