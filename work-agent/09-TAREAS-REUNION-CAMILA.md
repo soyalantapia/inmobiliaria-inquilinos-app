@@ -3838,3 +3838,25 @@ panel compila entero.
 
 Ninguno de los dos rompía el deploy real (en el runner hay `lsof` y no hay dev servers): rompían
 la prueba local, que es donde uno mira antes de pushear.
+### T-01-N1-N6 · Se podía borrar un gasto que a un co-dueño ya se le descontó — ✅ HECHA
+**Experto:** BE-P · **Prioridad:** 🟠 · **Detectada en:** barrido adversarial (T-01-N1)
+
+> **Estado: ✅ hecha.** Ver `work-agent/tareas/T-01-N1-N6/REQUISITOS.md`.
+
+`DELETE /caja/movimientos/:id` protegía el borrado con `descontadoEnRendicion: false`. Ese flag
+**no significa "no se le descontó a nadie"**: significa "todavía no se cubrió el 100%". Lo dice
+el propio armado de la rendición, más abajo en el mismo archivo.
+
+Departamento 50/50: se rinde a Silvana, se le descuentan $50.000, el flag sigue en `false`
+porque falta el hermano, y el borrado **pasaba**. Ella quedaba con el descuento hecho sobre un
+gasto que ya no existe, él no lo pagaba nunca, y el movimiento no estaba ni para auditarlo. Con
+un solo dueño no pasa —la primera rendición cubre el 100%—, que es por qué duró: el caso roto es
+el minoritario.
+
+**El candado pasa a mirar `GastoRendido`**, que es el registro que dice que a alguien ya se le
+cobró y que existe desde la **primera** parte rendida. Va dentro de una transacción para no
+reabrir la carrera que el `deleteMany` atómico había cerrado; el flag se conserva en el `where`
+del delete, que es el candado contra una rendición concurrente.
+
+**Verificado:** 5 tests puros, 2 se ponen rojos al volver al candado viejo; `tsc` 0 en los cinco
+paquetes; 395 tests verdes.
