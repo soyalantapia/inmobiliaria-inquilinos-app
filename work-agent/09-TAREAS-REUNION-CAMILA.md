@@ -656,6 +656,18 @@ separadas y ella esperaba las cuentas dentro de caja.
 3. **Verificar si existe la transferencia entre cajas.** Camila la nombró (*"para mover las
    cajas"*) y no está confirmado que exista.
 
+   > **Verificado el 19/08 desde otra sesión: NO existe.** No hay ningún tipo de movimiento de
+   > traspaso ni par vinculado — `grep` de `TRANSFERENCIA_ENTRE` / `transferenciaEntreCuentas`
+   > en `apps/api/src` y `apps/inmobiliaria/src` no devuelve nada, y `TipoMovimientoCaja` sólo
+   > tiene INGRESO_EXTRA y GASTO.
+   >
+   > Hoy la única forma es cargar una salida en una caja y una entrada en la otra, **sueltas**.
+   > Camila lo dijo así: *"si alguien anula una, la otra queda colgada"*.
+   >
+   > **No se construyó acá a propósito:** necesita un movimiento nuevo (o un par vinculado) en
+   > el schema, y tocar el modelo de datos es de las cosas que este repo manda consultar antes.
+   > Queda con el diagnóstico listo para quien tenga T-13.
+
 **Criterio de aceptación.** Camila carga un gasto en una cuenta concreta y ve el saldo de esa
 cuenta, sin que nadie le explique dónde está la pantalla.
 
