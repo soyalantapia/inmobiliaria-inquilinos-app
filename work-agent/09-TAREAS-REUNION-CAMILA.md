@@ -3064,7 +3064,29 @@ contrato: cobrar los dos, deshacer uno, y que quede vivo exactamente el movimien
 
 ---
 
-## T-28-N1-N2 · `multi-alquiler.test.ts` está en rojo, y no es contaminación de estado
+## T-28-N1-N2 · `multi-alquiler.test.ts` está en rojo, y no es contaminación de estado — ✅ RESUELTO
+
+> ### ✅ Arreglado el 20/08 en T-01-N1-N1. La pregunta abierta acá tiene respuesta.
+>
+> El diagnóstico de abajo es correcto hasta donde llega, y la pregunta que deja —*"a qué queda
+> enganchado el contrato de la segunda persona"*— se contestó: **queda enganchado a la PRIMERA**.
+> Era la peor de las dos salidas que el propio texto anticipaba.
+>
+> **La causa.** `buscarOCrearPersona` (`lib/persona.ts`) devuelve la Persona existente cuando el
+> email coincide y el DNI no. No es un descuido: lo necesita la importación de cartera, donde
+> reventar con P2002 a mitad de 2000 filas deja la carga hecha a medias en la cuenta real del
+> cliente, y donde el preview ya marca el caso como advertencia. Por eso nunca hubo P2002: el
+> insert que lo dispararía no llega a ocurrir. Al compartir ese helper con el alta manual, el
+> `catch` de P2002 quedó **inalcanzable**.
+>
+> **El arreglo** (commit `dd78755`): un chequeo explícito en el alta manual —`esOtraPersona`,
+> que sólo afirma cuando hay DNI de los dos lados y difieren— que tira `EmailDeOtraPersona` y
+> cae en el mismo 409. **No se tocó el camino de importación**, que sigue como estaba a
+> propósito. Ante la duda no bloquea: sin DNI de alguno de los dos lados, deja pasar.
+>
+> Verificado: el test pasa aislado contra una base creada desde cero, y hay 5 tests puros sobre
+> `esOtraPersona` que corren en el job que SÍ bloquea.
+
 
 **Experto:** BE · **Prioridad:** 🟠 · **Depende de:** nada
 **Origen:** T-28-N1, primera corrida del suite completo contra una base real.
