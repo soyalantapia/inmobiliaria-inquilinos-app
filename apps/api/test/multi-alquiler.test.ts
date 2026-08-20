@@ -22,8 +22,8 @@ beforeAll(async () => {
 
 // Este test CREA propiedades/contratos vía endpoint; la DB de test es compartida entre
 // archivos (core.test.ts espera los counts del seed puro), así que limpiamos lo creado
-// para no contaminar. Orden de borrado por FK: liq → inquilino → contrato → participación
-// → propiedad → persona.
+// para no contaminar. Orden de borrado por FK: liq → inquilino → historial → contrato →
+// participación → propiedad → persona.
 afterAll(async () => {
   const personas = await prismaTest.persona.findMany({
     where: { OR: [{ email: EMAIL }, { dni: { in: [DNI, '40999888'] } }] },
@@ -42,6 +42,12 @@ afterAll(async () => {
   const propIds = props.map((p) => p.id);
   await prismaTest.liquidacion.deleteMany({ where: { contratoId: { in: contratoIds } } });
   await prismaTest.inquilino.deleteMany({ where: { personaId: { in: personaIds } } });
+  // El historial va ANTES que el contrato: su FK es RESTRICT y desde que el alta escribe un
+  // evento CREADO (T-29), todo contrato creado por la API tiene al menos una fila acá. Sin
+  // esto la limpieza reventaba con P2003 (`eventos_contrato_contratoId_fkey`) y el archivo
+  // entero se reportaba como suite fallada aunque sus dos tests pasaran. Los teardowns
+  // hermanos que borran contratos ya lo hacían; éste era el único que faltaba.
+  await prismaTest.eventoContrato.deleteMany({ where: { contrato: { id: { in: contratoIds } } } });
   await prismaTest.contrato.deleteMany({ where: { id: { in: contratoIds } } });
   await prismaTest.participacionPropietario.deleteMany({ where: { propiedadId: { in: propIds } } });
   await prismaTest.propiedad.deleteMany({ where: { id: { in: propIds } } });
