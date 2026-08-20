@@ -4309,3 +4309,27 @@ y choca con éste. O sea no es una regresión: es el siguiente escalón, que ant
 un `export const dynamic = 'force-static'` con la imagen pre-generada, reemplazar `next/og` por
 un PNG estático en `public/`, o dejarlo y documentar que el build local del panel no corre en
 Windows.
+
+
+---
+
+## T-37-N2 · La matriz prometía un "queda pendiente" que sólo existe para contratos — ✅ HECHA
+
+**Estado: ✅ HECHA** — commit `60a268d`. Detalle en `work-agent/tareas/T-37-N2/estado.md`.
+
+**Experto:** FE-P · **Prioridad:** 🟠 · **Origen:** se tomó T-37-N1 y apareció esto al leer la matriz.
+
+T-37 sacó de `pago.manual.cargar` un `rolesAprobacion: ['OPERADOR']` que describía un circuito
+nunca construido. La misma mentira seguía viva en **otros dos lugares de la misma pantalla**
+(Configuración → Equipo, donde se reparten los roles):
+
+1. El rótulo del grupo decía *"(queda pendiente si no es Admin)"* arriba de **cinco** filas y era
+   cierto en **una** — circuito hay uno solo, el de contratos.
+2. La descripción del rol CARGA decía *"Lo que carga queda pendiente de aprobación"*, y de las
+   tres cosas que carga eso vale para los contratos nomás.
+
+El test fija el invariante de fondo: `rolesAprobacion` es lo único que pinta el badge
+"pendiente", así que sólo puede estar donde el circuito existe. Comprobado en rojo reinyectando
+las dos mentiras.
+
+**No construye el circuito de pagos** — eso sigue siendo T-37-N1, y sigue necesitando tu decisión.

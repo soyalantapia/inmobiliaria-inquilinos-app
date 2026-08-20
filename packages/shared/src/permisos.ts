@@ -53,8 +53,13 @@ export const ROL_DESCRIPCION: Record<Rol, string> = {
     'El mostrador: confirma o rechaza los pagos que informan los inquilinos, carga cobros en efectivo y mueve la caja. No carga contratos ni rinde a propietarios.',
   OPERADOR:
     'Día a día del panel: contratos, propiedades, reclamos, comunicaciones, gastos de caja. NO autoriza pagos.',
+  // Decía "Lo que carga queda pendiente de aprobación", y de las tres cosas que carga eso
+  // vale para UNA. Propiedades y propietarios se guardan directo: no hay circuito de
+  // aprobación para ellos, sólo para contratos. Se dice cuál es cuál porque esta frase se
+  // lee en el momento exacto de elegirle el rol a una persona (`equipo-card.tsx`), y de ahí
+  // sale cuánta confianza se le da.
   CARGA:
-    'Solo carga inicial: contratos, propietarios, propiedades. Lo que carga queda pendiente de aprobación.',
+    'Solo carga inicial: contratos, propietarios, propiedades. Los contratos que carga quedan pendientes de tu aprobación; las propiedades y los propietarios se guardan directo.',
   LECTURA:
     'Ve todo sin modificar nada — contadores, auditoría y propietarios que quieren mirar.',
 };
@@ -219,7 +224,19 @@ export function contratoQuedaPendiente(rol: Rol, contratosRequierenAprobacion: b
 
 export const GRUPO_LABEL: Record<DefinicionCapacidad['grupo'], string> = {
   lectura: 'Lectura · qué módulos ve',
-  carga: 'Carga · qué puede cargar (queda pendiente si no es Admin)',
+  // Decía "(queda pendiente si no es Admin)" y era falso para 4 de las 5 filas del grupo.
+  // Circuito de aprobación hay UNO solo, el de contratos (`contratoQuedaPendiente`, que sí
+  // llama el alta en `core.ts`). Propiedades, propietarios, pago manual y gasto de caja se
+  // guardan y listo: no queda nada pendiente de nada.
+  //
+  // Es la misma clase de mentira que T-37 sacó de `pago.manual.cargar` una fila más abajo, y
+  // pega en el mismo lugar: esta matriz es la pantalla donde la administradora reparte roles.
+  // Leer "queda pendiente si no es Admin" arriba de "Cargar pago manual (efectivo)" es
+  // exactamente lo que la lleva a darle ese permiso a alguien creyendo que hay una red atrás.
+  //
+  // No hace falta decir acá cuál queda pendiente: la fila ya lo dice sola, con el badge
+  // "pendiente" que pinta `rolesAprobacion` en la columna del rol que corresponde.
+  carga: 'Carga · qué puede cargar',
   operativa: 'Operativa · día a día sin firmar plata',
   // Decía "requieren PIN del usuario" y era falso desde el 05/07: el PIN se eliminó de
   // toda la plataforma (05-DECISIONES §7) y `verificarPinUsuario` aprueba siempre. Lo

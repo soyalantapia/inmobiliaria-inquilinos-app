@@ -24,6 +24,27 @@ async function limpiar() {
   const ids = [LIQ_VIEJA, LIQ_NUEVA, LIQ_FUTURA];
   await prisma.pago.deleteMany({ where: { liquidacionId: { in: ids } } });
   await prisma.liquidacion.deleteMany({ where: { id: { in: ids } } });
+
+  // Y TODA otra liquidación de cnt_004, que este test no creó.
+  //
+  // El test afirma una cuenta exacta: "la deuda exigible es 40.000 + 30.000 = 70.000".
+  // Eso sólo es cierto si el contrato no tiene NADA más, y en la base compartida sí tiene:
+  // el devengo corre solo, en proceso, cada 6 horas (`CRON_DEVENGO`), así que cualquier API
+  // apuntada a esta base le va agregando períodos a los contratos del seed. Con dos de más,
+  // `depositoAplicadoADeuda` dio 100.000 (el depósito entero) en vez de 70.000, y el rojo se
+  // lee como "el cálculo del depósito se rompió" cuando lo que cambió fue el escenario.
+  //
+  // Se borra por contrato y no por lista de ids porque lo que sobra no tiene ids conocidos.
+  const otras = await prisma.liquidacion.findMany({
+    where: { contratoId: CID, id: { notIn: ids } },
+    select: { id: true },
+  });
+  if (otras.length) {
+    const otrosIds = otras.map((l) => l.id);
+    await prisma.pago.deleteMany({ where: { liquidacionId: { in: otrosIds } } });
+    await prisma.alquilerRendido.deleteMany({ where: { liquidacionId: { in: otrosIds } } });
+    await prisma.liquidacion.deleteMany({ where: { id: { in: otrosIds } } });
+  }
 }
 
 const crearLiq = (id: string, periodo: string, venc: string, estado: 'VENCIDO' | 'PENDIENTE', monto: number) =>
