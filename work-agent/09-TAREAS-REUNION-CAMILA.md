@@ -72,7 +72,28 @@ Sin este bloque, el trabajo hecho no le llega a Camila. **Es lo primero.**
 
 ---
 
-## T-01 · Aplicar las migraciones pendientes (contalas: hoy son TRECE)
+## T-01 · Aplicar las migraciones pendientes (contalas: hoy son TRECE) — ✅ HECHO 20/08
+
+> ## ✅ CERRADA. Las trece corrieron en producción el 20/08/2026 a las 01:10:30 UTC.
+>
+> Deploy `1d6f9d4b-3401-43c9-9720-60ed9652b2be`, commit `94d4000`, estado **SUCCESS**.
+> El log dice `All migrations have been successfully applied.` sobre 57 migraciones totales.
+> Los tres servicios (`myalquiler-back`, `-front`, `-inquilino`) quedaron en `94d4000`.
+>
+> **Lo de abajo es el plan previo y ya no hay que ejecutarlo.** Se conserva porque explica el
+> orden y el porqué de cada una, que sigue siendo la referencia si algo hay que revisar.
+>
+> **Y una advertencia que ahora vale más que el plan: estas trece ya están aplicadas, así que
+> NINGUNA se puede volver a editar.** Prisma guarda un checksum de cada migración aplicada; si
+> alguien modifica uno de esos archivos, el próximo `prisma migrate deploy` falla con *"migration
+> was modified after it was applied"* — y como el arranque es `db:deploy && node dist/index.js`
+> (`apps/api/Dockerfile:30`), **el contenedor no levanta y producción se cae**. Si hace falta
+> cambiar algo que hizo una de estas migraciones, va en una migración NUEVA.
+>
+> *(Esto no es teórico: el 20/08 estuve por pushear una modificación a
+> `limpiar_pines_heredados` para que guardara evidencia forense antes de borrar. El deploy me
+> ganó de mano por minutos. El commit se descartó sin pushear — de haber salido, tiraba la API
+> abajo en el siguiente deploy.)*
 
 > ### ⚠️ Antes que nada: NO hay paso manual. Se aplican solas.
 >
@@ -209,13 +230,38 @@ trámite.
 
 ---
 
-## T-02 · Deployar los tres servicios y verificar qué quedó arriba
+## T-02 · Deployar los tres servicios y verificar qué quedó arriba — ✅ HECHO 20/08
+
+> ## ✅ CERRADA. Los tres servicios quedaron en `94d4000` el 20/08/2026 a las 01:09:45 UTC.
+>
+> | Servicio | Deploy | Estado |
+> |---|---|---|
+> | `myalquiler-back` | `1d6f9d4b` | SUCCESS |
+> | `myalquiler-front` | `7b75cfb7` | SUCCESS |
+> | `myalquiler-inquilino` | `8873507e` | SUCCESS |
+>
+> Sin errores en el log de deploy (sólo un aviso de corepack y un *deprecation* de Prisma sobre
+> `package.json#prisma`, ninguno bloqueante). Smoke test a los 7 minutos: `GET /health` → **200**;
+> `/rendiciones`, `/caja/movimientos`, `/metricas/resumen`, `/portal/rendiciones` y
+> `/mis-liquidaciones` → **401 sin token**, que es el comportamiento correcto. **Ningún 5xx.**
+>
+> **Ojo con la métrica de Railway:** marca 85,7% de error rate. Es un artefacto de ese mismo
+> smoke test —6 de 7 requests fueron sondas sin auth— sobre una muestra de 7 a las 22h de
+> Argentina. No es una caída.
+>
+> **`apps/propietario` NO deployó, porque no es un servicio de Railway.** El proyecto tiene tres
+> servicios de app y ninguno es el portal del propietario. Eso confirma T-46 desde el otro lado:
+> no es que el pipeline falle, es que **no existe**. Sigue abierto en T-46-N1.
+>
+> **La premisa de esta tarea era falsa** — decía que había que correr `railway up` a mano. Ver la
+> corrección al principio de `02-DEPLOY.md`: los servicios sí están conectados a GitHub y el
+> push a `main` deployó los tres solo.
 
 **Experto:** OPS · **Prioridad:** 🔴 · **Depende de:** T-01
 
-**Estado verificado.** Los servicios de Railway **no están conectados a GitHub**
-(`02-DEPLOY.md:31`): pushear a `main` **no** deploya. Hay que correr `railway up` a mano, por
-servicio. El backend expone la versión que corre en `GET /health` (`health.ts:29-31`), pero
+**Estado verificado (previo, incorrecto).** ~~Los servicios de Railway **no están conectados a
+GitHub** (`02-DEPLOY.md:31`): pushear a `main` **no** deploya. Hay que correr `railway up` a mano,
+por servicio.~~ El backend expone la versión que corre en `GET /health` (`health.ts:29-31`), pero
 **ningún front expone un build-id cruzable con git**, así que hoy no hay forma de saber en qué
 commit están el panel y la PWA.
 
@@ -3076,8 +3122,15 @@ El PIN no se escribe más desde el alta, para nadie. `admin.pin` se ignora **con
 callado. Mismo criterio en el seed, donde los tres usuarios nacían con `1234`.
 
 La contraseña compartida del seed **se dejó**, documentada como decisión de fixture: ~64 tests
-loguean con ella como los tres roles, y esos tests no se pueden correr desde acá (pegan a la
-Postgres de producción). Cambiarla a ciegas era el riesgo mayor.
+loguean con ella como los tres roles, y esos tests no se pueden correr desde acá. Cambiarla a
+ciegas era el riesgo mayor.
+
+> **Corrección.** Antes esta línea decía que esos tests *"pegan a la Postgres de producción"*.
+> **Es falso** y lo escribí yo en varios archivos. `docs/TESTING.md` dice lo contrario: prod
+> corre dentro de Railway con host interno (`*.railway.internal`), inalcanzable desde una
+> máquina de trabajo; el proxy público es la instancia de **test/dev**. El motivo real para no
+> correrlos sigue en pie y es otro: esa instancia es **compartida** y el seed la destruye, y
+> además `apps/api/.env` no existe en esta máquina.
 
 **112 tests puros** (8 nuevos). El de la firma verificado en rojo reintroduciendo el `?? admin`.
 
@@ -3086,6 +3139,38 @@ Postgres de producción). Cambiarla a ciegas era el riesgo mayor.
 quedado compartido, porque si el tenant se dio de alta así, esas cuentas tienen acceso ADMIN
 **hoy**; (3) aplicar `20260819140000_limpiar_pines_heredados` **antes o junto con** la migración
 de T-25 — si T-25 entra primero, hay una ventana en la que los PIN heredados autentican de verdad.
+
+### Actualización post-deploy — 20/08/2026, 01:10 UTC
+
+El punto (3) **ya está resuelto**: las dos migraciones entraron en el mismo deploy (`94d4000`),
+así que la ventana nunca existió. `limpiar_pines_heredados` se aplicó a las 01:10:30.879 UTC y
+**todos los `pinHash` de producción quedaron en NULL.**
+
+**Qué evidencia se perdió y cuánto importa.** La pregunta *"¿quién tenía PIN heredado?"* ya no se
+puede responder: el `UPDATE` borró justamente el dato que la contestaba. Alcancé a escribir una
+migración que guardaba un censo previo (sólo booleanos, sin copiar hashes), pero el deploy salió
+antes y **no se puede agregar** — editar una migración aplicada rompe el checksum y tira la API
+abajo (ver T-01). Se descartó sin pushear.
+
+**Cuesta poco, y conviene tener claro por qué:** ningún `pinHash` autenticó nunca nada
+—`verificarPinUsuario` siempre devolvía `{ok:true}`—, así que el PIN heredado era un riesgo
+*latente*, que era exactamente lo que la migración venía a desactivar antes de que T-25 lo
+volviera real. No hubo acceso indebido que investigar por esa vía.
+
+**Lo que sí importaba sigue intacto, y sigue abierto.** El escalamiento *vivo* nunca fue el PIN:
+era la **contraseña**, porque `POST /auth/login` compara contra `passwordHash` y el script viejo
+hacía `u.password ?? A.password`. La migración **no tocó `passwordHash`** —sólo `pinHash`,
+`pinIntentosFallidos` y `pinBloqueadoHasta`—, así que:
+
+- La evidencia que hace falta para responder la pregunta que importa **está entera en la base**.
+- Y el riesgo también: **el fix protege las altas nuevas, no las viejas.** Cualquier tenant dado
+  de alta con el script anterior puede seguir teniendo hoy usuarios con la contraseña del admin.
+
+**Queda para el dueño** (puntos 1 y 2 de arriba, sin cambios): correr la consulta de sólo lectura
+y rotar lo que aparezca. Un detalle para no sacar una conclusión falsa: **comparar los
+`passwordHash` entre sí no prueba nada** —bcrypt salea cada hash, dos personas con la misma
+contraseña tienen hashes distintos—. Hay que probar la contraseña del admin contra el hash del
+otro usuario, y eso sólo lo puede hacer quien la tenga.
 
 ---
 
