@@ -25,7 +25,7 @@ vi.mock('nodemailer', () => ({
 }));
 
 const GAP = 40;
-let mailer: typeof import('../src/mailer');
+let mailer: typeof import('../src/mailer.js');
 
 beforeAll(async () => {
   // El módulo lee la config SMTP al importarse: hay que setearla antes del import.
@@ -33,7 +33,7 @@ beforeAll(async () => {
   process.env.SMTP_USER = 'u';
   process.env.SMTP_PASS = 'p';
   process.env.SMTP_GAP_MS = String(GAP);
-  mailer = await import('../src/mailer');
+  mailer = await import('../src/mailer.js');
 });
 
 describe('el OTP no espera detrás de los masivos (T-31)', () => {

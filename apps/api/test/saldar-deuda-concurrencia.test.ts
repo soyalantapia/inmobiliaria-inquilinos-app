@@ -63,6 +63,6 @@ describe('CAZABUG — saldar-deuda no duplica el cobro bajo concurrencia', () =>
     const liq = await prisma.liquidacion.findUniqueOrThrow({ where: { id: LIQ } });
     expect(liq.estado).toBe('PAGADO');
     // El único pago cubre exactamente el saldo exigible (no un múltiplo).
-    expect(Number(pagos[0].monto)).toBeGreaterThanOrEqual(90000);
+    expect(Number(pagos[0]!.monto)).toBeGreaterThanOrEqual(90000);
   });
 });

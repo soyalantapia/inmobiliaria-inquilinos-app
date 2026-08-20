@@ -12,7 +12,7 @@
  * poder fijarla en la suite que corre en segundos, no en la de integración que tarda horas.
  */
 import { describe, it, expect } from 'vitest';
-import { motivoRevocacionPropietario } from '../src/auth/guards';
+import { motivoRevocacionPropietario } from '../src/auth/guards.js';
 
 const vivo = { activo: true, email: 'duenio@correo.com' };
 

@@ -19,6 +19,13 @@ const CONTRATO = {
   fechaInicio: new Date('2026-01-01T00:00:00.000Z'),
   fechaFin: new Date('2027-12-31T00:00:00.000Z'),
   diaPago: 10,
+  // `devengarDesde` y `tipoContrato` son OBLIGATORIOS a propósito (ver el docblock de
+  // ContratoParaLiquidar): se hicieron requeridos para que el compilador no deje que un caller
+  // se los saltee. Este fixture se los salteaba igual, porque hasta hoy `test/` no entraba al
+  // typecheck. Los valores son los que el runtime venía usando de hecho: `undefined` no es
+  // 'SOLO_EXPENSAS', así que devengaba como ALQUILER.
+  devengarDesde: null,
+  tipoContrato: 'ALQUILER' as const,
 };
 
 describe('CAZABUG — canonDelPeriodo', () => {

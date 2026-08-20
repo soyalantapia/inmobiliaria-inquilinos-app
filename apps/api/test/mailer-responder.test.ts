@@ -33,7 +33,7 @@ vi.mock('nodemailer', () => ({
   },
 }));
 
-let mailer: typeof import('../src/mailer');
+let mailer: typeof import('../src/mailer.js');
 
 beforeAll(async () => {
   // El módulo lee la config SMTP al importarse: hay que setearla antes del import.
@@ -41,7 +41,7 @@ beforeAll(async () => {
   process.env.SMTP_USER = 'u';
   process.env.SMTP_PASS = 'p';
   process.env.SMTP_GAP_MS = '0'; // sin espaciado: acá no se mide tiempo
-  mailer = await import('../src/mailer');
+  mailer = await import('../src/mailer.js');
 });
 
 /** El último mail que salió por el transport. */

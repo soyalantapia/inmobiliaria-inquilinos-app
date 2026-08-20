@@ -120,8 +120,8 @@ describe('CAZABUG — retener el depósito CANCELA deuda de verdad', () => {
       expect(l.estado, `${id} debía quedar PAGADO`).toBe('PAGADO');
       const pagos = await prisma.pago.findMany({ where: { liquidacionId: id, estado: 'CONCILIADO' } });
       expect(pagos.length).toBe(1);
-      expect(pagos[0].condonado).toBe(false); // es plata real del inquilino, no una condonación
-      expect(pagos[0].observacion ?? '').toMatch(/depósito/i);
+      expect(pagos[0]!.condonado).toBe(false); // es plata real del inquilino, no una condonación
+      expect(pagos[0]!.observacion ?? '').toMatch(/depósito/i);
     }
   });
 

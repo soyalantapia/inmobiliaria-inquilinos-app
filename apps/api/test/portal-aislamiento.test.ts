@@ -54,7 +54,7 @@ function extraerQueries(src: string): Query[] {
   // Dónde arranca cada handler, para atribuirle las queries que vienen después.
   const rutas: Array<{ indice: number; ruta: string }> = [];
   for (let m = reRuta.exec(src); m; m = reRuta.exec(src)) {
-    rutas.push({ indice: m.index, ruta: m[1] });
+    rutas.push({ indice: m.index, ruta: m[1]! });
   }
 
   for (let m = rePrisma.exec(src); m; m = rePrisma.exec(src)) {

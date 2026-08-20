@@ -137,7 +137,7 @@ describe('totales del día', () => {
     const t = totalizarCierre([pago({ moneda: null }), pago()]);
     expect(t.multiMoneda).toBe(false);
     expect(t.porMoneda).toHaveLength(1);
-    expect(t.porMoneda[0].moneda).toBe('ARS');
+    expect(t.porMoneda[0]!.moneda).toBe('ARS');
   });
 
   it('un día sin pagos da ceros, no NaN ni undefined', () => {
