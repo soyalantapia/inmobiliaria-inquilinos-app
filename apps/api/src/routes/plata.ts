@@ -2029,6 +2029,28 @@ export async function plataRoutes(app: FastifyInstance) {
           // el lock e ignora el result set.
           await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${u.inmobiliariaId}), hashtext(${`${propietarioId}|${periodo}`}))`;
 
+          // ¿YA SE RINDIÓ ESTE PERÍODO, ANTES DE QUE EXISTIERA EL LEDGER?
+          //
+          // Es la misma regla que `lib/rendicion-pendiente.ts` aplica del lado de lectura, y
+          // hasta acá vivía SÓLO ahí: el pendiente tapaba el período pero el write path no
+          // tenía con qué frenar, así que rendirlo de nuevo pagaba dos veces en silencio.
+          //
+          // `anuladaAt: null` es imprescindible y no es simetría cosmética: al anular se
+          // borran las líneas y se conserva la cabecera, así que una anulada se ve EXACTAMENTE
+          // igual que una pre-ledger. En la anulada, volver a rendir es lo correcto.
+          const preLedger = await tx.rendicion.findFirst({
+            where: {
+              inmobiliariaId: u.inmobiliariaId,
+              propietarioId,
+              periodo,
+              anuladaAt: null,
+              alquileresRendidos: { none: {} },
+            },
+            select: { rendidoAt: true },
+            orderBy: { rendidoAt: 'desc' },
+          });
+          if (preLedger) throw new RendicionPreLedger(preLedger.rendidoAt);
+
           // Cobrado (CONCILIADO) + lo YA rendido a ESTE dueño por liq — leído DENTRO
           // del lock para ver lo que otra rendición del período ya committeó.
           const liqIds = liqsCobradas.map((l) => l.id);
@@ -2567,6 +2589,20 @@ export async function plataRoutes(app: FastifyInstance) {
           .send({
             message: `No hay cobros nuevos del período ${periodo} para rendir a este propietario`,
           });
+      }
+      if (e instanceof RendicionPreLedger) {
+        const cuando = e.rendidoAt.toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
+        return reply.code(409).send({
+          // El operador tiene que poder decidir sin salir a buscar: le decimos cuándo se
+          // rindió y por qué el sistema no puede completar la diferencia solo.
+          message:
+            `El período ${periodo} ya se le rindió a este propietario el ${cuando}, antes de que el ` +
+            `sistema guardara el detalle por cuota. Como de esa rendición no queda el desglose, no ` +
+            `se puede calcular cuánto faltaría: rendirlo de nuevo le transferiría todo otra vez. Si ` +
+            `de verdad quedó plata sin rendir de ese mes, anulá la rendición vieja y rendilo entero.`,
+          codigo: 'RENDICION_PRE_LEDGER',
+          rendidoAt: e.rendidoAt.toISOString(),
+        });
       }
       if (e instanceof RendicionNetoNegativo) {
         const d = e.detalle;
@@ -3154,6 +3190,26 @@ class ParticipacionAusente extends Error {
   }
 }
 class RendicionSinCobros extends Error {}
+/**
+ * Ya hay una rendición de este dueño y este período que es ANTERIOR AL LEDGER.
+ *
+ * `alquileres_rendidos` nació el 01/07/2026 y su migración la creó vacía, sin backfill —no se
+ * puede backfillear: `Rendicion` guarda un total por (dueño, período), no el desglose por
+ * liquidación—. En la misma migración se soltó el `@@unique(propietarioId, periodo)`, porque
+ * desde entonces un período se rinde en varias tandas a medida que entran los parciales.
+ *
+ * Resultado: para todo período rendido ANTES de esa fecha, el anti-doble del handler —que se
+ * apoya entero en las líneas de ese ledger— lee cero y da vía libre. El operador elige un mes
+ * viejo en el selector, confirma, y la inmobiliaria transfiere de nuevo plata que ya depositó.
+ *
+ * La regla existía sólo del lado de LECTURA (`lib/rendicion-pendiente.ts`), así que el portal
+ * del dueño y el "por rendir" tapaban el período y nadie se enteraba del cobro doble.
+ */
+class RendicionPreLedger extends Error {
+  constructor(readonly rendidoAt: Date) {
+    super('rendicion pre-ledger');
+  }
+}
 /** Lleva los números: sin ellos el 409 mandaba al operador a "revisar los gastos" sin
  *  decirle cuánto falta ni cuál gasto lo traba, y el que traba puede ser el arreglo de un
  *  reclamo —que no figura en la lista de gastos de caja que el mensaje lo manda a mirar. */
