@@ -1,8 +1,12 @@
 # Estado del proyecto — My Alquiler
 
 > **Documento de handoff.** Resumen ejecutivo de dónde está el proyecto hoy.
-> Última actualización: **2026-07-28**. Último commit: `09b454a`.
-> **Último hito (28/07): caza de REGRESIONES sobre los fixes del 27** — 14 confirmados,
+> Última actualización: **2026-08-20**. Último commit en `main`: `70b8525`.
+> **Último hito (19-20/08): el portal del propietario en pestañas, y la suite de integración
+> corriendo por primera vez.** Las dos cosas se cuentan juntas porque la segunda destrabó a la
+> primera. Detalle abajo, en «Verificado el 20/08».
+> Hito previo (28/07): caza de REGRESIONES sobre los fixes del 27.
+> Sobre ese hito: 14 confirmados,
 > **los 14 cerrados**, 3 de ellos regresiones directas de los fixes del día anterior
 > (una costaba plata). ⚠️ **En `main`, TODAVÍA SIN DEPLOYAR.** Detalle en
 > `03-AUDITORIAS.md` §caza de regresiones 28/07.
@@ -21,12 +25,16 @@
 ## Qué es
 
 **My Alquiler** (codename `@llave/*`) es un SaaS **multi-tenant** de gestión de
-alquileres para **Tapia Propiedades** (y futuras inmobiliarias). Dos frentes:
+alquileres para **Tapia Propiedades** (y futuras inmobiliarias). **Tres** frentes:
 
 - **Panel de la inmobiliaria** (admin): contratos, propiedades, propietarios, pagos,
   rendiciones, caja, reclamos, equipo, sociedades, configuración.
 - **PWA del inquilino**: contrato/liquidaciones, informar pagos con comprobante,
   boletas de servicios, reclamos, co-inquilinos, notificaciones.
+- **Portal del propietario** (`apps/propietario`, puerto 3003): de **sólo lectura**, en cuatro
+  pestañas — Pagos (lo que se le rindió, más lo cobrado y todavía sin rendirle), Unidades,
+  Reclamos y Perfil. Login por OTP al email que la inmobiliaria le tiene cargado. Este doc
+  decía "dos frentes" y hacía meses que eran tres.
 
 ## EN VIVO (producción, Railway)
 
@@ -101,6 +109,34 @@ auditoría multi-agente arreglaron **~50+ bugs reales** verificados y deployados
   acción pide PIN (rol/capacidad + aislamiento multi-tenant siguen protegiendo). Tests actualizados.
 - ✅ **"Pagos recibidos"** en los comprobantes del inquilino — los cobros CONCILIADO (incl. manuales
   de la inmo, parciales o de meses futuros) se muestran como transacciones explícitas.
+
+## Verificado el 20/08 — qué se corrió de verdad
+
+No es una lista de lo que "debería andar": es lo que se ejecutó, con el resultado que dio.
+
+| Qué | Resultado |
+|---|---|
+| `tsc --noEmit` en los 6 paquetes | verde |
+| Tests sin base (41 archivos) | verde |
+| Tests de los tres fronts (12 archivos, 98 tests) | verde |
+| Integración, por lotes contra la DB de test | en curso, verde hasta ahora |
+| Build de `propietario` y de `inquilino` | verde |
+| Build de `inmobiliaria` | **rojo en Windows y sólo en Windows** — ver `02-DEPLOY.md` |
+| Portal del propietario, las 4 pestañas con login OTP real | verde |
+
+**Lo que destrabó todo esto fue crear `apps/api/.env`.** Está gitignoreado, así que en un
+checkout nuevo no existe y la suite de integración entera falla con un ZodError de entorno
+*antes* de tocar la red. Dos tareas anteriores leyeron ese síntoma como "no se puede correr acá"
+y lo anotaron como un hecho del repo. Con el archivo puesto corrieron ~60 archivos que llevaban
+meses sin ejecutarse, y aparecieron dos bugs que sólo se ven corriéndolos (ver `d65d655`).
+La receta está en `docs/TESTING.md`, junto con lo que cuesta: son ~94 archivos contra una
+Postgres remota, tarda **horas**, y un timeout que la corta devuelve exit 0 y parece verde.
+
+**Rojo conocido y preexistente:** `certificado-antiguedad.test.ts` falla con 401. Confirmado
+con `git stash` que falla igual sin ninguno de los cambios de estos días. Que nadie lo persiga
+creyendo que lo rompió.
+
+---
 
 ## Qué falta (próximo chat)
 

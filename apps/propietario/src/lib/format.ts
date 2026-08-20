@@ -64,3 +64,28 @@ export const cuit = (valor: string): string => {
   const d = valor.replace(/\D/g, '');
   return d.length === 11 ? `${d.slice(0, 2)}-${d.slice(2, 10)}-${d.slice(10)}` : valor;
 };
+
+/**
+ * Los enums de reclamos, en castellano.
+ *
+ * La pantalla los venía imprimiendo con `.toLowerCase()`, que alcanza para ABIERTO y falla para
+ * todo lo demás: `EN_CURSO` salía **`en_curso`**, con guión bajo, y `PLOMERIA` y `DEPOSITO`
+ * salían sin tilde. Son identificadores de base de datos asomando en la pantalla que el dueño
+ * abre para saber qué pasa en su propiedad.
+ *
+ * El fallback es el `.toLowerCase()` de antes: si mañana la API agrega un estado, el portal
+ * muestra algo legible en vez de romperse o dejar un hueco.
+ */
+const ETIQUETAS: Record<string, string> = {
+  // EstadoReclamo
+  ABIERTO: 'abierto', EN_CURSO: 'en curso', RESUELTO: 'resuelto',
+  CERRADO: 'cerrado', RECHAZADO: 'rechazado',
+  // CategoriaReclamo
+  PLOMERIA: 'plomería', ELECTRICIDAD: 'electricidad', CERRADURA: 'cerradura',
+  CALEFACCION: 'calefacción', OTRO: 'otro',
+  // PagadorReclamo
+  PROPIETARIO: 'propietario', INQUILINO: 'inquilino', DEPOSITO: 'depósito',
+};
+
+export const etiqueta = (valor: string): string =>
+  ETIQUETAS[valor] ?? valor.toLowerCase().replace(/_/g, ' ');

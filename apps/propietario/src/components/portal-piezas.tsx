@@ -16,7 +16,7 @@ import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card } from '@llave/ui/card';
 import { ImprimirRendicion } from '@/components/imprimir-rendicion';
-import { money, fecha, periodoLargo } from '@/lib/format';
+import { money, fecha, periodoLargo, etiqueta } from '@/lib/format';
 import {
   apiFetch,
   type MiCartera,
@@ -43,16 +43,16 @@ export function ListaReclamos({ reclamos }: { reclamos: ReclamoPortal[] }) {
         <Card key={r.id} className="space-y-1 p-3">
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant={r.estado === 'RESUELTO' || r.estado === 'CERRADO' ? 'success' : 'warning'}>
-              {r.estado.toLowerCase()}
+              {etiqueta(r.estado)}
             </Badge>
-            <span className="text-xs text-muted-foreground">{r.categoria.toLowerCase()}</span>
+            <span className="text-xs text-muted-foreground">{etiqueta(r.categoria)}</span>
             <span className="text-xs text-muted-foreground">· {r.complejo ?? r.direccion}</span>
           </div>
           <p className="text-sm">{r.descripcion}</p>
           <p className="text-xs text-muted-foreground">
             {fecha(r.creadoAt)}
             {r.costo != null && ` · costó ${money(r.costo, r.monedaCosto)}`}
-            {r.pagador && ` · lo paga: ${r.pagador.toLowerCase()}`}
+            {r.pagador && ` · lo paga: ${etiqueta(r.pagador)}`}
           </p>
         </Card>
       ))}
