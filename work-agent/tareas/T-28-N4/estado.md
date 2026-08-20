@@ -87,3 +87,39 @@ del depósito de garantía se le descuenta al inquilino al cerrar el contrato. E
 siguiente natural. Los otros cinco sin cobertura no son de plata (`auditoria`,
 `avisos-reclamo`, `reputacion-red`) o son de alta de contrato (`estado-inicial-contrato`,
 `contrato-historico`).
+
+---
+
+## Segunda parte: `aplicar-deposito` (mismo día)
+
+El candidato que este mismo documento dejaba anotado. `aplicarDepositoADeuda` es el cierre de
+cuentas de una baja: la garantía del inquilino cancela lo que debe y **el resto se le devuelve**.
+Arrastra una historia fea, escrita en su propio docblock — antes marcaba el depósito como
+NETEADO, cobraba la penalidad y **no tocaba una sola liquidación**: la garantía se consumía, la
+deuda quedaba intacta sumando punitorios, y el panel mostraba un neto que el backend nunca
+ejecutaba.
+
+Se extrajo **`planDeImputacion(cuotas, disponible)`**: entra la lista de cuotas con su saldo (ya
+con mora, que la calcula el caller porque necesita el esquema) y lo disponible, sale el plan de
+a qué cuota y por cuánto. Las queries y las escrituras se quedaron donde estaban. **No cambia el
+comportamiento.**
+
+**16 tests puros.** La invariante que más importa es la de conservación: **`aplicado + sobrante`
+tiene que dar `disponible`, siempre**. Si no cierra, o se le retiene plata a alguien que se está
+yendo, o se regala la de la inmobiliaria. Además: nunca imputar más que el saldo de una cuota
+(dejaría crédito en una y deuda viva en la siguiente), nunca más que lo disponible, orden de la
+más vieja primero, las cuotas futuras no se tocan (el ex-inquilino no ocupó ese mes) y la
+tolerancia de un centavo para dar una cuota por saldada.
+
+### Mutación 6 de 7 — y la séptima es un resultado, no una falla
+
+Sacar el `break` de `if (restante <= 0)` **no pone ningún test en rojo**, y está bien que así
+sea: con `restante` en 0 la iteración siguiente calcula `imputa = 0` y el `continue` la saltea
+igual. **El `break` es una optimización, no una garantía**, y no hay diferencia observable que
+un test pueda agarrar.
+
+Escribir un test que "lo cubriera" habría sido cubrir la nada. Se dejó anotado en el código, que
+es lo que sirve: para que nadie lo trate como si sostuviera una invariante al tocar la
+aritmética de arriba.
+
+Suite puro tras las dos partes: **53 archivos / 505 tests**. `tsc` en 0.
