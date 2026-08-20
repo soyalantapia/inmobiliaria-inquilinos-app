@@ -7,9 +7,5 @@
     }
   },
   "include": ["next-env.d.ts", "src/**/*", ".next/types/**/*.ts"],
-  // Los *.test.ts quedan fuera del typecheck porque `apps/inmobiliaria` todavía no tiene
-  // vitest como dependencia — no hay runner de tests en los fronts (T-32). Misma línea que
-  // ya tienen inquilino y propietario. AL CERRAR T-32 HAY QUE BORRAR ESTA LÍNEA en los tres,
-  // si no el runner existe y estos archivos siguen sin tipar ni correr (T-46-N2).
-  "exclude": ["node_modules", "src/**/*.test.ts", "src/**/*.test.tsx"]
+  "exclude": ["node_modules"]
 }

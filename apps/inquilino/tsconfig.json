@@ -7,9 +7,5 @@
     }
   },
   "include": ["next-env.d.ts", "src/**/*", ".next/types/**/*.ts"],
-  // Los `*.test.ts` quedan fuera de `tsc` HASTA QUE T-32 monte el runner: esta app
-  // todavía no tiene vitest instalado, así que el `import { describe } from 'vitest'`
-  // de src/lib/tipo-contrato.test.ts rompería el typecheck.
-  // ⚠️ Al cerrar T-32: borrar esta línea, para que los tests vuelvan a tipar.
-  "exclude": ["node_modules", "src/**/*.test.ts", "src/**/*.test.tsx"]
+  "exclude": ["node_modules"]
 }
