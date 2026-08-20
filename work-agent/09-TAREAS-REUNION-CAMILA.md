@@ -3219,7 +3219,26 @@ que debe pasar. Lo que no puede quedar es el test en rojo sin dueño.
 
 ---
 
-## T-28-N1-N3-N1 · Lo que sólo se ve con una base: `/mis-cargos` y los filtros del cierre
+## T-28-N1-N3-N1 · Lo que sólo se ve con una base: `/mis-cargos` y los filtros del cierre — 🟡 los filtros ya no
+
+> ## ✅ Los filtros del cierre SÍ se podían testear sin base — 20/08
+>
+> Esta ficha (la escribí yo) decía que los filtros *"viven en el `where` de Prisma: no hay
+> aritmética que extraer y un test puro no lo ve"*. **Es falso.** Lo que no se puede sin base es
+> verificar qué DEVUELVE Postgres; pero **construir el `where` es una función como cualquier
+> otra**, y ahí es exactamente donde ocurrieron las dos roturas históricas: alguien borró un
+> filtro.
+>
+> Se extrajo `whereCierreDelDia()` a `lib/cierre-caja.ts` y quedaron fijados los cuatro filtros
+> —condonados, `PROPIETARIO_DIRECTO`, scope de inmobiliaria y `CONCILIADO`— más el **día civil
+> argentino** y que el rango sea **semiabierto** (con `lte`, un pago exacto a las 03:00:00.000Z
+> se contaría en los cierres de dos días). **12 tests, mutación 7/7.**
+>
+> Honestidad sobre el alcance: prueba **la consulta que armamos**, no lo que Postgres devuelve.
+> No sustituye integración; agarra lo que pasó las dos veces, que es que alguien borre un filtro.
+>
+> **Sigue afuera `GET /mis-cargos`**, cuya garantía es el aislamiento multi-tenant: ahí no hay
+> forma ni aritmética que valga fijar por separado, necesita integración de verdad.
 
 **Experto:** QA · **Prioridad:** 🟡 · **Depende de:** una base de test (Docker o equivalente)
 **Origen:** T-28-N1-N3, que cubrió todo lo cubrible sin base.
@@ -4075,7 +4094,18 @@ conciliación) siguen sin correr nunca. Depende de la decisión de infraestructu
 
 ---
 
-## T-29-N1 · El historial se escribe dentro de la transacción, y ahí no puede ser best-effort
+## T-29-N1 · El historial se escribe dentro de la transacción, y ahí no puede ser best-effort — ✅ YA ESTABA HECHA
+
+> **Verificado el 20/08 mientras se buscaba tarea.** Ya está resuelto, y mejor de lo que pedía la
+> ficha: no sólo se movió a post-commit, sino que **la firma lo garantiza**. `registrarEventoContrato`
+> recibe `PrismaClient` y **no acepta un `tx`**, así que es el compilador el que impide volver a
+> meterlo adentro de una transacción. Los cinco call sites pasan `prisma`
+> (`core.ts:1496`, `core.ts:2397`, `operacion.ts:332`, `operacion.ts:872`, `plata.ts:525`);
+> **cero** pasan `tx`.
+>
+> El docblock además deja escrito el porqué: en PostgreSQL una sentencia fallida deja la
+> transacción abortada, así que el `catch` no protegía la operación — escondía que se había
+> perdido, devolviendo 200.
 
 **Experto:** BE · **Prioridad:** 🟠 · **Depende de:** nada
 **Origen:** revisión adversarial de la consolidación (19/08). No salió de la reunión.

@@ -18,6 +18,59 @@
  */
 import { r2c, tasaComisionDeParticipaciones } from './ganancia-contrato.js';
 
+/** Argentina no tiene horario de verano desde 2009: el offset es fijo. */
+const OFFSET_AR_MS = 3 * 3600 * 1000;
+
+/**
+ * Qué día es "hoy" para la cajera. NO es el día UTC.
+ *
+ * Entre las 21:00 y la medianoche de Argentina ya es el día siguiente en UTC. Si el cierre
+ * usara el día UTC, a las 21:05 la pantalla saltaría al día siguiente —vacía— mientras la
+ * cajera todavía está cerrando el suyo.
+ */
+export function diaDeCierreAR(now: Date): string {
+  return new Date(now.getTime() - OFFSET_AR_MS).toISOString().slice(0, 10);
+}
+
+/**
+ * El rango UTC que cubre un día civil argentino: `[fecha 03:00Z, +24h)`.
+ *
+ * Un pago conciliado a las 23:30 hora argentina se guarda como 02:30Z del día siguiente. Con
+ * un rango UTC ingenuo caería en el arqueo del día equivocado: el de la cajera no cuadra y el
+ * del día siguiente aparece inflado con plata que entró ayer.
+ */
+export function rangoUtcDelDiaAR(fecha: string): { desde: Date; hasta: Date } {
+  const desde = new Date(`${fecha}T03:00:00.000Z`);
+  return { desde, hasta: new Date(desde.getTime() + 24 * 3600 * 1000) };
+}
+
+/**
+ * El `where` de los pagos que entran al cierre del día.
+ *
+ * VIVE ACÁ PARA PODER FIJARLO CON UN TEST. Dos de estos filtros **ya rompieron una vez en
+ * producción**, y los dos fallan del mismo modo traicionero: no explotan, inflan. El arqueo
+ * queda más alto de lo que entró de verdad y la comisión se cobra sobre plata que la
+ * inmobiliaria nunca tocó.
+ *
+ *  - `condonado: false` — una condonación cancela deuda sin que entre un peso.
+ *  - `contrato.modoCobranza: 'INMOBILIARIA'` — en cobranza directa la plata va al CBU del
+ *    dueño: la inmo no la cobró ni comisiona sobre ella. Mismo filtro que `/rendiciones`.
+ *
+ * Y los otros dos no son menos importantes: sin `inmobiliariaId` el cierre mostraría pagos,
+ * inquilinos y direcciones de OTRA inmobiliaria; sin `estado: 'CONCILIADO'` entrarían pagos
+ * apenas informados, que todavía no validó nadie.
+ */
+export function whereCierreDelDia(inmobiliariaId: string, fecha: string) {
+  const { desde, hasta } = rangoUtcDelDiaAR(fecha);
+  return {
+    inmobiliariaId,
+    estado: 'CONCILIADO' as const,
+    condonado: false,
+    decididoAt: { gte: desde, lt: hasta },
+    contrato: { modoCobranza: 'INMOBILIARIA' as const },
+  };
+}
+
 /** Lo que el cierre necesita de un pago, ya desacoplado de Prisma. */
 export interface PagoParaCierre {
   /** Lo que efectivamente pagó el inquilino. Puede incluir mora. */
