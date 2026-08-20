@@ -140,7 +140,13 @@ const STEPS: Step[] = [
     icon: CheckCircle2,
     iconBg: 'from-primary to-primary/70',
     titulo: '¡Listo!',
-    descripcion: 'Ya conocés My Alquiler. Cualquier duda, el Asistente o la inmobiliaria están a un toque.',
+    // Decía "Cualquier duda, el Asistente o la inmobiliaria están a un toque". Quedó de cuando
+    // existía el slide del Asistente que se sacó más arriba: nombraba una capacidad que no
+    // existe, y encima ya ni botón tiene desde que se le sacó `/broker` al nav. Era lo ÚLTIMO
+    // que leía un inquilino nuevo antes de empezar a usar la app.
+    //
+    // La inmobiliaria sí está a un toque, y de verdad: /ayuda tiene el `wa.me` para escribirle.
+    descripcion: 'Ya conocés My Alquiler. Cualquier duda, tu inmobiliaria está a un toque desde Ayuda.',
     bullets: [
       'Podés volver a ver este tour desde Mi Cuenta',
       'WhatsApp directo con tu inmobiliaria',
