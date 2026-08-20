@@ -368,6 +368,35 @@ function VenceContrato({ hasta }: { hasta: string }) {
   );
 }
 
+/**
+ * Cuándo y con qué índice le sube el alquiler.
+ *
+ * Es una de las dos preguntas con las que el dueño levanta el teléfono —la otra es "¿ya me
+ * depositaste?"—, y el sistema tenía la respuesta guardada sin mostrarla: sólo veía el monto
+ * de hoy, que no dice si le cambia el mes que viene ni cuánto.
+ *
+ * El último ajuste va al lado del próximo a propósito: "te sube en octubre" no le dice nada a
+ * nadie, "te sube en octubre, la vez pasada fue +45%" sí. Y si no hay fecha cargada se dice,
+ * en vez de calcularla desde `fechaInicio + frecuencia`: una fecha inventada acá es una
+ * promesa que el sistema no puede sostener, y el dueño la va a tomar por buena.
+ */
+function ProximoAjuste({ ajuste }: { ajuste: NonNullable<PropiedadPortal['contrato']>['ajuste'] }) {
+  if (!ajuste) return null;
+  const conIndice = ajuste.indice === 'FIJO' ? 'un porcentaje fijo' : ajuste.indice;
+  const ultimo = ajuste.ultimo;
+  const subio = ultimo && ultimo.de > 0 ? Math.round(((ultimo.a - ultimo.de) / ultimo.de) * 100) : null;
+  return (
+    <p className="text-xs text-muted-foreground">
+      {ajuste.proximo
+        ? `Ajusta el ${fecha(ajuste.proximo)} por ${conIndice}`
+        : `Ajusta por ${conIndice} cada ${ajuste.cadaMeses} meses · tu inmobiliaria todavía no cargó la próxima fecha`}
+      {/* El porcentaje sólo si se puede calcular: con `de` en 0 la división es infinito, y un
+          "+Infinity%" en una pantalla de plata es peor que no decir nada. */}
+      {subio != null && ` · la última vez subió ${subio > 0 ? '+' : ''}${subio}%`}
+    </p>
+  );
+}
+
 export function FilaPropiedad({ p }: { p: PropiedadPortal }) {
   const c = p.contrato;
   return (
@@ -407,6 +436,7 @@ export function FilaPropiedad({ p }: { p: PropiedadPortal }) {
               renueva o si sale a buscar inquilino. El aviso aparece a 90 días, que es el tiempo
               que necesita para cualquiera de las dos cosas. */}
           <VenceContrato hasta={c.hasta} />
+          <ProximoAjuste ajuste={c.ajuste} />
           {/* El backend manda los últimos 6 períodos (`take: 6`) y la pantalla los listaba sin
               decir que había más: el dueño que quiere revisar el año leía seis meses y creía
               que eso era todo. Se deriva del largo real para que no mienta si el tope cambia. */}

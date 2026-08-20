@@ -6,6 +6,7 @@ import { Cargando, ErrorCarga, Seccion, Vacio } from '@/components/bloques';
 import { FilaRendicion } from '@/components/portal-piezas';
 import { AvisosInmobiliaria } from '@/components/avisos-inmobiliaria';
 import { PendienteDeRendir } from '@/components/pendiente-de-rendir';
+import { ImprimirAnual } from '@/components/imprimir-anual';
 import { ResumenPagos } from '@/components/resumen-pagos';
 import { apiFetch, ApiError, leerSesion, type MiCartera, type RendicionPortal } from '@/lib/api';
 
@@ -32,6 +33,15 @@ export default function PagosPage() {
       ) : rendiciones.data.length > 0 ? (
         <div className="space-y-4">
           <ResumenPagos rendiciones={rendiciones.data} />
+          {/* Debajo del resumen del año y ARRIBA del detalle mes a mes: el que baja hasta acá
+              ya vio el total y lo que sigue es la lista larga. Es el momento en que alguien
+              piensa "esto se lo tengo que pasar al contador". */}
+          <ImprimirAnual
+            rendiciones={rendiciones.data}
+            anio={new Date().getFullYear()}
+            propietario={cartera.data?.nombre ?? sesion?.nombre ?? ''}
+            inmobiliaria={cartera.data?.inmobiliaria.nombre ?? sesion?.inmobiliaria ?? ''}
+          />
           <div className="space-y-2">
           {rendiciones.data.map((r) => (
             <FilaRendicion

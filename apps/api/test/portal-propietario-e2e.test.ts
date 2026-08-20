@@ -158,6 +158,66 @@ describe('Portal del propietario — el camino entero, por HTTP', () => {
       expect(res.json()).toEqual({ ok: true });
     });
 
+    it('rechazar tarda lo MISMO exista o no el email: el reloj no puede delatarlo', async () => {
+      // `request` contesta 200 siempre para no revelar si un email es propietario. `verify`
+      // lo delataba por el tiempo: medido el 20/08, 703 ms para un email real con OTP
+      // pendiente contra 253 ms para uno inexistente. El ataque es de dos pasos —pedir el
+      // código, que no dice nada, y después mandar cualquiera y cronometrar—.
+      //
+      // La causa NO era bcrypt (19 ms acá): era una query de diferencia, y contra la base
+      // remota cada una son ~450 ms. Por eso el arreglo es un PISO fijo y no igualar el
+      // trabajo: igualar costos de I/O depende de la red, del pool y del planner.
+      //
+      // El umbral es generoso a propósito: acá se afirma que la diferencia dejó de ser una
+      // señal, no un número exacto. Con el bug daba 450.
+      const medir = async (email: string) => {
+        const t = process.hrtime.bigint();
+        const r = await app.inject({
+          method: 'POST',
+          url: '/auth/propietario/otp/verify',
+          payload: { email, code: '000000' },
+        });
+        expect(r.statusCode, 'si esto no es 401 la medición no vale (¿rate limit?)').toBe(401);
+        return Number(process.hrtime.bigint() - t) / 1e6;
+      };
+      const existe = await medir(OTRO_EMAIL);
+      const noExiste = await medir('no-existe-jamas-9998@example.invalid');
+      expect(
+        Math.abs(existe - noExiste),
+        `existe=${existe.toFixed(0)}ms noExiste=${noExiste.toFixed(0)}ms — la diferencia ` +
+          'volvió a ser medible: alguien puede enumerar qué emails son propietarios',
+      ).toBeLessThan(200);
+    });
+
+    it('los intentos se cortan POR CUENTA, no por IP', async () => {
+      // El código es de 6 dígitos y vive 10 minutos. Los topes que había —300/min global y
+      // 20 cada 15' en la ruta— son los dos por IP, así que acotaban al ATACANTE y no a la
+      // cuenta: con un proxy rotativo, los intentos contra un propietario no tenían techo.
+      //
+      // Las DOS mitades importan y por eso van juntas. Sin la segunda, este test pasaría
+      // igual con la key vieja (la IP) y no estaríamos probando nada: el `hook: 'preHandler'`
+      // es lo que hace que el body esté parseado cuando se calcula la key, y si eso se rompe
+      // la key cae a la IP EN SILENCIO.
+      const intentar = (email: string) =>
+        app.inject({
+          method: 'POST',
+          url: '/auth/propietario/otp/verify',
+          payload: { email, code: '000000' },
+        });
+
+      const objetivo = `ZZ-fuerza-bruta-${Date.now()}@example.invalid`;
+      const codigos: number[] = [];
+      for (let i = 0; i < 12; i++) codigos.push((await intentar(objetivo)).statusCode);
+      expect(codigos.at(-1), 'la cuenta atacada tiene que terminar bloqueada').toBe(429);
+
+      const otra = await intentar(`ZZ-otra-persona-${Date.now()}@example.invalid`);
+      expect(
+        otra.statusCode,
+        'otra cuenta desde la MISMA ip quedó bloqueada: la key volvió a ser la IP y el tope ' +
+          'por cuenta no existe',
+      ).not.toBe(429);
+    });
+
     it('un código equivocado no entra', async () => {
       const res = await app.inject({
         method: 'POST',

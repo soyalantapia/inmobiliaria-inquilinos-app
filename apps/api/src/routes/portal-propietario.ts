@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply } from 'fastify';
 import bcrypt from 'bcryptjs';
 import { randomInt } from 'node:crypto';
 import { z } from 'zod';
@@ -125,11 +125,75 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
     },
   );
 
+  /**
+   * Todos los rechazos de `verify` tardan lo mismo, midan lo que midan por dentro.
+   *
+   * `request` está hecho para no revelar si un email es propietario: contesta `{ ok: true }`
+   * siempre. Pero `verify` lo delataba por el RELOJ. Medido acá el 20/08 con un código
+   * equivocado en los dos casos: 703 ms para un email real con OTP pendiente contra 253 ms
+   * para uno inexistente. El ataque es de dos pasos: pedir el código —200, no dice nada— y
+   * después mandar cualquiera y cronometrar.
+   *
+   * LA DIFERENCIA NO ERA `bcrypt`, que en esta máquina cuesta 19 ms. Era que el camino del
+   * email inexistente hace UNA QUERY MENOS, y contra la base remota cada una son ~450 ms.
+   * Primero probé igualar el trabajo con una query señuelo: bajó de 451 a 259 ms de spread y
+   * ahí se estancó, porque igualar costos de I/O es perseguir un número que depende de la red,
+   * del pool y del planner. Un piso fijo no depende de nada de eso: si el handler tardó menos,
+   * espera; si tardó más, no espera. Plano por construcción y verificable con un cronómetro.
+   *
+   * Sólo se aplica a los RECHAZOS. El camino feliz no necesita padding: para llegar hay que
+   * saber un código válido, y quien lo sabe ya sabe que el email existe.
+   */
+  const PISO_RECHAZO_MS = 900;
+  const rechazar = async (desde: bigint, reply: FastifyReply, mensaje: string) => {
+    const transcurrido = Number(process.hrtime.bigint() - desde) / 1e6;
+    if (transcurrido < PISO_RECHAZO_MS) {
+      await new Promise((r) => setTimeout(r, PISO_RECHAZO_MS - transcurrido));
+    }
+    return reply.code(401).send({ message: mensaje });
+  };
+
   app.post(
     '/auth/propietario/otp/verify',
-    { config: { rateLimit: { max: 20, timeWindow: '15 minutes' } } },
+    {
+      config: {
+        rateLimit: {
+          /**
+           * EL TOPE ES POR CUENTA, no por IP.
+           *
+           * El código es de SEIS DÍGITOS y vive diez minutos. Los topes que había —300/min
+           * global y 20 cada 15' en esta ruta— son los dos por IP, así que acotaban al
+           * atacante y no a la cuenta: con varias IPs (un proxy rotativo alcanza) los
+           * intentos contra UN propietario no tenían ningún techo. El costo del ataque
+           * escalaba con las IPs del atacante, no con las defensas de la cuenta.
+           *
+           * Con la key por email, ese propietario recibe 10 intentos cada 15 minutos venga
+           * de donde venga. El límite por IP no se pierde: el global de 300/min sigue
+           * aplicando y es el que frena a quien barre muchas cuentas.
+           *
+           * CONTRA: alguien puede quemarle los 10 intentos a un dueño y hacerlo esperar. Es
+           * una molestia acotada a 15 minutos, y el intercambio es a favor: sin esto, lo que
+           * está en juego no es esperar sino que le entren a ver su plata.
+           */
+          keyGenerator: (req) => {
+            const email = (req.body as { email?: unknown } | undefined)?.email;
+            return typeof email === 'string' && email.trim()
+              ? `otp-prop:${email.trim().toLowerCase()}`
+              : `otp-prop-ip:${req.ip}`;
+          },
+          // `preHandler` y no el `onRequest` por default: ahí el body todavía no está
+          // parseado y `req.body` sería undefined, o sea que la key caería SIEMPRE a la IP
+          // y este cambio no haría nada. Silenciosamente.
+          hook: 'preHandler',
+          max: 10,
+          timeWindow: '15 minutes',
+        },
+      },
+    },
     async (request, reply) => {
+      const desde = process.hrtime.bigint();
       const body = OtpVerifySchema.safeParse(request.body);
+      // El 400 no se empareja: es un payload mal formado, no dice nada de ningún email.
       if (!body.success) return reply.code(400).send({ message: 'Email y código de 6 dígitos requeridos' });
       const emailLc = body.data.email.toLowerCase();
 
@@ -137,7 +201,7 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
         where: { email: emailLc, activo: true },
         select: { id: true, inmobiliariaId: true, nombre: true, apellido: true, inmobiliaria: { select: { nombre: true } } },
       });
-      if (propietarios.length === 0) return reply.code(401).send({ message: 'Código inválido o vencido' });
+      if (propietarios.length === 0) return rechazar(desde, reply, 'Código inválido o vencido');
 
       // La identidad sale de la fila de OTP que matchea, NO de un findFirst por email.
       const otps = await prisma.codigoOtpPropietario.findMany({
@@ -162,7 +226,7 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
           break;
         }
       }
-      if (!elegido) return reply.code(401).send({ message: 'Código inválido o vencido' });
+      if (!elegido) return rechazar(desde, reply, 'Código inválido o vencido');
 
       // Queda registrado que entró. BEST-EFFORT y sin await bloqueante en el camino feliz:
       // un rastro que rompe el login es peor que no tener rastro. Hasta acá no había forma
@@ -338,6 +402,24 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
                 tipoContrato: true,
                 fechaInicio: true,
                 fechaFin: true,
+                // CUÁNDO Y CON QUÉ ÍNDICE LE SUBE EL ALQUILER.
+                //
+                // Es una de las dos preguntas con las que el dueño llama —la otra es "¿ya me
+                // depositaste?"—, y el sistema tenía la respuesta guardada sin mostrarla. Sin
+                // esto sólo ve el monto de hoy, que no le dice si le va a cambiar el mes que
+                // viene ni cuánto.
+                indiceAjuste: true,
+                frecuenciaAjusteMeses: true,
+                proximoAjuste: true,
+                // El último ajuste aplicado, con su motivo ("ICL 12 meses (+45%)"): es lo que
+                // convierte "te sube en octubre" en algo que el dueño puede dimensionar,
+                // porque ya vio cuánto le subió la vez pasada.
+                ajustes: {
+                  where: { inmobiliariaId: p.inmobiliariaId },
+                  orderBy: { periodoDesde: 'desc' },
+                  take: 1,
+                  select: { montoAnterior: true, montoNuevo: true, periodoDesde: true, motivo: true },
+                },
                 inquilinoTitular: { select: { nombre: true, apellido: true } },
                 liquidaciones: {
                   // El tenant, otra vez y explícito. Acá ya viene garantizado por la cadena
@@ -404,6 +486,27 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
               moneda: c.moneda,
               desde: c.fechaInicio.toISOString().slice(0, 10),
               hasta: c.fechaFin.toISOString().slice(0, 10),
+              /**
+               * El ajuste del alquiler: cuándo, con qué índice y cuánto fue la vez pasada.
+               *
+               * `proximoAjuste` puede ser null —contratos viejos, o FIJO sin fecha cargada— y
+               * eso se dice como "no hay fecha cargada", no se inventa una calculándola de
+               * `fechaInicio + frecuencia`: si la inmobiliaria no la cargó, cualquier fecha
+               * que pongamos acá es una promesa que el sistema no puede sostener.
+               */
+              ajuste: {
+                indice: c.indiceAjuste,
+                cadaMeses: c.frecuenciaAjusteMeses,
+                proximo: c.proximoAjuste ? c.proximoAjuste.toISOString().slice(0, 10) : null,
+                ultimo: c.ajustes[0]
+                  ? {
+                      desde: c.ajustes[0].periodoDesde,
+                      de: dec(c.ajustes[0].montoAnterior),
+                      a: dec(c.ajustes[0].montoNuevo),
+                      motivo: c.ajustes[0].motivo,
+                    }
+                  : null,
+              },
               inquilino: c.inquilinoTitular
                 ? `${c.inquilinoTitular.nombre} ${c.inquilinoTitular.apellido ?? ''}`.trim()
                 : null,
