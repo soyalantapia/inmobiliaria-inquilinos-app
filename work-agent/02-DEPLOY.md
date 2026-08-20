@@ -167,23 +167,26 @@ y `join` es `path.join`, que no sabe de URLs:
 | win32 | `.\file:\repo\...\noto-sans.ttf` | **Invalid URL** ← lo que ves |
 | posix | `file:/repo/.../noto-sans.ttf` | parsea, pathname `/repo/...` |
 
-El parseo de URL es de spec y no depende del sistema operativo, así que **en el contenedor
-de Railway (node:22-slim) no puede fallar**. Verificado el 20/08/2026 corriendo la
-expresión exacta con `path.win32.join` y `path.posix.join`.
+El parseo de URL es de spec y no depende del sistema operativo, así que en el contenedor
+de Railway (node:22-slim) no puede fallar.
 
-Qué NO es evidencia de lo contrario:
+**Y no hace falta creerle al razonamiento: está comprobado en producción.** El 20/08 el
+panel se deployó desde este mismo commit —build de Docker, `next build` SIN
+`STATIC_EXPORT`, o sea exactamente el camino que prerenderiza esta ruta— con estado
+SUCCESS, y la imagen se sirve:
 
-- Que `admin.myalquiler.com/inicio/opengraph-image` dé 404 hoy. Lo da porque lo que está
-  arriba es anterior a `b50c511`, el commit que agregó la imagen — no porque el build la
-  haya rechazado.
-- Que el workflow de GitHub Pages esté verde. Ese build es `STATIC_EXPORT=1` y pasa por
-  `scripts/build-static.sh`, que **renombra el `middleware.ts`** antes de compilar. Correr
-  `STATIC_EXPORT=1 next build` a mano sin ese paso falla por otra cosa (`Can't resolve
-  '@clerk/nextjs/server'`) y no compara nada.
+```bash
+curl -sI https://admin.myalquiler.com/inicio/opengraph-image-b368cs   # 200 image/png
+```
 
-**Si el deploy del panel a Railway alguna vez falla acá, eso sí es real** y hay que mirarlo:
-el Dockerfile corre `next build` sin `STATIC_EXPORT`, que es exactamente el camino que
-prerenderiza esta ruta.
+> ⚠️ **Ojo con la URL.** `/inicio/opengraph-image` (sin el sufijo) da **404**, y ese 404 no
+> significa nada: Next publica la ruta con un hash. Yo tomé ese 404 como evidencia de que
+> el build había rechazado la imagen, y no era eso.
+
+Tampoco es evidencia que el workflow de GitHub Pages esté verde: ese build es
+`STATIC_EXPORT=1` y pasa por `scripts/build-static.sh`, que **renombra el `middleware.ts`**
+antes de compilar. Correr `STATIC_EXPORT=1 next build` a mano sin ese paso falla por otra
+cosa (`Can't resolve '@clerk/nextjs/server'`) y no compara nada.
 
 ## Tests (DB de test, NO prod)
 

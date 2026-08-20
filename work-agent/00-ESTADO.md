@@ -8,7 +8,7 @@
 > Hito previo (28/07): caza de REGRESIONES sobre los fixes del 27.
 > Sobre ese hito: 14 confirmados,
 > **los 14 cerrados**, 3 de ellos regresiones directas de los fixes del día anterior
-> (una costaba plata). ⚠️ **En `main`, TODAVÍA SIN DEPLOYAR.** Detalle en
+> (una costaba plata). Estuvo semanas en `main` sin deployar; hoy ya está en producción. Detalle en
 > `03-AUDITORIAS.md` §caza de regresiones 28/07.
 > Hito previo (27/07): cacería sistemática — ~75 hallazgos, **40 corregidos y deployados**.
 > Hitos previos (todo en prod, back+front, E2E/verificación OK):
