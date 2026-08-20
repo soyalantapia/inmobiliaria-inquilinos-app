@@ -20,7 +20,7 @@ import { diaDeCierreAR, totalizarCierre, whereCierreDelDia } from '../lib/cierre
 import { parteRendible } from '../lib/parte-rendible.js';
 import { descripcionDeReparacion } from '../lib/descripcion-gasto-rendido.js';
 import { sePuedeBorrarGastoDeCaja } from '../lib/borrar-gasto-caja.js';
-import { conSaldo, montoPagadoPorLiquidacion } from '../lib/saldos.js';
+import { conSaldo, montoCobradoRendiblePorLiquidacion, montoPagadoPorLiquidacion } from '../lib/saldos.js';
 import { registrarEventoContrato } from '../lib/evento-contrato.js';
 import { calcularMora, resolverEsquemaMora, asOfMora } from '../lib/punitorios.js';
 import { registrarEvento } from '../lib/auditoria.js';
@@ -103,6 +103,12 @@ export async function plataRoutes(app: FastifyInstance) {
     // sin ella, el diálogo de cobro manual prefilleaba un "total" que el server
     // clasificaba PARCIAL y la liquidación quedaba abierta por la mora invisible.
     const pagado = await montoPagadoPorLiquidacion(liqs.map((l) => l.id));
+    // Y lo COBRADO RENDIBLE, que es otra cosa: `montoPagado` incluye la deuda condonada y
+    // la plata de la migración de cartera, porque mide lo que el inquilino dejó de deber.
+    // El panel lo usaba para estimar lo que se le va a rendir al dueño, y ahí ninguna de las
+    // dos cuenta — la rendición las filtra. El resultado era que la ficha decía
+    // "a recibir $450.000", el operador se lo dictaba por teléfono, y Rendir contestaba 409.
+    const cobradoRendible = await montoCobradoRendiblePorLiquidacion(liqs.map((l) => l.id));
     const inmoDefaults = await prisma.inmobiliaria.findUnique({
       where: { id: u.inmobiliariaId },
       select: { moraTipoDefault: true, moraValorDefault: true },
@@ -118,7 +124,13 @@ export async function plataRoutes(app: FastifyInstance) {
         l.montoPunitorioManual != null ? Number(l.montoPunitorioManual) : null,
       );
       const { moraTipo: _mt, moraValor: _mv, tasaPunitorioDiaria: _tp, ...contrato } = l.contrato;
-      return conSaldo({ ...l, contrato }, pagado, punitorio);
+      return {
+        ...conSaldo({ ...l, contrato }, pagado, punitorio),
+        // Se manda ADEMÁS de `montoPagado`, no en su lugar: las dos cifras son correctas y
+        // contestan preguntas distintas. `montoPagado` es lo que el inquilino dejó de deber
+        // —con la condonación adentro—; ésta es lo que se le puede transferir al dueño.
+        montoCobradoRendible: cobradoRendible.get(l.id) ?? 0,
+      };
     });
   });
 
@@ -2019,6 +2031,14 @@ export async function plataRoutes(app: FastifyInstance) {
               estado: 'CONCILIADO',
               // La deuda condonada no se le rinde al propietario: no entró esa plata.
               condonado: false,
+              // Y la de la MIGRACIÓN DE CARTERA tampoco, por el mismo motivo y con más
+              // consecuencia: el alta de un contrato en curso registra hasta 120 períodos
+              // pasados como pagados para que el saldo del inquilino arranque bien, pero esa
+              // plata la cobró la inmobiliaria antes de usar el sistema y ya se la liquidó al
+              // dueño por fuera. Sin este filtro, rendir uno de esos períodos le transfiere de
+              // nuevo algo que ya tiene. Y el guard de `sinRendir` usa el mismo criterio, así
+              // que si acá no estuviera, las dos cuentas dirían cosas distintas.
+              migradoDeCartera: false,
             },
             _sum: { monto: true },
           });
@@ -2690,6 +2710,29 @@ export async function plataRoutes(app: FastifyInstance) {
       }
       throw e;
     }
+
+    // El rastro de la anulación, que hasta acá no existía.
+    //
+    // Rendir registra `PROPIETARIO_RENDIDO`; anular borraba la fila y sus tres ledgers sin
+    // escribir nada. Es el único registro de plata que el sistema destruye, y encima el único
+    // que un TERCERO ya vio: al propietario se le desaparece del portal la tarjeta "Te
+    // depositamos $X el 12/08", el total del año le baja solo y la plata le vuelve a figurar
+    // como "cobrado y sin rendirte", sin una línea que lo explique. Si llama a preguntar, la
+    // inmobiliaria tampoco tenía con qué contestarle.
+    //
+    // Se guarda el SNAPSHOT de los montos, porque la fila ya no está: es lo único que queda
+    // para reconstruir qué se anuló. El paso siguiente —que la rendición quede marcada como
+    // anulada en vez de borrarse, y el portal la muestre tachada— está anotado aparte.
+    await registrarEvento({
+      inmobiliariaId: u.inmobiliariaId,
+      tipo: 'PROPIETARIO_RENDICION_ANULADA',
+      autorId: u.userId,
+      rolAutor: u.rol,
+      entidadId: id,
+      entidadDescripcion:
+        `Anulada rendición ${r.periodo} de ${r.propietarioId} · ` +
+        `neto ${r.moneda === 'USD' ? 'US$' : '$'}${Number(r.montoNeto)} · bruto ${Number(r.montoBruto)}`,
+    });
     return { ok: true };
   });
 

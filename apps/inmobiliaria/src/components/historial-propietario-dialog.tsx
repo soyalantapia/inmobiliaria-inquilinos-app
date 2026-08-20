@@ -30,7 +30,7 @@ import {
   listarRendicionesDePropietario,
   type Rendicion,
 } from '@/lib/rendiciones-storage';
-import { formatFechaCorta, formatMonto, formatPeriodo } from '@/lib/format';
+import { formatFechaCorta, formatMonto, formatPeriodo, formatTotalPorMoneda } from '@/lib/format';
 import { rotuloEnLinea, rotuloPrincipal, rotuloSecundario } from '@/lib/rotulo-propiedad';
 import type { Propietario } from '@/lib/types';
 
@@ -78,6 +78,7 @@ export function HistorialPropietarioDialog({
           comisionPct: r.comisionPct,
           totalGastos: Number(r.totalGastos),
           montoNeto: Number(r.montoNeto),
+          moneda: r.moneda ?? 'ARS',
           rendidoAt: r.rendidoAt,
           metodo: r.metodo,
           notas: r.notas,
@@ -103,8 +104,18 @@ export function HistorialPropietarioDialog({
     );
   }, [propietario, propiedades]);
 
-  const totalCobradoHistorico = rendiciones.reduce((s, r) => s + r.montoBruto, 0);
-  const totalNetoHistorico = rendiciones.reduce((s, r) => s + r.montoNeto, 0);
+  // DESGLOSADO POR MONEDA, no sumado. Esto era `reduce((s, r) => s + r.montoBruto, 0)`: un
+  // dueño con una unidad en pesos y otra en dólares veía los dos montos sumados en un número
+  // que no existe, y `formatMonto` sin moneda lo pintaba de pesos, así que el error quedaba
+  // tapado. Es el total histórico que Camila le lee al dueño cuando llama a preguntar.
+  // `formatTotalPorMoneda` ya existía, testeado y hecho para esto: con una sola moneda se ve
+  // igual que antes.
+  const totalCobradoHistorico = formatTotalPorMoneda(
+    rendiciones.map((r) => ({ monto: r.montoBruto, moneda: r.moneda })),
+  );
+  const totalNetoHistorico = formatTotalPorMoneda(
+    rendiciones.map((r) => ({ monto: r.montoNeto, moneda: r.moneda })),
+  );
 
   if (!propietario) return null;
 
@@ -154,7 +165,7 @@ export function HistorialPropietarioDialog({
             /* I2-06: antes mostraba "—" (ambiguo: ¿$0, sin datos, error?).
                Ahora "$0" cuando no hubo rendiciones — coherente con el box
                "Rendiciones: 0" de al lado y con el empty state de abajo. */
-            value={formatMonto(totalNetoHistorico)}
+            value={totalNetoHistorico}
             icon={<Banknote className="h-3 w-3 text-emerald-600" />}
           />
         </div>
@@ -255,7 +266,7 @@ export function HistorialPropietarioDialog({
             <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
               Total cobrado histórico (bruto):{' '}
               <strong className="text-foreground">
-                {formatMonto(totalCobradoHistorico)}
+                {totalCobradoHistorico}
               </strong>
             </p>
           )}
@@ -331,10 +342,10 @@ function RendicionRow({ rendicion }: { rendicion: Rendicion }) {
       </div>
       <div className="shrink-0 text-right">
         <p className="text-sm font-semibold tabular-nums">
-          {formatMonto(rendicion.montoNeto)}
+          {formatMonto(rendicion.montoNeto, rendicion.moneda)}
         </p>
         <p className="text-[10px] text-muted-foreground">
-          bruto {formatMonto(rendicion.montoBruto)}
+          bruto {formatMonto(rendicion.montoBruto, rendicion.moneda)}
         </p>
       </div>
     </div>

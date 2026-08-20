@@ -27,9 +27,41 @@ export function PendienteDeRendir() {
     staleTime: 60_000,
   });
 
-  // Si falla, no se dice nada: es información de contexto y la pantalla de abajo —lo que YA se
-  // rindió— sigue siendo correcta. Un cartel de error acá sembraría dudas sobre ella.
-  if (pend.isPending || pend.isError || !pend.data?.length) return null;
+  // Los tres casos NO son el mismo, y meterlos en un `return null` los hacía indistinguibles.
+  //
+  // El que importa es el del medio: si la consulta FALLA, desaparecer se lee exactamente igual
+  // que "no me deben nada". El dueño cierra el portal tranquilo por un error que nadie vio —el
+  // fallo tampoco dejaba rastro—. Y el vacío tampoco es lo mismo que no tener respuesta:
+  // decirle que está al día es información, callarse no.
+  if (pend.isPending) return null;
+
+  if (pend.isError) {
+    return (
+      <section className="space-y-2">
+        <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <Clock className="h-4 w-4" />
+          Cobrado y todavía sin rendirte
+        </h2>
+        {/* Se acota a ESTE bloque: lo de abajo —lo que YA se rindió— sigue siendo correcto, y
+            decirlo evita que el dueño desconfíe del número que sí tiene delante. */}
+        <Card className="p-4 text-xs text-muted-foreground">
+          No pudimos calcular esto ahora.{' '}
+          <button type="button" onClick={() => void pend.refetch()} className="underline underline-offset-2">
+            Reintentar
+          </button>
+          . Lo de abajo, lo que ya se te rindió, está al día.
+        </Card>
+      </section>
+    );
+  }
+
+  if (!pend.data?.length) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        No hay alquiler cobrado pendiente de rendirte: tu inmobiliaria está al día.
+      </p>
+    );
+  }
 
   return (
     <section className="space-y-2">

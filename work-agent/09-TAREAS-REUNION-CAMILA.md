@@ -3459,7 +3459,29 @@ ejercita el bug. Detalle en `work-agent/tareas/T-28-N1/estado.md`.
 
 ## T-28-N1-N1 · `MovimientoCaja` no tiene `cargoId`: el vínculo con el cargo es un string
 
-**Experto:** BE + DATA · **Prioridad:** 🟡 · **Depende de:** decisión del dueño (schema)
+**Experto:** BE + DATA · **Prioridad:** 🟠 · **Depende de:** decisión del dueño (schema)
+
+> ### El daño está CONFIRMADO, y es plata — verificado el 20/08 (commit del test)
+>
+> Se escribieron los dos casos contra la base efímera, en `test/descobrar-cargo.test.ts`.
+>
+> **Mientras ninguno se rindió, no pasa nada.** Los dos ingresos son fungibles: borrar
+> cualquiera deja el mismo estado —un ingreso vivo, un cargo cobrado y uno adeudado— y las
+> cuentas cierran. Ese caso **pasa hoy**, y la prioridad no sube por él.
+>
+> **Dejan de ser fungibles apenas UNO se rinde.** Ahí tienen historias distintas y la
+> descripción no alcanza para saber cuál es cuál. Si se cobran los dos, se le rinde al
+> propietario el ingreso del primero y después se deshace ESE cargo, `descobrar` encuentra el
+> más reciente —el del segundo, sin rendir— y lo borra. Queda **el primer cargo como deuda del
+> inquilino otra vez Y el ingreso rendido vivo, acreditado al propietario**: exactamente la
+> consecuencia que el encabezado de ese archivo llama la cara. De yapa el segundo cargo queda
+> cobrado sin movimiento detrás, así que deshacerlo devuelve un 409 que miente.
+>
+> Medido, no razonado: el test da **`expected 200 to be 409`**. Lo correcto sería frenar desde
+> el principio, porque el ingreso de ese cargo ya se rindió.
+>
+> El caso está commiteado como **`it.fails`** — el criterio de aceptación, listo para el día que
+> se decida. **Al agregar `cargoId`, ese test empieza a fallar: hay que sacarle el `.fails`.**
 **Origen:** T-28-N1, al arreglar `descobrar`.
 
 `saldar` crea un `INGRESO_EXTRA` por el cargo cobrado y `descobrar` ahora lo borra. Pero **no hay

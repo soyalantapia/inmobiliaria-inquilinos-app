@@ -225,7 +225,7 @@ export function RendirPropietarioDialog({
       toast({
         variant: 'success',
         title: `¡${propietario.nombre} rendido!`,
-        description: `Registrado: le rendiste ${formatMonto(rendicion.montoNeto)} por ${metodo.toLowerCase()}. (La transferencia la hacés vos por fuera.)`,
+        description: `Registrado: le rendiste ${formatMonto(rendicion.montoNeto, rendicion.moneda ?? mon)} por ${metodo.toLowerCase()}. (La transferencia la hacés vos por fuera.)`,
       });
       onRendido?.(rendicion);
       onOpenChange(false);
@@ -259,12 +259,12 @@ export function RendirPropietarioDialog({
       rolAutor: 'ADMIN',
       entidadId: rendicion.id,
       entidadDescripcion: `${propietario.nombre} ${propietario.apellido} · ${periodoLabel(periodo)}`,
-      detalle: `${formatMonto(rendicion.montoNeto)} · ${metodo.toLowerCase()}`,
+      detalle: `${formatMonto(rendicion.montoNeto, rendicion.moneda ?? mon)} · ${metodo.toLowerCase()}`,
     });
     toast({
       variant: 'success',
       title: `¡${propietario.nombre} rendido!`,
-      description: `Registrado: le rendiste ${formatMonto(rendicion.montoNeto)} por ${metodo.toLowerCase()}. (La transferencia la hacés vos por fuera.)`,
+      description: `Registrado: le rendiste ${formatMonto(rendicion.montoNeto, rendicion.moneda ?? mon)} por ${metodo.toLowerCase()}. (La transferencia la hacés vos por fuera.)`,
     });
     onRendido?.(rendicion);
     onOpenChange(false);
@@ -329,7 +329,7 @@ export function RendirPropietarioDialog({
           <DesgloseRow label="Bruto cobrado" value={mezcla ? '—' : formatMonto(bruto, mon)} />
           <DesgloseRow
             label={`Comisión inmo (${propietario.comisionPct}%)`}
-            value={`− ${formatMonto(comisionMonto)}`}
+            value={`− ${formatMonto(comisionMonto, mon)}`}
             muted
           />
 
@@ -350,7 +350,7 @@ export function RendirPropietarioDialog({
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="text-sm font-semibold tabular-nums text-amber-900 dark:text-amber-200">
-                    − {formatMonto(totalGastos)}
+                    − {formatMonto(totalGastos, mon)}
                   </span>
                   {gastosOpen ? (
                     <ChevronUp aria-hidden className="h-3 w-3 text-amber-700 dark:text-amber-300" />
@@ -362,7 +362,7 @@ export function RendirPropietarioDialog({
               {gastosOpen && (
                 <div className="mt-2 space-y-1.5">
                   {gastos.map((g) => (
-                    <GastoRow key={g.refId} gasto={g} />
+                    <GastoRow key={g.refId} gasto={g} moneda={mon} />
                   ))}
                 </div>
               )}
@@ -552,7 +552,9 @@ function DesgloseRow({
   );
 }
 
-function GastoRow({ gasto }: { gasto: GastoAtribuido }) {
+// La moneda viene del llamador: un gasto no la lleva encima, y sin ella `formatMonto` cae
+// al default pesos y un gasto en dólares se lee mil veces más chico.
+function GastoRow({ gasto, moneda }: { gasto: GastoAtribuido; moneda: 'ARS' | 'USD' }) {
   const icon =
     gasto.tipo === 'TRABAJO' ? (
       <Wrench className="h-3 w-3 text-primary" />
@@ -579,7 +581,7 @@ function GastoRow({ gasto }: { gasto: GastoAtribuido }) {
           'shrink-0 text-xs font-semibold tabular-nums text-amber-900 dark:text-amber-200',
         )}
       >
-        − {formatMonto(gasto.monto)}
+        − {formatMonto(gasto.monto, moneda)}
       </p>
     </div>
   );
@@ -592,7 +594,12 @@ export function mensajeRendicion(prop: Propietario, rend: Rendicion): string {
   const nombrePila = prop.nombre.split(' ')[0] ?? prop.nombre;
   // Moneda REAL de la rendición. Con el default ARS, "US$ 1.104" salía como "$ 1.104"
   // y en Argentina eso se lee 1.104 pesos: el dueño esperaba mil veces menos plata.
-  const mon = prop.monedaMensual ?? 'ARS';
+  // LA MONEDA DE LA RENDICIÓN, no la del mes en curso del propietario. Esto era
+  // `prop.monedaMensual`, o sea el contrato de HOY: una rendición vieja en dólares, de un
+  // dueño que ahora factura en pesos, salía con signo de pesos. Y este mensaje es LO ÚNICO
+  // que el dueño recibe hoy, porque los mails a propietarios van sin CTA. El fallback
+  // conserva el comportamiento viejo para las filas del modo demo, que no tienen `moneda`.
+  const mon = rend.moneda ?? prop.monedaMensual ?? 'ARS';
   const comisionMonto = Math.round(rend.montoBruto * (rend.comisionPct / 100));
   const gastos = rend.gastos ?? [];
   const totalGastos = rend.totalGastos ?? 0;
@@ -604,7 +611,7 @@ export function mensajeRendicion(prop: Propietario, rend: Rendicion): string {
   // transferirte" que no cerraba, sin ninguna línea que explicara la diferencia.
   const detalleGastos =
     totalGastos > 0
-      ? `\n*Gastos del mes:* -${formatMonto(totalGastos)}\n` +
+      ? `\n*Gastos del mes:* -${formatMonto(totalGastos, mon)}\n` +
         (gastos.length > 0
           ? gastos
               .map((g) => {

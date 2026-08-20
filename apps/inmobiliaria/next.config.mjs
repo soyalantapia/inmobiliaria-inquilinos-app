@@ -55,13 +55,16 @@ const nextConfig = {
           afterFiles: [
             { source: '/propietario', destination: '/propietario/index.html' },
             { source: '/propietario/:ruta*', destination: '/propietario/:ruta*/index.html' },
-            // Cualquier ruta del portal que no exista cae en SU 404, no en el del panel.
-            // Sin esto, un dueño que se equivoca de link termina en la pantalla de error del
-            // back office de la inmobiliaria, con sus links a Contratos y Caja. El portal
-            // exporta su propio `404.html`.
-            { source: '/propietario/:ruta*', destination: '/propietario/404.html' },
           ],
-          fallback: [],
+          // Cualquier ruta del portal que no exista cae en SU 404, no en el del panel: sin
+          // esto un dueño que se equivoca de link termina en la pantalla de error del back
+          // office, con sus links a Contratos y Caja. El portal exporta su propio `404.html`.
+          //
+          // VA EN `fallback` Y NO EN `afterFiles`, que es donde la puse primero y no servía:
+          // Next se queda con el PRIMER rewrite que matchea, así que la regla comodín de
+          // arriba se la llevaba siempre y esta quedaba muerta. `fallback` corre al final de
+          // todo —después del filesystem y de las rutas dinámicas— y justo antes del 404.
+          fallback: [{ source: '/propietario/:ruta*', destination: '/propietario/404.html' }],
         }),
         headers: async () => [
           {

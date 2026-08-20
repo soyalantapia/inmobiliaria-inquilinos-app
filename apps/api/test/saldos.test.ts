@@ -123,7 +123,31 @@ describe('GUARDARRAÍL · el saldo SÍ cuenta las condonaciones, y es a propósi
     // Se mira el código porque el filtro es una ausencia, y una ausencia no se puede afirmar
     // desde afuera sin una base.
     const src = readFileSync(join(import.meta.dirname, '..', 'src', 'lib', 'saldos.ts'), 'utf8');
-    const query = src.slice(src.indexOf('montoPagadoPorLiquidacion'), src.indexOf('export function conSaldo'));
+    // El corte va hasta la función SIGUIENTE, no hasta `conSaldo`: desde que existe
+    // `montoCobradoRendiblePorLiquidacion` —que sí filtra condonado, porque mide lo
+    // contrario— el slice viejo se la llevaba adentro y este guardarraíl daba rojo por el
+    // filtro correcto de la función de al lado.
+    // El corte va de una función a la SIGUIENTE, y sin comentarios.
+    //
+    // Lo primero, porque el slice viejo llegaba hasta `conSaldo` y desde que existe
+    // `montoCobradoRendiblePorLiquidacion` —que sí filtra condonado, porque mide lo
+    // contrario— se la llevaba adentro. Lo segundo, porque el DOCBLOCK de esa función
+    // explica por qué lo filtra, y la palabra en la prosa hacía dar rojo a este guardarraíl.
+    // Lo que se afirma acá es una ausencia EN LA QUERY, no en el texto.
+    const sinComentarios = (t: string) =>
+      t
+        .split(/\r?\n/)
+        .filter((l) => {
+          const x = l.trim();
+          return !(x.startsWith('//') || x.startsWith('*') || x.startsWith('/*'));
+        })
+        .join('\n');
+    const query = sinComentarios(
+      src.slice(
+        src.indexOf('export async function montoPagadoPorLiquidacion'),
+        src.indexOf('export async function montoCobradoRendiblePorLiquidacion'),
+      ),
+    );
 
     expect(query).toContain("estado: 'CONCILIADO'");
     expect(
@@ -133,5 +157,28 @@ describe('GUARDARRAÍL · el saldo SÍ cuenta las condonaciones, y es a propósi
         'que se le perdonó. Los que sí deben excluirla son los que miden plata que ENTRÓ: la ' +
         'rendición, el portal del propietario y el cierre de caja.',
     ).toBe(false);
+  });
+});
+
+describe('GUARDARRAÍL · y la hermana SÍ las excluye, que es el otro lado', () => {
+  it('`montoCobradoRendiblePorLiquidacion` filtra condonado Y migrado', () => {
+    // Las dos funciones miden cosas OPUESTAS, y por eso las dos tienen guardarraíl:
+    // aquélla contesta "¿cuánto dejó de deber el inquilino?" —donde una condonación SÍ
+    // cuenta— y ésta "¿cuánta plata entró que se le pueda transferir al dueño?", donde no.
+    // Unificarlas rompe una de las dos.
+    //
+    // Sin esta mitad, el panel estimaba lo que se le va a rendir con la cifra de la deuda:
+    // la ficha decía "a recibir $450.000", el operador se lo dictaba al dueño por teléfono,
+    // apretaba Rendir y el server contestaba 409 "todavía no hay cobros nuevos".
+    const src = readFileSync(join(import.meta.dirname, '..', 'src', 'lib', 'saldos.ts'), 'utf8');
+    const query = src.slice(src.indexOf('export async function montoCobradoRendiblePorLiquidacion'));
+
+    expect(query).toContain("estado: 'CONCILIADO'");
+    expect(query, 'una condonación cancela deuda pero no ingresa plata').toContain('condonado: false');
+    expect(
+      query,
+      'la plata de la migración de cartera se cobró y se liquidó antes de que el sistema ' +
+        'existiera: rendirla de nuevo es pagarle dos veces al dueño',
+    ).toContain('migradoDeCartera: false');
   });
 });

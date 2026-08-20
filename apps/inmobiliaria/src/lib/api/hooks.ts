@@ -1011,6 +1011,8 @@ interface LiquidacionApi {
   // Suma de pagos CONCILIADO y saldo = max(0, montoTotal − montoPagado), del
   // decorador conSaldo del server. Opcionales por compat con backends viejos.
   montoPagado?: string | number | null;
+  /** Lo cobrado que la rendición PUEDE pagar: sin condonaciones ni plata migrada. */
+  montoCobradoRendible?: string | number | null;
   saldo?: string | number | null;
   fechaVencimiento: string;
   fechaPago: string | null;
@@ -1032,8 +1034,18 @@ export interface LiquidacionItem {
   montoTotal: number;
   /** Mora al día incluida en montoTotal/saldo (0 si no hay). */
   montoPunitorio: number;
-  /** Lo ya cobrado (pagos conciliados) de esta liquidación. */
+  /** Lo ya cobrado (pagos conciliados) de esta liquidación — la deuda que dejó de deber. */
   montoPagado: number;
+  /**
+   * Lo cobrado que se le puede RENDIR al dueño. NO es lo mismo que `montoPagado`.
+   *
+   * `montoPagado` incluye la deuda condonada y la plata registrada al migrar la cartera,
+   * porque mide lo que el inquilino dejó de deber. La rendición filtra las dos. Usar
+   * `montoPagado` para estimar lo que se le va a depositar al propietario hacía que la ficha
+   * dijera "a recibir $450.000", el operador se lo dictara por teléfono, y Rendir contestara
+   * 409 "todavía no hay cobros nuevos".
+   */
+  montoCobradoRendible: number;
   /** Lo que falta cobrar: max(0, montoTotal − montoPagado). */
   saldo: number;
   estado: string;
@@ -1057,6 +1069,10 @@ function mapLiquidacion(l: LiquidacionApi): LiquidacionItem {
     montoTotal: Number(l.montoTotal),
     montoPunitorio: Number(l.montoPunitorio ?? 0),
     montoPagado,
+    // Sin el campo (backend viejo) cae a `montoPagado`, que es el comportamiento de antes:
+    // peor estimación, pero no un cero que borraría el KPI de golpe.
+    montoCobradoRendible:
+      l.montoCobradoRendible != null ? Number(l.montoCobradoRendible) : montoPagado,
     // Fallback local si el server no mandó saldo (backend viejo): total − pagado.
     saldo: l.saldo != null ? Number(l.saldo) : Math.max(0, Number(l.montoTotal) - montoPagado),
     estado: l.estado,
@@ -1176,10 +1192,18 @@ export function usePropietarios(): {
       // al día (lo dice el comentario de `montoPunitorio` en el tipo de arriba), así que
       // usarlo crudo prorrateaba contra un denominador más grande y mostraba menos alquiler
       // cobrado del que la rendición efectivamente paga. Coincidían mientras no hubiera mora.
+      // `montoCobradoRendible` y NO `montoPagado`: este número estima LO QUE SE LE VA A
+      // DEPOSITAR AL DUEÑO, y la rendición filtra la deuda condonada y la plata de la
+      // migración de cartera. Con `montoPagado` —que las incluye, porque mide lo que el
+      // inquilino dejó de deber— la ficha decía "Cobrado $500.000 · A recibir $450.000", el
+      // operador se lo dictaba al dueño por teléfono, apretaba Rendir y el server contestaba
+      // 409 "todavía no hay cobros nuevos". El dashboard ya usaba el criterio correcto
+      // (`metricas.ts`), así que dos pantallas del mismo panel se contradecían sobre el mismo
+      // propietario.
       const alquilerCobradoLiq = porcionAlquilerCobrada({
         alquiler: l.montoAlquiler,
         base: l.montoTotal - l.montoPunitorio,
-        cobrado: l.montoPagado,
+        cobrado: l.montoCobradoRendible,
       });
       cobradoByOwner[part.propietarioId] =
         (cobradoByOwner[part.propietarioId] ?? 0) + alquilerCobradoLiq * (part.porcentaje / 100);
