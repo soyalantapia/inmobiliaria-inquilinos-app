@@ -55,6 +55,9 @@ export interface RendicionApi {
    * que alguien contesta "¿cuándo le pagaste a Silvana?".
    */
   rendidoAt: string;
+  /** Si está anulada. Sólo llega con `incluirAnuladas`. */
+  anuladaAt?: string | null;
+  motivoAnulacion?: string | null;
   /**
    * La moneda EN QUE SE RINDIÓ. Se persiste desde la migración `20260819220000`.
    *
@@ -113,12 +116,28 @@ export function useRendiciones(): UseRendiciones {
  * dueño volvía a aparecer "Por rendir" y el historial mostraba $0. Con esto el
  * estado sale del server y persiste.
  */
-export function useRendicionesList(): { rendiciones: RendicionApi[]; cargando: boolean } {
+/**
+ * Las rendiciones del tenant.
+ *
+ * Por default el server manda SÓLO LAS VIGENTES, y eso es lo que quieren casi todos los que
+ * llaman acá: el badge "Rendido", el KPI de "por rendir", el neto histórico, el comprobante
+ * de WhatsApp. Todos preguntan "¿ya se le rindió?", y una anulada no cuenta.
+ *
+ * `incluirAnuladas` es para la ÚNICA pantalla que pregunta otra cosa: el historial del
+ * propietario, que es donde el operador va a buscar por qué al dueño le falta un depósito.
+ * Ahí ocultarlas convierte la pregunta en un misterio.
+ */
+export function useRendicionesList(
+  opts?: { incluirAnuladas?: boolean },
+): { rendiciones: RendicionApi[]; cargando: boolean } {
+  const incluirAnuladas = opts?.incluirAnuladas ?? false;
   const q = useQuery({
-    queryKey: ['rendiciones'],
+    // La key lleva la variante: si compartiera cache con la lista sin anuladas, la primera
+    // pantalla que cargue decide lo que ve la otra.
+    queryKey: ['rendiciones', { incluirAnuladas }],
     queryFn: async () => {
       await ensureApiSession();
-      return apiFetch<RendicionApi[]>('/rendiciones');
+      return apiFetch<RendicionApi[]>(`/rendiciones${incluirAnuladas ? '?incluirAnuladas=1' : ''}`);
     },
     enabled: apiEnabled,
     staleTime: 30_000,

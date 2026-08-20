@@ -3,6 +3,7 @@
 import { useMemo } from 'react';
 import Link from 'next/link';
 import {
+  Ban,
   Banknote,
   CheckCircle2,
   CreditCard,
@@ -64,7 +65,11 @@ export function HistorialPropietarioDialog({
   // En prod las rendiciones salen del server (GET /rendiciones); en demo, de
   // localStorage. Antes solo leía localStorage → historial en $0 en prod aunque
   // ya le hubieras rendido.
-  const { rendiciones: rendicionesApi } = useRendicionesList();
+  // CON las anuladas. Es la única pantalla del panel que las quiere: acá es donde el operador
+  // viene a buscar por qué al dueño le falta un depósito, y esconderlas convierte esa pregunta
+  // en un misterio. En el resto del panel siguen ocultas, que es lo correcto para "¿ya se le
+  // rindió?".
+  const { rendiciones: rendicionesApi } = useRendicionesList({ incluirAnuladas: true });
   const rendiciones = useMemo(() => {
     if (!propietario) return [];
     if (apiEnabled) {
@@ -82,6 +87,8 @@ export function HistorialPropietarioDialog({
           rendidoAt: r.rendidoAt,
           metodo: r.metodo,
           notas: r.notas,
+          anuladaAt: r.anuladaAt ?? null,
+          motivoAnulacion: r.motivoAnulacion ?? null,
         }));
     }
     return listarRendicionesDePropietario(propietario.id);
@@ -110,11 +117,16 @@ export function HistorialPropietarioDialog({
   // tapado. Es el total histórico que Camila le lee al dueño cuando llama a preguntar.
   // `formatTotalPorMoneda` ya existía, testeado y hecho para esto: con una sola moneda se ve
   // igual que antes.
+  // Los totales cuentan SÓLO las vigentes. La lista de abajo las muestra a todas —tachadas
+  // las anuladas— pero este número es el que el operador le lee al dueño por teléfono, y una
+  // anulada ahí adentro es plata que no salió.
+  const vigentes = rendiciones.filter((r) => !r.anuladaAt);
+  const cuantasAnuladas = rendiciones.length - vigentes.length;
   const totalCobradoHistorico = formatTotalPorMoneda(
-    rendiciones.map((r) => ({ monto: r.montoBruto, moneda: r.moneda })),
+    vigentes.map((r) => ({ monto: r.montoBruto, moneda: r.moneda })),
   );
   const totalNetoHistorico = formatTotalPorMoneda(
-    rendiciones.map((r) => ({ monto: r.montoNeto, moneda: r.moneda })),
+    vigentes.map((r) => ({ monto: r.montoNeto, moneda: r.moneda })),
   );
 
   if (!propietario) return null;
@@ -157,7 +169,9 @@ export function HistorialPropietarioDialog({
           />
           <MetricBox
             label="Rendiciones"
-            value={rendiciones.length.toString()}
+            /* Las vigentes: es la respuesta a "¿cuántas veces le depositamos?". Las anuladas
+               están en la lista de abajo, pero no son un depósito y acá inflarían el número. */
+            value={vigentes.length.toString()}
             icon={<CheckCircle2 className="h-3 w-3 text-emerald-600" />}
           />
           <MetricBox
@@ -245,7 +259,12 @@ export function HistorialPropietarioDialog({
         {/* Rendiciones */}
         <div className="space-y-2">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Rendiciones ({rendiciones.length})
+            Rendiciones ({vigentes.length})
+            {cuantasAnuladas > 0 && (
+              <span className="ml-1 font-normal normal-case tracking-normal text-destructive">
+                + {cuantasAnuladas} {cuantasAnuladas === 1 ? 'anulada' : 'anuladas'}
+              </span>
+            )}
           </h3>
           {rendiciones.length === 0 ? (
             <div className="rounded-md border border-dashed bg-muted/20 p-6 text-center">
@@ -314,19 +333,39 @@ function MetricBox({
   );
 }
 
+/**
+ * Una rendición del historial. Si está ANULADA se muestra igual, apagada y tachada.
+ *
+ * Esta es la única pantalla del panel donde las anuladas aparecen, y es a propósito: acá es
+ * adonde viene el operador cuando el dueño llama preguntando por un depósito que no ve. Si la
+ * rendición anulada no estuviera, la respuesta sería "no figura" —que es exactamente lo que
+ * pasaba antes de la baja lógica, cuando anular borraba la fila—. Con el motivo a la vista, la
+ * respuesta es la verdadera: se anuló, y por qué.
+ */
 function RendicionRow({ rendicion }: { rendicion: Rendicion }) {
+  const anulada = Boolean(rendicion.anuladaAt);
   return (
-    <div className="flex items-start gap-3 rounded-lg border p-3 text-sm">
+    <div className={cn('flex items-start gap-3 rounded-lg border p-3 text-sm', anulada && 'border-dashed bg-muted/30')}>
       <div
         className={cn(
-          'grid h-9 w-9 shrink-0 place-items-center rounded-md bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+          'grid h-9 w-9 shrink-0 place-items-center rounded-md',
+          anulada
+            ? 'bg-muted text-muted-foreground'
+            : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
         )}
       >
-        <CheckCircle2 className="h-4 w-4" />
+        {anulada ? <Ban className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex flex-wrap items-center gap-1.5">
-          <p className="text-sm font-medium">{periodoLabel(rendicion.periodo)}</p>
+          <p className={cn('text-sm font-medium', anulada && 'text-muted-foreground line-through')}>
+            {periodoLabel(rendicion.periodo)}
+          </p>
+          {anulada ? (
+            <Badge variant="outline" className="border-destructive/40 text-[10px] text-destructive">
+              Anulada
+            </Badge>
+          ) : null}
           <Badge variant="outline" className="text-[10px]">
             {metodoLabel[rendicion.metodo]}
           </Badge>
@@ -339,13 +378,28 @@ function RendicionRow({ rendicion }: { rendicion: Rendicion }) {
             “{rendicion.notas}”
           </p>
         )}
+        {/* El motivo es el punto entero de guardar la anulada: es lo que el operador le
+            contesta al dueño. Va sin comillas y con etiqueta, para que no se confunda con las
+            notas de la rendición. */}
+        {anulada && (
+          <p className="mt-1 text-xs text-destructive">
+            <span className="font-medium">Motivo:</span>{' '}
+            {rendicion.motivoAnulacion?.trim() || 'sin motivo registrado'}
+            {rendicion.anuladaAt ? ` · ${formatFechaCorta(rendicion.anuladaAt)}` : ''}
+          </p>
+        )}
       </div>
       <div className="shrink-0 text-right">
-        <p className="text-sm font-semibold tabular-nums">
+        <p
+          className={cn(
+            'text-sm font-semibold tabular-nums',
+            anulada && 'font-normal text-muted-foreground line-through',
+          )}
+        >
           {formatMonto(rendicion.montoNeto, rendicion.moneda)}
         </p>
         <p className="text-[10px] text-muted-foreground">
-          bruto {formatMonto(rendicion.montoBruto, rendicion.moneda)}
+          {anulada ? 'no se depositó' : `bruto ${formatMonto(rendicion.montoBruto, rendicion.moneda)}`}
         </p>
       </div>
     </div>

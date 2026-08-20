@@ -49,6 +49,15 @@ export interface Rendicion {
    * dólares se lee mil veces más chica de lo que es.
    */
   moneda?: 'ARS' | 'USD';
+  /**
+   * Si la inmobiliaria la anuló. `null` o ausente = vigente.
+   *
+   * Desde la baja lógica la rendición anulada no se borra: se conserva marcada, el dueño la
+   * ve tachada en su portal y el historial del panel la muestra con su motivo. NO cuenta en
+   * ningún total.
+   */
+  anuladaAt?: string | null;
+  motivoAnulacion?: string | null;
   rendidoAt: string;
   /** Método (transferencia, mercadopago, efectivo). */
   metodo: 'TRANSFERENCIA' | 'MERCADOPAGO' | 'EFECTIVO';

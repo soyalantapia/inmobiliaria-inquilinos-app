@@ -927,14 +927,27 @@ export async function coreRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     const prop = await prisma.propietario.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
     if (!prop) return reply.code(404).send({ message: 'Propietario inexistente' });
-    const [participaciones, rendiciones, contratos] = await Promise.all([
+    const [participaciones, rendiciones, anuladas, contratos] = await Promise.all([
       prisma.participacionPropietario.count({ where: { propietarioId: id } }),
-      prisma.rendicion.count({ where: { propietarioId: id } }),
+      prisma.rendicion.count({ where: { propietarioId: id, anuladaAt: null } }),
+      // Las ANULADAS se cuentan aparte SÓLO para el mensaje, no para decidir: siguen
+      // bloqueando. Desde la baja lógica la fila sobrevive, así que un propietario al que se
+      // le rindió por error y se le anuló ya no se puede borrar — y con el mensaje genérico
+      // ("está asociado a propiedades, contratos o rendiciones") el operador no tiene forma de
+      // saber por qué, porque en la pantalla no ve ninguna rendición.
+      //
+      // NO se permite borrarlo igual: para eso habría que destruir la rendición anulada, que
+      // es exactamente el registro que la baja lógica existe para conservar. La salida honesta
+      // es explicarlo, no romper lo otro.
+      prisma.rendicion.count({ where: { propietarioId: id, anuladaAt: { not: null } } }),
       prisma.contrato.count({ where: { cobraDirectoPropietarioId: id } }),
     ]);
-    if (participaciones + rendiciones + contratos > 0) {
+    if (participaciones + rendiciones + anuladas + contratos > 0) {
       return reply.code(409).send({
-        message: 'Este propietario está asociado a propiedades, contratos o rendiciones y no se puede eliminar.',
+        message:
+          participaciones + rendiciones + contratos === 0
+            ? `Este propietario tiene ${anuladas === 1 ? 'una rendición anulada' : `${anuladas} rendiciones anuladas`} en su historial y no se puede eliminar. La anulación queda registrada aunque no se le haya depositado nada.`
+            : 'Este propietario está asociado a propiedades, contratos o rendiciones y no se puede eliminar.',
       });
     }
     await prisma.$transaction([
