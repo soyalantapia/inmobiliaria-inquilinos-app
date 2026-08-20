@@ -425,7 +425,20 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
 
     const semilla = [inquilino.dni ?? inquilino.id, contrato.id, contrato.inmobiliaria.nombre].join('|');
     const hash = hashCertificado(semilla);
-    const urlVerificacion = `https://myalquiler.com.ar/verificar/${hash}`;
+    // La URL que se IMPRIME en el certificado y que va a tipear o clickear un tercero —el
+    // propietario o la inmobiliaria a la que el inquilino se lo muestra—.
+    //
+    // Estaba hardcodeada a `https://myalquiler.com.ar/...`, y **ese dominio no existe**:
+    // verificado el 20/08, no resuelve (sin respuesta), mientras `myalquiler.com` y
+    // `admin.myalquiler.com` devuelven 200. O sea que el "certificado verificable" traía
+    // impresa una dirección adonde nadie podía llegar: la única parte que lo vuelve
+    // verificable era la que no funcionaba.
+    //
+    // La ruta `/verificar/[hash]` vive en la PWA del inquilino (`apps/inquilino`), que se
+    // sirve en `app.myalquiler.com`. Se usa `APP_INQUILINO_URL`, que ya existía y que el
+    // mailer usa con el mismo default, en vez de volver a hardcodear un dominio.
+    const appInquilino = (process.env.APP_INQUILINO_URL ?? 'https://app.myalquiler.com').replace(/\/$/, '');
+    const urlVerificacion = `${appInquilino}/verificar/${hash}`;
     const validoHasta = new Date(ahora.getTime() + 30 * DIA_MS);
 
     const inquilinoData = {
