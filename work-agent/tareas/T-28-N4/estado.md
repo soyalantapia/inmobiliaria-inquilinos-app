@@ -123,3 +123,46 @@ es lo que sirve: para que nadie lo trate como si sostuviera una invariante al to
 aritmética de arriba.
 
 Suite puro tras las dos partes: **53 archivos / 505 tests**. `tsc` en 0.
+
+---
+
+## Tercera parte: `contrato-historico` — la deuda que se carga a mano
+
+El módulo que crea la deuda de un inquilino **que ya se fue**: el pedido textual de la clienta
+cero (cargar los morosos viejos sin inventarles un alquiler vigente). Tiene **dos callers que no
+pueden divergir** —la carga de a uno desde la ficha de la propiedad y la importación masiva
+desde Excel—; si crearan cuotas distintas, son plata que alguien va a reclamar.
+
+**No tiene aritmética que extraer: es todo escritura.** Pero sus invariantes son de *forma de las
+filas que escribe*, y eso se verifica con un cliente de transacción falso que anota lo que se le
+manda — el mismo instrumento del test del cron. 15 tests, sin base.
+
+Las tres que más duelen, y ninguna es teórica:
+
+1. **El contrato nace `FINALIZADO`.** El devengo barre `estado: 'ACTIVO'`, así que las cuotas
+   creadas acá son las únicas que va a tener. Si naciera ACTIVO, a un moroso de hace tres años
+   **le seguiría creciendo la deuda sola, todos los meses, para siempre**.
+2. **`Inquilino.email` queda en `null`, aunque venga uno.** Ese campo es la llave de login de la
+   PWA y no filtra por estado del contrato. Acá la fila la tipea un operador de memoria o sale
+   de una celda de Excel: un email mal tipeado **le abre a un tercero la deuda de otra persona**.
+   El email sí va a la `Persona`, que sirve para dedup y no habilita login por sí sola.
+3. **No reclama la propiedad.** El moroso de hace tres años vivió donde hoy vive otro: tocar
+   `contratoActualId` le rompería el contrato vigente al inquilino de hoy. Y ése es el caso
+   NORMAL, no el borde.
+
+Más el DNI normalizado **en los dos lugares** (de `Inquilino.dni` sale la clave de dedup: si la
+carga de a uno guardara `30.111.222` y la masiva `30111222`, el aviso de "este DNI ya está en tu
+cartera" no saltaría y la misma deuda entraría dos veces), que un DNI vacío quede en `null` y no
+en cadena vacía, y que el tipo de contrato se derive de las expensas.
+
+**Mutación 7/7**, incluida la de reclamar la propiedad —que se verifica por *ausencia*, así que
+se inyectó un `propiedad.update` para comprobar que el test lo agarra—.
+
+Suite puro tras las tres partes: **56 archivos / 540 tests**. `tsc` en 0.
+
+## Estado del relevamiento
+
+De los siete módulos de `lib/` sin cobertura que abrieron esta tarea quedan cuatro, y **ninguno
+es de plata**: `auditoria` (32), `avisos-reclamo` (115), `reputacion-red` (179) y
+`estado-inicial-contrato` (164) — este último es el único que vale mirar, porque valida el
+estado inicial de un alta y de ahí salen 400 que el operador ve.
