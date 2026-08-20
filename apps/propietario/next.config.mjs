@@ -6,6 +6,15 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isExport = process.env.STATIC_EXPORT === '1';
 
+// Bajo qué ruta se sirve el export estático.
+//
+// El default es el de GitHub Pages, que es de donde salió esto y lo que espera
+// `scripts/build-static.sh` (no pasa nada y cuenta con que el config lo hornee).
+// Se puede pisar con BASE_PATH para servir el portal como un subdirectorio de otro host
+// —por ejemplo `/propietario` adentro del panel— y así no hace falta un servicio aparte
+// sólo para una app de sólo lectura.
+const basePath = process.env.BASE_PATH ?? '/inmobiliaria-inquilinos-app/propietario';
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -15,8 +24,8 @@ const nextConfig = {
     ? {
         output: 'export',
         trailingSlash: true,
-        basePath: '/inmobiliaria-inquilinos-app/propietario',
-        env: { NEXT_PUBLIC_BASE_PATH: '/inmobiliaria-inquilinos-app/propietario' },
+        basePath,
+        env: { NEXT_PUBLIC_BASE_PATH: basePath },
         images: { unoptimized: true },
       }
     : {

@@ -86,6 +86,42 @@ contexto = raíz del monorepo, `NEXT_PUBLIC_API_URL` se hornea como build ARG. E
 Dockerfile **debe copiar `tsconfig.base.json`** (cadena tsconfig → @llave/config →
 ../../tsconfig.base.json). `CORS_ORIGINS` del back debe incluir los dominios de los fronts.
 
+## El portal del propietario vive adentro del panel, en `/propietario`
+
+No tiene servicio propio en Railway **a propósito**. Es una app de sólo lectura y 100%
+estática —ya se exportaba así para la demo—, así que un servicio aparte serían dólares por mes
+y un dominio más para mantener a cambio de servir unos HTML. El build del panel la genera y la
+deja en `apps/inmobiliaria/public/propietario/`.
+
+**La URL para un propietario es `https://admin.myalquiler.com/propietario`.**
+
+Las tres piezas, por si alguna se toca:
+
+1. `apps/propietario/next.config.mjs` lee `BASE_PATH` (default: el de GitHub Pages, que es lo
+   que espera `scripts/build-static.sh`).
+2. El `Dockerfile` del panel buildea el portal con `BASE_PATH=/propietario` y le pasa el
+   `NEXT_PUBLIC_API_URL` del service, y copia el `out/` a `public/propietario/`. **Va antes**
+   del build del panel, porque `public/` se lee durante ese build.
+3. `apps/inmobiliaria/next.config.mjs` tiene dos rewrites en `afterFiles`. Sin ellos
+   `/propietario` da 404 aunque el archivo esté: Next sirve `public/` archivo por archivo y no
+   resuelve índices de directorio. Van en `afterFiles` y no en `beforeFiles` para que los
+   assets reales se sirvan primero y no les pegue la regla comodín.
+
+**Por qué el panel y no la PWA del inquilino:** la PWA registra un service worker con scope
+`/`, que tomaría el control de `/propietario/*`. El panel no tiene ninguno.
+
+**No pasarle `NEXT_PUBLIC_DEMO`.** Con `NEXT_PUBLIC_API_URL` puesta `demoEnabled` ya da false
+—pide las dos cosas—, pero el día que alguien lo agregue "para probar" estaría publicando datos
+inventados en un dominio real.
+
+Verificado el 20/08 sirviendo el export desde el panel: las cinco rutas (`/propietario`,
+`/login`, `/unidades`, `/reclamos`, `/perfil`) dan 200, los assets resuelven bajo
+`/propietario/_next/`, y el bundle tiene horneada la URL del API de producción, no la de la
+demo. **Lo que NO se pudo probar acá es el build de Docker** (el daemon no estaba levantado):
+si algo falla, falla el deploy del panel y Railway se queda con el anterior.
+
+---
+
 ## Migraciones (Prisma)
 
 El back aplica migraciones con **`prisma migrate deploy`** en el arranque del
