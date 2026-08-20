@@ -2342,6 +2342,66 @@ la mora sale igual desde los 16 lugares que la calculan.
 
 ---
 
+## T-64 · Cambiar el modo de cobranza con un comprobante esperando validación — ✅ RESUELTO
+
+**Experto:** BE · **Prioridad:** 🔴 · **Toca plata**
+**Origen:** riesgo 🔴 Nivel 1 **#1** de `work-agent/07-ECOSISTEMA.md`. Se verificaron los seis
+riesgos de esa tabla contra el código de hoy: **#6 y #7 ya estaban arreglados** (commits
+`704f37f5` y `35277578`, del 19/08, posteriores a la tabla) y **#1, #2, #4 y #5 seguían
+abiertos**. Este es el #1.
+
+**El caso.** El guard de `PATCH /contratos/:id/modo-cobranza` se apoya en
+`alquilerCobradoSinRendir`, que cuenta **sólo pagos `CONCILIADO`**
+(`lib/rendicion-pendiente.ts:238`). Pero un comprobante queda **`INFORMADO`** en la bandeja
+hasta que una persona lo decide: **días**, no la ventana de milisegundos que cerró T-36. En ese
+hueco el modo se cambia con el guard en cero, y el pago aterriza del lado equivocado cuando
+alguien lo valida — porque `POST /pagos/:id/validar` no mira el modo (`plata.ts:388` y `:465`) y
+la rendición y la caja filtran por el modo **actual** en cualquier período (`plata.ts:1988`,
+`cierre-caja.ts:70`).
+
+**Los dos sentidos duelen distinto:**
+- **→ PROPIETARIO_DIRECTO** (el frecuente, porque INMOBILIARIA es el default del alta): la plata
+  está en la cuenta de la inmobiliaria y el contrato pasa a directo ⇒ queda **fuera** de
+  `POST /rendiciones` y del arqueo. Ningún endpoint se la hace llegar al dueño. Y volver atrás
+  para arreglarlo **rebota con el otro 409**, porque ahora sí figura como "cobrado y sin
+  rendir": sólo se sale anulando el pago, que es de ADMIN.
+- **→ INMOBILIARIA**: el inquilino transfirió al CBU del **dueño** ⇒ la rendición lo toma como
+  rendible y le transfiere de nuevo lo que ya cobró. **Doble pago, sin ninguna alarma.**
+
+**Lo que lo vuelve claro:** el repo **ya** trata `INFORMADO`+`CONCILIADO` como "pago vivo" en
+`core.ts:1937`, `:1941`, `:2258`, `:2364`, `:3608` y `:3781`. Este handler era el único que había
+quedado afuera — y el de `:3781` termina cincuenta líneas antes.
+
+**Qué se hizo.** Un `count` de `INFORMADO` en dos lugares del mismo handler: la foto previa (409
+con `codigo: 'PAGOS_EN_VUELO'` y `pendientes: N`, para que el panel pueda mandar a la bandeja) y
+la **revalidación dentro de la transacción, con `tx` y no con `prisma`** — con `prisma` sería
+otra foto fuera de la transacción y reabriría el TOCTOU que cerró T-36. Un archivo, un handler;
+`grep` confirma que es el único write de `modoCobranza` que lo mueve (los otros tres lo fijan al
+nacer).
+
+**El mensaje del 409 es distinto por sentido, y eso es la mitad del arreglo.** Hacia directo la
+secuencia sana es *decidir → rendir → recién ahí cambiar*; decirle "validalos y volvé a
+intentar" lo mandaría contra el otro 409. Hacia recaudadora, en cambio, validar es justamente lo
+que dispara el doble pago: ahí hay que rechazarlos. Es el mismo pecado que `b00f5c19` ya había
+sacado una vez ("cambialo el mes que viene", consejo que no destrababa nada).
+
+**Qué podría romper.** Un contrato con un comprobante INFORMADO abandonado no puede cambiar de
+modo hasta que alguien lo decida. Siempre es escapable (`POST /pagos/:id/rechazar`, misma
+capacidad que validar) y el índice único parcial garantiza **un solo INFORMADO por
+liquidación**, así que el número es chico y accionable.
+
+**Tests.** `modo-cobranza-pago-en-vuelo.test.ts`, 4 casos. **Necesita base**, así que lo corre el
+job `integracion` de la CI y no se verificó local (el dueño prohibió correr los tests que tocan
+la base). Elige el contrato por propiedades y no por id fijo, y restaura pago y modo en el
+`afterAll` porque la base es compartida entre archivos.
+
+**Lo que NO cierra, y es de otra tarea.** El arreglo estructural es **congelar en el `Pago` el
+modo que regía al cobrar**, y que rendición y caja filtren por ese campo en vez de por el modo
+actual. Eso es schema + backfill + los doce filtros que enumera `07-ECOSISTEMA.md:827-830`.
+Mientras tanto, el modo sigue siendo un dato del contrato que reinterpreta la historia.
+
+---
+
 ## T-63 · Toda la plata del API aceptaba `Infinity` — 🟡 LA MITAD RESUELTA, la otra es tuya
 
 **Experto:** BE + **decisión del dueño** · **Prioridad:** 🔴 · **Toca plata**
