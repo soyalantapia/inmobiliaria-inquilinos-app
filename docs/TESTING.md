@@ -29,6 +29,33 @@ quiere de una base de test. `prisma/guard-db.ts` ya reconoce `localhost` como ba
 
 ---
 
+## Sin base: `test:sin-db` (lo que se puede correr en cualquier lado)
+
+**Verificado el 20/08/2026 sobre `2f75958`, el commit que está en producción: 41 archivos,
+395 tests, todos en verde.** Sin Docker, sin Postgres y sin tocar nada compartido.
+
+```bash
+cd apps/api && corepack pnpm db:generate
+DATABASE_URL='postgresql://nadie:nada@127.0.0.1:1/no_existe' \
+JWT_SECRET='cualquier-cosa-larga-que-no-se-usa' \
+corepack pnpm test:sin-db
+```
+
+**Las dos variables no son opcionales, y ahí está la trampa.** `vitest.sin-db.config.ts` separa
+los tests por *"¿necesita una base viva?"*, y varios de los que quedan del lado corrible llaman a
+`buildApp()`, que valida el entorno con zod **antes** de tocar la red. Sin ellas, tres tests de
+`sonar-correlacion.test.ts` fallan con un `ZodError: DATABASE_URL Required` que **parece código
+roto y no lo es**. Los valores pueden apuntar a la nada: nadie se conecta.
+
+**Y `db:generate` también es obligatorio en un checkout nuevo.** Sin él, 7 suites ni cargan:
+`Cannot find module '.prisma/client/default'`. El cliente de Prisma es generado, no viene en el
+repo.
+
+> Si alguna vez da rojo sin haber tocado código, **antes de investigar el test, confirmá estas
+> dos cosas.** Las dos veces que dio rojo acá fue por entorno, ninguna por el código.
+
+---
+
 ## Cómo correr los tests
 
 Los tests viven en `apps/api/test/*.test.ts` y corren con Vitest:
