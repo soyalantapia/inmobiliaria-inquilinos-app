@@ -35,6 +35,12 @@ ARG NEXT_PUBLIC_POSTHOG_KEY
 ENV NEXT_PUBLIC_POSTHOG_KEY=$NEXT_PUBLIC_POSTHOG_KEY
 ARG NEXT_PUBLIC_POSTHOG_HOST
 ENV NEXT_PUBLIC_POSTHOG_HOST=$NEXT_PUBLIC_POSTHOG_HOST
+# El commit que se está buildeando, para el <meta name="build-commit"> del layout. Railway
+# expone RAILWAY_GIT_COMMIT_SHA en los deploys que salen del repo conectado; si falta, el
+# layout cae a 'desconocido' en vez de mentir. Es lo que hace verificable un deploy del front:
+# hasta ahora sólo la API decía qué versión corría, en /health.
+ARG RAILWAY_GIT_COMMIT_SHA
+ENV NEXT_PUBLIC_COMMIT=$RAILWAY_GIT_COMMIT_SHA
 RUN pnpm --filter @llave/inmobiliaria exec next build
 
 FROM base AS runtime

@@ -44,6 +44,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="color-scheme" content="only light" />
         <meta name="supported-color-schemes" content="light" />
         <meta name="darkreader-lock" />
+        {/* Qué commit está corriendo. Ver el mismo meta en el panel: la API lo expone en
+            /health y los fronts no lo exponían en ningún lado. Va como meta porque esta app
+            también se buildea en modo static export, donde no hay servidor que conteste. */}
+        <meta
+          name="build-commit"
+          content={process.env.NEXT_PUBLIC_COMMIT?.slice(0, 7) || 'desconocido'}
+        />
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         {/* Sonar corre acá en PRODUCCIÓN aunque el dominio sea *.up.railway.app. Sin este
             meta, su heurística por hostname lo toma como staging y los tickets quedan

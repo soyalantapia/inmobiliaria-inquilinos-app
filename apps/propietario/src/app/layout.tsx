@@ -24,6 +24,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <meta name="color-scheme" content="only light" />
         <meta name="supported-color-schemes" content="light" />
+        {/* Qué commit está corriendo. Ver el mismo meta en el panel: la API lo expone en
+            /health y los fronts no lo exponían en ningún lado. Acá importa doble, porque este
+            portal hoy sólo existe como static export en GitHub Pages (T-46-N1) y ahí no hay
+            ningún otro modo de saber qué se publicó. */}
+        <meta
+          name="build-commit"
+          content={process.env.NEXT_PUBLIC_COMMIT?.slice(0, 7) || 'desconocido'}
+        />
       </head>
       <body className="min-h-screen bg-background font-sans" style={{ backgroundColor: '#ffffff' }}>
         <QueryProvider>

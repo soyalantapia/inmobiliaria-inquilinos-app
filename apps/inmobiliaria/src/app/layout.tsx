@@ -32,6 +32,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="color-scheme" content="only light" />
         <meta name="supported-color-schemes" content="light" />
         <meta name="darkreader-lock" />
+        {/* Qué commit está corriendo este front. La API lo expone en /health desde hace rato;
+            los fronts no, y por eso no había forma de verificar que un deploy entró ni de medir
+            la distancia entre lo que hay arriba y `main`.
+            Va como meta y no como endpoint porque estas apps también se buildean en modo static
+            export (GitHub Pages), donde no hay servidor que conteste. Un meta viaja en el HTML
+            y se lee con `curl -s https://admin.myalquiler.com | grep build-commit`.
+            'desconocido' antes que un valor inventado, igual que /health. */}
+        <meta
+          name="build-commit"
+          content={process.env.NEXT_PUBLIC_COMMIT?.slice(0, 7) || 'desconocido'}
+        />
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         {/* Sonar corre acá en PRODUCCIÓN aunque el dominio sea *.up.railway.app. Sin este
             meta, su heurística por hostname lo toma como staging y los tickets quedan

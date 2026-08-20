@@ -213,7 +213,18 @@ trámite.
 
 **Experto:** OPS · **Prioridad:** 🔴 · **Depende de:** T-01
 
-**Estado verificado.** Los servicios de Railway **no están conectados a GitHub**
+> ### ⚠️ Corregido el 20/08: los puntos 1 y 2 YA ESTÁN HECHOS, y la premisa era falsa.
+>
+> Los servicios **sí** están conectados a GitHub: el push del merge `94d4000` disparó los tres
+> deploys solos (`1d6f9d4b`, `7b75cfb7`, `8873507e`, los tres SUCCESS, misma hora que el push).
+> `/health` devuelve `{"ok":true,"db":"up","version":"94d4000"}` y las trece migraciones se
+> aplicaron en ese mismo deploy. Ver `02-DEPLOY.md`, sección "Qué hay arriba — 20/08/2026".
+>
+> **Queda pendiente sólo el punto 3**, el smoke test de los cinco caminos con credenciales
+> reales sobre el tenant real. El punto 4 (dejar registrado qué se subió) se hizo en T-02-N1,
+> junto con el `<meta name="build-commit">` que faltaba para poder verificar los fronts.
+
+**Estado ORIGINAL (falso, se conserva como registro).** Los servicios de Railway **no están conectados a GitHub**
 (`02-DEPLOY.md:31`): pushear a `main` **no** deploya. Hay que correr `railway up` a mano, por
 servicio. El backend expone la versión que corre en `GET /health` (`health.ts:29-31`), pero
 **ningún front expone un build-id cruzable con git**, así que hoy no hay forma de saber en qué
@@ -4031,3 +4042,64 @@ Eso lo define el dueño, no un agente. **Queda escrito, no construido.**
 
 **Riesgo de no hacerlo.** Que se dé por entregada una capacidad que nadie puede ejercer — el
 mismo patrón que T-46 con el portal del propietario.
+
+---
+
+### T-02-N1 · Los fronts no decían qué commit estaban corriendo — ✅ HECHA
+**Experto:** OPS + FE · **Prioridad:** 🟠 · **Detectada en:** T-02, al verificarla contra Railway
+
+> **Estado: ✅ hecha.** Ver `work-agent/tareas/T-02-N1/REQUISITOS.md`.
+
+T-02 partía de dos afirmaciones. La primera —*"los servicios no están conectados a GitHub,
+pushear a `main` no deploya"*— es **falsa** y ya está corregida arriba y en `02-DEPLOY.md`.
+
+La segunda sí era cierta: *"ningún front expone un build-id cruzable con git, así que hoy no hay
+forma de saber en qué commit están el panel y la PWA"*. Ese era el agujero que hacía imposible
+**verificar** un deploy: con la API se puede desde que existe `/health`; con los fronts no.
+
+**Lo que se hizo:** un `<meta name="build-commit">` en el `<head>` de los tres fronts, con el
+SHA horneado en build. Va como meta y no como endpoint porque los tres se buildean también en
+static export para Pages, donde no hay servidor que conteste un `/version`. El SHA sale de
+`RAILWAY_GIT_COMMIT_SHA` (declarado como ARG en cada Dockerfile, igual que las de PostHog) o de
+`GITHUB_SHA` en Actions; sin ninguna de las dos dice `desconocido`, mismo criterio que `/health`.
+
+De ahora en más:
+
+```bash
+curl -s https://admin.myalquiler.com | grep build-commit
+```
+
+**Verificado buildeando de verdad, los tres:** con la variable sale el SHA truncado a 7
+(`abc1234`, `feedfac`, `cafebab`); sin la variable sale `desconocido`, no vacío ni `undefined`.
+`tsc` 0 en los cinco paquetes y 395 tests verdes.
+
+**Nota:** el build del panel **falla en Windows** (la imagen OpenGraph de la landing revienta en
+`@vercel/og` con `fileURLToPath` sobre una ruta `file:///C:/...`). En Linux compila —CI está en
+verde— así que no bloquea nada, pero el meta se verificó leyendo el HTML que Next genera antes
+de ese paso. Queda anotado en T-02-N2.
+
+### T-02-N2 · El panel no compila en Windows
+**Experto:** FE · **Prioridad:** 🟡 · **Depende de:** nada
+
+`next build` de `apps/inmobiliaria` termina en exit 1 en esta máquina:
+
+```
+Error occurred prerendering page "/inicio/opengraph-image-b368cs"
+TypeError: Invalid URL … at fileURLToPath … @vercel/og/index.node.js:18988
+```
+
+**En Linux no pasa** — el `Deploy to GitHub Pages` del merge `94d4000` compiló las tres apps en
+2m24s. Es un problema conocido de `@vercel/og` en Windows.
+
+**Por qué igual importa:** cualquiera que trabaje en el panel desde Windows no puede correr
+`pnpm build` localmente, y el error no dice "esto es de Windows" — dice que falla el prerender,
+que parece un bug propio.
+
+**Contexto de cómo apareció:** el `main` anterior (`70d4be8`) también fallaba, pero **antes**, en
+`/inquilinos/[id]` sin `generateStaticParams()`. Ese se arregló y el build ahora llega más lejos
+y choca con éste. O sea no es una regresión: es el siguiente escalón, que antes estaba tapado.
+
+**Opciones** (no se eligió ninguna, es decisión de quién mantiene la landing): darle a la ruta
+un `export const dynamic = 'force-static'` con la imagen pre-generada, reemplazar `next/og` por
+un PNG estático en `public/`, o dejarlo y documentar que el build local del panel no corre en
+Windows.

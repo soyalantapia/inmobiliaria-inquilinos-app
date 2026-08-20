@@ -28,8 +28,31 @@ deployados vía `railway up`, **exit 0** cada uno ("Deploy complete"). HEAD == `
 
 ## Cómo deployar
 
-⚠️ Los servicios **NO están conectados a GitHub** — pushear a `main` **NO** auto-deploya.
-Para desplegar:
+> ### ✅ Corregido el 20/08: pushear a `main` SÍ deploya, solo, los tres servicios.
+>
+> Lo de abajo decía lo contrario y hoy es falso. Verificado contra la API de Railway: el
+> servicio `myalquiler-back` tiene `Source repo: soyalantapia/inmobiliaria-inquilinos-app`, y el
+> push del merge `94d4000` (20/08 01:09 UTC) disparó **los tres** deploys a la misma hora, sin
+> que nadie corriera nada:
+>
+> | servicio | deployment | estado |
+> |---|---|---|
+> | `myalquiler-back` | `1d6f9d4b` | SUCCESS |
+> | `myalquiler-front` | `7b75cfb7` | SUCCESS |
+> | `myalquiler-inquilino` | `8873507e` | SUCCESS |
+>
+> Y las migraciones tampoco se aplican a mano: el `CMD` del Dockerfile del back corre
+> `pnpm db:deploy && exec node dist/index.js`, así que corren antes de levantar y si fallan el
+> contenedor no arranca. En ese deploy se aplicaron las trece pendientes.
+>
+> **Consecuencia práctica:** el riesgo ya no es olvidarse de deployar, es lo contrario —
+> **cualquier push a `main` sale a producción**. Eso es lo que hay que tener presente antes de
+> mergear, y es de lo que habla T-05 (congelar deploys durante las sesiones de prueba).
+>
+> `railway up` sigue existiendo y sigue siendo válido para subir algo puntual sin pasar por
+> `main`; lo de abajo aplica a ese caso.
+
+### Subir algo sin pasar por `main` (`railway up`)
 
 ```bash
 railway up --service <svc> --detach        # back / front / inquilino — solo lo que tocaste
@@ -37,9 +60,13 @@ railway up --service <svc> --detach        # back / front / inquilino — solo l
 ```
 
 ⚠️ **`railway up` sube el WORKING TREE, no solo lo commiteado.** Antes de deployar,
-**verificá que el árbol esté limpio** (`git status`) — si hay cambios sin commitear se van
-a prod igual, aunque no estén en `main`. Combinado con lo de arriba (push a `main` NO
-auto-deploya), la regla es: commiteá primero, confirmá árbol limpio, después `railway up`.
+**verificá que el árbol esté limpio** (`git status`) — si hay cambios sin commitear se van a
+prod igual, aunque no estén en ningún commit. La regla es: commiteá primero, confirmá árbol
+limpio, después `railway up`.
+
+Y ojo con la otra mitad: como el push a `main` **sí** auto-deploya, un `railway up` desde un
+árbol sucio queda **pisado** por el siguiente merge a `main`, en silencio. Si algo se subió así
+y hace falta que sobreviva, tiene que terminar commiteado.
 
 Para saber cuándo quedó live un endpoint nuevo: pollear hasta que pase de **404→401**
 (route registrado pero sin token) en vez de pollear `railway status`. Ej:
@@ -141,3 +168,41 @@ en `beforeAll`. Es **distinta de prod** — pero la regla dura sigue: si no ten�
 3. No crear cuentas / data de prueba en el tenant real (Tapia Propiedades).
 4. Repo `soyalantapia/inmobiliaria-inquilinos-app`. gh token **sin** workflow scope
    (no tocar `.github/workflows/`). Pushear a `main` es OK en este repo.
+
+---
+
+## Qué hay arriba — 20/08/2026
+
+Deploy automático disparado por el push del merge `94d4000` a `main`.
+
+| servicio | URL | commit | verificado |
+|---|---|---|---|
+| API | `api-production-262e.up.railway.app` | `94d4000` | `/health` → `200 {"ok":true,"db":"up","version":"94d4000"}` |
+| Panel | `admin.myalquiler.com` | `94d4000` | HTTP 200 |
+| PWA inquilino | `app.myalquiler.com` | `94d4000` | HTTP 200 |
+| Landing | `myalquiler.com` | `94d4000` | HTTP 200 |
+| Demo estática | GitHub Pages | `94d4000` | 200, incluido `/propietario/` |
+
+**Migraciones:** las trece pendientes se aplicaron en ese deploy —
+*"All migrations have been successfully applied"* en el log.
+
+**Smoke test de rutas** (sin auth, sólo para confirmar que están registradas y no rotas):
+`/rendiciones`, `/caja/movimientos`, `/metricas/resumen`, `/portal/rendiciones`,
+`/mis-liquidaciones` → **401** las cinco. Cero 500.
+
+**CI:** las dos workflows verdes en ese push — `Revisión` (typecheck + 395 tests de API + 95 de
+los fronts) en 1m05s, y `Deploy to GitHub Pages` en 2m24s. Es el **primer Pages verde desde el
+3 de agosto**: los tres deploys anteriores en `main` estaban en failure.
+
+### Cómo saber qué commit está arriba, de ahora en más
+
+```bash
+curl -s https://api-production-262e.up.railway.app/health          # API: campo "version"
+curl -s https://admin.myalquiler.com | grep build-commit           # panel
+curl -s https://app.myalquiler.com   | grep build-commit           # PWA
+```
+
+El `<meta name="build-commit">` de los fronts se agregó en **T-02-N1**: hasta entonces sólo la
+API decía qué versión corría, y de los fronts no había forma de saberlo. Si dice `desconocido`,
+es un build que se hizo sin `RAILWAY_GIT_COMMIT_SHA` ni `GITHUB_SHA` — no es un error, es el
+fallback honesto.
