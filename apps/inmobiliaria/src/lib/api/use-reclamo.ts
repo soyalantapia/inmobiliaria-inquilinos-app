@@ -164,6 +164,8 @@ export interface UseReclamoResult {
   resolver: (input: ResolverReclamoInput) => Promise<void>;
   clasificar: (pagador: PagadorReclamo) => Promise<void>;
   rechazar: (motivo: string) => Promise<void>;
+  /** Reabre un reclamo CERRADO para poder corregirlo (T-63-N1). Sólo con API real. */
+  reabrir: (motivo: string) => Promise<void>;
   responder: (mensaje: string, adjuntoUrl?: string) => Promise<void>;
 }
 
@@ -244,6 +246,17 @@ export function useReclamo(id: string | undefined): UseReclamoResult {
     onSuccess: invalidar,
   });
 
+  const reabrirM = useMutation({
+    mutationFn: async (motivo: string) => {
+      await ensureApiSession();
+      await apiFetch(`/reclamos/${id}/reabrir`, {
+        method: 'POST',
+        body: JSON.stringify({ motivo }),
+      });
+    },
+    onSuccess: invalidar,
+  });
+
   const responderM = useMutation({
     mutationFn: async (input: { mensaje?: string; adjuntoUrl?: string }) => {
       await ensureApiSession();
@@ -276,6 +289,8 @@ export function useReclamo(id: string | undefined): UseReclamoResult {
       resolver: async () => {},
       clasificar: async () => {},
       rechazar: async () => {},
+      // En demo no hay backend que reabra: el resto de las acciones también son no-op acá.
+      reabrir: async () => {},
       responder: async () => {},
     };
   }
@@ -292,6 +307,7 @@ export function useReclamo(id: string | undefined): UseReclamoResult {
     resolver: (input) => resolverM.mutateAsync(input),
     clasificar: (pagador) => clasificarM.mutateAsync(pagador),
     rechazar: (motivo) => rechazarM.mutateAsync(motivo),
+    reabrir: (motivo) => reabrirM.mutateAsync(motivo),
     responder: (mensaje, adjuntoUrl) => responderM.mutateAsync({ mensaje, adjuntoUrl }),
   };
 }

@@ -78,6 +78,7 @@ export default function DetalleReclamoPage() {
     resolver: resolverApi,
     clasificar: clasificarApi,
     rechazar: rechazarApi,
+    reabrir: reabrirApi,
     responder: responderApi,
   } = useReclamo(params?.id);
   const { visita } = useVisitaReclamo(params?.id);
@@ -96,6 +97,11 @@ export default function DetalleReclamoPage() {
   // Guard de re-entrancia SÍNCRONO contra el doble-click: setDialogoCargando es un
   // state setter (async) y no bloquea la 2da invocación en el mismo tick.
   const confirmandoRef = useRef(false);
+  // Reapertura para corregir un cierre (T-63-N1). Estado propio y no el de `dialogo`: es
+  // una acción del reclamo YA cerrado, o sea el único caso donde el resto del panel de
+  // acciones no se muestra.
+  const [motivoReapertura, setMotivoReapertura] = useState('');
+  const [reabriendo, setReabriendo] = useState(false);
   const [enviandoMsg, setEnviandoMsg] = useState(false);
   const scrollEndRef = useRef<HTMLDivElement>(null);
 
@@ -509,6 +515,60 @@ export default function DetalleReclamoPage() {
             {/* Progreso del trabajo (link mágico del profesional) */}
             {reclamo.profesionalAsignadoId && (
               <ProgresoVisitaCard reclamoId={reclamo.id} />
+            )}
+
+            {cerrado && apiEnabled && (
+              <Card>
+                <CardContent className="space-y-3 p-5">
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                    Corregir este cierre
+                  </h3>
+                  {/* POR QUÉ ESTÁ ACÁ. Cuando el reclamo lo cierra el profesional por link
+                      mágico, el monto que declaró se imputa como plata real —cargo al
+                      inquilino, gasto al propietario o descuento del depósito—. Si tipeó mal,
+                      hasta T-63-N1 no había forma de arreglarlo desde el panel. */}
+                  <p className="text-xs text-muted-foreground">
+                    Reabrilo si el monto o quién paga quedaron mal. Vuelve a quedar en curso y
+                    podés resolverlo de nuevo con los datos corregidos.
+                  </p>
+                  <Textarea
+                    value={motivoReapertura}
+                    onChange={(e) => setMotivoReapertura(e.target.value)}
+                    placeholder="Por qué se reabre (ej: el plomero cargó un cero de más)"
+                    rows={2}
+                  />
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    disabled={reabriendo || motivoReapertura.trim().length < 5}
+                    onClick={async () => {
+                      if (reabriendo) return;
+                      setReabriendo(true);
+                      try {
+                        await reabrirApi(motivoReapertura.trim());
+                        setMotivoReapertura('');
+                        toast({
+                          title: 'Reclamo reabierto',
+                          description: 'Ahora podés corregir el monto y quién paga, y volver a resolverlo.',
+                        });
+                      } catch {
+                        // El API frena si esa plata ya se movió (rendida al propietario o
+                        // cobrada al inquilino). No se traga el error: hay que deshacer eso
+                        // primero, y el mensaje del server lo explica.
+                        toast({
+                          title: 'No se pudo reabrir',
+                          description: 'Puede que ya lo haya reabierto otra persona. Recargá para ver cómo quedó.',
+                          variant: 'destructive',
+                        });
+                      } finally {
+                        setReabriendo(false);
+                      }
+                    }}
+                  >
+                    {reabriendo ? 'Reabriendo…' : 'Reabrir para corregir'}
+                  </Button>
+                </CardContent>
+              </Card>
             )}
 
             {!cerrado && (

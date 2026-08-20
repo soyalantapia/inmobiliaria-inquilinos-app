@@ -715,6 +715,75 @@ export async function operacionRoutes(app: FastifyInstance) {
     }
   });
 
+  /**
+   * Reabrir un reclamo cerrado, para poder corregirlo.
+   *
+   * POR QUÉ EXISTE. El profesional cierra el reclamo por link mágico declarando `montoCobrado`
+   * (`POST /visitas-publicas/listo`), y eso se imputa como plata real: cargo al inquilino,
+   * gasto al propietario o descuento del depósito. Si tipeó mal el monto, **no había forma de
+   * arreglarlo**: con el reclamo ya cerrado, `/clasificar` y `/resolver` responden 409, y el
+   * único camino de reapertura era que el INQUILINO marcara "PERSISTE" — que es otro flujo (el
+   * problema sigue), no una corrección. Un typo quedaba como asiento permanente.
+   *
+   * Es la mitad de T-63 que no depende de la decisión pendiente sobre quién puede declarar
+   * cuánto: decida lo que se decida, un error tiene que poder corregirse.
+   *
+   * NO MUEVE PLATA. Sólo devuelve el reclamo a EN_CURSO para que `/clasificar` y `/resolver`
+   * vuelvan a estar habilitados. La reimputación la sigue haciendo `/resolver` con el helper
+   * de siempre, que es el único lugar donde se decide a dónde va esa plata — y que ya frena
+   * solo si el costo ya se le rindió al propietario (`ReclamoYaRendido`) o si el inquilino ya
+   * pagó el cargo (`ReclamoYaCobradoAlInquilino`). Reabrir no saltea ninguno de esos cortes.
+   *
+   * ⚠️ NO se toca `resueltoAt`, y no es un olvido. `evaluarSla` detecta un reclamo reabierto
+   * justamente por `estado` activo + `resueltoAt` no nulo, y reinicia el reloj del SLA desde
+   * ahí. Limpiándolo, un reclamo viejo reaparecería como VENCIDO apenas se reabre.
+   */
+  app.post('/reclamos/:id/reabrir', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'reclamos.gestionar');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    // Se pide motivo por lo mismo que en `/rechazar`: esto deshace un cierre y toca plata
+    // imputada. Que quede escrito quién lo reabrió y por qué.
+    const body = z.object({ motivo: z.string().trim().min(5).max(300) }).safeParse(request.body ?? {});
+    if (!body.success) {
+      return reply.code(400).send({ message: 'Contá por qué se reabre el reclamo (mínimo 5 caracteres)' });
+    }
+    const reclamo = await prisma.reclamo.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
+    if (!reclamo) return reply.code(404).send({ message: 'Reclamo inexistente' });
+    const autor = await nombreUsuario(u.userId);
+    try {
+      const actualizado = await prisma.$transaction(async (tx) => {
+        // El guard va al revés que en el resto: acá sólo se puede si ESTÁ cerrado. `updateMany`
+        // con la condición adentro y no un pre-check, por lo mismo que los otros handlers: si
+        // alguien lo reabre entre la lectura y la escritura, `count === 0` y sale 409.
+        const res = await tx.reclamo.updateMany({
+          where: { id, estado: { in: [...ESTADOS_CERRADOS] } },
+          data: { estado: 'EN_CURSO' },
+        });
+        if (res.count === 0) {
+          throw new ConflictoEstadoReclamo('Este reclamo no está cerrado: no hay nada que reabrir.');
+        }
+        // `EN_CURSO` y no un `REABIERTO` propio: el enum no lo tiene y agregarlo pedía una
+        // migración por una etiqueta. El estado al que vuelve ES en curso, y el motivo queda
+        // en el contenido del evento.
+        await tx.reclamoEvento.create({
+          data: {
+            inmobiliariaId: u.inmobiliariaId,
+            reclamoId: id,
+            tipo: 'EN_CURSO',
+            autor,
+            contenido: `Reabierto para corregir: ${body.data.motivo}`,
+          },
+        });
+        return tx.reclamo.findUniqueOrThrow({ where: { id } });
+      });
+      return conSla(actualizado);
+    } catch (e) {
+      if (e instanceof ConflictoEstadoReclamo) return reply.code(409).send({ message: e.message });
+      throw e;
+    }
+  });
+
   app.post('/reclamos/:id/responder', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'reclamos.gestionar');
     if (!u) return;
