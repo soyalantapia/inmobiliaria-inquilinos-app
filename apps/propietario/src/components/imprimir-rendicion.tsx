@@ -3,6 +3,7 @@
 import { Printer } from 'lucide-react';
 import { Button } from '@llave/ui/button';
 import type { RendicionDetalle } from '@/lib/api';
+import { etiqueta, fecha, money, periodoLargo } from '@/lib/format';
 
 /**
  * Abre una versión imprimible de UNA rendición, para que el propietario se la lleve.
@@ -54,17 +55,24 @@ const ESTILOS = `
 const esc = (s: string): string =>
   s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string);
 
+/**
+ * Los formateadores se IMPORTAN, no se inyectan.
+ *
+ * Antes venían por props —`money`, `fecha` y un `periodoLargo` ya resuelto a string— con la
+ * idea de que el caller "es quien tiene el helper". Viven en `@/lib/format`, en la misma app,
+ * a un import de distancia: la inyección no desacoplaba nada y sí abría un agujero. El caller
+ * pasaba un `money` de un solo argumento, así que TODO este papel se imprimía con el default
+ * ARS —una rendición en dólares salía con signo de pesos, en la hoja que el dueño le lleva al
+ * contador—, y `periodoLargo` llegaba resuelto para la rendición entera, así que las filas de
+ * alquiler mostraban el período crudo (`2026-08`) donde la pantalla muestra "Agosto 2026".
+ */
 interface Props {
   rendicion: RendicionDetalle;
   propietario: string;
   inmobiliaria: string;
-  /** "Septiembre 2026" ya formateado por el caller, que es quien tiene el helper. */
-  periodoLargo: string;
-  money: (n: number) => string;
-  fecha: (iso: string) => string;
 }
 
-export function ImprimirRendicion({ rendicion: r, propietario, inmobiliaria, periodoLargo, money, fecha }: Props) {
+export function ImprimirRendicion({ rendicion: r, propietario, inmobiliaria }: Props) {
   const abrir = () => {
     if (typeof window === 'undefined') return;
     const win = window.open('', '_blank', 'width=900,height=1100');
@@ -72,6 +80,14 @@ export function ImprimirRendicion({ rendicion: r, propietario, inmobiliaria, per
       alert('Tu navegador bloqueó la ventana. Habilitá los popups para poder imprimir o guardar el PDF.');
       return;
     }
+
+    // TODOS los importes de este papel llevan la moneda de ESTA rendición.
+    //
+    // Estaban llamando a `money(x)` a secas, y su default es ARS: una rendición en dólares se
+    // imprimía entera con signo de pesos. Es el mismo error que ya se arregló en la pantalla
+    // —y el motivo por el que `Rendicion.moneda` se persiste—, pero acá pesa más: este es el
+    // papel que el dueño le lleva al contador.
+    const plata = (x: number) => money(x, r.moneda);
 
     const filas = (items: { izq: string; sub: string; monto: string }[]): string =>
       items
@@ -86,22 +102,27 @@ export function ImprimirRendicion({ rendicion: r, propietario, inmobiliaria, per
     const alquileres = filas(
       r.detalleAlquileres.map((a) => ({
         izq: a.direccion,
-        sub: a.participacionPct < 100 ? `${a.periodo} · te toca el ${a.participacionPct}%` : a.periodo,
-        monto: money(a.monto),
+        // `periodoLargo` y no el crudo: en la pantalla dice "Agosto 2026" y acá decía
+        // "2026-08". Es el mismo dato en dos formas en dos superficies del mismo producto.
+        sub:
+          a.participacionPct < 100
+            ? `${periodoLargo(a.periodo)} · te toca el ${a.participacionPct}%`
+            : periodoLargo(a.periodo),
+        monto: plata(a.monto),
       })),
     );
     const gastos = filas(
       r.detalleGastos.map((g) => ({
         izq: g.descripcion,
         sub: [fecha(g.fecha), g.tipo.toLowerCase(), g.proveedor].filter(Boolean).join(' · '),
-        monto: `− ${money(g.monto)}`,
+        monto: `− ${plata(g.monto)}`,
       })),
     );
     const ingresos = filas(
       r.detalleIngresos.map((x) => ({
         izq: x.descripcion,
         sub: x.participacionPct < 100 ? `${fecha(x.fecha)} · te toca el ${x.participacionPct}%` : fecha(x.fecha),
-        monto: `+ ${money(x.monto)}`,
+        monto: `+ ${plata(x.monto)}`,
       })),
     );
 
@@ -109,34 +130,41 @@ export function ImprimirRendicion({ rendicion: r, propietario, inmobiliaria, per
 <html lang="es-AR">
   <head>
     <meta charset="utf-8" />
-    <title>Rendición ${esc(periodoLargo)} — ${esc(propietario)}</title>
+    <title>Rendición ${esc(periodoLargo(r.periodo))} — ${esc(propietario)}</title>
     <style>${ESTILOS}</style>
   </head>
   <body class="con-barra">
     <div class="barra">
-      <span>Rendición de ${esc(periodoLargo)} · imprimí o guardala como PDF</span>
+      <span>Rendición de ${esc(periodoLargo(r.periodo))} · imprimí o guardala como PDF</span>
       <button type="button" onclick="window.print()">Imprimir / Guardar PDF</button>
     </div>
 
-    <h1>Rendición de ${esc(periodoLargo)}</h1>
+    <h1>Rendición de ${esc(periodoLargo(r.periodo))}</h1>
     <p class="sub">
       ${esc(propietario)} · administra ${esc(inmobiliaria)}<br />
-      Depositado el ${esc(fecha(r.rendidoAt))} por ${esc(r.metodo.toLowerCase())}
+      Depositado el ${esc(fecha(r.rendidoAt))} por ${esc(etiqueta(r.metodo))}
     </p>
 
-    <h2>De dónde salió el alquiler</h2>
-    <table>${alquileres || '<tr><td class="concepto">Sin alquileres imputados.</td><td class="n"></td></tr>'}</table>
+    ${
+      alquileres
+        ? `<h2>De dónde salió el alquiler</h2><table>${alquileres}</table>`
+        : // Sin alquileres imputados el título sobra, y el cartel debajo de un depósito real
+          // se leía como si faltara algo. Una rendición puede ser toda "otros ingresos"
+          // —una expensa reintegrada, un ajuste— y eso no es una anomalía: se explica.
+          `<h2>De dónde salió</h2><p class="nota">Esta rendición no imputa alquiler: el depósito
+           sale de los otros conceptos que figuran abajo.</p>`
+    }
 
     ${gastos ? `<h2>Qué se descontó</h2><table>${gastos}</table>` : ''}
     ${ingresos ? `<h2>Otros ingresos</h2><table>${ingresos}</table>` : ''}
 
     <h2>Cuentas</h2>
     <table>
-      <tr><td class="concepto">Se cobró de alquiler</td><td class="n">${esc(money(r.cobrado))}</td></tr>
-      <tr><td class="concepto">Comisión de la inmobiliaria (${r.comisionPct}%)</td><td class="n">− ${esc(money(r.comision))}</td></tr>
-      ${r.gastos > 0 ? `<tr><td class="concepto">Gastos de tus unidades</td><td class="n">− ${esc(money(r.gastos))}</td></tr>` : ''}
-      ${r.otrosIngresos > 0 ? `<tr><td class="concepto">Otros ingresos</td><td class="n">+ ${esc(money(r.otrosIngresos))}</td></tr>` : ''}
-      <tr class="tot"><td>Te depositamos</td><td class="n">${esc(money(r.teDepositamos))}</td></tr>
+      <tr><td class="concepto">Se cobró de alquiler</td><td class="n">${esc(plata(r.cobrado))}</td></tr>
+      <tr><td class="concepto">Comisión de la inmobiliaria (${r.comisionPct}%)</td><td class="n">− ${esc(plata(r.comision))}</td></tr>
+      ${r.gastos > 0 ? `<tr><td class="concepto">Gastos de tus unidades</td><td class="n">− ${esc(plata(r.gastos))}</td></tr>` : ''}
+      ${r.otrosIngresos > 0 ? `<tr><td class="concepto">Otros ingresos</td><td class="n">+ ${esc(plata(r.otrosIngresos))}</td></tr>` : ''}
+      <tr class="tot"><td>Te depositamos</td><td class="n">${esc(plata(r.teDepositamos))}</td></tr>
     </table>
 
     <p class="nota">

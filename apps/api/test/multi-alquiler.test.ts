@@ -42,13 +42,27 @@ afterAll(async () => {
     where: { personaId: { in: personaIds } },
     select: { contratoId: true },
   });
-  const contratoIds = inquilinos.map((i) => i.contratoId).filter((c): c is string => !!c);
-  // Sólo las que creó este archivo. Ver el comentario de `propiedadesCreadas`.
+  // Sólo las propiedades que creó ESTE archivo (ver el comentario de `propiedadesCreadas`).
   const propIds = propiedadesCreadas;
-  // Los contratos con TODO lo que les cuelga (23 hijos y 10 nietos, ninguno cascadea) y el
-  // lazo `propiedad.contratoActualId` cortado. Antes esto era una lista a mano acá adentro, y
-  // se rompía sola cada vez que el alta empezaba a escribir un hijo más — que es literalmente
-  // lo que pasó con `EventoContrato`. Ver `prisma/borrar-contratos-de-test.ts`.
+  // Los contratos salen de DOS lados y se unen. Antes salían sólo de los inquilinos, y eso
+  // deja afuera cualquier contrato de estas propiedades cuyo inquilino no matchee —incluido
+  // el residuo de una corrida anterior que murió a mitad del borrado—. El síntoma era un
+  // `contratos_propiedadId_fkey` recién al llegar a `propiedad.deleteMany`, o sea a seis
+  // líneas de distancia de la causa.
+  const porPropiedad = await prismaTest.contrato.findMany({
+    where: { propiedadId: { in: propIds } },
+    select: { id: true },
+  });
+  const contratoIds = [
+    ...new Set([
+      ...inquilinos.map((i) => i.contratoId).filter((c): c is string => !!c),
+      ...porPropiedad.map((c) => c.id),
+    ]),
+  ];
+  // Y el árbol entero del contrato —22 hijos y 10 nietos, ninguno cascadea— lo borra el helper.
+  // Antes esto era una lista a mano acá adentro y se rompía sola cada vez que el alta empezaba
+  // a escribir un hijo más, que es literalmente lo que pasó con `EventoContrato`. El helper
+  // tiene un test que lo ata al schema. Ver `prisma/borrar-contratos-de-test.ts` y T-28-N3.
   await borrarContratosDeTest(prismaTest, contratoIds);
   await prismaTest.inquilino.deleteMany({ where: { personaId: { in: personaIds } } });
   await prismaTest.participacionPropietario.deleteMany({ where: { propiedadId: { in: propIds } } });

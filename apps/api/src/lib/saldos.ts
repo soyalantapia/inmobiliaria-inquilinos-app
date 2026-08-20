@@ -7,6 +7,17 @@ import { prisma } from '../db.js';
  * /liquidaciones, /contratos/:id) para exponer montoPagado + saldo, sin lo cual
  * ni el inquilino ni el detalle del contrato podían ver el impacto de un pago
  * parcial (seguían mostrando el montoTotal completo).
+ *
+ * ⚠️ NO FILTRA `condonado`, Y ES A PROPÓSITO. Condonar una deuda crea un `Pago` CONCILIADO
+ * con `condonado: true` (`plata.ts`). Hay otros tres lugares que SÍ lo excluyen —la rendición
+ * al propietario (`rendicion-pendiente.ts`), el portal del dueño y el cierre de caja
+ * (`whereCierreDelDia` en `lib/cierre-caja.ts`)— porque los tres miden **plata que entró**, y
+ * una condonación no entró.
+ *
+ * Acá se mide otra cosa: **lo que el inquilino DEBE**. Una deuda perdonada ya no se debe. Si
+ * alguien "unifica la inconsistencia" agregando `condonado: false` a esta query, le vuelve a
+ * cobrar al inquilino lo que la inmobiliaria le perdonó, y encima reaparece como deuda viva en
+ * el dashboard. Hay un test que lo impide (`test/saldos.test.ts`).
  */
 export async function montoPagadoPorLiquidacion(liqIds: string[]): Promise<Map<string, number>> {
   if (liqIds.length === 0) return new Map();

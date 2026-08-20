@@ -38,9 +38,17 @@ const TAMBIEN_NECESITAN_BASE = ['health.test.ts'];
 function soloCodigo(src: string): string {
   return src
     .split(/\r?\n/)
-    .filter((l) => {
+    .map((l) => {
       const t = l.trim();
-      return !(t.startsWith('//') || t.startsWith('*') || t.startsWith('/*'));
+      if (t.startsWith('//')) return '';
+      // Si la línea abre o continúa un bloque, se queda con lo que venga DESPUÉS del cierre.
+      // Una línea como `*/ await seedBase(prisma);` es código, y descartarla entera mandaría
+      // un test que SÍ necesita base al suite que corre sin ella — el error peligroso.
+      if (t.startsWith('*') || t.startsWith('/*')) {
+        const cierre = t.lastIndexOf('*/');
+        return cierre >= 0 ? t.slice(cierre + 2) : '';
+      }
+      return l;
     })
     .join('\n');
 }

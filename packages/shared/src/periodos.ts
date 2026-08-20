@@ -130,6 +130,26 @@ export function diaCivilAR(instante: Date): Date {
 }
 
 /**
+ * Inverso de `diaCivilAR`: de una fecha CIVIL (guardada a medianoche UTC, como las que manda el
+ * panel en `"YYYY-MM-DD"` o las que arma el parser del extracto bancario) a un INSTANTE
+ * inequívoco dentro de ese día argentino — mediodía, bien lejos de los dos bordes.
+ *
+ * POR QUÉ HACE FALTA. `diaCivilAR` está escrito para INSTANTES. Si se le pasa una fecha civil
+ * pelada, `D T00:00Z` son las 21:00 del día ANTERIOR en Argentina, así que devuelve `D − 1`
+ * **siempre** — no es un borde, es un corrimiento constante. Todo cálculo de mora con un `asOf`
+ * de fecha pelada perdía un día:
+ *
+ *  - cobro manual: el diálogo prefillea el saldo con la mora al instante y el guard la
+ *    recalcula con un día menos, así que rechazaba con 400 el monto que él mismo propuso;
+ *  - conciliación por extracto: ahí el monto NO se puede editar, así que un crédito por lo que
+ *    la app le mostró al inquilino quedaba imposible de conciliar;
+ *  - con mora de MONTO_FIJO por mes, un día de menos en un múltiplo de 30 se lleva un MES entero.
+ */
+export function instanteEnDiaCivilAR(fechaCivil: Date): Date {
+  return new Date(fechaCivil.getTime() + OFFSET_AR_MS + 12 * 60 * 60 * 1000);
+}
+
+/**
  * ¿El día de pago YA PASÓ? (la cuota es deuda exigible).
  * El día del vencimiento NO cuenta: si vence el 10, recién es deuda el 11.
  */

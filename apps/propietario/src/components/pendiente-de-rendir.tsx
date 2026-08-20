@@ -44,7 +44,13 @@ export function PendienteDeRendir() {
         {pend.data.map((u) => (
           <Card key={`${u.propiedadId}:${u.moneda}`} className="space-y-1 p-4">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <span className="font-medium">{u.complejo ?? u.direccion}</span>
+              {/* Igual que en la pestaña Unidades: el complejo arriba y la calle abajo, nunca
+                  uno EN LUGAR del otro. Con dos unidades en el mismo edificio, mostrar sólo el
+                  complejo daba dos tarjetas de plata idénticas con montos distintos. */}
+              <span className="min-w-0">
+                <span className="block font-medium">{u.complejo ?? u.direccion}</span>
+                {u.complejo && <span className="block text-xs text-muted-foreground">{u.direccion}</span>}
+              </span>
               <span className="tabular-nums font-semibold">{money(u.total, u.moneda)}</span>
             </div>
             <p className="text-xs text-muted-foreground">

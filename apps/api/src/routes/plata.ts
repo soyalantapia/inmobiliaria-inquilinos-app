@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import { yaVencio } from '@llave/shared';
+import { instanteEnDiaCivilAR, yaVencio } from '@llave/shared';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../db.js';
@@ -760,6 +760,16 @@ export async function plataRoutes(app: FastifyInstance) {
         : b.metodo === 'EFECTIVO'
           ? 'EFECTIVO'
           : 'TRANSFERENCIA';
+    // El `timeout` NO es de más: esta transacción toma un LOCK PESIMISTA por cuota
+    // (`FOR UPDATE`, más abajo) y recorre TODAS las exigibles del contrato. Con varias
+    // requests simultáneas —un doble click, dos operadores— las que quedan en la cola
+    // detrás del lock esperan a que la primera termine, y con el default de Prisma (5 s)
+    // reventaban con un P2028 que el operador veía como "Error interno".
+    //
+    // Ojo con el diagnóstico, que engaña: el invariante de plata SIEMPRE se cumplió —el
+    // lock hace su trabajo y se crea un solo pago—, así que el 500 no es un doble cobro.
+    // Es la espera, y el arreglo es esperar. 30 s / 10 s es lo que ya usan las otras
+    // transacciones largas del repo (core.ts, importaciones).
     const res = await prisma.$transaction(async (tx) => {
       let saldadas = 0;
       let montoAplicado = 0;
@@ -839,7 +849,7 @@ export async function plataRoutes(app: FastifyInstance) {
         montoAplicado: Math.round(montoAplicado * 100) / 100,
         cargosSaldados: cargos.count,
       };
-    });
+    }, { timeout: 30_000, maxWait: 10_000 });
     await registrarEvento({
       inmobiliariaId: u.inmobiliariaId,
       tipo: 'PAGO_CONCILIADO',
@@ -939,11 +949,21 @@ export async function plataRoutes(app: FastifyInstance) {
           .send({ message: 'El cargo no tiene un contrato válido en tu cartera' });
       }
       const usuario = await prisma.usuario.findUnique({ where: { id: u.userId } });
-      await prisma.$transaction(async (tx) => {
-        await tx.cargoContrato.update({
-          where: { id },
+      // T-55 — El `if (!cargo.saldadoAt)` de arriba lee FUERA de la transacción, y el update no
+      // estaba condicionado: dos requests concurrentes —alcanza un doble click— pasaban los dos
+      // el chequeo y creaban DOS `INGRESO_EXTRA` por una sola cobranza. Y ese ingreso no se
+      // queda en la caja: la rendición lo levanta y se lo ACREDITA al propietario (ver
+      // `ingresosPend` en este archivo), así que el dueño cobraba dos veces el mismo cargo.
+      //
+      // El `updateMany` condicionado a `saldadoAt: null` es el lock: el segundo request no
+      // matchea ninguna fila, sale con `count === 0` y no llega a crear el movimiento. Mismo
+      // patrón que validar/rechazar/anular en este mismo archivo.
+      const yaSaldado = await prisma.$transaction(async (tx) => {
+        const upd = await tx.cargoContrato.updateMany({
+          where: { id, inmobiliariaId: u.inmobiliariaId, saldadoAt: null },
           data: { saldadoAt: new Date(), saldadoPorId: u.userId },
         });
+        if (upd.count === 0) return true;
         await tx.movimientoCaja.create({
           data: {
             inmobiliariaId: u.inmobiliariaId,
@@ -962,7 +982,11 @@ export async function plataRoutes(app: FastifyInstance) {
             cargadoPor: usuario ? `${usuario.nombre} ${usuario.apellido}`.trim() : 'Panel',
           },
         });
+        return false;
       });
+      // El que perdió la carrera no registra el evento: el cargo ya lo saldó el otro, y dos
+      // eventos por una cobranza ensucian la auditoría igual que dos ingresos la caja.
+      if (yaSaldado) return { ok: true };
       await registrarEvento({
         inmobiliariaId: u.inmobiliariaId,
         tipo: 'PAGO_CONCILIADO',
@@ -1202,7 +1226,18 @@ export async function plataRoutes(app: FastifyInstance) {
         liquidacionId: z.string(),
         monto: montoCents,
         metodo: z.enum(['TRANSFERENCIA', 'MERCADOPAGO', 'EFECTIVO', 'CHEQUE']).default('EFECTIVO'),
-        fecha: z.coerce.date(),
+        // T-56 — El panel manda la fecha CIVIL ("YYYY-MM-DD"). Con `z.coerce.date()` a secas
+        // quedaba en `D T00:00Z`, que en Argentina son las 21:00 del día ANTERIOR: la mora se
+        // calculaba con un día de menos y el guard rechazaba con 400 el mismo monto que el
+        // diálogo había prefilleado. Se la lleva a un instante dentro de ese día argentino.
+        fecha: z
+          .union([
+            z.string().regex(/^\d{4}-\d{2}-\d{2}$/).transform((str) => {
+              const [y, m, d] = str.split('-').map(Number);
+              return instanteEnDiaCivilAR(new Date(Date.UTC(y!, m! - 1, d!)));
+            }),
+            z.coerce.date(),
+          ]),
         nota: z.string().optional(),
         pin: z.string().optional(),
       })
