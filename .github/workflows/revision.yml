@@ -83,6 +83,74 @@ jobs:
   # aparecieron tareas marcadas ✅ cuyo código no estaba en la rama de deploy. El resto del CI
   # no lo puede ver: corre sobre la rama que le toca, así que una rama sana y olvidada da
   # verde para siempre sin que su código llegue a ningún lado.
+  # Las 52 suites que necesitan una base viva. Nunca corrieron en ningún lado: la única base
+  # disponible era una remota COMPARTIDA que `seedBase` siembra destructivamente, así que
+  # correrlas le pisaba los datos a quien estuviera probando. Un service container resuelve
+  # exactamente eso — nace vacío en cada corrida, se usa y se tira.
+  #
+  # Son las que importan: bugs-de-plata, core, auth, depósitos, conciliación, rendición
+  # multi-dueño. Los tres bugs de plata que aparecieron el 19/08 se encontraron LEYENDO código.
+  #
+  # ⚠️ NO BLOQUEA TODAVÍA, a propósito. Contra una base limpia dan 378/383, y las 4 rojas que
+  # quedan NO son bugs del producto: son suites que se pisan entre sí (`core.test.ts` cuenta
+  # filas del seed y encuentra las que dejaron las 12 anteriores). Arreglar ese aislamiento es
+  # T-01-N1-N1-N1. Hasta entonces el job corre y se ve, que es infinitamente mejor que no
+  # correr; ponerlo en `required` sin eso sería bloquear todo por un problema conocido de los
+  # tests. Cuando esa tarea cierre, se saca el `continue-on-error` y listo.
+  integracion:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    services:
+      # postgres:16 pelado alcanza. El schema NO declara `extensions` y ninguna migración crea
+      # una: la nota de T-01-N1-N1 decía que hacía falta pgvector y estaba equivocada — venía de
+      # CLAUDE.md, que describe una extensión que el proyecto nunca usó.
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: myalquiler_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.28.2
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Generar el cliente de Prisma
+        run: pnpm --filter api exec prisma generate
+
+      # Desde CERO, no `db push`: así CI se convierte en el primer lugar donde las migraciones
+      # se prueban de verdad, antes que producción. Hoy la primera vez que corren es en el
+      # arranque del contenedor de prod (`db:deploy && node dist/index.js`), o sea el peor lugar
+      # posible para descubrir que una está mal. Medido en local: las 57 tardan ~25s.
+      - name: Migrar la base de test desde cero
+        working-directory: apps/api
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/myalquiler_test
+        run: pnpm exec prisma migrate deploy
+
+      # El guard `exigirDbDeTest` (prisma/guard-db.ts) acepta localhost, así que esta URL pasa
+      # sin tocarlo. Falla cerrado ante hosts desconocidos: si alguien apuntara esto a prod, el
+      # seed no correría. No hay que aflojarlo para que CI ande.
+      - name: Tests que necesitan base de datos
+        working-directory: apps/api
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/myalquiler_test
+          JWT_SECRET: esto-no-firma-nada-real-en-ci
+          NODE_ENV: test
+        run: pnpm exec vitest run --config vitest.con-db.config.ts
+
   ramas-sin-integrar:
     runs-on: ubuntu-latest
     steps:

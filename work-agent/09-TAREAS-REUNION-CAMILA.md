@@ -4241,3 +4241,54 @@ y choca con éste. O sea no es una regresión: es el siguiente escalón, que ant
 un `export const dynamic = 'force-static'` con la imagen pre-generada, reemplazar `next/og` por
 un PNG estático en `public/`, o dejarlo y documentar que el build local del panel no corre en
 Windows.
+
+---
+
+### T-01-N1-N1 · Los 52 tests que nunca corrieron — ✅ HECHA (el job no bloquea todavía)
+**Experto:** QA + OPS · **Prioridad:** 🟠
+
+> **Estado: ✅ hecha.** Ver `work-agent/tareas/T-01-N1-N1/REQUISITOS.md`.
+
+De 94 archivos de test, la compuerta miraba 42. Los otros **52 no habían corrido nunca**: la
+única base era una remota compartida que `seedBase` siembra destructivamente. Son los de plata,
+auth, depósitos, conciliación y rendición multi-dueño.
+
+Ahora corren contra un **service container de Postgres**, efímero por corrida. Verificado contra
+una Postgres en Docker antes de escribir el YAML: **378 de 383 pasan**, las 57 migraciones
+aplican desde cero en ~25 s, y **`postgres:16` pelado alcanza** — la nota original decía que
+hacía falta pgvector y estaba equivocada (venía de `CLAUDE.md`, que describe una extensión que
+el proyecto nunca usó).
+
+**Correrlos encontró un bug real, el primero que agarra este job:** dar de alta a otra persona
+(distinto DNI) con un email ya usado devolvía **200** en vez del 409 que el propio endpoint
+promete. `buscarOCrearPersona` devuelve la Persona existente en ese caso —deliberado, lo necesita
+la importación de cartera— y al compartirse con el alta manual dejó ese 409 inalcanzable: el
+contrato quedaba colgando en silencio de **la persona equivocada**. Arreglado sólo en el alta
+manual, sin tocar la importación.
+
+**El job NO bloquea todavía**, a propósito. Las 4 rojas restantes son de `core.test.ts`, que
+cuenta filas del seed y encuentra las que dejaron las suites anteriores — corriéndolo solo da
+7/7. No son bugs del producto. Ver **T-01-N1-N1-N1**.
+
+### T-01-N1-N1-N1 · Las suites de integración se pisan entre sí
+**Experto:** QA · **Prioridad:** 🟡 · **Depende de:** nada
+
+Las ~50 suites comparten una base y las que cuentan filas del seed fallan por lo que dejó la
+anterior. El síntoma es reconocible: **"expected 19 to be 8"**. No es un bug del producto —
+`core.test.ts` corriendo solo contra una base limpia da 7/7.
+
+Es lo único que falta para que el job de integración **bloquee** en vez de sólo mirar.
+
+**Dos caminos ya probados y descartados, para no repetirlos:**
+
+| intento | qué pasó |
+|---|---|
+| `limpiar-test-db.ts` como `setupFiles` | **empeoró: de 6 rojas a 39 archivos rotos.** Está escrito para correr ENTRE corridas; a mitad de suite choca con las FK RESTRICT y deja los `afterAll` sin `app` ni `prisma` |
+| ordenar `include` para que las sensibles vayan primero | **vitest no respeta ese orden** — se pidió `core.test.ts` primero y corrió `plata.test.ts` |
+
+**Lo que probablemente sí funciona** (sin probar): un `sequence.sequencer` propio de vitest para
+forzar el orden, o que cada suite cree su tenant `ZZ-TEST-*` en vez de compartir el del seed —
+que es lo que ya hacen varias y por eso no se pisan.
+
+**Cuando cierre:** sacar `continue-on-error: true` del job `integracion` en
+`.github/workflows/revision.yml`. Está anotado ahí también.
