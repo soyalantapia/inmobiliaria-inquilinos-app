@@ -66,17 +66,12 @@ y se copia `DATABASE_PUBLIC_URL` (la privada sólo resuelve dentro de la red de 
   `@@unique([contratoId, periodo])`, y `deposito-aplica-deuda` viendo 100.000 de deuda donde su
   fixture pone 70.000 — que se lee como "se rompió el cálculo del depósito". No se rompió nada:
   cambió el escenario abajo del test.
-- **`core.test.ts` necesita una base VIRGEN, y la remota no lo es.** Sus cuatro asserts cuentan
-  filas de todo el tenant (`GET /contratos` → 8, `/propiedades` → 6, `/propietarios` → 5,
-  `/inquilinos` → 7), y **`seedBase` sólo hace upsert: nunca borra lo que sobra.** Cualquier fila
-  que haya quedado de una corrida anterior —o de alguien probando a mano— se suma para siempre.
-  El 20/08 daba 29, 28, 6 y 20. Eso NO es una regresión: es la base sucia. Para que estos cuatro
-  digan algo hay que correrlos contra la base efímera de Docker (`test:db:up`, más arriba).
-  Es el único archivo que cuenta a nivel tenant; el resto cuenta sus propios fixtures y no le
-  molesta la basura ajena.
-- **El teardown de varios archivos borra contratos.** Desde T-29 el alta escribe un evento y
-  la FK de `eventos_contrato` es RESTRICT, así que hay que borrar el historial antes. Si
-  aparece un `23001` en la limpieza, es esto. La app **nunca** borra contratos: los finaliza.
+- **Ya NO hace falta una base virgen para `core.test.ts`.** Sus cuatro asserts contaban filas
+  con el número del seed hardcodeado (`toBe(8)`), y eso sólo se sostiene en una base limpia:
+  `seedBase` sólo hace upsert, nunca borra lo que sobra. Ahora cuentan **contra la base**
+  (`prisma.contrato.count({ where: { inmobiliariaId } })`), que afirma algo más fuerte —que el
+  endpoint devuelve exactamente las filas del tenant, ni una de más ni una de menos— y no
+  depende de cuánta basura haya. Queda un piso `toBeGreaterThanOrEqual` con el número del seed.
 
 ---
 

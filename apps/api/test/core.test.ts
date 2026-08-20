@@ -6,11 +6,34 @@ import { seedBase } from '../prisma/seed.js';
 
 let app: FastifyInstance;
 let token: string;
+let prisma: PrismaClient;
+let tid: string;
+
+/**
+ * Lo que estos tests miden de verdad al contar filas.
+ *
+ * Antes decían `expect(lista.length).toBe(8)`, con el 8 del seed hardcodeado. Eso sólo es
+ * cierto en una base VIRGEN, y la que se usa acá es COMPARTIDA y `seedBase` únicamente hace
+ * upsert: nunca borra lo que sobra. Cualquier fixture que otro test haya dejado —o el devengo
+ * automático, que corre solo cada 6h— se suma para siempre. El 20/08 daba 29 donde esperaba 8,
+ * y el rojo se leía como "se rompió GET /contratos".
+ *
+ * La propiedad que ese número protegía NO era "el seed tiene 8": era **que el endpoint no
+ * devuelva filas de OTRA inmobiliaria**. Contra la base, eso se afirma más fuerte que con un
+ * literal: `length` tiene que ser EXACTAMENTE lo que hay para este tenant. Si mañana alguien
+ * saca el `where: { inmobiliariaId }`, el test se pone rojo igual que antes — y ahora también
+ * se pondría rojo si devolviera de menos, que el 8 fijo no distinguía de un seed cambiado.
+ */
+const cuantasHayDelTenant = {
+  contratos: () => prisma.contrato.count({ where: { inmobiliariaId: tid } }),
+  propiedades: () => prisma.propiedad.count({ where: { inmobiliariaId: tid } }),
+  propietarios: () => prisma.propietario.count({ where: { inmobiliariaId: tid } }),
+  inquilinos: () => prisma.inquilino.count({ where: { inmobiliariaId: tid } }),
+};
 
 beforeAll(async () => {
-  const prisma = new PrismaClient();
-  await seedBase(prisma);
-  await prisma.$disconnect();
+  prisma = new PrismaClient();
+  ({ inmobiliariaId: tid } = await seedBase(prisma));
   app = await buildApp({ NODE_ENV: 'test', DEMO_MODE: 'true' });
   const login = await app.inject({
     method: 'POST',
@@ -22,6 +45,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await app.close();
+  await prisma.$disconnect();
 });
 
 const auth = () => ({ authorization: `Bearer ${token}` });
@@ -32,11 +56,12 @@ describe('Core (Fase 2)', () => {
     expect(res.statusCode).toBe(401);
   });
 
-  it('GET /contratos devuelve los 8 del seed con joins', async () => {
+  it('GET /contratos devuelve los del tenant —y sólo esos— con joins', async () => {
     const res = await app.inject({ method: 'GET', url: '/contratos', headers: auth() });
     expect(res.statusCode).toBe(200);
     const lista = res.json();
-    expect(lista.length).toBe(8);
+    expect(lista.length).toBe(await cuantasHayDelTenant.contratos());
+    expect(lista.length).toBeGreaterThanOrEqual(8); // los 8 del seed, como piso
     const c1 = lista.find((c: { id: string }) => c.id === 'cnt_001');
     expect(c1.propiedad.direccion).toBe('Gorriti 4521, 3°B');
     expect(c1.inquilinoTitular.nombre).toBe('Mariela');
@@ -51,26 +76,29 @@ describe('Core (Fase 2)', () => {
     expect(owners).toEqual(['Castro', 'Morales']);
   });
 
-  it('GET /propiedades → 6, alquiladas con contratoActual', async () => {
+  it('GET /propiedades → las del tenant, alquiladas con contratoActual', async () => {
     const res = await app.inject({ method: 'GET', url: '/propiedades', headers: auth() });
     const lista = res.json();
-    expect(lista.length).toBe(6);
+    expect(lista.length).toBe(await cuantasHayDelTenant.propiedades());
+    expect(lista.length).toBeGreaterThanOrEqual(6);
     const p1 = lista.find((p: { id: string }) => p.id === 'prp_001');
     expect(p1.contratoActual.id).toBe('cnt_001');
   });
 
-  it('GET /propietarios → 5 con sus propiedades', async () => {
+  it('GET /propietarios → los del tenant, con sus propiedades', async () => {
     const res = await app.inject({ method: 'GET', url: '/propietarios', headers: auth() });
     const lista = res.json();
-    expect(lista.length).toBe(5);
+    expect(lista.length).toBe(await cuantasHayDelTenant.propietarios());
+    expect(lista.length).toBeGreaterThanOrEqual(5);
     const castro = lista.find((p: { id: string }) => p.id === 'own_001');
     expect(castro.participaciones[0].propiedad.direccion).toBe('Gorriti 4521, 3°B');
   });
 
-  it('GET /inquilinos → 7 vinculados a contrato', async () => {
+  it('GET /inquilinos → los del tenant, vinculados a contrato', async () => {
     const res = await app.inject({ method: 'GET', url: '/inquilinos', headers: auth() });
     const lista = res.json();
-    expect(lista.length).toBe(7);
+    expect(lista.length).toBe(await cuantasHayDelTenant.inquilinos());
+    expect(lista.length).toBeGreaterThanOrEqual(7);
     const mariela = lista.find((i: { email: string }) => i.email === 'mariela.sosa@gmail.com');
     expect(mariela.contrato.id).toBe('cnt_001');
   });
