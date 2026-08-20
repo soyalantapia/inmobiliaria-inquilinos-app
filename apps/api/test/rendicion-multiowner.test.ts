@@ -399,7 +399,8 @@ describe('Anular una rendición parcial: el gasto vuelve a quedar pendiente', ()
       method: 'POST',
       url: `/rendiciones/${rendA!.id}/anular`,
       headers: auth(token),
-      payload: {},
+      // Motivo obligatorio desde la baja lógica.
+      payload: { motivo: 'prueba de anulación multi-dueño' },
     });
     expect(res.statusCode).toBe(200);
 

@@ -93,3 +93,34 @@ describe('cortarPorMoneda — «la última» se decide por fecha de depósito', 
     expect(c[0]!.ultima).toBe('2026-05');
   });
 })
+
+describe('cortarPorMoneda — las anuladas no son plata que entró', () => {
+  const anulada = (r: RendicionPortal): RendicionPortal =>
+    ({ ...r, anulada: { fecha: '2026-09-01', motivo: 'se rindió el período equivocado' } }) as RendicionPortal;
+
+  it('una rendición anulada no suma en el total del año', () => {
+    // Sigue apareciendo en la lista de abajo, tachada y con su motivo. Pero este número es el
+    // que el dueño cruza contra su cuenta bancaria: si contara plata que la inmobiliaria
+    // deshizo, no le cerraría y no tendría forma de saber por qué.
+    const c = cortarPorMoneda(
+      [R('ARS', 100000, '2026-05-10', '2026-04'), anulada(R('ARS', 500000, '2026-06-10', '2026-05'))],
+      2026,
+    );
+    expect(c[0]!.esteAnio.total).toBe(100000);
+    expect(c[0]!.esteAnio.cantidad).toBe(1);
+  });
+
+  it('si TODAS están anuladas, no queda ninguna tarjeta', () => {
+    // Y no una tarjeta en cero, que se leería como "no te depositaron nada este año" — cuando
+    // lo que pasó es que lo depositado se deshizo.
+    expect(cortarPorMoneda([anulada(R('ARS', 500000, '2026-06-10', '2026-05'))], 2026)).toEqual([]);
+  });
+
+  it('una anulada no puede ser "la última rendición"', () => {
+    const c = cortarPorMoneda(
+      [R('ARS', 100000, '2026-05-10', '2026-04'), anulada(R('ARS', 1, '2026-07-10', '2026-06'))],
+      2026,
+    );
+    expect(c[0]!.ultima).toBe('2026-04');
+  });
+})

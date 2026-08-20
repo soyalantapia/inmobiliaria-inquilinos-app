@@ -158,19 +158,48 @@ export function FilaRendicion({
         className="flex w-full items-center justify-between gap-3 p-4 text-left transition-colors hover:bg-muted/40"
         aria-expanded={abierto}
       >
+        {/* ANULADA: se muestra TACHADA, no desaparece. Al dueño ya le apareció ese depósito
+            en la pantalla y es probable que lo haya impreso; que se esfume sin una palabra es
+            exactamente lo que la baja lógica viene a evitar. El monto queda visible —es el que
+            él anotó— pero tachado y en gris, y no suma en ningún total de arriba. */}
         <div className="min-w-0">
-          <p className="font-medium">{periodoLargo(r.periodo)}</p>
-          <p className="text-xs text-muted-foreground">
-            Te depositamos el {fecha(r.rendidoAt)} · {etiqueta(r.metodo)}
+          <p className={`font-medium ${r.anulada ? 'text-muted-foreground line-through' : ''}`}>
+            {periodoLargo(r.periodo)}
           </p>
+          {r.anulada ? (
+            <p className="text-xs text-amber-700 dark:text-amber-500">
+              Tu inmobiliaria anuló esta rendición el {fecha(r.anulada.fecha)}
+              {r.anulada.motivo ? ` · ${r.anulada.motivo}` : ''}
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Te depositamos el {fecha(r.rendidoAt)} · {etiqueta(r.metodo)}
+            </p>
+          )}
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <span className="text-lg font-semibold tabular-nums">{plata(r.teDepositamos)}</span>
+          <span
+            className={`text-lg font-semibold tabular-nums ${
+              r.anulada ? 'text-muted-foreground line-through' : ''
+            }`}
+          >
+            {plata(r.teDepositamos)}
+          </span>
           <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${abierto ? 'rotate-180' : ''}`} />
         </div>
       </button>
       {abierto && (
         <div className="space-y-1 border-t bg-muted/20 p-4 text-sm">
+          {/* La marca va ARRIBA del desglose, no sólo en el encabezado: el que despliega
+              viene a leer los números, y sin esto lee cinco montos que afirman un depósito
+              que se deshizo. */}
+          {r.anulada && (
+            <p className="mb-2 rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+              Esta rendición fue anulada el {fecha(r.anulada.fecha)}. Los montos de abajo son
+              los que tenía: <strong>esta plata no se te depositó</strong>.
+              {r.anulada.motivo ? ` Motivo: ${r.anulada.motivo}` : ''}
+            </p>
+          )}
           <Linea label="Se cobró de alquiler" valor={plata(r.cobrado)} />
           <Linea label={`Comisión de la inmobiliaria (${r.comisionPct}%)`} valor={`− ${plata(r.comision)}`} />
           {r.gastos > 0 && <Linea label="Gastos de tus unidades" valor={`− ${plata(r.gastos)}`} />}
@@ -267,14 +296,27 @@ export function FilaRendicion({
               )}
 
               {/* Recién acá, con el detalle ya en mano: imprimir un resumen sin el desglose
-                  sería darle al contador el mismo número que ya tenía y ninguna explicación. */}
-              <div className="pt-1">
-                <ImprimirRendicion
-                  rendicion={detalle.data}
-                  propietario={propietario}
-                  inmobiliaria={inmobiliaria}
-                />
-              </div>
+                  sería darle al contador el mismo número que ya tenía y ninguna explicación.
+
+                  Y NO SE OFRECE PARA UNA ANULADA. El papel dice "Te depositamos $X" con
+                  membrete y totales; el dueño se lo pasa al contador y el contador no tiene
+                  cómo saber que esa plata se deshizo. Un cartel adentro del PDF sería peor:
+                  se recorta, se fotocopia, se manda suelto. El que quiera el número lo tiene
+                  arriba, en la pantalla, con la marca al lado. */}
+              {detalle.data.anulada ? (
+                <p className="pt-1 text-xs text-muted-foreground">
+                  No se puede imprimir una rendición anulada: el papel afirmaría un depósito
+                  que no ocurrió.
+                </p>
+              ) : (
+                <div className="pt-1">
+                  <ImprimirRendicion
+                    rendicion={detalle.data}
+                    propietario={propietario}
+                    inmobiliaria={inmobiliaria}
+                  />
+                </div>
+              )}
             </div>
           ) : null}
         </div>

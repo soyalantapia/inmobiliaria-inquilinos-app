@@ -566,6 +566,11 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
         moneda: true,
         rendidoAt: true,
         metodo: true,
+        // ANULADA: se manda, no se oculta. Al dueño ya le apareció ese depósito en la
+        // pantalla y probablemente lo imprimió; hacerla desaparecer sin decir nada es
+        // exactamente el problema que la baja lógica viene a resolver.
+        anuladaAt: true,
+        motivoAnulacion: true,
       },
     });
     return rends.map((r) => ({
@@ -583,6 +588,9 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
       moneda: r.moneda,
       rendidoAt: r.rendidoAt.toISOString(),
       metodo: r.metodo,
+      anulada: r.anuladaAt
+        ? { fecha: r.anuladaAt.toISOString(), motivo: r.motivoAnulacion }
+        : null,
     }));
   });
 
@@ -607,6 +615,11 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
         moneda: true,
         rendidoAt: true,
         metodo: true,
+        // Si está anulada, el detalle lo dice. Sin esto el dueño despliega la tarjeta tachada
+        // y adentro lee el desglose entero sin una marca —y encima puede imprimirlo—: un papel
+        // que afirma un depósito que la inmobiliaria deshizo.
+        anuladaAt: true,
+        motivoAnulacion: true,
         // `notas` NO se expone. En el panel el campo se rotula sólo "Notas (opcional)" y el
         // equipo lo viene escribiendo hace meses dando por sentado que es interno (por qué se
         // retuvo plata, comentarios sobre el dueño o el inquilino, arreglos de palabra).
@@ -632,6 +645,9 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
     return {
       id: r.id,
       periodo: r.periodo,
+      anulada: r.anuladaAt
+        ? { fecha: r.anuladaAt.toISOString(), motivo: r.motivoAnulacion }
+        : null,
       cobrado: dec(r.montoBruto),
       comisionPct: r.comisionPct,
       comision: dec(r.comisionMonto),
