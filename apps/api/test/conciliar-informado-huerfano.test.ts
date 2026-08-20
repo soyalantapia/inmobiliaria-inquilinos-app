@@ -41,6 +41,25 @@ async function limpiar() {
   await prisma.resumenBancario.deleteMany({ where: { id: { startsWith: P } } });
   await prisma.pago.deleteMany({ where: { liquidacionId: { startsWith: P } } });
   await prisma.liquidacion.deleteMany({ where: { id: { startsWith: P } } });
+
+  // Y además, el SLOT que este test ocupa: (cnt_001, 2026-09).
+  //
+  // La limpieza por prefijo de id borra lo que este archivo creó, y nada más. Pero
+  // `Liquidacion` tiene `@@unique([contratoId, periodo])`, así que alcanza con que
+  // CUALQUIER OTRA COSA haya devengado ese período de cnt_001 para que el `create` de
+  // abajo explote con un 23505 — y no es hipotético: el devengo corre solo, en proceso,
+  // cada 6 horas (`CRON_DEVENGO`), así que cualquier API apuntada a esta misma base lo
+  // crea sin que nadie lo pida. Pasó, y el rojo parecía un bug del código bajo prueba.
+  const ocupando = await prisma.liquidacion.findMany({
+    where: { contratoId: 'cnt_001', periodo: '2026-09' },
+    select: { id: true },
+  });
+  if (ocupando.length) {
+    const ids = ocupando.map((l) => l.id);
+    await prisma.pago.deleteMany({ where: { liquidacionId: { in: ids } } });
+    await prisma.alquilerRendido.deleteMany({ where: { liquidacionId: { in: ids } } });
+    await prisma.liquidacion.deleteMany({ where: { id: { in: ids } } });
+  }
 }
 
 beforeAll(async () => {

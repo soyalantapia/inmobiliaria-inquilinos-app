@@ -17,7 +17,18 @@ import type { JwtInquilino } from '@llave/shared';
 let app: FastifyInstance;
 let prisma: PrismaClient;
 let tid: string; // inmobiliariaId demo
-let inquilinoId: string; // inquilino demo (para armar el token)
+/**
+ * Un inquilino titular POR contrato de prueba, no el de la demo.
+ *
+ * POR QUÉ: `requireInquilino` revalida contra la base (`motivoRevocacionInquilino`) que el
+ * `contratoId` del token sea el mismo que tiene hoy la fila `Inquilino`. Este test reusaba a
+ * Mariela —cuya fila apunta a SU contrato del seed— y le firmaba tokens para CNT_BAJA y
+ * CNT_ACTIVO: desde que existe esa revalidación (T-23-N4-N1) eso es un 401 correcto, y los dos
+ * casos venían en rojo sin que nadie lo viera, porque la suite de integración no se corría.
+ * El test es sobre la ANTIGÜEDAD del certificado; que el token sea válido tiene que ser un
+ * dado, no lo que se está probando.
+ */
+const inquilinoDe = new Map<string, string>(); // contratoId → inquilinoId
 let propiedadId: string;
 
 const auth = (t: string) => ({ authorization: `Bearer ${t}` });
@@ -35,6 +46,8 @@ const FECHA_BAJA = new Date('2021-01-20T00:00:00.000Z'); // 12 meses después de
 // token de inquilino apuntando a un contrato arbitrario (requireInquilino lee
 // contratoId del JWT; el mismo patrón que emite /auth/demo).
 const tokenPara = (contratoId: string) => {
+  const inquilinoId = inquilinoDe.get(contratoId);
+  if (!inquilinoId) throw new Error(`No hay inquilino titular para ${contratoId}`);
   const payload: JwtInquilino = { kind: 'inquilino', inquilinoId, inmobiliariaId: tid, contratoId };
   return app.jwt.sign(payload);
 };
@@ -55,14 +68,19 @@ async function crearContrato(id: string, estado: 'FINALIZADO' | 'ACTIVO') {
       modoCobranza: 'INMOBILIARIA',
     },
   });
+  // Después del contrato: `Inquilino.contratoId` tiene FK contra él.
+  await prisma.inquilino.create({
+    data: { id: `inq_${id}`, inmobiliariaId: tid, nombre: 'Titular', apellido: id, contratoId: id },
+  });
+  inquilinoDe.set(id, `inq_${id}`);
 }
 
 beforeAll(async () => {
   prisma = new PrismaClient();
   await seedBase(prisma);
 
+  // Sólo para tomar el tenant de la demo; el titular de cada contrato lo crea este test.
   const inq = await prisma.inquilino.findFirstOrThrow({ where: { email: DEMO_INQ_EMAIL } });
-  inquilinoId = inq.id;
   tid = inq.inmobiliariaId;
   const prop = await prisma.propiedad.findFirstOrThrow({ where: { inmobiliariaId: tid } });
   propiedadId = prop.id;
@@ -73,6 +91,7 @@ beforeAll(async () => {
   // un evento CREADO (T-29), todo contrato creado por la API tiene al menos una fila acá.
   // Se filtra por la relación para no repetir —ni desincronizar— el where de abajo.
   await prisma.eventoContrato.deleteMany({ where: { contrato: { id: { in: [CNT_BAJA, CNT_ACTIVO] } } } });
+  await prisma.inquilino.deleteMany({ where: { contratoId: { in: [CNT_BAJA, CNT_ACTIVO] } } });
   await prisma.contrato.deleteMany({ where: { id: { in: [CNT_BAJA, CNT_ACTIVO] } } });
 
   await crearContrato(CNT_BAJA, 'FINALIZADO');
@@ -91,6 +110,8 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await prisma.certificadoInquilino.deleteMany({ where: { contratoId: { in: [CNT_BAJA, CNT_ACTIVO] } } });
+  await prisma.eventoContrato.deleteMany({ where: { contrato: { id: { in: [CNT_BAJA, CNT_ACTIVO] } } } });
+  await prisma.inquilino.deleteMany({ where: { contratoId: { in: [CNT_BAJA, CNT_ACTIVO] } } });
   await prisma.contrato.deleteMany({ where: { id: { in: [CNT_BAJA, CNT_ACTIVO] } } });
   await app.close();
   await prisma.$disconnect();
