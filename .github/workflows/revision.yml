@@ -200,6 +200,37 @@ jobs:
       - name: Build estático (como lo buildea GitHub Pages)
         run: bash scripts/build-static.sh
 
+      # EL PORTAL DEL PROPIETARIO DENTRO DEL PANEL, que es una TERCERA combinación y la única
+      # que sirve a un dueño real.
+      #
+      # Los dos builds de arriba no la cubren: el de producción compila el portal pelado (sin
+      # basePath, modo SSR) y el de la demo lo compila con `NEXT_PUBLIC_DEMO=1` y el basePath de
+      # GitHub Pages. Lo que corre en producción es esto otro —`apps/inmobiliaria/Dockerfile`—:
+      # export estático bajo `/propietario`, apuntando al API real. Si falla, falla el deploy
+      # ENTERO del panel y Railway se queda con la imagen anterior: `/propietario` sigue
+      # devolviendo 200 con código viejo, así que un smoke test que mire el código HTTP da verde
+      # con el deploy caído.
+      #
+      # `NEXT_PUBLIC_DEMO` NO se pasa, igual que en el Dockerfile: con la API_URL puesta
+      # `demoEnabled` ya da false, pero dejarlo explícito evita que alguien lo agregue "para
+      # probar" y publique datos inventados en un dominio real.
+      - name: Build del portal como va adentro del panel
+        run: |
+          rm -rf apps/propietario/.next apps/propietario/out
+          BASE_PATH=/propietario STATIC_EXPORT=1 NEXT_PUBLIC_API_URL=https://api-production-262e.up.railway.app pnpm --filter @llave/propietario exec next build
+          # Que el export exista Y tenga las rutas: un `out/` vacío pasaría el build igual.
+          for ruta in index login/index unidades/index reclamos/index perfil/index 404; do
+            test -f "apps/propietario/out/$ruta.html" || {
+              echo "::error::falta apps/propietario/out/$ruta.html en el export del portal"
+              exit 1
+            }
+          done
+          # Y que el basePath esté horneado: sin él los assets resuelven a la raíz del panel.
+          grep -q '/propietario/_next/' apps/propietario/out/index.html || {
+            echo "::error::el export no tiene horneado el basePath /propietario"
+            exit 1
+          }
+
   ramas-sin-integrar:
     runs-on: ubuntu-latest
     steps:
