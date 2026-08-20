@@ -59,6 +59,34 @@ pnpm --filter api test:db:down     # borra el volumen: la próxima arranca limpi
 > Si ves fallas raras de infraestructura, **antes de debuggear el código corré los archivos
 > caídos en aislamiento**. Si pasan, era la máquina.
 
+> ### Si ves una tormenta de 401 en UN archivo, mirá el login antes que los permisos
+>
+> Todos los casos de un archivo fallando con `expected 401 to be 200` casi nunca es un problema
+> de permisos: es que el `/auth/login` del `beforeAll` no devolvió token, cada request salió con
+> `Bearer undefined`, y el síntoma aparece lejos de la causa.
+>
+> Pasó en la primera corrida de los 125 archivos: `ecosistema-profesionales.test.ts` dio 7 rojos
+> así y **pasaba 7/7 corriendo solo** (15 s contra los 116 s que tardó bajo carga).
+>
+> Para eso está **`test/_login.ts`**: `loginTest(app, email, password)` chequea el 200, exige el
+> token y, si falla, el mensaje dice si fue el rate limit de `/auth/login` (30 en 15 min) o un
+> usuario que otro archivo dejó inutilizable. **Usalo en los archivos nuevos.** Los ~25 que
+> todavía hacen `login.json().token` a pelo están en T-28-N2-N2.
+
+> ### Dos chats no pueden correr la suite a la vez
+>
+> `docker-compose.test.yml` fija el nombre del contenedor y el puerto, así que el segundo que
+> levante o choca por nombre, o —peor— se engancha a la base del primero y se la reescribe con
+> `seedBase` a mitad de su corrida. Si vas a correr la suite con otra sesión activa, levantá tu
+> propia Postgres en otro puerto:
+>
+> ```bash
+> MSYS_NO_PATHCONV=1 docker run -d --name mi-suite >   -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=myalquiler_test >   -p 127.0.0.1:55440:5432 --tmpfs /var/lib/postgresql/data postgres:16-alpine >   -c fsync=off -c synchronous_commit=off -c full_page_writes=off
+> ```
+>
+> (`MSYS_NO_PATHCONV=1` es obligatorio en Git Bash: sin eso convierte `/var/lib/...` a una ruta
+> de Windows y docker rechaza el mount.)
+
 Detalles en `docker-compose.test.yml`. Puerto **55432** para no pisar un Postgres propio; la
 base vive en `tmpfs` (RAM) así que desaparece al bajar el contenedor, que es justo lo que se
 quiere de una base de test. `prisma/guard-db.ts` ya reconoce `localhost` como base de test.
