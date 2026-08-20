@@ -205,6 +205,7 @@ export async function alquilerCobradoSinRendirDePropiedad(
     },
     db,
     opts?.duenio,
+    opts?.soloRendible ?? false,
   );
 }
 
@@ -215,6 +216,12 @@ async function pendienteDeLiquidaciones(
     | { contrato: { propiedadId: string; inmobiliariaId?: string; modoCobranza?: 'INMOBILIARIA' } },
   db: TxOrClient,
   duenio?: { propietarioId: string; porcentaje: number },
+  /**
+   * Acota a lo que la rendición puede pagar DE VERDAD. Además del `modoCobranza` que ya
+   * filtra el `where` del contrato, tapa las dos fuentes de plata que nunca van a poder
+   * bajar a cero — ver los comentarios de cada una, abajo.
+   */
+  soloRendible = false,
 ): Promise<{ total: number; periodos: PeriodoSinRendir[] }> {
   const liqs = await db.liquidacion.findMany({
     where,
@@ -226,7 +233,18 @@ async function pendienteDeLiquidaciones(
   const [cobros, rendidos, rendidosMios] = await Promise.all([
     db.pago.groupBy({
       by: ['liquidacionId'],
-      where: { liquidacionId: { in: ids }, estado: 'CONCILIADO', condonado: false },
+      where: {
+        liquidacionId: { in: ids },
+        estado: 'CONCILIADO',
+        condonado: false,
+        // La plata de la MIGRACIÓN DE CARTERA no es un cobro de la inmobiliaria: el alta de
+        // un contrato en curso registra hasta 120 períodos pasados como pagados para que el
+        // saldo del inquilino arranque bien, pero eso se cobró y se liquidó antes de que el
+        // sistema existiera. Contarla acá le reclama al dueño plata que ya tiene, y —peor—
+        // `POST /rendiciones` se la podría transferir de nuevo si el operador elige uno de
+        // esos períodos. Mismo criterio que `condonado`, dos líneas más arriba.
+        ...(soloRendible ? { migradoDeCartera: false } : {}),
+      },
       _sum: { monto: true },
     }),
     db.alquilerRendido.groupBy({
@@ -249,8 +267,39 @@ async function pendienteDeLiquidaciones(
   const cobradoMap = new Map(cobros.map((c) => [c.liquidacionId, Number(c._sum.monto ?? 0)]));
   const rendidoMap = new Map(rendidos.map((r) => [r.liquidacionId, Number(r._sum.monto ?? 0)]));
 
+  // LOS PERÍODOS RENDIDOS ANTES DE QUE EXISTIERA EL LEDGER.
+  //
+  // `alquileres_rendidos` nació el 01/07/2026 y su migración la creó VACÍA, sin backfill
+  // (20260701130000_rendicion_incremental). Toda rendición anterior tiene su `montoBruto` y
+  // cero líneas, así que `rendidoMap` no le resta nada y su alquiler figura como pendiente
+  // para siempre. Y no se puede backfillear: `Rendicion` guarda un total por (dueño, período),
+  // no el desglose por liquidación, así que no hay de dónde sacar cuánto le tocó a cada una.
+  //
+  // La regla que sí se puede sostener: si existe una rendición de ese período SIN una sola
+  // línea, ese período ya se le rindió a ese dueño. Es coarse —no distingue una rendición
+  // parcial— pero el error va para el lado seguro: callar plata ya depositada en vez de
+  // acusar a la inmobiliaria de retener algo que pagó.
+  //
+  // Sólo aplica con `soloRendible`, o sea a las superficies que preguntan "¿qué se puede
+  // rendir?". El guard de modo-cobranza sigue viendo todo, que es lo que necesita.
+  const periodosPreLedger = new Set<string>();
+  if (soloRendible) {
+    const rendicionesViejas = await db.rendicion.findMany({
+      where: {
+        ...(duenio ? { propietarioId: duenio.propietarioId } : {}),
+        periodo: { in: [...new Set(liqs.map((l) => l.periodo))] },
+        alquileresRendidos: { none: {} },
+      },
+      select: { periodo: true },
+    });
+    for (const r of rendicionesViejas) periodosPreLedger.add(r.periodo);
+  }
+  const liqsVivas = periodosPreLedger.size
+    ? liqs.filter((l) => !periodosPreLedger.has(l.periodo))
+    : liqs;
+
   return calcularPendienteSinRendir(
-    liqs,
+    liqsVivas,
     cobradoMap,
     rendidoMap,
     duenio

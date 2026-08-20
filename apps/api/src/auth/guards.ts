@@ -158,6 +158,48 @@ export function motivoRevocacionInquilino(
   return null;
 }
 
+/**
+ * ¿El token de este propietario dejó de valer? Devuelve el mensaje del 401, o null.
+ *
+ * PURA Y EXPORTADA a propósito: la equivalente del inquilino
+ * (`motivoRevocacionInquilino`) también lo es, y así se fija en la suite sin base —que corre
+ * en segundos— en vez de en la de integración, que tarda horas y por eso no se corre.
+ *
+ * EL EMAIL ES LA LLAVE DEL PORTAL, y hasta acá nadie lo revalidaba. El staff lo tipea a mano
+ * al cargar al propietario y nadie lo verifica nunca: si se carga mal, quien controle esa
+ * casilla pide un OTP y entra a ver rendiciones, comisiones, morosidad y nombres de
+ * inquilinos. Cuando se detecta y se corrige el mail en la ficha, el token viejo seguía
+ * abriendo SIETE DÍAS MÁS —y `/portal/mi-cartera` le devolvía el email nuevo leído de la DB,
+ * así que el impostor seguía adentro y encima veía el dato corregido—. La única salida era
+ * `activo: false`, que significa otra cosa ("dejó de ser dueño") y se la ve el equipo.
+ *
+ * ⚠️ ESTO CIERRA LA VENTANA POSTERIOR A LA CORRECCIÓN, NO LA BRECHA. Mientras el typo vive,
+ * el que tenga esa casilla entra igual: el OTP se manda al mail que dice la ficha. Lo que se
+ * gana es que corregirlo tenga efecto inmediato en vez de en una semana.
+ */
+export function motivoRevocacionPropietario(
+  emailDelToken: string,
+  fila: { activo: boolean; email: string | null } | null,
+): string | null {
+  if (!fila) return 'Sesión vencida';
+  if (!fila.activo) return 'Tu acceso fue dado de baja';
+  // Insensible a mayúsculas: el OTP normaliza el email a minúsculas antes de buscar la fila,
+  // así que un token viejo puede traerlo normalizado y la ficha con la mayúscula que tipeó el
+  // operador. Eso no es un cambio de email y no tiene que echar a nadie.
+  //
+  // Y VACÍO NO MATCHEA CON VACÍO: con un `?? ''` a secas, un token sin email pasaba contra una
+  // ficha sin email. `Propietario.email` hoy es obligatorio, pero el día que deje de serlo esa
+  // comparación es una puerta abierta, no un caso borde. Lo encontró el test.
+  const enLaFicha = (fila.email ?? '').trim().toLowerCase();
+  const enElToken = (emailDelToken ?? '').trim().toLowerCase();
+  if (!enLaFicha || !enElToken || enLaFicha !== enElToken) {
+    // Mensaje DISTINTO al de la baja: al dueño legítimo al que le corrigieron un typo le va a
+    // caer este 401, y decirle que lo dieron de baja es falso y genera una llamada.
+    return 'Tus datos de acceso cambiaron. Volvé a entrar.';
+  }
+  return null;
+}
+
 /** Datos ya re-validados contra DB del profesional con visita asignada. */
 export interface ProfesionalVisitaAcceso {
   visitaId: string;
@@ -294,23 +336,20 @@ export async function requirePropietario(
   // pero el inmobiliariaId de otro tenant no matchea y se cae acá.
   const fila = await prisma.propietario.findFirst({
     where: { id: parsed.data.propietarioId, inmobiliariaId: parsed.data.inmobiliariaId },
-    select: { id: true, inmobiliariaId: true, activo: true },
+    // `email` entra al select porque ahora se revalida: ver `motivoRevocacionPropietario`.
+    select: { id: true, inmobiliariaId: true, activo: true, email: true },
   });
-  if (!fila) {
-    await reply.code(401).send({ message: 'Sesión vencida' });
+  const revocado = motivoRevocacionPropietario(parsed.data.email, fila);
+  if (revocado) {
+    await reply.code(401).send({ message: revocado });
     return null;
   }
-  // ESTE es el único punto de revocación que tiene el portal. El token dura 7
-  // días y no hay logout server-side ni denylist: si acá no se corta, dar de baja
-  // a un propietario no cierra las sesiones que ya tiene abiertas, y sigue viendo
-  // la morosidad del inquilino y el desglose de las rendiciones hasta que expire.
+  // ESTE es el único punto de revocación que tiene el portal. El token dura 7 días y no hay
+  // logout server-side ni denylist: lo que no se corte acá sigue abierto una semana.
   //
-  // 401 y no 403, igual que `requireUsuario`: la sesión ya no existe, el portal
-  // tiene que mandarlo al login en vez de mostrarle un shell roto.
-  if (!fila.activo) {
-    await reply.code(401).send({ message: 'Tu acceso fue dado de baja' });
-    return null;
-  }
+  // 401 y no 403, igual que `requireUsuario`: la sesión ya no existe, el portal tiene que
+  // mandarlo al login en vez de mostrarle un shell roto.
+  if (!fila) return null; // inalcanzable: `motivoRevocacionPropietario` ya cortó con null.
   // El email va del TOKEN, no de la fila: es el que probó el OTP y no lo puede mover nadie
   // editando el registro. Ver la nota de JwtPropietarioSchema.
   return { propietarioId: fila.id, inmobiliariaId: fila.inmobiliariaId, email: parsed.data.email };

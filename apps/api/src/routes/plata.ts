@@ -2022,6 +2022,14 @@ export async function plataRoutes(app: FastifyInstance) {
               estado: 'CONCILIADO',
               // La deuda condonada no se le rinde al propietario: no entró esa plata.
               condonado: false,
+              // Y la de la MIGRACIÓN DE CARTERA tampoco, por el mismo motivo y con más
+              // consecuencia: el alta de un contrato en curso registra hasta 120 períodos
+              // pasados como pagados para que el saldo del inquilino arranque bien, pero esa
+              // plata la cobró la inmobiliaria antes de usar el sistema y ya se la liquidó al
+              // dueño por fuera. Sin este filtro, rendir uno de esos períodos le transfiere de
+              // nuevo algo que ya tiene. Y el guard de `sinRendir` usa el mismo criterio, así
+              // que si acá no estuviera, las dos cuentas dirían cosas distintas.
+              migradoDeCartera: false,
             },
             _sum: { monto: true },
           });
@@ -2693,6 +2701,29 @@ export async function plataRoutes(app: FastifyInstance) {
       }
       throw e;
     }
+
+    // El rastro de la anulación, que hasta acá no existía.
+    //
+    // Rendir registra `PROPIETARIO_RENDIDO`; anular borraba la fila y sus tres ledgers sin
+    // escribir nada. Es el único registro de plata que el sistema destruye, y encima el único
+    // que un TERCERO ya vio: al propietario se le desaparece del portal la tarjeta "Te
+    // depositamos $X el 12/08", el total del año le baja solo y la plata le vuelve a figurar
+    // como "cobrado y sin rendirte", sin una línea que lo explique. Si llama a preguntar, la
+    // inmobiliaria tampoco tenía con qué contestarle.
+    //
+    // Se guarda el SNAPSHOT de los montos, porque la fila ya no está: es lo único que queda
+    // para reconstruir qué se anuló. El paso siguiente —que la rendición quede marcada como
+    // anulada en vez de borrarse, y el portal la muestre tachada— está anotado aparte.
+    await registrarEvento({
+      inmobiliariaId: u.inmobiliariaId,
+      tipo: 'PROPIETARIO_RENDICION_ANULADA',
+      autorId: u.userId,
+      rolAutor: u.rol,
+      entidadId: id,
+      entidadDescripcion:
+        `Anulada rendición ${r.periodo} de ${r.propietarioId} · ` +
+        `neto ${r.moneda === 'USD' ? 'US$' : '$'}${Number(r.montoNeto)} · bruto ${Number(r.montoBruto)}`,
+    });
     return { ok: true };
   });
 
