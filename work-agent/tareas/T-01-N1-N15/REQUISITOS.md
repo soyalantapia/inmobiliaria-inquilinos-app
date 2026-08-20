@@ -107,3 +107,30 @@ día un test de esta partición intenta conectarse de verdad, falla rápido y ru
 encontrar una base y ensuciarla.
 
 **Verificación:** `sonar-correlacion.test.ts` pasa 28/28 en un worktree **sin** `.env`.
+
+---
+
+## Hallazgo 5 — la verificación en el orden equivocado (error de proceso, mío)
+
+El primer push de esta tarea **rompió CI** en `revision`, con tres errores TS18048 en
+`test/modo-cobranza-pago-en-vuelo.test.ts` — un archivo que no toqué.
+
+No fue un merge conflictivo ni un test flaky. Fue el orden:
+
+```
+tsc --noEmit   → 0        # ✅ verificado
+git rebase origin/main    # ⬅️ la base cambió ACÁ
+git push                  # ❌ pusheé algo que nunca typechequeé
+```
+
+Entre mi `tsc` y mi `push`, el PR #56 (`chore/typecheck-tests`) encendió
+`noUncheckedIndexedAccess` para `test/`. Mi rama heredó la severidad **sin** heredar
+`cbfd4c04`, el commit que arregla el archivo que esa severidad rompe. `main` nunca estuvo rojo:
+allá los dos commits llegaron juntos.
+
+> **La regla que sale de acá: en este repo el `tsc` verde vale para el árbol que tenías, no para
+> el que vas a pushear.** Con ~40 chats en paralelo la base se mueve entre dos comandos. La
+> verificación va **después** del último rebase, no antes — y si rebaseás de nuevo, se repite.
+
+Se rebaseó sobre `main` actual y se reverificó en ese orden: `tsc` 0 en los 5 paquetes,
+**653/653** sin base, los tres fronts en verde.
