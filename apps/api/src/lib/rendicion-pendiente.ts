@@ -10,6 +10,15 @@ type TxOrClient = Prisma.TransactionClient | PrismaClient;
 export interface PeriodoSinRendir {
   periodo: string;
   monto: number;
+  /**
+   * La moneda de ESA liquidación, no la del contrato vigente de la propiedad.
+   *
+   * Importa porque este cálculo mira TODOS los contratos de la propiedad, incluidos los
+   * terminados: una unidad puede tener plata sin rendir de un contrato en dólares que ya
+   * venció y hoy estar alquilada en pesos —o no estar alquilada—. Quien muestre estos
+   * montos tiene que separarlos por moneda; sumarlos da un número que no existe.
+   */
+  moneda: string;
 }
 
 /**
@@ -54,6 +63,8 @@ export interface LiquidacionParaPendiente {
   periodo: string;
   montoAlquiler: unknown;
   montoTotal: unknown;
+  /** `Liquidacion.moneda`, que en la base es NOT NULL con default ARS. */
+  moneda: string;
 }
 
 /**
@@ -71,6 +82,10 @@ export function calcularPendienteSinRendir(
   cobradoPorLiq: Map<string, number>,
   rendidoPorLiq: Map<string, number>,
 ): { total: number; periodos: PeriodoSinRendir[] } {
+  // OJO con `total`: suma TODOS los períodos, sin mirar la moneda. Sirve para lo que lo usa
+  // core.ts —"¿hay algo cobrado y sin rendir, sí o no?", un umbral— y NO sirve para mostrarlo.
+  // Sumar pesos con dólares no cambia un cero por un no-cero, así que el guard sigue siendo
+  // correcto; una pantalla que imprima ese número, no. Para mostrar, agrupá por `moneda`.
   const periodos: PeriodoSinRendir[] = [];
   let total = 0;
   for (const l of liqs) {
@@ -87,7 +102,7 @@ export function calcularPendienteSinRendir(
     // algo es rendible (`rendible <= 0` ⇒ se saltea). Sin esto, un resto de redondeo
     // del prorrateo bloquearía el cambio de modo para siempre.
     if (pendiente > 0.01) {
-      periodos.push({ periodo: l.periodo, monto: pendiente });
+      periodos.push({ periodo: l.periodo, monto: pendiente, moneda: l.moneda });
       total += pendiente;
     }
   }
@@ -124,18 +139,29 @@ export async function alquilerCobradoSinRendir(
 export async function alquilerCobradoSinRendirDePropiedad(
   propiedadId: string,
   db: TxOrClient = prisma,
+  inmobiliariaId?: string,
 ): Promise<{ total: number; periodos: PeriodoSinRendir[] }> {
-  return pendienteDeLiquidaciones({ contrato: { propiedadId } }, db);
+  // `inmobiliariaId` es opcional pero NO decorativo. Los llamadores de core.ts ya vienen de un
+  // handler que resolvió la propiedad dentro de su tenant; el portal del propietario, en cambio,
+  // es una superficie de lectura sobre plata ajena, y su guard estructural
+  // (`test/portal-aislamiento.test.ts`) sólo lee `portal-propietario.ts`: no puede ver este
+  // archivo. Sin el filtro explícito, la garantía de ese endpoint dependía de una cadena de
+  // razonamientos entre dos archivos en vez de estar escrita en la query — que es justo lo que
+  // ese test dice que no hay que aceptar.
+  return pendienteDeLiquidaciones(
+    { contrato: { propiedadId, ...(inmobiliariaId ? { inmobiliariaId } : {}) } },
+    db,
+  );
 }
 
 /** El lector: una sola forma de traer los datos, dos formas de acotarlos. */
 async function pendienteDeLiquidaciones(
-  where: { contratoId: string } | { contrato: { propiedadId: string } },
+  where: { contratoId: string } | { contrato: { propiedadId: string; inmobiliariaId?: string } },
   db: TxOrClient,
 ): Promise<{ total: number; periodos: PeriodoSinRendir[] }> {
   const liqs = await db.liquidacion.findMany({
     where,
-    select: { id: true, periodo: true, montoAlquiler: true, montoTotal: true },
+    select: { id: true, periodo: true, montoAlquiler: true, montoTotal: true, moneda: true },
   });
   if (liqs.length === 0) return { total: 0, periodos: [] };
   const ids = liqs.map((l) => l.id);

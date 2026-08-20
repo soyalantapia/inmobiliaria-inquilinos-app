@@ -22,7 +22,8 @@ const liq = (
   periodo: string,
   montoAlquiler: number,
   montoTotal: number,
-): LiquidacionParaPendiente => ({ id, periodo, montoAlquiler, montoTotal });
+  moneda = 'ARS',
+): LiquidacionParaPendiente => ({ id, periodo, montoAlquiler, montoTotal, moneda });
 
 /** Azúcar: arma los dos Map desde objetos planos. */
 const mapa = (o: Record<string, number>) => new Map(Object.entries(o));
@@ -44,7 +45,7 @@ describe('calcularPendienteSinRendir', () => {
       mapa({}),
     );
     expect(r.total).toBe(500_000);
-    expect(r.periodos).toEqual([{ periodo: '2026-08', monto: 500_000 }]);
+    expect(r.periodos).toEqual([{ periodo: '2026-08', monto: 500_000, moneda: 'ARS' }]);
   });
 
   it('EL CAP deja la mora afuera: cobrar de más no aumenta lo rendible', () => {
@@ -163,7 +164,7 @@ describe('calcularPendienteSinRendir', () => {
       mapa({ l1: 200_000 }), // julio ya rendido
     );
     expect(r.total).toBe(300_000);
-    expect(r.periodos).toEqual([{ periodo: '2026-08', monto: 300_000 }]);
+    expect(r.periodos).toEqual([{ periodo: '2026-08', monto: 300_000, moneda: 'ARS' }]);
   });
 
   it('redondea a centavos, no a peso entero (tiene que cuadrar con la rendición)', () => {

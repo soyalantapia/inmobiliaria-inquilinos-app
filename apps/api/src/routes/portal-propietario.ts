@@ -631,20 +631,37 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
       },
     });
 
+    // UNA FILA POR (UNIDAD, MONEDA), no una por unidad.
+    //
+    // La moneda NO puede salir de `contratoActual`: esta cuenta mira todos los contratos de la
+    // propiedad, incluidos los TERMINADOS —para eso existe—, así que la plata sin rendir puede
+    // ser de un contrato en dólares que ya venció, y entonces `contratoActual` es null (o es
+    // otro, en pesos). Con el fallback a 'ARS' el dueño veía dólares con signo de pesos, que es
+    // exactamente el bug que se arregló persistiendo `Rendicion.moneda`.
+    //
+    // Y por lo mismo no se suma un único total: una unidad con historia en dos monedas daría un
+    // número que no existe. Se corta por moneda y cada corte lleva la suya.
     const unidades = await Promise.all(
       participaciones.map(async (part) => {
-        const pend = await alquilerCobradoSinRendirDePropiedad(part.propiedad.id);
-        return {
+        const pend = await alquilerCobradoSinRendirDePropiedad(part.propiedad.id, prisma, p.inmobiliariaId);
+        const porMoneda = new Map<string, { total: number; periodos: typeof pend.periodos }>();
+        for (const per of pend.periodos) {
+          const corte = porMoneda.get(per.moneda) ?? { total: 0, periodos: [] };
+          corte.total = Math.round((corte.total + per.monto) * 100) / 100;
+          corte.periodos.push(per);
+          porMoneda.set(per.moneda, corte);
+        }
+        return [...porMoneda.entries()].map(([moneda, corte]) => ({
           propiedadId: part.propiedad.id,
           direccion: part.propiedad.direccion,
           complejo: part.propiedad.consorcio?.nombre ?? part.propiedad.complejo ?? null,
           participacionPct: part.porcentaje,
-          moneda: part.propiedad.contratoActual?.moneda ?? 'ARS',
-          total: pend.total,
-          periodos: pend.periodos,
-        };
+          moneda,
+          total: corte.total,
+          periodos: corte.periodos,
+        }));
       }),
-    );
+    ).then((filas) => filas.flat());
     // Sólo las que tienen algo pendiente: una lista de ceros no contesta nada.
     return unidades.filter((u) => u.total > 0);
   });

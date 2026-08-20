@@ -38,8 +38,11 @@ export function PendienteDeRendir() {
         Cobrado y todavía sin rendirte
       </h2>
       <div className="space-y-2">
+        {/* La clave lleva la moneda: el endpoint devuelve una fila por (unidad, moneda), y una
+            unidad con historia en dos monedas manda dos. Con sólo el id, React descarta la
+            segunda. */}
         {pend.data.map((u) => (
-          <Card key={u.propiedadId} className="space-y-1 p-4">
+          <Card key={`${u.propiedadId}:${u.moneda}`} className="space-y-1 p-4">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <span className="font-medium">{u.complejo ?? u.direccion}</span>
               <span className="tabular-nums font-semibold">{money(u.total, u.moneda)}</span>

@@ -8,8 +8,10 @@
  * el propietario de un tenant empieza a ver plata de otro — y no hay nada que se ponga rojo.
  *
  * QUÉ ES ESTE TEST Y QUÉ NO ES. No es el test de integración que pide T-23-N1: ese necesita una
- * base de datos y hoy no hay ninguna que se pueda usar (la remota es compartida con otros
- * procesos y `seedBase` la reescribe; local no hay). Este es un guard ESTRUCTURAL: lee el
+ * base de datos. (Cuando se escribió esto se dio por hecho que no había ninguna usable; sí la
+ * hay, la receta está en `docs/TESTING.md` — lo que faltaba era el `apps/api/.env`.) Este es un
+ * guard ESTRUCTURAL, y sigue valiendo la pena aunque el de integración se pueda escribir: corre
+ * en milisegundos, sin red, y se cae ante un refactor que el de integración no vería. Lee el
  * archivo de rutas y verifica que cada query del portal nombre el tenant del token. Es un
  * instrumento más débil —no prueba el comportamiento, prueba la forma— pero cubre exactamente
  * el modo de falla que la tarea nombra: "que alguien saque un inmobiliariaId de un where".
@@ -102,9 +104,17 @@ describe('aislamiento del portal del propietario (T-23-N1)', () => {
         'o cambió el estilo de las llamadas a Prisma. Actualizá este guard: NO lo borres.',
     ).toBeGreaterThanOrEqual(5);
 
-    // Los 5 endpoints de lectura del portal tienen que seguir estando.
+    // Los endpoints de lectura del portal tienen que seguir estando. `/portal/pendiente` no va
+    // en esta lista: delega la cuenta en un helper y no tiene queries propias más allá de las
+    // participaciones — su cobertura está en el `it` de abajo, aparte.
     const rutas = new Set(delPortal.map((q) => q.ruta));
-    for (const esperada of ['/portal/mi-cartera', '/portal/propiedades', '/portal/rendiciones', '/portal/reclamos']) {
+    for (const esperada of [
+      '/portal/mi-cartera',
+      '/portal/propiedades',
+      '/portal/rendiciones',
+      '/portal/reclamos',
+      '/portal/anuncios',
+    ]) {
       expect(rutas, `El handler ${esperada} dejó de tener queries propias`).toContain(esperada);
     }
   });
@@ -140,6 +150,31 @@ describe('aislamiento del portal del propietario (T-23-N1)', () => {
         'el motivo por el que su superficie de riesgo es chica. Si hace falta escribir, ' +
         'revisá primero el modelo de permisos.',
     ).toEqual([]);
+  });
+
+  /**
+   * El agujero que este guard NO puede ver solo.
+   *
+   * `/portal/pendiente` no hace la cuenta acá: la delega en
+   * `alquilerCobradoSinRendirDePropiedad`, que vive en `src/lib/rendicion-pendiente.ts`. Este
+   * test lee UN archivo, así que las queries de ese helper le son invisibles: filtran por
+   * `propiedadId`, y el que la propiedad sea del tenant correcto salía de que los ids venían de
+   * una query ya scopeada. O sea, la garantía vivía en una cadena de razonamientos entre dos
+   * archivos en vez de estar escrita en la query — exactamente lo que el mensaje de error de
+   * arriba dice que no hay que aceptar.
+   *
+   * Se le pasa el `inmobiliariaId` explícito, y esto lo fija. Si alguien lo saca, rojo.
+   */
+  it('/portal/pendiente le pasa el tenant al helper que hace la cuenta', () => {
+    const handler = fuente.slice(fuente.indexOf("app.get('/portal/pendiente'"));
+    const hasta = handler.indexOf("app.get('", 10);
+    const cuerpo = hasta > 0 ? handler.slice(0, hasta) : handler;
+    expect(cuerpo).toContain('alquilerCobradoSinRendirDePropiedad(');
+    expect(
+      /alquilerCobradoSinRendirDePropiedad\([^)]*p\.inmobiliariaId/.test(cuerpo),
+      'El helper de "cobrado y sin rendir" se llama sin el inmobiliariaId del token. Sus ' +
+        'queries filtran por propiedadId y este guard NO las ve: viven en otro archivo.',
+    ).toBe(true);
   });
 
   it('las rendiciones por id se buscan por id + propietario + tenant, los tres', () => {
