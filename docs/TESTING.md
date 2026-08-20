@@ -59,6 +59,13 @@ y se copia `DATABASE_PUBLIC_URL` (la privada sólo resuelve dentro de la red de 
   verde. Si el resumen no dice `Test Files N passed (N)` con el N que esperabas, no terminó.
 - **`certificado-antiguedad.test.ts` da rojo (401) y es preexistente** — confirmado
   corriéndolo con y sin los cambios de la sesión. No lo rompió nadie de los que pasó por acá.
+- **Poné `CRON_DEVENGO=off` en tu `apps/api/.env`.** Si no, tu API local devenga sobre la base
+  COMPARTIDA cada 6 horas y al arrancar, y le va agregando liquidaciones a los contratos del
+  seed. Eso rompe todo test que afirme una cuenta exacta, y el rojo NO se parece a lo que es:
+  el 20/08 dejó `conciliar-informado-huerfano` con un 23505 al chocar el
+  `@@unique([contratoId, periodo])`, y `deposito-aplica-deuda` viendo 100.000 de deuda donde su
+  fixture pone 70.000 — que se lee como "se rompió el cálculo del depósito". No se rompió nada:
+  cambió el escenario abajo del test.
 - **`core.test.ts` necesita una base VIRGEN, y la remota no lo es.** Sus cuatro asserts cuentan
   filas de todo el tenant (`GET /contratos` → 8, `/propiedades` → 6, `/propietarios` → 5,
   `/inquilinos` → 7), y **`seedBase` sólo hace upsert: nunca borra lo que sobra.** Cualquier fila
