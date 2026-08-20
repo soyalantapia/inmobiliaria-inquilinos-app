@@ -83,17 +83,25 @@ Sin este bloque, el trabajo hecho no le llega a Camila. **Es lo primero.**
 > **Lo de abajo es el plan previo y ya no hay que ejecutarlo.** Se conserva porque explica el
 > orden y el porqué de cada una, que sigue siendo la referencia si algo hay que revisar.
 >
-> **Y una advertencia que ahora vale más que el plan: estas trece ya están aplicadas, así que
-> NINGUNA se puede volver a editar.** Prisma guarda un checksum de cada migración aplicada; si
-> alguien modifica uno de esos archivos, el próximo `prisma migrate deploy` falla con *"migration
-> was modified after it was applied"* — y como el arranque es `db:deploy && node dist/index.js`
-> (`apps/api/Dockerfile:30`), **el contenedor no levanta y producción se cae**. Si hace falta
-> cambiar algo que hizo una de estas migraciones, va en una migración NUEVA.
+> **Y una regla que ahora vale más que el plan: estas trece ya están aplicadas, así que ninguna
+> se vuelve a editar.** Si hay que cambiar algo que hizo una de ellas, va en una migración NUEVA.
 >
-> *(Esto no es teórico: el 20/08 estuve por pushear una modificación a
-> `limpiar_pines_heredados` para que guardara evidencia forense antes de borrar. El deploy me
-> ganó de mano por minutos. El commit se descartó sin pushear — de haber salido, tiraba la API
-> abajo en el siguiente deploy.)*
+> **Por qué — y ojo que el motivo NO es el que parece.** Yo escribí acá que editar una migración
+> aplicada rompía el arranque, porque `prisma migrate deploy` iba a fallar por checksum y el
+> contenedor no iba a levantar. **Es falso, y lo probó la realidad el mismo día:** el 20/08
+> modifiqué `limpiar_pines_heredados` para que guardara evidencia forense antes de borrar, ese
+> commit se pusheó por error a `main` (`99f119d`) y el deploy `819ce76a` salió **SUCCESS** —
+> el log dice `No pending migrations to apply.` y el server arrancó normal. `migrate deploy` sólo
+> aplica las pendientes; no verifica el checksum de las que ya están.
+>
+> **El daño real es otro, y es peor porque es silencioso:** el repo pasa a describir una base que
+> no existe. Ese archivo creaba una tabla `_t35_usuarios_con_credencial` que en producción **nunca
+> se creó**, y nada avisaba. Quien leyera el repo iba a creer que estaba. Y una base de dev creada
+> desde cero con estas migraciones habría quedado con un schema distinto al de prod. Además
+> `prisma migrate dev` y `migrate status` sí lo marcan, así que le explota en la cara al próximo
+> que trabaje en local.
+>
+> Se revirtió al contenido realmente aplicado (35 líneas) en `fix/restaurar-migracion-t35`.
 
 > ### ⚠️ Antes que nada: NO hay paso manual. Se aplican solas.
 >
@@ -3173,8 +3181,12 @@ así que la ventana nunca existió. `limpiar_pines_heredados` se aplicó a las 0
 **Qué evidencia se perdió y cuánto importa.** La pregunta *"¿quién tenía PIN heredado?"* ya no se
 puede responder: el `UPDATE` borró justamente el dato que la contestaba. Alcancé a escribir una
 migración que guardaba un censo previo (sólo booleanos, sin copiar hashes), pero el deploy salió
-antes y **no se puede agregar** — editar una migración aplicada rompe el checksum y tira la API
-abajo (ver T-01). Se descartó sin pushear.
+antes y **ya no sirve de nada**: la migración corre una sola vez, y para cuando el censo existiera
+en el archivo, las filas que iba a censar ya estaban en NULL. Habría creado una tabla vacía.
+
+Peor: ese cambio se pusheó por error a `main` y quedó un rato en el repo describiendo una tabla
+que en producción nunca se creó. Se revirtió al contenido realmente aplicado. El detalle completo
+—incluida una afirmación falsa que hice sobre checksums de Prisma— está en T-01.
 
 **Cuesta poco, y conviene tener claro por qué:** ningún `pinHash` autenticó nunca nada
 —`verificarPinUsuario` siempre devolvía `{ok:true}`—, así que el PIN heredado era un riesgo
