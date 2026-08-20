@@ -335,12 +335,14 @@ enum TipoEventoAuditoria {
   FACTURA_ARCA_EMITIDA
   PROPIETARIO_CONFIRMO_RECIBO
   PROPIETARIO_RENDIDO
-  // Anular una rendición BORRA la fila y sus tres ledgers. Es el único registro de plata del
-  // sistema que se destruye, y encima el único que un tercero —el propietario— ya vio en su
-  // portal: se le desaparece un depósito de la pantalla, el total del año le baja solo y la
-  // plata le vuelve a aparecer como "sin rendirte", sin una línea que lo explique. Sin este
-  // evento no queda absolutamente nada: ni la fila ni quién la borró. La baja lógica (que la
-  // rendición quede tachada en vez de desaparecer) es el paso siguiente.
+  // Anular es deshacer plata que un tercero —el propietario— YA VIO en su portal: se le cae un
+  // depósito de la pantalla y el total del año le baja solo. Por eso la anulación deja rastro
+  // con motivo obligatorio.
+  //
+  // Desde la baja lógica (`Rendicion.anuladaAt`) la fila ya no se borra: se marca, se le
+  // borran los ledgers para que la plata vuelva a contar como sin rendir, y queda tachada en el
+  // portal del dueño y en el historial del panel. Este evento sigue siendo lo que dice QUIÉN la
+  // anuló, cuándo y por qué.
   PROPIETARIO_RENDICION_ANULADA
   MODO_COBRANZA_CAMBIADO
   MORA_EDITADA

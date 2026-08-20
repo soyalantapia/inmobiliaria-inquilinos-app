@@ -5,33 +5,7 @@ import { Card, CardContent } from '@llave/ui/card';
 import { Topbar } from '@/components/topbar';
 import { formatFecha } from '@/lib/format';
 import { useEventos } from '@/lib/api/use-eventos';
-
-const TIPO_LABEL: Record<string, string> = {
-  PAGO_CONCILIADO: 'Pago conciliado',
-  PAGO_RECHAZADO: 'Pago rechazado',
-  PAGO_REVERTIDO: 'Pago revertido',
-  PAGO_MANUAL_CARGADO: 'Pago manual',
-  GASTO_CAJA_CARGADO: 'Gasto cargado',
-  GASTO_CAJA_ELIMINADO: 'Gasto eliminado',
-  PROPIETARIO_RENDIDO: 'Rendición',
-  CONTRATO_APROBADO: 'Contrato aprobado',
-  CONTRATO_RECHAZADO: 'Contrato rechazado',
-  CONTRATO_CARGADO: 'Contrato cargado',
-  PROPIEDAD_CARGADA: 'Propiedad cargada',
-  EQUIPO_INVITADO: 'Equipo · alta',
-  EQUIPO_REMOVIDO: 'Equipo · baja',
-};
-
-const TIPO_VARIANT: Record<string, 'success' | 'destructive' | 'warning' | 'secondary'> = {
-  PAGO_CONCILIADO: 'success',
-  PROPIETARIO_RENDIDO: 'success',
-  CONTRATO_APROBADO: 'success',
-  EQUIPO_INVITADO: 'success',
-  PAGO_RECHAZADO: 'destructive',
-  GASTO_CAJA_ELIMINADO: 'destructive',
-  CONTRATO_RECHAZADO: 'destructive',
-  EQUIPO_REMOVIDO: 'destructive',
-};
+import { TIPO_LABEL, TIPO_VARIANT } from '@/lib/auditoria-labels';
 
 export default function AuditoriaPage() {
   const { eventos, cargando, deApi } = useEventos();
