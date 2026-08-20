@@ -1878,9 +1878,14 @@ export async function plataRoutes(app: FastifyInstance) {
       const gastosRendidosQueLoApuntan = await tx.gastoRendido.count({
         where: { refId: id, tipo: 'CAJA' },
       });
+      // Y el ledger de los INGRESO_EXTRA, que es otro: para un ingreso el contador de gastos
+      // es 0 por construcción, así que sin esto el candado no protegía absolutamente nada y el
+      // ingreso rendido a medias se borraba dejando el `IngresoRendido` huérfano.
+      const ingresosRendidosQueLoApuntan = await tx.ingresoRendido.count({ where: { refId: id } });
       if (
         !sePuedeBorrarGastoDeCaja({
           gastosRendidosQueLoApuntan,
+          ingresosRendidosQueLoApuntan,
           descontadoEnRendicion: mov.descontadoEnRendicion,
         })
       ) {

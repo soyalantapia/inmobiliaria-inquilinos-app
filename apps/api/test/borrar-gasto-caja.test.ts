@@ -48,3 +48,47 @@ describe('sePuedeBorrarGastoDeCaja', () => {
     expect(soloElFlagViejo).toBe(true);
   });
 });
+
+describe('sePuedeBorrarGastoDeCaja — el INGRESO_EXTRA tiene su propio ledger', () => {
+  it('EL BUG: un ingreso rendido a medias se borraba, porque el contador de gastos es 0 para él', () => {
+    // Un movimiento de caja también puede ser un INGRESO_EXTRA, y ésos se rinden en
+    // `IngresoRendido`, no en `GastoRendido`. O sea que para un ingreso el candado miraba un
+    // contador estructuralmente 0. Con participaciones que no cubren el 100% el flag queda en
+    // `false`, y el borrado pasaba SIEMPRE: el ingreso desaparecía de caja y el
+    // `IngresoRendido` quedaba huérfano —`refId` es String sin FK, la base no lo frena—.
+    const conElBugViejo = sePuedeBorrarGastoDeCaja({
+      gastosRendidosQueLoApuntan: 0,
+      descontadoEnRendicion: false,
+    });
+    expect(conElBugViejo).toBe(true); // lo que decidía antes, sin mirar los ingresos
+
+    expect(
+      sePuedeBorrarGastoDeCaja({
+        gastosRendidosQueLoApuntan: 0,
+        ingresosRendidosQueLoApuntan: 1,
+        descontadoEnRendicion: false,
+      }),
+    ).toBe(false);
+  });
+
+  it('un ingreso SIN rendir todavía se sigue pudiendo borrar', () => {
+    // El caso de uso real: cargué un ingreso extra con el monto equivocado y lo saco.
+    expect(
+      sePuedeBorrarGastoDeCaja({
+        gastosRendidosQueLoApuntan: 0,
+        ingresosRendidosQueLoApuntan: 0,
+        descontadoEnRendicion: false,
+      }),
+    ).toBe(true);
+  });
+
+  it('alcanza UNA parte rendida a UN solo dueño para bloquear', () => {
+    expect(
+      sePuedeBorrarGastoDeCaja({
+        gastosRendidosQueLoApuntan: 0,
+        ingresosRendidosQueLoApuntan: 1,
+        descontadoEnRendicion: false,
+      }),
+    ).toBe(false);
+  });
+});

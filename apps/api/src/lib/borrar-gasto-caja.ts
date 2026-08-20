@@ -15,13 +15,28 @@
  *
  * El registro que sí dice la verdad es `GastoRendido`: se escribe con la PRIMERA parte rendida,
  * mucho antes de que el flag cambie.
+ *
+ * Y NO ES SÓLO EL GASTO. Un movimiento de caja también puede ser un INGRESO_EXTRA, y ésos se
+ * rinden en `IngresoRendido`, no en `GastoRendido`. O sea que para un ingreso el candado miraba
+ * un contador estructuralmente 0 y el borrado pasaba SIEMPRE mientras el flag estuviera en
+ * `false` — que es exactamente lo que pasa con participaciones que no cubren el 100%. El ingreso
+ * desaparecía de caja y el `IngresoRendido` quedaba huérfano: `refId` es un String sin FK, así
+ * que la base no lo frena.
  */
 export function sePuedeBorrarGastoDeCaja(p: {
   /** Cuántos `GastoRendido` (tipo CAJA) apuntan a este movimiento por `refId`. */
   gastosRendidosQueLoApuntan: number;
+  /**
+   * Cuántos `IngresoRendido` lo apuntan por `refId`. Es el ledger de los INGRESO_EXTRA: para
+   * un ingreso, el contador de gastos es 0 por construcción y no protege nada.
+   *
+   * Opcional para no romper a los callers viejos, pero el de producción lo pasa.
+   */
+  ingresosRendidosQueLoApuntan?: number;
   /** El flag del movimiento. Se sigue mirando como red para filas viejas. */
   descontadoEnRendicion: boolean;
 }): boolean {
   if (p.gastosRendidosQueLoApuntan > 0) return false;
+  if ((p.ingresosRendidosQueLoApuntan ?? 0) > 0) return false;
   return !p.descontadoEnRendicion;
 }

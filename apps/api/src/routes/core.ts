@@ -31,7 +31,7 @@ import { buscarOCrearPersona, EmailDeOtraPersona, esOtraPersona } from '../lib/p
 import { crearContratoHistorico } from '../lib/contrato-historico.js';
 import { borrarArchivoSiHuerfano, urlEsDelTenant } from './uploads.js';
 import { enviarInvitacionInquilino, enviarInvitacionEquipo, enviarAvisoAjusteAlquiler } from '../mailer.js';
-import { contratoQuedaPendiente, diaCivilAR, venceDespuesDeHoy, yaVencio } from '@llave/shared';
+import { contratoQuedaPendiente, diaCivilAR, rolTienePermiso, venceDespuesDeHoy, yaVencio } from '@llave/shared';
 import { ROLES_ORDEN, type Rol } from '@llave/shared/permisos';
 import { dinero, dineroPositivo } from '../lib/monto.js';
 
@@ -306,16 +306,41 @@ export async function coreRoutes(app: FastifyInstance) {
     const u = await requireUsuario(request, reply, 'contratos.ver');
     if (!u) return;
     const { id } = request.params as { id: string };
+    // QUÉ SE MANDA DEL PROPIETARIO, Y A QUIÉN.
+    //
+    // Acá había un `include` a secas: serializaba la fila entera del dueño —CBU/alias, CUIT,
+    // email, teléfono, comisión y las notas internas— más su cuenta de cobranza con el CBU
+    // completo. Y la capacidad de este endpoint es `contratos.ver`, que incluye a **CAJA**,
+    // un rol al que se le negó `propietarios.ver` a propósito. O sea que la pantalla de
+    // contratos le entregaba exactamente lo que la matriz de permisos le negaba en la de
+    // propietarios.
+    //
+    // Ahora es un `select` con lo que el front realmente consume (`use-contrato.ts`), y los
+    // campos sensibles sólo salen para quien puede ver propietarios. `comisionPct` y `notas`
+    // ya no viajan para nadie: el front los descarta y los reemplaza por 0/null.
+    const veDatosDelDuenio = rolTienePermiso(u.rol, 'propietarios.ver');
+    const selectPropietario = {
+      id: true,
+      nombre: true,
+      apellido: true,
+      ...(veDatosDelDuenio
+        ? {
+            cuit: true,
+            email: true,
+            telefono: true,
+            cbuAlias: true,
+            // En PROPIETARIO_DIRECTO el front necesita la cuenta del dueño para mostrar el
+            // destino de cobro. Sin esto decía "Falta cargar la cuenta" aunque existiera.
+            cuentaCobranza: true,
+          }
+        : {}),
+    };
     const contrato = await prisma.contrato.findFirst({
       where: { id, inmobiliariaId: u.inmobiliariaId },
       include: {
-        // cuentaCobranza incluida: en PROPIETARIO_DIRECTO el front necesita la
-        // cuenta del dueño (CBU/alias) para mostrar el destino de cobro. Sin esto
-        // siempre mostraba "Falta cargar la cuenta" aunque existiera (mismo include
-        // que GET /propietarios/:id).
         propiedad: {
           include: {
-            participaciones: { include: { propietario: { include: { cuentaCobranza: true } } } },
+            participaciones: { include: { propietario: { select: selectPropietario } } },
           },
         },
         inquilinoTitular: true,
