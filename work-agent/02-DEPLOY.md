@@ -114,22 +114,23 @@ Las tres piezas, por si alguna se toca:
 —pide las dos cosas—, pero el día que alguien lo agregue "para probar" estaría publicando datos
 inventados en un dominio real.
 
-### ⚠️ Está vivo y casi nadie lo linkea
+### Ya está linkeado — cómo llega el propietario
 
-Desde el 20/08 el mail de anuncios ya le dice al propietario que el portal existe. Era la
-única superficie que le habla directo a él; del lado de la inmobiliaria sigue sin aparecer.
-Es la diferencia entre "deployado" y "entregado":
+Hasta el 20/08 el portal se podía abrir pero **ninguna superficie decía que existía**: era la
+diferencia entre "deployado" y "entregado". Las dos puertas que faltaban ya están:
 
-- ~~**Los mails a propietarios se mandan sin CTA a propósito.**~~ **Cerrado (20/08).**
-  `enviarAnuncioEmail` ahora manda el CTA de los dos lados: al inquilino "Ver en la app", al
-  propietario **"Ver mis rendiciones"** hacia `APP_PROPIETARIO_URL`, que por default es
-  `https://admin.myalquiler.com/propietario`. Si se setea en Railway tiene que apuntar al host
-  del **panel** con `/propietario` — el portal no tiene servicio propio (ver arriba).
-  **Es el único mail que hoy le llega a un propietario** además del OTP de login del portal:
-  no hay mail de rendición ni de alta, así que ésta era la única superficie donde meterlo.
-- **El panel no lo menciona en ninguna parte.** Cero resultados de "portal" o "/propietario"
-  en `apps/inmobiliaria/src`. O sea que la inmobiliaria tampoco se entera de que puede
-  mandárselo a sus dueños.
+- **Por mail, al propietario.** `enviarAnuncioEmail` manda el CTA de los dos lados: al
+  inquilino "Ver en la app", al propietario **"Ver mis rendiciones"** hacia
+  `APP_PROPIETARIO_URL`, que por default es `https://admin.myalquiler.com/propietario`. Si se
+  setea en Railway tiene que apuntar al host del **panel** con `/propietario` — el portal no
+  tiene servicio propio (ver arriba). **Es el único mail que hoy le llega a un propietario**
+  además del OTP de login del portal: no hay mail de rendición ni de alta, así que ésta era la
+  única superficie donde meterlo.
+- **Desde el panel, para que la inmobiliaria lo comparta.** Configuración tiene la card **"Link
+  del portal para tus propietarios"** (`configuracion-prod.tsx`), al lado de la del link de la
+  app del inquilino: el link y un "Copiar link". Ahí la URL va **hardcodeada y sin env que la
+  pise** a propósito — el portal se sirve desde el mismo host que el panel, así que la única
+  variante posible sería una mal configurada.
 
 Las dos cosas tocan copy que ve un usuario final, así que las decide el dueño del producto.
 Verificado el 20/08 sirviendo el export desde el panel: las cinco rutas (`/propietario`,
