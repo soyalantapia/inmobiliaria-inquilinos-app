@@ -3860,3 +3860,33 @@ del delete, que es el candado contra una rendición concurrente.
 
 **Verificado:** 5 tests puros, 2 se ponen rojos al volver al candado viejo; `tsc` 0 en los cinco
 paquetes; 395 tests verdes.
+
+---
+
+### T-01-N1-N7 · La baja de un propietario existe en la API y no hay cómo usarla
+**Experto:** FE-P + PROD · **Prioridad:** 🟠 · **Depende de:** una decisión de UX
+**Origen:** barrido adversarial de T-01-N1.
+
+**Estado verificado.** `PATCH /propietarios/:id/activo` está construido, autenticado, con su
+409 de cobranza directa y su migración escrita (T-23-N4). **Ningún front lo llama:**
+
+```
+grep -rn "/activo" apps/inmobiliaria/src/   →  sin resultados
+```
+
+O sea: se puede dar de baja a un propietario por HTTP y **no desde el producto**. Camila no
+tiene botón. La feature está entregada del lado del server y es inalcanzable del lado de quien
+la iba a usar.
+
+**Por qué importa más de lo que parece.** T-23-N4 explica que la baja lógica es lo que corta el
+acceso de un ex-propietario al portal. Hoy, para que un dueño que vendió su departamento deje de
+ver la cartera, hay que **borrarle el email a mano** desde la ficha — que funciona, pero es un
+efecto lateral de otra cosa, no está documentado como el procedimiento, y nadie lo sabe.
+
+**Por qué no se hizo acá.** Agregar el control es una decisión de UX sobre el producto
+terminado: dónde va (¿ficha del propietario? ¿listado?), qué dice, si pide PIN como las otras
+acciones sensibles, y qué pasa con los que ya están dados de baja (¿se listan? ¿se filtran?).
+Eso lo define el dueño, no un agente. **Queda escrito, no construido.**
+
+**Riesgo de no hacerlo.** Que se dé por entregada una capacidad que nadie puede ejercer — el
+mismo patrón que T-46 con el portal del propietario.
