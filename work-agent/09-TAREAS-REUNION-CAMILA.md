@@ -5449,10 +5449,13 @@ Se limpiaron además las seis ramas de tarea mías que ya estaban 100% en `main`
 reporte, que existe para que se vea lo que quedó afuera.
 
 **Lo que queda por decidir es tuyo:** las dos de aprobación de contratos son una feature entera
-(revisar antes de aprobar, y corregir + reenviar un contrato rechazado). Y hay un dato feo en el
-camino: hoy **rechazar un contrato BORRA la deuda declarada** (`plata.ts`, `periodosAnteriores
-Pendientes: Prisma.DbNull`) justificándose en un `@@unique` de `Inquilino` **que ya no existe**
-—se mudó a `Persona`—. Eso está sin verificar por mí y merece tarea propia.
+(revisar antes de aprobar, y corregir + reenviar un contrato rechazado). Ver **T-01-N1-N13**, que
+verifica qué pasa hoy al rechazar.
+
+> **Corrección a lo que escribí acá antes.** Había repetido, sin verificarlo, que al rechazar se
+> borraba también el `Inquilino` justificándose en un `@@unique` que ya no existe. **Eso no se
+> sostiene**: no hay ningún `delete` en el camino de rechazo. Lo verifiqué línea por línea antes
+> de dejarlo escrito como si fuera un hecho. Lo que sí es cierto está en T-01-N1-N13.
 
 ### T-01-N1-N11 · Al inquilino cuyo pago confirmó el banco se le decía que se lo rechazaron — ✅ HECHA
 **Experto:** BE · **Prioridad:** 🔴
@@ -5498,3 +5501,42 @@ en ramas, nunca en `main`.
 
 **Efecto colateral bueno:** cuando se marquen los checks como *required* (T-01-N1-N9), esto deja
 de ser un problema — que era la objeción #2 de esa tarea.
+
+---
+
+### T-01-N1-N13 · Rechazar un contrato tira la deuda que alguien tipeó, y no hay forma de reenviarlo
+**Experto:** BE + PROD · **Prioridad:** 🟠 · **Depende de:** una decisión de producto
+**Origen:** T-01-N1-N10, verificando el camino de rechazo de la bandeja de aprobaciones.
+
+**Verificado línea por línea el 20/08** (esto reemplaza lo que había escrito antes de mirar):
+
+1. **Rechazar SÍ borra la deuda declarada.** `plata.ts` pone
+   `periodosAnterioresPendientes: Prisma.DbNull` en el mismo `updateMany` que saca el
+   `pendienteAprobacion`. Es deliberado y está comentado.
+2. **NO borra el `Inquilino`.** No hay ningún `delete` en ese camino. La versión anterior de esta
+   nota decía que sí; era falso.
+3. **No existe forma de corregir y reenviar.** `PUT /contratos/:id/borrador` y
+   `POST /contratos/:id/reenviar-aprobacion` **no están en `main`** — viven sólo en la rama
+   varada `feat/corregir-contrato-rechazado`.
+
+**Lo que esto significa hoy, y por qué NO es un bug.** El comentario del código justifica el
+borrado diciendo que *"el contrato rechazado nunca se va a aprobar, así que esa deuda histórica
+queda colgada para siempre si no la borramos"*. Con el punto 3 confirmado, **esa premisa es
+cierta hoy**: sin camino de reenvío, guardar la deuda dejaría un Json colgando de un contrato
+muerto. El borrado es internamente consistente.
+
+**Lo que cuesta.** Quien cargó un contrato con deuda histórica —períodos, montos, todo tipeado a
+mano— y se lo rechazan por una coma, **pierde eso y lo tiene que volver a tipear desde cero**.
+No es plata perdida: es trabajo perdido y una invitación a equivocarse la segunda vez.
+
+**La decisión.** Son dos caminos y no es mía:
+
+- **Construir el reenvío** (rescatar `feat/corregir-contrato-rechazado`): editar el borrador
+  rechazado y volver a mandarlo, con candado de una sola aprobación pendiente por contrato. Ahí
+  el borrado de la deuda **hay que sacarlo**, porque su premisa deja de valer. Es lo que la rama
+  hacía, y es la razón por la que hacía las dos cosas juntas.
+- **Dejarlo como está** y asumir que rechazar significa cargar de nuevo. Entonces al menos
+  convendría **avisarlo en el diálogo de rechazo**, que hoy no dice que se pierde nada.
+
+Lo que **no** hay que hacer es sacar el borrado sin construir el reenvío: quedaría el Json
+colgado que el comentario describe.
