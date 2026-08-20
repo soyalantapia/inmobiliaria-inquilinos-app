@@ -23,7 +23,7 @@
  * que hacer es agregar la capacidad a `CON_CIRCUITO` en el mismo commit que lo construye.
  */
 import { describe, it, expect } from 'vitest';
-import { CAPACIDADES, GRUPO_LABEL, ROL_DESCRIPCION, type Capacidad } from './permisos';
+import { CAPACIDADES, GRUPO_LABEL, ROL_DESCRIPCION, rolTienePermiso, type Capacidad } from './permisos';
 
 /** Las capacidades cuyo "queda pendiente" existe de verdad en el backend. */
 const CON_CIRCUITO: Capacidad[] = ['contratos.crear'];
@@ -65,5 +65,54 @@ describe('T-37-N2 · la matriz no promete lo que no hay', () => {
         expect(c.roles, `${c.key}: ${rol} aprueba pero no tiene la capacidad`).toContain(rol);
       }
     }
+  });
+});
+
+/**
+ * T-03-N1 · CAJA tiene que poder hacer el trabajo del mostrador, de punta a punta.
+ *
+ * POR QUÉ ESTO ES UN TEST Y NO UNA REVISIÓN A OJO. T-03 le pide a la dueña que entre a
+ * Configuración → Equipo y le ponga rol CAJA a quien atiende el mostrador. Su criterio de
+ * aceptación es *"una persona con rol CAJA puede confirmar un pago de punta a punta"*, y eso
+ * depende de que NINGUNO de los eslabones de la cadena le falte. CAJA es un rol nuevo: si a
+ * alguien se le escapa una capacidad, la persona reasignada se queda mirando una pantalla sin
+ * botones y Camila lo vive como que el sistema se rompió — que es justo lo que T-03 quiere
+ * evitar.
+ *
+ * Cada línea de abajo es un eslabón REAL, verificado contra el código, con el lugar donde se
+ * aplica. Si mañana alguien le saca una capacidad a CAJA "porque no la usa", esto se pone rojo
+ * y dice cuál era.
+ */
+describe('T-03-N1 · el rol CAJA cubre el mostrador entero', () => {
+  const CADENA: { cap: Capacidad; donde: string }[] = [
+    { cap: 'home.ver', donde: 'sidebar: entrar al panel' },
+    { cap: 'pagos.ver', donde: 'sidebar + GET /pagos: ver la bandeja de pagos informados' },
+    { cap: 'contratos.ver', donde: 'abrir el contrato para chequear de quién es el pago y cuánto debía' },
+    { cap: 'pago.conciliar', donde: 'POST /pagos/:id/validar — y el gate de los botones en pagos-por-validar.tsx' },
+    { cap: 'pago.rechazar', donde: 'POST /pagos/:id/rechazar' },
+    { cap: 'pago.manual.cargar', donde: 'cobrar en efectivo en el mostrador' },
+    { cap: 'caja.ver', donde: 'GET /caja/movimientos y /caja/cierre: cerrar el día' },
+    { cap: 'gasto.caja.cargar', donde: 'POST /caja/movimientos: cargar un gasto de caja' },
+  ];
+
+  it.each(CADENA)('CAJA puede: $donde', ({ cap }) => {
+    expect(rolTienePermiso('CAJA', cap)).toBe(true);
+  });
+
+  it('pero NO puede revertir una conciliación ni rendir: eso es de la dueña', () => {
+    // El límite del rol también importa: Camila pidió que la caja confirme, no que deshaga.
+    expect(rolTienePermiso('CAJA', 'pago.revertir')).toBe(false);
+    expect(rolTienePermiso('CAJA', 'rendicion.confirmar')).toBe(false);
+    expect(rolTienePermiso('CAJA', 'equipo.gestionar')).toBe(false);
+  });
+
+  it('OPERADOR ya no confirma pagos — es el cambio que T-03 va a hacer sentir', () => {
+    // Esto es lo que la dueña pidió textual: "nadie puede autorizar un pago" salvo caja y ella.
+    // Queda fijado para que no vuelva por descuido.
+    expect(rolTienePermiso('OPERADOR', 'pago.conciliar')).toBe(false);
+    expect(rolTienePermiso('OPERADOR', 'pago.rechazar')).toBe(false);
+    // Pero sigue viendo la bandeja: es la mitad útil de la pantalla, y sacársela sería
+    // castigarlo dos veces (ver la nota de T-40 en T-03).
+    expect(rolTienePermiso('OPERADOR', 'pagos.ver')).toBe(true);
   });
 });

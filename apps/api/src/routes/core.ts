@@ -27,7 +27,7 @@ import { registrarEventoContrato } from '../lib/evento-contrato.js';
 import { aplicarDepositoADeuda } from '../lib/aplicar-deposito.js';
 import { calcularMora, resolverEsquemaMora } from '../lib/punitorios.js';
 import { aplicarEstadoInicial, EstadoInicialInvalido } from '../lib/estado-inicial-contrato.js';
-import { buscarOCrearPersona } from '../lib/persona.js';
+import { buscarOCrearPersona, EmailDeOtraPersona, esOtraPersona } from '../lib/persona.js';
 import { crearContratoHistorico } from '../lib/contrato-historico.js';
 import { borrarArchivoSiHuerfano, urlEsDelTenant } from './uploads.js';
 import { enviarInvitacionInquilino, enviarInvitacionEquipo, enviarAvisoAjusteAlquiler } from '../mailer.js';
@@ -1357,14 +1357,26 @@ export async function coreRoutes(app: FastifyInstance) {
       const persona = d.personaId
         ? // Reuso explícito: agrupa bajo la Persona elegida (ya validada como del tenant).
           await tx.persona.findFirstOrThrow({ where: { id: d.personaId, inmobiliariaId: u.inmobiliariaId } })
-        : await buscarOCrearPersona(tx, {
-            inmobiliariaId: u.inmobiliariaId,
-            dni: d.inquilino.dni || null,
-            email: emailInq,
-            nombre: d.inquilino.nombre,
-            apellido: d.inquilino.apellido || null,
-            telefono: d.inquilino.telefono || null,
-          });
+        : await (async () => {
+            const p = await buscarOCrearPersona(tx, {
+              inmobiliariaId: u.inmobiliariaId,
+              dni: d.inquilino.dni || null,
+              email: emailInq,
+              nombre: d.inquilino.nombre,
+              apellido: d.inquilino.apellido || null,
+              telefono: d.inquilino.telefono || null,
+            });
+            // El helper es COMPARTIDO con la importación de cartera y ahí, ante "mismo email,
+            // DNI distinto", devuelve la Persona existente a propósito (reventar a mitad de
+            // 2000 filas es peor; el preview lo marca como advertencia). Acá no: hay alguien
+            // cargando el alta a quien se le puede preguntar, y este endpoint ya prometía un
+            // 409 con ese texto —confiaba en que saltara el unique de Persona—. Al compartir
+            // el helper ese 409 se volvió inalcanzable y el contrato quedaba colgando en
+            // silencio de OTRA persona. Se restituye acá, sin tocar el camino de importación.
+            const dniPedido = normalizarDni(d.inquilino.dni || null);
+            if (esOtraPersona(dniPedido, p.dni)) throw new EmailDeOtraPersona();
+            return p;
+          })();
       await tx.inquilino.update({ where: { id: inq.id }, data: { contratoId: contrato.id, personaId: persona.id } });
       if (contratoPendiente) {
         // BORRADOR: NO se reclama la propiedad ni se devengan liquidaciones hasta
@@ -1510,7 +1522,12 @@ export async function coreRoutes(app: FastifyInstance) {
       // dos personas DISTINTAS (distinto DNI) compartan el mismo email de login. Si es
       // el mismo inquilino, hay que reusarlo ("¿Ya está en tu cartera?"), no cargarlo
       // de nuevo. Lo convertimos en un 409 claro en vez de un 500.
-      if (e && typeof e === 'object' && (e as { code?: string }).code === 'P2002') {
+      // Dos caminos al mismo 409: el unique de Persona (P2002) y el chequeo explícito de
+      // arriba, que existe porque `buscarOCrearPersona` evita que el unique llegue a saltar.
+      if (
+        e instanceof EmailDeOtraPersona ||
+        (e && typeof e === 'object' && (e as { code?: string }).code === 'P2002')
+      ) {
         return reply.code(409).send({
           message: 'Ese email ya lo usa otra persona en tu cartera. Si es el mismo inquilino, buscalo en "¿Ya está en tu cartera?"; si no, poné otro email.',
         });

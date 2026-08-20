@@ -42,7 +42,11 @@ alquileres para **Tapia Propiedades** (y futuras inmobiliarias). **Tres** frente
 |---|---|
 | Panel inmobiliaria | **https://admin.myalquiler.com** |
 | PWA inquilino | **https://app.myalquiler.com** |
+| Portal del propietario | **https://admin.myalquiler.com/propietario** — sin servicio propio: es un export estático servido por el panel. Ver `02-DEPLOY.md`. |
 | API | https://api-production-262e.up.railway.app (`GET /health`) |
+
+> ⚠️ La contraseña de producción está escrita acá abajo, en texto plano y en el repo.
+> Rotarla es T-26. Mientras tanto, tratá este archivo como si fuera un secreto.
 
 Tenant real: **Tapia Propiedades** · admin `alannaimtapia@gmail.com / Tapia.2026!`
 (el **PIN de seguridad se eliminó** — ninguna acción lo pide).

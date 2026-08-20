@@ -1,6 +1,37 @@
 import type { Prisma, Persona } from '@prisma/client';
 import { normalizarDni } from './normalizar-dni.js';
 
+/**
+ * Se pidió dar de alta a alguien con un email que ya usa OTRA persona (distinto DNI).
+ *
+ * `buscarOCrearPersona` devuelve, a propósito, la Persona existente en ese caso: lo necesita la
+ * importación de cartera, donde reventar con P2002 a mitad de 2000 filas deja la carga hecha a
+ * medias en la cuenta real del cliente, y donde el preview ya marca el caso como advertencia
+ * para que el operador lo reconcilie después.
+ *
+ * En el ALTA MANUAL no aplica ese argumento: hay una persona frente al teclado a la que se le
+ * puede preguntar, y `POST /contratos` ya prometía un 409 con ese texto exacto —confiando en
+ * que saltara el unique de Persona—. Al compartir este helper, ese 409 quedó inalcanzable y el
+ * contrato pasaba a colgar en silencio de la persona equivocada: dos humanos distintos, una
+ * sola identidad, sin que nadie se entere. Es la misma línea que `normalizar-dni.ts` cuida
+ * cuando dice que no recorta un CUIT a su DNI porque "podría fusionar dos personas distintas".
+ */
+export class EmailDeOtraPersona extends Error {}
+
+/**
+ * ¿La Persona que devolvió `buscarOCrearPersona` es OTRA que la que se está cargando?
+ *
+ * Sólo se puede afirmar cuando hay DNI de los dos lados y no coinciden. Sin DNI en el alta no
+ * se sabe —puede ser el mismo inquilino cargado sin documento— y sin DNI en la Persona tampoco:
+ * ahí el helper justamente lo completa. En la duda NO bloquea: rechazar un alta legítima le
+ * rompe el día a quien está cargando, y el caso ambiguo ya lo cubre la búsqueda "¿Ya está en tu
+ * cartera?".
+ */
+export function esOtraPersona(dniDelAlta: string | null, dniDeLaPersona: string | null): boolean {
+  if (!dniDelAlta || !dniDeLaPersona) return false;
+  return dniDelAlta !== dniDeLaPersona;
+}
+
 export interface DatosPersonaFila {
   inmobiliariaId: string;
   dni: string | null;
