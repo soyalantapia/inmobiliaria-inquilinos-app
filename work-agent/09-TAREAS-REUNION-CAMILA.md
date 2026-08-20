@@ -4724,7 +4724,7 @@ es lo que está haciendo T-32. Se corrieron a mano.
 
 ---
 
-## T-46-N1 · El portal del propietario está en la demo, pero no en producción
+## T-46-N1 · El portal del propietario está en la demo, pero no en producción — ✅ HECHA 20/08
 
 **Experto:** OPS + el dueño · **Prioridad:** 🔴 · **Depende de:** nada · **ES DEL DUEÑO**
 **Origen:** T-46. Es el camino 2 que T-46 dejó explícitamente abierto.
@@ -4746,6 +4746,22 @@ y ve SUS rendiciones.
 
 **Riesgo de no hacerlo.** Que se dé por entregado dos veces: primero porque el código existía,
 ahora porque la demo se ve. Ninguna de las dos le sirve al dueño de un departamento.
+
+**Cómo se resolvió — y no por el camino que esta hoja esperaba.** No se levantó un host propio:
+el portal se compila como export estático bajo `/propietario` y lo sirve el MISMO servicio del
+panel (`768e8de2`, "feat(deploy): el portal del propietario, servido en /propietario del panel").
+Por eso no aparece como servicio nuevo en Railway — son tres, no cuatro.
+
+**Verificado el 20/08 contra producción**, no contra el repo:
+`curl -o /dev/null -w '%{http_code}' https://admin.myalquiler.com/propietario/login` → **200**,
+con `<title>My Alquiler · Propietarios</title>` y el mismo `build-commit` que el panel. El job
+`build` de `revision.yml` cubre además esta tercera combinación con asserts de que el export
+tenga las rutas y el `basePath` horneado.
+
+**Lo que NO se verificó**, y hace falta que lo haga una persona con datos reales: que un
+propietario **de verdad** entre con su email y vea SUS rendiciones. Lo comprobado es que la URL
+existe y sirve la app; el login end-to-end contra un dueño real de la cartera de Camila queda
+pendiente y es de producción.
 
 ---
 
@@ -5288,6 +5304,43 @@ nadie estaba obligado a mirar.
 **required** en la branch protection de `main`. El comando exacto está en la hoja, junto con las
 tres cosas que hay que saber antes de apretar — sobre todo que **se acabaría el push directo a
 `main`**, que es como trabajan hoy todos los chats.
+
+> ### 🟢 Hallazgo de otra sesión (20/08) — hay un camino que NO termina con el push directo
+>
+> **Railway tiene `Wait for CI` nativo**, y hace innecesario tanto desconectar el repo como
+> marcar los checks *required*. De su doc (`docs.railway.com/deployments/github-autodeploys`):
+> el deployment queda en **`WAITING`** mientras corren los workflows; si alguno falla queda
+> **`SKIPPED`**; si dan verde, procede.
+>
+> **Por qué importa más que la opción de esta hoja:** *required checks* gatea el **merge** —y
+> por eso se lleva puesto el push directo a `main`, que es como trabajan los ~40 chats—.
+> `Wait for CI` gatea el **deploy**. Misma protección sobre la plata de la inmobiliaria, sin
+> tocar el modelo de trabajo. Y no se pierde `RAILWAY_GIT_COMMIT_SHA` (o sea `/health` sigue
+> diciendo qué commit corre), ni el rollback de la UI, ni el historial de deployments.
+>
+> **Costo:** tres toggles en la UI, uno por servicio. **No se puede por API** — verificado:
+> `update_service` de la MCP de Railway no expone ni ese flag ni el de autodeploy.
+>
+> **Lo único a verificar al activarlo:** Railway documenta como requisito un workflow con
+> `on: push: branches: [main]`. `deploy.yml` tiene esa forma exacta; **`revision.yml` usa
+> `branches-ignore: [gh-pages]`**. Si Railway sólo reconoce la forma literal, esperaría a Pages
+> y **no** a esta compuerta — lo peor de los dos mundos. Se comprueba mirando que el próximo
+> deploy pase por `WAITING` y tarde lo que tarda `integracion`. Si no, es una línea.
+>
+> **Contexto que se relevó de paso, por si sirve:** se diseñó y se sometió a revisión
+> adversarial la alternativa de desconectar el repo y deployar desde Actions con `railway up`.
+> Tiene cuatro roturas reales y por eso NO se recomienda: (1) `railway up --ci` termina cuando
+> termina el *build*, no cuando el contenedor está sano, y un smoke test por commit da verde
+> leyendo el contenedor viejo; (2) el run pasaría a durar ~25-30 min contra una cadencia de un
+> push cada ~5 min (105 commits a `main` en 24 h), así que la cola no drena y **producción
+> retrocede sola**; (3) `needs:` espera a que los jobs concluyan aunque el `if:` ignore el
+> resultado, así que una palanca de emergencia sirve con la CI en rojo pero no con la CI
+> colgada —y no hay un solo `timeout-minutes` en `revision.yml`—; (4) al desconectar se pierde
+> `RAILWAY_GIT_COMMIT_SHA` y hay que inyectar el SHA a mano en los tres Dockerfiles.
+>
+> **Dato verificado que despeja una objeción:** `ramas-sin-integrar` **no puede** poner rojo el
+> workflow — `scripts/ramas-sin-integrar.mjs` sólo sale con 1 si recibe `--fallar`, y el
+> workflow lo invoca con `--remotas`. Así que el job-aviso no bloquearía ningún deploy.
 
 **Corrección al dato de las cancelaciones:** escribí que `Revisión` "se cancela sola seguido" y
 lo medí después: **3 de 40 (7,5%)** — y más tarde **7 de 40 (17,5%)**, porque el job `build` que
