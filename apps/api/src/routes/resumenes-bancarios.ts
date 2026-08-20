@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import { observacionDeReversion } from '../lib/reversion-interna.js';
 import { z } from 'zod';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { prisma } from '../db.js';
@@ -453,7 +454,20 @@ export async function resumenesBancariosRoutes(app: FastifyInstance): Promise<vo
             where: { liquidacionId: liq.id, estado: 'INFORMADO' },
             data: {
               estado: 'RECHAZADO',
-              observacion: `Cerrado automáticamente: el extracto bancario confirmó este cobro (op. ${credito.nroOperacion}).`,
+              // CON EL PREFIJO DE REVERSIÓN INTERNA, y no es un detalle de redacción. El
+              // esquema usa un solo `RECHAZADO` para "el inquilino mandó algo que no servía" y
+              // para "la inmobiliaria dio de baja un cobro propio", y el prefijo es lo único
+              // que los distingue. Acá pasa lo segundo: el inquilino avisó que pagó, el BANCO
+              // lo confirmó, y su aviso se cierra por superado.
+              //
+              // Sin el prefijo, a esa persona se le mostraba "Tu pago fue rechazado", se le
+              // publicaba en el feed con severidad crítica, se le filtraba esta nota interna y
+              // —lo peor— se le bajaba el nivel de buen pagador del certificado. Justo lo que
+              // el comentario de `PAGO_RECHAZADO_REAL` dice que hay que evitar: penalizarlo por
+              // algo que no es culpa suya.
+              observacion: observacionDeReversion(
+                `el extracto bancario confirmó este cobro (op. ${credito.nroOperacion}).`,
+              ),
               decididoPorId: u.userId,
               decididoAt: new Date(),
             },

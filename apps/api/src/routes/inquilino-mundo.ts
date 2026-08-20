@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { PREFIJO_REVERSION_INTERNA } from '../lib/reversion-interna.js';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { rolTienePermiso } from '@llave/shared';
@@ -34,7 +35,7 @@ import {
  * `Anulado tras conciliar: <motivo>` — misma convención que plata.ts
  * (/pagos/anular y el mapeo neutro de /mis-liquidaciones).
  */
-const PREFIJO_ANULADO = 'Anulado tras conciliar:';
+
 
 /**
  * Predicado Prisma reutilizable: pagos RECHAZADOS que SÍ cuentan como rechazo
@@ -49,7 +50,7 @@ const PREFIJO_ANULADO = 'Anulado tras conciliar:';
  */
 const PAGO_RECHAZADO_REAL: Prisma.PagoWhereInput = {
   estado: 'RECHAZADO',
-  NOT: { observacion: { startsWith: PREFIJO_ANULADO } },
+  NOT: { observacion: { startsWith: PREFIJO_REVERSION_INTERNA } },
 };
 
 type NivelHistorial = 'EXCELENTE' | 'BUENO' | 'REGULAR' | 'NUEVO';
@@ -955,7 +956,7 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
         // Un pago ANULADO por la inmo queda RECHAZADO con observacion interna
         // ('Anulado tras conciliar: …'): es una reversión operativa, NO un rechazo
         // de comprobante. Copy distinto y observacion NUNCA expuesta al inquilino.
-        const anulado = (p.observacion ?? '').startsWith(PREFIJO_ANULADO);
+        const anulado = (p.observacion ?? '').startsWith(PREFIJO_REVERSION_INTERNA);
         if (anulado) {
           out.push({
             id: `pago-anul-${p.id}`,

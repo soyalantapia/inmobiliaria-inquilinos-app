@@ -35,7 +35,17 @@ on:
 # Si se pushean tres commits seguidos, sólo interesa el último.
 concurrency:
   group: revision-${{ github.ref }}
-  cancel-in-progress: true
+  # En una RAMA sí: si se pushean tres commits seguidos, sólo interesa el veredicto del último.
+  #
+  # En `main` NO, y la diferencia importa: cada commit de `main` **se deploya a producción**, así
+  # que cada commit merece un veredicto propio. Cancelar ahí deja commits que salieron a
+  # producción sin que nadie los haya verificado nunca.
+  #
+  # No es teórico: al sumar el job `build` (3-4 min) la tasa de cancelación en `main` pasó de
+  # 3/40 a 7/40, y el que se cancelaba era SIEMPRE `build` — el más largo es el más expuesto,
+  # con pushes llegando cada pocos minutos. O sea que el job que se agregó para tapar el punto
+  # ciego de los builds era justo el que más veces no llegaba a correr.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   revision:

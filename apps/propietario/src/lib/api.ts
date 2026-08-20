@@ -176,6 +176,19 @@ export interface PropiedadPortal {
     moneda: 'ARS' | 'USD';
     desde: string;
     hasta: string;
+    /**
+     * Cuándo y con qué índice le sube el alquiler.
+     *
+     * `proximo` puede ser null: contratos viejos, o FIJO sin fecha cargada. Se dice que no
+     * hay fecha, NO se calcula una: si la inmobiliaria no la cargó, cualquier fecha que
+     * inventemos es una promesa que el sistema no puede sostener.
+     */
+    ajuste?: {
+      indice: string;
+      cadaMeses: number;
+      proximo: string | null;
+      ultimo: { desde: string; de: number; a: number; motivo: string | null } | null;
+    };
     inquilino: string | null;
     periodos: PeriodoInquilino[];
   } | null;

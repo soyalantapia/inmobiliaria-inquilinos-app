@@ -74,6 +74,13 @@ export const PROPIEDADES_DEMO: PropiedadPortal[] = [
       moneda: 'ARS',
       desde: '2025-09-01',
       hasta: '2028-08-31',
+      // Con el próximo ajuste cargado y un ajuste anterior: el caso completo.
+      ajuste: {
+        indice: 'ICL',
+        cadaMeses: 12,
+        proximo: '2026-09-01',
+        ultimo: { desde: '2025-09', de: 331000, a: 480000, motivo: 'ICL 12 meses (+45%)' },
+      },
       inquilino: 'Mariela Sosa',
       periodos: [
         { periodo: '2026-08', estado: 'PAGADO', monto: 480000, vence: '2026-08-05', pagoAt: '2026-08-11', condonada: false , pagado: null },
@@ -95,6 +102,8 @@ export const PROPIEDADES_DEMO: PropiedadPortal[] = [
       moneda: 'ARS',
       desde: '2023-09-01',
       hasta: '2026-08-31',
+      // Sin fecha próxima cargada: el portal lo DICE en vez de inventar una.
+      ajuste: { indice: 'IPC', cadaMeses: 6, proximo: null, ultimo: null },
       inquilino: 'Juan Pérez',
       periodos: [
         // Agosto sin pagar y ya vencido. La demo necesita mostrar el caso incómodo: es
@@ -118,6 +127,12 @@ export const PROPIEDADES_DEMO: PropiedadPortal[] = [
       moneda: 'ARS',
       desde: '2024-11-01',
       hasta: '2027-10-31',
+      ajuste: {
+        indice: 'FIJO',
+        cadaMeses: 12,
+        proximo: '2026-11-01',
+        ultimo: { desde: '2025-11', de: 600000, a: 720000, motivo: 'Ajuste fijo 20%' },
+      },
       inquilino: 'Carlos Romero',
       periodos: [
         { periodo: '2026-08', estado: 'PAGADO', monto: 720000, vence: '2026-08-05', pagoAt: '2026-08-04', condonada: false , pagado: null },
