@@ -2574,7 +2574,27 @@ solo lugar y se pueda testear — el estilo que ya usa `diasHasta` en ese mismo 
 
 ---
 
-## T-53-N1 · El OTP delataba si el email existe, por el tiempo de respuesta
+## T-53-N1 · El OTP delataba si el email existe, por el tiempo de respuesta — ✅ HECHA
+
+> ### ✅ Cerrada el 20/08. Ver `work-agent/tareas/T-53-N1/REQUISITOS.md`.
+>
+> **El bloqueo que la dejó abierta ya no existe:** decía que sus tests tocan la base y no se
+> podían correr. Desde T-01-N1-N1 la suite de integración corre —en CI y en local contra Docker—
+> así que la duda se contestó corriéndola.
+>
+> **Arreglado el OTP del inquilino** (`POST /auth/otp/request`), con el mismo patrón que el
+> portal: el bcrypt se calcula siempre y el envío SMTP no se espera. Su propio comentario decía
+> *"Respuesta idéntica exista o no"* y el cuerpo lo era; el tiempo no.
+>
+> **El del panel NO se tocó, y no es un olvido.** Ya revela la existencia a propósito, en el
+> cuerpo: devuelve `{ existe: false }` con un comentario que lo llama *"trade-off consciente"*
+> para poder mandar a `/registro`. Emparejar tiempos ahí sería teatro — la respuesta lo dice en
+> la primera línea. Cerrar ese canal es **decisión de producto**, y si se decide, el fix de
+> tiempos va JUNTO con sacar el `existe`: antes no cambia nada y da la sensación de que se
+> atendió.
+>
+> Verificado: `auth.test.ts` 12/12 contra base desde cero —ninguno dependía de que el mail
+> saliera antes de responder, que era la duda— y suite completa en verde.
 
 **Experto:** SEC + BE · **Prioridad:** 🟢
 **Origen:** revisión de seguridad del portal (19/08).
