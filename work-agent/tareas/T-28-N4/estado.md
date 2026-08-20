@@ -166,3 +166,45 @@ De los siete módulos de `lib/` sin cobertura que abrieron esta tarea quedan cua
 es de plata**: `auditoria` (32), `avisos-reclamo` (115), `reputacion-red` (179) y
 `estado-inicial-contrato` (164) — este último es el único que vale mirar, porque valida el
 estado inicial de un alta y de ahí salen 400 que el operador ve.
+
+---
+
+## Cuarta parte: `estado-inicial-contrato` — el alta de un contrato EN CURSO
+
+El último del relevamiento que valía. Al dar de alta un contrato con fecha de inicio pasada, el
+devengo genera todos los períodos vencidos **como si nadie hubiera pagado nunca**; este helper
+aplica lo que la inmobiliaria confirma en el wizard (cuáles se pagaron, cuáles a medias, cuáles
+se deben). Si se equivoca, el contrato entra a producción con la deuda mal **desde el minuto
+cero** — y esa deuda es lo que se le reclama a una persona real.
+
+**15 tests** con `tx` falso, sin base.
+
+### El caso que más valía está en las FECHAS
+
+Los pagos sintéticos se fechan en el **vencimiento de su cuota**, no en `new Date()`. El
+comentario del código cuenta qué pasó cuando no era así (bug de caja del 07/07): esa plata vieja
+caía en el **cierre de caja de HOY** como "cobrado hoy" —el dueño veía ingresos que nunca
+aprobó— y al inquilino le llegaba *"te validamos el pago de &lt;mes viejo&gt;"* como actividad
+reciente. Quedan fijados los tres campos (`fechaTransferencia`, `informadoAt`, `decididoAt`) y
+que **cada cuota use su propio vencimiento**, no todas el mismo.
+
+### Las validaciones que frenan un alta inconsistente
+
+- **Período repetido** → sin esto se crearían DOS pagos sintéticos para la misma cuota, y la
+  cuenta corriente arrancaría con el doble de lo pagado.
+- **Período que todavía no venció** → el estado inicial es historia, no futuro; marcarlo pagado
+  adelantaría plata que nadie cobró.
+- **PARCIAL sin monto** → un pago sintético de 0 dejaría la cuota PARCIAL sin nada pagado.
+- **PARCIAL que cubre el total** → obliga a marcarlo Pagado, para que estado y saldo no se
+  contradigan.
+- **Mora negativa recortada a 0** → si no, un dato mal tipeado *baja* la deuda.
+
+**Mutación 8/8.**
+
+Suite puro tras las cuatro partes: **57 archivos / 555 tests**. `tsc` en 0.
+
+## Relevamiento cerrado
+
+De los siete módulos de `lib/` sin cobertura, quedan tres y **ninguno toca plata**: `auditoria`
+(32 líneas), `avisos-reclamo` (115) y `reputacion-red` (179). La veta de plata sin tests que
+abrió este relevamiento **está agotada**.
