@@ -5013,7 +5013,23 @@ curl -s https://admin.myalquiler.com | grep build-commit
 verde— así que no bloquea nada, pero el meta se verificó leyendo el HTML que Next genera antes
 de ese paso. Queda anotado en T-02-N2.
 
-### T-02-N2 · El panel no compila en Windows
+### T-02-N2 · El panel no compila en Windows — ✅ HECHA
+
+> ### ✅ Resuelta el 20/08. Ver `work-agent/tareas/T-02-N2/REQUISITOS.md`.
+>
+> **Las opciones que parecían baratas no servían, y se comprobó.** `next/og` lee su fuente en el
+> TOP LEVEL de su módulo, así que revienta apenas se renderiza, antes de mirar ninguna prop:
+> `new ImageResponse(...).arrayBuffer()` tira `Invalid URL` con cualquier contenido. No hay
+> arreglo por configuración.
+>
+> **Lo que se hizo:** la imagen pasa a ser un PNG estático —**el mismo que ya estaba publicado**,
+> bajado de la landing, 1200×630 y 114.844 bytes, no cambió un pixel— con su `alt` en un `.txt`,
+> y el JSX se mueve a `_og/` (fuera del ruteo) como fuente regenerable, con las instrucciones
+> adentro.
+>
+> **Verificado:** `next build` del panel **en Windows da exit 0** y genera `out/` completo; el
+> PNG sale con el mismo nombre-hash y los mismos bytes; y la metadata queda igual (`og:image`,
+> type, width, height y alt).
 **Experto:** FE · **Prioridad:** 🟡 · **Depende de:** nada
 
 `next build` de `apps/inmobiliaria` termina en exit 1 en esta máquina:

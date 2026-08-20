@@ -1,9 +1,36 @@
 import { ImageResponse } from 'next/og';
 
 /**
- * Imagen Open Graph (1200×630) de la landing — la que se ve cuando compartís el
- * link por WhatsApp, X, etc. Generada con next/og (Satori), sin assets externos.
- * Next la asocia automáticamente a /inicio.
+ * FUENTE de la imagen Open Graph (1200×630) de la landing — la que se ve cuando compartís el
+ * link por WhatsApp, X, etc.
+ *
+ * **NO es una ruta.** Vive en `_og/`, y en el App Router una carpeta con guion bajo queda fuera
+ * del ruteo. Lo que Next sirve es el PNG hermano, `../opengraph-image.png`.
+ *
+ * POR QUÉ DEJÓ DE GENERARSE EN CADA BUILD. `next/og` —el `@vercel/og` que Next 14 trae
+ * bundleado— hace esto en el top level de su módulo:
+ *
+ *     fs.readFileSync(fileURLToPath(join(import.meta.url, '../noto-sans-....ttf')))
+ *
+ * Le pasa una URL a `path.join`. En POSIX queda `file:/...`, que Node acepta; en Windows
+ * convierte las barras y devuelve algo que no es una URL válida → `TypeError: Invalid URL`. Como
+ * la lectura es de módulo, revienta apenas se renderiza, sin importar qué opciones reciba
+ * `ImageResponse`: se probó y **no hay arreglo por configuración**.
+ *
+ * Resultado: `next build` del panel moría en Windows, que es donde se trabaja. El PNG de al lado
+ * es EXACTAMENTE el que este archivo generaba — se bajó de la landing publicada (1200×630,
+ * generado por este mismo código en Linux), así que la imagen no cambió ni un pixel.
+ *
+ * CÓMO REGENERARLA si cambia el diseño:
+ *   1. Editás este archivo.
+ *   2. Lo copiás a `../opengraph-image.tsx` (ahí sí es una ruta).
+ *   3. Buildeás en Linux, o dejás que lo haga CI, y bajás el PNG de la landing publicada.
+ *   4. Lo guardás como `../opengraph-image.png` y borrás el `.tsx` de la ruta.
+ *
+ * El `alt` vive en `../opengraph-image.alt.txt`, que es de donde Next lo toma para una imagen
+ * estática. Si lo cambiás acá, cambialo allá.
+ *
+ * Ver T-02-N2.
  */
 
 export const runtime = 'nodejs';
