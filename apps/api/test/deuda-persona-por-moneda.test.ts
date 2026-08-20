@@ -28,6 +28,10 @@ async function limpiar() {
   await prisma.pago.deleteMany({ where: { contratoId: { startsWith: P } } });
   await prisma.liquidacion.deleteMany({ where: { contratoId: { startsWith: P } } });
   await prisma.inquilino.deleteMany({ where: { contratoId: { startsWith: P } } });
+  // El historial va ANTES que el contrato: su FK es RESTRICT y desde que el alta escribe
+  // un evento CREADO (T-29), todo contrato creado por la API tiene al menos una fila acá.
+  // Se filtra por la relación para no repetir —ni desincronizar— el where de abajo.
+  await prisma.eventoContrato.deleteMany({ where: { contrato: { id: { startsWith: P } } } });
   await prisma.contrato.deleteMany({ where: { id: { startsWith: P } } });
   await prisma.propiedad.deleteMany({ where: { id: { startsWith: P } } });
   await prisma.persona.deleteMany({ where: { id: { startsWith: P } } });

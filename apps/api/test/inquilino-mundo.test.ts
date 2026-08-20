@@ -87,55 +87,43 @@ describe('Certificado del inquilino — calculado de liquidaciones reales', () =
   });
 });
 
-describe('Screening — informe simulado coherente con la identidad solicitada', () => {
-  it('el informe lleva EXACTAMENTE el cuit y nombre pedidos (sin mezclar personas)', async () => {
+describe('Screening — APAGADO hasta que haya una fuente real', () => {
+  /**
+   * Este bloque medía que el informe fabricado fuera "coherente": mismo CUIT → mismo score,
+   * la familia con el apellido pedido, el DNI sacado del medio del CUIT. Todo eso salía de un
+   * PRNG sembrado con el CUIT y se persistía como COMPLETO sobre una persona real.
+   *
+   * El endpoint se apagó a propósito (T-21-N3-N2) y devuelve 501. Los tests viejos quedaron
+   * midiendo un comportamiento que se eliminó, así que la suite estaba en rojo — y nadie lo
+   * había visto porque hasta ahora los tests de integración no se podían correr.
+   *
+   * Ahora fijan lo contrario: que NO se emita ningún informe. Si alguien reactiva el generador
+   * sin conectar una fuente real, esto se pone rojo.
+   */
+  it('POST /screening no emite ningún informe: 501 con el motivo', async () => {
     const res = await app.inject({
       method: 'POST',
       url: '/screening',
       headers: auth(tokenAdmin),
       payload: { cuit: '27-28456789-3', nombre: 'Valeria Núñez' },
     });
-    expect(res.statusCode).toBe(201);
-    const s = res.json();
-    expect(s.cuit).toBe('27-28456789-3');
-    expect(s.nombre).toBe('Valeria');
-    expect(s.apellido).toBe('Núñez');
-    expect(s.dni).toBe('28.456.789'); // los 8 del medio del CUIT
-    expect(s.sexo).toBe('F'); // prefijo 27
-    expect(s.email).toContain('valeria');
-    expect(s.estado).toBe('COMPLETO');
-    expect(s.scoreNosis).toBeGreaterThanOrEqual(0);
-    expect(s.scoreNosis).toBeLessThanOrEqual(1000);
-    expect(['APTO', 'APTO_CON_GARANTIA', 'NO_APTO']).toContain(s.recomendacion);
-    expect(s.recomendacionRazon).toContain(String(s.scoreNosis));
-    // El grupo familiar es coherente con el apellido solicitado
-    const familia = s.familia as Array<{ vinculo: string; nombreCompleto: string }>;
-    expect(familia.some((f) => f.nombreCompleto.endsWith('Núñez'))).toBe(true);
+    expect(res.statusCode).toBe(501);
+    expect(res.json().codigo).toBe('SCREENING_SIN_FUENTE');
   });
 
-  it('mismo CUIT → mismo perfil (determinístico)', async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: '/screening',
-      headers: auth(tokenAdmin),
-      payload: { cuit: '27284567893', nombre: 'Valeria Núñez' }, // sin guiones, se normaliza
-    });
-    expect(res.statusCode).toBe(201);
-    expect(res.json().cuit).toBe('27-28456789-3');
-    expect(res.json().scoreNosis).toBeDefined();
-  });
-
-  it('CUIT inválido → 400', async () => {
+  it('tampoco con un CUIT inválido: no hay forma de sacarle un informe', async () => {
+    // Antes esto daba 400 porque el zod corría primero. Da igual el input: 501 siempre.
     const res = await app.inject({
       method: 'POST',
       url: '/screening',
       headers: auth(tokenAdmin),
       payload: { cuit: '123', nombre: 'Valeria Núñez' },
     });
-    expect(res.statusCode).toBe(400);
+    expect(res.statusCode).toBe(501);
   });
 
-  it('rol CARGA no ve screening → 403', async () => {
+  it('el permiso sigue mandando: rol CARGA → 403, antes que el 501', async () => {
+    // El 501 no puede tapar el control de acceso: si mañana se reactiva, el guard ya está.
     const res = await app.inject({
       method: 'POST',
       url: '/screening',
@@ -145,12 +133,12 @@ describe('Screening — informe simulado coherente con la identidad solicitada',
     expect(res.statusCode).toBe(403);
   });
 
-  it('GET /screenings lista los del tenant (incluye scr_001 del seed)', async () => {
+  it('GET /screenings sigue listando lo YA guardado, scopeado al tenant', async () => {
+    // La lectura no se apagó: las filas fabricadas que puedan existir hay que poder verlas
+    // para decidir qué se hace con ellas. Lo que no se puede es crear más.
     const res = await app.inject({ method: 'GET', url: '/screenings', headers: auth(tokenAdmin) });
     expect(res.statusCode).toBe(200);
-    const lista = res.json();
-    expect(lista.find((s: { id: string }) => s.id === 'scr_001').apellido).toBe('Méndez');
-    expect(lista.length).toBeGreaterThanOrEqual(3);
+    expect(Array.isArray(res.json())).toBe(true);
   });
 });
 
