@@ -2883,7 +2883,22 @@ en cada PR.
 
 ---
 
-## T-28 · Cubrir con tests los flujos de plata que no tienen ninguno
+## T-28 · Cubrir con tests los flujos de plata que no tienen ninguno — 🟡 PARCIAL
+
+> ## ⚠️ El motivo por el que esta tarea se abandonó era FALSO — corregido el 20/08
+>
+> El `estado.md` de T-28 dice que los 5 endpoints no se pudieron testear porque los tests
+> *"pegan a la Postgres de producción"*. **No es cierto**, y es la misma afirmación que
+> contaminó ~10 archivos del repo. `docs/TESTING.md` dice lo contrario: prod corre con host
+> interno de Railway, **inalcanzable** desde una máquina de trabajo.
+>
+> Y desde el 19/08 existe `docker-compose.test.yml`: una Postgres local, efímera, que no
+> comparte nadie. **Verificada el 20/08 y funciona**: levanta, las 57 migraciones aplican desde
+> cero, y el suite completo corre —94 archivos, 786 tests, 22 minutos, **780 en verde**—. Era
+> justo lo que `docs/TESTING.md` pedía que alguien confirmara.
+>
+> O sea: **la cobertura de integración nunca estuvo bloqueada.** Continúa en **T-28-N1**, que ya
+> cerró `/cargos/:id/descobrar` y encontró ahí un bug de plata vivo en producción.
 
 **Experto:** QA + BE · **Prioridad:** 🟠 · **Depende de:** T-27
 
@@ -2912,6 +2927,120 @@ puro corrible sin base.
 ---
 
 ---
+
+---
+
+## T-28-N1 · Cerrar la cobertura de plata que T-28 dejó afuera — ✅ HECHA 20/08
+
+**Experto:** QA + BE · **Prioridad:** 🟠 · **Depende de:** nada
+**Origen:** continuación de T-28, cuyo motivo de abandono era falso (ver arriba).
+
+Se verificó que la base de test efímera funciona, se corrió el suite completo por primera vez en
+meses (780/786 en verde) y se cubrió `POST /cargos/:id/descobrar` — donde apareció **un bug de
+plata vivo en producción**, con su fix.
+
+**El bug.** `saldar` registra un `MovimientoCaja` de tipo `INGRESO_EXTRA` al marcar un cargo como
+cobrado. **`descobrar` limpiaba `saldadoAt` y no lo tocaba.** Lo que lo volvía caro es que el
+comentario que justificaba esa asimetría —*"la rendición filtra `tipo: 'GASTO'`, así que un
+INGRESO_EXTRA no le altera la liquidación al dueño"*— **fue cierto y dejó de serlo**: hoy la
+rendición levanta `tipo: 'INGRESO_EXTRA'` con `descontadoEnRendicion: false` y **se lo acredita
+al propietario**.
+
+- **Cobrado → Deshacer:** el inquilino vuelve a deber la plata **y** al dueño se le acredita igual.
+- **Cobrado → Deshacer → Cobrado:** **dos** ingresos por una sola cobranza, los dos rendibles.
+  Una reparación de $180.000 se le rinde dos veces.
+
+El camino no es raro: el corte anti-doble-cobro de `imputarCostoReclamo` **manda al operador a
+deshacer** para poder reimputar, y el botón está a un click de *Cobrado*.
+
+**El fix.** Borrar el movimiento en la misma transacción que limpia `saldadoAt`. Si esa plata ya
+se le rindió al propietario → **409** sin tocar nada (borrarlo dejaría a la rendición apuntando,
+por `IngresoRendido.refId`, a una fila inexistente). Se miran las **dos** señales de rendido:
+`descontadoEnRendicion` y el ledger — en multi-dueño la marca recién se pone cuando las partes
+cubren el total, así que un movimiento rendido a medias sólo lo delata el ledger.
+
+**Sin cambios de front:** `cargos-contrato-card.tsx` ya muestra `e.message` en un toast y
+`apiFetch` propaga el `message` del server. Verificado, que es justo lo que T-40 y T-43 tuvieron
+que arreglar dos veces.
+
+**Tests.** `apps/api/test/descobrar-cargo.test.ts`, 5 casos. **Verificados por mutación**: con el
+fix revertido y base limpia, 4 se ponen en rojo; el quinto pasa en los dos casos porque no
+ejercita el bug. Detalle en `work-agent/tareas/T-28-N1/estado.md`.
+
+---
+
+## T-28-N1-N1 · `MovimientoCaja` no tiene `cargoId`: el vínculo con el cargo es un string
+
+**Experto:** BE + DATA · **Prioridad:** 🟡 · **Depende de:** decisión del dueño (schema)
+**Origen:** T-28-N1, al arreglar `descobrar`.
+
+`saldar` crea un `INGRESO_EXTRA` por el cargo cobrado y `descobrar` ahora lo borra. Pero **no hay
+FK**: el único vínculo es el TEXTO de la descripción (`Cobro de cargo al inquilino: <concepto>`).
+El fix acota por contrato + tipo + monto + moneda y borra uno solo, lo cual es correcto en el
+caso normal.
+
+**Dónde falla:** dos cargos con el **mismo concepto, mismo monto y misma moneda** en el mismo
+contrato son indistinguibles. Deshacer uno puede borrar el movimiento del otro.
+
+**Qué hay que hacer.** `cargoId String?` con FK a `CargoContrato` en `MovimientoCaja`, escribirlo
+en `saldar`, matchear por ahí en `descobrar`. Es **cambio de schema** y CLAUDE.md §0 obliga a
+consultarlo: por eso T-28-N1 no lo tomó por su cuenta.
+
+**Criterio de aceptación.** Dos cargos idénticos en concepto/monto/moneda sobre el mismo
+contrato: cobrar los dos, deshacer uno, y que quede vivo exactamente el movimiento del otro.
+
+---
+
+## T-28-N1-N2 · `multi-alquiler.test.ts` está en rojo, y no es contaminación de estado
+
+**Experto:** BE · **Prioridad:** 🟠 · **Depende de:** nada
+**Origen:** T-28-N1, primera corrida del suite completo contra una base real.
+
+**Estado verificado el 20/08.** Falla **en una base creada desde cero**, corriendo el archivo
+solo: no es residuo de correr 94 archivos en fila.
+
+El caso es *"otra persona (DISTINTO DNI) con el MISMO email → 409"*. Crea un contrato para una
+persona con DNI distinto y el email de otra, y **espera 409**. La API devuelve **200**.
+
+**Lo verificado, para no volver a averiguarlo:**
+- El índice único **existe** en la base: `personas_inmobiliariaId_email_key`.
+- El guard que devuelve ese 409 **existe** y vive dentro de `POST /contratos`
+  (`routes/core.ts:1505-1511`), pero es un `catch` de **P2002**: sólo dispara si la base rechaza
+  el insert.
+- No hubo P2002. Después de correr el test, **una sola** `Persona` tiene ese email (la primera):
+  la segunda persona **nunca se creó**.
+
+O sea que el handler no llega a chocar contra el unique. Falta averiguar a qué queda enganchado
+el contrato de la segunda persona, y **las dos salidas posibles son defecto**: o queda bajo la
+identidad de login de un tercero (que entonces ve un contrato ajeno), o queda sin `Persona` y ese
+inquilino no puede entrar nunca.
+
+**No se arregló en T-28-N1** porque no es su tarea y porque el arreglo depende de qué se decida
+que debe pasar. Lo que no puede quedar es el test en rojo sin dueño.
+
+---
+
+## T-28-N1-N3 · Quedan 3 endpoints de plata sin cobertura, y ahora sí se pueden testear
+
+**Experto:** QA + BE · **Prioridad:** 🟡 · **Depende de:** nada
+**Origen:** T-28-N1.
+
+De los 5 que listaba T-28: `descobrar` lo cerró T-28-N1 y `/aprobaciones` ya tenía. Faltan
+**`GET /caja/cierre`**, **`POST /internal/cron/devengar`** y **`GET /mis-cargos`**.
+
+**El bloqueo era falso** (ver T-28). Con `docker-compose.test.yml` corren en local. Los de mayor
+riesgo, en orden:
+
+1. **`/caja/cierre` — NaN silencioso.** Una liquidación con total 0 (SOLO_EXPENSAS sin expensas
+   cargadas) vuelve `NaN` la comisión del pago, del acumulado y del total; `JSON.stringify` lo
+   serializa como `null` y la cajera cierra el día sin comisión **sin que nada falle**.
+2. **`/caja/cierre` — comisión sobre expensas.** Va sobre la porción de alquiler, no sobre
+   `montoTotal`. Al 8%, ~$8.000/mes de más por contrato con expensas.
+3. **`/internal/cron/devengar` — aislamiento de fallos.** Un contrato con datos malos ya dejó sin
+   facturar a **todas** las inmobiliarias una vez. Hoy lo frena un try/catch por contrato que
+   **ningún test ejercita**. Se cubre **sin base**, con un cliente Prisma falso: la orquestación
+   es pura.
+
 
 ## T-29 · Los eventos de contrato que nunca se escriben
 
