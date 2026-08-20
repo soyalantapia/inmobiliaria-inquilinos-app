@@ -107,7 +107,21 @@ export interface DefinicionCapacidad {
   label: string;
   /** Roles que tienen la capacidad directamente (sin necesidad de PIN). */
   roles: Rol[];
-  /** Si requiere PIN extra para confirmarse. */
+  /**
+   * Si requiere PIN extra para confirmarse.
+   *
+   * ⚠️ HOY NINGUNA CAPACIDAD LO DECLARA, y no es un descuido: **el PIN se eliminó de la
+   * plataforma por decisión de producto** — `apps/api/src/auth/pin.ts` siempre aprueba.
+   *
+   * Siete capacidades de plata lo tenían en `true` (confirmar pago, revertir conciliación,
+   * rendir al propietario, devolver depósito…) y la matriz de permisos del panel le pintaba
+   * un candado al admin diciendo *"piden el PIN del usuario"*. Era falso, y en la peor
+   * pantalla para serlo: es donde alguien va a entender qué protege su sistema.
+   *
+   * El campo se deja para que volver a habilitarlo sea una línea. Si lo hacés, **hay que
+   * cablear el server también**: hay un test que no te va a dejar declararlo mientras
+   * `pin.ts` siga siendo el stub que aprueba todo (`test/pin-coherencia.test.ts`).
+   */
   requierePin?: boolean;
   /** Roles cuya acción queda pendiente de aprobación por un ADMIN. */
   rolesAprobacion?: Rol[];
@@ -165,13 +179,13 @@ export const CAPACIDADES: DefinicionCapacidad[] = [
   // SOLO ADMIN + CAJA. Antes también OPERADOR, y era lo que la administradora marcó
   // como mal: "operador y carga limitada me está dando que puede pagar" → "nadie
   // puede autorizar un pago" salvo la caja y ella.
-  { key: 'pago.conciliar', label: 'Confirmar pago', roles: ['ADMIN', 'CAJA'], requierePin: true, grupo: 'sensible' },
-  { key: 'pago.rechazar', label: 'Rechazar pago', roles: ['ADMIN', 'CAJA'], requierePin: true, grupo: 'sensible' },
-  { key: 'pago.revertir', label: 'Revertir conciliación', roles: ['ADMIN'], requierePin: true, grupo: 'sensible' },
-  { key: 'contrato.aprobar', label: 'Aprobar contrato cargado', roles: ['ADMIN'], requierePin: true, grupo: 'sensible' },
-  { key: 'rendicion.confirmar', label: 'Rendir a propietario', roles: ['ADMIN'], requierePin: true, grupo: 'sensible' },
-  { key: 'deposito.devolver', label: 'Devolver depósito', roles: ['ADMIN'], requierePin: true, grupo: 'sensible' },
-  { key: 'caja.eliminar', label: 'Eliminar gasto de caja', roles: ['ADMIN'], requierePin: true, grupo: 'sensible' },
+  { key: 'pago.conciliar', label: 'Confirmar pago', roles: ['ADMIN', 'CAJA'], grupo: 'sensible' },
+  { key: 'pago.rechazar', label: 'Rechazar pago', roles: ['ADMIN', 'CAJA'], grupo: 'sensible' },
+  { key: 'pago.revertir', label: 'Revertir conciliación', roles: ['ADMIN'], grupo: 'sensible' },
+  { key: 'contrato.aprobar', label: 'Aprobar contrato cargado', roles: ['ADMIN'], grupo: 'sensible' },
+  { key: 'rendicion.confirmar', label: 'Rendir a propietario', roles: ['ADMIN'], grupo: 'sensible' },
+  { key: 'deposito.devolver', label: 'Devolver depósito', roles: ['ADMIN'], grupo: 'sensible' },
+  { key: 'caja.eliminar', label: 'Eliminar gasto de caja', roles: ['ADMIN'], grupo: 'sensible' },
   { key: 'plan.upgrade', label: 'Cambiar plan / facturación', roles: ['ADMIN'], grupo: 'sensible' },
   { key: 'equipo.gestionar', label: 'Gestionar equipo y permisos', roles: ['ADMIN'], grupo: 'sensible' },
   { key: 'sociedades.gestionar', label: 'Gestionar sociedades', roles: ['ADMIN'], grupo: 'sensible' },
