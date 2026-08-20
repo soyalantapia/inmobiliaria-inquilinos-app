@@ -1173,34 +1173,50 @@ NEXT_PUBLIC_POSTHOG_HOST=
 
 ## 14. PROMESAS PÚBLICAS QUE HOY NO TIENEN RESPALDO EN CÓDIGO
 
-> Esto **no es deuda de documentación**: lo ve un prospecto o un inquilino real. Ninguna de las
-> cuatro capacidades del brief está construida, pero cuatro superficies siguen anunciándolas.
-> Verificado el 19/08/2026.
+> **Reverificado el 20/08/2026, archivo por archivo.** De las cuatro que listaba esta sección,
+> **dos ya están arregladas y dos siguen**. Se deja el estado de cada una con la evidencia,
+> porque una lista vieja de promesas es peor que ninguna: da por vivo lo que ya se cerró y
+> tapa lo que falta.
 
-1. **El onboarding del inquilino, que corre EN PRODUCCIÓN.** Se monta sin gate de `apiEnabled`
-   (`apps/inquilino/src/app/(app)/layout.tsx`), así que lo ve todo inquilino real. Dice
-   textual: *"Una IA que leyó tus cláusulas y te responde al instante"* y *"Te cita la cláusula
-   exacta del contrato"*, con un CTA *"Probar el Asistente"* que lleva a `/broker` — que en
-   producción devuelve **"Próximamente"**. El botón central del nav, el más prominente del
-   mobile, se llama **"Asistente"** y va al mismo lugar.
-   *(`components/onboarding.tsx:81-88`, `components/nav-bar.tsx:36`, `broker/page.tsx:113`)*
+| # | superficie | estado |
+|---|---|---|
+| 1 | Onboarding del inquilino (**producción**) | ✅ **ARREGLADA** |
+| 2 | Demo público de GitHub Pages | ⚠️ **SIGUE** — y es decisión del dueño (§1.5) |
+| 3 | Landing `/precios` | ✅ **ARREGLADA** |
+| 4 | `package.json` | ✅ **ARREGLADA** (20/08) |
 
-2. **El demo público de GitHub Pages.** Como se construye sin `NEXT_PUBLIC_API_URL`, corre en
-   modo demo: `/contratos/nuevo` muestra **"Extrayendo datos con IA · Claude está leyendo el
-   contrato"** con un checklist falso y datos hardcodeados, y la simulación de screening dice
-   *"Validando identidad contra RENAPER y ARCA"* y firma el PDF con *"Fuentes: Nosis, BCRA,
-   ARCA"*. Sobre datos inventados.
+**1. ✅ El onboarding del inquilino.** Era la peor de las cuatro: se monta sin gate de
+`apiEnabled`, así que la veía **todo inquilino real**. Prometía *"Una IA que leyó tus cláusulas
+y te responde al instante"* con un CTA a `/broker`, que en producción devuelve "Próximamente" —
+y el botón central del nav, el más prominente del mobile, iba al mismo lugar.
+**El slide y el botón se sacaron**, y el porqué quedó escrito en el código
+(`components/onboarding.tsx:78-89`, `components/nav-bar.tsx:35`).
 
-3. **La landing `/precios`.** Vende *"Cobranzas con IA"*, *"Negociador IA al renovar"* (que este
-   mismo documento pone en el roadmap 2027) e *"IA carga 200+ contratos en minutos"* —
-   describiendo la importación de Excel, que es determinística y no usa IA.
+**2. ⚠️ El demo público de GitHub Pages.** Sigue igual: `/contratos/nuevo` muestra *"Extrayendo
+datos con IA · Claude está leyendo el contrato"* con un checklist falso
+(`contratos/nuevo/page.tsx:392`), y la simulación de screening dice *"Validando identidad contra
+RENAPER y ARCA"* (`screening/page.tsx:74`) y firma el PDF con *"Fuentes: Nosis, BCRA, ARCA"*
+(`screening/page.tsx:731`), sobre datos inventados.
 
-4. **`package.json`** describe el producto como *"(alquiler + expensas + chat IA + screening)"*.
+> **Esto NO se toca sin decisión del dueño.** El demo existe para mostrar las cuatro
+> capacidades del brief, y si siguen siendo parte del producto es exactamente lo que tiene que
+> mostrar. Es la decisión abierta de **§1.5**, no un bug.
 
-**Ninguna de estas cuatro se toca sin decisión del dueño** (ver §1.5), pero **ninguna debería
-quedar como está.** Están anotadas como tareas en `work-agent/09-TAREAS-REUNION-CAMILA.md`.
+**3. ✅ La landing.** Ya no vende ninguna de las cuatro: en todo
+`app/(landing)/` no queda una sola mención de IA como feature — las dos que aparecen son
+comentarios sobre los crawlers que extraen el schema de FAQ, no copy visible.
+
+**4. ✅ `package.json`.** Describía el producto como *"(alquiler + expensas + chat IA +
+screening)"*. Corregido el 20/08 a lo que el producto hace.
+
+**Un cabo suelto que esta sección no mencionaba:** hay un **"Negociador IA"** con componente
+propio (`components/negociador-renovacion.tsx`) y pantalla (`renovaciones/`), más menciones en
+el diálogo de planes y en referidos. El roadmap de §12 lo pone en **v2 (2027)**. Verificado:
+**todo eso está detrás de `!apiEnabled`** —los dos renders del panel, y la configuración corta
+antes con `<ConfiguracionProd />`— así que **la inmobiliaria real no lo ve**; sale sólo en el
+demo. Cae bajo el mismo paraguas que el punto 2.
 
 ---
 
-**Última actualización:** 19/08/2026 — auditoría contra el código (T-21-N3-N1).
+**Última actualización:** 20/08/2026 — §14 reverificada archivo por archivo (dos de las cuatro promesas ya estaban arregladas). El resto del archivo: auditoría del 19/08/2026 (T-21-N3-N1).
 **Estado:** §0 y §9 vigentes. El resto, marcado sección por sección.
