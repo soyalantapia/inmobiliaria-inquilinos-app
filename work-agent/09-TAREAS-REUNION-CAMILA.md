@@ -2299,6 +2299,41 @@ la mora sale igual desde los 16 lugares que la calculan.
 
 ---
 
+## T-62 · La bandeja prometía un saldo que al validar valía cero — ✅ RESUELTO
+
+**Experto:** BE · **Prioridad:** 🟡 · **Presentación** (no cambia plata cobrada)
+**Origen:** revisión adversarial del motor de cobranza (20/08). Último confirmado de esa tanda.
+
+**El caso.** Liquidación de $600.000, vence el 10/08, mora 0,15% diario ($900/día). El inquilino
+informa el 15/08 por **$604.500** — exactamente lo que le mostró su app. La inmobiliaria lo valida
+el 18/08. Durante esos tres días `GET /pagos` calculaba la mora con **hoy** ($607.200) y la
+bandeja renderizaba *"si lo validás queda $2.700"*. Pero `POST /pagos/:id/validar` congela la mora
+en la **fechaTransferencia** del pago: al validar da $604.500, cobrado $604.500, saldo **$0**. Los
+$2.700 no existieron nunca — eran los días que el informe pasó esperando que alguien lo mirara, y
+no los debía nadie. El fantasma crecía $900 por cada día de demora en decidir.
+
+**Qué se hizo.** La decisión de con qué instante se corta la mora pasó a `asOfMora`
+(`lib/punitorios.ts`), que es lo único que consultan las dos rutas: así no pueden volver a
+discrepar. Es exacto **por fila** porque el índice parcial `pagos_liquidacionId_informado_key`
+garantiza un único INFORMADO por liquidación — o sea, el que se está por validar. Un RECHAZADO no
+congela nada.
+
+**Lo que NO se hizo, y es la mitad del hallazgo.** La revisión pedía propagar el congelado a
+`deudaTotal` (`core.ts:271`) y al KPI de morosidad (`metricas.ts:126`), estimando *"~$108.000 de
+deuda inventada en el dashboard con 40 pagos esperando validación"*. **Ahí no corresponde, y esa
+deuda no está inventada: está sin verificar.** La `fechaTransferencia` la carga el inquilino, con
+backdate de hasta 30 días — el guard de `/pagos/informar` existe justamente porque se
+auto-condonaban punitorios fechando antes del vencimiento. Un KPI que la respetara dejaría que
+cualquiera se borre de la lista de morosos informando un pago que no existe, y encima quedaría
+escondido hasta que alguien lo rechace. En la bandeja no aplica: ahí el operador está mirando esa
+fila justo para decidirla. **Un pago INFORMADO es un reclamo sin verificar, no una deuda saldada.**
+
+**Tests.** 7 puros en `mora-congelada-al-informar.test.ts`: los cinco casos de la regla (incluido
+que el INFORMADO gana sobre una liq ya PAGADA, porque es lo que validar va a usar) y la aritmética
+del caso real, con el fantasma creciendo día a día. Los 536 puros que ya existían siguen verdes.
+
+---
+
 ## T-61 · Un ajuste posterior a una renovación ya cargada queda anulado en el devengo
 
 **Experto:** BE · **Prioridad:** 🟠 · **Toca plata** · **No se arregló: ver por qué**

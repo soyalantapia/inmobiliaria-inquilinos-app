@@ -22,7 +22,7 @@ import { descripcionDeReparacion } from '../lib/descripcion-gasto-rendido.js';
 import { sePuedeBorrarGastoDeCaja } from '../lib/borrar-gasto-caja.js';
 import { conSaldo, montoPagadoPorLiquidacion } from '../lib/saldos.js';
 import { registrarEventoContrato } from '../lib/evento-contrato.js';
-import { calcularMora, resolverEsquemaMora } from '../lib/punitorios.js';
+import { calcularMora, resolverEsquemaMora, asOfMora } from '../lib/punitorios.js';
 import { registrarEvento } from '../lib/auditoria.js';
 import { aplicarDepositoADeuda } from '../lib/aplicar-deposito.js';
 import { estadoDepositoContrato } from '../lib/deposito.js';
@@ -328,13 +328,10 @@ export async function plataRoutes(app: FastifyInstance) {
     const hoy = new Date();
     return pagos.map((p) => {
       const base = Number(p.liquidacion.montoTotal);
-      // Una liq PAGADA congela la mora en su fechaPago (mismo criterio que
-      // /mis-liquidaciones): sin esto la bandeja mostraba un saldo fantasma
-      // que seguía creciendo sobre liquidaciones ya cerradas.
-      const asOf =
-        p.liquidacion.estado === 'PAGADO' && p.liquidacion.fechaPago
-          ? new Date(p.liquidacion.fechaPago)
-          : hoy;
+      // Congela la mora del renglón igual que lo hará validar (ver `asOfMora`):
+      // es exacto por fila porque el índice parcial `pagos_liquidacionId_informado_key`
+      // garantiza un único INFORMADO por liquidación — o sea, el que se está por validar.
+      const asOf = asOfMora(p, p.liquidacion, hoy);
       const punitorio = calcularMora(
         base,
         resolverEsquemaMora(p.contrato, inmo),

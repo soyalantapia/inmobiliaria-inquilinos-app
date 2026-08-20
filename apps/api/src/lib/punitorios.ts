@@ -15,7 +15,8 @@ import { diaCivilAR } from '@llave/shared';
  *  - SIN_MORA:          0
  *
  * `asOf`: hoy para una liquidación impaga (sigue corriendo); la fecha de pago
- * para una ya PAGADA (la mora se congela cuando se saldó).
+ * para una ya PAGADA (la mora se congela cuando se saldó). Para elegirlo cuando
+ * hay un pago de por medio, usar `asOfMora` (abajo).
  */
 export interface EsquemaMora {
   tipo: TipoMora;
@@ -133,4 +134,32 @@ export function calcularPunitorio(
     fechaVencimiento,
     asOf,
   );
+}
+
+/**
+ * Con qué instante se corta la mora de una liquidación que tiene un pago asociado.
+ *
+ * Existe para que la BANDEJA DE VALIDACIÓN y `POST /pagos/:id/validar` no puedan
+ * discrepar. El renglón "si lo validás queda $X" es una PREDICCIÓN de lo que va a
+ * hacer validar, y validar congela la mora en la `fechaTransferencia` del pago que
+ * está validando. Mientras la bandeja calculaba con `hoy`, cada día de demora en
+ * decidir inventaba un saldo residual que al validar valía cero.
+ *
+ * DÓNDE **NO** VA. En `deudaTotal` (core.ts) ni en las métricas de morosidad
+ * (metricas.ts). Ahí un INFORMADO no puede congelar nada: la `fechaTransferencia`
+ * la carga el inquilino —con backdate de hasta 30 días, ver el guard de
+ * /pagos/informar— y todavía nadie verificó que la plata haya entrado. Si el KPI
+ * de mora la respetara, cualquiera se borraría de la lista de morosos informando
+ * un pago que no existe, y encima quedaría escondido hasta que alguien lo rechace.
+ * En la bandeja no aplica: ahí el operador está mirando esa fila para decidirla.
+ */
+export function asOfMora(
+  pago: { estado: string; fechaTransferencia: Date },
+  liquidacion: { estado: string; fechaPago: Date | null },
+  hoy: Date,
+): Date {
+  if (pago.estado === 'INFORMADO') return new Date(pago.fechaTransferencia);
+  if (liquidacion.estado === 'PAGADO' && liquidacion.fechaPago)
+    return new Date(liquidacion.fechaPago);
+  return hoy;
 }
