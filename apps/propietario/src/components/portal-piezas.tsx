@@ -69,7 +69,15 @@ export function ListaReclamos({ reclamos }: { reclamos: ReclamoPortal[] }) {
               {etiqueta(r.estado)}
             </Badge>
             <span className="text-xs text-muted-foreground">{etiqueta(r.categoria)}</span>
-            <span className="text-xs text-muted-foreground">· {r.complejo ?? r.direccion}</span>
+            {/* El complejo NO reemplaza a la calle: reemplazarla hacía que dos unidades del
+                mismo edificio se vieran idénticas —"Consorcio Gorriti 4521" en las dos— y el
+                dueño no sabía de cuál le estaban hablando. Y si no hay ninguno de los dos, no
+                va el separador solo: quedaba un '·' colgando sin nada al lado. */}
+            {(r.complejo || r.direccion) && (
+              <span className="text-xs text-muted-foreground">
+                · {r.complejo && r.direccion ? `${r.complejo} — ${r.direccion}` : (r.complejo ?? r.direccion)}
+              </span>
+            )}
           </div>
           <p className="text-sm">{r.descripcion}</p>
           <p className="text-xs text-muted-foreground">
@@ -152,7 +160,7 @@ export function FilaRendicion({
         <div className="min-w-0">
           <p className="font-medium">{periodoLargo(r.periodo)}</p>
           <p className="text-xs text-muted-foreground">
-            Te depositamos el {fecha(r.rendidoAt)} · {r.metodo.toLowerCase()}
+            Te depositamos el {fecha(r.rendidoAt)} · {etiqueta(r.metodo)}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -241,9 +249,6 @@ export function FilaRendicion({
                   rendicion={detalle.data}
                   propietario={propietario}
                   inmobiliaria={inmobiliaria}
-                  periodoLargo={periodoLargo(r.periodo)}
-                  money={plata}
-                  fecha={fecha}
                 />
               </div>
             </div>

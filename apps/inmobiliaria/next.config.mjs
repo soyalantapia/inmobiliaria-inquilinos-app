@@ -55,6 +55,11 @@ const nextConfig = {
           afterFiles: [
             { source: '/propietario', destination: '/propietario/index.html' },
             { source: '/propietario/:ruta*', destination: '/propietario/:ruta*/index.html' },
+            // Cualquier ruta del portal que no exista cae en SU 404, no en el del panel.
+            // Sin esto, un dueño que se equivoca de link termina en la pantalla de error del
+            // back office de la inmobiliaria, con sus links a Contratos y Caja. El portal
+            // exporta su propio `404.html`.
+            { source: '/propietario/:ruta*', destination: '/propietario/404.html' },
           ],
           fallback: [],
         }),

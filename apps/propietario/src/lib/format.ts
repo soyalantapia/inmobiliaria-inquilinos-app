@@ -88,6 +88,10 @@ const ETIQUETAS: Record<string, string> = {
   CALEFACCION: 'calefacción', OTRO: 'otro',
   // PagadorReclamo
   PROPIETARIO: 'propietario', INQUILINO: 'inquilino', DEPOSITO: 'depósito',
+  // MetodoPago, para el "te depositamos el … por X" de la rendición y su imprimible.
+  // `MERCADOPAGO` salía como 'mercadopago', todo junto: el nombre del enum, no el de la marca.
+  TRANSFERENCIA: 'transferencia', MERCADOPAGO: 'Mercado Pago', EFECTIVO: 'efectivo',
+  CHEQUE: 'cheque', QR: 'QR', CRIPTO: 'cripto',
 };
 
 export const etiqueta = (valor: string): string =>

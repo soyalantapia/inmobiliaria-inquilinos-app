@@ -103,3 +103,15 @@ describe('money — centavos', () => {
     expect(money(900, 'USD')).toMatch(/US\$/);
   });
 })
+
+describe('etiqueta — métodos de pago', () => {
+  it('MERCADOPAGO es una marca, no un enum en minúscula', () => {
+    // Salía "mercadopago", todo junto, en "te depositamos el 10 de ago por mercadopago".
+    expect(etiqueta('MERCADOPAGO')).toBe('Mercado Pago');
+  });
+
+  it('el resto va en minúscula, que es como se lee en la frase', () => {
+    expect(etiqueta('TRANSFERENCIA')).toBe('transferencia');
+    expect(etiqueta('EFECTIVO')).toBe('efectivo');
+  });
+})
