@@ -384,7 +384,7 @@ Servicios: `myalquiler-back` (api-production-262e) · `myalquiler-front` (admin.
 5. Repo `soyalantapia/inmobiliaria-inquilinos-app`. El gh token está **sin `workflow`
    scope** → no toques `.github/workflows/`. Pushear a `main` está OK en este repo.
 
-Tenant real: **Tapia Propiedades** · admin `alannaimtapia@gmail.com` / `Tapia.2026!` /
+Tenant real: **Tapia Propiedades** · admin `alannaimtapia@gmail.com` — la contraseña **no va en el repo**: la tiene el dueño. Ver §Credenciales en `work-agent/00-ESTADO.md`.
 PIN `1234`. (Verificá contra la DB antes de asumir que la data de ejemplo sigue.)
 
 ---
