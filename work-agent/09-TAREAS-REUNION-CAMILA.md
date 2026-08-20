@@ -2342,6 +2342,71 @@ la mora sale igual desde los 16 lugares que la calculan.
 
 ---
 
+## T-65 · El arreglo que cerró el profesional no se le cobraba a nadie — ✅ RESUELTO
+
+**Experto:** BE · **Prioridad:** 🔴 · **Toca plata**
+**Origen:** riesgo 🔴 Nivel 1 **#2** de `work-agent/07-ECOSISTEMA.md`. Son dos agujeros distintos
+en el mismo endpoint, y los dos son la misma clase de error: **un guard que quedó inline en
+`/resolver` y nunca se mudó al helper compartido**, así que el camino del link mágico lo esquiva.
+
+---
+
+### A · Imputar al DEPÓSITO sin depósito vivo
+
+`POST /reclamos/:id/resolver` chequea que haya depósito `RETENIDO` antes de crear un
+`CargoContrato` con `contraDeposito` (`operacion.ts:578-590`). El helper compartido no lo
+replicaba, así que `POST /visitas-publicas/listo` podía crear ese cargo sobre un contrato **sin
+depósito** —o con el depósito ya devuelto, neteado o ejecutado—. Ese cargo **nace incobrable por
+los cuatro caminos**: no aparece en `/depositos/en-custodia` (filtra RETENIDO), está excluido de
+`/mis-cargos`, `/cargos/:id/saldar` lo rechaza y saldar-deuda lo ignora.
+
+**Es una regresión de patrón, no un descuido, y hay fecha.** El commit `242db1b9` (26/07) se
+llama literal *"guard anti-doble-cobro en el helper compartido, **no sólo en /resolver**"* y fijó
+la regla del choke point. **Ese mismo día**, `afb9efe9` agregó el guard de depósito **inline en
+`/resolver` únicamente**. El de `yaRendido` se mudó; el de depósito quedó atrás.
+
+**Qué se hizo.** `ReclamoDepositoNoDisponible extends ReclamoNoReimputable` y el guard dentro de
+`imputarCostoReclamo`. Como hereda de la base, **los dos `catch` existentes ya la mapean a 409
+sin tocar ninguna ruta**. La ubicación importa: va **después** de los dos early-returns (el de
+`saldadoAt` y el de `!pagador || costo <= 0`) — si fuera antes, resolver el depósito (que salda
+los cargos `contraDeposito`) pasaría de 200 a 409.
+
+### B · El costo cerrado sin pagador, irrecuperable
+
+`/visitas-publicas/listo` escribe `costoTrabajo` y pone el reclamo en RESUELTO, pero el `pagador`
+sólo lo escriben `/clasificar` y `/resolver`, **y los dos rebotaban con 409 una vez cerrado**.
+Con `pagador: null` el helper hace early-return: **no se le cobra a nadie**, y no había forma de
+arreglarlo.
+
+**Y es el default del camino más rápido.** El diálogo de asignar profesional del panel
+(`asignar-profesional-dialog.tsx`) pega directo a `/reclamos/:id/asignar` y abre el WhatsApp con
+el link mágico **sin pasar nunca por la clasificación** — la card de asignar ni siquiera está
+deshabilitada cuando falta el pagador. `pagador: null` no es un caso raro.
+
+**Qué se hizo.** El rescate va en `/clasificar`, acotado a `RESUELTO` + costo > 0 + `pagador ==
+null`. Ahí el motivo del guard de estado no aplica: no hay ningún `CargoContrato` previo que
+quede colgado, porque con `pagador: null` el helper nunca creó uno. Los dos casos peligrosos —ya
+rendido al dueño, ya cobrado al inquilino— **los corta el propio helper**. El candado del
+`updateMany` pasa a ser `pagador: null` en vez del estado, así que dos operadores simultáneos no
+se pisan.
+
+**Por qué NO se relajó `/resolver`, que era lo primero que se pensó.** Ese endpoint incrementa
+`cantTrabajos` —y `/listo` ya lo incrementó, o sea **+2 trabajos por uno** en la reputación del
+profesional—, pisa `resueltoAt` (ancla del SLA **y** filtro de período de la rendición) y dispara
+un **segundo mail** al inquilino. `/clasificar` no toca nada de eso.
+
+**Tests.** 9 **puros** en `imputar-reclamo-deposito.test.ts` (el helper recibe el `tx`, así que se
+testea con un doble y sin base) — **verificados en rojo**: sin el guard, 4 de los 9 fallan. Más 6
+de integración en `clasificar-rescata-cierre-sin-pagador.test.ts` para el rescate, que corre el
+job `integracion` de la CI.
+
+**Lo que queda, y es de UX — no lo tomo por mi cuenta.** La **prevención** sería que el panel no
+deje mandar un profesional sin haber clasificado quién paga (deshabilitar la card de asignar
+mientras `pagador` sea null, o pedirlo en el mismo diálogo). Eso cambia cómo se ve el producto al
+operador, así que lo define el dueño. Hoy queda cubierta la recuperación, no la prevención.
+
+---
+
 ## T-64 · Cambiar el modo de cobranza con un comprobante esperando validación — ✅ RESUELTO
 
 **Experto:** BE · **Prioridad:** 🔴 · **Toca plata**
