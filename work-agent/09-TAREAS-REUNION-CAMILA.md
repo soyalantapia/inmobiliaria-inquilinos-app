@@ -2179,6 +2179,74 @@ real y deja el diálogo abierto para corregir, y el camino feliz guarda y refres
 
 ---
 
+## T-52 · "Cobrado y sin rendir" contaba plata que nadie va a rendir nunca — ✅ RESUELTO
+
+**Experto:** BE · **Prioridad:** 🟠
+**Origen:** revisión de seguridad del portal del propietario (19/08). Lo encontraron **dos
+dimensiones por separado**.
+
+**El desajuste.** `POST /rendiciones` sólo rinde contratos con `modoCobranza: 'INMOBILIARIA'`
+(`plata.ts:221` y `:1929`), pero `alquilerCobradoSinRendirDePropiedad` no filtraba por modo. En
+un contrato **PROPIETARIO_DIRECTO** el inquilino transfiere al CBU del dueño y conciliar el pago
+**no mira el modo**: esos cobros quedan CONCILIADOS y, como la rendición los excluye, **nunca va
+a existir un `AlquilerRendido` que los baje**. El número no llega a cero por ningún camino.
+
+**El impacto que ya estaba vivo — y no es el portal.** El mismo helper lo usa el guard de
+`PUT /propiedades/:id/participaciones` (`core.ts:686`), que corre **en el panel, en producción**.
+Una propiedad con un contrato directo y cobros conciliados quedaba con el **reparto de dueños
+trabado en 409 permanente**, con un mensaje que aconseja *"rendíselo a los dueños de hoy"* —
+justo lo que el sistema no puede hacer. Es el mismo pecado que T-36 se cuidó de no cometer: dar
+un consejo imposible.
+
+En el portal (todavía sin desplegar) el efecto habría sido peor de cara al dueño: ver como
+*"cobrado y todavía sin rendirte"* la plata que él mismo ya tiene en su cuenta.
+
+**Por qué el filtro es opt-in y no incondicional.** Dos llamadores necesitan lo **opuesto**:
+
+| Llamador | Qué necesita |
+|---|---|
+| `PATCH /contratos/:id/modo-cobranza` (`core.ts:3842`) | **VER** esa plata — es lo único que impide que al pasar de directo a inmobiliaria el sistema le transfiera al dueño algo que ya cobró. **No se tocó.** |
+| Guard de reparto (`core.ts:686`) y portal (`portal-propietario.ts:646`) | Ver **sólo lo rendible** |
+
+Meter el filtro adentro del helper habría abierto un agujero de plata real en el primero.
+
+**Tests.** `test/rendicion-pendiente-solo-rendible.test.ts`, puro (el cliente de base es un doble
+que captura el `where`). Incluye un test que **fija que el guard por contrato NO filtre**, para
+que nadie "unifique" los dos casos sin darse cuenta. Verificado en rojo revirtiendo el arreglo.
+El test estructural `portal-aislamiento.test.ts` sigue verde.
+
+---
+
+## T-51 · Los datos de demo usan dominios de correo reales, y ahora están publicados
+
+**Experto:** SEC (higiene de datos) · **Prioridad:** 🟢 · **Depende de:** poder correr la suite
+completa de `apps/api`
+**Origen:** revisión de seguridad del portal del propietario (19/08).
+
+**Qué pasa.** Ningún email de los datos ficticios usa un dominio reservado. Son
+`@gmail.com`, `@hotmail.com`, `@yahoo.com.ar`, `@outlook.com`, y dominios `.com.ar` con pinta de
+negocio real para los proveedores (`friopro.com.ar`, `ferrari-elec.com.ar`). Desde el 19/08 eso
+está **publicado en internet** en la demo de GitHub Pages, con nombre y apellido al lado.
+
+**Por qué importa aunque sea menor.** Algunas de esas direcciones pueden existir y ser de
+personas o negocios reales que no tienen nada que ver con el producto, y quedan asociadas
+públicamente a una demo. La convención para datos ficticios (RFC 2606) es `example.com`,
+`example.org`, `.invalid` o `.test`, justamente para que no le caiga correo a nadie.
+
+**Alcance medido:** 23 ocurrencias en 11 archivos —`apps/propietario/src/lib/demo-data.ts`, los
+`mock-data.ts` del panel y la PWA, `mailer.ts`, `auth.ts` y algunas pantallas—.
+
+**Por qué NO se hizo acá.** Varios tests de `apps/api` (`auth.test.ts`, `core.test.ts`,
+`anuncios.test.ts`, `baja-contrato.test.ts`, `certificado-antiguedad.test.ts`) dependen de esos
+emails, y esos tests **tocan la base**: desde esta sesión no se pueden correr, así que no había
+forma de verificar que el cambio no rompiera la suite. Cambiar a ciegas 23 valores de los que
+dependen tests que no puedo ejecutar es peor que dejar el problema anotado.
+
+**Criterio de aceptación.** Ningún dato ficticio usa un dominio de correo que pueda existir, y
+la suite completa de `apps/api` sigue en verde.
+
+---
+
 ## T-50 · La pestaña Comunicaciones decía que no había ninguna — ✅ RESUELTO
 
 **Experto:** FE-P · **Prioridad:** 🟠
@@ -2830,7 +2898,22 @@ en cada PR.
 
 ---
 
-## T-28 · Cubrir con tests los flujos de plata que no tienen ninguno
+## T-28 · Cubrir con tests los flujos de plata que no tienen ninguno — 🟡 PARCIAL
+
+> ## ⚠️ El motivo por el que esta tarea se abandonó era FALSO — corregido el 20/08
+>
+> El `estado.md` de T-28 dice que los 5 endpoints no se pudieron testear porque los tests
+> *"pegan a la Postgres de producción"*. **No es cierto**, y es la misma afirmación que
+> contaminó ~10 archivos del repo. `docs/TESTING.md` dice lo contrario: prod corre con host
+> interno de Railway, **inalcanzable** desde una máquina de trabajo.
+>
+> Y desde el 19/08 existe `docker-compose.test.yml`: una Postgres local, efímera, que no
+> comparte nadie. **Verificada el 20/08 y funciona**: levanta, las 57 migraciones aplican desde
+> cero, y el suite completo corre —94 archivos, 786 tests, 22 minutos, **780 en verde**—. Era
+> justo lo que `docs/TESTING.md` pedía que alguien confirmara.
+>
+> O sea: **la cobertura de integración nunca estuvo bloqueada.** Continúa en **T-28-N1**, que ya
+> cerró `/cargos/:id/descobrar` y encontró ahí un bug de plata vivo en producción.
 
 **Experto:** QA + BE · **Prioridad:** 🟠 · **Depende de:** T-27
 
@@ -2859,6 +2942,120 @@ puro corrible sin base.
 ---
 
 ---
+
+---
+
+## T-28-N1 · Cerrar la cobertura de plata que T-28 dejó afuera — ✅ HECHA 20/08
+
+**Experto:** QA + BE · **Prioridad:** 🟠 · **Depende de:** nada
+**Origen:** continuación de T-28, cuyo motivo de abandono era falso (ver arriba).
+
+Se verificó que la base de test efímera funciona, se corrió el suite completo por primera vez en
+meses (780/786 en verde) y se cubrió `POST /cargos/:id/descobrar` — donde apareció **un bug de
+plata vivo en producción**, con su fix.
+
+**El bug.** `saldar` registra un `MovimientoCaja` de tipo `INGRESO_EXTRA` al marcar un cargo como
+cobrado. **`descobrar` limpiaba `saldadoAt` y no lo tocaba.** Lo que lo volvía caro es que el
+comentario que justificaba esa asimetría —*"la rendición filtra `tipo: 'GASTO'`, así que un
+INGRESO_EXTRA no le altera la liquidación al dueño"*— **fue cierto y dejó de serlo**: hoy la
+rendición levanta `tipo: 'INGRESO_EXTRA'` con `descontadoEnRendicion: false` y **se lo acredita
+al propietario**.
+
+- **Cobrado → Deshacer:** el inquilino vuelve a deber la plata **y** al dueño se le acredita igual.
+- **Cobrado → Deshacer → Cobrado:** **dos** ingresos por una sola cobranza, los dos rendibles.
+  Una reparación de $180.000 se le rinde dos veces.
+
+El camino no es raro: el corte anti-doble-cobro de `imputarCostoReclamo` **manda al operador a
+deshacer** para poder reimputar, y el botón está a un click de *Cobrado*.
+
+**El fix.** Borrar el movimiento en la misma transacción que limpia `saldadoAt`. Si esa plata ya
+se le rindió al propietario → **409** sin tocar nada (borrarlo dejaría a la rendición apuntando,
+por `IngresoRendido.refId`, a una fila inexistente). Se miran las **dos** señales de rendido:
+`descontadoEnRendicion` y el ledger — en multi-dueño la marca recién se pone cuando las partes
+cubren el total, así que un movimiento rendido a medias sólo lo delata el ledger.
+
+**Sin cambios de front:** `cargos-contrato-card.tsx` ya muestra `e.message` en un toast y
+`apiFetch` propaga el `message` del server. Verificado, que es justo lo que T-40 y T-43 tuvieron
+que arreglar dos veces.
+
+**Tests.** `apps/api/test/descobrar-cargo.test.ts`, 5 casos. **Verificados por mutación**: con el
+fix revertido y base limpia, 4 se ponen en rojo; el quinto pasa en los dos casos porque no
+ejercita el bug. Detalle en `work-agent/tareas/T-28-N1/estado.md`.
+
+---
+
+## T-28-N1-N1 · `MovimientoCaja` no tiene `cargoId`: el vínculo con el cargo es un string
+
+**Experto:** BE + DATA · **Prioridad:** 🟡 · **Depende de:** decisión del dueño (schema)
+**Origen:** T-28-N1, al arreglar `descobrar`.
+
+`saldar` crea un `INGRESO_EXTRA` por el cargo cobrado y `descobrar` ahora lo borra. Pero **no hay
+FK**: el único vínculo es el TEXTO de la descripción (`Cobro de cargo al inquilino: <concepto>`).
+El fix acota por contrato + tipo + monto + moneda y borra uno solo, lo cual es correcto en el
+caso normal.
+
+**Dónde falla:** dos cargos con el **mismo concepto, mismo monto y misma moneda** en el mismo
+contrato son indistinguibles. Deshacer uno puede borrar el movimiento del otro.
+
+**Qué hay que hacer.** `cargoId String?` con FK a `CargoContrato` en `MovimientoCaja`, escribirlo
+en `saldar`, matchear por ahí en `descobrar`. Es **cambio de schema** y CLAUDE.md §0 obliga a
+consultarlo: por eso T-28-N1 no lo tomó por su cuenta.
+
+**Criterio de aceptación.** Dos cargos idénticos en concepto/monto/moneda sobre el mismo
+contrato: cobrar los dos, deshacer uno, y que quede vivo exactamente el movimiento del otro.
+
+---
+
+## T-28-N1-N2 · `multi-alquiler.test.ts` está en rojo, y no es contaminación de estado
+
+**Experto:** BE · **Prioridad:** 🟠 · **Depende de:** nada
+**Origen:** T-28-N1, primera corrida del suite completo contra una base real.
+
+**Estado verificado el 20/08.** Falla **en una base creada desde cero**, corriendo el archivo
+solo: no es residuo de correr 94 archivos en fila.
+
+El caso es *"otra persona (DISTINTO DNI) con el MISMO email → 409"*. Crea un contrato para una
+persona con DNI distinto y el email de otra, y **espera 409**. La API devuelve **200**.
+
+**Lo verificado, para no volver a averiguarlo:**
+- El índice único **existe** en la base: `personas_inmobiliariaId_email_key`.
+- El guard que devuelve ese 409 **existe** y vive dentro de `POST /contratos`
+  (`routes/core.ts:1505-1511`), pero es un `catch` de **P2002**: sólo dispara si la base rechaza
+  el insert.
+- No hubo P2002. Después de correr el test, **una sola** `Persona` tiene ese email (la primera):
+  la segunda persona **nunca se creó**.
+
+O sea que el handler no llega a chocar contra el unique. Falta averiguar a qué queda enganchado
+el contrato de la segunda persona, y **las dos salidas posibles son defecto**: o queda bajo la
+identidad de login de un tercero (que entonces ve un contrato ajeno), o queda sin `Persona` y ese
+inquilino no puede entrar nunca.
+
+**No se arregló en T-28-N1** porque no es su tarea y porque el arreglo depende de qué se decida
+que debe pasar. Lo que no puede quedar es el test en rojo sin dueño.
+
+---
+
+## T-28-N1-N3 · Quedan 3 endpoints de plata sin cobertura, y ahora sí se pueden testear
+
+**Experto:** QA + BE · **Prioridad:** 🟡 · **Depende de:** nada
+**Origen:** T-28-N1.
+
+De los 5 que listaba T-28: `descobrar` lo cerró T-28-N1 y `/aprobaciones` ya tenía. Faltan
+**`GET /caja/cierre`**, **`POST /internal/cron/devengar`** y **`GET /mis-cargos`**.
+
+**El bloqueo era falso** (ver T-28). Con `docker-compose.test.yml` corren en local. Los de mayor
+riesgo, en orden:
+
+1. **`/caja/cierre` — NaN silencioso.** Una liquidación con total 0 (SOLO_EXPENSAS sin expensas
+   cargadas) vuelve `NaN` la comisión del pago, del acumulado y del total; `JSON.stringify` lo
+   serializa como `null` y la cajera cierra el día sin comisión **sin que nada falle**.
+2. **`/caja/cierre` — comisión sobre expensas.** Va sobre la porción de alquiler, no sobre
+   `montoTotal`. Al 8%, ~$8.000/mes de más por contrato con expensas.
+3. **`/internal/cron/devengar` — aislamiento de fallos.** Un contrato con datos malos ya dejó sin
+   facturar a **todas** las inmobiliarias una vez. Hoy lo frena un try/catch por contrato que
+   **ningún test ejercita**. Se cubre **sin base**, con un cliente Prisma falso: la orquestación
+   es pura.
+
 
 ## T-29 · Los eventos de contrato que nunca se escriben
 

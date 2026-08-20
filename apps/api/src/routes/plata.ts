@@ -962,8 +962,15 @@ export async function plataRoutes(app: FastifyInstance) {
       // Se registra como INGRESO_EXTRA de caja —no como Pago— porque `Pago` exige
       // `liquidacionId` (schema: String, no opcional) y un cargo NO es una liquidación:
       // colgarlo de una liquidación ajena le inflaría el monto pagado a ese período.
-      // La rendición al propietario filtra `tipo: 'GASTO'`, así que un INGRESO_EXTRA
-      // no le altera la liquidación al dueño.
+      // ⚠️ ACÁ DECÍA: "la rendición al propietario filtra `tipo: 'GASTO'`, así que un
+      // INGRESO_EXTRA no le altera la liquidación al dueño". Fue cierto y DEJÓ DE SERLO:
+      // hoy la rendición levanta explícitamente `tipo: 'INGRESO_EXTRA'` con
+      // `descontadoEnRendicion: false` y se lo ACREDITA al propietario (buscá
+      // `ingresosPend` en este mismo archivo). O sea que este ingreso SÍ le llega al dueño.
+      //
+      // Es lo que hay que tener presente al tocar el inverso: `descobrar` tiene que borrar
+      // este movimiento, y frenar si ya se rindió. Que no lo hiciera costaba dos ingresos
+      // por una sola cobranza.
       const contrato = await prisma.contrato.findFirst({
         where: { id: cargo.contratoId, inmobiliariaId: u.inmobiliariaId },
         select: { id: true, propiedadId: true },
@@ -1029,9 +1036,62 @@ export async function plataRoutes(app: FastifyInstance) {
     });
     if (!cargo) return reply.code(404).send({ message: 'Cargo inexistente' });
     if (!cargo.saldadoAt) return { ok: true }; // idempotente, igual que saldar
-    await prisma.cargoContrato.update({
-      where: { id },
-      data: { saldadoAt: null, saldadoPorId: null },
+
+    // El INGRESO_EXTRA que dejó `saldar` tiene que irse JUNTO con el cobro. Antes no se
+    // tocaba, y eso dejaba las dos mitades contradiciéndose: el cargo volvía a ser deuda del
+    // inquilino y la caja seguía diciendo que esa plata entró. Peor todavía, la rendición
+    // levanta `tipo: 'INGRESO_EXTRA'` con `descontadoEnRendicion: false` y se lo ACREDITA al
+    // propietario — así que Cobrado → Deshacer → Cobrado dejaba DOS ingresos por una sola
+    // cobranza, los dos rendibles. (El comentario de `saldar` decía que la rendición sólo
+    // miraba `tipo: 'GASTO'`: fue cierto y dejó de serlo.)
+    //
+    // EL VÍNCULO ES LA DESCRIPCIÓN, NO UNA FK: `MovimientoCaja` no tiene `cargoId`. Se
+    // reconstruye la misma cadena que escribe `saldar` y se acota por contrato, tipo, monto y
+    // moneda. Se borra UNO solo (`saldar` crea exactamente uno por cobro), el más reciente.
+    // Es lo mejor que se puede hacer sin tocar el schema; el arreglo de fondo es un `cargoId`
+    // en `MovimientoCaja`, que necesita migración y decisión del dueño.
+    const descripcionIngreso = `Cobro de cargo al inquilino: ${cargo.concepto}`;
+    const mov = await prisma.movimientoCaja.findFirst({
+      where: {
+        inmobiliariaId: u.inmobiliariaId,
+        contratoId: cargo.contratoId,
+        tipo: 'INGRESO_EXTRA',
+        descripcion: descripcionIngreso,
+        monto: cargo.monto,
+        moneda: cargo.moneda,
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, descontadoEnRendicion: true },
+    });
+
+    // Si esa plata YA se le rindió al propietario, no se deshace nada. Borrar el movimiento
+    // acá dejaría a la rendición apuntando (por `IngresoRendido.refId`) a una fila que no
+    // existe, y el neto que se le rindió al dueño dejaría de poder reconstruirse. Primero se
+    // deshace la rendición, después el cobro.
+    //
+    // Se miran las DOS señales: `descontadoEnRendicion` y el ledger. En multi-dueño la marca
+    // recién se pone cuando las partes cubren el total, así que un movimiento rendido a MEDIAS
+    // la tiene en `false` y sólo lo delata `IngresoRendido`.
+    if (mov) {
+      const yaRendido =
+        mov.descontadoEnRendicion ||
+        (await prisma.ingresoRendido.count({ where: { refId: mov.id } })) > 0;
+      if (yaRendido) {
+        return reply.code(409).send({
+          message:
+            'Ese cobro ya se le rindió al propietario. Deshacé primero la rendición y después el cobro.',
+        });
+      }
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.cargoContrato.update({
+        where: { id },
+        data: { saldadoAt: null, saldadoPorId: null },
+      });
+      // Puede no haber movimiento: los cargos saldados ANTES de que `saldar` registrara el
+      // ingreso no tienen ninguno. Ahí basta con devolverle la deuda al inquilino.
+      if (mov) await tx.movimientoCaja.delete({ where: { id: mov.id } });
     });
     await registrarEvento({
       inmobiliariaId: u.inmobiliariaId,

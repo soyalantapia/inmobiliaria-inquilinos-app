@@ -140,6 +140,21 @@ export async function alquilerCobradoSinRendirDePropiedad(
   propiedadId: string,
   db: TxOrClient = prisma,
   inmobiliariaId?: string,
+  /**
+   * T-52 — `soloRendible` acota al MISMO universo que `POST /rendiciones`, que filtra
+   * `modoCobranza: 'INMOBILIARIA'` (plata.ts:221 y :1929).
+   *
+   * POR QUÉ HACE FALTA: en un contrato PROPIETARIO_DIRECTO el inquilino transfiere al CBU del
+   * dueño, pero conciliar el pago NO mira el modo — así que esos cobros quedan CONCILIADOS y,
+   * como la rendición los excluye, **nunca va a existir un `AlquilerRendido` que los baje**. El
+   * número no llega a cero por ningún camino.
+   *
+   * POR QUÉ NO SE FILTRA SIEMPRE, adentro: dos llamadores necesitan lo OPUESTO. El guard de
+   * `PATCH /contratos/:id/modo-cobranza` tiene que VER esa plata: es lo único que impide que al
+   * pasar de directo a inmobiliaria el sistema le transfiera al dueño algo que ya cobró. Si el
+   * filtro fuera incondicional se abriría ese agujero. Por eso es opt-in y ese guard no lo pasa.
+   */
+  opts?: { soloRendible?: boolean },
 ): Promise<{ total: number; periodos: PeriodoSinRendir[] }> {
   // `inmobiliariaId` es opcional pero NO decorativo. Los llamadores de core.ts ya vienen de un
   // handler que resolvió la propiedad dentro de su tenant; el portal del propietario, en cambio,
@@ -149,14 +164,22 @@ export async function alquilerCobradoSinRendirDePropiedad(
   // razonamientos entre dos archivos en vez de estar escrita en la query — que es justo lo que
   // ese test dice que no hay que aceptar.
   return pendienteDeLiquidaciones(
-    { contrato: { propiedadId, ...(inmobiliariaId ? { inmobiliariaId } : {}) } },
+    {
+      contrato: {
+        propiedadId,
+        ...(inmobiliariaId ? { inmobiliariaId } : {}),
+        ...(opts?.soloRendible ? { modoCobranza: 'INMOBILIARIA' as const } : {}),
+      },
+    },
     db,
   );
 }
 
 /** El lector: una sola forma de traer los datos, dos formas de acotarlos. */
 async function pendienteDeLiquidaciones(
-  where: { contratoId: string } | { contrato: { propiedadId: string; inmobiliariaId?: string } },
+  where:
+    | { contratoId: string }
+    | { contrato: { propiedadId: string; inmobiliariaId?: string; modoCobranza?: 'INMOBILIARIA' } },
   db: TxOrClient,
 ): Promise<{ total: number; periodos: PeriodoSinRendir[] }> {
   const liqs = await db.liquidacion.findMany({

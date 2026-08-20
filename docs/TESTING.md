@@ -7,8 +7,26 @@
 
 ## Base de test local y efímera (recomendado)
 
-> Escrito el 19/08/2026 en T-23-N1. **⚠️ NO SE PUDO VERIFICAR EN ESTA MÁQUINA**: el daemon de
-> Docker no estaba corriendo. La primera persona que lo corra, que confirme o corrija acá.
+> Escrito el 19/08/2026 en T-23-N1. **✅ VERIFICADO el 20/08/2026 (T-28-N1): anda.** Levanta
+> sano, las **57 migraciones aplican desde cero** y el suite completo corre contra ella: **94
+> archivos, 786 tests, 22 minutos, 780 en verde**, 5 rojos y 1 skip. Era la primera corrida
+> entera en meses.
+>
+> Dos cosas que conviene saber antes de correrlo:
+>
+> - **Además de `DATABASE_URL` hace falta `JWT_SECRET`.** Sin ella, `buildApp()` corta con un
+>   `ZodError` de env antes de tocar la base. Cualquier string largo sirve.
+> - **Se pueden crear varias bases en el mismo contenedor** y correr suites en paralelo sin
+>   pisarse — `seedBase` resetea la base entera, así que dos corridas contra la misma se
+>   arruinan mutuamente:
+>   ```bash
+>   docker exec myalquiler-postgres-test psql -U postgres -c "CREATE DATABASE mi_corrida;"
+>   ```
+> - **Los 5 rojos son 4 + 1.** Cuatro son los asserts de `core.test.ts`, y son los explicados más
+>   abajo: cuentan filas de TODO el tenant, y aunque la base arranque virgen, los 93 archivos que
+>   corren antes le van agregando filas. No es regresión.
+>   **El quinto sí lo es:** `multi-alquiler.test.ts` falla **también corriéndolo solo, contra una
+>   base recién creada**. Ficha propia: T-28-N1-N2.
 
 Hasta ahora la única base disponible era la remota del proxy de Railway, que **la comparten
 todos los procesos** y que `seedBase` reescribe: correr los tests se llevaba puesto a
