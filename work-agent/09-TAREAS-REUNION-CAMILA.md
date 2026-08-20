@@ -5809,3 +5809,39 @@ la fórmula y falla si aparece fuera de `shared`. Comprobado reintroduciendo una
 
 **Los invariantes #3 a #6 siguen verificados sólo por lectura.** El #2 se desprende del #1 y
 queda cubierto de rebote.
+
+---
+
+### T-01-N1-N15 · El suite rápido daba 3 rojos falsos, y el guard no decía qué no ve — ✅ HECHA
+**Experto:** BE · **Prioridad:** 🟠
+
+> Ver `work-agent/tareas/T-01-N1-N15/REQUISITOS.md`.
+
+Revisión del trabajo de T-01-N1-N14. Cuatro hallazgos; **dos eran falsas alarmas y se anotan
+con la evidencia para que nadie los persiga de nuevo.**
+
+**1. `pnpm test:sin-db` no era self-contained.** En un worktree limpio daba 3 rojos en
+`sonar-correlacion.test.ts` con `ZodError: DATABASE_URL Required`: varios de esos tests hacen
+`buildApp()` y `env.ts` valida con zod al importarse. **Nunca se notó porque los dos lugares
+donde se corría lo tapaban** — CI inyecta las variables a mano y el worktree de trabajo tiene un
+`.env` sin trackear. Cualquiera que clonara hoy se comía 3 rojos ajenos a su cambio, que es
+justo el rojo que enseña a ignorar los rojos. Arreglado en la config, sin pisar el entorno de
+quien lo tenga. **De paso: los 16 tests que salían `skipped` también los saltaba la falta de
+entorno.** Ahora corren. 625/625.
+
+**2. El guard de prorrateo no decía qué NO ve.** Busca el *esqueleto* `Math.min(...) * (../..)`,
+así que una copia que aplique la regla por omisión se le escapa entera. Queda escrito en el test.
+
+**3. `dashboard-helpers.ts:61` comisiona sin capear — NO es bug.** Es deliberado y está
+documentado en `lib/api/hooks.ts:1557`: el demo mantiene el 0.08 fijo por paridad byte-for-byte.
+
+**4. `cierre-caja.ts` (demo) no tiene rama PARCIAL — NO es bug.** Es inalcanzable:
+`generarLiquidaciones` emite `PAGADO | PENDIENTE | VENCIDO` y nunca `PARCIAL`, y sus cinco
+callers la usan cruda. **Pero esa seguridad descansa en el GENERADOR, no en el consumidor**, así
+que va un tripwire: si el demo aprende a emitir PARCIAL, `efectivoEnMano` contaría ese mes como
+0 de alquiler cobrado en silencio. Verificado en rojo forzando el generador.
+
+**Y dos documentos que quedaron mintiendo:** la tabla de `invariantes-plata.md` apunta a tres
+líneas y tres fórmulas inline que ya no existen —se marca en vez de reescribirse, porque el
+punto es que tres números de línea a mano se pudrieron en semanas—, y el docstring de
+`alquiler-cobrado.test.ts` decía replicar `plata.ts`, hoy un consumidor más del helper.
