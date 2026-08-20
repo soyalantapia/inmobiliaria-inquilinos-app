@@ -760,6 +760,16 @@ export async function plataRoutes(app: FastifyInstance) {
         : b.metodo === 'EFECTIVO'
           ? 'EFECTIVO'
           : 'TRANSFERENCIA';
+    // El `timeout` NO es de más: esta transacción toma un LOCK PESIMISTA por cuota
+    // (`FOR UPDATE`, más abajo) y recorre TODAS las exigibles del contrato. Con varias
+    // requests simultáneas —un doble click, dos operadores— las que quedan en la cola
+    // detrás del lock esperan a que la primera termine, y con el default de Prisma (5 s)
+    // reventaban con un P2028 que el operador veía como "Error interno".
+    //
+    // Ojo con el diagnóstico, que engaña: el invariante de plata SIEMPRE se cumplió —el
+    // lock hace su trabajo y se crea un solo pago—, así que el 500 no es un doble cobro.
+    // Es la espera, y el arreglo es esperar. 30 s / 10 s es lo que ya usan las otras
+    // transacciones largas del repo (core.ts, importaciones).
     const res = await prisma.$transaction(async (tx) => {
       let saldadas = 0;
       let montoAplicado = 0;
@@ -839,7 +849,7 @@ export async function plataRoutes(app: FastifyInstance) {
         montoAplicado: Math.round(montoAplicado * 100) / 100,
         cargosSaldados: cargos.count,
       };
-    });
+    }, { timeout: 30_000, maxWait: 10_000 });
     await registrarEvento({
       inmobiliariaId: u.inmobiliariaId,
       tipo: 'PAGO_CONCILIADO',
