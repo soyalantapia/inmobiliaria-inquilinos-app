@@ -19,9 +19,35 @@ const DIR_TESTS = join(import.meta.dirname, 'test');
 // para que lo abarque.
 const TAMBIEN_NECESITAN_BASE = ['health.test.ts'];
 
+/**
+ * Las líneas de código, sin las de comentario.
+ *
+ * POR QUÉ: la detección es por texto, y un archivo que sólo NOMBRA `seedBase` en su docblock
+ * quedaba clasificado como "necesita base". Le pasaba a `portal-aislamiento.test.ts` —el guard
+ * multi-tenant del portal del propietario, que lee un archivo con `readFileSync` y no toca la
+ * red—: su propio comentario dice "se corre sin base de datos", y la palabra `seedBase` en esa
+ * misma frase era lo que lo dejaba afuera. Resultado: el guard no corría NUNCA, porque la suite
+ * completa tarda horas y nadie la corre entera.
+ *
+ * Se sacan sólo las líneas que son enteramente comentario. NO se hace un strip de `//` a fin de
+ * línea: una línea como `const u = 'http://x'; await seedBase(p);` perdería la llamada real, y
+ * ese error va para el lado peligroso —un test que sí necesita base entrando al suite sin base—.
+ * Los falsos positivos que quedan son inofensivos: un archivo de más marcado como "necesita
+ * base" simplemente no corre acá.
+ */
+function soloCodigo(src: string): string {
+  return src
+    .split(/\r?\n/)
+    .filter((l) => {
+      const t = l.trim();
+      return !(t.startsWith('//') || t.startsWith('*') || t.startsWith('/*'));
+    })
+    .join('\n');
+}
+
 function necesitaBase(archivo: string): boolean {
   if (TAMBIEN_NECESITAN_BASE.includes(archivo)) return true;
-  const src = readFileSync(join(DIR_TESTS, archivo), 'utf8');
+  const src = soloCodigo(readFileSync(join(DIR_TESTS, archivo), 'utf8'));
   // Dos formas de depender de una base viva, y las dos cuentan:
   //  - seedBase, el helper compartido;
   //  - sembrarse solo (soporte.test.ts arma sus propias filas porque requireUsuario

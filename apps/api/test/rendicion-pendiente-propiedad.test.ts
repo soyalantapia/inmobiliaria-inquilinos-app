@@ -22,7 +22,8 @@ const liq = (
   periodo: string,
   montoAlquiler: number,
   montoTotal: number,
-): LiquidacionParaPendiente => ({ id, periodo, montoAlquiler, montoTotal });
+  moneda = 'ARS',
+): LiquidacionParaPendiente => ({ id, periodo, montoAlquiler, montoTotal, moneda });
 
 const mapa = (o: Record<string, number>) => new Map(Object.entries(o));
 
@@ -38,7 +39,7 @@ describe('calcularPendienteSinRendir', () => {
       mapa({}),
     );
     expect(r.total).toBe(300000);
-    expect(r.periodos).toEqual([{ periodo: '2026-03', monto: 300000 }]);
+    expect(r.periodos).toEqual([{ periodo: '2026-03', monto: 300000, moneda: 'ARS' }]);
   });
 
   it('cobrada y ya rendida entera: no traba nada', () => {
@@ -151,6 +152,40 @@ describe('calcularPendienteSinRendir', () => {
       mapa({ l1: 250000, l3: 250000 }),
     );
     expect(r.total).toBe(250000);
-    expect(r.periodos).toEqual([{ periodo: '2025-12', monto: 250000 }]);
+    expect(r.periodos).toEqual([{ periodo: '2025-12', monto: 250000, moneda: 'ARS' }]);
+  });
+});
+
+describe('la moneda viaja con el período, no con el contrato vigente', () => {
+  it('cada período conserva la moneda de SU liquidación', () => {
+    // Es la razón por la que `moneda` está en PeriodoSinRendir. Esta cuenta mira TODOS los
+    // contratos de la propiedad, incluidos los terminados: la plata sin rendir puede ser de un
+    // contrato en dólares que ya venció, con la unidad hoy alquilada en pesos —o vacía—. Antes
+    // el portal la etiquetaba con `contratoActual?.moneda ?? 'ARS'`, así que esos dólares le
+    // salían al dueño con signo de pesos. Es el mismo bug que se arregló persistiendo
+    // `Rendicion.moneda`, en otro endpoint.
+    const r = calcularPendienteSinRendir(
+      [liq('usd', '2025-06', 900, 900, 'USD'), liq('ars', '2026-03', 300000, 300000)],
+      mapa({ usd: 900, ars: 300000 }),
+      mapa({}),
+    );
+    expect(r.periodos).toEqual([
+      { periodo: '2025-06', monto: 900, moneda: 'USD' },
+      { periodo: '2026-03', monto: 300000, moneda: 'ARS' },
+    ]);
+  });
+
+  it('`total` SUMA las monedas, y por eso no se puede mostrar', () => {
+    // Queda fijado a propósito, no es un descuido que se testea. `total` existe para el guard
+    // de core.ts, que sólo pregunta "¿hay algo sin rendir?": sumar monedas no puede convertir
+    // un cero en un no-cero ni al revés, así que ahí es correcto. Quien MUESTRE estos montos
+    // tiene que agrupar por `periodos[].moneda` — es lo que hace GET /portal/pendiente.
+    const r = calcularPendienteSinRendir(
+      [liq('usd', '2025-06', 900, 900, 'USD'), liq('ars', '2026-03', 300000, 300000)],
+      mapa({ usd: 900, ars: 300000 }),
+      mapa({}),
+    );
+    expect(r.total).toBe(300900);
+    expect(r.total).not.toBe(900);
   });
 });
