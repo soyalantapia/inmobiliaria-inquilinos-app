@@ -340,6 +340,21 @@ cambio, y una persona con rol CAJA puede confirmar un pago de punta a punta.
 
 **Riesgo.** Operativo, no técnico. Se mitiga con el aviso previo.
 
+> **Verificación 20/08 (T-03-N1, commit `15cb6d3`) — el rol le alcanza.** Antes de reasignar
+> gente real se trazó la cadena entera contra el código: sidebar → bandeja (`pagos.ver`) →
+> abrir el contrato (`contratos.ver`) → confirmar (`pago.conciliar`, que es lo que exige
+> `POST /pagos/:id/validar` **y** lo que gatea los botones en `pagos-por-validar.tsx:121`) →
+> rechazar → cobrar en efectivo → cerrar el día. **No falta ningún eslabón**, y queda fijado
+> con un test que se pone rojo si alguien le saca una capacidad a CAJA.
+>
+> Dos sospechas que se revisaron y resultaron infundadas, para que nadie las vuelva a auditar:
+> la pantalla de pagos gatea con `contrato.aprobar` (ADMIN) pero **sólo el tab de aprobaciones
+> de contratos**, no los botones; y `normalizarRol` cae a LECTURA ante un rol desconocido —el
+> modo clásico de que un rol NUEVO entre mudo al menú de solo lectura— pero valida contra
+> `ROLES_ORDEN`, así que CAJA pasa.
+>
+> **Lo que sigue siendo tuyo:** reasignar los roles y avisarle a Camila antes.
+
 > **Actualización 19/08 — el golpe es más blando de lo que decía esta tarea.** Cuando se
 > escribió, una operadora que intentara confirmar un pago se comía un **403 crudo**: el botón
 > estaba ahí, lo tocaba, y el sistema le tiraba un error. Eso es exactamente "el sistema se
