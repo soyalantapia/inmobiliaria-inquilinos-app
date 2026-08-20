@@ -5292,3 +5292,50 @@ tres cosas que hay que saber antes de apretar — sobre todo que **se acabaría 
 **Corrección al dato de las cancelaciones:** escribí que `Revisión` "se cancela sola seguido" y
 lo medí después: **3 de las últimas 40 corridas en `main`, un 7,5%**. No es un obstáculo para
 volverlos required — alcanza con re-correr esa una.
+
+---
+
+### T-01-N1-N10 · Hay trabajo terminado varado en ramas que nadie mira — ✅ RELEVADA
+**Experto:** OPS · **Prioridad:** 🟠
+
+El job `ramas-sin-integrar` viene reportando y nadie actúa. Medido el 20/08, lo que falta de
+`main`:
+
+| rama | commits | archivos | edad | veredicto |
+|---|---|---|---|---|
+| `feat/corregir-contrato-rechazado` | 22 | 23 | 16d | **falta en parte** |
+| `feat/revision-contrato-aprobacion` | 10 | 13 | 16d | **falta en parte** |
+| `fix/camila-loop2` | 5 | 15 | 31d | **ya está** (squash-merge `e6e098f3`) → se puede borrar |
+| `fix/followups-noche-2026-07-14` | 5 | 3 | 37d | **faltaba una parte** → rescatada en T-01-N1-N11 |
+| `feat/landing-mejoras` | 4 | 7 | 37d | **falta entero** |
+
+Se limpiaron además las seis ramas de tarea mías que ya estaban 100% en `main`: ensuciaban el
+reporte, que existe para que se vea lo que quedó afuera.
+
+**Lo que queda por decidir es tuyo:** las dos de aprobación de contratos son una feature entera
+(revisar antes de aprobar, y corregir + reenviar un contrato rechazado). Y hay un dato feo en el
+camino: hoy **rechazar un contrato BORRA la deuda declarada** (`plata.ts`, `periodosAnteriores
+Pendientes: Prisma.DbNull`) justificándose en un `@@unique` de `Inquilino` **que ya no existe**
+—se mudó a `Persona`—. Eso está sin verificar por mí y merece tarea propia.
+
+### T-01-N1-N11 · Al inquilino cuyo pago confirmó el banco se le decía que se lo rechazaron — ✅ HECHA
+**Experto:** BE · **Prioridad:** 🔴
+
+> Ver `work-agent/tareas/T-01-N1-N11/REQUISITOS.md`. Rescatado de la rama varada de 37 días.
+
+`Pago` usa un solo `RECHAZADO` para "el comprobante del inquilino no servía" y para "la
+inmobiliaria dio de baja un cobro propio". Los distingue **un prefijo en la `observacion`**, que
+estaba escrito a mano en tres archivos. Cuando la conciliación por extracto bancario empezó a
+cerrar avisos de pago, su autor no tenía cómo saber que la convención existía.
+
+**Resultado:** el inquilino avisaba que pagó, **el banco lo confirmaba**, y se le mostraba *"Tu
+pago fue rechazado"*, se lo publicaba en el feed con severidad crítica, se le filtraba la nota
+interna y **se le bajaba el nivel de buen pagador del certificado** — exactamente lo que el
+comentario de `PAGO_RECHAZADO_REAL` dice que hay que evitar.
+
+**Arreglado**, con el prefijo centralizado en `lib/reversion-interna.ts` y un guard que prohíbe
+armar una `observacion` a mano en `routes/`. Verificado reintroduciendo el bug: el guard lo
+señala con archivo y línea.
+
+**No se inventó un tercer estado:** decirle "la inmobiliaria revirtió este cobro" sigue siendo
+raro cuando lo que pasó es que su pago se confirmó. Eso es cambio de producto y queda anotado.

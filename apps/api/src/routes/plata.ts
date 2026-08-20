@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
+import { esReversionInterna, observacionDeReversion } from '../lib/reversion-interna.js';
 import { instanteEnDiaCivilAR, yaVencio } from '@llave/shared';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
@@ -633,7 +634,7 @@ export async function plataRoutes(app: FastifyInstance) {
       });
     }
 
-    const observacion = `Anulado tras conciliar: ${body.data.observacion}`;
+    const observacion = observacionDeReversion(body.data.observacion);
     const pagoOk = await prisma.$transaction(async (tx) => {
       // updateMany condicionado (WHERE estado='CONCILIADO'): cierra la carrera de
       // doble-anulación o anular-mientras-otro-opera. count=0 → 409.
@@ -1640,7 +1641,7 @@ export async function plataRoutes(app: FastifyInstance) {
       // inquilino: la reemplazamos por un texto neutro y marcamos anulado para
       // que la PWA pueda distinguirlo de un rechazo de comprobante.
       const anulado =
-        p.estado === 'RECHAZADO' && (p.observacion ?? '').startsWith('Anulado tras conciliar:');
+        p.estado === 'RECHAZADO' && esReversionInterna(p.observacion);
       // Autor del informe (co-inquilinos): "vos" si lo informó quien consulta,
       // "otro" si fue otro miembro del contrato, null si es un cobro registrado
       // por la inmo (efectivo/banco, sin autor inquilino).
