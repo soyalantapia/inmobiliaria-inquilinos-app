@@ -114,6 +114,47 @@ auditoría multi-agente arreglaron **~50+ bugs reales** verificados y deployados
 - ✅ **"Pagos recibidos"** en los comprobantes del inquilino — los cobros CONCILIADO (incl. manuales
   de la inmo, parciales o de meses futuros) se muestran como transacciones explícitas.
 
+## El área del propietario, reforzada el 20/08
+
+Se exploró entera —seguridad, plata, cobertura, robustez, producto y operación— y se cerró
+lo que apareció. Lo que sigue es el resumen; el detalle está en los commits.
+
+**Plata.** Tres bugs que le mostraban al dueño números equivocados, y uno que podía pagarle
+de más:
+
+- Con dos dueños, "cobrado y sin rendirte" mostraba el remanente de la UNIDAD: a uno le
+  sobraba y al otro le faltaba, al mismo tiempo.
+- Los dólares salían con signo de pesos, en el portal y en la rendición impresa.
+- La plata de la MIGRACIÓN DE CARTERA se contaba como cobro rendible. `POST /rendiciones`
+  se la podía transferir de nuevo al dueño, y de paso trababa con 409 el cambio de reparto
+  de toda propiedad con historia previa. Se marca con `Pago.migradoDeCartera`.
+- Los períodos rendidos antes del 01/07/2026 no descontaban nada, porque
+  `alquileres_rendidos` se creó vacía. No se puede backfillear —`Rendicion` guarda un total
+  por (dueño, período), no el desglose—, así que se dan por saldados los períodos con una
+  rendición sin líneas.
+
+**Seguridad.** El email es la llave del portal y nadie lo revalidaba: corregir un typo no
+cerraba la sesión del que había entrado con el mail equivocado. Ahora sí, con mensaje
+distinto al de la baja. ⚠️ Cierra la ventana POSTERIOR a la corrección, no la brecha:
+mientras el typo vive, el OTP se manda igual a esa casilla.
+
+**Cobertura.** El portal tenía CERO tests por HTTP: los 7 endpoints y el login nunca se
+habían ejecutado. `test/portal-propietario-e2e.test.ts` los cubre, con aislamiento contra
+una segunda inmobiliaria REAL y la revocación por baja lógica. Encontró dos cosas en su
+primera corrida.
+
+**Lo que hay que saber para no romperlo:**
+
+- El portal se compila de TRES formas y sólo una llega a un dueño real
+  (`BASE_PATH=/propietario STATIC_EXPORT=1`). Las tres corren en CI.
+- Comparte `localStorage` con el panel, porque comparte origen. El logout del panel barre
+  las dos sesiones a propósito.
+- `anular` una rendición todavía BORRA la fila. Queda el evento de auditoría con el
+  snapshot de los montos; la baja lógica —que quede tachada en vez de desaparecer— está
+  pendiente y necesita decisión.
+
+---
+
 ## Verificado el 20/08 — qué se corrió de verdad
 
 No es una lista de lo que "debería andar": es lo que se ejecutó, con el resultado que dio.
