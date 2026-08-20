@@ -2281,6 +2281,40 @@ la mora sale igual desde los 16 lugares que la calculan.
 
 ---
 
+## T-59 · Un pago rechazado congelaba el canon y las expensas de esa cuota para siempre — ✅ RESUELTO
+
+**Experto:** BE · **Prioridad:** 🔴 · **Toca plata**
+**Origen:** revisión adversarial del motor de cobranza (20/08).
+
+**El caso.** Cuota de septiembre: alquiler $500.000 + expensas $80.000. El inquilino informa el
+pago con el comprobante equivocado y la inmobiliaria **lo rechaza** — operación diaria de la
+bandeja "Pagos a validar". La cuota sigue PENDIENTE, pero ya tiene una fila `Pago` en estado
+RECHAZADO.
+
+Llegan las expensas nuevas del consorcio ($110.000) y se hace `PATCH /contratos/:id/expensas`.
+El recálculo **saltea esa cuota** porque `cantidadPagos > 0` — contando el rechazado, que **no es
+plata**. La cuota queda con las expensas viejas: se le cobra **$580.000 en vez de $610.000**, la
+inmobiliaria le paga igual al consorcio, y queda así **para siempre** (ningún endpoint borra un
+pago rechazado ni permite reintentar el reajuste). Lo mismo por `PATCH /contratos/:id/monto`,
+que además lo llama el **ajuste masivo** en loop sobre todos los contratos.
+
+**No era deliberado, y el propio código lo prueba:** el docstring de `recomputarLiquidacionesFuturas`
+dice que la defensa es para cuando *"tiene un pago INFORMADO en revisión"* — o sea, pagos vivos.
+El conteo venía sin filtrar por estado.
+
+**Qué se hizo.** Las dos queries pasan a contar sólo pagos vivos:
+`_count: { select: { pagos: { where: { estado: { in: ['INFORMADO','CONCILIADO'] } } } } }`.
+Es el mismo criterio de "pago vivo" que el repo ya usa en `core.ts:1940`, `:2257` y `:2363`.
+El docstring quedó explícito sobre el rechazado.
+
+**No se tocó** el tercer conteo sin filtrar (`core.ts:2071`, `finalizar-preview`): ahí es
+deliberado y su propio comentario explica por qué un INFORMADO/RECHAZADO no debe caer en
+`esFuturaSinPago`.
+
+**473 tests puros en verde.**
+
+---
+
 ## T-58 · La mora fija del tenant se aplica sin mirar la moneda del contrato
 
 **Experto:** BE · **Prioridad:** 🟠 · **Toca plata** · **No se arregló: ver por qué**
