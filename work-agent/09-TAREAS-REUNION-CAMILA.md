@@ -2299,6 +2299,34 @@ la mora sale igual desde los 16 lugares que la calculan.
 
 ---
 
+## T-60 · Se facturaba un mes entero que vencía después de terminado el contrato — ✅ RESUELTO
+
+**Experto:** BE · **Prioridad:** 🟠 · **Toca plata**
+**Origen:** revisión adversarial del motor de cobranza (20/08).
+
+**El caso.** Contrato que termina el **05/09/2026**, día de pago 10. El tope de la enumeración
+es de granularidad **MES** (`finMes` es el día 1 del mes de fin), así que se emitía el período
+**2026-09 con vencimiento el 10/09** — cinco días después de terminado el contrato. Se le cobraba
+el mes completo ($580.000 en el ejemplo) por 5 días de ocupación, con comisión sobre el alquiler,
+y esa cuota se devenga de verdad: entra a la PWA, se puede informar y conciliar, entra al cierre
+de caja y se rinde al propietario. Una vez cobrada, **la baja del contrato ya no la puede
+deshacer**.
+
+**Lo que lo hace claro:** la enumeración **ya tiene la guarda simétrica del otro extremo** —si el
+vencimiento del primer mes cae antes del inicio, se saltea— con su propio test. Faltaba la del
+final.
+
+**Qué se hizo.** Si el vencimiento cae después de `fin`, ese período no se emite y se corta el
+loop (los siguientes vencen todavía más tarde). Va en `packages/shared/src/periodos.ts` y no en
+`liquidaciones.ts` a propósito: el wizard y el backend tienen que enumerar **igual**.
+
+**Tests.** Dos, al lado del de la guarda del inicio: el caso del hallazgo y **el borde del
+borde** —vencimiento que cae justo el día de fin, que sí debe facturarse—. El primero verificado
+en rojo revirtiendo. Los 487 tests puros que ya existían siguen verdes: ninguno dependía del
+comportamiento viejo.
+
+---
+
 ## T-59 · Un pago rechazado congelaba el canon y las expensas de esa cuota para siempre — ✅ RESUELTO
 
 **Experto:** BE · **Prioridad:** 🔴 · **Toca plata**
