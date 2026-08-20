@@ -64,6 +64,11 @@ export default defineConfig({
     testTimeout: 60_000,
     // `seedBase` corre en el beforeAll de ~50 suites. Contra una base local es cuestión de
     // segundos; el margen es para el primer arranque del contenedor en CI.
-    hookTimeout: 120_000,
+    // 180s y no 120: en una corrida local con la máquina cargada (dev servers de otros chats +
+    // Docker) el suite tardó 503s en vez de ~230s y un beforeAll se pasó del límite, tirando un
+    // archivo entero. En CI el runner es dedicado y el job tarda ~1m50s, así que no hace falta —
+    // pero desde que la compuerta BLOQUEA, un timeout espurio traba el merge de cualquiera, y ese
+    // costo es peor que esperar un minuto más en el peor caso.
+    hookTimeout: 180_000,
   },
 });

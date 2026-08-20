@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useId, useState } from 'react';
-import { Building2, GraduationCap, Landmark, Lock, ShieldCheck, Sparkles, TrendingUp } from 'lucide-react';
+import { Building2, GraduationCap, KeyRound, Landmark, Lock, ShieldCheck, Sparkles, TrendingUp } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@llave/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@llave/ui/card';
@@ -118,6 +118,7 @@ export function ConfiguracionProd() {
           <ConfiguracionPais />
         </div>
         <AppInquilinoLinkCard />
+        <PortalPropietarioLinkCard />
       </div>
     </main>
   );
@@ -165,6 +166,69 @@ function AppInquilinoLinkCard() {
             Copiar link
           </Button>
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * Portal del propietario. Vive en el MISMO host que el panel, bajo `/propietario`: es un
+ * export estático que el build del panel deja en `public/propietario/` (ver
+ * `work-agent/02-DEPLOY.md`). Por eso el link va hardcodeado y NO tiene env que lo pise, a
+ * diferencia del de la app del inquilino: no existe —ni puede existir— un deploy donde el
+ * panel esté en un host y el portal en otro, así que la única variante posible sería una mal
+ * configurada. La API tiene su espejo en `APP_PROPIETARIO_URL` (`mailer.ts`), que sí es env
+ * porque desde allá el host del panel no se conoce.
+ */
+const PORTAL_PROPIETARIO_URL = 'https://admin.myalquiler.com/propietario';
+
+/**
+ * Link del portal del propietario, al lado del de la app del inquilino: son la misma idea
+ * para las dos puntas de la cartera.
+ *
+ * POR QUÉ EXISTE: el portal estaba en producción y el panel no lo nombraba en ningún lado, así
+ * que la inmobiliaria no se enteraba de que podía mandárselo a sus dueños. El aviso por mail ya
+ * lo linkea, pero eso sólo alcanza al propietario que recibe un anuncio.
+ */
+function PortalPropietarioLinkCard() {
+  const copiar = async () => {
+    try {
+      await navigator.clipboard.writeText(PORTAL_PROPIETARIO_URL);
+      toast({ title: 'Link copiado', description: 'Ya lo podés compartir con tus propietarios.' });
+    } catch {
+      toast({ title: 'No pudimos copiar', variant: 'destructive' });
+    }
+  };
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <KeyRound className="h-5 w-5 text-primary" />
+          Link del portal para tus propietarios
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-xs text-muted-foreground">
+          Compartilo con los dueños de las propiedades que administrás: entran con el email que
+          les tengas cargado (les llega un código) y ven sus rendiciones con el detalle, sus
+          unidades y los avisos que les mandaste. Es sólo lectura: no pueden tocar nada.
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <a
+            href={PORTAL_PROPIETARIO_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="flex-1 truncate rounded-md border bg-muted/40 px-3 py-2 font-mono text-sm text-primary hover:underline"
+          >
+            {PORTAL_PROPIETARIO_URL}
+          </a>
+          <Button variant="outline" onClick={copiar}>
+            Copiar link
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Los avisos que les mandás por mail ya llevan este link adentro.
+        </p>
       </CardContent>
     </Card>
   );

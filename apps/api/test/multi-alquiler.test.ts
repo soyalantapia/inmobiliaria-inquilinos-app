@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { buildApp } from '../src/app.js';
 import { seedBase } from '../prisma/seed.js';
+import { borrarContratosDeTest } from '../prisma/borrar-contratos-de-test.js';
 
 let app: FastifyInstance;
 let token: string;
@@ -28,10 +29,9 @@ beforeAll(async () => {
   token = admin.json().token;
 });
 
-// Este test CREA propiedades/contratos vía endpoint; la DB de test es compartida entre
-// archivos (core.test.ts espera los counts del seed puro), así que limpiamos lo creado
-// para no contaminar. Orden de borrado por FK: liq → inquilino → contrato → participación
-// → propiedad → persona.
+// Este test CREA propiedades/contratos vía endpoint y la base es compartida entre archivos, así
+// que limpia lo suyo. El árbol del contrato lo borra `borrarContratosDeTest`; acá sólo queda lo
+// que NO cuelga de un contrato: la propiedad, su participación y la persona.
 afterAll(async () => {
   const personas = await prismaTest.persona.findMany({
     where: { OR: [{ email: EMAIL }, { dni: { in: [DNI, '40999888'] } }] },
@@ -59,23 +59,12 @@ afterAll(async () => {
       ...porPropiedad.map((c) => c.id),
     ]),
   ];
-  await prismaTest.liquidacion.deleteMany({ where: { contratoId: { in: contratoIds } } });
-  // El alta escribe historial (`EventoContrato`) desde T-29, y esta limpieza es anterior a eso:
-  // la FK es RESTRICT, así que sin borrarlos el delete del contrato no pasa.
-  await prismaTest.eventoContrato.deleteMany({ where: { contratoId: { in: contratoIds } } });
+  // Y el árbol entero del contrato —22 hijos y 10 nietos, ninguno cascadea— lo borra el helper.
+  // Antes esto era una lista a mano acá adentro y se rompía sola cada vez que el alta empezaba
+  // a escribir un hijo más, que es literalmente lo que pasó con `EventoContrato`. El helper
+  // tiene un test que lo ata al schema. Ver `prisma/borrar-contratos-de-test.ts` y T-28-N3.
+  await borrarContratosDeTest(prismaTest, contratoIds);
   await prismaTest.inquilino.deleteMany({ where: { personaId: { in: personaIds } } });
-  // La propiedad apunta al contrato y el contrato a la propiedad: hay que cortar ese lazo
-  // antes de borrar cualquiera de los dos, o el delete choca contra la FK. Es el mismo paso
-  // que hace `prisma/limpiar-test-db.ts`.
-  //
-  // Ojo si esto vuelve a romper: de los 22 modelos que cuelgan de `Contrato`, NINGUNO
-  // cascadea, y acá se borran sólo los que este test llega a crear. Cualquier feature nueva
-  // que escriba otro hijo en el alta rompe esta limpieza igual. Ver T-28-N2.
-  await prismaTest.propiedad.updateMany({
-    where: { id: { in: propIds } },
-    data: { contratoActualId: null },
-  });
-  await prismaTest.contrato.deleteMany({ where: { id: { in: contratoIds } } });
   await prismaTest.participacionPropietario.deleteMany({ where: { propiedadId: { in: propIds } } });
   await prismaTest.propiedad.deleteMany({ where: { id: { in: propIds } } });
   await prismaTest.persona.deleteMany({ where: { id: { in: personaIds } } });

@@ -19,6 +19,7 @@ import { ImprimirRendicion } from '@/components/imprimir-rendicion';
 import { money, fecha, periodoLargo, etiqueta } from '@/lib/format';
 import {
   apiFetch,
+  ApiError,
   type MiCartera,
   type PropiedadPortal,
   type ReclamoPortal,
@@ -185,11 +186,34 @@ export function FilaRendicion({
           {detalle.isPending ? (
             <p className="pt-3 text-xs text-muted-foreground">Buscando el detalle…</p>
           ) : detalle.isError ? (
-            // Los totales de arriba ya están y son correctos: el error es sólo del desglose.
-            // Decirlo evita que el dueño desconfíe del número que sí tiene delante.
+            // Un 404 acá NO es un problema pasajero: significa que la rendición se anuló
+            // después de que el dueño abrió la lista (que se cachea 30s). Decirle "probá de
+            // nuevo en un rato" es falso —no va a volver nunca— y encima lo deja mirando cinco
+            // montos de algo que ya no existe. Se dice lo que pasó y se ofrece recargar, que es
+            // lo único que arregla la lista de arriba.
+            //
+            // El resto de los errores sí son pasajeros, y ahí los totales de arriba siguen
+            // siendo correctos: decirlo evita que desconfíe del número que tiene delante.
             <p className="pt-3 text-xs text-muted-foreground">
-              No pudimos traer el detalle en este momento. Los montos de arriba son los de tu
-              rendición: probá de nuevo en un rato.
+              {detalle.error instanceof ApiError && detalle.error.status === 404 ? (
+                <>
+                  Esta rendición ya no está: tu inmobiliaria la anuló. Los montos de arriba son
+                  los que tenía.{' '}
+                  <button
+                    type="button"
+                    onClick={() => window.location.reload()}
+                    className="underline underline-offset-2"
+                  >
+                    Actualizá la página
+                  </button>{' '}
+                  para ver tus rendiciones al día, y consultales si no lo esperabas.
+                </>
+              ) : (
+                <>
+                  No pudimos traer el detalle en este momento. Los montos de arriba son los de tu
+                  rendición: probá de nuevo en un rato.
+                </>
+              )}
             </p>
           ) : detalle.data ? (
             <div className="space-y-4 pt-3">
@@ -421,7 +445,16 @@ export function FilaPropiedad({ p }: { p: PropiedadPortal }) {
                   ) : per.condonada ? (
                     <span className="text-muted-foreground">la inmobiliaria la condonó</span>
                   ) : per.pagoAt ? (
-                    <span className="text-muted-foreground">pagó el {fecha(per.pagoAt)}</span>
+                    <span className="text-muted-foreground">
+                      pagó el {fecha(per.pagoAt)}
+                      {/* CUÁNTO entró, cuando no fue todo. El estado decía "parcial" y al lado
+                          el monto ENTERO de la cuota, sin decir si el inquilino puso 50.000 o
+                          490.000 — que es justamente lo que explica por qué la rendición de ese
+                          mes vino corta. El backend ya lo tenía; el front lo descartaba. */}
+                      {per.pagado != null && per.pagado < per.monto && (
+                        <> · {money(per.pagado, c.moneda)} de {money(per.monto, c.moneda)}</>
+                      )}
+                    </span>
                   ) : (
                     <span className="text-muted-foreground">vence el {fecha(per.vence)}</span>
                   )}

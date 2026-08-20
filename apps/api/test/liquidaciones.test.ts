@@ -176,6 +176,34 @@ describe('computarLiquidacionesContrato', () => {
     expect((primera.fechaVencimiento as Date).toISOString().slice(0, 10)).toBe('2026-08-05');
   });
 
+  it('T-60 — contrato que TERMINA el 05/09 con diaPago 10: no se factura septiembre', () => {
+    // Simétrico del caso de arriba, en el otro extremo. El tope de la enumeración es de
+    // granularidad MES, así que septiembre entraba con vencimiento 10/09: CINCO DÍAS después
+    // de terminado el contrato. Se le cobraba el mes entero por esos días, con comisión, y
+    // una vez cobrada la baja del contrato ya no podía deshacerla.
+    const now = new Date('2026-08-20T12:00:00Z');
+    const data = computarLiquidacionesContrato(
+      contrato('2026-01-01T00:00:00Z', '2026-09-05T00:00:00Z', { diaPago: 10 }),
+      now,
+    );
+    const periodos = data.map((l) => l.periodo);
+    expect(periodos).not.toContain('2026-09');
+    // Y ninguna cuota vence después del fin del contrato.
+    for (const l of data) {
+      expect((l.fechaVencimiento as Date) <= new Date('2026-09-05T00:00:00Z')).toBe(true);
+    }
+  });
+
+  it('T-60 — si el vencimiento cae JUSTO el día de fin, la cuota sí va', () => {
+    // Borde del borde: venc 05/09 == fin 05/09 no es "después del fin".
+    const now = new Date('2026-08-20T12:00:00Z');
+    const data = computarLiquidacionesContrato(
+      contrato('2026-01-01T00:00:00Z', '2026-09-05T00:00:00Z', { diaPago: 5 }),
+      now,
+    );
+    expect(data.map((l) => l.periodo)).toContain('2026-09');
+  });
+
   it('contrato arranca 01/07 con diaPago 5: NO se saltea (venc 05/07 >= inicio 01/07)', () => {
     // Borde: cuando el inicio es día 1, el venc del día 5 NO es pre-inicio, así
     // que el 1er período se conserva (el skip solo aplica a venc < fechaInicio).

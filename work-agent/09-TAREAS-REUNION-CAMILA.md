@@ -2250,6 +2250,240 @@ real y deja el diálogo abierto para corregir, y el camino feliz guarda y refres
 
 ---
 
+## T-57 · Un pago parcial no frena la mora: sigue corriendo sobre el total original
+
+**Experto:** BE + **decisión del dueño** · **Prioridad:** 🔴 · **Toca plata — le cobra de más al inquilino**
+**Origen:** revisión adversarial del motor de cobranza (20/08). **NO se arregló: ver por qué.**
+
+**El caso, con números.** Cuota de $600.000 que vence el 10/08, mora 0,15% diario. El inquilino
+paga **$599.000 el mismo 10/08** —en fecha, sin mora— y queda debiendo $1.000 de capital. El
+09/09, a 30 días, la mora se calcula sobre los **$600.000 completos**:
+
+    600.000 × 0,15% × 30 = $27.000 de punitorios por deber $1.000.
+
+Sobre el saldo real serían **$450**. Y ese total inflado es exactamente lo que ve el inquilino en
+la PWA, lo que topea `POST /pagos/informar` y lo que muestra el panel.
+
+Caso menos extremo y mucho más frecuente: paga $500.000 de $600.000 y a 30 días la mora es
+$27.000 en vez de $4.500 — **$22.500 de más**.
+
+**Verificado:** en los ~16 call sites la base es siempre `Number(l.montoTotal)` bruto; lo
+conciliado se resta recién en `saldos.ts`, **después** del cálculo. El congelamiento de mora que
+existe (`plata.ts:1665-1675`) sólo cubre pagos **INFORMADO** pendientes: un parcial **CONCILIADO**
+deja la liquidación en PARCIAL y la mora sigue corriendo sobre el total original.
+
+### Por qué NO lo arreglé, y qué hace falta para hacerlo
+
+1. **La solución ingenua rompe el caso inverso.** `base = montoTotal − conciliados` haría que
+   pagar TARDE reduzca retroactivamente la mora ya devengada: al inquilino le convendría pagar
+   tarde y de a poco.
+2. **O se hace en los 16 call sites, o no se hace.** Arreglarlo sólo donde los pagos están a
+   mano daría **moras distintas según qué endpoint las calcule** — peor que el bug actual.
+3. **Cambia lo que se le cobra a inquilinos reales**, hoy, en producción. Bajar un cargo mal
+   calculado es correcto, pero la forma exacta es una decisión de negocio.
+4. **No se puede verificar desde acá:** los tests que cubren este camino tocan la base.
+
+### Las dos formas, para que elijas
+
+**(a) Descontar sólo lo pagado ANTES del vencimiento.** `capital = base − pagadoAlVencimiento`.
+Barata y sin regresión: lo que entró en fecha reduce el capital sobre el que corre toda la mora,
+y lo que entró tarde no borra punitorios ya devengados. Arregla el caso titular. **No** hace
+tramos: si paga la mitad al día 15 y el resto al 40, cobra los 40 días sobre el capital inicial
+menos lo de antes del vencimiento.
+
+**(b) Mora por tramos.** Lo riguroso: 5 días sobre $600.000 + 25 días sobre $100.000. Es lo que
+haría un contador, y es un cambio de fondo en el corazón del cobro.
+
+**Criterio de aceptación.** Un parcial pagado en fecha no genera mora sobre la parte ya pagada, y
+la mora sale igual desde los 16 lugares que la calculan.
+
+---
+
+## T-62 · La bandeja prometía un saldo que al validar valía cero — ✅ RESUELTO
+
+**Experto:** BE · **Prioridad:** 🟡 · **Presentación** (no cambia plata cobrada)
+**Origen:** revisión adversarial del motor de cobranza (20/08). Último confirmado de esa tanda.
+
+**El caso.** Liquidación de $600.000, vence el 10/08, mora 0,15% diario ($900/día). El inquilino
+informa el 15/08 por **$604.500** — exactamente lo que le mostró su app. La inmobiliaria lo valida
+el 18/08. Durante esos tres días `GET /pagos` calculaba la mora con **hoy** ($607.200) y la
+bandeja renderizaba *"si lo validás queda $2.700"*. Pero `POST /pagos/:id/validar` congela la mora
+en la **fechaTransferencia** del pago: al validar da $604.500, cobrado $604.500, saldo **$0**. Los
+$2.700 no existieron nunca — eran los días que el informe pasó esperando que alguien lo mirara, y
+no los debía nadie. El fantasma crecía $900 por cada día de demora en decidir.
+
+**Qué se hizo.** La decisión de con qué instante se corta la mora pasó a `asOfMora`
+(`lib/punitorios.ts`), que es lo único que consultan las dos rutas: así no pueden volver a
+discrepar. Es exacto **por fila** porque el índice parcial `pagos_liquidacionId_informado_key`
+garantiza un único INFORMADO por liquidación — o sea, el que se está por validar. Un RECHAZADO no
+congela nada.
+
+**Lo que NO se hizo, y es la mitad del hallazgo.** La revisión pedía propagar el congelado a
+`deudaTotal` (`core.ts:271`) y al KPI de morosidad (`metricas.ts:126`), estimando *"~$108.000 de
+deuda inventada en el dashboard con 40 pagos esperando validación"*. **Ahí no corresponde, y esa
+deuda no está inventada: está sin verificar.** La `fechaTransferencia` la carga el inquilino, con
+backdate de hasta 30 días — el guard de `/pagos/informar` existe justamente porque se
+auto-condonaban punitorios fechando antes del vencimiento. Un KPI que la respetara dejaría que
+cualquiera se borre de la lista de morosos informando un pago que no existe, y encima quedaría
+escondido hasta que alguien lo rechace. En la bandeja no aplica: ahí el operador está mirando esa
+fila justo para decidirla. **Un pago INFORMADO es un reclamo sin verificar, no una deuda saldada.**
+
+**Tests.** 7 puros en `mora-congelada-al-informar.test.ts`: los cinco casos de la regla (incluido
+que el INFORMADO gana sobre una liq ya PAGADA, porque es lo que validar va a usar) y la aritmética
+del caso real, con el fantasma creciendo día a día. Los 536 puros que ya existían siguen verdes.
+
+---
+
+## T-61 · Un ajuste posterior a una renovación ya cargada queda anulado en el devengo
+
+**Experto:** BE · **Prioridad:** 🟠 · **Toca plata** · **No se arregló: ver por qué**
+**Origen:** revisión adversarial del motor de cobranza (20/08).
+
+**El caso.** Contrato a $300.000 que termina el 30/11.
+
+1. **10/08** — se renueva por adelantado (el flujo normal): `montoDesde '2026-12'`,
+   `montoNuevo 500.000`. Queda `RenovacionContrato{montoDesde:'2026-12', montoAnterior:300.000}`
+   y `contrato.monto = 500.000`.
+2. **05/09** — llega el ajuste anual: `periodoDesde '2026-09'`, `montoNuevo 380.000`. Las cuotas
+   de 09 y 10 pasan a $380.000. Hasta acá bien.
+3. El cron crea la cuota de **2026-11**. `canonDelPeriodo` busca la próxima vigencia futura —la
+   renovación de diciembre— y devuelve su `montoAnterior`: **$300.000**.
+
+O sea: **el ajuste de septiembre queda anulado para noviembre.** Se cobran $300.000 en vez de
+$380.000, con la comisión calculada sobre esa base.
+
+**La causa.** `montoAnterior` es un **snapshot congelado** al momento de crear la vigencia. El
+diseño asume que nadie toca el canon después de grabar una vigencia futura.
+
+### El arreglo propuesto por el revisor NO sirve, y esto es lo importante
+
+Proponía **leer hacia adelante** (usar `montoNuevo` de la última vigencia con `desde <= periodo`)
+en vez de hacia atrás. **Rompería el ajuste masivo.** El docstring de `canonDelPeriodo` lo dice:
+
+> *"`contrato.monto` es la AUTORIDAD (lo pisa el ajuste masivo `PATCH /contratos/:id/monto`,
+> **que no deja fila de ajuste**)"*
+
+Si el canon se cambió por ahí no hay vigencia que leer, así que "hacia adelante" devolvería el
+`montoNuevo` de un ajuste **viejo** en lugar del monto actual — un sobrecobro o subcobro nuevo,
+en un camino que hoy funciona bien. Además el query trae **sólo vigencias futuras**
+(`periodoDesde: { gt: periodoActual }`), así que las pasadas ni siquiera están en el array.
+
+### Qué haría falta de verdad
+
+Distinguir "el snapshot sigue siendo válido" de "alguien tocó el canon después". Eso pide saber
+**cuándo se escribió cada cosa** (un `createdAt` comparado contra la última escritura de canon),
+o dejar de depender de snapshots y llevar un historial de canon completo — incluyendo los
+cambios que hoy no dejan fila.
+
+Es un cambio de diseño en el corazón del devengo, con un camino (ajuste masivo) que la solución
+obvia rompe. **No se toca sin decidir el modelo primero.**
+
+**Cobertura que ya existe:** `test/canon-por-periodo.test.ts` (18 casos, puros). Cualquier
+cambio acá tiene que pasar por ahí y sumar el caso de esta tarea.
+
+---
+
+## T-60 · Se facturaba un mes entero que vencía después de terminado el contrato — ✅ RESUELTO
+
+**Experto:** BE · **Prioridad:** 🟠 · **Toca plata**
+**Origen:** revisión adversarial del motor de cobranza (20/08).
+
+**El caso.** Contrato que termina el **05/09/2026**, día de pago 10. El tope de la enumeración
+es de granularidad **MES** (`finMes` es el día 1 del mes de fin), así que se emitía el período
+**2026-09 con vencimiento el 10/09** — cinco días después de terminado el contrato. Se le cobraba
+el mes completo ($580.000 en el ejemplo) por 5 días de ocupación, con comisión sobre el alquiler,
+y esa cuota se devenga de verdad: entra a la PWA, se puede informar y conciliar, entra al cierre
+de caja y se rinde al propietario. Una vez cobrada, **la baja del contrato ya no la puede
+deshacer**.
+
+**Lo que lo hace claro:** la enumeración **ya tiene la guarda simétrica del otro extremo** —si el
+vencimiento del primer mes cae antes del inicio, se saltea— con su propio test. Faltaba la del
+final.
+
+**Qué se hizo.** Si el vencimiento cae después de `fin`, ese período no se emite y se corta el
+loop (los siguientes vencen todavía más tarde). Va en `packages/shared/src/periodos.ts` y no en
+`liquidaciones.ts` a propósito: el wizard y el backend tienen que enumerar **igual**.
+
+**Tests.** Dos, al lado del de la guarda del inicio: el caso del hallazgo y **el borde del
+borde** —vencimiento que cae justo el día de fin, que sí debe facturarse—. El primero verificado
+en rojo revirtiendo. Los 487 tests puros que ya existían siguen verdes: ninguno dependía del
+comportamiento viejo.
+
+---
+
+## T-59 · Un pago rechazado congelaba el canon y las expensas de esa cuota para siempre — ✅ RESUELTO
+
+**Experto:** BE · **Prioridad:** 🔴 · **Toca plata**
+**Origen:** revisión adversarial del motor de cobranza (20/08).
+
+**El caso.** Cuota de septiembre: alquiler $500.000 + expensas $80.000. El inquilino informa el
+pago con el comprobante equivocado y la inmobiliaria **lo rechaza** — operación diaria de la
+bandeja "Pagos a validar". La cuota sigue PENDIENTE, pero ya tiene una fila `Pago` en estado
+RECHAZADO.
+
+Llegan las expensas nuevas del consorcio ($110.000) y se hace `PATCH /contratos/:id/expensas`.
+El recálculo **saltea esa cuota** porque `cantidadPagos > 0` — contando el rechazado, que **no es
+plata**. La cuota queda con las expensas viejas: se le cobra **$580.000 en vez de $610.000**, la
+inmobiliaria le paga igual al consorcio, y queda así **para siempre** (ningún endpoint borra un
+pago rechazado ni permite reintentar el reajuste). Lo mismo por `PATCH /contratos/:id/monto`,
+que además lo llama el **ajuste masivo** en loop sobre todos los contratos.
+
+**No era deliberado, y el propio código lo prueba:** el docstring de `recomputarLiquidacionesFuturas`
+dice que la defensa es para cuando *"tiene un pago INFORMADO en revisión"* — o sea, pagos vivos.
+El conteo venía sin filtrar por estado.
+
+**Qué se hizo.** Las dos queries pasan a contar sólo pagos vivos:
+`_count: { select: { pagos: { where: { estado: { in: ['INFORMADO','CONCILIADO'] } } } } }`.
+Es el mismo criterio de "pago vivo" que el repo ya usa en `core.ts:1940`, `:2257` y `:2363`.
+El docstring quedó explícito sobre el rechazado.
+
+**No se tocó** el tercer conteo sin filtrar (`core.ts:2071`, `finalizar-preview`): ahí es
+deliberado y su propio comentario explica por qué un INFORMADO/RECHAZADO no debe caer en
+`esFuturaSinPago`.
+
+**473 tests puros en verde.**
+
+---
+
+## T-58 · La mora fija del tenant se aplica sin mirar la moneda del contrato
+
+**Experto:** BE · **Prioridad:** 🟠 · **Toca plata** · **No se arregló: ver por qué**
+**Origen:** revisión adversarial del motor de cobranza (20/08).
+
+**El caso.** El admin configura la mora default como **MONTO_FIJO = 5000**, pensada en pesos —la
+pantalla que la carga no pide moneda y la previsualiza con el símbolo `$`—. Un contrato en
+**USD** sin `moraTipo` propio (el wizard arranca en `HEREDAR`, y la importación de cartera
+tampoco lo setea) hereda ese default y lo aplica **1:1**:
+
+    alquiler US$ 800 + mora US$ 5.000 = US$ 5.800 exigibles.
+
+Cinco mil dólares de punitorio sobre un alquiler de ochocientos. Es lo que la PWA le reclama al
+inquilino.
+
+**Por qué pasa.** `resolverEsquemaMora` devuelve `{tipo:'MONTO_FIJO', valor:5000}` sin mirar
+`Liquidacion.moneda`, y `calcularMora` lo usa tal cual.
+
+**El arreglo, que NO necesita migración.** `Inmobiliaria.monedaDefault` ya existe: la moneda del
+default **está determinada**, no hay que guardarla. La regla sería: si el esquema viene del tenant
+y es `MONTO_FIJO`, heredarlo **sólo si la moneda del contrato coincide** con `monedaDefault`; si
+no, `SIN_MORA` — mejor no cobrar mora que cobrarla en la unidad equivocada. No se inventa una
+conversión.
+
+**Por qué no lo hice.** `resolverEsquemaMora` tiene **21 call sites**, y la regla exige que cada
+uno conozca la moneda del contrato. Los tipos son opcionales, así que agregar el campo compila
+igual — pero los call sites cuyo `select` no traiga `moneda` seguirían con el comportamiento
+viejo, y quedarían **moras distintas según qué endpoint las calcule**. Es exactamente la
+objeción que hace inaceptable el arreglo parcial en T-57. O se hace en los 21 y se corre la
+suite completa, o no se hace.
+
+**Frecuencia:** raro (hace falta tenant con MONTO_FIJO default + contrato en otra moneda + sin
+mora propia), pero catastrófico cuando ocurre.
+
+**Criterio de aceptación.** Un contrato en USD no hereda una mora fija cargada en pesos, y la
+mora sale igual desde los 21 lugares que la resuelven.
+
+---
+
 ## T-56 · Todo cobro con fecha civil perdía un día de mora — ✅ RESUELTO
 
 **Experto:** BE · **Prioridad:** 🔴 · **Toca plata** · **Trababa la conciliación bancaria**
@@ -2340,7 +2574,27 @@ solo lugar y se pueda testear — el estilo que ya usa `diasHasta` en ese mismo 
 
 ---
 
-## T-53-N1 · El OTP delataba si el email existe, por el tiempo de respuesta
+## T-53-N1 · El OTP delataba si el email existe, por el tiempo de respuesta — ✅ HECHA
+
+> ### ✅ Cerrada el 20/08. Ver `work-agent/tareas/T-53-N1/REQUISITOS.md`.
+>
+> **El bloqueo que la dejó abierta ya no existe:** decía que sus tests tocan la base y no se
+> podían correr. Desde T-01-N1-N1 la suite de integración corre —en CI y en local contra Docker—
+> así que la duda se contestó corriéndola.
+>
+> **Arreglado el OTP del inquilino** (`POST /auth/otp/request`), con el mismo patrón que el
+> portal: el bcrypt se calcula siempre y el envío SMTP no se espera. Su propio comentario decía
+> *"Respuesta idéntica exista o no"* y el cuerpo lo era; el tiempo no.
+>
+> **El del panel NO se tocó, y no es un olvido.** Ya revela la existencia a propósito, en el
+> cuerpo: devuelve `{ existe: false }` con un comentario que lo llama *"trade-off consciente"*
+> para poder mandar a `/registro`. Emparejar tiempos ahí sería teatro — la respuesta lo dice en
+> la primera línea. Cerrar ese canal es **decisión de producto**, y si se decide, el fix de
+> tiempos va JUNTO con sacar el `existe`: antes no cambia nada y da la sensación de que se
+> atendió.
+>
+> Verificado: `auth.test.ts` 12/12 contra base desde cero —ninguno dependía de que el mail
+> saliera antes de responder, que era la duda— y suite completa en verde.
 
 **Experto:** SEC + BE · **Prioridad:** 🟢
 **Origen:** revisión de seguridad del portal (19/08).
@@ -3205,7 +3459,29 @@ ejercita el bug. Detalle en `work-agent/tareas/T-28-N1/estado.md`.
 
 ## T-28-N1-N1 · `MovimientoCaja` no tiene `cargoId`: el vínculo con el cargo es un string
 
-**Experto:** BE + DATA · **Prioridad:** 🟡 · **Depende de:** decisión del dueño (schema)
+**Experto:** BE + DATA · **Prioridad:** 🟠 · **Depende de:** decisión del dueño (schema)
+
+> ### El daño está CONFIRMADO, y es plata — verificado el 20/08 (commit del test)
+>
+> Se escribieron los dos casos contra la base efímera, en `test/descobrar-cargo.test.ts`.
+>
+> **Mientras ninguno se rindió, no pasa nada.** Los dos ingresos son fungibles: borrar
+> cualquiera deja el mismo estado —un ingreso vivo, un cargo cobrado y uno adeudado— y las
+> cuentas cierran. Ese caso **pasa hoy**, y la prioridad no sube por él.
+>
+> **Dejan de ser fungibles apenas UNO se rinde.** Ahí tienen historias distintas y la
+> descripción no alcanza para saber cuál es cuál. Si se cobran los dos, se le rinde al
+> propietario el ingreso del primero y después se deshace ESE cargo, `descobrar` encuentra el
+> más reciente —el del segundo, sin rendir— y lo borra. Queda **el primer cargo como deuda del
+> inquilino otra vez Y el ingreso rendido vivo, acreditado al propietario**: exactamente la
+> consecuencia que el encabezado de ese archivo llama la cara. De yapa el segundo cargo queda
+> cobrado sin movimiento detrás, así que deshacerlo devuelve un 409 que miente.
+>
+> Medido, no razonado: el test da **`expected 200 to be 409`**. Lo correcto sería frenar desde
+> el principio, porque el ingreso de ese cargo ya se rindió.
+>
+> El caso está commiteado como **`it.fails`** — el criterio de aceptación, listo para el día que
+> se decida. **Al agregar `cargoId`, ese test empieza a fallar: hay que sacarle el `.fails`.**
 **Origen:** T-28-N1, al arreglar `descobrar`.
 
 `saldar` crea un `INGRESO_EXTRA` por el cargo cobrado y `descobrar` ahora lo borra. Pero **no hay
@@ -4862,7 +5138,25 @@ que es lo que ya hacen varias y por eso no se pisan.
 
 ---
 
-## T-28-N3 · Las limpiezas de los tests se rompen solas cuando el alta escribe un hijo nuevo
+## T-28-N3 · Las limpiezas de los tests se rompen solas cuando el alta escribe un hijo nuevo — ✅ HECHA
+
+> ### ✅ Resuelta el 20/08 por un tercer camino. Ver `work-agent/tareas/T-28-N3/REQUISITOS.md`.
+>
+> **Los dos caminos que propone abajo quedaron descartados, con razón.** Cascadear cambiaría
+> PRODUCCIÓN —las migraciones se aplican solas en el deploy y hoy el RESTRICT es lo que impide
+> que borrar un contrato se lleve pagos en silencio—. Y envolver cada test en una transacción
+> no funciona acá: los tests pegan por `app.inject` y la app tiene su propio cliente de Prisma
+> en otra conexión, así que la transacción del test no envuelve lo que escribe la app.
+>
+> **Lo que se hizo:** `prisma/borrar-contratos-de-test.ts` (nietos → los 22 hijos en orden → el
+> contrato → el lazo) y `test/hijos-de-contrato-sincronizados.test.ts`, que lee el schema y se
+> pone rojo si aparece un hijo o un nieto nuevo, si el orden viola una FK entre hijos, o si el
+> nombre de una columna FK no coincide.
+>
+> **Corrección al texto de abajo:** no son 22 FK todas RESTRICT. Son 23 constraints hacia
+> `contratos` —**16 RESTRICT y 7 SET NULL**— y una de ellas es la inversa
+> (`propiedades.contratoActualId`, SET NULL, que **nunca** bloqueó borrar el contrato). El dato
+> está en el SQL de las migraciones, no en `schema.prisma`, que no declara los `onDelete`.
 
 **Experto:** BE · **Prioridad:** 🟡 · **Depende de:** nada
 **Origen:** T-28-N2, corriendo los 94 archivos del API por primera vez.

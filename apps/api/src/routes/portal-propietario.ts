@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import bcrypt from 'bcryptjs';
 import { randomInt } from 'node:crypto';
 import { z } from 'zod';
-import { OtpRequestSchema, OtpVerifySchema, type JwtPropietario } from '@llave/shared';
+import { OtpRequestSchema, OtpVerifySchema, yaVencio, type JwtPropietario } from '@llave/shared';
 import { prisma } from '../db.js';
 import { requirePropietario } from '../auth/guards.js';
 import { enviarOtp } from '../mailer.js';
@@ -288,6 +288,9 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
   app.get('/portal/propiedades', async (request, reply) => {
     const p = await requirePropietario(request, reply);
     if (!p) return;
+    // Una sola foto del tiempo para todas las filas: si cada `new Date()` fuera distinto, dos
+    // cuotas que vencen el mismo día podrían salir con estados distintos en la misma respuesta.
+    const ahora = new Date();
     // El vínculo propietario→propiedad es la participación, que además dice CUÁNTO le toca.
     const participaciones = await prisma.participacionPropietario.findMany({
       where: { propietarioId: p.propietarioId, inmobiliariaId: p.inmobiliariaId },
@@ -311,6 +314,12 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
                 fechaFin: true,
                 inquilinoTitular: { select: { nombre: true, apellido: true } },
                 liquidaciones: {
+                  // El tenant, otra vez y explícito. Acá ya viene garantizado por la cadena
+                  // —la participación de arriba filtra por `p.inmobiliariaId`—, pero esa
+                  // garantía son cuatro saltos de relación de razonamiento. Nombrarlo cuesta
+                  // una línea y es lo que el guard de `portal-aislamiento.test.ts` exige del
+                  // resto del archivo; este tramo se le escapaba por estar anidado.
+                  where: { inmobiliariaId: p.inmobiliariaId },
                   orderBy: { periodo: 'desc' },
                   // Doce y no seis: el dueño mira su propiedad por AÑO —para el contador, para
                   // decidir si renueva, para ver si el inquilino se atrasa siempre en el mismo
@@ -337,7 +346,7 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
                     // resto. Filtrando en la query con take 1 nos quedábamos con la más nueva
                     // —la condonación— y se perdía la fecha del pago que sí entró.
                     pagos: {
-                      where: { estado: 'CONCILIADO' },
+                      where: { estado: 'CONCILIADO', inmobiliariaId: p.inmobiliariaId },
                       orderBy: { fechaTransferencia: 'desc' },
                       select: { fechaTransferencia: true, monto: true, condonado: true },
                     },
@@ -374,7 +383,24 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
                 : null,
               periodos: c.liquidaciones.map((l) => ({
                 periodo: l.periodo,
-                estado: l.estado,
+                // El estado se DERIVA, no se copia de la base — igual que en el panel
+                // (`liqVencida` en core.ts). El barrido del devengo sólo toca filas
+                // PENDIENTE y a propósito NO toca las PARCIAL, así que una cuota de abril
+                // en la que el inquilino puso 50.000 de 500.000 sigue diciendo `PARCIAL`
+                // en la fila cuatro meses después. Copiándola, el dueño la veía en ámbar
+                // como "parcial · pagó el 5 de abril" mientras la inmobiliaria la cobra
+                // como morosa: dos versiones del mismo hecho, en la pantalla que existe
+                // justamente para que él la audite.
+                // `yaVencio` y no una comparación a mano: respeta el día civil argentino, así
+                // que la cuota que vence HOY no le figura vencida al dueño antes de tiempo.
+                estado:
+                  (l.estado === 'PENDIENTE' || l.estado === 'PARCIAL') &&
+                  yaVencio(l.fechaVencimiento, ahora)
+                    ? 'VENCIDO'
+                    : l.estado,
+                // Lo que el estado no dice: de un parcial, CUÁNTO entró. Es lo que explica
+                // por qué la rendición de ese mes vino corta, y la API ya lo tenía a mano.
+                pagado: l.pagos.filter((pg) => !pg.condonado).reduce((a, pg) => a + dec(pg.monto), 0) || null,
                 monto: dec(l.montoTotal),
                 vence: l.fechaVencimiento.toISOString().slice(0, 10),
                 // Sólo los pagos REALES dan fecha de cobro. Ver el comentario del select.
@@ -634,7 +660,9 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
             direccion: true,
             complejo: true,
             consorcio: { select: { nombre: true } },
-            contratoActual: { select: { moneda: true } },
+            // NO se trae `contratoActual.moneda`, y no es un olvido: era justamente de donde
+            // salía la moneda cuando este endpoint pintaba los dólares con signo de pesos.
+            // Dejarlo en el select invita a volver a usarlo. La moneda viaja con cada período.
           },
         },
       },

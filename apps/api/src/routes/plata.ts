@@ -22,7 +22,7 @@ import { descripcionDeReparacion } from '../lib/descripcion-gasto-rendido.js';
 import { sePuedeBorrarGastoDeCaja } from '../lib/borrar-gasto-caja.js';
 import { conSaldo, montoPagadoPorLiquidacion } from '../lib/saldos.js';
 import { registrarEventoContrato } from '../lib/evento-contrato.js';
-import { calcularMora, resolverEsquemaMora } from '../lib/punitorios.js';
+import { calcularMora, resolverEsquemaMora, asOfMora } from '../lib/punitorios.js';
 import { registrarEvento } from '../lib/auditoria.js';
 import { aplicarDepositoADeuda } from '../lib/aplicar-deposito.js';
 import { estadoDepositoContrato } from '../lib/deposito.js';
@@ -328,13 +328,10 @@ export async function plataRoutes(app: FastifyInstance) {
     const hoy = new Date();
     return pagos.map((p) => {
       const base = Number(p.liquidacion.montoTotal);
-      // Una liq PAGADA congela la mora en su fechaPago (mismo criterio que
-      // /mis-liquidaciones): sin esto la bandeja mostraba un saldo fantasma
-      // que seguía creciendo sobre liquidaciones ya cerradas.
-      const asOf =
-        p.liquidacion.estado === 'PAGADO' && p.liquidacion.fechaPago
-          ? new Date(p.liquidacion.fechaPago)
-          : hoy;
+      // Congela la mora del renglón igual que lo hará validar (ver `asOfMora`):
+      // es exacto por fila porque el índice parcial `pagos_liquidacionId_informado_key`
+      // garantiza un único INFORMADO por liquidación — o sea, el que se está por validar.
+      const asOf = asOfMora(p, p.liquidacion, hoy);
       const punitorio = calcularMora(
         base,
         resolverEsquemaMora(p.contrato, inmo),
@@ -2022,6 +2019,14 @@ export async function plataRoutes(app: FastifyInstance) {
               estado: 'CONCILIADO',
               // La deuda condonada no se le rinde al propietario: no entró esa plata.
               condonado: false,
+              // Y la de la MIGRACIÓN DE CARTERA tampoco, por el mismo motivo y con más
+              // consecuencia: el alta de un contrato en curso registra hasta 120 períodos
+              // pasados como pagados para que el saldo del inquilino arranque bien, pero esa
+              // plata la cobró la inmobiliaria antes de usar el sistema y ya se la liquidó al
+              // dueño por fuera. Sin este filtro, rendir uno de esos períodos le transfiere de
+              // nuevo algo que ya tiene. Y el guard de `sinRendir` usa el mismo criterio, así
+              // que si acá no estuviera, las dos cuentas dirían cosas distintas.
+              migradoDeCartera: false,
             },
             _sum: { monto: true },
           });
@@ -2693,6 +2698,29 @@ export async function plataRoutes(app: FastifyInstance) {
       }
       throw e;
     }
+
+    // El rastro de la anulación, que hasta acá no existía.
+    //
+    // Rendir registra `PROPIETARIO_RENDIDO`; anular borraba la fila y sus tres ledgers sin
+    // escribir nada. Es el único registro de plata que el sistema destruye, y encima el único
+    // que un TERCERO ya vio: al propietario se le desaparece del portal la tarjeta "Te
+    // depositamos $X el 12/08", el total del año le baja solo y la plata le vuelve a figurar
+    // como "cobrado y sin rendirte", sin una línea que lo explique. Si llama a preguntar, la
+    // inmobiliaria tampoco tenía con qué contestarle.
+    //
+    // Se guarda el SNAPSHOT de los montos, porque la fila ya no está: es lo único que queda
+    // para reconstruir qué se anuló. El paso siguiente —que la rendición quede marcada como
+    // anulada en vez de borrarse, y el portal la muestre tachada— está anotado aparte.
+    await registrarEvento({
+      inmobiliariaId: u.inmobiliariaId,
+      tipo: 'PROPIETARIO_RENDICION_ANULADA',
+      autorId: u.userId,
+      rolAutor: u.rol,
+      entidadId: id,
+      entidadDescripcion:
+        `Anulada rendición ${r.periodo} de ${r.propietarioId} · ` +
+        `neto ${r.moneda === 'USD' ? 'US$' : '$'}${Number(r.montoNeto)} · bruto ${Number(r.montoBruto)}`,
+    });
     return { ok: true };
   });
 

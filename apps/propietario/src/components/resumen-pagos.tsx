@@ -26,6 +26,8 @@ interface Corte {
   esteAnio: { total: number; cantidad: number };
   anteriores: { total: number; cantidad: number };
   ultima: string | null;
+  /** El `rendidoAt` de esa última, para poder compararla. No se muestra. */
+  ultimaAt: string | null;
 }
 
 export function cortarPorMoneda(rendiciones: RendicionPortal[], anio: number): Corte[] {
@@ -34,17 +36,28 @@ export function cortarPorMoneda(rendiciones: RendicionPortal[], anio: number): C
     const m = r.moneda ?? 'ARS';
     let c = por.get(m);
     if (!c) {
-      c = { moneda: m, esteAnio: { total: 0, cantidad: 0 }, anteriores: { total: 0, cantidad: 0 }, ultima: null };
+      c = { moneda: m, esteAnio: { total: 0, cantidad: 0 }, anteriores: { total: 0, cantidad: 0 }, ultima: null, ultimaAt: null };
       por.set(m, c);
     }
     const esDelAnio = new Date(r.rendidoAt).getFullYear() === anio;
     const balde = esDelAnio ? c.esteAnio : c.anteriores;
     balde.total = Math.round((balde.total + r.teDepositamos) * 100) / 100;
     balde.cantidad += 1;
-    // La lista viene de la más nueva a la más vieja, así que la primera que se ve es la última.
-    // Sólo cuenta si cayó en el año que muestra la tarjeta: si no, el rótulo decía "la última,
-    // diciembre 2025" abajo de un total que dice "te depositamos en 2026".
-    if (esDelAnio && !c.ultima) c.ultima = r.periodo;
+    // "La última" se decide por FECHA DE DEPÓSITO, igual que el total de arriba, y no por el
+    // orden en que vino la lista.
+    //
+    // El server ordena por `periodo desc` y recién después por `rendidoAt desc`, así que
+    // quedarse con la primera que se ve asume que los dos órdenes coinciden. No siempre: un
+    // período viejo rendido tarde —una puesta al día— llega DESPUÉS en la lista y ANTES en el
+    // tiempo. El rótulo terminaba nombrando un período que no fue el último movimiento de
+    // plata, abajo de un número que sí cuenta por fecha de depósito.
+    //
+    // Sólo cuenta si cayó en el año de la tarjeta: si no, decía "la última, diciembre 2025"
+    // abajo de un total que dice "te depositamos en 2026".
+    if (esDelAnio && (!c.ultimaAt || r.rendidoAt > c.ultimaAt)) {
+      c.ultima = r.periodo;
+      c.ultimaAt = r.rendidoAt;
+    }
   }
   // Los pesos primero: es la moneda del 99% de los contratos y la que el dueño espera arriba.
   return [...por.values()].sort((a, b) => (a.moneda === 'ARS' ? -1 : b.moneda === 'ARS' ? 1 : 0));

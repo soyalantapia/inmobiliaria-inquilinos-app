@@ -1036,9 +1036,12 @@ function PagoRow({
             {formatMonto(pago.monto)}
           </p>
           {/* Saldo con datos REALES del server (API): total exigible con mora y
-              lo que queda si se valida este pago. Se muestra también en pagos
-              TOTAL si igual queda saldo (p.ej. mora acumulada desde que informó).
-              En demo, el cálculo mock de siempre. */}
+              lo que queda si se valida este pago. En un TOTAL sólo aparece si
+              de verdad sobra algo (otro parcial ya conciliado, o un monto menor
+              al total): la mora NO sigue corriendo mientras el pago espera
+              decisión —el server la congela en la fechaTransferencia, igual que
+              validar (T-62)—, así que este renglón ya no puede prometer un saldo
+              que al validar vale cero. En demo, el cálculo mock de siempre. */}
           {liq ? (
             (esParcial || quedaTrasValidar > 0) && (
               <p className="text-[10px] text-muted-foreground">

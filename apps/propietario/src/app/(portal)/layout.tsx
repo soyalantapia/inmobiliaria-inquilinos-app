@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { NavPropietario, SideNavPropietario } from '@/components/nav-propietario';
-import { apiFetch, leerSesion, leerToken, type MiCartera } from '@/lib/api';
+import { apiFetch, ApiError, leerSesion, leerToken, type MiCartera } from '@/lib/api';
 
 /**
  * El caparazón de las cuatro pestañas: guard de sesión + navegación + encabezado.
@@ -32,10 +32,36 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
     enabled: listo,
   });
 
-  // Cualquier 401 (sesión vencida o revocada) manda al login: apiFetch ya limpió el storage.
+  // SÓLO el 401 manda al login. El resto NO.
+  //
+  // Antes salía por cualquier error: un 500 de la API, un timeout, el celular sin señal en el
+  // ascensor. El dueño terminaba en la pantalla de login, y ahí la única salida es pedir OTRO
+  // código por mail y esperarlo. Se le cerraba la sesión por un problema que no era suyo y que
+  // probablemente ya se resolvió solo. El 401 sí es lo que dice ser: sesión vencida o
+  // revocada, y `apiFetch` ya limpió el storage.
+  const esSesionVencida = cartera.error instanceof ApiError && cartera.error.status === 401;
   useEffect(() => {
-    if (cartera.isError) router.replace('/login');
-  }, [cartera.isError, router]);
+    if (esSesionVencida) router.replace('/login');
+  }, [esSesionVencida, router]);
+
+  // Un error que NO es 401: se dice lo que pasa y se ofrece reintentar, sin tirar la sesión.
+  if (cartera.isError && !esSesionVencida) {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center gap-3 px-6 text-center">
+        <p className="text-sm font-medium">No pudimos cargar tus datos</p>
+        <p className="max-w-xs text-xs text-muted-foreground">
+          Puede ser la conexión, o algo de nuestro lado. Tu sesión sigue abierta.
+        </p>
+        <button
+          type="button"
+          onClick={() => void cartera.refetch()}
+          className="rounded-full border px-4 py-2 text-xs font-medium transition-colors hover:bg-muted"
+        >
+          Reintentar
+        </button>
+      </main>
+    );
+  }
 
   if (!listo || cartera.isPending) {
     return (

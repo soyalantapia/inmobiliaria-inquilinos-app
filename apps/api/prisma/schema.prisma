@@ -335,6 +335,13 @@ enum TipoEventoAuditoria {
   FACTURA_ARCA_EMITIDA
   PROPIETARIO_CONFIRMO_RECIBO
   PROPIETARIO_RENDIDO
+  // Anular una rendición BORRA la fila y sus tres ledgers. Es el único registro de plata del
+  // sistema que se destruye, y encima el único que un tercero —el propietario— ya vio en su
+  // portal: se le desaparece un depósito de la pantalla, el total del año le baja solo y la
+  // plata le vuelve a aparecer como "sin rendirte", sin una línea que lo explique. Sin este
+  // evento no queda absolutamente nada: ni la fila ni quién la borró. La baja lógica (que la
+  // rendición quede tachada en vez de desaparecer) es el paso siguiente.
+  PROPIETARIO_RENDICION_ANULADA
   MODO_COBRANZA_CAMBIADO
   MORA_EDITADA
   MOVIMIENTO_CONSORCIO_ELIMINADO
@@ -1793,6 +1800,18 @@ model Pago {
   // Antes condonar creaba un pago idéntico a un cobro real → inflaba caja, comisión y le
   // transfería al dueño plata que nunca entró.
   condonado           Boolean             @default(false)
+  // MIGRACIÓN DE CARTERA: la plata NO pasó por la inmobiliaria. El alta de un contrato "en
+  // curso" registra hasta 120 períodos pasados como pagados (`estado-inicial-contrato.ts`)
+  // para que el saldo del inquilino arranque bien — pero eso lo cobró la inmobiliaria antes
+  // de usar el sistema, y ya se lo liquidó al dueño por fuera. Sin esta marca, `POST
+  // /rendiciones` la trata como cobro rendible y le puede transferir al propietario plata
+  // que ya tiene, y el portal se la reclama como "cobrado y todavía sin rendirte" en un
+  // número que no baja por ningún camino.
+  //
+  // Mismo criterio que `condonado`, y por el mismo motivo: cancela deuda del inquilino sin
+  // ser un ingreso. Es una columna y no un filtro por `observacion` porque esa observación
+  // es un texto libre que alguien puede editar o traducir.
+  migradoDeCartera    Boolean             @default(false)
   monto               Decimal             @db.Decimal(14, 2)
   montoLiqTotal       Decimal?            @db.Decimal(14, 2) // snapshot del total al informar
   metodo              MetodoPagoInformado

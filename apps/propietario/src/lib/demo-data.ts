@@ -76,9 +76,9 @@ export const PROPIEDADES_DEMO: PropiedadPortal[] = [
       hasta: '2028-08-31',
       inquilino: 'Mariela Sosa',
       periodos: [
-        { periodo: '2026-08', estado: 'PAGADO', monto: 480000, vence: '2026-08-05', pagoAt: '2026-08-11', condonada: false },
-        { periodo: '2026-07', estado: 'PAGADO', monto: 480000, vence: '2026-07-05', pagoAt: '2026-07-04', condonada: false },
-        { periodo: '2026-06', estado: 'PAGADO', monto: 480000, vence: '2026-06-05', pagoAt: '2026-06-03', condonada: false },
+        { periodo: '2026-08', estado: 'PAGADO', monto: 480000, vence: '2026-08-05', pagoAt: '2026-08-11', condonada: false , pagado: null },
+        { periodo: '2026-07', estado: 'PAGADO', monto: 480000, vence: '2026-07-05', pagoAt: '2026-07-04', condonada: false , pagado: null },
+        { periodo: '2026-06', estado: 'PAGADO', monto: 480000, vence: '2026-06-05', pagoAt: '2026-06-03', condonada: false , pagado: null },
       ],
     },
   },
@@ -99,9 +99,9 @@ export const PROPIEDADES_DEMO: PropiedadPortal[] = [
       periodos: [
         // Agosto sin pagar y ya vencido. La demo necesita mostrar el caso incómodo: es
         // exactamente lo que el propietario entra a mirar cuando no le llegó la plata.
-        { periodo: '2026-08', estado: 'VENCIDO', monto: 620000, vence: '2026-08-05', pagoAt: null, condonada: false },
-        { periodo: '2026-07', estado: 'PAGADO', monto: 620000, vence: '2026-07-05', pagoAt: '2026-07-07', condonada: false },
-        { periodo: '2026-06', estado: 'PAGADO', monto: 620000, vence: '2026-06-05', pagoAt: '2026-06-05', condonada: false },
+        { periodo: '2026-08', estado: 'VENCIDO', monto: 620000, vence: '2026-08-05', pagoAt: null, condonada: false , pagado: null },
+        { periodo: '2026-07', estado: 'PAGADO', monto: 620000, vence: '2026-07-05', pagoAt: '2026-07-07', condonada: false , pagado: null },
+        { periodo: '2026-06', estado: 'PAGADO', monto: 620000, vence: '2026-06-05', pagoAt: '2026-06-05', condonada: false , pagado: null },
       ],
     },
   },
@@ -120,9 +120,9 @@ export const PROPIEDADES_DEMO: PropiedadPortal[] = [
       hasta: '2027-10-31',
       inquilino: 'Carlos Romero',
       periodos: [
-        { periodo: '2026-08', estado: 'PAGADO', monto: 720000, vence: '2026-08-05', pagoAt: '2026-08-04', condonada: false },
-        { periodo: '2026-07', estado: 'PAGADO', monto: 720000, vence: '2026-07-05', pagoAt: '2026-07-03', condonada: false },
-        { periodo: '2026-06', estado: 'PAGADO', monto: 720000, vence: '2026-06-05', pagoAt: '2026-06-04', condonada: false },
+        { periodo: '2026-08', estado: 'PAGADO', monto: 720000, vence: '2026-08-05', pagoAt: '2026-08-04', condonada: false , pagado: null },
+        { periodo: '2026-07', estado: 'PAGADO', monto: 720000, vence: '2026-07-05', pagoAt: '2026-07-03', condonada: false , pagado: null },
+        { periodo: '2026-06', estado: 'PAGADO', monto: 720000, vence: '2026-06-05', pagoAt: '2026-06-04', condonada: false , pagado: null },
       ],
     },
   },

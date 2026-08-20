@@ -383,33 +383,46 @@ export async function authRoutes(app: FastifyInstance) {
     // findFirst arbitrario (que podía loguear contra el tenant equivocado).
     const emailLc = body.data.email.toLowerCase();
     const inquilinos = await prisma.inquilino.findMany({ where: { email: emailLc }, select: { id: true } });
-    // Respuesta idéntica exista o no (no enumerar emails)
-    if (inquilinos.length === 0) return { ok: true };
 
+    // T-53-N1 — El bcrypt va SIEMPRE, exista o no el email, y por eso el `return` temprano de
+    // la rama "no existe" quedó ABAJO. La respuesta ya era idéntica en los dos casos, pero el
+    // TIEMPO no: sin código que hashear, la rama del email inexistente contestaba en unos pocos
+    // milisegundos y la otra en cientos. Eso alcanza para enumerar quién es inquilino de esta
+    // inmobiliaria. Calcularlo igual y tirarlo empareja el costo. Mismo criterio, mismas
+    // palabras, que en `/auth/propietario/otp/request`.
     const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
     const codeHash = bcrypt.hashSync(code, 8);
-    const expiresAt = new Date(Date.now() + OTP_TTL_MS);
-    // Igual que en el OTP del panel: pedir un código nuevo invalida el anterior. Sin esto
-    // se acumulaban códigos válidos y cada pedido aumentaba la chance de acertar por
-    // fuerza bruta (además de alargar el loop de bcrypt del verify).
-    await prisma.codigoOtp.updateMany({
-      where: { inquilinoId: { in: inquilinos.map((i) => i.id) }, usedAt: null },
-      data: { usedAt: new Date() },
-    });
-    await prisma.codigoOtp.createMany({
-      data: inquilinos.map((i) => ({ inquilinoId: i.id, codeHash, expiresAt })),
-    });
-    // Envío por SMTP si está configurado (SMTP_HOST/USER/PASS); si no, fallback
-    // a loguear el código (dev/prueba). No filtramos el resultado al cliente.
-    const destino = emailLc;
-    try {
-      const enviado = await enviarOtp(destino, code);
-      if (!enviado) app.log.info({ email: destino, ...codeEnLog(code) }, 'OTP generado (SMTP no configurado)');
-      else app.log.info({ email: destino }, 'OTP enviado por email');
-    } catch (err) {
-      // No romper el login si el SMTP falla.
-      app.log.error({ email: destino, ...codeEnLog(code), err: (err as Error).message }, 'OTP: fallo el envío SMTP');
+
+    if (inquilinos.length > 0) {
+      const expiresAt = new Date(Date.now() + OTP_TTL_MS);
+      // Igual que en el OTP del panel: pedir un código nuevo invalida el anterior. Sin esto
+      // se acumulaban códigos válidos y cada pedido aumentaba la chance de acertar por
+      // fuerza bruta (además de alargar el loop de bcrypt del verify).
+      await prisma.codigoOtp.updateMany({
+        where: { inquilinoId: { in: inquilinos.map((i) => i.id) }, usedAt: null },
+        data: { usedAt: new Date() },
+      });
+      await prisma.codigoOtp.createMany({
+        data: inquilinos.map((i) => ({ inquilinoId: i.id, codeHash, expiresAt })),
+      });
+      // El envío NO se espera, por lo mismo que el bcrypt se calcula siempre: con SMTP
+      // configurado es el costo DOMINANTE del request —cientos de ms contra los pocos del
+      // bcrypt— y corre sólo en esta rama. Awaitearlo devolvía el tiempo de respuesta como
+      // oráculo y deshacía el emparejamiento de arriba.
+      //
+      // Nada de la respuesta depende del resultado: se contesta `{ ok: true }` igual salga o
+      // falle. El error se sigue logueando, sólo que fuera del camino del request.
+      void enviarOtp(emailLc, code)
+        .then((enviado) => {
+          if (!enviado) app.log.info({ email: emailLc, ...codeEnLog(code) }, 'OTP generado (SMTP no configurado)');
+          else app.log.info({ email: emailLc }, 'OTP enviado por email');
+        })
+        .catch((err: Error) => {
+          app.log.error({ email: emailLc, ...codeEnLog(code), err: err.message }, 'OTP: fallo el envío SMTP');
+        });
     }
+
+    // Respuesta idéntica exista o no (no enumerar emails), y ahora también en tiempo.
     return { ok: true };
   });
 

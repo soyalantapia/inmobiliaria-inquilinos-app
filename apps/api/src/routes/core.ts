@@ -3599,7 +3599,12 @@ export async function coreRoutes(app: FastifyInstance) {
           periodo: true,
           estado: true,
           montoExpensas: true,
-          _count: { select: { pagos: true } },
+          // T-59 — Sólo los pagos VIVOS. Contaba también los RECHAZADOS, que no son plata:
+          // un comprobante mal mandado y rechazado dejaba la cuota fuera del recálculo PARA
+          // SIEMPRE. Llegaban las expensas nuevas del consorcio y esa cuota conservaba las
+          // viejas — la inmobiliaria le cobraba de menos al inquilino y le pagaba igual al
+          // consorcio. Mismo criterio de "pago vivo" que usan core.ts:1940, :2257 y :2363.
+          _count: { select: { pagos: { where: { estado: { in: ['INFORMADO', 'CONCILIADO'] } } } } },
         },
       });
       const aReajustar = recomputarLiquidacionesFuturas(
@@ -3767,7 +3772,12 @@ export async function coreRoutes(app: FastifyInstance) {
           estado: true,
           montoAlquiler: true,
           montoExpensas: true,
-          _count: { select: { pagos: true } },
+          // T-59 — Sólo los pagos VIVOS. Contaba también los RECHAZADOS, que no son plata:
+          // un comprobante mal mandado y rechazado dejaba la cuota fuera del recálculo PARA
+          // SIEMPRE. Llegaban las expensas nuevas del consorcio y esa cuota conservaba las
+          // viejas — la inmobiliaria le cobraba de menos al inquilino y le pagaba igual al
+          // consorcio. Mismo criterio de "pago vivo" que usan core.ts:1940, :2257 y :2363.
+          _count: { select: { pagos: { where: { estado: { in: ['INFORMADO', 'CONCILIADO'] } } } } },
         },
       });
       const aReajustar = recomputarExpensasFuturas(

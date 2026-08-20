@@ -91,6 +91,15 @@ export function enumerarPeriodosContrato(params: ParamsEnumerarPeriodos, now: Da
     const diasMes = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
     const dia = Math.min(params.diaPago, diasMes);
     const venc = new Date(Date.UTC(y, m, dia));
+    // ÚLTIMO DEVENGO: simétrico al del primer período de arriba. El `tope` es de granularidad
+    // MES (`finMes` es el día 1 del mes de fin), así que un contrato que termina el 05/09 con
+    // diaPago 10 emitía la cuota de septiembre venciendo el 10 — CINCO DÍAS después de
+    // terminado. Se le cobraba el mes entero por esos días, con comisión, y una vez cobrada la
+    // baja del contrato ya no la puede deshacer.
+    //
+    // Si el vencimiento cae después del fin, ese período no existe: se corta acá y no se
+    // sigue, porque todos los siguientes vencen todavía más tarde.
+    if (venc > fin) break;
     out.push({ periodo, vencimiento: venc, vencido: venc < now });
     // Generamos hasta el tope inclusive; si el inicio ya superó el tope
     // (contrato futuro), queda solo el primer mes.
