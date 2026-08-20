@@ -19,16 +19,43 @@ restaurar() {
 }
 trap restaurar EXIT
 
-# Apagar dev servers si los hay (el guard de build los detecta y aborta).
-# 3003 es el del portal del propietario. NO va 3002: ese es el del API, que no tiene nada
-# que ver con estos builds y matarlo sería sabotear a quien esté laburando al lado.
+# Los tres dev servers, chequeados ANTES de buildear nada.
+#
+# 3003 es el del portal del propietario. NO va 3002: ese es el del API, que no tiene nada que
+# ver con estos builds y matarlo sería sabotear a quien esté laburando al lado.
+#
+# POR QUÉ SE CHEQUEA ACÁ Y NO SE CONFÍA EN EL GUARD POR APP. El guard de `check-dev-port.js`
+# sigue existiendo y está bien, pero salta recién al llegar a SU app: con el 3003 ocupado, el
+# script buildeaba inmobiliaria e inquilino enteras —minutos— y recién ahí abortaba. Pasó.
+#
+# Y POR QUÉ NO ALCANZA CON `lsof`. En Git Bash de Windows `lsof` no existe, así que el
+# `|| true` se lo comía y esto era un no-op silencioso: el script decía "Apagando proceso" sin
+# apagar nada, y después el guard abortaba igual. Ahora se detecta con `/dev/tcp`, que es de
+# bash y anda en los dos lados; si no se puede apagar, al menos se avisa temprano y con el
+# puerto.
+ocupados=""
 for puerto in 3000 3001 3003; do
+  (echo >"/dev/tcp/127.0.0.1/$puerto") >/dev/null 2>&1 || continue
   pids=$(lsof -ti:$puerto 2>/dev/null || true)
   if [[ -n "$pids" ]]; then
     echo "→ Apagando proceso en :$puerto"
     kill -9 $pids 2>/dev/null || true
+    sleep 1
   fi
+  # Se vuelve a mirar: si no había lsof no se mató nada, y si se mató puede tardar un instante.
+  (echo >"/dev/tcp/127.0.0.1/$puerto") >/dev/null 2>&1 && ocupados="$ocupados $puerto"
 done
+
+if [[ -n "$ocupados" ]]; then
+  echo ""
+  echo "❌ Hay dev servers escuchando en:$ocupados"
+  echo "   Apagalos antes de buildear (Ctrl+C en su terminal)."
+  echo "   No se pudieron apagar solos: 'lsof' no está en este shell (típico en Windows)."
+  echo ""
+  echo "   Se aborta ACÁ y no a mitad de camino: si no, el build de las apps anteriores"
+  echo "   se hace igual y se tira a la basura cuando falla la que tiene el puerto tomado."
+  exit 1
+fi
 
 [[ -f "$MW_INMO" ]] && mv "$MW_INMO" "$MW_INMO.bak"
 [[ -f "$MW_INQ" ]] && mv "$MW_INQ" "$MW_INQ.bak"
