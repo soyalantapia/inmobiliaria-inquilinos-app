@@ -186,6 +186,18 @@ export interface RendicionDetalle extends RendicionPortal {
   detalleIngresos: { fecha: string; descripcion: string; participacionPct: number; monto: number }[];
 }
 
+/** Alquiler cobrado de una unidad que todavía no se le rindió al dueño. */
+export interface PendientePortal {
+  propiedadId: string;
+  direccion: string;
+  complejo: string | null;
+  participacionPct: number;
+  moneda: 'ARS' | 'USD';
+  /** Alquiler cobrado sin rendir DE LA UNIDAD: todavía se le descuentan comisión y gastos. */
+  total: number;
+  periodos: { periodo: string; monto: number }[];
+}
+
 /** Un aviso que la inmobiliaria le mandó a sus propietarios. */
 export interface AnuncioPortal {
   id: string;

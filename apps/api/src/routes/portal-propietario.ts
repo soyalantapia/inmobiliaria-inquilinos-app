@@ -6,6 +6,7 @@ import { OtpRequestSchema, OtpVerifySchema, type JwtPropietario } from '@llave/s
 import { prisma } from '../db.js';
 import { requirePropietario } from '../auth/guards.js';
 import { enviarOtp } from '../mailer.js';
+import { alquilerCobradoSinRendirDePropiedad } from '../lib/rendicion-pendiente.js';
 
 /**
  * PORTAL DEL PROPIETARIO (T-23).
@@ -592,5 +593,59 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
       prioridad: a.prioridad,
       enviadoAt: a.enviadoAt.toISOString(),
     }));
+  });
+
+  /**
+   * Lo que ya se cobró de sus unidades y todavía NO se le rindió.
+   *
+   * POR QUÉ EXISTE: la pestaña de Pagos le muestra lo que YA se le depositó, y la de Unidades
+   * que el inquilino pagó tal día. Entre las dos quedaba justo el hueco de la llamada más
+   * frecuente del dueño: *"¿ya me mandaste lo de agosto?"*. La cuenta existía hace rato en
+   * `lib/rendicion-pendiente.ts` —la usan los guards de cambio de modo de cobranza y de reparto
+   * de dueños— y el portal no la exponía.
+   *
+   * SE INFORMA EL NÚMERO DE LA PROPIEDAD, NO UN NETO ESTIMADO. Es alquiler cobrado y sin rendir
+   * de la unidad: de ahí la rendición todavía va a descontar la comisión y los gastos, y a
+   * repartir por participación si hay más de un dueño. Anticipar ese neto exigiría replicar la
+   * aritmética de `POST /rendiciones` —con sus dos caps— y un número que no coincida con el
+   * depósito real sería peor que no mostrar ninguno. El front lo dice con esas palabras.
+   *
+   * Excluye mora, expensas y condonaciones, igual que la rendición: el helper es el mismo.
+   */
+  app.get('/portal/pendiente', async (request, reply) => {
+    const p = await requirePropietario(request, reply);
+    if (!p) return;
+    const participaciones = await prisma.participacionPropietario.findMany({
+      where: { propietarioId: p.propietarioId, inmobiliariaId: p.inmobiliariaId },
+      select: {
+        porcentaje: true,
+        propiedad: {
+          select: {
+            id: true,
+            direccion: true,
+            complejo: true,
+            consorcio: { select: { nombre: true } },
+            contratoActual: { select: { moneda: true } },
+          },
+        },
+      },
+    });
+
+    const unidades = await Promise.all(
+      participaciones.map(async (part) => {
+        const pend = await alquilerCobradoSinRendirDePropiedad(part.propiedad.id);
+        return {
+          propiedadId: part.propiedad.id,
+          direccion: part.propiedad.direccion,
+          complejo: part.propiedad.consorcio?.nombre ?? part.propiedad.complejo ?? null,
+          participacionPct: part.porcentaje,
+          moneda: part.propiedad.contratoActual?.moneda ?? 'ARS',
+          total: pend.total,
+          periodos: pend.periodos,
+        };
+      }),
+    );
+    // Sólo las que tienen algo pendiente: una lista de ceros no contesta nada.
+    return unidades.filter((u) => u.total > 0);
   });
 }

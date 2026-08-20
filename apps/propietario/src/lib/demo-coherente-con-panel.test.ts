@@ -13,17 +13,17 @@
  * que sólo existen en el build demo. El riesgo real no es tener dos copias: es que **diverjan en
  * silencio**. Un test no elimina la duplicación, elimina el silencio, que es lo que hace daño.
  *
- * POR QUÉ VIVE EN `apps/api`. Porque es el único paquete con runner de tests. Montar uno en los
- * fronts es **T-32**; cuando eso cierre, este archivo debería mudarse. Se deja acá y no sin
- * escribir, porque un guardarraíl que existe en el paquete equivocado sirve más que uno que no
- * existe.
+ * DÓNDE VIVE. Acá, en el portal, y no en el panel ni en la API: lo que este test protege es
+ * que la demo del PORTAL no contradiga la del panel. Nació en `apps/api/test/` porque era el
+ * único paquete con runner; al cerrarse T-32 y montarse el runner de los fronts, se mudó a su
+ * lugar.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
 const PORTAL = readFileSync(join(RAIZ, 'apps', 'propietario', 'src', 'lib', 'demo-data.ts'), 'utf8');
 const PANEL = readFileSync(join(RAIZ, 'apps', 'inmobiliaria', 'src', 'lib', 'mock-data.ts'), 'utf8');
 
