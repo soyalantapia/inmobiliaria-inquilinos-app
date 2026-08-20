@@ -2164,6 +2164,36 @@ real y deja el diálogo abierto para corregir, y el camino feliz guarda y refres
 
 ---
 
+## T-51 · Los datos de demo usan dominios de correo reales, y ahora están publicados
+
+**Experto:** SEC (higiene de datos) · **Prioridad:** 🟢 · **Depende de:** poder correr la suite
+completa de `apps/api`
+**Origen:** revisión de seguridad del portal del propietario (19/08).
+
+**Qué pasa.** Ningún email de los datos ficticios usa un dominio reservado. Son
+`@gmail.com`, `@hotmail.com`, `@yahoo.com.ar`, `@outlook.com`, y dominios `.com.ar` con pinta de
+negocio real para los proveedores (`friopro.com.ar`, `ferrari-elec.com.ar`). Desde el 19/08 eso
+está **publicado en internet** en la demo de GitHub Pages, con nombre y apellido al lado.
+
+**Por qué importa aunque sea menor.** Algunas de esas direcciones pueden existir y ser de
+personas o negocios reales que no tienen nada que ver con el producto, y quedan asociadas
+públicamente a una demo. La convención para datos ficticios (RFC 2606) es `example.com`,
+`example.org`, `.invalid` o `.test`, justamente para que no le caiga correo a nadie.
+
+**Alcance medido:** 23 ocurrencias en 11 archivos —`apps/propietario/src/lib/demo-data.ts`, los
+`mock-data.ts` del panel y la PWA, `mailer.ts`, `auth.ts` y algunas pantallas—.
+
+**Por qué NO se hizo acá.** Varios tests de `apps/api` (`auth.test.ts`, `core.test.ts`,
+`anuncios.test.ts`, `baja-contrato.test.ts`, `certificado-antiguedad.test.ts`) dependen de esos
+emails, y esos tests **tocan la base**: desde esta sesión no se pueden correr, así que no había
+forma de verificar que el cambio no rompiera la suite. Cambiar a ciegas 23 valores de los que
+dependen tests que no puedo ejecutar es peor que dejar el problema anotado.
+
+**Criterio de aceptación.** Ningún dato ficticio usa un dominio de correo que pueda existir, y
+la suite completa de `apps/api` sigue en verde.
+
+---
+
 ## T-50 · La pestaña Comunicaciones decía que no había ninguna — ✅ RESUELTO
 
 **Experto:** FE-P · **Prioridad:** 🟠
