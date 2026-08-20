@@ -41,12 +41,12 @@ function envSmtp() {
   process.env.SMTP_FROM = 'My Alquiler <no-reply@myalquiler.app>';
 }
 
-let mailer: typeof import('../src/mailer');
+let mailer: typeof import('../src/mailer.js');
 
 beforeAll(async () => {
   envSmtp();
   delete process.env.EMAIL_FROM_CON_INMOBILIARIA; // default: apagado
-  mailer = await import('../src/mailer');
+  mailer = await import('../src/mailer.js');
 });
 
 function ultimo(): MailEnviado {
@@ -129,13 +129,13 @@ describe('T-30-N1 — remitente, con el flag APAGADO (default)', () => {
 });
 
 describe('T-30-N1 — remitente, con el flag PRENDIDO', () => {
-  let conFlag: typeof import('../src/mailer');
+  let conFlag: typeof import('../src/mailer.js');
 
   beforeAll(async () => {
     vi.resetModules();
     envSmtp();
     process.env.EMAIL_FROM_CON_INMOBILIARIA = '1';
-    conFlag = await import('../src/mailer');
+    conFlag = await import('../src/mailer.js');
   });
 
   it('el inquilino ve el nombre de SU inmobiliaria en la bandeja', () => {

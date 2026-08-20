@@ -33,7 +33,7 @@ vi.mock('nodemailer', () => ({
   },
 }));
 
-let mailer: typeof import('../src/mailer');
+let mailer: typeof import('../src/mailer.js');
 
 beforeAll(async () => {
   // El módulo lee la config SMTP al importarse: hay que setearla antes del import.
@@ -43,7 +43,7 @@ beforeAll(async () => {
   process.env.SMTP_GAP_MS = '0'; // sin espaciado: acá no se mide tiempo
   // Sin APP_PROPIETARIO_URL a propósito: lo que se prueba es el default que sale a producción.
   delete process.env.APP_PROPIETARIO_URL;
-  mailer = await import('../src/mailer');
+  mailer = await import('../src/mailer.js');
 });
 
 function ultimo(): MailEnviado {
@@ -107,7 +107,7 @@ describe('APP_PROPIETARIO_URL', () => {
     // esa forma — este test sólo cuida que el override llegue al mail sin barra duplicada.
     vi.resetModules();
     process.env.APP_PROPIETARIO_URL = 'https://panel.otrodominio.com/propietario/';
-    const otro = await import('../src/mailer');
+    const otro = await import('../src/mailer.js');
     await otro.enviarAnuncioEmail({ ...ANUNCIO, email: 'dueno@test.com', paraInquilino: false });
     const cuerpo = cuerpoCompleto(ultimo());
     expect(cuerpo).toContain('https://panel.otrodominio.com/propietario');

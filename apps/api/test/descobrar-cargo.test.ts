@@ -164,7 +164,7 @@ describe('Deshacer el cobro de un cargo', () => {
     expect(movs).toHaveLength(1);
     // Y por el monto real, una sola vez. Si alguna vez se "arregla" sumando en vez de
     // reemplazando, esto lo agarra.
-    expect(Number(movs[0].monto)).toBe(180000);
+    expect(Number(movs[0]!.monto)).toBe(180000);
 
   });
 
@@ -211,7 +211,7 @@ describe('Deshacer el cobro de un cargo', () => {
 
     // Se marca como rendido igual que lo hace la rendición real.
     await prismaTest.movimientoCaja.update({
-      where: { id: mov.id },
+      where: { id: mov!.id },
       data: { descontadoEnRendicion: true },
     });
 

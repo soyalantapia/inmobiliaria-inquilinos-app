@@ -514,7 +514,7 @@ describe('Moneda de la caja: la rendición sólo descuenta los gastos de SU mone
     expect(ars.descontadoEnRendicion).toBe(false); // sólo A rindió: falta la mitad de B
     const partes = await prisma.gastoRendido.findMany({ where: { refId: `${P}gasto4ars` } });
     expect(partes).toHaveLength(1);
-    expect(Number(partes[0].monto)).toBe(100);
+    expect(Number(partes[0]!.monto)).toBe(100);
   });
 
   it('un gasto en USD tampoco se le cobra al co-dueño', async () => {

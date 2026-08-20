@@ -91,7 +91,7 @@ describe('borrarContratosDeTest cubre todo lo que cuelga de Contrato', () => {
   it('el orden respeta las FK ENTRE hijos: el que apunta va antes que el apuntado', () => {
     // Son cinco y son las que rompen el borrado si el orden está mal. Se derivan del schema,
     // no se escriben a mano, así que una nueva relación entre hijos también queda cubierta.
-    const posicion = new Map(HIJOS_EN_ORDEN.map((h, i) => [h, i]));
+    const posicion = new Map<string, number>(HIJOS_EN_ORDEN.map((h, i) => [h, i]));
     for (const hijo of HIJOS_EN_ORDEN) {
       const modelo = hijo.charAt(0).toUpperCase() + hijo.slice(1);
       const cuerpo = modelos[modelo] ?? '';

@@ -8,7 +8,7 @@
  * Estos tests son sobre `crearColaDeEnvio`, que es pura: no toca SMTP ni red.
  */
 import { describe, it, expect } from 'vitest';
-import { crearColaDeEnvio } from '../src/mailer';
+import { crearColaDeEnvio } from '../src/mailer.js';
 
 /** Registra cuándo empezó y terminó cada envío para poder detectar solapamiento. */
 function espia(duracionMs = 5) {
