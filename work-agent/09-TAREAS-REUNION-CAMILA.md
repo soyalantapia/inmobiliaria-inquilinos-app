@@ -5713,3 +5713,50 @@ la fórmula y falla si aparece fuera de `shared`. Comprobado reintroduciendo una
 
 **Los invariantes #3 a #6 siguen verificados sólo por lectura.** El #2 se desprende del #1 y
 queda cubierto de rebote.
+
+---
+
+## T-28-N2-N1 · Segunda corrida completa: 1057/1065, y una falla que no era del código — ✅ HECHA
+
+**Estado: ✅ HECHA** — commit `e231b79b`.
+
+**Experto:** BE/OPS · **Prioridad:** 🟡 · **Origen:** T-28-N2.
+
+Desde la primera corrida entraron muchísimos commits (los tests puros pasaron de 475 a 647), así
+que se volvió a correr la suite entera con base: **125 archivos** ahora, contra los 97 de la vez
+pasada. **1057 tests en verde de 1065**, 123 archivos de 125.
+
+**Las 7 fallas eran todas del mismo archivo y ninguna era una regresión.**
+`ecosistema-profesionales.test.ts` dio 7 × `expected 401 to be 200`, y **pasa 7/7 corriendo
+solo** — y también con los 18 archivos que lo preceden. Tardó **116 s** cuando en aislamiento
+tarda 15 s: el `/auth/login` de su `beforeAll` se cayó bajo carga, `token` quedó `undefined`, y
+los 7 casos salieron con `Bearer undefined`.
+
+**Lo que se arregló es el diagnóstico, no ese archivo.** El patrón está en **25 archivos**:
+loguean con `login.json().token` sin chequear nada, así que cualquier login transitoriamente
+fallido produce una tormenta de 401 que parece un problema de permisos, con la causa a un
+`beforeAll` de distancia. Ahora hay `test/_login.ts` con `loginTest()`, que falla en el primer
+renglón diciendo si fue el rate limit (30 en 15 min) o un usuario que otro archivo dejó
+inutilizable.
+
+**El suite es flaky bajo corridas largas, y conviene saberlo antes de creerle:** la primera
+corrida tuvo 3 archivos caídos por contención y la segunda 1, siempre distintos y siempre verdes
+en aislamiento. La regla quedó en `docs/TESTING.md`: **ante una falla rara, correr el archivo
+solo antes de debuggear el código.**
+
+---
+
+## T-28-N2-N2 · Los otros 25 archivos que loguean sin chequear el token
+
+**Experto:** BE · **Prioridad:** 🟢 · **Depende de:** nada
+**Origen:** T-28-N2-N1.
+
+`test/_login.ts` ya existe y `ecosistema-profesionales.test.ts` lo usa. Faltan los ~25 que siguen
+haciendo `const login = await app.inject(...); token = login.json().token;` sin verificar nada.
+
+Mientras estén así, cualquiera de ellos puede volver a producir una tormenta de 401 que cuesta
+una bisección entender. Es mecánico —reemplazar dos líneas por `await loginTest(app, mail, pass)`—
+pero son 25 archivos y no correspondía meterlo en el commit del diagnóstico.
+
+**Criterio de aceptación.** `grep -l "\.json()\.token" apps/api/test/*.test.ts` no devuelve nada,
+y la suite con base sigue en verde.
