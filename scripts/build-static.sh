@@ -64,6 +64,11 @@ cd "$ROOT"
 
 rm -rf apps/inmobiliaria/.next apps/inquilino/.next apps/propietario/.next out
 
+# El commit que se publica, para el <meta name="build-commit"> de cada front. En Actions viene
+# de GITHUB_SHA; corriendo el script a mano no hay ninguna y el layout cae a "desconocido", que
+# es preferible a inventar un valor. Se exporta una vez para los tres builds.
+export NEXT_PUBLIC_COMMIT="${GITHUB_SHA:-}"
+
 echo ""
 echo "▶ Build inmobiliaria"
 STATIC_EXPORT=1 pnpm --filter inmobiliaria build
