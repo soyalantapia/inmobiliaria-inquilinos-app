@@ -370,8 +370,12 @@ export default function LoginPage() {
             )}
           </Card>
 
-          {/* Banner DEMO con el código generado — más prominente que antes */}
-          {paso === 'otp' && codigoDemo && (
+          {/* Banner DEMO con el código generado. El gate de `!apiEnabled` es defensa en
+              profundidad: hoy en producción ya no hay quién setee `codigoDemo` —el camino
+              feliz dejó de mandar el código en 0b042656 y el fallback local se sacó en
+              T-67—, pero este banner le muestra un código de acceso en pantalla a quien
+              esté mirando, así que no puede depender de que nadie lo llene por error. */}
+          {!apiEnabled && paso === 'otp' && codigoDemo && (
             <Card className="border border-amber-300/60 bg-gradient-to-br from-amber-50 to-amber-100/60 p-4 dark:border-amber-900/40 dark:from-amber-950/40 dark:to-amber-900/20">
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
