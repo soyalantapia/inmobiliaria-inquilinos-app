@@ -77,6 +77,16 @@ const EnvSchema = z.object({
   SMTP_PORT: z.string().optional(),
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
+  // Bases de los CTA de los emails (las lee `mailer.ts`, que ya tiene el default de
+  // producción de cada una). `.url()` por el mismo motivo que SONAR_API_URL: una URL mal
+  // escrita falla en el ARRANQUE, en vez de descubrirse cuando a alguien le llega un mail
+  // con un link roto.
+  APP_INQUILINO_URL: z.string().url().optional(),
+  APP_ADMIN_URL: z.string().url().optional(),
+  // ⚠️ El portal del propietario NO tiene servicio propio en Railway: se sirve como export
+  // estático desde el host del PANEL, bajo /propietario (ver work-agent/02-DEPLOY.md). Si se
+  // setea, tiene que tener esa forma — un dominio propio del portal no existe.
+  APP_PROPIETARIO_URL: z.string().url().optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
