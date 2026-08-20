@@ -41,6 +41,24 @@ cd apps/api && ./node_modules/.bin/prisma migrate deploy && ./node_modules/.bin/
 pnpm --filter api test:db:down     # borra el volumen: la próxima arranca limpia
 ```
 
+> ### ⚠️ No corras dos suites completas a la vez (T-28-N2, 20/08)
+>
+> La suite entera se corrió dos veces seguidas contra esta misma base efímera:
+>
+> | | duración | resultado |
+> |---|---|---|
+> | 1ª (máquina libre) | **881 s** | 809/810 · 1 falla real |
+> | 2ª (con otra suite en paralelo) | **5433 s** | 3 suites caídas |
+>
+> Las tres de la segunda vuelta fueron **de entorno, no de código**: una murió con
+> `Hook timed out in 420000ms` y `Can't reach database server at localhost:55432`. El
+> contenedor quedó sano —sin OOM, sin reinicios— y **las tres pasan solas en 46 s**. Lo que
+> las volteó fue la contención: 6× más lento alcanza para que los timeouts de conexión
+> empiecen a saltar.
+>
+> Si ves fallas raras de infraestructura, **antes de debuggear el código corré los archivos
+> caídos en aislamiento**. Si pasan, era la máquina.
+
 Detalles en `docker-compose.test.yml`. Puerto **55432** para no pisar un Postgres propio; la
 base vive en `tmpfs` (RAM) así que desaparece al bajar el contenedor, que es justo lo que se
 quiere de una base de test. `prisma/guard-db.ts` ya reconoce `localhost` como base de test.

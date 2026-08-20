@@ -34,14 +34,37 @@ afterAll(async () => {
     where: { personaId: { in: personaIds } },
     select: { contratoId: true },
   });
-  const contratoIds = inquilinos.map((i) => i.contratoId).filter((c): c is string => !!c);
   const props = await prismaTest.propiedad.findMany({
     where: { direccion: { contains: 'Rivadavia' } },
     select: { id: true },
   });
   const propIds = props.map((p) => p.id);
+  // Los contratos salen de DOS lados y se unen. Antes salían sólo de los inquilinos, y eso
+  // deja afuera cualquier contrato de estas propiedades cuyo inquilino no matchee —incluido
+  // el residuo de una corrida anterior que murió a mitad del borrado—. El síntoma era un
+  // `contratos_propiedadId_fkey` recién al llegar a `propiedad.deleteMany`, o sea a seis
+  // líneas de distancia de la causa.
+  const porPropiedad = await prismaTest.contrato.findMany({
+    where: { propiedadId: { in: propIds } },
+    select: { id: true },
+  });
+  const contratoIds = [
+    ...new Set([
+      ...inquilinos.map((i) => i.contratoId).filter((c): c is string => !!c),
+      ...porPropiedad.map((c) => c.id),
+    ]),
+  ];
   await prismaTest.liquidacion.deleteMany({ where: { contratoId: { in: contratoIds } } });
   await prismaTest.inquilino.deleteMany({ where: { personaId: { in: personaIds } } });
+  // Los eventos del historial van ANTES que el contrato, y esta línea no estaba: el alta no
+  // escribía ninguno hasta que T-29 puso `registrarEventoContrato` en el flujo. Desde
+  // entonces cada contrato que crea este test deja su fila en `eventos_contrato`, y el
+  // `deleteMany` de abajo se comía un `eventos_contrato_contratoId_fkey`.
+  //
+  // Ojo si esto vuelve a romper: de los 22 modelos que cuelgan de `Contrato`, NINGUNO
+  // cascadea, y acá se borran sólo los que este test llega a crear. Cualquier feature nueva
+  // que escriba otro hijo en el alta rompe esta limpieza igual. Ver T-28-N2.
+  await prismaTest.eventoContrato.deleteMany({ where: { contratoId: { in: contratoIds } } });
   await prismaTest.contrato.deleteMany({ where: { id: { in: contratoIds } } });
   await prismaTest.participacionPropietario.deleteMany({ where: { propiedadId: { in: propIds } } });
   await prismaTest.propiedad.deleteMany({ where: { id: { in: propIds } } });
