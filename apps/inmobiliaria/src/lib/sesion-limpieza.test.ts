@@ -103,3 +103,39 @@ describe('limpiarEstadoDeSesion', () => {
     expect(() => limpiarEstadoDeSesion()).not.toThrow();
   });
 });
+
+describe('la sesión del PROPIETARIO también se va', () => {
+  let store: Storage;
+  beforeEach(() => {
+    store = instalarStorageFalso();
+  });
+
+  it('cerrar sesión en el panel borra el token del dueño que quedó abierto', () => {
+    // El portal se sirve como /propietario de este MISMO host, así que comparten
+    // localStorage. En el mostrador de Camila: le muestra a un dueño su rendición, el dueño
+    // entra con su OTP, ella cierra sesión — y sin este barrido el token del dueño sobrevive
+    // SIETE DÍAS. El que use la máquina después abre /propietario y entra como él.
+    store.setItem('myalquiler-propietario:token', 'jwt-del-duenio');
+    store.setItem('myalquiler-propietario:sesion', '{"nombre":"Eduardo Castro"}');
+    store.setItem('llave-inmo:caja', '{}');
+
+    limpiarEstadoDeSesion();
+
+    expect(store.getItem('myalquiler-propietario:token')).toBeNull();
+    expect(store.getItem('myalquiler-propietario:sesion')).toBeNull();
+    expect(store.getItem('llave-inmo:caja')).toBeNull();
+  });
+
+  it('el token del PANEL sigue siendo del caller: no se toca', () => {
+    // No-regresión de la regla que ya estaba: el conmutador lo REEMPLAZA y el logout lo
+    // BORRA, y quien decide es el caller. Si este barrido se lo llevara, el conmutador de
+    // usuarios dejaría de funcionar.
+    store.setItem('llave:auth:token', 'jwt-del-panel');
+    store.setItem('myalquiler-propietario:token', 'jwt-del-duenio');
+
+    limpiarEstadoDeSesion();
+
+    expect(store.getItem('llave:auth:token')).toBe('jwt-del-panel');
+    expect(store.getItem('myalquiler-propietario:token')).toBeNull();
+  });
+});

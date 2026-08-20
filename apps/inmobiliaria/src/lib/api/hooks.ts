@@ -1124,6 +1124,8 @@ interface PropietarioApi {
   cbuAlias: string | null;
   comisionPct: number | null;
   notas: string | null;
+  /** Última vez que entró al portal. `null` = nunca entró (o el backend es viejo). */
+  ultimoAccesoAt?: string | null;
   createdAt: string;
   participaciones: Array<{ propiedadId: string; porcentaje: number }>;
 }
@@ -1226,6 +1228,7 @@ export function usePropietarios(): {
       email: o.email ?? '',
       telefono: o.telefono ?? '',
       cbuAlias: o.cbuAlias,
+      ultimoAccesoAt: o.ultimoAccesoAt ?? null,
       comisionPct: o.comisionPct ?? 0,
       notas: o.notas,
       createdAt: (o.createdAt ?? '').slice(0, 10),

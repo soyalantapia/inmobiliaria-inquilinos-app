@@ -164,6 +164,20 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
       }
       if (!elegido) return reply.code(401).send({ message: 'Código inválido o vencido' });
 
+      // Queda registrado que entró. BEST-EFFORT y sin await bloqueante en el camino feliz:
+      // un rastro que rompe el login es peor que no tener rastro. Hasta acá no había forma
+      // de contestar "¿algún dueño usó el portal alguna vez?" — el único dato era
+      // `CodigoOtpPropietario.usedAt`, que es ambiguo porque también se escribe al invalidar
+      // los códigos anteriores.
+      //
+      // Se marca SÓLO la cartera con la que entró, no las otras del mismo email: si un dueño
+      // tiene dos y sólo abre una, decir que accedió a las dos sería mentira.
+      await prisma.propietario
+        .update({ where: { id: elegido.id }, data: { ultimoAccesoAt: new Date() } })
+        .catch((e: unknown) => {
+          app.log.warn({ propietarioId: elegido?.id, e }, 'no se pudo registrar el acceso del propietario');
+        });
+
       // RIESGO RESIDUAL, deliberadamente visible: `Propietario.email` lo tipea a mano el staff
       // de cada inmobiliaria y nadie lo verifica nunca. Si el mismo string aparece en dos
       // tenants —un typo, un mail placeholder tipo info@…, el mail del contador usado para
@@ -263,8 +277,11 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
         telefono: true,
         cuit: true,
         comisionPct: true,
-        // `cbuAlias` NO se devuelve: el propietario ya sabe su CBU y exponerlo acá sólo
-        // agranda lo que se filtra si el token se pierde.
+        // `cbuAlias` se trae para saber SI HAY, no para mandarlo. Abajo sale como booleano.
+        //
+        // El número no se devuelve nunca: el dueño ya sabe su CBU, y ponerlo acá sólo agranda
+        // lo que se filtra si el token se pierde. Ni el número ni sus últimos cuatro dígitos.
+        cbuAlias: true,
         inmobiliaria: { select: { nombre: true, telefono: true, email: true } },
       },
     });
@@ -275,6 +292,15 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
       telefono: yo.telefono,
       cuit: yo.cuit,
       comisionPct: yo.comisionPct,
+      /**
+       * Si la inmobiliaria tiene su CBU cargado. SÓLO el booleano.
+       *
+       * POR QUÉ EXISTE: `POST /rendiciones` corta con 409 cuando falta (plata.ts:1970), así que
+       * el dueño sin CBU cargado ve el "cobrado y todavía sin rendirte" crecer mes a mes sin
+       * ninguna pista de por qué no le depositan. El panel hasta tiene un KPI de "propietarios
+       * sin CBU"; el único que no se enteraba era el que puede resolverlo en treinta segundos.
+       */
+      tieneCbu: Boolean(yo.cbuAlias?.trim()),
       inmobiliaria: yo.inmobiliaria,
     };
   });

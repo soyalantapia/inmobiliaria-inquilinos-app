@@ -187,7 +187,36 @@ describe('Portal del propietario — el camino entero, por HTTP', () => {
       expect(c.nombre).toContain('Castro');
       expect(c.email).toBe('eduardo.castro@gmail.com');
       expect(typeof c.comisionPct).toBe('number');
+      // El BOOLEANO del CBU, nunca el número: es lo que le explica al dueño por qué no le
+      // depositan. Que el CBU mismo no viaje se afirma abajo.
+      expect(typeof c.tieneCbu).toBe('boolean');
       expect(c.inmobiliaria.nombre).toBeTruthy();
+    });
+
+    it('mi-cartera dice SI HAY cbu, pero nunca el número', async () => {
+      // El dueño ya sabe su CBU: mandarlo sólo agranda lo que se filtra si el token se
+      // pierde. Lo que sí necesita es el BOOLEANO, que es lo que le explica por qué no le
+      // depositan (POST /rendiciones corta con 409 sin CBU cargado).
+      const prismaLocal = new PrismaClient();
+      try {
+        await prismaLocal.propietario.update({
+          where: { id: 'own_001' },
+          data: { cbuAlias: 'ZZ.e2e.alias.del.duenio' },
+        });
+        const res = await app.inject({ method: 'GET', url: '/portal/mi-cartera', headers: auth(token) });
+        expect(res.json().tieneCbu).toBe(true);
+        // Se afirma sobre el cuerpo CRUDO y contra el valor real: así no se cuela mañana
+        // con otro nombre de campo, ni recortado a sus últimos cuatro dígitos.
+        expect(res.body).not.toContain('ZZ.e2e.alias.del.duenio');
+        expect(res.body).not.toContain('cbuAlias');
+
+        // Y sin CBU cargado el booleano lo dice, que es el caso que destraba la llamada.
+        await prismaLocal.propietario.update({ where: { id: 'own_001' }, data: { cbuAlias: null } });
+        const sin = await app.inject({ method: 'GET', url: '/portal/mi-cartera', headers: auth(token) });
+        expect(sin.json().tieneCbu).toBe(false);
+      } finally {
+        await prismaLocal.$disconnect();
+      }
     });
 
     it('propiedades: cada unidad con su participación y su historial de períodos', async () => {
@@ -417,5 +446,47 @@ describe('Portal del propietario — el camino entero, por HTTP', () => {
       const res = await app.inject({ method: 'GET', url: '/portal/mi-cartera', headers: auth(falso) });
       expect(res.statusCode).toBe(401);
     });
+  });
+});
+
+/**
+ * El rastro de que el dueño entró.
+ *
+ * Hasta acá no había forma de contestar "¿algún propietario usó el portal alguna vez?". El
+ * único dato era `CodigoOtpPropietario.usedAt`, y es ambiguo: se escribe tanto al consumir un
+ * código como al invalidar los anteriores. Sin esto, la inmobiliaria tampoco puede saber a
+ * quién hay que reenviarle el acceso, ni nadie puede contestar quién entró y cuándo.
+ */
+describe('Portal — queda registrado que el dueño entró', () => {
+  it('el OTP verify sella ultimoAccesoAt, y sólo el de la cartera con la que entró', async () => {
+    const prismaLocal = new PrismaClient();
+    try {
+      await prismaLocal.propietario.update({
+        where: { id: OTRO_PROP },
+        data: { ultimoAccesoAt: null },
+      });
+      const antesOtro = await prismaLocal.propietario.findUniqueOrThrow({
+        where: { id: 'own_001' },
+        select: { ultimoAccesoAt: true },
+      });
+
+      await entrarComo(OTRO_PROP, OTRO_EMAIL);
+
+      const despues = await prismaLocal.propietario.findUniqueOrThrow({
+        where: { id: OTRO_PROP },
+        select: { ultimoAccesoAt: true },
+      });
+      expect(despues.ultimoAccesoAt, 'entrar tiene que dejar rastro').not.toBeNull();
+
+      // Y NO tocó al otro. Un dueño con dos carteras que abre una sola no accedió a las dos:
+      // decir que sí sería inventar un dato que después alguien usa para decidir.
+      const otroDespues = await prismaLocal.propietario.findUniqueOrThrow({
+        where: { id: 'own_001' },
+        select: { ultimoAccesoAt: true },
+      });
+      expect(otroDespues.ultimoAccesoAt).toEqual(antesOtro.ultimoAccesoAt);
+    } finally {
+      await prismaLocal.$disconnect();
+    }
   });
 });

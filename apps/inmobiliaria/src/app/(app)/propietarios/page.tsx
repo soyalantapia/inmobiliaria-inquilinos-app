@@ -325,6 +325,17 @@ export default function PropietariosPage() {
                           <p className="whitespace-nowrap text-xs text-muted-foreground tabular-nums">
                             CUIT {formatearCuit(p.cuit)}
                           </p>
+                          {/* SI ENTRÓ AL PORTAL, que es la pregunta "¿le llegó el acceso?".
+                              Sólo se dice cuando NO entró: el caso normal no necesita un
+                              renglón, y el que importa es a quién hay que reenviarle el link.
+                              `undefined` (backend viejo) no dice nada: afirmar que nunca entró
+                              sin saberlo haría que Camila persiga a alguien que sí usa el
+                              portal. */}
+                          {p.ultimoAccesoAt === null && (
+                            <p className="whitespace-nowrap text-xs text-muted-foreground">
+                              Nunca entró al portal
+                            </p>
+                          )}
                         </div>
                         {/* I2-05: este badge comunica ESTADO de rendición.
                             Antes el tercer caso mostraba la cantidad de
