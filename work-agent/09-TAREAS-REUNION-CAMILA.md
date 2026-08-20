@@ -72,7 +72,7 @@ Sin este bloque, el trabajo hecho no le llega a Camila. **Es lo primero.**
 
 ---
 
-## T-01 · Aplicar las migraciones pendientes (son ONCE)
+## T-01 · Aplicar las migraciones pendientes (contalas: hoy son TRECE)
 
 > ### ⚠️ Antes que nada: NO hay paso manual. Se aplican solas.
 >
@@ -88,11 +88,11 @@ Sin este bloque, el trabajo hecho no le llega a Camila. **Es lo primero.**
 
 > ### ✅ Verificación previa hecha — 19/08
 >
-> **El título decía CUATRO, después OCHO, después DIEZ, y hoy son ONCE.** Se fue quedando corto mientras varios
+> **El título dijo CUATRO, después OCHO, DIEZ, ONCE, y al momento de escribir esto TRECE.** Se fue quedando corto mientras varios
 > chats escribían migraciones en paralelo. Aplicar sólo las cuatro que la tarea nombraba deja
 > el portal del propietario respondiendo 500.
 >
-> Las diez, en el orden exacto en que Prisma las va a correr:
+> Las trece, en el orden exacto en que Prisma las va a correr (ordena por nombre de directorio):
 >
 > | # | Migración | Qué hace | Riesgo |
 > |---|---|---|---|
@@ -104,12 +104,22 @@ Sin este bloque, el trabajo hecho no le llega a Camila. **Es lo primero.**
 > | 6 | `20260819140000_limpiar_pines_heredados` | UPDATE: borra los PIN que nadie eligió | — |
 > | 7 | `20260819160000_dni_persona_solo_digitos` | UPDATE: normaliza DNI | — |
 > | 8 | `20260819160000_propietario_baja_logica` | `ADD COLUMN activo` | 🔴 **orden** |
-> | 9 | `20260819180000_destinatario_por_aviso` | `CREATE TYPE` + `CREATE TABLE destinatarios_aviso` | — |
-> | 10 | `20260819200000_historial_reparto` | `CREATE TABLE cambios_participacion` | — |
+> | 9 | `20260819180000_conmutador_usuarios` | `ADD VALUE` ×4 en `TipoEventoAuditoria` | — |
+> | 10 | `20260819180000_destinatario_por_aviso` | `CREATE TYPE` + `CREATE TABLE destinatarios_aviso` | — |
+> | 11 | `20260819200000_historial_reparto` | `CREATE TABLE cambios_participacion` | — |
+> | 12 | `20260819220000_rendicion_moneda` | `ADD COLUMN moneda` en `rendiciones` | — |
+> | 13 | `20260819220000_sacar_texto_del_inquilino_de_gastos` | UPDATE: saca el texto del inquilino de los gastos ya rendidos | — |
 >
-> **Sobre las dos últimas (9 y 10), agregadas después de esa verificación:** las dos son
+> **Sobre la 12 y la 13, las más nuevas:** la 12 (`rendicion_moneda`) es aditiva pura con
+> default, así que las rendiciones existentes quedan en ARS — que es lo que eran. La 13 es la
+> ÚNICA que borra texto: recorta de `gastos_rendidos.descripcion` el relato del inquilino que
+> se estaba filtrando al propietario (T-01-N1-N2). Sólo toca las filas con el prefijo exacto
+> que generaba el template; las notas del operador no se tocan. Su archivo trae una consulta
+> para contar cuántas filas va a modificar **antes** de correrla.
+>
+> **Sobre la 10 y la 11, agregadas después de esa verificación:** las dos son
 > **aditivas puras** —`CREATE TYPE` / `CREATE TABLE`, cero filas escritas, cero columnas
-> alteradas— y las dos **van antes que su código**. La 10 (`historial_reparto`) conviene
+> alteradas— y las dos **van antes que su código**. La 11 (`historial_reparto`) conviene
 > aplicarla **cuanto antes**, no por riesgo sino porque hasta que exista no se registra ningún
 > cambio de dueño, y eso es historial que después no se puede reconstruir.
 >
