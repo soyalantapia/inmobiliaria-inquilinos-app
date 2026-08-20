@@ -30,6 +30,43 @@ export async function montoPagadoPorLiquidacion(liqIds: string[]): Promise<Map<s
 }
 
 /**
+ * Lo COBRADO DE VERDAD por liquidación: lo que la rendición al propietario puede pagar.
+ *
+ * Es la hermana de `montoPagadoPorLiquidacion` y mide lo OPUESTO. Aquélla contesta "¿cuánto
+ * dejó de deber el inquilino?" —y ahí una condonación cuenta, porque la deuda se perdonó—.
+ * Ésta contesta "¿cuánta plata entró que se le pueda transferir al dueño?", y ahí no:
+ *
+ *  - `condonado`: cancela deuda sin ingresar plata.
+ *  - `migradoDeCartera`: los períodos que el alta de un contrato EN CURSO registra como
+ *    pagados. Se cobraron y se liquidaron antes de que el sistema existiera.
+ *
+ * POR QUÉ HACE FALTA UNA SEGUNDA FUNCIÓN Y NO UN FLAG. El panel usaba `montoPagado` —el de
+ * la deuda— para estimar lo que se le va a rendir al dueño, y `POST /rendiciones` filtra las
+ * dos cosas. Modo de falla concreto: se condona el remanente de un contrato, la ficha del
+ * propietario dice "Cobrado $500.000 · A recibir $450.000", el operador se lo dicta al dueño
+ * por teléfono, aprieta Rendir y el server contesta 409 "todavía no hay cobros nuevos". Dos
+ * pantallas del mismo panel contradiciéndose sobre el mismo dueño.
+ *
+ * NO se resuelve agregándole el filtro a la de arriba: eso le volvería a cobrar al inquilino
+ * lo que se le perdonó, y hay un test que lo impide (`test/saldos.test.ts`). Son dos preguntas
+ * distintas y necesitan dos respuestas.
+ */
+export async function montoCobradoRendiblePorLiquidacion(liqIds: string[]): Promise<Map<string, number>> {
+  if (liqIds.length === 0) return new Map();
+  const rows = await prisma.pago.groupBy({
+    by: ['liquidacionId'],
+    where: {
+      liquidacionId: { in: liqIds },
+      estado: 'CONCILIADO',
+      condonado: false,
+      migradoDeCartera: false,
+    },
+    _sum: { monto: true },
+  });
+  return new Map(rows.map((r) => [r.liquidacionId, Number(r._sum.monto ?? 0)]));
+}
+
+/**
  * Decora una liquidación con `montoPagado` (suma de conciliados), `montoPunitorio`
  * (mora al día, calculada por el caller) y `saldo` (total exigible − pagado, nunca
  * negativo). `pagadoMap` sale de montoPagadoPorLiquidacion.

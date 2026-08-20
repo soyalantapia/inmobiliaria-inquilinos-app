@@ -55,6 +55,18 @@ export interface RendicionApi {
    * que alguien contesta "¿cuándo le pagaste a Silvana?".
    */
   rendidoAt: string;
+  /**
+   * La moneda EN QUE SE RINDIÓ. Se persiste desde la migración `20260819220000`.
+   *
+   * Este tipo no la declaraba, así que todo el panel caía al default pesos de `formatMonto`:
+   * la misma rendición se leía "US$ 1.104" en el portal del dueño y "$ 1.104" en la pantalla
+   * de Camila, que es la que le dicta el número por teléfono. Es el mismo bug que se cerró del
+   * lado del portal, todavía abierto del lado de adentro.
+   *
+   * Opcional para no romper una respuesta vieja cacheada; los lectores caen a 'ARS', que es lo
+   * que la columna tiene por default.
+   */
+  moneda?: 'ARS' | 'USD';
 }
 
 export interface UseRendiciones {
