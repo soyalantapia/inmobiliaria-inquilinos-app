@@ -5,7 +5,7 @@ export const JwtUsuarioSchema = z.object({
   kind: z.literal('usuario'),
   userId: z.string(),
   inmobiliariaId: z.string(),
-  rol: z.enum(['ADMIN', 'OPERADOR', 'CARGA', 'LECTURA']),
+  rol: z.enum(['ADMIN', 'CAJA', 'OPERADOR', 'CARGA', 'LECTURA']),
 });
 export type JwtUsuario = z.infer<typeof JwtUsuarioSchema>;
 
@@ -67,6 +67,41 @@ export const JwtProfesionalSchema = z.object({
 });
 export type JwtProfesional = z.infer<typeof JwtProfesionalSchema>;
 
+/**
+ * Payload del JWT de un PROPIETARIO (portal del propietario, T-23). Entra por OTP a su
+ * email — no tiene contraseña ni cuenta de panel — y sólo LEE: sus rendiciones, el estado
+ * de pago de sus inquilinos y sus reclamos.
+ *
+ * `propietarioId` + `inmobiliariaId` son el par de scoping: **toda** query del portal filtra
+ * por los dos. Una misma persona puede ser propietaria en varias inmobiliarias, y cada una
+ * de esas carteras es un `Propietario` distinto con su propio id — por eso el token apunta a
+ * UNO solo y cambiar de cartera exige emitir otro (`/auth/propietario/elegir`).
+ *
+ * Igual que `persona` y `profesional`, queda FUERA de `JwtPayloadSchema` A PROPÓSITO: el
+ * resto del código asume que un payload de `requireAuth` es usuario/inquilino/co-inquilino
+ * de forma exhaustiva (ver `/auth/me`), y meter un kind más ahí rompería esa exhaustividad
+ * en todos lados. Sólo `requirePropietario` lo valida.
+ */
+export const JwtPropietarioSchema = z.object({
+  kind: z.literal('propietario'),
+  propietarioId: z.string(),
+  inmobiliariaId: z.string(),
+  /**
+   * El email que el OTP PROBÓ, congelado al firmar. Es la credencial con la que se autoriza
+   * cambiar de cartera, y por eso NO puede releerse de la base en cada request:
+   * `Propietario.email` es un campo de negocio que cualquier ADMIN, OPERADOR o CARGA de
+   * CUALQUIER inmobiliaria edita a mano por `PUT /propietarios/:id`.
+   *
+   * Sin congelarlo, el salto entre carteras era un pivote CROSS-TENANT: un admin de su propia
+   * inmobiliaria se daba de alta a sí mismo como propietario con su email, sacaba un token
+   * legítimo, después le EDITABA el email al de la víctima, y con el token viejo pedía la
+   * cartera del propietario de otra inmobiliaria — el chequeo releía el email nuevo y
+   * matcheaba. Es la misma razón por la que `JwtPersona` lleva el email adentro.
+   */
+  email: z.string().email(),
+});
+export type JwtPropietario = z.infer<typeof JwtPropietarioSchema>;
+
 // El token de "persona" queda FUERA de esta unión a propósito: requireAuth (que
 // valida JwtPayloadSchema) debe RECHAZARLO en los endpoints normales. Solo
 // requirePersona lo valida (con JwtPersonaSchema), para listar/elegir alquileres.
@@ -94,6 +129,6 @@ export const OtpVerifySchema = z.object({
 export const AuthResponseSchema = z.object({
   token: z.string(),
   nombre: z.string(),
-  rol: z.enum(['ADMIN', 'OPERADOR', 'CARGA', 'LECTURA']).optional(),
+  rol: z.enum(['ADMIN', 'CAJA', 'OPERADOR', 'CARGA', 'LECTURA']).optional(),
 });
 export type AuthResponse = z.infer<typeof AuthResponseSchema>;

@@ -21,6 +21,7 @@ import { propiedadesMock } from '@/lib/mock-data';
 import { aplicarOverride } from '@/lib/propiedades-overrides-storage';
 import { enriquecerPropiedad } from '@/lib/propiedades-helpers';
 import { sociedadById, sociedadPrincipal } from '@/lib/sociedades-storage';
+import { rotuloEnLinea } from '@/lib/rotulo-propiedad';
 import type {
   ContratoListado,
   EstadoContrato,
@@ -285,7 +286,7 @@ function mapPropiedad(p: PropiedadApi, reclamosApi: ReclamoApi[]): PropiedadDeta
 
   // Reclamos de la propiedad (actuales + de contratos pasados), de un endpoint
   // aparte. reclamosAbiertos = ABIERTO/EN_CURSO (igual criterio que la ficha de Persona).
-  const reclamos: Reclamo[] = (reclamosApi ?? []).map((r) => mapReclamo(r, p.direccion));
+  const reclamos: Reclamo[] = (reclamosApi ?? []).map((r) => mapReclamo(r, rotuloEnLinea(p)));
   const reclamosAbiertos = reclamos.filter(
     (r) => r.estado === 'ABIERTO' || r.estado === 'EN_CURSO',
   ).length;

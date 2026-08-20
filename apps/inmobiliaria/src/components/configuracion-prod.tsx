@@ -25,6 +25,7 @@ import { descripcionMora, MoraSelector, type MoraSeleccion } from '@/components/
 import type { TipoMora } from '@/lib/types';
 import { SociedadesManager } from '@/components/sociedades-manager';
 import { EquipoCard } from '@/components/equipo-card';
+import { PinMostradorCard } from '@/components/pin-mostrador-card';
 import { ConfiguracionPais } from '@/components/configuracion-pais';
 import { relanzarOnboardingInmo } from '@/components/onboarding';
 
@@ -109,6 +110,9 @@ export function ConfiguracionProd() {
           <SociedadesManager />
         </div>
         <EquipoCard />
+        {/* Debajo del equipo a propósito: el PIN es lo que le permite a esa gente compartir
+            una máquina sin cerrar sesión (T-25). */}
+        <PinMostradorCard />
         <div>
           <h2 className="mb-2 px-1 text-sm font-semibold text-muted-foreground">Mercado y país</h2>
           <ConfiguracionPais />

@@ -28,6 +28,7 @@ Referencia de configuración de las tres apps del monorepo. Las marcadas **no ca
 | `SMTP_USER` | No (gate de envío) | — | Railway service `api` | Usuario SMTP (parte del gate `mailerConfigured`). |
 | `SMTP_PASS` | No (gate de envío) | — | Railway service `api` | Password SMTP (parte del gate `mailerConfigured`). |
 | `SMTP_FROM` | No | `My Alquiler <no-reply@myalquiler.app>` | Railway service `api` | Remitente de los emails. |
+| `EMAIL_FROM_CON_INMOBILIARIA` | No | (apagado) | Railway service `api` | `1` = los mails que la inmobiliaria le manda a su gente (aumento, anuncios, invitaciones, reclamos) salen como `"Tapia Propiedades vía My Alquiler" <no-reply@…>` en vez de sólo `My Alquiler`. **La dirección no cambia: SPF/DKIM quedan intactos, es sólo el rótulo.** El OTP y los mails de la plataforma nunca cambian. Apagado por default porque el remitente pesa en la entregabilidad: prenderlo es decisión del dueño (T-30-N1). |
 | `UPLOADS_DIR` | No | `/data/uploads` si existe `/data`, si no `<tmpdir>/myalquiler-uploads` | Railway service `api` (Volume montado en `/data`) | Directorio de subida de archivos (`apps/api/src/routes/uploads.ts`). |
 | `CRON_DEVENGO` | No | (sin valor → cron activo) | Railway service `api` | Si vale `off` deshabilita el cron de devengo (`apps/api/src/cron.ts`). |
 | `CRON_SECRET` | No | — | Railway service `api` | Secreto para autorizar el endpoint de cron de plata (`apps/api/src/routes/plata.ts`). |

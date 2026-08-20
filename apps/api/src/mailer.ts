@@ -17,6 +17,81 @@ const from = process.env.SMTP_FROM ?? 'My Alquiler <no-reply@myalquiler.app>';
 
 export const mailerConfigured = Boolean(host && user && pass);
 
+/**
+ * T-30-N1 — Quién figura como remitente en la bandeja del que recibe.
+ *
+ * EL PROBLEMA: todos los mails salen como "My Alquiler", una marca que el inquilino no
+ * conoce, avisándole que le suben el alquiler. El asunto lleva el nombre de la inmobiliaria
+ * al final, pero el remitente es lo primero que se lee.
+ *
+ * QUÉ CAMBIA Y QUÉ NO: sólo el *display name*. La dirección sigue siendo la misma casilla del
+ * dominio de la plataforma, así que **SPF/DKIM quedan intactos** — no estamos mandando en
+ * nombre del dominio de la inmobiliaria, que es lo que sí parecería phishing.
+ *
+ * POR QUÉ APAGADO POR DEFAULT: el remitente es lo que más pesa en si un proveedor te manda a
+ * spam, y esto tocaría TODOS los mails de TODAS las inmobiliarias de una. Es una decisión de
+ * deliverability del dueño del producto, no un efecto colateral. Se prende con
+ * `EMAIL_FROM_CON_INMOBILIARIA=1` y se puede apagar de nuevo sin deploy.
+ *
+ * Sólo aplica a los mails que la inmobiliaria le manda a SU gente. El OTP y los mails de la
+ * plataforma siguen saliendo como My Alquiler a propósito.
+ */
+const FROM_CON_INMOBILIARIA = process.env.EMAIL_FROM_CON_INMOBILIARIA === '1';
+
+/** Dirección de `from`, sin display name, extraída de SMTP_FROM ("Nombre <a@b>" → "a@b"). */
+const fromAddress = (from.match(/<([^>]+)>/)?.[1] ?? from).trim();
+
+export function remitente(inmobiliaria?: string | null): string {
+  const nombre = (inmobiliaria ?? '').trim();
+  if (!FROM_CON_INMOBILIARIA || !nombre) return from;
+  // Las comillas y los ángulos rompen la cabecera; una coma la partiría en dos destinatarios;
+  // un salto de línea permitiría inyectar cabeceras. `\s+` barre también los CR/LF, así que
+  // alcanza con sacar los separadores y colapsar el resto.
+  const limpio = nombre.replace(/["<>,;]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!limpio) return from;
+  return `"${limpio} vía My Alquiler" <${fromAddress}>`;
+}
+
+/**
+ * A dónde cae un "Responder", o null si no cae en ningún lado.
+ *
+ * POR QUÉ EXISTE: todos los mails salen del mismo `from` —un `no-reply@` del dominio de la
+ * plataforma—, pero varios de ellos son comunicación DE LA INMOBILIARIA a su inquilino: el
+ * aviso de aumento, los anuncios, la bienvenida. El que los recibe aprieta Responder, porque
+ * es lo que hace cualquiera cuando le escribe su inmobiliaria, y esa respuesta se pierde.
+ *
+ * POR QUÉ `replyTo` Y NO CAMBIAR EL `from`: el `from` tiene que seguir siendo el dominio que
+ * firma con SPF/DKIM. Mandar en nombre de `@gmail.com` de la inmobiliaria desde nuestro
+ * servidor es exactamente la pinta de un phishing y termina en spam — o directamente
+ * rechazado. `replyTo` no toca la autenticación: sólo dice a dónde contestar.
+ *
+ * POR QUÉ VALIDA: si en la base hay basura en ese campo, nodemailer rechaza el envío entero.
+ * Para el aviso de ajuste ese fallo se lo traga el caller (es best-effort, no puede voltear un
+ * ajuste ya aplicado), así que un email mal cargado dejaría al inquilino SIN aviso y sin
+ * rastro. Degradar a "sin replyTo" es infinitamente mejor que degradar a "sin mail".
+ */
+export function emailDeRespuesta(email: string | null | undefined): string | null {
+  const e = (email ?? '').trim();
+  // Deliberadamente laxa: no valida que el dominio exista, sólo que sea una dirección sola y
+  // bien formada. Los separadores (coma, punto y coma) y los ángulos quedan afuera a
+  // propósito — no queremos que un campo con dos direcciones arme una lista de destinatarios.
+  if (!/^[^\s@,;<>]+@[^\s@,;<>.]+(\.[^\s@,;<>.]+)+$/.test(e)) return null;
+  return e;
+}
+
+/**
+ * Segunda línea del pie: qué pasa si el que lo recibe aprieta Responder.
+ *
+ * Está separado del template para que sea imposible mandar un mail que invite a responder
+ * cuando no hay a dónde. El pie viejo decía "si no pediste este código, podés ignorar este
+ * email" en TODOS los mails —incluido el aviso de aumento, donde no hay ningún código—.
+ */
+export function pieDeRespuesta(inmobiliaria: string | null): string {
+  return inmobiliaria
+    ? `Podés responder este mail: le llega a ${inmobiliaria}.`
+    : 'Este mail sale de una dirección que no recibe respuestas.';
+}
+
 let transporter: Transporter | null = null;
 function getTransporter(): Transporter | null {
   if (!mailerConfigured) return null;
@@ -27,6 +102,110 @@ function getTransporter(): Transporter | null {
     auth: { user: user!, pass: pass! },
   });
   return transporter;
+}
+
+/**
+ * COLA DE ENVÍO con espaciado mínimo entre mails.
+ *
+ * POR QUÉ EXISTE: todos los mails salen de la MISMA cuenta SMTP, y hay operaciones que
+ * disparan muchos de golpe — el ajuste masivo son N llamadas seguidas a
+ * `PATCH /contratos/:id/monto`, una por contrato, y una inmobiliaria ajusta veinte o más
+ * el mismo día. Veinte mails en ráfaga desde la misma cuenta es la receta para que el
+ * proveedor los marque como spam o corte la conexión, y ahí no le llega el aviso a NADIE.
+ *
+ * El proyecto ya sabía esto: el docblock de `enviarAnuncioEmail` pide "loop secuencial con
+ * throttle (deliverability: parecer humano, no ráfaga)" — pero era responsabilidad del
+ * caller y ningún caller lo hacía. Acá deja de ser opcional.
+ *
+ * DOS CARRILES, y el criterio NO es "OTP contra el resto" sino **si alguien está esperando
+ * ese mail en pantalla**:
+ *
+ *   · `enviarEnCola` — lo que sale de a muchos y nadie mira: avisos de ajuste (uno por
+ *     contrato en un ajuste masivo), anuncios (uno por inquilino), avisos de reclamos.
+ *     Espaciarlos no le cuesta nada a nadie.
+ *
+ *   · `enviarYa` — lo que un request AWAITEA antes de responder: el OTP, la bienvenida del
+ *     registro y las invitaciones (al inquilino y al equipo). Son uno por persona, disparados
+ *     por esa persona, con alguien mirando la pantalla.
+ *
+ * La primera versión de esto puso sólo el OTP en el carril directo, y el razonamiento que lo
+ * justificaba aplicaba igual a los otros tres: durante un ajuste masivo de 220 contratos la
+ * cola queda con 220 mails ≈ 88 segundos de trabajo, y en esa ventana un alta de contrato o un
+ * registro se quedaba colgado esperando su invitación detrás de todos. El mail es best-effort,
+ * pero el request lo awaitea: el operador veía el alta fallar por timeout aunque hubiera
+ * funcionado.
+ *
+ * Serializa (un mail a la vez) y espacia. No reintenta: un fallo se propaga al caller, que
+ * decide. Es una cola en memoria — si el proceso se cae con mails pendientes, se pierden;
+ * es aceptable para avisos (el dato vive igual en la app) y evita meter una tabla y un
+ * worker para esto.
+ */
+const GAP_MS = Number(process.env.SMTP_GAP_MS || 400);
+
+/**
+ * Construye la cola. El envío se inyecta para que el test pueda verificar la garantía real
+ * —nunca dos envíos solapados, siempre con `gapMs` entre uno y el siguiente— sin levantar
+ * un SMTP. Es la única razón por la que esto es una factory y no código suelto.
+ */
+export function crearColaDeEnvio<T>(
+  enviar: (mail: T) => Promise<unknown>,
+  gapMs: number,
+): (mail: T) => Promise<unknown> {
+  let ultima: Promise<unknown> = Promise.resolve();
+  return (mail: T) => {
+    // Encadena sobre la anterior pase lo que pase: si un envío falla, la cola tiene que
+    // seguir andando para los que vienen atrás. Ese handler de rechazo NO se traga el error
+    // del caller — `tarea` es la promesa que se devuelve y sí lo propaga.
+    const tarea = ultima.then(
+      () => enviar(mail),
+      () => enviar(mail),
+    );
+    ultima = tarea.then(
+      () => new Promise((r) => setTimeout(r, gapMs)),
+      () => new Promise((r) => setTimeout(r, gapMs)),
+    );
+    return tarea;
+  };
+}
+
+const colaSmtp = crearColaDeEnvio<Parameters<Transporter['sendMail']>[0]>(
+  // getTransporter() adentro y no capturado afuera: es lazy y `enviarEnCola` ya garantizó
+  // que existe antes de encolar.
+  (mail) => getTransporter()!.sendMail(mail),
+  GAP_MS,
+);
+
+/**
+ * Envío CON throttle. Para lo que sale de a muchos: avisos de ajuste (uno por contrato en
+ * un ajuste masivo) y anuncios (uno por inquilino). Nadie está mirando la pantalla
+ * esperando estos mails, así que espaciarlos no le cuesta nada a nadie.
+ */
+function enviarEnCola(mail: Parameters<Transporter['sendMail']>[0]): Promise<unknown> {
+  if (!getTransporter()) return Promise.resolve(null);
+  return colaSmtp(mail);
+}
+
+/**
+ * Envío DIRECTO, sin cola. Para todo mail que un request AWAITEA antes de responder.
+ *
+ * Hoy: el OTP, la bienvenida del registro y las invitaciones (al inquilino y al equipo).
+ *
+ * POR QUÉ NO VAN EN LA COLA: la cola es FIFO y compartida. Si la inmobiliaria manda un
+ * anuncio a 200 inquilinos —o aplica un ajuste masivo sobre 220 contratos—, lo que venga
+ * después sale detrás de esos 200 → 200 × GAP_MS ≈ 80 segundos. Para el OTP eso no es un
+ * mail demorado, es un login roto; para el alta de contrato es un timeout con el alta ya
+ * hecha, que es peor todavía porque el operador no sabe si tiene que repetirla.
+ *
+ * El throttle existe por deliverability de envíos MASIVOS. Estos no son masivos: son un mail
+ * por persona, disparados por esa persona, con alguien mirando la pantalla. Van derecho.
+ *
+ * REGLA para el que agregue uno nuevo: si tu caller hace `await`, va por acá. Si dispara con
+ * `void` y sigue, va por la cola.
+ */
+function enviarYa(mail: Parameters<Transporter['sendMail']>[0]): Promise<unknown> {
+  const t = getTransporter();
+  if (!t) return Promise.resolve(null);
+  return t.sendMail(mail);
 }
 
 // ─── Helpers HTML email-safe (tablas + estilos inline) ───────────────────────
@@ -41,7 +220,10 @@ const preheader = (t: string) =>
 /** Shell My Alquiler — tema CLARO (fondo blanco, acento violeta), email-safe
  *  (tablas + estilos inline). Logo "My" recreado como badge violeta (sin imagen
  *  hosteada), wordmark tipográfico, franja de marca, cuerpo y footer. */
-function shell(opts: { preview: string; inner: string }): string {
+function shell(opts: { preview: string; inner: string; pie?: string }): string {
+  // Default deliberadamente pesimista: si un template nuevo se olvida de pasar `pie`, dice que
+  // no se puede responder. El error caro es el otro — prometer un canal que no existe.
+  const pie = opts.pie ?? pieDeRespuesta(null);
   return `<!doctype html>
 <html lang="es"><head>
 <meta charset="utf-8">
@@ -83,7 +265,7 @@ ${preheader(opts.preview)}
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
           <td valign="middle" style="color:#8a85a0;font-size:11px;line-height:1.5;">
             <strong style="color:#5b556e;">My Alquiler</strong> &middot; admin.myalquiler.com<br>
-            Gestión de alquileres. Si no pediste este código, podés ignorar este email.
+            ${esc(pie)}
           </td>
         </tr></table>
       </td></tr>
@@ -133,6 +315,10 @@ function otpHtml(opts: { code: string; ttlMin: number }): string {
   return shell({
     preview: `${opts.code} — tu código de acceso a My Alquiler (${opts.ttlMin} min)`,
     inner,
+    // El OTP es el ÚNICO mail donde "este código" tiene sentido: lo dispara la propia persona
+    // al querer entrar. Y no lleva replyTo — no hay inmobiliaria de por medio, es la
+    // plataforma autenticando a alguien.
+    pie: 'Este mail no recibe respuestas. Si no pediste este código, podés ignorarlo.',
   });
 }
 
@@ -142,7 +328,9 @@ function otpHtml(opts: { code: string; ttlMin: number }): string {
 export async function enviarOtp(email: string, code: string): Promise<boolean> {
   const t = getTransporter();
   if (!t) return false;
-  await t.sendMail({
+  // enviarYa, NO enviarEnCola: nadie puede esperar 80 segundos su código de login
+  // porque justo salió un anuncio masivo. Ver el docblock de enviarYa.
+  await enviarYa({
     from,
     to: email,
     subject: `${code} es tu código de acceso a My Alquiler`,
@@ -246,6 +434,7 @@ function invitacionHtml(opts: {
   return shell({
     preview: `${opts.inmobiliaria.nombre} te da la bienvenida a My Alquiler — entrá con tu email`,
     inner,
+    pie: pieDeRespuesta(emailDeRespuesta(opts.inmobiliaria.email) ? opts.inmobiliaria.nombre : null),
   });
 }
 
@@ -273,8 +462,10 @@ export async function enviarInvitacionInquilino(opts: {
   ]
     .filter(Boolean)
     .join(' · ');
-  await t.sendMail({
-    from,
+  const respondeA = emailDeRespuesta(opts.inmobiliaria.email);
+  await enviarYa({
+    from: remitente(inmoNombre),
+    ...(respondeA ? { replyTo: respondeA } : {}),
     to: opts.email,
     subject: `${inmoNombre} te da la bienvenida a My Alquiler`,
     text: `${inmoNombre} está contenta de sumarte a My Alquiler, la app para pagar el alquiler, ver tu contrato y hacer reclamos.\nEntrás con tu email (${opts.email}) y un código que te mandamos. Sin contraseñas.\nEntrá acá: ${appUrl}\n${contactoTxt ? `\nTu inmobiliaria: ${inmoNombre} · ${contactoTxt}` : ''}`,
@@ -338,6 +529,9 @@ function bienvenidaInmoHtml(opts: {
   return shell({
     preview: `Tu cuenta de ${opts.inmobiliaria} en My Alquiler está lista — entrá a tu panel`,
     inner,
+    // Este mail va de la PLATAFORMA a la inmobiliaria recién registrada. Ponerle como replyTo
+    // el email de ella misma sería mandarla a escribirse sola. Queda sin respuesta hasta que
+    // exista una casilla de soporte de My Alquiler.
   });
 }
 
@@ -354,7 +548,7 @@ export async function enviarBienvenidaInmobiliaria(
 ): Promise<boolean> {
   const t = getTransporter();
   if (!t) return false;
-  await t.sendMail({
+  await enviarYa({
     from,
     to: email,
     subject: `Tu cuenta de ${inmobiliariaNombre} en My Alquiler está lista`,
@@ -380,25 +574,55 @@ export async function enviarInvitacionEquipo(opts: {
   nombre: string;
   rol: string;
   inmobiliariaNombre: string;
+  /** Email de la inmobiliaria: el que recibe la invitación contesta ahí, no a un no-reply. */
+  inmobiliariaEmail?: string | null;
   panelUrl?: string;
 }): Promise<boolean> {
   const t = getTransporter();
   if (!t) return false;
   const panelUrl = opts.panelUrl ?? APP_ADMIN_URL;
   const rolTxt = ROL_LABEL_EQUIPO[opts.rol] ?? opts.rol;
-  await t.sendMail({
-    from,
+  const respondeA = emailDeRespuesta(opts.inmobiliariaEmail);
+  // T-30-N2 — Este era el ÚNICO template que armaba su HTML a mano e interpolaba sin `esc()`.
+  // Una razón social con `&` o `<` (un "Suárez & Cía") rompía el mail sin que hiciera falta
+  // ninguna malicia. Pasarlo por `shell()` corrige eso y de arrastre gana la marca y el pie
+  // de T-30, que dice a dónde cae un "Responder".
+  const inner = `
+    <h1 style="margin:0 0 10px;color:#1c1726;font-size:22px;line-height:1.2;font-weight:800;letter-spacing:-0.02em;">Te sumaron al equipo 🎉</h1>
+    <p style="margin:0 0 18px;color:#6b6577;font-size:15px;line-height:1.65;"><strong style="color:#1c1726;">${esc(opts.inmobiliariaNombre)}</strong> te dio acceso a su panel de My Alquiler con el rol de <strong style="color:#1c1726;">${esc(rolTxt)}</strong>.</p>
+
+    <!-- Botón -->
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:4px 0 20px;"><tr>
+      <td align="center" bgcolor="#7c3aed" style="background-color:#7c3aed;border-radius:12px;">
+        <a href="${esc(panelUrl)}" target="_blank" style="display:inline-block;padding:14px 30px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:15px;font-weight:800;color:#ffffff;text-decoration:none;letter-spacing:0.2px;">Entrar al panel &rarr;</a>
+      </td>
+    </tr></table>
+
+    <!-- Cómo entra -->
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 6px;">
+      <tr>
+        <td bgcolor="#f6f4fe" style="background-color:#f6f4fe;border:1px solid #e4dcfb;border-radius:10px;padding:12px 16px;">
+          <p style="margin:0;color:#6b6577;font-size:13px;line-height:1.5;">
+            Entrás con tu email (<strong style="color:#1c1726;">${esc(opts.email)}</strong>) y un código de 6 dígitos que te mandamos. <strong style="color:#1c1726;">Sin contraseñas.</strong>
+          </p>
+        </td>
+      </tr>
+    </table>`;
+  await enviarYa({
+    from: remitente(opts.inmobiliariaNombre),
+    ...(respondeA ? { replyTo: respondeA } : {}),
     to: opts.email,
     subject: `Te sumaron al equipo de ${opts.inmobiliariaNombre} en My Alquiler`,
-    text: `¡Hola ${opts.nombre}! ${opts.inmobiliariaNombre} te sumó a su equipo en My Alquiler con el rol de ${rolTxt}.\nEntrá al panel: ${panelUrl}\nIngresás con tu email (${opts.email}) — te mandamos un código por mail para entrar. No hace falta contraseña.`,
-    html: `<div style="font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;max-width:520px;margin:0 auto;color:#0f172a">
-      <h2 style="font-size:18px">Te sumaron al equipo 🎉</h2>
-      <p><strong>${opts.inmobiliariaNombre}</strong> te dio acceso a su panel de My Alquiler con el rol de <strong>${rolTxt}</strong>.</p>
-      <p style="margin:20px 0">
-        <a href="${panelUrl}" style="background:#7c3aed;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600">Entrar al panel</a>
-      </p>
-      <p style="font-size:13px;color:#475569">Ingresás con tu email (<strong>${opts.email}</strong>). Te mandamos un código de 6 dígitos por mail para entrar — sin contraseñas.</p>
-    </div>`,
+    text: `¡Hola ${opts.nombre}! ${opts.inmobiliariaNombre} te sumó a su equipo en My Alquiler con el rol de ${rolTxt}.
+Entrá al panel: ${panelUrl}
+Ingresás con tu email (${opts.email}) — te mandamos un código por mail para entrar. No hace falta contraseña.`,
+    html: shell({
+      preview: `${opts.inmobiliariaNombre} te dio acceso a su panel como ${rolTxt}`,
+      inner,
+      // Va DE la inmobiliaria a su nuevo compañero de oficina: si hay a dónde contestar, que
+      // el pie lo diga.
+      pie: pieDeRespuesta(respondeA ? opts.inmobiliariaNombre : null),
+    }),
   });
   return true;
 }
@@ -419,6 +643,7 @@ function anuncioHtml(opts: {
   prioridad: string;
   inmobiliariaNombre: string;
   ctaUrl: string | null;
+  respondeA: string | null;
 }): string {
   const chip = PRIORIDAD_CHIP[opts.prioridad] ?? '';
   // El cuerpo del anuncio conserva los saltos de línea del panel.
@@ -438,7 +663,11 @@ function anuncioHtml(opts: {
         : ''
     }
     <p style="margin:16px 0 0;color:#8a85a0;font-size:11px;line-height:1.6;">Recibís este aviso porque ${esc(opts.inmobiliariaNombre)} gestiona tu alquiler/propiedad con My Alquiler.</p>`;
-  return shell({ preview: `${opts.inmobiliariaNombre}: ${opts.titulo}`, inner });
+  return shell({
+    preview: `${opts.inmobiliariaNombre}: ${opts.titulo}`,
+    inner,
+    pie: pieDeRespuesta(opts.respondeA ? opts.inmobiliariaNombre : null),
+  });
 }
 
 /**
@@ -454,14 +683,18 @@ export async function enviarAnuncioEmail(opts: {
   cuerpo: string;
   prioridad: string;
   inmobiliariaNombre: string;
+  /** Email de la inmobiliaria: a dónde cae el "Responder" del que lo recibe. */
+  inmobiliariaEmail?: string | null;
   /** true → CTA a la app del inquilino; false (propietarios) → sin CTA. */
   paraInquilino: boolean;
 }): Promise<boolean> {
   const t = getTransporter();
   if (!t) return false;
   const urgente = opts.prioridad === 'URGENTE';
-  await t.sendMail({
-    from,
+  const respondeA = emailDeRespuesta(opts.inmobiliariaEmail);
+  await enviarEnCola({
+    from: remitente(opts.inmobiliariaNombre),
+    ...(respondeA ? { replyTo: respondeA } : {}),
     to: opts.email,
     subject: `${urgente ? 'URGENTE — ' : ''}${opts.titulo} · ${opts.inmobiliariaNombre}`,
     text: `${opts.titulo}\n\nAviso de ${opts.inmobiliariaNombre}:\n\n${opts.cuerpo}\n\n${opts.paraInquilino ? `Velo en la app: ${APP_INQUILINO_URL}\n\n` : ''}Recibís este aviso porque ${opts.inmobiliariaNombre} gestiona tu alquiler/propiedad con My Alquiler.`,
@@ -472,6 +705,312 @@ export async function enviarAnuncioEmail(opts: {
       inmobiliariaNombre: opts.inmobiliariaNombre,
       // Los anuncios viven en el home de la PWA (no hay ruta /anuncios).
       ctaUrl: opts.paraInquilino ? APP_INQUILINO_URL : null,
+      respondeA,
+    }),
+  });
+  return true;
+}
+
+// ─── Aviso de ajuste de alquiler ─────────────────────────────────────────────
+
+/** 'YYYY-MM' → 'septiembre 2026'. Para que el inquilino lea un mes, no un código. */
+function periodoLegible(periodo: string): string {
+  const [a, m] = periodo.split('-');
+  const meses = [
+    'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+    'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
+  ];
+  const i = Number(m) - 1;
+  return meses[i] ? `${meses[i]} ${a}` : periodo;
+}
+
+const montoFmt = (n: number, moneda: string): string =>
+  `${moneda === 'USD' ? 'US$' : '$'} ${n.toLocaleString('es-AR')}`;
+
+/**
+ * Cierre del aviso de aumento: a dónde va el inquilino si no está de acuerdo.
+ *
+ * Decía *"respondele a {inmobiliaria}"* con el mail saliendo de un `no-reply@`. El inquilino
+ * apretaba Responder —es lo que pedía el texto— y la respuesta no llegaba a ningún lado.
+ * Ahora el texto depende de que exista de verdad una dirección a la que contestar; si no la
+ * hay, no promete un canal: lo manda a hablar con la inmobiliaria y punto.
+ */
+export function lineaDudasAjuste(inmobiliariaNombre: string, respondeA: string | null): string {
+  return respondeA
+    ? `¿Algo no te cierra? Respondé este mail: le llega a ${inmobiliariaNombre}.`
+    : `¿Algo no te cierra? Hablá con ${inmobiliariaNombre} antes del próximo vencimiento.`;
+}
+
+function ajusteHtml(opts: {
+  inquilinoNombre?: string | null;
+  inmobiliariaNombre: string;
+  respondeA: string | null;
+  direccion?: string | null;
+  montoAnterior: number;
+  montoNuevo: number;
+  moneda: string;
+  periodoDesde: string;
+  motivo?: string | null;
+}): string {
+  const desde = periodoLegible(opts.periodoDesde);
+  const inner = `
+    <h1 style="margin:0 0 6px;color:#1c1726;font-size:21px;line-height:1.25;font-weight:800;letter-spacing:-0.02em;">Se actualizó el monto de tu alquiler</h1>
+    <p style="margin:0 0 18px;color:#8a85a0;font-size:12px;">De <strong style="color:#5b556e;">${esc(opts.inmobiliariaNombre)}</strong>${opts.direccion ? ` &middot; ${esc(opts.direccion)}` : ''}</p>
+    <p style="margin:0 0 18px;color:#3f3a4d;font-size:15px;line-height:1.7;">${opts.inquilinoNombre ? `Hola ${esc(opts.inquilinoNombre)}: ` : ''}a partir de <strong>${esc(desde)}</strong> tu alquiler pasa a ser:</p>
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 18px;width:100%;border-collapse:collapse;">
+      <tr>
+        <td style="padding:10px 0;color:#8a85a0;font-size:13px;">Antes</td>
+        <td align="right" style="padding:10px 0;color:#8a85a0;font-size:15px;text-decoration:line-through;">${esc(montoFmt(opts.montoAnterior, opts.moneda))}</td>
+      </tr>
+      <tr>
+        <td style="padding:10px 0;border-top:1px solid #ece9f3;color:#1c1726;font-size:14px;font-weight:700;">Desde ${esc(desde)}</td>
+        <td align="right" style="padding:10px 0;border-top:1px solid #ece9f3;color:#1c1726;font-size:20px;font-weight:800;">${esc(montoFmt(opts.montoNuevo, opts.moneda))}</td>
+      </tr>
+    </table>
+    ${opts.motivo ? `<p style="margin:0 0 18px;color:#3f3a4d;font-size:14px;line-height:1.6;"><strong>Motivo:</strong> ${esc(opts.motivo)}</p>` : ''}
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 6px;"><tr>
+      <td align="center" bgcolor="#7c3aed" style="background-color:#7c3aed;border-radius:12px;">
+        <a href="${APP_INQUILINO_URL}" target="_blank" style="display:inline-block;padding:12px 26px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:14px;font-weight:800;color:#ffffff;text-decoration:none;">Ver mi contrato &rarr;</a>
+      </td>
+    </tr></table>
+    <p style="margin:16px 0 0;color:#8a85a0;font-size:11px;line-height:1.6;">${esc(lineaDudasAjuste(opts.inmobiliariaNombre, opts.respondeA))}</p>`;
+  return shell({
+    preview: `Tu alquiler pasa a ${montoFmt(opts.montoNuevo, opts.moneda)} desde ${desde}`,
+    inner,
+    pie: pieDeRespuesta(opts.respondeA ? opts.inmobiliariaNombre : null),
+  });
+}
+
+/**
+ * Avisa al inquilino que le ajustaron el alquiler.
+ *
+ * POR QUÉ EXISTE: no había NINGÚN aviso de ajuste, por ningún canal. El inquilino se
+ * enteraba cuando le llegaba la liquidación siguiente más cara. Reportado en la prueba
+ * del 03/08: se ajustó un alquiler y del otro lado "no me avisó que me subiste, que hubo
+ * un aumento". Subirle el alquiler a alguien sin avisarle es un problema legal y de
+ * confianza, no de UX.
+ *
+ * Best-effort igual que el resto del mailer: devuelve false si el SMTP no está
+ * configurado. El caller NUNCA debe dejar que esto haga fallar el ajuste.
+ */
+export async function enviarAvisoAjusteAlquiler(opts: {
+  email: string;
+  inquilinoNombre?: string | null;
+  inmobiliariaNombre: string;
+  /** Email de la inmobiliaria: a dónde cae el "Responder" del inquilino. */
+  inmobiliariaEmail?: string | null;
+  direccion?: string | null;
+  montoAnterior: number;
+  montoNuevo: number;
+  moneda: string;
+  periodoDesde: string;
+  motivo?: string | null;
+}): Promise<boolean> {
+  const t = getTransporter();
+  if (!t) return false;
+  const desde = periodoLegible(opts.periodoDesde);
+  const respondeA = emailDeRespuesta(opts.inmobiliariaEmail);
+  await enviarEnCola({
+    from: remitente(opts.inmobiliariaNombre),
+    ...(respondeA ? { replyTo: respondeA } : {}),
+    to: opts.email,
+    subject: `Tu alquiler se actualiza desde ${desde} · ${opts.inmobiliariaNombre}`,
+    text:
+      `${opts.inquilinoNombre ? `Hola ${opts.inquilinoNombre}: ` : ''}a partir de ${desde} tu alquiler pasa de ` +
+      `${montoFmt(opts.montoAnterior, opts.moneda)} a ${montoFmt(opts.montoNuevo, opts.moneda)}.` +
+      `${opts.motivo ? `\nMotivo: ${opts.motivo}` : ''}` +
+      `${opts.direccion ? `\nPropiedad: ${opts.direccion}` : ''}` +
+      `\n\nVelo en la app: ${APP_INQUILINO_URL}` +
+      `\n\n${lineaDudasAjuste(opts.inmobiliariaNombre, respondeA)}`,
+    html: ajusteHtml({ ...opts, respondeA }),
+  });
+  return true;
+}
+
+// ─── Reclamos ────────────────────────────────────────────────────────────────
+//
+// Pedido de la reunión del 03/08: "tiene que notificarle también los reclamos,
+// tiene todo por email y por la plataforma, POR SI NO NO ESTÁ ENTERADA".
+//
+// La parte "en la plataforma" ya existía en los dos lados (la campana del panel
+// cuenta los reclamos sin resolver; GET /mis-notificaciones ya le avisa al
+// inquilino cuando le responden, le asignan profesional o hay que calificar).
+// Lo que faltaba era el mail, y es lo que cubren estas tres funciones.
+//
+// Las tres son BEST-EFFORT: el caller no las awaitea de forma bloqueante ni deja
+// que un fallo de SMTP tumbe la operación. Abrir un reclamo, asignarlo o
+// resolverlo tiene que funcionar igual con el mailer caído.
+
+const URGENCIA_CHIP: Record<string, string> = {
+  EMERGENCIA:
+    '<span style="display:inline-block;padding:3px 10px;border-radius:999px;background:#fee2e2;color:#991b1b;font-size:11px;font-weight:800;letter-spacing:0.02em;">EMERGENCIA</span>',
+  ALTA: '<span style="display:inline-block;padding:3px 10px;border-radius:999px;background:#ffedd5;color:#9a3412;font-size:11px;font-weight:800;">Urgencia alta</span>',
+};
+
+const CATEGORIA_LABEL: Record<string, string> = {
+  PLOMERIA: 'Plomería',
+  ELECTRICIDAD: 'Electricidad',
+  CERRADURA: 'Cerradura',
+  CALEFACCION: 'Calefacción',
+  OTRO: 'Otro',
+};
+
+function reclamoHtml(opts: {
+  titulo: string;
+  subtitulo: string;
+  cuerpo: string;
+  chip?: string;
+  filas: { k: string; v: string }[];
+  ctaUrl: string;
+  ctaLabel: string;
+  pie: string;
+}): string {
+  const filas = opts.filas
+    .filter((f) => f.v)
+    .map(
+      (f) =>
+        `<tr><td style="padding:5px 12px 5px 0;color:#8a85a0;font-size:12px;white-space:nowrap;">${esc(f.k)}</td>
+         <td style="padding:5px 0;color:#3f3a4d;font-size:13px;font-weight:600;">${esc(f.v)}</td></tr>`,
+    )
+    .join('');
+  const inner = `
+    ${opts.chip ? `<div style="margin:0 0 10px;">${opts.chip}</div>` : ''}
+    <h1 style="margin:0 0 6px;color:#1c1726;font-size:21px;line-height:1.25;font-weight:800;letter-spacing:-0.02em;">${esc(opts.titulo)}</h1>
+    <p style="margin:0 0 18px;color:#8a85a0;font-size:12px;">${esc(opts.subtitulo)}</p>
+    ${opts.cuerpo ? `<p style="margin:0 0 18px;color:#3f3a4d;font-size:15px;line-height:1.7;">${esc(opts.cuerpo).replace(/\n/g, '<br>')}</p>` : ''}
+    ${filas ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 22px;">${filas}</table>` : ''}
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 6px;"><tr>
+      <td align="center" bgcolor="#7c3aed" style="background-color:#7c3aed;border-radius:12px;">
+        <a href="${opts.ctaUrl}" target="_blank" style="display:inline-block;padding:12px 26px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:14px;font-weight:800;color:#ffffff;text-decoration:none;">${esc(opts.ctaLabel)} &rarr;</a>
+      </td>
+    </tr></table>
+    <p style="margin:16px 0 0;color:#8a85a0;font-size:11px;line-height:1.6;">${esc(opts.pie)}</p>`;
+  return shell({ preview: `${opts.titulo} — ${opts.subtitulo}`, inner });
+}
+
+/**
+ * A la INMOBILIARIA: un inquilino abrió un reclamo.
+ *
+ * Es el que resuelve el "por si no no está enterada": sin esto, un reclamo de
+ * urgencia EMERGENCIA un viernes a la noche espera hasta que alguien entre al
+ * panel a mirar.
+ */
+export async function enviarReclamoNuevoInmo(opts: {
+  email: string;
+  autor: string;
+  propiedad: string;
+  categoria: string;
+  urgencia: string;
+  descripcion: string;
+  reclamoId: string;
+}): Promise<boolean> {
+  const t = getTransporter();
+  if (!t) return false;
+  const esEmergencia = opts.urgencia === 'EMERGENCIA';
+  const cat = CATEGORIA_LABEL[opts.categoria] ?? opts.categoria;
+  const url = `${APP_ADMIN_URL}/reclamos/${opts.reclamoId}`;
+  await enviarEnCola({
+    from,
+    to: opts.email,
+    subject: `${esEmergencia ? 'EMERGENCIA — ' : ''}Nuevo reclamo de ${opts.autor} · ${opts.propiedad}`,
+    text:
+      `${opts.autor} abrió un reclamo en ${opts.propiedad}.\n\n` +
+      `Categoría: ${cat}\nUrgencia: ${opts.urgencia}\n\n${opts.descripcion}\n\n` +
+      `Verlo en el panel: ${url}`,
+    html: reclamoHtml({
+      titulo: `Nuevo reclamo de ${opts.autor}`,
+      subtitulo: opts.propiedad,
+      cuerpo: opts.descripcion,
+      chip: URGENCIA_CHIP[opts.urgencia],
+      filas: [
+        { k: 'Categoría', v: cat },
+        { k: 'Urgencia', v: opts.urgencia },
+      ],
+      ctaUrl: url,
+      ctaLabel: 'Ver el reclamo',
+      pie: 'Recibís este aviso porque administrás esta propiedad en My Alquiler.',
+    }),
+  });
+  return true;
+}
+
+/** Al INQUILINO: le asignaron un profesional a su reclamo. */
+export async function enviarReclamoAsignadoInquilino(opts: {
+  email: string;
+  profesional: string;
+  oficio: string | null;
+  inmobiliariaNombre: string;
+  /** Email de la inmobiliaria: a dónde cae el "Responder" del inquilino. */
+  inmobiliariaEmail?: string | null;
+  reclamoId: string;
+}): Promise<boolean> {
+  const t = getTransporter();
+  if (!t) return false;
+  const url = `${APP_INQUILINO_URL}/reclamos/${opts.reclamoId}`;
+  // Este mail FIRMA como la inmobiliaria (`remitente`), así que el Responder tiene
+  // que llegarle a ELLA. Sin esto el inquilino contestaba "Tapia Propiedades" y la
+  // respuesta caía en el no-reply de la plataforma — el mismo agujero que T-30
+  // cerró para los otros mails; los de reclamos son de T-17 y quedaron afuera.
+  const respondeA = emailDeRespuesta(opts.inmobiliariaEmail);
+  await enviarEnCola({
+    from: remitente(opts.inmobiliariaNombre),
+    ...(respondeA ? { replyTo: respondeA } : {}),
+    to: opts.email,
+    subject: `${opts.inmobiliariaNombre} asignó a ${opts.profesional} a tu reclamo`,
+    text:
+      `${opts.inmobiliariaNombre} asignó a ${opts.profesional}${opts.oficio ? ` (${opts.oficio})` : ''} para resolver tu reclamo.\n\n` +
+      `Seguilo desde la app: ${url}`,
+    html: reclamoHtml({
+      titulo: `Te asignaron a ${opts.profesional}`,
+      subtitulo: opts.inmobiliariaNombre,
+      cuerpo: 'Se va a comunicar con vos para coordinar la visita.',
+      filas: [{ k: 'Profesional', v: `${opts.profesional}${opts.oficio ? ` · ${opts.oficio}` : ''}` }],
+      ctaUrl: url,
+      ctaLabel: 'Seguir el reclamo',
+      pie: `Recibís este aviso porque ${opts.inmobiliariaNombre} gestiona tu alquiler con My Alquiler.`,
+    }),
+  });
+  return true;
+}
+
+/** Al INQUILINO: su reclamo se resolvió. */
+export async function enviarReclamoResueltoInquilino(opts: {
+  email: string;
+  inmobiliariaNombre: string;
+  /** Email de la inmobiliaria: a dónde cae el "Responder" del inquilino. */
+  inmobiliariaEmail?: string | null;
+  notas: string | null;
+  reclamoId: string;
+}): Promise<boolean> {
+  const t = getTransporter();
+  if (!t) return false;
+  const url = `${APP_INQUILINO_URL}/reclamos/${opts.reclamoId}`;
+  // Mismo caso que el aviso de asignación: firma como la inmobiliaria, así que el
+  // Responder tiene que llegarle a ella y no al no-reply. Y acá pesa más: "tu
+  // reclamo se resolvió" es el mail que el inquilino MÁS va a querer contestar
+  // cuando el problema en realidad no se resolvió.
+  const respondeA = emailDeRespuesta(opts.inmobiliariaEmail);
+  await enviarEnCola({
+    from: remitente(opts.inmobiliariaNombre),
+    ...(respondeA ? { replyTo: respondeA } : {}),
+    to: opts.email,
+    subject: `Tu reclamo se resolvió · ${opts.inmobiliariaNombre}`,
+    text:
+      `${opts.inmobiliariaNombre} marcó tu reclamo como resuelto.\n\n` +
+      `${opts.notas ? `${opts.notas}\n\n` : ''}` +
+      `Si el problema sigue, podés reabrirlo desde la app: ${url}`,
+    html: reclamoHtml({
+      titulo: 'Tu reclamo se resolvió',
+      subtitulo: opts.inmobiliariaNombre,
+      // Que sepa que puede reabrirlo es lo importante: el circuito de
+      // confirmación (CONFORME / PERSISTE) sólo funciona si el inquilino entra.
+      cuerpo: opts.notas
+        ? `${opts.notas}\n\nSi el problema sigue, entrá y avisanos: se reabre el reclamo.`
+        : 'Si el problema sigue, entrá y avisanos: se reabre el reclamo.',
+      filas: [],
+      ctaUrl: url,
+      ctaLabel: 'Ver y calificar',
+      pie: `Recibís este aviso porque ${opts.inmobiliariaNombre} gestiona tu alquiler con My Alquiler.`,
     }),
   });
   return true;

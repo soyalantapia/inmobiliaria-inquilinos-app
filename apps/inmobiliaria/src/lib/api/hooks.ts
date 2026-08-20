@@ -29,6 +29,7 @@ import type {
 import { enriquecerPropiedad, type PropiedadEnriquecida } from '@/lib/propiedades-helpers';
 import type { DashboardStats } from '@/lib/dashboard-helpers';
 import { parseLocal } from '@/lib/format';
+import { porcionAlquilerCobrada } from '@/lib/alquiler-cobrado';
 import {
   cargarMovimiento as cargarMovimientoLocal,
   eliminarMovimiento as eliminarMovimientoLocal,
@@ -53,7 +54,13 @@ interface ContratoApi {
   cargadoRol: string | null;
   cargadoAt: string | null;
   aprobadoPor: string | null;
-  propiedad: { id: string; direccion: string; ciudad: string; consorcio?: { nombre: string } | null };
+  propiedad: {
+    id: string;
+    direccion: string;
+    ciudad: string;
+    complejo?: string | null;
+    consorcio?: { nombre: string } | null;
+  };
   inquilinoTitular: { id: string; nombre: string; apellido: string | null; telefono?: string | null } | null;
   /** Derivados por el server desde liquidaciones reales (Fase 3). */
   estadoPagoActual: ContratoListado['estadoPagoActual'];
@@ -86,6 +93,13 @@ function mapContrato(c: ContratoApi): ContratoListado {
     // Defensa: una respuesta sin la relación `propiedad` (p.ej. un POST que
     // devuelve la fila pelada) no debe crashear con "reading 'direccion'".
     direccion: c.propiedad?.direccion ?? '—',
+    // Nombre por el que la inmobiliaria identifica la unidad. Se descartaba al mapear,
+    // así que el listado y el detalle de contratos mostraban la calle aunque la
+    // propiedad colgara de un consorcio ("nosotros cuando decimos Lourdes no le decimos
+    // nunca Artigas la dirección", 03/08). Ver lib/rotulo-propiedad.ts.
+    // Misma prioridad que en `mapPropiedad` más abajo: el consorcio real gana sobre el
+    // texto libre. Si difieren, el consorcio es el dato administrado.
+    complejo: c.propiedad?.consorcio?.nombre ?? c.propiedad?.complejo ?? null,
     propiedadId: c.propiedad?.id,
     monto: Number(c.monto),
     moneda: c.moneda,
@@ -239,13 +253,15 @@ function mapAprobacion(a: AprobacionApi): Aprobacion {
   } as Aprobacion;
 }
 
-export function useAprobaciones(): {
+/** `enabled` (default true): ver el docblock de useReclamos — evita 403 por navegación. */
+export function useAprobaciones(opts?: { enabled?: boolean }): {
   aprobaciones: Aprobacion[];
   cargando: boolean;
   aprobarApi: (id: string, pin: string, comentario?: string) => Promise<Aprobacion>;
   rechazarApi: (id: string, pin: string, motivo: string) => Promise<Aprobacion>;
 } {
   const qc = useQueryClient();
+  const habilitado = opts?.enabled ?? true;
   const q = useQuery({
     queryKey: ['aprobaciones'],
     queryFn: async () => {
@@ -253,7 +269,7 @@ export function useAprobaciones(): {
       const data = await apiFetch<AprobacionApi[]>('/aprobaciones');
       return data.map(mapAprobacion);
     },
-    enabled: apiEnabled,
+    enabled: apiEnabled && habilitado,
     staleTime: 10_000,
   });
   const invalidar = () => void qc.invalidateQueries({ queryKey: ['aprobaciones'] });
@@ -355,7 +371,8 @@ function mapMovimiento(m: MovimientoCajaApi): MovimientoCaja {
 }
 
 export interface NuevoGasto {
-  propiedadId: string;
+  /** null = movimiento propio de la inmobiliaria, no imputable a una propiedad. */
+  propiedadId: string | null;
   /** GASTO = salida, INGRESO_EXTRA = entrada. Default GASTO. */
   tipo?: MovimientoCaja['tipo'];
   categoria: MovimientoCaja['categoria'];
@@ -726,7 +743,7 @@ export function useActualizarAvatar(): {
   };
 }
 
-export function useMe(): { me: Me | null; cargando: boolean } {
+export function useMe(): { me: Me | null; cargando: boolean; isError: boolean } {
   const q = useQuery({
     queryKey: ['me'],
     queryFn: async () => {
@@ -759,10 +776,16 @@ export function useMe(): { me: Me | null; cargando: boolean } {
         trial: null,
       },
       cargando: false,
+      isError: false,
     };
   }
   const d = q.data;
-  if (!d) return { me: null, cargando: q.isPending };
+  // isError viaja porque el CALLER no puede distinguir "todavía no cargó" de "falló":
+  // en los dos casos `me` es null. El sidebar filtra el menú por `me.rol` y, sin esta
+  // señal, un /auth/me caído lo dejaba pisado en LECTURA para siempre y en silencio —
+  // el usuario veía un panel recortado sin ninguna explicación. Mismo criterio que
+  // useAResolverCount, donde un 0 sin isError es un 0 FALSO.
+  if (!d) return { me: null, cargando: q.isPending, isError: q.isError };
   const firstName = d.nombre.trim().split(/\s+/)[0] ?? d.nombre;
   return {
     me: {
@@ -786,6 +809,7 @@ export function useMe(): { me: Me | null; cargando: boolean } {
         : null,
     },
     cargando: false,
+    isError: false,
   };
 }
 
@@ -1147,12 +1171,16 @@ export function usePropietarios(): {
       // Sobre el ALQUILER (no montoTotal): igual que la rendición real del server,
       // las expensas no le corresponden al propietario. Antes inflaba el KPI y el
       // preview del diálogo de rendición.
-      // Porción de ALQUILER de lo REALMENTE cobrado, con el mismo prorrateo que el server
-      // (alquilerCobrado = cobrado capeado × montoAlquiler / montoTotal). En una PAGADA da
-      // el alquiler entero; en una PARCIAL, la parte proporcional. El cap deja afuera la
-      // mora — que no se rinde al propietario.
-      const cobradoLiq = Math.min(l.montoPagado, l.montoTotal);
-      const alquilerCobradoLiq = l.montoTotal > 0 ? cobradoLiq * (l.montoAlquiler / l.montoTotal) : 0;
+      // Porción de ALQUILER de lo REALMENTE cobrado, con el mismo prorrateo que el server.
+      // La base va SIN mora: `l.montoTotal` viene decorado por `conSaldo` con el punitorio
+      // al día (lo dice el comentario de `montoPunitorio` en el tipo de arriba), así que
+      // usarlo crudo prorrateaba contra un denominador más grande y mostraba menos alquiler
+      // cobrado del que la rendición efectivamente paga. Coincidían mientras no hubiera mora.
+      const alquilerCobradoLiq = porcionAlquilerCobrada({
+        alquiler: l.montoAlquiler,
+        base: l.montoTotal - l.montoPunitorio,
+        cobrado: l.montoPagado,
+      });
       cobradoByOwner[part.propietarioId] =
         (cobradoByOwner[part.propietarioId] ?? 0) + alquilerCobradoLiq * (part.porcentaje / 100);
       (monedasByOwner[part.propietarioId] ??= new Set()).add(l.moneda);
@@ -1501,10 +1529,16 @@ export function useDashboard(): DashboardData {
     ? activos.reduce((acc, c) => {
         const pagado = c.estadoPagoActual === 'PAGADO' ? (c.montoPagado || c.monto) : c.estadoPagoActual === 'PARCIAL' ? (c.montoPagado ?? 0) : 0;
         if (pagado <= 0) return acc;
-        const expensas = c.montoExpensas ?? 0;
-        const total = c.monto + expensas;
-        if (total <= 0) return acc;
-        return acc + Math.min(pagado, total) * (c.monto / total);
+        // La base se arma sumando componentes, así que ya viene sin mora. Mismo helper que
+        // el KPI de arriba, que es donde esto estaba mal.
+        return (
+          acc +
+          porcionAlquilerCobrada({
+            alquiler: c.monto,
+            base: c.monto + (c.montoExpensas ?? 0),
+            cobrado: pagado,
+          })
+        );
       }, 0)
     : cobrado;
   const comisionMes = Math.round(alquilerCobrado * tasaComision);

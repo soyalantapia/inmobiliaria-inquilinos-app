@@ -7,6 +7,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   AlertCircle,
   ArrowLeft,
+  ArrowUpRight,
   Building2,
   CheckCircle2,
   Clock,
@@ -52,6 +53,7 @@ import { CargosContratoCard } from '@/components/cargos-contrato-card';
 import { Topbar } from '@/components/topbar';
 import { FinalizarContratoButton } from '@/components/finalizar-contrato-button';
 import { AjustarAlquilerButton } from '@/components/ajustar-alquiler-button';
+import { CambiarExpensasButton } from '@/components/cambiar-expensas-button';
 import { GananciaInmoCard } from '@/components/ganancia-inmo-card';
 import { RenovarContratoButton } from '@/components/renovar-contrato-button';
 import { AvisarRenovacionButton } from '@/components/avisar-renovacion-button';
@@ -62,10 +64,13 @@ import {
 } from '@/components/mora-selector';
 import { calcularScoringInquilino, type ResumenScoring } from '@/lib/scoring-inquilino';
 import { registrarEvento } from '@/lib/auditoria-storage';
-import { apiEnabled, apiFetch, ApiError, varianteError } from '@/lib/api/client';
+import { apiEnabled, apiFetch, ApiError, datoDeError, varianteError } from '@/lib/api/client';
 import { ensureApiSession } from '@/lib/api/session';
-import { useCobranza } from '@/lib/api/hooks';
-import { useContrato } from '@/lib/api/use-contrato';
+import { useCobranza, usePropietarios } from '@/lib/api/hooks';
+import { CuentaCobranzaDialog } from '@/components/cuenta-cobranza-dialog';
+import { useContrato, useEventosContrato } from '@/lib/api/use-contrato';
+import { useServiciosPublicos } from '@/lib/api/use-servicios-publicos';
+import { TIPO_SERVICIO_LABEL } from '@/lib/servicios-publicos-storage';
 import {
   type CanalComunicacion,
   type LiquidacionAdmin,
@@ -73,6 +78,7 @@ import {
 } from '@/lib/mock-data';
 import type { ContratoListado, EstadoContrato, Propietario } from '@/lib/types';
 import { formatFecha, formatMonto } from '@/lib/format';
+import { rotuloPrincipal, rotuloSecundario } from '@/lib/rotulo-propiedad';
 
 const estadoLiqVariant: Record<
   LiquidacionAdmin['estado'],
@@ -98,6 +104,7 @@ const estadoContratoVariant: Record<EstadoContrato, React.ComponentProps<typeof 
 const eventoIcono: Record<TipoEventoContrato, LucideIcon> = {
   CREADO: Flag,
   AJUSTE_APLICADO: TrendingUp,
+  RENOVACION: FileText,
   PAGO_RECIBIDO: CheckCircle2,
   PAGO_VENCIDO: Clock,
   RECLAMO_CREADO: Wrench,
@@ -111,6 +118,12 @@ const eventoIcono: Record<TipoEventoContrato, LucideIcon> = {
 const eventoColor: Record<TipoEventoContrato, string> = {
   CREADO: 'bg-emerald-500',
   AJUSTE_APLICADO: 'bg-primary',
+  // Verde y NO `bg-primary`: el tipo RENOVACION existe justamente para que una renovación
+  // —que extiende el plazo— deje de verse igual que un ajuste de monto, que antes reusaba
+  // AJUSTE_APLICADO. Pintarla del mismo color que el ajuste anularía el cambio.
+  // (Las dos ramas paralelas agregaron esta clave con colores distintos; git las dejó
+  // duplicadas y `tsc` lo atajó con TS1117.)
+  RENOVACION: 'bg-emerald-500',
   PAGO_RECIBIDO: 'bg-emerald-500',
   PAGO_VENCIDO: 'bg-red-500',
   RECLAMO_CREADO: 'bg-primary',
@@ -128,6 +141,7 @@ const canalIcono: Record<CanalComunicacion, LucideIcon> = {
 export default function DetalleContratoPage() {
   const params = useParams<{ id: string }>();
   const { detalle, cargando, noEncontrado } = useContrato(params.id);
+  const { eventos, isError: eventosError } = useEventosContrato(params.id);
 
   // En build demo (!apiEnabled) el id inexistente da 404 sin tirar request:
   // mantenemos el comportamiento original de notFound().
@@ -194,7 +208,11 @@ export default function DetalleContratoPage() {
   }
 
   const liquidaciones = detalle.liquidaciones;
-  const eventosDelContrato = detalle.eventos;
+  // El timeline sale de su propio endpoint. Antes `detalle.eventos` venía hardcodeado en []
+  // porque EventoContrato era write-only, y la pestaña decía "Sin eventos" aunque la base
+  // tuviera el rastro. El hook ya cubre el modo demo (devuelve el mock), así que es la única
+  // fuente.
+  const eventosDelContrato = eventos;
   const comunicaciones = detalle.comunicaciones;
 
   return (
@@ -224,7 +242,32 @@ export default function DetalleContratoPage() {
               Volver a contratos
             </Link>
             <h2 className="line-clamp-2 text-xl font-semibold leading-tight">{c.inquilino}</h2>
-            <p className="line-clamp-2 text-sm text-muted-foreground">{c.direccion}</p>
+            {/* El complejo manda; la calle queda de dato secundario. Los botones de
+                abajo (rescindir, avisar renovación, mensaje al inquilino) siguen
+                recibiendo `c.direccion` a propósito: ahí la dirección real es lo que
+                hace falta, no el rótulo interno. */}
+            {/* El rótulo es el paso a la propiedad. Las acciones sobre el inquilino
+                —reenviar el email de bienvenida, sumar co-inquilinos— viven SÓLO en la
+                ficha de la propiedad (InquilinoActualAcciones), así que sin este link,
+                desde el contrato hay que volver al menú lateral para llegar al inquilino:
+                exactamente el laberinto que describió Camila el 03/08. El único link que
+                había estaba enterrado adentro de la card de servicios.
+                Sin `propiedadId` (el tipo lo declara opcional) queda como texto plano —
+                un link muerto sería peor que no tenerlo. */}
+            {c.propiedadId ? (
+              <Link
+                href={`/propiedades/${c.propiedadId}`}
+                className="line-clamp-2 inline-flex items-start gap-1 text-sm font-medium hover:text-primary hover:underline"
+              >
+                {rotuloPrincipal(c)}
+                <ArrowUpRight className="mt-0.5 h-3.5 w-3.5 shrink-0 opacity-60" />
+              </Link>
+            ) : (
+              <p className="line-clamp-2 text-sm font-medium">{rotuloPrincipal(c)}</p>
+            )}
+            {rotuloSecundario(c) && (
+              <p className="line-clamp-1 text-sm text-muted-foreground">{rotuloSecundario(c)}</p>
+            )}
           </div>
           <div className="flex w-full flex-wrap gap-2 sm:w-auto">
             <Button
@@ -254,8 +297,12 @@ export default function DetalleContratoPage() {
                 las liquidaciones futuras sin pagos. Solo prod (necesita endpoint +
                 PIN); en demo queda deshabilitado con el mismo patrón que otras
                 acciones solo-conectadas del panel. */}
+            {/* Un contrato de solo expensas no tiene canon que ajustar: el server rechaza con
+                409. Sin este filtro la operadora abre el diálogo, escribe el monto, tipea el
+                PIN y RECIÉN AHÍ se come el error — el mismo criterio con el que ya se filtró
+                el ajuste masivo. */}
             {apiEnabled ? (
-              c.estado === 'ACTIVO' && (
+              c.estado === 'ACTIVO' && c.tipoContrato !== 'SOLO_EXPENSAS' && (
                 <Button
                   variant="outline"
                   className="flex-1 sm:flex-none"
@@ -280,10 +327,23 @@ export default function DetalleContratoPage() {
               <AvisarRenovacionButton contratoId={c.id} inquilino={c.inquilino} direccion={c.direccion} />
             )}
             {apiEnabled && c.estado === 'ACTIVO' && (
-              <RenovarContratoButton contratoId={c.id} montoActual={c.monto} fechaFinActual={c.fechaFin} moneda={c.moneda} />
+              <RenovarContratoButton contratoId={c.id} montoActual={c.monto} fechaFinActual={c.fechaFin} moneda={c.moneda} tipoContrato={c.tipoContrato} />
             )}
-            {apiEnabled && c.estado === 'ACTIVO' && (
+            {apiEnabled && c.estado === 'ACTIVO' && c.tipoContrato !== 'SOLO_EXPENSAS' && (
               <AjustarAlquilerButton contratoId={c.id} montoActual={c.monto} moneda={c.moneda} />
+            )}
+            {/* Sin gate por tipo, al revés que el ajuste de alquiler: un
+                SOLO_EXPENSAS es JUSTO el que más lo necesita (es su único monto),
+                y un ALQUILER puede empezar a tener expensas. */}
+            {apiEnabled && c.estado === 'ACTIVO' && (
+              <CambiarExpensasButton
+                contratoId={c.id}
+                expensasActuales={c.montoExpensas ?? null}
+                // Un contrato sin tipo explícito es de alquiler: es el default
+                // del schema y lo que asume el resto del panel.
+                tipoContrato={c.tipoContrato ?? 'ALQUILER'}
+                moneda={c.moneda}
+              />
             )}
             {apiEnabled && c.estado === 'ACTIVO' && (
               <FinalizarContratoButton contratoId={c.id} direccion={c.direccion} />
@@ -313,6 +373,10 @@ export default function DetalleContratoPage() {
 
           <TabsContent value="resumen" className="space-y-4">
             <GananciaInmoCard contratoId={c.id} moneda={c.moneda} />
+            {/* Servicios de la propiedad: son parte del expediente del contrato —
+                "no tengo servicios" (03/08)— pero se editan en la propiedad, que es
+                donde viven. Acá van sólo de lectura. */}
+            {apiEnabled && c.propiedadId && <ServiciosDelContrato propiedadId={c.propiedadId} />}
             <div className="grid gap-4 md:grid-cols-2">
               <Card>
                 <CardHeader>
@@ -442,7 +506,25 @@ export default function DetalleContratoPage() {
                   {/* WhatsApp/Email/Garante salen del contacto real resuelto por
                       contratoId (API en prod, mock en demo). Antes eran strings
                       hardcoded idénticos para todos los contratos. */}
-                  <Row label="Nombre" value={c.inquilino} />
+                  {/* El nombre linkea a la FICHA de la persona (su historial de contratos,
+                      reclamos y morosidad en la inmobiliaria). Era la cuarta cosa que Camila
+                      no encontraba en el expediente: "no tengo persona" (03/08). El link
+                      aparece sólo si el inquilino tiene una Persona asociada. */}
+                  <Row
+                    label="Nombre"
+                    value={
+                      detalle.personaId ? (
+                        <Link
+                          href={`/inquilinos/${detalle.personaId}`}
+                          className="font-medium text-primary hover:underline"
+                        >
+                          {c.inquilino}
+                        </Link>
+                      ) : (
+                        c.inquilino
+                      )
+                    }
+                  />
                   <Row
                     label="WhatsApp"
                     value={
@@ -455,7 +537,18 @@ export default function DetalleContratoPage() {
                       </span>
                     }
                   />
-                  <Row label="Email" value={contacto?.titular.email ?? '—'} />
+                  <Row
+                    label="Email"
+                    value={
+                      <span className="inline-flex items-center gap-1.5">
+                        {contacto?.titular.email ?? '—'}
+                        <EditarEmailInquilinoButton
+                          contratoId={c.id}
+                          emailActual={contacto?.titular.email ?? null}
+                        />
+                      </span>
+                    }
+                  />
                   <Row
                     label="Garante"
                     value={
@@ -494,7 +587,13 @@ export default function DetalleContratoPage() {
           <TabsContent value="historial" className="space-y-4">
             <Card>
               <CardContent className="space-y-0 p-6">
-                {eventosDelContrato.length === 0 ? (
+                {eventosError ? (
+                  // No decimos "sin eventos" cuando en realidad no pudimos preguntar: sería
+                  // afirmar que no quedó registro de un ajuste que sí puede haber quedado.
+                  <p className="py-8 text-center text-sm text-destructive">
+                    No pudimos cargar el historial. Recargá la página.
+                  </p>
+                ) : eventosDelContrato.length === 0 ? (
                   <p className="py-8 text-center text-sm text-muted-foreground">
                     Sin eventos registrados todavía.
                   </p>
@@ -564,6 +663,7 @@ export default function DetalleContratoPage() {
       <MensajeInquilinoDialog
         open={abrirMensaje}
         onOpenChange={setAbrirMensaje}
+        contratoId={c.id}
         inquilino={{
           nombre: c.inquilino,
           telefono: contacto?.titular.telefono ?? '',
@@ -1000,7 +1100,12 @@ function EventoTimelineRow({
   evento: { tipo: TipoEventoContrato; titulo: string; detalle: string | null; fecha: string; autor: string };
   esUltimo: boolean;
 }) {
-  const Icon = eventoIcono[evento.tipo];
+  // Fallback obligatorio: `apiFetch` castea la respuesta sin validar, así que un tipo de
+  // evento que el backend agregue al enum llega igual a esta pantalla. Sin el `??`, el
+  // `<Icon>` era `undefined` y React tiraba "Element type is invalid" — y como la única
+  // error boundary del panel es la raíz, se caía la ficha entera del contrato, no la
+  // pestaña. Pasó con RENOVACION; el `??` es para el próximo.
+  const Icon = eventoIcono[evento.tipo] ?? Flag;
   return (
     <li className="relative flex gap-4">
       {!esUltimo && (
@@ -1012,7 +1117,7 @@ function EventoTimelineRow({
       <div
         className={cn(
           'relative z-10 grid h-10 w-10 shrink-0 place-items-center rounded-full text-white',
-          eventoColor[evento.tipo],
+          eventoColor[evento.tipo] ?? 'bg-primary',
         )}
       >
         <Icon className="h-5 w-5" />
@@ -1024,9 +1129,24 @@ function EventoTimelineRow({
             {formatFecha(evento.fecha)} · {new Date(evento.fecha).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
           </p>
         </div>
-        {evento.detalle && (
-          <p className="mt-0.5 text-xs text-muted-foreground">{evento.detalle}</p>
-        )}
+        {evento.detalle &&
+          // El `detalle` de una COMUNICACIÓN es el CUERPO del mensaje que se le mandó al
+          // inquilino, no una nota al pie: se renderiza como una cita, con el texto legible y
+          // los saltos de línea RESPETADOS. Antes usaba el mismo `<p>` gris de metadato que el
+          // resto de los eventos, así que un mensaje de varios párrafos llegaba colapsado en un
+          // bloque corrido y gris — y Camila lo quiere justo para lo contrario: *"queda anotado
+          // que mandé un mensaje, pero no queda el mensaje… si guarda sólo el asunto no me
+          // sirve para discutir después."* El texto completo SIEMPRE estuvo guardado
+          // (`EventoContrato.detalle`) y el endpoint lo devolvía; lo que fallaba era leerlo.
+          (evento.tipo === 'COMUNICACION_ENVIADA' ? (
+            <blockquote className="mt-1.5 whitespace-pre-line border-l-2 border-border pl-3 text-sm text-foreground">
+              {evento.detalle}
+            </blockquote>
+          ) : (
+            <p className="mt-0.5 whitespace-pre-line text-xs text-muted-foreground">
+              {evento.detalle}
+            </p>
+          ))}
         <p className="mt-0.5 text-[10px] uppercase tracking-wide text-muted-foreground/70">
           {evento.autor}
         </p>
@@ -1093,6 +1213,100 @@ function Row({ label, value, bold }: { label: string; value: React.ReactNode; bo
       <span className="text-muted-foreground">{label}</span>
       <span className={bold ? 'font-semibold' : ''}>{value}</span>
     </div>
+  );
+}
+
+/**
+ * Lápiz para cargar o corregir el EMAIL del inquilino titular (T-45).
+ *
+ * POR QUÉ EXISTE: el wizard de alta le dice a la operadora "sin email podés cargar el contrato
+ * igual… se lo podés agregar después". Hasta acá eso era mentira — el único PATCH de contacto
+ * aceptaba `telefono` y ningún endpoint escribía `Inquilino.email` fuera del alta. Un contrato
+ * cargado sin email dejaba al inquilino fuera de la app PARA SIEMPRE (el acceso es por OTP al
+ * mail), salvo rehacer el contrato: la rescisión falsa de la que se queja Camila.
+ *
+ * No es un dato de contacto más: es la llave de entrada. Por eso el copy lo dice, y por eso el
+ * backend rechaza con 409 si ese email ya es de otro inquilino de la misma cartera.
+ */
+function EditarEmailInquilinoButton({
+  contratoId,
+  emailActual,
+}: {
+  contratoId: string;
+  emailActual: string | null;
+}) {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [valor, setValor] = useState('');
+  const [guardando, setGuardando] = useState(false);
+
+  useEffect(() => {
+    if (open) setValor(emailActual && emailActual !== '—' ? emailActual : '');
+  }, [open, emailActual]);
+
+  const guardar = async () => {
+    if (guardando) return;
+    setGuardando(true);
+    try {
+      await apiFetch(`/contratos/${contratoId}/inquilino-contacto`, {
+        method: 'PATCH',
+        body: JSON.stringify({ email: valor.trim() }),
+      });
+      await qc.invalidateQueries({ queryKey: ['contrato', contratoId] });
+      toast({
+        variant: 'success',
+        title: 'Email del inquilino actualizado',
+        description: 'Ya puede entrar a la app con ese mail.',
+      });
+      setOpen(false);
+    } catch (e) {
+      toast({
+        variant: varianteError(e),
+        title: 'No se pudo guardar',
+        description: e instanceof ApiError ? e.message : 'Probá de nuevo.',
+      });
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="text-muted-foreground transition-colors hover:text-foreground"
+        aria-label="Editar email del inquilino"
+      >
+        <Pencil className="h-3 w-3" />
+      </button>
+      <Dialog open={open} onOpenChange={(o) => !guardando && setOpen(o)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Email del inquilino</DialogTitle>
+            <DialogDescription>
+              Es con lo que entra a la app: le llega un código de 6 dígitos a ese mail. Sin
+              email no puede entrar.
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            type="email"
+            value={valor}
+            onChange={(e) => setValor(e.target.value)}
+            placeholder="inquilino@email.com"
+            disabled={guardando}
+          />
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" disabled={guardando} onClick={() => setOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={guardar} disabled={guardando || !valor.trim()}>
+              {guardando ? 'Guardando…' : 'Guardar'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -1307,6 +1521,70 @@ function AprobacionContratoCard({
 // inmobiliaria (default) o si el inquilino deposita directo al propietario
 // y la inmo sólo audita. Se puede cambiar en cualquier momento — queda
 // registrado en auditoría.
+/**
+ * Servicios públicos de la propiedad, dentro del expediente del contrato.
+ *
+ * Camila los nombró entre lo que no encontraba: "no tengo servicios" (03/08). El dato ya
+ * existía (`GET /propiedades/:propiedadId/servicios`) pero sólo se veía desde la propiedad,
+ * y ella estaba parada en el contrato.
+ *
+ * Sólo lectura: se editan donde viven, en la ficha de la propiedad. Duplicar el editor acá
+ * sería dos caminos para el mismo dato.
+ */
+function ServiciosDelContrato({ propiedadId }: { propiedadId: string }) {
+  const { servicios, hidratado, error } = useServiciosPublicos(propiedadId);
+
+  if (!hidratado) return null;
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0">
+        <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+          Servicios de la propiedad
+        </CardTitle>
+        <Link
+          href={`/propiedades/${propiedadId}`}
+          className="text-xs font-medium text-primary hover:underline"
+        >
+          Editar en la propiedad →
+        </Link>
+      </CardHeader>
+      <CardContent className="text-sm">
+        {error ? (
+          // Un GET que falla NO es "no hay servicios": decirlo sería que el operador crea
+          // que la propiedad no tiene ninguno cargado.
+          <p className="py-2 text-destructive">
+            No pudimos cargar los servicios. Recargá la página.
+          </p>
+        ) : servicios.length === 0 ? (
+          <p className="py-2 text-muted-foreground">
+            Esta propiedad todavía no tiene servicios cargados.
+          </p>
+        ) : (
+          <ul role="list" className="divide-y">
+            {servicios.map((s) => (
+              <li key={s.tipo} className="flex items-start justify-between gap-3 py-2">
+                <div className="min-w-0">
+                  <p className="font-medium">{TIPO_SERVICIO_LABEL[s.tipo]}</p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {s.distribuidora || 'Sin distribuidora'}
+                    {s.nis ? ` · N° ${s.nis}` : ''}
+                  </p>
+                </div>
+                {s.titular && (
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    a nombre de {s.titular}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function ModoCobranzaCard({
   contrato,
   propietarioDirecto,
@@ -1319,6 +1597,14 @@ function ModoCobranzaCard({
     contrato.modoCobranza ?? 'INMOBILIARIA';
   const [modo, setModo] = useState<'INMOBILIARIA' | 'PROPIETARIO_DIRECTO'>(inicial);
   const [guardando, setGuardando] = useState(false);
+  // Dueño al que le falta la cuenta de cobro directo, para poder cargarla sin salir
+  // de la ficha del contrato.
+  const [faltaCuentaPropId, setFaltaCuentaPropId] = useState<string | null>(null);
+  const [cuentaDialogOpen, setCuentaDialogOpen] = useState(false);
+  const { propietarios } = usePropietarios();
+  const propietarioSinCuenta = faltaCuentaPropId
+    ? (propietarios.find((p) => p.id === faltaCuentaPropId) ?? null)
+    : null;
   // El estado local sigue al contrato si cambia (re-fetch tras el PATCH).
   useEffect(() => {
     setModo(contrato.modoCobranza ?? 'INMOBILIARIA');
@@ -1358,6 +1644,11 @@ function ModoCobranzaCard({
               : `El inquilino transfiere directo al CBU del propietario.`,
         });
       } catch (e) {
+        // Si el rebote es "al dueño le falta la cuenta de cobro directo", ofrecemos
+        // cargarla acá mismo en vez de mandar al operador a la ficha del propietario
+        // (que es lo que lo dejaba clavado en la prueba del 03/08).
+        const faltaCuenta = datoDeError<string>(e, 'codigo') === 'FALTA_CUENTA_COBRANZA';
+        setFaltaCuentaPropId(faltaCuenta ? (datoDeError<string>(e, 'propietarioId') ?? null) : null);
         toast({
           variant: varianteError(e),
           title: 'No se pudo cambiar el modo de cobranza',
@@ -1448,6 +1739,36 @@ function ModoCobranzaCard({
             </p>
           </button>
         </div>
+
+        {propietarioSinCuenta && (
+          <div className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs dark:border-amber-800 dark:bg-amber-900/20">
+            <p className="text-amber-900 dark:text-amber-200">
+              Para cobrar directo, <strong>{propietarioSinCuenta.nombre}</strong> necesita su cuenta
+              de cobro cargada (banco + CBU + alias). No es el CBU del alta del propietario: es un
+              dato aparte.
+            </p>
+            <Button type="button" size="sm" variant="outline" onClick={() => setCuentaDialogOpen(true)}>
+              Cargar la cuenta ahora
+            </Button>
+          </div>
+        )}
+
+        {propietarioSinCuenta && (
+          <CuentaCobranzaDialog
+            open={cuentaDialogOpen}
+            onOpenChange={setCuentaDialogOpen}
+            propietario={propietarioSinCuenta}
+            onSaved={() => {
+              qc.invalidateQueries({ queryKey: ['propietarios'] });
+              setFaltaCuentaPropId(null);
+              toast({
+                variant: 'success',
+                title: 'Cuenta cargada',
+                description: 'Ya podés pasar el contrato a cobranza directa.',
+              });
+            }}
+          />
+        )}
 
         {modo === 'PROPIETARIO_DIRECTO' && propietarioDirecto?.cuentaCobranza && (
           <div className="space-y-2 rounded-md border bg-muted/30 p-3 text-xs">

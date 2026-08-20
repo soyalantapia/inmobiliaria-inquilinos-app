@@ -45,6 +45,9 @@ interface ContratoActualApi {
 interface PropiedadEmbebidaApi {
   id: string;
   direccion: string;
+  /** El endpoint hace include completo de la propiedad, así que `complejo` ya viajaba;
+   *  sólo faltaba declararlo para poder rotular (lib/rotulo-propiedad.ts). */
+  complejo?: string | null;
   ciudad?: string;
   provincia?: string;
   tipo?: string;
@@ -148,6 +151,7 @@ function mapDetalle(d: PropietarioDetalleApi): PropietarioDetalle {
     .map((p) => ({
       id: p.id,
       direccion: p.direccion,
+      complejo: p.complejo ?? null,
       ciudad: p.ciudad ?? '',
       provincia: p.provincia ?? '',
       tipo: coerceTipo(p.tipo),

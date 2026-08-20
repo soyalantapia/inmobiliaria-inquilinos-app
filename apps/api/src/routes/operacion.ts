@@ -3,12 +3,16 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../db.js';
+import { registrarEventoContrato } from '../lib/evento-contrato.js';
 import { requireInquilino, requireUsuario } from '../auth/guards.js';
 import { verificarPinUsuario } from '../auth/pin.js';
 import { registrarEvento } from '../lib/auditoria.js';
 import { imputarCostoReclamo, conceptoReclamo, ReclamoYaRendido, ReclamoNoReimputable } from '../lib/imputar-reclamo.js';
 import { fichaReputacion, resumenReputacionMasivo, normalizarTelefono } from '../lib/reputacion-red.js';
 import { urlEsDelTenant } from './uploads.js';
+import { avisarReclamoNuevoAInmo, avisarAlInquilinoDelReclamo } from '../lib/avisos-reclamo.js';
+import { TIPOS_AVISO_INMO } from '../lib/destinatario-aviso.js';
+import { normalizarEmail } from '../lib/normalizar-email.js';
 
 /** Token opaco del link mágico de visita (/p/:token) — 24 bytes base64url, no adivinable. */
 function generarTokenVisita(): string {
@@ -199,7 +203,7 @@ export async function operacionRoutes(app: FastifyInstance) {
         ...(q.urgencia ? { urgencia: q.urgencia } : {}),
       },
       include: {
-        propiedad: { select: { id: true, direccion: true, ciudad: true } },
+        propiedad: { select: { id: true, direccion: true, ciudad: true, complejo: true, consorcio: { select: { nombre: true } } } },
         contrato: {
           select: {
             id: true,
@@ -222,7 +226,7 @@ export async function operacionRoutes(app: FastifyInstance) {
     const reclamo = await prisma.reclamo.findFirst({
       where: { id, inmobiliariaId: u.inmobiliariaId },
       include: {
-        propiedad: { select: { id: true, direccion: true, ciudad: true } },
+        propiedad: { select: { id: true, direccion: true, ciudad: true, complejo: true, consorcio: { select: { nombre: true } } } },
         contrato: {
           select: {
             id: true,
@@ -320,6 +324,19 @@ export async function operacionRoutes(app: FastifyInstance) {
       });
       return r;
     });
+    // El reclamo también es parte de la vida del CONTRATO, no sólo del ticket: el
+    // expediente tiene que dejar ver que en tal mes hubo un problema en esa unidad.
+    //
+    // POST-COMMIT (T-29-N1): adentro de la transacción, un fallo escribiendo el historial
+    // se llevaba puesto el reclamo recién abierto — y el inquilino veía un 200.
+    await registrarEventoContrato(prisma, {
+      inmobiliariaId: u.inmobiliariaId,
+      contratoId: contrato.id,
+      tipo: 'RECLAMO_CREADO',
+      titulo: `Reclamo: ${body.data.titulo}`,
+      detalle: `${body.data.categoria} · urgencia ${body.data.urgencia}`,
+      autor: u.userId,
+    });
     return reply.code(201).send(conSla(reclamo));
   });
 
@@ -384,7 +401,76 @@ export async function operacionRoutes(app: FastifyInstance) {
         });
         return { reclamo: await tx.reclamo.findUniqueOrThrow({ where: { id } }), visita: visitaUpsert };
       });
+
+      // El inquilino ya lo ve en su feed ("Te asignaron a X"), pero eso sólo llega si
+      // abre la app. El mail cierra el otro lado. Best-effort, fuera de la tx.
+      void avisarAlInquilinoDelReclamo({
+        inmobiliariaId: u.inmobiliariaId,
+        reclamoId: id,
+        evento: { tipo: 'ASIGNADO', profesional: prof.nombre, oficio: prof.categoria ?? null },
+      }).catch((e) => app.log.warn({ err: e, reclamoId: id }, '[reclamos] no se pudo avisar la asignación'));
+
       return { ...conSla(actualizado), visitaToken: visita.token };
+    } catch (e) {
+      if (e instanceof ConflictoEstadoReclamo) return reply.code(409).send({ message: e.message });
+      throw e;
+    }
+  });
+
+  /**
+   * Tomar un reclamo: ABIERTO → EN_CURSO.
+   *
+   * POR QUÉ EXISTE: `EN_CURSO` era **inalcanzable desde la inmobiliaria**. El enum lo tiene, el
+   * panel lo filtra, el SLA lo contempla y hasta existe el evento `EN_CURSO` — pero el único
+   * lugar que lo escribía era el flujo en que el INQUILINO marca "PERSISTE" y reabre un reclamo
+   * ya resuelto (`:902`). O sea que la única forma de que un reclamo estuviera "en curso" era
+   * que antes se hubiera cerrado mal.
+   *
+   * Camila, después de que T-17 le puso el aviso por mail: *"me entero más rápido de algo que
+   * después no puedo mover. Me sirve igual, pero es media solución."* Se enteraba antes de un
+   * reclamo que seguía figurando ABIERTO aunque alguien ya lo estuviera atendiendo — y con 220
+   * propiedades, la bandeja de abiertos es lo que usa para saber qué falta.
+   *
+   * Es deliberadamente lo más chico que cierra eso: un cambio de estado con su evento. NO asigna
+   * profesional (eso ya es `/asignar`, y son cosas distintas: se puede estar atendiendo un
+   * reclamo sin mandar a nadie todavía).
+   */
+  app.post('/reclamos/:id/tomar', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'reclamos.gestionar');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+
+    const reclamo = await prisma.reclamo.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
+    if (!reclamo) return reply.code(404).send({ message: 'Reclamo inexistente' });
+    if ((ESTADOS_CERRADOS as readonly string[]).includes(reclamo.estado)) {
+      return reply.code(409).send({ message: 'El reclamo ya está cerrado — no se puede tomar' });
+    }
+    // Idempotente: tomar algo que ya está en curso no es un error, es lo que pasa cuando dos
+    // personas de la oficina abren el mismo reclamo. Devolvemos 200 sin duplicar el evento,
+    // que si no el historial se llena de "tomó el reclamo" del mismo día.
+    if (reclamo.estado === 'EN_CURSO') return reclamo;
+
+    const autor = await nombreUsuario(u.userId);
+    try {
+      return await prisma.$transaction(async (tx) => {
+        // Lock atómico, igual que asignar/resolver/rechazar: si entre el pre-check y esto
+        // alguien resolvió o rechazó el reclamo, `count === 0` → 409 en vez de pisar el cierre.
+        const res = await tx.reclamo.updateMany({
+          where: { id, estado: { notIn: [...ESTADOS_CERRADOS] } },
+          data: { estado: 'EN_CURSO' },
+        });
+        if (res.count === 0) throw new ConflictoEstadoReclamo('El reclamo ya está cerrado — no se puede tomar');
+        await tx.reclamoEvento.create({
+          data: {
+            inmobiliariaId: u.inmobiliariaId,
+            reclamoId: id,
+            tipo: 'EN_CURSO',
+            autor,
+            contenido: null,
+          },
+        });
+        return tx.reclamo.findUniqueOrThrow({ where: { id } });
+      });
     } catch (e) {
       if (e instanceof ConflictoEstadoReclamo) return reply.code(409).send({ message: e.message });
       throw e;
@@ -578,6 +664,15 @@ export async function operacionRoutes(app: FastifyInstance) {
 
         return tx.reclamo.findUniqueOrThrow({ where: { id } });
       });
+      // El feed del inquilino ya le pide calificar, pero eso sólo aparece si entra.
+      // El mail además le recuerda que puede REABRIRLO si el problema sigue, que es
+      // la mitad del circuito CONFORME/PERSISTE que hoy casi nadie usa.
+      void avisarAlInquilinoDelReclamo({
+        inmobiliariaId: u.inmobiliariaId,
+        reclamoId: id,
+        evento: { tipo: 'RESUELTO', notas: body.data.costoTrabajoNotas?.trim() || null },
+      }).catch((e) => app.log.warn({ err: e, reclamoId: id }, '[reclamos] no se pudo avisar la resolución'));
+
       return conSla(actualizado);
     } catch (e) {
       if (e instanceof ConflictoEstadoReclamo) return reply.code(409).send({ message: e.message });
@@ -768,6 +863,39 @@ export async function operacionRoutes(app: FastifyInstance) {
       });
       return r;
     });
+
+    // Mismo criterio que el alta desde el panel: al expediente del contrato le importa
+    // que hubo un reclamo, lo haya abierto la inmobiliaria o el inquilino.
+    //
+    // POST-COMMIT (T-29-N1), igual que el aviso de acá abajo y por el mismo motivo: el
+    // reclamo YA está creado y nada informativo puede tirarlo abajo.
+    await registrarEventoContrato(prisma, {
+      inmobiliariaId: inq.inmobiliariaId,
+      contratoId: contrato.id,
+      tipo: 'RECLAMO_CREADO',
+      titulo: `Reclamo del inquilino: ${body.data.titulo}`,
+      detalle: `${body.data.categoria} · urgencia ${body.data.urgencia}`,
+      autor,
+    });
+
+    // Avisarle a la inmobiliaria que entró un reclamo. Sin esto se entera sólo si
+    // abre el panel, y un EMERGENCIA de un viernes a la noche espera al lunes
+    // ("por si no no está enterada", reunión del 03/08).
+    //
+    // FUERA de la transacción y sin await bloqueante: el reclamo YA está creado y
+    // un SMTP caído no puede tirarlo abajo. El destinatario sale del tenant que ya
+    // resolvió el guard, nunca de un id del request.
+    void avisarReclamoNuevoAInmo({
+      inmobiliariaId: inq.inmobiliariaId,
+      reclamoId: reclamo.id,
+      autor,
+      categoria: body.data.categoria,
+      urgencia: body.data.urgencia,
+      descripcion: body.data.descripcion,
+    }).catch((e) =>
+      app.log.warn({ err: e, reclamoId: reclamo.id }, '[reclamos] no se pudo avisar del reclamo nuevo'),
+    );
+
     return reply.code(201).send(conSla(reclamo));
   });
 
@@ -1840,7 +1968,7 @@ export async function operacionRoutes(app: FastifyInstance) {
         monto: true,
         moneda: true,
         tipoContrato: true,
-        propiedad: { select: { id: true, direccion: true, ciudad: true } },
+        propiedad: { select: { id: true, direccion: true, ciudad: true, complejo: true, consorcio: { select: { nombre: true } } } },
         inquilinoTitular: { select: { id: true, nombre: true, apellido: true, email: true, telefono: true } },
         intencionRenovacion: true,
       },
@@ -1984,5 +2112,70 @@ export async function operacionRoutes(app: FastifyInstance) {
       data: { contratosRequierenAprobacion: body.data.contratosRequierenAprobacion },
     });
     return { contratosRequierenAprobacion: body.data.contratosRequierenAprobacion };
+  });
+
+  /**
+   * A qué casilla va cada tipo de aviso automático (T-17-N1).
+   *
+   * Devuelve SIEMPRE la lista completa de tipos, con `email: null` en los que no tienen casilla
+   * propia y el `fallback` aparte, para que el panel pueda mostrar "hoy va a X" sin tener que
+   * saber la regla. Si el front tuviera que resolver el fallback, esa regla viviría en dos
+   * lugares y se despegarían.
+   */
+  app.get('/mi-inmobiliaria/avisos', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'configuracion.ver');
+    if (!u) return;
+    const [configs, inmo] = await Promise.all([
+      prisma.destinatarioAviso.findMany({
+        where: { inmobiliariaId: u.inmobiliariaId },
+        select: { tipo: true, email: true },
+      }),
+      prisma.inmobiliaria.findUnique({ where: { id: u.inmobiliariaId }, select: { email: true } }),
+    ]);
+    const porTipo = new Map(configs.map((c) => [c.tipo, c.email]));
+    return {
+      fallback: inmo?.email ?? null,
+      avisos: TIPOS_AVISO_INMO.map((t) => ({
+        tipo: t.tipo,
+        label: t.label,
+        descripcion: t.descripcion,
+        email: porTipo.get(t.tipo) ?? null,
+      })),
+    };
+  });
+
+  app.put('/mi-inmobiliaria/avisos', async (request, reply) => {
+    const u = await requireUsuario(request, reply);
+    if (!u) return;
+    // Mismo criterio que las otras dos secciones de configuración: sólo ADMIN edita.
+    if (u.rol !== 'ADMIN') return reply.code(403).send({ message: 'Necesitás permiso de Admin para editar esta sección' });
+    const body = z
+      .object({
+        tipo: z.enum(['RECLAMO_NUEVO']),
+        // Vacío = "volvé al default". No es lo mismo que un email inválido, así que se acepta
+        // explícitamente en vez de hacerlo pasar por el `.email()`.
+        email: z.string().trim().email().or(z.literal('')),
+      })
+      .safeParse(request.body ?? {});
+    if (!body.success) {
+      return reply.code(400).send({ message: 'Poné un email válido, o dejalo vacío para usar el de la inmobiliaria' });
+    }
+    const { tipo } = body.data;
+    // Normalizado a minúsculas, igual que el resto de los emails del sistema: acá no es una
+    // credencial, pero mantener un solo criterio evita que la misma casilla figure de dos formas.
+    const email = normalizarEmail(body.data.email);
+
+    if (!email) {
+      // Borrar la fila y no guardar '' : la AUSENCIA es lo que significa "usá el default".
+      // Guardar un vacío dejaría una fila que no configura nada y confundiría al próximo.
+      await prisma.destinatarioAviso.deleteMany({ where: { inmobiliariaId: u.inmobiliariaId, tipo } });
+      return { tipo, email: null };
+    }
+    await prisma.destinatarioAviso.upsert({
+      where: { inmobiliariaId_tipo: { inmobiliariaId: u.inmobiliariaId, tipo } },
+      create: { inmobiliariaId: u.inmobiliariaId, tipo, email },
+      update: { email },
+    });
+    return { tipo, email };
   });
 }

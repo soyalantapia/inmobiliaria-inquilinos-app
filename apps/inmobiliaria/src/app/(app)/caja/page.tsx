@@ -14,6 +14,7 @@ import {
   Trash2,
   TrendingDown,
   TrendingUp,
+  Undo2,
   Wallet,
   X,
 } from 'lucide-react';
@@ -34,18 +35,23 @@ import { Label } from '@llave/ui/label';
 import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
 import { MoneyInput } from '@/components/money-input';
+import { useSearchParams } from 'next/navigation';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@llave/ui/tabs';
 import { Topbar } from '@/components/topbar';
+import { CuentasPanel } from '@/components/cuentas-panel';
 import {
   type CategoriaGasto,
   type MovimientoCaja,
   categoriaGastoLabel,
   totalesPorMoneda,
 } from '@/lib/caja-storage';
-import { useCaja, usePropiedades } from '@/lib/api/hooks';
+import { useCaja, useMe, usePropiedades } from '@/lib/api/hooks';
 import { useCuentas } from '@/lib/api/use-cuentas';
-import { useCierreCaja } from '@/lib/api/use-pagos';
+import { type CierreCajaItem, useAnularPago, useCierreCaja } from '@/lib/api/use-pagos';
+import { rolTienePermiso } from '@/lib/permisos';
+import { normalizarRol } from '@/lib/rol-storage';
 import { apiEnabled, subirArchivo } from '@/lib/api/client';
-import { formatFechaCorta, formatMonto, fechaHoyLocal } from '@/lib/format';
+import { formatFechaCorta, formatMonto, formatTotalPorMoneda, fechaHoyLocal } from '@/lib/format';
 import type { Moneda } from '@/lib/types';
 import { propiedadesMock } from '@/lib/mock-data';
 
@@ -102,6 +108,10 @@ export default function CajaPage() {
   const [abrirForm, setAbrirForm] = useState(false);
   const [eliminando, setEliminando] = useState<MovimientoCaja | null>(null);
   const [filtroProp, setFiltroProp] = useState<string>('TODAS');
+  // El tab se lee de la URL para que `/caja?tab=cuentas` sea linkeable (el ítem del menú
+  // apunta ahí). Mismo patrón que /pagos.
+  const searchParams = useSearchParams();
+  const [tab, setTab] = useState(searchParams?.get('tab') === 'cuentas' ? 'cuentas' : 'movimientos');
 
   const filtrados = useMemo(() => {
     if (filtroProp === 'TODAS') return movimientos;
@@ -142,7 +152,21 @@ export default function CajaPage() {
   return (
     <>
       <Topbar titulo="Caja" />
-      <main className="flex-1 space-y-6 p-4 md:p-6">
+      <main className="flex-1 p-4 md:p-6">
+        {/* PESTAÑAS. Camila (03/08) fue a caja buscando las cuentas y no las encontró:
+            "abajo de caja no aparece ahí en caja, pero sí aparece cuentas". Eran dos
+            pantallas hermanas sin un solo link entre ellas. "Cuentas" es una subdivisión de
+            la caja, no un par: por eso se integra en vez de enlazarse. Mismo patrón que
+            /pagos (Tabs + tab leído de la URL), que ya resolvió este mismo problema. */}
+        <Tabs value={tab} onValueChange={setTab}>
+          <TabsList className="mb-4">
+            <TabsTrigger value="movimientos">Movimientos</TabsTrigger>
+            <TabsTrigger value="cuentas">Cuentas</TabsTrigger>
+          </TabsList>
+          <TabsContent value="cuentas" className="mt-0">
+            <CuentasPanel />
+          </TabsContent>
+          <TabsContent value="movimientos" className="mt-0 space-y-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -254,13 +278,19 @@ export default function CajaPage() {
                 key={m.id}
                 mov={m}
                 propDireccion={
-                  opcionesProp.find((p) => p.id === m.propiedadId)?.direccion ?? '—'
+                  // Distinguimos "sin propiedad a propósito" (gasto de la inmobiliaria)
+                  // de "no la encontramos", que antes se veían igual con un guión.
+                  !m.propiedadId
+                    ? 'De la inmobiliaria'
+                    : (opcionesProp.find((p) => p.id === m.propiedadId)?.direccion ?? '—')
                 }
                 onDelete={() => setEliminando(m)}
               />
             ))}
           </div>
         )}
+          </TabsContent>
+        </Tabs>
       </main>
 
       <DialogCargarGasto
@@ -279,6 +309,11 @@ export default function CajaPage() {
               categoria: data.categoria,
               descripcion: data.descripcion,
               monto: data.monto,
+              // MISMO bug que el `tipo` de acá arriba, con otro campo: el form tiene
+              // selector $ / US$ y lo emitía, pero este payload se arma campo por campo y
+              // se lo comía, así que el zod del back caía al default ARS y todo movimiento
+              // se guardaba en pesos. Es opcional en el tipo, por eso tsc no lo marcaba.
+              moneda: data.moneda,
               fecha: data.fecha,
               proveedor: data.proveedor,
               comprobanteUrl: data.comprobante,
@@ -325,6 +360,48 @@ function CierreCajaDelDia() {
   const [abierto, setAbierto] = useState(false);
   const { cierre, cargando } = useCierreCaja(fecha);
   const esHoy = fecha === hoy;
+  // Con UNA sola moneda el total plano es correcto, pero se formateaba siempre como
+  // pesos: un día cuyo único cobro fue en dólares mostraba "$ 1.200" arriba y "US$ 1.200"
+  // en la fila. El desglose `porMoneda` ya sabe cuál es.
+  const monedaUnica = (cierre?.porMoneda[0]?.moneda ?? 'ARS') as Moneda;
+
+  // T-12 — Camila buscó acá cómo deshacer un cobro mal cargado: llegó al detalle y la fila
+  // no tenía acción. `POST /pagos/:id/anular` ya existía, pero sólo se alcanzaba desde la
+  // bandeja de conciliados, que no es donde ella estaba mirando.
+  const { me } = useMe();
+  const { anular, disponible: anularDisponible } = useAnularPago();
+  // `pago.revertir` es ADMIN. Si no puede, no mostramos el botón: prometerlo para que el
+  // server conteste 403 es peor que no ofrecerlo.
+  const puedeAnular =
+    anularDisponible && rolTienePermiso(normalizarRol(me?.rol, 'LECTURA'), 'pago.revertir');
+  const [anulando, setAnulando] = useState<CierreCajaItem | null>(null);
+  const [motivo, setMotivo] = useState('');
+  const [enviando, setEnviando] = useState(false);
+
+  const confirmarAnular = async () => {
+    if (!anulando || motivo.trim().length < 5) return;
+    setEnviando(true);
+    try {
+      await anular(anulando.id, motivo.trim());
+      toast({
+        title: 'Cobro deshecho',
+        description: `El pago de ${anulando.inquilino} volvió a quedar pendiente.`,
+      });
+      setAnulando(null);
+      setMotivo('');
+    } catch (e) {
+      // El server tiene motivos concretos para negarse (el período ya se le rindió al
+      // propietario, el pago ya no está conciliado). Mostramos SU mensaje: es la respuesta
+      // a "¿por qué no puedo?", y un texto genérico la borraría.
+      toast({
+        variant: 'destructive',
+        title: 'No se pudo deshacer',
+        description: e instanceof Error ? e.message : 'Probá de nuevo en un momento.',
+      });
+    } finally {
+      setEnviando(false);
+    }
+  };
 
   const compartir = () => {
     if (!cierre || cierre.cantidad === 0) return;
@@ -334,7 +411,8 @@ function CierreCajaDelDia() {
       ? cierre.porMoneda
           .map((m) => `${m.moneda} — Cobrado: ${formatMonto(m.cobrado, m.moneda as 'ARS' | 'USD')} · Comisión: ${formatMonto(m.comision, m.moneda as 'ARS' | 'USD')}`)
           .join('\n')
-      : `Cobrado: ${formatMonto(cierre.cobrado)}\n` + `Comisión (honorarios): ${formatMonto(cierre.comision)}`;
+      : `Cobrado: ${formatMonto(cierre.cobrado, monedaUnica)}\n` +
+        `Comisión (honorarios): ${formatMonto(cierre.comision, monedaUnica)}`;
     const msg =
       `*Cierre de caja ${cuando}*\n` +
       `${lineasMonto}\n` +
@@ -399,7 +477,7 @@ function CierreCajaDelDia() {
                   Cobrado
                 </p>
                 <p className="mt-1 text-2xl font-bold tabular-nums text-emerald-700 dark:text-emerald-300">
-                  {cierre.multiMoneda ? 'ver desglose' : formatMonto(cierre.cobrado)}
+                  {cierre.multiMoneda ? 'ver desglose' : formatMonto(cierre.cobrado, monedaUnica)}
                 </p>
               </div>
               <div className="rounded-lg border bg-muted/20 p-3">
@@ -407,7 +485,7 @@ function CierreCajaDelDia() {
                   <Percent className="h-3 w-3" /> Comisión
                 </p>
                 <p className="mt-1 text-2xl font-bold tabular-nums">
-                  {cierre.multiMoneda ? 'ver desglose' : formatMonto(cierre.comision)}
+                  {cierre.multiMoneda ? 'ver desglose' : formatMonto(cierre.comision, monedaUnica)}
                 </p>
                 <p className="text-[10px] text-muted-foreground">tus honorarios sobre el alquiler</p>
               </div>
@@ -443,13 +521,31 @@ function CierreCajaDelDia() {
                         {p.direccion} · {p.periodo} · {p.metodo.toLowerCase()}
                       </p>
                     </div>
-                    <div className="text-right">
-                      <p className="font-semibold tabular-nums text-emerald-700 dark:text-emerald-300">
-                        {formatMonto(p.monto)}
-                      </p>
-                      <p className="text-[10px] tabular-nums text-muted-foreground">
-                        comisión {formatMonto(p.comision)}
-                      </p>
+                    <div className="flex items-center gap-2">
+                      <div className="text-right">
+                        {/* Con la moneda del ítem: el cierre ya separa ARS de USD más
+                            arriba, y esta fila los mostraba todos como pesos. */}
+                        <p className="font-semibold tabular-nums text-emerald-700 dark:text-emerald-300">
+                          {formatMonto(p.monto, p.moneda as Moneda)}
+                        </p>
+                        <p className="text-[10px] tabular-nums text-muted-foreground">
+                          comisión {formatMonto(p.comision, p.moneda as Moneda)}
+                        </p>
+                      </div>
+                      {puedeAnular && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="gap-1.5 text-muted-foreground hover:text-destructive"
+                          onClick={() => {
+                            setAnulando(p);
+                            setMotivo('');
+                          }}
+                        >
+                          <Undo2 className="h-3.5 w-3.5" />
+                          Deshacer
+                        </Button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -458,6 +554,61 @@ function CierreCajaDelDia() {
           </>
         )}
       </CardContent>
+
+      {/* Deshacer un cobro: el server exige un motivo de 5+ caracteres y lo deja en la
+          auditoría del pago, así que lo pedimos acá en vez de comerse un 400. */}
+      <Dialog
+        open={anulando !== null}
+        onOpenChange={(v) => {
+          if (!v && !enviando) {
+            setAnulando(null);
+            setMotivo('');
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Deshacer el cobro de {anulando?.inquilino}</DialogTitle>
+            <DialogDescription>
+              {anulando
+                ? `${formatMonto(anulando.monto, anulando.moneda as Moneda)} · ${anulando.periodo}. La cuota vuelve a quedar pendiente y el cobro sale del cierre del día.`
+                : ''}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="motivo-anular">¿Por qué se deshace?</Label>
+            <Textarea
+              id="motivo-anular"
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+              placeholder="Ej: se cargó en el contrato equivocado"
+              rows={3}
+            />
+            <p className="text-xs text-muted-foreground">
+              Queda registrado en el historial del pago. Mínimo 5 caracteres.
+            </p>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              disabled={enviando}
+              onClick={() => {
+                setAnulando(null);
+                setMotivo('');
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={enviando || motivo.trim().length < 5}
+              onClick={confirmarAnular}
+            >
+              {enviando ? 'Deshaciendo…' : 'Deshacer cobro'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
@@ -631,10 +782,14 @@ function DialogCargarGasto({
 
   const guardar = async () => {
     if (guardando) return;
-    if (!propiedadId || !descripcion.trim() || !monto) {
+    // La propiedad NO es obligatoria: sin propiedad el movimiento es de la propia
+    // inmobiliaria (oficina, sueldos, entre cajas) y no se le rinde a ningún dueño.
+    // Antes era obligatoria y no había forma de cargar esos gastos ("sí o sí tengo que
+    // elegir una propiedad", 03/08).
+    if (!descripcion.trim() || !monto) {
       toast({
         title: 'Faltan datos',
-        description: 'Propiedad, descripción y monto son obligatorios.',
+        description: 'La descripción y el monto son obligatorios.',
         variant: 'destructive',
       });
       return;
@@ -658,7 +813,7 @@ function DialogCargarGasto({
     setGuardando(true);
     try {
       await onSubmit({
-        propiedadId,
+        propiedadId: propiedadId || null,
         contratoId: prop?.contratoActualId ?? null,
         tipo,
         categoria,
@@ -732,20 +887,55 @@ function DialogCargarGasto({
                   </option>
                 ))}
               </select>
+              {/* El saldo de la cuenta elegida, acá mismo. Camila pidió "cargar un gasto en
+                  una cuenta y ver el saldo de esa cuenta": antes el saldo vivía SÓLO en
+                  /cuentas, así que había que cargar el gasto y después irse a otra pantalla
+                  a ver cómo quedó. */}
+              {(() => {
+                const sel = cuentasCompatibles.find((c) => c.id === cuentaId);
+                if (!sel) return null;
+                if (sel.porMoneda.length === 0) {
+                  return <p className="text-[11px] text-muted-foreground">Sin movimientos todavía.</p>;
+                }
+                return (
+                  <p className="text-[11px] text-muted-foreground">
+                    Saldo actual:{' '}
+                    <span className="font-medium tabular-nums text-foreground">
+                      {formatTotalPorMoneda(sel.porMoneda.map((p) => ({ monto: p.saldo, moneda: p.moneda })))}
+                    </span>
+                  </p>
+                );
+              })()}
+            </div>
+          )}
+          {/* SIN cuentas cargadas el select entero desaparecía, sin una palabra. Es el
+              estado inicial de CUALQUIER inmobiliaria, y es la explicación más probable del
+              "no aparece nada de cuentas" de Camila el 03/08: no es que estuviera escondido,
+              es que no había ninguna cuenta y la pantalla se quedó callada. */}
+          {apiEnabled && cuentasCompatibles.length === 0 && (
+            <div className="rounded-md border border-dashed bg-muted/20 p-3 text-xs">
+              <p className="font-medium">
+                Todavía no tenés cuentas {esIngreso ? 'de entrada' : 'de salida'} cargadas
+              </p>
+              <p className="mt-0.5 text-muted-foreground">
+                Podés cargar el movimiento igual: queda sin cuenta asignada. Si querés llevar el
+                saldo por cuenta (Mercado Pago, efectivo, banco), creá una en la pestaña Cuentas.
+              </p>
             </div>
           )}
           <div className="space-y-1">
-            <Label htmlFor="caj-propiedad" className="text-xs" aria-required>
-              Propiedad <span className="text-destructive">*</span>
+            <Label htmlFor="caj-propiedad" className="text-xs">
+              Propiedad <span className="font-normal text-muted-foreground">(opcional)</span>
             </Label>
             <select
               id="caj-propiedad"
               value={propiedadId}
               onChange={(e) => setPropiedadId(e.target.value)}
-              required
               className="w-full rounded-md border bg-background px-3 py-2 text-sm"
             >
-              <option value="">Elegí una propiedad…</option>
+              {/* Sin propiedad = gasto de la inmobiliaria. Se dice explícito para que no
+                  parezca un campo que quedó sin completar. */}
+              <option value="">Sin propiedad — gasto de la inmobiliaria</option>
               {opciones.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.direccion}

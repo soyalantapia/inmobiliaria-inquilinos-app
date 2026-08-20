@@ -31,6 +31,7 @@ import {
   type Rendicion,
 } from '@/lib/rendiciones-storage';
 import { formatFechaCorta, formatMonto, formatPeriodo } from '@/lib/format';
+import { rotuloEnLinea, rotuloPrincipal, rotuloSecundario } from '@/lib/rotulo-propiedad';
 import type { Propietario } from '@/lib/types';
 
 /**
@@ -77,7 +78,7 @@ export function HistorialPropietarioDialog({
           comisionPct: r.comisionPct,
           totalGastos: Number(r.totalGastos),
           montoNeto: Number(r.montoNeto),
-          rendidoAt: r.createdAt ?? `${r.periodo}-01`,
+          rendidoAt: r.rendidoAt,
           metodo: r.metodo,
           notas: r.notas,
         }));
@@ -215,8 +216,11 @@ export function HistorialPropietarioDialog({
                 >
                   <MapPin className="h-3.5 w-3.5 shrink-0 text-primary" />
                   <div className="flex-1 min-w-0">
-                    <p className="truncate text-sm font-medium">{p.direccion}</p>
-                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                    <p className="truncate text-sm font-medium">{rotuloPrincipal(p)}</p>
+                    {/* La calle va acá cuando el título pasó a ser el complejo: es la
+                        lista desde la que se ubica cuál de las unidades es. */}
+                    <p className="truncate text-[10px] uppercase tracking-wide text-muted-foreground">
+                      {rotuloSecundario(p) && `${rotuloSecundario(p)} · `}
                       {p.ciudad} · {p.tipo.toLowerCase()}
                     </p>
                   </div>

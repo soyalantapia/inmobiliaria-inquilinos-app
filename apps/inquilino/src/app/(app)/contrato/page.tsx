@@ -32,6 +32,7 @@ import { MobileGreetingHeader } from '@/components/mobile-greeting-header';
 import { contratoMock, garanteMock, inquilinoActual } from '@/lib/mock-data';
 import { apiEnabled } from '@/lib/api/client';
 import { useMiContrato } from '@/lib/api/hooks';
+import { montoMensual } from '@/lib/tipo-contrato';
 import {
   diasHastaVencimiento,
   formatDuracion,
@@ -106,8 +107,21 @@ export default function ContratoPage() {
             </span>
           </div>
           <div>
-            <p className="text-xs text-muted-foreground">Alquiler actual</p>
-            <p className="text-3xl font-semibold">{formatMonto(c.montoActual, c.moneda)}</p>
+            {/* Para un contrato de solo expensas, `montoActual` es 0 y este número —el más
+                grande de la pantalla— decía "Alquiler actual $0". `montoMensual` devuelve el
+                rótulo y el importe que corresponden a lo que la persona realmente paga.
+                Si no hay monto (expensas sin cargar) no mostramos "$0": mejor sin cifra que
+                con una que miente. Ver lib/tipo-contrato.ts. */}
+            <p className="text-xs text-muted-foreground">{montoMensual(c).label}</p>
+            {montoMensual(c).monto != null ? (
+              <p className="text-3xl font-semibold">
+                {formatMonto(montoMensual(c).monto as number, c.moneda)}
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Todavía no está cargado. Consultalo con tu inmobiliaria.
+              </p>
+            )}
             {/* "Te quedan X de contrato" lo sacamos: el banner de
                 renovación arriba ya dice "Faltan X. Te avisamos cuando
                 se acerque la renovación · Ver opciones". Tener la misma
@@ -378,8 +392,21 @@ function ContratoReal() {
             </span>
           </div>
           <div>
-            <p className="text-xs text-muted-foreground">Alquiler actual</p>
-            <p className="text-3xl font-semibold">{formatMonto(c.montoActual, c.moneda)}</p>
+            {/* Para un contrato de solo expensas, `montoActual` es 0 y este número —el más
+                grande de la pantalla— decía "Alquiler actual $0". `montoMensual` devuelve el
+                rótulo y el importe que corresponden a lo que la persona realmente paga.
+                Si no hay monto (expensas sin cargar) no mostramos "$0": mejor sin cifra que
+                con una que miente. Ver lib/tipo-contrato.ts. */}
+            <p className="text-xs text-muted-foreground">{montoMensual(c).label}</p>
+            {montoMensual(c).monto != null ? (
+              <p className="text-3xl font-semibold">
+                {formatMonto(montoMensual(c).monto as number, c.moneda)}
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Todavía no está cargado. Consultalo con tu inmobiliaria.
+              </p>
+            )}
           </div>
         </Card>
 

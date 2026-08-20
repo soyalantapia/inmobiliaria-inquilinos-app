@@ -46,7 +46,15 @@ export interface RendicionApi {
   montoNeto: string | number;
   metodo: RendirInput['metodo'];
   notas: string | null;
-  createdAt?: string;
+  /**
+   * Cuándo se rindió de verdad. Acá decía `createdAt?: string`, un campo que el modelo
+   * `Rendicion` NO tiene: el API devuelve la fila cruda de Prisma, que trae `rendidoAt`. Como
+   * `createdAt` llegaba siempre `undefined`, las dos pantallas que lo consumen caían al
+   * fallback `${periodo}-01` y mostraban el día 1 del período como fecha de pago. Una
+   * rendición de julio hecha el 12 de agosto se veía como 1 de julio — que es el dato con el
+   * que alguien contesta "¿cuándo le pagaste a Silvana?".
+   */
+  rendidoAt: string;
 }
 
 export interface UseRendiciones {

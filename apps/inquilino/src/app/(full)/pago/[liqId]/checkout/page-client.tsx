@@ -33,6 +33,7 @@ import { toast } from '@llave/ui/use-toast';
 import { contratoMock, liquidacionesMock } from '@/lib/mock-data';
 import { datosBancariosMock, proximoCambioVigente } from '@/lib/datos-bancarios';
 import { formatFecha, formatMonto, formatPeriodo } from '@/lib/format';
+import { montoMensualDeReferencia } from '@/lib/tipo-contrato';
 import { resolverMontos } from '@/lib/punitorios';
 import {
   agregarPago,
@@ -368,12 +369,20 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
     ? Math.max(0, liq.saldo ?? totalAPagar)
     : saldoPendiente(params.liqId, totalAPagar);
   const saldo = apiEnabled ? saldoProdRestante ?? saldoBase : saldoBase;
-  // Alquiler vigente para el umbral del hint de negociación: en la demo es el
-  // mock; en prod, el monto real del contrato (o, si no llegó, el montoAlquiler
-  // de la liquidación). Nunca el mock en prod.
+  // Monto mensual de referencia para el umbral del hint de negociación: en la demo es el
+  // mock; en prod, el monto real del contrato (o, si no llegó, el de la liquidación).
+  // Nunca el mock en prod.
+  //
+  // Antes era `contrato?.montoActual ?? liq.montoAlquiler`. `??` sólo cae en null/undefined,
+  // NO en 0 — y un contrato de solo expensas tiene `montoActual === 0` por diseño. La
+  // referencia quedaba en 0 y `saldo > 0 * 1.2` se cumplía con CUALQUIER saldo: al ocupante
+  // le saltaba "tu deuda es alta, podés pactar un plan" por un único período al día.
+  // `montoMensualDeReferencia` usa las expensas cuando ése es el monto que devenga.
+  // Las dos ramas pasan por el mismo helper: la demo usaba `contratoMock.montoActual` pelado
+  // y repetía el mismo agujero (con un mock de solo expensas la referencia daba 0).
   const alquilerVigente = apiEnabled
-    ? (contrato?.montoActual ?? liq.montoAlquiler)
-    : contratoMock.montoActual;
+    ? montoMensualDeReferencia(contrato, liq)
+    : montoMensualDeReferencia(contratoMock, liq);
   // Por defecto: pagar el saldo completo (que puede ser todo el total o
   // el remanente si hubo parciales antes).
   const montoActual = montoElegido ?? saldo;
@@ -499,7 +508,10 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
               setStep('ok');
               toast({
                 title: p.tipo === 'PARCIAL' ? 'Pago parcial recibido' : 'Comprobante recibido',
-                description: 'Lo validamos en 24-48 hs y te avisamos por WhatsApp.',
+                // NO hay integración de WhatsApp (env.ts no declara ninguna WHATSAPP_*). Lo que sí
+                  // existe es el aviso in-app: GET /mis-notificaciones emite 'Tu comprobante fue
+                  // confirmado/rechazado'. El copy dice eso, que es lo que de verdad pasa.
+                  description: 'Lo validamos en 24-48 hs y te avisamos acá en la app.',
               });
             }}
           />
@@ -1605,7 +1617,7 @@ function StepConfirmado({
             )
           ) : (
             <p className="text-sm text-muted-foreground">
-              Validamos en 24-48 hs hábiles y te avisamos por WhatsApp.
+              Validamos en 24-48 hs hábiles y te avisamos acá en la app.
             </p>
           )}
         </div>

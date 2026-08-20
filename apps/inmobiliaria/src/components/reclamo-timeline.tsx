@@ -1,5 +1,7 @@
 import {
+  CalendarClock,
   CheckCircle2,
+  Circle,
   Clock,
   FileEdit,
   HardHat,
@@ -7,6 +9,7 @@ import {
   Plus,
   ShieldX,
   Tag,
+  Truck,
   UserCheck,
   type LucideIcon,
 } from 'lucide-react';
@@ -28,6 +31,9 @@ const iconForTipo: Record<TipoEventoReclamo, LucideIcon> = {
   MENSAJE_INMO: MessageCircle,
   CLASIFICADO: Tag,
   PROFESIONAL_ASIGNADO: HardHat,
+  VISITA_CONFIRMADA: CalendarClock,
+  VISITA_EN_CAMINO: Truck,
+  VISITA_LISTO: CheckCircle2,
 };
 
 const colorForTipo: Record<TipoEventoReclamo, string> = {
@@ -41,6 +47,9 @@ const colorForTipo: Record<TipoEventoReclamo, string> = {
   MENSAJE_INMO: 'bg-primary/10 text-primary',
   CLASIFICADO: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
   PROFESIONAL_ASIGNADO: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+  VISITA_CONFIRMADA: 'bg-primary/10 text-primary',
+  VISITA_EN_CAMINO: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+  VISITA_LISTO: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
 };
 
 const labelForTipo: Record<TipoEventoReclamo, (e: EventoReclamo) => string> = {
@@ -54,13 +63,24 @@ const labelForTipo: Record<TipoEventoReclamo, (e: EventoReclamo) => string> = {
   MENSAJE_INMO: (e) => `${e.autor} (inmobiliaria)`,
   CLASIFICADO: (e) => `Clasificado como ${e.contenido ?? '—'}`,
   PROFESIONAL_ASIGNADO: (e) => `Profesional asignado: ${e.contenido ?? '—'}`,
+  // Los escribe el profesional desde el link público, sin cuenta en el sistema.
+  VISITA_CONFIRMADA: (e) => `${e.autor} confirmó la visita`,
+  VISITA_EN_CAMINO: (e) => `${e.autor} está en camino`,
+  VISITA_LISTO: (e) => `${e.autor} terminó el trabajo`,
 };
 
 export function ReclamoTimeline({ eventos }: { eventos: EventoReclamo[] }) {
   return (
     <ol role="list" className="space-y-4">
       {eventos.map((ev, i) => {
-        const Icon = iconForTipo[ev.tipo];
+        // Los tres lookups con fallback. La segunda línea de defensa: la primera es el test
+        // que compara `TipoEventoReclamo` contra el enum de Prisma, pero eso no cubre el rato
+        // entre que se despliega la API y se despliega el front — en ese rato la base ya tiene
+        // eventos que este código no conoce. Antes eso era `undefined(ev)` y la pantalla se
+        // caía entera; ahora es un renglón sin gracia. Degradar se banca, caerse no.
+        const Icon = iconForTipo[ev.tipo] ?? Circle;
+        const color = colorForTipo[ev.tipo] ?? 'bg-muted text-muted-foreground';
+        const label = labelForTipo[ev.tipo]?.(ev) ?? 'Actualización del reclamo';
         const esMensaje = ev.tipo === 'MENSAJE_INQUILINO' || ev.tipo === 'MENSAJE_INMO';
         const desdeInmo = ev.tipo === 'MENSAJE_INMO';
 
@@ -68,36 +88,31 @@ export function ReclamoTimeline({ eventos }: { eventos: EventoReclamo[] }) {
           <li key={ev.id} className="relative flex gap-3">
             {i < eventos.length - 1 && (
               <span
-                className="absolute left-[15px] top-8 h-[calc(100%-12px)] w-px bg-border"
+                className="bg-border absolute left-[15px] top-8 h-[calc(100%-12px)] w-px"
                 aria-hidden
               />
             )}
-            <div
-              className={cn(
-                'grid h-8 w-8 shrink-0 place-items-center rounded-full',
-                colorForTipo[ev.tipo],
-              )}
-            >
+            <div className={cn('grid h-8 w-8 shrink-0 place-items-center rounded-full', color)}>
               <Icon className="h-4 w-4" />
             </div>
-            <div className="flex-1 min-w-0 space-y-1">
+            <div className="min-w-0 flex-1 space-y-1">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <p className="text-sm font-medium">{labelForTipo[ev.tipo](ev)}</p>
-                <p className="text-[11px] text-muted-foreground">{tiempoRelativo(ev.fecha)}</p>
+                <p className="text-sm font-medium">{label}</p>
+                <p className="text-muted-foreground text-[11px]">{tiempoRelativo(ev.fecha)}</p>
               </div>
               {ev.contenido && !esMensaje && ev.tipo !== 'ASIGNADO' && (
-                <p className="text-sm text-muted-foreground">{ev.contenido}</p>
+                <p className="text-muted-foreground text-sm">{ev.contenido}</p>
               )}
               {esMensaje && (ev.contenido || ev.adjuntoUrl) && (
                 <div
                   className={cn(
                     'space-y-2 rounded-lg px-3 py-2 text-sm',
-                    desdeInmo
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted text-foreground',
+                    desdeInmo ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground',
                   )}
                 >
-                  {ev.contenido && <p className="whitespace-pre-wrap break-words">{ev.contenido}</p>}
+                  {ev.contenido && (
+                    <p className="whitespace-pre-wrap break-words">{ev.contenido}</p>
+                  )}
                   {ev.adjuntoUrl &&
                     (esImagen(ev.adjuntoUrl) ? (
                       // eslint-disable-next-line @next/next/no-img-element

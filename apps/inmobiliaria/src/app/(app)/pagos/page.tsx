@@ -51,6 +51,7 @@ import {
 } from '@/lib/mock-data';
 import { estadoDePago } from '@/lib/conciliacion-storage';
 import { formatFecha, formatFechaCorta, formatMonto, formatPeriodo, formatTotalPorMoneda, periodoActualFormat } from '@/lib/format';
+import { rotuloEnLinea } from '@/lib/rotulo-propiedad';
 import { abrirReporteImprimible } from '@/lib/reportes-pdf';
 import { diasHastaVencimiento } from '@/lib/format';
 import {
@@ -338,7 +339,7 @@ export default function PagosPage() {
       const telefono = apiEnabled ? (c.inquilinoTelefono ?? '—') : (contacto?.titular.telefono ?? '—');
       return [
         c.inquilino,
-        c.direccion,
+        rotuloEnLinea(c),
         telefono,
         contacto?.garante ? `${contacto.garante.nombre} · ${contacto.garante.telefono}` : 'Sin garante registrado',
         `${dias} día${dias === 1 ? '' : 's'}`,
@@ -479,7 +480,7 @@ export default function PagosPage() {
 
           return [
             c.inquilino,
-            c.direccion,
+            rotuloEnLinea(c),
             ownerNombre,
             contacto?.titular.telefono ?? '—',
             `${dias} día${dias === 1 ? '' : 's'}`,
@@ -602,7 +603,7 @@ export default function PagosPage() {
     const pagados = cobrables.filter((c) => c.estadoPagoActual === 'PAGADO');
     const filas: (string | number)[][] = pagados.map((c) => [
       c.inquilino,
-      c.direccion,
+      rotuloEnLinea(c),
       formatFecha(c.proximoVencimiento),
       'Transferencia',
       formatMonto(c.monto, c.moneda),
@@ -910,7 +911,7 @@ export default function PagosPage() {
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="truncate font-medium">{c.inquilino}</p>
-                        <p className="truncate text-xs text-muted-foreground">{c.direccion}</p>
+                        <p className="truncate text-xs text-muted-foreground">{rotuloEnLinea(c)}</p>
                       </div>
                       <Badge variant={estadoVariant[c.estadoPagoActual]} className="shrink-0">
                         {estadoLabel[c.estadoPagoActual]}
@@ -956,7 +957,7 @@ export default function PagosPage() {
                   {filtradas.map((c) => (
                     <TableRow key={c.id}>
                       <TableCell className="font-medium">{c.inquilino}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{c.direccion}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{rotuloEnLinea(c)}</TableCell>
                       <TableCell className="text-sm">{formatFechaCorta(c.proximoVencimiento)}</TableCell>
                       <TableCell className="text-right font-medium">
                         {formatMonto(c.monto, c.moneda)}

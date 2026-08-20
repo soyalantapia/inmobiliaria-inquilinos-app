@@ -35,6 +35,7 @@ import { apiEnabled } from '@/lib/api/client';
 import { usePropietario } from '@/lib/api/use-propietario';
 import { useRendicionesList } from '@/lib/api/use-rendiciones';
 import { formatFechaCorta, formatMonto, formatPeriodo, formatRangoVigencia } from '@/lib/format';
+import { rotuloEnLinea, rotuloPrincipal, rotuloSecundario } from '@/lib/rotulo-propiedad';
 import { descargarCsv } from '@/lib/csv-export';
 import { toast } from '@llave/ui/use-toast';
 
@@ -280,8 +281,9 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
                         <Home className="h-4 w-4" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="truncate text-sm font-medium">{p.direccion}</p>
+                        <p className="truncate text-sm font-medium">{rotuloPrincipal(p)}</p>
                         <p className="truncate text-xs text-muted-foreground">
+                          {rotuloSecundario(p) && `${rotuloSecundario(p)} · `}
                           {contrato
                             ? `${contrato.inquilino} · ${formatMonto(contrato.monto, contrato.moneda)}`
                             : 'Sin contrato vigente'}
@@ -567,7 +569,7 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
                     <div className="flex-1 min-w-0">
                       <p className="truncate text-sm font-medium">{c.inquilino}</p>
                       <p className="truncate text-xs text-muted-foreground">
-                        {c.direccion} · {formatRangoVigencia(c.fechaInicio, c.fechaFin)}
+                        {rotuloEnLinea(c)} · {formatRangoVigencia(c.fechaInicio, c.fechaFin)}
                       </p>
                     </div>
                     <Badge variant={c.estado === 'ACTIVO' ? 'success' : 'outline'}>

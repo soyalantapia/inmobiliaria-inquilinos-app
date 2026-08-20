@@ -11,16 +11,28 @@ import {
   generarLiquidacionesContrato,
   sumarMesesUTC,
   periodoDe,
+  recomputarExpensasFuturas,
   recomputarLiquidacionesFuturas,
+  montoAlquilerSegunTipo,
 } from '../lib/liquidaciones.js';
 import { conSaldo, montoPagadoPorLiquidacion } from '../lib/saldos.js';
+import { normalizarEmail } from '../lib/normalizar-email.js';
+import { normalizarDni } from '../lib/normalizar-dni.js';
+import { diffParticipaciones } from '../lib/diff-participaciones.js';
+import {
+  alquilerCobradoSinRendir,
+  alquilerCobradoSinRendirDePropiedad,
+} from '../lib/rendicion-pendiente.js';
+import { registrarEventoContrato } from '../lib/evento-contrato.js';
 import { aplicarDepositoADeuda } from '../lib/aplicar-deposito.js';
 import { calcularMora, resolverEsquemaMora } from '../lib/punitorios.js';
 import { aplicarEstadoInicial, EstadoInicialInvalido } from '../lib/estado-inicial-contrato.js';
 import { buscarOCrearPersona } from '../lib/persona.js';
+import { crearContratoHistorico } from '../lib/contrato-historico.js';
 import { borrarArchivoSiHuerfano, urlEsDelTenant } from './uploads.js';
-import { enviarInvitacionInquilino, enviarInvitacionEquipo } from '../mailer.js';
+import { enviarInvitacionInquilino, enviarInvitacionEquipo, enviarAvisoAjusteAlquiler } from '../mailer.js';
 import { contratoQuedaPendiente, diaCivilAR, venceDespuesDeHoy, yaVencio } from '@llave/shared';
+import { ROLES_ORDEN, type Rol } from '@llave/shared/permisos';
 
 /**
  * Una liquidación cuenta como VENCIDA (a efectos de cobranza) si su estado ya es
@@ -78,6 +90,106 @@ function normalizarCuit(input: string | undefined | null): string {
   return (input ?? '').replace(/\D/g, '');
 }
 
+
+/**
+ * Qué pasó con el aviso de ajuste. Viaja en la respuesta del endpoint para que el panel
+ * pueda decir la verdad: `sin-email` es un dato accionable (falta cargarle el mail al
+ * inquilino), no un error del sistema.
+ */
+type AvisoAjuste = 'encolado' | 'sin-email' | 'error';
+
+/**
+ * Le avisa por email al inquilino que le ajustaron el alquiler.
+ *
+ * Existe como helper porque hay DOS caminos de ajuste —`POST /contratos/:id/ajustar` y
+ * `PATCH /contratos/:id/monto`— y el bug clásico de este código es arreglar uno y olvidar
+ * el otro (pasó con `proximoAjuste`, ver el comentario del ajustar). Un solo lugar, los
+ * dos callers.
+ *
+ * BEST-EFFORT, SIEMPRE. Se llama DESPUÉS de que la transacción commiteó y se traga
+ * cualquier error: un SMTP caído no puede hacer fallar un ajuste ya aplicado. El mail se
+ * puede reenviar; un ajuste revertido a mitad, no. Si el inquilino no tiene email, no hay
+ * a dónde escribir y se sale en silencio (queda el aviso en la campana igual).
+ */
+async function avisarAjusteAlInquilino(opts: {
+  contratoId: string;
+  inmobiliariaId: string;
+  montoAnterior: number;
+  montoNuevo: number;
+  periodoDesde: string;
+  motivo: string | null;
+  log?: { warn: (o: unknown, m: string) => void };
+}): Promise<AvisoAjuste> {
+  try {
+    const c = await prisma.contrato.findFirst({
+      where: { id: opts.contratoId, inmobiliariaId: opts.inmobiliariaId },
+      select: {
+        moneda: true,
+        inquilinoTitular: { select: { nombre: true, apellido: true, email: true } },
+        propiedad: { select: { direccion: true } },
+        // `email` sale de la MISMA fila que ya está filtrada por inmobiliariaId: el
+        // "Responder" del inquilino no puede terminar en la casilla de otro tenant.
+        inmobiliaria: { select: { nombre: true, email: true } },
+      },
+    });
+    const email = c?.inquilinoTitular?.email;
+    // El caso más frecuente en la vida real no es que el SMTP falle: es que el inquilino
+    // no tenga email cargado. Eso se sabe ACÁ, en el acto, y por eso se devuelve — para
+    // que el ajuste masivo pueda decir "a 3 de 20 no les vamos a poder avisar" en vez de
+    // dejarlo en un log que nadie mira.
+    if (!c || !email) return 'sin-email';
+
+    // NO se espera el envío. El mailer serializa y espacia los mails (ver enviarEnCola),
+    // así que esperar acá haría que un ajuste masivo de 20 contratos tarde 20 turnos de
+    // cola: el operador miraría una barra de progreso durante segundos por un mail que no
+    // cambia el resultado de la operación. Se encola y el request sigue.
+    void enviarAvisoAjusteAlquiler({
+      email,
+      inquilinoNombre: `${c.inquilinoTitular?.nombre ?? ''} ${c.inquilinoTitular?.apellido ?? ''}`.trim() || null,
+      inmobiliariaNombre: c.inmobiliaria?.nombre ?? 'Tu inmobiliaria',
+      inmobiliariaEmail: c.inmobiliaria?.email ?? null,
+      direccion: c.propiedad?.direccion ?? null,
+      montoAnterior: opts.montoAnterior,
+      montoNuevo: opts.montoNuevo,
+      moneda: c.moneda,
+      periodoDesde: opts.periodoDesde,
+      motivo: opts.motivo,
+    }).catch((e: unknown) => {
+      // Falla del SMTP: no puede romper un ajuste ya aplicado (el mail se reenvía; un
+      // ajuste revertido a mitad, no). Queda en el log del server.
+      opts.log?.warn({ err: e, contratoId: opts.contratoId }, '[ajuste] no se pudo avisar al inquilino');
+      // ...pero el log del server no lo mira nadie en la inmobiliaria. Como el envío es
+      // asincrónico, el rebote llega DESPUÉS de que el endpoint respondió: no hay respuesta
+      // donde contarlo. Se deja asentado en el historial del contrato, que es donde la inmo
+      // ya va a mirar qué pasó con ese alquiler.
+      //
+      // Se usa COMUNICACION_ENVIADA —el título dice que falló— en vez de agregar
+      // COMUNICACION_FALLIDA al enum a propósito: un valor nuevo exige una migración, y hasta
+      // que esa migración esté aplicada en prod el insert tiraría error, lo comería este mismo
+      // catch, y el fallo volvería a ser invisible. Justo lo que esta línea viene a arreglar.
+      void prisma.eventoContrato
+        .create({
+          data: {
+            inmobiliariaId: opts.inmobiliariaId,
+            contratoId: opts.contratoId,
+            tipo: 'COMUNICACION_ENVIADA',
+            titulo: `No se pudo enviar el aviso de aumento a ${email}`,
+            detalle: 'El correo rebotó o el servidor de mail no respondió. El ajuste SÍ se aplicó. Avisale al inquilino por otro medio.',
+            fecha: new Date(),
+            autor: 'Sistema',
+          },
+        })
+        .catch((e2: unknown) => {
+          opts.log?.warn({ err: e2, contratoId: opts.contratoId }, '[ajuste] no se pudo registrar el fallo del aviso');
+        });
+    });
+    return 'encolado';
+  } catch (e) {
+    opts.log?.warn({ err: e, contratoId: opts.contratoId }, '[ajuste] no se pudo preparar el aviso');
+    return 'error';
+  }
+}
+
 export async function coreRoutes(app: FastifyInstance) {
   // ===== Contratos =====
   app.get('/contratos', async (request, reply) => {
@@ -86,7 +198,9 @@ export async function coreRoutes(app: FastifyInstance) {
     const contratos = await prisma.contrato.findMany({
       where: { inmobiliariaId: u.inmobiliariaId },
       include: {
-        propiedad: { select: { id: true, direccion: true, ciudad: true, consorcio: { select: { nombre: true } } } },
+        // `complejo` es el texto libre de la propiedad; `consorcio.nombre` el consorcio real.
+        // El panel rotula con consorcio, si no complejo, si no dirección (lib/rotulo-propiedad.ts).
+        propiedad: { select: { id: true, direccion: true, ciudad: true, complejo: true, consorcio: { select: { nombre: true } } } },
         inquilinoTitular: { select: { id: true, nombre: true, apellido: true, email: true, telefono: true } },
         liquidaciones: { orderBy: { periodo: 'desc' }, take: 6 },
       },
@@ -541,12 +655,58 @@ export async function coreRoutes(app: FastifyInstance) {
           'No podés quitar a ese propietario: es quien cobra directo del inquilino en un contrato activo. Reasigná la cobranza directa antes de cambiar los dueños.',
       });
     }
-    // NOTA (limitación conocida): cambiar el reparto de un período ya cobrado no
-    // re-atribuye lo cobrado-no-rendido del dueño saliente. El cap cruzado en la
-    // rendición (plata.ts) evita que la inmobiliaria pague MÁS que lo cobrado; la
-    // re-atribución fina requeriría snapshotear participaciones por período.
+    // Guard de plata cobrada y sin rendir. ESTE es el agujero que dejaba la falta de
+    // vigencia en ParticipacionPropietario, y no es teórico: la rendición decide a quién
+    // le transfiere leyendo la participación de HOY (`plata.ts` arma el universo de
+    // propiedades del dueño desde sus participaciones actuales y aplica el porcentaje
+    // actual), pero el `periodo` que se rinde lo elige el operador y puede ser de hace
+    // dos años. Cambiar el reparto con plata cobrada en el medio le transfiere al dueño
+    // ENTRANTE lo que era del SALIENTE — y el saliente, al borrarse su fila, desaparece
+    // del universo y no hay ningún camino en el código para rendirle lo suyo.
+    //
+    // El cap cruzado de la rendición evita pagar de MÁS; no dice nada sobre A QUIÉN. Es
+    // mis-atribución silenciosa, sin rastro y sin vuelta atrás.
+    //
+    // POR QUÉ ESTO ARREGLA EL PROBLEMA DE FONDO SIN AGREGAR `desde`/`hasta`: la vigencia
+    // que le falta a la tabla YA EXISTE en el ledger de rendiciones —`AlquilerRendido`
+    // congela `participacion` y `periodo` en el momento de rendir—. Sólo hace falta
+    // forzar el orden correcto: primero se rinde con el reparto viejo (y queda
+    // congelado), después se cambia el reparto. Versionar las filas, en cambio, haría
+    // que la Σ de comisión de `tasaComisionDeParticipaciones` pase de 100% y la
+    // inmobiliaria comisione de más, en silencio, en dos lugares distintos.
+    //
+    // Sólo traba cuando la propiedad YA TIENE dueños. Los dos caminos de alta —`POST
+    // /propiedades` con `propietarios` `.min(1)` y la importación de cartera— siempre crean al
+    // menos una participación, así que ese caso hoy no existe; pero si alguna vez existiera
+    // (dato viejo, carga a medias), trabar la PRIMERA asignación dejaría la plata sin poder
+    // rendirse nunca: sin dueños no hay a quién rendir y sin rendir no se podrían cargar los
+    // dueños. Un deadlock es peor que el riesgo que este guard evita.
+    const yaTieneDuenios = await prisma.participacionPropietario.count({ where: { propiedadId: id } });
+    const sinRendirPropiedad = yaTieneDuenios > 0
+      ? await alquilerCobradoSinRendirDePropiedad(id)
+      : { total: 0, periodos: [] };
+    if (sinRendirPropiedad.total > 0) {
+      const detalle = sinRendirPropiedad.periodos.map((p) => `${p.periodo} ($${p.monto.toLocaleString('es-AR')})`).join(', ');
+      return reply.code(409).send({
+        message:
+          `Esta propiedad tiene alquiler cobrado y sin rendir: ${detalle}. Rendíselo a los dueños de hoy ` +
+          `antes de cambiar el reparto — si lo cambiás ahora, esa plata se le transfiere a quien no ` +
+          `corresponde y al dueño que sale no hay forma de rendirle lo suyo.`,
+        codigo: 'COBRADO_SIN_RENDIR',
+        periodos: sinRendirPropiedad.periodos,
+        total: sinRendirPropiedad.total,
+      });
+    }
 
     await prisma.$transaction(async (tx) => {
+      // El estado anterior se lee DENTRO de la transacción y ANTES del deleteMany: es la única
+      // ventana en la que existe. Un `findMany` afuera podría leer una foto que otra request
+      // ya cambió, y el historial quedaría diciendo algo que no pasó.
+      const antes = await tx.participacionPropietario.findMany({
+        where: { propiedadId: id },
+        select: { propietarioId: true, porcentaje: true },
+      });
+
       await tx.participacionPropietario.deleteMany({ where: { propiedadId: id } });
       await tx.participacionPropietario.createMany({
         data: parts.map((p) => ({
@@ -556,6 +716,26 @@ export async function coreRoutes(app: FastifyInstance) {
           porcentaje: p.porcentaje,
         })),
       });
+
+      // HISTORIAL DE REPARTO (T-23-N3-N1). Va acá adentro y no por `registrarEvento`: de esto
+      // va a colgar un recorte de PRIVACIDAD —qué le mostramos al comprador de una unidad sobre
+      // el inquilino que ya vivía ahí— y la auditoría es best-effort declarada (se traga su
+      // propio error y corre después del commit). Si el cambio de reparto commitea, su registro
+      // commiteó con él; si el registro falla, el reparto no cambia. Es lo que hace que el dato
+      // sea confiable como fuente de un recorte.
+      const cambios = diffParticipaciones(antes, parts);
+      if (cambios.length > 0) {
+        await tx.cambioParticipacion.createMany({
+          data: cambios.map((c) => ({
+            inmobiliariaId: u.inmobiliariaId,
+            propiedadId: id,
+            propietarioId: c.propietarioId,
+            porcentajeAnterior: c.porcentajeAnterior,
+            porcentajeNuevo: c.porcentajeNuevo,
+            autorId: u.userId,
+          })),
+        });
+      }
     });
 
     return prisma.propiedad.findFirst({
@@ -625,7 +805,7 @@ export async function coreRoutes(app: FastifyInstance) {
         nombre: d.nombre,
         apellido: d.apellido,
         cuit: normalizarCuit(d.cuit),
-        email: d.email ?? '',
+        email: normalizarEmail(d.email),
         telefono: d.telefono ?? '',
         cbuAlias: d.cbuAlias || null,
         comisionPct: d.comisionPct ?? 8,
@@ -664,7 +844,20 @@ export async function coreRoutes(app: FastifyInstance) {
         nombre: d.nombre,
         apellido: d.apellido,
         cuit: normalizarCuit(d.cuit),
-        email: d.email ?? '',
+        // El email sólo se escribe si VINO en el body. Antes se escribía siempre,
+        // y como `normalizarEmail(undefined)` devuelve '', cualquier caller que
+        // omitiera el campo le BORRABA el email al propietario.
+        //
+        // Dejó de ser un detalle cuando el email pasó a ser la llave de entrada al
+        // portal (T-23): vaciarlo no es perder un dato de contacto, es dejar al
+        // propietario afuera —y sin ningún error, porque el PUT devuelve 200—.
+        //
+        // Hoy el diálogo del panel manda el campo siempre, así que esto es una
+        // mina y no un incendio. Se desactiva igual: el próximo caller (un PATCH
+        // parcial, un script, la app móvil) no tiene por qué saberlo.
+        //
+        // Un `''` EXPLÍCITO sí lo borra: querer sacarle el email es legítimo.
+        ...(d.email !== undefined ? { email: normalizarEmail(d.email) } : {}),
         telefono: d.telefono ?? '',
         cbuAlias: d.cbuAlias || null,
         ...(d.comisionPct != null ? { comisionPct: d.comisionPct } : {}),
@@ -735,9 +928,91 @@ export async function coreRoutes(app: FastifyInstance) {
       // El propietario puede tener ArcaConfig (relación 1:1). Sin borrarla, el
       // delete tiraba 500 por violación de FK.
       prisma.arcaConfig.deleteMany({ where: { propietarioId: id } }),
+      // Idem con los códigos OTP del portal (T-23): la FK es RESTRICT, igual que las otras dos
+      // tablas de OTP, así que un propietario que alguna vez pidió un código no se podía
+      // borrar más — el mismo 500 por FK que ya había pasado con ArcaConfig.
+      prisma.codigoOtpPropietario.deleteMany({ where: { propietarioId: id } }),
       prisma.propietario.delete({ where: { id } }),
     ]);
     return { ok: true };
+  });
+
+  /**
+   * Baja / alta lógica de un propietario (PATCH /propietarios/:id/activo).
+   *
+   * Es lo que faltaba para poder cortarle el acceso al portal a alguien sin
+   * borrarle la fila. `DELETE /propietarios/:id` (arriba) sólo procede cuando el
+   * propietario NO tiene historial — o sea, nunca en el caso que importa: al que
+   * hay que sacarle el acceso es justamente al que tiene rendiciones.
+   *
+   * Los dos endpoints conviven a propósito y no se pisan: DELETE es para limpiar
+   * una fila cargada por error; esto es para dar de baja a alguien real,
+   * conservando su historial contable.
+   *
+   * La revocación de la sesión abierta la hace `requirePropietario`, que revalida
+   * `activo` en cada request. Sin eso, un token de 7 días seguiría sirviendo.
+   */
+  app.patch('/propietarios/:id/activo', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'propietarios.crear');
+    if (!u) return;
+    // Mismo criterio que el DELETE: la capacidad incluye CARGA, pero dar de baja
+    // le corta el acceso a una persona real y deja de mandarle avisos.
+    if (u.rol === 'CARGA') {
+      return reply.code(403).send({ message: 'Solo un Admin u Operador puede dar de baja a un propietario' });
+    }
+    const { id } = request.params as { id: string };
+    const body = z.object({ activo: z.boolean(), motivo: z.string().max(300).optional() }).safeParse(request.body);
+    if (!body.success) return reply.code(400).send({ message: 'Indicá si el propietario queda activo o no' });
+
+    const prop = await prisma.propietario.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      select: { id: true, nombre: true, apellido: true, activo: true },
+    });
+    if (!prop) return reply.code(404).send({ message: 'Propietario inexistente' });
+    if (prop.activo === body.data.activo) return { ok: true, activo: prop.activo, sinCambios: true };
+
+    if (!body.data.activo) {
+      // Mismo guard que ya usa el cambio de dueños de una propiedad: si este
+      // propietario es quien cobra DIRECTO del inquilino en un contrato activo,
+      // darlo de baja dejaría al inquilino transfiriendo a la cuenta de alguien
+      // que ya no administra la propiedad. Es plata yendo al lugar equivocado, no
+      // un problema de prolijidad.
+      const cobranzaDirecta = await prisma.contrato.findFirst({
+        where: {
+          inmobiliariaId: u.inmobiliariaId,
+          estado: 'ACTIVO',
+          modoCobranza: 'PROPIETARIO_DIRECTO',
+          cobraDirectoPropietarioId: id,
+        },
+        select: { id: true },
+      });
+      if (cobranzaDirecta) {
+        return reply.code(409).send({
+          codigo: 'COBRA_DIRECTO',
+          contratoId: cobranzaDirecta.id,
+          message:
+            'No podés dar de baja a este propietario: es quien cobra directo del inquilino en un contrato activo. Cambiá el modo de cobranza de ese contrato antes.',
+        });
+      }
+    }
+
+    await prisma.propietario.update({ where: { id }, data: { activo: body.data.activo } });
+
+    // Auditoría: le corta (o le devuelve) el acceso a los datos financieros de
+    // terceros que muestra el portal. Best-effort, después del commit.
+    await registrarEvento({
+      inmobiliariaId: u.inmobiliariaId,
+      tipo: 'EQUIPO_REMOVIDO',
+      autorId: u.userId,
+      rolAutor: u.rol,
+      entidadId: id,
+      entidadDescripcion:
+        `Propietario ${body.data.activo ? 'reactivado' : 'dado de baja'}: ` +
+        `${prop.nombre} ${prop.apellido}`.trim() +
+        (body.data.motivo ? ` · ${body.data.motivo}` : ''),
+    });
+
+    return { ok: true, activo: body.data.activo };
   });
 
   app.post('/propiedades', async (request, reply) => {
@@ -929,6 +1204,18 @@ export async function coreRoutes(app: FastifyInstance) {
     if (d.monto === 0 && d.tipoContrato !== 'SOLO_EXPENSAS') {
       return reply.code(400).send({ message: 'El monto del alquiler tiene que ser mayor a cero' });
     }
+    // …y el inverso, que faltaba: la validación era asimétrica. Un POST con
+    // { tipoContrato: 'SOLO_EXPENSAS', monto: 500000 } pasaba y se persistía tal cual, y a
+    // partir de ahí el contrato devengaba alquiler todos los meses pese a estar marcado como
+    // de solo expensas. Rechazamos en vez de normalizar a 0: si el que carga puso un monto,
+    // o se equivocó de tipo o se equivocó de monto — y adivinar cuál de las dos es peor que
+    // preguntar.
+    if (d.monto > 0 && d.tipoContrato === 'SOLO_EXPENSAS') {
+      return reply.code(400).send({
+        message:
+          'Un contrato de solo expensas no lleva monto de alquiler. Dejalo en 0, o cambiá el tipo de contrato si además se cobra alquiler.',
+      });
+    }
     if ((d.tipoContrato === 'ALQUILER_Y_EXPENSAS' || d.tipoContrato === 'SOLO_EXPENSAS') && !d.montoExpensas) {
       return reply.code(400).send({ message: 'Este tipo de contrato requiere el monto de expensas' });
     }
@@ -987,9 +1274,16 @@ export async function coreRoutes(app: FastifyInstance) {
       // sin cuenta, el contrato nacía "directo" pero el inquilino no tenía a
       // dónde transferir.
       if (!part.propietario.cuentaCobranza) {
+        // `codigo` + `propietarioId` viajan para que el panel pueda ofrecer cargar la
+        // cuenta AHÍ MISMO, sin abandonar lo que se estaba haciendo. Antes el operador
+        // leía "entrá a la ficha del propietario", se iba, y perdía el hilo del alta
+        // (reportado en la prueba del 03/08: "ya me quedé ahí").
         return reply.code(400).send({
+          codigo: 'FALTA_CUENTA_COBRANZA',
+          propietarioId: part.propietarioId,
+          propietarioNombre: `${part.propietario.nombre} ${part.propietario.apellido ?? ''}`.trim(),
           message: `Falta la cuenta de cobro directo de ${part.propietario.nombre} ${part.propietario.apellido ?? ''}`.trim() +
-            '. Entrá a la ficha del propietario → "Cuenta de cobranza directa" y cargá banco + CBU (22 dígitos) + alias. (El CBU/alias del alta del propietario NO alcanza para el cobro directo.)',
+            '. Cargale banco + CBU (22 dígitos) + alias. (El CBU/alias del alta del propietario NO alcanza para el cobro directo: son datos distintos.)',
         });
       }
       cobraDirectoPropietarioId = part.propietarioId;
@@ -1166,6 +1460,24 @@ export async function coreRoutes(app: FastifyInstance) {
           );
         }
       }
+      // Hito fundacional del expediente. Sin esto el Historial del contrato arrancaba en
+      // la nada: el primer renglón era un ajuste de canon meses después, y no había forma
+      // de ver de un vistazo cuándo se firmó ni quién lo cargó.
+      // Se registra también cuando nace BORRADOR: que quedó pendiente de aprobación es
+      // parte de su historia, y el evento de activación lo agrega después la aprobación.
+      //
+      // POST-COMMIT (T-29-N1), junto con la auditoría y por el mismo motivo: adentro de la
+      // transacción un fallo al escribirlo la abortaba y se perdía el alta entera.
+      await registrarEventoContrato(prisma, {
+        inmobiliariaId: u.inmobiliariaId,
+        contratoId: contratoCreado.id,
+        tipo: 'CREADO',
+        titulo: contratoPendiente
+          ? 'Contrato cargado — pendiente de aprobación'
+          : 'Contrato dado de alta',
+        detalle: `${d.moneda} ${d.monto} · del ${d.fechaInicio.toISOString().slice(0, 10)} al ${d.fechaFin.toISOString().slice(0, 10)}`,
+        autor: u.userId,
+      });
       // Auditoría: crear un contrato ahora deja rastro en el timeline (antes solo
       // aparecían pagos). Best-effort. CARGA lo deja BORRADOR para aprobar; ADMIN/
       // OPERADOR lo activan directo — en ambos casos queda registrado el alta.
@@ -1194,6 +1506,179 @@ export async function coreRoutes(app: FastifyInstance) {
       if (e && typeof e === 'object' && (e as { code?: string }).code === 'P2002') {
         return reply.code(409).send({
           message: 'Ese email ya lo usa otra persona en tu cartera. Si es el mismo inquilino, buscalo en "¿Ya está en tu cartera?"; si no, poné otro email.',
+        });
+      }
+      throw e;
+    }
+  });
+
+  /**
+   * DEUDA HISTÓRICA: un inquilino que YA SE FUE y quedó debiendo.
+   *
+   * El alta normal (POST /contratos) NO sirve para esto y no es un bug: rechaza
+   * con 409 si la propiedad ya tiene contrato activo, y siempre crea ACTIVO. La
+   * propiedad de un moroso de hace tres años hoy está alquilada a otro, así que
+   * por ahí no entra. Camila arranca con ~50 casos así; sin esto no puede migrar
+   * su cartera.
+   *
+   * POR QUÉ UN CONTRATO Y NO UNA TABLA `DeudaHistorica`: toda la maquinaria de
+   * plata del sistema cuelga de `Liquidacion` — saldos, mora, saldar-deuda, la
+   * ficha de la Persona, la cuenta corriente. Un modelo aparte sería una segunda
+   * verdad sobre cuánto debe cada uno, que es justo lo que este código evita en
+   * todos lados. Acá la deuda vive donde ya vive el resto.
+   *
+   * LAS DOS DIFERENCIAS con el alta normal, y son las que importan:
+   *   1. Nace FINALIZADO. El devengo (lib/liquidaciones.ts) barre
+   *      `estado: 'ACTIVO'` y `devengarSiSigueActivo` re-verifica bajo lock, así
+   *      que este contrato no devenga nunca más: las cuotas que se crean acá son
+   *      las únicas que va a tener.
+   *   2. NO reclama la propiedad. No toca `contratoActualId` ni `estado`, así
+   *      que puede convivir con el contrato vigente de otro inquilino.
+   *
+   * fechaInicio/fechaFin delimitan LA VENTANA DE DEUDA, no el alquiler real: si
+   * alquiló dos años y se fue debiendo los últimos tres meses, se cargan esos
+   * tres. Todas las cuotas nacen VENCIDAS (ambas fechas están en el pasado). Si
+   * alguna estaba paga en parte, se registra el pago después por el flujo normal.
+   */
+  const contratoHistoricoSchema = z.object({
+    propiedadId: z.string(),
+    // Reuso explícito de identidad, igual que el alta normal.
+    personaId: z.string().optional(),
+    inquilino: z.object({
+      nombre: z.string().trim().min(1),
+      apellido: z.string().trim().optional(),
+      email: z.string().trim().email().optional().or(z.literal('')),
+      telefono: z.string().trim().optional(),
+      dni: z.string().trim().optional(),
+    }),
+    monto: z.number().positive(),
+    moneda: z.enum(['ARS', 'USD']).default('ARS'),
+    montoExpensas: z.number().nonnegative().optional(),
+    fechaInicio: z.coerce.date(),
+    fechaFin: z.coerce.date(),
+    diaPago: z.number().int().min(1).max(31),
+  });
+
+  app.post('/contratos/historico', async (request, reply) => {
+    // Está CREANDO DEUDA de la nada: mismo permiso que el alta, pero sin CARGA.
+    // Un contrato histórico no pasa por la bandeja de aprobación (nace
+    // FINALIZADO, no hay nada que activar), así que no hay red de contención
+    // detrás: que lo cargue alguien que ya puede aprobar plata.
+    const u = await requireUsuario(request, reply, 'contratos.crear');
+    if (!u) return;
+    if (u.rol !== 'ADMIN' && u.rol !== 'OPERADOR') {
+      return reply.code(403).send({ message: 'Solo un administrador u operador puede cargar deuda histórica' });
+    }
+    // El rol angostado se captura ACÁ: TypeScript pierde el narrowing de una
+    // propiedad al cruzar el closure de la transacción, y `crearContratoHistorico`
+    // exige ADMIN|OPERADOR en el tipo justamente para que ese guard no se pueda
+    // saltear desde un caller nuevo.
+    const rolAutor = u.rol;
+    const parsed = contratoHistoricoSchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ message: 'Datos inválidos', issues: parsed.error.issues });
+    const d = parsed.data;
+
+    if (d.fechaFin <= d.fechaInicio) {
+      return reply.code(400).send({ message: 'La fecha de fin tiene que ser posterior a la fecha de inicio' });
+    }
+    // La ventana no puede llegar a un mes FUTURO.
+    //
+    // Este guard antes exigía que la ventana estuviera cerrada (`fechaFin` en el
+    // pasado) y dejaba afuera el caso más frecuente de una migración: el que dejó
+    // de pagar en julio, se fue en agosto y la propiedad ya está realquilada. Por
+    // el alta normal tampoco entraba (rechaza propiedad ocupada), así que no había
+    // ninguna puerta — justo para la deuda más fresca, que es la que se está
+    // cobrando.
+    //
+    // El miedo original era que alguien usara esto para crear un contrato paralelo
+    // sobre una propiedad ocupada y esquivar el 409 del alta. Revisado, no se
+    // sostiene: un contrato histórico nace FINALIZADO, no reclama la propiedad y
+    // el cron no lo devenga, así que no puede funcionar como contrato en curso.
+    //
+    // Lo que SÍ hay que impedir es cobrar meses que todavía no pasaron: eso sería
+    // inventar plata. Por eso el corte ahora es el mes, no el día. El mes en curso
+    // entra; si su vencimiento todavía no llegó, la cuota nace PENDIENTE en vez de
+    // VENCIDO y se comporta como corresponde.
+    const mesFin = `${d.fechaFin.getUTCFullYear()}-${String(d.fechaFin.getUTCMonth() + 1).padStart(2, '0')}`;
+    const hoyAR = diaCivilAR(new Date());
+    const mesHoy = `${hoyAR.getUTCFullYear()}-${String(hoyAR.getUTCMonth() + 1).padStart(2, '0')}`;
+    if (mesFin > mesHoy) {
+      return reply.code(400).send({
+        message: 'La deuda no puede llegar a un mes que todavía no pasó. Si el inquilino sigue viviendo ahí, cargalo como contrato normal.',
+      });
+    }
+
+    const prop = await prisma.propiedad.findFirst({
+      where: { id: d.propiedadId, inmobiliariaId: u.inmobiliariaId },
+      select: { id: true, direccion: true },
+    });
+    if (!prop) return reply.code(404).send({ message: 'Propiedad inexistente' });
+
+    if (d.personaId) {
+      const per = await prisma.persona.findFirst({
+        where: { id: d.personaId, inmobiliariaId: u.inmobiliariaId },
+        select: { id: true },
+      });
+      if (!per) return reply.code(404).send({ message: 'La persona seleccionada no existe en tu cartera' });
+    }
+
+    const emailInq = d.inquilino.email ? d.inquilino.email.toLowerCase() : null;
+
+    try {
+      const creado = await prisma.$transaction(
+        async (tx) =>
+          crearContratoHistorico(
+            tx,
+            {
+              inmobiliariaId: u.inmobiliariaId,
+              propiedadId: prop.id,
+              personaId: d.personaId ?? null,
+              inquilino: {
+                nombre: d.inquilino.nombre,
+                apellido: d.inquilino.apellido ?? null,
+                email: emailInq,
+                telefono: d.inquilino.telefono ?? null,
+                dni: d.inquilino.dni ?? null,
+              },
+              monto: d.monto,
+              moneda: d.moneda,
+              montoExpensas: d.montoExpensas ?? null,
+              fechaInicio: d.fechaInicio,
+              fechaFin: d.fechaFin,
+              diaPago: d.diaPago,
+            },
+            // El guard de rol de arriba ya angostó el tipo a ADMIN|OPERADOR.
+            { userId: u.userId, rol: rolAutor },
+            prop.direccion,
+          ),
+        { timeout: 30_000, maxWait: 10_000 },
+      );
+
+      // Auditoría del tenant, además del timeline del contrato: esto CREA DEUDA
+      // sin que ningún inquilino haya firmado nada, y sin pasar por la bandeja de
+      // aprobación. Tiene que quedar en el mismo log que las conciliaciones.
+      await registrarEvento({
+        inmobiliariaId: u.inmobiliariaId,
+        tipo: 'CONTRATO_CARGADO',
+        autorId: u.userId,
+        rolAutor: u.rol,
+        entidadId: creado.contratoId,
+        entidadDescripcion: `Deuda histórica · ${d.inquilino.nombre} · ${prop.direccion} · ${creado.cuotas} período(s)`,
+      });
+
+      return reply.code(201).send({
+        id: creado.contratoId,
+        personaId: creado.personaId,
+        periodosAdeudados: creado.cuotas,
+      });
+    } catch (e) {
+      // Mismo caso que el alta normal: el email pertenece a OTRA persona del
+      // tenant (unique de Persona). Acá es MÁS probable que allá — cargar 50
+      // morosos viejos a mano es justo donde se repite un email. 409 claro en vez
+      // de un 500 crudo que dejaría a Camila sin saber qué fila falló.
+      if (e && typeof e === 'object' && (e as { code?: string }).code === 'P2002') {
+        return reply.code(409).send({
+          message: 'Ese email ya lo usa otra persona en tu cartera. Si es el mismo inquilino, buscalo en "¿Ya está en tu cartera?"; si no, dejá el email vacío.',
         });
       }
       throw e;
@@ -1594,7 +2079,14 @@ export async function coreRoutes(app: FastifyInstance) {
     // Rescisión: penalidad sugerida (cánones × alquiler, override contrato > default inmo),
     // depósito en custodia disponible a netear, y el saldo neto = deuda + penalidad − depósito
     // (>0 el ex-inquilino debe; <0 hay que devolverle). El operador puede editar la penalidad.
-    const alquiler = Number(contrato.monto);
+    // Por `montoAlquilerSegunTipo` y no `contrato.monto` pelado: la penalidad se mide en
+    // MESES DE ALQUILER, y un contrato de solo expensas no tiene alquiler → sugerir 0. Con el
+    // monto crudo, un contrato ya ensuciado (canon que le dejó un ajuste viejo) le sugería a
+    // la operadora una penalidad de cientos de miles a alguien que nunca pagó un alquiler, y
+    // el finalizar la persiste como CargoContrato real. Es plata NUEVA saliendo del mismo
+    // campo sucio, así que la defensa tiene que estar acá también, no sólo en el devengo.
+    // La operadora igual puede escribir una penalidad a mano: esto es la SUGERENCIA.
+    const alquiler = montoAlquilerSegunTipo(contrato.tipoContrato, Number(contrato.monto));
     const mesesPenalidad = contrato.penalidadRescisionMeses ?? contrato.inmobiliaria.penalidadRescisionMesesDefault;
     const penalidadSugerida = Math.round(alquiler * mesesPenalidad * 100) / 100;
     // El depósito que se puede netear es el DISPONIBLE (bruto − reparaciones ya imputadas
@@ -1660,11 +2152,35 @@ export async function coreRoutes(app: FastifyInstance) {
     const contrato = await prisma.contrato.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
     if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
     if (contrato.estado !== 'ACTIVO') return reply.code(409).send({ message: 'Solo se ajusta un contrato activo' });
+    // Un contrato de SOLO EXPENSAS no tiene canon que ajustar: el alquiler lo arregla el
+    // propietario por fuera. Sin este corte, el ajuste —y sobre todo el ajuste MASIVO del
+    // panel, que barre todos los contratos activos— le escribía un canon positivo y el
+    // devengo empezaba a facturarle alquiler a alguien que no paga alquiler. Y la comisión
+    // sale de esa misma base.
+    //
+    // Los otros tres caminos que escriben el canon (computarLiquidacionesContrato,
+    // recomputarLiquidacionesFuturas y PATCH /contratos/:id/monto) pasan por
+    // `montoAlquilerSegunTipo`; éste armaba su propio updateMany y no miraba el tipo. Es el
+    // residuo que dejó T-20, que cerró el cron y no esto.
+    if (contrato.tipoContrato === 'SOLO_EXPENSAS') {
+      // OJO con el texto: la primera versión decía "las expensas se editan desde los datos del
+      // contrato". Es MENTIRA — ningún endpoint escribe `montoExpensas` fuera del alta (los
+      // únicos PATCH de contrato son mora, monto, modo-cobranza, contacto y garantes). Mandar
+      // al operador a buscar una pantalla que no existe es peor que decirle que no se puede.
+      return reply.code(409).send({
+        codigo: 'CONTRATO_SIN_CANON',
+        message:
+          // El mensaje decía "las expensas hoy sólo se define al cargar el contrato"
+          // porque era verdad: no había forma de cambiarlas después. Ahora la hay
+          // (PATCH /contratos/:id/expensas, botón "Cambiar expensas" en el
+          // contrato), así que en vez de cerrar la puerta se indica cuál abrir.
+          'Este contrato es de solo expensas: no tiene alquiler que ajustar. Para cambiar el monto usá "Cambiar expensas".',
+      });
+    }
     const montoAnterior = Number(contrato.monto);
     if (b.montoNuevo === montoAnterior) {
       return reply.code(400).send({ message: 'El monto nuevo es igual al actual' });
     }
-    const expensas = contrato.montoExpensas != null ? Number(contrato.montoExpensas) : 0;
     // Reprogramar el próximo ajuste = mes de este ajuste (periodoDesde) + frecuencia.
     // Antes este endpoint (botón "Ajustar" de la ficha) NO tocaba proximoAjuste →
     // el contrato seguía figurando "a ajustar" y el ajuste masivo lo re-aumentaba.
@@ -1687,7 +2203,22 @@ export async function coreRoutes(app: FastifyInstance) {
       await tx.contrato.update({ where: { id }, data: { monto: b.montoNuevo, proximoAjuste: nuevoProximoAjuste } });
       // Cuotas FUTURAS impagas (periodo >= periodoDesde, PENDIENTE, sin pagos) → nuevo canon.
       // NO se tocan las pagadas/parciales/vencidas: ya se devengaron con su monto histórico.
-      const upd = await tx.liquidacion.updateMany({
+      //
+      // El total se arma con las expensas de CADA CUOTA, no con las del contrato.
+      //
+      // Antes era un `updateMany` con `montoTotal: b.montoNuevo + expensasDelContrato`, y
+      // funcionaba sólo porque `montoExpensas` se escribía una vez en el alta y no cambiaba
+      // nunca: la del contrato y la de la cuota eran siempre la misma. Desde que existe
+      // `PATCH /contratos/:id/expensas` dejó de ser cierto — ese endpoint deja a propósito
+      // con las expensas VIEJAS a las cuotas que tienen plata en juego (un pago informado,
+      // aunque después se rechace). Sobre una de esas, el updateMany dejaba `montoExpensas`
+      // en el valor viejo y `montoTotal` calculado con el nuevo: la fila no cuadraba consigo
+      // misma, y el inquilino veía un total que no es la suma de lo que tiene arriba.
+      //
+      // Es la misma regla que ya aplica `recomputarLiquidacionesFuturas` ("el total =
+      // alquiler + expensas de LA liquidación, no del contrato"). Se hace en dos pasos
+      // porque `updateMany` no puede calcular por fila.
+      const aReajustar = await tx.liquidacion.findMany({
         where: {
           contratoId: id,
           inmobiliariaId: u.inmobiliariaId,
@@ -1695,11 +2226,30 @@ export async function coreRoutes(app: FastifyInstance) {
           estado: 'PENDIENTE',
           pagos: { none: { estado: { in: ['INFORMADO', 'CONCILIADO'] } } },
         },
-        data: { montoAlquiler: b.montoNuevo, montoTotal: b.montoNuevo + expensas },
+        select: { id: true, montoExpensas: true },
       });
-      return { ajusteId: ajuste.id, liquidacionesActualizadas: upd.count };
+      for (const l of aReajustar) {
+        const expensasDeLaCuota = l.montoExpensas != null ? Number(l.montoExpensas) : 0;
+        await tx.liquidacion.updateMany({
+          where: { id: l.id, inmobiliariaId: u.inmobiliariaId },
+          data: { montoAlquiler: b.montoNuevo, montoTotal: b.montoNuevo + expensasDeLaCuota },
+        });
+      }
+      return { ajusteId: ajuste.id, liquidacionesActualizadas: aReajustar.length };
     });
-    return { ok: true, montoAnterior, montoNuevo: b.montoNuevo, ...res };
+    // Avisarle al inquilino. FUERA de la transacción y best-effort: un SMTP caído no
+    // puede tirar abajo un ajuste ya aplicado (el mail se puede reenviar; el ajuste
+    // revertido a mitad, no).
+    const aviso = await avisarAjusteAlInquilino({
+      contratoId: id,
+      inmobiliariaId: u.inmobiliariaId,
+      montoAnterior,
+      montoNuevo: b.montoNuevo,
+      periodoDesde: b.periodoDesde,
+      motivo: b.motivo || null,
+      log: request.log,
+    });
+    return { ok: true, montoAnterior, montoNuevo: b.montoNuevo, ...res, avisoInquilino: aviso };
   });
 
   app.get('/contratos/:id/ajustes', async (request, reply) => {
@@ -1723,7 +2273,10 @@ export async function coreRoutes(app: FastifyInstance) {
     const parsed = z
       .object({
         fechaFinNueva: z.coerce.date(),
-        montoNuevo: z.number().positive(),
+        // `nonnegative` y no `positive`: un SOLO_EXPENSAS se renueva (se extiende el plazo)
+        // pero su canon es 0. El chequeo de "0 sólo vale para solo expensas" está abajo,
+        // igual que en el alta.
+        montoNuevo: z.number().nonnegative(),
         montoDesde: z.string().regex(/^\d{4}-\d{2}$/, 'Período inválido (YYYY-MM)'),
         diaPago: z.number().int().min(1).max(31).optional(),
         motivo: z.string().trim().max(200).optional(),
@@ -1740,7 +2293,15 @@ export async function coreRoutes(app: FastifyInstance) {
       return reply.code(400).send({ message: 'La nueva fecha de fin debe ser posterior a la actual' });
     }
     const montoAnterior = Number(contrato.monto);
-    const expensas = contrato.montoExpensas != null ? Number(contrato.montoExpensas) : 0;
+    // Un contrato de solo expensas se renueva por el PLAZO, no por el canon: su alquiler es 0
+    // y lo tiene que seguir siendo. Sin esto, renovarlo le escribía un canon positivo y el
+    // devengo del mes siguiente le facturaba alquiler a alguien que no paga alquiler.
+    // Forzamos 0 en vez de rechazar: la renovación en sí es legítima.
+    const esSoloExpensas = contrato.tipoContrato === 'SOLO_EXPENSAS';
+    const canonNuevo = esSoloExpensas ? 0 : b.montoNuevo;
+    if (!esSoloExpensas && canonNuevo === 0) {
+      return reply.code(400).send({ message: 'El monto del alquiler tiene que ser mayor a cero' });
+    }
     const res = await prisma.$transaction(async (tx) => {
       const renov = await tx.renovacionContrato.create({
         data: {
@@ -1749,7 +2310,7 @@ export async function coreRoutes(app: FastifyInstance) {
           fechaFinAnterior: contrato.fechaFin,
           fechaFinNueva: b.fechaFinNueva,
           montoAnterior,
-          montoNuevo: b.montoNuevo,
+          montoNuevo: canonNuevo,
           montoDesde: b.montoDesde,
           motivo: b.motivo || null,
           creadoPorId: u.userId,
@@ -1757,10 +2318,13 @@ export async function coreRoutes(app: FastifyInstance) {
       });
       await tx.contrato.update({
         where: { id },
-        data: { fechaFin: b.fechaFinNueva, monto: b.montoNuevo, ...(b.diaPago ? { diaPago: b.diaPago } : {}) },
+        data: { fechaFin: b.fechaFinNueva, monto: canonNuevo, ...(b.diaPago ? { diaPago: b.diaPago } : {}) },
       });
-      // Cuotas futuras impagas (>= montoDesde) al nuevo canon (igual que el ajuste).
-      await tx.liquidacion.updateMany({
+      // Cuotas futuras impagas (>= montoDesde) al nuevo canon (igual que el ajuste),
+      // con las expensas de CADA CUOTA y no las del contrato — mismo motivo que allá:
+      // desde que existe `PATCH /contratos/:id/expensas`, una cuota puede tener las
+      // suyas propias, y usar las del contrato dejaba la fila sin cuadrar consigo misma.
+      const cuotasARenovar = await tx.liquidacion.findMany({
         where: {
           contratoId: id,
           inmobiliariaId: u.inmobiliariaId,
@@ -1768,33 +2332,73 @@ export async function coreRoutes(app: FastifyInstance) {
           estado: 'PENDIENTE',
           pagos: { none: { estado: { in: ['INFORMADO', 'CONCILIADO'] } } },
         },
-        data: { montoAlquiler: b.montoNuevo, montoTotal: b.montoNuevo + expensas },
+        select: { id: true, montoExpensas: true },
       });
+      for (const l of cuotasARenovar) {
+        const expensasDeLaCuota = l.montoExpensas != null ? Number(l.montoExpensas) : 0;
+        await tx.liquidacion.updateMany({
+          where: { id: l.id, inmobiliariaId: u.inmobiliariaId },
+          data: { montoAlquiler: canonNuevo, montoTotal: canonNuevo + expensasDeLaCuota },
+        });
+      }
       // Devengar los nuevos períodos (hasta el tope del devengo) con la nueva fechaFin + monto.
       // Idempotente (skipDuplicates); el cron completa el resto mes a mes.
       const nuevas = await generarLiquidacionesContrato(tx, {
         ...contrato,
         fechaFin: b.fechaFinNueva,
-        monto: b.montoNuevo,
+        monto: canonNuevo,
       });
-      // Rastro en el Historial del contrato (antes la renovación no dejaba evento
-      // → la pestaña Historial seguía "Sin eventos"). Reusamos AJUSTE_APLICADO (el
-      // enum no tiene un valor propio de renovación) con un título explícito.
-      const finNuevaTxt = b.fechaFinNueva.toISOString().slice(0, 10);
-      await tx.eventoContrato.create({
-        data: {
-          inmobiliariaId: u.inmobiliariaId,
-          contratoId: id,
-          tipo: 'AJUSTE_APLICADO',
-          titulo: `Renovación: plazo hasta ${finNuevaTxt} · canon ${montoAnterior} → ${b.montoNuevo} ${contrato.moneda}`,
-          detalle: b.motivo ?? null,
-          fecha: new Date(),
-          autor: u.userId,
-        },
-      });
+      // Rastro en el Historial del contrato. Ahora con su tipo propio (RENOVACION): antes
+      // reusaba AJUSTE_APLICADO por falta de un valor en el enum, y en el timeline una
+      // renovación —que extiende el plazo— se veía igual que un cambio de monto.
+      // Resolución del merge T-29 ↔ integración: se toma el helper y el tipo propio
+      // `RENOVACION` que trae T-29, pero el monto sigue siendo `canonNuevo` y NO
+      // `b.montoNuevo`, que es un fix que la rama de integración ya tenía y T-29 no.
+      // La diferencia importa: `b.montoNuevo` es lo que pidió el body, `canonNuevo` es
+      // lo que la base realmente guardó. En un SOLO_EXPENSAS no coinciden, y el
+      // historial mostraría un canon que nunca existió.
       return { renovacionId: renov.id, liquidacionesNuevas: nuevas };
     });
-    return { ok: true, montoAnterior, montoNuevo: b.montoNuevo, ...res };
+    // POST-COMMIT (T-29-N1). Esta llamada es el ejemplo que motivó mover las cinco: con la
+    // migración de `RENOVACION` sin aplicar, el insert fallaba por un valor de enum que la
+    // base no conocía, la transacción quedaba abortada y la renovación entera se perdía —
+    // con el endpoint respondiendo 200. Acá afuera, lo peor que pasa es un hueco en el
+    // timeline.
+    await registrarEventoContrato(prisma, {
+      inmobiliariaId: u.inmobiliariaId,
+      contratoId: id,
+      tipo: 'RENOVACION',
+      // `b.fechaFinNueva` es el mismo dato que usaba `finNuevaTxt` adentro de la
+      // transacción; se recomputa acá porque aquella era local al closure.
+      titulo: `Renovación: plazo hasta ${b.fechaFinNueva.toISOString().slice(0, 10)} · canon ${montoAnterior} → ${canonNuevo} ${contrato.moneda}`,
+      detalle: b.motivo ?? null,
+      autor: u.userId,
+    });
+    // TERCER camino que cambia el canon. T-16 arregló el aviso en /ajustar y en
+    // PATCH /monto, y la renovación se pasó por alto: renovar con un canon nuevo ES un
+    // aumento de alquiler, y el inquilino tampoco se enteraba. Mismo helper, mismo
+    // criterio (best-effort, fuera de la tx).
+    // `canonNuevo`, NO `b.montoNuevo`: las cinco escrituras de la transacción ya usan el canon
+    // efectivo, y si el aviso usara el del body le mandaríamos al inquilino un mail diciendo
+    // que su alquiler subió a un monto que la base nunca guardó. En un SOLO_EXPENSAS eso es
+    // anunciarle un aumento de un alquiler que no paga.
+    //
+    // Y si el canon no se movió no hay nada que avisar: una renovación puede ser sólo de
+    // plazo. Antes se mandaba igual —"tu alquiler pasó de X a X"—, que es ruido en el mejor
+    // caso y alarma en el peor.
+    const aviso =
+      canonNuevo !== montoAnterior
+        ? await avisarAjusteAlInquilino({
+            contratoId: id,
+            inmobiliariaId: u.inmobiliariaId,
+            montoAnterior,
+            montoNuevo: canonNuevo,
+            periodoDesde: b.montoDesde,
+            motivo: b.motivo || 'Renovación del contrato',
+            log: request.log,
+          })
+        : undefined;
+    return { ok: true, montoAnterior, montoNuevo: canonNuevo, ...res, avisoInquilino: aviso };
   });
 
   app.get('/contratos/:id/renovaciones', async (request, reply) => {
@@ -1805,6 +2409,109 @@ export async function coreRoutes(app: FastifyInstance) {
       where: { contratoId: id, inmobiliariaId: u.inmobiliariaId },
       orderBy: { createdAt: 'desc' },
     });
+  });
+
+  /**
+   * Timeline del contrato (pestaña "Historial" del panel).
+   *
+   * POR QUÉ EXISTE: `EventoContrato` era WRITE-ONLY. Se escribe al renovar
+   * (core.ts, POST /contratos/:id/renovar) y al ajustar el alquiler (PATCH
+   * /contratos/:id/monto), y NINGÚN endpoint lo devolvía — así que el panel
+   * hardcodeaba `eventos: []` y la pestaña decía "Sin eventos registrados todavía"
+   * aunque la base tuviera el rastro. Es peor que no tener trazabilidad: hacer creer
+   * que no quedó registro de un ajuste de alquiler que sí quedó.
+   *
+   * `autor` guarda el userId (un cuid), no un nombre. Lo resolvemos ACÁ, al leer, en
+   * vez de arreglar las escrituras: así los eventos ya guardados también se ven bien
+   * —no hace falta backfill— y el nombre sigue al usuario si se lo cambian. Lo que no
+   * matchea ningún usuario se devuelve tal cual, que cubre el 'Sistema' de los eventos
+   * automáticos y cualquier valor viejo.
+   */
+  app.get('/contratos/:id/eventos', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'contratos.ver');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    // El tenant se valida sobre el CONTRATO antes de leer los eventos: un findMany por
+    // contratoId a secas expondría el historial de otra inmobiliaria.
+    const contrato = await prisma.contrato.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      select: { id: true },
+    });
+    if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
+
+    const eventos = await prisma.eventoContrato.findMany({
+      where: { contratoId: id, inmobiliariaId: u.inmobiliariaId },
+      orderBy: { fecha: 'desc' },
+    });
+    if (eventos.length === 0) return [];
+
+    const autores = [...new Set(eventos.map((e) => e.autor).filter(Boolean))];
+    const usuarios = await prisma.usuario.findMany({
+      where: { id: { in: autores }, inmobiliariaId: u.inmobiliariaId },
+      select: { id: true, nombre: true, apellido: true },
+    });
+    const nombrePorId = new Map(
+      usuarios.map((x) => [x.id, `${x.nombre} ${x.apellido ?? ''}`.trim()]),
+    );
+    return eventos.map((e) => ({ ...e, autor: nombrePorId.get(e.autor) ?? e.autor }));
+  });
+
+  /**
+   * Registrar una comunicación que el operador le mandó al inquilino.
+   *
+   * POR QUÉ EXISTE: el diálogo "Nuevo mensaje" del detalle del contrato le decía al operador
+   * *"Queda registrado en el historial del contrato"* y NO registraba nada — abría `wa.me` /
+   * `mailto:` y ahí terminaba. El propio comentario del componente lo admitía. En una discusión
+   * con un inquilino ("yo te avisé del aumento el 12") no había ninguna evidencia: es pérdida
+   * de trazabilidad, no un detalle de copy.
+   *
+   * Se podía arreglar suavizando el texto (una línea) o haciendo que la promesa fuera cierta.
+   * Esto último, porque el registro es justamente lo que la administradora necesita, y porque
+   * la infraestructura ya estaba: `EventoContrato` existe, el enum ya tenía
+   * `COMUNICACION_ENVIADA`, y el read-path (`GET /contratos/:id/eventos`) se acaba de construir.
+   *
+   * El mensaje NO se envía desde acá: lo manda la persona por su WhatsApp o su mail. Esto sólo
+   * deja constancia de que se mandó, quién y cuándo — que es exactamente lo que se prometía.
+   */
+  app.post('/contratos/:id/comunicaciones', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'comunicaciones.enviar');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const body = z
+      .object({
+        canal: z.enum(['WHATSAPP', 'EMAIL', 'LLAMADA']),
+        asunto: z.string().trim().min(1).max(140),
+        // El cuerpo es opcional: en una LLAMADA puede no haber texto que guardar.
+        cuerpo: z.string().trim().max(4000).optional(),
+      })
+      .safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ message: 'Datos de la comunicación incompletos' });
+
+    // Tenant validado sobre el CONTRATO antes de escribir (mismo criterio que el GET de arriba).
+    const contrato = await prisma.contrato.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      select: { id: true },
+    });
+    if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
+
+    const CANAL_LABEL: Record<string, string> = {
+      WHATSAPP: 'WhatsApp',
+      EMAIL: 'Email',
+      LLAMADA: 'Llamada',
+    };
+    const evento = await prisma.eventoContrato.create({
+      data: {
+        inmobiliariaId: u.inmobiliariaId,
+        contratoId: contrato.id,
+        tipo: 'COMUNICACION_ENVIADA',
+        titulo: `${CANAL_LABEL[body.data.canal]} · ${body.data.asunto}`,
+        detalle: body.data.cuerpo || null,
+        fecha: new Date(),
+        // `autor` guarda el userId: el GET lo resuelve a nombre y apellido.
+        autor: u.userId,
+      },
+    });
+    return reply.code(201).send(evento);
   });
 
   // ===== Depósitos en custodia (plata de terceros que la inmo guarda) =====
@@ -1988,7 +2695,11 @@ export async function coreRoutes(app: FastifyInstance) {
           OR: [
             { nombre: { contains: q, mode: 'insensitive' as const } },
             { apellido: { contains: q, mode: 'insensitive' as const } },
+            // El DNI se guarda en dígitos, así que se busca en dígitos: tipear "20.123.456"
+            // no encontraba nada. Se mantienen las DOS formas —cruda y normalizada— porque
+            // hasta que corra el backfill siguen conviviendo fichas viejas con puntos.
             { dni: { contains: q } },
+            ...(normalizarDni(q) ? [{ dni: { contains: normalizarDni(q) as string } }] : []),
             { email: { contains: q, mode: 'insensitive' as const } },
           ],
         }
@@ -2537,7 +3248,11 @@ export async function coreRoutes(app: FastifyInstance) {
   // ===== Configuración: equipo y permisos (usuarios del panel) =====
   // Antes el tab Equipo era 100% mock (equipoInicial hardcoded). Ahora persiste
   // en la tabla Usuario. Guardas para no dejar la inmobiliaria sin ningún Admin.
-  const rolEnum = z.enum(['ADMIN', 'OPERADOR', 'CARGA', 'LECTURA']);
+  // Se deriva de ROLES_ORDEN (la matriz de permisos) en vez de escribirse a mano: cuando se
+  // agregó el rol CAJA, esta lista literal se quedó vieja y hacía IMPOSIBLE dar de alta a la
+  // cajera —el alta devolvía "Datos inválidos" sin decir por qué—, que es justo el usuario
+  // que el rol venía a habilitar. Derivarlo garantiza que no vuelva a desincronizarse.
+  const rolEnum = z.enum(ROLES_ORDEN as [Rol, ...Rol[]]);
 
   app.get('/usuarios', async (request, reply) => {
     const u = await requireUsuario(request, reply);
@@ -2626,13 +3341,15 @@ export async function coreRoutes(app: FastifyInstance) {
     try {
       const inmo = await prisma.inmobiliaria.findUnique({
         where: { id: u.inmobiliariaId },
-        select: { nombre: true },
+        select: { nombre: true, email: true },
       });
       await enviarInvitacionEquipo({
         email: creado.email,
         nombre: creado.nombre,
         rol: creado.rol,
         inmobiliariaNombre: inmo?.nombre ?? 'la inmobiliaria',
+        // El recién invitado contesta a su propia inmobiliaria, no a un no-reply.
+        inmobiliariaEmail: inmo?.email ?? null,
       });
     } catch (e) {
       request.log.error({ err: (e as Error).message }, 'Invitación de equipo: fallo el email');
@@ -2745,7 +3462,10 @@ export async function coreRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     const body = z
       .object({
-        monto: z.number().positive(),
+        // `nonnegative` y no `positive`: el 0 es el camino de normalización de un
+        // SOLO_EXPENSAS. Que el 0 sólo valga para ese tipo se chequea abajo, con el contrato
+        // ya leído — igual que en el alta.
+        monto: z.number().nonnegative(),
         // Opcional: si el operador quiere fijar a mano la próxima fecha de ajuste;
         // omitido => se calcula sobre la actual (o hoy) + frecuencia.
         proximoAjuste: z.coerce.date().optional(),
@@ -2775,6 +3495,28 @@ export async function coreRoutes(app: FastifyInstance) {
       },
     });
     if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
+    // Un solo expensas no tiene canon que SUBIR — pero sí puede necesitar que lo BAJEN a 0.
+    //
+    // Ojo con esta asimetría, que no es capricho: este endpoint es, además, la única
+    // herramienta de limpieza que hay. `recomputarLiquidacionesFuturas` ya respeta el tipo y
+    // alcanza las cuotas PENDIENTE **y VENCIDO** desde el período actual (liquidaciones.ts),
+    // así que un `monto: 0` acá arregla de una vez el contrato y todas sus cuotas impagas.
+    // Rechazar el endpoint entero —como hacía la primera versión de este guard— dejaba a un
+    // contrato ya ensuciado sin ninguna forma de volver a 0 desde el producto: el ajuste
+    // también rechaza, y la renovación sólo toca las PENDIENTE y encima obliga a estirar el
+    // plazo. Se cerraba la puerta de entrada de la suciedad y la de salida junto con ella.
+    if (contrato.tipoContrato === 'SOLO_EXPENSAS' && d.monto > 0) {
+      return reply.code(409).send({
+        message:
+          'Este contrato es de solo expensas: su alquiler tiene que quedar en cero. Podés mandar 0 para normalizarlo (deja en cero las cuotas impagas), pero no un monto mayor.',
+        codigo: 'SOLO_EXPENSAS_SIN_CANON',
+      });
+    }
+    // El otro lado del `nonnegative`: un contrato con alquiler no puede quedar en 0, o sus
+    // liquidaciones nunca llegarían a PAGADO y el inquilino quedaría "debiendo $0".
+    if (contrato.tipoContrato !== 'SOLO_EXPENSAS' && d.monto === 0) {
+      return reply.code(400).send({ message: 'El monto del alquiler tiene que ser mayor a cero' });
+    }
 
     const montoViejo = Number(contrato.monto);
     // Base para reprogramar el próximo ajuste: lo que mande el body pisa; si no,
@@ -2789,6 +3531,27 @@ export async function coreRoutes(app: FastifyInstance) {
       await tx.contrato.update({
         where: { id: contrato.id },
         data: { monto: d.monto, proximoAjuste },
+      });
+
+      // (a2) FILA DE AJUSTE. Este camino no la dejaba y `POST /contratos/:id/ajustar` sí,
+      // así que el historial de ajustes salía incompleto según por dónde hubiera entrado
+      // el operador — y el aviso al inquilino, que se deriva de esta tabla, no salía nunca
+      // por acá.
+      //
+      // `periodoDesde` = período ACTUAL, que es desde donde este endpoint re-devenga.
+      // Es INERTE para el devengo: `vigenciasFuturas` (lib/liquidaciones.ts) filtra
+      // `periodoDesde: { gt: periodo }`, o sea estrictamente futuras, así que una fila del
+      // período en curso no entra a `canonDelPeriodo` y no cambia ninguna liquidación.
+      await tx.ajusteAlquiler.create({
+        data: {
+          inmobiliariaId: u.inmobiliariaId,
+          contratoId: contrato.id,
+          montoAnterior: montoViejo,
+          montoNuevo: d.monto,
+          periodoDesde: periodoActual,
+          motivo: d.motivo || null,
+          creadoPorId: u.userId,
+        },
       });
 
       // (c) RE-DEVENGO de futuras. Traemos las liqs candidatas (>= mes actual,
@@ -2850,7 +3613,177 @@ export async function coreRoutes(app: FastifyInstance) {
     // EventoContrato AJUSTE_APLICADO (creado dentro de la tx, arriba) — el tipo
     // semánticamente correcto. No duplicamos en EventoAuditoria porque su enum no
     // tiene un valor de "ajuste de monto" y no vamos a migrar el schema.
-    return { contrato: resultado.actualizado, liquidacionesReajustadas: resultado.reajustadas };
+    // Mismo aviso que el otro camino de ajuste (ver avisarAjusteAlInquilino): fuera de la
+    // transacción y best-effort.
+    const aviso = await avisarAjusteAlInquilino({
+      contratoId: contrato.id,
+      inmobiliariaId: u.inmobiliariaId,
+      montoAnterior: montoViejo,
+      montoNuevo: d.monto,
+      periodoDesde: periodoActual,
+      motivo: d.motivo || null,
+      log: request.log,
+    });
+    return { contrato: resultado.actualizado, liquidacionesReajustadas: resultado.reajustadas, avisoInquilino: aviso };
+  });
+
+  // ===== Cambiar las EXPENSAS de un contrato (PATCH /contratos/:id/expensas) =====
+  //
+  // Hasta acá `montoExpensas` se podía escribir UNA SOLA VEZ, en el alta: ningún
+  // endpoint lo tocaba después. Y las expensas suben todos los meses. O sea que
+  // para corregir la expensa de un contrato la única salida era rehacer el
+  // contrato entero — y en un SOLO_EXPENSAS es peor, porque es el ÚNICO monto que
+  // tiene: si está mal, no hay nada que ajustar.
+  //
+  // Es el hermano de PATCH /contratos/:id/monto y sigue su misma forma a
+  // propósito: actualiza el contrato, RE-DEVENGA las cuotas futuras sin plata en
+  // juego, y deja rastro en el timeline. Money code: no toca liquidaciones
+  // pagadas, parciales, con un pago informado, ni meses pasados.
+  app.patch('/contratos/:id/expensas', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'contratos.crear');
+    if (!u) return;
+    // Mismo criterio que el ajuste de canon: cambia lo que el inquilino tiene que
+    // pagar. No es una acción de carga para aprobación.
+    if (u.rol === 'CARGA') {
+      return reply.code(403).send({ message: 'Solo un Admin u Operador puede cambiar las expensas' });
+    }
+    const { id } = request.params as { id: string };
+    const body = z
+      .object({
+        // `nonnegative`: el 0 es cómo se le sacan las expensas a un contrato que
+        // dejó de tenerlas. Que el 0 no valga para un SOLO_EXPENSAS se chequea
+        // abajo, con el contrato ya leído.
+        montoExpensas: z.number().nonnegative(),
+        motivo: z.string().optional(),
+      })
+      .safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ message: 'Monto de expensas inválido' });
+    const d = body.data;
+
+    // Scopeado por inmobiliariaId (multi-tenant): un id de otro tenant => 404.
+    const contrato = await prisma.contrato.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      select: { id: true, montoExpensas: true, tipoContrato: true, moneda: true, estado: true },
+    });
+    if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
+
+    // Un contrato terminado no se re-tarifa: sus cuotas son historia (y las de
+    // deuda histórica, todas vencidas, no deberían moverse nunca).
+    if (contrato.estado !== 'ACTIVO') {
+      return reply.code(409).send({
+        message: 'Solo se pueden cambiar las expensas de un contrato activo',
+      });
+    }
+
+    // Un SOLO_EXPENSAS sin expensas no factura NADA: sus liquidaciones nacerían
+    // en $0 y el inquilino quedaría "debiendo cero" para siempre. Es el espejo
+    // exacto del guard de `monto: 0` en el ajuste de canon.
+    if (contrato.tipoContrato === 'SOLO_EXPENSAS' && d.montoExpensas === 0) {
+      return reply.code(400).send({
+        message: 'Este contrato es de solo expensas: el monto tiene que ser mayor a cero',
+      });
+    }
+
+    const expensasViejas = contrato.montoExpensas != null ? Number(contrato.montoExpensas) : 0;
+    if (expensasViejas === d.montoExpensas) {
+      // Mismo monto: no se escribe nada, pero se devuelve el contrato COMPLETO —
+      // no el subset del `select` de arriba. El front usa la respuesta para
+      // refrescar, y dos formas distintas según el camino es cómo se rompe.
+      const completo = await prisma.contrato.findUniqueOrThrow({ where: { id: contrato.id } });
+      return reply.code(200).send({
+        contrato: completo,
+        liquidacionesReajustadas: 0,
+        tipoContrato: contrato.tipoContrato,
+        sinCambios: true,
+      });
+    }
+
+    // El tipo de contrato acompaña al monto, para que no quede un estado que el
+    // resto del sistema lee mal: `computarLiquidacionesContrato` factura expensas
+    // con sólo mirar `montoExpensas`, sin consultar el tipo, así que un ALQUILER
+    // con expensas > 0 facturaría expensas mientras la PWA le sigue diciendo al
+    // inquilino que su contrato no las tiene.
+    const tipoNuevo =
+      contrato.tipoContrato === 'SOLO_EXPENSAS'
+        ? 'SOLO_EXPENSAS'
+        : d.montoExpensas > 0
+          ? 'ALQUILER_Y_EXPENSAS'
+          : 'ALQUILER';
+
+    const periodoActual = periodoDe(new Date());
+
+    const resultado = await prisma.$transaction(async (tx) => {
+      await tx.contrato.update({
+        where: { id: contrato.id },
+        data: {
+          // 0 se guarda como null: es como el alta representa "sin expensas", y
+          // dejar un 0 explícito haría que `montoExpensas != null` diera true en
+          // los ~10 lugares que preguntan eso para decidir si mostrar la línea.
+          montoExpensas: d.montoExpensas === 0 ? null : d.montoExpensas,
+          tipoContrato: tipoNuevo,
+        },
+      });
+
+      const liqs = await tx.liquidacion.findMany({
+        where: {
+          contratoId: contrato.id,
+          inmobiliariaId: u.inmobiliariaId,
+          periodo: { gte: periodoActual },
+          estado: { in: ['PENDIENTE', 'VENCIDO'] },
+        },
+        select: {
+          id: true,
+          periodo: true,
+          estado: true,
+          montoAlquiler: true,
+          montoExpensas: true,
+          _count: { select: { pagos: true } },
+        },
+      });
+      const aReajustar = recomputarExpensasFuturas(
+        liqs.map((l) => ({
+          id: l.id,
+          periodo: l.periodo,
+          estado: l.estado,
+          montoAlquiler: l.montoAlquiler,
+          montoExpensas: l.montoExpensas,
+          cantidadPagos: l._count.pagos,
+        })),
+        { expensasNuevas: d.montoExpensas, periodoActual },
+      );
+      for (const r of aReajustar) {
+        // updateMany scopeado por inmobiliariaId (defensa cross-tenant redundante).
+        await tx.liquidacion.updateMany({
+          where: { id: r.id, inmobiliariaId: u.inmobiliariaId },
+          data: { montoExpensas: r.montoExpensas === 0 ? null : r.montoExpensas, montoTotal: r.montoTotal },
+        });
+      }
+
+      // Rastro en el timeline del contrato, dentro de la tx: el cambio y su
+      // registro caen juntos. Se reusa AJUSTE_APLICADO porque es el tipo que ya
+      // significa "cambió lo que hay que pagar" y el enum no tiene uno propio
+      // para expensas; el título lo desambigua.
+      await tx.eventoContrato.create({
+        data: {
+          inmobiliariaId: u.inmobiliariaId,
+          contratoId: contrato.id,
+          tipo: 'AJUSTE_APLICADO',
+          titulo: `Expensas: ${expensasViejas} → ${d.montoExpensas} ${contrato.moneda}`,
+          detalle: d.motivo ?? null,
+          fecha: new Date(),
+          autor: u.userId,
+        },
+      });
+
+      const actualizado = await tx.contrato.findUniqueOrThrow({ where: { id: contrato.id } });
+      return { actualizado, reajustadas: aReajustar.length };
+    });
+
+    return {
+      contrato: resultado.actualizado,
+      liquidacionesReajustadas: resultado.reajustadas,
+      tipoContrato: tipoNuevo,
+    };
   });
 
   // PATCH modo de cobranza de un contrato YA creado (feedback 14/07: quedaba en
@@ -2878,24 +3811,53 @@ export async function coreRoutes(app: FastifyInstance) {
     // Scopeado por inmobiliariaId (multi-tenant): un id ajeno => 404.
     const contrato = await prisma.contrato.findFirst({
       where: { id, inmobiliariaId: u.inmobiliariaId },
-      select: { id: true, modoCobranza: true, propiedadId: true },
+      select: { id: true, modoCobranza: true, propiedadId: true, moneda: true },
     });
     if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
     if (contrato.modoCobranza === body.data.modoCobranza) {
       return { ok: true, modoCobranza: contrato.modoCobranza, sinCambios: true };
     }
 
-    // GUARD rendición: si ya hay cobros CONCILIADO del período en curso, cambiar
-    // el modo dejaría esa plata ya cobrada fuera del circuito de rendición
-    // (POST /rendiciones y /caja/cierre filtran modoCobranza='INMOBILIARIA'). No
-    // se puede cambiar hasta cerrar/revertir esos cobros.
-    const periodoActual = periodoDe(new Date());
-    const cobrosPeriodo = await prisma.pago.count({
-      where: { contratoId: contrato.id, estado: 'CONCILIADO', liquidacion: { periodo: periodoActual } },
-    });
-    if (cobrosPeriodo > 0) {
+    // GUARD rendición: cambiar el modo mueve plata vieja de circuito, porque
+    // POST /rendiciones y /caja/cierre filtran por el modoCobranza ACTUAL en
+    // CUALQUIER período (no por el que regía cuando se cobró). Ver el docblock de
+    // alquilerCobradoSinRendir para los dos sentidos del agujero.
+    //
+    // Antes esto contaba "pagos conciliados del mes en curso", y estaba mal en las dos
+    // puntas: (a) bloqueaba un cambio perfectamente seguro sólo porque se había
+    // validado un pago que YA se había rendido —el caso que trabó a la operadora en la
+    // prueba del 03/08—, y (b) dejaba pasar el caso peligroso de verdad, que es plata
+    // de un mes ANTERIOR cobrada y sin rendir. El consejo que daba ("cambialo el mes
+    // que viene") además era falso: el mes que viene esa plata sigue sin rendirse.
+    // `contrato.id` ya fue validado contra el tenant en el findFirst de arriba, así que
+    // el helper puede consultar por contratoId sin volver a filtrar (mismo patrón que el
+    // resto de los handlers: el id padre se valida una vez por request).
+    const sinRendir = await alquilerCobradoSinRendir(contrato.id);
+    if (sinRendir.total > 0) {
+      // Mismo criterio de símbolo que el 409 de la rendición (plata.ts): la moneda
+      // sale del contrato, no se asume ARS.
+      const sim = contrato.moneda === 'USD' ? 'US$' : '$';
+      const detalle = sinRendir.periodos.map((p) => `${p.periodo} (${sim}${p.monto})`).join(', ');
+      // EL CONSEJO DEPENDE DEL SENTIDO DEL CAMBIO, y esto importa: en
+      // PROPIETARIO_DIRECTO no se rinde NADA (POST /rendiciones filtra
+      // modoCobranza='INMOBILIARIA'), así que todos los cobros conciliados figuran acá
+      // como "sin rendir" y decirle al operador "rendilos primero" sería mandarlo a
+      // hacer algo que el sistema no le va a permitir — el mismo pecado del guard viejo,
+      // que aconsejaba "cambialo el mes que viene" cuando el mes siguiente no cambiaba nada.
+      const volviendoARecaudadora = body.data.modoCobranza === 'INMOBILIARIA';
       return reply.code(409).send({
-        message: 'No se puede cambiar el modo de cobranza: ya hay cobros conciliados este mes. Cambialo el mes que viene o revertí los cobros primero.',
+        message: volviendoARecaudadora
+          ? `No se puede volver a cobranza por inmobiliaria: hay ${sim}${sinRendir.total} ya cobrado ` +
+            `mientras el contrato estaba en cobranza directa (${detalle}). Esa plata fue a la cuenta ` +
+            'del propietario, pero al volver a cuenta recaudadora el sistema la tomaría como rendible ' +
+            'y se la transferiría de nuevo. Antes de cambiar hay que anular esos cobros ' +
+            '(Pagos → Deshacer cobro) o dar de baja este contrato y cargar uno nuevo.'
+          : `No se puede pasar a cobranza directa todavía: hay ${sim}${sinRendir.total} de alquiler ` +
+            `ya cobrado que no se le rindió al propietario (${detalle}). ` +
+            'Rendile esos períodos desde Propietarios → Rendir y volvé a intentar. ' +
+            'Si cambiás el modo antes, esa plata queda fuera del circuito de rendición y no hay ' +
+            'forma de hacérsela llegar.',
+        detalle: { ...sinRendir, moneda: contrato.moneda, hacia: body.data.modoCobranza },
       });
     }
 
@@ -2912,18 +3874,65 @@ export async function coreRoutes(app: FastifyInstance) {
         return reply.code(400).send({ message: 'La propiedad necesita dueños cargados para usar cobranza directa al propietario' });
       }
       if (!part.propietario.cuentaCobranza) {
+        // `codigo` + `propietarioId` viajan para que el panel pueda ofrecer cargar la
+        // cuenta AHÍ MISMO, sin abandonar lo que se estaba haciendo. Antes el operador
+        // leía "entrá a la ficha del propietario", se iba, y perdía el hilo del alta
+        // (reportado en la prueba del 03/08: "ya me quedé ahí").
         return reply.code(400).send({
+          codigo: 'FALTA_CUENTA_COBRANZA',
+          propietarioId: part.propietarioId,
+          propietarioNombre: `${part.propietario.nombre} ${part.propietario.apellido ?? ''}`.trim(),
           message: `Falta la cuenta de cobro directo de ${part.propietario.nombre} ${part.propietario.apellido ?? ''}`.trim() +
-            '. Entrá a la ficha del propietario → "Cuenta de cobranza directa" y cargá banco + CBU (22 dígitos) + alias. (El CBU/alias del alta del propietario NO alcanza para el cobro directo.)',
+            '. Cargale banco + CBU (22 dígitos) + alias. (El CBU/alias del alta del propietario NO alcanza para el cobro directo: son datos distintos.)',
         });
       }
       cobraDirectoPropietarioId = part.propietarioId;
     }
 
-    const actualizado = await prisma.contrato.update({
-      where: { id: contrato.id },
-      data: { modoCobranza: body.data.modoCobranza, cobraDirectoPropietarioId },
-    });
+    // T-36 — El guard de arriba decidió con una foto tomada FUERA de transacción. Entre esa
+    // lectura y este UPDATE, otro operador puede conciliar un pago: el guard ya pasó, el modo
+    // cambia igual, y esa plata queda del lado equivocado del circuito de rendición.
+    //
+    // Se re-verifica ADENTRO y el UPDATE va condicionado al modo que se leyó (patrón
+    // updateMany + count===0 ⇒ 409, el mismo que usan validar/anular/finalizar). Esto cierra
+    // el doble cambio de modo y achica la ventana del otro caso de toda la latencia del
+    // handler —incluidas las consultas de propietario y cuenta— a lo que tarda la propia
+    // transacción. NO la cierra del todo: en READ COMMITTED, una conciliación que commitea
+    // justo después de esta re-lectura sigue entrando. Cerrarla del todo exige que conciliar
+    // un pago tome un lock sobre el contrato, que es un cambio más grande y de otra tarea.
+    const resultado = await prisma.$transaction(async (tx) => {
+      const revalidacion = await alquilerCobradoSinRendir(contrato.id, tx);
+      if (revalidacion.total > 0) return { conflicto: 'SIN_RENDIR' as const };
+      const upd = await tx.contrato.updateMany({
+        where: {
+          id: contrato.id,
+          inmobiliariaId: u.inmobiliariaId,
+          modoCobranza: contrato.modoCobranza,
+        },
+        data: { modoCobranza: body.data.modoCobranza, cobraDirectoPropietarioId },
+      });
+      if (upd.count === 0) return { conflicto: 'CAMBIO_CONCURRENTE' as const };
+      return { conflicto: null };
+      // Timeouts explícitos, como el resto de las transacciones que hacen trabajo real acá
+      // (core.ts:1249, :1507, importaciones-cartera.ts:497). Con los defaults de Prisma
+      // (timeout 5s / maxWait 2s) esta transacción quedaba al filo: adentro hay 4 queries y,
+      // sobre todo, `maxWait` cuenta la espera por un cliente del POOL. Bajo carga eso puede
+      // superar 2s y convertir un cambio de modo que antes andaba en un 500 esporádico —
+      // introducido por el propio arreglo del TOCTOU.
+    }, { timeout: 15_000, maxWait: 10_000 });
+    if (resultado.conflicto === 'SIN_RENDIR') {
+      return reply.code(409).send({
+        message:
+          'Mientras se procesaba el cambio se validó un cobro de este contrato, así que quedó ' +
+          'alquiler cobrado sin rendir. Volvé a entrar para ver el detalle actualizado.',
+      });
+    }
+    if (resultado.conflicto === 'CAMBIO_CONCURRENTE') {
+      return reply.code(409).send({
+        message: 'Otra persona cambió el modo de cobranza de este contrato recién. Recargá para ver cómo quedó.',
+      });
+    }
+    const actualizado = { modoCobranza: body.data.modoCobranza };
     // Auditoría real del backend (el enum ya existe): antes el cambio solo se
     // registraba en localStorage (demo) → sin traza en prod.
     await registrarEvento({
@@ -2947,10 +3956,19 @@ export async function coreRoutes(app: FastifyInstance) {
     const u = await requireUsuario(request, reply, 'contratos.crear');
     if (!u) return;
     const { id } = request.params as { id: string };
+    // T-45 — El EMAIL también se puede corregir después del alta. El wizard le dice a la
+    // operadora "sin email podés cargar el contrato igual… se lo podés agregar después", y hasta
+    // acá eso era mentira: este endpoint sólo aceptaba `telefono` y ningún otro escribía
+    // `Inquilino.email`. Un contrato cargado sin email dejaba al inquilino fuera de la app para
+    // siempre —el acceso es por OTP al mail— salvo rehacer el contrato, que es la rescisión
+    // falsa de la que se queja Camila.
     const body = z
-      .object({ telefono: z.string().trim().max(40).optional() })
+      .object({
+        telefono: z.string().trim().max(40).optional(),
+        email: z.string().trim().toLowerCase().email('Email inválido').max(120).optional(),
+      })
       .safeParse(request.body ?? {});
-    if (!body.success) return reply.code(400).send({ message: 'Teléfono inválido' });
+    if (!body.success) return reply.code(400).send({ message: 'Datos de contacto inválidos', detalle: body.error.flatten() });
 
     // Scopeado por inmobiliariaId (multi-tenant): un id ajeno => 404.
     const contrato = await prisma.contrato.findFirst({
@@ -2963,10 +3981,30 @@ export async function coreRoutes(app: FastifyInstance) {
     }
 
     const telefono = body.data.telefono?.trim() || null;
-    await prisma.inquilino.update({
-      where: { id: contrato.inquilinoTitular.id },
-      data: { telefono },
-    });
-    return { ok: true, telefono };
+    // El email va SÓLO si vino. Al teléfono un body vacío lo borra (comportamiento previo, se
+    // respeta), pero el email es la llave de acceso del inquilino: borrarlo por omisión lo
+    // dejaría afuera de la app sin que nadie lo haya pedido.
+    const email = body.data.email;
+    try {
+      const actualizado = await prisma.inquilino.update({
+        where: { id: contrato.inquilinoTitular.id },
+        data: { telefono, ...(email !== undefined ? { email } : {}) },
+        select: { telefono: true, email: true },
+      });
+      return { ok: true, telefono: actualizado.telefono, email: actualizado.email };
+    } catch (e) {
+      // `@@unique([inmobiliariaId, email])`: dos inquilinos del mismo tenant no pueden compartir
+      // email, porque el OTP entrega el acceso por esa dirección. Sin este catch, el operador
+      // veía un 500 y no sabía qué había pasado.
+      // Mismo chequeo que usa auth.ts:202 — `Prisma` acá está importado como `import type`,
+      // así que no hay valor en runtime contra el que hacer `instanceof`.
+      if ((e as { code?: string })?.code === 'P2002') {
+        return reply.code(409).send({
+          codigo: 'EMAIL_DUPLICADO',
+          message: 'Ya hay otro inquilino con ese email en tu cartera. Revisá si no es la misma persona.',
+        });
+      }
+      throw e;
+    }
   });
 }

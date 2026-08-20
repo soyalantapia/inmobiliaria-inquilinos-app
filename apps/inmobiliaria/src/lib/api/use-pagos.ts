@@ -12,7 +12,7 @@
  * (!apiEnabled). Las dos mutaciones exigen PIN: lo valida el server.
  */
 import { useMemo } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { type QueryClient, useQuery, useQueryClient } from '@tanstack/react-query';
 import { API_URL, apiEnabled, apiFetch, getToken } from './client';
 import { ensureApiSession } from './session';
 import { pagosInformadosMock, type PagoInformado } from '@/lib/mock-data';
@@ -157,14 +157,14 @@ export interface UsePagosInformados {
  * validación. La usa /pagos para el contador "A resolver" en prod.
  * En demo cae al mock + estado de localStorage.
  */
-export function useAResolverCount(): {
+export function useAResolverCount(opts?: { enabled?: boolean }): {
   count: number;
   deApi: boolean;
   cargando: boolean;
   /** Con la query caída el count es 0 FALSO: el caller muestra '—', no un cero. */
   isError: boolean;
 } {
-  const { pagos, cargando, deApi, isError } = usePagosInformados();
+  const { pagos, cargando, deApi, isError } = usePagosInformados(opts);
   if (!deApi) {
     const count = pagosInformadosMock.filter((p) => estadoDePago(p.id) === 'INFORMADO').length;
     return { count, deApi: false, cargando: false, isError: false };
@@ -172,8 +172,13 @@ export function useAResolverCount(): {
   return { count: pagos.length, deApi: true, cargando, isError };
 }
 
-export function usePagosInformados(): UsePagosInformados {
+/**
+ * `enabled` (default true): ver el docblock de useReclamos. La campana del topbar monta esto
+ * en todas las páginas y un rol sin `pagos.ver` generaba un 403 por navegación.
+ */
+export function usePagosInformados(opts?: { enabled?: boolean }): UsePagosInformados {
   const qc = useQueryClient();
+  const habilitado = opts?.enabled ?? true;
 
   const q = useQuery({
     queryKey: ['pagos', 'informados'],
@@ -183,7 +188,7 @@ export function usePagosInformados(): UsePagosInformados {
       const data = await apiFetch<PagoApi[]>('/pagos?estado=INFORMADO');
       return data.map(mapPago);
     },
-    enabled: apiEnabled,
+    enabled: apiEnabled && habilitado,
     staleTime: 15_000,
   });
 
@@ -293,14 +298,44 @@ export function usePagosConciliados(): UsePagosConciliados {
     reintentar: () => void qc.invalidateQueries({ queryKey: ['pagos', 'conciliados'] }),
     deApi: true,
     anular: async (id, motivo, pin) => {
-      await apiFetch(`/pagos/${id}/anular`, {
-        method: 'POST',
-        body: JSON.stringify({ pin, observacion: motivo }),
-      });
-      void qc.invalidateQueries({ queryKey: ['pagos'] });
-      void qc.invalidateQueries({ queryKey: ['liquidaciones'] });
-      void qc.invalidateQueries({ queryKey: ['contratos'] });
-      void qc.invalidateQueries({ queryKey: ['contrato'] });
+      await anularPagoEnApi(qc, id, motivo, pin);
+    },
+  };
+}
+
+/**
+ * Anular un pago conciliado. Vive suelto porque la acción se dispara desde DOS lugares:
+ * la bandeja de conciliados y el detalle del cierre de caja (T-12: es ahí donde el
+ * operador ve el cobro equivocado). La invalidación tiene que ser la misma en los dos.
+ */
+async function anularPagoEnApi(qc: QueryClient, id: string, motivo: string, pin?: string) {
+  await apiFetch(`/pagos/${id}/anular`, {
+    method: 'POST',
+    body: JSON.stringify({ pin, observacion: motivo }),
+  });
+  void qc.invalidateQueries({ queryKey: ['pagos'] });
+  void qc.invalidateQueries({ queryKey: ['liquidaciones'] });
+  void qc.invalidateQueries({ queryKey: ['contratos'] });
+  void qc.invalidateQueries({ queryKey: ['contrato'] });
+  // El cierre de caja muestra este cobro y su comisión en los totales del día. Sin esta
+  // línea, anular desde el propio cierre deja el total mostrando plata que ya no está.
+  void qc.invalidateQueries({ queryKey: ['caja'] });
+}
+
+/**
+ * Sólo la mutación de anular, sin traer la lista de conciliados: el cierre de caja ya
+ * tiene sus filas y no necesita un segundo GET para poder deshacer una.
+ */
+export function useAnularPago(): {
+  anular: (id: string, motivo: string) => Promise<void>;
+  disponible: boolean;
+} {
+  const qc = useQueryClient();
+  return {
+    disponible: apiEnabled,
+    anular: async (id, motivo) => {
+      if (!apiEnabled) return;
+      await anularPagoEnApi(qc, id, motivo);
     },
   };
 }

@@ -44,13 +44,28 @@ afterAll(async () => {
   await prismaTest.$disconnect();
 });
 
-const cargarMov = (token: string, tipo: 'GASTO' | 'INGRESO_EXTRA', monto: number, cuentaId: string | null, sufijo: string) =>
+const cargarMov = (
+  token: string,
+  tipo: 'GASTO' | 'INGRESO_EXTRA',
+  monto: number,
+  cuentaId: string | null,
+  sufijo: string,
+  // Default ARS (igual que el zod del endpoint) para no tocar las llamadas que ya existían.
+  moneda: 'ARS' | 'USD' = 'ARS',
+) =>
   app.inject({
     method: 'POST',
     url: '/caja/movimientos',
     headers: auth(token),
-    payload: { propiedadId: 'prp_003', tipo, categoria: 'OTRO', descripcion: `${MARCA} ${sufijo}`, monto, fecha: '2026-06-20', proveedor: null, cuentaId },
+    payload: { propiedadId: 'prp_003', tipo, categoria: 'OTRO', descripcion: `${MARCA} ${sufijo}`, monto, moneda, fecha: '2026-06-20', proveedor: null, cuentaId },
   });
+
+/** Forma de una cuenta en GET /cuentas. */
+type CuentaResp = {
+  id: string;
+  activa: boolean;
+  porMoneda: Array<{ moneda: 'ARS' | 'USD'; entradas: number; salidas: number; saldo: number }>;
+};
 
 describe('Cuentas de caja — alta y dirección', () => {
   it('el admin crea cuentas con dirección (entrada / salida / ambas) → 201', async () => {
@@ -107,16 +122,43 @@ describe('Cuentas de caja — movimientos respetan la dirección', () => {
 });
 
 describe('Cuentas de caja — totales y detalle', () => {
-  it('GET /cuentas refleja entradas / salidas / saldo por cuenta', async () => {
+  it('GET /cuentas refleja entradas / salidas / saldo por cuenta, desglosado por moneda', async () => {
     const res = await app.inject({ method: 'GET', url: '/cuentas', headers: auth(tokenAdmin) });
     expect(res.statusCode).toBe(200);
-    const porId = new Map<string, { entradas: number; salidas: number; saldo: number }>(
-      res.json().map((c: { id: string; entradas: number; salidas: number; saldo: number }) => [c.id, c]),
-    );
-    expect(porId.get(idGaspar)).toMatchObject({ entradas: 0, salidas: 10000, saldo: -10000 });
-    expect(porId.get(idReintegros)).toMatchObject({ entradas: 5000, salidas: 0, saldo: 5000 });
-    expect(porId.get(idEfectivo)).toMatchObject({ entradas: 0, salidas: 3000, saldo: -3000 });
-    expect(porId.get(idVacia)).toMatchObject({ entradas: 0, salidas: 0, saldo: 0 });
+    const porId = new Map<string, CuentaResp>(res.json().map((c: CuentaResp) => [c.id, c]));
+
+    // Los movimientos del setup son todos en ARS → una sola fila por cuenta.
+    expect(porId.get(idGaspar)?.porMoneda).toEqual([
+      { moneda: 'ARS', entradas: 0, salidas: 10000, saldo: -10000 },
+    ]);
+    expect(porId.get(idReintegros)?.porMoneda).toEqual([
+      { moneda: 'ARS', entradas: 5000, salidas: 0, saldo: 5000 },
+    ]);
+    expect(porId.get(idEfectivo)?.porMoneda).toEqual([
+      { moneda: 'ARS', entradas: 0, salidas: 3000, saldo: -3000 },
+    ]);
+    // Una cuenta SIN movimientos devuelve [] y NO una fila de ceros: "sin movimientos" y
+    // "saldo cero en pesos" son cosas distintas.
+    expect(porId.get(idVacia)?.porMoneda).toEqual([]);
+  });
+
+  /**
+   * El bug que motivó todo esto: el groupBy agrupaba por ['cuentaId','tipo'] sin `moneda`,
+   * así que un gasto en dólares y uno en pesos se restaban como si fueran la misma unidad
+   * y el panel rotulaba el resultado en pesos. Sin este test nadie lo veía: los movimientos
+   * del setup eran todos ARS.
+   */
+  it('NO mezcla monedas: un gasto en USD no se resta contra los pesos', async () => {
+    await cargarMov(tokenAdmin, 'GASTO', 800, idEfectivo, 'gasto en dolares', 'USD');
+
+    const res = await app.inject({ method: 'GET', url: '/cuentas', headers: auth(tokenAdmin) });
+    const cuenta = (res.json() as CuentaResp[]).find((c) => c.id === idEfectivo);
+
+    // Dos filas separadas, no un −3800 inventado.
+    expect(cuenta?.porMoneda).toEqual([
+      { moneda: 'ARS', entradas: 0, salidas: 3000, saldo: -3000 },
+      { moneda: 'USD', entradas: 0, salidas: 800, saldo: -800 },
+    ]);
   });
 
   it('GET /cuentas/:id/movimientos devuelve el detalle de esa cuenta', async () => {
@@ -142,9 +184,9 @@ describe('Cuentas de caja — borrado', () => {
     expect(res.json()).toMatchObject({ archivada: true, movimientos: 1 });
     // sigue apareciendo en la lista pero inactiva, y el movimiento sobrevive
     const lista = await app.inject({ method: 'GET', url: '/cuentas', headers: auth(tokenAdmin) });
-    const gaspar = lista.json().find((c: { id: string }) => c.id === idGaspar);
+    const gaspar = (lista.json() as CuentaResp[]).find((c) => c.id === idGaspar)!;
     expect(gaspar.activa).toBe(false);
-    expect(gaspar.salidas).toBe(10000);
+    expect(gaspar.porMoneda).toEqual([{ moneda: 'ARS', entradas: 0, salidas: 10000, saldo: -10000 }]);
   });
 });
 

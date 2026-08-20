@@ -7,7 +7,7 @@ export const dynamic = 'force-static';
 
 const LLMS = `# My Alquiler
 
-> Software de gestión de alquileres para inmobiliarias argentinas. Los inquilinos pagan desde una app y suben el comprobante; la inmobiliaria ve la cobranza en vivo con la mora calculada sola; y la rendición a propietarios sale calculada (alquiler, comisión, gastos y expensas). Incluye reclamos con red de profesionales, ajustes ICL/IPC automáticos, caja y auditoría, y depósitos en custodia.
+> Software de gestión de alquileres para inmobiliarias argentinas. Los inquilinos pagan desde una app y suben el comprobante; la inmobiliaria ve la cobranza en vivo con la mora calculada sola; y la rendición a propietarios sale calculada (alquiler, comisión, gastos y expensas). Incluye reclamos con red de profesionales, avisos de ajuste de canon con recálculo de las cuotas al confirmar el monto, caja y auditoría, y registro de depósitos en custodia.
 
 ## Qué es y para quién
 - Para inmobiliarias y administradores de propiedades en Argentina.
@@ -19,6 +19,13 @@ const LLMS = `# My Alquiler
 - Precios: ${SITE_URL}/precios
 - Precios legibles por máquina: ${SITE_URL}/pricing.md
 - Empezar (alta self-service, sin tarjeta): ${SITE_URL}/registro
+
+## Qué NO hace (para evitar confusiones)
+- No usa modelos de lenguaje: no lee contratos con IA ni con OCR, no chatea, no negocia aumentos.
+- No consulta centrales de riesgo (Nosis, BCRA, Veraz) ni emite informes crediticios.
+- No emite facturas electrónicas ni está conectado a ARCA.
+- No descarga índices oficiales: el ajuste por ICL/IPC lo confirma una persona de la inmobiliaria, y el sistema recalcula las cuotas.
+- No custodia dinero: la plata va directo al CBU de la inmobiliaria o del propietario.
 
 ## Precios (resumen)
 - Plan Alquileres: desde $50.000/mes (ARS) según el tamaño de la cartera — hasta 10 propiedades $50.000, hasta 50 $100.000, hasta 100 $200.000, más de 100 $350.000.

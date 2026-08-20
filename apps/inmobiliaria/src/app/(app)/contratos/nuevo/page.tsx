@@ -18,7 +18,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { cn } from '@llave/ui/cn';
 import { enumerarPeriodosContrato } from '@llave/shared/periodos';
 import { Topbar } from '@/components/topbar';
-import { apiEnabled, apiFetch, ApiError, subirArchivo, varianteError } from '@/lib/api/client';
+import { apiEnabled, apiFetch, ApiError, datoDeError, subirArchivo, varianteError } from '@/lib/api/client';
 import { ensureApiSession } from '@/lib/api/session';
 import {
   borrarBorradorContrato,
@@ -28,7 +28,9 @@ import {
   type BorradorContrato,
 } from '@/lib/contrato-borrador-storage';
 import type { PersonaListado } from '@/lib/api/use-inquilinos';
-import { usePropiedades, useMercado, useCobranza } from '@/lib/api/hooks';
+import { usePropiedades, useMercado, useCobranza, usePropietarios } from '@/lib/api/hooks';
+import { rotuloPrincipal, rotuloSecundario } from '@/lib/rotulo-propiedad';
+import { CuentaCobranzaDialog } from '@/components/cuenta-cobranza-dialog';
 import {
   calcularMora,
   descripcionMora,
@@ -37,6 +39,7 @@ import {
 } from '@/components/mora-selector';
 import { contratoExtraidoMock } from '@/lib/mock-data';
 import { formatFechaCorta, formatMonto, formatTotalPorMoneda } from '@/lib/format';
+import { rotuloEnLinea } from '@/lib/rotulo-propiedad';
 import type {
   ContratoExtraido,
   IndiceAjuste,
@@ -570,8 +573,10 @@ function PasoConfirmar({
           Listo para dar de alta
         </CardTitle>
         <CardDescription>
+          {/* La invitación existe y se manda de verdad, pero por MAIL
+              (enviarInvitacionInquilino, core.ts). Decía WhatsApp. */}
           Revisá un último resumen antes de confirmar. Generamos la primera
-          liquidación y mandamos invitación al inquilino por WhatsApp.
+          liquidación y le mandamos la invitación al inquilino por mail.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
@@ -1004,6 +1009,14 @@ function CargarContratoApiWizard() {
   const [confirmando, setConfirmando] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [errorServidor, setErrorServidor] = useState<string | null>(null);
+  // Id del propietario al que le falta la cuenta de cobranza directa, cuando el alta
+  // rebota por eso. Habilita resolverlo SIN salir del wizard (ver el banner de error).
+  const [faltaCuentaPropId, setFaltaCuentaPropId] = useState<string | null>(null);
+  const [cuentaDialogOpen, setCuentaDialogOpen] = useState(false);
+  const { propietarios } = usePropietarios();
+  const propietarioSinCuenta = faltaCuentaPropId
+    ? (propietarios.find((p) => p.id === faltaCuentaPropId) ?? null)
+    : null;
   const [cancelarAbierto, setCancelarAbierto] = useState(false);
 
   // Sólo se puede dar de alta sobre propiedades DISPONIBLES: una ALQUILADA ya
@@ -1479,7 +1492,14 @@ function CargarContratoApiWizard() {
       // alta falló (ej. 409 porque la propiedad se ocupó), la persona tiene
       // que poder reintentar sin perder lo que cargó.
       if (namespaceBorrador) borrarBorradorContrato(namespaceBorrador);
-      router.push('/contratos');
+      // AL CONTRATO RECIÉN CREADO, no a la lista. Camila (03/08): "de un lado tenés que
+      // entrar a propiedades, después el otro tenés que ir al contrato, después lo otro
+      // tenés que ir al inquilino, yo me pierdo". Terminar el alta y caer en una tabla
+      // donde hay que BUSCAR lo que acabás de cargar es ese mismo laberinto.
+      // `creado.id` ya se venía usando acá arriba para subir los documentos; sólo que
+      // después se descartaba. Vale también para el contrato que queda PENDIENTE de
+      // aprobación: su detalle es justamente donde se ve que está pendiente.
+      router.push(`/contratos/${creado.id}`);
     } catch (e) {
       // Mostramos el mensaje del server (ej. 409 propiedad ya tiene contrato).
       const msg =
@@ -1487,6 +1507,14 @@ function CargarContratoApiWizard() {
           ? e.message
           : 'No pudimos dar de alta el contrato. Reintentá en un momento.';
       setErrorServidor(msg);
+      // Cobranza directa sin cuenta del dueño: en vez de dejar al operador con un
+      // "andá a la ficha del propietario" (que lo saca del alta), guardamos a quién le
+      // falta para ofrecerle cargarla acá mismo y reintentar.
+      setFaltaCuentaPropId(
+        datoDeError<string>(e, 'codigo') === 'FALTA_CUENTA_COBRANZA'
+          ? (datoDeError<string>(e, 'propietarioId') ?? null)
+          : null,
+      );
       setEnviando(false);
       setConfirmando(false);
       toast({
@@ -1534,11 +1562,81 @@ function CargarContratoApiWizard() {
           </Button>
         </div>
 
+        {/* Desde el paso 2 la propiedad elegida en el paso 1 desaparecía de la
+            pantalla y la operadora perdía de vista en qué inmueble estaba
+            cargando el contrato (se daba cuenta recién al confirmar, o volvía
+            atrás para chequear). La dejamos fija arriba, en los mismos
+            términos en que la inmobiliaria la reconoce (rotuloPrincipal).
+
+            Los márgenes negativos la sangran hasta el borde del <main>, que tiene
+            p-4/p-6: sin eso el fondo sólido cubre sólo la caja y, al scrollear, el
+            contenido se ve pasar por los costados de una barra que se supone fija. */}
+        {paso > 1 && propiedadElegida && (
+          <div className="sticky top-0 z-10 -mx-4 flex items-center justify-between gap-3 border-b bg-background px-4 py-2 md:-mx-6 md:px-6">
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <Home className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">
+                  {rotuloPrincipal(propiedadElegida.propiedad)}
+                </p>
+                {rotuloSecundario(propiedadElegida.propiedad) && (
+                  <p className="truncate text-xs text-muted-foreground">
+                    {rotuloSecundario(propiedadElegida.propiedad)}
+                  </p>
+                )}
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="shrink-0"
+              onClick={() => setPaso(1)}
+            >
+              Cambiar
+            </Button>
+          </div>
+        )}
+
         {errorServidor && (
           <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-            <span>{errorServidor}</span>
+            <div className="space-y-2">
+              <span>{errorServidor}</span>
+              {propietarioSinCuenta && (
+                <div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setCuentaDialogOpen(true)}
+                  >
+                    Cargar la cuenta de {propietarioSinCuenta.nombre} ahora
+                  </Button>
+                </div>
+              )}
+            </div>
           </div>
+        )}
+
+        {/* Resolver la cuenta del dueño sin abandonar el alta: al guardar, el operador
+            vuelve al mismo punto del wizard y sólo tiene que volver a confirmar. */}
+        {propietarioSinCuenta && (
+          <CuentaCobranzaDialog
+            open={cuentaDialogOpen}
+            onOpenChange={setCuentaDialogOpen}
+            propietario={propietarioSinCuenta}
+            onSaved={() => {
+              qc.invalidateQueries({ queryKey: ['propietarios'] });
+              setFaltaCuentaPropId(null);
+              setErrorServidor(null);
+              toast({
+                variant: 'success',
+                title: 'Cuenta cargada',
+                description: 'Ya podés confirmar el alta del contrato.',
+              });
+            }}
+          />
         )}
 
         {paso === 1 && (
@@ -1573,7 +1671,7 @@ function CargarContratoApiWizard() {
                     <SelectContent>
                       {disponibles.map((p) => (
                         <SelectItem key={p.propiedad.id} value={p.propiedad.id}>
-                          {p.propiedad.direccion} · {p.propiedad.ciudad}
+                          {rotuloEnLinea(p.propiedad)} · {p.propiedad.ciudad}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -1596,7 +1694,13 @@ function CargarContratoApiWizard() {
             <CardHeader>
               <CardTitle>Datos del inquilino</CardTitle>
               <CardDescription>
-                Sólo el nombre es obligatorio; el resto ayuda a contactarlo e invitarlo.
+                Sólo el nombre es obligatorio: podés dar de alta el contrato con lo que
+                tengas hoy y completar el resto después, desde el expediente.
+                {' '}
+                <strong className="font-medium text-foreground">
+                  La excepción es el email
+                </strong>{' '}
+                — sin él, el inquilino no puede entrar a la app.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -1740,6 +1844,19 @@ function CargarContratoApiWizard() {
                   {!!email.trim() && !emailInquilinoOk && (
                     <p className="text-[11px] text-destructive">
                       El email no tiene un formato válido (ej: nombre@correo.com).
+                    </p>
+                  )}
+                  {/* AVISA, NO BLOQUEA. El login del inquilino es OTP por email
+                      (/auth/otp/request busca por Inquilino.email): sin email no hay
+                      ninguna forma de que entre a la app — no es que "se complica",
+                      es que no puede. Pero cargar la cartera con los datos que la
+                      inmobiliaria tiene HOY es un caso legítimo, así que el alta sigue
+                      adelante y el hueco queda visible. */}
+                  {!email.trim() && (
+                    <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                      Sin email podés cargar el contrato igual, pero el inquilino no va a
+                      poder entrar a la app: el acceso es con un código que le llega por
+                      mail. Se lo podés agregar después.
                     </p>
                   )}
                   {personaId && email.trim() && (
@@ -2247,7 +2364,7 @@ function CargarContratoApiWizard() {
                   label="Propiedad"
                   value={
                     propiedadElegida
-                      ? `${propiedadElegida.propiedad.direccion} · ${propiedadElegida.propiedad.ciudad}`
+                      ? `${rotuloEnLinea(propiedadElegida.propiedad)} · ${propiedadElegida.propiedad.ciudad}`
                       : '—'
                   }
                   className="md:col-span-2"

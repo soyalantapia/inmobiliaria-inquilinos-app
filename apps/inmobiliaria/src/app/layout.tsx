@@ -10,7 +10,7 @@ const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
 
 export const metadata: Metadata = {
   title: 'My Alquiler — Panel inmobiliaria',
-  description: 'Cargá contratos con IA, cobrá automático, verificá inquilinos.',
+  description: 'Panel para inmobiliarias: contratos, cobranza en vivo, rendición a propietarios, reclamos y caja.',
 };
 
 export const viewport: Viewport = {

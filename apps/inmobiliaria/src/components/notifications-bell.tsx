@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   AlertTriangle,
@@ -14,6 +14,11 @@ import { Badge } from '@llave/ui/badge';
 import { cn } from '@llave/ui/cn';
 import { apiEnabled } from '@/lib/api/client';
 import { listarReclamos } from '@/lib/reclamos-store';
+import { useAResolverCount } from '@/lib/api/use-pagos';
+import { useAprobaciones, useMe } from '@/lib/api/hooks';
+import { useReclamos } from '@/lib/api/use-reclamos';
+import { rolTienePermiso } from '@/lib/permisos';
+import { normalizarRol } from '@/lib/rol-storage';
 
 interface Notif {
   id: string;
@@ -85,10 +90,101 @@ function buildNotifs(): Notif[] {
   return [...fromReclamos, ...sinteticas].slice(0, 8);
 }
 
+/**
+ * Notificaciones REALES del panel (prod).
+ *
+ * En producción la campana existía en la topbar y NO mostraba nunca nada
+ * (`buildNotifs` devolvía [] con apiEnabled). El efecto práctico es que la
+ * inmobiliaria no se enteraba de que había un pago informado esperando validación
+ * salvo que entrara a /pagos a mirar — reportado en la prueba del 03/08:
+ * "¿dónde tenés las notificaciones acá?" / "interno en la aplicación".
+ *
+ * Criterio: la campana NO es un log de lo que pasó, es **lo que está esperando una
+ * acción tuya**. Por eso sale de las tres colas que ya expone el API (pagos
+ * informados, aprobaciones pendientes, reclamos abiertos) y no de EventoAuditoria.
+ * Como son pendientes y no eventos, no se "marcan leídos": el badge baja solo
+ * cuando el trabajo se resolvió. Marcar leído algo que sigue pendiente sería
+ * justamente la forma de que se pierda de vista.
+ */
+function useNotifsProd(puede: { pagos: boolean; aprobaciones: boolean; reclamos: boolean }): Notif[] {
+  // Cada query se dispara SÓLO si el rol puede resolver ese pendiente. Sin esto, la campana
+  // —que vive en el topbar, o sea en todas las páginas— le pegaba un 403 por navegación a
+  // /pagos y /reclamos con un rol CARGA, que no tiene esas capacidades.
+  const { count: pagosPorValidar, isError: pagosError } = useAResolverCount({ enabled: puede.pagos });
+  const { aprobaciones } = useAprobaciones({ enabled: puede.aprobaciones });
+  const { reclamos } = useReclamos({ enabled: puede.reclamos });
+
+  return useMemo(() => {
+    if (!apiEnabled) return [];
+    const out: Notif[] = [];
+
+    // isError ⇒ el count es un 0 FALSO. Preferimos no decir nada antes que decir
+    // "no tenés nada pendiente" cuando en realidad no pudimos preguntar.
+    if (puede.pagos && !pagosError && pagosPorValidar > 0) {
+      out.push({
+        id: 'n-pagos-validar',
+        titulo: `${pagosPorValidar} pago${pagosPorValidar === 1 ? '' : 's'} esperando que lo valides`,
+        detalle: 'El inquilino ya informó la transferencia',
+        href: '/pagos',
+        cuando: 'ahora',
+        unread: true,
+        icono: 'card',
+      });
+    }
+
+    const aprobPend = puede.aprobaciones
+      ? aprobaciones.filter((a) => a.estado === 'PENDIENTE').length
+      : 0;
+    if (aprobPend > 0) {
+      out.push({
+        id: 'n-aprobaciones',
+        titulo: `${aprobPend} carga${aprobPend === 1 ? '' : 's'} esperando tu aprobación`,
+        detalle: 'Revisá qué se cargó antes de aprobar',
+        href: '/pagos?tab=aprobaciones',
+        cuando: 'ahora',
+        unread: true,
+        icono: 'check',
+      });
+    }
+
+    const abiertos = puede.reclamos
+      ? (reclamos ?? []).filter((r) => r.estado === 'ABIERTO' || r.estado === 'EN_CURSO').length
+      : 0;
+    if (abiertos > 0) {
+      out.push({
+        id: 'n-reclamos',
+        titulo: `${abiertos} reclamo${abiertos === 1 ? '' : 's'} sin resolver`,
+        detalle: 'Asignale un profesional o resolvelo',
+        href: '/reclamos',
+        cuando: 'ahora',
+        unread: true,
+        icono: 'wrench',
+      });
+    }
+
+    return out;
+  }, [puede, pagosPorValidar, pagosError, aprobaciones, reclamos]);
+}
+
 export function NotificationsBell() {
   const [open, setOpen] = useState(false);
   const [notifs, setNotifs] = useState<Notif[]>([]);
   const popoverRef = useRef<HTMLDivElement>(null);
+  const { me } = useMe();
+
+  // La campana lista lo que este usuario PUEDE RESOLVER, no lo que puede mirar. Un rol
+  // CARGA no concilia pagos, no aprueba y no gestiona reclamos: para él la campana está
+  // vacía, y además no dispara ninguna de las tres queries.
+  const puede = useMemo(() => {
+    const rol = normalizarRol(me?.rol, 'LECTURA');
+    return {
+      pagos: rolTienePermiso(rol, 'pago.conciliar'),
+      aprobaciones: rolTienePermiso(rol, 'contrato.aprobar'),
+      reclamos: rolTienePermiso(rol, 'reclamos.gestionar'),
+    };
+  }, [me?.rol]);
+
+  const notifsProd = useNotifsProd(puede);
 
   useEffect(() => {
     setNotifs(buildNotifs());
@@ -114,7 +210,10 @@ export function NotificationsBell() {
     };
   }, [open]);
 
-  const unreadCount = notifs.filter((n) => n.unread).length;
+  // En prod la lista son PENDIENTES derivados del API (no eventos guardados), así que
+  // no hay estado local de leído: la campana se vacía cuando el trabajo se resolvió.
+  const lista = apiEnabled ? notifsProd : notifs;
+  const unreadCount = lista.filter((n) => n.unread).length;
 
   const marcarTodoLeido = () => {
     setNotifs((prev) => prev.map((n) => ({ ...n, unread: false })));
@@ -142,7 +241,7 @@ export function NotificationsBell() {
         <div role="dialog" aria-label="Notificaciones" className="absolute right-0 top-12 z-50 w-80 rounded-lg border bg-popover text-popover-foreground shadow-lg sm:w-96">
           <div className="flex items-center justify-between border-b p-3">
             <p className="text-sm font-semibold">Notificaciones</p>
-            {unreadCount > 0 && (
+            {unreadCount > 0 && !apiEnabled && (
               <button
                 type="button"
                 onClick={marcarTodoLeido}
@@ -153,12 +252,12 @@ export function NotificationsBell() {
             )}
           </div>
           <ul role="list" aria-label="Notificaciones" className="max-h-96 overflow-y-auto">
-            {notifs.length === 0 && (
+            {lista.length === 0 && (
               <li className="p-6 text-center text-sm text-muted-foreground">
-                No tenés notificaciones nuevas.
+                {apiEnabled ? 'No tenés nada esperando tu acción.' : 'No tenés notificaciones nuevas.'}
               </li>
             )}
-            {notifs.map((n) => {
+            {lista.map((n) => {
               const Icon = ICONS[n.icono];
               return (
                 <li key={n.id}>

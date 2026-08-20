@@ -4,12 +4,12 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Isotipo } from './isotipo';
 import {
+  ClipboardList,
   ArrowLeftRight,
   BadgeCheck,
   CircleHelp,
   FileText,
   Receipt,
-  Sparkles,
   User,
   Wallet,
   Wrench,
@@ -26,16 +26,19 @@ interface NavItem {
   icon: LucideIcon;
 }
 
-// El Asistente IA va en el CENTRO (índice 2 de 5) y se renderiza como botón
-// elevado (FAB) en el bottom-nav mobile: es el diferenciador del producto y
-// el patrón moderno de navegación. El orden agrupa lo "de plata" a la
-// izquierda (Inicio, Pagos) y lo documental a la derecha (Contrato, Reclamos).
+// El ítem del CENTRO (índice 2 de 5) se renderiza como botón elevado (FAB) en el bottom-nav
+// mobile. El orden agrupa lo "de plata" a la izquierda (Inicio, Pagos) y lo documental a la
+// derecha (Contrato, Reclamos), con la acción de crear en el medio.
 const itemsPrimarios: NavItem[] = [
   { href: '/', label: 'Inicio', icon: Wallet },
   { href: '/comprobantes', label: 'Pagos', icon: Receipt },
-  { href: '/broker', label: 'Asistente', icon: Sparkles },
+  // El lugar más caro de la pantalla llevaba a "/broker", que en producción es un cartel de
+  // "Próximamente": no hay ningún LLM en el monorepo y el chat es un simulacro que sólo existe
+  // en el build demo. Ahora es la acción real más frecuente que un inquilino necesita a un
+  // toque desde cualquier pantalla — y es la semántica clásica de un FAB: crear algo.
+  { href: '/reclamos/nuevo', label: 'Reportar', icon: Wrench },
   { href: '/contrato', label: 'Contrato', icon: FileText },
-  { href: '/reclamos', label: 'Reclamos', icon: Wrench },
+  { href: '/reclamos', label: 'Reclamos', icon: ClipboardList },
 ];
 
 const itemsSecundarios: NavItem[] = [
@@ -52,7 +55,7 @@ function isActive(pathname: string, href: string): boolean {
 
 export function NavBar() {
   const pathname = usePathname() ?? '/';
-  // El ítem del medio (Asistente) se renderiza como botón central elevado.
+  // El ítem del medio se renderiza como botón central elevado.
   const centerIndex = Math.floor(itemsPrimarios.length / 2);
   return (
     <nav
@@ -64,9 +67,8 @@ export function NavBar() {
           const active = isActive(pathname, item.href);
           const Icon = item.icon;
 
-          // Botón central elevado (FAB): el Asistente IA, diferenciador del
-          // producto. Sobresale por encima del borde del nav; el anillo del
-          // color de fondo crea el efecto "notch" alrededor del círculo.
+          // Botón central elevado (FAB). Sobresale por encima del borde del nav; el anillo
+          // del color de fondo crea el efecto "notch" alrededor del círculo.
           if (i === centerIndex) {
             return (
               <li key={item.href} className="flex flex-1 justify-center">

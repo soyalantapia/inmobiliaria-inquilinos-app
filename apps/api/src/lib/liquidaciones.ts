@@ -23,6 +23,23 @@ export type ContratoParaLiquidar = {
    * cobrar. Requerido, el compilador no deja que un caller nuevo se lo saltee.
    */
   devengarDesde: Date | null;
+  /**
+   * Qué se le factura a este contrato. `SOLO_EXPENSAS` = no devenga alquiler nunca.
+   *
+   * OBLIGATORIO por la misma razón que `devengarDesde`: hasta ahora el devengo no lo
+   * recibía, y un contrato de solo expensas daba alquiler 0 **por casualidad**, sólo porque
+   * `contrato.monto` había quedado en 0. No había ninguna defensa: cualquier camino que
+   * escribiera un canon positivo (ajustar, renovar, un alta con monto) hacía que el cron le
+   * facturara alquiler a alguien que no paga alquiler. Requerido, así el compilador no deja
+   * que un caller nuevo se lo saltee.
+   *
+   * El síntoma observable, que es lo que lo hacía difícil de ver: `PATCH /contratos/:id/monto`
+   * exige un monto POSITIVO, lo guarda en `contrato.monto` y recién después llama a
+   * `recomputarLiquidacionesFuturas`, que sí respetaba el tipo y dejaba las cuotas futuras en
+   * 0. Pero `contrato.monto` quedaba positivo, así que la SIGUIENTE corrida del cron volvía a
+   * generar cuotas con alquiler > 0. O sea: **el ajuste se "deshacía solo" seis horas después.**
+   */
+  tipoContrato: 'ALQUILER' | 'SOLO_EXPENSAS' | 'ALQUILER_Y_EXPENSAS';
 };
 
 /**
@@ -86,7 +103,15 @@ export function computarLiquidacionesContrato(
   return enumerarPeriodosContrato(contrato, now).map((p) => {
     // Canon POR PERÍODO: un ajuste/renovación con vigencia futura no puede cobrarle el
     // canon nuevo a los meses intermedios, que todavía son del viejo.
-    const alquiler = canonDelPeriodo(p.periodo, montoActual, vigencias);
+    // `montoAlquilerSegunTipo` va DESPUÉS de resolver el canon del período, no antes: un
+    // SOLO_EXPENSAS tiene que dar 0 aunque el contrato haya quedado con un canon positivo
+    // (por un ajuste viejo, una renovación, o un alta mal cargada). Es la única defensa del
+    // devengo: antes dependía de que `contrato.monto` valiera 0. Es la misma regla que ya
+    // aplicaba `recomputarLiquidacionesFuturas`; acá faltaba, y por eso las dos divergían.
+    const alquiler = montoAlquilerSegunTipo(
+      contrato.tipoContrato,
+      canonDelPeriodo(p.periodo, montoActual, vigencias),
+    );
     return {
       inmobiliariaId: contrato.inmobiliariaId,
       contratoId: contrato.id,
@@ -239,6 +264,9 @@ export async function devengarTodosLosTenants(
       // Sin esto el cron devengaba desde fechaInicio e ignoraba la decisión de la
       // importación de cartera → resucitaba los meses históricos como deuda falsa.
       devengarDesde: true,
+      // Sin esto el barrido no sabe que un SOLO_EXPENSAS no factura alquiler y le devenga
+      // el canon que haya quedado en el contrato. Ver ContratoParaLiquidar.
+      tipoContrato: true,
       fechaFin: true,
       diaPago: true,
     },
@@ -366,6 +394,58 @@ export function recomputarLiquidacionesFuturas(
     if (l.cantidadPagos > 0) continue;
     const expensas = l.montoExpensas != null ? Number(l.montoExpensas) : 0;
     out.push({ id: l.id, montoAlquiler: alquilerNuevo, montoTotal: alquilerNuevo + expensas });
+  }
+  return out;
+}
+
+/** Igual que `LiquidacionParaReajustar`, pero del lado de las EXPENSAS: acá el
+ *  alquiler es lo que se conserva y las expensas lo que cambia. */
+export type LiquidacionParaReexpensar = {
+  id: string;
+  periodo: string;
+  estado: 'PENDIENTE' | 'PAGADO' | 'PARCIAL' | 'VENCIDO';
+  montoAlquiler: Prisma.Decimal | number;
+  montoExpensas: Prisma.Decimal | number | null;
+  /** Cantidad de pagos (de cualquier estado) asociados a la liquidación. */
+  cantidadPagos: number;
+};
+
+/**
+ * Espejo de `recomputarLiquidacionesFuturas` para un cambio de EXPENSAS.
+ *
+ * Las expensas suben todos los meses, así que esto se usa seguido — y por eso
+ * comparte el criterio conservador del ajuste de canon, línea por línea:
+ *
+ *  - período >= mes actual: no se tocan meses pasados (el inquilino ya vio ese
+ *    valor y probablemente lo pagó);
+ *  - estado PENDIENTE o VENCIDO: no se tocan PAGADO ni PARCIAL;
+ *  - sin ningún pago asociado: aunque siga PENDIENTE, si hay un pago INFORMADO
+ *    en revisión el inquilino ya informó contra el total que vio.
+ *
+ * La diferencia con el ajuste de canon es cuál de los dos montos se conserva:
+ * acá el `montoAlquiler` de CADA liquidación queda como está (puede diferir del
+ * canon del contrato si hubo un ajuste con vigencia futura) y sólo se pisa la
+ * parte de expensas. Devuelve sólo las que cambian.
+ */
+export function recomputarExpensasFuturas(
+  liquidaciones: LiquidacionParaReexpensar[],
+  params: { expensasNuevas: number; periodoActual: string },
+): Array<{ id: string; montoExpensas: number; montoTotal: number }> {
+  const out: Array<{ id: string; montoExpensas: number; montoTotal: number }> = [];
+  for (const l of liquidaciones) {
+    // Comparación lexicográfica de 'YYYY-MM': correcta porque ambos tienen el
+    // mismo formato ancho-fijo.
+    if (l.periodo < params.periodoActual) continue;
+    if (l.estado !== 'PENDIENTE' && l.estado !== 'VENCIDO') continue;
+    if (l.cantidadPagos > 0) continue;
+    const expensasViejas = l.montoExpensas != null ? Number(l.montoExpensas) : 0;
+    if (expensasViejas === params.expensasNuevas) continue;
+    const alquiler = Number(l.montoAlquiler);
+    out.push({
+      id: l.id,
+      montoExpensas: params.expensasNuevas,
+      montoTotal: alquiler + params.expensasNuevas,
+    });
   }
   return out;
 }

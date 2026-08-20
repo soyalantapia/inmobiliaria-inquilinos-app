@@ -32,6 +32,11 @@ datasource db {
 
 enum Rol {
   ADMIN
+  // Puesto de mostrador: confirma/rechaza los pagos que informan los inquilinos, carga
+  // cobros en efectivo y mueve la caja. Pedido explícito de la administradora
+  // (prueba del 03/08): antes conciliar era de OPERADOR, o sea que cualquiera del día
+  // a día daba plata por cobrada. Ver packages/shared/src/permisos.ts.
+  CAJA
   OPERADOR
   CARGA
   LECTURA
@@ -212,6 +217,9 @@ enum EstadoScreening {
 enum TipoEventoContrato {
   CREADO
   AJUSTE_APLICADO
+  // Valor propio: antes la renovación reusaba AJUSTE_APLICADO porque no había otro,
+  // y en el timeline una renovación y un ajuste de canon se veían iguales.
+  RENOVACION
   PAGO_RECIBIDO
   PAGO_VENCIDO
   RECLAMO_CREADO
@@ -330,6 +338,13 @@ enum TipoEventoAuditoria {
   MODO_COBRANZA_CAMBIADO
   MORA_EDITADA
   MOVIMIENTO_CONSORCIO_ELIMINADO
+  // Conmutador de usuarios (T-25). Son la defensa REAL del feature: un PIN de 5 dígitos
+  // tipeado en un mostrador no es un secreto fuerte, pero cada cambio y cada intento
+  // rechazado quedan acá y el ADMIN los ve en /auditoria.
+  SESION_CONMUTADA
+  CONMUTACION_RECHAZADA
+  PIN_DESBLOQUEADO
+  PIN_ELIMINADO
 }
 
 enum GrupoCapacidad {
@@ -664,12 +679,14 @@ model Inmobiliaria {
   updatedAt             DateTime @updatedAt
 
   usuarios                   Usuario[]
+  destinatariosAviso         DestinatarioAviso[]
   sociedades                 Sociedad[]
   propietarios               Propietario[]
   arcaConfigs                ArcaConfig[]
   cuentasCobranzaDirecta     CuentaCobranzaDirecta[]
   propiedades                Propiedad[]
   participaciones            ParticipacionPropietario[]
+  cambiosParticipacion       CambioParticipacion[]
   contratos                  Contrato[]
   contratoDrafts             ContratoDraft[]
   inquilinos                 Inquilino[]
@@ -864,6 +881,58 @@ model CodigoOtpUsuario {
 
   @@index([usuarioId])
   @@map("codigos_otp_usuario")
+}
+
+/// OTP de login del PORTAL DEL PROPIETARIO. Tercer gemelo de CodigoOtp, keyed a
+/// `propietarioId`: el propietario no tiene contraseña, entra con email + código.
+/// Se separa por modelo (y no una tabla genérica con un `tipo`) para conservar la FK
+/// real: un código huérfano que apunte a un id de otra tabla no es representable.
+/// A qué casilla va cada TIPO de aviso automático de la inmobiliaria.
+///
+/// POR QUÉ: hasta ahora todos los avisos iban a `Inmobiliaria.email`, una sola casilla. Camila
+/// administra 220 propiedades: *"me va a llegar un mail por cada reclamo… y todos van a mi misma
+/// casilla, no a la de la chica que los maneja. Habría que poder decir a quién le llega cada
+/// cosa."* Su bandeja se llena de avisos que no va a accionar, y quien tiene que accionarlos no
+/// se entera.
+///
+/// FALLBACK: la ausencia de fila significa "usá `Inmobiliaria.email`", que es el comportamiento
+/// de siempre. Por eso no hay `activo` ni default sembrado: no configurar nada deja todo como
+/// estaba, y borrar la fila vuelve atrás.
+model DestinatarioAviso {
+  id             String        @id @default(cuid())
+  inmobiliariaId String
+  inmobiliaria   Inmobiliaria  @relation(fields: [inmobiliariaId], references: [id])
+  tipo           TipoAvisoInmo
+  email          String
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@unique([inmobiliariaId, tipo])
+  @@map("destinatarios_aviso")
+}
+
+/// Tipos de aviso automático que recibe la INMOBILIARIA (no el inquilino ni el propietario).
+///
+/// Arranca con uno solo a propósito: `RECLAMO_NUEVO` es, hoy, el único aviso por mail que el
+/// sistema le manda a la inmobiliaria (`avisos-reclamo.ts`). Listar acá tipos que todavía no
+/// mandan nada sería ofrecer una configuración que no hace nada — el mismo patrón de promesa
+/// vacía que este proyecto viene sacando de todas las pantallas. Cuando se agregue un aviso
+/// nuevo, se agrega su valor acá.
+enum TipoAvisoInmo {
+  RECLAMO_NUEVO
+}
+
+model CodigoOtpPropietario {
+  id            String      @id @default(cuid())
+  propietarioId String
+  propietario   Propietario @relation(fields: [propietarioId], references: [id])
+  codeHash      String
+  expiresAt     DateTime
+  usedAt        DateTime?
+  createdAt     DateTime    @default(now())
+
+  @@index([propietarioId])
+  @@map("codigos_otp_propietario")
 }
 
 model ReportePiloto {
@@ -1126,6 +1195,12 @@ model Propietario {
   cbuAlias       String? // null => alerta 'sin CBU no podemos rendir'
   comisionPct    Float        @default(8)
   notas          String?
+  // Baja lógica, misma convención que Sociedad.activa y Usuario.activo. NO se
+  // borra la fila: un propietario dado de baja conserva su historial de
+  // rendiciones, que es plata que ya se movió. Lo que corta es el acceso al
+  // portal — requirePropietario lo revalida en cada request, que es la única
+  // revocación real que tiene un token de 7 días sin denylist.
+  activo         Boolean      @default(true)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
@@ -1135,6 +1210,7 @@ model Propietario {
   participaciones          ParticipacionPropietario[]
   rendiciones              Rendicion[]
   contratosCobranzaDirecta Contrato[]                 @relation("CobranzaDirecta")
+  codigosOtp               CodigoOtpPropietario[]
 
   @@index([inmobiliariaId])
   @@map("propietarios")
@@ -1229,6 +1305,47 @@ model Propiedad {
 
 // Cotitularidad: Σ porcentaje por propiedad = 100 ± 0.5 (valida el API).
 // Sin filas explícitas => reparto igualitario.
+/// Cada vez que cambia el reparto de una propiedad, una fila. APPEND-ONLY: nunca se edita ni
+/// se borra.
+///
+/// POR QUÉ: hoy no existe ningún rastro de cuándo alguien pasó a ser dueño de una unidad —
+/// `ParticipacionPropietario` sólo guarda la foto de HOY, sin `desde`/`hasta`. Sin ese dato, el
+/// portal del propietario no puede recortar lo que muestra a "desde que sos dueño", y un
+/// comprador ve el historial completo del inquilino anterior (T-23-N3).
+///
+/// POR QUÉ NO `EventoAuditoria`: ese log es **best-effort declarado** (`lib/auditoria.ts`:
+/// try/catch que se traga su propio error, y corre DESPUÉS del commit). Un recorte que protege
+/// datos de un tercero no puede colgar de algo que puede no escribirse. Esta tabla se escribe
+/// DENTRO de la misma transacción que el reparto: si no se registra, el reparto tampoco cambia.
+///
+/// SEMÁNTICA DE LOS NULOS:
+///   `porcentajeAnterior` null = **entró** (no tenía participación antes)
+///   `porcentajeNuevo`    null = **salió** (dejó de tener participación)
+///
+/// TABLA VACÍA = "toda participación existente se considera vigente desde siempre". El pasado
+/// no tiene dato y no se inventa: sólo se registra de acá en adelante.
+model CambioParticipacion {
+  id                  String       @id @default(cuid())
+  inmobiliariaId      String
+  inmobiliaria        Inmobiliaria @relation(fields: [inmobiliariaId], references: [id])
+  /// Sin FK, igual que `autorId` y que `AlquilerRendido.propiedadId`: el rastro tiene que
+  /// SOBREVIVIR al borrado de la propiedad o del propietario, no bloquearlo. Con una FK
+  /// RESTRICT, borrar una propiedad que alguna vez cambió de reparto tiraba 500 (el
+  /// `$transaction` del DELETE no limpia esta tabla, ni debería); con CASCADE, el historial
+  /// moría con ella — que es justo lo que no puede perderse.
+  propiedadId         String
+  propietarioId       String
+  porcentajeAnterior  Float?
+  porcentajeNuevo     Float?
+  aplicadoAt          DateTime     @default(now())
+  /// Quién lo hizo. Sin FK a propósito: si el usuario se borra, el rastro no se puede perder.
+  autorId             String?
+
+  @@index([inmobiliariaId])
+  @@index([propiedadId, propietarioId, aplicadoAt])
+  @@map("cambios_participacion")
+}
+
 model ParticipacionPropietario {
   inmobiliariaId String
   inmobiliaria   Inmobiliaria @relation(fields: [inmobiliariaId], references: [id])
@@ -1785,8 +1902,17 @@ model MovimientoCaja {
   id                    String             @id @default(cuid())
   inmobiliariaId        String
   inmobiliaria          Inmobiliaria       @relation(fields: [inmobiliariaId], references: [id])
-  propiedadId           String
-  propiedad             Propiedad          @relation(fields: [propiedadId], references: [id])
+  // NULL = gasto/ingreso PROPIO de la inmobiliaria, no imputable a ninguna propiedad
+  // (alquiler de la oficina, sueldos, un adelanto entre cajas). Pedido en la prueba del
+  // 03/08: "sí o sí tengo que elegir una propiedad" / "poder mover una caja igual sin
+  // que tenga que depender de una propiedad".
+  //
+  // CONSECUENCIA DE PLATA, deliberada: la rendición filtra los gastos por
+  // `propiedadId IN propIdsConIngreso` (plata.ts), así que un movimiento sin propiedad
+  // NUNCA se le descuenta a un propietario. Es correcto: es un gasto de la
+  // inmobiliaria, no de la propiedad de nadie. Sí entra al cierre de caja del día.
+  propiedadId           String?
+  propiedad             Propiedad?         @relation(fields: [propiedadId], references: [id])
   contratoId            String?
   contrato              Contrato?          @relation(fields: [contratoId], references: [id])
   tipo                  TipoMovimientoCaja
@@ -1879,6 +2005,10 @@ model Rendicion {
   // Ingresos extra de caja (INGRESO_EXTRA) del período que SUMAN al dueño.
   totalIngresos  Decimal         @default(0) @db.Decimal(14, 2)
   montoNeto      Decimal         @db.Decimal(14, 2)
+  // La moneda en la que se rindió. El handler ya la calcula (`monedaRendicion`) y rechaza con
+  // 409 si el propietario tiene cobros en varias, pero no la guardaba: aguas abajo nadie podía
+  // saberla, y el portal del propietario mostraba los dólares con signo de pesos.
+  moneda         Moneda          @default(ARS)
   rendidoAt      DateTime        @default(now())
   metodo         MetodoRendicion
   notas          String?

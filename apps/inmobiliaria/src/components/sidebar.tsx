@@ -23,7 +23,6 @@ import {
   Landmark,
   Users,
   Wallet,
-  WalletCards,
   Wrench,
   ScrollText,
   Bug,
@@ -32,7 +31,7 @@ import {
 import { listarPendientes } from '@/lib/aprobaciones-storage';
 import { apiEnabled, setToken } from '@/lib/api/client';
 import { cargarSociedades } from '@/lib/api/use-sociedades';
-import { limpiarSociedadesCache } from '@/lib/sociedades-storage';
+import { limpiarEstadoDeSesion } from '@/lib/sesion-limpieza';
 import { useAprobaciones, useMe } from '@/lib/api/hooks';
 import { cn } from '@llave/ui/cn';
 import { CountBadge } from '@/components/count-badge';
@@ -97,8 +96,14 @@ const links: NavLink[] = [
   // "Caja" a secas se confundía con la caja del día y con Cuentas; el ícono de
   // "Depósitos" es un banco, y para una recepcionista un depósito es primero un
   // depósito bancario, no la garantía del inquilino.
-  { href: '/caja', label: 'Caja de gastos', icon: Wallet, capacidad: 'caja.ver', grupo: 'Plata' },
-  { href: '/cuentas', label: 'Cuentas', icon: WalletCards, capacidad: 'cuentas.ver', grupo: 'Plata' },
+  // "Cuentas" era un ítem HERMANO de éste y ahí nacía la queja de Camila (03/08): fue a caja
+  // buscando las cuentas y no estaban, porque vivían en una pantalla aparte. Ahora son una
+  // pestaña adentro de /caja, y el ítem duplicado se saca — dejarlo sería mantener la misma
+  // confusión con un click extra. `/cuentas` sigue existiendo como ruta por si alguien la
+  // tiene en favoritos, sólo que ya no se ofrece desde el menú.
+  // Sin riesgo de perder acceso: `caja.ver` y `cuentas.ver` tienen exactamente los mismos
+  // roles (permisos.ts:122-123), así que nadie ve una y no la otra.
+  { href: '/caja', label: 'Caja y cuentas', icon: Wallet, capacidad: 'caja.ver', grupo: 'Plata' },
   { href: '/depositos', label: 'Depósitos de garantía', icon: Landmark, capacidad: 'contratos.ver', grupo: 'Plata' },
 
   /* ---- Seguimiento ---- */
@@ -138,11 +143,17 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
   // dueño — sacar el avatar del header).
   const cerrarSesion = () => {
     setToken(null);
-    // Limpiar el cache de sociedades: es dato del TENANT, no de la app. En una PC
-    // compartida (el mostrador de la inmobiliaria) el siguiente que entraba heredaba la
-    // razón social y el CUIT del anterior y los imprimía en sus PDF de cobranza.
-    limpiarSociedadesCache();
-    router.replace('/login');
+    // Antes acá se limpiaba UNA sola clave (el cache de sociedades) con este comentario: "en una
+    // PC compartida el siguiente que entraba heredaba la razón social y el CUIT del anterior y
+    // los imprimía en sus PDF de cobranza". El diagnóstico era correcto y el arreglo cubría una
+    // de las 34 claves `llave-inmo:`; las otras 33 —caja, rendiciones, aprobaciones, el borrador
+    // de contrato— seguían pasando de una persona a la siguiente. `limpiarEstadoDeSesion` barre
+    // por prefijo, así que no se puede olvidar ninguna.
+    limpiarEstadoDeSesion();
+    // HARD nav y no `router.replace`: el QueryClient vive en el layout raíz y sobrevive a un soft
+    // nav, así que el que entraba después veía las pantallas pintadas con la caché en memoria del
+    // anterior. Mismo patrón que usa el conmutador y que la PWA en /mis-alquileres.
+    window.location.assign('/login');
   };
   const plan = calcularResumenPlan();
   const trial = leerTrial();
@@ -161,7 +172,7 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
   const pendientes = apiEnabled
     ? aprobaciones.filter((a) => a.estado === 'PENDIENTE').length
     : pendientesLocal;
-  const { me } = useMe();
+  const { me, isError: meError } = useMe();
 
   useEffect(() => {
     if (apiEnabled) return;
@@ -190,9 +201,14 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
   // secundarios). Mientras `me` carga, piso a LECTURA: nunca de más.
   const rol: Rol = apiEnabled ? normalizarRol(me?.rol, 'LECTURA') : rolDemo;
 
+  // Con /auth/me caído NO recortamos el menú en silencio: dos personas con el mismo rol
+  // veían paneles distintos según si su sesión había resuelto o no, y la que fallaba
+  // quedaba con el menú de LECTURA sin ninguna pista de por qué (reportado el 03/08:
+  // "las dos tienen diferentes cosas en el panel"). Mostramos todos los links y avisamos,
+  // que es honesto: el 403 del server sigue siendo la frontera real de permisos.
   const linksVisibles = links.filter(
     (l) =>
-      (!l.capacidad || rolTienePermiso(rol, l.capacidad)) &&
+      (!l.capacidad || meError || rolTienePermiso(rol, l.capacidad)) &&
       // "Verificar inquilino" OCULTO en prod (pedido del dueño 07/07): el
       // screening actual no funciona bien y se rehace la semana próxima. En el
       // build demo queda visible (ahí el mock anda y se usa para demos).
@@ -220,6 +236,12 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
           nav scrollea sola si no entra, y el footer (cuenta + Cerrar sesión)
           queda SIEMPRE visible abajo. */}
       <nav aria-label="Navegación principal" className="flex-1 space-y-1 overflow-y-auto p-3">
+        {meError && (
+          <div className="mb-2 rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-900 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
+            No pudimos cargar tu perfil, así que el menú puede mostrarte cosas que tu rol no
+            permite. Recargá la página.
+          </div>
+        )}
         {(() => {
           // El padre NO se prende si otro ítem visible matchea la ruta exacta.
           // Sin esto, en /profesionales/red se prendían las dos filas a la vez

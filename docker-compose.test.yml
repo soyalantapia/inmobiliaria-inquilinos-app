@@ -1,0 +1,52 @@
+# Postgres efímera para correr los tests de integración de apps/api.
+#
+# POR QUÉ EXISTE. Hoy los tests de integración no se pueden correr en el día a día: la única
+# base disponible es una remota compartida, y `seedBase` la reescribe — o sea que correr los
+# tests se lleva puesto a quien esté trabajando contra ella. Y sin `apps/api/.env` ni siquiera
+# arrancan: fallan con un ZodError de env antes de tocar la red. El resultado es que ~60
+# archivos de test viven en el repo y nadie los corre, incluidos los de plata (T-28) y el
+# aislamiento del portal (T-23-N1).
+#
+# Esto levanta una Postgres local, descartable, que no la comparte nadie.
+#
+#   docker compose -f docker-compose.test.yml up -d
+#   export DATABASE_URL='postgresql://postgres:postgres@localhost:55432/myalquiler_test'
+#   cd apps/api && ./node_modules/.bin/prisma migrate deploy && ./node_modules/.bin/vitest run
+#   docker compose -f docker-compose.test.yml down -v      # -v borra el volumen
+#
+# El puerto es 55432 y no 5432 a propósito: si alguien tiene un Postgres local propio, esto no
+# se lo pisa.
+#
+# `tmpfs` para el datadir: la base vive en RAM y desaparece al bajar el contenedor. Es lo que
+# se quiere de una base de test —cada corrida arranca limpia— y de paso el seed vuela.
+#
+# SEGURIDAD: la contraseña es `postgres` y está escrita acá. Es deliberado y no es un secreto:
+# este contenedor sólo escucha en localhost, no tiene datos reales y se borra al terminar.
+# `apps/api/prisma/guard-db.ts` ya reconoce `localhost` como base de test y bloquea el seed
+# contra cualquier URL que no sepa identificar como tal.
+
+services:
+  postgres-test:
+    image: postgres:16-alpine
+    container_name: myalquiler-postgres-test
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: myalquiler_test
+      # Sin fsync ni checkpoints prolijos: es una base descartable, queremos velocidad.
+      POSTGRES_INITDB_ARGS: '--no-sync'
+    command: >
+      postgres
+      -c fsync=off
+      -c synchronous_commit=off
+      -c full_page_writes=off
+    ports:
+      - '127.0.0.1:55432:5432'
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      # Los tests no tienen que arrancar antes de que la base acepte conexiones.
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d myalquiler_test']
+      interval: 2s
+      timeout: 3s
+      retries: 30

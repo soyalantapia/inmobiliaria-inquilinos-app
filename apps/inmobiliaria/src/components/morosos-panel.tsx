@@ -32,6 +32,7 @@ import {
 } from '@/lib/mock-data';
 import { consorciosMock } from '@/lib/consorcios-storage';
 import { diasHastaVencimiento, formatFechaCorta, formatMonto } from '@/lib/format';
+import { rotuloEnLinea } from '@/lib/rotulo-propiedad';
 
 /**
  * Plantillas de mensaje pre-armadas para cobranza. La inmo elige el
@@ -348,7 +349,7 @@ export function MorososPanel({ inmobiliaria = 'My Alquiler' }: Props) {
               <div className="rounded-md border bg-muted/40 p-2 text-xs">
                 <p className="font-medium">{mensaje.moroso.contrato.inquilino}</p>
                 <p className="text-muted-foreground">
-                  {mensaje.moroso.contrato.direccion} · {mensaje.moroso.dias} día
+                  {rotuloEnLinea(mensaje.moroso.contrato)} · {mensaje.moroso.dias} día
                   {mensaje.moroso.dias === 1 ? '' : 's'} de atraso
                 </p>
               </div>

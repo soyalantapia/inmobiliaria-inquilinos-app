@@ -70,7 +70,7 @@ function contarReclamosSinAsignar(): number {
 
 export function MobileBottomNav() {
   const pathname = usePathname() ?? '/';
-  const { me } = useMe();
+  const { me, isError: meError } = useMe();
   // rolDemo: solo build demo (sin API). En prod el rol sale de me.rol (abajo).
   const [rolDemo, setRolDemo] = useState<Rol>('ADMIN');
   const [pagosBadge, setPagosBadge] = useState(0);
@@ -104,7 +104,10 @@ export function MobileBottomNav() {
     return () => window.removeEventListener('storage', refrescar);
   }, [pathname]);
 
-  const puede = (c?: Capacidad) => !c || rolTienePermiso(rol, c);
+  // Igual que el sidebar: con /auth/me caído no recortamos en silencio (dejaría al
+  // usuario con la barra de LECTURA sin saber por qué). El 403 del server sigue siendo
+  // la frontera real.
+  const puede = (c?: Capacidad) => !c || meError || rolTienePermiso(rol, c);
   const izq = TABS_IZQ.filter((t) => puede(t.capacidad));
   const der = TABS_DER.filter((t) => puede(t.capacidad));
   const puedeCargar = rolTienePermiso(rol, 'propiedades.crear');

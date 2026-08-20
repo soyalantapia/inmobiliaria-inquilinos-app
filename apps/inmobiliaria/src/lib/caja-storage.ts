@@ -24,7 +24,13 @@ export type TipoMovimiento = 'GASTO' | 'INGRESO_EXTRA';
 
 export interface MovimientoCaja {
   id: string;
-  propiedadId: string;
+  /**
+   * null = movimiento PROPIO de la inmobiliaria (oficina, sueldos, entre cajas), no
+   * imputable a ninguna propiedad. Esos movimientos entran al cierre de caja del día
+   * pero NUNCA se le descuentan a un propietario en la rendición. Ver el comentario del
+   * campo en apps/api/prisma/schema.prisma.
+   */
+  propiedadId: string | null;
   contratoId: string | null;
   tipo: TipoMovimiento;
   categoria: CategoriaGasto;

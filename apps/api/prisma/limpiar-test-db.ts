@@ -28,16 +28,18 @@
  * hay ninguna razón para que corra en otro lado.
  */
 import { PrismaClient } from '@prisma/client';
+import { exigirDbDeTest } from './guard-db.js';
 
 const ID_SEED = /^[a-z]+_\d+$/; // cnt_001, prp_002, own_003…
 const esDelSeed = (id: string) => ID_SEED.test(id);
 
 async function main() {
-  const url = process.env.DATABASE_URL ?? '';
-  // Guard de seguridad: este script BORRA. Si la URL no es la de test, no corre.
-  if (/railway\.internal|myalquiler-db/.test(url)) {
-    throw new Error('DATABASE_URL apunta a producción. Este script sólo corre contra la DB de test.');
-  }
+  // Guard de seguridad: este script BORRA. Si la URL no es una base de test conocida,
+  // no corre. Antes el criterio estaba escrito acá adentro con un regex propio y
+  // `seedBase` no tenía ninguno: dos scripts destructivos con dos reglas distintas (una
+  // de ellas inexistente). Ahora los dos preguntan lo mismo, en `guard-db.ts`, y ese
+  // criterio falla cerrado ante una URL desconocida en vez de dejar pasar.
+  exigirDbDeTest('limpiar-test-db');
   const prisma = new PrismaClient();
   const borrado: string[] = [];
 

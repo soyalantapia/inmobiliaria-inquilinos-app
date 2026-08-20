@@ -12,6 +12,7 @@ export const contratosMock: ContratoListado[] = [
     id: 'cnt_001',
     inquilino: 'Mariela Sosa',
     direccion: 'Gorriti 4521, 3°B',
+    complejo: 'Complejo Lourdes',
     monto: 480000,
     moneda: 'ARS',
     estado: 'ACTIVO',
@@ -50,6 +51,7 @@ export const contratosMock: ContratoListado[] = [
     id: 'cnt_004',
     inquilino: 'Carlos Romero',
     direccion: 'Honduras 4490, PB',
+    complejo: 'Complejo Lourdes',
     monto: 720000,
     moneda: 'ARS',
     estado: 'ACTIVO',
@@ -62,6 +64,7 @@ export const contratosMock: ContratoListado[] = [
     id: 'cnt_005',
     inquilino: 'Ana Pereyra',
     direccion: 'Salguero 2240, 12°D',
+    complejo: 'Torres del Parque',
     monto: 850000,
     moneda: 'ARS',
     modoCobranza: 'PROPIETARIO_DIRECTO',
@@ -567,7 +570,7 @@ export const reclamosMock: Reclamo[] = [
     id: 'rec_001',
     contratoId: 'cnt_001',
     inquilino: 'Mariela Sosa',
-    direccion: 'Gorriti 4521, 3°B',
+    direccion: 'Complejo Lourdes · Gorriti 4521, 3°B',
     categoria: 'PLOMERIA',
     descripcion: 'Pierde la canilla del baño desde anoche. Goteo constante.',
     urgencia: 'MEDIA',
@@ -643,7 +646,7 @@ export const reclamosMock: Reclamo[] = [
     id: 'rec_003',
     contratoId: 'cnt_004',
     inquilino: 'Carlos Romero',
-    direccion: 'Honduras 4490, PB',
+    direccion: 'Complejo Lourdes · Honduras 4490, PB',
     categoria: 'ELECTRICIDAD',
     descripcion: 'Saltó el térmico de la cocina. Probé reset y no anda.',
     urgencia: 'EMERGENCIA',
@@ -736,7 +739,7 @@ export const reclamosMock: Reclamo[] = [
     id: 'rec_006',
     contratoId: 'cnt_001',
     inquilino: 'Mariela Sosa',
-    direccion: 'Gorriti 4521, 3°B',
+    direccion: 'Complejo Lourdes · Gorriti 4521, 3°B',
     categoria: 'PLOMERIA',
     descripcion: 'Inodoro con pérdida en la base.',
     urgencia: 'MEDIA',
@@ -902,6 +905,7 @@ export const propiedadesMock: Propiedad[] = [
   {
     id: 'prp_001',
     direccion: 'Gorriti 4521, 3°B',
+    complejo: 'Complejo Lourdes',
     ciudad: 'CABA',
     provincia: 'Buenos Aires',
     tipo: 'DEPARTAMENTO',
@@ -952,6 +956,7 @@ export const propiedadesMock: Propiedad[] = [
     // Local comercial: gestionado bajo la S.A. comercial.
     id: 'prp_004',
     direccion: 'Honduras 4490, PB',
+    complejo: 'Complejo Lourdes',
     ciudad: 'CABA',
     provincia: 'Buenos Aires',
     tipo: 'LOCAL',
@@ -1084,9 +1089,23 @@ export function generarLiquidaciones(
 // importantes, reclamos creados, cambios de estado). Para el demo
 // generamos un set fijo para Mariela y otro para los demás.
 
+/**
+ * ⚠️ Es una COPIA A MANO del enum `TipoEventoContrato` de `schema.prisma`. El
+ * panel no importa tipos de Prisma, así que agregar un valor al enum del backend
+ * NO rompe la compilación acá — y los `Record<TipoEventoContrato, …>` de la
+ * pestaña Historial quedan sin la clave nueva, devuelven `undefined` y la
+ * pantalla crashea al renderizar el ícono.
+ *
+ * Ya pasó con `RENOVACION`: un chat lo agregó al backend, otro no se enteró, y
+ * renovar un contrato dejaba el Historial en blanco. Si sumás un valor al enum de
+ * Prisma, sumalo también acá y a los dos `Record` de `contratos/[id]`.
+ */
 export type TipoEventoContrato =
   | 'CREADO'
   | 'AJUSTE_APLICADO'
+  // Valor propio del enum de la base (migración 20260819120000). Faltaba acá, y como
+  // `apiFetch` castea sin validar, el evento llegaba igual y reventaba el timeline.
+  | 'RENOVACION'
   | 'PAGO_RECIBIDO'
   | 'PAGO_VENCIDO'
   | 'RECLAMO_CREADO'
@@ -1122,6 +1141,19 @@ export const eventosContratoMock: EventoContrato[] = [
     detalle: '$405.000 · transferencia',
     fecha: '2025-09-08T09:15:00-03:00',
     autor: 'Sistema',
+  },
+  {
+    // Una COMUNICACIÓN de varios párrafos: es el caso que Camila quiere poder releer
+    // ("si guarda sólo el asunto no me sirve para discutir después"). Sin un mock así, el
+    // historial de la demo no muestra ninguna y no se ve que el cuerpo queda guardado entero.
+    id: 'ev_c1_3',
+    contratoId: 'cnt_001',
+    tipo: 'COMUNICACION_ENVIADA',
+    titulo: 'WhatsApp · Aviso de vencimiento',
+    detalle:
+      'Hola Mariela, ¿cómo estás?\n\nTe recuerdo que el alquiler de mayo vence el 5. Cualquier cosa avisame y lo vemos.\n\nSi ya lo pagaste, mandame el comprobante por acá y lo cargo.',
+    fecha: '2026-05-02T11:20:00-03:00',
+    autor: 'Camila Acosta',
   },
   {
     id: 'ev_c1_3',

@@ -85,6 +85,16 @@ export type EstadoReclamo = 'ABIERTO' | 'EN_CURSO' | 'RESUELTO' | 'CERRADO' | 'R
 // Lo decide la inmobiliaria al evaluar el reclamo.
 export type ClasificacionReclamo = 'USO_Y_GOCE' | 'DESPERFECTO';
 
+// Copia del enum `TipoEventoReclamo` de Prisma. Se quedó corta: le faltaban los tres VISITA_*,
+// que escribe el profesional desde el link público. Como el timeline hace
+// `labelForTipo[ev.tipo](ev)`, eso no era un renglón feo sino `undefined(ev)`: el panel se caía
+// entero al abrir cualquier reclamo con una visita confirmada. TypeScript no lo agarró porque
+// el `Record<TipoEventoReclamo, X>` sí exigía exhaustividad — contra esta lista, que era la que
+// estaba mal.
+//
+// Que siga sincronizada lo verifica `apps/api/test/tipos-evento-reclamo-sincronizados.test.ts`,
+// que lee el schema y esta lista y exige que coincidan. Si agregás un valor al enum, ese test
+// se pone rojo hasta que lo agregues acá y decidas cómo se muestra.
 export type TipoEventoReclamo =
   | 'CREADO'
   | 'ASIGNADO'
@@ -95,7 +105,10 @@ export type TipoEventoReclamo =
   | 'MENSAJE_INQUILINO'
   | 'MENSAJE_INMO'
   | 'CLASIFICADO'
-  | 'PROFESIONAL_ASIGNADO';
+  | 'PROFESIONAL_ASIGNADO'
+  | 'VISITA_CONFIRMADA'
+  | 'VISITA_EN_CAMINO'
+  | 'VISITA_LISTO';
 
 export interface EventoReclamo {
   id: string;
@@ -216,6 +229,12 @@ export interface ContratoListado {
   /** Teléfono del inquilino titular (para WhatsApp/PDF de cobranza). */
   inquilinoTelefono?: string | null;
   direccion: string;
+  /**
+   * Nombre EFECTIVO del complejo/edificio (hoy: el del consorcio ligado, si hay).
+   * Es el rótulo por el que la inmobiliaria reconoce la unidad; la dirección pasa a dato
+   * secundario. Se consume con los helpers de `lib/rotulo-propiedad.ts`.
+   */
+  complejo?: string | null;
   /** FK a Propiedad.id — para cruzar la deuda de ex-inquilinos contra el listado de propiedades. */
   propiedadId?: string;
   monto: number;

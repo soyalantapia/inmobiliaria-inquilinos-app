@@ -32,7 +32,10 @@ import { MobileGreetingHeader } from '@/components/mobile-greeting-header';
 import { contratoMock, liquidacionesMock } from '@/lib/mock-data';
 import { movimientosMock, type Movimiento } from '@/lib/movimientos-mock';
 import { resolverMontos } from '@/lib/punitorios';
+import { saldoDeLiquidacion } from '@/lib/saldo-liquidacion';
+import { listarPagosDeLiq, type PagoInformado } from '@/lib/pago-storage';
 import { diasHastaVencimiento, formatFecha, formatFechaCorta, formatMonto, formatPeriodo } from '@/lib/format';
+import { mostrarFilaAlquiler } from '@/lib/tipo-contrato';
 import {
   aplicarEstadoDemo,
   useDemoEstado,
@@ -558,23 +561,42 @@ function HomeReal() {
 // click "Regularizar pago" → checkout. 2 clicks para la acción más
 // crítica. Ahora 1 click directo.
 function BannerPagoPendiente({ liq }: { liq: Liquidacion }) {
-  // Prod: si YA hay un pago INFORMADO vivo (en revisión) para esta liq, el
-  // banner NO debe empujar de nuevo al checkout — el inquilino terminaba
-  // transfiriendo plata real dos veces y recién ahí veía el 409 del API.
-  // Variante ámbar informativa que linkea al DETALLE (no al checkout) y sin
-  // pill de pagar. En demo `liq.pagos` no existe (mocks) → comportamiento igual.
-  const pagoVivo = apiEnabled
-    ? ((liq.pagos ?? []).find((p) => p.estado === 'INFORMADO') ?? null)
-    : null;
+  // Si YA hay un pago INFORMADO vivo (en revisión) para esta liq, el banner NO debe
+  // empujar de nuevo al checkout — el inquilino terminaba transfiriendo plata real dos
+  // veces y recién ahí veía el 409 del API. Variante ámbar informativa que linkea al
+  // DETALLE (no al checkout) y sin pill de pagar.
+  //
+  // En demo los pagos NO están en `liq.pagos` (eso es el espejo del API): viven en el store
+  // local. Antes acá se asumía `null` con el argumento de que "en demo liq.pagos no existe
+  // → comportamiento igual", y no era igual: el pago existe, sólo que en localStorage. El
+  // home decía "atrasado" y la pantalla a la que linkea decía "en revisión", sobre la misma
+  // cuota.
+  //
+  // Se lee post-mount y no en render porque `localStorage` no existe en el server y el build
+  // es estático: leerlo directo rompería la hidratación. Mismo patrón que `useDemoEstado`.
+  const [pagosDemo, setPagosDemo] = useState<PagoInformado[]>([]);
+  useEffect(() => {
+    if (apiEnabled) return;
+    setPagosDemo(listarPagosDeLiq(liq.id));
+  }, [liq.id]);
+
+  // Una sola lista para todo el banner. Importa que sea una sola: abajo, `saldoDeLiquidacion`
+  // decide entre "Te faltan $X" y "Comprobante en revisión" mirando estos mismos pagos. Con
+  // la lista vacía en demo, el rótulo podía reconocer el comprobante y la cuenta de al lado
+  // decir que falta todo.
+  const pagos = apiEnabled ? (liq.pagos ?? []) : pagosDemo;
+  const pagoVivo = pagos.find((p) => p.estado === 'INFORMADO') ?? null;
   if (pagoVivo) {
     // Cuánto informó vs cuánto debía: si informó de MENOS, decirle sólo
     // "en revisión" le hace creer que terminó y se entera del saldo recién
     // cuando la inmobiliaria le reclama. Mostramos el faltante. Igual seguimos
     // linkeando al DETALLE y no al checkout: la razón original de esta rama
     // (que no transfiera dos veces y coma un 409) sigue valiendo.
-    const cTot = resolverMontos(liq, apiEnabled).totalAPagar;
-    const totalDeuda = Math.max(0, liq.saldo ?? cTot);
-    const faltan = Math.max(0, totalDeuda - pagoVivo.monto);
+    // Mismo helper que usa el DETALLE del pago: antes cada pantalla hacía su propia
+    // cuenta y no coincidían (acá se descontaba lo informado, allá no).
+    const det = saldoDeLiquidacion({ ...liq, pagos }, resolverMontos(liq, apiEnabled).totalAPagar);
+    const totalDeuda = det.exigible;
+    const faltan = det.faltaPagar;
     return (
       <Link
         href={`/pago/${liq.id}`}
@@ -699,7 +721,12 @@ function BannerPagoPendiente({ liq }: { liq: Liquidacion }) {
         onClick={(e) => e.stopPropagation()}
         className={`space-y-1 rounded-lg bg-white/70 px-3 py-2 text-xs dark:bg-black/20 ${tono.text}`}
       >
-        <DesgloseFila label="Alquiler" value={formatMonto(liq.montoAlquiler, liq.moneda)} />
+        {/* Condicional igual que la fila de Expensas de abajo: a quien sólo paga expensas
+            (SOLO_EXPENSAS, el alquiler lo arregla el propietario por fuera) esta fila le
+            decía "Alquiler $0". Ver lib/tipo-contrato.ts. */}
+        {mostrarFilaAlquiler(liq) && (
+          <DesgloseFila label="Alquiler" value={formatMonto(liq.montoAlquiler, liq.moneda)} />
+        )}
         {liq.montoExpensas != null && liq.montoExpensas > 0 && (
           <DesgloseFila label="Expensas" value={formatMonto(liq.montoExpensas, liq.moneda)} />
         )}

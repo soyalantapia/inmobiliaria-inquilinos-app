@@ -5,6 +5,30 @@
 
 ---
 
+## Base de test local y efímera (recomendado)
+
+> Escrito el 19/08/2026 en T-23-N1. **⚠️ NO SE PUDO VERIFICAR EN ESTA MÁQUINA**: el daemon de
+> Docker no estaba corriendo. La primera persona que lo corra, que confirme o corrija acá.
+
+Hasta ahora la única base disponible era la remota del proxy de Railway, que **la comparten
+todos los procesos** y que `seedBase` reescribe: correr los tests se llevaba puesto a
+cualquiera que estuviera trabajando contra ella. Y sin `apps/api/.env` ni siquiera arrancan —
+fallan con un ZodError de env antes de tocar la red. Resultado: ~60 archivos de test en el repo
+que nadie corre.
+
+```bash
+pnpm --filter api test:db:up
+export DATABASE_URL='postgresql://postgres:postgres@localhost:55432/myalquiler_test'
+cd apps/api && ./node_modules/.bin/prisma migrate deploy && ./node_modules/.bin/vitest run
+pnpm --filter api test:db:down     # borra el volumen: la próxima arranca limpia
+```
+
+Detalles en `docker-compose.test.yml`. Puerto **55432** para no pisar un Postgres propio; la
+base vive en `tmpfs` (RAM) así que desaparece al bajar el contenedor, que es justo lo que se
+quiere de una base de test. `prisma/guard-db.ts` ya reconoce `localhost` como base de test.
+
+---
+
 ## Cómo correr los tests
 
 Los tests viven en `apps/api/test/*.test.ts` y corren con Vitest:

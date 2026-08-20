@@ -36,7 +36,10 @@ export interface CertificadoInquilino {
     direccion: string;
     inmobiliaria: string;
     fechaInicio: string;
+    /** Lo que paga por mes. Para un SOLO_EXPENSAS el server ya manda acá las expensas,
+     *  no el `contrato.monto` (que vale 0 por diseño). El rótulo lo decide `tipoContrato`. */
     montoMensual: number;
+    tipoContrato?: 'ALQUILER' | 'SOLO_EXPENSAS';
     moneda: 'ARS' | 'USD';
     /** Meses cumplidos en el contrato actual. */
     mesesCumplidos: number;
@@ -221,7 +224,11 @@ export function generarCertificado(): CertificadoInquilino {
       direccion: contratoMock.direccion,
       inmobiliaria: contratoMock.inmobiliaria,
       fechaInicio: contratoMock.fechaInicio,
-      montoMensual: contratoMock.montoActual,
+      montoMensual:
+        contratoMock.tipoContrato === 'SOLO_EXPENSAS'
+          ? (contratoMock.montoExpensas ?? 0)
+          : contratoMock.montoActual,
+      tipoContrato: contratoMock.tipoContrato,
       moneda: contratoMock.moneda,
       mesesCumplidos: Math.max(0, meses),
     },

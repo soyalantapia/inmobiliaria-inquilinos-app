@@ -217,9 +217,11 @@ export default function ScreeningPage() {
               Verificación en beta
             </DialogTitle>
             <DialogDescription>
+              {/* Sin "te avisamos apenas esté lista": no hay lista de espera, nadie queda
+                  anotado y ese aviso no lo manda nadie. Mismo caso que el banner de país. */}
               Esta función todavía no está disponible. Estamos conectando las
               fuentes oficiales (RENAPER, BCRA, Nosis/Veraz) para darte informes
-              con datos reales. Te avisamos apenas esté lista.
+              con datos reales.
             </DialogDescription>
           </DialogHeader>
           <Button onClick={() => setBetaOpen(false)} className="w-full">

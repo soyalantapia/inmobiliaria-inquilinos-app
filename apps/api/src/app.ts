@@ -10,6 +10,7 @@ import { loadEnv, type Env } from './env.js';
 import { healthRoutes } from './routes/health.js';
 import { authRoutes } from './routes/auth.js';
 import { coreRoutes } from './routes/core.js';
+import { portalPropietarioRoutes } from './routes/portal-propietario.js';
 import { plataRoutes } from './routes/plata.js';
 import { operacionRoutes } from './routes/operacion.js';
 import { anunciosRoutes } from './routes/anuncios.js';
@@ -21,6 +22,7 @@ import { miPerfilRoutes } from './routes/mi-perfil.js';
 import { visitasPublicasRoutes } from './routes/visitas-publicas.js';
 import { resumenesBancariosRoutes } from './routes/resumenes-bancarios.js';
 import { importacionesCarteraRoutes } from './routes/importaciones-cartera.js';
+import { importacionMorososRoutes } from './routes/importacion-morosos.js';
 import { propiedadReclamosRoutes } from './routes/propiedad-reclamos.js';
 import { contratoGananciaRoutes } from './routes/contrato-ganancia.js';
 import { propiedadGananciasRoutes } from './routes/propiedad-ganancias.js';
@@ -32,6 +34,7 @@ import { propiedadDocumentosRoutes } from './routes/propiedad-documentos.js';
 import { soporteRoutes } from './routes/soporte.js';
 import { metricasRoutes } from './routes/metricas.js';
 import { cuentasRoutes } from './routes/cuentas.js';
+import { urlParaLog } from './lib/redactar-url.js';
 import {
   reportarErrorAlSonar,
   setAvisadorDeVentanaSonar,
@@ -72,13 +75,12 @@ export async function buildApp(envOverrides: Partial<Record<string, string>> = {
     logger:
       env.NODE_ENV !== 'test' && {
         serializers: {
-          // El JWT de sesión (15 días) viaja por query en GET /uploads/:tenant/:name
-          // —un <img src> no puede mandar el header Authorization— y el serializer por
-          // defecto de Fastify loguea `req.url` ENTERA. Resultado: cada foto de
-          // propiedad, comprobante o documento que alguien abría escribía una sesión
-          // válida en texto plano en el log de Railway, donde queda para cualquiera que
-          // lo lea. Redactamos el valor y dejamos el resto de la URL intacta para poder
-          // debuggear. Se replican los campos del serializer default (si no, se pierden).
+          // El serializer por defecto de Fastify loguea `req.url` ENTERA, y por la query
+          // string de esta API pasan credenciales (el JWT de /uploads) y datos personales
+          // de terceros (el DNI en `GET /personas?q=…`). Qué se redacta y por qué está en
+          // `lib/redactar-url.ts`, que además tiene los tests.
+          //
+          // Se replican los campos del serializer default (si no, se pierden).
           req(req: {
             method: string;
             url: string;
@@ -87,7 +89,7 @@ export async function buildApp(envOverrides: Partial<Record<string, string>> = {
           }) {
             return {
               method: req.method,
-              url: String(req.url ?? '').replace(/([?&](?:token|access_token)=)[^&]*/gi, '$1[REDACTED]'),
+              url: urlParaLog(req.url),
               hostname: req.headers?.host,
               remoteAddress: req.socket?.remoteAddress,
               remotePort: req.socket?.remotePort,
@@ -244,8 +246,10 @@ export async function buildApp(envOverrides: Partial<Record<string, string>> = {
   await app.register(visitasPublicasRoutes);
   await app.register(resumenesBancariosRoutes);
   await app.register(importacionesCarteraRoutes);
+  await app.register(importacionMorososRoutes);
   await app.register(propiedadReclamosRoutes);
   await app.register(contratoGananciaRoutes);
+  await app.register(portalPropietarioRoutes);
   await app.register(propiedadGananciasRoutes);
   await app.register(propiedadSaludPagoRoutes);
   await app.register(propiedadSegurosRoutes);

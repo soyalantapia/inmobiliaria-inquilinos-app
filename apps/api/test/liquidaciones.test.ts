@@ -3,8 +3,10 @@ import {
   computarLiquidacionesContrato,
   sumarMesesUTC,
   recomputarLiquidacionesFuturas,
+  recomputarExpensasFuturas,
   type ContratoParaLiquidar,
   type LiquidacionParaReajustar,
+  type LiquidacionParaReexpensar,
 } from '../src/lib/liquidaciones.js';
 
 /**
@@ -20,11 +22,74 @@ const base: Omit<ContratoParaLiquidar, 'fechaInicio' | 'fechaFin'> = {
   montoExpensas: 80_000,
   moneda: 'ARS',
   diaPago: 10,
+  devengarDesde: null,
+  tipoContrato: 'ALQUILER',
 };
 
 function contrato(inicio: string, fin: string, over: Partial<ContratoParaLiquidar> = {}): ContratoParaLiquidar {
   return { ...base, fechaInicio: new Date(inicio), fechaFin: new Date(fin), ...over };
 }
+
+describe('computarLiquidacionesContrato · SOLO_EXPENSAS', () => {
+  // El devengo NO recibía `tipoContrato`: un contrato de solo expensas daba alquiler 0
+  // sólo porque `contrato.monto` había quedado en 0. Estos casos cubren justamente el
+  // escenario en que NO quedó en 0 — que es lo que pasaba tras ajustar o renovar.
+  const now = new Date('2026-06-15T12:00:00Z');
+
+  it('no devenga alquiler aunque el contrato tenga un canon positivo', () => {
+    const data = computarLiquidacionesContrato(
+      contrato('2026-06-01T00:00:00Z', '2028-06-01T00:00:00Z', {
+        tipoContrato: 'SOLO_EXPENSAS',
+        monto: 500_000, // canon "sucio", dejado por un ajuste/renovación vieja
+        montoExpensas: 80_000,
+      }),
+      now,
+    );
+    expect(data.every((l) => Number(l.montoAlquiler) === 0)).toBe(true);
+    expect(data.every((l) => Number(l.montoTotal) === 80_000)).toBe(true);
+  });
+
+  it('el canon 0 del contrato limpio da el mismo resultado', () => {
+    const data = computarLiquidacionesContrato(
+      contrato('2026-06-01T00:00:00Z', '2028-06-01T00:00:00Z', {
+        tipoContrato: 'SOLO_EXPENSAS',
+        monto: 0,
+        montoExpensas: 80_000,
+      }),
+      now,
+    );
+    expect(data.every((l) => Number(l.montoTotal) === 80_000)).toBe(true);
+  });
+
+  it('una vigencia futura de canon tampoco se le cobra', () => {
+    // Un ajuste con vigencia futura entra por `vigencias`, no por `contrato.monto`:
+    // si el corte estuviera antes de resolver el canon del período, este caso se colaba.
+    const data = computarLiquidacionesContrato(
+      contrato('2026-06-01T00:00:00Z', '2028-06-01T00:00:00Z', {
+        tipoContrato: 'SOLO_EXPENSAS',
+        monto: 0,
+        montoExpensas: 80_000,
+      }),
+      now,
+      [{ periodoDesde: '2026-07', monto: 900_000, montoAnterior: 0 }],
+    );
+    expect(data.every((l) => Number(l.montoAlquiler) === 0)).toBe(true);
+    expect(data.every((l) => Number(l.montoTotal) === 80_000)).toBe(true);
+  });
+
+  it('ALQUILER_Y_EXPENSAS sí cobra las dos cosas', () => {
+    const data = computarLiquidacionesContrato(
+      contrato('2026-06-01T00:00:00Z', '2028-06-01T00:00:00Z', {
+        tipoContrato: 'ALQUILER_Y_EXPENSAS',
+        monto: 500_000,
+        montoExpensas: 80_000,
+      }),
+      now,
+    );
+    expect(data.every((l) => Number(l.montoAlquiler) === 500_000)).toBe(true);
+    expect(data.every((l) => Number(l.montoTotal) === 580_000)).toBe(true);
+  });
+});
 
 describe('computarLiquidacionesContrato', () => {
   it('contrato nuevo (inicio este mes): genera período actual + siguiente', () => {
@@ -185,6 +250,34 @@ describe('recomputarLiquidacionesFuturas (ajuste manual de monto)', () => {
     expect(out).toEqual([{ id: 'ago', montoAlquiler: 0, montoTotal: 50_000 }]);
   });
 
+  it('SOLO_EXPENSAS con monto 0: limpia también las cuotas VENCIDAS', () => {
+    // Éste es el camino de NORMALIZACIÓN de un contrato ya ensuciado: `PATCH /monto` con 0.
+    // Tiene que alcanzar las VENCIDAS, no sólo las PENDIENTE — si sólo tocara las pendientes,
+    // los meses que ya vencieron con alquiler cobrado de más quedarían sucios para siempre
+    // (el devengo usa createMany skipDuplicates y nunca pisa una fila existente).
+    const out = recomputarLiquidacionesFuturas(
+      [
+        liq({ id: 'jul', periodo: '2026-07', estado: 'VENCIDO', montoExpensas: 50_000 }),
+        liq({ id: 'ago', periodo: '2026-08', estado: 'PENDIENTE', montoExpensas: 50_000 }),
+      ],
+      { montoNuevo: 0, tipoContrato: 'SOLO_EXPENSAS', periodoActual },
+    );
+    expect(out).toEqual([
+      { id: 'jul', montoAlquiler: 0, montoTotal: 50_000 },
+      { id: 'ago', montoAlquiler: 0, montoTotal: 50_000 },
+    ]);
+  });
+
+  it('normalizar NO toca una cuota que ya tiene pagos', () => {
+    // Si ya se cobró, corregir la liquidación en silencio escondería el problema: esa plata
+    // entró y hay que resolverla con la persona, no borrando el número.
+    const out = recomputarLiquidacionesFuturas(
+      [liq({ id: 'jul', periodo: '2026-07', estado: 'VENCIDO', montoExpensas: 50_000, cantidadPagos: 1 })],
+      { montoNuevo: 0, tipoContrato: 'SOLO_EXPENSAS', periodoActual },
+    );
+    expect(out).toEqual([]);
+  });
+
   it('sin expensas (null): total = solo el alquiler nuevo', () => {
     const out = recomputarLiquidacionesFuturas(
       [liq({ id: 'ago', periodo: '2026-08', estado: 'PENDIENTE', montoExpensas: null })],
@@ -236,5 +329,104 @@ describe('devengarDesde — cartera importada (no inventar deuda histórica)', (
     const conNull = computarLiquidacionesContrato(contrato(INICIO_HISTORICO, FIN, { devengarDesde: null }), now);
     const sin = computarLiquidacionesContrato(contrato(INICIO_HISTORICO, FIN), now);
     expect(conNull.map((l) => l.periodo)).toEqual(sin.map((l) => l.periodo));
+  });
+});
+
+describe('recomputarExpensasFuturas (cambio de expensas)', () => {
+  /**
+   * Las expensas suben todos los meses, así que este camino se usa seguido.
+   * Comparte el criterio conservador del ajuste de canon: no toca meses pasados
+   * ni cuotas con plata en juego. La diferencia es cuál de los dos montos se
+   * conserva — acá el alquiler de CADA liquidación queda como está.
+   */
+  const periodoActual = '2026-07';
+  function liq(over: Partial<LiquidacionParaReexpensar>): LiquidacionParaReexpensar {
+    return {
+      id: 'liq_x',
+      periodo: '2026-07',
+      estado: 'PENDIENTE',
+      montoAlquiler: 500_000,
+      montoExpensas: 80_000,
+      cantidadPagos: 0,
+      ...over,
+    };
+  }
+
+  it('actualiza la cuota del mes en curso y recalcula el total', () => {
+    const r = recomputarExpensasFuturas([liq({})], { expensasNuevas: 95_000, periodoActual });
+
+    expect(r).toHaveLength(1);
+    expect(r[0]?.montoExpensas).toBe(95_000);
+    expect(r[0]?.montoTotal).toBe(595_000);
+  });
+
+  it('NO toca los meses pasados: el inquilino ya vio ese valor', () => {
+    expect(recomputarExpensasFuturas([liq({ periodo: '2026-06' })], { expensasNuevas: 95_000, periodoActual }))
+      .toHaveLength(0);
+  });
+
+  it('NO toca una cuota PAGADA ni una PARCIAL: ya hay plata contra el total viejo', () => {
+    const r = recomputarExpensasFuturas(
+      [liq({ id: 'a', estado: 'PAGADO' }), liq({ id: 'b', estado: 'PARCIAL' })],
+      { expensasNuevas: 95_000, periodoActual },
+    );
+
+    expect(r).toHaveLength(0);
+  });
+
+  it('NO toca una cuota con un pago INFORMADO, aunque siga PENDIENTE', () => {
+    // El inquilino ya informó una transferencia contra el total que vio.
+    expect(recomputarExpensasFuturas([liq({ cantidadPagos: 1 })], { expensasNuevas: 95_000, periodoActual }))
+      .toHaveLength(0);
+  });
+
+  it('SÍ toca una VENCIDA impaga: sigue siendo lo que se le va a reclamar', () => {
+    const r = recomputarExpensasFuturas([liq({ estado: 'VENCIDO' })], { expensasNuevas: 95_000, periodoActual });
+
+    expect(r).toHaveLength(1);
+  });
+
+  it('conserva el alquiler de CADA cuota, que puede diferir entre meses', () => {
+    // Un ajuste con vigencia futura deja meses con canon distinto. Cambiar las
+    // expensas no puede uniformarlos.
+    const r = recomputarExpensasFuturas(
+      [
+        liq({ id: 'a', periodo: '2026-07', montoAlquiler: 500_000 }),
+        liq({ id: 'b', periodo: '2026-08', montoAlquiler: 620_000 }),
+      ],
+      { expensasNuevas: 95_000, periodoActual },
+    );
+
+    expect(r.map((x) => x.montoTotal)).toEqual([595_000, 715_000]);
+  });
+
+  it('bajar las expensas a 0 deja el total en el alquiler solo', () => {
+    const r = recomputarExpensasFuturas([liq({})], { expensasNuevas: 0, periodoActual });
+
+    expect(r[0]?.montoExpensas).toBe(0);
+    expect(r[0]?.montoTotal).toBe(500_000);
+  });
+
+  it('una cuota SIN expensas pasa a tenerlas, sumando al total', () => {
+    const r = recomputarExpensasFuturas([liq({ montoExpensas: null })], { expensasNuevas: 95_000, periodoActual });
+
+    expect(r[0]?.montoTotal).toBe(595_000);
+  });
+
+  it('no devuelve las que ya están en el monto nuevo: nada que escribir', () => {
+    expect(recomputarExpensasFuturas([liq({ montoExpensas: 95_000 })], { expensasNuevas: 95_000, periodoActual }))
+      .toHaveLength(0);
+    // null y 0 son la misma cosa ("sin expensas"), así que tampoco.
+    expect(recomputarExpensasFuturas([liq({ montoExpensas: null })], { expensasNuevas: 0, periodoActual }))
+      .toHaveLength(0);
+  });
+
+  it('un contrato de solo expensas (alquiler 0) queda con el total en las expensas', () => {
+    const r = recomputarExpensasFuturas(
+      [liq({ montoAlquiler: 0, montoExpensas: 285_000 })],
+      { expensasNuevas: 310_000, periodoActual },
+    );
+
+    expect(r[0]?.montoTotal).toBe(310_000);
   });
 });

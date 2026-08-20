@@ -126,7 +126,15 @@ async function resolverAudiencia(
 ): Promise<{ inquilinoIds: string[]; destinatariosCount: number }> {
   switch (audiencia) {
     case 'TODOS_PROPIETARIOS':
-      return { inquilinoIds: [], destinatariosCount: await prisma.propietario.count({ where: { inmobiliariaId: tid } }) };
+      // `activo: true` tiene que estar acá TAMBIÉN, no sólo en el envío. El envío ya
+      // excluye a los dados de baja (más abajo, en `destinos`), pero este contador es
+      // el que se persiste en `Anuncio.destinatariosCount` y el que muestra el panel:
+      // sin el filtro decía "12 destinatarios" mientras salían 7 mails. Un número de
+      // alcance inflado es peor que no tenerlo, porque nadie lo va a dudar.
+      return {
+        inquilinoIds: [],
+        destinatariosCount: await prisma.propietario.count({ where: { inmobiliariaId: tid, activo: true } }),
+      };
     case 'TODOS_CONSORCIOS':
       return { inquilinoIds: [], destinatariosCount: await prisma.consorcio.count({ where: { inmobiliariaId: tid } }) };
     case 'CONTRATOS_ESPECIFICOS': {
@@ -206,15 +214,20 @@ async function enviarEmailsAnuncio(
 ): Promise<void> {
   const inmo = await prisma.inmobiliaria.findUnique({
     where: { id: anuncio.inmobiliariaId },
-    select: { nombre: true },
+    select: { nombre: true, email: true },
   });
   const inmoNombre = inmo?.nombre ?? 'Tu inmobiliaria';
+  // A dónde contesta el que recibe el anuncio. Sale de la inmobiliaria dueña del anuncio.
+  const inmoEmail = inmo?.email ?? null;
 
   // Destinatarios con email real, deduplicados (co-titulares pueden compartir casilla).
   const destinos: Array<{ email: string; paraInquilino: boolean }> = [];
   if (anuncio.audiencia === 'TODOS_PROPIETARIOS') {
+    // Sin `activo: true` esto le seguía mandando los anuncios de la inmobiliaria
+    // a ex-propietarios: es la fuga hacia afuera más visible de la baja lógica,
+    // porque llega a la casilla de alguien que ya no tiene nada que ver.
     const owners = await prisma.propietario.findMany({
-      where: { inmobiliariaId: anuncio.inmobiliariaId },
+      where: { inmobiliariaId: anuncio.inmobiliariaId, activo: true },
       select: { email: true },
     });
     for (const o of owners) destinos.push({ email: o.email, paraInquilino: false });
@@ -245,6 +258,7 @@ async function enviarEmailsAnuncio(
         cuerpo: anuncio.cuerpo,
         prioridad: anuncio.prioridad,
         inmobiliariaNombre: inmoNombre,
+        inmobiliariaEmail: inmoEmail,
         paraInquilino: d.paraInquilino,
       });
       if (enviado) ok += 1;

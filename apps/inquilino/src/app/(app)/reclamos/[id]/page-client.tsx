@@ -525,8 +525,8 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
                   Estamos viendo tu reclamo
                 </p>
                 <p className="text-xs text-amber-800/80 dark:text-amber-200/80">
-                  Te respondemos en menos de 24 hs hábiles. Te avisamos por
-                  WhatsApp cuando asignemos un profesional.
+                  Te respondemos en menos de 24 hs hábiles. Te avisamos acá en la app
+                  cuando asignemos un profesional.
                 </p>
               </div>
             </Card>
@@ -874,7 +874,7 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
             </form>
             <p className="flex items-center gap-1 text-[11px] text-muted-foreground">
               <Sparkles className="h-3 w-3 text-primary" />
-              Te avisamos por WhatsApp cuando te respondan.
+              Te avisamos acá en la app cuando te respondan.
             </p>
           </Card>
         ) : !cerrado ? (

@@ -1,0 +1,88 @@
+# Hasta que existió este archivo, el único workflow del repo era el deploy de la demo a
+# Pages: no corría tsc, ni lint, ni un solo test. Había 725 tests escritos que sólo se
+# ejecutaban si una persona se acordaba.
+#
+# Eso se notó: en un día de trabajo en paralelo aparecieron ocho regresiones cruzadas
+# (commits 00fc8a3, 7346ca8, 4f59794), todas del mismo tipo — dos ramas tocan la misma
+# superficie, cada una compila sola, y la unión rompe algo que ninguna de las dos rompía.
+# Ese bug es invisible desde adentro de cualquiera de las dos ramas. Es justo el que una
+# compuerta ataja.
+#
+# Esta compuerta NO bloquea el deploy todavía: es un workflow aparte, para que se pueda
+# ver qué reporta antes de que le corte el paso a nadie. Volverlo required es del dueño.
+
+name: Revisión
+
+on:
+  push:
+    branches-ignore: [gh-pages]
+  pull_request:
+  workflow_dispatch:
+
+# Si se pushean tres commits seguidos, sólo interesa el último.
+concurrency:
+  group: revision-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  revision:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.28.2
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Sin esto, apps/api no compila: media API tipa contra el cliente generado, y el
+      # cliente no está versionado.
+      - name: Generar el cliente de Prisma
+        run: pnpm --filter api exec prisma generate
+
+      # Corre en los cinco que lo tienen. Hasta hoy apps/api quedaba afuera: tenía el chequeo
+      # con el nombre "lint", así que `turbo run typecheck` lo salteaba en silencio y daba
+      # verde sin haber mirado el paquete donde vive la plata.
+      - name: Typecheck
+        run: pnpm typecheck
+
+      # Los 341 tests que no necesitan una base viva (33 archivos de 85). Los demás siembran
+      # una Postgres compartida y quedan afuera a propósito — ver T-01-N1-N1.
+      #
+      # Las dos variables no apuntan a nada: EnvSchema (apps/api/src/env.ts) exige que
+      # estén para arrancar la app, y algunos de estos tests la construyen con buildApp().
+      # Ninguno se conecta. Por eso el host es 127.0.0.1:1, que no escucha: si alguna vez
+      # un test intenta hablar con la base de verdad, falla acá y no en silencio.
+      - name: Tests que no necesitan base de datos
+        working-directory: apps/api
+        env:
+          DATABASE_URL: postgresql://nadie:nadie@127.0.0.1:1/nada
+          JWT_SECRET: esto-no-firma-nada-real-en-ci
+          NODE_ENV: test
+        run: pnpm test:sin-db
+
+  # Aviso, no portón. Corre aparte del job de calidad a propósito: que una rama olvidada
+  # ponga en rojo el CI de alguien que está laburando en otra cosa es la forma más rápida de
+  # que el aviso se ignore. Informa y sigue.
+  #
+  # POR QUÉ EXISTE: dos veces (T-44 y T-44-N1) hubo que consolidar a mano, y las dos veces
+  # aparecieron tareas marcadas ✅ cuyo código no estaba en la rama de deploy. El resto del CI
+  # no lo puede ver: corre sobre la rama que le toca, así que una rama sana y olvidada da
+  # verde para siempre sin que su código llegue a ningún lado.
+  ramas-sin-integrar:
+    runs-on: ubuntu-latest
+    steps:
+      # fetch-depth: 0 no es opcional acá — con el checkout shallow de siempre no existe
+      # ninguna rama más que la actual y el script no tendría nada que comparar.
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Ramas con trabajo fuera de la integración
+        run: node scripts/ramas-sin-integrar.mjs --remotas
