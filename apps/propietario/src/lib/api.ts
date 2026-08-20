@@ -145,6 +145,14 @@ export interface PeriodoInquilino {
    * front lo tiraba: la cuota figuraba "pagada" en verde y esa plata NUNCA le va a llegar.
    */
   condonada: boolean;
+  /**
+   * Cuánto entró de verdad, cuando no fue todo. `null` si no hubo pago real.
+   *
+   * El `estado` solo no alcanza: una cuota "parcial" con el monto entero al lado no dice si el
+   * inquilino puso 50.000 de 500.000 o 490.000 — y esa diferencia es lo que explica por qué la
+   * rendición de ese mes vino corta. La API ya lo tenía y la pantalla lo descartaba.
+   */
+  pagado: number | null;
 }
 
 export interface PropiedadPortal {

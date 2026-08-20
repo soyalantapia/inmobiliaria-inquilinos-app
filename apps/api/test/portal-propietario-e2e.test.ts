@@ -333,7 +333,7 @@ describe('Portal del propietario — el camino entero, por HTTP', () => {
         },
       });
       await prisma.participacionPropietario.create({
-        data: { propiedadId: PROP, propietarioId: 'own_001', porcentaje: 100 },
+        data: { propiedadId: PROP, propietarioId: 'own_001', porcentaje: 100, inmobiliariaId: tid },
       });
       await prisma.contrato.create({
         data: {

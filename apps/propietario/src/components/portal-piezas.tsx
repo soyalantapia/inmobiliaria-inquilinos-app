@@ -445,7 +445,16 @@ export function FilaPropiedad({ p }: { p: PropiedadPortal }) {
                   ) : per.condonada ? (
                     <span className="text-muted-foreground">la inmobiliaria la condonó</span>
                   ) : per.pagoAt ? (
-                    <span className="text-muted-foreground">pagó el {fecha(per.pagoAt)}</span>
+                    <span className="text-muted-foreground">
+                      pagó el {fecha(per.pagoAt)}
+                      {/* CUÁNTO entró, cuando no fue todo. El estado decía "parcial" y al lado
+                          el monto ENTERO de la cuota, sin decir si el inquilino puso 50.000 o
+                          490.000 — que es justamente lo que explica por qué la rendición de ese
+                          mes vino corta. El backend ya lo tenía; el front lo descartaba. */}
+                      {per.pagado != null && per.pagado < per.monto && (
+                        <> · {money(per.pagado, c.moneda)} de {money(per.monto, c.moneda)}</>
+                      )}
+                    </span>
                   ) : (
                     <span className="text-muted-foreground">vence el {fecha(per.vence)}</span>
                   )}
