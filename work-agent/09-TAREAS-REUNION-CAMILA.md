@@ -2299,6 +2299,118 @@ la mora sale igual desde los 16 lugares que la calculan.
 
 ---
 
+## T-62 · La bandeja prometía un saldo que al validar valía cero — ✅ RESUELTO
+
+**Experto:** BE · **Prioridad:** 🟡 · **Presentación** (no cambia plata cobrada)
+**Origen:** revisión adversarial del motor de cobranza (20/08). Último confirmado de esa tanda.
+
+**El caso.** Liquidación de $600.000, vence el 10/08, mora 0,15% diario ($900/día). El inquilino
+informa el 15/08 por **$604.500** — exactamente lo que le mostró su app. La inmobiliaria lo valida
+el 18/08. Durante esos tres días `GET /pagos` calculaba la mora con **hoy** ($607.200) y la
+bandeja renderizaba *"si lo validás queda $2.700"*. Pero `POST /pagos/:id/validar` congela la mora
+en la **fechaTransferencia** del pago: al validar da $604.500, cobrado $604.500, saldo **$0**. Los
+$2.700 no existieron nunca — eran los días que el informe pasó esperando que alguien lo mirara, y
+no los debía nadie. El fantasma crecía $900 por cada día de demora en decidir.
+
+**Qué se hizo.** La decisión de con qué instante se corta la mora pasó a `asOfMora`
+(`lib/punitorios.ts`), que es lo único que consultan las dos rutas: así no pueden volver a
+discrepar. Es exacto **por fila** porque el índice parcial `pagos_liquidacionId_informado_key`
+garantiza un único INFORMADO por liquidación — o sea, el que se está por validar. Un RECHAZADO no
+congela nada.
+
+**Lo que NO se hizo, y es la mitad del hallazgo.** La revisión pedía propagar el congelado a
+`deudaTotal` (`core.ts:271`) y al KPI de morosidad (`metricas.ts:126`), estimando *"~$108.000 de
+deuda inventada en el dashboard con 40 pagos esperando validación"*. **Ahí no corresponde, y esa
+deuda no está inventada: está sin verificar.** La `fechaTransferencia` la carga el inquilino, con
+backdate de hasta 30 días — el guard de `/pagos/informar` existe justamente porque se
+auto-condonaban punitorios fechando antes del vencimiento. Un KPI que la respetara dejaría que
+cualquiera se borre de la lista de morosos informando un pago que no existe, y encima quedaría
+escondido hasta que alguien lo rechace. En la bandeja no aplica: ahí el operador está mirando esa
+fila justo para decidirla. **Un pago INFORMADO es un reclamo sin verificar, no una deuda saldada.**
+
+**Tests.** 7 puros en `mora-congelada-al-informar.test.ts`: los cinco casos de la regla (incluido
+que el INFORMADO gana sobre una liq ya PAGADA, porque es lo que validar va a usar) y la aritmética
+del caso real, con el fantasma creciendo día a día. Los 536 puros que ya existían siguen verdes.
+
+---
+
+## T-61 · Un ajuste posterior a una renovación ya cargada queda anulado en el devengo
+
+**Experto:** BE · **Prioridad:** 🟠 · **Toca plata** · **No se arregló: ver por qué**
+**Origen:** revisión adversarial del motor de cobranza (20/08).
+
+**El caso.** Contrato a $300.000 que termina el 30/11.
+
+1. **10/08** — se renueva por adelantado (el flujo normal): `montoDesde '2026-12'`,
+   `montoNuevo 500.000`. Queda `RenovacionContrato{montoDesde:'2026-12', montoAnterior:300.000}`
+   y `contrato.monto = 500.000`.
+2. **05/09** — llega el ajuste anual: `periodoDesde '2026-09'`, `montoNuevo 380.000`. Las cuotas
+   de 09 y 10 pasan a $380.000. Hasta acá bien.
+3. El cron crea la cuota de **2026-11**. `canonDelPeriodo` busca la próxima vigencia futura —la
+   renovación de diciembre— y devuelve su `montoAnterior`: **$300.000**.
+
+O sea: **el ajuste de septiembre queda anulado para noviembre.** Se cobran $300.000 en vez de
+$380.000, con la comisión calculada sobre esa base.
+
+**La causa.** `montoAnterior` es un **snapshot congelado** al momento de crear la vigencia. El
+diseño asume que nadie toca el canon después de grabar una vigencia futura.
+
+### El arreglo propuesto por el revisor NO sirve, y esto es lo importante
+
+Proponía **leer hacia adelante** (usar `montoNuevo` de la última vigencia con `desde <= periodo`)
+en vez de hacia atrás. **Rompería el ajuste masivo.** El docstring de `canonDelPeriodo` lo dice:
+
+> *"`contrato.monto` es la AUTORIDAD (lo pisa el ajuste masivo `PATCH /contratos/:id/monto`,
+> **que no deja fila de ajuste**)"*
+
+Si el canon se cambió por ahí no hay vigencia que leer, así que "hacia adelante" devolvería el
+`montoNuevo` de un ajuste **viejo** en lugar del monto actual — un sobrecobro o subcobro nuevo,
+en un camino que hoy funciona bien. Además el query trae **sólo vigencias futuras**
+(`periodoDesde: { gt: periodoActual }`), así que las pasadas ni siquiera están en el array.
+
+### Qué haría falta de verdad
+
+Distinguir "el snapshot sigue siendo válido" de "alguien tocó el canon después". Eso pide saber
+**cuándo se escribió cada cosa** (un `createdAt` comparado contra la última escritura de canon),
+o dejar de depender de snapshots y llevar un historial de canon completo — incluyendo los
+cambios que hoy no dejan fila.
+
+Es un cambio de diseño en el corazón del devengo, con un camino (ajuste masivo) que la solución
+obvia rompe. **No se toca sin decidir el modelo primero.**
+
+**Cobertura que ya existe:** `test/canon-por-periodo.test.ts` (18 casos, puros). Cualquier
+cambio acá tiene que pasar por ahí y sumar el caso de esta tarea.
+
+---
+
+## T-60 · Se facturaba un mes entero que vencía después de terminado el contrato — ✅ RESUELTO
+
+**Experto:** BE · **Prioridad:** 🟠 · **Toca plata**
+**Origen:** revisión adversarial del motor de cobranza (20/08).
+
+**El caso.** Contrato que termina el **05/09/2026**, día de pago 10. El tope de la enumeración
+es de granularidad **MES** (`finMes` es el día 1 del mes de fin), así que se emitía el período
+**2026-09 con vencimiento el 10/09** — cinco días después de terminado el contrato. Se le cobraba
+el mes completo ($580.000 en el ejemplo) por 5 días de ocupación, con comisión sobre el alquiler,
+y esa cuota se devenga de verdad: entra a la PWA, se puede informar y conciliar, entra al cierre
+de caja y se rinde al propietario. Una vez cobrada, **la baja del contrato ya no la puede
+deshacer**.
+
+**Lo que lo hace claro:** la enumeración **ya tiene la guarda simétrica del otro extremo** —si el
+vencimiento del primer mes cae antes del inicio, se saltea— con su propio test. Faltaba la del
+final.
+
+**Qué se hizo.** Si el vencimiento cae después de `fin`, ese período no se emite y se corta el
+loop (los siguientes vencen todavía más tarde). Va en `packages/shared/src/periodos.ts` y no en
+`liquidaciones.ts` a propósito: el wizard y el backend tienen que enumerar **igual**.
+
+**Tests.** Dos, al lado del de la guarda del inicio: el caso del hallazgo y **el borde del
+borde** —vencimiento que cae justo el día de fin, que sí debe facturarse—. El primero verificado
+en rojo revirtiendo. Los 487 tests puros que ya existían siguen verdes: ninguno dependía del
+comportamiento viejo.
+
+---
+
 ## T-59 · Un pago rechazado congelaba el canon y las expensas de esa cuota para siempre — ✅ RESUELTO
 
 **Experto:** BE · **Prioridad:** 🔴 · **Toca plata**
@@ -2462,7 +2574,27 @@ solo lugar y se pueda testear — el estilo que ya usa `diasHasta` en ese mismo 
 
 ---
 
-## T-53-N1 · El OTP delataba si el email existe, por el tiempo de respuesta
+## T-53-N1 · El OTP delataba si el email existe, por el tiempo de respuesta — ✅ HECHA
+
+> ### ✅ Cerrada el 20/08. Ver `work-agent/tareas/T-53-N1/REQUISITOS.md`.
+>
+> **El bloqueo que la dejó abierta ya no existe:** decía que sus tests tocan la base y no se
+> podían correr. Desde T-01-N1-N1 la suite de integración corre —en CI y en local contra Docker—
+> así que la duda se contestó corriéndola.
+>
+> **Arreglado el OTP del inquilino** (`POST /auth/otp/request`), con el mismo patrón que el
+> portal: el bcrypt se calcula siempre y el envío SMTP no se espera. Su propio comentario decía
+> *"Respuesta idéntica exista o no"* y el cuerpo lo era; el tiempo no.
+>
+> **El del panel NO se tocó, y no es un olvido.** Ya revela la existencia a propósito, en el
+> cuerpo: devuelve `{ existe: false }` con un comentario que lo llama *"trade-off consciente"*
+> para poder mandar a `/registro`. Emparejar tiempos ahí sería teatro — la respuesta lo dice en
+> la primera línea. Cerrar ese canal es **decisión de producto**, y si se decide, el fix de
+> tiempos va JUNTO con sacar el `existe`: antes no cambia nada y da la sensación de que se
+> atendió.
+>
+> Verificado: `auth.test.ts` 12/12 contra base desde cero —ninguno dependía de que el mail
+> saliera antes de responder, que era la duda— y suite completa en verde.
 
 **Experto:** SEC + BE · **Prioridad:** 🟢
 **Origen:** revisión de seguridad del portal (19/08).

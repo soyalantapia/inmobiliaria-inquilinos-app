@@ -348,6 +348,19 @@ export async function enviarOtpAdmin(email: string, code: string): Promise<boole
 /** URL de la app del inquilino (para los CTAs del email). */
 const APP_INQUILINO_URL = (process.env.APP_INQUILINO_URL ?? 'https://app.myalquiler.com').replace(/\/$/, '');
 
+/**
+ * URL del portal del propietario (para los CTAs del email).
+ *
+ * ⚠️ El portal NO tiene servicio propio: es un export estático que el build del panel deja en
+ * `apps/inmobiliaria/public/propietario/` y se sirve desde el MISMO host que el panel (ver
+ * `work-agent/02-DEPLOY.md`, "El portal del propietario vive adentro del panel"). Si alguien
+ * setea esta variable en Railway, tiene que apuntar al host del PANEL con `/propietario`: un
+ * dominio propio del portal no existe y el link caería en un 404.
+ */
+const APP_PROPIETARIO_URL = (
+  process.env.APP_PROPIETARIO_URL ?? 'https://admin.myalquiler.com/propietario'
+).replace(/\/$/, '');
+
 /** Datos de contacto de la inmobiliaria que se muestran en el email al inquilino. */
 export interface InmobiliariaContacto {
   nombre: string;
@@ -643,6 +656,7 @@ function anuncioHtml(opts: {
   prioridad: string;
   inmobiliariaNombre: string;
   ctaUrl: string | null;
+  ctaLabel: string;
   respondeA: string | null;
 }): string {
   const chip = PRIORIDAD_CHIP[opts.prioridad] ?? '';
@@ -657,7 +671,7 @@ function anuncioHtml(opts: {
       opts.ctaUrl
         ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 6px;"><tr>
       <td align="center" bgcolor="#7c3aed" style="background-color:#7c3aed;border-radius:12px;">
-        <a href="${opts.ctaUrl}" target="_blank" style="display:inline-block;padding:12px 26px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:14px;font-weight:800;color:#ffffff;text-decoration:none;">Ver en la app &rarr;</a>
+        <a href="${opts.ctaUrl}" target="_blank" style="display:inline-block;padding:12px 26px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:14px;font-weight:800;color:#ffffff;text-decoration:none;">${esc(opts.ctaLabel)} &rarr;</a>
       </td>
     </tr></table>`
         : ''
@@ -685,26 +699,42 @@ export async function enviarAnuncioEmail(opts: {
   inmobiliariaNombre: string;
   /** Email de la inmobiliaria: a dónde cae el "Responder" del que lo recibe. */
   inmobiliariaEmail?: string | null;
-  /** true → CTA a la app del inquilino; false (propietarios) → sin CTA. */
+  /** true → CTA a la app del inquilino; false → CTA al portal del propietario. */
   paraInquilino: boolean;
 }): Promise<boolean> {
   const t = getTransporter();
   if (!t) return false;
   const urgente = opts.prioridad === 'URGENTE';
   const respondeA = emailDeRespuesta(opts.inmobiliariaEmail);
+  // Cada lado tiene su puerta, y las dos muestran el aviso en el home: la PWA del inquilino y
+  // el portal del propietario (`AvisosInmobiliaria`, arriba de las rendiciones). Al propietario
+  // no se le puede decir "la app" —no tiene una— ni mandarlo a la del inquilino; hasta que el
+  // portal existió este mail salía sin CTA y el dueño no tenía dónde volver a leer el aviso.
+  const cta = opts.paraInquilino
+    ? {
+        url: APP_INQUILINO_URL,
+        label: 'Ver en la app',
+        linea: `Velo en la app: ${APP_INQUILINO_URL}`,
+      }
+    : {
+        url: APP_PROPIETARIO_URL,
+        label: 'Ver mis rendiciones',
+        linea: `Entrá a ver tus rendiciones: ${APP_PROPIETARIO_URL}`,
+      };
   await enviarEnCola({
     from: remitente(opts.inmobiliariaNombre),
     ...(respondeA ? { replyTo: respondeA } : {}),
     to: opts.email,
     subject: `${urgente ? 'URGENTE — ' : ''}${opts.titulo} · ${opts.inmobiliariaNombre}`,
-    text: `${opts.titulo}\n\nAviso de ${opts.inmobiliariaNombre}:\n\n${opts.cuerpo}\n\n${opts.paraInquilino ? `Velo en la app: ${APP_INQUILINO_URL}\n\n` : ''}Recibís este aviso porque ${opts.inmobiliariaNombre} gestiona tu alquiler/propiedad con My Alquiler.`,
+    text: `${opts.titulo}\n\nAviso de ${opts.inmobiliariaNombre}:\n\n${opts.cuerpo}\n\n${cta.linea}\n\nRecibís este aviso porque ${opts.inmobiliariaNombre} gestiona tu alquiler/propiedad con My Alquiler.`,
     html: anuncioHtml({
       titulo: opts.titulo,
       cuerpo: opts.cuerpo,
       prioridad: opts.prioridad,
       inmobiliariaNombre: opts.inmobiliariaNombre,
-      // Los anuncios viven en el home de la PWA (no hay ruta /anuncios).
-      ctaUrl: opts.paraInquilino ? APP_INQUILINO_URL : null,
+      // Los anuncios viven en el home de las dos apps (ninguna tiene ruta /anuncios).
+      ctaUrl: cta.url,
+      ctaLabel: cta.label,
       respondeA,
     }),
   });
