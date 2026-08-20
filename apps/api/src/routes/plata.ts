@@ -16,6 +16,7 @@ import {
   generarLiquidacionesContrato,
   marcarLiquidacionesVencidas,
 } from '../lib/liquidaciones.js';
+import { totalizarCierre } from '../lib/cierre-caja.js';
 import { parteRendible } from '../lib/parte-rendible.js';
 import { descripcionDeReparacion } from '../lib/descripcion-gasto-rendido.js';
 import { sePuedeBorrarGastoDeCaja } from '../lib/borrar-gasto-caja.js';
@@ -241,86 +242,49 @@ export async function plataRoutes(app: FastifyInstance) {
       orderBy: { decididoAt: 'asc' },
     });
 
-    let cobrado = 0;
-    let comision = 0;
-    // Buckets por moneda: sumar ARS+USD en un mismo total no tiene sentido. El
-    // total plano de abajo sólo es correcto si hay UNA sola moneda; para el caso
-    // mixto exponemos porMoneda + multiMoneda y el front muestra el desglose.
-    const buckets = new Map<
-      string,
-      { moneda: string; cobrado: number; comision: number; cantidad: number }
-    >();
-    const bucket = (m: string) => {
-      let b = buckets.get(m);
-      if (!b) {
-        b = { moneda: m, cobrado: 0, comision: 0, cantidad: 0 };
-        buckets.set(m, b);
-      }
-      return b;
-    };
-    const items = pagos.map((p) => {
-      const monto = Number(p.monto);
-      cobrado += monto;
-      const moneda = p.liquidacion?.moneda ?? 'ARS';
-      const liqTotal = Number(p.liquidacion?.montoTotal ?? 0);
-      const liqAlq = Number(p.liquidacion?.montoAlquiler ?? 0);
-      // Porción de alquiler dentro del pago (proporcional: cubre parciales y
-      // excluye las expensas, sobre las que NO se cobra comisión). CAP del monto a
-      // la base (montoTotal sin mora): un pago que incluye mora no infla la porción
-      // de alquiler ni la comisión (misma regla que la rendición).
-      const alquilerPortion = liqTotal > 0 ? Math.min(monto, liqTotal) * (liqAlq / liqTotal) : 0;
-      // Tasa de comisión ponderada por la participación de cada dueño de la propiedad.
-      //
-      // ⚠️ NO se filtra por `Propietario.activo`, igual que en
-      // `tasaComisionDeParticipaciones` (lib/ganancia-contrato.ts), que es la misma
-      // fórmula duplicada acá inline: la tasa cubre el 100% de la propiedad, y
-      // excluir a un dueño dado de baja la bajaría falsamente. La baja lógica corta
-      // el acceso al portal, no la titularidad.
-      const parts = p.contrato?.propiedad?.participaciones ?? [];
-      const tasa = parts.reduce(
-        (s, x) => s + (x.porcentaje / 100) * ((x.propietario?.comisionPct ?? 0) / 100),
-        0,
-      );
-      // Redondeo a CENTAVOS (no a peso entero) para cuadrar con la rendición, que
-      // persiste comisión en Decimal(14,2). Antes el cierre redondeaba a peso
-      // entero por pago → drift de centavos al reconciliar cierre vs rendición.
-      const comisionPago = Math.round(alquilerPortion * tasa * 100) / 100;
-      comision += comisionPago;
-      const b = bucket(moneda);
-      b.cobrado += monto;
-      b.comision += comisionPago;
-      b.cantidad += 1;
+    // Toda la aritmética vive en `lib/cierre-caja.ts`, sin Prisma: es la única forma de
+    // que las seis invariantes de plata de este cierre —prorrateo que deja las expensas
+    // afuera, cap de la mora, guarda del 0/0, redondeo a centavos, buckets por moneda y el
+    // flag multiMoneda— tengan tests que corran en CI. Acá queda la query y el armado de
+    // las filas que ve la pantalla.
+    const totales = totalizarCierre(
+      pagos.map((p) => ({
+        monto: Number(p.monto),
+        moneda: p.liquidacion?.moneda ?? 'ARS',
+        liqAlquiler: Number(p.liquidacion?.montoAlquiler ?? 0),
+        liqTotal: Number(p.liquidacion?.montoTotal ?? 0),
+        participaciones: p.contrato?.propiedad?.participaciones ?? [],
+      })),
+    );
+
+    const items = pagos.map((p, i) => {
       const inq = p.contrato?.inquilinoTitular;
+      // `totalizarCierre` devuelve una línea por pago y en el mismo orden, así que el índice
+      // siempre existe (hay un test puro que fija ese contrato). El `!` es por
+      // `noUncheckedIndexedAccess`, no porque el caso pueda darse.
+      const linea = totales.lineas[i]!;
       return {
         id: p.id,
         inquilino: inq ? `${inq.nombre} ${inq.apellido ?? ''}`.trim() : '—',
         direccion: p.contrato?.propiedad?.direccion ?? '—',
         periodo: p.liquidacion?.periodo ?? p.periodo,
-        monto,
-        moneda,
-        comision: comisionPago,
+        monto: linea.monto,
+        moneda: linea.moneda,
+        comision: linea.comision,
         metodo: p.metodo,
         hora: p.decididoAt,
       };
     });
 
-    // Totales redondeados a centavos: cobrado/comision acumulan floats; sin esto
-    // la suma podía arrastrar artefactos binarios (0.1+0.2) en el JSON.
-    const porMoneda = [...buckets.values()].map((b) => ({
-      moneda: b.moneda,
-      cobrado: Math.round(b.cobrado * 100) / 100,
-      comision: Math.round(b.comision * 100) / 100,
-      cantidad: b.cantidad,
-    }));
     return {
       fecha,
       // Totales planos: correctos con una sola moneda; con multiMoneda el front
       // debe usar porMoneda (sumar ARS+USD acá no significaría nada).
-      cobrado: Math.round(cobrado * 100) / 100,
-      comision: Math.round(comision * 100) / 100,
-      cantidad: items.length,
-      multiMoneda: porMoneda.length > 1,
-      porMoneda,
+      cobrado: totales.cobrado,
+      comision: totales.comision,
+      cantidad: totales.cantidad,
+      multiMoneda: totales.multiMoneda,
+      porMoneda: totales.porMoneda,
       pagos: items,
     };
   });
