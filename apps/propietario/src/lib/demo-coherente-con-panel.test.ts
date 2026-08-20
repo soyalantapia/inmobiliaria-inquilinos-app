@@ -39,8 +39,10 @@ function montosPorDireccion(fuente: string): Map<string, number> {
   const re = /direccion:\s*'([^']+)'/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(fuente))) {
+    // El grupo 1 existe si el exec matcheó, pero TS lo tipa `string | undefined` igual. Se
+    // chequea en vez de afirmarlo con `!`: cuesta una línea y no hay que confiar en nadie.
     const direccion = m[1];
-    if (out.has(direccion)) continue;
+    if (!direccion || out.has(direccion)) continue;
     const resto = fuente.slice(m.index, m.index + 600);
     const monto = /monto:\s*(\d+)/.exec(resto);
     if (monto) out.set(direccion, Number(monto[1]));

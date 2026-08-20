@@ -65,6 +65,16 @@ jobs:
           NODE_ENV: test
         run: pnpm test:sin-db
 
+      # Los tests de los tres fronts. Existen desde T-32 y hasta T-46-N2 no los corría nadie
+      # en CI: el runner estaba montado y los archivos seguían sin ejecutarse, que es el peor
+      # de los dos mundos —parecen cubiertos y no lo están—.
+      #
+      # Van por `--filter` y no por `turbo run test` a propósito: la tarea `test` de turbo
+      # incluiría a `api`, cuyo script es la suite COMPLETA y necesita una Postgres viva. Acá
+      # sólo corren los tres paquetes de front, que no tocan base.
+      - name: Tests de los fronts
+        run: pnpm test:fronts
+
   # Aviso, no portón. Corre aparte del job de calidad a propósito: que una rama olvidada
   # ponga en rojo el CI de alguien que está laburando en otra cosa es la forma más rápida de
   # que el aviso se ignore. Informa y sigue.

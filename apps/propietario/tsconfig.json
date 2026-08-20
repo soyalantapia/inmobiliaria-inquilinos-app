@@ -7,10 +7,5 @@
     }
   },
   "include": ["next-env.d.ts", "src/**/*", ".next/types/**/*.ts"],
-  // Mismo motivo y misma deuda que en apps/inquilino: los `*.test.ts` quedan fuera de `tsc`
-  // HASTA QUE T-32 monte el runner de tests de los fronts. Esta app tampoco tiene vitest
-  // instalado, así que el `import { describe } from 'vitest'` de src/lib/demo-data.test.ts
-  // rompería el typecheck — y con él el `pnpm typecheck` de revision.yml.
-  // ⚠️ Al cerrar T-32: borrar esta línea, para que los tests vuelvan a tipar.
-  "exclude": ["node_modules", "src/**/*.test.ts", "src/**/*.test.tsx"]
+  "exclude": ["node_modules"]
 }

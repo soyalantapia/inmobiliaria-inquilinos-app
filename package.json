@@ -15,6 +15,7 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "ramas": "node scripts/ramas-sin-integrar.mjs",
+    "test:fronts": "node scripts/test-fronts.mjs",
     "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
     "clean": "turbo run clean && rm -rf node_modules"
   },
