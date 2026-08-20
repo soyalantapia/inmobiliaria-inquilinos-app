@@ -7,6 +7,7 @@ import path from 'node:path';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { JwtPayloadSchema, JwtProfesionalSchema, type JwtPayload, type JwtProfesional } from '@llave/shared';
 import { prisma } from '../db.js';
+import { cuotaBytes, registrarSubida, usoDelTenant } from '../lib/cuota-uploads.js';
 
 /**
  * File storage REAL sobre un Railway Volume montado en /data.
@@ -27,7 +28,10 @@ import { prisma } from '../db.js';
 const UPLOADS_DIR =
   process.env.UPLOADS_DIR ?? (existsSync('/data') ? '/data/uploads' : path.join(os.tmpdir(), 'myalquiler-uploads'));
 
-const MAX_BYTES = 10 * 1024 * 1024; // 10 MB
+// El tope por archivo NO se aplica acá: lo aplica `@fastify/multipart` en su registro
+// (`app.ts`, `limits: { fileSize: 10 MB, files: 1 }`), y este handler sólo detecta el
+// truncado resultante (`data.file.truncated`). Antes había acá un `MAX_BYTES` que no leía
+// nadie: dos fuentes de verdad para el mismo número, y la de este archivo era la falsa.
 
 // MIMEs aceptados → extensión con la que GUARDAMOS. La extensión sale SIEMPRE
 // de este mapa (o de EXT_PERMITIDAS abajo), NUNCA del MIME crudo: así jamás
@@ -284,6 +288,26 @@ export async function uploadsRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
+    // CUOTA POR INMOBILIARIA. El Volume es uno solo y lo comparten todos los tenants, así que
+    // sin esto un token vivo —el de un inquilino dura 15 días, incluso con el contrato ya
+    // terminado— podía llenarlo y dejar sin subir a TODOS. Se mide antes de escribir; el
+    // desborde máximo es un archivo (10 MB, tope del multipart), que es aceptable.
+    const cuota = cuotaBytes();
+    if (cuota > 0) {
+      const usados = await usoDelTenant(UPLOADS_DIR, tenant);
+      if (usados >= cuota) {
+        // 507 como el disco lleno —para el que sube es lo mismo: no hay dónde guardarlo— pero
+        // con `codigo` propio, porque la acción de quien atiende es distinta: acá no hay que
+        // agrandar el disco, hay que borrar lo que sobra o subirle la cuota a esta cartera.
+        return reply.code(507).send({
+          message:
+            'No pudimos guardar el archivo: esta inmobiliaria llegó al límite de espacio. ' +
+            'Avisale al equipo de My Alquiler para ampliarlo.',
+          codigo: 'CUOTA_TENANT_LLENA',
+        });
+      }
+    }
+
     const filename = `${randomUUID()}${ext}`;
     const dir = path.join(UPLOADS_DIR, tenant);
     const dest = path.join(dir, filename);
@@ -314,6 +338,9 @@ export async function uploadsRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const tamanioBytes = (await stat(dest)).size;
+    // Se le suman al cache los bytes recién escritos, para no recorrer el directorio entero
+    // en cada subida. Ver `usoDelTenant`.
+    registrarSubida(tenant, tamanioBytes);
     return {
       url: `/uploads/${tenant}/${filename}`,
       nombreArchivo: data.filename ?? filename,

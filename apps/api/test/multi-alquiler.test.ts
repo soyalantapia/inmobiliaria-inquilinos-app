@@ -42,9 +42,23 @@ afterAll(async () => {
     where: { personaId: { in: personaIds } },
     select: { contratoId: true },
   });
-  const contratoIds = inquilinos.map((i) => i.contratoId).filter((c): c is string => !!c);
-  // Sólo las que creó este archivo. Ver el comentario de `propiedadesCreadas`.
+  // Sólo las propiedades que creó ESTE archivo (ver el comentario de `propiedadesCreadas`).
   const propIds = propiedadesCreadas;
+  // Los contratos salen de DOS lados y se unen. Antes salían sólo de los inquilinos, y eso
+  // deja afuera cualquier contrato de estas propiedades cuyo inquilino no matchee —incluido
+  // el residuo de una corrida anterior que murió a mitad del borrado—. El síntoma era un
+  // `contratos_propiedadId_fkey` recién al llegar a `propiedad.deleteMany`, o sea a seis
+  // líneas de distancia de la causa.
+  const porPropiedad = await prismaTest.contrato.findMany({
+    where: { propiedadId: { in: propIds } },
+    select: { id: true },
+  });
+  const contratoIds = [
+    ...new Set([
+      ...inquilinos.map((i) => i.contratoId).filter((c): c is string => !!c),
+      ...porPropiedad.map((c) => c.id),
+    ]),
+  ];
   await prismaTest.liquidacion.deleteMany({ where: { contratoId: { in: contratoIds } } });
   // El alta escribe historial (`EventoContrato`) desde T-29, y esta limpieza es anterior a eso:
   // la FK es RESTRICT, así que sin borrarlos el delete del contrato no pasa.
@@ -52,7 +66,11 @@ afterAll(async () => {
   await prismaTest.inquilino.deleteMany({ where: { personaId: { in: personaIds } } });
   // La propiedad apunta al contrato y el contrato a la propiedad: hay que cortar ese lazo
   // antes de borrar cualquiera de los dos, o el delete choca contra la FK. Es el mismo paso
-  // que hace `prisma/limpiar-test-db.ts`, y acá faltaba.
+  // que hace `prisma/limpiar-test-db.ts`.
+  //
+  // Ojo si esto vuelve a romper: de los 22 modelos que cuelgan de `Contrato`, NINGUNO
+  // cascadea, y acá se borran sólo los que este test llega a crear. Cualquier feature nueva
+  // que escriba otro hijo en el alta rompe esta limpieza igual. Ver T-28-N2.
   await prismaTest.propiedad.updateMany({
     where: { id: { in: propIds } },
     data: { contratoActualId: null },

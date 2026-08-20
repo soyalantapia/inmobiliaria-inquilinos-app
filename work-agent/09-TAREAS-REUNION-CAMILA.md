@@ -1819,7 +1819,25 @@ antes de dar el tema por cerrado.
 
 ---
 
-## T-23-N4-N1-N1 · `POST /uploads` no tiene cuota: un token vivo puede llenar el Volume
+## T-23-N4-N1-N1 · `POST /uploads` no tiene cuota: un token vivo puede llenar el Volume — ✅ HECHA
+
+**Estado: ✅ HECHA** — commit `22f0790`. Cuota **por inmobiliaria** (`UPLOADS_CUOTA_MB`, default
+2 GB), medida antes de escribir, con cache por tenant. Al tope: **507** con
+`codigo: CUOTA_TENANT_LLENA`, distinto del disco lleno de verdad porque la acción de quien
+atiende es otra.
+
+**Por tenant y no por usuario**, que era la decisión del arreglo: el Volume es uno solo y
+compartido, así que un tope por usuario no evita que una inmobiliaria con muchos llene el de
+todas. Por tenant acota el daño a quien lo causa. Y **no** se gateó por contrato activo — la
+tarea ya avisaba que eso rompe `POST /mis-documentos`, que a propósito deja subir documentación
+después de terminado el contrato.
+
+**Un bug que cazó su propio test:** la primera versión hacía `Number(env.UPLOADS_CUOTA_MB)`
+directo, y `Number('')` es 0 — un `UPLOADS_CUOTA_MB=` vacío en un `.env` apagaba la cuota en
+silencio, que es justo el modo de falla que el módulo venía a cerrar.
+
+De paso: `MAX_BYTES` en `uploads.ts` era una constante muerta. El tope real de 10 MB lo aplica
+`@fastify/multipart` en `app.ts`.
 
 **Experto:** SEC + OPS · **Prioridad:** 🟡 · **Depende de:** nada
 **Origen:** T-23-N4-N1, barrido de escrituras del inquilino.
@@ -4963,3 +4981,47 @@ que es lo que ya hacen varias y por eso no se pisan.
 
 **Cuando cierre:** sacar `continue-on-error: true` del job `integracion` en
 `.github/workflows/revision.yml`. Está anotado ahí también.
+
+---
+
+## T-28-N3 · Las limpiezas de los tests se rompen solas cuando el alta escribe un hijo nuevo
+
+**Experto:** BE · **Prioridad:** 🟡 · **Depende de:** nada
+**Origen:** T-28-N2, corriendo los 94 archivos del API por primera vez.
+
+**El síntoma.** `multi-alquiler.test.ts` se cayó entero — no por su lógica, sino por su
+`afterAll`. Borraba los contratos que crea, y desde **T-29** el alta escribe además una fila en
+`eventos_contrato`. Como ninguno de esos FK cascadea, el `deleteMany` se comió un
+`eventos_contrato_contratoId_fkey`. El test no cambió: cambió lo que el alta hace.
+
+**El problema de fondo.** De los **22 modelos que cuelgan de `Contrato`, ninguno declara
+`onDelete: Cascade`**:
+
+`AjusteAlquiler`, `BoletaServicio`, `CargoContrato`, `CargoPagado`, `CertificadoInquilino`,
+`ChatMensaje`, `CoInquilino`, `Comprobante`, `ContratoDraft`, `DocumentoContrato`,
+`EventoContrato`, `Garante`, `Inquilino`, `InquilinoInvitado`, `IntencionRenovacion`,
+`Liquidacion`, `MovimientoCaja`, `MovimientoFeed`, `Pago`, `Reclamo`, `RenovacionContrato`,
+`Screening`.
+
+Cada teardown borra a mano los pocos hijos que su propio flujo llega a crear, y **funciona por
+casualidad**: mientras el alta no escriba uno más. Es una bomba de tiempo repartida por toda la
+suite, y explota lejos de su causa — el fallo aparece en el `deleteMany` del teardown, no en la
+feature que agregó el hijo.
+
+**Por qué no se arregló en T-28-N2.** Ahí se tapó el agujero puntual (dos capas: los eventos, y
+que los contratos se deducían de un solo lado). El arreglo de fondo son dos caminos y ninguno
+entra en un fix de limpieza:
+
+1. **Cascadear** los FK que son de composición de verdad (evento, liquidación, cargo, documento…)
+   — es una migración y hay que pensar cuáles NO deben cascadear, porque borrar un contrato no
+   debería llevarse pagos en silencio.
+2. **Envolver cada test en una transacción que revierta** al terminar, y así no borrar nada a
+   mano. Es el patrón estándar y mata la clase entera de bug, pero toca todos los `afterAll` y
+   hay que ver cómo convive con `seedBase`.
+
+**Criterio de aceptación.** Que agregar un hijo nuevo de `Contrato` no rompa el teardown de
+ningún test — o que esté escrito cuál de los dos caminos se eligió y por qué.
+
+**Riesgo de no hacerlo.** Bajo hoy, molesto siempre: cada vez que alguien toque el alta, algún
+test lejano se pone rojo por una razón que no tiene nada que ver con lo que cambió, y se pierde
+media hora entendiendo que era la limpieza.

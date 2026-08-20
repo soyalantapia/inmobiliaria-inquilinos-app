@@ -41,6 +41,24 @@ cd apps/api && ./node_modules/.bin/prisma migrate deploy && ./node_modules/.bin/
 pnpm --filter api test:db:down     # borra el volumen: la próxima arranca limpia
 ```
 
+> ### ⚠️ No corras dos suites completas a la vez (T-28-N2, 20/08)
+>
+> La suite entera se corrió dos veces seguidas contra esta misma base efímera:
+>
+> | | duración | resultado |
+> |---|---|---|
+> | 1ª (máquina libre) | **881 s** | 809/810 · 1 falla real |
+> | 2ª (con otra suite en paralelo) | **5433 s** | 3 suites caídas |
+>
+> Las tres de la segunda vuelta fueron **de entorno, no de código**: una murió con
+> `Hook timed out in 420000ms` y `Can't reach database server at localhost:55432`. El
+> contenedor quedó sano —sin OOM, sin reinicios— y **las tres pasan solas en 46 s**. Lo que
+> las volteó fue la contención: 6× más lento alcanza para que los timeouts de conexión
+> empiecen a saltar.
+>
+> Si ves fallas raras de infraestructura, **antes de debuggear el código corré los archivos
+> caídos en aislamiento**. Si pasan, era la máquina.
+
 Detalles en `docker-compose.test.yml`. Puerto **55432** para no pisar un Postgres propio; la
 base vive en `tmpfs` (RAM) así que desaparece al bajar el contenedor, que es justo lo que se
 quiere de una base de test. `prisma/guard-db.ts` ya reconoce `localhost` como base de test.
@@ -67,6 +85,28 @@ y se copia `DATABASE_PUBLIC_URL` (la privada sólo resuelve dentro de la red de 
 > ⚠️ **Que apunte a la base de TEST.** `seedBase` reescribe el tenant de demo entero. Contra
 > producción, esto no es un test: es una pérdida de datos.
 
+### Corrida completa del 20/08: los 53 archivos de integración, por lotes
+
+Primera vez que se corrieron todos. Resultado: **7 archivos en rojo, y NINGUNO era un bug de
+la aplicación introducido por un cambio reciente.** Vale la pena la lista, porque las causas se
+repiten y las tres primeras se disfrazan de "se rompió el código":
+
+| Causa | Archivos | Cómo se veía |
+|---|---|---|
+| El devengo automático escribiendo en la base compartida | `conciliar-informado-huerfano`, `deposito-aplica-deuda`, `inquilino-mundo` | un 23505, un depósito que se imputaba entero, "expected 12 to be 1" |
+| Contar filas del seed a mano en una base que nunca se limpia | `core.test.ts` | "expected 29 to be 8" |
+| Fixture viejo respecto del código | `certificado-antiguedad` | 401 desde que existe la revalidación de tokens |
+| La base de test se cayó a mitad de la corrida | `renovacion-decision`, `pago-tipo-parcial`, `pago-monto-centavos` | todo *skipped*, y un archivo colgado 74 minutos |
+| Limpieza vieja respecto del código | `multi-alquiler` | FK RESTRICT de `eventos_contrato` |
+
+**La única excepción, y sí era real:** `saldar-deuda-concurrencia` daba 500. No era
+contaminación ni flake —se reprodujo aislado y con la base sana—: la transacción toma un lock
+pesimista y se quedaba sin los 5 segundos de default de Prisma, tirando un P2028 que el
+operador veía como "Error interno". El invariante de plata nunca se rompió (un solo pago), así
+que el 500 no era un doble cobro: era la espera.
+
+> La moraleja operativa es corta: **antes de investigar un rojo de integración, mirá si el
+> escenario cambió abajo del test.** Cuatro de los siete eran eso.
 ### Lo que hay que saber antes de tirar `vitest run` a secas
 
 - **La suite completa son ~94 archivos y tarda horas, no minutos.** Cada test hace ida y

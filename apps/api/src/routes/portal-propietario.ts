@@ -311,6 +311,12 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
                 fechaFin: true,
                 inquilinoTitular: { select: { nombre: true, apellido: true } },
                 liquidaciones: {
+                  // El tenant, otra vez y explícito. Acá ya viene garantizado por la cadena
+                  // —la participación de arriba filtra por `p.inmobiliariaId`—, pero esa
+                  // garantía son cuatro saltos de relación de razonamiento. Nombrarlo cuesta
+                  // una línea y es lo que el guard de `portal-aislamiento.test.ts` exige del
+                  // resto del archivo; este tramo se le escapaba por estar anidado.
+                  where: { inmobiliariaId: p.inmobiliariaId },
                   orderBy: { periodo: 'desc' },
                   // Doce y no seis: el dueño mira su propiedad por AÑO —para el contador, para
                   // decidir si renueva, para ver si el inquilino se atrasa siempre en el mismo
@@ -337,7 +343,7 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
                     // resto. Filtrando en la query con take 1 nos quedábamos con la más nueva
                     // —la condonación— y se perdía la fecha del pago que sí entró.
                     pagos: {
-                      where: { estado: 'CONCILIADO' },
+                      where: { estado: 'CONCILIADO', inmobiliariaId: p.inmobiliariaId },
                       orderBy: { fechaTransferencia: 'desc' },
                       select: { fechaTransferencia: true, monto: true, condonado: true },
                     },
@@ -634,7 +640,9 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
             direccion: true,
             complejo: true,
             consorcio: { select: { nombre: true } },
-            contratoActual: { select: { moneda: true } },
+            // NO se trae `contratoActual.moneda`, y no es un olvido: era justamente de donde
+            // salía la moneda cuando este endpoint pintaba los dólares con signo de pesos.
+            // Dejarlo en el select invita a volver a usarlo. La moneda viaja con cada período.
           },
         },
       },

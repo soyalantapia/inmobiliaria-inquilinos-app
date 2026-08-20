@@ -72,3 +72,24 @@ describe('cortarPorMoneda', () => {
     expect(c[0]!.ultima).toBeNull();
   });
 });
+
+describe('cortarPorMoneda — «la última» se decide por fecha de depósito', () => {
+  it('un período viejo rendido tarde ES el último movimiento, aunque venga después en la lista', () => {
+    // El server ordena por `periodo desc` y recién después por `rendidoAt desc`. Una puesta al
+    // día —marzo rendido en abril, febrero recién en mayo— llega DESPUÉS en la lista y ANTES en
+    // el tiempo. Antes se tomaba la primera que se veía y el rótulo nombraba marzo.
+    const c = cortarPorMoneda(
+      [R('ARS', 100000, '2026-04-10', '2026-03'), R('ARS', 100000, '2026-05-10', '2026-02')],
+      2026,
+    );
+    expect(c[0]!.ultima).toBe('2026-02');
+  });
+
+  it('en el caso normal —orden de período y de depósito coinciden— no cambia nada', () => {
+    const c = cortarPorMoneda(
+      [R('ARS', 1, '2026-06-10', '2026-05'), R('ARS', 1, '2026-05-10', '2026-04')],
+      2026,
+    );
+    expect(c[0]!.ultima).toBe('2026-05');
+  });
+})

@@ -20,6 +20,23 @@ async function resetInquilinoMundo(prisma: PrismaClient, tid: string) {
   await prisma.reportePiloto.deleteMany({ where: { inmobiliariaId: tid } });
   await prisma.screening.deleteMany({ where: { inmobiliariaId: tid, id: { not: 'scr_001' } } });
   await prisma.certificadoInquilino.deleteMany({ where: { inmobiliariaId: tid } });
+  // El certificado de Mariela cuenta las CUOTAS de cnt_001, y el test afirma que son 1.
+  // Eso sólo vale si el contrato tiene únicamente la del seed — y en la base compartida no:
+  // el devengo corre solo, en proceso, cada 6 horas (`CRON_DEVENGO`), así que cualquier API
+  // apuntada acá le va agregando períodos. Llegó a tener 12, y el test moría con
+  // "expected 12 to be 1", que se lee como "se rompió el cálculo del certificado".
+  // Se borran las que NO son del seed (ids `liq_*`), con sus pagos, antes de nada.
+  const devengadas = await prisma.liquidacion.findMany({
+    where: { contratoId: 'cnt_001', NOT: { id: { startsWith: 'liq_' } } },
+    select: { id: true },
+  });
+  if (devengadas.length) {
+    const ids = devengadas.map((l) => l.id);
+    await prisma.pago.deleteMany({ where: { liquidacionId: { in: ids } } });
+    await prisma.alquilerRendido.deleteMany({ where: { liquidacionId: { in: ids } } });
+    await prisma.liquidacion.deleteMany({ where: { id: { in: ids } } });
+  }
+
   // El certificado de Mariela se calcula de liq_001: devolverla a VENCIDA
   // por si otra corrida la pagó, y limpiar rechazos espurios.
   await prisma.liquidacion.update({
