@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import { yaVencio } from '@llave/shared';
+import { instanteEnDiaCivilAR, yaVencio } from '@llave/shared';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../db.js';
@@ -1216,7 +1216,18 @@ export async function plataRoutes(app: FastifyInstance) {
         liquidacionId: z.string(),
         monto: montoCents,
         metodo: z.enum(['TRANSFERENCIA', 'MERCADOPAGO', 'EFECTIVO', 'CHEQUE']).default('EFECTIVO'),
-        fecha: z.coerce.date(),
+        // T-56 — El panel manda la fecha CIVIL ("YYYY-MM-DD"). Con `z.coerce.date()` a secas
+        // quedaba en `D T00:00Z`, que en Argentina son las 21:00 del día ANTERIOR: la mora se
+        // calculaba con un día de menos y el guard rechazaba con 400 el mismo monto que el
+        // diálogo había prefilleado. Se la lleva a un instante dentro de ese día argentino.
+        fecha: z
+          .union([
+            z.string().regex(/^\d{4}-\d{2}-\d{2}$/).transform((str) => {
+              const [y, m, d] = str.split('-').map(Number);
+              return instanteEnDiaCivilAR(new Date(Date.UTC(y!, m! - 1, d!)));
+            }),
+            z.coerce.date(),
+          ]),
         nota: z.string().optional(),
         pin: z.string().optional(),
       })

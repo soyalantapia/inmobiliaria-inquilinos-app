@@ -7,6 +7,7 @@ import { verificarPinUsuario } from '../auth/pin.js';
 import { calcularMora, resolverEsquemaMora } from '../lib/punitorios.js';
 import { parsearFilasResumen, sugerirMatch, type CandidatoLiquidacion, type CandidatoPago , claveCredito} from '../lib/matching-bancario.js';
 import { guardarBufferSubido } from './uploads.js';
+import { instanteEnDiaCivilAR } from '@llave/shared';
 
 /**
  * Validador de resumen bancario REAL (auditoría "archivos" — feature elegida
@@ -353,7 +354,10 @@ export async function resumenesBancariosRoutes(app: FastifyInstance): Promise<vo
       Number(liq.montoTotal),
       resolverEsquemaMora(liq.contrato, liq.contrato.inmobiliaria),
       liq.fechaVencimiento,
-      credito.fecha,
+      // T-56 — `credito.fecha` es una fecha CIVIL a medianoche: sin normalizar, la mora sale
+      // con un día de menos y el crédito por el monto exacto que vio el inquilino se rechaza
+      // con 400 — y acá el monto NO se puede editar, así que la conciliación queda trabada.
+      instanteEnDiaCivilAR(credito.fecha),
       liq.montoPunitorioManual != null ? Number(liq.montoPunitorioManual) : null,
     );
     const saldoPendiente = Number(liq.montoTotal) + punitorioGuard - Number(aggConc._sum.monto ?? 0);
@@ -413,7 +417,7 @@ export async function resumenesBancariosRoutes(app: FastifyInstance): Promise<vo
           Number(liq.montoTotal),
           resolverEsquemaMora(liq.contrato, liq.contrato.inmobiliaria),
           liq.fechaVencimiento,
-          credito.fecha,
+          instanteEnDiaCivilAR(credito.fecha),
           liq.montoPunitorioManual != null ? Number(liq.montoPunitorioManual) : null,
         );
         // Tolerancia de 1 centavo, igual que validar/manual (plata.ts): `montoTotal
