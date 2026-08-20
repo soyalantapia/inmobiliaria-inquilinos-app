@@ -2542,9 +2542,19 @@ El profesional declara `montoCobrado` en `POST /visitas-publicas/listo`
 - **(d) Dejarlo, y que el tope sea la revocación** — arreglar que regenerar el link corte las
   sesiones vivas, y aceptar el riesgo del profesional legítimo que se equivoca tipeando.
 
-**Lo que sí conviene hacer aunque no se decida nada:** que el reclamo cerrado por link mágico
-**se pueda corregir** desde el panel. Hoy no se puede, y eso convierte un typo en un asiento
-permanente.
+**Lo que sí conviene hacer aunque no se decida nada:** ✅ **HECHO** — T-63-N1, commit `d09b308e`.
+
+Existe `POST /reclamos/:id/reabrir` (capacidad `reclamos.gestionar`, exige motivo) y su card en
+el detalle del reclamo, que aparece sólo con el reclamo cerrado y API real. Devuelve el reclamo
+a `EN_CURSO` para que `/clasificar` y `/resolver` vuelvan a estar habilitados.
+
+**No mueve plata:** la reimputación la sigue haciendo `/resolver` con el helper de siempre, que
+frena solo si el costo ya se rindió al propietario o el inquilino ya lo pagó. Un test fija que
+reabrir **no saltea** esos cortes. Y no se toca `resueltoAt`, porque `evaluarSla` lo usa de ancla
+para reiniciar el reloj de un reclamo reabierto — limpiarlo lo mostraría VENCIDO al instante.
+
+**La Parte B sigue esperando tu decisión**: el tope, el umbral con aprobación, o que el
+profesional no declare monto. Lo que se cerró es que un error ya no es irreversible.
 
 ---
 
