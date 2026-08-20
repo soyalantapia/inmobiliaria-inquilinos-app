@@ -29,6 +29,7 @@ import type {
 import { enriquecerPropiedad, type PropiedadEnriquecida } from '@/lib/propiedades-helpers';
 import type { DashboardStats } from '@/lib/dashboard-helpers';
 import { parseLocal } from '@/lib/format';
+import { porcionAlquilerCobrada } from '@/lib/alquiler-cobrado';
 import {
   cargarMovimiento as cargarMovimientoLocal,
   eliminarMovimiento as eliminarMovimientoLocal,
@@ -1170,12 +1171,16 @@ export function usePropietarios(): {
       // Sobre el ALQUILER (no montoTotal): igual que la rendición real del server,
       // las expensas no le corresponden al propietario. Antes inflaba el KPI y el
       // preview del diálogo de rendición.
-      // Porción de ALQUILER de lo REALMENTE cobrado, con el mismo prorrateo que el server
-      // (alquilerCobrado = cobrado capeado × montoAlquiler / montoTotal). En una PAGADA da
-      // el alquiler entero; en una PARCIAL, la parte proporcional. El cap deja afuera la
-      // mora — que no se rinde al propietario.
-      const cobradoLiq = Math.min(l.montoPagado, l.montoTotal);
-      const alquilerCobradoLiq = l.montoTotal > 0 ? cobradoLiq * (l.montoAlquiler / l.montoTotal) : 0;
+      // Porción de ALQUILER de lo REALMENTE cobrado, con el mismo prorrateo que el server.
+      // La base va SIN mora: `l.montoTotal` viene decorado por `conSaldo` con el punitorio
+      // al día (lo dice el comentario de `montoPunitorio` en el tipo de arriba), así que
+      // usarlo crudo prorrateaba contra un denominador más grande y mostraba menos alquiler
+      // cobrado del que la rendición efectivamente paga. Coincidían mientras no hubiera mora.
+      const alquilerCobradoLiq = porcionAlquilerCobrada({
+        alquiler: l.montoAlquiler,
+        base: l.montoTotal - l.montoPunitorio,
+        cobrado: l.montoPagado,
+      });
       cobradoByOwner[part.propietarioId] =
         (cobradoByOwner[part.propietarioId] ?? 0) + alquilerCobradoLiq * (part.porcentaje / 100);
       (monedasByOwner[part.propietarioId] ??= new Set()).add(l.moneda);
@@ -1524,10 +1529,16 @@ export function useDashboard(): DashboardData {
     ? activos.reduce((acc, c) => {
         const pagado = c.estadoPagoActual === 'PAGADO' ? (c.montoPagado || c.monto) : c.estadoPagoActual === 'PARCIAL' ? (c.montoPagado ?? 0) : 0;
         if (pagado <= 0) return acc;
-        const expensas = c.montoExpensas ?? 0;
-        const total = c.monto + expensas;
-        if (total <= 0) return acc;
-        return acc + Math.min(pagado, total) * (c.monto / total);
+        // La base se arma sumando componentes, así que ya viene sin mora. Mismo helper que
+        // el KPI de arriba, que es donde esto estaba mal.
+        return (
+          acc +
+          porcionAlquilerCobrada({
+            alquiler: c.monto,
+            base: c.monto + (c.montoExpensas ?? 0),
+            cobrado: pagado,
+          })
+        );
       }, 0)
     : cobrado;
   const comisionMes = Math.round(alquilerCobrado * tasaComision);
