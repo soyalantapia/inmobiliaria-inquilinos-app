@@ -4623,7 +4623,30 @@ manual, sin tocar la importación.
 cuenta filas del seed y encuentra las que dejaron las suites anteriores — corriéndolo solo da
 7/7. No son bugs del producto. Ver **T-01-N1-N1-N1**.
 
-### T-01-N1-N1-N1 · Las suites de integración se pisan entre sí
+### T-01-N1-N1-N1 · Las suites de integración se pisan entre sí — ✅ HECHA
+
+> ### ✅ Cerrada el 20/08. La suite da **52/52 · 387 tests** y el job **ya bloquea**.
+>
+> Eran dos causas distintas, no una:
+>
+> **1. Los conteos del seed** (4 rojas de `core.test.ts`). Ya lo había arreglado otro chat
+> cambiando `toBe(8)` por `toBeGreaterThanOrEqual(8)`: la aserción pasa a decir lo que de
+> verdad importa —que los 8 del seed están y vienen con sus joins— en vez de exigir que la base
+> no tenga nada más.
+>
+> **2. Una limpieza que se salía de su territorio** (el archivo entero de `multi-alquiler`).
+> Su `afterAll` borraba propiedades matcheando `direccion contains "Rivadavia"`, y
+> `importacion-morosos.test.ts` **también usa direcciones con Rivadavia**. En una corrida
+> completa intentaba borrar propiedades ajenas, con contratos y pagos que no limpia, y moría
+> con violación de FK. Por eso corriéndolo solo pasaba y en la suite era el único rojo.
+>
+> Se acotó a las propiedades que el propio archivo crea (por id, no por texto), y de paso le
+> faltaban dos pasos que el limpiador oficial documenta: cortar el lazo `propiedad.contratoActualId`
+> antes de borrar el contrato, y borrar el `EventoContrato` que el alta escribe desde T-29.
+>
+> **Se sacó el `continue-on-error` del job `integracion`.** Si vuelve a ponerse rojo, frena el
+> merge — que es el punto: con push a `main` deployando producción, ese job es lo único que hay
+> entre un merge y la plata de la inmobiliaria.
 **Experto:** QA · **Prioridad:** 🟡 · **Depende de:** nada
 
 Las ~50 suites comparten una base y las que cuentan filas del seed fallan por lo que dejó la
