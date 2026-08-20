@@ -5012,7 +5012,25 @@ que es lo que ya hacen varias y por eso no se pisan.
 
 ---
 
-## T-28-N3 · Las limpiezas de los tests se rompen solas cuando el alta escribe un hijo nuevo
+## T-28-N3 · Las limpiezas de los tests se rompen solas cuando el alta escribe un hijo nuevo — ✅ HECHA
+
+> ### ✅ Resuelta el 20/08 por un tercer camino. Ver `work-agent/tareas/T-28-N3/REQUISITOS.md`.
+>
+> **Los dos caminos que propone abajo quedaron descartados, con razón.** Cascadear cambiaría
+> PRODUCCIÓN —las migraciones se aplican solas en el deploy y hoy el RESTRICT es lo que impide
+> que borrar un contrato se lleve pagos en silencio—. Y envolver cada test en una transacción
+> no funciona acá: los tests pegan por `app.inject` y la app tiene su propio cliente de Prisma
+> en otra conexión, así que la transacción del test no envuelve lo que escribe la app.
+>
+> **Lo que se hizo:** `prisma/borrar-contratos-de-test.ts` (nietos → los 22 hijos en orden → el
+> contrato → el lazo) y `test/hijos-de-contrato-sincronizados.test.ts`, que lee el schema y se
+> pone rojo si aparece un hijo o un nieto nuevo, si el orden viola una FK entre hijos, o si el
+> nombre de una columna FK no coincide.
+>
+> **Corrección al texto de abajo:** no son 22 FK todas RESTRICT. Son 23 constraints hacia
+> `contratos` —**16 RESTRICT y 7 SET NULL**— y una de ellas es la inversa
+> (`propiedades.contratoActualId`, SET NULL, que **nunca** bloqueó borrar el contrato). El dato
+> está en el SQL de las migraciones, no en `schema.prisma`, que no declara los `onDelete`.
 
 **Experto:** BE · **Prioridad:** 🟡 · **Depende de:** nada
 **Origen:** T-28-N2, corriendo los 94 archivos del API por primera vez.

@@ -114,20 +114,27 @@ Las tres piezas, por si alguna se toca:
 —pide las dos cosas—, pero el día que alguien lo agregue "para probar" estaría publicando datos
 inventados en un dominio real.
 
-### ⚠️ Está vivo y NADIE LO LINKEA
+### Ya está linkeado — cómo llega el propietario
 
-El portal se puede abrir, pero hoy no hay una sola superficie que le diga a un propietario
-que existe. Es la diferencia entre "deployado" y "entregado":
+Hasta el 20/08 el portal se podía abrir pero **ninguna superficie decía que existía**: era la
+diferencia entre "deployado" y "entregado". Las dos puertas que faltaban ya están:
 
-- **Los mails a propietarios se mandan sin CTA a propósito.** `enviarAnuncioEmail` en
-  `apps/api/src/mailer.ts` tiene la bandera `paraInquilino` y el comentario dice textual:
-  *"true → CTA a la app del inquilino; false (propietarios) → sin CTA"*. Era correcto cuando
-  el portal no existía en ningún lado. Falta una `APP_PROPIETARIO_URL` y su copy.
-- **El panel no lo menciona en ninguna parte.** Cero resultados de "portal" o "/propietario"
-  en `apps/inmobiliaria/src`. O sea que la inmobiliaria tampoco se entera de que puede
-  mandárselo a sus dueños.
+- **Por mail, al propietario.** `enviarAnuncioEmail` manda el CTA de los dos lados: al
+  inquilino "Ver en la app", al propietario **"Ver mis rendiciones"** hacia
+  `APP_PROPIETARIO_URL`, que por default es `https://admin.myalquiler.com/propietario`. Si se
+  setea en Railway tiene que apuntar al host del **panel** con `/propietario` — el portal no
+  tiene servicio propio (ver arriba). **Es el único mail que hoy le llega a un propietario**
+  además del OTP de login del portal: no hay mail de rendición ni de alta, así que ésta era la
+  única superficie donde meterlo.
+- **Desde el panel, para que la inmobiliaria lo comparta.** Configuración tiene la card **"Link
+  del portal para tus propietarios"** (`configuracion-prod.tsx`), al lado de la del link de la
+  app del inquilino: el link y un "Copiar link". Ahí la URL va **hardcodeada y sin env que la
+  pise** a propósito — el portal se sirve desde el mismo host que el panel, así que la única
+  variante posible sería una mal configurada.
 
-Las dos cosas tocan copy que ve un usuario final, así que las decide el dueño del producto.
+El copy de las dos lo confirmó el dueño el 20/08 —toca a un usuario final, así que no lo decide
+un dev—: botón «Ver mis rendiciones» en el mail y el texto de la card.
+
 Verificado el 20/08 sirviendo el export desde el panel: las cinco rutas (`/propietario`,
 `/login`, `/unidades`, `/reclamos`, `/perfil`) dan 200, los assets resuelven bajo
 `/propietario/_next/`, y el bundle tiene horneada la URL del API de producción, no la de la
