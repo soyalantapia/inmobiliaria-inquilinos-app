@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Clock } from 'lucide-react';
 import { Card } from '@llave/ui/card';
 import { money, periodoLargo } from '@/lib/format';
-import { apiFetch, type PendientePortal } from '@/lib/api';
+import { apiFetch, type MiCartera, type PendientePortal } from '@/lib/api';
 
 /**
  * Lo que ya se cobró de sus unidades y todavía no se le rindió.
@@ -21,6 +21,13 @@ import { apiFetch, type PendientePortal } from '@/lib/api';
  * inmobiliaria.
  */
 export function PendienteDeRendir() {
+  // La cartera ya está cacheada por el layout con esta misma key: no es una request más.
+  const cartera = useQuery({
+    queryKey: ['mi-cartera'],
+    queryFn: () => apiFetch<MiCartera>('/portal/mi-cartera'),
+    staleTime: 60_000,
+  });
+
   const pend = useQuery({
     queryKey: ['portal-pendiente'],
     queryFn: () => apiFetch<PendientePortal[]>('/portal/pendiente'),
@@ -69,6 +76,27 @@ export function PendienteDeRendir() {
         <Clock className="h-4 w-4" />
         Cobrado y todavía sin rendirte
       </h2>
+      {/* SIN CBU NO LE PUEDEN DEPOSITAR, y era lo único que el dueño no sabía.
+          `POST /rendiciones` corta con 409 cuando falta, así que este número crece mes a mes
+          sin que nada explique por qué no le llega. El panel hasta tiene un KPI de
+          "propietarios sin CBU": el único que no se enteraba era el que lo resuelve en treinta
+          segundos.
+
+          Se muestra SÓLO si además hay algo pendiente —sin plata esperando no es un problema
+          todavía— y sólo si el server DIJO que falta: con `tieneCbu` undefined (backend viejo)
+          no se avisa nada, porque decirle que no tiene CBU cuando sí lo tiene es peor que
+          callarse. */}
+      {cartera.data?.tieneCbu === false && (
+        <Card className="border-amber-300 bg-amber-50 p-4 text-xs dark:border-amber-800 dark:bg-amber-950/30">
+          <p className="font-medium text-amber-900 dark:text-amber-200">
+            Falta tu CBU para que puedan depositarte
+          </p>
+          <p className="mt-1 text-amber-800 dark:text-amber-300">
+            Tu inmobiliaria no tiene cargado tu CBU o alias, y sin eso no puede transferirte lo
+            de arriba. Pasáselo y se destraba.
+          </p>
+        </Card>
+      )}
       <div className="space-y-2">
         {/* La clave lleva la moneda: el endpoint devuelve una fila por (unidad, moneda), y una
             unidad con historia en dos monedas manda dos. Con sólo el id, React descarta la

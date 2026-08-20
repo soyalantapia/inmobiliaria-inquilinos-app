@@ -16,8 +16,20 @@
  *
  * NO toca `llave:auth:token` (otro prefijo, sin guion): quién decide sobre el token es el
  * caller, porque el conmutador lo REEMPLAZA y el logout lo BORRA.
+ *
+ * SÍ TOCA LAS CLAVES DEL PORTAL DEL PROPIETARIO, y eso es nuevo. El portal se sirve como
+ * `/propietario` de este MISMO host (ver `work-agent/02-DEPLOY.md`), así que comparte origen y
+ * comparte `localStorage`. En el mostrador compartido eso significa: Camila le muestra a un
+ * dueño su rendición, el dueño entra con su OTP, Camila cierra sesión —y el token del dueño
+ * sigue ahí SIETE DÍAS, porque el barrido sólo miraba `llave-inmo:`—. El siguiente que abra
+ * `/propietario` en esa máquina entra como él: ve sus rendiciones, su comisión y la morosidad
+ * de sus inquilinos.
+ *
+ * Acá sí se borra el token del portal junto con lo demás: a diferencia del panel, no hay ningún
+ * caller que lo administre. Cerrar sesión en el mostrador tiene que significar "terminé, pasa
+ * el que sigue" para las dos puertas.
  */
-const PREFIJO = 'llave-inmo:';
+const PREFIJOS = ['llave-inmo:', 'myalquiler-propietario:'] as const;
 
 export function limpiarEstadoDeSesion(): void {
   if (typeof window === 'undefined') return;
@@ -27,7 +39,7 @@ export function limpiarEstadoDeSesion(): void {
     const aBorrar: string[] = [];
     for (let i = 0; i < window.localStorage.length; i++) {
       const k = window.localStorage.key(i);
-      if (k && k.startsWith(PREFIJO)) aBorrar.push(k);
+      if (k && PREFIJOS.some((pre) => k.startsWith(pre))) aBorrar.push(k);
     }
     for (const k of aBorrar) window.localStorage.removeItem(k);
   } catch {

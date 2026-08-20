@@ -208,6 +208,14 @@ export interface Propietario {
   cbuAlias: string | null;
   comisionPct: number;
   notas: string | null;
+  /**
+   * Última vez que entró a su portal. `null` = nunca entró.
+   *
+   * Contesta la pregunta que hoy no tenía respuesta: "¿le llegó el acceso a este dueño?".
+   * Sirve para saber a quién hay que reenviarle el link, y para tener con qué contestar si
+   * alguien pregunta quién entró y cuándo.
+   */
+  ultimoAccesoAt?: string | null;
   createdAt: string;
   // métricas derivadas para el listado/detalle (en backend real se calculan)
   propiedadesIds: string[]; // FK a Propiedad.id (no a Contrato)

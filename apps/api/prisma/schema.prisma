@@ -1208,6 +1208,19 @@ model Propietario {
   // portal — requirePropietario lo revalida en cada request, que es la única
   // revocación real que tiene un token de 7 días sin denylist.
   activo         Boolean      @default(true)
+  /**
+   * La última vez que entró al portal. `null` = nunca entró.
+   *
+   * Hoy no hay forma de contestar "¿algún dueño usó esto alguna vez?". El único rastro es
+   * `CodigoOtpPropietario.usedAt`, y es ambiguo: se escribe tanto al consumir un código como
+   * al invalidar los anteriores. Sirve para tres cosas concretas: saber si el portal se usa,
+   * que la inmobiliaria vea en la ficha si a ese dueño le llegó el acceso, y tener con qué
+   * contestar cuando alguien pregunte quién entró y cuándo.
+   *
+   * Se escribe en el OTP verify, best-effort: si falla, el dueño entra igual. Un rastro que
+   * rompe el login es peor que no tener rastro.
+   */
+  ultimoAccesoAt DateTime?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 

@@ -130,6 +130,14 @@ export interface MiCartera {
   telefono: string;
   cuit: string;
   comisionPct: number;
+  /**
+   * Si la inmobiliaria tiene cargado su CBU. SÓLO el booleano: el número no viaja nunca.
+   *
+   * Opcional por compat con un backend viejo, y los lectores tienen que tratar `undefined`
+   * como "no sé", NO como "falta": avisarle a un dueño que no tiene CBU cuando sí lo tiene es
+   * peor que no avisarle nada.
+   */
+  tieneCbu?: boolean;
   inmobiliaria: { nombre: string; telefono: string | null; email: string | null };
 }
 
