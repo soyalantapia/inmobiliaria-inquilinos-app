@@ -128,7 +128,15 @@ export async function authRoutes(app: FastifyInstance) {
   // --- Auto-onboarding: una inmobiliaria crea su cuenta sola ---
   // Crea Inmobiliaria (piloto pre-lanzamiento) + Usuario ADMIN + Trial gratis,
   // todo en una transacción, y devuelve el token igual que /auth/login.
-  app.post('/auth/registro', async (request, reply) => {
+  //
+  // Era la única ruta pública de este archivo sin tope propio: caía en el global de 300/min
+  // por IP. Cada hit deja tres filas nuevas (inmobiliaria + usuario ADMIN + trial)
+  // y dispara un mail a la dirección que mandó quien llama, así que una sola IP podía sembrar
+  // ~432.000 tenants por día y usar el alta como cañón de mails contra terceros. El chequeo de
+  // email único de acá abajo no lo frena: impide reusar UN email, no crear mil con mil emails.
+  // Mismo tope que /auth/usuario/otp/request y por la misma razón que dice su comentario
+  // (bombardeo de mails); sobra de largo para un alta real, que se hace UNA vez.
+  app.post('/auth/registro', { config: { rateLimit: { max: 10, timeWindow: '15 minutes' } } }, async (request, reply) => {
     const body = RegistroSchema.safeParse(request.body);
     if (!body.success) return reply.code(400).send({ message: 'Datos de registro incompletos o inválidos' });
     const { inmobiliaria, admin } = body.data;
