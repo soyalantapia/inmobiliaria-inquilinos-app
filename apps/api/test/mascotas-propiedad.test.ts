@@ -13,6 +13,7 @@ import type { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { buildApp } from '../src/app.js';
 import { seedBase } from '../prisma/seed.js';
+import { loginTest, loginDemoTest } from './_login.js';
 
 let app: FastifyInstance;
 let token: string;
@@ -22,12 +23,7 @@ beforeAll(async () => {
   await seedBase(prisma);
   await prisma.$disconnect();
   app = await buildApp({ NODE_ENV: 'test', DEMO_MODE: 'true' });
-  const login = await app.inject({
-    method: 'POST',
-    url: '/auth/login',
-    payload: { email: 'roberto@delsol.com', password: 'delsol123' },
-  });
-  token = login.json().token;
+  token = await loginTest(app, 'roberto@delsol.com', 'delsol123');
 });
 
 afterAll(async () => {
@@ -195,8 +191,7 @@ describe('Mascotas: atributo de la propiedad (feedback 03/08)', () => {
     let contratoOriginal: boolean | null = null;
 
     beforeAll(async () => {
-      const demo = await app.inject({ method: 'POST', url: '/auth/demo' });
-      tokenInq = demo.json().token;
+      tokenInq = await loginDemoTest(app);
       const contrato = await prisma.contrato.findUniqueOrThrow({
         where: { id: 'cnt_001' },
         select: { propiedadId: true, mascotasPermitidas: true },

@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { buildApp } from '../src/app.js';
 import { seedBase } from '../prisma/seed.js';
+import { loginTest } from './_login.js';
 
 // CAZABUG P1 (rescatado de la rama varada fix/camila-hunt) — al retener el depósito
 // (NETEAR/EJECUTAR) el sistema marcaba el estado, cobraba la penalidad… y NO tocaba una sola
@@ -86,8 +87,7 @@ beforeAll(async () => {
   await crearLiq(LIQ_FUTURA, '2099-06', '2099-06-05', 'PENDIENTE', 50000);
 
   app = await buildApp({ NODE_ENV: 'test', DEMO_MODE: 'true' });
-  const login = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'roberto@delsol.com', password: 'delsol123' } });
-  tADMIN = login.json().token;
+  tADMIN = await loginTest(app, 'roberto@delsol.com', 'delsol123');
 });
 
 afterAll(async () => {

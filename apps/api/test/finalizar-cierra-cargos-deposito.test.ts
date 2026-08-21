@@ -22,6 +22,7 @@ import type { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { buildApp } from '../src/app.js';
 import { seedBase } from '../prisma/seed.js';
+import { loginTest } from './_login.js';
 
 let app: FastifyInstance;
 let prisma: PrismaClient;
@@ -37,11 +38,7 @@ beforeAll(async () => {
   prisma = new PrismaClient();
   await seedBase(prisma);
   app = await buildApp({ NODE_ENV: 'test', DEMO_MODE: 'true' });
-  const r = await app.inject({
-    method: 'POST', url: '/auth/login',
-    payload: { email: 'luciana@delsol.com', password: 'delsol123' },
-  });
-  token = r.json().token;
+  token = await loginTest(app, 'luciana@delsol.com', 'delsol123');
 
   // Contrato PROPIO, no uno del seed: finalizar es destructivo y esta base es compartida
   // entre los 55 archivos de la suite. Se apoya en una propiedad existente, pero como NO es
