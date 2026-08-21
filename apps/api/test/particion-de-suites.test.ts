@@ -27,6 +27,19 @@ import { DIR_TESTS, TAMBIEN_NECESITAN_BASE, necesitaBase, soloCodigo } from '../
 
 const archivos = readdirSync(DIR_TESTS).filter((f) => f.endsWith('.test.ts'));
 
+/**
+ * La aguja que busca el clasificador, armada en dos pedazos A PROPÓSITO.
+ *
+ * Este archivo habla del clasificador, así que si escribiera la cadena entera y literal el
+ * clasificador lo clasificaría a ÉL como "necesita base" —un falso positivo— y el test que
+ * cuida la partición terminaría corriendo sólo en el job lento, fuera del bucle rápido que se
+ * corre antes de cada push. Que es exactamente el tipo de descuido que este archivo persigue.
+ *
+ * Concatenar es más feo que escribirla, y es lo que hace que el test viva donde tiene que vivir.
+ */
+const LLAMADA_A_SEED = 'seedBase' + '(';
+const CLIENTE_PROPIO = 'new PrismaClient' + '(';
+
 describe('partición del suite en los dos jobs de CI', () => {
   it('hay archivos que clasificar (si no, este test no estaría midiendo nada)', () => {
     expect(archivos.length).toBeGreaterThan(50);
@@ -52,7 +65,7 @@ describe('partición del suite en los dos jobs de CI', () => {
     // Los dos lados de la regla que hizo divergir las copias.
     for (const f of archivos) {
       const codigo = soloCodigo(readFileSync(join(DIR_TESTS, f), 'utf8'));
-      if (codigo.includes('seedBase(')) {
+      if (codigo.includes(LLAMADA_A_SEED)) {
         expect(necesitaBase(f), `${f} llama a seedBase y tiene que ir al job con base`).toBe(true);
       }
     }
@@ -74,7 +87,7 @@ describe('partición del suite en los dos jobs de CI', () => {
   it('un archivo que se siembra solo también va al job con base', () => {
     for (const f of archivos) {
       const codigo = soloCodigo(readFileSync(join(DIR_TESTS, f), 'utf8'));
-      if (codigo.includes('new PrismaClient(')) {
+      if (codigo.includes(CLIENTE_PROPIO)) {
         expect(necesitaBase(f), `${f} abre su propio cliente y necesita base`).toBe(true);
       }
     }
