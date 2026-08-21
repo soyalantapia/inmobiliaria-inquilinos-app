@@ -11,7 +11,7 @@ import {
   DialogTitle,
 } from '@llave/ui/dialog';
 import { toast } from '@llave/ui/use-toast';
-import { generarGaranteToken } from '@/lib/garante-token';
+import { generarTokenDemoGarante } from '@/lib/garante-token';
 
 // CTA + modal para compartir el contrato con el garante. Genera un token con
 // vigencia de 30 días, arma la URL y ofrece copiar al portapapeles o
@@ -32,7 +32,7 @@ export function CompartirGarante({
   // El token se genera una vez por apertura del dialog para no exponer múltiples.
   const url = useMemo(() => {
     if (!open) return '';
-    const token = generarGaranteToken(contratoId, 30);
+    const token = generarTokenDemoGarante(contratoId, 30);
     const origin = typeof window !== 'undefined' ? window.location.origin : '';
     // basePath: en GH Pages la app vive bajo /inmobiliaria-inquilinos-app/inquilino
     // (seteado en el export build); vacío en Railway/dev. Sin esto el link al

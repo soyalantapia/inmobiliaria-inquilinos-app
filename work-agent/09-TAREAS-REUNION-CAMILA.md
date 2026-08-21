@@ -2342,6 +2342,44 @@ la mora sale igual desde los 16 lugares que la calculan.
 
 ---
 
+## T-69 · El token de garante no valida nada, y su nombre decía lo contrario — ✅ RESUELTO
+
+**Experto:** FE-I + SEC · **Prioridad:** 🟢 (prevención)
+**Origen:** riesgo 🟠 Nivel 2 **#12** de `work-agent/07-ECOSISTEMA.md`.
+
+**El caso.** El token del link de garante es `base64url(JSON)` con un prefijo constante escrito
+en texto plano en el mismo archivo, que el propio código declaraba *"no-secret: es solo ofuscación
+visual"*. Cualquiera fabrica uno para cualquier `contratoId` en dos líneas.
+
+**El riesgo no es criptográfico, es de lectura.** Hoy es inofensivo porque no hay backend de
+garantes: la página pública sólo lee mocks. Pero se llamaba `leerGaranteToken` y **estaba en el
+camino caliente de producción** — o sea, era exactamente la línea que un dev futuro copia para
+"resolver el contrato acá", creyendo que el token ya se validó. El día que exista ese endpoint,
+es un IDOR cross-tenant inmediato. El docblock de `portal-propietario.ts:31-34` **ya lo nombra
+como el precedente que no hay que repetir**.
+
+**Un detalle que la revisión no vio.** En producción la página igual **parseaba** el token para
+decidir entre 404 y el cartel "Disponible pronto". O sea que un token bien formado y uno mal
+formado se distinguían desde afuera — poca cosa, pero es información sobre un token que se puede
+fabricar, y no compraba nada.
+
+**Qué se hizo.** Tres cosas, ninguna cambia lo que ve un usuario real:
+1. `generarGaranteToken`/`leerGaranteToken` → **`generarTokenDemoGarante`/`leerTokenDemoGarante`**.
+   Es el pedazo que sostiene todo lo demás: un nombre con "Demo" adentro no se importa por
+   accidente en un handler.
+2. El encabezado del módulo dice qué es, qué NO hace, y **a qué patrón migrar** el día que haya
+   backend: token opaco de `randomBytes(24).toString('base64url')` persistido + resolución por
+   `findUnique({ where: { token } })`, que el repo ya tiene escrito en `operacion.ts:18` y
+   `visitas-publicas.ts:35`.
+3. El corte de producción se movió **arriba** del parseo: ahora en producción el token no se abre
+   nunca y todos ven exactamente lo mismo.
+
+**Tests.** 4 puros en `garante-token.test.ts`. Uno **afirma explícitamente que el token es
+falsificable** —fabrica uno a mano para un contrato ajeno y comprueba que lo acepta—: no es un
+hallazgo escondido, es la propiedad documentada que justifica el nombre y el corte de producción.
+
+---
+
 ## T-68 · El atajo de la demo emitía sesiones de un inquilino real con un solo candado — ✅ RESUELTO
 
 **Experto:** BE + SEC · **Prioridad:** 🟠
