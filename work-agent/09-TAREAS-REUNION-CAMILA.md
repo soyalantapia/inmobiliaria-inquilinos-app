@@ -6049,3 +6049,36 @@ Alguien la reemplazó por un **PNG estático** y movió el generador a
 de otra sesión, así que `build-static.sh` aborta **antes** de compilar nada en vez de gastar dos
 builds y morir en el tercero. Para verificar se compiló en un worktree propio, sin tocar ese dev
 server.
+---
+
+## T-02-N1 · El deploy ya es automático, y eso cambia T-01, T-02 y T-05 — ✅ VERIFICADO
+
+**Estado: ✅ verificado en producción el 21/08**, leyendo Railway, no suponiendo.
+
+**Railway auto-deploya desde `main`.** No hay paso manual que gestionar: cada push a `main`
+redeploya los tres servicios (`myalquiler-back`, `myalquiler-front`, `myalquiler-inquilino`), y el
+contenedor del API corre `prisma migrate deploy` antes de arrancar.
+
+### T-01 (aplicar migraciones) — ya está hecho
+
+El log del deploy de las 11:24 dice **`63 migrations found`** y sólo una pendiente
+(`20260821030000_backfill_pago_condonado`), aplicada con **`All migrations have been successfully
+applied`**. Las trece que auditó T-01-N2 **ya habían entrado en los deploys de la madrugada**. El
+deploy siguiente confirma: `No pending migrations to apply`.
+
+### T-02 (deployar los tres servicios) — ya está hecho, y se repite solo
+
+API en **SUCCESS**; panel y PWA construyendo commits aún más nuevos. El API quedó sirviendo
+tráfico real, con el cron de devengo programado y ejecutado, y **sin errores** en los logs (sólo
+un aviso de corepack y un deprecation de Prisma). El apagado del contenedor viejo fue prolijo:
+`SIGTERM recibido — drenando requests en vuelo` → `[shutdown] listo`.
+
+### T-05 (congelar deploys en las pruebas) — sube de prioridad
+
+**Es la consecuencia incómoda de lo anterior.** Como *cada* merge a `main` sale a la producción de
+la clienta cero sin ningún portón, mientras Camila prueba puede estar cambiándole el piso: es
+literalmente lo que pasó en la reunión del 03/08 y lo que T-05 vino a evitar. Hoy no hay nada que
+lo impida, y con varias sesiones mergeando en paralelo el riesgo es mayor que cuando se escribió.
+
+Lo barato: acordar la ventana (T-05 tal cual), y anotar el SHA de `/health` al empezar la sesión
+para poder descartar después los reportes de una ventana con deploy en el medio.
