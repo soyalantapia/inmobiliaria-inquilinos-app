@@ -1,7 +1,7 @@
 # Estado del proyecto — My Alquiler
 
 > **Documento de handoff.** Resumen ejecutivo de dónde está el proyecto hoy.
-> Última actualización: **2026-08-20**. Último commit en `main`: `70b8525`.
+> Última actualización: **2026-08-21**. Último commit en `main`: `9208578`.
 > **Último hito (19-20/08): el portal del propietario en pestañas, y la suite de integración
 > corriendo por primera vez.** Las dos cosas se cuentan juntas porque la segunda destrabó a la
 > primera. Detalle abajo, en «Verificado el 20/08».
@@ -216,6 +216,55 @@ se contradecía a sí misma en el portal; el resumen anual para el contador desa
 Y una cuarta, más de fondo: **el email del propietario nunca se verifica**. Es la credencial
 del portal y alcanza con escribirlo en la ficha para recibir el OTP. Hoy la única defensa es
 la auditoría.
+
+---
+
+### Tercera vuelta (21/08): carreras, datos preexistentes y lo que el código promete
+
+Segunda revisión adversarial, con cinco lentes que la primera NO usó —concurrencia, filas
+anteriores a cada feature, comentarios y tests que afirman lo que el código ya no hace, el
+camino del error, y lo que se le comunica al dueño—. **13 hallazgos, 11 sobrevivieron, 10
+cerrados.**
+
+- **Las condonaciones de 16 días se le rindieron al dueño como plata cobrada.** El botón
+  Condonar salió el 05/07 y crea un `Pago` CONCILIADO por el saldo entero: cancela la deuda del
+  inquilino sin que entre un peso. `Pago.condonado` —lo único que lo distingue de un cobro
+  real— se agregó el 21/07 con `DEFAULT false` y **sin backfill**. Las dos superficies que la
+  marca vino a proteger las seguían contando: el cierre de caja con comisión, y
+  `POST /rendiciones` transfiriéndoselas al propietario. Migración
+  `20260821030000_backfill_pago_condonado`, verificada caso por caso contra filas reales y
+  aplicada en producción con OK del dueño. **Lo que el backfill NO hace es devolver lo que ya se
+  transfirió de más** — eso queda para decidir.
+- **Cuatro guards de plata decidían con una foto tomada fuera de la transacción.** El mismo
+  patrón: leer con `prisma` en autocommit, contestar 409, y recién ahí abrir la tx y escribir
+  por clave primaria pelada. El peor —anular un pago mientras se rinde— dejaba
+  `AlquilerRendido` sobre un pago que terminaba RECHAZADO **y sin salida**: reintentar anular da
+  409 porque el pago ya está rechazado. Los otros: resolver el depósito dos veces contra la
+  misma deuda, borrar el movimiento que la rendición acababa de acreditar, y cambiar el reparto
+  con plata en el aire (que además ignoraba los pagos INFORMADOS, donde la ventana no son
+  milisegundos sino días). El repo ya tenía el arreglo escrito y comentado en
+  `PATCH /modo-cobranza` y en `DELETE /caja/movimientos/:id`; estos cuatro habían quedado
+  afuera. El test es **estructural**: reproducir la carrera pide dos requests entrelazados en el
+  punto exacto y sale flaky por construcción; la forma del código no.
+- **El panel contaba los errores como buenas noticias.** "Todos rendidos este mes 🎉", "Todos
+  tienen CBU cargado" y "Sin rendiciones todavía" se pintaban igual con la consulta caída. Y no
+  hace falta que se caiga nada: el rol CARGA no tiene `pagos.ver`, así que para él ese cartel
+  verde es el estado PERMANENTE.
+- **Rendir en efectivo a un dueño sin CBU era imposible**, aunque el panel lo ofrecía y lo
+  recomendaba: el 409 era incondicional, antes de mirar el método.
+- **El comprobante de WhatsApp salía de una rendición elegida al azar** cuando el período tenía
+  varias (la rendición es incremental y va una por moneda), porque `GET /rendiciones` ordenaba
+  sólo por período y el panel pisaba en cada vuelta.
+- Y: la doc de la rendición mentía en tres archivos (la fórmula del neto sin `+ totalIngresos`,
+  y un `@@unique` como "lock anti-doble" que se dropeó el 01/07); `smoke-prod.mjs` fallaba
+  siempre porque usaba la credencial del seed, que en prod no existe; y el test de partición del
+  suite que `vitest.con-db.config.ts` prometía por su nombre exacto no existía, con el criterio
+  duplicado y divergido — el riesgo ahí no es que un test corra dos veces, es que no corra en
+  **ninguno** de los dos jobs.
+
+**El que queda, y es decisión de producto:** al propietario **nunca se le avisa que le anularon
+la rendición**. No hay canal de notificación al dueño —el portal es pull— así que o se crea uno,
+o el diálogo de Deshacer lleva el mismo botón de WhatsApp que ya tiene el de Rendir.
 
 ---
 
