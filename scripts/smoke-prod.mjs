@@ -67,7 +67,19 @@ await check('GET /health (db up)', async () => {
 // DEMO_MODE en producción.
 await check('POST /auth/demo CERRADO en prod (404)', async () => {
   const r = await fetch(`${base}/auth/demo`, { method: 'POST' });
-  if (r.status !== 404) throw new Error(`abierto: HTTP ${r.status}`);
+  if (r.status === 404) return;
+  // "ABIERTO" ES UNA ACUSACIÓN, Y HAY QUE MERECERLA.
+  //
+  // Esto decía `abierto: HTTP ${status}` ante cualquier cosa que no fuera 404, así que durante
+  // la ventana de reinicio de CUALQUIER deploy el smoke gritaba que el atajo que emite sesiones
+  // de un inquilino real sin prueba de identidad estaba abierto en producción. Es lo más grave
+  // que este script puede decir, y lo decía por un 502 de treinta segundos.
+  //
+  // Un 5xx no es "abierto": es "no contesta". La única respuesta que prueba que el atajo está
+  // vivo es un 2xx.
+  if (r.status >= 500) throw new Error(`la API no contestó (HTTP ${r.status}) — ¿deploy en curso? No prueba nada sobre el atajo`);
+  if (r.status < 300) throw new Error(`ABIERTO: devolvió HTTP ${r.status}. Este endpoint emite una sesión sin prueba de identidad`);
+  throw new Error(`respuesta inesperada: HTTP ${r.status} (se esperaba 404)`);
 });
 
 // ===== Lo que necesita un usuario del panel. =====
