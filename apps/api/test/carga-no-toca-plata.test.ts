@@ -182,15 +182,19 @@ describe('CAZABUG — un rol CARGA no redirige la plata del propietario ni se me
     await prisma.eventoAuditoria.deleteMany({ where: { tipo: 'PROPIETARIO_CUENTA_CAMBIADA', entidadId: OWN } });
   });
 
-  it('CARGA SÍ puede corregir el teléfono: no le rompimos el trabajo', async () => {
-    // El rol existe para tipear altas y arreglar typos. Bloquear la ficha entera habría sido
-    // más fácil y le habría sacado justamente lo que sí tiene que poder hacer.
+  it('el corte es ANCHO: CARGA tampoco edita el teléfono', async () => {
+    // Este test decía lo contrario. El corte se resolvió del lado ancho —toda la ficha— por
+    // simetría con el DELETE y el PATCH /activo, y porque un gate que depende de QUÉ campos
+    // vinieron en el body hay que volver a pensarlo cada vez que alguien toca el zod.
+    //
+    // El costo está asumido: CARGA no puede arreglarle un typo al teléfono de un propietario.
+    // Si eso molesta en el uso real, el lugar de la discusión es el gate, no este test.
     const r = await app.inject({
       method: 'PUT', url: `/propietarios/${OWN}`, headers: auth(tCARGA),
       payload: { nombre: 'Silvana', apellido: 'Morales', telefono: '+54 11 5234 0000' },
     });
-    expect(r.statusCode).toBe(200);
-    await prisma.propietario.update({ where: { id: OWN }, data: { telefono: '+54 11 5234 8765' } });
+    expect(r.statusCode).toBe(403);
+    expect((await prisma.propietario.findUniqueOrThrow({ where: { id: OWN } })).telefono).toBe('+54 11 5234 8765');
   });
 
   it('un OPERADOR cambia el CBU y queda REGISTRADO con el valor viejo y el nuevo', async () => {

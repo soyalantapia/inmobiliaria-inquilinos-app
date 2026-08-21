@@ -875,6 +875,12 @@ export async function coreRoutes(app: FastifyInstance) {
     //
     // El propio código de abajo ya reconocía la sensibilidad del email ("pasó a ser la llave
     // de entrada al portal"); lo que faltaba era el gate de rol.
+    //
+    // EL CORTE ES ANCHO —toda la ficha, no sólo esos dos campos— y quedó así a propósito. Se
+    // llegó a él por dos caminos en paralelo: éste, y otro que gateaba campo por campo dejando
+    // que CARGA corrigiera un teléfono. Gana el ancho: es el mismo criterio que el DELETE y el
+    // PATCH /activo de más abajo, y un gate que depende de QUÉ campos vinieron en el body es
+    // una regla que hay que volver a pensar cada vez que alguien agrega un campo al zod.
     if (u.rol === 'CARGA') {
       return reply.code(403).send({ message: 'Solo un Admin u Operador puede editar un propietario' });
     }
@@ -896,27 +902,6 @@ export async function coreRoutes(app: FastifyInstance) {
     if (!body.success) return reply.code(400).send({ message: 'Datos del propietario incompletos' });
     const d = body.data;
 
-    // TRES CAMPOS DE ESTA FICHA NO SON "DATOS DE CONTACTO":
-    //
-    // - `cbuAlias` es adónde se le transfiere al dueño.
-    // - `email` es la CREDENCIAL del portal: quien lo escribe recibe el OTP y entra a ver la
-    //   cartera, las rendiciones y la plata de ese propietario. La casilla no se verifica.
-    // - `comisionPct` es cuánto se queda la inmobiliaria de cada rendición.
-    //
-    // La capacidad de este endpoint es `propietarios.crear`, que incluye a CARGA —un rol
-    // pensado para tipear altas, al que se le negó `pagos.ver` justamente para que no vea
-    // plata—. Podía reescribir los tres. Se le deja el resto de la ficha: corregirle un
-    // teléfono o un apellido mal tipeado es exactamente para lo que existe el rol.
-    const tocaPlataOAcceso =
-      d.cbuAlias !== undefined ||
-      d.comisionPct != null ||
-      (d.email !== undefined && normalizarEmail(d.email) !== (prop.email ?? ''));
-    if (u.rol === 'CARGA' && tocaPlataOAcceso) {
-      return reply.code(403).send({
-        message:
-          'Solo un Admin u Operador puede cambiar el CBU, el email de acceso al portal o la comisión de un propietario.',
-      });
-    }
 
     const actualizado = await prisma.propietario.update({
       where: { id },
