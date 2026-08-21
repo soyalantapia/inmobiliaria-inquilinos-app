@@ -41,17 +41,32 @@ describe('la caja del tablero no suma dólares como si fueran pesos', () => {
 });
 
 describe('cobrar un cargo al inquilino registra la moneda del cargo', () => {
-  it('el MovimientoCaja del cargo saldado escribe moneda: cargo.moneda', () => {
+  it('TODOS los lugares que registran el cobro de un cargo escriben la moneda del cargo', () => {
     const src = api('routes/plata.ts');
-    const i = src.indexOf('Cobro de cargo al inquilino');
-    expect(i).toBeGreaterThan(0);
 
-    // La ventana del create que sigue a esa descripción.
-    const create = src.slice(i, i + 900);
+    // Este test miraba SÓLO la primera aparición, y eso alcanzaba mientras hubo un solo lugar
+    // que registraba el cobro de un cargo (`POST /cargos/:id/saldar`). Apareció un segundo
+    // —`POST /contratos/:id/saldar-deuda`, que saldaba los mismos cargos y no registraba nada—,
+    // y con un solo `indexOf` el test pasaba a vigilar uno y a dejar al otro sin mirar. Ahora
+    // recorre todas las apariciones: si mañana aparece un tercero, entra solo.
+    const marca = 'Cobro de cargo al inquilino';
+    const posiciones: number[] = [];
+    for (let i = src.indexOf(marca); i >= 0; i = src.indexOf(marca, i + 1)) posiciones.push(i);
 
-    // `MovimientoCaja.moneda` es @default(ARS): omitirla NO fallaba, escribía ARS igual.
-    // Un cargo de US$800 quedaba en caja como $800 y después nadie podía notarlo, porque
-    // la fila ya no dice de dónde vino.
-    expect(create).toContain('moneda: cargo.moneda');
+    // Dos: el de `saldar` y el de `saldar-deuda`. Si baja a uno, alguien borró un registro de
+    // plata; si sube, hay que confirmar que el nuevo también escriba la moneda.
+    expect(posiciones.length).toBeGreaterThanOrEqual(2);
+
+    for (const i of posiciones) {
+      // La ventana del create que sigue a esa descripción.
+      const create = src.slice(i, i + 900);
+      // `MovimientoCaja.moneda` es @default(ARS): omitirla NO falla, escribe ARS igual. Un cargo
+      // de US$800 quedaría en caja como $800 y después nadie podría notarlo, porque la fila ya
+      // no dice de dónde vino. Se acepta cualquier nombre de variable —`cargo.moneda` en un
+      // lugar, `c.moneda` en el otro— pero NO que falte ni que sea una constante.
+      expect(create, `el create en la posición ${i} no escribe la moneda del cargo`).toMatch(
+        /moneda:\s*\w+\.moneda/,
+      );
+    }
   });
 });
