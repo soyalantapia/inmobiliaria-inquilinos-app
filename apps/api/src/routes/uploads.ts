@@ -8,6 +8,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { JwtPayloadSchema, JwtProfesionalSchema, type JwtPayload, type JwtProfesional } from '@llave/shared';
 import { prisma } from '../db.js';
 import { cuotaBytes, registrarSubida, usoDelTenant } from '../lib/cuota-uploads.js';
+import { inquilinoRevocado } from '../auth/guards.js';
 
 /**
  * File storage REAL sobre un Railway Volume montado en /data.
@@ -112,6 +113,18 @@ async function requireAuthOProfesional(
     // la excepción: un co-inquilino al que el titular ya le sacó el acceso seguía subiendo
     // archivos al Volume del tenant hasta que venciera su token.
     const p = asPayload.data;
+    // El TITULAR también: un inquilino al que le dieron de baja el alquiler —o cuyo token
+    // apunta a un contrato que ya no es el suyo— conservaba el token hasta 15 días y seguía
+    // leyendo y escribiendo el Volume del tenant por acá. Cuando se agregó esta revalidación
+    // se cubrió al co-inquilino y al profesional, y ésta se salteó: es la tercera puerta del
+    // titular, la que el docblock de `inquilinoRevocado` no contaba.
+    if (p.kind === 'inquilino') {
+      const revocado = await inquilinoRevocado(p);
+      if (revocado) {
+        await reply.code(401).send({ message: revocado });
+        return null;
+      }
+    }
     if (p.kind === 'co-inquilino') {
       const co = await prisma.coInquilino.findUnique({ where: { id: p.coInquilinoId } });
       if (!co || co.estado !== 'ACEPTADO' || co.inmobiliariaId !== p.inmobiliariaId) {

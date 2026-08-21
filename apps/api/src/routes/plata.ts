@@ -796,6 +796,9 @@ export async function plataRoutes(app: FastifyInstance) {
       },
     });
     if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
+    // Para el `cargadoPor` del movimiento de caja de los cargos. Fuera de la transacción:
+    // no participa del invariante de plata y no tiene por qué alargar el lock.
+    const usuarioQueSalda = await prisma.usuario.findUnique({ where: { id: u.userId } });
     const now = new Date();
     const liqs = await prisma.liquidacion.findMany({
       where: {
@@ -887,19 +890,64 @@ export async function plataRoutes(app: FastifyInstance) {
       // Además saldamos los cargos pendientes del inquilino (reparaciones imputadas +
       // penalidad de rescisión) que NO van contra el depósito: "saldar deuda" = dejar
       // la cuenta del inquilino en cero, no sólo las liquidaciones.
-      const cargos = await tx.cargoContrato.updateMany({
+      //
+      // LA PLATA DEL CARGO TIENE QUE QUEDAR REGISTRADA, igual que en `POST /cargos/:id/saldar`.
+      // Ese hermano ya arregló exactamente esto ("plata de cargos sin registrar", 40625049) y
+      // el arreglo NO llegó acá: este bloque seguía poniendo `saldadoAt` y nada más. O sea que
+      // el mismo cobro entraba a caja o no según por qué pantalla hubiera entrado la operadora
+      // — "Marcar cobrado" lo registraba, "Saldar deuda" lo hacía desaparecer. Textual del
+      // hermano: "Cobrabas una reparación, al inquilino se le borraba la deuda y en la caja no
+      // figuraba un peso" (Camila 46:37).
+      //
+      // Se recorre de a uno y no con un `updateMany` masivo por la lección de T-55: el
+      // `updateMany` condicionado a `saldadoAt: null` ES el lock, y sólo se registra el ingreso
+      // del cargo que ESTE request ganó. Con un updateMany masivo no se sabe cuáles ganó, y dos
+      // requests concurrentes escribirían dos ingresos por una sola cobranza.
+      const cargosPend = await tx.cargoContrato.findMany({
         where: {
           contratoId: id,
           inmobiliariaId: u.inmobiliariaId,
           contraDeposito: false,
           saldadoAt: null,
         },
-        data: { saldadoAt: now, saldadoPorId: u.userId },
+        select: { id: true, concepto: true, monto: true, moneda: true },
       });
+      let cargosSaldados = 0;
+      for (const c of cargosPend) {
+        const upd = await tx.cargoContrato.updateMany({
+          where: { id: c.id, saldadoAt: null },
+          data: { saldadoAt: now, saldadoPorId: u.userId },
+        });
+        if (upd.count === 0) continue; // lo ganó otro request
+        cargosSaldados++;
+        // Condonar es PERDONAR la deuda: no entró plata, así que no hay ingreso que registrar.
+        // (Lo que este fix NO resuelve: el cargo igual queda con `saldadoAt`, y `CargoContrato`
+        // no tiene columna que distinga "cobrado" de "condonado" —las liquidaciones sí, por
+        // `Pago.condonado`—. Aguas abajo `imputarCostoReclamo` lee ese `saldadoAt` como
+        // evidencia de cobro. Arreglarlo pide una columna nueva, o sea una migración.)
+        if (b.condonar) continue;
+        await tx.movimientoCaja.create({
+          data: {
+            inmobiliariaId: u.inmobiliariaId,
+            propiedadId: contrato.propiedadId,
+            contratoId: contrato.id,
+            tipo: 'INGRESO_EXTRA',
+            categoria: 'OTRO',
+            descripcion: `Cobro de cargo al inquilino: ${c.concepto}`,
+            monto: c.monto,
+            // La moneda DEL CARGO, no el default: `MovimientoCaja.moneda` es @default(ARS) y
+            // omitirla dejaría un cargo en dólares registrado como pesos. Misma razón que en
+            // el hermano.
+            moneda: c.moneda,
+            fecha: now,
+            cargadoPor: usuarioQueSalda ? `${usuarioQueSalda.nombre} ${usuarioQueSalda.apellido}`.trim() : 'Panel',
+          },
+        });
+      }
       return {
         liquidacionesSaldadas: saldadas,
         montoAplicado: Math.round(montoAplicado * 100) / 100,
-        cargosSaldados: cargos.count,
+        cargosSaldados,
       };
     }, { timeout: 30_000, maxWait: 10_000 });
     await registrarEvento({

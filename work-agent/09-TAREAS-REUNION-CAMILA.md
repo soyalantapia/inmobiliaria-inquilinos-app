@@ -2342,6 +2342,96 @@ la mora sale igual desde los 16 lugares que la calculan.
 
 ---
 
+## T-70 · La tercera puerta del titular quedó abierta en `/uploads` — ✅ RESUELTO
+
+**Experto:** BE + SEC · **Prioridad:** 🟠
+**Origen:** salió mientras se relevaba el riesgo #9 (uploads). **No es el #9** — ver abajo.
+
+**El caso.** `/uploads` tiene su propio guard, `requireAuthOProfesional`, porque además del JWT
+normal acepta el token del profesional por link mágico. Cuando se le agregó la revalidación
+contra la base se cubrió al **co-inquilino** y al **profesional**, y **se salteó al titular**.
+
+Un inquilino al que le dieron de baja el alquiler —o cuyo token apunta a un contrato que ya no es
+suyo— conservaba el token hasta **15 días** y seguía leyendo y escribiendo el Volume del tenant
+por este endpoint.
+
+**Lo notable es que el archivo ya llevaba la cuenta, y la llevaba mal.** El docblock de
+`inquilinoRevocado` decía: *"Compartido por `requireInquilino` y por la rama `inquilino` de
+`requireContratoAcceso`, que son las **DOS puertas del titular**: cuando la revalidación vivía en
+una sola, la otra quedaba abierta."* Eran tres.
+
+**Qué se hizo.** `inquilinoRevocado` pasó a estar **exportada** —para que el que agregue una
+cuarta puerta la reuse en vez de reimplementar la regla, que es exactamente cómo se llegó a tener
+tres versiones— y se la llama desde la rama `inquilino` de `requireAuthOProfesional`. El docblock
+ahora enumera las tres y dice cuál faltaba.
+
+**Tests.** 4 de integración en `uploads-revoca-al-titular.test.ts`: con el alquiler vigente pasa
+la autorización (404 por archivo inexistente, que es lo que distingue "pasó" de "no pasó"), con
+el contrato desvinculado da 401, y restaurado vuelve a pasar. Restaura el estado en el `afterAll`
+porque la base es compartida.
+
+---
+
+> ### ⏸️ Lo que NO es esto: el riesgo #9 sigue abierto y es **tuyo**
+>
+> `GET /uploads/:tenant/:name` **autoriza por tenant, no por dueño del archivo**
+> (`uploads.ts:364`, `tenantDe(payload) === tenant` y nada más). Cualquier inquilino,
+> co-inquilino o profesional con link mágico puede leer **cualquier** archivo del tenant si
+> conoce el nombre: comprobantes ajenos, DNIs, recibos de sueldo, escrituras de garantes,
+> extractos bancarios. Hoy lo tapa **sólo el `randomUUID()` del nombre**, no la autorización.
+>
+> **Por qué no lo hago sin que lo decidas:** no existe ningún registro de quién subió cada
+> archivo —de los 85 modelos del schema no hay ninguno— así que hay que **agregar una tabla y
+> migrar**, y encima **backfillear lo histórico** desde las 16 columnas que hoy referencian
+> URLs. Sin backfill, el día del deploy todos los archivos ya existentes quedan sin dueño y la
+> regla nueva los bloquea: se rompe el acceso a documentos que hoy funciona.
+>
+> Y hay una trampa que conviene saber antes de empezar: la regla "o lo subiste vos, **o** hay una
+> fila que lo referencia y vos podés ver esa fila" **se auto-anula**. Hay 8 endpoints donde un
+> actor de baja confianza puede ENGANCHAR una URL ajena a una fila propia (p. ej.
+> `POST /mis-documentos`), así que el atacante que ya tiene la URL se auto-autoriza. El
+> endurecimiento de esos 8 call sites no es "de yapa": sin eso la regla no cierra.
+
+---
+
+## T-69 · El token de garante no valida nada, y su nombre decía lo contrario — ✅ RESUELTO
+
+**Experto:** FE-I + SEC · **Prioridad:** 🟢 (prevención)
+**Origen:** riesgo 🟠 Nivel 2 **#12** de `work-agent/07-ECOSISTEMA.md`.
+
+**El caso.** El token del link de garante es `base64url(JSON)` con un prefijo constante escrito
+en texto plano en el mismo archivo, que el propio código declaraba *"no-secret: es solo ofuscación
+visual"*. Cualquiera fabrica uno para cualquier `contratoId` en dos líneas.
+
+**El riesgo no es criptográfico, es de lectura.** Hoy es inofensivo porque no hay backend de
+garantes: la página pública sólo lee mocks. Pero se llamaba `leerGaranteToken` y **estaba en el
+camino caliente de producción** — o sea, era exactamente la línea que un dev futuro copia para
+"resolver el contrato acá", creyendo que el token ya se validó. El día que exista ese endpoint,
+es un IDOR cross-tenant inmediato. El docblock de `portal-propietario.ts:31-34` **ya lo nombra
+como el precedente que no hay que repetir**.
+
+**Un detalle que la revisión no vio.** En producción la página igual **parseaba** el token para
+decidir entre 404 y el cartel "Disponible pronto". O sea que un token bien formado y uno mal
+formado se distinguían desde afuera — poca cosa, pero es información sobre un token que se puede
+fabricar, y no compraba nada.
+
+**Qué se hizo.** Tres cosas, ninguna cambia lo que ve un usuario real:
+1. `generarGaranteToken`/`leerGaranteToken` → **`generarTokenDemoGarante`/`leerTokenDemoGarante`**.
+   Es el pedazo que sostiene todo lo demás: un nombre con "Demo" adentro no se importa por
+   accidente en un handler.
+2. El encabezado del módulo dice qué es, qué NO hace, y **a qué patrón migrar** el día que haya
+   backend: token opaco de `randomBytes(24).toString('base64url')` persistido + resolución por
+   `findUnique({ where: { token } })`, que el repo ya tiene escrito en `operacion.ts:18` y
+   `visitas-publicas.ts:35`.
+3. El corte de producción se movió **arriba** del parseo: ahora en producción el token no se abre
+   nunca y todos ven exactamente lo mismo.
+
+**Tests.** 4 puros en `garante-token.test.ts`. Uno **afirma explícitamente que el token es
+falsificable** —fabrica uno a mano para un contrato ajeno y comprueba que lo acepta—: no es un
+hallazgo escondido, es la propiedad documentada que justifica el nombre y el corte de producción.
+
+---
+
 ## T-68 · El atajo de la demo emitía sesiones de un inquilino real con un solo candado — ✅ RESUELTO
 
 **Experto:** BE + SEC · **Prioridad:** 🟠

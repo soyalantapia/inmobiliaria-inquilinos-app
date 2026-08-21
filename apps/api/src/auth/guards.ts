@@ -122,12 +122,19 @@ export async function requireInquilino(request: FastifyRequest, reply: FastifyRe
 }
 
 /**
- * ¿El token de este titular dejó de valer? Devuelve el mensaje del 401, o null si
- * sigue vigente. Compartido por `requireInquilino` y por la rama `inquilino` de
- * `requireContratoAcceso`, que son las DOS puertas del titular: cuando la
- * revalidación vivía en una sola, la otra quedaba abierta.
+ * ¿El token de este titular dejó de valer? Devuelve el mensaje del 401, o null si sigue vigente.
+ *
+ * Son TRES las puertas del titular, y cada vez que se contaron mal quedó uno abierta:
+ *  1. `requireInquilino`
+ *  2. la rama `inquilino` de `requireContratoAcceso`
+ *  3. `requireAuthOProfesional` (routes/uploads.ts) — **la que faltaba**. Ese guard es propio
+ *     de `/uploads` porque además acepta el token del profesional por link mágico, y cuando se
+ *     agregó la revalidación se cubrió al co-inquilino y al profesional y se salteó al titular.
+ *
+ * Por eso está EXPORTADA: el que agregue una cuarta puerta tiene que poder reusar ésta en vez
+ * de reimplementarla, que es exactamente cómo se llegó a tener tres versiones de la regla.
  */
-async function inquilinoRevocado(payload: JwtInquilino): Promise<string | null> {
+export async function inquilinoRevocado(payload: JwtInquilino): Promise<string | null> {
   const fila = await prisma.inquilino.findFirst({
     where: { id: payload.inquilinoId, inmobiliariaId: payload.inmobiliariaId },
     select: { contratoId: true },
