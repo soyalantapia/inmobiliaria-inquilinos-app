@@ -62,6 +62,24 @@ describe('CAZABUG — un rol CARGA no toca la plata de un contrato vigente', () 
     expect(Number(c.monto)).toBeGreaterThan(1);
   });
 
+  it('PUT /propietarios/:id con CARGA → 403', async () => {
+    // El email de un propietario es la LLAVE DE ENTRADA a su portal (el OTP se busca por él),
+    // y el cbuAlias es el DESTINO de la rendición. Con el bug, un CARGA podía reescribir los
+    // dos: quedarse con el acceso a la cartera de un tercero y desviar a dónde va la plata.
+    // Los hermanos DELETE y PATCH /activo ya cortaban a CARGA; este PUT no.
+    const r = await app.inject({
+      method: 'PUT', url: '/propietarios/own_001', headers: auth(tCARGA),
+      payload: { nombre: 'Tomado', apellido: 'Porelatacante', email: 'atacante@example.com', cbuAlias: 'atacante.mp' },
+    });
+    expect(r.statusCode).toBe(403); // con el bug: 200, y el propietario perdía su portal
+  });
+
+  it('el email y el CBU del propietario NO cambiaron', async () => {
+    const o = await prisma.propietario.findUniqueOrThrow({ where: { id: 'own_001' } });
+    expect(o.email).not.toBe('atacante@example.com');
+    expect(o.cbuAlias ?? '').not.toBe('atacante.mp');
+  });
+
   it('un OPERADOR SÍ puede ajustar el monto (no se rompió el caso de uso real)', async () => {
     const antes = await prisma.contrato.findUniqueOrThrow({ where: { id: CID } });
     const nuevo = Number(antes.monto) + 1;
@@ -69,6 +87,15 @@ describe('CAZABUG — un rol CARGA no toca la plata de un contrato vigente', () 
     expect(r.statusCode).toBe(200);
     // lo devolvemos a su valor original para no ensuciar la DB compartida
     await prisma.contrato.update({ where: { id: CID }, data: { monto: antes.monto } });
+  });
+
+  it('un OPERADOR SÍ puede editar un propietario (no se rompió el caso de uso real)', async () => {
+    const antes = await prisma.propietario.findUniqueOrThrow({ where: { id: 'own_001' } });
+    const r = await app.inject({
+      method: 'PUT', url: '/propietarios/own_001', headers: auth(tOPERADOR),
+      payload: { nombre: antes.nombre, apellido: antes.apellido ?? undefined, telefono: antes.telefono ?? undefined },
+    });
+    expect(r.statusCode).toBe(200);
   });
 });
 
