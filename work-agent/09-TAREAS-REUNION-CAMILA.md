@@ -2877,6 +2877,47 @@ del caso real, con el fantasma creciendo día a día. Los 536 puros que ya exist
 
 ## T-61 · Un ajuste posterior a una renovación ya cargada queda anulado en el devengo
 
+> ## 🔍 RELEVADO el 21/08 — el arreglo es viable y NO necesita migración
+>
+> **Lo que se verificó (leyendo, no suponiendo):**
+> - `AjusteAlquiler` y `RenovacionContrato` **ya tienen `createdAt`**. La información para
+>   distinguir "el snapshot sigue valiendo" de "alguien tocó el canon después" **existe**.
+> - Son **tres puntos de escritura**: `core.ts:2460` y `core.ts:3813` (ajustes) y `core.ts:2574`
+>   (renovación).
+> - `vigenciasFuturas` trae **sólo futuras** (`periodoDesde: { gt: periodoActual }`), lo que
+>   confirma que "leer hacia atrás" no es posible con la query de hoy.
+>
+> ### Un diseño más simple que el de la ficha: REPARAR AL ESCRIBIR
+>
+> No hace falta comparar `createdAt` en el read, ni llevar un historial de canon. Alcanza con
+> mantener el snapshot sano cuando se ensucia.
+>
+> `V.montoAnterior` significa *"el canon vigente justo antes de `V.desde`"*. Un ajuste nuevo en
+> el período X cambia exactamente eso — pero sólo para **la vigencia futura más cercana con
+> `desde > X`**; las posteriores tienen su propio predecesor y no se tocan.
+>
+> **Regla:** al crear un cambio de canon en X, actualizar el `montoAnterior` de la vigencia
+> futura con el `desde` más chico entre las que cumplen `desde > X`.
+>
+> **Por qué esto no rompe el ajuste masivo**, que es lo que tumbó la propuesta anterior: el
+> camino de lectura no se toca. `PATCH /contratos/:id/monto` sigue sin dejar fila y
+> `contrato.monto` sigue siendo la autoridad, exactamente como hoy.
+>
+> ### Por qué NO se implementó igual
+>
+> **Cambia lo que se factura**, y el camino que hay que tocar es de ESCRITURA, en tres lugares.
+> Verificarlo pide base de datos: los tests puros pueden fijar *a qué vigencia hay que reparar*
+> —eso es una decisión aislable— pero no que las tres escrituras la ejecuten bien.
+>
+> Mandar un cambio de plata con el camino de escritura sin verificar es exactamente lo que
+> produjo los bugs de esta tanda. Con una base de test disponible es una tarde de trabajo.
+>
+> **Ojo con el signo:** acá se está cobrando **de menos** ($300.000 en vez de $380.000 en el
+> ejemplo), así que además de la cuota queda mal la comisión, que sale del alquiler. No es
+> urgente como un sobrecobro —no hay un inquilino al que se le esté reclamando de más— pero es
+> plata que la inmobiliaria no está facturando.
+
+
 **Experto:** BE · **Prioridad:** 🟠 · **Toca plata** · **No se arregló: ver por qué**
 **Origen:** revisión adversarial del motor de cobranza (20/08).
 

@@ -91,6 +91,7 @@ export async function plataRoutes(app: FastifyInstance) {
           select: {
             id: true,
             tasaPunitorioDiaria: true,
+            moneda: true,
             moraTipo: true,
             moraValor: true,
             // La PROPIEDAD y el MODO DE COBRANZA de ESTE contrato, no del que la propiedad
@@ -123,7 +124,7 @@ export async function plataRoutes(app: FastifyInstance) {
     const cobradoRendible = await montoCobradoRendiblePorLiquidacion(liqs.map((l) => l.id));
     const inmoDefaults = await prisma.inmobiliaria.findUnique({
       where: { id: u.inmobiliariaId },
-      select: { moraTipoDefault: true, moraValorDefault: true },
+      select: { moraTipoDefault: true, moraValorDefault: true, monedaDefault: true },
     });
     const hoy = new Date();
     return liqs.map((l) => {
@@ -323,6 +324,7 @@ export async function plataRoutes(app: FastifyInstance) {
             moraTipo: true,
             moraValor: true,
             tasaPunitorioDiaria: true,
+            moneda: true,
             propiedad: { select: { direccion: true } },
             inquilinoTitular: { select: { nombre: true, apellido: true } },
           },
@@ -347,7 +349,7 @@ export async function plataRoutes(app: FastifyInstance) {
     const pagadoMap = await montoPagadoPorLiquidacion(pagos.map((p) => p.liquidacion.id));
     const inmo = await prisma.inmobiliaria.findUnique({
       where: { id: u.inmobiliariaId },
-      select: { moraTipoDefault: true, moraValorDefault: true },
+      select: { moraTipoDefault: true, moraValorDefault: true, monedaDefault: true },
     });
     const hoy = new Date();
     return pagos.map((p) => {
@@ -441,9 +443,10 @@ export async function plataRoutes(app: FastifyInstance) {
             contrato: {
               select: {
                 tasaPunitorioDiaria: true,
+                moneda: true,
                 moraTipo: true,
                 moraValor: true,
-                inmobiliaria: { select: { moraTipoDefault: true, moraValorDefault: true } },
+                inmobiliaria: { select: { moraTipoDefault: true, moraValorDefault: true, monedaDefault: true } },
               },
             },
           },
@@ -695,9 +698,10 @@ export async function plataRoutes(app: FastifyInstance) {
           contrato: {
             select: {
               tasaPunitorioDiaria: true,
+              moneda: true,
               moraTipo: true,
               moraValor: true,
-              inmobiliaria: { select: { moraTipoDefault: true, moraValorDefault: true } },
+              inmobiliaria: { select: { moraTipoDefault: true, moraValorDefault: true, monedaDefault: true } },
             },
           },
         },
@@ -792,7 +796,7 @@ export async function plataRoutes(app: FastifyInstance) {
     const contrato = await prisma.contrato.findFirst({
       where: { id, inmobiliariaId: u.inmobiliariaId },
       include: {
-        inmobiliaria: { select: { moraTipoDefault: true, moraValorDefault: true } },
+        inmobiliaria: { select: { moraTipoDefault: true, moraValorDefault: true, monedaDefault: true } },
       },
     });
     if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
@@ -1409,9 +1413,10 @@ export async function plataRoutes(app: FastifyInstance) {
             id: true,
             estado: true,
             tasaPunitorioDiaria: true,
+            moneda: true,
             moraTipo: true,
             moraValor: true,
-            inmobiliaria: { select: { moraTipoDefault: true, moraValorDefault: true } },
+            inmobiliaria: { select: { moraTipoDefault: true, moraValorDefault: true, monedaDefault: true } },
           },
         },
       },
@@ -1603,9 +1608,10 @@ export async function plataRoutes(app: FastifyInstance) {
           select: {
             fechaInicio: true,
             tasaPunitorioDiaria: true,
+            moneda: true,
             moraTipo: true,
             moraValor: true,
-            inmobiliaria: { select: { moraTipoDefault: true, moraValorDefault: true } },
+            inmobiliaria: { select: { moraTipoDefault: true, moraValorDefault: true, monedaDefault: true } },
           },
         },
       },
@@ -1823,9 +1829,10 @@ export async function plataRoutes(app: FastifyInstance) {
       where: { id: inq.contratoId },
       select: {
         tasaPunitorioDiaria: true,
+        moneda: true,
         moraTipo: true,
         moraValor: true,
-        inmobiliaria: { select: { moraTipoDefault: true, moraValorDefault: true } },
+        inmobiliaria: { select: { moraTipoDefault: true, moraValorDefault: true, monedaDefault: true } },
       },
     });
     const esquema = resolverEsquemaMora(ctto, ctto?.inmobiliaria);

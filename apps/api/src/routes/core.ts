@@ -211,7 +211,7 @@ export async function coreRoutes(app: FastifyInstance) {
     // query para toda la lista.
     const inmoMora = await prisma.inmobiliaria.findUnique({
       where: { id: u.inmobiliariaId },
-      select: { moraTipoDefault: true, moraValorDefault: true },
+      select: { moraTipoDefault: true, moraValorDefault: true, monedaDefault: true },
     });
     // Liquidación ACTUAL por contrato (la que define estadoPagoActual): cualquier
     // vencida manda; si no, la del período en curso (NO la futura ya devengada).
@@ -375,7 +375,7 @@ export async function coreRoutes(app: FastifyInstance) {
     // mora en su fechaPago y un montoPunitorioManual (migración) pisa el cálculo.
     const inmoMora = await prisma.inmobiliaria.findUnique({
       where: { id: u.inmobiliariaId },
-      select: { moraTipoDefault: true, moraValorDefault: true },
+      select: { moraTipoDefault: true, moraValorDefault: true, monedaDefault: true },
     });
     const esquema = resolverEsquemaMora(rest, inmoMora);
     return {
@@ -1979,7 +1979,7 @@ export async function coreRoutes(app: FastifyInstance) {
     });
     const inmoMora = await prisma.inmobiliaria.findUnique({
       where: { id: u.inmobiliariaId },
-      select: { moraTipoDefault: true, moraValorDefault: true },
+      select: { moraTipoDefault: true, moraValorDefault: true, monedaDefault: true },
     });
     const esquema = resolverEsquemaMora(actualizado, inmoMora);
     await registrarEvento({
@@ -2298,7 +2298,7 @@ export async function coreRoutes(app: FastifyInstance) {
       where: { id, inmobiliariaId: u.inmobiliariaId },
       include: {
         inmobiliaria: {
-          select: { moraTipoDefault: true, moraValorDefault: true, penalidadRescisionMesesDefault: true },
+          select: { moraTipoDefault: true, moraValorDefault: true, monedaDefault: true, penalidadRescisionMesesDefault: true },
         },
       },
     });
@@ -3026,7 +3026,7 @@ export async function coreRoutes(app: FastifyInstance) {
     const now = new Date();
     const inmoMora = await prisma.inmobiliaria.findUnique({
       where: { id: u.inmobiliariaId },
-      select: { moraTipoDefault: true, moraValorDefault: true },
+      select: { moraTipoDefault: true, moraValorDefault: true, monedaDefault: true },
     });
     const contratosRaw = persona.inquilinos
       .map((i) => i.contrato)
@@ -3202,7 +3202,7 @@ export async function coreRoutes(app: FastifyInstance) {
     // Viaja junto a la config de cobranza (es parte de "cómo cobro").
     const inmoMora = await prisma.inmobiliaria.findUnique({
       where: { id: u.inmobiliariaId },
-      select: { moraTipoDefault: true, moraValorDefault: true },
+      select: { moraTipoDefault: true, moraValorDefault: true, monedaDefault: true },
     });
     return {
       tieneCuenta: !!(c?.cbu && c?.titular),
@@ -3244,7 +3244,7 @@ export async function coreRoutes(app: FastifyInstance) {
         moraTipoDefault: tipo,
         moraValorDefault: tipo !== 'SIN_MORA' ? valor : null,
       },
-      select: { moraTipoDefault: true, moraValorDefault: true },
+      select: { moraTipoDefault: true, moraValorDefault: true, monedaDefault: true },
     });
     await registrarEvento({
       inmobiliariaId: u.inmobiliariaId,

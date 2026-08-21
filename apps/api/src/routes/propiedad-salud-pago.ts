@@ -83,7 +83,7 @@ export async function propiedadSaludPagoRoutes(app: FastifyInstance) {
     // contrato, el inquilino y la cobranza.
     const inmoMora = await prisma.inmobiliaria.findUnique({
       where: { id: u.inmobiliariaId },
-      select: { moraTipoDefault: true, moraValorDefault: true },
+      select: { moraTipoDefault: true, moraValorDefault: true, monedaDefault: true },
     });
     const esquemaPorContrato = new Map(contratos.map((c) => [c.id, resolverEsquemaMora(c, inmoMora)]));
 

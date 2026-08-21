@@ -134,7 +134,7 @@ export async function aplicarDepositoADeuda(
       moraTipo: true,
       moraValor: true,
       tasaPunitorioDiaria: true,
-      inmobiliaria: { select: { moraTipoDefault: true, moraValorDefault: true } },
+      inmobiliaria: { select: { moraTipoDefault: true, moraValorDefault: true, monedaDefault: true } },
     },
   });
   if (!contrato) return { aplicado: 0, sobrante: args.disponible, cuotasSaldadas: 0 };

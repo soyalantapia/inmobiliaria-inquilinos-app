@@ -233,7 +233,7 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
       include: {
         propiedad: { select: { direccion: true, ciudad: true, reglasConvivencia: true, mascotasPermitidas: true } },
         inmobiliaria: {
-          select: { nombre: true, telefono: true, moraTipoDefault: true, moraValorDefault: true },
+          select: { nombre: true, telefono: true, moraTipoDefault: true, moraValorDefault: true, monedaDefault: true },
         },
         sociedad: { select: { cuentaCobranza: true } },
         cobraDirectoPropietario: { include: { cuentaCobranza: true } },
