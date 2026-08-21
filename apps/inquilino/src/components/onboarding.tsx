@@ -51,15 +51,30 @@ const STEPS: Step[] = [
       'Podés saltar este tour cuando quieras',
     ],
   },
+  // ⛔ ACÁ DECÍA "Pagás con transferencia, MP o QR", y el título, "en un toque".
+  //
+  // Ni MP ni QR existen como forma de pagar: el enum MetodoPago del schema es TRANSFERENCIA |
+  // MERCADOPAGO | EFECTIVO, y MERCADOPAGO es sólo la etiqueta con la que la inmo REGISTRA a
+  // mano un pago que ya recibió — no hay checkout de ninguna pasarela en el monorepo. QR no
+  // está ni en MetodoPago ni en MetodoPagoInformado; el único QR del schema es un valor de
+  // MetodoComprobante, que respalda Comprobante.metodo y que no escribe nadie. El checkout
+  // real de la app se llama, literalmente, "Pagar por
+  // transferencia": muestra el CBU y el alias para copiar, y recién después pide el comprobante.
+  //
+  // A diferencia del slide del asistente (más abajo), este se reescribe en vez de sacarse: el
+  // paso existe y es el más importante de la app, lo que no existía era el medio. El "en un
+  // toque" se va por lo mismo — sostenía la promesa de pago instantáneo con otras palabras, y
+  // encima le tapaba al inquilino el paso que más se olvida: volver a subir el comprobante. Sin
+  // eso transfirió plata real y para el sistema no pagó, porque no hay informe que validar.
   {
     icon: CreditCard,
     iconBg: 'from-primary to-primary/70',
-    titulo: 'Pagás tu alquiler en un toque',
+    titulo: 'Pagás tu alquiler sin vueltas',
     descripcion: 'En la pantalla principal ves el monto exacto del mes y si está al día.',
     bullets: [
       'Te mostramos vencimiento, monto y punitorios si los hay',
-      'Pagás con transferencia, MP o QR',
-      'Subís el comprobante y queda registrado',
+      'Copiás el CBU o el alias y transferís desde tu banco',
+      'Volvés, subís el comprobante y seguís acá la validación',
     ],
     cta: { label: 'Ver mis pagos', href: '/' },
   },
