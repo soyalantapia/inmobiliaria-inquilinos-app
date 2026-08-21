@@ -56,6 +56,16 @@ export function rangoUtcDelDiaAR(fecha: string): { desde: Date; hasta: Date } {
  *  - `condonado: false` — una condonación cancela deuda sin que entre un peso.
  *  - `contrato.modoCobranza: 'INMOBILIARIA'` — en cobranza directa la plata va al CBU del
  *    dueño: la inmo no la cobró ni comisiona sobre ella. Mismo filtro que `/rendiciones`.
+ *  - `migradoDeCartera: false` — el tercero de la misma familia, y el que faltaba. El alta de
+ *    un contrato EN CURSO registra los períodos anteriores como pagados
+ *    (`lib/estado-inicial-contrato.ts`) con `decididoAt` = vencimiento de cada cuota: es plata
+ *    que la inmobiliaria cobró y le liquidó al dueño ANTES de usar el sistema. Cae en el arqueo
+ *    del día en que venció cada una, así que cualquier fecha vieja que la cajera abra aparece
+ *    inflada y con comisión encima —y si la cuota venció HOY, el arqueo de hoy—. Ya explotó
+ *    una vez (bug caja 07/07): entonces se arregló poniéndoles `decididoAt` histórico
+ *    (`estado-inicial-contrato.ts`), que las sacó del cierre de HOY pero no del cierre. La
+ *    rendición ya lo excluye (`lib/rendicion-pendiente.ts`) y el cobrado rendible también
+ *    (`lib/saldos.ts`); el cierre era el único de los tres que la contaba.
  *
  * Y los otros dos no son menos importantes: sin `inmobiliariaId` el cierre mostraría pagos,
  * inquilinos y direcciones de OTRA inmobiliaria; sin `estado: 'CONCILIADO'` entrarían pagos
@@ -67,6 +77,12 @@ export function whereCierreDelDia(inmobiliariaId: string, fecha: string) {
     inmobiliariaId,
     estado: 'CONCILIADO' as const,
     condonado: false,
+    // La plata de la MIGRACIÓN DE CARTERA no entró por la caja: son las cuotas que el alta de
+    // un contrato EN CURSO registra como pagadas, con `decididoAt` = vencimiento de cada una.
+    // Sin este filtro engordan el arqueo del día en que venció la cuota y le generan comisión
+    // a la inmobiliaria sobre plata que cobró y liquidó antes de usar el sistema. Mismo
+    // criterio que `condonado`, y el mismo que ya aplican la rendición y el cobrado rendible.
+    migradoDeCartera: false,
     decididoAt: { gte: desde, lt: hasta },
     contrato: { modoCobranza: 'INMOBILIARIA' as const },
   };

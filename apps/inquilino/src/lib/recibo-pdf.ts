@@ -1,10 +1,18 @@
 'use client';
 
 /**
- * Genera un recibo imprimible (HTML → PDF via window.print) para que el
- * inquilino tenga proof-of-payment al instante. Funciona offline, sin
- * backend ni librerías de PDF — solo es un popup con CSS de print.
+ * Genera un COMPROBANTE INFORMATIVO imprimible (HTML → PDF via window.print) para
+ * que el inquilino tenga un respaldo propio del pago al instante. Funciona offline,
+ * sin backend ni librerías de PDF — solo es un popup con CSS de print.
+ *
+ * NO es un recibo oficial, y el documento tiene que decirlo. Lo arma el browser del
+ * inquilino con los datos de su app: la inmobiliaria no lo emite, no lo firma y ni se
+ * entera. Antes el pie declaraba "Recibo emitido digitalmente por la inmobiliaria.
+ * Tiene validez legal como prueba de pago" — un documento que nadie emitió, atribuido
+ * a un tercero, que el inquilino podía llevar a un reclamo creyendo que lo respaldaba.
  */
+
+import type { PagoDeLiquidacion } from '@/lib/types';
 
 export interface ReciboInput {
   /** Periodo cobrado, ej. "2026-05" */
@@ -14,12 +22,19 @@ export interface ReciboInput {
   direccion: string;
   monto: number;
   montoFmt: string; // "$ 480.000"
-  metodo: string; // "Transferencia", "Mercado Pago", etc.
+  /**
+   * Método REAL del cobro, ya en texto legible ("Transferencia", "Efectivo").
+   * Opcional a propósito: el llamador lo tenía HARDCODEADO en "Transferencia", así que un
+   * cobro en efectivo o por cheque salía impreso como una transferencia bancaria que nunca
+   * existió. Si no se puede saber el método (demo offline, o parciales con métodos
+   * distintos), se omite la fila en vez de afirmar uno.
+   */
+  metodo?: string;
   fechaPago: string; // ISO
   fechaPagoFmt: string; // "11 may 2026"
-  /** Razón social de la inmobiliaria — head del recibo. */
+  /** Razón social de la inmobiliaria — head del comprobante. */
   inmobiliaria: string;
-  /** Número generado para que se vea "oficial". */
+  /** Referencia interna del comprobante. NO es numeración oficial de recibo. */
   numero?: string;
 }
 
@@ -71,29 +86,34 @@ export function abrirReciboImprimible(recibo: ReciboInput): void {
     alert('Tu navegador bloqueó el popup. Habilitalo para descargar el recibo.');
     return;
   }
+  // Referencia derivada del período y la fecha del pago: estable siempre que haya fecha de
+  // pago real (si el llamador cae al `new Date()` de respaldo, cambia por día). Antes salía de
+  // Math.random(): reimprimir el MISMO pago daba un número distinto cada vez, así que no
+  // identificaba nada — y con el prefijo "R-" parecía la numeración oficial de un recibo
+  // emitido por la inmobiliaria, que es justo lo que este documento no es.
   const numero =
     recibo.numero ??
-    `R-${recibo.periodo.replace('-', '')}-${String(Math.floor(Math.random() * 9999)).padStart(4, '0')}`;
+    `${recibo.periodo.replace('-', '')}-${recibo.fechaPago.slice(0, 10).replace(/-/g, '')}`;
   const html = `<!doctype html>
 <html lang="es-AR">
   <head>
     <meta charset="utf-8" />
-    <title>Recibo ${recibo.periodoFmt} — ${recibo.inquilino}</title>
+    <title>Comprobante ${recibo.periodoFmt} — ${recibo.inquilino}</title>
     <style>${ESTILOS}</style>
   </head>
   <body class="with-bar">
     <div class="preview-bar">
-      <span>Recibo listo · presioná Imprimir para guardarlo como PDF</span>
+      <span>Comprobante listo · presioná Imprimir para guardarlo como PDF</span>
       <button onclick="window.print()">Imprimir / Guardar PDF</button>
     </div>
     <div class="recibo">
       <div class="head">
         <div>
           <p class="logo">${escapeHtml(recibo.inmobiliaria)}</p>
-          <p class="sub">My Alquiler · recibo de alquiler</p>
+          <p class="sub">Comprobante informativo generado por el inquilino</p>
         </div>
         <div class="numero">
-          <span>Comprobante</span>
+          <span>Referencia</span>
           <strong>${escapeHtml(numero)}</strong>
         </div>
       </div>
@@ -103,7 +123,7 @@ export function abrirReciboImprimible(recibo: ReciboInput): void {
       <div class="row"><span class="label">Propiedad</span><span class="value">${escapeHtml(recibo.direccion)}</span></div>
       <div class="row"><span class="label">Período</span><span class="value">${escapeHtml(recibo.periodoFmt)}</span></div>
       <div class="row"><span class="label">Fecha de pago</span><span class="value">${escapeHtml(recibo.fechaPagoFmt)}</span></div>
-      <div class="row"><span class="label">Método</span><span class="value">${escapeHtml(recibo.metodo)}</span></div>
+      ${recibo.metodo ? `<div class="row"><span class="label">Método</span><span class="value">${escapeHtml(recibo.metodo)}</span></div>` : ''}
 
       <div class="total">
         <span class="label">Total cobrado</span>
@@ -111,12 +131,16 @@ export function abrirReciboImprimible(recibo: ReciboInput): void {
       </div>
 
       <div class="nota">
-        Recibo emitido digitalmente por la inmobiliaria. Tiene validez legal como prueba de pago.
-        Conservalo junto con el comprobante bancario.
+        <strong>Este no es un recibo oficial.</strong> Lo generaste vos desde My Alquiler con los
+        datos registrados en tu cuenta: ${escapeHtml(recibo.inmobiliaria || 'la inmobiliaria')} no lo emitió ni lo
+        firmó. Te sirve como respaldo propio de lo que figura pagado en la app. El comprobante
+        de la transferencia sigue siendo el que prueba el pago: guardalo. Si necesitás un recibo
+        oficial, pedíselo a la inmobiliaria.
       </div>
 
       <div class="footer">
-        Generado el ${new Date().toLocaleDateString('es-AR')} desde My Alquiler.
+        Generado el ${new Date().toLocaleDateString('es-AR')} desde My Alquiler, a pedido del
+        inquilino. Documento informativo, sin valor de recibo.
       </div>
     </div>
   </body>
@@ -132,4 +156,31 @@ function escapeHtml(str: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+/** Etiquetas legibles de los métodos que maneja el API. */
+const METODO_LABEL: Record<PagoDeLiquidacion['metodo'], string> = {
+  TRANSFERENCIA: 'Transferencia',
+  MERCADOPAGO: 'Mercado Pago',
+  EFECTIVO: 'Efectivo',
+  CHEQUE: 'Cheque',
+};
+
+/**
+ * Método REAL del cobro para imprimir en el comprobante. La pantalla de detalle le pasaba
+ * "Transferencia" HARDCODEADO: un cobro en efectivo o por cheque que registró la
+ * inmobiliaria salía impreso como una transferencia bancaria que nunca existió.
+ *
+ * Devuelve undefined —y entonces el comprobante NO imprime la fila— cuando no hay UN método
+ * único que afirmar: en la demo offline `liq.pagos` no existe, y en prod un período cubierto
+ * con parciales de distinto método (mitad efectivo, mitad transferencia) no tiene uno solo.
+ * Omitir la fila es preferible a elegir un método por sobre el otro.
+ */
+export function metodoParaRecibo(pagos: PagoDeLiquidacion[] | undefined): string | undefined {
+  // Los RECHAZADOS quedan afuera: esa plata no entró, su método no describe el cobro.
+  const metodos = (pagos ?? []).filter((p) => p.estado !== 'RECHAZADO').map((p) => p.metodo);
+  const primero = metodos[0];
+  if (!primero) return undefined;
+  if (metodos.some((m) => m !== primero)) return undefined;
+  return METODO_LABEL[primero];
 }

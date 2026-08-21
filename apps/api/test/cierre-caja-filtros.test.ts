@@ -101,11 +101,27 @@ describe('qué pagos entran al arqueo', () => {
     expect(where.decididoAt.lt.toISOString()).toBe('2026-08-20T03:00:00.000Z');
   });
 
+  it('la plata MIGRADA DE CARTERA queda afuera', () => {
+    // El alta de un contrato EN CURSO registra los períodos anteriores como pagados
+    // (`lib/estado-inicial-contrato.ts`) con `decididoAt` = vencimiento de cada cuota: plata
+    // que la inmobiliaria cobró y le liquidó al dueño antes de usar el sistema. Entra al
+    // arqueo del día en que venció cada una e infla el cobrado Y la comisión, que sale del
+    // mismo array. La rendición y el cobrado rendible ya la excluían; el cierre no.
+    expect(where.migradoDeCartera).toBe(false);
+  });
+
   it('no arrastra ningún filtro de más que recorte el arqueo en silencio', () => {
     // Al revés que los otros: un filtro EXTRA haría desaparecer plata que sí entró. Fijar la
     // forma exacta obliga a que agregar uno sea una decisión consciente, no un descuido.
     expect(Object.keys(where).sort()).toEqual(
-      ['condonado', 'contrato', 'decididoAt', 'estado', 'inmobiliariaId'].sort(),
+      [
+        'condonado',
+        'contrato',
+        'decididoAt',
+        'estado',
+        'inmobiliariaId',
+        'migradoDeCartera',
+      ].sort(),
     );
   });
 });
