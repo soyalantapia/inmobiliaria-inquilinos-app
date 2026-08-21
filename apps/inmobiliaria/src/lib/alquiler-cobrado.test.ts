@@ -8,9 +8,13 @@ import { porcionAlquilerCobrada } from './alquiler-cobrado';
  * día. El server prorratea contra la base de la fila, sin mora. Mientras no hubo atrasos los
  * dos denominadores coincidieron y nadie lo vio.
  *
- * `formulaDelServer` replica lo que hace `plata.ts` al armar la rendición: es la referencia
- * contra la que el panel tiene que dar igual. Si algún día cambia allá, estos tests son el
- * lugar donde se nota.
+ * `formulaDelServer` NO importa el código de producción, y eso es deliberado: es la fórmula
+ * escrita de nuevo, a mano, para que el test sea diferencial. Si el panel y esta expresión dan
+ * distinto, uno de los dos se movió.
+ *
+ * Antes este comentario decía que "replica lo que hace `plata.ts`". Ya no es cierto: desde
+ * T-01-N1-N14 la regla vive una sola vez en `@llave/shared/prorrateo` y `plata.ts` pasó a ser
+ * un consumidor más. La referencia es el helper compartido; esto es la segunda opinión.
  */
 function formulaDelServer(alquiler: number, expensas: number, cobrado: number): number {
   const total = alquiler + expensas; // `liq.montoTotal` de la fila: la mora nunca se persiste

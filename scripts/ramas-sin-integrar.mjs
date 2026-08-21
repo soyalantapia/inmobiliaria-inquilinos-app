@@ -56,13 +56,21 @@ const MAIN = REMOTAS ? 'origin/main' : 'main';
  * y el patrón empezó a devolver una rama 58 commits atrasada, en silencio. Poner acá otra lista
  * de nombres sería el mismo error con más pasos: caduca el día que alguien renombre.
  *
- * El criterio es estructural: **la rama con más commits por encima de `main`**. La integración es
- * la que acumula el trabajo de todas las demás, así que siempre es la más adelantada por
- * definición. Y es "más commits", no "más reciente": una rama de tarea recién creada es más
- * reciente que la integración y la ganaría siempre.
+ * El criterio es estructural y tiene DOS partes, y la segunda no estaba:
  *
- * Si algún día empatan o el repo queda sin nada por encima de main, cae a `main`, que es el
- * default correcto para un repo recién consolidado.
+ *   1. La rama tiene que CONTENER todo `main`. Una integración es main más el trabajo que
+ *      acumuló; si le faltan commits de main, es una rama de tarea que quedó atrás.
+ *   2. Entre las que cumplen 1, la que más commits tiene por encima de `main`. Es "más
+ *      commits" y no "más reciente": una rama recién creada es más reciente que la
+ *      integración y la ganaría siempre.
+ *
+ * Sin la parte 1 la heurística se degrada sola a medida que el repo deja de usar una rama de
+ * integración: ganaba la rama de TAREA más gorda. El 20/08/2026 eso daba
+ * `feat/semaforo-dni` —34 commits propios, 16 días sin tocar, PR abierto— y el informe salía
+ * medido contra ella, listando a `origin/main` con 448 commits "fuera de la integración".
+ *
+ * Si NINGUNA rama contiene a main —que es el caso cuando se mergea derecho a `main`, como se
+ * trabaja hoy— cae a `main`, que es la respuesta correcta: la integración es main.
  */
 function detectarBase() {
   const explicita = valor('--base', null);
@@ -73,10 +81,31 @@ function detectarBase() {
     .split('\n')
     .filter(Boolean)
     .filter((b) => b !== 'origin/HEAD' && b !== MAIN && b !== 'main')
-    .map((b) => ({ b, n: contar(MAIN, b) }))
-    .sort((a, z) => z.n - a.n);
+    .map((b) => ({ b, adelante: contar(MAIN, b), atras: contar(b, MAIN) }))
+    // Una integración CONTIENE todo lo que hay en main: es main + el trabajo que acumuló. Si
+    // le FALTAN commits de main, no es una integración: es una rama de tarea que quedó vieja.
+    // Sin este filtro ganaba la rama de tarea más gorda —`feat/semaforo-dni`, 34 commits
+    // propios y 16 días sin tocar— y el informe salía medido contra ella: listaba a
+    // `origin/main` con 448 commits "fuera de la integración", que es un absurdo. Un aviso
+    // que dice un absurdo en cada corrida enseña a ignorar el aviso.
+    .filter((c) => c.atras === 0)
+    .sort((a, z) => z.adelante - a.adelante);
 
-  return candidatas[0]?.n > 0 ? candidatas[0].b : 'main';
+  // Cae a MAIN, no al literal `main`: con --remotas (que es como corre en CI) la rama local
+  // `main` puede no existir, y `contar()` se traga ese error devolviendo 0 — o sea que una
+  // base inexistente haría ver TODO como consolidado. Es el falso "todo bien" que este script
+  // existe para no dar.
+  return candidatas[0]?.adelante > 0 ? candidatas[0].b : MAIN;
+}
+
+/** ¿Existe esa ref? Para no medir el riesgo contra algo que no está. */
+function existeRef(ref) {
+  try {
+    git('rev-parse', '--verify', '--quiet', ref);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function contar(desde, hasta) {
@@ -123,13 +152,23 @@ console.log(`\nIntegración: ${BASE}${flag('--base') ? '' : '  (detectada)'}`);
 let remotoOk = true;
 try {
   const enRemoto = git('ls-remote', '--heads', 'origin', BASE.replace(/^origin\//, ''));
-  const adelanteDeMain = contar(MAIN, BASE);
+  // Se mide contra lo que HAY EN EL REMOTO, no contra la rama `main` local. En modo local
+  // `MAIN` es `main` a secas, que suele estar días atrás de `origin/main`, y entonces este
+  // aviso cuenta como "en un solo disco" commits que ya están pusheados y a salvo. Medido el
+  // 20/08/2026: decía 29 commits en riesgo cuando los que de verdad no estaban en ningún lado
+  // eran 7 — el `main` local estaba 23 commits atrás. Un aviso que exagera se descarta igual
+  // que uno que miente, y este script sólo sirve si se le cree.
+  const referenciaRemota = existeRef('origin/main') ? 'origin/main' : MAIN;
+  const adelanteDeMain = contar(referenciaRemota, BASE);
   if (!enRemoto) {
     remotoOk = false;
     console.log(
-      `\n  ⚠  La rama de integración NO está en origin, y tiene ${adelanteDeMain} commits por\n` +
-        `     encima de main. Ese trabajo existe en UN SOLO disco: no hay backup, no hay CI que lo\n` +
-        `     mire y no hay forma de deployarlo desde otra máquina.`,
+      `
+  ⚠  La rama de integración NO está en origin, y tiene ${adelanteDeMain} commits que no
+` +
+        `     están en ${referenciaRemota}. Ese trabajo existe en UN SOLO disco: no hay backup, no
+` +
+        `     hay CI que lo mire y no hay forma de deployarlo desde otra máquina.`,
     );
   } else {
     const sinPushear = contar(`origin/${BASE.replace(/^origin\//, '')}`, BASE);

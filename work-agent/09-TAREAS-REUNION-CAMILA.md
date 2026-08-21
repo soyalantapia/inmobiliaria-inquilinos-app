@@ -2342,6 +2342,56 @@ la mora sale igual desde los 16 lugares que la calculan.
 
 ---
 
+## T-67 · El login del inquilino se caía a la demo cuando el API no contestaba — ✅ RESUELTO
+
+**Experto:** FE-I + SEC · **Prioridad:** 🔴
+**Origen:** riesgo 🟠 Nivel 2 **#15** de `work-agent/07-ECOSISTEMA.md`. De los 7 riesgos de esa
+tabla que se verificaron, **#10 y #16 ya estaban arreglados** (commits `88f4e02e` y `2f77f0f3`) y
+éste era el único **explotable hoy**.
+
+**El caso.** `solicitarCodigoUnificado` y `verificarCodigoUnificado` arrancan con
+`if (!apiEnabled) return <flujo local>`. El build demo sale por ahí — así que **todo lo que viene
+después es código de PRODUCCIÓN por construcción**, incluido el `catch` que volvía a caer al
+flujo local cuando `fetch` rechazaba.
+
+**El disparador no es "estar offline".** Sin red la página ni carga: el service worker es
+network-first sobre un cache que nunca se llena (`public/sw.js` no hace un solo `cache.put`). Es
+que la página cargue bien y la llamada falle: corte de 3G a mitad del flujo, DNS, CORS, un
+adblocker que bloquea el dominio de Railway, un portal cautivo que devuelve HTML donde va JSON.
+
+**Qué pasaba.** Se generaba un código local, se lo mostraba **en pantalla** en un banner "Demo"
+—sin gate de `apiEnabled`, aunque el archivo ya lo importa y lo usa en otros dos lados— y se le
+armaba al inquilino un perfil inventado.
+
+**Y la mitad fea, que la primera revisión no vio.** `desdeLocal` escribe la sesión pero **no toca
+`llave:auth:token`**, mientras que el camino del API sí llama a `cerrarSesion()` cuando cambia el
+email. En un dispositivo compartido: la persona B entra con SU email por el fallback, el JWT de A
+sobrevive en localStorage, y como **todos los hooks leen el token y no la sesión**, B ve el
+contrato, el saldo y los pagos REALES de A con su propio nombre en el header. Y hay un botón que
+lleva justo ahí: `mis-alquileres` manda a `/login?force=1` —el único parámetro que saltea el
+redirect del login— cuando se le vence el persona-token.
+
+**Ya se había arreglado a medias, y hace rato.** El commit `0b042656` (01/07) sacó el
+`codigo: '000000'` del camino feliz; su mensaje dice textual que el banner *"aparecía EN
+PRODUCCIÓN"*. Cerró la puerta y dejó la ventana — y el comentario que quedó lo documenta como
+resuelto.
+
+**Qué se hizo.** Los dos `catch` devuelven un error honesto de conexión en vez de caer al flujo
+local, y el banner quedó con gate de `!apiEnabled` como defensa en profundidad. `desdeLocal` y
+`solicitarCodigo` **no se borran**: siguen vivas en las ramas legítimas del build demo.
+
+**Tests.** 5 puros en `auth-otp-api.test.ts`, con `fetch` stubeado y un localStorage falso —el
+mismo invariante que el portal del propietario ya protege en `demo-data.test.ts`: *la demo no se
+prende sola cuando falta el servidor*.
+
+**Nota de método, porque casi se me pasa.** La primera versión del test verificaba el paso de
+`verificar` **en aislamiento**, y pasaba **igual con el bug puesto**: sin un código guardado el
+flujo local falla de todos modos, así que no probaba nada. Hay que hacer el flujo de dos pasos
+completo —pedir y después verificar—, que es el camino real. Con el bug completo restaurado,
+**3 de los 5 fallan**; con el arreglo, 5/5.
+
+---
+
 ## T-66 · Finalizar resolvía el depósito y dejaba sus cargos huérfanos — ✅ RESUELTO
 
 **Experto:** BE · **Prioridad:** 🔴 · **Toca plata**
@@ -5806,3 +5856,39 @@ pero son 25 archivos y no correspondía meterlo en el commit del diagnóstico.
 
 **Criterio de aceptación.** `grep -l "\.json()\.token" apps/api/test/*.test.ts` no devuelve nada,
 y la suite con base sigue en verde.
+
+---
+
+### T-01-N1-N15 · El suite rápido daba 3 rojos falsos, y el guard no decía qué no ve — ✅ HECHA
+**Experto:** BE · **Prioridad:** 🟠
+
+> Ver `work-agent/tareas/T-01-N1-N15/REQUISITOS.md`.
+
+Revisión del trabajo de T-01-N1-N14. Cuatro hallazgos; **dos eran falsas alarmas y se anotan
+con la evidencia para que nadie los persiga de nuevo.**
+
+**1. `pnpm test:sin-db` no era self-contained.** En un worktree limpio daba 3 rojos en
+`sonar-correlacion.test.ts` con `ZodError: DATABASE_URL Required`: varios de esos tests hacen
+`buildApp()` y `env.ts` valida con zod al importarse. **Nunca se notó porque los dos lugares
+donde se corría lo tapaban** — CI inyecta las variables a mano y el worktree de trabajo tiene un
+`.env` sin trackear. Cualquiera que clonara hoy se comía 3 rojos ajenos a su cambio, que es
+justo el rojo que enseña a ignorar los rojos. Arreglado en la config, sin pisar el entorno de
+quien lo tenga. **De paso: los 16 tests que salían `skipped` también los saltaba la falta de
+entorno.** Ahora corren. 625/625.
+
+**2. El guard de prorrateo no decía qué NO ve.** Busca el *esqueleto* `Math.min(...) * (../..)`,
+así que una copia que aplique la regla por omisión se le escapa entera. Queda escrito en el test.
+
+**3. `dashboard-helpers.ts:61` comisiona sin capear — NO es bug.** Es deliberado y está
+documentado en `lib/api/hooks.ts:1557`: el demo mantiene el 0.08 fijo por paridad byte-for-byte.
+
+**4. `cierre-caja.ts` (demo) no tiene rama PARCIAL — NO es bug.** Es inalcanzable:
+`generarLiquidaciones` emite `PAGADO | PENDIENTE | VENCIDO` y nunca `PARCIAL`, y sus cinco
+callers la usan cruda. **Pero esa seguridad descansa en el GENERADOR, no en el consumidor**, así
+que va un tripwire: si el demo aprende a emitir PARCIAL, `efectivoEnMano` contaría ese mes como
+0 de alquiler cobrado en silencio. Verificado en rojo forzando el generador.
+
+**Y dos documentos que quedaron mintiendo:** la tabla de `invariantes-plata.md` apunta a tres
+líneas y tres fórmulas inline que ya no existen —se marca en vez de reescribirse, porque el
+punto es que tres números de línea a mano se pudrieron en semanas—, y el docstring de
+`alquiler-cobrado.test.ts` decía replicar `plata.ts`, hoy un consumidor más del helper.

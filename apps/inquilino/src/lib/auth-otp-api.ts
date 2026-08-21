@@ -73,10 +73,18 @@ export async function solicitarCodigoUnificado(email: string): Promise<Solicitar
       body: JSON.stringify({ email: emailNorm }),
     });
   } catch (e) {
-    // Server respondió con error → lo informamos. Server inalcanzable (red) →
-    // caemos al flujo local para no romper el dev/demo sin backend.
     if (e instanceof ApiError) return { ok: false, motivo: 'No pudimos enviar el código. Probá de nuevo.' };
-    return solicitarCodigo(email);
+    // API INALCANZABLE. Acá NO se cae al flujo local, y el motivo es que este catch es
+    // código de PRODUCCIÓN por construcción: el guard de `!apiEnabled` de arriba ya sacó al
+    // build demo, así que sólo se llega hasta acá con el API real configurado.
+    //
+    // Lo que pasaba: un `fetch` que rechaza —corte de 3G a mitad del flujo, DNS, CORS mal
+    // configurado, el dominio de Railway bloqueado por un adblocker, un portal cautivo que
+    // devuelve HTML— caía al OTP de localStorage. Eso genera un código local, lo muestra en
+    // pantalla en un banner "Demo", y le arma al inquilino un perfil inventado.
+    // Un arreglo previo (0b042656) sacó el `codigo: '000000'` del camino feliz, pero dejó
+    // este catch: cerró la puerta y no la ventana.
+    return { ok: false, motivo: 'No pudimos conectarnos. Revisá tu conexión e intentá de nuevo.' };
   }
   return {
     ok: true,
@@ -135,8 +143,17 @@ export async function verificarCodigoUnificado(
     if (e instanceof ApiError) {
       return { ok: false, motivo: e.message || 'No pudimos verificar el código. Probá de nuevo.' };
     }
-    // API inalcanzable → flujo local (el código local del fallback offline).
-    return desdeLocal(email, codigo);
+    // API inalcanzable. Igual que en `solicitarCodigoUnificado`: NO se cae al flujo local,
+    // porque acá ya sabemos que estamos en producción.
+    //
+    // Y es la mitad más peligrosa de las dos. `desdeLocal` escribe la sesión pero NO toca
+    // `llave:auth:token`, mientras que el camino del API sí llama a `cerrarSesion()` cuando
+    // el email cambia (arriba, :110-113). O sea que en un dispositivo compartido la persona B
+    // entraba con SU email por este fallback, el JWT de A sobrevivía en localStorage, y como
+    // todos los hooks leen el token y no la sesión, B veía el contrato, el saldo y los pagos
+    // REALES de A con su propio nombre en el header. Hay un botón que lleva justo ahí:
+    // `mis-alquileres` manda a `/login?force=1` cuando se le vence el persona-token.
+    return { ok: false, motivo: 'No pudimos conectarnos. Revisá tu conexión e intentá de nuevo.' };
   }
 }
 
