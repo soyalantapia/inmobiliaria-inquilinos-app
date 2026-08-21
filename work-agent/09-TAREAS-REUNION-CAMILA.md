@@ -2342,6 +2342,60 @@ la mora sale igual desde los 16 lugares que la calculan.
 
 ---
 
+## T-71 · El código del certificado era derivable de los datos de la persona — ✅ RESUELTO
+
+**Experto:** BE + SEC · **Prioridad:** 🟠 · **Toca schema (migración con borrado)**
+**Origen:** riesgo 🟠 Nivel 2 **#11**. **Autorizado explícitamente por el dueño** el 21/08,
+sabiendo que la migración borra la tabla.
+
+**El caso.** `hash` se calculaba con FNV-1a + djb2 sobre `DNI | contratoId | nombreInmobiliaria`,
+sin sal y sin secreto, truncado a 12 caracteres. Dos funciones de hash públicas de 32 bits:
+cualquiera con esos tres datos —y el nombre de la inmobiliaria es público— reproducía el código
+de otra persona en diez líneas. Y al ser determinístico, `revocadoAt` no servía de nada:
+regenerar devolvía el MISMO código.
+
+**Por qué ahora y no después.** Hoy el daño es latente: **no existe la página pública de
+verificación**, así que ningún código se puede canjear en ningún lado. Pero el código es lo único
+que va a proteger esa página el día que exista, y la tabla **ya guarda PII de personas reales**
+(nombre, DNI, email, teléfono, dirección, monto). Cambiarlo después obligaría a invalidar
+certificados ya en circulación.
+
+**Las dos exigencias que tiran para lados opuestos**, y por eso no era un cambio de una línea:
+el código tiene que ser **aleatorio** (para que no se derive) y **estable** (porque se imprime y
+se comparte: si cambiara en cada visita, el papel que el inquilino entregó moriría al día
+siguiente).
+
+**Qué se hizo.**
+1. `codigoCertificado()` — `randomBytes`, alfabeto de 28 símbolos sin los que se confunden al
+   tipear (I/1, O/0, S/5, Z/2), ~58 bits. **No recibe ningún argumento**: ésa es la propiedad, no
+   hashea bien los datos del titular, no los toca.
+2. La clave del upsert pasó de `hash` a **`(inquilinoId, contratoId)`**. Con un código aleatorio,
+   buscar por hash no encontraría nunca la fila previa: cada visita crearía una fila nueva y
+   dejaría la anterior **huérfana con PII adentro** y sin nada que la borre.
+3. El handler **lee el código existente antes de inventar uno**. Sin eso aparecía un bug sutil:
+   la fila conservaba su código viejo pero `urlVerificacion` apuntaba al recién generado.
+
+**La migración borra la tabla, y es la opción con menos riesgo.** El índice único no se puede
+crear si hay duplicados —y puede haberlos: si una inmobiliaria se renombró, la semilla cambiaba y
+nacía una segunda fila para el mismo par— y un `CREATE UNIQUE INDEX` que falla deja el contenedor
+**sin arrancar**: producción caída. Se verificó que es seguro:
+- **Ningún endpoint LEE la tabla.** Las únicas dos referencias en toda la API son el `upsert` de
+  `/certificado` y un `deleteMany` en cascada. No hay página de verificación, así que no hay
+  código impreso que se pueda canjear en ninguna parte.
+- La fila **se regenera sola** en la próxima visita: son snapshots derivados, no fuente de verdad.
+- Sus tres FKs son **salientes**; ninguna tabla la referencia, así que el DELETE no cascadea.
+
+Y hay un motivo positivo, no sólo la conveniencia del índice: **los códigos viejos son los
+débiles**. Conservarlos dejaría los certificados ya emitidos con un identificador derivable para
+siempre.
+
+**Tests.** 6 **puros** en `certificado-codigo-opaco.test.ts` —uno afirma que la función **no
+tiene parámetros**, que es el arreglo en una línea— y 5 de integración en
+`certificado-codigo-estable.test.ts`: el código no cambia entre visitas, no se duplica la fila,
+la URL apunta al código guardado, y **cambiarle el DNI al inquilino no le cambia el código**.
+
+---
+
 ## T-70 · La tercera puerta del titular quedó abierta en `/uploads` — ✅ RESUELTO
 
 **Experto:** BE + SEC · **Prioridad:** 🟠

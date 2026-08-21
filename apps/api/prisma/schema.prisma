@@ -2922,6 +2922,12 @@ model CertificadoInquilino {
   urlVerificacion String
   revocadoAt      DateTime?
 
+  // La clave ESTABLE del certificado: una persona tiene UN certificado por contrato. Antes el
+  // upsert iba por `hash`, y funcionaba sólo porque el hash era determinístico sobre
+  // (DNI, contrato, inmobiliaria). Al pasar a un código aleatorio (T-71) eso deja de servir:
+  // sin esta clave, cada visita a /certificado crearía una fila nueva y dejaría la anterior
+  // huérfana, con PII adentro y sin nada que la borre.
+  @@unique([inquilinoId, contratoId])
   @@index([inmobiliariaId])
   @@index([inquilinoId])
   @@index([contratoId])

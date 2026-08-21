@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { PREFIJO_REVERSION_INTERNA } from '../lib/reversion-interna.js';
 import { Prisma } from '@prisma/client';
@@ -143,26 +144,32 @@ function calcularNivel(historial: HistorialCertificado): { nivel: NivelHistorial
 }
 
 /**
- * Hash determinístico XXXX-XXXX-XXXX (port del mock). Basado SOLO en datos
- * inmutables (DNI + contrato + inmobiliaria) para que el link compartido a
- * otra inmobiliaria siga vivo aunque el historial crezca.
+ * Código del certificado: XXXX-XXXX-XXXX, ALEATORIO y opaco.
+ *
+ * ANTES ERA DERIVABLE. Se calculaba con FNV-1a + djb2 sobre
+ * `DNI | contratoId | nombreDeLaInmobiliaria`, sin sal y sin secreto: dos funciones de hash
+ * de 32 bits publicadas, truncadas a 12 caracteres. Cualquiera con esos tres datos —y el
+ * nombre de la inmobiliaria es público— reproducía el código de otra persona en diez líneas.
+ * Y como era determinístico, `revocadoAt` no servía de nada: regenerar daba el MISMO código.
+ *
+ * Este código está pensado para que lo tipee un tercero (el propietario o la inmobiliaria a
+ * la que el inquilino le muestra el certificado), así que el alfabeto excluye los caracteres
+ * que se confunden al leer a mano: I/1, O/0, S/5, Z/2. Quedan 32 símbolos × 12 = **60 bits**.
+ *
+ * `randomBytes` y no `Math.random()`: el código es lo único que va a proteger la página
+ * pública de verificación el día que exista, y ahí un PRNG predecible es una llave maestra.
+ * Es el mismo patrón que el link mágico de visita (`operacion.ts`, `randomBytes(24)`).
  */
-function hashCertificado(input: string): string {
-  let h = 2166136261;
-  for (let i = 0; i < input.length; i++) {
-    h ^= input.charCodeAt(i);
-    h = Math.imul(h, 16777619);
+export const ALFABETO_CERT = 'ABCDEFGHJKLMNPQRTUVWXY346789';
+/** Exportada para fijar en un test puro que NO toma ningún dato de la persona. */
+export function codigoCertificado(): string {
+  const bytes = randomBytes(12);
+  let out = '';
+  for (let i = 0; i < 12; i++) {
+    out += ALFABETO_CERT[bytes[i]! % ALFABETO_CERT.length];
+    if (i === 3 || i === 7) out += '-';
   }
-  let h2 = 5381;
-  for (let i = 0; i < input.length; i++) {
-    h2 = (h2 * 33) ^ input.charCodeAt(i);
-  }
-  const combined = ((h >>> 0).toString(36) + (h2 >>> 0).toString(36))
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, '')
-    .padEnd(12, '0')
-    .slice(0, 12);
-  return `${combined.slice(0, 4)}-${combined.slice(4, 8)}-${combined.slice(8, 12)}`;
+  return out;
 }
 
 /* ============================================================
@@ -423,8 +430,18 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
         (hastaMeses.getMonth() - contrato.fechaInicio.getMonth()),
     );
 
-    const semilla = [inquilino.dni ?? inquilino.id, contrato.id, contrato.inmobiliaria.nombre].join('|');
-    const hash = hashCertificado(semilla);
+    // El código ya NO se deriva de los datos de la persona (ver `codigoCertificado`), así que
+    // hay que LEER el que ya tenga esta persona para este contrato antes de inventar uno.
+    //
+    // Es la diferencia que trae el cambio: con un código determinístico daba igual, porque
+    // recalcularlo devolvía siempre lo mismo. Con uno aleatorio, generarlo antes de mirar
+    // rompería dos cosas — el código impreso cambiaría en cada visita, y `urlVerificacion`
+    // quedaría apuntando a un código distinto del que guarda la fila.
+    const certPrevio = await prisma.certificadoInquilino.findUnique({
+      where: { inquilinoId_contratoId: { inquilinoId: inquilino.id, contratoId: contrato.id } },
+      select: { hash: true },
+    });
+    const hash = certPrevio?.hash ?? codigoCertificado();
     // La URL que se IMPRIME en el certificado y que va a tipear o clickear un tercero —el
     // propietario o la inmobiliaria a la que el inquilino se lo muestra—.
     //
@@ -470,7 +487,11 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
     };
 
     const cert = await prisma.certificadoInquilino.upsert({
-      where: { hash },
+      // La clave del upsert es (inquilino, contrato), NO el código. Antes era `{ hash }` y
+      // funcionaba sólo porque el código era determinístico: con un código aleatorio, buscar
+      // por hash no encontraría nunca la fila previa y cada visita a /certificado crearía una
+      // fila nueva —con un código nuevo— dejando la anterior huérfana con PII adentro.
+      where: { inquilinoId_contratoId: { inquilinoId: inquilino.id, contratoId: contrato.id } },
       update: {
         inquilinoData,
         contratoActual,
