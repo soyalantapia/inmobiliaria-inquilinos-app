@@ -23,7 +23,7 @@ import { toast } from '@llave/ui/use-toast';
 import { contratoMock, liquidacionesMock } from '@/lib/mock-data';
 import { formatFecha, formatFechaCorta, formatMonto, formatPeriodo } from '@/lib/format';
 import { mostrarFilaAlquiler } from '@/lib/tipo-contrato';
-import { abrirReciboImprimible } from '@/lib/recibo-pdf';
+import { abrirReciboImprimible, metodoParaRecibo } from '@/lib/recibo-pdf';
 import { resolverMontos } from '@/lib/punitorios';
 import { saldoDeLiquidacion } from '@/lib/saldo-liquidacion';
 import {
@@ -217,8 +217,8 @@ function DetallePagoView({
    * pero la inmobiliaria todavía no lo aprobó y puede rechazarlo.
    *
    * Sin esto, `pagadoEnParciales` daba true y la pantalla mostraba el badge verde "Pagado"
-   * y ofrecía **descargar el recibo** —un PDF que dice textual *"Tiene validez legal como
-   * prueba de pago"* (`lib/recibo-pdf.ts`)— sobre plata que nadie validó, y que
+   * y ofrecía **descargar el comprobante** (`lib/recibo-pdf.ts`) —un respaldo impreso del
+   * pago, que el inquilino guarda y muestra— sobre plata que nadie validó, y que
    * `POST /pagos/:id/rechazar` todavía puede tirar atrás. Con esto cae en
    * `pendienteValidacion`, que ya tiene el copy y el CTA correctos.
    *
@@ -514,7 +514,10 @@ function DetallePagoView({
                   : contratoMock.direccion,
                 monto: liq.montoTotal,
                 montoFmt: formatMonto(liq.montoTotal, liq.moneda),
-                metodo: 'Transferencia',
+                // Método REAL del cobro. Estaba hardcodeado en "Transferencia": un cobro en
+                // efectivo o por cheque salía impreso como una transferencia que nunca existió.
+                // En demo `liq.pagos` no existe → undefined → el comprobante omite la fila.
+                metodo: metodoParaRecibo(liq.pagos),
                 fechaPago: fechaIso,
                 fechaPagoFmt: formatFecha(fechaIso),
                 inmobiliaria: apiEnabled

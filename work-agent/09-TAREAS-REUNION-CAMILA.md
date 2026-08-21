@@ -6245,3 +6245,35 @@ lo impida, y con varias sesiones mergeando en paralelo el riesgo es mayor que cu
 
 Lo barato: acordar la ventana (T-05 tal cual), y anotar el SHA de `/health` al empezar la sesión
 para poder descartar después los reportes de una ventana con deploy en el medio.
+---
+
+## T-02-N2 · Consolidación a `main`: los 8 arreglos de ola-1 que faltaban — ✅ HECHA
+
+**Estado: ✅ en `main` y deployado** — merge `c83cb5e0`, push a `main` el 21/08.
+
+**Experto:** OPS · **Prioridad:** 🔴 · **Origen:** auditoría de "¿está todo en main y producción?".
+
+`fix/ola-1-riesgos-confirmados` tenía **8 arreglos cerrados que nunca se mergearon**: la demo
+pública pidiendo tarjeta y CVV, el recibo del browser declarándose con validez legal, tres
+superficies prometiendo Mercado Pago o QR, la conciliación por extracto sin rastro de auditoría,
+el alta pública sin freno propio, el arqueo cobrando comisión sobre la migración de cartera, y un
+empleado dado de baja bajando archivos del tenant por 15 días.
+
+**El único conflicto no era el esperado.** Se anticipaba un choque con la cuota de disco puesta en
+`uploads.ts`; eran en realidad **dos versiones de la revalidación de auth**. Ganó la de ola-1 por
+ser superior, no por ser la entrante: `main` revalidaba inquilino y co-inquilino, la de ola-1
+revalida **también al `usuario`**, y delega en `requireUsuario`, que devuelve el `inmobiliariaId`
+**vigente de la tabla** en vez del congelado en el JWT — clave acá, porque `tenantDe` elige la
+carpeta del Volume con ese id, así que un usuario movido de inmobiliaria seguía escribiendo en la
+del tenant viejo. Se verificó que los dos arreglos del archivo sobrevivieran.
+
+**Verificado antes de producción:** tsc 0 en los seis paquetes y la suite COMPLETA con base —
+**1137 tests en verde, 0 fallas, 134 archivos**.
+
+**Lo que NO se tocó, a propósito:** dos worktrees con trabajo sin commitear
+(`docs/verificar-promesas-publicas`, `docs/T-61-canon-snapshot`). Son sesiones escribiendo, y con
+`main` auto-deployando a producción, commitear trabajo ajeno a medias shippea algo incompleto.
+
+**Dato operativo:** entre empezar a verificar y pushear, `main` se movió **cuatro veces** en dos
+tandas. El push tuvo que rebotar, re-mergear y re-verificar. Es la misma presión que hace falta
+para T-05: no hay ventana tranquila si nadie la acuerda.

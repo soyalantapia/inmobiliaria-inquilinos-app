@@ -8,6 +8,7 @@ import { verificarPinUsuario } from '../auth/pin.js';
 import { calcularMora, resolverEsquemaMora } from '../lib/punitorios.js';
 import { parsearFilasResumen, sugerirMatch, type CandidatoLiquidacion, type CandidatoPago , claveCredito} from '../lib/matching-bancario.js';
 import { guardarBufferSubido } from './uploads.js';
+import { registrarEvento } from '../lib/auditoria.js';
 import { instanteEnDiaCivilAR } from '@llave/shared';
 
 /**
@@ -371,8 +372,16 @@ export async function resumenesBancariosRoutes(app: FastifyInstance): Promise<vo
       });
     }
 
+    // Un solo lugar arma este texto: va a la `observacion` del pago auto-rechazado Y al
+    // `detalle` de su evento de auditoría. Escritos por separado se desincronizan al primer
+    // retoque, y entonces el rastro dice una cosa y lo que ve el inquilino dice otra.
+    const motivoAutoRechazo = observacionDeReversion(
+      `el extracto bancario confirmó este cobro (op. ${credito.nroOperacion}).`,
+    );
     try {
-      const pago = await prisma.$transaction(async (tx) => {
+      // La tx devuelve además los avisos que cerró: la auditoría se escribe DESPUÉS del
+      // commit y `updateMany` no informa qué filas tocó, así que hay que sacarlos de adentro.
+      const { pago, autoRechazados } = await prisma.$transaction(async (tx) => {
         // Lock: si otro admin ya concilió este crédito concurrentemente, count=0 → aborta.
         const marcado = await tx.creditoDetectado.updateMany({ where: { id: creditoId, conciliado: false }, data: { conciliado: true } });
         if (marcado.count === 0) throw new ConflictoCreditoConciliado();
@@ -439,6 +448,10 @@ export async function resumenesBancariosRoutes(app: FastifyInstance): Promise<vo
           data: { tipo: cubierta ? 'TOTAL' : 'PARCIAL' },
         });
 
+        // Se llena abajo si el crédito cierra avisos del inquilino. Vive FUERA del `if`
+        // porque lo consume la auditoría, que recién corre después del commit.
+        const avisosCerrados: { id: string; periodo: string; monto: number }[] = [];
+
         // El aviso del inquilino sobre ESTA liquidación ya no tiene nada que decidir:
         // el banco confirmó la plata. Sin esto quedaba en INFORMADO para siempre y
         // alguien tenía que rechazarlo A MANO desde "Pagos a validar" —una bandeja
@@ -452,6 +465,16 @@ export async function resumenesBancariosRoutes(app: FastifyInstance): Promise<vo
         // RECHAZADO y no CONCILIADO: CONCILIADO entra en el agregado de cobrado y
         // duplicaría la plata. La observación deja el rastro de por qué se cerró.
         if (cubierta) {
+          // Los ids se leen ANTES del updateMany: Prisma no devuelve las filas afectadas, y
+          // sin ellos el rastro no puede decir QUÉ aviso se cerró — que es justo el dato que
+          // se busca cuando el inquilino reclama que le "rechazaron" un pago que sí entró.
+          const informados = await tx.pago.findMany({
+            where: { liquidacionId: liq.id, estado: 'INFORMADO' },
+            select: { id: true, periodo: true, monto: true },
+          });
+          avisosCerrados.push(
+            ...informados.map((p) => ({ id: p.id, periodo: p.periodo, monto: Number(p.monto) })),
+          );
           await tx.pago.updateMany({
             where: { liquidacionId: liq.id, estado: 'INFORMADO' },
             data: {
@@ -467,16 +490,49 @@ export async function resumenesBancariosRoutes(app: FastifyInstance): Promise<vo
               // —lo peor— se le bajaba el nivel de buen pagador del certificado. Justo lo que
               // el comentario de `PAGO_RECHAZADO_REAL` dice que hay que evitar: penalizarlo por
               // algo que no es culpa suya.
-              observacion: observacionDeReversion(
-                `el extracto bancario confirmó este cobro (op. ${credito.nroOperacion}).`,
-              ),
+              observacion: motivoAutoRechazo,
               decididoPorId: u.userId,
               decididoAt: new Date(),
             },
           });
         }
-        return nuevoPago;
+        return { pago: nuevoPago, autoRechazados: avisosCerrados };
       });
+      // AUDITORÍA POST-COMMIT Y BEST-EFFORT. Esta conciliación crea un Pago CONCILIADO —plata
+      // que después entra al cierre de caja con comisión y se le rinde al propietario— y hasta
+      // acá era el único camino que la movía sin dejar una línea de quién lo hizo: ante una
+      // disputa no había forma de saber si ese cobro lo puso el extracto o alguien a mano.
+      //
+      // Va DESPUÉS del commit y no adentro de la tx por lo mismo que plata.ts:522 — un fallo
+      // al escribir el rastro abortaba la conciliación entera y el endpoint devolvía 200 igual.
+      // `registrarEvento` además traga su propio error, así que nunca rompe la respuesta.
+      await registrarEvento({
+        inmobiliariaId: u.inmobiliariaId,
+        tipo: 'PAGO_CONCILIADO',
+        autorId: u.userId,
+        rolAutor: u.rol,
+        entidadId: pago.id,
+        entidadDescripcion: `Pago ${pago.periodo} · $${Number(pago.monto)}`,
+        // El origen va en `detalle` porque es lo único que distingue este cobro de uno
+        // validado a mano: los dos terminan en un Pago CONCILIADO idéntico.
+        detalle: `Conciliado desde extracto bancario · ${credito.bancoOrigen || 'banco'} · op. ${credito.nroOperacion}`,
+      });
+      // La reversión del aviso también se audita, y como REVERTIDO —no RECHAZADO—: al
+      // inquilino su aviso le queda en RECHAZADO porque el esquema no tiene otro estado,
+      // pero no le rebotó nada, lo cerró el banco. Es la misma distinción que hace
+      // `observacionDeReversion` sobre la observación (ver lib/reversion-interna.ts) y la
+      // que plata.ts usa al anular un cobro propio.
+      for (const p of autoRechazados) {
+        await registrarEvento({
+          inmobiliariaId: u.inmobiliariaId,
+          tipo: 'PAGO_REVERTIDO',
+          autorId: u.userId,
+          rolAutor: u.rol,
+          entidadId: p.id,
+          entidadDescripcion: `Pago ${p.periodo} · $${p.monto}`,
+          detalle: motivoAutoRechazo,
+        });
+      }
       return pago;
     } catch (e) {
       if (e instanceof ConflictoCreditoConciliado) return reply.code(409).send({ message: 'Este crédito ya fue conciliado' });

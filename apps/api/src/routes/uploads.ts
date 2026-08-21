@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { JwtPayloadSchema, JwtProfesionalSchema, type JwtPayload, type JwtProfesional } from '@llave/shared';
+import { requireInquilino, requireUsuario } from '../auth/guards.js';
 import { prisma } from '../db.js';
 import { cuotaBytes, registrarSubida, usoDelTenant } from '../lib/cuota-uploads.js';
 import { inquilinoRevocado } from '../auth/guards.js';
@@ -108,8 +109,10 @@ function tenantDe(payload: JwtPayload | JwtProfesional): string | null {
  * no romper la exhaustividad usuario/inquilino/co-inquilino en el resto del
  * código) — pero /uploads es el ÚNICO endpoint genérico que el profesional
  * necesita (subir fotoAntes/fotoDespues), así que acá probamos ambos schemas
- * ANTES de responder (no podemos reusar requireAuth: ya manda 401 apenas el
- * shape no matchea JwtPayloadSchema, y una reply no se puede mandar dos veces).
+ * ANTES de responder (no podemos ARRANCAR con requireAuth: ya manda 401 apenas
+ * el shape no matchea JwtPayloadSchema, y una reply no se puede mandar dos veces).
+ * Una vez que sabemos QUÉ kind es, sí se delega en los guards de guards.ts —ver
+ * abajo—: ahí ya no pueden cortar antes de la revalidación.
  */
 async function requireAuthOProfesional(
   request: FastifyRequest,
@@ -123,29 +126,41 @@ async function requireAuthOProfesional(
   }
   const asPayload = JwtPayloadSchema.safeParse(request.user);
   if (asPayload.success) {
-    // MISMA regla que requireContratoAcceso (guards.ts): el token dura días, así que NO se
-    // confía en el estado que trae — se revalida contra la DB en cada request. /uploads era
-    // la excepción: un co-inquilino al que el titular ya le sacó el acceso seguía subiendo
-    // archivos al Volume del tenant hasta que venciera su token.
+    // MISMA regla que los guards de guards.ts: el token dura 15 días (TOKEN_TTL), así que NO
+    // se confía en el estado que trae — se revalida contra la DB en cada request. Acá se
+    // revalidaba SÓLO al co-inquilino y los otros dos kinds entraban con el JWT crudo:
+    //
+    //   - un empleado dado de baja (DELETE /usuarios/:id deja `activo: false`, la fila y el
+    //     token siguen vivos) se comía el 401 de requireUsuario en TODO el panel, pero
+    //     seguía bajándose comprobantes, documentos, DNI y extractos del tenant por
+    //     GET /uploads/:t/:n —que además acepta el token por query, o sea que le alcanza con
+    //     pegar la URL en el navegador— y subiendo por POST /uploads contra la cuota de esa
+    //     inmobiliaria, durante los 15 días que le quedaran al token;
+    //   - lo mismo, más chico, para un inquilino cuya fila se borró o cuyo contrato se
+    //     reasignó a otro.
+    //
+    // Se DELEGA en los guards que ya hacen esa revalidación en vez de copiarla acá: una
+    // segunda copia se desincroniza de la original, que es exactamente cómo nació este bug
+    // (el arreglo del co-inquilino se escribió acá y no alcanzó a los otros dos kinds).
+    // Delegar es seguro aunque los guards arranquen con su propio `jwtVerify`: es idempotente
+    // —relee el header y vuelve a poblar `request.user`—. Y NO manda dos replies: la
+    // advertencia del comentario de arriba sobre requireAuth vale para llamarlo A CIEGAS, y
+    // acá ya sabemos que el shape matchea JwtPayloadSchema y qué `kind` es, así que ninguno
+    // de los dos puede cortar antes de llegar a la revalidación.
     const p = asPayload.data;
-    // El TITULAR también: un inquilino al que le dieron de baja el alquiler —o cuyo token
-    // apunta a un contrato que ya no es el suyo— conservaba el token hasta 15 días y seguía
-    // leyendo y escribiendo el Volume del tenant por acá. Cuando se agregó esta revalidación
-    // se cubrió al co-inquilino y al profesional, y ésta se salteó: es la tercera puerta del
-    // titular, la que el docblock de `inquilinoRevocado` no contaba.
-    if (p.kind === 'inquilino') {
-      const revocado = await inquilinoRevocado(p);
-      if (revocado) {
-        await reply.code(401).send({ message: revocado });
-        return null;
-      }
-    }
-    if (p.kind === 'co-inquilino') {
-      const co = await prisma.coInquilino.findUnique({ where: { id: p.coInquilinoId } });
-      if (!co || co.estado !== 'ACEPTADO' || co.inmobiliariaId !== p.inmobiliariaId) {
-        await reply.code(401).send({ message: 'Tu acceso fue revocado' });
-        return null;
-      }
+    // requireUsuario devuelve el rol y el inmobiliariaId VIGENTES de la tabla, no los del
+    // token: además de cortar al dado de baja, evita que `tenantDe` elija la carpeta del
+    // Volume por el tenant congelado en el JWT si al usuario lo movieron de inmobiliaria.
+    if (p.kind === 'usuario') return requireUsuario(request, reply);
+    // El titular NO pasa por exigirContratoActivo, y eso es a propósito (ver guards.ts): un
+    // ex-inquilino tiene que poder seguir bajando sus comprobantes viejos.
+    if (p.kind === 'inquilino') return requireInquilino(request, reply);
+    // Co-inquilino: la única rama que ya revalidaba. No se delega en requireContratoAcceso
+    // porque ese guard devuelve un ContratoAcceso y acá hace falta el payload para `tenantDe`.
+    const co = await prisma.coInquilino.findUnique({ where: { id: p.coInquilinoId } });
+    if (!co || co.estado !== 'ACEPTADO' || co.inmobiliariaId !== p.inmobiliariaId) {
+      await reply.code(401).send({ message: 'Tu acceso fue revocado' });
+      return null;
     }
     return p;
   }

@@ -289,10 +289,20 @@ export default function LoginPage() {
               Lo que vas a encontrar
             </p>
             <ul role="list" className="space-y-4">
+              {/* Acá decía "Pagás directo desde la app · Transferencia, MP o QR. Comprobante
+                  registrado al instante". Es la misma promesa que traía el onboarding, y las
+                  tres partes eran falsas: no hay checkout de ninguna pasarela en el monorepo,
+                  QR no está ni en el enum MetodoPago, y "al instante" tampoco — el pago nace
+                  INFORMADO y lo valida a mano alguien con la capacidad `pago.conciliar`.
+                  Pesa más que en el onboarding porque esto corre en PRODUCCIÓN, sin gate de
+                  apiEnabled y ANTES del login: es lo primero que lee un inquilino nuevo desde
+                  una pantalla grande, y después llegaba al checkout buscando un botón de pagar
+                  donde hay un CBU para copiar.
+                  Se reemplaza por el flujo real, que dicho de verdad vende igual. */}
               <Beneficio
                 Icon={CreditCard}
-                titulo="Pagás directo desde la app"
-                detalle="Transferencia, MP o QR. Comprobante registrado al instante."
+                titulo="Pagás por transferencia, sin adivinar"
+                detalle="Copiás el CBU, transferís y subís el comprobante. La validación la seguís desde acá."
               />
               <Beneficio
                 Icon={FileText}

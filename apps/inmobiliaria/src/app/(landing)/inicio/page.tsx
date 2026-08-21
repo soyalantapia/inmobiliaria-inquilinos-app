@@ -116,7 +116,12 @@ const FAQS = [
   },
   {
     q: '¿Cómo paga el inquilino?',
-    a: 'Por transferencia a tu CBU/alias o por Mercado Pago. Sube el comprobante y lo validás vos — el dinero nunca pasa por nosotros.',
+    // Decía "por transferencia a tu CBU/alias o por Mercado Pago". Lo segundo no existe: no hay
+    // integración con ninguna pasarela, y MERCADOPAGO es apenas un valor del enum con el que se
+    // REGISTRA a mano un pago ya recibido. Peor que en la app: como el bloque visible y el
+    // JSON-LD de FAQPage salen los dos de este array, la promesa se indexaba como respuesta
+    // canónica y el buscador contestaba por nosotros algo que el producto no hace.
+    a: 'Te transfiere a tu CBU o alias —los ve en su app, listos para copiar—, sube el comprobante y vos lo validás con un clic. La plata va directo a tu cuenta y nunca pasa por nosotros.',
   },
   {
     q: '¿Tengo con quién hablar si me trabo?',
