@@ -1105,6 +1105,8 @@ export function useLiquidaciones(): {
   liquidaciones: LiquidacionItem[];
   cargando: boolean;
   deApi: boolean;
+  /** La consulta falló. Sin esto, "0 liquidaciones" es indistinguible de "no pudimos preguntar". */
+  error: boolean;
 } {
   const q = useQuery({
     queryKey: ['liquidaciones'],
@@ -1116,9 +1118,9 @@ export function useLiquidaciones(): {
     enabled: apiEnabled,
     staleTime: 15_000,
   });
-  if (!apiEnabled) return { liquidaciones: [], cargando: false, deApi: false };
-  if (q.isError) return { liquidaciones: [], cargando: false, deApi: true };
-  return { liquidaciones: q.data ?? [], cargando: q.isPending, deApi: true };
+  if (!apiEnabled) return { liquidaciones: [], cargando: false, deApi: false, error: false };
+  if (q.isError) return { liquidaciones: [], cargando: false, deApi: true, error: true };
+  return { liquidaciones: q.data ?? [], cargando: q.isPending, deApi: true, error: false };
 }
 
 // Período "YYYY-MM" del mes actual (hora local del cliente).
@@ -1149,6 +1151,16 @@ export function usePropietarios(): {
   propietarios: Propietario[];
   cargando: boolean;
   deApi: boolean;
+  /**
+   * Algo falló: la lista de propietarios, o la de liquidaciones de la que salen TODOS los
+   * números de plata de esta pantalla.
+   *
+   * Sin esto, un 403 o un 500 se veían igual que una cartera al día: la pantalla decía "Todos
+   * rendidos este mes 🎉" y "Todos tienen CBU cargado" sobre una lista vacía. Y no hace falta
+   * que se caiga nada: el rol CARGA tiene `propietarios.ver` pero NO `pagos.ver`, así que para
+   * él `/liquidaciones` devuelve 403 SIEMPRE y ese cartel verde es su estado permanente.
+   */
+  error: boolean;
 } {
   const ownersQ = useQuery({
     queryKey: ['propietarios'],
@@ -1168,10 +1180,10 @@ export function usePropietarios(): {
     enabled: apiEnabled,
     staleTime: 15_000,
   });
-  const { liquidaciones } = useLiquidaciones();
+  const { liquidaciones, error: errorLiqs } = useLiquidaciones();
 
-  if (!apiEnabled) return { propietarios: propietariosMock, cargando: false, deApi: false };
-  if (ownersQ.isError) return { propietarios: [], cargando: false, deApi: true };
+  if (!apiEnabled) return { propietarios: propietariosMock, cargando: false, deApi: false, error: false };
+  if (ownersQ.isError) return { propietarios: [], cargando: false, deApi: true, error: true };
 
   // Atribuimos lo COBRADO este mes (liquidaciones PAGADAS del período) a cada
   // propietario según su participación en la propiedad del contrato. Lo "a
@@ -1277,7 +1289,9 @@ export function usePropietarios(): {
     };
   });
 
-  return { propietarios, cargando: ownersQ.isPending, deApi: true };
+  // `errorLiqs` viaja aunque la lista de dueños haya venido bien: los nombres se ven, pero
+  // todos los números de plata quedan en 0 y eso NO es "al día".
+  return { propietarios, cargando: ownersQ.isPending, deApi: true, error: errorLiqs };
 }
 
 // ===== Alta de propietario (POST /propietarios) =====

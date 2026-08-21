@@ -2030,7 +2030,16 @@ model CierreCaja {
   @@map("cierres_caja")
 }
 
-// montoNeto = montoBruto - comisionMonto - totalGastos
+// montoNeto = montoBruto - comisionMonto - totalGastos + totalIngresos
+//
+// Los INGRESOS EXTRA faltaban en esta línea, y no son un detalle: son la plata que la
+// inmobiliaria le suma al dueño (un reintegro, un cobro que le corresponde), así que la
+// fórmula de acá daba MENOS que lo que el código transfiere. Ver `plata.ts`, paso NETO.
+//
+// NO HAY `@@unique([propietarioId, periodo])`: se dropeó el 01/07/2026 porque un período se
+// rinde en varias tandas a medida que entran los pagos parciales, y además va una rendición
+// por moneda. El anti-doble son otras tres cosas: el advisory lock por (dueño, período), la
+// aritmética contra `AlquilerRendido`, y el guard pre-ledger de `POST /rendiciones`.
 model Rendicion {
   id             String          @id @default(cuid())
   inmobiliariaId String

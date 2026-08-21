@@ -90,8 +90,18 @@ export default function PropietariosPage() {
   const [rendiendoA, setRendiendoA] = useState<Propietario | null>(null);
   const [verHistorial, setVerHistorial] = useState<Propietario | null>(null);
   const [rendicionesMap, setRendicionesMap] = useState<Record<string, Rendicion | null>>({});
+  /**
+   * Cuántas rendiciones tiene cada dueño ESTE período.
+   *
+   * Casi siempre es 1, pero puede ser más: la rendición es incremental —cada tanda de parciales
+   * cobrados genera la suya— y además va una por moneda cuando el dueño cobra en pesos y en
+   * dólares. El mapa de arriba se queda con UNA, así que cuando hay varias hay que decirlo: si
+   * no, el comprobante de WhatsApp sale con el monto de una sola y el dueño lo lee como el
+   * total del mes.
+   */
+  const [cuantasRendiciones, setCuantasRendiciones] = useState<Record<string, number>>({});
 
-  const { propietarios, cargando } = usePropietarios();
+  const { propietarios, cargando, error: errorDatos } = usePropietarios();
   // En prod el estado "rendido" sale del server (GET /rendiciones); en demo, de
   // localStorage. Antes SOLO leía localStorage → en prod todo aparecía "por
   // rendir" y el historial en $0, y "rendido" se perdía al refrescar.
@@ -101,16 +111,25 @@ export default function PropietariosPage() {
 
   const refrescarRendiciones = () => {
     const map: Record<string, Rendicion | null> = {};
+    const cuantas: Record<string, number> = {};
     if (apiEnabled) {
       for (const r of rendicionesApi) {
-        if (r.periodo === periodo) map[r.propietarioId] = apiRendicionALocal(r);
+        if (r.periodo !== periodo) continue;
+        cuantas[r.propietarioId] = (cuantas[r.propietarioId] ?? 0) + 1;
+        // La PRIMERA que llega de cada dueño, que es la más reciente: el server ordena por
+        // `periodo desc, rendidoAt desc`. Antes se pisaba en cada vuelta y quedaba la última
+        // de la lista, sin ningún criterio — y de ahí salen el monto del WhatsApp y el
+        // `rendicionId` del botón Deshacer.
+        if (!map[r.propietarioId]) map[r.propietarioId] = apiRendicionALocal(r);
       }
     } else {
       propietarios.forEach((p) => {
         map[p.id] = obtenerRendicion(p.id, periodo);
+        cuantas[p.id] = map[p.id] ? 1 : 0;
       });
     }
     setRendicionesMap(map);
+    setCuantasRendiciones(cuantas);
   };
 
   // `propietarios` es una ref NUEVA cada render (usePropietarios mapea el dato
@@ -219,9 +238,15 @@ export default function PropietariosPage() {
                 {porRendir}
               </p>
               <p className="text-xs text-muted-foreground">
-                {porRendir > 0
-                  ? `Tenés ${porRendir} propietario${porRendir === 1 ? '' : 's'} esperando`
-                  : 'Todos rendidos este mes 🎉'}
+                {/* CON ERROR NO SE AFIRMA NADA. Este número sale de las liquidaciones, y si esa
+                    consulta falló —o devolvió 403, que es lo que le pasa SIEMPRE al rol CARGA—
+                    queda en 0 y el cartel felicitaba al operador por una cartera que no pudo
+                    mirar. "0" y "no sé" no son lo mismo cuando se trata de plata sin rendir. */}
+                {errorDatos
+                  ? 'No pudimos consultar la cobranza'
+                  : porRendir > 0
+                    ? `Tenés ${porRendir} propietario${porRendir === 1 ? '' : 's'} esperando`
+                    : 'Todos rendidos este mes 🎉'}
               </p>
             </CardContent>
           </Card>
@@ -238,7 +263,11 @@ export default function PropietariosPage() {
                 {sinCbu}
               </p>
               <p className="text-xs text-muted-foreground">
-                {sinCbu > 0 ? 'Pediles los datos antes de rendir' : 'Todos tienen CBU cargado'}
+                {errorDatos
+                  ? 'No pudimos consultar'
+                  : sinCbu > 0
+                    ? 'Pediles los datos antes de rendir'
+                    : 'Todos tienen CBU cargado'}
               </p>
             </CardContent>
           </Card>
@@ -268,6 +297,26 @@ export default function PropietariosPage() {
               <p className="font-medium text-foreground">Cargando propietarios…</p>
             </CardContent>
           </Card>
+        ) : errorDatos && propietarios.length === 0 ? (
+          /* EL ERROR VA ANTES QUE LA LISTA VACÍA. Con la consulta caída, "Todavía no cargaste
+             propietarios" es una afirmación falsa sobre la cartera de alguien que sí la tiene
+             cargada — y encima lo manda a cargarla de nuevo. */
+          <Card className="border-destructive/40">
+            <CardContent className="space-y-2 p-10 text-center text-muted-foreground">
+              <AlertCircle className="mx-auto h-8 w-8 text-destructive" />
+              <p className="font-medium text-foreground">No pudimos traer tus propietarios</p>
+              <p className="text-xs">
+                No es que no tengas: no pudimos consultarlos. Probá de nuevo en un momento.
+              </p>
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="text-xs font-medium text-primary hover:underline"
+              >
+                Reintentar
+              </button>
+            </CardContent>
+          </Card>
         ) : filtrados.length === 0 ? (
           <Card>
             <CardContent className="space-y-2 p-10 text-center text-muted-foreground">
@@ -287,6 +336,7 @@ export default function PropietariosPage() {
             {filtrados.map((p, i) => {
               const tel = p.telefono.replace(/[^\d]/g, '');
               const rendido = rendicionesMap[p.id];
+              const variasEsteMes = (cuantasRendiciones[p.id] ?? 0) > 1;
               const necesitaRendir = !rendido && p.totalRecibirMes > 0;
               // Mensaje de WhatsApp contextual: rendición si ya se rindió, pedido
               // de CBU si no tiene, sino aviso de cobranza pronta.
@@ -419,6 +469,16 @@ export default function PropietariosPage() {
                           // decidía sobre eso; el server recién lo frenaba al confirmar.
                           <p className="text-[10px] text-muted-foreground">
                             Cobros en pesos y dólares · rendí cada moneda por separado
+                          </p>
+                        )}
+                        {/* VARIAS RENDICIONES ESTE MES. La rendición es incremental —una por
+                            cada tanda de parciales cobrados— y además va una por moneda. Los
+                            números de esta tarjeta y el comprobante de WhatsApp son de UNA
+                            sola: la más reciente. Sin este renglón, el operador le manda al
+                            dueño un monto parcial como si fuera el total del mes. */}
+                        {variasEsteMes && (
+                          <p className="text-[10px] text-amber-700 dark:text-amber-400">
+                            {cuantasRendiciones[p.id]} rendiciones este mes · abajo se muestra la última
                           </p>
                         )}
                         <p className="text-[10px] uppercase tracking-wide text-muted-foreground">

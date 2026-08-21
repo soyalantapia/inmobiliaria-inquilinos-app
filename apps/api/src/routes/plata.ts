@@ -2052,7 +2052,13 @@ export async function plataRoutes(app: FastifyInstance) {
         ...(q.incluirAnuladas === '1' ? {} : { anuladaAt: null }),
       },
       include: { gastos: true, propietario: { select: { nombre: true, apellido: true } } },
-      orderBy: { periodo: 'desc' },
+      // DOS criterios, no uno. Con `periodo` solo, el orden DENTRO de un período queda a
+      // gusto del planner, y un período puede tener varias rendiciones: la incremental de
+      // cada tanda de parciales, y una por moneda cuando el dueño cobra en pesos y dólares.
+      // El panel se queda con una sola por (dueño, período), así que sin desempate elegía
+      // una arbitraria — y de ahí salen el monto del comprobante de WhatsApp y el botón de
+      // Deshacer.
+      orderBy: [{ periodo: 'desc' }, { rendidoAt: 'desc' }],
     });
   });
 
@@ -2081,10 +2087,20 @@ export async function plataRoutes(app: FastifyInstance) {
       include: { participaciones: { include: { propiedad: true } } },
     });
     if (!owner) return reply.code(404).send({ message: 'Propietario inexistente' });
-    if (!owner.cbuAlias)
+    // EL CBU SÓLO HACE FALTA PARA TRANSFERIR.
+    //
+    // Este 409 era incondicional, antes de mirar el método, aunque el zod de arriba acepta
+    // EFECTIVO y MERCADOPAGO y el campo se persiste tal cual. O sea que al dueño que pasa a
+    // buscar la plata en efectivo por la oficina —que es justamente el que no tiene CBU
+    // cargado— no se le podía rendir por ningún camino.
+    //
+    // El panel ya asumía esto: el botón de rendir sólo se deshabilita por CBU faltante cuando
+    // el método es TRANSFERENCIA (`rendir-propietario-dialog.tsx`). O sea que ofrecía el
+    // efectivo, lo recomendaba, y el server lo rechazaba.
+    if (body.data.metodo === 'TRANSFERENCIA' && !owner.cbuAlias)
       return reply
         .code(409)
-        .send({ message: 'El propietario no tiene CBU cargado — pedíselo antes de rendir' });
+        .send({ message: 'El propietario no tiene CBU cargado — pedíselo antes de rendir, o rendile en efectivo' });
 
     // Bruto INCREMENTAL: alquiler COBRADO hasta ahora (PAGADO + PARCIAL conciliado)
     // de las propiedades del dueño, × participación, MENOS lo ya rendido de cada

@@ -129,7 +129,7 @@ export function useRendiciones(): UseRendiciones {
  */
 export function useRendicionesList(
   opts?: { incluirAnuladas?: boolean },
-): { rendiciones: RendicionApi[]; cargando: boolean } {
+): { rendiciones: RendicionApi[]; cargando: boolean; error: boolean } {
   const incluirAnuladas = opts?.incluirAnuladas ?? false;
   const q = useQuery({
     // La key lleva la variante: si compartiera cache con la lista sin anuladas, la primera
@@ -142,5 +142,7 @@ export function useRendicionesList(
     enabled: apiEnabled,
     staleTime: 30_000,
   });
-  return { rendiciones: q.data ?? [], cargando: q.isPending };
+  // `error` explícito: "0 rendiciones" y "no pudimos preguntar" son cosas distintas, y la
+  // pantalla que las confunde le dice al operador que ya se le rindió a todo el mundo.
+  return { rendiciones: q.data ?? [], cargando: q.isPending, error: q.isError };
 }

@@ -276,7 +276,7 @@ describe('Rendición — el loop caja→rendición', () => {
     expect(res.statusCode).toBe(409);
   });
 
-  it('propietario sin CBU (Federico) → 409 con mensaje claro', async () => {
+  it('propietario sin CBU (Federico), por TRANSFERENCIA → 409 con mensaje claro', async () => {
     const res = await app.inject({
       method: 'POST',
       url: '/rendiciones',
@@ -285,6 +285,23 @@ describe('Rendición — el loop caja→rendición', () => {
     });
     expect(res.statusCode).toBe(409);
     expect(res.json().message).toContain('CBU');
+  });
+
+  it('ese mismo propietario en EFECTIVO ya no se traba por el CBU', async () => {
+    // El 409 era incondicional, antes de mirar el método. Al dueño que pasa a buscar la plata
+    // por la oficina —que es justo el que no tiene CBU cargado— no se le podía rendir por
+    // ningún camino, aunque el zod acepta EFECTIVO y el panel ya ofrecía el botón.
+    //
+    // Lo que se afirma es que NO frena por CBU. Puede frenar por otra cosa —que no haya
+    // cobros nuevos del período es lo normal en este fixture—, y eso está bien: es otro 409,
+    // con otro motivo.
+    const res = await app.inject({
+      method: 'POST',
+      url: '/rendiciones',
+      headers: auth(tokenAdmin),
+      payload: { propietarioId: 'own_003', periodo: '2026-06', metodo: 'EFECTIVO', pin: '1234' },
+    });
+    expect(res.json().message ?? '').not.toContain('CBU');
   });
 });
 

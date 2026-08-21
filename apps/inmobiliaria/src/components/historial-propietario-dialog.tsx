@@ -69,7 +69,7 @@ export function HistorialPropietarioDialog({
   // viene a buscar por qué al dueño le falta un depósito, y esconderlas convierte esa pregunta
   // en un misterio. En el resto del panel siguen ocultas, que es lo correcto para "¿ya se le
   // rindió?".
-  const { rendiciones: rendicionesApi } = useRendicionesList({ incluirAnuladas: true });
+  const { rendiciones: rendicionesApi, error: errorRendiciones } = useRendicionesList({ incluirAnuladas: true });
   const rendiciones = useMemo(() => {
     if (!propietario) return [];
     if (apiEnabled) {
@@ -171,15 +171,17 @@ export function HistorialPropietarioDialog({
             label="Rendiciones"
             /* Las vigentes: es la respuesta a "¿cuántas veces le depositamos?". Las anuladas
                están en la lista de abajo, pero no son un depósito y acá inflarían el número. */
-            value={vigentes.length.toString()}
+            value={errorRendiciones && rendiciones.length === 0 ? '—' : vigentes.length.toString()}
             icon={<CheckCircle2 className="h-3 w-3 text-emerald-600" />}
           />
           <MetricBox
             label="Neto histórico"
             /* I2-06: antes mostraba "—" (ambiguo: ¿$0, sin datos, error?).
                Ahora "$0" cuando no hubo rendiciones — coherente con el box
-               "Rendiciones: 0" de al lado y con el empty state de abajo. */
-            value={totalNetoHistorico}
+               "Rendiciones: 0" de al lado y con el empty state de abajo.
+               PERO con la consulta caída vuelve al "—": ahí el $0 sí sería una mentira, y es
+               el número que el operador le lee al dueño por teléfono. */
+            value={errorRendiciones && rendiciones.length === 0 ? '—' : totalNetoHistorico}
             icon={<Banknote className="h-3 w-3 text-emerald-600" />}
           />
         </div>
@@ -266,7 +268,19 @@ export function HistorialPropietarioDialog({
               </span>
             )}
           </h3>
-          {rendiciones.length === 0 ? (
+          {errorRendiciones && rendiciones.length === 0 ? (
+            /* EL ERROR VA ANTES QUE LA LISTA VACÍA, y acá importa más que en ninguna otra
+               pantalla: a este diálogo se entra cuando el dueño llama preguntando por un
+               depósito. "Sin rendiciones todavía" sobre una consulta que falló hace que el
+               operador le diga por teléfono que nunca se le rindió nada. */
+            <div className="rounded-md border border-destructive/40 bg-destructive/5 p-6 text-center">
+              <p className="text-sm font-medium">No pudimos traer las rendiciones</p>
+              <p className="text-xs text-muted-foreground">
+                No quiere decir que no las haya: no pudimos consultarlas. Cerrá y volvé a abrir
+                en un momento.
+              </p>
+            </div>
+          ) : rendiciones.length === 0 ? (
             <div className="rounded-md border border-dashed bg-muted/20 p-6 text-center">
               <p className="text-sm font-medium">Sin rendiciones todavía</p>
               <p className="text-xs text-muted-foreground">
