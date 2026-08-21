@@ -5937,3 +5937,25 @@ que va un tripwire: si el demo aprende a emitir PARCIAL, `efectivoEnMano` contar
 líneas y tres fórmulas inline que ya no existen —se marca en vez de reescribirse, porque el
 punto es que tres números de línea a mano se pudrieron en semanas—, y el docstring de
 `alquiler-cobrado.test.ts` decía replicar `plata.ts`, hoy un consumidor más del helper.
+---
+
+## T-27-N2 · El sitio estático, reverificado 206 commits después — ✅ HECHA
+
+**Estado: ✅ HECHA** — verificación, sin cambios de código.
+
+**Experto:** OPS · **Prioridad:** 🟡 · **Origen:** T-27-N1 lo había verificado y desde entonces
+entraron **206 commits**.
+
+**El sitio se arma entero y las cinco puertas resuelven** (`presentacion/`, `inmobiliaria/`,
+`inquilino/`, `propietario/`, `legales/`). El portal del propietario sale con sus datos de demo
+horneados y **sin** el mensaje de "no está conectado".
+
+**El bloqueante de `opengraph` ya no existe.** En T-27 quedó documentado que `@vercel/og` fallaba
+sólo en Windows (le pasa una URL a `path.join`), y había que apartar la ruta para poder verificar.
+Alguien la reemplazó por un **PNG estático** y movió el generador a
+`(landing)/inicio/_og/opengraph-image.fuente.tsx`. Ya no hay que apartar nada.
+
+**Y el guard de T-27-N1 hizo su trabajo en la vida real:** el 3001 estaba ocupado por el dev server
+de otra sesión, así que `build-static.sh` aborta **antes** de compilar nada en vez de gastar dos
+builds y morir en el tercero. Para verificar se compiló en un worktree propio, sin tocar ese dev
+server.
