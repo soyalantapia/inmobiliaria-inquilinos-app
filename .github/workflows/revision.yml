@@ -171,6 +171,16 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/myalquiler_test
           JWT_SECRET: esto-no-firma-nada-real-en-ci
           NODE_ENV: test
+          # El ámbito de /uploads (T-72) se ejercita ACÁ en modo BLOQUEANTE, aunque en producción
+          # arranque en `log`. Es la única forma de saber si la regla de ámbito deja afuera algún
+          # flujo legítimo SIN usar a los inquilinos de Camila como canarios: estas 60 suites
+          # recorren informar pagos, adjuntar comprobantes, subir fotos de reclamo, boletas de
+          # servicio y el link mágico del profesional. Si la regla rompe algo real, se rompe acá.
+          #
+          # O sea: el default de producción es el conservador, y el que se prueba es el estricto.
+          # Al revés —probar en `log` y prender en prod— el verde no diría nada del modo que
+          # importa.
+          UPLOADS_AMBITO: 'on'
         run: pnpm exec vitest run --config vitest.con-db.config.ts
 
   # BUILDEA. `tsc --noEmit` no ve lo que ve `next build`: restricciones de static export,
