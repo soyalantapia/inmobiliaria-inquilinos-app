@@ -65,6 +65,7 @@ async function candidatosVigentes(inmobiliariaId: string): Promise<{ pagos: Cand
         contrato: {
           select: {
             tasaPunitorioDiaria: true,
+            moneda: true,
             moraTipo: true,
             moraValor: true,
             inquilinoTitular: { select: { nombre: true, apellido: true } },
@@ -72,7 +73,7 @@ async function candidatosVigentes(inmobiliariaId: string): Promise<{ pagos: Cand
         },
       },
     }),
-    prisma.inmobiliaria.findUnique({ where: { id: inmobiliariaId }, select: { moraTipoDefault: true, moraValorDefault: true } }),
+    prisma.inmobiliaria.findUnique({ where: { id: inmobiliariaId }, select: { moraTipoDefault: true, moraValorDefault: true, monedaDefault: true } }),
   ]);
 
   const liqIds = liquidacionesAbiertas.map((l) => l.id);
@@ -313,11 +314,12 @@ export async function resumenesBancariosRoutes(app: FastifyInstance): Promise<vo
         contrato: {
           select: {
             tasaPunitorioDiaria: true,
+            moneda: true,
             moraTipo: true,
             moraValor: true,
             estado: true,
             modoCobranza: true,
-            inmobiliaria: { select: { moraTipoDefault: true, moraValorDefault: true } },
+            inmobiliaria: { select: { moraTipoDefault: true, moraValorDefault: true, monedaDefault: true } },
           },
         },
       },

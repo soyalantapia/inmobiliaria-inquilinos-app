@@ -29,11 +29,31 @@ export interface ContratoConMora {
   moraTipo?: TipoMora | null;
   moraValor?: number | null;
   tasaPunitorioDiaria?: number | null;
+  /**
+   * La moneda del contrato. **REQUERIDA a propósito, y ése es todo el arreglo de T-58.**
+   *
+   * Una mora `MONTO_FIJO` es un importe absoluto, así que heredarla sin mirar la moneda
+   * aplica pesos sobre un contrato en dólares: un default de 5.000 pensado en pesos se
+   * convertía en **US$ 5.000 de punitorio sobre un alquiler de US$ 800**.
+   *
+   * Se hizo requerida en vez de opcional porque el riesgo real de este arreglo NO era la
+   * regla —es de una línea— sino aplicarla a medias: son 21 call sites, y con un campo
+   * opcional los que no lo pasaran seguirían con el comportamiento viejo, dejando **moras
+   * distintas según qué endpoint las calcule**. Requerida, el compilador los enumera a todos
+   * y no hay forma de olvidarse de uno.
+   */
+  moneda: string;
 }
 
 export interface DefaultsMora {
   moraTipoDefault?: TipoMora | null;
   moraValorDefault?: number | null;
+  /**
+   * Moneda en la que está expresada `moraValorDefault`. No hay que guardarla en ningún lado
+   * nuevo: la pantalla que carga el default no pide moneda, así que el valor está en la
+   * moneda por defecto del tenant, que ya existe (`Inmobiliaria.monedaDefault`).
+   */
+  monedaDefault?: string | null;
 }
 
 export type OrigenMora = 'CONTRATO' | 'LEGACY' | 'INMOBILIARIA' | 'SIN_MORA';
@@ -61,6 +81,36 @@ export function resolverEsquemaMora(
     return { tipo: 'PORCENTAJE_DIARIO', valor: Number(tasaLegacy), origen: 'LEGACY' };
   }
   if (defaults?.moraTipoDefault && defaults.moraTipoDefault !== 'SIN_MORA') {
+    // T-58 · UN MONTO FIJO HEREDADO SÓLO VALE EN SU PROPIA MONEDA.
+    //
+    // Los otros esquemas son PORCENTAJES: se aplican sobre la base, que ya está en la moneda
+    // del contrato, así que heredarlos es correcto siempre. `MONTO_FIJO` no: es un importe
+    // absoluto. Un default de 5.000 cargado pensando en pesos —la pantalla que lo carga ni
+    // siquiera pide moneda— se aplicaba 1:1 sobre un contrato en dólares y le reclamaba al
+    // inquilino US$ 5.000 de punitorio sobre un alquiler de US$ 800.
+    //
+    // Ante la duda NO se cobra, y no se inventa una conversión: no hay cotización en el
+    // sistema, y adivinarla sería reemplazar un número equivocado por otro. Cobrar de menos
+    // se corrige cargándole la mora al contrato; cobrar US$ 5.000 de más ya se le reclamó a
+    // una persona.
+    //
+    // `!contrato` entra por acá a propósito: sin contrato no se conoce la moneda, y heredar
+    // un monto fijo a ciegas es exactamente el caso que esto evita.
+    const heredaImporteAbsoluto = defaults.moraTipoDefault === 'MONTO_FIJO';
+    const monedasCoinciden =
+      contrato != null &&
+      // Esta línea es REDUNDANTE hoy y conviene saberlo: `contrato.moneda` es un string no
+      // nulo, así que `'ARS' === undefined` ya da false y el resultado sería el mismo sin
+      // ella. Verificado con mutation testing — sacarla no pone ningún test en rojo, y eso
+      // es un dato, no un agujero de cobertura. Se deja porque el día que `moneda` se vuelva
+      // opcional en alguno de los dos lados, `null === null` heredaría el monto fijo a
+      // ciegas, que es exactamente el bug que esto evita.
+      defaults.monedaDefault != null &&
+      contrato.moneda === defaults.monedaDefault;
+
+    if (heredaImporteAbsoluto && !monedasCoinciden) {
+      return { tipo: 'SIN_MORA', valor: null, origen: 'SIN_MORA' };
+    }
     return {
       tipo: defaults.moraTipoDefault,
       valor: defaults.moraValorDefault ?? null,

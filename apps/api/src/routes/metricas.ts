@@ -75,7 +75,7 @@ async function financieroPorPeriodo(
 
   const inmo = await prisma.inmobiliaria.findUnique({
     where: { id: inmobiliariaId },
-    select: { moraTipoDefault: true, moraValorDefault: true },
+    select: { moraTipoDefault: true, moraValorDefault: true, monedaDefault: true },
   });
 
   const liqs = await prisma.liquidacion.findMany({
@@ -93,7 +93,7 @@ async function financieroPorPeriodo(
       fechaVencimiento: true,
       fechaPago: true,
       montoPunitorioManual: true,
-      contrato: { select: { moraTipo: true, moraValor: true, tasaPunitorioDiaria: true } },
+      contrato: { select: { moraTipo: true, moraValor: true, tasaPunitorioDiaria: true, moneda: true } },
     },
   });
 
