@@ -13,7 +13,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import { mensajeRendicion } from './rendir-propietario-dialog';
-import type { Propietario, Rendicion } from '@/lib/types';
+import type { Propietario } from '@/lib/types';
+import type { Rendicion } from '@/lib/rendiciones-storage';
 
 const duenio = (extra: Partial<Propietario> = {}): Propietario =>
   ({
