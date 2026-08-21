@@ -835,6 +835,24 @@ export async function coreRoutes(app: FastifyInstance) {
   app.put('/propietarios/:id', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'propietarios.crear');
     if (!u) return;
+    // Mismo criterio que el DELETE y el PATCH /activo de más abajo: la capacidad
+    // 'propietarios.crear' incluye CARGA porque ese rol CARGA fichas nuevas, pero EDITAR una
+    // ficha que ya existe pesa más que crearla, y acá pesa más que en los hermanos.
+    //
+    // Dos campos de este body no son datos de contacto:
+    //   · `email` es la LLAVE DE ENTRADA al portal del propietario — el OTP se busca por él
+    //     (portal-propietario.ts, `findMany({ where: { email, activo: true } })`). Cambiarlo
+    //     es quedarse con el acceso a la cartera, las rendiciones y los reclamos de esa
+    //     persona. Agravante: CARGA no tiene `pagos.ver`, así que por el portal vería plata
+    //     que su propio rol le niega en el panel.
+    //   · `cbuAlias` es el DESTINO de la rendición: es lo que POST /rendiciones exige para
+    //     poder rendir, y lo que el panel le muestra al ADMIN como "Cobra en (CBU)".
+    //
+    // El propio código de abajo ya reconocía la sensibilidad del email ("pasó a ser la llave
+    // de entrada al portal"); lo que faltaba era el gate de rol.
+    if (u.rol === 'CARGA') {
+      return reply.code(403).send({ message: 'Solo un Admin u Operador puede editar un propietario' });
+    }
     const { id } = request.params as { id: string };
     const prop = await prisma.propietario.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
     if (!prop) return reply.code(404).send({ message: 'Propietario inexistente' });
