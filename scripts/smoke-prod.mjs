@@ -30,11 +30,14 @@ await check('GET /health (db up)', async () => {
   if (h.db !== 'up') throw new Error(`db=${h.db}`);
 });
 
-let tokenDemo = '';
-await check('POST /auth/demo (sesión Mariela)', async () => {
-  const r = await json('/auth/demo', { method: 'POST' });
-  if (!r.token) throw new Error('sin token');
-  tokenDemo = r.token;
+// Se AFIRMA QUE ESTÁ CERRADO, no que funcione. Este endpoint emite una sesión de un inquilino
+// real sin ninguna prueba de identidad; en producción tiene que devolver 404 siempre (T-68: dos
+// candados, DEMO_MODE y NODE_ENV). Antes este smoke verificaba lo contrario —que devolviera un
+// token—, que es dar por bueno el agujero: si alguna vez fallaba, el arreglo "obvio" era prender
+// DEMO_MODE en producción.
+await check('POST /auth/demo CERRADO en prod (404)', async () => {
+  const r = await fetch(`${base}/auth/demo`, { method: 'POST' });
+  if (r.status !== 404) throw new Error(`abierto: HTTP ${r.status}`);
 });
 
 let tokenAdmin = '';
@@ -52,10 +55,11 @@ await check('GET /contratos (panel, con estado de pago derivado)', async () => {
   if (!lista[0].estadoPagoActual) throw new Error('sin estadoPagoActual derivado');
 });
 
-await check('GET /mis-anuncios (inquilino)', async () => {
-  const lista = await json('/mis-anuncios', { headers: { Authorization: `Bearer ${tokenDemo}` } });
-  if (!Array.isArray(lista)) throw new Error('respuesta inválida');
-});
+// SIN COBERTURA desde que se cerró el atajo de la demo: este smoke no tiene forma de conseguir
+// un token de inquilino sin credenciales reales, y meterlas acá sería el mismo problema que ya
+// tiene el login de Roberto de arriba. Se deja anotado en vez de borrado, para que se vea que
+// falta y no que nunca importó.
+console.log('· GET /mis-anuncios (inquilino) — sin cubrir: hace falta un token de inquilino real');
 
 await check('GET /anuncios con conteos reales', async () => {
   const lista = await json('/anuncios', { headers: { Authorization: `Bearer ${tokenAdmin}` } });

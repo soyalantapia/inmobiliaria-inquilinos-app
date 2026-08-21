@@ -606,7 +606,27 @@ export async function authRoutes(app: FastifyInstance) {
 
   // --- Demo: sesión de Mariela con un click (?demo=1) ---
   app.post('/auth/demo', async (_request, reply) => {
-    if (!app.env.DEMO_MODE) return reply.code(404).send({ message: 'No disponible' });
+    // DOS candados, no uno. `DEMO_MODE` solo no alcanza: es una env var, y si alguna vez se
+    // filtra a la env de producción este endpoint emite una sesión de un inquilino REAL sin
+    // pedir ninguna prueba de identidad — ni OTP, ni contraseña, ni nada.
+    //
+    // La auditoría pre-lanzamiento ya había decidido esto: el commit `e06956e2` (20/06) dice
+    // textual en su mensaje «M-1: demo backdoor excluye NODE_ENV=production (auth.ts)». Aplicó
+    // el guard a los dos `/otp/verify` (:337 y :446) y se salteó ESTE, 250 líneas más abajo en
+    // el mismo archivo. Era un olvido, no una decisión.
+    //
+    // Va por `app.env` y no por `process.env` —que es lo que usan los dos de arriba— para que
+    // se pueda ejercitar desde `buildApp({ NODE_ENV: 'production' })`. Sin eso el estado
+    // apagado no lo cubre ningún test, que es exactamente cómo se llegó hasta acá.
+    if (!app.env.DEMO_MODE || app.env.NODE_ENV === 'production')
+      return reply.code(404).send({ message: 'No disponible' });
+    // El otro salteo de esa misma auditoría: este `findFirst` no tiene scope de tenant. El
+    // commit citado reemplazó el patrón por `findMany` en el OTP, con el comentario «la
+    // identidad sale del OTP que matchea — nunca de un findFirst arbitrario (que podía loguear
+    // contra el tenant equivocado)». Acá quedó. No se scopea porque el request no trae ningún
+    // tenant del que colgarse; lo que lo vuelve inofensivo es el guard de arriba, que hace el
+    // endpoint inalcanzable en producción. Si algún día se relaja ese guard, esto vuelve a ser
+    // un problema.
     const inquilino = await prisma.inquilino.findFirst({ where: { email: DEMO_INQUILINO_EMAIL } });
     if (!inquilino) return reply.code(500).send({ message: 'Seed demo faltante' });
     const payload: JwtInquilino = {
