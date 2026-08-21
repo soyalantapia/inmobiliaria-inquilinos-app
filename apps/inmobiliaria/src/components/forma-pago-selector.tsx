@@ -6,6 +6,7 @@ import {
   CalendarRange,
   CheckCircle2,
   CreditCard,
+  ShieldAlert,
   Sparkles,
 } from 'lucide-react';
 import { Badge } from '@llave/ui/badge';
@@ -19,8 +20,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@llave/ui/dialog';
-import { Input } from '@llave/ui/input';
-import { Label } from '@llave/ui/label';
 import { toast } from '@llave/ui/use-toast';
 import {
   DESCUENTO_ANUAL,
@@ -79,6 +78,28 @@ const OPCIONES: Array<{
     recomendado: true,
   },
 ];
+
+/**
+ * Tarjeta de ejemplo que se MUESTRA, nunca se pide.
+ *
+ * Antes acá había cuatro inputs reales —número, vencimiento, CVV y titular—
+ * con validación de BIN incluida. Este dialog SÓLO se monta en el build demo
+ * (/configuracion corta antes con <ConfiguracionProd /> cuando apiEnabled), y
+ * ese build se publica en GitHub Pages: es público, no pide login (AuthGuard
+ * deja pasar con !apiEnabled) y tiene aspecto de producto real. Un formulario
+ * de tarjeta ahí adentro es una página de phishing terminada y lista para
+ * clonar, aunque de nuestro lado no procese nada.
+ *
+ * El número es el 4242… de prueba a propósito: pasa Luhn, se reconoce a
+ * simple vista como de test y no es de nadie.
+ */
+const TARJETA_EJEMPLO = {
+  numero: '4242 4242 4242 4242',
+  vencimiento: '12/30',
+  titular: 'INMOBILIARIA DEL SOL',
+  ultimos4: '4242',
+  marca: 'Visa',
+} as const;
 
 export function FormaPagoSelector() {
   const [config, setConfig] = useState<ConfigFormaPago | null>(null);
@@ -254,20 +275,14 @@ function ConfigurarFormaDialog({
   onOpenChange: (v: boolean) => void;
   onConfirmar: (cfg: ConfigFormaPago) => void;
 }) {
-  const [numTarjeta, setNumTarjeta] = useState('');
-  const [vencimiento, setVencimiento] = useState('');
-  const [cvv, setCvv] = useState('');
-  const [titular, setTitular] = useState('');
   const [guardando, setGuardando] = useState(false);
 
+  // Ya no hay campos de tarjeta que limpiar al abrir el dialog (ver
+  // TARJETA_EJEMPLO). Queda el reset de `guardando`, que sigue haciendo falta:
+  // sin él, reabrir el dialog después de confirmar lo deja pegado en
+  // "Guardando…" con el botón deshabilitado.
   useEffect(() => {
-    if (forma) {
-      setNumTarjeta('');
-      setVencimiento('');
-      setCvv('');
-      setTitular('');
-      setGuardando(false);
-    }
+    if (forma) setGuardando(false);
   }, [forma]);
 
   if (!forma) return null;
@@ -280,26 +295,15 @@ function ConfigurarFormaDialog({
   const monto = { ...base, importe: conCupon.final };
 
   const handleConfirmar = async () => {
-    if (forma === 'DEBITO_AUTOMATICO') {
-      const digits = numTarjeta.replace(/\D/g, '');
-      if (digits.length < 13) {
-        toast({
-          title: 'Número de tarjeta inválido',
-          variant: 'destructive',
-        });
-        return;
-      }
-      if (!titular.trim()) {
-        toast({ title: 'Falta el titular', variant: 'destructive' });
-        return;
-      }
-    }
     setGuardando(true);
     await new Promise((r) => setTimeout(r, 500));
+    // El resumen "Visa ···· 4242" sale de la constante, no de lo tipeado: sin
+    // campos de tarjeta no hay nada que validar ni que leer. La validación de
+    // BIN que había acá era justamente lo que hacía que el formulario se
+    // sintiera real, que es el problema, no la feature.
     const ultimos4 =
-      forma === 'DEBITO_AUTOMATICO' ? numTarjeta.replace(/\D/g, '').slice(-4) : undefined;
-    const marca =
-      forma === 'DEBITO_AUTOMATICO' ? detectarMarca(numTarjeta) : undefined;
+      forma === 'DEBITO_AUTOMATICO' ? TARJETA_EJEMPLO.ultimos4 : undefined;
+    const marca = forma === 'DEBITO_AUTOMATICO' ? TARJETA_EJEMPLO.marca : undefined;
     const nuevo = guardarFormaPago({ forma, ultimos4, marca });
     setGuardando(false);
     toast({
@@ -327,65 +331,59 @@ function ConfigurarFormaDialog({
 
         {forma === 'DEBITO_AUTOMATICO' && (
           <div className="space-y-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="num-tarjeta">Número de tarjeta</Label>
-              <Input
-                id="num-tarjeta"
-                value={formatTarjeta(numTarjeta)}
-                onChange={(e) => setNumTarjeta(e.target.value)}
-                placeholder="4521 1234 5678 9012"
-                inputMode="numeric"
-                maxLength={19}
-              />
+            <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-900/10 dark:text-amber-200">
+              <p className="flex items-center gap-1.5 font-medium">
+                <ShieldAlert className="h-3.5 w-3.5 shrink-0" />
+                Vista de ejemplo — acá no se piden datos de tarjeta
+              </p>
+              <p className="mt-1">
+                Esta demo es pública y no procesa pagos. Nunca cargues el
+                número, el vencimiento ni el código de seguridad de una tarjeta
+                real en un sitio de demostración.
+              </p>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="venc">Vencimiento</Label>
-                <Input
-                  id="venc"
-                  value={vencimiento}
-                  onChange={(e) => setVencimiento(e.target.value)}
-                  placeholder="MM/AA"
-                  inputMode="numeric"
-                  maxLength={5}
-                />
+            <div className="rounded-md border bg-muted/30 p-4">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                Así se vería tu tarjeta cargada
+              </p>
+              <p className="mt-1 font-mono text-sm tabular-nums text-muted-foreground">
+                {TARJETA_EJEMPLO.numero}
+              </p>
+              <div className="mt-2 flex gap-6 font-mono text-[11px] text-muted-foreground">
+                <span>Venc. {TARJETA_EJEMPLO.vencimiento}</span>
+                <span>CVV ···</span>
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="cvv">CVV</Label>
-                <Input
-                  id="cvv"
-                  value={cvv}
-                  onChange={(e) => setCvv(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                  placeholder="123"
-                  inputMode="numeric"
-                />
-              </div>
+              <p className="mt-2 font-mono text-[11px] text-muted-foreground">
+                {TARJETA_EJEMPLO.titular}
+              </p>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="titular">Titular de la tarjeta</Label>
-              <Input
-                id="titular"
-                value={titular}
-                onChange={(e) => setTitular(e.target.value)}
-                placeholder="Como aparece en la tarjeta"
-              />
-            </div>
-            <Badge variant="outline" className="self-start text-[10px]">
-              Modo demo · no se procesa la tarjeta
-            </Badge>
           </div>
         )}
 
         {forma === 'PREPAGO' && (
           <div className="space-y-3 text-sm">
-            <div className="rounded-md border bg-muted/30 p-4 text-xs">
-              <p className="font-medium">Datos para transferir</p>
+            {/* Los datos eran plausibles al punto de ser peligrosos: CBU que
+                arranca con 007 (Galicia de verdad), alias con la marca real
+                del producto y CUIT con formato válido, todo bajo el título
+                "Datos para transferir" en un sitio público. Alguien podía
+                transferir en serio, y un tercero podía clonar la página
+                cambiando sólo el CBU. Ahora son ceros: imposibles de
+                confundir con una cuenta y sin valor para quien clone. */}
+            <div className="rounded-md border border-amber-300 bg-amber-50 p-4 text-xs dark:border-amber-900/40 dark:bg-amber-900/10">
+              <p className="flex items-center gap-1.5 font-medium text-amber-900 dark:text-amber-200">
+                <ShieldAlert className="h-3.5 w-3.5 shrink-0" />
+                Datos de ejemplo — no transfieras a esta cuenta
+              </p>
               <div className="mt-2 space-y-1 font-mono text-[11px] text-muted-foreground">
-                <p>Banco Galicia · Cta. corriente</p>
-                <p>CBU: 0070099120000031234567</p>
-                <p>Alias: myalquiler.cobros</p>
-                <p>CUIT: 30-71234567-9</p>
+                <p>Banco de ejemplo · Cta. corriente</p>
+                <p>CBU: 0000000000000000000000</p>
+                <p>Alias: cuenta.de.ejemplo</p>
+                <p>CUIT: 00-00000000-0</p>
               </div>
+              <p className="mt-2 text-[11px] text-amber-900 dark:text-amber-200">
+                En la cuenta real, los datos de cobro de My Alquiler te llegan
+                en la factura por mail.
+              </p>
             </div>
             <p className="text-xs text-muted-foreground">
               Cada mes te enviamos la factura por mail. Si pasan 45 días sin
@@ -453,17 +451,4 @@ function ConfigurarFormaDialog({
       </DialogContent>
     </Dialog>
   );
-}
-
-function formatTarjeta(raw: string): string {
-  const digits = raw.replace(/\D/g, '').slice(0, 16);
-  return digits.replace(/(\d{4})(?=\d)/g, '$1 ');
-}
-
-function detectarMarca(numero: string): string {
-  const d = numero.replace(/\D/g, '');
-  if (d.startsWith('4')) return 'Visa';
-  if (/^(5[1-5]|2[2-7])/.test(d)) return 'Mastercard';
-  if (/^3[47]/.test(d)) return 'American Express';
-  return 'Tarjeta';
 }
