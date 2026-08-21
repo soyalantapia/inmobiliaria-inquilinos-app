@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { buildApp } from '../src/app.js';
 import { seedBase } from '../prisma/seed.js';
+import { loginTest } from './_login.js';
 
 /**
  * CAZABUG — un cobro que NO cubre la cuota quedaba etiquetado `tipo: TOTAL`.
@@ -62,11 +63,7 @@ beforeAll(async () => {
   await crear(LIQ_B, '2024-04', '2024-04-05', 30000);
 
   app = await buildApp({ NODE_ENV: 'test', DEMO_MODE: 'true' });
-  const login = await app.inject({
-    method: 'POST', url: '/auth/login',
-    payload: { email: 'roberto@delsol.com', password: 'delsol123' },
-  });
-  token = login.json().token;
+  token = await loginTest(app, 'roberto@delsol.com', 'delsol123');
 }, 420_000);
 
 afterAll(async () => {

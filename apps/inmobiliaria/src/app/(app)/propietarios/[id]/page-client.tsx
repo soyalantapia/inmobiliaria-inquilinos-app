@@ -490,7 +490,10 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
                         <p className="text-xs text-muted-foreground">{r.metodo.toLowerCase()}</p>
                       </div>
                       <div className="text-right">
-                        <p className="font-semibold tabular-nums">{formatMonto(Number(r.montoNeto))}</p>
+                        {/* Con la moneda: es la tercera pantalla del panel sobre el mismo dato y
+                            era la única que no la pasaba, así que un neto en dólares se
+                            imprimía con signo de pesos. */}
+                        <p className="font-semibold tabular-nums">{formatMonto(Number(r.montoNeto), r.moneda)}</p>
                         <p className="text-[11px] text-muted-foreground">neto rendido</p>
                       </div>
                     </div>

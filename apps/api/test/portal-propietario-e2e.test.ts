@@ -189,6 +189,69 @@ describe('Portal del propietario — el camino entero, por HTTP', () => {
       ).toBeLessThan(200);
     });
 
+    it('PEDIR el código tampoco puede delatarlo por el reloj', async () => {
+      // El hermano del test de arriba, sobre el otro endpoint. `request` contesta 200 siempre,
+      // pero la rama del email que EXISTE awaiteaba dos escrituras más (invalidar los códigos
+      // viejos y crear el nuevo). Contra la base remota cada query son ~450 ms: el email real
+      // tardaba cerca de un segundo más, y eso convertía el 200-siempre en decoración.
+      //
+      // Acá el arreglo NO es un piso fijo como en `verify`: las escrituras se sacaron del
+      // camino del request. Se elimina la diferencia en vez de esconderla, y no le agrega
+      // espera a nadie.
+      const unaVez = async (email: string) => {
+        const t = process.hrtime.bigint();
+        const r = await app.inject({ method: 'POST', url: '/auth/propietario/otp/request', payload: { email } });
+        expect(r.statusCode, 'si esto no es 200 la medición no vale (¿rate limit?)').toBe(200);
+        return Number(process.hrtime.bigint() - t) / 1e6;
+      };
+      // Se mide el MÍNIMO de varias corridas, y descartando la primera.
+      //
+      // La primera de cada forma paga el arranque en frío del engine de Prisma: medido acá,
+      // ~2100 ms contra los ~25 ms de las siguientes, en las DOS ramas por igual. Sin
+      // descartarla, este test comparaba ruido de warm-up y fallaba (o pasaba) por azar.
+      //
+      // Y el mínimo, no el promedio: un oráculo de tiempo se explota con las observaciones más
+      // rápidas, así que es la estadística que le importa al atacante. El promedio lo
+      // enmascara con el ruido del GC y del scheduler.
+      //
+      // CUIDADO CON EL PRESUPUESTO: `request` tiene rate limit 10/15min y su key es la IP, así
+      // que TODAS las llamadas del archivo comparten el tope. Con 3 por email son 6, más 2 de
+      // los otros tests del bloque: 8 de 10. Agregar llamadas acá empieza a devolver 429 y la
+      // medición deja de valer (por eso `unaVez` afirma el 200 antes de contar el tiempo).
+      const medir = async (email: string) => {
+        await unaVez(email); // calentar, se tira
+        return Math.min(await unaVez(email), await unaVez(email));
+      };
+      const existe = await medir(OTRO_EMAIL);
+      const noExiste = await medir('no-existe-jamas-9997@example.invalid');
+      expect(
+        Math.abs(existe - noExiste),
+        `existe=${existe.toFixed(0)}ms noExiste=${noExiste.toFixed(0)}ms — la diferencia ` +
+          'volvió a ser medible: alguien puede enumerar qué emails son propietarios',
+      ).toBeLessThan(200);
+    });
+
+    it('y el código igual se emite, aunque la respuesta no lo espere', async () => {
+      // La contracara del test de arriba: sacar las escrituras del camino del request no puede
+      // significar que dejen de ocurrir. El orden se conserva —primero se guarda, después sale
+      // el mail—, así que nadie puede recibir un código que no existe.
+      await prisma.codigoOtpPropietario.deleteMany({ where: { propietarioId: OTRO_PROP } });
+      const r = await app.inject({
+        method: 'POST', url: '/auth/propietario/otp/request', payload: { email: OTRO_EMAIL },
+      });
+      expect(r.statusCode).toBe(200);
+
+      // Se espera a que la escritura aterrice. El polling es corto y explícito: si algún día
+      // el código dejara de emitirse, esto falla en dos segundos en vez de pasar por casualidad.
+      let filas = 0;
+      for (let i = 0; i < 20 && filas === 0; i++) {
+        filas = await prisma.codigoOtpPropietario.count({ where: { propietarioId: OTRO_PROP, usedAt: null } });
+        if (filas === 0) await new Promise((r2) => setTimeout(r2, 100));
+      }
+      expect(filas, 'pedir el código tiene que dejarlo guardado').toBe(1);
+      await prisma.codigoOtpPropietario.deleteMany({ where: { propietarioId: OTRO_PROP } });
+    });
+
     it('los intentos se cortan POR CUENTA, no por IP', async () => {
       // El código es de 6 dígitos y vive 10 minutos. Los topes que había —300/min global y
       // 20 cada 15' en la ruta— son los dos por IP, así que acotaban al ATACANTE y no a la

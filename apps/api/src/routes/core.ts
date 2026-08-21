@@ -31,7 +31,7 @@ import { buscarOCrearPersona, EmailDeOtraPersona, esOtraPersona } from '../lib/p
 import { crearContratoHistorico } from '../lib/contrato-historico.js';
 import { borrarArchivoSiHuerfano, urlEsDelTenant } from './uploads.js';
 import { enviarInvitacionInquilino, enviarInvitacionEquipo, enviarAvisoAjusteAlquiler } from '../mailer.js';
-import { contratoQuedaPendiente, diaCivilAR, venceDespuesDeHoy, yaVencio } from '@llave/shared';
+import { contratoQuedaPendiente, diaCivilAR, rolTienePermiso, venceDespuesDeHoy, yaVencio } from '@llave/shared';
 import { ROLES_ORDEN, type Rol } from '@llave/shared/permisos';
 import { dinero, dineroPositivo } from '../lib/monto.js';
 
@@ -306,16 +306,41 @@ export async function coreRoutes(app: FastifyInstance) {
     const u = await requireUsuario(request, reply, 'contratos.ver');
     if (!u) return;
     const { id } = request.params as { id: string };
+    // QUÉ SE MANDA DEL PROPIETARIO, Y A QUIÉN.
+    //
+    // Acá había un `include` a secas: serializaba la fila entera del dueño —CBU/alias, CUIT,
+    // email, teléfono, comisión y las notas internas— más su cuenta de cobranza con el CBU
+    // completo. Y la capacidad de este endpoint es `contratos.ver`, que incluye a **CAJA**,
+    // un rol al que se le negó `propietarios.ver` a propósito. O sea que la pantalla de
+    // contratos le entregaba exactamente lo que la matriz de permisos le negaba en la de
+    // propietarios.
+    //
+    // Ahora es un `select` con lo que el front realmente consume (`use-contrato.ts`), y los
+    // campos sensibles sólo salen para quien puede ver propietarios. `comisionPct` y `notas`
+    // ya no viajan para nadie: el front los descarta y los reemplaza por 0/null.
+    const veDatosDelDuenio = rolTienePermiso(u.rol, 'propietarios.ver');
+    const selectPropietario = {
+      id: true,
+      nombre: true,
+      apellido: true,
+      ...(veDatosDelDuenio
+        ? {
+            cuit: true,
+            email: true,
+            telefono: true,
+            cbuAlias: true,
+            // En PROPIETARIO_DIRECTO el front necesita la cuenta del dueño para mostrar el
+            // destino de cobro. Sin esto decía "Falta cargar la cuenta" aunque existiera.
+            cuentaCobranza: true,
+          }
+        : {}),
+    };
     const contrato = await prisma.contrato.findFirst({
       where: { id, inmobiliariaId: u.inmobiliariaId },
       include: {
-        // cuentaCobranza incluida: en PROPIETARIO_DIRECTO el front necesita la
-        // cuenta del dueño (CBU/alias) para mostrar el destino de cobro. Sin esto
-        // siempre mostraba "Falta cargar la cuenta" aunque existiera (mismo include
-        // que GET /propietarios/:id).
         propiedad: {
           include: {
-            participaciones: { include: { propietario: { include: { cuentaCobranza: true } } } },
+            participaciones: { include: { propietario: { select: selectPropietario } } },
           },
         },
         inquilinoTitular: true,
@@ -850,6 +875,12 @@ export async function coreRoutes(app: FastifyInstance) {
     //
     // El propio código de abajo ya reconocía la sensibilidad del email ("pasó a ser la llave
     // de entrada al portal"); lo que faltaba era el gate de rol.
+    //
+    // EL CORTE ES ANCHO —toda la ficha, no sólo esos dos campos— y quedó así a propósito. Se
+    // llegó a él por dos caminos en paralelo: éste, y otro que gateaba campo por campo dejando
+    // que CARGA corrigiera un teléfono. Gana el ancho: es el mismo criterio que el DELETE y el
+    // PATCH /activo de más abajo, y un gate que depende de QUÉ campos vinieron en el body es
+    // una regla que hay que volver a pensar cada vez que alguien agrega un campo al zod.
     if (u.rol === 'CARGA') {
       return reply.code(403).send({ message: 'Solo un Admin u Operador puede editar un propietario' });
     }
@@ -870,12 +901,26 @@ export async function coreRoutes(app: FastifyInstance) {
       .safeParse(request.body ?? {});
     if (!body.success) return reply.code(400).send({ message: 'Datos del propietario incompletos' });
     const d = body.data;
-    return prisma.propietario.update({
+
+
+    const actualizado = await prisma.propietario.update({
       where: { id },
       data: {
         nombre: d.nombre,
         apellido: d.apellido,
-        cuit: normalizarCuit(d.cuit),
+        // MISMO CRITERIO PARA TODO CAMPO OPCIONAL: sólo se escribe si VINO en el body.
+        //
+        // El comentario de abajo cuenta cómo el `email` le borraba el dato al que omitía el
+        // campo, y se arregló sólo el email. Los vecinos quedaron igual — y `cbuAlias` es el
+        // peor de los cuatro: un PUT que no lo mandara le vaciaba el CBU al propietario, y sin
+        // CBU `POST /rendiciones` corta con 409 y no se le puede rendir hasta que alguien lo
+        // vuelva a cargar. Todo con un 200 y un toast de "actualizado".
+        //
+        // Lo encontró un test que ni siquiera lo buscaba: mandó un PUT con sólo el teléfono
+        // para probar otra cosa y el CBU quedó en null.
+        //
+        // Un valor EXPLÍCITO —`''` o `null`— sigue borrando: querer sacarle el dato es legítimo.
+        ...(d.cuit !== undefined ? { cuit: normalizarCuit(d.cuit) } : {}),
         // El email sólo se escribe si VINO en el body. Antes se escribía siempre,
         // y como `normalizarEmail(undefined)` devuelve '', cualquier caller que
         // omitiera el campo le BORRABA el email al propietario.
@@ -890,13 +935,39 @@ export async function coreRoutes(app: FastifyInstance) {
         //
         // Un `''` EXPLÍCITO sí lo borra: querer sacarle el email es legítimo.
         ...(d.email !== undefined ? { email: normalizarEmail(d.email) } : {}),
-        telefono: d.telefono ?? '',
-        cbuAlias: d.cbuAlias || null,
+        ...(d.telefono !== undefined ? { telefono: d.telefono } : {}),
+        ...(d.cbuAlias !== undefined ? { cbuAlias: d.cbuAlias || null } : {}),
         ...(d.comisionPct != null ? { comisionPct: d.comisionPct } : {}),
-        notas: d.notas || null,
+        ...(d.notas !== undefined ? { notas: d.notas || null } : {}),
       },
       include: { participaciones: true },
     });
+
+    // El rastro sólo si CAMBIÓ de verdad: un PUT que reenvía el mismo email —que es lo que
+    // hace el diálogo del panel cada vez que se guarda cualquier campo— no es un evento.
+    const antesAlias = prop.cbuAlias ?? '';
+    const despuesAlias = actualizado.cbuAlias ?? '';
+    const antesEmail = prop.email ?? '';
+    const despuesEmail = actualizado.email ?? '';
+    if (antesAlias !== despuesAlias || antesEmail !== despuesEmail) {
+      const cambios: string[] = [];
+      // El CBU/alias va ENTERO en el detalle a propósito: el punto del rastro es poder
+      // comparar contra el que la inmobiliaria tiene en su registro, y media cadena no sirve
+      // para eso. Es un dato de la propia inmobiliaria sobre su propio proveedor, y la
+      // pantalla que lo muestra ya pide `auditoria.ver` (ADMIN/LECTURA).
+      if (antesAlias !== despuesAlias) cambios.push(`CBU/alias: "${antesAlias || '—'}" → "${despuesAlias || '—'}"`);
+      if (antesEmail !== despuesEmail) cambios.push(`email de acceso: "${antesEmail || '—'}" → "${despuesEmail || '—'}"`);
+      await registrarEvento({
+        inmobiliariaId: u.inmobiliariaId,
+        tipo: 'PROPIETARIO_CUENTA_CAMBIADA',
+        autorId: u.userId,
+        rolAutor: u.rol,
+        entidadId: id,
+        entidadDescripcion: `${actualizado.nombre} ${actualizado.apellido}`,
+        detalle: cambios.join(' · '),
+      });
+    }
+    return actualizado;
   });
 
   // Cuenta de cobranza DIRECTA del propietario (la que ve el inquilino cuando
@@ -905,6 +976,14 @@ export async function coreRoutes(app: FastifyInstance) {
   app.put('/propietarios/:id/cuenta-cobranza-directa', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'propietarios.crear');
     if (!u) return;
+    // Este endpoint decide A QUÉ CUENTA TRANSFIERE EL INQUILINO en los contratos que cobra el
+    // dueño directo: el CBU que se escribe acá es el que la PWA le muestra al inquilino a la
+    // hora de pagar. `propietarios.crear` incluye a CARGA, así que el rol de tipeo podía
+    // redirigir el alquiler de una cartera entera. Mismo corte que el DELETE de acá abajo.
+    if (u.rol === 'CARGA')
+      return reply
+        .code(403)
+        .send({ message: 'Solo un Admin u Operador puede cambiar la cuenta donde cobra el propietario' });
     const { id } = request.params as { id: string };
     const prop = await prisma.propietario.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
     if (!prop) return reply.code(404).send({ message: 'Propietario inexistente' });
@@ -925,11 +1004,28 @@ export async function coreRoutes(app: FastifyInstance) {
       alias: body.data.alias,
       cuit: body.data.cuit,
     };
+    const previa = await prisma.cuentaCobranzaDirecta.findUnique({ where: { propietarioId: id } });
     const cuenta = await prisma.cuentaCobranzaDirecta.upsert({
       where: { propietarioId: id },
       create: { ...data, propietarioId: id, inmobiliariaId: u.inmobiliariaId },
       update: data,
     });
+    // Sin rastro, el campo que decide adónde va el alquiler del inquilino se podía reescribir
+    // sin autor. Se registra el CBU viejo y el nuevo: el punto es poder comparar contra el
+    // registro de la inmobiliaria, y para eso hace falta la cadena entera.
+    if (!previa || previa.cbu !== data.cbu || previa.titular !== data.titular) {
+      await registrarEvento({
+        inmobiliariaId: u.inmobiliariaId,
+        tipo: 'PROPIETARIO_CUENTA_CAMBIADA',
+        autorId: u.userId,
+        rolAutor: u.rol,
+        entidadId: id,
+        entidadDescripcion: `${prop.nombre} ${prop.apellido} · cuenta de cobranza directa`,
+        detalle: previa
+          ? `CBU "${previa.cbu}" (${previa.titular}) → "${data.cbu}" (${data.titular})`
+          : `alta de cuenta: CBU "${data.cbu}" (${data.titular})`,
+      });
+    }
     return { ok: true, cuentaCobranza: cuenta };
   });
 

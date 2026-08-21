@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { buildApp } from '../src/app.js';
 import { seedBase } from '../prisma/seed.js';
+import { loginTest } from './_login.js';
 
 /**
  * El alta con el flag de aprobación prendido. Cubre lo que el unit puro no puede:
@@ -20,12 +21,7 @@ beforeAll(async () => {
   const inmo = await prisma.inmobiliaria.findFirstOrThrow({ where: { nombre: 'Inmobiliaria del Sol' } });
   inmobiliariaId = inmo.id;
   app = await buildApp({ NODE_ENV: 'test', DEMO_MODE: 'true' });
-  const login = await app.inject({
-    method: 'POST',
-    url: '/auth/login',
-    payload: { email: 'luciana@delsol.com', password: 'delsol123' }, // OPERADOR del seed
-  });
-  tokenOperador = login.json().token;
+  tokenOperador = await loginTest(app, 'luciana@delsol.com', 'delsol123');
 });
 
 afterAll(async () => {

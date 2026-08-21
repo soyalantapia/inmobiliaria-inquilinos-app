@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { buildApp } from '../src/app.js';
 import { seedBase } from '../prisma/seed.js';
+import { loginTest } from './_login.js';
 
 let app: FastifyInstance;
 let tokenAdmin: string;
@@ -113,10 +114,8 @@ beforeAll(async () => {
   await resetPlata(prisma);
   await prisma.$disconnect();
   app = await buildApp({ NODE_ENV: 'test', DEMO_MODE: 'true' });
-  const admin = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'roberto@delsol.com', password: 'delsol123' } });
-  tokenAdmin = admin.json().token;
-  const carga = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'camila@delsol.com', password: 'delsol123' } });
-  tokenCarga = carga.json().token;
+  tokenAdmin = await loginTest(app, 'roberto@delsol.com', 'delsol123');
+  tokenCarga = await loginTest(app, 'camila@delsol.com', 'delsol123');
 });
 
 afterAll(async () => {

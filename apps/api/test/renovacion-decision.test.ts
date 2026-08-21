@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { buildApp } from '../src/app.js';
 import { seedBase } from '../prisma/seed.js';
+import { loginTest } from './_login.js';
 
 // Registrar la decisión de renovación desde el panel, con PREAVISO DE EGRESO:
 // cuando el inquilino avisa que NO renueva, se puede anotar cuándo se va.
@@ -21,8 +22,7 @@ beforeAll(async () => {
   await prisma.intencionRenovacion.deleteMany({ where: { contratoId: CID } });
   await prisma.contrato.updateMany({ where: { id: CID }, data: { estado: 'ACTIVO' } });
   app = await buildApp({ NODE_ENV: 'test', DEMO_MODE: 'true' });
-  const login = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'roberto@delsol.com', password: 'delsol123' } });
-  tADMIN = login.json().token;
+  tADMIN = await loginTest(app, 'roberto@delsol.com', 'delsol123');
 });
 
 afterAll(async () => {

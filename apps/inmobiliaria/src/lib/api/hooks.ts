@@ -1020,6 +1020,9 @@ interface LiquidacionApi {
   moneda: string;
   contrato: {
     id: string;
+    /** La propiedad de ESTE contrato. Opcionales por compat con backends viejos. */
+    propiedadId?: string | null;
+    modoCobranza?: string | null;
     propiedad: { direccion: string } | null;
     inquilinoTitular: { nombre: string; apellido: string | null } | null;
   } | null;
@@ -1056,6 +1059,16 @@ export interface LiquidacionItem {
   fechaPago: string | null;
   direccion: string;
   inquilino: string;
+  /**
+   * La propiedad y el modo de cobranza DE ESTE CONTRATO, no del que la propiedad tenga como
+   * actual. Es lo que ata la liquidación a su dueño cuando el contrato ya terminó o fue
+   * reemplazado por uno nuevo — el momento exacto en que el join viejo se cortaba y la plata
+   * cobrada desaparecía del panel.
+   *
+   * `null` cuando el backend todavía no los manda.
+   */
+  propiedadId: string | null;
+  modoCobranza: string | null;
 }
 
 function mapLiquidacion(l: LiquidacionApi): LiquidacionItem {
@@ -1063,6 +1076,8 @@ function mapLiquidacion(l: LiquidacionApi): LiquidacionItem {
   return {
     id: l.id,
     contratoId: l.contratoId,
+    propiedadId: l.contrato?.propiedadId ?? null,
+    modoCobranza: l.contrato?.modoCobranza ?? null,
     periodo: l.periodo,
     montoAlquiler: Number(l.montoAlquiler),
     montoExpensas: l.montoExpensas != null ? Number(l.montoExpensas) : null,
@@ -1178,13 +1193,35 @@ export function usePropietarios(): {
     // PAGADO, así que un mes cobrado a medias mostraba $0 a rendir y el operador no le
     // transfería NADA al propietario: plata cobrada que nunca llegaba.
     if (l.periodo !== period || (l.estado !== 'PAGADO' && l.estado !== 'PARCIAL')) continue;
-    const prop = props.find((p) => p.contratoActualId === l.contratoId);
+    // POR LA PROPIEDAD DEL CONTRATO, NO POR EL "CONTRATO ACTUAL" DE LA PROPIEDAD.
+    //
+    // Acá había un `props.find(p => p.contratoActualId === l.contratoId)`, y ese join se corta
+    // solo: al finalizar un contrato la propiedad queda con `contratoActualId: null`, y al
+    // firmar uno nuevo apunta al nuevo. Desde ese instante la liquidación del contrato viejo
+    // no encontraba propietario y se salteaba con un `continue`.
+    //
+    // La plata estaba cobrada de verdad, en la cuenta de la inmobiliaria. Pero el dueño
+    // desaparecía del listado "Por rendir", su ficha mostraba "—" en Cobrado y A recibir, y el
+    // diálogo de Rendir le mostraba Bruto $0 — mientras el server SÍ se la habría rendido, y
+    // su portal se la seguía mostrando como pendiente. Justo el mes de la baja o la renovación,
+    // que es cuando más se mira.
+    //
+    // El fallback al join viejo es para backends que todavía no mandan `propiedadId`.
+    const propIdDeLaLiq = l.propiedadId;
+    const prop = propIdDeLaLiq
+      ? props.find((p) => p.id === propIdDeLaLiq)
+      : props.find((p) => p.contratoActualId === l.contratoId);
     if (!prop) continue;
     // El KPI "cobrado / a rendir" refleja lo que la inmobiliaria va a RENDIR al
     // propietario. POST /rendiciones (server) sólo cuenta contratos
     // modoCobranza=INMOBILIARIA; en PROPIETARIO_DIRECTO el dueño cobra él mismo y no
     // se rinde → contarlo acá inflaba el bruto y no coincidía con la rendición real.
-    if (prop.contratoActual?.modoCobranza === 'PROPIETARIO_DIRECTO') continue;
+    //
+    // Se mira el modo del contrato DE LA LIQUIDACIÓN, no el del contrato actual de la
+    // propiedad: son distintos apenas el contrato dejó de ser el actual, y en ese caso el del
+    // actual puede no existir (unidad vacía) o ser el de un inquilino nuevo con otro modo.
+    const modoDeLaLiq = l.modoCobranza ?? prop.contratoActual?.modoCobranza;
+    if (modoDeLaLiq === 'PROPIETARIO_DIRECTO') continue;
     for (const part of prop.participaciones) {
       // Sobre el ALQUILER (no montoTotal): igual que la rendición real del server,
       // las expensas no le corresponden al propietario. Antes inflaba el KPI y el

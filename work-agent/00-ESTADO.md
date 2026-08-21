@@ -159,9 +159,63 @@ primera corrida.
   (`BASE_PATH=/propietario STATIC_EXPORT=1`). Las tres corren en CI.
 - Comparte `localStorage` con el panel, porque comparte origen. El logout del panel barre
   las dos sesiones a propósito.
-- `anular` una rendición todavía BORRA la fila. Queda el evento de auditoría con el
-  snapshot de los montos; la baja lógica —que quede tachada en vez de desaparecer— está
-  pendiente y necesita decisión.
+- `anular` una rendición ya NO borra la fila: es baja lógica (`Rendicion.anuladaAt`,
+  `motivoAnulacion`, `anuladaPorId`). Se le borran los `AlquilerRendido` para que la plata
+  vuelva a contar como sin rendir, la cabecera sobrevive marcada, el dueño la ve tachada con
+  el motivo en su portal y el operador la ve igual en el historial del panel.
+  `GET /rendiciones` **las esconde por default**: cinco pantallas preguntan "¿ya se le
+  rindió?" y ninguna sabía de la baja lógica. Quien las quiera, `?incluirAnuladas=1`.
+
+### Segunda vuelta (20/08, tarde): revisión adversarial de las cinco lentes
+
+Se corrió una revisión con cinco lentes distintas sobre el área —plata, aislamiento
+multi-tenant, el portal como producto, ciclo de vida de estados raros y consistencia
+panel↔portal—, cada hallazgo refutado por un escéptico antes de contarlo. **20 hallazgos, 15
+sobrevivieron, 12 cerrados.** Los tres que faltan son decisiones de producto, abajo.
+
+Lo más grave, en orden:
+
+- **Se le podía pagar DOS VECES al dueño.** El anti-doble de `POST /rendiciones` se apoya
+  entero en `alquileres_rendidos`, que nació vacía: para todo período rendido antes del
+  01/07/2026 leía cero y daba vía libre. La regla existía sólo del lado de LECTURA, así que
+  el portal y el "por rendir" daban el período por saldado y el cobro doble no aparecía en
+  ninguna pantalla. Verificado al revés: con el guard desactivado el test da 201 en vez de 409.
+- **Un rol CARGA podía redirigir la plata.** `propietarios.crear` incluye a CARGA y gateaba
+  el `cbuAlias` del dueño, la cuenta de cobranza directa —el CBU que la PWA le muestra al
+  inquilino— y el `email`, que es la credencial del portal. Sin rastro. Ahora hay corte de
+  rol y evento `PROPIETARIO_CUENTA_CAMBIADA` con el valor viejo y el nuevo.
+- **Un PUT parcial le borraba el CBU al propietario**, y sin CBU no se le puede rendir. Es la
+  misma mina que el `email` tenía documentada y arreglada tres líneas más arriba, que nunca
+  se aplicó a los vecinos. Lo encontró un test que buscaba otra cosa.
+- **CAJA recibía el CBU y el CUIT de cada dueño** por `GET /contratos/:id`, que pide
+  `contratos.ver`. A CAJA se le negó `propietarios.ver` a propósito: la restricción existía y
+  se filtraba entera por la puerta de al lado.
+- **Al terminar un contrato, la plata cobrada y sin rendir desaparecía del panel.** El join
+  era por `contratoActualId`, que se corta solo en la baja y en la renovación. El server sí se
+  la habría rendido y el portal la seguía mostrando como pendiente.
+- **Pedir el OTP delataba por el reloj** si un email era propietario: la rama del email que
+  existe awaiteaba dos escrituras más (~450 ms cada una contra la base remota). Se sacaron del
+  camino del request — se elimina la diferencia en vez de taparla. Mismo agujero en el OTP del
+  inquilino, arreglado igual.
+
+Y: el borrado de caja no protegía los INGRESO_EXTRA rendidos a medias (miraba sólo el ledger
+de gastos); todo contrato importado "en curso" quedaba trabado para siempre sin poder cambiar
+de modo de cobranza; la moneda se perdía en tres pantallas más y en el WhatsApp al dueño; la
+ficha prometía rendir el alquiler de contratos que cobra el dueño mismo; una rendición anulada
+se contradecía a sí misma en el portal; el resumen anual para el contador desaparecía en enero.
+
+**Las tres decisiones de producto que quedaron abiertas** (no las toma un agente):
+
+1. `rendidoAt` es cuándo el operador CARGÓ la rendición, y el portal lo presenta como
+   *"Te depositamos el X"* y bucketea con él el resumen del contador. O se agrega un campo de
+   fecha real de transferencia, o el copy tiene que decir "Rendido el".
+2. En Unidades, el renglón *"pagó $X de $Y"* compara contra `montoTotal` (alquiler +
+   expensas), así que le muestra al dueño un faltante que incluye plata del consorcio.
+3. El resumen anual no tiene selector de año (hoy ofrece el último año con rendiciones).
+
+Y una cuarta, más de fondo: **el email del propietario nunca se verifica**. Es la credencial
+del portal y alcanza con escribirlo en la ficha para recibir el OTP. Hoy la única defensa es
+la auditoría.
 
 ---
 

@@ -6,7 +6,7 @@
  * nadie lo va a cruzar contra otra fuente.
  */
 import { describe, it, expect } from 'vitest';
-import { cortarAnual } from './imprimir-anual';
+import { anioDelResumen, cortarAnual } from './imprimir-anual';
 import type { RendicionPortal } from '@/lib/api';
 
 /** Una rendición mínima: sólo lo que la cuenta mira. */
@@ -139,3 +139,45 @@ describe('cortarAnual — las anuladas quedan afuera del papel', () => {
     expect(c[0]!.cobrado).toBe(100000);
   });
 })
+
+describe('anioDelResumen — el botón no puede esconderse justo cuando se lo busca', () => {
+  it('EL BUG: en enero, sin rendiciones del año nuevo, ofrece el año anterior', () => {
+    // Estaba clavado en `new Date().getFullYear()`, y `cortarAnual` devuelve vacío para un año
+    // sin rendiciones: el componente devolvía null y el botón DESAPARECÍA. En enero y febrero,
+    // que es exactamente cuando el dueño necesita el ejercicio cerrado para el contador.
+    const r = [
+      R('ARS', '2026-11-10', '2026-10', { cobrado: 100000, comision: 8000 }),
+      R('ARS', '2026-12-10', '2026-11', { cobrado: 100000, comision: 8000 }),
+    ];
+    expect(anioDelResumen(r, 2027)).toBe(2026);
+  });
+
+  it('con el año corriente ya empezado, ofrece el corriente', () => {
+    const r = [
+      R('ARS', '2026-12-10', '2026-11', { cobrado: 1, comision: 0 }),
+      R('ARS', '2027-01-10', '2026-12', { cobrado: 1, comision: 0 }),
+    ];
+    expect(anioDelResumen(r, 2027)).toBe(2027);
+  });
+
+  it('un año cuya ÚNICA rendición se anuló no cuenta: no hay nada que imprimir', () => {
+    const viva = R('ARS', '2025-06-10', '2025-05', { cobrado: 1, comision: 0 });
+    const muerta = {
+      ...R('ARS', '2026-06-10', '2026-05', { cobrado: 1, comision: 0 }),
+      anulada: { fecha: '2026-07-01', motivo: 'error' },
+    } as RendicionPortal;
+    expect(anioDelResumen([viva, muerta], 2027)).toBe(2025);
+  });
+
+  it('sin ninguna rendición viva devuelve null y el botón no va', () => {
+    expect(anioDelResumen([], 2027)).toBeNull();
+  });
+
+  it('el año que elige SIEMPRE tiene filas para imprimir', () => {
+    // La propiedad que importa: si eligiera un año vacío, volveríamos al bug.
+    const r = [R('ARS', '2026-11-10', '2026-10', { cobrado: 100000, comision: 8000 })];
+    const anio = anioDelResumen(r, 2027);
+    expect(anio).not.toBeNull();
+    expect(cortarAnual(r, anio as number).length).toBeGreaterThan(0);
+  });
+});

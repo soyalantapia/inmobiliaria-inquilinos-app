@@ -403,31 +403,39 @@ export async function authRoutes(app: FastifyInstance) {
 
     if (inquilinos.length > 0) {
       const expiresAt = new Date(Date.now() + OTP_TTL_MS);
-      // Igual que en el OTP del panel: pedir un código nuevo invalida el anterior. Sin esto
-      // se acumulaban códigos válidos y cada pedido aumentaba la chance de acertar por
-      // fuerza bruta (además de alargar el loop de bcrypt del verify).
-      await prisma.codigoOtp.updateMany({
-        where: { inquilinoId: { in: inquilinos.map((i) => i.id) }, usedAt: null },
-        data: { usedAt: new Date() },
-      });
-      await prisma.codigoOtp.createMany({
-        data: inquilinos.map((i) => ({ inquilinoId: i.id, codeHash, expiresAt })),
-      });
-      // El envío NO se espera, por lo mismo que el bcrypt se calcula siempre: con SMTP
-      // configurado es el costo DOMINANTE del request —cientos de ms contra los pocos del
-      // bcrypt— y corre sólo en esta rama. Awaitearlo devolvía el tiempo de respuesta como
-      // oráculo y deshacía el emparejamiento de arriba.
+      // TODO EL TRABAJO DE ESTA RAMA VA FUERA DEL CAMINO DEL REQUEST.
       //
-      // Nada de la respuesta depende del resultado: se contesta `{ ok: true }` igual salga o
-      // falle. El error se sigue logueando, sólo que fuera del camino del request.
-      void enviarOtp(emailLc, code)
-        .then((enviado) => {
-          if (!enviado) app.log.info({ email: emailLc, ...codeEnLog(code) }, 'OTP generado (SMTP no configurado)');
-          else app.log.info({ email: emailLc }, 'OTP enviado por email');
-        })
-        .catch((err: Error) => {
-          app.log.error({ email: emailLc, ...codeEnLog(code), err: err.message }, 'OTP: fallo el envío SMTP');
+      // Es el mismo razonamiento que sacó el envío del email, llevado hasta el final. El
+      // emparejamiento que hace el bcrypt de arriba sólo sirve si el RESTO del request es
+      // igual en las dos ramas, y no lo era: la del email que EXISTE awaiteaba dos escrituras
+      // más. Contra la base remota cada query son ~450 ms, así que el email real tardaba
+      // cerca de un segundo más que el inexistente y el `{ ok: true }` idéntico dejaba de
+      // tapar nada.
+      //
+      // EL ORDEN SE CONSERVA: primero las escrituras, después el envío. El mail no puede
+      // salir antes de que el código exista, así que no hay carrera con el `verify`.
+      //
+      // Mismo criterio, mismas palabras, que en `/auth/propietario/otp/request`.
+      void (async () => {
+        // Igual que en el OTP del panel: pedir un código nuevo invalida el anterior. Sin esto
+        // se acumulaban códigos válidos y cada pedido aumentaba la chance de acertar por
+        // fuerza bruta (además de alargar el loop de bcrypt del verify).
+        await prisma.codigoOtp.updateMany({
+          where: { inquilinoId: { in: inquilinos.map((i) => i.id) }, usedAt: null },
+          data: { usedAt: new Date() },
         });
+        await prisma.codigoOtp.createMany({
+          data: inquilinos.map((i) => ({ inquilinoId: i.id, codeHash, expiresAt })),
+        });
+        const enviado = await enviarOtp(emailLc, code);
+        if (!enviado) app.log.info({ email: emailLc, ...codeEnLog(code) }, 'OTP generado (SMTP no configurado)');
+        else app.log.info({ email: emailLc }, 'OTP enviado por email');
+      })().catch((err: unknown) => {
+        app.log.error(
+          { email: emailLc, ...codeEnLog(code), err: (err as Error).message },
+          'OTP: falló la emisión del código',
+        );
+      });
     }
 
     // Respuesta idéntica exista o no (no enumerar emails), y ahora también en tiempo.
@@ -614,7 +622,27 @@ export async function authRoutes(app: FastifyInstance) {
 
   // --- Demo: sesión de Mariela con un click (?demo=1) ---
   app.post('/auth/demo', async (_request, reply) => {
-    if (!app.env.DEMO_MODE) return reply.code(404).send({ message: 'No disponible' });
+    // DOS candados, no uno. `DEMO_MODE` solo no alcanza: es una env var, y si alguna vez se
+    // filtra a la env de producción este endpoint emite una sesión de un inquilino REAL sin
+    // pedir ninguna prueba de identidad — ni OTP, ni contraseña, ni nada.
+    //
+    // La auditoría pre-lanzamiento ya había decidido esto: el commit `e06956e2` (20/06) dice
+    // textual en su mensaje «M-1: demo backdoor excluye NODE_ENV=production (auth.ts)». Aplicó
+    // el guard a los dos `/otp/verify` (:337 y :446) y se salteó ESTE, 250 líneas más abajo en
+    // el mismo archivo. Era un olvido, no una decisión.
+    //
+    // Va por `app.env` y no por `process.env` —que es lo que usan los dos de arriba— para que
+    // se pueda ejercitar desde `buildApp({ NODE_ENV: 'production' })`. Sin eso el estado
+    // apagado no lo cubre ningún test, que es exactamente cómo se llegó hasta acá.
+    if (!app.env.DEMO_MODE || app.env.NODE_ENV === 'production')
+      return reply.code(404).send({ message: 'No disponible' });
+    // El otro salteo de esa misma auditoría: este `findFirst` no tiene scope de tenant. El
+    // commit citado reemplazó el patrón por `findMany` en el OTP, con el comentario «la
+    // identidad sale del OTP que matchea — nunca de un findFirst arbitrario (que podía loguear
+    // contra el tenant equivocado)». Acá quedó. No se scopea porque el request no trae ningún
+    // tenant del que colgarse; lo que lo vuelve inofensivo es el guard de arriba, que hace el
+    // endpoint inalcanzable en producción. Si algún día se relaja ese guard, esto vuelve a ser
+    // un problema.
     const inquilino = await prisma.inquilino.findFirst({ where: { email: DEMO_INQUILINO_EMAIL } });
     if (!inquilino) return reply.code(500).send({ message: 'Seed demo faltante' });
     const payload: JwtInquilino = {

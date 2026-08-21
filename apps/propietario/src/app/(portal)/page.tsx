@@ -6,7 +6,7 @@ import { Cargando, ErrorCarga, Seccion, Vacio } from '@/components/bloques';
 import { FilaRendicion } from '@/components/portal-piezas';
 import { AvisosInmobiliaria } from '@/components/avisos-inmobiliaria';
 import { PendienteDeRendir } from '@/components/pendiente-de-rendir';
-import { ImprimirAnual } from '@/components/imprimir-anual';
+import { anioDelResumen, ImprimirAnual } from '@/components/imprimir-anual';
 import { ResumenPagos } from '@/components/resumen-pagos';
 import { apiFetch, ApiError, leerSesion, type MiCartera, type RendicionPortal } from '@/lib/api';
 
@@ -38,7 +38,10 @@ export default function PagosPage() {
               piensa "esto se lo tengo que pasar al contador". */}
           <ImprimirAnual
             rendiciones={rendiciones.data}
-            anio={new Date().getFullYear()}
+            /* El año corriente si ya tuvo rendiciones; si no, el último que las tuvo. Clavado
+               en el corriente, el botón desaparecía en enero y febrero — justo cuando el dueño
+               busca el ejercicio cerrado para el contador. */
+            anio={anioDelResumen(rendiciones.data, new Date().getFullYear()) ?? new Date().getFullYear()}
             propietario={cartera.data?.nombre ?? sesion?.nombre ?? ''}
             inmobiliaria={cartera.data?.inmobiliaria.nombre ?? sesion?.inmobiliaria ?? ''}
           />

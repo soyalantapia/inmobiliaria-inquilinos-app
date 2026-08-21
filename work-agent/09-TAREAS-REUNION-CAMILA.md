@@ -2342,6 +2342,48 @@ la mora sale igual desde los 16 lugares que la calculan.
 
 ---
 
+## T-68 · El atajo de la demo emitía sesiones de un inquilino real con un solo candado — ✅ RESUELTO
+
+**Experto:** BE + SEC · **Prioridad:** 🟠
+**Origen:** riesgo 🟠 Nivel 2 **#13** de `work-agent/07-ECOSISTEMA.md`.
+
+**El caso.** `POST /auth/demo` existe para entrar a la demo con un click, y su único gate era
+`DEMO_MODE` — una env var. Si alguna vez se filtra a la env de producción, cualquiera que le
+pegue se lleva un **JWT de un inquilino de verdad**, sin OTP, sin contraseña, sin ninguna prueba
+de identidad. La ruta es pública: `authRoutes` va sin prefijo y ninguno de los hooks globales
+(helmet, rate-limit, cors, jwt, multipart, los dos de Sonar) autentica.
+
+**No es un hallazgo nuevo: es un olvido con fecha.** El commit `e06956e2` (20/06, *"cierre
+completo de la auditoría pre-lanzamiento"*) dice **textual en su mensaje**: *«M-1: demo backdoor
+excluye NODE_ENV=production (auth.ts)»*. Aplicó el guard a los dos `/otp/verify` (`auth.ts:337` y
+`:446`) y **se salteó éste, 250 líneas más abajo en el mismo archivo**. Esa auditoría pasó dos
+veces por encima del endpoint: el otro salteo es el `findFirst` sin scope de tenant de la línea
+siguiente, que ese mismo commit reemplazó por `findMany` en el OTP con el comentario *"nunca de
+un findFirst arbitrario (que podía loguear contra el tenant equivocado)"*.
+
+**Por qué no se notó en dos meses.** `auth.test.ts:199` sólo ejercita el camino feliz (200), y
+**ningún test del repo pasaba `NODE_ENV: 'production'`**: el estado apagado no lo miraba nadie.
+
+**Qué se hizo.** El segundo candado, por `app.env` y no por `process.env` —que es lo que usan los
+dos vecinos— justamente para que se pueda ejercitar desde `buildApp({ NODE_ENV: 'production' })`.
+El `findFirst` sin tenant queda documentado y no "arreglado": el request no trae ningún tenant
+del que colgarse, y lo que lo vuelve inofensivo es el guard nuevo.
+
+**Y se dio vuelta el smoke de producción**, que es la mitad menos obvia. `scripts/smoke-prod.mjs`
+verificaba que `/auth/demo` **devolviera un token** — o sea, daba por bueno el agujero: si ese
+check fallaba, el arreglo "obvio" era prender `DEMO_MODE` en producción. Ahora afirma lo
+contrario (404). El chequeo de `/mis-anuncios` que colgaba de ese token quedó **anotado como sin
+cubrir** en vez de borrado: hace falta un token de inquilino real y meterlo ahí sería el mismo
+problema que ya tiene el login de Roberto hardcodeado (T-26).
+
+**Tests.** 4 **puros** en `auth-demo-cerrado-en-prod.test.ts` — los cuatro casos devuelven 404
+antes del `findFirst`, así que no tocan la base. El test declara su propio `DATABASE_URL` y
+`JWT_SECRET` en vez de heredarlos del runner, para que valga igual corrido a mano que en CI.
+Verificado en rojo: sin el guard fallan exactamente las 2 que lo ejercitan, y siguen pasando las
+2 del candado que ya existía.
+
+---
+
 ## T-67 · El login del inquilino se caía a la demo cuando el API no contestaba — ✅ RESUELTO
 
 **Experto:** FE-I + SEC · **Prioridad:** 🔴
@@ -5809,6 +5851,56 @@ la fórmula y falla si aparece fuera de `shared`. Comprobado reintroduciendo una
 
 **Los invariantes #3 a #6 siguen verificados sólo por lectura.** El #2 se desprende del #1 y
 queda cubierto de rebote.
+
+---
+
+## T-28-N2-N1 · Segunda corrida completa: 1057/1065, y una falla que no era del código — ✅ HECHA
+
+**Estado: ✅ HECHA** — commit `e231b79b`.
+
+**Experto:** BE/OPS · **Prioridad:** 🟡 · **Origen:** T-28-N2.
+
+Desde la primera corrida entraron muchísimos commits (los tests puros pasaron de 475 a 647), así
+que se volvió a correr la suite entera con base: **125 archivos** ahora, contra los 97 de la vez
+pasada. **1057 tests en verde de 1065**, 123 archivos de 125.
+
+**Las 7 fallas eran todas del mismo archivo y ninguna era una regresión.**
+`ecosistema-profesionales.test.ts` dio 7 × `expected 401 to be 200`, y **pasa 7/7 corriendo
+solo** — y también con los 18 archivos que lo preceden. Tardó **116 s** cuando en aislamiento
+tarda 15 s: el `/auth/login` de su `beforeAll` se cayó bajo carga, `token` quedó `undefined`, y
+los 7 casos salieron con `Bearer undefined`.
+
+**Lo que se arregló es el diagnóstico, no ese archivo.** El patrón está en **25 archivos**:
+loguean con `login.json().token` sin chequear nada, así que cualquier login transitoriamente
+fallido produce una tormenta de 401 que parece un problema de permisos, con la causa a un
+`beforeAll` de distancia. Ahora hay `test/_login.ts` con `loginTest()`, que falla en el primer
+renglón diciendo si fue el rate limit (30 en 15 min) o un usuario que otro archivo dejó
+inutilizable.
+
+**El suite es flaky bajo corridas largas, y conviene saberlo antes de creerle:** la primera
+corrida tuvo 3 archivos caídos por contención y la segunda 1, siempre distintos y siempre verdes
+en aislamiento. La regla quedó en `docs/TESTING.md`: **ante una falla rara, correr el archivo
+solo antes de debuggear el código.**
+
+---
+
+## T-28-N2-N2 · Los otros archivos que loguean sin chequear el token — ✅ HECHA (casi)
+
+**Estado: ✅ HECHA en lo que se podía barrer** — commit `612c2fbd`. Eran **68 apariciones, no 25**
+(el conteo original miraba archivos, no ocurrencias). Se convirtieron **48 en 37 archivos**: 43 de
+`/auth/login` y 5 de `/auth/demo`. Se agregó `loginDemoTest`, porque `/auth/demo` falla igual de
+mudo y por dos motivos propios (404 sin `DEMO_MODE`, 500 sin el inquilino demo sembrado).
+
+**Quedan 20 en 13 archivos, y quedaron a propósito:** `return X.json().token as string`, tokens
+inline dentro de `headers:`, e injects encadenados. El matcher exigía ver el `inject`
+inmediatamente antes Y la URL, así que sólo tocó lo inequívoco — en 46 archivos de test un regex
+ambicioso hace más daño que el problema que arregla. Esas formas piden lectura caso por caso.
+
+Verificado con la suite COMPLETA con base, que es la única que prueba algo acá: **1099 tests en
+verde, 0 fallas, 128 archivos**.
+
+**Criterio de aceptación original, revisado:** pedía que el grep no devolviera nada. Con las 20
+formas irregulares eso es una tarea de lectura, no de barrido, y no vale forzarla con regex.
 
 ---
 

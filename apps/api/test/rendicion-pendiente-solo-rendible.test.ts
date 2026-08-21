@@ -38,6 +38,32 @@ function dbEspia() {
   return { db, visto };
 }
 
+/**
+ * Doble que SÍ devuelve una liquidación, para que la cuenta siga hasta los groupBy y se pueda
+ * mirar el `where` de los PAGOS.
+ *
+ * Hace falta porque el espía de arriba corta antes: `findMany` devuelve `[]` y el helper sale
+ * ahí mismo. O sea que fijaba el where del `liquidacion.findMany` y nada más — y el filtro de
+ * la plata migrada vive en el otro, el de `pago.groupBy`. Estaba sin cubrir.
+ */
+function dbEspiaConPagos() {
+  const visto: { wherePagos?: Record<string, unknown> } = {};
+  const db = {
+    liquidacion: {
+      findMany: async () => [{ id: 'liq_1', periodo: '2026-07', montoAlquiler: 100, montoTotal: 100, moneda: 'ARS' }],
+    },
+    pago: {
+      groupBy: async (args: { where: Record<string, unknown> }) => {
+        visto.wherePagos = args.where;
+        return [] as never[];
+      },
+    },
+    alquilerRendido: { groupBy: async () => [] as never[] },
+    rendicion: { findMany: async () => [] as never[] },
+  } as never;
+  return { db, visto };
+}
+
 /** El `contrato` del where, ya tipado para poder preguntarle por el modo. */
 function contratoDelWhere(visto: { where?: Record<string, unknown> }) {
   return (visto.where?.contrato ?? {}) as {
@@ -73,6 +99,37 @@ describe('T-52 — por propiedad: el filtro de modo es opt-in', () => {
     const c = contratoDelWhere(visto);
     expect(c.propiedadId).toBe('prp_1');
     expect(c.inmobiliariaId).toBeUndefined();
+  });
+});
+
+describe('la plata MIGRADA DE CARTERA queda afuera SIEMPRE, no sólo con soloRendible', () => {
+  // Estaba adentro del opt-in, pegada a la exclusión por `modoCobranza`, y son ortogonales:
+  //
+  //  · La de modo es opt-in a propósito: el guard de PATCH /modo-cobranza tiene que VER la
+  //    plata cobrada directo, porque es lo único que impide transferírsela de nuevo al dueño.
+  //  · La de migración no: POST /rendiciones la filtra en los DOS modos, así que no hay ningún
+  //    camino que pueda rendirla. Que el guard la viera no protegía de nada, y dejaba a todo
+  //    contrato importado "en curso" —que registra hasta 120 períodos pasados como pagados—
+  //    con un pendiente que nunca bajaba a cero: no se le podía cambiar el modo NUNCA MÁS.
+
+  it('con soloRendible: el groupBy de pagos la excluye', async () => {
+    const { db, visto } = dbEspiaConPagos();
+    await alquilerCobradoSinRendirDePropiedad('prp_1', db, 'inm_1', { soloRendible: true });
+    expect(visto.wherePagos?.migradoDeCartera).toBe(false);
+  });
+
+  it('EL BUG: SIN soloRendible también, que es el caso del guard de modo-cobranza', async () => {
+    const { db, visto } = dbEspiaConPagos();
+    await alquilerCobradoSinRendirDePropiedad('prp_1', db, 'inm_1');
+    expect(visto.wherePagos?.migradoDeCartera).toBe(false);
+  });
+
+  it('y por contrato, que es el camino exacto del guard', async () => {
+    const { db, visto } = dbEspiaConPagos();
+    await alquilerCobradoSinRendir('cnt_1', db);
+    expect(visto.wherePagos?.migradoDeCartera).toBe(false);
+    // Sin filtrar por modo: esa parte del guard NO cambia.
+    expect(visto.wherePagos?.condonado).toBe(false);
   });
 });
 

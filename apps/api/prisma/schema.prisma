@@ -345,6 +345,11 @@ enum TipoEventoAuditoria {
   // anuló, cuándo y por qué.
   PROPIETARIO_RENDICION_ANULADA
   MODO_COBRANZA_CAMBIADO
+  // A QUÉ CUENTA VA LA PLATA: el CBU/alias del dueño, la cuenta de cobranza directa que ve
+  // el inquilino, o el email que es la credencial de entrada a su portal. Los tres se podían
+  // reescribir sin dejar autor, y la cuenta de cobranza directa es el campo que decide adónde
+  // transfiere el inquilino: es el que menos puede quedar sin rastro.
+  PROPIETARIO_CUENTA_CAMBIADA
   MORA_EDITADA
   MOVIMIENTO_CONSORCIO_ELIMINADO
   // Conmutador de usuarios (T-25). Son la defensa REAL del feature: un PIN de 5 dígitos

@@ -34,6 +34,7 @@ export const TIPO_LABEL: Record<string, string> = {
   PROPIETARIO_RENDICION_ANULADA: 'Rendición anulada',
   PROPIETARIO_CONFIRMO_RECIBO: 'Propietario confirmó',
   MODO_COBRANZA_CAMBIADO: 'Modo de cobranza',
+  PROPIETARIO_CUENTA_CAMBIADA: 'Cuenta del propietario',
   MORA_EDITADA: 'Mora editada',
   MOVIMIENTO_CONSORCIO_ELIMINADO: 'Movimiento de consorcio eliminado',
   RECLAMO_CLASIFICADO: 'Reclamo clasificado',
@@ -63,6 +64,7 @@ export const TIPO_VARIANT: Record<string, 'success' | 'destructive' | 'warning' 
   // lo que el ADMIN quiere ver de un vistazo cuando revisa el rastro.
   MORA_EDITADA: 'warning',
   MODO_COBRANZA_CAMBIADO: 'warning',
+  PROPIETARIO_CUENTA_CAMBIADA: 'warning',
   SESION_CONMUTADA: 'warning',
   PIN_DESBLOQUEADO: 'warning',
   PROPIETARIO_CONFIRMO_RECIBO: 'success',

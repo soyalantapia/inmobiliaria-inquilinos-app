@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { buildApp } from '../src/app.js';
 import { seedBase } from '../prisma/seed.js';
+import { loginTest } from './_login.js';
 
 // CAZABUG P1 — POST /contratos/:id/deposito/resolver capeaba montoDevuelto contra el
 // BRUTO del depósito, ignorando las reparaciones ya imputadas contra él (CargoContrato
@@ -47,8 +48,7 @@ beforeAll(async () => {
     data: { id: CARGO, inmobiliariaId: tid, contratoId: CID, tipo: 'REPARACION', concepto: 'Reparación imputada al depósito (cazabug)', monto: 40000, moneda: 'ARS', contraDeposito: true },
   });
   app = await buildApp({ NODE_ENV: 'test', DEMO_MODE: 'true' });
-  const login = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'roberto@delsol.com', password: 'delsol123' } });
-  tADMIN = login.json().token;
+  tADMIN = await loginTest(app, 'roberto@delsol.com', 'delsol123');
 });
 
 afterAll(async () => {

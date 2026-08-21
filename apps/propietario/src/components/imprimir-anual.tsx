@@ -55,6 +55,32 @@ export function cortarAnual(rendiciones: RendicionPortal[], anio: number): Corte
 }
 
 /**
+ * Qué año mostrar: el corriente si ya tuvo rendiciones, si no el último que las tuvo.
+ *
+ * El botón estaba clavado en `new Date().getFullYear()`, y `cortarAnual` devuelve vacío para un
+ * año sin rendiciones — o sea que el componente devolvía `null` y el botón DESAPARECÍA. En
+ * enero y febrero, que es justo cuando el dueño necesita el ejercicio cerrado para llevárselo
+ * al contador. Y apenas entraba la primera rendición del año nuevo, reaparecía armando una hoja
+ * de una sola fila del año equivocado.
+ *
+ * Las ANULADAS no cuentan para elegir el año: no son plata que entró, y el papel las excluye.
+ * Un año cuya única rendición se anuló no tiene nada que imprimir.
+ *
+ * Devuelve `null` cuando no hay ninguna rendición viva: ahí el botón no va, y está bien.
+ *
+ * (Esto NO es el selector de año. Poder pedir cualquier año sigue siendo una decisión de
+ * producto pendiente; esto sólo hace que el botón deje de esconderse cuando más se busca.)
+ */
+export function anioDelResumen(rendiciones: RendicionPortal[], anioCorriente: number): number | null {
+  const anios = rendiciones
+    .filter((r) => !r.anulada)
+    .map((r) => new Date(r.rendidoAt).getFullYear())
+    .filter((a) => Number.isFinite(a));
+  if (anios.length === 0) return null;
+  return anios.includes(anioCorriente) ? anioCorriente : Math.max(...anios);
+}
+
+/**
  * El año entero en una hoja, para el contador.
  *
  * POR QUÉ EXISTE. El portal ya deja imprimir UNA rendición, y eso sirve para discutir un mes

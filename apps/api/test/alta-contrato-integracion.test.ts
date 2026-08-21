@@ -4,6 +4,7 @@ import { PrismaClient } from '@prisma/client';
 import { buildApp } from '../src/app.js';
 import { seedBase } from '../prisma/seed.js';
 import { enumerarPeriodosContrato } from '@llave/shared/periodos';
+import { loginTest } from './_login.js';
 
 /**
  * Regresión del bug i36 (alta de contrato falla con inicio a mitad de mes).
@@ -24,12 +25,7 @@ beforeAll(async () => {
   await seedBase(prisma);
   await prisma.$disconnect();
   app = await buildApp({ NODE_ENV: 'test', DEMO_MODE: 'true' });
-  const login = await app.inject({
-    method: 'POST',
-    url: '/auth/login',
-    payload: { email: 'roberto@delsol.com', password: 'delsol123' },
-  });
-  token = login.json().token;
+  token = await loginTest(app, 'roberto@delsol.com', 'delsol123');
 });
 
 afterAll(async () => {
