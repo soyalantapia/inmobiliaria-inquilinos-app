@@ -42,3 +42,24 @@ export async function loginTest(
   expect(token, `El login de ${email} devolvió 200 pero sin token.`).toBeTruthy();
   return token!;
 }
+
+/**
+ * Lo mismo para `POST /auth/demo`, que es como entran los tests del lado inquilino.
+ *
+ * Falla igual de mudo y por dos motivos propios: devuelve **404** si `DEMO_MODE` está apagado y
+ * **500** si la base no tiene sembrado al inquilino demo. Las dos cosas dejan `token` en
+ * `undefined` y convierten el archivo entero en una tanda de 401 que no dice nada.
+ */
+export async function loginDemoTest(app: FastifyInstance): Promise<string> {
+  const res = await app.inject({ method: 'POST', url: '/auth/demo' });
+  expect(
+    res.statusCode,
+    `POST /auth/demo devolvió ${res.statusCode} en vez de 200. 404 = DEMO_MODE apagado; ` +
+      `500 = falta el inquilino demo en la base (¿corrió seedBase?). Sin token, todo este ` +
+      `archivo va a fallar con 401. Cuerpo: ${res.body.slice(0, 200)}`,
+  ).toBe(200);
+
+  const token = res.json().token as string | undefined;
+  expect(token, 'POST /auth/demo devolvió 200 pero sin token.').toBeTruthy();
+  return token!;
+}

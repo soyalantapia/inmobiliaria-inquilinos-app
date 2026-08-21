@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { buildApp } from '../src/app.js';
 import { seedBase } from '../prisma/seed.js';
+import { loginTest, loginDemoTest } from './_login.js';
 
 // Regresión de la BAJA de contrato (auditoría "el inquilino sigue viendo el contrato
 // activo tras la baja"). Cubre el circuito completo:
@@ -50,15 +51,9 @@ beforeAll(async () => {
 
   app = await buildApp({ NODE_ENV: 'test', DEMO_MODE: 'true' });
 
-  const admin = await app.inject({
-    method: 'POST',
-    url: '/auth/login',
-    payload: { email: 'roberto@delsol.com', password: 'delsol123' },
-  });
-  tokenAdmin = admin.json().token;
+  tokenAdmin = await loginTest(app, 'roberto@delsol.com', 'delsol123');
 
-  const demo = await app.inject({ method: 'POST', url: '/auth/demo' });
-  tokenInq = demo.json().token;
+  tokenInq = await loginDemoTest(app);
 
   // Limpieza idempotente de corridas previas (pagos primero por la FK).
   await prisma.pago.deleteMany({

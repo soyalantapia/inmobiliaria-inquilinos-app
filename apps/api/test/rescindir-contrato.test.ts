@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { buildApp } from '../src/app.js';
 import { seedBase } from '../prisma/seed.js';
+import { loginTest } from './_login.js';
 
 // Baja de contrato: distinguir FINALIZACIÓN (fin del plazo) de RESCISIÓN anticipada.
 // Antes toda baja colapsaba en FINALIZADO; ahora `finalizar` acepta `tipo` y el
@@ -28,12 +29,7 @@ beforeAll(async () => {
   await reactivar(CID_RESC);
   await reactivar(CID_FIN);
   app = await buildApp({ NODE_ENV: 'test', DEMO_MODE: 'true' });
-  const login = await app.inject({
-    method: 'POST',
-    url: '/auth/login',
-    payload: { email: 'roberto@delsol.com', password: 'delsol123' },
-  });
-  tADMIN = login.json().token;
+  tADMIN = await loginTest(app, 'roberto@delsol.com', 'delsol123');
 });
 
 afterAll(async () => {

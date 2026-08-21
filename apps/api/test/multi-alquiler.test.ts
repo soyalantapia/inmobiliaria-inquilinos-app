@@ -4,6 +4,7 @@ import { PrismaClient } from '@prisma/client';
 import { buildApp } from '../src/app.js';
 import { seedBase } from '../prisma/seed.js';
 import { borrarContratosDeTest } from '../prisma/borrar-contratos-de-test.js';
+import { loginTest } from './_login.js';
 
 let app: FastifyInstance;
 let token: string;
@@ -25,8 +26,7 @@ beforeAll(async () => {
   prismaTest = new PrismaClient();
   await seedBase(prismaTest);
   app = await buildApp({ NODE_ENV: 'test', DEMO_MODE: 'true' });
-  const admin = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'roberto@delsol.com', password: 'delsol123' } });
-  token = admin.json().token;
+  token = await loginTest(app, 'roberto@delsol.com', 'delsol123');
 });
 
 // Este test CREA propiedades/contratos vía endpoint y la base es compartida entre archivos, así

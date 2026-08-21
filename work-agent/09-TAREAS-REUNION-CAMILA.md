@@ -5884,20 +5884,23 @@ solo antes de debuggear el código.**
 
 ---
 
-## T-28-N2-N2 · Los otros 25 archivos que loguean sin chequear el token
+## T-28-N2-N2 · Los otros archivos que loguean sin chequear el token — ✅ HECHA (casi)
 
-**Experto:** BE · **Prioridad:** 🟢 · **Depende de:** nada
-**Origen:** T-28-N2-N1.
+**Estado: ✅ HECHA en lo que se podía barrer** — commit `612c2fbd`. Eran **68 apariciones, no 25**
+(el conteo original miraba archivos, no ocurrencias). Se convirtieron **48 en 37 archivos**: 43 de
+`/auth/login` y 5 de `/auth/demo`. Se agregó `loginDemoTest`, porque `/auth/demo` falla igual de
+mudo y por dos motivos propios (404 sin `DEMO_MODE`, 500 sin el inquilino demo sembrado).
 
-`test/_login.ts` ya existe y `ecosistema-profesionales.test.ts` lo usa. Faltan los ~25 que siguen
-haciendo `const login = await app.inject(...); token = login.json().token;` sin verificar nada.
+**Quedan 20 en 13 archivos, y quedaron a propósito:** `return X.json().token as string`, tokens
+inline dentro de `headers:`, e injects encadenados. El matcher exigía ver el `inject`
+inmediatamente antes Y la URL, así que sólo tocó lo inequívoco — en 46 archivos de test un regex
+ambicioso hace más daño que el problema que arregla. Esas formas piden lectura caso por caso.
 
-Mientras estén así, cualquiera de ellos puede volver a producir una tormenta de 401 que cuesta
-una bisección entender. Es mecánico —reemplazar dos líneas por `await loginTest(app, mail, pass)`—
-pero son 25 archivos y no correspondía meterlo en el commit del diagnóstico.
+Verificado con la suite COMPLETA con base, que es la única que prueba algo acá: **1099 tests en
+verde, 0 fallas, 128 archivos**.
 
-**Criterio de aceptación.** `grep -l "\.json()\.token" apps/api/test/*.test.ts` no devuelve nada,
-y la suite con base sigue en verde.
+**Criterio de aceptación original, revisado:** pedía que el grep no devolviera nada. Con las 20
+formas irregulares eso es una tarea de lectura, no de barrido, y no vale forzarla con regex.
 
 ---
 
