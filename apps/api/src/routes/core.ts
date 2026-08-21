@@ -737,7 +737,61 @@ export async function coreRoutes(app: FastifyInstance) {
       });
     }
 
+    // PLATA EN VUELO: un comprobante INFORMADO todavía sin validar.
+    //
+    // El guard de arriba sólo mira lo CONCILIADO. Un pago informado por el inquilino y
+    // esperando validación no figura en ningún lado de esa cuenta, y puede quedar días así.
+    // Si el reparto se cambia en el medio, cuando el operador lo valide esa plata se le va a
+    // rendir al dueño NUEVO — por un mes en que la propiedad era del anterior.
+    //
+    // Es el mismo guard que `PATCH /contratos/:id/modo-cobranza` ya tiene, con las mismas
+    // palabras; a esta pantalla nunca llegó. Y acá la ventana no son milisegundos de
+    // concurrencia: son los días que un comprobante espera a que alguien lo mire.
+    const enVuelo = yaTieneDuenios > 0
+      ? await prisma.pago.count({
+          where: {
+            inmobiliariaId: u.inmobiliariaId,
+            estado: 'INFORMADO',
+            contrato: { propiedadId: id },
+          },
+        })
+      : 0;
+    if (enVuelo > 0) {
+      return reply.code(409).send({
+        message:
+          `Esta propiedad tiene ${enVuelo === 1 ? 'un pago informado' : `${enVuelo} pagos informados`} ` +
+          `esperando validación. Validalos o rechazalos antes de cambiar el reparto: si los validás ` +
+          `después, esa plata se le rinde al dueño nuevo por un mes que era del anterior.`,
+        codigo: 'PAGOS_EN_VUELO',
+        enVuelo,
+      });
+    }
+
+    let conflicto: 'SIN_RENDIR' | 'EN_VUELO' | null = null;
     await prisma.$transaction(async (tx) => {
+      // Y LOS DOS GUARDS SE REVALIDAN ACÁ ADENTRO, con `tx`.
+      //
+      // Los de arriba deciden con una foto tomada en autocommit, y entre esa foto y este
+      // bloque hay toda la latencia del handler. Es el patrón que el propio repo ya escribió
+      // y comentó en `PATCH /modo-cobranza`: el guard de afuera da el mensaje bueno con el
+      // detalle de los períodos, y el de adentro es el que garantiza.
+      //
+      // El helper acepta `TxOrClient`, así que se le pasa `tx` y la relectura ve lo que
+      // committeó cualquier otra transacción antes de que ésta empezara.
+      const revalidacion = yaTieneDuenios > 0
+        ? await alquilerCobradoSinRendirDePropiedad(id, tx, u.inmobiliariaId, { soloRendible: true })
+        : { total: 0, periodos: [] };
+      if (revalidacion.total > 0) {
+        conflicto = 'SIN_RENDIR';
+        return;
+      }
+      const enVueloTx = await tx.pago.count({
+        where: { inmobiliariaId: u.inmobiliariaId, estado: 'INFORMADO', contrato: { propiedadId: id } },
+      });
+      if (enVueloTx > 0) {
+        conflicto = 'EN_VUELO';
+        return;
+      }
       // El estado anterior se lee DENTRO de la transacción y ANTES del deleteMany: es la única
       // ventana en la que existe. Un `findMany` afuera podría leer una foto que otra request
       // ya cambió, y el historial quedaría diciendo algo que no pasó.
@@ -776,6 +830,26 @@ export async function coreRoutes(app: FastifyInstance) {
         });
       }
     });
+
+    // La revalidación de adentro no cambia el reparto: si saltó, se contesta 409 igual que
+    // arriba. El mensaje es más corto a propósito —no se rearma el detalle de los períodos—
+    // porque acá el caso es "alguien más operó mientras tanto" y lo que corresponde es
+    // recargar y volver a mirar.
+    if (conflicto === 'SIN_RENDIR') {
+      return reply.code(409).send({
+        message:
+          'Mientras cambiabas el reparto se cobró alquiler de esta propiedad. Recargá: hay que rendírselo ' +
+          'a los dueños de hoy antes de cambiarlo.',
+        codigo: 'COBRADO_SIN_RENDIR',
+      });
+    }
+    if (conflicto === 'EN_VUELO') {
+      return reply.code(409).send({
+        message:
+          'Mientras cambiabas el reparto entró un pago informado. Validalo o rechazalo antes de cambiarlo.',
+        codigo: 'PAGOS_EN_VUELO',
+      });
+    }
 
     return prisma.propiedad.findFirst({
       where: { id, inmobiliariaId: u.inmobiliariaId },

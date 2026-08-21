@@ -630,23 +630,45 @@ export async function plataRoutes(app: FastifyInstance) {
     if (!pago) return reply.code(404).send({ message: 'Pago inexistente' });
     if (pago.estado !== 'CONCILIADO')
       return reply.code(409).send({ message: 'Solo se puede anular un pago ya conciliado' });
-    // Si la liquidación de este pago YA fue rendida al propietario, anular el
-    // pago acá desincronizaría lo cobrado de lo rendido (al dueño se le rindió
-    // plata que ahora se revierte, sin corrección). Forzamos a anular primero la
-    // rendición del período (ahora es posible) para no dejar un descuadre mudo.
-    const yaRendido = await prisma.alquilerRendido.findFirst({
-      where: { liquidacionId: pago.liquidacionId, inmobiliariaId: u.inmobiliariaId },
-      select: { id: true },
-    });
-    if (yaRendido) {
-      return reply.code(409).send({
-        message:
-          'Este pago ya fue rendido al propietario. Anulá primero la rendición del período y volvé a intentar.',
-      });
-    }
-
     const observacion = observacionDeReversion(body.data.observacion);
+    // El chequeo de "¿ya se rindió?" va ADENTRO de la transacción, no acá afuera. Antes se
+    // leía con `prisma` en autocommit y después se abría la tx, y en esa ventana la rendición
+    // —que es larga: tiene timeout de 30 s y hace mucho trabajo entre leer y commitear— podía
+    // colarse entera. Quedaba una `Rendicion` con sus `AlquilerRendido` sobre un pago que un
+    // segundo después pasaba a RECHAZADO: al dueño se le transfirió el alquiler de un mes que
+    // no se cobró, y no había salida, porque reintentar anular devuelve 409 ("solo se puede
+    // anular un pago ya conciliado") con el pago ya rechazado. El descuadre además no se ve:
+    // el pendiente saltea la liquidación en vez de mostrarla en negativo.
+    //
+    // Y se toma EL MISMO advisory lock que toma `POST /rendiciones` (dueño + período), que es
+    // lo único que hace que las dos operaciones serialicen de verdad: no comparten ninguna
+    // fila escrita —anular escribe pago/liquidacion/credito, la rendición escribe
+    // rendicion/alquilerRendido/gastoRendido— así que ningún lock de fila las cruza.
+    //
+    // El patrón es el mismo que ya está escrito y comentado en `PATCH /modo-cobranza`
+    // (core.ts): el guard de afuera decide con una foto, y adentro se re-verifica.
+    const duenios = await prisma.participacionPropietario.findMany({
+      where: { propiedad: { contratos: { some: { id: pago.contratoId } } }, inmobiliariaId: u.inmobiliariaId },
+      select: { propietarioId: true },
+    });
+    let yaRendidoAlCerrar = false;
     const pagoOk = await prisma.$transaction(async (tx) => {
+      // Un lock por cada dueño de la propiedad: la rendición serializa por (dueño, período) y
+      // acá no se sabe a cuál de ellos se le va a rendir, así que se toman todos los que
+      // podrían. Ordenados para que dos anulaciones concurrentes no se traben entre sí.
+      for (const d of [...duenios].sort((a, b) => a.propietarioId.localeCompare(b.propietarioId))) {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${u.inmobiliariaId}), hashtext(${`${d.propietarioId}|${pago.periodo}`}))`;
+      }
+      // Recién ahora, con el lock tomado, la pregunta tiene una respuesta que no se puede
+      // volver falsa mientras dure esta transacción.
+      const yaRendido = await tx.alquilerRendido.findFirst({
+        where: { liquidacionId: pago.liquidacionId, inmobiliariaId: u.inmobiliariaId },
+        select: { id: true },
+      });
+      if (yaRendido) {
+        yaRendidoAlCerrar = true;
+        return null;
+      }
       // updateMany condicionado (WHERE estado='CONCILIADO'): cierra la carrera de
       // doble-anulación o anular-mientras-otro-opera. count=0 → 409.
       const upd = await tx.pago.updateMany({
@@ -724,6 +746,15 @@ export async function plataRoutes(app: FastifyInstance) {
       });
       return tx.pago.findUnique({ where: { id } });
     });
+    // El 409 de la rendición se distingue del de la carrera: son dos cosas distintas y el
+    // operador tiene que saber cuál le tocó. Uno se resuelve anulando la rendición; el otro es
+    // "alguien te ganó de mano, recargá".
+    if (yaRendidoAlCerrar) {
+      return reply.code(409).send({
+        message:
+          'Este pago ya fue rendido al propietario. Anulá primero la rendición del período y volvé a intentar.',
+      });
+    }
     if (!pagoOk) return reply.code(409).send({ message: 'El pago ya no estaba conciliado' });
     await registrarEvento({
       inmobiliariaId: u.inmobiliariaId,
@@ -1070,27 +1101,65 @@ export async function plataRoutes(app: FastifyInstance) {
     // Se miran las DOS señales: `descontadoEnRendicion` y el ledger. En multi-dueño la marca
     // recién se pone cuando las partes cubren el total, así que un movimiento rendido a MEDIAS
     // la tiene en `false` y sólo lo delata `IngresoRendido`.
-    if (mov) {
-      const yaRendido =
-        mov.descontadoEnRendicion ||
-        (await prisma.ingresoRendido.count({ where: { refId: mov.id } })) > 0;
-      if (yaRendido) {
-        return reply.code(409).send({
-          message:
-            'Ese cobro ya se le rindió al propietario. Deshacé primero la rendición y después el cobro.',
+    // LA PREGUNTA SE HACE ADENTRO DE LA TRANSACCIÓN, no acá afuera.
+    //
+    // Se leía con `prisma` en autocommit y después se abría la tx, y el borrado era un
+    // `delete` por PK pelada, sin condición. En esa ventana la rendición podía levantar este
+    // mismo movimiento, crear su `IngresoRendido` y SUMARLO al neto que se le transfiere al
+    // dueño; el delete de acá lo borraba igual. Quedaba el cargo otra vez impago para el
+    // inquilino, la plata ya transferida al dueño, y un `IngresoRendido` huérfano —`refId` es
+    // String sin FK— que hace que el detalle de esa rendición no se pueda reconstruir.
+    //
+    // El endpoint hermano que borra la MISMA tabla ya lo hace bien y dice por qué:
+    // `DELETE /caja/movimientos/:id` mete los dos `count` adentro de la tx y borra con
+    // `deleteMany` condicionado. Éste había quedado afuera de ese arreglo.
+    let yaRendidoAlCerrar = false;
+    const hecho = await prisma.$transaction(async (tx) => {
+      if (mov) {
+        // Las DOS señales: `descontadoEnRendicion` y el ledger. En multi-dueño la marca recién
+        // se pone cuando las partes cubren el total, así que un movimiento rendido A MEDIAS la
+        // tiene en `false` y sólo lo delata `IngresoRendido`.
+        const rendido = await tx.movimientoCaja.findUnique({
+          where: { id: mov.id },
+          select: { descontadoEnRendicion: true },
         });
+        const enElLedger = await tx.ingresoRendido.count({ where: { refId: mov.id } });
+        if (!rendido || rendido.descontadoEnRendicion || enElLedger > 0) {
+          yaRendidoAlCerrar = true;
+          return false;
+        }
       }
-    }
-
-    await prisma.$transaction(async (tx) => {
       await tx.cargoContrato.update({
         where: { id },
         data: { saldadoAt: null, saldadoPorId: null },
       });
       // Puede no haber movimiento: los cargos saldados ANTES de que `saldar` registrara el
       // ingreso no tienen ninguno. Ahí basta con devolverle la deuda al inquilino.
-      if (mov) await tx.movimientoCaja.delete({ where: { id: mov.id } });
+      //
+      // `deleteMany` CONDICIONADO y no `delete` por PK: es el candado atómico contra una
+      // rendición que tome el movimiento entre el chequeo de arriba y esta línea. Si lo tomó,
+      // el count queda en 0 y abortamos toda la transacción.
+      if (mov) {
+        const borrado = await tx.movimientoCaja.deleteMany({
+          where: { id: mov.id, inmobiliariaId: u.inmobiliariaId, descontadoEnRendicion: false },
+        });
+        if (borrado.count === 0) {
+          yaRendidoAlCerrar = true;
+          throw new MovimientoTomadoPorRendicion();
+        }
+      }
+      return true;
+    }).catch((e) => {
+      if (e instanceof MovimientoTomadoPorRendicion) return false;
+      throw e;
     });
+    if (!hecho) {
+      return reply.code(409).send({
+        message: yaRendidoAlCerrar
+          ? 'Ese cobro ya se le rindió al propietario. Deshacé primero la rendición y después el cobro.'
+          : 'No se pudo deshacer el cobro. Recargá y volvé a intentar.',
+      });
+    }
     await registrarEvento({
       inmobiliariaId: u.inmobiliariaId,
       tipo: 'PAGO_REVERTIDO',
@@ -1177,8 +1246,34 @@ export async function plataRoutes(app: FastifyInstance) {
     let aplicacion = { aplicado: 0, sobrante: 0, cuotasSaldadas: 0 };
     // timeout holgado: la aplicación del depósito recorre las cuotas exigibles y con el
     // proxy de por medio la tx se pasaba de los 5s por defecto de Prisma → 500.
+    let yaResuelto = false;
     await prisma.$transaction(
       async (tx) => {
+        // EL CANDADO, ANTES DE TOCAR NADA.
+        //
+        // Todo lo de arriba —el estado del contrato, `estadoDeposito === 'RETENIDO'`, el
+        // disponible— se leyó con `prisma` en autocommit, y la escritura era un
+        // `tx.contrato.update({ where: { id } })` sin condición. Dos operadores apretando
+        // "Resolver" a la vez pasaban los dos por el 409 de arriba y los dos ejecutaban
+        // `aplicarDepositoADeuda`: el mismo depósito se imputaba DOS VECES contra la misma
+        // deuda, saldando cuotas que nadie pagó.
+        //
+        // `updateMany` condicionado a que siga RETENIDO es el candado atómico: el segundo en
+        // llegar cuenta 0 y aborta. Va PRIMERO, antes de imputar, para que no quede plata
+        // aplicada de una transacción que después se revierte.
+        const tomado = await tx.contrato.updateMany({
+          where: { id, inmobiliariaId: u.inmobiliariaId, estadoDeposito: 'RETENIDO' },
+          data: {
+            estadoDeposito,
+            depositoDevueltoMonto: monto,
+            depositoDevueltoAt: new Date(),
+            motivoDeposito: body.data.motivo?.trim() || null,
+          },
+        });
+        if (tomado.count === 0) {
+          yaResuelto = true;
+          throw new DepositoYaResuelto();
+        }
         if (aRetener > 0) {
           aplicacion = await aplicarDepositoADeuda(tx, {
             contratoId: id,
@@ -1187,20 +1282,17 @@ export async function plataRoutes(app: FastifyInstance) {
             usuarioId: u.userId,
           });
         }
-        await tx.contrato.update({
-          where: { id },
-          data: {
-            estadoDeposito,
-            depositoDevueltoMonto: monto,
-            depositoDevueltoAt: new Date(),
-            motivoDeposito: body.data.motivo?.trim() || null,
-          },
-        });
         // El monto ya se topeó contra `disponible` arriba, así que cerrar es seguro.
         await cerrarCargosContraDeposito(tx, { contratoId: id, inmobiliariaId: u.inmobiliariaId, usuarioId: u.userId });
       },
       { timeout: 20000 },
-    );
+    ).catch((e) => {
+      if (e instanceof DepositoYaResuelto) return;
+      throw e;
+    });
+    // Mismo mensaje que el 409 de arriba: para el operador es el mismo hecho —el depósito ya
+    // está resuelto—, sólo que se descubrió un instante más tarde.
+    if (yaResuelto) return reply.code(409).send({ message: 'El depósito de este contrato ya fue resuelto' });
     await registrarEvento({
       inmobiliariaId: u.inmobiliariaId,
       tipo: 'PAGO_CONCILIADO',
@@ -3203,6 +3295,14 @@ class ParticipacionAusente extends Error {
     super('participacion ausente');
   }
 }
+/**
+ * Aborta el `descobrar` cuando la rendición tomó el movimiento de caja entre el chequeo y el
+ * borrado. Existe para revertir la transacción entera: sin tirar, el `cargoContrato.update` ya
+ * hecho quedaría commiteado y el cargo volvería a estar impago con la plata igual rendida.
+ */
+class MovimientoTomadoPorRendicion extends Error {}
+/** Aborta el `deposito/resolver` cuando otro operador lo resolvió primero. */
+class DepositoYaResuelto extends Error {}
 class RendicionSinCobros extends Error {}
 /**
  * Ya hay una rendición de este dueño y este período que es ANTERIOR AL LEDGER.
