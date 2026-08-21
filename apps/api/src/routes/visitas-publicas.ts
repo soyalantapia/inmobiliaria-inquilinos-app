@@ -5,6 +5,7 @@ import { requireProfesionalVisita } from '../auth/guards.js';
 import { urlEsDelTenant } from './uploads.js';
 import { imputarCostoReclamo, conceptoReclamo, ReclamoYaRendido, ReclamoNoReimputable } from '../lib/imputar-reclamo.js';
 import { dinero } from '../lib/monto.js';
+import { puedeAdjuntar } from '../lib/acceso-archivos.js';
 
 /**
  * Flujo del profesional asignado a un reclamo, vía link mágico (/p/:token en
@@ -228,8 +229,18 @@ export async function visitasPublicasRoutes(app: FastifyInstance): Promise<void>
     if (body.data.fotoAntes && !urlEsDelTenant(body.data.fotoAntes, acc.inmobiliariaId)) {
       return reply.code(400).send({ message: 'Foto (antes) inválida' });
     }
+    if (!(await puedeAdjuntar(body.data.fotoAntes, acc))) {
+      // Suyo, no sólo del tenant: sin esto la vía 2 del guard de lectura se auto-anula
+      // —alguien con la URL ajena la engancha a una fila propia y se auto-autoriza—.
+      return reply.code(403).send({ message: 'Ese archivo no es tuyo' });
+    }
     if (body.data.fotoDespues && !urlEsDelTenant(body.data.fotoDespues, acc.inmobiliariaId)) {
       return reply.code(400).send({ message: 'Foto (después) inválida' });
+    }
+    if (!(await puedeAdjuntar(body.data.fotoDespues, acc))) {
+      // Suyo, no sólo del tenant: sin esto la vía 2 del guard de lectura se auto-anula
+      // —alguien con la URL ajena la engancha a una fila propia y se auto-autoriza—.
+      return reply.code(403).send({ message: 'Ese archivo no es tuyo' });
     }
     const data: Record<string, string> = {};
     if (body.data.fotoAntes) data.fotoAntes = body.data.fotoAntes;

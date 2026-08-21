@@ -32,6 +32,7 @@ import { enviarInvitacionInquilino } from '../mailer.js';
 import { borrarArchivoSiHuerfano, urlEsDelTenant } from './uploads.js';
 import { aplicarEstadoInicial, EstadoInicialInvalido } from '../lib/estado-inicial-contrato.js';
 import { dinero, dineroPositivo } from '../lib/monto.js';
+import { puedeAdjuntar } from '../lib/acceso-archivos.js';
 
 /**
  * Fase 3 — La plata: liquidaciones, validación de pagos informados, caja de
@@ -1568,6 +1569,11 @@ export async function plataRoutes(app: FastifyInstance) {
     // inmobiliaria (no una url externa ni de otro tenant).
     if (body.data.comprobanteUrl && !urlEsDelTenant(body.data.comprobanteUrl, inq.inmobiliariaId)) {
       return reply.code(400).send({ message: 'Comprobante inválido' });
+    }
+    if (!(await puedeAdjuntar(body.data.comprobanteUrl, inq))) {
+      // Suyo, no sólo del tenant: sin esto la vía 2 del guard de lectura se auto-anula
+      // —alguien con la URL ajena la engancha a una fila propia y se auto-autoriza—.
+      return reply.code(403).send({ message: 'Ese archivo no es tuyo' });
     }
     // REGLA: NUNCA borrar del disco un archivo cuya URL vino en el body de la request.
     //

@@ -9,6 +9,7 @@ import { JwtPayloadSchema, JwtProfesionalSchema, type JwtPayload, type JwtProfes
 import { prisma } from '../db.js';
 import { cuotaBytes, registrarSubida, usoDelTenant } from '../lib/cuota-uploads.js';
 import { inquilinoRevocado } from '../auth/guards.js';
+import { puedeLeerArchivo, actorDeJwt } from '../lib/acceso-archivos.js';
 
 /**
  * File storage REAL sobre un Railway Volume montado en /data.
@@ -82,6 +83,20 @@ export function resolverExtensionUpload(mime: string | undefined, filename: stri
 }
 
 /** Los 4 kinds de JWT (usuario/inquilino/co-inquilino/profesional) llevan inmobiliariaId. */
+/**
+ * Quién es el dueño del archivo que se está subiendo, en la forma que guarda `ArchivoSubido`.
+ *
+ * Para el profesional se guarda el `visitaId` y no el `profesionalId`: su identidad ES la visita
+ * —el link mágico no tiene cuenta— y si la visita se reasigna, el que entra está trabajando sobre
+ * el mismo expediente.
+ */
+function duenoDe(p: JwtPayload | JwtProfesional): { subidoPorKind: 'USUARIO' | 'INQUILINO' | 'CO_INQUILINO' | 'PROFESIONAL'; subidoPorId: string } {
+  if ('kind' in p && p.kind === 'usuario') return { subidoPorKind: 'USUARIO', subidoPorId: p.userId };
+  if ('kind' in p && p.kind === 'inquilino') return { subidoPorKind: 'INQUILINO', subidoPorId: p.inquilinoId };
+  if ('kind' in p && p.kind === 'co-inquilino') return { subidoPorKind: 'CO_INQUILINO', subidoPorId: p.coInquilinoId };
+  return { subidoPorKind: 'PROFESIONAL', subidoPorId: (p as JwtProfesional).visitaId };
+}
+
 function tenantDe(payload: JwtPayload | JwtProfesional): string | null {
   return (payload as { inmobiliariaId?: string }).inmobiliariaId ?? null;
 }
@@ -354,8 +369,25 @@ export async function uploadsRoutes(app: FastifyInstance): Promise<void> {
     // Se le suman al cache los bytes recién escritos, para no recorrer el directorio entero
     // en cada subida. Ver `usoDelTenant`.
     registrarSubida(tenant, tamanioBytes);
+    const url = `/uploads/${tenant}/${filename}`;
+    // El dueño, para que después pueda leer lo suyo. Va DESPUÉS de que el archivo ya está en
+    // disco y **sin bloquear la respuesta**: subir un comprobante hoy sólo necesita el Volume, y
+    // hacerlo depender también de una escritura a Postgres convertiría una caída de la base en
+    // "no podés informar tu pago". Si la fila no se escribe, el archivo no queda inaccesible:
+    // apenas se adjunta a algo, lo cubre la segunda vía del guard.
+    // SE ESPERA la escritura, pero un fallo NO rompe la subida. Las dos mitades importan:
+    //  · `await`, porque si no hay carrera: el cliente sube y acto seguido informa el pago con
+    //    esa URL, y `puedeAdjuntar` no encontraría todavía la fila → 403 espurio en el flujo
+    //    normal, justo el que hay que preservar.
+    //  · `.catch()`, porque subir un comprobante hoy sólo necesita el Volume; hacerlo depender
+    //    de Postgres convertiría una caída de la base en "no podés informar tu pago". Si la
+    //    fila no se escribe, el archivo no queda inaccesible: apenas se adjunta a algo, lo
+    //    cubre la segunda vía del guard.
+    await prisma.archivoSubido
+      .create({ data: { inmobiliariaId: tenant, url, ...duenoDe(payload), origen: 'POST /uploads' } })
+      .catch((e: unknown) => request.log.warn({ err: e, url }, 'no se pudo registrar el dueño del archivo'));
     return {
-      url: `/uploads/${tenant}/${filename}`,
+      url,
       nombreArchivo: data.filename ?? filename,
       tipoMime: data.mimetype,
       tamanioBytes,
@@ -382,6 +414,26 @@ export async function uploadsRoutes(app: FastifyInstance): Promise<void> {
     if (safe !== name || safe.includes('..')) {
       return reply.code(400).send({ message: 'Nombre de archivo inválido' });
     }
+
+    // ÁMBITO: además del tenant, ¿este archivo es de este actor? (ver lib/acceso-archivos.ts)
+    //
+    // Sale en TRES ESTADOS y arranca en `log` a propósito. Es un cambio de autorización sobre
+    // una inmobiliaria en uso: si alguna lectura legítima quedó fuera de las columnas del ámbito,
+    // el costo de enterarse bloqueando es que un inquilino real pierde un documento. Observando
+    // primero, el costo es una línea de log. Prender `on` es una variable de entorno, no un push.
+    const actor = await actorDeJwt(payload);
+    const modo = app.env.UPLOADS_AMBITO;
+    if (modo !== 'off' && actor && actor.kind !== 'usuario') {
+      const url = `/uploads/${tenant}/${safe}`;
+      if (!(await puedeLeerArchivo(url, actor))) {
+        request.log.warn(
+          { url, kind: actor.kind, tenant, modo },
+          'uploads-ambito: archivo fuera del ámbito del actor',
+        );
+        if (modo === 'on') return reply.code(403).send({ message: 'Sin acceso a este archivo' });
+      }
+    }
+
     const file = path.join(UPLOADS_DIR, tenant, safe);
     try {
       const s = await stat(file);

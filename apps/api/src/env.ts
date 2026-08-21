@@ -27,6 +27,20 @@ const EnvSchema = z.object({
     .default('http://localhost:3000,http://localhost:3001,http://localhost:3003,https://soyalantapia.github.io')
     .transform((v) => v.split(',').map((s) => s.trim()).filter(Boolean)),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  /**
+   * Qué hace `GET /uploads` cuando un archivo cae FUERA del ámbito del actor (T-72).
+   *
+   *   off → no se chequea nada (comportamiento previo: sólo tenant).
+   *   log → se chequea y se registra, pero se sirve igual. **Default.**
+   *   on  → se deniega con 403.
+   *
+   * Arranca en `log` porque es un cambio de autorización sobre una inmobiliaria en uso: si
+   * alguna lectura legítima quedó fuera de las columnas del ámbito, enterarse bloqueando cuesta
+   * que un inquilino real pierda un documento; enterarse observando cuesta una línea de log.
+   * TIENE DEFAULT a propósito: una variable nueva sin default en este schema hace fallar el
+   * `parse` y el contenedor no arranca.
+   */
+  UPLOADS_AMBITO: z.enum(['off', 'log', 'on']).default('log'),
   // Fin del acceso gratis pre-lanzamiento (la usa /auth/registro). Si está seteada,
   // tiene que ser una fecha parseable → una basura falla en el ARRANQUE con mensaje
   // claro, en vez de un 500 silencioso al registrarse. Lenient: ISO con o sin hora.

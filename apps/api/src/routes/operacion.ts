@@ -14,6 +14,7 @@ import { avisarReclamoNuevoAInmo, avisarAlInquilinoDelReclamo } from '../lib/avi
 import { TIPOS_AVISO_INMO } from '../lib/destinatario-aviso.js';
 import { normalizarEmail } from '../lib/normalizar-email.js';
 import { dinero, dineroConSigno } from '../lib/monto.js';
+import { puedeAdjuntar } from '../lib/acceso-archivos.js';
 
 /** Token opaco del link mágico de visita (/p/:token) — 24 bytes base64url, no adivinable. */
 function generarTokenVisita(): string {
@@ -894,6 +895,11 @@ export async function operacionRoutes(app: FastifyInstance) {
     if (body.data.adjuntoUrl && !urlEsDelTenant(body.data.adjuntoUrl, inq.inmobiliariaId)) {
       return reply.code(400).send({ message: 'Adjunto inválido' });
     }
+    if (!(await puedeAdjuntar(body.data.adjuntoUrl, inq))) {
+      // Suyo, no sólo del tenant: sin esto la vía 2 del guard de lectura se auto-anula
+      // —alguien con la URL ajena la engancha a una fila propia y se auto-autoriza—.
+      return reply.code(403).send({ message: 'Ese archivo no es tuyo' });
+    }
     // El reclamo tiene que ser del inquilino (su contrato + inmobiliaria).
     const reclamo = await prisma.reclamo.findFirst({
       where: { id, contratoId: inq.contratoId, inmobiliariaId: inq.inmobiliariaId },
@@ -950,6 +956,11 @@ export async function operacionRoutes(app: FastifyInstance) {
     // La foto, si viene, tiene que ser un /uploads de ESTA inmobiliaria (no externa).
     if (body.data.fotoUrl && !urlEsDelTenant(body.data.fotoUrl, inq.inmobiliariaId)) {
       return reply.code(400).send({ message: 'Foto inválida' });
+    }
+    if (!(await puedeAdjuntar(body.data.fotoUrl, inq))) {
+      // Suyo, no sólo del tenant: sin esto la vía 2 del guard de lectura se auto-anula
+      // —alguien con la URL ajena la engancha a una fila propia y se auto-autoriza—.
+      return reply.code(403).send({ message: 'Ese archivo no es tuyo' });
     }
 
     const contrato = await prisma.contrato.findFirst({

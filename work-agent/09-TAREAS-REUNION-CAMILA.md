@@ -2342,6 +2342,74 @@ la mora sale igual desde los 16 lugares que la calculan.
 
 ---
 
+## T-72 · `GET /uploads` autorizaba por tenant, no por dueño del archivo — 🟡 MECANISMO LISTO, falta prenderlo
+
+**Experto:** BE + SEC · **Prioridad:** 🔴 · **Toca schema**
+**Origen:** riesgo 🟠 Nivel 2 **#9**. **Autorizado explícitamente por el dueño** el 21/08.
+Diseñado por tres propuestas independientes y sometido a cuatro lentes adversariales; se
+implementó la que resistió tres de las cuatro, con las seis correcciones que le encontraron.
+
+**El caso.** El GET autorizaba con `tenantDe(payload) === tenant` y nada más. Cualquier
+inquilino, co-inquilino o profesional con link mágico que conociera el nombre leía **cualquier**
+archivo de esa inmobiliaria: el comprobante del 3°B, el DNI de otro contrato, el recibo de sueldo
+de un garante ajeno, el extracto bancario de la administradora. Lo único que lo tapaba es que el
+nombre es un `randomUUID()` — **oscuridad, no autorización**: la URL viaja en el `<img src>`,
+queda en el historial del browser y se reenvía como cualquier link.
+
+La causa raíz: **no existía ningún registro de quién subió qué**. De los 85 modelos del schema,
+ninguno lo guardaba.
+
+**La regla, con dos vías (alcanza con una):**
+1. **Lo subiste vos** — hay fila en `ArchivoSubido`. Cubre la ventana entre `POST /uploads` y el
+   request que persiste la URL, que es real: la PWA previsualiza el comprobante **antes** de
+   informar el pago.
+2. **Está colgado de una fila de tu ámbito** — el archivo lo referencia una fila de tu contrato,
+   tuya como persona, o de tu visita.
+
+**LA VÍA 2 ES LA DECISIÓN CENTRAL, y es la que evita el desastre.** La tabla nace vacía: si la
+autorización dependiera sólo de ella, el día del deploy **todos los archivos históricos quedarían
+sin dueño y se bloquearían** — un inquilino real perdiendo documentos que hoy ve. La alternativa
+"backfillear el dueño desde las 16 columnas de URL" **no se hizo a propósito**: esas columnas
+guardan un *vínculo*, no un dueño, y adivinar mal rompe lo que funciona. La vía 2 consulta esas
+mismas filas **en vivo**: la información que un backfill congelaría, el guard la lee fresca. Un
+comprobante de marzo se lee porque su `Pago` es del contrato de quien pide — **la misma fila que
+el front ya usa para armar el `<img src>`**. Si tu pantalla te lo muestra, el guard te lo sirve.
+
+**Por qué no se auto-anula.** La vía 2 sería un agujero si alguien pudiera enganchar una URL
+ajena a una fila propia (`POST /mis-documentos` con la URL de la víctima) y auto-autorizarse. Por
+eso **adjuntar exige exactamente lo mismo que leer**: los 8 call sites no-panel que aceptan una
+URL del cliente pasan por `puedeAdjuntar`, que llama a la misma función. Los 7 de panel quedan
+por tenant, igual que la lectura del panel.
+
+**SALE APAGADO. `UPLOADS_AMBITO` tiene tres estados y arranca en `log`.** Es un cambio de
+autorización sobre una inmobiliaria en uso, y el push a `main` **es** el deploy: no hay ventana
+entre mergear y aplicar. En `log` se evalúa y se registra lo que se habría denegado, pero se
+sirve todo igual que hoy. **Un solo interruptor gobierna las dos mitades** —lectura y
+adjuntar— porque el estado intermedio (lectura bloqueando, escritura libre) es justamente el que
+permitiría prepararse un enganche.
+
+> ### ⏸️ LO QUE FALTA, Y ES DEL DUEÑO
+> Poner `UPLOADS_AMBITO=on` en Railway. **Antes de prenderlo**, mirar los logs del back buscando
+> `uploads-ambito`: cada línea es una lectura legítima que se habría bloqueado. Si no aparece
+> ninguna en unos días de uso real, prenderlo es seguro. Si aparecen, la columna que falta se
+> agrega a `estaEnSuAmbito` y se vuelve a esperar. **Prenderlo sin mirar el log es exactamente
+> el riesgo que este diseño viene a evitar.**
+
+**Correcciones propias durante la implementación**, las dos encontradas verificando y no
+asumiendo:
+- El registro del dueño era `void` (no bloqueante) y eso **abría una carrera**: el cliente sube y
+  acto seguido informa el pago con esa URL, y la fila todavía no existe → 403 espurio en el flujo
+  normal. Ahora se espera la escritura, pero con `.catch()`: subir un comprobante no puede
+  depender de que Postgres esté vivo.
+- El `contratoId` del co-inquilino se lee **de la base**, no del JWT: el guard propio de
+  `/uploads` revalida su estado pero no compara ese campo (`requireContratoAcceso` sí), así que
+  tomarlo del token dejaría el ámbito para leer más laxo que el de adjuntar.
+
+**Tests.** 20 puros en `acceso-archivos.test.ts`, incluido el ataque completo —enganchar una URL
+ajena a una fila propia— y los cuatro estados del interruptor.
+
+---
+
 ## T-71 · El código del certificado era derivable de los datos de la persona — ✅ RESUELTO
 
 **Experto:** BE + SEC · **Prioridad:** 🟠 · **Toca schema (migración con borrado)**

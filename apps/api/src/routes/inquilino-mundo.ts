@@ -8,6 +8,7 @@ import { resolverEsquemaMora } from '../lib/punitorios.js';
 import { prisma } from '../db.js';
 import { urlEsDelTenant } from './uploads.js';
 import { dineroPositivo } from '../lib/monto.js';
+import { puedeAdjuntar } from '../lib/acceso-archivos.js';
 import {
   exigirContratoActivo,
   requireAuth,
@@ -767,6 +768,11 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
     // La boleta, si trae archivo, tiene que ser un /uploads de ESTA inmobiliaria.
     if (body.data.archivoUrl && !urlEsDelTenant(body.data.archivoUrl, inq.inmobiliariaId)) {
       return reply.code(400).send({ message: 'Archivo de boleta inválido' });
+    }
+    if (!(await puedeAdjuntar(body.data.archivoUrl, inq))) {
+      // Suyo, no sólo del tenant: sin esto la vía 2 del guard de lectura se auto-anula
+      // —alguien con la URL ajena la engancha a una fila propia y se auto-autoriza—.
+      return reply.code(403).send({ message: 'Ese archivo no es tuyo' });
     }
     // No se cargan boletas de períodos futuros.
     const [anioBol = 0, mesBol = 0] = body.data.periodo.split('-').map(Number);
