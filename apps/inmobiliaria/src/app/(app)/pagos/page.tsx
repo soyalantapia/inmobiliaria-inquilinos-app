@@ -285,11 +285,21 @@ export default function PagosPage() {
         .map((c) => {
           // Restamos lo ya conciliado del período actual (montoPagado) en CUALQUIER
           // contrato no pagado, no sólo los PARCIAL: un parcial VENCIDO reporta
-          // estadoPagoActual='VENCIDO' (no 'PARCIAL', tras el fix A2) pero igual tiene
-          // una parte cobrada. Contar el mes entero sobreestimaría la mora. montoPagado
-          // viene del API (0/ausente en demo). Clamp a ≥0 por si lo conciliado supera
-          // el canon (p.ej. la liq incluye expensas).
-          return { monto: Math.max(0, c.monto - (c.montoPagado ?? 0)), moneda: c.moneda };
+          // Lo que falta cobrar sale de `saldo`, que lo calcula el API (`conSaldo`, lib/saldos.ts) y
+          // ya viene en este mismo objeto. NO se recalcula acá, y por una razón concreta: antes esto
+          // hacía `c.monto - c.montoPagado`, y esas dos cosas NO son de la misma base. `c.monto` es
+          // el canon (sólo alquiler); `montoPagado` es lo conciliado contra la liquidación ENTERA,
+          // que vale alquiler + expensas + la mora del día.
+          //
+          // Con expensas, la resta daba negativo y el clamp la mandaba a CERO: un contrato de
+          // $500.000 + $120.000 de expensas al que le pagaron $500.000 figuraba "Parcial" en la
+          // tabla de abajo y aportaba $0 al Pendiente de arriba. Y el KPI "Cobrado" de al lado sí
+          // usa `montoPagado`, así que los dos números estaban medidos contra bases distintas y no
+          // cerraban — justo el descuadre que el comentario de ese KPI dice haber arreglado.
+          //
+          // El fallback es para el build demo, que no manda `saldo`: ahí se conserva la cuenta
+          // vieja, que sobre datos inventados sin expensas da lo mismo.
+          return { monto: c.saldo ?? Math.max(0, c.monto - (c.montoPagado ?? 0)), moneda: c.moneda };
         }),
     [cobrables],
   );
@@ -678,7 +688,7 @@ export default function PagosPage() {
                 {totalPendiente}
               </p>
               <p className="text-xs text-amber-700/70 dark:text-amber-300/70">
-                Suma de alquileres no cobrados todavía
+                Lo que falta cobrar: alquiler, expensas y mora
               </p>
             </CardContent>
           </Card>
