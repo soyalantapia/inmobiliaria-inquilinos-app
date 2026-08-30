@@ -67,6 +67,41 @@ export async function montoCobradoRendiblePorLiquidacion(liqIds: string[]): Prom
 }
 
 /**
+ * Cuánto se pagó de cada liquidación **hasta su vencimiento** — la base de la mora (T-57).
+ *
+ * Distinto de `montoPagadoPorLiquidacion`, que suma TODO lo conciliado sin mirar cuándo entró.
+ * Acá sólo cuenta lo que llegó en fecha, porque es lo único que reduce el capital sobre el que
+ * corren los punitorios: lo pagado tarde no borra mora ya devengada (ver `BaseMora`).
+ *
+ * `fechaTransferencia` y no `decididoAt`: importa cuándo el inquilino movió la plata, no cuándo
+ * la inmobiliaria llegó a validarla. Si valida tres días tarde, la demora es de ella.
+ *
+ * Se resuelve con una query por liquidación agrupada en memoria en vez de un `groupBy`, porque
+ * el corte —`fechaTransferencia <= fechaVencimiento`— es POR FILA: cada liquidación tiene su
+ * propio vencimiento, y eso un `groupBy` de Prisma no lo expresa.
+ */
+export async function pagadoAlVencimientoPorLiquidacion(
+  liqs: { id: string; fechaVencimiento: Date | string }[],
+): Promise<Map<string, number>> {
+  if (liqs.length === 0) return new Map();
+  const pagos = await prisma.pago.findMany({
+    where: { liquidacionId: { in: liqs.map((l) => l.id) }, estado: 'CONCILIADO' },
+    select: { liquidacionId: true, monto: true, fechaTransferencia: true },
+  });
+  const vencePorLiq = new Map(liqs.map((l) => [l.id, new Date(l.fechaVencimiento).getTime()]));
+  const out = new Map<string, number>();
+  for (const p of pagos) {
+    const venc = vencePorLiq.get(p.liquidacionId);
+    if (venc == null) continue;
+    // El vencimiento se guarda como medianoche UTC del día civil: un pago hecho ESE día cuenta
+    // como en fecha, así que el corte es el final del día, no su comienzo.
+    if (new Date(p.fechaTransferencia).getTime() > venc + 86_400_000 - 1) continue;
+    out.set(p.liquidacionId, (out.get(p.liquidacionId) ?? 0) + Number(p.monto));
+  }
+  return out;
+}
+
+/**
  * Decora una liquidación con `montoPagado` (suma de conciliados), `montoPunitorio`
  * (mora al día, calculada por el caller) y `saldo` (total exigible − pagado, nunca
  * negativo). `pagadoMap` sale de montoPagadoPorLiquidacion.

@@ -136,6 +136,48 @@ function diasAtraso(fechaVencimiento: Date | string, asOf: Date): number {
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
 /**
+ * La base sobre la que corre la mora de una liquidación (T-57).
+ *
+ * NO es el `montoTotal` pelado, y ésa es toda la corrección. Antes se pasaba un `number` y
+ * siempre era el total bruto, así que **un pago parcial no frenaba la mora**: una cuota de
+ * $600.000 en la que el inquilino pagó $599.000 EL MISMO DÍA DEL VENCIMIENTO seguía devengando
+ * punitorios sobre los $600.000 completos. A 30 días con 0,15% diario eran **$27.000 de mora
+ * por deber $1.000** — sobre el saldo real serían $450. Y ese total inflado es lo que ve el
+ * inquilino en la PWA, lo que topea `POST /pagos/informar` y lo que muestra el panel.
+ *
+ * REGLA ELEGIDA (opción (a), decisión del dueño el 21/08): se descuenta **sólo lo que entró en
+ * fecha**. Lo pagado hasta el vencimiento reduce el capital sobre el que corre toda la mora; lo
+ * pagado TARDE no la borra retroactivamente.
+ *
+ * Por qué no se descuenta todo lo pagado: haría que pagar tarde reduzca punitorios ya
+ * devengados, y al inquilino le convendría pagar tarde y de a poco. Y por qué no se hace por
+ * tramos (5 días sobre 600.000 + 25 sobre 100.000): es lo que haría un contador, pero es un
+ * cambio de fondo en el corazón del cobro. Queda anotado en T-57 como la opción (b).
+ *
+ * Es un objeto y no dos parámetros a propósito: obliga a cada call site a decir explícitamente
+ * cuánto se pagó en fecha. Con un parámetro opcional, el que no lo pasara seguiría con el
+ * comportamiento viejo y quedarían **moras distintas según qué endpoint las calcule** — que es
+ * peor que el bug.
+ */
+export interface BaseMora {
+  /** `Liquidacion.montoTotal`: alquiler + expensas, sin mora. */
+  total: number;
+  /**
+   * Σ de los pagos CONCILIADOS cuya `fechaTransferencia` es anterior o igual al vencimiento.
+   *
+   * `fechaTransferencia` y no `decididoAt`: lo que importa es cuándo el inquilino movió la
+   * plata, no cuándo la inmobiliaria llegó a validarla. Si valida tres días tarde, la demora
+   * es de ella y no puede costarle mora a él.
+   */
+  pagadoAlVencimiento: number;
+}
+
+/** El capital sobre el que corre la mora: lo que se debía, menos lo que entró en fecha. */
+export function capitalConMora(base: BaseMora): number {
+  return Math.max(0, base.total - Math.max(0, base.pagadoAlVencimiento));
+}
+
+/**
  * Mora de UNA liquidación según el esquema, a la fecha `asOf`.
  *
  * `manual` (Liquidacion.montoPunitorioManual) PISA el cálculo: es la mora
@@ -144,25 +186,26 @@ const r2 = (n: number) => Math.round(n * 100) / 100;
  * condonar la mora de un período puntual sin tocar el esquema).
  */
 export function calcularMora(
-  base: number,
+  base: BaseMora,
   esquema: EsquemaMora,
   fechaVencimiento: Date | string,
   asOf: Date,
   manual?: number | null,
 ): number {
   if (manual != null) return r2(Math.max(0, Number(manual)));
-  if (base <= 0 || esquema.tipo === 'SIN_MORA' || !esquema.valor || esquema.valor <= 0) return 0;
+  const capital = capitalConMora(base);
+  if (capital <= 0 || esquema.tipo === 'SIN_MORA' || !esquema.valor || esquema.valor <= 0) return 0;
   const dias = diasAtraso(fechaVencimiento, asOf);
   if (dias === 0) return 0;
   switch (esquema.tipo) {
     case 'PORCENTAJE_DIARIO':
-      return r2(base * (esquema.valor / 100) * dias);
+      return r2(capital * (esquema.valor / 100) * dias);
     case 'MONTO_FIJO':
       // Meses INICIADOS (día 1-30 de atraso = 1 mes, 31-60 = 2…): así el fijo
       // "acumula" como lo describió el piloto ($5k → $10k → $15k).
       return r2(esquema.valor * Math.ceil(dias / 30));
     case 'PORCENTAJE_MENSUAL':
-      return r2(base * (esquema.valor / 100) * (dias / 30));
+      return r2(capital * (esquema.valor / 100) * (dias / 30));
     default:
       return 0;
   }
