@@ -65,6 +65,12 @@ export const HIJOS_EN_ORDEN = [
   'comprobante',
   'pago',
   'cargoPagado',
+  // Sube acá con T-28-N1-N1: `MovimientoCaja.cargoId` apunta a `CargoContrato`, así que tiene
+  // que irse ANTES que él. La FK es `onDelete: SetNull`, o sea que borrar al revés no reventaría
+  // —dejaría el puntero en null—, pero el orden se mantiene estricto a propósito: el día que
+  // alguna FK nueva sí sea Restrict, el invariante ya está bien y no hay que descubrirlo con
+  // un borrado que falla a mitad de camino.
+  'movimientoCaja',
   'cargoContrato',
   // Ahora los apuntados.
   'liquidacion',
@@ -79,7 +85,6 @@ export const HIJOS_EN_ORDEN = [
   'screening',
   'eventoContrato',
   'intencionRenovacion',
-  'movimientoCaja',
   'movimientoFeed',
   'documentoContrato',
   'inquilinoInvitado',

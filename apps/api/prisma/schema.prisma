@@ -1649,7 +1649,10 @@ model CargoContrato {
   @@index([inmobiliariaId])
   @@index([contratoId])
   @@map("cargos_contrato")
+  /// Los movimientos de caja que nacieron de cobrar este cargo (T-28-N1-N1).
+  movimientos    MovimientoCaja[]
 }
+
 
 // Ajuste del monto del alquiler (manual-asistido): el operador confirma el nuevo canon y
 // desde qué período aplica. Registra el historial (antes/después) y actualiza las cuotas
@@ -1951,9 +1954,36 @@ model MovimientoCaja {
   // NUNCA se le descuenta a un propietario. Es correcto: es un gasto de la
   // inmobiliaria, no de la propiedad de nadie. Sí entra al cierre de caja del día.
   propiedadId           String?
-  propiedad             Propiedad?         @relation(fields: [propiedadId], references: [id])
+  /// `onDelete: Restrict` EXPLÍCITO, y no es cosmético.
+  ///
+  /// La migración inicial creó esta FK con `ON DELETE RESTRICT`, pero el schema no lo declaraba
+  /// — y para una relación opcional el default de Prisma es `SetNull`. O sea que había DERIVA
+  /// silenciosa entre el schema y la base, y la primera migración que tocara esta tabla la iba a
+  /// "arreglar" sola, cambiando el borrado sin que nadie lo pidiera.
+  ///
+  /// No es cosmético porque toca plata: la rendición filtra los gastos por
+  /// `propiedadId IN propIdsConIngreso`, así que un movimiento al que se le anule la propiedad
+  /// **deja de descontársele a su propietario**, en silencio. Se declara la conducta que la base
+  /// ya tenía.
+  propiedad             Propiedad?         @relation(fields: [propiedadId], references: [id], onDelete: Restrict)
   contratoId            String?
   contrato              Contrato?          @relation(fields: [contratoId], references: [id])
+  /// T-28-N1-N1 · De qué cargo del inquilino salió este INGRESO_EXTRA.
+  ///
+  /// Antes el vínculo era el TEXTO: `descobrar` buscaba el movimiento por descripción + monto +
+  /// moneda + contrato y se quedaba con el más reciente. Con dos cargos gemelos —mismo concepto,
+  /// mismo importe, cosa habitual en expensas o en una reparación repetida— podía borrar el que
+  /// no era. Mientras ninguno se rindió no se nota, porque los dos ingresos son fungibles; dejan
+  /// de serlo apenas UNO se rinde: ahí tienen historias distintas y las cuentas dejan de cerrar.
+  ///
+  /// `onDelete: SetNull` y no `Restrict`: `imputar-reclamo.ts` borra los cargos no saldados al
+  /// reimputar, y una FK que frena ese borrado es el mismo bug que este repo ya pagó con la FK de
+  /// `Persona` y con la del OTP. Perder el puntero es aceptable; frenar una operación legítima no.
+  ///
+  /// Nullable a propósito: los movimientos anteriores a esta migración no lo tienen, y
+  /// `descobrar` mantiene el camino viejo como respaldo para ellos.
+  cargoId               String?
+  cargo                 CargoContrato?     @relation(fields: [cargoId], references: [id], onDelete: SetNull)
   tipo                  TipoMovimientoCaja
   categoria             CategoriaGasto
   // Cuenta de caja (de dónde sale / a dónde entra la plata): MP Gaspar, efectivo,
