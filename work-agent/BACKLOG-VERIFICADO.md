@@ -188,6 +188,30 @@ acordado: **la fecha de vigencia no**, y la dirección tampoco.
 **Solución.** Relevar campo por campo qué se puede editar hoy y cerrar la brecha contra la lista de
 Camila — probablemente falte poco. Y que la capacidad sea **de la administradora**, no de todos.
 
+### ✅ Relevamiento hecho → `work-agent/T-11-QUE-SE-PUEDE-EDITAR.md`
+
+**El ticket describe un bloqueo que no existe.** Ningún endpoint de edición se niega a trabajar
+porque el contrato tenga pagos: todos editan igual y lo que hacen es proteger las cuotas que ya
+tienen plata, dejándolas con su monto histórico. Los dos datos que Camila pidió —teléfono del
+inquilino y garante— **ya se editan hoy**, y CARGA puede hacerlo.
+
+Lo que sí encontró el relevamiento, y es lo que se arregla acá:
+
+- 🔴 **`PATCH /contratos/:id/inquilino-contacto` no cortaba a CARGA**, y desde T-45 escribe
+  `Inquilino.email`, que es el **login** del inquilino (el OTP viaja ahí). Un rol cuyo trabajo
+  espera aprobación podía reapuntar el acceso a la app de cualquier inquilino, sin aprobación y
+  sin rastro. Los cuatro endpoints vecinos de edición sí cortan; el gemelo del lado del
+  propietario ya estaba cerrado. **Arreglado + test de comportamiento + test estructural** que
+  obliga al próximo endpoint de edición a decidir explícitamente qué hace con CARGA.
+- **Hay nueve datos que no tienen endpoint de edición por ningún camino** —ni con pagos ni sin
+  pagos—: propiedad, inquilino titular, `fechaInicio`, moneda, **índice de ajuste**, frecuencia
+  de ajuste, comisión, sociedad y penalidad. Ahí sí hay que rehacer el contrato: **esa es la
+  rescisión falsa**. El más probable de los nueve es el índice.
+
+**Queda abierto** (tickets sugeridos, con su detalle en el relevamiento): T-11-a editar índice y
+frecuencia de ajuste *(necesita una decisión de producto: ¿recalcula hacia atrás o rige desde el
+próximo?)*, T-11-b cambiar la propiedad, T-11-c corregir `fechaInicio`.
+
 ---
 
 ## T-13 · Cuentas de caja: que se entiendan

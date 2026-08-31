@@ -224,6 +224,11 @@ modo demo (localStorage) sin tocar la API.
 - ⚠️ **`prisma generate` falla con EPERM** si el dev server tiene tomado el motor. Bajalo primero.
 - ⚠️ **La suite con base tarda ~15 minutos** en local y corre en serie a propósito: todas siembran
   la misma base.
+- 🔴 **No toques el fuente mientras la suite larga corre en segundo plano.** Son 15 minutos de
+  tentación para "ir adelantando", y vitest lee cada archivo cuando le toca: los que se colecten
+  después de tu edición corren contra un código distinto del que se colectó al principio. El
+  resultado no es rojo, es **peor: es verde y no significa nada**. Si editaste, matá la corrida y
+  volvé a lanzarla. Aprovechá esos minutos para el backlog, el PR o la documentación.
 
 ### Cómo NO mentirte a vos mismo
 
@@ -237,6 +242,13 @@ modo demo (localStorage) sin tocar la API.
   código de salida solo.
 - ⚠️ **Un patrón vacío en un grep matchea todo.** Si tu búsqueda "encontró" un número redondo y
   enorme, verificá que el patrón no salga vacío.
+- ⚠️ **Un test estructural que no encuentra nada pasa en verde.** Si escribís un test que escanea
+  el fuente, la PRIMERA aserción tiene que ser que el parser encontró algo (`length >= N`, y que
+  la lista contenga dos nombres que sabés que están). Sin eso, un cambio de forma en el código lo
+  convierte en un test que mide cero y no avisa. Ya pasó acá con `metricas-moneda.test.ts`.
+- ⚠️ **Probá el control negativo DONDE el control manda.** Neutralizar el guard de un endpoint que
+  tu test declara como excepción no prueba nada: va a seguir verde y vas a creer que lo probaste.
+  Rompé el caso que el test sí gobierna.
 - ⚠️ **El CI reporta, no frena.** `main` no tiene branch protection. Un rojo no impide nada: mirarlo
   es tu trabajo, no del sistema.
 
