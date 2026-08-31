@@ -909,7 +909,7 @@ function MovimientoRow({ mov }: { mov: Movimiento }) {
 // SELECTOR DE MODO DEMO
 // ============================================================
 // Toggle visible para alternar entre los dos estados durante la presentación:
-//   - "Atrasado": el inquilino tiene un pago vencido (PaymentHero rojo)
+//   - "Atrasado": el inquilino tiene un pago vencido (la tarjeta roja del home)
 //   - "Al día": no tiene pagos pendientes (AlDiaHero verde)
 //
 // Está marcado claramente como "Demo" para que en una versión real se pueda
