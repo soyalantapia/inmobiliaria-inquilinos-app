@@ -58,7 +58,11 @@ function handlersDeEdicion(src: string): { ruta: string; cuerpo: string }[] {
         if (prof === 0) break;
       }
     }
-    salida.push({ ruta: m[1].trim(), cuerpo: src.slice(inicio, i) });
+    // `m[1]` es `string | undefined` con noUncheckedIndexedAccess, aunque el grupo sea
+    // obligatorio en el patrón. Si alguna vez no viniera, es que el regex cambió: que se note
+    // en la primera aserción (el conteo de handlers) y no acá con un crash.
+    const ruta = m[1];
+    if (ruta) salida.push({ ruta: ruta.trim(), cuerpo: src.slice(inicio, i) });
   }
   return salida;
 }

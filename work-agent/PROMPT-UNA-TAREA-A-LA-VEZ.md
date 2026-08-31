@@ -249,6 +249,14 @@ modo demo (localStorage) sin tocar la API.
 - ⚠️ **Probá el control negativo DONDE el control manda.** Neutralizar el guard de un endpoint que
   tu test declara como excepción no prueba nada: va a seguir verde y vas a creer que lo probaste.
   Rompé el caso que el test sí gobierna.
+- 🔴 **Corré el typecheck DESPUÉS del último archivo que tocaste, no antes.** Pasó: `tsc` en verde
+  a las 11:55, el último test escrito a las 12:10, PR abierto citando ese verde — y el CI lo tiró
+  abajo con un `TS2532` de ese archivo. El verde no era falso, era **viejo**. Vale para las dos
+  suites igual. Antes de escribir "verificado" en un PR, mirá que la corrida que estás citando sea
+  posterior a tu última edición.
+- ⚠️ **`noUncheckedIndexedAccess` está prendido.** `m[1]` de un `regex.exec`, `arr[0]`, y
+  `map.get()` son `T | undefined` aunque "obviamente" existan. En un test recién escrito es el
+  error más probable, y **vitest no lo ve**: el test corre en verde y el typecheck se cae aparte.
 - ⚠️ **El CI reporta, no frena.** `main` no tiene branch protection. Un rojo no impide nada: mirarlo
   es tu trabajo, no del sistema.
 
