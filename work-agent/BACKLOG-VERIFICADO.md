@@ -71,23 +71,34 @@ rechaza, o se registra como ajuste del día en curso?
 
 ---
 
-## T-21-N3-N1 · La capacidad #1 del MVP no está construida
+## T-21-N3-N1 · Las cuatro capacidades del brief: qué se hace con ellas — ◑ reencuadrada
 
-**Objetivo.** Cerrar la contradicción entre lo que el documento fundacional promete y lo que el
-producto hace.
+**Objetivo.** Decidir el roadmap de las cuatro capacidades del brief de mayo.
 
-**Problema.** `CLAUDE.md` §1 lista **"Carga de contrato con IA"** como la primera de las cuatro
-capacidades **no negociables** del MVP, y §5.1 la describe con endpoint, flujo, prompt y tests.
-**No existe**, verificado por tres caminos independientes: no hay endpoint `/contratos/parse`, el
-SDK de Anthropic no está en ninguna dependencia, y `ANTHROPIC_*` no se lee en ningún archivo de
-`apps/api/src`.
+**Lo que la ficha decía, y ya no es cierto.** Decía que `CLAUDE.md` promete la carga de contrato
+con IA como capacidad **no negociable** y el producto no la hace — o sea, que el documento
+fundacional mentía. **Verificado el 31/08: esa mitad ya está resuelta.** `CLAUDE.md` §1.2 se
+reescribió el 19/08 y hoy dice, textual:
 
-Lo que sí hay para cargar contratos: el wizard manual y la importación de cartera desde Excel/CSV
-— determinística, sin IA, y que funciona.
+> *"Estas son las que este documento llamó «no-negociables». **Ninguna está construida como está
+> escrita.**"*
 
-**Solución.** Es **decisión de producto, no tarea técnica**: o se construye, o se saca de la lista
-de capacidades no negociables. Mientras no se decida, el documento que define el MVP promete algo
-que el producto no hace — y eso contamina cualquier conversación de alcance.
+…con una tabla del estado real de cada una. **El documento ya no promete nada que el producto no
+haga.**
+
+**Lo que sigue abierto** —y verificado hoy por los tres caminos: sin endpoint `/contratos/parse`,
+sin SDK de ningún LLM en las dependencias, sin `ANTHROPIC_*` en el código— es **la decisión de
+roadmap**, y no es sólo la #1:
+
+| Capacidad | Estado real |
+|---|---|
+| 1 · Carga de contrato con IA | no existe. En su lugar: wizard manual + importación de cartera, las dos en producción |
+| 2 · Pago unificado con Mercado Pago | **el resultado sí, el medio no**: una pantalla y un botón, pero se cobra por transferencia con validación humana |
+| 3 · Chat con el contrato (RAG) | no existe. La tabla de mensajes está y nadie la escribe |
+| 4 · Screening crediticio | cáscara: el informe sale de un PRNG. *(El endpoint ya devuelve 501, no inventa más.)* |
+
+**Solución.** Es **decisión de producto**, y la pregunta está en `PARA-ALAN.md`. Ninguna de las
+cuatro es trabajo que un agente pueda tomar sin esa respuesta.
 
 ---
 
