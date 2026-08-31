@@ -101,6 +101,10 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
   const { me, isError: meError } = useMe();
   const rolActual: Rol = apiEnabled ? normalizarRol(me?.rol, 'LECTURA') : 'ADMIN';
   const puedeCargarDeuda = meError || rolActual === 'ADMIN' || rolActual === 'OPERADOR';
+  // El reparto define A QUIÉN SE LE RINDE LA PLATA, y el PUT corta a CARGA (core.ts). Mismo
+  // criterio que la línea de arriba: con /auth/me caído no recortamos en silencio, porque el
+  // 403 del server sigue siendo la frontera real.
+  const puedeEditarReparto = meError || rolActual !== 'CARGA';
 
   // En build demo el mock es síncrono: si no existe el id → 404 real de Next.
   if (!deApi && noEncontrada) notFound();
@@ -593,7 +597,10 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                           ) : (
                             <Badge variant="warning">Suma {validacion.suma}% — falta ajustar</Badge>
                           )}
-                          {apiEnabled && (
+                          {/* El reparto define A QUIEN SE LE RINDE LA PLATA, y el PUT corta a
+                              CARGA (core.ts). Sin este gate, el rol veia el boton, abria el
+                              dialogo, armaba el reparto nuevo y recien ahi comia un 403. */}
+                          {apiEnabled && puedeEditarReparto && (
                             <Button variant="outline" size="sm" onClick={() => setEditarRepartoOpen(true)}>
                               <Users className="h-3.5 w-3.5" />
                               Editar reparto
