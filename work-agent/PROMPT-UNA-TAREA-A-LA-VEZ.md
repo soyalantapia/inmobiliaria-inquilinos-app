@@ -237,6 +237,15 @@ modo demo (localStorage) sin tocar la API.
   código de salida solo.
 - ⚠️ **Un patrón vacío en un grep matchea todo.** Si tu búsqueda "encontró" un número redondo y
   enorme, verificá que el patrón no salga vacío.
+- 🔴 **No edites un `migration.sql` ya aplicado, ni para arreglarle un comentario.** Prisma guarda
+  el checksum de cada migración aplicada: cambiar un solo carácter hace que el próximo
+  `migrate deploy` falle con *"migration was modified after it was applied"*, y como la imagen de
+  la API arranca con `pnpm db:deploy && exec node dist/index.js`, eso **rompe todos los deploys**.
+  Si el comentario quedó mintiendo, la corrección va en otro lado.
+- ⚠️ **Una advertencia del backlog puede haber caducado sola.** "La migración está sin aplicar,
+  cuanto antes" dejó de ser cierto el día que se migró a Render, y nadie fue a tacharlo. Antes de
+  actuar sobre una urgencia escrita, verificá que siga siendo urgencia — y si no podés verificarla
+  de primera mano, decí de dónde sale la conclusión.
 - ⚠️ **El CI reporta, no frena.** `main` no tiene branch protection. Un rojo no impide nada: mirarlo
   es tu trabajo, no del sistema.
 
