@@ -8,7 +8,7 @@ import { useEventos } from '@/lib/api/use-eventos';
 import { TIPO_LABEL, TIPO_VARIANT } from '@/lib/auditoria-labels';
 
 export default function AuditoriaPage() {
-  const { eventos, cargando, deApi } = useEventos();
+  const { eventos, cargando, deApi, error } = useEventos();
 
   return (
     <>
@@ -24,8 +24,11 @@ export default function AuditoriaPage() {
         ) : eventos.length === 0 ? (
           <Card>
             <CardContent className="p-10 text-center text-sm text-muted-foreground">
-              Todavía no hay eventos registrados. Aparecen acá a medida que tu equipo concilia pagos,
-              rinde a propietarios, aprueba contratos o cambia el equipo.
+              {/* "Todavía no hay eventos" es una AFIRMACIÓN sobre lo que hizo el equipo, y con la
+                  consulta caída era falsa: el admin concluía que nadie tocó nada. */}
+              {error
+                ? 'No pudimos traer el historial. No quiere decir que no haya movimientos: volvé a cargar la página.'
+                : 'Todavía no hay eventos registrados. Aparecen acá a medida que tu equipo concilia pagos, rinde a propietarios, aprueba contratos o cambia el equipo.'}
             </CardContent>
           </Card>
         ) : (

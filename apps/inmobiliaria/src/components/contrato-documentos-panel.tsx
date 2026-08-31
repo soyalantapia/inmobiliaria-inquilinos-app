@@ -136,7 +136,7 @@ function gruposParaContrato(garantesCount: number): GrupoUI[] {
 
 export function ContratoDocumentosPanel({ contrato, propietarios }: Props) {
   // Documentos REALES vía API en prod (CRUD + Volume); localStorage en demo.
-  const { docs, hidratado, subir, eliminar: eliminarDoc } = useDocsContrato(contrato.id);
+  const { docs, hidratado, error: errorDocs, subir, eliminar: eliminarDoc } = useDocsContrato(contrato.id);
   const [grupoActivo, setGrupoActivo] = useState<GrupoUI | null>(null);
   const [tipoElegido, setTipoElegido] = useState<TipoDocContrato>('DNI_TITULAR_FRENTE');
   const [garantesCount, setGarantesCount] = useState(1);
@@ -283,6 +283,18 @@ export function ContratoDocumentosPanel({ contrato, propietarios }: Props) {
   }, [contrato, propietarios]);
 
   if (!hidratado) return null;
+  // "Documentos cargados: 0 de 6" es una AFIRMACIÓN sobre el expediente. Con el GET caído, el
+  // `catch { setDocs([]) }` mudo la imprimía sobre un contrato que TIENE el contrato firmado y
+  // el DNI subidos: el operador le pedía al inquilino papeles que ya había entregado, o los
+  // volvía a subir duplicados.
+  if (errorDocs) {
+    return (
+      <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+        No pudimos traer los documentos de este contrato. <strong>No quiere decir que falten</strong>:
+        volvé a cargar la página antes de pedírselos de nuevo al inquilino.
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">

@@ -260,6 +260,8 @@ function mapAprobacion(a: AprobacionApi): Aprobacion {
 export function useAprobaciones(opts?: { enabled?: boolean }): {
   aprobaciones: Aprobacion[];
   cargando: boolean;
+  /** `true` cuando la consulta falló: la lista vacía NO significa "no hay pendientes". */
+  error?: boolean;
   aprobarApi: (id: string, pin: string, comentario?: string) => Promise<Aprobacion>;
   rechazarApi: (id: string, pin: string, motivo: string) => Promise<Aprobacion>;
 } {
@@ -294,10 +296,16 @@ export function useAprobaciones(opts?: { enabled?: boolean }): {
     };
   }
   // Prod con API caída: vacío, nunca seeds (montos/autores fabricados).
+  //
+  // Pero devolver la lista vacía SIN decir que fue por un error hacía que la bandeja afirmara
+  // "Sin pendientes. Buen trabajo." — una afirmación inventada, que es justo lo que este bloque
+  // quería evitar al no sembrar datos. El admin cerraba el panel convencido de estar al día
+  // mientras un gasto esperaba el visto.
   if (q.isError) {
     return {
       aprobaciones: [],
       cargando: false,
+      error: true,
       aprobarApi: async () => { throw new Error('Sin conexión con el servidor'); },
       rechazarApi: async () => { throw new Error('Sin conexión con el servidor'); },
     };
@@ -306,6 +314,7 @@ export function useAprobaciones(opts?: { enabled?: boolean }): {
   return {
     aprobaciones: q.data ?? [],
     cargando: q.isPending,
+    error: false,
     aprobarApi: async (id, pin, comentario) => {
       const r = await apiFetch<AprobacionApi>(`/aprobaciones/${id}/aprobar`, {
         method: 'POST',

@@ -69,12 +69,16 @@ export interface NuevoDocInput {
 export function useDocsContrato(contratoId: string): {
   docs: DocContrato[];
   hidratado: boolean;
+  /** `true` si la consulta falló: "0 documentos" NO significa expediente vacío. */
+  error?: boolean;
   deApi: boolean;
   subir: (input: NuevoDocInput) => Promise<void>;
   eliminar: (doc: DocContrato) => Promise<void>;
 } {
   const [docs, setDocs] = useState<DocContrato[]>([]);
   const [hidratado, setHidratado] = useState(false);
+  /** `true` si la consulta fallo: "0 documentos" NO significa que el expediente este vacio. */
+  const [error, setError] = useState(false);
 
   const recargar = useCallback(async () => {
     if (!apiEnabled) {
@@ -85,8 +89,14 @@ export function useDocsContrato(contratoId: string): {
     try {
       const filas = await apiFetch<DocApi[]>(`/contratos/${contratoId}/documentos`);
       setDocs(filas.map(mapDoc));
+      setError(false);
     } catch {
+      // El `catch { setDocs([]) }` mudo hacía que el panel imprimiera "Documentos cargados:
+      // 0 de 6 requeridos" con badge 0% sobre un expediente que TIENE el contrato firmado y el
+      // DNI subidos. El operador le pedía al inquilino papeles que ya había entregado, o los
+      // volvía a subir duplicados.
       setDocs([]);
+      setError(true);
     } finally {
       setHidratado(true);
     }
@@ -149,5 +159,5 @@ export function useDocsContrato(contratoId: string): {
     [contratoId, recargar],
   );
 
-  return { docs, hidratado, deApi: apiEnabled, subir, eliminar };
+  return { docs, hidratado, error, deApi: apiEnabled, subir, eliminar };
 }
