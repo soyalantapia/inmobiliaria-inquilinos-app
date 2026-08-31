@@ -11,10 +11,12 @@ import { ResolverDepositoDialog } from '@/components/resolver-deposito-dialog';
 import { Topbar } from '@/components/topbar';
 import { useDepositosEnCustodia, type DepositoContrato } from '@/lib/api/use-depositos';
 import { formatFechaCorta, formatMonto } from '@/lib/format';
+import { usePuede } from '@/lib/use-puede';
 
 export default function DepositosPage() {
   const { data, cargando, disponible, error, resolver } = useDepositosEnCustodia();
   const [resolviendo, setResolviendo] = useState<DepositoContrato | null>(null);
+  const puedeResolver = usePuede('deposito.devolver');
 
   return (
     <>
@@ -111,7 +113,12 @@ export default function DepositosPage() {
                           <div className="flex items-center justify-end gap-1">
                             {/* Solo se resuelve el depósito de un contrato TERMINADO (el de
                                 un contrato ACTIVO sigue en custodia hasta que el inquilino se va). */}
-                            {c.estadoContrato !== 'ACTIVO' ? (
+                            {/* `deposito.devolver` es SÓLO ADMIN, y esta pantalla la abre
+                                `contratos.ver` = los cinco roles. Un CAJA apretaba "Resolver",
+                                elegía DEVOLVER, escribía el motivo, confirmaba → 403. Es plata
+                                de un tercero: quien la maneja concluye que el sistema está roto
+                                y la resuelve por afuera. */}
+                            {c.estadoContrato !== 'ACTIVO' && puedeResolver ? (
                               <Button size="sm" variant="outline" onClick={() => setResolviendo(c)}>
                                 Resolver
                               </Button>
