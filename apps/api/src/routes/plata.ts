@@ -1136,7 +1136,18 @@ export async function plataRoutes(app: FastifyInstance) {
   // salida (nada en toda la API limpiaba `saldadoAt`). Vuelve a ser deuda del inquilino:
   // reaparece en /mis-cargos y en el total adeudado.
   app.post('/cargos/:id/descobrar', async (request, reply) => {
-    const u = await requireUsuario(request, reply, 'pago.conciliar');
+    // `pago.revertir` (ADMIN) — NO `pago.conciliar`, que incluye a CAJA.
+    //
+    // Es el MISMO razonamiento que ya está escrito en `POST /pagos/:id/anular`, unas 500
+    // líneas más arriba: deshacer un cobro registra el evento `PAGO_REVERTIDO`, y la matriz
+    // declara `pago.revertir` como ADMIN. Este handler hace además la segunda mitad —borra el
+    // `MovimientoCaja` que dejó `saldar`—, y esa acción es `caja.eliminar`, también ADMIN.
+    //
+    // `descobrar` nació después y por otro camino (destrabar el 409 de `imputarCostoReclamo`),
+    // y heredó el gate de su ACCIÓN DIRECTA (`saldar`, que sí es `pago.conciliar`) en vez del
+    // de su INVERSA. Deshacer nunca pesa lo mismo que hacer: `saldar` cobra una deuda que
+    // existe; `descobrar` la resucita y borra el ingreso que la respaldaba.
+    const u = await requireUsuario(request, reply, 'pago.revertir');
     if (!u) return;
     const { id } = request.params as { id: string };
     const cargo = await prisma.cargoContrato.findFirst({
