@@ -139,7 +139,10 @@ function generarFila(seed: number, idx: number): FilaMigracion {
   const propietario = pick(PROPIETARIOS, r);
   const dni = `${20 + Math.floor(r() * 25)}.${100 + Math.floor(r() * 800)}.${100 + Math.floor(r() * 800)}`;
   const tel = `+54 9 11 ${4000 + Math.floor(r() * 5000)} ${1000 + Math.floor(r() * 9000)}`;
-  const email = inquilino.toLowerCase().replace(/[^a-z]/g, '') + '@gmail.com';
+  // `example.com` está reservado por la RFC 2606 justamente para esto. Con `@gmail.com` un
+  // nombre argentino común genera una casilla que EXISTE y es de otra persona — y esta demo
+  // está publicada.
+  const email = inquilino.toLowerCase().replace(/[^a-z]/g, '') + '@example.com';
 
   // Fecha inicio: entre 12 y 30 meses atrás
   const ahora = new Date();

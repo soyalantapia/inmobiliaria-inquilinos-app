@@ -51,11 +51,11 @@ export const SESION_DEMO: SesionPropietario = {
 
 export const CARTERA_DEMO: MiCartera = {
   nombre: 'Silvana Morales',
-  email: 'silvanamorales@gmail.com',
+  email: 'silvanamorales@example.com',
   telefono: '+54 9 11 5432 6789',
   cuit: '27-23456789-3',
   comisionPct: 7,
-  inmobiliaria: { nombre: INMOBILIARIA, telefono: '+54 11 4788 9900', email: 'hola@inmobiliariadelsol.com.ar' },
+  inmobiliaria: { nombre: INMOBILIARIA, telefono: '+54 11 4788 9900', email: 'hola@example.com' },
 };
 
 export const PROPIEDADES_DEMO: PropiedadPortal[] = [
