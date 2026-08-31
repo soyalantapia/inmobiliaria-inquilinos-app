@@ -38,7 +38,7 @@
 | **T-45** el home de la PWA ignoraba el pago informado | usa el mismo helper que el detalle y muestra el faltante |
 | **T-57** la mora sobre el saldo | **hecho y desplegado el 31/08** — PR #66 |
 | **T-58** monto fijo según la moneda | test en `mora-cascada.test.ts:109` |
-| **T-51 (a)** los dominios de correo de la demo publicada | **hecho el 31/08** — PR #72; entraron además dos generadores que la ficha no tenía |
+| **T-51** los dominios de correo de la demo Y del seed | **hecho el 31/08** — PR #72; entraron además dos generadores que la ficha no tenía |
 | **T-72** el candado de archivos | **prendido el 31/08** — `UPLOADS_AMBITO=on` en Render |
 
 Y una que se cierra sin trabajo: **T-23-N3-N2** está marcada **mal diagnosticada** en el propio
@@ -246,16 +246,6 @@ pasada**, porque vive bajo la carpeta de pagos y así nadie discute si cuenta co
 
 ---
 
-## T-51 (b) · Las seis direcciones de terceros que quedan en el seed
-
-**Objetivo.** Cerrar lo que quedó de T-51: el seed. *(La parte publicada se cerró el 31/08 en el PR #72.)*
-
-**Problema.** Ningún email ficticio usa un dominio reservado. Verificado hoy en el seed:
-`@gmail.com`, `@hotmail.com`, `@yahoo.com`, y dominios con pinta de negocio real. Desde el 19/08
-está **publicado en internet**, con nombre y apellido al lado, y algunas de esas direcciones pueden
-ser de personas reales que no tienen nada que ver con el producto.
-
-**Solución.** Pasar todo a `example.com` (RFC 2606). Toca el seed → correr la suite después.
 
 ---
 
@@ -374,7 +364,6 @@ El orden que yo tomaría:
 1. **T-13-N1** (el cierre de caja) y **T-61** (el ajuste anulado): las dos tocan plata, las dos
    tienen diagnóstico cerrado y ninguna necesita relevar nada. **T-61 ni siquiera necesita
    migración.**
-2. **T-34** y **T-51**: baratas, cierran en una pasada cada una y bajan el ruido.
 3. **T-21-N3-N1**: no es código, es una definición tuya — y hasta que no esté, el documento que
    define el MVP promete algo que el producto no hace.
 4. **T-23-N2-N1** y **T-28-N1-N1**: las dos tocan schema, así que conviene juntarlas en una tanda
