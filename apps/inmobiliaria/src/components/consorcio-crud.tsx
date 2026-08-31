@@ -38,6 +38,8 @@ import {
 } from '@/lib/api/use-consorcios';
 import {
   CATEGORIA_MOVIMIENTO_LABEL,
+  ESTADO_UF_LABEL,
+  type EstadoUF,
   type MovimientoConsorcio,
   type UnidadFuncional,
 } from '@/lib/consorcios-storage';
@@ -228,6 +230,12 @@ export function UnidadDialog({
   const [usaFijo, setUsaFijo] = useState(false);
   const [cargoFijo, setCargoFijo] = useState('');
   const [saldoDeudor, setSaldoDeudor] = useState('');
+  // El backend acepta `estado` desde siempre (el zod tiene el enum de cuatro valores y el POST y
+  // el PUT lo persisten). Lo que faltaba era el control: sin él toda unidad nacía y quedaba con
+  // el default AL_DIA de Prisma, y PENDIENTE / VENCIDO / CON_PLAN_PAGO eran inalcanzables en
+  // producción — sólo aparecían en los datos sembrados de la demo, que es lo que hacía que el
+  // defecto fuera invisible mostrando el producto.
+  const [estado, setEstado] = useState<EstadoUF>('AL_DIA');
   const [guardando, setGuardando] = useState(false);
 
   useEffect(() => {
@@ -239,6 +247,7 @@ export function UnidadDialog({
       setUsaFijo(unidad?.cargoFijo !== undefined);
       setCargoFijo(unidad?.cargoFijo !== undefined ? String(unidad.cargoFijo) : '');
       setSaldoDeudor(unidad && unidad.saldoDeudor > 0 ? String(unidad.saldoDeudor) : '');
+      setEstado(unidad?.estado ?? 'AL_DIA');
       setGuardando(false);
     }
   }, [open, unidad]);
@@ -266,6 +275,7 @@ export function UnidadDialog({
       telefono: unidad ? telefono.trim() : telefono.trim() || undefined,
       coeficiente: coefNum,
       cargoFijo: usaFijo ? Math.round(parseFloat(cargoFijo)) : null,
+      estado,
       ...(unidad
         ? { saldoDeudor: saldoDeudor ? Math.round(parseFloat(saldoDeudor)) : 0 }
         : saldoDeudor
@@ -388,6 +398,26 @@ export function UnidadDialog({
               onChange={setSaldoDeudor}
               placeholder="0"
             />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="uf-estado">Estado de la unidad</Label>
+            <select
+              id="uf-estado"
+              value={estado}
+              onChange={(e) => setEstado(e.target.value as EstadoUF)}
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              {(Object.keys(ESTADO_UF_LABEL) as EstadoUF[]).map((k) => (
+                <option key={k} value={k}>
+                  {ESTADO_UF_LABEL[k]}
+                </option>
+              ))}
+            </select>
+            <p className="text-[11px] text-muted-foreground">
+              Con saldo deudor cargado, la unidad nunca se muestra “Al día” aunque acá diga eso:
+              el saldo manda. <strong>Plan de pago</strong> es lo único que el saldo no puede
+              decir por sí solo.
+            </p>
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={guardando}>

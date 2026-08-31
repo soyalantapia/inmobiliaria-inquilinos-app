@@ -54,6 +54,7 @@ import {
   ESTADO_UF_LABEL,
   balanceConsorcio,
   morosidadConsorcio,
+  estadoUfVisible,
   type UnidadFuncional,
 } from '@/lib/consorcios-storage';
 import { apiEnabled } from '@/lib/api/client';
@@ -398,8 +399,10 @@ export default function DetalleConsorcioPage() {
                         {u.saldoDeudor > 0 ? formatMonto(u.saldoDeudor) : '—'}
                       </TableCell>
                       <TableCell>
-                        <Badge className={`text-[10px] ${ESTADO_UF_COLOR[u.estado]}`}>
-                          {ESTADO_UF_LABEL[u.estado]}
+                        {/* El saldo manda sobre el rótulo: la fila se contradecía sola,
+                            con el saldo en ámbar y "Al día" en verde al lado. */}
+                        <Badge className={`text-[10px] ${ESTADO_UF_COLOR[estadoUfVisible(u)]}`}>
+                          {ESTADO_UF_LABEL[estadoUfVisible(u)]}
                         </Badge>
                       </TableCell>
                       {apiEnabled && (
