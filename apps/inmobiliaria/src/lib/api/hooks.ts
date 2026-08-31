@@ -30,6 +30,8 @@ import { enriquecerPropiedad, type PropiedadEnriquecida } from '@/lib/propiedade
 import type { DashboardStats } from '@/lib/dashboard-helpers';
 import { parseLocal } from '@/lib/format';
 import { porcionAlquilerCobrada } from '@/lib/alquiler-cobrado';
+import { faltaRendirle } from '@/lib/falta-rendirle';
+import { useRendidosDelPeriodo } from './use-rendiciones';
 import {
   cargarMovimiento as cargarMovimientoLocal,
   eliminarMovimiento as eliminarMovimientoLocal,
@@ -1562,6 +1564,17 @@ export function useDashboard(): DashboardData {
   const { propietarios, cargando: cargOwn } = usePropietarios();
   const { liquidaciones, cargando: cargLiq } = useLiquidaciones();
   const { movimientos: movsCaja, cargando: cargCaja } = useCaja();
+  // El tablero NO consultaba rendiciones, así que "propietarios por rendir" no medía eso:
+  // medía "cuántos dueños tienen alquiler cobrado este mes", y NUNCA bajaba dentro del
+  // período por más rendiciones que se hicieran. La card linkea a
+  // `/propietarios?filtro=sin-rendir`, y esa pantalla SÍ descuenta lo rendido: el operador
+  // hacía click en "3 por rendir" y caía en una lista vacía. Dos pantallas del mismo panel
+  // contradiciéndose sobre plata.
+  //
+  // Efecto colateral que también se arregla: el empty state "Todo al día — no tenés acciones
+  // urgentes" exige `porRendir === 0`, así que en cualquier cuenta que hubiera cobrado algo
+  // ese cartel era inalcanzable PARA SIEMPRE.
+  const { yaRendidos, cargando: cargRend } = useRendidosDelPeriodo(propietarios.map((p) => p.id));
 
   // Excluye PROPIETARIO_DIRECTO igual que dashboard-helpers (demo) y /pagos: esa
   // plata va directo del inquilino al dueño, no la cobra/rinde la inmo. (El path
@@ -1671,7 +1684,9 @@ export function useDashboard(): DashboardData {
   }));
 
   const propietariosSinCbu = propietarios.filter((p) => !p.cbuAlias).length;
-  const porRendir = propietarios.filter((p) => p.totalRecibirMes > 0).length;
+  // Mismo criterio que `/propietarios`, importado del mismo lugar: `totalRecibirMes` vale 0
+  // cuando el dueño cobró en dos monedas, así que ese cero no significa "nada que rendir".
+  const porRendir = propietarios.filter((p) => faltaRendirle(p, yaRendidos.has(p.id))).length;
 
   // Próximos vencimientos: liquidaciones no pagadas que vencen dentro de 14 días.
   const hoy = new Date();
@@ -1699,7 +1714,8 @@ export function useDashboard(): DashboardData {
     proximosVencimientos,
     // Incluye propietarios y liquidaciones: el dashboard deriva comisión/a-rendir y
     // próximos vencimientos de esos datos → sin esto se mostraba antes de tenerlos.
-    cargando: cargC || cargP || cargOwn || cargLiq || cargCaja,
+    // `cargRend` va acá o el contador parpadea ALTO —sin descontar nada— antes de asentarse.
+    cargando: cargC || cargP || cargOwn || cargLiq || cargCaja || cargRend,
     error: errContratos || errProps,
     propiedadesTotal: propiedades.length,
   };
