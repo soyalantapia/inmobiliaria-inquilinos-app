@@ -48,7 +48,7 @@
 
 **9:08 — /servicios.** Subo boletas de luz/gas. Buenas KPIs arriba (Este mes $34.200, Pagaste este año $51.300, Sin pagar 1). Lista de boletas con botones de descarga + delete (🗑️ rojo). El trash está PEGADO al ícono download. Con mi dedo gordo de iPhone podría borrar una boleta que recién subí. Al lado del PAGADAS, no tengo cómo confirmar "ya pagué" para Gas, solo para la sin pagar. Confundible.
 
-**9:12 — Voy a Cuenta.** Me ven en grande: *"Mariela Sosa · Inquilino · Gorriti 4521, 3°B"*. ¿"Inquilino" para una mujer? Pequeño detalle de copy que descuida. Mi teléfono +5491145678900 y email mariela.sosa@gmail.com. Botón "Editar datos". Las secciones "TU HOGAR" están bien organizadas (Mi contrato, Mis documentos, Mi calendario, Co-inquilinos, Profesionales). Pero "Mi contrato → Ver términos" duplica al tab "Contrato" del NavBar — son lo mismo.
+**9:12 — Voy a Cuenta.** Me ven en grande: *"Mariela Sosa · Inquilino · Gorriti 4521, 3°B"*. ¿"Inquilino" para una mujer? Pequeño detalle de copy que descuida. Mi teléfono +5491145678900 y email mariela.sosa@example.com. Botón "Editar datos". Las secciones "TU HOGAR" están bien organizadas (Mi contrato, Mis documentos, Mi calendario, Co-inquilinos, Profesionales). Pero "Mi contrato → Ver términos" duplica al tab "Contrato" del NavBar — son lo mismo.
 
 **9:15 — Cierro la app.** Estado general: **producto bueno con detalles chicos**. El asistente IA, el checkout con CBU change warning, el hint en formularios, el dashboard de pago atrasado — todo eso es first-class. Pero los detalles cosméticos (concordancia género, badges ambiguos, dropzone vs trash, copy técnico) restan profesionalismo. Si arreglan eso, pasa de "está bien" a "está pulida".
 
@@ -192,8 +192,8 @@
 
 ```
 [#M-LOGIN-01] [Mobile/Polish] — Email se rompe feo en "g | mail.com"
-📍 Ubicación:     /login → step OTP → texto "Te lo mandamos a mariela.sosa@gmail.com"
-👀 Qué vi:        El email mariela.sosa@gmail.com se rompe entre la "g" y "mail.com" en 2 líneas (mobile 375px). Queda "mariela.sosa@g" + salto + "mail.com".
+📍 Ubicación:     /login → step OTP → texto "Te lo mandamos a mariela.sosa@example.com"
+👀 Qué vi:        El email mariela.sosa@example.com se rompe entre la "g" y "mail.com" en 2 líneas (mobile 375px). Queda "mariela.sosa@g" + salto + "mail.com".
 😖 Por qué molesta: Visualmente se ve descuidado. Da impresión de que el desarrollo no probó el email más común de Argentina (gmail.com).
 🔥 Severidad:     Media
 🔧 Esfuerzo:      Bajo

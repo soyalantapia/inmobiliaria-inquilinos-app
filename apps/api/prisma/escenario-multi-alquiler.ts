@@ -11,7 +11,7 @@ import { generarLiquidacionesContrato } from '../src/lib/liquidaciones.js';
  * Uso (contra una DB local efímera, NUNCA la remota):
  *   DATABASE_URL=... JWT_SECRET=... npx tsx prisma/escenario-multi-alquiler.ts
  */
-const EMAIL = 'mariela.sosa@gmail.com';
+const EMAIL = 'mariela.sosa@example.com';
 const MONTO_2 = 999_999;
 
 // Este script hace muchos writes de prueba. NUNCA debe poder correr contra

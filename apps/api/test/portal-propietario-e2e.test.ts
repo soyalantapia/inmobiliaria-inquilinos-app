@@ -106,7 +106,7 @@ beforeAll(async () => {
 
   app = await buildApp({ NODE_ENV: 'test', DEMO_MODE: 'true' });
   // own_001 (Eduardo Castro) es el propietario del seed con cartera y rendición.
-  token = await entrarComo('own_001', 'eduardo.castro@gmail.com');
+  token = await entrarComo('own_001', 'eduardo.castro@example.com');
   tokenAjeno = await entrarComo(OTRO_PROP, OTRO_EMAIL);
 }, 420_000);
 
@@ -308,7 +308,7 @@ describe('Portal del propietario — el camino entero, por HTTP', () => {
       expect(res.statusCode).toBe(200);
       const c = res.json();
       expect(c.nombre).toContain('Castro');
-      expect(c.email).toBe('eduardo.castro@gmail.com');
+      expect(c.email).toBe('eduardo.castro@example.com');
       expect(typeof c.comisionPct).toBe('number');
       // El BOOLEANO del CBU, nunca el número: es lo que le explica al dueño por qué no le
       // depositan. Que el CBU mismo no viaje se afirma abajo.
@@ -564,7 +564,7 @@ describe('Portal del propietario — el camino entero, por HTTP', () => {
         kind: 'propietario',
         propietarioId: 'own_001',
         inmobiliariaId: OTRO_TENANT,
-        email: 'eduardo.castro@gmail.com',
+        email: 'eduardo.castro@example.com',
       });
       const res = await app.inject({ method: 'GET', url: '/portal/mi-cartera', headers: auth(falso) });
       expect(res.statusCode).toBe(401);
