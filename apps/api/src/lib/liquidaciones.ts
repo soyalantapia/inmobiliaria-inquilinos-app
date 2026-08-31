@@ -63,11 +63,88 @@ export type VigenciaCanon = { desde: string; montoAnterior: number };
  */
 export function canonDelPeriodo(periodo: string, montoActual: number, vigencias?: VigenciaCanon[]): number {
   if (!vigencias || vigencias.length === 0) return montoActual;
-  let proxima: VigenciaCanon | undefined;
-  for (const v of vigencias) {
-    if (v.desde > periodo && (!proxima || v.desde < proxima.desde)) proxima = v;
-  }
+  const proxima = primeraVigenciaDespuesDe(vigencias, periodo);
   return proxima ? proxima.montoAnterior : montoActual;
+}
+
+/**
+ * La PRIMERA vigencia que empieza estrictamente después de `desde`. Puro.
+ *
+ * Existe separado porque lo usan las DOS puntas del mismo invariante, y tienen que elegir la
+ * misma fila o el arreglo de T-61 no sirve:
+ *
+ *  - la LECTURA (`canonDelPeriodo`): "¿qué canon regía en este período?" → el `montoAnterior`
+ *    de la primera vigencia posterior.
+ *  - la ESCRITURA (`repararVigenciaSiguiente`): "acabo de cambiar el canon en X, ¿a quién le
+ *    quedó viejo su `montoAnterior`?" → exactamente a esa misma primera vigencia posterior.
+ *
+ * `>` y no `>=` a propósito: una vigencia que empieza EN `desde` tiene como `montoAnterior` el
+ * canon de ANTES de `desde`, y un cambio que arranca en `desde` no lo toca.
+ */
+export function primeraVigenciaDespuesDe<T extends { desde: string }>(
+  vigencias: T[],
+  desde: string,
+): T | undefined {
+  let proxima: T | undefined;
+  for (const v of vigencias) {
+    if (v.desde > desde && (!proxima || v.desde < proxima.desde)) proxima = v;
+  }
+  return proxima;
+}
+
+/**
+ * T-61 · Mantiene sano el snapshot `montoAnterior` cuando cambia el canon.
+ *
+ * EL BUG QUE ARREGLA. `montoAnterior` significa *"el canon que regía justo antes de esta
+ * vigencia"*, y se congela cuando la vigencia se crea. El diseño asumía que después nadie
+ * tocaba el canon de los períodos anteriores — y sí se toca, con el flujo más normal que hay:
+ *
+ *   1. 10/08 · se renueva por adelantado a $500.000 desde 2026-12.
+ *      Queda `RenovacionContrato{ montoDesde: '2026-12', montoAnterior: 300.000 }`.
+ *   2. 05/09 · llega el ajuste anual: $380.000 desde 2026-09.
+ *   3. El cron devenga 2026-11: `canonDelPeriodo` busca la primera vigencia posterior —la
+ *      renovación de diciembre— y devuelve su `montoAnterior`: **$300.000**.
+ *
+ * O sea: **el ajuste de septiembre queda anulado para noviembre.** Y el signo importa — acá se
+ * cobra de MENOS, así que no hay un inquilino reclamado de más, pero es plata que la
+ * inmobiliaria no factura, con la comisión (que sale del alquiler) corta en la misma
+ * proporción.
+ *
+ * POR QUÉ SE REPARA AL ESCRIBIR Y NO SE CALCULA AL LEER. El camino de lectura es el del cron,
+ * corre sobre todos los contratos de todos los tenants y hoy no lee nada hacia atrás. Arreglarlo
+ * ahí obligaba a traer el historial completo de canon en cada devengo. Acá el trabajo se hace
+ * una vez, cuando el dato se ensucia, y `canonDelPeriodo` queda intacto.
+ *
+ * SÓLO SE REPARA UNA. Las vigencias posteriores a esa tienen su propio predecesor —el
+ * `montoNuevo` de la que reparamos— y siguen siendo correctas.
+ */
+export async function repararVigenciaSiguiente(
+  tx: TxOrClient,
+  args: { contratoId: string; inmobiliariaId: string; desde: string; canonNuevo: number },
+): Promise<{ tabla: 'ajuste' | 'renovacion'; id: string } | null> {
+  const { contratoId, inmobiliariaId, desde, canonNuevo } = args;
+  const [ajustes, renovaciones] = await Promise.all([
+    tx.ajusteAlquiler.findMany({
+      where: { contratoId, inmobiliariaId, periodoDesde: { gt: desde } },
+      select: { id: true, periodoDesde: true },
+    }),
+    tx.renovacionContrato.findMany({
+      where: { contratoId, inmobiliariaId, montoDesde: { gt: desde } },
+      select: { id: true, montoDesde: true },
+    }),
+  ]);
+  const candidatas = [
+    ...ajustes.map((a) => ({ id: a.id, desde: a.periodoDesde, tabla: 'ajuste' as const })),
+    ...renovaciones.map((r) => ({ id: r.id, desde: r.montoDesde, tabla: 'renovacion' as const })),
+  ];
+  const elegida = primeraVigenciaDespuesDe(candidatas, desde);
+  if (!elegida) return null;
+  if (elegida.tabla === 'ajuste') {
+    await tx.ajusteAlquiler.update({ where: { id: elegida.id }, data: { montoAnterior: canonNuevo } });
+  } else {
+    await tx.renovacionContrato.update({ where: { id: elegida.id }, data: { montoAnterior: canonNuevo } });
+  }
+  return { tabla: elegida.tabla, id: elegida.id };
 }
 
 /**
