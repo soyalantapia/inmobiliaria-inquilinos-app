@@ -211,23 +211,10 @@ export function calcularMora(
   }
 }
 
-/**
- * LEGACY: firma original (% diario) — wrapper de calcularMora para los call
- * sites aún no migrados a esquemas. No agregar usos nuevos.
- */
-export function calcularPunitorio(
-  base: number,
-  tasaDiaria: number | null | undefined,
-  fechaVencimiento: Date | string,
-  asOf: Date,
-): number {
-  return calcularMora(
-    base,
-    { tipo: 'PORCENTAJE_DIARIO', valor: tasaDiaria != null ? Number(tasaDiaria) : null },
-    fechaVencimiento,
-    asOf,
-  );
-}
+// El wrapper legacy `calcularPunitorio(base: number, …)` se BORRÓ con T-57. No tenía un solo
+// llamador, y era la última forma de calcular mora sobre el total bruto: dejarlo vivo con la
+// firma vieja era dejar abierta la puerta a que la mora salga distinta según quién la calcule,
+// que es exactamente lo que esta tarea vino a cerrar.
 
 /**
  * Con qué instante se corta la mora de una liquidación que tiene un pago asociado.

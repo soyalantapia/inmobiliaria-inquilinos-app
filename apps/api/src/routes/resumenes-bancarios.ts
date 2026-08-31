@@ -6,6 +6,7 @@ import { prisma } from '../db.js';
 import { requireUsuario } from '../auth/guards.js';
 import { verificarPinUsuario } from '../auth/pin.js';
 import { calcularMora, resolverEsquemaMora } from '../lib/punitorios.js';
+import { pagadoAlVencimientoPorLiquidacion } from '../lib/saldos.js';
 import { parsearFilasResumen, sugerirMatch, type CandidatoLiquidacion, type CandidatoPago , claveCredito} from '../lib/matching-bancario.js';
 import { guardarBufferSubido } from './uploads.js';
 import { registrarEvento } from '../lib/auditoria.js';
@@ -92,12 +93,14 @@ async function candidatosVigentes(inmobiliariaId: string): Promise<{ pagos: Cand
   }));
 
   const ahora = new Date();
+  // T-57: lo que entró EN FECHA reduce el capital sobre el que corre la mora.
+  const pagadoAlVenc = await pagadoAlVencimientoPorLiquidacion(liquidacionesAbiertas);
   const liquidaciones: CandidatoLiquidacion[] = liquidacionesAbiertas.map((l) => {
     // Mora con el ESQUEMA EFECTIVO (cascada contrato → default inmobiliaria,
     // manual pisa) — antes usaba el wrapper legacy (% diario) e ignoraba los
     // esquemas nuevos: el saldo sugerido no coincidía con el que veía el inquilino.
     const punitorio = calcularMora(
-      Number(l.montoTotal),
+      { total: Number(l.montoTotal), pagadoAlVencimiento: pagadoAlVenc.get(l.id) ?? 0 },
       resolverEsquemaMora(l.contrato, inmo),
       l.fechaVencimiento,
       ahora,
@@ -354,8 +357,9 @@ export async function resumenesBancariosRoutes(app: FastifyInstance): Promise<vo
       where: { liquidacionId: liq.id, estado: 'CONCILIADO' },
       _sum: { monto: true },
     });
+    const pagadoAlVencGuard = await pagadoAlVencimientoPorLiquidacion([liq]);
     const punitorioGuard = calcularMora(
-      Number(liq.montoTotal),
+      { total: Number(liq.montoTotal), pagadoAlVencimiento: pagadoAlVencGuard.get(liq.id) ?? 0 },
       resolverEsquemaMora(liq.contrato, liq.contrato.inmobiliaria),
       liq.fechaVencimiento,
       // T-56 — `credito.fecha` es una fecha CIVIL a medianoche: sin normalizar, la mora sale
@@ -425,8 +429,11 @@ export async function resumenesBancariosRoutes(app: FastifyInstance): Promise<vo
         // mora del ESQUEMA EFECTIVO a la fecha del crédito, manual pisa).
         const agg = await tx.pago.aggregate({ where: { liquidacionId: liq.id, estado: 'CONCILIADO' }, _sum: { monto: true } });
         const cobrado = Number(agg._sum.monto ?? 0);
+        // T-57: con el `tx` — el pago que esta transacción acaba de crear tiene la fecha del
+        // crédito, así que si entró en fecha ya cuenta para bajar el capital.
+        const pagadoAlVenc = await pagadoAlVencimientoPorLiquidacion([liq], tx);
         const punitorio = calcularMora(
-          Number(liq.montoTotal),
+          { total: Number(liq.montoTotal), pagadoAlVencimiento: pagadoAlVenc.get(liq.id) ?? 0 },
           resolverEsquemaMora(liq.contrato, liq.contrato.inmobiliaria),
           liq.fechaVencimiento,
           instanteEnDiaCivilAR(credito.fecha),

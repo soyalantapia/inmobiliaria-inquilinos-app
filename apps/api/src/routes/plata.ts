@@ -22,7 +22,12 @@ import { diaDeCierreAR, totalizarCierre, whereCierreDelDia } from '../lib/cierre
 import { parteRendible } from '../lib/parte-rendible.js';
 import { descripcionDeReparacion } from '../lib/descripcion-gasto-rendido.js';
 import { sePuedeBorrarGastoDeCaja } from '../lib/borrar-gasto-caja.js';
-import { conSaldo, montoCobradoRendiblePorLiquidacion, montoPagadoPorLiquidacion } from '../lib/saldos.js';
+import {
+  conSaldo,
+  montoCobradoRendiblePorLiquidacion,
+  montoPagadoPorLiquidacion,
+  pagadoAlVencimientoPorLiquidacion,
+} from '../lib/saldos.js';
 import { registrarEventoContrato } from '../lib/evento-contrato.js';
 import { calcularMora, resolverEsquemaMora, asOfMora } from '../lib/punitorios.js';
 import { registrarEvento } from '../lib/auditoria.js';
@@ -123,6 +128,8 @@ export async function plataRoutes(app: FastifyInstance) {
     // dos cuenta — la rendición las filtra. El resultado era que la ficha decía
     // "a recibir $450.000", el operador se lo dictaba por teléfono, y Rendir contestaba 409.
     const cobradoRendible = await montoCobradoRendiblePorLiquidacion(liqs.map((l) => l.id));
+    // T-57: lo que entró EN FECHA reduce el capital sobre el que corre la mora.
+    const pagadoAlVenc = await pagadoAlVencimientoPorLiquidacion(liqs);
     const inmoDefaults = await prisma.inmobiliaria.findUnique({
       where: { id: u.inmobiliariaId },
       select: { moraTipoDefault: true, moraValorDefault: true, monedaDefault: true },
@@ -131,7 +138,7 @@ export async function plataRoutes(app: FastifyInstance) {
     return liqs.map((l) => {
       const asOf = l.estado === 'PAGADO' && l.fechaPago ? new Date(l.fechaPago) : hoy;
       const punitorio = calcularMora(
-        Number(l.montoTotal),
+        { total: Number(l.montoTotal), pagadoAlVencimiento: pagadoAlVenc.get(l.id) ?? 0 },
         resolverEsquemaMora(l.contrato, inmoDefaults),
         l.fechaVencimiento,
         asOf,
@@ -348,6 +355,8 @@ export async function plataRoutes(app: FastifyInstance) {
     // lo mostraba calculado contra mocks (siempre "saldo = total − este pago"),
     // ignorando parciales ya conciliados y la mora → deuda fantasma al validar.
     const pagadoMap = await montoPagadoPorLiquidacion(pagos.map((p) => p.liquidacion.id));
+    // T-57: lo que entró EN FECHA reduce el capital sobre el que corre la mora.
+    const pagadoAlVenc = await pagadoAlVencimientoPorLiquidacion(pagos.map((p) => p.liquidacion));
     const inmo = await prisma.inmobiliaria.findUnique({
       where: { id: u.inmobiliariaId },
       select: { moraTipoDefault: true, moraValorDefault: true, monedaDefault: true },
@@ -360,7 +369,7 @@ export async function plataRoutes(app: FastifyInstance) {
       // garantiza un único INFORMADO por liquidación — o sea, el que se está por validar.
       const asOf = asOfMora(p, p.liquidacion, hoy);
       const punitorio = calcularMora(
-        base,
+        { total: base, pagadoAlVencimiento: pagadoAlVenc.get(p.liquidacion.id) ?? 0 },
         resolverEsquemaMora(p.contrato, inmo),
         p.liquidacion.fechaVencimiento,
         asOf,
@@ -453,9 +462,16 @@ export async function plataRoutes(app: FastifyInstance) {
           },
         });
         const base = Number(liq?.montoTotal ?? pago.montoLiqTotal ?? 0);
+        // T-57: con el `tx`, para que la mora salga de lo mismo que ve esta transacción.
+        const pagadoAlVenc = liq
+          ? await pagadoAlVencimientoPorLiquidacion(
+              [{ id: pago.liquidacionId, fechaVencimiento: liq.fechaVencimiento }],
+              tx,
+            )
+          : new Map<string, number>();
         const punitorio = liq
           ? calcularMora(
-              base,
+              { total: base, pagadoAlVencimiento: pagadoAlVenc.get(pago.liquidacionId) ?? 0 },
               resolverEsquemaMora(liq.contrato, liq.contrato?.inmobiliaria),
               liq.fechaVencimiento,
               pago.fechaTransferencia,
@@ -717,9 +733,16 @@ export async function plataRoutes(app: FastifyInstance) {
       // anular el pago que cubría la mora dejaba la liq PAGADO con mora impaga
       // (descuadre silencioso — la mora nunca se podía volver a cobrar).
       const base = Number(liq?.montoTotal ?? 0);
+      // T-57: con el `tx`, misma razón que en validar.
+      const pagadoAlVenc = liq
+        ? await pagadoAlVencimientoPorLiquidacion(
+            [{ id: pago.liquidacionId, fechaVencimiento: liq.fechaVencimiento }],
+            tx,
+          )
+        : new Map<string, number>();
       const punitorio = liq
         ? calcularMora(
-            base,
+            { total: base, pagadoAlVencimiento: pagadoAlVenc.get(pago.liquidacionId) ?? 0 },
             resolverEsquemaMora(liq.contrato, liq.contrato?.inmobiliaria),
             liq.fechaVencimiento,
             liq.fechaPago ?? new Date(),
@@ -833,6 +856,9 @@ export async function plataRoutes(app: FastifyInstance) {
     const res = await prisma.$transaction(async (tx) => {
       let saldadas = 0;
       let montoAplicado = 0;
+      // T-57: una sola query para todo el lote y adentro de la tx. Por fila sería un N+1
+      // con el lock pesimista tomado, que es justo lo que hizo falta subir el timeout.
+      const pagadoAlVenc = await pagadoAlVencimientoPorLiquidacion(liqs, tx);
       for (const l of liqs) {
         // Sólo las EXIGIBLES: vencidas o parciales vencidas. Una futura no se salda acá.
         const vencida =
@@ -853,7 +879,7 @@ export async function plataRoutes(app: FastifyInstance) {
           _sum: { monto: true },
         });
         const punit = calcularMora(
-          Number(l.montoTotal),
+          { total: Number(l.montoTotal), pagadoAlVencimiento: pagadoAlVenc.get(l.id) ?? 0 },
           esquema,
           l.fechaVencimiento,
           now,
@@ -1436,8 +1462,9 @@ export async function plataRoutes(app: FastifyInstance) {
       where: { liquidacionId: liq.id, estado: 'CONCILIADO' },
       _sum: { monto: true },
     });
+    const pagadoAlVenc = await pagadoAlVencimientoPorLiquidacion([liq]);
     const punitorio = calcularMora(
-      Number(liq.montoTotal),
+      { total: Number(liq.montoTotal), pagadoAlVencimiento: pagadoAlVenc.get(liq.id) ?? 0 },
       resolverEsquemaMora(liq.contrato, liq.contrato?.inmobiliaria),
       liq.fechaVencimiento,
       body.data.fecha,
@@ -1662,8 +1689,9 @@ export async function plataRoutes(app: FastifyInstance) {
       where: { liquidacionId: liq.id, estado: 'CONCILIADO' },
       _sum: { monto: true },
     });
+    const pagadoAlVenc = await pagadoAlVencimientoPorLiquidacion([liq]);
     const punitorio = calcularMora(
-      Number(liq.montoTotal),
+      { total: Number(liq.montoTotal), pagadoAlVencimiento: pagadoAlVenc.get(liq.id) ?? 0 },
       resolverEsquemaMora(liq.contrato, liq.contrato?.inmobiliaria),
       liq.fechaVencimiento,
       new Date(),
@@ -1843,6 +1871,8 @@ export async function plataRoutes(app: FastifyInstance) {
     });
     const esquema = resolverEsquemaMora(ctto, ctto?.inmobiliaria);
     const hoy = new Date();
+    // T-57: lo que entró EN FECHA reduce el capital sobre el que corre la mora.
+    const pagadoAlVenc = await pagadoAlVencimientoPorLiquidacion(liqs);
     return liqs.map((l) => {
       // La mora se CONGELA cuando ya hay un pago esperando validación, con la fecha de
       // transferencia declarada — que es exactamente la que usa /pagos/:id/validar para
@@ -1859,7 +1889,7 @@ export async function plataRoutes(app: FastifyInstance) {
       const asOf =
         l.estado === 'PAGADO' && l.fechaPago ? new Date(l.fechaPago) : (congeladoPorInforme ?? hoy);
       const punitorio = calcularMora(
-        Number(l.montoTotal),
+        { total: Number(l.montoTotal), pagadoAlVencimiento: pagadoAlVenc.get(l.id) ?? 0 },
         esquema,
         l.fechaVencimiento,
         asOf,

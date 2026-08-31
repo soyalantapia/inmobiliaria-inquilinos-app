@@ -26,6 +26,9 @@
 import { describe, it, expect } from 'vitest';
 import { asOfMora, calcularMora } from '../src/lib/punitorios.js';
 
+/** T-57: en estos casos no hay pagos en fecha, así que la base de la mora es el total pelado. */
+const soloTotal = (total: number) => ({ total, pagadoAlVencimiento: 0 });
+
 const d = (iso: string) => new Date(`${iso}T12:00:00.000Z`);
 
 const HOY = d('2026-08-18');
@@ -65,7 +68,7 @@ describe('T-62 — la plata que la bandeja inventaba', () => {
   const ESQUEMA = { tipo: 'PORCENTAJE_DIARIO' as const, valor: 0.15 };
   const BASE = 600_000;
 
-  const moraAl = (asOf: Date) => calcularMora(BASE, ESQUEMA, VENCE, asOf, null);
+  const moraAl = (asOf: Date) => calcularMora(soloTotal(BASE), ESQUEMA, VENCE, asOf, null);
 
   it('el renglón "si lo validás queda" ahora da cero', () => {
     const pago = informado('2026-08-15');

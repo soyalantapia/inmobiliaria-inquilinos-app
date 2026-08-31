@@ -2,6 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { diaCivilAR } from '@llave/shared';
 import { calcularMora, type EsquemaMora } from '../src/lib/punitorios.js';
 
+/** T-57: en estos casos no hay pagos en fecha, así que la base de la mora es el total pelado. */
+const soloTotal = (total: number) => ({ total, pagadoAlVencimiento: 0 });
+
 /**
  * El día del vencimiento es del inquilino: si la cuota vence el 10, tiene TODO el
  * 10 (hora de Argentina) para pagar sin figurar moroso ni devengar punitorios.
@@ -48,18 +51,18 @@ describe('los punitorios no se devengan durante el día del vencimiento', () => 
 
   it('a las 21:00 del propio día del vencimiento la mora sigue en cero', () => {
     // Antes cobraba 1 día: `asOf` normalizado a medianoche UTC ya caía en el 11.
-    expect(calcularMora(100000, esquema, VENC_10, new Date('2026-07-11T00:30:00.000Z'))).toBe(0);
+    expect(calcularMora(soloTotal(100000), esquema, VENC_10, new Date('2026-07-11T00:30:00.000Z'))).toBe(0);
   });
 
   it('a las 21:00 del día ANTERIOR tampoco', () => {
-    expect(calcularMora(100000, esquema, VENC_10, new Date('2026-07-10T00:30:00.000Z'))).toBe(0);
+    expect(calcularMora(soloTotal(100000), esquema, VENC_10, new Date('2026-07-10T00:30:00.000Z'))).toBe(0);
   });
 
   it('al día siguiente devenga exactamente un día (1% de 100.000)', () => {
-    expect(calcularMora(100000, esquema, VENC_10, new Date('2026-07-11T12:00:00.000Z'))).toBe(1000);
+    expect(calcularMora(soloTotal(100000), esquema, VENC_10, new Date('2026-07-11T12:00:00.000Z'))).toBe(1000);
   });
 
   it('dos días después, dos días — el corte no se corre solo', () => {
-    expect(calcularMora(100000, esquema, VENC_10, new Date('2026-07-12T12:00:00.000Z'))).toBe(2000);
+    expect(calcularMora(soloTotal(100000), esquema, VENC_10, new Date('2026-07-12T12:00:00.000Z'))).toBe(2000);
   });
 });

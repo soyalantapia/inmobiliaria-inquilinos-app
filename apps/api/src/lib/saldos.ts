@@ -1,4 +1,8 @@
+import type { Prisma, PrismaClient } from '@prisma/client';
 import { prisma } from '../db.js';
+
+/** Igual que en `lib/deposito.ts`: acepta el cliente global o el `tx` de una transaccion. */
+type TxOrClient = Prisma.TransactionClient | PrismaClient;
 
 /**
  * Saldo pagado por liquidación. La FUENTE DE VERDAD de "cuánto se pagó" son los
@@ -76,15 +80,20 @@ export async function montoCobradoRendiblePorLiquidacion(liqIds: string[]): Prom
  * `fechaTransferencia` y no `decididoAt`: importa cuándo el inquilino movió la plata, no cuándo
  * la inmobiliaria llegó a validarla. Si valida tres días tarde, la demora es de ella.
  *
+ * Acepta un `tx` porque hay dos call sites que calculan mora DENTRO de una transacción
+ * (validar un pago y aplicar el depósito). Leer ahí con el cliente global vería el estado de
+ * afuera, y la mora saldría distinta de la que la misma transacción está por escribir.
+ *
  * Se resuelve con una query por liquidación agrupada en memoria en vez de un `groupBy`, porque
  * el corte —`fechaTransferencia <= fechaVencimiento`— es POR FILA: cada liquidación tiene su
  * propio vencimiento, y eso un `groupBy` de Prisma no lo expresa.
  */
 export async function pagadoAlVencimientoPorLiquidacion(
   liqs: { id: string; fechaVencimiento: Date | string }[],
+  db: TxOrClient = prisma,
 ): Promise<Map<string, number>> {
   if (liqs.length === 0) return new Map();
-  const pagos = await prisma.pago.findMany({
+  const pagos = await db.pago.findMany({
     where: { liquidacionId: { in: liqs.map((l) => l.id) }, estado: 'CONCILIADO' },
     select: { liquidacionId: true, monto: true, fechaTransferencia: true },
   });

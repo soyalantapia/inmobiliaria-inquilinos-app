@@ -31,6 +31,9 @@ import { z } from 'zod';
 import { dinero, dineroPositivo, dineroConSigno, MAX_MONTO } from '../src/lib/monto.js';
 import { calcularMora } from '../src/lib/punitorios.js';
 
+/** T-57: en estos casos no hay pagos en fecha, así que la base de la mora es el total pelado. */
+const soloTotal = (total: number) => ({ total, pagadoAlVencimiento: 0 });
+
 describe('T-63 — el agujero que había', () => {
   it('el patrón viejo aceptaba Infinity: por eso hubo que barrer 31 campos', () => {
     expect(z.number().nonnegative().safeParse(Infinity).success).toBe(true);
@@ -44,10 +47,10 @@ describe('T-63 — el agujero que había', () => {
   it('Infinity en moraValor envenenaba la mora de todas las cuotas del contrato', () => {
     const venc = new Date('2026-08-10T00:00:00.000Z');
     const asOf = new Date('2026-08-20T12:00:00.000Z');
-    const envenenado = calcularMora(600_000, { tipo: 'PORCENTAJE_DIARIO', valor: Infinity }, venc, asOf, null);
+    const envenenado = calcularMora(soloTotal(600_000), { tipo: 'PORCENTAJE_DIARIO', valor: Infinity }, venc, asOf, null);
     expect(envenenado).toBe(Infinity);
     // Y no es un caso de borde del cálculo: con un valor sano da un número normal.
-    expect(calcularMora(600_000, { tipo: 'PORCENTAJE_DIARIO', valor: 0.15 }, venc, asOf, null)).toBe(9_000);
+    expect(calcularMora(soloTotal(600_000), { tipo: 'PORCENTAJE_DIARIO', valor: 0.15 }, venc, asOf, null)).toBe(9_000);
   });
 });
 
