@@ -2929,6 +2929,28 @@ export async function coreRoutes(app: FastifyInstance) {
     const u = await requireUsuario(request, reply, 'contratos.crear');
     if (!u) return;
     const { id, garanteId } = request.params as { id: string; garanteId: string };
+    // CARGA MANEJA LA GARANTÍA MIENTRAS EL CONTRATO SE ESTÁ ARMANDO; NO DESPUÉS.
+    //
+    // Me corrijo a mí mismo: en T-11 declaré este endpoint como excepción legítima —"papelerío
+    // del alta, y el garante no tiene login"—. Las dos mitades siguen siendo ciertas, pero la
+    // conclusión era media verdad, porque no miraba el ESTADO del contrato.
+    //
+    // Sobre un BORRADOR, cargar y corregir la garantía ES el trabajo de CARGA, y encima queda
+    // sujeto a aprobación. Sobre un contrato VIGENTE es otra cosa: el PUT es peor que el DELETE
+    // —borrar deja el hueco visible ("Sin garante registrado"); reescribirle el DNI, el teléfono
+    // o el número de póliza al garante de un contrato en curso no lo nota nadie—, el `deleteMany`
+    // es borrado duro, y ninguno de los dos escribe en `EventoAuditoria`: desaparecida la
+    // garantía, no queda rastro de quién la sacó ni de qué decía antes.
+    const contratoGar = await prisma.contrato.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      select: { estado: true },
+    });
+    if (!contratoGar) return reply.code(404).send({ message: 'Contrato inexistente' });
+    if (u.rol === 'CARGA' && contratoGar.estado !== 'BORRADOR') {
+      return reply.code(403).send({
+        message: 'Solo un Admin u Operador puede tocar la garantía de un contrato que ya está vigente',
+      });
+    }
     const parsed = garanteBody.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({ message: 'Datos del garante incompletos', detalle: parsed.error.flatten() });
@@ -2946,6 +2968,29 @@ export async function coreRoutes(app: FastifyInstance) {
     const u = await requireUsuario(request, reply, 'contratos.crear');
     if (!u) return;
     const { id, garanteId } = request.params as { id: string; garanteId: string };
+    // CARGA MANEJA LA GARANTÍA MIENTRAS EL CONTRATO SE ESTÁ ARMANDO; NO DESPUÉS.
+    //
+    // Me corrijo a mí mismo: en T-11 declaré este endpoint como excepción legítima —"papelerío
+    // del alta, y el garante no tiene login"—. Las dos mitades siguen siendo ciertas, pero la
+    // conclusión era media verdad, porque no miraba el ESTADO del contrato.
+    //
+    // Sobre un BORRADOR, cargar y corregir la garantía ES el trabajo de CARGA, y encima queda
+    // sujeto a aprobación. Sobre un contrato VIGENTE es otra cosa: el PUT es peor que el DELETE
+    // —borrar deja el hueco visible ("Sin garante registrado"); reescribirle el DNI, el teléfono
+    // o el número de póliza al garante de un contrato en curso no lo nota nadie—, el `deleteMany`
+    // es borrado duro, y ninguno de los dos escribe en `EventoAuditoria`: desaparecida la
+    // garantía, no queda rastro de quién la sacó ni de qué decía antes.
+    const contratoGarDel = await prisma.contrato.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      select: { estado: true },
+    });
+    if (!contratoGarDel) return reply.code(404).send({ message: 'Contrato inexistente' });
+    if (u.rol === 'CARGA' && contratoGarDel.estado !== 'BORRADOR') {
+      return reply.code(403).send({
+        message: 'Solo un Admin u Operador puede tocar la garantía de un contrato que ya está vigente',
+      });
+    }
+
     const del = await prisma.garante.deleteMany({
       where: { id: garanteId, contratoId: id, inmobiliariaId: u.inmobiliariaId },
     });
