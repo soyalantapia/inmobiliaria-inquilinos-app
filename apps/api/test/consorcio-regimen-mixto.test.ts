@@ -256,9 +256,27 @@ describe('T-20 — un consorcio con unidades de regímenes distintos', () => {
     // ...y aun así no hay nada que rendirle al dueño: esa plata es del CONSORCIO.
     const r = await rendir(`${P}ownExp`);
     expect(r.statusCode).toBe(409);
-    // El mensaje dice "no hay cobros" y sí los hubo. Es correcto en la plata y engañoso en el
-    // texto; queda anotado en el relevamiento, no se cambia acá.
-    expect((r.json() as { message: string }).message).toContain('No hay cobros nuevos');
+    // T-20-a — Y el mensaje lo DICE. Antes decía "No hay cobros nuevos", que frente a una unidad
+    // cuyo inquilino pagó todo es lo contrario de lo que pasó: mandaba al operador a buscar un
+    // pago que no falta.
+    const body = r.json() as { codigo: string; message: string };
+    expect(body.codigo).toBe('SOLO_EXPENSAS');
+    expect(body.message).toContain('expensas');
+    expect(body.message).toContain('consorcio');
+    expect(body.message).toContain(EXPENSAS.toLocaleString('es-AR'));
+    // Y el control que le da sentido: NO dice la frase vieja.
+    expect(body.message).not.toContain('No hay cobros nuevos');
+  });
+
+  it('el otro 409 sigue diciendo lo de siempre: rendir DOS VECES el mismo período', async () => {
+    // El caso que NO cambia. Sin esto, el arreglo podría haber reemplazado el mensaje para todos
+    // y el test de arriba pasaría igual — quedaría un texto de expensas sobre una unidad
+    // alquilada, que es la misma mentira al revés.
+    const r = await rendir(`${P}ownAlq`);
+    expect(r.statusCode).toBe(409);
+    const body = r.json() as { codigo: string; message: string };
+    expect(body.codigo).toBe('SIN_COBROS_NUEVOS');
+    expect(body.message).toContain('No hay cobros nuevos');
   });
 
   it('y no quedó ninguna rendición del dueño de sólo expensas', async () => {

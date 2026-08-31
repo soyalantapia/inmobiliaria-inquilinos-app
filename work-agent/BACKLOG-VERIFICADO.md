@@ -240,11 +240,14 @@ devuelve **409 aunque el inquilino haya pagado todo**, porque esa plata es del c
 El contraste está en el mismo test: la unidad alquilada del mismo consorcio sí se rinde, y con
 plata.
 
-**🟡 T-20-a (nuevo):** el 409 dice *"No hay cobros nuevos"* y sí los hubo — lo que no hay es nada
-*rendible*. Para Camila, parada frente a una unidad cuyo inquilino pagó todo, ese texto dice lo
-contrario de lo que pasó. No se arregló acá porque el 409 se lanza desde adentro de la transacción
-y se traduce ~430 líneas más abajo sin acceso a lo cobrado: distinguir los dos casos es más que un
-cambio de copy.
+**✅ T-20-a — arreglado.** El 409 decía *"No hay cobros nuevos"* y sí los hubo: lo que no hay es
+nada *rendible*. Frente a una unidad cuyo inquilino pagó todo, ese texto decía lo contrario de lo
+que pasó y mandaba al operador a buscar un pago que no falta. Ahora la excepción viaja con lo
+cobrado y con la porción que es alquiler, y el mensaje distingue: *"Se cobraron $ 150.000 de
+expensas del período 2026-06, que van al consorcio: no hay alquiler para rendirle a este
+propietario"*. Los otros dos casos —no se cobró nada, o ya se rindió todo— conservan el texto de
+siempre, que ahí sí es cierto. Con `codigo` (`SOLO_EXPENSAS` / `SIN_COBROS_NUEVOS`) para que el
+panel no parsee texto.
 
 **Y el hallazgo grande:** la plata de las expensas **entra y desaparece de la vista**. El libro del
 consorcio (`MovimientoConsorcio`, categoría `COBRANZA`) **sólo se escribe a mano**; nada conecta el
