@@ -203,6 +203,23 @@ ella esperaba las cuentas adentro de caja.
 mover plata entre cuentas— y decidir si `/cuentas` se integra dentro de `/caja` o se enlaza
 claramente. **Es UX, no backend.**
 
+### ✅ Ya resuelto en `main` → `work-agent/T-13-CUENTAS-Y-CAJA.md`
+
+La queja está cerrada y verificada **en el navegador**, no sólo leyendo código: `/caja` abre con
+las pestañas `Movimientos | Cuentas`, el menú tiene un solo ítem ("Caja y cuentas"),
+`/caja?tab=cuentas` es linkeable, `/cuentas` sigue viva como ruta, y la pestaña explica la relación
+con palabras. De los tres flujos, **dos están hechos**: cargar un gasto eligiendo cuenta (con el
+selector filtrado por dirección ENTRADA/SALIDA/AMBAS) y ver el saldo por cuenta (por moneda, con el
+negativo resaltado y drill-down de movimientos).
+
+**🟡 T-13-a (nuevo) · Mover plata entre cuentas no existe.** Es el caso de Camila *"Gaspar retira
+Mercado Pago"*: hoy hay que cargar un `GASTO` en una cuenta y un `INGRESO_EXTRA` en la otra. Los
+saldos quedan bien, pero **inventa un gasto y un ingreso** en los totales de la inmobiliaria. Y
+🔴 si alguien elige una propiedad, ese `INGRESO_EXTRA` **se le acredita al dueño en la rendición** y
+el `GASTO` se le descuenta a otro: un traspaso mal cargado mueve plata entre propietarios. Es
+inofensivo por defecto (Propiedad es opcional y arranca en "sin propiedad"), pero no hay nada que
+lo impida. Propuesta y alcance en el relevamiento.
+
 ---
 
 ## T-22 · Consorcio: avisar por mail y cargar la expensa del período
