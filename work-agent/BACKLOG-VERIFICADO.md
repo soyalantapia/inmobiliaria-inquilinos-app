@@ -38,6 +38,7 @@
 | **T-45** el home de la PWA ignoraba el pago informado | usa el mismo helper que el detalle y muestra el faltante |
 | **T-57** la mora sobre el saldo | **hecho y desplegado el 31/08** — PR #66 |
 | **T-58** monto fijo según la moneda | test en `mora-cascada.test.ts:109` |
+| **T-34** `payment-hero.tsx` era código muerto | **hecho el 31/08** — PR #71; con él se fue una cuarta copia de la aritmética de pago |
 | **T-72** el candado de archivos | **prendido el 31/08** — `UPLOADS_AMBITO=on` en Render |
 
 Y una que se cierra sin trabajo: **T-23-N3-N2** está marcada **mal diagnosticada** en el propio
@@ -233,18 +234,6 @@ edificio pueden tener regímenes distintos sin hacer nada especial.
 
 # 🟢 Baratas
 
-## T-34 · `payment-hero.tsx` es código muerto
-
-**Objetivo.** Sacar un archivo que no importa nadie.
-
-**Problema.** Se exporta y **ningún módulo lo importa** (verificado hoy: cero importadores). La
-única otra mención en todo el árbol es un comentario.
-
-**Solución.** Borrarlo. No puede cambiar comportamiento. Conviene hacerlo **solo, en su propia
-pasada**, porque vive bajo la carpeta de pagos y así nadie discute si cuenta como "tocar plata".
-
----
-
 ## T-51 · Los datos de demo usan dominios de correo reales
 
 **Objetivo.** Que la demo pública no exponga direcciones de terceros.
@@ -254,7 +243,22 @@ pasada**, porque vive bajo la carpeta de pagos y así nadie discute si cuenta co
 está **publicado en internet**, con nombre y apellido al lado, y algunas de esas direcciones pueden
 ser de personas reales que no tienen nada que ver con el producto.
 
-**Solución.** Pasar todo a `example.com` (RFC 2606). Toca el seed → correr la suite después.
+**Solución, y viene partida en dos — medido el 31/08:**
+
+**(a) Lo que de verdad se publica** son los mocks de los fronts, no el seed: `build-static.sh`
+buildea `inmobiliaria` e `inquilino` con `STATIC_EXPORT`. Son **24 direcciones** en el mock del
+panel y **1** en el del inquilino, con tests de front que las cubren. Es una pasada corta y cierra
+el daño real: lo que está en internet.
+
+**(b) El seed es otra cosa.** No se publica en Pages —aunque sí es visible en el repo, que es
+público—. Y cambiarlo entero no es barato: **`@delsol.com` lo referencian 53 archivos**. Pero no
+hace falta cambiarlo entero: las direcciones que podrían ser de personas reales son **seis**
+(`@gmail`, `@yahoo`, `@hotmail`), y sólo tres están referenciadas fuera del seed —
+`mariela.sosa@gmail.com` en 14 archivos, `eduardo.castro@gmail.com` en 2,
+`silvana.morales@hotmail.com` en 1—. Las otras tres se cambian sin tocar nada más.
+
+**Las cuentas de login del seed (`@delsol.com`) se dejan como están:** no son de un tercero, y
+moverlas es un refactor de 53 archivos sin beneficio de privacidad.
 
 ---
 
