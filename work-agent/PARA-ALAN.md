@@ -54,3 +54,36 @@ Nada útil. Escribir el snapshot sin decidir qué pasa después deja la plata an
 en ningún día**, que es peor que el problema actual.
 
 ---
+
+## T-21-N3-N1 · Las cuatro capacidades del brief de mayo: ¿cuáles se construyen?
+
+**Fecha:** 31/08/2026 · **Bloquea:** T-21-N3-N1
+
+### Por qué la pregunta es otra de la que decía la ficha
+
+Decía que `CLAUDE.md` prometía la carga de contrato con IA como **no negociable** y el producto no
+la hacía. **Esa contradicción ya no existe:** el documento se corrigió el 19/08 y hoy declara el
+estado real de las cuatro. No hay nada que "cerrar" ahí.
+
+Lo que queda es una decisión de roadmap, y conviene tomarla **por las cuatro juntas**: salieron del
+mismo brief y están en el mismo lugar.
+
+| Capacidad | Hoy | Qué costaría |
+|---|---|---|
+| 1 · Carga de contrato con IA | no existe; hay wizard manual e importación de cartera, las dos andando | un LLM, parseo de PDF y revisión humana — la carga hoy la hace una persona en minutos |
+| 2 · Pago unificado con Mercado Pago | **el resultado ya está**: una pantalla, un botón. Falta el medio | integración + webhook. Cambia quién concilia: hoy lo hace una persona |
+| 3 · Chat con el contrato (RAG) | no existe, y es el **botón central de la PWA** cayendo en «Próximamente» | embeddings + pgvector + endpoint |
+| 4 · Screening crediticio | cáscara; el endpoint ya devuelve 501 en vez de inventar | un proveedor real (Nosis) y su costo por consulta |
+
+### La pregunta
+
+**De las cuatro, ¿cuáles entran al roadmap y en qué orden — y cuáles se sacan del brief?**
+
+Sacarlas es una respuesta tan válida como construirlas, y más barata: el producto **ya resuelve el
+problema del cliente sin ellas** — la carga por Excel funciona, y el pago unificado en una sola
+transferencia es exactamente lo que Camila pidió. Lo que no es una opción es dejarlas en el limbo
+donde se venden afuera y no existen adentro: el «Asistente» de la PWA es la prueba — es el botón
+más destacado de la app del inquilino y no hace nada.
+
+---
+
