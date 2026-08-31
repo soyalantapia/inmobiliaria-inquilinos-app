@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../db.js';
 import { requireUsuario } from '../auth/guards.js';
-import { montoPagadoPorLiquidacion, conSaldo } from '../lib/saldos.js';
+import { montoPagadoPorLiquidacion, conSaldo, pagadoAlVencimientoPorLiquidacion } from '../lib/saldos.js';
 import { resolverEsquemaMora, calcularMora } from '../lib/punitorios.js';
 
 /**
@@ -118,13 +118,16 @@ async function financieroPorPeriodo(
     if (acc) acc.cobrado += monto;
   }
 
+  // T-57: lo que entró EN FECHA reduce el capital sobre el que corre la mora.
+  const pagadoAlVenc = await pagadoAlVencimientoPorLiquidacion(liqs);
+
   for (const l of liqs) {
     const acc = base.get(l.periodo);
     if (!acc) continue;
     acc.devengado += Number(l.montoTotal);
     const esquema = resolverEsquemaMora(l.contrato, inmo);
     const punit = calcularMora(
-      Number(l.montoTotal),
+      { total: Number(l.montoTotal), pagadoAlVencimiento: pagadoAlVenc.get(l.id) ?? 0 },
       esquema,
       l.fechaVencimiento,
       l.estado === 'PAGADO' && l.fechaPago ? new Date(l.fechaPago) : now,

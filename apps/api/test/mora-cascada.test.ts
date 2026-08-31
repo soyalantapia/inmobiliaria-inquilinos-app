@@ -21,6 +21,9 @@
 import { describe, it, expect } from 'vitest';
 import { resolverEsquemaMora, calcularMora } from '../src/lib/punitorios.js';
 
+/** T-57: en estos casos no hay pagos en fecha, así que la base de la mora es el total pelado. */
+const soloTotal = (total: number) => ({ total, pagadoAlVencimiento: 0 });
+
 const INMO_COBRA_DIARIO = { moraTipoDefault: 'PORCENTAJE_DIARIO' as const, moraValorDefault: 0.5, monedaDefault: 'ARS' };
 
 describe('resolverEsquemaMora — la cascada contrato > legacy > inmobiliaria', () => {
@@ -88,8 +91,8 @@ describe('la cascada en PESOS — que el override no sea sólo una etiqueta', ()
     const delContrato = resolverEsquemaMora({ moraTipo: 'MONTO_FIJO', moraValor: 5000, moneda: 'ARS' }, inmoCara);
     const deLaInmo = resolverEsquemaMora({ moneda: 'ARS' }, inmoCara);
 
-    const conOverride = calcularMora(BASE, delContrato, VENC, DIEZ_DIAS_DESPUES);
-    const sinOverride = calcularMora(BASE, deLaInmo, VENC, DIEZ_DIAS_DESPUES);
+    const conOverride = calcularMora(soloTotal(BASE), delContrato, VENC, DIEZ_DIAS_DESPUES);
+    const sinOverride = calcularMora(soloTotal(BASE), deLaInmo, VENC, DIEZ_DIAS_DESPUES);
 
     expect(conOverride).toBe(5000); // fijo, 1 mes iniciado
     expect(sinOverride).toBe(10_000); // 1% × 10 días sobre 100.000
@@ -98,7 +101,7 @@ describe('la cascada en PESOS — que el override no sea sólo una etiqueta', ()
 
   it('el opt-out del contrato deja la mora en CERO aunque la inmobiliaria cobre', () => {
     const e = resolverEsquemaMora({ moraTipo: 'SIN_MORA', moraValor: null, moneda: 'ARS' }, INMO_COBRA_DIARIO);
-    expect(calcularMora(BASE, e, VENC, DIEZ_DIAS_DESPUES)).toBe(0);
+    expect(calcularMora(soloTotal(BASE), e, VENC, DIEZ_DIAS_DESPUES)).toBe(0);
   });
 });
 
@@ -150,7 +153,7 @@ describe('T-58 · el monto fijo heredado respeta la moneda', () => {
     const venc = new Date('2026-08-01T00:00:00Z');
     const asOf = new Date('2026-09-10T12:00:00Z');
     const e = resolverEsquemaMora({ moneda: 'USD' }, INMO_FIJO_EN_PESOS);
-    expect(calcularMora(800, e, venc, asOf)).toBe(0);
+    expect(calcularMora(soloTotal(800), e, venc, asOf)).toBe(0);
   });
 
   it('un PORCENTAJE heredado se aplica igual en cualquier moneda', () => {

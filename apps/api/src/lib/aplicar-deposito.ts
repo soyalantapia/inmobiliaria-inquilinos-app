@@ -1,6 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import { yaVencio } from '@llave/shared';
-import { conSaldo } from './saldos.js';
+import { conSaldo, pagadoAlVencimientoPorLiquidacion } from './saldos.js';
 import { calcularMora, resolverEsquemaMora } from './punitorios.js';
 
 const r2c = (n: number) => Math.round(n * 100) / 100;
@@ -156,6 +156,10 @@ export async function aplicarDepositoADeuda(
     _sum: { monto: true },
   });
   const pagadoMap = new Map(filas.map((f) => [f.liquidacionId, Number(f._sum.monto ?? 0)]));
+  // T-57: lo que entró EN FECHA reduce el capital sobre el que corre la mora. Va por `tx` y en
+  // una sola query, por la misma razón que el groupBy de arriba: acá adentro una query por
+  // cuota es un N+1 con la transacción abierta, y con el proxy de por medio la hace expirar.
+  const pagadoAlVenc = await pagadoAlVencimientoPorLiquidacion(liqs, tx);
   const esquema = resolverEsquemaMora(contrato, contrato.inmobiliaria);
 
   // El saldo CON punitorios de cada cuota, en el orden en que vienen (más vieja primero).
@@ -164,7 +168,7 @@ export async function aplicarDepositoADeuda(
   const punitPorLiq = new Map<string, number>();
   const candidatas: CuotaParaImputar[] = liqs.map((l) => {
     const punit = calcularMora(
-      Number(l.montoTotal),
+      { total: Number(l.montoTotal), pagadoAlVencimiento: pagadoAlVenc.get(l.id) ?? 0 },
       esquema,
       l.fechaVencimiento,
       now,

@@ -15,7 +15,11 @@ import {
   recomputarLiquidacionesFuturas,
   montoAlquilerSegunTipo,
 } from '../lib/liquidaciones.js';
-import { conSaldo, montoPagadoPorLiquidacion } from '../lib/saldos.js';
+import {
+  conSaldo,
+  montoPagadoPorLiquidacion,
+  pagadoAlVencimientoPorLiquidacion,
+} from '../lib/saldos.js';
 import { normalizarEmail } from '../lib/normalizar-email.js';
 import { normalizarDni } from '../lib/normalizar-dni.js';
 import { diffParticipaciones } from '../lib/diff-participaciones.js';
@@ -225,6 +229,10 @@ export async function coreRoutes(app: FastifyInstance) {
     const pagadoMap = await montoPagadoPorLiquidacion(
       actualPorContrato.flatMap((l) => (l ? [l.id] : [])),
     );
+    // T-57: lo que entró EN FECHA reduce el capital sobre el que corre la mora.
+    const pagadoAlVencActual = await pagadoAlVencimientoPorLiquidacion(
+      actualPorContrato.flatMap((l) => (l ? [l] : [])),
+    );
     // Deuda TOTAL por contrato = suma de TODAS las liquidaciones impagas y vencidas
     // (resto de parciales + vencidas + su mora), no solo la actual. El include de
     // arriba trae 6 liqs para derivar estado; para la deuda de un contrato "en curso"
@@ -239,6 +247,8 @@ export async function coreRoutes(app: FastifyInstance) {
       select: { id: true, contratoId: true, montoTotal: true, estado: true, fechaVencimiento: true, montoPunitorioManual: true },
     });
     const pagadoDeuda = await montoPagadoPorLiquidacion(deudaLiqs.map((l) => l.id));
+    // T-57: lo que entró EN FECHA reduce el capital sobre el que corre la mora.
+    const pagadoAlVencDeuda = await pagadoAlVencimientoPorLiquidacion(deudaLiqs);
     const deudaPorContrato = new Map<string, typeof deudaLiqs>();
     for (const l of deudaLiqs) {
       const arr = deudaPorContrato.get(l.contratoId) ?? [];
@@ -259,7 +269,7 @@ export async function coreRoutes(app: FastifyInstance) {
       const esquema = resolverEsquemaMora(c, inmoMora);
       const punitorioActual = actual
         ? calcularMora(
-            Number(actual.montoTotal),
+            { total: Number(actual.montoTotal), pagadoAlVencimiento: pagadoAlVencActual.get(actual.id) ?? 0 },
             esquema,
             actual.fechaVencimiento,
             actual.estado === 'PAGADO' && actual.fechaPago ? new Date(actual.fechaPago) : now,
@@ -273,7 +283,7 @@ export async function coreRoutes(app: FastifyInstance) {
       for (const l of deudaPorContrato.get(c.id) ?? []) {
         if (!(liqVencida(l, now) || l.estado === 'PARCIAL')) continue;
         const punit = calcularMora(
-          Number(l.montoTotal),
+          { total: Number(l.montoTotal), pagadoAlVencimiento: pagadoAlVencDeuda.get(l.id) ?? 0 },
           esquema,
           l.fechaVencimiento,
           now,
@@ -370,6 +380,8 @@ export async function coreRoutes(app: FastifyInstance) {
     // y el tab "Pagos" del detalle quedaba SIEMPRE vacío (bug 4): un pago informado
     // o conciliado nunca se veía en el contrato.
     const pagado = await montoPagadoPorLiquidacion(liquidaciones.map((l) => l.id));
+    // T-57: lo que entró EN FECHA reduce el capital sobre el que corre la mora.
+    const pagadoAlVenc = await pagadoAlVencimientoPorLiquidacion(liquidaciones);
     // Cada liquidación con su mora al día según el ESQUEMA EFECTIVO del contrato
     // (cascada contrato → legacy → default inmobiliaria); una PAGADA congela la
     // mora en su fechaPago y un montoPunitorioManual (migración) pisa el cálculo.
@@ -384,7 +396,7 @@ export async function coreRoutes(app: FastifyInstance) {
       liquidaciones: liquidaciones.map((l) => {
         const asOf = l.estado === 'PAGADO' && l.fechaPago ? new Date(l.fechaPago) : now;
         const punitorio = calcularMora(
-          Number(l.montoTotal),
+          { total: Number(l.montoTotal), pagadoAlVencimiento: pagadoAlVenc.get(l.id) ?? 0 },
           esquema,
           l.fechaVencimiento,
           asOf,
@@ -2310,6 +2322,8 @@ export async function coreRoutes(app: FastifyInstance) {
     });
     const esquema = resolverEsquemaMora(contrato, contrato.inmobiliaria);
     const pagadoMap = await montoPagadoPorLiquidacion(liqs.map((l) => l.id));
+    // T-57: lo que entró EN FECHA reduce el capital sobre el que corre la mora.
+    const pagadoAlVenc = await pagadoAlVencimientoPorLiquidacion(liqs);
     let cuotasFuturasAAnular = 0;
     let deudaVencida = 0;
     let cuotasImpagas = 0;
@@ -2327,7 +2341,7 @@ export async function coreRoutes(app: FastifyInstance) {
       // número del diálogo, contradiciendo la deudaTotal del panel (que excluye futuras).
       if (!liqVencida(l, now)) continue;
       const punit = calcularMora(
-        Number(l.montoTotal),
+        { total: Number(l.montoTotal), pagadoAlVencimiento: pagadoAlVenc.get(l.id) ?? 0 },
         esquema,
         l.fechaVencimiento,
         now,
@@ -3033,6 +3047,10 @@ export async function coreRoutes(app: FastifyInstance) {
       .filter((c): c is NonNullable<typeof c> => !!c);
     const contratoIds = contratosRaw.map((c) => c.id);
     const pagado = await montoPagadoPorLiquidacion(contratosRaw.flatMap((c) => c.liquidaciones.map((l) => l.id)));
+    // T-57: lo que entró EN FECHA reduce el capital sobre el que corre la mora.
+    const pagadoAlVenc = await pagadoAlVencimientoPorLiquidacion(
+      contratosRaw.flatMap((c) => c.liquidaciones),
+    );
 
     let tuvoMora = false;
     // La deuda se acumula POR MONEDA. Con multi-alquiler una persona puede tener
@@ -3047,7 +3065,7 @@ export async function coreRoutes(app: FastifyInstance) {
       for (const l of c.liquidaciones) {
         if (!(liqVencida(l, now) || l.estado === 'PARCIAL')) continue;
         const punit = calcularMora(
-          Number(l.montoTotal),
+          { total: Number(l.montoTotal), pagadoAlVencimiento: pagadoAlVenc.get(l.id) ?? 0 },
           esquema,
           l.fechaVencimiento,
           now,
