@@ -227,6 +227,12 @@ modo demo (localStorage) sin tocar la API.
 
 ### Cómo NO mentirte a vos mismo
 
+- 🔴 **El cliente de Prisma también cruza de rama, y miente peor.** Está generado en
+  `node_modules`, que no cambia al hacer `git checkout`. Si la rama anterior tenía una columna
+  que ésta no tiene, el cliente la pide y la base no la tiene: **59 archivos de test en rojo de
+  golpe**, con un error que apunta al seed y no a tu cambio. Pasó en el ciclo de hoy y costó una
+  corrida entera. **Después de cambiar de rama con migraciones de por medio, `prisma generate`
+  antes de creerle a nada.**
 - ⚠️ **El exit code de una tubería es el del último comando.** `tsc | head` devuelve el de `head`.
   Guardá la salida en un archivo y leé el exit code aparte.
 - ⚠️ **`tsc --noEmit` no es el build.** La API buildea con `tsup` y los fronts con `next build`, y
