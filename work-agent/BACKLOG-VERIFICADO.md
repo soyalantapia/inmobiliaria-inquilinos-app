@@ -38,6 +38,7 @@
 | **T-45** el home de la PWA ignoraba el pago informado | usa el mismo helper que el detalle y muestra el faltante |
 | **T-57** la mora sobre el saldo | **hecho y desplegado el 31/08** — PR #66 |
 | **T-58** monto fijo según la moneda | test en `mora-cascada.test.ts:109` |
+| **T-51 (a)** los dominios de correo de la demo publicada | **hecho el 31/08** — PR #72; entraron además dos generadores que la ficha no tenía |
 | **T-72** el candado de archivos | **prendido el 31/08** — `UPLOADS_AMBITO=on` en Render |
 
 Y una que se cierra sin trabajo: **T-23-N3-N2** está marcada **mal diagnosticada** en el propio
@@ -245,9 +246,9 @@ pasada**, porque vive bajo la carpeta de pagos y así nadie discute si cuenta co
 
 ---
 
-## T-51 · Los datos de demo usan dominios de correo reales
+## T-51 (b) · Las seis direcciones de terceros que quedan en el seed
 
-**Objetivo.** Que la demo pública no exponga direcciones de terceros.
+**Objetivo.** Cerrar lo que quedó de T-51: el seed. *(La parte publicada se cerró el 31/08 en el PR #72.)*
 
 **Problema.** Ningún email ficticio usa un dominio reservado. Verificado hoy en el seed:
 `@gmail.com`, `@hotmail.com`, `@yahoo.com`, y dominios con pinta de negocio real. Desde el 19/08
