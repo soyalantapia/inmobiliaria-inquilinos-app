@@ -2204,7 +2204,20 @@ export async function operacionRoutes(app: FastifyInstance) {
   });
 
   // Rescisión anticipada por defecto: preaviso (meses) + penalidad (cánones de alquiler).
-  // La heredan los contratos sin valor propio (core.ts la lee al finalizar).
+  //
+  // OJO, LOS DOS CAMPOS NO SON IGUALES, y este comentario decía que sí ("la heredan los
+  // contratos sin valor propio (core.ts la lee al finalizar)"), en plural y para los dos:
+  //
+  //   · `penalidadRescisionMesesDefault` SÍ: `core.ts` la lee al finalizar como penalidad
+  //     sugerida, y eso termina emitido como `CargoContrato`. `Contrato` tiene su columna
+  //     propia para pisarla.
+  //   · `preavisoRescisionMesesDefault` NO. No lo lee nadie: se escribe acá y sólo se relee en
+  //     `GET /mi-inmobiliaria/reglas` para repintar el mismo input. Y no se puede pisar por
+  //     contrato, porque `Contrato` no tiene columna de preaviso.
+  //
+  // Nada que ver con el preaviso de EGRESO (`Renovacion.fechaEgreso`), que sí funciona.
+  // Qué hacer con este campo es una decisión de producto: ver
+  // `work-agent/DOS-PROMESAS-QUE-NO-SE-CUMPLEN.md`.
   app.put('/mi-inmobiliaria/rescision', async (request, reply) => {
     const u = await requireUsuario(request, reply);
     if (!u) return;
