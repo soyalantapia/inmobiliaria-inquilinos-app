@@ -81,6 +81,8 @@ export interface Consorcio {
   /** Unidades funcionales del edificio. */
   unidades: UnidadFuncional[];
   movimientos: MovimientoConsorcio[];
+  /** `false` si la respuesta NO trajo los movimientos (el listado no los manda, sólo el detalle). */
+  movimientosCargados?: boolean;
   asambleas: AsambleaConsorcio[];
   /** Fecha de incorporación a la administración. */
   desde: string;
@@ -417,18 +419,45 @@ export function morosidadConsorcio(c: Consorcio): {
   };
 }
 
-export function balanceConsorcio(c: Consorcio): {
+/**
+ * El balance del PERÍODO — que es lo que los tres rótulos dicen y antes no era.
+ *
+ * DOS DEFECTOS, UNO EN CADA PANTALLA, con la misma causa de fondo: un número que se muestra sin
+ * poder calcularlo.
+ *
+ *   · EN EL DETALLE recorría TODOS los movimientos, sin filtrar por período, bajo rótulos que
+ *     dicen "Ingresos del mes", "Egresos del mes" y "Saldo del mes". Un edificio administrado
+ *     hace tres años mostraba el acumulado histórico como si fuera el mes.
+ *   · EN EL LISTADO, `GET /consorcios` **no manda los movimientos** —es una decisión declarada:
+ *     "sin movimientos/asambleas, que sólo viajan en el detalle"— y el mapper los normalizaba
+ *     con `?? []`, borrando la diferencia entre "no hay" y "no me los mandaron". El balance daba
+ *     0 y `formatMonto(0)` devuelve "$ 0", no un guion: la lista decía **$ 0 siempre**, para
+ *     cualquier edificio, mientras el detalle del MISMO edificio decía 2.840.000.
+ *
+ * `disponible` es la mitad que faltaba: "cero" y "no sé" son cosas distintas, y la pantalla que
+ * las confunde le miente al operador con la misma cara con la que le dice la verdad.
+ */
+export function balanceConsorcio(
+  c: Consorcio,
+  periodo?: string,
+): {
   ingresos: number;
   egresos: number;
   saldoMes: number;
+  /** `false` cuando el endpoint no mandó los movimientos: no hay con qué calcular. */
+  disponible: boolean;
 } {
+  const disponible = c.movimientosCargados !== false;
   let ingresos = 0;
   let egresos = 0;
   for (const m of c.movimientos) {
+    // Sin `periodo` se comporta como antes (todos los movimientos), para no romper a un
+    // llamador que todavía no lo pase.
+    if (periodo && m.fecha.slice(0, 7) !== periodo) continue;
     if (m.monto >= 0) ingresos += m.monto;
     else egresos += Math.abs(m.monto);
   }
-  return { ingresos, egresos, saldoMes: ingresos - egresos };
+  return { ingresos, egresos, saldoMes: ingresos - egresos, disponible };
 }
 
 export const ESTADO_UF_LABEL: Record<EstadoUF, string> = {
