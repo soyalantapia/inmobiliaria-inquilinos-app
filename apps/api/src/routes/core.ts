@@ -488,6 +488,15 @@ export async function coreRoutes(app: FastifyInstance) {
   app.delete('/contratos/:contratoId/co-inquilinos/:id', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'contratos.crear');
     if (!u) return;
+    // INVITAR Y REVOCAR NO PESAN LO MISMO. El POST hermano se deja abierto —sumar un
+    // co-inquilino es carga—, pero esto es un borrado duro que le saca el acceso a la PWA a
+    // alguien con permiso PAGAR o COMPLETO: justo el que informa los pagos. La única vuelta
+    // atrás es volver a invitarlo, y no queda rastro de quién lo sacó.
+    if (u.rol === 'CARGA') {
+      return reply
+        .code(403)
+        .send({ message: 'Solo un Admin u Operador puede sacar a un co-inquilino del contrato' });
+    }
     const { contratoId, id } = request.params as { contratoId: string; id: string };
     const co = await prisma.coInquilino.findFirst({
       where: { id, contratoId, inmobiliariaId: u.inmobiliariaId },

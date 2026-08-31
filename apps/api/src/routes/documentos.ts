@@ -124,6 +124,18 @@ export async function documentosRoutes(app: FastifyInstance): Promise<void> {
   app.delete('/contratos/:contratoId/documentos/:docId', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'contratos.crear');
     if (!u) return;
+    // BORRAR NO PESA LO MISMO QUE SUBIR. `contratos.crear` incluye a CARGA porque subir el
+    // expediente es su trabajo; esto lo DESTRUYE: saca la fila y después hace unlink real del
+    // archivo en el Volume. Ahí caen el contrato firmado, el pagaré, el convenio de
+    // desocupación, el seguro de caución y los DNI de los garantes. Sin papelera y sin rastro.
+    //
+    // El otro DELETE del panel que toca el Volume (`plata.ts`, comprobantes) exige
+    // `caja.eliminar` —sólo ADMIN—, PIN y evento de auditoría. Éste no pedía nada.
+    if (u.rol === 'CARGA') {
+      return reply
+        .code(403)
+        .send({ message: 'Solo un Admin u Operador puede eliminar un documento del expediente' });
+    }
     const { contratoId, docId } = request.params as { contratoId: string; docId: string };
     // findFirst por las tres claves: nadie borra documentos de otra inmobiliaria
     // ni de otro contrato aunque adivine el id.
