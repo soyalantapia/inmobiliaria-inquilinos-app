@@ -237,6 +237,13 @@ modo demo (localStorage) sin tocar la API.
   código de salida solo.
 - ⚠️ **Un patrón vacío en un grep matchea todo.** Si tu búsqueda "encontró" un número redondo y
   enorme, verificá que el patrón no salga vacío.
+- 🔴 **Tu base local ACUMULA entre tareas, y te va a dar un rojo que no es tuyo.** El contenedor
+  vive hasta que lo bajes, y `seedBase` no revierte todo: un test de otra rama que renovó un
+  contrato dejó liquidaciones nuevas, y tres tareas después un test ajeno falló con
+  `expected 'cmth8x…' to be 'liq_001'`. **Antes de creerle a un rojo local, recreá la base**
+  (`docker compose -f docker-compose.test.yml down -v && up -d` + `migrate deploy`) y volvé a
+  correr. El CI arranca con una Postgres nueva cada vez, así que si él está verde y vos rojo,
+  empezá por ahí.
 - ⚠️ **El CI reporta, no frena.** `main` no tiene branch protection. Un rojo no impide nada: mirarlo
   es tu trabajo, no del sistema.
 
