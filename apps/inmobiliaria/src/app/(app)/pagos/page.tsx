@@ -241,11 +241,21 @@ export default function PagosPage() {
     () =>
       contratos
         .filter((c) => (c.estado === 'FINALIZADO' || c.estado === 'RESCINDIDO') && (c.deudaTotal ?? 0) > 0)
-        .sort((a, b) => (b.deudaTotal ?? 0) - (a.deudaTotal ?? 0)),
+        // Ordena por MONEDA y después por monto: comparando importes crudos, una deuda en
+        // dólares quedaba hundida al final de la lista detrás de cualquier deuda en pesos.
+        .sort((a, b) => (a.moneda === b.moneda ? (b.deudaTotal ?? 0) - (a.deudaTotal ?? 0) : a.moneda === 'ARS' ? -1 : 1)),
     [contratos],
   );
+  // POR MONEDA. Era un `reduce` plano de contratos de CUALQUIER moneda, impreso con signo de
+  // pesos: dos ex-inquilinos, uno que debe $1.500.000 y otro US$2.000, daban "Total $1.502.000".
+  // Cada fila de abajo ya imprime bien, con su moneda.
+  //
+  // Y el arreglo ya existía EN ESTE MISMO ARCHIVO: el PDF de morosos usa `formatTotalPorMoneda`
+  // con un comentario que lo explica —"el total sumaba dólares y pesos y lo imprimía con $… no
+  // es un redondeo, es otro número"—. La pantalla desde la que se imprime ese PDF se había
+  // quedado afuera de ese arreglo.
   const totalPorCobrarEx = useMemo(
-    () => porCobrarExInquilinos.reduce((s, c) => s + (c.deudaTotal ?? 0), 0),
+    () => formatTotalPorMoneda(porCobrarExInquilinos.map((c) => ({ monto: c.deudaTotal ?? 0, moneda: c.moneda }))),
     [porCobrarExInquilinos],
   );
 
@@ -1005,7 +1015,7 @@ export default function PagosPage() {
               <div className="text-right shrink-0">
                 <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Total</p>
                 <p className="text-base font-semibold tabular-nums text-amber-700">
-                  {formatMonto(totalPorCobrarEx)}
+                  {totalPorCobrarEx}
                 </p>
               </div>
             </div>
