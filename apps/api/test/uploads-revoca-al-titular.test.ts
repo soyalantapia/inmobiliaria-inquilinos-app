@@ -11,8 +11,12 @@
  * Consecuencia: un inquilino al que le dieron de baja el alquiler —o cuyo token apunta a un
  * contrato que ya no es el suyo— conservaba el token hasta **15 días** y seguía leyendo y
  * escribiendo el Volume del tenant por este endpoint. No arregla el IDOR intra-tenant del
- * riesgo #9 (para eso hace falta saber de quién es cada archivo, que hoy no se guarda), pero
- * cierra el único endpoint que quedó fuera del fix de revocación.
+ * riesgo #9 —eso lo cerró T-72, guardando de quién es cada archivo—, pero cierra el único
+ * endpoint que quedó fuera del fix de revocación.
+ *
+ * ⚠️ Este test mide LA REVOCACIÓN, no el ámbito. Si un día vuelve a fallar con 403 donde
+ * espera 404, mirá primero la sonda: probablemente el archivo dejó de estar en el ámbito del
+ * titular.
  *
  * NECESITA BASE: lo corre el job `integracion` de la CI.
  */
@@ -29,9 +33,22 @@ let inquilinoId = '';
 let tenant = '';
 let contratoOriginal: string | null = null;
 
-/** Un archivo que no existe: alcanza para distinguir "pasó la autorización" (404) de "no pasó" (401). */
-const url = () => `/uploads/${tenant}/no-existe-${Date.now()}.pdf`;
-const pedir = () => app.inject({ method: 'GET', url: url(), headers: { authorization: `Bearer ${token}` } });
+/**
+ * La sonda: un archivo que **no existe en disco** pero que **sí es del titular**.
+ *
+ * Antes alcanzaba con una URL inventada, porque `/uploads` autorizaba sólo por tenant y el 404
+ * probaba que la autorización había pasado. **Desde T-72 eso dejó de ser cierto**: con
+ * `UPLOADS_AMBITO=on` un archivo que no es de nadie da 403 — correctamente—, y este test pasaba
+ * a medir la regla de ámbito en vez de la revocación, que es lo suyo. Se rompió así, en verde
+ * del lado del producto y en rojo del lado de la sonda.
+ *
+ * Por eso ahora se registra el dueño (vía 1 de `puedeLeerArchivo`): la sonda queda DENTRO del
+ * ámbito del titular, y entonces el único motivo posible de un no-404 vuelve a ser la
+ * revocación. La URL es estable —no `Date.now()`— porque tiene que ser la misma que se
+ * registró.
+ */
+let archivoUrl = '';
+const pedir = () => app.inject({ method: 'GET', url: archivoUrl, headers: { authorization: `Bearer ${token}` } });
 
 beforeAll(async () => {
   prisma = new PrismaClient();
@@ -49,12 +66,27 @@ beforeAll(async () => {
     tenant = fila.inmobiliariaId;
     contratoOriginal = fila.contratoId;
   }
+  archivoUrl = `/uploads/${tenant}/no-existe-t70.pdf`;
+  await prisma.archivoSubido.upsert({
+    where: { url: archivoUrl },
+    update: { inmobiliariaId: tenant, subidoPorKind: 'INQUILINO', subidoPorId: inquilinoId },
+    create: {
+      inmobiliariaId: tenant,
+      url: archivoUrl,
+      subidoPorKind: 'INQUILINO',
+      subidoPorId: inquilinoId,
+      origen: 'test:T-70',
+    },
+  });
 });
 
 afterAll(async () => {
   // Restaurar SIEMPRE: la base es compartida entre los archivos de la suite.
   if (inquilinoId) {
     await prisma.inquilino.update({ where: { id: inquilinoId }, data: { contratoId: contratoOriginal } }).catch(() => {});
+  }
+  if (archivoUrl) {
+    await prisma.archivoSubido.deleteMany({ where: { url: archivoUrl } }).catch(() => {});
   }
   if (app) await app.close();
   await prisma.$disconnect();
