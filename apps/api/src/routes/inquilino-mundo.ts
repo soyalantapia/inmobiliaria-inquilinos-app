@@ -1026,7 +1026,11 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
         out.push({
           id: `pago-ok-${p.id}`,
           titulo: loInformoQuienConsulta ? 'Tu comprobante fue confirmado' : `Se confirmó el pago de ${p.periodo}`,
-          detalle: `$${Math.round(Number(p.monto)).toLocaleString('es-AR')} acreditado.`,
+          // El formateador correcto está definido en esta misma función, 160 líneas arriba, y
+          // su comentario dice textual que el signo equivocado "ya fue bug varias veces". Se usa
+          // para el aviso de ajuste y se había salteado justo acá — que es el aviso que el
+          // inquilino guarda COMO COMPROBANTE de que pagó.
+          detalle: `${fmtMonedaContrato(Math.round(Number(p.monto)))} acreditado.`,
           href: `/pago/${p.liquidacionId}`,
           cuando: p.decididoAt ? relativo(p.decididoAt) : 'reciente',
           icono: 'pago_confirmado',

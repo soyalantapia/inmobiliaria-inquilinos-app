@@ -28,6 +28,7 @@ import {
   montoPagadoPorLiquidacion,
   pagadoAlVencimientoPorLiquidacion,
 } from '../lib/saldos.js';
+import { sim } from '../lib/simbolo-moneda.js';
 import { registrarEventoContrato } from '../lib/evento-contrato.js';
 import { calcularMora, resolverEsquemaMora, asOfMora } from '../lib/punitorios.js';
 import { registrarEvento } from '../lib/auditoria.js';
@@ -404,7 +405,10 @@ export async function plataRoutes(app: FastifyInstance) {
 
     const pago = await prisma.pago.findFirst({
       where: { id, inmobiliariaId: u.inmobiliariaId },
-      include: { contrato: { select: { estado: true } } },
+      // `liquidacion.moneda` es para el asiento de auditoría de más abajo. Va de la liquidación
+      // y no del contrato a propósito: la liq CONGELA la moneda del período, así que si el
+      // contrato cambia de moneda después, los renglones viejos siguen diciendo la verdad.
+      include: { contrato: { select: { estado: true } }, liquidacion: { select: { moneda: true } } },
     });
     if (!pago) return reply.code(404).send({ message: 'Pago inexistente' });
     if (pago.estado !== 'INFORMADO')
@@ -559,7 +563,7 @@ export async function plataRoutes(app: FastifyInstance) {
       titulo: cerroElPeriodo
         ? `Pago recibido — período ${pagoOk.periodo} saldado`
         : `Pago parcial recibido — período ${pagoOk.periodo}`,
-      detalle: `${Number(pagoOk.monto)} · ${pagoOk.metodo}`,
+      detalle: `${sim(pago.liquidacion.moneda)}${Number(pagoOk.monto)} · ${pagoOk.metodo}`,
       fecha: pagoOk.fechaTransferencia,
       autor: u.userId,
     });
@@ -569,7 +573,7 @@ export async function plataRoutes(app: FastifyInstance) {
       autorId: u.userId,
       rolAutor: u.rol,
       entidadId: pagoOk.id,
-      entidadDescripcion: `Pago ${pagoOk.periodo} · $${Number(pagoOk.monto)}`,
+      entidadDescripcion: `Pago ${pagoOk.periodo} · ${sim(pago.liquidacion.moneda)}${Number(pagoOk.monto)}`,
     });
     return pagoOk;
   });
@@ -587,7 +591,11 @@ export async function plataRoutes(app: FastifyInstance) {
         .send({ message: 'Contale al inquilino por qué se rechaza (mínimo 5 caracteres)' });
     if (!(await verificarPin(u.userId, body.data.pin, reply))) return;
 
-    const pago = await prisma.pago.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
+    const pago = await prisma.pago.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      // La moneda del asiento sale de la liquidación, que la congela por período.
+      include: { liquidacion: { select: { moneda: true } } },
+    });
     if (!pago) return reply.code(404).send({ message: 'Pago inexistente' });
     if (pago.estado !== 'INFORMADO')
       return reply.code(409).send({ message: 'El pago ya fue decidido' });
@@ -616,7 +624,7 @@ export async function plataRoutes(app: FastifyInstance) {
       autorId: u.userId,
       rolAutor: u.rol,
       entidadId: pagoOk.id,
-      entidadDescripcion: `Pago ${pagoOk.periodo} · $${Number(pagoOk.monto)}`,
+      entidadDescripcion: `Pago ${pagoOk.periodo} · ${sim(pago.liquidacion.moneda)}${Number(pagoOk.monto)}`,
       detalle: body.data.observacion,
     });
     return pagoOk;
@@ -646,7 +654,11 @@ export async function plataRoutes(app: FastifyInstance) {
         .send({ message: 'Contá por qué se anula el pago (mínimo 5 caracteres)' });
     if (!(await verificarPin(u.userId, body.data.pin, reply))) return;
 
-    const pago = await prisma.pago.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
+    const pago = await prisma.pago.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      // La moneda del asiento sale de la liquidación, que la congela por período.
+      include: { liquidacion: { select: { moneda: true } } },
+    });
     if (!pago) return reply.code(404).send({ message: 'Pago inexistente' });
     if (pago.estado !== 'CONCILIADO')
       return reply.code(409).send({ message: 'Solo se puede anular un pago ya conciliado' });
@@ -790,7 +802,7 @@ export async function plataRoutes(app: FastifyInstance) {
       autorId: u.userId,
       rolAutor: u.rol,
       entidadId: pagoOk.id,
-      entidadDescripcion: `Pago ${pagoOk.periodo} · $${Number(pagoOk.monto)}`,
+      entidadDescripcion: `Pago ${pagoOk.periodo} · ${sim(pago.liquidacion.moneda)}${Number(pagoOk.monto)}`,
       detalle: body.data.observacion,
     });
     return pagoOk;
@@ -987,7 +999,7 @@ export async function plataRoutes(app: FastifyInstance) {
       autorId: u.userId,
       rolAutor: u.rol,
       entidadId: id,
-      entidadDescripcion: `${b.condonar ? 'Condonación' : 'Cobro'} de deuda: ${res.liquidacionesSaldadas} cuota(s) por $${res.montoAplicado}`,
+      entidadDescripcion: `${b.condonar ? 'Condonación' : 'Cobro'} de deuda: ${res.liquidacionesSaldadas} cuota(s) por ${sim(contrato.moneda)}${res.montoAplicado}`,
     });
     return { ok: true, condonado: !!b.condonar, ...res };
   });
@@ -1124,7 +1136,7 @@ export async function plataRoutes(app: FastifyInstance) {
         autorId: u.userId,
         rolAutor: u.rol,
         entidadId: id,
-        entidadDescripcion: `Cargo saldado: ${cargo.concepto} · $${Number(cargo.monto)}`,
+        entidadDescripcion: `Cargo saldado: ${cargo.concepto} · ${sim(cargo.moneda)}${Number(cargo.monto)}`,
       });
     }
     return { ok: true };
@@ -1304,7 +1316,7 @@ export async function plataRoutes(app: FastifyInstance) {
       return reply.code(400).send({
         message:
           dep.deducciones > 0
-            ? `Sólo quedan $${dep.disponible} para devolver: hay $${dep.deducciones} en reparaciones imputadas a este depósito.`
+            ? `Sólo quedan ${sim(contrato.moneda)}${dep.disponible} para devolver: hay ${sim(contrato.moneda)}${dep.deducciones} en reparaciones imputadas a este depósito.`
             : 'No podés devolver más que el depósito en custodia',
       });
     }
@@ -1378,7 +1390,7 @@ export async function plataRoutes(app: FastifyInstance) {
       autorId: u.userId,
       rolAutor: u.rol,
       entidadId: id,
-      entidadDescripcion: `Depósito ${estadoDeposito.toLowerCase()} · se devolvió $${monto} de $${deposito}${body.data.motivo ? ` · ${body.data.motivo.trim()}` : ''}`,
+      entidadDescripcion: `Depósito ${estadoDeposito.toLowerCase()} · se devolvió ${sim(contrato.moneda)}${monto} de ${sim(contrato.moneda)}${deposito}${body.data.motivo ? ` · ${body.data.motivo.trim()}` : ''}`,
     });
     // El front necesita saber qué pasó de verdad con la retención: cuánto canceló deuda y
     // cuánto sobró tras cubrirla toda (ese sobrante es plata que sigue siendo del inquilino).
@@ -1558,7 +1570,7 @@ export async function plataRoutes(app: FastifyInstance) {
       autorId: u.userId,
       rolAutor: u.rol,
       entidadId: pagoOk.id,
-      entidadDescripcion: `Cobro manual ${pagoOk.periodo} · $${Number(pagoOk.monto)}`,
+      entidadDescripcion: `Cobro manual ${pagoOk.periodo} · ${sim(liq.moneda)}${Number(pagoOk.monto)}`,
       detalle: body.data.nota ?? 'Cobro registrado a mano (efectivo / cobranza directa)',
     });
     return reply.code(201).send(pagoOk);
@@ -2849,7 +2861,7 @@ export async function plataRoutes(app: FastifyInstance) {
       autorId: u.userId,
       rolAutor: u.rol,
       entidadId: rendicion.id,
-      entidadDescripcion: `Rendición ${body.data.periodo} a propietario ${body.data.propietarioId} · neto $${Number(rendicion.montoNeto)}`,
+      entidadDescripcion: `Rendición ${body.data.periodo} a ${owner.nombre} ${owner.apellido} · neto ${sim(rendicion.moneda)}${Number(rendicion.montoNeto)}`,
     });
     return reply.code(201).send(rendicion);
   });
