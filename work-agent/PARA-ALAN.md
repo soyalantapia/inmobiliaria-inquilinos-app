@@ -187,3 +187,46 @@ handler sepa que existe?
 Mi lectura, para que no cuente como neutral: **B**, porque el daño que falta cubrir es de
 recursos y no de cuentas, y el borde es donde eso se resuelve barato. Pero A es la única que
 deja el techo dentro del repo, y eso vale.
+
+## Renovaciones · qué queda anotado cuando un contrato se renueva
+
+**Fecha:** 01/09/2026 · **Bloquea:** nada. Está arreglado y funcionando; esto es para que la
+decisión sea tuya y no mía.
+
+### Lo que estaba roto
+
+Renovar un contrato **no limpiaba la intención de renovación**. `IntencionRenovacion` es una
+fila por contrato y hasta hoy sólo la escribía la pantalla de decisión. Así que si el inquilino
+avisaba que no renovaba —con su fecha de egreso— y después negociaban y renovaban, quedaba un
+contrato con plazo hasta 2028 y, colgado, un "se va el 30/09/2026".
+
+Se veía en tres lados a la vez: el KPI **"No renuevan"** lo seguía contando, la tarjeta mostraba
+las dos fechas juntas, y el expediente de la propiedad seguía empujando el hito "Aviso de egreso
+del inquilino". Ya está arreglado.
+
+### La decisión que tomé, y que podés dar vuelta
+
+Cuando se renueva, la intención vuelve a **SIN_RESPUESTA** y se limpian la fecha de egreso, el
+comentario y la fecha de la decisión.
+
+La alternativa obvia era escribir **RENOVAR**: al fin y al cabo renovaron. **No la elegí**
+porque esa pregunta es sobre *el vencimiento que viene*, y la pantalla la muestra contra la
+fecha de fin NUEVA. Poniendo RENOVAR, en 2028 el contrato aparecería como "quieren renovar" sin
+que nadie se lo haya preguntado a nadie: el mismo defecto de hoy con el signo cambiado. Lo
+cierto después de renovar es que **sobre el plazo nuevo todavía no se habló**.
+
+El hecho de la renovación no se pierde: queda en la tabla de renovaciones y en el historial del
+contrato.
+
+**Consecuencia práctica:** un contrato recién renovado aparece en "Falta avisar" cuando entra en
+los últimos 6 meses del plazo nuevo. Que es, me parece, lo que querés que pase.
+
+### La pregunta
+
+**¿Va así, o preferís que renovar deje anotado RENOVAR?** Si preferís lo segundo, es cambiar una
+palabra — pero conviene decidirlo sabiendo que la pantalla va a decir que quieren renovar sin
+que nadie haya preguntado.
+
+Y una que no depende de esto: **¿querés que el aviso de egreso quede en la historia de la
+propiedad aunque después renueven?** Hoy no queda —la intención es una sola fila y se pisa—, y
+eso ya pasaba antes con cualquier cambio de opinión. Guardarlo pide una tabla de historial.
