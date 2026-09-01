@@ -105,3 +105,95 @@ sobre una base recreada desde cero, el `vitest` del panel y `next build` de los 
 ninguno prueba el árbol con los otros treinta y cinco adentro. Esto sí.
 
 **Lo que no prueba:** `main` no tiene branch protection, así que nada de esto se aplica solo.
+
+---
+
+# Segunda corrida: ahora son 45 (01/09, madrugada)
+
+Entraron **9 PRs más** —los arreglos de la tercera auditoría (#105 a #113)— y se volvió a
+mergear **todo desde cero** sobre `main`. `main` no se movió desde la corrida anterior, así
+que esto reemplaza a los números de arriba, no los complementa.
+
+| | |
+|---|---|
+| PRs mergeados | **45** (#69 a #113) |
+| Conflictos en **código** | **2** |
+| Conflictos en documentación | varios, todos *"quedate con los dos lados"* |
+| `tsc --noEmit` api · panel · PWA · portal | **0 errores** en los cuatro |
+| Suite `sin-db` | **81 archivos / 748 tests** ✅ |
+| Suite `con-db` con `UPLOADS_AMBITO=on` | **79 ok + 1 skip / 563 tests** ✅ |
+| `vitest` del panel | **16 archivos / 117 tests** ✅ |
+| `next build` panel y PWA | **OK** ✅ |
+
+El skip sigue siendo `backfill-mascotas-propiedad.test.ts`, que ya se saltea en `main`.
+
+## 🔴 La corrida encontró un defecto que ninguna rama veía
+
+`el-default-de-mora-viaja-con-su-moneda.test.ts` (de **#108**) tipaba `monedaOriginal` como
+`'ARS' | 'USD'`, pero `Inmobiliaria.monedaDefault` es `String` en el schema. **`tsc` en rojo.**
+
+No lo agarró el CI de esa rama porque el typecheck se había corrido **antes** de escribir ese
+archivo, y después sólo se corrió el test: **vitest transpila sin chequear tipos**, así que el
+test pasaba en verde con `tsc` roto. Ya está arreglado y pusheado a #108.
+
+Es el argumento de este documento en una línea: **cada PR tiene su verde contra `main`, y
+ninguno prueba el árbol con los otros cuarenta y cuatro adentro.**
+
+## Los dos conflictos de código
+
+### 1 · `apps/api/src/routes/core.ts` — #94 contra #90
+
+El mismo de la corrida anterior. #90 saca `liqVencida` y `liqQueDefineEstado` a
+`lib/estado-de-pago.js`; #94 agrega el import de `lib/simbolo-moneda.js`. Chocan en el bloque
+de imports.
+
+**Resolución: los DOS imports, y las funciones inline NO vuelven.**
+
+> ⚠️ Resolver con `git checkout --theirs` **descarta el cambio de #90**: el árbol queda verde
+> y **sin** la extracción. Un verde incompleto es peor que un rojo.
+
+Verificación después de resolver: `grep -c "function liqVencida" apps/api/src/routes/core.ts`
+tiene que dar **0**.
+
+### 2 · `apps/inmobiliaria/src/lib/auditoria-labels.ts` — #106 contra #113 (nuevo)
+
+Los dos agregan valores al enum `TipoEventoAuditoria` y su rótulo en castellano: #106 suma
+`CONTRATO_DADO_DE_BAJA`, #113 suma `EQUIPO_REINCORPORADO` y `EQUIPO_ROL_CAMBIADO`. Tres hunks,
+en `TIPO_LABEL` y en `TIPO_VARIANT`.
+
+**Resolución: los dos lados, en los tres hunks.** Son entradas independientes de un mapa.
+
+Verificación después de resolver: los **tres** valores tienen que aparecer **dos veces** cada
+uno (una en `TIPO_LABEL` y otra en `TIPO_VARIANT`).
+
+Las migraciones **no** chocan (son archivos distintos) y el `schema.prisma` tampoco: los
+valores se insertaron en anclas distintas del enum a propósito.
+
+## Sobre por qué esto importa: el test que lo obliga
+
+`auditoria-labels.test.ts` **lee el `schema.prisma` real** y exige un rótulo en castellano por
+cada valor del enum. Si el conflicto se resuelve mal —quedándose con un solo lado— ese test se
+pone rojo y nombra el valor que falta. Es la red que hace que este conflicto no se pueda
+resolver a medias en silencio.
+
+## El orden, actualizado
+
+Los 36 de antes mantienen su orden. Los 9 nuevos van **después**, y entre ellos:
+
+`#105` (informe) · `#107` · `#109` · `#110` · `#111` · `#112` · `#108` · `#106` → `#113`
+
+- **#106 antes que #113**, o al revés: da igual, pero **adyacentes**. Los dos tocan el enum de
+  auditoría y sus rótulos; ponerlos juntos concentra la resolución en un solo momento.
+- **#94 después de #90**, como en la corrida anterior.
+- El resto no tiene dependencias entre sí.
+
+## Una trampa nueva del procedimiento
+
+La primera corrida de `con-db` en el worktree dio **75 archivos fallados** y parecía una
+regresión enorme. No lo era: al worktree le faltaba `apps/api/.env` —está gitignoreado, así que
+no viaja con `git worktree add`— y sin `JWT_SECRET` **`buildApp` explota antes de correr un
+solo test**. 547 tests "skipped" no son 547 tests que pasan.
+
+**Antes de creerle a una corrida en un worktree, hay que mirar cuántos tests corrieron de
+verdad.** Y el `.env` del worktree tiene que apuntar a **su propia** base, nunca a la del clon
+principal ni —jamás— a la de producción.
