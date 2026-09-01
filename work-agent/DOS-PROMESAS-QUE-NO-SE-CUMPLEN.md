@@ -87,3 +87,29 @@ Las tres afirmaciones falsas —el copy de la comisión, el copy del preaviso y 
 server— quedan corregidas. **Es la parte que no depende de ninguna decisión:** un texto que
 promete algo que el código no hace es peor que la ausencia de la función, porque nadie va a ir a
 verificarlo.
+
+---
+
+## 3. Y cuatro campos más del mismo bloque, sin lector
+
+Salieron de la segunda auditoría, en la misma tarjeta **"Contacto y presencia"** de
+`/mi-inmobiliaria` de la que salió el WhatsApp. Verificados uno por uno: los cuatro aparecen
+**sólo** en su propio formulario, su propio zod, y el `GET /empresa` que repinta ese formulario.
+
+| Campo | Qué podría hacer | Cuesta |
+|---|---|---|
+| `horariosAtencion` | Mostrarle al inquilino cuándo atienden, al lado del botón de WhatsApp. Es el más plausible de los cuatro: hoy el inquilino escribe un domingo a las 23 y no sabe que nadie va a leerlo hasta el lunes. | chico |
+| `sitioWeb` | Un link en el pie del portal del propietario o en los mails salientes. | chico |
+| `instagram` / `facebook` | Ídem, o nada. | chico |
+
+*(Ojo al grepear: `sitioWeb` también existe en **Cupon**, y ése **sí** se usa —`convenios-browser`
+lo renderiza como link—. Son dos campos distintos con el mismo nombre.)*
+
+**La diferencia con el WhatsApp, y por eso éstos no se arreglaron:** el WhatsApp tenía un
+comportamiento **equivocado** —abría un chat que no existe—, y eso se arregla sin preguntar. Estos
+cuatro simplemente no hacen nada. Darles un consumidor es agregar una función, y eso es una
+decisión.
+
+**La pregunta concreta:** ¿la tarjeta "Contacto y presencia" es la ficha pública de la
+inmobiliaria —y entonces esos datos tienen que llegar al inquilino y al propietario— o es una
+libreta interna? Si es lo segundo, alcanza con rotularla así y no hay nada más que hacer.
