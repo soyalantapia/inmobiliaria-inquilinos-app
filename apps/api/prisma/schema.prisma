@@ -351,6 +351,10 @@ enum TipoEventoAuditoria {
   // transfiere el inquilino: es el que menos puede quedar sin rastro.
   PROPIETARIO_CUENTA_CAMBIADA
   MORA_EDITADA
+  // La baja de un contrato (fin de plazo o rescisión) libera la propiedad, anula las cuotas
+  // futuras, puede crear la penalidad y puede resolver el depósito. Todo eso era anónimo:
+  // el contrato quedaba RESCINDIDO y no había forma de saber quién apretó el botón.
+  CONTRATO_DADO_DE_BAJA
   MOVIMIENTO_CONSORCIO_ELIMINADO
   // Conmutador de usuarios (T-25). Son la defensa REAL del feature: un PIN de 5 dígitos
   // tipeado en un mostrador no es un secreto fuerte, pero cada cambio y cada intento
