@@ -1,11 +1,19 @@
-/**
- * Los rótulos del rastro de auditoría, afuera de la pantalla para poder fijarlos con un test.
- *
- * Vivían adentro de `app/(app)/auditoria/page.tsx` y ahí no había forma de chequear que
- * estuvieran completos: doce de los veinticuatro tipos de evento no tenían rótulo y nadie se
- * enteró. El test de al lado los cruza contra el enum de Prisma.
- */
-
+/**
+
+ * Los rótulos del rastro de auditoría, afuera de la pantalla para poder fijarlos con un test.
+
+ *
+
+ * Vivían adentro de `app/(app)/auditoria/page.tsx` y ahí no había forma de chequear que
+
+ * estuvieran completos: doce de los veinticuatro tipos de evento no tenían rótulo y nadie se
+
+ * enteró. El test de al lado los cruza contra el enum de Prisma.
+
+ */
+
+
+
 /**
  * Los 24 valores de `TipoEventoAuditoria` en castellano.
  *
@@ -44,6 +52,7 @@ export const TIPO_LABEL: Record<string, string> = {
   CONMUTACION_RECHAZADA: 'Conmutación rechazada',
   PIN_DESBLOQUEADO: 'PIN desbloqueado',
   PIN_ELIMINADO: 'PIN eliminado',
+  CONTRATO_DADO_DE_BAJA: 'Contrato dado de baja',
 };
 
 export const TIPO_VARIANT: Record<string, 'success' | 'destructive' | 'warning' | 'secondary'> = {
@@ -55,6 +64,9 @@ export const TIPO_VARIANT: Record<string, 'success' | 'destructive' | 'warning' 
   GASTO_CAJA_ELIMINADO: 'destructive',
   CONTRATO_RECHAZADO: 'destructive',
   EQUIPO_REMOVIDO: 'destructive',
+  // La baja libera la propiedad, borra las cuotas futuras y puede resolver el depósito.
+  // Es irreversible: va en rojo, como el resto de lo que deshace.
+  CONTRATO_DADO_DE_BAJA: 'destructive',
   // En rojo lo que deshace o borra plata, y lo que es un intento fallido de entrar.
   PROPIETARIO_RENDICION_ANULADA: 'destructive',
   MOVIMIENTO_CONSORCIO_ELIMINADO: 'destructive',
