@@ -176,9 +176,28 @@ cada valor del enum. Si el conflicto se resuelve mal —quedándose con un solo 
 pone rojo y nombra el valor que falta. Es la red que hace que este conflicto no se pueda
 resolver a medias en silencio.
 
+## 🔴 #77 va PRIMERO, y ahora hay evidencia
+
+El flake que arregla #77 —`portal-propietario-e2e.test.ts`, el caso "el código igual se emite"—
+apareció **dos veces el 01/09 en ramas que no lo pueden haber causado**:
+
+| rama | conteo |
+|---|---|
+| `fix/la-mora-fantasma-que-queda-cobrable` (#108) | esperaba 1, vio **3** |
+| `docs/orden-de-merge-verificado` (#85) — **cambia un solo `.md`** | esperaba 1, vio **2** |
+
+Que una rama de sólo documentación lo dispare cierra la pregunta de si hay un defecto de
+producto atrás: no lo hay. Las escrituras del OTP salieron del camino del request a propósito
+(para que el reloj no delate qué emails existen), y las del test de temporización aterrizan
+**después** del `deleteMany` del caso siguiente.
+
+**Hasta que #77 entre, el verde de cualquier otro PR es "verde salvo que toque".** Con 59 PRs
+abiertos, eso es tiempo de alguien mirando un rojo que no es suyo.
+
 ## El orden, actualizado
 
-Los 36 de antes mantienen su orden. Los 9 nuevos van **después**, y entre ellos:
+**#77 primero** (ver arriba). Después, los 36 de antes mantienen su orden, y los 9 nuevos van
+al final, entre ellos:
 
 `#105` (informe) · `#107` · `#109` · `#110` · `#111` · `#112` · `#108` · `#106` → `#113`
 
