@@ -219,3 +219,39 @@ solo test**. 547 tests "skipped" no son 547 tests que pasan.
 **Antes de creerle a una corrida en un worktree, hay que mirar cuántos tests corrieron de
 verdad.** Y el `.env` del worktree tiene que apuntar a **su propia** base, nunca a la del clon
 principal ni —jamás— a la de producción.
+
+
+---
+
+# Tercera corrida: 53 (01/09, tarde)
+
+Entraron los 8 de T-28 y las trampas del prompt (#114 a #121). `main` sigue sin moverse, así
+que esto reemplaza a los números de arriba.
+
+| | |
+|---|---|
+| PRs mergeados | **53** (#69 a #121) |
+| Conflictos en **código** | **2** — los dos ya documentados arriba |
+| Conflictos en documentación | 6, todos *"quedate con los dos lados"* |
+| `tsc --noEmit` api · panel · PWA · portal | **0** en los cuatro |
+| Suite `sin-db` | **82 archivos / 758 tests** ✅ |
+| Suite `con-db` con `UPLOADS_AMBITO=on` | **84 ok + 1 skip / 594 tests** ✅ |
+| `vitest` del panel | **16 archivos / 117 tests** ✅ |
+| `next build` panel · PWA · portal | **OK** en los tres ✅ |
+
+**Ningún conflicto nuevo.** Los 8 PRs de T-28 son casi todos archivos de test nuevos, que por
+definición no chocan; los dos que tocan fuente (#115 en `saldos.ts` y `resumenes-bancarios.ts`)
+no coinciden con ningún otro.
+
+El crecimiento de la red, que es el punto de T-28: la suite con base pasó de **563 a 594**
+tests, y la sin base de **748 a 758**.
+
+## El orden, con los nuevos
+
+`#77` **primero** (el flake). Después los 36 originales en su orden, después los 9 de la
+tercera auditoría, y al final los de T-28, que no dependen de nada entre sí:
+
+`#116` (informe) · `#115` · `#117` · `#118` · `#119` · `#120` · `#121` · `#114`
+
+**#115 conviene antes que los cinco de test**: es el único que toca fuente, y los tests que
+vienen después corren sobre el `saldos.ts` ya corregido.
