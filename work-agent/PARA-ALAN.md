@@ -87,3 +87,51 @@ más destacado de la app del inquilino y no hace nada.
 
 ---
 
+
+## Anuncios · ¿un inquilino de SOLO EXPENSAS recibe los anuncios generales?
+
+**Fecha:** 01/09/2026 · **Bloquea:** el residuo del hallazgo de anuncios de la tercera auditoría
+(lo demás ya está arreglado en #90 y #112)
+
+### Lo que está verificado, para no volver a mirarlo
+
+El panel y el server **no coinciden en a quién alcanza un anuncio**, y no por un bug de
+derivación —eso era el hallazgo y ya está resuelto— sino por un filtro que uno tiene y el otro no:
+
+- **El panel** arma la lista de inquilinos alcanzables con
+  `contratosApi.filter((c) => c.estado === 'ACTIVO' && c.tipoContrato !== 'SOLO_EXPENSAS')`
+  (`anuncios/page.tsx:489`). De ahí sale **el número que ves antes de confirmar** y también
+  **la lista donde elegís contratos uno por uno**.
+- **El server** (`resolverAudiencia`, `anuncios.ts`) busca con
+  `where: { contrato: { estado: 'ACTIVO' } }`. Sin filtro de tipo.
+
+O sea: hoy **un inquilino de solo expensas SÍ recibe el anuncio** —en la app y por mail—, pero
+**no está contado** en el «Enviar a N destinatarios» que confirmás, ni aparece en la lista para
+elegirlo a mano.
+
+No es un número al voleo: es la diferencia entre lo que confirmás y lo que sale.
+
+### Por qué no lo arreglé solo
+
+Las dos direcciones son defendibles y significan cosas distintas para el producto:
+
+**A · El server tiene razón: reciben.** Un inquilino de solo expensas es un inquilino de la
+inmobiliaria, y «el 12 cortan el agua» le importa igual. El arreglo es sacar el filtro del panel
+para que el número diga la verdad. **Costo:** también aparecen en la lista de selección manual, que
+es lo que probablemente alguien quiso evitar.
+
+**B · El panel tiene razón: no reciben.** El arreglo es agregar el filtro al `where` del server.
+**Costo:** hoy les llega y dejaría de llegarles — un cambio de comportamiento silencioso para
+quien ya está usando el producto.
+
+Mi lectura, para que no cuente como neutral: el filtro del panel **parece copiado** del ajuste
+masivo, donde sí tiene sentido (un solo-expensas no tiene canon que ajustar). Acá no hay nada
+equivalente: las expensas también se deben, y el anuncio no habla de plata. Eso inclina hacia **A**,
+pero no lo suficiente como para cambiarlo sin que lo digas.
+
+### La pregunta
+
+**¿Un contrato de SOLO EXPENSAS entra en «Todos los inquilinos», «Morosos» y «Pendientes»?**
+
+Y si la respuesta es sí (opción A): ¿querés que además aparezca en la lista de selección manual, o
+sólo que se lo cuente en las audiencias masivas?
