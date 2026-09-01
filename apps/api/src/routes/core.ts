@@ -2885,13 +2885,29 @@ export async function coreRoutes(app: FastifyInstance) {
     contactoTelefono: z.string().trim().min(3).max(50),
     contactoEmail: z.string().trim().email().optional().or(z.literal('')),
   });
+  // Los campos de PÓLIZA sólo existen para una póliza. El schema ya lo dice —«Montos/
+  // vigencia son de una PÓLIZA (caución/digital): opcionales para un garante persona
+  // (propietaria/sueldo), que NO TIENE cobertura ni vencimiento»— y el body los aceptaba
+  // para los cuatro tipos sin un solo `refine`.
+  //
+  // Una fila PROPIETARIA con `vigenciaHasta` no es un dato de más: es un dato que MIENTE.
+  // `propiedad-seguros.ts` deriva `estadoPoliza` sólo `if (esPoliza && vigenciaHasta)`, así
+  // que esa fila queda con estado `null`, y el badge del expediente pintaba el null como
+  // «Vigente» junto a una fecha vencida hace medio año.
+  //
+  // Se normaliza acá y no con un 400 porque el caso real es un RESIDUO, no una decisión: el
+  // operador carga una caución, corrige el tipo a PROPIETARIA, y el formulario le esconde los
+  // campos de póliza sin limpiarlos. Lo que ve en pantalla es "sin póliza"; esto guarda eso.
+  // Y a diferencia de arreglarlo sólo en el formulario, cubre también los imports, el seed y
+  // cualquier cliente de la API.
+  const esPolizaTipo = (t: z.infer<typeof garanteBody>['tipo']) => t === 'CAUCION' || t === 'DIGITAL';
   const garanteData = (b: z.infer<typeof garanteBody>) => ({
     tipo: b.tipo,
     nombreProveedor: b.nombreProveedor,
     dni: b.dni || null,
-    numeroPoliza: b.numeroPoliza || null,
-    montoCobertura: b.montoCobertura ?? null,
-    vigenciaHasta: b.vigenciaHasta ?? null,
+    numeroPoliza: esPolizaTipo(b.tipo) ? b.numeroPoliza || null : null,
+    montoCobertura: esPolizaTipo(b.tipo) ? b.montoCobertura ?? null : null,
+    vigenciaHasta: esPolizaTipo(b.tipo) ? b.vigenciaHasta ?? null : null,
     contactoNombre: b.contactoNombre || null,
     contactoTelefono: b.contactoTelefono,
     contactoEmail: b.contactoEmail || null,
