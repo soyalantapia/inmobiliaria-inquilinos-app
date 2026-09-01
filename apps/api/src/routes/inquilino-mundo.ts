@@ -9,6 +9,7 @@ import { prisma } from '../db.js';
 import { urlEsDelTenant } from './uploads.js';
 import { dineroPositivo } from '../lib/monto.js';
 import { puedeAdjuntar } from '../lib/acceso-archivos.js';
+import { CAMPOS_VISITA_INQUILINO } from '../lib/visita-campos.js';
 import {
   exigirContratoActivo,
   requireAuth,
@@ -1038,7 +1039,17 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
     // 3) Reclamos: respondidos por la inmo / profesional asignado / a calificar.
     const reclamos = await prisma.reclamo.findMany({
       where: { contratoId },
-      include: { eventos: { orderBy: { fecha: 'asc' } }, profesional: true, visita: true, rating: true },
+      include: {
+        eventos: { orderBy: { fecha: 'asc' } },
+        profesional: true,
+        // NUNCA el token. `visita: true` le mandaba al INQUILINO el link mágico del
+        // profesional, y con él puede canjear un JWT de profesional (el canje no pide bearer)
+        // y cerrar su propio reclamo poniendo el `costoTrabajo` que quiera: 0 para no
+        // pagarlo, o un número grande si el pagador clasificado es el propietario.
+        // Acá no hay rol que valga: el inquilino no crea ni regenera ese link nunca.
+        visita: { select: CAMPOS_VISITA_INQUILINO },
+        rating: true,
+      },
     });
     const CERRADOS = ['RESUELTO', 'CERRADO', 'RECHAZADO'];
     for (const r of reclamos) {
