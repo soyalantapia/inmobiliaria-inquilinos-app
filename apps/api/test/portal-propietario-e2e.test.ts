@@ -40,6 +40,12 @@ const P = 'ZZ-e2e-prop-'; // prefijo de todo lo que crea este archivo
 const OTRO_TENANT = `${P}inmo`;
 const OTRO_PROP = `${P}duenio`;
 const OTRO_EMAIL = 'duenio.de.otra.inmo@example.invalid';
+/**
+ * Propietario EXCLUSIVO del caso "el código igual se emite". No comparte fila con nadie a
+ * propósito: ver el comentario de ese test. Se limpia solo con el prefijo `P`.
+ */
+const EMISION_PROP = `${P}emision`;
+const EMISION_EMAIL = 'duenio.emision@example.invalid';
 
 const auth = (t: string) => ({ authorization: `Bearer ${t}` });
 
@@ -100,6 +106,18 @@ beforeAll(async () => {
       cuit: '20-11111111-1',
       email: OTRO_EMAIL,
       telefono: '11 1111-1111',
+      activo: true,
+    },
+  });
+  await prisma.propietario.create({
+    data: {
+      id: EMISION_PROP,
+      inmobiliariaId: OTRO_TENANT,
+      nombre: 'Dueño',
+      apellido: 'Emisión',
+      cuit: '20-22222222-2',
+      email: EMISION_EMAIL,
+      telefono: '11 2222-2222',
       activo: true,
     },
   });
@@ -235,9 +253,29 @@ describe('Portal del propietario — el camino entero, por HTTP', () => {
       // La contracara del test de arriba: sacar las escrituras del camino del request no puede
       // significar que dejen de ocurrir. El orden se conserva —primero se guarda, después sale
       // el mail—, así que nadie puede recibir un código que no existe.
-      await prisma.codigoOtpPropietario.deleteMany({ where: { propietarioId: OTRO_PROP } });
+      //
+      // 🔴 VA CONTRA SU PROPIO PROPIETARIO, Y NO CONTRA `OTRO_PROP` — que es como estaba, y por
+      // eso este caso se caía solo en CI con `expected 2 to be 1`, en commits que no tocaban
+      // nada de esto.
+      //
+      // El test de acá arriba usa `OTRO_EMAIL` SEIS veces, y lo que ese test verifica es
+      // justamente que las escrituras salieron del camino del request: aterrizan DESPUÉS de que
+      // el request contestó. Cada una hace `updateMany(usedAt = ahora)` sobre las viejas y
+      // después `createMany` la nueva. Con las dos tandas solapadas alcanza este orden:
+      //
+      //   rezagada.updateMany → (este test borra todo) → propio.updateMany → propio.createMany
+      //   → rezagada.createMany
+      //
+      // y quedan DOS filas con `usedAt: null`, porque el `updateMany` propio corrió antes de que
+      // la rezagada insertara la suya. Es una carrera de verdad: no se dispara a pedido, y el
+      // mismo commit pasaba en una corrida y fallaba en la otra.
+      //
+      // Con un propietario propio no hay carrera posible: ninguna otra llamada del archivo le
+      // escribe, así que hay exactamente una escritura asincrónica en juego. Un test que se cae
+      // por el test de al lado enseña a ignorar el rojo, que es lo caro.
+      await prisma.codigoOtpPropietario.deleteMany({ where: { propietarioId: EMISION_PROP } });
       const r = await app.inject({
-        method: 'POST', url: '/auth/propietario/otp/request', payload: { email: OTRO_EMAIL },
+        method: 'POST', url: '/auth/propietario/otp/request', payload: { email: EMISION_EMAIL },
       });
       expect(r.statusCode).toBe(200);
 
@@ -245,11 +283,11 @@ describe('Portal del propietario — el camino entero, por HTTP', () => {
       // el código dejara de emitirse, esto falla en dos segundos en vez de pasar por casualidad.
       let filas = 0;
       for (let i = 0; i < 20 && filas === 0; i++) {
-        filas = await prisma.codigoOtpPropietario.count({ where: { propietarioId: OTRO_PROP, usedAt: null } });
+        filas = await prisma.codigoOtpPropietario.count({ where: { propietarioId: EMISION_PROP, usedAt: null } });
         if (filas === 0) await new Promise((r2) => setTimeout(r2, 100));
       }
       expect(filas, 'pedir el código tiene que dejarlo guardado').toBe(1);
-      await prisma.codigoOtpPropietario.deleteMany({ where: { propietarioId: OTRO_PROP } });
+      await prisma.codigoOtpPropietario.deleteMany({ where: { propietarioId: EMISION_PROP } });
     });
 
     it('los intentos se cortan POR CUENTA, no por IP', async () => {
