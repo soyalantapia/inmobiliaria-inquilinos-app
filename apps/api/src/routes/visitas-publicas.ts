@@ -6,6 +6,8 @@ import { urlEsDelTenant } from './uploads.js';
 import { imputarCostoReclamo, conceptoReclamo, ReclamoYaRendido, ReclamoNoReimputable } from '../lib/imputar-reclamo.js';
 import { dinero } from '../lib/monto.js';
 import { puedeAdjuntar } from '../lib/acceso-archivos.js';
+import { linkDeVisitaVencido } from '../lib/vigencia-link-visita.js';
+import { CAMPOS_VISITA_PANEL } from '../lib/visita-campos.js';
 
 /**
  * Flujo del profesional asignado a un reclamo, vía link mágico (/p/:token en
@@ -23,11 +25,6 @@ import { puedeAdjuntar } from '../lib/acceso-archivos.js';
 
 const ORDEN_ESTADO = { ASIGNADO: 0, CONFIRMADA: 1, EN_CAMINO: 2, LISTO: 3 } as const;
 type EstadoVisita = keyof typeof ORDEN_ESTADO;
-
-/** Gracia tras marcar LISTO: el profesional todavía ve la pantalla de confirmación. */
-const GRACIA_POST_LISTO_MS = 48 * 60 * 60 * 1000;
-/** Tope duro de vida del link, contado desde que se abrió el reclamo. */
-const VIDA_MAX_LINK_MS = 60 * 24 * 60 * 60 * 1000;
 
 export async function visitasPublicasRoutes(app: FastifyInstance): Promise<void> {
   // GET /visitas-publicas/:token — PÚBLICO (sin bearer): valida el token opaco
@@ -68,18 +65,12 @@ export async function visitasPublicasRoutes(app: FastifyInstance): Promise<void>
     //
     // Sin migración: la visita no tiene createdAt, pero es 1:1 con el reclamo, así que
     // usamos ESE reloj + los hitos que ya se persisten.
-    const vencido = (() => {
-      const ahora = Date.now();
-      // (a) Trabajo terminado: se deja una ventana de gracia para que el profesional vea
-      //     la pantalla de confirmación y refresque, y después el link muere.
-      if (visita.listoAt && ahora - new Date(visita.listoAt).getTime() > GRACIA_POST_LISTO_MS) return true;
-      // (b) Reclamo cerrado o rechazado: no hay trabajo que hacer, no hay razón para entrar.
-      if (visita.reclamo.estado === 'CERRADO' || visita.reclamo.estado === 'RECHAZADO') return true;
-      // (c) Tope duro por antigüedad, para el link que quedó abierto y nunca se completó.
-      if (ahora - new Date(visita.reclamo.createdAt).getTime() > VIDA_MAX_LINK_MS) return true;
-      return false;
-    })();
-    if (vencido) return reply.code(410).send({ message: 'Este link ya venció. Pedile uno nuevo a la inmobiliaria.' });
+    // La regla salió a `lib/vigencia-link-visita.ts` porque el GUARD de cada escritura
+    // (`requireProfesionalVisita`) no la aplicaba: una sesión de tres días emitida antes del
+    // vencimiento seguía escribiendo cuando este endpoint ya contestaba 410.
+    if (linkDeVisitaVencido(visita)) {
+      return reply.code(410).send({ message: 'Este link ya venció. Pedile uno nuevo a la inmobiliaria.' });
+    }
 
     const sesion = app.jwt.sign(
       { kind: 'profesional', visitaId: visita.id, inmobiliariaId: visita.inmobiliariaId, profesionalId: visita.profesionalId },
@@ -122,9 +113,22 @@ export async function visitasPublicasRoutes(app: FastifyInstance): Promise<void>
   /** Aplica una transición si la visita está en un estado previo válido; si ya
    * está en el estado destino (o más adelante), es idempotente (200 sin
    * volver a aplicar). Si falta un paso anterior, 409 con mensaje claro. */
-  /** La visita tal como está hoy, para responder sin repetir los efectos del cierre. */
+  /**
+   * La visita tal como está hoy — SIN el token.
+   *
+   * Los cuatro endpoints del profesional devolvían la fila entera, token incluido. El
+   * profesional ya tiene su link, así que repetírselo no le da nada nuevo… salvo en un caso:
+   * REGENERAR el link no lo invalidaba de verdad. El que conserva un JWT viejo (dura tres
+   * días) podía leer el token NUEVO en la respuesta de cualquier escritura y volver a entrar.
+   *
+   * El GET público ya armaba su respuesta campo por campo omitiéndolo; esto lo hace parejo
+   * para las otras cuatro puertas.
+   */
   async function visitaActualDe(visitaId: string) {
-    return prisma.visitaProfesional.findUnique({ where: { id: visitaId } });
+    return prisma.visitaProfesional.findUnique({
+      where: { id: visitaId },
+      select: CAMPOS_VISITA_PANEL,
+    });
   }
 
   async function transicionar(
@@ -171,7 +175,10 @@ export async function visitasPublicasRoutes(app: FastifyInstance): Promise<void>
     );
     if (!ok) return;
     const [visita, prof] = await Promise.all([
-      prisma.visitaProfesional.findUnique({ where: { id: acc.visitaId } }),
+      prisma.visitaProfesional.findUnique({
+        where: { id: acc.visitaId },
+        select: CAMPOS_VISITA_PANEL,
+      }),
       prisma.profesional.findUnique({ where: { id: acc.profesionalId }, select: { nombre: true } }),
     ]);
     await prisma.reclamoEvento.create({
@@ -192,7 +199,10 @@ export async function visitasPublicasRoutes(app: FastifyInstance): Promise<void>
     const { ok } = await transicionar(acc.visitaId, 'CONFIRMADA', 'EN_CAMINO', { estado: 'EN_CAMINO', enCaminoAt: new Date() }, reply);
     if (!ok) return;
     const [visita, prof] = await Promise.all([
-      prisma.visitaProfesional.findUnique({ where: { id: acc.visitaId } }),
+      prisma.visitaProfesional.findUnique({
+        where: { id: acc.visitaId },
+        select: CAMPOS_VISITA_PANEL,
+      }),
       prisma.profesional.findUnique({ where: { id: acc.profesionalId }, select: { nombre: true } }),
     ]);
     await prisma.reclamoEvento.create({
@@ -246,7 +256,7 @@ export async function visitasPublicasRoutes(app: FastifyInstance): Promise<void>
     if (body.data.fotoAntes) data.fotoAntes = body.data.fotoAntes;
     if (body.data.fotoDespues) data.fotoDespues = body.data.fotoDespues;
     if (Object.keys(data).length === 0) return reply.code(400).send({ message: 'Mandá al menos una foto' });
-    return prisma.visitaProfesional.update({ where: { id: acc.visitaId }, data });
+    return prisma.visitaProfesional.update({ where: { id: acc.visitaId }, data, select: CAMPOS_VISITA_PANEL });
   });
 
   const listoSchema = z.object({
@@ -259,34 +269,63 @@ export async function visitasPublicasRoutes(app: FastifyInstance): Promise<void>
     if (!acc) return;
     const body = listoSchema.safeParse(request.body ?? {});
     if (!body.success) return reply.code(400).send({ message: 'Contanos brevemente qué se hizo' });
-    const { ok, transiciono } = await transicionar(
-      acc.visitaId,
-      'EN_CAMINO',
-      'LISTO',
-      { estado: 'LISTO', listoAt: new Date(), notaFinal: body.data.notaFinal, ...(body.data.montoCobrado != null ? { montoCobrado: body.data.montoCobrado } : {}) },
-      reply,
-    );
-    if (!ok) return;
-    // La visita YA estaba en LISTO: doble-tap, reintento, o —el caso caro— el link reabierto
-    // después de que el inquilino marcó PERSISTE y el reclamo volvió a EN_CURSO. Sin este
-    // corte se repetían TODOS los efectos del cierre: se re-cerraba el reclamo (el guard del
-    // updateMany sólo mira estados terminales, y uno reabierto ya no lo está), se le sumaba
-    // OTRO trabajo al profesional y se volvía a imputar el costo. Volver a cerrar pide una
-    // visita nueva, no re-abrir el link viejo.
-    if (!transiciono) return visitaActualDe(acc.visitaId);
-    const [visita, prof] = await Promise.all([
-      prisma.visitaProfesional.findUnique({ where: { id: acc.visitaId } }),
-      prisma.profesional.findUnique({ where: { id: acc.profesionalId }, select: { nombre: true } }),
-    ]);
-    await prisma.reclamoEvento.create({
-      data: {
-        inmobiliariaId: acc.inmobiliariaId,
-        reclamoId: visita!.reclamoId,
-        tipo: 'VISITA_LISTO',
-        autor: prof?.nombre ?? 'Profesional',
-        contenido: body.data.notaFinal,
-      },
-    });
+    // TODO EL CIERRE VA EN UNA SOLA TRANSACCIÓN, y ésa es la corrección.
+    //
+    // Antes la transición a LISTO (con `listoAt`, `notaFinal` y `montoCobrado`) y el evento
+    // VISITA_LISTO se escribían AFUERA de la transacción que cierra el reclamo e imputa el
+    // costo. Si `imputarCostoReclamo` tiraba, la tx hacía rollback y el handler contestaba
+    // 409 — pero la visita YA había quedado en LISTO. Y en el reintento `transicionar`
+    // devolvía `transiciono: false` y el early-return de abajo respondía **200**: el reclamo
+    // no se cerraba nunca, el costo no se imputaba nunca, y no quedaba ninguna señal.
+    //
+    // El caso llega solo: basta con clasificar un reclamo con `pagador: 'DEPOSITO'` sobre un
+    // contrato sin depósito. El profesional cierra, se come un 409 redactado para la
+    // operadora del panel, toca de nuevo, ve "Trabajo cerrado" — y la plata no se le cobra a
+    // nadie. Lo mismo con `ReclamoYaRendido`, `ReclamoYaCobradoAlInquilino`, o una caída en
+    // el medio.
+    //
+    // Con todo adentro, o queda todo o no queda nada, y el reintento vuelve a intentarlo.
+    const ahora = new Date();
+    try {
+      await prisma.$transaction(async (tx) => {
+      const trans = await tx.visitaProfesional.updateMany({
+        where: { id: acc.visitaId, estado: 'EN_CAMINO' },
+        data: {
+          estado: 'LISTO',
+          listoAt: ahora,
+          notaFinal: body.data.notaFinal,
+          ...(body.data.montoCobrado != null ? { montoCobrado: body.data.montoCobrado } : {}),
+        },
+      });
+      if (trans.count === 0) {
+        const actual = await tx.visitaProfesional.findUnique({
+          where: { id: acc.visitaId },
+          select: { estado: true },
+        });
+        // Ya está en LISTO: doble-tap, reintento, o —el caso caro— el link reabierto después
+        // de que el inquilino marcó PERSISTE y el reclamo volvió a EN_CURSO. NO se repiten
+        // los efectos del cierre: sería re-cerrar el reclamo (el guard del updateMany sólo
+        // mira estados terminales, y uno reabierto ya no lo está), sumarle OTRO trabajo al
+        // profesional y volver a imputar el costo. Volver a cerrar pide una visita nueva.
+        if (actual && ORDEN_ESTADO[actual.estado] >= ORDEN_ESTADO.LISTO) {
+          throw new VisitaSinCambios();
+        }
+        throw new VisitaFueraDeOrden();
+      }
+
+      const [visita, prof] = await Promise.all([
+        tx.visitaProfesional.findUnique({ where: { id: acc.visitaId } }),
+        tx.profesional.findUnique({ where: { id: acc.profesionalId }, select: { nombre: true } }),
+      ]);
+      await tx.reclamoEvento.create({
+        data: {
+          inmobiliariaId: acc.inmobiliariaId,
+          reclamoId: visita!.reclamoId,
+          tipo: 'VISITA_LISTO',
+          autor: prof?.nombre ?? 'Profesional',
+          contenido: body.data.notaFinal,
+        },
+      });
     // Reputación REAL: al terminar el trabajo cerramos el reclamo (RESUELTO), imputamos
     // el costo que declaró el profesional y sumamos el trabajo a su track record. Antes
     // el /listo dejaba la visita en LISTO pero NO cerraba el reclamo ni tocaba cantTrabajos
@@ -299,9 +338,6 @@ export async function visitasPublicasRoutes(app: FastifyInstance): Promise<void>
     // /mis-cargos, no deducía el depósito, y la rendición lo ignoraba por no ser
     // PROPIETARIO) — y quedaba irrecuperable, porque con el reclamo ya RESUELTO el
     // /reclamos/:id/resolver del panel responde 409.
-    const ahora = new Date();
-    try {
-      await prisma.$transaction(async (tx) => {
       const cerrado = await tx.reclamo.updateMany({
         where: {
           id: visita!.reclamoId,
@@ -348,11 +384,25 @@ export async function visitasPublicasRoutes(app: FastifyInstance): Promise<void>
       });
       });
     } catch (e) {
+      // Doble-tap o link reabierto: la visita ya estaba en LISTO. La tx se revirtió sin
+      // efectos y se responde con lo que hay — igual que antes, pero ahora sin haber
+      // escrito nada a medias.
+      if (e instanceof VisitaSinCambios) return visitaActualDe(acc.visitaId);
+      if (e instanceof VisitaFueraDeOrden) {
+        return reply.code(409).send({ message: 'Marcá que vas en camino antes de dar la visita por terminada.' });
+      }
       // El costo ya se le rindió al propietario y este /listo lo reimputaría al inquilino
       // o al depósito → 409. Sin este catch sería 500: la tx no tenía manejo de error.
+      // Ahora, además, el rollback se lleva puesta la transición: la visita NO queda en
+      // LISTO y el reintento vuelve a intentar el cierre entero.
       if (e instanceof ReclamoNoReimputable) return reply.code(409).send({ message: e.message });
       throw e;
     }
-    return visita;
+    return visitaActualDe(acc.visitaId);
   });
 }
+
+/** La visita ya estaba en LISTO: se revierte la tx y se responde con lo que hay. */
+class VisitaSinCambios extends Error {}
+/** La visita no venía de EN_CAMINO: no se puede cerrar. */
+class VisitaFueraDeOrden extends Error {}
