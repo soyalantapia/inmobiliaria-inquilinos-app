@@ -222,6 +222,15 @@ modo demo (localStorage) sin tocar la API.
   con *"the `border-border` class does not exist"*. Parece un error del proyecto y es del lanzador.
   **Arrancá con el cwd adentro de la app.**
 - ⚠️ **`prisma generate` falla con EPERM** si el dev server tiene tomado el motor. Bajalo primero.
+- 🔴 **En un worktree con `node_modules` junctioneado, `prisma generate` le pisa el cliente al clon
+  principal.** Son el mismo directorio. Si generás en el worktree con un schema mergeado y después
+  volvés al clon a correr tests, el cliente que tenés es el del OTRO árbol — y el error sale
+  cincuenta archivos más allá, hablando de una columna que "no existe". Regenerá al volver.
+- 🔴 **Un worktree nuevo NO tiene `apps/api/.env`**: está gitignoreado y no viaja con
+  `git worktree add`. Sin `JWT_SECRET`, `buildApp` explota **antes de correr un solo test** y la
+  suite entera reporta "75 archivos fallados / 547 skipped". Parece una regresión gigante y es un
+  archivo que falta. El `.env` del worktree apunta a **su propia** base — nunca a la del clon
+  principal, y jamás a producción.
 - ⚠️ **La suite con base tarda ~15 minutos** en local y corre en serie a propósito: todas siembran
   la misma base.
 
@@ -235,6 +244,12 @@ modo demo (localStorage) sin tocar la API.
   sin compilar nada.
 - ⚠️ **Un timeout que corta la suite puede devolver 0 y parecer verde.** Mirá el resumen, no el
   código de salida solo.
+- 🔴 **Un test nuevo puede estar verde con `tsc` roto.** Vitest **transpila sin chequear tipos**.
+  Si corriste el typecheck y DESPUÉS escribiste el último test, tu verde es de antes del archivo.
+  Ya pasó dos veces: la segunda la encontró el merge de control, no la rama. **El typecheck va
+  después de la última edición, siempre — y "última" incluye los tests.**
+- ⚠️ **Contá cuántos tests corrieron, no cuántos no fallaron.** Una suite con todo "skipped"
+  sale con exit 0. 547 skipped no son 547 que pasan.
 - ⚠️ **Un patrón vacío en un grep matchea todo.** Si tu búsqueda "encontró" un número redondo y
   enorme, verificá que el patrón no salga vacío.
 - ⚠️ **El CI reporta, no frena.** `main` no tiene branch protection. Un rojo no impide nada: mirarlo
