@@ -431,19 +431,60 @@ export function balanceConsorcio(c: Consorcio): {
   return { ingresos, egresos, saldoMes: ingresos - egresos };
 }
 
-export const ESTADO_UF_LABEL: Record<EstadoUF, string> = {
+/**
+ * Lo que muestra el badge. No es `EstadoUF`: incluye `CON_DEUDA`, que no se guarda en ningún
+ * lado — es lo único que se puede afirmar de una unidad que debe plata y cuyo `estado` dice
+ * otra cosa.
+ */
+export type BadgeUF = EstadoUF | 'CON_DEUDA';
+
+export const ESTADO_UF_LABEL: Record<BadgeUF, string> = {
   AL_DIA: 'Al día',
   PENDIENTE: 'Pendiente',
   VENCIDO: 'Vencido',
   CON_PLAN_PAGO: 'Plan de pago',
+  CON_DEUDA: 'Con deuda',
 };
 
-export const ESTADO_UF_COLOR: Record<EstadoUF, string> = {
+export const ESTADO_UF_COLOR: Record<BadgeUF, string> = {
   AL_DIA: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
   PENDIENTE: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
   VENCIDO: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
   CON_PLAN_PAGO: 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300',
+  CON_DEUDA: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
 };
+
+/**
+ * El badge de una unidad, que NO puede contradecir el número que tiene al lado.
+ *
+ * EL PROBLEMA. `estado` y `saldoDeudor` son dos columnas independientes, y el único formulario
+ * del producto que crea o edita una unidad **nunca manda `estado`**: no tiene ningún control
+ * para ese campo. Del lado del server, POST y PUT sólo lo escriben si viene. O sea que toda
+ * unidad cargada desde el panel se queda para siempre en el default `AL_DIA`, aunque se le
+ * cargue una deuda de $480.000 en la misma pantalla. En la fila quedaba "$480.000" en ámbar y,
+ * en la celda de al lado, un badge **verde** diciendo "Al día" — con la tarjeta de morosidad
+ * arriba, calculada desde `saldoDeudor`, contando esa misma deuda.
+ *
+ * No se veía en la demo porque las unidades del seed traen estados variados y consistentes.
+ *
+ * LA REGLA. El número manda sobre la etiqueta, y sólo sobre la parte en la que se contradicen:
+ *
+ *  - debe plata y el estado dice AL_DIA → **"Con deuda"**. No se inventa "Vencido": sin emisión
+ *    de expensas no hay fecha de vencimiento contra la cual decir eso.
+ *  - no debe nada y el estado dice PENDIENTE/VENCIDO/PLAN → **"Al día"**. La contradicción de
+ *    ida también es una contradicción.
+ *  - en cualquier otro caso manda el estado guardado, que es MÁS específico que el número:
+ *    "Plan de pago" y "Vencido" dicen cosas que `saldoDeudor` no sabe.
+ *
+ * Es a propósito que esto NO derive el badge del saldo y listo: aplanaría las cuatro etiquetas
+ * a dos y se perdería "Plan de pago", que es información real de la administración.
+ */
+export function badgeDeUnidad(u: { estado: EstadoUF; saldoDeudor: number }): BadgeUF {
+  const debe = u.saldoDeudor > 0;
+  if (debe && u.estado === 'AL_DIA') return 'CON_DEUDA';
+  if (!debe && u.estado !== 'AL_DIA') return 'AL_DIA';
+  return u.estado;
+}
 
 export const CATEGORIA_MOVIMIENTO_LABEL: Record<MovimientoConsorcio['categoria'], string> = {
   COBRANZA: 'Cobranza',

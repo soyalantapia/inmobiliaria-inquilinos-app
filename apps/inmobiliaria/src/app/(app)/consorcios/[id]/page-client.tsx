@@ -52,6 +52,7 @@ import {
   CATEGORIA_MOVIMIENTO_LABEL,
   ESTADO_UF_COLOR,
   ESTADO_UF_LABEL,
+  badgeDeUnidad,
   balanceConsorcio,
   morosidadConsorcio,
   type UnidadFuncional,
@@ -398,8 +399,12 @@ export default function DetalleConsorcioPage() {
                         {u.saldoDeudor > 0 ? formatMonto(u.saldoDeudor) : '—'}
                       </TableCell>
                       <TableCell>
-                        <Badge className={`text-[10px] ${ESTADO_UF_COLOR[u.estado]}`}>
-                          {ESTADO_UF_LABEL[u.estado]}
+                        {/* El badge sale de `badgeDeUnidad`, no de `u.estado` pelado: el
+                            formulario de unidades nunca manda `estado`, así que toda unidad
+                            cargada desde acá se quedaba en AL_DIA y la fila decía "Al día" en
+                            verde al lado de su propia deuda en ámbar. */}
+                        <Badge className={`text-[10px] ${ESTADO_UF_COLOR[badgeDeUnidad(u)]}`}>
+                          {ESTADO_UF_LABEL[badgeDeUnidad(u)]}
                         </Badge>
                       </TableCell>
                       {apiEnabled && (
