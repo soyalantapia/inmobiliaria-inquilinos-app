@@ -179,15 +179,18 @@ resolver a medias en silencio.
 ## 🔴 #77 va PRIMERO, y ahora hay evidencia
 
 El flake que arregla #77 —`portal-propietario-e2e.test.ts`, el caso "el código igual se emite"—
-apareció **dos veces el 01/09 en ramas que no lo pueden haber causado**:
+se llevó **tres de las seis corridas rojas del 01/09**, y **dos de las tres fueron en ramas que
+sólo tocan un `.md`**:
 
 | rama | conteo |
 |---|---|
+| `docs/dos-promesas-que-el-codigo-no-cumple` (#99) — **sólo `.md`** | esperaba 1, vio **3** |
+| `docs/orden-de-merge-verificado` (#85) — **sólo `.md`** | esperaba 1, vio **2** |
 | `fix/la-mora-fantasma-que-queda-cobrable` (#108) | esperaba 1, vio **3** |
-| `docs/orden-de-merge-verificado` (#85) — **cambia un solo `.md`** | esperaba 1, vio **2** |
 
-Que una rama de sólo documentación lo dispare cierra la pregunta de si hay un defecto de
-producto atrás: no lo hay. Las escrituras del OTP salieron del camino del request a propósito
+Que dos ramas de sólo documentación lo disparen cierra la pregunta de si hay un defecto de
+producto atrás: no lo hay. (Las otras tres rojas del día sí fueron defectos reales, míos, y ya
+están arreglados: el `tsc` de #108 y el rótulo faltante de #106.) Las escrituras del OTP salieron del camino del request a propósito
 (para que el reloj no delate qué emails existen), y las del test de temporización aterrizan
 **después** del `deleteMany` del caso siguiente.
 
