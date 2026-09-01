@@ -3772,6 +3772,7 @@ export async function coreRoutes(app: FastifyInstance) {
       where: { id, inmobiliariaId: u.inmobiliariaId },
       select: {
         id: true,
+        estado: true,
         monto: true,
         montoExpensas: true,
         tipoContrato: true,
@@ -3781,6 +3782,25 @@ export async function coreRoutes(app: FastifyInstance) {
       },
     });
     if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
+    // Un contrato terminado no se re-tarifa: sus cuotas son historia. Es la MISMA regla que
+    // ya aplican los dos hermanos —`POST /contratos/:id/ajustar` y `PATCH /:id/expensas`—,
+    // y este endpoint ni siquiera traía `estado` en el select.
+    //
+    // No es teórico. Una cuota del mes en curso SOBREVIVE a la baja (la finalización sólo
+    // borra las PENDIENTE con vencimiento futuro), así que queda como deuda real e impaga.
+    // `recomputarLiquidacionesFuturas` toma las PENDIENTE y VENCIDO desde el período actual:
+    // un `monto: 1` la reescribe, la deuda del ex-inquilino se evapora, queda una fila
+    // `AjusteAlquiler` falsa y le sale un aviso de ajuste por mail a alguien que ya no vive ahí.
+    //
+    // El panel ya lo gatea en sus dos call sites (el botón del detalle y el ajuste masivo,
+    // los dos con `c.estado === 'ACTIVO'`): esto deja de ser una suposición del front.
+    //
+    // La puerta de limpieza del `monto: 0` que documenta el guard de abajo no se cierra:
+    // sigue disponible mientras el contrato está ACTIVO, que es cuando la suciedad todavía
+    // puede seguir facturando.
+    if (contrato.estado !== 'ACTIVO') {
+      return reply.code(409).send({ message: 'Solo se ajusta el monto de un contrato activo' });
+    }
     // Un solo expensas no tiene canon que SUBIR — pero sí puede necesitar que lo BAJEN a 0.
     //
     // Ojo con esta asimetría, que no es capricho: este endpoint es, además, la única
