@@ -233,6 +233,12 @@ modo demo (localStorage) sin tocar la API.
   principal, y jamás a producción.
 - ⚠️ **La suite con base tarda ~15 minutos** en local y corre en serie a propósito: todas siembran
   la misma base.
+- 🔴 **Un test que MUTA una fila del seed rompe a otro archivo EN AISLAMIENTO.** La base es
+  persistente entre corridas: si tu test le pone `depositoGarantia: null` a `cnt_001` y la
+  corrida se corta antes del `afterAll`, ese null queda. Después otro archivo falla **solo**, y
+  el rojo se lee como "se rompió el código que ese archivo prueba". Ya pasó.
+  **Armá fixtures propios** —contrato, propiedad, profesional con tu prefijo— en vez de mutar
+  filas del seed. Restaurar en el `afterAll` no alcanza: no corre si la corrida se interrumpe.
 
 ### Cómo NO mentirte a vos mismo
 
