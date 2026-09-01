@@ -135,3 +135,55 @@ pero no lo suficiente como para cambiarlo sin que lo digas.
 
 Y si la respuesta es sí (opción A): ¿querés que además aparezca en la lista de selección manual, o
 sólo que se lo cuente en las audiencias masivas?
+
+## Auth · el techo por IP que falta en el login del propietario, y por qué no lo puse
+
+**Fecha:** 01/09/2026 · **Bloquea:** nada urgente. Es defensa en profundidad, y las dos salidas
+tienen consecuencias operativas distintas.
+
+### El hecho, verificado
+
+`POST /auth/propietario/otp/verify` limita **por cuenta** (10 intentos cada 15 minutos, con la
+key armada desde el email). Eso es correcto y protege lo que importa: sin él, un atacante con un
+proxy rotativo tenía intentos infinitos contra UN propietario.
+
+Lo que ese endpoint **no** tiene es un techo **por IP**. El comentario del código decía que sí
+—"el global de 300/min sigue aplicando"— y es falso: el `onRoute` de `@fastify/rate-limit` es un
+if/else, así que declarar `config.rateLimit` en una ruta **reemplaza** al global en vez de
+sumarse. Ya está corregido el comentario.
+
+Sin ese techo, un host sin autenticar puede mandar requests con un email distinto cada vez: la
+key nunca se repite, nada lo cuenta, y **cada request se queda 900 ms** en el piso anti-timing
+sosteniendo un socket y un timer. No entra a ninguna cuenta; hace ruido y consume el servidor.
+
+### Por qué no lo arreglé solo
+
+Probé lo obvio —agregar un segundo limitador por IP en `onRequest`— y **desactiva el de cuenta
+en silencio**. El plugin marca la request con un flag interno y **corre sólo el primero**: el
+techo por IP le come el lugar al que protege la cuenta. Lo agarró un test que ya existía, que
+pasó de 429 a 401.
+
+O sea: **no se puede apilar**. Queda fijado con un caso de prueba para que el próximo que lo
+intente se entere antes y no después.
+
+### Las dos salidas reales
+
+**A · Una segunda instancia del plugin con `global: false`.** Tendría su propio flag, así que
+los dos limitadores correrían. **Costo:** las otras seis rutas que declaran `config.rateLimit`
+—los logins del panel, del inquilino y el registro— pasarían a tener **dos** limitadores
+contando lo mismo. No cambia el comportamiento, pero es una pieza de infraestructura nueva que
+toca todas las puertas de entrada a la vez.
+
+**B · El techo en el borde: Render, o el proxy que esté adelante.** Es donde vive naturalmente
+un límite por IP, no cuesta código, y no toca ninguna ruta. **Costo:** vive afuera del repo, así
+que no lo ve el que lee el handler ni lo prueba la suite — y esta sesión ya mostró varias veces
+lo que pasa con las reglas que viven en un solo lado.
+
+### La pregunta
+
+**¿Va A o B?** Y si es B: ¿quién lo configura y dónde queda anotado para que el que lea el
+handler sepa que existe?
+
+Mi lectura, para que no cuente como neutral: **B**, porque el daño que falta cubrir es de
+recursos y no de cuentas, y el borde es donde eso se resuelve barato. Pero A es la única que
+deja el techo dentro del repo, y eso vale.
