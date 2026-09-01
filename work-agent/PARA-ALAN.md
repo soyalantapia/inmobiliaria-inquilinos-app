@@ -272,3 +272,56 @@ prende y nunca se apaga es peor que no tenerlo, porque se lee como si estuviera 
 Mi lectura: **esperar a B para pendiente/vencido**, y si hace falta ya, un selector sólo
 para "plan de pago" —que es el único que un sistema no puede deducir— con la fecha de hasta
 cuándo vale, así se apaga solo.
+
+## Servicios · las boletas que sube el inquilino no las ve nadie
+
+**Fecha:** 01/09/2026 · **Bloquea:** decidir esto antes de escribir código, porque la
+pregunta no es técnica.
+
+### El hecho
+
+El inquilino saca foto de la boleta de luz y la sube. La fila se guarda bien. Y ahí queda:
+**ningún endpoint del panel la lee**. Las únicas lecturas de esa tabla en toda la API son
+el listado del propio inquilino y dos chequeos internos de permisos de archivos. Del lado
+de la inmobiliaria hay tres pantallas escritas para mostrarlas y las tres están apagadas en
+producción, leyendo datos de mentira.
+
+Además el inquilino **no puede marcar una boleta como paga**: el estado existe en la base
+(PAGADA, EN_REVISION) pero no hay ningún endpoint que lo mueva, así que todas quedan en
+"subida" para siempre.
+
+Lo que la pantalla *decía* ya lo arreglé (#129): no promete más que la inmobiliaria las ve,
+no le pide marcar como paga sin darle el botón, y el aviso de vencimiento dejó de quedarse
+pegado con la boleta más vieja. **Eso tapa la mentira, no el pozo.**
+
+### Lo que falta, medido
+
+Tres endpoints chicos y dos pantallas que ya están escritas:
+
+1. `GET /contratos/:id/boletas` para el panel, con filtro por inmobiliaria.
+2. Un endpoint que mueva el estado de la boleta (pagada / en revisión).
+3. Un borrado, para la boleta subida por error.
+4. Prender `BoletasInquilinoPanel` (ficha de la propiedad) y la card de alertas de
+   servicios, que hoy leen mocks.
+
+Es de una tarde. **No lo hice porque antes hay que contestar una pregunta de producto.**
+
+### La pregunta
+
+**¿Qué hace la inmobiliaria con una boleta cuando la ve?** De la respuesta depende todo lo
+demás:
+
+- **Sólo mirarla** (control de que el inquilino paga los servicios, que suele ser
+  obligación del contrato) → alcanza con el listado, y "marcar como paga" lo hace el
+  inquilino.
+- **Validarla** (la inmobiliaria confirma que está paga) → entonces el estado lo mueve la
+  inmobiliaria y no el inquilino, y EN_REVISION empieza a significar algo.
+- **Cobrarla o descontarla** (que entre a la liquidación) → es otra cosa, mucho más grande,
+  y toca plata.
+
+Y una segunda, más chica: **¿el inquilino puede borrar una boleta que subió?** Si la
+inmobiliaria la usa como comprobante de algo, no debería.
+
+Mi lectura: **la primera**. Es lo que la pantalla ya insinuaba, es lo que sirve el día uno,
+y no compromete nada de plata. Pero decidilo vos, porque las otras dos no se agregan
+después sin rehacer esto.
