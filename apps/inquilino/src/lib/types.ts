@@ -60,6 +60,10 @@ export interface Reclamo {
   createdAt: string;
   resueltoAt: string | null;
   eventos: EventoReclamo[];
+  /** Quién deshizo el cierre, cuando el reclamo está reabierto. Lo resuelve el server
+   *  (`lib/reapertura-reclamo.ts`): la pantalla lo estaba infiriendo y le atribuía al
+   *  inquilino las reaperturas de la inmobiliaria. `null` en demo y cuando no se sabe. */
+  reabiertoPor?: 'INQUILINO' | 'INMOBILIARIA' | null;
   /** Profesional externo que la inmobiliaria asignó para venir a resolverlo. */
   profesionalAsignadoNombre?: string | null;
   profesionalAsignadoTelefono?: string | null;

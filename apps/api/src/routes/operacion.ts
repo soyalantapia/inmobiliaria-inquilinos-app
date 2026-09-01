@@ -3,6 +3,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../db.js';
+import { origenDeReapertura } from '../lib/reapertura-reclamo.js';
 import { registrarEventoContrato } from '../lib/evento-contrato.js';
 import { requireInquilino, requireUsuario } from '../auth/guards.js';
 import { verificarPinUsuario } from '../auth/pin.js';
@@ -934,7 +935,10 @@ export async function operacionRoutes(app: FastifyInstance) {
       },
       orderBy: { createdAt: 'desc' },
     });
-    return reclamos.map(conSla);
+    // `reabiertoPor` viaja resuelto desde acá: la pantalla del inquilino lo estaba infiriendo
+    // con una regla que dejó de ser cierta cuando se agregó `/reclamos/:id/reabrir`, y terminaba
+    // diciéndole «Reportaste que sigue» a alguien que no había reportado nada.
+    return reclamos.map((r) => ({ ...conSla(r), reabiertoPor: origenDeReapertura(r) }));
   });
 
   app.post('/mis-reclamos', async (request, reply) => {
