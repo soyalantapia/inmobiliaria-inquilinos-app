@@ -250,6 +250,13 @@ modo demo (localStorage) sin tocar la API.
   después de la última edición, siempre — y "última" incluye los tests.**
 - ⚠️ **Contá cuántos tests corrieron, no cuántos no fallaron.** Una suite con todo "skipped"
   sale con exit 0. 547 skipped no son 547 que pasan.
+- 🔴 **Un control negativo que NO se pone rojo casi nunca significa "el código está bien".**
+  Significa, en este orden: (1) neutralizaste **otra copia** —este repo tiene bloques duplicados
+  entre handlers hermanos, y un reemplazo por texto pega en el primero—; (2) el test no llega a
+  esa línea; (3) recién ahí, que el aserto no medía lo que creías. Verificá **por número de
+  línea** que neutralizaste la que corre en el camino que probás. Ya pasó: `expensasDeLaCuota`
+  vive igual en `/ajustar` y en `/renovar`, y el verde falso se lee como "el control no
+  detecta nada".
 - ⚠️ **Un patrón vacío en un grep matchea todo.** Si tu búsqueda "encontró" un número redondo y
   enorme, verificá que el patrón no salga vacío.
 - ⚠️ **El CI reporta, no frena.** `main` no tiene branch protection. Un rojo no impide nada: mirarlo
