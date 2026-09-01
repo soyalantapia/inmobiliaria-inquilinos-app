@@ -2318,7 +2318,19 @@ export async function coreRoutes(app: FastifyInstance) {
     const now = new Date();
     const liqs = await prisma.liquidacion.findMany({
       where: { contratoId: id, inmobiliariaId: u.inmobiliariaId, estado: { in: ['PENDIENTE', 'VENCIDO', 'PARCIAL'] } },
-      include: { _count: { select: { pagos: true } } },
+      // SÓLO LOS PAGOS VIVOS, igual que el POST que este preview describe.
+      //
+      // Contaba los pagos de CUALQUIER estado, así que una cuota futura con sólo un pago
+      // RECHAZADO no entraba en `cuotasFuturasAAnular` — y como tampoco pasa `liqVencida`,
+      // caía en el `continue` de abajo y desaparecía también de `deudaVencida`. La cuota no
+      // figuraba en NINGÚN número del diálogo… y el POST la borraba igual: suelta los pagos
+      // muertos antes del `deleteMany` justo para eso, con el comentario que enuncia la
+      // regla («una cuota futura con sólo un pago rechazado es deuda fantasma igual que una
+      // sin pagos»). El operador confirmaba una baja irreversible sobre un resumen que le
+      // ocultaba una cuota.
+      //
+      // Mismo criterio de "pago vivo" que core.ts:1940, :2257, :3863 y :4036.
+      include: { _count: { select: { pagos: { where: { estado: { in: ['INFORMADO', 'CONCILIADO'] } } } } } },
     });
     const esquema = resolverEsquemaMora(contrato, contrato.inmobiliaria);
     const pagadoMap = await montoPagadoPorLiquidacion(liqs.map((l) => l.id));
