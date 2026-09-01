@@ -2623,6 +2623,32 @@ export async function coreRoutes(app: FastifyInstance) {
           data: { montoAlquiler: canonNuevo, montoTotal: canonNuevo + expensasDeLaCuota },
         });
       }
+      // La intención de renovación quedaba colgada del plazo VIEJO. `IntencionRenovacion` es
+      // 1:1 con el contrato y su único writer era `POST /renovaciones/:contratoId/decision`,
+      // así que después de renovar sobrevivía un NO_RENOVAR con una `fechaEgreso` que ya no va
+      // a pasar: en `/renovaciones` el contrato seguía contando en el KPI "No renuevan" y su
+      // tarjeta mostraba "Vence 31/08/2028" y "Se va el 30/09/2026" una al lado de la otra.
+      // El expediente de la propiedad seguía empujando el hito "Aviso de egreso del inquilino",
+      // que filtra sólo por `fechaEgreso != null`.
+      //
+      // Es el mismo criterio que el endpoint de decisión ya aplica unas líneas más abajo
+      // (`operacion.ts:2148`): al cambiar de opinión, la fecha huérfana se limpia. Renovar ES
+      // ese cambio de opinión, sólo que expresado firmando.
+      //
+      // SIN_RESPUESTA Y NO 'RENOVAR', que es lo que primero parece. La intención responde
+      // "¿qué dijo el inquilino sobre el vencimiento que viene?", y la pantalla la muestra
+      // contra la fechaFin NUEVA. Escribir RENOVAR dejaría al contrato diciendo "quieren
+      // renovar" en 2028 sin que nadie lo haya preguntado: el mismo defecto de hoy con el
+      // signo cambiado. Lo cierto después de renovar es que sobre el plazo nuevo todavía no
+      // se habló. El hecho de la renovación no se pierde: queda en `RenovacionContrato` y en
+      // el historial del contrato.
+      //
+      // `updateMany` y no `update`: la mayoría de los contratos no tiene fila de intención, y
+      // renovar no es motivo para inventarle una decisión que nadie tomó.
+      await tx.intencionRenovacion.updateMany({
+        where: { contratoId: id, inmobiliariaId: u.inmobiliariaId },
+        data: { decision: 'SIN_RESPUESTA', fechaEgreso: null, decididoAt: null, comentario: null },
+      });
       // Devengar los nuevos períodos (hasta el tope del devengo) con la nueva fechaFin + monto.
       // Idempotente (skipDuplicates); el cron completa el resto mes a mes.
       const nuevas = await generarLiquidacionesContrato(tx, {
