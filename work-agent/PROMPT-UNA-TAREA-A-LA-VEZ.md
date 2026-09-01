@@ -267,6 +267,22 @@ modo demo (localStorage) sin tocar la API.
   enorme, verificá que el patrón no salga vacío.
 - ⚠️ **El CI reporta, no frena.** `main` no tiene branch protection. Un rojo no impide nada: mirarlo
   es tu trabajo, no del sistema.
+- 🔴 **Un rojo en TU rama no siempre es TUYO.** Antes de arreglar, fijate si el archivo que falla
+  lo tocó tu cambio (`git diff main...tu-rama -- ese-archivo`) y si el mismo commit pasó en otra
+  corrida. Ya pasó: #124 dio `expected 2 to be 1` en un test de OTP que no tocaba, y el flaky
+  vivía en `main`. **Eso no es "no es mi problema": es otra tarea, y hay que abrirla** — un check
+  que falla por algo ajeno entrena a todos a ignorar el rojo.
+- 🔴 **Un test puede caerse por el test de al lado.** Este repo tiene escrituras *fire-and-forget*
+  (`void (async () => …)`, dos en toda la API) que aterrizan **después** de que el request
+  contestó. Si tu caso borra filas y cuenta, y el caso de arriba usó **el mismo fixture**, una
+  rezagada te deja una fila de más. La regla: **un caso que cuenta filas necesita su propia fila
+  del fixture**, no la compartida.
+- ⚠️ **Si el control negativo de un test flaky sale verde, tu explicación está mal.** Antes de
+  escribir un señuelo que "simula" la carrera, verificá que el señuelo sobreviva al código real
+  —el handler puede neutralizarlo—. Una carrera de verdad casi nunca se dispara a pedido:
+  cuando no la podés reproducir, **decilo** en el PR y mostrá la evidencia que sí tenés (la firma
+  del fallo, el código, que el mismo commit pasa y falla). Es mucho mejor que un control
+  decorativo.
 
 ---
 
