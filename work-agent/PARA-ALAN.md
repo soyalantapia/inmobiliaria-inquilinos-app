@@ -230,3 +230,45 @@ que nadie haya preguntado.
 Y una que no depende de esto: **¿querés que el aviso de egreso quede en la historia de la
 propiedad aunque después renueven?** Hoy no queda —la intención es una sola fila y se pisa—, y
 eso ya pasaba antes con cualquier cambio de opinión. Guardarlo pide una tabla de historial.
+
+## Consorcios · el estado de una unidad, ¿lo escribe alguien o sale solo?
+
+**Fecha:** 01/09/2026 · **Bloquea:** nada. La mentira ya está tapada; falta decidir si el
+campo tiene dueño.
+
+### Lo que estaba roto y ya se arregló
+
+Toda unidad funcional cargada desde el panel figuraba con badge verde **"Al día"**, debiera
+lo que debiera. El formulario nunca manda el campo `estado` —no tiene ningún control para
+eso— así que se quedaba en el valor por defecto para siempre. En la fila quedaba "$480.000"
+en ámbar y, al lado, "Al día" en verde.
+
+Ahora el badge no puede contradecir el número: con deuda dice "Con deuda", sin deuda dice
+"Al día", y si hay un estado guardado que cuadra —"Plan de pago", "Vencido"— manda ése,
+porque dice más.
+
+### Lo que sigue faltando
+
+La administradora **no puede** marcar una unidad como "plan de pago" ni como "vencido"
+desde el panel. Son estados reales de la administración de un consorcio, y hoy sólo existen
+en las unidades del seed.
+
+Hay dos formas de resolverlo y no son la misma cosa:
+
+**A · Un selector en el formulario de la unidad.** La administradora lo pone a mano. Rápido
+de hacer. **Costo:** es un dato que envejece solo — se acuerda de ponerlo el día que arma el
+plan de pago, y nadie se acuerda de sacarlo cuando el plan se cumple o se cae. En seis meses
+la columna dice cosas de hace seis meses.
+
+**B · Que salga de la emisión de expensas, cuando exista.** Con períodos emitidos hay fecha
+de vencimiento, y "pendiente" vs. "vencido" se calcula solo. **Costo:** no existe todavía, y
+"plan de pago" igual va a necesitar que alguien lo marque —eso no lo deduce ningún sistema—.
+
+### La pregunta
+
+**¿Va A ahora, o se espera a B?** Y si va A: **¿quién lo saca?** Un estado que sólo se
+prende y nunca se apaga es peor que no tenerlo, porque se lee como si estuviera al día.
+
+Mi lectura: **esperar a B para pendiente/vencido**, y si hace falta ya, un selector sólo
+para "plan de pago" —que es el único que un sistema no puede deducir— con la fecha de hasta
+cuándo vale, así se apaga solo.
