@@ -30,7 +30,9 @@ let app: FastifyInstance;
 let prisma: PrismaClient;
 let token = '';
 let inmobiliariaId = '';
-let monedaOriginal: 'ARS' | 'USD' = 'ARS';
+// `string` y no `'ARS' | 'USD'`: `Inmobiliaria.monedaDefault` es String en el schema, no el
+// enum `Moneda`. Tiparlo más angosto que la columna compila sólo hasta que alguien mira.
+let monedaOriginal = 'ARS';
 
 const cobranza = () => app.inject({ method: 'GET', url: '/cobranza', headers: { authorization: `Bearer ${token}` } });
 
