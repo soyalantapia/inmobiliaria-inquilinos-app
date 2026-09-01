@@ -24,9 +24,36 @@ el resto de la mora corta por día civil argentino. Cualquier pago hecho entre l
 **$27.000 en vez de $45** sobre una cuota de $600.000 pagada en $599.000. Es T-57 reintroducido
 por la puerta de atrás, en el corte gemelo del que T-56 arregló.
 
-Va con su arreglo y sus diez casos en **#115**. **Los otros seis siguen abiertos**: son tests
-por escribir, no defectos confirmados — cada uno con el caso mínimo que lo agarraría y contra
-qué test existente se compara.
+Va con su arreglo y sus diez casos en **#115**.
+
+---
+
+## ✅ Los siete quedaron cubiertos
+
+Escritos y verificados el mismo día. Cada uno con **control negativo corrido a mano**: se
+neutraliza la línea que protege y se comprueba que el test se pone rojo *con el número que
+importa*, no sólo con un status code.
+
+| # | camino | dónde |
+|---|---|---|
+| 1 | 🔴 el corte de "pagó en fecha" en UTC — **era un bug** | **#115** |
+| 2 | la rendición excluye condonados y migrados del bruto | **#118** |
+| 3 | los dos guards del crédito bancario (moneda, modoCobranza) | **#117** |
+| 4 | finalizar con NETEAR / EJECUTAR | **#119** |
+| 5 | `POST /contratos/:id/renovar` | **#120** |
+| 6 | el tope global del `INGRESO_EXTRA` | **#121** |
+| 7 | anular un pago: qué queda en la liquidación | **#119** |
+
+Los números que reproducen los controles negativos, que son el argumento de todo esto:
+
+- **$27.000 de mora en vez de $45** (×600) — #115
+- **$150 acreditados sobre $100 que entraron** — #121
+- un crédito de **$500.000 cancelando US$ 500.000 a 1:1** — #117
+- el bruto de la rendición de **$500.000 a $600.000**, y la comisión de $35.000 a $42.000 — #118
+- el depósito **marcado consumido sin saldar una sola cuota** — #119
+- una cuota re-preciada a **$520.000 en vez de $577.000** por usar las expensas equivocadas — #120
+
+**Nada de lo de arriba tocó una línea de producción, salvo #115**, que era el defecto.
 
 **Y hay un séptimo hallazgo que no es un test:** el descarte #4 de la lista final
 (`cerrarCargosContraDeposito` cerrando el excedente) tiene una **decisión de producto** atrás —
