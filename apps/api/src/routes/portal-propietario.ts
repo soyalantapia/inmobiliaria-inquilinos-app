@@ -7,6 +7,7 @@ import { prisma } from '../db.js';
 import { requirePropietario } from '../auth/guards.js';
 import { enviarOtp } from '../mailer.js';
 import { alquilerCobradoSinRendirDePropiedad } from '../lib/rendicion-pendiente.js';
+import { esperarPisoDeRechazo } from '../lib/piso-de-rechazo.js';
 
 /**
  * PORTAL DEL PROPIETARIO (T-23).
@@ -152,12 +153,10 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
    * Sólo se aplica a los RECHAZOS. El camino feliz no necesita padding: para llegar hay que
    * saber un código válido, y quien lo sabe ya sabe que el email existe.
    */
-  const PISO_RECHAZO_MS = 900;
+  // El piso salió a `lib/piso-de-rechazo.ts`: el login del INQUILINO tenía el mismo agujero
+  // y no lo tenía, y una copia más era garantizar que volvieran a divergir.
   const rechazar = async (desde: bigint, reply: FastifyReply, mensaje: string) => {
-    const transcurrido = Number(process.hrtime.bigint() - desde) / 1e6;
-    if (transcurrido < PISO_RECHAZO_MS) {
-      await new Promise((r) => setTimeout(r, PISO_RECHAZO_MS - transcurrido));
-    }
+    await esperarPisoDeRechazo(desde);
     return reply.code(401).send({ message: mensaje });
   };
 
@@ -176,8 +175,29 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
            * escalaba con las IPs del atacante, no con las defensas de la cuenta.
            *
            * Con la key por email, ese propietario recibe 10 intentos cada 15 minutos venga
-           * de donde venga. El límite por IP no se pierde: el global de 300/min sigue
-           * aplicando y es el que frena a quien barre muchas cuentas.
+           * de donde venga.
+           *
+           * ⚠️ ACÁ DECÍA algo falso: "el límite por IP no se pierde: el global de 300/min sigue
+           * aplicando". **No sigue aplicando.** El `onRoute` de `@fastify/rate-limit@10.3.0` es
+           * un if/else (`index.js:142-156`): si la ruta trae `config.rateLimit`, se registra
+           * SÓLO el limitador de la ruta y el global no se agrega. Y como acá la key sale del
+           * `email` del body, **la elige quien llama**: con un email distinto por request la
+           * key nunca se repite y no se cuenta nada.
+           *
+           * 🔴 Y NO SE ARREGLA APILANDO OTRO LIMITADOR. Lo intenté —un
+           * `onRequest: app.rateLimit({ max: 30, ... })` por IP— y **desactiva éste en
+           * silencio**: el plugin marca la request con un flag propio
+           * (`rateLimitRan`, `index.js:281-285`) y **sólo corre el PRIMER limitador**; todos
+           * los siguientes salen sin hacer nada. O sea que el techo por IP le habría comido el
+           * lugar al techo por cuenta, que es el que protege lo que importa. Lo agarró el test
+           * "los intentos se cortan POR CUENTA, no por IP" (`portal-propietario-e2e`), que
+           * pasó de 429 a 401.
+           *
+           * Lo que queda entonces —un techo por IP para que un host no barra cuentas ni retenga
+           * sockets en el piso de 900 ms— NO se puede resolver acá adentro con este plugin. Va
+           * anotado en `PARA-ALAN.md` con las dos salidas reales: una segunda instancia del
+           * plugin con `global: false` (tiene su propio símbolo y sí correría), o el techo en
+           * el borde (Render / proxy). Las dos tienen consecuencias operativas.
            *
            * CONTRA: alguien puede quemarle los 10 intentos a un dueño y hacerlo esperar. Es
            * una molestia acotada a 15 minutos, y el intercambio es a favor: sin esto, lo que
