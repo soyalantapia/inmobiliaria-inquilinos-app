@@ -3586,6 +3586,23 @@ export async function coreRoutes(app: FastifyInstance) {
           },
           select: { id: true, nombre: true, apellido: true, email: true, rol: true, activo: true },
         });
+        // ESTE ES EL ÚNICO CAMINO DE REINCORPORACIÓN QUE EXISTE. La pantalla Equipo filtra
+        // por `activo`, así que el usuario dado de baja desaparece y no hay botón de
+        // "reactivar" en ninguna parte: al admin no le queda otra que apretar «Sumar» y
+        // volver a tipear el email — y caía justo acá, en la rama muda.
+        //
+        // Con el rol NUEVO y el VIEJO: alguien que salió como CARGA puede volver como ADMIN,
+        // y sin el rol anterior el rastro no dice que hubo un salto de poder.
+        await registrarEvento({
+          inmobiliariaId: u.inmobiliariaId,
+          tipo: 'EQUIPO_REINCORPORADO',
+          autorId: u.userId,
+          rolAutor: u.rol,
+          entidadId: reactivado.id,
+          entidadDescripcion:
+            `${reactivado.nombre} ${reactivado.apellido} (${reactivado.rol}) · ${reactivado.email}` +
+            (yaExiste.rol !== reactivado.rol ? ` · antes era ${yaExiste.rol}` : ''),
+        });
         return reply.code(200).send({ ...reactivado, esVos: false });
       }
       return reply.code(409).send({ message: 'Ya existe una cuenta con ese email' });
@@ -3657,8 +3674,9 @@ export async function coreRoutes(app: FastifyInstance) {
     // Atómico: aplicamos el cambio y verificamos que quede ≥1 Admin activo
     // DENTRO de la misma transacción serializable. Cubre la carrera de dos
     // admins degradándose en simultáneo (que un pre-chequeo no atómico no ve).
+    let actualizado;
     try {
-      return await prisma.$transaction(
+      actualizado = await prisma.$transaction(
         async (tx) => {
           const r = await tx.usuario.update({
             where: { id },
@@ -3677,6 +3695,25 @@ export async function coreRoutes(app: FastifyInstance) {
       }
       throw e;
     }
+    // El OTRO endpoint que escribe `Usuario.rol`, y tampoco dejaba rastro: un contador externo
+    // podía pasar de LECTURA a ADMIN y en /auditoría no quedaba nada. El rol VIEJO va en el
+    // texto porque es lo que hace legible el salto; `target` ya estaba leído arriba, así que
+    // no cuesta una query.
+    //
+    // Va DESPUÉS del commit, no adentro de la transacción: `registrarEvento` es best-effort
+    // (se traga su propio error) y meterlo adentro ataría el cambio de rol a que el rastro
+    // funcione. Por eso el `return` salió de adentro de la tx.
+    if (body.data.rol && body.data.rol !== target.rol) {
+      await registrarEvento({
+        inmobiliariaId: u.inmobiliariaId,
+        tipo: 'EQUIPO_ROL_CAMBIADO',
+        autorId: u.userId,
+        rolAutor: u.rol,
+        entidadId: actualizado.id,
+        entidadDescripcion: `${actualizado.nombre} ${actualizado.apellido} · ${target.rol} → ${actualizado.rol} · ${actualizado.email}`,
+      });
+    }
+    return actualizado;
   });
 
   app.delete('/usuarios/:id', async (request, reply) => {
