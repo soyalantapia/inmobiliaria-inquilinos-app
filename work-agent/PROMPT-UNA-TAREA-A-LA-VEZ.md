@@ -227,6 +227,12 @@ modo demo (localStorage) sin tocar la API.
 
 ### Cómo NO mentirte a vos mismo
 
+- 🔴 **El cliente de Prisma también cruza de rama, y miente peor.** Está generado en
+  `node_modules`, que no cambia al hacer `git checkout`. Si la rama anterior tenía una columna
+  que ésta no tiene, el cliente la pide y la base no la tiene: **59 archivos de test en rojo de
+  golpe**, con un error que apunta al seed y no a tu cambio. Pasó en el ciclo de hoy y costó una
+  corrida entera. **Después de cambiar de rama con migraciones de por medio, `prisma generate`
+  antes de creerle a nada.**
 - ⚠️ **El exit code de una tubería es el del último comando.** `tsc | head` devuelve el de `head`.
   Guardá la salida en un archivo y leé el exit code aparte.
 - ⚠️ **`tsc --noEmit` no es el build.** La API buildea con `tsup` y los fronts con `next build`, y
@@ -237,6 +243,13 @@ modo demo (localStorage) sin tocar la API.
   código de salida solo.
 - ⚠️ **Un patrón vacío en un grep matchea todo.** Si tu búsqueda "encontró" un número redondo y
   enorme, verificá que el patrón no salga vacío.
+- 🔴 **Tu base local ACUMULA entre tareas, y te va a dar un rojo que no es tuyo.** El contenedor
+  vive hasta que lo bajes, y `seedBase` no revierte todo: un test de otra rama que renovó un
+  contrato dejó liquidaciones nuevas, y tres tareas después un test ajeno falló con
+  `expected 'cmth8x…' to be 'liq_001'`. **Antes de creerle a un rojo local, recreá la base**
+  (`docker compose -f docker-compose.test.yml down -v && up -d` + `migrate deploy`) y volvé a
+  correr. El CI arranca con una Postgres nueva cada vez, así que si él está verde y vos rojo,
+  empezá por ahí.
 - ⚠️ **El CI reporta, no frena.** `main` no tiene branch protection. Un rojo no impide nada: mirarlo
   es tu trabajo, no del sistema.
 
