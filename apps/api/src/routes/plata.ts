@@ -1102,6 +1102,9 @@ export async function plataRoutes(app: FastifyInstance) {
             contratoId: contrato.id,
             tipo: 'INGRESO_EXTRA',
             categoria: 'OTRO',
+            // T-28-N1-N1: de qué cargo salió. Antes el vínculo era el texto de la descripción,
+            // y con dos cargos gemelos `descobrar` podía borrar el ingreso del que no era.
+            cargoId: cargo.id,
             descripcion: `Cobro de cargo al inquilino: ${cargo.concepto}`,
             monto: cargo.monto,
             // La moneda DEL CARGO, no el default. `MovimientoCaja.moneda` es `@default(ARS)`,
@@ -1159,18 +1162,35 @@ export async function plataRoutes(app: FastifyInstance) {
     // Es lo mejor que se puede hacer sin tocar el schema; el arreglo de fondo es un `cargoId`
     // en `MovimientoCaja`, que necesita migración y decisión del dueño.
     const descripcionIngreso = `Cobro de cargo al inquilino: ${cargo.concepto}`;
-    const mov = await prisma.movimientoCaja.findFirst({
-      where: {
-        inmobiliariaId: u.inmobiliariaId,
-        contratoId: cargo.contratoId,
-        tipo: 'INGRESO_EXTRA',
-        descripcion: descripcionIngreso,
-        monto: cargo.monto,
-        moneda: cargo.moneda,
-      },
+    // T-28-N1-N1 · Se busca por `cargoId`, que es exacto. El camino de abajo —descripción +
+    // monto + moneda, el más reciente— era la ÚNICA forma antes de que existiera la columna, y
+    // con dos cargos gemelos (mismo concepto, mismo importe: expensas, una reparación repetida)
+    // podía traer el ingreso del OTRO. Mientras ninguno se rindió los dos son fungibles y no se
+    // nota; dejan de serlo apenas uno se rinde.
+    //
+    // El respaldo se conserva SÓLO para los movimientos anteriores a la migración, y por eso
+    // pide `cargoId: null`: sin esa condición podría volver a agarrar el ingreso de un cargo
+    // gemelo que sí tiene puntero, que es exactamente el bug que esto viene a cerrar.
+    const movPorCargo = await prisma.movimientoCaja.findFirst({
+      where: { inmobiliariaId: u.inmobiliariaId, cargoId: cargo.id, tipo: 'INGRESO_EXTRA' },
       orderBy: { createdAt: 'desc' },
       select: { id: true, descontadoEnRendicion: true },
     });
+    const mov =
+      movPorCargo ??
+      (await prisma.movimientoCaja.findFirst({
+        where: {
+          inmobiliariaId: u.inmobiliariaId,
+          contratoId: cargo.contratoId,
+          tipo: 'INGRESO_EXTRA',
+          cargoId: null,
+          descripcion: descripcionIngreso,
+          monto: cargo.monto,
+          moneda: cargo.moneda,
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, descontadoEnRendicion: true },
+      }));
 
     // Si esa plata YA se le rindió al propietario, no se deshace nada. Borrar el movimiento
     // acá dejaría a la rendición apuntando (por `IngresoRendido.refId`) a una fila que no

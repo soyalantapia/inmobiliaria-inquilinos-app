@@ -13,8 +13,7 @@ import {
   periodoDe,
   recomputarExpensasFuturas,
   recomputarLiquidacionesFuturas,
-  montoAlquilerSegunTipo,
-} from '../lib/liquidaciones.js';
+  montoAlquilerSegunTipo, repararVigenciaSiguiente } from '../lib/liquidaciones.js';
 import {
   conSaldo,
   montoPagadoPorLiquidacion,
@@ -1021,6 +1020,13 @@ export async function coreRoutes(app: FastifyInstance) {
         //
         // Un `''` EXPLÍCITO sí lo borra: querer sacarle el email es legítimo.
         ...(d.email !== undefined ? { email: normalizarEmail(d.email) } : {}),
+        // T-23-N2-N1 · Si el email CAMBIA, la verificación se cae. Lo que se había probado es
+        // que la casilla vieja era suya; de la nueva no se sabe nada todavía. Dejar la marca
+        // puesta sería peor que no tenerla: diría "verificado" sobre una dirección que nadie
+        // confirmó, que es exactamente el estado que esta columna vino a hacer visible.
+        ...(d.email !== undefined && normalizarEmail(d.email) !== prop.email
+          ? { emailVerificadoAt: null }
+          : {}),
         ...(d.telefono !== undefined ? { telefono: d.telefono } : {}),
         ...(d.cbuAlias !== undefined ? { cbuAlias: d.cbuAlias || null } : {}),
         ...(d.comisionPct != null ? { comisionPct: d.comisionPct } : {}),
@@ -2483,6 +2489,14 @@ export async function coreRoutes(app: FastifyInstance) {
         },
       });
       await tx.contrato.update({ where: { id }, data: { monto: b.montoNuevo, proximoAjuste: nuevoProximoAjuste } });
+      // T-61: si hay una vigencia futura (una renovación pactada por adelantado, típicamente),
+      // su `montoAnterior` acaba de quedar viejo — apunta al canon de antes de este ajuste.
+      await repararVigenciaSiguiente(tx, {
+        contratoId: id,
+        inmobiliariaId: u.inmobiliariaId,
+        desde: b.periodoDesde,
+        canonNuevo: b.montoNuevo,
+      });
       // Cuotas FUTURAS impagas (periodo >= periodoDesde, PENDIENTE, sin pagos) → nuevo canon.
       // NO se tocan las pagadas/parciales/vencidas: ya se devengaron con su monto histórico.
       //
@@ -2601,6 +2615,14 @@ export async function coreRoutes(app: FastifyInstance) {
       await tx.contrato.update({
         where: { id },
         data: { fechaFin: b.fechaFinNueva, monto: canonNuevo, ...(b.diaPago ? { diaPago: b.diaPago } : {}) },
+      });
+      // T-61: mismo motivo que en el ajuste. Una renovación con vigencia futura también deja
+      // desactualizado el `montoAnterior` de la vigencia que venga después de ella.
+      await repararVigenciaSiguiente(tx, {
+        contratoId: id,
+        inmobiliariaId: u.inmobiliariaId,
+        desde: b.montoDesde,
+        canonNuevo,
       });
       // Cuotas futuras impagas (>= montoDesde) al nuevo canon (igual que el ajuste),
       // con las expensas de CADA CUOTA y no las del contrato — mismo motivo que allá:
@@ -3838,6 +3860,16 @@ export async function coreRoutes(app: FastifyInstance) {
           motivo: d.motivo || null,
           creadoPorId: u.userId,
         },
+      });
+      // T-61: este camino también cambia el canon, así que también ensucia el `montoAnterior`
+      // de la primera vigencia futura. La ficha de la tarea decía que el masivo "no deja fila" y
+      // por eso lo daba por afuera del problema — eso quedó viejo (la fila se agregó después), y
+      // de todos modos lo que ensucia el snapshot no es la fila: es haber movido `contrato.monto`.
+      await repararVigenciaSiguiente(tx, {
+        contratoId: contrato.id,
+        inmobiliariaId: u.inmobiliariaId,
+        desde: periodoActual,
+        canonNuevo: d.monto,
       });
 
       // (c) RE-DEVENGO de futuras. Traemos las liqs candidatas (>= mes actual,
