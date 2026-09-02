@@ -317,6 +317,23 @@ total, en una sola operación. No existe ningún camino que le cobre las expensa
 **Solución.** E2E completo con un contrato `ALQUILER_Y_EXPENSAS` y **mostrárselo**. Verificación y
 comunicación.
 
+### ✅ Verificado → `work-agent/T-19-EL-PAGO-VA-UNIFICADO.md`
+
+Está como ella quiere, y más de lo que pidió: **no existe la opción de pagarlo separado**. El E2E
+(`apps/api/test/pago-unificado-alquiler-y-expensas.test.ts`) recorre alta → devengo → informar →
+validar → rendir con un contrato de $500.000 + $100.000. El caso que lo demuestra: **pagar
+exactamente el alquiler NO salda la cuota**, queda debiendo las expensas. Y esa plata le llega al
+dueño **prorrateada** ($416.666,67, no $500.000), que es la prueba del otro lado del mostrador.
+
+Nadie lo había probado antes: el devengo mixto estaba testeado como función pura y el
+informar/validar sobre contratos de sólo alquiler; el cruce de los dos no tenía cobertura.
+
+**Pero hay que decirle la otra mitad en la misma conversación:** *cobrar* la expensa unificada
+funciona, **cargarla no**. El `expensasPeriodoActual` del consorcio no llega a ninguna cuota — el
+devengo lee `Contrato.montoExpensas` y nada lo copia desde el consorcio. Cuando llega la expensa
+del mes, hay que entrar contrato por contrato. Si se olvida una unidad, se le cobra de menos al
+inquilino y la inmobiliaria le paga igual al consorcio. **Eso es T-22, y sube de prioridad.**
+
 ---
 
 ## T-04 · Cerrar la duda de los $850 con una consulta a la base
