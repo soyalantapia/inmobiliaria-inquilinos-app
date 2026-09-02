@@ -1521,8 +1521,6 @@ export async function coreRoutes(app: FastifyInstance) {
     // no hay pre-check que lo bloquee. La única colisión posible es que ese email lo use
     // OTRA persona (distinto DNI) → la atrapa el unique de Persona (P2002, abajo).
     // Reuso (req 3): si el alta trae personaId, la Persona debe existir en ESTE tenant.
-    // (El guard de email de arriba sigue aplicando: un 2º contrato reusado no puede
-    // repetir el email de otra fila — se deja vacío o distinto; la identidad vive en Persona.)
     if (d.personaId) {
       const per = await prisma.persona.findFirst({
         where: { id: d.personaId, inmobiliariaId: u.inmobiliariaId },
@@ -1530,6 +1528,54 @@ export async function coreRoutes(app: FastifyInstance) {
       });
       if (!per) return reply.code(404).send({ message: 'La persona seleccionada no existe en tu cartera' });
     }
+
+    // EL EMAIL NO PUEDE SER EL DE OTRA PERSONA DE LA CARTERA. Un solo chequeo, ANTES de que el
+    // alta se bifurque, porque las dos ramas tenían el agujero y por motivos distintos:
+    //
+    //   · CON `personaId`: la rama hace un `findFirstOrThrow` de SOLO LECTURA sobre Persona.
+    //     Nunca la escribe, así que no ejerce el `@@unique([inmobiliariaId, email])` y no
+    //     corría ningún chequeo. El comentario que lo autorizaba —"(El guard de email de arriba
+    //     sigue aplicando…)"— citaba un guard que el multi-alquiler ya había sacado, y lo decía
+    //     doce líneas después del comentario que explica esa remoción.
+    //   · SIN `personaId`: `buscarOCrearPersona` busca por DNI PRIMERO. Con un DNI que matchea,
+    //     devuelve esa Persona y `esOtraPersona` compara DNI contra DNI: da false y pasa. O sea
+    //     que el 409 de más abajo sólo atrapa el caso "email de otro DNI, sin DNI propio que
+    //     matchee". Con DNI, el email ajeno entraba igual.
+    //
+    // QUÉ HABILITABA. El operador carga el contrato de Juan y en el campo email tipea el de
+    // Mariela —otra inquilina de la misma cartera—. Queda un `Inquilino` con el email de Mariela
+    // colgado del contrato de Juan; como el acceso a la PWA es por OTP al mail, la casilla de
+    // Mariela entra al contrato de Juan y ve monto, deuda y documentos.
+    //
+    // (Que `/auth/otp/*` busque por email SIN scope de tenant no es parte de esto: es
+    // deliberado y está documentado —"una persona, un login, varios alquileres"—, y la
+    // propiedad de seguridad se sostiene porque el OTP prueba control de la casilla.)
+    //
+    // Es como máximo una fila: `Persona` tiene `@@unique([inmobiliariaId, email])`.
+    if (emailInq) {
+      const duenioDelEmail = await prisma.persona.findFirst({
+        where: { inmobiliariaId: u.inmobiliariaId, email: emailInq },
+        select: { id: true, dni: true },
+      });
+      // Reusando una Persona, "otra" es por ID. Sin reuso, por DNI — la misma regla que ya
+      // aplicaba `esOtraPersona` adentro de la transacción, sólo que ahora también corre cuando
+      // el DNI del alta matchea con una Persona DISTINTA de la dueña del email.
+      const esDeOtro = duenioDelEmail
+        ? d.personaId
+          ? duenioDelEmail.id !== d.personaId
+          : esOtraPersona(normalizarDni(d.inquilino.dni || null), duenioDelEmail.dni)
+        : false;
+      if (esDeOtro) {
+        // MISMO texto que el 409 de la otra rama, a propósito: para el operador es el mismo
+        // problema, y dos redacciones para el mismo caso es lo que hace que un mensaje deje
+        // de ser reconocible.
+        return reply.code(409).send({
+          message:
+            'Ese email ya lo usa otra persona en tu cartera. Si es el mismo inquilino, buscalo en "¿Ya está en tu cartera?"; si no, poné otro email.',
+        });
+      }
+    }
+
     // Modo cobranza directa: el contrato apunta al dueño PRINCIPAL (mayor
     // participación). Si la propiedad no tiene dueños cargados, rechazamos acá:
     // si no, el inquilino quedaría sin cuenta real a la cual transferir y /mi-
