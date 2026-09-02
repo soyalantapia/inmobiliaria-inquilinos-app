@@ -66,9 +66,14 @@ function GaranteForm({
       contactoTelefono: telefono.trim(),
       ...(dni.trim() ? { dni: dni.trim() } : {}),
       ...(emailC.trim() ? { contactoEmail: emailC.trim() } : {}),
-      ...(numeroPoliza.trim() ? { numeroPoliza: numeroPoliza.trim() } : {}),
-      ...(montoCobertura.trim() ? { montoCobertura: Number(montoCobertura) } : {}),
-      ...(vigenciaHasta ? { vigenciaHasta } : {}),
+      // Sólo si el tipo elegido ES una póliza. El formulario ya ESCONDE estos tres campos
+      // cuando no lo es (`esPoliza(tipo)` más abajo), pero seguía mandando lo que hubiera
+      // quedado en el estado: cargar una caución con vigencia y después corregir el tipo a
+      // PROPIETARIA guardaba una garantía persona con fecha de vencimiento. El server ahora
+      // también los descarta; esto es para que lo que se manda sea lo que se ve.
+      ...(esPoliza(tipo) && numeroPoliza.trim() ? { numeroPoliza: numeroPoliza.trim() } : {}),
+      ...(esPoliza(tipo) && montoCobertura.trim() ? { montoCobertura: Number(montoCobertura) } : {}),
+      ...(esPoliza(tipo) && vigenciaHasta ? { vigenciaHasta } : {}),
     };
     try {
       if (inicial) await actualizar.mutateAsync({ id: inicial.id, ...input });
