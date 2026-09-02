@@ -494,8 +494,36 @@ escribe: nadie la lee, cero cambio de comportamiento. Se hizo ya porque cada dí
 **La otra mitad —usar el dato para recortar lo que ve el dueño— espera una respuesta de Camila:**
 ¿un propietario que compró en marzo puede ver los reclamos y las liquidaciones de enero?
 
-⚠️ **Y tiene una deuda con fecha: la migración `20260819200000_historial_reparto` está sin
-aplicar.** Cuanto antes.
+### ✅ La migración YA ESTÁ APLICADA en producción — la advertencia de abajo quedó vieja
+
+~~⚠️ **Y tiene una deuda con fecha: la migración `20260819200000_historial_reparto` está sin
+aplicar.** Cuanto antes.~~
+
+Se aplicó sola con la migración a Render. La imagen de `myalq-api` arranca con
+`pnpm db:deploy && exec node dist/index.js`: **si una migración falla, el contenedor no arranca**,
+así que un deploy `live` es prueba de que corrieron todas. El deploy vivo hoy es el commit
+`60da7d43` (merge de #66, 31/08 11:08), y ese commit —igual que el anterior, del 29/08— **contiene
+la migración**. O sea que ya corrió el 29/08.
+
+**Con una salvedad honesta:** no pude *ver* la tabla. La base `myalq-db` tiene lista de IPs
+permitidas (sólo la de Alan) y exige SSL, así que la consulta directa no entra desde acá. La
+conclusión sale de la cadena del deploy, no de mirar `information_schema`. Para confirmarlo de
+primera mano, desde la máquina de Alan:
+
+```sql
+select count(*) from cambios_participacion;
+```
+
+**⚠️ Y el comentario de la migración sigue diciendo "SIN APLICAR. La corre el dueño." — no se
+puede arreglar.** Prisma guarda el checksum de cada `migration.sql` aplicado: editar el archivo,
+aunque sea un comentario, hace que el próximo `migrate deploy` falle por *"migration was modified
+after it was applied"* — y como el arranque del contenedor depende de ese comando, **rompería
+todos los deploys de la API**. El archivo se deja tal cual, a propósito. Es el mismo patrón que
+T-11: la justificación escrita sobrevive al hecho que la volvió falsa.
+
+**Lo que sigue bloqueado es la otra mitad**, la que usa el dato para recortar lo que ve el dueño:
+espera la respuesta de Camila —¿un propietario que compró en marzo puede ver los reclamos y las
+liquidaciones de enero?—.
 
 ---
 
