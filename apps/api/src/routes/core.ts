@@ -13,8 +13,7 @@ import {
   periodoDe,
   recomputarExpensasFuturas,
   recomputarLiquidacionesFuturas,
-  montoAlquilerSegunTipo,
-} from '../lib/liquidaciones.js';
+  montoAlquilerSegunTipo, repararVigenciaSiguiente } from '../lib/liquidaciones.js';
 import {
   conSaldo,
   montoPagadoPorLiquidacion,
@@ -1021,6 +1020,13 @@ export async function coreRoutes(app: FastifyInstance) {
         //
         // Un `''` EXPLÍCITO sí lo borra: querer sacarle el email es legítimo.
         ...(d.email !== undefined ? { email: normalizarEmail(d.email) } : {}),
+        // T-23-N2-N1 · Si el email CAMBIA, la verificación se cae. Lo que se había probado es
+        // que la casilla vieja era suya; de la nueva no se sabe nada todavía. Dejar la marca
+        // puesta sería peor que no tenerla: diría "verificado" sobre una dirección que nadie
+        // confirmó, que es exactamente el estado que esta columna vino a hacer visible.
+        ...(d.email !== undefined && normalizarEmail(d.email) !== prop.email
+          ? { emailVerificadoAt: null }
+          : {}),
         ...(d.telefono !== undefined ? { telefono: d.telefono } : {}),
         ...(d.cbuAlias !== undefined ? { cbuAlias: d.cbuAlias || null } : {}),
         ...(d.comisionPct != null ? { comisionPct: d.comisionPct } : {}),
@@ -2483,6 +2489,14 @@ export async function coreRoutes(app: FastifyInstance) {
         },
       });
       await tx.contrato.update({ where: { id }, data: { monto: b.montoNuevo, proximoAjuste: nuevoProximoAjuste } });
+      // T-61: si hay una vigencia futura (una renovación pactada por adelantado, típicamente),
+      // su `montoAnterior` acaba de quedar viejo — apunta al canon de antes de este ajuste.
+      await repararVigenciaSiguiente(tx, {
+        contratoId: id,
+        inmobiliariaId: u.inmobiliariaId,
+        desde: b.periodoDesde,
+        canonNuevo: b.montoNuevo,
+      });
       // Cuotas FUTURAS impagas (periodo >= periodoDesde, PENDIENTE, sin pagos) → nuevo canon.
       // NO se tocan las pagadas/parciales/vencidas: ya se devengaron con su monto histórico.
       //
@@ -2601,6 +2615,14 @@ export async function coreRoutes(app: FastifyInstance) {
       await tx.contrato.update({
         where: { id },
         data: { fechaFin: b.fechaFinNueva, monto: canonNuevo, ...(b.diaPago ? { diaPago: b.diaPago } : {}) },
+      });
+      // T-61: mismo motivo que en el ajuste. Una renovación con vigencia futura también deja
+      // desactualizado el `montoAnterior` de la vigencia que venga después de ella.
+      await repararVigenciaSiguiente(tx, {
+        contratoId: id,
+        inmobiliariaId: u.inmobiliariaId,
+        desde: b.montoDesde,
+        canonNuevo,
       });
       // Cuotas futuras impagas (>= montoDesde) al nuevo canon (igual que el ajuste),
       // con las expensas de CADA CUOTA y no las del contrato — mismo motivo que allá:
@@ -3839,6 +3861,16 @@ export async function coreRoutes(app: FastifyInstance) {
           creadoPorId: u.userId,
         },
       });
+      // T-61: este camino también cambia el canon, así que también ensucia el `montoAnterior`
+      // de la primera vigencia futura. La ficha de la tarea decía que el masivo "no deja fila" y
+      // por eso lo daba por afuera del problema — eso quedó viejo (la fila se agregó después), y
+      // de todos modos lo que ensucia el snapshot no es la fila: es haber movido `contrato.monto`.
+      await repararVigenciaSiguiente(tx, {
+        contratoId: contrato.id,
+        inmobiliariaId: u.inmobiliariaId,
+        desde: periodoActual,
+        canonNuevo: d.monto,
+      });
 
       // (c) RE-DEVENGO de futuras. Traemos las liqs candidatas (>= mes actual,
       // PENDIENTE/VENCIDO) con su conteo de pagos, y el filtro PURO decide cuáles
@@ -4300,9 +4332,13 @@ export async function coreRoutes(app: FastifyInstance) {
   // Editar el WhatsApp/teléfono del inquilino titular sin rehacer el contrato.
   // Antes el teléfono del inquilino SOLO se podía cargar en el alta → si quedaba
   // vacío no había forma de agregarlo, y la cobranza por WhatsApp se quedaba sin
-  // número. Scope: solo teléfono (el email es la identidad de login OTP y tiene
-  // @@unique([inmobiliariaId,email]) → no se toca acá). Sin auditoría/migración:
-  // cambiar el teléfono no rerutea plata (eso es CBU / modo de cobranza).
+  // número.
+  //
+  // ⚠️ ESTE COMENTARIO DECÍA "scope: solo teléfono (el email no se toca acá)" y "sin auditoría:
+  // cambiar el teléfono no rerutea plata". Las dos cosas dejaron de ser ciertas con T-45, que
+  // agregó el email — y el argumento que autorizaba a no tener corte de rol se quedó escrito
+  // igual. Es la forma más cara de mentira que tiene un repo: la justificación sobrevive al
+  // cambio que la invalida.
   app.patch('/contratos/:id/inquilino-contacto', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'contratos.crear');
     if (!u) return;
@@ -4320,6 +4356,27 @@ export async function coreRoutes(app: FastifyInstance) {
       })
       .safeParse(request.body ?? {});
     if (!body.success) return reply.code(400).send({ message: 'Datos de contacto inválidos', detalle: body.error.flatten() });
+
+    // T-11 · CARGA puede corregir el TELÉFONO, no la CREDENCIAL.
+    //
+    // `contratos.crear` incluye a CARGA con `rolesAprobacion: ['CARGA']`, o sea que lo que ese
+    // rol carga espera aprobación. Pero esto no es un alta: escribe directo. Y el email del
+    // inquilino no es un dato de contacto — es su LOGIN: el OTP viaja ahí. Un rol de "carga para
+    // aprobación" podía reapuntar el acceso a la app de cualquier inquilino, sin que nadie
+    // aprobara nada y sin dejar rastro.
+    //
+    // Es exactamente el mismo agujero que ya se cerró del otro lado del mostrador: `propietarios`
+    // gateaba por rol el `email` (la credencial del portal) y el `cbuAlias` porque CARGA podía
+    // redirigir la plata. Acá faltaba el gemelo. Los cuatro endpoints vecinos de edición de
+    // contrato —monto, expensas, modo de cobranza y mora— ya cortan a CARGA.
+    //
+    // El teléfono se deja: corregirlo no reapunta nada y es justo el caso que este endpoint vino
+    // a resolver.
+    if (u.rol === 'CARGA' && body.data.email !== undefined) {
+      return reply
+        .code(403)
+        .send({ message: 'Solo un Admin u Operador puede cambiar el email del inquilino: es su acceso a la app' });
+    }
 
     // Scopeado por inmobiliariaId (multi-tenant): un id ajeno => 404.
     const contrato = await prisma.contrato.findFirst({

@@ -131,7 +131,7 @@ describe('CAZABUG — un rol CARGA no redirige la plata del propietario ni se me
     });
     expect(r.statusCode).toBe(403);
     const p = await prisma.propietario.findUniqueOrThrow({ where: { id: OWN } });
-    expect(p.email).toBe('silvana.morales@hotmail.com');
+    expect(p.email).toBe('silvana.morales@example.com');
   });
 
   it('cambiarle la comisión con CARGA → 403', async () => {
@@ -166,7 +166,7 @@ describe('CAZABUG — un rol CARGA no redirige la plata del propietario ni se me
     expect(r.statusCode).toBe(200);
     const p = await prisma.propietario.findUniqueOrThrow({ where: { id: OWN } });
     expect(p.cbuAlias).toBe('morales.silvana.mp');
-    expect(p.email).toBe('silvana.morales@hotmail.com');
+    expect(p.email).toBe('silvana.morales@example.com');
     expect(p.telefono).toBe('+54 11 5234 8765');
     expect(p.cuit).toBeTruthy();
   });
@@ -221,7 +221,7 @@ describe('CAZABUG — un rol CARGA no redirige la plata del propietario ni se me
     // —el CBU que cambió— quedaría enterrado.
     const r = await app.inject({
       method: 'PUT', url: `/propietarios/${OWN}`, headers: auth(tOPERADOR),
-      payload: { nombre: 'Silvana', apellido: 'Morales', email: 'silvana.morales@hotmail.com', cbuAlias: 'morales.silvana.mp' },
+      payload: { nombre: 'Silvana', apellido: 'Morales', email: 'silvana.morales@example.com', cbuAlias: 'morales.silvana.mp' },
     });
     expect(r.statusCode).toBe(200);
     expect(await prisma.eventoAuditoria.count({ where: { tipo: 'PROPIETARIO_CUENTA_CAMBIADA', entidadId: OWN } })).toBe(0);

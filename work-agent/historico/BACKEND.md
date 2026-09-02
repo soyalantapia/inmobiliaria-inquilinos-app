@@ -53,7 +53,7 @@ pnpm --filter api db:deploy      # prod/Docker (no interactivo)
 |---|---|
 | Roberto Tapia (ADMIN) | `roberto@delsol.com` / `delsol123` · PIN `1234` |
 | Luciana Vidal (OPERADOR) · Camila Acosta (CARGA) | mismo password/PIN |
-| Mariela Sosa (inquilina, cnt_001) | OTP a `mariela.sosa@gmail.com` (código en el log del API; `000000` con DEMO_MODE) o `?demo=1` |
+| Mariela Sosa (inquilina, cnt_001) | OTP a `mariela.sosa@example.com` (código en el log del API; `000000` con DEMO_MODE) o `?demo=1` |
 
 ## Variables de entorno (API)
 | Var | Qué |

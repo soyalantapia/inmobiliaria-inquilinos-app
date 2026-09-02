@@ -177,7 +177,7 @@ export function generarCertificado(): CertificadoInquilino {
   const inquilino = {
     nombre: 'Mariela Sosa',
     dni: '38.421.567',
-    email: 'mariela.sosa@gmail.com',
+    email: 'mariela.sosa@example.com',
     telefono: '+54 9 11 4321 9876',
   };
   // parseLocal (no `new Date('YYYY-MM-DD')`, que parsea en UTC y en UTC-3 cae al

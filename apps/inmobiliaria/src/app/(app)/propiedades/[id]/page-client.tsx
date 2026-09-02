@@ -1064,7 +1064,7 @@ function emailDeNombre(nombre: string): string {
     .replace(/[^a-z0-9\s]/g, '')
     .trim()
     .split(/\s+/)
-    .join('.')}@gmail.com`;
+    .join('.')}@example.com`;
 }
 
 function DocRow({ nombre, subtitulo }: { nombre: string; subtitulo: string }) {

@@ -249,10 +249,21 @@ describe('T-28-N1-N1 - dos cargos identicos, y hasta donde llega el dano', () =>
     await app.inject({ method: 'POST', url: `/cargos/${b.id}/saldar`, headers: auth(tokenAdmin) });
     expect(await ingresosDe(CONCEPTO)).toHaveLength(2);
 
+    // Desde T-28-N1-N1 se puede afirmar algo mas fuerte que "las cuentas cierran": CUAL
+    // sobrevive. Antes era indistinguible —los dos movimientos tenian la misma descripcion,
+    // el mismo monto y la misma moneda— y por eso este caso solo podia mirar los totales.
+    const dos = await ingresosDe(CONCEPTO);
+    expect(new Set(dos.map((m) => m.cargoId))).toEqual(new Set([a.id, b.id]));
+
     const res = await app.inject({ method: 'POST', url: `/cargos/${a.id}/descobrar`, headers: auth(tokenAdmin) });
     expect(res.statusCode).toBe(200);
 
-    expect(await ingresosDe(CONCEPTO)).toHaveLength(1);
+    const quedan = await ingresosDe(CONCEPTO);
+    expect(quedan).toHaveLength(1);
+    // Se deshizo el primero, asi que el que sobrevive es el del SEGUNDO. Con el heuristico
+    // viejo —el mas reciente por createdAt— se borraba justo al reves.
+    expect(quedan[0]!.cargoId).toBe(b.id);
+
     const despuesA = await prismaTest.cargoContrato.findUnique({ where: { id: a.id } });
     const despuesB = await prismaTest.cargoContrato.findUnique({ where: { id: b.id } });
     expect(despuesA!.saldadoAt).toBeNull();
@@ -277,11 +288,13 @@ describe('T-28-N1-N1 - dos cargos identicos, y hasta donde llega el dano', () =>
    *
    * Lo correcto es 409 desde el principio: el ingreso de ESE cargo ya se rindio.
    *
-   * it.fails porque hoy devuelve 200. Es el criterio de aceptacion de T-28-N1-N1, que
-   * necesita `cargoId` en MovimientoCaja y por eso espera decision del dueno. EL DIA QUE SE
-   * AGREGUE, ESTE TEST EMPIEZA A FALLAR: hay que sacarle el .fails.
+   * ✅ CERRADO el 31/08 con `cargoId` en MovimientoCaja. Este test estuvo escrito como
+   * `it.fails` esperando justamente este dia —"EL DIA QUE SE AGREGUE, ESTE TEST EMPIEZA A
+   * FALLAR: hay que sacarle el .fails"— y eso fue exactamente lo que paso al agregar la
+   * columna. Dejarlo escrito asi fue lo que convirtio el arreglo en verificable: el criterio
+   * de aceptacion ya estaba, ejecutandose, esperando.
    */
-  it.fails('con uno ya rendido, deshacer el otro no deberia poder borrarle el movimiento', async () => {
+  it('con uno ya rendido, deshacer el otro no le puede borrar el movimiento', async () => {
     const a = await crearCargo(CONCEPTO);
     const b = await crearCargo(CONCEPTO);
     await app.inject({ method: 'POST', url: `/cargos/${a.id}/saldar`, headers: auth(tokenAdmin) });

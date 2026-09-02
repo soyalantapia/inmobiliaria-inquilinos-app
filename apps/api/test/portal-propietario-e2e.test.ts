@@ -41,6 +41,25 @@ const OTRO_TENANT = `${P}inmo`;
 const OTRO_PROP = `${P}duenio`;
 const OTRO_EMAIL = 'duenio.de.otra.inmo@example.invalid';
 
+/**
+ * T-73 · Un propietario EXCLUSIVO para el caso "el código igual se emite".
+ *
+ * Ese caso cuenta las filas de OTP que dejó UN request, y contarlas sobre `OTRO_PROP` lo volvía
+ * flaky: el test de temporización que corre antes llama a `/auth/propietario/otp/request` muchas
+ * veces sobre ese mismo email, y la escritura del código es ASÍNCRONA a propósito —se sacó del
+ * camino del request para que el reloj no delate si un email existe—. Esas escrituras en vuelo
+ * aterrizaban DESPUÉS del `deleteMany` del caso siguiente, que entonces veía 2 donde esperaba 1.
+ *
+ * Se vio en el CI del PR #69: el mismo commit, una corrida en rojo y otra en verde. No era un
+ * defecto del producto — pero un test que falla de a ratos enseña a ignorar los rojos, que es
+ * exactamente lo que este repo ya pagó con nueve días de CI en rojo.
+ *
+ * Aislarlo por dato —y no esperar más tiempo— es lo único que lo cierra: con un propietario que
+ * nadie más toca, no hay escritura ajena posible que contar.
+ */
+const EMISOR_PROP = `${P}emisor`;
+const EMISOR_EMAIL = 'duenio.solo.para.emision@example.invalid';
+
 const auth = (t: string) => ({ authorization: `Bearer ${t}` });
 
 /** Le arma una fila de OTP válida a un propietario y la canjea por un token. */
@@ -104,9 +123,23 @@ beforeAll(async () => {
     },
   });
 
+  // T-73: el propietario exclusivo del caso de emisión. Mismo tenant, email propio.
+  await prisma.propietario.create({
+    data: {
+      id: EMISOR_PROP,
+      inmobiliariaId: OTRO_TENANT,
+      nombre: 'Dueño',
+      apellido: 'Emisor',
+      cuit: '20-22222222-2',
+      email: EMISOR_EMAIL,
+      telefono: '11 2222-2222',
+      activo: true,
+    },
+  });
+
   app = await buildApp({ NODE_ENV: 'test', DEMO_MODE: 'true' });
   // own_001 (Eduardo Castro) es el propietario del seed con cartera y rendición.
-  token = await entrarComo('own_001', 'eduardo.castro@gmail.com');
+  token = await entrarComo('own_001', 'eduardo.castro@example.com');
   tokenAjeno = await entrarComo(OTRO_PROP, OTRO_EMAIL);
 }, 420_000);
 
@@ -235,9 +268,9 @@ describe('Portal del propietario — el camino entero, por HTTP', () => {
       // La contracara del test de arriba: sacar las escrituras del camino del request no puede
       // significar que dejen de ocurrir. El orden se conserva —primero se guarda, después sale
       // el mail—, así que nadie puede recibir un código que no existe.
-      await prisma.codigoOtpPropietario.deleteMany({ where: { propietarioId: OTRO_PROP } });
+      await prisma.codigoOtpPropietario.deleteMany({ where: { propietarioId: EMISOR_PROP } });
       const r = await app.inject({
-        method: 'POST', url: '/auth/propietario/otp/request', payload: { email: OTRO_EMAIL },
+        method: 'POST', url: '/auth/propietario/otp/request', payload: { email: EMISOR_EMAIL },
       });
       expect(r.statusCode).toBe(200);
 
@@ -245,11 +278,13 @@ describe('Portal del propietario — el camino entero, por HTTP', () => {
       // el código dejara de emitirse, esto falla en dos segundos en vez de pasar por casualidad.
       let filas = 0;
       for (let i = 0; i < 20 && filas === 0; i++) {
-        filas = await prisma.codigoOtpPropietario.count({ where: { propietarioId: OTRO_PROP, usedAt: null } });
+        filas = await prisma.codigoOtpPropietario.count({ where: { propietarioId: EMISOR_PROP, usedAt: null } });
         if (filas === 0) await new Promise((r2) => setTimeout(r2, 100));
       }
+      // Sigue siendo `toBe(1)` y no `>= 1`: la afirmación fuerte —un request deja UN código, no
+      // dos— se conserva. Lo que cambió es de quién se cuenta, no cuánto se exige.
       expect(filas, 'pedir el código tiene que dejarlo guardado').toBe(1);
-      await prisma.codigoOtpPropietario.deleteMany({ where: { propietarioId: OTRO_PROP } });
+      await prisma.codigoOtpPropietario.deleteMany({ where: { propietarioId: EMISOR_PROP } });
     });
 
     it('los intentos se cortan POR CUENTA, no por IP', async () => {
@@ -308,7 +343,7 @@ describe('Portal del propietario — el camino entero, por HTTP', () => {
       expect(res.statusCode).toBe(200);
       const c = res.json();
       expect(c.nombre).toContain('Castro');
-      expect(c.email).toBe('eduardo.castro@gmail.com');
+      expect(c.email).toBe('eduardo.castro@example.com');
       expect(typeof c.comisionPct).toBe('number');
       // El BOOLEANO del CBU, nunca el número: es lo que le explica al dueño por qué no le
       // depositan. Que el CBU mismo no viaje se afirma abajo.
@@ -564,7 +599,7 @@ describe('Portal del propietario — el camino entero, por HTTP', () => {
         kind: 'propietario',
         propietarioId: 'own_001',
         inmobiliariaId: OTRO_TENANT,
-        email: 'eduardo.castro@gmail.com',
+        email: 'eduardo.castro@example.com',
       });
       const res = await app.inject({ method: 'GET', url: '/portal/mi-cartera', headers: auth(falso) });
       expect(res.statusCode).toBe(401);

@@ -576,7 +576,7 @@ function PasoEmail({
       {!apiEnabled && (
         <button
           type="button"
-          onClick={() => setEmail('mariela.sosa@gmail.com')}
+          onClick={() => setEmail('mariela.sosa@example.com')}
           className="flex w-full items-center justify-center gap-2 rounded-full border border-dashed border-primary/40 bg-primary/5 px-3 py-2 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
         >
           <Sparkles className="h-3.5 w-3.5" />
