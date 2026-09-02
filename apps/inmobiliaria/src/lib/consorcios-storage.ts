@@ -438,6 +438,28 @@ export const ESTADO_UF_LABEL: Record<EstadoUF, string> = {
   CON_PLAN_PAGO: 'Plan de pago',
 };
 
+/**
+ * El estado que se MUESTRA de una unidad, que no es siempre el que está guardado.
+ *
+ * `UnidadFuncional.estado` se carga a mano y hasta acá no había ningún control para elegirlo:
+ * toda unidad creada en producción nace con el default `AL_DIA` de Prisma y ahí se queda. El
+ * resultado en pantalla era una fila contradiciéndose sola — el saldo en ámbar diciendo
+ * $50.000 y el badge verde al lado diciendo "Al día".
+ *
+ * Regla: **el saldo manda sobre el rótulo.** Si hay deuda cargada, la unidad no está al día,
+ * diga lo que diga el enum. Los otros tres valores se respetan tal cual: `CON_PLAN_PAGO` es
+ * información que el saldo no puede dar, y es justamente por eso que el diálogo ahora deja
+ * elegirlo.
+ *
+ * (El arreglo de fondo —derivar `estado` de las liquidaciones reales, del lado del server— es
+ * otra conversación, atada a la Fase 2 de expensas: ver `work-agent/T-22-RELEVAMIENTO-CONSORCIO.md`,
+ * donde este campo figura como una de las "dos verdades del mismo hecho".)
+ */
+export function estadoUfVisible(u: { estado: EstadoUF; saldoDeudor: number }): EstadoUF {
+  if (u.estado === 'AL_DIA' && u.saldoDeudor > 0) return 'VENCIDO';
+  return u.estado;
+}
+
 export const ESTADO_UF_COLOR: Record<EstadoUF, string> = {
   AL_DIA: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
   PENDIENTE: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',

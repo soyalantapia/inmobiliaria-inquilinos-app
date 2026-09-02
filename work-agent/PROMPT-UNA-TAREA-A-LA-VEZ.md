@@ -248,6 +248,17 @@ modo demo (localStorage) sin tocar la API.
   código de salida solo.
 - ⚠️ **Un patrón vacío en un grep matchea todo.** Si tu búsqueda "encontró" un número redondo y
   enorme, verificá que el patrón no salga vacío.
+- 🔴 **`next build` le rompe el `.next` al `next dev` que está corriendo.** Comparten carpeta: el
+  build de producción pisa los chunks del dev, y a partir de ahí el navegador come 404 y
+  *"Refused to execute script … MIME type ('text/html')"* — que parecen un problema del código y
+  son del entorno. Pisado TRES veces en una sesión. Si vas a verificar en el navegador, corré el
+  build **antes** de levantar el dev, o bajá el dev, `rm -rf .next` y volvelo a levantar.
+- ⚠️ **`pkill -f "next dev"` no mata nada en Windows.** El proceso sigue tomando el 3001 y el
+  `next dev` nuevo muere con `EADDRINUSE` — pero como el viejo sigue sirviendo, parece que
+  arrancó. Matalo por puerto: `Get-NetTCPConnection -LocalPort 3001 -State Listen` y `Stop-Process`.
+- ⚠️ **Recrear la base invalida el token del panel.** El seed regenera los cuids, así que el JWT
+  que guardaste apunta a una inmobiliaria que ya no existe y el panel dice *"Tu sesión venció por
+  seguridad"*. No es un bug de auth: pedí un token nuevo después de cada `docker compose down -v`.
 - ⚠️ **Un test estructural que no encuentra nada pasa en verde.** Si escribís un test que escanea
   el fuente, la PRIMERA aserción tiene que ser que el parser encontró algo (`length >= N`, y que
   la lista contenga dos nombres que sabés que están). Sin eso, un cambio de forma en el código lo
