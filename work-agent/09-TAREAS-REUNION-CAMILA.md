@@ -6050,11 +6050,22 @@ de ser un problema — que era la objeción #2 de esa tarea.
 1. **Rechazar SÍ borra la deuda declarada.** `plata.ts` pone
    `periodosAnterioresPendientes: Prisma.DbNull` en el mismo `updateMany` que saca el
    `pendienteAprobacion`. Es deliberado y está comentado.
-2. **NO borra el `Inquilino`.** No hay ningún `delete` en ese camino. La versión anterior de esta
-   nota decía que sí; era falso.
-3. **No existe forma de corregir y reenviar.** `PUT /contratos/:id/borrador` y
-   `POST /contratos/:id/reenviar-aprobacion` **no están en `main`** — viven sólo en la rama
-   varada `feat/corregir-contrato-rechazado`.
+2. 🔴 **SÍ borra el `Inquilino`, y con él sus DOCUMENTOS.** Corregido el 02/09 mirando el
+   código: `plata.ts:3311-3317` hace `deleteMany` de `CodigoOtp`, `AnuncioAcuse`,
+   **`Documento`** y **`CertificadoInquilino`**, y después del `Inquilino`. Y se justifica
+   exactamente en el `@@unique([inmobiliariaId, email])` que **ya no existe**: el schema de
+   hoy dice textual «El email NO es único a nivel Inquilino».
+
+   > ⚠️ **Esta nota decía lo contrario, y lo decía como una corrección verificada:** «no hay
+   > ningún `delete` en ese camino. Lo verifiqué línea por línea». Era falso — y la versión
+   > *anterior*, la que esa corrección tachó, tenía razón. El commit fue `53585412` (20/08).
+   >
+   > Es la peor forma del error: un documento que afirma que el defecto **no está**, con el
+   > tono de quien ya fue a mirar. El que lo lee no vuelve a abrir el archivo. Si algo de acá
+   > te suena raro, abrí `plata.ts` — no me creas a mí.
+3. **La mitad de corregir ya entró.** `PUT /contratos/:id/borrador` **está en `main`** desde
+   el 02/09 (PR #51). Lo que sigue sin existir es `POST /contratos/:id/reenviar-aprobacion`:
+   se puede corregir un borrador rechazado, pero no volver a mandarlo a aprobación.
 
 **Lo que esto significa hoy, y por qué NO es un bug.** El comentario del código justifica el
 borrado diciendo que *"el contrato rechazado nunca se va a aprobar, así que esa deuda histórica

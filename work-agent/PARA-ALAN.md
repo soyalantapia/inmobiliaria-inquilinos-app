@@ -325,3 +325,58 @@ inmobiliaria la usa como comprobante de algo, no debería.
 Mi lectura: **la primera**. Es lo que la pantalla ya insinuaba, es lo que sirve el día uno,
 y no compromete nada de plata. Pero decidilo vos, porque las otras dos no se agregan
 después sin rehacer esto.
+
+## Rechazar un contrato borra los documentos del inquilino
+
+**Fecha:** 02/09/2026 · **Bloquea:** sí — hay que decidir antes de que alguien rechace un
+contrato con documentos cargados. Hoy no hay datos en producción, así que el reloj todavía no
+corre.
+
+### El hecho
+
+Cuando se **rechaza** un contrato desde la bandeja de aprobaciones, el sistema borra al
+inquilino y, antes, a todos sus hijos: los códigos de OTP, los acuses de anuncios, **los
+documentos que subió** y **sus certificados**. Está en `plata.ts:3311-3317`.
+
+El motivo escrito en el código es que, si no, «su email queda tomado» por un
+`@@unique([inmobiliariaId, email])`. **Ese unique ya no existe.** El schema de hoy dice textual
+lo contrario: *«El email NO es único a nivel Inquilino»* — cambió con el multi-alquiler, para
+que la misma persona pueda tener tres contratos con el mismo mail.
+
+O sea: se destruyen documentos para evitar un choque que no puede ocurrir.
+
+### 🔴 Por qué nadie lo vio
+
+El tablero **decía que esto no pasaba**, y lo decía como una corrección verificada: *«no hay
+ningún `delete` en ese camino. Lo verifiqué línea por línea»*. Era falso, y la versión anterior
+—la que esa corrección tachó— tenía razón. Ya está arreglado el documento.
+
+Es la peor forma del error: un papel que afirma que el defecto no está, con el tono de quien ya
+fue a mirar. El que lo lee no vuelve a abrir el archivo.
+
+### Por qué no lo saqué yo
+
+Porque sacar el borrado tiene una consecuencia visible, y elegirla es tuyo:
+
+**A · Dejar de borrar.** Los documentos se conservan. **Costo:** el inquilino de un contrato
+rechazado queda con su fila viva, y el selector «Mis alquileres» del login **no filtra por
+estado** — así que vería un borrador rechazado listado como un alquiler suyo. Se arregla
+excluyendo los BORRADOR de ese selector (un contrato que nunca existió no es un alquiler), pero
+es un segundo cambio, en el camino de login.
+
+**B · Seguir borrando, pero no los documentos.** No se puede: el `Inquilino` no se puede borrar
+sin sus hijos, es una FK.
+
+**C · Dejarlo como está.** Se pierden los documentos de cada contrato rechazado. Hoy eso es
+gratis porque no hay datos; el día que Camila rechace un contrato al que el inquilino ya le
+subió el DNI y el recibo de sueldo, no.
+
+### La pregunta
+
+**¿Va A?** Es lo que yo haría —los documentos son irrecuperables y el motivo del borrado se
+evaporó—, pero arrastra el cambio en el selector del login, que es una superficie sensible.
+
+Y la de al lado, que es la que cierra el círculo: **¿se construye
+`POST /contratos/:id/reenviar-aprobacion`?** Corregir un borrador rechazado ya se puede desde
+hoy (#51); volver a mandarlo a aprobación, no. Sin eso, un contrato rechazado es papel mojado
+igual, se borren o no los documentos. El PR **#49** construye las dos mitades y sigue abierto.
