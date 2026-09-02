@@ -109,6 +109,53 @@ export function InstalarAppBoton({
   );
 }
 
+/**
+ * Fila para la barra lateral de escritorio. Es la puerta de entrada PERMANENTE a la
+ * instalación: a diferencia del banner flotante —que se puede cerrar— ésta se queda
+ * hasta que la app está efectivamente instalada, y recién ahí desaparece.
+ *
+ * Se muestra sólo si el navegador puede instalar (`tieneNativo`) o es iOS: ofrecer
+ * "Descargar app" en un Firefox de escritorio, que no puede hacerlo, sería mandar a
+ * alguien a una puerta que no abre.
+ *
+ * Va estilada como los NavLink de al lado a propósito, pero es un `button`: no navega
+ * a ningún lado, dispara el prompt del navegador.
+ */
+export function InstalarAppNavItem() {
+  const [montado, setMontado] = useState(false);
+  useEffect(() => setMontado(true), []);
+  const { instalada, tieneNativo, ios, instalar } = useInstalarApp();
+  const [iosOpen, setIosOpen] = useState(false);
+
+  if (!montado || instalada || (!tieneNativo && !ios)) return null;
+
+  const onClick = async () => {
+    const r = await instalar();
+    if (r === 'ios') setIosOpen(true);
+    else if (r === 'instalada')
+      toast({ title: '¡Listo!', description: 'Ya tenés la app instalada.' });
+    else if (r === 'no-disponible')
+      toast({
+        title: 'Instalá desde el menú del navegador',
+        description: 'Abrí el menú (⋮) y tocá "Instalar app".',
+      });
+  };
+
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={onClick}
+        className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm text-primary transition-colors hover:bg-primary/10"
+      >
+        <Download className="h-4 w-4 shrink-0" />
+        Descargar app
+      </button>
+      <InstruccionesIOSDialog open={iosOpen} onOpenChange={setIosOpen} />
+    </li>
+  );
+}
+
 /** Card persistente para /cuenta: "Descargá la app en tu celular" + botón. */
 export function DescargarAppCard() {
   const [montado, setMontado] = useState(false);

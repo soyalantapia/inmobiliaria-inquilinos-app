@@ -7,10 +7,18 @@ import { Card } from '@llave/ui/card';
 import { InstruccionesIOSDialog } from '@/components/instalar-app';
 import { useInstalarApp } from '@/lib/instalar-app';
 
-// Banner flotante (auto) para descubrir la descarga. Aparece cuando el navegador
-// ofrece instalar (Android/Chrome) o en iPhone. Si el inquilino lo cierra, lo
-// respetamos 7 días. El botón "Descargar app" persistente vive en /cuenta y /ayuda
-// (este banner es solo el empujón de la primera vez).
+// Banner flotante para descubrir la descarga. Aparece cuando el navegador ofrece
+// instalar (Android/Chrome/Edge) o en iPhone, y deja de aparecer cuando la app está
+// EFECTIVAMENTE instalada — no antes.
+//
+// Cerrarlo lo calla sólo por esta visita (sessionStorage), no por 7 días. Antes se
+// guardaba un timestamp en localStorage y un solo click en la ✕ enterraba la
+// invitación una semana entera, la instalara o no: el inquilino que la cerró sin
+// leerla no volvía a ver la app en 7 días. Con el cierre por sesión el empujón vuelve
+// en la próxima visita, y mientras tanto la puerta de entrada permanente sigue a la
+// vista en Mi cuenta y en la barra lateral de escritorio.
+//
+// El pedido era explícito: que aparezca "hasta que efectivamente se la descargue".
 
 const DISMISSED_KEY = 'llave:install-dismissed';
 
@@ -20,9 +28,12 @@ export function InstallPrompt() {
   const [iosOpen, setIosOpen] = useState(false);
 
   useEffect(() => {
-    const dismissed = window.localStorage.getItem(DISMISSED_KEY);
-    const sigueVigente = dismissed && Date.now() - Number(dismissed) < 7 * 86400 * 1000;
-    setOculto(Boolean(sigueVigente));
+    try {
+      setOculto(window.sessionStorage.getItem(DISMISSED_KEY) === '1');
+    } catch {
+      // Safari en privado puede tirar al leer storage: mostrarlo es lo correcto.
+      setOculto(false);
+    }
   }, []);
 
   const descargar = async () => {
@@ -34,7 +45,7 @@ export function InstallPrompt() {
   const dismiss = () => {
     setOculto(true);
     try {
-      window.localStorage.setItem(DISMISSED_KEY, String(Date.now()));
+      window.sessionStorage.setItem(DISMISSED_KEY, '1');
     } catch {
       // ignore
     }
