@@ -222,8 +222,23 @@ modo demo (localStorage) sin tocar la API.
   con *"the `border-border` class does not exist"*. Parece un error del proyecto y es del lanzador.
   **Arrancá con el cwd adentro de la app.**
 - ⚠️ **`prisma generate` falla con EPERM** si el dev server tiene tomado el motor. Bajalo primero.
+- 🔴 **En un worktree con `node_modules` junctioneado, `prisma generate` le pisa el cliente al clon
+  principal.** Son el mismo directorio. Si generás en el worktree con un schema mergeado y después
+  volvés al clon a correr tests, el cliente que tenés es el del OTRO árbol — y el error sale
+  cincuenta archivos más allá, hablando de una columna que "no existe". Regenerá al volver.
+- 🔴 **Un worktree nuevo NO tiene `apps/api/.env`**: está gitignoreado y no viaja con
+  `git worktree add`. Sin `JWT_SECRET`, `buildApp` explota **antes de correr un solo test** y la
+  suite entera reporta "75 archivos fallados / 547 skipped". Parece una regresión gigante y es un
+  archivo que falta. El `.env` del worktree apunta a **su propia** base — nunca a la del clon
+  principal, y jamás a producción.
 - ⚠️ **La suite con base tarda ~15 minutos** en local y corre en serie a propósito: todas siembran
   la misma base.
+- 🔴 **Un test que MUTA una fila del seed rompe a otro archivo EN AISLAMIENTO.** La base es
+  persistente entre corridas: si tu test le pone `depositoGarantia: null` a `cnt_001` y la
+  corrida se corta antes del `afterAll`, ese null queda. Después otro archivo falla **solo**, y
+  el rojo se lee como "se rompió el código que ese archivo prueba". Ya pasó.
+  **Armá fixtures propios** —contrato, propiedad, profesional con tu prefijo— en vez de mutar
+  filas del seed. Restaurar en el `afterAll` no alcanza: no corre si la corrida se interrumpe.
 - 🔴 **No toques el fuente mientras la suite larga corre en segundo plano.** Son 15 minutos de
   tentación para "ir adelantando", y vitest lee cada archivo cuando le toca: los que se colecten
   después de tu edición corren contra un código distinto del que se colectó al principio. El
@@ -246,6 +261,19 @@ modo demo (localStorage) sin tocar la API.
   sin compilar nada.
 - ⚠️ **Un timeout que corta la suite puede devolver 0 y parecer verde.** Mirá el resumen, no el
   código de salida solo.
+- 🔴 **Un test nuevo puede estar verde con `tsc` roto.** Vitest **transpila sin chequear tipos**.
+  Si corriste el typecheck y DESPUÉS escribiste el último test, tu verde es de antes del archivo.
+  Ya pasó dos veces: la segunda la encontró el merge de control, no la rama. **El typecheck va
+  después de la última edición, siempre — y "última" incluye los tests.**
+- ⚠️ **Contá cuántos tests corrieron, no cuántos no fallaron.** Una suite con todo "skipped"
+  sale con exit 0. 547 skipped no son 547 que pasan.
+- 🔴 **Un control negativo que NO se pone rojo casi nunca significa "el código está bien".**
+  Significa, en este orden: (1) neutralizaste **otra copia** —este repo tiene bloques duplicados
+  entre handlers hermanos, y un reemplazo por texto pega en el primero—; (2) el test no llega a
+  esa línea; (3) recién ahí, que el aserto no medía lo que creías. Verificá **por número de
+  línea** que neutralizaste la que corre en el camino que probás. Ya pasó: `expensasDeLaCuota`
+  vive igual en `/ajustar` y en `/renovar`, y el verde falso se lee como "el control no
+  detecta nada".
 - ⚠️ **Un patrón vacío en un grep matchea todo.** Si tu búsqueda "encontró" un número redondo y
   enorme, verificá que el patrón no salga vacío.
 - 🔴 **`next build` le rompe el `.next` al `next dev` que está corriendo.** Comparten carpeta: el
@@ -283,6 +311,22 @@ modo demo (localStorage) sin tocar la API.
   empezá por ahí.
 - ⚠️ **El CI reporta, no frena.** `main` no tiene branch protection. Un rojo no impide nada: mirarlo
   es tu trabajo, no del sistema.
+- 🔴 **Un rojo en TU rama no siempre es TUYO.** Antes de arreglar, fijate si el archivo que falla
+  lo tocó tu cambio (`git diff main...tu-rama -- ese-archivo`) y si el mismo commit pasó en otra
+  corrida. Ya pasó: #124 dio `expected 2 to be 1` en un test de OTP que no tocaba, y el flaky
+  vivía en `main`. **Eso no es "no es mi problema": es otra tarea, y hay que abrirla** — un check
+  que falla por algo ajeno entrena a todos a ignorar el rojo.
+- 🔴 **Un test puede caerse por el test de al lado.** Este repo tiene escrituras *fire-and-forget*
+  (`void (async () => …)`, dos en toda la API) que aterrizan **después** de que el request
+  contestó. Si tu caso borra filas y cuenta, y el caso de arriba usó **el mismo fixture**, una
+  rezagada te deja una fila de más. La regla: **un caso que cuenta filas necesita su propia fila
+  del fixture**, no la compartida.
+- ⚠️ **Si el control negativo de un test flaky sale verde, tu explicación está mal.** Antes de
+  escribir un señuelo que "simula" la carrera, verificá que el señuelo sobreviva al código real
+  —el handler puede neutralizarlo—. Una carrera de verdad casi nunca se dispara a pedido:
+  cuando no la podés reproducir, **decilo** en el PR y mostrá la evidencia que sí tenés (la firma
+  del fallo, el código, que el mismo commit pasa y falla). Es mucho mejor que un control
+  decorativo.
 
 ---
 
