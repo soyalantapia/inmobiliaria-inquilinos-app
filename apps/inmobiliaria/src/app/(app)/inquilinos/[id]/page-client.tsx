@@ -10,6 +10,7 @@ import { Topbar } from '@/components/topbar';
 import { usePersona } from '@/lib/api/use-inquilinos';
 import { SaldarDeudaButton } from '@/components/saldar-deuda-button';
 import { formatFechaCorta, formatMonto, formatRangoVigencia, formatTotalPorMoneda } from '@/lib/format';
+import { usePuede } from '@/lib/use-puede';
 
 function Stat({ label, value, accent }: { label: string; value: string; accent?: 'red' | 'green' | 'muted' }) {
   return (
@@ -31,6 +32,7 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
 }
 
 export default function InquilinoFichaPage({ params }: { params: { id: string } }) {
+  const puedeSaldar = usePuede('pago.conciliar');
   const { persona, cargando, error } = usePersona(params.id);
 
   const nombre = persona ? `${persona.nombre} ${persona.apellido ?? ''}`.trim() : '';
@@ -129,7 +131,12 @@ export default function InquilinoFichaPage({ params }: { params: { id: string } 
                       <Badge variant={c.estado === 'ACTIVO' ? 'success' : 'secondary'}>
                         {c.estado.charAt(0) + c.estado.slice(1).toLowerCase()}
                       </Badge>
-                      {c.deuda > 0 && <SaldarDeudaButton contratoId={c.id} deuda={c.deuda} moneda={c.moneda} />}
+                      {/* `pago.conciliar` es ADMIN + CAJA. La única condición era `deuda > 0`,
+                          así que el diálogo le ofrecía los cuatro métodos de cobro —y el chip
+                          "Condonar", con su botón "Condonar la deuda"— a un rol de sólo lectura. */}
+                      {c.deuda > 0 && puedeSaldar && (
+                        <SaldarDeudaButton contratoId={c.id} deuda={c.deuda} moneda={c.moneda} />
+                      )}
                       <Button variant="ghost" size="sm" asChild>
                         <Link href={`/contratos/${c.id}`}>
                           <FileText className="h-4 w-4" />

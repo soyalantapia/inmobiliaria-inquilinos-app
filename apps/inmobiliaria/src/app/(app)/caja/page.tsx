@@ -54,6 +54,7 @@ import { apiEnabled, subirArchivo } from '@/lib/api/client';
 import { formatFechaCorta, formatMonto, formatTotalPorMoneda, fechaHoyLocal } from '@/lib/format';
 import type { Moneda } from '@/lib/types';
 import { propiedadesMock } from '@/lib/mock-data';
+import { usePuede } from '@/lib/use-puede';
 
 /** Opción mínima de propiedad para el select/filtros de caja. */
 /**
@@ -623,6 +624,7 @@ function MovimientoRow({
   onDelete: () => void;
 }) {
   const esIngreso = mov.tipo === 'INGRESO_EXTRA';
+  const puedeBorrarMovimiento = usePuede('caja.eliminar');
   return (
     <Card className="flex flex-wrap items-start gap-3 p-4">
       <div
@@ -689,6 +691,12 @@ function MovimientoRow({
           {esIngreso ? '+' : '−'}
           {formatMonto(mov.monto, mov.moneda)}
         </p>
+        {/* `caja.eliminar` es ADMIN. Este MISMO archivo calcula bien `puedeAnular` 320 líneas
+            más arriba, con el comentario "si no puede, no mostramos el botón: prometerlo para
+            que el server conteste 403 es peor que no ofrecerlo". Gatearon un botón y no el de
+            al lado: el cajero que carga un gasto con la propiedad equivocada veía el tachito,
+            lo apretaba y no podía corregir su propio error. */}
+        {puedeBorrarMovimiento && (
         <Button
           size="icon"
           variant="ghost"
@@ -698,6 +706,7 @@ function MovimientoRow({
         >
           <Trash2 className="h-3.5 w-3.5 text-destructive" />
         </Button>
+        )}
       </div>
     </Card>
   );
