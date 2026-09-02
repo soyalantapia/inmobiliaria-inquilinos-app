@@ -78,6 +78,7 @@ interface ReclamoApi {
   resolucion: string | null;
   createdAt: string;
   resueltoAt: string | null;
+  reabiertoPor?: 'INQUILINO' | 'INMOBILIARIA' | null;
   eventos?: EventoApi[];
   profesional?: ProfesionalApi | null;
   confirmacion?: ConfirmacionApi | null;
@@ -139,6 +140,7 @@ function mapReclamo(r: ReclamoApi, identidad: IdentidadInquilino): Reclamo {
     resolucion: r.resolucion,
     createdAt: r.createdAt,
     resueltoAt: r.resueltoAt,
+    reabiertoPor: r.reabiertoPor ?? null,
     eventos: (r.eventos ?? [])
       .map(mapEvento)
       .filter((e): e is EventoReclamo => e !== null),
