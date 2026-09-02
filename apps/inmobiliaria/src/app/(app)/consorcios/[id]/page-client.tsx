@@ -132,7 +132,9 @@ export default function DetalleConsorcioPage() {
     );
   }
 
-  const balance = balanceConsorcio(consorcio);
+  // CON el período: los tres rótulos dicen "del mes" y hasta acá mostraban el acumulado
+  // histórico. Un edificio administrado hace tres años sumaba todo desde 2022.
+  const balance = balanceConsorcio(consorcio, consorcio.periodoActual);
   const morosidad = morosidadConsorcio(consorcio);
   const soc = sociedadById(consorcio.sociedadId);
 
