@@ -44,6 +44,19 @@ describe('el estado que se muestra de una unidad', () => {
     expect(Object.keys(ESTADO_UF_LABEL).sort()).toEqual(['AL_DIA', 'CON_PLAN_PAGO', 'PENDIENTE', 'VENCIDO']);
   });
 
+  it('🔴 sin deuda NO dice "Vencido", aunque el enum diga eso — la contradicción al revés', () => {
+    // Alcanzable desde que el diálogo deja elegir el estado: se marca VENCIDO a mano, la
+    // unidad paga, y el saldo queda en 0. La fila mostraba «—» y un badge rojo al lado.
+    expect(estadoUfVisible({ estado: 'VENCIDO', saldoDeudor: 0 })).toBe('AL_DIA');
+    expect(estadoUfVisible({ estado: 'PENDIENTE', saldoDeudor: 0 })).toBe('AL_DIA');
+    // Un plan de pago sin saldo es un plan que ya se cumplió.
+    expect(estadoUfVisible({ estado: 'CON_PLAN_PAGO', saldoDeudor: 0 })).toBe('AL_DIA');
+  });
+
+  it('y un saldo a favor tampoco sostiene un estado de mora', () => {
+    expect(estadoUfVisible({ estado: 'VENCIDO', saldoDeudor: -5_000 })).toBe('AL_DIA');
+  });
+
   it('el control que le da sentido: la regla vieja mostraba el enum crudo', () => {
     const viejo = (u: { estado: string }) => u.estado;
     const conDeuda = { estado: 'AL_DIA' as const, saldoDeudor: 50_000 };
