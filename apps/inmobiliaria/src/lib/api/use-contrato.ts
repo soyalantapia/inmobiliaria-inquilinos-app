@@ -30,7 +30,7 @@ import {
   propiedadesMock,
   propietariosMock,
 } from '@/lib/mock-data';
-import type { ContratoListado, MoraEfectiva, Propietario, TipoMora } from '@/lib/types';
+import type { ContratoListado, Moneda, MoraEfectiva, Propietario, TipoMora } from '@/lib/types';
 
 // ---- Shape de la respuesta del API (GET /contratos/:id) ----
 
@@ -119,6 +119,8 @@ interface ContratoApi {
     id: string;
     contratoId: string;
     periodo: string;
+    /** La cuota trae su propia moneda (`Liquidacion.moneda`); el server ya la devolvía. */
+    moneda?: Moneda | null;
     montoAlquiler: string | number;
     montoExpensas: string | number | null;
     montoTotal: string | number;
@@ -282,13 +284,19 @@ function mapPropietarioDirecto(r: ContratoApi): Propietario | null {
   return p ? mapPropietario(p) : null;
 }
 
-function mapLiquidacionAdmin(l: NonNullable<ContratoApi['liquidaciones']>[number]): LiquidacionAdmin {
+function mapLiquidacionAdmin(
+  l: NonNullable<ContratoApi['liquidaciones']>[number],
+  // Fallback a la moneda del CONTRATO, no a 'ARS': una cuota de un contrato en dólares es
+  // en dólares. Caer a pesos acá sería reponer el mismo bug un nivel más adentro.
+  monedaContrato: Moneda,
+): LiquidacionAdmin {
   const montoTotal = Number(l.montoTotal);
   const montoPagado = l.montoPagado != null ? Number(l.montoPagado) : 0;
   return {
     id: l.id,
     contratoId: l.contratoId,
     periodo: l.periodo,
+    moneda: l.moneda ?? monedaContrato,
     montoAlquiler: Number(l.montoAlquiler),
     montoExpensas: l.montoExpensas != null ? Number(l.montoExpensas) : 0,
     montoTotal,
@@ -313,7 +321,7 @@ function mapDetalle(r: ContratoApi): ContratoDetalle {
     // `[]` (el endpoint no las traía) → el tab "Pagos" del contrato quedaba SIEMPRE
     // vacío, aun con pagos informados o conciliados (bug 4). NO fabricamos cuotas
     // falsas: si el contrato no tiene liquidaciones, el empty state es real.
-    liquidaciones: (r.liquidaciones ?? []).map(mapLiquidacionAdmin),
+    liquidaciones: (r.liquidaciones ?? []).map((l) => mapLiquidacionAdmin(l, r.moneda)),
     // El timeline va por su propio endpoint (useEventosContrato); este campo queda para
     // el modo demo, que arma el detalle desde los mocks.
     eventos: [],
@@ -348,7 +356,7 @@ function detalleMock(id: string): ContratoDetalle | null {
     contacto,
     propietarios,
     propietarioDirecto,
-    liquidaciones: generarLiquidaciones(c.id, c.monto, c.montoExpensas ?? 0),
+    liquidaciones: generarLiquidaciones(c.id, c.monto, c.montoExpensas ?? 0, c.moneda),
     eventos: eventosContratoMock.filter((e) => e.contratoId === id),
     comunicaciones: comunicacionesMock.filter((cm) => cm.contratoId === id),
   };

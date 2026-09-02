@@ -31,7 +31,7 @@ import {
   type ContactoCobranza,
 } from '@/lib/mock-data';
 import { consorciosMock } from '@/lib/consorcios-storage';
-import { diasHastaVencimiento, formatFechaCorta, formatMonto } from '@/lib/format';
+import { diasHastaVencimiento, formatFechaCorta, formatMonto, formatTotalPorMoneda } from '@/lib/format';
 import { rotuloEnLinea } from '@/lib/rotulo-propiedad';
 
 /**
@@ -172,7 +172,11 @@ export function MorososPanel({ inmobiliaria = 'My Alquiler' }: Props) {
     });
   }, [morosos, busqueda, filtroConsorcio]);
 
-  const total = morosos.reduce((acc, m) => acc + m.contrato.monto, 0);
+  // POR MONEDA. Este `reduce` sumaba pesos con dólares en un número solo y el badge lo
+  // pintaba con `$`: con un contrato de US$ 800 al lado de uno de $ 1.200.000, la "deuda
+  // total" decía $ 1.200.800. Las otras dos llamadas del mismo archivo (la del WhatsApp de
+  // cobranza y la de la fila) sí le pasan `c.moneda`.
+  const totalPorMoneda = morosos.map((m) => ({ monto: m.contrato.monto, moneda: m.contrato.moneda }));
   const aVisible = expandido ? filtrados : filtrados.slice(0, 3);
 
   if (morosos.length === 0) {
@@ -267,7 +271,7 @@ export function MorososPanel({ inmobiliaria = 'My Alquiler' }: Props) {
           </div>
           <Badge variant="destructive" className="shrink-0 gap-1 text-xs">
             <TrendingDown className="h-3 w-3" />
-            Deuda total {formatMonto(total)}
+            Deuda total {formatTotalPorMoneda(totalPorMoneda)}
           </Badge>
         </div>
 

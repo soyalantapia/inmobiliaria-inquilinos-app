@@ -1,6 +1,7 @@
 import type {
   ContratoExtraido,
   ContratoListado,
+  Moneda,
   Propiedad,
   Propietario,
   Reclamo,
@@ -1010,6 +1011,13 @@ export interface LiquidacionAdmin {
   id: string;
   contratoId: string;
   periodo: string; // YYYY-MM
+  /**
+   * Moneda de ESTA cuota. Faltaba, y la pestaña Pagos —que no recibe el contrato— no tenía
+   * de dónde sacarla: sus nueve `formatMonto` caían al default `'ARS'` y un contrato de
+   * US$ 1.200 se leía "$ 1.200", mil veces por debajo de la deuda real. En el mismo archivo
+   * hay once llamadas que sí le pasan `c.moneda`.
+   */
+  moneda: Moneda;
   montoAlquiler: number;
   montoExpensas: number;
   montoTotal: number;
@@ -1048,6 +1056,10 @@ export function generarLiquidaciones(
   // caemos a la estimación histórica del 19% del alquiler. Para SOLO_EXPENSAS
   // (montoBase=0) el 19% daba $0 e ignoraba las expensas reales del contrato.
   montoExpensasBase = 0,
+  // Default ARS para las otras cinco llamadas (cierre de caja y scoring del inquilino),
+  // que suman plata en pesos por construcción. La única que tiene la respuesta de verdad
+  // —el detalle del contrato— pasa `c.moneda`.
+  moneda: Moneda = 'ARS',
 ): LiquidacionAdmin[] {
   const hoy = new Date();
   const liquidaciones: LiquidacionAdmin[] = [];
@@ -1073,6 +1085,7 @@ export function generarLiquidaciones(
       id: `liq_${contratoId}_${periodo}`,
       contratoId,
       periodo,
+      moneda,
       montoAlquiler: montoBase,
       montoExpensas: expensas,
       montoTotal: montoBase + expensas,
