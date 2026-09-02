@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../db.js';
+import { registrarEvento } from '../lib/auditoria.js';
 import { requireUsuario } from '../auth/guards.js';
 import { generarLiquidacionesContrato } from '../lib/liquidaciones.js';
 import { buscarOCrearPersona } from '../lib/persona.js';
@@ -246,8 +247,39 @@ export async function importacionesCarteraRoutes(app: FastifyInstance): Promise<
           creadas: creadas + 1, errores, procesadas: [...procesadas, i],
           enCursoDesde: new Date().toISOString(), // latido: ver estadoActual()
         };
-        await crearContratoDesdeFila(u.inmobiliariaId, u.userId, d, propietarioCache, async (tx) => {
+        const creado = await crearContratoDesdeFila(u.inmobiliariaId, u.userId, d, propietarioCache, async (tx) => {
           await tx.importacionCartera.update({ where: { id }, data: { resultado: siguiente } });
+        });
+        // RASTRO POR CONTRATO, no por importación. En todo este archivo no había un solo
+        // `registrarEvento`, mientras que los otros TRES caminos que llegan al mismo estado
+        // sí lo escriben: el alta manual (PROPIEDAD_CARGADA + CONTRATO_CARGADO), la deuda
+        // histórica de a una, y la importación HERMANA de morosos —que audita una línea por
+        // deuda, con el argumento explícito de que un «se importaron 50» no sirve para
+        // rastrear de dónde salió UNA que alguien viene a reclamar—.
+        //
+        // Los contratos importados nacen ACTIVO, así que `cargadoPor`/`cargadoAt` quedan
+        // inalcanzables desde el panel: sólo se renderizan dentro de `AprobacionContratoCard`,
+        // que vive detrás de `pendienteAprobacion`. Para una fila importada esa card no se
+        // muestra nunca, y el rastro visible era CERO.
+        //
+        // Fuera de la transacción, por la regla best-effort/post-commit de `lib/auditoria.ts`:
+        // un fallo del rastro no puede tumbar una importación de 340 filas.
+        await registrarEvento({
+          inmobiliariaId: u.inmobiliariaId,
+          tipo: 'PROPIEDAD_CARGADA',
+          autorId: u.userId,
+          rolAutor: u.rol,
+          entidadId: creado.propiedadId,
+          entidadDescripcion: `${creado.direccion} · importación de cartera`,
+        });
+        await registrarEvento({
+          inmobiliariaId: u.inmobiliariaId,
+          tipo: 'CONTRATO_CARGADO',
+          autorId: u.userId,
+          rolAutor: u.rol,
+          entidadId: creado.contratoId,
+          entidadDescripcion:
+            `${creado.direccion}${creado.inquilino ? ` · ${creado.inquilino}` : ''} · importación de cartera (fila ${i + 1})`,
         });
         // El email ya NO bloquea nada (ver validarFila): esto es para que las filas
         // siguientes del mismo archivo con este email salgan como ADVERTENCIA "ya hay un
@@ -412,11 +444,13 @@ async function crearContratoDesdeFila(
   /** Corre DENTRO de la transacción de la fila: sirve para anotar el progreso de forma
    *  atómica con la creación (o quedan las dos cosas, o no queda ninguna). */
   alTerminar?: (tx: Prisma.TransactionClient) => Promise<void>,
-): Promise<void> {
+  // Devuelve los ids de lo creado para que el caller pueda auditar DESPUÉS del commit
+  // (`registrarEvento` es best-effort y no va adentro de la transacción).
+): Promise<{ contratoId: string; propiedadId: string; direccion: string; inquilino: string }> {
   const fechaInicio = d.fechaInicio!;
   const fechaFin = d.fechaFin && d.fechaFin > fechaInicio ? d.fechaFin : fechaFinPorDefecto(fechaInicio);
 
-  await prisma.$transaction(
+  return prisma.$transaction(
     async (tx) => {
       const propietarioId = await propietarioParaFila(tx, inmobiliariaId, d.propietarioNombre, propietarioCache);
       // Find-or-create COMPARTIDO con el alta manual (lib/persona.ts): agrupa esta fila bajo
@@ -498,6 +532,12 @@ async function crearContratoDesdeFila(
       await generarLiquidacionesContrato(tx, { ...contrato, devengarDesde });
       // Último dentro de la tx: el progreso se commitea junto con la fila creada.
       await alTerminar?.(tx);
+      return {
+        contratoId: contrato.id,
+        propiedadId: propiedad.id,
+        direccion: d.direccion,
+        inquilino: d.inquilinoNombre ?? '',
+      };
     },
     { timeout: 30_000, maxWait: 10_000 },
   );

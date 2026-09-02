@@ -52,6 +52,8 @@ export const TIPO_LABEL: Record<string, string> = {
   CONMUTACION_RECHAZADA: 'Conmutación rechazada',
   PIN_DESBLOQUEADO: 'PIN desbloqueado',
   PIN_ELIMINADO: 'PIN eliminado',
+  EQUIPO_REINCORPORADO: 'Equipo · reincorporación',
+  EQUIPO_ROL_CAMBIADO: 'Equipo · cambio de rol',
   CONTRATO_DADO_DE_BAJA: 'Contrato dado de baja',
 };
 
@@ -60,6 +62,10 @@ export const TIPO_VARIANT: Record<string, 'success' | 'destructive' | 'warning' 
   PROPIETARIO_RENDIDO: 'success',
   CONTRATO_APROBADO: 'success',
   EQUIPO_INVITADO: 'success',
+  EQUIPO_REINCORPORADO: 'success',
+  // Ámbar y no verde: un cambio de rol puede SUBIR o BAJAR poder, y la línea que hay que
+  // encontrar cuando algo no cierra es la que lo subió. En gris se pierde entre las demás.
+  EQUIPO_ROL_CAMBIADO: 'warning',
   PAGO_RECHAZADO: 'destructive',
   GASTO_CAJA_ELIMINADO: 'destructive',
   CONTRATO_RECHAZADO: 'destructive',
