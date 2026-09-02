@@ -2542,11 +2542,19 @@ function CargarContratoApiWizard() {
         )}
       </main>
 
+      {/* EL CARTEL MENTÍA EN LAS DOS DIRECCIONES. Decía «vas a perder el progreso» y «no se
+          puede deshacer», y las dos son falsas: este wizard AUTOGUARDA el borrador en cada
+          cambio (`guardarBorradorContrato`, con debounce), y al volver a la pantalla te lo
+          ofrece para retomar. El borrador sólo se borra al dar de alta o al elegir «empezar
+          de cero» — cancelar no lo toca.
+          
+          No es cosmético: un cartel que amenaza con perder una hora de carga hace que la
+          persona NO cancele y siga peleando con una pantalla que quería abandonar. */}
       <ConfirmDialog
         open={cancelarAbierto}
         onOpenChange={setCancelarAbierto}
         title="¿Cancelar la carga?"
-        description="Vas a perder el progreso de este contrato. Esta acción no se puede deshacer."
+        description="Salís sin dar de alta el contrato. Lo que cargaste queda guardado: cuando vuelvas a esta pantalla te lo vamos a ofrecer para retomarlo."
         confirmLabel="Sí, cancelar"
         onConfirm={() => router.push('/contratos')}
       />
