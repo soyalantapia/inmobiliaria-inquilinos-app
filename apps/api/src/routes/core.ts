@@ -37,6 +37,7 @@ import { enviarInvitacionInquilino, enviarInvitacionEquipo, enviarAvisoAjusteAlq
 import { contratoQuedaPendiente, diaCivilAR, rolTienePermiso, venceDespuesDeHoy, yaVencio } from '@llave/shared';
 import { ROLES_ORDEN, type Rol } from '@llave/shared/permisos';
 import { dinero, dineroPositivo } from '../lib/monto.js';
+import { sim } from '../lib/simbolo-moneda.js';
 import { liqQueDefineEstado, liqVencida } from '../lib/estado-de-pago.js';
 
 
@@ -2230,7 +2231,7 @@ export async function coreRoutes(app: FastifyInstance) {
         return reply.code(400).send({
           message:
             dep.deducciones > 0
-              ? `Sólo quedan $${dep.disponible} para devolver: hay $${dep.deducciones} en reparaciones imputadas a este depósito.`
+              ? `Sólo quedan ${sim(contrato.moneda)}${dep.disponible} para devolver: hay ${sim(contrato.moneda)}${dep.deducciones} en reparaciones imputadas a este depósito.`
               : 'No podés devolver más que el depósito en custodia',
         });
       }
